@@ -171,6 +171,11 @@ fn ValueTypes defs = Fold defs, {}, \|acc, d| Fold d.items, acc, \|a, it| match 
     ItTag t: Insert a, "{d.name}::{t.name}", True
     otherwise: a
 
+# A module's item as the crate root's items refer to it (`crate::Elem`'s variants, written
+# in `main`): by its module's path.
+RootRef: fn Text, Text -> Ref
+fn RootRef home, name = RefItem (RustModName home), name, "{RustModName home}::{name}"
+
 # The modules whose value types an item's own type holds by value.
 ItemHeld: fn [Text], (Text ==> Bool), Text, Item -> [Text]
 fn ItemHeld names, valueTys, home, it = match it:
@@ -186,8 +191,9 @@ fn ItemHeld names, valueTys, home, it = match it:
 HeldIn: fn [Text], (Text ==> Bool), Text, OutTy -> [Text]
 fn HeldIn names, valueTys, home, t = match t:
     OutNamed n, args:
-        let p = PathFrom names, home, n
-        let own = if HasKey valueTys, p: [[(ParentOf p)]] else: [[]]
+        let own = match n:
+            RefItem m, ignore, ignore: if HasKey valueTys, (Or (?RefKey n), ""): [[m]] else: [[]]
+            otherwise: [[]]
         Fold args, own, \|acc, a| UnionTexts acc, (HeldIn names, valueTys, home, a)
     OutOpt i: HeldIn names, valueTys, home, i
     OutRes i: HeldIn names, valueTys, home, i
@@ -199,8 +205,9 @@ fn HeldIn names, valueTys, home, t = match t:
 NamedIn: fn [Text], Text, OutTy -> [Text]
 fn NamedIn names, home, t = match t:
     OutNamed n, args:
-        let p = PathFrom names, home, n
-        let own = if HasText names, (ParentOf p): [[(ParentOf p)]] else: [[]]
+        let own = match n:
+            RefItem m, ignore, ignore: if HasText names, m: [[m]] else: [[]]
+            otherwise: [[]]
         Fold args, own, \|acc, a| UnionTexts acc, (NamedIn names, home, a)
     OutOpt i: NamedIn names, home, i
     OutRes i: NamedIn names, home, i
@@ -213,22 +220,6 @@ fn NamedIn names, home, t = match t:
     OutTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (NamedIn names, home, a)
     OutFn ps, r: Fold ps, (NamedIn names, home, r), \|acc, a| UnionTexts acc, (NamedIn names, home, a)
     otherwise: [[]]
-
-# A type's path as the model writes it, made absolute (`crate::` dropped; a path that does
-# not start with a module is the home module's).
-PathFrom: fn [Text], Text, Text -> Text
-fn PathFrom names, home, n:
-    let q = DropPrefix n, "crate::"
-    if StartsWithModule names, q: q else: if home == "": q else: "{home}::{q}"
-
-# Whether a path starts with one of the modules' paths (`check::env::Ty` with `check::env`).
-StartsWithModule: fn [Text], Text -> Bool
-fn StartsWithModule names, q = Fold names, False, \|f, n| f or (n != "" and HasPrefix q, "{n}::")
-
-ParentOf: fn Text -> Text
-fn ParentOf p:
-    let segs = SplitOn p, "::"
-    Join (Take segs, (Dec (Len segs))), "::"
 
 # Each module with the modules its value types are ordered with (`ModDef.typesWith`): the
 # ones it reaches by `complete` that reach it back, itself among them, in the program's
@@ -578,7 +569,7 @@ fn KindTags lx, kind, mods = Filter (Values lx.g.tags), \|tg| tg.kind == kind an
 RowDefOf: unbounded fn Lx, TyInfo -> RowDef
 fn RowDefOf lx, ti:
     let tags = KindTags lx, ti.name, (Keys lx.rsMods)
-    let cases = Each tags, \|tg| (((TagStruct tg.name), (PathIn lx, tg.home, (TagStruct tg.name))))
+    let cases = Each tags, \|tg| (((TagStruct tg.name), (RefIn lx, tg.home, (TagStruct tg.name))))
     let pod = Fold tags, True, \|ok, tg| ok and (TagDefOf lx, tg).pod
     let eq = Fold tags, True, \|ok, tg| ok and (TagDefOf lx, tg).eq
     RowDef(name=(Camel (BareName ti.name)), prism=ti.name, cases=cases, pod=pod, doc=(TypeDoc lx, ti), eq=eq, level=False, deep=[[]])
@@ -589,7 +580,7 @@ fn RowDefOf lx, ti:
 ElemRow: unbounded fn Lx, [Text] -> RowDef
 fn ElemRow lx, mods:
     let tags = KindTags lx, "Element", (Push mods, "Prelude")
-    let cases = Each tags, \|tg| (((TagStruct tg.name), "{RustModName tg.home}::{TagStruct tg.name}"))
+    let cases = Each tags, \|tg| (((TagStruct tg.name), (RootRef tg.home, (TagStruct tg.name))))
     let pod = Fold tags, True, \|ok, tg| ok and (TagDefOf lx, tg).pod
     let eq = Fold tags, True, \|ok, tg| ok and (TagDefOf lx, tg).eq
     let deep = Fold tags, [[]], \|acc, tg| if TagHoldsDyn lx, tg: Push acc, (TagStruct tg.name) else: acc
@@ -604,7 +595,7 @@ fn TagHoldsDyn lx, tg = Fold (TagDefOf lx, tg).fields, False, \|f, ((ignore, ign
 AnswerEnum: unbounded fn Lx, [Text] -> AnswerDef
 fn AnswerEnum lx, mods:
     let tags = KindTags lx, "Element", (Push mods, "Prelude")
-    AnswerDef(cases=(Each tags, \|tg| AnswerCase(variant=(TagStruct tg.name), accessor=(AnswerAccessor tg), structPath="{RustModName tg.home}::{TagStruct tg.name}", tagName=tg.name, ty=(AnswerTy lx, tg))))
+    AnswerDef(cases=(Each tags, \|tg| AnswerCase(variant=(TagStruct tg.name), accessor=(AnswerAccessor tg), structPath=(RootRef tg.home, (TagStruct tg.name)), tagName=tg.name, ty=(AnswerTy lx, tg))))
 
 # What an answer to a tag's element carries: its output's value; of a bundle (a tuple with
 # an event part, `Gui.Window`'s `((WindowId, !WindowInput))`) the event part's, which is
@@ -620,18 +611,15 @@ fn AnswerTy lx, tg:
         t: t
 
 # The Rust path of a tag's enum variant and of its struct, from the current module.
-TagPaths: fn Lx, TagInfo -> ((Text, Text))
-fn TagPaths lx, tg:
-    let st = TagStruct tg.name
-    let structPath = PathIn lx, tg.home, st
-    (("{KindPath lx, tg.kind}::{st}", structPath))
+TagPaths: fn Lx, TagInfo -> ((Ref, Ref))
+fn TagPaths lx, tg = (((VariantOf lx, tg), (RefIn lx, tg.home, (TagStruct tg.name))))
 
-VariantOf: fn Lx, TagInfo -> Text
-fn VariantOf lx, tg = "{KindPath lx, tg.kind}::{TagStruct tg.name}"
+VariantOf: fn Lx, TagInfo -> Ref
+fn VariantOf lx, tg = RefChild (KindRef lx, tg.kind), (TagStruct tg.name)
 
-KindPath: fn Lx, Text -> Text
-fn KindPath lx, kind = if kind == "Element": "crate::Elem" else: PathIn lx, (Or lx.g.types[kind], dummyTyInfo).home, (Camel (BareName kind))
+KindRef: fn Lx, Text -> Ref
+fn KindRef lx, kind = if kind == "Element": elemRef else: RefIn lx, (Or lx.g.types[kind], dummyTyInfo).home, (Camel (BareName kind))
 
 # A `check` block: each line's value as plain data, or the fault that stopped it.
 CheckDefOf: unbounded fn Lx, CheckDecl -> CheckDef
-fn CheckDefOf lx, c = CheckDef(name=c.name.name, lines=(Each c.lines, \|l| XCtor "std::Ok", [[(XMethod (Own (ValueOf lx, emptyEnv, l.expr)), "to_pod", [[]])]]))
+fn CheckDefOf lx, c = CheckDef(name=c.name.name, lines=(Each c.lines, \|l| XCtor (RefRuntime "std::Ok"), [[(XMethod (Own (ValueOf lx, emptyEnv, l.expr)), "to_pod", [[]])]]))

@@ -61,8 +61,8 @@ fn Type t = match t:
     OutPath: "rt::Path"
     OutDuration: "rt::Duration"
     OutError: "rt::Error"
-    OutNamed n, [[]]: RsPath n
-    OutNamed n, args: "{RsPath n}<{Types args}>"
+    OutNamed n, [[]]: RsRef n
+    OutNamed n, args: "{RsRef n}<{Types args}>"
     OutOpt i: "::std::option::Option<{Type i}>"
     OutRes i: "::std::result::Result<{Type i}, rt::Error>"
     OutTuple [[one]]: "({Type one},)"
@@ -92,7 +92,7 @@ fn Type t = match t:
     OutPort i: "rt::Port<{Type i}>"
     OutLive i: "rt::Live<{Type i}>"
     OutTurn: "() /* the job's turn */"
-    OutAssoc tr, n, (OutNamed "Self", [[]]): "Self::{n}"
+    OutAssoc tr, n, (OutNamed (RefRuntime "Self"), [[]]): "Self::{n}"
     OutAssoc tr, n, a: "<{Type a} as {tr}>::{n}"
     OutRefused what: "compile_error!(\"{loweringRefusal}{what}\")"
     OutQuantified b: "compile_error!(\"{loweringRefusal}a quantified type variable of `{b}`: no instantiation gives it a type\")"
@@ -102,6 +102,10 @@ fn Type t = match t:
 # `::std::option::Option::Some`), so that a program's type or node of the same name (`Rc`,
 # `Some`) hides none of them; the runtime side's are `rt::` already, a program's from the
 # crate or its own module.
+RsRef: fn Ref -> Text
+fn RsRef (RefItem ignore, ignore, s) = s
+fn RsRef (RefRuntime t) = RsPath t
+
 RsPath: fn Text -> Text
 fn RsPath p = if HasPrefix p, "std::":
     let segs = SplitOn (DropPrefix p, "std::"), "::"
@@ -176,7 +180,7 @@ fn Args xs = Join (Each xs, \|x| Expression x), ", "
 Expression: unbounded fn Ex -> Text
 fn Expression x = match x:
     XVar n: n
-    XPath p: RsPath p
+    XPath p: RsRef p
     XSelf: "self"
     XCx: "cx"
     XConst n: "Self::{n}"
@@ -206,16 +210,16 @@ fn Expression x = match x:
     XLater y: "::std::boxed::Box::new(move |cx| \{ {Expression y}; ::std::result::Result::Ok(()) \})"
     XFormatStr parts: FormatStr parts
     XIsCase y, [[]]: "false"
-    XIsCase y, cs: "matches!({Expression y}, {Join (Each cs, \|c| "{RsPath c}(..)"), " | "})"
+    XIsCase y, cs: "matches!({Expression y}, {Join (Each cs, \|c| "{RsRef c}(..)"), " | "})"
     XRefusal what: "compile_error!(\"{loweringRefusal}{Escape what}\")"
     XUnreachable: "unreachable!()"
-    XCall f, args: "{RsPath f}({Args args})"
+    XCall f, args: "{RsRef f}({Args args})"
     XApply f, args: "{Tight f}({Args args})"
     XMethod r, m, args: "{Tight r}.{m}({Args args})"
     XBin op, l, r: "{Operand l} {BinOpText op} {Operand r}"
     XUnary op, y: "{UnOpText op}{Operand y}"
-    XCtor p, args: "{RsPath p}({Args args})"
-    XRecord p, fs: "{RsPath p} \{ {Join (Each fs, \|((f, v))| FieldInit f, v), ", "} \}"
+    XCtor p, args: "{RsRef p}({Args args})"
+    XRecord p, fs: "{RsRef p} \{ {Join (Each fs, \|((f, v))| FieldInit f, v), ", "} \}"
     XTuple [[one]]: "({Expression one},)"
     XTuple xs: "({Args xs})"
     XVec xs: "vec![{Args xs}]"
@@ -230,6 +234,7 @@ fn Expression x = match x:
     XClosure mv, ps, body: "{if mv: "move " else: ""}|{Join (Each ps, \|p| Pattern p), ", "}| {Expression body}"
     XTry y: "{Tight y}?"
     XField r, f: "{Tight r}.{f}"
+    XFieldOf r, ignore, f: "{Tight r}.{f}"
     XPart r, k: "{Tight r}.{k}"
     XDecode t, y: "{DecodeHead t}::from_pod({Expression y})?"
     XCast y, t: "{Tight y} as {Type t}"
@@ -241,7 +246,7 @@ fn FieldInit f, v = "{f}: {Expression v}"
 
 DecodeHead: unbounded fn OutTy -> Text
 fn DecodeHead t = match t:
-    OutNamed n, [[]]: RsPath n
+    OutNamed n, [[]]: RsRef n
     OutNat: "rt::Nat"
     OutInt: "rt::Int"
     OutText: "rt::Text"
@@ -378,10 +383,10 @@ fn Pattern p = match p:
     PaWild: "_"
     PaBind n: n
     PaMut n: "mut {n}"
-    PaCtor c, ps: "{RsPath c}({Join (Each ps, \|q| Pattern q), ", "})"
-    PaUnit c: RsPath c
+    PaCtor c, ps: "{RsRef c}({Join (Each ps, \|q| Pattern q), ", "})"
+    PaUnit c: RsRef c
     PaRecord c0, fs, rest:
-        let c = RsPath c0
+        let c = RsRef c0
         let parts = Each fs, \|((f, q))| match q:
             PaBind n: if n == f: f else: "{f}: {n}"
             otherwise: "{f}: {Pattern q}"

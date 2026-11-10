@@ -113,7 +113,7 @@ fn RowLeaving cp, n:
     CppFunction "", "void {n.name}::leave_row(rt::Cx& cx)", (Join (Append (Push kept, "remove_places(cx);"), unsubscribe), "\n")
 
 ForBuildCpp: unbounded fn Cp, Text, ForDef -> Text
-fn ForBuildCpp cp, owner, b = ForBuildTemplate owner, b.name, (CppExpr cp, b.at), (CppType cp, b.keyTy), (CppType cp, b.valueTy), (CallPath "{b.rowNode}::build"), b.source, (CppExpr cp, b.parent), (Concat (Each b.passed, \|x| ", {CppExpr cp, x}")), (MovedCallCpp b.moved), (FromKeptCpp b.name, b.replaced), (ReplacedCallCpp b.replaced)
+fn ForBuildCpp cp, owner, b = ForBuildTemplate owner, b.name, (CppExpr cp, b.at), (CppType cp, b.keyTy), (CppType cp, b.valueTy), "{TypePath b.rowNode}::make", b.source, (CppExpr cp, b.parent), (Concat (Each b.passed, \|x| ", {CppExpr cp, x}")), (MovedCallCpp b.moved), (FromKeptCpp b.name, b.replaced), (ReplacedCallCpp b.replaced)
 
 # The source the rows were last built from, kept: over a map of dynamics the walk reads the
 # one it replaces, to compare each kept key's dynamic with the one its row was built from.
@@ -146,7 +146,7 @@ fn ProgramCpp cp, p, fallible:
     let names = Each p.params, \|((a, ignore))| a
     let plural = if n == 1: "" else: "s"
     let decode = if n == 0: "static_cast<void>(args);" else: Join (Append [["if (args.size() != {n}) return rt::unexpected(rt::Fault::answer(\"@{p.prism} takes {n} argument{plural}\"));"]], (Each (Range0 n), \|i| DecodeArg cp, p.params, i)), "\n"
-    let call = "{CallPath "{p.node}::build"}(rt::Path::root(), {Concat (Each names, \|a| "{a}, ")}cx)"
+    let call = "{TypePath p.node}::make(rt::Path::root(), {Concat (Each names, \|a| "{a}, ")}cx)"
     let root = if fallible: "TRY({call})" else: call
     ProgramClass p.name, p.prism, (TypePath p.node), decode, root
 

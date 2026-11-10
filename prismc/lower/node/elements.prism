@@ -62,7 +62,7 @@ fn ElementLine wx, benv, menv, e, ?bound:
             let pos = wx.pos
             let wx1 = update wx:
                 &_.pos <= NextPos &_.pos
-            let structPath = PathIn lx, tg.home, (TagStruct tg.name)
+            let structPath = RefIn lx, tg.home, (TagStruct tg.name)
             # each field three ways: live in the methods, constant at the build, and constant
             # in the methods (a row's `document`, where a row's key is its own field)
             let ((liveFields, constFields, methodConsts, reads, wx2)) = Fold tg.fields, (([[]], [[]], [[]], [[]], wx1)), \|((lf, cf, mf, rd, w)), ((fname, fty))|
@@ -102,11 +102,11 @@ fn ElementLine wx, benv, menv, e, ?bound:
             # its scope's builders (`BuildSteps`)
             let constTake = if live: [[]] else: [[(DoExpr (XMethod (XVar entry), "take", [[atBuild, XCx]]))]]
             let wx3h = if emits: wx3w else: update wx3w:
-                &_.lets <= Append (Push &_.lets, (DoLet (PaTyped (PaBind entry), entryTy), (XCall "prism_rtl::Entry::new", [[XStr what]]))), constTake
+                &_.lets <= Append (Push &_.lets, (DoLet (PaTyped (PaBind entry), entryTy), (XCall (RefRuntime "prism_rtl::Entry::new"), [[XStr what]]))), constTake
                 &_.fields <= Push &_.fields, ((entry, entryTy, "{what}, an entry of its host's document"))
                 &_.moves <= Push &_.moves, ((entry, (XClone (XVar entry))))
-            let wx3d = if deep: AddFieldLast wx3h, watch, (OutNamed "prism_rtl::Watch", [[]]), "the dynamics place {PlaceText pos}'s level holds, watched so a move sends it again (doubt WD)", (XCall "prism_rtl::Watch::new", [[]]) else: wx3h
-            let sent = if deep: [[(DoLet (PaBind "sent"), added), (DoExpr (XMethod (XCx), "added", [[(PlaceAt wx3, "node", pos), (XMethod (XVar "sent"), "level_pod", [[XCx]])]])), (DoExpr (XMethod (XField (XVar "node"), watch), "renew", [[(XRef (XVar "sent")), (XCast (XClone (XVar "node")), (OutObj (OutNamed "rt::Node", [[]]))), XCx]]))]]
+            let wx3d = if deep: AddFieldLast wx3h, watch, (OutNamed (RefRuntime "prism_rtl::Watch"), [[]]), "the dynamics place {PlaceText pos}'s level holds, watched so a move sends it again (doubt WD)", (XCall (RefRuntime "prism_rtl::Watch::new"), [[]]) else: wx3h
+            let sent = if deep: [[(DoLet (PaBind "sent"), added), (DoExpr (XMethod (XCx), "added", [[(PlaceAt wx3, "node", pos), (XMethod (XVar "sent"), "level_pod", [[XCx]])]])), (DoExpr (XMethod (XField (XVar "node"), watch), "renew", [[(XRef (XVar "sent")), (XCast (XClone (XVar "node")), (OutObj (OutNamed (RefRuntime "rt::Node"), [[]]))), XCx]]))]]
                 else: [[(DoExpr (XMethod (XCx), "added", [[(PlaceAt wx3, "node", pos), (XMethod added, "level_pod", [[XCx]])]]))]]
             let wx4 = update wx3d:
                 &_.places <= Push &_.places, Place(pos=pos, level=level, getter=getter, reads=reads, entry=entry, watch=watch)
@@ -231,7 +231,7 @@ fn BundleAnswer wx, pos, et, ?b:
 # from the World.
 FirstValueLet: fn Wx, Pos, TagInfo, Ex -> Do
 fn FirstValueLet wx, pos, tg, level:
-    let missing = XCall "rt::Fault::answer", [[(XStr "no first value for {tg.name}")]]
+    let missing = XCall (RefRuntime "rt::Fault::answer"), [[(XStr "no first value for {tg.name}")]]
     if Emits wx, pos:
         let asked = XMethod (XCx), "first_value", [[(XRef (XMethod level, "to_pod", [[]]))]]
         DoLet (PaBind "first_{PlaceText pos}"), (TryOf (XMethod asked, "ok_or", [[missing]]))
@@ -249,8 +249,8 @@ fn HostLocal wx, pos = if pos.scope == 0: "enclosing" else: Or wx.scopes[Dec pos
 
 # A tag's variant of the program's `Answer` enum, and the accessor that takes the variant's
 # value out (`ui_button`), emitted beside `crate::Elem`.
-AnswerVariant: fn TagInfo -> Text
-fn AnswerVariant tg = "crate::Answer::{TagStruct tg.name}"
+AnswerVariant: fn TagInfo -> Ref
+fn AnswerVariant tg = RefChild answerRef, (TagStruct tg.name)
 
 AnswerAccessor: fn TagInfo -> Text
 fn AnswerAccessor tg = Snake (TagStruct tg.name)
@@ -278,7 +278,7 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
             let wx2 = update wx1:
                 &_.lets <= Push &_.lets, (FirstValueLet wx, pos, tg, level)
                 &_.fields <= Push &_.fields, ((f, OutHold out, "pushed to place {PlaceText pos}"))
-                &_.inits <= Push &_.inits, ((f, (XCall "rt::Hold::new", [[first, XCx]])))
+                &_.inits <= Push &_.inits, ((f, (XCall (RefRuntime "rt::Hold::new"), [[first, XCx]])))
                 &_.dynPlaces <= Push &_.dynPlaces, ((pos, f, out, (AnswerAccessor tg)))
                 &_.fallible <= True
             # a World's pushes are keyed by the element: the place listens for them; a hosted
@@ -287,7 +287,7 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
                 &_.lets <= Push &_.lets, (DoLet (PaBind "{f}_element"), (XMethod level, "to_pod", [[]]))
                 &_.fields <= Push &_.fields, (("{f}_element", OutPod, "place {PlaceText pos}'s element, which pushes are keyed by"))
                 &_.moves <= Push &_.moves, (("{f}_element", (XClone (XVar "{f}_element"))))
-                &_.build <= Push &_.build, (DoExpr (XMethod (XCx), "listen", [[(XClone (XField (XVar "node"), "{f}_element")), (XRef (XCast (XClone (XVar "node")), (OutObj (OutNamed "rt::Node", [[]]))))]]))
+                &_.build <= Push &_.build, (DoExpr (XMethod (XCx), "listen", [[(XClone (XField (XVar "node"), "{f}_element")), (XRef (XCast (XClone (XVar "node")), (OutObj (OutNamed (RefRuntime "rt::Node"), [[]]))))]]))
             else: wx2
             ((wx3, (WrDyn (XMethod (XField XSelf, "{f}"), "get", [[XCx]]), [[OwnRead f]], out)))
         otherwise: match ?bound:

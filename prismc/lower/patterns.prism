@@ -74,11 +74,11 @@ fn RustPat lx, p, ty, mode, fresh = match p.kind:
             PatOut(pa=(PaBind rs), conds=[[]], binds=[[((nkey, (BnLocal (XVar rs), mode, bt)))]])
     PIgnore: PatOnly PaWild
     PUnit: PatOnly PaWild
-    PNil: PatOnly (PaUnit "std::None")
+    PNil: PatOnly (PaUnit (RefRuntime "std::None"))
     PLit l: LitPat lx, l, ty, mode, fresh, False
     PNeg l: LitPat lx, l, ty, mode, fresh, True
-    PSigil "?", q: WrapPat lx, "std::Some", q, (InnerTy ty), mode, fresh
-    PSigil "~", q: WrapPat lx, "std::Ok", q, (InnerTy ty), mode, fresh
+    PSigil "?", q: WrapPat lx, (RefRuntime "std::Some"), q, (InnerTy ty), mode, fresh
+    PSigil "~", q: WrapPat lx, (RefRuntime "std::Ok"), q, (InnerTy ty), mode, fresh
     PSigil ignore, q: RustPat lx, q, ty, mode, fresh
     PGroup q: RustPat lx, q, ty, mode, fresh
     PCtor n, ps: CtorPat lx, n, ps, ty, mode, fresh
@@ -108,7 +108,7 @@ fn IsUnitCtor lx, qk = match lx.g.ctors[qk]:
         otherwise: False
     nil: False
 
-WrapPat: unbounded fn Lx, Text, Pattern, Ty, Holding, Text -> PatOut
+WrapPat: unbounded fn Lx, Ref, Pattern, Ty, Holding, Text -> PatOut
 fn WrapPat lx, ctor, q, inner, mode, fresh:
     let o = RustPat lx, q, inner, mode, fresh
     update o:
@@ -142,7 +142,7 @@ fn CtorPat lx, n, ps, ty, mode, fresh:
         ? qk: match lx.g.ctors[qk]:
             ? c:
                 let owner = Or lx.g.types[c.owner], dummyTyInfo
-                let tyPath = PathIn lx, owner.home, (Camel (BareName c.owner))
+                let tyPath = RefIn lx, owner.home, (Camel (BareName c.owner))
                 let args = match Peel ty:
                     TyCon ignore, xs: xs
                     otherwise: [[]]
@@ -158,7 +158,7 @@ fn CtorPat lx, n, ps, ty, mode, fresh:
                         let isNewtype = (BareName c.name) == (BareName c.owner) and match owner.body:
                             BChoice cases: (Len cases) == 1
                             otherwise: False
-                        let path = if isUnitType or isNewtype: tyPath else: "{tyPath}::{Camel (BareName c.name)}"
+                        let path = if isUnitType or isNewtype: tyPath else: RefChild tyPath, (Camel (BareName c.name))
                         if (Len c.args) == 0: PatOut(pa=(PaUnit path), conds=[[]], binds=[[]])
                         else: PatOut(pa=(PaCtor path, pas), conds=conds, binds=binds)
             nil: PatOut(pa=PaWild, conds=[[CcIf (Refusal "a pattern of {qk}")]], binds=[[]])
@@ -197,7 +197,7 @@ fn RecordPat lx, n, fps, rest, ty, mode, fresh:
     else: match lx.g.ctors[qk]:
         ? c:
             let owner = Or lx.g.types[c.owner], dummyTyInfo
-            let tyPath = PathIn lx, owner.home, (Camel (BareName c.owner))
+            let tyPath = RefIn lx, owner.home, (Camel (BareName c.owner))
             match owner.body:
                 # `Box(..)` on a choice's positional case: that case, every field ignored
                 BChoice cases if (Len fps) == 0: RestCasePat c, cases, tyPath
@@ -206,15 +206,15 @@ fn RecordPat lx, n, fps, rest, ty, mode, fresh:
             ? tg: TagPat lx, tg, fps, rest, ty, mode, fresh
             nil: PatOut(pa=PaWild, conds=[[CcIf (Refusal "a pattern of {qk}")]], binds=[[]])
 
-RestCasePat: fn CtorInfo, [((Text, [Ty]))], Text -> PatOut
+RestCasePat: fn CtorInfo, [((Text, [Ty]))], Ref -> PatOut
 fn RestCasePat c, cases, tyPath:
     let isNewtype = (Len cases) == 1 and (BareName c.name) == (BareName c.owner)
-    let path = if isNewtype: tyPath else: "{tyPath}::{Camel (BareName c.name)}"
+    let path = if isNewtype: tyPath else: RefChild tyPath, (Camel (BareName c.name))
     if (Len c.args) == 0: PatOut(pa=(PaUnit path), conds=[[]], binds=[[]])
     else: PatOut(pa=(PaCtor path, (Each c.args, \|ignore| PaWild)), conds=[[]], binds=[[]])
 
 # A record's (or a case's) fields by name: `Rec(f=p, ..)`.
-FieldsPat: unbounded fn Lx, CtorInfo, [FieldPat], Bool, Ty, Holding, Text, Text -> PatOut
+FieldsPat: unbounded fn Lx, CtorInfo, [FieldPat], Bool, Ty, Holding, Text, Ref -> PatOut
 fn FieldsPat lx, c, fps, rest, ty, mode, fresh, tyPath:
             let args = match Peel ty:
                 TyCon ignore, xs: xs
@@ -266,7 +266,7 @@ fn TagPat lx, tg, fps, rest, ty, mode, fresh:
         let ft = Fold tg.fields, TyErr, \|found, ((f, t))| if f == fname: t else: found
         match LayerOf ft:
             LyEv: ((nil, (PatOut(pa=PaWild, conds=[[CcIf (Refusal "an event field in an element pattern ({tg.name}.{fname})")]], binds=[[]]))))
-            LyDyn if live: ((nil, (LiveFieldPat lx, fp.pattern, variant, fname, (FieldSpell tg.home, fname, ft), ft, fresh)))
+            LyDyn if live: ((nil, (LiveFieldPat lx, fp.pattern, variant, structPath, fname, (FieldSpell tg.home, fname, ft), ft, fresh)))
             otherwise:
                 let o = RustPat lx, fp.pattern, (Peel ft), subMode, "{fresh}_{i}"
                 ((? (FieldSpell tg.home, fname, ft), o))
@@ -285,18 +285,18 @@ fn TagPat lx, tg, fps, rest, ty, mode, fresh:
 # projected (`Dynamic::map`). A plain function is lifted, its `$` values read at the
 # caller's read point, which it has no `cx` to read at, so there the binder is refused
 # (gap LE); a host's supplier, lowered in its node, binds the dynamic.
-LiveFieldPat: unbounded fn Lx, Pattern, Text, Text, Text, Ty, Text -> PatOut
-fn LiveFieldPat lx, p, variant, fname, rsField, ft, fresh = match p.kind:
+LiveFieldPat: unbounded fn Lx, Pattern, Ref, Ref, Text, Text, Ty, Text -> PatOut
+fn LiveFieldPat lx, p, variant, structPath, fname, rsField, ft, fresh = match p.kind:
     PIgnore: PatOnly PaWild
     PName n:
-        let rs = if lx.inNode: LiveProjection fresh, variant, rsField, (OutTyOf lx, (Peel ft)) else: Refusal "a live element's `$` field ({fname}) in a plain function, which has no read point (gap LE)"
+        let rs = if lx.inNode: LiveProjection fresh, variant, structPath, rsField, (OutTyOf lx, (Peel ft)) else: Refusal "a live element's `$` field ({fname}) in a plain function, which has no read point (gap LE)"
         PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal rs, Owned, (OutDyn (OutTyOf lx, (Peel ft))))))]])
-    PGroup q: LiveFieldPat lx, q, variant, fname, rsField, ft, fresh
+    PGroup q: LiveFieldPat lx, q, variant, structPath, fname, rsField, ft, fresh
     otherwise: PatOut(pa=PaWild, conds=[[CcIf (Refusal "a pattern inside a live element's `$` field ({fname})")]], binds=[[]])
 
-LiveProjection: fn Text, Text, Text, OutTy -> Ex
-fn LiveProjection fresh, variant, fname, ft:
-    let arm = XArm(pat=(PaCtor variant, [[PaBind "x"]]), conds=[[]], body=(XClone (XField (XVar "x"), fname)))
+LiveProjection: fn Text, Ref, Ref, Text, OutTy -> Ex
+fn LiveProjection fresh, variant, structPath, fname, ft:
+    let arm = XArm(pat=(PaCtor variant, [[PaBind "x"]]), conds=[[]], body=(XClone (XFieldOf (XVar "x"), structPath, fname)))
     let other = XArm(pat=PaWild, conds=[[]], body=XUnreachable)
     XMethod (XField (XVar fresh), "level"), "map", [[(XClosure True, [[PaBind "l"]], (XMatch (XVar "l"), [[arm, other]], False, ft))]]
 
@@ -334,7 +334,7 @@ fn ErrorPat lx, fps, ty, mode, fresh:
                 otherwise: (([[]], [[]]))
             otherwise: (([[]], [[]]))
     let wrapped = match Peel ty:
-        TySig "~", ignore: PaCtor "std::Err", [[PaBind fresh]]
+        TySig "~", ignore: PaCtor (RefRuntime "std::Err"), [[PaBind fresh]]
         otherwise: PaBind fresh
     PatOut(pa=wrapped, conds=(Fold parts, [[]], \|acc, ((cs, ignore))| Append acc, cs), binds=(Fold parts, [[]], \|acc, ((ignore, bs))| Append acc, bs))
 
@@ -347,6 +347,6 @@ fn ArrayPat lx, ps, ty, mode, fresh:
     let arr = LocalPlace (XVar fresh), mode, (OutTyOf lx, (Peel ty))
     let lenCond = CcIf (XBin OpEq, (XMethod (Ref arr), "len", [[]]), (XIndex (Len ps)))
     let subs = Each (Range0 (Len ps)), \|i| ((i, (RustPat lx, (Or ps[i], dummyPat), et, Owned, "{fresh}_{i}")))
-    let conds = Fold subs, [[lenCond]], \|acc, ((i, o))| Append (Push acc, (CcLet (PaCtor "std::Some", [[o.pa]]), (XCall (Helper "index"), [[Ref arr, (XRef (XNat "{i}"))]]))), o.conds
+    let conds = Fold subs, [[lenCond]], \|acc, ((i, o))| Append (Push acc, (CcLet (PaCtor (RefRuntime "std::Some"), [[o.pa]]), (XCall (HelperRef "index"), [[Ref arr, (XRef (XNat "{i}"))]]))), o.conds
     let binds = Fold subs, [[]], \|acc, ((ignore, o))| Append acc, o.binds
     PatOut(pa=(PaBind fresh), conds=conds, binds=binds)

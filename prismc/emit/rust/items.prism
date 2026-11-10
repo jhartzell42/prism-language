@@ -212,23 +212,23 @@ fn DeepField p, f, ft = "(\"{p}\", {DeepPod f, ft})"
 # dynamic sampled deep. Any other shape holding a dynamic stops the build, loudly.
 DeepPod: unbounded fn Text, OutTy -> Text
 fn DeepPod f, ft = match ft:
-    OutMap ignore, (OutDyn (OutNamed "crate::Elem", ignore)): "prism_rtl::dynamics_pod(&self.{f}, cx)"
-    OutDyn (OutNamed "crate::Elem", ignore): "prism_rtl::Level::level_pod(&self.{f}.sample(cx), cx)"
+    OutMap ignore, (OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore)): "prism_rtl::dynamics_pod(&self.{f}, cx)"
+    OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore): "prism_rtl::Level::level_pod(&self.{f}.sample(cx), cx)"
     other: if HoldsDyn other: "compile_error!(\"prismc: a tag field holding a dynamic other than `$Elem` or a map of them is not read deep (claude/incremental-host-document.md, doubt WD)\")" else: "self.{f}.to_pod()"
 
 DeepPorts: unbounded fn Text, OutTy -> Text
 fn DeepPorts f, ft = match ft:
-    OutMap ignore, (OutDyn (OutNamed "crate::Elem", ignore)): "\n        prism_rtl::dynamics_ports(&self.{f}, cx, out);"
-    OutDyn (OutNamed "crate::Elem", ignore): "\n        out.push(self.{f}.updates.clone());\n        prism_rtl::Level::level_ports(&self.{f}.sample(cx), cx, out);"
+    OutMap ignore, (OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore)): "\n        prism_rtl::dynamics_ports(&self.{f}, cx, out);"
+    OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore): "\n        out.push(self.{f}.updates.clone());\n        prism_rtl::Level::level_ports(&self.{f}.sample(cx), cx, out);"
     otherwise: ""
 
 # A row kind's enum (pick RV): a variant per tag, printing and crossing as the tag's level.
 RustRow: unbounded fn RowDef -> Text
 fn RustRow r:
     let derives = if r.eq: "::std::clone::Clone, ::std::cmp::PartialEq, ::std::cmp::Eq" else: "::std::clone::Clone"
-    let cases = Join (Each r.cases, \|((v, st))| "{v}({st}),"), "\n"
+    let cases = Join (Each r.cases, \|((v, st))| "{v}({RsRef st}),"), "\n"
     let pods = Join (Each r.cases, \|((v, ignore))| "{r.name}::{v}(x) => x.to_pod(),"), "\n"
-    let reads = Join (Each r.cases, \|((v, st))| "::std::option::Option::Some(t) if t == {st}::TAG => ::std::result::Result::Ok({r.name}::{v}(rt::FromPod::from_pod(p)?)),"), "\n"
+    let reads = Join (Each r.cases, \|((v, st))| "::std::option::Option::Some(t) if t == {RsRef st}::TAG => ::std::result::Result::Ok({r.name}::{v}(rt::FromPod::from_pod(p)?)),"), "\n"
     let back = if r.pod: "\n{RowFromPod r.name, reads}" else: ""
     # An empty row's enum has no values: its match is over `*self`, with no arms.
     let pods2 = if (Len r.cases) == 0: "_ => unreachable!()," else: pods
@@ -243,7 +243,7 @@ fn RustRow r:
 RustAnswer: unbounded fn AnswerDef -> Text
 fn RustAnswer a:
     let cases = Join (Each a.cases, \|c| "{c.variant}({Type c.ty}),"), "\n"
-    let tags = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Each a.cases, \|c| "Answer::{c.variant}(_) => {c.structPath}::TAG,"), "\n"
+    let tags = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Each a.cases, \|c| "Answer::{c.variant}(_) => {RsRef c.structPath}::TAG,"), "\n"
     let accessors = Join (Each a.cases, \|c| AnswerGetter c.accessor, c.variant, c.tagName, (Type c.ty)), "\n"
     let decodes = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Each a.cases, \|c| "Elem::{c.variant}(..) => ::std::result::Result::Ok(Answer::{c.variant}({DecodeHead c.ty}::from_pod(v)?)),"), "\n"
     AnswerType cases, tags, accessors, decodes

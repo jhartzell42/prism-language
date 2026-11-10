@@ -247,6 +247,19 @@ fn PreludePath ignore, name = Helper name
 Helper: fn Text -> Text
 fn Helper n = "crate::prelude::{n}"
 
+# A module's item `name` as the model refers to it from the site (pick UN): resolved to its
+# output module, with its path as `PathIn` writes it.
+RefIn: fn Lx, Text, Text -> Ref
+fn RefIn lx, owner, name = RefItem (Or lx.rsMods[owner], (RustModName owner)), name, (PathIn lx, owner, name)
+
+# An item lowering makes in the module it lowers (a node, a job): bare at the site.
+SiteRef: fn Lx, Text -> Ref
+fn SiteRef lx, name = RefIn lx, lx.site, name
+
+# A function or type of the emitted prelude's hand-written code, from the crate.
+HelperRef: fn Text -> Ref
+fn HelperRef n = RefItem "prelude", n, (Helper n)
+
 # The Rust and C++ name of a top-level value of a module (pick UN): its name in snake
 # case, `_` and the letter of its kind, by its sigil (`?` `o`, `~` `r`, `!` `e`, `$` `d`,
 # `@` `b`) or else its type's outer layer (`f` a function, `p` anything plain):
@@ -383,13 +396,13 @@ fn SigilWord "@" = "widget"
 fn SigilWord "&" = "ref"
 fn SigilWord other = "x"
 
-# A top-level value's Rust path from the current module.
-ValuePath: fn Lx, Text -> Text
-fn ValuePath lx, qk:
+# A top-level value as the model refers to it.
+ValueRef: fn Lx, Text -> Ref
+fn ValueRef lx, qk:
     let owner = match lx.g.vals[qk]:
         ? v: v.home
         nil: OwnerOf qk
-    PathIn lx, owner, (Or lx.rsNames[qk], (Snake (BareName qk)))
+    RefIn lx, owner, (Or lx.rsNames[qk], (Snake (BareName qk)))
 
 # The module a qualified key belongs to: everything before its last segment.
 OwnerOf: fn Text -> Text

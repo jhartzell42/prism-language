@@ -110,13 +110,8 @@ fn ValueDeps cp, t = match t:
 
 # A value type's path as `ValueDecl.path` writes it: in its module, or the crate's own
 # (`Elem`, `Answer`).
-DepPath: fn Cp, Text -> Text
-fn DepPath cp, n:
-    let abs = Absolute cp, n
-    let q = DropPrefix n, "crate::"
-    match cp.types[abs]:
-        ? ignore: abs
-        nil: q
+DepPath: fn Cp, Ref -> Text
+fn DepPath cp, n = Or (?RefKey n), (RefSpelled n)
 
 # Whether a field's type names a type that may be incomplete where the struct is defined,
 # and whose comparison a defaulted one would instantiate at once (clang defines a defaulted
@@ -400,14 +395,14 @@ fn CppDeepField p, f, ft = "\{\"{p}\", {CppDeepPod f, ft}\}"
 
 CppDeepPod: unbounded fn Text, OutTy -> Text
 fn CppDeepPod f, ft = match ft:
-    OutMap ignore, (OutDyn (OutNamed "crate::Elem", ignore)): "prism_rtl::dynamics_pod({FieldId f}, cx)"
-    OutDyn (OutNamed "crate::Elem", ignore): "prism_rtl::level_pod({FieldId f}.sample(cx), cx)"
+    OutMap ignore, (OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore)): "prism_rtl::dynamics_pod({FieldId f}, cx)"
+    OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore): "prism_rtl::level_pod({FieldId f}.sample(cx), cx)"
     other: if HoldsDyn other: "[] \{ static_assert(false, \"prismc: a tag field holding a dynamic other than `$Elem` or a map of them is not read deep (claude/incremental-host-document.md, doubt WD)\"); return rt::Pod(); \}()" else: "prism_rtl::to_pod({FieldId f})"
 
 CppDeepPorts: unbounded fn Text, OutTy -> Text
 fn CppDeepPorts f, ft = match ft:
-    OutMap ignore, (OutDyn (OutNamed "crate::Elem", ignore)): "prism_rtl::dynamics_ports({FieldId f}, cx, out);"
-    OutDyn (OutNamed "crate::Elem", ignore): "out.push_back({FieldId f}.updates);\nprism_rtl::level_ports({FieldId f}.sample(cx), cx, out);"
+    OutMap ignore, (OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore)): "prism_rtl::dynamics_ports({FieldId f}, cx, out);"
+    OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore): "out.push_back({FieldId f}.updates);\nprism_rtl::level_ports({FieldId f}.sample(cx), cx, out);"
     otherwise: ""
 
 # A row kind's values (pick RV): a choice of the kind's tags, each holding its tag's struct.
@@ -430,8 +425,10 @@ fn RowParts cp, m, r:
     Parts(forward=[["class {r.name};"]], values=[[ValueDecl(path=(DeclPath cp, r.name), deps=deps, text="{cls}{eq}")]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append (Append [[toPod, show]], fromPod), levelDefs))
 
 # A row case's struct, by its path from the crate (the case's own name would name the case).
-RowStruct: fn Text, Text -> Text
-fn RowStruct m, st = if (Contains st, ":") or m == "": TypePath st else: "crate::{m}::{st}"
+RowStruct: fn Text, Ref -> Text
+fn RowStruct m, st = match st:
+    RefItem sm, p, s: if m == "": TypePath s else: "crate::{sm}::{p}"
+    RefRuntime t: TypePath t
 
 # `crate::Answer` (pick HO): a choice of a case per element tag with the tag's output; the
 # tag an answer is for; an accessor per case; the decode of a World's answer.
@@ -442,7 +439,7 @@ fn AnswerParts cp, a:
     let members = "const char* tag() const;\n{accessors}\nstatic rt::Result<Answer> decode(const Elem& e, const rt::Pod& v);"
     let cases = Join (Each a.cases, \|c| CaseDecl c.variant, "{CppType cp, c.ty} a0;"), "\n"
     let cls = ChoiceClass (CppDoc "`Answer c`: an answer to an element, typed by its tag (Semantics ch. 9): what a host's\nsupplier answers a child place with, and what a World's answer to a forwarded element\ndecodes to, carrying the tag's output."), "", "Answer", cases, (Join names, ", "), members
-    let tags = Join (Each a.cases, \|c| "if (::std::holds_alternative<{c.variant}>(cases())) return {TypePath c.structPath}::TAG;"), "\n"
+    let tags = Join (Each a.cases, \|c| "if (::std::holds_alternative<{c.variant}>(cases())) return {TypePath (RefSpelled c.structPath)}::TAG;"), "\n"
     let tagFn = CppFunction "", "const char* Answer::tag() const", "{tags}\nprism_rtl::unreachable();"
     let getters = Each a.cases, \|c| CppFunction (CppDoc "A `{c.tagName}`'s answer."), "rt::Result<{CppType cp, c.ty}> Answer::{c.accessor}() const", "if (auto c = ::std::get_if<{c.variant}>(&cases())) return c->a0;\nreturn rt::unexpected(rt::Fault::answer(rt::str(\"an answer for \", tag(), \", where {c.tagName}'s was expected\")));"
     let decodes = Join (Each a.cases, \|c| "if (is<Elem::{c.variant}>(e)) return Answer({c.variant}\{TRY(prism_rtl::from_pod<{CppType cp, c.ty}>(v))\});"), "\n"

@@ -106,7 +106,7 @@ fn PlainBinder lx, p = match p.kind:
 ParamWord: fn OutTy, Nat -> Text
 fn ParamWord t, i:
     let base = match t:
-        OutNamed n, ignore: Snake (Or (?Last (SplitOn n, "::")), "arg")
+        OutNamed n, ignore: Snake (RefLast n)
         OutText: "text"
         OutNat: "n"
         OutInt: "i"
@@ -338,7 +338,7 @@ fn IfGenLine wx, menv, c, thenB, elseB, e:
     let no = GenRowOf yes.parent, menv, elseB, OutUnit, "{base}Else", name
     let cond = AsBool (ValueOf lx, menv, c)
     let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
-    let Mk = \|n| XCast (TryOf (XCall "{n.name}::build", (Append [[(XVar "path"), (XVar "value")]], tail))), (OutObj (OutNamed "rt::Row", [[]]))
+    let Mk = \|n| XCast (TryOf (XCall (RefChild (SiteRef lx, n.name), "build"), (Append [[(XVar "path"), (XVar "value")]], tail))), (OutObj (OutNamed (RefRuntime "rt::Row"), [[]]))
     let select = XIf cond, (Mk yes.node), (Mk no.node)
     let wx3 = update no.parent:
         &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=False, width=0, moved=(Or (?HostedRows wx), ""))

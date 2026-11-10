@@ -62,7 +62,7 @@ fn OutTyOf lx, t = match t:
     TyCon "RegexReplacement", [[]]: OutReplacement
     TyCon "Duration", [[]]: OutDuration
     TyCon "Prelude.Error", [[]]: OutError
-    TyCon "\u{0}Self", [[]]: OutNamed "Self", [[]]
+    TyCon "\u{0}Self", [[]]: OutNamed (RefRuntime "Self"), [[]]
     TyCon "Buffer", [[a]]: OutArray (OutTyOf lx, a)
     TyCon "Table", [[k, v]]: OutArray (OutTuple [[(OutTyOf lx, k), (OutTyOf lx, v)]])
     TyCon "\u{0}Event", [[a]]: OutEvent (OutTyOf lx, a)
@@ -91,26 +91,26 @@ fn OutTyOf lx, t = match t:
         nil: match lx.quants["'{n}"]:
             ? b: OutQuantified b
             nil: OutUnit
-    TyAny bounds: if IsShowOnly bounds: OutShowAny else: OutNamed "prism_rtl::Packed", [[]]
-    TyElem ignore, ignore: OutLive (OutNamed "crate::Elem", [[]])
-    TyElemAny ignore: OutNamed "crate::Elem", [[]]
+    TyAny bounds: if IsShowOnly bounds: OutShowAny else: OutNamed (RefRuntime "prism_rtl::Packed"), [[]]
+    TyElem ignore, ignore: OutLive (OutNamed elemRef, [[]])
+    TyElemAny ignore: OutNamed elemRef, [[]]
     TyAt i, ignore: blueprintTy
     TyAssoc n, a: AssocOut lx, n, a
     TyErr: OutRefused "a type the checker did not find"
 
 # A blueprint as a value, `@o` (a supplier's answer): prism_rtl's, over the program's
 # element and answer enums (pick HO).
-let blueprintTy = OutNamed "prism_rtl::Blueprint", [[(OutNamed "crate::Elem", [[]]), (OutNamed "crate::Answer", [[]])]]
+let blueprintTy = OutNamed (RefRuntime "prism_rtl::Blueprint"), [[(OutNamed elemRef, [[]]), (OutNamed answerRef, [[]])]]
 
 # The program's element and answer enums, `crate::Elem` and `crate::Answer`, and a host as
 # its rows reach it.
-let elemTy = OutNamed "crate::Elem", [[]]
-let answerTy = OutNamed "crate::Answer", [[]]
+let elemTy = OutNamed elemRef, [[]]
+let answerTy = OutNamed answerRef, [[]]
 # A hosted place's entry in its host's document (`$(Path ==> $Elem c)`), and the host's
 # document, its outer, as the owner keeps it.
-let entryTy = OutRc (OutNamed "prism_rtl::Entry", [[(OutNamed "crate::Elem", [[]])]])
-let hostDocTy = OutNamed "prism_rtl::HostDoc", [[(OutNamed "crate::Elem", [[]])]]
-let hostOfTy = OutObj (OutNamed "prism_rtl::HostOf", [[(OutNamed "crate::Elem", [[]]), (OutNamed "crate::Answer", [[]])]])
+let entryTy = OutRc (OutNamed (RefRuntime "prism_rtl::Entry"), [[(OutNamed elemRef, [[]])]])
+let hostDocTy = OutNamed (RefRuntime "prism_rtl::HostDoc"), [[(OutNamed elemRef, [[]])]]
+let hostOfTy = OutObj (OutNamed (RefRuntime "prism_rtl::HostOf"), [[(OutNamed elemRef, [[]]), (OutNamed answerRef, [[]])]])
 
 # Whether a type gives a blueprint (`@o`, `?@o`).
 HasBlueprint: fn Ty -> Bool
@@ -163,9 +163,9 @@ fn NamedTy lx, n, args = match lx.g.types[n]:
     ? ti: match ti.body:
         BAlias a: OutTyOf lx, a
         # A fault kind is its name (`Error`'s `kind`); any other row kind is its enum.
-        BRowKind: if n == "Prelude.Fault": OutPod else: OutNamed (PathIn lx, ti.home, (Camel (BareName n))), [[]]
-        otherwise: OutNamed (PathIn lx, ti.home, (Camel (BareName n))), args
-    nil: if HasKey lx.g.families, n: OutPod else: OutNamed (Camel (BareName n)), args
+        BRowKind: if n == "Prelude.Fault": OutPod else: OutNamed (RefIn lx, ti.home, (Camel (BareName n))), [[]]
+        otherwise: OutNamed (RefIn lx, ti.home, (Camel (BareName n))), args
+    nil: if HasKey lx.g.families, n: OutPod else: OutRefused "the type `{n}`, which the checker did not declare"
 
 # A type with its time layers peeled: what a value of it holds at one moment.
 Peel: fn Ty -> Ty
@@ -368,6 +368,7 @@ PlaceStem: fn Ex -> Text
 fn PlaceStem x = match x:
     XVar n: n
     XField ignore, f: f
+    XFieldOf ignore, ignore, f: f
     XTarget y: PlaceStem y
     XPart y, k: "{PlaceStem y}_{k}"
     otherwise: "place"
@@ -377,6 +378,7 @@ OnSelf: fn Ex -> Bool
 fn OnSelf x = match x:
     XField XSelf, ignore: True
     XField y, ignore: OnSelf y
+    XFieldOf y, ignore, ignore: OnSelf y
     XPart y, ignore: OnSelf y
     XMethod y, ignore, ignore: OnSelf y
     XUpgrade y: OnSelf y
@@ -389,6 +391,9 @@ fn ?ThroughParent x = match x:
     XField XSelf, "parent": ? (XVar "parent")
     XField y, f: match ?ThroughParent y:
         ? z: ? (XField z, f)
+        nil: nil
+    XFieldOf y, o, f: match ?ThroughParent y:
+        ? z: ? (XFieldOf z, o, f)
         nil: nil
     XPart y, k: match ?ThroughParent y:
         ? z: ? (XPart z, k)

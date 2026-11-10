@@ -203,6 +203,7 @@ IsPlaceEx: fn Ex -> Bool
 fn IsPlaceEx x = match x:
     XVar ignore: True
     XField y, ignore: IsPlaceEx y
+    XFieldOf y, ignore, ignore: IsPlaceEx y
     XPart y, ignore: IsPlaceEx y
     XTarget ignore: True
     XSelf: True

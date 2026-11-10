@@ -94,7 +94,6 @@ type Cp = record:
     members: (Text ==> Bool)
     methods: (Text ==> Bool)
     fieldNames: (Text ==> Bool)
-    fns: (Text ==> Bool)
     fields: (Text ==> OutTy)
     pointers: (Text ==> Bool)
     owned: (Text ==> Bool)
@@ -127,34 +126,25 @@ fn Bare p = DropPrefix (DropPrefix p, "rt::"), "std::"
 InList: fn [Text], Text -> Bool
 fn InList xs, x = Fold xs, False, \|seen, y| seen or y == x
 
-# A path as the model writes it, made absolute: `crate::` dropped, a path that does not
-# start with a module put in the module being printed.
-Absolute: fn Cp, Text -> Text
-fn Absolute cp, p:
-    let q = DropPrefix p, "crate::"
-    if Fold cp.mods, False, \|f, m| f or HasPrefix q, "{m}::": q else: "{cp.home}::{q}"
+# The type a reference names, by its key: the program's, the prelude's, or the crate's own
+# (`Elem`). A runtime name is none of them.
+?TypeOf: fn Cp, Ref -> ?TyInfo
+fn ?TypeOf cp, r = match ?RefKey r:
+    ? k: cp.types[k]
+    nil: nil
 
-# The type a path names: in the module, the prelude's, or the crate's own (`Elem`).
-?TypeOf: fn Cp, Text -> ?TyInfo
-fn ?TypeOf cp, p:
-    let q = DropPrefix p, "crate::"
-    match cp.types[Absolute cp, q]:
-        ? t: ? t
-        nil: match cp.types["prelude::{q}"]:
-            ? t: ? t
-            nil: cp.types[q]
+# The choice a constructor is a case of (`Term::Var` of `Term`).
+?CaseOf: fn Cp, Ref -> ?Ref
+fn ?CaseOf cp, r = match ?RefKey r:
+    ? k: match cp.ctors[k]:
+        ? ignore: ? (RefParent r)
+        nil: nil
+    nil: nil
 
-# The choice a constructor path is a case of (`Term::Var` of `Term`), as the path writes it.
-?CaseOf: fn Cp, Text -> ?Text
-fn ?CaseOf cp, p:
-    let q = DropPrefix p, "crate::"
-    match cp.ctors[Absolute cp, q]:
-        ? ignore: ? (ParentPath p)
-        nil: match cp.ctors["prelude::{q}"]:
-            ? ignore: ? (ParentPath p)
-            nil: match cp.ctors[q]:
-                ? ignore: ? (ParentPath p)
-                nil: nil
+# What the printer cannot print: a program's item its tables do not have, which lowering
+# referred to (a prismc bug, refused where the target compiler would see it).
+PrinterRefusal: fn Text -> Text
+fn PrinterRefusal what = "compile_error!(\"prismc's C++ printer: {what}\")"
 
 # A path without its last segment.
 ParentPath: fn Text -> Text
@@ -173,7 +163,7 @@ fn Context model:
         let top = Or (SplitOn n, "::")[0], n
         if (InList names, top) or InList acc, top: acc else: Push acc, top
     let mods = Push (Append names, tops), "prelude"
-    let base = Cp(home="", mods=mods, types=preludeTypes, ctors=preludeCtors, members=nodeBase, methods={}, fieldNames={}, fns={}, fields={}, pointers={}, owned={}, moveCaptures=[[]], localTypes={})
+    let base = Cp(home="", mods=mods, types=preludeTypes, ctors=preludeCtors, members=nodeBase, methods={}, fieldNames={}, fields={}, pointers={}, owned={}, moveCaptures=[[]], localTypes={})
     let withElem = AddRow (AddAnswer base, model.answer), "", model.elem
     Fold model.mods, withElem, \|cp, m| Fold m.items, cp, \|c, it| AddModelItem c, m.name, it
 
@@ -192,8 +182,6 @@ fn AddModelItem cp, m, it = match it:
     ItRow r: AddRow cp, m, r
     ItJob j: AddTy cp, "{m}::{j.name}", TyInfo(kind="job", fields=(Each j.fields, \|((f, ignore))| f), params=(Each j.generics, \|((g, ignore))| g))
     ItNode n: AddNode cp, m, n
-    ItFn f: update cp:
-        &_.fns <= Insert &_.fns, "{m}::{f.name}", True
     otherwise: cp
 
 AddTy: fn Cp, Text, TyInfo -> Cp
@@ -264,10 +252,10 @@ fn CppType cp, t = match t:
     OutPath: "rt::Path"
     OutDuration: "rt::Duration"
     OutError: "rt::Error"
-    OutNamed "std::Cell", [[i]]: CppType cp, i
-    OutNamed "std::RefCell", [[i]]: CppType cp, i
-    OutNamed "std::Vec", [[i]]: "::std::vector<{CppType cp, i}>"
-    OutNamed "std::Result", [[a, b]]: "rt::Expected<{CppType cp, a}, {CppType cp, b}>"
+    OutNamed (RefRuntime "std::Cell"), [[i]]: CppType cp, i
+    OutNamed (RefRuntime "std::RefCell"), [[i]]: CppType cp, i
+    OutNamed (RefRuntime "std::Vec"), [[i]]: "::std::vector<{CppType cp, i}>"
+    OutNamed (RefRuntime "std::Result"), [[a, b]]: "rt::Expected<{CppType cp, a}, {CppType cp, b}>"
     OutNamed n, [[]]: OwnTypePath cp, n
     OutNamed n, args: "{OwnTypePath cp, n}<{CppTypes cp, args}>"
     OutOpt i: "::std::optional<{CppType cp, i}>"
@@ -314,13 +302,13 @@ fn ParamTypes cp, ts = Join (Each ts, \|t| "const {CppType cp, t}&"), ", "
 
 # A program's type, or a case of one, by its whole path from the crate: a class deriving
 # from a runtime base reads a bare name as the base's (its injected class name, `Node` in
-# a node's `make`), so no program type is ever spelled bare.
-OwnTypePath: fn Cp, Text -> Text
-fn OwnTypePath cp, n:
-    let head = Or (SplitOn (Or (SplitOn n, "<")[0], n), "::")[0], n
-    match cp.types[Absolute cp, head]:
-        ? ignore: "crate::{Absolute cp, (TypePath n)}"
-        nil: TypePath n
+# a node's `make`), so no program type is ever spelled bare. A runtime type as the model
+# writes it.
+OwnTypePath: fn Cp, Ref -> Text
+fn OwnTypePath cp, r = match r:
+    RefItem "", p, ignore: "crate::{TypePath p}"
+    RefItem m, p, ignore: "crate::{m}::{TypePath p}"
+    RefRuntime t: TypePath t
 
 # A Rust path with its turbofish as a C++ path: `Link::<N>` is `Link<N>`, a `_` argument
 # left to deduction.

@@ -160,8 +160,8 @@ IsPointerLet: fn Cp, Pa, Ex -> Bool
 fn IsPointerLet cp, p, x = match p:
     PaTyped ignore, t: IsPointerTy cp, t
     otherwise: match x:
-        XCall "prism_rtl::Host::new", ignore: True
-        XCall "std::Rc::new", [[(XCall "rt::Port::new", ignore)]]: True
+        XCall (RefRuntime "prism_rtl::Host::new"), ignore: True
+        XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), ignore)]]: True
         otherwise: match ?Pointer cp, x:
             ? b: b
             nil: False

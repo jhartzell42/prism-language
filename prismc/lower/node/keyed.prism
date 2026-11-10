@@ -60,7 +60,7 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
         TyMap k, v: (((OutTyOf lx, k), (OutTyOf lx, v), True))
         TyArray v: ((OutNat, (OutTyOf lx, v), False))
         otherwise: ((OutUnit, OutUnit, True))
-    let src = if keyed: srcEx else: XCall (Helper "indexed"), [[(XRef srcEx)]]
+    let src = if keyed: srcEx else: XCall (HelperRef "indexed"), [[(XRef srcEx)]]
     let base = match ?bound:
         ? (BnEv er, ignore): (GnOf wx1, er.node).name
         otherwise: "rows"
@@ -75,14 +75,14 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
     let rowName = "{wx.node}{RowSuffix wx}Row"
     let locals = RowLocals benv, menv, body
     let rowFields = Append [[(("key", kt, "the row's key")), (("left_entry", (OutCell (OutOpt vt)), "the entry as the tick its key left opened, kept from the row's leaving on (R8)")), (("parent", (OutWeak wx.node), "the node of the `for`"))]], (Each locals, \|l| ((l.field, l.ty, "`{l.name}`, the block's")))
-    let rowMoves = Append [[(("key", (XClone (XVar "key")))), (("left_entry", (XCall "std::RefCell::new", [[XNone]]))), (("parent", (XVar "parent")))]], (Each locals, \|l| ((l.field, (XVar l.field))))
+    let rowMoves = Append [[(("key", (XClone (XVar "key")))), (("left_entry", (XCall (RefRuntime "std::RefCell::new"), [[XNone]]))), (("parent", (XVar "parent")))]], (Each locals, \|l| ((l.field, (XVar l.field))))
     let rowTaken = Append (Append nodeHooks, [["key", "value", "parent", "entry", "left_entry"]]), (Each locals, \|l| l.field)
     let rowWx0 = NewWx lx, rowName, rowFields, [[]], rowMoves, [[(EntryGetter srcGetter, vt)]], {"entry": [[ParentRead srcGetter]]}, rowTaken, wx.inlining, (?HostedRows wx)
     # The block's events the body names reach the row through ports, as a generation's do
     # (`RowEnv`): a port node in the row, subscribed to the block's port, which the block's
     # event fires. The row's own graph indexes none of the block's events.
     let ((wx2p, rowWx0p, ports)) = RowEnv wx2a, rowWx0, menv, body
-    let wx2 = update (AddField wx2p, "{srcGetter}_cache", (OutNamed "rt::Cache", [[(OutMap kt, vt)]]), "the source of the `for` at place {PlaceText pos}, cached (gap SR)", (XCall "rt::Cache::new", [[]])):
+    let wx2 = update (AddField wx2p, "{srcGetter}_cache", (OutNamed (RefRuntime "rt::Cache"), [[(OutMap kt, vt)]]), "the source of the `for` at place {PlaceText pos}, cached (gap SR)", (XCall (RefRuntime "rt::Cache::new"), [[]])):
         &_.taken <= Append &_.taken, [[srcGetter, "{srcGetter}_cache"]]
         &_.getters <= Push &_.getters, srcDef
         &_.dynReads <= Insert &_.dynReads, srcGetter, reads
@@ -114,7 +114,7 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
     match rowWx.result:
         WrEv r:
             let ((gid, wx4)) = AddGn wx3, "{name}_all", outTy, GnGather, 1
-            let wx5 = AddFieldLast wx4, "{name}_gathered", (OutStamped outTy), "the rows' firings this tick, by key", (XCall "rt::Stamped::new", [[]])
+            let wx5 = AddFieldLast wx4, "{name}_gathered", (OutStamped outTy), "the rows' firings this tick, by key", (XCall (RefRuntime "rt::Stamped::new"), [[]])
             let wx6 = update wx5:
                 &_.gns <= Each &_.gns, \|n| if n.id == gid: WithInputs n, [["{name}_gathered"]] else: n
             let rowDone = Connect rowWx, r, (SkUp "{name}_all_in")
@@ -142,7 +142,7 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
                 &_.taken <= Append &_.taken, [[gathered, "{gathered}_now", "{gathered}_snap", "{gathered}_moved", "{gathered}_publish"]]
                 &_.getters <= Append &_.getters, [[(MethDef(name="{gathered}_now", recv=RecvRef, params=[[]], cx=CxRef, ret=gatheredTy, body=[[]], tail=all, doc="The rows' results by key, computed live: what the snapshot of the `for`'s dynamic is taken from (pick ST).")), (SnapGetter gathered, gatheredTy, "The `for`'s dynamic, the rows' results by key, a structural dynamic (pick ST): one tick behind the rows, the snapshot of the tick before the tick the read point is after.")]]
                 &_.fields <= Push &_.fields, (("{gathered}_snap", (OutSnapshot gatheredTy), "the `for` at place {PlaceText pos}'s gathered dynamic, structural: its snapshots, the rows' results and the lagged dynamic (pick ST)"))
-                &_.inits <= Push &_.inits, (("{gathered}_snap", (XCall "rt::Snapshot::new", [[XStr what]])))
+                &_.inits <= Push &_.inits, (("{gathered}_snap", (XCall (RefRuntime "rt::Snapshot::new"), [[XStr what]])))
                 &_.snaps <= Push &_.snaps, SnapDef(name=gathered, live="{gathered}_now", ty=gatheredTy, eq=(TyHasEq lx, (Peel full), [[]]), builder=name, before=False, what=what)
                 &_.dynReads <= Insert &_.dynReads, "{gathered}_now", (UnionReads reads, (BlockReads (ReadsClosed rowWx.dynReads, resultReads)))
             ((wx5, (WrDyn (XMethod (XSelf), gathered, [[XCx]]), [[OwnRead gathered]], gatheredTy)))
@@ -163,14 +163,14 @@ EntryGetter: fn Text, OutTy -> MethDef
 fn EntryGetter srcGetter, vt:
     let found = XMethod (XMethod (XMethod (XVar "parent"), srcGetter, [[XCx]]), "get", [[(XRef (XField XSelf, "key"))]]), "cloned", [[]]
     let opened = XMethod (XMethod (XCx), "before", [[(XClosure False, [[PaBind "cx"]], found)]]), "expect", [[(XStr "a row's key is in its source as its tick opened")]]
-    let body = [[(DoIfLet (PaCtor "std::Some", [[PaBind "v"]]), (XMethod (XMethod (XField XSelf, "left_entry"), "borrow", [[]]), "as_ref", [[]]), [[(DoReturn (XClone (XVar "v")))]], [[]]), (DoLet (PaBind "parent"), parentRef)]]
-    let tail = XMatch found, [[XArm(pat=(PaCtor "std::Some", [[PaBind "v"]]), conds=[[]], body=(XVar "v")), XArm(pat=(PaUnit "std::None"), conds=[[]], body=opened)]], False, vt
+    let body = [[(DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "v"]]), (XMethod (XMethod (XField XSelf, "left_entry"), "borrow", [[]]), "as_ref", [[]]), [[(DoReturn (XClone (XVar "v")))]], [[]]), (DoLet (PaBind "parent"), parentRef)]]
+    let tail = XMatch found, [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "v"]]), conds=[[]], body=(XVar "v")), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=opened)]], False, vt
     MethDef(name="entry", recv=RecvRef, params=[[]], cx=CxRef, ret=vt, body=body, tail=tail, doc="The row's entry, `$_`: the block's source at this key, at the read point; from the row's leaving on, the value as the leaving tick opened.")
 
 AddBuilder: fn Wx, Text, Pos, OutTy, OutTy, Text, Bool, [Read], PendingRow, [Ex] -> Wx
 fn AddBuilder wx, name, pos, kt, vt, rowName, keyed, reads, waiting, passed:
-    let wx0 = AddFieldLast wx, name, (OutCell (OutMap kt, (OutRc (OutNamed rowName, [[]])))), "the rows of the `for` at place {PlaceText pos}", (XCall "std::RefCell::new", [[(XCall "rt::Map::new", [[]])]])
-    let wx1 = AddFieldLast wx0, "{name}_from", (OutCell (OutMap kt, vt)), "the source the rows of the `for` at place {PlaceText pos} were last built from", (XCall "std::RefCell::new", [[(XCall "rt::Map::new", [[]])]])
+    let wx0 = AddFieldLast wx, name, (OutCell (OutMap kt, (OutRc (OutNamed (SiteRef wx.lx, rowName), [[]])))), "the rows of the `for` at place {PlaceText pos}", (XCall (RefRuntime "std::RefCell::new"), [[(XCall (RefRuntime "rt::Map::new"), [[]])]])
+    let wx1 = AddFieldLast wx0, "{name}_from", (OutCell (OutMap kt, vt)), "the source the rows of the `for` at place {PlaceText pos} were last built from", (XCall (RefRuntime "std::RefCell::new"), [[(XCall (RefRuntime "rt::Map::new"), [[]])]])
     # over a map of dynamics, the rows' flattens of their entries, each told when the
     # dynamic under its kept key was replaced (`{name}_replaced`, ruling FV)
     let replaced = Each (Filter waiting.wx.flattens, \|fl| fl.generation == ""), \|fl| "{fl.name}_replaced"

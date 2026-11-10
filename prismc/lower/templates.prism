@@ -49,9 +49,9 @@ use Lower.Node.Switch.*
 # column (`place`, the prelude's).
 TemplateValue: unbounded fn Lx, Env, Template -> Vl
 fn TemplateValue lx, env, tp:
-    let start = [[(DoLet (PaMut "out"), (XCall "std::String::new", [[]]))]]
+    let start = [[(DoLet (PaMut "out"), (XCall (RefRuntime "std::String::new"), [[]]))]]
     let dos = Fold tp.parts, start, \|acc, part| Append acc, (TemplatePartDos lx, env, part)
-    VlOwned (XBlock dos, (XCall "rt::Text::from", [[(XVar "out")]])), OutText
+    VlOwned (XBlock dos, (XCall (RefRuntime "rt::Text::from"), [[(XVar "out")]])), OutText
 
 TemplatePartDos: unbounded fn Lx, Env, TemplatePart -> [Do]
 fn TemplatePartDos lx, env, part = match part:
@@ -59,34 +59,36 @@ fn TemplatePartDos lx, env, part = match part:
     TpPlaceholder x, ?col:
         let v = ValueOf lx, env, x
         let column = match ?col:
-            ? c: XCtor "std::Some", [[XIndex c]]
+            ? c: XCtor (RefRuntime "std::Some"), [[XIndex c]]
             nil: XNone
-        [[DoExpr (XCall (Helper "place"), [[(XRefMut (XVar "out")), ShownText v, column]])]]
+        [[DoExpr (XCall (HelperRef "place"), [[(XRefMut (XVar "out")), ShownText v, column]])]]
     TpBlock b:
         let v = BlockValue lx, env, b
         if (ValueTy v) == OutUnit: [[DoExpr (Own v)]]
-        else: [[DoExpr (XCall (Helper "place"), [[(XRefMut (XVar "out")), ShownText v, XNone]])]]
+        else: [[DoExpr (XCall (HelperRef "place"), [[(XRefMut (XVar "out")), ShownText v, XNone]])]]
     TpCall n, args, ?parts, ignore:
         let plain = SName(sigils=(AfterFirst n.sigils), path=n.path, span=n.span)
         let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
         let ((?qk2, ignore)) = ResolveValue lx.g, lx.home, plain
-        let callee = match ?qk:
-            ? q: ValuePath lx, q
+        let ?callee = match ?qk:
+            ? q: ? (ValueRef lx, q)
             nil: match ?qk2:
-                ? q: ValuePath lx, q
-                nil: Snake (SNameKey n)
+                ? q: ? (ValueRef lx, q)
+                nil: nil
         let body = match ?parts:
             ? ps:
-                let inner = Fold ps, [[(DoLet (PaMut "out"), (XCall "std::String::new", [[]]))]], \|acc, p| Append acc, (TemplatePartDos lx, env, p)
-                [[(XRef (XBlock inner, (XCall "rt::Text::from", [[(XVar "out")]])))]]
+                let inner = Fold ps, [[(DoLet (PaMut "out"), (XCall (RefRuntime "std::String::new"), [[]]))]], \|acc, p| Append acc, (TemplatePartDos lx, env, p)
+                [[(XRef (XBlock inner, (XCall (RefRuntime "rt::Text::from"), [[(XVar "out")]])))]]
             nil: [[]]
         let passed = match ?qk:
             ? q: TemplateArgs lx, env, q, args, body
             nil: match ?qk2:
                 ? q: TemplateArgs lx, env, q, args, body
                 nil: Append (Each args, \|a| Argument lx, env, a.value), body
-        let call = XCall callee, passed
-        [[DoExpr (XCall (Helper "place"), [[(XRefMut (XVar "out")), (XRef call), XNone]])]]
+        let call = match ?callee:
+            ? c: XCall c, passed
+            nil: Refusal "a template call of `{SNameKey n}`, which names no function"
+        [[DoExpr (XCall (HelperRef "place"), [[(XRefMut (XVar "out")), (XRef call), XNone]])]]
 
 # A template call's arguments in place order (pick TK, as the checker reads them): the
 # body, when there is one, fills the last place; each attribute fills the one place any
@@ -128,7 +130,7 @@ ShownText: fn Vl -> Ex
 fn ShownText v = match ValueTy v:
     OutText: Ref v
     OutChar: XRef (XFormat [[Ref v]])
-    otherwise: XRef (XCall (Helper "show_text"), [[Ref v]])
+    otherwise: XRef (XCall (HelperRef "show_text"), [[Ref v]])
 
 # `given:` (Semantics ch. 4): `let`s, binds that fail on `nil` (or on an `Error`), the
 # guards, and the answer last; a failed guard under `~` is `Prelude.Unmet` with the
@@ -142,7 +144,7 @@ fn GivenValue lx, env, b, t, span:
     let n = Len b.stmts
     let ((dos, env2, ?last)) = Fold (Range0 n), (([[]], env, nil)), \|((acc, en, ?lv)), i|
         let s = Or b.stmts[i], dummyStmtL
-        let fail = if isTry: XCtor "std::Err", [[(XCall "rt::Error::new", [[(XStr "Prelude.Unmet"), (XStr (SourceText lx, s.span))]])]] else: XNone
+        let fail = if isTry: XCtor (RefRuntime "std::Err"), [[(XCall (RefRuntime "rt::Error::new"), [[(XStr "Prelude.Unmet"), (XStr (SourceText lx, s.span))]])]] else: XNone
         match s.kind:
             SBind p, x, nil:
                 let v = ValueOf lx, en, x
@@ -163,8 +165,8 @@ fn GivenValue lx, env, b, t, span:
 # passed on.
 GivenBind: fn Bool, Pa, Ex, Text, OutTy -> Do
 fn GivenBind isTry, pa, x, label, t:
-    if isTry: DoLet pa, (XMatch x, [[XArm(pat=(PaCtor "std::Ok", [[PaBind "v"]]), conds=[[]], body=(XVar "v")), XArm(pat=(PaCtor "std::Err", [[PaBind "e"]]), conds=[[]], body=(XBreak label, (XCtor "std::Err", [[XVar "e"]])))]], False, t)
-    else: DoLetElse (PaCtor "std::Some", [[pa]]), x, (XBreak label, XNone)
+    if isTry: DoLet pa, (XMatch x, [[XArm(pat=(PaCtor (RefRuntime "std::Ok"), [[PaBind "v"]]), conds=[[]], body=(XVar "v")), XArm(pat=(PaCtor (RefRuntime "std::Err"), [[PaBind "e"]]), conds=[[]], body=(XBreak label, (XCtor (RefRuntime "std::Err"), [[XVar "e"]])))]], False, t)
+    else: DoLetElse (PaCtor (RefRuntime "std::Some"), [[pa]]), x, (XBreak label, XNone)
 
 # The source a range covers, in the file being lowered.
 SourceText: fn Lx, Range -> Text
@@ -255,7 +257,7 @@ fn UpdForRefs lx, env, n, source, body, span, sty = match sty:
         let refName = "r{span.start}"
         let env1 = Bind (Bind (Bind env, "key", (BnLocal (XVar keyName), Owned, OutNat)), "ix", (BnLocal (XVar keyName), Owned, OutNat)), (SNameKey n), (BnLocal (XTarget (XVar refName)), Owned, (OutTyOf lx, v))
         let ((dos, ignore)) = UpdStmts lx, env1, body.stmts
-        let head = DoLet (PaBind keyName), (XCall (Helper "nat_of"), [[(XVar "i{span.start}")]])
+        let head = DoLet (PaBind keyName), (XCall (HelperRef "nat_of"), [[(XVar "i{span.start}")]])
         DoFor (PaTuple [[(PaBind "i{span.start}"), (PaBind refName)]]), (XMethod (XMethod (PlaceOf lx, env, source), "iter_mut", [[]]), "enumerate", [[]]), (Append [[head]], dos)
     otherwise: RefusalDo "a `for` by reference over what is not an array"
 
@@ -304,7 +306,7 @@ fn UpdForValues lx, env, ?binders, source, body, span, sty:
                 ((([[(DoLet pk.pa, (XClone (XVar keyName))), (DoLet pv.pa, (XClone (XVar valName)))]]), (BindAll (BindAll env2, pk.binds), pv.binds)))
     let ((dos, ignore)) = UpdStmts lx, env3, body.stmts
     if isArray:
-        let head = DoLet (PaBind keyName), (XCall (Helper "nat_of"), [[(XVar "i{span.start}")]])
+        let head = DoLet (PaBind keyName), (XCall (HelperRef "nat_of"), [[(XVar "i{span.start}")]])
         DoFor (PaTuple [[(PaBind "i{span.start}"), (PaBind valName)]]), (XMethod (XMethod src, "into_iter", [[]]), "enumerate", [[]]), (Append (Push [[]], head), (Append binds, dos))
     else: DoFor (PaTuple [[(PaBind keyName), (PaBind valName)]]), (XMethod src, "into_iter", [[]]), (Append binds, dos)
 
@@ -357,13 +359,14 @@ fn PlaceOf lx, env, e = match e.kind:
         ? (BnLocal rs, ignore, ignore): rs
         otherwise: XVar (Snake (SNameKey n))
     EField r, ignore, name:
-        let ((ignore, ignore, f)) = FieldInfo lx, (Peel (PlaceTy lx, r)), name.name
-        XField (PlaceOf lx, env, r), f
+        let rty = Peel (PlaceTy lx, r)
+        let ((ignore, ignore, f)) = FieldInfo lx, rty, name.name
+        FieldOfEx lx, (PlaceOf lx, env, r), rty, f
     EIndex r, k:
         let rt = OutTyOf lx, (Peel (PlaceTy lx, r))
         let f = match rt:
-            OutMap ignore, ignore: Helper "at_mut_map"
-            otherwise: Helper "at_mut"
+            OutMap ignore, ignore: HelperRef "at_mut_map"
+            otherwise: HelperRef "at_mut"
         XDeref (XCall f, [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k)]])
     EGroup x: PlaceOf lx, env, x
     otherwise: Refusal "a reference path this back end does not lower"
@@ -396,8 +399,8 @@ fn Assign lx, env, target, v = match target.kind:
     EIndex r, k:
         let rt = OutTyOf lx, (Peel (PlaceTy lx, r))
         let f = match rt:
-            OutMap ignore, ignore: Helper "set_key"
-            otherwise: Helper "set_index"
+            OutMap ignore, ignore: HelperRef "set_key"
+            otherwise: HelperRef "set_index"
         DoExpr (XCall f, [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k), v]])
     EGroup x: Assign lx, env, x, v
     otherwise: DoAssign (PlaceOf lx, env, target), v

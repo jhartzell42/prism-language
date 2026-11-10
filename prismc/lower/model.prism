@@ -44,6 +44,58 @@ use Lower.Node.Switch.*
 # The core form
 # ---------------------------------------------------------------------------------------
 
+# A name the model refers to (pick UN): a program's item as lowering resolved it from the
+# checker's keys, which a printer looks up by its key and never by its spelling, or a name
+# the runtime, the standard library or a printer's own prelude code defines, which the
+# program has no item behind and a printer matches by its spelling.
+type Ref = choice:
+    # A program's item, or a case of one of its choices: the output module that defines it
+    # (`ModDef.name`; `prelude` the emitted prelude; "" the crate's own `Elem` and `Answer`),
+    # its path in that module (`Term`, `Term::Var`, `Node::host_1_answer`), and its path as
+    # written where the model uses it (the module's own items bare, any other from
+    # `crate::`), which the Rust printer writes.
+    RefItem Text, Text, Text
+    # A name of the runtime's (`rt::`, `prism_rtl::`), of the standard library's (marked
+    # `std::`), of the hand-written prelude code's, or a target's own (`Self`).
+    RefRuntime Text
+derive ^Eq, ^Show
+
+# A program item's key in a printer's tables: `module::path`, or the crate's own by its path.
+?RefKey: fn Ref -> ?Text
+fn ?RefKey (RefItem "", p, ignore) = ? p
+fn ?RefKey (RefItem m, p, ignore) = ? "{m}::{p}"
+fn ?RefKey other = nil
+
+# A reference as written where the model uses it.
+RefSpelled: fn Ref -> Text
+fn RefSpelled (RefItem ignore, ignore, s) = s
+fn RefSpelled (RefRuntime t) = t
+
+# A reference's last segment: an item's name, a runtime name's last part.
+RefLast: fn Ref -> Text
+fn RefLast (RefItem ignore, p, ignore) = Or (?Last (SplitOn p, "::")), p
+fn RefLast (RefRuntime t) = Or (?Last (SplitOn t, "::")), t
+
+# An item's member (a choice's case, a node's method, an associated function): the same
+# module, one segment more.
+RefChild: fn Ref, Text -> Ref
+fn RefChild (RefItem m, p, s), n = RefItem m, "{p}::{n}", "{s}::{n}"
+fn RefChild (RefRuntime t), n = RefRuntime "{t}::{n}"
+
+# The item a member belongs to (a case's choice, a method's node).
+RefParent: fn Ref -> Ref
+fn RefParent (RefItem m, p, s) = RefItem m, (DropLastSegment p), (DropLastSegment s)
+fn RefParent (RefRuntime t) = RefRuntime (DropLastSegment t)
+
+DropLastSegment: fn Text -> Text
+fn DropLastSegment p:
+    let segs = SplitOn p, "::"
+    Join (Take segs, (Dec (Len segs))), "::"
+
+# The crate's own row of every element tag and its answers (`crate::Elem`, `crate::Answer`).
+let elemRef = RefItem "", "Elem", "crate::Elem"
+let answerRef = RefItem "", "Answer", "crate::Answer"
+
 # A type of the output program (claude/backend.md, "Types"): the value types, and the
 # runtime's cells, ports, references and shared pointers a node is made of.
 type OutTy = choice:
@@ -63,7 +115,7 @@ type OutTy = choice:
     OutPath
     OutDuration
     OutError
-    OutNamed Text, [OutTy]
+    OutNamed Ref, [OutTy]
     OutOpt OutTy
     OutRes OutTy
     OutTuple [OutTy]
@@ -163,13 +215,14 @@ fn ?BinOpOf ">=" = ? OpGe
 fn ?BinOpOf ignore = nil
 
 # An expression. Each node names an operation, never its spelling: a printer spells it
-# for its target. Text in a node is a name (a local, a field, a method, a function's or a
-# constructor's qualified path) or a literal's digits, never syntax.
+# for its target. A program's item is a `Ref`, resolved; text in a node is a local's, a
+# label's, a member's name lowering or the runtime defines, or a literal's digits, never
+# syntax.
 type Ex = choice:
     # A local: a parameter, a `let`, a pattern's binder.
     XVar Text
-    # A global item by its qualified path: a function, a getter, a unit constructor.
-    XPath Text
+    # A global item: a function, a getter, a unit constructor, a node's method.
+    XPath Ref
     # The node a method runs on, the read point, and a constant of the node's (a height).
     XSelf
     XCx
@@ -211,17 +264,17 @@ type Ex = choice:
     # A message formatted from literal runs and values (a fault's), not a `Text`.
     XFormatStr [Ex]
     # Whether a value is one of these constructors, whatever their payloads.
-    XIsCase Ex, [Text]
+    XIsCase Ex, [Ref]
     # What lowering cannot lower (`Refusal`), and an arm no value reaches.
     XRefusal Text
     XUnreachable
-    XCall Text, [Ex]
+    XCall Ref, [Ex]
     XApply Ex, [Ex]
     XMethod Ex, Text, [Ex]
     XBin BinOp, Ex, Ex
     XUnary UnOp, Ex
-    XCtor Text, [Ex]
-    XRecord Text, [((Text, Ex))]
+    XCtor Ref, [Ex]
+    XRecord Ref, [((Text, Ex))]
     XTuple [Ex]
     XVec [Ex]
     XText Text
@@ -237,7 +290,10 @@ type Ex = choice:
     # `?`: the failure passed on, else the value; whether the operand is a temporary,
     # which a target that copies a named one moves (C++'s `TRY`; Rust's `?` moves either).
     XTry Ex
+    # A member lowering or the runtime defines (a node's field, a port's `updates`), and a
+    # field of a program's value type (a record's, a tag's level's) with the type it is of.
     XField Ex, Text
+    XFieldOf Ex, Ref, Text
     # A tuple's part by its position.
     XPart Ex, Nat
     XDecode OutTy, Ex
@@ -266,9 +322,9 @@ type Pa = choice:
     PaBind Text
     # A binder whose value the body changes in place.
     PaMut Text
-    PaCtor Text, [Pa]
-    PaUnit Text
-    PaRecord Text, [((Text, Pa))], Bool
+    PaCtor Ref, [Pa]
+    PaUnit Ref
+    PaRecord Ref, [((Text, Pa))], Bool
     PaTuple [Pa]
     PaChar Text
     PaBool Bool
@@ -364,7 +420,7 @@ derive ^Eq, ^Show
 type RowDef = record:
     name: Text
     prism: Text
-    cases: [((Text, Text))]
+    cases: [((Text, Ref))]
     pod: Bool
     doc: Text
     # As a tag's `eq`; whether this is `crate::Elem`, whose levels a World reads deep
@@ -639,7 +695,7 @@ type AnswerCase = record:
     # out (`ui_button`); the tag's struct path (`ui::UiButton`) and qualified name.
     variant: Text
     accessor: Text
-    structPath: Text
+    structPath: Ref
     tagName: Text
     ty: OutTy
 derive ^Eq, ^Show
@@ -678,6 +734,7 @@ fn ExReads x, n = match x:
     XClosure ignore, ignore, y: ExReads y, n
     XTry y: ExReads y, n
     XField y, ignore: ExReads y, n
+    XFieldOf y, ignore, ignore: ExReads y, n
     XPart y, ignore: ExReads y, n
     XDecode ignore, y: ExReads y, n
     XCast y, ignore: ExReads y, n

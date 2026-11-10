@@ -82,6 +82,7 @@ OverParent: fn Ex -> Ex
 fn OverParent x = match x:
     XSelf: parentRef
     XField y, f: XField (OverParent y), f
+    XFieldOf y, o, f: XFieldOf (OverParent y), o, f
     XPart y, k: XPart (OverParent y), k
     XMethod y, m, xs: XMethod (OverParent y), m, xs
     XUpgrade y: XUpgrade (OverParent y)
@@ -150,8 +151,8 @@ fn RebuildDynamic wx, menv, body, srcEx, reads, vt, name, pos:
             let live = "{result}_live"
             let what = "the dynamic of the `rebuild` at place {PlaceText pos}"
             let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
-            let built = TryOf (XCall "{whole.node.name}::build", (Append [[(XVar "path"), (XVar "value")]], tail))
-            let kept = DoAssign (XDeref (XMethod (XField XSelf, live), "borrow_mut", [[]])), (XCtor "std::Some", [[(XMethod (XVar "row"), "result_dynamic", [[]])]])
+            let built = TryOf (XCall (RefChild (SiteRef wx.lx, whole.node.name), "build"), (Append [[(XVar "path"), (XVar "value")]], tail))
+            let kept = DoAssign (XDeref (XMethod (XField XSelf, live), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XMethod (XVar "row"), "result_dynamic", [[]])]])
             let marked = DoExpr (XMethod (XField XSelf, "{result}_snap"), "mark", [[XCx]])
             let select = XBlock [[(DoLet (PaBind "row"), built), kept, marked]], (XVar "row")
             let current = XMethod (XClone (XMethod (XField XSelf, "{live}"), "borrow", [[]])), "expect", [[(XStr "a `rebuild` has a generation from its build on")]]
@@ -161,8 +162,8 @@ fn RebuildDynamic wx, menv, body, srcEx, reads, vt, name, pos:
                 &_.rows <= Append (Push &_.rows, whole.node), whole.node.children
                 &_.taken <= Append &_.taken, [[result, live, "{result}_now", "{result}_snap", "{result}_publish", "{result}_moved"]]
                 &_.fields <= Append &_.fields, [[((live, (OutCell (OutOpt dynTy)), "the current generation's result, which the snapshot of the `rebuild`'s dynamic is taken from")), (("{result}_snap", (OutSnapshot dynTy), "the `rebuild` at place {PlaceText pos}'s dynamic, structural: its snapshots, the generations' results and the lagged dynamic (pick ST)"))]]
-                &_.moves <= Push &_.moves, ((live, (XCall "std::RefCell::new", [[XNone]])))
-                &_.inits <= Push &_.inits, (("{result}_snap", (XCall "rt::Snapshot::new", [[XStr what]])))
+                &_.moves <= Push &_.moves, ((live, (XCall (RefRuntime "std::RefCell::new"), [[XNone]])))
+                &_.inits <= Push &_.inits, (("{result}_snap", (XCall (RefRuntime "rt::Snapshot::new"), [[XStr what]])))
                 &_.getters <= Append &_.getters, [[(MethDef(name="{result}_now", recv=RecvRef, params=[[]], cx=CxRef, ret=dynTy, body=[[]], tail=current, doc="The current generation's result: what the snapshot of the `rebuild`'s dynamic is taken from (pick ST).")), (SnapGetter result, dynTy, "The `rebuild`'s dynamic, its generation's result, a structural dynamic (pick ST): one tick behind the generations, the snapshot of the tick before the tick the read point is after.")]]
                 &_.snaps <= Push &_.snaps, SnapDef(name=result, live="{result}_now", ty=dynTy, eq=False, builder=name, before=False, what=what)
             ((wx2, (WrDyn (XMethod (XSelf), result, [[XCx]]), [[OwnRead result]], dynTy)))
@@ -343,7 +344,7 @@ fn GenResult r, genName, ex, resultReads, rt:
     let ownBehind = Filter (ReadsClosed r.dynReads, resultReads), \|rd| match rd:
         OwnRead ignore: True
         ParentRead ignore: False
-    let made = XCall "rt::Dynamic::of", [[(XClosure True, [[PaBind "cx"]], (XMethod (XVar "me"), "result", [[XCx]])), (XRef (XCall "std::Rc::new", [[(XCall "rt::Port::new", [[]])]]))]]
+    let made = XCall (RefRuntime "rt::Dynamic::of"), [[(XClosure True, [[PaBind "cx"]], (XMethod (XVar "me"), "result", [[XCx]])), (XRef (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]]))]]
     let doc = "The generation's result as a dynamic, which the block keeps while the generation is current; the block hears it move through `{genName}_result_moved`, not through the dynamic's port."
     update r:
         &_.getters <= Append &_.getters, [[(MethDef(name="result", recv=RecvRef, params=[[]], cx=CxRef, ret=rt, body=[[]], tail=ex, doc="The generation's result, which the `rebuild` hands back.")), (MethDef(name="result_dynamic", recv=RecvRc, params=[[]], cx=CxNone, ret=(OutDyn rt), body=[[(DoLet (PaBind "me"), (XClone XSelf))]], tail=made, doc=doc))]]
@@ -375,15 +376,15 @@ fn GenSelect wx, menv, body, cases, pos:
     let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
     match ?ClauseCall wx.lx, body:
         nil: match cases[0]:
-            ? c: TryOf (XCall "{c.node.name}::build", (Append [[(XVar "path"), (XVar "value")]], tail))
+            ? c: TryOf (XCall (RefChild (SiteRef wx.lx, c.node.name), "build"), (Append [[(XVar "path"), (XVar "value")]], tail))
             nil: Refusal "a `rebuild` with no generation"
         ? ((qk, args)):
             let env = Bind menv, "_", (BnLocal (XVar "value"), Owned, OutUnit)
             let scrut = XTuple (Each args, \|a| Argument wx.lx, env, a.value)
             let arms = Each cases, \|c|
-                let made = TryOf (XCall "{c.node.name}::build", (Append (Append [[(XClone (XVar "path"))]], c.passed), tail))
-                XArm(pat=c.pat, conds=c.conds, body=(XCast made, (OutObj (OutNamed "rt::Row", [[]]))))
-            Own (ArmsValue scrut, arms, "'select", (OutObj (OutNamed "rt::Row", [[]])))
+                let made = TryOf (XCall (RefChild (SiteRef wx.lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), tail))
+                XArm(pat=c.pat, conds=c.conds, body=(XCast made, (OutObj (OutNamed (RefRuntime "rt::Row"), [[]]))))
+            Own (ArmsValue scrut, arms, "'select", (OutObj (OutNamed (RefRuntime "rt::Row"), [[]])))
 
 # The `rebuild`'s up-forwarding: a generation's result fires the block's event.
 GenUp: fn Text, Text, OutTy -> MethDef
@@ -395,7 +396,7 @@ GenForwards: fn GenDef -> [((Pa, Ex))]
 fn GenForwards gd:
     if gd.transparent: Each (Range0 gd.width), \|i|
         let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
-        let body = XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "std::Some", [[PaBind "row"]]), (XVar "row"), [[DoExpr (TryOf (XMethod (XVar "row"), "answer", [[(XVar "at"), (XVar "v"), XCx]]))]], [[]])]], (XUnit)
+        let body = XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[DoExpr (TryOf (XMethod (XVar "row"), "answer", [[(XVar "at"), (XVar "v"), XCx]]))]], [[]])]], (XUnit)
         (((PosPat (Pos(scope=gd.pos.scope, at=gd.pos.at + i)), [[PaRest ""]]), body))
     else: [[(((PosPat gd.pos, genTail), (ForwardGen gd)))]]
 
@@ -403,7 +404,7 @@ ForwardGen: fn GenDef -> Ex
 fn ForwardGen gd:
     let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
     let isCurrent = XBin OpEq, (XBin OpAdd, (XDeref (XVar "g")), (XIndex 1)), (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]])
-    XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "std::Some", [[PaBind "row"]]), (XVar "row"), [[(DoIf isCurrent, [[DoExpr (TryOf (XMethod (XVar "row"), "answer", [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]], [[]])]], (XUnit)
+    XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[(DoIf isCurrent, [[DoExpr (TryOf (XMethod (XVar "row"), "answer", [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]], [[]])]], (XUnit)
 
 # `@Flatten $$x` over a `rebuild`'s dynamic `$$x` (claude/backend.md, "Dynamic structure";
 # Semantics ch. 7): a field with the current inner, a hold of the generation's `Dynamic`,
@@ -435,12 +436,12 @@ fn FlattenLine wx, menv, args, ?bound:
                 ? (BnDyn (XMethod (XSelf), f, ignore), ignore, ignore): ((f, wx))
                 otherwise: FreshName wx, "flatten"
             let inner = "{name}_inner"
-            let first = DoExpr (XMethod (XField (XVar "node"), "{inner}"), "set", [[(XCtor "std::Some", [[(XMethod (XVar "node"), m, [[XCx]])]]), XCx]])
+            let first = DoExpr (XMethod (XField (XVar "node"), "{inner}"), "set", [[(XCtor (RefRuntime "std::Some"), [[(XMethod (XVar "node"), m, [[XCx]])]]), XCx]])
             let sample = XMethod (XMethod (XMethod (XField XSelf, "{inner}"), "get", [[XCx]]), "expect", [[(XStr "`@Flatten` adopts its first inner at the build")]]), "sample", [[XCx]]
             let wx2 = update wx1:
                 &_.taken <= Append &_.taken, [[inner, "{name}_adopt"]]
                 &_.fields <= Push &_.fields, ((inner, (OutHold (OutOpt (OutDyn t))), "`@Flatten`'s current inner: the dynamic of the generation it adopted"))
-                &_.moves <= Push &_.moves, ((inner, (XCall "rt::Hold::new", [[XNone, XCx]])))
+                &_.moves <= Push &_.moves, ((inner, (XCall (RefRuntime "rt::Hold::new"), [[XNone, XCx]])))
                 &_.build <= Push &_.build, first
                 &_.getters <= Push &_.getters, (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=sample, doc="`@Flatten`'s dynamic: its current inner at the read point."))
                 &_.dynReads <= Insert &_.dynReads, name, [[OwnRead inner]]
@@ -466,12 +467,12 @@ fn EntryFlatten wx, t, ?bound:
         otherwise: FreshName wx, "flatten"
     let inner = "{name}_inner"
     let follow = "{name}_follow"
-    let followed = DoExpr (XMethod (XField (XVar "node"), follow), "follow", [[(XRef (XField (XMethod (XVar "node"), "entry", [[XCx]]), "updates")), (XRef (XVar "node")), (XPath "{wx.node}::{name}_moved")]])
+    let followed = DoExpr (XMethod (XField (XVar "node"), follow), "follow", [[(XRef (XField (XMethod (XVar "node"), "entry", [[XCx]]), "updates")), (XRef (XVar "node")), (XPath (RefChild (SiteRef wx.lx, wx.node), "{name}_moved"))]])
     let sample = XMethod (XMethod (XMethod (XField XSelf, "{inner}"), "get", [[XCx]]), "expect", [[(XStr "`@Flatten` adopts its first inner at the build")]]), "sample", [[XCx]]
     let wx2 = update wx1:
         &_.taken <= Append &_.taken, [[inner, follow, "{name}_adopt", "{name}_moved", "{name}_replaced"]]
-        &_.fields <= Append &_.fields, [[((inner, (OutHold (OutOpt (OutDyn t))), "`@Flatten`'s current inner: the row's entry it adopted")), ((follow, (OutNamed "prism_rtl::Follow", [[]]), "the subscription to the inner's update event"))]]
-        &_.moves <= Append &_.moves, [[((inner, (XCall "rt::Hold::new", [[(XCtor "std::Some", [[(XClone (XVar "value"))]]), XCx]]))), ((follow, (XCall "prism_rtl::Follow::new", [[]])))]]
+        &_.fields <= Append &_.fields, [[((inner, (OutHold (OutOpt (OutDyn t))), "`@Flatten`'s current inner: the row's entry it adopted")), ((follow, (OutNamed (RefRuntime "prism_rtl::Follow"), [[]]), "the subscription to the inner's update event"))]]
+        &_.moves <= Append &_.moves, [[((inner, (XCall (RefRuntime "rt::Hold::new"), [[(XCtor (RefRuntime "std::Some"), [[(XClone (XVar "value"))]]), XCx]]))), ((follow, (XCall (RefRuntime "prism_rtl::Follow::new"), [[]])))]]
         &_.build <= Push &_.build, followed
         &_.getters <= Push &_.getters, (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=sample, doc="`@Flatten`'s dynamic: its current inner at the read point."))
         &_.dynReads <= Insert &_.dynReads, name, [[OwnRead inner]]

@@ -60,31 +60,31 @@ TailHere: unbounded fn Lx, Env, Expr -> Ex
 fn TailHere lx, env, e = match e.kind:
     EGroup x: Tail lx, env, x
     EUpdate target, b:
-        if HasTopWhile lx, b: UpdTail lx, env, target, b, e.span, \|en, v| XCtor "prism_rtl::Turn::Finished", [[v]]
-        else: XCtor "prism_rtl::Turn::Finished", [[Own (ValueOf lx, env, e)]]
+        if HasTopWhile lx, b: UpdTail lx, env, target, b, e.span, \|en, v| XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[v]]
+        else: XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[Own (ValueOf lx, env, e)]]
     EMatch s, arms: TailMatch lx, env, s, arms, e.span
     EIf (CondExpr c), thenB, (? elseB): XIf (AsBool (ValueOf lx, env, c)), (TailBlock lx, env, thenB), (TailBlock lx, env, elseB)
     # a call right of `and` or `or` in the tail is the tail's (DS)
     EBinary op, l, r if (op == "and" or op == "or") and AnyJob lx, env, r:
-        let shortcut = XCtor "prism_rtl::Turn::Finished", [[(XBool (op == "or"))]]
+        let shortcut = XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[(XBool (op == "or"))]]
         if op == "and": XIf (AsBool (ValueOf lx, env, l)), (Tail lx, env, r), shortcut
         else: XIf (AsBool (ValueOf lx, env, l)), shortcut, (Tail lx, env, r)
     ECall callee, args, ignore, ignore: match ?TailCallee lx, env, callee:
         ? qk:
             let job = Or lx.rsNames[qk], (Snake (BareName qk))
-            let jobName = PathIn lx, (OwnerOf qk), (Camel (BareName qk))
+            let jobName = RefIn lx, (OwnerOf qk), (Camel (BareName qk))
             let ((ptys, ignore)) = SchemeParts lx, qk
             let fields = JobFieldNames lx, qk
             let vals = NamedArgsOwned lx, env, qk, args
-            if EntersAtOnce lx, qk, args: XMethod (XCall (PathIn lx, (OwnerOf qk), "start_{job}"), vals), "cycle", [[]]
-            else: if IsColorPoly lx, qk: XCtor "prism_rtl::Turn::More", [[(XCall (PathIn lx, (OwnerOf qk), "start_{job}"), vals)]]
-            else: XCtor "prism_rtl::Turn::More", [[(XCall "std::Rc::new", [[(XRecord jobName, (Each (Range0 (Len vals)), \|i| (((Or fields[i], "arg"), (Or vals[i], (XUnit))))))]])]]
+            if EntersAtOnce lx, qk, args: XMethod (XCall (RefIn lx, (OwnerOf qk), "start_{job}"), vals), "cycle", [[]]
+            else: if IsColorPoly lx, qk: XCtor (RefRuntime "prism_rtl::Turn::More"), [[(XCall (RefIn lx, (OwnerOf qk), "start_{job}"), vals)]]
+            else: XCtor (RefRuntime "prism_rtl::Turn::More"), [[(XCall (RefRuntime "std::Rc::new"), [[(XRecord jobName, (Each (Range0 (Len vals)), \|i| (((Or fields[i], "arg"), (Or vals[i], (XUnit))))))]])]]
         nil: match ?LocalJobFn lx, env, callee:
             ? f: XMethod (StartCall f, (StartArgs lx, env, f, args)), "cycle", [[]]
             nil: match ?PreludeJobCall lx, env, e:
                 ? job: XMethod job, "cycle", [[]]
-                nil: XCtor "prism_rtl::Turn::Finished", [[Own (ValueOf lx, env, e)]]
-    otherwise: XCtor "prism_rtl::Turn::Finished", [[Own (ValueOf lx, env, e)]]
+                nil: XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[Own (ValueOf lx, env, e)]]
+    otherwise: XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[Own (ValueOf lx, env, e)]]
 
 TailBlock: unbounded fn Lx, Env, Block -> Ex
 fn TailBlock lx, env, b = TailFrom lx, env, b, 0
@@ -94,7 +94,7 @@ fn TailBlock lx, env, b = TailFrom lx, env, b, 0
 TailFrom: unbounded fn Lx, Env, Block, Nat -> Ex
 fn TailFrom lx, env, b, i = TailFromK lx, env, b, i, \|en, ?x| match ?x:
     ? x: Tail lx, en, x
-    nil: XCtor "prism_rtl::Turn::Finished", [[XUnit]]
+    nil: XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[XUnit]]
 
 # The same, the block's last expression (`nil` for a block that ends in another statement)
 # given to `Last`: `Tail` in a function's tail, a continuation's call in a branch (`TailK`).
@@ -160,7 +160,7 @@ fn KStmt lx, env, b, i, s, ?p, x, Last:
             Prepend [[(DoLet po.pa, (XVar v))]], (TailFromK lx, (BindAll envK, po.binds), b, i + 1, Last)
         nil: TailFromK lx, envK, b, i + 1, Last
     let kDo = DoLet (PaBind kName), (XClosure True, [[(PaTyped (PaBind v), t)]], body)
-    Prepend (Push dos, kDo), (TailK lx, env, x, \|en, val| XCall kName, [[val]])
+    Prepend (Push dos, kDo), (TailK lx, env, x, \|en, val| XApply (XVar kName), [[val]])
 
 # An expression whose value goes to a continuation `K` (`KStmt`): a call it makes whatever
 # its value is a frame first; a `match`, an `if` or an `and`/`or` with a call in a branch
@@ -317,12 +317,12 @@ fn WhileJob lx, outer, env, c, wb, span, restReads, Cont:
     # it ends in the turn's `Ok`, after the inner loop's continuation; else it runs within
     # the cycle and gives `Ok` or `Err` itself (`loop_job`).
     let jobs = HasTopWhile lx, wb
-    let Finish = \|x| if jobs: XCtor "prism_rtl::Turn::Finished", [[x]] else: x
-    let stepTy = OutNamed "std::Result", [[stTy, stTy]]
-    let again = Finish (XTyped (XCtor "std::Ok", [[pack]]), stepTy)
-    let stop = Finish (XTyped (XCtor "std::Err", [[pack]]), stepTy)
+    let Finish = \|x| if jobs: XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[x]] else: x
+    let stepTy = OutNamed (RefRuntime "std::Result"), [[stTy, stTy]]
+    let again = Finish (XTyped (XCtor (RefRuntime "std::Ok"), [[pack]]), stepTy)
+    let stop = Finish (XTyped (XCtor (RefRuntime "std::Err"), [[pack]]), stepTy)
     let Body = \|en| if jobs: UpdTailFrom lx, en, en, wb, 0, wb.span, \|o2, e2| again else: StmtsThen lx, en, wb, again
-    let resTy = if jobs: OutNamed "prism_rtl::Turn", [[stepTy]] else: stTy
+    let resTy = if jobs: OutNamed (RefRuntime "prism_rtl::Turn"), [[stepTy]] else: stTy
     let turn = match c:
         CondExpr x: XIf (AsBool (ValueOf lx, envC, x)), (Body envC), stop
         CondBind p, x, ?g:
@@ -336,8 +336,8 @@ fn WhileJob lx, outer, env, c, wb, span, restReads, Cont:
     let outer2 = Fold outCaps, outer, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
     let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
     let stepFn = Prepend capDos, (XClosure True, [[(PaTyped pat, stTy)]], turn)
-    let looping = Helper (if jobs: "loop_turns" else: "loop_job")
-    let enter = XCall (Helper "call_then"), [[(XCall looping, [[pack, stepFn]]), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))]]
+    let looping = HelperRef (if jobs: "loop_turns" else: "loop_job")
+    let enter = XCall (HelperRef "call_then"), [[(XCall looping, [[pack, stepFn]]), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))]]
     Prepend outDos, enter
 
 # A block's statements in an `update` block, then `last`.
@@ -367,11 +367,11 @@ fn IfJob lx, outer, env, c, thenB, ?elseB, span, restReads, Cont:
     let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
     let kName = "k_if{span.start}"
     let kDo = DoLet (PaBind kName), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))
-    let ToK = \|o2, e2| XCall kName, [[pack]]
+    let ToK = \|o2, e2| XApply (XVar kName), [[pack]]
     let Branch = \|b| UpdTailFrom lx, env, env, b, 0, b.span, ToK
     let elseX = match ?elseB:
         ? eb: Branch eb
-        nil: XCall kName, [[pack]]
+        nil: XApply (XVar kName), [[pack]]
     let choose = match c:
         CondExpr x: XIf (AsBool (ValueOf lx, env, x)), (Branch thenB), elseX
         CondBind p, x, ignore:
@@ -400,7 +400,7 @@ fn MatchJob lx, outer, env, scrut, arms, span, restReads, Cont:
     let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
     let kName = "k_match{span.start}"
     let kDo = DoLet (PaBind kName), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))
-    let ToK = \|o2, e2| XCall kName, [[pack]]
+    let ToK = \|o2, e2| XApply (XVar kName), [[pack]]
     let sty = TypeAt lx, scrut.span
     let xarms = Each (Range0 (Len arms)), \|i|
         let arm = Or arms[i], dummyArm
@@ -454,14 +454,14 @@ fn ForJob lx, outer, env, ?binders, source, body, span, restReads, Cont:
                 let pk = RustPat lx, fb.first, kty, Owned, "k{span.start}_"
                 let pv = RustPat lx, second, vty, Owned, "e{span.start}"
                 ((([[(DoLet pk.pa, (XClone (XVar keyName))), (DoLet pv.pa, (XClone (XVar valName)))]]), (BindAll (BindAll envK, pk.binds), pv.binds)))
-    let turn = Prepend binds, (UpdTailFrom lx, envB, envB, body, 0, body.span, \|o2, e2| XCtor "prism_rtl::Turn::Finished", [[pack]])
+    let turn = Prepend binds, (UpdTailFrom lx, envB, envB, body, 0, body.span, \|o2, e2| XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[pack]])
     let stepFn = Prepend capDos, (XClosure True, [[(PaTyped pat, stTy), (PaTyped (PaBind keyName), kt), (PaTyped (PaBind valName), vt)]], turn)
     let outCaps = CapsIn outer, restReads, names
     let outDos = Each outCaps, \|((ignore, rs, mode, bt))| DoLet (PaBind (OuterName rs)), (Own (VlPlace rs, mode, bt))
     let outer2 = Fold outCaps, outer, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
     let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
-    let looping = Helper (if isArray: "for_turns_indexed" else: "for_turns_keyed")
-    let enter = XCall (Helper "call_then"), [[(XCall looping, [[src, pack, stepFn]]), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))]]
+    let looping = HelperRef (if isArray: "for_turns_indexed" else: "for_turns_keyed")
+    let enter = XCall (HelperRef "call_then"), [[(XCall looping, [[src, pack, stepFn]]), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))]]
     Prepend outDos, enter
 
 # The name an instantiation's key is of (`Twin#inst1`, pick LG); any other key itself.
@@ -548,12 +548,12 @@ fn Frame lx, env, call, restReads, Cont = match call.kind:
         let env3 = BindSpan env2, (PlaceKey lx, call.span), (VlOwned (XVar v), t)
         let body = Cont env3
         let ((job, how)) = match ?qk:
-            ? q: (((XCall (PathIn lx, (OwnerOf q), "start_{base}"), vals), (Helper (if EntersAtOnce lx, q, args: "call_value" else: "call_then"))))
+            ? q: (((XCall (RefIn lx, (OwnerOf q), "start_{base}"), vals), (HelperRef (if EntersAtOnce lx, q, args: "call_value" else: "call_then"))))
             nil: match ?LocalJobFn lx, env2, c:
-                ? f: (((StartCall f, vals), (Helper "call_value")))
+                ? f: (((StartCall f, vals), (HelperRef "call_value")))
                 nil: match ?PreludeJobCall lx, env2, call:
-                    ? pj: ((pj, (Helper "call_value")))
-                    nil: (((Refusal "a call this frame cannot enter"), (Helper "call_then")))
+                    ? pj: ((pj, (HelperRef "call_value")))
+                    nil: (((Refusal "a call this frame cannot enter"), (HelperRef "call_then")))
         # An unbounded call lifted over a `?` or `~` would enter its job only when every
         # peeled argument is present: not lowered yet.
         let enter = if IsLiftedAt lx, call.span: Refusal "an unbounded call lifted over `?` or `~` (`{SrcText lx, lx.file, call.span}`)" else: XCall how, [[job, (XClosure True, [[(PaTyped (PaBind v), t)]], body)]]

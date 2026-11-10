@@ -116,8 +116,8 @@ fn EventObjectRef wx, menv, e, t:
     let getter = MethDef(name="{rs}_event", recv=RecvRef, params=[[]], cx=CxRef, ret=(OutEvent t), body=[[]], tail=(Own (ValueOf lx, menv, e)), doc="`{shown}`, an event a function gave whole, as its value.")
     let port = XClosure False, [[PaBind "ev"]], (XRef (XField (XVar "ev"), "port"))
     let call = XClosure False, [[PaBind "n", PaBind "v", PaBind "cx"]], (XMethod (XVar "n"), rs, [[XClone (XVar "v"), XCx]])
-    let sub = DoExpr (XCall (Helper "subscribe_row"), [[(XRef (XVar "node")), (XCtor "std::Some", [[(XCall "std::Rc::new", [[(XMethod (XVar "node"), "{rs}_event", [[XCx]])]])]]), port, call, (XRef (XField (XVar "node"), "{rs}_sub"))]])
-    let w3 = update (AddField w2, "{rs}_sub", (OutNamed "std::Cell", [[(OutOpt (OutNamed "rt::Handle", [[]]))]]), "the subscription to `{shown}`", (XCall "std::Cell::new", [[XNone]])):
+    let sub = DoExpr (XCall (HelperRef "subscribe_row"), [[(XRef (XVar "node")), (XCtor (RefRuntime "std::Some"), [[(XCall (RefRuntime "std::Rc::new"), [[(XMethod (XVar "node"), "{rs}_event", [[XCx]])]])]]), port, call, (XRef (XField (XVar "node"), "{rs}_sub"))]])
+    let w3 = update (AddField w2, "{rs}_sub", (OutNamed (RefRuntime "std::Cell"), [[(OutOpt (OutNamed (RefRuntime "rt::Handle"), [[]]))]]), "the subscription to `{shown}`", (XCall (RefRuntime "std::Cell::new"), [[XNone]])):
         &_.getters <= Push &_.getters, getter
         &_.build <= Push &_.build, sub
     (((EvRefOf w3, id), w3))
@@ -176,7 +176,7 @@ fn MergeAllEvent wx, menv, args, t = match args[0]:
             let ((nm, w1)) = FreshName wx, "merged"
             let ((id, w2)) = AddGn w1, nm, t, GnMergeAll, 1
             let ins = Each (Range0 (Len es)), \|i| "{nm}_{i}"
-            let w3 = Fold ins, w2, \|w, f| AddFieldLast w, f, (OutStamped et), "an input of `!MergeAll`", (XCall "rt::Stamped::new", [[]])
+            let w3 = Fold ins, w2, \|w, f| AddFieldLast w, f, (OutStamped et), "an input of `!MergeAll`", (XCall (RefRuntime "rt::Stamped::new"), [[]])
             let w4 = update w3:
                 &_.gns <= Each &_.gns, \|n| if n.id == id: WithInputs n, ins else: n
             let w5 = Fold (Range0 (Len es)), w4, \|w, i|
@@ -204,7 +204,7 @@ fn UpdatedEvent wx, menv, args, t = match args[0]:
         let ((ex, reads)) = DynamicExpr wx, menv, a.value
         let ((nm, w1)) = FreshName wx, "updated"
         let ((id, w2)) = AddGn w1, nm, t, GnUpdated, 1
-        let w3 = AddFieldLast w2, "{nm}_moved", (OutNamed "std::Cell", [[OutBool]]), "a hold `!{nm}`'s dynamic reads was written this tick", (XCall "std::Cell::new", [[XBool False]])
+        let w3 = AddFieldLast w2, "{nm}_moved", (OutNamed (RefRuntime "std::Cell"), [[OutBool]]), "a hold `!{nm}`'s dynamic reads was written this tick", (XCall (RefRuntime "std::Cell::new"), [[XBool False]])
         let w4 = update w3:
             &_.gns <= Each &_.gns, \|n| if n.id == id: WithReads n, reads else: n
             &_.getters <= Push &_.getters, (MethDef(name="{nm}_value", recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="The dynamic `!{nm}` is the event half of, which the wake reads after the tick."))
@@ -219,7 +219,7 @@ fn FilterEvent wx, menv, args, isUnit:
         ? a:
             let ((r, w1)) = EventRef wx, menv, a.value
             let bound = if isUnit: PaWild else: PaBind "w"
-            let pipe = \|x, K| r.pipe x, \|y| [[(DoIfLet (PaCtor "std::Some", [[bound]]), y, (K (if isUnit: XUnit else: XVar "w")), [[]])]]
+            let pipe = \|x, K| r.pipe x, \|y| [[(DoIfLet (PaCtor (RefRuntime "std::Some"), [[bound]]), y, (K (if isUnit: XUnit else: XVar "w")), [[]])]]
             ((EvRef(node=r.node, owner=r.owner, pipe=pipe), w1))
 
 # `!Gate $b, !e` fires `!e` while `$b` reads true.
@@ -286,8 +286,8 @@ fn Merge wx, name, t, l, r = Combinator wx, name, t, GnMerge, l, r, t, t
 Combinator: fn Wx, Text, OutTy, GnKind, EvRef, EvRef, OutTy, OutTy -> ((Nat, Wx))
 fn Combinator wx, name, t, kind, l, r, lt, rt:
     let ((id, wx1)) = AddGn wx, name, t, kind, 1
-    let wx2 = AddFieldLast wx1, "{name}_left", (OutStamped lt), "`{name}`'s left input", (XCall "rt::Stamped::new", [[]])
-    let wx3 = AddFieldLast wx2, "{name}_right", (OutStamped rt), "its right input", (XCall "rt::Stamped::new", [[]])
+    let wx2 = AddFieldLast wx1, "{name}_left", (OutStamped lt), "`{name}`'s left input", (XCall (RefRuntime "rt::Stamped::new"), [[]])
+    let wx3 = AddFieldLast wx2, "{name}_right", (OutStamped rt), "its right input", (XCall (RefRuntime "rt::Stamped::new"), [[]])
     let wx4 = update wx3:
         &_.gns <= Each &_.gns, \|n| if n.id == id: WithInputs n, [["{name}_left", "{name}_right"]] else: n
     ((id, (Connect (Connect wx4, l, (SkIn id, 0)), r, (SkIn id, 1))))

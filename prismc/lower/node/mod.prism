@@ -139,7 +139,7 @@ type Sk = choice:
     SkUp Text
     SkPort Text
     # `@Machine`: the state hold, the step function's path, the output node.
-    SkMachine Text, Text, Nat
+    SkMachine Text, Ref, Nat
     # `@Distinct`: its hold, written only by a value unequal to the one it holds.
     SkDistinct Text
     # `@PerKey`: its `prism_rtl::PerKey`, whose outer is written only when a key came or went.
