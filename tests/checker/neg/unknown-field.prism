@@ -1,0 +1,15 @@
+# `unknown-field`: an argument names its field as declared: `Pad.Note`'s field is `$text`,
+# so `text=` names no field, and a plain record's `name` is no `?name`. Written by Claude on
+# the claude-bugs branch; subject to change.
+emit Ui.* | Pad.*
+
+tag Pad.Note of Element unit:
+    $text: Text
+
+type Person = record:
+    name: Text
+
+@page: @unit
+@page:
+    let ann = Person(?name=nil)
+    ignore <- Pad.Note(text=$"hi")

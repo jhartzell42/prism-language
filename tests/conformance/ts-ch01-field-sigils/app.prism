@@ -1,0 +1,24 @@
+# Fields carry their sigils on their names, as binders do: a tag's `$text: Text` holds a
+# dynamic, given as `$text=` and read as `.$text`; a record's `?nickname: Text` holds an
+# optional, given as `?nickname=` (Jimmy's ruling on field sigils). Written by Claude on the
+# claude-bugs branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Note of Element unit:
+    $text: Text
+
+type Person = record:
+    name: Text
+    ?nickname: Text
+
+Called: fn Person -> Text
+fn Called p = Or p.?nickname, p.name
+
+@page: @unit
+@page:
+    !bump <- Ui.Button($label=$"bump")                        # 0
+    $count <- 1 then $count + 1 on !bump
+    let ann = Person(name="Ann", ?nickname=nil)
+    let bo = Person(name="Robert", ?nickname=(? "Bo"))
+    ignore <- Pad.Note($text=$"{Called ann} {Called bo} {$count}")    # 1

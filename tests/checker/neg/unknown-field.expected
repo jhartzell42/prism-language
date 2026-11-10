@@ -1,0 +1,9 @@
+tests/checker/neg/unknown-field.prism:14: error[unknown-field]: `Person` has no field `?name`; its `name` is plain
+        let ann = Person(?name=nil)
+                         ^^^^^^^^^
+  fix: write `name=`
+tests/checker/neg/unknown-field.prism:15: error[unknown-field]: `Pad.Note` has no plain field `text`; its field is `$text`
+        ignore <- Pad.Note(text=$"hi")
+                           ^^^^^^^^^^
+  fix: write `$text=`
+2 errors

@@ -1,0 +1,5 @@
+# `field-sigils`: a field's sigils stand on its name, its type written without them, as a
+# binder's do (`$text: Text`, never `text: $Text`). Written by Claude on the claude-bugs
+# branch; subject to change.
+type Note = record:
+    text: $Text
