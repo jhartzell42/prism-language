@@ -1,0 +1,22 @@
+# `mismatch`: a local lambda's argument meets an associated type that waits for it, so the
+# lambda stays at one type, and its use at a number pair gives the item `Nat` where `Takes`
+# wants `Text`.
+trait ^Box a:
+    type Item
+    Open: fn a -> Item a
+
+type Pair a = record:
+    one: a
+    two: a
+
+impl ^Box (Pair a):
+    type Item = a
+    fn Open p = p.one
+
+Takes: fn Text -> Nat
+fn Takes t = Len t
+
+Wrong: fn Nat -> Nat
+fn Wrong n:
+    let G = \|x| Takes (Open x)
+    G (Pair(one=n, two=n))
