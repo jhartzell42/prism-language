@@ -1,0 +1,21 @@
+# A program trait's method taking a function (`Use b, F`), given a lambda and a function
+# value: the argument takes the representation the method's parameter has. Written by
+# Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Applies a:
+    Use: fn a, (fn Nat -> Nat) -> Nat
+
+type Box = record:
+    n: Nat
+
+impl ^Applies Box:
+    fn Use b, F = F b.n
+
+Plus: fn Nat -> Nat
+fn Plus x = x + 5
+
+@main: @unit
+@main:
+    Ui.Label(text=$"{Use (Box(n=4)), \|x| x * 3} {Use (Box(n=4)), Plus}")    # 0

@@ -1,0 +1,7 @@
+# The tests of ts-ch03-trait-method-fn-param (Type System chapter 3).
+emit Ui.*
+use App.*
+
+test trait_method_fn_param, @main:
+    build
+        => expect Ui.Label(text="12 9")
