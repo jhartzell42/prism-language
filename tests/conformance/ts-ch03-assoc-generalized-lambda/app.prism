@@ -1,0 +1,27 @@
+# A local lambda over an associated type generalizes with the projection in its type: `F`
+# opens a pair whichever branch it takes, and at a number pair its item adds, at a text pair
+# its item displays. Two calls' `Item` meet in the `if` as one type. Written by Claude on the
+# claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Box a:
+    type Item
+    Open: fn a -> Item a
+
+type Pair a = record:
+    one: a
+    two: a
+derive ^Eq, ^Show
+
+impl ^Box (Pair a):
+    type Item = a
+    fn Open p = p.one
+
+@main: @unit
+@main:
+    let F = \|x, b| if b: Open x else: Open x
+    let n = (F (Pair(one=1, two=2)), True) + 1
+    let p = Pair(one="a", two="b")
+    let t = "{F p, False}!"
+    Ui.Label(text=$"{n} {t}")      # 0
