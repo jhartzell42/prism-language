@@ -1,0 +1,17 @@
+# `!MergeAll` over a dynamic list (Semantics Appendix B, `!MergeAll: fn [!a] -> ![a]`; Type
+# System ch. 4: a plain function lifts over a dynamic argument, so `!MergeAll $evs` is a
+# `$![a]`, a dynamic of merges) taken by `@Switch` (round 47 SW: the switch listens to the
+# inner the dynamic holds after each tick, from n+1). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@page: @unit
+@page:
+    !a <- Ui.Button(label=$"a")                             # 0
+    !b <- Ui.Button(label=$"b")                             # 1
+    !swap <- Ui.Button(label=$"swap")                       # 2
+    $evs <- [[(1 on !a)]] then [[(2 on !b)]] on !swap
+    !m <- @Switch (!MergeAll $evs)
+    $count <- 0 then $count + 1 on !m
+    Ui.Label(text=$"{$count}")                              # 3
