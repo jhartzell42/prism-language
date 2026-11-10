@@ -129,7 +129,7 @@ KeepWaiting: unbounded fn St -> St
 fn KeepWaiting st:
     let fields = Fold st.fieldQs, [[]], \|acc, q| FreeVarsInto st, (FreeVarsInto st, acc, q.recv), q.result
     let deferred = Fold st.deferred, fields, \|acc, w| FreeVarsInto st, (FreeVarsInto st, acc, w.expected), w.found
-    let waiting = Fold st.faultVars, deferred, \|acc, v| FreeVarsInto st, acc, (TyFlex v)
+    let waiting = Fold st.faultVars, deferred, \|acc, w| FreeVarsInto st, acc, w.expected
     LowerLevels st, waiting, st.level
 
 Generalize: unbounded fn St, Ty, [Nat], [((Nat, Text))] -> ((Scheme, St))

@@ -1,0 +1,30 @@
+# `mismatch`: a local lambda that captures an enclosing local (`n`) stays monomorphic, as
+# under GHC's MonoLocalBinds, so its waiting equation keeps `x` at the first use's type and
+# the tag at the second use is no pair (Jimmy's ruling SH). Written by Claude on the
+# claude-bugs branch; subject to change.
+trait ^Box a:
+    type Item
+    Open: fn a -> Item a
+
+type Pair a = record:
+    one: a
+    two: a
+
+impl ^Box (Pair a):
+    type Item = a
+    fn Open p = p.one
+
+type Tag = record:
+    name: Text
+
+impl ^Box Tag:
+    type Item = Text
+    fn Open t = t.name
+
+Takes: fn Text -> Nat
+fn Takes t = Len t
+
+Both: fn Nat -> Nat
+fn Both n:
+    let G = \|x| (Takes (Open x)) + n
+    (G (Pair(one="a", two="b"))) + (G (Tag(name="c")))

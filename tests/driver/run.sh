@@ -132,6 +132,15 @@ else
     failed+=(free-variable-defaulted)
     echo "FAILED free-variable-defaulted: wanted no undecided variable in the typed output ($out/free-variable-defaulted.typed)"
 fi
+# A bare `Error` as a tuple's part nothing decides stays an `Error` (ruling NE): the typed
+# output shows the tuple as `((Error, Int))`.
+"$prismc" --typed tests/driver/fault-variable-defaulted.prism --out "$out/fault-variable-defaulted.typed" > /dev/null 2>&1
+if [ -f "$out/fault-variable-defaulted.typed" ] && grep -q "(tuple Prelude.Error Int)" "$out/fault-variable-defaulted.typed"; then
+    echo "ok fault-variable-defaulted: the part is an Error"
+else
+    failed+=(fault-variable-defaulted)
+    echo "FAILED fault-variable-defaulted: wanted the part as Prelude.Error in the typed output ($out/fault-variable-defaulted.typed)"
+fi
 if ./prism compile --target cpp examples/chess -o "$out/chess-cpp" > /dev/null 2>&1 &&
     grep -q 'prism_world_canvas::run<' "$out/chess-cpp/src/main.cpp" &&
     make -s -C "$out/chess-cpp" -j"$(getconf _NPROCESSORS_ONLN)" > "$out/chess-cpp.log" 2>&1 &&

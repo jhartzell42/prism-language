@@ -181,10 +181,13 @@ type St = record:
     # arm against the match's, a field, an element): at the program's end those where it
     # is one are the typed output's `faults` (`FaultNotes`).
     faultQs: [Waiting]
-    # A tuple's part that is a bare `Error` has a variable of its own, which the place the
-    # tuple meets decides (a `~T`, so the part is its failure) and the definition's end
-    # makes `Error` if nothing did (`DefaultDef`); monomorphic till then (`KeepWaiting`).
-    faultVars: [Nat]
+    # An `Error` value at a place nothing has decided yet (an array's element, a tuple's
+    # part, a generic parameter, an arm) has a variable of its own (`FaultVar`), which the
+    # places it meets later decide: a `~T`, so the value is its failure, or `Error`. The
+    # definition's end makes `Error` of one nothing decided (`DefaultDef`), the program's
+    # end refuses one decided as anything else (`FaultsSettled`); monomorphic till then
+    # (`KeepWaiting`). Each waits as `t = Error` at its value's place.
+    faultVars: [Waiting]
 derive ^Eq, ^Show
 
 type AssocImpl = record:

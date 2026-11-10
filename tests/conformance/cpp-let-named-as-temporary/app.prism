@@ -1,0 +1,15 @@
+# A widget's `let`s named as lowering's own temporaries (`f`, `fy`, `a0`), a function value
+# passed where an unbounded function is taken: C++ reads `auto f = f;` as `f` initialized
+# from itself. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Apply: fn (fn Nat -> Nat) -> Nat
+fn Apply F = F 3
+
+@main: @unit
+@main:
+    let F = \|n| n + 1
+    let Fy = \|n| n + 2
+    let a0 = 10
+    Ui.Label(text=$"{Apply F} {Apply Fy} {a0}")    # 0

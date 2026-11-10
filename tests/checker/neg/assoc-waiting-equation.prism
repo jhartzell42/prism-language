@@ -1,6 +1,7 @@
-# `mismatch`: a local lambda's argument meets an associated type that waits for it, so the
-# lambda stays at one type, and its use at a number pair gives the item `Nat` where `Takes`
-# wants `Text`.
+# `mismatch`: a closed local lambda generalizes with its waiting associated-type equation
+# (`Item a = Text`) as a constraint (GHC's MonoLocalBinds, Jimmy's ruling SH); its use at a
+# number pair cannot meet it, and is refused there: the item is `Nat` where `Takes` wants
+# `Text`.
 trait ^Box a:
     type Item
     Open: fn a -> Item a

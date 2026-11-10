@@ -158,7 +158,7 @@ fn BindCtor env, st, p, n, args, t:
                 nil: ((env, (Err st, "unknown-name", n.span, "`{SNameKey n}` is not a constructor")))
                 ? c:
                     let ((self, st1, inst)) = InstantiateWith st, (Scheme(qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), p.span, [[]]
-                    let st2 = Unify st1, t, self, p.span
+                    let st2 = if IsFailurePattern st1, t, self: st1 else: Unify st1, t, self, p.span
                     if (Len args) != (Len c.args) and not ((Len args) == 1 and (Len c.args) > 1):
                         ((env, (Err st2, "mismatch", p.span, "`{BareName c.name}` takes {CountWord (Len c.args)} argument{if (Len c.args) == 1: "" else: "s"}; this pattern gives {CountWord (Len args)}")))
                     else: Fold (Range0 (Len args)), ((env, st2)), \|((en, s)), i| BindPattern en, s, (Or args[i], Pattern(kind=PIgnore, span=p.span)), (SubstQ inst, (Or c.args[i], TyErr)), True
@@ -176,7 +176,7 @@ fn BindRecord env, st, p, n, fields, rest, t:
                 nil: ((env, (Err st, "unknown-name", n.span, "`{SNameKey n}` is not a record")))
                 ? c:
                     let ((self, st1, inst)) = InstantiateWith st, (Scheme(qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), p.span, [[]]
-                    let st2 = Unify st1, t, self, p.span
+                    let st2 = if IsFailurePattern st1, t, self: st1 else: Unify st1, t, self, p.span
                     Fold (Range0 (Len fields)), ((env, st2)), \|((en, s)), i|
                         let fp = Or fields[i], FieldPat(name=nil, pattern=Pattern(kind=PIgnore, span=p.span), span=p.span)
                         let fname = FieldPatName fp, c.fields, i

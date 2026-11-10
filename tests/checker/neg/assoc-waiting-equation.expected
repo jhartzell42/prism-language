@@ -1,4 +1,4 @@
-tests/checker/neg/assoc-waiting-equation.prism:21: error[mismatch]: expected `Text`, found `Nat`
-        let G = \|x| Takes (Open x)
-                           ^^^^^^^^
+tests/checker/neg/assoc-waiting-equation.prism:23: error[mismatch]: expected `Text`, found `Nat`
+        G (Pair(one=n, two=n))
+        ^
 1 error
