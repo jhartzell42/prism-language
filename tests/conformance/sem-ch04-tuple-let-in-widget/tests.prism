@@ -1,0 +1,7 @@
+# The tests of sem-ch04-tuple-let-in-widget (Semantics chapter 4).
+emit Ui.*
+use App.*
+
+test tuple_let_in_widget, @main:
+    build
+        => expect Ui.Label(text="3 two 7")

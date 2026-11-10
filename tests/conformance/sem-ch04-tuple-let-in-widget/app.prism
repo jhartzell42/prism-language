@@ -1,0 +1,11 @@
+# A widget block's `let` of a tuple pattern over plain values: each name binds its part,
+# a function among them. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@main: @unit
+@main:
+    let pair = ((3, "two"))
+    let ((n, label)) = pair
+    let ((Add, m)) = ((\|a| a + 2, 5))
+    Ui.Label(text=$"{n} {label} {Add m}")       # 0
