@@ -62,7 +62,7 @@ fn ElementLine wx, benv, menv, e, ?bound:
             let pos = wx.pos
             let wx1 = update wx:
                 &_.pos <= NextPos &_.pos
-            let structPath = RefIn lx, tg.home, (TagStruct tg.name)
+            let structPath = RefIn lx, tg.home, (TagStructOf tg)
             # each field three ways: live in the methods, constant at the build, and constant
             # in the methods (a row's `document`, where a row's key is its own field)
             let ((liveFields, constFields, methodConsts, reads, wx2)) = Fold tg.fields, (([[]], [[]], [[]], [[]], wx1)), \|((lf, cf, mf, rd, w)), ((fname, fty))|

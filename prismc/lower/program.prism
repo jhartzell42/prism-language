@@ -556,7 +556,7 @@ fn TypeDoc lx, ti = match lx.g.srcs[ti.file]:
 TagDefOf: unbounded fn Lx, TagInfo -> TagDef
 fn TagDefOf lx, tg:
     let fields = Each (LevelFields tg), \|((fname, ft))| ((fname, (FieldSpell tg.home, fname, ft), (OutTyOf lx, (Peel ft))))
-    TagDef(name=(TagStruct tg.name), tagName=tg.name, fields=fields, doc=(TypeDoc lx, (TyInfo(name=tg.name, home=tg.home, params=[[]], body=BOpaque, derives=[[]], file=tg.file, span=tg.span))), pod=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and Podable t), eq=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and RuntimeEq t))
+    TagDef(name=(TagStructOf tg), tagName=tg.name, fields=fields, doc=(TypeDoc lx, (TyInfo(name=tg.name, home=tg.home, params=[[]], body=BOpaque, derives=[[]], file=tg.file, span=tg.span))), pod=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and Podable t), eq=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and RuntimeEq t))
 
 LevelFields: fn TagInfo -> [((Text, Ty))]
 fn LevelFields tg = Filter tg.fields, \|((ignore, ft))| (LayerOf ft) != LyEv
@@ -569,7 +569,7 @@ fn KindTags lx, kind, mods = Filter (Values lx.g.tags), \|tg| tg.kind == kind an
 RowDefOf: unbounded fn Lx, TyInfo -> RowDef
 fn RowDefOf lx, ti:
     let tags = KindTags lx, ti.name, (Keys lx.rsMods)
-    let cases = Each tags, \|tg| (((TagStruct tg.name), (RefIn lx, tg.home, (TagStruct tg.name))))
+    let cases = Each tags, \|tg| (((TagStruct tg.name), (RefIn lx, tg.home, (TagStructOf tg))))
     let pod = Fold tags, True, \|ok, tg| ok and (TagDefOf lx, tg).pod
     let eq = Fold tags, True, \|ok, tg| ok and (TagDefOf lx, tg).eq
     RowDef(name=(Camel (BareName ti.name)), prism=ti.name, cases=cases, pod=pod, doc=(TypeDoc lx, ti), eq=eq, level=False, deep=[[]])
@@ -580,7 +580,7 @@ fn RowDefOf lx, ti:
 ElemRow: unbounded fn Lx, [Text] -> RowDef
 fn ElemRow lx, mods:
     let tags = KindTags lx, "Element", (Push mods, "Prelude")
-    let cases = Each tags, \|tg| (((TagStruct tg.name), (RootRef tg.home, (TagStruct tg.name))))
+    let cases = Each tags, \|tg| (((TagStruct tg.name), (RootRef tg.home, (TagStructOf tg))))
     let pod = Fold tags, True, \|ok, tg| ok and (TagDefOf lx, tg).pod
     let eq = Fold tags, True, \|ok, tg| ok and (TagDefOf lx, tg).eq
     let deep = Fold tags, [[]], \|acc, tg| if TagHoldsDyn lx, tg: Push acc, (TagStruct tg.name) else: acc
@@ -595,7 +595,7 @@ fn TagHoldsDyn lx, tg = Fold (TagDefOf lx, tg).fields, False, \|f, ((ignore, ign
 AnswerEnum: unbounded fn Lx, [Text] -> AnswerDef
 fn AnswerEnum lx, mods:
     let tags = KindTags lx, "Element", (Push mods, "Prelude")
-    AnswerDef(cases=(Each tags, \|tg| AnswerCase(variant=(TagStruct tg.name), accessor=(AnswerAccessor tg), structPath=(RootRef tg.home, (TagStruct tg.name)), tagName=tg.name, ty=(AnswerTy lx, tg))))
+    AnswerDef(cases=(Each tags, \|tg| AnswerCase(variant=(TagStruct tg.name), accessor=(AnswerAccessor tg), structPath=(RootRef tg.home, (TagStructOf tg)), tagName=tg.name, ty=(AnswerTy lx, tg))))
 
 # What an answer to a tag's element carries: its output's value; of a bundle (a tuple with
 # an event part, `Gui.Window`'s `((WindowId, !WindowInput))`) the event part's, which is
@@ -612,7 +612,7 @@ fn AnswerTy lx, tg:
 
 # The Rust path of a tag's enum variant and of its struct, from the current module.
 TagPaths: fn Lx, TagInfo -> ((Ref, Ref))
-fn TagPaths lx, tg = (((VariantOf lx, tg), (RefIn lx, tg.home, (TagStruct tg.name))))
+fn TagPaths lx, tg = (((VariantOf lx, tg), (RefIn lx, tg.home, (TagStructOf tg))))
 
 VariantOf: fn Lx, TagInfo -> Ref
 fn VariantOf lx, tg = RefChild (KindRef lx, tg.kind), (TagStruct tg.name)
