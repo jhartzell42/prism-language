@@ -1,0 +1,22 @@
+# Derived by hand from Semantics ch. 9 (a computed answer is the next tick's input, which is owed; a forwarded element's answer from the World is heard in its tick) and prismc's ruling HL (the list form's answers are computed answers, by path): the send in tick 1 reaches the inner button, the document's first path, in tick 2.
+test answers_go_down_by_path
+
+tick 0
+  added:
+    0: Ui.Button(label="send")
+    1/[0]/0: Ui.Button(label="inner")
+    1/[1]/0: Ui.Label(text="pressed 0")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1/[1]/0: Ui.Label(text="pressed 1")
+
+tick 3
+  in:
+    1/[0]/0: click
+  changed:
+    1/[1]/0: Ui.Label(text="pressed 2")
