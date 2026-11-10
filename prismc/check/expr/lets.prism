@@ -464,7 +464,7 @@ fn CheckBody env, st, body, res = match body:
                 TyAt inner, rw:
                     let env2 = update env:
                         &_.scope <= rw
-                    let ((t, st2)) = InferWidgetBlock env2, st, b
+                    let ((t, st2)) = InferWidgetBlockAt env2, st, b, (? inner)
                     Unify st2, inner, t, b.span
                 other: Err st, "mismatch", b.span, "a widget block builds a blueprint; the signature says `{ShowTy st, other}`"
         else: if env.mark == "?" or env.mark == "~":
