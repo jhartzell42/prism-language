@@ -1,0 +1,11 @@
+# The program's own `Std`, for ts-ch01-module-named-std.
+emit r
+type Option = choice:
+    Some Nat
+    Nope
+derive ^Eq, ^Show
+
+Pick: fn Option -> Nat
+fn Pick o = match o:
+    Some n: n
+    Nope: 0

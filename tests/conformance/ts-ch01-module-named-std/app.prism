@@ -1,0 +1,12 @@
+# A module named `Std`, whose type and constructor share names with the standard library's
+# (`Option`, `Some`): the emitted code reaches the standard library by its own path, so a
+# program module of that name never stands for it, in either target. Written by Claude on
+# the claude-bugs branch; subject to change.
+emit Ui.*
+mod Std
+test mod Tests
+use Std.*
+
+@main: @unit
+@main:
+    Ui.Label(text=$"{Pick (Some 4)} {Pick Nope}")              # 0
