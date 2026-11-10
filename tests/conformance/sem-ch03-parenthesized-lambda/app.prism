@@ -20,4 +20,4 @@ fn First n = Apply (\|k| k * 10), n
 
 @page: @unit
 @page:
-    Ui.Label(text=$"{Last 1} {First 2}")                                      # 0
+    Ui.Label($text=$"{Last 1} {First 2}")                                      # 0

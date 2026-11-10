@@ -7,9 +7,9 @@ test mod Tests
 
 @count: @unit
 @count:
-    !inc <- Ui.Button(label=$"Increment")                 # 0
+    !inc <- Ui.Button($label=$"Increment")                 # 0
     $count <- 0 then $count + 1 on !inc
-    Ui.Label(text=$"Count: {$count}")                     # 1
+    Ui.Label($text=$"Count: {$count}")                     # 1
 
 # A job over several ticks (D6: each call a cycle point): an aborted tick between its
 # cycles leaves it where it was, so its cycles and its result come as if the tick had
@@ -25,7 +25,7 @@ fn Run n = Twice n
 
 @Working: fn Nat -> @unit
 fn @Working n:
-    !poke <- Ui.Button(label=$"poke")                       # 0
+    !poke <- Ui.Button($label=$"poke")                       # 0
     !done <- @Run Run, n                                    # 1
     $shown <- "working" then Show !done
-    Ui.Label(text=$shown)                                   # 2
+    Ui.Label($text=$shown)                                   # 2

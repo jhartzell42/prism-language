@@ -33,4 +33,4 @@ fn Bump x:
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{Bump (Cell(v=2))} {Bump (Wrap(inner=Cell(v=3)))}")    # 0
+    Ui.Label($text=$"{Bump (Cell(v=2))} {Bump (Wrap(inner=Cell(v=3)))}")    # 0

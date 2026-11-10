@@ -17,4 +17,4 @@ fn IsBox s = match s:
 
 @shapes: @unit
 @shapes:
-    Ui.Label(text=$"{IsBox (Box 2, 3)} {IsBox Dot}")                     # 0
+    Ui.Label($text=$"{IsBox (Box 2, 3)} {IsBox Dot}")                     # 0

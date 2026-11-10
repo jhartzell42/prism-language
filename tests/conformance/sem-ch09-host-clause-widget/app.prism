@@ -9,11 +9,11 @@ test mod Tests
 
 @Pick: fn ?Nat -> @!Nat
 fn @Pick nil:
-    !b <- Ui.Button(label=$"none")                               # 0
+    !b <- Ui.Button($label=$"none")                               # 0
     @ (0 on !b)
 fn @Pick (? n):
-    Ui.Label(text=$"some {n}")                                   # 0
-    !b <- Ui.Button(label=$"pick {n}")                           # 1
+    Ui.Label($text=$"some {n}")                                   # 0
+    !b <- Ui.Button($label=$"pick {n}")                           # 1
     @ (n on !b)
 
 @child: @unit
@@ -22,8 +22,8 @@ fn @Pick (? n):
     $total <- 0 then $total + !picked
     let mode = 2
     match mode:                                                  # 2
-        1: Ui.Label(text=$"one")
-        otherwise: Ui.Label(text=$"total {$total}")
+        1: Ui.Label($text=$"one")
+        otherwise: Ui.Label($text=$"total {$total}")
 
 @hosted: @unit
 @hosted:

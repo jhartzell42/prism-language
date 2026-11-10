@@ -129,7 +129,7 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
             let wx6 = update wx5:
                 &_.gns <= Each &_.gns, \|n| if n.id == gid: WithInputs n, [["{name}_gathered"]] else: n
             let rowDone = Connect rowWxR, r, (SkUp "{name}_all_in")
-            let wx7 = AddBuilder wx6, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowDone, qk=rowName, params=rowParams, gather=(? gid))), passed
+            let wx7 = AddBuilder wx6, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowDone, qk=rowName, params=rowParams, ?gather=(? gid))), passed
             ((wx7, (WrEv (EvRefOf wx7, gid))))
         WrDyn ex, resultReads, rt:
             # The gathered dynamic `$(K ==> T)` is structural (pick ST): the rows' results by
@@ -146,7 +146,7 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
             let rowDone = update rowWxR:
                 &_.getters <= Push &_.getters, (MethDef(name="result", recv=RecvRef, params=[[]], cx=CxRef, ret=rt, body=[[]], tail=ex, doc="The row's result, which the block gathers by key."))
                 &_.resultMoved <= if (Len ownBehind) > 0: ? (("{gathered}_moved", ownBehind)) else: nil
-            let wx4 = AddBuilder wx3, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowDone, qk=rowName, params=rowParams, gather=nil)), passed
+            let wx4 = AddBuilder wx3, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowDone, qk=rowName, params=rowParams, ?gather=nil)), passed
             let all = (XMethod (XMethod (XMethod (XMethod (XField XSelf, name), "borrow", [[]]), "iter", [[]]), "map", [[(XClosure False, [[PaTuple [[PaBind "k", PaBind "row"]]]], (XTuple [[XClone (XVar "k"), (XMethod (XVar "row"), "result", [[XCx]])]]))]]), "collect", [[]])
             let what = "the dynamic gathered by the `for` at place {PlaceText pos}"
             let wx5 = update wx4:
@@ -162,7 +162,7 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
                 &_.build <= Push &_.build, (RefusalDo "a `for` whose rows end on a bundle (Semantics ch. 4: gathered part by part)")
             ((wx4, WrUnit))
         otherwise:
-            let wx4 = AddBuilder wx3, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowWxR, qk=rowName, params=rowParams, gather=nil)), passed
+            let wx4 = AddBuilder wx3, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowWxR, qk=rowName, params=rowParams, ?gather=nil)), passed
             ((wx4, WrUnit))
 
 # A row's entry, `$_`: the block's source at the row's key, at the read point (a projection

@@ -244,12 +244,12 @@ fn TemplateKids parts, m = Fold parts, [[]], \|acc, p| match p:
 TemplateCallExpr: fn SName, [Arg], ?[TemplatePart], Range -> Expr
 fn TemplateCallExpr n, args, ?ps, span:
     let body = match ?ps:
-        ? ps: [[Arg(name=(? Ident(name="#body", span=span)), value=(Expr(kind=(ETemplate (Template(keyword="InlineText", lang="", delims="double", parts=ps, span=span))), span=span)), span=span)]]
+        ? ps: [[Arg(?name=(? Ident(name="#body", span=span)), value=(Expr(kind=(ETemplate (Template(keyword="InlineText", lang="", delims="double", parts=ps, span=span))), span=span)), span=span)]]
         nil: [[]]
     Expr(kind=(ECall (Expr(kind=(EName n), span=n.span)), (Append args, body), False, False), span=span)
 
 ArgOf: fn Expr -> Arg
-fn ArgOf x = Arg(name=nil, value=x, span=x.span)
+fn ArgOf x = Arg(?name=nil, value=x, span=x.span)
 
 ExprsKids: fn [Expr], (Text ==> Rel) -> [Kid]
 fn ExprsKids xs, m = Each xs, \|x| KidExpr x, m
@@ -283,7 +283,7 @@ MethodCallee: fn SName -> Expr
 fn MethodCallee n = Expr(kind=(EName n), span=n.span)
 
 MethodArgs: fn Expr, [Arg] -> [Arg]
-fn MethodArgs r, args = Append [[Arg(name=nil, value=r, span=r.span)]], args
+fn MethodArgs r, args = Append [[Arg(?name=nil, value=r, span=r.span)]], args
 
 # A call in a clause's body with the relations in scope where it stands; a name mentioned
 # without being called is a call with no arguments.

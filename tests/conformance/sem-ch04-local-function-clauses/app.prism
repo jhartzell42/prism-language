@@ -17,4 +17,4 @@ fn Medals n:
 @page:
     fn Size 0 = "none"
     fn Size k = "{k}"
-    Ui.Label(text=$"{Medals 0} {Medals 1} {Medals 4} {Size 0} {Size 3}")   # 0
+    Ui.Label($text=$"{Medals 0} {Medals 1} {Medals 4} {Size 0} {Size 3}")   # 0

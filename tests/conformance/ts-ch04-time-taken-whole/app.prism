@@ -23,36 +23,36 @@ fn Lifts $a, $b = [[$a + $b, $a + 1]]
 fn !Bump $n, !go = $n + 1 on !go
 
 @wrapped:
-    !inc <- Ui.Button(label=$"Inc")                             # 0
+    !inc <- Ui.Button($label=$"Inc")                             # 0
     $count <- 0 then $count + 1 on !inc
     let $first = Or (Wrap $count)[0], ($ 0)
-    Ui.Label(text=$"first {$first}")                            # 1
+    Ui.Label($text=$"first {$first}")                            # 1
 
 @incremented:
-    !inc <- Ui.Button(label=$"Inc")                             # 0
+    !inc <- Ui.Button($label=$"Inc")                             # 0
     $count <- 0 then $count + 1 on !inc
-    Ui.Label(text=$"inc {$Inc $count}")                          # 1
+    Ui.Label($text=$"inc {$Inc $count}")                          # 1
 
 @summed:
-    !inc <- Ui.Button(label=$"Inc")                             # 0
-    !dec <- Ui.Button(label=$"Ten")                             # 1
+    !inc <- Ui.Button($label=$"Inc")                             # 0
+    !dec <- Ui.Button($label=$"Ten")                             # 1
     $ones <- 0 then $ones + 1 on !inc
     $tens <- 0 then $tens + 10 on !dec
-    Ui.Label(text=$"sum {$Plus $ones, $tens}")                    # 2
+    Ui.Label($text=$"sum {$Plus $ones, $tens}")                    # 2
 
 @bumped:
-    !inc <- Ui.Button(label=$"Inc")                             # 0
-    !go <- Ui.Button(label=$"Go")                               # 1
+    !inc <- Ui.Button($label=$"Inc")                             # 0
+    !go <- Ui.Button($label=$"Go")                               # 1
     $count <- 0 then $count + 1 on !inc
     $last <- 0 then !Bump $count, !go
-    Ui.Label(text=$"last {$last}")                              # 2
+    Ui.Label($text=$"last {$last}")                              # 2
 
 @lifted:
-    !inc <- Ui.Button(label=$"Inc")                             # 0
-    !ten <- Ui.Button(label=$"Ten")                             # 1
+    !inc <- Ui.Button($label=$"Inc")                             # 0
+    !ten <- Ui.Button($label=$"Ten")                             # 1
     $ones <- 0 then $ones + 1 on !inc
     $tens <- 0 then $tens + 10 on !ten
     let ls = Lifts $ones, $tens
     let $both = Or ls[0], ($ 0)
     let $next = Or ls[1], ($ 0)
-    Ui.Label(text=$"both {$both} next {$next}")                 # 2
+    Ui.Label($text=$"both {$both} next {$next}")                 # 2

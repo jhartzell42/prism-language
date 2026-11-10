@@ -119,7 +119,7 @@ type ArmWait = record:
     out: Ty
     ty: Ty
     span: Range
-    against: ?Ty
+    ?against: Ty
     fwd: Bool
 derive ^Eq, ^Show
 
@@ -144,7 +144,7 @@ fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
             let st3 = NoteFaultAt st3a, (TailSpan arm.body), want, bt
             let fwd = arm.?pattern == nil or (IsFamilyArm arm)
             match ?refinedOut:
-                ? ((o, out)): ((acc, st3, (? ArmWait(o=o, out=out, ty=bt, span=arm.body.span, against=(? want), fwd=fwd))))
+                ? ((o, out)): ((acc, st3, (? ArmWait(o=o, out=out, ty=bt, span=arm.body.span, ?against=(? want), fwd=fwd))))
                 nil: ((acc, (ArmAgainst st3, want, bt, arm.body.span, fwd), nil))
         nil:
             let ((bt, st3b)) = InferExprBlock env2, st2, arm.body
@@ -154,7 +154,7 @@ fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
             let acc2 = if IsTimeSigil head: Push acc, ((head, arm.body.span)) else: Push acc, (("", arm.body.span))
             let acc3 = if head == "@": Push acc2, (("@", arm.body.span)) else: acc2
             match ?refinedOut:
-                ? ((o, out)): ((acc3, st3, (? ArmWait(o=o, out=out, ty=plainBt, span=arm.body.span, against=nil, fwd=False))))
+                ? ((o, out)): ((acc3, st3, (? ArmWait(o=o, out=out, ty=plainBt, span=arm.body.span, ?against=nil, fwd=False))))
                 nil: ((acc3, (UnifyArm st3, res, plainBt, arm.body.span), nil))
 
 # An arm's value against the type the match is checked at: a blueprint's row goes in an

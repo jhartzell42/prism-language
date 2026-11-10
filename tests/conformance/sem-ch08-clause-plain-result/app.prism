@@ -10,18 +10,18 @@ test mod Tests
 
 @Pick: fn ?Nat -> @Text
 fn @Pick nil:
-    Ui.Label(text=$"none")                                       # 0
+    Ui.Label($text=$"none")                                       # 0
     @ "zero"
 fn @Pick (? n):
-    Ui.Label(text=$"some {n}")                                   # 0
-    Ui.Label(text=$"second")                                     # 1
+    Ui.Label($text=$"some {n}")                                   # 0
+    Ui.Label($text=$"second")                                     # 1
     @ "n{n}"
 
 @Page: fn ?Nat -> @Text
 fn @Page ?x:
     picked <- @Pick ?x                                           # 0, 1
-    Ui.Label(text=$"{picked}")                                   # 2
-    !go <- Ui.Button(label=$"go")                                # 3
+    Ui.Label($text=$"{picked}")                                   # 2
+    !go <- Ui.Button($label=$"go")                                # 3
     $n <- 0 then $n + 1 on !go
-    Ui.Label(text=$"{picked} {$n}")                              # 4
+    Ui.Label($text=$"{picked} {$n}")                              # 4
     @ picked

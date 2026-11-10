@@ -699,7 +699,7 @@ type Model = record:
     name: Text
     mods: [ModDef]
     programs: [ProgDef]
-    root: ?ProgDef
+    ?root: ProgDef
     checks: [CheckDef]
     # `crate::Elem`, emitted in `main.rs`
     elem: RowDef
@@ -732,7 +732,7 @@ type AnswerCase = record:
     # (`{variant}First`, accessor `{accessor}_first`), which a host's supplier answers and
     # a World's first value decodes to (`decode_first`); the variant above carries the
     # event part, the answers (pick HO).
-    first: ?OutTy
+    ?first: OutTy
 derive ^Eq, ^Show
 
 # Whether an expression reads the local `n` anywhere in it (its `XVar`s), as a printer

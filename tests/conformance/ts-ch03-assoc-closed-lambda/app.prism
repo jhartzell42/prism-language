@@ -31,4 +31,4 @@ fn Takes t = Len t
 @main: @unit
 @main:
     let G = \|x| Takes (Open x)
-    Ui.Label(text=$"{G (Pair(one="ab", two="c"))} {G (Tag(name="xyz"))}")    # 0
+    Ui.Label($text=$"{G (Pair(one="ab", two="c"))} {G (Tag(name="xyz"))}")    # 0

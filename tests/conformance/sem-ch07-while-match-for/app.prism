@@ -39,16 +39,16 @@ fn InForMap m = update "":
 fn @MatchShown n:
     !done <- @Run InMatch, n                                # 0
     $shown <- "working" then Show !done
-    Ui.Label(text=$shown)                                   # 1
+    Ui.Label($text=$shown)                                   # 1
 
 @ForShown: fn [Int] -> @unit
 fn @ForShown xs:
     !done <- @Run InFor, xs                                 # 0
     $shown <- "working" then Show !done
-    Ui.Label(text=$shown)                                   # 1
+    Ui.Label($text=$shown)                                   # 1
 
 @MapShown: fn (Text ==> Int) -> @unit
 fn @MapShown m:
     !done <- @Run InForMap, m                               # 0
     $shown <- "working" then !done
-    Ui.Label(text=$shown)                                   # 1
+    Ui.Label($text=$shown)                                   # 1

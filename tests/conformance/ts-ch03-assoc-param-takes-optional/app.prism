@@ -21,4 +21,4 @@ impl ^Box Jar:
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{Show (Make Empty, (? "x"))} {Show (Make (Full "y"), nil)}")    # 0
+    Ui.Label($text=$"{Show (Make Empty, (? "x"))} {Show (Make (Full "y"), nil)}")    # 0

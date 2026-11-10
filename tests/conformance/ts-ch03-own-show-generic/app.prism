@@ -14,4 +14,4 @@ impl ^Show (Bag a) where a: ^Show:
 @main: @unit
 @main:
     let bag = Bag(items=[[1, 2]], owner="ann")
-    Ui.Label(text=$"{Show bag} {Show [[(Bag(items=[["x"]], owner="bo"))]]}")    # 0
+    Ui.Label($text=$"{Show bag} {Show [[(Bag(items=[["x"]], owner="bo"))]]}")    # 0

@@ -11,4 +11,4 @@ use Geometry.*
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{Name (Double 2)}")
+    Ui.Label($text=$"{Name (Double 2)}")

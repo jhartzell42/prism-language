@@ -34,4 +34,4 @@ impl ^Named (Pair a) where a: ^Named:
     let zs = match ?z:
         ? q: Name q
         nil: "none"
-    Ui.Label(text=$"{Name p} {zs}")    # 0
+    Ui.Label($text=$"{Name p} {zs}")    # 0

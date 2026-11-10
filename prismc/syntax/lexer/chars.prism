@@ -292,4 +292,4 @@ fn LexErr l, start, end, message = update l:
     &_.diags <= Push &_.diags, (LexDiag (Range(start=start, end=(Max end, start))), message)
 
 LexDiag: fn Range, Text -> Diag
-fn LexDiag span, message = Diag(stage="lex", span=span, message=message, feature=nil)
+fn LexDiag span, message = Diag(stage="lex", span=span, message=message, ?feature=nil)

@@ -12,12 +12,12 @@ use Ui.*
 
 @child: @unit
 @child:
-    !press <- Ui.Button(label=$"inner")                                 # 0
+    !press <- Ui.Button($label=$"inner")                                 # 0
     $n <- 0 then $n + 1 on !press
-    Ui.Label(text=$"pressed {$n}")                                      # 1
+    Ui.Label($text=$"pressed {$n}")                                      # 1
 
 @list: @unit
 @list:
-    !send <- Ui.Button(label=$"send")                                   # 0
+    !send <- Ui.Button($label=$"send")                                   # 0
     let !answers = (Map (Each (Take (Keys $doc), 1), \|p| ((p, AnswerOf click)))) on !send
     ((ignore, $doc)) <- @HostList @child, !answers, \|p, e| @Element e   # 1/[p]/0

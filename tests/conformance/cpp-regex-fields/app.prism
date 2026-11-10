@@ -20,7 +20,7 @@ fn Start nil = "-"
 
 @Shown: @unit
 @Shown:
-    !next <- Ui.Button(label=$"Next")
+    !next <- Ui.Button($label=$"Next")
     $text <- "ab cd" then "e fg" on !next
     $front <- 0 then 1 on !next
-    Ui.Label(text=$"{Words $text} {Fronts $text}{$front}")
+    Ui.Label($text=$"{Words $text} {Fronts $text}{$front}")

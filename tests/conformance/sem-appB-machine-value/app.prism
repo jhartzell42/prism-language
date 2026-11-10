@@ -10,8 +10,8 @@ fn Past t = "past {t}"
 
 @Over: fn Nat -> @unit
 fn @Over limit:
-    !go <- Ui.Button(label=$"Go")                                       # 0
+    !go <- Ui.Button($label=$"Go")                                       # 0
     let step = \|total, n| ((total + n, if total + n > limit: ? (total + n) else: nil))
     !over <- @Machine step, 0, (2 on !go)
     $past <- "no" then Past !over
-    Ui.Label(text=$"{$past}")                                           # 1
+    Ui.Label($text=$"{$past}")                                           # 1

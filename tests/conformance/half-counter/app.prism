@@ -6,7 +6,7 @@ test mod Tests
 
 @halfcounter: @unit
 @halfcounter:
-    !increment <- Ui.Button(label=$"Increment")           # 0
+    !increment <- Ui.Button($label=$"Increment")           # 0
     let !delta = +1 on !increment
     $count <- 0 then $count + !delta
-    Ui.Label(text=$"Count: {$count}")                     # 1
+    Ui.Label($text=$"Count: {$count}")                     # 1

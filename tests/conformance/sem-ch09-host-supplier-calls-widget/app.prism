@@ -12,11 +12,11 @@ fn Shown (Error(..)) = "(none)"
 
 @child: @unit
 @child:
-    !read <- Ui.Button(label=$"read")                             # 0
+    !read <- Ui.Button($label=$"read")                             # 0
     $~text <- Fs.Contents(path="a")                               # 1
-    !~got <- Fs.File(path="b", requests=Read on !read)            # 2
+    !~got <- Fs.File(path="b", !requests=Read on !read)            # 2
     $last <- "nothing" then Shown !~got
-    Ui.Label(text=$"{Shown $~text}, {$last}")                     # 3
+    Ui.Label($text=$"{Shown $~text}, {$last}")                     # 3
 
 @Supply: fn Path, Element (Ui.* | Fs.*) o -> @o
 fn @Supply p, e = match e:

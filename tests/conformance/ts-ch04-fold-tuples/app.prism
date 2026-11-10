@@ -21,4 +21,4 @@ fn Weigh items:
 
 @shown: @unit
 @shown:
-    Ui.Label(text=$(Weigh [[(("a", 2)), (("b", 3))]]))         # 0
+    Ui.Label($text=$(Weigh [[(("a", 2)), (("b", 3))]]))         # 0

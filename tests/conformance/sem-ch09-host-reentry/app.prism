@@ -14,17 +14,17 @@ fn ?Echo p, e, !back = match e:
 
 @child: @unit
 @child:
-    !b <- Ui.Button(label=$"b")                                 # 0, answered
-    !c <- Ui.Button(label=$"c")                                 # 1, answered
+    !b <- Ui.Button($label=$"b")                                 # 0, answered
+    !c <- Ui.Button($label=$"c")                                 # 1, answered
     let !hit = !b <| !c
     $hits <- 0 then $hits + 1 on !hit
-    Ui.Label(text=$"{$hits} hits")                              # 2
+    Ui.Label($text=$"{$hits} hits")                              # 2
 
 @loop: @unit
 @loop:
-    !go <- Ui.Button(label=$"go")                               # 0
-    !other <- Ui.Button(label=$"other")                         # 1
+    !go <- Ui.Button($label=$"go")                               # 0
+    !other <- Ui.Button($label=$"other")                         # 1
     let !either = !go <| !other
     ignore <- @HostSome @child, \|p, e| ?Echo p, e, !either     # 2/[p]
     $count <- 0 then $count + 1 on !either
-    Ui.Label(text=$"{$count}")                                  # 3
+    Ui.Label($text=$"{$count}")                                  # 3

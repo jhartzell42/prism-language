@@ -19,4 +19,4 @@ fn Count (Node l, ignore, r) = (Count l) + 1 + (Count r)
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{Count (Plant (Plant Leaf, 2), 1)} {(Plant Leaf, 3) == (Node Leaf, 3, Leaf)}")    # 0
+    Ui.Label($text=$"{Count (Plant (Plant Leaf, 2), 1)} {(Plant Leaf, 3) == (Node Leaf, 3, Leaf)}")    # 0

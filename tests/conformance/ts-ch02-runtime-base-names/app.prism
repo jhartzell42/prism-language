@@ -30,4 +30,4 @@ derive ^Eq, ^Show
         Line n: "line {n}"
         Header t: t
     let idle = Idle
-    Ui.Label(text=$"{shown} {idle} {r}")             # 0
+    Ui.Label($text=$"{shown} {idle} {r}")             # 0

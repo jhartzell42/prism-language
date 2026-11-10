@@ -15,11 +15,11 @@ tag Pad.Door of Element ((Text, !Nat)):
 @doors:
     ((door, !knocks)) <- Pad.Door(name="front")              # 0
     $count <- 0 then $count + !knocks
-    Ui.Label(text=$"{door}: {$count}")                       # 1
+    Ui.Label($text=$"{door}: {$count}")                       # 1
 
 @computed: @unit
 @computed:
-    !go <- Ui.Button(label=$"knock")                         # 0
+    !go <- Ui.Button($label=$"knock")                         # 0
     ignore <- @HostDocument @doors, \|p, e| match e:         # 1/[p]
         Pad.Door(..): @ (("mock", 2 on !go))
         otherwise: @Element e

@@ -10,5 +10,5 @@ use Ui.*
 @page:
     let word = "caf\u{e9} \u{20ac}\u{1f600}\u{41}"
     let c = '\u{3bb}'
-    Ui.Label(text=$"{word} {Len word} {c}{Text c}")                             # 0
-    Ui.Label(text=$"{Or (?CharOf 955), '-'}{Or (?CharOf 55296), '-'}{Or (?CharOf 1114112), '-'}")  # 1
+    Ui.Label($text=$"{word} {Len word} {c}{Text c}")                             # 0
+    Ui.Label($text=$"{Or (?CharOf 955), '-'}{Or (?CharOf 55296), '-'}{Or (?CharOf 1114112), '-'}")  # 1

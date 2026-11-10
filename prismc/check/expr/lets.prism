@@ -430,9 +430,9 @@ fn TemplateCallCheck env, st, n, args, ?parts, span:
                     nil: st1
                 let quiet = (Len st1.diags) > (Len st.diags)
                 let ((positional, st3)) = Fold (Range0 arity), (([[]], st2)), \|((acc, s)), j| match slots["{j}"]:
-                    ? v: (((Push acc, Arg(name=nil, value=v, span=v.span)), s))
+                    ? v: (((Push acc, Arg(?name=nil, value=v, span=v.span)), s))
                     nil: match ?body:
-                        ? b: if j == last: (((Push acc, Arg(name=nil, value=b, span=span)), s)) else: TemplateMissing acc, s, clauses, j, cname, span, quiet
+                        ? b: if j == last: (((Push acc, Arg(?name=nil, value=b, span=span)), s)) else: TemplateMissing acc, s, clauses, j, cname, span, quiet
                         nil: TemplateMissing acc, s, clauses, j, cname, span, quiet
                 let ((t, st4)) = CallGlobal env, st3, callee, positional, span, [[]], callee.span
                 Unify st4, tText, t, span
@@ -447,7 +447,7 @@ fn TemplateMissing acc, st, clauses, j, cname, span, quiet:
             nil: ""
         nil: ""
     let st2 = if quiet: st else: Err st, "mismatch", span, "`<@{cname}>` needs `{pname}=`"
-    (((Push acc, Arg(name=nil, value=Expr(kind=EError, span=span), span=span)), st2))
+    (((Push acc, Arg(?name=nil, value=Expr(kind=EError, span=span), span=span)), st2))
 
 # The parameter an attribute names: the one place every clause that names it gives.
 ?TemplateSlot: unbounded fn [FnClause], Text -> ?Nat

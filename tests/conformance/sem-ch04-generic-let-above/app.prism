@@ -9,7 +9,7 @@ use Ui.*
 @page: @unit
 @page:
     let shown = "{Same 1} {Same "a"} {total}"
-    Ui.Label(text=$"{shown}")                                                   # 0
+    Ui.Label($text=$"{shown}")                                                   # 0
     let Same = \|x| x
     let total = sum + 1
     let sum = 2

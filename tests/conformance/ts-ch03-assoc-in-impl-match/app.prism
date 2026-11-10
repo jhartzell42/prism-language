@@ -38,4 +38,4 @@ fn Again x = Make (Open x)
 @main: @unit
 @main:
     let c: Crate = Make 4
-    Ui.Label(text=$"{Show (Again c)} {Show (Again (Full "z"))} {Show (Again Empty)}")    # 0
+    Ui.Label($text=$"{Show (Again c)} {Show (Again (Full "z"))} {Show (Again Empty)}")    # 0

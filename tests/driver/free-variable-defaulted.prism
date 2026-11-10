@@ -7,4 +7,4 @@ emit Ui.*
 @main: @unit
 @main:
     let xs = [[]]
-    Ui.Label(text=$"{Len xs} {Len [[]]}")
+    Ui.Label($text=$"{Len xs} {Len [[]]}")

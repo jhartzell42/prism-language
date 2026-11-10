@@ -269,7 +269,7 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
     let n = Len args
     let cmp = IsComparison fname
     let ((argTys, st1)) = Fold (Range0 n), (([[]], st)), \|((acc, s)), i|
-        let a = Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)
+        let a = Or args[i], Arg(?name=nil, value=Expr(kind=EError, span=span), span=span)
         if IsLambda a.value: (((Push acc, TyErr), s))
         else:
             let ((t, s2)) = Infer env, s, a.value
@@ -277,7 +277,7 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
                 (((TyFn pc, ignore, ignore), (TyFn ac, aps, ar))): (((Push acc, (TyFn pc, aps, ar)), (AddLeq s2, ac, pc, a.value.span, "arg", fname, "")))
                 otherwise: (((Push acc, t), s2))
     let ((st2, whole)) = Fold (Range0 n), ((st1, [[]])), \|((s, done)), i|
-        let a = Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)
+        let a = Or args[i], Arg(?name=nil, value=Expr(kind=EError, span=span), span=span)
         let at = Or argTys[i], TyErr
         let pnow = NormAssoc s, (Walk s, (Or params[i], TyErr))
         let wholeNow = (IsTimeSigil (HeadSigil s, pnow)) or (HeadSigil s, pnow) == "@"
@@ -286,7 +286,7 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
         else: if (StackOf s, at) != "" or (IsFreeHeaded s, at): ((s, done))
         else: (((ArgOrUnpack env, s, fname, (Or params[i], TyErr), pnow, at, a, res, span), done))
     let ((ignore, st3)) = Fold (Range0 n), (({}, st2)), \|((m, s)), i|
-        let a = Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)
+        let a = Or args[i], Arg(?name=nil, value=Expr(kind=EError, span=span), span=span)
         if IsLambda a.value:
             let p = Walk s, (Or params[i], TyErr)
             let ((lt, s2)) = InferLambda env, s, a.value, (? p)
@@ -296,7 +296,7 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
             ((m, s3))
         else: ((m, s))
     let ((pl, st4)) = Fold (Range0 n), ((Peeled(events=[[]], dyns=[[]], opts=[[]], optArgs=[[]], lifted="", broken=False), st3)), \|((acc, s)), i|
-        let a = Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)
+        let a = Or args[i], Arg(?name=nil, value=Expr(kind=EError, span=span), span=span)
         let at = Or argTys[i], TyErr
         if (IsLambda a.value) or (HasNat whole, i) or ((StackOf s, at) == "" and not (IsFreeHeaded s, at)): ((acc, s))
         else:
@@ -320,7 +320,7 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
     let st9 = UseColor st8, callCol, fname, span
     let kind = if layer == "!" and (Len pl.dyns) > 0: "sample" else: if layer != "": "map" else: if fname == "$": "const" else: "plain"
     let peeled = Append pl.events, pl.dyns
-    let lifted = Filter (Range0 n), \|i| HasRange peeled, (Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)).value.span
+    let lifted = Filter (Range0 n), \|i| HasRange peeled, (Or args[i], Arg(?name=nil, value=Expr(kind=EError, span=span), span=span)).value.span
     let st10 = if pl.broken or (Len pl.opts) != 1: st9 else: NoteLift st9, span, (Or pl.opts[0], ""), pl.optArgs
     ((result, (NoteApp st10, span, fname, kind, layer, lifted, (Or pl.opts[0], ""), callCol)))
 

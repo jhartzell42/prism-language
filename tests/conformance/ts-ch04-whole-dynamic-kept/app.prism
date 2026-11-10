@@ -10,7 +10,7 @@ Wrap: fn $Nat -> [$Nat]
 fn Wrap $a = [[$a]]
 
 @rows:
-    !inc <- Ui.Button(label=$"Inc")                             # 0
+    !inc <- Ui.Button($label=$"Inc")                             # 0
     $count <- 0 then $count + 1 on !inc
     for $d <- Wrap $count:
-        Ui.Label(text=$"row {$d}")                              # 1/[0]
+        Ui.Label($text=$"row {$d}")                              # 1/[0]

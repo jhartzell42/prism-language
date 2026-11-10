@@ -19,4 +19,4 @@ derive ^Eq, ^Ord, ^Show
     let n = Many(all=[[1, 3]])
     let h = Node [["x"]], Leaf
     let k = Node [["x"]], (Node [["y"]], Leaf)
-    Ui.Label(text=$"{m == n} {m < n} {Show m} {h == k} {h < k} {Leaf < h} {Show k}")    # 0
+    Ui.Label($text=$"{m == n} {m < n} {Show m} {h == k} {h < k} {Leaf < h} {Show k}")    # 0

@@ -24,4 +24,4 @@ fn Run k = Shown (Sums [[((1, ((2, 9)))), ((3, ((4, 9))))]], k, 100)
 fn @Summed k:
     !done <- @Run Run, k                                    # 0
     $shown <- "working" then !done
-    Ui.Label(text=$shown)                                   # 1
+    Ui.Label($text=$shown)                                   # 1

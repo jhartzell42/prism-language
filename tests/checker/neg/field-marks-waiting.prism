@@ -2,12 +2,12 @@
 # `r.n` in the lambda waits for the record, which `Both` decides on the next line; the
 # field is a `?Nat`, and the access shows no `?`.
 type Left = record:
-    n: ?Nat
+    ?n: Nat
 
 type Right = record:
-    n: ?Nat
+    ?n: Nat
 
 Both: fn Nat -> Nat
 fn Both k:
     let Get = \|r| r.n
-    Or (Get (Left(n=? k))), 0
+    Or (Get (Left(?n=? k))), 0

@@ -13,11 +13,11 @@ fn $Pick $useB, $p, $q = if $useB: $ $q else: $ $p
 
 @page: @unit
 @page:
-    !inc <- Ui.Button(label=$"inc")                         # 0
-    !swap <- Ui.Button(label=$"swap")                       # 1
+    !inc <- Ui.Button($label=$"inc")                         # 0
+    !swap <- Ui.Button($label=$"swap")                       # 1
     $a <- 0 then $a + 1 on !inc
     $b <- 100 then $b + 1 on !inc
     $useB <- False then True on !swap
     let $$cur = $Pick $useB, $a, $b
     $shown <- @Flatten $$cur
-    Ui.Label(text=$"{$shown}")                              # 2
+    Ui.Label($text=$"{$shown}")                              # 2

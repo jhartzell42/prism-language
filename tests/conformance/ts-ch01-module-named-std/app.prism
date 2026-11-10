@@ -9,4 +9,4 @@ use Std.*
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{Pick (Some 4)} {Pick Nope}")              # 0
+    Ui.Label($text=$"{Pick (Some 4)} {Pick Nope}")              # 0

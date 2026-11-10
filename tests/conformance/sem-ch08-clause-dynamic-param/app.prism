@@ -10,12 +10,12 @@ use Ui.*
 
 @Pick: fn ?Nat, $Text -> @unit
 fn @Pick nil, $t:
-    Ui.Label(text=$"none {$t}")                                  # 1
+    Ui.Label($text=$"none {$t}")                                  # 1
 fn @Pick (? n), $t:
-    Ui.Label(text=$"some {n} {$t}")                              # 1
+    Ui.Label($text=$"some {n} {$t}")                              # 1
 
 @top: @unit
 @top:
-    !go <- Ui.Button(label=$"go")                                # 0
+    !go <- Ui.Button($label=$"go")                                # 0
     $t <- "x" then "y" on !go
     @Pick (? 3), $t                                              # 1

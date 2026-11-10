@@ -9,17 +9,17 @@ emit Ui.* | Pad.*
 test mod Tests
 
 tag Pad.Door of Element ((Text, !Nat)):
-    name: $Text
+    $name: Text
 
 @Door: fn $Text -> @Text
 fn @Door $name:
-    ((door, !knocks)) <- Pad.Door(name=$name)
-    Ui.Label(text=$"inside {door}")
+    ((door, !knocks)) <- Pad.Door($name=$name)
+    Ui.Label($text=$"inside {door}")
     @ door
 
 @Sign: fn Text -> @unit
 fn @Sign word:
-    Ui.Label(text=$"sign {word}")
+    Ui.Label($text=$"sign {word}")
 
 @Ends: fn Nat -> @((Nat, Nat))
 fn @Ends n:
@@ -30,14 +30,14 @@ fn @Ends n:
     $called <- "front" then "back" on !never
     door <- @Door $called                                   # 0, 1
     let greeting = "hello {door}"
-    Ui.Label(text=$"{greeting}")                            # 2
+    Ui.Label($text=$"{greeting}")                            # 2
     @Sign door                                              # 3
-    !more <- Ui.Button(label=$"more")                       # 4
+    !more <- Ui.Button($label=$"more")                       # 4
     $n <- 0 then $n + 1 on !more
-    Ui.Label(text=$"{door} knocked {$n}")                   # 5
+    Ui.Label($text=$"{door} knocked {$n}")                   # 5
     $said <- door then "{$said}, {door}" on !more
-    !never <- Ui.Button(label=$"never")                     # 6
+    !never <- Ui.Button($label=$"never")                     # 6
     ((low, high)) <- @Ends 2
     ((ignore, top)) <- @Ends high
-    Ui.Label(text=$"{low} to {top} after {$n}")              # 7
+    Ui.Label($text=$"{low} to {top} after {$n}")              # 7
     @ $said

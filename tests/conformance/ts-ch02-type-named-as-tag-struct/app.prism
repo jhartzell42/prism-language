@@ -16,4 +16,4 @@ derive ^Eq, ^Show
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{Show (InkRect(w=2))} {Show [[(Ink.Rect(w=3))]]}")    # 0
+    Ui.Label($text=$"{Show (InkRect(w=2))} {Show [[(Ink.Rect(w=3))]]}")    # 0

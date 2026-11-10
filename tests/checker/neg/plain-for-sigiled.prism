@@ -6,6 +6,6 @@ fn !Bump $n, !go = $n + 1 on !go
 
 @bumper: @unit
 @bumper:
-    !go <- Ui.Button(label=$"Go")
+    !go <- Ui.Button($label=$"Go")
     $bumped <- 0 then !Bump 5, (unit on !go)
-    Ui.Label(text=$"{$bumped}")
+    Ui.Label($text=$"{$bumped}")

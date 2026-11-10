@@ -16,14 +16,14 @@ derive ^Eq, ^Show
 fn @Choose mode, $resets:
     match mode:                                                        # 0
         Loud t:
-            !up <- Ui.Button(label=$"{t}!")                            # 0
+            !up <- Ui.Button($label=$"{t}!")                            # 0
             $c <- 0 then $c + 1 on !up
             @ $"{t} {$c} {$resets}"
         Soft: @ $"soft {$resets}"
 
 @Panel: fn Mode -> @unit
 fn @Panel mode:
-    !reset <- Ui.Button(label=$"reset")                                # 0
+    !reset <- Ui.Button($label=$"reset")                                # 0
     $resets <- 0 then $resets + 1 on !reset
     $shown <- @Choose mode, $resets                                    # 1
-    Ui.Label(text=$"{$shown}")                                         # 2
+    Ui.Label($text=$"{$shown}")                                         # 2

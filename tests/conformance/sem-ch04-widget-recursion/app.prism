@@ -15,12 +15,12 @@ derive ^Eq, ^Show
 
 @Outline: fn $Tree -> @unit
 fn @Outline $t:
-    Ui.Label(text=$t.name)                                       # 0
+    Ui.Label($text=$t.name)                                       # 0
     for k, $c <- $t.kids:                                        # 1/[k]
         @Outline $c
 
 @outline: @unit
 @outline:
-    !grow <- Ui.Button(label=$"grow")                            # 0
+    !grow <- Ui.Button($label=$"grow")                            # 0
     $t <- (Tree "a", {0: (Tree "b", {})}) then (Tree "a", {0: (Tree "b", {0: (Tree "c", {})})}) on !grow
     @Outline $t                                                  # 1, 2/[k]

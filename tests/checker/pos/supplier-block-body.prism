@@ -9,7 +9,7 @@ use Fs.*
 @child: @unit
 @child:
     $~text <- Fs.Contents(path="a")                               # 0
-    Ui.Label(text=$"child")                                       # 1
+    Ui.Label($text=$"child")                                       # 1
 
 @Supply: fn Path, Element (Ui.* | Fs.*) o -> @o
 fn @Supply p, e:

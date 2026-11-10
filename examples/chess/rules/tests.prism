@@ -9,7 +9,7 @@ use Rules.*
 
 # a position from pieces, with every castling right unspent
 Setup: fn [((Sq, Piece))], Color -> Game
-fn Setup pieces, turn = Game(board=(Map pieces), turn=turn, corners=allCorners, passed=nil)
+fn Setup pieces, turn = Game(board=(Map pieces), turn=turn, corners=allCorners, ?passed=nil)
 
 let wk = Piece White, King
 let wr = Piece White, Rook

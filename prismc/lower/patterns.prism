@@ -230,7 +230,7 @@ fn FieldsPat lx, c, fps, rest, ty, mode, fresh, tyPath:
             let binds = Fold subs, [[]], \|acc, ((ignore, o))| Append acc, o.binds
             PatOut(pa=(PaRecord tyPath, (Each subs, \|((f, o))| ((f, o.pa))), (rest or (Len subs) < (Len c.fields))), conds=conds, binds=binds)
 
-let dummyFieldPat = FieldPat(name=nil, pattern=dummyPat, span=Range(start=0, end=0))
+let dummyFieldPat = FieldPat(?name=nil, pattern=dummyPat, span=Range(start=0, end=0))
 
 let dummyTagInfo = TagInfo(name="", family="", kind="", out=TyErr, qs=[[]], rqs=[[]], bounds=[[]], fields=[[]], home="", file=0, span=Range(start=0, end=0))
 

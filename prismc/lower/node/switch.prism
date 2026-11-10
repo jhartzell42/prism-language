@@ -385,10 +385,10 @@ type ClauseRow = record:
     parent: Wx
     # The clause's plain result, kept in the row's field and read by `result_value`, when
     # it ends on one.
-    plain: ?OutTy
+    ?plain: OutTy
     # What a clause's dynamic result reads of its block, and its type (`DynClauseLine`).
     resultReads: [Read]
-    resultTy: ?OutTy
+    ?resultTy: OutTy
     # How many places the clause has: the positions it takes in its caller when it stands
     # there (`ClauseWidgetLine`).
     width: Nat
@@ -509,7 +509,7 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
     let passed = Each fields, \|((f, t, bn))| match binds[bn]:
         ? (BnLocal rs, mode, bt): Own (VlPlace rs, mode, bt)
         otherwise: XClone (XVar f)
-    ClauseRow(case=GenCase(node=node, params=(Each fields, \|((f, t, ignore))| ((f, t))), pat=pa, conds=(Append (Fold pos, [[]], \|acc, o| Append acc, o.conds), guardConds), passed=passed), parent=p2, width=(Or (r2.pos.at -? r0.pos.at), 0), plain=?plain, resultReads=(ResultParentReads r2), resultTy=(?ResultDynTy r2))
+    ClauseRow(case=GenCase(node=node, params=(Each fields, \|((f, t, ignore))| ((f, t))), pat=pa, conds=(Append (Fold pos, [[]], \|acc, o| Append acc, o.conds), guardConds), passed=passed), parent=p2, width=(Or (r2.pos.at -? r0.pos.at), 0), ?plain=?plain, resultReads=(ResultParentReads r2), ?resultTy=(?ResultDynTy r2))
 
 ?ResultDynTy: fn Wx -> ?OutTy
 fn ?ResultDynTy r = match r.result:
@@ -619,8 +619,8 @@ type GenRow = record:
     parent: Wx
     # The generation's result when it is a dynamic: its type (the row has `result` and
     # `result_dynamic`); when it is a plain value, its type (the row has `result_value`).
-    dynResult: ?OutTy
-    plainResult: ?OutTy
+    ?dynResult: OutTy
+    ?plainResult: OutTy
 
 # A generation's node: its `_` a plain field, the block's events it names through ports,
 # its result forwarded up to the `rebuild`'s.
@@ -651,7 +651,7 @@ fn GenRowOf wx, menv, body, vt, rowName, genName:
             ((r2b, nil, nil))
         otherwise: ((r2, nil, nil))
     let r4 = GenHears r3, genName
-    GenRow(node=(FinishNode r4, rowName, (Append [[(("value", vt)), (("parent", (OutWeak wx.node)))]], (HostedParams wx)), True), parent=(GenMarked p1, genName, r3), dynResult=?dynResult, plainResult=?plainResult)
+    GenRow(node=(FinishNode r4, rowName, (Append [[(("value", vt)), (("parent", (OutWeak wx.node)))]], (HostedParams wx)), True), parent=(GenMarked p1, genName, r3), ?dynResult=?dynResult, ?plainResult=?plainResult)
 
 # A generation's dynamic result (a `rebuild` handing back `$$a`): the getter `result`, the
 # `Dynamic` the block keeps of it, and the block told through `{genName}_result_moved` when

@@ -2,4 +2,4 @@
 emit Test.*
 
 tag Test.Log of Element:
-    requests: !Text
+    !requests: Text

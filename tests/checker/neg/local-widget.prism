@@ -6,12 +6,12 @@ emit Ui.*
 @outer: @unit
 @outer:
     @inner:
-        Ui.Label(text=$"x")
+        Ui.Label($text=$"x")
         @inner
     @inner
 
 @fine: @unit
 @fine:
     @inner:
-        Ui.Label(text=$"y")
+        Ui.Label($text=$"y")
     @inner

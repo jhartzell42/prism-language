@@ -17,4 +17,4 @@ fn Apply F, p = F p
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{Show (Apply Mirror, (Pair(left=1, right="b")))}")    # 0
+    Ui.Label($text=$"{Show (Apply Mirror, (Pair(left=1, right="b")))}")    # 0

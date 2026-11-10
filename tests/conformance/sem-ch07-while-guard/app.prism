@@ -22,4 +22,4 @@ fn Counts n = "{Count n} {Count 0}"
 fn @Shown n:
     !done <- @Run Counts, n                                 # 0
     $shown <- "working" then !done
-    Ui.Label(text=$shown)                                   # 1
+    Ui.Label($text=$shown)                                   # 1

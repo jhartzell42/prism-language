@@ -18,4 +18,4 @@ fn @Shown ok:
     let !~gaveUp: !~unit = Error(kind=Prelude.NotANumber, message="given up") on !started
     $~first <- (~Check (not ok)) then !~verdict
     $~second <- (~ unit) then !~gaveUp
-    Ui.Label(text=$"{Describe $~first} / {Describe $~second}")      # 1
+    Ui.Label($text=$"{Describe $~first} / {Describe $~second}")      # 1

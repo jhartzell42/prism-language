@@ -12,4 +12,4 @@ derive ^Eq, ^Show
 @main: @unit
 @main:
     let w = Wrap(inner=Wrap(inner=3))
-    Ui.Label(text=$"{Show w} {w.inner.inner}")    # 0
+    Ui.Label($text=$"{Show w} {w.inner.inner}")    # 0

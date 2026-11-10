@@ -49,4 +49,4 @@ fn Total n, p, r, o, v:
     let total = Total n, (Some 10), (Rc(shared=100)), Yes, (Vec(items=[[1000, 2000]]))
     let c = Row(label="c", count=3)
     let p = Some 4
-    Ui.Label(text=$"{total} {p} {c}")             # 0
+    Ui.Label($text=$"{total} {p} {c}")             # 0

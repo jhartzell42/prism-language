@@ -10,7 +10,7 @@ type Res = choice:
 derive ^Eq, ^Show
 
 type Slot = record:
-    got: ~Nat
+    ~got: Nat
 derive ^Eq, ^Show
 
 ~Clause: fn Res -> ~Text
@@ -33,5 +33,5 @@ fn SaidN (Error(message=m, ..)) = "!{m}"
 @main: @unit
 @main:
     let xs = [[(~ 1), Error(kind=Prelude.NotANumber, message="el")]]
-    let s = Slot(got=Error(kind=Prelude.NotANumber, message="field"))
-    Ui.Label(text=$"{Said (~Clause (Bad "c"))} {Said (~Arm (Bad "a"))} {Concat (Each xs, \|~x| SaidN ~x)} {SaidN s.~got}")    # 0
+    let s = Slot(~got=Error(kind=Prelude.NotANumber, message="field"))
+    Ui.Label($text=$"{Said (~Clause (Bad "c"))} {Said (~Arm (Bad "a"))} {Concat (Each xs, \|~x| SaidN ~x)} {SaidN s.~got}")    # 0

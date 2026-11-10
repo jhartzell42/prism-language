@@ -14,8 +14,8 @@ fn Joined xs = Fold xs, "", \|acc, x| if acc == "": "{x}" else: "{acc},{x}"
 
 @page: @unit
 @page:
-    !a <- Ui.Button(label=$"a")                             # 0
-    !b <- Ui.Button(label=$"b")                             # 1
+    !a <- Ui.Button($label=$"a")                             # 0
+    !b <- Ui.Button($label=$"b")                             # 1
     let evs = Evs !a, !b
     $last <- "none" then Joined (!MergeAll evs)
-    Ui.Label(text=$last)                                    # 2
+    Ui.Label($text=$last)                                    # 2

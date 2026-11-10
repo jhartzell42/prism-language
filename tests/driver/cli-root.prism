@@ -6,4 +6,4 @@ use Fs.*
 @main: @unit
 @main:
     !started <- @started                                              # 0
-    ignore <- Fs.File(path="/etc/motd", requests=(Read on !started))  # 1
+    ignore <- Fs.File(path="/etc/motd", !requests=(Read on !started))  # 1

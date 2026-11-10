@@ -8,10 +8,10 @@ test mod Tests
 
 @page: @unit
 @page:
-    !a <- Ui.Button(label=$"a")                             # 0
-    !b <- Ui.Button(label=$"b")                             # 1
-    !swap <- Ui.Button(label=$"swap")                       # 2
+    !a <- Ui.Button($label=$"a")                             # 0
+    !b <- Ui.Button($label=$"b")                             # 1
+    !swap <- Ui.Button($label=$"swap")                       # 2
     $evs <- [[(1 on !a)]] then [[(2 on !b)]] on !swap
     !m <- @Switch (!MergeAll $evs)
     $count <- 0 then $count + 1 on !m
-    Ui.Label(text=$"{$count}")                              # 3
+    Ui.Label($text=$"{$count}")                              # 3

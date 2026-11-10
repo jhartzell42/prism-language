@@ -18,8 +18,8 @@ fn Big n = update {}:
 
 @rows: @unit
 @rows:
-    !same <- Ui.Button(label=$"same")                        # 0
+    !same <- Ui.Button($label=$"same")                        # 0
     $m <- (Big 20000) then $m on !same
     for k, $v <- $m:                                         # 1/[k]
         @ unit
-    Ui.Label(text=$"{Size $m}")                              # 2
+    Ui.Label($text=$"{Size $m}")                              # 2

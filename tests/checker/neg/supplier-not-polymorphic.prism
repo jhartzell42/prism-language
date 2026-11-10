@@ -7,7 +7,7 @@ use Fs.*
 
 @child: @unit
 @child:
-    Ui.Label(text=$"child")                                       # 0
+    Ui.Label($text=$"child")                                       # 0
 
 @Fixed: fn Path, Element (Ui.* | Fs.*) $~Contents -> @$~Contents
 fn @Fixed p, e = @ $ (~ Contents(text="A"))

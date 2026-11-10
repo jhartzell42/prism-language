@@ -140,7 +140,7 @@ type RxState = record:
     open: Nat
     groups: Nat
     names: Text ==> Nat
-    err: ?RxDiag
+    ?err: RxDiag
 derive ^Eq, ^Show
 
 # What the last piece of a sequence was, for the repetition checks.
@@ -178,7 +178,7 @@ fn RxBad st = st.?err != nil
 
 # The state with a diagnostic of the pattern at `at`, unless it has one already.
 RxFail: fn RxState, Nat, Text -> RxState
-fn RxFail st, at, message = if RxBad st: st else: RxState(s=st.s, i=st.i, open=st.open, groups=st.groups, names=st.names, err=(? RxDiag(part="pattern", at=at, message=message)))
+fn RxFail st, at, message = if RxBad st: st else: RxState(s=st.s, i=st.i, open=st.open, groups=st.groups, names=st.names, ?err=(? RxDiag(part="pattern", at=at, message=message)))
 
 RxGo: fn RxState, Nat -> RxState
 fn RxGo st, n = update st:
@@ -311,7 +311,7 @@ fn RxHexText n = update "":
 fn ?RegexRefusal pattern, flags, ?replacement = match ?RxFlagsRefusal flags:
     ? d: ? d
     nil:
-        let st0 = RxState(s=pattern, i=0, open=0, groups=0, names={}, err=nil)
+        let st0 = RxState(s=pattern, i=0, open=0, groups=0, names={}, ?err=nil)
         let ((m, st)) = RxAlternation st0, (?RxFind flags, 0, "i") != nil
         match st.?err:
             ? d: ? d
@@ -777,7 +777,7 @@ fn RxCapture st, ?name:
     let names = match ?name:
         ? x: Insert st.names, x, n
         nil: st.names
-    RxState(s=st.s, i=st.i, open=st.open, groups=n, names=names, err=st.?err)
+    RxState(s=st.s, i=st.i, open=st.open, groups=n, names=names, ?err=st.?err)
 
 # ---------------------------------------------------------------------------------------
 # Replacements (chapter 2, "The replacement"; RX-E)

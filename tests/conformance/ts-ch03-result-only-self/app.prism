@@ -48,4 +48,4 @@ fn Words (Error(message=m, ..)) = m
 @main: @unit
 @main:
     let ?none: ?Nat = ?Nothing 1
-    Ui.Label(text=$"{Digits (~Two "4", "2")} / {Digits (~Two "4", "12")} / {Words (~Two "ab", "cd")} / {Or ?none, 7}")    # 0
+    Ui.Label($text=$"{Digits (~Two "4", "2")} / {Digits (~Two "4", "12")} / {Words (~Two "ab", "cd")} / {Or ?none, 7}")    # 0

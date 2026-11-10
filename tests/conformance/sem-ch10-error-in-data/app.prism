@@ -60,4 +60,4 @@ fn Made n = [[Error(kind=Prelude.NotANumber, message="k{n}")]]
     let nested = [[[[Error(kind=Prelude.NotANumber, message="n")]]]]
     let e = Error(kind=Prelude.NotANumber, message="q")
     let ~x = (~ 3)
-    Ui.Label(text=$"{Firsts xs} {SaidO ?~o} {SaidM m} {SaidB b} {SaidR r} {Apply F} {Firsts fs} {Firsts is} {Concat (Each nested, Firsts)} {Firsts (Id [[Error(kind=Prelude.NotANumber, message="d")]])} {Firsts (Made 1)} {~x == e} {e == ~x}")    # 0
+    Ui.Label($text=$"{Firsts xs} {SaidO ?~o} {SaidM m} {SaidB b} {SaidR r} {Apply F} {Firsts fs} {Firsts is} {Concat (Each nested, Firsts)} {Firsts (Id [[Error(kind=Prelude.NotANumber, message="d")]])} {Firsts (Made 1)} {~x == e} {e == ~x}")    # 0

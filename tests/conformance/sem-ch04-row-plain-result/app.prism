@@ -8,13 +8,13 @@ use Ui.*
 @Rows: fn $[Nat] -> @$Nat
 fn @Rows $xs:
     $keys <- for i, $x <- $xs:                                   # 0/[k]
-        Ui.Label(text=$"i{i}={$x}")
+        Ui.Label($text=$"i{i}={$x}")
         @ i
     @ (Len (Values $keys))
 
 @main: @unit
 @main:
-    !go <- Ui.Button(label=$"go")                                # 0
+    !go <- Ui.Button($label=$"go")                                # 0
     $xs <- [[5]] then Push $xs, 7 on !go
     $n <- @Rows $xs                                              # 1/[k]
-    Ui.Label(text=$"{$n}")                                       # 2
+    Ui.Label($text=$"{$n}")                                       # 2

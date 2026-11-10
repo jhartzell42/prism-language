@@ -12,10 +12,10 @@ use Ui.*
 
 @child: @unit
 @child:
-    !add <- Ui.Button(label=$"add")                                          # 0
+    !add <- Ui.Button($label=$"add")                                          # 0
     $names <- {1: "k1"} then Insert $names, (Size $names) + 1, "k{(Size $names) + 1}" on !add
     for k, $name <- $names:                                                  # 1/[k]
-        Ui.Label(text=$name)                                                 # 1/[k]/0
+        Ui.Label($text=$name)                                                 # 1/[k]/0
 
 type Pair = record:
     size: Nat
@@ -29,23 +29,23 @@ fn Paired size, clicks = Pair size, clicks
 @host: @unit
 @host:
     ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e              # 0/[p]/0
-    !tap <- Ui.Button(label=$"tap")                                           # 1
+    !tap <- Ui.Button($label=$"tap")                                           # 1
     $clicks <- 0 then $clicks + 1 on !tap
     $moves <- 0 then $moves + 1 on (!Updated $doc)
     let $pair = Paired (Size $doc), $clicks
     $seen <- Pair 0, 0 then !Updated $pair
-    Ui.Label(text=$"{$moves} moves, {Size $doc} places")                     # 2
-    Ui.Label(text=$"seen {$seen.size} places at {$seen.clicks} clicks")      # 3
+    Ui.Label($text=$"{$moves} moves, {Size $doc} places")                     # 2
+    Ui.Label($text=$"seen {$seen.size} places at {$seen.clicks} clicks")      # 3
 
 # A `for`'s gathered dynamic is structural too: its event fires in the tick after the row
 # is born, with the rows' results after the birth tick.
 @gathered: @unit
 @gathered:
-    !add <- Ui.Button(label=$"add")                                          # 0
+    !add <- Ui.Button($label=$"add")                                          # 0
     $names <- {1: "one"} then Insert $names, 2, "three" on !add
     $lens <- for k, $name <- $names:                                         # 1/[k]
-        Ui.Label(text=$name)                                                 # 1/[k]/0
+        Ui.Label($text=$name)                                                 # 1/[k]/0
         @ Len $name
     $heard <- 0 then $heard + 1 on (!Updated $lens)
     $rows <- 0 then Size (!Updated $lens)
-    Ui.Label(text=$"{$heard} heard, {$rows} rows")                           # 2
+    Ui.Label($text=$"{$heard} heard, {$rows} rows")                           # 2

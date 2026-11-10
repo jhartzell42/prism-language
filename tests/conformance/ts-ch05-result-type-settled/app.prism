@@ -17,9 +17,9 @@ fn Pad xs, x = Push xs, x
 @Shown: fn $Nat -> @unit
 fn @Shown $n:
     let ?none: ?Text = ?Nothing 1
-    Ui.Label(text=$"{Or ?none, "-"}{$n}")       # 0
+    Ui.Label($text=$"{Or ?none, "-"}{$n}")       # 0
 
 @main: @unit
 @main:
     @Shown $ 0                                                   # 0
-    Ui.Label(text=$"{Len (Pad (Empty 1), "a")} {Len (Empty 2)} {Show (Pad (Empty 3), 7)}")    # 1
+    Ui.Label($text=$"{Len (Pad (Empty 1), "a")} {Len (Empty 2)} {Show (Pad (Empty 3), 7)}")    # 1

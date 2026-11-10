@@ -34,4 +34,4 @@ fn @Shown n:
     !done <- @Run Work, n                                   # 0
     let first = "{doubled} {twice} {Show shape}"
     $shown <- first then "{first} {Show !done}"
-    Ui.Label(text=$shown)                                   # 1
+    Ui.Label($text=$shown)                                   # 1

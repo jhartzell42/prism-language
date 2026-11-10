@@ -17,28 +17,28 @@ derive ^Eq, ^Show
 
 @Choose: fn Mode, $Nat -> @!Click
 fn @Choose mode, $resets:
-    Ui.Label(text=$"choose")                                           # 0
+    Ui.Label($text=$"choose")                                           # 0
     match mode:                                                        # 1, 2
         Loud t if t != "":
-            !up <- Ui.Button(label=$"{t}!")                            # 1
-            Ui.Label(text=$"{t} {$resets}")                            # 2
+            !up <- Ui.Button($label=$"{t}!")                            # 1
+            Ui.Label($text=$"{t} {$resets}")                            # 2
             @ !up
         Loud t:
-            !e <- Ui.Button(label=$"empty")                            # 1
+            !e <- Ui.Button($label=$"empty")                            # 1
             @ !e
         Soft:
-            !s <- Ui.Button(label=$"soft")                             # 1
+            !s <- Ui.Button($label=$"soft")                             # 1
             @ !s
 
 @Panel: fn Mode -> @unit
 fn @Panel mode:
-    !reset <- Ui.Button(label=$"reset")                                # 0
+    !reset <- Ui.Button($label=$"reset")                                # 0
     $resets <- 0 then $resets + 1 on !reset
     let ?count = if mode == Soft: nil else: ? 2
     !hit <- @Choose mode, $resets                                      # 1, 2, 3
     if ? c <- ?count:                                                  # 4
-        Ui.Label(text=$"count {c}")
+        Ui.Label($text=$"count {c}")
     else:
-        Ui.Label(text=$"no count")
+        Ui.Label($text=$"no count")
     $hits <- 0 then $hits + 1 on !hit
-    Ui.Label(text=$"hits {$hits}")                                     # 5
+    Ui.Label($text=$"hits {$hits}")                                     # 5

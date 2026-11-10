@@ -71,7 +71,7 @@ Finish: unbounded fn Lex, Text, Nat, Text, Nat, ?Text, Nat, Nat -> Lex
 fn Finish l, sigils, start, pattern, at, ?replacement, replacementAt, flagsAt:
     let src = l.src
     let flagsEnd = LettersEnd src, flagsAt
-    let lit = RegexLit(pattern=pattern, patternAt=at, replacement=?replacement, replacementAt=replacementAt, flags=(Between src, flagsAt, flagsEnd), flagsAt=flagsAt)
+    let lit = RegexLit(pattern=pattern, patternAt=at, ?replacement=?replacement, replacementAt=replacementAt, flags=(Between src, flagsAt, flagsEnd), flagsAt=flagsAt)
     let tail = IdentEnd src, flagsEnd
     let l1 = update l:
         &_.pos <= tail
@@ -83,7 +83,7 @@ fn Finish l, sigils, start, pattern, at, ?replacement, replacementAt, flagsAt:
 Unclosed: unbounded fn Lex, Text, Nat, Text, Nat, ?Text, Text, Text -> Lex
 fn Unclosed l, sigils, start, pattern, at, ?replacement, what, close:
     let end = LineEndAt l.src, at
-    let lit = RegexLit(pattern=pattern, patternAt=at, replacement=?replacement, replacementAt=at, flags="", flagsAt=end)
+    let lit = RegexLit(pattern=pattern, patternAt=at, ?replacement=?replacement, replacementAt=at, flags="", flagsAt=end)
     let l1 = update l:
         &_.pos <= end
     let l2 = LexErr l1, start, end, "a regular expression ends on its line: close its {what} with `{close}`"

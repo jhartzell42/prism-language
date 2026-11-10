@@ -155,7 +155,7 @@ fn BadOptions args, flags, valued:
 fn @Refuse why:
     !started <- @started
     let !~gaveUp: !~unit = Error(kind=Prismc.Refused, message=why) on !started
-    ignore <- Prelude.Unwrap(value=!~gaveUp)
+    ignore <- Prelude.Unwrap(!~value=!~gaveUp)
 
 # The arguments that are neither options nor the values of the `valued` options.
 PlainArgs: fn [Text], [Text] -> [Text]
@@ -206,14 +206,14 @@ fn @Compile job, file, out, (~ c):
 fn @Compile job, file, out, (Error(message=m, ..)):
     !started <- @started
     let !~gaveUp: !~unit = Error(kind=Prismc.Refused, message="cannot read {file}: {m}") on !started
-    ignore <- Prelude.Unwrap(value=!~gaveUp)
+    ignore <- Prelude.Unwrap(!~value=!~gaveUp)
 
 # Writes the output, and gives up with the diagnostics when there was an error.
 @Finish: fn Text, ?Outcome -> @unit
 fn @Finish out, nil:
     @ unit
 fn @Finish out, (? o):
-    ignore <- Fs.Output(path=out, text=$ o.text)
+    ignore <- Fs.Output(path=out, $text=$ o.text)
     !started <- @started
     let !~verdict = (if o.failed: Error(kind=Prismc.Refused, message=o.report) else: ~ unit) on !started
-    ignore <- Prelude.Unwrap(value=!~verdict)
+    ignore <- Prelude.Unwrap(!~value=!~verdict)

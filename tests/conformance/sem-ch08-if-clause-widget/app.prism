@@ -14,18 +14,18 @@ derive ^Eq, ^Show
 
 @Say: fn Mode -> @unit
 fn @Say (Shout t):
-    Ui.Label(text=$"{t}!")                                  # 0
+    Ui.Label($text=$"{t}!")                                  # 0
 fn @Say Quiet:
-    Ui.Label(text=$"...")                                   # 0
+    Ui.Label($text=$"...")                                   # 0
 fn @Say Off:
-    Ui.Label(text=$"not built")                             # 0
+    Ui.Label($text=$"not built")                             # 0
 
 @Pick: fn Mode -> @unit
 fn @Pick m:
     if m != Off: @Say m
-    else: Ui.Label(text=$"off")
+    else: Ui.Label($text=$"off")
 
 @main: @unit
 @main:
-    Ui.Label(text=$"top")                                   # 0
+    Ui.Label($text=$"top")                                   # 0
     ignore <- @Pick (Shout "hi")                      # 1

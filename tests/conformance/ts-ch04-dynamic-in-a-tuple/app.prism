@@ -14,4 +14,4 @@ fn Fst ((x, y)) = x
 @Shown: fn $Nat -> @unit
 fn @Shown $a:
     let sums = MapF (\|v| (Fst v) + 1), [[(($a, 1))]]
-    Ui.Label(text=$"{Len sums}")                  # 0
+    Ui.Label($text=$"{Len sums}")                  # 0

@@ -9,17 +9,17 @@ use Ui.*
 
 @Pick: fn ?Nat, $Text -> @$Text
 fn @Pick nil, $tail:
-    !go <- Ui.Button(label=$"none")                              # 0
+    !go <- Ui.Button($label=$"none")                              # 0
     $said <- "zero" then "zero!" on !go
     @ $"{$said}{$tail}"
 fn @Pick (? n), $tail:
-    !go <- Ui.Button(label=$"some {n}")                          # 0
+    !go <- Ui.Button($label=$"some {n}")                          # 0
     $said <- "n{n}" then "n{n}!" on !go
     @ $"{$said}{$tail}"
 
 @Page: fn ?Nat -> @unit
 fn @Page ?x:
-    !more <- Ui.Button(label=$"more")                            # 0
+    !more <- Ui.Button($label=$"more")                            # 0
     $tail <- "" then "{$tail}+" on !more
     $picked <- @Pick ?x, $tail                                   # 1
-    Ui.Label(text=$"{$picked}")                                  # 2
+    Ui.Label($text=$"{$picked}")                                  # 2

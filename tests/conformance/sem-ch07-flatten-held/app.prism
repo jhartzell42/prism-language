@@ -14,10 +14,10 @@ fn $Sel useB, $p, $q = if useB: $q else: $p
 
 @page: @unit
 @page:
-    !inc <- Ui.Button(label=$"inc")                         # 0
-    !swap <- Ui.Button(label=$"swap")                       # 1
+    !inc <- Ui.Button($label=$"inc")                         # 0
+    !swap <- Ui.Button($label=$"swap")                       # 1
     $a <- 0 then $a + 1 on !inc
     $b <- 100 then $b + 1 on !inc
     $$cur <- $a then $Sel (True on !swap), $a, $b
     $shown <- @Flatten $$cur
-    Ui.Label(text=$"{$shown}")                              # 2
+    Ui.Label($text=$"{$shown}")                              # 2

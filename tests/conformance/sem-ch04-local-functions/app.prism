@@ -19,4 +19,4 @@ fn Digits p:
 @page: @unit
 @page:
     fn Joined ((a, b)) = "{a}-{b}"
-    Ui.Label(text=$"{Total [[1, 2, 3]]} {Digits ((4, 5))} {Joined ((6, 7))}")   # 0
+    Ui.Label($text=$"{Total [[1, 2, 3]]} {Digits ((4, 5))} {Joined ((6, 7))}")   # 0

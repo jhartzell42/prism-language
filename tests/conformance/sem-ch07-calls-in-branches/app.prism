@@ -32,16 +32,16 @@ fn RightOfAnd n:
 fn @Arm n:
     !done <- @Run InArm, n                                  # 0
     $shown <- "working" then Show !done
-    Ui.Label(text=$shown)                                   # 1
+    Ui.Label($text=$shown)                                   # 1
 
 @Branch: fn Nat -> @unit
 fn @Branch n:
     !done <- @Run InBranch, n                               # 0
     $shown <- "working" then Show !done
-    Ui.Label(text=$shown)                                   # 1
+    Ui.Label($text=$shown)                                   # 1
 
 @And: fn Nat -> @unit
 fn @And n:
     !done <- @Run RightOfAnd, n                             # 0
     $shown <- "working" then Show !done
-    Ui.Label(text=$shown)                                   # 1
+    Ui.Label($text=$shown)                                   # 1

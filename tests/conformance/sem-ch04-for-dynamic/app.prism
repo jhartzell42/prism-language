@@ -18,8 +18,8 @@ fn Joined m = Fold (Values m), "", \|acc, ~c| if acc == "": TextOf ~c else: "{ac
 
 @files: @unit
 @files:
-    !add <- Ui.Button(label=$"add")                             # 0
+    !add <- Ui.Button($label=$"add")                             # 0
     $names <- [["a"]] then [["a", "b"]] on !add
     $found <- for path, ignore <- Keyed $names:                  # 1/[path]
         Fs.Contents(path=path)                                   # 1/[path]/0
-    Ui.Label(text=$"{Joined $found}")                            # 2
+    Ui.Label($text=$"{Joined $found}")                            # 2

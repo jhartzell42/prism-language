@@ -17,15 +17,15 @@ use Window.Hits.*
 @$tall: @$Text
 @$tall:
     !bump <- @Column 0.0, @widget:
-        !b <- Ui.Button(label=$"Bump")
-        Ui.Label(text=$"one")
-        Ui.Label(text=$"two")
-        Ui.Label(text=$"three")
-        Ui.Label(text=$"four")
-        Ui.Label(text=$"five")
-        Ui.Label(text=$"six")
-        Ui.Label(text=$"seven")
-        Ui.Label(text=$"last {$count}")
+        !b <- Ui.Button($label=$"Bump")
+        Ui.Label($text=$"one")
+        Ui.Label($text=$"two")
+        Ui.Label($text=$"three")
+        Ui.Label($text=$"four")
+        Ui.Label($text=$"five")
+        Ui.Label($text=$"six")
+        Ui.Label($text=$"seven")
+        Ui.Label($text=$"last {$count}")
         @ !b
     $count <- 0 then $count + 1 on !bump
     @ "{$count}"
@@ -50,7 +50,7 @@ test a_column_taller_than_the_window_draws_what_shows, @$window:
     $typed <- @Column 0.0, @widget:
         $first <- @TextInput "a", "x"
         $second <- @TextInput "b", "y"
-        ignore <- Ui.Button(label=$"Go")
+        ignore <- Ui.Button($label=$"Go")
         @ "{$first}{$second}"
     @ $typed
 
@@ -87,7 +87,7 @@ test a_key_types_its_character, @$formWindow:
 @$slide: @$Text
 @$slide:
     $shown <- @Column 0.0, @widget:
-        !slid <- Ui.Slider(value=$level, low=0, high=10)
+        !slid <- Ui.Slider($value=$level, low=0, high=10)
         $typed <- @TextField "level", "3", (StepText !slid)
         $level <- 3 then !slid <| !Filter (?ParseNat (!Updated $typed))
         @ "{$level} {$typed}"
@@ -124,14 +124,14 @@ test a_slider_and_its_box_move_together, @$slideWindow:
 @$overlaid: @$Text
 @$overlaid:
     $said <- @Layers @widget:
-        !under <- Ui.Button(label=$"Under the dialog")
+        !under <- Ui.Button($label=$"Under the dialog")
         $typed <- @Overlay $open, (Point 0.0, 0.0), @widget:
             $t <- @TextInput "note", "hi"
             @ $t
         $presses <- 0 then $presses + 1 on !under
         $open <- False then (not $open) on !toggle
         @ "{$presses} {$typed}"
-    !toggle <- Ui.Button(label=$"Toggle")
+    !toggle <- Ui.Button($label=$"Toggle")
     @ $said
 
 @$overlaidWindow: @$Text
@@ -171,9 +171,9 @@ test a_dialog_hides_shows_and_keeps_its_text, @$overlaidWindow:
 @$form2: @$Text
 @$form2:
     $both <- @Grid 2, @widget:
-        Ui.Label(text=$"Name")
+        Ui.Label($text=$"Name")
         $a <- @TextInput "a", "x"
-        Ui.Label(text=$"A longer caption")
+        Ui.Label($text=$"A longer caption")
         $b <- @TextInput "b", "y"
         @ "{$a}{$b}"
     @ $both

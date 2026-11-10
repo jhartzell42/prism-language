@@ -24,4 +24,4 @@ impl ^Box (Pair a):
     let n = (F (Pair(one=1, two=2)), True) + 1
     let p = Pair(one="a", two="b")
     let t = "{F p, False}!"
-    Ui.Label(text=$"{n} {t}")      # 0
+    Ui.Label($text=$"{n} {t}")      # 0

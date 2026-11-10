@@ -12,4 +12,4 @@ let outer = Left.Shape(name="outer", first=(Right.Nested inner), rest=[[(Right.P
 
 @shown: @unit
 @shown:
-    Ui.Label(text=$"{Left.Weigh outer} {Show (Right.Plain 1)}")     # 0
+    Ui.Label($text=$"{Left.Weigh outer} {Show (Right.Plain 1)}")     # 0

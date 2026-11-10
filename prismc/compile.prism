@@ -155,7 +155,7 @@ fn @FinishCompile out, nil:
     @ unit
 fn @FinishCompile out, (? o):
     ignore <- for ((path, text)) <- o.files:
-        Fs.Output(path="{out}/{path}", text=$ text)
+        Fs.Output(path="{out}/{path}", $text=$ text)
     !started <- @started
     let !~verdict = (if o.failed: Error(kind=Prismc.Refused, message=o.report) else: ~ unit) on !started
-    ignore <- Prelude.Unwrap(value=!~verdict)
+    ignore <- Prelude.Unwrap(!~value=!~verdict)

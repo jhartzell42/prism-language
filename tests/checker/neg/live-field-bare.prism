@@ -5,6 +5,6 @@ emit Ui.*
 @Shout: fn @a -> @a
 fn @Shout @child:
     ((x, ignore)) <- @HostDocument @child, \|p, e| match e:
-        Ui.Label(text=t): @Element Ui.Label(text=t)
+        Ui.Label($text=t): @Element Ui.Label($text=t)
         otherwise: @Element e
     @ x

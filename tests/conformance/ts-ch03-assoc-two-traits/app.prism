@@ -35,4 +35,4 @@ fn Poured x = Pour x
 @main: @unit
 @main:
     let c = Crate(count=4, label="figs")
-    Ui.Label(text=$"{(Open c) + 1} {Pour c}! {(Opened c) + 2} {Poured c}?")    # 0
+    Ui.Label($text=$"{(Open c) + 1} {Pour c}! {(Opened c) + 2} {Poured c}?")    # 0

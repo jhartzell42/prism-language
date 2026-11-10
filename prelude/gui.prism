@@ -90,12 +90,12 @@ derive ^Eq, ^Show
 
 # a bundle: the window's id, answered once by the first-value query, and its inputs
 tag Gui.Window of Element ((WindowId, !WindowInput)):
-    title: $Text
+    $title: Text
     size: Extent
 
 tag Gui.Scene of Element unit:
     window: WindowId
-    draw: $[Draw]
+    $draw: [Draw]
 
 # the size of a text, a fact about fonts
 tag Gui.Metrics of Element $Extent:
@@ -104,4 +104,4 @@ tag Gui.Metrics of Element $Extent:
 # where the platform's focus and input method go
 tag Gui.Focus of Element unit:
     window: WindowId
-    at: $?Rect
+    $?at: Rect

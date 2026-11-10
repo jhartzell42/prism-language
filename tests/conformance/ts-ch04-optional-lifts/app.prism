@@ -60,7 +60,7 @@ fn ?Key line = match ?Find %/^(?<key>[a-z_]+)\s*=/, line:
 # Under a dynamic: `$` peeled, then `?`.
 @Lookup: @unit
 @Lookup:
-    !tap <- Ui.Button(label=$"Next")
+    !tap <- Ui.Button($label=$"Next")
     $n <- 0 then $n + 1 on !tap
     let $?p = [[P(a=4, b="four"), P(a=7, b="seven")]][$n]
-    Ui.Label(text=$"{Or $?p.b, "none"} {Or (Twice $?p.a), 0}")
+    Ui.Label($text=$"{Or $?p.b, "none"} {Or (Twice $?p.a), 0}")

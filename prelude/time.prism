@@ -7,4 +7,4 @@ type Wake = record:
 derive ^Eq, ^Show
 
 tag Time.After of Element !Wake:
-    wakes: !Wake
+    !wakes: Wake

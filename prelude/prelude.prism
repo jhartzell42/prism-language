@@ -44,7 +44,7 @@ type Exception = record:
     kind: Fault
     message: Text
     spans: [Span]
-    path: ?Path
+    ?path: Path
 derive ^Eq, ^Show
 
 # A source range: file, line, column, binding (Appendix B, Types).
@@ -63,7 +63,7 @@ derive ^Eq, ^Show
 
 # The prelude's tags (Appendix B, Prelude tags; Semantics ch. 10).
 tag Prelude.Unwrap of Element !a where a: ^Show:
-    value: !~a
+    !~value: a
 
 tag Prelude.Exceptions of Element !Exception
 

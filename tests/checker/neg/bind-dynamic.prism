@@ -3,11 +3,11 @@ emit Ui.*
 
 @Spot: fn Nat -> @unit
 fn @Spot n:
-    Ui.Label(text=$"{n}")
+    Ui.Label($text=$"{n}")
 
 @spots: @unit
 @spots:
-    !go <- Ui.Button(label=$"Next")
+    !go <- Ui.Button($label=$"Next")
     $n <- 0 then $n + 1 on !go
     let $@w = @Spot $n
     x <- $@w

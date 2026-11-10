@@ -178,7 +178,7 @@ fn BindRecord env, st, p, n, fields, rest, t:
                     let ((self, st1, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), p.span, [[]]
                     let st2 = if IsFailurePattern st1, t, self: st1 else: Unify st1, t, self, p.span
                     Fold (Range0 (Len fields)), ((env, st2)), \|((en, s)), i|
-                        let fp = Or fields[i], FieldPat(name=nil, pattern=Pattern(kind=PIgnore, span=p.span), span=p.span)
+                        let fp = Or fields[i], FieldPat(?name=nil, pattern=Pattern(kind=PIgnore, span=p.span), span=p.span)
                         let fname = FieldPatName fp, c.fields, i
                         match ?IndexOf c.fields, fname:
                             ? j: BindPattern en, s, fp.pattern, (SubstQ inst, (Or c.args[j], TyErr)), True
@@ -205,7 +205,7 @@ fn BindTagPattern env, st, p, name, fields, rest, t = match env.g.tags[name]:
         let ((ignore, st2, inst)) = InstantiateWith st1, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=[[]], ty=tg.out)), p.span, [[]]
         let names = Each tg.fields, \|((f, ignore))| f
         Fold (Range0 (Len fields)), ((env, st2)), \|((en, s)), i|
-            let fp = Or fields[i], FieldPat(name=nil, pattern=Pattern(kind=PIgnore, span=p.span), span=p.span)
+            let fp = Or fields[i], FieldPat(?name=nil, pattern=Pattern(kind=PIgnore, span=p.span), span=p.span)
             let fname = FieldPatName fp, names, i
             match ?FieldOfTag tg, fname:
                 ? ft: BindField en, s, fp.pattern, (SubstQ inst, ft), snapshot

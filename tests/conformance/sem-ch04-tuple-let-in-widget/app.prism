@@ -8,4 +8,4 @@ test mod Tests
     let pair = ((3, "two"))
     let ((n, label)) = pair
     let ((Add, m)) = ((\|a| a + 2, 5))
-    Ui.Label(text=$"{n} {label} {Add m}")       # 0
+    Ui.Label($text=$"{n} {label} {Add m}")       # 0

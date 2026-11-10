@@ -10,9 +10,9 @@ test mod Tests
 
 @sleeper: @$Nat
 @sleeper:
-    !go <- Ui.Button(label=$"go")                                          # 0
-    !woke <- Time.After(wakes=(Time.Wake(after=1.5s, context="nap") on !go))   # 1
+    !go <- Ui.Button($label=$"go")                                          # 0
+    !woke <- Time.After(!wakes=(Time.Wake(after=1.5s, context="nap") on !go))   # 1
     $n <- 0 then $n + 1 on !woke
-    Ui.Label(text=$"woke {$n}")                                            # 2
-    Ui.Label(text=$"{250ms} {1.3ms} {2min} {-2s} {1h} {7ns} {0.5us} {90s}")   # 3
+    Ui.Label($text=$"woke {$n}")                                            # 2
+    Ui.Label($text=$"{250ms} {1.3ms} {2min} {-2s} {1h} {7ns} {0.5us} {90s}")   # 3
     @ $n

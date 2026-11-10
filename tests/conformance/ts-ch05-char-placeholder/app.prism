@@ -9,4 +9,4 @@ let quote = Text '\''
 
 @chars: @unit
 @chars:
-    Ui.Label(text=$"{'q'} {Text 'q'} {Text 'é'}{quote}")      # 0
+    Ui.Label($text=$"{'q'} {Text 'q'} {Text 'é'}{quote}")      # 0
