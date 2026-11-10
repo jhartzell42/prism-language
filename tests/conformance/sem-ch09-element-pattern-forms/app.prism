@@ -1,0 +1,33 @@
+# One pattern over both forms of an element (Type System ch. 4: a `$` field of an element
+# binds a `$T`): `$Shown` reads the label of the supplier's live element, and again the label
+# of a description made from it, which no statement or host has placed yet (Type System
+# ch. 2: an element applied is a plain value). A click on the forwarded "inc" moves both.
+# A family pattern (`Ui.*`) sees the description as one of its tags.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+$Shown: fn Element Ui.* o -> $Text
+fn $Shown e = match e:
+    Ui.Label($text=$t): $"<{$t}>"
+    otherwise: $ "?"
+
+IsUi: fn Element Ui.* o -> Bool
+fn IsUi e = match e:
+    Ui.*: True
+    otherwise: False
+
+@child: @unit
+@child:
+    !inc <- Ui.Button($label=$"inc")                             # 0
+    $n <- 0 then $n + 1 on !inc
+    Ui.Label($text=$"{$n}")                                      # 1
+
+@page: @unit
+@page:
+    ignore <- @HostDocument @child, \|p, e| match e:            # 0/[p]
+        Ui.Label(..):
+            let d = Ui.Label($text=$Shown e)
+            @Element (Ui.Label($text=$"{$Shown d} {IsUi d}"))
+        otherwise: @Element e

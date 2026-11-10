@@ -1,0 +1,10 @@
+# One pattern over a live element and a description: declarations of
+# sem-ch09-element-pattern-forms.
+emit Ui.*
+use App.*
+
+test one_pattern_reads_both_forms, @page:
+    build
+        => expect Ui.Label(text="<<0>> True")
+    click Ui.Button(label="inc")
+        => expect Ui.Label(text="<<1>> True")

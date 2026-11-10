@@ -1,0 +1,13 @@
+# Derived by hand from Type System ch. 4 (an element's `$` field is a `$T`, live or described) and ch. 2 (an element applied is a plain value): `$Shown` of the description reads the text it was given, `$Shown e`, which follows the child's label; the placed element follows it in the tick of the click.
+test one_pattern_reads_both_forms
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="inc")
+    0/[1]/0: Ui.Label(text="<<0>> True")
+
+tick 1
+  in:
+    0/[0]/0: click
+  changed:
+    0/[1]/0: Ui.Label(text="<<1>> True")
