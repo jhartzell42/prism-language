@@ -650,7 +650,8 @@ fn GenRowOf wx, menv, body, vt, rowName, genName:
                 &_.build <= Push &_.build, (RefusalDo "a `rebuild` whose block ends on a bundle")
             ((r2b, nil, nil))
         otherwise: ((r2, nil, nil))
-    GenRow(node=(FinishNode r3, rowName, (Append [[(("value", vt)), (("parent", (OutWeak wx.node)))]], (HostedParams wx)), True), parent=(GenMarked p1, genName, r3), dynResult=?dynResult, plainResult=?plainResult)
+    let r4 = GenHears r3, genName
+    GenRow(node=(FinishNode r4, rowName, (Append [[(("value", vt)), (("parent", (OutWeak wx.node)))]], (HostedParams wx)), True), parent=(GenMarked p1, genName, r3), dynResult=?dynResult, plainResult=?plainResult)
 
 # A generation's dynamic result (a `rebuild` handing back `$$a`): the getter `result`, the
 # `Dynamic` the block keeps of it, and the block told through `{genName}_result_moved` when
@@ -667,13 +668,27 @@ fn GenResult r, genName, ex, resultReads, rt:
         &_.resultMoved <= if (Len ownBehind) > 0: ? (("{genName}_result_moved", ownBehind)) else: nil
 
 # The block's writes behind what a generation's places read mark the generation (gap DY;
-# `RowMarks` of kind `GenerationRow`: the current one is dirtied, and told nothing).
+# `RowMarks` of kind `GenerationRow`: the current one is dirtied), and the block's names it
+# hears a write behind (`RowHears`: its `!Updated` nodes' reads through the parent) tell
+# the current one through `parent_wrote_{m}`, as a `for` row is told (pick RE).
 GenMarked: fn Wx, Text, Wx -> Wx
 fn GenMarked parent, genName, rowWx:
     let reads = RowPlaceReads rowWx
-    if (Len reads) == 0: parent
-    else: update parent:
-        &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=genName, reads=reads, wrote=[[]], kind=GenerationRow)
+    let hears = RowHears rowWx
+    let ported = Fold hears, parent, \|w, m| AddField w, "{genName}_wrote_{m}_port", (OutPort OutUnit), "the current generation of `{genName}` hears a write behind `{m}`", (XCall (RefRuntime "rt::Port::new"), [[]])
+    if (Len reads) == 0 and (Len hears) == 0: parent
+    else: update ported:
+        &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=genName, reads=reads, wrote=hears, kind=GenerationRow)
+
+# A generation's side of `GenMarked`: the block holds the current generation as a `Row`,
+# which names no method of it, so each name it hears is a port of the block,
+# `{genName}_wrote_{m}`, the generation subscribes to (`subscribe_row`, as a row hears a
+# block's event), its firing heard by `wrote_{m}` as `parent_wrote_{m}`.
+GenHears: fn Wx, Text -> Wx
+fn GenHears r, genName = Fold (RowHears r), r, \|w, m| update w:
+    &_.subs <= Push &_.subs, (("{genName}_wrote_{m}", "wrote_{m}", OutUnit))
+    &_.taken <= Push &_.taken, "wrote_{m}"
+    &_.getters <= Push &_.getters, (MethDef(name="wrote_{m}", recv=RecvRc, params=[[(("v", OutUnit))]], cx=CxMut, ret=OutUnit, body=[[DoExpr (XMethod (XSelf), "parent_wrote_{m}", [[XCx]])]], tail=(XUnit), doc="The block wrote behind its `{m}`: as `parent_wrote_{m}`."))
 
 # A row's names as its constructor spells them: the block through the `parent` argument.
 BuildSpelling: fn Env -> Env
@@ -772,9 +787,6 @@ fn FlattenLine wx, menv, args, ?bound:
 # compared: an adoption of the same inner fires again. It shares the `rebuild` flatten's
 # mechanism (`Adoption`, `Cx::answer_later`) rather than the swap list: the flatten fires
 # at n+1 with no input of its own, so that tick must be owed, and nothing of the outer's
-# write at n reaches n's own propagation (the Compiler seed, "No prompt binding"). It shares the `rebuild` flatten's
-# mechanism (`Adoption`, `Cx::answer_later`) rather than the swap list: the flatten fires
-# at n+1 with no input of its own, so that tick must be owed, and nothing of the outer's
 # write at n reaches n's own propagation (the Compiler seed, "No prompt binding").
 HeldFlatten: unbounded fn Wx, Env, Expr, ?Bn -> ((Wx, Wres))
 fn HeldFlatten wx, menv, x, ?bound:
@@ -839,10 +851,22 @@ fn EntryFlatten wx, t, ?bound:
         &_.flattens <= Push &_.flattens, FlatDef(name=name, outer="entry", generation="", held=False, ty=t)
     ((wx2, (WrDyn (XMethod (XSelf), name, [[XCx]]), [[OwnRead inner]], t)))
 
-# `@Switch $!a`: the event its `rebuild` forwards.
+# `@Switch $!a`: the event its `rebuild` forwards. Any other dynamic of events (`@Switch
+# (!MergeAll $evs)`, a map over a dynamic list) is refused: its event is not the inner
+# the outer holds.
 SwitchLine: unbounded fn Wx, Env, [Arg] -> ((Wx, Wres))
 fn SwitchLine wx, menv, args = match args[0]:
     ? a:
-        let ((r, wx2)) = EventRef wx, menv, a.value
-        ((wx2, (WrEv r)))
+        let rebuilt = match a.value.kind:
+            EName n: match menv.names[SNameKey n]:
+                ? (BnEv ignore, ignore): True
+                otherwise: False
+            otherwise: False
+        if rebuilt:
+            let ((r, wx2)) = EventRef wx, menv, a.value
+            ((wx2, (WrEv r)))
+        else:
+            let wx2 = update wx:
+                &_.build <= Push &_.build, (RefusalDo "`@Switch` of `{SrcText wx.lx, wx.lx.file, a.value.span}`, a dynamic of events that is not a `rebuild`'s")
+            ((wx2, WrUnit))
     nil: ((wx, WrUnit))

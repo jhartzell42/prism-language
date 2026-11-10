@@ -165,7 +165,7 @@ fn PairEvent wx, menv, args, kind, t = match ((args[0], args[1])):
 
 # `!MergeAll [[!a, ..]]`: every input that fired this tick, in the list's order, one
 # firing of the list (a combinator of as many inputs as the literal has). A list that is
-# not a literal is not lowered yet.
+# not a literal is a plain value, so its events are fixed at the build (`MergeListEvent`).
 MergeAllEvent: unbounded fn Wx, Env, [Arg], OutTy -> ((EvRef, Wx))
 fn MergeAllEvent wx, menv, args, t = match args[0]:
     ? a: match a.value.kind:
@@ -183,12 +183,38 @@ fn MergeAllEvent wx, menv, args, t = match args[0]:
                 let ((r, w6)) = EventRef w, menv, (Or es[i], a.value)
                 Connect w6, r, (SkIn id, i)
             (((EvRefOf w5, id), w5))
-        otherwise:
+        # a list's events are fixed at the build only when the list is plain; over a
+        # dynamic list `!MergeAll` is lifted, a `$![a]` only `@Switch` takes (`SwitchLine`)
+        otherwise: if (LayerOf (TypeAt wx.lx, a.value.span)) == LyPlain: MergeListEvent wx, menv, a.value, t
+        else:
             let ((r, w1)) = NeverEvent wx, t
             let w2 = update w1:
-                &_.build <= Push &_.build, (RefusalDo "`!MergeAll` of a list that is not a literal")
+                &_.build <= Push &_.build, (RefusalDo "`!MergeAll` of `{SrcText wx.lx, wx.lx.file, a.value.span}`, a list that is not plain, read as an event")
             ((r, w2))
     nil: NeverEvent wx, t
+
+# `!MergeAll evs` over a list that is not a literal (Semantics Appendix B): the list's
+# `Event`s, read once the node is made (`{nm}_events`), each heard by the runtime's
+# `MergeList` (`{nm}_list`), which stamps the input and tells the node (`{nm}_in`, the wake
+# asked); the wake takes the values fired this tick, in the list's order, as one firing.
+MergeListEvent: unbounded fn Wx, Env, Expr, OutTy -> ((EvRef, Wx))
+fn MergeListEvent wx, menv, x, t:
+    let lx = wx.lx
+    let et = match t:
+        OutArray y: y
+        otherwise: OutUnit
+    let ((nm, w1)) = FreshName wx, "merged"
+    let ((id, w2)) = AddGn w1, nm, t, GnMergeList, 1
+    let list = "{nm}_list"
+    let shown = SrcText lx, lx.file, x.span
+    let getter = MethDef(name="{nm}_events", recv=RecvRef, params=[[]], cx=CxRef, ret=(OutArray (OutEvent et)), body=[[]], tail=(Own (ValueOf lx, menv, x)), doc="`{shown}`, the list `!MergeAll` merges, as its value.")
+    let listened = DoExpr (XMethod (XField (XVar "node"), list), "listen", [[(XRef (XMethod (XVar "node"), "{nm}_events", [[XCx]])), (XRef (XVar "node")), (XPath (RefChild (SiteRef lx, wx.node), "{nm}_in"))]])
+    let w3 = update (AddFieldLast w2, list, (OutNamed (RefRuntime "prism_rtl::MergeList"), [[et]]), "`!MergeAll`'s list, heard", (XCall (RefRuntime "std::Default::default"), [[]])):
+        &_.gns <= Each &_.gns, \|n| if n.id == id: WithInputs n, [[list]] else: n
+        &_.getters <= Push &_.getters, getter
+        &_.build <= Push &_.build, listened
+        &_.taken <= Append &_.taken, [["{nm}_events", "{nm}_in"]]
+    (((EvRefOf w3, id), w3))
 
 # `!Updated $d`: the event half of a dynamic (Semantics R3; README pick UP). A graph node
 # of kind "updated", decided in the wake like a merge, one above every node whose sink

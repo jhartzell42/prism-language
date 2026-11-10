@@ -446,6 +446,63 @@ impl<U: Clone + 'static> Event<Option<U>> {
     }
 }
 
+/// `!MergeAll` of a list that is not a literal (Semantics Appendix B): the list is a plain
+/// value, so its events are fixed at the build. Each event's port is heard into a stamped
+/// input, and the node is told (`heard`, which asks its wake); the wake takes the values
+/// fired this tick, in the list's order, as one firing.
+pub struct MergeList<T: Clone> {
+    inputs: RefCell<Rc<Vec<Stamped<T>>>>,
+    subs: RefCell<Vec<(Rc<Port<T>>, Handle)>>,
+}
+
+impl<T: Clone + 'static> MergeList<T> {
+    pub fn new() -> MergeList<T> {
+        MergeList { inputs: RefCell::new(Rc::new(Vec::new())), subs: RefCell::new(Vec::new()) }
+    }
+    /// Hears every event of `events`, telling `node` through `heard` when one fires.
+    pub fn listen<N: 'static>(&self, events: &crate::collections::Array<Event<T>>, node: &Rc<N>, heard: fn(&Rc<N>, &mut Cx)) {
+        let inputs: Rc<Vec<Stamped<T>>> = Rc::new(events.iter().map(|_| Stamped::new()).collect());
+        *self.inputs.borrow_mut() = inputs.clone();
+        let mut subs = self.subs.borrow_mut();
+        for (i, ev) in events.iter().enumerate() {
+            let weak = Rc::downgrade(node);
+            let ins = inputs.clone();
+            let h = ev.port.subscribe(Rc::new(move |v: &T, cx: &mut Cx| {
+                ins[i].set(v.clone(), cx);
+                if let Some(n) = weak.upgrade() {
+                    heard(&n, cx);
+                }
+                Ok(())
+            }));
+            subs.push((ev.port.clone(), h));
+        }
+    }
+    /// The values the list's events fired this tick, in the list's order; none fired, none.
+    pub fn take(&self, cx: &Cx) -> Option<crate::collections::Array<T>> {
+        let mut all = crate::collections::Array::new();
+        for s in self.inputs.borrow().iter() {
+            if let Some(x) = s.take(cx) {
+                all.push_back(x);
+            }
+        }
+        if all.len() == 0 { None } else { Some(all) }
+    }
+}
+
+impl<T: Clone + 'static> Default for MergeList<T> {
+    fn default() -> MergeList<T> {
+        MergeList::new()
+    }
+}
+
+impl<T: Clone> Drop for MergeList<T> {
+    fn drop(&mut self) {
+        for (p, h) in self.subs.borrow_mut().drain(..) {
+            p.unsubscribe(h);
+        }
+    }
+}
+
 /// A `$a` value: a read at the context's read point, its update event, and its owner.
 /// The update event says only that the value moved; a reader reads it again, so a
 /// projection of a dynamic shares its source's port.

@@ -88,7 +88,8 @@ type Gn = record:
 
 # What a node of the graph is: a source (a place's answer, `@started`, an `@Defer`, a row's
 # port), a named event, or a combinator decided in the wake (a merge, `!Union`, `!Both`,
-# `!Except`, `!MergeAll`, a `for`'s gather, `!Updated`); `never` fires nothing.
+# `!Except`, `!MergeAll` of a literal or of a list, a `for`'s gather, `!Updated`); `never`
+# fires nothing.
 type GnKind = choice:
     GnNamed
     GnAnswer
@@ -101,6 +102,7 @@ type GnKind = choice:
     GnExcept
     GnMergeAll
     GnGather
+    GnMergeList
     GnUpdated
     GnNever
 derive ^Eq, ^Show
@@ -119,6 +121,7 @@ fn KindWord k = match k:
     GnExcept: "except"
     GnMergeAll: "mergeall"
     GnGather: "gather"
+    GnMergeList: "mergelist"
     GnUpdated: "updated"
     GnNever: "never"
 

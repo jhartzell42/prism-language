@@ -235,6 +235,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
   inner) and fires. No dynamics are compared; an adoption of the same inner fires again
   (`sem-ch07-flatten-held`, `sem-ch07-flatten-mapped-constants`). A live dynamic's port
   fires once a tick however many writes lie behind it (`{name}_once`).
+- **`!MergeAll` of a plain list that is not a literal** (`MergeListEvent`) → a
+  `MergeList<T>` field (prism_rtl, both runtimes) that hears each `Event` of the list,
+  read once the node is made (`{nm}_events`), into a stamped input and tells the node
+  (`{nm}_in`, the wake asked); the wake takes the values fired this tick in the list's
+  order (`GnMergeList`). A list that is not plain makes `!MergeAll` lifted, a `$![a]`:
+  refused, as is `@Switch` of any dynamic of events that is not a `rebuild`'s.
+- **`!Updated` in a generation over its block's names.** The block holds its current
+  generation as a `Row`, which names no method of it, so each name the generation hears
+  is a port of the block, `{gen}_wrote_{m}_port`, fired where a `for` row's
+  `parent_wrote_{m}` is called; the generation subscribes to it (`GenHears`,
+  `subscribe_row`) and hears it as `parent_wrote_{m}` (`sem-ch07-generation-updated`).
 - **`$$a` is a dynamic of `Dynamic`s.** `Peel` takes one time layer off, so a `$$a`
   binder's value is a `Dynamic<A>`: a hold of dynamics (`$$cur <- $a then ..`) takes its
   initial value whole; a function is whole when a call takes time below the top of what

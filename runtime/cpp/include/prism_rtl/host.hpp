@@ -192,6 +192,52 @@ private:
     std::optional<std::pair<Rc<Port<Unit>>, Handle>> sub_;
 };
 
+/// `!MergeAll` of a list that is not a literal (Semantics Appendix B): the list is a plain
+/// value, so its events are fixed at the build. Each event's port is heard into a stamped
+/// input, and the node is told (`heard`, which asks its wake); the wake takes the values
+/// fired this tick, in the list's order, as one firing.
+template <class T>
+class MergeList {
+public:
+    MergeList() = default;
+    MergeList(const MergeList&) = delete;
+    MergeList& operator=(const MergeList&) = delete;
+    MergeList(MergeList&&) = default;
+    MergeList& operator=(MergeList&&) = default;
+    ~MergeList() {
+        for (auto& [p, h] : subs_) p->unsubscribe(h);
+    }
+    /// Hears every event of `events`, telling `node` through `heard` when one fires.
+    template <class N, class R>
+    void listen(const Array<Event<T>>& events, const Rc<N>& node, R (N::*heard)(Cx&)) {
+        auto inputs = std::make_shared<std::vector<Stamped<T>>>(events.size());
+        inputs_ = inputs;
+        for (std::size_t i = 0; i < events.size(); ++i) {
+            const Event<T>& ev = events[i];
+            Weak<N> weak = node;
+            Handle h = ev.port->subscribe([inputs, i, weak, heard](const T& v, Cx& cx) -> Done {
+                (*inputs)[i].set(v, cx);
+                if (auto n = weak.lock()) ((*n).*heard)(cx);
+                return {};
+            });
+            subs_.emplace_back(ev.port, h);
+        }
+    }
+    /// The values the list's events fired this tick, in the list's order; none fired, none.
+    std::optional<Array<T>> take(const Cx& cx) {
+        Array<T> all;
+        if (inputs_)
+            for (auto& s : *inputs_)
+                if (auto x = s.take(cx)) all.push_back(std::move(*x));
+        if (all.size() == 0) return std::nullopt;
+        return all;
+    }
+
+private:
+    std::shared_ptr<std::vector<Stamped<T>>> inputs_;
+    std::vector<std::pair<Rc<Port<T>>, Handle>> subs_;
+};
+
 /// One place of a hosted child, as its host's document holds it (Jimmy, 6 November 2026:
 /// the document is `$(Path ==> $Elem c)`): a structural dynamic of its own (Semantics ch. 7,
 /// round 3 ST, doubt EP). Its node takes a snapshot of the place's level at its build and
