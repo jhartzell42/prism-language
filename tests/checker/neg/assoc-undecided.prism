@@ -1,0 +1,22 @@
+# `ambiguous`: a local lambda's argument meets an associated type that waits for it, and
+# nothing ever applies the lambda: the equation `Item a` = `Text` is never decided, and is
+# reported, not dropped.
+trait ^Box a:
+    type Item
+    Open: fn a -> Item a
+
+type Pair a = record:
+    one: a
+    two: a
+
+impl ^Box (Pair a):
+    type Item = a
+    fn Open p = p.one
+
+Takes: fn Text -> Nat
+fn Takes t = Len t
+
+Unused: fn Nat -> Nat
+fn Unused n:
+    let G = \|x| Takes (Open x)
+    n
