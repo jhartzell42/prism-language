@@ -119,6 +119,19 @@ else
     failed+=(lifted-holds-dynamic)
     echo "FAILED lifted-holds-dynamic: wanted Wrap lowered over a Dynamic, got: $said"
 fi
+# A type variable no constraint reaches is settled by the checker (the unit type, in the
+# typed output), never left for lowering to guess; only the variable `xs` quantified stays
+# one, given at its use.
+"$prismc" --typed tests/driver/free-variable-defaulted.prism --out "$out/free-variable-defaulted.typed" > /dev/null 2>&1
+if [ -f "$out/free-variable-defaulted.typed" ] && [ "$(grep -c '(var ' "$out/free-variable-defaulted.typed")" = 2 ] &&
+    grep -q "^  (binder \"xs\" .*(array (var t[0-9]*)))" "$out/free-variable-defaulted.typed" &&
+    grep -q "^  (expr .*:10:35-10:39 (array unit))" "$out/free-variable-defaulted.typed" &&
+    grep -q "('[0-9]* unit)" "$out/free-variable-defaulted.typed"; then
+    echo "ok free-variable-defaulted: the checker settles it"
+else
+    failed+=(free-variable-defaulted)
+    echo "FAILED free-variable-defaulted: wanted no undecided variable in the typed output ($out/free-variable-defaulted.typed)"
+fi
 # A static clause widget's plain result is refused by lowering, never dropped.
 said=$("$prismc" compile tests/driver/clause-plain-result.prism -o "$out/clause-plain-result" 2>&1)
 if [ $? -ne 0 ] && echo "$said" | grep -q 'not-lowered.*a widget of several clauses whose clause ends on a plain result'; then

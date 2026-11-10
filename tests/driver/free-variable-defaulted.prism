@@ -1,0 +1,10 @@
+# An element type no constraint reaches: the empty array's, which `Len` never looks at.
+# The checker settles it to the unit type in its typed output (nothing the program does
+# depends on it), so lowering never meets an undecided variable. Written by Claude on the
+# claude-bugs branch; subject to change.
+emit Ui.*
+
+@main: @unit
+@main:
+    let xs = [[]]
+    Ui.Label(text=$"{Len xs} {Len [[]]}")
