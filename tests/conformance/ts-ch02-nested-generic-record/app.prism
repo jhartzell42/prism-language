@@ -1,0 +1,15 @@
+# A generic record holding a value of its own type at another argument (`Wrap (Wrap Nat)`):
+# each level is built at its own type, in both targets (C++ would deduce the outer one's
+# argument from the inner by copy). Written by Claude on the claude-bugs branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+
+type Wrap a = record:
+    inner: a
+derive ^Eq, ^Show
+
+@main: @unit
+@main:
+    let w = Wrap(inner=Wrap(inner=3))
+    Ui.Label(text=$"{Show w} {w.inner.inner}")    # 0

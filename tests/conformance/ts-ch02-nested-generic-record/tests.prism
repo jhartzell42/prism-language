@@ -1,0 +1,7 @@
+# The tests of ts-ch02-nested-generic-record (Type System chapter 2).
+emit Ui.*
+use App.*
+
+test nested_generic_record, @main:
+    build
+        => expect Ui.Label(text="Wrap(inner=Wrap(inner=3)) 3")
