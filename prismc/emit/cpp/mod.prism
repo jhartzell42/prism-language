@@ -303,8 +303,9 @@ fn CppType cp, t = match t:
     OutPort i: "crate::prelude::Port<{CppType cp, i}>"
     OutLive i: "crate::prelude::Live<{CppType cp, i}>"
     OutTurn: "decltype(this->cycle())"
-    # deduced: a trait's declarations are templates, a generic function's too (C++20)
-    OutAssoc ignore, ignore, ignore: "auto"
+    # a trait's associated type is a class template of its namespace, each impl's choice a
+    # specialization at the impl's head (`TraitParts`, `ImplParts`)
+    OutAssoc tr, n, a: "typename {TypePath tr}::{n}<{CppType cp, a}>::type"
     OutRefused what: "compile_error!(\"{loweringRefusal}{what}\")"
     OutQuantified b: "compile_error!(\"{loweringRefusal}a quantified type variable of `{b}`: no instantiation gives it a type\")"
 

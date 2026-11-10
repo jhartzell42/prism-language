@@ -469,14 +469,20 @@ fn JobParts cp, j:
 # declared a deleted template over `Self`, so that a generic function's call of it names
 # something wherever it is defined, and the overloads its file declares before it are the
 # ones a call picks (`NAME.generic.hpp`, `ModuleFiles`).
+#
+# Each associated type is a class template of the namespace over `Self`, declared with the
+# module's forward declarations and never defined: an impl's choice is a specialization at
+# its head, `typename Box_t::Item<A>::type` reads it (`CppType`'s `OutAssoc`).
 TraitParts: unbounded fn Cp, TraitDef -> Parts
 fn TraitParts cp, t:
     let defaults = Filter t.methods, \|f| f.public
     let defs = Each defaults, \|f| FnDefinition cp, (WithGenerics f, [[(("Self", [[]]))]])
     let protos = Each t.methods, \|f| "{FnSignature cp, (WithGenerics f, [[(("Self", [[]]))]])}{if f.public: "" else: " = delete"};"
     let generic = if (Len defaults) == 0: [[]] else: [[(TraitNamespace t.name, (Join defs, "\n"))]]
+    let assocs = Each t.assocs, \|n| "template <class Self>\nstruct {n};"
     update (GenericOnly generic):
         &_.protos <= [[(TraitNamespace t.name, (Join protos, "\n"))]]
+        &_.forward <= if (Len assocs) == 0: [[]] else: [[(TraitNamespace t.name, (Join assocs, "\n"))]]
 
 # An impl: of a program's trait, overloads in the trait's namespace (of another module's
 # trait, in a namespace of the impl's module, `impl_aloud_Loud`, which a using-declaration
@@ -502,9 +508,15 @@ fn ImplParts cp, i:
             let ns = if own: tr else: "impl_{Join (SplitOn tr, "::"), "_"}"
             let inTrait = Each i.methods, \|f| TraitNamespace ns, (FnDefinition cp, (WithGenerics f, i.generics))
             let protos = Each i.methods, \|f| TraitNamespace ns, "{FnSignature cp, (WithGenerics f, i.generics)};"
+            # each associated type it chooses, a specialization in the trait's own namespace
+            # (a class template is specialized where it is declared, so another module's
+            # trait's at the crate's scope)
+            let spec = if gens == "": "template <>\n" else: gens
+            let chosen = Each i.assocs, \|((n, at))| "{spec}struct {n}<{head}> \{ using type = {CppType cp, at}; \};"
+            let specs = if (Len chosen) == 0: [[]] else: [[(TraitNamespace tr, (Join chosen, "\n"))]]
             let outer = if own: [[]] else: [[(TraitNamespace tr, (Join (Each i.methods, \|f| "using ::crate::{cp.home}::{ns}::{CppId f.name};"), "\n"))]]
-            update (ProtosDefs protos, inTrait):
-                &_.outer <= outer
+            update (ProtosDefs (if own: Append specs, protos else: protos), inTrait):
+                &_.outer <= if own: outer else: Append specs, outer
 
 # A function with type parameters before its own.
 WithGenerics: fn FnDef, [((Text, [Text]))] -> FnDef
