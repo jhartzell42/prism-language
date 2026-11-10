@@ -2216,8 +2216,7 @@ chess and of two on the self-compile.
 Each is refused loudly: lowering emits a `compile_error!("prismc does not lower ..")`
 naming the construct, and `CompileProgram` reports every distinct one as
 `error[not-lowered]` and fails, the crate still written for reading:
-`@HostList`; a named widget function as a host's supplier (gap NS: a widget function is
-a node, not a value; a lambda supplier is lowered); a supplier's answer `@ x` outside a tag arm, a dynamic answer over what has
+a supplier's answer `@ x` outside a tag arm, a dynamic answer over what has
 no value at the owner's build, a widget-function blueprint as an answer, and a bundle in
 a hosted scope (pick HO); a bundle as a root's result, and a `for` row, a `rebuild`'s
 generation or a widget clause ending on a bundle (a widget block's bundle result is
@@ -2225,12 +2224,10 @@ lowered, each part its own result, `WrParts`: `sem-ch04-bundle-result`); a widge
 result bound by a pattern other than a name, `ignore` or a tuple of those; an element applied as a plain value and a live element's `$` field read in a plain
 function (gap LE), `@Flatten` of a dynamic that is not a `rebuild`'s (a `for` over a map of dynamics binds the value under the key, pick FV),
 `!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
-structural dynamic of its block (gap SU), an `@Machine` whose step is
-not a named function, a local function whose
-parameters are not names or used as a value, an unbounded call lifted over a `?` or `~`, `!MergeAll` of a list that is not a
-literal, lifted functions with time parameters (`fn !Bump $n, !go`), building `match`
-and `if`, a widget of several clauses in a static position of a hosted scope (pick CS),
-`Time.After`, lines of a block that read each
+structural dynamic of its block (gap SU), a local function whose
+parameters are not names or used as a value, `!MergeAll` of a list that is not a
+literal, building `match`
+and `if`, lines of a block that read each
 other at the build (pick BO), and the zombie and
 dead states (`leave`, `clean_up`, `edges`).
 
