@@ -300,7 +300,7 @@ fn ProgDefOf lx, qk:
         otherwise: [[]]
     let lxm = InModuleAt lx, v.file, v.home, "\u{0}main"
     let params = Each (Range0 (Len ptys)), \|i| (("arg{i}", (OutTyOf lxm, (Peel (Or ptys[i], TyErr)))))
-    let node = "{RustModName v.home}::{Camel (BareName qk)}"
+    let node = "{RustModName v.home}::{NodeName qk}"
     # the World the root's row asks for: `Gui` the canvas World; `Ui` without `Gui` none,
     # since no World answers Ui elements alone; anything else the CLI World
     let fams = (Or lx.g.mods[v.home], dummyMod).emitRw.fams

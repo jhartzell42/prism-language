@@ -48,7 +48,7 @@ use Lower.Model.*
 # its constructor's and fields; its block lowers into the node.
 NodeDefOf: unbounded fn Lx, Text, [Pattern], Block, Scheme, Bool -> NodeDef
 fn NodeDefOf lx, qk, params, body, sc, isRoot:
-    let name = Camel (BareName qk)
+    let name = NodeName qk
     let ptys = match sc.ty:
         TyFn ignore, ps, ignore: ps
         otherwise: [[]]

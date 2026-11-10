@@ -64,7 +64,9 @@ RustTrait: unbounded fn TraitDef -> Text
 fn RustTrait t:
     let types = Each t.assocs, \|a| "type {a}: ::std::clone::Clone;"
     let ms = Join (Append types, (Each t.methods, \|f| TraitMethod f)), "\n"
-    "{SourceDoc "", t.doc}pub trait {t.name} \{\n{Indent ms}\n\}\n"
+    # every Prism value is a whole value its functions may copy and keep (a default's
+    # closure, a default giving `Self`)
+    "{SourceDoc "", t.doc}pub trait {t.name}: ::std::clone::Clone + 'static \{\n{Indent ms}\n\}\n"
 
 Signature: unbounded fn FnDef, Text -> Text
 fn Signature f, vis:
@@ -80,7 +82,6 @@ fn TraitMethod f = if f.public: Fn "", (Signature f, ""), (BodyLines f.body) els
 RustImpl: unbounded fn ImplDef -> Text
 fn RustImpl i:
     let head = Type i.head
-    let gens = Generics i.generics
     let Own = \|f| RustFn (update f:
         &_.generics <= Append i.generics, &_.generics)
     match i.cls:
@@ -95,7 +96,7 @@ fn RustImpl i:
             "{fns}\n{Impl sgens, "::std::cmp::PartialEq", head, "fn eq(&self, other: &Self) -> bool", "{eq}(self, other)"}\nimpl{sgens} ::std::cmp::Eq for {head} \{\}"
         otherwise:
             let types = Each i.assocs, \|((a, t))| "type {a} = {Type t};"
-            "impl{gens} {i.tr} for {head} \{\n{Indent (Join (Append types, (Each i.methods, \|f| Fn "", (Signature f, ""), (BodyLines f.body))), "\n")}\n\}\n"
+            "impl{StaticGenerics i.generics} {i.tr} for {head} \{\n{Indent (Join (Append types, (Each i.methods, \|f| Fn "", (Signature f, ""), (BodyLines f.body))), "\n")}\n\}\n"
 
 RustFn: unbounded fn FnDef -> Text
 fn RustFn f:

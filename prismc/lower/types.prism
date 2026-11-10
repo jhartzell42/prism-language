@@ -471,4 +471,4 @@ fn AllImpls g = Fold (Values g.impls), [[]], \|acc, l| Append acc, l
 
 # The trait that declares an associated type, by its path from the site.
 AssocTrait: fn Lx, Text -> Text
-fn AssocTrait lx, n = Fold (Values lx.g.traits), "", \|found, tr| if found == "" and HasText tr.assocs, n: PathIn lx, tr.home, (Camel (BareName tr.name)) else: found
+fn AssocTrait lx, n = Fold (Values lx.g.traits), "", \|found, tr| if found == "" and HasText tr.assocs, n: PathIn lx, tr.home, (TraitName tr.name) else: found

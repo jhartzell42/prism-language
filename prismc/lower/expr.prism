@@ -904,7 +904,12 @@ fn CtorApp lx, env, c, args, span:
         otherwise: match owner.body:
             BRecord fs:
                 if (Len c.fields) == 0: VlOwned (XPath tyPath), t
-                else: VlOwned (XRecord tyPath, (Each (Range0 (Len c.fields)), \|i| (((FieldSpell (OwnerOf c.owner), (Or c.fields[i], ""), (Or c.args[i], TyErr)), (Or vals[i], (XCall (RefRuntime "std::Default::default"), [[]])))))), t
+                else:
+                    let made = XRecord tyPath, (Each (Range0 (Len c.fields)), \|i| (((FieldSpell (OwnerOf c.owner), (Or c.fields[i], ""), (Or c.args[i], TyErr)), (Or vals[i], (XCall (RefRuntime "std::Default::default"), [[]])))))
+                    # a generic record with its type said, which a printer whose target
+                    # deduces it from the fields (C++, by copy from a nested one) spells
+                    if (Len owner.params) > 0: VlOwned (XTyped made, (BuiltTy t)), t
+                    else: VlOwned made, t
             BChoice cases:
                 let isUnitType = (Len cases) == 1 and (Len c.args) == 0 and IsLowerText (BareName c.name)
                 # a newtype is a tuple struct (a struct in C++), built by its own name
@@ -975,8 +980,8 @@ fn MethodCall lx, env, v, args, span, t:
     if (HasPrefix cls, "Prelude."): PreludeMethod lx, cls, m, vals, span, t
     else:
         let tr = Or lx.g.traits[cls], dummyTraitInfo
-        let path = RefIn lx, tr.home, "{Camel (BareName cls)}::{Or lx.rsNames[v.qk], (Snake m)}"
-        VlOwned (XCall path, (Each args, \|a| Argument lx, env, a.value)), t
+        let path = RefIn lx, tr.home, "{TraitName cls}::{Or lx.rsNames[v.qk], (Snake m)}"
+        VlOwned (XCall path, (ArgsFor lx, env, v, args)), t
 
 let dummyTraitInfo = TraitInfo(name="", home="", param="a", supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], file=0, span=Range(start=0, end=0))
 

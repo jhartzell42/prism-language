@@ -170,6 +170,8 @@ fn CppExpr cp, x = match x:
         XPath p if IsGenericCase cp, p:
             let tt = CppType cp, t
             "{tt}(typename {tt}::{CaseIdOf p}\{\})"
+        # a generic record at its type: never deduced from its fields
+        XRecord p, fs: CppRecordAs cp, p, fs, (CppType cp, t)
         otherwise:
             let e = CppExpr cp, y
             if e == "\{\}" or e == "::std::nullopt": "{CppType cp, t}\{\}"
@@ -309,12 +311,16 @@ fn CppCtor cp, r, args = match r:
 # A record: its fields in the order declared (designated initializers); a job's by its
 # constructor.
 CppRecord: unbounded fn Cp, Ref, [((Text, Ex))] -> Text
-fn CppRecord cp, p, fs = match ?TypeOf cp, p:
+fn CppRecord cp, p, fs = CppRecordAs cp, p, fs, (OwnTypePath cp, p)
+
+# A record by its fields, its type spelled `head`.
+CppRecordAs: unbounded fn Cp, Ref, [((Text, Ex))], Text -> Text
+fn CppRecordAs cp, p, fs, head = match ?TypeOf cp, p:
     ? info:
         let ordered = Each info.fields, \|f| Or (Fold fs, nil, \|?found, ((g, v))| if g == f: ? v else: ?found), XUnit
         let values = CppArgList cp, ordered
         if info.kind == "job": "{TypePath (RefSpelled p)}({Join values, ", "})"
-        else: "{OwnTypePath cp, p}\{{Join (Each (Range0 (Len info.fields)), \|i| ".{FieldId (Or info.fields[i], "")} = {Or values[i], ""}"), ", "}\}"
+        else: "{head}\{{Join (Each (Range0 (Len info.fields)), \|i| ".{FieldId (Or info.fields[i], "")} = {Or values[i], ""}"), ", "}\}"
     nil: PrinterRefusal "a record of no type it knows ({RefSpelled p})"
 
 # A call of a named function: the runtime's and the prelude code's functions by their C++

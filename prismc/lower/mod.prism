@@ -249,6 +249,19 @@ fn PreludePath ignore, name = Helper name
 Helper: fn Text -> Text
 fn Helper n = "crate::prelude::{n}"
 
+# A widget's node (a Rust struct, a C++ class): the widget's name with `_w` after it, which
+# no program type has (a type's name is UpperCamelCase, with no `_`); its rows' and
+# generations' nodes extend it (`Main_wRow`, `Main_wGen1`).
+NodeName: fn Text -> Text
+fn NodeName qk = "{Camel (BareName qk)}_w"
+
+# A trait as a target names it (a Rust trait, a C++ namespace): a program trait's name with
+# `_t` after it, apart from a type of the same name (`^Loud` and `Loud`), which no type's
+# name (UpperCamelCase, with no `_`) can be; the prelude's by the names its hand-written
+# code gives them (`Num`), beside no program type.
+TraitName: fn Text -> Text
+fn TraitName cls = if HasPrefix cls, "Prelude.": Camel (BareName cls) else: "{Camel (BareName cls)}_t"
+
 # A module's item `name` as the model refers to it from the site (pick UN): resolved to its
 # output module, with its path as `PathIn` writes it.
 RefIn: fn Lx, Text, Text -> Ref
