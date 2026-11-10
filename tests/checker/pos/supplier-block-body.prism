@@ -1,0 +1,23 @@
+# Written by Claude on the claude-lowering branch; subject to change.
+# A named supplier whose body is a block, a `let` before its tag `match` (Type System ch.
+# 5, "Refinement at tag matches": each arm answers the tag's own output, wherever the
+# `match` stands): the checker refines `o` when the `match` is the body's expression
+# (tests/checker/pos/supplier-named), and must here too.
+emit Ui.* | Fs.*
+use Fs.*
+
+@child: @unit
+@child:
+    $~text <- Fs.Contents(path="a")                               # 0
+    Ui.Label(text=$"child")                                       # 1
+
+@Supply: fn Path, Element (Ui.* | Fs.*) o -> @o
+fn @Supply p, e:
+    let text = "B"
+    match e:
+        Fs.Contents(..): @ $ (~ Contents(text=text))
+        otherwise: @Element e
+
+@named: @unit
+@named:
+    ignore <- @HostDocument @child, @Supply                       # 0/[p]
