@@ -198,7 +198,8 @@ fn IsTopicName n = n == "_" or (DropPrefix n, (MarksOf n)) == "_"
 # become the scheme's bounds and leave the wanted list; on a non-lambda's they keep the
 # variable monomorphic (doubt MR).
 WantsAbove: unbounded fn St, Ty, Bool -> (([Nat], [((Nat, Text))], St))
-fn WantsAbove st, t, lambda:
+fn WantsAbove st0, t, lambda:
+    let st = KeepWaiting st0
     let vs = Filter (FreeVars st, t), \|v| (InfoOf st, v).level > st.level
     let mine = Filter st.wants, \|w| match Walk st, w.ty:
         TyFlex n: HasNat vs, n

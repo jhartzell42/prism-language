@@ -155,7 +155,7 @@ type St = record:
     cleqs: [CLeq]
     colQ: (Nat ==> Text)
     colUp: (Text ==> Text)
-    deferred: [((Ty, Ty, Range))]
+    deferred: [Waiting]
     binderAt: (Nat ==> Range)
     rowNames: (Nat ==> Text)
     layerQs: [((Ty, Range, Text))]
@@ -182,6 +182,15 @@ type AssocImpl = record:
     head: Ty
     qs: [Text]
     value: Ty
+derive ^Eq, ^Show
+
+# An equation that waits for an associated type's argument (`Item t3` against `Text`),
+# with the file it was met in: retried there once the variable is bound.
+type Waiting = record:
+    expected: Ty
+    found: Ty
+    span: Range
+    file: Nat
 derive ^Eq, ^Show
 
 NewSt: fn Nat -> St

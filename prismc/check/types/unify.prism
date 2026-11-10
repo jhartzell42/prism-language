@@ -61,15 +61,30 @@ UnifyIn: unbounded fn St, Ty, Ty, Range -> ((Text, St))
 fn UnifyIn st, expected, found, span:
     let e = NormAssoc st, (Walk st, expected)
     let f = NormAssoc st, (Walk st, found)
+    # A variable meeting a waiting associated type is bound to it, so the projection stays
+    # in the variable's type (a local `let`'s scheme keeps `Item a`); only two types that
+    # are not variables wait as an equation.
     if (IsWaitingAssoc st, e) or (IsWaitingAssoc st, f):
-        if e == f: (("", st)) else: (("", (Defer st, e, f, span)))
+        # equal once their variables are followed (two calls' `Item t4` and `Item t7`,
+        # both variables bound to `t2`): an associated type is not injective, so its
+        # arguments are never unified for it
+        if (Zonk st, e) == (Zonk st, f): (("", st))
+        else: if (IsFlexVar st, e) or (IsFlexVar st, f): UnifyHeads st, e, f, span
+        else: (("", (Defer st, e, f, span)))
     else: UnifyHeads st, e, f, span
 
 # An associated type normalizes before comparing (ch. 5, Traits): `Quotient Float` is
 # `Float`, `Quotient Int` is `?Int` (Type System ch. 3); at a flexible variable it waits
-# for the variable to be bound.
+# for the variable to be bound. What an impl chooses is walked and normalized again: at
+# `Pair a`, `type Item = a` chooses the head's argument, which at `Pair(one="a", ...)` is
+# a variable already bound to `Text` (and a choice may itself be an associated type).
 NormAssoc: unbounded fn St, Ty -> Ty
-fn NormAssoc st, t = match t:
+fn NormAssoc st, t:
+    let n = NormAssocOnce st, t
+    if n == t: t else: NormAssoc st, (Walk st, n)
+
+NormAssocOnce: unbounded fn St, Ty -> Ty
+fn NormAssocOnce st, t = match t:
     TyAssoc "Quotient", a: match Walk st, a:
         TyCon "Float", [[]]: tFloat
         TyCon n, [[]]: if n == "Nat" or n == "Int" or n == "U8": TySig "?", (TyCon n, [[]]) else: ImplAssoc st, "Quotient", (Walk st, a), t
@@ -98,15 +113,33 @@ fn IsWaitingAssoc st, t = match t:
 
 Defer: fn St, Ty, Ty, Range -> St
 fn Defer st, e, f, span = update st:
-    &_.deferred <= Push &_.deferred, ((e, f, span))
+    &_.deferred <= Push &_.deferred, Waiting(expected=e, found=f, span=span, file=st.file)
 
-# The waiting equations, retried once their variables are bound.
+# The waiting equations, retried once their variables are bound, each in its own file.
 RetryDeferred: unbounded fn St -> St
 fn RetryDeferred st:
     let waiting = st.deferred
     let cleared = update st:
         &_.deferred <= [[]]
-    Fold waiting, cleared, \|s, ((e, f, span))| Unify s, e, f, span
+    let done = Fold waiting, cleared, \|s, w|
+        let there = update s:
+            &_.file <= w.file
+        Unify there, w.expected, w.found, w.span
+    update done:
+        &_.file <= st.file
+
+# The program's end: an equation still waiting has a variable nothing decided, and an
+# equation never checked would let any type through (`ambiguous`, never dropped).
+Undecided: unbounded fn St -> St
+fn Undecided st0:
+    let st = RetryDeferred st0
+    let left = Fold st.deferred, st, \|s, w|
+        let there = update s:
+            &_.file <= w.file
+        ErrFix there, "ambiguous", w.span, "nothing decides the associated type in `{ShowTy s, w.expected}` = `{ShowTy s, w.found}`", "annotate the value's type"
+    update left:
+        &_.deferred <= [[]]
+        &_.file <= st.file
 
 UnifyHeads: unbounded fn St, Ty, Ty, Range -> ((Text, St))
 fn UnifyHeads st, e, f, span:

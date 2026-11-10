@@ -90,11 +90,14 @@ fn OutTyOf lx, t = match t:
     TyRigid n: match lx.subst[n]:
         ? x: OutTyOf lx, x
         nil: OutGen (Camel n)
+    # A variable is a generalized local `let`'s, given at its instance or quantified; the
+    # checker settles every other before the typed output (`DefaultFree`), so one here is
+    # a checker bug, refused loudly.
     TyFlex n: match lx.subst["'{n}"]:
         ? x: OutTyOf lx, x
         nil: match lx.quants["'{n}"]:
             ? b: OutQuantified b
-            nil: OutUnit
+            nil: OutRefused "a type variable the checker left undecided (`t{n}`)"
     TyAny bounds: if IsShowOnly bounds: OutShowAny else: OutNamed (RefRuntime "prism_rtl::Packed"), [[]]
     TyElem ignore, ignore: OutLive (OutNamed elemRef, [[]])
     TyElemAny ignore: OutNamed elemRef, [[]]

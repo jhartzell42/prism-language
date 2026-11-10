@@ -119,12 +119,21 @@ fn Skolemize sc:
 # `keep` lists variables that must stay monomorphic (constrained ones of a non-lambda).
 # Its color variables first settle their joins (GeneralizeCols), then are quantified
 # like its type variables (D8).
+# A variable a waiting field access still decides stays monomorphic: the access is
+# answered by the uses of the name. So does one of a waiting associated-type equation
+# (`Item a` against `Text`): a scheme has no place for the equation, which would be
+# dropped, so the uses of the name decide the variable and the equation is checked. Before
+# a lambda's wanted constraints become bounds (`WantsAbove`), so that such a variable's
+# stay wanted.
+KeepWaiting: unbounded fn St -> St
+fn KeepWaiting st:
+    let fields = Fold st.fieldQs, [[]], \|acc, q| FreeVarsInto st, (FreeVarsInto st, acc, q.recv), q.result
+    let waiting = Fold st.deferred, fields, \|acc, w| FreeVarsInto st, (FreeVarsInto st, acc, w.expected), w.found
+    LowerLevels st, waiting, st.level
+
 Generalize: unbounded fn St, Ty, [Nat], [((Nat, Text))] -> ((Scheme, St))
 fn Generalize st0, t, keep, bounds:
-    # A variable a waiting field access still decides stays monomorphic: the access is
-    # answered by the uses of the name.
-    let waiting = Fold st0.fieldQs, [[]], \|acc, q| FreeVarsInto st0, (FreeVarsInto st0, acc, q.recv), q.result
-    let st = GeneralizeCols (LowerLevels st0, waiting, st0.level)
+    let st = GeneralizeCols (KeepWaiting st0)
     let z = Zonk st, t
     let vs = Filter (FreeVars st, z), \|v| (InfoOf st, v).level > st.level and not (HasNat keep, v)
     let cvs = Filter (FreeColVars st, z), \|v| (InfoOf st, v).level > st.level

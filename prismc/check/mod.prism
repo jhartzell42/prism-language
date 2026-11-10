@@ -85,7 +85,7 @@ fn CheckProgram srcs, trees, world, shown, recording, unused, pre:
         ((bad2, s2))
     let st2b = update st2:
         &_.level <= 0
-    let st3 = DefaultWants g1, st2b, [[]]
+    let st3 = Undecided (DefaultWants g1, st2b, [[]])
     # A failed impl's method is its impl's alone: two impls' methods share a key, so the
     # list keys each by where its impl stands (`OwnKey`).
     let good = Filter g1.defs, \|d| not (HasText failed, (OwnKey d).qk)
