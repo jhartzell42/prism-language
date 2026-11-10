@@ -189,7 +189,7 @@ fn PreBind wx, benv, menv, s = match s.kind:
         otherwise: ((wx, benv, menv))
     SFn c:
         let fname = DefNameText c.name
-        ((wx, (Bind benv, fname, (BnLocalFn c)), (Bind menv, fname, (BnLocalFn c))))
+        ((wx, (Bind benv, fname, (WithClause benv, fname, c)), (Bind menv, fname, (WithClause menv, fname, c))))
     otherwise: ((wx, benv, menv))
 
 # How a line binds its name: `$x <- init then step` (a hold), `p <- e` (a bind), `let`.
@@ -218,7 +218,7 @@ fn GivesResult lx, menv, e = match e.kind:
                 otherwise:
                     let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
                     match ?q:
-                        ? q: (IsGetterBuiltin q) or ((not (IsPreludeName q)) and (lx.g.vals[q] != nil) and IsWidgetTy (Peel (TypeAt lx, e.span)))
+                        ? q: (IsGetterBuiltin q) or (IsHostBuiltin q) or ((not (IsPreludeName q)) and (lx.g.vals[q] != nil) and IsWidgetTy (Peel (TypeAt lx, e.span)))
                         nil: False
             otherwise: False
 
@@ -231,6 +231,12 @@ fn IsPreludeName q = (?Find %/^Prelude\./, q) != nil
 # it reads the getter.
 IsGetterBuiltin: fn Text -> Bool
 fn IsGetterBuiltin q = q == "Prelude.@Distinct" or q == "Prelude.@PerKey" or q == "Prelude.@Flatten"
+
+# A host (`@HostDocument` and its forms), whose document is a getter of the node: a line
+# above it may read `$doc`, through a getter named for the name it is bound to
+# (`BindHosted`).
+IsHostBuiltin: fn Text -> Bool
+fn IsHostBuiltin q = q == "Prelude.@HostDocument" or q == "Prelude.@HostSome" or q == "Prelude.@HostList"
 
 IsWidgetTy: fn Ty -> Bool
 fn IsWidgetTy t = match t:
@@ -403,8 +409,20 @@ fn BindHosted wx, benv, menv, res, doc, ps:
         WrDyn ex, rds, t: ? (BnDyn ex, rds, t)
         WrParts ignore: ? (BundleBn res)
         otherwise: nil
+    let wx1 = PartGetter (PartGetter wx, menv, ps[0], ?r), menv, ps[1], (? doc)
     let ((be1, me1)) = BindPart benv, menv, ps[0], ?r
-    BindPart2 wx, be1, me1, ps[1], (? doc)
+    BindPart2 wx1, be1, me1, ps[1], (? doc)
+
+# A dynamic part of a host's line, read above the line through the getter its name was
+# prebound to (`IsHostBuiltin`): that getter, reading the part.
+PartGetter: fn Wx, Env, ?Pattern, ?Bn -> Wx
+fn PartGetter wx, menv, ?p, ?b = match ((?p, ?b)):
+    ((? p, ? (BnDyn ex, rds, t))): match p.kind:
+        PName n:
+            let ((w2, ignore, ignore)) = ResultGetter wx, menv, n, ex, rds, t, emptyEnv, emptyEnv
+            w2
+        otherwise: wx
+    otherwise: wx
 
 BindPart: fn Env, Env, ?Pattern, ?Bn -> ((Env, Env))
 fn BindPart benv, menv, ?p, ?b = match ((?p, ?b)):
@@ -717,7 +735,8 @@ fn BuildLine wx, benv, menv, e, ?bound:
         EWidgetBlock b: InlineBlock wx, benv, menv, b, lx
         EFor ?binders, source, body: ForLine wx, benv, menv, ?binders, source, body, e, ?bound
         ERebuild scrut, body: RebuildLine wx, benv, menv, scrut, body, e, ?bound
-        EIf (CondExpr c), thenB, (? elseB): IfGenLine wx, menv, c, thenB, elseB, e
+        EIf c, thenB, (? elseB): IfGenLine wx, menv, c, thenB, elseB, e
+        EMatch s, arms: MatchGenLine wx, menv, s, arms, e
         otherwise: match Peel full:
             TyElem ignore, ignore: ElementLine wx, benv, menv, e, ?bound
             TyAt ignore, ignore: WidgetLine wx, benv, menv, e, ?bound

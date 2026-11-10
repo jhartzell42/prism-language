@@ -112,6 +112,7 @@ fn WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target:
         "Prelude.@Machine": MachineLine wx, benv, menv, args, e, ?target
         "Prelude.@HostDocument": HostLine wx, benv, menv, HostEach, args, ?bound
         "Prelude.@HostSome": HostLine wx, benv, menv, HostSome, args, ?bound
+        "Prelude.@HostList": HostLine wx, benv, menv, HostList, args, ?bound
         otherwise: match lx.g.vals[qk]:
             ? v: InlineWidget wx, benv, menv, qk, v, args, e
             nil:
@@ -132,10 +133,14 @@ fn WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target:
 # methods), linked to the node once it is made, since a child place's first value asks the
 # host before then. The child's result is the line's first part (`WrHosted`), the document
 # the second.
-# The two host forms (`@HostDocument`, and `@HostSome`, whose `nil` forwards).
+# The host forms: `@HostDocument`; `@HostSome`, whose `nil` forwards; `@HostList`, the Each
+# form whose owner also sends answers down by path (prismc's first ruling HL: each firing
+# of its event hands each keyed place its answer, decoded by the place's tag, the next
+# tick's input, as any computed answer; prism_rtl's `Host::hear`).
 type HostForm = choice:
     HostEach
     HostSome
+    HostList
 derive ^Eq, ^Show
 
 HostLine: unbounded fn Wx, Env, Env, HostForm, [Arg], ?Bn -> ((Wx, Wres))
@@ -148,23 +153,19 @@ fn HostLine wx, benv, menv, form, args, ?bound:
     let docGetter = "{hf}_doc"
     let wx1 = update wx:
         &_.taken <= Append &_.taken, [[hf, rowsName, docGetter, "{docGetter}_now", "{docGetter}_snap", "{docGetter}_direct", "{docGetter}_publish", "{hf}_answer", "{hf}_moved"]]
-    let named = match args[1]:
-        ? sup: IsWidgetName sup.value
-        nil: False
-    match ((args[0], args[1])):
-        ((? ignore, ? ignore)) if named:
-            let wx2 = update wx1:
-                &_.pos <= NextPos &_.pos
-                &_.build <= Push &_.build, (RefusalDo "a named widget function as a host's supplier (gap NS): a lambda supplier is lowered, a widget function is not a value")
-            ((wx2, (WrHosted WrUnit, (BnLocal XUnit, Owned, OutUnit))))
+    let ?supArg = if form == HostList: args[2] else: args[1]
+    match ((args[0], ?supArg)):
         ((? child, ? sup)):
             # the supplier's dynamic answers (`@ $d`, round 3 DY): a getter of this node per
             # dynamic, read through the owner's link, and a port each marks
             let ((wxd, dynEnv, dynLets)) = DynamicAnswers wx1, benv, menv, hf, sup.value
             let offered = Own (ValueOf lx, dynEnv, sup.value)
             let supplier0 = match form:
-                HostEach: offered
                 HostSome: XCall (RefRuntime "prism_rtl::forward_on_none"), [[offered]]
+                otherwise: offered
+            let heard = match ((form, args[1])):
+                ((HostList, ? answers)): [[(DoExpr (XMethod (XVar hf), "hear", [[(Ref (ValueOf lx, dynEnv, answers.value))]]))]]
+                otherwise: [[]]
             let supplier = if (Len dynLets) == 0: supplier0 else: XBlock dynLets, supplier0
             # the scope the host's rows build in: the World's, or the enclosing host's
             let enclosing = if Emits wx, pos: XNone else: XCtor (RefRuntime "std::Some"), [[(XCast (XClone (XVar (HostLocal wx, pos))), hostOfTy)]]
@@ -180,7 +181,7 @@ fn HostLine wx, benv, menv, form, args, ?bound:
             let what = "the document of the child hosted at place {PlaceText pos}"
             let wx2 = update wxd:
                 &_.pos <= NextPos &_.pos
-                &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind rowsName), rowsTy), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "std::RefCell::new"), [[(XCall (RefRuntime "rt::Map::new"), [[]])]])]])), (DoLet (PaBind hf), made)]]
+                &_.lets <= Append (Append &_.lets, [[(DoLet (PaTyped (PaBind rowsName), rowsTy), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "std::RefCell::new"), [[(XCall (RefRuntime "rt::Map::new"), [[]])]])]])), (DoLet (PaBind hf), made)]]), heard
                 &_.fields <= Append &_.fields, [[((hf, hostTy, "the host at place {PlaceText pos}: its supplier, its rows, and the way back into its child (pick HO)")), ((rowsName, rowsTy, "the rows of the host at place {PlaceText pos}: `for p, e <- $doc`, one supplier blueprint per child place")), (("{rowsName}_from", (OutCell directTy), "the places the rows of the host at place {PlaceText pos} were last built from")), (("{docGetter}_snap", (OutSnapshot hostDocTy), "`$doc` of the host at place {PlaceText pos}, its outer, a structural dynamic: its snapshots, the places and the lagged dynamic (pick ST)"))]]
                 &_.moves <= Append &_.moves, [[((hf, (XClone (XVar hf)))), ((rowsName, (XClone (XVar rowsName))))]]
                 &_.inits <= Append &_.inits, [[(("{docGetter}_snap", (XCall (RefRuntime "rt::Snapshot::new"), [[XStr what]]))), (("{rowsName}_from", (XCall (RefRuntime "std::RefCell::new"), [[(XCall (RefRuntime "rt::Map::new"), [[]])]])))]]
@@ -213,13 +214,6 @@ fn HostLine wx, benv, menv, form, args, ?bound:
                 &_.pos <= NextPos &_.pos
                 &_.build <= Push &_.build, (RefusalDo "a host without its child or its supplier")
             ((wx2, (WrHosted WrUnit, (BnLocal XUnit, Owned, OutUnit))))
-
-# A widget function's name as a value (`@Supply`), which lowering has no value for.
-IsWidgetName: fn Expr -> Bool
-fn IsWidgetName e = match e.kind:
-    EName n: HasPrefix (SNameKey n), "@"
-    EGroup x: IsWidgetName x
-    otherwise: False
 
 # A supplier's dynamic answers (`@ $d`, `$d` a hold or a derived dynamic of this node; round
 # 3 DY): each `@ x` of the supplier whose `x` is a dynamic that is not a constant gets a
@@ -501,20 +495,28 @@ fn MachineLine wx, benv, menv, args, e, ?target:
     let lx = wx.lx
     let t = OutTyOf lx, (OutOf (TypeAt lx, e.span))
     let ((f, wx1)) = FreshName wx, "machine"
-    let ?step = match args[0]:
+    # a named function is called by its path; any other step is a function value made at
+    # the build and kept in a field (Appendix B: any function of the step's type)
+    let ?named = match args[0]:
         ? a: match a.value.kind:
             EName n:
                 let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
+                let local = (Len n.path) == 1 and HasKey benv.names, (SNameKey n)
                 match ?q:
-                    ? q: ? (ValueRef lx, q)
-                    nil: nil
+                    ? q if not local: ? (XPath (ValueRef lx, q))
+                    otherwise: nil
             otherwise: nil
         nil: nil
-    match ((?step, args[1], args[2])):
-        ((? sp, ? init, ? ev)):
+    match ((args[0], args[1], args[2])):
+        ((? stepArg, ? init, ? ev)):
             let st = OutTyOf lx, (Peel (TypeAt lx, init.value.span))
             let x = Own (ValueOf lx, benv, init.value)
-            let wx2 = AddField wx1, "{f}_state", (OutHold st), "`@Machine`'s state", (XCall (RefRuntime "rt::Hold::new"), [[x, XCx]])
+            let wx0 = AddField wx1, "{f}_state", (OutHold st), "`@Machine`'s state", (XCall (RefRuntime "rt::Hold::new"), [[x, XCx]])
+            let ((sp, wx2)) = match ?named:
+                ? p: ((p, wx0))
+                nil:
+                    let ft = OutTyOf lx, (Peel (TypeAt lx, stepArg.value.span))
+                    (((XField XSelf, "{f}_step"), (AddField wx0, "{f}_step", ft, "`@Machine`'s step, a function value", (Own (ValueOf lx, benv, stepArg.value)))))
             let ((out, wx3)) = match ?target:
                 ? n: ((n, wx2))
                 nil: AddGn wx2, "{f}_fired", t, GnNamed, 0
@@ -522,7 +524,7 @@ fn MachineLine wx, benv, menv, args, e, ?target:
             (((Connect wx4, r, (SkMachine "{f}_state", sp, out)), (WrEv (EvRefOf wx4, out))))
         otherwise:
             let wx2 = update wx1:
-                &_.build <= Push &_.build, (RefusalDo "an `@Machine` whose step is not a named function")
+                &_.build <= Push &_.build, (RefusalDo "an `@Machine` without its step, state or event")
             ((wx2, WrUnit))
 
 # A user widget inlined: its parameters bound to the arguments by layer (an event to the
@@ -558,7 +560,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                 match args[0]:
                     ? a:
                         let call = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
-                        ClauseWidgetLine wx, menv, a.value, call, qk, v, e
+                        ClauseWidgetLine wx, benv, menv, a.value, call, qk, v, e, args
                     nil:
                         let wx2 = update wx:
                             &_.build <= Push &_.build, (RefusalDo "a widget of several clauses that takes no arguments")

@@ -435,17 +435,24 @@ fn RowStruct m, st = match st:
 # tag an answer is for; an accessor per case; the decode of a World's answer.
 AnswerParts: unbounded fn Cp, AnswerDef -> Parts
 fn AnswerParts cp, a:
-    let names = Each a.cases, \|c| c.variant
-    let accessors = Join (Each a.cases, \|c| "crate::prelude::Result<{CppType cp, c.ty}> {c.accessor}() const;"), "\n"
-    let members = "const char* tag() const;\n{accessors}\nstatic crate::prelude::Result<Answer> decode(const Elem& e, const crate::prelude::Pod& v);"
-    let cases = Join (Each a.cases, \|c| CaseDecl c.variant, "{CppType cp, c.ty} a0;"), "\n"
+    # a bundle's tag has a second case, its plain parts, the first value (pick HO)
+    let firsts = Fold a.cases, [[]], \|acc, c| match c.?first:
+        ? ft: Push acc, ((c, ft))
+        nil: acc
+    let names = Append (Each a.cases, \|c| c.variant), (Each firsts, \|((c, ft))| "{c.variant}First")
+    let accessors = Join (Append (Each a.cases, \|c| "crate::prelude::Result<{CppType cp, c.ty}> {c.accessor}() const;"), (Each firsts, \|((c, ft))| "crate::prelude::Result<{CppType cp, ft}> {c.accessor}_first() const;")), "\n"
+    let members = "const char* tag() const;\n{accessors}\nstatic crate::prelude::Result<Answer> decode(const Elem& e, const crate::prelude::Pod& v);\nstatic crate::prelude::Result<Answer> decode_first(const Elem& e, const crate::prelude::Pod& v);"
+    let cases = Join (Append (Each a.cases, \|c| CaseDecl c.variant, "{CppType cp, c.ty} a0;"), (Each firsts, \|((c, ft))| CaseDecl "{c.variant}First", "{CppType cp, ft} a0;")), "\n"
     let cls = ChoiceClass (CppDoc "`Answer c`: an answer to an element, typed by its tag (Semantics ch. 9): what a host's\nsupplier answers a child place with, and what a World's answer to a forwarded element\ndecodes to, carrying the tag's output."), "", "Answer", cases, (Join names, ", "), members
-    let tags = Join (Each a.cases, \|c| "if (::std::holds_alternative<{c.variant}>(cases())) return {TypePath (RefSpelled c.structPath)}::TAG;"), "\n"
+    let tags = Join (Append (Each a.cases, \|c| "if (::std::holds_alternative<{c.variant}>(cases())) return {TypePath (RefSpelled c.structPath)}::TAG;"), (Each firsts, \|((c, ft))| "if (::std::holds_alternative<{c.variant}First>(cases())) return {TypePath (RefSpelled c.structPath)}::TAG;")), "\n"
     let tagFn = CppFunction "", "const char* Answer::tag() const", "{tags}\n::prism_rtl::unreachable();"
+    let firstGetters = Each firsts, \|((c, ft))| CppFunction (CppDoc "A `{c.tagName}`'s first value."), "crate::prelude::Result<{CppType cp, ft}> Answer::{c.accessor}_first() const", "if (auto c = ::std::get_if<{c.variant}First>(&cases())) return c->a0;\nreturn crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where {c.tagName}'s first value was expected\")));"
+    let decodeFirsts = Join (Each firsts, \|((c, ft))| "if (is<Elem::{c.variant}>(e)) return Answer({c.variant}First\{TRY(::prism_rtl::from_pod<{CppType cp, ft}>(v))\});"), "\n"
+    let decodeFirst = CppFunction (CppDoc "A World's first value for the element `e`: a bundle's plain parts, any other tag's answer."), "crate::prelude::Result<Answer> Answer::decode_first(const Elem& e, const crate::prelude::Pod& v)", "{decodeFirsts}\nreturn decode(e, v);"
     let getters = Each a.cases, \|c| CppFunction (CppDoc "A `{c.tagName}`'s answer."), "crate::prelude::Result<{CppType cp, c.ty}> Answer::{c.accessor}() const", "if (auto c = ::std::get_if<{c.variant}>(&cases())) return c->a0;\nreturn crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where {c.tagName}'s was expected\")));"
     let decodes = Join (Each a.cases, \|c| "if (is<Elem::{c.variant}>(e)) return Answer({c.variant}\{TRY(::prism_rtl::from_pod<{CppType cp, c.ty}>(v))\});"), "\n"
     let decode = CppFunction (CppDoc "A World's answer to the element `e`, decoded by its tag."), "crate::prelude::Result<Answer> Answer::decode(const Elem& e, const crate::prelude::Pod& v)", "{decodes}\n::prism_rtl::unreachable();"
-    Parts(forward=[["class Answer;"]], values=[[ValueDecl(path="Answer", deps=[[]], text=cls)]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append [[tagFn]], (Push getters, decode)))
+    Parts(forward=[["class Answer;"]], values=[[ValueDecl(path="Answer", deps=[[]], text=cls)]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append [[tagFn]], (Append (Append getters, firstGetters), [[decode, decodeFirst]])))
 
 # A step machine (D6): a job struct, its `cycle`, its `Start`.
 JobParts: unbounded fn Cp, JobDef -> Parts

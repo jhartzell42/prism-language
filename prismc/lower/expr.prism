@@ -88,7 +88,7 @@ fn LiteralValue lx, env, l, span, neg:
         LInt d: VlOwned (Number t, d, neg), t
         LFloat d: VlOwned (XFloat (if neg: "-{d}" else: d)), OutFloat
         LChar c: VlOwned (XChar c), OutChar
-        LDuration d, u: VlOwned (Refusal "a Duration literal"), OutDuration
+        LDuration d, u: VlOwned (XDuration (if neg: "-{DurationNanos d, u}" else: "{DurationNanos d, u}")), OutDuration
         LText segs: TextValue lx, env, segs
         LRegex r: match r.?replacement:
             nil: VlOwned (XRegex r.pattern, r.flags), OutRegex
@@ -582,6 +582,7 @@ fn PureBlueprint lx, env, x, t:
     if isNever: VlOwned (XCall (RefRuntime "prism_rtl::never_blueprint::<crate::Elem, crate::Answer>"), [[]]), t
     else: match env.names["#tag"]:
         nil: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}` as a supplier's answer outside a tag arm: which tag's output it answers cannot be known"), t
+        ? (BnLocal (XPath variant), ignore, ignore) if IsBundleAnswer lx, x: BundleBlueprint lx, env, x, variant, t
         ? (BnLocal (XPath variant), ignore, ignore): match LayerOf (TypeAt lx, x.span):
             LyEv:
                 let wrapped = XMethod (Own (ValueOf lx, env, x)), "map", [[(XClosure False, [[PaBind "v"]], (XCtor variant, [[(XClone (XVar "v"))]]))]]
@@ -593,6 +594,33 @@ fn PureBlueprint lx, env, x, t:
                 ? d: DynamicBlueprint lx, env, x, d, variant, t
             otherwise: PlainBlueprint lx, env, x, variant, t
         otherwise: VlOwned (Refusal "a supplier's answer under a tag the arm does not name"), t
+
+# `@ ((x, !e))` under a bundle tag's arm (Type System ch. 2, "Bundles"; pick HO): a tuple
+# whose parts are plain values and one event. The plain parts are the place's first value,
+# the tag's first-value variant of `Answer` (`AnswerCase.first`), read at the place's
+# build; each firing of the event an answer, a tick late (prism_rtl's `bundle_blueprint`).
+IsBundleAnswer: fn Lx, Expr -> Bool
+fn IsBundleAnswer lx, x = match x.kind:
+    EGroup y: IsBundleAnswer lx, y
+    ETuple es: Fold es, False, \|f, y| f or (LayerOf (TypeAt lx, y.span)) == LyEv
+    otherwise: False
+
+BundleBlueprint: unbounded fn Lx, Env, Expr, Ref, OutTy -> Vl
+fn BundleBlueprint lx, env, x, variant, t = match x.kind:
+    EGroup y: BundleBlueprint lx, env, y, variant, t
+    ETuple es:
+        let plain = Filter es, \|y| (LayerOf (TypeAt lx, y.span)) == LyPlain
+        let evs = Filter es, \|y| (LayerOf (TypeAt lx, y.span)) == LyEv
+        let others = Filter es, \|y| (LayerOf (TypeAt lx, y.span)) == LyDyn
+        match ((env.names["#tagfirst"], evs, others)):
+            ((? (BnLocal (XPath firstVariant), ignore, ignore), [[ev]], [[]])):
+                let firstVal = match plain:
+                    [[y]]: Own (ValueOf lx, env, y)
+                    otherwise: XTuple (Each plain, \|y| Own (ValueOf lx, env, y))
+                let wrapped = XMethod (Own (ValueOf lx, env, ev)), "map", [[(XClosure False, [[PaBind "v"]], (XCtor variant, [[(XClone (XVar "v"))]]))]]
+                VlOwned (XCall (RefRuntime "prism_rtl::bundle_blueprint::<crate::Elem, _>"), [[(XCtor firstVariant, [[firstVal]]), wrapped]]), t
+            otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer with a `$` part or two event parts"), t
+    otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer that is not a tuple of its parts"), t
 
 PlainBlueprint: unbounded fn Lx, Env, Expr, Ref, OutTy -> Vl
 fn PlainBlueprint lx, env, x, variant, t = VlOwned (XCall (RefRuntime "prism_rtl::plain_blueprint::<crate::Elem, _>"), [[(XCtor variant, [[Own (ValueOf lx, env, x)]])]]), t
@@ -654,7 +682,7 @@ fn NameValue lx, env, n, span:
             otherwise: VlOwned (Refusal "an event read as a value"), et
         ? (BnParts ignore): VlOwned (Refusal "a tuple pattern's binding as a value"), t
         ? (BnWidget ignore, ignore, ignore, ignore): VlOwned (Refusal "a widget parameter read as a plain value"), t
-        ? (BnLocalFn ignore): VlOwned (Refusal "a local function as a value"), t
+        ? (BnLocalFn cs): LocalFnValue lx, env, cs, t
         nil:
             let ((?qk, why)) = ResolveValue lx.g, lx.home, n
             match ?qk:
@@ -684,6 +712,7 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
         ? tg: VlOwned (XStr tg.name), t
         nil: if Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsLetDef d): VlOwned (XCall (ValueRef lx, qk), [[]]), t
         else: match lx.g.vals[qk]:
+            ? v if (IsWidgetFn v) and not (IsValueWidget lx, qk): VlOwned (Refusal (WidgetValueWords qk)), t
             ? v:
                 let isLet = Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsLetDef d)
                 if isLet: VlOwned (XCall (ValueRef lx, qk), [[]]), t
@@ -703,6 +732,17 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
                         VlOwned (XCall (RefRuntime "std::Rc::new"), [[(XClosure False, pas, (XCall (ValueRef lx, qk), (Each names, \|nm| XVar nm)))]]), t
                     otherwise: VlOwned (XCall (RefRuntime "std::Rc::new"), [[XPath (ValueRef lx, qk)]]), t
             nil: VlOwned (Refusal "the global {qk}"), t
+
+# A widget function: its result a blueprint.
+IsWidgetFn: fn ValInfo -> Bool
+fn IsWidgetFn v = match v.scheme.ty:
+    TyFn ignore, ignore, (TyAt ignore, ignore): True
+    otherwise: False
+
+# A widget function as a value that is not one (pick HO): a supplier whose blueprint
+# builds places, or a widget that answers no element.
+WidgetValueWords: fn Text -> Text
+fn WidgetValueWords qk = "the widget function {BareName qk} as a value: a blueprint value is a supplier's answer that builds no place (`@ x`, `@Element e`, a `match` of them); one with places is a widget-function blueprint as an answer (pick HO)"
 
 IsLetDef: fn Def -> Bool
 fn IsLetDef d = match d.body:
@@ -726,7 +766,7 @@ fn Application lx, env, callee, args, span:
             let nkey = NameKeyAt lx, env, n, callee.span
             let ?local = if (Len n.path) == 1: env.names[nkey] else: nil
             match ?local:
-                ? (BnLocalFn c): InlineLocalFn lx, env, c, args, t
+                ? (BnLocalFn cs): InlineLocalFn lx, env, cs, args, t
                 ? b:
                     let f = NameValue lx, env, n, callee.span
                     match ValueTy f:
@@ -753,20 +793,75 @@ fn Application lx, env, callee, args, span:
 # A local function called: its body inlined, each parameter a local bound to its
 # argument (the caller's environment, which the function's block shares). A clause whose
 # parameters are not names is not lowered yet.
-InlineLocalFn: unbounded fn Lx, Env, FnClause, [Arg], OutTy -> Vl
-fn InlineLocalFn lx, env, c, args, t:
+InlineLocalFn: unbounded fn Lx, Env, [FnClause], [Arg], OutTy -> Vl
+fn InlineLocalFn lx, env0, cs, args, t:
+    let c = Or cs[0], dummyClause
     let names = Each c.params, \|p| PlainBinder lx, p
-    if Fold names, False, \|bad, nm| bad or nm == "": VlOwned (Refusal "a local function whose parameters are not names"), t
+    # a call inside the function's own body would inline it again, without end
+    let mark = "#inlining{c.span.start}"
+    let env = Bind env0, mark, (BnLocal XUnit, Owned, OutUnit)
+    if HasKey env0.names, mark: VlOwned (Refusal "a local function that calls itself ({DefNameText c.name})"), t
+    else: if (Len cs) > 1 or Fold names, False, \|bad, nm| bad or nm == "": InlineLocalFnMatched lx, env0, env, cs, args, t
     else:
         let ((dos, env2)) = Fold (Range0 (Len names)), (([[]], env)), \|((acc, en)), i|
             let nm = Or names[i], ""
             let rs = "{LocalName lx, nm}_{c.span.start}"
             let v = match args[i]:
-                ? a: ValueOf lx, env, a.value
+                ? a: ValueOf lx, env0, a.value
                 nil: VlOwned (XUnit), OutUnit
             let bt = ValueTy v
             (((Push acc, (DoLet (PaBind rs), (Own v))), (Bind en, nm, (BnLocal (XVar rs), Owned, bt))))
         VlOwned (XBlock dos, (FnBodyValue lx, env2, c.body)), t
+
+# A local function whose parameters are patterns, or of several clauses, called: the
+# arguments, owned, matched against each clause's patterns in order (the checker has them
+# exhaustive), its body over what they bind.
+InlineLocalFnMatched: unbounded fn Lx, Env, Env, [FnClause], [Arg], OutTy -> Vl
+fn InlineLocalFnMatched lx, callEnv, env, cs, args, t:
+    let first = Or cs[0], dummyClause
+    let vals = Each (Range0 (Len first.params)), \|i| match args[i]:
+        ? a: Own (ValueOf lx, callEnv, a.value)
+        nil: XUnit
+    let arms = Each cs, \|c|
+        let pos = Each (Range0 (Len c.params)), \|i|
+            let p = Or c.params[i], dummyPat
+            RustPat lx, p, (BinderTyOfPattern lx, p), Owned, "l{c.span.start}_{i}"
+        let env2 = BindAll env, (Fold pos, [[]], \|acc, o| Append acc, o.binds)
+        XArm(pat=(PaTuple (Each pos, \|o| o.pa)), conds=(Fold pos, [[]], \|acc, o| Append acc, o.conds), body=(FnBodyValue lx, env2, c.body))
+    ArmsValue (XTuple vals), arms, "l{first.span.start}", t
+
+# A local function's binding with one more clause (`fn` lines in clauses, Semantics ch. 4):
+# a clause after one of the same name in the block is its next.
+WithClause: fn Env, Text, FnClause -> Bn
+fn WithClause env, name, c = match env.names[name]:
+    ? (BnLocalFn cs) if (Fold cs, False, \|f, k| f or k.span == c.span) == False: BnLocalFn (Push cs, c)
+    otherwise: BnLocalFn [[c]]
+
+# A local function as a value (`Fold xs, 0, Add`): a closure of its clause, made where it is
+# named, at the type it is used at there. One the checker generalized is used at a type its
+# body's own types do not say, so it is refused, loudly.
+LocalFnValue: unbounded fn Lx, Env, [FnClause], OutTy -> Vl
+fn LocalFnValue lx, env, cs, t:
+    let c = Or cs[0], dummyClause
+    let body = match c.body:
+        BodyExpr e: LbExpr e
+        BodyBlock b: LbBlock b
+    if (Len cs) > 1: VlOwned (Refusal "a local function of several clauses as a value ({DefNameText c.name})"), t
+    else: if HasQuant (TypeAt lx, c.span): VlOwned (Refusal "a generic local function as a value ({DefNameText c.name})"), t
+    else: PlainLambda lx, env, c.params, body, t
+
+HasQuant: fn Ty -> Bool
+fn HasQuant t = match t:
+    TyQ ignore: True
+    TyCon ignore, xs: Fold xs, False, \|f, x| f or HasQuant x
+    TyFn ignore, ps, r: (HasQuant r) or Fold ps, False, \|f, x| f or HasQuant x
+    TyTuple xs: Fold xs, False, \|f, x| f or HasQuant x
+    TyArray x: HasQuant x
+    TyMap k, v: (HasQuant k) or HasQuant v
+    TySig ignore, x: HasQuant x
+    TyAt x, ignore: HasQuant x
+    TyElem ignore, x: HasQuant x
+    otherwise: False
 
 # An argument as a parameter takes it: borrowed, a lambda as a borrowed closure.
 Argument: unbounded fn Lx, Env, Expr -> Ex
@@ -830,6 +925,7 @@ fn GlobalCall lx, env, qk, args, span, cspan, t:
     match lx.g.ctors[qk]:
         ? c: CtorApp lx, env, c, args, span
         nil: match lx.g.vals[qk]:
+            ? v if (IsWidgetFn v) and not (IsValueWidget lx, qk): VlOwned (Refusal (WidgetValueWords qk)), t
             ? v:
                 if v.sort == "method": MethodCall lx, env, v, args, span, t
                 else: if v.home == "Prelude": PreludeCall lx, env, qk, args, span, t
@@ -1135,7 +1231,9 @@ fn PreludeCall lx, env, qk, args, span, t:
         ? a: OutTyOf lx, (Peel (TypeAt lx, a.value.span))
         nil: OutUnit
     let variant = PreludeVariant name, first
-    match ?PreludeJob lx, env, variant, args:
+    # `@HostList`'s answer goes as plain data (prismc's first ruling HL)
+    if qk == "Prelude.AnswerOf" and not (Podable first): VlOwned (Refusal "`AnswerOf` of a value that is not plain data"), t
+    else: match ?PreludeJob lx, env, variant, args:
         ? job: VlOwned (XCall (HelperRef "run_to_end"), [[job]]), t
         nil: VlOwned (XCall (HelperRef variant), (Each args, \|a| Argument lx, env, a.value)), t
 
@@ -1737,7 +1835,8 @@ fn BlockStmt lx, env, s = match s.kind:
         otherwise: PlainLet lx, env, s, p, x
     SExpr x: (([[DoExpr (Own (ValueOf lx, env, x))]], env))
     SSignature ignore: (([[]], env))
-    SFn f: (([[RefusalDo "a local function {DefNameText f.name}: not lowered yet"]], env))
+    # a local function: inlined where it is called, a closure where it is a value
+    SFn f: (([[]], (Bind env, (DefNameText f.name), (WithClause env, (DefNameText f.name), f))))
     otherwise: (([[RefusalDo "a statement this back end does not lower yet"]], env))
 
 # A generalized local `let` (pick LG): its value lowered once per distinct instantiation

@@ -434,6 +434,11 @@ pub fn forward_on_none<E: Level + Eq, A: AnswerOf<E>>(some: Rc<dyn Fn(&Path, &Li
 /// element's tag (emitted beside `Elem`).
 pub trait AnswerOf<E>: Clone + 'static {
     fn decode(element: &E, v: &Pod) -> Result<Self, Fault>;
+    /// A World's first value for the element: an answer, but for a bundle's tag, whose first
+    /// value is its plain parts (`Answer`'s first-value variant, pick HO).
+    fn decode_first(element: &E, v: &Pod) -> Result<Self, Fault> {
+        Self::decode(element, v)
+    }
 }
 
 /// Where a node's places go (claude/backend.md, "Hosting"): the document, or an enclosing
@@ -493,6 +498,17 @@ pub fn event_blueprint<E: 'static, A: Clone + 'static>(e: Event<A>) -> Blueprint
     })
 }
 
+/// `@ ((x, !e))` for a bundle's tag (pick HO): `x`, the plain parts, the place's first value,
+/// once; each firing of `e` an answer to the child's place, a tick late.
+pub fn bundle_blueprint<E: 'static, A: Clone + 'static>(first: A, e: Event<A>) -> Blueprint<E, A> {
+    Rc::new(move |_path, sink: Sink<A>, _scope, _cx| {
+        let node = Rc::new(Subscribed { port: e.port.clone(), handle: Cell::new(None) });
+        let h = e.port.subscribe(Rc::new(move |v: &A, cx: &mut Cx| later(&sink, v.clone(), cx)));
+        node.handle.set(Some(h));
+        Ok(Supplied { node, first: Some(first.clone()), forwards: false })
+    })
+}
+
 /// `@ $d`: the value after the birth tick is the place's first value, read now,
 /// synchronously, as a World's first-value query is; each later change of `d` is a push to
 /// the child's place as an input of the next tick, which is owed (Semantics ch. 9 as ruled,
@@ -549,6 +565,12 @@ impl<P> Link<P> {
     pub fn owner(&self) -> Option<Rc<P>> {
         self.0.borrow().upgrade()
     }
+    /// The owner, as `Weak::upgrade` gives it: a generation built before its block's node
+    /// is made holds its block through a link (a static widget of several clauses whose
+    /// result the block reads at its build), and reads it as a row reads its `parent`.
+    pub fn upgrade(&self) -> Option<Rc<P>> {
+        self.owner()
+    }
 }
 
 /// `@Element e`: the child's element re-emitted at `path/0`, its level following the
@@ -564,7 +586,7 @@ pub fn element_blueprint<E: Level + Eq, A: AnswerOf<E>>(e: &Live<E>) -> Blueprin
         // tick, and an early row's entry cannot be read until its host's node is made.
         let element = e.identity.level_pod(cx);
         let first = match scope {
-            Scope::World => cx.first_value(&element).map(|v| A::decode(&e.identity, &v)).transpose()?,
+            Scope::World => cx.first_value(&element).map(|v| A::decode_first(&e.identity, &v)).transpose()?,
             // the forwarded element is the same place for the enclosing host: its entry
             Scope::Hosted(host) => host.first_value(&at, &e.identity, &e.entry, cx)?,
         };
@@ -668,6 +690,31 @@ impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> Host<E, A, P> {
         self.me.upgrade().expect("a host outlives its rows")
     }
 
+    /// `@HostList`'s answers sent down by path (Semantics ch. 9, the list form; prismc's
+    /// first ruling HL): each firing of `answers` hands the place at each of its keys that
+    /// answer, decoded by the place's element as a World's answer is (a tag that does not
+    /// match is a fault of the tick), as a computed answer, the next tick's input, which is
+    /// owed. A key with no place is dropped, as an answer to a place that left is.
+    pub fn hear(&self, answers: &Event<Map<Path, Pod>>) {
+        let me = self.me.clone();
+        // the subscription holds the host weakly and lives as long as the event's port
+        let _ = answers.port.subscribe(Rc::new(move |m: &Map<Path, Pod>, cx: &mut Cx| match me.upgrade() {
+            Some(host) => host.send_down(m, cx),
+            None => Ok(()),
+        }));
+    }
+
+    fn send_down(&self, m: &Map<Path, Pod>, cx: &mut Cx) -> Done {
+        for (p, v) in m.iter() {
+            let row = self.rows.borrow().get(p).cloned();
+            if let Some(row) = row {
+                let a = A::decode(&row.entry(cx), v)?;
+                row.answer_later(a, cx);
+            }
+        }
+        Ok(())
+    }
+
     /// A child place's request: out with its forwarded element, or nowhere when the
     /// supplier answered the place (a host answers its child; a request reaches a World
     /// only from an element the host's blueprint emits).
@@ -759,6 +806,13 @@ impl<E: Clone + Eq + 'static, A: Clone + 'static> HostRow<E, A> {
 
     fn host(&self) -> Rc<dyn HostOf<E, A>> {
         self.host.upgrade().expect("a host outlives its rows")
+    }
+
+    /// An answer the host sends down to the row's place (`@HostList`): delivered as the
+    /// next tick's input, and dropped if the key left by then.
+    pub fn answer_later(&self, v: A, cx: &mut Cx) {
+        let sink = self.sink.clone();
+        cx.answer_later(Box::new(move |cx| sink(&v, cx)));
     }
 
     /// The blueprint's first value: the place's, when its output has one.

@@ -103,6 +103,22 @@ fn WholeNanoseconds text, scale:
             let tens = FoldChars frac, 1, \|p, ignore| p * 10
             k <= 30 and (Or (?Mod (f * scale), tens), 1) == 0
 
+# A duration literal's length in nanoseconds, `digits[.frac]` times its unit's scale; the
+# lexer has refused one that is not whole (back ends write it as a number).
+DurationNanos: fn Text, Text -> Nat
+fn DurationNanos text, u:
+    let scale = Fold durationUnits, 0, \|found, ((name, s))| if name == u: s else: found
+    let parts = SplitOn (Concat (SplitOn text, "_")), "."
+    let whole = Or (?ParseNat (Or parts[0], "0")), 0
+    let fracNs = match parts[1]:
+        nil: 0
+        ? frac0:
+            let frac = TrimZeros frac0
+            let f = if frac == "": 0 else: Or (?ParseNat frac), 0
+            let tens = FoldChars frac, 1, \|p, ignore| p * 10
+            Or (?Div (f * scale), tens), 0
+    whole * scale + fracNs
+
 TrimZeros: fn Text -> Text
 fn TrimZeros t = TrimTrailing t, "0"
 

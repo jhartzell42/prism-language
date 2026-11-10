@@ -100,6 +100,7 @@ fn CppExpr cp, x = match x:
     XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "crate::prelude::Int({d}ll)" else: "*crate::prelude::Int::parse(\"{d}\")"
     XByte d: "::std::uint8_t({d})"
     XFloat d: "crate::prelude::Float\{{d}\}"
+    XDuration n: "crate::prelude::Duration\{{CppNanos n}\}"
     XIndex n: "{n}u"
     XChar c: "U'{CppCharEscape c}'"
     XStr t: CppString t
@@ -143,6 +144,8 @@ fn CppExpr cp, x = match x:
     XUnary op, y: "{UnOpText op}{CppTight cp, y}"
     XCtor p, args: CppCtor cp, p, args
     XRecord p, fs: CppRecord cp, p, fs
+    # one part: `make_tuple`, since `std::tuple\{t\}` of a tuple `t` deduces a copy of `t`
+    XTuple [[x]]: "::std::make_tuple({CppArgs cp, [[x]]})"
     XTuple xs: "::std::tuple\{{CppArgs cp, xs}\}"
     XVec [[]]: "\{\}"
     XVec xs: "::std::vector\{{CppArgs cp, xs}\}"
@@ -204,6 +207,24 @@ fn CppFormat cp, parts, how = "{how}({Join (CppArgList cp, (Each parts, \|p| For
 FormatArg: fn Ex -> Ex
 fn FormatArg (XText t) = XStr t
 fn FormatArg x = x
+
+# A duration's nanoseconds as a `prism_rtl::Nanos` (`__int128`, which has no literal):
+# eighteen digits at a time, so each part is a `long long` literal, the high parts scaled.
+CppNanos: fn Text -> Text
+fn CppNanos n = if HasPrefix n, "-": "(-{CppNanosOf (Or (?ParseNat (AfterFirst n)), 0)})" else: CppNanosOf (Or (?ParseNat n), 0)
+
+CppNanosOf: fn Nat -> Text
+fn CppNanosOf n:
+    let base: Nat = 1000000000000000000
+    let Part = \|k| "prism_rtl::Nanos({k}ll)"
+    let low = Or (?Mod n, base), 0
+    let high = Or (?Div n, base), 0
+    if high == 0: Part low
+    else:
+        let mid = Or (?Mod high, base), 0
+        let top = Or (?Div high, base), 0
+        let upper = if top == 0: Part mid else: "({Part top} * {Part base} + {Part mid})"
+        "({upper} * {Part base} + {Part low})"
 
 CppCharEscape: fn Text -> Text
 fn CppCharEscape "'" = "\\'"

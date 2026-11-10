@@ -1,0 +1,22 @@
+# A widget of several clauses whose body names what its caller also names (Semantics ch. 6:
+# a function's names are its own): the clause's `!b` is its button, never the caller's
+# `!b`, so a click on the caller's button fires nothing of the clause's. Written by Claude
+# on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@Pick: fn ?Nat -> @!Nat
+fn @Pick nil:
+    !b <- Ui.Button(label=$"none")                               # 1
+    @ (0 on !b)
+fn @Pick (? n):
+    !b <- Ui.Button(label=$"pick {n}")                           # 1
+    @ (n on !b)
+
+@page: @unit
+@page:
+    !b <- Ui.Button(label=$"page")                               # 0
+    !picked <- @Pick (? 3)                                       # 1
+    $total <- 0 then $total + !picked
+    $clicks <- 0 then $clicks + 1 on !b
+    Ui.Label(text=$"{$total} {$clicks}")                         # 2

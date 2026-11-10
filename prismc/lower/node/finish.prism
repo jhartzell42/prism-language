@@ -145,7 +145,7 @@ fn SinkCode sk, target, y = match target:
     SkResult: [[DoExpr (XMethod (XCx), "result", [[(XCtor (RefRuntime "rt::Outcome::Fired"), [[(XMethod y, "to_pod", [[]])]])]])]]
     SkArm f: [[DoExpr (XMethod (XField XSelf, "{f}"), "arm", [[y, (XClone XSelf), XCx]])]]
     SkMachine f, step, out:
-        let stepped = XCall step, [[(XRef (XMethod (XField XSelf, f), "get", [[XCx]])), (XRef y)]]
+        let stepped = XApply step, [[(XRef (XMethod (XField XSelf, f), "get", [[XCx]])), (XRef y)]]
         Append [[(DoLet (PaTuple [[PaBind "machine_s", PaBind "machine_b"]]), stepped), DoExpr (XMethod (XField XSelf, "{f}"), "set", [[(XVar "machine_s"), XCx]]), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "machine_b"]]), (XVar "machine_b"), [[(SelfCall (GnOf sk.wx, out).name, [[(XVar "machine_b")]])]], [[]])]], (MovedMarks sk, f)
     SkPort f: [[DoExpr (XCall (HelperRef "no_fault"), [[(XMethod (XField XSelf, "{f}_port"), "fire", [[y, XCx]])]])]]
     SkUp m:
@@ -312,7 +312,8 @@ fn FinishNode wx0, qk, params, isRow:
     let wakesField = if many: [[(("wakes", OutWakes, "the heights asked for this tick, lowest first"))]] else: [[]]
     let wakesInit = if many: [[(("wakes", (XCall (RefRuntime "rt::Wakes::default"), [[]])))]] else: [[]]
     let genFields = Fold wx.gens, [[]], \|acc, gd| Append acc, [[((gd.name, (OutCell (OutOpt (OutObj (OutNamed (RefRuntime "rt::Row"), [[]])))), "the current generation of the `rebuild` at place {PlaceText gd.pos}")), (("{gd.name}_count", (OutNamed (RefRuntime "std::Cell"), [[OutCount]]), "how many generations it has built")), (("{gd.name}_stale", (OutNamed (RefRuntime "std::Cell"), [[OutBool]]), "its source changed since it was built"))]]
-    let genInits = Fold wx.gens, [[]], \|acc, gd| Append acc, [[((gd.name, (XCall (RefRuntime "std::RefCell::new"), [[XNone]]))), (("{gd.name}_count", (XCall (RefRuntime "std::Cell::new"), [[XIndex 0]]))), (("{gd.name}_stale", (XCall (RefRuntime "std::Cell::new"), [[XBool False]])))]]
+    # an early generation (`GenDef.early`) is the row the build made
+    let genInits = Fold wx.gens, [[]], \|acc, gd| Append acc, [[((gd.name, (XCall (RefRuntime "std::RefCell::new"), [[(if gd.early: XCtor (RefRuntime "std::Some"), [[(XVar "{gd.name}_row")]] else: XNone)]]))), (("{gd.name}_count", (XCall (RefRuntime "std::Cell::new"), [[XIndex (if gd.early: 1 else: 0)]]))), (("{gd.name}_stale", (XCall (RefRuntime "std::Cell::new"), [[XBool False]])))]]
     let portFields = Each wx.ports, \|pn| (("{pn}_port", (OutPort (GnTyNamed wx, pn)), "`!{pn}`, which rows subscribe to"))
     let portInits = Each wx.ports, \|pn| (("{pn}_port", (XCall (RefRuntime "rt::Port::new"), [[]])))
     let subFields = Each wx.subs, \|((ev, m, t))| (("{m}_sub", (OutNamed (RefRuntime "std::Cell"), [[(OutOpt (OutNamed (RefRuntime "rt::Handle"), [[]]))]]), "the subscription to the parent's `!{ev}`"))
@@ -359,7 +360,9 @@ fn FlattenMethods sk:
         let fire = XCall (HelperRef "no_fault"), [[(XMethod port, "fire", [[XUnit, XCx]])]]
         let fired = DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "d"]]), live, [[(DoExpr fire)]], [[]]
         MethDef(name="{gd.name}_result_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Push marks, fired), tail=(XUnit), doc="The current generation's result moved: what reads a `@Flatten` over it reads it again, and the dynamic kept for it fires its update event for whoever follows it outside this node.")
-    Append adopts, moved
+    # a static clause widget's dynamic result moved (`DynClauseLine`): its readers here
+    let clauseMoved = Each wx.clauseResults, \|n| MethDef(name="{n}_result_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(HoldWritten sk, "{n}_res"), tail=(XUnit), doc="A write behind the clause's dynamic result: what reads it reads it again.")
+    Append (Append adopts, moved), clauseMoved
 
 IsDynTy: fn OutTy -> Bool
 fn IsDynTy (OutDyn ignore) = True
@@ -390,7 +393,7 @@ fn BuildSteps sk, atBuild:
         Append (Push before, (DoExpr (TryOf (XMethod recv, "{b.name}_build", [[XCx]])))), after
     # a `rebuild` handing back a dynamic: its snapshot taken after the generation is built
     let Gen = \|gd|
-        let built = if atBuild: DoExpr (TryOf (XMethod recv, "{gd.name}_build", [[XCx]])) else: DoIf (XMethod (XField XSelf, "{gd.name}_stale"), "replace", [[(XBool False)]]), [[DoExpr (TryOf (XMethod (XSelf), "{gd.name}_build", [[XCx]]))]], [[]]
+        let built = if atBuild and gd.early: DoExpr (XUnit) else: if atBuild: DoExpr (TryOf (XMethod recv, "{gd.name}_build", [[XCx]])) else: DoIf (XMethod (XField XSelf, "{gd.name}_stale"), "replace", [[(XBool False)]]), [[DoExpr (TryOf (XMethod (XSelf), "{gd.name}_build", [[XCx]]))]], [[]]
         Append [[built]], (Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == gd.name), Take)
     # at the build, a scope's live hosted places take their entries once its builders and
     # generations have run (the structure they read has settled), before the host whose
@@ -457,7 +460,10 @@ fn DocumentBody Add, places, builders, gens:
     # a host's own rows (prism_rtl's) give their forwarded places' entries
     let RowDoc = \|b| if HasPrefix b.rowNode, "prism_rtl::HostRow": XMethod (XVar "row"), "entries", [[]] else: XMethod (XVar "row"), "document", [[XCx]]
     let rows = Each builders, \|b| DoFor (PaTuple [[PaBind "k", PaBind "row"]]), (XMethod (XMethod (XField XSelf, b.name), "borrow", [[]]), "iter", [[]]), [[(DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (RowDoc b), [[(Add (XMethod (XMethod (XMethod (XCall (RefRuntime "rt::Path::root"), [[]]), "at", [[XIndex b.pos.at]]), "child", [[(XCtor (RefRuntime "rt::Segment::Key"), [[(XMethod (XVar "k"), "to_pod", [[]])]])]]), "join", [[XRef (XVar "p")]]), (XVar "e"))]])]]
-    let generations = Each gens, \|gd| DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XMethod (XMethod (XField XSelf, gd.name), "borrow", [[]]), "as_ref", [[]]), [[(DoLet (PaBind "g"), (XBin OpSub, (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]]), (XIndex 1))), (DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (XMethod (XVar "row"), "document", [[XCx]]), [[(Add (XMethod (XMethod (XMethod (XCall (RefRuntime "rt::Path::root"), [[]]), "at", [[XIndex gd.pos.at]]), "child", [[(XCtor (RefRuntime "rt::Segment::Gen"), [[XVar "g"]])]]), "join", [[XRef (XVar "p")]]), (XVar "e"))]])]], [[]]
+    # a transparent generation's places stand at the block's own positions (a static
+    # widget of several clauses, a building `match`'s arm): their paths are the block's
+    let GenPath = \|gd| if gd.transparent: XClone (XVar "p") else: XMethod (XMethod (XMethod (XCall (RefRuntime "rt::Path::root"), [[]]), "at", [[XIndex gd.pos.at]]), "child", [[(XCtor (RefRuntime "rt::Segment::Gen"), [[XVar "g"]])]]), "join", [[XRef (XVar "p")]]
+    let generations = Each gens, \|gd| DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XMethod (XMethod (XField XSelf, gd.name), "borrow", [[]]), "as_ref", [[]]), [[(DoLet (PaBind "g"), (XBin OpSub, (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]]), (XIndex 1))), (DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (XMethod (XVar "row"), "document", [[XCx]]), [[(Add (GenPath gd), (XVar "e"))]])]], [[]]
     Append (Append statics, rows), generations
 
 MapInsert: fn Ex, Ex -> Do
@@ -683,6 +689,16 @@ fn TypedForwardArm b, segs:
     let rowOf = XMethod (XMethod (XMethod (XField XSelf, "{b.name}"), "borrow", [[]]), "get", [[(XRef (XDecode b.keyTy, (XVar "k")))]]), "cloned", [[]]
     (((PosPat b.pos, keyTail), [[(DoLet (PaBind "row"), rowOf), (DoMatch (XVar "row"), [[(((PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), [[DoExpr (TryOf (XMethod (XVar "row"), "deliver", [[(XVar "rest"), (XVar "v"), XCx]]))]])), ((PaUnit (RefRuntime "std::None"), [[DoReturn (XCtor (RefRuntime "std::Err"), [[(XCall (RefRuntime "rt::Fault::answer"), [[(XFormatStr [[(XText "no row "), (XVar "k"), (XText " under the hosted place "), (XCtor (RefRuntime "rt::Path"), [[(XMethod segs, "to_vec", [[]])]])]])]])]])]]))]])]]))
 
+# A transparent generation answers at each of its positions in the block, its row given the
+# whole path (its places' paths are the block's).
+TypedGenArms: fn GenDef, Ex -> [((Pa, [Do]))]
+fn TypedGenArms gd, segs = if gd.transparent: Each (Range0 gd.width), \|i| TransparentGenArm gd, segs, i else: [[TypedGenArm gd]]
+
+TransparentGenArm: fn GenDef, Ex, Nat -> ((Pa, [Do]))
+fn TransparentGenArm gd, segs, i:
+    let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
+    (((PosPat (Pos(scope=gd.pos.scope, at=gd.pos.at + i)), [[PaRest ""]]), [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[DoExpr (TryOf (XMethod (XVar "row"), "deliver", [[segs, (XVar "v"), XCx]]))]], [[]])]]))
+
 TypedGenArm: fn GenDef -> ((Pa, [Do]))
 fn TypedGenArm gd:
     let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
@@ -704,7 +720,7 @@ fn TypedDispatch sk, name, scope:
     let answers = Each (Filter wx.answers, \|((pos, ignore, ignore, ignore))| InScope pos), \|((pos, id, ignore, acc))| TypedAnswerArm wx, pos, id, acc
     let dyns = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| InScope pos), \|((pos, f, ignore, acc))| TypedDynArm sk, pos, f, acc
     let rows = Each (Filter wx.builders, \|b| InScope b.pos), \|b| TypedForwardArm b, segs
-    let gens = Each (Filter wx.gens, \|gd| InScope gd.pos), \|gd| TypedGenArm gd
+    let gens = Fold (Filter wx.gens, \|gd| InScope gd.pos), [[]], \|acc, gd| Append acc, (TypedGenArms gd, segs)
     let none = ((PaWild, [[DoReturn (XCtor (RefRuntime "std::Err"), [[(XCall (RefRuntime "rt::Fault::answer"), [[(XFormatStr [[(XText "no hosted place at "), (XCtor (RefRuntime "rt::Path"), [[(XMethod segs, "to_vec", [[]])]]), (XText " to answer")]])]])]])]]))
     let arms = Push (Append (Append (Append answers, dyns), rows), gens), none
     MethDef(name=name, recv=recv, params=[[param, (("v", (OutRef answerTy)))]], cx=CxMut, ret=(OutNamed (RefRuntime "rt::Done"), [[]]), body=[[(DoMatch segs, arms)]], tail=(XCtor (RefRuntime "std::Ok"), [[XUnit]]), doc=doc)

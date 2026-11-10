@@ -157,15 +157,11 @@ fn ElementOutput wx, menv, tg, out, pos, ?bound, level:
 # A bundle's output (`Gui.Window`'s `((WindowId, !WindowInput))`), taken apart by its
 # tuple pattern: the plain parts are the place's first value (one part itself, several a
 # tuple), the event part its answers (claude/backend.md, "Answers"; the World protocol's
-# bundle). A `$` part, or a second event part, is not lowered yet; nor is a bundle in a
-# hosted scope, whose `Answer` variant would carry two types.
+# bundle). A `$` part, or a second event part, is not lowered yet. In a hosted scope the
+# first value is the enclosing host's, typed, its tag's first-value variant of `Answer`
+# (pick HO).
 BundleOutput: unbounded fn Wx, TagInfo, OutTy, Pos, [?Bn], Ex -> ((Wx, Wres))
-fn BundleOutput wx, tg, out, pos, parts, level:
-    if not (Emits wx, pos):
-        let wx2 = update wx:
-            &_.build <= Push &_.build, (RefusalDo "a bundle ({tg.name}) in a hosted scope")
-        ((wx2, WrUnit))
-    else: BundleOutputOf wx, tg, out, pos, parts, level
+fn BundleOutput wx, tg, out, pos, parts, level = BundleOutputOf wx, tg, out, pos, parts, level
 
 BundleOutputOf: unbounded fn Wx, TagInfo, OutTy, Pos, [?Bn], Ex -> ((Wx, Wres))
 fn BundleOutputOf wx, tg, out, pos, parts, level:
@@ -180,7 +176,7 @@ fn BundleOutputOf wx, tg, out, pos, parts, level:
     let evIx = Filter idx, \|i| (Or layers[i], LyPlain) == LyEv
     let dynIx = Filter idx, \|i| (Or layers[i], LyPlain) == LyDyn
     let wx1 = BundleFirst wx, tg, pos, plainIx, tys, parts, level
-    let wx2 = Fold evIx, wx1, \|w, i| BundleAnswer w, pos, (Or tys[i], OutUnit), (Or parts[i], nil)
+    let wx2 = Fold evIx, wx1, \|w, i| BundleAnswer w, tg, pos, (Or tys[i], OutUnit), (Or parts[i], nil)
     if (Len evIx) > 1 or (Len dynIx) > 0:
         let wx3 = update wx2:
             &_.build <= Push &_.build, (RefusalDo "a bundle with a `$` part or two event parts ({tg.name})")
@@ -195,7 +191,7 @@ fn BundleFirst wx, tg, pos, plainIx, tys, parts, level = match plainIx:
         let one = (Len plainIx) == 1
         let plainTy = if one: Or tys[Or plainIx[0], 0], OutUnit else: OutTuple (Each plainIx, \|i| Or tys[i], OutUnit)
         let wx1 = update wx:
-            &_.lets <= Append &_.lets, [[(FirstValueLet wx, pos, tg, level), (DoLet (PaBind "bundle_{PlaceText pos}"), (XDecode plainTy, (XRef (XVar "first_{PlaceText pos}"))))]]
+            &_.lets <= Append &_.lets, [[(FirstValueLet wx, pos, tg, level), (DoLet (PaBind "bundle_{PlaceText pos}"), (if Emits wx, pos: XDecode plainTy, (XRef (XVar "first_{PlaceText pos}")) else: XVar "first_{PlaceText pos}"))]]
             &_.fallible <= True
         Fold (Range0 (Len plainIx)), wx1, \|w, k|
             let i = Or plainIx[k], 0
@@ -210,8 +206,8 @@ fn BundleFirst wx, tg, pos, plainIx, tys, parts, level = match plainIx:
                 otherwise: w
 
 # A bundle's event part: the place's answers.
-BundleAnswer: fn Wx, Pos, OutTy, ?Bn -> Wx
-fn BundleAnswer wx, pos, et, ?b:
+BundleAnswer: fn Wx, TagInfo, Pos, OutTy, ?Bn -> Wx
+fn BundleAnswer wx, tg, pos, et, ?b:
     let t = match et:
         OutEvent inner: inner
         otherwise: et
@@ -221,7 +217,7 @@ fn BundleAnswer wx, pos, et, ?b:
             let ((nm, w)) = FreshName wx, "place_{PlaceText pos}"
             AddGn w, nm, t, GnAnswer, 0
     update wx2:
-        &_.answers <= Push &_.answers, ((pos, id, t, ""))
+        &_.answers <= Push &_.answers, ((pos, id, t, (AnswerAccessor tg)))
 
 # A place's first value at the build: from the World (`cx.first_value`, by the element as
 # it is built, the plain data every World answer is), or in a hosted scope from the
@@ -239,7 +235,8 @@ fn FirstValueLet wx, pos, tg, level:
         let host = HostLocal wx, pos
         let entry = Or (Fold wx.places, nil, \|?e, pl| if pl.pos == pos: ? pl.entry else: ?e), ""
         let asked = TryOf (XMethod (XVar host), "first_value", [[(XRef (PlaceAt wx, "", pos)), (XRef level), (XRef (XVar entry)), XCx]])
-        DoLet (PaBind "first_{PlaceText pos}"), (TryOf (XMethod (TryOf (XMethod asked, "ok_or", [[missing]])), (AnswerAccessor tg), [[]]))
+        let accessor = if (IsBundleTag tg): "{AnswerAccessor tg}_first" else: AnswerAccessor tg
+        DoLet (PaBind "first_{PlaceText pos}"), (TryOf (XMethod (TryOf (XMethod asked, "ok_or", [[missing]])), accessor, [[]]))
 
 # The host whose document a position's place is an entry of, as the build spells it (a
 # local before the node exists): the host of its scope, or for a node's own places in a
@@ -251,6 +248,17 @@ fn HostLocal wx, pos = if pos.scope == 0: "enclosing" else: Or wx.scopes[Dec pos
 # value out (`ui_button`), emitted beside `crate::Elem`.
 AnswerVariant: fn TagInfo -> Ref
 fn AnswerVariant tg = RefChild answerRef, (TagStruct tg.name)
+
+# Whether a tag's output is a bundle with a plain part and an event part, whose first value
+# has a variant of its own (`?BundleFirstTy`).
+IsBundleTag: fn TagInfo -> Bool
+fn IsBundleTag tg = match Peel tg.out:
+    TyTuple cs: (Fold cs, False, \|f, c| f or (LayerOf c) == LyEv) and Fold cs, False, \|f, c| f or (LayerOf c) == LyPlain
+    otherwise: False
+
+# A bundle tag's first-value variant (`AnswerCase.first`).
+AnswerFirstVariant: fn TagInfo -> Ref
+fn AnswerFirstVariant tg = RefChild answerRef, "{TagStruct tg.name}First"
 
 AnswerAccessor: fn TagInfo -> Text
 fn AnswerAccessor tg = Snake (TagStruct tg.name)

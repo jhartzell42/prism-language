@@ -540,25 +540,66 @@ fn Frame lx, env, call, restReads, Cont = match call.kind:
             otherwise: acc
         let dos = Each caps, \|((ignore, rs, mode, bt))| DoLet (PaBind (CaptureName rs)), (Own (VlPlace rs, mode, bt))
         let env2 = Fold caps, env, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (CaptureName rs)), Owned, bt)
-        let vals = match ?qk:
-            ? q: NamedArgsOwned lx, env2, q, args
-            nil: match ?LocalJobFn lx, env2, c:
-                ? f: StartArgs lx, env2, f, args
-                nil: Each args, \|a| Own (ValueOf lx, env2, a.value)
         let env3 = BindSpan env2, (PlaceKey lx, call.span), (VlOwned (XVar v), t)
-        let body = Cont env3
-        let ((job, how)) = match ?qk:
-            ? q: (((XCall (RefIn lx, (OwnerOf q), "start_{base}"), vals), (HelperRef (if EntersAtOnce lx, q, args: "call_value" else: "call_then"))))
-            nil: match ?LocalJobFn lx, env2, c:
-                ? f: (((StartCall f, vals), (HelperRef "call_value")))
-                nil: match ?PreludeJobCall lx, env2, call:
-                    ? pj: ((pj, (HelperRef "call_value")))
-                    nil: (((Refusal "a call this frame cannot enter"), (HelperRef "call_then")))
-        # An unbounded call lifted over a `?` or `~` would enter its job only when every
-        # peeled argument is present: not lowered yet.
-        let enter = if IsLiftedAt lx, call.span: Refusal "an unbounded call lifted over `?` or `~` (`{SrcText lx, lx.file, call.span}`)" else: XCall how, [[job, (XClosure True, [[(PaTyped (PaBind v), t)]], body)]]
+        let enter = match lx.lifts[PlaceKey lx, call.span]:
+            # lifted over `?` or `~` (Type System ch. 4): the peeled arguments matched first,
+            # the job entered with their values when all are present, its result wrapped
+            # back; an absent one (the leftmost `Err`) is the call's value at once, and the
+            # rest of the source runs on it in this cycle
+            ? ln if (Len ln.operands) > 0: LiftedFrame lx, env2, env3, c, ?qk, base, args, call, v, t, ln, ln.operands, Cont
+            otherwise:
+                let ((job, how)) = FrameJob lx, env2, c, ?qk, base, args, call
+                XCall how, [[job, (XClosure True, [[(PaTyped (PaBind v), t)]], (Cont env3))]]
         if (Len dos) == 0: enter else: XBlock dos, enter
     otherwise: Cont env
+
+# The job a frame enters, and the helper that enters it.
+FrameJob: unbounded fn Lx, Env, Expr, ?Text, Text, [Arg], Expr -> ((Ex, Ref))
+fn FrameJob lx, env2, c, ?qk, base, args, call:
+    let vals = match ?qk:
+        ? q: NamedArgsOwned lx, env2, q, args
+        nil: match ?LocalJobFn lx, env2, c:
+            ? f: StartArgs lx, env2, f, args
+            nil: Each args, \|a| Own (ValueOf lx, env2, a.value)
+    match ?qk:
+        ? q: (((XCall (RefIn lx, (OwnerOf q), "start_{base}"), vals), (HelperRef (if EntersAtOnce lx, q, args: "call_value" else: "call_then"))))
+        nil: match ?LocalJobFn lx, env2, c:
+            ? f: (((StartCall f, vals), (HelperRef "call_value")))
+            nil: match ?PreludeJobCall lx, env2, call:
+                ? pj: ((pj, (HelperRef "call_value")))
+                nil: (((Refusal "a call this frame cannot enter"), (HelperRef "call_then")))
+
+# A frame's call lifted over `?` or `~`, from its first peeled operand (`LiftOperands`, the
+# plain form): each matched in turn, its value bound where the operand stands; with all
+# present the job is entered and its result, wrapped, resumes the source; an absent one
+# resumes it at once with `nil`, or with the operand's `Err`.
+LiftedFrame: unbounded fn Lx, Env, Env, Expr, ?Text, Text, [Arg], Expr, Text, OutTy, LiftNote, [Range], (unbounded fn Env -> Ex) -> Ex
+fn LiftedFrame lx, env, env3, c, ?qk, base, args, call, v, t, ln, operands, Cont = match operands:
+    [[]]:
+        let inner = OutTyOf lx, (InnerTy (TypeAt lx, call.span))
+        let lxIn = update lx:
+            &_.tys <= Insert &_.tys, (PlaceKey lx, call.span), (InnerTy (TypeAt lx, call.span))
+            &_.lifts <= Insert &_.lifts, (PlaceKey lx, call.span), LiftNote(at=ln.at, sigil=ln.sigil, operands=[[]])
+        let lxOps = Fold ln.operands, lxIn, \|l, r| update l:
+            &_.tys <= Insert &_.tys, (PlaceKey lx, r), (InnerTy (TypeAt lx, r))
+        let ((job, how)) = FrameJob lxOps, env, c, ?qk, base, args, call
+        let wrapped = XCtor (RefRuntime (if ln.sigil == "~": "std::Ok" else: "std::Some")), [[(XVar "{v}_in")]]
+        XCall how, [[job, (XClosure True, [[(PaTyped (PaBind "{v}_in"), inner)]], (XBlock [[(DoLet (PaTyped (PaBind v), t), wrapped)]], (Cont env3)))]]
+    otherwise:
+        let r = Or operands[0], call.span
+        let sv = ValueOf lx, env, (Or (?OperandAt call, r), dummyExpr)
+        let it = OutTyOf lx, (InnerTy (TypeAt lx, r))
+        let owned = match sv:
+            VlOwned ignore, ignore: True
+            otherwise: False
+        let mode = if owned: Owned else: ByRef
+        let x = "o{r.start}_{r.end}"
+        let env2 = BindSpan env, (PlaceKey lx, r), (VlPlace (XVar x), mode, it)
+        let present = LiftedFrame lx, env2, env3, c, ?qk, base, args, call, v, t, ln, (Drop operands, 1), Cont
+        let absent = if ln.sigil == "~": XCtor (RefRuntime "std::Err"), [[Own (VlPlace (XVar "{x}_e"), mode, OutError)]] else: XTyped (XNone), t
+        let failArm = XArm(pat=(if ln.sigil == "~": PaCtor (RefRuntime "std::Err"), [[PaBind "{x}_e"]] else: PaUnit (RefRuntime "std::None")), conds=[[]], body=(XBlock [[(DoLet (PaTyped (PaBind v), t), absent)]], (Cont env3)))
+        let arms = [[XArm(pat=(PaCtor (RefRuntime (if ln.sigil == "~": "std::Ok" else: "std::Some")), [[PaBind x]]), conds=[[]], body=present), failArm]]
+        XMatch (if owned: Own sv else: Ref sv), arms, False, OutTurn
 
 # A local whose value is an unbounded function: its `Start` (claude/backend.md).
 ?LocalJobFn: unbounded fn Lx, Env, Expr -> ?Vl

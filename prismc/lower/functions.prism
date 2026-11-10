@@ -379,26 +379,3 @@ fn MethodClauses d = match d.body:
     DbMethod cs, ignore, ignore: cs
     otherwise: [[]]
 
-# A building `if` over a plain condition (Semantics ch. 4: it picks its arm once, at the
-# build): each arm a generation of its own, one built (pick BI of the README: under its
-# place `n/#0`, where the book's arms are transparent).
-IfGenLine: unbounded fn Wx, Env, Expr, Block, Block, Expr -> ((Wx, Wres))
-fn IfGenLine wx, menv, c, thenB, elseB, e:
-    let lx = wx.lx
-    let pos = wx.pos
-    let wx1 = update wx:
-        &_.pos <= NextPos &_.pos
-    let ((name, wx2)) = FreshName wx1, "arm"
-    let base = "{wx.node}{Camel name}{RowSuffix wx}"
-    let yes = GenRowOf wx2, menv, thenB, OutUnit, "{base}Then", name
-    let no = GenRowOf yes.parent, menv, elseB, OutUnit, "{base}Else", name
-    let cond = AsBool (ValueOf lx, menv, c)
-    let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
-    let Mk = \|n| XCast (TryOf (XCall (RefChild (SiteRef lx, n.name), "build"), (Append [[(XVar "path"), (XVar "value")]], tail))), (OutObj (OutNamed (RefRuntime "rt::Row"), [[]]))
-    let select = XIf cond, (Mk yes.node), (Mk no.node)
-    let wx3 = update no.parent:
-        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=False, width=0, moved=(Or (?HostedRows wx), ""))
-        &_.genHolds <= Push &_.genHolds, ((name, [[]]))
-        &_.rows <= Append (Append (Append (Push &_.rows, yes.node), yes.node.children), [[no.node]]), no.node.children
-        &_.getters <= Push &_.getters, (MethDef(name="{name}_up", recv=RecvRc, params=[[(("v", OutUnit))]], cx=CxMut, ret=OutUnit, body=[[]], tail=(XUnit), doc="An arm's result, which a building `if` of widgets drops."))
-    ((wx3, WrUnit))

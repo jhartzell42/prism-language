@@ -192,7 +192,7 @@ impl Printer {
     /// A duration in its largest whole unit.
     pub fn duration(&mut self, ns: i128) {
         const UNITS: [(&str, i128); 6] =
-            [("h", 3_600_000_000_000), ("m", 60_000_000_000), ("s", 1_000_000_000), ("ms", 1_000_000), ("us", 1_000), ("ns", 1)];
+            [("h", 3_600_000_000_000), ("min", 60_000_000_000), ("s", 1_000_000_000), ("ms", 1_000_000), ("us", 1_000), ("ns", 1)];
         let (name, size) = if ns == 0 { ("s", 1) } else { *UNITS.iter().find(|(_, s)| ns % s == 0).unwrap() };
         let _ = write!(self.out, "{}{name}", ns / size);
     }

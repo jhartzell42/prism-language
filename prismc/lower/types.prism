@@ -61,6 +61,10 @@ fn OutTyOf lx, t = match t:
     TyCon "Regex", [[]]: OutRegex
     TyCon "RegexReplacement", [[]]: OutReplacement
     TyCon "Duration", [[]]: OutDuration
+    # `@HostList`'s answer sent down by path, plain data a place decodes by its tag, and the
+    # entries of its document, the places' elements (prismc's first ruling HL)
+    TyCon "Answer", [[]]: OutPod
+    TyCon "Wired", [[]]: OutNamed elemRef, [[]]
     TyCon "Prelude.Error", [[]]: OutError
     TyCon "\u{0}Self", [[]]: OutNamed (RefRuntime "Self"), [[]]
     TyCon "Buffer", [[a]]: OutArray (OutTyOf lx, a)
@@ -326,7 +330,9 @@ type Bn = choice:
     BnWidget Expr, Env, Env, Lx
     # A local function of a block (`fn Paired k, v = ((k, v))`): its clause, inlined
     # where it is called.
-    BnLocalFn FnClause
+    # a local function, its clauses in order (Semantics ch. 4: `fn` lines in a block, in
+    # clauses)
+    BnLocalFn [FnClause]
 
 type Env = record:
     names: (Text ==> Bn)

@@ -93,7 +93,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   peeled (`TProgram.lifts`); lowering makes it a `match` of each operand in turn, left to
   right, whose present arm is the plain expression over the peeled values, wrapped back
   (`match get(ps, k) { Some(o) => Some(o.a.clone()), None => None }`), and whose absent arm
-  is `None` (the leftmost `Err`). An unbounded call lifted so is refused, naming it.
+  is `None` (the leftmost `Err`). An unbounded call lifted so is a frame that matches first (below).
 - **`&` blocks** → native mutation of a fresh or unique value: `Rc::make_mut`, and the
   persistent collections' in-place updates (Compiler ch. 3, "Unique values").
 - **Fault `~`**: a fallible expression is a `Result<_, rt::Error>` and `?` propagates;
@@ -237,6 +237,25 @@ it make every program an interpreter run, and every type mistake a runtime fault
   one loop counts cannot (Graph ch. 4, worked examples).
 - **States and transitions** are emitted: a `state` field per node, the transition as
   the code that writes it, and every method matching on it.
+- **A widget of several clauses in a static position**, and **a building `match` or
+  `if`** (Semantics ch. 4: the arm is fixed for the life of the block and adds no
+  segment), are one generation built once, transparent: the row the arguments (or the
+  arm's pattern and guard) choose stands at the block's path, its places at the block's
+  positions, the widest clause's or arm's width reserved (pick CS), answered at those
+  positions in the World's scope and in a hosted one. An arm of a `match` reads the
+  block's names through its `parent`; a clause reads only its own, a `$` parameter being
+  the caller's dynamic read through the parent (`ClauseDynArg`), never its value at the
+  build. The result:
+  - an event fires the line's event;
+  - a dynamic (`result_dynamic`) is kept by the block in `{gen}_res` and read through the
+    line's getter; a write behind it in the row calls the block's `{gen}_result_moved`,
+    which marks the block's readers (`KeptDynResult`);
+  - a plain one, which the block reads in its build: the clause's row is built in the
+    block's own build, before its node, at the line's point (`GenDef.early`), holding
+    the block through a `prism_rtl::Link` linked once the node is made, and hands back
+    its `result_value` with itself (`EarlyClauseLine`). A building `match` or `if` whose
+    arm ends on a plain result is refused: its arm reads the block's names through a
+    parent that does not exist before the node.
 
 ## Hosting
 
@@ -327,8 +346,36 @@ it make every program an interpreter run, and every type mistake a runtime fault
   a link filled in after `Rc::new`.
 - **Requests** of a hosted place go to the host (`host_k.request`): out with the forwarded
   element, or nowhere when the supplier answered the place.
-- **`@HostSome`** is `@HostDocument` through `rt::forward_on_none` (`nil` forwards);
-  `@HostList` is not lowered yet.
+- **`@HostSome`** is `@HostDocument` through `rt::forward_on_none` (`nil` forwards).
+- **`@HostList @child, !answers, supplier`** is `@HostDocument` whose owner also hears
+  `!answers` (`Host::hear`): each firing's map hands the place at each key its answer,
+  decoded by the place's element as a World's answer is (`AnswerOf::decode`, a tag that
+  does not match is a fault of the tick), as a computed answer, the next tick's input
+  (`HostRow::answer_later`); a key with no place is dropped. `Answer c` is plain data
+  (`Pod`), made by the prelude's `AnswerOf`; `Wired c` is `Elem c` (prismc's first ruling HL).
+- **A bundle in a hosted scope** (a tag whose output is plain parts and one event part):
+  `crate::Answer` has a second variant per bundle tag, `{Tag}First`, its plain parts; the
+  place's first value is that variant (`{tag}_first()`), from a supplier's
+  `@ ((x, !e))` (`rt::bundle_blueprint`: `x` once, each firing of `e` a tick late) or from a
+  World's first value to a forwarded element (`AnswerOf::decode_first`); its answers are
+  the event part's variant, as in the World's scope.
+- **A named widget function as a supplier** (`@HostDocument @child, @Supply`): a widget
+  function shaped as a supplier (a parameter `Element c o`, the result `@o`) whose clauses
+  build no place (`@ x`, `@Element e`, a `match` or `if` of them, after `let`s) is emitted
+  as a function giving the blueprint (`IsValueWidget`), which the supplier, a lambda calling
+  it, or a value naming it calls. Any other widget function used as a value is refused.
+
+## Local functions, `@Machine`, durations
+
+- **A local function** (`fn Add a, x = ..` in a block) is inlined where it is called, its
+  parameters bound to the arguments (a pattern parameter matched against its argument),
+  and is a closure of its clause where it is named as a value, at the type it is used at
+  there; a generic one as a value, and one that calls itself, are refused.
+- **`@Machine step, s, !e`** calls a named step by its path; any other step is a function
+  value made at the build and kept in a field (`{m}_step`).
+- **A duration literal** is `Duration(ns)`, its signed nanoseconds (`DurationNanos`); in C++
+  `prism_rtl::Nanos`, an `__int128`, built from `long long` parts (`CppNanos`). Both
+  runtimes print and read minutes as `min`, the literal's unit.
 
 ## Unbounded functions and `@Run`
 
@@ -337,7 +384,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   function, and the job implements `rt::Job<B>::cycle`, which runs bounded code to the
   next cycle point (`Turn::More(next)`) or the result (`Turn::Finished(b)`).
 - **A tail call** leaves no frame (`Normalize`); any other call pushes the caller's
-  continuation as a frame inside the job.
+  continuation as a frame inside the job. A call lifted over `?` or `~` matches its peeled
+  arguments first: with all present the job is entered and its result, wrapped, resumes the
+  source; an absent one resumes it at once with `nil` or the leftmost `Err`
+  (`LiftedFrame`).
 - **`@Run`** is Appendix B's Prism definition over `@Machine` and `@Defer`, compiled like
   any widget and inlined into its caller's node: the job is a `Hold`, each cycle fires
   `!turns`, a `More` arms the `@Defer`, a `Finished` fires the result.

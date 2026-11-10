@@ -314,11 +314,16 @@ fn RustRow r:
 # enum is empty, and its matches are over the value, which has none.
 RustAnswer: unbounded fn AnswerDef -> Text
 fn RustAnswer a:
-    let cases = Join (Each a.cases, \|c| "{c.variant}({Type c.ty}),"), "\n"
-    let tags = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Each a.cases, \|c| "Answer::{c.variant}(_) => {RsRef c.structPath}::TAG,"), "\n"
-    let accessors = Join (Each a.cases, \|c| AnswerGetter c.accessor, c.variant, c.tagName, (Type c.ty)), "\n"
+    # a bundle's tag has a second variant, its plain parts, the first value (pick HO)
+    let firsts = Fold a.cases, [[]], \|acc, c| match c.?first:
+        ? ft: Push acc, ((c, ft))
+        nil: acc
+    let cases = Join (Append (Each a.cases, \|c| "{c.variant}({Type c.ty}),"), (Each firsts, \|((c, ft))| "{c.variant}First({Type ft}),")), "\n"
+    let tags = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Append (Each a.cases, \|c| "Answer::{c.variant}(_) => {RsRef c.structPath}::TAG,"), (Each firsts, \|((c, ft))| "Answer::{c.variant}First(_) => {RsRef c.structPath}::TAG,")), "\n"
+    let accessors = Join (Append (Each a.cases, \|c| AnswerGetter c.accessor, c.variant, c.tagName, (Type c.ty)), (Each firsts, \|((c, ft))| AnswerGetter "{c.accessor}_first", "{c.variant}First", c.tagName, (Type ft))), "\n"
     let decodes = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Each a.cases, \|c| "Elem::{c.variant}(..) => ::std::result::Result::Ok(Answer::{c.variant}({DecodeHead c.ty}::from_pod(v)?)),"), "\n"
-    AnswerType cases, tags, accessors, decodes
+    let decodeFirsts = Join (Push (Each firsts, \|((c, ft))| "Elem::{c.variant}(..) => ::std::result::Result::Ok(Answer::{c.variant}First({DecodeHead ft}::from_pod(v)?)),"), "_ => Self::decode(e, v),"), "\n"
+    AnswerType cases, tags, accessors, decodes, decodeFirsts
 
 # ---------------------------------------------------------------------------------------
 # Nodes and programs

@@ -274,7 +274,7 @@ TEST(spellings_round_trip) {
         "0.30000000000000004", "nan", "-inf", "Press Point(x=280.0, y=400.0)",
         "Gui.Scene(window=WindowId \"Chess\", at=nil)", "Box(paint=(Rgb 1.0, 0.5, 0.0), inner=Node (Leaf 1))",
         "? (Node (Leaf 1), (Leaf 2))", "Name()", "\"h\xC3\xA9\"", "'\xC3\xA9'", "123456789012345678901234567890",
-        "2h", "90m", "-3ms",
+        "2h", "90min", "-3ms",
     };
     for (const char* s : values) {
         auto v = read::value(s);
@@ -360,6 +360,7 @@ struct Answer {
         if (auto c = v.if_choice(); c && c->ctor == "click") return Answer{};
         return mismatch<Answer>("click", v);
     }
+    static Result<Answer> decode_first(const Elem& e, const Pod& v) { return decode(e, v); }
 };
 
 /// An owner hosting one child button at child path `0`, every place forwarded: the child's

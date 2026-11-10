@@ -191,6 +191,7 @@ fn Expression x = match x:
     XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "crate::prelude::Int::from({d})" else: "crate::prelude::Int::parse(\"{d}\").unwrap()"
     XByte d: "{d}u8"
     XFloat d: "crate::prelude::Float({d})"
+    XDuration n: "crate::prelude::Duration({n})"
     XIndex n: "{n}"
     XChar c: "'{CharEscape c}'"
     XStr t: "\"{Escape t}\""
@@ -216,6 +217,8 @@ fn Expression x = match x:
     XCall f, args: "{RsRef f}({Args args})"
     XCallAt f, tys, args: "{RsRef f}::<{Types tys}>({Args args})"
     XCallSelf tr, m, self, args: "<{Type self} as {RsRef tr}>::{m}({Args args})"
+    # a closure in a field is called through parentheses (`(self.f)(x)`), not as a method
+    XApply (XField r, n), args: "({Expression (XField r, n)})({Args args})"
     XApply f, args: "{Tight f}({Args args})"
     XMethod r, m, args: "{Tight r}.{m}({Args args})"
     XBin op, l, r: "{Operand l} {BinOpText op} {Operand r}"

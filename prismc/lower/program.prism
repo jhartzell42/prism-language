@@ -283,6 +283,55 @@ fn BlueprintQk lx, e = match e.kind:
         Or ?q, ""
     otherwise: ""
 
+# A widget function that is a value (gap NS): a supplier, answering an element it is given
+# with a blueprint of that element's output, every clause's body (its `let`s, then one expression) builds no place, a pure blueprint (`@ x`, `@Element e`, a `match` or `if` of them, or a
+# call of another such function), so it is emitted as a function giving the blueprint, and
+# a host's supplier, a lambda calling it or a value naming it calls that. A widget function
+# with places is a node, inlined where it is applied, never a value.
+IsValueWidget: unbounded fn Lx, Text -> Bool
+fn IsValueWidget lx, qk = PureWidgetFn lx, qk, [[]]
+
+PureWidgetFn: unbounded fn Lx, Text, [Text] -> Bool
+fn PureWidgetFn lx, qk, seen:
+    if HasText seen, qk: True
+    else:
+        # a supplier's shape: it answers an element it is given, `fn .., Element c o, .. -> @o`
+        let isWidget = match lx.g.vals[qk]:
+            ? v: match v.scheme.ty:
+                TyFn ignore, ps, (TyAt o, ignore): Fold ps, False, \|found, p| found or match p:
+                    TyElem ignore, po: po == o
+                    otherwise: False
+                otherwise: False
+            nil: False
+        let defs = Filter lx.g.defs, \|d| d.qk == qk
+        let clauses = ClausesOf lx.g, qk
+        isWidget and (Len defs) > 0 and (Len clauses) > 0 and Fold defs, True, \|ok, d| ok and Fold (DefClauses d, [[]]), True, \|ok2, c| ok2 and match c.body:
+            BodyExpr x: PureBlueprintExpr (InModule lx, d.file, d.home), x, (Push seen, qk)
+            BodyBlock b: PureBlueprintBlock (InModule lx, d.file, d.home), b, (Push seen, qk)
+
+PureBlueprintExpr: unbounded fn Lx, Expr, [Text] -> Bool
+fn PureBlueprintExpr lx, e, seen = match e.kind:
+    EFreeSigil "@", ignore: True
+    EGroup x: PureBlueprintExpr lx, x, seen
+    EMatch ignore, arms: Fold arms, True, \|ok, a| ok and PureBlueprintBlock lx, a.body, seen
+    EIf ignore, yes, (? no): (PureBlueprintBlock lx, yes, seen) and PureBlueprintBlock lx, no, seen
+    ECall c, ignore, ignore, ignore:
+        let qk = BlueprintQk lx, c
+        qk == "Prelude.@Element" or PureWidgetFn lx, qk, seen
+    otherwise: False
+
+PureBlueprintBlock: unbounded fn Lx, Block, [Text] -> Bool
+fn PureBlueprintBlock lx, b, seen:
+    let n = Len b.stmts
+    let k = Or (n -? 1), 0
+    let lets = Fold (Take b.stmts, k), True, \|ok, st| ok and match st.kind:
+        SLet ignore, ignore, ignore: True
+        otherwise: False
+    let last = Or b.stmts[k], (Stmt(kind=(SExpr (Expr(kind=EError, span=b.span))), span=b.span))
+    n > 0 and lets and match last.kind:
+        SExpr x: PureBlueprintExpr lx, x, seen
+        otherwise: False
+
 # A definition's value, or for a block with no signature its definition's place.
 ValOf: fn Lx, Text -> ValInfo
 fn ValOf lx, qk = match lx.g.vals[qk]:
@@ -440,7 +489,9 @@ fn DefItems lx, d, roots:
             nil: [[]]
             ? v: match v.scheme.ty:
                 TyFn ignore, ignore, (TyAt ignore, ignore):
-                    if not isRoot: [[ItNote "`{d.name}` is inlined where it is applied."]]
+                    if not isRoot:
+                        if IsValueWidget lx, d.qk: [[ItFn (FnDefOf lx, d.qk, clauses, v.scheme)]]
+                        else: [[ItNote "`{d.name}` is inlined where it is applied."]]
                     else: match clauses:
                         [[c]]: match c.body:
                             BodyBlock b: NodeItems (NodeDefOf lx, d.qk, c.params, b, v.scheme, True)
@@ -595,7 +646,21 @@ fn TagHoldsDyn lx, tg = Fold (TagDefOf lx, tg).fields, False, \|f, ((ignore, ign
 AnswerEnum: unbounded fn Lx, [Text] -> AnswerDef
 fn AnswerEnum lx, mods:
     let tags = KindTags lx, "Element", (Push mods, "Prelude")
-    AnswerDef(cases=(Each tags, \|tg| AnswerCase(variant=(TagStruct tg.name), accessor=(AnswerAccessor tg), structPath=(RootRef tg.home, (TagStructOf tg)), tagName=tg.name, ty=(AnswerTy lx, tg))))
+    AnswerDef(cases=(Each tags, \|tg| AnswerCase(variant=(TagStruct tg.name), accessor=(AnswerAccessor tg), structPath=(RootRef tg.home, (TagStructOf tg)), tagName=tg.name, ty=(AnswerTy lx, tg), first=(?BundleFirstTy lx, tg))))
+
+# A bundle tag's plain parts as one type, its first value (`AnswerCase.first`); `nil` for
+# a tag whose output is no bundle, or a bundle with no plain part.
+?BundleFirstTy: unbounded fn Lx, TagInfo -> ?OutTy
+fn ?BundleFirstTy lx, tg = match Peel tg.out:
+    TyTuple cs:
+        let plain = Filter cs, \|c| (LayerOf c) == LyPlain
+        let hasEv = Fold cs, False, \|f, c| f or (LayerOf c) == LyEv
+        if not hasEv: nil
+        else: match plain:
+            [[]]: nil
+            [[c]]: ? (OutTyOf lx, c)
+            otherwise: ? (OutTuple (Each plain, \|c| OutTyOf lx, c))
+    otherwise: nil
 
 # What an answer to a tag's element carries: its output's value; of a bundle (a tuple with
 # an event part, `Gui.Window`'s `((WindowId, !WindowInput))`) the event part's, which is

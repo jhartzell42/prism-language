@@ -140,7 +140,7 @@ struct Tok {
 using Err = std::string;
 
 const std::pair<const char*, Nanos> UNITS[] = {
-    {"h", Nanos(3600000000000)}, {"m", Nanos(60000000000)}, {"s", Nanos(1000000000)},
+    {"h", Nanos(3600000000000)}, {"min", Nanos(60000000000)}, {"s", Nanos(1000000000)},
     {"ms", Nanos(1000000)},      {"us", Nanos(1000)},       {"ns", Nanos(1)},
 };
 

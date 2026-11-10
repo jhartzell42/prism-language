@@ -277,7 +277,7 @@ fn TagPat lx, tg, fps, rest, ty, mode, fresh:
     let binds = Fold parts, [[]], \|acc, ((ignore, o))| Append acc, o.binds
     let level = PaCtor variant, [[(PaRecord structPath, fieldPas, True)]]
     # the arm names the tag: a `@ x` in it answers with the tag's variant of `crate::Answer`
-    let tagged = Push binds, (("#tag", (BnLocal (XPath (AnswerVariant tg)), Owned, OutUnit)))
+    let tagged = Push (Push binds, (("#tag", (BnLocal (XPath (AnswerVariant tg)), Owned, OutUnit)))), (("#tagfirst", (BnLocal (XPath (AnswerFirstVariant tg)), Owned, OutUnit)))
     if live: PatOut(pa=(PaBind fresh), conds=(Append [[(CcLet level, (XRef (XField (XVar fresh), "identity")))]], conds), binds=tagged)
     else: PatOut(pa=level, conds=conds, binds=binds)
 

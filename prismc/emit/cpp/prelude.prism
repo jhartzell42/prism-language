@@ -502,6 +502,10 @@ inline Text replace(const RegexReplacement& r, const Text& t) { return r.replace
 /// `Split: fn Regex, Text -> [Text]`: the `k + 1` views between the `k` matches.
 inline Array<Text> split(const Regex& r, const Text& t) { return r.split(t); }
 
+/// `AnswerOf: fn a -> Answer c`: an answer `@HostList` sends down, as plain data.
+template <class T>
+Pod answer_of(const T& x) { return ::prism_rtl::to_pod(x); }
+
 /// `?ParseNat`.
 inline std::optional<Nat> parse_nat_opt(const Text& t) {
     std::string_view s = t.view();

@@ -7,7 +7,7 @@ test a_wake_comes_back, @sleeper:
         => expect Ui.Label(text="woke 0")
         => returns 0
     click at 0
-        => requested Time.After, Time.Wake(after=1500ms, context="nap")
-    send at 1, Time.Wake(after=1500ms, context="nap")
+        => requested Time.After, Wake(after=1500ms, context="nap")
+    send at 1, Wake(after=1500ms, context="nap")
         => expect Ui.Label(text="woke 1")
         => returns 1

@@ -245,6 +245,8 @@ type Ex = choice:
     XInt Text
     XByte Text
     XFloat Text
+    # A duration, its signed nanoseconds in decimal (`Duration`'s representation).
+    XDuration Text
     XIndex Nat
     # A character and a string literal (not a `Text`: a fault's message, a name), as the
     # source has them; the printer escapes.
@@ -579,6 +581,11 @@ type GenDef = record:
     width: Nat
     # As a `for`'s `moved`: what a new generation tells when its places are a host's.
     moved: Text
+    # Built in the block's own build, before its node, from locals `{name}_row` (the row)
+    # and `{name}_link` (the link it holds the block through, linked once the node is
+    # made): a static widget of several clauses whose result the block reads at its build
+    # (`EarlyClauseLine`). Its `select` builds through the link the node keeps.
+    early: Bool
 derive ^Eq, ^Show
 
 # A `for` builder (claude/backend.md, "Dynamic structure"): a map of rows, each a node of
@@ -721,6 +728,11 @@ type AnswerCase = record:
     structPath: Ref
     tagName: Text
     ty: OutTy
+    # A bundle's plain parts (Type System ch. 2), its first value, in a variant of its own
+    # (`{variant}First`, accessor `{accessor}_first`), which a host's supplier answers and
+    # a World's first value decodes to (`decode_first`); the variant above carries the
+    # event part, the answers (pick HO).
+    first: ?OutTy
 derive ^Eq, ^Show
 
 # Whether an expression reads the local `n` anywhere in it (its `XVar`s), as a printer

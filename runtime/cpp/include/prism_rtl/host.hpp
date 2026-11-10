@@ -416,10 +416,13 @@ struct Supplied {
 };
 
 /// The program's answer type, which a World's answer to an element decodes into by the
-/// element's tag (emitted beside `Elem`): `static Result<A> decode(const E&, const Pod&)`.
+/// element's tag (emitted beside `Elem`): `static Result<A> decode(const E&, const Pod&)`,
+/// and `decode_first`, a World's first value for the element: an answer, but for a bundle's
+/// tag, whose first value is its plain parts (`Answer`'s first-value case, pick HO).
 template <class A, class E>
 concept AnswerOf = std::copyable<A> && requires(const E& e, const Pod& p) {
     { A::decode(e, p) } -> std::same_as<Result<A>>;
+    { A::decode_first(e, p) } -> std::same_as<Result<A>>;
 };
 
 template <class E, class A>
@@ -500,6 +503,17 @@ Blueprint<E, A> event_blueprint(Event<A> e) {
     };
 }
 
+/// `@ ((x, !e))` for a bundle's tag (pick HO): `x`, the plain parts, the place's first value,
+/// once; each firing of `e` an answer to the child's place, a tick late.
+template <class E, class A>
+Blueprint<E, A> bundle_blueprint(A first, Event<A> e) {
+    return [first, e](Path, Sink<A> sink, const Scope<E, A>&, Cx&) -> Result<Supplied<A>> {
+        auto node = make_rc<detail::Subscribed<A>>(e.port);
+        node->handle = e.port->subscribe([sink](const A& v, Cx& cx) { return detail::later(sink, v, cx); });
+        return Supplied<A>{node, first, false};
+    };
+}
+
 /// `@ $d`: the value after the birth tick is the place's first value, read now,
 /// synchronously, as a World's first-value query is; each later change of `d` is a push to
 /// the child's place as an input of the next tick, which is owed (Semantics ch. 9 as ruled,
@@ -538,6 +552,15 @@ public:
 private:
     Rc<Weak<P>> w_;
 };
+
+/// `Link::upgrade`, as `Weak::upgrade` (lang.hpp's `upgrade`): a generation built before its
+/// block's node is made holds its block through a link (a static widget of several clauses
+/// whose result the block reads at its build), and reads it as a row reads its `parent`.
+template <class P>
+std::optional<Rc<P>> upgrade(const Link<P>& l) {
+    if (auto p = l.owner()) return p;
+    return std::nullopt;
+}
 
 namespace detail {
 
@@ -592,7 +615,7 @@ Blueprint<E, A> element_blueprint(const Live<E>& e) {
         std::optional<A> first;
         if (scope.is_world()) {
             if (auto v = cx.first_value(element)) {
-                auto a = TRY(A::decode(e.identity, *v));
+                auto a = TRY(A::decode_first(e.identity, *v));
                 first = std::move(a);
             }
         } else {
@@ -695,6 +718,13 @@ public:
         auto supplied = TRY(blueprint(node->path_, node->sink_, host->scope(), cx));
         node->supplied_ = std::move(supplied);
         return node;
+    }
+
+    /// An answer the host sends down to the row's place (`@HostList`): delivered as the
+    /// next tick's input, and dropped if the key left by then.
+    void answer_later(A v, Cx& cx) const {
+        Sink<A> sink = sink_;
+        cx.answer_later([sink, v](Cx& cx) { return sink(v, cx); });
     }
 
     /// The blueprint's first value: the place's, when its output has one.
@@ -812,6 +842,21 @@ public:
     /// The owner's node, once made: the rows read the document and answer through it.
     void link(const Rc<P>& owner) { owner_ = owner; }
 
+    /// `@HostList`'s answers sent down by path (Semantics ch. 9, the list form; prismc's
+    /// first ruling HL): each firing of `answers` hands the place at each of its keys that
+    /// answer, decoded by the place's element as a World's answer is (a tag that does not
+    /// match is a fault of the tick), as a computed answer, the next tick's input, which is
+    /// owed. A key with no place is dropped, as an answer to a place that left is.
+    void hear(const Event<Map<Path, Pod>>& answers) {
+        Weak<Host> me = this->rc_from_this();
+        // the subscription holds the host weakly and lives as long as the event's port
+        (void)answers.port->subscribe([me](const Map<Path, Pod>& m, Cx& cx) -> Done {
+            auto host = me.lock();
+            if (!host) return {};
+            return host->send_down(m, cx);
+        });
+    }
+
     /// A child place's request: out with its forwarded element, or nowhere when the
     /// supplier answered the place (a host answers its child; a request reaches a World
     /// only from an element the host's blueprint emits).
@@ -845,6 +890,17 @@ private:
     Host(Path at, Rows<E, A> rows, Supplier<E, A> supplier, Rc<HostOf<E, A>> enclosing, DeliverFn deliver)
         : at_(std::move(at)), rows_(std::move(rows)), supplier_(std::move(supplier)), enclosing_(std::move(enclosing)),
           deliver_(std::move(deliver)) {}
+
+    Done send_down(const Map<Path, Pod>& m, Cx& cx) const {
+        for (const auto& [p, v] : m) {
+            if (auto row = rows_->get(p)) {
+                Rc<HostRow<E, A>> r = *row;
+                A a = TRY(A::decode(r->entry(cx), v));
+                r->answer_later(std::move(a), cx);
+            }
+        }
+        return {};
+    }
 
     Rc<P> owner() const {
         auto o = owner_.lock();
