@@ -56,7 +56,7 @@ fn NodeDefOf lx, qk, params, body, sc, isRoot:
     let ((ps, wx1, benv, menv)) = Fold (Range0 (Len params)), (([[]], wx0, emptyEnv, emptyEnv)), \|((acc, w, be, me)), i|
         let p = Or params[i], dummyPat
         let nkey = PlainBinder lx, p
-        let base = if nkey == "": "arg{i}" else: Snake nkey
+        let base = if nkey == "": "arg{i}" else: LocalNameAt lx, nkey, p.span
         let ((rs, w2)) = FreshName w, base
         let t = OutTyOf lx, (Peel (Or ptys[i], TyErr))
         let w3 = update w2:
@@ -115,8 +115,8 @@ fn PreInit wx, benv, menv, s = match s.kind:
             ((wx2, (Bind benv, "{PatText p}#init", (BnLocal (XVar "{f}_init"), Owned, t))))
         otherwise: ((wx, benv))
     SLet p, ignore, e: match ?BindingOf menv, p:
-        ? (BnDyn ignore, ignore, t):
-            let rs = Snake (PatText p)
+        # the getter its prebinding named (`PreBindName`)
+        ? (BnDyn (XMethod XSelf, rs, ignore), ignore, t):
             let ((ignore, reads)) = DynamicExpr wx, menv, e
             let wx2 = update wx:
                 &_.dynReads <= Insert &_.dynReads, rs, reads
@@ -248,7 +248,8 @@ fn PreBindName wx, benv, menv, n, how:
     let full = BinderTy lx, n.span
     let layer = LayerOf full
     let t = OutTyOf lx, (Peel full)
-    let ((rs, wx1)) = FreshName wx, (Snake nkey)
+    # spelled as a local (`f_f3`), never as one of lowering's own temporaries (`f`, `a0`)
+    let ((rs, wx1)) = FreshName wx, (LocalNameAt lx, nkey, n.span)
     # a bundle bound to a name (the window library's generic `r`) is its parts' bindings,
     # bound where its line is lowered (`BundleBn`)
     if (how == AsBind or how == AsResult) and IsBundle full: ((wx, benv, menv))
@@ -612,8 +613,8 @@ fn LetLine wx, benv, menv, p, e:
                 OutRes ignore: if fed == OutError: ErrPipe r else: r
                 otherwise: r
             (((Connect wx2, r2, (SkNode er.node)), benv))
-        ? (BnDyn ignore, ignore, t):
-            let rs = Snake (PatText p)
+        # the getter its prebinding named (`PreBindName`)
+        ? (BnDyn (XMethod XSelf, rs, ignore), ignore, t):
             let ((ex, reads)) = DynamicExpr wx, menv, e
             # Computed once per write behind it (Graph ch. 4, "Invalidation by stamped marks")
             # when everything it reads is the node's own, whose write paths mark the cache; a

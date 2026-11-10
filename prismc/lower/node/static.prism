@@ -584,7 +584,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                     let pty = SubstTy lxp, (Or ptys[i], TyErr)
                     match args[i]:
                         nil: ((w, be, me))
-                        ? a: BindParam w, benv, menv, be, me, nkey, pty, a.value
+                        ? a: BindParam w, benv, menv, be, me, nkey, (LocalNameAt lxc, nkey, p.span), pty, a.value
                 let callSpan = match e.kind:
                     ECall c, ignore, ignore, ignore: c.span
                     otherwise: e.span
@@ -682,9 +682,10 @@ fn ?DefWidget d, ?other = match d.body:
     otherwise: ?other
 
 # One parameter of an inlined widget, bound in the callee's environments from an argument
-# lowered in the caller's.
-BindParam: unbounded fn Wx, Env, Env, Env, Env, Text, Ty, Expr -> ((Wx, Env, Env))
-fn BindParam wx, cbenv, cmenv, be, me, nkey, pty, arg:
+# lowered in the caller's; its fields and getters spelled from `spelled`, its name as a
+# local (`LocalNameAt`).
+BindParam: unbounded fn Wx, Env, Env, Env, Env, Text, Text, Ty, Expr -> ((Wx, Env, Env))
+fn BindParam wx, cbenv, cmenv, be, me, nkey, spelled, pty, arg:
     let lx = wx.lx
     let t = OutTyOf lx, (Peel pty)
     match LayerOf pty:
@@ -704,7 +705,7 @@ fn BindParam wx, cbenv, cmenv, be, me, nkey, pty, arg:
             # its value at the build, when the argument has one (`InitEnv`, round 3 DY): what an
             # element's first value or a supplier reads while the node is being made
             let ((wx0, be0)) = if (AllInited wx, reads) and (NamesInited cbenv, arg):
-                let ((rsi, wxi)) = FreshName wx, "{Snake nkey}_arg"
+                let ((rsi, wxi)) = FreshName wx, "{spelled}_arg"
                 let wxj = update wxi:
                     &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind "{rsi}_init"), t), (Own (ValueOf lx, (InitEnv cbenv), arg)))
                     &_.inited <= Push &_.inited, rsi
@@ -713,7 +714,7 @@ fn BindParam wx, cbenv, cmenv, be, me, nkey, pty, arg:
             match ex:
                 XMethod XSelf, ignore, ignore: ((wx0, (Bind be0, nkey, b), (Bind me, nkey, b)))
                 otherwise:
-                    let ((rs, wx2)) = FreshName wx0, (Snake nkey)
+                    let ((rs, wx2)) = FreshName wx0, spelled
                     let getter = MethDef(name=rs, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="`{nkey}`, a widget's parameter, as its rows read it")
                     let wx3 = update wx2:
                         &_.getters <= Push &_.getters, getter
@@ -721,7 +722,7 @@ fn BindParam wx, cbenv, cmenv, be, me, nkey, pty, arg:
                     let rb = BnDyn (XMethod (XSelf), rs, [[XCx]]), [[OwnRead rs]], t
                     ((wx3, (Bind (Bind be0, nkey, b), "{nkey}#row", rb), (Bind (Bind me, nkey, b), "{nkey}#row", rb)))
         otherwise:
-            let ((rs, wx2)) = FreshName wx, (Snake nkey)
+            let ((rs, wx2)) = FreshName wx, spelled
             let v = Own (ValueOf lx, cbenv, arg)
             let wx3 = update wx2:
                 &_.lets <= Push &_.lets, (DoLet (PaBind rs), v)
