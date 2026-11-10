@@ -1,0 +1,23 @@
+# `@Flatten` of a dynamic of dynamics that is not a `rebuild`'s (Semantics Appendix B:
+# "`@Flatten` follows a `rebuild`'s dynamic, or any other `$$a` a program holds"; the
+# Compiler book's seed, `@Flatten` driven by its outer's update event): the outer here is a
+# function's `$$Nat` over the page's holds. The flattened value follows its inner in the
+# inner's tick; when the outer fires at n the flatten adopts, after n, the inner the outer
+# then holds, and from n+1 reads and fires with it (the tick owed). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+$Pick: fn $Bool, $Nat, $Nat -> $$Nat
+fn $Pick $useB, $p, $q = if $useB: $ $q else: $ $p
+
+@page: @unit
+@page:
+    !inc <- Ui.Button(label=$"inc")                         # 0
+    !swap <- Ui.Button(label=$"swap")                       # 1
+    $a <- 0 then $a + 1 on !inc
+    $b <- 100 then $b + 1 on !inc
+    $useB <- False then True on !swap
+    let $$cur = $Pick $useB, $a, $b
+    $shown <- @Flatten $$cur
+    Ui.Label(text=$"{$shown}")                              # 2
