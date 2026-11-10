@@ -238,6 +238,65 @@ private:
     std::vector<std::pair<Rc<Port<T>>, Handle>> subs_;
 };
 
+/// A held `@Switch`'s subscription to its current inner event (prismc's `HeldSwitch`):
+/// listening to another event lets go of the one before. The event is kept whole: its
+/// owner (a `merge_all`'s node) lives while the switch listens.
+template <class T>
+class Listen {
+public:
+    Listen() = default;
+    Listen(const Listen&) = delete;
+    Listen& operator=(const Listen&) = delete;
+    Listen(Listen&&) = default;
+    Listen& operator=(Listen&&) = default;
+    ~Listen() { drop_sub(); }
+    /// From now on `ev` tells `node` through `heard`, and the event before tells nothing.
+    template <class N, class R, class V>
+    void listen(const Event<T>& ev, const Rc<N>& node, R (N::*heard)(V, Cx&)) {
+        drop_sub();
+        Weak<N> weak = node;
+        Handle h = ev.port->subscribe([weak, heard](const T& v, Cx& cx) -> Done {
+            if (auto n = weak.lock()) ((*n).*heard)(v, cx);
+            return {};
+        });
+        sub_.emplace(ev, h);
+    }
+
+private:
+    void drop_sub() {
+        if (sub_) {
+            sub_->first.port->unsubscribe(sub_->second);
+            sub_.reset();
+        }
+    }
+    std::optional<std::pair<Event<T>, Handle>> sub_;
+};
+
+/// `!MergeAll` of a list as an event value: a node of its own that hears the list's events
+/// (`MergeList`) and, woken, fires the values of the tick in the list's order.
+template <class T>
+class MergeNode : public Node {
+public:
+    MergeList<T> list;
+    Rc<Port<Array<T>>> out = make_rc<Port<Array<T>>>();
+    Done wake(Cx& cx) override {
+        if (auto all = list.take(cx)) return out->fire(std::move(*all), cx);
+        return {};
+    }
+    void heard(Cx& cx) { cx.wake(0, self_.lock()); }
+    Weak<MergeNode> self_;
+};
+
+/// The event `!MergeAll events` (Semantics Appendix B): its node woken at the height after
+/// the one an input fired at (the runtime's clamp), owned by the event.
+template <class T>
+Event<Array<T>> merge_all(const Array<Event<T>>& events) {
+    auto node = make_rc<MergeNode<T>>();
+    node->self_ = node;
+    node->list.listen(events, node, &MergeNode<T>::heard);
+    return Event<Array<T>>{node, node->out};
+}
+
 /// One place of a hosted child, as its host's document holds it (Jimmy, 6 November 2026:
 /// the document is `$(Path ==> $Elem c)`): a structural dynamic of its own (Semantics ch. 7,
 /// round 3 ST, doubt EP). Its node takes a snapshot of the place's level at its build and

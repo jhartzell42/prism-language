@@ -669,23 +669,26 @@ fn GenResult r, genName, ex, resultReads, rt:
 
 # The block's writes behind what a generation's places read mark the generation (gap DY;
 # `RowMarks` of kind `GenerationRow`: the current one is dirtied), and the block's names it
-# hears a write behind (`RowHears`: its `!Updated` nodes' reads through the parent) tell
-# the current one through `parent_wrote_{m}`, as a `for` row is told (pick RE).
+# hears a write behind (`UpdatedHears`: its `!Updated` nodes' reads through the parent)
+# tell the current one through `parent_wrote_{m}`, as a `for` row is told (pick RE). Its
+# own builders over the block's names are not told: a generation's `rebuild` over them
+# stands until the generation is replaced (`sem-ch07-paged`).
 GenMarked: fn Wx, Text, Wx -> Wx
 fn GenMarked parent, genName, rowWx:
     let reads = RowPlaceReads rowWx
-    let hears = RowHears rowWx
+    let hears = UpdatedHears rowWx
     let ported = Fold hears, parent, \|w, m| AddField w, "{genName}_wrote_{m}_port", (OutPort OutUnit), "the current generation of `{genName}` hears a write behind `{m}`", (XCall (RefRuntime "rt::Port::new"), [[]])
-    if (Len reads) == 0 and (Len hears) == 0: parent
+    let unheard = Filter (RowHears rowWx), \|m| not (HasText hears, m)
+    if (Len reads) == 0 and (Len hears) == 0 and (Len unheard) == 0: parent
     else: update ported:
-        &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=genName, reads=reads, wrote=hears, kind=GenerationRow)
+        &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=genName, reads=reads, wrote=hears, unheard=unheard, kind=GenerationRow)
 
 # A generation's side of `GenMarked`: the block holds the current generation as a `Row`,
 # which names no method of it, so each name it hears is a port of the block,
 # `{genName}_wrote_{m}`, the generation subscribes to (`subscribe_row`, as a row hears a
 # block's event), its firing heard by `wrote_{m}` as `parent_wrote_{m}`.
 GenHears: fn Wx, Text -> Wx
-fn GenHears r, genName = Fold (RowHears r), r, \|w, m| update w:
+fn GenHears r, genName = Fold (UpdatedHears r), r, \|w, m| update w:
     &_.subs <= Push &_.subs, (("{genName}_wrote_{m}", "wrote_{m}", OutUnit))
     &_.taken <= Push &_.taken, "wrote_{m}"
     &_.getters <= Push &_.getters, (MethDef(name="wrote_{m}", recv=RecvRc, params=[[(("v", OutUnit))]], cx=CxMut, ret=OutUnit, body=[[DoExpr (XMethod (XSelf), "parent_wrote_{m}", [[XCx]])]], tail=(XUnit), doc="The block wrote behind its `{m}`: as `parent_wrote_{m}`."))
@@ -865,8 +868,47 @@ fn SwitchLine wx, menv, args = match args[0]:
         if rebuilt:
             let ((r, wx2)) = EventRef wx, menv, a.value
             ((wx2, (WrEv r)))
-        else:
-            let wx2 = update wx:
-                &_.build <= Push &_.build, (RefusalDo "`@Switch` of `{SrcText wx.lx, wx.lx.file, a.value.span}`, a dynamic of events that is not a `rebuild`'s")
-            ((wx2, WrUnit))
+        else: HeldSwitch wx, menv, a.value
     nil: ((wx, WrUnit))
+
+# `@Switch $!x` over any other dynamic of events (round 47 SW; the Compiler seed, `@Switch`:
+# the switch listens to the inner the dynamic holds after each tick, from n+1, with no
+# catch-up). The outer is a live `Dynamic<Event<a>>`, made once the node is (`{name}_outer`,
+# a name's live dynamic from `WholeArgs`, or a lifted expression, `@Switch (!MergeAll
+# $evs)`, evaluated whole); the inner's firings reach the graph through a port node,
+# `{name}`, as an event value's do (`EventObjectRef`), heard by a runtime `Listen`. The
+# outer's update event puts the node on the swap list (`{name}_outer_moved`,
+# `Cx::swap_later`), and `swap`, after the tick's propagation, listens to the inner the
+# outer then holds and lets go of the old one.
+HeldSwitch: unbounded fn Wx, Env, Expr -> ((Wx, Wres))
+fn HeldSwitch wx, menv, x:
+    let lx = wx.lx
+    let t = OutTyOf lx, (Peel (Peel (TypeAt lx, x.span)))
+    let lxw = update lx:
+        &_.whole <= True
+    let ((name, w1)) = FreshName wx, "switched"
+    let ((id, w2)) = AddGn w1, name, t, GnPort, 0
+    let outer = "{name}_outer"
+    let listen = "{name}_listen"
+    let ofollow = "{name}_ofollow"
+    let outerTy = OutDyn (OutEvent t)
+    let made = MethDef(name="{outer}_made", recv=RecvRef, params=[[]], cx=CxRef, ret=outerTy, body=[[]], tail=(Own (ValueOf lxw, menv, x)), doc="`{SrcText lx, lx.file, x.span}`, the switch's outer, as a live dynamic.")
+    let outerNow = XMethod (XMethod (XField (XVar "node"), outer), "get", [[XCx]]), "expect", [[(XStr "`@Switch`'s outer is made at the build")]]
+    let setOuter = DoExpr (XMethod (XField (XVar "node"), outer), "set", [[(XCtor (RefRuntime "std::Some"), [[(XMethod (XVar "node"), "{outer}_made", [[XCx]])]]), XCx]])
+    let listened = DoExpr (XMethod (XField (XVar "node"), listen), "listen", [[(XRef (XMethod outerNow, "sample", [[XCx]])), (XRef (XVar "node")), (XPath (RefChild (SiteRef lx, wx.node), name))]])
+    let followed = DoExpr (XMethod (XField (XVar "node"), ofollow), "follow", [[(XRef (XField outerNow, "updates")), (XRef (XVar "node")), (XPath (RefChild (SiteRef lx, wx.node), "{name}_outer_moved"))]])
+    let moved = MethDef(name="{name}_outer_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=[[DoExpr (XMethod (XCx), "swap_later", [[(XClone XSelf)]])]], tail=(XUnit), doc="The switch's outer fired: after the tick's propagation the switch takes the inner it then holds.")
+    let w3 = update w2:
+        &_.taken <= Append &_.taken, [[outer, listen, ofollow, "{outer}_made", "{name}_outer_moved"]]
+        &_.fields <= Append &_.fields, [[((outer, (OutHold (OutOpt outerTy)), "`@Switch`'s outer, made at the build")), ((listen, (OutNamed (RefRuntime "prism_rtl::Listen"), [[t]]), "the subscription to the switch's current inner")), ((ofollow, (OutNamed (RefRuntime "prism_rtl::Follow"), [[]]), "the subscription to the outer's update event"))]]
+        &_.moves <= Append &_.moves, [[((outer, (XCall (RefRuntime "rt::Hold::new"), [[XNone, XCx]]))), ((listen, (XCall (RefRuntime "std::Default::default"), [[]]))), ((ofollow, (XCall (RefRuntime "prism_rtl::Follow::new"), [[]])))]]
+        &_.build <= Append &_.build, [[setOuter, listened, followed]]
+        &_.getters <= Append &_.getters, [[made, moved]]
+        &_.switches <= Push &_.switches, name
+    ((w3, (WrEv (EvRefOf w3, id))))
+
+# The `swap` hook's body: each held switch listens to the inner its outer holds now.
+SwapBody: fn Wx -> [Do]
+fn SwapBody wx = Each wx.switches, \|name|
+    let outerNow = XMethod (XMethod (XField XSelf, "{name}_outer"), "get", [[XCx]]), "expect", [[(XStr "`@Switch`'s outer is made at the build")]]
+    DoExpr (XMethod (XField XSelf, "{name}_listen"), "listen", [[(XRef (XMethod outerNow, "sample", [[XCx]])), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef wx.lx, wx.node), name))]])

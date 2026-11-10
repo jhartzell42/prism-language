@@ -1012,6 +1012,12 @@ pub fn dyn_constant<T: Clone + 'static>(v: T) -> Dynamic<T> {
     Dynamic::constant(v)
 }
 
+/// `!MergeAll` of a list as an event value (a merge made where `!MergeAll` is lifted over a
+/// dynamic list, Type System ch. 4): prism_rtl's own node decides each tick's firing.
+pub fn merge_all<T: Clone + 'static>(events: &Array<Event<T>>) -> Event<Array<T>> {
+    ::prism_rtl::merge_all(events)
+}
+
 /// `test`: each script under the Test World. With `--print` the transcripts go to
 /// standard output as they are; otherwise each is compared byte for byte with the
 /// `.expected` beside it (`tests.expected` for the test module `tests.prism`), and `ok`

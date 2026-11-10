@@ -239,8 +239,18 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `MergeList<T>` field (prism_rtl, both runtimes) that hears each `Event` of the list,
   read once the node is made (`{nm}_events`), into a stamped input and tells the node
   (`{nm}_in`, the wake asked); the wake takes the values fired this tick in the list's
-  order (`GnMergeList`). A list that is not plain makes `!MergeAll` lifted, a `$![a]`:
-  refused, as is `@Switch` of any dynamic of events that is not a `rebuild`'s.
+  order (`GnMergeList`). Over a dynamic list `!MergeAll` is lifted, a `$![a]` (Type
+  System ch. 4), whose inners are `merge_all` event values: prism_rtl's own `MergeNode`
+  decides each tick's firing, owned by the event.
+- **`@Switch $!a`** over any dynamic of events that is not a `rebuild`'s (`HeldSwitch`) →
+  the outer's live `Dynamic<Event<A>>`, made once the node is (`{name}_outer`), a port node
+  `{name}` of the graph, and a `Listen<A>` (prism_rtl) that keeps the current inner event
+  whole and tells the port node. The outer's update port (`{name}_ofollow`) calls
+  `cx.swap_later`, and `swap`, after the tick's propagation, listens to the inner the
+  outer then holds: heard from n+1, with no catch-up (`sem-appB-merge-all-switched`).
+- **A generation's own builder over a name of its block** that the outer `rebuild`'s
+  source does not read is refused (`UnheardGaps`, gap DY; `sem-ch07-generation-rebuild`).
+  A generation is told only what its `!Updated` nodes read.
 - **`!Updated` in a generation over its block's names.** The block holds its current
   generation as a `Row`, which names no method of it, so each name the generation hears
   is a port of the block, `{gen}_wrote_{m}_port`, fired where a `for` row's

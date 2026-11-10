@@ -285,9 +285,10 @@ fn WholeArgs wx, benv, menv, e, whole:
     let lx = wx.lx
     # a call of a function that takes time whole, lifted or not (a lifted one, `$Sel (True
     # on !swap), $a, $b`, takes its sigiled arguments whole, `ArgsFor`), and `@Flatten`'s
-    # outer, a dynamic of dynamics it follows whole (`HeldFlatten`)
+    # outer, a dynamic of dynamics it follows whole (`HeldFlatten`), and `@Switch`'s
+    # (`HeldSwitch`)
     let calls = Filter (ExprsIn e), \|x| match x.kind:
-        ECall c, ignore, ignore, ignore: (IsWholeObject lx, x) or (IsWholeFn lx, (CalleeKey lx, c)) or (CalleeKey lx, c) == "Prelude.@Flatten"
+        ECall c, ignore, ignore, ignore: (IsWholeObject lx, x) or (IsWholeFn lx, (CalleeKey lx, c)) or (CalleeKey lx, c) == "Prelude.@Flatten" or (CalleeKey lx, c) == "Prelude.@Switch"
         otherwise: False
     let roots = Fold calls, (if whole: [[e]] else: [[]]), \|acc, c| match c.kind:
         ECall ignore, args, ignore, ignore: Fold args, acc, \|acc2, a| Append acc2, (ExprsIn a.value)

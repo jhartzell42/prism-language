@@ -880,6 +880,11 @@ inline void no_fault(const Done& d) {
 template <class T>
 Dynamic<T> dyn_constant(T v) { return Dynamic<T>::constant(std::move(v)); }
 
+/// `!MergeAll` of a list as an event value (a merge made where `!MergeAll` is lifted over a
+/// dynamic list, Type System ch. 4): prism_rtl's own node decides each tick's firing.
+template <class T>
+Event<Array<T>> merge_all(const Array<Event<T>>& events) { return ::prism_rtl::merge_all(events); }
+
 /// The root under the CLI World (`worlds/cli/cpp`).
 template <class P>
 int run_cli(const std::vector<std::string>& args) { return ::prism_world_cli::run<P>(args); }

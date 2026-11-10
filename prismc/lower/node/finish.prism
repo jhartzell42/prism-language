@@ -256,7 +256,7 @@ fn FinishNode wx0, qk, params, isRow:
     let isGen = isRow and (Len (Filter wx0.fields, \|((f, ignore, ignore))| f == "key")) == 0
     let wx = update wx0:
         &_.gns <= Heights gns2
-        &_.build <= Append &_.build, (UpdatedGaps wx0, closedGns)
+        &_.build <= Append (Append &_.build, (UpdatedGaps wx0, closedGns)), (UnheardGaps wx0)
         &_.rows <= Fold rowDefs, &_.rows, \|acc, rd| Append (Push acc, rd), rd.children
     let combs = Filter wx.gns, \|g| (IsComb g.kind) or g.kind == GnGather or g.kind == GnMergeList
     let heights = SortNats (Fold combs, [[]], \|acc, g| AddNat acc, g.height)
@@ -281,7 +281,7 @@ fn FinishNode wx0, qk, params, isRow:
     let patchBody = Append patchBody0, (RootDynPatch wx)
     let buildBody = BuildSteps sinks, False
     let pushBody = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, f, t, ignore))| DoIf (XBin OpEq, (XVar "element"), (XRef (XField XSelf, "{f}_element"))), (DynPlaceWrite sinks, f, (XDecode t, (XVar "v"))), [[]]
-    let hooks = Filter [[(("wake", wakeBody)), (("started", startedBody)), (("deferred", deferredBody)), (("build", buildBody)), (("push", pushBody)), (("patch", patchBody))]], \|((ignore, b))| (Len b) > 0
+    let hooks = Filter [[(("wake", wakeBody)), (("started", startedBody)), (("deferred", deferredBody)), (("build", buildBody)), (("swap", (SwapBody wx))), (("push", pushBody)), (("patch", patchBody))]], \|((ignore, b))| (Len b) > 0
     let startedReg = if (Len wx.started) > 0: [[DoExpr (XMethod (XCx), "on_started", [[(XClone (XVar "node"))]])]] else: [[]]
     # the hosts linked to the node, then the builders and the snapshots (a place over a
     # structural dynamic reads its snapshot at the build), then the places out
@@ -495,6 +495,21 @@ fn DynAnswerArm sk, pos, f, t = (((PosPat pos, [[]]), (XBlock (DynPlaceWrite sk,
 # over it told at height 0, before any wake, so the wake is only asked).
 DynPlaceWrite: fn Sinks, Text, Ex -> [Do]
 fn DynPlaceWrite sk, f, value = Append [[DoExpr (XMethod (XField XSelf, "{f}"), "set", [[value, XCx]])]], (HoldWritten sk, f)
+
+# A generation's own builder (a `rebuild` or a `for` in it) over a name of its block is
+# told of no write of that name (gap DY): refused loudly, unless the outer `rebuild`'s
+# source reads the name too, so a write behind it replaces the generation
+# (`sem-ch07-paged`). `sem-ch07-generation-rebuild` is its failing test.
+UnheardGaps: fn Wx -> [Do]
+fn UnheardGaps wx = Fold (Filter wx.rowMarks, \|rm| rm.kind == GenerationRow), [[]], \|acc, rm|
+    let source = Fold (Filter wx.genHolds, \|((g, ignore))| g == rm.builder), [[]], \|a, ((ignore, hs))| UnionReads a, (ReadsClosed wx.dynReads, hs)
+    Fold rm.unheard, acc, \|a, m| if SourceCovers wx, source, m: a else: Push a, (RefusalDo "not lowered yet: a builder in a `rebuild` generation over `{m}`, a name of its parent block its `rebuild`'s source does not read (gap DY)")
+
+# Whether every hold behind a name of the block is behind a `rebuild`'s source.
+SourceCovers: fn Wx, [Read], Text -> Bool
+fn SourceCovers wx, source, m = Fold (ReadsClosed wx.dynReads, [[OwnRead m]]), True, \|ok, r| ok and match r:
+    OwnRead h: (HasKey wx.dynReads, h) or HasRead source, r
+    ParentRead ignore: False
 
 # What an "updated" node cannot be given: a read of anything that is not a hold a sink of
 # this node writes, a dynamic `let` over such, or a structural dynamic of the node (its

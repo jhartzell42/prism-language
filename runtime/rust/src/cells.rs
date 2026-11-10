@@ -503,6 +503,72 @@ impl<T: Clone> Drop for MergeList<T> {
     }
 }
 
+/// A held `@Switch`'s subscription to its current inner event (prismc's `HeldSwitch`):
+/// listening to another event lets go of the one before. The event is kept whole: its
+/// owner (a `merge_all`'s node) lives while the switch listens.
+pub struct Listen<T: Clone> {
+    sub: RefCell<Option<(Event<T>, Handle)>>,
+}
+
+impl<T: Clone + 'static> Default for Listen<T> {
+    fn default() -> Listen<T> {
+        Listen { sub: RefCell::new(None) }
+    }
+}
+
+impl<T: Clone + 'static> Listen<T> {
+    /// From now on `ev` tells `node` through `heard`, and the event before tells nothing.
+    pub fn listen<N: 'static>(&self, ev: &Event<T>, node: &Rc<N>, heard: fn(&Rc<N>, T, &mut Cx)) {
+        self.drop_sub();
+        let weak = Rc::downgrade(node);
+        let h = ev.port.subscribe(Rc::new(move |v: &T, cx: &mut Cx| {
+            if let Some(n) = weak.upgrade() {
+                heard(&n, v.clone(), cx);
+            }
+            Ok(())
+        }));
+        *self.sub.borrow_mut() = Some((ev.clone(), h));
+    }
+    fn drop_sub(&self) {
+        if let Some((ev, h)) = self.sub.borrow_mut().take() {
+            ev.port.unsubscribe(h);
+        }
+    }
+}
+
+impl<T: Clone> Drop for Listen<T> {
+    fn drop(&mut self) {
+        if let Some((ev, h)) = self.sub.borrow_mut().take() {
+            ev.port.unsubscribe(h);
+        }
+    }
+}
+
+/// `!MergeAll` of a list as an event value: a node of its own that hears the list's events
+/// (`MergeList`) and, woken, fires the values of the tick in the list's order.
+struct MergeNode<T: Clone + 'static> {
+    list: MergeList<T>,
+    out: Rc<Port<crate::collections::Array<T>>>,
+}
+
+impl<T: Clone + 'static> Node for MergeNode<T> {
+    fn wake(self: Rc<Self>, cx: &mut Cx) -> crate::cx::Done {
+        match self.list.take(cx) {
+            Some(all) => self.out.fire(all, cx),
+            None => Ok(()),
+        }
+    }
+}
+
+/// The event `!MergeAll events` (Semantics Appendix B): its node woken at the height after
+/// the one an input fired at (the runtime's clamp), owned by the event.
+pub fn merge_all<T: Clone + 'static>(events: &crate::collections::Array<Event<T>>) -> Event<crate::collections::Array<T>> {
+    let node = Rc::new(MergeNode { list: MergeList::new(), out: Rc::new(Port::new()) });
+    node.list.listen(events, &node, |n: &Rc<MergeNode<T>>, cx: &mut Cx| cx.wake(0, n.clone()));
+    let port = node.out.clone();
+    Event { owner: Some(node), port }
+}
+
 /// A `$a` value: a read at the context's read point, its update event, and its owner.
 /// The update event says only that the value moved; a reader reads it again, so a
 /// projection of a dynamic shares its source's port.
