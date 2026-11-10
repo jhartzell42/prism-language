@@ -1,0 +1,34 @@
+# A closed local lambda (it mentions only top-level names) generalizes with its waiting
+# associated-type equation as a constraint, as GHC's MonoLocalBinds does: `G` is
+# `Item a = Text => a -> Nat`, and each use meets the equation at its own type, a pair of
+# texts and a tag (Jimmy's ruling SH). Written by Claude on the claude-bugs branch; subject
+# to change.
+emit Ui.*
+test mod Tests
+
+trait ^Box a:
+    type Item
+    Open: fn a -> Item a
+
+type Pair a = record:
+    one: a
+    two: a
+
+impl ^Box (Pair a):
+    type Item = a
+    fn Open p = p.one
+
+type Tag = record:
+    name: Text
+
+impl ^Box Tag:
+    type Item = Text
+    fn Open t = t.name
+
+Takes: fn Text -> Nat
+fn Takes t = Len t
+
+@main: @unit
+@main:
+    let G = \|x| Takes (Open x)
+    Ui.Label(text=$"{G (Pair(one="ab", two="c"))} {G (Tag(name="xyz"))}")    # 0
