@@ -1,0 +1,15 @@
+# An event a function keeps whole in a list, heard by the node that passed it (Type System
+# ch. 4, Application: a sigiled parameter is not lifted over): `es[0]` is `!inc` itself, so
+# the hold counts each click. Written by Claude on the claude-bugs branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+
+Evs: fn !a -> [!a]
+fn Evs !e = [[!e]]
+
+@shown:
+    !inc <- Ui.Button(label=$"Inc")                             # 0
+    let es = Evs !inc
+    $n <- 0 then $n + 1 on (Or es[0], never)
+    Ui.Label(text=$"n {$n}")                                    # 1
