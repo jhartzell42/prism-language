@@ -327,8 +327,8 @@ type GenRow = record:
     parent: Wx
     # The generation's result when it is a dynamic: its type (the row has `result` and
     # `result_dynamic`); when it is a plain value, its type (the row has `result_value`).
-    dynResult: ?OutTy
-    plainResult: ?OutTy
+    ?dynResult: OutTy
+    ?plainResult: OutTy
 
 # A generation's node: its `_` a plain field, the block's events it names through ports,
 # its result forwarded up to the `rebuild`'s.
@@ -358,7 +358,7 @@ fn GenRowOf wx, menv, body, vt, rowName, genName:
                 &_.build <= Push &_.build, (RefusalDo "a `rebuild` whose block ends on a bundle")
             ((r2b, nil, nil))
         otherwise: ((r2, nil, nil))
-    GenRow(node=(FinishNode r3, rowName, (Append [[(("value", vt)), (("parent", (OutWeak wx.node)))]], (HostedParams wx)), True), parent=(GenMarked p1, genName, r3), dynResult=?dynResult, plainResult=?plainResult)
+    GenRow(node=(FinishNode r3, rowName, (Append [[(("value", vt)), (("parent", (OutWeak wx.node)))]], (HostedParams wx)), True), parent=(GenMarked p1, genName, r3), ?dynResult=?dynResult, ?plainResult=?plainResult)
 
 # A generation's dynamic result (a `rebuild` handing back `$$a`): the getter `result`, the
 # `Dynamic` the block keeps of it, and the block told through `{genName}_result_moved` when

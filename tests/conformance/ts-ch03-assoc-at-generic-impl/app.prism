@@ -23,4 +23,4 @@ fn Firsts xs = Fold xs, [[]], \|acc, x| Push acc, (Open x)
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{Open (Pair(one="a", two="b"))} {Show (Firsts [[(Pair(one=1, two=2)), (Pair(one=3, two=4))]])}")    # 0
+    Ui.Label($text=$"{Open (Pair(one="a", two="b"))} {Show (Firsts [[(Pair(one=1, two=2)), (Pair(one=3, two=4))]])}")    # 0

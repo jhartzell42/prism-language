@@ -93,7 +93,7 @@ fn LowerProgram srcs, trees, shown, tp, name:
     let elemHeld = Fold elem.cases, [[]], \|acc, ((ignore, sp))| UnionTexts acc, (HeldIn names, valueTys, "", (OutNamed sp, [[]]))
     let answerHeld = Fold answer.cases, elemHeld, \|acc, k| UnionTexts acc, (HeldIn names, valueTys, "", k.ty)
     let answerNamed = Fold answer.cases, [[]], \|acc, k| UnionTexts acc, (NamedIn names, "", k.ty)
-    Model(name=name, mods=withNeeds, programs=programs, root=?root, checks=checks, elem=elem, answer=answer, elemComplete=answerHeld, elemDeclared=(MinusTexts answerNamed, answerHeld), scripts=[[]], notes=[[]])
+    Model(name=name, mods=withNeeds, programs=programs, ?root=?root, checks=checks, elem=elem, answer=answer, elemComplete=answerHeld, elemDeclared=(MinusTexts answerNamed, answerHeld), scripts=[[]], notes=[[]])
 
 # Each module with what it needs of the others (`ModDef.complete` and `declared`).
 WithNeeds: unbounded fn G, [Src], TProgram, [ModDef] -> [ModDef]

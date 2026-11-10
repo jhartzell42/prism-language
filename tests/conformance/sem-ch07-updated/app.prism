@@ -11,7 +11,7 @@ use Ui.*
 
 @halves: @unit
 @halves:
-    !bump <- Ui.Button(label=$"bump")                           # 0
+    !bump <- Ui.Button($label=$"bump")                           # 0
     $a <- 0 then $a + 1 on !bump
     let $b = $a + 1
     let !newB = !Updated $b                                     # the event half: after n
@@ -21,5 +21,5 @@ use Ui.*
     $holdFired <- 0 then $holdFired + 1 on (!Updated $a)
     let $same = $a * 0
     $sameFired <- 0 then $sameFired + 1 on (!Updated $same)
-    Ui.Label(text=$"b {$lastNew} was {$lastOld}")               # 1
-    Ui.Label(text=$"a fired {$holdFired}, same fired {$sameFired}")   # 2
+    Ui.Label($text=$"b {$lastNew} was {$lastOld}")               # 1
+    Ui.Label($text=$"a fired {$holdFired}, same fired {$sameFired}")   # 2

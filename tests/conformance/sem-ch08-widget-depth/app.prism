@@ -26,9 +26,9 @@ fn @Wrap @child = @Inner @child
                             $r6 <- @Wrap @widget:
                                 $r7 <- @Wrap @widget:
                                     $r8 <- @Wrap @widget:
-                                        !poke <- Ui.Button(label=$"poke")          # 0
+                                        !poke <- Ui.Button($label=$"poke")          # 0
                                         $n <- 0 then $n + 1 on !poke
-                                        Ui.Label(text=$"deep {$n}")                # 1
+                                        Ui.Label($text=$"deep {$n}")                # 1
                                         @ $n
                                     @ $r8
                                 @ $r7

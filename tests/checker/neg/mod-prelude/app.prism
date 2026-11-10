@@ -6,4 +6,4 @@ mod Prelude
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{Prelude.Twice 2}")
+    Ui.Label($text=$"{Prelude.Twice 2}")

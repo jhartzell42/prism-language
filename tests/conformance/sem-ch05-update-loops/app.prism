@@ -16,4 +16,4 @@ fn Tally xs, m = update "":
 
 @shown: @unit
 @shown:
-    Ui.Label(text=$(Tally [[0, 7, 2, 9]], {"a": 1, "b": 2}))   # 0
+    Ui.Label($text=$(Tally [[0, 7, 2, 9]], {"a": 1, "b": 2}))   # 0

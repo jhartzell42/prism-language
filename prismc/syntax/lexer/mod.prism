@@ -162,16 +162,16 @@ type Lex = record:
     markLineStart: Bool
     firstLine: Bool
     testPending: Text
-    testDepth: ?Nat
-    checkDepth: ?Nat
+    ?testDepth: Nat
+    ?checkDepth: Nat
     pathNext: Bool
 derive ^Eq, ^Show
 
 Fresh: fn Lex, Mode -> Lex
 fn Fresh l, mode = Lex(src=l.src, pos=l.pos, diags=l.diags, mode=mode, tokens=[[]], layout=[[]],
     frames=[[]], lastWs=True, lambdaOpen=False, pendingOpen=False, pendingSpan=Range(start=0, end=0),
-    lineFirst=0, markLineStart=False, firstLine=True, testPending="", testDepth=nil,
-    checkDepth=nil, pathNext=False)
+    lineFirst=0, markLineStart=False, firstLine=True, testPending="", ?testDepth=nil,
+    ?checkDepth=nil, pathNext=False)
 
 # What a file lexes to.
 type Lexed = record:

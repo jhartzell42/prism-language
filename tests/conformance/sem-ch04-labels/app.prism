@@ -14,20 +14,20 @@ fn Apply tags, changes = Fold changes, tags, \|acc, k, c| match c:
 
 @labels: @unit
 @labels:
-    !add <- Ui.Button(label=$"Add a tag")                       # 0
+    !add <- Ui.Button($label=$"Add a tag")                       # 0
     $next <- 1 then $next + 1 on !add
     let !adds = {$next: Added} on !add
     !removes <- for $tags:                                      # 1/[key]
-        Ui.Label(text=$_)                                       # 1/[key]/0
-        !remove <- Ui.Button(label=$"Remove")                   # 1/[key]/1
+        Ui.Label($text=$_)                                       # 1/[key]/0
+        !remove <- Ui.Button($label=$"Remove")                   # 1/[key]/1
         @ Removed on !remove
     $tags <- {} then Apply $tags, (!Union !adds, !removes)
 
 @Shelf: fn $(Text ==> Nat) -> @!(Text ==> ?Nat)
 fn @Shelf $stock:
     for title, $count <- $stock:
-        Ui.Label(text=$"{title}: {$count} left")
-        !sell <- Ui.Button(label=$"Sell one")
+        Ui.Label($text=$"{title}: {$count} left")
+        !sell <- Ui.Button($label=$"Sell one")
         @ $count -? 1 on !sell
 
 @shop: @unit

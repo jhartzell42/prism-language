@@ -12,4 +12,4 @@ fn Apply F = F 3
     let F = \|n| n + 1
     let Fy = \|n| n + 2
     let a0 = 10
-    Ui.Label(text=$"{Apply F} {Apply Fy} {a0}")    # 0
+    Ui.Label($text=$"{Apply F} {Apply Fy} {a0}")    # 0

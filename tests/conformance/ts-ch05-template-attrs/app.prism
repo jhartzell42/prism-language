@@ -12,4 +12,4 @@ fn Both a, b = inline_text <t><@Pair right={{b}} left={{a}}/></t>
 
 @shown: @unit
 @shown:
-    Ui.Label(text=$(Both "first", "second"))                # 0
+    Ui.Label($text=$(Both "first", "second"))                # 0

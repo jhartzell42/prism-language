@@ -9,7 +9,7 @@ test mod Tests
 @shown: @unit
 @shown:
     let Twin = \|x| ((x, x))
-    !more <- Ui.Button(label=$"more")                       # 0
+    !more <- Ui.Button($label=$"more")                       # 0
     $n <- 1 then $n + 1 on !more
-    Ui.Label(text=$"{Show (Twin 3)} {Show (Twin True)}")    # 1
-    Ui.Label(text=$"{Show (Twin $n)}")                      # 2
+    Ui.Label($text=$"{Show (Twin 3)} {Show (Twin True)}")    # 1
+    Ui.Label($text=$"{Show (Twin $n)}")                      # 2

@@ -7,7 +7,7 @@ emit Ui.*
 
 @Delay: fn !Int -> @!Int
 fn @Delay !e:
-    !go <- Ui.Button(label=$"go")                                 # 0
+    !go <- Ui.Button($label=$"go")                                 # 0
     $last <- 0 then !e
     @ ($last on !go)
 
@@ -16,4 +16,4 @@ fn @Delay !e:
     !y <- @Delay !x                                               # 0
     let !x = !y + 1
     $seen <- 0 then !y
-    Ui.Label(text=$"{$seen}")                                     # 1
+    Ui.Label($text=$"{$seen}")                                     # 1

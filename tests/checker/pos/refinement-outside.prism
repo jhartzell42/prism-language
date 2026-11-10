@@ -10,8 +10,8 @@ use Fs.*
 @child: @unit
 @child:
     $~text <- Fs.Contents(path="a")                               # 0
-    !~got <- Fs.File(path="b", requests=never)                    # 1
-    Ui.Label(text=$"child")                                       # 2
+    !~got <- Fs.File(path="b", !requests=never)                    # 1
+    Ui.Label($text=$"child")                                       # 2
 
 @viaLet: @unit
 @viaLet:

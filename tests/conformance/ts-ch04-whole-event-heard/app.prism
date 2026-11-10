@@ -9,7 +9,7 @@ Evs: fn !a -> [!a]
 fn Evs !e = [[!e]]
 
 @shown:
-    !inc <- Ui.Button(label=$"Inc")                             # 0
+    !inc <- Ui.Button($label=$"Inc")                             # 0
     let es = Evs !inc
     $n <- 0 then $n + 1 on (Or es[0], never)
-    Ui.Label(text=$"n {$n}")                                    # 1
+    Ui.Label($text=$"n {$n}")                                    # 1

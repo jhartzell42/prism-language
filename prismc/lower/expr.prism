@@ -520,7 +520,7 @@ fn PlainValueByKind lx, env, e:
         EMap kvs: VlOwned (XCall (HelperRef "map_of"), [[XVec (Each kvs, \|((k, v))| XTuple [[Own (ValueOf lx, env, k), Own (ValueOf lx, env, v)]])]]), t
         EGroup x: ValueOf lx, env, x
         ECall c, args, ignore, ignore: Application lx, env, c, args, e.span
-        EMethod r, m, args: Application lx, env, (Expr(kind=(EName m), span=m.span)), (Append [[Arg(name=nil, value=r, span=r.span)]], args), e.span
+        EMethod r, m, args: Application lx, env, (Expr(kind=(EName m), span=m.span)), (Append [[Arg(marks="", ?name=nil, value=r, span=r.span)]], args), e.span
         EBinary op, l, r: BinaryValue lx, env, op, l, r, e.span
         EUnary "not", x: VlOwned (XUnary OpNot, (AsBool (ValueOf lx, env, x))), OutBool
         EUnary "neg", x: match x.kind:
@@ -942,7 +942,7 @@ fn ArgsFor lx, env, v, args:
         TyFn ignore, xs, ignore: xs
         otherwise: [[]]
     Each (Range0 (Len args)), \|i|
-        let a = Or args[i], (Arg(name=nil, value=dummyExpr, span=Range(start=0, end=0)))
+        let a = Or args[i], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0)))
         let toUnbounded = match Peel (Or ps[i], TyErr):
             TyFn CBound, ignore, ignore: False
             TyFn ignore, ignore, ignore: True
@@ -1003,7 +1003,7 @@ CtorFn: unbounded fn Lx, CtorInfo, [OutTy], Range, OutTy, Bool -> Vl
 fn CtorFn lx, c, pts, span, t, job:
     let names = Each (Range0 (Len pts)), \|i| "a{i}"
     # Each argument stands at a place no source has, bound to its parameter.
-    let fakes = Each (Range0 (Len pts)), \|i| Arg(name=nil, value=(Expr(kind=EAbsent, span=Range(start=(4000000000 + i), end=(4000000000 + i)))), span=Range(start=0, end=0))
+    let fakes = Each (Range0 (Len pts)), \|i| Arg(marks="", ?name=nil, value=(Expr(kind=EAbsent, span=Range(start=(4000000000 + i), end=(4000000000 + i)))), span=Range(start=0, end=0))
     let env = Fold (Range0 (Len pts)), emptyEnv, \|en, i| BindSpan en, (PlaceKey lx, (Range(start=(4000000000 + i), end=(4000000000 + i)))), (VlPlace (XVar (Or names[i], "a")), (if job: Owned else: ByRef), (Or pts[i], OutUnit))
     let made = Own (CtorApp lx, env, c, fakes, span)
     if job:
@@ -1147,7 +1147,7 @@ fn PreludeCall lx, env, qk, args, span, t:
 ?PreludeJob: unbounded fn Lx, Env, Text, [Arg] -> ?Ex
 fn ?PreludeJob lx, env, variant, args:
     if HasText [["fold", "fold_map", "each", "each_map", "filter", "filter_map"]], variant:
-        let last = Or args[Dec (Len args)], (Arg(name=nil, value=dummyExpr, span=Range(start=0, end=0)))
+        let last = Or args[Dec (Len args)], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0)))
         match OutTyOf lx, (Peel (TypeAt lx, last.value.span)):
             OutJobFn ignore, ignore:
                 let front = Each (Take args, (Dec (Len args))), \|a| Own (ValueOf lx, env, a.value)
@@ -1214,7 +1214,7 @@ NamedArgsOwned: unbounded fn Lx, Env, Text, [Arg] -> [Ex]
 fn NamedArgsOwned lx, env, qk, args:
     let ((ps, ignore)) = SchemeParts lx, qk
     Each (Range0 (Len args)), \|i|
-        let a = Or args[i], (Arg(name=nil, value=dummyExpr, span=Range(start=0, end=0)))
+        let a = Or args[i], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0)))
         match Peel (Or ps[i], TyErr):
             TyFn CBound, ignore, ignore: Own (ValueOf lx, env, a.value)
             TyFn ignore, ignore, ignore: AsJobValue lx, env, a.value
@@ -1228,7 +1228,7 @@ fn StartArgs lx, env, f, args:
         OutJobFn a, ignore: [[a]]
         otherwise: [[]]
     Each (Range0 (Len args)), \|i|
-        let a = Or args[i], (Arg(name=nil, value=dummyExpr, span=Range(start=0, end=0)))
+        let a = Or args[i], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0)))
         match Or pts[i], OutUnit:
             OutJobFn ignore, ignore: AsJobValue lx, env, a.value
             otherwise: Own (ValueOf lx, env, a.value)
@@ -1681,7 +1681,7 @@ fn ?OnlyRead lx, arm, nkey:
 WordCount: fn Text, Text -> Nat
 fn WordCount text, name = Len (Filter (Matches %/[?~$!@&]*[A-Za-z_][A-Za-z0-9_]*/, text), \|m| m.text == name)
 
-let dummyArm = Arm(pattern=nil, guard=nil, body=Block(stmts=[[]], inline=True, span=Range(start=0, end=0)), span=Range(start=0, end=0))
+let dummyArm = Arm(?pattern=nil, ?guard=nil, body=Block(stmts=[[]], inline=True, span=Range(start=0, end=0)), span=Range(start=0, end=0))
 
 ArmPat: unbounded fn Lx, ?Pattern, Ty, Holding, Text -> PatOut
 fn ArmPat lx, (? p), ty, mode, fresh = RustPat lx, p, ty, mode, fresh

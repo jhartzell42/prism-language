@@ -48,5 +48,5 @@ fn Called n:
 @page: @unit
 @page:
     let ops = Ops(inc=(\|k| k + 7), label="ops")
-    Ui.Label(text=$"{Tupled 3} {Held 4} {Matched (? 5)} {Matched nil}")       # 0
-    Ui.Label(text=$"{Nested 1} {Called 2} {ops.inc 1} {ops.label}")            # 1
+    Ui.Label($text=$"{Tupled 3} {Held 4} {Matched (? 5)} {Matched nil}")       # 0
+    Ui.Label($text=$"{Nested 1} {Called 2} {ops.inc 1} {ops.label}")            # 1

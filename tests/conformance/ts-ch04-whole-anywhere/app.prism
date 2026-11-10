@@ -9,13 +9,13 @@ Wrap: fn $Nat -> [$Nat]
 fn Wrap $a = [[$a]]
 
 @inElement:
-    !inc <- Ui.Button(label=$"Inc")                             # 0
+    !inc <- Ui.Button($label=$"Inc")                             # 0
     $count <- 0 then $count + 1 on !inc
-    Ui.Label(text=$"first {Or (Wrap $count)[0], ($ 0)}")        # 1
+    Ui.Label($text=$"first {Or (Wrap $count)[0], ($ 0)}")        # 1
 
 @inStep:
-    !inc <- Ui.Button(label=$"Inc")                             # 0
-    !keep <- Ui.Button(label=$"Keep")                           # 1
+    !inc <- Ui.Button($label=$"Inc")                             # 0
+    !keep <- Ui.Button($label=$"Keep")                           # 1
     $count <- 0 then $count + 1 on !inc
     $kept <- 0 then (Or (Wrap $count)[0], ($ 0)) on !keep
-    Ui.Label(text=$"kept {$kept}")                              # 2
+    Ui.Label($text=$"kept {$kept}")                              # 2

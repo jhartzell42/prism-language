@@ -53,7 +53,7 @@ fn ParseCheckLine p:
     let start = Here p
     let ((expr, p1)) = ParseRhsExpr p
     let ((?pattern, q)) = if AtOp p1, "=>": OptionalPatternTop (Adv p1) else: ((nil, p1))
-    ((CheckLine(expr=expr, pattern=?pattern, span=(To start, (Prev q))), q))
+    ((CheckLine(expr=expr, ?pattern=?pattern, span=(To start, (Prev q))), q))
 
 OptionalPatternTop: unbounded fn Ps -> ((?Pattern, Ps))
 fn OptionalPatternTop p:
@@ -65,7 +65,7 @@ ParseTestDecl: unbounded fn Ps -> ((TestDecl, Ps))
 fn ParseTestDecl p0:
     let start = Here p0
     let ((name, p1)) = ParseIdent (Adv p0)
-    let fallback = TestDecl(name=name, blueprint=noExpr, seed=nil, steps=[[]], span=start)
+    let fallback = TestDecl(name=name, blueprint=noExpr, ?seed=nil, steps=[[]], span=start)
     if not (AtComma p1): ((fallback, (ErrorHere p1, "a test names its blueprint: `test name, @blueprint:`")))
     else:
         let ((blueprint, p2)) = ParseArgExpr (Adv p1)
@@ -75,7 +75,7 @@ fn ParseTestDecl p0:
             let saved = p4.stepMode
             let ((steps, p5)) = LayoutItems (Adv p4), \|s| StepIn s, saved
             let q = WithStepMode p5, saved
-            ((TestDecl(name=name, blueprint=blueprint, seed=?seed, steps=steps, span=(To start, (Prev q))), q))
+            ((TestDecl(name=name, blueprint=blueprint, ?seed=?seed, steps=steps, span=(To start, (Prev q))), q))
         else: ((fallback, (ErrorHere p4, "a test's steps stand in an indented block")))
 
 ParseSeed: fn Ps -> ((?Nat, Ps))

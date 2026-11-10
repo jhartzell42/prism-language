@@ -14,4 +14,4 @@ fn Doubles xs = Each xs, Double
 fn @Listed xs:
     !done <- @Run Doubles, xs                               # 0
     $shown <- "working" then Show !done
-    Ui.Label(text=$shown)                                   # 1
+    Ui.Label($text=$shown)                                   # 1

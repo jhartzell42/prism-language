@@ -6,7 +6,7 @@ fn $Titled u = $"opened"
 
 @title: @unit
 @title:
-    !go <- Ui.Button(label=$"Go")
+    !go <- Ui.Button($label=$"Go")
     $$title <- $"untitled" then $Titled (unit on !go)
     let $bad = Len $$title
-    Ui.Label(text=$"x")
+    Ui.Label($text=$"x")

@@ -26,6 +26,6 @@ fn Grid n = Each [[1, 2]], \|r| Each [[1, 2]], \|c| r * c + n
 
 @page: @unit
 @page:
-    !go <- Ui.Button(label=$"go")                                     # 0
+    !go <- Ui.Button($label=$"go")                                     # 0
     $n <- 1 then $n + 1 on !go
-    Ui.Label(text=$"{Curry $n} {Grid $n}")                             # 1
+    Ui.Label($text=$"{Curry $n} {Grid $n}")                             # 1

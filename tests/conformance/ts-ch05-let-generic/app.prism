@@ -17,6 +17,6 @@ fn Describe n:
 
 @shown: @unit
 @shown:
-    Ui.Label(text=$"{Describe 3}")                          # 0
+    Ui.Label($text=$"{Describe 3}")                          # 0
 # Audited: Twin 3 is (3, 3), 3 + 3 = 6; Twin "ab" is ("ab", "ab"); Second "unused", 3 is 3;
 # Second 3, "ab" is "ab"; one place.

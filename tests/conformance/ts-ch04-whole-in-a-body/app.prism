@@ -15,6 +15,6 @@ Count: fn $Nat -> Nat
 fn Count $a = Len (Wrap $a)
 
 @shown:
-    !inc <- Ui.Button(label=$"Inc")                             # 0
+    !inc <- Ui.Button($label=$"Inc")                             # 0
     $count <- 0 then $count + 1 on !inc
-    Ui.Label(text=$"first {$First $count} count {Count $count}")  # 1
+    Ui.Label($text=$"first {$First $count} count {Count $count}")  # 1

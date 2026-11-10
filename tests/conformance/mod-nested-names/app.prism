@@ -12,4 +12,4 @@ use Ui
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{A.Describe 3}")
+    Ui.Label($text=$"{A.Describe 3}")

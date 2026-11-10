@@ -52,4 +52,4 @@ fn @Shown xs:
     let op = Op(name="none", step=(\|n| n))
     let first = "{Found (?FirstOver xs, 2)}{Value (WithOp op, 0)}"
     $shown <- first then "{first} {Show !done}"
-    Ui.Label(text=$shown)                                   # 1
+    Ui.Label($text=$shown)                                   # 1

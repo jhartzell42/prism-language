@@ -8,7 +8,7 @@ emit Ui.* | Pad.*
 test mod Tests
 
 tag Pad.Door of Element ((Text, !Nat)):
-    name: $Text
+    $name: Text
 
 # the value at a map's least key, whatever its keys are
 ?Least: fn (k ==> Nat) -> ?Nat
@@ -18,28 +18,28 @@ fn ?Least m:
 
 @Field: fn Text -> @$Text
 fn @Field initial:
-    !go <- Ui.Button(label=$"go {initial}")
+    !go <- Ui.Button($label=$"go {initial}")
     $t <- initial then "{$t}!" on !go
     @ $t
 
 @Rows: fn $Text -> @unit
 fn @Rows $label:
     for k, ignore <- $ {1: unit, 2: unit}:
-        Ui.Label(text=$"{k} {$label}")
+        Ui.Label($text=$"{k} {$label}")
 
 @Door: fn $Text -> @unit
 fn @Door $name:
-    ((door, !knocks)) <- Pad.Door(name=$name)
-    Ui.Label(text=$"{door} {Or (?Least {"z": 7, "y": 3}), 0}")
+    ((door, !knocks)) <- Pad.Door($name=$name)
+    Ui.Label($text=$"{door} {Or (?Least {"z": 7, "y": 3}), 0}")
 
 @page: @$Text
 @page:
-    Ui.Label(text=$"{$a} and {$both}")                      # 0: reads what is bound below
+    Ui.Label($text=$"{$a} and {$both}")                      # 0: reads what is bound below
     $a <- @Field "a"                                        # 1
     $b <- @Field "b"                                        # 2
     let $both = "{$a}{$b}"
     @Rows $a                                                # 3/[k]/0
     $called <- "front" then "back" on !never
     @Door $called                                           # 4, 5
-    !never <- Ui.Button(label=$"never")                     # 6
+    !never <- Ui.Button($label=$"never")                     # 6
     @ $both

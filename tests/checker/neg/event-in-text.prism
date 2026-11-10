@@ -3,6 +3,6 @@ emit Ui.*
 
 @shout: @unit
 @shout:
-    !go <- Ui.Button(label=$"Go")
+    !go <- Ui.Button($label=$"Go")
     let !said = "hi" on !go
-    Ui.Label(text=$"{!said}")
+    Ui.Label($text=$"{!said}")

@@ -35,4 +35,4 @@ fn Named j = "{Open j}!"
 @shown: @unit
 @shown:
     let jar = Jar(label="figs")
-    Ui.Label(text=$"{Total (Crate(count=4))} {Named jar}")      # 0
+    Ui.Label($text=$"{Total (Crate(count=4))} {Named jar}")      # 0

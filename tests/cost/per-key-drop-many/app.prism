@@ -28,10 +28,10 @@ fn Costly v = update v:
 
 @rows: @unit
 @rows:
-    !drop <- Ui.Button(label=$"drop")                        # 0
+    !drop <- Ui.Button($label=$"drop")                        # 0
     $i <- 0 then $i + 1 on !drop
     $m <- (Big 2000) then (Remove $m, $i) on !drop
     $each <- @PerKey $m
     for k, $v <- $each:                                      # 1/[k]
-        Ui.Label(text=$"{Costly $v}")                        # 1/[k]/0
-    Ui.Label(text=$"{Size $m}")                              # 2
+        Ui.Label($text=$"{Costly $v}")                        # 1/[k]/0
+    Ui.Label($text=$"{Size $m}")                              # 2

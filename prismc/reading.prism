@@ -64,7 +64,7 @@ fn IsCompiling (Checking ignore) = False
 
 type CheckOpts = record:
     world: [Text]
-    out: ?Text
+    ?out: Text
     typed: Bool
     unused: Bool
 derive ^Eq, ^Show

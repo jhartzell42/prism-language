@@ -334,7 +334,7 @@ fn @Board $settings, $history, $?selected = @Bordered (Width $settings.border), 
         !squares <- for spot, $dark <- $ darkness:                   # 0/[spot] in the grid's child
             let sq = SqOf spot
             let $game = OnBoard $history
-            !c <- Ui.Image(src=(Picture (?At $game, sq)), paint=(Tint (SquarePaint $settings, $dark), sq, $?selected))  # 0/[spot]/0
+            !c <- Ui.Image($src=(Picture (?At $game, sq)), $paint=(Tint (SquarePaint $settings, $dark), sq, $?selected))  # 0/[spot]/0
             @ (Pick sq) on !c
         @ !Filter (?Earliest !squares)
     @ !picks
@@ -342,16 +342,16 @@ fn @Board $settings, $history, $?selected = @Bordered (Width $settings.border), 
 # beside the board: the status, the move counter, the buttons, and the moves
 @Panel: fn $Settings, $History -> @!Command
 fn @Panel $settings, $history = @Column 6.0, @widget:
-    Ui.Label(text=(StatusOf $settings, (OnBoard $history)))          # 0
-    Ui.Label(text=(CounterOf $settings.copy, $history))              # 1
+    Ui.Label($text=(StatusOf $settings, (OnBoard $history)))          # 0
+    Ui.Label($text=(CounterOf $settings.copy, $history))              # 1
     !pressed <- @Row 4.0, @widget:                                   # 2 hosts; 3 is the row
         !buttons <- for act, ignore <- $ toolbar:                    # 0/[act] in the row
-            !c <- Ui.Button(label=(ActionLabel $settings.copy, act)) # 0/[act]/0
+            !c <- Ui.Button($label=(ActionLabel $settings.copy, act)) # 0/[act]/0
             @ (Act act) on !c
         @ !Filter (?Earliest !buttons)
-    Ui.Label(text=$settings.copy.moves)                              # 4
+    Ui.Label($text=$settings.copy.moves)                              # 4
     for slot, $line <- MoveLines $history:                           # 5/[slot]
-        Ui.Label(text=$line)                                         # 5/[slot]/0
+        Ui.Label($text=$line)                                         # 5/[slot]/0
     @ !pressed
 
 # The settings dialog's form: a caption and a box per setting, each box starting at its
@@ -361,51 +361,51 @@ fn @Panel $settings, $history = @Column 6.0, @widget:
 @settingsForm: @((!Command, $Settings))
 @settingsForm:
     @Column 8.0, @widget:
-        Ui.Label(text=$chosen.copy.settings)                         # 0
+        Ui.Label($text=$chosen.copy.settings)                         # 0
         ((!titled, $chosen)) <- @Grid 2, @widget:                    # 1 hosts; 2 is the grid: captions at even places, boxes at odd
-            Ui.Label(text=$"Title")
+            Ui.Label($text=$"Title")
             $title <- @TextInput "title", defaultCopy.title          # 1
-            Ui.Label(text=$"Settings button")
+            Ui.Label($text=$"Settings button")
             $settingsLabel <- @TextInput "settings", defaultCopy.settings    # 3
-            Ui.Label(text=$"Close button")
+            Ui.Label($text=$"Close button")
             $closeLabel <- @TextInput "close", defaultCopy.close     # 5
-            Ui.Label(text=$"Reset button")
+            Ui.Label($text=$"Reset button")
             $reset <- @TextInput "reset", defaultCopy.reset          # 7
-            Ui.Label(text=$"Back button")
+            Ui.Label($text=$"Back button")
             $back <- @TextInput "back", defaultCopy.back             # 9
-            Ui.Label(text=$"Forward button")
+            Ui.Label($text=$"Forward button")
             $forward <- @TextInput "forward", defaultCopy.forward    # 11
-            Ui.Label(text=$"Moves heading")
+            Ui.Label($text=$"Moves heading")
             $moves <- @TextInput "moves", defaultCopy.moves          # 13
-            Ui.Label(text=$"Move counter")
+            Ui.Label($text=$"Move counter")
             $counter <- @TextInput "counter", defaultCopy.counter    # 15
-            Ui.Label(text=$"Turn")
+            Ui.Label($text=$"Turn")
             $turn <- @TextInput "turn", defaultCopy.turn             # 17
-            Ui.Label(text=$"In check")
+            Ui.Label($text=$"In check")
             $inCheck <- @TextInput "check", defaultCopy.inCheck      # 19
-            Ui.Label(text=$"Checkmate")
+            Ui.Label($text=$"Checkmate")
             $mate <- @TextInput "mate", defaultCopy.mate             # 21
-            Ui.Label(text=$"Stalemate")
+            Ui.Label($text=$"Stalemate")
             $stalemate <- @TextInput "stalemate", defaultCopy.stalemate      # 23
-            Ui.Label(text=$"White's name")
+            Ui.Label($text=$"White's name")
             $white <- @TextInput "white", defaultWhite               # 25
-            Ui.Label(text=$"Black's name")
+            Ui.Label($text=$"Black's name")
             $black <- @TextInput "black", defaultBlack               # 27
-            Ui.Label(text=(ColourCaption "Dark squares", $darkHex))
+            Ui.Label($text=(ColourCaption "Dark squares", $darkHex))
             $darkHex <- @TextInput "dark", defaultDark               # 29
-            Ui.Label(text=(ColourCaption "Light squares", $lightHex))
+            Ui.Label($text=(ColourCaption "Light squares", $lightHex))
             $lightHex <- @TextInput "light", defaultLight            # 31
-            Ui.Label(text=$"Border")
-            !slid <- Ui.Slider(value=$border, low=0, high=widestBorder)      # 33
-            Ui.Label(text=PointsCaption $borderText)
+            Ui.Label($text=$"Border")
+            !slid <- Ui.Slider($value=$border, low=0, high=widestBorder)      # 33
+            Ui.Label($text=PointsCaption $borderText)
             $borderText <- @TextField "border", (PointsText defaultBorder), (PointsText !slid)   # 35
             $dark <- (DefaultPaint defaultDark) then !Filter (?HexPaint (!Updated $darkHex))
             $light <- (DefaultPaint defaultLight) then !Filter (?HexPaint (!Updated $lightHex))
             $border <- defaultBorder then !slid <| !Filter (?Points (!Updated $borderText))
             let $copy = MakeCopy $title, $settingsLabel, $closeLabel, $reset, $back, $forward, $moves, $counter, $turn, $inCheck, $mate, $stalemate
             @ ((RetitleTo (!Updated $title), (MakeSettings $copy, $white, $black, $dark, $light, $border)))
-        Ui.Label(text=$"Settings apply as typed; each run starts at the defaults.")   # 3
-        !close <- Ui.Button(label=$chosen.copy.close)                # 4
+        Ui.Label($text=$"Settings apply as typed; each run starts at the defaults.")   # 3
+        !close <- Ui.Button($label=$chosen.copy.close)                # 4
         @ ((((Act CloseSettings) on !close) <| !titled, $chosen))
 
 # The interface: the title, the board and its panel; over them, the settings dialog while it
@@ -416,7 +416,7 @@ fn @Panel $settings, $history = @Column 6.0, @widget:
 @chess:
     ((!command, $settings)) <- @Layers @widget:
         !played <- @Column 8.0, @widget:                             # 0 hosts; 1 is the column
-            Ui.Label(text=$settings.copy.title)                      # 0
+            Ui.Label($text=$settings.copy.title)                      # 0
             !picked <- @Row 16.0, @widget:                           # 1 hosts; 2 is the row
                 !onBoard <- @Board $settings, $history, $?selected   # 0 and 1: the border's frame
                 !onPanel <- @Panel $settings, $history               # 2 and 3: the panel's column

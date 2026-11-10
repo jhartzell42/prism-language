@@ -282,7 +282,7 @@ fn ParseOneArg p:
 ParseArg: unbounded fn Ps -> ((Arg, Ps))
 fn ParseArg p:
     let ((value, q)) = ParseArgExpr p
-    ((Arg(name=nil, value=value, span=value.span), q))
+    ((Arg(marks="", ?name=nil, value=value, span=value.span), q))
 
 # `F(a, b)`, `Ui.Button(label=$"Go")`, `Error(kind=Fs.NotFound, ..)`: arguments in
 # touching parentheses, each named or not, and whether `..` ended them.
@@ -305,9 +305,9 @@ fn ParseParenArgs p0:
                     &_.rest <= True
                 else:
                     let start = Here &_.p
-                    let ((?name, p1)) = ParseArgName &_.p
+                    let ((?name, marks, p1)) = ParseArgName &_.p
                     let ((value, p2)) = ParseArgExpr p1
-                    &_.args <= Push &_.args, Arg(name=?name, value=value, span=(To start, value.span))
+                    &_.args <= Push &_.args, Arg(marks=marks, ?name=?name, value=value, span=(To start, value.span))
                     &_.p <= p2
                 if AtComma &_.p:
                     &_.p <= Adv &_.p
@@ -317,11 +317,12 @@ fn ParseParenArgs p0:
         ((r.args, r.rest, r.p))
 
 # `name=` before a named argument.
-ParseArgName: fn Ps -> ((?Ident, Ps))
+# A named argument's field, `label=` or `$label=`: its name and the sigils on it.
+ParseArgName: fn Ps -> ((?Ident, Text, Ps))
 fn ParseArgName p = match Kind p:
-    KName n if n.sigils == "" and (Len n.path) == 1 and n.case == CaseLower and (AtOp (Adv p), "="):
-        ((? Ident(name=(Or n.path[0], ""), span=(Here p)), (Adv (Adv p))))
-    otherwise: ((nil, p))
+    KName n if (Len n.path) == 1 and n.case == CaseLower and (AtOp (Adv p), "="):
+        ((? Ident(name=(Or n.path[0], ""), span=(Here p)), n.sigils, (Adv (Adv p))))
+    otherwise: ((nil, "", p))
 
 # ----- primaries -----
 
@@ -596,7 +597,7 @@ fn TemplatePartOf acc, p, (TptCall name, attrs, ?body, span):
 AttrArg: unbounded fn [Arg], Ps, AttrTok -> (([Arg], Ps))
 fn AttrArg done, p, a:
     let ((value, q)) = ParseNested p, a.tokens, a.span
-    (((Push done, Arg(name=(? Ident(name=a.name, span=a.span)), value=value, span=a.span)), q))
+    (((Push done, Arg(marks="", ?name=(? Ident(name=a.name, span=a.span)), value=value, span=a.span)), q))
 
 # ----- lambdas and block forms -----
 
@@ -687,14 +688,14 @@ fn ParseArm p:
     let start = Here p
     if AtKw p, "otherwise":
         let ((body, q)) = ParseBlockAfterColon (Adv p)
-        ((Arm(pattern=nil, guard=nil, body=body, span=(To start, body.span)), q))
+        ((Arm(?pattern=nil, ?guard=nil, body=body, span=(To start, body.span)), q))
     else: if (AtKw p, "ignore") and (KindAt p, 1) == KColon:
-        ((Arm(pattern=nil, guard=nil, body=noBlock, span=start), (ErrorAt p, (Here p), "an arm beginning `ignore:` would read as \"ignore these cases\": the catch-all is `otherwise:`")))
+        ((Arm(?pattern=nil, ?guard=nil, body=noBlock, span=start), (ErrorAt p, (Here p), "an arm beginning `ignore:` would read as \"ignore these cases\": the catch-all is `otherwise:`")))
     else:
         let ((pattern, p1)) = ParsePattern p, True
         let ((?guard, p2)) = if AtKw p1, "if": OptionalExpr (Adv p1) else: ((nil, p1))
         let ((body, p3)) = ParseBlockAfterColon p2
-        ((Arm(pattern=(? pattern), guard=?guard, body=body, span=(To start, body.span)), p3))
+        ((Arm(?pattern=(? pattern), ?guard=?guard, body=body, span=(To start, body.span)), p3))
 
 OptionalExpr: unbounded fn Ps -> ((?Expr, Ps))
 fn OptionalExpr p:
@@ -716,7 +717,7 @@ ForBindersOf: unbounded fn Ps -> ((?ForBinders, Ps))
 fn ForBindersOf p:
     let ((first, q1)) = ParsePattern p, False
     let ((?second, q2)) = if AtComma q1: OptionalPattern (Adv q1) else: ((nil, q1))
-    if not q2.bad and (AtOp q2, "<-"): ((? ForBinders(first=first, second=?second), (Adv q2)))
+    if not q2.bad and (AtOp q2, "<-"): ((? ForBinders(first=first, ?second=?second), (Adv q2)))
     else: ((nil, p))
 
 OptionalPattern: unbounded fn Ps -> ((?Pattern, Ps))

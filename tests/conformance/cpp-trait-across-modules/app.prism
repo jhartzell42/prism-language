@@ -14,4 +14,4 @@ let birds = [[Zoo.Robin, Zoo.Wren, Zoo.Robin]]
 
 @sung: @unit
 @sung:
-    Ui.Label(text=$"{Chorus birds} / {Shout Zoo.Wren}")     # 0
+    Ui.Label($text=$"{Chorus birds} / {Shout Zoo.Wren}")     # 0

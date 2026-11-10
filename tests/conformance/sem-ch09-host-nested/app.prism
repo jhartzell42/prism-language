@@ -11,22 +11,22 @@ use Ui.*
 
 @leaf: @unit
 @leaf:
-    !hit <- Ui.Button(label=$"hit")                              # 0, answered by the inner host's !go
-    !key <- Ui.TextInput(name="in", text=$"")                    # 1, forwarded twice over
+    !hit <- Ui.Button($label=$"hit")                              # 0, answered by the inner host's !go
+    !key <- Ui.TextInput(name="in", $text=$"")                    # 1, forwarded twice over
     $hits <- 0 then $hits + 1 on !hit
     $keys <- 0 then $keys + 1 on !key
-    Ui.Label(text=$"{$hits} hits, {$keys} keys")                 # 2, forwarded twice over
+    Ui.Label($text=$"{$hits} hits, {$keys} keys")                 # 2, forwarded twice over
 
 @inner: @unit
 @inner:
-    !go <- Ui.Button(label=$"go")                                # 0, answered by the outer host's !tap
+    !go <- Ui.Button($label=$"go")                                # 0, answered by the outer host's !tap
     ignore <- @HostDocument @leaf, \|p, e| match e:             # 1/[p]
         Ui.Button(..): @ !go
         otherwise: @Element e
 
 @outer: @unit
 @outer:
-    !tap <- Ui.Button(label=$"tap")                              # 0
+    !tap <- Ui.Button($label=$"tap")                              # 0
     ignore <- @HostDocument @inner, \|p, e| match e:            # 1/[p]
         Ui.Button(..): @ !tap
         otherwise: @Element e

@@ -3,7 +3,7 @@
 emit Ui.* | Box.*
 
 tag Box.Column of Element unit:
-    children: $(Path ==> $Elem)
+    $children: (Path ==> $Elem)
 
 Same: fn Elem Box.*, Elem Box.* -> Bool
 fn Same a, b = a == b

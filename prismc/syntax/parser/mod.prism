@@ -61,7 +61,7 @@ use Syntax.Parser.TestLanguage.*
 # The pairing of one bracket token: its partner, and whether it is the outer or the inner
 # bracket of a double.
 type Pair = record:
-    partner: ?Nat
+    ?partner: Nat
     outer: Bool
     inner: Bool
 derive ^Eq, ^Show
@@ -85,7 +85,7 @@ derive ^Eq, ^Show
 
 let noRange = Range(start=0, end=0)
 let eofTok = Tok(kind=KEof, span=noRange, touches=False, lineStart=False)
-let noPair = Pair(partner=nil, outer=False, inner=False)
+let noPair = Pair(?partner=nil, outer=False, inner=False)
 
 # Parses a file as a module (Semantics ch. 6: one file is one module).
 ParseFile: unbounded fn Text -> Parsed
@@ -292,7 +292,7 @@ fn ExpectClose p, kind = if AtClose p, kind: Adv p else: ErrorHere p, "expected 
 # ----- diagnostics -----
 
 ParseDiag: fn Range, Text -> Diag
-fn ParseDiag span, message = Diag(stage="parse", span=span, message=message, feature=nil)
+fn ParseDiag span, message = Diag(stage="parse", span=span, message=message, ?feature=nil)
 
 # Records an error and fails; on a cursor that already failed, nothing.
 ErrorAt: fn Ps, Range, Text -> Ps
@@ -325,7 +325,7 @@ fn Complain p, message = Unbad (ErrorHere p, message)
 # Records an out-of-scope feature (decisions.md, "Features in and out").
 OutOfScope: fn Ps, Range, Text, Text -> Ps
 fn OutOfScope p, span, feature, message = if p.bad: p else: update p:
-    &_.out <= Push &_.out, Diag(stage="out", span=span, message=message, feature=(? feature))
+    &_.out <= Push &_.out, Diag(stage="out", span=span, message=message, ?feature=(? feature))
 
 ExpectColon: fn Ps -> Ps
 fn ExpectColon p = if AtColon p: Adv p else: ErrorHere p, "expected `:`"

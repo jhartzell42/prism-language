@@ -15,4 +15,4 @@ fn Digits n = match ?CursorAt digits, n:
 
 @shown: @unit
 @shown:
-    Ui.Label(text=$"{Digits 3}{Digits 7}")                  # 0
+    Ui.Label($text=$"{Digits 3}{Digits 7}")                  # 0

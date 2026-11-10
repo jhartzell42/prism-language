@@ -24,12 +24,12 @@ tag Fs.Contents of Element $~Contents:
 # One-shot reads and writes, each answered in a later tick.
 tag Fs.File of Element !~Contents:
     path: Text
-    requests: !FileRequest
+    !requests: FileRequest
 
 # A file whose text is the field's: the World writes it whenever the text changes.
 tag Fs.Output of Element $WriteState:
     path: Text
-    text: $Text
+    $text: Text
 
 tag Fs.NotFound of Fault
 tag Fs.Denied of Fault

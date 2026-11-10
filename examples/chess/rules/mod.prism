@@ -41,7 +41,7 @@ type Game = record:
     board: Sq ==> Piece        # an absent key is an empty square
     turn: Color
     corners: [Sq]              # the rook corners whose castling right is unspent
-    passed: ?Sq                # the square a pawn's double step just passed over
+    ?passed: Sq                # the square a pawn's double step just passed over
 derive ^Eq, ^Show
 
 # every color-dependent rank, so that the rules say `own.forward`
@@ -124,7 +124,7 @@ fn Opening board, file:
 
 let allCorners = [[(Sq 0, 0), (Sq 7, 0), (Sq 0, 7), (Sq 7, 7)]]
 
-let initial = Game(board=(Fold eight, {}, Opening), turn=White, corners=allCorners, passed=nil)
+let initial = Game(board=(Fold eight, {}, Opening), turn=White, corners=allCorners, ?passed=nil)
 
 ?At: fn Game, Sq -> ?Piece
 fn ?At g, sq = g.board[sq]
@@ -237,7 +237,7 @@ fn AfterMove g, pc, from, to, promo, manner:
     let ?passed = match manner:
         Double over: ? over
         otherwise: nil
-    Game(board=board, turn=(Opponent g.turn), corners=(Unspent g.corners, pc, from, to), passed=?passed)
+    Game(board=board, turn=(Opponent g.turn), corners=(Unspent g.corners, pc, from, to), ?passed=?passed)
 
 ?Move: fn Game, Sq, Sq, Man -> ?Game
 fn ?Move g, from, to, promo:

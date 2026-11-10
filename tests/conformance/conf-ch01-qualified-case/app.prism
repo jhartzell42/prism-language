@@ -11,4 +11,4 @@ use Ui
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{Show (Sizes.Of 3)}")
+    Ui.Label($text=$"{Show (Sizes.Of 3)}")

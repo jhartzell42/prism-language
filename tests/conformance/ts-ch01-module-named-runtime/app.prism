@@ -12,4 +12,4 @@ test mod Tests
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{PrismRtl.Twice 3} {Show (PrismRtl.Dynamic 2)} {PrismWorldCli.Run 4} {Show (Rt.Hold 5)} {PrismWorldCanvas.Run 6}")    # 0
+    Ui.Label($text=$"{PrismRtl.Twice 3} {Show (PrismRtl.Dynamic 2)} {PrismWorldCli.Run 4} {Show (Rt.Hold 5)} {PrismWorldCanvas.Run 6}")    # 0

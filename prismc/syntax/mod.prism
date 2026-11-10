@@ -36,7 +36,7 @@ type Diag = record:
     stage: Text
     span: Range
     message: Text
-    feature: ?Text
+    ?feature: Text
 derive ^Eq, ^Show
 
 # ---------------------------------------------------------------------------------------
@@ -72,12 +72,12 @@ derive ^Eq, ^Show
 # ---------------------------------------------------------------------------------------
 
 type Module = record:
-    name: ?QualName
-    emitRow: ?Row
+    ?name: QualName
+    ?emitRow: Row
     mods: [ModLine]
     uses: [Use]
     decls: [Decl]
-    template: ?Template
+    ?template: Template
     span: Range
 derive ^Eq, ^Show
 
@@ -168,8 +168,10 @@ type PatternKind = choice:
     PFamily QualName
 derive ^Eq, ^Show
 
+# `marks` are the sigils written on the field's name (`$label=ignore`), "" for a plain name.
 type FieldPat = record:
-    name: ?Ident
+    marks: Text
+    ?name: Ident
     pattern: Pattern
     span: Range
 derive ^Eq, ^Show
@@ -201,7 +203,7 @@ derive ^Eq, ^Show
 type RegexLit = record:
     pattern: Text
     patternAt: Nat
-    replacement: ?Text
+    ?replacement: Text
     replacementAt: Nat
     flags: Text
     flagsAt: Nat
@@ -263,8 +265,11 @@ type ExprKind = choice:
     EError
 derive ^Eq, ^Show
 
+# `marks` are the sigils written on a named argument's field (`$label=$t`), "" for a plain
+# name or a positional argument.
 type Arg = record:
-    name: ?Ident
+    marks: Text
+    ?name: Ident
     value: Expr
     span: Range
 derive ^Eq, ^Show
@@ -281,12 +286,12 @@ derive ^Eq, ^Show
 
 type ForBinders = record:
     first: Pattern
-    second: ?Pattern
+    ?second: Pattern
 derive ^Eq, ^Show
 
 type Arm = record:
-    pattern: ?Pattern
-    guard: ?Expr
+    ?pattern: Pattern
+    ?guard: Expr
     body: Block
     span: Range
 derive ^Eq, ^Show

@@ -18,4 +18,4 @@ fn Plus x = x + 5
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{Use (Box(n=4)), \|x| x * 3} {Use (Box(n=4)), Plus}")    # 0
+    Ui.Label($text=$"{Use (Box(n=4)), \|x| x * 3} {Use (Box(n=4)), Plus}")    # 0

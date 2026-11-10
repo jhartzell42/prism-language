@@ -15,4 +15,4 @@ fn Rank Joker = 0
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{Show (Card 3)} {Rank (Card 4)} {Rank Joker} {(Card 9) < Joker}")    # 0
+    Ui.Label($text=$"{Show (Card 3)} {Rank (Card 4)} {Rank Joker} {(Card 9) < Joker}")    # 0

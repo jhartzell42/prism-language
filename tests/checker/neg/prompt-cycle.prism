@@ -3,7 +3,7 @@ emit Ui.*
 
 @broken: @unit
 @broken:
-    !go <- Ui.Button(label=$"Go")
+    !go <- Ui.Button($label=$"Go")
     let !a = 1 + (!b <| 0 on !go)
     let !b = 2 + !a
-    Ui.Label(text=$"x")
+    Ui.Label($text=$"x")

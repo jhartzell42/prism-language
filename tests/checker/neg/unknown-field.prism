@@ -11,5 +11,6 @@ type Person = record:
 
 @page: @unit
 @page:
-    let ann = Person(?name=nil)
+    let ann = Person(?name="Ann")
     ignore <- Pad.Note(text=$"hi")
+# sigil-rename: skip (this test writes the forms the rename would change)

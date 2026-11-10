@@ -17,7 +17,7 @@ fn Count xs = "{Len xs}"
 
 @bindings: @unit
 @bindings:
-    !go <- Ui.Button(label=$"Go")                           # 0
+    !go <- Ui.Button($label=$"Go")                           # 0
     !again <- @Defer !go
     !first <- @Once !go
     !later <- @AfterFirst !go
@@ -30,4 +30,4 @@ fn Count xs = "{Len xs}"
     $last <- "none" then Shown !numbered
     $past <- "no" then Past !over
     $merged <- "[]" then Count !both
-    Ui.Label(text=$"{$echoes} {$firsts} {$laters} {$last} {$past} {$merged}")   # 1
+    Ui.Label($text=$"{$echoes} {$firsts} {$laters} {$last} {$past} {$merged}")   # 1

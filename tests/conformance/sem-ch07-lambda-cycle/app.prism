@@ -25,4 +25,4 @@ fn IsEven n:
 fn @Checked n:
     !done <- @Run IsEven, n                                 # 0
     $shown <- "working" then Show !done
-    Ui.Label(text=$shown)                                   # 1
+    Ui.Label($text=$shown)                                   # 1

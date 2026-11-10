@@ -11,7 +11,7 @@ fn @Wrap @child:
 
 @$counter: @$Text
 @$counter:
-    !inc <- Ui.Button(label=$"inc")
+    !inc <- Ui.Button($label=$"inc")
     $n <- 0 then $n + 1 on !inc
     @ $"{$n}"
 

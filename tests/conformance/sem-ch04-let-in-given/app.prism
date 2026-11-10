@@ -29,4 +29,4 @@ fn SaidN (Error(message=m, ..)) = "!{m}"
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{SaidN (~Pure 1)} {Or (?Opt 2), 0} {SaidN (~Failed 7)}")    # 0
+    Ui.Label($text=$"{SaidN (~Pure 1)} {Or (?Opt 2), 0} {SaidN (~Failed 7)}")    # 0

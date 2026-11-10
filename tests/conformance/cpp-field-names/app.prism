@@ -17,9 +17,9 @@ fn Told n = "{n.message} x{n.count}"
 
 @Shown: fn Text -> @unit
 fn @Shown message:
-    Ui.Label(text=$"{message}")
+    Ui.Label($text=$"{message}")
 
 @notes: @unit
 @notes:
     ignore <- @Shown "hello"                                             # 0
-    Ui.Label(text=$"{Told (Note(message="hi", count=2))}")               # 1
+    Ui.Label($text=$"{Told (Note(message="hi", count=2))}")               # 1

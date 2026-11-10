@@ -19,4 +19,4 @@ derive ^Eq, ^Show
 @page: @unit
 @page:
     let e = Entry(byName="door", isOpen=True)
-    Ui.Label(text=$"{e} {[[(Filled e), Empty]]}")                             # 0
+    Ui.Label($text=$"{e} {[[(Filled e), Empty]]}")                             # 0

@@ -692,7 +692,7 @@ type Model = record:
     name: Text
     mods: [ModDef]
     programs: [ProgDef]
-    root: ?ProgDef
+    ?root: ProgDef
     checks: [CheckDef]
     # `crate::Elem`, emitted in `main.rs`
     elem: RowDef

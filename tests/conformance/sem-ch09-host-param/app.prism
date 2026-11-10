@@ -9,15 +9,15 @@ test mod Tests
 @Boxed: fn @a -> @a
 fn @Boxed @child:
     ((r, $doc)) <- @HostDocument @child, \|p, e| @Element e     # 1/[p]
-    Ui.Label(text=$"{Size $doc} inside")                        # 2
+    Ui.Label($text=$"{Size $doc} inside")                        # 2
     @ r
 
 @page: @unit
 @page:
-    !go <- Ui.Button(label=$"go")                               # 0
+    !go <- Ui.Button($label=$"go")                               # 0
     $n <- 0 then $n + 1 on !go
     !inner <- @Boxed @widget:
-        !b <- Ui.Button(label=$"in {$n}")                       # 1/[0]/0
+        !b <- Ui.Button($label=$"in {$n}")                       # 1/[0]/0
         @ !b
     $m <- 0 then $m + 1 on !inner
-    Ui.Label(text=$"{$m}")                                      # 3
+    Ui.Label($text=$"{$m}")                                      # 3

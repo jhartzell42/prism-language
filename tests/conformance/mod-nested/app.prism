@@ -14,4 +14,4 @@ use Shapes.Round.Circle.*
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{Area 2} {Shapes.Flat.Area 3} {Shapes.Total 1}")
+    Ui.Label($text=$"{Area 2} {Shapes.Flat.Area 3} {Shapes.Total 1}")

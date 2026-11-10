@@ -7,12 +7,12 @@ use Ui.*
 
 @child: @unit
 @child:
-    !add <- Ui.Button(label=$"add")                              # 0
+    !add <- Ui.Button($label=$"add")                              # 0
     $items <- {0: unit} then (Insert $items, (Size $items), unit) on !add
     for k, $u <- $items:                                         # 1/[k]
-        Ui.Label(text=$"item {k}")                               # 1/[k]/0
+        Ui.Label($text=$"item {k}")                               # 1/[k]/0
 
 @forwarded: @unit
 @forwarded:
     ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e    # 0/[p]/0
-    Ui.Label(text=$"{Size $doc} places")                         # 1
+    Ui.Label($text=$"{Size $doc} places")                         # 1

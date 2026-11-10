@@ -6,4 +6,4 @@ use Fs.*
 @main: @unit
 @main:
     $~contents <- Fs.Contents(path="/etc/motd")
-    Ui.Label(text=$"x")
+    Ui.Label($text=$"x")

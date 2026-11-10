@@ -19,12 +19,12 @@ fn Entries n, t = match n -? 1:
 
 @rows: @unit
 @rows:
-    !add <- Ui.Button(label=$"add")                               # 0
+    !add <- Ui.Button($label=$"add")                               # 0
     $n <- 1 then $n + 1 on !add
     $~motd <- Fs.Contents(path="m")                               # 1
     let $src = Entries $n, (Shown $~motd)
     for k, $v <- $src:                                            # 2/[k]
-        Ui.Label(text=$"{k} {$v}")                                # 2/[k]/0
+        Ui.Label($text=$"{k} {$v}")                                # 2/[k]/0
 
 @hosted: @unit
 @hosted:

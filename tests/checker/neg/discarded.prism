@@ -3,5 +3,5 @@ emit Ui.*
 
 @buttons: @unit
 @buttons:
-    Ui.Button(label=$"Ignored")
-    Ui.Label(text=$"x")
+    Ui.Button($label=$"Ignored")
+    Ui.Label($text=$"x")

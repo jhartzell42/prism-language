@@ -21,16 +21,16 @@ fn Upto n = update [[]]:
 
 @shared: @unit
 @shared:
-    !go <- Ui.Button(label=$"go")                            # 0
+    !go <- Ui.Button($label=$"go")                            # 0
     $n <- 0 then $n + 1 on !go
     let $heavy = Heavy $n
-    Ui.Label(text=$"1: {$heavy}")
-    Ui.Label(text=$"2: {$heavy}")
-    Ui.Label(text=$"3: {$heavy}")
-    Ui.Label(text=$"4: {$heavy}")
-    Ui.Label(text=$"5: {$heavy}")
-    Ui.Label(text=$"6: {$heavy}")
-    Ui.Label(text=$"7: {$heavy}")
-    Ui.Label(text=$"8: {$heavy}")
-    Ui.Label(text=$"9: {$heavy}")
-    Ui.Label(text=$"10: {$heavy}")
+    Ui.Label($text=$"1: {$heavy}")
+    Ui.Label($text=$"2: {$heavy}")
+    Ui.Label($text=$"3: {$heavy}")
+    Ui.Label($text=$"4: {$heavy}")
+    Ui.Label($text=$"5: {$heavy}")
+    Ui.Label($text=$"6: {$heavy}")
+    Ui.Label($text=$"7: {$heavy}")
+    Ui.Label($text=$"8: {$heavy}")
+    Ui.Label($text=$"9: {$heavy}")
+    Ui.Label($text=$"10: {$heavy}")

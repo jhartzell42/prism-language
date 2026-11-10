@@ -60,7 +60,7 @@ fn InferMap env, st, entries, span:
     let ((v, st2)) = FreshVar st1, False, ""
     let n = Len entries
     let params = Fold entries, [[]], \|acc, ignore| Append acc, [[k, v]]
-    let args = Fold entries, [[]], \|acc, ((ke, ve))| Append acc, [[Arg(name=nil, value=ke, span=ke.span), Arg(name=nil, value=ve, span=ve.span)]]
+    let args = Fold entries, [[]], \|acc, ((ke, ve))| Append acc, [[Arg(marks="", ?name=nil, value=ke, span=ke.span), Arg(marks="", ?name=nil, value=ve, span=ve.span)]]
     let st3 = if n > 0: AddWant st2, "Prelude.Ord", k, span else: st2
     ApplyRule env, st3, "a map literal", CBound, params, (TyMap k, v), args, span
 
@@ -68,7 +68,7 @@ fn InferMap env, st, entries, span:
 # operand and fires with its right; `<|` merges two events, the left winning; `and`, `or`.
 InferBinary: unbounded fn Env, St, Text, Expr, Expr, Range -> ((Ty, St))
 fn InferBinary env, st, op, lhs, rhs, span:
-    let args = [[Arg(name=nil, value=lhs, span=lhs.span), Arg(name=nil, value=rhs, span=rhs.span)]]
+    let args = [[Arg(marks="", ?name=nil, value=lhs, span=lhs.span), Arg(marks="", ?name=nil, value=rhs, span=rhs.span)]]
     if op == "and" or op == "or":
         ApplyRule env, st, op, CBound, [[tBool, tBool]], tBool, args, span
     else: if op == "on": InferOn env, st, lhs, rhs, span
@@ -114,12 +114,12 @@ fn InferOn env, st, lhs, rhs, span:
     if (HeadSigil st3, rt) != "!" and rt != TyErr and not (IsFlexVar st3, rt):
         ((TyErr, (Err st3, "mismatch", rhs.span, "`on` fires with an event on its right; this is `{ShowTy st3, rt}`")))
     else:
-        let args = [[Arg(name=nil, value=lhs, span=lhs.span), Arg(name=nil, value=rhs, span=rhs.span)]]
+        let args = [[Arg(marks="", ?name=nil, value=lhs, span=lhs.span), Arg(marks="", ?name=nil, value=rhs, span=rhs.span)]]
         ApplyRule env, st3, "on", CBound, [[a, b]], a, args, span
 
 InferUnary: unbounded fn Env, St, Text, Expr, Range -> ((Ty, St))
 fn InferUnary env, st, op, x, span:
-    let args = [[Arg(name=nil, value=x, span=x.span)]]
+    let args = [[Arg(marks="", ?name=nil, value=x, span=x.span)]]
     match op:
         "not": ApplyRule env, st, "not", CBound, [[tBool]], tBool, args, span
         "neg": match x.kind:
@@ -144,7 +144,7 @@ fn InferFreeSigil env, st, s, x, span:
         if IsBlueprintExpr env, st2, x:
             let ((t, st3)) = Infer env, st2, x
             (((TySig s, t), st3))
-        else: ApplyRule env, st2, "{s}", CBound, [[v]], (TySig s, v), [[Arg(name=nil, value=x, span=x.span)]], span
+        else: ApplyRule env, st2, "{s}", CBound, [[v]], (TySig s, v), [[Arg(marks="", ?name=nil, value=x, span=x.span)]], span
     else:
         let ((t, st2)) = Infer env, st, x
         (((WithMarks s, t, env.scope), st2))
@@ -247,5 +247,5 @@ fn InferIndex env, st, recv, idx, span:
                 TyCon "Table", ignore: (((TyCon "Table", [[k, v]]), k))
                 TyCon "Buffer", ignore: (((TyCon "Buffer", [[v]]), tNat))
                 otherwise: ((TyArray v, tNat))
-            let args = [[Arg(name=nil, value=recv, span=recv.span), Arg(name=nil, value=idx, span=idx.span)]]
+            let args = [[Arg(marks="", ?name=nil, value=recv, span=recv.span), Arg(marks="", ?name=nil, value=idx, span=idx.span)]]
             ApplyRule env, st3, "[]", CBound, [[coll, keyTy]], (TySig "?", v), args, span

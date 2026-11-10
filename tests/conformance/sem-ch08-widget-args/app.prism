@@ -8,7 +8,7 @@ test mod Tests
 
 @Titled: fn Text, @unit -> @unit
 fn @Titled title, @inner:
-    Ui.Label(text=$ title)
+    Ui.Label($text=$ title)
     @inner
 
 @Twice: fn @unit -> @unit
@@ -18,15 +18,15 @@ fn @Twice @w:
 
 @counter: @unit
 @counter:
-    !inc <- Ui.Button(label=$"+")
+    !inc <- Ui.Button($label=$"+")
     $n <- 0 then $n + 1 on !inc
-    Ui.Label(text=$"{$n}")
+    Ui.Label($text=$"{$n}")
 
 @page: @unit
 @page:
-    !poke <- Ui.Button(label=$"poke")                       # 0
+    !poke <- Ui.Button($label=$"poke")                       # 0
     $shown <- "inside" then "poked" on !poke
     @Titled "A", @widget:                                   # 1
-        Ui.Label(text=$shown)                               # 2
+        Ui.Label($text=$shown)                               # 2
     @Titled "B", @counter                                   # 3, then 4 and 5
     @Twice @counter                                         # 6 and 7, then 8 and 9

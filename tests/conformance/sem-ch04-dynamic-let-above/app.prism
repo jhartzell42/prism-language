@@ -7,12 +7,12 @@ emit Ui.* | Pad.*
 test mod Tests
 
 tag Pad.Door of Element ((Text, !Nat)):
-    name: $Text
+    $name: Text
 
 @page: @Text
 @page:
-    ((door, !knocks)) <- Pad.Door(name=$greet)              # 0
+    ((door, !knocks)) <- Pad.Door($name=$greet)              # 0
     let $greet = "hi {$count}"
-    !bump <- Ui.Button(label=$"bump")                       # 1
+    !bump <- Ui.Button($label=$"bump")                       # 1
     $count <- 1 then $count + 1 on !bump
     @ door

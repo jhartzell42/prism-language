@@ -13,4 +13,4 @@ test mod Tests
     let d: Nat = 0b1010
     let e: Nat = 0x1_0000_0000_0000_0000
     let f: U8 = 0o377
-    Ui.Label(text=$"{a} {b} {c} {d} {e} {f}")     # 0
+    Ui.Label($text=$"{a} {b} {c} {d} {e} {f}")     # 0

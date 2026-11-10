@@ -13,13 +13,13 @@ use Ui.*
 
 @child: @unit
 @child:
-    !inc <- Ui.Button(label=$"inc")                              # 0
+    !inc <- Ui.Button($label=$"inc")                              # 0
     $n <- 0 then $n + 1 on !inc
-    Ui.Label(text=$"{$n}")                                       # 1
+    Ui.Label($text=$"{$n}")                                       # 1
 
 Texts: fn (Path ==> Elem Ui.*) -> Text
 fn Texts doc = Fold (Values doc), "", \|acc, e| match e:
-    Ui.Label(text=$t): "{acc}[{$t}]"
+    Ui.Label($text=$t): "{acc}[{$t}]"
     Ui.*: acc
 
 @counter: @unit
@@ -30,4 +30,4 @@ fn Texts doc = Fold (Values doc), "", \|acc, e| match e:
     let !moved = !Updated $flat
     $moves <- 0 then $moves + 1 on !moved
     $latest <- "" then Texts !moved
-    Ui.Label(text=$"{$moves} moves, latest {$latest}")           # 2
+    Ui.Label($text=$"{$moves} moves, latest {$latest}")           # 2

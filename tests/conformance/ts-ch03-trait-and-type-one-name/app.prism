@@ -18,4 +18,4 @@ fn Yell x = "{Shout x}!"
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{Shout (Loud(v=1))} {Yell (Loud(v=2))}")    # 0
+    Ui.Label($text=$"{Shout (Loud(v=1))} {Yell (Loud(v=2))}")    # 0

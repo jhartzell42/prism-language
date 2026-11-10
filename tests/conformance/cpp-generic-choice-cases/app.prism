@@ -26,4 +26,4 @@ fn Leaves ts = Each ts, Leaf
 @page: @unit
 @page:
     let t = Built 3
-    Ui.Label(text=$"{Count t} {t} {Leaves [["a", "b"]]} {t == (Built 3)}")      # 0
+    Ui.Label($text=$"{Count t} {t} {Leaves [["a", "b"]]} {t == (Built 3)}")      # 0

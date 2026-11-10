@@ -15,11 +15,11 @@ Sums: fn $Nat, $Nat, $Nat, $Nat -> [$Nat]
 fn Sums $a, $b, $c, $d = [[(Add3 $a, $b, $c), (Add4 $a, $b, $c, $d)]]
 
 @summed:
-    !one <- Ui.Button(label=$"One")                             # 0
-    !ten <- Ui.Button(label=$"Ten")                             # 1
+    !one <- Ui.Button($label=$"One")                             # 0
+    !ten <- Ui.Button($label=$"Ten")                             # 1
     $ones <- 0 then $ones + 1 on !one
     $tens <- 0 then $tens + 10 on !ten
     let ss = Sums $ones, $tens, ($ 100), ($ 1000)
     let $three = Or ss[0], ($ 0)
     let $four = Or ss[1], ($ 0)
-    Ui.Label(text=$"three {$three} four {$four}")               # 2
+    Ui.Label($text=$"three {$three} four {$four}")               # 2

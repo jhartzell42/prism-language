@@ -96,7 +96,7 @@ type TplRead = record:
     l: Lex
     lines: [RawLine]
     cur: RawLine
-    closingCol: ?Nat
+    ?closingCol: Nat
     closed: Bool
     atLineStart: Bool
     going: Bool
@@ -117,7 +117,7 @@ TemplateBody: unbounded fn Lex, Text, Text, Bool, Bool, Nat -> (([TPartTok], Lex
 fn TemplateBody l0, close, delims, isRaw, firstContinues, openStart:
     let open = if delims == "double": "\{\{" else: "\{"
     let how = TplHow(close=close, delims=delims, open=open, isRaw=isRaw, firstContinues=firstContinues)
-    let start = TplRead(l=l0, lines=[[]], cur=emptyLine, closingCol=nil, closed=False, atLineStart=(not firstContinues), going=True)
+    let start = TplRead(l=l0, lines=[[]], cur=emptyLine, ?closingCol=nil, closed=False, atLineStart=(not firstContinues), going=True)
     let r = update start:
         while &_.going:
             &_ <= TemplateStep &_, how
@@ -195,7 +195,7 @@ fn TemplateItem l, how:
 type CallRead = record:
     l: Lex
     attrs: [AttrTok]
-    body: ?[TPartTok]
+    ?body: [TPartTok]
     going: Bool
 derive ^Eq, ^Show
 
@@ -208,7 +208,7 @@ fn TemplateCall l0, delims, open:
     let ((path, l2)) = LexQualifiedPath l1
     let name = NameTok(sigils=sigils, path=path, case=CaseUpper)
     let close = "</{sigils}{Join path, "."}>"
-    let r = update CallRead(l=l2, attrs=[[]], body=nil, going=True):
+    let r = update CallRead(l=l2, attrs=[[]], ?body=nil, going=True):
         while &_.going:
             &_ <= CallStep &_, start, close, delims, open
     let item = RiCall name, r.attrs, r.?body, Range(start=start, end=r.l.pos)

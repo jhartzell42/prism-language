@@ -6,4 +6,4 @@ emit Ui.*
 @main: @unit
 @main:
     let ts = [[((Error(kind=Prelude.NotANumber, message="e"), 2))]]
-    Ui.Label(text=$"{Len ts}")
+    Ui.Label($text=$"{Len ts}")

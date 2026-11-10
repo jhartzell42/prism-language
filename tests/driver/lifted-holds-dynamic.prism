@@ -12,6 +12,6 @@ fn Wrap $a = [[$a]]
 @main:
     !started <- @started                                              # 0
     $n <- 0 then 1 on !started                                        # 1
-    ignore <- Fs.File(path="/etc/motd", requests=(Read on !started))  # 2
+    ignore <- Fs.File(path="/etc/motd", !requests=(Read on !started))  # 2
     let k = Len (Wrap $n)
     @ unit

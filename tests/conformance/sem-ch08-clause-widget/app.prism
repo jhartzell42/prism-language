@@ -6,11 +6,11 @@ test mod Tests
 
 @Note: fn ?Text, Text -> @unit
 fn @Note nil, text:
-    Ui.Label(text=$"untitled: {text}")                       # 0
+    Ui.Label($text=$"untitled: {text}")                       # 0
 fn @Note (? title), text:
-    Ui.Label(text=$"{title}: {text}")                        # 0
+    Ui.Label($text=$"{title}: {text}")                        # 0
 
 @Notes: fn ?Text -> @unit
 fn @Notes ?title:
-    Ui.Label(text=$"notes")                                 # 0
+    Ui.Label($text=$"notes")                                 # 0
     ignore <- @Note ?title, "first"                         # 1

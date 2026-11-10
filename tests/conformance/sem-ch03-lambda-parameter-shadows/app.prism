@@ -17,4 +17,4 @@ fn Shifted base:
 @page:
     let Add = \|n| n + 100
     let n = Add 5
-    Ui.Label(text=$"{Shifted 1} {n} {Add 1}")                                   # 0
+    Ui.Label($text=$"{Shifted 1} {n} {Add 1}")                                   # 0

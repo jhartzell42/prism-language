@@ -20,8 +20,8 @@ LexFile: unbounded fn Text -> Lexed
 fn LexFile src:
     let start = Lex(src=src, pos=0, diags=[[]], mode=MFile, tokens=[[]], layout=[[]],
         frames=[[]], lastWs=True, lambdaOpen=False, pendingOpen=False, pendingSpan=Range(start=0, end=0),
-        lineFirst=0, markLineStart=False, firstLine=True, testPending="", testDepth=nil,
-        checkDepth=nil, pathNext=False)
+        lineFirst=0, markLineStart=False, firstLine=True, testPending="", ?testDepth=nil,
+        ?checkDepth=nil, pathNext=False)
     let skipped = SkipBlankAndCommentLines start
     let opened = (Peek skipped) == "<" and (TemplateTagAhead skipped) != ""
     let ((head, l)) = if opened: TemplateHead skipped else: (([[]], start))

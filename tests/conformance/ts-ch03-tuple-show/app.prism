@@ -9,4 +9,4 @@ derive ^Eq, ^Show
 
 @shown: @unit
 @shown:
-    Ui.Label(text=$(Show Edge(ends=((1, 2, True)))))           # 0
+    Ui.Label($text=$(Show Edge(ends=((1, 2, True)))))           # 0

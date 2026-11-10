@@ -16,14 +16,14 @@ use Ui.*
 
 @child: @unit
 @child:
-    !inc <- Ui.Button(label=$"inc")                              # 0
+    !inc <- Ui.Button($label=$"inc")                              # 0
     $n <- 0 then $n + 1 on !inc
-    Ui.Label(text=$"{$n}")                                       # 1
+    Ui.Label($text=$"{$n}")                                       # 1
 
 TextOf: fn Elem Ui.* -> Text
 fn TextOf e = match e:
-    Ui.Label(text=$t): $t
-    Ui.Button(label=l): l
+    Ui.Label($text=$t): $t
+    Ui.Button($label=l): l
     Ui.*: ""
 
 type Tagged = record:
@@ -42,8 +42,8 @@ fn Tag doc, n = Fold (Keys doc), {}, \|acc, p| match ?Get doc, p:
     ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e    # 0/[p]/0
     $flat <- for p, $e <- $doc:                                   # 1/[p], no places
         @ $e
-    !tap <- Ui.Button(label=$"tap")                              # 2
+    !tap <- Ui.Button($label=$"tap")                              # 2
     $clicks <- 0 then $clicks + 1 on !tap
     let $tagged = Tag $flat, $clicks
     for p, $pair <- $tagged:                                     # 3/[p]/0
-        Ui.Label(text=$"{$pair.text} after {$pair.count}")
+        Ui.Label($text=$"{$pair.text} after {$pair.count}")

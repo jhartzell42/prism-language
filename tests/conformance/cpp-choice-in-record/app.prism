@@ -9,7 +9,7 @@ use Ui.*
 
 type Spec = record:
     width: Nat
-    bg: ?Shade
+    ?bg: Shade
 derive ^Eq, ^Show
 
 type Shade = choice:
@@ -22,13 +22,13 @@ Same: fn Spec, Spec -> Text
 fn Same a, b = if a == b: "same" else: "different"
 
 SpecFor: fn Bool -> Spec
-fn SpecFor dark = Spec(width=2, bg=(if dark: ? Dark else: ? (Mixed 3)))
+fn SpecFor dark = Spec(width=2, ?bg=(if dark: ? Dark else: ? (Mixed 3)))
 
 Verdict: fn Bool -> Text
-fn Verdict dark = Same (Spec(width=2, bg=(? (Mixed 3)))), (SpecFor dark)
+fn Verdict dark = Same (Spec(width=2, ?bg=(? (Mixed 3)))), (SpecFor dark)
 
 @specs: @unit
 @specs:
-    !flip <- Ui.Button(label=$"flip")                                         # 0
+    !flip <- Ui.Button($label=$"flip")                                         # 0
     $dark <- False then not $dark on !flip
-    Ui.Label(text=(Verdict $dark))                                            # 1
+    Ui.Label($text=(Verdict $dark))                                            # 1

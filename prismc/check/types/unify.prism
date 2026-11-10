@@ -266,12 +266,12 @@ type FieldQ = record:
     owners: [Text]
     # The marks the access shows and where the field's name stands, checked against the
     # field's stack once the record is known (gap FM); none for a reference path's step.
-    marks: ?((Text, Range))
+    ?marks: ((Text, Range))
 derive ^Eq, ^Show
 
 AskField: fn St, Ty, Text, Ty, Range, [Text] -> St
 fn AskField st, recv, field, result, span, owners = update st:
-    &_.fieldQs <= Push &_.fieldQs, FieldQ(recv=recv, field=field, result=result, span=span, file=&_.file, owners=owners, marks=nil)
+    &_.fieldQs <= Push &_.fieldQs, FieldQ(recv=recv, field=field, result=result, span=span, file=&_.file, owners=owners, ?marks=nil)
 
 # The waiting field read whose type is `result` checks its marks when it is read (gap FM).
 MarkLastField: fn St, Ty, Text, Range -> St

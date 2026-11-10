@@ -3,3 +3,4 @@
 # branch; subject to change.
 type Note = record:
     text: $Text
+# sigil-rename: skip (this test writes the forms the rename would change)

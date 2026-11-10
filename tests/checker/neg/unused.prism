@@ -12,4 +12,4 @@ fn Forgotten n = n * 2
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{Helper 1}")
+    Ui.Label($text=$"{Helper 1}")

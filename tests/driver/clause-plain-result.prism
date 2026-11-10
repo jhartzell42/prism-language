@@ -7,13 +7,13 @@ use Ui.*
 
 @Pick: fn ?Nat -> @Text
 fn @Pick nil:
-    Ui.Label(text=$"none")                                       # 0
+    Ui.Label($text=$"none")                                       # 0
     @ "zero"
 fn @Pick (? n):
-    Ui.Label(text=$"some {n}")                                   # 0
+    Ui.Label($text=$"some {n}")                                   # 0
     @ "n{n}"
 
 @main: @unit
 @main:
     picked <- @Pick (? 3)                                        # 0
-    Ui.Label(text=$"{picked}")                                   # 1
+    Ui.Label($text=$"{picked}")                                   # 1

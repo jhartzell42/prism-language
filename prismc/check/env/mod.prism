@@ -164,7 +164,7 @@ type G = record:
     defs: [Def]
     programRow: Rw
     elemFams: [Text]
-    rootModule: ?Text
+    ?rootModule: Text
     appRoot: Bool
     fnAt: (Text ==> Nat)
     preludeFrom: Nat
@@ -208,7 +208,7 @@ fn IsUpperText t = IsUpper (Head t)
 # The program's files, parsed: the environment, and the diagnostics of every declaration.
 BuildG: unbounded fn [Src], [Module] -> ((G, St))
 fn BuildG srcs, trees:
-    let g0 = G(mods={}, types={}, ctors={}, tags={}, families={}, famOwner={}, vals={}, traits={}, impls={}, bare={}, bareTypes={}, bareTraits={}, srcs=srcs, defs=[[]], programRow=emptyRow, elemFams=[[]], rootModule=nil, appRoot=(AppRoot srcs, trees), fnAt={}, preludeFrom=(Len trees))
+    let g0 = G(mods={}, types={}, ctors={}, tags={}, families={}, famOwner={}, vals={}, traits={}, impls={}, bare={}, bareTypes={}, bareTraits={}, srcs=srcs, defs=[[]], programRow=emptyRow, elemFams=[[]], ?rootModule=nil, appRoot=(AppRoot srcs, trees), fnAt={}, preludeFrom=(Len trees))
     let st0 = NewSt 0
     let ((g1, st1)) = Fold (Range0 (Len trees)), ((g0, st0)), \|((g, st)), i| AddModule g, st, i, (Or trees[i], emptyModule)
     let g2 = AddBuiltins g1
@@ -222,7 +222,7 @@ fn BuildG srcs, trees:
     let st8 = Coherence g8, (DerivedFields g8, (DerivedDynamics g8, st7))
     ((g8, st8))
 
-let emptyModule = Module(name=nil, emitRow=nil, mods=[[]], uses=[[]], decls=[[]], template=nil, span=Range(start=0, end=0))
+let emptyModule = Module(?name=nil, ?emitRow=nil, mods=[[]], uses=[[]], decls=[[]], ?template=nil, span=Range(start=0, end=0))
 
 ModName: fn Module -> Text
 fn ModName m = match m.?name:

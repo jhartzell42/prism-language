@@ -114,16 +114,16 @@ type WindowId = WindowId Text          # the World's handle for a window, answer
 derive ^Eq, ^Show
 
 tag Gui.Window of Element ((WindowId, !WindowInput)):
-    title: $Text                       # live: retitling keeps the window
+    $title: Text                       # live: retitling keeps the window
     size: Extent                       # the first size
 
 tag Gui.Scene of Element unit:
     window: WindowId
-    draw: $[Draw]                      # live: one place, a new picture per change
+    $draw: [Draw]                      # live: one place, a new picture per change
 
 tag Gui.Metrics of Element $Extent:    # the size of a text, a fact about fonts
     text: Text
 
 tag Gui.Focus of Element unit:         # where the platform's focus and input method go
     window: WindowId
-    at: $?Rect
+    $?at: Rect

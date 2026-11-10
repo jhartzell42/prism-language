@@ -43,8 +43,8 @@ fn Summary n:
 
 @rows: @unit
 @rows:
-    !add <- Ui.Button(label=$"add")                          # 0
+    !add <- Ui.Button($label=$"add")                          # 0
     $n <- 1 then $n + 1 on !add
     for k, $r <- RowsUpTo $n:                                 # 1/[k]
-        Ui.Label(text=$r.name)                               # 1/[k]/0
-    Ui.Label(text=(Summary $n))                              # 2
+        Ui.Label($text=$r.name)                               # 1/[k]/0
+    Ui.Label($text=(Summary $n))                              # 2
