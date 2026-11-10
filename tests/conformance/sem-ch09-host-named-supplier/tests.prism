@@ -1,0 +1,16 @@
+# The named suppliers' tests: declarations of sem-ch09-host-named-supplier.
+emit Ui.* | Fs.*
+use App.*
+use Fs.*
+
+test named_supplier, @named:
+    build
+    click at 0/[0]/0
+
+test forwarding_supplier, @forwarded:
+    with Fs.Contents(path="a") = ~ Contents(text="a"), build
+        => expect Ui.Label(text="a, nothing")
+    click at 0/[0]/0
+        => requested Fs.File, Read
+    send at 0/[2]/0, ~ Contents(text="b")
+        => expect Ui.Label(text="a, b")
