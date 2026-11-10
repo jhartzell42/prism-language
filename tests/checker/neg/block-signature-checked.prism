@@ -1,0 +1,8 @@
+# `mismatch`: a block's signature line types the `let` under it, as a top-level one types
+# its definition: `xs` is a `[Bool]`, so a text element is refused. Written by Claude on the
+# claude-bugs branch; subject to change.
+Size: fn Nat -> Nat
+fn Size n:
+    xs: [Bool]
+    let xs = [["a"]]
+    Len xs
