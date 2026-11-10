@@ -98,11 +98,29 @@ fn EventRef wx, menv, e:
             "Prelude.!Except": PairEvent wx, menv, args, GnExcept, t
             "Prelude.!MergeAll": MergeAllEvent wx, menv, args, t
             "Prelude.!Updated": UpdatedEvent wx, menv, args, t
-            otherwise: EventMap wx, menv, e
+            otherwise: if IsWholeObject lx, e: EventObjectRef wx, menv, e, t else: EventMap wx, menv, e
         EIf (CondExpr c), thenB, (? elseB): match ((?BlockExpr thenB, ?BlockExpr elseB)):
             ((? a, ? b)): EventIf wx, menv, c, a, b, t
             otherwise: EventMap wx, menv, e
         otherwise: EventMap wx, menv, e
+
+# An event value a function gave whole (`Or es[0], never` over `es = Evs !inc`, gap LF),
+# heard in the node: a port node of the graph, fed by a subscription the build makes to the
+# value's port, the value read through a getter once the node is made.
+EventObjectRef: unbounded fn Wx, Env, Expr, OutTy -> ((EvRef, Wx))
+fn EventObjectRef wx, menv, e, t:
+    let lx = wx.lx
+    let ((rs, w1)) = FreshName wx, "heard"
+    let ((id, w2)) = AddGn w1, rs, t, GnPort, 0
+    let shown = SrcText lx, lx.file, e.span
+    let getter = MethDef(name="{rs}_event", recv=RecvRef, params=[[]], cx=CxRef, ret=(OutEvent t), body=[[]], tail=(Own (ValueOf lx, menv, e)), doc="`{shown}`, an event a function gave whole, as its value.")
+    let port = XClosure False, [[PaBind "ev"]], (XRef (XField (XVar "ev"), "port"))
+    let call = XClosure False, [[PaBind "n", PaBind "v", PaBind "cx"]], (XMethod (XVar "n"), rs, [[XClone (XVar "v"), XCx]])
+    let sub = DoExpr (XCall (Helper "subscribe_row"), [[(XRef (XVar "node")), (XCtor "std::Some", [[(XCall "std::Rc::new", [[(XMethod (XVar "node"), "{rs}_event", [[XCx]])]])]]), port, call, (XRef (XField (XVar "node"), "{rs}_sub"))]])
+    let w3 = update (AddField w2, "{rs}_sub", (OutNamed "std::Cell", [[(OutOpt (OutNamed "rt::Handle", [[]]))]]), "the subscription to `{shown}`", (XCall "std::Cell::new", [[XNone]])):
+        &_.getters <= Push &_.getters, getter
+        &_.build <= Push &_.build, sub
+    (((EvRefOf w3, id), w3))
 
 # `if $c: !a else: !b`, an `if` lifted to events (Type System ch. 4): each branch gated by
 # the condition at its firing, the two merged.
