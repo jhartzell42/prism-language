@@ -1,0 +1,7 @@
+# The tests of ts-ch03-result-only-self (Type System chapter 3).
+emit Ui.*
+use App.*
+
+test read_by_the_wanted_type, @main:
+    build
+        => expect Ui.Label(text="42 / cannot read 12 / ab-cd / 7")
