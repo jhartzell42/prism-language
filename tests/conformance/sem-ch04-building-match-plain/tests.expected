@@ -1,0 +1,14 @@
+# Derived by hand from Semantics ch. 4 (a building `match`'s arm is chosen once, at the build, and stands at the block's next positions) and ch. 8 (the line after it reads its plain result at the build; places are born in source order): the arm's label follows `$gone`.
+test the_arm_result_is_read_below
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="x 0")
+    2: Ui.Label(text="n 10")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="x 1")
