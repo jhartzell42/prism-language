@@ -1,0 +1,14 @@
+# An answer of the wrong tag is a type error (Semantics rulings round 12, AQ): `Answer c`
+# is the union of the answer constructors of row `c`'s tags, each typed by its tag's
+# answer. Written by Claude on the claude-bugs branch; subject to change.
+use Ui.*
+use Fs.*
+
+OfUi: fn Click, Contents -> [Answer Ui.*]
+fn OfUi c, text = [[Ui.Button.Answer c, Fs.Contents.Answer (~ text)]]
+
+Carried: fn Nat -> Answer Ui.*
+fn Carried n = Ui.Button.Answer n
+
+Unknown: fn Click -> Answer Ui.*
+fn Unknown c = Ui.Knob.Answer c
