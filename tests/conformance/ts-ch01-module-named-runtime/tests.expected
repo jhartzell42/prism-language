@@ -1,0 +1,7 @@
+# Derived by hand from Type System ch. 1: the program's own `Twice 3` is 6, its `Dynamic 2`
+# shows as written, its `Run 4` is 5.
+test a_module_named_as_the_runtime
+
+tick 0
+  added:
+    0: Ui.Label(text="6 Dynamic 2 5")
