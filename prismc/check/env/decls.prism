@@ -299,15 +299,8 @@ fn ConvTrait g, st, info, t, span:
     let name = QualKey info.name, (Dotted t.name.path)
     let param = Or (Each t.params, \|p| p.name)[0], "a"
     let st1 = if (Len t.params) > 1: Err st, "unsupported", span, "this checker does not implement traits of several types" else: st
-    let cx0 = CxOf g, info.name
-    let ((supers, st2)) = ConvBounds cx0, st1, t.bounds
-    # its own associated types, named bare in its signatures, are its own (`ResolveAssoc`)
-    let cx = update cx0:
-        &_.ownTrait <= name
-        &_.ownAssocs <= Fold t.items, [[]], \|acc, it| match it:
-            TiAssocType n, ignore, ignore, ignore: AddText acc, n.name
-            otherwise: acc
-        &_.bounds <= Push supers, ((param, name))
+    let cx = CxOf g, info.name
+    let ((supers, st2)) = ConvBounds cx, st1, t.bounds
     let ((g3, st3, methods, defaults, assocs)) = Fold t.items, ((g, st2, [[]], [[]], [[]])), \|((gg, s, ms, ds, assocAcc)), it| match it:
         TiSignature sg:
             let mname = DefNameText sg.name
@@ -338,13 +331,9 @@ ConvImpl: unbounded fn G, St, ModInfo, ImplDecl, Range -> ((G, St))
 fn ConvImpl g, st, info, i, span = match ?ResolveTrait g, info.name, i.traitRef.path:
     nil: ((g, (Err st, "unknown-name", i.traitRef.span, "no trait `^{Dotted i.traitRef.path}`")))
     ? cls:
-        let cx0 = CxOf g, info.name
-        # the bounds before the head and the choices: an associated type the impl names is
-        # its own trait's, or a bound's (`type Item = Item a` where `a: ^Box`)
-        let ((bs, st2)) = ConvBounds cx0, st, i.bounds
-        let cx = update cx0:
-            &_.ownTrait <= cls
-            &_.bounds <= bs
+        let cx = CxOf g, info.name
+        # the bounds before the head and the choices
+        let ((bs, st2)) = ConvBounds cx, st, i.bounds
         let ((head, st3)) = ConvType cx, st2, i.ty
         let ((assocs, st4)) = Fold i.items, (([[]], st3)), \|((acc, s)), it| match it:
             TiAssocType n, ignore, (? v), ignore:

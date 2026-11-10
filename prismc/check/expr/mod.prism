@@ -259,7 +259,6 @@ fn EnvCx env:
     let base = CxOf env.g, env.home
     update base:
         &_.scope <= env.scope
-        &_.bounds <= env.givens
 
 # ---------------------------------------------------------------------------------------
 # Names
