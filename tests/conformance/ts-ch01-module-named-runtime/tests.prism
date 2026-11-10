@@ -4,4 +4,4 @@ use App.*
 
 test a_module_named_as_the_runtime, @main:
     build
-        => expect Ui.Label(text="6 Dynamic 2 5")
+        => expect Ui.Label(text="6 Dynamic 2 5 Hold 5")
