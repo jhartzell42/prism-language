@@ -1,0 +1,20 @@
+# A generic function passed as a value (`Mirror` to `Apply`): its value is the function at
+# the instantiation the argument's place asks for, in both targets. Written by Claude on the
+# claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Pair a b = record:
+    left: a
+    right: b
+derive ^Eq, ^Show
+
+Mirror: fn Pair a b -> Pair b a
+fn Mirror p = Pair(left=p.right, right=p.left)
+
+Apply: fn (fn Pair Nat Text -> Pair Text Nat), Pair Nat Text -> Pair Text Nat
+fn Apply F, p = F p
+
+@main: @unit
+@main:
+    Ui.Label(text=$"{Show (Apply Mirror, (Pair(left=1, right="b")))}")    # 0
