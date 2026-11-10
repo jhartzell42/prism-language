@@ -1,0 +1,14 @@
+# Derived by hand from Semantics ch. 4 (a block's lines are one binding group: a line reads a hold or an event bound below it; a building `match`'s arm stands at the block's next positions) and ch. 8 (the line below the `match` reads its plain result at the build): the first label follows `$gone`, which the button below the `match` steps.
+test a_line_above_reads_a_hold_bound_below
+
+tick 0
+  added:
+    0: Ui.Label(text="gone 0")
+    1: Ui.Label(text="x")
+    2: Ui.Button(label="go 10")
+
+tick 1
+  in:
+    2: click
+  changed:
+    0: Ui.Label(text="gone 1")
