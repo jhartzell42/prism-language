@@ -141,7 +141,7 @@ using Done = Result<void>;
     ({                                                                                   \
         auto&& prism_try_ = (__VA_ARGS__);                                               \
         if (!prism_try_.has_value()) return ::prism_rtl::unexpected(prism_try_.error()); \
-        std::move(prism_try_).value();                                                   \
+        ::std::move(prism_try_).value();                                                 \
     })
 
 }  // namespace prism_rtl

@@ -53,7 +53,7 @@ fn PatConds cp, p, v = match p:
         let inner = Concat2 (Each (Range0 (Len ps)), \|i| PatConds cp, (Or ps[i], PaWild), (Payload cp, c, v, i))
         Filter (Append [[own]], inner), \|t| t != "true"
     PaRecord c, fs, ignore: Concat2 (Each fs, \|((f, q))| PatConds cp, q, "{v}.{FieldId f}")
-    PaTuple ps: Concat2 (Each (Range0 (Len ps)), \|i| PatConds cp, (Or ps[i], PaWild), "std::get<{i}>({v})")
+    PaTuple ps: Concat2 (Each (Range0 (Len ps)), \|i| PatConds cp, (Or ps[i], PaWild), "::std::get<{i}>({v})")
     PaChar c: [["{v} == U'{CppCharEscape c}'"]]
     PaBool b: [[if b: v else: "!{v}"]]
     PaIndex n: [["{v} == {n}u"]]
@@ -75,7 +75,7 @@ fn PatBinds cp, p, v = match p:
     PaUnit ignore: [[]]
     PaCtor c, ps: Concat2 (Each (Range0 (Len ps)), \|i| PatBinds cp, (Or ps[i], PaWild), (Payload cp, c, v, i))
     PaRecord c, fs, ignore: Concat2 (Each fs, \|((f, q))| PatBinds cp, q, "{v}.{FieldId f}")
-    PaTuple ps: Concat2 (Each (Range0 (Len ps)), \|i| PatBinds cp, (Or ps[i], PaWild), "std::get<{i}>({v})")
+    PaTuple ps: Concat2 (Each (Range0 (Len ps)), \|i| PatBinds cp, (Or ps[i], PaWild), "::std::get<{i}>({v})")
     PaSlice ps: Concat2 (Each (Range0 (Len ps)), \|i| SliceBinds cp, (Or ps[i], PaWild), v, i)
     otherwise: [[]]
 

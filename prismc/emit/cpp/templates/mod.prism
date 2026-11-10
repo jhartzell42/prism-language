@@ -281,23 +281,23 @@ rt::TestWorld test_world() {
 }
 
 /// The test scripts compiled with the program: `test` runs these when given none.
-const std::vector<std::string> SCRIPTS = {
+const ::std::vector<::std::string> SCRIPTS = {
     {{scripts}}
 };
 
 /// The World the root's row asks for: `canvas`, `cli`, or `none` (a row with `Ui` and no
 /// `Gui`, which no World answers).
-const std::string WORLD = "{{world}}";
+const ::std::string WORLD = "{{world}}";
 
 /// The root under the World `world`.
-int run_root(const std::string& world, const std::vector<std::string>& args) {
+int run_root(const ::std::string& world, const ::std::vector<::std::string>& args) {
     {{runRoot}}
 }
 
 }  // namespace crate
 
 int main(int argc, char** argv) {
-    std::vector<std::string> args(argv + 1, argv + argc);
+    ::std::vector<::std::string> args(argv + 1, argv + argc);
     // The canvas World keeps the main thread for its windows (AppKit's rule on macOS) and
     // ticks on a big stack of its own.
     if (auto [world, rest] = crate::prelude::world_option(args, crate::WORLD); world == "canvas" && (args.empty() || args[0] != "test"))
@@ -305,7 +305,7 @@ int main(int argc, char** argv) {
     return crate::prelude::on_big_stack([&] {
         auto [world, rest] = crate::prelude::world_option(args, crate::WORLD);
         if ((!args.empty() && args[0] == "test") || world == "test") {
-            std::vector<std::string> scripts;
+            ::std::vector<::std::string> scripts;
             for (const auto& a : rest)
                 if (a != "test") scripts.push_back(a);
             return crate::prelude::run_scripts(crate::test_world(), scripts, crate::SCRIPTS);
@@ -320,7 +320,7 @@ CppNoRoot: fn Text -> Text
 fn CppNoRoot name = inline_text <cpp>
 static_cast<void>(world);
 static_cast<void>(args);
-std::fprintf(stderr, "{{name}}: the program has no `@main`; `{{name}} test` runs its tests\n");
+::std::fprintf(stderr, "{{name}}: the program has no `@main`; `{{name}} test` runs its tests\n");
 return 2;
 </cpp>
 
@@ -332,10 +332,10 @@ if (world == "canvas") {
     {{canvas}}
 }
 if (world == "none") {
-    std::fprintf(stderr, "the root's row has Ui.* without Gui.*: no World answers Ui elements alone; emit Gui.* for the canvas World, or pass --world\n");
+    ::std::fprintf(stderr, "the root's row has Ui.* without Gui.*: no World answers Ui elements alone; emit Gui.* for the canvas World, or pass --world\n");
     return 2;
 }
-std::fprintf(stderr, "no World %s (cli, canvas, test)\n", world.c_str());
+::std::fprintf(stderr, "no World %s (cli, canvas, test)\n", world.c_str());
 return 2;
 </cpp>
 
@@ -351,7 +351,7 @@ return prism_world_canvas::run<{{program}}>();
 # the World.
 CppNoCanvas: fn Text -> Text
 fn CppNoCanvas program = inline_text <cpp>
-std::fprintf(stderr, "the root's row emits no Gui.*, so this program is built without the canvas World\n");
+::std::fprintf(stderr, "the root's row emits no Gui.*, so this program is built without the canvas World\n");
 return 2;
 </cpp>
 

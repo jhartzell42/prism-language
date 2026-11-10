@@ -109,7 +109,7 @@ fn Main name, mods, programs, registrations, scripts, runRoot, world = inline_te
 
 {{mods}}
 
-use std::rc::Rc;
+use ::std::rc::Rc;
 
 use prism_rtl::*;
 
@@ -134,7 +134,7 @@ const SCRIPTS: &[&str] = &[
 const WORLD: &str = "{{world}}";
 
 fn main() {
-    let args: ::std::vec::Vec<::std::string::String> = std::env::args().skip(1).collect();
+    let args: ::std::vec::Vec<::std::string::String> = ::std::env::args().skip(1).collect();
     let (world, rest) = prelude::world_option(&args, WORLD);
     let code = if args.first().map(::std::string::String::as_str) == ::std::option::Option::Some("test") || world == "test" {
         let scripts: ::std::vec::Vec<::std::string::String> = rest.into_iter().filter(|a| a != "test").collect();
@@ -142,7 +142,7 @@ fn main() {
     } else {
         run_root(&world, rest)
     };
-    std::process::exit(code as i32);
+    ::std::process::exit(code as i32);
 }
 
 /// The root under the World `world`.

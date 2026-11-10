@@ -277,7 +277,7 @@ fn ForBuilder b = ForBuild b.name, (Expression b.at), (Type b.keyTy), (Type b.va
 # The source the rows were last built from, kept: over a map of dynamics the walk reads the
 # one it replaces, to compare each kept key's dynamic with the one its row was built from.
 FromKept: fn Text, [Text] -> Text
-fn FromKept name, replaced = if (Len replaced) == 0: "*self.{name}_from.borrow_mut() = items.clone();" else: "let from = std::mem::replace(&mut *self.{name}_from.borrow_mut(), items.clone());"
+fn FromKept name, replaced = if (Len replaced) == 0: "*self.{name}_from.borrow_mut() = items.clone();" else: "let from = ::std::mem::replace(&mut *self.{name}_from.borrow_mut(), items.clone());"
 
 # A kept key whose dynamic is another than the one its row was built from (ruling FV): the
 # row is told, and adopts it among the next tick's first firings.

@@ -218,7 +218,7 @@ fn TypeParts cp, t:
             let cls = ChoiceClass doc, gens, t.name, cases, (Join names, ", "), members
             # the choice's comparisons over the variant, after its cases; the cases' own, where
             # declared (`Behind`), among the module's definitions
-            let cmp = Join (Filter [[(if eq: "{gens}inline bool operator==(const {head}& a, const {head}& b) \{ return a.cases() == b.cases(); \}" else: ""), (if ord: "{gens}inline std::strong_ordering operator<=>(const {head}& a, const {head}& b) \{ return a.cases() <=> b.cases(); \}" else: "")]], \|s| s != ""), "\n"
+            let cmp = Join (Filter [[(if eq: "{gens}inline bool operator==(const {head}& a, const {head}& b) \{ return a.cases() == b.cases(); \}" else: ""), (if ord: "{gens}inline ::std::strong_ordering operator<=>(const {head}& a, const {head}& b) \{ return a.cases() <=> b.cases(); \}" else: "")]], \|s| s != ""), "\n"
             let caseDefs = Filter (Each t.cases, \|c| CaseCmpDefs cp, gens, head, c, eq, ord), \|s| s != ""
             (((Join (Filter [[cls, cmp]], \|s| s != ""), "\n"), caseDefs))
         otherwise:
@@ -249,10 +249,10 @@ Comparisons: fn Text, Text, Text, [Text], Bool, Bool, Bool -> ((Text, Text))
 fn Comparisons gens, owner, self, names, eq, ord, behind:
     if not behind: (((Join (Filter [[(if eq: "bool operator==(const {self}&) const = default;" else: ""), (if ord: "auto operator<=>(const {self}&) const = default;" else: "")]], \|s| s != ""), "\n"), ""))
     else:
-        let decls = Join (Filter [[(if eq: "bool operator==(const {self}&) const;" else: ""), (if ord: "std::strong_ordering operator<=>(const {self}&) const;" else: "")]], \|s| s != ""), "\n"
+        let decls = Join (Filter [[(if eq: "bool operator==(const {self}&) const;" else: ""), (if ord: "::std::strong_ordering operator<=>(const {self}&) const;" else: "")]], \|s| s != ""), "\n"
         let eqBody = if (Len names) == 0: "true" else: Join (Each names, \|n| "{n} == o.{n}"), " && "
-        let ordBody = if (Len names) == 0: "std::strong_ordering::equal" else: "std::tie({Join names, ", "}) <=> std::tie({Join (Each names, \|n| "o.{n}"), ", "})"
-        let defs = Join (Filter [[(if eq: "{gens}bool {owner}::operator==(const {self}& o) const \{ return {eqBody}; \}" else: ""), (if ord: "{gens}std::strong_ordering {owner}::operator<=>(const {self}& o) const \{ return {ordBody}; \}" else: "")]], \|s| s != ""), "\n"
+        let ordBody = if (Len names) == 0: "::std::strong_ordering::equal" else: "::std::tie({Join names, ", "}) <=> ::std::tie({Join (Each names, \|n| "o.{n}"), ", "})"
+        let defs = Join (Filter [[(if eq: "{gens}bool {owner}::operator==(const {self}& o) const \{ return {eqBody}; \}" else: ""), (if ord: "{gens}::std::strong_ordering {owner}::operator<=>(const {self}& o) const \{ return {ordBody}; \}" else: "")]], \|s| s != ""), "\n"
         ((decls, defs))
 
 # The members a value type declares for the runtime: its printer and its plain data.
@@ -303,7 +303,7 @@ fn ShowDef cp, t, head, gens:
 ShowCase: fn TyDef, Nat -> Text
 fn ShowCase t, i:
     let c = Or t.cases[i], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
-    let head = "{if i == 0: "if" else: "else if"} (auto c = std::get_if<{c.name}>(&cases()))"
+    let head = "{if i == 0: "if" else: "else if"} (auto c = ::std::get_if<{c.name}>(&cases()))"
     "{head} p.choice(\"{c.prism}\", \{{Join (Each (Range0 (Len c.fields)), \|k| "c->a{k}"), ", "}\});"
 
 # The Prism name of a newtype's or unit type's one case (`click` of `Click`).
@@ -337,7 +337,7 @@ ChoicePod: fn TyDef -> Text
 fn ChoicePod t:
     let arms = Each (Range0 (Len t.cases)), \|i|
         let c = Or t.cases[i], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
-        "std::holds_alternative<{c.name}>(cases()) ? rt::Pod::choice(\"{c.prism}\", \{{Join (Each (Range0 (Len c.fields)), \|k| "prism_rtl::to_pod(std::get<{c.name}>(cases()).a{k})"), ", "}\})"
+        "::std::holds_alternative<{c.name}>(cases()) ? rt::Pod::choice(\"{c.prism}\", \{{Join (Each (Range0 (Len c.fields)), \|k| "prism_rtl::to_pod(::std::get<{c.name}>(cases()).a{k})"), ", "}\})"
     "{Join arms, "\n    : "}\n    : rt::Pod()"
 
 FromPodDef: unbounded fn Cp, TyDef, Text, Text -> Text
@@ -382,11 +382,11 @@ fn TagParts cp, t:
     let back = if t.pod: "static rt::Result<{t.name}> from_pod(const rt::Pod& p);" else: ""
     # a level that holds dynamics as a World reads it, deep (doubt WD)
     let deep = Fold t.fields, False, \|d, ((ignore, ignore, ft))| d or HoldsDyn ft
-    let levelDecl = if deep: "/// The level as a World reads it: each dynamic it holds sampled at the read point.\nrt::Pod level_pod(const rt::Cx& cx) const;\n/// The update events of the dynamics it holds, and of theirs.\nvoid level_ports(const rt::Cx& cx, std::vector<prism_rtl::Rc<prism_rtl::Port<rt::Unit>>>& out) const;" else: ""
+    let levelDecl = if deep: "/// The level as a World reads it: each dynamic it holds sampled at the read point.\nrt::Pod level_pod(const rt::Cx& cx) const;\n/// The update events of the dynamics it holds, and of theirs.\nvoid level_ports(const rt::Cx& cx, ::std::vector<prism_rtl::Rc<prism_rtl::Port<rt::Unit>>>& out) const;" else: ""
     let decl = CppTagStruct (CppSourceDoc "The `Level` of `{t.tagName}`:", t.doc), t.name, fields, t.tagName, (Join (Filter [[eq, back, levelDecl]], \|s| s != ""), "\n")
     let deepPods = Join (Each t.fields, \|((p, f, ft))| CppDeepField p, f, ft), ", "
     let deepPorts = Join (Filter (Each t.fields, \|((ignore, f, ft))| CppDeepPorts f, ft), \|s| s != ""), "\n"
-    let levelDefs = if deep: [[(CppFunction "", "rt::Pod {t.name}::level_pod(const rt::Cx& cx) const", "static_cast<void>(cx);\nreturn rt::Pod::element(TAG, \{{deepPods}\});"), (CppFunction "", "void {t.name}::level_ports(const rt::Cx& cx, std::vector<prism_rtl::Rc<prism_rtl::Port<rt::Unit>>>& out) const", "static_cast<void>(cx);\nstatic_cast<void>(out);{if deepPorts == "": "" else: "\n{deepPorts}"}")]] else: [[]]
+    let levelDefs = if deep: [[(CppFunction "", "rt::Pod {t.name}::level_pod(const rt::Cx& cx) const", "static_cast<void>(cx);\nreturn rt::Pod::element(TAG, \{{deepPods}\});"), (CppFunction "", "void {t.name}::level_ports(const rt::Cx& cx, ::std::vector<prism_rtl::Rc<prism_rtl::Port<rt::Unit>>>& out) const", "static_cast<void>(cx);\nstatic_cast<void>(out);{if deepPorts == "": "" else: "\n{deepPorts}"}")]] else: [[]]
     let toPod = CppFunction "", "rt::Pod {t.name}::to_pod() const", "return rt::Pod::element(TAG, \{{pods}\});"
     let show = CppFunction "", "void {t.name}::show(rt::Printer& p) const", "prism_rtl::to_pod(*this).structure();\nrt::Show<rt::Pod>::show(prism_rtl::to_pod(*this), p);"
     let fromPod = if t.pod: [[(CppFunction "", "rt::Result<{t.name}> {t.name}::from_pod(const rt::Pod& p)", "if (auto t = p.tag(); t && *t == TAG) return {t.name}\{{reads}\};\nreturn rt::mismatch<{t.name}>(\"a {t.tagName}\", p);")]] else: [[]]
@@ -414,15 +414,15 @@ fn CppDeepPorts f, ft = match ft:
 RowParts: unbounded fn Cp, Text, RowDef -> Parts
 fn RowParts cp, m, r:
     let names = Each r.cases, \|((v, ignore))| v
-    let levels = if r.level: "\nrt::Pod level_pod(const rt::Cx& cx) const;\nvoid level_ports(const rt::Cx& cx, std::vector<prism_rtl::Rc<prism_rtl::Port<rt::Unit>>>& out) const;" else: ""
+    let levels = if r.level: "\nrt::Pod level_pod(const rt::Cx& cx) const;\nvoid level_ports(const rt::Cx& cx, ::std::vector<prism_rtl::Rc<prism_rtl::Port<rt::Unit>>>& out) const;" else: ""
     let pod = "rt::Pod to_pod() const;\nvoid show(rt::Printer& p) const;{if r.pod: "\nstatic rt::Result<{r.name}> from_pod(const rt::Pod& p);" else: ""}{levels}"
     let cases = Join (Each r.cases, \|((v, st))| CaseDecl v, "{RowStruct m, st} a0;{if r.eq: "\nbool operator==(const {v}&) const = default;" else: ""}"), "\n"
     let cls = ChoiceClass (CppSourceDoc "`{r.prism}`, a row kind's values:", r.doc), "", r.name, cases, (Join names, ", "), pod
     let eq = if r.eq: "\ninline bool operator==(const {r.name}& a, const {r.name}& b) \{ return a.cases() == b.cases(); \}" else: ""
     # `crate::Elem`'s levels as a World reads them (doubt WD): a tag that holds dynamics
     # deep, any other as its plain data
-    let levelDefs = if r.level: [[(CppFunction "", "rt::Pod {r.name}::level_pod(const rt::Cx& cx) const", "return std::visit([&](const auto& c) \{ return prism_rtl::level_pod(c.a0, cx); \}, cases());"), (CppFunction "", "void {r.name}::level_ports(const rt::Cx& cx, std::vector<prism_rtl::Rc<prism_rtl::Port<rt::Unit>>>& out) const", "std::visit([&](const auto& c) \{ prism_rtl::level_ports(c.a0, cx, out); \}, cases());")]] else: [[]]
-    let toPod = CppFunction "", "rt::Pod {r.name}::to_pod() const", "return std::visit([](const auto& c) \{ return prism_rtl::to_pod(c.a0); \}, cases());"
+    let levelDefs = if r.level: [[(CppFunction "", "rt::Pod {r.name}::level_pod(const rt::Cx& cx) const", "return ::std::visit([&](const auto& c) \{ return prism_rtl::level_pod(c.a0, cx); \}, cases());"), (CppFunction "", "void {r.name}::level_ports(const rt::Cx& cx, ::std::vector<prism_rtl::Rc<prism_rtl::Port<rt::Unit>>>& out) const", "::std::visit([&](const auto& c) \{ prism_rtl::level_ports(c.a0, cx, out); \}, cases());")]] else: [[]]
+    let toPod = CppFunction "", "rt::Pod {r.name}::to_pod() const", "return ::std::visit([](const auto& c) \{ return prism_rtl::to_pod(c.a0); \}, cases());"
     let show = CppFunction "", "void {r.name}::show(rt::Printer& p) const", "rt::Show<rt::Pod>::show(to_pod(), p);"
     let reads = Join (Each r.cases, \|((v, st))| "if (*t == {RowStruct m, st}::TAG) return {r.name}({v}\{TRY(prism_rtl::from_pod<{RowStruct m, st}>(p))\});"), "\n"
     let fromPod = if r.pod: [[(CppFunction "", "rt::Result<{r.name}> {r.name}::from_pod(const rt::Pod& p)", "if (auto t = p.tag()) \{\n{IndentCpp reads}\n\}\nreturn rt::mismatch<{r.name}>(\"a {r.name}\", p);")]] else: [[]]
@@ -442,9 +442,9 @@ fn AnswerParts cp, a:
     let members = "const char* tag() const;\n{accessors}\nstatic rt::Result<Answer> decode(const Elem& e, const rt::Pod& v);"
     let cases = Join (Each a.cases, \|c| CaseDecl c.variant, "{CppType cp, c.ty} a0;"), "\n"
     let cls = ChoiceClass (CppDoc "`Answer c`: an answer to an element, typed by its tag (Semantics ch. 9): what a host's\nsupplier answers a child place with, and what a World's answer to a forwarded element\ndecodes to, carrying the tag's output."), "", "Answer", cases, (Join names, ", "), members
-    let tags = Join (Each a.cases, \|c| "if (std::holds_alternative<{c.variant}>(cases())) return {TypePath c.structPath}::TAG;"), "\n"
+    let tags = Join (Each a.cases, \|c| "if (::std::holds_alternative<{c.variant}>(cases())) return {TypePath c.structPath}::TAG;"), "\n"
     let tagFn = CppFunction "", "const char* Answer::tag() const", "{tags}\nprism_rtl::unreachable();"
-    let getters = Each a.cases, \|c| CppFunction (CppDoc "A `{c.tagName}`'s answer."), "rt::Result<{CppType cp, c.ty}> Answer::{c.accessor}() const", "if (auto c = std::get_if<{c.variant}>(&cases())) return c->a0;\nreturn rt::unexpected(rt::Fault::answer(rt::str(\"an answer for \", tag(), \", where {c.tagName}'s was expected\")));"
+    let getters = Each a.cases, \|c| CppFunction (CppDoc "A `{c.tagName}`'s answer."), "rt::Result<{CppType cp, c.ty}> Answer::{c.accessor}() const", "if (auto c = ::std::get_if<{c.variant}>(&cases())) return c->a0;\nreturn rt::unexpected(rt::Fault::answer(rt::str(\"an answer for \", tag(), \", where {c.tagName}'s was expected\")));"
     let decodes = Join (Each a.cases, \|c| "if (is<Elem::{c.variant}>(e)) return Answer({c.variant}\{TRY(prism_rtl::from_pod<{CppType cp, c.ty}>(v))\});"), "\n"
     let decode = CppFunction (CppDoc "A World's answer to the element `e`, decoded by its tag."), "rt::Result<Answer> Answer::decode(const Elem& e, const rt::Pod& v)", "{decodes}\nprism_rtl::unreachable();"
     Parts(forward=[["class Answer;"]], values=[[ValueDecl(path="Answer", deps=[[]], text=cls)]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append [[tagFn]], (Push getters, decode)))
@@ -457,7 +457,7 @@ fn JobParts cp, j:
     let jcp = WithFields cp, j.fields
     let fields = Join (Each j.fields, \|((n, t))| "{CppType cp, t} {FieldId n};"), "\n"
     let params = Join (Each j.fields, \|((n, t))| "{CppType cp, t} {FieldId n}"), ", "
-    let inits = Join (Each j.fields, \|((n, ignore))| "{FieldId n}(std::move({FieldId n}))"), ", "
+    let inits = Join (Each j.fields, \|((n, ignore))| "{FieldId n}(::std::move({FieldId n}))"), ", "
     let ctor = if (Len j.fields) == 0: "" else: "{j.name}({params}) : {inits} \{\}"
     let ret = CppType cp, j.ret
     let decl = JobStruct (CppDoc j.doc), gens, j.name, ret, fields, ctor

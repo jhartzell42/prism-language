@@ -17,10 +17,10 @@ fn ChoiceClass doc, gens, name, cases, names, members = inline_text <cpp>
 public:
     using prism_value = void;
     {{cases}}
-    using Cases = std::variant<{{names}}>;
+    using Cases = ::std::variant<{{names}}>;
     template <class C>
         requires prism_rtl::one_of<C, {{names}}>
-    {{name}}(C c) : cases_(std::move(c)) {}
+    {{name}}(C c) : cases_(::std::move(c)) {}
     const Cases& cases() const { return cases_; }
     {{members}}
 
@@ -170,11 +170,11 @@ fn GenBuildTemplate owner, name, at, path, source, valueTy, select, moved = inli
 /// The `rebuild` at `{{at}}`: the old generation torn down (it ran to the end of the
 /// tick), the next built at `{{path}}` from the source after the tick.
 rt::Done {{owner}}::{{name}}_build(rt::Cx& cx) {
-    if (auto old = std::exchange(this->{{name}}, std::nullopt)) {
+    if (auto old = ::std::exchange(this->{{name}}, ::std::nullopt)) {
         (*old)->leave_row(cx);
         cx.leave_later(*old);
     }
-    std::uint32_t g = this->{{name}}_count;
+    ::std::uint32_t g = this->{{name}}_count;
     this->{{name}}_count = g + 1;
     rt::Path path = {{path}};
     {{valueTy}} value = {{source}};
@@ -190,13 +190,13 @@ fn ProgramClass name, prism, node, decode, root = inline_text <cpp>
 /// The program of `@{{prism}}`: the root node and the runtime.
 class {{name}} : public rt::Program {
 public:
-    static rt::Built<{{name}}> build(std::span<const rt::Pod> args, const rt::ReadyState& ready) {
+    static rt::Built<{{name}}> build(::std::span<const rt::Pod> args, const rt::ReadyState& ready) {
         {{decode}}
-        auto p = std::make_unique<{{name}}>();
+        auto p = ::std::make_unique<{{name}}>();
         rt::Cx cx = p->rt.build(ready);
         p->root = {{root}};
-        rt::TickOut out = TRY(p->rt.close(std::move(cx)));
-        return std::pair<std::unique_ptr<{{name}}>, rt::TickOut>(std::move(p), std::move(out));
+        rt::TickOut out = TRY(p->rt.close(::std::move(cx)));
+        return ::std::pair<::std::unique_ptr<{{name}}>, rt::TickOut>(::std::move(p), ::std::move(out));
     }
     rt::Result<rt::TickOut> tick(const rt::TickIn& input, const rt::ReadyState& ready) override {
         return rt.tick(root, input, ready);

@@ -15,7 +15,7 @@ fn PreludeSource unused = inline_text <rust>
 //! The prelude (Semantics Appendix B), emitted by prismc beside every program: the
 //! builtins and the prelude's own functions as Rust over `prism_rtl`.
 
-use std::rc::Rc;
+use ::std::rc::Rc;
 
 // The runtime's items, reached through the prelude too: the emitted code calls every helper
 // by its path from here (`crate::prelude::index`), never bare (prismc/lower/mod.prism,
@@ -372,9 +372,9 @@ pub fn min<A: Ord + Clone>(a: &A, b: &A) -> A {
 /// `Compare` of `^Ord`.
 pub fn compare<A: Ord>(a: &A, b: &A) -> Ordering {
     match a.cmp(b) {
-        std::cmp::Ordering::Less => Ordering::Less,
-        std::cmp::Ordering::Greater => Ordering::Greater,
-        std::cmp::Ordering::Equal => Ordering::Equal,
+        ::std::cmp::Ordering::Less => Ordering::Less,
+        ::std::cmp::Ordering::Greater => Ordering::Greater,
+        ::std::cmp::Ordering::Equal => Ordering::Equal,
     }
 }
 
@@ -677,7 +677,7 @@ pub fn place(out: &mut String, text: &Text, column: Option<usize>) {
             }
             for l in text.split('\n') {
                 if !l.is_empty() {
-                    out.extend(std::iter::repeat_n(' ', c));
+                    out.extend(::std::iter::repeat_n(' ', c));
                 }
                 out.push_str(l);
                 out.push('\n');
@@ -700,7 +700,7 @@ pub fn indexed<A: Clone>(xs: &Array<A>) -> Map<Nat, A> {
 /// The heights a node with combinators at several heights asked for this tick: its wake
 /// runs the lowest one asked (`Node::wake` is not told its height, prismc/README.md WH).
 #[derive(Default)]
-pub struct Wakes(std::cell::RefCell<std::collections::BTreeSet<u32>>);
+pub struct Wakes(::std::cell::RefCell<::std::collections::BTreeSet<u32>>);
 
 impl Wakes {
     pub fn ask(&self, h: u32) {
@@ -743,7 +743,7 @@ impl Row for prism_rtl::HostRow<crate::Elem, crate::Answer> {
 
 /// A row subscribing to its block's port for one event: the row heard weakly, the handle
 /// kept for its leaving (claude/backend.md: `Port::subscribe`).
-pub fn subscribe_row<N: Node, P, T: Clone + 'static>(node: &Rc<N>, parent: Option<Rc<P>>, port: impl Fn(&P) -> &Port<T>, call: impl Fn(&Rc<N>, &T, &mut Cx) + 'static, slot: &std::cell::Cell<Option<Handle>>) {
+pub fn subscribe_row<N: Node, P, T: Clone + 'static>(node: &Rc<N>, parent: Option<Rc<P>>, port: impl Fn(&P) -> &Port<T>, call: impl Fn(&Rc<N>, &T, &mut Cx) + 'static, slot: &::std::cell::Cell<Option<Handle>>) {
     let Some(parent) = parent else { return };
     let me = Rc::downgrade(node);
     let h = port(&parent).subscribe(Rc::new(move |v: &T, cx: &mut Cx| {
@@ -765,14 +765,14 @@ pub fn subscribe_row<N: Node, P, T: Clone + 'static>(node: &Rc<N>, parent: Optio
 /// it owns: a cycled frame hands it on to the next.
 pub struct Frame<A, B> {
     callee: Rc<dyn Job<A>>,
-    then: std::cell::RefCell<Option<Box<dyn FnOnce(A) -> Turn<B>>>>,
+    then: ::std::cell::RefCell<Option<Box<dyn FnOnce(A) -> Turn<B>>>>,
 }
 
 impl<A: 'static, B: 'static> Job<B> for Frame<A, B> {
     fn cycle(&self) -> Turn<B> {
         let then = self.then.borrow_mut().take().expect("a job's frame is cycled once");
         match self.callee.cycle() {
-            Turn::More(next) => Turn::More(Rc::new(Frame { callee: next, then: std::cell::RefCell::new(Some(then)) })),
+            Turn::More(next) => Turn::More(Rc::new(Frame { callee: next, then: ::std::cell::RefCell::new(Some(then)) })),
             Turn::Finished(a) => then(a),
         }
     }
@@ -780,14 +780,14 @@ impl<A: 'static, B: 'static> Job<B> for Frame<A, B> {
 
 /// A call that is not in tail position: a cycle point, with `then` the continuation.
 pub fn call_then<A: 'static, B: 'static>(callee: Rc<dyn Job<A>>, then: impl FnOnce(A) -> Turn<B> + 'static) -> Turn<B> {
-    Turn::More(Rc::new(Frame { callee, then: std::cell::RefCell::new(Some(Box::new(then))) }))
+    Turn::More(Rc::new(Frame { callee, then: ::std::cell::RefCell::new(Some(Box::new(then))) }))
 }
 
 /// A call through an unbounded function value that is not in tail position: the value's
 /// job runs its first cycle now. A named function's value is `entered`, so entering it
 /// is still a cycle point (D6); a lambda's body is not a named function and runs on.
 pub fn call_value<A: 'static, B: 'static>(callee: Rc<dyn Job<A>>, then: impl FnOnce(A) -> Turn<B> + 'static) -> Turn<B> {
-    Frame { callee, then: std::cell::RefCell::new(Some(Box::new(then))) }.cycle()
+    Frame { callee, then: ::std::cell::RefCell::new(Some(Box::new(then))) }.cycle()
 }
 
 /// A named unbounded function's job as its value gives it: entering it is a cycle point.
@@ -808,7 +808,7 @@ pub fn entered<B: 'static>(job: Rc<dyn Job<B>>) -> Rc<dyn Job<B>> {
 /// (`this` and its `&` locals) one turn, `Ok` to turn again, `Err` when the condition
 /// fails; each turn is a cycle.
 pub struct Looping<S> {
-    state: std::cell::RefCell<Option<S>>,
+    state: ::std::cell::RefCell<Option<S>>,
     step: Rc<dyn Fn(S) -> Result<S, S>>,
 }
 
@@ -816,20 +816,20 @@ impl<S: 'static> Job<S> for Looping<S> {
     fn cycle(&self) -> Turn<S> {
         let s = self.state.borrow_mut().take().expect("a loop's turn is cycled once");
         match (self.step)(s) {
-            Ok(next) => Turn::More(Rc::new(Looping { state: std::cell::RefCell::new(Some(next)), step: self.step.clone() })),
+            Ok(next) => Turn::More(Rc::new(Looping { state: ::std::cell::RefCell::new(Some(next)), step: self.step.clone() })),
             Err(done) => Turn::Finished(done),
         }
     }
 }
 
 pub fn loop_job<S: 'static>(state: S, step: impl Fn(S) -> Result<S, S> + 'static) -> Rc<dyn Job<S>> {
-    Rc::new(Looping { state: std::cell::RefCell::new(Some(state)), step: Rc::new(step) })
+    Rc::new(Looping { state: ::std::cell::RefCell::new(Some(state)), step: Rc::new(step) })
 }
 
 /// A `while` whose body holds a cycle-point loop of its own (D6): a turn is a job, `Ok` to
 /// turn again in the next cycle, `Err` when the condition fails; each turn starts a cycle.
 pub struct LoopingTurns<S> {
-    state: std::cell::RefCell<Option<S>>,
+    state: ::std::cell::RefCell<Option<S>>,
     step: Rc<dyn Fn(S) -> Turn<Result<S, S>>>,
 }
 
@@ -838,18 +838,18 @@ impl<S: 'static> Job<S> for LoopingTurns<S> {
         let state = self.state.borrow_mut().take().expect("a loop's turn is cycled once");
         let step = self.step.clone();
         let again = move |r: Result<S, S>| match r {
-            Ok(next) => Turn::More(Rc::new(LoopingTurns { state: std::cell::RefCell::new(Some(next)), step }) as Rc<dyn Job<S>>),
+            Ok(next) => Turn::More(Rc::new(LoopingTurns { state: ::std::cell::RefCell::new(Some(next)), step }) as Rc<dyn Job<S>>),
             Err(done) => Turn::Finished(done),
         };
         match (self.step)(state) {
             Turn::Finished(r) => again(r),
-            Turn::More(turn) => Turn::More(Rc::new(Frame { callee: turn, then: std::cell::RefCell::new(Some(Box::new(again))) })),
+            Turn::More(turn) => Turn::More(Rc::new(Frame { callee: turn, then: ::std::cell::RefCell::new(Some(Box::new(again))) })),
         }
     }
 }
 
 pub fn loop_turns<S: 'static>(state: S, step: impl Fn(S) -> Turn<Result<S, S>> + 'static) -> Rc<dyn Job<S>> {
-    Rc::new(LoopingTurns { state: std::cell::RefCell::new(Some(state)), step: Rc::new(step) })
+    Rc::new(LoopingTurns { state: ::std::cell::RefCell::new(Some(state)), step: Rc::new(step) })
 }
 
 /// A `for` of an `update` block whose body holds a cycle-point loop (D6, gap LP): a loop
@@ -879,7 +879,7 @@ pub fn for_turns_indexed<V: Clone + 'static, S: 'static>(entries: impl IntoItera
 
 /// The job of a lambda of unbounded type: its body, run as a job body from its first
 /// cycle (prismc/README.md, pick JB).
-pub struct Once<B>(std::cell::RefCell<Option<Box<dyn FnOnce() -> Turn<B>>>>);
+pub struct Once<B>(::std::cell::RefCell<Option<Box<dyn FnOnce() -> Turn<B>>>>);
 
 impl<B> Job<B> for Once<B> {
     fn cycle(&self) -> Turn<B> {
@@ -888,12 +888,12 @@ impl<B> Job<B> for Once<B> {
 }
 
 pub fn once_job<B: 'static>(body: impl FnOnce() -> Turn<B> + 'static) -> Rc<dyn Job<B>> {
-    Rc::new(Once(std::cell::RefCell::new(Some(Box::new(body)))))
+    Rc::new(Once(::std::cell::RefCell::new(Some(Box::new(body)))))
 }
 
 /// A job's result, mapped: `g` runs in the cycle the job finishes (entering is free).
 pub fn map_job<B: 'static, C: 'static>(job: Rc<dyn Job<B>>, g: impl FnOnce(B) -> C + 'static) -> Rc<dyn Job<C>> {
-    Rc::new(Frame { callee: job, then: std::cell::RefCell::new(Some(Box::new(move |b| Turn::Finished(g(b))))) })
+    Rc::new(Frame { callee: job, then: ::std::cell::RefCell::new(Some(Box::new(move |b| Turn::Finished(g(b))))) })
 }
 
 // ---- The higher-order functions as jobs (D8): given an unbounded closure, `Fold`, `Each`
@@ -987,7 +987,7 @@ pub fn world_option(args: &[String], default: &str) -> (String, Vec<String>) {
 /// Run on a thread with a large stack: unbounded code runs direct-style within a cycle
 /// (doubt DS of prismc/README.md), and Rust's default stack is 8 MB.
 pub fn on_big_stack(f: impl FnOnce() -> u8 + Send + 'static) -> u8 {
-    std::thread::Builder::new().stack_size(1 << 30).spawn(f).map_or(1, |h| h.join().unwrap_or(1))
+    ::std::thread::Builder::new().stack_size(1 << 30).spawn(f).map_or(1, |h| h.join().unwrap_or(1))
 }
 
 /// A port's firing from an event method, which returns nothing to pass a fault on through
@@ -1019,7 +1019,7 @@ pub fn run_scripts(world: &TestWorld, given: &[String], compiled: &[&str]) -> u8
     }
     let mut code = 0;
     for path in paths {
-        let script = match std::fs::read_to_string(&path) {
+        let script = match ::std::fs::read_to_string(&path) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("{path}: {e}");
@@ -1036,7 +1036,7 @@ pub fn run_scripts(world: &TestWorld, given: &[String], compiled: &[&str]) -> u8
         }
         let stem = path.strip_suffix(".prism").unwrap_or(&path);
         let expected_path = format!("{stem}.expected");
-        match std::fs::read_to_string(&expected_path) {
+        match ::std::fs::read_to_string(&expected_path) {
             Ok(expected) => match world.verify(&script, &expected) {
                 Ok(_) => println!("ok {path}"),
                 Err(e) => {

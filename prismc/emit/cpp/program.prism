@@ -44,16 +44,16 @@ fn NodeParts cp, n:
     let ncp = WithFields cp, (Each n.fields, \|((f, t, ignore))| ((f, t)))
     let base = if n.rowKind == NotARow and (Len n.hosted) == 0: "rt::Node" else: "rt::Row"
     let fields = Join (Each n.fields, \|((f, t, doc))| "{CppDoc doc}{CppType cp, t} {FieldId f};"), "\n"
-    let consts = Join (Each n.consts, \|((c, h, doc))| "{CppDoc "The {doc}."}static constexpr std::uint32_t {c} = {h};"), "\n"
+    let consts = Join (Each n.consts, \|((c, h, doc))| "{CppDoc "The {doc}."}static constexpr ::std::uint32_t {c} = {h};"), "\n"
     let ctorParams = Join (Append [["rt::Path path"]], (Each n.fields, \|((f, t, ignore))| "{CppType cp, t} {FieldId f}")), ", "
-    let ctorInits = Join (Append [["path(std::move(path))"]], (Each n.fields, \|((f, ignore, ignore))| "{FieldId f}(std::move({FieldId f}))")), ", "
+    let ctorInits = Join (Append [["path(::std::move(path))"]], (Each n.fields, \|((f, ignore, ignore))| "{FieldId f}(::std::move({FieldId f}))")), ", "
     let params = Concat (Each n.params, \|((p, t))| "{ParamType cp, t} {p}, ")
     let ret = if n.fallible: "rt::Result<prism_rtl::Rc<{n.name}>>" else: "prism_rtl::Rc<{n.name}>"
     let makeDecl = "static {ret} make(rt::Path path, {params}rt::Cx& cx);"
     let methodDecls = Each (Append n.methods, n.hosted), \|m| "{MethodSig ncp, m, ""};"
     let builderDecls = Append (Each n.builders, \|b| "rt::Done {b.name}_build(rt::Cx& cx);"), (Each n.gens, \|g| "rt::Done {g.name}_build(rt::Cx& cx);")
     let hookDecls = Each n.hooks, \|((h, ignore))| "{HookSig h, ""} override;"
-    let answerDecl = if (Len n.answers) == 0: [[]] else: [["rt::Done answer(std::span<const rt::Segment> at, const rt::Pod& v, rt::Cx& cx) override;"]]
+    let answerDecl = if (Len n.answers) == 0: [[]] else: [["rt::Done answer(::std::span<const rt::Segment> at, const rt::Pod& v, rt::Cx& cx) override;"]]
     let rowDecl = if n.rowKind == NotARow: [[]] else: [["void leave_row(rt::Cx& cx) override;"]]
     let decls = Join (Append (Append (Append (Append (Append [[makeDecl]], methodDecls), builderDecls), hookDecls), answerDecl), rowDecl), "\n"
     let doc = CppSourceDoc "`{n.prism}`: a node of its own (claude/backend.md, \"A widget block\").", n.doc
@@ -102,14 +102,14 @@ fn AnswerDefCpp cp, n:
     let blocks = Each (Range0 (Len arms)), \|i|
         let ((tests, inner)) = Or arms[i], (([[]], ""))
         Block "{if i == 0: "if" else: "else if"} ({Conds tests})", inner
-    CppFunction "", "rt::Done {n.name}::answer(std::span<const rt::Segment> at, const rt::Pod& v, rt::Cx& cx)", "{Join blocks, " "} else \{\n    return rt::unexpected(rt::Fault::answer(rt::str(\"no answering place at \", rt::path_of(at))));\n\}\nreturn \{\};"
+    CppFunction "", "rt::Done {n.name}::answer(::std::span<const rt::Segment> at, const rt::Pod& v, rt::Cx& cx)", "{Join blocks, " "} else \{\n    return rt::unexpected(rt::Fault::answer(rt::str(\"no answering place at \", rt::path_of(at))));\n\}\nreturn \{\};"
 
 # A row's leaving (prelude `Row`): a `for` row keeps its entry as the tick opened, its places
 # are torn down, its subscriptions let go.
 RowLeaving: unbounded fn Cp, NodeDef -> Text
 fn RowLeaving cp, n:
     let kept = if n.rowKind == ForRow: [["this->left_entry = entry(cx);"]] else: [[]]
-    let unsubscribe = Each n.subs, \|((ev, m, ignore))| "if (auto p = parent.lock(); p && {m}_sub) rt::deref(p->{ev}_port).unsubscribe(*std::exchange({m}_sub, std::nullopt));"
+    let unsubscribe = Each n.subs, \|((ev, m, ignore))| "if (auto p = parent.lock(); p && {m}_sub) rt::deref(p->{ev}_port).unsubscribe(*::std::exchange({m}_sub, ::std::nullopt));"
     CppFunction "", "void {n.name}::leave_row(rt::Cx& cx)", (Join (Append (Push kept, "remove_places(cx);"), unsubscribe), "\n")
 
 ForBuildCpp: unbounded fn Cp, Text, ForDef -> Text
@@ -118,7 +118,7 @@ fn ForBuildCpp cp, owner, b = ForBuildTemplate owner, b.name, (CppExpr cp, b.at)
 # The source the rows were last built from, kept: over a map of dynamics the walk reads the
 # one it replaces, to compare each kept key's dynamic with the one its row was built from.
 FromKeptCpp: fn Text, [Text] -> Text
-fn FromKeptCpp name, replaced = if (Len replaced) == 0: "this->{name}_from = items;" else: "auto from = std::exchange(this->{name}_from, items);"
+fn FromKeptCpp name, replaced = if (Len replaced) == 0: "this->{name}_from = items;" else: "auto from = ::std::exchange(this->{name}_from, items);"
 
 # A kept key whose dynamic is another than the one its row was built from (ruling FV): the
 # row is told, and adopts it among the next tick's first firings. `Map::get` is a pointer,
@@ -190,7 +190,7 @@ fn EmitCpp model, runtime, scripts:
     let mods = Each model.mods, \|m| ModuleParts cp, m
     let programs = Join (Each (AllProgramsCpp model), \|p| ProgramCpp crate, p, (NodeFallibleCpp model, p.node)), "\n\n"
     let regs = Concat (Each model.programs, \|p| "\n.program<{p.name}>(\"{p.prism}\")")
-    let checks = Concat (Each model.checks, \|c| "\n.check(\"{c.name}\", [] \{ return std::vector<rt::Result<rt::Pod>>\{{Join (Each c.lines, \|l| CppExpr crate, l), ", "}\}; \})")
+    let checks = Concat (Each model.checks, \|c| "\n.check(\"{c.name}\", [] \{ return ::std::vector<rt::Result<rt::Pod>>\{{Join (Each c.lines, \|l| CppExpr crate, l), ", "}\}; \})")
     let scriptList = Join (Each scripts, \|s| "\"{Escape s}\","), "\n"
     let world = match model.?root:
         ? r: r.world

@@ -71,7 +71,7 @@ fn CppPlace cp, x = CppExpr cp, x
 # A local read as a value: moved when the scope holds it by value (`owned`, pick MV): the
 # model writes `XClone` wherever Rust copies, so a bare read is Rust's move, the last read.
 CppVar: fn Cp, Text -> Text
-fn CppVar cp, n = if Or cp.owned[n], False: "std::move({VarName cp, n})" else: VarName cp, n
+fn CppVar cp, n = if Or cp.owned[n], False: "::std::move({VarName cp, n})" else: VarName cp, n
 
 # Arguments evaluated in no fixed order (a call's, a record's initializers after pick NC's
 # reordering, `cat`'s): a local moved by one is left a place when another argument reads
@@ -94,11 +94,11 @@ fn CppExpr cp, x = match x:
     XCx: "cx"
     XConst n: n
     XUnit: "rt::Unit\{\}"
-    XNone: "std::nullopt"
+    XNone: "::std::nullopt"
     XBool b: if b: "true" else: "false"
     XNat d: if (Len d) <= 9: "rt::Nat({d}u)" else: "*rt::Nat::from_int({CppExpr cp, (XInt d)})"
     XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "rt::Int({d}ll)" else: "*rt::Int::parse(\"{d}\")"
-    XByte d: "std::uint8_t({d})"
+    XByte d: "::std::uint8_t({d})"
     XFloat d: "rt::Float\{{d}\}"
     XIndex n: "{n}u"
     XChar c: "U'{CppCharEscape c}'"
@@ -141,9 +141,9 @@ fn CppExpr cp, x = match x:
     XUnary op, y: "{UnOpText op}{CppTight cp, y}"
     XCtor p, args: CppCtor cp, p, args
     XRecord p, fs: CppRecord cp, p, fs
-    XTuple xs: "std::tuple\{{CppArgs cp, xs}\}"
+    XTuple xs: "::std::tuple\{{CppArgs cp, xs}\}"
     XVec [[]]: "\{\}"
-    XVec xs: "std::vector\{{CppArgs cp, xs}\}"
+    XVec xs: "::std::vector\{{CppArgs cp, xs}\}"
     XText t: "rt::Text::lit({CppString t})"
     XFormat parts: if Fold parts, True, \|f, p| f and IsTextPiece p: "rt::Text::lit({CppString (Concat (Each parts, \|p| TextPiece p))})" else: CppFormat cp, parts, "prism_rtl::cat"
     XMatch s, arms, fallback, t: CppMatch cp, s, arms, t
@@ -157,7 +157,7 @@ fn CppExpr cp, x = match x:
     XClosure mv, ps, body: CppClosure cp, mv, ps, body
     XTry y: "TRY({CppExpr cp, y})"
     XField r, f: CppField cp, r, f
-    XPart r, k: "std::get<{k}>({AsValue cp, r})"
+    XPart r, k: "::std::get<{k}>({AsValue cp, r})"
     XDecode t, y: "TRY(prism_rtl::from_pod<{CppType cp, t}>({CppExpr cp, y}))"
     XCast y, t: "static_cast<{CppType cp, t}>({CppExpr cp, y})"
     XTyped y, t: match y:
@@ -169,7 +169,7 @@ fn CppExpr cp, x = match x:
             "{tt}({tt}::{LastSegment (TypePath p)}\{\})"
         otherwise:
             let e = CppExpr cp, y
-            if e == "\{\}" or e == "std::nullopt": "{CppType cp, t}\{\}"
+            if e == "\{\}" or e == "::std::nullopt": "{CppType cp, t}\{\}"
             else: if (IsCtor y, "Ok") or IsCtor y, "Err": "{CppType cp, t}({e})"
             else: e
 
@@ -268,7 +268,7 @@ fn IsDigits t = t != "" and FoldChars t, True, \|ok, c| ok and Contains "0123456
 # runtime's cases by their C++ names.
 CppCtor: unbounded fn Cp, Text, [Ex] -> Text
 fn CppCtor cp, p0, args = match Bare p0:
-    "Some": "std::optional({CppArgs cp, args})"
+    "Some": "::std::optional({CppArgs cp, args})"
     "Ok": if args == [[XUnit]]: "prism_rtl::ok()" else: CppArgs cp, args
     "Err": "rt::unexpected({CppArgs cp, args})"
     "prism_rtl::Turn::More": "prism_rtl::more({CppArgs cp, args})"
@@ -317,7 +317,7 @@ fn CppCall cp, f, args:
         "Fault::too_deep": "rt::Fault::too_deep({a})"
         "Error::new": "rt::Error({a})"
         "Text::from": "rt::Text({a})"
-        "String::new": "std::string()"
+        "String::new": "::std::string()"
         "Array::from": "rt::Array({a})"
         "prism_rtl::Dynamic::of": "prism_rtl::dynamic_of({a})"
         "Dynamic::of": "prism_rtl::dynamic_of({a})"
@@ -377,14 +377,14 @@ fn CppMethod cp, r, m, args:
             ? b: if b: "(*{recv})" else: recv
             nil: recv
         "assign": "{recv} = {a}"
-        "take": "std::exchange({recv}, \{\})"
+        "take": "::std::exchange({recv}, \{\})"
         "free": "{FreeName m}({recv}{sep}{a})"
         "arrow":
             let through = match ?Pointer cp, r:
                 ? b: if b: "->" else: "."
                 nil: "->"
             "{recv}{through}{MemberName m}({a})"
-        "exchange": "std::exchange({recv}, {a})"
+        "exchange": "::std::exchange({recv}, {a})"
         otherwise:
             let through = match ?Pointer cp, r:
                 ? b: if b: "->" else: "."
@@ -527,7 +527,7 @@ fn CaseType c = match Bare c:
 # A choice's case as tested against the value `v`: a generic choice's case by the value's
 # own type, whose arguments the path does not write (`Tree::Leaf` of a `Tree<A>`).
 CaseTypeOf: fn Cp, Text, Text -> Text
-fn CaseTypeOf cp, c, v = if IsGenericCase cp, c: "typename std::remove_cvref_t<decltype({v})>::{LastSegment (TypePath c)}" else: OwnTypePath cp, c
+fn CaseTypeOf cp, c, v = if IsGenericCase cp, c: "typename ::std::remove_cvref_t<decltype({v})>::{LastSegment (TypePath c)}" else: OwnTypePath cp, c
 
 # Whether a constructor path is a case of a choice with type parameters.
 IsGenericCase: fn Cp, Text -> Bool
@@ -674,10 +674,10 @@ fn ?ErrOf x = match x:
 # other branch converts to, of `x`'s type and `y`'s.
 OkBranch: unbounded fn Cp, Ex, Ex -> Text
 fn OkBranch cp, x, y = match x:
-    XCtor "std::Ok", [[v]]: "rt::Expected<std::decay_t<decltype({CppExpr cp, v})>, std::decay_t<decltype({CppExpr cp, y})>>({CppExpr cp, v})"
+    XCtor "std::Ok", [[v]]: "rt::Expected<::std::decay_t<decltype({CppExpr cp, v})>, ::std::decay_t<decltype({CppExpr cp, y})>>({CppExpr cp, v})"
     XBlock dos, (XCtor "std::Ok", [[v]]):
         let ((st, cp2)) = CppStatementsCp cp, dos
-        StmtExpr st, "rt::Expected<std::decay_t<decltype({CppExpr cp2, v})>, std::decay_t<decltype({CppExpr cp2, y})>>({CppExpr cp2, v})"
+        StmtExpr st, "rt::Expected<::std::decay_t<decltype({CppExpr cp2, v})>, ::std::decay_t<decltype({CppExpr cp2, y})>>({CppExpr cp2, v})"
     otherwise: CppExpr cp, x
 
 # A closure: a lambda capturing by value (`move`) or by reference. A move closure takes
@@ -696,7 +696,7 @@ fn CppClosure cp0, mv, ps, body:
     let binds = Concat (Each (Range0 (Len ps)), \|i| ClosureBinds cp, (Or ps[i], PaWild), i)
     let b = CppExpr cp, body
     let moved = if mv: Filter cp0.moveCaptures, \|n| (Or cp0.owned[n], False) and (not (InList names, n)) and ExReads body, n else: [[]]
-    let capture = Join (Append [[(if mv: "=" else: "&")]], (Each moved, \|n| "{VarName cp0, n} = std::move({VarName cp0, n})")), ", "
+    let capture = Join (Append [[(if mv: "=" else: "&")]], (Each moved, \|n| "{VarName cp0, n} = ::std::move({VarName cp0, n})")), ", "
     let ((ret, value)) = match body:
         XRef ignore: ((" -> decltype(auto)", "({b})"))
         XRefMut ignore: ((" -> decltype(auto)", "({b})"))
