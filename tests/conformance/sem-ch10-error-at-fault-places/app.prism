@@ -1,0 +1,37 @@
+# A bare `Error(..)` is the failure of the `~T` it meets (Semantics ch. 10) wherever it meets
+# one: a clause's body, a match arm, an array's element, a record's field. Written by
+# Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Res = choice:
+    Good Text
+    Bad Text
+derive ^Eq, ^Show
+
+type Slot = record:
+    got: ~Nat
+derive ^Eq, ^Show
+
+~Clause: fn Res -> ~Text
+fn ~Clause (Good t) = ~ t
+fn ~Clause (Bad t) = Error(kind=Prelude.NotANumber, message=t)
+
+~Arm: fn Res -> ~Text
+fn ~Arm r = match r:
+    Good t: ~ t
+    Bad t: Error(kind=Prelude.NotANumber, message=t)
+
+Said: fn ~Text -> Text
+fn Said (~ t) = t
+fn Said (Error(message=m, ..)) = "!{m}"
+
+SaidN: fn ~Nat -> Text
+fn SaidN (~ n) = "{n}"
+fn SaidN (Error(message=m, ..)) = "!{m}"
+
+@main: @unit
+@main:
+    let xs = [[(~ 1), Error(kind=Prelude.NotANumber, message="el")]]
+    let s = Slot(got=Error(kind=Prelude.NotANumber, message="field"))
+    Ui.Label(text=$"{Said (~Clause (Bad "c"))} {Said (~Arm (Bad "a"))} {Concat (Each xs, \|~x| SaidN ~x)} {SaidN s.~got}")    # 0
