@@ -184,6 +184,9 @@ type St = record:
     # arm against the match's, a field, an element): at the program's end those where it
     # is one are the typed output's `faults` (`FaultNotes`).
     faultQs: [Waiting]
+    # Element constructions lifted at an identity field, each refused by the statement that
+    # would build it (`LiftedElement`).
+    elemLifts: [ElemLift]
     # An `Error` value at a place nothing has decided yet (an array's element, a tuple's
     # part, a generic parameter, an arm) has a variable of its own (`FaultVar`), which the
     # places it meets later decide: a `~T`, so the value is its failure, or `Error`. The
@@ -204,6 +207,17 @@ type AssocImpl = record:
     value: Ty
 derive ^Eq, ^Show
 
+# A dynamic (`$`) or event (`!`) given at an element's identity field `field`, at `arg` in
+# `file`, written `src`, of the tag `owner`.
+type ElemLift = record:
+    field: Text
+    owner: Text
+    arg: Range
+    file: Nat
+    layer: Text
+    src: Text
+derive ^Eq, ^Show
+
 # An equation that waits for an associated type's argument (`Item t3` against `Text`),
 # with the file it was met in: retried there once the variable is bound.
 type Waiting = record:
@@ -214,7 +228,7 @@ type Waiting = record:
 derive ^Eq, ^Show
 
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], faultQs=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]])
+fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], faultQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]])
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed)
