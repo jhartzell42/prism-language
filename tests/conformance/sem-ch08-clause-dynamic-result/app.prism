@@ -1,0 +1,25 @@
+# A widget of several clauses in a static position whose clauses end on a dynamic (Semantics
+# ch. 4 and 8: `$x <- @W args` binds the widget's dynamic): the chosen clause's hold is the
+# caller's `$picked`, which the caller's label follows in the tick the clause's button
+# writes it; the clause also reads the caller's own dynamic. Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Pick: fn ?Nat, $Text -> @$Text
+fn @Pick nil, $tail:
+    !go <- Ui.Button(label=$"none")                              # 0
+    $said <- "zero" then "zero!" on !go
+    @ $"{$said}{$tail}"
+fn @Pick (? n), $tail:
+    !go <- Ui.Button(label=$"some {n}")                          # 0
+    $said <- "n{n}" then "n{n}!" on !go
+    @ $"{$said}{$tail}"
+
+@Page: fn ?Nat -> @unit
+fn @Page ?x:
+    !more <- Ui.Button(label=$"more")                            # 0
+    $tail <- "" then "{$tail}+" on !more
+    $picked <- @Pick ?x, $tail                                   # 1
+    Ui.Label(text=$"{$picked}")                                  # 2
