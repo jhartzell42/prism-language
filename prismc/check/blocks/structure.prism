@@ -190,15 +190,15 @@ fn InferGivenBlock env, st, b, mark:
     let n = Len b.stmts
     let ((env2, st2, ?res)) = Fold (Range0 n), ((env, st, nil)), \|((en, s, ?r)), i|
         let stmt = Or b.stmts[i], dummyStmt2
-        GivenStmt en, s, stmt, mark, i + 1 == n, ?r
+        GivenStmt en, s, stmt, (LocalClauses b.stmts, i), mark, i + 1 == n, ?r
     match ?res:
         ? t: ((t, st2))
         nil:
             let ((v, st3)) = FreshVar st2, False, ""
             (((TySig mark, v), st3))
 
-GivenStmt: unbounded fn Env, St, Stmt, Text, Bool, ?Ty -> ((Env, St, ?Ty))
-fn GivenStmt env, st, s, mark, last, ?res = match s.kind:
+GivenStmt: unbounded fn Env, St, Stmt, [FnClause], Text, Bool, ?Ty -> ((Env, St, ?Ty))
+fn GivenStmt env, st, s, clauses, mark, last, ?res = match s.kind:
     SBind p, e, nil:
         let ((t, st1)) = Infer env, st, e
         let ((v, st2)) = FreshVar st1, False, ""
@@ -212,7 +212,7 @@ fn GivenStmt env, st, s, mark, last, ?res = match s.kind:
         ((env2, st2, ?res))
     SFn f:
         let ((env1, st1)) = PreBind env, st, s
-        let ((env2, st2)) = CheckLocalFn env1, st1, f, s.span
+        let ((env2, st2)) = CheckLocalFn env1, st1, clauses, s.span
         ((env2, st2, ?res))
     SSignature ignore:
         let ((env2, st2)) = PreBind env, st, s

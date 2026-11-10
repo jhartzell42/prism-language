@@ -628,7 +628,8 @@ GenRowOf: unbounded fn Wx, Env, Block, OutTy, Text, Text -> GenRow
 fn GenRowOf wx, menv, body, vt, rowName, genName:
     let lx = wx.lx
     let upName = "{genName}_up"
-    let r0 = NewWx lx, rowName, [[(("value", vt, "the generation's value, `_`")), (("parent", (OutWeak wx.node), "the node of the `rebuild`"))]], [[(("value", (XClone (XVar "value"))))]], [[(("parent", (XVar "parent")))]], [[]], {}, (Append nodeHooks, [["value", "parent", "result", "result_dynamic"]]), wx.inlining, (?HostedRows wx)
+    let r00 = NewWx lx, rowName, [[(("value", vt, "the generation's value, `_`")), (("parent", (OutWeak wx.node), "the node of the `rebuild`"))]], [[(("value", (XClone (XVar "value"))))]], [[(("parent", (XVar "parent")))]], [[]], {}, (Append nodeHooks, [["value", "parent", "result", "result_dynamic"]]), wx.inlining, (?HostedRows wx)
+    let r0 = GenCurrent r00, wx, genName
     let ((p1, r1, ports)) = RowEnv wx, r0, menv, body
     let be = Bind (BuildSpelling ports), "_", (BnLocal (XVar "value"), Owned, vt)
     let me = Bind ports, "_", (BnLocal (XField XSelf, "value"), Owned, vt)
@@ -668,30 +669,48 @@ fn GenResult r, genName, ex, resultReads, rt:
         &_.resultMoved <= if (Len ownBehind) > 0: ? (("{genName}_result_moved", ownBehind)) else: nil
 
 # The block's writes behind what a generation's places read mark the generation (gap DY;
-# `RowMarks` of kind `GenerationRow`: the current one is dirtied), and the block's names it
-# hears a write behind (`UpdatedHears`: its `!Updated` nodes' reads through the parent)
-# tell the current one through `parent_wrote_{m}`, as a `for` row is told (pick RE). Its
-# own builders over the block's names are not told: a generation's `rebuild` over them
-# stands until the generation is replaced (`sem-ch07-paged`).
+# `RowMarks` of kind `GenerationRow`: the current one is dirtied), and the block's names the
+# generation hears a write behind (`RowHears`: what its `!Updated` nodes and its own
+# builders read through the parent) tell the current one through `parent_wrote_{m}`, as a
+# `for` row is told (pick RE). A generation the block replaces in the same tick builds
+# nothing (`GenCurrent`): its builders stand until it is replaced (`sem-ch07-paged`).
 GenMarked: fn Wx, Text, Wx -> Wx
 fn GenMarked parent, genName, rowWx:
     let reads = RowPlaceReads rowWx
     let hears = UpdatedHears rowWx
-    let ported = Fold hears, parent, \|w, m| AddField w, "{genName}_wrote_{m}_port", (OutPort OutUnit), "the current generation of `{genName}` hears a write behind `{m}`", (XCall (RefRuntime "rt::Port::new"), [[]])
-    let unheard = Filter (RowHears rowWx), \|m| not (HasText hears, m)
-    if (Len reads) == 0 and (Len hears) == 0 and (Len unheard) == 0: parent
+    let builds = Filter (RowHears rowWx), \|m| not (HasText hears, m)
+    let ported = Fold (Append hears, builds), parent, \|w, m| AddField w, "{genName}_wrote_{m}_port", (OutPort OutUnit), "the current generation of `{genName}` hears a write behind `{m}`", (XCall (RefRuntime "rt::Port::new"), [[]])
+    if (Len reads) == 0 and (Len hears) == 0 and (Len builds) == 0: parent
     else: update ported:
-        &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=genName, reads=reads, wrote=hears, unheard=unheard, kind=GenerationRow)
+        &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=genName, reads=reads, wrote=hears, builds=builds, kind=GenerationRow)
 
 # A generation's side of `GenMarked`: the block holds the current generation as a `Row`,
 # which names no method of it, so each name it hears is a port of the block,
 # `{genName}_wrote_{m}`, the generation subscribes to (`subscribe_row`, as a row hears a
 # block's event), its firing heard by `wrote_{m}` as `parent_wrote_{m}`.
 GenHears: fn Wx, Text -> Wx
-fn GenHears r, genName = Fold (UpdatedHears r), r, \|w, m| update w:
+fn GenHears r, genName = Fold (RowHears r), r, \|w, m| update w:
     &_.subs <= Push &_.subs, (("{genName}_wrote_{m}", "wrote_{m}", OutUnit))
     &_.taken <= Push &_.taken, "wrote_{m}"
     &_.getters <= Push &_.getters, (MethDef(name="wrote_{m}", recv=RecvRc, params=[[(("v", OutUnit))]], cx=CxMut, ret=OutUnit, body=[[DoExpr (XMethod (XSelf), "parent_wrote_{m}", [[XCx]])]], tail=(XUnit), doc="The block wrote behind its `{m}`: as `parent_wrote_{m}`."))
+
+# Whether a generation is still its block's current one after the tick: it has not left
+# (`left`, set as its places are torn down), the block will not replace it at the build
+# (its `{genName}_stale`), and a generation block is current in turn. A write behind a name
+# both the `rebuild`'s source and the generation's builders read lists both for the build,
+# in either order; the generation's build runs only while it is current, so a generation
+# the tick replaces builds nothing (Semantics ch. 7: the old generation runs to the end of
+# the tick, and the build comes after it).
+GenCurrent: fn Wx, Wx, Text -> Wx
+fn GenCurrent r, parent, genName:
+    let stale = XMethod (XField parentRef, "{genName}_stale"), "get", [[]]
+    let blockCurrent = if parent.genOf == "": XUnary OpNot, stale else: XBin OpAnd, (XUnary OpNot, stale), (XMethod parentRef, "current", [[]])
+    let tail = XBin OpAnd, (XUnary OpNot, (XMethod (XField XSelf, "left"), "get", [[]])), blockCurrent
+    let r2 = AddField r, "left", (OutNamed (RefRuntime "std::Cell"), [[OutBool]]), "the generation left: its block replaced it", (XCall (RefRuntime "std::Cell::new"), [[XBool False]])
+    update r2:
+        &_.genOf <= genName
+        &_.taken <= Append &_.taken, [["left", "current"]]
+        &_.getters <= Push &_.getters, (MethDef(name="current", recv=RecvRef, params=[[]], cx=CxNone, ret=OutBool, body=[[]], tail=tail, doc="Whether this generation is still its block's current one after the tick: it builds only then."))
 
 # A row's names as its constructor spells them: the block through the `parent` argument.
 BuildSpelling: fn Env -> Env

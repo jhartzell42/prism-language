@@ -494,20 +494,24 @@ fn TagApp env, st, name, args, span, cspan = match env.g.tags[name]:
     ? tg:
         let ((out, st1, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span, [[]]
         let element = tg.kind == "Element"
-        let st2 = Fold args, st1, \|s, a| match a.?name:
+        let ((layer, st2)) = Fold args, (("", st1)), \|((lay, s)), a| match a.?name:
             ? id: match ?FieldOfTag tg, id.name:
                 ? ft:
                     let marked = ArgMarks s, name, id.name, ft, a.marks, a.span
-                    if element: TagField env, marked, name, id.name, (SubstQ inst, ft), a else: marked
-                nil: Err s, "mismatch", a.span, "`{name}` has no field `{id.name}`"
-            nil: Err s, "mismatch", a.span, "a tag's fields are named: `{name}(field=...)`"
+                    if element:
+                        let ((l, s2)) = TagField env, marked, name, id.name, (SubstQ inst, ft), a
+                        (((if lay == "!" or l == "": lay else: l), s2))
+                    else: ((lay, marked))
+                nil: ((lay, (Err s, "mismatch", a.span, "`{name}` has no field `{id.name}`")))
+            nil: ((lay, (Err s, "mismatch", a.span, "a tag's fields are named: `{name}(field=...)`")))
         let missing = Filter tg.fields, \|((f, ignore))| not (Fold args, False, \|seen, a| seen or (ArgNamed a, f))
         let st3 = if (Len missing) > 0 and not (Fold args, False, \|seen, a| seen or a.value.kind == ERest): Err st2, "mismatch", span, "`{name}` needs {Join (Each missing, \|((f, ignore))| "`{f}`"), ", "}" else: st2
         let fieldTys = Each tg.fields, \|((ignore, ft))| SubstQ inst, ft
         if element:
             let ((rw, st4)) = FreshRow st3, [[tg.family]]
             let et = TyElem (Rw(fams=[[tg.family]], minus=[[]], tail=rw.tail)), out
-            ((et, (NoteTy st4, cspan, (TyFn CBound, fieldTys, et))))
+            let lifted = if layer == "": et else: TySig layer, et
+            ((lifted, (NoteTy st4, cspan, (TyFn CBound, fieldTys, et))))
         else:
             let self = TyCon tg.kind, [[]]
             let known = Filter args, \|a| match a.?name:
@@ -540,16 +544,23 @@ fn ?FieldOfTag tg, f = Fold tg.fields, nil, \|?found, ((n, t))| match ?found:
 
 # One field of a construction: a sigiled field takes the argument whole; a plain field
 # lifts, and a dynamic there is `identity-dynamic`.
-TagField: unbounded fn Env, St, Text, Text, Ty, Arg -> St
+# An element's field: a sigiled field takes the argument whole; a dynamic or an event at a
+# plain (identity) field lifts the construction to a `$Element o` or `!Element o` (Type
+# System ch. 2-05: "A dynamic in an identity field lifts the construction to `$Element o`,
+# and the statement refuses it"), the field's refusal kept for the statement that would
+# build it (`ElemLift`, read by `LiftedElement`). The layer it lifts to, or "".
+TagField: unbounded fn Env, St, Text, Text, Ty, Arg -> ((Text, St))
 fn TagField env, st, tagName, field, ft, a:
-    if (HeadSigil st, ft) != "": Check env, st, a.value, ft
+    if (HeadSigil st, ft) != "": (("", (Check env, st, a.value, ft)))
     else:
         let ((at, st2)) = Infer env, st, a.value
         let head = HeadSigil st2, at
-        if head == "$":
-            ErrFix st2, "identity-dynamic", a.value.span, "a dynamic in the identity field `{field}`", "for a new element per value, write `rebuild {SrcText env, a.value.span}:` with `{tagName}({field}=_, ...)` inside"
-        else: if head == "!": Err st2, "two-events", a.value.span, "an event in the plain field `{field}`"
-        else: Unify st2, ft, at, a.value.span
+        if head == "$" or head == "!":
+            let lift = ElemLift(field=field, owner=tagName, arg=a.value.span, file=st2.file, layer=head, src=(SrcText env, a.value.span))
+            let st3 = update (Unify st2, ft, (InnerOf st2, at), a.value.span):
+                &_.elemLifts <= Push &_.elemLifts, lift
+            ((head, st3))
+        else: (("", (Unify st2, ft, at, a.value.span)))
 
 # ---------------------------------------------------------------------------------------
 # Lambdas

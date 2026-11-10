@@ -1,0 +1,4 @@
+tests/checker/neg/assoc-not-imported/app.prism:6: error[unknown-name]: no type `Item`
+    Opened: fn a -> Item a where a: ^Boxes.Box
+                    ^^^^^^
+1 error

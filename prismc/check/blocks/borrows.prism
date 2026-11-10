@@ -93,7 +93,7 @@ fn UpdateStmt env, st, s = match s.kind:
             ((env, (Discarded st1, t, e.span)))
     SFn f:
         let ((env1, st1)) = PreBind env, st, s
-        CheckLocalFn env1, st1, f, s.span
+        CheckLocalFn env1, st1, [[f]], s.span
     SSignature ignore: PreBind env, st, s
     otherwise: ((env, (Err st, "mismatch", s.span, "this statement belongs in a widget or `given:` block")))
 

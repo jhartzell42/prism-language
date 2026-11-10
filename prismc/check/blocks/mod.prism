@@ -142,7 +142,7 @@ fn InferWidgetBlock env, st, b:
     let n = Len b.stmts
     let ((env3, st3, ?res)) = Fold (WidgetGroupOrder b.stmts), ((env2, st2, nil)), \|((en, s, ?r)), i|
         let stmt = Or b.stmts[i], dummyStmt2
-        let ((en2, s2, ?r2)) = WidgetStmt en, s, stmt, i + 1 == n
+        let ((en2, s2, ?r2)) = WidgetStmt en, s, stmt, (LocalClauses b.stmts, i), i + 1 == n
         match ?r2:
             ? t: ((en2, s2, ? t))
             nil: ((en2, s2, ?r))
@@ -204,8 +204,8 @@ fn PreBindPattern env, st, p = Fold (PatternBinders p), ((env, st)), \|((en, s))
     BindLocalId en2, s3, name, at
 
 # One statement of a widget block; the last gives the block's result.
-WidgetStmt: unbounded fn Env, St, Stmt, Bool -> ((Env, St, ?Ty))
-fn WidgetStmt env, st, s, last = match s.kind:
+WidgetStmt: unbounded fn Env, St, Stmt, [FnClause], Bool -> ((Env, St, ?Ty))
+fn WidgetStmt env, st, s, clauses, last = match s.kind:
     SEmit ignore: ((env, st, if last: ? tUnit else: nil))
     SBind p, e, nil:
         let st2 = BindStmt env, st, p, e, s.span
@@ -220,7 +220,7 @@ fn WidgetStmt env, st, s, last = match s.kind:
         let ((env2, st2)) = CheckLet env, st, p, ?ty, e, s.span
         ((env2, st2, if last: ? tUnit else: nil))
     SFn f:
-        let ((env2, st2)) = CheckLocalFn env, st, f, s.span
+        let ((env2, st2)) = CheckLocalFn env, st, clauses, s.span
         ((env2, st2, if last: ? tUnit else: nil))
     SSignature ignore: ((env, st, if last: ? tUnit else: nil))
     SWidget w:
@@ -260,13 +260,30 @@ fn BindOutput env, st, t, span = match Walk st, t:
     TySig s, inner:
         match Walk st, inner:
             TyAt ignore, ignore: ((TyErr, (ErrFix st, "bind-dynamic", span, "binding a `{ShowTy st, t}`; say what happens to the old widgets with `rebuild`", "write `rebuild` over the dynamic, with the blueprint inside")))
-            TyElem ignore, ignore: ((TyErr, (ErrFix st, "bind-dynamic", span, "binding a `{ShowTy st, t}`, a {if s == "$": "dynamic" else: "event"} of elements; say what happens to the old element with `rebuild`", "write `rebuild` over the dynamic field's value, with the element inside")))
+            TyElem ignore, ignore: match ?LiftedElement st, span:
+                ? lift: ((TyErr, (RefuseLifted st, lift)))
+                nil: ((TyErr, (ErrFix st, "bind-dynamic", span, "binding a `{ShowTy st, t}`, a {if s == "$": "dynamic" else: "event"} of elements; say what happens to the old element with `rebuild`", "write `rebuild` over the dynamic field's value, with the element inside")))
             otherwise: ((TyErr, (Err st, "mismatch", span, "`<-` binds a blueprint or an element; this is `{ShowTy st, t}`")))
     TyFlex ignore:
         let ((v, st2)) = FreshVar st, False, ""
         ((v, (Unify st2, t, (TyAt v, env.scope), span)))
     TyErr: ((TyErr, st))
     other: ((TyErr, (Err st, "mismatch", span, "`<-` binds a blueprint or an element; this is `{ShowTy st, other}`")))
+
+# The identity field a statement's element was lifted at: a dynamic or an event given to an
+# element's plain field inside `span` (Type System ch. 2-05: the construction lifts, and the
+# statement that would build it refuses, at the field).
+?LiftedElement: fn St, Range -> ?ElemLift
+fn ?LiftedElement st, span = Fold st.elemLifts, nil, \|?found, l| match ?found:
+    ? x: ? x
+    nil: if l.file == st.file and l.arg.start >= span.start and l.arg.end <= span.end: ? l else: nil
+
+# The refusal at the field: a dynamic there means a new element per value (`rebuild`), an
+# event a value per firing (a hold).
+RefuseLifted: fn St, ElemLift -> St
+fn RefuseLifted st, l:
+    if l.layer == "$": ErrFix st, "identity-dynamic", l.arg, "a dynamic in the identity field `{l.field}`", "for a new element per value, write `rebuild {l.src}:` with `{l.owner}({l.field}=_, ...)` inside"
+    else: ErrFix st, "identity-dynamic", l.arg, "an event in the identity field `{l.field}`", "hold it first, `$x <- ... then {l.src}`, and give the field the `$x`"
 
 AddIncl: fn St, Rw, Rw, Range, Text -> St
 fn AddIncl st, sub, sup, span, what = update st:
@@ -342,12 +359,18 @@ fn BareLineKind env, st, e, last = match e.kind:
         let ((res, st2)) = match Walk st1, t:
             TyAt ignore, ignore: BindOutput env, st1, t, e.span
             TyElem ignore, ignore: BindOutput env, st1, t, e.span
+            TySig ignore, inner if IsElemType st1, inner: BindOutput env, st1, t, e.span
             TyErr: ((tUnit, st1))
             other:
                 if IsBuilder e: ((other, st1))
                 else: if (Walk st1, other) == tUnit: ((tUnit, st1))
                 else: ((other, (ErrFix st1, "mismatch", e.span, "a bare line emits an element or builds a blueprint; this is `{ShowTy st1, other}`", "end the block on a value with `@ {SrcText env, e.span}`")))
         if last: ((res, st2)) else: ((res, (Discarded st2, res, e.span)))
+
+IsElemType: unbounded fn St, Ty -> Bool
+fn IsElemType st, t = match Walk st, t:
+    TyElem ignore, ignore: True
+    otherwise: False
 
 # `unit` before the last line (`discarded`, Semantics ch. 8).
 Discarded: unbounded fn St, Ty, Range -> St

@@ -43,7 +43,7 @@ NodeParts: unbounded fn Cp, NodeDef -> Parts
 fn NodeParts cp, n:
     let ncp = WithFields cp, (Each n.fields, \|((f, t, ignore))| ((f, t)))
     let base = if n.rowKind == NotARow and (Len n.hosted) == 0: "crate::prelude::Node" else: "crate::prelude::Row"
-    let fields = Join (Each n.fields, \|((f, t, doc))| "{CppDoc doc}{CppType cp, t} {FieldId f};"), "\n"
+    let fields = Join (Each n.fields, \|((f, t, doc))| "{CppDoc doc}{MutableOf t}{CppType cp, t} {FieldId f};"), "\n"
     let consts = Join (Each n.consts, \|((c, h, doc))| "{CppDoc "The {doc}."}static constexpr ::std::uint32_t {c} = {h};"), "\n"
     let ctorParams = Join (Append [["crate::prelude::Path path"]], (Each n.fields, \|((f, t, ignore))| "{CppType cp, t} {FieldId f}")), ", "
     let ctorInits = Join (Append [["path(::std::move(path))"]], (Each n.fields, \|((f, ignore, ignore))| "{FieldId f}(::std::move({FieldId f}))")), ", "
@@ -352,3 +352,10 @@ Declared: fn (Text ==> Bool), Text -> Bool
 fn Declared done, d = match done[d]:
     ? b: b
     nil: True
+
+# A node's `Cell` field is `mutable`: the model sets one through a shared reference (a
+# generation's `left`, set as its places are torn down, `remove_places`), as Rust's `Cell`
+# allows.
+MutableOf: fn OutTy -> Text
+fn MutableOf (OutNamed (RefRuntime "std::Cell"), ignore) = "mutable "
+fn MutableOf other = ""
