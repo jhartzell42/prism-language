@@ -421,11 +421,21 @@ fn WalkModule has, texts, acc, main, name, parent, inTest:
     let leaf = not (HasText [["mod.prism", "app.prism", "lib.prism"]], (BaseOf main))
     let stem = Or (?BeforeSuffix (BaseOf main), ".prism"), main
     let acc2 = if leaf: Fold mods, acc1, \|a, h| AddTreeDiag a, main, h.span, "mod-leaf", "`{BaseOf main}` declares `{h.word} {h.arg}`, and a module with children is a directory", "move {BaseOf main} to {stem}/mod.prism" else: acc1
-    let acc3 = Fold lower, acc2, \|a, h| Lowercase a, main, dir, h
+    let acc3l = Fold lower, acc2, \|a, h| Lowercase a, main, dir, h
+    # the root's `mod Prelude`: the prelude's own module, which every file reaches by that
+    # name (and the emitted code by `crate::prelude`), refused as the one error
+    let prelude = Filter subs, \|h| name == "" and h.arg == "Prelude"
+    let acc3 = Fold prelude, acc3l, \|a, h| PreludeNamed a, main, dir, h
     let acc4 = update acc3:
         &_.declared <= Insert &_.declared, main, True
         &_.units <= Push &_.units, ModFiles(name=name, named=True, segs=[[Seg(path=main, text=text, role=(if inTest: "test" else: "main"))]], parent=parent)
-    if leaf: acc4 else: Fold subs, acc4, \|a, h| Child has, texts, a, main, dir, h, name, inTest
+    if leaf: acc4 else: Fold (Filter subs, \|h| not (name == "" and h.arg == "Prelude")), acc4, \|a, h| Child has, texts, a, main, dir, h, name, inTest
+
+PreludeNamed: fn TreeAcc, Text, Text, HeadLine -> TreeAcc
+fn PreludeNamed a, main, dir, h:
+    let marked = update a:
+        &_.declared <= Insert (Insert &_.declared, (Under dir, "prelude.prism"), True), (Under dir, "prelude/mod.prism"), True
+    AddTreeDiag marked, main, h.span, "mod-prelude", "`{h.word} {h.arg}`: `Prelude` is the prelude's own module, which every file reaches by that name", "name the module otherwise"
 
 # A lowercase `mod name` line: refused, its file `name.prism` taken as declared so the
 # refusal is the one error.

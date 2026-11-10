@@ -1,8 +1,8 @@
 # Modules named as the runtime's libraries and its path (`PrismRtl`, `PrismWorldCli`,
-# `PrismWorldCanvas`, `Rt`),
-# whose types share names with the runtime's (`Dynamic`, `Hold`): the emitted code reaches
-# the runtime from the root, so a program module never stands for it, in either target. Written by Claude on
-# the claude-bugs branch; subject to change.
+# `PrismWorldCanvas`, `Rt`), whose types share names with the runtime's (`Dynamic`,
+# `Hold`): the emitted code reaches the runtime from the root, so a program module never
+# stands for it, in either target. Written by Claude on the claude-bugs branch; subject to
+# change.
 emit Ui.*
 mod PrismRtl
 mod PrismWorldCli
