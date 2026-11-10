@@ -1,0 +1,12 @@
+tests/checker/neg/non-empty-cast.prism:5: error[mismatch]: a checked cast's type is non-empty; this is `[Nat]`
+    fn ?Checked xs = xs as [Nat]?
+                     ^^^^^^^^^^^^
+  fix: write `as [a]+?` or `as (K ==> V)+?`, or drop the `?`
+tests/checker/neg/non-empty-cast.prism:7: error[kind]: only an array or a map is non-empty; this is `Nat`
+    Wrapped: fn (Nat)+ -> Nat
+                ^^^^^^
+tests/checker/neg/non-empty-cast.prism:12: error[unreachable]: a non-empty array has no length zero
+        [[]]: "empty"
+        ^^^^
+  fix: remove the arm
+3 errors

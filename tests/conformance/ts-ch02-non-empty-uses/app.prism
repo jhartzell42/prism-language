@@ -1,0 +1,25 @@
+# A non-empty collection used as the collection it is (Type System ch. 2, "Collections"
+# and "Exhaustiveness, with rows"): `Len`, an index, a fold, equality, and an array
+# pattern over a `[a]+`, whose arms need no length zero. Written by Claude on the
+# claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Largest: fn [Nat]+ -> Nat
+fn Largest xs = Fold xs, 0, \|acc, x| if x > acc: x else: acc
+
+Describe: fn [Nat]+ -> Text
+fn Describe xs = match xs:
+    [[x]]: "one {x}"
+    [[x, y]]: "two {x} {y}"
+    otherwise: "many"
+
+@main: @unit
+@main:
+    let xs = [[3, 1, 2]]+
+    let m = {1: "a", 2: "b"}+
+    let first = Or xs[0], 0
+    let name = Or m[2], "none"
+    let again = [[3, 1, 2]]+
+    let same = if xs == again: "same" else: "differs"
+    Ui.Label($text=$"{Len xs} {Len m} {first} {name} {Largest xs} {Describe xs} {Describe [[7]]+} {same}")    # 0
