@@ -1,0 +1,41 @@
+# An impl's method matching on a parameter of its associated type (`Make: fn Item a -> a`
+# at a jar, whose item is `?Text`): the match covers `?` and `nil` of the type the impl
+# chose. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Box a:
+    type Item
+    Open: fn a -> Item a
+    Make: fn Item a -> a
+
+type Crate = record:
+    count: Nat
+derive ^Eq, ^Show
+
+type Jar = choice:
+    Full Text
+    Empty
+derive ^Eq, ^Show
+
+impl ^Box Crate:
+    type Item = Nat
+    fn Open c = c.count
+    fn Make n = Crate(count=n)
+
+impl ^Box Jar:
+    type Item = ?Text
+    fn Open j = match j:
+        Full t: ? t
+        Empty: nil
+    fn Make ?t = match ?t:
+        ? t: Full t
+        nil: Empty
+
+Again: fn a -> a where a: ^Box
+fn Again x = Make (Open x)
+
+@main: @unit
+@main:
+    let c: Crate = Make 4
+    Ui.Label(text=$"{Show (Again c)} {Show (Again (Full "z"))} {Show (Again Empty)}")    # 0

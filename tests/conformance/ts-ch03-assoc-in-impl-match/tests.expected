@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 3 (each impl chooses its associated type) and Semantics ch. 2 (a `?T` is covered by `?` and `nil`): each value made again from what it opens to is itself.
+test make_again
+
+tick 0
+  added:
+    0: Ui.Label(text="Crate(count=4) Full \"z\" Empty")
