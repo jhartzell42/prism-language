@@ -529,8 +529,9 @@ fn PlainValueByKind lx, env, e:
                 let v = ValueOf lx, env, x
                 if IsCopy t: VlOwned (XUnary OpNeg, (Copy v)), t else: VlOwned (XUnary OpNeg, (Ref v)), t
         EUnary ignore, x: ValueOf lx, env, x
-        EFreeSigil "?", x: VlOwned (XCtor (RefRuntime "std::Some"), [[Own (ValueOf lx, env, x)]]), t
-        EFreeSigil "~", x: VlOwned (XCtor (RefRuntime "std::Ok"), [[Own (ValueOf lx, env, x)]]), t
+        # at its type: C++ deduces a bare value from `auto x = ~ 3`
+        EFreeSigil "?", x: VlOwned (XTyped (XCtor (RefRuntime "std::Some"), [[Own (ValueOf lx, env, x)]]), t), t
+        EFreeSigil "~", x: VlOwned (XTyped (XCtor (RefRuntime "std::Ok"), [[Own (ValueOf lx, env, x)]]), t), t
         EFreeSigil "@", x: PureBlueprint lx, env, x, t
         EFreeSigil ignore, x: ValueOf lx, env, x
         EField r, ignore, name: FieldValue lx, env, r, name.name

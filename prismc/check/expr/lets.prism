@@ -78,9 +78,43 @@ fn Builds s = match s.kind:
 BindGroup: unbounded fn Env, St, [Stmt] -> ((Env, St))
 fn BindGroup env, st, stmts:
     let order = GroupOrder stmts
-    let ((env1, st1)) = Fold order, ((env, st)), \|((en, s)), i| PreBind en, s, (Or stmts[i], dummyStmt)
+    let signed = SignedNames stmts
+    # a `let` under a signature line of the block keeps the signature's binding, which
+    # `CheckLet` checks it against
+    let ((env1, st0)) = Fold order, ((env, st)), \|((en, s)), i|
+        let stmt = Or stmts[i], dummyStmt
+        if HasText signed, (LetName stmt): ((en, s)) else: PreBind en, s, stmt
+    let st1 = Fold stmts, st0, \|s, stmt| UndefinedSignature s, stmts, stmt
     let st2 = if st1.recording and (Len stmts) > 1: NoteGroup st1, (StmtsSpan stmts), "expr", (DepOrder stmts) else: st1
     Fold order, ((env1, st2)), \|((en, s)), i| CheckGroupStmt en, s, (Or stmts[i], dummyStmt), (IsLast stmts, i)
+
+# The names a block's signature lines give.
+SignedNames: fn [Stmt] -> [Text]
+fn SignedNames stmts = Fold stmts, [[]], \|acc, s| match s.kind:
+    SSignature sg: Push acc, (DefNameText sg.name)
+    otherwise: acc
+
+# The name a statement defines: a `let` of a name, or a local `fn`.
+LetName: fn Stmt -> Text
+fn LetName s = match s.kind:
+    SLet p, ignore, ignore: match p.kind:
+        PName n: SNameKey n
+        otherwise: ""
+    otherwise: ""
+
+DefinedName: fn Stmt -> Text
+fn DefinedName s = match s.kind:
+    SFn f: DefNameText f.name
+    otherwise: LetName s
+
+# `no-definition`: a block's signature line with no `let` or `fn` of its name in the block.
+UndefinedSignature: fn St, [Stmt], Stmt -> St
+fn UndefinedSignature st, stmts, s = match s.kind:
+    SSignature sg:
+        let name = DefNameText sg.name
+        if Fold stmts, False, \|seen, x| seen or (DefinedName x) == name: st
+        else: ErrFix st, "no-definition", s.span, "`{name}` has a signature line and no definition", "define it under its signature, `let {name} = ...`, or delete the line"
+    otherwise: st
 
 StmtsSpan: fn [Stmt] -> Range
 fn StmtsSpan stmts = Range(start=(Or stmts[0], dummyStmt).span.start, end=(Or (?Last stmts), dummyStmt).span.end)
@@ -145,7 +179,13 @@ fn CheckLet env, st, p, ?ty, e, span:
                 let ((v, s2)) = FreshVar st1, True, (SNameKey n)
                 ((v, (AtBinder s2, v, n.span)))
             else: ((sc.ty, st1))
-            nil: FreshVar st1, True, (SNameKey n)
+            # a name no line bound ahead (a `given:` body's): its sigils state its type's
+            # layers over its variable, as `PreBind` binds one (`let ~x = ~ 3` binds the
+            # `~Nat` whole; ruling MS)
+            nil:
+                let ((v, s2)) = FreshVar st1, True, (SNameKey n)
+                let ((rw, s3)) = FreshRow s2, [[]]
+                (((WithMarks (TypeMarks n.sigils), v, rw), (AtBinder s3, v, n.span)))
         otherwise: FreshVar st1, False, ""
     let st3 = match ?annot:
         ? at: Check env, st2, e, at
@@ -168,8 +208,11 @@ fn CheckLet env, st, p, ?ty, e, span:
             if (HoldsNode st7, t) or (IsTopicName name): ((env2, (Ahead st7)))
             else:
                 let lambda = IsLambda e
-                let ((keep, bounds, st8)) = WantsAbove st7, t, lambda
-                let ((sc, st9)) = Generalize st8, t, keep, bounds
+                # a closed lambda quantifies its own waiting equations (ruling SH); a
+                # non-lambda's constrained variables stay monomorphic anyway (doubt MR)
+                let own = if lambda and IsClosed st2, st5: OwnEquations st7, t, [[]] else: [[]]
+                let ((keep, bounds, st8)) = WantsAboveBut st7, t, lambda, own
+                let ((sc, st9)) = GeneralizeIn st8, t, keep, bounds, own
                 (((WithLocal env2, name, sc), (Ahead (NoteGen st9, n.span, name, sc))))
         otherwise:
             let st6 = LeaveLevel st5
@@ -198,8 +241,12 @@ fn IsTopicName n = n == "_" or (DropPrefix n, (MarksOf n)) == "_"
 # become the scheme's bounds and leave the wanted list; on a non-lambda's they keep the
 # variable monomorphic (doubt MR).
 WantsAbove: unbounded fn St, Ty, Bool -> (([Nat], [((Nat, Text))], St))
-fn WantsAbove st0, t, lambda:
-    let st = KeepWaiting st0
+fn WantsAbove st0, t, lambda = WantsAboveBut st0, t, lambda, [[]]
+
+# `WantsAbove`, the equations `own` a closed `let` quantifies left to it.
+WantsAboveBut: unbounded fn St, Ty, Bool, [Waiting] -> (([Nat], [((Nat, Text))], St))
+fn WantsAboveBut st0, t, lambda, own:
+    let st = KeepWaitingBut st0, own
     let vs = Filter (FreeVars st, t), \|v| (InfoOf st, v).level > st.level
     let mine = Filter st.wants, \|w| match Walk st, w.ty:
         TyFlex n: HasNat vs, n

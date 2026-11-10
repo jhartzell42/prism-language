@@ -442,7 +442,7 @@ fn PeelTimeOnly env, st, acc, fname, p, at, a:
 # A constructor takes every argument whole (ch. 5): positionally, or a record's by name.
 CtorApp: unbounded fn Env, St, CtorInfo, [Arg], Range, Range -> ((Ty, St))
 fn CtorApp env, st, c, args, span, cspan:
-    let ((self, st0, inst)) = InstantiateWith st, (Scheme(qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), span, [[]]
+    let ((self, st0, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), span, [[]]
     let fieldTys = Each c.args, \|t| SubstQ inst, t
     let st1 = NoteTy st0, cspan, (TyFn CBound, fieldTys, self)
     let named = Filter args, \|a| a.?name != nil
@@ -470,7 +470,7 @@ TagApp: unbounded fn Env, St, Text, [Arg], Range, Range -> ((Ty, St))
 fn TagApp env, st, name, args, span, cspan = match env.g.tags[name]:
     nil: ((TyErr, (Err st, "unknown-name", span, "no tag `{name}`")))
     ? tg:
-        let ((out, st1, inst)) = InstantiateWith st, (Scheme(qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span, [[]]
+        let ((out, st1, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span, [[]]
         let st2 = Fold args, st1, \|s, a| match a.?name:
             ? id: match ?FieldOfTag tg, id.name:
                 ? ft: TagField env, s, name, id.name, (SubstQ inst, ft), a

@@ -124,6 +124,9 @@ type Scheme = record:
     cqs: [Text]
     cjoins: [((Text, Text))]
     bounds: [((Text, Text))]
+    # The associated-type equations a closed local `let` quantified over, as constraints
+    # each use meets at its own types (`Item a = Text`; GHC's MonoLocalBinds, ruling SH).
+    eqs: [Waiting]
     ty: Ty
 derive ^Eq, ^Show
 
@@ -188,6 +191,9 @@ type St = record:
     # end refuses one decided as anything else (`FaultsSettled`); monomorphic till then
     # (`KeepWaiting`). Each waits as `t = Error` at its value's place.
     faultVars: [Waiting]
+    # Every local binder's id and every use's, in the order checked (`IsClosed`).
+    binderIds: [Nat]
+    useIds: [Nat]
 derive ^Eq, ^Show
 
 type AssocImpl = record:
@@ -208,7 +214,7 @@ type Waiting = record:
 derive ^Eq, ^Show
 
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], faultQs=[[]], faultVars=[[]])
+fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], faultQs=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]])
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed)

@@ -77,8 +77,9 @@ fn IsFailurePattern st, scrut, pat = match (((Walk st, scrut), (Walk st, pat))):
     (((TySig "~", ignore), (TyCon "Prelude.Error", [[]]))): True
     otherwise: False
 
-# The definition's end: an `Error` value's variable nothing decided is `Error`. One of a
-# top-level `let` waits for the uses in the definitions after it, to the program's end.
+# The definition's end: an `Error` value's variable nothing decided is `Error` (an
+# `Error` is a plain record, and fills a place wanting a `~T` as it is). One of a top-level
+# `let` waits for the uses in the definitions after it, to the program's end.
 FaultsDefaulted: unbounded fn St, Bool -> St
 fn FaultsDefaulted st, all = Fold st.faultVars, st, \|s, w| match Walk s, w.expected:
     TyFlex n if all or (InfoOf s, n).level >= 1: update s:
@@ -128,9 +129,14 @@ fn NoteBinder st, span, name, t = if not st.recording: st else: update st:
     &_.typed.binders <= Push &_.typed.binders, BinderNote(at=(AtHere st, span), name=name, ty=t)
 
 # A local's binder and a use of it, by the binder's id (pick UN).
+# Every binder's and use's id is kept whether or not the typed output is recorded: a local
+# `let` is closed when its right side uses only binders it makes itself (`IsClosed`).
 NoteLocal: fn St, Range, Nat, Text -> St
-fn NoteLocal st, span, id, name = if not st.recording: st else: update st:
-    &_.typed.locals <= Push &_.typed.locals, LocalNote(at=(AtHere st, span), id=id, name=name)
+fn NoteLocal st0, span, id, name:
+    let st = update st0:
+        &_.binderIds <= Push &_.binderIds, id
+    if not st.recording: st else: update st:
+        &_.typed.locals <= Push &_.typed.locals, LocalNote(at=(AtHere st, span), id=id, name=name)
 
 NoteGlobal: fn St, Range, Text -> St
 fn NoteGlobal st, span, qk = if not st.recording: st else: update st:
@@ -141,8 +147,18 @@ fn NoteCall st, span, id = if not st.recording: st else: update st:
     &_.typed.calls <= Push &_.typed.calls, LocalNote(at=(AtHere st, span), id=id, name="")
 
 NoteUse: fn St, Range, Nat, Text -> St
-fn NoteUse st, span, id, name = if not st.recording: st else: update st:
-    &_.typed.uses <= Push &_.typed.uses, LocalNote(at=(AtHere st, span), id=id, name=name)
+fn NoteUse st0, span, id, name:
+    let st = update st0:
+        &_.useIds <= Push &_.useIds, id
+    if not st.recording: st else: update st:
+        &_.typed.uses <= Push &_.typed.uses, LocalNote(at=(AtHere st, span), id=id, name=name)
+
+# Whether the code checked since `before` (an `St` of then) used only binders it made: a
+# closed `let`'s right side (GHC's MonoLocalBinds, ruling SH).
+IsClosed: unbounded fn St, St -> Bool
+fn IsClosed before, st:
+    let made = Drop st.binderIds, (Len before.binderIds)
+    Fold (Drop st.useIds, (Len before.useIds)), True, \|ok, u| ok and HasNat made, u
 
 # A generalized local `let`: its binder and the variables its scheme quantified.
 NoteGen: fn St, Range, Text, Scheme -> St

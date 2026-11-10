@@ -212,6 +212,23 @@ fn MissingSignatures g, st, info = Fold g.defs, st, \|s, d|
         ErrFix s, "no-signature", d.span, "`{d.name}` has no signature line", "write `{d.name}: fn ... -> ...` above it"
     else: s
 
+# `no-definition`: a signature line of a program's own file with no definition under it.
+MissingDefinitions: unbounded fn G, St -> St
+fn MissingDefinitions g, st0:
+    let defined = Fold g.defs, {}, \|m, x| Insert m, x.qk, True
+    # the prelude module's signature lines with no clauses are its builtins, which each back
+    # end supplies (prelude/prelude.prism's header), wherever it is read from
+    let st = Fold (Values g.mods), st0, \|s0, info| if info.file >= g.preludeFrom or info.name == "Prelude": s0 else:
+        let s1 = update s0:
+            &_.file <= info.file
+        Fold info.tree.decls, s1, \|s, d| match d.kind:
+            DSignature sg:
+                if HasKey defined, (QualKey info.name, (DefNameText sg.name)): s
+                else: ErrFix s, "no-definition", d.span, "`{DefNameText sg.name}` has a signature line and no definition", "define it under its signature, `fn {DefNameText sg.name} ... = ...`, or delete the line"
+            otherwise: s
+    update st:
+        &_.file <= st0.file
+
 # A tag (Semantics ch. 8's table): `of` a row kind, its output, its fields; a generic tag's
 # variables bounded on the line.
 ConvTag: unbounded fn G, St, ModInfo, TagDecl, Range -> ((G, St))

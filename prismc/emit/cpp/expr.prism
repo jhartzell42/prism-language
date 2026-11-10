@@ -387,7 +387,7 @@ fn FreeCallPath cp, f:
     let p = CallPath cp, f
     let hidden = match cp.members[RefSpelled f]:
         ? ignore: True
-        nil: (InList stdNames, p) or InList cp.mods, p
+        nil: InList cp.mods, p
     if Contains p, ":": p
     else: if hidden: QualifiedCall f, p
     else: p
@@ -395,10 +395,6 @@ fn FreeCallPath cp, f:
 QualifiedCall: fn Ref, Text -> Text
 fn QualifiedCall (RefItem m, ignore, ignore), p = "crate::{m}::{p}"
 fn QualifiedCall (RefRuntime ignore), p = p
-
-# The standard library's functions a call by argument-dependent lookup may find instead of
-# the program's or the prelude's of the same name (an argument of a `std` type).
-let stdNames = [["apply", "begin", "end", "size", "empty", "data", "get", "swap", "move", "forward", "find", "count", "copy", "fill", "sort", "min", "max", "visit", "invoke", "merge", "remove", "replace", "reverse", "unique", "transform", "accumulate", "distance", "next", "prev", "exchange", "tie", "to_string", "clamp", "partition", "equal", "mismatch", "erase", "search", "rotate"]]
 
 # The runtime's constructors of an empty value, whose type the context gives.
 IsFresh: fn Ref -> Bool

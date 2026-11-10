@@ -23,7 +23,7 @@ use Check.Typed.Print.*
 # ---------------------------------------------------------------------------------------
 
 Mono: fn Ty -> Scheme
-fn Mono t = Scheme(qs=[[]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=t)
+fn Mono t = Scheme(eqs=[[]], qs=[[]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=t)
 
 # A type's quantified names replaced: type variables, row tails, colors.
 type Inst = record:
@@ -87,7 +87,9 @@ fn InstantiateWith st, sc, span, explicit:
     let st2c = Fold sc.cjoins, st2b, \|s, ((lo, hi))| AddLeq s, (Or cols[lo], CBound), (Or cols[hi], CBound), span, "arg", "", ""
     let st3 = Fold sc.bounds, st2c, \|s, ((v, tr))| update s:
         &_.wants <= Push &_.wants, Want(cls=tr, ty=(Or tys[v], TyErr), file=s.file, span=span, level=s.level)
-    (((SubstQ inst, sc.ty), st3, inst))
+    # each quantified equation at this use's types: checked here, or waiting for them
+    let st4 = Fold sc.eqs, st3, \|s, w| Unify s, (SubstQ inst, w.expected), (SubstQ inst, w.found), span
+    (((SubstQ inst, sc.ty), st4, inst))
 
 # The families a scheme's row variable is extended with: `r | Net.*` promises `r` has no
 # `Net` tags (ch. 5, Rows).
@@ -126,15 +128,27 @@ fn Skolemize sc:
 # a lambda's wanted constraints become bounds (`WantsAbove`), so that such a variable's
 # stay wanted.
 KeepWaiting: unbounded fn St -> St
-fn KeepWaiting st:
+fn KeepWaiting st = KeepWaitingBut st, [[]]
+
+# `KeepWaiting`, but for the equations a closed `let` quantifies (`OwnEquations`).
+KeepWaitingBut: unbounded fn St, [Waiting] -> St
+fn KeepWaitingBut st, own:
     let fields = Fold st.fieldQs, [[]], \|acc, q| FreeVarsInto st, (FreeVarsInto st, acc, q.recv), q.result
-    let deferred = Fold st.deferred, fields, \|acc, w| FreeVarsInto st, (FreeVarsInto st, acc, w.expected), w.found
+    let deferred = Fold (Filter st.deferred, \|w| not (HasWaiting own, w)), fields, \|acc, w| FreeVarsInto st, (FreeVarsInto st, acc, w.expected), w.found
     let waiting = Fold st.faultVars, deferred, \|acc, w| FreeVarsInto st, acc, w.expected
     LowerLevels st, waiting, st.level
 
 Generalize: unbounded fn St, Ty, [Nat], [((Nat, Text))] -> ((Scheme, St))
-fn Generalize st0, t, keep, bounds:
-    let st = GeneralizeCols (KeepWaiting st0)
+fn Generalize st0, t, keep, bounds = GeneralizeIn st0, t, keep, bounds, [[]]
+
+# `Generalize`, quantifying over the waiting associated-type equations `own`: a closed
+# `let` (it mentions no local of an enclosing scope) passes its own (`OwnEquations`), as
+# GHC's MonoLocalBinds generalizes a closed binding with its type-family equations as
+# constraints; each use then meets them (ruling SH). One that captures a local passes none
+# and keeps their variables monomorphic (`KeepWaiting`).
+GeneralizeIn: unbounded fn St, Ty, [Nat], [((Nat, Text))], [Waiting] -> ((Scheme, St))
+fn GeneralizeIn st0, t, keep, bounds, own:
+    let st = GeneralizeCols (KeepWaitingBut st0, own)
     let z = Zonk st, t
     let vs = Filter (FreeVars st, z), \|v| (InfoOf st, v).level > st.level and not (HasNat keep, v)
     let cvs = Filter (FreeColVars st, z), \|v| (InfoOf st, v).level > st.level
@@ -143,9 +157,26 @@ fn Generalize st0, t, keep, bounds:
     let named = SubstFlex tys, cols, z
     let plains = Each (Filter vs, \|v| (InfoOf st, v).plain), \|v| "'{v}"
     let bs = Each (Filter bounds, \|((v, ignore))| HasNat vs, v), \|((v, tr))| (("'{v}", tr))
+    let eqs = Each own, \|w| update w:
+        &_.expected <= SubstFlex tys, cols, (Zonk st, w.expected)
+        &_.found <= SubstFlex tys, cols, (Zonk st, w.found)
     let st2 = update st:
         &_.colQ <= Fold cvs, &_.colQ, \|m, v| Insert m, v, "'c{v}"
-    ((Scheme(qs=(Each vs, \|v| "'{v}"), plainQs=plains, rqs=[[]], cqs=(Each cvs, \|v| "'c{v}"), cjoins=[[]], bounds=bs, ty=named), st2))
+        &_.deferred <= Filter &_.deferred, \|w| not (HasWaiting own, w)
+    ((Scheme(eqs=eqs, qs=(Each vs, \|v| "'{v}"), plainQs=plains, rqs=[[]], cqs=(Each cvs, \|v| "'c{v}"), cjoins=[[]], bounds=bs, ty=named), st2))
+
+# The waiting equations a closed `let` of type `t` quantifies: those whose every variable
+# is the `let`'s own (above the level, not kept) and in its type, so each use instantiates
+# them; any other keeps waiting.
+OwnEquations: unbounded fn St, Ty, [Nat] -> [Waiting]
+fn OwnEquations st, t, keep:
+    let inType = FreeVars st, (Zonk st, t)
+    Filter st.deferred, \|w|
+        let vs = FreeVarsInto st, (FreeVars st, w.expected), w.found
+        (Len vs) > 0 and Fold vs, True, \|ok, v| ok and (HasNat inType, v) and ((InfoOf st, v).level > st.level) and not (HasNat keep, v)
+
+HasWaiting: fn [Waiting], Waiting -> Bool
+fn HasWaiting ws, w = Fold ws, False, \|seen, x| seen or x == w
 
 SubstFlex: unbounded fn (Nat ==> Ty), (Nat ==> Col), Ty -> Ty
 fn SubstFlex m, cm, t = match t:

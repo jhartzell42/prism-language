@@ -141,8 +141,8 @@ CheckPairIn: unbounded fn G, St, ImplInfo, ImplInfo -> St
 fn CheckPairIn g, st, a, b:
     let s0 = update st:
         &_.file <= b.file
-    let ((ta, s1)) = Instantiate s0, (Scheme(qs=a.qs, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=a.head)), b.span
-    let ((tb, s2)) = Instantiate s1, (Scheme(qs=b.qs, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=b.head)), b.span
+    let ((ta, s1)) = Instantiate s0, (Scheme(eqs=[[]], qs=a.qs, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=a.head)), b.span
+    let ((tb, s2)) = Instantiate s1, (Scheme(eqs=[[]], qs=b.qs, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=b.head)), b.span
     let ((ok, s3)) = TryUnify s2, ta, tb, b.span
     if not ok: st
     else:
