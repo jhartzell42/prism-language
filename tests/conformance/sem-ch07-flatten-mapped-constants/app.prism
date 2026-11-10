@@ -1,0 +1,23 @@
+# `@Flatten` of a dynamic of dynamics whose inners are constants (Type System ch. 4, "Where
+# the table looks": `$` is `fn a -> $a`, and a bare type variable lifts, so `$ $q` is a map
+# over `$q`, a constant of its value). The outer moves whenever `$a`, `$b` or `$useB` does,
+# and each move puts the flatten on the swap list: after n it adopts the constant the outer
+# then holds and fires with it from n+1, owed. No identity comparison of dynamics (the
+# coordinator's ruling FV): an adoption fires whatever inner it takes. Written by Claude on
+# the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+$Pick: fn $Bool, $Nat, $Nat -> $$Nat
+fn $Pick $useB, $p, $q = if $useB: $ $q else: $ $p
+
+@page: @unit
+@page:
+    !inc <- Ui.Button(label=$"inc")                         # 0
+    !swap <- Ui.Button(label=$"swap")                       # 1
+    $a <- 0 then $a + 1 on !inc
+    $b <- 100 then $b + 1 on !inc
+    $useB <- False then True on !swap
+    let $$cur = $Pick $useB, $a, $b
+    $shown <- @Flatten $$cur
+    Ui.Label(text=$"{$shown}")                              # 2
