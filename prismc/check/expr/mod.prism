@@ -221,22 +221,24 @@ fn Check env, st, e, expected = match e.kind:
     EAny x: NoteTy (CheckAny env, st, x, expected, e.span), e.span, expected
     otherwise:
         let ((t, st2)) = Infer env, st, e
-        Unify (NoteFaultAt st2, e.span, expected, t), expected, t, e.span
+        UnifyAt st2, expected, t, e.span
 
-# A tuple's part: one that is a bare `Error` gets a variable of its own (`St.faultVars`), a
-# fault question at the part; any other keeps its type.
+# A tuple's part: one that is a bare `Error` gets a variable of its own (`FaultOf`); any
+# other keeps its type.
 FaultPart: unbounded fn St, [Ty], Ty, Range -> (([Ty], St))
-fn FaultPart st, acc, t, span = match Walk st, t:
-    TyCon "Prelude.Error", [[]]:
-        let ((v, st2)) = FreshVar st, False, ""
-        let st3 = update (NoteFaultAt st2, span, v, t):
-            &_.faultVars <= Push &_.faultVars, (FlexOf v)
-        (((Push acc, v), st3))
-    otherwise: (((Push acc, t), st))
+fn FaultPart st, acc, t, span:
+    let ((t2, st2)) = FaultOf st, t, span
+    (((Push acc, t2), st2))
 
-FlexOf: fn Ty -> Nat
-fn FlexOf (TyFlex n) = n
-fn FlexOf ignore = 0
+# An inferred value at a place no type is wanted at yet (a tuple's part, a lambda's body):
+# an `Error` there gets a variable of its own (`FaultVar`), with a fault question at the
+# place; any other keeps its type.
+FaultOf: unbounded fn St, Ty, Range -> ((Ty, St))
+fn FaultOf st, t, span = match Walk st, t:
+    TyCon "Prelude.Error", [[]]:
+        let ((v, st2)) = FaultVar st, span
+        ((v, (NoteFaultAt st2, span, v, t)))
+    otherwise: ((t, st))
 
 # `any e` against `any ^Show`: the bounds are solved at `e`'s type (ch. 5, Existentials).
 CheckAny: unbounded fn Env, St, Expr, Ty, Range -> St

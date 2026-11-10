@@ -146,8 +146,6 @@ fn UnifyHeads st, e, f, span:
     match ((e, f)):
         ((TyErr, ignore)): (("", st))
         ((ignore, TyErr)): (("", st))
-        (((TySig "~", ignore), (TyCon "Prelude.Error", [[]]))): (("", st))
-        (((TyCon "Prelude.Error", [[]]), (TySig "~", ignore))): (("", st))
         ((TyFlex a, TyFlex b)): if a == b: (("", st)) else: (("", (MergeVars st, a, b)))
         ((TyFlex a, t)): BindVar st, a, t, span
         ((t, TyFlex b)): BindVar st, b, t, span

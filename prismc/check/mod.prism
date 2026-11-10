@@ -85,7 +85,7 @@ fn CheckProgram srcs, trees, world, shown, recording, unused, pre:
         ((bad2, s2))
     let st2b = update st2:
         &_.level <= 0
-    let st3 = Undecided (DefaultWants g1, st2b, [[]])
+    let st3 = Undecided (DefaultWants g1, (FaultsSettled st2b), [[]])
     # A failed impl's method is its impl's alone: two impls' methods share a key, so the
     # list keys each by where its impl stands (`OwnKey`).
     let good = Filter g1.defs, \|d| not (HasText failed, (OwnKey d).qk)
@@ -212,11 +212,8 @@ fn CheckDef g, st, d:
 # monomorphic ones wait for the program's end.
 DefaultDef: unbounded fn G, St -> St
 fn DefaultDef g, st0:
-    # a tuple's `Error` part nothing decided is an `Error`
-    let st = Fold st0.faultVars, st0, \|s, v| match Walk s, (TyFlex v):
-        TyFlex n: update s:
-            &_.tys <= Insert &_.tys, n, (TyCon "Prelude.Error", [[]])
-        otherwise: s
+    # an `Error` value's variable nothing decided is an `Error`
+    let st = FaultsDefaulted st0, False
     let mine = Filter st.wants, \|w| match Walk st, w.ty:
         TyFlex n: (InfoOf st, n).level >= 1
         otherwise: True

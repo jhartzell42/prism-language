@@ -362,7 +362,7 @@ fn PlainArg env, st, fname, param, at, a:
     else: if (IsTimeSigil ph) or ph == "@":
         let shown = if IsFlexVar st, at: SrcText env, a.value.span else: ShowTy st, at
         ErrFix st, "plain-for-sigiled", a.value.span, "a plain `{shown}` where `{fname}` takes a `{ShowTy st, p}`", "write `{ph} {SrcText env, a.value.span}`"
-    else: Unify st, p, at, a.value.span
+    else: UnifyAt st, p, at, a.value.span
 
 # A layered argument against its parameter as it now stands.
 LayeredArg: unbounded fn Env, St, Peeled, Text, Bool, Ty, Ty, Arg -> ((Peeled, St))
@@ -561,8 +561,14 @@ fn InferBareLambda env, st, e, ?expected:
             ? r:
                 let s4 = Check env2, st2, x, r
                 ((r, s4))
-            nil: Infer env2, st2, x
-        LbBlock b: InferBodyBlock env2, st2, b, ?expRes
+            nil:
+                let ((t, s4)) = Infer env2, st2, x
+                FaultOf s4, t, x.span
+        LbBlock b: match ?expRes:
+            ? ignore: InferBodyBlock env2, st2, b, ?expRes
+            nil:
+                let ((t, s4)) = InferBodyBlock env2, st2, b, nil
+                FaultOf s4, t, (TailSpan b)
     let st3b = SettleBody st3, lcol, ""
     let st3c = AddLeq st3b, st3b.color, lcol, e.span, "lambda", "", st3b.colorWhy
     let st4 = update st3c:

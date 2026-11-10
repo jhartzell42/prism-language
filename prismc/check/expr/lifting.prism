@@ -165,7 +165,7 @@ fn ArmAgainst st, want, bt, span, forwards = match (((Walk st, want), (Walk st, 
         let st2 = Unify st, w1, b1, span
         update st2:
             &_.incls <= Push &_.incls, Incl(sub=r2, sup=r1, file=&_.file, span=span, what="arm", forward=forwards)
-    otherwise: Unify st, want, bt, span
+    otherwise: UnifyNoted st, want, bt, span
 
 IsFamilyArm: fn Arm -> Bool
 fn IsFamilyArm arm = match arm.?pattern:
@@ -236,10 +236,11 @@ fn InferIf env, st, c, thenB, ?elseB, span, ?expected = match c:
         let ((layers, st5)) = IfBranches env2, st4, env, thenB, ?elseB, res
         MatchResult env, st5, "", layers, res, span
 
-# An arm's plain layer against the match's: an arm that is a bare `Error` waits for the
-# others, so `if c: Error(..) else: ~ unit` is a `~unit` (pick ER).
+# An arm's plain layer against the match's: an arm that is a bare `Error` takes a fault
+# variable the other arms decide, so `if c: Error(..) else: ~ unit` is a `~unit` (pick ER);
+# its place was asked about at its tail (`NoteFaultAt`).
 UnifyArm: unbounded fn St, Ty, Ty, Range -> St
-fn UnifyArm st, res, t, span = if (IsFlexVar st, res) and (Walk st, t) == (TyCon "Prelude.Error", [[]]): Defer st, res, t, span else: Unify st, res, t, span
+fn UnifyArm st, res, t, span = UnifyNoted st, res, t, span
 
 LayerHead: fn Text -> Text
 fn LayerHead h = if IsTimeSigil h: h else: if h == "@": "@" else: ""

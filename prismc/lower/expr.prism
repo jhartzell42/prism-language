@@ -176,12 +176,17 @@ fn UnboundValueOf lx, env, e:
     AsFailure lx, e, v
 
 # An `Error` value where the checker found it to be a `~T`'s failure (its `faults`): the
-# `~T` failing with it. One already made the failure (a constructor whose own place is the
-# `~T`) is kept.
+# `~T` failing with it, at its type (C++ deduces nothing from a failure: `auto`, an
+# optional's or a map's element). One already made the failure (a constructor whose own
+# place is the `~T`) is kept.
 AsFailure: unbounded fn Lx, Expr, Vl -> Vl
 fn AsFailure lx, e, v = match lx.faults[PlaceKey lx, e.span]:
-    ? ft: if (ValueTy v) == OutError: VlOwned (XCtor (RefRuntime "std::Err"), [[Own v]]), (OutTyOf lx, (Peel (SubstTy lx, ft))) else: v
+    ? ft: if (ValueTy v) == OutError: Failing (Own v), (OutTyOf lx, (Peel (SubstTy lx, ft))) else: v
     nil: v
+
+# The failure of a `~T` with an `Error`, at the `~T`'s type.
+Failing: fn Ex, OutTy -> Vl
+fn Failing x, t = VlOwned (XTyped (XCtor (RefRuntime "std::Err"), [[x]]), t), t
 
 # ---------------------------------------------------------------------------------------
 # Time taken whole (Type System ch. 4, Application: "A sigiled parameter is not lifted
@@ -455,7 +460,7 @@ fn LiftedValue lx, env, e, ln:
 # The operands from the first: its value matched, the rest inside its arm.
 LiftOperands: unbounded fn Lx, Lx, Env, Expr, Text, [Range], OutTy -> Ex
 fn LiftOperands lx, lxIn, env, e, sigil, operands, t = match operands:
-    [[]]: XCtor (RefRuntime (if sigil == "~": "std::Ok" else: "std::Some")), [[Own (PlainValueByKind lxIn, env, e)]]
+    [[]]: XTyped (XCtor (RefRuntime (if sigil == "~": "std::Ok" else: "std::Some")), [[Own (PlainValueByKind lxIn, env, e)]]), t
     otherwise:
         let r = Or operands[0], e.span
         let sv = ValueOf lx, env, (Or (?OperandAt e, r), dummyExpr)
@@ -772,7 +777,8 @@ fn Argument lx, env, e = match env.spans[PlaceKey lx, e.span]:
 ArgumentByKind: unbounded fn Lx, Env, Expr -> Ex
 fn ArgumentByKind lx, env, e = match e.kind:
     ELambda ?ps, body: XRef (LambdaArg lx, env, (Or ?ps, [[]]), body, (LambdaParamTys lx, e, (Len (Or ?ps, [[]]))))
-    EGroup x: Argument lx, env, x
+    # a group the checker found a `~T`'s failure at keeps its place (`AsFailure`)
+    EGroup x: if HasKey lx.faults, (PlaceKey lx, e.span): Ref (ValueOf lx, env, e) else: Argument lx, env, x
     EName n:
         let t = TypeAt lx, e.span
         match Peel t:
@@ -928,7 +934,7 @@ fn WrapAsBounded f, pts, target:
     XBlock [[(DoLet (PaBind "job_fn"), f)]], (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure True, pas, body)]]), target)
 
 # A function's arguments, borrowed; a bare `Error(..)` where the parameter is a `~T` is
-# that `~T`'s failure (the checker's pick ER lets it wait for its type).
+# that `~T`'s failure, made where the checker found it one (`AsFailure`).
 ArgsFor: unbounded fn Lx, Env, ValInfo, [Arg] -> [Ex]
 fn ArgsFor lx, env, v, args:
     let ps = match v.scheme.ty:
@@ -936,18 +942,11 @@ fn ArgsFor lx, env, v, args:
         otherwise: [[]]
     Each (Range0 (Len args)), \|i|
         let a = Or args[i], (Arg(name=nil, value=dummyExpr, span=Range(start=0, end=0)))
-        let isTry = match Peel (Or ps[i], TyErr):
-            TySig "~", ignore: True
-            otherwise: False
-        let isError = match Peel (TypeAt lx, a.value.span):
-            TyCon "Prelude.Error", ignore: True
-            otherwise: False
         let toUnbounded = match Peel (Or ps[i], TyErr):
             TyFn CBound, ignore, ignore: False
             TyFn ignore, ignore, ignore: True
             otherwise: False
-        if isTry and isError: XRef (XCtor (RefRuntime "std::Err"), [[Own (ValueOf lx, env, a.value)]])
-        else: if toUnbounded: XRef (AsJobValue lx, env, a.value)
+        if toUnbounded: XRef (AsJobValue lx, env, a.value)
         else: Argument lx, env, a.value
 
 let dummyExpr = Expr(kind=EError, span=Range(start=0, end=0))
@@ -967,7 +966,7 @@ fn CtorApp lx, env, c, args, span:
             let msg = Or vals[1], (XText "")
             let made = XCall (RefRuntime "rt::Error::new"), [[kind, msg]]
             match t:
-                OutRes ignore: VlOwned (XCtor (RefRuntime "std::Err"), [[made]]), t
+                OutRes ignore: Failing made, t
                 otherwise: VlOwned made, OutError
         otherwise: match owner.body:
             BRecord fs:
