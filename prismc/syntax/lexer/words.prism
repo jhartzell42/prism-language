@@ -134,8 +134,11 @@ fn FirstOp l = MatchHere (if FatArrowOn l: %/==>|<-|<=|<\||->|-=|-\?|\+=|\+\?|\*
 EndsMark: fn Text -> Bool
 fn EndsMark a = a == "" or (Contains " \n\u{d},)]\}", a)
 
+# A bracket a non-empty mark may follow: an array's or a map's, and the parentheses of a
+# type `(K ==> V)+`, which Type System ch. 2 writes though the quoted rule above names only
+# double brackets and braces (doubt, raised with the coordinator).
 ClosesSquareOrBrace: fn ?Tok -> Bool
-fn ClosesSquareOrBrace (? t) = t.kind == (KClose "[") or t.kind == (KClose "\{")
+fn ClosesSquareOrBrace (? t) = t.kind == (KClose "[") or t.kind == (KClose "\{") or t.kind == (KClose "(")
 fn ClosesSquareOrBrace nil = False
 
 # Longest match over the operator table, with the two marks a sign makes against a closing

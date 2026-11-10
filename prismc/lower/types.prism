@@ -62,6 +62,8 @@ fn OutTyOf lx, t = match t:
     TyCon "RegexReplacement", [[]]: OutReplacement
     TyCon "Duration", [[]]: OutDuration
     TyCon "Prelude.Error", [[]]: OutError
+    # a non-empty collection is the collection: its promise is the checker's
+    TyCon "Prelude.NonEmpty", [[c]]: OutTyOf lx, c
     TyCon "\u{0}Self", [[]]: OutNamed (RefRuntime "Self"), [[]]
     TyCon "Buffer", [[a]]: OutArray (OutTyOf lx, a)
     TyCon "Table", [[k, v]]: OutArray (OutTuple [[(OutTyOf lx, k), (OutTyOf lx, v)]])

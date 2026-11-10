@@ -203,8 +203,7 @@ fn PostfixStep e, p, commas = match Kind p:
         ((Expr(kind=(ETypeArgs e, types), span=(To e.span, (Prev q))), q, True))
     KNonEmpty:
         let span = Here p
-        let q = OutOfScope (Adv p), span, "non-empty arrays", "the non-empty mark `+` is out of this compiler"
-        ((Expr(kind=(ENonEmpty e), span=(To e.span, span)), q, True))
+        ((Expr(kind=(ENonEmpty e), span=(To e.span, span)), (Adv p), True))
     otherwise: ((e, p, False))
 
 FieldOrMethod: unbounded fn Expr, Ps, Bool -> ((Expr, Ps, Bool))

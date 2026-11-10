@@ -172,13 +172,13 @@ fn InferKind env, st, e = match e.kind:
     EMethod recv, m, args: InferCall env, st, (Expr(kind=(EName m), span=m.span)), (Append [[Arg(marks="", ?name=nil, value=recv, span=recv.span)]], args), e.span
     ETypeArgs target, ignore: InferCall env, st, e, [[]], e.span
     ECast x, ty, checked:
-        if checked: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement non-empty arrays")))
+        if checked: CheckedCast env, st, x, ty, e.span
         else:
             let cx = EnvCx env
             let ((t, st2)) = ConvType cx, st, ty
             let st3 = Check env, st2, x, t
             ((t, st3))
-    ENonEmpty ignore: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement non-empty arrays")))
+    ENonEmpty x: InferNonEmpty env, st, x, e.span
     EAbsent: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement sparse tuples")))
     ERest: ((TyErr, st))
     ELambda ignore, ignore: InferLambda env, st, e, nil
@@ -198,6 +198,33 @@ fn InferKind env, st, e = match e.kind:
         ((TyAny [[]], st2))
     ELens ignore: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement named lenses and `Over`")))
     EError: ((TyErr, st))
+
+# `[[x, y]]+` and `{k: v}+`: a literal is non-empty only when it says so, and an empty one
+# never is (Type System ch. 2, "Collections").
+InferNonEmpty: unbounded fn Env, St, Expr, Range -> ((Ty, St))
+fn InferNonEmpty env, st, x, span:
+    let ?count = match x.kind:
+        EArray es: ? (Len es)
+        EMap kvs: ? (Len kvs)
+        otherwise: nil
+    match ?count:
+        nil: ((TyErr, (Err st, "mismatch", span, "only an array or a map literal is non-empty")))
+        ? 0: ((TyErr, (ErrFix st, "mismatch", span, "an empty literal is not non-empty", "give it an element, or drop the `+`")))
+        otherwise:
+            let ((c, st2)) = Infer env, st, x
+            (((NonEmptyOf c), st2))
+
+# `xs as [a]+?`: the collection checked for an element, `?[a]+`, `nil` when it is empty; a
+# non-empty one's promise counts for nothing more here (Type System ch. 2, "Collections").
+CheckedCast: unbounded fn Env, St, Expr, Type, Range -> ((Ty, St))
+fn CheckedCast env, st, x, ty, span:
+    let ((t, st2)) = ConvType (EnvCx env), st, ty
+    match ?NonEmptyColl st2, t:
+        nil: ((TyErr, (ErrFix st2, "mismatch", span, "a checked cast's type is non-empty; this is `{ShowTy st2, t}`", "write `as [a]+?` or `as (K ==> V)+?`, or drop the `?`")))
+        ? c:
+            let ((xt, st3)) = Infer env, st2, x
+            let coll = Or (?NonEmptyColl st3, xt), xt
+            (((TySig "?", t), (Unify st3, c, coll, x.span)))
 
 InferAll: unbounded fn Env, St, [Expr] -> (([Ty], St))
 fn InferAll env, st, es = Fold es, (([[]], st)), \|((acc, s)), x|
@@ -259,7 +286,6 @@ fn EnvCx env:
     let base = CxOf env.g, env.home
     update base:
         &_.scope <= env.scope
-        &_.bounds <= env.givens
 
 # ---------------------------------------------------------------------------------------
 # Names

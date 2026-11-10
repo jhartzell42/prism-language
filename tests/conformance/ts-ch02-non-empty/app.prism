@@ -16,9 +16,9 @@ Summed: fn ?[Nat]+ -> Text
 fn Summed (? xs) = "{Total xs}"
 fn Summed nil = "none"
 
-Keys: fn ?(Nat ==> Text)+ -> Text
-fn Keys (? m) = "{Count m}"
-fn Keys nil = "no keys"
+KeyCount: fn ?(Nat ==> Text)+ -> Text
+fn KeyCount (? m) = "{Count m}"
+fn KeyCount nil = "no keys"
 
 @main: @unit
 @main:
@@ -27,4 +27,4 @@ fn Keys nil = "no keys"
     let ys = xs as [Nat]
     let empty = [[]] as [Nat]
     let none = {} as (Nat ==> Text)
-    Ui.Label($text=$"{Total xs} {Count m} {Summed (empty as [Nat]+?)} {Summed (ys as [Nat]+?)} {Keys (none as (Nat ==> Text)+?)} {Keys (m as (Nat ==> Text)+?)} {(Len ys) as Nat}")    # 0
+    Ui.Label($text=$"{Total xs} {Count m} {Summed (empty as [Nat]+?)} {Summed (ys as [Nat]+?)} {KeyCount (none as (Nat ==> Text)+?)} {KeyCount (m as (Nat ==> Text)+?)} {(Len ys) as Nat}")    # 0

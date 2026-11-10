@@ -331,6 +331,17 @@ fn IsFreeHeaded st, t = match Walk st, t:
     TyFlex n: not (InfoOf st, n).plain
     otherwise: False
 
+# A non-empty array or map, `[a]+` and `(K ==> V)+` (Type System ch. 2, "Collections"): the
+# collection's type under a constructor no program can name.
+NonEmptyOf: fn Ty -> Ty
+fn NonEmptyOf c = TyCon "Prelude.NonEmpty", [[c]]
+
+# The collection a non-empty type promises, or nothing.
+?NonEmptyColl: unbounded fn St, Ty -> ?Ty
+fn ?NonEmptyColl st, t = match Walk st, t:
+    TyCon "Prelude.NonEmpty", [[c]]: ? c
+    otherwise: nil
+
 # A type with a stack written on top: marks `"$?"` over `t` is `$?t`; an `@` among the
 # marks takes `rw` as its row.
 WithMarks: fn Text, Ty, Rw -> Ty
@@ -353,6 +364,7 @@ fn ShowTyIn st, t, nested = match t:
     TyRigid n: n
     TyQ n: n
     TyCon n, [[]]: BareName n
+    TyCon "Prelude.NonEmpty", [[c]]: "{ShowTyIn st, c, True}+"
     TyCon n, args:
         let inner = "{BareName n}{Concat (Each args, \|a| " {ShowTyIn st, a, True}")}"
         if nested: "({inner})" else: inner

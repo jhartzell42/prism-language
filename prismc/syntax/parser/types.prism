@@ -155,8 +155,7 @@ fn ParseTypeAtom p:
             let ((t, p1)) = TypeAtomBody p, start
             if (Kind p1) == KNonEmpty:
                 let m = Here p1
-                let q = OutOfScope (Adv p1), m, "non-empty arrays", "the non-empty array type `[a]+` is out of this compiler"
-                ((Type(kind=(TNonEmpty t), span=(To start, m)), q))
+                ((Type(kind=(TNonEmpty t), span=(To start, m)), (Adv p1)))
             else: ((t, p1))
 
 TypeAtomBody: unbounded fn Ps, Range -> ((Type, Ps))
