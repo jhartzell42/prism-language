@@ -1,0 +1,16 @@
+# `!Updated` in a `rebuild`'s generation over a hold of its block (Semantics R3, a dynamic
+# is a behavior and an event; ch. 7, `rebuild`): the generation hears every write of `$a`
+# in its tick, as a `for` row does (pick RE). Written by Claude on the claude-lowering
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@main: @unit
+@main:
+    !inc <- Ui.Button(label=$"inc")                         # 0
+    !next <- Ui.Button(label=$"next")                       # 1
+    $a <- 0 then $a + 1 on !inc
+    $page <- 1 then $page + 1 on !next
+    rebuild $page:                                          # 2/#g
+        $n <- 0 then $n + 1 on !Updated $a
+        Ui.Label(text=$"page {_}: {$n}")                    # 2/#g/0
