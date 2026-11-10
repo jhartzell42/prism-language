@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 3 (a jar's item is `?Text`) and ch. 5 (an argument at a parameter whose sigil it has is taken whole): the text fills the empty jar; nil keeps the full one.
+test taken_whole
+
+tick 0
+  added:
+    0: Ui.Label(text="Full \"x\" Full \"y\"")
