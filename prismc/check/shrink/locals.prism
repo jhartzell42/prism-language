@@ -233,7 +233,31 @@ fn SiteGraph sk, d, site, k:
     let argText = match site.args[0]:
         ? a: ExprName a.value
         nil: ""
-    Sc(caller=d.qk, callee=k, edges=edges, span=site.span, file=d.file, arg=argText)
+    Sc(caller=d.qk, callee=k, edges=(Append edges, (SelfTypeEdges sk, d, site, k)), span=site.span, file=d.file, arg=argText)
+
+# An impl's method calling its trait's method at a variable of its own head (`Name (Left p)`
+# in the impl at `Pair a` is a call at `a`): the instance it reaches is at a strictly
+# smaller type, which no chain of calls can do forever. An edge of the self type's slot,
+# strictly smaller. A call at the head itself or at a bigger type (`Pair (Pair a)`,
+# polymorphic recursion) has none, and its arguments must shrink.
+SelfTypeEdges: unbounded fn Shrink, Def, Site, Text -> [((Nat, Nat, Bool))]
+fn SelfTypeEdges sk, d, site, k = match d.body:
+    DbMethod ignore, cls, im: match ?SiteClass sk, d, site:
+        ? kc if kc == cls: match sk.choices[ChoiceKey d.file, site.span, cls]:
+            ? chs: if (Len chs) > 0 and Fold chs, True, \|all, ch| all and (HasPrefix ch, "given:") and HasText im.qs, (DropPrefix ch, "given:"): [[((selfTypeSlot, selfTypeSlot, True))]] else: [[]]
+            nil: [[]]
+        otherwise: [[]]
+    otherwise: [[]]
+
+# The trait whose method a call names, if it names one (the call's targets are the impls'
+# definitions, not the method).
+?SiteClass: unbounded fn Shrink, Def, Site -> ?Text
+fn ?SiteClass sk, d, site = match ?ResolveCallee sk.g, d.home, site.callee:
+    ? mk: ?MethodClass sk.g, mk
+    nil: nil
+
+# The slot of the self type's size beside the parameters' (`SelfTypeEdges`).
+let selfTypeSlot = 4096
 
 # Each argument with the callee's parameter it fills: a positional one by its place among
 # the positional ones; a named one (a template call's attribute, `<@Item depth={{d}}/>`)

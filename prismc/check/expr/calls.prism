@@ -279,7 +279,7 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
     let ((st2, whole)) = Fold (Range0 n), ((st1, [[]])), \|((s, done)), i|
         let a = Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)
         let at = Or argTys[i], TyErr
-        let pnow = Walk s, (Or params[i], TyErr)
+        let pnow = NormAssoc s, (Walk s, (Or params[i], TyErr))
         let wholeNow = (IsTimeSigil (HeadSigil s, pnow)) or (HeadSigil s, pnow) == "@"
         if IsLambda a.value: ((s, done))
         else: if wholeNow and (StackOf s, at) != "": (((Unify s, pnow, at, a.value.span), (Push done, i)))
@@ -367,10 +367,16 @@ fn PlainArg env, st, fname, param, at, a:
 # A layered argument against its parameter as it now stands.
 LayeredArg: unbounded fn Env, St, Peeled, Text, Bool, Ty, Ty, Arg -> ((Peeled, St))
 fn LayeredArg env, st, acc, fname, cmp, param, at, a:
-    let p = Walk st, param
+    # an associated type is the impl's choice before its head says how the argument is
+    # taken (`Item Jar` is `?Text`: a `?` there is whole)
+    let p = NormAssoc st, (Walk st, param)
     let span = a.value.span
     let ph = HeadSigil st, p
-    if IsFreeHeaded st, at:
+    # one nothing has decided yet may turn out sigiled or plain, which decides between
+    # taking the argument whole and lifting over it: refused, never guessed
+    if (IsWaitingAssoc st, p) and not (IsFreeHeaded st, at):
+        ((acc, (ErrFix (Unify st, p, at, span), "ambiguous", span, "whether `{fname}` takes this `{HeadSigil st, at}` whole or lifts over it depends on an associated type nothing has decided here", "decide the type before the call, by an argument of it or an annotation on one")))
+    else: if IsFreeHeaded st, at:
         let st2 = if (IsTimeSigil ph) or ph == "@" or ph == "&" or cmp: st else: AskLayer st, at, span, fname
         ((acc, (Unify st2, p, at, span)))
     else: if (IsTimeSigil ph) or ph == "@" or ph == "&": ((acc, (Unify st, p, at, span)))

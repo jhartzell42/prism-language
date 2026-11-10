@@ -385,9 +385,17 @@ fn ImplHow g, im:
 Solved: fn St, Want, Ty, Text -> St
 fn Solved st, w, t, how:
     let s2 = NoteImpl st, w.file, w.span, w.cls, t, how
-    if how == "given" or how == "packed" or how == "quantified": NoteChoice s2, w.file, w.span, w.cls, "any"
+    if how == "given": NoteChoice s2, w.file, w.span, w.cls, (GivenChoice t)
+    else: if how == "packed" or how == "quantified": NoteChoice s2, w.file, w.span, w.cls, "any"
     else: if how == "builtin" or how == "parts": NoteChoice s2, w.file, w.span, w.cls, "none"
     else: s2
+
+# A want a given solved, for the shrink check: at a rigid variable it names it
+# (`given:a`; an impl's method calling its trait's method at a part of its head), and
+# reaches every definition as `any` does.
+GivenChoice: fn Ty -> Text
+fn GivenChoice (TyRigid v) = "given:{v}"
+fn GivenChoice ignore = "any"
 
 # One-way matching of an impl head (with `TyQ` variables) against a type.
 ?MatchHead: unbounded fn Ty, Ty, (Text ==> Ty) -> ?(Text ==> Ty)
