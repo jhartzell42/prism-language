@@ -84,7 +84,13 @@ fn BindPattern env, st, p, t, refutable = match p.kind:
         Fold (Range0 (Len ps)), ((env, st3)), \|((en, s)), i| BindPattern en, s, (Or ps[i], Pattern(kind=PIgnore, span=p.span)), (Or vs[i], TyErr), refutable
     PArray ps:
         let ((v, st2)) = FreshVar st, False, ""
-        let st3 = Unify st2, t, (TyArray v), p.span
+        # a non-empty array is matched as the array it is, and has no length zero (Type
+        # System ch. 2, "Exhaustiveness, with rows")
+        let st3 = match ?NonEmptyColl st2, t:
+            ? c:
+                let s = Unify st2, c, (TyArray v), p.span
+                if (Len ps) == 0: ErrFix s, "unreachable", p.span, "a non-empty array has no length zero", "remove the arm" else: s
+            nil: Unify st2, t, (TyArray v), p.span
         Fold ps, ((env, st3)), \|((en, s)), q| BindPattern en, s, q, v, refutable
     PGroup q: BindPattern env, st, q, t, refutable
     PFamily q: BindFamily env, st, (Dotted q.path), t, p.span

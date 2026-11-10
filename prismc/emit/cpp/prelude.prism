@@ -283,6 +283,12 @@ inline Nat len_text(const Text& t) { return nat_of(t.len()); }
 template <class K, class V>
 Nat len_map(const Map<K, V>& m) { return nat_of(m.size()); }
 
+// `xs as [a]+?`: the collection when it has an element (Type System ch. 2, "Collections").
+template <class A>
+::std::optional<Array<A>> non_empty(const Array<A>& xs) { if (xs.size() > 0) return xs; return ::std::nullopt; }
+template <class K, class V>
+::std::optional<Map<K, V>> non_empty_map(const Map<K, V>& m) { if (m.size() > 0) return m; return ::std::nullopt; }
+
 template <class A>
 Array<A> append(const Array<A>& a, const Array<A>& b) { return a.concat(b); }
 template <class A>

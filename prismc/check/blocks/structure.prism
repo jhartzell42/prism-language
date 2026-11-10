@@ -91,6 +91,7 @@ fn CollParts st, t, span = match Walk st, t:
     TyMap k, v: ((k, v, st))
     TyArray v: ((tNat, v, st))
     TyCon "Buffer", [[v]]: ((tNat, v, st))
+    TyCon "Prelude.NonEmpty", [[c]]: CollParts st, c, span
     TyErr: ((TyErr, TyErr, st))
     TyFlex ignore:
         let ((v, st2)) = FreshVar st, False, ""

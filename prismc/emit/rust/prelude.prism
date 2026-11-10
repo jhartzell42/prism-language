@@ -399,6 +399,15 @@ pub fn len_map<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Nat {
     nat_of(m.len())
 }
 
+// `xs as [a]+?`: the collection when it has an element (Type System ch. 2, "Collections").
+pub fn non_empty<A: Clone>(xs: &Array<A>) -> Option<Array<A>> {
+    if xs.len() > 0 { Some(xs.clone()) } else { None }
+}
+
+pub fn non_empty_map<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Option<Map<K, V>> {
+    if m.len() > 0 { Some(m.clone()) } else { None }
+}
+
 pub fn append<A: Clone>(a: &Array<A>, b: &Array<A>) -> Array<A> {
     let mut out = a.clone();
     out.append(b.clone());

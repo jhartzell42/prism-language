@@ -540,7 +540,8 @@ fn PlainValueByKind lx, env, e:
         EIf c, thenB, ?elseB: IfValue lx, env, c, thenB, ?elseB, t
         EMatch s, arms: MatchValue lx, env, s, arms, t, e.span
         ETemplate tp: TemplateValue lx, env, tp
-        ECast x, ignore, ignore: ValueOf lx, env, x
+        ECast x, ignore, checked: if checked: CheckedCastValue lx, env, x, t else: ValueOf lx, env, x
+        ENonEmpty x: ValueOf lx, env, x
         ETypeArgs x, ignore: ValueOf lx, env, x
         EGiven b: GivenValue lx, env, b, t, e.span
         EUpdate target, b: UpdateValue lx, env, target, b, t, e.span
@@ -620,6 +621,14 @@ ElementBlueprint: unbounded fn Lx, Env, [Arg], OutTy -> Vl
 fn ElementBlueprint lx, env, args, t = match args[0]:
     ? a: VlOwned (XCall (RefRuntime "prism_rtl::element_blueprint::<crate::Elem, crate::Answer>"), [[Ref (ValueOf lx, env, a.value)]]), t
     nil: VlOwned (Refusal "`@Element` without its element"), t
+
+# `xs as [a]+?`: the collection when it has an element, else `nil`.
+CheckedCastValue: unbounded fn Lx, Env, Expr, OutTy -> Vl
+fn CheckedCastValue lx, env, x, t:
+    let helper = match OutTyOf lx, (Peel (TypeAt lx, x.span)):
+        OutMap ignore, ignore: "non_empty_map"
+        otherwise: "non_empty"
+    VlOwned (XTyped (XCall (HelperRef helper), [[Ref (ValueOf lx, env, x)]]), t), t
 
 # The construct an expression is, in words, for a refusal (`Refusal`).
 KindWords: fn ExprKind -> Text

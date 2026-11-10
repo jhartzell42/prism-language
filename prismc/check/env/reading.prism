@@ -79,7 +79,12 @@ fn ConvType cx, st, t = match t.kind:
         ? k: ((TyAny [[k]], st))
         nil: ((TyErr, (Err st, "unknown-name", tr.span, "no trait `^{Dotted tr.path}`")))
     TAbsent: ((TyErr, (Err st, "unsupported", t.span, "this checker does not implement sparse tuples")))
-    TNonEmpty ignore: ((TyErr, (Err st, "unsupported", t.span, "this checker does not implement non-empty arrays")))
+    TNonEmpty inner:
+        let ((c, st2)) = ConvType cx, st, inner
+        match c:
+            TyArray ignore: (((NonEmptyOf c), st2))
+            TyMap ignore, ignore: (((NonEmptyOf c), st2))
+            otherwise: ((TyErr, (Err st2, "kind", t.span, "only an array or a map is non-empty; this is `{ShowTy st2, c}`")))
     THole ignore: ((TyErr, (Err st, "unsupported", t.span, "this checker does not implement higher-kinded traits")))
     TFamily q: ((TyErr, (Err st, "kind", t.span, "`{Dotted q.path}.*` is a row, not a type")))
     TRowUnion ignore: ((TyErr, (Err st, "kind", t.span, "a row is not a type")))
