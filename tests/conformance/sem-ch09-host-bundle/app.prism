@@ -1,0 +1,29 @@
+# A bundle in a hosted scope (Semantics ch. 9 with Type System ch. 2, "Bundles"): the child
+# of sem-ch09-bundle under a host. A supplier answers the bundle's tag with a blueprint of
+# the whole output, `@ ((door, !knocks))`: its plain part is the place's first value, read
+# at the place's build, and each firing of its event part an answer, a tick late (a
+# computed answer). A forwarding host hands the place the World's first value and the
+# World's answers in their own tick. Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Door of Element ((Text, !Nat)):
+    name: Text
+
+@doors: @unit
+@doors:
+    ((door, !knocks)) <- Pad.Door(name="front")              # 0
+    $count <- 0 then $count + !knocks
+    Ui.Label(text=$"{door}: {$count}")                       # 1
+
+@computed: @unit
+@computed:
+    !go <- Ui.Button(label=$"knock")                         # 0
+    ignore <- @HostDocument @doors, \|p, e| match e:         # 1/[p]
+        Pad.Door(..): @ (("mock", 2 on !go))
+        otherwise: @Element e
+
+@forwarded: @unit
+@forwarded:
+    ignore <- @HostDocument @doors, \|p, e| @Element e       # 0/[p]/0
