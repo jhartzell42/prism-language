@@ -1,0 +1,38 @@
+# Two traits each declare an associated type `Item`, and one type implements both with
+# different choices: a crate opens to its count and pours its label. Each `Item` is its own
+# trait's, in the traits' signatures, at a known head, and in a generic function whose
+# bound says which. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Box a:
+    type Item
+    Open: fn a -> Item a
+
+trait ^Bag a:
+    type Item
+    Pour: fn a -> Item a
+
+type Crate = record:
+    count: Nat
+    label: Text
+derive ^Eq, ^Show
+
+impl ^Box Crate:
+    type Item = Nat
+    fn Open c = c.count
+
+impl ^Bag Crate:
+    type Item = Text
+    fn Pour c = c.label
+
+Opened: fn a -> Item a where a: ^Box
+fn Opened x = Open x
+
+Poured: fn a -> Item a where a: ^Bag
+fn Poured x = Pour x
+
+@main: @unit
+@main:
+    let c = Crate(count=4, label="figs")
+    Ui.Label(text=$"{(Open c) + 1} {Pour c}! {(Opened c) + 2} {Poured c}?")    # 0
