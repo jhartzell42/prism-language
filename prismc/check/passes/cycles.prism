@@ -321,4 +321,4 @@ fn SummaryEdges cx, s, defs = match s.kind:
     SLet p, ignore, e: Edges (PatternNames p), (PromptReads cx, e, defs)
     otherwise: [[]]
 
-let dummyArgP = Arg(?name=nil, value=(Expr(kind=EError, span=Range(start=0, end=0))), span=Range(start=0, end=0))
+let dummyArgP = Arg(marks="", ?name=nil, value=(Expr(kind=EError, span=Range(start=0, end=0))), span=Range(start=0, end=0))

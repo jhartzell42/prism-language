@@ -380,9 +380,9 @@ fn ParseRecordPattern p0, name:
                 &_.rest <= True
             else:
                 let fstart = Here &_.p
-                let ((?fname, p1)) = ParseArgName &_.p
+                let ((?fname, marks, p1)) = ParseArgName &_.p
                 let ((pattern, p2)) = ParsePattern p1, False
-                &_.fields <= Push &_.fields, FieldPat(?name=?fname, pattern=pattern, span=(To fstart, pattern.span))
+                &_.fields <= Push &_.fields, FieldPat(marks=marks, ?name=?fname, pattern=pattern, span=(To fstart, pattern.span))
                 &_.p <= p2
             if AtComma &_.p:
                 &_.p <= Adv &_.p

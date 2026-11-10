@@ -1,0 +1,9 @@
+# The tests of ts-ch04-tag-lifts.
+emit Ui.*
+use App.*
+
+test lifted_tag, @main:
+    build
+        => expect Ui.Label(text="4")
+    click at 0
+        => expect Ui.Label(text="9")

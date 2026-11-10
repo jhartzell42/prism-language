@@ -125,7 +125,7 @@ fi
 "$prismc" --typed tests/driver/free-variable-defaulted.prism --out "$out/free-variable-defaulted.typed" > /dev/null 2>&1
 if [ -f "$out/free-variable-defaulted.typed" ] && [ "$(grep -c '(var ' "$out/free-variable-defaulted.typed")" = 2 ] &&
     grep -q "^  (binder \"xs\" .*(array (var t[0-9]*)))" "$out/free-variable-defaulted.typed" &&
-    grep -q "^  (expr .*:10:35-10:39 (array unit))" "$out/free-variable-defaulted.typed" &&
+    grep -q "^  (expr .*:10:36-10:40 (array unit))" "$out/free-variable-defaulted.typed" &&
     grep -q "('[0-9]* unit)" "$out/free-variable-defaulted.typed"; then
     echo "ok free-variable-defaulted: the checker settles it"
 else

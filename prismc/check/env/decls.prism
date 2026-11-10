@@ -56,8 +56,8 @@ fn ConvertTypeDecl g, st, info, d = match d.kind:
             ? body: match body:
                 TbRecord fs:
                     let ((fields, st2)) = Fold fs, (([[]], st)), \|((acc, s)), f|
-                        let ((ft, s2)) = ConvType cx, s, f.ty
-                        (((Push acc, ((f.name.name, ft))), s2))
+                        let ((ft, s2)) = ConvType cx, (SigilsOnName s, f), f.ty
+                        (((Push acc, ((f.name.name, (FieldSigils f.sigils, ft)))), s2))
                     let ctor = CtorInfo(name=name, owner=name, params=params, args=(Each fields, \|((ignore, ft))| ft), fields=(Each fields, \|((fname, ignore))| fname), ty=self, index=0)
                     let upd = update g:
                         &_.types <= Insert &_.types, name, (WithBody ti, (BRecord fields))
@@ -206,6 +206,30 @@ fn CheckMarkFunction st, name, t, span = match t:
         else: ErrFix st, "mark-function", span, "`{name}` returns `{ShowTy st, res}`; name it `{want}{bare}`", "rename to `{want}{bare}`"
     otherwise: st
 
+# `field-sigils`: a field's sigils stand on its name, its type written without them
+# (`$label: Text`, never `label: $Text`), as a binder's do.
+SigilsOnName: fn St, Field -> St
+fn SigilsOnName st, f:
+    let sigils = TypeSigils f.ty
+    if sigils == "": st
+    else: ErrFix st, "field-sigils", f.span, "the field `{f.sigils}{f.name.name}` writes `{sigils}` on its type; a field's sigils stand on its name", "write `{f.sigils}{sigils}{f.name.name}: ` and the type without them"
+
+# The sigils written outermost on a type (`$` of `$Text`, `$?` of `$?Rect`).
+TypeSigils: fn Type -> Text
+fn TypeSigils t = match t.kind:
+    TName n, ignore: n.sigils
+    TSigiled s, ignore: s
+    TUnit m: m
+    TGroup inner: TypeSigils inner
+    otherwise: ""
+
+# A field's type: the sigils on its name over its written type (`$label: Text` is a
+# `$Text` field), as a binder's sigils state its type's layers.
+FieldSigils: fn Text, Ty -> Ty
+fn FieldSigils sigils, t:
+    let innermostFirst = FoldChars sigils, [[]], \|acc, c| Append [[c]], acc
+    Fold innermostFirst, t, \|inner, c| TySig c, inner
+
 MissingSignatures: fn G, St, ModInfo -> St
 fn MissingSignatures g, st, info = Fold g.defs, st, \|s, d|
     if d.home == info.name and (IsFnDef d) and not (HasKey g.vals, d.qk):
@@ -238,8 +262,8 @@ fn ConvTag g, st, info, t, span:
     let cx = CxOf g, info.name
     let ((kind, out, st2)) = TagKind g, cx, st, t.ofType
     let ((fields, st3)) = Fold t.fields, (([[]], st2)), \|((acc, s)), f|
-        let ((ft, s2)) = ConvType cx, s, f.ty
-        (((Push acc, ((f.name.name, ft))), s2))
+        let ((ft, s2)) = ConvType cx, (SigilsOnName s, f), f.ty
+        (((Push acc, ((f.name.name, (FieldSigils f.sigils, ft)))), s2))
     let qs = Fold t.fields, (TypeVarsOfType t.ofType), \|acc, f| UnionTexts acc, (TypeVarsOfType f.ty)
     let ((bs, st4)) = ConvBounds cx, st3, t.bounds
     let tg = TagInfo(name=name, family=family, kind=kind, out=out, qs=qs, rqs=(if info.rowVar == "": [[]] else: [[info.rowVar]]), bounds=bs, fields=fields, home=info.name, file=info.file, span=span)

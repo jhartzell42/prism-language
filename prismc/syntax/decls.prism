@@ -87,7 +87,9 @@ type TypeBody = choice:
     TbAlias Type
 derive ^Eq, ^Show
 
+# A field's sigils stand on its name, as a binder's do (`$label: Text` holds a dynamic).
 type Field = record:
+    sigils: Text
     name: Ident
     ty: Type
     span: Range

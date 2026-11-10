@@ -177,7 +177,7 @@ fn ParseReference p = match Kind p:
             let p2 = OutOfScope p1, name.span, "named lenses `&Home` and `Over`", "the named lens `{NameText name}` is out of this compiler; write its path, `&_.score.home`"
             let ((inner, q)) = ParseReference p2
             let callee = Expr(kind=(EName name), span=start)
-            ((Expr(kind=(ECall callee, [[Arg(?name=nil, value=inner, span=inner.span)]], False, False), span=(To start, inner.span)), q))
+            ((Expr(kind=(ECall callee, [[Arg(marks="", ?name=nil, value=inner, span=inner.span)]], False, False), span=(To start, inner.span)), q))
         else: LensSteps (Expr(kind=(EName name), span=name.span)), p1
     otherwise: ((noExpr, (Fail p)))
 

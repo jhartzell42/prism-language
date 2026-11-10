@@ -169,7 +169,7 @@ fn InferKind env, st, e = match e.kind:
     EIndex recv, idx: InferIndex env, st, recv, idx, e.span
     ETopicField ignore: InferLambda env, st, e, nil
     ETopicIndex ignore: InferLambda env, st, e, nil
-    EMethod recv, m, args: InferCall env, st, (Expr(kind=(EName m), span=m.span)), (Append [[Arg(?name=nil, value=recv, span=recv.span)]], args), e.span
+    EMethod recv, m, args: InferCall env, st, (Expr(kind=(EName m), span=m.span)), (Append [[Arg(marks="", ?name=nil, value=recv, span=recv.span)]], args), e.span
     ETypeArgs target, ignore: InferCall env, st, e, [[]], e.span
     ECast x, ty, checked:
         if checked: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement non-empty arrays")))

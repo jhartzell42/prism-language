@@ -168,7 +168,9 @@ type PatternKind = choice:
     PFamily QualName
 derive ^Eq, ^Show
 
+# `marks` are the sigils written on the field's name (`$label=ignore`), "" for a plain name.
 type FieldPat = record:
+    marks: Text
     ?name: Ident
     pattern: Pattern
     span: Range
@@ -263,7 +265,10 @@ type ExprKind = choice:
     EError
 derive ^Eq, ^Show
 
+# `marks` are the sigils written on a named argument's field (`$label=$t`), "" for a plain
+# name or a positional argument.
 type Arg = record:
+    marks: Text
     ?name: Ident
     value: Expr
     span: Range

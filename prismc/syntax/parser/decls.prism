@@ -313,9 +313,13 @@ fn ParseFieldBlock p0:
 ParseField: unbounded fn Ps -> ((Field, Ps))
 fn ParseField p:
     let start = Here p
-    let ((name, p1)) = ParseIdent p
+    let ((sigils, name, p1)) = match Kind p:
+        KName n if n.sigils != "" and (Len n.path) == 1 and n.case == CaseLower: ((n.sigils, Ident(name=(Or n.path[0], ""), span=(Here p)), (Adv p)))
+        otherwise:
+            let ((id, q)) = ParseIdent p
+            (("", id, q))
     let ((ty, p2)) = ParseType (ExpectColon p1)
-    ((Field(name=name, ty=ty, span=(To start, (Prev p2))), p2))
+    ((Field(sigils=sigils, name=name, ty=ty, span=(To start, (Prev p2))), p2))
 
 # A choice's alternative: `Name`, `Name T, U`, or the indexed `Name: T -> R`.
 ParseCase: unbounded fn Ps -> ((Case, Ps))
