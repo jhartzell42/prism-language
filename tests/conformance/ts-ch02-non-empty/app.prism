@@ -1,0 +1,30 @@
+# Non-empty arrays and maps (Type System ch. 2, "Collections"; rulings round 7): a literal
+# is non-empty when it says so, `[[x, y]]+`; a `[a]+` fills a place known to want an `[a]`;
+# `xs as [a]` drops the promise and `xs as [a]+?` checks it, `nil` for an empty one; `e as
+# T` at `e`'s own type ascribes. Written by Claude on the claude-bugs branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+
+Total: fn [Nat] -> Nat
+fn Total xs = Fold xs, 0, \|acc, x| acc + x
+
+Count: fn (Nat ==> Text) -> Nat
+fn Count m = Len m
+
+Summed: fn ?[Nat]+ -> Text
+fn Summed (? xs) = "{Total xs}"
+fn Summed nil = "none"
+
+Keys: fn ?(Nat ==> Text)+ -> Text
+fn Keys (? m) = "{Count m}"
+fn Keys nil = "no keys"
+
+@main: @unit
+@main:
+    let xs = [[1, 2, 3]]+
+    let m = {1: "a", 2: "b"}+
+    let ys = xs as [Nat]
+    let empty = [[]] as [Nat]
+    let none = {} as (Nat ==> Text)
+    Ui.Label($text=$"{Total xs} {Count m} {Summed (empty as [Nat]+?)} {Summed (ys as [Nat]+?)} {Keys (none as (Nat ==> Text)+?)} {Keys (m as (Nat ==> Text)+?)} {(Len ys) as Nat}")    # 0
