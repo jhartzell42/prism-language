@@ -1,0 +1,25 @@
+# Generic functions whose type parameter is only in their result: at a type a later call
+# decides (`Pad (Empty 1), "a"`), and at one nothing decides (`Len (Empty 2)`, the element
+# type the checker settles), in a widget function too. Written by Claude on the claude-bugs
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Empty: fn Nat -> [a]
+fn Empty n = [[]]
+
+?Nothing: fn Nat -> ?a
+fn ?Nothing n = nil
+
+Pad: fn [a], a -> [a]
+fn Pad xs, x = Push xs, x
+
+@Shown: fn $Nat -> @unit
+fn @Shown $n:
+    let ?none: ?Text = ?Nothing 1
+    Ui.Label(text=$"{Or ?none, "-"}{$n}")       # 0
+
+@main: @unit
+@main:
+    @Shown $ 0                                                   # 0
+    Ui.Label(text=$"{Len (Pad (Empty 1), "a")} {Len (Empty 2)} {Show (Pad (Empty 3), 7)}")    # 1

@@ -1,0 +1,7 @@
+# Derived by hand from Type System ch. 5 (a generic function instantiated at each call; a type nothing decides does not change what the program does): one text padded on, no element, 7 padded on; nothing gives nil, so "-".
+test settled
+
+tick 0
+  added:
+    0: Ui.Label(text="-0")
+    1: Ui.Label(text="1 0 [[7]]")
