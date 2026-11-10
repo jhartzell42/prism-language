@@ -1,0 +1,33 @@
+# A block that ends on a plain result below a line that binds a building `match`'s plain
+# result (Semantics ch. 4: the arm is fixed for the life of the block and adds no path
+# segment; ch. 8: `<-` builds the child and binds its result, and a block's places are born
+# in source order). `@Panel` gives `n + 1` back, which its caller reads at its own build,
+# after the arm's places and the panel's own label.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Panel: fn Mode -> @Nat
+fn @Panel mode:
+    n <- match mode:                                                   # 0
+        Loud t:
+            Ui.Label($text=$"{t}")                                     # 0
+            @ 10
+        Soft:
+            Ui.Label($text=$"soft")                                    # 0
+            @ 20
+    Ui.Label($text=$"n {n}")                                           # 1
+    @ n + 1
+
+@main: @unit
+@main:
+    m <- @Panel (Loud "x")                                             # 0, 1
+    !go <- Ui.Button($label=$"go")                                     # 2
+    $gone <- 0 then $gone + 1 on !go
+    Ui.Label($text=$"m {m} {$gone}")                                   # 3

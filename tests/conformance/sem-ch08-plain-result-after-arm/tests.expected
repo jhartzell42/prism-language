@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 4 (a building `match`'s arm is chosen once, at the build, and stands at the block's next positions) and ch. 8 (`<-` binds the child's plain result, read at the build; places are born in source order): the panel's result is its arm's plus one, and the caller's label reads it at the build and follows `$gone` after.
+test the_block_result_is_read_by_its_caller
+
+tick 0
+  added:
+    0: Ui.Label(text="x")
+    1: Ui.Label(text="n 10")
+    2: Ui.Button(label="go")
+    3: Ui.Label(text="m 11 0")
+
+tick 1
+  in:
+    2: click
+  changed:
+    3: Ui.Label(text="m 11 1")
