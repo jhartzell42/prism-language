@@ -132,6 +132,16 @@ else
     failed+=(free-variable-defaulted)
     echo "FAILED free-variable-defaulted: wanted no undecided variable in the typed output ($out/free-variable-defaulted.typed)"
 fi
+# A bare `Error` as a tuple's part nothing decides is a `~unit`'s failure (ruling NE): the
+# typed output shows the tuple as `((~unit, Int))`.
+"$prismc" --typed tests/driver/fault-variable-defaulted.prism --out "$out/fault-variable-defaulted.typed" > /dev/null 2>&1
+if [ -f "$out/fault-variable-defaulted.typed" ] && grep -q "(tuple (~ unit) Int)" "$out/fault-variable-defaulted.typed" &&
+    ! grep -q "(tuple Prelude.Error Int)" "$out/fault-variable-defaulted.typed"; then
+    echo "ok fault-variable-defaulted: the part is a ~unit"
+else
+    failed+=(fault-variable-defaulted)
+    echo "FAILED fault-variable-defaulted: wanted the part as (~ unit) in the typed output ($out/fault-variable-defaulted.typed)"
+fi
 # A static clause widget's plain result is refused by lowering, never dropped.
 said=$("$prismc" compile tests/driver/clause-plain-result.prism -o "$out/clause-plain-result" 2>&1)
 if [ $? -ne 0 ] && echo "$said" | grep -q 'not-lowered.*a widget of several clauses whose clause ends on a plain result'; then

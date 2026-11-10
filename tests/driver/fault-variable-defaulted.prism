@@ -1,0 +1,10 @@
+# A bare `Error` as a tuple's part that nothing else decides: the part is a `~T` whose
+# success side no constraint reaches, so the checker settles it to `~unit` (Jimmy's ruling
+# NE, as GHC leaves `Left e` an `Either E a` and the free `a` defaults), never the bare
+# `Error`. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+
+@main: @unit
+@main:
+    let ts = [[((Error(kind=Prelude.NotANumber, message="e"), 2))]]
+    Ui.Label(text=$"{Len ts}")
