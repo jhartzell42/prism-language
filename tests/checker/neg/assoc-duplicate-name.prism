@@ -1,0 +1,10 @@
+# `duplicate-name`: an associated type is a type-level name of its trait's module (Jimmy's
+# ruling AK, as Haskell's), so two traits of one module cannot each declare `Item`. Written
+# by Claude on the claude-bugs branch; subject to change.
+trait ^Box a:
+    type Item
+    Open: fn a -> Item a
+
+trait ^Bag a:
+    type Item
+    Pour: fn a -> Item a
