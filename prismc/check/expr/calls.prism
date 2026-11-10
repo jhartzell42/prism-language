@@ -135,7 +135,7 @@ fn QOccurs q, t = match t:
     TySig ignore, i: QOccurs q, i
     TyAt i, ignore: QOccurs q, i
     TyElem ignore, o: QOccurs q, o
-    TyAssoc ignore, i: QOccurs q, i
+    TyAssoc ignore, ignore, i: QOccurs q, i
     otherwise: False
 
 # Whether `q` is an element's output somewhere in a type (`Element R q`).
@@ -176,7 +176,7 @@ fn RigidIn r, t = match t:
     TySig ignore, i: RigidIn r, i
     TyAt i, ignore: RigidIn r, i
     TyElem ignore, o: RigidIn r, o
-    TyAssoc ignore, i: RigidIn r, i
+    TyAssoc ignore, ignore, i: RigidIn r, i
     otherwise: False
 
 # A block-local type made outside every `&` block (ch. 5, pass 3; Semantics ch. 5).

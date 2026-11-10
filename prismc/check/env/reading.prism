@@ -33,12 +33,18 @@ type Cx = record:
     scope: Rw
     rowVars: [Text]
     unwritten: Col
+    # The bounds in force, each a type variable and a trait's key, and the trait whose
+    # declaration or impl is being read with its associated types' names: they decide which
+    # trait a bare associated type's name means (`ResolveAssoc`).
+    bounds: [((Text, Text))]
+    ownTrait: Text
+    ownAssocs: [Text]
 derive ^Eq, ^Show
 
 CxOf: fn G, Text -> Cx
 fn CxOf g, m:
     let info = Or g.mods[m], (Or g.mods[""], dummyMod)
-    Cx(g=g, home=m, scope=info.emitRw, rowVars=(if info.rowVar == "": [[]] else: [[info.rowVar]]), unwritten=CBound)
+    Cx(g=g, home=m, scope=info.emitRw, rowVars=(if info.rowVar == "": [[]] else: [[info.rowVar]]), unwritten=CBound, bounds=[[]], ownTrait="", ownAssocs=[[]])
 
 let dummyMod = ModInfo(name="", file=0, emitRw=emptyRow, rowVar="", uses=[[]], root=False, tree=emptyModule)
 
@@ -114,11 +120,11 @@ fn ConvNamed cx, st, n, args, span:
                 let ((rw, st2)) = ConvRow cx, st, (Or args[0], dummyType)
                 ((TyElemAny rw, st2))
             otherwise: ((TyErr, (Err st, "kind", span, "`Elem` takes a row; here it has {CountWord (Len args)}")))
-    else: if (Len n.path) == 1 and (Len args) == 1 and IsAssocName cx.g, name:
+    else: if (Len n.path) == 1 and (Len args) == 1 and (Len (AssocTraits cx, name)) > 0:
         # an associated type applied (Type System ch. 3, ch. 5's Traits): normalized when
         # unified, at an impl's head
         let ((a, st2)) = ConvType cx, st, (Or args[0], dummyType)
-        (((TyAssoc name, a), st2))
+        ResolveAssoc cx, st2, name, a, span
     else: if name == "Answer" or name == "Wired":
         (((TyCon name, [[]]), st))
     else: if name == "Instant":
@@ -191,10 +197,13 @@ fn SigScheme cx, st, t, bounds:
         &_.rowVars <= rowVars
         &_.unwritten <= CBound
     let written = ColorVarsOfType t
-    let ((ty, defaults, joins, st2)) = SigType cx2, st, t, written
+    # the bounds first: they decide an associated type the signature names
+    let ((bs, st1)) = ConvBounds cx, st, bounds
+    let cx3 = update cx2:
+        &_.bounds <= Append &_.bounds, bs
+    let ((ty, defaults, joins, st3)) = SigType cx3, st1, t, written
     let tvs = Filter (TypeVarsOfType t), \|v| not (HasText rowVars, v)
     let cqs = Fold defaults, written, \|acc, v| AddText acc, v
-    let ((bs, st3)) = ConvBounds cx, st2, bounds
     let rowsUsed = Filter rowVars, \|v| (HasText (RowVarsOfType t), v) or (UsesScope t)
     ((Scheme(qs=tvs, plainQs=[[]], rqs=rowsUsed, cqs=cqs, cjoins=joins, bounds=bs, ty=ty), st3))
 
@@ -400,6 +409,24 @@ fn ColorVarsOfType t = match t.kind:
     TEmit ty, ignore: ColorVarsOfType ty
     otherwise: [[]]
 
-# Whether a name is an associated type some trait of the program declares.
-IsAssocName: fn G, Text -> Bool
-fn IsAssocName g, name = Fold (Values g.traits), False, \|f, tr| f or HasText tr.assocs, name
+# The traits that declare an associated type of this name, by key: the program's and the
+# one being declared.
+AssocTraits: fn Cx, Text -> [Text]
+fn AssocTraits cx, name:
+    let declared = Fold (Values cx.g.traits), [[]], \|acc, tr| if HasText tr.assocs, name: AddText acc, tr.name else: acc
+    if cx.ownTrait != "" and HasText cx.ownAssocs, name: AddText declared, cx.ownTrait else: declared
+
+# Which trait a bare associated type's name means: the one trait declaring it; of several,
+# the one its argument's bounds name (`Item a` where `a: ^Box`), else the trait being
+# declared or implemented; else `ambiguous`. Two traits may each declare `type Item`, and
+# a type may implement both with different choices: the name alone never picks one.
+ResolveAssoc: fn Cx, St, Text, Ty, Range -> ((Ty, St))
+fn ResolveAssoc cx, st, name, a, span:
+    let all = AssocTraits cx, name
+    let bounded = match a:
+        TyQ v: Filter all, \|k| HasText (Each (Filter cx.bounds, \|((bv, ignore))| bv == v), \|((ignore, bk))| bk), k
+        otherwise: [[]]
+    let pick = if (Len all) == 1: all else: if (Len bounded) == 1: bounded else: if HasText all, cx.ownTrait: [[cx.ownTrait]] else: [[]]
+    match pick[0]:
+        ? k: (((TyAssoc k, name, a), st))
+        nil: ((TyErr, (ErrFix st, "ambiguous", span, "`{name}` is an associated type of {Join (Each all, \|k| "`^{BareName k}`"), " and "}; nothing here says which", "bound its argument by one of the traits, `where a: ^{BareName (Or all[0], "")}`")))

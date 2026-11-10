@@ -131,6 +131,8 @@ fn CppExpr cp, x = match x:
     XRefusal what: "compile_error!(\"{loweringRefusal}{Escape what}\")"
     XUnreachable: "throw ::prism_rtl::Panic(\"entered unreachable code\")"
     XCall f, args: CppCall cp, f, args
+    XCallAt f, tys, args: "{FreeCallPath cp, f}<{CppTypes cp, tys}>({CppArgs cp, args})"
+    XCallSelf tr, m, self, args: "{FreeCallPath cp, tr}::{CppId m}_at<{CppType cp, self}>::call({CppArgs cp, args})"
     XApply f, args: "{CppTightPlace cp, f}({CppArgs cp, args})"
     XMethod r, m, args: CppMethod cp, r, m, args
     XBin op, l, r:
@@ -175,7 +177,7 @@ fn CppExpr cp, x = match x:
         otherwise:
             let e = CppExpr cp, y
             if e == "\{\}" or e == "::std::nullopt": "{CppType cp, t}\{\}"
-            else: if (IsCtor y, "Ok") or IsCtor y, "Err": "{CppType cp, t}({e})"
+            else: if (IsCtor y, "Ok") or (IsCtor y, "Err") or IsCtor y, "Some": "{CppType cp, t}({e})"
             else: e
 
 # A string literal: a NUL as `\000` (an octal escape takes three digits at most), and the
@@ -639,6 +641,8 @@ fn ReadsOf x, into, acc:
         XFormatStr xs: ReadsEach xs, into, acc
         XIsCase y, ignore: ReadsOf y, into, acc
         XCall ignore, xs: ReadsEach xs, into, acc
+        XCallAt ignore, ignore, xs: ReadsEach xs, into, acc
+        XCallSelf ignore, ignore, ignore, xs: ReadsEach xs, into, acc
         XApply f, xs: ReadsEach (Append [[f]], xs), into, acc
         XMethod r, ignore, xs: ReadsEach (Append [[r]], xs), into, acc
         XBin ignore, l, r: ReadsEach [[l, r]], into, acc

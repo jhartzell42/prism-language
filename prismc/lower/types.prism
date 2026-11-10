@@ -102,7 +102,7 @@ fn OutTyOf lx, t = match t:
     TyElem ignore, ignore: OutLive (OutNamed elemRef, [[]])
     TyElemAny ignore: OutNamed elemRef, [[]]
     TyAt i, ignore: blueprintTy
-    TyAssoc n, a: AssocOut lx, n, a
+    TyAssoc tr, n, a: AssocOut lx, tr, n, a
     TyErr: OutRefused "a type the checker did not find"
 
 # A blueprint as a value, `@o` (a supplier's answer): prism_rtl's, over the program's
@@ -140,7 +140,7 @@ fn HasTime t = match t:
     TyTuple ts: Fold ts, False, \|seen, x| seen or HasTime x
     TyArray x: HasTime x
     TyMap k, v: (HasTime k) or HasTime v
-    TyAssoc ignore, x: HasTime x
+    TyAssoc ignore, ignore, x: HasTime x
     otherwise: False
 
 # An event parameter taken as an event value: a type `Peel` leaves and `OutTyOf` spells
@@ -442,19 +442,21 @@ fn IsCopy t = t == OutBool or t == OutFloat or t == OutU8 or t == OutChar or t =
 AsBool: fn Vl -> Ex
 fn AsBool v = Copy v
 
-# An associated type: the type the impl at its argument's head chooses (Type System ch.
-# 5, Traits), else the application as the target writes one, `<A as Box>::Item` or
-# `Self::Item` (`OutAssoc`).
-AssocOut: unbounded fn Lx, Text, Ty -> OutTy
-fn AssocOut lx, n, a = match ?ImplAssoc lx.g, n, a:
+# An associated type: the type the impl of its trait at its argument's head chooses (Type
+# System ch. 5, Traits), else the application as the target writes one, `<A as Box>::Item`
+# or `Self::Item` (`OutAssoc`).
+AssocOut: unbounded fn Lx, Text, Text, Ty -> OutTy
+fn AssocOut lx, tr, n, a = match ?ImplAssoc lx.g, tr, n, a:
     ? t: OutTyOf lx, t
-    nil: OutAssoc (AssocTrait lx, n), (Camel n), (OutTyOf lx, a)
+    nil: match lx.g.traits[tr]:
+        ? info: OutAssoc (PathIn lx, info.home, (TraitName info.name)), (Camel n), (OutTyOf lx, a)
+        nil: OutRefused "an associated type `{n}` of `{tr}`, which no trait of the program declares"
 
-# The type the impl at a known head chooses for an associated type, its variables the
-# head's arguments.
-?ImplAssoc: unbounded fn G, Text, Ty -> ?Ty
-fn ?ImplAssoc g, n, a = match a:
-    TyCon c, args: Fold (AllImpls g), nil, \|?found, im| match ?found:
+# The type the impl of the trait `tr` at a known head chooses for an associated type, its
+# variables the head's arguments.
+?ImplAssoc: unbounded fn G, Text, Text, Ty -> ?Ty
+fn ?ImplAssoc g, tr, n, a = match a:
+    TyCon c, args: Fold (Or g.impls[tr], [[]]), nil, \|?found, im| match ?found:
         ? t: ? t
         nil: ?ImplChoice im, n, c, args
     otherwise: nil
@@ -469,9 +471,3 @@ fn ?ImplChoice im, n, c, args = match im.head:
         Fold im.assocs, nil, \|?f2, ((an, at))| if an == n and ?f2 == nil: ? (Instantiated at, params, args) else: ?f2
     otherwise: nil
 
-AllImpls: fn G -> [ImplInfo]
-fn AllImpls g = Fold (Values g.impls), [[]], \|acc, l| Append acc, l
-
-# The trait that declares an associated type, by its path from the site.
-AssocTrait: fn Lx, Text -> Text
-fn AssocTrait lx, n = Fold (Values lx.g.traits), "", \|found, tr| if found == "" and HasText tr.assocs, n: PathIn lx, tr.home, (TraitName tr.name) else: found

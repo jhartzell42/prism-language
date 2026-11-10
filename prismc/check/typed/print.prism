@@ -38,7 +38,7 @@ fn TySexp t = match t:
     TyAt i, rw: "(@ {TySexp i} {RowSexp rw})"
     TyElem rw, o: "(element {RowSexp rw} {TySexp o})"
     TyElemAny rw: "(elem {RowSexp rw})"
-    TyAssoc n, a: "(assoc {n} {TySexp a})"
+    TyAssoc ignore, n, a: "(assoc {n} {TySexp a})"
     TyAny trs: "(any{Concat (Each trs, \|x| " ^{x}")})"
     TyErr: "unknown"
 

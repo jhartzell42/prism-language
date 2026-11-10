@@ -85,19 +85,19 @@ fn NormAssoc st, t:
 
 NormAssocOnce: unbounded fn St, Ty -> Ty
 fn NormAssocOnce st, t = match t:
-    TyAssoc "Quotient", a: match Walk st, a:
+    TyAssoc tr, "Quotient", a if tr == quotientTrait: match Walk st, a:
         TyCon "Float", [[]]: tFloat
-        TyCon n, [[]]: if n == "Nat" or n == "Int" or n == "U8": TySig "?", (TyCon n, [[]]) else: ImplAssoc st, "Quotient", (Walk st, a), t
-        otherwise: ImplAssoc st, "Quotient", (Walk st, a), t
-    TyAssoc n, a: ImplAssoc st, n, (Walk st, a), t
+        TyCon n, [[]]: if n == "Nat" or n == "Int" or n == "U8": TySig "?", (TyCon n, [[]]) else: ImplAssoc st, tr, "Quotient", (Walk st, a), t
+        otherwise: ImplAssoc st, tr, "Quotient", (Walk st, a), t
+    TyAssoc tr, n, a: ImplAssoc st, tr, n, (Walk st, a), t
     other: other
 
-# An associated type at a known head: the type the one impl at that head chooses, its
-# variables the head's arguments (ch. 5: "the impl's `?Int` before comparing"); at a
-# variable, or with no impl choosing it, the application as it is.
-ImplAssoc: unbounded fn St, Text, Ty, Ty -> Ty
-fn ImplAssoc st, n, a, t = match a:
-    TyCon c, args: Fold st.assocImpls, t, \|found, ai| if found != t or ai.name != n: found else: match ai.head:
+# An associated type at a known head: the type the one impl of its trait at that head
+# chooses, its variables the head's arguments (ch. 5: "the impl's `?Int` before
+# comparing"); at a variable, or with no impl choosing it, the application as it is.
+ImplAssoc: unbounded fn St, Text, Text, Ty, Ty -> Ty
+fn ImplAssoc st, tr, n, a, t = match a:
+    TyCon c, args: Fold st.assocImpls, t, \|found, ai| if found != t or ai.cls != tr or ai.name != n: found else: match ai.head:
         TyCon hc, hargs if hc == c and (Len hargs) == (Len args):
             let tys = Fold (Range0 (Len hargs)), {}, \|m, i| match Or hargs[i], TyErr:
                 TyQ q: Insert m, q, (Or args[i], TyErr)
@@ -108,7 +108,7 @@ fn ImplAssoc st, n, a, t = match a:
 
 IsWaitingAssoc: unbounded fn St, Ty -> Bool
 fn IsWaitingAssoc st, t = match t:
-    TyAssoc ignore, a: IsFlexVar st, a
+    TyAssoc ignore, ignore, a: IsFlexVar st, a
     otherwise: False
 
 Defer: fn St, Ty, Ty, Range -> St
@@ -172,7 +172,7 @@ fn UnifyHeads st, e, f, span:
             let ((v, st2)) = UnifyRow st, r1, r2, span
             if v != "": ((v, st2)) else: UnifyIn st2, o1, o2, span
         ((TyElemAny r1, TyElemAny r2)): UnifyRow st, r1, r2, span
-        (((TyAssoc n1, a1), (TyAssoc n2, a2))): if n1 == n2: UnifyIn st, a1, a2, span else: (("mismatch", st))
+        (((TyAssoc t1, n1, a1), (TyAssoc t2, n2, a2))): if t1 == t2 and n1 == n2: UnifyIn st, a1, a2, span else: (("mismatch", st))
         ((TyAny xs, TyAny ys)): if (SortTexts xs) == (SortTexts ys): (("", st)) else: (("mismatch", st))
         otherwise: (("mismatch", st))
 

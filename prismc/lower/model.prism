@@ -278,6 +278,15 @@ type Ex = choice:
     XRefusal Text
     XUnreachable
     XCall Ref, [Ex]
+    # A call with its type arguments said, in the callee's order: a generic function some
+    # of whose type parameters no parameter's type holds (C++ deduces none from a result;
+    # Rust infers them, and prints the call plain).
+    XCallAt Ref, [OutTy], [Ex]
+    # A call of a trait's method whose type parameter is only in its result, at the type
+    # the call gives: the trait, the method, that type. Rust `<T as Trait>::m(..)`, C++
+    # `Trait::m_at<T>::call(..)` (a class template per such method, each impl's choice a
+    # specialization).
+    XCallSelf Ref, Text, OutTy, [Ex]
     XApply Ex, [Ex]
     XMethod Ex, Text, [Ex]
     XBin BinOp, Ex, Ex
@@ -619,6 +628,9 @@ derive ^Eq, ^Show
 # A program's own trait: each method an associated function over `Self`, a default's body.
 type TraitDef = record:
     name: Text
+    # its methods whose type parameter is only in their result, as the target spells them
+    # (`XCallSelf`)
+    resultOnly: [Text]
     # its associated types' names, as the target spells them
     assocs: [Text]
     methods: [FnDef]
@@ -635,6 +647,8 @@ type ImplDef = record:
     generics: [((Text, [Text]))]
     # the associated types it chooses, by name
     assocs: [((Text, OutTy))]
+    # its trait's methods whose type parameter is only in their result (`TraitDef`)
+    resultOnly: [Text]
     methods: [FnDef]
     doc: Text
 derive ^Eq, ^Show
@@ -726,6 +740,8 @@ fn ExReads x, n = match x:
     XFormatStr ys: AnyReads ys, n
     XIsCase y, ignore: ExReads y, n
     XCall ignore, ys: AnyReads ys, n
+    XCallAt ignore, ignore, ys: AnyReads ys, n
+    XCallSelf ignore, ignore, ignore, ys: AnyReads ys, n
     XApply f, ys: (ExReads f, n) or AnyReads ys, n
     XMethod y, ignore, ys: (ExReads y, n) or AnyReads ys, n
     XBin ignore, a, b: (ExReads a, n) or ExReads b, n

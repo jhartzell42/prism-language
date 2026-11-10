@@ -29,6 +29,36 @@ NoteTy: fn St, Range, Ty -> St
 fn NoteTy st, span, t = if not st.recording: st else: update st:
     &_.typed.exprs <= Push &_.typed.exprs, TyNote(at=(AtHere st, span), ty=t)
 
+# An expression of type `found` standing where `expected` is wanted: when `found` is an
+# `Error`, a question for the program's end, whether `expected` is a `~T` (`FaultNotes`).
+NoteFaultAt: unbounded fn St, Range, Ty, Ty -> St
+fn NoteFaultAt st, span, expected, found = match Walk st, found:
+    TyCon "Prelude.Error", [[]]: update st:
+        &_.faultQs <= Push &_.faultQs, Waiting(expected=expected, found=found, span=span, file=st.file)
+    otherwise: st
+
+# The span a block's value comes from: its last statement's expression, else the block.
+TailSpan: fn Block -> Range
+fn TailSpan b = match ?Last b.stmts:
+    ? s: match s.kind:
+        SExpr e: e.span
+        otherwise: b.span
+    nil: b.span
+
+# The fault questions answered: each place whose wanted type is, under its time layers, a
+# `~T`.
+FaultNotes: unbounded fn St -> [TyNote]
+fn FaultNotes st = Fold st.faultQs, [[]], \|acc, q|
+    let z = ResolveTy st, q.expected
+    if IsFaultHead z: Push acc, TyNote(at=SrcAt(file=q.file, span=q.span), ty=z) else: acc
+
+IsFaultHead: fn Ty -> Bool
+fn IsFaultHead t = match t:
+    TySig "~", ignore: True
+    TySig "$", i: IsFaultHead i
+    TySig "!", i: IsFaultHead i
+    otherwise: False
+
 NoteBinder: fn St, Range, Text, Ty -> St
 fn NoteBinder st, span, name, t = if not st.recording: st else: update st:
     &_.typed.binders <= Push &_.typed.binders, BinderNote(at=(AtHere st, span), name=name, ty=t)
@@ -121,6 +151,7 @@ fn ZonkTyped st0:
     let st = DefaultFree st0
     let t = st.typed
     update t:
+        &_.faults <= FaultNotes st
         &_.exprs <= Each &_.exprs, \|n| TyNote(at=n.at, ty=(ResolveTy st, n.ty))
         &_.binders <= Each &_.binders, \|n| BinderNote(at=n.at, name=n.name, ty=(ResolveTy st, n.ty))
         &_.insts <= Each &_.insts, \|n| InstNote(at=n.at, name=n.name, tys=(Each n.tys, \|((q, x))| ((q, (ResolveTy st, x)))), cols=(Each n.cols, \|((q, c))| ((q, (ResolveCol st, c)))))
@@ -167,7 +198,7 @@ fn ResolveIn st, t = match t:
     TySig s, i: TySig s, (ResolveIn st, i)
     TyAt i, rw: TyAt (ResolveIn st, i), rw
     TyElem rw, o: TyElem rw, (ResolveIn st, o)
-    TyAssoc n, a: TyAssoc n, (ResolveIn st, a)
+    TyAssoc tr, n, a: TyAssoc tr, n, (ResolveIn st, a)
     other: other
 
 # A binder's variable remembers where the binder stands, for `mark-stack`.
@@ -226,7 +257,7 @@ fn Zonk st, t = match NormAssoc st, (Walk st, t):
     TyAt i, rw: TyAt (Zonk st, i), (WalkRow st, rw)
     TyElem rw, o: TyElem (WalkRow st, rw), (Zonk st, o)
     TyElemAny rw: TyElemAny (WalkRow st, rw)
-    TyAssoc n, a: TyAssoc n, (Zonk st, a)
+    TyAssoc tr, n, a: TyAssoc tr, n, (Zonk st, a)
     w: w
 
 # The flexible type variables of a type.
@@ -244,5 +275,5 @@ fn FreeVarsInto st, acc, t = match Walk st, t:
     TySig ignore, i: FreeVarsInto st, acc, i
     TyAt i, ignore: FreeVarsInto st, acc, i
     TyElem ignore, o: FreeVarsInto st, acc, o
-    TyAssoc ignore, a: FreeVarsInto st, acc, a
+    TyAssoc ignore, ignore, a: FreeVarsInto st, acc, a
     otherwise: acc

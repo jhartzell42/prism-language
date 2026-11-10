@@ -127,6 +127,9 @@ type Lx = record:
     inlined: Text
     subst: (Text ==> Ty)
     csubst: (Text ==> Col)
+    # The expressions whose `Error` value is the failure of the `~T` it meets, with that
+    # type, by place (the typed output's `faults`).
+    faults: (Text ==> Ty)
 derive ^Eq, ^Show
 
 # A key into the typed tables: the file and the range.
@@ -160,7 +163,7 @@ fn SubstTyIn lx, t = match t:
     TySig s, i: TySig s, (SubstTyIn lx, i)
     TyAt i, rw: TyAt (SubstTyIn lx, i), rw
     TyElem rw, o: TyElem rw, (SubstTyIn lx, o)
-    TyAssoc n, a: TyAssoc n, (SubstTyIn lx, a)
+    TyAssoc tr, n, a: TyAssoc tr, n, (SubstTyIn lx, a)
     other: other
 
 InstCol: fn Lx, Col -> Col

@@ -220,7 +220,7 @@ fn Check env, st, e, expected = match e.kind:
     EAny x: NoteTy (CheckAny env, st, x, expected, e.span), e.span, expected
     otherwise:
         let ((t, st2)) = Infer env, st, e
-        Unify st2, expected, t, e.span
+        Unify (NoteFaultAt st2, e.span, expected, t), expected, t, e.span
 
 # `any e` against `any ^Show`: the bounds are solved at `e`'s type (ch. 5, Existentials).
 CheckAny: unbounded fn Env, St, Expr, Ty, Range -> St
@@ -241,6 +241,7 @@ fn EnvCx env:
     let base = CxOf env.g, env.home
     update base:
         &_.scope <= env.scope
+        &_.bounds <= env.givens
 
 # ---------------------------------------------------------------------------------------
 # Names

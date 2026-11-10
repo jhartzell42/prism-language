@@ -473,16 +473,27 @@ fn JobParts cp, j:
 # Each associated type is a class template of the namespace over `Self`, declared with the
 # module's forward declarations and never defined: an impl's choice is a specialization at
 # its head, `typename Box_t::Item<A>::type` reads it (`CppType`'s `OutAssoc`).
+#
+# A method whose type is only in its result (`?Read: fn Text -> ?a`) is no overload, which
+# C++ would tell apart by its arguments: it is a class template over `Self`, `read_o_at`,
+# declared with the forward declarations, its static `call` the default's body if the trait
+# has one, each impl's a specialization at its head (`ImplParts`), each call
+# `Parse_t::read_o_at<T>::call(..)` (`XCallSelf`).
 TraitParts: unbounded fn Cp, TraitDef -> Parts
 fn TraitParts cp, t:
-    let defaults = Filter t.methods, \|f| f.public
+    let overloads = Filter t.methods, \|f| not (InList t.resultOnly, f.name)
+    let atTypes = Filter t.methods, \|f| InList t.resultOnly, f.name
+    let defaults = Filter overloads, \|f| f.public
     let defs = Each defaults, \|f| FnDefinition cp, (WithGenerics f, [[(("Self", [[]]))]])
-    let protos = Each t.methods, \|f| "{FnSignature cp, (WithGenerics f, [[(("Self", [[]]))]])}{if f.public: "" else: " = delete"};"
-    let generic = if (Len defaults) == 0: [[]] else: [[(TraitNamespace t.name, (Join defs, "\n"))]]
-    let assocs = Each t.assocs, \|n| "template <class Self>\nstruct {n};"
+    let atDefs = Each (Filter atTypes, \|f| f.public), \|f| CppFunction (CppDoc f.doc), "template <class Self>\n{CppType cp, f.ret} {CppId f.name}_at<Self>::call({CppParams cp, f.params})", (CppBody (WithParams cp, f.params), f.body)
+    let protos = Each overloads, \|f| "{FnSignature cp, (WithGenerics f, [[(("Self", [[]]))]])}{if f.public: "" else: " = delete"};"
+    let atProtos = Each (Filter atTypes, \|f| f.public), \|f| "template <class Self>\nstruct {CppId f.name}_at \{\n    static {CppType cp, f.ret} call({CppParams cp, f.params});\n\};"
+    let allDefs = Append defs, atDefs
+    let generic = if (Len allDefs) == 0: [[]] else: [[(TraitNamespace t.name, (Join allDefs, "\n"))]]
+    let declared = Append (Each t.assocs, \|n| "template <class Self>\nstruct {n};"), (Each atTypes, \|f| "template <class Self>\nstruct {CppId f.name}_at;")
     update (GenericOnly generic):
-        &_.protos <= [[(TraitNamespace t.name, (Join protos, "\n"))]]
-        &_.forward <= if (Len assocs) == 0: [[]] else: [[(TraitNamespace t.name, (Join assocs, "\n"))]]
+        &_.protos <= [[(TraitNamespace t.name, (Join (Append protos, atProtos), "\n"))]]
+        &_.forward <= if (Len declared) == 0: [[]] else: [[(TraitNamespace t.name, (Join declared, "\n"))]]
 
 # An impl: of a program's trait, overloads in the trait's namespace (of another module's
 # trait, in a namespace of the impl's module, `impl_aloud_Loud`, which a using-declaration
@@ -506,17 +517,28 @@ fn ImplParts cp, i:
             let tr = DropPrefix (TypePath i.tr), "crate::"
             let own = not (Contains tr, "::")
             let ns = if own: tr else: "impl_{Join (SplitOn tr, "::"), "_"}"
-            let inTrait = Each i.methods, \|f| TraitNamespace ns, (FnDefinition cp, (WithGenerics f, i.generics))
-            let protos = Each i.methods, \|f| TraitNamespace ns, "{FnSignature cp, (WithGenerics f, i.generics)};"
-            # each associated type it chooses, a specialization in the trait's own namespace
-            # (a class template is specialized where it is declared, so another module's
-            # trait's at the crate's scope)
+            let overloads = Filter i.methods, \|f| not (InList i.resultOnly, f.name)
+            let atTypes = Filter i.methods, \|f| InList i.resultOnly, f.name
+            let inTrait = Each overloads, \|f| TraitNamespace ns, (FnDefinition cp, (WithGenerics f, i.generics))
+            let protos = Each overloads, \|f| TraitNamespace ns, "{FnSignature cp, (WithGenerics f, i.generics)};"
+            # each associated type it chooses, and each method whose type is only in its
+            # result, a specialization in the trait's own namespace (a class template is
+            # specialized where it is declared, so another module's trait's at the crate's
+            # scope, its `call` defined there too)
             let spec = if gens == "": "template <>\n" else: gens
             let chosen = Each i.assocs, \|((n, at))| "{spec}struct {n}<{head}> \{ using type = {CppType cp, at}; \};"
-            let specs = if (Len chosen) == 0: [[]] else: [[(TraitNamespace tr, (Join chosen, "\n"))]]
-            let outer = if own: [[]] else: [[(TraitNamespace tr, (Join (Each i.methods, \|f| "using ::crate::{cp.home}::{ns}::{CppId f.name};"), "\n"))]]
-            update (ProtosDefs (if own: Append specs, protos else: protos), inTrait):
+            let atSpecs = Each atTypes, \|f|
+                let call = "static {CppType cp, f.ret} call({CppParams cp, f.params})"
+                if own: "{spec}struct {CppId f.name}_at<{head}> \{\n    {call};\n\};"
+                else: "{spec}struct {CppId f.name}_at<{head}> \{\n    {CppFunction "", call, (CppBody (WithParams cp, f.params), f.body)}\n\};"
+            let atDefs = if own: Each atTypes, \|f| TraitNamespace ns, (CppFunction (CppDoc f.doc), "{gens}{CppType cp, f.ret} {CppId f.name}_at<{head}>::call({CppParams cp, f.params})", (CppBody (WithParams cp, f.params), f.body)) else: [[]]
+            let specLines = Append chosen, atSpecs
+            let specs = if (Len specLines) == 0: [[]] else: [[(TraitNamespace tr, (Join specLines, "\n"))]]
+            let outer = if own or (Len overloads) == 0: [[]] else: [[(TraitNamespace tr, (Join (Each overloads, \|f| "using ::crate::{cp.home}::{ns}::{CppId f.name};"), "\n"))]]
+            let parts = ProtosDefs (if own: Append specs, protos else: protos), (if gens == "": Append inTrait, atDefs else: inTrait)
+            update parts:
                 &_.outer <= if own: outer else: Append specs, outer
+                &_.generic <= if gens == "": [[]] else: atDefs
 
 # A function with type parameters before its own.
 WithGenerics: fn FnDef, [((Text, [Text]))] -> FnDef

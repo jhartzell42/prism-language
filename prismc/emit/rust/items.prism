@@ -123,8 +123,13 @@ fn RustJob j:
 
 # A type, its derives, and its printer and plain-data impls (claude/backend.md, "Printing").
 TypeDecl: unbounded fn TyDef -> Text
+#
+# A generic type compares by impls of its own, each bounding its parameters by the trait
+# itself (`A: Eq`): a derive bounds them by `PartialEq` alone, and a field that holds them
+# in an array (`[a]`) compares only `Eq` elements (`EqImpls`, `OrdImpls`).
 fn TypeDecl t:
-    let derives = Join (Filter [["::std::clone::Clone", (if t.eq or t.ord: "::std::cmp::PartialEq, ::std::cmp::Eq" else: ""), (if t.ord: "::std::cmp::PartialOrd, ::std::cmp::Ord" else: "")]], \|d| d != ""), ", "
+    let generic = (Len t.params) > 0
+    let derives = if generic: "::std::clone::Clone" else: Join (Filter [["::std::clone::Clone", (if t.eq or t.ord: "::std::cmp::PartialEq, ::std::cmp::Eq" else: ""), (if t.ord: "::std::cmp::PartialOrd, ::std::cmp::Ord" else: "")]], \|d| d != ""), ", "
     let head = "{t.name}{GenericNames t.params}"
     let doc = SourceDoc "`{t.prism}`:", t.doc
     let decl = match t.shape:
@@ -138,7 +143,66 @@ fn TypeDecl t:
         otherwise: Enum doc, derives, head, (Join (Each t.cases, \|c| EnumCase c), "\n")
     let show = if t.show == ShownDerived: "\n{ShowImpl t, head}" else: ""
     let pod = if t.pod: "\n{ToPodImpl t, head}\n{FromPodImpl t, head}" else: ""
-    "{decl}{show}{pod}"
+    let eq = if generic and (t.eq or t.ord): "\n{EqImpls t, head}" else: ""
+    let ord = if generic and t.ord: "\n{OrdImpls t, head}" else: ""
+    "{decl}{show}{pod}{eq}{ord}"
+
+# A case's pattern with its fields bound by a prefix, `Pair::Two(b0, b1)`.
+CasePatternAs: fn TyDef, CaseDef, Text -> Text
+fn CasePatternAs t, c, prefix:
+    let names = Join (Each (Range0 (Len c.fields)), \|i| "{prefix}{i}"), ", "
+    match t.shape:
+        ShapeNewtype: "{t.name}({names})"
+        ShapeUnit: t.name
+        otherwise: if (Len c.fields) == 0: "{t.name}::{c.name}" else: "{t.name}::{c.name}({names})"
+
+# The pairs of a case's fields, `self`'s against `other`'s: a record's by name, a case's by
+# the binders `CasePatternAs` gives.
+FieldPairs: fn TyDef, CaseDef -> [((Text, Text))]
+fn FieldPairs t, c = match t.shape:
+    ShapeRecord: Each c.fields, \|((f, ignore))| (("self.{f}", "other.{f}"))
+    otherwise: Each (Range0 (Len c.fields)), \|i| (("a{i}", "b{i}"))
+
+# `==` of a generic type: field by field, a choice's cases matched in pairs.
+EqImpls: unbounded fn TyDef, Text -> Text
+fn EqImpls t, head:
+    let body = match t.shape:
+        ShapeRecord: FieldsEq t, (Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]])))
+        otherwise: "match (self, other) \{\n{Concat (Each t.cases, \|c| "    ({CasePatternAs t, c, "a"}, {CasePatternAs t, c, "b"}) => {FieldsEq t, c},\n")}    #[allow(unreachable_patterns)]\n    _ => false,\n\}"
+    let eqImpl = Impl (Bounded t.params, "::std::cmp::Eq"), "::std::cmp::PartialEq", head, "fn eq(&self, other: &Self) -> bool", body
+    "{eqImpl}\nimpl{Bounded t.params, "::std::cmp::Eq"} ::std::cmp::Eq for {head} \{\}"
+
+# The order of a generic type: a choice's cases in their order, then field by field.
+OrdImpls: unbounded fn TyDef, Text -> Text
+fn OrdImpls t, head:
+    let arms = Concat (Each (Range0 (Len t.cases)), \|i| RankArm t, i)
+    let rank = "let rank = |x: &Self| match x \{ {arms}\};"
+    let body = match t.shape:
+        ShapeRecord: FieldsCmp t, (Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]])))
+        otherwise: "{rank}\nmatch (self, other) \{\n{Concat (Each t.cases, \|c| "    ({CasePatternAs t, c, "a"}, {CasePatternAs t, c, "b"}) => {FieldsCmp t, c},\n")}    #[allow(unreachable_patterns)]\n    _ => rank(self).cmp(&rank(other)),\n\}"
+    let partial = Impl (Bounded t.params, "::std::cmp::Ord"), "::std::cmp::PartialOrd", head, "fn partial_cmp(&self, other: &Self) -> ::std::option::Option<::std::cmp::Ordering>", "::std::option::Option::Some(::std::cmp::Ord::cmp(self, other))"
+    let total = Impl (Bounded t.params, "::std::cmp::Ord"), "::std::cmp::Ord", head, "fn cmp(&self, other: &Self) -> ::std::cmp::Ordering", body
+    "{partial}\n{total}"
+
+# A case's fields equal, pair by pair.
+FieldsEq: fn TyDef, CaseDef -> Text
+fn FieldsEq t, c = Fold (FieldPairs t, c), "true", \|acc, ((a, b))| "{acc} && {a} == {b}"
+
+# A case's fields compared in order, the first unequal pair deciding.
+FieldsCmp: fn TyDef, CaseDef -> Text
+fn FieldsCmp t, c = Fold (FieldPairs t, c), "::std::cmp::Ordering::Equal", \|acc, ((a, b))| "{acc}.then_with(|| {a}.cmp(&{b}))"
+
+# A case's arm of the `rank` closure: its place among the cases.
+RankArm: fn TyDef, Nat -> Text
+fn RankArm t, i = match t.cases[i]:
+    ? c: "{CaseRankPattern t, c} => {i}usize, "
+    nil: ""
+
+CaseRankPattern: fn TyDef, CaseDef -> Text
+fn CaseRankPattern t, c = match t.shape:
+    ShapeNewtype: "{t.name}(..)"
+    ShapeUnit: t.name
+    otherwise: if (Len c.fields) == 0: "{t.name}::{c.name}" else: "{t.name}::{c.name}(..)"
 
 EnumCase: unbounded fn CaseDef -> Text
 fn EnumCase c = if (Len c.fields) == 0: "{c.name}," else: "{c.name}({Join (Each c.fields, \|((ignore, ft))| Type ft), ", "}),"
@@ -161,7 +225,8 @@ fn ShowImpl t, head:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
             "p.record(\"{t.prism}\", &[{Join (Each c.fields, \|((f, ignore))| "(\"{PrismFieldOf c, f}\", &self.{f})"), ", "}]);"
         otherwise: MatchSelf (Join (Each t.cases, \|c| "{CasePattern t, c} => p.choice(\"{c.prism}\", &[{Join (Binders (Len c.fields)), ", "}]),"), "\n")
-    Impl (Bounded t.params, "crate::prelude::Show"), "crate::prelude::Show", head, "fn show(&self, p: &mut crate::prelude::Printer)", body
+    # `Clone` beside `Show`: an array of the parameter prints only `Clone` elements
+    Impl (Bounded t.params, "crate::prelude::Show + ::std::clone::Clone"), "crate::prelude::Show", head, "fn show(&self, p: &mut crate::prelude::Printer)", body
 
 # A field's Prism spelling: the Rust one without the `_` a keyword took.
 PrismField: fn Text -> Text

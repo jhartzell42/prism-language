@@ -91,7 +91,7 @@ fn InferBinary env, st, op, lhs, rhs, span:
 QuotientOf: unbounded fn St, Ty -> Ty
 fn QuotientOf st, t = match Walk st, t:
     TyFn c, ps, ignore: match ps[0]:
-        ? p: TyFn c, ps, (TyAssoc "Quotient", p)
+        ? p: TyFn c, ps, (TyAssoc quotientTrait, "Quotient", p)
         nil: t
     other: other
 

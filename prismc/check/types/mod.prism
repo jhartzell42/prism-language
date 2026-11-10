@@ -88,7 +88,9 @@ type Ty = choice:
     TyAt Ty, Rw
     TyElem Rw, Ty
     TyElemAny Rw
-    TyAssoc Text, Ty
+    # an associated type applied: the trait that declares it (its key), its name, its
+    # argument
+    TyAssoc Text, Text, Ty
     TyAny [Text]
     TyErr
 derive ^Eq, ^Show
@@ -173,11 +175,16 @@ type St = record:
     # Type System ch. 5): givens for the rest of the program.
     anyGivens: [((Text, Text))]
     # Every impl's associated types, for normalizing (Type System ch. 5, Traits): the
-    # associated type's name, the impl's head and its variables, and the type it chooses.
+    # associated type's trait and name, the impl's head and its variables, and the type it chooses.
     assocImpls: [AssocImpl]
+    # The places an `Error` value meets a type that may be a `~T` (a clause's result, an
+    # arm against the match's, a field, an element): at the program's end those where it
+    # is one are the typed output's `faults` (`FaultNotes`).
+    faultQs: [Waiting]
 derive ^Eq, ^Show
 
 type AssocImpl = record:
+    cls: Text
     name: Text
     head: Ty
     qs: [Text]
@@ -194,7 +201,7 @@ type Waiting = record:
 derive ^Eq, ^Show
 
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]])
+fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], faultQs=[[]])
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed)
@@ -207,6 +214,10 @@ let tNat = TyCon "Nat", [[]]
 let tText = TyCon "Text", [[]]
 let tBool = TyCon "Bool", [[]]
 let tUnit = TyCon "unit", [[]]
+
+# The trait whose `Quotient` the checker reads `/` with (Type System ch. 3; doubt QD): the
+# prelude's `^Num` declares no associated type, so the checker owns this one.
+let quotientTrait = "Prelude.Num"
 let tChar = TyCon "Char", [[]]
 let tFloat = TyCon "Float", [[]]
 
@@ -334,7 +345,7 @@ fn ShowTyIn st, t, nested = match t:
         let inner = "Element {ShowRowIn rw, True} {ShowTyIn st, o, True}"
         if nested: "({inner})" else: inner
     TyElemAny rw: if nested: "(Elem {ShowRowIn rw, True})" else: "Elem {ShowRowIn rw, True}"
-    TyAssoc n, a: if nested: "({n} {ShowTyIn st, a, True})" else: "{n} {ShowTyIn st, a, True}"
+    TyAssoc ignore, n, a: if nested: "({n} {ShowTyIn st, a, True})" else: "{n} {ShowTyIn st, a, True}"
     TyAny ts: "any {Join (Each ts, \|x| "^{BareName x}"), " "}"
     TyErr: "?"
 

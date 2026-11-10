@@ -214,6 +214,8 @@ fn Expression x = match x:
     XRefusal what: "compile_error!(\"{loweringRefusal}{Escape what}\")"
     XUnreachable: "unreachable!()"
     XCall f, args: "{RsRef f}({Args args})"
+    XCallAt f, ignore, args: "{RsRef f}({Args args})"
+    XCallSelf tr, m, self, args: "<{Type self} as {RsRef tr}>::{m}({Args args})"
     XApply f, args: "{Tight f}({Args args})"
     XMethod r, m, args: "{Tight r}.{m}({Args args})"
     XBin op, l, r: "{Operand l} {BinOpText op} {Operand r}"

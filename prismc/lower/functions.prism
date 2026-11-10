@@ -155,15 +155,40 @@ FnBodyValue: unbounded fn Lx, Env, FnBody -> Ex
 fn FnBodyValue lx, env, (BodyExpr x) = Own (ValueOf lx, env, x)
 fn FnBodyValue lx, env, (BodyBlock b) = Own (BlockValue lx, env, b)
 
-# A plain function: its scheme's types, its clauses as a `match`.
-FnDefOf: unbounded fn Lx, Text, [FnClause], Scheme -> FnDef
-fn FnDefOf lx, qk, clauses, sc:
+# A function's parameter types and result in its scheme. A function that gives a blueprint
+# is not lifted over its `!` parameters: it takes each as an event value (`?Boxed p, e, !in`
+# builds `@ !Filter (?ClickTo p, !in)`).
+SignatureTys: fn Scheme -> (([Ty], Ty))
+fn SignatureTys sc:
     let ((ptys0, res)) = match sc.ty:
         TyFn ignore, ps, r: ((ps, r))
         other: (([[]], other))
-    # A function that gives a blueprint is not lifted over its `!` parameters: it takes
-    # each as an event value (`?Boxed p, e, !in` builds `@ !Filter (?ClickTo p, !in)`).
     let ptys = if HasBlueprint res: Each ptys0, \|p| EventParam p else: ptys0
+    ((ptys, res))
+
+# The same as the target types them: peeled, or whole for a function that takes its time
+# whole (`IsWholeFn`).
+SignatureOut: unbounded fn Lx, Text, Scheme -> (([OutTy], OutTy))
+fn SignatureOut lx, qk, sc:
+    let ((ptys, res)) = SignatureTys sc
+    let whole = IsWholeFn lx, qk
+    let pts = Each ptys, \|p| OutTyOf lx, (if whole: p else: Peel p)
+    let ret = OutTyOf lx, (if whole: res else: Peel res)
+    ((pts, ret))
+
+# A function's type parameters, in its scheme's order. A type variable the Rust signature
+# erases (a supplier's `o`, under a blueprint and a live element) is no Rust type parameter:
+# rustc could not infer it.
+FnGenerics: unbounded fn Lx, Text, Scheme -> [((Text, [Text]))]
+fn FnGenerics lx, qk, sc:
+    let ((pts, ret)) = SignatureOut lx, qk, sc
+    let used = Fold (Push pts, ret), [[]], \|acc, t| UnionTexts acc, (TyParamsIn t)
+    Filter (SchemeGenerics lx, sc), \|((g, ignore))| HasText used, g
+
+# A plain function: its scheme's types, its clauses as a `match`.
+FnDefOf: unbounded fn Lx, Text, [FnClause], Scheme -> FnDef
+fn FnDefOf lx, qk, clauses, sc:
+    let ((ptys, res)) = SignatureTys sc
     # A plain function is lifted: its `$` and `!` values are read at the caller's read point
     # (gap LE), so its body has their values. One whose parameters or result hold a dynamic
     # or an event below the top takes and gives them whole, `Dynamic`s and `Event`s (Type
@@ -172,15 +197,11 @@ fn FnDefOf lx, qk, clauses, sc:
     let lxb = update lx:
         &_.whole <= whole
         &_.noCx <= True
-    let pts = Each ptys, \|p| OutTyOf lx, (if whole: p else: Peel p)
+    let ((pts, ret)) = SignatureOut lx, qk, sc
     let names = ParamNames lx, clauses, pts
-    let ret = OutTyOf lx, (if whole: res else: Peel res)
     let body = ClausesBody lxb, emptyEnv, clauses, names, ptys, FnBodyValue, "c", ret
     let params = Each (Range0 (Len pts)), \|i| (((Or (Each names, \|((n, ignore))| n)[i], "arg"), (OutRef (Or pts[i], OutUnit))))
-    # A type variable the Rust signature erases (a supplier's `o`, under a blueprint and a
-    # live element) is no Rust type parameter: rustc could not infer it.
-    let used = Fold (Push pts, ret), [[]], \|acc, t| UnionTexts acc, (TyParamsIn t)
-    let generics = Filter (SchemeGenerics lx, sc), \|((g, ignore))| HasText used, g
+    let generics = FnGenerics lx, qk, sc
     FnDef(name=(Or lx.rsNames[qk], (Snake (BareName qk))), generics=generics, params=params, ret=ret, body=body, doc=(SignatureText lx, qk), public=True)
 
 # The type parameters a Rust type names.
@@ -263,9 +284,40 @@ fn HeadName other = ""
 SelfIn: unbounded fn Ty, Text -> Ty
 fn SelfIn t, param = Instantiated t, [[param]], [[(TyCon "\u{0}Self", [[]])]]
 
+# Whether a trait method's own type parameter is only in its result (`?Read: fn Text -> ?a`):
+# a call is decided by the type it gives, never by an argument (`XCallSelf`).
+IsResultOnly: fn Lx, Text, Text -> Bool
+fn IsResultOnly lx, mq, param = match lx.g.vals[mq]:
+    ? v: match v.scheme.ty:
+        TyFn ignore, ps, ignore: not (Fold ps, False, \|f, p| f or HasText (TyQsIn p), param)
+        otherwise: True
+    nil: False
+
+# The type variables a type names.
+TyQsIn: fn Ty -> [Text]
+fn TyQsIn t = match t:
+    TyQ q: [[q]]
+    TyRigid q: [[q]]
+    TyCon ignore, xs: Fold xs, [[]], \|acc, x| UnionTexts acc, (TyQsIn x)
+    TyFn ignore, ps, r: Fold ps, (TyQsIn r), \|acc, x| UnionTexts acc, (TyQsIn x)
+    TyTuple xs: Fold xs, [[]], \|acc, x| UnionTexts acc, (TyQsIn x)
+    TyArray x: TyQsIn x
+    TyMap k, v: UnionTexts (TyQsIn k), (TyQsIn v)
+    TySig ignore, x: TyQsIn x
+    TyAt x, ignore: TyQsIn x
+    TyElem ignore, x: TyQsIn x
+    TyAssoc ignore, ignore, x: TyQsIn x
+    otherwise: [[]]
+
+# The names a trait's methods whose parameter is only in their result take in the target.
+ResultOnlyNames: fn Lx, TraitInfo -> [Text]
+fn ResultOnlyNames lx, tr = Each (Filter tr.methods, \|mq| IsResultOnly lx, mq, tr.param), \|mq| Or lx.rsNames[mq], (Snake (BareName mq))
+
 TraitDefOf: unbounded fn Lx, TraitInfo -> TraitDef
 fn TraitDefOf lx0, tr:
-    let lx = InModule lx0, tr.file, tr.home
+    # a default's body has the trait's parameter as `Self`, as its signature does
+    let lx = update (InModule lx0, tr.file, tr.home):
+        &_.subst <= Insert &_.subst, tr.param, (TyCon "\u{0}Self", [[]])
     let methods = Each tr.methods, \|mq|
         let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
         let sc = update v.scheme:
@@ -277,7 +329,7 @@ fn TraitDefOf lx0, tr:
         let fd = FnDefOf lx, mq, (if (Len clauses) == 0: [[dummyClause]] else: clauses), sc
         update fd:
             &_.public <= (Len clauses) > 0
-    TraitDef(name=(TraitName tr.name), assocs=(Each tr.assocs, \|a| Camel a), methods=methods, defaults=tr.defaults, doc=(TypeDoc lx, (TyInfo(name=tr.name, home=tr.home, params=[[]], body=BOpaque, derives=[[]], file=tr.file, span=tr.span))))
+    TraitDef(name=(TraitName tr.name), resultOnly=(ResultOnlyNames lx, tr), assocs=(Each tr.assocs, \|a| Camel a), methods=methods, defaults=tr.defaults, doc=(TypeDoc lx, (TyInfo(name=tr.name, home=tr.home, params=[[]], body=BOpaque, derives=[[]], file=tr.file, span=tr.span))))
 
 DefaultClauses: fn G, Text -> [FnClause]
 fn DefaultClauses g, qk = Fold g.defs, [[]], \|acc, d| if d.qk == qk: DefaultOf d, acc else: acc
@@ -304,7 +356,7 @@ fn ImplDefOf lx, im:
         if (HasPrefix im.cls, "Prelude."): Renamed fd, "{Snake d.name}_{Snake (BareName (HeadName im.head))}" else: fd
     # an impl's `where` clauses bound its type parameters, as a function's do
     let generics = Each im.qs, \|q| ((Camel q, (ImplBounds lx, im, q)))
-    ImplDef(cls=im.cls, tr=(PathIn lx, tr.home, (TraitName im.cls)), head=head, generics=generics, assocs=(Each im.assocs, \|((an, at))| (((Camel an), (OutTyOf lx, at)))), methods=methods, doc="")
+    ImplDef(cls=im.cls, tr=(PathIn lx, tr.home, (TraitName im.cls)), head=head, generics=generics, assocs=(Each im.assocs, \|((an, at))| (((Camel an), (OutTyOf lx, at)))), resultOnly=(ResultOnlyNames lx, tr), methods=methods, doc="")
 
 ImplBounds: unbounded fn Lx, ImplInfo, Text -> [Text]
 fn ImplBounds lx, im, q = Fold im.bounds, [["std::Clone"]], \|acc, ((v, cls))| if v == q: UnionTexts acc, (BoundOf lx, cls) else: acc

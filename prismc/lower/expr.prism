@@ -169,10 +169,19 @@ fn ValueOf lx, env, e = match env.spans[PlaceKey lx, e.span]:
 # the source (`Env.spans`), so the map is the plain expression over that value.
 UnboundValueOf: unbounded fn Lx, Env, Expr -> Vl
 fn UnboundValueOf lx, env, e:
-    if lx.whole: WholeValueOf lx, env, e
+    let v = if lx.whole: WholeValueOf lx, env, e
     else: if IsWholeObject lx, e: SampledObject lx, env, e
     else: if IsEventValue lx, env, e: EventValueOf lx, env, e
     else: ValueByKind lx, env, e
+    AsFailure lx, e, v
+
+# An `Error` value where the checker found it to be a `~T`'s failure (its `faults`): the
+# `~T` failing with it. One already made the failure (a constructor whose own place is the
+# `~T`) is kept.
+AsFailure: unbounded fn Lx, Expr, Vl -> Vl
+fn AsFailure lx, e, v = match lx.faults[PlaceKey lx, e.span]:
+    ? ft: if (ValueTy v) == OutError: VlOwned (XCtor (RefRuntime "std::Err"), [[Own v]]), (OutTyOf lx, (Peel (SubstTy lx, ft))) else: v
+    nil: v
 
 # ---------------------------------------------------------------------------------------
 # Time taken whole (Type System ch. 4, Application: "A sigiled parameter is not lifted
@@ -499,7 +508,9 @@ fn PlainValueByKind lx, env, e:
         ENil ignore: VlOwned (XTyped (XNone), t), t
         ETuple es: VlOwned (XTuple (Each es, \|x| Own (ValueOf lx, env, x))), t
         EArray [[]]: VlOwned (XTyped (XCall (RefRuntime "rt::Array::new"), [[]]), t), t
-        EArray es: VlOwned (XCall (RefRuntime "rt::Array::from"), [[XVec (Each es, \|x| Own (ValueOf lx, env, x))]]), t
+        # an optional's or a fault's elements at their type: C++ deduces no vector from a
+        # value and a failure (`[[~ 1, Error(..)]]`)
+        EArray es: VlOwned (XCall (RefRuntime "rt::Array::from"), [[XVec (Each es, \|x| ElementAt t, (Own (ValueOf lx, env, x)))]]), t
         EMap [[]]: VlOwned (XTyped (XCall (RefRuntime "rt::Map::new"), [[]]), t), t
         EMap kvs: VlOwned (XCall (HelperRef "map_of"), [[XVec (Each kvs, \|((k, v))| XTuple [[Own (ValueOf lx, env, k), Own (ValueOf lx, env, v)]])]]), t
         EGroup x: ValueOf lx, env, x
@@ -725,7 +736,7 @@ fn Application lx, env, callee, args, span:
                         ? qk: match lx.g.tags[qk]:
                             ? tg if why == "tag": TagValue lx, env, tg, args
                             otherwise: if qk == "Prelude.@Element": ElementBlueprint lx, env, args, t
-                            else: GlobalCall lx, env, qk, args, span, t
+                            else: GlobalCall lx, env, qk, args, span, callee.span, t
                         nil: VlOwned (Refusal "a call of {nkey}, which nothing declares"), t
         EGroup x: Application lx, env, x, args, span
         otherwise:
@@ -808,16 +819,73 @@ fn TagValue lx, env, tg, args:
             VlOwned (XCtor variant, [[(XRecord structPath, fields)]]), t
 
 # A call of a global: a constructor, a trait method, a prelude function, a program's own.
-GlobalCall: unbounded fn Lx, Env, Text, [Arg], Range, OutTy -> Vl
-fn GlobalCall lx, env, qk, args, span, t:
+GlobalCall: unbounded fn Lx, Env, Text, [Arg], Range, Range, OutTy -> Vl
+fn GlobalCall lx, env, qk, args, span, cspan, t:
     match lx.g.ctors[qk]:
         ? c: CtorApp lx, env, c, args, span
         nil: match lx.g.vals[qk]:
             ? v:
                 if v.sort == "method": MethodCall lx, env, v, args, span, t
                 else: if v.home == "Prelude": PreludeCall lx, env, qk, args, span, t
-                else: AsInstance (XCall (ValueRef lx, qk), (ArgsFor lx, env, v, args)), (ResultRepr lx, v), t
+                else:
+                    let callArgs = ArgsFor lx, env, v, args
+                    let call = match ?TypeArgsAt lx, qk, v.scheme, cspan:
+                        ? tys: XCallAt (ValueRef lx, qk), tys, callArgs
+                        nil: XCall (ValueRef lx, qk), callArgs
+                    AsInstance call, (ResultRepr lx, v), t
             nil: VlOwned (Refusal "a call of {qk}"), t
+
+# A generic function's type arguments at a call, in its type parameters' order, when one of
+# them is in no parameter's type (`?Nothing: fn Nat -> ?a`): read off the callee's type at
+# the call against its scheme. The rest are deduced from the arguments: nil.
+?TypeArgsAt: unbounded fn Lx, Text, Scheme, Range -> ?[OutTy]
+fn ?TypeArgsAt lx, qk, sc, cspan:
+    let generics = Each (FnGenerics lx, qk, sc), \|((g, ignore))| g
+    let ((pts, ignore)) = SignatureOut lx, qk, sc
+    let deduced = Fold pts, [[]], \|acc, p| UnionTexts acc, (TyParamsIn p)
+    if Fold generics, True, \|all, g| all and HasText deduced, g: nil
+    else:
+        let qs = Filter sc.qs, \|q| HasText generics, (Camel q)
+        let ?m = ?InstanceMatch sc.ty, (TypeAt lx, cspan), {}
+        ? (Each qs, \|q| TypeArgOf lx, qk, ?m, q)
+
+# An array literal's element, at the element type when that is an optional or a fault.
+ElementAt: fn OutTy, Ex -> Ex
+fn ElementAt (OutArray (OutRes e)), x = XTyped x, (OutRes e)
+fn ElementAt (OutArray (OutOpt e)), x = XTyped x, (OutOpt e)
+fn ElementAt ignore, x = x
+
+# One type argument of a call (`?TypeArgsAt`); one the callee's type there does not give is
+# refused.
+TypeArgOf: unbounded fn Lx, Text, ?(Text ==> Ty), Text -> OutTy
+fn TypeArgOf lx, qk, ?m, q = match ?m:
+    ? m: match m[q]:
+        ? x: OutTyOf lx, x
+        nil: OutRefused "the type `{q}` of a call of `{BareName qk}`, which its type at the call does not give"
+    nil: OutRefused "the type arguments of a call of `{BareName qk}`, whose type at the call does not match its signature"
+
+# One-way matching of a scheme's type against its type at a use: each quantified variable's
+# type there.
+?InstanceMatch: unbounded fn Ty, Ty, (Text ==> Ty) -> ?(Text ==> Ty)
+fn ?InstanceMatch pat, t, m = match ((pat, t)):
+    ((TyQ v, x)): match m[v]:
+        ? y: if y == x: ? m else: nil
+        nil: ? (Insert m, v, x)
+    (((TyCon a, xs), (TyCon b, ys))): if a == b and (Len xs) == (Len ys): ?InstanceMatchAll xs, ys, m else: nil
+    ((TyTuple xs, TyTuple ys)): if (Len xs) == (Len ys): ?InstanceMatchAll xs, ys, m else: nil
+    ((TyArray x, TyArray y)): ?InstanceMatch x, y, m
+    (((TyMap k1, v1), (TyMap k2, v2))): ?InstanceMatchAll [[k1, v1]], [[k2, v2]], m
+    (((TySig s1, i1), (TySig s2, i2))): if s1 == s2: ?InstanceMatch i1, i2, m else: nil
+    (((TyFn ignore, ps, r), (TyFn ignore, qs, s))): if (Len ps) == (Len qs): ?InstanceMatchAll (Push ps, r), (Push qs, s), m else: nil
+    # an associated type at a variable decides nothing about it: its instance is already
+    # normalized
+    (((TyAssoc ignore, ignore, ignore), ignore)): ? m
+    otherwise: if pat == t: ? m else: nil
+
+?InstanceMatchAll: unbounded fn [Ty], [Ty], (Text ==> Ty) -> ?(Text ==> Ty)
+fn ?InstanceMatchAll xs, ys, m = Fold (Range0 (Len xs)), (? m), \|?acc, i| match ?acc:
+    ? mm: ?InstanceMatch (Or xs[i], TyErr), (Or ys[i], TyErr), mm
+    nil: nil
 
 # What a named function returns as its Rust signature has it: a function of the
 # function's own color variable is a `Start` (`OutJobFn`), whatever color a call gives it.
@@ -980,8 +1048,21 @@ fn MethodCall lx, env, v, args, span, t:
     if (HasPrefix cls, "Prelude."): PreludeMethod lx, cls, m, vals, span, t
     else:
         let tr = Or lx.g.traits[cls], dummyTraitInfo
-        let path = RefIn lx, tr.home, "{TraitName cls}::{Or lx.rsNames[v.qk], (Snake m)}"
-        VlOwned (XCall path, (ArgsFor lx, env, v, args)), t
+        let mname = Or lx.rsNames[v.qk], (Snake m)
+        # a method whose type is only in its result is called at the type the call gives,
+        # which the checker's impl note at the call says
+        if IsResultOnly lx, v.qk, tr.param: match ?SelfAt lx, span, cls:
+            ? self: VlOwned (XCallSelf (RefIn lx, tr.home, (TraitName cls)), mname, self, (ArgsFor lx, env, v, args)), t
+            nil: VlOwned (Refusal "a call of `{m}` at a type the checker did not record"), t
+        else:
+            let path = RefIn lx, tr.home, "{TraitName cls}::{mname}"
+            VlOwned (XCall path, (ArgsFor lx, env, v, args)), t
+
+# The type a call's want of a trait was solved at (its impl note).
+?SelfAt: unbounded fn Lx, Range, Text -> ?OutTy
+fn ?SelfAt lx, span, cls = Fold (Or lx.impls[PlaceKey lx, span], [[]]), nil, \|?found, n| match ?found:
+    ? x: ? x
+    nil: if n.cls == cls: ? (OutTyOf lx, (SubstTy lx, n.ty)) else: nil
 
 let dummyTraitInfo = TraitInfo(name="", home="", param="a", supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], file=0, span=Range(start=0, end=0))
 
@@ -1226,7 +1307,7 @@ fn Instantiated t, params, args = match t:
     TyArray e: TyArray (Instantiated e, params, args)
     TyMap k, v: TyMap (Instantiated k, params, args), (Instantiated v, params, args)
     TySig s, i: TySig s, (Instantiated i, params, args)
-    TyAssoc n, a: TyAssoc n, (Instantiated a, params, args)
+    TyAssoc tr, n, a: TyAssoc tr, n, (Instantiated a, params, args)
     otherwise: t
 
 # `xs[i]`: an optional, of an array or a map (a text has no index: the checker refuses it).
@@ -1729,7 +1810,7 @@ fn OpenTyQs lx, t = match t:
     TySig ignore, i: OpenTyQs lx, i
     TyAt i, ignore: OpenTyQs lx, i
     TyElem ignore, o: OpenTyQs lx, o
-    TyAssoc ignore, a: OpenTyQs lx, a
+    TyAssoc ignore, ignore, a: OpenTyQs lx, a
     otherwise: [[]]
 
 # Lowering at an instantiation: its variables' types and colors in the substitution.
