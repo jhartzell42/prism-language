@@ -1,4 +1,4 @@
-# Derived by hand from the coordinator's ruling FV (the Compiler seed: `@Flatten` adopts, after the tick its outer fires, the inner the outer then holds, and reads it from the next tick, owed): the inc moves the inner `$a` in its tick; the swap fires the outer at 2, the flatten adopts `$b` after 2 and reads 101 at 3.
+# Derived by hand from the coordinator's ruling FV (the Compiler seed: `@Flatten` adopts, after the tick its outer fires, the inner the outer then holds, and reads it from the next tick, owed): the inc moves the inner `$a` in its tick; the swap fires the outer, a hold of dynamics, at 2, the flatten adopts `$b` after 2 and reads 101 at 3.
 test the_flatten_follows_and_adopts
 
 tick 0
