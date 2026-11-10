@@ -280,11 +280,14 @@ type Wx = record:
 # whose publication queues the adoption (`{name}_adopt`) for the first firings of the next
 # tick, and `generation` the `rebuild`, whose current generation tells the block when its
 # result moved (`{generation}_result_moved`). For a row's, `outer` is `entry` and
-# `generation` empty: the `for`'s builder queues the adoption (`{name}_replaced`).
+# `generation` empty: the `for`'s builder queues the adoption (`{name}_replaced`). For any
+# other `$$a` (`held`), `outer` is the live dynamic of dynamics its line made (`WholeArgs`),
+# whose update event (`{name}_outer_moved`) queues the adoption, and `generation` is empty.
 type FlatDef = record:
     name: Text
     outer: Text
     generation: Text
+    held: Bool
     ty: OutTy
 
 # A `for`'s rows' (or a `rebuild`'s generation's) reads of their block, as the block's own

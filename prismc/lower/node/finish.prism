@@ -203,7 +203,10 @@ fn MovedBy sk, r:
     let marks = Each (SnapsBehind sk.wx, r), \|sn| DoExpr (XMethod (XField XSelf, "{sn.name}_snap"), "mark", [[XCx]])
     let listed = if ListsBuild sk, r: [[DoExpr (XMethod (XCx), "build_later", [[(XClone XSelf)]])]] else: [[]]
     # a host's dynamic answer over it: its port fired, so its blueprints push next tick
-    let answers = Each (Filter sk.wx.dynAnswers, \|((ignore, rds))| HasRead (ReadsClosed sk.wx.dynReads, rds), r), \|((name, ignore))| DoExpr (XCall (HelperRef "no_fault"), [[(XMethod (XField XSelf, "{name}_port"), "fire", [[XUnit, XCx]])]])
+    let answers = Each (Filter sk.wx.dynAnswers, \|((ignore, rds))| HasRead (ReadsClosed sk.wx.dynReads, rds), r), \|((name, ignore))|
+        let fire = DoExpr (XCall (HelperRef "no_fault"), [[(XMethod (XField XSelf, "{name}_port"), "fire", [[XUnit, XCx]])]])
+        let stamp = DoExpr (XMethod (XField XSelf, "{name}_once"), "set", [[XUnit, XCx]])
+        DoIf (XUnary OpNot, (XMethod (XField XSelf, "{name}_once"), "fired", [[XCx]])), [[stamp, fire]], [[]]
     # a `@Flatten` over a `rebuild`'s dynamic that moved: the adoption among the next tick's
     # first firings, which is owed (Semantics ch. 7)
     let adoptions = Each (Filter sk.wx.flattens, \|fl| fl.generation != "" and r == (OwnRead fl.outer)), \|fl| DoScope (Adoption fl)
@@ -336,7 +339,7 @@ fn FlattenMethods sk:
     # `for`'s builder telling the row that the dynamic under its kept key was replaced,
     # which queues the adoption for the start of the next tick, owed (rulings VL, TK); and
     # the adoption itself
-    let entries = Fold (Filter wx.flattens, \|fl| fl.generation == ""), [[]], \|acc, fl|
+    let entries = Fold (Filter wx.flattens, \|fl| fl.generation == "" and not fl.held), [[]], \|acc, fl|
         let set = DoExpr (XMethod (XField XSelf, "{fl.name}_inner"), "set", [[(XCtor (RefRuntime "std::Some"), [[(XMethod (XSelf), "entry", [[XCx]])]]), XCx]])
         let followed = DoExpr (XMethod (XField XSelf, "{fl.name}_follow"), "follow", [[(XRef (XField (XMethod (XSelf), "entry", [[XCx]]), "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef wx.lx, wx.node), "{fl.name}_moved"))]])
         let moved = MethDef(name="{fl.name}_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(HoldWritten sk, "{fl.name}_inner"), tail=(XUnit), doc="`{fl.name}`'s inner moved: what reads it reads it again.")
@@ -346,7 +349,17 @@ fn FlattenMethods sk:
     let adopts0 = Each (Filter wx.flattens, \|fl| fl.generation != ""), \|fl|
         let set = DoExpr (XMethod (XField XSelf, "{fl.name}_inner"), "set", [[(XCtor (RefRuntime "std::Some"), [[(XMethod (XSelf), fl.outer, [[XCx]])]]), XCx]])
         MethDef(name="{fl.name}_adopt", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Append [[set]], (HoldWritten sk, "{fl.name}_inner")), tail=(XUnit), doc="`@Flatten` adopts the inner its `rebuild`'s dynamic held after the tick before, among this tick's first firings: from here on it reads that inner (Semantics ch. 7).")
-    let adopts = Append adopts0, entries
+    # any other `$$a` flattened (`HeldFlatten`): the inner's move, the outer's move, which
+    # queues the adoption for the next tick's first firings, owed, and the adoption
+    let held = Fold (Filter wx.flattens, \|fl| fl.held), [[]], \|acc, fl|
+        let innerNow = XMethod (XMethod (XField XSelf, "{fl.name}_inner"), "get", [[XCx]]), "expect", [[(XStr "`@Flatten` adopts its first inner at the build")]]
+        let set = DoExpr (XMethod (XField XSelf, "{fl.name}_inner"), "set", [[(XCtor (RefRuntime "std::Some"), [[(XMethod (XField XSelf, fl.outer), "sample", [[XCx]])]]), XCx]])
+        let followed = DoExpr (XMethod (XField XSelf, "{fl.name}_follow"), "follow", [[(XRef (XField innerNow, "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef wx.lx, wx.node), "{fl.name}_moved"))]])
+        let moved = MethDef(name="{fl.name}_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(HoldWritten sk, "{fl.name}_inner"), tail=(XUnit), doc="`{fl.name}`'s inner moved: what reads it reads it again.")
+        let outerMoved = MethDef(name="{fl.name}_outer_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Adoption fl), tail=(XUnit), doc="`{fl.name}`'s outer fired: the adoption is queued for the first firings of the next tick, which is owed (the Compiler seed, `@Flatten`).")
+        let adopt = MethDef(name="{fl.name}_adopt", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Append [[set, followed]], (HoldWritten sk, "{fl.name}_inner")), tail=(XUnit), doc="`{fl.name}` adopts the inner its outer held after the tick before, among this tick's first firings, and fires: no dynamics are compared (ruling FV).")
+        Append acc, [[moved, outerMoved, adopt]]
+    let adopts = Append (Append adopts0, entries), held
     # a `rebuild`'s current generation's result moved: the readers of every `@Flatten` over
     # it in this node, and the update event of the dynamic the block keeps for it, which a
     # reader outside the node follows (a `for` gathering `$$r`s into `$(k ==> $r)`, whose

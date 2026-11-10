@@ -211,8 +211,34 @@ fn WholeFns lx:
             ? v: Push acc, ((d, clauses, v))
             nil: acc
         otherwise: acc
-    let start = Fold fns, {}, \|m, ((d, ignore, v))| if IsWholeSig v.scheme.ty: Insert m, d.qk, True else: m
+    let bySig = Fold fns, {}, \|m, ((d, ignore, v))| if IsWholeSig v.scheme.ty: Insert m, d.qk, True else: m
+    # and those a call takes with time below the top of what it gives (`$Sel (True on
+    # !swap), $a, $b`, a `!$Nat`: lifted over a plain parameter, the call gives the dynamic
+    # it returns whole, Type System ch. 4)
+    let known = Fold fns, {}, \|m, ((d, ignore, v))| match v.scheme.ty:
+        TyFn ignore, ignore, r: if (LayerOf r) == LyDyn or (LayerOf r) == LyEv: Insert m, d.qk, True else: m
+        otherwise: m
+    let start = Fold lx.g.defs, bySig, \|m, d|
+        let lxd = update lx:
+            &_.file <= d.file
+            &_.home <= d.home
+            &_.site <= d.home
+        Fold (DefExprs d), m, \|m2, x| match x.kind:
+            ECall c, ignore, ignore, ignore:
+                let qk = CalleeKey lxd, c
+                if (HasKey known, qk) and TimeWithin (TypeAt lxd, x.span): Insert m2, qk, True else: m2
+            otherwise: m2
     GrowWhole lx, fns, start, (Len fns)
+
+# Every expression of a definition's body.
+DefExprs: unbounded fn Def -> [Expr]
+fn DefExprs d = match d.body:
+    DbFn clauses: Fold clauses, [[]], \|acc, c| Append acc, (BodyExprs c.body)
+    DbMethod clauses, ignore, ignore: Fold clauses, [[]], \|acc, c| Append acc, (BodyExprs c.body)
+    DbDefault clauses, ignore: Fold clauses, [[]], \|acc, c| Append acc, (BodyExprs c.body)
+    DbWidget w: StmtsExprs w.body.stmts
+    DbLet l: ExprsIn l.value
+    otherwise: [[]]
 
 GrowWhole: unbounded fn Lx, [((Def, [FnClause], ValInfo))], (Text ==> Bool), Nat -> (Text ==> Bool)
 fn GrowWhole lx, fns, set, fuel:
@@ -315,10 +341,35 @@ fn WholeValueOf lx, env, e:
                     # widget's argument): the constant it is
                     other if local: VlOwned (XCall (HelperRef "dyn_constant"), [[Own v]]), (OutDyn other)
                     otherwise: VlOwned (Refusal "`{SrcText lx, lx.file, e.span}` passed whole to a function that takes it so, where it has no live dynamic to give: a reader with no value at the build where the line reads it (gap LF)"), (OutDyn (OutTyOf lx, (Peel full)))
-        EFreeSigil "$", x: if (LayerOf (TypeAt lx, x.span)) == LyDyn: ValueOf lx, env, x else: VlOwned (XCall (HelperRef "dyn_constant"), [[Own (ValueOf lxp, env, x)]]), (OutDyn (OutTyOf lx, (Peel full)))
+        # `$ $q` is lifted over `$q` (a bare type variable lifts, Type System ch. 4): a map
+        # to a constant of each value
+        EFreeSigil "$", x: if not (NotLifted lx, e.span): DynamicLift lx, env, e
+        else: if (LayerOf (TypeAt lx, x.span)) == LyDyn: ValueOf lx, env, x else: VlOwned (XCall (HelperRef "dyn_constant"), [[Own (ValueOf lxp, env, x)]]), (OutDyn (OutTyOf lx, (Peel full)))
         otherwise:
             if not (NotLifted lx, e.span): DynamicLift lx, env, e
             else: ValueByKind lx, env, e
+
+# An expression's operands as a lift maps them: a lifted `if` or `match` maps its
+# condition or scrutinee and its arms' results (`if $useB: $ $q else: $ $p`, a `$$Nat`
+# whose arms are maps themselves).
+MappedOperands: fn Expr -> [Expr]
+fn MappedOperands e = match e.kind:
+    EIf c, t, ?el:
+        let cs = match c:
+            CondExpr x: [[x]]
+            otherwise: [[]]
+        let els = match ?el:
+            ? b: BlockResult b
+            nil: [[]]
+        Append (Append cs, (BlockResult t)), els
+    EMatch sc, arms: Fold arms, [[sc]], \|acc, a| Append acc, (BlockResult a.body)
+    otherwise: Operands e
+
+# A block's result expression, when its last line is one.
+BlockResult: fn Block -> [Expr]
+fn BlockResult b = Fold b.stmts, [[]], \|ignore, st| match st.kind:
+    SExpr x: [[x]]
+    otherwise: [[]]
 
 # A lift over the dynamics among an expression's operands, each a `Dynamic`: the plain
 # expression over their values, mapped; two are read together, one update event firing
@@ -327,7 +378,7 @@ DynamicLift: unbounded fn Lx, Env, Expr -> Vl
 fn DynamicLift lx, env, e:
     let full = TypeAt lx, e.span
     let t = OutTyOf lx, (Peel full)
-    let srcs = Filter (Operands e), \|x| (LayerOf (TypeAt lx, x.span)) == LyDyn
+    let srcs = Filter (MappedOperands e), \|x| (LayerOf (TypeAt lx, x.span)) == LyDyn
     let lxp = update lx:
         &_.whole <= False
     let caps = Filter (WithInstances env, (ReadNames (ExprsIn e))), \|n| match env.names[n]:
@@ -533,6 +584,14 @@ fn PlainValueByKind lx, env, e:
         EFreeSigil "?", x: VlOwned (XTyped (XCtor (RefRuntime "std::Some"), [[Own (ValueOf lx, env, x)]]), t), t
         EFreeSigil "~", x: VlOwned (XTyped (XCtor (RefRuntime "std::Ok"), [[Own (ValueOf lx, env, x)]]), t), t
         EFreeSigil "@", x: PureBlueprint lx, env, x, t
+        # a value of `$$a` holds a `$a` (`Peel`): `$ v` there is a constant of `v`, as in a
+        # map's body over `$ $q`
+        EFreeSigil "$", x:
+            let v = ValueOf lx, env, x
+            match ((t, (ValueTy v))):
+                ((OutDyn ignore, OutDyn ignore)): v
+                ((OutDyn ignore, ignore)): VlOwned (XCall (HelperRef "dyn_constant"), [[Own v]]), t
+                otherwise: v
         EFreeSigil ignore, x: ValueOf lx, env, x
         EField r, ignore, name: FieldValue lx, env, r, name.name
         EIndex r, i: IndexValue lx, env, r, i, t
@@ -1043,7 +1102,15 @@ fn ArgsFor lx, env, v, args:
             TyFn CBound, ignore, ignore: False
             TyFn ignore, ignore, ignore: True
             otherwise: False
+        # a function that takes time whole, applied lifted outside such a body (`$Sel
+        # (True on !swap), $a, $b`): its sigiled dynamics go in whole, the live dynamics
+        # their line made (`WholeArgs`); the lifted arguments are values
+        let wholeAt = (not lx.whole) and (IsWholeFn lx, v.qk) and (LayerOf (Or ps[i], TyErr)) == LyDyn
         if toUnbounded: XRef (AsJobValue lx, env, a.value)
+        else: if wholeAt:
+            let lxw = update lx:
+                &_.whole <= True
+            XRef (Own (ValueOf lxw, env, a.value))
         else: Argument lx, env, a.value
 
 let dummyExpr = Expr(kind=EError, span=Range(start=0, end=0))

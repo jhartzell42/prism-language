@@ -259,8 +259,18 @@ fn DynamicAnswers wx, benv, menv, hf, sup:
                         &_.fields <= Push &_.fields, ((port, (OutRc (OutPort OutUnit)), "the dynamic answer `{name}` moved: its blueprints push the child's place next tick"))
                         &_.moves <= Push &_.moves, ((port, (XClone (XVar port))))
                         &_.dynAnswers <= Push &_.dynAnswers, ((name, reads))
-                    ((w2, (Bind en, "#dyn{DynKey y}", (BnLocal (XVar name), Owned, t)), (Push ls, (DoLet (PaBind "{port}x"), (XClone (XVar port))))))
+                    let w3 = OnceField w2, name
+                    ((w3, (Bind en, "#dyn{DynKey y}", (BnLocal (XVar name), Owned, t)), (Push ls, (DoLet (PaBind "{port}x"), (XClone (XVar port))))))
             nil: ((w, en, ls))
+
+# A dynamic answer's or a live dynamic's port fires once a tick, however many writes lie
+# behind it: an update event fires at most once a tick (Semantics ch. 7). `{name}_once`
+# stamps the tick it fired in (`MovedBy`).
+OnceField: fn Wx, Text -> Wx
+fn OnceField wx, name = update wx:
+    &_.taken <= Push &_.taken, "{name}_once"
+    &_.fields <= Push &_.fields, (("{name}_once", (OutStamped OutUnit), "the tick `{name}`'s port fired in"))
+    &_.moves <= Push &_.moves, (("{name}_once", (XCall (RefRuntime "rt::Stamped::new"), [[]])))
 
 # The node's readers a line passes whole to a function that takes them so (Type System ch.
 # 4, Application; gap LF), each a live `Dynamic`: read through the node's link by a getter,
@@ -268,20 +278,26 @@ fn DynamicAnswers wx, benv, menv, hf, sup:
 # `DynamicAnswers`), made once at the build and kept in a field, so every read of the line
 # passes the same dynamic. Bound under `#whole{span}` for `WholeValueOf`; a reader with no
 # value at the build has no such dynamic, and the call is refused there.
-WholeArgs: unbounded fn Wx, Env, Env, Expr -> ((Wx, Env, Env))
-fn WholeArgs wx, benv, menv, e:
+# `whole` says the line's expression is itself taken whole: a hold of dynamics' initial
+# value (`$$cur <- $a then ..`, `HoldLine`).
+WholeArgs: unbounded fn Wx, Env, Env, Expr, Bool -> ((Wx, Env, Env))
+fn WholeArgs wx, benv, menv, e, whole:
     let lx = wx.lx
+    # a call of a function that takes time whole, lifted or not (a lifted one, `$Sel (True
+    # on !swap), $a, $b`, takes its sigiled arguments whole, `ArgsFor`), and `@Flatten`'s
+    # outer, a dynamic of dynamics it follows whole (`HeldFlatten`)
     let calls = Filter (ExprsIn e), \|x| match x.kind:
-        ECall ignore, ignore, ignore, ignore: IsWholeObject lx, x
+        ECall c, ignore, ignore, ignore: (IsWholeObject lx, x) or (IsWholeFn lx, (CalleeKey lx, c)) or (CalleeKey lx, c) == "Prelude.@Flatten"
         otherwise: False
-    let names = Fold calls, [[]], \|acc, c| match c.kind:
-        ECall ignore, args, ignore, ignore: Fold args, acc, \|acc2, a| Fold (ExprsIn a.value), acc2, \|acc3, y| match y.kind:
+    let roots = Fold calls, (if whole: [[e]] else: [[]]), \|acc, c| match c.kind:
+        ECall ignore, args, ignore, ignore: Fold args, acc, \|acc2, a| Append acc2, (ExprsIn a.value)
+        otherwise: acc
+    let names = Fold roots, [[]], \|acc3, y| match y.kind:
             EName n: if HasKey menv.names, "#whole{DynKey y}": acc3 else: match menv.names[SNameKey n]:
                 ? (BnHold ignore, ignore): if (LayerOf (TypeAt lx, y.span)) == LyDyn and not (HasText (Each acc3, \|z| DynKey z), (DynKey y)): Push acc3, y else: acc3
                 ? (BnDyn ignore, ignore, ignore): if (LayerOf (TypeAt lx, y.span)) == LyDyn and not (HasText (Each acc3, \|z| DynKey z), (DynKey y)): Push acc3, y else: acc3
                 otherwise: acc3
             otherwise: acc3
-        otherwise: acc
     if (Len names) == 0: ((wx, benv, menv))
     else:
         let owner = "whole_owner"
@@ -308,8 +324,9 @@ fn WholeArgs wx, benv, menv, e:
                     &_.fields <= Append &_.fields, [[((port, (OutRc (OutPort OutUnit)), "`{name}` moved: its dynamic's update event")), ((dyn, (OutDyn t), "`{SrcText lx, lx.file, y.span}` as the live dynamic a function takes whole"))]]
                     &_.moves <= Append &_.moves, [[((port, (XClone (XVar port)))), ((dyn, (XClone (XVar dyn))))]]
                     &_.dynAnswers <= Push &_.dynAnswers, ((name, reads))
+                let w3 = OnceField w2, name
                 let wkey = "#whole{DynKey y}"
-                ((w2, (Bind be, wkey, (BnLocal (XVar dyn), Owned, (OutDyn t))), (Bind me, wkey, (BnLocal (XField XSelf, dyn), Owned, (OutDyn t)))))
+                ((w3, (Bind be, wkey, (BnLocal (XVar dyn), Owned, (OutDyn t))), (Bind me, wkey, (BnLocal (XField XSelf, dyn), Owned, (OutDyn t)))))
 
 # The dynamic a supplier's `@ x` answers with, when `x` is a dynamic that is not a constant:
 # `x` itself, or the `d` of `$ d` when `d` is a dynamic already.

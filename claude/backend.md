@@ -225,8 +225,23 @@ it make every program an interpreter run, and every type mistake a runtime fault
   readers (`{gen}_result_moved`), and that method also fires the update port of the
   `Dynamic` kept for the result (`{gen}_result_live`), so a follower outside the node
   sees it move: a `for` gathering `$$r`s into `$(k ==> $r)`, whose rows' `$v` follow
-  their inners (`sem-ch04-for-replaced-inner`). `@Flatten` of anything but a `rebuild`'s
-  dynamic is refused (`FlattenLine`, naming the `for` form above).
+  their inners (`sem-ch04-for-replaced-inner`).
+- **`@Flatten $$a`** over any other dynamic of dynamics (`HeldFlatten`; the coordinator's
+  ruling FV) → the outer as the live `Dynamic<Dynamic<A>>` its line made (`WholeArgs`,
+  `whole_{x}_dyn`), a current-inner `Hold<Option<Dynamic<A>>>` and two `Follow`s: the
+  outer's update port (`{name}_outer_moved`) queues `{name}_adopt` with
+  `cx.answer_later`, owed, as the `rebuild` form does, and the adoption takes the inner
+  the outer holds after n, follows the inner's port (`{name}_moved`, a write of the
+  inner) and fires. No dynamics are compared; an adoption of the same inner fires again
+  (`sem-ch07-flatten-held`, `sem-ch07-flatten-mapped-constants`). A live dynamic's port
+  fires once a tick however many writes lie behind it (`{name}_once`).
+- **`$$a` is a dynamic of `Dynamic`s.** `Peel` takes one time layer off, so a `$$a`
+  binder's value is a `Dynamic<A>`: a hold of dynamics (`$$cur <- $a then ..`) takes its
+  initial value whole; a function is whole when a call takes time below the top of what
+  it gives (`$Sel (True on !swap), $a, $b`, a `!$Nat`), and such a lifted call takes its
+  sigiled arguments whole (`ArgsFor`); `$ $q` is a map of `$q` to constants (Type System
+  ch. 4: a bare type variable lifts), and a lifted `if` or `match` maps its arms' results
+  too (`MappedOperands`).
 - **Leaving.** `leave` writes the `state` enum (live, detached, zombie, dead), turns
   holds into their `newest()` constants and the node's own events into `never`, then
   `cx.clean_up_later(self, zombie)`. A `for` row's entry, a projection whose key the

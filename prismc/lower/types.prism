@@ -178,12 +178,19 @@ fn NamedTy lx, n, args = match lx.g.types[n]:
         otherwise: OutNamed (RefIn lx, ti.home, (Camel (BareName n))), args
     nil: if HasKey lx.g.families, n: OutPod else: OutRefused "the type `{n}`, which the checker did not declare"
 
-# A type with its time layers peeled: what a value of it holds at one moment.
+# A type with its outermost time layer peeled: what a value of it holds at one moment. A
+# `$$a` holds a `$a` (a dynamic of dynamics, Type System ch. 4: lifting is a map, never a
+# bind), so only one `$` or `!` comes off; a `&` on either side of it goes too.
 Peel: fn Ty -> Ty
 fn Peel t = match t:
-    TySig "$", i: Peel i
-    TySig "!", i: Peel i
+    TySig "$", i: PeelRef i
+    TySig "!", i: PeelRef i
     TySig "&", i: Peel i
+    otherwise: t
+
+PeelRef: fn Ty -> Ty
+fn PeelRef t = match t:
+    TySig "&", i: PeelRef i
     otherwise: t
 
 # What a blueprint gives, its layers peeled: `@!Term` holds a `Term` at a firing.

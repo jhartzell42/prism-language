@@ -741,10 +741,9 @@ fn FlattenLine wx, menv, args, ?bound:
         ? ((m, t)): Fold wx.gens, nil, \|?acc, gd| if "{gd.name}_result" == m: ? ((m, gd.name, t)) else: ?acc
         nil: nil
     match ?outer:
-        nil:
-            let wx2 = update wx:
-                &_.build <= Push &_.build, (RefusalDo "`@Flatten` of a dynamic that is not a `rebuild`'s (a `for` over a map of dynamics binds the value under the key, `for k, $v <- $each:`, ruling FV)")
-            ((wx2, WrUnit))
+        nil: match args[0]:
+            ? a: HeldFlatten wx, menv, a.value, ?bound
+            nil: ((wx, WrUnit))
         ? ((m, gen, t)):
             let ((name, wx1)) = match ?bound:
                 ? (BnHold f, ignore): ((f, wx))
@@ -761,8 +760,53 @@ fn FlattenLine wx, menv, args, ?bound:
                 &_.build <= Push &_.build, first
                 &_.getters <= Push &_.getters, (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=sample, doc="`@Flatten`'s dynamic: its current inner at the read point."))
                 &_.dynReads <= Insert &_.dynReads, name, [[OwnRead inner]]
-                &_.flattens <= Push &_.flattens, FlatDef(name=name, outer=m, generation=gen, ty=t)
+                &_.flattens <= Push &_.flattens, FlatDef(name=name, outer=m, generation=gen, held=False, ty=t)
             ((wx2, (WrDyn (XMethod (XSelf), name, [[XCx]]), [[OwnRead inner]], t)))
+
+# `@Flatten $$x` over any other dynamic of dynamics (Semantics Appendix B; the Compiler
+# seed, `@Flatten`; the coordinator's ruling FV): `$$x` is the live dynamic its line made
+# (`WholeArgs`), a `Dynamic` of `Dynamic`s, whose update event the flatten follows
+# (`{name}_ofollow`). Its firing at n queues the adoption for the first firings of n+1,
+# owed (`Adoption`), which takes the inner the outer holds after n, follows that inner's
+# update event (`{name}_follow`) and fires as a write of the inner does. No dynamics are
+# compared: an adoption of the same inner fires again. It shares the `rebuild` flatten's
+# mechanism (`Adoption`, `Cx::answer_later`) rather than the swap list: the flatten fires
+# at n+1 with no input of its own, so that tick must be owed, and nothing of the outer's
+# write at n reaches n's own propagation (the Compiler seed, "No prompt binding"). It shares the `rebuild` flatten's
+# mechanism (`Adoption`, `Cx::answer_later`) rather than the swap list: the flatten fires
+# at n+1 with no input of its own, so that tick must be owed, and nothing of the outer's
+# write at n reaches n's own propagation (the Compiler seed, "No prompt binding").
+HeldFlatten: unbounded fn Wx, Env, Expr, ?Bn -> ((Wx, Wres))
+fn HeldFlatten wx, menv, x, ?bound:
+    let t = OutTyOf wx.lx, (Peel (Peel (TypeAt wx.lx, x.span)))
+    match menv.names["#whole{DynKey x}"]:
+        ? (BnLocal (XField (XSelf), dyn), ignore, ignore):
+            let ((name, wx1)) = match ?bound:
+                ? (BnHold f, ignore): ((f, wx))
+                # bound as a widget's result (`IsGetterBuiltin`): the getter the name was pre-bound to
+                ? (BnDyn (XMethod (XSelf), f, ignore), ignore, ignore): ((f, wx))
+                otherwise: FreshName wx, "flatten"
+            let inner = "{name}_inner"
+            let follow = "{name}_follow"
+            let ofollow = "{name}_ofollow"
+            let innerNow = XMethod (XMethod (XField (XVar "node"), inner), "get", [[XCx]]), "expect", [[(XStr "`@Flatten` adopts its first inner at the build")]]
+            let followed = DoExpr (XMethod (XField (XVar "node"), follow), "follow", [[(XRef (XField innerNow, "updates")), (XRef (XVar "node")), (XPath (RefChild (SiteRef wx.lx, wx.node), "{name}_moved"))]])
+            let ofollowed = DoExpr (XMethod (XField (XVar "node"), ofollow), "follow", [[(XRef (XField (XField (XVar "node"), dyn), "updates")), (XRef (XVar "node")), (XPath (RefChild (SiteRef wx.lx, wx.node), "{name}_outer_moved"))]])
+            let sample = XMethod (XMethod (XMethod (XField XSelf, "{inner}"), "get", [[XCx]]), "expect", [[(XStr "`@Flatten` adopts its first inner at the build")]]), "sample", [[XCx]]
+            let followTy = OutNamed (RefRuntime "prism_rtl::Follow"), [[]]
+            let wx2 = update wx1:
+                &_.taken <= Append &_.taken, [[inner, follow, ofollow, "{name}_adopt", "{name}_moved", "{name}_outer_moved"]]
+                &_.fields <= Append &_.fields, [[((inner, (OutHold (OutOpt (OutDyn t))), "`@Flatten`'s current inner: the one its outer held when it adopted")), ((follow, followTy, "the subscription to the inner's update event")), ((ofollow, followTy, "the subscription to the outer's update event"))]]
+                &_.moves <= Append &_.moves, [[((inner, (XCall (RefRuntime "rt::Hold::new"), [[(XCtor (RefRuntime "std::Some"), [[(XMethod (XVar dyn), "sample", [[XCx]])]]), XCx]]))), ((follow, (XCall (RefRuntime "prism_rtl::Follow::new"), [[]]))), ((ofollow, (XCall (RefRuntime "prism_rtl::Follow::new"), [[]])))]]
+                &_.build <= Append &_.build, [[followed, ofollowed]]
+                &_.getters <= Push &_.getters, (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=sample, doc="`@Flatten`'s dynamic: its current inner at the read point."))
+                &_.dynReads <= Insert &_.dynReads, name, [[OwnRead inner]]
+                &_.flattens <= Push &_.flattens, FlatDef(name=name, outer=dyn, generation="", held=True, ty=t)
+            ((wx2, (WrDyn (XMethod (XSelf), name, [[XCx]]), [[OwnRead inner]], t)))
+        otherwise:
+            let wx2 = update wx:
+                &_.build <= Push &_.build, (RefusalDo "`@Flatten` of `{SrcText wx.lx, wx.lx.file, x.span}`, a dynamic of dynamics with no live dynamic at the build where the line reads it (gap LF)")
+            ((wx2, WrUnit))
 
 # `for k, $v <- $each:` over `$(k ==> $v)` (Semantics ch. 4, ruling FV; a host document's
 # entries, `$(Path ==> $Elem c)`, and `@PerKey`'s inners): `$v` is the row's entry flattened.
@@ -792,7 +836,7 @@ fn EntryFlatten wx, t, ?bound:
         &_.build <= Push &_.build, followed
         &_.getters <= Push &_.getters, (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=sample, doc="`@Flatten`'s dynamic: its current inner at the read point."))
         &_.dynReads <= Insert &_.dynReads, name, [[OwnRead inner]]
-        &_.flattens <= Push &_.flattens, FlatDef(name=name, outer="entry", generation="", ty=t)
+        &_.flattens <= Push &_.flattens, FlatDef(name=name, outer="entry", generation="", held=False, ty=t)
     ((wx2, (WrDyn (XMethod (XSelf), name, [[XCx]]), [[OwnRead inner]], t)))
 
 # `@Switch $!a`: the event its `rebuild` forwards.
