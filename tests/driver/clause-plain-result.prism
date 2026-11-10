@@ -1,19 +1,22 @@
-# A widget of several clauses in a static position whose clauses end on a plain result,
-# bound by the caller: not lowered (the caller's build reads its plain values before the
-# clause's generation is built), refused loudly. Written by Claude on the claude-bugs
+# A widget of several clauses in a static position whose clauses end on a dynamic, bound
+# by the caller: not lowered (the clause's dynamic is the generation's, which the caller
+# would follow), refused loudly. Its plain-result twin lowers
+# (tests/conformance/sem-ch08-clause-plain-result). Written by Claude on the claude-bugs
 # branch; subject to change.
 emit Ui.*
 use Ui.*
 
-@Pick: fn ?Nat -> @Text
+@Pick: fn ?Nat -> @$Text
 fn @Pick nil:
-    Ui.Label(text=$"none")                                       # 0
-    @ "zero"
+    !go <- Ui.Button(label=$"none")                              # 0
+    $said <- "zero" then "zero!" on !go
+    @ $said
 fn @Pick (? n):
-    Ui.Label(text=$"some {n}")                                   # 0
-    @ "n{n}"
+    !go <- Ui.Button(label=$"some {n}")                          # 0
+    $said <- "n{n}" then "n{n}!" on !go
+    @ $said
 
 @main: @unit
 @main:
-    picked <- @Pick (? 3)                                        # 0
-    Ui.Label(text=$"{picked}")                                   # 1
+    $picked <- @Pick (? 3)                                       # 0
+    Ui.Label(text=$"{$picked}")                                  # 1

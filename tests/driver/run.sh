@@ -132,9 +132,9 @@ else
     failed+=(free-variable-defaulted)
     echo "FAILED free-variable-defaulted: wanted no undecided variable in the typed output ($out/free-variable-defaulted.typed)"
 fi
-# A static clause widget's plain result is refused by lowering, never dropped.
+# A static clause widget's dynamic result is refused by lowering, never dropped.
 said=$("$prismc" compile tests/driver/clause-plain-result.prism -o "$out/clause-plain-result" 2>&1)
-if [ $? -ne 0 ] && echo "$said" | grep -q 'not-lowered.*a widget of several clauses whose clause ends on a plain result'; then
+if [ $? -ne 0 ] && echo "$said" | grep -q 'not-lowered.*a widget of several clauses whose clause ends on a dynamic'; then
     echo "ok clause-plain-result: refused"
 else
     failed+=(clause-plain-result)

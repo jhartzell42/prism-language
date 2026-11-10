@@ -1,0 +1,14 @@
+# The plain clause results' tests: declarations of sem-ch08-clause-plain-result.
+emit Ui.*
+use App.*
+
+test some_clause, @Page (? 3):
+    build
+        => returns "n3"
+    click at 3
+        => expect Ui.Label(text="n3 1")
+
+test none_clause, @Page nil:
+    build
+        => expect Ui.Label(text="zero 0")
+        => returns "zero"
