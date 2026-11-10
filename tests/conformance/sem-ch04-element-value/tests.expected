@@ -1,0 +1,21 @@
+# Derived by hand from Type System ch. 2 (an element is a plain value until a statement or a host places it) and Semantics ch. 4 (`@Element` of an element is the element statement, at the statement's own path): the button's label follows `$n` in the tick of the click, and its clicks are `!go`'s.
+test an_element_value_is_placed
+
+tick 0
+  added:
+    0: Ui.Button(label="inc")
+    1: Ui.Button(label="go 0")
+    2: Ui.Label(text="went 0")
+    3/[0]/0: Ui.Label(text="replaced")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Button(label="go 1")
+
+tick 2
+  in:
+    1: click
+  changed:
+    2: Ui.Label(text="went 1")
