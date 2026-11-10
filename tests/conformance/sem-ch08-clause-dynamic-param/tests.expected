@@ -1,0 +1,13 @@
+# Derived by hand: the clause's label reads the caller's `$t`, so the click that writes it changes the label in its tick (Semantics ch. 7).
+test the_clause_follows_its_parameter
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="some 3 x")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="some 3 y")

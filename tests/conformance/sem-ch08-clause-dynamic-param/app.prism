@@ -1,0 +1,21 @@
+# A widget of several clauses in a static position with a dynamic parameter (Semantics
+# ch. 8: the clause chosen at the build stands transparent in its caller; Type System ch.
+# 1: a `$` parameter is the caller's dynamic, not a sample of it): the clause's label
+# follows the caller's hold after the build. prismc once passed the clause the hold's value
+# at the build, so the label never moved. Written by Claude on the claude-lowering
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Pick: fn ?Nat, $Text -> @unit
+fn @Pick nil, $t:
+    Ui.Label(text=$"none {$t}")                                  # 1
+fn @Pick (? n), $t:
+    Ui.Label(text=$"some {n} {$t}")                              # 1
+
+@top: @unit
+@top:
+    !go <- Ui.Button(label=$"go")                                # 0
+    $t <- "x" then "y" on !go
+    @Pick (? 3), $t                                              # 1
