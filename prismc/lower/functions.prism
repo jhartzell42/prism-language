@@ -168,7 +168,7 @@ fn FnDefOf lx, qk, clauses, sc:
     # (gap LE), so its body has their values. One whose parameters or result hold a dynamic
     # or an event below the top takes and gives them whole, `Dynamic`s and `Event`s (Type
     # System ch. 4, Application; gap LF): its body lifts by mapping them.
-    let whole = IsWholeSig sc.ty
+    let whole = IsWholeFn lx, qk
     let lxb = update lx:
         &_.whole <= whole
         &_.noCx <= True

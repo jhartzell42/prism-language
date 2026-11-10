@@ -183,9 +183,47 @@ fn UnboundValueOf lx, env, e:
 # read at the caller's read point, which no program can tell apart; one that gives a
 # blueprint takes its events as event values already.
 IsWholeFn: fn Lx, Text -> Bool
-fn IsWholeFn lx, qk = match lx.g.vals[qk]:
-    ? v: IsWholeSig v.scheme.ty
-    nil: False
+fn IsWholeFn lx, qk = HasKey lx.wholeFns, qk
+
+# The functions that take time whole: by their signature, and those whose dynamics are only
+# on top of their types but whose bodies pass one whole (`$First $a = Or (Wrap $a)[0], ($
+# 0)`): lifting such a body over its parameters would leave a dynamic it builds nothing to
+# be read at, so it takes and gives the dynamics too. Grown until no body adds one.
+WholeFns: unbounded fn Lx -> (Text ==> Bool)
+fn WholeFns lx:
+    let fns = Fold lx.g.defs, [[]], \|acc, d| match d.body:
+        DbFn clauses: match lx.g.vals[d.qk]:
+            ? v: Push acc, ((d, clauses, v))
+            nil: acc
+        otherwise: acc
+    let start = Fold fns, {}, \|m, ((d, ignore, v))| if IsWholeSig v.scheme.ty: Insert m, d.qk, True else: m
+    GrowWhole lx, fns, start, (Len fns)
+
+GrowWhole: unbounded fn Lx, [((Def, [FnClause], ValInfo))], (Text ==> Bool), Nat -> (Text ==> Bool)
+fn GrowWhole lx, fns, set, fuel:
+    let lxs = update lx:
+        &_.wholeFns <= set
+    let next = Fold fns, set, \|m, ((d, clauses, v))|
+        if (HasKey m, d.qk) or not (DynOnlyOnTop v.scheme.ty): m
+        else:
+            let lxf = update lxs:
+                &_.file <= d.file
+                &_.home <= d.home
+                &_.site <= d.home
+            let exprs = Fold clauses, [[]], \|acc, c| Append acc, (BodyExprs c.body)
+            if Fold exprs, False, \|seen, x| seen or IsWholeObject lxf, x: Insert m, d.qk, True else: m
+    if fuel == 0 or (Len (Keys next)) == (Len (Keys set)): next else: GrowWhole lx, fns, next, (Dec fuel)
+
+# Whether a signature's only time is `$` on top of parameters or the result.
+DynOnlyOnTop: fn Ty -> Bool
+fn DynOnlyOnTop t = match t:
+    TyFn ignore, ps, r:
+        let all = Push ps, r
+        let tops = Filter all, \|p| match p:
+            TySig "$", i: not (HasTime i)
+            otherwise: False
+        (Len tops) > 0 and (Len tops) + (Len (Filter all, \|p| not (HasTime p))) == (Len all)
+    otherwise: False
 
 IsWholeSig: fn Ty -> Bool
 fn IsWholeSig t = match t:

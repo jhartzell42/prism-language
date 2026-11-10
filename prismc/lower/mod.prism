@@ -99,6 +99,8 @@ type Lx = record:
     # below the top of a parameter or its result, Type System ch. 4, Application): its
     # time values are `Dynamic`s and `Event`s, never samples, and a lift in it maps them.
     whole: Bool
+    # The functions that take a dynamic or an event whole (`WholeFns`).
+    wholeFns: (Text ==> Bool)
     # Lowering a plain function's or a job's body, which has no read point (`cx`).
     noCx: Bool
     # The `while` loops of unbounded functions the shrink check did not clear, by place:
