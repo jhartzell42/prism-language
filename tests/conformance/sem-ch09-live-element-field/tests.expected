@@ -1,0 +1,13 @@
+# Derived by hand from Type System ch. 4 (a live element's `$` field is a `$T`, read at the reader's read point) and Semantics ch. 9 (a forwarded child's place re-emits in the tick it moves): the click moves the child's label, and the supplier's new element follows it in the same tick.
+test a_plain_function_reads_a_live_field
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="inc")
+    0/[1]/0: Ui.Label(text="<0>")
+
+tick 1
+  in:
+    0/[0]/0: click
+  changed:
+    0/[1]/0: Ui.Label(text="<1>")
