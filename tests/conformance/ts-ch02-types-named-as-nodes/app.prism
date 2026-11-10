@@ -24,8 +24,9 @@ fn ShowMain n = Show (Main(n=n))
 
 @main: @unit
 @main:
-    $xs <- [[1]]
-    for i, $x <- $xs:                                            # 0/[k]
+    !go <- Ui.Button(label=$"go")                                # 0
+    $xs <- [[1]] then Push $xs, 2 on !go
+    for i, $x <- $xs:                                            # 1/[k]
         Ui.Label(text=$"{ShowMain $x}")
-    ignore <- rebuild $xs:                                       # 1/#g
+    ignore <- rebuild $xs:                                       # 2/#g
         Ui.Label(text=$"{Show (MainRow (Len _))} {Show (MainGen(g=1))}")

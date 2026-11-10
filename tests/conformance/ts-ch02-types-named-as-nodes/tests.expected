@@ -4,5 +4,6 @@ test types_named_as_nodes
 
 tick 0
   added:
-    0/[0]/0: Ui.Label(text="Main(n=1)")
-    1/#0/0: Ui.Label(text="MainRow 1 MainGen(g=1)")
+    0: Ui.Button(label="go")
+    1/[0]/0: Ui.Label(text="Main(n=1)")
+    2/#0/0: Ui.Label(text="MainRow 1 MainGen(g=1)")
