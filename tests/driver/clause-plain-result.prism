@@ -1,0 +1,19 @@
+# A widget of several clauses in a static position whose clauses end on a plain result,
+# bound by the caller: not lowered (the caller's build reads its plain values before the
+# clause's generation is built), refused loudly. Written by Claude on the claude-bugs
+# branch; subject to change.
+emit Ui.*
+use Ui.*
+
+@Pick: fn ?Nat -> @Text
+fn @Pick nil:
+    Ui.Label(text=$"none")                                       # 0
+    @ "zero"
+fn @Pick (? n):
+    Ui.Label(text=$"some {n}")                                   # 0
+    @ "n{n}"
+
+@main: @unit
+@main:
+    picked <- @Pick (? 3)                                        # 0
+    Ui.Label(text=$"{picked}")                                   # 1

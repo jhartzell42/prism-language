@@ -570,10 +570,18 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                 let ptys = match v.scheme.ty:
                     TyFn ignore, ps, ignore: ps
                     otherwise: [[]]
+                # a generic widget's type parameters, over which its body was checked: their
+                # types at this call, read off its arguments' types
+                let ?params = Fold (Range0 (Len params)), (? {}), \|?acc, i| match ((?acc, args[i])):
+                    ((? m, ? a)): ?ParamInstance (Or ptys[i], TyErr), (TypeAt lx, a.value.span), m
+                    otherwise: ?acc
+                let unmatched = Filter (Fold ptys, [[]], \|acc, t| UnionTexts acc, (RigidsIn t)), \|q| not (HasKey (Or ?params, {}), q)
+                let lxp = update lx:
+                    &_.subst <= Fold (Keys (Or ?params, {})), &_.subst, \|m, q| Insert m, q, (Or (Or ?params, {})[q], TyErr)
                 let ((wx1, be1, me1)) = Fold (Range0 (Len params)), ((wx, emptyEnv, emptyEnv)), \|((w, be, me)), i|
                     let p = Or params[i], dummyPat
                     let nkey = PlainBinder lxc, p
-                    let pty = Or ptys[i], TyErr
+                    let pty = SubstTy lxp, (Or ptys[i], TyErr)
                     match args[i]:
                         nil: ((w, be, me))
                         ? a: BindParam w, benv, menv, be, me, nkey, pty, a.value
@@ -584,16 +592,53 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                     &_.inlined <= match lx.callIds[PlaceKey lx, callSpan]:
                         ? id: "{lx.inlined}_{Base32 id}"
                         nil: lx.inlined
+                    &_.subst <= Fold (Keys (Or ?params, {})), &_.subst, \|m, q| Insert m, q, (Or (Or ?params, {})[q], TyErr)
                 let inner = update wx1:
                     &_.lx <= lxi
                     &_.inlining <= Push &_.inlining, qk
                     &_.result <= WrUnit
-                let done = BlockInto inner, be1, me1, body
-                let back = update done:
-                    &_.lx <= lx
-                    &_.inlining <= wx.inlining
-                    &_.result <= wx.result
-                ((back, done.result))
+                if (Len unmatched) > 0:
+                    let wx2 = update wx:
+                        &_.build <= Push &_.build, (RefusalDo "the generic widget {BareName qk} at a call whose types its parameters' do not match")
+                    ((wx2, WrUnit))
+                else:
+                    let done = BlockInto inner, be1, me1, body
+                    let back = update done:
+                        &_.lx <= lx
+                        &_.inlining <= wx.inlining
+                        &_.result <= wx.result
+                    ((back, done.result))
+
+# A widget's type parameters at one of its arguments: its parameter's type matched to the
+# argument's (a plain parameter lifted over a dynamic argument, to the value under it),
+# keyed by name, as `SubstTy` reads a rigid or quantified variable.
+?ParamInstance: unbounded fn Ty, Ty, (Text ==> Ty) -> ?(Text ==> Ty)
+fn ?ParamInstance pty, aty, m = match ?MatchHead (Unrigid pty), aty, m:
+    ? found: ? found
+    nil: ?MatchHead (Unrigid pty), (Peel aty), m
+
+# The type variables a parameter's type names.
+RigidsIn: unbounded fn Ty -> [Text]
+fn RigidsIn t = match t:
+    TyRigid n: [[n]]
+    TyQ n: [[n]]
+    TyCon ignore, args: Fold args, [[]], \|acc, a| UnionTexts acc, (RigidsIn a)
+    TyTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (RigidsIn a)
+    TyArray e: RigidsIn e
+    TyMap k, v: UnionTexts (RigidsIn k), (RigidsIn v)
+    TySig ignore, i: RigidsIn i
+    otherwise: [[]]
+
+# A scheme's type with its rigid variables as quantified ones, which `?MatchAll` binds.
+Unrigid: unbounded fn Ty -> Ty
+fn Unrigid t = match t:
+    TyRigid n: TyQ n
+    TyCon n, args: TyCon n, (Each args, \|a| Unrigid a)
+    TyTuple ts: TyTuple (Each ts, \|a| Unrigid a)
+    TyArray e: TyArray (Unrigid e)
+    TyMap k, v: TyMap (Unrigid k), (Unrigid v)
+    TySig s, i: TySig s, (Unrigid i)
+    other: other
 
 # How many times the widget `qk` is already being inlined around this call: its recursion,
 # which alone is bounded; widgets that call other widgets nest as deep as they are written.

@@ -219,7 +219,7 @@ fn BuildG srcs, trees:
     let ((g6b, st6b)) = Fold (Keys g6.mods), ((g6, st6)), \|((g, st)), m| ConvertTypes g, st, m
     let ((g7, st7)) = Fold (Keys g6b.mods), ((g6b, st6b)), \|((g, st)), m| ConvertDecls g, st, m
     let g8 = DerivedImpls g7
-    let st8 = Coherence g8, (DerivedDynamics g8, st7)
+    let st8 = Coherence g8, (DerivedFields g8, (DerivedDynamics g8, st7))
     ((g8, st8))
 
 let emptyModule = Module(name=nil, emitRow=nil, mods=[[]], uses=[[]], decls=[[]], template=nil, span=Range(start=0, end=0))

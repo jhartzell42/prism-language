@@ -71,6 +71,15 @@ RefSpelled: fn Ref -> Text
 fn RefSpelled (RefItem ignore, ignore, s) = s
 fn RefSpelled (RefRuntime t) = t
 
+# A runtime name as both targets write it: the model's mark of the runtime side, `rt::`, is
+# the emitted prelude's path from the crate (`crate::prelude::`), and the runtime library is
+# reached from the root (`::prism_rtl::`), so a program module of either name hides
+# neither. The standard library's `std::` mark is each printer's.
+RuntimePath: fn Text -> Text
+fn RuntimePath t = if HasPrefix t, "rt::": "crate::prelude::{DropPrefix t, "rt::"}"
+else: if HasPrefix t, "prism_rtl::": "::{t}"
+else: t
+
 # A reference's last segment: an item's name, a runtime name's last part.
 RefLast: fn Ref -> Text
 fn RefLast (RefItem ignore, p, ignore) = Or (?Last (SplitOn p, "::")), p

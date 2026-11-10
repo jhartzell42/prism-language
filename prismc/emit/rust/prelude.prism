@@ -20,12 +20,12 @@ use ::std::rc::Rc;
 // The runtime's items, reached through the prelude too: the emitted code calls every helper
 // by its path from here (`crate::prelude::index`), never bare (prismc/lower/mod.prism,
 // `Helper`).
-pub use prism_rtl::*;
+pub use ::prism_rtl::*;
 
 /// The runtime's traits and the prelude's, unnamed: `use crate::prelude::traits::*` brings
 /// their methods into scope and none of their names (the emitted modules' one import).
 pub mod traits {
-    pub use prism_rtl::traits::*;
+    pub use ::prism_rtl::traits::*;
     pub use super::{Modulo as _, Num as _, Row as _};
 }
 
@@ -93,7 +93,7 @@ impl FromPod for Exception {
     }
 }
 
-/// `type Turn b = choice: More | Done b` (the prelude's; `prism_rtl::Turn` is the job's).
+/// `type Turn b = choice: More | Done b` (the prelude's; `::prism_rtl::Turn` is the job's).
 #[derive(Clone, PartialEq, Eq)]
 pub enum PreludeTurn<B> {
     More,
@@ -119,7 +119,7 @@ impl FromPod for PreludeUnwrap {
     fn from_pod(p: &Pod) -> Result<Self, Fault> {
         match p.tag() {
             Some("Prelude.Unwrap") => Ok(PreludeUnwrap {}),
-            _ => prism_rtl::pod::mismatch("a Prelude.Unwrap", p),
+            _ => ::prism_rtl::pod::mismatch("a Prelude.Unwrap", p),
         }
     }
 }
@@ -142,7 +142,7 @@ impl FromPod for PreludeExceptions {
     fn from_pod(p: &Pod) -> Result<Self, Fault> {
         match p.tag() {
             Some("Prelude.Exceptions") => Ok(PreludeExceptions {}),
-            _ => prism_rtl::pod::mismatch("a Prelude.Exceptions", p),
+            _ => ::prism_rtl::pod::mismatch("a Prelude.Exceptions", p),
         }
     }
 }
@@ -167,7 +167,7 @@ impl FromPod for Duration {
     fn from_pod(p: &Pod) -> Result<Duration, Fault> {
         match p.structure() {
             Pod::Duration(ns) => Ok(Duration(*ns)),
-            other => prism_rtl::pod::mismatch("a Duration", other),
+            other => ::prism_rtl::pod::mismatch("a Duration", other),
         }
     }
 }
@@ -602,11 +602,11 @@ pub fn cursor_at(t: &Text, n: &Nat) -> Option<Cursor> {
 
 // ---- Regular expressions (Appendix B; claude/regex-dialect.md) --------------------------
 // A literal is built where it stands (`Regex::lit`, once per literal); these are the
-// prelude's functions over `prism_rtl::regex`, each the runtime's search.
+// prelude's functions over `::prism_rtl::regex`, each the runtime's search.
 
 /// `type Group = record: text, front, back` and `type Match = record: text, front, back,
 /// groups, named`: the runtime's own records, with their `==` and `Show`.
-pub use prism_rtl::{Group, Match};
+pub use ::prism_rtl::{Group, Match};
 
 /// `?Regex: fn Text -> ?Regex`: the text as a pattern with no flags, `None` outside the
 /// dialect; linear in the text.
@@ -717,7 +717,7 @@ impl Wakes {
 /// of them.
 pub trait Row: Node {
     fn leave_row(&self, cx: &mut Cx);
-    fn document(&self, cx: &Cx) -> Vec<(Path, Rc<prism_rtl::Entry<crate::Elem>>)> {
+    fn document(&self, cx: &Cx) -> Vec<(Path, Rc<::prism_rtl::Entry<crate::Elem>>)> {
         let _ = cx;
         Vec::new()
     }
@@ -728,16 +728,16 @@ pub trait Row: Node {
 }
 
 /// A host's own rows (prism_rtl's), which its `for` builds and tears down like any row.
-impl Row for prism_rtl::HostRow<crate::Elem, crate::Answer> {
+impl Row for ::prism_rtl::HostRow<crate::Elem, crate::Answer> {
     fn leave_row(&self, cx: &mut Cx) {
-        prism_rtl::HostRow::leave_row(self, cx)
+        ::prism_rtl::HostRow::leave_row(self, cx)
     }
-    fn document(&self, cx: &Cx) -> Vec<(Path, Rc<prism_rtl::Entry<crate::Elem>>)> {
+    fn document(&self, cx: &Cx) -> Vec<(Path, Rc<::prism_rtl::Entry<crate::Elem>>)> {
         let _ = cx;
-        prism_rtl::HostRow::entries(self)
+        ::prism_rtl::HostRow::entries(self)
     }
     fn deliver(self: Rc<Self>, at: &[Segment], v: &crate::Answer, cx: &mut Cx) -> Done {
-        prism_rtl::HostRow::deliver(&self, at, v, cx)
+        ::prism_rtl::HostRow::deliver(&self, at, v, cx)
     }
 }
 
@@ -1058,7 +1058,7 @@ pub fn run_scripts(world: &TestWorld, given: &[String], compiled: &[&str]) -> u8
 /// The canvas World, when the crate is built with it.
 #[cfg(feature = "canvas")]
 pub fn run_canvas<P: Program>() -> u8 {
-    prism_world_canvas_rtl::run::<P>()
+    ::prism_world_canvas_rtl::run::<P>()
 }
 
 #[cfg(not(feature = "canvas"))]

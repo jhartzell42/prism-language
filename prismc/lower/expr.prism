@@ -678,6 +678,13 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
                         let pa = if (Len ps) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
                         let f = XClosure False, [[pa]], (XCall (HelperRef "entered"), [[(XCall (StartRef lx, qk), (Each names, \|nm| XVar nm))]])
                         VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[f]]), t), t
+                    # a generic function's value is a closure calling it, at the types the
+                    # closure's parameters say (a target with function templates names
+                    # none of them by its path alone)
+                    OutFn pts, ignore if (Len v.scheme.qs) > 0:
+                        let names = Each (Range0 (Len pts)), \|i| "a{i}"
+                        let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "a")), (OutRef (Or pts[i], OutUnit))
+                        VlOwned (XCall (RefRuntime "std::Rc::new"), [[(XClosure False, pas, (XCall (ValueRef lx, qk), (Each names, \|nm| XVar nm)))]]), t
                     otherwise: VlOwned (XCall (RefRuntime "std::Rc::new"), [[XPath (ValueRef lx, qk)]]), t
             nil: VlOwned (Refusal "the global {qk}"), t
 

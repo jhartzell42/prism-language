@@ -113,11 +113,19 @@ fi
 # Gap LF: a function whose result holds its `$` parameter takes the dynamic whole (Type
 # System ch. 4, Application): lowered, a `Dynamic` in and out, never refused.
 said=$("$prismc" compile tests/driver/lifted-holds-dynamic.prism -o "$out/lifted-holds-dynamic" 2>&1)
-if [ $? -eq 0 ] && grep -Eq 'fn wrap_f\(a_[a-z0-9]+: &rt::Dynamic<rt::Nat>\) -> rt::Array<rt::Dynamic<rt::Nat>>' "$out/lifted-holds-dynamic/src/program.rs"; then
+if [ $? -eq 0 ] && grep -Eq 'fn wrap_f\(a_[a-z0-9]+: &crate::prelude::Dynamic<crate::prelude::Nat>\) -> crate::prelude::Array<crate::prelude::Dynamic<crate::prelude::Nat>>' "$out/lifted-holds-dynamic/src/program.rs"; then
     echo "ok lifted-holds-dynamic: Wrap takes its dynamic whole"
 else
     failed+=(lifted-holds-dynamic)
     echo "FAILED lifted-holds-dynamic: wanted Wrap lowered over a Dynamic, got: $said"
+fi
+# A static clause widget's plain result is refused by lowering, never dropped.
+said=$("$prismc" compile tests/driver/clause-plain-result.prism -o "$out/clause-plain-result" 2>&1)
+if [ $? -ne 0 ] && echo "$said" | grep -q 'not-lowered.*a widget of several clauses whose clause ends on a plain result'; then
+    echo "ok clause-plain-result: refused"
+else
+    failed+=(clause-plain-result)
+    echo "FAILED clause-plain-result: wanted a not-lowered refusal, got: $said"
 fi
 if ./prism compile --target cpp examples/chess -o "$out/chess-cpp" > /dev/null 2>&1 &&
     grep -q 'prism_world_canvas::run<' "$out/chess-cpp/src/main.cpp" &&

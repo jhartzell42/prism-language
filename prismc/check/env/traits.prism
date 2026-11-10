@@ -49,6 +49,43 @@ fn DerivedDynamics g, st = Fold (Keys g.types), st, \|s, k| match g.types[k]:
             otherwise: s
     nil: s
 
+# A derived `^Eq`, `^Ord` or `^Show` is structural (Type System ch. 3, "Derive, out loud"):
+# each field's type has the trait, the type's parameters given it as the derived impl's
+# bounds give it. A field whose type has none refuses the derive at the type's line
+# (`no-impl`), where the target compilers would refuse the derived code. A field holding a
+# dynamic or an event is `derive-dynamic`'s.
+DerivedFields: unbounded fn G, St -> St
+fn DerivedFields g, st = Fold (Keys g.types), st, \|s, k| match g.types[k]:
+    ? ti: if (?FieldHolding ti.body) != nil: s else: Fold ti.derives, s, \|s1, tr| match ?ResolveTrait g, ti.home, (SplitOn tr, "."):
+        ? cls: if HasText [["Eq", "Ord", "Show"]], (BareName cls): DeriveFieldsHave g, s1, ti, cls else: s1
+        nil: s1
+    nil: s
+
+DeriveFieldsHave: unbounded fn G, St, TyInfo, Text -> St
+fn DeriveFieldsHave g, st, ti, cls:
+    let inst = ParamInst ti.params, (Each ti.params, \|p| TyRigid p)
+    let fields = match ti.body:
+        BRecord fs: Each fs, \|((f, t))| ((f, "is", t))
+        BChoice cs: Fold cs, [[]], \|acc, ((c, ts))| Append acc, (Each ts, \|t| ((c, "holds", t)))
+        otherwise: [[]]
+    let givens = Each ti.params, \|p| ((p, cls))
+    let ?lacking = Fold fields, nil, \|?found, ((f, how, t))| match ?found:
+        ? x: ? x
+        nil:
+            let ft = SubstQ inst, t
+            let trial = update st:
+                &_.file <= ti.file
+                &_.diags <= [[]]
+                &_.wants <= [[Want(cls=cls, ty=ft, file=ti.file, span=ti.span, level=0)]]
+            let out = SolveWants g, trial, givens, False
+            if (Len out.diags) > 0 or (Len out.wants) > 0: ? ((f, how, ft)) else: nil
+    match ?lacking:
+        ? ((f, how, ft)):
+            let bare = BareName cls
+            let shown = ShowTy st, ft
+            WithFile (ErrFix (WithFile st, ti.file), "no-impl", ti.span, "`derive ^{bare}` on `{BareName ti.name}`, whose `{f}` {how} `{shown}`, which has no `^{bare}`", "derive `^{bare}` on `{shown}`, or drop the derive"), st.file
+        nil: st
+
 # The first field (or a choice's case) of a type's body whose type holds a dynamic or an
 # event.
 ?FieldHolding: fn TyBody -> ?Text

@@ -121,11 +121,14 @@ fn RebuildLine wx, benv, menv, scrut, body, e, ?bound:
             &_.getters <= Push &_.getters, (GenUp name, (GnOf wx4, upId).name, (GnOf wx4, upId).ty)
         ((wx5, (WrEv (EvRefOf wx5, upId))))
 
-# Whether a `rebuild` hands back a dynamic, `$$a` (its generations give `$a`), rather than
-# an event, `$!a`.
+# Whether a `rebuild` hands back a dynamic: `$$a` (its generations give `$a`), or `$a` over
+# a plain result, rather than an event, `$!a`, or nothing.
 GivesDynamic: fn Ty -> Bool
 fn GivesDynamic t = match t:
     TySig "$", (TySig "$", ignore): True
+    TySig "$", (TySig "!", ignore): False
+    TySig "$", (TyCon "unit", [[]]): False
+    TySig "$", ignore: True
     TyAt i, ignore: GivesDynamic i
     otherwise: False
 
@@ -140,19 +143,24 @@ RebuildDynamic: unbounded fn Wx, Env, Block, Ex, [Read], OutTy, Text, Pos -> ((W
 fn RebuildDynamic wx, menv, body, srcEx, reads, vt, name, pos:
     let rowName = "{wx.node}Gen{RowSuffix wx}"
     let whole = GenRowOf wx, menv, body, vt, rowName, name
-    match whole.?dynResult:
+    # the rebuild's dynamic holds the generation's dynamic result, or its plain one
+    let ?shape = match whole.?dynResult:
+        ? rt: ? (((OutDyn rt), "result_dynamic"))
+        nil: match whole.?plainResult:
+            ? rt: ? ((rt, "result_value"))
+            nil: nil
+    match ?shape:
         nil:
             let wx2 = update whole.parent:
                 &_.build <= Push &_.build, (RefusalDo "a `rebuild` whose generation gives a dynamic it does not lower")
             ((wx2, WrUnit))
-        ? rt:
-            let dynTy = OutDyn rt
+        ? ((dynTy, taken)):
             let result = "{name}_result"
             let live = "{result}_live"
             let what = "the dynamic of the `rebuild` at place {PlaceText pos}"
             let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
             let built = TryOf (XCall (RefChild (SiteRef wx.lx, whole.node.name), "build"), (Append [[(XVar "path"), (XVar "value")]], tail))
-            let kept = DoAssign (XDeref (XMethod (XField XSelf, live), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XMethod (XVar "row"), "result_dynamic", [[]])]])
+            let kept = DoAssign (XDeref (XMethod (XField XSelf, live), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XMethod (XVar "row"), taken, [[]])]])
             let marked = DoExpr (XMethod (XField XSelf, "{result}_snap"), "mark", [[XCx]])
             let select = XBlock [[(DoLet (PaBind "row"), built), kept, marked]], (XVar "row")
             let current = XMethod (XClone (XMethod (XField XSelf, "{live}"), "borrow", [[]])), "expect", [[(XStr "a `rebuild` has a generation from its build on")]]
@@ -299,6 +307,12 @@ fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent:
         WrEv r: Connect r2, r, (SkUp upName)
         WrParts ignore: update r2:
             &_.build <= Push &_.build, (RefusalDo "a widget of several clauses whose clause ends on a bundle")
+        # the caller takes a static clause widget's result as an event (its generation is
+        # built after the caller's build reads its plain values)
+        WrPlain ignore, ignore: update r2:
+            &_.build <= Push &_.build, (RefusalDo "a widget of several clauses whose clause ends on a plain result")
+        WrDyn ignore, ignore, ignore: update r2:
+            &_.build <= Push &_.build, (RefusalDo "a widget of several clauses whose clause ends on a dynamic")
         otherwise: r2
     let node = FinishNode r3, rowName, (Append (Push (Each fields, \|((f, t, ignore))| ((f, t))), (("parent", (OutWeak wx.node)))), (HostedParams wx)), True
     let p2 = GenMarked p1, genName, r3
@@ -312,8 +326,9 @@ type GenRow = record:
     node: NodeDef
     parent: Wx
     # The generation's result when it is a dynamic: its type (the row has `result` and
-    # `result_dynamic`).
+    # `result_dynamic`); when it is a plain value, its type (the row has `result_value`).
     dynResult: ?OutTy
+    plainResult: ?OutTy
 
 # A generation's node: its `_` a plain field, the block's events it names through ports,
 # its result forwarded up to the `rebuild`'s.
@@ -326,15 +341,24 @@ fn GenRowOf wx, menv, body, vt, rowName, genName:
     let be = Bind (BuildSpelling ports), "_", (BnLocal (XVar "value"), Owned, vt)
     let me = Bind ports, "_", (BnLocal (XField XSelf, "value"), Owned, vt)
     let r2 = BlockInto r1, be, me, body
-    let ((r3, ?dynResult)) = match r2.result:
-        WrEv r: (((Connect r2, r, (SkUp upName)), nil))
-        WrDyn ex, resultReads, rt: (((GenResult r2, genName, ex, resultReads, rt), ? rt))
+    let ((r3, ?dynResult, ?plainResult)) = match r2.result:
+        WrEv r: (((Connect r2, r, (SkUp upName)), nil, nil))
+        WrDyn ex, resultReads, rt: (((GenResult r2, genName, ex, resultReads, rt), ? rt, nil))
+        # a plain result: computed at the generation's build, kept in a field of the row
+        WrPlain ex, rt:
+            let ((f, rf)) = FreshName r2, "result"
+            let r2p = update rf:
+                &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind f), rt), ex)
+                &_.fields <= Push &_.fields, ((f, rt, "the generation's plain result"))
+                &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
+                &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=(XClone (XField XSelf, f)), doc="The generation's plain result, which the `rebuild`'s dynamic is while the generation stands."))
+            ((r2p, nil, ? rt))
         WrParts ignore:
             let r2b = update r2:
                 &_.build <= Push &_.build, (RefusalDo "a `rebuild` whose block ends on a bundle")
-            ((r2b, nil))
-        otherwise: ((r2, nil))
-    GenRow(node=(FinishNode r3, rowName, (Append [[(("value", vt)), (("parent", (OutWeak wx.node)))]], (HostedParams wx)), True), parent=(GenMarked p1, genName, r3), dynResult=?dynResult)
+            ((r2b, nil, nil))
+        otherwise: ((r2, nil, nil))
+    GenRow(node=(FinishNode r3, rowName, (Append [[(("value", vt)), (("parent", (OutWeak wx.node)))]], (HostedParams wx)), True), parent=(GenMarked p1, genName, r3), dynResult=?dynResult, plainResult=?plainResult)
 
 # A generation's dynamic result (a `rebuild` handing back `$$a`): the getter `result`, the
 # `Dynamic` the block keeps of it, and the block told through `{genName}_result_moved` when

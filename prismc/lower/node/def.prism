@@ -183,6 +183,9 @@ fn PreBind wx, benv, menv, s = match s.kind:
             otherwise: ((wx, benv, menv))
     SLet p, ignore, ignore: match p.kind:
         PName n: PreBindName wx, benv, menv, n, AsLet
+        PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
+            PName n: PreBindName w, be, me, n, AsLet
+            otherwise: ((w, be, me))
         otherwise: ((wx, benv, menv))
     SFn c:
         let fname = DefNameText c.name
@@ -656,7 +659,23 @@ fn LetLine wx, benv, menv, p, e:
                         otherwise: lx
                     let v = Own (ValueOf lxw, benv, e)
                     (((WidgetLetField wx, (PlaceStem rs), t, v, "`{PatText p}`"), benv))
-        otherwise: ((wx, benv))
+        # a tuple of plain names (or `ignore`s): the value computed at the build, each name
+        # its part, as a widget's plain result binds them
+        ? (BnParts parts) if Fold parts, True, \|ok, ?b| ok and IsPlainPart ?b:
+            let t = OutTyOf lx, (Peel (TypeAt lx, e.span))
+            (((BindPlainResult wx, menv, p, (Own (ValueOf lx, benv, e)), t), benv))
+        otherwise: match p.kind:
+            PIgnore: ((wx, benv))
+            otherwise:
+                let wx2 = update wx:
+                    &_.build <= Push &_.build, (RefusalDo "a widget block's `let` of this pattern (`{SrcText lx, lx.file, p.span}`): a name, or a tuple of plain names, binds")
+                ((wx2, benv))
+
+# A part of a tuple pattern as its prebinding has it: a plain name, or none (`ignore`).
+IsPlainPart: fn ?Bn -> Bool
+fn IsPlainPart (? (BnLocal ignore, ignore, ignore)) = True
+fn IsPlainPart nil = True
+fn IsPlainPart ?other = False
 
 # A widget block's plain `let` as a node field: computed in the build's `let`s, moved in.
 WidgetLetField: fn Wx, Text, OutTy, Ex, Text -> Wx

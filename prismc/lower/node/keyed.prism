@@ -111,13 +111,24 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
         &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=name, reads=(RowPlaceReads rowWx), wrote=(RowHears rowWx), kind=ForRow)
     let full = TypeAt lx, e.span
     let outTy = OutTyOf lx, (Peel full)
-    match rowWx.result:
+    # a plain result is the row's from its build on: kept in a field of the row, read as a
+    # dynamic no write moves
+    let rowWxR = match rowWx.result:
+        WrPlain ex, rt:
+            let ((f, rw1)) = FreshName rowWx, "result"
+            update rw1:
+                &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind f), rt), ex)
+                &_.fields <= Push &_.fields, ((f, rt, "the row's plain result"))
+                &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
+                &_.result <= WrDyn (XClone (XField XSelf, f)), [[]], rt
+        otherwise: rowWx
+    match rowWxR.result:
         WrEv r:
             let ((gid, wx4)) = AddGn wx3, "{name}_all", outTy, GnGather, 1
             let wx5 = AddFieldLast wx4, "{name}_gathered", (OutStamped outTy), "the rows' firings this tick, by key", (XCall (RefRuntime "rt::Stamped::new"), [[]])
             let wx6 = update wx5:
                 &_.gns <= Each &_.gns, \|n| if n.id == gid: WithInputs n, [["{name}_gathered"]] else: n
-            let rowDone = Connect rowWx, r, (SkUp "{name}_all_in")
+            let rowDone = Connect rowWxR, r, (SkUp "{name}_all_in")
             let wx7 = AddBuilder wx6, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowDone, qk=rowName, params=rowParams, gather=(? gid))), passed
             ((wx7, (WrEv (EvRefOf wx7, gid))))
         WrDyn ex, resultReads, rt:
@@ -129,10 +140,10 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
             # the parent, mark it as the live computation's own reads.
             let gathered = "{name}_all"
             let gatheredTy = OutMap kt, rt
-            let ownBehind = Filter (ReadsClosed rowWx.dynReads, resultReads), \|r| match r:
+            let ownBehind = Filter (ReadsClosed rowWxR.dynReads, resultReads), \|r| match r:
                 OwnRead ignore: True
                 ParentRead ignore: False
-            let rowDone = update rowWx:
+            let rowDone = update rowWxR:
                 &_.getters <= Push &_.getters, (MethDef(name="result", recv=RecvRef, params=[[]], cx=CxRef, ret=rt, body=[[]], tail=ex, doc="The row's result, which the block gathers by key."))
                 &_.resultMoved <= if (Len ownBehind) > 0: ? (("{gathered}_moved", ownBehind)) else: nil
             let wx4 = AddBuilder wx3, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowDone, qk=rowName, params=rowParams, gather=nil)), passed
@@ -144,14 +155,14 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
                 &_.fields <= Push &_.fields, (("{gathered}_snap", (OutSnapshot gatheredTy), "the `for` at place {PlaceText pos}'s gathered dynamic, structural: its snapshots, the rows' results and the lagged dynamic (pick ST)"))
                 &_.inits <= Push &_.inits, (("{gathered}_snap", (XCall (RefRuntime "rt::Snapshot::new"), [[XStr what]])))
                 &_.snaps <= Push &_.snaps, SnapDef(name=gathered, live="{gathered}_now", ty=gatheredTy, eq=(TyHasEq lx, (Peel full), [[]]), builder=name, before=False, what=what)
-                &_.dynReads <= Insert &_.dynReads, "{gathered}_now", (UnionReads reads, (BlockReads (ReadsClosed rowWx.dynReads, resultReads)))
+                &_.dynReads <= Insert &_.dynReads, "{gathered}_now", (UnionReads reads, (BlockReads (ReadsClosed rowWxR.dynReads, resultReads)))
             ((wx5, (WrDyn (XMethod (XSelf), gathered, [[XCx]]), [[OwnRead gathered]], gatheredTy)))
         WrParts ignore:
             let wx4 = update wx3:
                 &_.build <= Push &_.build, (RefusalDo "a `for` whose rows end on a bundle (Semantics ch. 4: gathered part by part)")
             ((wx4, WrUnit))
         otherwise:
-            let wx4 = AddBuilder wx3, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowWx, qk=rowName, params=rowParams, gather=nil)), passed
+            let wx4 = AddBuilder wx3, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowWxR, qk=rowName, params=rowParams, gather=nil)), passed
             ((wx4, WrUnit))
 
 # A row's entry, `$_`: the block's source at the row's key, at the read point (a projection

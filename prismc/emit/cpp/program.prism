@@ -42,19 +42,19 @@ use Emit.Cpp.Prelude.*
 NodeParts: unbounded fn Cp, NodeDef -> Parts
 fn NodeParts cp, n:
     let ncp = WithFields cp, (Each n.fields, \|((f, t, ignore))| ((f, t)))
-    let base = if n.rowKind == NotARow and (Len n.hosted) == 0: "rt::Node" else: "rt::Row"
+    let base = if n.rowKind == NotARow and (Len n.hosted) == 0: "crate::prelude::Node" else: "crate::prelude::Row"
     let fields = Join (Each n.fields, \|((f, t, doc))| "{CppDoc doc}{CppType cp, t} {FieldId f};"), "\n"
     let consts = Join (Each n.consts, \|((c, h, doc))| "{CppDoc "The {doc}."}static constexpr ::std::uint32_t {c} = {h};"), "\n"
-    let ctorParams = Join (Append [["rt::Path path"]], (Each n.fields, \|((f, t, ignore))| "{CppType cp, t} {FieldId f}")), ", "
+    let ctorParams = Join (Append [["crate::prelude::Path path"]], (Each n.fields, \|((f, t, ignore))| "{CppType cp, t} {FieldId f}")), ", "
     let ctorInits = Join (Append [["path(::std::move(path))"]], (Each n.fields, \|((f, ignore, ignore))| "{FieldId f}(::std::move({FieldId f}))")), ", "
     let params = Concat (Each n.params, \|((p, t))| "{ParamType cp, t} {p}, ")
-    let ret = if n.fallible: "rt::Result<prism_rtl::Rc<{n.name}>>" else: "prism_rtl::Rc<{n.name}>"
-    let makeDecl = "static {ret} make(rt::Path path, {params}rt::Cx& cx);"
+    let ret = if n.fallible: "crate::prelude::Result<::prism_rtl::Rc<{n.name}>>" else: "::prism_rtl::Rc<{n.name}>"
+    let makeDecl = "static {ret} make(crate::prelude::Path path, {params}crate::prelude::Cx& cx);"
     let methodDecls = Each (Append n.methods, n.hosted), \|m| "{MethodSig ncp, m, ""};"
-    let builderDecls = Append (Each n.builders, \|b| "rt::Done {b.name}_build(rt::Cx& cx);"), (Each n.gens, \|g| "rt::Done {g.name}_build(rt::Cx& cx);")
+    let builderDecls = Append (Each n.builders, \|b| "crate::prelude::Done {b.name}_build(crate::prelude::Cx& cx);"), (Each n.gens, \|g| "crate::prelude::Done {g.name}_build(crate::prelude::Cx& cx);")
     let hookDecls = Each n.hooks, \|((h, ignore))| "{HookSig h, ""} override;"
-    let answerDecl = if (Len n.answers) == 0: [[]] else: [["rt::Done answer(::std::span<const rt::Segment> at, const rt::Pod& v, rt::Cx& cx) override;"]]
-    let rowDecl = if n.rowKind == NotARow: [[]] else: [["void leave_row(rt::Cx& cx) override;"]]
+    let answerDecl = if (Len n.answers) == 0: [[]] else: [["crate::prelude::Done answer(::std::span<const crate::prelude::Segment> at, const crate::prelude::Pod& v, crate::prelude::Cx& cx) override;"]]
+    let rowDecl = if n.rowKind == NotARow: [[]] else: [["void leave_row(crate::prelude::Cx& cx) override;"]]
     let decls = Join (Append (Append (Append (Append (Append [[makeDecl]], methodDecls), builderDecls), hookDecls), answerDecl), rowDecl), "\n"
     let doc = CppSourceDoc "`{n.prism}`: a node of its own (claude/backend.md, \"A widget block\").", n.doc
     let decl = NodeClass doc, n.name, base, fields, consts, "{n.name}({ctorParams}) : {ctorInits} \{\}", decls
@@ -63,7 +63,7 @@ fn NodeParts cp, n:
     let ((letsText, lcp)) = CppStatementsCp ncp, n.lets
     let args = Join (Append [["path"]], (Each byField, \|v| CppExpr lcp, v)), ", "
     let tail = if n.fallible: "return node;" else: "return node;"
-    let make = NodeMake n.name, "{ret} {n.name}::make(rt::Path path, {params}rt::Cx& cx)", letsText, args, (Join (Filter [[(CppStatements (Pointing lcp, "node"), n.build), tail]], \|s| s != ""), "\n")
+    let make = NodeMake n.name, "{ret} {n.name}::make(crate::prelude::Path path, {params}crate::prelude::Cx& cx)", letsText, args, (Join (Filter [[(CppStatements (Pointing lcp, "node"), n.build), tail]], \|s| s != ""), "\n")
     let methods = Each (Append n.methods, n.hosted), \|m| MethodDef ncp, n.name, m
     let builders = Append (Each n.builders, \|b| ForBuildCpp ncp, n.name, b), (Each n.gens, \|g| GenBuildCpp ncp, n.name, g)
     let hooks = Each n.hooks, \|((h, body))| CppFunction "", (HookSig h, "{n.name}::"), "{CppStatements ncp, body}\nreturn \{\};"
@@ -76,8 +76,8 @@ fn NodeParts cp, n:
 MethodSig: unbounded fn Cp, MethDef, Text -> Text
 fn MethodSig cp, m, owner:
     let cx = match m.cx:
-        CxMut: [["rt::Cx& cx"]]
-        CxRef: [["const rt::Cx& cx"]]
+        CxMut: [["crate::prelude::Cx& cx"]]
+        CxRef: [["const crate::prelude::Cx& cx"]]
         CxNone: [[]]
     let params = Join (Append (Each m.params, \|((p, t))| "{ParamType cp, t} {p}"), cx), ", "
     let constness = if m.recv == RecvRef: " const" else: ""
@@ -86,12 +86,12 @@ fn MethodSig cp, m, owner:
 MethodDef: unbounded fn Cp, Text, MethDef -> Text
 fn MethodDef cp, owner, m:
     let ((st, cp2)) = CppStatementsCp cp, m.body
-    let body = if m.ret == OutUnit: "{st}\nreturn rt::Unit\{\};" else: if (Len m.body) == 0: CppBody cp, m.tail else: "{st}\n{CppBody cp2, m.tail}"
+    let body = if m.ret == OutUnit: "{st}\nreturn crate::prelude::Unit\{\};" else: if (Len m.body) == 0: CppBody cp, m.tail else: "{st}\n{CppBody cp2, m.tail}"
     CppFunction (CppDoc m.doc), (MethodSig cp, m, "{owner}::"), body
 
 HookSig: fn Text, Text -> Text
-fn HookSig "push", owner = "rt::Done {owner}push(const rt::Pod& element, const rt::Pod& v, rt::Cx& cx)"
-fn HookSig h, owner = "rt::Done {owner}{h}(rt::Cx& cx)"
+fn HookSig "push", owner = "crate::prelude::Done {owner}push(const crate::prelude::Pod& element, const crate::prelude::Pod& v, crate::prelude::Cx& cx)"
+fn HookSig h, owner = "crate::prelude::Done {owner}{h}(crate::prelude::Cx& cx)"
 
 AnswerDefCpp: unbounded fn Cp, NodeDef -> Text
 fn AnswerDefCpp cp, n:
@@ -102,18 +102,18 @@ fn AnswerDefCpp cp, n:
     let blocks = Each (Range0 (Len arms)), \|i|
         let ((tests, inner)) = Or arms[i], (([[]], ""))
         Block "{if i == 0: "if" else: "else if"} ({Conds tests})", inner
-    CppFunction "", "rt::Done {n.name}::answer(::std::span<const rt::Segment> at, const rt::Pod& v, rt::Cx& cx)", "{Join blocks, " "} else \{\n    return rt::unexpected(rt::Fault::answer(rt::str(\"no answering place at \", rt::path_of(at))));\n\}\nreturn \{\};"
+    CppFunction "", "crate::prelude::Done {n.name}::answer(::std::span<const crate::prelude::Segment> at, const crate::prelude::Pod& v, crate::prelude::Cx& cx)", "{Join blocks, " "} else \{\n    return crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"no answering place at \", crate::prelude::path_of(at))));\n\}\nreturn \{\};"
 
 # A row's leaving (prelude `Row`): a `for` row keeps its entry as the tick opened, its places
 # are torn down, its subscriptions let go.
 RowLeaving: unbounded fn Cp, NodeDef -> Text
 fn RowLeaving cp, n:
     let kept = if n.rowKind == ForRow: [["this->left_entry = entry(cx);"]] else: [[]]
-    let unsubscribe = Each n.subs, \|((ev, m, ignore))| "if (auto p = parent.lock(); p && {m}_sub) rt::deref(p->{ev}_port).unsubscribe(*::std::exchange({m}_sub, ::std::nullopt));"
-    CppFunction "", "void {n.name}::leave_row(rt::Cx& cx)", (Join (Append (Push kept, "remove_places(cx);"), unsubscribe), "\n")
+    let unsubscribe = Each n.subs, \|((ev, m, ignore))| "if (auto p = parent.lock(); p && {m}_sub) crate::prelude::deref(p->{ev}_port).unsubscribe(*::std::exchange({m}_sub, ::std::nullopt));"
+    CppFunction "", "void {n.name}::leave_row(crate::prelude::Cx& cx)", (Join (Append (Push kept, "remove_places(cx);"), unsubscribe), "\n")
 
 ForBuildCpp: unbounded fn Cp, Text, ForDef -> Text
-fn ForBuildCpp cp, owner, b = ForBuildTemplate owner, b.name, (CppExpr cp, b.at), (CppType cp, b.keyTy), (CppType cp, b.valueTy), "{TypePath b.rowNode}::make", b.source, (CppExpr cp, b.parent), (Concat (Each b.passed, \|x| ", {CppExpr cp, x}")), (MovedCallCpp b.moved), (FromKeptCpp b.name, b.replaced), (ReplacedCallCpp b.replaced)
+fn ForBuildCpp cp, owner, b = ForBuildTemplate owner, b.name, (CppExpr cp, b.at), (CppType cp, b.keyTy), (CppType cp, b.valueTy), "{TypePath (RuntimePath b.rowNode)}::make", b.source, (CppExpr cp, b.parent), (Concat (Each b.passed, \|x| ", {CppExpr cp, x}")), (MovedCallCpp b.moved), (FromKeptCpp b.name, b.replaced), (ReplacedCallCpp b.replaced)
 
 # The source the rows were last built from, kept: over a map of dynamics the walk reads the
 # one it replaces, to compare each kept key's dynamic with the one its row was built from.
@@ -129,7 +129,7 @@ fn ReplacedCallCpp replaced = if (Len replaced) == 0: "" else: " else if (auto w
 # A builder whose rows' places are a host's document tells the host its child's places came
 # or went (`$(Path ==> $Elem c)`'s outer moves).
 MovedCallCpp: fn Text -> Text
-fn MovedCallCpp m = if m == "": "" else: "\n    // the places of the host's child came or went: its document's outer moves\n    if (!prism_rtl::same_keys(next, old)) this->{m}(cx);"
+fn MovedCallCpp m = if m == "": "" else: "\n    // the places of the host's child came or went: its document's outer moves\n    if (!::prism_rtl::same_keys(next, old)) this->{m}(cx);"
 
 # A generation's builder: a new generation's places always came.
 GenMovedCallCpp: fn Text -> Text
@@ -137,7 +137,7 @@ fn GenMovedCallCpp m = if m == "": "" else: "\n    // the places of the host's c
 
 GenBuildCpp: unbounded fn Cp, Text, GenDef -> Text
 fn GenBuildCpp cp, owner, gd:
-    let path = if gd.transparent: "this->path" else: "{CppExpr cp, gd.at}.child(rt::Segment::gen(g))"
+    let path = if gd.transparent: "this->path" else: "{CppExpr cp, gd.at}.child(crate::prelude::Segment::gen(g))"
     GenBuildTemplate owner, gd.name, (CppExpr cp, gd.at), path, (CppExpr cp, gd.source), (CppType cp, gd.valueTy), (CppExpr cp, gd.select), (GenMovedCallCpp gd.moved)
 
 ProgramCpp: unbounded fn Cp, ProgDef, Bool -> Text
@@ -145,14 +145,14 @@ fn ProgramCpp cp, p, fallible:
     let n = Len p.params
     let names = Each p.params, \|((a, ignore))| a
     let plural = if n == 1: "" else: "s"
-    let decode = if n == 0: "static_cast<void>(args);" else: Join (Append [["if (args.size() != {n}) return rt::unexpected(rt::Fault::answer(\"@{p.prism} takes {n} argument{plural}\"));"]], (Each (Range0 n), \|i| DecodeArg cp, p.params, i)), "\n"
-    let call = "{TypePath p.node}::make(rt::Path::root(), {Concat (Each names, \|a| "{a}, ")}cx)"
+    let decode = if n == 0: "static_cast<void>(args);" else: Join (Append [["if (args.size() != {n}) return crate::prelude::unexpected(crate::prelude::Fault::answer(\"@{p.prism} takes {n} argument{plural}\"));"]], (Each (Range0 n), \|i| DecodeArg cp, p.params, i)), "\n"
+    let call = "{TypePath p.node}::make(crate::prelude::Path::root(), {Concat (Each names, \|a| "{a}, ")}cx)"
     let root = if fallible: "TRY({call})" else: call
     ProgramClass p.name, p.prism, (TypePath p.node), decode, root
 
 DecodeArg: unbounded fn Cp, [((Text, OutTy))], Nat -> Text
 fn DecodeArg cp, ps, i = match ps[i]:
-    ? ((a, t)): "auto {a} = TRY(prism_rtl::from_pod<{CppType cp, t}>(args[{i}]));"
+    ? ((a, t)): "auto {a} = TRY(::prism_rtl::from_pod<{CppType cp, t}>(args[{i}]));"
     nil: ""
 
 # ---------------------------------------------------------------------------------------
@@ -190,7 +190,7 @@ fn EmitCpp model, runtime, scripts:
     let mods = Each model.mods, \|m| ModuleParts cp, m
     let programs = Join (Each (AllProgramsCpp model), \|p| ProgramCpp crate, p, (NodeFallibleCpp model, p.node)), "\n\n"
     let regs = Concat (Each model.programs, \|p| "\n.program<{p.name}>(\"{p.prism}\")")
-    let checks = Concat (Each model.checks, \|c| "\n.check(\"{c.name}\", [] \{ return ::std::vector<rt::Result<rt::Pod>>\{{Join (Each c.lines, \|l| CppExpr crate, l), ", "}\}; \})")
+    let checks = Concat (Each model.checks, \|c| "\n.check(\"{c.name}\", [] \{ return ::std::vector<crate::prelude::Result<crate::prelude::Pod>>\{{Join (Each c.lines, \|l| CppExpr crate, l), ", "}\}; \})")
     let scriptList = Join (Each scripts, \|s| "\"{Escape s}\","), "\n"
     let world = match model.?root:
         ? r: r.world

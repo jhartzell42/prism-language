@@ -222,7 +222,7 @@ fn CppLet cp, named, p, x = match p:
     PaTyped (PaBind n), t: match x:
         # a local whose value is never computed (a widget's result too deep to inline,
         # behind its fault): a throw expression is `void`, so a call of the local's type
-        XUnreachable: "{CppType cp, t} {VarName named, n} = prism_rtl::unreachable_as<{CppType cp, t}>();"
+        XUnreachable: "{CppType cp, t} {VarName named, n} = ::prism_rtl::unreachable_as<{CppType cp, t}>();"
         otherwise: "{CppType cp, t} {VarName named, n} = {CppExpr cp, x};"
     PaTyped (PaMut n), t: "{CppType cp, t} {VarName named, n} = {CppExpr cp, x};"
     PaTuple ps:

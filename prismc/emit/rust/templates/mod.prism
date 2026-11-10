@@ -55,11 +55,10 @@ Module: fn Text, Text, Text, Text -> Text
 fn Module prism, path, uses, items = inline_text <rust>
 //! {{prism}}, from `{{path}}`, emitted by prismc: one Rust type per Prism type, a node
 //! per root widget (claude/backend.md). Edit the Prism source, not this file. The runtime
-//! side is reached by one path, `rt` (the prelude, and through it `prism_rtl`), the
+//! side is reached from the crate, `crate::prelude` (and through it `::prism_rtl`), the
 //! standard library from `::std`, and nothing is imported by name: a program's own type
 //! (`Row`, `Option`) hides none of theirs. The traits are in scope unnamed, for their methods.
 
-use crate::prelude as rt;
 use crate::prelude::traits::*;
 {{uses}}
 
@@ -111,16 +110,15 @@ fn Main name, mods, programs, registrations, scripts, runRoot, world = inline_te
 
 use ::std::rc::Rc;
 
-use prism_rtl::*;
+use ::prism_rtl::*;
 
 use crate::prelude::*;
-use crate::prelude as rt;
 
 {{programs}}
 
 /// The Test World with every root a test names, and the compiled `check` blocks.
-fn test_world() -> rt::TestWorld {
-    rt::TestWorld::new()
+fn test_world() -> crate::prelude::TestWorld {
+    crate::prelude::TestWorld::new()
         {{registrations}}
 }
 
@@ -164,7 +162,7 @@ RunRoot: fn Text -> Text
 fn RunRoot program = inline_text <rust>
 match world {
     "canvas" => prelude::run_canvas::<{{program}}>(),
-    "cli" => prelude::on_big_stack(move || prism_world_cli::run::<{{program}}>(args)),
+    "cli" => prelude::on_big_stack(move || ::prism_world_cli::run::<{{program}}>(args)),
     "none" => {
         eprintln!("the root's row has Ui.* without Gui.*: no World answers Ui elements alone; emit Gui.* for the canvas World, or pass --world");
         2

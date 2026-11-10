@@ -149,6 +149,9 @@ fn SubstTy lx, t = if (Len (Keys lx.subst)) == 0 and (Len (Keys lx.csubst)) == 0
 SubstTyIn: fn Lx, Ty -> Ty
 fn SubstTyIn lx, t = match t:
     TyFlex n: Or lx.subst["'{n}"], t
+    # an inlined generic widget's own parameters (`?InstanceOf`)
+    TyQ n: Or lx.subst[n], t
+    TyRigid n: Or lx.subst[n], t
     TyCon n, args: TyCon n, (Each args, \|a| SubstTyIn lx, a)
     TyFn c, ps, res: TyFn (InstCol lx, c), (Each ps, \|p| SubstTyIn lx, p), (SubstTyIn lx, res)
     TyTuple ts: TyTuple (Each ts, \|a| SubstTyIn lx, a)
@@ -222,8 +225,7 @@ fn RustModName m = if m == "": "program" else: Join (Each (SplitOn m, "."), \|s|
 ModSegment: fn Text -> Text
 fn ModSegment s:
     let n = Snake s
-    # `rt` is the emitted code's path to the runtime side, in both targets
-    if (HasText cppKeywords, n) or n == "rt": "{n}_" else: n
+    if HasText cppKeywords, n: "{n}_" else: n
 
 # The C++ keywords and the names the C++ standard library reaches bare (`errno`, `assert`).
 let cppKeywords = [["explicit", "and", "and_eq", "asm", "auto", "bitand", "bitor", "bool", "case", "catch", "char", "char8_t", "char16_t", "char32_t", "class", "compl", "concept", "const_cast", "consteval", "constexpr", "constinit", "co_await", "co_return", "co_yield", "decltype", "default", "delete", "double", "dynamic_cast", "explicit", "export", "extern", "float", "friend", "goto", "inline", "int", "long", "mutable", "namespace", "new", "noexcept", "not", "not_eq", "nullptr", "operator", "or", "or_eq", "private", "protected", "public", "register", "reinterpret_cast", "requires", "short", "signed", "sizeof", "static_assert", "static_cast", "switch", "template", "this", "thread_local", "throw", "try", "typedef", "typeid", "typename", "union", "unsigned", "using", "virtual", "void", "volatile", "wchar_t", "xor", "xor_eq", "errno", "assert", "NULL", "EOF", "stdin", "stdout", "stderr", "major", "minor"]]

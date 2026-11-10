@@ -274,8 +274,8 @@ using namespace prelude;
 {{crateDefs}}
 
 /// The Test World with every root a test names, and the compiled `check` blocks.
-rt::TestWorld test_world() {
-    rt::TestWorld world;
+crate::prelude::TestWorld test_world() {
+    crate::prelude::TestWorld world;
     world{{registrations}}{{checks}};
     return world;
 }
@@ -344,7 +344,7 @@ return 2;
 CppCanvasRun: fn Text -> Text
 fn CppCanvasRun program = inline_text <cpp>
 static_cast<void>(args);
-return prism_world_canvas::run<{{program}}>();
+return ::prism_world_canvas::run<{{program}}>();
 </cpp>
 
 # The canvas branch of a root whose row does not ask for it: the program is built without

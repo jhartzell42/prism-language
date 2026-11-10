@@ -90,46 +90,46 @@ CppExpr: unbounded fn Cp, Ex -> Text
 fn CppExpr cp, x = match x:
     XVar n: CppVar cp, n
     XPath p: PathValue cp, p
-    XSelf: "prism_rtl::share(this)"
+    XSelf: "::prism_rtl::share(this)"
     XCx: "cx"
     XConst n: n
-    XUnit: "rt::Unit\{\}"
+    XUnit: "crate::prelude::Unit\{\}"
     XNone: "::std::nullopt"
     XBool b: if b: "true" else: "false"
-    XNat d: if (Len d) <= 9: "rt::Nat({d}u)" else: "*rt::Nat::from_int({CppExpr cp, (XInt d)})"
-    XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "rt::Int({d}ll)" else: "*rt::Int::parse(\"{d}\")"
+    XNat d: if (Len d) <= 9: "crate::prelude::Nat({d}u)" else: "*crate::prelude::Nat::from_int({CppExpr cp, (XInt d)})"
+    XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "crate::prelude::Int({d}ll)" else: "*crate::prelude::Int::parse(\"{d}\")"
     XByte d: "::std::uint8_t({d})"
-    XFloat d: "rt::Float\{{d}\}"
+    XFloat d: "crate::prelude::Float\{{d}\}"
     XIndex n: "{n}u"
     XChar c: "U'{CppCharEscape c}'"
     XStr t: CppString t
     # One literal, one compiled regex: a function-local static of the literal's own lambda,
     # built on its first call (thread-safe since C++11) and alive until exit; each use
     # copies it, which counts a reference.
-    XRegex p, f: "([]() -> const rt::Regex& \{ static const rt::Regex r = rt::Regex::lit({CppString p}, {CppString f}); return r; \}())"
-    XReplacement p, r, f: "([]() -> const rt::RegexReplacement& \{ static const rt::RegexReplacement r = rt::RegexReplacement::lit({CppString p}, {CppString f}, {CppString r}); return r; \}())"
+    XRegex p, f: "([]() -> const crate::prelude::Regex& \{ static const crate::prelude::Regex r = crate::prelude::Regex::lit({CppString p}, {CppString f}); return r; \}())"
+    XReplacement p, r, f: "([]() -> const crate::prelude::RegexReplacement& \{ static const crate::prelude::RegexReplacement r = crate::prelude::RegexReplacement::lit({CppString p}, {CppString f}, {CppString r}); return r; \}())"
     # `&x` and `x.clone()` are the value itself (a reference is `const T&`, a copy shares);
     # `*x` is the value behind an `Rc` (a recursive payload), or the place itself when `x`
     # is a reference (Rust's `*` of one), by `x`'s type where the printer knows it, else
-    # through `prism_rtl::deref`, which tells the two apart by overload (pick PT)
+    # through `::prism_rtl::deref`, which tells the two apart by overload (pick PT)
     XRef y: CppPlace cp, y
     XRefMut y: CppPlace cp, y
     XDeref y: match ?ExTy cp, y:
         ? (OutRc ignore): "*{CppTightPlace cp, y}"
         ? (OutRef ignore): CppPlace cp, y
-        otherwise: "prism_rtl::deref({CppPlace cp, y})"
+        otherwise: "::prism_rtl::deref({CppPlace cp, y})"
     XTarget y: CppPlace cp, y
     XClone y: CppPlace cp, y
-    XWeak y: "prism_rtl::weaken({CppExpr cp, y})"
-    XUpgrade y: "prism_rtl::upgrade({CppExpr cp, y})"
+    XWeak y: "::prism_rtl::weaken({CppExpr cp, y})"
+    XUpgrade y: "::prism_rtl::upgrade({CppExpr cp, y})"
     XBreak l, y: "({CppBreak cp, l, y})"
     XBreakLoop: "(\{ break; \})"
-    XLater y: "[=](rt::Cx& cx) -> rt::Done \{ {CppExpr (Captured cp), y}; return \{\}; \}"
-    XFormatStr parts: CppFormat cp, parts, "prism_rtl::str"
+    XLater y: "[=](crate::prelude::Cx& cx) -> crate::prelude::Done \{ {CppExpr (Captured cp), y}; return \{\}; \}"
+    XFormatStr parts: CppFormat cp, parts, "::prism_rtl::str"
     XIsCase y, [[]]: "false"
     XIsCase y, cs: "({Join (Each cs, \|c| CaseTest cp, c, (CppTightPlace cp, y)), " || "})"
     XRefusal what: "compile_error!(\"{loweringRefusal}{Escape what}\")"
-    XUnreachable: "throw prism_rtl::Panic(\"entered unreachable code\")"
+    XUnreachable: "throw ::prism_rtl::Panic(\"entered unreachable code\")"
     XCall f, args: CppCall cp, f, args
     XApply f, args: "{CppTightPlace cp, f}({CppArgs cp, args})"
     XMethod r, m, args: CppMethod cp, r, m, args
@@ -144,8 +144,8 @@ fn CppExpr cp, x = match x:
     XTuple xs: "::std::tuple\{{CppArgs cp, xs}\}"
     XVec [[]]: "\{\}"
     XVec xs: "::std::vector\{{CppArgs cp, xs}\}"
-    XText t: "rt::Text::lit({CppString t})"
-    XFormat parts: if Fold parts, True, \|f, p| f and IsTextPiece p: "rt::Text::lit({CppString (Concat (Each parts, \|p| TextPiece p))})" else: CppFormat cp, parts, "prism_rtl::cat"
+    XText t: "crate::prelude::Text::lit({CppString t})"
+    XFormat parts: if Fold parts, True, \|f, p| f and IsTextPiece p: "crate::prelude::Text::lit({CppString (Concat (Each parts, \|p| TextPiece p))})" else: CppFormat cp, parts, "::prism_rtl::cat"
     XMatch s, arms, fallback, t: CppMatch cp, s, arms, t
     XChain label, s, arms, t: CppMatch cp, s, arms, t
     XIf c, t, e: CppIf cp, c, t, e
@@ -159,15 +159,17 @@ fn CppExpr cp, x = match x:
     XField r, f: CppField cp, r, f
     XFieldOf r, ignore, f: CppFieldOf cp, r, f
     XPart r, k: "::std::get<{k}>({AsValue cp, r})"
-    XDecode t, y: "TRY(prism_rtl::from_pod<{CppType cp, t}>({CppExpr cp, y}))"
+    XDecode t, y: "TRY(::prism_rtl::from_pod<{CppType cp, t}>({CppExpr cp, y}))"
     XCast y, t: "static_cast<{CppType cp, t}>({CppExpr cp, y})"
+    # a generic choice's case through its type, which may depend on a type parameter
+    # (`typename`, allowed before any qualified name)
     XTyped y, t: match y:
         XCtor p, args if IsGenericCase cp, p:
             let tt = CppType cp, t
-            "{tt}({tt}::{RefLast p}\{{CppArgs cp, args}\})"
+            "{tt}(typename {tt}::{CaseIdOf p}\{{CppArgs cp, args}\})"
         XPath p if IsGenericCase cp, p:
             let tt = CppType cp, t
-            "{tt}({tt}::{RefLast p}\{\})"
+            "{tt}(typename {tt}::{CaseIdOf p}\{\})"
         otherwise:
             let e = CppExpr cp, y
             if e == "\{\}" or e == "::std::nullopt": "{CppType cp, t}\{\}"
@@ -209,7 +211,9 @@ fn PathValue cp, p = if IsNodeMethod cp, p: "&{TypePath (RefSpelled (RefParent p
     ? ty: "{OwnTypePath cp, ty}({OwnTypePath cp, p}\{\})"
     nil: match ?TypeOf cp, p:
         ? info: if info.kind == "unit": "{OwnTypePath cp, p}\{\}" else: OwnTypePath cp, p
-        nil: TypePath (RefSpelled p)
+        nil: match p:
+            RefRuntime t: TypePath (RuntimePath t)
+            otherwise: TypePath (RefSpelled p)
 
 # A node's method by its path (`Host::host_1_answer`), a member function as a value.
 IsNodeMethod: fn Cp, Ref -> Bool
@@ -258,7 +262,7 @@ fn CppFieldOf cp, r, f:
 AsValue: unbounded fn Cp, Ex -> Text
 fn AsValue cp, r = match ?Pointer cp, r:
     ? False: CppTightPlace cp, r
-    otherwise: "prism_rtl::deref({CppPlace cp, r})"
+    otherwise: "::prism_rtl::deref({CppPlace cp, r})"
 
 # The model's type of an expression, where the printer knows it: a local the scope typed
 # (`localTypes`), a field of the node or job being printed, and a `*` or `&` of one.
@@ -285,17 +289,17 @@ CppCtor: unbounded fn Cp, Ref, [Ex] -> Text
 fn CppCtor cp, r, args = match r:
     RefRuntime t: match Bare t:
         "Some": "::std::optional({CppArgs cp, args})"
-        "Ok": if args == [[XUnit]]: "prism_rtl::ok()" else: CppArgs cp, args
-        "Err": "rt::unexpected({CppArgs cp, args})"
-        "prism_rtl::Turn::More": "prism_rtl::more({CppArgs cp, args})"
-        "prism_rtl::Turn::Finished": "prism_rtl::finished({CppArgs cp, args})"
-        "Outcome::Fired": "rt::Outcome::fired({CppArgs cp, args})"
-        "Outcome::Value": "rt::Outcome::value({CppArgs cp, args})"
-        "Segment::Pos": "rt::Segment::pos({CppArgs cp, args})"
-        "Segment::Gen": "rt::Segment::gen({CppArgs cp, args})"
-        "Segment::Key": "rt::Segment::key({CppArgs cp, args})"
-        # a runtime struct (`rt::Path`) by its fields
-        otherwise: "{TypePath t}\{{CppArgs cp, args}\}"
+        "Ok": if args == [[XUnit]]: "::prism_rtl::ok()" else: CppArgs cp, args
+        "Err": "crate::prelude::unexpected({CppArgs cp, args})"
+        "prism_rtl::Turn::More": "::prism_rtl::more({CppArgs cp, args})"
+        "prism_rtl::Turn::Finished": "::prism_rtl::finished({CppArgs cp, args})"
+        "Outcome::Fired": "crate::prelude::Outcome::fired({CppArgs cp, args})"
+        "Outcome::Value": "crate::prelude::Outcome::value({CppArgs cp, args})"
+        "Segment::Pos": "crate::prelude::Segment::pos({CppArgs cp, args})"
+        "Segment::Gen": "crate::prelude::Segment::gen({CppArgs cp, args})"
+        "Segment::Key": "crate::prelude::Segment::key({CppArgs cp, args})"
+        # a runtime struct (`crate::prelude::Path`) by its fields
+        otherwise: "{TypePath (RuntimePath t)}\{{CppArgs cp, args}\}"
     otherwise: match ?CaseOf cp, r:
         ? ty: "{OwnTypePath cp, ty}({OwnTypePath cp, r}\{{CppArgs cp, args}\})"
         nil: match ?TypeOf cp, r:
@@ -324,27 +328,27 @@ fn CppCall cp, f, args:
         RefItem "prelude", p, ignore: p
         otherwise: ""
     match runtimeName:
-        "Rc::new": if a == "\{\}": "prism_rtl::make_new()" else: "prism_rtl::rc({a})"
-        "is_some": "prism_rtl::is_some({a})"
-        "is_none": "prism_rtl::is_none({a})"
+        "Rc::new": if a == "\{\}": "::prism_rtl::make_new()" else: "::prism_rtl::rc({a})"
+        "is_some": "::prism_rtl::is_some({a})"
+        "is_none": "::prism_rtl::is_none({a})"
         "RefCell::new": a
         "Cell::new": a
         "Hold::new": "\{{a}\}"
-        "Snapshot::new": "rt::snapshot({a})"
-        "Path::root": "rt::Path::root()"
-        "Fault::answer": "rt::Fault::answer({a})"
-        "Fault::too_deep": "rt::Fault::too_deep({a})"
-        "Error::new": "rt::Error({a})"
-        "Text::from": "rt::Text({a})"
+        "Snapshot::new": "crate::prelude::snapshot({a})"
+        "Path::root": "crate::prelude::Path::root()"
+        "Fault::answer": "crate::prelude::Fault::answer({a})"
+        "Fault::too_deep": "crate::prelude::Fault::too_deep({a})"
+        "Error::new": "crate::prelude::Error({a})"
+        "Text::from": "crate::prelude::Text({a})"
         "String::new": "::std::string()"
-        "Array::from": "rt::Array({a})"
-        "prism_rtl::Dynamic::of": "prism_rtl::dynamic_of({a})"
-        "Dynamic::of": "prism_rtl::dynamic_of({a})"
-        "prism_rtl::Event::of": "prism_rtl::event_of({a})"
-        "prism_rtl::Host::new": "rt::host_new({a})"
-        "prism_rtl::Entry::new": "rt::entry_new({a})"
-        "prism_rtl::forward_on_none": "prism_rtl::forward_on_none<crate::Elem, crate::Answer>({a})"
-        "Event::never": "prism_rtl::never_event()"
+        "Array::from": "crate::prelude::Array({a})"
+        "prism_rtl::Dynamic::of": "::prism_rtl::dynamic_of({a})"
+        "Dynamic::of": "::prism_rtl::dynamic_of({a})"
+        "prism_rtl::Event::of": "::prism_rtl::event_of({a})"
+        "prism_rtl::Host::new": "crate::prelude::host_new({a})"
+        "prism_rtl::Entry::new": "crate::prelude::entry_new({a})"
+        "prism_rtl::forward_on_none": "::prism_rtl::forward_on_none<crate::Elem, crate::Answer>({a})"
+        "Event::never": "::prism_rtl::never_event()"
         otherwise: if IsFresh f: "\{\}" else: "{FreeCallPath cp, f}({a})"
 
 # A function's path where a node's member of the same name would hide it: qualified, a
@@ -377,7 +381,7 @@ fn IsFresh other = False
 CallPath: fn Cp, Ref -> Text
 fn CallPath cp, f = match f:
     RefItem ignore, ignore, s: if (RefLast f) == "build" and IsNodeType cp, (RefParent f): "{TypePath (RefSpelled (RefParent f))}::make" else: CppPathId (TypePath s)
-    RefRuntime t: if (LastSegment t) == "new": TypePath (ParentPath t) else: CppPathId (TypePath t)
+    RefRuntime t: if (LastSegment t) == "new": TypePath (RuntimePath (ParentPath t)) else: CppPathId (TypePath (RuntimePath t))
 
 # A method call through the table of the Rust runtime's methods, a node's member through
 # its pointer, anything else as a member.
@@ -497,17 +501,17 @@ fn MethodForm m, n = match ((m, n)):
 
 FreeName: fn Text -> Text
 fn FreeName m = match m:
-    "to_pod": "prism_rtl::to_pod"
-    "ok": "prism_rtl::ignore"
-    "map": "prism_rtl::fmap"
-    "ok_or": "prism_rtl::ok_or"
-    "to_vec": "prism_rtl::path_of"
+    "to_pod": "::prism_rtl::to_pod"
+    "ok": "::prism_rtl::ignore"
+    "map": "::prism_rtl::fmap"
+    "ok_or": "::prism_rtl::ok_or"
+    "to_vec": "::prism_rtl::path_of"
     "values": "crate::prelude::values"
     "keys": "crate::prelude::keys"
-    "enumerate": "prism_rtl::enumerate"
-    "unwrap_or_default": "prism_rtl::unwrap_or_default"
-    "for_each": "prism_rtl::for_each"
-    otherwise: "rt::{m}"
+    "enumerate": "::prism_rtl::enumerate"
+    "unwrap_or_default": "::prism_rtl::unwrap_or_default"
+    "for_each": "::prism_rtl::for_each"
+    otherwise: "crate::prelude::{m}"
 
 MemberName: fn Text -> Text
 fn MemberName m = match m:
@@ -524,15 +528,15 @@ fn MemberName m = match m:
 CaseTest: fn Cp, Ref, Text -> Text
 fn CaseTest cp, c, v = match c:
     RefRuntime t: match Bare t:
-        "Some": "prism_rtl::is_some({v})"
-        "None": "prism_rtl::is_none({v})"
-        "Ok": "prism_rtl::is_ok({v})"
-        "Err": "prism_rtl::is_err({v})"
+        "Some": "::prism_rtl::is_some({v})"
+        "None": "::prism_rtl::is_none({v})"
+        "Ok": "::prism_rtl::is_ok({v})"
+        "Err": "::prism_rtl::is_err({v})"
         "prism_rtl::Turn::More": "{v}.if_more()"
         "prism_rtl::Turn::Finished": "{v}.if_finished()"
-        otherwise: "prism_rtl::is<{CaseType t}>({v})"
+        otherwise: "::prism_rtl::is<{CaseType t}>({v})"
     otherwise: match ?CaseOf cp, c:
-        ? ignore: "prism_rtl::is<{CaseTypeOf cp, c, v}>({v})"
+        ? ignore: "::prism_rtl::is<{CaseTypeOf cp, c, v}>({v})"
         nil: match ?TypeOf cp, c:
             ? ignore: "true"
             nil: PrinterRefusal "a pattern of no type it knows ({RefSpelled c})"
@@ -540,15 +544,15 @@ fn CaseTest cp, c, v = match c:
 # A runtime constructor's pattern tag.
 CaseType: fn Text -> Text
 fn CaseType c = match Bare c:
-    "Segment::Pos": "rt::pat::Pos"
-    "Segment::Gen": "rt::pat::Gen"
-    "Segment::Key": "rt::pat::Key"
+    "Segment::Pos": "crate::prelude::pat::Pos"
+    "Segment::Gen": "crate::prelude::pat::Gen"
+    "Segment::Key": "crate::prelude::pat::Key"
     otherwise: PrinterRefusal "a pattern of the runtime's {c}, which it has no case of"
 
 # A choice's case as tested against the value `v`: a generic choice's case by the value's
 # own type, whose arguments the path does not write (`Tree::Leaf` of a `Tree<A>`).
 CaseTypeOf: fn Cp, Ref, Text -> Text
-fn CaseTypeOf cp, c, v = if IsGenericCase cp, c: "typename ::std::remove_cvref_t<decltype({v})>::{RefLast c}" else: OwnTypePath cp, c
+fn CaseTypeOf cp, c, v = if IsGenericCase cp, c: "typename ::std::remove_cvref_t<decltype({v})>::{CaseIdOf c}" else: OwnTypePath cp, c
 
 # Whether a constructor is a case of a choice with type parameters.
 IsGenericCase: fn Cp, Ref -> Bool
@@ -562,14 +566,14 @@ fn IsGenericCase cp, p = match ?CaseOf cp, p:
 Payload: fn Cp, Ref, Text, Nat -> Text
 fn Payload cp, c, v, i = match c:
     RefRuntime t: match Bare t:
-        "Some": "prism_rtl::some_of({v})"
+        "Some": "::prism_rtl::some_of({v})"
         "Ok": "*{v}"
         "Err": "{v}.error()"
         "prism_rtl::Turn::More": "{v}.if_more()->next"
         "prism_rtl::Turn::Finished": "{v}.if_finished()->value"
-        otherwise: "prism_rtl::as<{CaseType t}>({v}).a{i}"
+        otherwise: "::prism_rtl::as<{CaseType t}>({v}).a{i}"
     otherwise: match ?CaseOf cp, c:
-        ? ignore: "prism_rtl::as<{CaseTypeOf cp, c, v}>({v}).a{i}"
+        ? ignore: "::prism_rtl::as<{CaseTypeOf cp, c, v}>({v}).a{i}"
         nil: "{v}.a{i}"
 
 # `if`: a conditional expression.
@@ -695,10 +699,10 @@ fn ?ErrOf x = match x:
 # other branch converts to, of `x`'s type and `y`'s.
 OkBranch: unbounded fn Cp, Ex, Ex -> Text
 fn OkBranch cp, x, y = match x:
-    XCtor (RefRuntime "std::Ok"), [[v]]: "rt::Expected<::std::decay_t<decltype({CppExpr cp, v})>, ::std::decay_t<decltype({CppExpr cp, y})>>({CppExpr cp, v})"
+    XCtor (RefRuntime "std::Ok"), [[v]]: "crate::prelude::Expected<::std::decay_t<decltype({CppExpr cp, v})>, ::std::decay_t<decltype({CppExpr cp, y})>>({CppExpr cp, v})"
     XBlock dos, (XCtor (RefRuntime "std::Ok"), [[v]]):
         let ((st, cp2)) = CppStatementsCp cp, dos
-        StmtExpr st, "rt::Expected<::std::decay_t<decltype({CppExpr cp2, v})>, ::std::decay_t<decltype({CppExpr cp2, y})>>({CppExpr cp2, v})"
+        StmtExpr st, "crate::prelude::Expected<::std::decay_t<decltype({CppExpr cp2, v})>, ::std::decay_t<decltype({CppExpr cp2, y})>>({CppExpr cp2, v})"
     otherwise: CppExpr cp, x
 
 # A closure: a lambda capturing by value (`move`) or by reference. A move closure takes
@@ -752,5 +756,5 @@ ParamType: unbounded fn Cp, OutTy -> Text
 fn ParamType cp, t = match t:
     OutRef ignore: CppType cp, t
     OutSlice ignore: CppType cp, t
-    OutUnit: "rt::Unit"
+    OutUnit: "crate::prelude::Unit"
     otherwise: CppType cp, t

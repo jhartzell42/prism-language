@@ -47,50 +47,50 @@ use Emit.Rust.Items.*
 
 Type: unbounded fn OutTy -> Text
 fn Type t = match t:
-    OutNat: "rt::Nat"
-    OutInt: "rt::Int"
+    OutNat: "crate::prelude::Nat"
+    OutInt: "crate::prelude::Int"
     OutU8: "u8"
-    OutFloat: "rt::Float"
+    OutFloat: "crate::prelude::Float"
     OutBool: "bool"
     OutChar: "char"
-    OutText: "rt::Text"
-    OutCursor: "rt::Cursor"
-    OutRegex: "rt::Regex"
-    OutReplacement: "rt::RegexReplacement"
+    OutText: "crate::prelude::Text"
+    OutCursor: "crate::prelude::Cursor"
+    OutRegex: "crate::prelude::Regex"
+    OutReplacement: "crate::prelude::RegexReplacement"
     OutUnit: "()"
-    OutPath: "rt::Path"
-    OutDuration: "rt::Duration"
-    OutError: "rt::Error"
+    OutPath: "crate::prelude::Path"
+    OutDuration: "crate::prelude::Duration"
+    OutError: "crate::prelude::Error"
     OutNamed n, [[]]: RsRef n
     OutNamed n, args: "{RsRef n}<{Types args}>"
     OutOpt i: "::std::option::Option<{Type i}>"
-    OutRes i: "::std::result::Result<{Type i}, rt::Error>"
+    OutRes i: "::std::result::Result<{Type i}, crate::prelude::Error>"
     OutTuple [[one]]: "({Type one},)"
     OutTuple ts: "({Types ts})"
-    OutArray e: "rt::Array<{Type e}>"
-    OutMap k, v: "rt::Map<{Type k}, {Type v}>"
+    OutArray e: "crate::prelude::Array<{Type e}>"
+    OutMap k, v: "crate::prelude::Map<{Type k}, {Type v}>"
     OutFn ps, r: "::std::rc::Rc<dyn ::std::ops::Fn({RefTypes ps}) -> {Type r}>"
     OutRef i: "&{Type i}"
-    OutJobFn a, b: "::std::rc::Rc<dyn ::std::ops::Fn({Type a}) -> ::std::rc::Rc<dyn prism_rtl::Job<{Type b}>>>"
-    OutJob b: "::std::rc::Rc<dyn prism_rtl::Job<{Type b}>>"
-    OutEvent i: "rt::Event<{Type i}>"
-    OutDyn i: "rt::Dynamic<{Type i}>"
+    OutJobFn a, b: "::std::rc::Rc<dyn ::std::ops::Fn({Type a}) -> ::std::rc::Rc<dyn ::prism_rtl::Job<{Type b}>>>"
+    OutJob b: "::std::rc::Rc<dyn ::prism_rtl::Job<{Type b}>>"
+    OutEvent i: "crate::prelude::Event<{Type i}>"
+    OutDyn i: "crate::prelude::Dynamic<{Type i}>"
     OutGen n: n
     OutRc i: "::std::rc::Rc<{Type i}>"
-    OutPod: "rt::Pod"
-    OutShowAny: "::std::rc::Rc<dyn rt::Show>"
-    OutHold i: "rt::Hold<{Type i}>"
-    OutStamped i: "rt::Stamped<{Type i}>"
-    OutSnapshot i: "rt::Snapshot<{Type i}>"
-    OutDefer i: "rt::Defer<{Type i}>"
+    OutPod: "crate::prelude::Pod"
+    OutShowAny: "::std::rc::Rc<dyn crate::prelude::Show>"
+    OutHold i: "crate::prelude::Hold<{Type i}>"
+    OutStamped i: "crate::prelude::Stamped<{Type i}>"
+    OutSnapshot i: "crate::prelude::Snapshot<{Type i}>"
+    OutDefer i: "crate::prelude::Defer<{Type i}>"
     OutWeak n: "::std::rc::Weak<{n}>"
     OutCell i: "::std::cell::RefCell<{Type i}>"
-    OutWakes: "rt::Wakes"
+    OutWakes: "crate::prelude::Wakes"
     OutCount: "u32"
     OutObj i: "::std::rc::Rc<dyn {Type i}>"
     OutSlice i: "[{Type i}]"
-    OutPort i: "rt::Port<{Type i}>"
-    OutLive i: "rt::Live<{Type i}>"
+    OutPort i: "crate::prelude::Port<{Type i}>"
+    OutLive i: "crate::prelude::Live<{Type i}>"
     OutTurn: "() /* the job's turn */"
     OutAssoc tr, n, (OutNamed (RefRuntime "Self"), [[]]): "Self::{n}"
     OutAssoc tr, n, a: "<{Type a} as {tr}>::{n}"
@@ -100,14 +100,14 @@ fn Type t = match t:
 # A path the model writes as Rust spells it: the standard library's items, which the model
 # marks `std::` (`std::Rc::new`, `std::Some`), from the root (`::std::rc::Rc::new`,
 # `::std::option::Option::Some`), so that a program's type or node of the same name (`Rc`,
-# `Some`) hides none of them; the runtime side's are `rt::` already, a program's from the
+# `Some`) hides none of them; the runtime side's are `crate::prelude::` already, a program's from the
 # crate or its own module.
 RsRef: fn Ref -> Text
 fn RsRef (RefItem ignore, ignore, s) = s
 fn RsRef (RefRuntime t) = RsPath t
 
 RsPath: fn Text -> Text
-fn RsPath p = if HasPrefix p, "std::":
+fn RsPath p = if (HasPrefix p, "rt::") or HasPrefix p, "prism_rtl::": RuntimePath p else: if HasPrefix p, "std::":
     let segs = SplitOn (DropPrefix p, "std::"), "::"
     match ?StdPath (Or segs[0], ""):
         ? full: Join (Append [[full]], (Drop segs, 1)), "::"
@@ -187,17 +187,17 @@ fn Expression x = match x:
     XUnit: "()"
     XNone: "::std::option::Option::None"
     XBool b: if b: "true" else: "false"
-    XNat d: if (Len d) <= 9: "rt::Nat::from({d}u32)" else: if (Len d) <= 18: "rt::Nat::from_int(rt::Int::from({d}i64)).unwrap()" else: "rt::Nat::from_int(rt::Int::parse(\"{d}\").unwrap()).unwrap()"
-    XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "rt::Int::from({d})" else: "rt::Int::parse(\"{d}\").unwrap()"
+    XNat d: if (Len d) <= 9: "crate::prelude::Nat::from({d}u32)" else: if (Len d) <= 18: "crate::prelude::Nat::from_int(crate::prelude::Int::from({d}i64)).unwrap()" else: "crate::prelude::Nat::from_int(crate::prelude::Int::parse(\"{d}\").unwrap()).unwrap()"
+    XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "crate::prelude::Int::from({d})" else: "crate::prelude::Int::parse(\"{d}\").unwrap()"
     XByte d: "{d}u8"
-    XFloat d: "rt::Float({d})"
+    XFloat d: "crate::prelude::Float({d})"
     XIndex n: "{n}"
     XChar c: "'{CharEscape c}'"
     XStr t: "\"{Escape t}\""
     # One literal, one compiled regex per thread: the static is built on its first use and
     # each use clones it, which counts a reference (prism_rtl's `Regex` is an `Rc`).
-    XRegex p, f: "\{ thread_local!(static R: rt::Regex = rt::Regex::lit(\"{Escape p}\", \"{Escape f}\")); R.with(rt::Regex::clone) \}"
-    XReplacement p, r, f: "\{ thread_local!(static R: rt::RegexReplacement = rt::RegexReplacement::lit(\"{Escape p}\", \"{Escape f}\", \"{Escape r}\")); R.with(rt::RegexReplacement::clone) \}"
+    XRegex p, f: "\{ thread_local!(static R: crate::prelude::Regex = crate::prelude::Regex::lit(\"{Escape p}\", \"{Escape f}\")); R.with(crate::prelude::Regex::clone) \}"
+    XReplacement p, r, f: "\{ thread_local!(static R: crate::prelude::RegexReplacement = crate::prelude::RegexReplacement::lit(\"{Escape p}\", \"{Escape f}\", \"{Escape r}\")); R.with(crate::prelude::RegexReplacement::clone) \}"
     XRef y: "&{Operand y}"
     XRefMut y: "&mut {Operand y}"
     XDeref y: "*{Operand y}"
@@ -223,7 +223,7 @@ fn Expression x = match x:
     XTuple [[one]]: "({Expression one},)"
     XTuple xs: "({Args xs})"
     XVec xs: "vec![{Args xs}]"
-    XText t: "rt::Text::lit(\"{Escape t}\")"
+    XText t: "crate::prelude::Text::lit(\"{Escape t}\")"
     XFormat parts: Format parts
     XMatch s, arms, fallback, ignore: MatchBlock (Expression s), (Arms arms, fallback)
     XChain label, s, arms, ignore: Chain (Label label), s, arms
@@ -247,9 +247,9 @@ fn FieldInit f, v = "{f}: {Expression v}"
 DecodeHead: unbounded fn OutTy -> Text
 fn DecodeHead t = match t:
     OutNamed n, [[]]: RsRef n
-    OutNat: "rt::Nat"
-    OutInt: "rt::Int"
-    OutText: "rt::Text"
+    OutNat: "crate::prelude::Nat"
+    OutInt: "crate::prelude::Int"
+    OutText: "crate::prelude::Text"
     otherwise: "<{Type t}>"
 
 Label: fn Text -> Text
@@ -261,8 +261,8 @@ Format: unbounded fn [Ex] -> Text
 fn Format parts:
     let lit = Concat (Each parts, \|p| FormatPiece p)
     let vals = Filter parts, \|p| not (IsText p)
-    if (Len vals) == 0: "rt::Text::lit(\"{Escape (Concat (Each parts, \|p| PlainPiece p))}\")"
-    else: "rt::Text::from(format!(\"{lit}\", {Args vals}))"
+    if (Len vals) == 0: "crate::prelude::Text::lit(\"{Escape (Concat (Each parts, \|p| PlainPiece p))}\")"
+    else: "crate::prelude::Text::from(format!(\"{lit}\", {Args vals}))"
 
 PlainPiece: fn Ex -> Text
 fn PlainPiece (XText t) = t

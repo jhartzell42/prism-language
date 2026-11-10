@@ -84,8 +84,12 @@ fn OutTyOf lx, t = match t:
     TySig "$", i: OutDyn (OutTyOf lx, i)
     TySig "&", i: OutTyOf lx, i
     TySig ignore, i: OutTyOf lx, i
-    TyQ n: OutGen (Camel n)
-    TyRigid n: OutGen (Camel n)
+    TyQ n: match lx.subst[n]:
+        ? x: OutTyOf lx, x
+        nil: OutGen (Camel n)
+    TyRigid n: match lx.subst[n]:
+        ? x: OutTyOf lx, x
+        nil: OutGen (Camel n)
     TyFlex n: match lx.subst["'{n}"]:
         ? x: OutTyOf lx, x
         nil: match lx.quants["'{n}"]:

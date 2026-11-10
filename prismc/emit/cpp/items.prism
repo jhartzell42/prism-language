@@ -196,7 +196,8 @@ fn CppSourceDoc lead, source:
 # struct; its comparisons, printer and plain data. Each is a value type defined after the
 # types it holds by value (`ValueDecl`).
 TypeParts: unbounded fn Cp, TyDef -> Parts
-fn TypeParts cp, t:
+fn TypeParts cp, t0:
+    let t = CppCases t0
     let eq = t.eq
     let ord = t.ord
     let gens = CppTemplateHead t.params
@@ -253,8 +254,8 @@ fn Comparisons gens, owner, self, names, eq, ord, behind:
 # The members a value type declares for the runtime: its printer and its plain data.
 Members: fn Bool, Bool, Text -> Text
 fn Members shown, pod, head:
-    let s = if shown: [["void show(rt::Printer& p) const;"]] else: [[]]
-    let d = if pod: [["rt::Pod to_pod() const;", "static rt::Result<{head}> from_pod(const rt::Pod& whole);"]] else: [[]]
+    let s = if shown: [["void show(crate::prelude::Printer& p) const;"]] else: [[]]
+    let d = if pod: [["crate::prelude::Pod to_pod() const;", "static crate::prelude::Result<{head}> from_pod(const crate::prelude::Pod& whole);"]] else: [[]]
     Join (Append s, d), "\n"
 
 # A case's struct, nested in its choice.
@@ -293,7 +294,7 @@ fn ShowDef cp, t, head, gens:
         ShapeChoice: Join (Each (Range0 (Len t.cases)), \|i| ShowCase t, i), "\n"
         ShapeNewtype: "p.choice(\"{FirstCase t}\", \{{Join (Each (Range0 (FirstArity t)), \|k| "a{k}"), ", "}\});"
         ShapeUnit: "p.choice(\"{FirstCase t}\", \{\});"
-    CppFunction "", "{gens}void {head}::show(rt::Printer& p) const", body
+    CppFunction "", "{gens}void {head}::show(crate::prelude::Printer& p) const", body
 
 ShowCase: fn TyDef, Nat -> Text
 fn ShowCase t, i:
@@ -321,38 +322,38 @@ fn ToPodDef cp, t, head, gens:
     let structure = match t.shape:
         ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
-            "rt::Pod::record(\"{t.prism}\", \{{Join (Each c.fields, \|((f, ignore))| "\{\"{PrismFieldOf c, f}\", prism_rtl::to_pod({FieldId f})\}"), ", "}\})"
+            "crate::prelude::Pod::record(\"{t.prism}\", \{{Join (Each c.fields, \|((f, ignore))| "\{\"{PrismFieldOf c, f}\", ::prism_rtl::to_pod({FieldId f})\}"), ", "}\})"
         ShapeChoice: ChoicePod t
-        ShapeNewtype: "rt::Pod::choice(\"{FirstCase t}\", \{{Join (Each (Range0 (FirstArity t)), \|k| "prism_rtl::to_pod(a{k})"), ", "}\})"
-        ShapeUnit: "rt::Pod::choice(\"{FirstCase t}\", \{\})"
-    let body = if t.show == ShownOwn: "rt::Pod structure = {structure};\nreturn rt::Pod::shown(prism_rtl::show(*this), structure);" else: "return {structure};"
-    CppFunction "", "{gens}rt::Pod {head}::to_pod() const", body
+        ShapeNewtype: "crate::prelude::Pod::choice(\"{FirstCase t}\", \{{Join (Each (Range0 (FirstArity t)), \|k| "::prism_rtl::to_pod(a{k})"), ", "}\})"
+        ShapeUnit: "crate::prelude::Pod::choice(\"{FirstCase t}\", \{\})"
+    let body = if t.show == ShownOwn: "crate::prelude::Pod structure = {structure};\nreturn crate::prelude::Pod::shown(::prism_rtl::show(*this), structure);" else: "return {structure};"
+    CppFunction "", "{gens}crate::prelude::Pod {head}::to_pod() const", body
 
 ChoicePod: fn TyDef -> Text
 fn ChoicePod t:
     let arms = Each (Range0 (Len t.cases)), \|i|
         let c = Or t.cases[i], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
-        "::std::holds_alternative<{c.name}>(cases()) ? rt::Pod::choice(\"{c.prism}\", \{{Join (Each (Range0 (Len c.fields)), \|k| "prism_rtl::to_pod(::std::get<{c.name}>(cases()).a{k})"), ", "}\})"
-    "{Join arms, "\n    : "}\n    : rt::Pod()"
+        "::std::holds_alternative<{c.name}>(cases()) ? crate::prelude::Pod::choice(\"{c.prism}\", \{{Join (Each (Range0 (Len c.fields)), \|k| "::prism_rtl::to_pod(::std::get<{c.name}>(cases()).a{k})"), ", "}\})"
+    "{Join arms, "\n    : "}\n    : crate::prelude::Pod()"
 
 FromPodDef: unbounded fn Cp, TyDef, Text, Text -> Text
 fn FromPodDef cp, t, head, gens:
     let body = match t.shape:
         ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
-            let reads = Join (Each c.fields, \|((f, ft))| ".{FieldId f} = TRY(prism_rtl::from_pod<{CppType cp, ft}>(TRY(crate::prelude::field(whole, \"{PrismFieldOf c, f}\"))))"), ", "
+            let reads = Join (Each c.fields, \|((f, ft))| ".{FieldId f} = TRY(::prism_rtl::from_pod<{CppType cp, ft}>(TRY(crate::prelude::field(whole, \"{PrismFieldOf c, f}\"))))"), ", "
             "return {head}\{{reads}\};"
         otherwise:
             let arms = Each t.cases, \|c|
                 let n = Len c.fields
                 let tys = FieldTypes c.fields
-                let args = Join (Each (Range0 n), \|i| "TRY(prism_rtl::from_pod<{CppType cp, (Or tys[i], OutUnit)}>(c->args[{i}]))"), ", "
+                let args = Join (Each (Range0 n), \|i| "TRY(::prism_rtl::from_pod<{CppType cp, (Or tys[i], OutUnit)}>(c->args[{i}]))"), ", "
                 let made = match t.shape:
                     ShapeChoice: "{head}({c.name}\{{args}\})"
                     otherwise: "{head}\{{args}\}"
                 "if (c->ctor == \"{c.prism}\" && c->args.size() == {n}) return {made};"
-            "const rt::Pod& p = whole.structure();\nif (auto c = p.if_choice()) \{\n{IndentCpp (Join arms, "\n")}\n\}\nreturn rt::mismatch<{head}>(\"a {t.prism}\", p);"
-    CppFunction "", "{gens}rt::Result<{head}> {head}::from_pod(const rt::Pod& whole)", body
+            "const crate::prelude::Pod& p = whole.structure();\nif (auto c = p.if_choice()) \{\n{IndentCpp (Join arms, "\n")}\n\}\nreturn crate::prelude::mismatch<{head}>(\"a {t.prism}\", p);"
+    CppFunction "", "{gens}crate::prelude::Result<{head}> {head}::from_pod(const crate::prelude::Pod& whole)", body
 
 # A field's Prism spelling: the C++ one without the `_` a keyword took.
 PrismField: fn Text -> Text
@@ -371,20 +372,20 @@ fn IndentCpp t = Join (Each (SplitOn t, "\n"), \|l| if l == "": "" else: "    {l
 TagParts: unbounded fn Cp, TagDef -> Parts
 fn TagParts cp, t:
     let fields = Join (Each t.fields, \|((ignore, f, ft))| "{CppType cp, ft} {FieldId f};"), "\n"
-    let pods = Join (Each t.fields, \|((p, f, ignore))| "\{\"{p}\", prism_rtl::to_pod({FieldId f})\}"), ", "
-    let reads = Join (Each t.fields, \|((p, f, ft))| ".{FieldId f} = TRY(prism_rtl::from_pod<{CppType cp, ft}>(TRY(crate::prelude::field(p, \"{p}\"))))"), ", "
+    let pods = Join (Each t.fields, \|((p, f, ignore))| "\{\"{p}\", ::prism_rtl::to_pod({FieldId f})\}"), ", "
+    let reads = Join (Each t.fields, \|((p, f, ft))| ".{FieldId f} = TRY(::prism_rtl::from_pod<{CppType cp, ft}>(TRY(crate::prelude::field(p, \"{p}\"))))"), ", "
     let eq = if t.eq: "bool operator==(const {t.name}&) const = default;" else: ""
-    let back = if t.pod: "static rt::Result<{t.name}> from_pod(const rt::Pod& p);" else: ""
+    let back = if t.pod: "static crate::prelude::Result<{t.name}> from_pod(const crate::prelude::Pod& p);" else: ""
     # a level that holds dynamics as a World reads it, deep (doubt WD)
     let deep = Fold t.fields, False, \|d, ((ignore, ignore, ft))| d or HoldsDyn ft
-    let levelDecl = if deep: "/// The level as a World reads it: each dynamic it holds sampled at the read point.\nrt::Pod level_pod(const rt::Cx& cx) const;\n/// The update events of the dynamics it holds, and of theirs.\nvoid level_ports(const rt::Cx& cx, ::std::vector<prism_rtl::Rc<prism_rtl::Port<rt::Unit>>>& out) const;" else: ""
+    let levelDecl = if deep: "/// The level as a World reads it: each dynamic it holds sampled at the read point.\ncrate::prelude::Pod level_pod(const crate::prelude::Cx& cx) const;\n/// The update events of the dynamics it holds, and of theirs.\nvoid level_ports(const crate::prelude::Cx& cx, ::std::vector<::prism_rtl::Rc<::prism_rtl::Port<crate::prelude::Unit>>>& out) const;" else: ""
     let decl = CppTagStruct (CppSourceDoc "The `Level` of `{t.tagName}`:", t.doc), t.name, fields, t.tagName, (Join (Filter [[eq, back, levelDecl]], \|s| s != ""), "\n")
     let deepPods = Join (Each t.fields, \|((p, f, ft))| CppDeepField p, f, ft), ", "
     let deepPorts = Join (Filter (Each t.fields, \|((ignore, f, ft))| CppDeepPorts f, ft), \|s| s != ""), "\n"
-    let levelDefs = if deep: [[(CppFunction "", "rt::Pod {t.name}::level_pod(const rt::Cx& cx) const", "static_cast<void>(cx);\nreturn rt::Pod::element(TAG, \{{deepPods}\});"), (CppFunction "", "void {t.name}::level_ports(const rt::Cx& cx, ::std::vector<prism_rtl::Rc<prism_rtl::Port<rt::Unit>>>& out) const", "static_cast<void>(cx);\nstatic_cast<void>(out);{if deepPorts == "": "" else: "\n{deepPorts}"}")]] else: [[]]
-    let toPod = CppFunction "", "rt::Pod {t.name}::to_pod() const", "return rt::Pod::element(TAG, \{{pods}\});"
-    let show = CppFunction "", "void {t.name}::show(rt::Printer& p) const", "prism_rtl::to_pod(*this).structure();\nrt::Show<rt::Pod>::show(prism_rtl::to_pod(*this), p);"
-    let fromPod = if t.pod: [[(CppFunction "", "rt::Result<{t.name}> {t.name}::from_pod(const rt::Pod& p)", "if (auto t = p.tag(); t && *t == TAG) return {t.name}\{{reads}\};\nreturn rt::mismatch<{t.name}>(\"a {t.tagName}\", p);")]] else: [[]]
+    let levelDefs = if deep: [[(CppFunction "", "crate::prelude::Pod {t.name}::level_pod(const crate::prelude::Cx& cx) const", "static_cast<void>(cx);\nreturn crate::prelude::Pod::element(TAG, \{{deepPods}\});"), (CppFunction "", "void {t.name}::level_ports(const crate::prelude::Cx& cx, ::std::vector<::prism_rtl::Rc<::prism_rtl::Port<crate::prelude::Unit>>>& out) const", "static_cast<void>(cx);\nstatic_cast<void>(out);{if deepPorts == "": "" else: "\n{deepPorts}"}")]] else: [[]]
+    let toPod = CppFunction "", "crate::prelude::Pod {t.name}::to_pod() const", "return crate::prelude::Pod::element(TAG, \{{pods}\});"
+    let show = CppFunction "", "void {t.name}::show(crate::prelude::Printer& p) const", "::prism_rtl::to_pod(*this).structure();\ncrate::prelude::Show<crate::prelude::Pod>::show(::prism_rtl::to_pod(*this), p);"
+    let fromPod = if t.pod: [[(CppFunction "", "crate::prelude::Result<{t.name}> {t.name}::from_pod(const crate::prelude::Pod& p)", "if (auto t = p.tag(); t && *t == TAG) return {t.name}\{{reads}\};\nreturn crate::prelude::mismatch<{t.name}>(\"a {t.tagName}\", p);")]] else: [[]]
     let deps = Concat2 (Each t.fields, \|((ignore, ignore, ft))| ValueDeps cp, ft)
     Parts(forward=[["struct {t.name};"]], values=[[ValueDecl(path=(DeclPath cp, t.name), deps=deps, text=decl)]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append (Append [[toPod, show]], fromPod), levelDefs))
 
@@ -395,32 +396,32 @@ fn CppDeepField p, f, ft = "\{\"{p}\", {CppDeepPod f, ft}\}"
 
 CppDeepPod: unbounded fn Text, OutTy -> Text
 fn CppDeepPod f, ft = match ft:
-    OutMap ignore, (OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore)): "prism_rtl::dynamics_pod({FieldId f}, cx)"
-    OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore): "prism_rtl::level_pod({FieldId f}.sample(cx), cx)"
-    other: if HoldsDyn other: "[] \{ static_assert(false, \"prismc: a tag field holding a dynamic other than `$Elem` or a map of them is not read deep (claude/incremental-host-document.md, doubt WD)\"); return rt::Pod(); \}()" else: "prism_rtl::to_pod({FieldId f})"
+    OutMap ignore, (OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore)): "::prism_rtl::dynamics_pod({FieldId f}, cx)"
+    OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore): "::prism_rtl::level_pod({FieldId f}.sample(cx), cx)"
+    other: if HoldsDyn other: "[] \{ static_assert(false, \"prismc: a tag field holding a dynamic other than `$Elem` or a map of them is not read deep (claude/incremental-host-document.md, doubt WD)\"); return crate::prelude::Pod(); \}()" else: "::prism_rtl::to_pod({FieldId f})"
 
 CppDeepPorts: unbounded fn Text, OutTy -> Text
 fn CppDeepPorts f, ft = match ft:
-    OutMap ignore, (OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore)): "prism_rtl::dynamics_ports({FieldId f}, cx, out);"
-    OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore): "out.push_back({FieldId f}.updates);\nprism_rtl::level_ports({FieldId f}.sample(cx), cx, out);"
+    OutMap ignore, (OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore)): "::prism_rtl::dynamics_ports({FieldId f}, cx, out);"
+    OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore): "out.push_back({FieldId f}.updates);\n::prism_rtl::level_ports({FieldId f}.sample(cx), cx, out);"
     otherwise: ""
 
 # A row kind's values (pick RV): a choice of the kind's tags, each holding its tag's struct.
 RowParts: unbounded fn Cp, Text, RowDef -> Parts
 fn RowParts cp, m, r:
     let names = Each r.cases, \|((v, ignore))| v
-    let levels = if r.level: "\nrt::Pod level_pod(const rt::Cx& cx) const;\nvoid level_ports(const rt::Cx& cx, ::std::vector<prism_rtl::Rc<prism_rtl::Port<rt::Unit>>>& out) const;" else: ""
-    let pod = "rt::Pod to_pod() const;\nvoid show(rt::Printer& p) const;{if r.pod: "\nstatic rt::Result<{r.name}> from_pod(const rt::Pod& p);" else: ""}{levels}"
+    let levels = if r.level: "\ncrate::prelude::Pod level_pod(const crate::prelude::Cx& cx) const;\nvoid level_ports(const crate::prelude::Cx& cx, ::std::vector<::prism_rtl::Rc<::prism_rtl::Port<crate::prelude::Unit>>>& out) const;" else: ""
+    let pod = "crate::prelude::Pod to_pod() const;\nvoid show(crate::prelude::Printer& p) const;{if r.pod: "\nstatic crate::prelude::Result<{r.name}> from_pod(const crate::prelude::Pod& p);" else: ""}{levels}"
     let cases = Join (Each r.cases, \|((v, st))| CaseDecl v, "{RowStruct m, st} a0;{if r.eq: "\nbool operator==(const {v}&) const = default;" else: ""}"), "\n"
     let cls = ChoiceClass (CppSourceDoc "`{r.prism}`, a row kind's values:", r.doc), "", r.name, cases, (Join names, ", "), pod
     let eq = if r.eq: "\ninline bool operator==(const {r.name}& a, const {r.name}& b) \{ return a.cases() == b.cases(); \}" else: ""
     # `crate::Elem`'s levels as a World reads them (doubt WD): a tag that holds dynamics
     # deep, any other as its plain data
-    let levelDefs = if r.level: [[(CppFunction "", "rt::Pod {r.name}::level_pod(const rt::Cx& cx) const", "return ::std::visit([&](const auto& c) \{ return prism_rtl::level_pod(c.a0, cx); \}, cases());"), (CppFunction "", "void {r.name}::level_ports(const rt::Cx& cx, ::std::vector<prism_rtl::Rc<prism_rtl::Port<rt::Unit>>>& out) const", "::std::visit([&](const auto& c) \{ prism_rtl::level_ports(c.a0, cx, out); \}, cases());")]] else: [[]]
-    let toPod = CppFunction "", "rt::Pod {r.name}::to_pod() const", "return ::std::visit([](const auto& c) \{ return prism_rtl::to_pod(c.a0); \}, cases());"
-    let show = CppFunction "", "void {r.name}::show(rt::Printer& p) const", "rt::Show<rt::Pod>::show(to_pod(), p);"
-    let reads = Join (Each r.cases, \|((v, st))| "if (*t == {RowStruct m, st}::TAG) return {r.name}({v}\{TRY(prism_rtl::from_pod<{RowStruct m, st}>(p))\});"), "\n"
-    let fromPod = if r.pod: [[(CppFunction "", "rt::Result<{r.name}> {r.name}::from_pod(const rt::Pod& p)", "if (auto t = p.tag()) \{\n{IndentCpp reads}\n\}\nreturn rt::mismatch<{r.name}>(\"a {r.name}\", p);")]] else: [[]]
+    let levelDefs = if r.level: [[(CppFunction "", "crate::prelude::Pod {r.name}::level_pod(const crate::prelude::Cx& cx) const", "return ::std::visit([&](const auto& c) \{ return ::prism_rtl::level_pod(c.a0, cx); \}, cases());"), (CppFunction "", "void {r.name}::level_ports(const crate::prelude::Cx& cx, ::std::vector<::prism_rtl::Rc<::prism_rtl::Port<crate::prelude::Unit>>>& out) const", "::std::visit([&](const auto& c) \{ ::prism_rtl::level_ports(c.a0, cx, out); \}, cases());")]] else: [[]]
+    let toPod = CppFunction "", "crate::prelude::Pod {r.name}::to_pod() const", "return ::std::visit([](const auto& c) \{ return ::prism_rtl::to_pod(c.a0); \}, cases());"
+    let show = CppFunction "", "void {r.name}::show(crate::prelude::Printer& p) const", "crate::prelude::Show<crate::prelude::Pod>::show(to_pod(), p);"
+    let reads = Join (Each r.cases, \|((v, st))| "if (*t == {RowStruct m, st}::TAG) return {r.name}({v}\{TRY(::prism_rtl::from_pod<{RowStruct m, st}>(p))\});"), "\n"
+    let fromPod = if r.pod: [[(CppFunction "", "crate::prelude::Result<{r.name}> {r.name}::from_pod(const crate::prelude::Pod& p)", "if (auto t = p.tag()) \{\n{IndentCpp reads}\n\}\nreturn crate::prelude::mismatch<{r.name}>(\"a {r.name}\", p);")]] else: [[]]
     let deps = Concat2 (Each r.cases, \|((ignore, st))| ValueDeps cp, (OutNamed st, [[]]))
     Parts(forward=[["class {r.name};"]], values=[[ValueDecl(path=(DeclPath cp, r.name), deps=deps, text="{cls}{eq}")]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append (Append [[toPod, show]], fromPod), levelDefs))
 
@@ -435,15 +436,15 @@ fn RowStruct m, st = match st:
 AnswerParts: unbounded fn Cp, AnswerDef -> Parts
 fn AnswerParts cp, a:
     let names = Each a.cases, \|c| c.variant
-    let accessors = Join (Each a.cases, \|c| "rt::Result<{CppType cp, c.ty}> {c.accessor}() const;"), "\n"
-    let members = "const char* tag() const;\n{accessors}\nstatic rt::Result<Answer> decode(const Elem& e, const rt::Pod& v);"
+    let accessors = Join (Each a.cases, \|c| "crate::prelude::Result<{CppType cp, c.ty}> {c.accessor}() const;"), "\n"
+    let members = "const char* tag() const;\n{accessors}\nstatic crate::prelude::Result<Answer> decode(const Elem& e, const crate::prelude::Pod& v);"
     let cases = Join (Each a.cases, \|c| CaseDecl c.variant, "{CppType cp, c.ty} a0;"), "\n"
     let cls = ChoiceClass (CppDoc "`Answer c`: an answer to an element, typed by its tag (Semantics ch. 9): what a host's\nsupplier answers a child place with, and what a World's answer to a forwarded element\ndecodes to, carrying the tag's output."), "", "Answer", cases, (Join names, ", "), members
     let tags = Join (Each a.cases, \|c| "if (::std::holds_alternative<{c.variant}>(cases())) return {TypePath (RefSpelled c.structPath)}::TAG;"), "\n"
-    let tagFn = CppFunction "", "const char* Answer::tag() const", "{tags}\nprism_rtl::unreachable();"
-    let getters = Each a.cases, \|c| CppFunction (CppDoc "A `{c.tagName}`'s answer."), "rt::Result<{CppType cp, c.ty}> Answer::{c.accessor}() const", "if (auto c = ::std::get_if<{c.variant}>(&cases())) return c->a0;\nreturn rt::unexpected(rt::Fault::answer(rt::str(\"an answer for \", tag(), \", where {c.tagName}'s was expected\")));"
-    let decodes = Join (Each a.cases, \|c| "if (is<Elem::{c.variant}>(e)) return Answer({c.variant}\{TRY(prism_rtl::from_pod<{CppType cp, c.ty}>(v))\});"), "\n"
-    let decode = CppFunction (CppDoc "A World's answer to the element `e`, decoded by its tag."), "rt::Result<Answer> Answer::decode(const Elem& e, const rt::Pod& v)", "{decodes}\nprism_rtl::unreachable();"
+    let tagFn = CppFunction "", "const char* Answer::tag() const", "{tags}\n::prism_rtl::unreachable();"
+    let getters = Each a.cases, \|c| CppFunction (CppDoc "A `{c.tagName}`'s answer."), "crate::prelude::Result<{CppType cp, c.ty}> Answer::{c.accessor}() const", "if (auto c = ::std::get_if<{c.variant}>(&cases())) return c->a0;\nreturn crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where {c.tagName}'s was expected\")));"
+    let decodes = Join (Each a.cases, \|c| "if (is<Elem::{c.variant}>(e)) return Answer({c.variant}\{TRY(::prism_rtl::from_pod<{CppType cp, c.ty}>(v))\});"), "\n"
+    let decode = CppFunction (CppDoc "A World's answer to the element `e`, decoded by its tag."), "crate::prelude::Result<Answer> Answer::decode(const Elem& e, const crate::prelude::Pod& v)", "{decodes}\n::prism_rtl::unreachable();"
     Parts(forward=[["class Answer;"]], values=[[ValueDecl(path="Answer", deps=[[]], text=cls)]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append [[tagFn]], (Push getters, decode)))
 
 # A step machine (D6): a job struct, its `cycle`, its `Start`.
@@ -458,10 +459,10 @@ fn JobParts cp, j:
     let ctor = if (Len j.fields) == 0: "" else: "{j.name}({params}) : {inits} \{\}"
     let ret = CppType cp, j.ret
     let decl = JobStruct (CppDoc j.doc), gens, j.name, ret, fields, ctor
-    let cycle = CppFunction "", "{gens}prism_rtl::Turn<{ret}> {head}::cycle() const", (CppBody jcp, j.body)
-    let start = CppFunction (CppDoc "`Start {j.name}, x`: what the function value is when passed to `@Run`."), "{gens}prism_rtl::JobRef<{ret}> {j.start}({params})", "return prism_rtl::make_rc<{head}>({Join (Each j.fields, \|((n, ignore))| FieldId n), ", "});"
+    let cycle = CppFunction "", "{gens}::prism_rtl::Turn<{ret}> {head}::cycle() const", (CppBody jcp, j.body)
+    let start = CppFunction (CppDoc "`Start {j.name}, x`: what the function value is when passed to `@Run`."), "{gens}::prism_rtl::JobRef<{ret}> {j.start}({params})", "return ::prism_rtl::make_rc<{head}>({Join (Each j.fields, \|((n, ignore))| FieldId n), ", "});"
     let generic = (Len j.generics) > 0
-    Parts(forward=[["{gens}struct {j.name};"]], values=[[]], protos=[["{gens}prism_rtl::JobRef<{ret}> {j.start}({params});"]], classes=[[decl]], outer=[[]], generic=(if generic: [[cycle, start]] else: [[]]), defs=(if generic: [[]] else: [[cycle, start]]))
+    Parts(forward=[["{gens}struct {j.name};"]], values=[[]], protos=[["{gens}::prism_rtl::JobRef<{ret}> {j.start}({params});"]], classes=[[decl]], outer=[[]], generic=(if generic: [[cycle, start]] else: [[]]), defs=(if generic: [[]] else: [[cycle, start]]))
 
 # A program's own trait: its methods are functions of a namespace named after it, each impl
 # an overload (a default's body a template over `Self`). A method with no default is
@@ -491,7 +492,7 @@ fn ImplParts cp, i:
     match i.cls:
         "Prelude.Show":
             let shown = Or (Each i.methods, \|f| f.name)[0], "show"
-            JoinParts own, (ProtosDefs [[]], [[(CppFunction "", "{gens}void {head}::show(rt::Printer& p) const", "p.raw({shown}(*this).to_string());")]])
+            JoinParts own, (ProtosDefs [[]], [[(CppFunction "", "{gens}void {head}::show(crate::prelude::Printer& p) const", "p.raw({shown}(*this).to_string());")]])
         "Prelude.Eq":
             let eq = Fold i.methods, "", \|acc, f| if (not (HasPrefix f.name, "ne")) and acc == "": f.name else: acc
             JoinParts own, (ProtosDefs [["{gens}bool operator==(const {head}& a, const {head}& b);"]], [[(CppFunction "", "{gens}bool operator==(const {head}& a, const {head}& b)", "return {eq}(a, b);")]])
