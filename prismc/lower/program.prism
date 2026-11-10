@@ -469,7 +469,7 @@ fn ModDefOf lx0, m, roots, info, mods:
         ? src: src.path
         nil: ""
     let types = Fold (Values lx.g.types), [[]], \|acc, ti| if ti.home == m: Append acc, (TyDefs lx, ti) else: acc
-    let tags = Fold (Values lx.g.tags), [[]], \|acc, tg| if tg.home == m and tg.kind != "Prelude.Fault": Push acc, (ItTag (TagDefOf lx, tg)) else: acc
+    let tags = Fold (Values lx.g.tags), [[]], \|acc, tg| if tg.home == m and tg.kind != "Prelude.Fault": Append acc, (TagItems lx, tg) else: acc
     let defs = Fold lx.g.defs, [[]], \|acc, d| if d.home == m: Append acc, (DefItems (InModule lx, d.file, m), d, roots) else: acc
     let traits = Fold (Values lx.g.traits), [[]], \|acc, tr| if tr.home == m: Push acc, (ItTrait (TraitDefOf lx, tr)) else: acc
     let impls = Fold (Values lx.g.impls), [[]], \|acc, ims| Fold ims, acc, \|a, im| if im.home == m and not im.derived: Push a, (ItImpl (ImplDefOf (InModule lx, im.file, m), im)) else: a
@@ -608,6 +608,26 @@ TagDefOf: unbounded fn Lx, TagInfo -> TagDef
 fn TagDefOf lx, tg:
     let fields = Each (LevelFields tg), \|((fname, ft))| ((fname, (FieldSpell tg.home, fname, ft), (OutTyOf lx, (Peel ft))))
     TagDef(name=(TagStructOf tg), tagName=tg.name, fields=fields, doc=(TypeDoc lx, (TyInfo(name=tg.name, home=tg.home, params=[[]], body=BOpaque, derives=[[]], file=tg.file, span=tg.span))), pod=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and Podable t), eq=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and RuntimeEq t))
+
+# A tag's items: its struct, and an element tag's description beside it.
+TagItems: unbounded fn Lx, TagInfo -> [Item]
+fn TagItems lx, tg = if tg.kind == "Element": [[(ItTag (TagDefOf lx, tg)), (ItType (DescDefOf lx, tg))]] else: [[ItTag (TagDefOf lx, tg)]]
+
+# An element tag's description (gap LE; Type System ch. 2: an element applied, before
+# anything places it, is a plain value): a record of its fields as the application gives
+# them, a `$` field its `Dynamic`, an event field its `Event`, a plain field its value. A
+# pattern over an element matches it, or a live element's view as one (`DescView`).
+DescDefOf: unbounded fn Lx, TagInfo -> TyDef
+fn DescDefOf lx, tg:
+    let name = DescStructOf tg
+    let fields = Each tg.fields, \|((fname, ft))| (((FieldSpell tg.home, fname, ft), (DescFieldTy lx, ft)))
+    TyDef(name=name, prism=name, params=[[]], shape=ShapeRecord, cases=[[CaseDef(name=name, prism=name, fields=fields, labels=(Each tg.fields, \|((fname, ignore))| fname))]], eq=False, ord=False, show=NotShown, pod=False, doc="The description of `{tg.name}`: an element applied as a plain value, its fields as given.")
+
+DescFieldTy: unbounded fn Lx, Ty -> OutTy
+fn DescFieldTy lx, ft = match LayerOf ft:
+    LyDyn: OutDyn (OutTyOf lx, (Peel ft))
+    LyEv: OutEvent (OutTyOf lx, (Peel ft))
+    otherwise: OutTyOf lx, (Peel ft)
 
 LevelFields: fn TagInfo -> [((Text, Ty))]
 fn LevelFields tg = Filter tg.fields, \|((ignore, ft))| (LayerOf ft) != LyEv

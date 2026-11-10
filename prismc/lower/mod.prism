@@ -436,5 +436,9 @@ fn TagStruct tn = Concat (Each (SplitOn tn, "."), \|p| Camel p)
 # run together with `_g` after them (`InkRect_g`), which no type's name (UpperCamelCase,
 # with no `_`) can be; the prelude's tags by the names its hand-written code gives them.
 # The variants of a row's enum and of `Answer` keep `TagStruct`, inside their enum.
+# An element tag's description struct (`DescDefOf`).
+DescStructOf: fn TagInfo -> Text
+fn DescStructOf tg = "{TagStruct tg.name}_desc"
+
 TagStructOf: fn TagInfo -> Text
 fn TagStructOf tg = if tg.home == "Prelude": TagStruct tg.name else: "{TagStruct tg.name}_g"

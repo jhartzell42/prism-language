@@ -90,7 +90,7 @@ fn Type t = match t:
     OutObj i: "::std::rc::Rc<dyn {Type i}>"
     OutSlice i: "[{Type i}]"
     OutPort i: "crate::prelude::Port<{Type i}>"
-    OutLive i: "crate::prelude::Live<{Type i}>"
+    OutLive i: "crate::prelude::Element<{Type i}>"
     OutTurn: "() /* the job's turn */"
     OutAssoc tr, n, (OutNamed (RefRuntime "Self"), [[]]): "Self::{n}"
     OutAssoc tr, n, a: "<{Type a} as {tr}>::{n}"

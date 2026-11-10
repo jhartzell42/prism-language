@@ -211,7 +211,11 @@ fn WholeFns lx:
             ? v: Push acc, ((d, clauses, v))
             nil: acc
         otherwise: acc
-    let bySig = Fold fns, {}, \|m, ((d, ignore, v))| if IsWholeSig v.scheme.ty: Insert m, d.qk, True else: m
+    # and those with an element parameter (gap LE): a `$` field of the element is a
+    # `Dynamic` with no read point in the body, so the function gives its time whole and its
+    # callers read it (an implementation choice: `e.$field` is a `$T` either way, Type System
+    # ch. 4)
+    let bySig = Fold fns, {}, \|m, ((d, ignore, v))| if (IsWholeSig v.scheme.ty) or HasElementParam v.scheme.ty: Insert m, d.qk, True else: m
     # and those a call takes with time below the top of what it gives (`$Sel (True on
     # !swap), $a, $b`, a `!$Nat`: lifted over a plain parameter, the call gives the dynamic
     # it returns whole, Type System ch. 4)
@@ -264,6 +268,13 @@ fn DynOnlyOnTop t = match t:
             TySig "$", i: not (HasTime i)
             otherwise: False
         (Len tops) > 0 and (Len tops) + (Len (Filter all, \|p| not (HasTime p))) == (Len all)
+    otherwise: False
+
+HasElementParam: fn Ty -> Bool
+fn HasElementParam t = match t:
+    TyFn ignore, ps, r: (not (HasBlueprint r)) and Fold ps, False, \|seen, p| seen or match Peel p:
+        TyElem ignore, ignore: True
+        otherwise: False
     otherwise: False
 
 IsWholeSig: fn Ty -> Bool
@@ -957,14 +968,14 @@ fn ClosureRef (VlPlace x, ignore, t) = XRef (XDeref x)
 fn ClosureRef (VlOwned x, t) = XRef (XDeref x)
 
 # A tag applied as a value (pick RV): a plain row kind's value is its enum's variant
-# around the tag's struct (`Draw::DrawRect(DrawRect { .. })`). An element as a value is
-# live, and only a host makes one (gap LE).
+# around the tag's struct (`Draw::DrawRect(DrawRect { .. })`). An element applied is a
+# description (`ElementValue`).
 TagValue: unbounded fn Lx, Env, TagInfo, [Arg] -> Vl
 fn TagValue lx, env, tg, args:
     let ((variant, structPath)) = TagPaths lx, tg
     let t = OutNamed (KindRef lx, tg.kind), [[]]
     match tg.kind:
-        "Element": VlOwned (Refusal "an element as a plain value ({tg.name}): a live element comes from its host"), t
+        "Element": ElementValue lx, env, tg, args
         "Prelude.Fault": VlOwned (Refusal "a fault kind applied ({tg.name})"), t
         otherwise:
             let named = Fold args, False, \|f, a| f or IsNamedArg a
@@ -978,6 +989,91 @@ fn TagValue lx, env, tg, args:
                     nil: (XCall (RefRuntime "std::Default::default"), [[]])
                 (((FieldSpell tg.home, fname, fty), v))
             VlOwned (XCtor variant, [[(XRecord structPath, fields)]]), t
+
+# An element applied as a plain value (gap LE; Type System ch. 2, "Names and sigils":
+# `Ui.Button(..)` before anything binds it is a plain value): a description, plain data
+# with no read point, live only where a statement or a host places it
+# (`prism_rtl::element_blueprint`). It holds its fields as given, a `$` field its
+# `Dynamic` and an event field its `Event` (the tag's `_desc` record, which a pattern
+# matches), its level over time, mapped from its `$` fields, and its requests, each event
+# field's firings as the field's request (`RequestField`).
+ElementValue: unbounded fn Lx, Env, TagInfo, [Arg] -> Vl
+fn ElementValue lx, env, tg, args:
+    let ((variant, structPath)) = TagPaths lx, tg
+    let descPath = RefIn lx, tg.home, (DescStructOf tg)
+    let t = OutLive (OutNamed elemRef, [[]])
+    let lxw = update lx:
+        &_.whole <= True
+    let named = Fold args, False, \|f, a| f or IsNamedArg a
+    let n = Len tg.fields
+    # each field given, by its index, with its argument
+    let argued = Fold (Range0 n), [[]], \|acc, i|
+        let ((fname, fty)) = Or tg.fields[i], (("", TyErr))
+        let ?arg = if named: ?TagArg args, fname else: match args[i]:
+            ? a: ? a.value
+            nil: nil
+        match ?arg:
+            ? x: Push acc, ((i, x))
+            nil: acc
+    let missing = Filter (Range0 n), \|i| not (Fold argued, False, \|seen, ((j, ignore))| seen or j == i)
+    let Local = \|i| "desc_f{i}"
+    let FieldOf = \|i| Or tg.fields[i], (("", TyErr))
+    let TyAt = \|i| match FieldOf i:
+        ((ignore, ft)): ft
+    let LayerAt = \|i| LayerOf (TyAt i)
+    let NameAt = \|i| match FieldOf i:
+        ((fname, ignore)): fname
+    let lets = Each argued, \|((i, x))|
+        let ((fname, fty)) = FieldOf i
+        let v = match LayerOf fty:
+            LyPlain: Own (ValueOf lx, env, x)
+            otherwise: Own (ValueOf lxw, env, x)
+        DoLet (PaBind (Local i)), v
+    let Spell = \|i| match FieldOf i:
+        ((fname, fty)): FieldSpell tg.home, fname, fty
+    let desc = XRecord descPath, (Each argued, \|((i, ignore))| (((Spell i), (XClone (XVar (Local i))))))
+    # the level: the plain fields' values and the `$` fields' values, mapped together
+    let dyns = Filter argued, \|((i, ignore))| (LayerAt i) == LyDyn
+    let plains = Filter argued, \|((i, ignore))| (LayerAt i) == LyPlain
+    let names = Each (Range0 (Len dyns)), \|k| "desc_y{k}"
+    let NameOfDyn = \|i| Fold (Range0 (Len dyns)), "", \|found, k| match dyns[k]:
+        ? ((j, ignore)): if j == i: Or names[k], "" else: found
+        nil: found
+    let levelFields = Each (Filter argued, \|((i, ignore))| (LayerAt i) != LyEv), \|((i, ignore))|
+        if (LayerAt i) == LyDyn: (((Spell i), (XClone (XVar (NameOfDyn i))))) else: (((Spell i), (XClone (XVar "{Local i}_l"))))
+    let level = XCtor variant, [[(XRecord structPath, levelFields)]]
+    let keeps = Each plains, \|((i, ignore))| DoLet (PaBind "{Local i}_l"), (XClone (XVar (Local i)))
+    let tys = Each dyns, \|((i, ignore))| OutTyOf lx, (Peel (TyAt i))
+    let mapped = match dyns:
+        [[]]: XCall (HelperRef "dyn_constant"), [[level]]
+        [[((i, ignore))]]: XMethod (XVar (Local i)), "map", [[(XClosure True, [[(PaTyped (PaBind (Or names[0], "y")), (OutRef (Or tys[0], OutUnit)))]], level)]]
+        otherwise:
+            # paired up left to right (`map2` into a tuple), then mapped once
+            let first = match dyns[0]:
+                ? ((i, ignore)): XVar (Local i)
+                nil: XUnit
+            let ((paired, pty)) = Fold (Filter (Range0 (Len dyns)), \|k| k > 0), ((first, (Or tys[0], OutUnit))), \|((acc, at)), k|
+                let it = Or tys[k], OutUnit
+                let src = match dyns[k]:
+                    ? ((i, ignore)): XVar (Local i)
+                    nil: XUnit
+                let pair = XClosure True, [[(PaTyped (PaBind "l"), (OutRef at)), (PaTyped (PaBind "r"), (OutRef it))]], (XTuple [[(XClone (XVar "l")), (XClone (XVar "r"))]])
+                (((XMethod acc, "map2", [[(XRef src), pair]]), (OutTuple [[at, it]])))
+            let m = Len dyns
+            let unpack = Each (Range0 m), \|k| DoLet (PaBind (Or names[k], "y")), (XClone (TuplePath (XVar "t"), m, k))
+            XMethod paired, "map", [[(XClosure True, [[(PaTyped (PaBind "t"), (OutRef pty))]], (XBlock unpack, level))]]
+    let made = XCall (RefRuntime "prism_rtl::described"), [[desc, (XBlock keeps, mapped)]]
+    # each event field's firings, the field's request
+    let evs = Filter argued, \|((i, ignore))| (LayerAt i) == LyEv
+    let requested = Fold evs, made, \|acc, ((i, ignore))|
+        let ((fname, fty)) = FieldOf i
+        let field = if (Len (Filter tg.fields, \|((ignore, ft))| (LayerOf ft) == LyEv)) > 1: fname else: ""
+        let fieldEx = if field == "": XNone else: XCtor (RefRuntime "std::Some"), [[XStr field]]
+        let pods = XMethod (XVar (Local i)), "map", [[(XClosure True, [[(PaTyped (PaBind "v"), (OutRef (OutTyOf lx, (Peel fty))))]], (XMethod (XVar "v"), "to_pod", [[]]))]]
+        XMethod acc, "request", [[fieldEx, pods]]
+    let value = XCall (RefRuntime "prism_rtl::described_element"), [[requested]]
+    if (Len missing) > 0: VlOwned (Refusal "an element value ({tg.name}) without its field `{Or (Each missing, \|i| NameAt i)[0], ""}`"), t
+    else: VlOwned (XBlock lets, value), t
 
 # A call of a global: a constructor, a trait method, a prelude function, a program's own.
 GlobalCall: unbounded fn Lx, Env, Text, [Arg], Range, Range, OutTy -> Vl

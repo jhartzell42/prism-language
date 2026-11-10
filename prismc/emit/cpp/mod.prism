@@ -309,7 +309,7 @@ fn CppType cp, t = match t:
     OutObj i: "::prism_rtl::Rc<{CppType cp, i}>"
     OutSlice i: "::std::span<const {CppType cp, i}>"
     OutPort i: "crate::prelude::Port<{CppType cp, i}>"
-    OutLive i: "crate::prelude::Live<{CppType cp, i}>"
+    OutLive i: "crate::prelude::Element<{CppType cp, i}>"
     OutTurn: "decltype(this->cycle())"
     # a trait's associated type is a class template of its namespace, each impl's choice a
     # specialization at the impl's head (`TraitParts`, `ImplParts`)
