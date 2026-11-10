@@ -1,0 +1,7 @@
+# The tests of ts-ch02-non-empty.
+emit Ui.*
+use App.*
+
+test non_empty, @main:
+    build
+        => expect Ui.Label(text="6 2 none 6 no keys 2 3")

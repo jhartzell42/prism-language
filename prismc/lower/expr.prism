@@ -949,6 +949,20 @@ fn ArgumentByKind lx, env, e = match e.kind:
             otherwise: Ref (ValueOf lx, env, e)
     otherwise: Ref (ValueOf lx, env, e)
 
+# An argument at its parameter's declared type: a lambda where the parameter is a type
+# variable (a fold's accumulator `b`) is a function value, held as every function value is,
+# not the borrowed closure only a parameter of a function type takes.
+ArgumentAt: unbounded fn Lx, Env, Ty, Expr -> Ex
+fn ArgumentAt lx, env, declared, e = match Peel declared:
+    TyFn ignore, ignore, ignore: Argument lx, env, e
+    otherwise: if IsLambdaValue e: Ref (ValueOf lx, env, e) else: Argument lx, env, e
+
+IsLambdaValue: fn Expr -> Bool
+fn IsLambdaValue e = match e.kind:
+    ELambda ignore, ignore: True
+    EGroup x: IsLambdaValue x
+    otherwise: False
+
 # A bounded function value where a `&dyn Fn` is taken: a parameter that is one already
 # passes on; a closure held in an `Rc` is borrowed through it (`&*f`).
 ClosureRef: fn Vl -> Ex
@@ -1111,7 +1125,7 @@ fn ArgsFor lx, env, v, args:
             let lxw = update lx:
                 &_.whole <= True
             XRef (Own (ValueOf lxw, env, a.value))
-        else: Argument lx, env, a.value
+        else: ArgumentAt lx, env, (Or ps[i], TyErr), a.value
 
 let dummyExpr = Expr(kind=EError, span=Range(start=0, end=0))
 
@@ -1303,7 +1317,13 @@ fn PreludeCall lx, env, qk, args, span, t:
     if qk == "Prelude.AnswerOf" and not (Podable first): VlOwned (Refusal "`AnswerOf` of a value that is not plain data"), t
     else: match ?PreludeJob lx, env, variant, args:
         ? job: VlOwned (XCall (HelperRef "run_to_end"), [[job]]), t
-        nil: VlOwned (XCall (HelperRef variant), (Each args, \|a| Argument lx, env, a.value)), t
+        nil:
+            let ps = match lx.g.vals[qk]:
+                ? v: match v.scheme.ty:
+                    TyFn ignore, xs, ignore: xs
+                    otherwise: [[]]
+                nil: [[]]
+            VlOwned (XCall (HelperRef variant), (Each (Range0 (Len args)), \|i| ArgumentAt lx, env, (Or ps[i], TyErr), (Or args[i], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0)))).value)), t
 
 # D8 in the back end: `Fold`, `Each` and `Filter` given a closure that is not bounded are
 # the prelude's job versions (`fold_job`), the closure a `Start`: each call it makes is a

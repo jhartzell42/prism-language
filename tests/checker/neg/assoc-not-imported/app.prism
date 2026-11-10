@@ -1,0 +1,7 @@
+# `unknown-name`: an associated type of another module's trait is reached as any of its
+# names is, by `use` or qualification (Jimmy's ruling AK): `Item` alone names nothing here,
+# `Boxes.Item` would. Written by Claude on the claude-bugs branch; subject to change.
+mod Boxes
+
+Opened: fn a -> Item a where a: ^Boxes.Box
+fn Opened x = Boxes.Open x

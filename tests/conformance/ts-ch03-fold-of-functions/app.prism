@@ -1,0 +1,15 @@
+# A fold whose accumulator is a function, its initial value a lambda: each step wraps the
+# function so far. Rust refused the emitted code: the initial lambda went in as a borrowed
+# closure where the fold's `b` is a held function value. Written by Claude on the claude-bugs
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Compose: fn [Nat] -> Nat
+fn Compose ns:
+    let F = Fold ns, (\|x| x), \|G, n| \|x| G (x + n)
+    F 1
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Compose [[1, 2]]} {Compose [[]]}")    # 0

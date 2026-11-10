@@ -86,7 +86,57 @@ fn BindGroup env, st, stmts:
         if HasText signed, (LetName stmt): ((en, s)) else: PreBind en, s, stmt
     let st1 = Fold stmts, st0, \|s, stmt| UndefinedSignature s, stmts, stmt
     let st2 = if st1.recording and (Len stmts) > 1: NoteGroup st1, (StmtsSpan stmts), "expr", (DepOrder stmts) else: st1
-    Fold order, ((env1, st2)), \|((en, s)), i| CheckGroupStmt en, s, (Or stmts[i], dummyStmt), (IsLast stmts, i)
+    # each line's uses, by binder id, for the cycle check after
+    let ((envN, stN, uses)) = Fold order, ((env1, st2, {})), \|((en, s, m)), i|
+        let before = Len s.useIds
+        let ((en2, s2)) = CheckGroupStmt en, s, stmts, i, (IsLast stmts, i)
+        ((en2, s2, (Insert m, i, (Drop s2.useIds, before))))
+    ((envN, (ValueCycles stN, stmts, uses)))
+
+# `value-cycle`: the block's `let`s that read one another around a cycle with a plain value
+# among them (Semantics ch. 4, "Binding groups and cycles": "a cycle among plain values is an
+# error"); a cycle of functions alone recurses.
+# A line reads another when a use in it is of a binder the other's `let` or `fn` makes (by the
+# binders' ids, so a pattern's own name in a `match` arm is no read of the block's).
+ValueCycles: unbounded fn St, [Stmt], (Nat ==> [Nat]) -> St
+fn ValueCycles st, stmts, uses:
+    let n = Len stmts
+    let ids = Each (Range0 n), \|j| BinderIdsOf st, (Or stmts[j], dummyStmt)
+    let deps = Each (Range0 n), \|i| Filter (Range0 n), \|j| Fold (Or ids[j], [[]]), False, \|seen, d| seen or HasNat (Or uses[i], [[]]), d
+    let reach = Each (Range0 n), \|i| ReachIdx deps, (Or deps[i], [[]]), [[]]
+    let comps = Each (Range0 n), \|i| Filter (Range0 n), \|j| j == i or ((HasNat (Or reach[i], [[]]), j) and (HasNat (Or reach[j], [[]]), i))
+    Fold (EmitGroups comps, deps, [[]], [[]]), st, \|s, comp| CycleOf s, stmts, comp
+
+CycleOf: unbounded fn St, [Stmt], [Nat] -> St
+fn CycleOf s, stmts, comp:
+    let values = Filter comp, \|i| IsPlainLet (Or stmts[i], dummyStmt)
+    if (Len comp) < 2 or (Len values) == 0: s
+    else:
+        let first = Fold comp, (Or comp[0], 0), \|m, i| Min m, i
+        let names = Fold (Each (Filter (Range0 (Len stmts)), \|i| HasNat comp, i), \|i| GroupDefs (Or stmts[i], dummyStmt)), [[]], \|acc, ns| Append acc, ns
+        ErrFix s, "value-cycle", (Or stmts[first], dummyStmt).span, "a cycle among plain values: {Join (Each names, \|n| "`{n}`"), ", "}", "compute them in order: a value cannot read itself, through other values or directly"
+
+# The ids of the binders a `let` or local `fn` line makes (`BindLocalId`'s places).
+BinderIdsOf: fn St, Stmt -> [Nat]
+fn BinderIdsOf st, s:
+    let spans = match s.kind:
+        SLet p, ignore, ignore: PatternNameSpans p
+        SFn f: [[(DefNameSpan f.name)]]
+        otherwise: [[]]
+    Fold spans, [[]], \|acc, sp| match st.localIds["{st.file}:{sp.start}:{sp.end}"]:
+        ? id: Push acc, id
+        nil: acc
+
+PatternNameSpans: fn Pattern -> [Range]
+fn PatternNameSpans p = match p.kind:
+    PName n: [[n.span]]
+    otherwise: [[]]
+
+# A `let` of a value: not a lambda, which may recurse.
+IsPlainLet: fn Stmt -> Bool
+fn IsPlainLet s = match s.kind:
+    SLet ignore, ignore, e: not (IsLambda e)
+    otherwise: False
 
 # The names a block's signature lines give.
 SignedNames: fn [Stmt] -> [Text]
@@ -147,17 +197,17 @@ fn PreBind env, st, s = match s.kind:
         otherwise: ((env, st))
     otherwise: ((env, st))
 
-CheckGroupStmt: unbounded fn Env, St, Stmt, Bool -> ((Env, St))
-fn CheckGroupStmt env, st, s, last = match s.kind:
-    SLet p, ?ty, e: CheckLet env, st, p, ?ty, e, s.span
-    SFn f: CheckLocalFn env, st, f, s.span
+CheckGroupStmt: unbounded fn Env, St, [Stmt], Nat, Bool -> ((Env, St))
+fn CheckGroupStmt env, st, stmts, i, last = match (Or stmts[i], dummyStmt).kind:
+    SLet p, ?ty, e: CheckLet env, st, p, ?ty, e, (Or stmts[i], dummyStmt).span
+    SFn f: CheckLocalFn env, st, (LocalClauses stmts, i), (Or stmts[i], dummyStmt).span
     SSignature ignore: ((env, st))
     SExpr e:
         if last: ((env, st))
         else:
             let ((t, st2)) = Infer env, st, e
             ((env, st2))
-    otherwise: ((env, (Err st, "mismatch", s.span, "this statement belongs in a widget, `given:` or `update` block")))
+    otherwise: ((env, (Err st, "mismatch", (Or stmts[i], dummyStmt).span, "this statement belongs in a widget, `given:` or `update` block")))
 
 # A local `let` (ch. 5): generalized over the variables not free in the scope when its type
 # has no `$` or `!` outside every arrow (round 1 DB1a), and, when its right side is not a
@@ -269,17 +319,43 @@ fn WantsAboveBut st0, t, lambda, own:
 
 # A local `fn`: a `let` of its lambda (its clauses one function), or checked as a
 # top-level function when a local signature names it (ch. 5).
-CheckLocalFn: unbounded fn Env, St, FnClause, Range -> ((Env, St))
-fn CheckLocalFn env, st, f, span:
+# A local function, its clauses the `fn` lines of its name in a row (`LocalClauses`; one
+# function, as at the top level: `fn Medal 0 = ..` then `fn Medal k = ..` is exhaustive).
+# None when an earlier line of the run checked it.
+CheckLocalFn: unbounded fn Env, St, [FnClause], Range -> ((Env, St))
+fn CheckLocalFn env, st, clauses, span = match clauses[0]:
+    nil: ((env, st))
+    ? f: CheckLocalClauses env, st, f, clauses, span
+
+# The clauses of the local function whose `fn` line stands at `i`: it and the `fn` lines of
+# its name right after it; none when the line before it is one of them.
+LocalClauses: fn [Stmt], Nat -> [FnClause]
+fn LocalClauses stmts, i:
+    let name = LocalFnName (Or stmts[i], dummyStmt)
+    let before = if i == 0: "" else: LocalFnName (Or stmts[Dec i], dummyStmt)
+    if name == "" or before == name: [[]]
+    else:
+        let ((run, ignore)) = Fold (Drop stmts, i), (([[]], True)), \|((acc, going)), s| match s.kind:
+            SFn f if going and (DefNameText f.name) == name: (((Push acc, f), True))
+            otherwise: ((acc, False))
+        run
+
+LocalFnName: fn Stmt -> Text
+fn LocalFnName s = match s.kind:
+    SFn f: DefNameText f.name
+    otherwise: ""
+
+CheckLocalClauses: unbounded fn Env, St, FnClause, [FnClause], Range -> ((Env, St))
+fn CheckLocalClauses env, st, f, clauses, span:
     let name = DefNameText f.name
     match env.locals[name]:
         ? sc:
             if (Len sc.qs) > 0 or (Len sc.cqs) > 0 or not (IsFlexVar st, sc.ty):
-                let st2 = CheckClauses env, st, name, [[f]], sc, span
+                let st2 = CheckClauses env, st, name, clauses, sc, span
                 ((env, st2))
             else:
                 let st0 = EnterLevel st
-                let ((lt, st1)) = ClauseLambda env, st0, f
+                let ((lt, st1)) = if (Len clauses) == 1: ClauseLambda env, st0, f else: ClausesLambda env, st0, name, clauses, span
                 let st2 = Unify st1, sc.ty, lt, span
                 let st3 = SolveWants env.g, st2, env.givens, False
                 let st4 = LeaveLevel st3
@@ -290,6 +366,39 @@ fn CheckLocalFn env, st, f, span:
                     let ((sc2, st6)) = Generalize st5, t, keep, bounds
                     (((WithLocal env, name, sc2), st6))
         nil: ((env, st))
+
+# Several clauses as one lambda: its parameters and result fresh, each clause's patterns
+# bound against the parameters and its body against the result, the clauses exhaustive over
+# the parameters (`ClauseCoverage`), as a signature's clauses are.
+ClausesLambda: unbounded fn Env, St, Text, [FnClause], Range -> ((Ty, St))
+fn ClausesLambda env, st, name, clauses, span:
+    let arity = match clauses[0]:
+        ? c: Len c.params
+        nil: 0
+    let ((params, st1)) = Fold (Range0 arity), (([[]], st)), \|((acc, s)), ignore|
+        let ((v, s2)) = FreshVar s, True, ""
+        (((Push acc, v), s2))
+    let ((res, st2)) = FreshVar st1, False, ""
+    let ((lcol, st3)) = FreshCol st2
+    let outerColor = st3.color
+    let outerWhy = st3.colorWhy
+    let outerFlex = st3.colorFlex
+    let st4 = update st3:
+        &_.color <= CBound
+        &_.colorWhy <= ""
+        &_.colorFlex <= [[]]
+    let env2 = update env:
+        &_.mark <= Head (MarksOf name)
+    let st5 = Fold clauses, st4, \|s, c| CheckClause env2, s, c, params, res
+    let st6 = ClauseCoverage env2, st5, clauses, params, span
+    let st7 = SettleBody st6, lcol, ""
+    let st8 = AddLeq st7, st7.color, lcol, span, "lambda", "", st7.colorWhy
+    let st9 = update st8:
+        &_.color <= outerColor
+        &_.colorWhy <= outerWhy
+        &_.colorFlex <= outerFlex
+    let t = TyFn lcol, params, res
+    ((t, (NoteTy (NoteFn st9, span, "lambda", lcol, lcol), span, t)))
 
 # One clause as a lambda.
 ClauseLambda: unbounded fn Env, St, FnClause -> ((Ty, St))
