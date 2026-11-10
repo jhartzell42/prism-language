@@ -157,7 +157,7 @@ fn BindCtor env, st, p, n, args, t:
             else: match env.g.ctors[qk]:
                 nil: ((env, (Err st, "unknown-name", n.span, "`{SNameKey n}` is not a constructor")))
                 ? c:
-                    let ((self, st1, inst)) = InstantiateWith st, (Scheme(qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), p.span, [[]]
+                    let ((self, st1, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), p.span, [[]]
                     let st2 = if IsFailurePattern st1, t, self: st1 else: Unify st1, t, self, p.span
                     if (Len args) != (Len c.args) and not ((Len args) == 1 and (Len c.args) > 1):
                         ((env, (Err st2, "mismatch", p.span, "`{BareName c.name}` takes {CountWord (Len c.args)} argument{if (Len c.args) == 1: "" else: "s"}; this pattern gives {CountWord (Len args)}")))
@@ -175,7 +175,7 @@ fn BindRecord env, st, p, n, fields, rest, t:
             else: match env.g.ctors[qk]:
                 nil: ((env, (Err st, "unknown-name", n.span, "`{SNameKey n}` is not a record")))
                 ? c:
-                    let ((self, st1, inst)) = InstantiateWith st, (Scheme(qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), p.span, [[]]
+                    let ((self, st1, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), p.span, [[]]
                     let st2 = if IsFailurePattern st1, t, self: st1 else: Unify st1, t, self, p.span
                     Fold (Range0 (Len fields)), ((env, st2)), \|((en, s)), i|
                         let fp = Or fields[i], FieldPat(name=nil, pattern=Pattern(kind=PIgnore, span=p.span), span=p.span)
@@ -202,7 +202,7 @@ fn BindTagPattern env, st, p, name, fields, rest, t = match env.g.tags[name]:
     ? tg:
         let st1 = if tg.kind == "Element": TagInRow env, st, tg, t, p.span else: Unify st, t, (TyCon tg.kind, [[]]), p.span
         let snapshot = IsSnapshot st1, t
-        let ((ignore, st2, inst)) = InstantiateWith st1, (Scheme(qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=[[]], ty=tg.out)), p.span, [[]]
+        let ((ignore, st2, inst)) = InstantiateWith st1, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=[[]], ty=tg.out)), p.span, [[]]
         let names = Each tg.fields, \|((f, ignore))| f
         Fold (Range0 (Len fields)), ((env, st2)), \|((en, s)), i|
             let fp = Or fields[i], FieldPat(name=nil, pattern=Pattern(kind=PIgnore, span=p.span), span=p.span)

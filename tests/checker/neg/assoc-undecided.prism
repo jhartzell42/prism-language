@@ -1,6 +1,6 @@
-# `ambiguous`: a local lambda's argument meets an associated type that waits for it, and
-# nothing ever applies the lambda: the equation `Item a` = `Text` is never decided, and is
-# reported, not dropped.
+# `ambiguous`: a local lambda that captures `n` (so it stays monomorphic, ruling SH) has an
+# argument that meets an associated type waiting for it, and nothing ever applies the
+# lambda: the equation `Item a` = `Text` is never decided, and is reported, not dropped.
 trait ^Box a:
     type Item
     Open: fn a -> Item a
@@ -18,5 +18,5 @@ fn Takes t = Len t
 
 Unused: fn Nat -> Nat
 fn Unused n:
-    let G = \|x| Takes (Open x)
+    let G = \|x| (Takes (Open x)) + n
     n

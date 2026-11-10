@@ -205,7 +205,7 @@ fn SigScheme cx, st, t, bounds:
     let tvs = Filter (TypeVarsOfType t), \|v| not (HasText rowVars, v)
     let cqs = Fold defaults, written, \|acc, v| AddText acc, v
     let rowsUsed = Filter rowVars, \|v| (HasText (RowVarsOfType t), v) or (UsesScope t)
-    ((Scheme(qs=tvs, plainQs=[[]], rqs=rowsUsed, cqs=cqs, cjoins=joins, bounds=bs, ty=ty), st3))
+    ((Scheme(eqs=[[]], qs=tvs, plainQs=[[]], rqs=rowsUsed, cqs=cqs, cjoins=joins, bounds=bs, ty=ty), st3))
 
 # A signature's unwritten colors (ch. 5, The color; round 3 CD). One mentioning `$`, `!`
 # or `@`, or taking no function, has them bounded. Otherwise every function parameter
