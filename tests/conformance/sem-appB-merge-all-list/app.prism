@@ -1,0 +1,21 @@
+# `!MergeAll` of a list that is not a literal (Semantics Appendix B, Widgets and Events:
+# `!MergeAll: fn [!a] -> ![a]` fires, in a tick any of them fires, the values of those that
+# fired, in the list's order). The list is a plain value a function made, so its events
+# are fixed at the build. Written by Claude on the claude-lowering branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+
+Evs: fn !Ui.Click, !Ui.Click -> [!Nat]
+fn Evs !a, !b = [[(1 on !a), (2 on !b), (3 on !a)]]
+
+Joined: fn [Nat] -> Text
+fn Joined xs = Fold xs, "", \|acc, x| if acc == "": "{x}" else: "{acc},{x}"
+
+@page: @unit
+@page:
+    !a <- Ui.Button(label=$"a")                             # 0
+    !b <- Ui.Button(label=$"b")                             # 1
+    let evs = Evs !a, !b
+    $last <- "none" then Joined (!MergeAll evs)
+    Ui.Label(text=$last)                                    # 2
