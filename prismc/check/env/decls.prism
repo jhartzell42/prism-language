@@ -86,6 +86,12 @@ fn ConvertTypeDecl g, st, info, d = match d.kind:
                         ((upd, st2))
     otherwise: ((g, st))
 
+# Whether a definition is the module-level `let` of this key.
+IsLetOf: fn Def, Text -> Bool
+fn IsLetOf d, qk = match d.body:
+    DbLet ignore: d.qk == qk
+    otherwise: False
+
 # `collision`: a second field of one name in a record or a tag. The first stays the field.
 SecondField: fn St, [((Text, Ty))], Field -> St
 fn SecondField st, fields, f = if Fold fields, False, \|seen, ((fname, ignore))| seen or fname == f.name.name: Err st, "collision", f.span, "a second field `{f.name.name}`" else: st
@@ -131,10 +137,13 @@ fn ConvertDecl g, st, info, d = match d.kind:
         let st2 = LensCheck st1, (DefNameText s.name), s.ty, (DefNameSpan s.name)
         let st3 = CheckMarkFunction st2, (DefNameText s.name), sc.ty, (DefNameSpan s.name)
         if HasKey g.vals, qk: ((g, (Err st3, "collision", d.span, "a second signature for `{DefNameText s.name}`")))
-        else:
-            let upd = update g:
-                &_.vals <= Insert &_.vals, qk, ValInfo(qk=qk, scheme=sc, sort="fn", hasSig=True, home=info.name, file=info.file, span=d.span)
-            ((upd, st3))
+        # a constructor's name is a value-level name of its module
+        else: match g.ctors[qk]:
+            ? constructor: ((g, (Err st3, "collision", d.span, "`{DefNameText s.name}` is a constructor of `{BareName constructor.owner}` in this module")))
+            nil:
+                let upd = update g:
+                    &_.vals <= Insert &_.vals, qk, ValInfo(qk=qk, scheme=sc, sort="fn", hasSig=True, home=info.name, file=info.file, span=d.span)
+                ((upd, st3))
     DFn f:
         let qk = QualKey info.name, (DefNameText f.name)
         (((AddClause g, info, qk, (DefNameText f.name), f, d.span, st), st))
@@ -142,9 +151,12 @@ fn ConvertDecl g, st, info, d = match d.kind:
         let names = PatternNames l.pattern
         let qk = QualKey info.name, (Or names[0], "")
         let def = Def(qk=qk, name=(Or names[0], ""), home=info.name, file=info.file, span=d.span, body=(DbLet l))
-        let upd = update g:
-            &_.defs <= Push &_.defs, def
-        ((upd, st))
+        # `collision`: a module's `let` binds its name once; the first stays
+        if Fold g.defs, False, \|seen, other| seen or (IsLetOf other, qk): ((g, (Err st, "collision", d.span, "a second `let` for `{Or names[0], ""}`")))
+        else:
+            let upd = update g:
+                &_.defs <= Push &_.defs, def
+            ((upd, st))
     DWidget w:
         let qk = QualKey info.name, (SNameKey w.name)
         let def = Def(qk=qk, name=(SNameKey w.name), home=info.name, file=info.file, span=d.span, body=(DbWidget w))

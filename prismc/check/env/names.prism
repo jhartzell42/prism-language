@@ -185,6 +185,14 @@ fn PatternBinders p = match p.kind:
     PGroup q: PatternBinders q
     otherwise: [[]]
 
+# `collision`: the patterns of one parameter list, or one pattern, bind a name once.
+BoundTwice: unbounded fn St, [Pattern] -> St
+fn BoundTwice st, patterns:
+    let binders = Fold patterns, [[]], \|acc, p| Append acc, (PatternBinders p)
+    let ((ignore, checked)) = Fold binders, (([[]], st)), \|((seen, s)), ((name, at))|
+        if HasText seen, name: ((seen, (Err s, "collision", at, "`{name}` is bound twice here"))) else: (((Push seen, name), s))
+    checked
+
 # The bare type-level names a module declares: its types, and its traits' associated types.
 BareTypesOf: fn G, Text, (Text ==> [Text]) -> (Text ==> [Text])
 fn BareTypesOf g, src, acc:
