@@ -1,0 +1,24 @@
+# A `rebuild` whose block ends on `@ both`, `both` a name bound to a widget's bundle
+# result (Semantics ch. 4, "What a `rebuild` hands back": "a dynamic of its current
+# generation's result"; Type System ch. 2, "Bundles": a bundle is a plain aggregate, so a
+# name binds it and the `rebuild` gives a dynamic of it). The page keeps the dynamic and
+# reads nothing of it; the generations' places and holds are as any `rebuild`'s. Written
+# by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Counter: fn Nat -> @((!Click, $Nat))
+fn @Counter page:
+    !more <- Ui.Button($label=$"more on {page}")                  # 0
+    $guests <- 1 then $guests + 1 on !more
+    Ui.Label($text=$"page {page}: {$guests}")                     # 1
+    @ ((!more, $guests))
+
+@main: @unit
+@main:
+    !next <- Ui.Button($label=$"next")                            # 0
+    $page <- 1 then $page + 1 on !next
+    $kept <- rebuild $page:                                      # 1/#g
+        both <- @Counter _                                        # 1/#g/0, 1/#g/1
+        @ both
