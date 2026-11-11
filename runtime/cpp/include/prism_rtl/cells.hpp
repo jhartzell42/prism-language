@@ -551,10 +551,10 @@ private:
 
 /// `@Later: fn !a -> @!a` (Semantics Appendix B): each firing answered one tick later,
 /// through a zero-delay `Time.After`. The firings whose wake the World has not answered
-/// yet, oldest first: `Later::queue` at each firing, as the wake is asked;
-/// `Later::answered` at each answer of the place, which gives the oldest back.
+/// yet, oldest first: `LaterQueue::queue` at each firing, as the wake is asked;
+/// `LaterQueue::answered` at each answer of the place, which gives the oldest back.
 template <class T>
-class Later {
+class LaterQueue {
 public:
     /// The argument fired: kept until its wake is answered.
     void queue(T v) const { pending_.push_back(std::move(v)); }

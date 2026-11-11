@@ -491,7 +491,7 @@ fn DeferLine wx, menv, args, e, ?target:
 # `@Later !e` (Semantics Appendix B: "each firing answered one tick later, through a
 # zero-delay `Time.After`. A World implements time, so this one goes through a World"): a
 # `Time.After` at the block's next position, a place of the block as an inlined widget's
-# is (ch. 8). Each firing of `!e` queues its value (`prism_rtl::Later`) and asks the place
+# is (ch. 8). Each firing of `!e` queues its value (`prism_rtl::LaterQueue`) and asks the place
 # for a wake of no delay and of the empty context; each answer at the place fires the
 # oldest value still queued. The wake asked is the record of `Time.After`'s request
 # field, built from the prelude's declaration.
@@ -503,7 +503,7 @@ fn LaterLine wx, benv, menv, args, e, ?target:
         ((? tg, ? a)):
             let ((wakesName, wakeTy)) = Or (Fold tg.fields, nil, \|?found, ((fname, ft))| if (LayerOf ft) == LyEv: ? ((fname, (Peel ft))) else: ?found), (("", TyErr))
             let ((queue, wx1)) = FreshName wx, "later"
-            let wx2 = AddFieldLast wx1, queue, (OutNamed (RefRuntime "prism_rtl::Later"), [[t]]), "`@Later`'s firings not answered yet, oldest first", (XCall (RefRuntime "prism_rtl::Later::new"), [[]])
+            let wx2 = AddFieldLast wx1, queue, (OutNamed (RefRuntime "prism_rtl::LaterQueue"), [[t]]), "`@Later`'s firings not answered yet, oldest first", (XCall (RefRuntime "prism_rtl::LaterQueue::new"), [[]])
             let ((r, wx3)) = EventRef wx2, menv, a.value
             # the value queued first, then the wake asked: the sinks run in page order
             let wx4 = Connect wx3, r, (SkLater queue)
