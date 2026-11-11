@@ -421,6 +421,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
     first, since it may read what the reference borrows. Its read is `xs[i]`, `nil` past
     the end. A lens to a map key is refused by the checker (`lens-map-key`, ruling ME), so
     no reference is ever an entry of a map.
+  - The reference borrows all of its argument, as the book's rule has it, so two places
+    keep rustc and the borrow rule equal: an accumulation through a lens reads the part
+    by the read function (`UpdStmt`), and inside a `for` over a lens applied the checker
+    refuses a read that overlaps the lens's argument (`HeldReads`, `borrow-overlap`), as
+    it refuses a set there.
   - Negative space: no lens value (`&.score.home`), no `Over`; a lens takes its one
     reference and nothing else, so there is no lens with a key or an index handed in.
 - **An `update` block's bare `for`** (`for &_.xs:`, `for xs:`; Semantics ch. 5,

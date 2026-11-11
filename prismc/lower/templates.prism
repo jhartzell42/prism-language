@@ -199,7 +199,12 @@ fn UpdStmt lx, env, s = match s.kind:
         let tt = OutTyOf lx, (Peel (TypeAt lx, target.span))
         let rv = ValueOf lx, env, value
         let bin = Head op
-        let next = OpValue lx, bin, (VlPlace cur, Owned, tt), rv, s.span, tt
+        # through a named lens the part's value is the lens's read, so the operator's
+        # operands borrow nothing mutably
+        let now = match ?LensCall lx, target:
+            ? ignore: ValueOf lx, env, target
+            nil: VlPlace cur, Owned, tt
+        let next = OpValue lx, bin, now, rv, s.span, tt
         (([[(Assign lx, env, target, (Own next))]], env))
     SLet p, ignore, x:
         let v = Own (ValueOf lx, env, x)
