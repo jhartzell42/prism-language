@@ -1,0 +1,26 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": the order of a group's lines decides positions and nothing else), ch. 9 (a host re-emits each forwarded place of its child under its own place, keyed by the child's path) and ruling TC (places counted as built): loud gives 1 + 9, so the upper `match` takes `nil` and builds 0 and 1, the arm's label is 2, its host 3 with the child's label under it, and the last label 4; long gives 7 + 9, so the upper `match` builds 0, the arm's label is 1, its host 2 and the last label 3; soft gives 20, so the upper `match` builds 0 and the last label is 1.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="under")
+    1: Ui.Label(text="at 10")
+    2: Ui.Label(text="x")
+    3/[0]/0: Ui.Label(text="note")
+    4: Ui.Label(text="below 10")
+
+test long
+
+tick 0
+  added:
+    0: Ui.Label(text="over by 1")
+    1: Ui.Label(text="xxxxxxx")
+    2/[0]/0: Ui.Label(text="note")
+    3: Ui.Label(text="below 16")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="over by 5")
+    1: Ui.Label(text="below 20")

@@ -1,0 +1,12 @@
+# The tests of sem-ch04-building-match-on-built-late-value-above-host-in-arm.
+emit Ui.*
+use App.*
+
+test loud, @Page (Loud "x"):
+    build
+
+test long, @Page (Loud "xxxxxxx"):
+    build
+
+test soft, @Page Soft:
+    build

@@ -1,0 +1,36 @@
+# A place with a plain output whose constant field reads, above the line that gives it,
+# a building `match`'s late plain result (the arm reads the block, so the `match` is
+# built after the node): the place is born with the field's value and asks its first
+# value with it (Semantics ch. 4, "Binding groups and cycles": any line may use any name
+# the block binds, and "the order of a group's lines decides positions and nothing
+# else"; ch. 8, "A new place's first value": a state is keyed by the element's value).
+# Nothing here is a cycle.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+tag Pad.Count of Element Nat:
+    name: Text
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Panel: fn Mode, $Nat -> @unit
+fn @Panel mode, $k:
+    c <- Pad.Count(name="count {n}")                                   # 1
+    Ui.Label($text=$"{c} of {n}")                                      # 2
+    n <- match mode:
+        Loud t:
+            Ui.Label($text=$"{t} {$k}")
+            @ 10
+        Soft:
+            @ 20
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    !add <- Ui.Button($label=$"add")                                   # 0
+    $k <- 0 then $k + 1 on !add
+    @Panel mode, $k
