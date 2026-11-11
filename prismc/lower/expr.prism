@@ -1905,7 +1905,7 @@ fn NamedRecolored lx, x, fromTy, n, fromArgs, toArgs, to, depth:
                     XBlock [[(DoLet (PaBind held), x)]], (XTyped (XRecord tyPath, (Each (Range0 (Len made)), \|i| (((Spell i), (Or made[i], XUnit))))), to)
                 ((BChoice written, ignore)):
                     let arms = Each cases, \|c|
-                        let isNewtype = (BareName c.name) == (BareName c.owner) and (Len written) == 1
+                        let isNewtype = (BareName c.name) == (BareName c.owner) and (Len written) == 1 and (Len c.args) > 0
                         let path = if isNewtype or ((Len c.args) == 0 and IsUnitCtor lx, c.name): tyPath else: RefChild tyPath, (Camel (BareName c.name))
                         let names = Each (Range0 (Len c.args)), \|i| "{held}_f{i}"
                         if (Len c.args) == 0: XArm(pat=(PaUnit path), conds=[[]], body=(XPath path))
@@ -2097,7 +2097,7 @@ fn CtorApp lx, env, c, args, span:
             BChoice cases:
                 let isUnitType = (Len cases) == 1 and (Len c.args) == 0 and IsLowerText (BareName c.name)
                 # a newtype is a tuple struct (a struct in C++), built by its own name
-                let isNewtype = (Len cases) == 1 and (BareName c.name) == (BareName c.owner)
+                let isNewtype = (Len cases) == 1 and (BareName c.name) == (BareName c.owner) and (Len c.args) > 0
                 let path = if isUnitType or isNewtype: tyPath else: RefChild tyPath, (Camel (BareName c.name))
                 let made = if (Len c.args) == 0: XPath path else: XCtor path, vals
                 # a generic choice's case with the choice's type said, which a printer
