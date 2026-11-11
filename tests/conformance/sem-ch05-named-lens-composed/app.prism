@@ -1,0 +1,48 @@
+# Semantics ch. 5: a named lens over a named lens. Appendix A.6: `ref ::= .. | "&" uname
+# ref`, a lens applied to a reference is a reference, so `&Spare &Registers &_` applies
+# `&Spare` to what `&Registers` gives back; and a named lens's body is a reference, so
+# it may be another lens applied to its parameter ("The borrow rule": "A lens's result is
+# alive while its argument is").
+# Written by Claude on the claude-lowering branch; subject to change.
+test mod Tests
+type Regs = record:
+    acc: Int
+    x: Int
+derive ^Eq, ^Show
+
+type Vm = record:
+    pc: Nat
+    regs: Regs
+    steps: Nat
+derive ^Eq, ^Show
+
+&Acc: fn &Vm -> &Int
+fn &Acc &vm = &vm.regs.acc
+
+&Registers: fn &Vm -> &Regs
+fn &Registers &vm = &vm.regs
+
+&Spare: fn &Regs -> &Int
+fn &Spare &regs = &regs.x
+
+# A lens whose body applies two others.
+&SpareOf: fn &Vm -> &Int
+fn &SpareOf &vm = &Spare &Registers &vm
+
+# A lens whose body goes on by a field step from another lens's argument path.
+&AccOf: fn &Vm -> &Int
+fn &AccOf &vm = &Acc &vm
+
+Composed: fn Vm -> Vm
+fn Composed vm = update vm:
+    &Spare &Registers &_ <= 1
+    &Spare &Registers &_ += 10
+    &Acc &_ <= &Spare &Registers &_
+
+ByName: fn Vm -> Vm
+fn ByName vm = update vm:
+    &SpareOf &_ += 20
+    &AccOf &_ <= (&SpareOf &_) * 2
+    &Registers &_ <= Regs(acc=(&AccOf &_) + 1, x=&SpareOf &_)
+
+let boot = Vm(pc=4, regs=Regs(acc=7, x=5), steps=2)

@@ -58,9 +58,10 @@ fn InferUpdate env, st, target, body, span:
     let st4 = AndBlockChecks env2, st3, body, t
     ((t, st4))
 
-# A set at an index path of a non-empty collection (Type System ch. 2, Collections): `nil`
-# there removes the key (Semantics ch. 5, References and lens paths) and could leave the
-# collection empty, so the value is one written `? v`, which only adds or replaces.
+# A set at an index path of a non-empty map (Type System ch. 2, Collections): `nil` there
+# removes the key (Semantics ch. 5, References and lens paths) and could leave the map
+# empty, so the value is one written `? v`, which only adds or replaces. An array has no
+# entry to remove (`nil` at its index is a fault of the run), so a `[a]+` keeps its promise.
 KeepsNonEmpty: unbounded fn Env, St, Expr, Expr -> St
 fn KeepsNonEmpty env, st, target, value = match target.kind:
     EGroup x: KeepsNonEmpty env, st, x, value
@@ -68,16 +69,24 @@ fn KeepsNonEmpty env, st, target, value = match target.kind:
         # the collection's type, read in a state that is dropped: its notes and errors are
         # the target's already
         let ((ct, read)) = Infer env, st, collection
-        match ?NonEmptyColl read, ct:
+        match ?NonEmptyMap read, ct:
             ? ignore:
                 let shown = ShowTy read, ct
-                let plain = "update the plain collection (`as` drops the promise) and check the result with `as {shown}?`"
+                let plain = "update the plain map (`as` drops the promise) and check the result with `as {shown}?`"
                 match SetValue value:
                     SetsPresent: st
-                    SetsAbsent: ErrFix st, "mismatch", value.span, "setting `nil` at an index removes it, and a `{shown}` is non-empty", plain
-                    SetsEither: ErrFix st, "mismatch", value.span, "this may be `nil`, which set at an index removes it, and a `{shown}` is non-empty", "write `? v` to set a value, or {plain}"
+                    SetsAbsent: ErrFix st, "mismatch", value.span, "setting `nil` at a key removes it, and a `{shown}` is non-empty", plain
+                    SetsEither: ErrFix st, "mismatch", value.span, "this may be `nil`, which set at a key removes it, and a `{shown}` is non-empty", "write `? v` to set a value, or {plain}"
             nil: st
     otherwise: st
+
+# The map a non-empty map's type holds; none for any other type.
+?NonEmptyMap: unbounded fn St, Ty -> ?Ty
+fn ?NonEmptyMap st, t = match ?NonEmptyColl st, t:
+    ? c: match Walk st, c:
+        TyMap ignore, ignore: ? c
+        otherwise: nil
+    nil: nil
 
 # What a set's value is as written: `? v`, `nil`, or a value that may be either.
 type SetWritten = choice:
