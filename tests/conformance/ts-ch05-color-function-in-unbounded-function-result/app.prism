@@ -1,0 +1,26 @@
+# A function of its callee's own color in the result of an unbounded function a call
+# returns, at a call that makes the color bounded (Type System ch. 5: a color variable is
+# decided at each call; a function is a value and a function may give one back; the
+# returned function keeps its own, unbounded color). The call is an argument, which
+# gives its type. Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Maker: u fn (u fn Nat -> Nat) -> (unbounded fn Nat -> (u fn Nat -> Nat))
+fn Maker F = \|k| (\|n| (F n) + k)
+
+Inc: fn Nat -> Nat
+fn Inc n = n + 1
+
+Through: unbounded fn (unbounded fn Nat -> (bounded fn Nat -> Nat)) -> Nat
+fn Through Make:
+    let Add = Make 2
+    Add 5
+
+@page: @unit
+@page:
+    !done <- @Run Through, (Maker Inc)                              # 0
+    $shown <- "working" then "{!done}"
+    Ui.Label($text=$shown)                                       # 1

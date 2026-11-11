@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 5 (a `u fn` takes its color from its call; the function in the tuple is the one passed): the function adds one to 5.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="6")

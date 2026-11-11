@@ -1,0 +1,7 @@
+# The tests of sem-ch08-widget-parameter-pattern.
+emit Ui.*
+use App.*
+
+test the_patterns_bind, @main:
+    build
+    click at 0

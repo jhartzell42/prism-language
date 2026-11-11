@@ -1,0 +1,25 @@
+# A generic widget taken as a blueprint value inside a generic function, given that
+# function's own parameter, and applied out of an option (Semantics ch. 8: "a blueprint
+# builds nothing until a block applies it"; Type System ch. 2: a blueprint is an opaque
+# handle and still a value; ch. 5: a type variable is decided at each call).
+# sem-ch08-widget-value-generic with the reading in a function. Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Shown: fn a, Text -> @unit where a: ^Show
+fn @Shown x, label:
+    Ui.Label($text=$"{label}={Show x}")
+
+?Wrapped: fn a -> ?@unit where a: ^Show
+fn ?Wrapped x = ?Pick True, (@Shown x, "n")
+
+@Page: @unit
+@Page:
+    match ?Wrapped 7:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")

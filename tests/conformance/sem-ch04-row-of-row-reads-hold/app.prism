@@ -1,0 +1,14 @@
+# A row of a row reads a hold of the block around both (Semantics ch. 4: a row reads the
+# names of the blocks around it, at any depth; ch. 7: a dynamic's readers move in the tick
+# it moves). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@main: @unit
+@main:
+    !more <- Ui.Button($label=$"more")                            # 0
+    $guests <- 1 then $guests + 1 on !more
+    for i, inner <- {1: {1: "a", 2: "b"}, 2: {1: "c"}}:             # 1/[i]
+        for j, name <- inner:                                       # 1/[i]/0/[j]
+            Ui.Label($text=$"{name}: {$guests}")                  # 1/[i]/0/[j]/0

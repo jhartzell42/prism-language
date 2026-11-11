@@ -1,0 +1,14 @@
+# Derived by hand from Semantics ch. 8 (a widget application is transparent: its places are its caller's, in line order; its parameters bind as patterns do) and ch. 7 (a dynamic's readers move in the tick it moves): the plain tuple's names are values of the build, the bundle's event and dynamic are the caller's.
+test the_patterns_bind
+
+tick 0
+  added:
+    0: Ui.Button(label="more on 1")
+    1: Ui.Label(text="a: 3")
+    2: Ui.Label(text="b: 1 guests, 0 clicks")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="b: 2 guests, 1 clicks")

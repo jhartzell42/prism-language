@@ -1,0 +1,25 @@
+# A widget defined in a block, taken as a blueprint value, that gives a function, a plain value that is no data, back
+# to the block that applies it (Semantics ch. 4: a block's own widget reads the block's
+# names; ch. 8: "a blueprint builds nothing until a block applies it", and `<-` binds its
+# result; Type System ch. 2: a blueprint is an opaque handle and still a value). Written
+# by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Page: fn Bool -> @unit
+fn @Page b:
+    let k = 7
+    @maker:
+        Ui.Label($text=$"maker")
+        @ \|x| x + k
+    match ?Pick b, @maker:
+        ? @t:
+            Next <- @t
+            let made = Next 1
+            Ui.Label($text=$"made {made}")
+        nil: Ui.Label($text=$"none")
+    Ui.Label($text=$"end")

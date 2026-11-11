@@ -1,0 +1,11 @@
+# The tests of sem-ch08-local-widget-value-gives-event.
+emit Ui.*
+use App.*
+
+test picked, @Page True:
+    build
+    click at 1
+        => expect Ui.Label(text="total 7")
+
+test not_picked, @Page False:
+    build
