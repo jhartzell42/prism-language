@@ -813,7 +813,7 @@ impl Row for ::prism_rtl::HostRow<crate::Elem, crate::Answer> {
 
 /// A widget's row as its blueprint built it (prism_rtl's `widget_blueprint`): the row as a
 /// node, its leaving, how many places it built, and the widget's plain result.
-pub fn built_widget<N: Row + 'static, R>(built: usize, result: R, row: Rc<N>) -> ::prism_rtl::BuiltWidget<R> {
+pub fn built_widget<N: Row + 'static, R>(built: u32, result: R, row: Rc<N>) -> ::prism_rtl::BuiltWidget<R> {
     let leaving = row.clone();
     ::prism_rtl::BuiltWidget { node: row, leave: Rc::new(move |cx: &mut Cx| leaving.leave_row(cx)), built, result }
 }
@@ -849,7 +849,7 @@ impl Row for AppliedBlueprint {
 /// generation and how many places it built. A blueprint that answers (`@ x`, an event's, a
 /// dynamic's) builds no place here, and what it answers is the line's result, which a line
 /// of unit drops.
-pub fn apply_blueprint(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: usize, cx: &mut Cx) -> Result<(Rc<dyn Row>, usize), Fault> {
+pub fn apply_blueprint(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: u32, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32), Fault> {
     let sink: ::prism_rtl::Sink<crate::Answer> = Rc::new(|_: &crate::Answer, _: &mut Cx| Ok(()));
     let supplied = blueprint(path, sink, &::prism_rtl::Scope::World, base, cx)?;
     let built = supplied.built;

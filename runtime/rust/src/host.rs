@@ -418,7 +418,7 @@ pub struct Supplied<E, A> {
     pub entry: Option<Rc<Entry<E>>>,
     /// How many places of its own the blueprint built from the base it was given (a
     /// widget's blueprint, [`widget_blueprint`]; ruling TC: places are counted as built).
-    pub built: usize,
+    pub built: u32,
     /// How a widget's blueprint leaves: its row's places torn down, the row with them.
     /// The other forms leave by their node.
     pub leave: Option<Rc<dyn Fn(&mut Cx)>>,
@@ -428,7 +428,7 @@ pub struct Supplied<E, A> {
 /// the child's place, in the scope of the host whose row builds it, its own places
 /// numbered from the base it is given (0 under a host's row; a block that applies the
 /// value gives its next position as built).
-pub type Blueprint<E, A> = Rc<dyn Fn(Path, Sink<A>, &Scope<E, A>, usize, &mut Cx) -> Result<Supplied<E, A>, Fault>>;
+pub type Blueprint<E, A> = Rc<dyn Fn(Path, Sink<A>, &Scope<E, A>, u32, &mut Cx) -> Result<Supplied<E, A>, Fault>>;
 
 /// A host's supplier, in the `@HostDocument` form: a blueprint for every child place.
 pub type Supplier<E, A> = Rc<dyn Fn(&Path, &Element<E>) -> Blueprint<E, A>>;
@@ -483,7 +483,7 @@ pub fn never_blueprint<E: 'static, A: 'static>() -> Blueprint<E, A> {
 pub struct BuiltWidget<R> {
     pub node: Rc<dyn Node>,
     pub leave: Rc<dyn Fn(&mut Cx)>,
-    pub built: usize,
+    pub built: u32,
     pub result: R,
 }
 
@@ -492,7 +492,7 @@ pub struct BuiltWidget<R> {
 /// from the base, in the World's scope; `answer` makes the widget's plain result the
 /// place's first value (nothing for a widget that gives none). Built in a hosted scope it
 /// is a fault: the row's places are the World's.
-pub fn widget_blueprint<E: 'static, A: 'static, R: 'static>(build: impl Fn(Path, usize, &mut Cx) -> Result<BuiltWidget<R>, Fault> + 'static, answer: impl Fn(R) -> Option<A> + 'static) -> Blueprint<E, A> {
+pub fn widget_blueprint<E: 'static, A: 'static, R: 'static>(build: impl Fn(Path, u32, &mut Cx) -> Result<BuiltWidget<R>, Fault> + 'static, answer: impl Fn(R) -> Option<A> + 'static) -> Blueprint<E, A> {
     Rc::new(move |path, _sink, scope: &Scope<E, A>, base, cx| {
         if let Scope::Hosted(_) = scope {
             return Err(Fault::answer(format!("a widget with places built as a blueprint value at {} in a hosted scope: prismc does not lower it yet", path)));

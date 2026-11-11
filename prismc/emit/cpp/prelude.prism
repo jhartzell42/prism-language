@@ -1033,7 +1033,7 @@ public:
 /// A widget's row as its blueprint built it (prism_rtl's `widget_blueprint`): the row as a
 /// node, its leaving, how many places it built, and the widget's plain result.
 template <class N, class R>
-::prism_rtl::BuiltWidget<R> built_widget(std::size_t built, R result, ::prism_rtl::Rc<N> row) {
+::prism_rtl::BuiltWidget<R> built_widget(std::uint32_t built, R result, ::prism_rtl::Rc<N> row) {
     return ::prism_rtl::BuiltWidget<R>{row, [row](Cx& cx) { row->leave_row(cx); }, built, std::move(result)};
 }
 
@@ -1061,11 +1061,11 @@ private:
 /// generation and how many places it built. A blueprint that answers (`@ x`, an event's, a
 /// dynamic's) builds no place here, and what it answers is the line's result, which a line
 /// of unit drops.
-inline Result<std::tuple<::prism_rtl::Rc<Row>, std::size_t>> apply_blueprint(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::size_t base, Cx& cx) {
+inline Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, Cx& cx) {
     ::prism_rtl::Sink<Answer> sink = [](const Answer&, Cx&) -> Done { return {}; };
     auto supplied = TRY(blueprint(std::move(path), sink, ::prism_rtl::Scope<Elem, Answer>::world(), base, cx));
-    std::size_t built = supplied.built;
-    return std::tuple<::prism_rtl::Rc<Row>, std::size_t>{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied)), built};
+    std::uint32_t built = supplied.built;
+    return std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied)), built};
 }
 
 /// A row subscribing to its block's port for one event: the row heard weakly, the handle
