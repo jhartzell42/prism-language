@@ -1,0 +1,20 @@
+# Derived by hand from ruling TC and Semantics ch. 8 (a widget application is transparent): the button is 0, levels 3 down to 1 take places 1 to 3, the last clause's label 4, the caller's label 5; the click gives each level its own number through `!Fired`, and the last clause counts it. Never run.
+test three_levels_hand_the_event_on
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="level 3: 0")
+    2: Ui.Label(text="level 2: 0")
+    3: Ui.Label(text="level 1: 0")
+    4: Ui.Label(text="end: 0")
+    5: Ui.Label(text="after")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="level 3: 3")
+    2: Ui.Label(text="level 2: 2")
+    3: Ui.Label(text="level 1: 1")
+    4: Ui.Label(text="end: 1")
