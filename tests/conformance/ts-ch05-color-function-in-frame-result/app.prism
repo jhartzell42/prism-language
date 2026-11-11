@@ -1,0 +1,25 @@
+# A call in an unbounded function's body whose result holds a function of the callee's
+# own color, at a call that makes the color bounded, bound by a pattern (Type System
+# ch. 5, The color: "At a call, each parameter's variable is its closure argument's
+# color"; a `let` of a pattern does not generalize). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Maker: u fn (u fn Nat -> Nat) -> (u fn Nat -> Nat)
+fn Maker F = \|n| (F n) + 2
+
+Inc: fn Nat -> Nat
+fn Inc n = n + 1
+
+Through: unbounded fn Nat -> Nat
+fn Through k:
+    let ((Make, more)) = ((Maker Inc, 2))
+    (Make k) + more
+
+@page: @unit
+@page:
+    !done <- @Run Through, 5                              # 0
+    $shown <- "working" then "{!done}"
+    Ui.Label($text=$shown)                                       # 1

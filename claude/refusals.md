@@ -34,9 +34,13 @@ Hosting
   lower/expr.prism (`DynamicBlueprint`, `WrittenPart`): the two refusals stand for a
   dynamic answer whose line made no getter for it, which no program reaches now that
   `DynamicAnswers` makes one for every dynamic answer (unsure: G).
-- lower/expr.prism:703 `@ x` outside a tag arm where `x` is no plain data (a function).
-  No test. Any other answer outside an arm is lowered: plain data in `Answer`'s case of
-  no tag, read by the place that takes it (sem-ch09-host-answer-without-arm).
+- `@ x` outside a tag arm is lowered: plain data in `Answer`'s case of no tag, read by
+  the place that takes it (sem-ch09-host-answer-without-arm); a value that is no plain
+  data (a function) held as it is and read at the type of the line that binds it
+  (`TaggedOrHeld`: sem-ch08-blueprint-of-function-outside-tag-arm,
+  ts-ch05-color-function-in-blueprint-result).
+  A bundle with such a part outside an arm is held whole, its events and dynamics as
+  values (`PartsBlueprint`: sem-ch08-blueprint-of-bundle-with-function-outside-tag-arm).
 - Every other bundle answer is lowered, any mix of plain, `$` and event
   parts, written as a tuple or given as a value (`PartsBlueprint`:
   sem-ch09-host-bundle-two-events-answer, -two-dynamics-answer,
@@ -55,10 +59,13 @@ Hosting
   -event-result, -let, -dynamic-result, -bundle-result, -function-result), a generic
   one at each set of types its readings give it (sem-ch08-widget-value-generic), one
   that gives a bundle back under a tag's arm (sem-ch09-host-widget-bundle-answer), one
-  whose block ends on a host's line (sem-ch08-widget-value-ends-on-host). Left
-  refused: a generic one read where a type parameter of its stays open (inside a
-  generic function or widget, given that one's own parameter: R,
-  sem-ch08-widget-value-generic-in-function), one with a
+  whose block ends on a host's line (sem-ch08-widget-value-ends-on-host), a generic one
+  read in a generic function's body, given that function's own type parameter
+  (`?OpenWidgetBlueprintValue`: sem-ch08-widget-value-generic-in-function). Left
+  refused: a generic one read where a type parameter stays open and the instantiations
+  of the definition it stands in cannot all be read (`?DefInstances`: a use in a
+  method's body at the impl's type parameters, a definition that uses itself at other
+  types than its own; R, no tests), one with a
   widget function parameter, or a `$` or event parameter with time below its top (no
   tests);
   one read in a place `ValuedWidgets` does not look (a record's field read back and

@@ -70,7 +70,11 @@ fn RustPat lx, p, ty, mode, fresh = match p.kind:
         else: if why == "tag" and ?tagged != nil: TagPat lx, (Or ?tagged, dummyTagInfo), [[]], True, ty, mode, fresh
         else:
             let rs = LocalNameAt lx, nkey, n.span
-            let bt = OutTyOf lx, (Peel (BinderTy lx, n.span))
+            # in a function that takes time whole the scrutinee's dynamics and events are
+            # `Dynamic`s and `Event`s, and so is what a `$` or `!` binder names (`fn !Fired
+            # ((!made, more))`): a lift over it maps it (`EventValueOf`, `DynamicLift`)
+            let full = BinderTy lx, n.span
+            let bt = OutTyOf lx, (if lx.whole: full else: Peel full)
             PatOut(pa=(PaBind rs), conds=[[]], binds=[[((nkey, (BnLocal (XVar rs), mode, bt)))]])
     PIgnore: PatOnly PaWild
     PUnit: PatOnly PaWild

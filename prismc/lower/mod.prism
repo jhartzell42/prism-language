@@ -147,6 +147,9 @@ type Lx = record:
     # types it gives the widget's type parameters, in the order its rows are numbered
     # (`ValuedStemAt`). A widget with no type parameter has the one, its own name.
     valuedAt: (Text ==> [((Text, [((Text, Ty))]))])
+    # The definition whose body is being lowered, "" outside one: a generic function's
+    # instantiations over the program are read by it (`?DefInstances`).
+    inDefinition: Text
 derive ^Eq, ^Show
 
 # A key into the typed tables: the file and the range.

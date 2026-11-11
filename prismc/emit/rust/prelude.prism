@@ -1041,6 +1041,23 @@ pub fn answer_held<T: 'static>(v: T) -> crate::Answer {
     crate::Answer::Held_a(Rc::new(v))
 }
 
+/// A blueprint whose held answers are made again (`answer_held`): one that holds the
+/// output whole, a `W`, through `whole`; one that holds one firing's or one move's value,
+/// a `P`, through `part`. Any other answer holds no such value and is itself.
+pub fn held_answers_mapped<W: Clone + 'static, V: 'static, P: Clone + 'static, Q: 'static>(
+    blueprint: ::prism_rtl::Blueprint<crate::Elem, crate::Answer>,
+    whole: impl Fn(&W) -> V + 'static,
+    part: impl Fn(&P) -> Q + 'static,
+) -> ::prism_rtl::Blueprint<crate::Elem, crate::Answer> {
+    ::prism_rtl::answers_mapped(blueprint, move |answer: &crate::Answer| match answer.held_as::<W>() {
+        Some(held) => answer_held(whole(&held)),
+        None => match answer.held_as::<P>() {
+            Some(held) => answer_held(part(&held)),
+            None => answer.clone(),
+        },
+    })
+}
+
 /// An answer held whole (`answer_held`), read at the type of the line that binds it.
 pub fn held_answer<T: Clone + 'static>(answer: &crate::Answer) -> Result<T, Fault> {
     answer.held()

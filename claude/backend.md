@@ -122,6 +122,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   right, whose present arm is the plain expression over the peeled values, wrapped back
   (`match get(ps, k) { Some(o) => Some(o.a.clone()), None => None }`), and whose absent arm
   is `None` (the leftmost `Err`). An unbounded call lifted so is a frame that matches first (below).
+- **A function that takes time whole** (`IsWholeFn`: a `$` or `!` below the top of a
+  parameter or of its result, `fn !Fired ((!made, more))`) takes and gives `Dynamic`s and
+  `Event`s. A `$` or `!` binder of a pattern in its body names the `Dynamic` or `Event`
+  itself (`RustPat`), and an application the checker lifted over one maps it
+  (`EventValueOf`, `DynamicLift`).
 - **`&` blocks** → native mutation of a fresh or unique value: `Rc::make_mut`, and the
   persistent collections' in-place updates (Compiler ch. 3, "Unique values").
 - **Fault `~`**: a fallible expression is a `Result<_, rt::Error>` and `?` propagates;
@@ -555,9 +560,21 @@ it make every program an interpreter run, and every type mistake a runtime fault
     widget and those types (`ValuedKey`), `Lx.valuedAt` lists a widget's readings in
     the order the program has them; each has rows of its own, lowered with the types in
     the substitution (`AtInstance`, `ValInfoAt`) and named `{Widget}_value_at{k}_{i}`
-    (`ValuedStemAt`). A reading that leaves a type parameter open (it stands in a
-    generic function or widget, whose own parameter it is given) has no rows and is
-    refused where it is read.
+    (`ValuedStemAt`). A reading that leaves a type parameter open stands in a generic
+    function, whose own parameter it is given (`fn ?Wrapped x = ?Pick True, (@Shown x,
+    "n")`): it has rows for the types each of that function's instantiations gives it
+    (`PlacedWidget`). A definition's instantiations are the types its uses give its
+    type parameters over the whole program, a use in another generic definition's body
+    at each of that one's own (`?DefInstances`; `Lx.inDefinition` names the definition
+    being lowered). The function is a target generic, lowered once, so where it runs
+    it chooses among those rows by its type parameters (`?OpenWidgetBlueprintValue`:
+    prism_rtl's `type_key` of each against the instantiation's types; two
+    instantiations of one target type are one choice); the arguments are read at the
+    function's own types and are the row's by the choice made (`recast`). A function
+    the program never uses chooses nothing. Where the instantiations cannot all be
+    read (a use in a method's body at the impl's type parameters, a definition that
+    uses itself at other types than its own, more than eight definitions deep) the
+    reading is refused.
   - A `$` or an event parameter is the caller's live `Dynamic` or `Event`, which the
     blueprint keeps and each row it builds holds (`LiveParams`, as the shared rows of a
     widget that calls itself do); the line that reads the widget makes the dynamic
@@ -1034,7 +1051,14 @@ it make every program an interpreter run, and every type mistake a runtime fault
   arguments walked and maps its job's result (the prelude's `map_job`). The walk
   starts from the signature's result at the types the call gives the callee's type
   parameters, so the two types differ in color alone, and it is made whenever the two
-  differ: a function beside it that stays a `Start` is itself.
+  differ: a function beside it that stays a `Start` is itself. A blueprint that holds
+  the function (`?@(u fn Nat -> Nat)`) has its answers made again (prism_rtl's
+  `answers_mapped`, the prelude's `held_answers_mapped`): its first value and each
+  answer it gives, one that holds the output whole or one firing's or one move's value
+  (`answer_held`). A blueprint's target type names no output, so the walk is found by
+  the two types themselves (`HeldDiffers`, `BlueprintOutputs`). A call that is a frame
+  of an unbounded function's body walks the job's result the same way before the rest
+  of the source runs (`FrameTaker`, `?SignatureResult`).
 - **A function value applied** (`Take (\|n| n * k)`, `Take Double`, `Take` a `let` or a
   parameter) takes each argument of a function type as a function value
   (`ValueArgument`); a named function takes a borrowed closure or a path there.
@@ -1096,6 +1120,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
   arguments first: with all present the job is entered and its result, wrapped, resumes the
   source; an absent one resumes it at once with `nil` or the leftmost `Err`
   (`LiftedFrame`).
+- **A generalized `let` in an unbounded function's body** is lowered at each of its
+  instantiations, calls and all (`GenericLetTail`): a call its value makes is a frame at
+  that instantiation, where a color no use decides is bounded, and a call in a branch
+  ends the branch in a continuation over that instantiation's value (`KValue`, which a
+  statement's own branches use too, `KStmt`). The places one instantiation's frames
+  bound are unbound before the next lowers the same expression.
 - **`@Run`** is Appendix B's Prism definition over `@Machine` and `@Defer`, compiled like
   any widget and inlined into its caller's node: the job is a `Hold`, each cycle fires
   `!turns`, a `More` arms the `@Defer`, a `Finished` fires the result.

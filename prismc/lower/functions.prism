@@ -197,6 +197,7 @@ fn FnDefOf lx, qk, clauses, sc:
     let lxb = update lx:
         &_.whole <= whole
         &_.noCx <= True
+        &_.inDefinition <= qk
     let ((pts, ret)) = SignatureOut lx, qk, sc
     let names = ParamNames lx, clauses, pts
     let body = ClausesBody lxb, emptyEnv, clauses, names, ptys, FnBodyValue, "c", ret
