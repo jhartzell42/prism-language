@@ -1,0 +1,5 @@
+tests/checker/neg/hosting-spectator-cannot-request/app.prism:64: error[row-outside]: a child that emits `Play.*` in a scope that emits `Ui.* | Watch.*`
+        !response <- @Ask (1 on !sneak)
+                     ^^^^^^^^^^^^^^^^^^
+  fix: widen the scope's `emit` row, or host the child with `@HostDocument`
+1 error
