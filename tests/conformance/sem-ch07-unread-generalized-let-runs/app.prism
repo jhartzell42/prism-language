@@ -1,0 +1,25 @@
+# A `let` no line reads, in an unbounded function's body, whose right side calls an
+# unbounded function and whose type generalizes (Semantics ch. 7: "The graph is lazy, the
+# language is eager", so a function's `let` runs where it is written, read or not; a
+# cycle point sits "at every call of an unbounded function from an unbounded function";
+# Type System ch. 5: "A local `let` generalizes over the variables not free" in its
+# surroundings, its color variables too). `Maker k` is a `u fn` for every color `u`: the
+# call is one cycle of `Through`'s whatever reads it. Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Maker: unbounded fn Nat -> (u fn Nat -> Nat)
+fn Maker k = \|n| n + k
+
+Through: unbounded fn Nat -> Nat
+fn Through k:
+    let Make = Maker k
+    k + 1
+
+@page: @unit
+@page:
+    !done <- @Run Through, 5                              # 0
+    $shown <- "working" then "{!done}"
+    Ui.Label($text=$shown)                                       # 1
