@@ -1,0 +1,22 @@
+# From prism-notes, claude/04-domains-and-documents/evidence/hosting/01-host-hears-request/app.prism: attempt 01 of the Bible's document hosting against prismc at 10ca993, committed as written.
+# Attempt 01: the host hears a guest's request at all. A supplier arm binds the request
+# element's `!` field and answers from it. The host's body never sees the request.
+# Written by Claude (an implementation agent), 10 November 2026; subject to change.
+emit Ui.* | Seat.*
+test mod Tests
+
+tag Seat.Request of Element !Text:
+    !requests: Text
+
+@guest: @unit
+@guest:
+    !press <- Ui.Button($label=$"move")                        # 0
+    !said <- Seat.Request(!requests=("e2e4" on !press))        # 1
+    $last <- "" then !said
+    Ui.Label($text=$"heard: {$last}")                          # 2
+
+@host: @unit
+@host:
+    ignore <- @HostDocument @guest, \|p, e| match e:           # 0/[p]
+        Seat.Request(!requests=!r): @ "ok {!r}"
+        otherwise: @Element e
