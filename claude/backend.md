@@ -555,8 +555,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   document holds as the row's place at `0`, `HostRow::entries`; the entry takes the level
   again each time it moves, and an enclosing host's answer there goes to the child's
   place). In the World's scope each move of its level sends it again, and its answers and
-  pushes are the child place's. A description with an event field placed in a hosted
-  scope is a fault at the build (doubt DQ).
+  pushes are the child place's. Each firing of an event field is the place's request:
+  out to the World, or in a hosted scope a request of the enclosing host's child
+  (`HostOf::request_from`).
+- **A request rises host by host.** A hosted place's request goes to its host's row
+  (`Host::request`), which the live element's event fields hear; a row that forwards the
+  element hands it on as the host's own at `0` under the row, to the World or to the
+  enclosing host's row for that place, which decides again.
 - **A pattern sees either form as the tag's description** (`DescView`,
   `rt::element_view`). A description of the tag matches as it is. A live element of the tag
   matches as the description of its level, each `$` field its level projected. So a `$`
@@ -623,6 +628,33 @@ it make every program an interpreter run, and every type mistake a runtime fault
   is dropped. `Answer c` is `crate::Answer`, and a tag's answer constructor
   (`Ui.Button.Answer click`, rulings round 12, AQ) is the tag's variant of it over what
   the tag's answer carries (`AnswerValue`); `Wired c` is `Elem c` (prismc's first ruling HL).
+- **An element's level holds the events of its event fields** (`LevelEvents`, ruling EP):
+  the tag's struct has a field per event field, the event the element was made with (a
+  port the place's event fires, `request_{pos}_{field}_port`, and the `Event` of it made
+  once, so the level holds the same event while the place lives; a description's own
+  event). Events compare by their port, as dynamics by their read. They are no part of
+  the element's plain data: a World sees a firing as a request, and an element read back
+  from plain data has events that never fire. So a pattern over a document's entry
+  (`Elem r`) binds the event, and a host's body hears its child's requests out of `$doc`.
+  The core prelude's own element tags hold none.
+- **A generic tag holds each of its variables as plain data** (`TagFieldOut`): `crate::Elem`
+  has one variant per tag whatever it is placed at, so in the tag's level, its description
+  and its `Answer` variant a type variable of the tag is a `Pod`. A place recodes the
+  fields it gives (the prelude's `recode`, by `ToPod` and `FromPod`; a `$` or event field
+  mapped by it) and the answer it reads (`RecodedAnswer`), and a host's arm reads a field
+  as the plain data it is.
+- **An answer made outside a tag's arm** (a host's `let @seven = @ 7`) is plain data in
+  `Answer`'s case of no tag, `Untagged_a`; each accessor of `Answer` reads that case at its
+  own tag's type, so the place that takes the answer decides what it is.
+- **A place whose element answers a dynamic has its value at the build**: its first
+  value stands in the local `{f}_init` (`DynamicPlace`), bound as the name's value at the
+  build (`PreInit`), so a supplier's dynamic answer over the host's own pushed place
+  reads it while the node is being made.
+- **A bundle with one event part and one `$` part** (`((!Text, $Text))`): the `$` part is a
+  pushed place's hold, its first value the place's first value and its pushes keyed by
+  the element, the event part answered by path. In a hosted scope the tag's first-value
+  variant carries the `$` part: a supplier's constant `$` part (`@ ((never, $ "offline"))`)
+  is the first value.
 - **A bundle in a hosted scope** (a tag whose output is plain parts and one event part):
   `crate::Answer` has a second variant per bundle tag, `{Tag}First`, its plain parts; the
   place's first value is that variant (`{tag}_first()`), from a supplier's

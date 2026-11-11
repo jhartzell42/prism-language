@@ -18,50 +18,43 @@ spell".
 ## R: legal programs not lowered
 
 Hosting
-- lower/expr.prism:658 `@ x` as a supplier's answer outside a tag arm. Program: a host's
-  `let @seven = @ 7`, given by the arm that matched the tag. A supplier `\|p, e| @ 1`
-  with no `match e` is a checker error (its `o` is rank-2). Test:
-  sem-ch09-host-answer-without-arm.
-- lower/expr.prism:716 a supplier's dynamic answer that has no value at the owner's
-  build. Program: `@ $~real` where `$~real` is the host's own pushed place, and `@ $~d`
-  where `$~d` is a `let` below the host's line. Test: sem-ch09-host-dynamic-answer-late.
-- lower/expr.prism:696 a bundle answer with a `$` part or two event parts. Program:
-  Semantics ch. 9's `@ ((never, $ "offline"))`. Test: sem-ch09-bundle-dynamic-part.
-- lower/expr.prism:697 a bundle answer not written as a tuple. Program: `@ pair` under a
-  bundle tag's arm, `pair` a `let`. The refusal is not reached: `pair` is lowered as a
-  plain answer and rustc refuses the crate. Test: sem-ch09-host-bundle-answer-named.
+- lower/expr.prism:796 a supplier's dynamic answer that reads what has no value at the
+  owner's build: a structural dynamic (a `for`'s gathered result, a `rebuild`'s) or a
+  name of the parent. No test. The host's own pushed place and a `let` below the host's
+  line are lowered (sem-ch09-host-dynamic-answer-late).
+- lower/expr.prism:703 `@ x` outside a tag arm where `x` is no plain data (a function).
+  No test. Any other answer outside an arm is lowered: plain data in `Answer`'s case of
+  no tag, read by the place that takes it (sem-ch09-host-answer-without-arm).
+- lower/expr.prism:751, 769 a bundle answer with two event parts, a `$` part that is no
+  constant, a `$` part beside a plain part, or a `$` part in a bundle given as a value.
+  No test. `@ ((never, $ "offline"))` is lowered (sem-ch09-bundle-dynamic-part).
+- lower/node/elements.prism:220 an element tag whose bundle output has two event parts,
+  two `$` parts, or a `$` part beside a plain part. No test. One event part and one `$`
+  part is lowered (sem-ch09-bundle-dynamic-part); in a hosted scope the `$` part takes
+  its first value, and a later push to it is a fault of the tick.
+- lower/expr.prism:889, 1316 a widget function with places as a blueprint value: a
+  supplier's arm `Pad.Ask(name=n): @Answerer n`. Test: sem-ch09-host-widget-answer.
 - lower/node/static.prism:667 `@Element` in a block of an element value that is neither
   a tag applied in place nor a name a `let` of the block binds to one. Program: a widget
   parameter `fn @Show e:` with the line `@Element e`. No test. The `let` form is lowered:
   `let made = Ui.Label(..)`, then `@Element made` as a line (sem-ch08-element-value-statement).
-- lower/node/elements.prism:182 an element tag whose bundle output has a `$` part or two
-  event parts. Program: a tag declared `((!Text, $Text))` placed in a block. Test:
-  sem-ch09-bundle-dynamic-part.
-- DQ (no refusal; a fault at the build, `Runtime.Answer`): an element value with an event
-  field placed by a host that is itself hosted. Test: sem-ch09-host-nested-request.
-- A tag's answer constructor as a function value (`Each cs, Ui.Button.Answer`): no
-  refusal; rustc refuses the crate. Test: sem-ch09-answer-constructor-value.
 - lower/node/static.prism:104 a widget function parameter applied to arguments whose
   argument is a function value that is no name (a lambda). No test. A named widget
   function passed and applied is lowered (sem-ch08-widget-parameter-applied).
-
-- lower/expr.prism:764 an event read as a value. Program: a widget function's event
-  parameter read in its supplier's arm, `fn @HostPlayer side, @guest, $state, !outcome:`
-  with the arm `Play.Request(..): @ !Filter (?ResponseTo side, p, !outcome)`. Test:
-  sem-ch09-hosting-per-role-event-parameter (hosting attempt 09 of the Bible's evidence,
-  as written).
-- lower/node/static.prism:651 a generic widget at a call whose types its parameters' do
-  not match. Program: a widget function with a bounded type variable that also takes a
-  blueprint `@a`, `@Framed: fn s, @a -> @a where s: ^Show` called as `@Framed 3, (@Guest
-  "one")`; `a` is left unmatched. With the bound alone (`fn s, Text`) or the blueprint
-  alone (`fn Nat, @a`) the call is lowered. Test:
-  sem-ch08-generic-widget-blueprint-parameter. Hosting attempt 14 reaches it too, and is
-  a wrong program for another reason: see C, a tag field's type variable.
-- lower/patterns.prism:268 (see Dynamics and events) stops a host hearing a guest's
-  request: a supplier's arm `Seat.Request(!requests=!r): @ "ok {!r}"`
-  (sem-ch09-hosting-host-hears-request) and the host's body reading each entry of its
-  document (sem-ch09-hosting-body-reads-request, which meets gap LF at `$evs` too);
-  hosting attempts 01 and 02, as written.
+- lower/node/static.prism:778 a generic widget at a call whose types its parameters' do
+  not match. No program found: a blueprint parameter and a function parameter are
+  matched through (sem-ch08-generic-widget-blueprint-parameter).
+- A generic tag's field read in a host's arm at a written type (`let x: r = ..` over
+  `Pad.Echo($?latest=$l)`): the tag's variables are plain data in its structs
+  (`TagFieldOut`), and a type the arm writes with the variable is spelled as a type
+  parameter no item declares. No refusal, no test.
+- Lowered, each with its test: a request heard by a supplier's arm and by the host's
+  body out of its document (sem-ch09-hosting-host-hears-request,
+  sem-ch09-hosting-body-reads-request), a widget's event parameter read as a value
+  (sem-ch09-hosting-per-role-event-parameter), a request through a host that is itself
+  hosted (sem-ch09-host-nested-request), an answer constructor as a function value
+  (sem-ch09-answer-constructor-value), a bundle answer given as a value
+  (sem-ch09-host-bundle-answer-named).
 
 Bundles
 - lower/node/def.prism:99 a bundle with two dynamic parts as the root's result. No test.
@@ -109,58 +102,37 @@ Building `match`, clause widgets, `rebuild`
   that calls its block's function (sem-ch04-for-local-function-reads-block).
 
 Dynamics and events
-- lower/node/finish.prism:518 `!Updated` of a dynamic no sink of the node writes (UP).
-  Program: `$r <- @Pick 1`, the dynamic result of a widget of several clauses, then
-  `!Updated $r`; a hosted child's dynamic result read in a row reaches it too. Test:
-  sem-ch07-updated-clause-result. A constant `let` and a widget's dynamic parameter are
-  not the case: sem-ch07-updated-constant and sem-ch07-updated-parameter pass.
-- lower/node/finish.prism:528 the same in a row over a name of its block (SU). No
+- lower/node/finish.prism:523 `!Updated` of a dynamic no sink of the node writes (UP).
+  No program found: a generation's dynamic result the block keeps is lowered
+  (sem-ch07-updated-clause-result), as a constant `let` and a widget's dynamic parameter
+  are (sem-ch07-updated-constant, sem-ch07-updated-parameter).
+- lower/node/finish.prism:533 the same in a row over a name of its block (SU). No
   program found: a row over its block's parameter passes
-  (sem-ch07-updated-row-parameter), and over a clause widget's result, a global and a
-  constant it compiles.
-- lower/node/switch.prism:867 `@Flatten` of a dynamic of dynamics with no live dynamic
-  at the build (LF). Program: `$shown <- @Flatten ($Pick $useB, $a, $b)`, the outer
-  written in place. Test: sem-ch07-flatten-call. With the outer a hold bound below the
-  `@Flatten` the refusal is not reached: rustc refuses the crate
-  (sem-ch07-flatten-held-above).
-- lower/expr.prism:354 a dynamic passed whole to a function where it has no live dynamic
-  (LF). Programs: `Wrap $r` with `$r` a clause widget's result
-  (ts-ch04-whole-clause-result), with `$g` a place's dynamic
-  (ts-ch04-whole-place-dynamic), with a global `let $four = $ 4`
-  (ts-ch04-whole-global-dynamic); a `for`'s `$v` over
-  `@PerKey` and a host's `$doc` reach it too, with no test. A row passing its block's
-  hold and a hosted child's result do not reach it: rustc refuses the crate
-  (ts-ch04-whole-row-parent, ts-ch04-whole-hosted-result).
-- lower/expr.prism:327 a dynamic a function gives whole, read in a plain function. No
+  (sem-ch07-updated-row-parameter).
+- lower/node/switch.prism:1328 `@Flatten` of a dynamic of dynamics with no live dynamic
+  at the build (LF). No program found: an outer written in place and an outer bound
+  below are lowered (sem-ch07-flatten-call, sem-ch07-flatten-held-above).
+- lower/expr.prism:371 a dynamic passed whole to a function where it has no live dynamic
+  (LF). No program found: a clause widget's result, a place's dynamic, a global, a row's
+  parent's hold and a hosted child's result are read through the node's link
+  (ts-ch04-whole-clause-result, -place-dynamic, -global-dynamic, -row-parent,
+  -hosted-result); a `for`'s `$v` over `@PerKey` has no test.
+- lower/expr.prism:341 a dynamic a function gives whole, read in a plain function. No
   program found: `fn $Kth n = Or (Consts n)[1], ($ 0)` compiles.
-- lower/node/dynamics.prism:192 `!MergeAll` of a list that is not plain: a G, the checker
-  gives `two-layers` for `!MergeAll $evs` read as an event.
-- lower/expr.prism:494 an event value of several events: a G, the checker gives
-  `two-events`.
-- lower/patterns.prism:268 an event field in an element pattern. Program:
-  `match e: Pad.Bell(!rings=!r, ..): !r` over a description. Test:
-  sem-ch09-element-pattern-event-field.
-- lower/patterns.prism:323 a pattern inside an element's `$` field: see C
+- lower/expr.prism:549 a lift over a sigil of {kind}. No program found.
+- lower/patterns.prism:332 a pattern inside an element's `$` field: see C
   (`Ui.Label($text=$"x")` passes the checker; `$text="x"` is a mismatch there).
-- An interpolation lifted over `?` (`fn ?Greet ?name = "hello {?name}!"`): no refusal,
-  rustc refuses the crate. Test: ts-ch04-interpolation-lifts-optional.
+- Lowered, each with its test: an event field in an element pattern, over a live element,
+  a description and a document's entry (sem-ch09-element-pattern-event-field); an
+  interpolation lifted over `?` (ts-ch04-interpolation-lifts-optional).
 
 Functions
-- lower/expr.prism:1893 ("a parameter") and the emitters' "a quantified type variable ..:
-  no instantiation gives it a type": a generic `let` of a widget block that nothing
-  reads. Program: `let Same = \|x| x`, `let empty = [[]]`, `let pair = ((nil, [[]]))`,
-  `let blanks = Each [[1, 2]], ?Nothing`, none read. Test: ts-ch05-generic-let-unused.
-- lower/expr.prism:1580 a field of an `Error` has no type in the back end: no refusal,
-  and `"{e.message}"` prints the message as `Show` would, in quotes. Test:
-  ts-ch02-field-reads.
-- A fault kind as a value (`e.kind == Fs.NotFound`, a list of kinds, a record's field of
-  type `Fault`, a generic call at `Fault`): no refusal; rustc refuses the crate. Test:
-  sem-ch10-fault-kind-value.
-- The prelude's `Turn b` built and matched by a program (`Done x`, `More`): no refusal;
-  rustc refuses the crate (the runtime's `Turn` is the job's own). Test:
-  sem-appB-turn-value.
-- A trait method passed as a function value (`Each ns, Blank`, `Each xs, Twice`): no
-  refusal; rustc refuses the crate. Test: ts-ch03-method-function-value.
+- Lowered, each with its test: a generic `let` of a widget block that nothing reads, which
+  is given no field (ts-ch05-generic-let-unused); an `Error`'s `message` read as a `Text`
+  (ts-ch02-field-reads); a fault kind as a value, its name as plain data
+  (sem-ch10-fault-kind-value); the prelude's `Turn b` built and matched by a program
+  (sem-appB-turn-value, Rust only: the C++ prelude has no `PreludeTurn`); a trait method
+  as a function value (ts-ch03-method-function-value).
 - lower/expr.prism `StartsAsBounded`: a function value of its callee's own color inside
   the value a call returns, at a call that makes the color bounded, where a map, a named
   type or another function's type holds it. Through an array, an optional, a `~T` and a
@@ -213,26 +185,13 @@ first value of an element value placed in a hosted scope (DH2) holds through two
 
 ## rustc refuses prismc's output
 
-No refusal: prismc writes a crate and rustc refuses it. Each is an R, critical. Entries
-above that end this way: sem-ch09-host-bundle-answer-named,
-sem-ch09-answer-constructor-value, sem-ch04-rebuild-clause-plain-result,
-sem-ch07-flatten-held-above, ts-ch04-whole-row-parent, ts-ch04-whole-hosted-result,
-ts-ch04-interpolation-lifts-optional, sem-ch10-fault-kind-value, sem-appB-turn-value,
-ts-ch03-method-function-value. Found by the Bible's document hosting:
-
-- `!Filter` of `!Updated $d` written in place: the crate calls
-  `crate::prelude::filter_ev` and `crate::prelude::updated`, which do not exist (E0425),
-  and reads `self` in a function without it (E0424). Program: a supplier's arm `@
-  !Filter (?ResponseTo side, p, !Updated $state)`, `$state` a parameter of the widget
-  function. Test: sem-ch09-hosting-per-role-inline-update (hosting attempt 10, as
-  written). A plain `fn !Echoed $?l = !Filter (!Updated $?l)` gives the same two E0425
-  with no supplier in sight. With the update named first, `let !stepped = !Updated
-  $state`, the program runs: sem-ch09-hosting-per-role-named-update passes.
-- A generic tag with a `$` field of its variable: `struct PadEcho_g` and `PadEcho_desc`
-  have a field of type `R` and no `<R>` (E0425; an E0308 follows). Program: `tag Pad.Echo
-  of Element !r:` with `$?latest: r`, placed at `Text`. Test:
-  sem-ch09-generic-tag-live-field. Hosting attempt 15 met it with a tag whose variable is
-  missing from its output, a wrong program: see C.
+No refusal: prismc writes a crate and rustc refuses it. Each is an R, critical. The
+lowerings written for these have not been run: sem-ch09-host-bundle-answer-named,
+sem-ch09-answer-constructor-value, sem-ch07-flatten-held-above, ts-ch04-whole-row-parent,
+ts-ch04-whole-hosted-result, ts-ch04-interpolation-lifts-optional,
+sem-ch10-fault-kind-value, sem-appB-turn-value, ts-ch03-method-function-value,
+sem-ch09-hosting-per-role-inline-update (`!Filter` of `!Updated $d` written in place) and
+sem-ch09-generic-tag-live-field (a generic tag with a `$` field of its variable).
 
 ## C: wrong programs the checker lets through
 
