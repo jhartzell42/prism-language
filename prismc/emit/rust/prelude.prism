@@ -1017,6 +1017,10 @@ pub fn apply_blueprint_dynamic<T: Clone + 'static>(blueprint: &::prism_rtl::Blue
     });
     let supplied = blueprint(path, sink.clone(), &applied_scope(hosted), base, cx)?;
     let built = supplied.built;
+    // a widget's dynamic result, held whole: the line's dynamic is the widget's own
+    if let Some(live) = supplied.first.as_ref().and_then(|first| first.held_as::<::prism_rtl::Dynamic<T>>()) {
+        return Ok((Rc::new(AppliedBlueprint { supplied, base, sink }), built, live));
+    }
     let first = supplied.first.as_ref().ok_or_else(|| Fault::answer("a blueprint value that gives a dynamic answered nothing at its build".to_string()))?;
     *cell.borrow_mut() = Some(::prism_rtl::Hold::new(take(first)?, cx));
     let read = cell.clone();
@@ -1028,6 +1032,89 @@ pub fn apply_blueprint_dynamic<T: Clone + 'static>(blueprint: &::prism_rtl::Blue
 /// gives it), read at the type of the line that binds it.
 pub fn answer_plain<T: FromPod>(answer: &crate::Answer) -> Result<T, Fault> {
     answer.plain()
+}
+
+/// An answer made outside a tag's arm that is no plain data: a widget's result as a
+/// blueprint value gives it when it is a function, a dynamic, or a bundle with its events
+/// and dynamics whole. Held as it is, and read back at the type of the line that binds it.
+pub fn answer_held<T: 'static>(v: T) -> crate::Answer {
+    crate::Answer::Held_a(Rc::new(v))
+}
+
+/// An answer held whole (`answer_held`), read at the type of the line that binds it.
+pub fn held_answer<T: Clone + 'static>(answer: &crate::Answer) -> Result<T, Fault> {
+    answer.held()
+}
+
+/// A blueprint value applied by a line that binds a bundle (`((step, !go)) <- @t`): as
+/// `apply_blueprint`, with the bundle as one value `W`, its events and dynamics whole.
+/// A widget's blueprint answers with that value held whole (`answer_held`), once, at its
+/// build. Any other blueprint answers as a bundle's tag does (an element value forwarded
+/// or placed, a supplier's `@ ((a, $b, !c))`): `state` reads an answer that is the state
+/// (the plain and `$` parts; `first` for the answer at the build), `event` one that is
+/// the event parts', and `whole` makes the bundle of the state as a dynamic (the first
+/// answer its value at the build, each later one a new value in the tick it comes) and
+/// of the event the later answers fire.
+#[allow(clippy::too_many_arguments)]
+pub fn apply_blueprint_whole<W: Clone + 'static, S: Clone + 'static, V: Clone + 'static>(
+    blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>,
+    path: Path,
+    base: u32,
+    hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Answer>>>,
+    state: impl Fn(&crate::Answer, bool) -> Result<Option<S>, Fault> + 'static,
+    event: impl Fn(&crate::Answer) -> Result<V, Fault> + 'static,
+    whole: impl FnOnce(Option<::prism_rtl::Dynamic<S>>, ::prism_rtl::Event<V>, &Cx) -> Result<W, Fault>,
+    cx: &mut Cx,
+) -> Result<(Rc<dyn Row>, u32, W), Fault> {
+    let cell: Rc<::std::cell::RefCell<Option<::prism_rtl::Hold<S>>>> = Rc::new(::std::cell::RefCell::new(None));
+    let updates: Rc<::prism_rtl::Port<()>> = Rc::new(::prism_rtl::Port::new());
+    let events: Rc<::prism_rtl::Port<V>> = Rc::new(::prism_rtl::Port::new());
+    let state = Rc::new(state);
+    let (held, moved, fired, stated) = (cell.clone(), updates.clone(), events.clone(), state.clone());
+    let sink: ::prism_rtl::Sink<crate::Answer> = Rc::new(move |answer: &crate::Answer, cx: &mut Cx| {
+        if let Some(s) = stated(answer, false)? {
+            match held.borrow().as_ref() {
+                Some(hold) => hold.set(s, cx),
+                None => return Err(Fault::answer("a blueprint value that gives a bundle was answered before its build ended".to_string())),
+            }
+            return moved.fire((), cx);
+        }
+        fired.fire(event(answer)?, cx)
+    });
+    let supplied = blueprint(path, sink.clone(), &applied_scope(hosted), base, cx)?;
+    let built = supplied.built;
+    let made = match supplied.first.as_ref() {
+        Some(first) => match first.held_as::<W>() {
+            Some(live) => live,
+            None => {
+                let s = state(first, true)?.ok_or_else(|| Fault::answer(format!("a blueprint value that gives a bundle answered for {} at its build, which is no state of the bundle", first.tag())))?;
+                *cell.borrow_mut() = Some(::prism_rtl::Hold::new(s, cx));
+                let read = cell.clone();
+                let dynamic = ::prism_rtl::Dynamic { owner: None, read: Rc::new(move |cx: &Cx| read.borrow().as_ref().expect("the hold is made at the build").get(cx)), updates };
+                whole(Some(dynamic), ::prism_rtl::Event::of(&events), cx)?
+            }
+        },
+        None => whole(None, ::prism_rtl::Event::of(&events), cx)?,
+    };
+    Ok((Rc::new(AppliedBlueprint { supplied, base, sink }), built, made))
+}
+
+/// A `$` part of a bundle a blueprint value gives (`apply_blueprint_whole`): the state's
+/// part as a dynamic.
+pub fn state_part<S: Clone + 'static, T: 'static>(state: &::prism_rtl::Dynamic<S>, part: impl Fn(&S) -> T + 'static) -> ::prism_rtl::Dynamic<T> {
+    state.map(part)
+}
+
+/// One of several event parts of a bundle a blueprint value gives
+/// (`apply_blueprint_whole`): the firings of the sparse tuple that hold the part.
+pub fn event_part<V: Clone + 'static, T: Clone + 'static>(events: &::prism_rtl::Event<V>, part: impl Fn(&V) -> ::prism_rtl::SparsePart<T> + 'static) -> ::prism_rtl::Event<T> {
+    events.map(move |v| part(v).0).filter_some()
+}
+
+/// An event part of a bundle a blueprint value gives, heard by the block that applied
+/// it: each firing is `hear`'s, in its tick. The subscription lives as long as the port.
+pub fn hear_part<T: Clone + 'static>(event: &::prism_rtl::Event<T>, hear: impl Fn(&T, &mut Cx) -> Done + 'static) {
+    let _ = event.port.subscribe(Rc::new(hear));
 }
 
 /// A row subscribing to its block's port for one event: the row heard weakly, the handle

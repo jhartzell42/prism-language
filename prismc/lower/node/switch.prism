@@ -1046,14 +1046,21 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
         ? g: Connect r, (EvRefOf r, g.id), (SkUp blocks)
         nil: update r:
             &_.build <= Push &_.build, (InternalBugDo "the event `{mine}` of a split block's lower lines has no node in their row")
+    # a row a blueprint value builds (a valued widget's, a block's own widget's) hands
+    # its result to no block: the blueprint that built it takes it from the row
+    let valueRow = (zeroBased and parentTy == OutUnit) or IsSome wx.?valuedAs
     # a bundle: handed to the block part by part (`RowPartsOut`)
     let ((r2b, parts)) = match r2.result:
-        WrParts ps: RowPartsOut r2, genName, "", ps
+        WrParts ps if not valueRow: RowPartsOut r2, genName, "", ps
         otherwise: ((r2, [[]]))
     let ((r3, ?plain)) = match r2.result:
         # an event: it fires the block's; a row a blueprint value builds holds no block,
         # and fires a port of its own (`ValuedEventResult`)
-        WrEv r: if zeroBased and parentTy == OutUnit: (((ValuedEventResult r2, r, (BlockGives lxc, body)), nil)) else: (((Connect r2, r, (SkUp upName)), nil))
+        WrEv r: if valueRow: (((ValuedEventResult r2, r, (BlockGives lxc, body)), nil)) else: (((Connect r2, r, (SkUp upName)), nil))
+        # a value row's bundle and its dynamic result: one value, its events and
+        # dynamics whole (`ValueRowWhole`), which `result_value` reads from the row
+        WrParts ignore if valueRow: ValueRowResult r2, lxc, body
+        WrDyn ignore, ignore, ignore if valueRow: ValueRowResult r2, lxc, body
         WrParts ignore: ((r2b, nil))
         # a plain result, computed at the generation's build and kept in a field of the
         # row, read by the block that built it: early for a clause (`EarlyClauseLine`),
@@ -1105,6 +1112,63 @@ fn ValuedEventResult r, event, t:
         &_.fields <= Push &_.fields, ((port, portTy, "the port the row's event result fires"))
         &_.moves <= Push &_.moves, ((port, (XClone (XVar port))))
         &_.getters <= Push &_.getters, (MethDef(name="result_event", recv=RecvRef, params=[[]], cx=CxNone, ret=portTy, body=[[]], tail=(XClone (XField XSelf, port)), doc="The port the row's event result fires, which the blueprint that built the row subscribes to."))
+
+# The result of a row a blueprint value builds when it is a dynamic or a bundle: the
+# row's `result_value` gives it as one value (`ValueRowWhole`), read once the row is
+# built.
+ValueRowResult: unbounded fn Wx, Lx, Block -> ((Wx, ?OutTy))
+fn ValueRowResult r, lx, body:
+    let full = match (Or body.stmts[Dec (Len body.stmts)], dummyStmtL).kind:
+        SExpr x: LineOutFull lx, x
+        otherwise: TyErr
+    let ((r2, whole, t)) = ValueRowWhole r, lx, r.result, full, ""
+    let r3 = update r2:
+        &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=t, body=[[]], tail=whole, doc="The row's result as one value, its events and dynamics whole, which the blueprint that built the row answers with."))
+    ((r3, ? t))
+
+# A result of a row a blueprint value builds as a value the row's methods read (Type
+# System ch. 2: a bundle is a plain aggregate with functor values inside): an event is
+# the event of a port of the row's that it fires; a dynamic a live `Dynamic` over the
+# row, its update event a port the writes behind it fire (`LiveDynamic`); a plain part
+# its value at the build, kept in a field, or read from the row when it is late; a
+# bundle the tuple of its parts. `place` tells the parts of a bundle apart (`_0`, `_1_0`).
+ValueRowWhole: unbounded fn Wx, Lx, Wres, Ty, Text -> ((Wx, Ex, OutTy))
+fn ValueRowWhole r, lx, res, full, place = match res:
+    WrEv event:
+        let t = OutTyOf lx, (Peel (Peel full))
+        let portTy = OutRc (OutPort t)
+        let stem = "result_part{place}"
+        let port = "{stem}_port"
+        let r2 = update (Connect r, event, (SkPort stem)):
+            &_.taken <= Append &_.taken, [[stem, port]]
+            &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind port), portTy), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]]))
+            &_.fields <= Push &_.fields, ((port, portTy, "the port an event of the row's result fires"))
+            &_.moves <= Push &_.moves, ((port, (XClone (XVar port))))
+        ((r2, (XCall (RefRuntime "prism_rtl::Event::of"), [[(XRef (XField XSelf, port))]]), (OutEvent t)))
+    WrDyn ex, reads, t:
+        let ((made, r2)) = LiveDynamic r, "result_live{place}", ex, reads, t, "a dynamic of the row's result"
+        match made:
+            XClone (XVar field): ((r2, (XClone (XField XSelf, field)), (OutDyn t)))
+            otherwise: ((r2, (InternalBug "a live dynamic of a value row's result that is no field of the row"), (OutDyn t)))
+    WrPlain ex, t:
+        let ((f, r1)) = FreshName r, "result_plain{place}"
+        let r2 = update r1:
+            &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind f), t), ex)
+            &_.fields <= Push &_.fields, ((f, t, "a plain part of the row's result"))
+            &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
+        ((r2, (XClone (XField XSelf, f)), t))
+    WrLate ex, t: ((r, ex, t))
+    WrParts parts:
+        let tys = BundlePartTys full
+        let ((r2, values, outs)) = Fold (Range0 (Len parts)), ((r, [[]], [[]])), \|((w, vs, ts)), i|
+            let ((w2, v, t)) = ValueRowWhole w, lx, (Or parts[i], WrUnit), (Or tys[i], TyErr), "{place}_{i}"
+            ((w2, (Push vs, v), (Push ts, t)))
+        ((r2, (XTuple values), (OutTuple outs)))
+    WrHosted ignore, ignore:
+        let r2 = update r:
+            &_.build <= Push &_.build, (RefusalDo "a widget read as a blueprint value whose block ends on a host's line, its result the host's output")
+        ((r2, XUnit, OutUnit))
+    WrUnit: ((r, XUnit, OutUnit))
 
 # What a block's last line gives, lowered: the payload under its blueprint and its time.
 BlockGives: unbounded fn Lx, Block -> OutTy

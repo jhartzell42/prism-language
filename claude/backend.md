@@ -480,8 +480,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
   tuple or an array, the value of a `let` (`LetValues`: `let @w = @Pair`, read where
   `@w` is), and a blueprint argument of a widget that stands in one (`@Frame @Pair`).
   A widget can be one when it has no type parameter and no widget function parameter,
-  its `$` and event parameters have no time below their top, and it gives nothing, a
-  plain value or an event back (`?ValuedCases`).
+  and its `$` and event parameters have no time below their top, whatever it gives
+  back (`?ValuedCases`).
   - A `$` or an event parameter is the caller's live `Dynamic` or `Event`, which the
     blueprint keeps and each row it builds holds (`LiveParams`, as the shared rows of a
     widget that calls itself do); the line that reads the widget makes the dynamic
@@ -491,6 +491,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
     (`ValuedEventResult`, the row's `result_event`); prism_rtl's
     `widget_event_blueprint` subscribes the sink of what applied the blueprint, each
     firing an answer under the arm's tag or outside any, as a plain result is.
+  - A dynamic result and a bundle are one value the row's `result_value` gives
+    (`ValueRowWhole`): a dynamic is a live `Dynamic` over the row, its update event a
+    port the writes behind it fire (`LiveDynamic`); a bundle is the tuple of its parts,
+    each event the event of a port of the row's that it fires, each dynamic such a live
+    `Dynamic`, each plain part its value. Outside a tag's arm the blueprint answers
+    with that value held as it is, once, at its build (`crate::Answer`'s case
+    `Held_a`, the prelude's `answer_held`), and so it does with a plain value that is
+    no plain data (a function): the line that applies the blueprint reads the widget's
+    own dynamic, events and value, so they move in the tick the widget's do. Under a
+    tag's arm a dynamic result is the place's first value and each move of it a push
+    of the next tick, as `@ $d` is (prism_rtl's `widget_dynamic_blueprint`).
   - Each such widget is lowered once more as rows of its own, items of its module
     (`ValuedRows`): one row type a clause, `{Widget}_value{i}`, its places numbered from 0
     and built from a base, holding no block, telling how many places it built (`built`),
@@ -513,9 +524,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
     methods). A host's row gives them to the enclosing host (`HostRow::entries`,
     `HostRow::deliver`); a block that applied the value gives them as its generation's
     (`AppliedBlueprint`).
-  - A widget with a `$`, event or blueprint parameter, a type parameter, or an event,
-    dynamic or bundle result is not among them, and is refused where it is read as a
-    value.
+  - A widget with a type parameter or a widget function parameter is not among them,
+    and is refused where it is read as a value; so is one that gives a bundle back read
+    under a tag's arm.
 - **A widget defined in a block read as a value** (`Card(@body=@line)`, `?Pick True,
   @line`) is a `Blueprint` its line makes at the build before the node, kept in a field
   (`BlueprintValuesAt`, `blueprint_{name}`): it builds the widget's block as a row of its
@@ -531,9 +542,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
     is applied). A write behind what the rows' places read of the block dirties each
     row that lives (`RowMarks` of kind `ValueRow`, `RowWritten`), so a place that reads
     a dynamic of the block changes in place.
-  - A widget that gives a plain value back answers with it outside any tag, as plain
-    data. One that gives an event, a dynamic, a bundle, or a value that is no plain
-    data back is refused as a value.
+  - What the widget gives back it answers with as a top-level widget read as a value
+    does outside a tag's arm: plain data outside any tag; an event through a port of
+    the row's (`ValuedEventResult`, `widget_event_blueprint`); a dynamic, a bundle and
+    a value that is no plain data held whole (`ValueRowWhole`, `answer_held`).
 - **A blueprint value applied by a block** (`? @t: @t`, `ignore <- card.@body`;
   Semantics ch. 8: at the applying block's next positions) is the node's generation at
   the line (`ValueBlueprintLine`): the prelude's `apply_blueprint` builds the value at
@@ -557,8 +569,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
     (the prelude's `apply_blueprint_answered`), read at the line's type (`FirstAnswerTaken`): by the tag
     it is under where a tag of the program answers with that type (a blueprint made in
     a supplier's arm answers under the arm's tag; that tag's accessor reads an answer
-    made outside any tag too), else as plain data (`answer_plain`, `Answer::plain`), and
-    the node keeps it in `{generation}_res`
+    made outside any tag too), else as plain data (`answer_plain`, `Answer::plain`); a
+    type that is no plain data (a function) is read from the answer held whole
+    (`held_answer`, `Answer::held`). The node keeps it in `{generation}_res`
     from the build on: the result is late (`WrLate`, `IsLateExpr`), as a call of a
     widget that calls itself keeps its own.
   - A line that binds a dynamic (`$d <- @$t`, `$level <- @Element e` of an element
@@ -568,8 +581,22 @@ it make every program an interpreter run, and every type mistake a runtime fault
     answer comes, read at the line's type as a bound first answer is. The node keeps it
     in `{generation}_res` as a generation's dynamic result is kept (`KeptDyn`) and
     follows its update event (`prism_rtl::Follow`), each firing marking what reads it
-    (`{generation}_result_moved`).
-  - A blueprint value that gives a bundle back is refused.
+    (`{generation}_result_moved`). A first answer that holds a `Dynamic` whole (a
+    widget's dynamic result) is the line's dynamic itself.
+  - A line that binds a bundle (`((step, !go)) <- @t`, `((!rx, $link)) <- @Element e`;
+    `AppliedBundleLine`) takes it as one value, its events and dynamics whole, from the
+    prelude's `apply_blueprint_whole`: a first answer that holds the value whole (a
+    widget's bundle) is it; any other blueprint answers as a bundle's tag does, and the
+    value is made of those answers: the state (the tag's first-value case, or its own
+    when it has no event part) a hold the first answer makes and each later one writes,
+    its `$` parts dynamics over it (`state_part`), its plain parts read at the build;
+    the event parts the event the tag's answers fire, of several the firings of the
+    sparse tuple that hold the part (`event_part`). The tags are the program's whose
+    output is the line's bundle (`BundleTagsOf`). The node keeps the value in
+    `{generation}_whole` and binds its parts (`AppliedPart`): a plain part is late,
+    read from the kept value; a dynamic part is kept and followed as a dynamic result
+    is (`{generation}_part{place}_res`); an event part is heard (`hear_part`) and fires
+    an event of the node through `{generation}_part{place}_up`.
 - **`prism_rtl::Blueprint`** is built with a base beside its path, sink and scope: 0
   under a host's row, the line's position as built in a block. `Supplied` tells how many
   places were built (`built`), how a widget's row leaves (`leave`), and, for a widget's row

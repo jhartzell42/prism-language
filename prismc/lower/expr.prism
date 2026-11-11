@@ -910,6 +910,12 @@ fn ?AnswerDynamic lx, env, x, d, variant = match ((env.names["#dyn{DynKey x}"], 
         ? (XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar "{getter}_portx"))]]))
     otherwise: nil
 
+# An answer of the type `t` made by a widget's blueprint value: in its tag's case, or
+# with no tag as plain data when it is plain data (`Tagged`), else held as it is (the
+# prelude's `answer_held`).
+TaggedOrHeld: unbounded fn Ref, OutTy, Ex -> Ex
+fn TaggedOrHeld variant, t, value = if variant == untaggedRef and not (Podable t): XCall (HelperRef "answer_held"), [[value]] else: Tagged variant, value
+
 # An answer in its tag's case of `crate::Answer`; with no tag, as plain data in the case
 # of no tag (`untaggedRef`).
 Tagged: fn Ref, Ex -> Ex
@@ -1047,7 +1053,10 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
 # base (prism_rtl's `widget_blueprint`). A plain result is the first value of the place
 # the blueprint answers, under the arm's tag as `@ x` is (`PureBlueprint`); an event
 # result is the port the row fires, each firing an answer to that place
-# (`widget_event_blueprint`). Built in a
+# (`widget_event_blueprint`). Outside a tag's arm a dynamic result, a bundle and a plain
+# value that is no plain data are the first answer held whole (the prelude's
+# `answer_held`): the row's live `Dynamic`, the bundle with its events and dynamics as
+# values (`ValueRowWhole`), the value itself. Built in a
 # hosted scope the blueprint builds the widget's hosted row, given the host and what
 # tells it that a place of the row's came or went.
 WidgetBlueprintValue: unbounded fn Lx, Env, Text, [Arg], OutTy -> Vl
@@ -1070,7 +1079,13 @@ fn WidgetBlueprintValue lx, env, qk, args, t = match ((lx.valued[qk], lx.g.vals[
         # an event result: the row hands out the port it fires (`ValuedEventResult`), and
         # each firing is an answer to the sink of what applies the blueprint
         let fires = (ResultLayer gives) == LyEv
-        let builtTy = OutNamed (RefRuntime "prism_rtl::BuiltWidget"), [[elemTy, answerTy, (if fires: OutRc (OutPort resTy) else: resTy)]]
+        # a dynamic result is the row's live `Dynamic`, a bundle the row's one value with
+        # its events and dynamics whole (`ValueRowWhole`)
+        let live = (ResultLayer gives) == LyDyn
+        let bundle = match gives:
+            TyAt i, ignore: IsBundle (Peel i)
+            otherwise: False
+        let builtTy = OutNamed (RefRuntime "prism_rtl::BuiltWidget"), [[elemTy, answerTy, (if fires: OutRc (OutPort resTy) else: if live: OutDyn resTy else: resTy)]]
         # the row whose places are the World's, and the one built under a host
         # (`ValuedRows`): the blueprint is built in the scope of what applies it
         let Arms = \|hosted| Each cases, \|((rowNode, pat, conds, passed))|
@@ -1086,9 +1101,19 @@ fn WidgetBlueprintValue lx, env, qk, args, t = match ((lx.valued[qk], lx.g.vals[
         let variant = match env.names["#tag"]:
             ? (BnLocal (XPath tagged), ignore, ignore): tagged
             otherwise: untaggedRef
-        let answer = if resTy == OutUnit: XClosure False, [[PaWild]], XNone else: XClosure False, [[PaBind "widget_result"]], (XCtor (RefRuntime "std::Some"), [[(Tagged variant, (XVar "widget_result"))]])
-        let fired = XClosure False, [[(PaTyped (PaBind "widget_result"), (OutRef resTy))]], (Tagged variant, (XClone (XVar "widget_result")))
-        if resTy != OutUnit and variant == untaggedRef and not (Podable resTy): VlOwned (Refusal "the widget {BareName qk} as a blueprint value outside a tag arm, its result no plain data"), t
+        # outside a tag's arm a dynamic, a bundle, and a plain value that is no plain data
+        # are answered held whole (`answer_held`): the line that applies the blueprint
+        # reads the widget's own dynamic, events and value (`AppliedBlueprintLine`)
+        let untagged = variant == untaggedRef
+        let heldWhole = untagged and resTy != OutUnit and not fires and (live or bundle or not (Podable resTy))
+        let answer = if resTy == OutUnit: XClosure False, [[PaWild]], XNone else: if heldWhole: XClosure False, [[PaBind "widget_result"]], (XCtor (RefRuntime "std::Some"), [[(XCall (HelperRef "answer_held"), [[(XVar "widget_result")]])]]) else: XClosure False, [[PaBind "widget_result"]], (XCtor (RefRuntime "std::Some"), [[(Tagged variant, (XVar "widget_result"))]])
+        let fired = XClosure False, [[(PaTyped (PaBind "widget_result"), (OutRef resTy))]], (TaggedOrHeld variant, resTy, (XClone (XVar "widget_result")))
+        # under a tag's arm the answers are the tag's: a bundle's state and events part by
+        # part, which this value does not make of the row's one value
+        if bundle and not untagged: VlOwned (Refusal "the widget {BareName qk} as a supplier's answer under a tag's arm, its result a bundle"), t
+        # under a tag's arm a dynamic result is the place's first value and each move of
+        # it a push, as `@ $d` is (prism_rtl's `widget_dynamic_blueprint`)
+        else: if live and not untagged: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_dynamic_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, fired]])), t
         else: if fires: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_event_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, fired]])), t
         else: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, answer]])), t
     otherwise: VlOwned (Refusal (WidgetValueWords qk)), t

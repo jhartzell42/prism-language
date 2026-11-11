@@ -277,9 +277,9 @@ fn RootWidgets lx:
 # until a block applies it): an argument of a function that is no widget or of a
 # constructor, a host's supplier, what a lambda gives, the operand of `?`, a part of a
 # tuple or an array, the value of a `let`. Each is lowered once more as rows of its own (`ValuedRows`), which the
-# blueprint made at the value site builds (`WidgetBlueprintValue`). One whose parameters
-# are not all plain, with a type parameter, or with an event, dynamic or bundle result is
-# left out, and refused where it is read as a value.
+# blueprint made at the value site builds (`WidgetBlueprintValue`). One with a widget
+# function parameter or a type parameter is left out, and refused where it is read as a
+# value.
 ValuedWidgets: unbounded fn Lx -> (Text ==> [((Text, Pa, [Cc], [Ex]))])
 fn ValuedWidgets lx = Fold lx.g.defs, {}, \|acc, d|
     let lxd = InModule lx, d.file, d.home
@@ -399,7 +399,7 @@ fn ValuedStem qk = "{Camel (BareName qk)}_value"
 
 # A valued widget's clauses as a blueprint chooses and builds them (`SharedCaseOf`), when
 # it can be one: no widget function parameter, no type parameter, no `$` or event
-# parameter with time below its top, and nothing, a plain value or an event given back.
+# parameter with time below its top; whatever it gives back.
 ?ValuedCases: unbounded fn Lx, Text -> ?[((Text, Pa, [Cc], [Ex]))]
 fn ?ValuedCases lx, qk = match lx.g.vals[qk]:
     nil: nil
@@ -407,10 +407,11 @@ fn ?ValuedCases lx, qk = match lx.g.vals[qk]:
         let ptys = match v.scheme.ty:
             TyFn ignore, ps, ignore: ps
             otherwise: [[]]
-        # nothing, a plain value, or an event with no time below its top (the row fires a
-        # port, `ValuedEventResult`)
+        # any result: nothing, a plain value, an event (the row fires a port,
+        # `ValuedEventResult`), a dynamic or a bundle (the row's one value, its events
+        # and dynamics whole, `ValueRowWhole`)
         let plainResult = match WidgetResultOf v.scheme.ty:
-            TyAt i, ignore: ((LayerOf i) == LyPlain and not (IsBundle (Peel i))) or ((LayerOf i) == LyEv and not (HasTime (Peel i)))
+            TyAt ignore, ignore: True
             otherwise: False
         # a plain parameter; a `$` or an event parameter, the caller's live value the row
         # holds (`LiveParams`); a blueprint parameter, a value of the row
