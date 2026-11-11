@@ -1089,7 +1089,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   of the source runs (`FrameTaker`, `?SignatureResult`).
 - **A function value applied** (`Take (\|n| n * k)`, `Take Double`, `Take` a `let` or a
   parameter) takes each argument of a function type as a function value
-  (`ValueArgument`); a named function takes a borrowed closure or a path there.
+  (`ValueArgument`). So does a named function of the program at a parameter of a bounded
+  function type (`ArgsFor`): its parameter is a `&Rc<dyn Fn>`, a function value it may
+  keep. A prelude function takes a borrowed closure or a path there, and a function
+  value handed on to one is borrowed through its `Rc` (`ClosureRef`).
 - **`@Run` of a function value that is no function the program defines by clauses** (a
   lambda, a local, a call's result, a constructor, a trait's method, a function of the
   prelude) takes the `Start` it is or is made (`AsJobValue`); a function the program

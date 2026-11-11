@@ -1524,10 +1524,12 @@ fn IsLambdaValue e = match e.kind:
     EGroup x: IsLambdaValue x
     otherwise: False
 
-# A bounded function value where a `&dyn Fn` is taken: a parameter that is one already
-# passes on; a closure held in an `Rc` is borrowed through it (`&*f`).
+# A bounded function value where a `&dyn Fn` is taken (a prelude function's parameter): a
+# function value is held in an `Rc` wherever it is one, a named function's parameter and
+# a pattern's binder a `&Rc<dyn Fn>`, so the closure is borrowed through it (`&**f`,
+# `&*f`).
 ClosureRef: fn Vl -> Ex
-fn ClosureRef (VlPlace x, ByRef, t) = x
+fn ClosureRef (VlPlace x, ByRef, t) = XRef (XDeref (XDeref x))
 fn ClosureRef (VlPlace x, ignore, t) = XRef (XDeref x)
 fn ClosureRef (VlOwned x, t) = XRef (XDeref x)
 
@@ -1960,7 +1962,14 @@ fn ArgsFor lx, env, v, args:
         # (True on !swap), $a, $b`): its sigiled dynamics go in whole, the live dynamics
         # their line made (`WholeArgs`); the lifted arguments are values
         let wholeAt = (not lx.whole) and (IsWholeFn lx, v.qk) and (LayerOf (Or ps[i], TyErr)) == LyDyn
+        # a parameter of a bounded function type is a function value, held as every
+        # function value is (the signature's `&Rc<dyn Fn>`): a lambda and a named function
+        # are made one (`ValueArgument`)
+        let bounded = match Peel (Or ps[i], TyErr):
+            TyFn CBound, ignore, ignore: True
+            otherwise: False
         if toUnbounded: XRef (AsJobValue lx, env, a.value)
+        else: if bounded: ValueArgument lx, env, a.value
         else: if wholeAt:
             let lxw = update lx:
                 &_.whole <= True
@@ -2716,8 +2725,7 @@ fn ClosureParams lx, env, ps, pts, typed = Fold (Range0 (Len ps)), (([[]], env))
 # A closure parameter's binder of a function type: a function value is held in an `Rc`
 # wherever it is a value, so the binder is a `&Rc<dyn Fn>`, the place behind it the `Rc`
 # itself: cloned as a value, and borrowed through where a `&dyn Fn` is taken
-# (`ClosureRef`, which takes a `ByRef` function for a named function's parameter, a
-# `&dyn Fn` already).
+# (`ClosureRef`).
 HeldFunction: fn ((Text, Bn)) -> ((Text, Bn))
 fn HeldFunction ((n, b)) = match b:
     BnLocal x, ByRef, (OutFn pts, r): ((n, (BnLocal (XDeref x), Owned, (OutFn pts, r))))
