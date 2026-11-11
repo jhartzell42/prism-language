@@ -1,0 +1,15 @@
+# `for` builds its block once per entry and keeps each built block (Semantics ch. 4,
+# "`for`"), and `@ v` lifts a value into the widget being built: a plain function builds
+# nothing, so a `for` is a blueprint there, `@(Nat ==> Nat)`, as a building `match` is
+# (`@t`), and not the plain map the signature names. prismc's back end refuses it today
+# ("a `for` outside a widget block as a value"); the checker should, as a mismatch.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+use Ui.*
+
+Doubles: fn [Nat] -> (Nat ==> Nat)
+fn Doubles xs = for x <- xs: @ x * 2
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Size (Doubles [[1, 2]])}")
