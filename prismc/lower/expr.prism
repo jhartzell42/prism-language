@@ -402,7 +402,9 @@ fn WholeValueOf lx, env, e:
         # `$ $q` is lifted over `$q` (a bare type variable lifts, Type System ch. 4): a map
         # to a constant of each value
         EFreeSigil "$", x: if not (NotLifted lx, e.span): DynamicLift lx, env, e
-        else: if (LayerOf (TypeAt lx, x.span)) == LyDyn: ValueOf lx, env, x else: VlOwned (XCall (HelperRef "dyn_constant"), [[Own (ValueOf lxp, env, x)]]), (OutDyn (OutTyOf lx, (Peel full)))
+        # (a constant of a value that holds time below its top keeps that value's dynamics
+        # whole, `ConstantOfTimeAt`: `$ (($ (($a, "in")), 3))`)
+        else: if (LayerOf (TypeAt lx, x.span)) == LyDyn: ValueOf lx, env, x else: VlOwned (XCall (HelperRef "dyn_constant"), [[Own (ValueOf (if ConstantOfTimeAt lx, e: lx else: lxp), env, x)]]), (OutDyn (OutTyOf lx, (Peel full)))
         otherwise:
             if not (NotLifted lx, e.span): DynamicLift lx, env, e
             else: ValueByKind lx, env, e
