@@ -1,0 +1,6 @@
+# The tests of ts-ch03-existential-num-packed.
+emit Ui.*
+use App.*
+
+test packed_numbers_are_counted, @page:
+    build
