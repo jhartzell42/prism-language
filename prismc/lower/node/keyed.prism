@@ -326,11 +326,23 @@ RowReads: fn Env, Ex -> Env
 fn RowReads env, pref = Fold (Keys env.names), env, \|en, k| match env.names[k]:
     ? (BnHold f, t): Bind en, k, (BnDyn (XMethod (XField pref, f), "get", [[XCx]]), [[ParentRead f]], t)
     ? (BnDyn (XMethod (XSelf), m, xs), ignore, t): Bind en, k, (BnDyn (XMethod pref, m, xs), [[ParentRead m]], t)
-    # a widget parameter's dynamic, through its getter (`BindParam`)
-    ? (BnDyn ignore, ignore, ignore): match env.names["{k}#row"]:
+    # a widget parameter's dynamic, through its getter (`BindParam`); any other dynamic
+    # that stands on the block's own node (a hold that starts from a late result,
+    # `PreBindName`), the same expression through the parent
+    ? (BnDyn ex, rds, bt): match env.names["{k}#row"]:
         ? (BnDyn (XMethod ignore, m, xs), ignore, t): Bind en, k, (BnDyn (XMethod pref, m, xs), [[ParentRead m]], t)
-        otherwise: en
+        otherwise: if (OnSelfRooted ex) and Fold rds, True, \|f, rd| f and IsOwnRead rd: Bind en, k, (BnDyn (OverBlock ex, pref), (Each rds, \|rd| AsParentRead rd), bt) else: en
     otherwise: en
+
+# A node's expression of itself read through `pref`, the block as a row reaches it.
+OverBlock: fn Ex, Ex -> Ex
+fn OverBlock x, pref = match x:
+    XSelf: pref
+    XField y, f: XField (OverBlock y, pref), f
+    XFieldOf y, o, f: XFieldOf (OverBlock y, pref), o, f
+    XPart y, i: XPart (OverBlock y, pref), i
+    XMethod y, m, xs: XMethod (OverBlock y, pref), m, xs
+    otherwise: x
 
 # The event bindings of a row's port environment (`RowEnv`) over a row's environment: the
 # block's events as the row's ports; and a widget parameter the row applies, its
@@ -348,8 +360,10 @@ fn BlockReads reads = Fold reads, [[]], \|acc, r| match r:
     ParentRead f: AddRead acc, (OwnRead f)
     OwnRead ignore: acc
 
-# The block's plain values a row reads (a parameter, a plain `let`): each a field of the
-# row, which the block passes to its `build`, since a row's build has no block to read.
+# The block's plain values a row reads (a parameter, a plain `let`), itself or through a
+# function or a widget defined in the block that it calls (`RowNamesClosed`): each a
+# field of the row, which the block passes to its `build`, since a row's build has no
+# block to read.
 type RowLocal = record:
     name: Text
     field: Text
@@ -357,7 +371,7 @@ type RowLocal = record:
     passed: Ex
 
 RowLocals: unbounded fn Env, Env, Block -> [RowLocal]
-fn RowLocals benv, menv, body = Fold (ReadNames (BlockExprs body)), [[]], \|acc, n| match menv.names[n]:
+fn RowLocals benv, menv, body = Fold (RowNamesClosed menv, (ReadNames (BlockExprs body))), [[]], \|acc, n| match menv.names[n]:
     ? (BnLocal rs, mode, t):
         let field = Snake n
         if field == "key" or field == "value" or field == "parent" or field == "path": acc

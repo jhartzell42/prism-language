@@ -326,8 +326,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
     `Hold<Option<T>>`, empty until the row that gives the result is built, set in that
     generation's build right after the row (`WithLateInits`), before the lower
     generation is built and before any place goes out;
-  - a place's constant field or a plain `let` of the node that reads the late name at
-    the build is refused, naming it.
+  - a place of the node whose field reads a late name is live over the node's getters
+    (`ElementLine`): it goes out where every place does, after the node's rows are
+    built, its level read from the node;
+  - a plain `let` of the node that reads a late name is late too (`MarkLateLets`): a
+    getter of the node that computes it (`late_{name}`, `LateLetGetters`), bound under
+    `{name}#late` as the split line's names are, so what reads it reads it late in turn;
+  - a line of the node that takes a late name as a value at the build (a widget's plain
+    argument, a `for` row's plain local of a `for` above the split) is refused, naming
+    it.
 - **A line is late** (`IsLateExpr`) when it is a building `match` or `if` with a plain
   result, a widget block or a widget of one clause whose block ends late, a widget
   parameter applied whose argument is late (read in the caller's environment), or a
@@ -340,6 +347,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   blueprint parameter is, the argument's text with its caller's environments; `Inner 1`
   applies the function the argument names to the line's arguments, read in the line's
   environments (`ApplyWidgetParam`). A function value that is no name is refused.
+- **A clause widget's blueprint parameter** (`fn @Show True, @w:`), and a widget
+  function parameter of one, is bound in the clause's row as an inlined widget's is
+  (`BindParam`): the caller's argument's text with the caller's environments as the row
+  sees them (`ArmRowOf`'s `widgets`, `RowEnvNames`), built where the clause applies it,
+  at the row's next positions. The argument is no value: the clauses' patterns match
+  nothing in its place (`ClauseScrutinee`). So a widget defined in the caller's block is
+  passed as any blueprint is.
 - **A clause widget's `$` argument that its caller reads through its own parent** (the
   caller a row, the dynamic its block's) is a getter of the caller (`clause_dynamic`),
   read by the clause's row through its parent; the caller hears its block's write behind
@@ -391,7 +405,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   local widgets as they are, with the names their bodies read, and a widget parameter
   with its argument's environments seen through the row: the caller's events as ports
   of the row, its values and dynamics through the parent. A `for` row takes its widget
-  parameters the same way (`EventsOf`).
+  parameters the same way (`EventsOf`). A `for` row's plain locals of its block
+  (`RowLocals`) are the ones it names and the ones a function or a widget of the block
+  it calls reads (`RowNamesClosed`); a dynamic of the block that is no getter and no
+  hold (a hold that starts from a late result) is read through the parent as it stands
+  (`RowReads`, `OverBlock`).
 - **A widget's plain result bound by a pattern** (`((Extent(wide=w, high=h), ((d, t)))) <-
   @Measure 3`): a name or a tuple of names takes its parts as locals of the build, each
   moved into its field (`BindPlainResult`); any other pattern is matched once in the build
