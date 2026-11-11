@@ -1,0 +1,30 @@
+# A widget of several clauses that takes a blueprint and builds it (Semantics ch. 8: a
+# blueprint parameter is built where the widget applies it, at the widget's next
+# positions; a widget of several clauses is chosen by its plain arguments). The blueprint
+# is a widget of the file, and a widget defined in the caller's block (ch. 3: `fn` and
+# its `@` form define in the block), which reads the block's `n`.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Show: fn Bool, @unit -> @unit
+fn @Show True, @w:
+    Ui.Label($text=$"shown")                                     # first of the clause
+    @w                                                           # the blueprint's places
+fn @Show False, @w:
+    Ui.Label($text=$"hidden")
+
+@Five: @unit
+@Five:
+    Ui.Label($text=$"five")
+
+@page: @unit
+@page:
+    let n = 7
+    @line:
+        Ui.Label($text=$"line {n}")
+    @Show True, @Five                                            # 0, 1
+    @Show True, @line                                            # 2, 3
+    @Show False, @line                                           # 4
+    Ui.Label($text=$"end")                                       # 5

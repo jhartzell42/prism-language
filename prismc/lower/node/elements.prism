@@ -103,7 +103,11 @@ fn ElementLine wx, benv, menv, e, ?bound:
                                 # a generic tag's field goes into its level as plain data
                                 let ex = RecodedField lx, fty, ex0
                                 (((Push lf, (((FieldSpell tg.home, fname, fty), ex))), (Push cf, (((FieldSpell tg.home, fname, fty), cv))), (Push mf, (((FieldSpell tg.home, fname, fty), mv))), (UnionReads rd, rds), w))
-            let live = (Len reads) > 0
+            # a field that reads a late name has no value at the build (`BindLate`,
+            # `MarkLateLets`): the place is live over the node's getters, read where the
+            # place goes out, after the node's rows are built
+            let late = Fold args, False, \|f, a| f or ReadsLate menv, a.value
+            let live = (Len reads) > 0 or late
             let ((getter, wx3)) = if live: FreshName wx2, (Snake (BareName tg.name)) else: (("", wx2))
             let variant = VariantOf lx, tg
             # the place's level as the program's `Elem`: read by its getter in the methods when

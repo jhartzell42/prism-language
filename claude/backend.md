@@ -326,8 +326,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
     `Hold<Option<T>>`, empty until the row that gives the result is built, set in that
     generation's build right after the row (`WithLateInits`), before the lower
     generation is built and before any place goes out;
-  - a place's constant field or a plain `let` of the node that reads the late name at
-    the build is refused, naming it.
+  - a place of the node whose field reads a late name is live over the node's getters
+    (`ElementLine`): it goes out where every place does, after the node's rows are
+    built, its level read from the node;
+  - a plain `let` of the node that reads a late name is late too (`MarkLateLets`): a
+    getter of the node that computes it (`late_{name}`, `LateLetGetters`), bound under
+    `{name}#late` as the split line's names are, so what reads it reads it late in turn;
+  - a line of the node that takes a late name as a value at the build (a widget's plain
+    argument, a `for` row's plain local of a `for` above the split) is refused, naming
+    it.
 - **A line is late** (`IsLateExpr`) when it is a building `match` or `if` with a plain
   result, a widget block or a widget of one clause whose block ends late, a widget
   parameter applied whose argument is late (read in the caller's environment), or a
@@ -340,6 +347,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   blueprint parameter is, the argument's text with its caller's environments; `Inner 1`
   applies the function the argument names to the line's arguments, read in the line's
   environments (`ApplyWidgetParam`). A function value that is no name is refused.
+- **A clause widget's blueprint parameter** (`fn @Show True, @w:`), and a widget
+  function parameter of one, is bound in the clause's row as an inlined widget's is
+  (`BindParam`): the caller's argument's text with the caller's environments as the row
+  sees them (`ArmRowOf`'s `widgets`, `RowEnvNames`), built where the clause applies it,
+  at the row's next positions. The argument is no value: the clauses' patterns match
+  nothing in its place (`ClauseScrutinee`). So a widget defined in the caller's block is
+  passed as any blueprint is.
 - **A clause widget's `$` argument that its caller reads through its own parent** (the
   caller a row, the dynamic its block's) is a getter of the caller (`clause_dynamic`),
   read by the clause's row through its parent; the caller hears its block's write behind
@@ -349,6 +363,41 @@ it make every program an interpreter run, and every type mistake a runtime fault
   result is.
 - **A `let` of a name bound to a bundle** (`let same = both`) binds the same parts
   (`?BundleNamed`).
+- **A row that ends on a bundle hands it to its block part by part** (`RowPartsOut`,
+  `KeepParts`; a clause of a widget of several clauses, an arm of a building `match` or
+  `if`, the lower generation of a split block). Part `i` is `p{i}`, a part of a bundle
+  inside the bundle `p{i}_{j}`:
+  - an event part fires the block's `{generation}_p{i}_up`, a node of the block's graph;
+  - a dynamic part is the row's `result_p{i}` and `result_dynamic_p{i}`, kept by the
+    block in `{generation}_p{i}_res` and read through `{generation}_p{i}_value`; a write
+    behind it in the row calls `{generation}_p{i}_result_moved` (`KeptDyn`);
+  - a plain part is the row's `result_value_p{i}`, kept by the block in
+    `{generation}_p{i}_res` from the row's build on, and late (`WrLate`).
+  A widget of several clauses that ends on a bundle is built after the block's node
+  (`BundleClauseLine`), whatever its parts.
+- **A line that binds a bundle with a plain part from a row is late** (`IsPlainResult`,
+  `PlainIn`), and its block is split at it. The bundle's events and dynamics are names
+  of the node, prebound as any line's (`PreBind`) and bound where the line is lowered
+  (`BindParts`); its plain parts are the late names (`BindLate`, each read by itself,
+  `LateParts`), and the lower generation matches the plain parts' patterns against
+  their reads (`LowerBinder`). A bundle with no plain part splits nothing.
+- **A `for` whose rows end on a bundle** gathers it part by part (`ForParts`): an event
+  part into `{name}_p{i}_all`, one firing a tick by key, a dynamic part into the
+  structural dynamic `{name}_p{i}_all`, a plain part as a dynamic no write moves. The
+  row has one `result_p{i}` per dynamic part and tells the block of a write behind each
+  (`Wx.resultMoved`, a list); the block's gathers of one row are `PendingRow.gathers`.
+- **A `rebuild` whose block ends on a bundle** gives a dynamic of the bundle as one
+  value (`WholeResultOf`, `Wx.wholeResultAt`): the generation's plain result is the
+  tuple with each event as its port's `Event` and each dynamic it names as the live
+  `Dynamic` made for it (`WholeArgsAt`). A bundle that is not written out as a tuple
+  where the block ends is refused.
+- **`@Element made` as a line, `made` a `let` of the block bound to a tag applied**
+  (Semantics ch. 8, "Elements and the element statement") is that element's line at
+  the placing line's position, lowered in the placing line's environments
+  (`WithElementLets`, `ElementCallLine`); a row that places it sees what its fields read
+  through the parent (`RowEnvNames`). A `let` no line reads but to place it is no value
+  of the node. `@Element` of any other element value in a block (a parameter, a call's
+  result) is refused.
 - **A widget defined in a block** (`@line:` and its block) is bound to its block
   (`BnLocalWidget`) and lowered at each line that applies it, in that line's
   environments, at the node's next positions (`LocalWidgetLine`).
@@ -356,7 +405,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   local widgets as they are, with the names their bodies read, and a widget parameter
   with its argument's environments seen through the row: the caller's events as ports
   of the row, its values and dynamics through the parent. A `for` row takes its widget
-  parameters the same way (`EventsOf`).
+  parameters the same way (`EventsOf`). A `for` row's plain locals of its block
+  (`RowLocals`) are the ones it names and the ones a function or a widget of the block
+  it calls reads (`RowNamesClosed`); a dynamic of the block that is no getter and no
+  hold (a hold that starts from a late result) is read through the parent as it stands
+  (`RowReads`, `OverBlock`).
 - **A widget's plain result bound by a pattern** (`((Extent(wide=w, high=h), ((d, t)))) <-
   @Measure 3`): a name or a tuple of names takes its parts as locals of the build, each
   moved into its field (`BindPlainResult`); any other pattern is matched once in the build
