@@ -1416,40 +1416,68 @@ fn GlobalCall lx, env, qk, args, span, cspan, t:
                     let declaredTy = match v.scheme.ty:
                         TyFn ignore, ignore, r: Peel r
                         other: Peel other
-                    if (HasJobFn declared) and not (HasJobFn t): match ?RecordStartsAsBounded lx, call, declaredTy, (Peel (SubstTy lx, (TypeAt lx, span))), t:
+                    if (HasJobFn declared) and not (HasJobFn t): match ?TypeStartsAsBounded lx, call, declaredTy, (Peel (SubstTy lx, (TypeAt lx, span))), 0:
                         ? made: VlOwned made, t
                         nil: AsInstance call, declared, t
                     else: AsInstance call, declared, t
             nil: VlOwned (InternalBug "a call of {qk}"), t
 
-# A record a call returns whose type arguments hold a `Start` the call made bounded
-# (`Holder (u fn Nat -> Nat)` at a call that makes `u` bounded): the record made again,
-# each field as its type at the call has it (`StartsAsBounded`, by the field's type under
-# the declared arguments and under the call's). `nil` for any other type: a choice's
-# argument and a named type inside another type stay refused there.
-?RecordStartsAsBounded: unbounded fn Lx, Ex, Ty, Ty, OutTy -> ?Ex
-fn ?RecordStartsAsBounded lx, x, declaredTy, instanceTy, t = match ((declaredTy, instanceTy)):
-    (((TyCon n, declaredArgs), (TyCon m, instanceArgs))) if n == m: match lx.g.ctors[n]:
-        ? c:
-            let owner = Or lx.g.types[c.owner], dummyTyInfo
-            match owner.body:
-                BRecord ignore:
-                    if (Len c.fields) == 0: nil
-                    else:
-                        let tyPath = RefIn lx, owner.home, (TypeItemName c.owner)
-                        let fields = Each (Range0 (Len c.fields)), \|i|
-                            let ft = Or c.args[i], TyErr
-                            let spelled = FieldSpell (OwnerOf c.owner), (Or c.fields[i], ""), ft
-                            let declaredField = OutTyOf lx, (Instantiated ft, c.params, declaredArgs)
-                            let instanceField = OutTyOf lx, (Instantiated ft, c.params, instanceArgs)
-                            let boxed = RcField lx, c.name, i
-                            let read = Own (VlPlace (FieldOfEx lx, (XVar "held_record"), declaredTy, spelled), (if boxed: RcOwned else: Owned), declaredField)
-                            let wrapped = StartsAsBounded read, declaredField, instanceField, i + 1
-                            ((spelled, (if boxed: XCall (RefRuntime "std::Rc::new"), [[wrapped]] else: wrapped)))
-                        ? (XBlock [[(DoLet (PaBind "held_record"), x)]], (XTyped (XRecord tyPath, fields), t))
-                otherwise: nil
-        nil: nil
-    otherwise: nil
+# A value of a named type a call returns whose type arguments hold a `Start` the call
+# made bounded (`Holder (u fn Nat -> Nat)`, `Kept (u fn Nat -> Nat)` at a call that makes
+# `u` bounded): the value made again, each field as its type at the call has it
+# (`TypeAsBounded`, by the field's type under the declared arguments and under the
+# call's). A record is made from its fields; a choice by a `match` over its cases, each
+# made again from what it holds; an array of either element by element. `nil` for any
+# other type, which `StartsAsBounded` takes by its lowered type.
+?TypeStartsAsBounded: unbounded fn Lx, Ex, Ty, Ty, Nat -> ?Ex
+fn ?TypeStartsAsBounded lx, x, declaredTy, instanceTy, depth:
+    let t = OutTyOf lx, instanceTy
+    let held = "held_{depth}"
+    if not (HasJobFn (OutTyOf lx, declaredTy)) or HasJobFn t: nil
+    else: match ((declaredTy, instanceTy)):
+        ((TyArray d, TyArray e)): match ?TypeStartsAsBounded lx, (XClone (XVar held)), d, e, depth + 1:
+            ? made: ? (XCall (HelperRef "each"), [[(XRef x), (XRef (XClosure False, [[(PaTyped (PaBind held), (OutRef (OutTyOf lx, d)))]], made))]])
+            nil: nil
+        (((TyCon n, declaredArgs), (TyCon m, instanceArgs))) if n == m: match lx.g.types[n]:
+            ? owner:
+                let tyPath = RefIn lx, owner.home, (TypeItemName n)
+                let cases = Filter (Values lx.g.ctors), \|c| c.owner == n
+                # a case's fields read from `Local i`, each made again
+                let Fields = \|c, Local| Each (Range0 (Len c.args)), \|i|
+                    let ft = Or c.args[i], TyErr
+                    let declaredField = Instantiated ft, c.params, declaredArgs
+                    let instanceField = Instantiated ft, c.params, instanceArgs
+                    let boxed = RcField lx, c.name, i
+                    let read = Own (VlPlace (Local i), (if boxed: RcOwned else: Owned), (OutTyOf lx, declaredField))
+                    let wrapped = TypeAsBounded lx, read, declaredField, instanceField, depth + i + 1
+                    if boxed: XCall (RefRuntime "std::Rc::new"), [[wrapped]] else: wrapped
+                match owner.body:
+                    BRecord ignore: match cases[0]:
+                        ? c:
+                            if (Len c.fields) == 0: nil
+                            else:
+                                let Spell = \|i| FieldSpell (OwnerOf c.owner), (Or c.fields[i], ""), (Or c.args[i], TyErr)
+                                let made = Fields c, \|i| FieldOfEx lx, (XVar held), declaredTy, (Spell i)
+                                ? (XBlock [[(DoLet (PaBind held), x)]], (XTyped (XRecord tyPath, (Each (Range0 (Len made)), \|i| (((Spell i), (Or made[i], XUnit))))), t))
+                        nil: nil
+                    BChoice written:
+                        let arms = Each cases, \|c|
+                            let isNewtype = (BareName c.name) == (BareName c.owner) and (Len written) == 1
+                            let path = if isNewtype or ((Len c.args) == 0 and IsUnitCtor lx, c.name): tyPath else: RefChild tyPath, (Camel (BareName c.name))
+                            let names = Each (Range0 (Len c.args)), \|i| "{held}_f{i}"
+                            if (Len c.args) == 0: XArm(pat=(PaUnit path), conds=[[]], body=(XPath path))
+                            else: XArm(pat=(PaCtor path, (Each names, \|nm| PaBind nm)), conds=[[]], body=(XCtor path, (Fields c, \|i| XVar (Or names[i], ""))))
+                        ? (XMatch x, arms, False, t)
+                    otherwise: nil
+            nil: nil
+        otherwise: nil
+
+# A value as its type at a call has it: a named type or an array of one made again
+# (`?TypeStartsAsBounded`), anything else by its lowered type (`StartsAsBounded`).
+TypeAsBounded: unbounded fn Lx, Ex, Ty, Ty, Nat -> Ex
+fn TypeAsBounded lx, x, declaredTy, instanceTy, depth = match ?TypeStartsAsBounded lx, x, declaredTy, instanceTy, depth:
+    ? made: made
+    nil: StartsAsBounded x, (OutTyOf lx, declaredTy), (OutTyOf lx, instanceTy), depth
 
 # A generic function's type arguments at a call, in its type parameters' order, when one of
 # them is in no parameter's type (`?Nothing: fn Nat -> ?a`): read off the callee's type at
@@ -1564,7 +1592,7 @@ fn StartsAsBounded x, declared, t, depth:
             let pas = Each (Range0 (Len dps)), \|i| PaTyped (PaBind (Or names[i], "")), (OutRef (Or dps[i], OutUnit))
             let applied = XApply (XVar "{inner}_fn"), (Each names, \|nm| XVar nm)
             XBlock [[(DoLet (PaBind "{inner}_fn"), x)]], (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure True, pas, (StartsAsBounded applied, dr, er, depth + 1))]]), t)
-        otherwise: Refusal "a function value of its callee's own color in a named type or in another function's parameter, inside the value a call returns, at a call that makes the color bounded"
+        otherwise: Refusal "a function value of its callee's own color in another function's parameter, or in a named type inside a tuple, an optional, a `~T` or a map, inside the value a call returns, at a call that makes the color bounded"
 
 HasJobFn: unbounded fn OutTy -> Bool
 fn HasJobFn t = match t:

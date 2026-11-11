@@ -795,7 +795,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   value is rebuilt with each wrapped as the bounded function it is (`StartsAsBounded`):
   through an array (the prelude's `each`), an optional, a `~T`, a tuple, a map's values
   (the map made again with `fold_map` and `insert`) and a function's result (a function
-  that calls it and wraps what it gives).
+  that calls it and wraps what it gives). A named type whose arguments hold one is made
+  again by its declaration (`?TypeStartsAsBounded`): a record from its fields, a choice
+  by a `match` over its cases, each field as its type under the call's arguments has
+  it; an array of either element by element.
 - **`@Run` of a function value that is no function the program defines by clauses** (a
   lambda, a local, a call's result, a constructor, a trait's method, a function of the
   prelude) takes the `Start` it is or is made (`AsJobValue`); a function the program

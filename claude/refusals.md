@@ -155,10 +155,13 @@ Functions
   lowered (sem-ch08-let-pattern-in-widget), and with dynamics inside it
   (`LetPatternDynamics`, sem-ch08-let-pattern-dynamic-in-widget).
 - lower/expr.prism `StartsAsBounded`: a function value of its callee's own color inside
-  the value a call returns, at a call that makes the color bounded, where a choice's
-  argument, a named type inside another type, or another function's parameter holds it.
-  No test. A record the call returns is made again field by field
-  (`RecordStartsAsBounded`, ts-ch05-color-function-in-named-result). Through an array, an optional, a `~T`, a tuple, a map's values and a
+  the value a call returns, at a call that makes the color bounded, where another
+  function's parameter holds it, or a named type inside a tuple, an optional, a `~T` or
+  a map.
+  No test. A record or a choice the call returns, and an array of either, is made again
+  (`?TypeStartsAsBounded`, ts-ch05-color-function-in-named-result,
+  ts-ch05-color-function-in-choice-result,
+  ts-ch05-color-function-in-nested-named-result). Through an array, an optional, a `~T`, a tuple, a map's values and a
   function's result it is lowered (ts-ch05-color-function-in-result,
   ts-ch05-color-function-in-map-result).
 - lower/node/def.prism (`RefusePlainResult`) a widget's plain result bound by a pattern
