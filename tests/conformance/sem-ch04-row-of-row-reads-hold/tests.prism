@@ -1,0 +1,7 @@
+# The tests of sem-ch04-row-of-row-reads-hold.
+emit Ui.*
+use App.*
+
+test inner_rows_follow_the_hold, @main:
+    build
+    click at 0
