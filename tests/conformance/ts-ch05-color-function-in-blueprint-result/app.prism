@@ -1,0 +1,19 @@
+# A function of its callee's own color held by a blueprint in the value a call returns,
+# at a call that makes the color bounded (Type System ch. 5: a `u fn` takes its color
+# from its call; ch. 2: a blueprint is an opaque handle and still a value, and `@ x` is
+# the blueprint whose output is `x`; Semantics ch. 8: a blueprint builds nothing until a
+# block applies it). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Made: u fn (u fn Nat -> Nat) -> ?@(u fn Nat -> Nat)
+fn ?Made F = ? @ F
+
+@page: @unit
+@page:
+    match ?Made (\|n| n + 1):
+        ? @t:
+            F <- @t
+            Ui.Label($text=$"{F 5}")
+        nil: Ui.Label($text=$"none")
