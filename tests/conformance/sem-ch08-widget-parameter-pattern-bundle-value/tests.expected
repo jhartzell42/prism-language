@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 8 (a widget application is transparent: its places are its caller's, in line order; its parameters bind as patterns do) and ch. 7 (a dynamic's readers move in the tick it moves; a hold's write lands in the tick of the firing): the bundle the function gives holds the caller's event and dynamic, which the pattern names.
+test the_bundle_value_binds
+
+tick 0
+  added:
+    0: Ui.Button(label="more")
+    1: Ui.Label(text="b: 1 guests, 0 clicks")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="b: 2 guests, 1 clicks")
