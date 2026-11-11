@@ -225,8 +225,8 @@ fn BuildG srcs, trees:
     let ((g6a, st6a)) = ConvertAliases g6, st6
     let ((g6b, st6b)) = Fold (Keys g6a.mods), ((g6a, st6a)), \|((g, st)), m| ConvertTypes g, st, m
     let ((g7, st7)) = Fold (Keys g6b.mods), ((g6b, st6b)), \|((g, st)), m| ConvertDecls g, st, m
-    let ((g7a, st7a)) = TraitCycles g7, st7
-    let g8 = DerivedImpls g7a
+    let st7a = TraitCycles g7, st7
+    let g8 = DerivedImpls g7
     let st8 = Coherence g8, (DerivedFields g8, (DerivedDynamics g8, st7a))
     # here, so that lowering, which builds the tables again, reads the defaults too
     ImplDefaults g8, st8

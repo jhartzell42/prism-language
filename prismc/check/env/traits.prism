@@ -207,22 +207,15 @@ fn SuperReach g, frontier, seen = match frontier[0]:
         else: SuperReach g, (Append (Drop frontier, 1), (Or g.traits[cls], dummyTrait).supers), (Push seen, cls)
 
 # `trait-cycle`: a trait whose `where` reaches the trait itself asks, of every impl, for an
-# impl that asks for it (Type System ch. 3). Each trait of the ring says so, and loses its
-# `where` in the tables, so nothing after follows the ring.
-TraitCycles: unbounded fn G, St -> ((G, St))
-fn TraitCycles g, st = Fold (Keys g.traits), ((g, st)), \|((gg, s)), name|
+# impl that asks for it (Type System ch. 3). Each trait of the ring says so; the tables
+# keep the `where`s (`SuperReach` reads each trait once), so a bound on one trait of the
+# ring still gives the others and nothing more is reported.
+TraitCycles: unbounded fn G, St -> St
+fn TraitCycles g, st = Fold (Keys g.traits), st, \|s, name|
     let ti = Or g.traits[name], dummyTrait
     match ?RingFrom g, name, ti.supers, [[name]]:
-        nil: ((gg, s))
-        ? ring:
-            let s2 = WithFile (ErrFix (WithFile s, ti.file), "trait-cycle", ti.span, "the trait `^{BareName name}` asks for itself: its `where` names a ring of traits, {Join (Each ring, \|r| "`^{BareName r}`"), ", "}", "drop the `where` of one trait of the ring"), s.file
-            let cut = update gg:
-                &_.traits <= Insert &_.traits, name, (WithoutSupers ti)
-            ((cut, s2))
-
-WithoutSupers: fn TraitInfo -> TraitInfo
-fn WithoutSupers ti = update ti:
-    &_.supers <= [[]]
+        nil: s
+        ? ring: WithFile (ErrFix (WithFile s, ti.file), "trait-cycle", ti.span, "the trait `^{BareName name}` asks for itself: its `where` names a ring of traits, {Join (Each ring, \|r| "`^{BareName r}`"), ", "}", "drop the `where` of one trait of the ring"), s.file
 
 # The ring from `name` back to itself through `where`s: its traits in the order the
 # `where`s name them, `name` first; none when no path of `where`s comes back.
