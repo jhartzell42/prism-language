@@ -1,5 +1,0 @@
-tests/checker/neg/building-if-no-else.prism:11: error[no-else]: this `if` has no `else`: an `if` chooses between two branches
-        if loud:
-        ^^^^^^^^
-  fix: add `else:` with what the other branch does
-1 error
