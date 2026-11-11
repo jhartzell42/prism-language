@@ -410,7 +410,7 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
             let dyn = "{name}_dyn"
             let ((ex, reads)) = DynamicExpr w1, me, y
             let t = OutTyOf lx, (Peel (TypeAt lx, y.span))
-            let valued = (AllInited w1, reads) and not late
+            let valued = (AllInited w1, reads) and (NamesInited be, y) and not late
             let unlinked = if valued: XClone (XVar "at_build") else: XUnreachable
             let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(XMethod (XVar "owner"), name, [[XCx]])), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=unlinked)]]
             let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, t)
