@@ -1,0 +1,19 @@
+# Derived by hand from Type System ch. 2 (an element applied is a plain value, a description of the fields it was given) and ch. 4 (a pattern binds an element's field with its stack): `!r` is `1 on !press`, so each click adds 1; the description is never placed, so it takes no position.
+test a_pattern_binds_an_event_field
+
+tick 0
+  added:
+    0: Ui.Button(label="press")
+    1: Ui.Label(text="rang 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="rang 1")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="rang 2")
