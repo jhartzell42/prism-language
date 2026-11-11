@@ -1,0 +1,22 @@
+# `@ ((F, !go))` in a plain function, outside any tag's arm: a bundle with a function
+# part as a blueprint's output, applied by a block's line that binds its parts (Type
+# System ch. 2: `@ x` is the blueprint whose output is `x`; a function is a value, and a
+# plain aggregate with a functor value inside is a bundle; Semantics ch. 8: a blueprint
+# builds nothing until a block applies it). Written by Claude on the claude-lowering
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Made: fn (fn Nat -> Nat), !Click -> ?@((fn Nat -> Nat, !Click))
+fn ?Made F, !go = ? @ ((F, !go))
+
+@page: @unit
+@page:
+    !go <- Ui.Button($label=$"go")
+    match ?Made (\|n| n + 1), !go:
+        ? @t:
+            ((F, !again)) <- @t
+            $count <- 0 then $count + 1 on !again
+            Ui.Label($text=$"{F 5} {$count}")
+        nil: Ui.Label($text=$"none")
