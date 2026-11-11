@@ -97,7 +97,8 @@ Dynamics and events
 - lower/expr.prism:354 a dynamic passed whole to a function where it has no live dynamic
   (LF). Programs: `Wrap $r` with `$r` a clause widget's result
   (ts-ch04-whole-clause-result), with `$g` a place's dynamic
-  (ts-ch04-whole-place-dynamic); a global `let $four = $ 4`, a `for`'s `$v` over
+  (ts-ch04-whole-place-dynamic), with a global `let $four = $ 4`
+  (ts-ch04-whole-global-dynamic); a `for`'s `$v` over
   `@PerKey` and a host's `$doc` reach it too, with no test. A row passing its block's
   hold and a hosted child's result do not reach it: rustc refuses the crate
   (ts-ch04-whole-row-parent, ts-ch04-whole-hosted-result).
