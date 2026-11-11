@@ -170,7 +170,7 @@ fn AppliedBlueprintLine wx, e, blueprint:
         let hearer = if heard: [[(DoLet (PaBind "heard_by"), (XWeak XSelf))]] else: [[]]
         let res = "{name}_res"
         let made = if answered: PaTuple [[(PaBind "row"), (PaBind "built"), (PaBind "answered")]] else: PaTuple [[(PaBind "row"), (PaBind "built")]]
-        let keeps = if answered: [[(DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(TryOf (XCallAt (HelperRef "answer_plain"), [[outTy]], [[(XRef (XVar "answered"))]]))]]))]] else: [[]]
+        let keeps = if answered: [[(DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(FirstAnswerTaken lx, outTy, "answered")]]))]] else: [[]]
         let select = WithRowBase wx, "self", pos, (XBlock (Append (Append (Append hearer, [[(DoLet made, applied)]]), keeps), (GapSet name, (? gap))), (XVar "row"))
         let wx3 = update wx2:
             &_.pos <= Pos(scope=pos.scope, at=pos.at + wideGeneration)
@@ -196,13 +196,33 @@ fn AppliedBlueprintLine wx, e, blueprint:
 # other answer is a fault (the accessor's).
 AnswerSink: unbounded fn Lx, Text, OutTy -> Ex
 fn AnswerSink lx, name, t:
-    let tags = Filter (Values lx.g.tags), \|tg| tg.kind == "Element" and ((AnswerOpen lx, tg) or (AnswerTy lx, tg) == t)
-    let Taken = \|tg| RecodedAnswer (AnswerOpen lx, tg), (AnswerTy lx, tg), t, (TryOf (XMethod (XVar "answer"), (AnswerAccessor tg), [[]]))
-    let fired = match tags[0]:
-        ? first: Fold (Drop tags, 1), (Taken first), \|rest, tg| XIf (XIsCase (XVar "answer"), [[AnswerVariant tg]]), (Taken tg), rest
+    let fired = match ?AnswerByTag lx, t, "answer":
+        ? taken: taken
         nil: InternalBug "a blueprint's answers heard at a type no element tag of the program answers with"
     let up = DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "block"]]), (XUpgrade (XVar "heard_by")), [[(DoExpr (XMethod (XVar "block"), "{name}_up", [[(XVar "fired"), XCx]]))]], [[]]
     XClosure True, [[(PaBind "answer"), (PaBind "cx")]], (XBlock [[(DoLet (PaBind "fired"), fired), up]], (XCtor (RefRuntime "std::Ok"), [[XUnit]]))
+
+# An answer (the local `answer`, a `crate::Answer`) read at the type `t` by the tag it
+# is under: the program's element tags whose answers are of that type, and its generic
+# ones, whose answers are recoded to it. An answer made outside a tag's arm is read at
+# the first one's type (its accessor reads plain data so), and an answer under any other
+# tag is the accessor's fault. `nil` when no tag answers with the type.
+?AnswerByTag: unbounded fn Lx, OutTy, Text -> ?Ex
+fn ?AnswerByTag lx, t, answer:
+    let tags = Filter (Values lx.g.tags), \|tg| tg.kind == "Element" and ((AnswerOpen lx, tg) or (AnswerTy lx, tg) == t)
+    let Taken = \|tg| RecodedAnswer (AnswerOpen lx, tg), (AnswerTy lx, tg), t, (TryOf (XMethod (XVar answer), (AnswerAccessor tg), [[]]))
+    match tags[0]:
+        ? first: ? (Fold (Drop tags, 1), (Taken first), \|rest, tg| XIf (XIsCase (XVar answer), [[AnswerVariant tg]]), (Taken tg), rest)
+        nil: nil
+
+# The first answer of a blueprint value a line binds (`n <- @t`), read at the line's
+# type: under the tag whose arm made the blueprint (`@Answerer n` in a supplier's arm
+# answers under that arm's tag), or outside any (a widget read as a value elsewhere
+# answers plain data, `answer_plain`).
+FirstAnswerTaken: unbounded fn Lx, OutTy, Text -> Ex
+fn FirstAnswerTaken lx, t, answer = match ?AnswerByTag lx, t, answer:
+    ? taken: taken
+    nil: TryOf (XCallAt (HelperRef "answer_plain"), [[t]], [[(XRef (XVar answer))]])
 
 # A blueprint a `let` of the block names, applied (`let @w = @Tile k`, then `@w`): its
 # expression built here, in this line's environments, at this node's next positions,
