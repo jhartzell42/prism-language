@@ -227,7 +227,7 @@ fn AddRow cp, m, r:
     Fold r.cases, (AddTy cp, path, TyInfo(kind="choice", fields=[[]], params=[[]])), \|c, ((v, ignore))| AddCtor c, "{path}::{v}", "choice"
 
 AddAnswer: fn Cp, AnswerDef -> Cp
-fn AddAnswer cp, a = Fold a.cases, (AddTy cp, "Answer", TyInfo(kind="choice", fields=[[]], params=[[]])), \|c, k| AddAnswerCase c, k
+fn AddAnswer cp, a = Fold a.cases, (AddCtor (AddTy cp, "Answer", TyInfo(kind="choice", fields=[[]], params=[[]])), "Answer::Untagged_a", "choice"), \|c, k| AddAnswerCase c, k
 
 # A tag's case, and a bundle tag's first-value case (`AnswerCase.first`).
 AddAnswerCase: fn Cp, AnswerCase -> Cp

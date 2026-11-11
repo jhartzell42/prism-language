@@ -72,13 +72,36 @@ fn ElementLine wx, benv, menv, e, ?bound:
                         match LayerOf fty:
                             LyEv:
                                 let ((r, w2)) = EventRef w, menv, arg
-                                ((lf, cf, mf, rd, (Connect w2, r, (SkRequest pos, (RequestField tg, fname)))))
+                                let w3 = Connect w2, r, (SkRequest pos, (RequestField tg, fname))
+                                if (Len (LevelEvents tg)) == 0: ((lf, cf, mf, rd, w3))
+                                else:
+                                    # the event itself in the place's level (ruling EP; `LevelEvents`):
+                                    # a port the event fires, as a bound event's value form is
+                                    # (`PreBindName`), and the event of that port, made once so the
+                                    # level holds the same event for as long as the place lives
+                                    let et = OutTyOf lx, (Peel (TypeAt lx, arg.span))
+                                    let ((stem, w4)) = FreshName w3, "request_{PlaceText pos}_{Snake (FieldSpell tg.home, fname, fty)}"
+                                    let pf = "{stem}_port"
+                                    let ef = "{stem}_event"
+                                    let pt = OutRc (OutPort et)
+                                    let evTy = OutEvent (TagFieldOut lx, fty)
+                                    let made = RecodedWhole lx, fty, (XCall (RefRuntime "prism_rtl::Event::of"), [[XRef (XVar pf)]])
+                                    let w5 = update (Connect w4, r, (SkPort stem)):
+                                        &_.taken <= Append &_.taken, [[pf, ef]]
+                                        &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind pf), pt), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]])), (DoLet (PaTyped (PaBind ef), evTy), made)]]
+                                        &_.fields <= Append &_.fields, [[((pf, pt, "place {PlaceText pos}'s `{fname}`: the port it fires")), ((ef, evTy, "place {PlaceText pos}'s `{fname}` as its level holds it"))]]
+                                        &_.moves <= Append &_.moves, [[((pf, (XClone (XVar pf)))), ((ef, (XClone (XVar ef))))]]
+                                    let spelled = FieldSpell tg.home, fname, fty
+                                    let held = XClone (XField XSelf, ef)
+                                    (((Push lf, ((spelled, held))), (Push cf, ((spelled, (XClone (XVar ef))))), (Push mf, ((spelled, held))), rd, w5))
                             otherwise:
-                                let ((ex, rds)) = DynamicExpr w, menv, arg
+                                let ((ex0, rds)) = DynamicExpr w, menv, arg
                                 # at the build every name with a value then reads it (`InitEnv`):
                                 # a window's title, asked with its first value before the node is
-                                let cv = Own (ValueOf lx, (InitEnv benv), arg)
-                                let mv = Own (ValueOf lx, menv, arg)
+                                let cv = RecodedField lx, fty, (Own (ValueOf lx, (InitEnv benv), arg))
+                                let mv = RecodedField lx, fty, (Own (ValueOf lx, menv, arg))
+                                # a generic tag's field goes into its level as plain data
+                                let ex = RecodedField lx, fty, ex0
                                 (((Push lf, (((FieldSpell tg.home, fname, fty), ex))), (Push cf, (((FieldSpell tg.home, fname, fty), cv))), (Push mf, (((FieldSpell tg.home, fname, fty), mv))), (UnionReads rd, rds), w))
             # a field that reads a late name has no value at the build (`BindLate`,
             # `MarkLateLets`): the place is live over the node's getters, read where the
@@ -125,9 +148,7 @@ fn ElementOut lx, tg, full:
     let t = match Peel full:
         TyElem ignore, o: OutTyOf lx, (Peel o)
         otherwise: OutTyOf lx, (Peel tg.out)
-    match t:
-        OutGen ignore: OutPod
-        otherwise: t
+    ErasedOut t
 
 # The tag an element expression names.
 TagNameOf: fn Lx, Expr -> Text
@@ -195,7 +216,7 @@ fn BundleFirst wx, tg, pos, plainIx, tys, parts, level = match plainIx:
         let one = (Len plainIx) == 1
         let plainTy = if one: Or tys[Or plainIx[0], 0], OutUnit else: OutTuple (Each plainIx, \|i| Or tys[i], OutUnit)
         let wx1 = update wx:
-            &_.lets <= Append &_.lets, [[(FirstValueLet wx, pos, tg, level), (DoLet (PaBind "bundle_{PlaceText pos}"), (if Emits wx, pos: XDecode plainTy, (XRef (XVar "first_{PlaceText pos}")) else: XVar "first_{PlaceText pos}"))]]
+            &_.lets <= Append &_.lets, [[(FirstValueLet wx, pos, tg, level, plainTy), (DoLet (PaBind "bundle_{PlaceText pos}"), (if Emits wx, pos: XDecode plainTy, (XRef (XVar "first_{PlaceText pos}")) else: XVar "first_{PlaceText pos}"))]]
             &_.fallible <= True
         Fold (Range0 (Len plainIx)), wx1, \|w, k|
             let i = Or plainIx[k], 0
@@ -229,8 +250,8 @@ fn BundleAnswer wx, tg, pos, et, ?b:
 # construction, prism_rtl's `Host::first_value`) and answers typed, by the tag's `Answer`
 # accessor. Either way the local `first_{pos}` holds the value, decoded from a `Pod` only
 # from the World.
-FirstValueLet: fn Wx, Pos, TagInfo, Ex -> Do
-fn FirstValueLet wx, pos, tg, level:
+FirstValueLet: unbounded fn Wx, Pos, TagInfo, Ex, OutTy -> Do
+fn FirstValueLet wx, pos, tg, level, placed:
     let missing = XCall (RefRuntime "rt::Fault::answer"), [[(XStr "no first value for {tg.name}")]]
     if Emits wx, pos:
         let asked = XMethod (XCx), "first_value", [[(XRef (XMethod level, "to_pod", [[]]))]]
@@ -240,7 +261,8 @@ fn FirstValueLet wx, pos, tg, level:
         let entry = Or (Fold wx.places, nil, \|?e, pl| if pl.pos == pos: ? pl.entry else: ?e), ""
         let asked = TryOf (XMethod (XVar host), "first_value", [[(XRef (PlaceAt wx, "", pos)), (XRef level), (XRef (XVar entry)), XCx]])
         let accessor = if (IsBundleTag tg): "{AnswerAccessor tg}_first" else: AnswerAccessor tg
-        DoLet (PaBind "first_{PlaceText pos}"), (TryOf (XMethod (TryOf (XMethod asked, "ok_or", [[missing]])), accessor, [[]]))
+        let carried = if IsBundleTag tg: Or (?BundleFirstTy wx.lx, tg), OutUnit else: AnswerTy wx.lx, tg
+        DoLet (PaBind "first_{PlaceText pos}"), (RecodedAnswer (AnswerOpen wx.lx, tg), carried, placed, (TryOf (XMethod (TryOf (XMethod asked, "ok_or", [[missing]])), accessor, [[]])))
 
 # The host whose document a position's place is an entry of, as the build spells it (a
 # local before the node exists): the host of its scope, or for a node's own places in a
@@ -288,7 +310,7 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
             # a World's first value is plain data, decoded; a host's is typed already
             let first = if emits: XDecode out, (XRef (XVar "first_{PlaceText pos}")) else: (XVar "first_{PlaceText pos}")
             let wx2 = update wx1:
-                &_.lets <= Push &_.lets, (FirstValueLet wx, pos, tg, level)
+                &_.lets <= Push &_.lets, (FirstValueLet wx, pos, tg, level, out)
                 &_.fields <= Push &_.fields, ((f, OutHold out, "pushed to place {PlaceText pos}"))
                 &_.inits <= Push &_.inits, ((f, (XCall (RefRuntime "rt::Hold::new"), [[first, XCx]])))
                 &_.dynPlaces <= Push &_.dynPlaces, ((pos, f, out, (AnswerAccessor tg)))
@@ -307,7 +329,7 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
                 let f = PlaceStem rs
                 let first = if Emits wx, pos: XDecode out, (XRef (XVar "first_{PlaceText pos}")) else: (XVar "first_{PlaceText pos}")
                 let wx2 = update wx:
-                    &_.lets <= Append &_.lets, [[(FirstValueLet wx, pos, tg, level), (DoLet (PaBind f), first)]]
+                    &_.lets <= Append &_.lets, [[(FirstValueLet wx, pos, tg, level, out), (DoLet (PaBind f), first)]]
                     &_.fields <= Push &_.fields, ((f, out, "place {PlaceText pos}'s answer, its first value"))
                     &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
                     &_.fallible <= True

@@ -345,6 +345,9 @@ struct Event {
     static Event never() { return Event{nullptr, make_rc<Port<T>>()}; }
     /// A node's own event as a value: the port its firing method fires.
     static Event of(const Rc<Port<T>>& port) { return Event{nullptr, port}; }
+    /// Events compare by identity, the port they fire, as dynamics do: an element's level
+    /// holds the events of its event fields (ruling EP).
+    bool operator==(const Event& o) const { return ptr_eq(port, o.port); }
     /// The event `f` of this one, a pure transform at each firing (a lifted call).
     template <class F>
     auto map(F f) const -> Event<std::invoke_result_t<F, const T&>> {
@@ -438,18 +441,26 @@ struct Live {
 
     /// One event field of the live element as an `!T` (an element pattern's `!field=!r`,
     /// ruling EP): each request the place makes through `field` (none: the tag's only
-    /// event field), decoded, in the tick the place fires it.
-    template <class T>
-    Event<T> requested(std::optional<std::string> field) const {
-        auto port = make_rc<Port<T>>();
-        requests->subscribe([port, field](const std::pair<std::optional<std::string>, Pod>& request, Cx& cx) -> Done {
-            if (request.first != field) return {};
-            auto decoded = from_pod<T>(request.second);
-            if (!decoded) return unexpected(decoded.error());
-            return port->fire(*decoded, cx);
-        });
-        return Event<T>{nullptr, port};
-    }
+    /// event field), decoded, in the tick the place fires it. The event's type is the one
+    /// the value is given to (a description's field): C++ deduces no template argument
+    /// from a result, so `requested` gives a `Requested`, which converts to that `Event<T>`.
+    struct Requested {
+        Rc<Port<std::pair<std::optional<std::string>, Pod>>> requests;
+        std::optional<std::string> field;
+
+        template <class T>
+        operator Event<T>() const {
+            auto port = make_rc<Port<T>>();
+            requests->subscribe([port, field = field](const std::pair<std::optional<std::string>, Pod>& request, Cx& cx) -> Done {
+                if (request.first != field) return {};
+                auto decoded = from_pod<T>(request.second);
+                if (!decoded) return unexpected(decoded.error());
+                return port->fire(*decoded, cx);
+            });
+            return Event<T>{nullptr, port};
+        }
+    };
+    Requested requested(std::optional<std::string> field) const { return Requested{requests, std::move(field)}; }
 };
 
 /// An element applied as a plain value, before a statement or a host places it (Type System

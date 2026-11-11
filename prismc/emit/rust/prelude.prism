@@ -1029,6 +1029,12 @@ pub fn filter_map_job<K: Ord + Clone + 'static, V: Clone + 'static>(m: Map<K, V>
     }))
 }
 
+/// A local function that calls itself: `step` is the function as one closure that takes
+/// itself first (what its body calls for its own name) and its arguments as one value.
+pub fn recursive<A, R>(step: &dyn for<'a> Fn(&'a dyn Fn(A) -> R, A) -> R, first: A) -> R {
+    step(&|next| recursive(step, next), first)
+}
+
 /// A job run to its result inside the cycle: a call of an unbounded function value from
 /// direct-style code (gap DS of prismc/README.md).
 pub fn run_to_end<B>(job: Rc<dyn Job<B>>) -> B {
@@ -1081,6 +1087,17 @@ pub fn dyn_constant<T: Clone + 'static>(v: T) -> Dynamic<T> {
 /// dynamic list, Type System ch. 4): prism_rtl's own node decides each tick's firing.
 pub fn merge_all<T: Clone + 'static>(events: &Array<Event<T>>) -> Event<Array<T>> {
     ::prism_rtl::merge_all(events)
+}
+
+/// A value given for a generic tag's field or answer, as the tag's own types hold it: the
+/// same plain data at the type with each of the tag's variables a `Pod` (and back, where
+/// a place reads its answer at the type it was placed at). The two types differ only
+/// there, so the decoding cannot fail.
+pub fn recode<U: FromPod>(v: &impl ToPod) -> U {
+    match U::from_pod(&v.to_pod()) {
+        Ok(u) => u,
+        Err(fault) => panic!("a prismc bug: a generic tag's value did not recode: {fault:?}"),
+    }
 }
 
 /// A fault kind as a value (`Fs.NotFound` named, an `Error`'s `kind` read): its name, the

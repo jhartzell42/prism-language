@@ -746,12 +746,14 @@ fn PreBind wx, benv, menv, s = match s.kind:
                 # a pattern inside the tuple: each name it binds (`BindPatternResult`)
                 otherwise: if ?step == nil: (Fold (BinderNames q), ((w, be, me)), \|((w2, be2, me2)), n| PreBindName w2, be2, me2, n, how) else: ((w, be, me))
             otherwise: if ?step == nil: (Fold (BinderNames p), ((wx, benv, menv)), \|((w2, be2, me2)), n| PreBindName w2, be2, me2, n, how) else: ((wx, benv, menv))
+    # a `let` of any other pattern (a record's, a constructor's, a tuple inside a tuple):
+    # each name it binds (`BindPatternResult`)
     SLet p, ignore, ignore: match p.kind:
         PName n: if (IsPlacedLet menv, p) or IsLateLet menv, p: ((wx, benv, menv)) else: PreBindName wx, benv, menv, n, AsLet
         PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
             PName n: PreBindName w, be, me, n, AsLet
-            otherwise: ((w, be, me))
-        otherwise: ((wx, benv, menv))
+            otherwise: Fold (BinderNames q), ((w, be, me)), \|((w2, be2, me2)), n| PreBindName w2, be2, me2, n, AsLet
+        otherwise: Fold (BinderNames p), ((wx, benv, menv)), \|((w2, be2, me2)), n| PreBindName w2, be2, me2, n, AsLet
     SFn c:
         let fname = DefNameText c.name
         ((wx, (Bind benv, fname, (WithClause benv, fname, c)), (Bind menv, fname, (WithClause menv, fname, c))))
@@ -1383,14 +1385,20 @@ fn LetLine wx, benv, menv, p, e:
                     (((WidgetLetField wx, (PlaceStem rs), t, v, "`{PatText p}`"), benv))
         # a tuple of plain names (or `ignore`s): the value computed at the build, each name
         # its part, as a widget's plain result binds them
-        ? (BnParts parts) if Fold parts, True, \|ok, ?b| ok and IsPlainPart ?b:
+        ? (BnParts parts) if (IsNamesPattern p) and Fold parts, True, \|ok, ?b| ok and IsPlainPart ?b:
             let t = OutTyOf lx, (Peel (TypeAt lx, e.span))
             (((BindPlainResult wx, menv, p, (Own (ValueOf lx, benv, e)), t), benv))
         otherwise: match p.kind:
             PIgnore: ((wx, benv))
-            otherwise:
+            # any other pattern whose names are plain (a record's, a constructor's, a tuple
+            # inside a tuple): the value computed at the build and matched once there, each
+            # name moved into its field, as a widget's plain result bound by a pattern is
+            otherwise: if Fold (BinderNames p), True, \|ok, n| ok and IsPlainPart menv.names[SNameKey n]:
+                let t = OutTyOf lx, (Peel (TypeAt lx, e.span))
+                (((BindPatternResult wx, menv, p, (Own (ValueOf lx, benv, e)), t, (Peel (TypeAt lx, e.span))), benv))
+            else:
                 let wx2 = update wx:
-                    &_.build <= Push &_.build, (RefusalDo "a widget block's `let` of this pattern (`{SrcText lx, lx.file, p.span}`): a name, or a tuple of plain names, binds")
+                    &_.build <= Push &_.build, (RefusalDo "a widget block's `let` of this pattern (`{SrcText lx, lx.file, p.span}`), which binds a dynamic or an event inside it")
                 ((wx2, benv))
 
 # A part of a tuple pattern as its prebinding has it: a plain name, or none (`ignore`).

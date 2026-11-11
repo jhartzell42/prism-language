@@ -104,6 +104,10 @@ fn DropLastSegment p:
 # The crate's own row of every element tag and its answers (`crate::Elem`, `crate::Answer`).
 let elemRef = RefItem "", "Elem", "crate::Elem"
 let answerRef = RefItem "", "Answer", "crate::Answer"
+# `Answer`'s case of no tag: an answer made outside a tag's arm, plain data that the place
+# taking it reads at its own tag's type. Named as no tag's case is (a tag's is its name in
+# UpperCamelCase).
+let untaggedRef = RefChild answerRef, "Untagged_a"
 
 # A type of the output program (claude/backend.md, "Types"): the value types, and the
 # runtime's cells, ports, references and shared pointers a node is made of.
@@ -423,6 +427,11 @@ type TagDef = record:
     name: Text
     tagName: Text
     fields: [((Text, Text, OutTy))]
+    # An element tag's event fields, each the event the element was made with (ruling EP):
+    # the field's spelled name and what it fires. No part of the element's plain data: a
+    # World sees a firing as a request, and an element read back from plain data has
+    # events that never fire.
+    events: [((Text, OutTy))]
     doc: Text
     # Every field is plain data (`Podable`): the struct is `Clone` and `PartialEq` and
     # reads back from a `Pod`, so a value holding it (a `[Draw]` in a record) can be data.

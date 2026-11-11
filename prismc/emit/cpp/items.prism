@@ -371,9 +371,10 @@ fn IndentCpp t = Join (Each (SplitOn t, "\n"), \|l| if l == "": "" else: "    {l
 # An element tag's `Level`: a struct of its fields, its tag, its plain data.
 TagParts: unbounded fn Cp, TagDef -> Parts
 fn TagParts cp, t:
-    let fields = Join (Each t.fields, \|((ignore, f, ft))| "{CppType cp, ft} {FieldId f};"), "\n"
+    let fields = Join (Append (Each t.fields, \|((ignore, f, ft))| "{CppType cp, ft} {FieldId f};"), (Each t.events, \|((f, et))| "{CppType cp, (OutEvent et)} {FieldId f};")), "\n"
     let pods = Join (Each t.fields, \|((p, f, ignore))| "\{\"{p}\", ::prism_rtl::to_pod({FieldId f})\}"), ", "
-    let reads = Join (Each t.fields, \|((p, f, ft))| ".{FieldId f} = TRY(::prism_rtl::from_pod<{CppType cp, ft}>(TRY(crate::prelude::field(p, \"{p}\"))))"), ", "
+    # an element read back from plain data was made with no event: each never fires
+    let reads = Join (Append (Each t.fields, \|((p, f, ft))| ".{FieldId f} = TRY(::prism_rtl::from_pod<{CppType cp, ft}>(TRY(crate::prelude::field(p, \"{p}\"))))"), (Each t.events, \|((f, et))| ".{FieldId f} = {CppType cp, (OutEvent et)}::never()")), ", "
     let eq = if t.eq: "bool operator==(const {t.name}&) const = default;" else: ""
     let back = if t.pod: "static crate::prelude::Result<{t.name}> from_pod(const crate::prelude::Pod& p);" else: ""
     # a level that holds dynamics as a World reads it, deep (doubt WD)
@@ -386,7 +387,7 @@ fn TagParts cp, t:
     let toPod = CppFunction "", "crate::prelude::Pod {t.name}::to_pod() const", "return crate::prelude::Pod::element(TAG, \{{pods}\});"
     let show = CppFunction "", "void {t.name}::show(crate::prelude::Printer& p) const", "::prism_rtl::to_pod(*this).structure();\ncrate::prelude::Show<crate::prelude::Pod>::show(::prism_rtl::to_pod(*this), p);"
     let fromPod = if t.pod: [[(CppFunction "", "crate::prelude::Result<{t.name}> {t.name}::from_pod(const crate::prelude::Pod& p)", "if (auto t = p.tag(); t && *t == TAG) return {t.name}\{{reads}\};\nreturn crate::prelude::mismatch<{t.name}>(\"a {t.tagName}\", p);")]] else: [[]]
-    let deps = Concat2 (Each t.fields, \|((ignore, ignore, ft))| ValueDeps cp, ft)
+    let deps = Concat2 (Append (Each t.fields, \|((ignore, ignore, ft))| ValueDeps cp, ft), (Each t.events, \|((ignore, et))| ValueDeps cp, et))
     Parts(forward=[["struct {t.name};"]], values=[[ValueDecl(path=(DeclPath cp, t.name), deps=deps, text=decl)]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append (Append [[toPod, show]], fromPod), levelDefs))
 
 # A level field as a World reads it (doubt WD): plain data as it is; a map of dynamics or a
@@ -439,17 +440,20 @@ fn AnswerParts cp, a:
     let firsts = Fold a.cases, [[]], \|acc, c| match c.?first:
         ? ft: Push acc, ((c, ft))
         nil: acc
-    let names = Append (Each a.cases, \|c| c.variant), (Each firsts, \|((c, ft))| "{c.variant}First")
+    # and one case of no tag, an answer made outside a tag's arm, as plain data (the
+    # lowering's `untaggedRef`)
+    let names = Push (Append (Each a.cases, \|c| c.variant), (Each firsts, \|((c, ft))| "{c.variant}First")), "Untagged_a"
     let accessors = Join (Append (Each a.cases, \|c| "crate::prelude::Result<{CppType cp, c.ty}> {c.accessor}() const;"), (Each firsts, \|((c, ft))| "crate::prelude::Result<{CppType cp, ft}> {c.accessor}_first() const;")), "\n"
     let members = "const char* tag() const;\n{accessors}\nstatic crate::prelude::Result<Answer> decode(const Elem& e, const crate::prelude::Pod& v);\nstatic crate::prelude::Result<Answer> decode_first(const Elem& e, const crate::prelude::Pod& v);"
-    let cases = Join (Append (Each a.cases, \|c| CaseDecl c.variant, "{CppType cp, c.ty} a0;"), (Each firsts, \|((c, ft))| CaseDecl "{c.variant}First", "{CppType cp, ft} a0;")), "\n"
+    let cases0 = Join (Append (Each a.cases, \|c| CaseDecl c.variant, "{CppType cp, c.ty} a0;"), (Each firsts, \|((c, ft))| CaseDecl "{c.variant}First", "{CppType cp, ft} a0;")), "\n"
+    let cases = "{cases0}\n{CaseDecl "Untagged_a", "crate::prelude::Pod a0;"}"
     let cls = ChoiceClass (CppDoc "`Answer c`: an answer to an element, typed by its tag (Semantics ch. 9): what a host's\nsupplier answers a child place with, and what a World's answer to a forwarded element\ndecodes to, carrying the tag's output."), "", "Answer", cases, (Join names, ", "), members
     let tags = Join (Append (Each a.cases, \|c| "if (::std::holds_alternative<{c.variant}>(cases())) return {TypePath (RefSpelled c.structPath)}::TAG;"), (Each firsts, \|((c, ft))| "if (::std::holds_alternative<{c.variant}First>(cases())) return {TypePath (RefSpelled c.structPath)}::TAG;")), "\n"
-    let tagFn = CppFunction "", "const char* Answer::tag() const", "{tags}\n::prism_rtl::unreachable();"
-    let firstGetters = Each firsts, \|((c, ft))| CppFunction (CppDoc "A `{c.tagName}`'s first value."), "crate::prelude::Result<{CppType cp, ft}> Answer::{c.accessor}_first() const", "if (auto c = ::std::get_if<{c.variant}First>(&cases())) return c->a0;\nreturn crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where {c.tagName}'s first value was expected\")));"
+    let tagFn = CppFunction "", "const char* Answer::tag() const", "{tags}\nreturn \"no tag (an answer made outside a tag's arm)\";"
+    let firstGetters = Each firsts, \|((c, ft))| CppFunction (CppDoc "A `{c.tagName}`'s first value."), "crate::prelude::Result<{CppType cp, ft}> Answer::{c.accessor}_first() const", "if (auto c = ::std::get_if<{c.variant}First>(&cases())) return c->a0;\nif (auto u = ::std::get_if<Untagged_a>(&cases())) return ::prism_rtl::from_pod<{CppType cp, ft}>(u->a0);\nreturn crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where {c.tagName}'s first value was expected\")));"
     let decodeFirsts = Join (Each firsts, \|((c, ft))| "if (is<Elem::{c.variant}>(e)) return Answer({c.variant}First\{TRY(::prism_rtl::from_pod<{CppType cp, ft}>(v))\});"), "\n"
     let decodeFirst = CppFunction (CppDoc "A World's first value for the element `e`: a bundle's plain parts, any other tag's answer."), "crate::prelude::Result<Answer> Answer::decode_first(const Elem& e, const crate::prelude::Pod& v)", "{decodeFirsts}\nreturn decode(e, v);"
-    let getters = Each a.cases, \|c| CppFunction (CppDoc "A `{c.tagName}`'s answer."), "crate::prelude::Result<{CppType cp, c.ty}> Answer::{c.accessor}() const", "if (auto c = ::std::get_if<{c.variant}>(&cases())) return c->a0;\nreturn crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where {c.tagName}'s was expected\")));"
+    let getters = Each a.cases, \|c| CppFunction (CppDoc "A `{c.tagName}`'s answer."), "crate::prelude::Result<{CppType cp, c.ty}> Answer::{c.accessor}() const", "if (auto c = ::std::get_if<{c.variant}>(&cases())) return c->a0;\nif (auto u = ::std::get_if<Untagged_a>(&cases())) return ::prism_rtl::from_pod<{CppType cp, c.ty}>(u->a0);\nreturn crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where {c.tagName}'s was expected\")));"
     let decodes = Join (Each a.cases, \|c| "if (is<Elem::{c.variant}>(e)) return Answer({c.variant}\{TRY(::prism_rtl::from_pod<{CppType cp, c.ty}>(v))\});"), "\n"
     let decode = CppFunction (CppDoc "A World's answer to the element `e`, decoded by its tag."), "crate::prelude::Result<Answer> Answer::decode(const Elem& e, const crate::prelude::Pod& v)", "{decodes}\n::prism_rtl::unreachable();"
     Parts(forward=[["class Answer;"]], values=[[ValueDecl(path="Answer", deps=[[]], text=cls)]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append [[tagFn]], (Append (Append getters, firstGetters), [[decode, decodeFirst]])))

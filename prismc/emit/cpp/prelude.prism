@@ -78,6 +78,46 @@ inline Result<Pod> field(const Pod& p, const char* name) {
     return unexpected(Fault::answer(str("no field ", name, " in ", p)));
 }
 
+/// `type Turn b = choice: More | Done b` (the prelude's; `::prism_rtl::Turn` is the job's),
+/// as a program's own choice is emitted: a case struct each, positional fields `a0`.
+template <class B>
+class PreludeTurn {
+public:
+    using prism_value = void;
+    struct More {
+        bool operator==(const More&) const = default;
+    };
+    struct Done {
+        B a0;
+        bool operator==(const Done&) const = default;
+    };
+    using Cases = std::variant<More, Done>;
+    template <class C>
+        requires ::prism_rtl::one_of<C, More, Done>
+    PreludeTurn(C c) : cases_(std::move(c)) {}
+    const Cases& cases() const { return cases_; }
+    void show(Printer& p) const {
+        if (auto c = ::std::get_if<More>(&cases())) p.choice("More", {});
+        else if (auto c = ::std::get_if<Done>(&cases())) p.choice("Done", {c->a0});
+    }
+    Pod to_pod() const {
+        return ::std::holds_alternative<More>(cases()) ? Pod::choice("More", {})
+            : Pod::choice("Done", {::prism_rtl::to_pod(::std::get<Done>(cases()).a0)});
+    }
+    static Result<PreludeTurn<B>> from_pod(const Pod& whole) {
+        const Pod& p = whole.structure();
+        if (auto c = p.if_choice()) {
+            if (c->ctor == "More" && c->args.size() == 0) return PreludeTurn<B>(More{});
+            if (c->ctor == "Done" && c->args.size() == 1) return PreludeTurn<B>(Done{TRY(::prism_rtl::from_pod<B>(c->args[0]))});
+        }
+        return mismatch<PreludeTurn<B>>("a Turn", p);
+    }
+    friend bool operator==(const PreludeTurn& a, const PreludeTurn& b) { return a.cases() == b.cases(); }
+
+private:
+    Cases cases_;
+};
+
 /// `type Span = record: file, line, column, binding`.
 struct Span {
     using prism_value = void;
@@ -803,6 +843,14 @@ JobRef<Map<K, V>> filter_map_job(Map<K, V> m, F keep) {
     });
 }
 
+/// A local function that calls itself: `step` is the function as one closure that takes
+/// itself first (what its body calls for its own name) and its arguments as one value.
+template <class A, class R, class F>
+R recursive(const F& step, A first) {
+    ::std::function<R(A)> again = [&](A next) -> R { return step(again, std::move(next)); };
+    return again(std::move(first));
+}
+
 /// A job run to its result inside the cycle: a call of an unbounded function value from
 /// direct-style code (gap DS of prismc/README.md).
 template <class B>
@@ -914,6 +962,16 @@ Dynamic<T> dyn_constant(T v) { return Dynamic<T>::constant(std::move(v)); }
 /// dynamic list, Type System ch. 4): prism_rtl's own node decides each tick's firing.
 template <class T>
 Event<Array<T>> merge_all(const Array<Event<T>>& events) { return ::prism_rtl::merge_all(events); }
+
+/// A value given for a generic tag's field or answer, as the tag's own types hold it: the
+/// same plain data at the type with each of the tag's variables a `Pod` (and back). The
+/// two types differ only there, so the decoding cannot fail.
+template <class U, class T>
+U recode(const T& v) {
+    auto decoded = ::prism_rtl::from_pod<U>(::prism_rtl::to_pod(v));
+    if (!decoded) panic("a prismc bug: a generic tag's value did not recode");
+    return std::move(*decoded);
+}
 
 /// A fault kind as a value (`Fs.NotFound` named, an `Error`'s `kind` read): its name, the
 /// choice with no arguments it crosses to a World as.

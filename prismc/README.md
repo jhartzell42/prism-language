@@ -1929,8 +1929,7 @@ ruling taken (Claude's).
   makes the `for` a loop over its entries whose test is taking the next one, each turn a
   job (`ForJob`, the preludes' `for_turns_keyed` and `for_turns_indexed`), so
   `sem-ch07-while-match-for` costs 5 ticks in a `match` and 9 for a `for` of two entries
-  of 2 and 1 turns. A loop job in a `for &s <- &_:` is refused (its references cannot
-  outlive a cycle).
+  of 2 and 1 turns.
 - **FA A field's `.` or `->`** is chosen by the receiver's type where `?Pointer` knows it,
   and only otherwise by its name, `->` when any node has a member of that name
   (`cp.members`). Where the type is not known, a value's field named as some node's
@@ -2200,8 +2199,7 @@ a supplier's answer `@ x` outside a tag arm, a dynamic answer over what has
 no value at the owner's build, a widget-function blueprint as an answer, and a bundle in
 a hosted scope (pick HO); `@Flatten` of a dynamic that is not a `rebuild`'s (a `for` over a map of dynamics binds the value under the key, pick FV),
 `!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
-structural dynamic of its block (gap SU), a local function whose
-parameters are not names or used as a value, `!MergeAll` of a list that is not a
+structural dynamic of its block (gap SU), `!MergeAll` of a list that is not a
 literal, lines of a block that read each
 other at the build (pick BO), and the zombie and
 dead states (`leave`, `clean_up`, `edges`).

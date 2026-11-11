@@ -605,12 +605,14 @@ fn TypeDoc lx, ti = match lx.g.srcs[ti.file]:
     ? src: Trim (LineText src, (CLineOf src.starts, ti.span.start))
     nil: ti.name
 
-# A tag's struct: an element tag's `Level`, its plain and dynamic fields (an event field
-# is a request); any other tag's fields, all plain.
+# A tag's struct: an element tag's `Level`, its plain and dynamic fields and the events
+# of its event fields (`LevelEvents`; a firing is a request too); any other tag's fields,
+# all plain.
 TagDefOf: unbounded fn Lx, TagInfo -> TagDef
 fn TagDefOf lx, tg:
-    let fields = Each (LevelFields tg), \|((fname, ft))| ((fname, (FieldSpell tg.home, fname, ft), (OutTyOf lx, (Peel ft))))
-    TagDef(name=(TagStructOf tg), tagName=tg.name, fields=fields, doc=(TypeDoc lx, (TyInfo(name=tg.name, home=tg.home, params=[[]], body=BOpaque, derives=[[]], file=tg.file, span=tg.span))), pod=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and Podable t), eq=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and RuntimeEq t))
+    let fields = Each (LevelFields tg), \|((fname, ft))| ((fname, (FieldSpell tg.home, fname, ft), (TagFieldOut lx, ft)))
+    let events = Each (LevelEvents tg), \|((fname, ft))| (((FieldSpell tg.home, fname, ft), (TagFieldOut lx, ft)))
+    TagDef(name=(TagStructOf tg), tagName=tg.name, fields=fields, events=events, doc=(TypeDoc lx, (TyInfo(name=tg.name, home=tg.home, params=[[]], body=BOpaque, derives=[[]], file=tg.file, span=tg.span))), pod=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and Podable t), eq=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and RuntimeEq t))
 
 # A tag's items: its struct, and an element tag's description beside it.
 TagItems: unbounded fn Lx, TagInfo -> [Item]
@@ -628,9 +630,17 @@ fn DescDefOf lx, tg:
 
 DescFieldTy: unbounded fn Lx, Ty -> OutTy
 fn DescFieldTy lx, ft = match LayerOf ft:
-    LyDyn: OutDyn (OutTyOf lx, (Peel ft))
-    LyEv: OutEvent (OutTyOf lx, (Peel ft))
-    otherwise: OutTyOf lx, (Peel ft)
+    LyDyn: OutDyn (TagFieldOut lx, ft)
+    LyEv: OutEvent (TagFieldOut lx, ft)
+    otherwise: TagFieldOut lx, ft
+
+# An element tag's event fields as its level holds them (ruling EP: an event field in an
+# element pattern binds the event the element was made with, and a document's entry is
+# matched as a description is): each the event itself, beside the plain and `$` fields.
+# The core prelude's own element tags, whose structs the prelude template writes, hold
+# none (`Prelude.Unwrap`'s `!~value` is heard as a request alone).
+LevelEvents: fn TagInfo -> [((Text, Ty))]
+fn LevelEvents tg = if tg.kind != "Element" or tg.home == "Prelude": [[]] else: Filter tg.fields, \|((ignore, ft))| (LayerOf ft) == LyEv
 
 LevelFields: fn TagInfo -> [((Text, Ty))]
 fn LevelFields tg = Filter tg.fields, \|((ignore, ft))| (LayerOf ft) != LyEv
@@ -681,22 +691,38 @@ fn ?BundleFirstTy lx, tg = match Peel tg.out:
         if not hasEv: nil
         else: match plain:
             [[]]: nil
-            [[c]]: ? (OutTyOf lx, c)
-            otherwise: ? (OutTuple (Each plain, \|c| OutTyOf lx, c))
+            [[c]]: ? (TagFieldOut lx, c)
+            otherwise: ? (OutTuple (Each plain, \|c| TagFieldOut lx, c))
     otherwise: nil
 
 # What an answer to a tag's element carries: its output's value; of a bundle (a tuple with
 # an event part, `Gui.Window`'s `((WindowId, !WindowInput))`) the event part's, which is
-# what a World answers with; a type variable left open, the answer as it came, a `Pod`.
+# what a World answers with; a variable of the tag, the answer as it came, a `Pod`
+# (`TagFieldOut`).
 AnswerTy: unbounded fn Lx, TagInfo -> OutTy
 fn AnswerTy lx, tg:
     let out = Peel tg.out
     let part = match out:
         TyTuple cs: Fold cs, out, \|found, c| if (LayerOf c) == LyEv: Peel c else: found
         otherwise: out
-    match OutTyOf lx, part:
-        OutGen ignore: OutPod
-        t: t
+    TagFieldOut lx, part
+
+# An answer taken out of its tag's variant (`v.pad_echo()?`), as the place that asked
+# reads it: itself, or of a generic tag (whose variant holds each variable as plain data,
+# `TagFieldOut`) recoded to the type the place was placed at.
+AnswerTaken: unbounded fn Lx, Text, OutTy, Ex -> Ex
+fn AnswerTaken lx, accessor, placed, taken:
+    let ?named = Fold (Values lx.g.tags), nil, \|?found, tg| if tg.kind == "Element" and (AnswerAccessor tg) == accessor: ? tg else: ?found
+    match ?named:
+        ? tg: RecodedAnswer (AnswerOpen lx, tg), (AnswerTy lx, tg), placed, taken
+        nil: InternalBug "an answer taken by `{accessor}`, which is no tag's accessor"
+
+# Whether a tag's output has a variable of the tag.
+AnswerOpen: unbounded fn Lx, TagInfo -> Bool
+fn AnswerOpen lx, tg = TagFieldOpen lx, tg.out
+
+RecodedAnswer: fn Bool, OutTy, OutTy, Ex -> Ex
+fn RecodedAnswer open, carried, placed, taken = if open and carried != placed: XCallAt (HelperRef "recode"), [[placed]], [[XRef taken]] else: taken
 
 # The Rust path of a tag's enum variant and of its struct, from the current module.
 TagPaths: fn Lx, TagInfo -> ((Ref, Ref))

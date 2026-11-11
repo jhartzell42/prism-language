@@ -259,6 +259,60 @@ fn Reaches g, t, target, seen = match t:
 RcField: fn Lx, Text, Nat -> Bool
 fn RcField lx, ctor, i = Or (Or lx.layouts[ctor], [[]])[i], False
 
+# A generic tag's field (`tag Pad.Echo of Element !r:` with `$?latest: r`; Type System
+# ch. 2: a generic tag's output is a scheme, its variables shared with its fields). The
+# program's `Elem` has one variant per tag, whatever the tag is placed at, so the tag's
+# structs hold each of its variables as plain data, a `Pod`, as an answer to an open
+# output is (`AnswerTy`): the type of a field there is the field's own with every variable
+# a `Pod`. A place that gives the field at `Text` recodes it (`RecodedField`), and a
+# host's arm reads the field as the plain data it is.
+TagFieldOut: unbounded fn Lx, Ty -> OutTy
+fn TagFieldOut lx, ft:
+    # the tag's variables are its own: the caller's instantiation does not name them
+    let own = update lx:
+        &_.subst <= {}
+    ErasedOut (OutTyOf own, (Peel ft))
+
+# Whether a tag's field has a variable of the tag in its type.
+TagFieldOpen: unbounded fn Lx, Ty -> Bool
+fn TagFieldOpen lx, ft:
+    let own = update lx:
+        &_.subst <= {}
+    HoldsGen (OutTyOf own, (Peel ft))
+
+ErasedOut: unbounded fn OutTy -> OutTy
+fn ErasedOut t = match t:
+    OutGen ignore: OutPod
+    OutNamed r, args: OutNamed r, (Each args, \|a| ErasedOut a)
+    OutOpt i: OutOpt (ErasedOut i)
+    OutRes i: OutRes (ErasedOut i)
+    OutRc i: OutRc (ErasedOut i)
+    OutTuple ts: OutTuple (Each ts, \|a| ErasedOut a)
+    OutArray e: OutArray (ErasedOut e)
+    OutMap k, v: OutMap (ErasedOut k), (ErasedOut v)
+    OutEvent i: OutEvent (ErasedOut i)
+    OutDyn i: OutDyn (ErasedOut i)
+    OutFn ps, r: OutFn (Each ps, \|a| ErasedOut a), (ErasedOut r)
+    OutJobFn a, r: OutJobFn (ErasedOut a), (ErasedOut r)
+    otherwise: t
+
+HoldsGen: unbounded fn OutTy -> Bool
+fn HoldsGen t = t != ErasedOut t
+
+# A value given for a generic tag's field, as the tag's structs hold it: plain data of
+# the erased type (the prelude's `recode`, by `ToPod` and `FromPod`); a `$` field's
+# dynamic and an event field's event mapped by it. A field with no variable is itself.
+RecodedField: unbounded fn Lx, Ty, Ex -> Ex
+fn RecodedField lx, ft, value = if not (TagFieldOpen lx, ft): value else:
+    let erased = TagFieldOut lx, ft
+    XCallAt (HelperRef "recode"), [[erased]], [[XRef value]]
+
+# The same of a field given whole, as a description holds it (`ElementValue`).
+RecodedWhole: unbounded fn Lx, Ty, Ex -> Ex
+fn RecodedWhole lx, ft, value = if not (TagFieldOpen lx, ft): value else: match LayerOf ft:
+    LyPlain: RecodedField lx, ft, value
+    otherwise: XMethod value, "map", [[(XClosure True, [[PaBind "open"]], (XCallAt (HelperRef "recode"), [[(TagFieldOut lx, ft)]], [[XVar "open"]]))]]
+
 # Whether a Rust type can cross to a World (`ToPod`, `FromPod`).
 Podable: unbounded fn OutTy -> Bool
 fn Podable t = match t:

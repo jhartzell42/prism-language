@@ -266,10 +266,11 @@ fn FromPodImpl t, head:
 
 RustTag: unbounded fn TagDef -> Text
 fn RustTag t:
-    let fields = Join (Each t.fields, \|((ignore, f, ft))| "pub {f}: {Type ft},"), "\n"
+    let fields = Join (Append (Each t.fields, \|((ignore, f, ft))| "pub {f}: {Type ft},"), (Each t.events, \|((f, et))| "pub {f}: {Type (OutEvent et)},")), "\n"
     let pods = Join (Each t.fields, \|((p, f, ignore))| "(\"{p}\", self.{f}.to_pod())"), ", "
     let derives = if t.eq: "::std::clone::Clone, ::std::cmp::PartialEq, ::std::cmp::Eq" else: "::std::clone::Clone"
-    let reads = Join (Each t.fields, \|((p, f, ignore))| "{f}: crate::prelude::FromPod::from_pod(crate::prelude::field(p, \"{p}\")?)?"), ", "
+    # an element read back from plain data was made with no event: each never fires
+    let reads = Join (Append (Each t.fields, \|((p, f, ignore))| "{f}: crate::prelude::FromPod::from_pod(crate::prelude::field(p, \"{p}\")?)?"), (Each t.events, \|((f, ignore))| "{f}: crate::prelude::Event::never()")), ", "
     let back = if t.pod: "\n{TagFromPod t.name, t.tagName, reads}" else: ""
     let deep = Fold t.fields, False, \|d, ((ignore, ignore, ft))| d or HoldsDyn ft
     let deepPods = Join (Each t.fields, \|((p, f, ft))| DeepField p, f, ft), ", "
@@ -318,8 +319,10 @@ fn RustAnswer a:
     let firsts = Fold a.cases, [[]], \|acc, c| match c.?first:
         ? ft: Push acc, ((c, ft))
         nil: acc
-    let cases = Join (Append (Each a.cases, \|c| "{c.variant}({Type c.ty}),"), (Each firsts, \|((c, ft))| "{c.variant}First({Type ft}),")), "\n"
-    let tags = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Append (Each a.cases, \|c| "Answer::{c.variant}(_) => {RsRef c.structPath}::TAG,"), (Each firsts, \|((c, ft))| "Answer::{c.variant}First(_) => {RsRef c.structPath}::TAG,")), "\n"
+    # and one case of no tag, an answer made outside a tag's arm, as plain data (the
+    # lowering's `untaggedRef`)
+    let cases = Join (Push (Append (Each a.cases, \|c| "{c.variant}({Type c.ty}),"), (Each firsts, \|((c, ft))| "{c.variant}First({Type ft}),")), "Untagged_a(crate::prelude::Pod),"), "\n"
+    let tags = Join (Push (Append (Each a.cases, \|c| "Answer::{c.variant}(_) => {RsRef c.structPath}::TAG,"), (Each firsts, \|((c, ft))| "Answer::{c.variant}First(_) => {RsRef c.structPath}::TAG,")), "Answer::Untagged_a(_) => \"no tag (an answer made outside a tag's arm)\","), "\n"
     let accessors = Join (Append (Each a.cases, \|c| AnswerGetter c.accessor, c.variant, c.tagName, (Type c.ty)), (Each firsts, \|((c, ft))| AnswerGetter "{c.accessor}_first", "{c.variant}First", c.tagName, (Type ft))), "\n"
     let decodes = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Each a.cases, \|c| "Elem::{c.variant}(..) => ::std::result::Result::Ok(Answer::{c.variant}({DecodeHead c.ty}::from_pod(v)?)),"), "\n"
     let decodeFirsts = Join (Push (Each firsts, \|((c, ft))| "Elem::{c.variant}(..) => ::std::result::Result::Ok(Answer::{c.variant}First({DecodeHead ft}::from_pod(v)?)),"), "_ => Self::decode(e, v),"), "\n"
