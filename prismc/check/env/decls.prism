@@ -164,7 +164,8 @@ fn ConvertTypeDecl g, st0, info, d = match d.kind:
                     TbRecord fs:
                         let ((fields, st2a)) = Fold fs, (([[]], st)), \|((acc, s)), f|
                             let ((ft, s2)) = ConvType cx, (SigilsOnName (SecondField s, acc, f), f), f.ty
-                            (((Push acc, ((f.name.name, (FieldSigils f.sigils, ft)))), s2))
+                            let ((fieldRow, s3)) = if Contains f.sigils, "@": FieldRow cx, s2, f.ty else: ((cx.scope, s2))
+                            (((Push acc, ((f.name.name, (FieldSigils f.sigils, ft, fieldRow)))), (FieldRowBound s3, info, (Dotted t.name.path), f)))
                         let st2 = SecondConstructor g, st2a, name, name, d.span
                         let ctor = CtorInfo(name=name, owner=name, params=params, args=(Each fields, \|((ignore, ft))| ft), fields=(Each fields, \|((fname, ignore))| fname), ty=self, index=0)
                         let upd = update g:
@@ -367,10 +368,35 @@ fn TypeSigils t = match t.kind:
 
 # A field's type: the sigils on its name over its written type (`$label: Text` is a
 # `$Text` field), as a binder's sigils state its type's layers.
-FieldSigils: fn Text, Ty -> Ty
-fn FieldSigils sigils, t:
-    let innermostFirst = FoldChars sigils, [[]], \|acc, c| Append [[c]], acc
-    Fold innermostFirst, t, \|inner, c| TySig c, inner
+# A field's blueprint, `@body: unit`, emits the row its type writes with `emit`, or the row
+# of the scope it is written in, as a signature's does (Type System ch. 2, "Rows in `emit`
+# and in signatures").
+FieldSigils: fn Text, Ty, Rw -> Ty
+fn FieldSigils sigils, t, emitted = WithMarks sigils, t, emitted
+
+# A record's field that emits the scope's row, in a module whose row is a variable: the
+# module's `emit r` is a variable of each signature (Type System ch. 2, "Rows in `emit`
+# and in signatures"), and a record is no signature, so nothing would bind the field's
+# row. The field writes its own.
+FieldRowBound: unbounded fn St, ModInfo, Text, Field -> St
+fn FieldRowBound st, info, owner, f:
+    let takesScope = ((Contains f.sigils, "@") and not (WritesEmit f.ty)) or UsesScope f.ty
+    if info.rowVar == "" or not takesScope: st
+    else: ErrFix st, "unknown-name", f.span, "the field `{f.sigils}{f.name.name}` of `{owner}` emits the module's row `{info.rowVar}`, and a record has no row of its own", "write the row on the field's type, as `emit Ui.*`"
+
+# Whether a field's type writes its row with `emit`.
+WritesEmit: unbounded fn Type -> Bool
+fn WritesEmit t = match t.kind:
+    TEmit ignore, ignore: True
+    TGroup inner: WritesEmit inner
+    otherwise: False
+
+# The row a field's blueprint emits: its type's own `emit`, or the scope's.
+FieldRow: unbounded fn Cx, St, Type -> ((Rw, St))
+fn FieldRow cx, st, t = match t.kind:
+    TEmit ignore, rowType: ConvRow cx, st, rowType
+    TGroup inner: FieldRow cx, st, inner
+    otherwise: ((cx.scope, st))
 
 MissingSignatures: fn G, St, ModInfo -> St
 fn MissingSignatures g, st, info = Fold g.defs, st, \|s, d|
@@ -479,7 +505,8 @@ fn ConvTag g, st, info, t, span:
     let ((kind, out, st2)) = TagKind g, cx, st, t.ofType
     let ((fields, st3)) = Fold t.fields, (([[]], st2)), \|((acc, s)), f|
         let ((ft, s2)) = ConvType cx, (SigilsOnName (SecondField s, acc, f), f), f.ty
-        (((Push acc, ((f.name.name, (FieldSigils f.sigils, ft)))), s2))
+        let ((fieldRow, s3)) = if Contains f.sigils, "@": FieldRow cx, s2, f.ty else: ((cx.scope, s2))
+        (((Push acc, ((f.name.name, (FieldSigils f.sigils, ft, fieldRow)))), s3))
     let qs = Fold t.fields, (TypeVarsOfType t.ofType), \|acc, f| UnionTexts acc, (TypeVarsOfType f.ty)
     let ((bs, st4a)) = ConvBounds cx, st3, t.bounds
     # `collision`: a tag is declared once; the first declaration stays the tag
