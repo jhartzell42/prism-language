@@ -807,6 +807,38 @@ impl<T: Clone> Defer<T> {
     }
 }
 
+/// `@Later: fn !a -> @!a` (Semantics Appendix B): each firing answered one tick later,
+/// through a zero-delay `Time.After`. The firings whose wake the World has not answered
+/// yet, oldest first: [`Later::queue`] at each firing, as the wake is asked;
+/// [`Later::answered`] at each answer of the place, which gives the oldest back.
+pub struct Later<T> {
+    pending: RefCell<std::collections::VecDeque<T>>,
+}
+
+impl<T> Default for Later<T> {
+    fn default() -> Later<T> {
+        Later { pending: RefCell::new(std::collections::VecDeque::new()) }
+    }
+}
+
+impl<T> Later<T> {
+    pub fn new() -> Later<T> {
+        Later::default()
+    }
+    /// The argument fired: kept until its wake is answered.
+    pub fn queue(&self, v: T) {
+        self.pending.borrow_mut().push_back(v);
+    }
+    /// The place was answered: the oldest firing still kept. An answer with none kept is
+    /// a World answering a wake nobody asked for.
+    pub fn answered(&self) -> T {
+        match self.pending.borrow_mut().pop_front() {
+            Some(v) => v,
+            None => panic!("an answer at the place of an `@Later` that asked for no wake"),
+        }
+    }
+}
+
 /// An `unbounded` function stopped at a cycle point: its continuation (Semantics ch. 7,
 /// "An unbounded function is a bounded body iterated"). The compiler emits one type per
 /// group of unbounded functions, whose frames are the cycle points of the canonical rule

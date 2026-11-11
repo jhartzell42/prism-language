@@ -138,6 +138,8 @@ type Sk = choice:
     SkRequest Pos, Text
     SkResult
     SkArm Text
+    # `@Later`: its queue, which keeps each firing until its wake is answered.
+    SkLater Text
     SkCycle Text, Text, Nat
     SkUp Text
     SkPort Text

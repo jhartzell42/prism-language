@@ -119,6 +119,15 @@ fn WakeConst heights, h = if (Len heights) <= 1: "WAKE" else: "WAKE_{h}"
 SelfCall: fn Text, [Ex] -> Do
 fn SelfCall m, args = DoExpr (XMethod (XSelf), m, (Push args, (XCx)))
 
+# A request field's firing: `cx.request` at the place, or its host's `request`.
+RequestCode: fn Sinks, Pos, Text, Ex -> [Do]
+fn RequestCode sk, pos, field, y:
+    let fieldEx = if field == "": XNone else: (XCtor (RefRuntime "std::Some"), [[XStr field]])
+    # a hosted place's request goes to its host: out with a forwarded element, else nowhere
+    if Emits sk.wx, pos: [[DoExpr (XMethod (XCx), "request", [[(PlaceAt sk.wx, "self", pos), fieldEx, (XMethod y, "to_pod", [[]])]])]]
+    # the host's answer first, then kept: `cx` is borrowed once at a time
+    else: [[(DoLet (PaBind "requested"), (XMethod (HostFieldEx sk.wx, pos), "request", [[(XRef (PlaceAt sk.wx, "self", pos)), fieldEx, (XMethod y, "to_pod", [[]]), XCx]])), (DoExpr (XMethod (XCx), "keep", [[(XVar "requested")]]))]]
+
 # What a firing does at its sink.
 SinkCode: fn Sinks, Sk, Ex -> [Do]
 fn SinkCode sk, target, y = match target:
@@ -136,14 +145,10 @@ fn SinkCode sk, target, y = match target:
     # the map after the tick taken apart: the changed inners written and fired by the
     # runtime; the outer's readers marked only when a key came or went
     SkPerKey f: [[(DoIf (XMethod (XField XSelf, "{f}"), "written", [[(XClone y), XCx]]), (HoldWritten sk, f), [[]])]]
-    SkRequest pos, field:
-        let fieldEx = if field == "": XNone else: (XCtor (RefRuntime "std::Some"), [[XStr field]])
-        # a hosted place's request goes to its host: out with a forwarded element, else nowhere
-        if Emits sk.wx, pos: [[DoExpr (XMethod (XCx), "request", [[(PlaceAt sk.wx, "self", pos), fieldEx, (XMethod y, "to_pod", [[]])]])]]
-        # the host's answer first, then kept: `cx` is borrowed once at a time
-        else: [[(DoLet (PaBind "requested"), (XMethod (HostFieldEx sk.wx, pos), "request", [[(XRef (PlaceAt sk.wx, "self", pos)), fieldEx, (XMethod y, "to_pod", [[]]), XCx]])), (DoExpr (XMethod (XCx), "keep", [[(XVar "requested")]]))]]
+    SkRequest pos, field: RequestCode sk, pos, field, y
     SkResult: [[DoExpr (XMethod (XCx), "result", [[(XCtor (RefRuntime "rt::Outcome::Fired"), [[(XMethod y, "to_pod", [[]])]])]])]]
     SkArm f: [[DoExpr (XMethod (XField XSelf, "{f}"), "arm", [[y, (XClone XSelf), XCx]])]]
+    SkLater f: [[(DoExpr (XMethod (XField XSelf, f), "queue", [[y]]))]]
     SkMachine f, step, out:
         let stepped = XApply step, [[(XRef (XMethod (XField XSelf, f), "get", [[XCx]])), (XRef y)]]
         Append [[(DoLet (PaTuple [[PaBind "machine_s", PaBind "machine_b"]]), stepped), DoExpr (XMethod (XField XSelf, "{f}"), "set", [[(XVar "machine_s"), XCx]]), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "machine_b"]]), (XVar "machine_b"), [[(SelfCall (GnOf sk.wx, out).name, [[(XVar "machine_b")]])]], [[]])]], (MovedMarks sk, f)

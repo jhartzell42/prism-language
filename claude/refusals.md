@@ -189,8 +189,6 @@ Catch-alls
 - lower/node/static.prism:121 a widget not lowered yet. Programs: a building `if` with
   no `else` (sem-ch04-building-if-no-else); a bare call of a widget defined inside the
   block (sem-ch04-local-widget); SP3.
-- lower/node/static.prism:600 the builtin widget {name}. Program: `@Later !go`, the one
-  prelude widget with no body and no case. Test: sem-appB-later.
 - lower/expr.prism:621 {kind} as a value: see C for a `for` and a `rebuild` as a plain
   function's value; a suffixed operator, a monad block and a lens stop at the parser or
   the checker (`unsupported`).
