@@ -37,3 +37,14 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   the next number"). Refused: prismc's pick CS, the widest arm's positions reserved,
   which has no answer for a blueprint parameter or for a clause widget that calls itself
   in a static position (prismc overflowed its stack on one).
+- **CL** `match x as [a]+?:` reads without parentheses: the lexer is fixed so that the
+  checked cast's `+?` before a block's `:` is the non-empty mark and the option. Jimmy:
+  "fix the lexer". Refused: leaving the book's lexing rule and writing
+  `match (x as [a]+?):`. Where: Semantics chapter 2; Type System chapter 2, "Collections".
+- **AD** A trait's default for an associated type is read: an impl that does not state
+  that associated type takes the default, and `impl-lacks` is reported only for one with
+  no default. Jimmy: "fix it". Where: Type System chapter 3.
+- **NS** The conversion from a non-empty collection to its plain type is symmetric at an
+  operator: `[Nat]+ == [Nat]` checks as `[Nat] == [Nat]+` does. Jimmy: "change it".
+  Refused: the conversion only at the right operand, the old rule as written. Where: Type
+  System chapter 2, "Collections".
