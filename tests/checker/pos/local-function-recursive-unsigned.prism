@@ -1,0 +1,20 @@
+# `local-function-recursive-unsigned`: a block's `fn` with no signature that calls itself
+# on the `? less` of `match k -? 1` (Semantics ch. 4, "Lambdas, `let`, and `fn` in
+# blocks"). Its one use is at `Nat`. Since a block's `fn` generalizes (Type System ch. 5,
+# "A local `let` generalizes"), its `k` is a variable of `^Num`, and the checker says
+# `may-not-end`: a `-?` that is not `Nat`'s is no shrink. The checker before that
+# generalization read `k` as `Nat` from the use and let the program through. Written by
+# Claude on the claude-lowering-wip branch; subject to change.
+emit Ui.*
+use Ui.*
+
+Total: fn Nat -> Nat
+fn Total n:
+    fn Go k, acc = match k -? 1:
+        ? less: Go less, acc + k
+        nil: acc
+    Go n, 0
+
+@page: @unit
+@page:
+    Ui.Label($text=$"sum {Total 4}")
