@@ -1,9 +1,9 @@
-# `for` builds its block once per entry (Semantics ch. 4, "`for`"), so written as a value
-# it is a blueprint, `@(Nat ==> Nat)`, as in a plain function (neg for-in-plain-function);
-# a `let` of a widget block names that blueprint and builds nothing (`<-` builds it), so
-# the name is no map. The checker types it as the plain map today, and prismc's back end
-# refuses it ("a `for` outside a widget block as a value"). Written by Claude on the
-# claude-lowering branch; subject to change.
+# `for` builds its block once per entry and keeps each built block (Semantics ch. 4,
+# "`for`"): it is a builder, and `<-` is the line that builds and binds its result. A
+# `let` builds nothing, so a `for` on its right is an error, as a `for` in a plain
+# function is (neg for-in-plain-function). The checker types it as the plain map today,
+# and prismc's back end refuses it ("a `for` outside a widget block as a value"). Written
+# by Claude on the claude-lowering branch; subject to change.
 emit Ui.*
 use Ui.*
 
