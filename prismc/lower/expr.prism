@@ -898,7 +898,14 @@ fn InlineLocalFnMatched lx, callEnv, env, cs, args, t:
     let arms = Each cs, \|c|
         let pos = Each (Range0 (Len c.params)), \|i|
             let p = Or c.params[i], dummyPat
-            RustPat lx, p, (BinderTyOfPattern lx, p), Owned, "l{c.span.start}_{i}"
+            # a pattern that is no name is read at its argument's type (a literal
+            # pattern has no type of its own: `fn Medal 0` of a Nat is a Nat's 0)
+            let pt = match p.kind:
+                PName n: BinderTy lx, n.span
+                otherwise: match args[i]:
+                    ? a: TypeAt lx, a.value.span
+                    nil: TypeAt lx, p.span
+            RustPat lx, p, pt, Owned, "l{c.span.start}_{i}"
         let env2 = BindAll env, (Fold pos, [[]], \|acc, o| Append acc, o.binds)
         XArm(pat=(PaTuple (Each pos, \|o| o.pa)), conds=(Fold pos, [[]], \|acc, o| Append acc, o.conds), body=(FnBodyValue lx, env2, c.body))
     ArmsValue (XTuple vals), arms, "l{first.span.start}", t
