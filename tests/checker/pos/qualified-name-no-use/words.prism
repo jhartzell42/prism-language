@@ -1,0 +1,9 @@
+# `Words`, reached by its qualified names alone.
+emit r
+
+type Unit = choice:
+    Metres
+    Feet
+
+Name: fn Nat -> Text
+fn Name n = "{n} units"
