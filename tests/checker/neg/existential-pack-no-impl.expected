@@ -1,0 +1,5 @@
+tests/checker/neg/existential-pack-no-impl.prism:18: error[no-impl]: no impl of `^Show` for `Shut`
+        let w = Watch(label="shut", value=any Shut(n=1))
+                                          ^^^^^^^^^^^^^
+  fix: derive `^Show` on `Shut`, or write `impl ^Show Shut`
+1 error

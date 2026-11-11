@@ -823,7 +823,14 @@ SharedClauseLine: unbounded fn Wx, Env, Expr, Text, ValInfo, Expr, [Arg] -> ((Wx
 fn SharedClauseLine wx, menv, scrut, qk, v, e, args:
     let lx = wx.lx
     let pos = wx.pos
-    let ((srcEx, reads)) = DynamicExpr wx, menv, scrut
+    let ((srcEx, sourceReads)) = DynamicExpr wx, menv, scrut
+    # a live first parameter (`IsLiveParam`) chooses no clause: the row holds the caller's
+    # `Dynamic` or `Event` and follows it (`LiveParams`), so a write behind the argument
+    # patches the row's places and never makes the generation stale
+    let liveFirst = match v.scheme.ty:
+        TyFn ignore, ps, ignore: IsLiveParam (Or ps[0], TyErr)
+        otherwise: False
+    let reads = if liveFirst: [[]] else: sourceReads
     let vt = OutTyOf lx, (Peel (TypeAt lx, scrut.span))
     let ((name, wx1)) = FreshName wx, "generation"
     let clauses = ClausesOf lx.g, qk

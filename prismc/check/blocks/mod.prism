@@ -440,7 +440,7 @@ fn BuildingMatch env, st, scrut, arms, span, last:
             ? gd: CheckCond env2, s1, gd
             nil: s1
         let ((bt, s3)) = ArmWidgetBlock env2, s2, arm.body
-        Unify s3, res, bt, arm.body.span
+        Unify s3, res, bt, (ResultSpan arm.body)
     let st5 = MatchCoverage env, st4, plainScrut, arms, span
     if last: ((res, st5)) else: ((res, (Discarded st5, res, span)))
 
@@ -462,10 +462,10 @@ fn BuildingIf env, st, c, thenB, ?elseB, span, last:
     match ?elseB:
         ? b:
             let ((t2, st3)) = ArmWidgetBlock env, st2, b
-            let st4 = Unify st3, t1, t2, b.span
+            let st4 = Unify st3, t1, t2, (ResultSpan b)
             if last: ((t1, st4)) else: ((t1, (Discarded st4, t1, span)))
         nil:
-            let st3 = Unify st2, tUnit, t1, thenB.span
+            let st3 = Unify st2, tUnit, t1, (ResultSpan thenB)
             ((tUnit, st3))
 
 # An arm of a building `match`: a widget block, or a single line read as a bare line.

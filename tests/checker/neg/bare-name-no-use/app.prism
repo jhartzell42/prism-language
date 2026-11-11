@@ -1,0 +1,10 @@
+# A bare name of another module with no `use` is `unknown-name` (Semantics ch. 6: a name
+# is written bare through `use`; Jimmy's ruling QN: a qualified name needs none, so the
+# qualified `Words.Name` beside it is fine). Expected text derived by hand. Written by
+# Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+mod Words
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Words.Name 2} {Name 3}")

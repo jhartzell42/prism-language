@@ -113,7 +113,11 @@ fn BuildTables g, st, m = match g.mods[m]:
     ? info:
         let s0 = update st:
             &_.file <= info.file
-        let s1 = Fold info.uses, s0, \|s, ((u, ignore))| if (HasKey g.mods, u) or u == "Prelude": s else: Err s, "unknown-name", info.tree.span, "no module `{u}` among the program's files"
+        # at the `use` line (Semantics ch. 6: "A `use` of a module not among the files is an
+        # error at the `use`")
+        let s1 = Fold info.tree.uses, s0, \|s, line|
+            let u = UseName g, (Dotted line.target.path)
+            if (HasKey g.mods, u) or u == "Prelude": s else: Err s, "unknown-name", line.span, "no module `{u}` among the program's files"
         let starred = Fold info.uses, [[]], \|acc, ((u, star))| if star and u != m: Push acc, u else: acc
         let sources = AddText (Append [[m]], starred), "Prelude"
         let vals = Fold sources, {}, \|acc, src| BareValuesOf g, src, acc

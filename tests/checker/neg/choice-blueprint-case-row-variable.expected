@@ -1,0 +1,9 @@
+tests/checker/neg/choice-blueprint-case-row-variable/cards.prism:6: error[unknown-name]: the case `Inside` of `Slot` emits the module's row `r`, and a choice has no row of its own
+        Inside @unit
+        ^^^^^^^^^^^^
+  fix: write the row on the case's type, as `emit Ui.*`
+tests/checker/neg/choice-blueprint-case-row-variable/cards.prism:7: error[unknown-name]: the case `Made` of `Slot` emits the module's row `r`, and a choice has no row of its own
+        Made (fn Nat -> @unit)
+        ^^^^^^^^^^^^^^^^^^^^^^
+  fix: write the row on the case's type, as `emit Ui.*`
+2 errors

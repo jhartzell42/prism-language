@@ -203,9 +203,13 @@ fn InferKind env, st, e = match e.kind:
         (((TyAt t, env.scope), st2))
     EMonad ignore, ignore: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement `T monad:` blocks")))
     ETemplate t: InferTemplate env, st, t
+    # `any e` where no existential is expected yet (a constructor's field, an argument,
+    # an array's element): a variable, and the bounds are wanted at `e`'s type once it is
+    # an existential (`ResolvePacks`)
     EAny x:
         let ((t, st2)) = Infer env, st, x
-        ((TyAny [[]], st2))
+        let ((v, st3)) = FreshVar st2, True, ""
+        ((v, (WaitingPack st3, v, t, e.span)))
     ELens ignore: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement named lenses and `Over`")))
     EError: ((TyErr, st))
 
@@ -283,9 +287,16 @@ fn CheckAny env, st, x, expected, span = match Walk st, expected:
     TyAny trs:
         let ((t, st2)) = Infer env, st, x
         Fold trs, st2, \|s, tr| AddWant s, tr, t, span
+    TyFlex ignore:
+        let ((t, st2)) = Infer env, st, x
+        WaitingPack st2, expected, t, span
     other:
         let ((t, st2)) = Infer env, st, x
         Unify st2, other, (TyAny [[]]), span
+
+WaitingPack: fn St, Ty, Ty, Range -> St
+fn WaitingPack st, result, inner, span = update st:
+    &_.packs <= Push &_.packs, Pack(result=result, inner=inner, file=&_.file, span=span)
 
 AddWant: fn St, Text, Ty, Range -> St
 fn AddWant st, cls, t, span = update st:

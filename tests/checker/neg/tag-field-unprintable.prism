@@ -1,0 +1,27 @@
+# A tag's field whose type does not print (Semantics ch. 8's table, "tag fields: the
+# outermost mark is the field's kind; the type beneath prints"; "Every field and every
+# output prints"): `Shut` has no `^Show`, alone or inside an array, and a function never
+# prints. `$shown` is fine, its type derives `^Show`; so is `$children`, which holds
+# dynamics of elements and prints through its level, each child at its own place (the
+# books' own `$children: (Path ==> $Elem)`, Type System ch. 2: such an `Elem` has no
+# `^Show`). The expected text is derived by hand. Written by Claude on the claude-bugs
+# branch; subject to change.
+emit Ui.* | Pad.*
+
+type Plain = record:
+    n: Nat
+derive ^Eq, ^Show
+
+type Shut = record:
+    n: Nat
+
+tag Pad.Echo of Element unit:
+    $shown: Plain
+    $hidden: Shut
+    $inside: [Shut]
+    made: fn Nat -> Nat
+    $children: (Path ==> $Elem)
+
+@main: @unit
+@main:
+    Ui.Label($text=$"x")
