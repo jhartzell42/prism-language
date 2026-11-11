@@ -809,21 +809,21 @@ impl<T: Clone> Defer<T> {
 
 /// `@Later: fn !a -> @!a` (Semantics Appendix B): each firing answered one tick later,
 /// through a zero-delay `Time.After`. The firings whose wake the World has not answered
-/// yet, oldest first: [`Later::queue`] at each firing, as the wake is asked;
-/// [`Later::answered`] at each answer of the place, which gives the oldest back.
-pub struct Later<T> {
+/// yet, oldest first: [`LaterQueue::queue`] at each firing, as the wake is asked;
+/// [`LaterQueue::answered`] at each answer of the place, which gives the oldest back.
+pub struct LaterQueue<T> {
     pending: RefCell<std::collections::VecDeque<T>>,
 }
 
-impl<T> Default for Later<T> {
-    fn default() -> Later<T> {
-        Later { pending: RefCell::new(std::collections::VecDeque::new()) }
+impl<T> Default for LaterQueue<T> {
+    fn default() -> LaterQueue<T> {
+        LaterQueue { pending: RefCell::new(std::collections::VecDeque::new()) }
     }
 }
 
-impl<T> Later<T> {
-    pub fn new() -> Later<T> {
-        Later::default()
+impl<T> LaterQueue<T> {
+    pub fn new() -> LaterQueue<T> {
+        LaterQueue::default()
     }
     /// The argument fired: kept until its wake is answered.
     pub fn queue(&self, v: T) {

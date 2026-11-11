@@ -280,6 +280,19 @@ HeadName: fn Ty -> Text
 fn HeadName (TyCon n, ignore) = n
 fn HeadName other = ""
 
+# An impl's head as a word in a function's name: a named type's name; a collection's
+# shape with its parts' words, so two impls of one prelude trait at two collections (or at
+# one collection of two types) are two functions.
+HeadWord: unbounded fn Ty -> Text
+fn HeadWord t = match t:
+    TyCon n, ignore: Snake (BareName n)
+    TyArray x: "array_of_{HeadWord x}"
+    TyMap k, v: "map_of_{HeadWord k}_to_{HeadWord v}"
+    TyTuple xs: "tuple_of_{Join (Each xs, \|x| HeadWord x), "_and_"}"
+    TyQ q: Snake q
+    TyRigid q: Snake q
+    otherwise: "value"
+
 # A trait's parameter as `Self` in its methods' types.
 SelfIn: unbounded fn Ty, Text -> Ty
 fn SelfIn t, param = Instantiated t, [[param]], [[(TyCon "\u{0}Self", [[]])]]
@@ -396,7 +409,7 @@ fn ImplDefOf lx, im:
             &_.qs <= Filter &_.qs, \|q| q != tr.param
             &_.bounds <= Filter &_.bounds, \|((q, ignore))| q != tr.param
         let fd = FnDefOf lx, mq, (MethodClauses d), sc
-        if (HasPrefix im.cls, "Prelude."): Renamed fd, "{Snake d.name}_{Snake (BareName (HeadName im.head))}" else: fd
+        if (HasPrefix im.cls, "Prelude."): Renamed fd, "{Snake d.name}_{HeadWord im.head}" else: fd
     # an impl's `where` clauses bound its type parameters, as a function's do
     let generics = Each im.qs, \|q| ((Camel q, (ImplBounds lx, im, q)))
     ImplDef(cls=im.cls, tr=(PathIn lx, tr.home, (TraitName im.cls)), head=head, generics=generics, assocs=(Each im.assocs, \|((an, at))| (((Camel an), (OutTyOf lx, at)))), resultOnly=(ResultOnlyNames lx, tr), methods=methods, doc="")

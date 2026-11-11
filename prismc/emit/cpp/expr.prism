@@ -398,7 +398,7 @@ fn QualifiedCall (RefRuntime ignore), p = p
 
 # The runtime's constructors of an empty value, whose type the context gives.
 IsFresh: fn Ref -> Bool
-fn IsFresh (RefRuntime f) = InList [["rt::Stamped::new", "rt::Cache::new", "rt::Port::new", "rt::Map::new", "rt::Array::new", "std::Vec::new", "std::Default::default", "rt::Wakes::default", "rt::Defer::new", "prism_rtl::Later::new", "prism_rtl::HostDoc::new", "prism_rtl::Watch::new", "prism_rtl::PerKey::new"]], f
+fn IsFresh (RefRuntime f) = InList [["rt::Stamped::new", "rt::Cache::new", "rt::Port::new", "rt::Map::new", "rt::Array::new", "std::Vec::new", "std::Default::default", "rt::Wakes::default", "rt::Defer::new", "prism_rtl::LaterQueue::new", "prism_rtl::HostDoc::new", "prism_rtl::Watch::new", "prism_rtl::PerKey::new"]], f
 fn IsFresh other = False
 
 # A function's path: a node's constructor is `make` (`build` is the C++ runtime's virtual

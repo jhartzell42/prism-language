@@ -1108,10 +1108,10 @@ fn WithClause env, name, c = match env.names[name]:
 LocalFnValue: unbounded fn Lx, Env, [FnClause], OutTy -> Vl
 fn LocalFnValue lx, env, cs, t:
     let c = Or cs[0], dummyClause
-    if (Len cs) == 1: PlainLambda lx, env, c.params, (ClauseLambdaBody c), t
-    else: match t:
-        OutFn pts, r: LocalClausesClosure lx, env, cs, pts, r, t
-        otherwise: VlOwned (Refusal "a local function of several clauses as a value that is no bounded function ({DefNameText c.name})"), t
+    match t:
+        OutJobFn a, ignore: JobLocalFn lx, env, cs, t, a
+        OutFn pts, r: if (Len cs) == 1: PlainLambda lx, env, c.params, (ClauseLambdaBody c), t else: LocalClausesClosure lx, env, cs, pts, r, t
+        otherwise: VlOwned (InternalBug "a local function as a value of a type that is no function's ({DefNameText c.name})"), t
 
 ClauseLambdaBody: fn FnClause -> LambdaBody
 fn ClauseLambdaBody c = match c.body:
@@ -2093,6 +2093,41 @@ fn JobLambda lx, env, ps, body, ft, a, enter:
     let tail = if (Len unpack) == 0: tail0 else: XBlock unpack, tail0
     let job0 = XCall (HelperRef "once_job"), [[(XClosure True, [[]], tail)]]
     let job = if enter: XCall (HelperRef "entered"), [[job0]] else: job0
+    let call = if (Len again) == 0: job else: XBlock again, job
+    VlOwned (XBlock dos, (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure True, [[pa]], call)]]), ft)), ft
+
+# A local function that is not bounded as a value (`@Run Step, 3` over `fn Step` lines of
+# the block): a `Start` as a job lambda is (`JobLambda`), its job the clauses as one job
+# body, the arguments matched against each clause's patterns in order (`ClausesBody` over
+# `TailBody`, as a named unbounded function's job is). Entering it is a cycle point (D6).
+JobLocalFn: unbounded fn Lx, Env, [FnClause], OutTy, OutTy -> Vl
+fn JobLocalFn lx, env, cs, ft, a:
+    let first = Or cs[0], dummyClause
+    let reads = Fold cs, [[]], \|acc, k| UnionTexts acc, (LambdaReads k.params, (ClauseLambdaBody k))
+    let caps = Filter (WithInstances env, reads), \|n| match env.names[n]:
+        ? (BnLocal ignore, ignore, ignore): True
+        otherwise: False
+    let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
+        ? (BnLocal rs, mode, ct):
+            let d = DoLet (PaBind (CaptureName rs)), (Own (LocalPlace rs, mode, ct))
+            (((Push acc, d), (Bind en, n, (BnLocal (XVar (CaptureName rs)), Owned, ct))))
+        otherwise: ((acc, en))
+    # each call's own copy of what the function captured, which its job takes
+    let ((again, envAgain)) = Fold caps, (([[]], env1)), \|((acc, en)), n| match env1.names[n]:
+        ? (BnLocal rs, ignore, ct): (((Push acc, (DoLet (PaBind (CopyName rs)), (Own (LocalPlace rs, Owned, ct)))), (Bind en, n, (BnLocal (XVar (CopyName rs)), Owned, ct))))
+        otherwise: ((acc, en))
+    let count = Len first.params
+    let argTys = match Peel (SubstTy lx, (TypeAt lx, first.span)):
+        TyFn ignore, ps, ignore: ps
+        otherwise: [[]]
+    let owned = Each (Range0 count), \|i| "p{i}"
+    let pa = if count == 1: PaTyped (PaBind "p0"), a else: PaTyped (PaTuple (Each owned, \|nm| PaBind nm)), a
+    # the job owns its arguments; the clauses match them by reference, as a named
+    # function's clauses match its parameters
+    let borrowed = Each (Range0 count), \|i| DoLet (PaBind "argument{i}"), (XRef (XVar "p{i}"))
+    let names = Each (Range0 count), \|i| (("argument{i}", True))
+    let tail = XBlock borrowed, (ClausesBody lx, (OnlyCaptured envAgain, caps), cs, names, argTys, TailBody, "l{first.span.start}_", OutTurn)
+    let job = XCall (HelperRef "entered"), [[(XCall (HelperRef "once_job"), [[(XClosure True, [[]], tail)]])]]
     let call = if (Len again) == 0: job else: XBlock again, job
     VlOwned (XBlock dos, (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure True, [[pa]], call)]]), ft)), ft
 

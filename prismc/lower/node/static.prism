@@ -491,7 +491,7 @@ fn DeferLine wx, menv, args, e, ?target:
 # `@Later !e` (Semantics Appendix B: "each firing answered one tick later, through a
 # zero-delay `Time.After`. A World implements time, so this one goes through a World"): a
 # `Time.After` at the block's next position, a place of the block as an inlined widget's
-# is (ch. 8). Each firing of `!e` queues its value (`prism_rtl::Later`) and asks the place
+# is (ch. 8). Each firing of `!e` queues its value (`prism_rtl::LaterQueue`) and asks the place
 # for a wake of no delay and of the empty context; each answer at the place fires the
 # oldest value still queued. The wake asked is the record of `Time.After`'s request
 # field, built from the prelude's declaration.
@@ -503,7 +503,7 @@ fn LaterLine wx, benv, menv, args, e, ?target:
         ((? tg, ? a)):
             let ((wakesName, wakeTy)) = Or (Fold tg.fields, nil, \|?found, ((fname, ft))| if (LayerOf ft) == LyEv: ? ((fname, (Peel ft))) else: ?found), (("", TyErr))
             let ((queue, wx1)) = FreshName wx, "later"
-            let wx2 = AddFieldLast wx1, queue, (OutNamed (RefRuntime "prism_rtl::Later"), [[t]]), "`@Later`'s firings not answered yet, oldest first", (XCall (RefRuntime "prism_rtl::Later::new"), [[]])
+            let wx2 = AddFieldLast wx1, queue, (OutNamed (RefRuntime "prism_rtl::LaterQueue"), [[t]]), "`@Later`'s firings not answered yet, oldest first", (XCall (RefRuntime "prism_rtl::LaterQueue::new"), [[]])
             let ((r, wx3)) = EventRef wx2, menv, a.value
             # the value queued first, then the wake asked: the sinks run in page order
             let wx4 = Connect wx3, r, (SkLater queue)
@@ -638,13 +638,15 @@ fn RunLine wx, benv, args, e, ?target:
         &_.taken <= Append &_.taken, [["{p}_job", "{p}_again", "{p}_started", "{p}_turn"]]
     let start = match args[0]:
         ? a: match a.value.kind:
-            # a named function by its `Start`; any other function value (a lambda, a local,
-            # a call's result) as the `Start` it is or is made (`AsJobValue`)
+            # a function the program defines, bounded or not, by its `Start` (`JobRoots`
+            # gives each one `@Run` names a job); any other function value (a lambda, a
+            # local, a call's result, a constructor, a trait's method, a function of the
+            # prelude) as the `Start` it is or is made (`AsJobValue`)
             EName n:
                 let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
                 let ?local = if (Len n.path) == 1: benv.names[NameKeyAt lx, benv, n, a.value.span] else: nil
                 match ((?local, ?q)):
-                    ((nil, ? q)): XPath (StartRef lx, q)
+                    ((nil, ? q)) if HasFnDef lx, q: XPath (StartRef lx, q)
                     otherwise: AsJobValue lx, benv, a.value
             otherwise: AsJobValue lx, benv, a.value
         nil: InternalBug "an `@Run` without its function"
@@ -663,6 +665,11 @@ fn RunLine wx, benv, args, e, ?target:
         &_.started <= Push &_.started, s
         &_.defers <= Push &_.defers, (("{p}_again", a))
     ((wx9, (WrEv (EvRefOf wx9, res))))
+
+# Whether a name is a function the program defines by clauses: one with a job when
+# `@Run` names it.
+HasFnDef: fn Lx, Text -> Bool
+fn HasFnDef lx, qk = Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsFnDef d)
 
 # `@Machine step, init, !a` (Semantics Appendix B): the state a hold; each firing of
 # `!a` steps it, writes the new state and fires the output when the step gives one. The
