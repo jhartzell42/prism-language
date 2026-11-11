@@ -51,6 +51,7 @@ RustItem: unbounded fn Item -> Text
 fn RustItem it = match it:
     ItTrait t: RustTrait t
     ItImpl i: RustImpl i
+    ItPacked d: RustPacked d
     ItType t: TypeDecl t
     ItTag t: RustTag t
     ItRow r: RustRow r
@@ -97,6 +98,28 @@ fn RustImpl i:
         otherwise:
             let types = Each i.assocs, \|((a, t))| "type {a} = {Type t};"
             "impl{StaticGenerics i.generics} {i.tr} for {head} \{\n{Indent (Join (Append types, (Each i.methods, \|f| Fn "", (Signature f, ""), (BodyLines f.body))), "\n")}\n\}\n"
+
+# A program's trait as an existential keeps it (`PackedDef`): the dictionary, a struct of
+# one function per method over packed values; the function that makes it at a type, each
+# entry reading the hidden values at that type (`Packed::held`) and hiding a result of it
+# again (`Packed::repacked`); the trait's impl for the packed value, each method asking the
+# dictionary found in its first hidden argument.
+RustPacked: unbounded fn PackedDef -> Text
+fn RustPacked d:
+    let dictionary = "{d.name}_packed"
+    let fields = Each d.methods, \|m| "pub {m.method.name}: fn({Join (Each m.method.params, \|((ignore, t))| Type t), ", "}) -> {Type m.method.ret},"
+    let entries = Each d.methods, \|m|
+        let names = Each m.method.params, \|((n, ignore))| n
+        let args = Each (Range0 (Len names)), \|i| if Or m.hidden[i], False: "{Or names[i], ""}.held::<T>()" else: Or names[i], ""
+        let call = "<T as {d.tr}>::{m.method.name}({Join args, ", "})"
+        "{m.method.name}: |{Join names, ", "}| {if m.hiddenResult: "{PackedFirstHidden m}.repacked({call})" else: call},"
+    let methods = Each d.methods, \|m| Fn "", (Signature m.method, ""), "({PackedFirstHidden m}.dictionary::<{dictionary}>().{m.method.name})({Join (Each m.method.params, \|((n, ignore))| n), ", "})"
+    let made = Fn "/// The dictionary of `{d.name}` at the type of a value.", "pub fn {Lower d.name}_packed_of<T: {d.tr}>(_: &T) -> {dictionary}", "{dictionary} \{\n{Indent (Indent (Join entries, "\n"))}\n    \}"
+    "/// The dictionary of `{d.name}` an existential keeps: each method over packed values.\npub struct {dictionary} \{\n{Indent (Join fields, "\n")}\n\}\n{made}\nimpl {d.tr} for ::prism_rtl::Packed \{\n{Indent (Join methods, "\n")}\n\}\n"
+
+# The first parameter of a packed method that is the hidden value: its dictionaries.
+PackedFirstHidden: fn PackedMethod -> Text
+fn PackedFirstHidden m = Fold (Range0 (Len m.hidden)), "", \|found, i| if found == "" and Or m.hidden[i], False: (Or (Each m.method.params, \|((n, ignore))| n)[i], "") else: found
 
 RustFn: unbounded fn FnDef -> Text
 fn RustFn f:

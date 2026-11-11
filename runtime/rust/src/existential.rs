@@ -5,6 +5,13 @@
 //! compares were packed from one value of one type; a comparison across two types, which
 //! the checker refuses, panics here rather than answer.
 //!
+//! A program's own trait is kept as a dictionary the compiler emits (prismc's `PackedDef`):
+//! a struct of functions over packed values, made at the value's type by
+//! [`Packing::with_dictionary`] and found again by its type ([`Packed::dictionary`]); the
+//! emitted impl of the trait for `Packed` asks it, and each function reads the hidden
+//! value at its type ([`Packed::held`]) or packs a result with the same dictionaries
+//! ([`Packed::repacked`]).
+//!
 //! Written by Claude on the claude-bugs branch; subject to change.
 
 use std::any::Any;
@@ -24,6 +31,7 @@ pub struct Packed {
     show: Option<ShowFn>,
     eq: Option<EqFn>,
     cmp: Option<CmpFn>,
+    dictionaries: Vec<Rc<dyn Any>>,
 }
 
 /// A packing under way: the value's own type is still known, so each bound's impl can be
@@ -33,11 +41,12 @@ pub struct Packing<T: 'static> {
     show: Option<ShowFn>,
     eq: Option<EqFn>,
     cmp: Option<CmpFn>,
+    dictionaries: Vec<Rc<dyn Any>>,
 }
 
 impl Packed {
     pub fn of<T: 'static>(value: T) -> Packing<T> {
-        Packing { value, show: None, eq: None, cmp: None }
+        Packing { value, show: None, eq: None, cmp: None, dictionaries: Vec::new() }
     }
 }
 
@@ -69,7 +78,30 @@ impl<T: 'static> Packing<T> {
         self
     }
     pub fn packed(self) -> Packed {
-        Packed { value: Rc::new(self.value), show: self.show, eq: self.eq, cmp: self.cmp }
+        Packed { value: Rc::new(self.value), show: self.show, eq: self.eq, cmp: self.cmp, dictionaries: self.dictionaries }
+    }
+    /// A program's trait: its dictionary at the value's type, which `make` gives from the
+    /// value (the emitted `.._packed_of`).
+    pub fn with_dictionary<D: 'static>(mut self, make: fn(&T) -> D) -> Self {
+        let dictionary: Rc<dyn Any> = Rc::new(make(&self.value));
+        self.dictionaries.push(dictionary);
+        self
+    }
+}
+
+impl Packed {
+    /// The hidden value at its own type: a dictionary's function reads it at the type the
+    /// dictionary was made at.
+    pub fn held<T: 'static>(&self) -> &T {
+        same::<T>(&*self.value)
+    }
+    /// The dictionary of a program's trait, by the dictionary's type.
+    pub fn dictionary<D: 'static>(&self) -> &D {
+        self.dictionaries.iter().find_map(|d| d.downcast_ref::<D>()).expect("an existential asked for a trait it was not packed with")
+    }
+    /// A value of the hidden type a method gave back, hidden again with this one's impls.
+    pub fn repacked<T: 'static>(&self, value: T) -> Packed {
+        Packed { value: Rc::new(value), show: self.show, eq: self.eq, cmp: self.cmp, dictionaries: self.dictionaries.clone() }
     }
 }
 

@@ -678,9 +678,29 @@ type ImplDef = record:
     doc: Text
 derive ^Eq, ^Show
 
+# A program's trait as an existential keeps it (Type System ch. 5, "Existentials are
+# dictionaries"): the dictionary of the trait an `any` stores at its packing, one function
+# per method over packed values, and the trait's impl for the packed value, each method
+# asking the dictionary. `name` is the trait as the target spells it, `tr` its path.
+type PackedDef = record:
+    name: Text
+    tr: Text
+    methods: [PackedMethod]
+derive ^Eq, ^Show
+
+# A trait's method at a packed value: its name, parameters and result with the packed
+# value in the trait's parameter's place (its body is unused); which parameters are the
+# hidden value; whether the result is one, packed again with the same dictionaries.
+type PackedMethod = record:
+    method: FnDef
+    hidden: [Bool]
+    hiddenResult: Bool
+derive ^Eq, ^Show
+
 type Item = choice:
     ItTrait TraitDef
     ItImpl ImplDef
+    ItPacked PackedDef
     ItType TyDef
     ItTag TagDef
     ItRow RowDef

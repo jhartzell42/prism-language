@@ -343,6 +343,45 @@ fn DefaultOf d, other = match d.body:
     DbDefault cs, ignore: cs
     otherwise: other
 
+# A program's trait as an existential keeps it (`PackedDef`), when every method can be
+# asked of a packed value: the trait has no associated type; each method has no type
+# parameter of its own, takes the trait's parameter as at least one whole parameter (the
+# dictionary is found in a packed argument), and names it nowhere else but as its whole
+# result. `nil` for any other trait: an `any` of it is refused where it is packed
+# (`AnyValue`).
+?PackedDefOf: unbounded fn Lx, TraitInfo -> ?PackedDef
+fn ?PackedDefOf lx0, tr:
+    let lx = InModule lx0, tr.file, tr.home
+    let hiddenTy = TyCon "\u{0}Self", [[]]
+    let ?methods = Fold tr.methods, (? [[]]), \|?acc, mq| match ?acc:
+        nil: nil
+        ? acc:
+            let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
+            let ((ps, r)) = match v.scheme.ty:
+                TyFn ignore, ps, r: ((ps, r))
+                other: (([[]], other))
+            let marked = Each ps, \|p| Instantiated p, [[tr.param]], [[hiddenTy]]
+            let hidden = Each marked, \|m| m == hiddenTy
+            let markedResult = Instantiated r, [[tr.param]], [[hiddenTy]]
+            let whole = Fold (Range0 (Len ps)), True, \|ok, i| ok and ((Or hidden[i], False) or (Or marked[i], TyErr) == (Or ps[i], TyErr))
+            let ownQs = Filter v.scheme.qs, \|q| q != tr.param
+            if (Len ownQs) > 0 or not whole or not (Fold hidden, False, \|f, h| f or h) or not (markedResult == hiddenTy or markedResult == r): nil
+            else:
+                let sc = update v.scheme:
+                    &_.ty <= Instantiated &_.ty, [[tr.param]], [[(TyAny [[tr.name]])]]
+                    &_.qs <= ownQs
+                    &_.bounds <= Filter &_.bounds, \|((q, ignore))| q != tr.param
+                ? (Push acc, PackedMethod(method=(FnDefOf lx, mq, [[dummyClause]], sc), hidden=hidden, hiddenResult=(markedResult == hiddenTy)))
+    if (HasPrefix tr.name, "Prelude.") or (Len tr.assocs) > 0: nil
+    else: match ?methods:
+        ? methods: ? PackedDef(name=(TraitName tr.name), tr=(PathIn lx, tr.home, (TraitName tr.name)), methods=methods)
+        nil: nil
+
+# The function that makes a trait's dictionary at a type, given a value of it
+# (`PackedDef`; the packing's `with_dictionary` takes it).
+PackedDictionaryOf: fn Lx, TraitInfo -> Ref
+fn PackedDictionaryOf lx, tr = RefIn lx, tr.home, "{Lower (TraitName tr.name)}_packed_of"
+
 # An impl's methods, each with its trait's scheme at the impl's head.
 ImplDefOf: unbounded fn Lx, ImplInfo -> ImplDef
 fn ImplDefOf lx, im:

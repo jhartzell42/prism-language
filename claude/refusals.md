@@ -165,8 +165,11 @@ Functions
   the value a call returns, at a call that makes the color bounded, where a map, a named
   type or another function's type holds it. Through an array, an optional, a `~T` and a
   tuple it is lowered (ts-ch05-color-function-in-result). No test for the rest.
-- lower/expr.prism:636 an existential of a program's own trait (`any ^Weighed`); `^A +
-  ^B` is no syntax. Test: ts-ch03-existential-own-trait.
+- lower/expr.prism (`AnyValue`) an existential of a program's trait with a method that
+  cannot be asked of a hidden value (`?PackedDefOf`): a type parameter of its own, the
+  trait's type inside another type (`fn [a] -> Nat`) or in no parameter (`Empty: a`), an
+  associated type. Test: ts-ch03-existential-trait-inside-array. A prelude trait other
+  than `^Show`, `^Eq`, `^Ord` as a bound is refused there too.
 - lower/node/def.prism (`RefusePlainResult`) a widget's plain result bound by a pattern
   that left a name without its field: an internal error; `BindPatternResult` takes every
   pattern (sem-ch08-plain-result-pattern passes).
