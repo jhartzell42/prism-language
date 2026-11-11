@@ -1,0 +1,34 @@
+# A widget whose block ends on a host's line, taken as a blueprint value and applied out
+# of an option by a line that binds the host's output (Semantics ch. 8: "a blueprint
+# builds nothing until a block applies it", at the applying block's next positions;
+# ch. 9: a host's line gives its child's result and the child's document; Type System
+# ch. 2: a blueprint is an opaque handle and still a value). sem-ch09-host-doc-entries
+# through sem-ch08-widget-value-bundle-result's option. Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@child: @unit
+@child:
+    !add <- Ui.Button($label=$"add")                              # 0
+    $items <- {} then (Insert $items, (Size $items), unit) on !add
+    for k, $u <- $items:                                         # 1/[k]
+        Ui.Label($text=$"item {k}")                               # 1/[k]/0
+
+@Framed: @((unit, $(Path ==> $Elem Ui.*)))
+@Framed:
+    @HostDocument @child, \|p, e| @Element e                      # 0/[p]/0
+
+@Page: fn Bool -> @unit
+fn @Page b:
+    match ?Pick b, @Framed:                                      # 0 and 1, or 0
+        ? @t:
+            ((ignore, $doc)) <- @t
+            $moves <- 0 then $moves + 1 on !Updated $doc
+            Ui.Label($text=$"{$moves} moves")
+        nil: Ui.Label($text=$"none")
+    Ui.Label($text=$"end")                                       # 2, or 1
