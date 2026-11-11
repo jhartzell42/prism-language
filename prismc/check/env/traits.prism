@@ -195,7 +195,44 @@ fn TypeNamesIn t = match t:
 
 # A trait's superclasses, closed: `^Ord` entails `^Eq`.
 SuperClosure: unbounded fn G, Text -> [Text]
-fn SuperClosure g, cls = Fold (Or g.traits[cls], dummyTrait).supers, [[cls]], \|acc, s| UnionTexts acc, (SuperClosure g, s)
+fn SuperClosure g, cls = SuperReach g, [[cls]], [[]]
+
+# The traits reached from `frontier` by `where`s, each once (a ring of traits ends here; it
+# is `trait-cycle`, `TraitCycles`).
+SuperReach: unbounded fn G, [Text], [Text] -> [Text]
+fn SuperReach g, frontier, seen = match frontier[0]:
+    nil: seen
+    ? cls:
+        if HasText seen, cls: SuperReach g, (Drop frontier, 1), seen
+        else: SuperReach g, (Append (Drop frontier, 1), (Or g.traits[cls], dummyTrait).supers), (Push seen, cls)
+
+# `trait-cycle`: a trait whose `where` reaches the trait itself asks, of every impl, for an
+# impl that asks for it (Type System ch. 3). Each trait of the ring says so, and loses its
+# `where` in the tables, so nothing after follows the ring.
+TraitCycles: unbounded fn G, St -> ((G, St))
+fn TraitCycles g, st = Fold (Keys g.traits), ((g, st)), \|((gg, s)), name|
+    let ti = Or g.traits[name], dummyTrait
+    match ?RingFrom g, name, ti.supers, [[name]]:
+        nil: ((gg, s))
+        ? ring:
+            let s2 = WithFile (ErrFix (WithFile s, ti.file), "trait-cycle", ti.span, "the trait `^{BareName name}` asks for itself: its `where` names a ring of traits, {Join (Each ring, \|r| "`^{BareName r}`"), ", "}", "drop the `where` of one trait of the ring"), s.file
+            let cut = update gg:
+                &_.traits <= Insert &_.traits, name, (WithoutSupers ti)
+            ((cut, s2))
+
+WithoutSupers: fn TraitInfo -> TraitInfo
+fn WithoutSupers ti = update ti:
+    &_.supers <= [[]]
+
+# The ring from `name` back to itself through `where`s: its traits in the order the
+# `where`s name them, `name` first; none when no path of `where`s comes back.
+?RingFrom: unbounded fn G, Text, [Text], [Text] -> ?[Text]
+fn ?RingFrom g, name, nexts, path = Fold nexts, nil, \|?found, next| match ?found:
+    ? ring: ? ring
+    nil:
+        if next == name: ? path
+        else: if HasText path, next: nil
+        else: ?RingFrom g, name, (Or g.traits[next], dummyTrait).supers, (Push path, next)
 
 WithFile: fn St, Nat -> St
 fn WithFile s, f = update s:
