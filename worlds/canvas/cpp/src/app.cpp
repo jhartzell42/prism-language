@@ -183,8 +183,9 @@ void App::tick_here(TickIn input) {
     pending_ = out.pending;
     // `PRISM_RESULTS` set: each result the root gives, on standard error, for a driver to
     // read (the xvfb run of chess checks its status this way).
-    if (results_ && out.result && out.result->kind == prism_rtl::Outcome::Kind::Value)
-        std::fprintf(stderr, "result: %s\n", out.result->pod.to_string().c_str());
+    if (results_)
+        for (const auto& outcome : out.results)
+            if (outcome.kind == prism_rtl::Outcome::Kind::Value) std::fprintf(stderr, "result: %s\n", outcome.pod.to_string().c_str());
     prism_rtl::probe::enter(prism_rtl::probe::Phase::Perform);
     world_->perform(out);
     if (auto code = world_->exit_code()) exit(*code);

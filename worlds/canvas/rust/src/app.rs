@@ -116,8 +116,12 @@ impl<P: Program> App<P> {
                 self.pending = out.pending;
                 // `PRISM_RESULTS` set: each result the root gives, on standard error, for a
                 // driver to read (the xvfb run of chess checks its status this way).
-                if let (Some(prism_rtl::Outcome::Value(v)), Ok(_)) = (&out.result, std::env::var("PRISM_RESULTS")) {
-                    eprintln!("result: {v}");
+                if std::env::var("PRISM_RESULTS").is_ok() {
+                    for outcome in &out.results {
+                        if let prism_rtl::Outcome::Value(v) = outcome {
+                            eprintln!("result: {v}");
+                        }
+                    }
                 }
                 probe::enter(Phase::Perform);
                 self.world.perform(&out);
