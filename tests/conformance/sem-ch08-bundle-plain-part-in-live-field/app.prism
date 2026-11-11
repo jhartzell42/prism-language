@@ -1,0 +1,19 @@
+# A widget's bundle with a plain part, bound by a tuple pattern, the plain part read by a
+# place's live field (Semantics ch. 8: `<-` builds the child and binds its result; Type
+# System ch. 2, "Bundles": a plain aggregate with functor values inside; Semantics ch. 7:
+# a place's field is read again whenever a dynamic in it moves). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Counter: fn Nat -> @((Nat, !Click, $Nat))
+fn @Counter page:
+    !more <- Ui.Button($label=$"more on {page}")
+    $guests <- 1 then $guests + 1 on !more
+    @ ((page * 10, !more, $guests))
+
+@main: @unit
+@main:
+    ((ten, !more, $guests)) <- @Counter 1                         # 0
+    Ui.Label($text=$"{ten}: {$guests}")                           # 1

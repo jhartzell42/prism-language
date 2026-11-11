@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 8 (a widget application is transparent; `<-` binds its result) and ch. 7 (a dynamic's readers move in the tick it moves): the label reads the plain part beside the hold at the build and again when the hold moves.
+test the_plain_part_is_read_again
+
+tick 0
+  added:
+    0: Ui.Button(label="more on 1")
+    1: Ui.Label(text="10: 1")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="10: 2")
