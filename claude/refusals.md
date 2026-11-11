@@ -18,31 +18,43 @@ spell".
 ## R: legal programs not lowered
 
 Hosting
-- lower/expr.prism:796 a supplier's dynamic answer that reads what has no value at the
-  owner's build: a structural dynamic (a `for`'s gathered result, a `rebuild`'s) or a
-  name of the parent. No test. The host's own pushed place and a `let` below the host's
-  line are lowered (sem-ch09-host-dynamic-answer-late).
+- lower/expr.prism (`DynamicBlueprint`, `WrittenPart`) a supplier's dynamic answer, or
+  a bundle answer's `$` part, that reads a structural dynamic (a `for`'s gathered
+  result, a `rebuild`'s): it has no value when the child's place asks its first value,
+  in the owner's build before its builders run
+  (sem-ch09-host-dynamic-answer-structural, sem-ch09-host-bundle-answer-structural-part).
+  Lowered: the host's own pushed place and a `let` below the host's line
+  (sem-ch09-host-dynamic-answer-late); a name of the parent, read by a host in a row
+  (sem-ch09-host-dynamic-answer-reads-parent, sem-ch09-host-bundle-answer-parent-part);
+  an answer through a blueprint a `let` names (sem-ch09-host-dynamic-answer-let,
+  sem-ch09-host-event-answer-let).
 - lower/expr.prism:703 `@ x` outside a tag arm where `x` is no plain data (a function).
   No test. Any other answer outside an arm is lowered: plain data in `Answer`'s case of
   no tag, read by the place that takes it (sem-ch09-host-answer-without-arm).
-- lower/expr.prism (`BundleBlueprint`) a bundle answer with two event parts, two `$`
-  parts, a `$` part beside a plain part, a `$` part that reads what has no value at the
-  owner's build, or a `$` part in a bundle given as a value.
-  No test. `@ ((never, $ "offline"))` is lowered (sem-ch09-bundle-dynamic-part), and a
-  live `$` part (sem-ch09-host-bundle-live-dynamic-answer).
-- lower/node/elements.prism:220 an element tag whose bundle output has two event parts,
-  two `$` parts, or a `$` part beside a plain part. No test. One event part and one `$`
-  part is lowered (sem-ch09-bundle-dynamic-part), in a hosted scope too
-  (sem-ch09-host-bundle-dynamic-part-forwarded).
+- Every other bundle answer is lowered, any mix of plain, `$` and event
+  parts, written as a tuple or given as a value (`PartsBlueprint`:
+  sem-ch09-host-bundle-two-events-answer, -two-dynamics-answer,
+  -plain-beside-dynamic-answer, sem-ch09-host-bundle-live-dynamic-answer,
+  sem-ch09-bundle-dynamic-part).
+- An element tag whose output is a bundle is lowered for any mix of plain, `$` and
+  event parts (`BundleOutputOf`: sem-ch09-bundle-two-events, -two-dynamics,
+  -plain-beside-dynamic, sem-ch09-bundle-dynamic-part), in a hosted scope too
+  (sem-ch09-host-bundle-dynamic-part-forwarded). A bundle nested in a tag's bundle
+  output is read as a plain part: no test.
 - lower/expr.prism (`WidgetBlueprintValue`, `WidgetValueWords`) a widget with places as
-  a blueprint value is lowered where it has no type parameter and no widget function
-  parameter, and gives nothing, a plain value or an event back
+  a blueprint value is lowered where it has no widget function parameter, whatever it
+  gives back
   (sem-ch09-host-widget-answer, sem-ch08-blueprint-out-of-value,
   sem-ch08-widget-value-dynamic-parameter, -event-parameter, -blueprint-parameter,
-  -event-result, -let). Left refused: one with a type parameter
-  (sem-ch08-widget-value-generic), a dynamic, a bundle or a function result
-  (sem-ch08-widget-value-dynamic-result, -bundle-result, -function-result), a widget
-  function parameter, or a `$` or event parameter with time below its top (no tests);
+  -event-result, -let, -dynamic-result, -bundle-result, -function-result), a generic
+  one at each set of types its readings give it (sem-ch08-widget-value-generic), one
+  that gives a bundle back under a tag's arm (sem-ch09-host-widget-bundle-answer), one
+  whose block ends on a host's line (sem-ch08-widget-value-ends-on-host). Left
+  refused: a generic one read where a type parameter of its stays open (inside a
+  generic function or widget, given that one's own parameter: R,
+  sem-ch08-widget-value-generic-in-function), one with a
+  widget function parameter, or a `$` or event parameter with time below its top (no
+  tests);
   one read in a place `ValuedWidgets` does not look (a record's field read back and
   given on is a value already). One built in a hosted scope builds its hosted row
   (sem-ch09-host-widget-answer-hosted).
@@ -50,8 +62,9 @@ Hosting
   value is lowered (sem-ch08-local-widget-passed-as-value, sem-ch08-local-widget-in-record).
   One whose places read a dynamic of the block is lowered
   (sem-ch08-local-widget-value-reads-dynamic), and one in a hosted scope and one that
-  gives a plain value back. Left refused: one that gives an event, a dynamic, a bundle
-  or a value that is no plain data back (refused where the value is read). One a
+  gives a plain value, an event, a dynamic, a bundle or a function back
+  (sem-ch08-local-widget-value-gives-back, -gives-event, -gives-dynamic, -gives-bundle,
+  -gives-function). One a
   `let` names is the same value (sem-ch08-local-widget-value-let). lower/expr.prism
   (`NameValueOf`) "a widget
   defined in a block read as a blueprint value" stands for a reading outside a line's
@@ -62,12 +75,15 @@ Hosting
   back, which hears the blueprint's answers, and a line that binds a plain result
   (sem-ch08-blueprint-value-gives-back), in a hosted scope too
   (sem-ch09-blueprint-value-hosted), and a line that binds a dynamic
-  (sem-ch08-element-value-dynamic-statement). Left refused: one that gives a bundle
-  back (sem-ch08-widget-value-bundle-result reaches it, behind the widget's own
-  refusal as a value).
-- lower/node/static.prism:104 a widget function parameter applied to arguments whose
-  argument is a function value that is no name (a lambda). No test. A named widget
-  function passed and applied is lowered (sem-ch08-widget-parameter-applied).
+  (sem-ch08-element-value-dynamic-statement), and a line that binds a bundle
+  (`AppliedBundleLine`: sem-ch08-element-value-bundle-statement,
+  sem-ch08-widget-value-bundle-result). A bundle answered as a generic tag's is read
+  through no tag (a fault of the run: no test).
+- lower/node/static.prism (`ApplyWidgetParam`) a widget function parameter applied to
+  arguments is lowered whatever its argument: a named widget function
+  (sem-ch08-widget-parameter-applied), a lambda
+  (sem-ch08-widget-parameter-lambda-argument), any other function value
+  (sem-ch08-widget-parameter-call-argument).
 - lower/node/static.prism:778 a generic widget at a call whose types its parameters' do
   not match. No program found: a blueprint parameter and a function parameter are
   matched through (sem-ch08-generic-widget-blueprint-parameter).
@@ -84,11 +100,21 @@ Bundles
   apart by a pattern of its own is read by that pattern (sem-ch08-late-part-nested-pattern).
   Left: a line of the block's node below the split that reads the whole name (`let same =
   both`) finds no binding ("the name both, which nothing declares"); a bundle inside the
-  bundle whose late part a nested tuple pattern binds is not bound late; a dynamic part of
-  a named bundle read by a row of a row (lower/node/switch.prism, `RowPartBn`). No tests.
+  bundle whose late part a nested tuple pattern binds is not bound late. No tests.
+  A dynamic part of a named bundle read by a row of a row is read through a getter of
+  the row between (`ThroughGetter`, sem-ch04-named-bundle-in-row-of-row).
 - A `rebuild` whose block ends on a bundle a line named whole (`@ both`) is lowered
-  (`WholeNamedOf`, sem-ch04-rebuild-named-bundle-result); a bundle inside that bundle is
-  refused there. No test.
+  (`WholeNamedOf`, sem-ch04-rebuild-named-bundle-result), a bundle inside that bundle
+  too (`WholePartsOf`, sem-ch04-rebuild-nested-bundle-result), a named bundle inside a
+  tuple written out (sem-ch04-rebuild-bundle-in-tuple-result) and a block that ends on
+  the line that gives the bundle (`WholeOfResults`, sem-ch04-rebuild-ends-on-widget-bundle).
+- lower/node/static.prism (`BindBundleParam`) a widget's parameter pattern over a bundle
+  given neither a tuple written out nor a name bound to one (a function's result): the
+  bundle is a value of the run there, to be taken apart as a `let`'s is
+  (`LetPatternDynamics`). No test. (`BindParamPattern`) a widget's parameter pattern
+  that takes an event or a dynamic out of a value that is no bundle (a record's `$`
+  field): the same. No test. Lowered: a tuple pattern over a bundle written out or
+  named, and any pattern over a plain value (sem-ch08-widget-parameter-pattern).
 - A root's bundle with several dynamic parts is told part by part
   (sem-ch07-root-bundle-two-dynamics).
 - lower/node/switch.prism:216 a `rebuild` whose generation gives a dynamic it does not
@@ -105,13 +131,15 @@ Building `match`, clause widgets, `rebuild`
   sem-ch04-late-widget-result-value-above, sem-ch04-late-let-value-above); a building
   `match` with no guard whose arms read nothing of the block is built early
   (`EarlyChoiceLine`, sem-ch04-building-match-value-above); a place's field, a plain
-  `let` of one name and a hold's first value are late in turn
+  `let` (of one name, or of a pattern whose names are plain:
+  sem-ch04-late-let-pattern-above) and a hold's first value are late in turn
   (sem-ch04-building-match-read-above, sem-ch04-building-match-hold-above). Left
-  refused, no tests: a `let` of a pattern that is no one name, or of a bundle or a type
-  with time inside, that reads the late name (the three `unbuilt` refusals of
-  `BindLate`, `MarkLateLets` and `BindWhole`); and in `DeferredLine`, a line that takes
-  the late name and whose places are counted as built, and one that gives a plain
-  result of its own.
+  refused: a `let` of a bundle or of a type with time inside that reads the late name
+  (the `unbuilt` refusals of `BindLate`, `MarkLateLets` and `BindWhole`:
+  sem-ch04-late-let-bundle-above, sem-ch08-late-part-bundle-named-read-above); and in
+  `DeferredLine`, a line that takes the late name and whose places are counted as
+  built, and one that gives a plain result of its own (no program found:
+  sem-ch04-late-value-above-gives-result is built early and passes).
 - lower/jobs.prism: none added. A bare `for` in a job is lowered (`ForJob`), no test of
   the job form; the plain form is sem-ch05-update-for-bare.
 - lower/node/finish.prism:699 a place read at its block's build before the node exists
@@ -169,20 +197,30 @@ Dynamics and events
   (`Ui.Label($text=$"x")` passes the checker; `$text="x"` is a mismatch there).
 
 Functions
-- lower/node/def.prism (`LetLine`) a widget block's `let` of a pattern that is no name
-  and no tuple of names and binds an event inside it. No test. With plain names it is
-  lowered (sem-ch08-let-pattern-in-widget), and with dynamics inside it
-  (`LetPatternDynamics`, sem-ch08-let-pattern-dynamic-in-widget).
+- A widget block's `let` of a pattern that is no name and no tuple of names is
+  lowered: with plain names (sem-ch08-let-pattern-in-widget), with dynamics inside it
+  and with events inside it (`LetPatternDynamics`,
+  sem-ch08-let-pattern-dynamic-in-widget, sem-ch08-let-pattern-event-in-record). Left:
+  the value taken apart is a nested bundle a line named whole (`let ((ten, ((!more,
+  $guests)))) = all`, sem-ch08-let-pattern-event-in-tuple: lower/expr.prism, "a tuple
+  pattern's binding as a value").
 - lower/expr.prism `Recolored`: a function value of its callee's own color inside the
   value a call returns, at a call that makes the color bounded, is made again through
   every type that can hold it (ts-ch05-color-function-in-result, -in-map-result,
   -in-named-result, -in-choice-result, -in-nested-named-result, -in-named-in-tuple-result,
-  -in-optional-result, -in-result-result, -in-function-parameter-result). Left refused,
-  no tests: one held by a type alias or behind a blueprint (`Recolored`,
-  `NamedRecolored`), and a function of unbounded color whose own parameter or result
-  holds one (`FunctionRecolored`: a job's result is not mapped). A call whose result
-  holds a `Start` of the callee's color beside a function that stays a `Start` is not
-  walked (the guard at `GlobalCall`), no refusal, no test.
+  -in-optional-result, -in-result-result, -in-function-parameter-result), beside a
+  function that stays unbounded (ts-ch05-color-function-beside-unbounded-function-result)
+  and in the result of a function that stays unbounded
+  (ts-ch05-color-function-in-unbounded-function-result). A type alias is its target in
+  every type the checker gives (`ConvNamedType`), so `NamedRecolored` meets none (G, an
+  internal error). `Recolored`'s refusal of a type that is none of those is reached
+  only where the call's type does not match the callee's signature (no program found).
+  `FunctionRecolored`'s refusal is of a function whose color is a generalized `let`'s
+  that no use decides (`OutQuantified`, refused where its type is written). A function under an
+  event or a `$` inside the result is mapped (ts-ch05-color-function-in-event-result).
+  Not walked, with no refusal and no test: a function held by a blueprint inside the
+  result (`?Made F = ? @ F`: the blueprint's held answer is the `Start`, read as a
+  bounded function by the line that applies it, a fault of the run).
 - lower/node/def.prism (`RefusePlainResult`) a widget's plain result bound by a pattern
   that left a name without its field: an internal error; `BindPatternResult` takes every
   pattern (sem-ch08-plain-result-pattern passes).

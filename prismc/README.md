@@ -1724,8 +1724,7 @@ Each is Claude's, for Jimmy to overturn.
 - **BA Bundles.** A tag whose output is a tuple of plain parts and one event part
   (`Gui.Window`'s `((WindowId, !WindowInput))`), bound by a tuple pattern: the plain
   parts are the place's first value (one part itself, several a tuple), each bound part
-  a field; the event part fires on each answer at the place (`sem-ch09-bundle`). A `$` part,
-  or a second event part, is refused loudly.
+  a field; the event part fires on each answer at the place (`sem-ch09-bundle`).
 - **WB Widget arguments.** A widget parameter (`@child`) binds its argument, a widget
   block (`@widget: ..`) or a widget expression (`@counter`), with the caller's
   environments; applying the parameter lowers the argument there, so its places take

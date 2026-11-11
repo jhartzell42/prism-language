@@ -199,12 +199,17 @@ fn ElementOutput wx, menv, tg, out, pos, ?bound, level:
         ? (BnParts parts): BundleOutput wx, tg, out, pos, parts, level
         otherwise: ElementOutputOf wx, menv, tg, out, pos, ?bound, level
 
-# A bundle's output (`Gui.Window`'s `((WindowId, !WindowInput))`), taken apart by its
-# tuple pattern: the plain parts are the place's first value (one part itself, several a
-# tuple), the event part its answers (claude/backend.md, "Answers"; the World protocol's
-# bundle); with no plain part, one `$` part is a pushed place's hold (`DynamicPlace`). In a hosted scope the
-# first value is the enclosing host's, typed, its tag's first-value variant of `Answer`
-# (pick HO).
+# A bundle's output (`Gui.Window`'s `((WindowId, !WindowInput))`, `((Nat, $Text))`,
+# `((!Text, !Nat))`), taken apart by its tuple pattern: any mix of plain, `$` and event
+# parts (Type System ch. 2, "Bundles"; claude/backend.md, "Answers").
+# - The plain and `$` parts are the place's state, its first value (one part itself,
+#   several a tuple): a plain part is read from it once, at the build; a `$` part is a
+#   hold made with its part of it (`{f}_init`, the part's value at the build, `PreInit`),
+#   written by each push of the state, which a World keys by the element.
+# - Each event part is a node the place's answers fire: an answer to one event part is
+#   its value, to several a sparse tuple of them, the parts that fired.
+# In a hosted scope the state is the enclosing host's, typed: the tag's first-value
+# variant of `Answer` when the tag has event parts too, else the tag's own (pick HO).
 BundleOutput: unbounded fn Wx, TagInfo, OutTy, Pos, [?Bn], Ex -> ((Wx, Wres))
 fn BundleOutput wx, tg, out, pos, parts, level = BundleOutputOf wx, tg, out, pos, parts, level
 
@@ -217,65 +222,64 @@ fn BundleOutputOf wx, tg, out, pos, parts, level:
         OutTuple ts: ts
         otherwise: [[]]
     let idx = Range0 (Len layers)
-    let plainIx = Filter idx, \|i| (Or layers[i], LyPlain) == LyPlain
+    let stateIx = Filter idx, \|i| (Or layers[i], LyPlain) != LyEv
     let evIx = Filter idx, \|i| (Or layers[i], LyPlain) == LyEv
-    let dynIx = Filter idx, \|i| (Or layers[i], LyPlain) == LyDyn
-    let wx1 = BundleFirst wx, tg, pos, plainIx, tys, parts, level
-    let wx2 = Fold evIx, wx1, \|w, i| BundleAnswer w, tg, pos, (Or tys[i], OutUnit), (Or parts[i], nil)
-    # one `$` part beside the event part and no plain part (`((!Text, $Text))`; Semantics
-    # ch. 8: the `$` part's first value from the first-value query, its pushes keyed by the
-    # element, the event part's answers by path): a pushed place's hold (`DynamicPlace`),
-    # answered in a hosted scope by the tag's first-value variant
-    if (Len evIx) == 1 and (Len dynIx) == 1 and (Len plainIx) == 0:
-        let i = Or dynIx[0], 0
-        let t = match Or tys[i], OutUnit:
-            OutDyn inner: inner
-            other: other
-        let ((f, wx3)) = match parts[i]:
-            ? (? (BnHold hf, ignore)): ((hf, wx2))
-            otherwise: FreshName wx2, "place_{PlaceText pos}"
-        (((DynamicPlace wx3, tg, t, pos, f, level, "{AnswerAccessor tg}_first"), WrUnit))
-    else: if (Len evIx) > 1 or (Len dynIx) > 0:
-        let wx3 = update wx2:
-            &_.build <= Push &_.build, (RefusalDo "a bundle with two event parts, two `$` parts, or a `$` part beside a plain part ({tg.name})")
-        ((wx3, WrUnit))
-    else: ((wx2, WrUnit))
-
-# A bundle's plain parts, from the place's first value: each bound part a field.
-BundleFirst: unbounded fn Wx, TagInfo, Pos, [Nat], [OutTy], [?Bn], Ex -> Wx
-fn BundleFirst wx, tg, pos, plainIx, tys, parts, level = match plainIx:
-    [[]]: wx
-    otherwise:
-        let one = (Len plainIx) == 1
-        let plainTy = if one: Or tys[Or plainIx[0], 0], OutUnit else: OutTuple (Each plainIx, \|i| Or tys[i], OutUnit)
-        let wx1 = update wx:
-            &_.lets <= Append &_.lets, [[(FirstValueLet wx, pos, tg, level, plainTy), (DoLet (PaBind "bundle_{PlaceText pos}"), (if Emits wx, pos: XDecode plainTy, (XRef (XVar "first_{PlaceText pos}")) else: XVar "first_{PlaceText pos}"))]]
-            &_.fallible <= True
-        Fold (Range0 (Len plainIx)), wx1, \|w, k|
-            let i = Or plainIx[k], 0
-            match parts[i]:
-                ? (? (BnLocal rs, ignore, ignore)):
-                    let f = PlaceStem rs
-                    let part = if one: (XVar "bundle_{PlaceText pos}") else: (XClone (XPart (XVar "bundle_{PlaceText pos}"), k))
-                    update w:
-                        &_.lets <= Push &_.lets, (DoLet (PaBind f), part)
-                        &_.fields <= Push &_.fields, ((f, (Or tys[i], OutUnit), "place {PlaceText pos}'s answer, part {i} of its first value"))
-                        &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
-                otherwise: w
-
-# A bundle's event part: the place's answers.
-BundleAnswer: fn Wx, TagInfo, Pos, OutTy, ?Bn -> Wx
-fn BundleAnswer wx, tg, pos, et, ?b:
-    let t = match et:
+    let ValueTy = \|i| match Or tys[i], OutUnit:
+        OutDyn inner: inner
         OutEvent inner: inner
-        otherwise: et
-    let ((id, wx2)) = match ?b:
-        ? (BnEv er, ignore): ((er.node, wx))
-        otherwise:
-            let ((nm, w)) = FreshName wx, "place_{PlaceText pos}"
-            AddGn w, nm, t, GnAnswer, 0
-    update wx2:
-        &_.answers <= Push &_.answers, ((pos, id, t, (AnswerAccessor tg)))
+        other: other
+    let ((wx1, events)) = Fold evIx, ((wx, [[]])), \|((w, acc)), i|
+        let ((id, w2)) = BundleEvent w, pos, (ValueTy i), (Or parts[i], nil)
+        ((w2, (Push acc, ((id, (ValueTy i))))))
+    let one = (Len stateIx) == 1
+    let stateTy = if one: ValueTy (Or stateIx[0], 0) else: OutTuple (Each stateIx, ValueTy)
+    let whole = "bundle_{PlaceText pos}"
+    let wx2 = if (Len stateIx) == 0: wx1 else: update wx1:
+        &_.lets <= Append &_.lets, [[(FirstValueLet wx1, pos, tg, level, stateTy), (DoLet (PaBind whole), (if Emits wx1, pos: XDecode stateTy, (XRef (XVar "first_{PlaceText pos}")) else: XVar "first_{PlaceText pos}"))]]
+        &_.fallible <= True
+    let ((wx3, holds)) = Fold (Range0 (Len stateIx)), ((wx2, [[]])), \|((w, acc)), k|
+        let i = Or stateIx[k], 0
+        let part = if one: XVar whole else: XClone (XPart (XVar whole), k)
+        if (Or layers[i], LyPlain) == LyDyn:
+            let ((f, w1)) = match parts[i]:
+                ? (? (BnHold hf, ignore)): ((hf, w))
+                otherwise: FreshName w, "place_{PlaceText pos}"
+            let w2 = update w1:
+                &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind "{f}_init"), (ValueTy i)), part)
+                &_.fields <= Push &_.fields, ((f, (OutHold (ValueTy i)), "pushed to place {PlaceText pos}, part {i} of its answer"))
+                &_.inits <= Push &_.inits, ((f, (XCall (RefRuntime "rt::Hold::new"), [[(XClone (XVar "{f}_init")), XCx]])))
+            ((w2, (Push acc, ((k, f, (ValueTy i))))))
+        else: match parts[i]:
+            ? (? (BnLocal rs, ignore, ignore)):
+                let f = PlaceStem rs
+                let w2 = update w:
+                    &_.lets <= Push &_.lets, (DoLet (PaBind f), part)
+                    &_.fields <= Push &_.fields, ((f, (ValueTy i), "place {PlaceText pos}'s answer, part {i}, read from its first value"))
+                    &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
+                ((w2, acc))
+            otherwise: ((w, acc))
+    # a World's pushes are keyed by the element: the place listens for them; a hosted
+    # place's come typed from its host
+    let stem = match holds[0]:
+        ? ((ignore, f, ignore)): f
+        nil: ""
+    let wx4 = if stem == "" or not (Emits wx3, pos): wx3 else: update wx3:
+        &_.lets <= Push &_.lets, (DoLet (PaBind "{stem}_element"), (XMethod level, "to_pod", [[]]))
+        &_.fields <= Push &_.fields, (("{stem}_element", OutPod, "place {PlaceText pos}'s element, which pushes are keyed by"))
+        &_.moves <= Push &_.moves, (("{stem}_element", (XClone (XVar "{stem}_element"))))
+        &_.build <= Push &_.build, (DoExpr (XMethod (XCx), "listen", [[(XClone (XField (XVar "node"), "{stem}_element")), (XRef (XCast (XClone (XVar "node")), (OutObj (OutNamed (RefRuntime "rt::Node"), [[]]))))]]))
+    let wx5 = update wx4:
+        &_.bundles <= Push &_.bundles, BundlePlace(pos=pos, stem=stem, stateTy=stateTy, stateParts=(Len stateIx), holds=holds, events=events, stateAccessor=(if (Len evIx) == 0: AnswerAccessor tg else: "{AnswerAccessor tg}_first"), eventAccessor=(AnswerAccessor tg), firstVariant=(AnswerFirstVariant tg))
+    ((wx5, WrUnit))
+
+# A bundle's event part: the node the place's answers fire, the bound name's or one of
+# the place's own.
+BundleEvent: fn Wx, Pos, OutTy, ?Bn -> ((Nat, Wx))
+fn BundleEvent wx, pos, t, ?b = match ?b:
+    ? (BnEv er, ignore): ((er.node, wx))
+    otherwise:
+        let ((nm, w)) = FreshName wx, "place_{PlaceText pos}"
+        AddGn w, nm, t, GnAnswer, 0
 
 # A place's first value at the build: from the World (`cx.first_value`, by the element as
 # it is built, the plain data every World answer is), or in a hosted scope from the
@@ -308,14 +312,11 @@ fn HostLocal wx, pos = if pos.scope == 0: "enclosing" else: Or wx.scopes[Dec pos
 AnswerVariant: fn TagInfo -> Ref
 fn AnswerVariant tg = RefChild answerRef, (TagStruct tg.name)
 
-# Whether a tag's output is a bundle with an event part and a plain part, or an event part
-# and one `$` part, whose first value has a variant of its own (`?BundleFirstTy`).
+# Whether a tag's output is a bundle with event parts and a state (plain or `$` parts),
+# whose state has a variant of its own (`?BundleFirstTy`).
 IsBundleTag: fn TagInfo -> Bool
 fn IsBundleTag tg = match Peel tg.out:
-    TyTuple cs:
-        let Has = \|layer| Fold cs, False, \|f, c| f or (LayerOf c) == layer
-        let lives = Len (Filter cs, \|c| (LayerOf c) == LyDyn)
-        (Has LyEv) and ((Has LyPlain) or lives == 1)
+    TyTuple cs: (Fold cs, False, \|f, c| f or (LayerOf c) == LyEv) and Fold cs, False, \|f, c| f or (LayerOf c) != LyEv
     otherwise: False
 
 # A bundle tag's first-value variant (`AnswerCase.first`).

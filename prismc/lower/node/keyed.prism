@@ -49,12 +49,12 @@ use Lower.Model.*
 # ---------------------------------------------------------------------------------------
 
 ForLine: unbounded fn Wx, Env, Env, ?ForBinders, Expr, Block, Expr, ?Bn -> ((Wx, Wres))
-fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
+fn ForLine wx, benv0, menv0, ?binders, source, body, e, ?bound:
     let lx = wx.lx
     let pos = wx.pos
     let wx1 = update wx:
         &_.pos <= NextPos &_.pos
-    let ((srcEx, reads)) = DynamicExpr wx1, menv, source
+    let ((srcEx, reads)) = DynamicExpr wx1, menv0, source
     let srcTy = Peel (TypeAt lx, source.span)
     let ((kt, vt, keyed)) = match srcTy:
         TyMap k, v: (((OutTyOf lx, k), (OutTyOf lx, v), True))
@@ -73,7 +73,7 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
     let srcCached = XMethod (XField XSelf, "{srcGetter}_cache"), "get", [[XCx, (XClosure False, [[]], src)]]
     let srcDef = MethDef(name=srcGetter, recv=RecvRef, params=[[]], cx=CxRef, ret=(OutMap kt, vt), body=[[]], tail=srcCached, doc="The source of the `for` at place {PlaceText pos} by key, at the read point: what its builder and its rows' entries read, computed once per write behind it.")
     let rowName = "{wx.node}{RowSuffix wx}Row"
-    let locals = RowLocals benv, menv, body
+    let locals = RowLocals benv0, menv0, body
     let rowFields = Append [[(("key", kt, "the row's key")), (("left_entry", (OutCell (OutOpt vt)), "the entry as the tick its key left opened, kept from the row's leaving on (R8)")), (("parent", (OutWeak wx.node), "the node of the `for`"))]], (Each locals, \|l| ((l.field, l.ty, "`{l.name}`, the block's")))
     let rowMoves = Append [[(("key", (XClone (XVar "key")))), (("left_entry", (XCall (RefRuntime "std::RefCell::new"), [[XNone]]))), (("parent", (XClone (XVar "parent"))))]], (Each locals, \|l| ((l.field, (XVar l.field))))
     let rowTaken = Append (Append nodeHooks, [["key", "value", "parent", "entry", "left_entry"]]), (Each locals, \|l| l.field)
@@ -81,15 +81,18 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
     # The block's events the body names reach the row through ports, as a generation's do
     # (`RowEnv`): a port node in the row, subscribed to the block's port, which the block's
     # event fires. The row's own graph indexes none of the block's events.
-    let ((wx2p, rowWx0p, ports)) = RowEnv wx2a, rowWx0, menv, body
+    # a dynamic the rows read that stands on no node of the block's own (the block is a
+    # row, reading the block around it): a getter of the block (`RowReadGetters`)
+    let ((wx2g, benv, menv)) = RowReadGetters wx2a, benv0, menv0, body
+    let ((wx2p, rowWx0p, ports)) = RowEnv wx2g, rowWx0, menv, body
     let wx2 = update (AddField wx2p, "{srcGetter}_cache", (OutNamed (RefRuntime "rt::Cache"), [[(OutMap kt, vt)]]), "the source of the `for` at place {PlaceText pos}, cached (gap SR)", (XCall (RefRuntime "rt::Cache::new"), [[]])):
         &_.taken <= Append &_.taken, [[srcGetter, "{srcGetter}_cache"]]
         &_.getters <= Push &_.getters, srcDef
         &_.dynReads <= Insert &_.dynReads, srcGetter, reads
     let keyB = BnLocal (XVar "key"), Owned, kt
     let keyM = BnLocal (XField XSelf, "key"), Owned, kt
-    let benvL = WholeOfBlock menv, (EventsOf ports, (Fold locals, (RowReads benv, parentArg), \|en, l| Bind en, l.name, (BnLocal (XVar l.field), Owned, l.ty))), True
-    let menvL = WholeOfBlock menv, (EventsOf ports, (Fold locals, (RowReads menv, parentRef), \|en, l| Bind en, l.name, (BnLocal (XField XSelf, l.field), Owned, l.ty))), False
+    let benvL = WholeOfBlock menv, (BundlesOf ports, (EventsOf ports, (Fold locals, (RowReads benv, parentArg), \|en, l| Bind en, l.name, (BnLocal (XVar l.field), Owned, l.ty))), True), True
+    let menvL = WholeOfBlock menv, (BundlesOf ports, (EventsOf ports, (Fold locals, (RowReads menv, parentRef), \|en, l| Bind en, l.name, (BnLocal (XField XSelf, l.field), Owned, l.ty))), False), False
     let passed = Append (HostedPassed wx), (Each locals, \|l| l.passed)
     let rowParams = Append (Append [[(("key", kt)), (("value", vt)), (("parent", (OutWeak wx.node)))]], (HostedParams wx)), (Each locals, \|l| ((l.field, l.ty)))
     # `$_`: in the build the entry after the tick, which the builder passes; in the methods the
@@ -352,6 +355,37 @@ fn EventsOf ports, env = Fold (Keys ports.names), env, \|en, k| match ports.name
     ? (BnEv er, t): Bind en, k, (BnEv er, t)
     ? (BnWidget x, cbenv, cmenv, clx): Bind en, k, (BnWidget x, cbenv, cmenv, clx)
     otherwise: en
+
+# The named bundles of a row's port environment (`RowEnv`, `RowPartsBn`) over a row's
+# environment: each part as the row reads it, an event through a port of the row, a
+# dynamic and a plain part through the parent; in the build as the row's constructor
+# spells them (`PartsAtBuild`).
+BundlesOf: unbounded fn Env, Env, Bool -> Env
+fn BundlesOf ports, env, build = Fold (Keys ports.names), env, \|en, k| match ports.names[k]:
+    ? (BnParts bs): Bind en, k, (BnParts (if build: PartsAtBuild bs else: bs))
+    otherwise: en
+
+# The block's dynamics its rows read that do not stand on the block's own node (the
+# block is a row itself, and reads the block around it through its `parent`): each
+# rebound to a getter of the block over the read, which the rows read through their
+# parent as any dynamic `let` of the block (`RowReads`), so a row of a row reads a hold
+# of the block around both and hears its writes through the row between
+# (`sem-ch04-row-of-row-reads-hold`).
+RowReadGetters: unbounded fn Wx, Env, Env, Block -> ((Wx, Env, Env))
+fn RowReadGetters wx, benv, menv, body = Fold (RowNamesClosed menv, (ReadNames (BlockExprs body))), ((wx, benv, menv)), \|((w, be, me)), n| match ((me.names[n], (HasKey me.names, "{n}#row"))):
+    (((? (BnDyn ex, rds, t)), False)):
+        let own = match ex:
+            XMethod XSelf, ignore, ignore: True
+            otherwise: (OnSelfRooted ex) and Fold rds, True, \|f, rd| f and IsOwnRead rd
+        if own: ((w, be, me))
+        else:
+            let ((getter, w1)) = FreshName w, "through_{Snake n}"
+            let w2 = update w1:
+                &_.getters <= Push &_.getters, (MethDef(name=getter, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="`{n}` of a block around this one, as this block's rows read it through it."))
+                &_.dynReads <= Insert &_.dynReads, getter, rds
+            let b = BnDyn (XMethod (XSelf), getter, [[XCx]]), [[OwnRead getter]], t
+            ((w2, (Bind be, n, b), (Bind me, n, b)))
+    otherwise: ((w, be, me))
 
 # A row's reads of its block, as the block's own reads: the block's writes of these mark
 # the rows.

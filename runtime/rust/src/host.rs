@@ -567,6 +567,40 @@ pub fn widget_event_blueprint<E: 'static, A: 'static, T: Clone + 'static>(
     })
 }
 
+/// A widget that gives a dynamic back as a blueprint value under a tag's arm: as
+/// [`widget_blueprint`], the row's result its live dynamic. Its value at the row's build
+/// is the place's first value, made an answer by `answer`; each later move of it is a
+/// push to the place, an input of the next tick, which is owed, sampled when it is
+/// delivered, as [`dynamic_blueprint`]'s is (several marks in one tick are one push).
+/// The subscription lives as long as the row, whose port it is.
+pub fn widget_dynamic_blueprint<E: 'static, A: 'static, T: Clone + 'static>(
+    build: impl Fn(Path, u32, &mut Cx) -> Result<BuiltWidget<E, A, Dynamic<T>>, Fault> + 'static,
+    build_hosted: impl Fn(Path, u32, Rc<dyn HostOf<E, A>>, Moved, &mut Cx) -> Result<BuiltWidget<E, A, Dynamic<T>>, Fault> + 'static,
+    answer: impl Fn(&T) -> A + 'static,
+) -> Blueprint<E, A> {
+    let answer = Rc::new(answer);
+    Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, base, cx| {
+        let (made, hosted) = match scope {
+            Scope::World => (build(path, base, cx)?, false),
+            Scope::Hosted(host) => (build_hosted(path, base, host.clone(), host_moved(host), cx)?, true),
+        };
+        let first = answer(&made.result.sample(cx));
+        let (read, answered) = (made.result.clone(), answer.clone());
+        let queued: Stamped<()> = Stamped::new();
+        let _ = made.result.updates.subscribe(Rc::new(move |_: &(), cx: &mut Cx| {
+            if queued.fired(cx) {
+                return Ok(());
+            }
+            queued.set((), cx);
+            let (read, sink, answered) = (read.clone(), sink.clone(), answered.clone());
+            cx.answer_later(Box::new(move |cx| sink(&answered(&read.sample(cx)), cx)));
+            Ok(())
+        }));
+        let (document, deliver) = if hosted { (Some(made.document), Some(made.deliver)) } else { (None, None) };
+        Ok(Supplied { node: made.node, first: Some(first), forwards: false, entry: None, built: made.built, leave: Some(made.leave), document, deliver })
+    })
+}
+
 /// A host's telling as a [`Moved`]: the host held weakly, told while it lives.
 pub fn host_moved<E: 'static, A: 'static>(host: &Rc<dyn HostOf<E, A>>) -> Moved {
     let weak = Rc::downgrade(host);
@@ -626,22 +660,24 @@ impl<T: Clone + 'static> Node for Subscribed<T> {
     }
 }
 
-/// The two subscriptions of a bundle answer with a `$` part
-/// ([`bundle_dynamic_blueprint`]), let go when the row leaves.
-struct SubscribedBoth<T> {
-    event: Rc<Port<T>>,
-    event_handle: Cell<Option<Handle>>,
-    updates: Rc<Port<()>>,
-    updates_handle: Cell<Option<Handle>>,
+/// The subscriptions of a bundle answer ([`parts_blueprint`]): one per event part, and one
+/// per port that says a `$` part moved, let go when the row leaves.
+struct SubscribedParts<T> {
+    events: Vec<(Rc<Port<T>>, Cell<Option<Handle>>)>,
+    updates: Vec<(Rc<Port<()>>, Cell<Option<Handle>>)>,
 }
 
-impl<T: Clone + 'static> Node for SubscribedBoth<T> {
+impl<T: Clone + 'static> Node for SubscribedParts<T> {
     fn leave(self: Rc<Self>, _cx: &mut Cx) -> Done {
-        if let Some(h) = self.event_handle.take() {
-            self.event.unsubscribe(h);
+        for (port, handle) in &self.events {
+            if let Some(h) = handle.take() {
+                port.unsubscribe(h);
+            }
         }
-        if let Some(h) = self.updates_handle.take() {
-            self.updates.unsubscribe(h);
+        for (port, handle) in &self.updates {
+            if let Some(h) = handle.take() {
+                port.unsubscribe(h);
+            }
         }
         Ok(())
     }
@@ -664,43 +700,111 @@ pub fn event_blueprint<E: 'static, A: Clone + 'static>(e: Event<A>) -> Blueprint
     })
 }
 
-/// `@ ((x, !e))` for a bundle's tag (pick HO): `x`, the plain parts, the place's first value,
-/// once; each firing of `e` an answer to the child's place, a tick late.
-pub fn bundle_blueprint<E: 'static, A: Clone + 'static>(first: A, e: Event<A>) -> Blueprint<E, A> {
-    Rc::new(move |_path, sink: Sink<A>, _scope, _base, _cx| {
-        let node = Rc::new(Subscribed { port: e.port.clone(), handle: Cell::new(None) });
-        let h = e.port.subscribe(Rc::new(move |v: &A, cx: &mut Cx| later(&sink, v.clone(), cx)));
-        node.handle.set(Some(h));
-        Ok(Supplied { node, first: Some(first.clone()), forwards: false, entry: None, built: 0, leave: None, document: None, deliver: None })
+/// A bundle answer's parts (Type System ch. 2, "Bundles"): `@ ((a, $b, !c, !d))` under a
+/// bundle tag's arm, any mix of plain, `$` and event parts. The plain and `$` parts are
+/// the place's state, one dynamic of the tag's state case (a constant when no part
+/// moves), with a port per `$` part that says the part moved; each event part is an event
+/// of the tag's answer case.
+pub struct PartsAnswer<A> {
+    state: Option<Dynamic<A>>,
+    moved: Vec<Rc<Port<()>>>,
+    events: Vec<Event<A>>,
+}
+
+/// A bundle answer with a state: its plain and `$` parts.
+pub fn parts_state<A>(state: Dynamic<A>) -> PartsAnswer<A> {
+    PartsAnswer { state: Some(state), moved: Vec::new(), events: Vec::new() }
+}
+
+/// A bundle answer with no state: its first event part.
+pub fn parts_event<A>(e: Event<A>) -> PartsAnswer<A> {
+    PartsAnswer { state: None, moved: Vec::new(), events: vec![e] }
+}
+
+impl<A> PartsAnswer<A> {
+    /// One more port that says the state moved (a second `$` part's).
+    pub fn moved_by(mut self, port: &Rc<Port<()>>) -> PartsAnswer<A> {
+        self.moved.push(port.clone());
+        self
+    }
+    /// One more event part.
+    pub fn event(mut self, e: Event<A>) -> PartsAnswer<A> {
+        self.events.push(e);
+        self
+    }
+}
+
+/// `@ ((a, $b, !c))` for a bundle's tag (pick HO; round 3 DY): the state's value at the
+/// row's build is the place's first value, read synchronously; each later move of a `$`
+/// part is a push of the whole state to the place, and each firing of an event part an
+/// answer, all inputs of the next tick, which is owed. As [`dynamic_blueprint`], several
+/// marks of the state in one tick are one push, sampled when it is delivered. Two event
+/// parts that fire in one tick are two answers of that next tick.
+pub fn parts_blueprint<E: 'static, A: Clone + 'static>(parts: PartsAnswer<A>) -> Blueprint<E, A> {
+    let parts = Rc::new(parts);
+    Rc::new(move |_path, sink: Sink<A>, _scope, _base, cx| {
+        let (first, node) = answer_parts(&parts, &sink, cx);
+        Ok(Supplied { node: Rc::new(node), first, forwards: false, entry: None, built: 0, leave: None, document: None, deliver: None })
     })
 }
 
-/// `@ ((!e, $d))` for a bundle's tag with a `$` part (Type System ch. 2, "Bundles"; round
-/// 3 DY): `d` is the `$` part in the tag's first-value case, `e` the event part in the
-/// tag's own. `d`'s value is the place's first value, read at the build; each later
-/// change of `d` is a push to the place and each firing of `e` an answer, both inputs of
-/// the next tick, which is owed. As [`dynamic_blueprint`], several marks of `d` in one
-/// tick are one push, sampled when it is delivered.
-pub fn bundle_dynamic_blueprint<E: 'static, A: Clone + 'static>(d: Dynamic<A>, e: Event<A>) -> Blueprint<E, A> {
-    Rc::new(move |_path, sink: Sink<A>, _scope, _base, cx| {
-        let first = d.sample(cx);
-        let node = Rc::new(SubscribedBoth { event: e.port.clone(), event_handle: Cell::new(None), updates: d.updates.clone(), updates_handle: Cell::new(None) });
+/// A bundle answer given to a sink ([`parts_blueprint`], [`widget_parts_blueprint`]): the
+/// state's value now, the place's first value, and the subscriptions that push each
+/// later move of the state and answer each firing of an event part, a tick late.
+fn answer_parts<A: Clone + 'static>(parts: &PartsAnswer<A>, sink: &Sink<A>, cx: &mut Cx) -> (Option<A>, SubscribedParts<A>) {
+    let first = parts.state.as_ref().map(|d| d.sample(cx));
+    let mut events = Vec::new();
+    for e in &parts.events {
         let answers = sink.clone();
         let h = e.port.subscribe(Rc::new(move |v: &A, cx: &mut Cx| later(&answers, v.clone(), cx)));
-        node.event_handle.set(Some(h));
-        let read = d.clone();
-        let queued: Stamped<()> = Stamped::new();
-        let h = d.updates.subscribe(Rc::new(move |_: &(), cx: &mut Cx| {
-            if queued.fired(cx) {
-                return Ok(());
+        events.push((e.port.clone(), Cell::new(Some(h))));
+    }
+    let mut updates = Vec::new();
+    if let Some(d) = &parts.state {
+        let queued: Rc<Stamped<()>> = Rc::new(Stamped::new());
+        let mut ports = vec![d.updates.clone()];
+        for port in &parts.moved {
+            if !ports.iter().any(|p| Rc::ptr_eq(p, port)) {
+                ports.push(port.clone());
             }
-            queued.set((), cx);
-            let (read, sink) = (read.clone(), sink.clone());
-            cx.answer_later(Box::new(move |cx| sink(&read.sample(cx), cx)));
-            Ok(())
-        }));
-        node.updates_handle.set(Some(h));
-        Ok(Supplied { node, first: Some(first), forwards: false, entry: None, built: 0, leave: None, document: None, deliver: None })
+        }
+        for port in ports {
+            let (read, sink, queued) = (d.clone(), sink.clone(), queued.clone());
+            let h = port.subscribe(Rc::new(move |_: &(), cx: &mut Cx| {
+                if queued.fired(cx) {
+                    return Ok(());
+                }
+                queued.set((), cx);
+                let (read, sink) = (read.clone(), sink.clone());
+                cx.answer_later(Box::new(move |cx| sink(&read.sample(cx), cx)));
+                Ok(())
+            }));
+            updates.push((port, Cell::new(Some(h))));
+        }
+    }
+    (first, SubscribedParts { events, updates })
+}
+
+/// A widget that gives a bundle back as a blueprint value under a bundle tag's arm: as
+/// [`widget_blueprint`], the row's result its one value, its events and dynamics whole.
+/// `parts` makes the bundle answer of it (the tag's state of its plain and `$` parts,
+/// the tag's answers of its event parts), which is answered as [`parts_blueprint`]
+/// answers: the state at the row's build the place's first value, each later move a
+/// push and each firing an answer, inputs of the next tick. The subscriptions live as
+/// long as the row, whose ports they are.
+pub fn widget_parts_blueprint<E: 'static, A: Clone + 'static, R: 'static>(
+    build: impl Fn(Path, u32, &mut Cx) -> Result<BuiltWidget<E, A, R>, Fault> + 'static,
+    build_hosted: impl Fn(Path, u32, Rc<dyn HostOf<E, A>>, Moved, &mut Cx) -> Result<BuiltWidget<E, A, R>, Fault> + 'static,
+    parts: impl Fn(&R) -> PartsAnswer<A> + 'static,
+) -> Blueprint<E, A> {
+    Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, base, cx| {
+        let (made, hosted) = match scope {
+            Scope::World => (build(path, base, cx)?, false),
+            Scope::Hosted(host) => (build_hosted(path, base, host.clone(), host_moved(host), cx)?, true),
+        };
+        let (first, _subscribed) = answer_parts(&parts(&made.result), &sink, cx);
+        let (document, deliver) = if hosted { (Some(made.document), Some(made.deliver)) } else { (None, None) };
+        Ok(Supplied { node: made.node, first, forwards: false, entry: None, built: made.built, leave: Some(made.leave), document, deliver })
     })
 }
 

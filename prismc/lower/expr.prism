@@ -749,17 +749,16 @@ fn PureBlueprint lx, env, x, t:
             otherwise: PlainBlueprint lx, env, x, variant, t
         otherwise: VlOwned (InternalBug "a supplier's answer under a tag the arm does not name"), t
 
-# `@ ((x, !e))` under a bundle tag's arm (Type System ch. 2, "Bundles"; pick HO): a tuple
-# whose parts are plain values and one event. The plain parts are the place's first value,
-# the tag's first-value variant of `Answer` (`AnswerCase.first`), read at the place's
-# build; each firing of the event an answer, a tick late (prism_rtl's `bundle_blueprint`).
+# `@ ((a, $b, !c))` under a bundle tag's arm (Type System ch. 2, "Bundles"; pick HO): a
+# tuple of any mix of plain, `$` and event parts, answered through prism_rtl's
+# `parts_blueprint` (`PartsBlueprint`).
 IsBundleAnswer: fn Lx, Expr -> Bool
 fn IsBundleAnswer lx, x = match x.kind:
     EGroup y: IsBundleAnswer lx, y
-    ETuple es: Fold es, False, \|f, y| f or (LayerOf (TypeAt lx, y.span)) == LyEv
+    ETuple es: Fold es, False, \|f, y| f or (LayerOf (TypeAt lx, y.span)) == LyEv or (LayerOf (TypeAt lx, y.span)) == LyDyn
     # a bundle not written as a tuple (`@ pair`, `pair` a `let`): by its type
     otherwise: match TypeAt lx, x.span:
-        TyTuple ts: Fold ts, False, \|f, part| f or (LayerOf part) == LyEv
+        TyTuple ts: Fold ts, False, \|f, part| f or (LayerOf part) == LyEv or (LayerOf part) == LyDyn
         otherwise: False
 
 # An answer's event. `never` alone names no type its `map` can read (`@ ((never, $
@@ -774,57 +773,116 @@ fn AnswerEvent lx, env, ev = match ev.kind:
         else: Own (ValueOf lx, env, ev)
     otherwise: Own (ValueOf lx, env, ev)
 
+# One part of a bundle answer: a plain value (a constant `$` part among them, `$
+# "offline"`); a live `$` part, a `Dynamic` of its value; an event part, an `Event` of the
+# type given; or a part this back end refuses, in words.
+type AnswerPart = choice:
+    PartPlain Ex
+    PartLive Ex
+    PartEvent Ex, OutTy
+    PartRefused Text
+
 BundleBlueprint: unbounded fn Lx, Env, Expr, Ref, OutTy -> Vl
 fn BundleBlueprint lx, env, x, variant, t = match x.kind:
     EGroup y: BundleBlueprint lx, env, y, variant, t
-    ETuple es:
-        let plain = Filter es, \|y| (LayerOf (TypeAt lx, y.span)) == LyPlain
-        let evs = Filter es, \|y| (LayerOf (TypeAt lx, y.span)) == LyEv
-        let others = Filter es, \|y| (LayerOf (TypeAt lx, y.span)) == LyDyn
-        match ((env.names["#tagfirst"], evs, others)):
-            ((? (BnLocal (XPath firstVariant), ignore, ignore), [[ev]], [[]])):
-                let firstVal = match plain:
-                    [[y]]: Own (ValueOf lx, env, y)
-                    otherwise: XTuple (Each plain, \|y| Own (ValueOf lx, env, y))
-                let wrapped = XMethod (AnswerEvent lx, env, ev), "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (XClone (XVar "v"))))]]
-                VlOwned (XCall (RefRuntime "prism_rtl::bundle_blueprint::<crate::Elem, _>"), [[(Tagged firstVariant, firstVal), wrapped]]), t
-            # a constant `$` part beside the event and no plain part (`@ ((never, $
-            # "offline"))`, Semantics ch. 9): its value the place's first value, once
-            ((? (BnLocal (XPath firstVariant), ignore, ignore), [[ev]], [[d]])) if (Len plain) == 0 and (?ConstantDynamic d) != nil:
-                let firstVal = Own (ValueOf lx, env, (Or (?ConstantDynamic d), d))
-                let wrapped = XMethod (AnswerEvent lx, env, ev), "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (XClone (XVar "v"))))]]
-                VlOwned (XCall (RefRuntime "prism_rtl::bundle_blueprint::<crate::Elem, _>"), [[(Tagged firstVariant, firstVal), wrapped]]), t
-            # a live `$` part beside the event and no plain part (`@ (("hello" on !flip,
-            # $state))`; round 3 DY): the dynamic in the tag's first-value case, its value
-            # the place's first value and each later change a push (prism_rtl's
-            # `bundle_dynamic_blueprint`)
-            ((? (BnLocal (XPath firstVariant), ignore, ignore), [[ev]], [[d]])) if (Len plain) == 0: match ?DynamicAnswer lx, d:
-                ? inner: match ?AnswerDynamic lx, env, d, inner, firstVariant:
-                    ? dynamic:
-                        let wrapped = XMethod (AnswerEvent lx, env, ev), "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (XClone (XVar "v"))))]]
-                        VlOwned (XCall (RefRuntime "prism_rtl::bundle_dynamic_blueprint::<crate::Elem, _>"), [[dynamic, wrapped]]), t
-                    nil: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer whose `$` part reads what has no value at the owner's build (a structural dynamic, or a name of the parent)"), t
-                nil: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a bundle answer whose `$` part is no dynamic"), t
-            otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer with two event parts, two `$` parts, or a `$` part beside a plain part"), t
-    # a bundle that is a value already (`@ pair`): its parts are the tuple's, the plain
-    # ones cloned out for the first value, the event's mapped to the tag's variant
+    ETuple es: VlOwned (PartsBlueprint lx, env, x, (Each es, \|y| WrittenPart lx, env, y), variant), t
+    # a bundle that is a value already (`@ pair`): its parts are the tuple's, an event
+    # part its `Event`, a `$` part its `Dynamic`
     otherwise: match TypeAt lx, x.span:
         TyTuple ts:
-            let places = Range0 (Len ts)
-            let LayerAt = \|i| LayerOf (Or ts[i], TyErr)
-            let plain = Filter places, \|i| (LayerAt i) == LyPlain
-            let evs = Filter places, \|i| (LayerAt i) == LyEv
-            let others = Filter places, \|i| (LayerAt i) == LyDyn
             let whole = XVar "bundle_answer"
-            match ((env.names["#tagfirst"], evs, others)):
-                ((? (BnLocal (XPath firstVariant), ignore, ignore), [[ev]], [[]])):
-                    let firstVal = match plain:
-                        [[i]]: XClone (XPart whole, i)
-                        otherwise: XTuple (Each plain, \|i| XClone (XPart whole, i))
-                    let wrapped = XMethod (XPart whole, ev), "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (XClone (XVar "v"))))]]
-                    VlOwned (XBlock [[(DoLet (PaBind "bundle_answer"), (Own (ValueOf lx, env, x)))]], (XCall (RefRuntime "prism_rtl::bundle_blueprint::<crate::Elem, _>"), [[(Tagged firstVariant, firstVal), wrapped]])), t
-                otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer given as a value with two event parts or a `$` part"), t
+            let parts = Each (Range0 (Len ts)), \|i|
+                let part = Or ts[i], TyErr
+                match LayerOf part:
+                    LyEv: PartEvent (XClone (XPart whole, i)), (OutTyOf lx, (Peel part))
+                    LyDyn: PartLive (XClone (XPart whole, i))
+                    otherwise: PartPlain (XClone (XPart whole, i))
+            VlOwned (XBlock [[(DoLet (PaBind "bundle_answer"), (Own (ValueOf lx, env, x)))]], (PartsBlueprint lx, env, x, parts, variant)), t
         otherwise: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a bundle answer whose type is no tuple"), t
+
+# A part of a bundle answer written in place.
+WrittenPart: unbounded fn Lx, Env, Expr -> AnswerPart
+fn WrittenPart lx, env, y = match LayerOf (TypeAt lx, y.span):
+    LyEv: PartEvent (AnswerEvent lx, env, y), (OutTyOf lx, (Peel (TypeAt lx, y.span)))
+    LyDyn: match ?DynamicAnswer lx, y:
+        # a constant `$` part: its value, once
+        nil: PartPlain (Own (ValueOf lx, env, (Or (?ConstantDynamic y), y)))
+        ? d: match ?PartDynamic lx, env, y, d:
+            ? dynamic: PartLive dynamic
+            nil: PartRefused "`{SrcText lx, lx.file, y.span}`, a bundle answer's `$` part that reads what has no value at the owner's build (a structural dynamic)"
+    otherwise: PartPlain (Own (ValueOf lx, env, y))
+
+# A bundle answer of its parts (round 3 DY). The plain and `$` parts are the state: one
+# `Dynamic` of the tag's state case of `crate::Answer` (the tag's first-value variant when
+# the answer has event parts too, else the tag's own), a constant when no part is live,
+# else read from the live parts' dynamics at the read point and moved when any of them
+# moves. Each event part is mapped to the tag's answer case: of one event part its value,
+# of several a sparse tuple holding that part alone.
+PartsBlueprint: unbounded fn Lx, Env, Expr, [AnswerPart], Ref -> Ex
+fn PartsBlueprint lx, env, x, parts, variant = match PartsAnswerOf lx, env, "`@ {SrcText lx, lx.file, x.span}`", parts, variant:
+    XBlock lets, answer: XBlock lets, (XCall (RefRuntime "prism_rtl::parts_blueprint::<crate::Elem, _>"), [[answer]])
+    other: other
+
+# The bundle answer of its parts (prism_rtl's `PartsAnswer`), in a block that names the
+# state's parts; a refusal or an internal error in its place. `what` names the answer in
+# those.
+PartsAnswerOf: unbounded fn Lx, Env, Text, [AnswerPart], Ref -> Ex
+fn PartsAnswerOf lx, env, what, parts, variant:
+    let idx = Range0 (Len parts)
+    let IsEvent = \|i| match parts[i]:
+        ? (PartEvent ignore, ignore): True
+        otherwise: False
+    let IsLive = \|i| match parts[i]:
+        ? (PartLive ignore): True
+        otherwise: False
+    let evIx = Filter idx, IsEvent
+    let stIx = Filter idx, \|i| not (IsEvent i)
+    let liveIx = Filter idx, IsLive
+    let refused = Fold parts, "", \|found, part| if found != "": found else: match part:
+        PartRefused why: why
+        otherwise: ""
+    let ?stateVariant = if (Len evIx) == 0: ? variant else: match env.names["#tagfirst"]:
+        ? (BnLocal (XPath firstVariant), ignore, ignore): ? firstVariant
+        otherwise: nil
+    match ?stateVariant:
+        nil: InternalBug "{what}, a bundle answer under a tag the arm does not name"
+        ? stateVariant: if refused != "": Refusal refused else:
+            let lets = Fold stIx, [[]], \|acc, i| match parts[i]:
+                ? (PartPlain v): Push acc, (DoLet (PaBind "part{i}"), v)
+                ? (PartLive d): Append acc, [[(DoLet (PaBind "part{i}"), d), (DoLet (PaBind "moved{i}"), (XClone (XField (XVar "part{i}"), "updates")))]]
+                otherwise: acc
+            let StateOf = \|Read| match stIx:
+                [[i]]: Read i
+                otherwise: XTuple (Each stIx, Read)
+            let state = match liveIx:
+                [[]]: XCall (HelperRef "dyn_constant"), [[(Tagged stateVariant, (StateOf \|i| XVar "part{i}"))]]
+                otherwise:
+                    let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (Tagged stateVariant, (StateOf \|i| if IsLive i: XMethod (XVar "part{i}"), "sample", [[XCx]] else: XClone (XVar "part{i}")))
+                    XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar "moved{Or liveIx[0], 0}"))]]
+            let EventTy = \|k| match parts[Or evIx[k], 0]:
+                ? (PartEvent ignore, et): et
+                otherwise: OutUnit
+            let Payload = \|j| if (Len evIx) == 1: XClone (XVar "v") else: XTuple (Each (Range0 (Len evIx)), \|k| if k == j: XCall (RefRuntime "prism_rtl::sparse_present"), [[(XClone (XVar "v"))]] else: XCallAt (RefRuntime "prism_rtl::sparse_absent"), [[(EventTy k)]], [[]])
+            let EventOf = \|j| match parts[Or evIx[j], 0]:
+                ? (PartEvent ev, ignore): XMethod ev, "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (Payload j)))]]
+                otherwise: XUnit
+            let started = if (Len stIx) > 0: Fold (Drop liveIx, 1), (XCall (RefRuntime "prism_rtl::parts_state"), [[state]]), \|acc, i| XMethod acc, "moved_by", [[(XRef (XVar "moved{i}"))]]
+                else: XCall (RefRuntime "prism_rtl::parts_event"), [[(EventOf 0)]]
+            let all = Fold (Drop (Range0 (Len evIx)), (if (Len stIx) > 0: 0 else: 1)), started, \|acc, j| XMethod acc, "event", [[(EventOf j)]]
+            XBlock lets, all
+
+# A supplier's dynamic `d` (a `$` part `x` of a bundle answer) as a `Dynamic` of its own
+# value, read through the owner's link (`DynamicAnswers`), and, while the owner's node is
+# being made, its value at the build; `nil` when its line made no getter for it (it reads
+# what has no value at the owner's build).
+?PartDynamic: unbounded fn Lx, Env, Expr, Expr -> ?Ex
+fn ?PartDynamic lx, env, x, d = match ((env.names["#dyn{DynKey x}"], env.names["#owner"])):
+    ((? (BnLocal (XVar getter), ignore, dt), ? (BnLocal (XVar owner), ignore, ignore))):
+        let atBuild = AnswerAtBuild lx, env, x, d
+        let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(XMethod (XVar "owner"), getter, [[XCx]])), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=(XClone (XVar "at_build")))]]
+        let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, dt)
+        ? (XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar "{getter}_portx"))]]))
+    otherwise: nil
 
 # `$ x` written in place: the `x` of a constant dynamic.
 ?ConstantDynamic: fn Expr -> ?Expr
@@ -845,7 +903,7 @@ fn PlainBlueprint lx, env, x, variant, t = VlOwned (XCall (RefRuntime "prism_rtl
 DynamicBlueprint: unbounded fn Lx, Env, Expr, Expr, Ref, OutTy -> Vl
 fn DynamicBlueprint lx, env, x, d, variant, t = match ?AnswerDynamic lx, env, x, d, variant:
     ? dynamic: VlOwned (XCall (RefRuntime "prism_rtl::dynamic_blueprint::<crate::Elem, _>"), [[dynamic]]), t
-    nil: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer that reads what has no value at the owner's build (a structural dynamic, or a name of the parent)"), t
+    nil: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer that reads what has no value at the owner's build (a structural dynamic)"), t
 
 # A supplier's dynamic `d` (the `x` of `@ x`, or a `$` part of a bundle answer) as a
 # `Dynamic` of `crate::Answer` under `variant`, read through the owner's link
@@ -854,11 +912,25 @@ fn DynamicBlueprint lx, env, x, d, variant, t = match ?AnswerDynamic lx, env, x,
 ?AnswerDynamic: unbounded fn Lx, Env, Expr, Expr, Ref -> ?Ex
 fn ?AnswerDynamic lx, env, x, d, variant = match ((env.names["#dyn{DynKey x}"], env.names["#owner"])):
     ((? (BnLocal (XVar getter), ignore, dt), ? (BnLocal (XVar owner), ignore, ignore))):
-        let atBuild = Own (ValueOf lx, (InitEnv env), d)
+        let atBuild = AnswerAtBuild lx, env, x, d
         let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(Tagged variant, (XMethod (XVar "owner"), getter, [[XCx]]))), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=(Tagged variant, (XClone (XVar "at_build"))))]]
         let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, (OutNamed answerRef, [[]]))
         ? (XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar "{getter}_portx"))]]))
     otherwise: nil
+
+# An answer of the type `t` made by a widget's blueprint value: in its tag's case, or
+# with no tag as plain data when it is plain data (`Tagged`), else held as it is (the
+# prelude's `answer_held`).
+TaggedOrHeld: unbounded fn Ref, OutTy, Ex -> Ex
+fn TaggedOrHeld variant, t, value = if variant == untaggedRef and not (Podable t): XCall (HelperRef "answer_held"), [[value]] else: Tagged variant, value
+
+# A supplier's dynamic answer's value at the owner's build: the local the host's line took
+# it into, for a dynamic read through the owner's parent (`DynamicAnswers`,
+# `#dynbuild{span}`), or the dynamic over the names' values at the build (`InitEnv`).
+AnswerAtBuild: unbounded fn Lx, Env, Expr, Expr -> Ex
+fn AnswerAtBuild lx, env, x, d = match env.names["#dynbuild{DynKey x}"]:
+    ? (BnLocal taken, ignore, ignore): XClone taken
+    otherwise: Own (ValueOf lx, (InitEnv env), d)
 
 # An answer in its tag's case of `crate::Answer`; with no tag, as plain data in the case
 # of no tag (`untaggedRef`).
@@ -967,7 +1039,7 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
         ? tg: VlOwned (XCall (HelperRef "fault_kind"), [[XStr tg.name]]), OutPod
         nil: if Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsLetDef d): VlOwned (XCall (ValueRef lx, qk), [[]]), t
         else: match lx.g.vals[qk]:
-            ? v if HasKey lx.valued, qk: WidgetBlueprintValue lx, emptyEnv, qk, [[]], t
+            ? v if HasKey lx.valued, (ValuedKeyAt lx, qk, span, [[]]): WidgetBlueprintValue lx, emptyEnv, qk, span, [[]], t
             ? v if ((IsWidgetFn v) or IsWidgetTy v.scheme.ty) and not (IsValueWidget lx, qk): VlOwned (Refusal (WidgetValueWords qk)), t
             ? v:
                 let isLet = Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsLetDef d)
@@ -997,12 +1069,18 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
 # base (prism_rtl's `widget_blueprint`). A plain result is the first value of the place
 # the blueprint answers, under the arm's tag as `@ x` is (`PureBlueprint`); an event
 # result is the port the row fires, each firing an answer to that place
-# (`widget_event_blueprint`). Built in a
+# (`widget_event_blueprint`). Outside a tag's arm a dynamic result, a bundle and a plain
+# value that is no plain data are the first answer held whole (the prelude's
+# `answer_held`): the row's live `Dynamic`, the bundle with its events and dynamics as
+# values (`ValueRowWhole`), the value itself. Built in a
 # hosted scope the blueprint builds the widget's hosted row, given the host and what
 # tells it that a place of the row's came or went.
-WidgetBlueprintValue: unbounded fn Lx, Env, Text, [Arg], OutTy -> Vl
-fn WidgetBlueprintValue lx, env, qk, args, t = match ((lx.valued[qk], lx.g.vals[qk])):
-    ((? cases, ? v)):
+WidgetBlueprintValue: unbounded fn Lx, Env, Text, Range, [Arg], OutTy -> Vl
+fn WidgetBlueprintValue lx, env, qk, calleeSpan, args, t = match ((lx.valued[ValuedKeyAt lx, qk, calleeSpan, args], lx.g.vals[qk])):
+    ((? cases, ? declared)):
+        # a generic widget's rows are those of the types this reading gives its type
+        # parameters (`?ValuedTypes`), and its signature is read with them in place
+        let v = ValInfoAt (AtInstance lx, (((Or (?ValuedTypes lx, declared, calleeSpan, args), [[]]), [[]]))), declared
         let gives = match v.scheme.ty:
             TyFn ignore, ignore, r: r
             otherwise: v.scheme.ty
@@ -1020,7 +1098,13 @@ fn WidgetBlueprintValue lx, env, qk, args, t = match ((lx.valued[qk], lx.g.vals[
         # an event result: the row hands out the port it fires (`ValuedEventResult`), and
         # each firing is an answer to the sink of what applies the blueprint
         let fires = (ResultLayer gives) == LyEv
-        let builtTy = OutNamed (RefRuntime "prism_rtl::BuiltWidget"), [[elemTy, answerTy, (if fires: OutRc (OutPort resTy) else: resTy)]]
+        # a dynamic result is the row's live `Dynamic`, a bundle the row's one value with
+        # its events and dynamics whole (`ValueRowWhole`)
+        let live = (ResultLayer gives) == LyDyn
+        let bundle = match gives:
+            TyAt i, ignore: IsBundle (Peel i)
+            otherwise: False
+        let builtTy = OutNamed (RefRuntime "prism_rtl::BuiltWidget"), [[elemTy, answerTy, (if fires: OutRc (OutPort resTy) else: if live: OutDyn resTy else: resTy)]]
         # the row whose places are the World's, and the one built under a host
         # (`ValuedRows`): the blueprint is built in the scope of what applies it
         let Arms = \|hosted| Each cases, \|((rowNode, pat, conds, passed))|
@@ -1036,9 +1120,31 @@ fn WidgetBlueprintValue lx, env, qk, args, t = match ((lx.valued[qk], lx.g.vals[
         let variant = match env.names["#tag"]:
             ? (BnLocal (XPath tagged), ignore, ignore): tagged
             otherwise: untaggedRef
-        let answer = if resTy == OutUnit: XClosure False, [[PaWild]], XNone else: XClosure False, [[PaBind "widget_result"]], (XCtor (RefRuntime "std::Some"), [[(Tagged variant, (XVar "widget_result"))]])
-        let fired = XClosure False, [[(PaTyped (PaBind "widget_result"), (OutRef resTy))]], (Tagged variant, (XClone (XVar "widget_result")))
-        if resTy != OutUnit and variant == untaggedRef and not (Podable resTy): VlOwned (Refusal "the widget {BareName qk} as a blueprint value outside a tag arm, its result no plain data"), t
+        # outside a tag's arm a dynamic, a bundle, and a plain value that is no plain data
+        # are answered held whole (`answer_held`): the line that applies the blueprint
+        # reads the widget's own dynamic, events and value (`AppliedBlueprintLine`)
+        let untagged = variant == untaggedRef
+        let heldWhole = untagged and resTy != OutUnit and not fires and (live or bundle or not (Podable resTy))
+        let answer = if resTy == OutUnit: XClosure False, [[PaWild]], XNone else: if heldWhole: XClosure False, [[PaBind "widget_result"]], (XCtor (RefRuntime "std::Some"), [[(XCall (HelperRef "answer_held"), [[(XVar "widget_result")]])]]) else: XClosure False, [[PaBind "widget_result"]], (XCtor (RefRuntime "std::Some"), [[(Tagged variant, (XVar "widget_result"))]])
+        let fired = XClosure False, [[(PaTyped (PaBind "widget_result"), (OutRef resTy))]], (TaggedOrHeld variant, resTy, (XClone (XVar "widget_result")))
+        # under a tag's arm the answers are the tag's: a bundle's state and events part by
+        # part, made of the row's one value as a bundle that is a value already is
+        # answered (`BundleBlueprint`, `PartsAnswerOf`; prism_rtl's
+        # `widget_parts_blueprint`)
+        let rowParts = match gives:
+            TyAt (TyTuple ts), ignore: Each (Range0 (Len ts)), \|i|
+                let part = Or ts[i], TyErr
+                let read = XClone (XPart (XVar "widget_result"), i)
+                match LayerOf part:
+                    LyEv: PartEvent read, (OutTyOf lx, (Peel part))
+                    LyDyn: PartLive read
+                    otherwise: PartPlain read
+            otherwise: [[]]
+        let partsOf = XClosure False, [[(PaTyped (PaBind "widget_result"), (OutRef resTy))]], (PartsAnswerOf lx, env, "the widget {BareName qk} as a supplier's answer", rowParts, variant)
+        if bundle and not untagged: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_parts_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, partsOf]])), t
+        # under a tag's arm a dynamic result is the place's first value and each move of
+        # it a push, as `@ $d` is (prism_rtl's `widget_dynamic_blueprint`)
+        else: if live and not untagged: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_dynamic_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, fired]])), t
         else: if fires: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_event_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, fired]])), t
         else: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, answer]])), t
     otherwise: VlOwned (Refusal (WidgetValueWords qk)), t
@@ -1465,7 +1571,7 @@ fn GlobalCall lx, env, qk, args, span, cspan, t:
     match lx.g.ctors[qk]:
         ? c: CtorApp lx, env, c, args, span
         nil: match lx.g.vals[qk]:
-            ? v if HasKey lx.valued, qk: WidgetBlueprintValue lx, env, qk, args, t
+            ? v if HasKey lx.valued, (ValuedKeyAt lx, qk, cspan, args): WidgetBlueprintValue lx, env, qk, cspan, args, t
             ? v if (IsWidgetFn v) and not (IsValueWidget lx, qk): VlOwned (Refusal (WidgetValueWords qk)), t
             ? v:
                 if v.sort == "method": MethodCall lx, env, v, args, span, t
@@ -1480,8 +1586,22 @@ fn GlobalCall lx, env, qk, args, span, cspan, t:
                         TyFn ignore, ignore, r: Peel r
                         other: Peel other
                     # a function of the callee's own color in what it returns, at a call
-                    # that makes the color bounded: the value made again (`Recolored`)
-                    if (HasJobFn declared) and not (HasJobFn t): VlOwned (Recolored lx, call, declaredTy, (Peel (SubstTy lx, (TypeAt lx, span))), 0), t
+                    # that makes the color bounded: the value made again (`Recolored`),
+                    # from the signature's result at the types this call gives the
+                    # callee's type parameters (so the two differ in color alone) to
+                    # the call's; a function beside it that stays a `Start` is itself
+                    let callTy = Peel (SubstTy lx, (TypeAt lx, span))
+                    let ?calleeTypes = ?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, cspan), {}
+                    let lxCallee = update lx:
+                        &_.subst <= Or ?calleeTypes, {}
+                        &_.csubst <= {}
+                    let signatureTy = SubstTy lxCallee, declaredTy
+                    # (where the callee's type at the call does not give its type
+                    # parameters, the walk is made when no `Start` is left at the call)
+                    let differs = match ?calleeTypes:
+                        ? ignore: (OutTyOf lx, signatureTy) != (OutTyOf lx, callTy)
+                        nil: not (HasJobFn t)
+                    if (HasJobFn declared) and differs: VlOwned (Recolored lx, call, signatureTy, callTy, 0), t
                     else: VlOwned call, t
             nil: VlOwned (InternalBug "a call of {qk}"), t
 
@@ -1490,7 +1610,7 @@ fn GlobalCall lx, env, qk, args, span, cspan, t:
 # the color bounded: the value made again by one walk over its two types, the signature's
 # (`fromTy`) and the call's (`toTy`), which differ in color alone. A `Start` is wrapped as
 # the bounded function it is (`FunctionRecolored`); an array is mapped (the prelude's
-# `each`); an optional and a `~T` are matched; a tuple is taken apart; a map is made
+# `each`); an event and a dynamic are mapped; an optional and a `~T` are matched; a tuple is taken apart; a map is made
 # again, each value walked (a key holds no function); a record is made from its fields
 # and a choice by a `match` over its cases, each field at its type under the signature's
 # type arguments and under the call's (`NamedRecolored`). A function's parameter is walked
@@ -1521,9 +1641,12 @@ fn Recolored lx, x, fromTy, toTy, depth:
             let keyName = "{inner}_key"
             let step = XClosure False, [[(PaTyped (PaBind "{inner}_made"), (OutRef to)), (PaTyped (PaBind keyName), (OutRef (OutTyOf lx, dk))), (PaTyped (PaBind inner), (OutRef (OutTyOf lx, dv)))]], (XCall (HelperRef "insert"), [[(XVar "{inner}_made"), (XVar keyName), (XRef (Recolored lx, (XClone (XVar inner)), dv, ev, depth + 1))]])
             XCall (HelperRef "fold_map"), [[(XRef x), (XRef (XCast (XCall (RefRuntime "rt::Map::new"), [[]]), to)), (XRef step)]]
+        # an event and a dynamic are mapped (prism_rtl's `Event::map`, `Dynamic::map`)
+        (((TySig "!", d), (TySig "!", e))): XMethod x, "map", [[(XClosure True, [[(PaTyped (PaBind inner), (OutRef (OutTyOf lx, d)))]], (Recolored lx, (XClone (XVar inner)), d, e, depth + 1))]]
+        (((TySig "$", d), (TySig "$", e))): XMethod x, "map", [[(XClosure True, [[(PaTyped (PaBind inner), (OutRef (OutTyOf lx, d)))]], (Recolored lx, (XClone (XVar inner)), d, e, depth + 1))]]
         (((TyCon n, fromArgs), (TyCon m, toArgs))) if n == m: NamedRecolored lx, x, fromTy, n, fromArgs, toArgs, to, depth
         (((TyFn ignore, dps, dr), (TyFn ignore2, eps, er))) if (Len dps) == (Len eps): FunctionRecolored lx, x, from, to, dps, dr, eps, er, depth
-        otherwise: Refusal "a function value of its callee's own color inside the value a call returns, at a call that makes the color bounded, held by a type that is no array, optional, `~T`, tuple, map, record, choice or function"
+        otherwise: Refusal "a function value of its callee's own color inside the value a call returns, at a call that makes the color bounded, held by a type that is no array, event, dynamic, optional, `~T`, tuple, map, record, choice or function"
 
 # A record or a choice made again (`Recolored`): each field read at its type under the
 # signature's type arguments and walked to its type under the call's.
@@ -1544,7 +1667,7 @@ fn NamedRecolored lx, x, fromTy, n, fromArgs, toArgs, to, depth:
                 let walked = Recolored lx, read, fromField, toField, depth + i + 1
                 if boxed: XCall (RefRuntime "std::Rc::new"), [[walked]] else: walked
             match ((owner.body, cases[0])):
-                ((BRecord ignore, ? c)) if (Len c.fields) > 0:
+                ((BRecord ignore, ? c)):
                     let Spell = \|i| FieldSpell (OwnerOf c.owner), (Or c.fields[i], ""), (Or c.args[i], TyErr)
                     let made = Fields c, \|i| FieldOfEx lx, (XVar held), fromTy, (Spell i)
                     XBlock [[(DoLet (PaBind held), x)]], (XTyped (XRecord tyPath, (Each (Range0 (Len made)), \|i| (((Spell i), (Or made[i], XUnit))))), to)
@@ -1556,7 +1679,9 @@ fn NamedRecolored lx, x, fromTy, n, fromArgs, toArgs, to, depth:
                         if (Len c.args) == 0: XArm(pat=(PaUnit path), conds=[[]], body=(XPath path))
                         else: XArm(pat=(PaCtor path, (Each names, \|nm| PaBind nm)), conds=[[]], body=(XCtor path, (Fields c, \|i| XVar (Or names[i], ""))))
                     XMatch x, arms, False, to
-                otherwise: Refusal "a function value of its callee's own color inside the value a call returns, at a call that makes the color bounded, held by the type `{n}`, which is no record and no choice"
+                # (an alias is its target in every type the checker gives, `ConvNamedType`;
+                # a row kind's type has no type argument here, so its two types are one)
+                otherwise: InternalBug "a function value of its callee's own color inside the value a call returns, held by the type `{n}`, which is no record and no choice"
         nil: InternalBug "the type `{n}` of a value a call returns, which nothing declares"
 
 # A function made again (`Recolored`). A `Start` where a bounded function is wanted: a
@@ -1589,7 +1714,19 @@ fn FunctionRecolored lx, x, from, to, dps, dr, eps, er, depth:
             let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Name i)), (OutRef (Or pts[i], OutUnit))
             let handed = Each (Range0 (Len eps)), \|i| if (Or fromPts[i], OutUnit) == (Or pts[i], OutUnit): XVar (Name i) else: XRef (Recolored lx, (XClone (XVar (Name i))), (Or eps[i], TyErr), (Or dps[i], TyErr), depth + i + 1)
             Made pas, (Recolored lx, (XApply (XVar held), handed), dr, er, depth + (Len eps) + 1)
-        otherwise: Refusal "a function of unbounded color whose own parameter or result holds a function of its callee's own color, inside the value a call returns, at a call that makes that color bounded"
+        # a `Start` whose own parameter or result holds the function: a `Start` that
+        # hands the held one its arguments walked and maps its job's result (the
+        # prelude's `map_job`: the walk runs in the cycle the job finishes)
+        (((OutJobFn ignore, ignore), (OutJobFn a, ignore))):
+            let pa = if (Len eps) == 1: PaTyped (PaBind (Name 0)), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
+            let handed = Each (Range0 (Len eps)), \|i| Recolored lx, (XVar (Name i)), (JobParam (Or eps[i], TyErr)), (JobParam (Or dps[i], TyErr)), depth + i + 1
+            let arg = if (Len handed) == 1: Or handed[0], XUnit else: XTuple handed
+            let answer = "job_result_{depth}"
+            let mapped = XClosure True, [[(PaTyped (PaBind answer), (OutTyOf lx, dr))]], (Recolored lx, (XVar answer), dr, er, depth + (Len eps) + 1)
+            Made [[pa]], (XCall (HelperRef "map_job"), [[(XApply (XVar held), [[arg]]), mapped]])
+        # (a function of a generalized `let`'s color that no use decides is refused where
+        # its type is written, `OutQuantified`)
+        otherwise: Refusal "a function whose color no use of its `let` decides, inside the value a call returns, at a call that makes its callee's color bounded"
 
 # A generic function's type arguments at a call, in its type parameters' order, when one of
 # them is in no parameter's type (`?Nothing: fn Nat -> ?a`): read off the callee's type at
@@ -1656,6 +1793,8 @@ fn HasJobFn t = match t:
     OutOpt i: HasJobFn i
     OutRes i: HasJobFn i
     OutArray i: HasJobFn i
+    OutEvent i: HasJobFn i
+    OutDyn i: HasJobFn i
     OutMap k, v: (HasJobFn k) or HasJobFn v
     OutTuple ts: Fold ts, False, \|f, x| f or HasJobFn x
     OutNamed ignore, ts: Fold ts, False, \|f, x| f or HasJobFn x
@@ -2198,8 +2337,18 @@ fn LambdaValue lx, env, e, ps, body:
         OutJobFn a, ignore: JobLambda lx, env, ps, body, ft, a, (EntersLambda lx, e)
         otherwise: PlainLambda lx, env, ps, body, ft
 
+# Names read with what the blueprints among them read: a blueprint a `let` of the block
+# names (`let @!later = @ (3 on !go)`) is read as its expression in the name's place
+# (`NameValueOf`), so a lambda that reads the name reads what the expression reads, and
+# captures it (the event's port, a hold's value at the build).
+WithBlueprintReads: unbounded fn Env, [Text] -> [Text]
+fn WithBlueprintReads env, read = Fold (Range0 4), read, \|acc, ignore| Fold acc, acc, \|more, n| match env.names["{n}#blueprint"]:
+    ? (BnWidget x, ignore, ignore, ignore): UnionTexts more, (FreeReads (ExprsIn x), [[]])
+    otherwise: more
+
 LambdaCaptures: unbounded fn Env, [Text] -> (([Do], Env))
-fn LambdaCaptures env, read:
+fn LambdaCaptures env, written:
+    let read = WithBlueprintReads env, written
     let caps0 = Filter read, \|n| match env.names[n]:
         ? (BnLocal ignore, ignore, ignore): True
         otherwise: False
@@ -2410,10 +2559,20 @@ ClosureParams: unbounded fn Lx, Env, [Pattern], [OutTy], Bool -> (([Pa], Env))
 fn ClosureParams lx, env, ps, pts, typed = Fold (Range0 (Len ps)), (([[]], env)), \|((acc, en)), i| match ps[i]:
     ? p:
         let po = RustPat lx, p, (BinderTyOfPattern lx, p), ByRef, "a{p.span.start}"
-        let en2 = BindAll en, po.binds
+        let en2 = BindAll en, (Each po.binds, HeldFunction)
         let pa = if typed: PaTyped po.pa, (OutRef (Or pts[i], (OutRefused "a parameter"))) else: po.pa
         (((Push acc, pa), en2))
     nil: ((acc, en))
+
+# A closure parameter's binder of a function type: a function value is held in an `Rc`
+# wherever it is a value, so the binder is a `&Rc<dyn Fn>`, the place behind it the `Rc`
+# itself: cloned as a value, and borrowed through where a `&dyn Fn` is taken
+# (`ClosureRef`, which takes a `ByRef` function for a named function's parameter, a
+# `&dyn Fn` already).
+HeldFunction: fn ((Text, Bn)) -> ((Text, Bn))
+fn HeldFunction ((n, b)) = match b:
+    BnLocal x, ByRef, (OutFn pts, r): ((n, (BnLocal (XDeref x), Owned, (OutFn pts, r))))
+    otherwise: ((n, b))
 
 BindAll: fn Env, [((Text, Bn))] -> Env
 fn BindAll env, bs = Fold bs, env, \|en, ((n, b))| Bind en, n, b

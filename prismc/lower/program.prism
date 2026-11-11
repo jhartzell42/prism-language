@@ -73,11 +73,13 @@ fn LowerProgram srcs, trees, shown, tp, name:
     let mods = NeededMods g, shown
     let rsMods = Fold mods, {}, \|acc, m| Insert acc, m, (RustModName m)
     let modSegments = Fold (Values rsMods), {}, \|acc, p| Fold (SplitOn p, "::"), acc, \|a2, seg| Insert a2, seg, True
-    let lx0 = Lx(g=g, tys=tys, apps=apps, lifts=(Fold tp.lifts, {}, \|m, n| Insert m, (AtKey n.at), n), binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, modSegments=modSegments, rsNames=(ValueNames g), layouts=(Layouts g), unbs=[[]], notes=[[]], globals=(GlobalNames g), inNode=False, whole=False, wholeFns={}, noCx=False, unshrunk=(Fold tp.unshrunk, {}, \|m, a| Insert m, (AtKey a), True), gens=gens, insts=insts, quants=quants, genOfQ=genOfQ, useInsts=useInsts, localIds=(Fold tp.locals, {}, \|m, n| Insert m, (AtKey n.at), n.id), useIds=(Fold tp.uses, {}, \|m, n| Insert m, (AtKey n.at), n.id), useNames=(Fold tp.uses, {}, \|m, n| Insert m, n.at.file, (Push (Or m[n.at.file], [[]]), ((n.at.span.start, n.name)))), callIds=(Fold tp.calls, {}, \|m, n| Insert m, (AtKey n.at), n.id), inlined="", subst={}, csubst={}, faults=(Fold tp.faults, {}, \|m, n| Insert m, (AtKey n.at), n.ty), shared={}, recursing=[[]], valued={})
+    let lx0 = Lx(g=g, tys=tys, apps=apps, lifts=(Fold tp.lifts, {}, \|m, n| Insert m, (AtKey n.at), n), binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, modSegments=modSegments, rsNames=(ValueNames g), layouts=(Layouts g), unbs=[[]], notes=[[]], globals=(GlobalNames g), inNode=False, whole=False, wholeFns={}, noCx=False, unshrunk=(Fold tp.unshrunk, {}, \|m, a| Insert m, (AtKey a), True), gens=gens, insts=insts, quants=quants, genOfQ=genOfQ, useInsts=useInsts, localIds=(Fold tp.locals, {}, \|m, n| Insert m, (AtKey n.at), n.id), useIds=(Fold tp.uses, {}, \|m, n| Insert m, (AtKey n.at), n.id), useNames=(Fold tp.uses, {}, \|m, n| Insert m, n.at.file, (Push (Or m[n.at.file], [[]]), ((n.at.span.start, n.name)))), callIds=(Fold tp.calls, {}, \|m, n| Insert m, (AtKey n.at), n.id), inlined="", subst={}, csubst={}, faults=(Fold tp.faults, {}, \|m, n| Insert m, (AtKey n.at), n.ty), shared={}, recursing=[[]], valued={}, valuedAt={})
+    let ((valuedCases, valuedInstances)) = ValuedWidgets lx0
     let lx = update lx0:
         &_.unbs <= JobRoots lx0
         &_.wholeFns <= WholeFns lx0
-        &_.valued <= ValuedWidgets lx0
+        &_.valued <= valuedCases
+        &_.valuedAt <= valuedInstances
     let roots = RootWidgets lx
     let modDefs = Each mods, \|m| ModDefOf lx, m, roots, (Or g.mods[m], dummyMod), mods
     let programs = Each roots, \|((qk, ignore))| ProgDefOf lx, qk
@@ -277,18 +279,67 @@ fn RootWidgets lx:
 # until a block applies it): an argument of a function that is no widget or of a
 # constructor, a host's supplier, what a lambda gives, the operand of `?`, a part of a
 # tuple or an array, the value of a `let`. Each is lowered once more as rows of its own (`ValuedRows`), which the
-# blueprint made at the value site builds (`WidgetBlueprintValue`). One whose parameters
-# are not all plain, with a type parameter, or with an event, dynamic or bundle result is
-# left out, and refused where it is read as a value.
-ValuedWidgets: unbounded fn Lx -> (Text ==> [((Text, Pa, [Cc], [Ex]))])
-fn ValuedWidgets lx = Fold lx.g.defs, {}, \|acc, d|
+# blueprint made at the value site builds (`WidgetBlueprintValue`). A generic widget is
+# lowered so once for each set of types its readings give its type parameters
+# (`?ValuedTypes`). One with a widget function parameter is left out, and refused where
+# it is read as a value.
+ValuedWidgets: unbounded fn Lx -> (((Text ==> [((Text, Pa, [Cc], [Ex]))]), (Text ==> [((Text, [((Text, Ty))]))])))
+fn ValuedWidgets lx = Fold lx.g.defs, (({}, {})), \|acc, d|
     let lxd = InModule lx, d.file, d.home
-    let held = Fold (DefExprs d), [[]], \|qks, e| Append qks, (ValueWidgetsIn lxd, e)
+    let held = Fold (DefExprs d), [[]], \|sites, e| Append sites, (ValueWidgetsIn lxd, e)
     # a `let` names a value: the widget it names is read as one where the name is
-    let named = Fold (LetValues d), held, \|qks, e| Append qks, (ValueWidgetsAt lxd, e)
-    Fold named, acc, \|m2, qk| if HasKey m2, qk: m2 else: match ?ValuedCases lx, qk:
-        ? cases: Insert m2, qk, cases
-        nil: m2
+    let named = Fold (LetValues d), held, \|sites, e| Append sites, (ValueWidgetsAt lxd, e)
+    Fold named, acc, \|((cases, instances)), ((qk, types))|
+        let valuedKey = ValuedKey qk, types
+        let known = Or instances[qk], [[]]
+        if HasKey cases, valuedKey: ((cases, instances)) else: match ?ValuedCases lx, qk, types, (ValuedStemAt qk, (Len known), types):
+            ? found: (((Insert cases, valuedKey, found), (Insert instances, qk, (Push known, ((valuedKey, types))))))
+            nil: ((cases, instances))
+
+# A valued widget's key in `Lx.valued`: the widget, and for a generic one the types this
+# reading of it gives its type parameters.
+ValuedKey: fn Text, [((Text, Ty))] -> Text
+fn ValuedKey qk, types = if (Len types) == 0: qk else: "{qk}#{Show types}"
+
+# The types a reading of a widget as a value gives the widget's type parameters, in the
+# parameters' order by name: read off the arguments' types as an inlined call reads them
+# (`?ParamInstance`), and off the widget's own type where it is read. Nothing for a
+# widget with no type parameter; no answer when a type parameter stays open there (the
+# reading stands in a generic function, whose own parameter it is given).
+?ValuedTypes: unbounded fn Lx, ValInfo, Range, [Arg] -> ?[((Text, Ty))]
+fn ?ValuedTypes lx, v, calleeSpan, args:
+    let rigids = RigidsIn v.scheme.ty
+    if (Len rigids) == 0: ? [[]]
+    else:
+        let ptys = match v.scheme.ty:
+            TyFn ignore, ps, ignore: ps
+            otherwise: [[]]
+        let fromArguments = Fold (Range0 (Len ptys)), {}, \|m, i| match args[i]:
+            ? a: Or (?ParamInstance (Or ptys[i], TyErr), (TypeAt lx, a.value.span), m), m
+            nil: m
+        let found = if Fold rigids, True, \|all, q| all and HasKey fromArguments, q: fromArguments else: Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, calleeSpan), fromArguments), fromArguments
+        let closed = Fold rigids, True, \|all, q| all and match found[q]:
+            ? t: (Len (RigidsIn t)) == 0
+            nil: False
+        if closed: ? (Each (SortTexts rigids), \|q| ((q, (Or found[q], TyErr)))) else: nil
+
+# A valued widget's key where it is read (`ValuedKey`), "" where its type parameters stay
+# open.
+ValuedKeyAt: unbounded fn Lx, Text, Range, [Arg] -> Text
+fn ValuedKeyAt lx, qk, calleeSpan, args = match lx.g.vals[qk]:
+    ? v: match ?ValuedTypes lx, v, calleeSpan, args:
+        ? types: ValuedKey qk, types
+        nil: ""
+    nil: ""
+
+# A widget at the types a reading of it gives its type parameters: its signature with
+# them in place.
+ValInfoAt: fn Lx, ValInfo -> ValInfo
+fn ValInfoAt lx, v:
+    let scheme = update v.scheme:
+        &_.ty <= SubstTy lx, &_.ty
+    update v:
+        &_.scheme <= scheme
 
 # The value of every `let` of a definition, at any depth: its body's own, and those of
 # every block an expression of it holds.
@@ -330,7 +381,7 @@ fn BlocksHeld e = match e.kind:
     otherwise: [[]]
 
 # The widgets one expression holds in a value's place.
-ValueWidgetsIn: unbounded fn Lx, Expr -> [Text]
+ValueWidgetsIn: unbounded fn Lx, Expr -> [((Text, [((Text, Ty))]))]
 fn ValueWidgetsIn lx, e = match e.kind:
     ECall c, args, ignore, ignore:
         let qk = BlueprintQk lx, c
@@ -361,7 +412,7 @@ fn CallsItself lx, qk = match lx.g.vals[qk]:
             otherwise: False
 
 # The widgets an expression in a value's place is: itself, or what its arms end on.
-ValueWidgetsAt: unbounded fn Lx, Expr -> [Text]
+ValueWidgetsAt: unbounded fn Lx, Expr -> [((Text, [((Text, Ty))]))]
 fn ValueWidgetsAt lx, e = match e.kind:
     EGroup x: ValueWidgetsAt lx, x
     EMatch ignore, arms: Fold arms, [[]], \|acc, a| Append acc, (ValueWidgetsOfBlock lx, a.body)
@@ -369,22 +420,26 @@ fn ValueWidgetsAt lx, e = match e.kind:
     EIf ignore, yes, nil: ValueWidgetsOfBlock lx, yes
     # a widget applied to its arguments, and the widgets its blueprint arguments are,
     # values of the row the blueprint builds
-    ECall c, args, ignore, ignore: Fold args, (PlacedWidget lx, (BlueprintQk lx, c)), \|acc, a| if (LayerOf (TypeAt lx, a.value.span)) == LyBlueprint: Append acc, (ValueWidgetsAt lx, a.value) else: acc
-    EName ignore: PlacedWidget lx, (BlueprintQk lx, e)
+    ECall c, args, ignore, ignore: Fold args, (PlacedWidget lx, (BlueprintQk lx, c), c.span, args), \|acc, a| if (LayerOf (TypeAt lx, a.value.span)) == LyBlueprint: Append acc, (ValueWidgetsAt lx, a.value) else: acc
+    EName ignore: PlacedWidget lx, (BlueprintQk lx, e), e.span, [[]]
     otherwise: [[]]
 
-ValueWidgetsOfBlock: unbounded fn Lx, Block -> [Text]
+ValueWidgetsOfBlock: unbounded fn Lx, Block -> [((Text, [((Text, Ty))]))]
 fn ValueWidgetsOfBlock lx, b = match (Or b.stmts[Dec (Len b.stmts)], dummyStmtL).kind:
     SExpr x: ValueWidgetsAt lx, x
     otherwise: [[]]
 
-# A widget with places by its name: one the program defines that is no pure blueprint
-# (`IsValueWidget`).
-PlacedWidget: unbounded fn Lx, Text -> [Text]
-fn PlacedWidget lx, qk = match lx.g.vals[qk]:
+# A widget with places by its name where it is read as a value: one the program defines
+# that is no pure blueprint (`IsValueWidget`), with the types the reading gives its type
+# parameters (`?ValuedTypes`).
+PlacedWidget: unbounded fn Lx, Text, Range, [Arg] -> [((Text, [((Text, Ty))]))]
+fn PlacedWidget lx, qk, calleeSpan, args = match lx.g.vals[qk]:
     ? v:
         let defined = Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsWidgetDef d)
-        if defined and (IsWidgetTy (WidgetResultOf v.scheme.ty)) and not (IsValueWidget lx, qk): [[qk]] else: [[]]
+        if defined and (IsWidgetTy (WidgetResultOf v.scheme.ty)) and not (IsValueWidget lx, qk): match ?ValuedTypes lx, v, calleeSpan, args:
+            ? types: [[((qk, types))]]
+            nil: [[]]
+        else: [[]]
     nil: [[]]
 
 IsWidgetDef: fn Def -> Bool
@@ -397,30 +452,37 @@ fn IsWidgetDef d = match d.body:
 ValuedStem: fn Text -> Text
 fn ValuedStem qk = "{Camel (BareName qk)}_value"
 
+# The same for one reading of a generic widget: each set of types its type parameters
+# are given has rows of its own, numbered in the order the program reads them.
+ValuedStemAt: fn Text, Nat, [((Text, Ty))] -> Text
+fn ValuedStemAt qk, k, types = if (Len types) == 0: ValuedStem qk else: "{ValuedStem qk}_at{k}_"
+
 # A valued widget's clauses as a blueprint chooses and builds them (`SharedCaseOf`), when
-# it can be one: no widget function parameter, no type parameter, no `$` or event
-# parameter with time below its top, and nothing, a plain value or an event given back.
-?ValuedCases: unbounded fn Lx, Text -> ?[((Text, Pa, [Cc], [Ex]))]
-fn ?ValuedCases lx, qk = match lx.g.vals[qk]:
+# it can be one: no widget function parameter, no `$` or event parameter with time below
+# its top; whatever it gives back. A generic widget's are made once for each set of
+# types the program's readings give its type parameters (`types`, `ValuedKey`).
+?ValuedCases: unbounded fn Lx, Text, [((Text, Ty))], Text -> ?[((Text, Pa, [Cc], [Ex]))]
+fn ?ValuedCases lx, qk, types, stem = match lx.g.vals[qk]:
     nil: nil
-    ? v:
+    ? declared:
+        let lxv = AtInstance (InModuleAt lx, declared.file, declared.home, declared.home), ((types, [[]]))
+        let v = ValInfoAt lxv, declared
         let ptys = match v.scheme.ty:
             TyFn ignore, ps, ignore: ps
             otherwise: [[]]
-        # nothing, a plain value, or an event with no time below its top (the row fires a
-        # port, `ValuedEventResult`)
+        # any result: nothing, a plain value, an event (the row fires a port,
+        # `ValuedEventResult`), a dynamic or a bundle (the row's one value, its events
+        # and dynamics whole, `ValueRowWhole`)
         let plainResult = match WidgetResultOf v.scheme.ty:
-            TyAt i, ignore: ((LayerOf i) == LyPlain and not (IsBundle (Peel i))) or ((LayerOf i) == LyEv and not (HasTime (Peel i)))
+            TyAt ignore, ignore: True
             otherwise: False
         # a plain parameter; a `$` or an event parameter, the caller's live value the row
         # holds (`LiveParams`); a blueprint parameter, a value of the row
         # (`ClauseRowOf`); never a widget function's
         let plainParams = Fold ptys, True, \|ok, pt| ok and not (IsWidgetFnTy pt) and ((LayerOf pt) == LyPlain or (LayerOf pt) == LyBlueprint or IsLiveParam pt)
-        if not (plainResult and plainParams and (Len (RigidsIn v.scheme.ty)) == 0): nil
+        if not (plainResult and plainParams): nil
         else:
-            let lxv = InModuleAt lx, v.file, v.home, v.home
             let clauses = ClausesOf lx.g, qk
-            let stem = ValuedStem qk
             if (Len clauses) == 0: ? [[(("{stem}0", (PaTuple [[]]), [[]], [[(XVar "row_base")]]))]]
             else: ? (Each (Range0 (Len clauses)), \|i| SharedCaseOf lxv, v, (Or clauses[i], dummyClause), "{stem}{i}")
 
@@ -432,13 +494,18 @@ fn ?ValuedCases lx, qk = match lx.g.vals[qk]:
 # which is given the host and what tells it, as a shared row in a hosted scope is. A
 # blueprint value is built in the scope of what applies it, which no value site knows.
 ValuedRows: unbounded fn Lx, Text, ?Block -> [Item]
-fn ValuedRows lx, qk, ?body = match ((lx.valued[qk], lx.g.vals[qk])):
-    ((? ignore, ? v)): Append (ValuedRowsIn lx, qk, ?body, v, False), (ValuedRowsIn lx, qk, ?body, v, True)
-    otherwise: [[]]
+fn ValuedRows lx, qk, ?body = match lx.g.vals[qk]:
+    ? v:
+        let instances = Or lx.valuedAt[qk], [[]]
+        Fold (Range0 (Len instances)), [[]], \|acc, k|
+            let ((ignore, types)) = Or instances[k], (("", [[]]))
+            let lxk = AtInstance lx, ((types, [[]]))
+            let stem = ValuedStemAt qk, k, types
+            Append (Append acc, (ValuedRowsIn lxk, qk, stem, ?body, (ValInfoAt lxk, v), False)), (ValuedRowsIn lxk, qk, stem, ?body, (ValInfoAt lxk, v), True)
+    nil: [[]]
 
-ValuedRowsIn: unbounded fn Lx, Text, ?Block, ValInfo, Bool -> [Item]
-fn ValuedRowsIn lx, qk, ?body, v, hosted:
-    let stem = ValuedStem qk
+ValuedRowsIn: unbounded fn Lx, Text, Text, ?Block, ValInfo, Bool -> [Item]
+fn ValuedRowsIn lx, qk, stem, ?body, v, hosted:
     let Named = \|i| if hosted: HostedValuedRow "{stem}{i}" else: "{stem}{i}"
     let ?hostedBy = if hosted: ? sharedMoved else: nil
     let wx0 = NewWx lx, "{stem}s", [[]], [[]], [[]], [[]], {}, nodeHooks, [[]], ?hostedBy
@@ -865,37 +932,45 @@ fn AnswerEnum lx, mods:
     let tags = KindTags lx, "Element", (Push mods, "Prelude")
     AnswerDef(cases=(Each tags, \|tg| AnswerCase(variant=(TagStruct tg.name), accessor=(AnswerAccessor tg), structPath=(RootRef tg.home, (TagStructOf tg)), tagName=tg.name, ty=(AnswerTy lx, tg), ?first=(?BundleFirstTy lx, tg))))
 
-# A bundle tag's plain parts as one type, its first value (`AnswerCase.first`), or with no
-# plain part its one `$` part's value; `nil` for a tag whose output is no bundle, or a
-# bundle of events alone.
-?BundleFirstTy: unbounded fn Lx, TagInfo -> ?OutTy
-fn ?BundleFirstTy lx, tg = match Peel tg.out:
-    TyTuple cs:
-        let plain = Filter cs, \|c| (LayerOf c) == LyPlain
-        let live = Filter cs, \|c| (LayerOf c) == LyDyn
-        let hasEv = Fold cs, False, \|f, c| f or (LayerOf c) == LyEv
-        if not hasEv: nil
-        else: match plain:
-            # no plain part and one `$` part (`((!Text, $Text))`): the `$` part's value,
-            # its first value and each push after it
-            [[]]: match live:
-                [[d]]: ? (TagFieldOut lx, d)
-                otherwise: nil
-            [[c]]: ? (TagFieldOut lx, c)
-            otherwise: ? (OutTuple (Each plain, \|c| TagFieldOut lx, c))
+# A bundle tag's state (Type System ch. 2, "Bundles"): its plain and `$` parts' values, one
+# part itself, several a tuple in the tag's order; `nil` for a tag whose output is no
+# tuple, or a tuple of events alone.
+?BundleStateTy: unbounded fn Lx, TagInfo -> ?OutTy
+fn ?BundleStateTy lx, tg = match Peel tg.out:
+    TyTuple cs: match Filter cs, \|c| (LayerOf c) != LyEv:
+        [[]]: nil
+        [[c]]: ? (TagFieldOut lx, c)
+        state: ? (OutTuple (Each state, \|c| TagFieldOut lx, c))
     otherwise: nil
 
-# What an answer to a tag's element carries: its output's value; of a bundle (a tuple with
-# an event part, `Gui.Window`'s `((WindowId, !WindowInput))`) the event part's, which is
-# what a World answers with; a variable of the tag, the answer as it came, a `Pod`
-# (`TagFieldOut`).
+# A bundle tag's state in a variant of its own (`AnswerCase.first`), when the tag has
+# event parts too: the place's first value and each push after it. A bundle of state
+# parts alone answers with its state in the tag's own variant (`AnswerTy`); `nil` for it,
+# for a tag whose output is no bundle, and for a bundle of events alone.
+?BundleFirstTy: unbounded fn Lx, TagInfo -> ?OutTy
+fn ?BundleFirstTy lx, tg = match Peel tg.out:
+    TyTuple cs: if Fold cs, False, \|f, c| f or (LayerOf c) == LyEv: ?BundleStateTy lx, tg else: nil
+    otherwise: nil
+
+# One part of a sparse tuple (prism_rtl's `SparsePart`): the part's value, or absent.
+SparsePartTy: fn OutTy -> OutTy
+fn SparsePartTy t = OutNamed (RefRuntime "prism_rtl::SparsePart"), [[t]]
+
+# What an answer to a tag's element carries: its output's value. Of a bundle (a tuple
+# with time inside, `Gui.Window`'s `((WindowId, !WindowInput))`) with one event part, the
+# event's value, which is what a World answers with; with several event parts, a sparse
+# tuple of them, the parts that fired (Type System ch. 2, "Bundles and sparse tuples");
+# with none, its state (`?BundleStateTy`). A variable of the tag is the answer as it
+# came, a `Pod` (`TagFieldOut`).
 AnswerTy: unbounded fn Lx, TagInfo -> OutTy
 fn AnswerTy lx, tg:
     let out = Peel tg.out
-    let part = match out:
-        TyTuple cs: Fold cs, out, \|found, c| if (LayerOf c) == LyEv: Peel c else: found
-        otherwise: out
-    TagFieldOut lx, part
+    match out:
+        TyTuple cs: if not (IsBundle out): TagFieldOut lx, out else: match Filter cs, \|c| (LayerOf c) == LyEv:
+            [[]]: Or (?BundleStateTy lx, tg), OutUnit
+            [[c]]: TagFieldOut lx, c
+            evs: OutTuple (Each evs, \|c| SparsePartTy (TagFieldOut lx, c))
+        otherwise: TagFieldOut lx, out
 
 # An answer taken out of its tag's variant (`v.pad_echo()?`), as the place that asked
 # reads it: itself, or of a generic tag (whose variant holds each variable as plain data,

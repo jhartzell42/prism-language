@@ -385,6 +385,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
   - a plain `let` of the node that reads a late name is late too (`MarkLateLets`): a
     getter of the node that computes it (`late_{name}`, `LateLetGetters`), bound under
     `{name}#late` as the split line's names are, so what reads it reads it late in turn;
+    a `let` of a pattern whose names are plain (`let ((low, high)) = Sides n`) is late
+    with every name it binds: one getter computes the whole value (`late_whole`), and
+    each name's getter matches it by the pattern;
   - a building line of the node that reads a late name and is no element's (a widget's
     plain argument, a `for` above the split, a building `match` over the name) is a
     generation of one arm at its own positions (`DeferredLine`, `IsLateTaker`): its row
@@ -406,7 +409,14 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A widget function parameter** (`Inner: fn Nat -> @unit`, given `@Row`) is bound as a
   blueprint parameter is, the argument's text with its caller's environments; `Inner 1`
   applies the function the argument names to the line's arguments, read in the line's
-  environments (`ApplyWidgetParam`). A function value that is no name is refused.
+  environments (`ApplyWidgetParam`). Given a lambda (`@Use (\|F| @Shower label, F)`),
+  the lambda's body is lowered at the line, in the lambda's own file: its parameters
+  are bound to the line's arguments by layer as an inlined widget's are (`BindParam`),
+  over the environments the lambda closes over, and its names are kept apart for each
+  application by the line's call (`Lx.inlined`). Any other function value (a call's
+  result, a field) is read where the argument stands and applied to the line's
+  arguments, and the blueprint it gives is applied as any blueprint value
+  (`AppliedBlueprintLine`).
 - **A clause widget's blueprint parameter** (`fn @Show True, @w:`), and a widget
   function parameter of one, is bound in the clause's row as an inlined widget's is
   (`BindParam`): the caller's argument's text with the caller's environments as the row
@@ -449,8 +459,45 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A `rebuild` whose block ends on a bundle** gives a dynamic of the bundle as one
   value (`WholeResultOf`, `Wx.wholeResultAt`): the generation's plain result is the
   tuple with each event as its port's `Event` and each dynamic it names as the live
-  `Dynamic` made for it (`WholeArgsAt`). A bundle that is not written out as a tuple
-  where the block ends is refused.
+  `Dynamic` made for it (`WholeArgsAt`). A bundle a line named whole (`@ both`) is the
+  tuple of its parts by their bindings (`WholeNamedOf`, `WholePartsOf`): an event the
+  `Event` of a port it fires, a dynamic a live `Dynamic` over the node's link
+  (`LiveDynamic`), a plain part its value at the build, a bundle inside the tuple of its
+  own parts, made the same way. A named bundle inside a tuple written out (`@ ((_,
+  both))`) is that value under `{name}#value` (`WholeWrittenOf`). A block that ends on a
+  line that gives a bundle with no name between (`@Counter _` last) gives the same value
+  from the line's parts (`WholeOfResults`); with a late plain part inside, the value is
+  read from the row once the part's row is built, every other part kept in a field.
+- **A name bound to a whole bundle is its parts** (`BnParts`; `both <- @Counter 1`, `let
+  pair = ((..))`, a name inside a tuple pattern over a bundle). Each plain part with a
+  value at the build is a field of the node (`FieldedParts`): the build reads the local,
+  the methods the field, a row the field through its parent. A plain part bound by a
+  tuple pattern's name is moved into the field its name was prebound to (`BindParts`,
+  `BindPlainResult`). A `let` whose tuple pattern takes a named bundle apart (`let ((ten,
+  ((!more, $guests)))) = all`) binds each name to the part at its place
+  (`BindNamedParts`): an event part feeds the name's node, a dynamic part is the name's
+  getter, a plain part the name's field, a bundle inside is taken apart in turn or
+  bound whole.
+- **A row reads a named bundle of its block** part by part (`RowPartsBn`; a `for`'s row
+  takes them from its port environment, `BundlesOf`): an event through a port of the
+  row, a dynamic and a plain part through the parent, in the build through the `parent`
+  argument (`PartsAtBuild`).
+- **A row of a row reads a dynamic of the block around both** through a getter of the
+  row between (`through_{name}`; `RowReadGetters` for a `for`'s rows, `ThroughGetter`
+  for a generation's and for a bundle's part): the block's own read of its parent,
+  which the inner row reads through its parent as any dynamic `let` of the block, so
+  the outer block's writes reach the inner rows through the row between (`RowHears`,
+  `parent_wrote_{m}`).
+- **A widget's parameter that is a pattern** (one clause, so a pattern that cannot
+  fail; `BindParamPattern`). A tuple over a bundle takes the argument apart
+  (`BindBundleParam`): written out, each pattern of the tuple takes its part's
+  expression as a parameter of its own takes its argument; a name bound to a bundle
+  gives each pattern the part's binding (`BindPartsParam`), an event with its value
+  form (`BindEventParam`), a plain part as a field. Any other pattern is over a plain
+  value: the argument is a local of the build, matched once there, each name a field
+  (`BindPlainPatternValue`). Refused: a bundle argument that is neither written out nor
+  a name (a function's result), and a pattern that takes an event or a dynamic out of
+  a value that is no bundle (a record's `$` field).
 - **`@Element made` as a line, `made` a `let` of the block bound to a tag applied**
   (Semantics ch. 8, "Elements and the element statement") is that element's line at
   the placing line's position, lowered in the placing line's environments
@@ -479,9 +526,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
   constructor, a host's supplier, what a lambda gives, the operand of `?`, a part of a
   tuple or an array, the value of a `let` (`LetValues`: `let @w = @Pair`, read where
   `@w` is), and a blueprint argument of a widget that stands in one (`@Frame @Pair`).
-  A widget can be one when it has no type parameter and no widget function parameter,
-  its `$` and event parameters have no time below their top, and it gives nothing, a
-  plain value or an event back (`?ValuedCases`).
+  A widget can be one when it has no widget function parameter and its `$` and event
+  parameters have no time below their top, whatever it gives back (`?ValuedCases`).
+  - A generic widget is one for each set of types the program's readings give its type
+    parameters (`?ValuedTypes`: read off the arguments' types as an inlined call reads
+    them, and off the widget's own type where it is read). `Lx.valued` is keyed by the
+    widget and those types (`ValuedKey`), `Lx.valuedAt` lists a widget's readings in
+    the order the program has them; each has rows of its own, lowered with the types in
+    the substitution (`AtInstance`, `ValInfoAt`) and named `{Widget}_value_at{k}_{i}`
+    (`ValuedStemAt`). A reading that leaves a type parameter open (it stands in a
+    generic function or widget, whose own parameter it is given) has no rows and is
+    refused where it is read.
   - A `$` or an event parameter is the caller's live `Dynamic` or `Event`, which the
     blueprint keeps and each row it builds holds (`LiveParams`, as the shared rows of a
     widget that calls itself do); the line that reads the widget makes the dynamic
@@ -491,6 +546,24 @@ it make every program an interpreter run, and every type mistake a runtime fault
     (`ValuedEventResult`, the row's `result_event`); prism_rtl's
     `widget_event_blueprint` subscribes the sink of what applied the blueprint, each
     firing an answer under the arm's tag or outside any, as a plain result is.
+  - A dynamic result and a bundle are one value the row's `result_value` gives
+    (`ValueRowWhole`): a dynamic is a live `Dynamic` over the row, its update event a
+    port the writes behind it fire (`LiveDynamic`); a bundle is the tuple of its parts,
+    each event the event of a port of the row's that it fires, each dynamic such a live
+    `Dynamic`, each plain part its value. Outside a tag's arm the blueprint answers
+    with that value held as it is, once, at its build (`crate::Answer`'s case
+    `Held_a`, the prelude's `answer_held`), and so it does with a plain value that is
+    no plain data (a function): the line that applies the blueprint reads the widget's
+    own dynamic, events and value, so they move in the tick the widget's do. Under a
+    tag's arm a dynamic result is the place's first value and each move of it a push
+    of the next tick, as `@ $d` is (prism_rtl's `widget_dynamic_blueprint`), and a
+    bundle is answered as a bundle that is a value already is (`@ pair`,
+    `PartsAnswerOf`): prism_rtl's `widget_parts_blueprint` builds the row and makes
+    the `PartsAnswer` of its one value, the plain and `$` parts the tag's state, each
+    event part the tag's answers, all but the first value inputs of the next tick.
+  - A widget whose block ends on a host's line gives the host's output: the tuple of
+    the child's result and the child's document, the document a live `Dynamic` over the
+    row as any dynamic of the result is (`ValueRowWhole`, `WrHosted`).
   - Each such widget is lowered once more as rows of its own, items of its module
     (`ValuedRows`): one row type a clause, `{Widget}_value{i}`, its places numbered from 0
     and built from a base, holding no block, telling how many places it built (`built`),
@@ -513,9 +586,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
     methods). A host's row gives them to the enclosing host (`HostRow::entries`,
     `HostRow::deliver`); a block that applied the value gives them as its generation's
     (`AppliedBlueprint`).
-  - A widget with a `$`, event or blueprint parameter, a type parameter, or an event,
-    dynamic or bundle result is not among them, and is refused where it is read as a
-    value.
+  - A widget with a widget function parameter is not among them, and is refused where
+    it is read as a value.
 - **A widget defined in a block read as a value** (`Card(@body=@line)`, `?Pick True,
   @line`) is a `Blueprint` its line makes at the build before the node, kept in a field
   (`BlueprintValuesAt`, `blueprint_{name}`): it builds the widget's block as a row of its
@@ -531,9 +603,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
     is applied). A write behind what the rows' places read of the block dirties each
     row that lives (`RowMarks` of kind `ValueRow`, `RowWritten`), so a place that reads
     a dynamic of the block changes in place.
-  - A widget that gives a plain value back answers with it outside any tag, as plain
-    data. One that gives an event, a dynamic, a bundle, or a value that is no plain
-    data back is refused as a value.
+  - What the widget gives back it answers with as a top-level widget read as a value
+    does outside a tag's arm: plain data outside any tag; an event through a port of
+    the row's (`ValuedEventResult`, `widget_event_blueprint`); a dynamic, a bundle and
+    a value that is no plain data held whole (`ValueRowWhole`, `answer_held`).
 - **A blueprint value applied by a block** (`? @t: @t`, `ignore <- card.@body`;
   Semantics ch. 8: at the applying block's next positions) is the node's generation at
   the line (`ValueBlueprintLine`): the prelude's `apply_blueprint` builds the value at
@@ -557,8 +630,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
     (the prelude's `apply_blueprint_answered`), read at the line's type (`FirstAnswerTaken`): by the tag
     it is under where a tag of the program answers with that type (a blueprint made in
     a supplier's arm answers under the arm's tag; that tag's accessor reads an answer
-    made outside any tag too), else as plain data (`answer_plain`, `Answer::plain`), and
-    the node keeps it in `{generation}_res`
+    made outside any tag too), else as plain data (`answer_plain`, `Answer::plain`); a
+    type that is no plain data (a function) is read from the answer held whole
+    (`held_answer`, `Answer::held`). The node keeps it in `{generation}_res`
     from the build on: the result is late (`WrLate`, `IsLateExpr`), as a call of a
     widget that calls itself keeps its own.
   - A line that binds a dynamic (`$d <- @$t`, `$level <- @Element e` of an element
@@ -568,8 +642,22 @@ it make every program an interpreter run, and every type mistake a runtime fault
     answer comes, read at the line's type as a bound first answer is. The node keeps it
     in `{generation}_res` as a generation's dynamic result is kept (`KeptDyn`) and
     follows its update event (`prism_rtl::Follow`), each firing marking what reads it
-    (`{generation}_result_moved`).
-  - A blueprint value that gives a bundle back is refused.
+    (`{generation}_result_moved`). A first answer that holds a `Dynamic` whole (a
+    widget's dynamic result) is the line's dynamic itself.
+  - A line that binds a bundle (`((step, !go)) <- @t`, `((!rx, $link)) <- @Element e`;
+    `AppliedBundleLine`) takes it as one value, its events and dynamics whole, from the
+    prelude's `apply_blueprint_whole`: a first answer that holds the value whole (a
+    widget's bundle) is it; any other blueprint answers as a bundle's tag does, and the
+    value is made of those answers: the state (the tag's first-value case, or its own
+    when it has no event part) a hold the first answer makes and each later one writes,
+    its `$` parts dynamics over it (`state_part`), its plain parts read at the build;
+    the event parts the event the tag's answers fire, of several the firings of the
+    sparse tuple that hold the part (`event_part`). The tags are the program's whose
+    output is the line's bundle (`BundleTagsOf`). The node keeps the value in
+    `{generation}_whole` and binds its parts (`AppliedPart`): a plain part is late,
+    read from the kept value; a dynamic part is kept and followed as a dynamic result
+    is (`{generation}_part{place}_res`); an event part is heard (`hear_part`) and fires
+    an event of the node through `{generation}_part{place}_up`.
 - **`prism_rtl::Blueprint`** is built with a base beside its path, sink and scope: 0
   under a host's row, the line's position as built in a block. `Supplied` tells how many
   places were built (`built`), how a widget's row leaves (`leave`), and, for a widget's row
@@ -759,8 +847,6 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `Event`: the description's own, or, for a live element, the requests its place makes
   through that field (`Live::requested`: the host row's `requests` port, filtered by the
   field's name and decoded), fired in the tick of the request.
-- **A bundle answer that is a value** (`@ pair`) is taken apart by its type: the plain
-  parts cloned for the first value, the event part mapped to the tag's variant.
 - **A tag's answer constructor named, not applied**, is a closure building the variant.
 - **`@Element (Tag(..))` in a block** is the element statement at the line's own position
   (`ElementCallLine`; Semantics ch. 4).
@@ -798,8 +884,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
     when delivered, so it carries the value after the tick of the change. The owner emits a
     getter per dynamic answer and fires its update port at every write behind it; the
     supplier reads the getter through an `rt::Link` to the owner, and the dynamic's value
-    at the build while the owner is being made. A computed answer in flight to a place
-    whose key left is dropped. Nested hosts add one tick per computing layer and none per
+    at the build while the owner is being made. A dynamic read through the owner's parent
+    (a host in a row answering with the block's `$n`) has its value at the build taken
+    at the host's line, through the parent, into a local the supplier copies
+    (`{getter}_at_build`, `AnswerAtBuild`); the block's write tells the row, which fires
+    the getter's port (`RowHears`). An answer through a blueprint a `let` names (`let
+    @$live = @ $level`) is its expression in the name's place: `DynamicAnswers` reads
+    the `let`'s expression, and the supplier's closure captures what it reads
+    (`WithBlueprintReads`). A computed answer in flight to a place whose key left is
+    dropped. Nested hosts add one tick per computing layer and none per
     forwarding layer.
 - **First values.** A child place with a first value asks the host at its build
   (`host_k.first_value(&place, &elem, &entry, cx)`), before the owner's node exists: the host builds
@@ -838,28 +931,42 @@ it make every program an interpreter run, and every type mistake a runtime fault
   value stands in the local `{f}_init` (`DynamicPlace`), bound as the name's value at the
   build (`PreInit`), so a supplier's dynamic answer over the host's own pushed place
   reads it while the node is being made.
-- **A bundle with one event part and one `$` part** (`((!Text, $Text))`): the `$` part is a
-  pushed place's hold, its first value the place's first value and its pushes keyed by
-  the element, the event part answered by path. In a hosted scope the tag's first-value
-  variant carries the `$` part: a supplier's constant `$` part (`@ ((never, $ "offline"))`)
-  is the first value.
-  - A supplier's live `$` part (`@ (("hello" on !flip, $state))`) is a `Dynamic` of the
-    first-value variant, read through the owner's link as a dynamic answer's is
-    (`DynamicAnswers` keys it by the part, `?AnswerDynamic`), given to prism_rtl's
-    `bundle_dynamic_blueprint` beside the event: its value at the row's build is the
-    first value, each later change a push delivered the next tick, each firing of the
-    event an answer a tick late.
-  - A forwarded element's push from the World is decoded by `decode_first` (`Forward`,
-    `Placed`): of a bundle's tag the first-value variant, of any other its answer.
-  - The child's typed dispatch has one arm for such a place (`BundlePlaceArm`): the
-    first-value variant is written to the `$` part's hold, any other answer fires the
-    event part.
-- **A bundle in a hosted scope** (a tag whose output is plain parts and one event part):
-  `crate::Answer` has a second variant per bundle tag, `{Tag}First`, its plain parts; the
-  place's first value is that variant (`{tag}_first()`), from a supplier's
-  `@ ((x, !e))` (`rt::bundle_blueprint`: `x` once, each firing of `e` a tick late) or from a
-  World's first value to a forwarded element (`AnswerOf::decode_first`); its answers are
-  the event part's variant, as in the World's scope.
+- **A tag whose output is a bundle** (Type System ch. 2, "Bundles and sparse tuples":
+  `((WindowId, !WindowInput))`, `((!Text, $Text))`, `((Nat, $Text))`, `(($Text, $Nat))`,
+  `((!Text, !Nat))`) is one mechanism for any mix of plain, `$` and event parts
+  (`BundleOutputOf`, the node's `BundlePlace`s).
+  - **The state** is the plain and `$` parts' values, one part itself, several a tuple in
+    the tag's order. It is the place's first value (the World's first-value query, or the
+    enclosing host's) and what each push after it holds, keyed by the element. A plain
+    part is a field read from the first value once. A `$` part is a hold made with its
+    part of the first value (the local `{f}_init`, the name's value at the build,
+    `PreInit`); a push writes every `$` part's hold with its part of the state
+    (`BundleStateWrite`), as any hold is written.
+  - **The event parts' answer** comes by path. Of one event part it is the part's value;
+    of several it is a sparse tuple, one `prism_rtl::SparsePart` per event part, and each
+    part that is there fires its event (`BundleEventsFire`). As plain data an absent part
+    is `Pod::Absent`, written and printed `-` (`(("hello", -))`). A bundle with no event
+    part is answered by path with its state.
+  - **In `crate::Answer`** the tag's variant carries the event parts' answer (`AnswerTy`),
+    and a tag with both event parts and a state has a second variant, `{Tag}First`, the
+    state (`?BundleFirstTy`, `{tag}_first()`); a bundle of state parts alone has its
+    state in the tag's own variant. A World's first value and its pushes to a forwarded
+    element decode to the state's variant (`AnswerOf::decode_first`), its answers to the
+    tag's own.
+  - **The child's typed dispatch has one arm for a bundle's place** (`BundleTypedArm`):
+    the state's variant is written to the `$` parts' holds, any other answer fires the
+    event parts.
+  - **A supplier's bundle answer** (`@ ((a, $b, !c))`, or `@ pair` of a bundle that is a
+    value) is `rt::parts_blueprint` over an `rt::PartsAnswer` (`PartsBlueprint`). The
+    state is one `Dynamic` of the state's variant: a constant when no `$` part is live
+    (a constant `$ v` is its value), else read at the read point from the plain parts,
+    cloned, and each live `$` part's own `Dynamic` (read through the owner's link as a
+    dynamic answer's is, `DynamicAnswers` keys the getter by the part, `?PartDynamic`),
+    and moved when any of them moves (`moved_by`). Its value at the row's build is the
+    place's first value; each later move is one push of the whole state, delivered the
+    next tick. Each event part is mapped to the tag's answer (of several event parts, a
+    sparse tuple holding that part alone); each firing is an answer a tick late, so two
+    parts that fire in one tick are two answers of the next.
 - **A named widget function as a supplier** (`@HostDocument @child, @Supply`): a widget
   function shaped as a supplier (a parameter `Element c o`, the result `@o`) whose clauses
   build no place (`@ x`, `@Element e`, a `match` or `if` of them, after `let`s) is emitted
@@ -878,14 +985,20 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A function value of its callee's own color in a call's result** (`[u fn Nat -> Nat]`
   at a call that makes `u` bounded) is a `Start` in the callee's signature; the call's
   value is made again by one walk over its two types, the signature's and the call's
-  (`Recolored`): an array is mapped (the prelude's `each`), an optional and a `~T`
+  (`Recolored`): an array is mapped (the prelude's `each`), an event and a dynamic
+  are mapped (`Event::map`, `Dynamic::map`), an optional and a `~T`
   matched, a tuple taken apart, a map made again with `fold_map` and `insert`, a record
   made from its fields and a choice by a `match` over its cases, each field at its type
   under the signature's type arguments and under the call's (`NamedRecolored`), to any
   depth and in any nesting. A function is made again (`FunctionRecolored`): a `Start`
   where a bounded function is wanted runs each application's job to its end; a
   function's own parameter is walked the other way, where a bounded function is wrapped
-  as a `Start` that answers in its first cycle.
+  as a `Start` that answers in its first cycle; a `Start` that stays one and whose own
+  parameter or result holds the function is a `Start` that hands the held one its
+  arguments walked and maps its job's result (the prelude's `map_job`). The walk
+  starts from the signature's result at the types the call gives the callee's type
+  parameters, so the two types differ in color alone, and it is made whenever the two
+  differ: a function beside it that stays a `Start` is itself.
 - **A function value applied** (`Take (\|n| n * k)`, `Take Double`, `Take` a `let` or a
   parameter) takes each argument of a function type as a function value
   (`ValueArgument`); a named function takes a borrowed closure or a path there.
@@ -900,7 +1013,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   (`HeadWord`: a named type's name, a collection's shape with its parts).
 - **A widget block's `let` of a record's or a constructor's pattern** computes the value
   at the build, matches it once there and moves each name it binds into its own field
-  (`BindPatternResult`, as a widget's plain result bound by a pattern).
+  (`BindPatternResult`, as a widget's plain result bound by a pattern). A pattern that
+  binds a dynamic or an event inside it (`LetPatternDynamics`) keeps the whole value as
+  a getter of the node: a `$` binder's getter matches it and samples the dynamic it
+  holds; an event binder's port node is subscribed at the build to the event the value
+  holds (read out by the pattern, `{heard}_event`) and feeds the name's own node.
 - **`for &v <- &m:` over a map** (ruling FM) takes the keys before the first step and
   reads each entry's place through its key (`keys`, `at_mut_map`), in key order.
 - **A `while` or an `if` bind in an `update` block whose pattern has conditions** (a

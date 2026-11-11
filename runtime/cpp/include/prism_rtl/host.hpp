@@ -48,6 +48,7 @@
 #pragma once
 
 #include "prism_rtl/rc.hpp"
+#include <algorithm>
 #include <concepts>
 #include <functional>
 #include <memory>
@@ -614,18 +615,17 @@ struct Subscribed : Node {
     }
 };
 
-/// The two subscriptions of a bundle answer with a `$` part (`bundle_dynamic_blueprint`),
-/// let go when the row leaves.
+/// The subscriptions of a bundle answer (`parts_blueprint`): one per event part, and one
+/// per port that says a `$` part moved, let go when the row leaves.
 template <class T>
-struct SubscribedBoth : Node {
-    Rc<Port<T>> event;
-    std::optional<Handle> event_handle;
-    Rc<Port<Unit>> updates;
-    std::optional<Handle> updates_handle;
-    SubscribedBoth(Rc<Port<T>> e, Rc<Port<Unit>> u) : event(std::move(e)), updates(std::move(u)) {}
+struct SubscribedParts : Node {
+    std::vector<std::pair<Rc<Port<T>>, Handle>> events;
+    std::vector<std::pair<Rc<Port<Unit>>, Handle>> updates;
     Done leave(Cx&) override {
-        if (event_handle) event->unsubscribe(*std::exchange(event_handle, std::nullopt));
-        if (updates_handle) updates->unsubscribe(*std::exchange(updates_handle, std::nullopt));
+        for (auto& [port, handle] : events) port->unsubscribe(handle);
+        for (auto& [port, handle] : updates) port->unsubscribe(handle);
+        events.clear();
+        updates.clear();
         return {};
     }
 };
@@ -694,6 +694,35 @@ Blueprint<E, A> widget_event_blueprint(Build build, BuildHosted build_hosted, An
     };
 }
 
+/// A widget that gives a dynamic back as a blueprint value under a tag's arm: as
+/// `widget_blueprint`, the row's result its live dynamic. Its value at the row's build is
+/// the place's first value, made an answer by `answer`; each later move of it is a push
+/// to the place, an input of the next tick, which is owed, sampled when it is delivered,
+/// as `dynamic_blueprint`'s is (several marks in one tick are one push).
+template <class E, class A, class Build, class BuildHosted, class AnswerFn>
+Blueprint<E, A> widget_dynamic_blueprint(Build build, BuildHosted build_hosted, AnswerFn answer) {
+    return [build, build_hosted, answer](Path path, Sink<A> sink, const Scope<E, A>& scope, std::uint32_t base, Cx& cx) -> Result<Supplied<E, A>> {
+        auto follow = [sink, answer](const auto& d, Cx& cx) -> A {
+            auto queued = make_rc<Stamped<Unit>>();
+            deref(d.updates).subscribe([d, sink, answer, queued](const Unit&, Cx& cx) -> Done {
+                if (queued->fired(cx)) return {};
+                queued->set(Unit{}, cx);
+                cx.answer_later([d, sink, answer](Cx& cx) { return sink(answer(d.sample(cx)), cx); });
+                return {};
+            });
+            return answer(d.sample(cx));
+        };
+        if (scope.is_world()) {
+            auto made = TRY(build(path, base, cx));
+            A first = follow(made.result, cx);
+            return Supplied<E, A>{made.node, first, false, nullptr, made.built, made.leave};
+        }
+        auto made = TRY(build_hosted(path, base, scope.hosted, host_moved<E, A>(scope.hosted), cx));
+        A first = follow(made.result, cx);
+        return Supplied<E, A>{made.node, first, false, nullptr, made.built, made.leave, made.document, made.deliver};
+    };
+}
+
 /// The rows a blueprint value of a block's own widget built (Semantics ch. 8: a blueprint
 /// builds as often as it is applied), held weakly: the block's write behind what their
 /// places read marks each one that lives. A row that left is dropped from the list when
@@ -745,37 +774,105 @@ Blueprint<E, A> event_blueprint(Event<A> e) {
     };
 }
 
-/// `@ ((x, !e))` for a bundle's tag (pick HO): `x`, the plain parts, the place's first value,
-/// once; each firing of `e` an answer to the child's place, a tick late.
+/// A bundle answer's parts (Type System ch. 2, "Bundles"): `@ ((a, $b, !c, !d))` under a
+/// bundle tag's arm, any mix of plain, `$` and event parts. The plain and `$` parts are
+/// the place's state, one dynamic of the tag's state case (a constant when no part
+/// moves), with a port per `$` part that says the part moved; each event part is an event
+/// of the tag's answer case.
+template <class A>
+struct PartsAnswer {
+    std::optional<Dynamic<A>> state;
+    std::vector<Rc<Port<Unit>>> moved;
+    std::vector<Event<A>> events;
+    /// One more port that says the state moved (a second `$` part's).
+    PartsAnswer moved_by(const Rc<Port<Unit>>& port) && {
+        moved.push_back(port);
+        return std::move(*this);
+    }
+    /// One more event part.
+    PartsAnswer event(Event<A> e) && {
+        events.push_back(std::move(e));
+        return std::move(*this);
+    }
+};
+
+/// A bundle answer with a state: its plain and `$` parts.
+template <class A>
+PartsAnswer<A> parts_state(Dynamic<A> state) {
+    return PartsAnswer<A>{std::optional<Dynamic<A>>(std::move(state)), {}, {}};
+}
+
+/// A bundle answer with no state: its first event part.
+template <class A>
+PartsAnswer<A> parts_event(Event<A> e) {
+    return PartsAnswer<A>{std::nullopt, {}, {std::move(e)}};
+}
+
+namespace detail {
+
+/// A bundle answer given to a sink (`parts_blueprint`, `widget_parts_blueprint`): the
+/// state's value now, the place's first value, and the subscriptions that push each
+/// later move of the state and answer each firing of an event part, a tick late, kept
+/// in `node`.
+template <class A>
+std::optional<A> answer_parts(const PartsAnswer<A>& parts, const Sink<A>& sink, SubscribedParts<A>& node, Cx& cx) {
+    std::optional<A> first;
+    if (parts.state) first = parts.state->sample(cx);
+    for (const Event<A>& e : parts.events)
+        node.events.emplace_back(e.port, e.port->subscribe([sink](const A& v, Cx& cx) { return later(sink, v, cx); }));
+    if (parts.state) {
+        Dynamic<A> d = *parts.state;
+        auto queued = make_rc<Stamped<Unit>>();
+        std::vector<Rc<Port<Unit>>> ports{d.updates};
+        for (const auto& port : parts.moved)
+            if (std::find(ports.begin(), ports.end(), port) == ports.end()) ports.push_back(port);
+        for (const auto& port : ports)
+            node.updates.emplace_back(port, port->subscribe([d, sink, queued](const Unit&, Cx& cx) -> Done {
+                if (queued->fired(cx)) return {};
+                queued->set(Unit{}, cx);
+                cx.answer_later([d, sink](Cx& cx) { return sink(d.sample(cx), cx); });
+                return {};
+            }));
+    }
+    return first;
+}
+
+}  // namespace detail
+
+/// `@ ((a, $b, !c))` for a bundle's tag (pick HO; round 3 DY): the state's value at the
+/// row's build is the place's first value, read synchronously; each later move of a `$`
+/// part is a push of the whole state to the place, and each firing of an event part an
+/// answer, all inputs of the next tick, which is owed. As `dynamic_blueprint`, several
+/// marks of the state in one tick are one push, sampled when it is delivered. Two event
+/// parts that fire in one tick are two answers of that next tick.
 template <class E, class A>
-Blueprint<E, A> bundle_blueprint(A first, Event<A> e) {
-    return [first, e](Path, Sink<A> sink, const Scope<E, A>&, std::uint32_t, Cx&) -> Result<Supplied<E, A>> {
-        auto node = make_rc<detail::Subscribed<A>>(e.port);
-        node->handle = e.port->subscribe([sink](const A& v, Cx& cx) { return detail::later(sink, v, cx); });
-        return Supplied<E, A>{node, first, false};
+Blueprint<E, A> parts_blueprint(PartsAnswer<A> parts) {
+    return [parts](Path, Sink<A> sink, const Scope<E, A>&, std::uint32_t, Cx& cx) -> Result<Supplied<E, A>> {
+        auto node = make_rc<detail::SubscribedParts<A>>();
+        std::optional<A> first = detail::answer_parts(parts, sink, *node, cx);
+        return Supplied<E, A>{node, std::move(first), false};
     };
 }
 
-/// `@ ((!e, $d))` for a bundle's tag with a `$` part (Type System ch. 2, "Bundles"; round
-/// 3 DY): `d` is the `$` part in the tag's first-value case, `e` the event part in the
-/// tag's own. `d`'s value is the place's first value, read at the build; each later
-/// change of `d` is a push to the place and each firing of `e` an answer, both inputs of
-/// the next tick, which is owed. As `dynamic_blueprint`, several marks of `d` in one tick
-/// are one push, sampled when it is delivered.
-template <class E, class A>
-Blueprint<E, A> bundle_dynamic_blueprint(Dynamic<A> d, Event<A> e) {
-    return [d, e](Path, Sink<A> sink, const Scope<E, A>&, std::uint32_t, Cx& cx) -> Result<Supplied<E, A>> {
-        A first = d.sample(cx);
-        auto node = make_rc<detail::SubscribedBoth<A>>(e.port, d.updates);
-        node->event_handle = e.port->subscribe([sink](const A& v, Cx& cx) { return detail::later(sink, v, cx); });
-        auto queued = make_rc<Stamped<Unit>>();
-        node->updates_handle = d.updates->subscribe([d, sink, queued](const Unit&, Cx& cx) -> Done {
-            if (queued->fired(cx)) return {};
-            queued->set(Unit{}, cx);
-            cx.answer_later([d, sink](Cx& cx) { return sink(d.sample(cx), cx); });
-            return {};
-        });
-        return Supplied<E, A>{node, std::move(first), false};
+/// A widget that gives a bundle back as a blueprint value under a bundle tag's arm: as
+/// `widget_blueprint`, the row's result its one value, its events and dynamics whole.
+/// `parts` makes the bundle answer of it (the tag's state of its plain and `$` parts,
+/// the tag's answers of its event parts), which is answered as `parts_blueprint`
+/// answers: the state at the row's build the place's first value, each later move a push
+/// and each firing an answer, inputs of the next tick. The subscriptions live as long as
+/// the row, whose ports they are.
+template <class E, class A, class Build, class BuildHosted, class PartsFn>
+Blueprint<E, A> widget_parts_blueprint(Build build, BuildHosted build_hosted, PartsFn parts) {
+    return [build, build_hosted, parts](Path path, Sink<A> sink, const Scope<E, A>& scope, std::uint32_t base, Cx& cx) -> Result<Supplied<E, A>> {
+        detail::SubscribedParts<A> subscribed;
+        if (scope.is_world()) {
+            auto made = TRY(build(path, base, cx));
+            std::optional<A> first = detail::answer_parts(parts(made.result), sink, subscribed, cx);
+            return Supplied<E, A>{made.node, std::move(first), false, nullptr, made.built, made.leave};
+        }
+        auto made = TRY(build_hosted(path, base, scope.hosted, host_moved<E, A>(scope.hosted), cx));
+        std::optional<A> first = detail::answer_parts(parts(made.result), sink, subscribed, cx);
+        return Supplied<E, A>{made.node, std::move(first), false, nullptr, made.built, made.leave, made.document, made.deliver};
     };
 }
 

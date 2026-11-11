@@ -139,10 +139,14 @@ type Lx = record:
     # (`IsRecursingCall`).
     recursing: [Text]
     # The widgets with places the program reads as blueprint values (`ValuedWidgets`): by
-    # widget, each clause's row, the pattern and conditions that choose it, and what its
+    # widget (and for a generic one the types a reading gives it, `ValuedKey`), each clause's row, the pattern and conditions that choose it, and what its
     # `build` is passed. The rows are items of the widget's module (`ValuedRows`), built
     # by the blueprint a value site makes (`WidgetBlueprintValue`).
     valued: (Text ==> [((Text, Pa, [Cc], [Ex]))])
+    # Every valued widget's readings: each one's key in `valued` (`ValuedKey`) with the
+    # types it gives the widget's type parameters, in the order its rows are numbered
+    # (`ValuedStemAt`). A widget with no type parameter has the one, its own name.
+    valuedAt: (Text ==> [((Text, [((Text, Ty))]))])
 derive ^Eq, ^Show
 
 # A key into the typed tables: the file and the range.

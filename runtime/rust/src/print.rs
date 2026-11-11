@@ -316,6 +316,7 @@ impl Show for Pod {
             Pod::Map(es) => p.map(es.iter().map(|(k, v)| (k as &dyn Show, v as &dyn Show))),
             Pod::Nil => p.option(None),
             Pod::Some(x) => p.option(Some(&**x)),
+            Pod::Absent => p.raw("-"),
             Pod::Ok(x) => p.prefixed("~ ", &**x),
             Pod::Failed(e) => e.show(p),
             Pod::Path(path) => path.show(p),
