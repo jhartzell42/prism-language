@@ -1,0 +1,13 @@
+# A lowercase declaration of another module written qualified (Semantics ch. 6: every
+# declaration of a module is reachable by its qualified name; Jimmy's ruling QN: a
+# qualified name needs no `use`). `Words.base` names the module's `let`, not a field of a
+# value `Words`, since no value `Words` is in scope and a module is. Written by Claude on
+# the claude-lowering branch; subject to change.
+emit Ui.*
+mod Words
+test mod Tests
+use Ui.*
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Words.base} {Words.Twice Words.base} {Words.pair.left}")     # 0
