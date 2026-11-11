@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 4, Application (a function whose parameter holds a dynamic below the top takes the dynamic whole), as ts-ch04-whole-dynamic-kept derives it for a hold: `$four` is a constant dynamic of 4, so the one row shows 4.
+test a_kept_dynamic_follows
+
+tick 0
+  added:
+    0/[0]/0: Ui.Label(text="row 4")

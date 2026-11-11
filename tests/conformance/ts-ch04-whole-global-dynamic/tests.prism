@@ -1,0 +1,6 @@
+# The tests of ts-ch04-whole-global-dynamic.
+emit Ui.*
+use App.*
+
+test a_kept_dynamic_follows, @rows:
+    build
