@@ -6,19 +6,19 @@ emit Ui.*
 test mod Tests
 use Ui.*
 
-type Size = record:
+type Extent = record:
     wide: Nat
     high: Nat
 derive ^Eq, ^Show
 
-@Measure: fn Nat -> @((Size, ((Nat, Text))))
+@Measure: fn Nat -> @((Extent, ((Nat, Text))))
 fn @Measure n:
     Ui.Label($text=$"measured")                                        # 0
-    @ ((Size(wide=n, high=n + 1), ((n + 2, "deep"))))
+    @ ((Extent(wide=n, high=n + 1), ((n + 2, "deep"))))
 
 @main: @unit
 @main:
-    ((Size(wide=w, high=h), ((d, t)))) <- @Measure 3                   # 0
+    ((Extent(wide=w, high=h), ((d, t)))) <- @Measure 3                   # 0
     !go <- Ui.Button($label=$"go")                                     # 1
     $gone <- 0 then $gone + w on !go
     Ui.Label($text=$"{w} {h} {d} {t} {$gone}")                         # 2
