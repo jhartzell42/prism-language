@@ -285,8 +285,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `if`** (Semantics ch. 4: the arm is fixed for the life of the block and adds no
   segment), are one generation built once, transparent: the row the arguments (or the
   arm's pattern and guard) choose stands at the block's path, its places at the block's
-  positions, the widest clause's or arm's width reserved (pick CS), answered at those
-  positions in the World's scope and in a hosted one. An arm of a `match` reads the
+  positions, answered there in the World's scope and in a hosted one. Places are counted
+  as they are built (rulings since the Bible, TC): see "Positions" below. An arm of a `match` reads the
   block's names through its `parent`; a clause reads only its own, a `$` parameter being
   the caller's dynamic read through the parent (`ClauseDynArg`), never its value at the
   build. The result:
@@ -316,6 +316,34 @@ it make every program an interpreter run, and every type mistake a runtime fault
   moved into its field (`BindPlainResult`); any other pattern is matched once in the build
   against the result, and each name it binds is moved into the field its prebinding made
   (`BinderNames`, `BindPatternResult`).
+
+## Positions
+
+- Places are counted as they are built (ruling TC): after a building `match` or `if`, or
+  a widget of several clauses, the block's later places take the next numbers after the
+  places the chosen row built.
+- Inside a node the lowering still writes each position as a fixed number, the one the
+  place has when every transparent generation before it builds its widest row. That
+  keeps every match on a position, every forward to a row and every place's name static.
+- A transparent generation whose rows differ in what they build is gappy
+  (`GenDef.gappy`). The node keeps how many of its positions the chosen row left unbuilt
+  in `{name}_gap`, set where the row is built: the row's shortfall against the widest
+  row, plus what the row's own gappy generations left (`inner_gap`).
+- Going out, every path is spelled through `place(v)` (`PlaceNumber`): `v` less the gaps
+  of the generations that end at or before it. A transparent row is built with `base`,
+  the number its first position has as built, and counts from it. A node with no gappy
+  generation and no base spells the number itself, so its code has no `place`.
+- Coming in, a node with gaps of its own puts them back before it matches (`seat`, the
+  prelude's `seated`): a World's answer in `answer`, a host's in `host_k_answer` and
+  `deliver`. A transparent row is handed the path with its block's gaps already put
+  back, so each node undoes only its own.
+- A hosted scope has its own sequence, so its methods are `place_k` and `seat_k`.
+- A place read at the block's build before the node exists (a first-value query, a host
+  made in the build) after a gappy generation built after the node has no number yet;
+  that is refused loudly. A generation built early gives its gap as a local
+  (`{name}_gap_now`).
+- A clause that calls its own widget is lowered level by level, to the sixteen levels an
+  inlined widget is (`TooDeep`: a tree deeper than that faults at its build).
 
 ## Hosting
 

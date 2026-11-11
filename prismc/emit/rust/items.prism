@@ -340,7 +340,9 @@ fn RustNode n:
     let restText = if (Len n.build) == 0: tail else: "{Statements n.build}\n{tail}"
     let build = Build n.name, params, ret, (Statements n.lets), inits, restText
     let methods = Join (Each n.methods, \|m| RustMethod m), "\n"
-    let answer = if (Len n.answers) == 0: "" else: Answer (Join (Each n.answers, \|((pat, call))| "{Pattern pat} => {Expression call},"), "\n")
+    # a node with gaps of its own seats an answer's position first (the lowering's `seat`)
+    let seating = if Fold n.methods, False, \|f, m| f or m.name == "seat": "let seated = crate::prelude::seated(at, |a| self.seat(a));\nlet at = crate::prelude::segments_of(&seated);" else: ""
+    let answer = if (Len n.answers) == 0: "" else: Answer seating, (Join (Each n.answers, \|((pat, call))| "{Pattern pat} => {Expression call},"), "\n")
     let builders = Concat (Append (Each n.builders, \|b| "\n{ForBuilder b}"), (Each n.gens, \|gd| "\n{GenBuilder gd}"))
     let rowImpl = if n.rowKind == NotARow: "" else: "\n{RustRowImpl n}"
     let hooks = Join (Each n.hooks, \|((h, body))| if h == "push": PushHook (Statements body) else: Hook h, (Statements body)), "\n"

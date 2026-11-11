@@ -649,6 +649,22 @@ pub fn split(r: &Regex, t: &Text) -> Array<Text> {
     r.split(t)
 }
 
+/// An answer's segments with the first, a position, put through `seat`: a node whose
+/// places are counted as they are built matches the positions it was lowered with
+/// (claude/backend.md, "Positions").
+pub fn seated(at: &[::prism_rtl::Segment], seat: impl Fn(u32) -> u32) -> Vec<::prism_rtl::Segment> {
+    let mut out = at.to_vec();
+    if let Some(::prism_rtl::Segment::Pos(a)) = out.first_mut() {
+        *a = seat(*a);
+    }
+    out
+}
+
+/// Seated segments as a node's arms match them.
+pub fn segments_of(seated: &Vec<::prism_rtl::Segment>) -> &[::prism_rtl::Segment] {
+    seated
+}
+
 /// `?ParseNat`.
 pub fn parse_nat_opt(t: &Text) -> Option<Nat> {
     let s = t.as_str();

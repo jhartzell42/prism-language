@@ -586,6 +586,11 @@ type GenDef = record:
     # made): a static widget of several clauses whose result the block reads at its build
     # (`EarlyClauseLine`). Its `select` builds through the link the node keeps.
     early: Bool
+    # A transparent generation whose rows do not all build `width` places (rulings since
+    # the Bible, TC: places are counted as they are built): the node keeps how many of
+    # the `width` positions the chosen row left unbuilt in `{name}_gap`, and the places
+    # after it stand that many positions lower (`PlaceNumber`, the node's `place`).
+    gappy: Bool
 derive ^Eq, ^Show
 
 # A `for` builder (claude/backend.md, "Dynamic structure"): a map of rows, each a node of

@@ -102,7 +102,9 @@ fn AnswerDefCpp cp, n:
     let blocks = Each (Range0 (Len arms)), \|i|
         let ((tests, inner)) = Or arms[i], (([[]], ""))
         Block "{if i == 0: "if" else: "else if"} ({Conds tests})", inner
-    CppFunction "", "crate::prelude::Done {n.name}::answer(::std::span<const crate::prelude::Segment> at, const crate::prelude::Pod& v, crate::prelude::Cx& cx)", "{Join blocks, " "} else \{\n    return crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"no answering place at \", crate::prelude::path_of(at))));\n\}\nreturn \{\};"
+    # a node with gaps of its own seats an answer's position first (the lowering's `seat`)
+    let seating = if Fold n.methods, False, \|f, m| f or m.name == "seat": "auto seated = crate::prelude::seated(at, [this](::std::uint32_t a) \{ return this->seat(a); \});\nat = crate::prelude::segments_of(seated);\n" else: ""
+    CppFunction "", "crate::prelude::Done {n.name}::answer(::std::span<const crate::prelude::Segment> at, const crate::prelude::Pod& v, crate::prelude::Cx& cx)", "{seating}{Join blocks, " "} else \{\n    return crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"no answering place at \", crate::prelude::path_of(at))));\n\}\nreturn \{\};"
 
 # A row's leaving (prelude `Row`): a `for` row keeps its entry as the tick opened, its places
 # are torn down, its subscriptions let go.

@@ -1632,14 +1632,7 @@ Each is Claude's, for Jimmy to overturn.
   its caller's path and its places take the caller's positions from the call's on, as an
   inlined widget's do (`sem-ch08-clause-widget`: `@Note`'s label is `@Notes`'s place 1), the
   caller forwarding the World's answers at those positions to it (`GenForwards`).
-  Clauses with different numbers of places take the widest clause's positions, so the
-  caller's later places have one position whichever clause is chosen; where a narrower
-  clause is chosen, a later place of the caller stands one or more positions past where
-  compiler zero, which numbers places as they are built, puts it (prismc's own
-  `@FinishCheck`: `@WriteOut nil, ..` has no place and `(? path), ..` one, and the
-  `Prelude.Unwrap` after it is place 1 either way). One in a hosted scope is refused.
-  *If otherwise:* the caller's later positions offset at the build by the chosen clause's
-  width.
+  One in a hosted scope is refused.
 - **PO Ports.** An event of a block that a row or generation names reaches it through a
   `Port` in the block (`Port::fire` when the event fires) and a subscription the row makes
   when built and drops when it leaves (prelude `subscribe_row`, `Row::leave_row`).

@@ -394,9 +394,10 @@ pub fn {{accessor}}(&self) -> ::std::result::Result<{{ty}}, crate::prelude::Faul
 }
 </rust>
 
-Answer: fn Text -> Text
-fn Answer arms = inline_text <rust>
+Answer: fn Text, Text -> Text
+fn Answer seating, arms = inline_text <rust>
 fn answer(self: ::std::rc::Rc<Self>, at: &[crate::prelude::Segment], v: &crate::prelude::Pod, cx: &mut crate::prelude::Cx) -> crate::prelude::Done {
+    {{seating}}
     match at {
         {{arms}}
         _ => return ::std::result::Result::Err(crate::prelude::Fault::answer(format!("no answering place at {}", crate::prelude::Path(at.to_vec())))),

@@ -508,6 +508,19 @@ inline Text replace(const RegexReplacement& r, const Text& t) { return r.replace
 /// `Split: fn Regex, Text -> [Text]`: the `k + 1` views between the `k` matches.
 inline Array<Text> split(const Regex& r, const Text& t) { return r.split(t); }
 
+/// An answer's segments with the first, a position, put through `seat`: a node whose
+/// places are counted as they are built matches the positions it was lowered with
+/// (claude/backend.md, "Positions").
+template <class Seat>
+std::vector<::prism_rtl::Segment> seated(std::span<const ::prism_rtl::Segment> at, Seat seat) {
+    std::vector<::prism_rtl::Segment> out(at.begin(), at.end());
+    if (!out.empty() && out.front().kind() == ::prism_rtl::Segment::Kind::Pos) out.front() = ::prism_rtl::Segment::pos(seat(out.front().number()));
+    return out;
+}
+
+/// Seated segments as a node's arms match them.
+inline std::span<const ::prism_rtl::Segment> segments_of(const std::vector<::prism_rtl::Segment>& seated) { return seated; }
+
 /// `?ParseNat`.
 inline std::optional<Nat> parse_nat_opt(const Text& t) {
     std::string_view s = t.view();

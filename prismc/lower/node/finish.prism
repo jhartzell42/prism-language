@@ -316,15 +316,15 @@ fn FinishNode wx0, qk, params, isRow:
     let top = Fold wx.gns, 0, \|hi, g| Max hi, g.height
     let wakesField = if many: [[(("wakes", OutWakes, "the heights asked for this tick, lowest first"))]] else: [[]]
     let wakesInit = if many: [[(("wakes", (XCall (RefRuntime "rt::Wakes::default"), [[]])))]] else: [[]]
-    let genFields = Fold wx.gens, [[]], \|acc, gd| Append acc, [[((gd.name, (OutCell (OutOpt (OutObj (OutNamed (RefRuntime "rt::Row"), [[]])))), "the current generation of the `rebuild` at place {PlaceText gd.pos}")), (("{gd.name}_count", (OutNamed (RefRuntime "std::Cell"), [[OutCount]]), "how many generations it has built")), (("{gd.name}_stale", (OutNamed (RefRuntime "std::Cell"), [[OutBool]]), "its source changed since it was built"))]]
+    let genFields = Fold wx.gens, [[]], \|acc, gd| Append acc, (Append [[((gd.name, (OutCell (OutOpt (OutObj (OutNamed (RefRuntime "rt::Row"), [[]])))), "the current generation of the `rebuild` at place {PlaceText gd.pos}")), (("{gd.name}_count", (OutNamed (RefRuntime "std::Cell"), [[OutCount]]), "how many generations it has built")), (("{gd.name}_stale", (OutNamed (RefRuntime "std::Cell"), [[OutBool]]), "its source changed since it was built"))]], (if gd.gappy: [[(("{gd.name}_gap", (OutNamed (RefRuntime "std::Cell"), [[OutCount]]), "how many of its positions the chosen row left unbuilt"))]] else: [[]]))
     # an early generation (`GenDef.early`) is the row the build made
-    let genInits = Fold wx.gens, [[]], \|acc, gd| Append acc, [[((gd.name, (XCall (RefRuntime "std::RefCell::new"), [[(if gd.early: XCtor (RefRuntime "std::Some"), [[(XVar "{gd.name}_row")]] else: XNone)]]))), (("{gd.name}_count", (XCall (RefRuntime "std::Cell::new"), [[XIndex (if gd.early: 1 else: 0)]]))), (("{gd.name}_stale", (XCall (RefRuntime "std::Cell::new"), [[XBool False]])))]]
+    let genInits = Fold wx.gens, [[]], \|acc, gd| Append acc, (Append [[((gd.name, (XCall (RefRuntime "std::RefCell::new"), [[(if gd.early: XCtor (RefRuntime "std::Some"), [[(XVar "{gd.name}_row")]] else: XNone)]]))), (("{gd.name}_count", (XCall (RefRuntime "std::Cell::new"), [[XIndex (if gd.early: 1 else: 0)]]))), (("{gd.name}_stale", (XCall (RefRuntime "std::Cell::new"), [[XBool False]])))]], (if gd.gappy: [[(("{gd.name}_gap", (XCall (RefRuntime "std::Cell::new"), [[(if gd.early: XVar "{gd.name}_gap_now" else: XIndex 0)]])))]] else: [[]]))
     let portFields = Each wx.ports, \|pn| (("{pn}_port", (OutPort (GnTyNamed wx, pn)), "`!{pn}`, which rows subscribe to"))
     let portInits = Each wx.ports, \|pn| (("{pn}_port", (XCall (RefRuntime "rt::Port::new"), [[]])))
     let subFields = Each wx.subs, \|((ev, m, t))| (("{m}_sub", (OutNamed (RefRuntime "std::Cell"), [[(OutOpt (OutNamed (RefRuntime "rt::Handle"), [[]]))]]), "the subscription to the parent's `!{ev}`"))
     let subInits = Each wx.subs, \|((ev, m, t))| (("{m}_sub", (XCall (RefRuntime "std::Cell::new"), [[XNone]])))
     let fallible = wx.fallible or isRow or (Len wx.builders) > 0 or (Len wx.gens) > 0
-    NodeDef(name=wx.node, prism=(BareName qk), doc=(DefinitionText wx.lx, qk), params=params, fields=(Append (Append (Append (Append wx.fields, wakesField), genFields), portFields), subFields), consts=consts, lets=wx.lets, inits=(Append wx.inits, (Append (Append (Append (Append wx.moves, wakesInit), genInits), portInits), subInits)), build=(Append (Append (Append rowsBuilt, wx.build), subscribed), startedReg), fallible=fallible, methods=(Append (Append (Append (Append (Append (Append (Append (Append evMethods, gatherIns), placeGetters), wx.getters), rowMethods), heard), hostMethods), gatheredMoved), movedMethod), answers=(Append answers, forwards), hooks=hooks, builders=wx.builders, wakes=many, children=wx.rows, gens=wx.gens, subs=wx.subs, top=top, rowKind=(if isRow: (if isGen: GenerationRow else: ForRow) else: NotARow), hosted=hostedMethods)
+    NodeDef(name=wx.node, prism=(BareName qk), doc=(DefinitionText wx.lx, qk), params=params, fields=(Append (Append (Append (Append wx.fields, wakesField), genFields), portFields), subFields), consts=consts, lets=wx.lets, inits=(Append wx.inits, (Append (Append (Append (Append wx.moves, wakesInit), genInits), portInits), subInits)), build=(Append (Append (Append rowsBuilt, wx.build), subscribed), startedReg), fallible=fallible, methods=(Append (Append (Append (Append (Append (Append (Append (Append evMethods, gatherIns), placeGetters), wx.getters), rowMethods), heard), hostMethods), gatheredMoved), (Append movedMethod, (PlaceMethods wx))), answers=(Append answers, forwards), hooks=hooks, builders=wx.builders, wakes=many, children=wx.rows, gens=wx.gens, subs=wx.subs, top=top, rowKind=(if isRow: (if isGen: GenerationRow else: ForRow) else: NotARow), hosted=hostedMethods)
 
 IsGeneration: fn Wx, Text -> Bool
 fn IsGeneration wx, name = (Len (Filter wx.gens, \|gd| gd.name == name)) > 0
@@ -457,7 +457,7 @@ fn GatheredMoved sn = MethDef(name="{sn.name}_moved", recv=RecvRc, params=[[]], 
 DocumentGetter: fn Wx -> MethDef
 fn DocumentGetter wx:
     let IsOwn = \|p| p.scope == 0
-    let body = DocumentBody VecPush, (Filter wx.places, \|pl| IsOwn pl.pos), (Filter wx.builders, \|b| IsOwn b.pos), (Filter wx.gens, \|gd| IsOwn gd.pos)
+    let body = DocumentBody wx, VecPush, (Filter wx.places, \|pl| IsOwn pl.pos), (Filter wx.builders, \|b| IsOwn b.pos), (Filter wx.gens, \|gd| IsOwn gd.pos)
     MethDef(name="document", recv=RecvRef, params=[[]], cx=CxRef, ret=(OutNamed (RefRuntime "std::Vec"), [[(OutTuple [[OutPath, entryTy]])]]), body=(Append [[(DoLet (PaTyped (PaMut "doc"), (OutNamed (RefRuntime "std::Vec"), [[(OutTuple [[OutPath, entryTy]])]])), (XCall (RefRuntime "std::Vec::new"), [[]]))]], body), tail=(XVar "doc"), doc="The row's own places, entries of its host's document, by their paths relative to the row (pick HO).")
 
 # A hosted row's place may have moved (a hold it reads was written): its parent is told,
@@ -469,15 +469,15 @@ fn DocumentMoved m = MethDef(name="document_moved", recv=RecvRc, params=[[]], cx
 # `for` and `rebuild` the rows' own documents, keyed under the place's path. `Add` spells
 # the collection's insert of `path, e`: into the `doc` host document (`MapInsert`) or onto
 # the `doc` vector (`VecPush`).
-DocumentBody: fn (fn Ex, Ex -> Do), [Place], [ForDef], [GenDef] -> [Do]
-fn DocumentBody Add, places, builders, gens:
-    let statics = Each places, \|pl| Add (XMethod (XCall (RefRuntime "rt::Path::root"), [[]]), "at", [[XIndex pl.pos.at]]), (XClone (XField XSelf, pl.entry))
+DocumentBody: fn Wx, (fn Ex, Ex -> Do), [Place], [ForDef], [GenDef] -> [Do]
+fn DocumentBody wx, Add, places, builders, gens:
+    let statics = Each places, \|pl| Add (XMethod (XCall (RefRuntime "rt::Path::root"), [[]]), "at", [[(PlaceNumber wx, "self", pl.pos)]]), (XClone (XField XSelf, pl.entry))
     # a host's own rows (prism_rtl's) give their forwarded places' entries
     let RowDoc = \|b| if HasPrefix b.rowNode, "prism_rtl::HostRow": XMethod (XVar "row"), "entries", [[]] else: XMethod (XVar "row"), "document", [[XCx]]
-    let rows = Each builders, \|b| DoFor (PaTuple [[PaBind "k", PaBind "row"]]), (XMethod (XMethod (XField XSelf, b.name), "borrow", [[]]), "iter", [[]]), [[(DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (RowDoc b), [[(Add (XMethod (XMethod (XMethod (XCall (RefRuntime "rt::Path::root"), [[]]), "at", [[XIndex b.pos.at]]), "child", [[(XCtor (RefRuntime "rt::Segment::Key"), [[(XMethod (XVar "k"), "to_pod", [[]])]])]]), "join", [[XRef (XVar "p")]]), (XVar "e"))]])]]
+    let rows = Each builders, \|b| DoFor (PaTuple [[PaBind "k", PaBind "row"]]), (XMethod (XMethod (XField XSelf, b.name), "borrow", [[]]), "iter", [[]]), [[(DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (RowDoc b), [[(Add (XMethod (XMethod (XMethod (XCall (RefRuntime "rt::Path::root"), [[]]), "at", [[(PlaceNumber wx, "self", b.pos)]]), "child", [[(XCtor (RefRuntime "rt::Segment::Key"), [[(XMethod (XVar "k"), "to_pod", [[]])]])]]), "join", [[XRef (XVar "p")]]), (XVar "e"))]])]]
     # a transparent generation's places stand at the block's own positions (a static
     # widget of several clauses, a building `match`'s arm): their paths are the block's
-    let GenPath = \|gd| if gd.transparent: XClone (XVar "p") else: XMethod (XMethod (XMethod (XCall (RefRuntime "rt::Path::root"), [[]]), "at", [[XIndex gd.pos.at]]), "child", [[(XCtor (RefRuntime "rt::Segment::Gen"), [[XVar "g"]])]]), "join", [[XRef (XVar "p")]]
+    let GenPath = \|gd| if gd.transparent: XClone (XVar "p") else: XMethod (XMethod (XMethod (XCall (RefRuntime "rt::Path::root"), [[]]), "at", [[(PlaceNumber wx, "self", gd.pos)]]), "child", [[(XCtor (RefRuntime "rt::Segment::Gen"), [[XVar "g"]])]]), "join", [[XRef (XVar "p")]]
     let generations = Each gens, \|gd| DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XMethod (XMethod (XField XSelf, gd.name), "borrow", [[]]), "as_ref", [[]]), [[(DoLet (PaBind "g"), (XBin OpSub, (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]]), (XIndex 1))), (DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (XMethod (XVar "row"), "document", [[XCx]]), [[(Add (GenPath gd), (XVar "e"))]])]], [[]]
     Append (Append statics, rows), generations
 
@@ -657,9 +657,80 @@ fn Adoption fl:
 # which a host's row builds (pick HO).
 PlaceAt: fn Wx, Text, Pos -> Ex
 fn PlaceAt wx, recv, pos:
-    let at = [[XIndex pos.at]]
+    let at = [[(PlaceNumber wx, recv, pos)]]
     if Emits wx, pos: XMethod (if recv == "": XVar "path" else: (if recv == "self": XField XSelf, "path" else: XField (XVar recv), "path")), "at", at
     else: XMethod (XCall (RefRuntime "rt::Path::root"), [[]]), "at", at
+
+# The gappy generations of a position's scope that end at or before it (`GenDef.gappy`).
+GapsBefore: fn Wx, Pos -> [GenDef]
+fn GapsBefore wx, pos = Filter wx.gens, \|gd| gd.gappy and gd.pos.scope == pos.scope and gd.pos.at + gd.width <= pos.at
+
+# The node's method that gives a position of scope `k` as built, and the one that gives
+# back the position an answer's names (`PlaceMethods`).
+PlaceMethod: fn Nat -> Text
+fn PlaceMethod scope = if scope == 0: "place" else: "place_{scope}"
+
+SeatMethod: fn Nat -> Text
+fn SeatMethod scope = if scope == 0: "seat" else: "seat_{scope}"
+
+# A position's number as built (rulings since the Bible, TC: places are counted as they
+# are built). Inside a node a position is where the place stands when every transparent
+# generation before it builds its widest row; the number a path takes is that less what
+# the generations before it left unbuilt, and for a transparent row's place counted from
+# the row's `base`. A node with neither spells the position itself. Before the node
+# exists (`recv` empty) the row's `base` is the build's parameter and a gap is known only
+# of a generation built early (`{name}_gap_now`).
+PlaceNumber: fn Wx, Text, Pos -> Ex
+fn PlaceNumber wx, recv, pos:
+    let gaps = GapsBefore wx, pos
+    let ?base = if pos.scope == 0: wx.?based else: nil
+    if (Len gaps) == 0 and not (IsSomeNat ?base): XIndex pos.at
+    else: if recv == "":
+        let start = match ?base:
+            ? s: XBin OpAdd, (XVar "base"), (XIndex (Or (pos.at -? s), 0))
+            nil: XIndex pos.at
+        Fold gaps, start, \|acc, gd| if gd.early: XBin OpSub, acc, (XVar "{gd.name}_gap_now") else: Refusal "a place that is read at its block's build (place {PlaceText pos}) after a building `match`, `if` or widget of several clauses whose rows differ in width and are built after the block's node"
+    else: XMethod (if recv == "self": XSelf else: XVar recv), (PlaceMethod pos.scope), [[XIndex pos.at]]
+
+IsSomeNat: fn ?Nat -> Bool
+fn IsSomeNat (? ignore) = True
+fn IsSomeNat nil = False
+
+# What a gappy generation's row left unbuilt, as the node reads it.
+GapGet: fn GenDef -> Ex
+fn GapGet gd = XMethod (XField XSelf, "{gd.name}_gap"), "get", [[]]
+
+# The node's `place` and `seat` of each scope that needs them (`PlaceNumber`), and a
+# row's `inner_gap`. `place(v)`: the position `v` as built. `seat(a)`: the position an
+# answer's first segment names, its own gaps put back, so that the node's arms match
+# positions as the lowering wrote them; an answer reaches a transparent row with its
+# block's gaps put back already. `inner_gap()`: what the row's own generations left
+# unbuilt, which its block adds to the row's own shortfall.
+PlaceMethods: fn Wx -> [MethDef]
+fn PlaceMethods wx:
+    let gappy = Filter wx.gens, \|gd| gd.gappy
+    let scopes = Fold gappy, (if IsSomeNat wx.?based: [[0]] else: [[]]), \|acc, gd| if HasNat acc, gd.pos.scope: acc else: Push acc, gd.pos.scope
+    Fold scopes, [[]], \|acc, k|
+        let gaps = Filter gappy, \|gd| gd.pos.scope == k
+        let start = match (if k == 0: wx.?based else: nil):
+            ? s: XBin OpSub, (XBin OpAdd, (XField XSelf, "base"), (XVar "v")), (XIndex s)
+            nil: XVar "v"
+        let placed = Fold gaps, start, \|x, gd| XBin OpSub, x, (XIf (XBin OpGe, (XVar "v"), (XIndex (gd.pos.at + gd.width))), (GapGet gd), (XIndex 0))
+        let place = MethDef(name=(PlaceMethod k), recv=RecvRef, params=[[(("v", OutCount))]], cx=CxNone, ret=OutCount, body=[[]], tail=placed, doc="The position `v` as built: places are counted as they are built (ruling TC).")
+        let steps = Each (Range0 (Len gaps)), \|i|
+            let gd = Or gaps[i], dummyGenDef
+            let before = XVar (if i == 0: "v" else: "v{i}")
+            DoLet (PaBind "v{i + 1}"), (XIf (XBin OpGe, before, (XBin OpSub, (XIndex (gd.pos.at + gd.width)), (GapGet gd))), (XBin OpAdd, before, (GapGet gd)), before)
+        let seat = MethDef(name=(SeatMethod k), recv=RecvRef, params=[[(("v", OutCount))]], cx=CxNone, ret=OutCount, body=steps, tail=(XVar "v{Len gaps}"), doc="The position an answer names, this node's gaps put back (ruling TC).")
+        let inner = MethDef(name="inner_gap", recv=RecvRef, params=[[]], cx=CxNone, ret=OutCount, body=[[]], tail=(Fold gaps, (XIndex 0), \|x, gd| XBin OpAdd, x, (GapGet gd)), doc="How many positions this row's own generations left unbuilt.")
+        Append acc, (Append [[place]], (if (Len gaps) == 0: [[]] else: (if k == 0 and IsSomeNat wx.?based: [[seat, inner]] else: [[seat]])))
+
+let dummyGenDef = GenDef(name="", pos=Pos(scope=0, at=0), at=(XUnit), source=(XUnit), valueTy=OutUnit, select=(XUnit), transparent=False, width=0, moved="", early=False, gappy=False)
+
+# An answer's segments with the first, a position, seated (`PlaceMethods`), when the
+# node has gaps in the scope; else the segments as they came.
+Seated: fn Wx, Nat, Ex -> (([Do], Ex))
+fn Seated wx, scope, segs = if (Len (Filter wx.gens, \|gd| gd.gappy and gd.pos.scope == scope)) == 0: (([[]], segs)) else: (([[(DoLet (PaBind "seated"), (XCall (HelperRef "seated"), [[segs, (XClosure False, [[PaBind "a"]], (XMethod XSelf, (SeatMethod scope), [[XVar "a"]]))]]))]], (XCall (HelperRef "segments_of"), [[XRef (XVar "seated")]])))
 
 # The pattern of an answer at a place, `tail` the rest of its segments.
 PosPat: fn Pos, [Pa] -> Pa
@@ -733,15 +804,16 @@ fn TypedDispatch sk, name, scope:
     let InScope = \|p| p.scope == scope
     # the owner's `host_k_answer` takes the child place's path; a hosted node's `deliver`, a
     # `Row` hook, the segments under its parent's place
-    let ((recv, param, segs, doc)) = if scope > 0: ((RecvRc, (("place", (OutRef OutPath))), (XMethod (XVar "place"), "segments", [[]]), "The host at place {PlaceText (Or wx.hosts[Dec scope], dummyHost).pos} answers its child's place `place` (pick HO): into the child's input method, a hold the place's element answers, or the row of a `for` or `rebuild` under it."))
+    let ((recv, param, segs0, doc)) = if scope > 0: ((RecvRc, (("place", (OutRef OutPath))), (XMethod (XVar "place"), "segments", [[]]), "The host at place {PlaceText (Or wx.hosts[Dec scope], dummyHost).pos} answers its child's place `place` (pick HO): into the child's input method, a hold the place's element answers, or the row of a `for` or `rebuild` under it."))
         else: ((RecvOwned, (("at", (OutRef (OutSlice (OutNamed (RefRuntime "rt::Segment"), [[]]))))), (XVar "at"), "A host's answer to a place of this row's own, `at` under the row (pick HO): into the input method, a hold, or a row under it."))
+    let ((seating, segs)) = Seated wx, scope, segs0
     let answers = Each (Filter wx.answers, \|((pos, ignore, ignore, ignore))| InScope pos), \|((pos, id, ignore, acc))| TypedAnswerArm wx, pos, id, acc
     let dyns = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| InScope pos), \|((pos, f, ignore, acc))| TypedDynArm sk, pos, f, acc
     let rows = Each (Filter wx.builders, \|b| InScope b.pos), \|b| TypedForwardArm b, segs
     let gens = Fold (Filter wx.gens, \|gd| InScope gd.pos), [[]], \|acc, gd| Append acc, (TypedGenArms gd, segs)
     let none = ((PaWild, [[DoReturn (XCtor (RefRuntime "std::Err"), [[(XCall (RefRuntime "rt::Fault::answer"), [[(XFormatStr [[(XText "no hosted place at "), (XCtor (RefRuntime "rt::Path"), [[(XMethod segs, "to_vec", [[]])]]), (XText " to answer")]])]])]])]]))
     let arms = Push (Append (Append (Append answers, dyns), rows), gens), none
-    MethDef(name=name, recv=recv, params=[[param, (("v", (OutRef answerTy)))]], cx=CxMut, ret=(OutNamed (RefRuntime "rt::Done"), [[]]), body=[[(DoMatch segs, arms)]], tail=(XCtor (RefRuntime "std::Ok"), [[XUnit]]), doc=doc)
+    MethDef(name=name, recv=recv, params=[[param, (("v", (OutRef answerTy)))]], cx=CxMut, ret=(OutNamed (RefRuntime "rt::Done"), [[]]), body=(Push seating, (DoMatch segs, arms)), tail=(XCtor (RefRuntime "std::Ok"), [[XUnit]]), doc=doc)
 
 let dummyHost = HostDef(pos=pos0, name="", scope=0)
 

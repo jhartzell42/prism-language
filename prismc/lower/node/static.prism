@@ -202,7 +202,7 @@ fn HostLine wx, benv, menv, form, args, ?bound:
             # level marks it, since each place's entry is its own
             let childPlaces = Drop done.places, (Len wx2.places)
             let InScope = \|p| p.scope == k
-            let getter = HostDocGetter "{docGetter}_now", pos, (Filter childPlaces, \|pl| InScope pl.pos), (Filter (Drop done.builders, (Len wx2.builders)), \|b| InScope b.pos), (Filter (Drop done.gens, (Len wx2.gens)), \|gd| InScope gd.pos)
+            let getter = HostDocGetter done, "{docGetter}_now", pos, (Filter childPlaces, \|pl| InScope pl.pos), (Filter (Drop done.builders, (Len wx2.builders)), \|b| InScope b.pos), (Filter (Drop done.gens, (Len wx2.gens)), \|gd| InScope gd.pos)
             let back = update done:
                 &_.pos <= wx2.pos
                 &_.result <= wx.result
@@ -348,10 +348,10 @@ fn DynKey x = "{x.span.start}:{x.span.end}"
 # and under each of its `for`s and `rebuild`s their rows' own. Only the snapshot of the
 # outer reads it, in the construction step of a tick in which a place came or went (pick
 # ST).
-HostDocGetter: fn Text, Pos, [Place], [ForDef], [GenDef] -> MethDef
-fn HostDocGetter name, pos, places, builders, gens:
+HostDocGetter: fn Wx, Text, Pos, [Place], [ForDef], [GenDef] -> MethDef
+fn HostDocGetter wx, name, pos, places, builders, gens:
     let start = DoLet (PaTyped (PaMut "doc"), hostDocTy), (XCall (RefRuntime "prism_rtl::HostDoc::new"), [[]])
-    let body = DocumentBody MapInsert, places, builders, gens
+    let body = DocumentBody wx, MapInsert, places, builders, gens
     MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=hostDocTy, body=(Append [[start]], body), tail=(XVar "doc"), doc="The places of the child hosted at place {PlaceText pos}: each place's entry by its path relative to the child (pick HO). Read only by the snapshot of `$doc`'s outer (pick ST).")
 
 # A structural dynamic's getter (pick ST): its snapshot at the read point.
@@ -606,8 +606,17 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                 # (`ClauseRow`).
                 match args[0]:
                     ? a:
-                        let call = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
-                        ClauseWidgetLine wx, benv, menv, a.value, call, qk, v, e, args
+                        # a clause that calls its own widget is lowered level by level, as an
+                        # inlined widget is, to the same depth (`TooDeep`)
+                        if (Recursion wx.inlining, qk) > 16: TooDeep wx, qk, e
+                        else:
+                            let call = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
+                            let inside = update wx:
+                                &_.inlining <= Push &_.inlining, qk
+                            let ((done, res)) = ClauseWidgetLine inside, benv, menv, a.value, call, qk, v, e, args
+                            let outside = update done:
+                                &_.inlining <= wx.inlining
+                            ((outside, res))
                     nil:
                         let wx2 = update wx:
                             &_.build <= Push &_.build, (RefusalDo "a widget of several clauses that takes no arguments")
