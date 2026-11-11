@@ -1,0 +1,7 @@
+# An `if` that is an expression chooses between two values, so it has an `else` (Jimmy's
+# rulings IE and IE2: builders and statements may have a raw `if`; an expression may not).
+# The checker reads the missing branch as `unit` today and passes this. Expected diagnostic
+# derived by hand from the ruling. Written by Claude on the claude-bugs branch; subject to
+# change.
+Pick: fn Bool -> unit
+fn Pick c = if c: unit

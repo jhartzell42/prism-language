@@ -132,9 +132,12 @@ fn CheckPair g, st, a, b:
     else: if a.file < b.file or (a.file == b.file and a.span.start <= b.span.start): CheckPairIn g, st, a, b
     else: CheckPairIn g, st, b, a
 
-# Two heads with different constructors never unify: most pairs of a trait's impls.
+# Two heads with different constructors never unify: most pairs of a trait's impls. A head
+# that is no type (its own error is reported where it is written) is no impl to meet.
 HeadsMayMeet: fn Ty, Ty -> Bool
 fn HeadsMayMeet (TyCon x, ignore), (TyCon y, ignore) = x == y
+fn HeadsMayMeet TyErr, ignore = False
+fn HeadsMayMeet ignore, TyErr = False
 fn HeadsMayMeet ignore, ignore = True
 
 CheckPairIn: unbounded fn G, St, ImplInfo, ImplInfo -> St
@@ -174,7 +177,7 @@ fn CheckOrphan g, st, i:
             &_.file <= i.file
         ErrFix s, "orphan", i.span, "{if i.home == "": "this file" else: "`{i.home}`"} declares neither `^{BareName i.cls}` nor `{ShowTy s, i.head}`", "wrap the type in a newtype of this module, or move the impl"
 
-let dummyTrait = TraitInfo(name="", home="", param="a", supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], file=0, span=Range(start=0, end=0))
+let dummyTrait = TraitInfo(name="", home="", param="a", supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], assocDefaults=[[]], file=0, span=Range(start=0, end=0))
 
 TypeNamesIn: unbounded fn Ty -> [Text]
 fn TypeNamesIn t = match t:
@@ -192,7 +195,37 @@ fn TypeNamesIn t = match t:
 
 # A trait's superclasses, closed: `^Ord` entails `^Eq`.
 SuperClosure: unbounded fn G, Text -> [Text]
-fn SuperClosure g, cls = Fold (Or g.traits[cls], dummyTrait).supers, [[cls]], \|acc, s| UnionTexts acc, (SuperClosure g, s)
+fn SuperClosure g, cls = SuperReach g, [[cls]], [[]]
+
+# The traits reached from `frontier` by `where`s, each once (a ring of traits ends here; it
+# is `trait-cycle`, `TraitCycles`).
+SuperReach: unbounded fn G, [Text], [Text] -> [Text]
+fn SuperReach g, frontier, seen = match frontier[0]:
+    nil: seen
+    ? cls:
+        if HasText seen, cls: SuperReach g, (Drop frontier, 1), seen
+        else: SuperReach g, (Append (Drop frontier, 1), (Or g.traits[cls], dummyTrait).supers), (Push seen, cls)
+
+# `trait-cycle`: a trait whose `where` reaches the trait itself asks, of every impl, for an
+# impl that asks for it (Type System ch. 3). Each trait of the ring says so; the tables
+# keep the `where`s (`SuperReach` reads each trait once), so a bound on one trait of the
+# ring still gives the others and nothing more is reported.
+TraitCycles: unbounded fn G, St -> St
+fn TraitCycles g, st = Fold (Keys g.traits), st, \|s, name|
+    let ti = Or g.traits[name], dummyTrait
+    match ?RingFrom g, name, ti.supers, [[name]]:
+        nil: s
+        ? ring: WithFile (ErrFix (WithFile s, ti.file), "trait-cycle", ti.span, "the trait `^{BareName name}` asks for itself: its `where` names a ring of traits, {Join (Each ring, \|r| "`^{BareName r}`"), ", "}", "drop the `where` of one trait of the ring"), s.file
+
+# The ring from `name` back to itself through `where`s: its traits in the order the
+# `where`s name them, `name` first; none when no path of `where`s comes back.
+?RingFrom: unbounded fn G, Text, [Text], [Text] -> ?[Text]
+fn ?RingFrom g, name, nexts, path = Fold nexts, nil, \|?found, next| match ?found:
+    ? ring: ? ring
+    nil:
+        if next == name: ? path
+        else: if HasText path, next: nil
+        else: ?RingFrom g, name, (Or g.traits[next], dummyTrait).supers, (Push path, next)
 
 WithFile: fn St, Nat -> St
 fn WithFile s, f = update s:
@@ -332,7 +365,13 @@ fn SolveClass g, st, s0, Restore, givens, w, t:
     match ?parts:
         ? ps:
             if structural: (((Each ps, \|p| Want(cls=w.cls, ty=p, file=w.file, span=w.span, level=w.level)), (Solved st, w, t, "parts")))
-            else: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
+            # a tuple, an array or a map has the impls written for it (`impl ^Blank [a]
+            # where a: ^Blank`, Type System ch. 3), found as a named type's are
+            else: match ?FindImpl g, st, w.cls, t:
+                ? ((im, s2, how, ch)):
+                    let wants = Each im, \|((ty, cls))| Want(cls=cls, ty=ty, file=w.file, span=w.span, level=w.level)
+                    ((wants, (NoteChoice (Solved s2, w, t, how), w.file, w.span, w.cls, ch)))
+                nil: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
         nil: match t:
             TySig ignore, ignore: (([[]], st))
             TyElem rw, ignore: ElemTrait g, st, s0, Restore, w, t, bare, rw

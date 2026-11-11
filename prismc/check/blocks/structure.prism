@@ -126,12 +126,17 @@ fn BindForBinders env, st, ?binders, k, v, live:
         ? bs: match bs.?second:
             ? second:
                 let ((e1, st1)) = BindPattern (Unpending env), st, bs.first, k, False
-                let ((st2, vt2)) = ForInnerMark st1, inner, second, v, vt
-                BindPattern e1, st2, second, vt2, False
+                let ((st2, vt2)) = ForInnerMark (ForBinderMatches env, st1, bs.first, k), inner, second, v, vt
+                let ((e2, st3)) = BindPattern e1, st2, second, vt2, False
+                ((e2, (ForBinderMatches env, st3, second, vt2)))
             nil:
                 let e1 = WithTopic env, "key", k
                 let ((st2, vt2)) = ForInnerMark st, inner, bs.first, v, vt
-                BindPattern (Unpending e1), st2, bs.first, vt2, False
+                let ((e2, st3)) = BindPattern (Unpending e1), st2, bs.first, vt2, False
+                ((e2, (ForBinderMatches env, st3, bs.first, vt2)))
+
+ForBinderMatches: unbounded fn Env, St, Pattern, Ty -> St
+fn ForBinderMatches env, st, p, t = AlwaysMatches env, st, p, t, "a `for` binder"
 
 # A `for` over a map of dynamics whose value binder shows `$$`: the binder is the value
 # under the key, one layer, so it is `$v` (ruling FV; the old form flattened `$$d` on the

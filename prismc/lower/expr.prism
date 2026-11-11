@@ -1602,7 +1602,7 @@ fn ?SelfAt lx, span, cls = Fold (Or lx.impls[PlaceKey lx, span], [[]]), nil, \|?
     ? x: ? x
     nil: if n.cls == cls: ? (OutTyOf lx, (SubstTy lx, n.ty)) else: nil
 
-let dummyTraitInfo = TraitInfo(name="", home="", param="a", supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], file=0, span=Range(start=0, end=0))
+let dummyTraitInfo = TraitInfo(name="", home="", param="a", supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], assocDefaults=[[]], file=0, span=Range(start=0, end=0))
 
 PreludeMethod: unbounded fn Lx, Text, Text, [Vl], Range, OutTy -> Vl
 fn PreludeMethod lx, cls, m, vals, span, t:

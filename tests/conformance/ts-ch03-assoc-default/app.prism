@@ -1,0 +1,58 @@
+# A trait's default for an associated type (Type System ch. 3, "Associated types", with
+# Jimmy's ruling AD): `type Item = a` in the trait is what an impl takes when it does not
+# state `type Item`, the trait's parameter read as the impl's head, so `Item Crate` is
+# `Crate` and `Item (Wrapped b)` is `Wrapped b`; a default that does not mention the
+# parameter (`type Unit = Text`) is that type at every impl; an impl that states the type
+# chooses it as before. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Box a:
+    type Item = a
+    Open: fn a -> Item a
+
+trait ^Measured a:
+    type Unit = Text
+    Extent: fn a -> Nat
+    UnitOf: fn a -> Unit a
+
+type Crate = record:
+    weight: Nat
+derive ^Eq, ^Show
+
+type Wrapped b = record:
+    inner: b
+derive ^Eq, ^Show
+
+type Pair b = record:
+    one: b
+    two: b
+derive ^Eq, ^Show
+
+impl ^Box Crate:
+    fn Open c = c
+
+impl ^Box (Wrapped b):
+    fn Open w = w
+
+impl ^Box (Pair b):
+    type Item = b
+    fn Open p = p.one
+
+impl ^Measured Crate:
+    fn Extent c = c.weight
+    fn UnitOf c = "kg"
+
+impl ^Measured (Pair b):
+    type Unit = Nat
+    fn Extent p = 2
+    fn UnitOf p = 1
+
+Opened: fn [a] -> [Item a] where a: ^Box
+fn Opened xs = Fold xs, [[]], \|acc, x| Push acc, (Open x)
+
+@main: @unit
+@main:
+    let crate = Crate(weight=3)
+    let pair = Pair(one="a", two="b")
+    Ui.Label($text=$"{(Open crate).weight} {(Open (Wrapped(inner=7))).inner} {Open pair} {Extent crate}{UnitOf crate} {(Extent pair) + (UnitOf pair)} {Len (Opened [[crate, crate]])} {Show (Opened [[(Pair(one=1, two=2)), (Pair(one=3, two=4))]])}")    # 0

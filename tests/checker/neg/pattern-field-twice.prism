@@ -1,0 +1,9 @@
+# A record pattern names a field once, as a record's construction does (`x` is given
+# twice): a second pattern for one field is refused (Type System ch. 2, records). Written
+# by Claude on the claude-bugs branch; subject to change.
+type Point = record:
+    x: Nat
+    y: Nat
+
+Left: fn Point -> Nat
+fn Left Point(x=a, x=b) = a + b

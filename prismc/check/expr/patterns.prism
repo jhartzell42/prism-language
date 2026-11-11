@@ -180,6 +180,29 @@ fn BindField env, st, p, ft, snapshot = match Walk st, ft:
     TySig s, level if snapshot and s == "$": BindLevel env, st, p, level
     otherwise: BindPattern env, st, p, ft, True
 
+# `live-field-pattern`: a blueprint's element has its `$` and `!` fields as nodes, which a
+# pattern binds; a literal or a constructor there would test a value the field has only in
+# a tick (Semantics ch. 8). A document's element has levels, which a pattern may test.
+LiveFieldTested: unbounded fn Env, St, Text, Pattern, Ty, Bool -> St
+fn LiveFieldTested env, st, fname, p, ft, snapshot = match Walk st, ft:
+    TySig s, ignore if (s == "$" or s == "!") and not snapshot and TestsValue p:
+        ErrFix st, "live-field-pattern", p.span, "an element's `{s}{fname}` binds its {if s == "$": "dynamic" else: "event"}; `{SrcText env, p.span}` would test a value the field has only in a tick", "bind it, `{s}{fname}={s}{Head fname}`, and read `{s}{Head fname}` where a tick reads it"
+    otherwise: st
+
+# Whether a pattern tests the value it meets: a literal, `nil`, a constructor's or a tag's
+# pattern, an array's, under any group or sigil.
+TestsValue: fn Pattern -> Bool
+fn TestsValue p = match p.kind:
+    PLit ignore: True
+    PNeg ignore: True
+    PNil: True
+    PCtor ignore, ignore: True
+    PRecord ignore, ignore, ignore: True
+    PArray ignore: True
+    PSigil ignore, q: TestsValue q
+    PGroup q: TestsValue q
+    otherwise: False
+
 BindLevel: unbounded fn Env, St, Pattern, Ty -> ((Env, St))
 fn BindLevel env, st, p, level = match p.kind:
     PName n:
@@ -221,9 +244,13 @@ fn BindRecord env, st, p, n, fields, rest, t:
                     Fold (Range0 (Len fields)), ((env, st2)), \|((en, s)), i|
                         let fp = Or fields[i], FieldPat(marks="", ?name=nil, pattern=Pattern(kind=PIgnore, span=p.span), span=p.span)
                         let fname = FieldPatName fp, c.fields, i
+                        # `collision`: a pattern names a field once, as a construction does
+                        let before = Fold (Range0 i), False, \|seen, k| seen or (FieldPatName (Or fields[k], fp), c.fields, k) == fname
+                        # (its pattern still binds, so the names it writes are known below)
+                        let s0 = if before: Err s, "collision", fp.span, "`{fname}` is matched twice" else: s
                         match ?IndexOf c.fields, fname:
-                            ? j: BindPattern en, (PatMarks s, (BareName c.owner), fname, (Or c.args[j], TyErr), fp), fp.pattern, (SubstQ inst, (Or c.args[j], TyErr)), True
-                            nil: ((en, (Err s, "mismatch", fp.span, "`{BareName c.owner}` has no field `{fname}`")))
+                            ? j: BindPattern en, (PatMarks s0, (BareName c.owner), fname, (Or c.args[j], TyErr), fp), fp.pattern, (SubstQ inst, (Or c.args[j], TyErr)), True
+                            nil: ((en, (Err s0, "mismatch", fp.span, "`{BareName c.owner}` has no field `{fname}`")))
 
 # A field pattern's sigils, when it writes any, are its field's (`$label=ignore`); a plain
 # name matches a sigiled field too, as a World pattern reads levels (`Ui.Button(label="OK")`).
@@ -253,9 +280,13 @@ fn BindTagPattern env, st, p, name, fields, rest, t = match env.g.tags[name]:
         Fold (Range0 (Len fields)), ((env, st2)), \|((en, s)), i|
             let fp = Or fields[i], FieldPat(marks="", ?name=nil, pattern=Pattern(kind=PIgnore, span=p.span), span=p.span)
             let fname = FieldPatName fp, names, i
+            # `collision`: a tag pattern names a field once, as a record's does (its
+            # pattern still binds, so the names it writes are known below)
+            let before = Fold (Range0 i), False, \|seen, k| seen or (FieldPatName (Or fields[k], fp), names, k) == fname
+            let s0 = if before: Err s, "collision", fp.span, "`{fname}` is matched twice" else: s
             match ?FieldOfTag tg, fname:
-                ? ft: BindField en, (PatMarks s, name, fname, ft, fp), fp.pattern, (SubstQ inst, ft), snapshot
-                nil: ((en, (Err s, "mismatch", fp.span, "`{name}` has no field `{fname}`")))
+                ? ft: BindField en, (LiveFieldTested env, (PatMarks s0, name, fname, ft, fp), fname, fp.pattern, ft, snapshot), fp.pattern, (SubstQ inst, ft), snapshot
+                nil: ((en, (Err s0, "mismatch", fp.span, "`{name}` has no field `{fname}`")))
 
 # An element seen through a document: `Elem r`, the document's value type (Type System
 # ch. 2), as against a blueprint's `Element r o` (doubt WL).

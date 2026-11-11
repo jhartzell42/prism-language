@@ -1,0 +1,50 @@
+# The conversion from a non-empty collection to the collection is symmetric (Type System
+# ch. 2, "Collections", with Jimmy's ruling NS): where two values meet at one type, an
+# operator's two sides, two arguments at one type variable, an `if`'s or a `match`'s
+# arms, an array's or a map's entries, a `[a]+` beside an `[a]` is the `[a]` whichever
+# comes first. Two non-empty values keep the promise. Written by Claude on the claude-bugs
+# branch; subject to change.
+Same: fn [Nat]+, [Nat] -> Bool
+fn Same xs, ys = xs == ys
+
+SameAfter: fn [Nat], [Nat]+ -> Bool
+fn SameAfter ys, xs = ys == xs
+
+Differs: fn (Nat ==> Text)+, (Nat ==> Text) -> Bool
+fn Differs m, n = m != n
+
+Choose: fn a, a -> a
+fn Choose x, y = x
+
+Chosen: fn [Nat]+, [Nat] -> [Nat]
+fn Chosen xs, ys = Choose xs, ys
+
+ChosenAfter: fn [Nat], [Nat]+ -> [Nat]
+fn ChosenAfter ys, xs = Choose ys, xs
+
+Either: fn Bool, [Nat]+, [Nat] -> [Nat]
+fn Either first, xs, ys = if first: xs else: ys
+
+EitherAfter: fn Bool, [Nat], [Nat]+ -> [Nat]
+fn EitherAfter first, ys, xs = if first: ys else: xs
+
+Pick: fn Nat, [Nat]+, [Nat] -> [Nat]
+fn Pick n, xs, ys = match n:
+    0: xs
+    1: ys
+    otherwise: xs
+
+Both: fn [Nat]+, [Nat] -> [ [Nat] ]
+fn Both xs, ys = [[xs, ys]]
+
+BothAfter: fn [Nat], [Nat]+ -> [ [Nat] ]
+fn BothAfter ys, xs = [[ys, xs]]
+
+Named: fn (Nat ==> Text)+, (Nat ==> Text) -> (Nat ==> (Nat ==> Text))
+fn Named m, n = {1: m, 2: n}
+
+Kept: fn Bool, [Nat]+, [Nat]+ -> [Nat]+
+fn Kept first, xs, ys = if first: xs else: Choose ys, xs
+
+KeptAll: fn [Nat]+, [Nat]+ -> [ [Nat]+ ]
+fn KeptAll xs, ys = [[xs, ys]]

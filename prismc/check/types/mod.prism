@@ -180,6 +180,9 @@ type St = record:
     # Every impl's associated types, for normalizing (Type System ch. 5, Traits): the
     # associated type's trait and name, the impl's head and its variables, and the type it chooses.
     assocImpls: [AssocImpl]
+    # The result variables of the matches and `if`s with a `[a]+` arm beside an `[a]` arm:
+    # such a construct's value is the `[a]` (`UnifyArm`, `ArmResult`).
+    plainArms: [Nat]
     # The places an `Error` value meets a type that may be a `~T` (a clause's result, an
     # arm against the match's, a field, an element): at the program's end those where it
     # is one are the typed output's `faults` (`FaultNotes`).
@@ -192,7 +195,7 @@ type St = record:
     # places it meets later decide: a `~T`, so the value is its failure, or `Error`. The
     # definition's end makes `Error` of one nothing decided (`DefaultDef`), the program's
     # end refuses one decided as anything else (`FaultsSettled`); monomorphic till then
-    # (`KeepWaiting`). Each waits as `t = Error` at its value's place.
+    # (`KeepWaitingBut`). Each waits as `t = Error` at its value's place.
     faultVars: [Waiting]
     # Every local binder's id and every use's, in the order checked (`IsClosed`).
     binderIds: [Nat]
@@ -228,7 +231,7 @@ type Waiting = record:
 derive ^Eq, ^Show
 
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], faultQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]])
+fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], plainArms=[[]], faultQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]])
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed)
@@ -356,6 +359,13 @@ fn WithoutTime t = match t:
     TySig "$", inner: WithoutTime inner
     TySig "!", inner: WithoutTime inner
     otherwise: t
+
+# An array or a map with no promise of an entry.
+IsPlainCollection: unbounded fn St, Ty -> Bool
+fn IsPlainCollection st, t = match Walk st, t:
+    TyArray ignore: True
+    TyMap ignore, ignore: True
+    otherwise: False
 
 # The collection a non-empty type promises, or nothing.
 ?NonEmptyColl: unbounded fn St, Ty -> ?Ty

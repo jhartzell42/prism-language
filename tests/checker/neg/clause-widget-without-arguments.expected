@@ -1,5 +1,4 @@
-tests/checker/neg/clause-widget-without-arguments.prism:13: error[unreachable]: this clause is never reached
+tests/checker/neg/clause-widget-without-arguments.prism:13: error[collision]: `@Twice` is defined twice
     @Twice:
     ^^^^^^^
-  fix: remove it, or put it above the clause that covers it
 1 error

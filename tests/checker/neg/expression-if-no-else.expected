@@ -1,0 +1,5 @@
+tests/checker/neg/expression-if-no-else.prism:7: error[no-else]: this `if` has no `else`: an `if` that is a value chooses between two branches
+    fn Pick c = if c: unit
+                ^^^^^^^^^^
+  fix: add `else:` with the other branch's value
+1 error
