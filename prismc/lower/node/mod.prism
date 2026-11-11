@@ -404,7 +404,7 @@ fn Connect wx, r, sink:
 # none). Refused at the node's build, naming what crossed.
 Crossed: fn Wx, Text -> Wx
 fn Crossed wx, what = update wx:
-    &_.build <= Push &_.build, (DoExpr (Refusal "{what} read in node `{wx.node}` without a port (a lowering bug)"))
+    &_.build <= Push &_.build, (InternalBugDo "{what} read in node `{wx.node}` without a port")
 
 AddOut: fn Gn, Out -> Gn
 fn AddOut n, o = update n:

@@ -615,7 +615,7 @@ fn BuildingChoiceLine wx, menv, scrut, pats, sty, guards, bodies, outTy, layer:
             ((wx5, (WrLate read, outTy)))
         else:
             let wx5 = update wx4:
-                &_.build <= Push &_.build, (RefusalDo "a building `match` or `if` whose arms do not all end on a plain result")
+                &_.build <= Push &_.build, (InternalBugDo "a building `match` or `if` whose arms do not all end on a plain result")
             ((wx5, WrUnit))
     else: if outTy == OutUnit: ((wx4, WrUnit)) else: ((wx4, (WrEv (EvRefOf wx4, upId))))
 
@@ -778,7 +778,7 @@ fn GenSelect wx, menv, body, cases, pos, sets:
     match ?ClauseCall wx.lx, body:
         nil: match cases[0]:
             ? c: TryOf (XCall (RefChild (SiteRef wx.lx, c.node.name), "build"), (Append [[(XVar "path"), (XVar "value")]], tail))
-            nil: Refusal "a `rebuild` with no generation"
+            nil: InternalBug "a `rebuild` with no generation"
         ? ((qk, args)):
             let env = Bind menv, "_", (BnLocal (XVar "value"), Owned, OutUnit)
             let scrut = XTuple (Each args, \|a| Argument wx.lx, env, a.value)

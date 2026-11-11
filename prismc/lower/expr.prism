@@ -160,6 +160,16 @@ let loweringRefusal = "prismc does not lower "
 RefusalDo: fn Text -> Do
 fn RefusalDo what = DoExpr (Refusal what)
 
+# A guard no checked program reaches: an internal error, "a prismc bug: ..", marked in the
+# emitted files as a refusal is and reported by `CompileProgram` as `error[internal]`.
+let internalBug = "a prismc bug: "
+
+InternalBug: fn Text -> Ex
+fn InternalBug what = XRefusal "{internalBug}{what}"
+
+InternalBugDo: fn Text -> Do
+fn InternalBugDo what = DoExpr (InternalBug what)
+
 ValueOf: unbounded fn Lx, Env, Expr -> Vl
 fn ValueOf lx, env, e = match env.spans[PlaceKey lx, e.span]:
     ? v: v
