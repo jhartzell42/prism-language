@@ -1,0 +1,149 @@
+# From prism-notes, claude/04-domains-and-documents/evidence/hosting/09-hosting-per-role/app.prism: attempt 09 of the Bible's document hosting against prismc at 10ca993, committed as written.
+# Attempt 09: attempt 05 with the hosting written once per role, as Part IV, chapter 5,
+# splits it: @HostPlayer hosts one player seat and gives back what that seat asks,
+# @HostWatchers hosts a live map of spectators, and the implementation's state and
+# outcome are passed to both. Spectators join and leave while the players stay.
+# Written by Claude (an implementation agent), 10 November 2026; subject to change.
+emit Ui.* | Play.* | Watch.*
+test mod Tests
+
+type Response = choice:
+    Accepted
+    Refused Text
+derive ^Eq, ^Show
+
+type Query = choice:
+    Whole
+derive ^Eq, ^Show
+
+type Side = choice:
+    White
+    Black
+derive ^Eq, ^Ord, ^Show
+
+# What every seat is told: the count and whose move it is.
+type Game = record:
+    count: Nat
+    turn: Side
+derive ^Eq, ^Show
+
+# The player's language: the latest numbered request, and the query.
+tag Play.Request of Element !Response:
+    $?latest: ((Nat, Nat))
+
+tag Play.Query of Element $Game:
+    $query: Query
+
+# The spectator's language: the query alone.
+tag Watch.Query of Element $Game:
+    $query: Query
+
+# A participant's request place: an event of requests as the tag's live field.
+@Ask: fn !Nat -> @!Response emit Play.*
+fn @Ask !requests:
+    !numbered <- @Numbered !requests
+    $?latest <- nil then ? !numbered
+    !response <- Play.Request($?latest=$?latest)
+    @ !response
+
+Said: fn Response -> Text
+fn Said Accepted = "accepted"
+fn Said (Refused why) = "refused: {why}"
+
+@Player: fn Text -> @unit emit Ui.* | Play.*
+fn @Player name:
+    !one <- Ui.Button($label=$"{name} +1")                     # 0
+    !response <- @Ask (1 on !one)                              # 1/0
+    $game <- Play.Query($query=$ Whole)                        # 2
+    $last <- "nothing yet" then Said !response
+    Ui.Label($text=$"{name} sees {$game.count}, {$game.turn} to move; {$last}")   # 3
+
+@spectator: @unit emit Ui.* | Watch.*
+@spectator:
+    $game <- Watch.Query($query=$ Whole)                       # 0
+    Ui.Label($text=$"spectator sees {$game.count}, {$game.turn} to move")         # 1
+
+# The implementation's state: the game, each request place's last number, and the
+# responses of the last step by seat and place.
+type State = record:
+    game: Game
+    seen: (((Side, Path)) ==> Nat)
+    judged: (((Side, Path)) ==> Response)
+
+let fresh = State(game=Game(count=0, turn=White), seen={}, judged={})
+
+# One request: who asked, where, its number, and what it asks.
+type Asking = record:
+    side: Side
+    place: Path
+    number: Nat
+    amount: Nat
+derive ^Eq, ^Show
+
+Asked: fn Side, (Path ==> Elem (Ui.* | Play.*)) -> [Asking]
+fn Asked side, doc = Fold doc, [[]], \|acc, p, e| match e:
+    Play.Request($?latest=$?l): match $?l:
+        ? ((n, r)): Push acc, Asking(side=side, place=p, number=n, amount=r)
+        nil: acc
+    Play.Query(..): acc
+    Ui.*: acc
+
+Other: fn Side -> Side
+fn Other White = Black
+fn Other Black = White
+
+Judge: fn Game, Asking -> Response
+fn Judge g, a = if g.turn != a.side: Refused "not your move" else:
+    if g.count + a.amount > 5: Refused "the count stops at five" else: Accepted
+
+Step: fn State, Asking -> State
+fn Step s, a = if (?Get s.seen, ((a.side, a.place))) == (? a.number): s else:
+    let r = Judge s.game, a
+    let g = if r == Accepted: Game(count=s.game.count + a.amount, turn=(Other a.side)) else: s.game
+    State(game=g, seen=(Insert s.seen, ((a.side, a.place)), a.number), judged=(Insert s.judged, ((a.side, a.place)), r))
+
+StepAll: fn State, [Asking] -> State
+fn StepAll s, asked = Fold asked, State(game=s.game, seen=s.seen, judged={}), Step
+
+?ResponseTo: fn Side, Path, State -> ?Response
+fn ?ResponseTo side, p, s = ?Get s.judged, ((side, p))
+
+GameOf: fn State -> Game
+fn GameOf s = s.game
+
+# One player seat: the guest hosted, its requests read out of its document.
+@HostPlayer: fn Side, @a emit Ui.* | Play.*, $State, !State -> @((a, $[Asking])) emit Ui.*
+fn @HostPlayer side, @guest, $state, !outcome:
+    ((result, $doc)) <- @HostDocument @guest, \|p, e| match e:
+        Play.Request(..): @ !Filter (?ResponseTo side, p, !outcome)
+        Play.Query(..): @ GameOf $state
+        otherwise: @Element e
+    $now <- for p, $e <- $doc:
+        @ $e
+    @ ((result, (Asked side, $now)))
+
+# The spectators: one seat per key of a live map.
+@Seated: fn $(Text ==> unit) -> @unit emit Ui.* | Watch.*
+fn @Seated $watchers:
+    for name, $u <- $watchers:
+        Ui.Label($text=$"{name} has a seat")
+        @spectator
+
+@HostWatchers: fn $(Text ==> unit), $State -> @unit emit Ui.*
+fn @HostWatchers $watchers, $state:
+    ignore <- @HostDocument (@Seated $watchers), \|p, e| match e:
+        Watch.Query(..): @ GameOf $state
+        otherwise: @Element e
+
+# Places: White 0, Black 2, the buttons 4 and 5, the spectators 6.
+@host: @unit
+@host:
+    ((ignore, $whiteAsks)) <- @HostPlayer White, (@Player "White"), $state, !outcome
+    ((ignore, $blackAsks)) <- @HostPlayer Black, (@Player "Black"), $state, !outcome
+    !join <- Ui.Button($label=$"ada joins")
+    !leave <- Ui.Button($label=$"ada leaves")
+    $watchers <- {} then (Insert $watchers, "ada", unit) on !join <| (Remove $watchers, "ada") on !leave
+    @HostWatchers $watchers, $state
+    let $asked = Append $whiteAsks, $blackAsks
+    let !outcome = StepAll $state, !Updated $asked
+    $state <- fresh then !outcome
