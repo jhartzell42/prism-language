@@ -217,8 +217,8 @@ fn CheckLet env, st, p, ?ty, e, span = match ?BuilderHead env, e:
     ? ((word, built, head)) if not env.inUpdate:
         # a `for` or a `rebuild` builds, and a `let` builds nothing (Semantics ch. 4): the
         # name is bound to an error's type, so its uses say nothing more
-        let ((t, st1)) = Infer env, st, e
-        let st2 = ErrFix st1, "mismatch", e.span, "a `{word}` builds its {built} and `let` builds nothing; this is `{ShowTy st1, t}`", "bind its result with `<-`: `{SrcText env, p.span} <- {head} ..`"
+        let ((ignore, st1)) = Infer env, st, e
+        let st2 = ErrFix st1, "mismatch", e.span, "a `{word}` builds its {built} and `let` builds nothing", "bind its result with `<-`: `{SrcText env, p.span} <- {head} ..`"
         BindPattern env, st2, p, TyErr, False
     otherwise: CheckLetValue env, st, p, ?ty, e, span
 
