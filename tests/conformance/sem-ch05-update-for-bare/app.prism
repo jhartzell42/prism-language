@@ -1,0 +1,30 @@
+# An `update` block's bare `for` (Semantics ch. 5, "Statements": "the bare form, `for
+# &_.xs:`, rebinds `&_` to the element"): inside the loop `&_` is the entry, written in
+# place over a reference path, and the updated value again after it. Over a plain value
+# the entry is a value of the turn. Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Shelf = record:
+    counts: [Nat]
+    total: Nat
+
+Bumped: fn Shelf -> Shelf
+fn Bumped s = update s:
+    for &_.counts:
+        &_ += 10
+    &_.total <= 7
+
+Summed: fn [Nat] -> Nat
+fn Summed xs = update 0:
+    let &sum = 0
+    for xs:
+        &sum += &_
+    &_ <= &sum
+
+@page: @unit
+@page:
+    let b = Bumped (Shelf(counts=[[1, 2]], total=0))
+    Ui.Label($text=$"{Or b.counts[0], 0} {Or b.counts[1], 0} {b.total} {Summed [[3, 4]]}")   # 0
