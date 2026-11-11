@@ -122,9 +122,12 @@ Functions
   Gauge($level=$l, name=nm) = ..`). Test: sem-ch08-let-pattern-dynamic-in-widget. With
   plain names only it is lowered (sem-ch08-let-pattern-in-widget).
 - lower/expr.prism `StartsAsBounded`: a function value of its callee's own color inside
-  the value a call returns, at a call that makes the color bounded, where a map, a named
-  type or another function's type holds it. Through an array, an optional, a `~T` and a
-  tuple it is lowered (ts-ch05-color-function-in-result). No test for the rest.
+  the value a call returns, at a call that makes the color bounded, where a named type's
+  argument or another function's parameter holds it. Test:
+  ts-ch05-color-function-in-named-result (the named type; no test for a function's
+  parameter). Through an array, an optional, a `~T`, a tuple, a map's values and a
+  function's result it is lowered (ts-ch05-color-function-in-result,
+  ts-ch05-color-function-in-map-result).
 - lower/expr.prism (`AnyValue`) an existential of a program's trait with a method that
   cannot be asked of a hidden value (`?PackedDefOf`): a type parameter of its own, the
   trait's type inside another type (`fn [a] -> Nat`) or in no parameter (`Empty: a`), an

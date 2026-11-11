@@ -679,9 +679,18 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A function value of its callee's own color in a call's result** (`[u fn Nat -> Nat]`
   at a call that makes `u` bounded) is a `Start` in the callee's signature; the call's
   value is rebuilt with each wrapped as the bounded function it is (`StartsAsBounded`):
-  through an array (the prelude's `each`), an optional, a `~T` and a tuple.
-- **`@Run` of a function value that is no global name** (a lambda, a local, a call's
-  result) takes the `Start` it is or is made (`AsJobValue`).
+  through an array (the prelude's `each`), an optional, a `~T`, a tuple, a map's values
+  (the map made again with `fold_map` and `insert`) and a function's result (a function
+  that calls it and wraps what it gives).
+- **`@Run` of a function value that is no function the program defines by clauses** (a
+  lambda, a local, a call's result, a constructor, a trait's method, a function of the
+  prelude) takes the `Start` it is or is made (`AsJobValue`); a function the program
+  defines, bounded or not, is named by its `start_..` (`JobRoots` gives it a job).
+- **A local function that is not bounded, as a value** is a `Start` as a job lambda is
+  (`JobLocalFn`): its job is the clauses as one job body, the arguments matched against
+  each clause's patterns in order, and entering it is a cycle point.
+- **A prelude trait's impl** names its functions after the method and the head
+  (`HeadWord`: a named type's name, a collection's shape with its parts).
 - **A widget block's `let` of a record's or a constructor's pattern** computes the value
   at the build, matches it once there and moves each name it binds into its own field
   (`BindPatternResult`, as a widget's plain result bound by a pattern).
