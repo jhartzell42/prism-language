@@ -543,7 +543,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the node keeps it in `{generation}_res`
     from the build on: the result is late (`WrLate`, `IsLateExpr`), as a call of a
     widget that calls itself keeps its own.
-  - A blueprint value that gives a dynamic or a bundle back is refused.
+  - A line that binds a dynamic (`$d <- @$t`, `$level <- @Element e` of an element
+    value whose output is a dynamic) takes the dynamic the prelude's
+    `apply_blueprint_dynamic` makes of the blueprint's answers: a hold whose value at
+    the build is the first answer and which each later answer writes, in the tick the
+    answer comes, read at the line's type as a bound first answer is. The node keeps it
+    in `{generation}_res` as a generation's dynamic result is kept (`KeptDyn`) and
+    follows its update event (`prism_rtl::Follow`), each firing marking what reads it
+    (`{generation}_result_moved`).
+  - A blueprint value that gives a bundle back is refused.
 - **`prism_rtl::Blueprint`** is built with a base beside its path, sink and scope: 0
   under a host's row, the line's position as built in a block. `Supplied` tells how many
   places were built (`built`), how a widget's row leaves (`leave`), and, for a widget's row

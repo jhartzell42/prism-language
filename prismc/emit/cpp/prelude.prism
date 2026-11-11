@@ -1110,6 +1110,34 @@ inline Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t, Answer>> apply_blu
     return std::tuple<::prism_rtl::Rc<Row>, std::uint32_t, Answer>{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied), base, sink), built, std::move(first)};
 }
 
+/// A blueprint value applied by a line that binds a dynamic (`$d <- @$t`): as
+/// `apply_blueprint`, with the dynamic the blueprint gives: its value at the build the
+/// first answer of the place the blueprint answers, and each later answer a new value,
+/// in the tick the answer comes. `take` reads an answer at the line's type.
+template <class Take>
+auto apply_blueprint_dynamic(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, std::optional<::prism_rtl::Rc<::prism_rtl::HostOf<Elem, Answer>>> hosted, Take take, Cx& cx) {
+    using T = typename std::invoke_result_t<Take, const Answer&>::value_type;
+    using Made = std::tuple<::prism_rtl::Rc<Row>, std::uint32_t, ::prism_rtl::Dynamic<T>>;
+    auto cell = ::prism_rtl::make_rc<std::optional<::prism_rtl::Hold<T>>>();
+    auto updates = ::prism_rtl::make_rc<::prism_rtl::Port<Unit>>();
+    ::prism_rtl::Sink<Answer> sink = [cell, updates, take](const Answer& answer, Cx& cx) -> Done {
+        auto v = TRY(take(answer));
+        if (!*cell) return unexpected(Fault::answer("a blueprint value that gives a dynamic was answered before its build ended"));
+        (*cell)->set(std::move(v), cx);
+        return updates->fire(Unit{}, cx);
+    };
+    auto run = [&]() -> Result<Made> {
+        auto supplied = TRY(blueprint(std::move(path), sink, applied_scope(std::move(hosted)), base, cx));
+        std::uint32_t built = supplied.built;
+        if (!supplied.first) return unexpected(Fault::answer("a blueprint value that gives a dynamic answered nothing at its build"));
+        auto first = TRY(take(*supplied.first));
+        cell->emplace(std::move(first), cx);
+        auto read = [cell](const Cx& cx) { return (*cell)->get(cx); };
+        return Made{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied), base, sink), built, ::prism_rtl::Dynamic<T>{nullptr, read, updates}};
+    };
+    return run();
+}
+
 /// An answer made outside a tag's arm (a widget's plain result as a blueprint value
 /// gives it), read at the type of the line that binds it.
 template <class T, class A>
