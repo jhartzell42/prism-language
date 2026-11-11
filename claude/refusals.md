@@ -38,12 +38,17 @@ Hosting
   by a host in a row (sem-ch09-host-dynamic-answer-reads-parent,
   sem-ch09-host-bundle-answer-parent-part); an answer through a blueprint a `let` names
   (sem-ch09-host-dynamic-answer-let, sem-ch09-host-event-answer-let).
-  lower/expr.prism (`DynamicBlueprint`, `WrittenPart`): the two refusals stand for a
-  dynamic answer whose line made no getter for it, which no known program reaches:
-  `DynamicAnswers` makes one for every dynamic answer in the supplier's text, a
-  blueprint `let`, a blueprint parameter's argument and a function of the block the
-  supplier calls (sem-ch09-host-local-supplier-dynamic-answer,
-  sem-ch09-host-local-supplier-bundle-answer). Unsure: G.
+  lower/expr.prism (`DynamicBlueprint`, `WrittenPart`): a dynamic answer whose line
+  made no getter for it. `DynamicAnswers` makes one for every dynamic answer in the
+  supplier's text, a blueprint `let`, a blueprint parameter's argument and a function
+  of the block the supplier calls (sem-ch09-host-local-supplier-dynamic-answer,
+  sem-ch09-host-local-supplier-bundle-answer), but none for an answer that reads a
+  parameter of that function: `fn @Supply $d, e` answering `@ $d` is lowered as the
+  dynamic the function holds (sem-ch09-host-local-supplier-dynamic-parameter), and the
+  two refusals stand for the answer that reads the parameter beside a dynamic of the
+  block (`@ $ ($d + $count)` there). R, no test. A supplier cannot be handed on as a
+  parameter of a widget (its type is of every output `o`; the checker has no such
+  parameter), and a method or a named function reads no name of the block.
 - `@ x` outside a tag arm is lowered: plain data in `Answer`'s case of no tag, read by
   the place that takes it (sem-ch09-host-answer-without-arm); a value that is no plain
   data (a function) held as it is and read at the type of the line that binds it
@@ -206,33 +211,59 @@ Building `match`, clause widgets, `rebuild`
   plain result of a building `match` or `if` whose arms give it from nothing their own
   lines build takes it as a value of the build (`IsPureChoiceAt`, `PureChoiceValue`:
   sem-ch04-building-if-on-late-value-above, sem-ch04-building-match-on-late-value-above).
+  The same holds for any other line above that takes the result at its build (a
+  widget's plain argument, a builder's rows: `IsPureChoiceTakenBy`,
+  sem-ch04-late-value-above-clause-widget-result). A World's place with a plain answer
+  bound to a name whose constant field reads the late name asks its first value where
+  the row that gives the result is built (`LateFieldPlaces`,
+  sem-ch04-late-value-above-in-plain-place-field). A line that takes the late name
+  and binds a plain result of its own to a name gives a late name in turn
+  (`LateTakerResults`).
   Left refused: a `let` of a type with time inside that is no bundle and reads the late
-  name (the `unbuilt` refusals of `BindLate`, `MarkLateLets`); and in `DeferredLine`, a
-  line that takes the late name and whose places are counted as built, where the late
-  result is no pure choice's (an arm whose result reads what its own lines build, a
-  late widget result: the places of the row that gives the result take their numbers
-  from a count that reads the result; it needs a row built in two steps, its result
-  first and its places sent after. No test), and one that gives a plain result of its
-  own (no program found: sem-ch04-late-value-above-gives-result is built early and
-  passes). A line whose late names are all plain parts of a late place's bundle
+  name (the `unbuilt` refusals of `BindLate`, `MarkLateLets`); a place whose constant
+  field reads the late name and whose answer is a `$` or a bundle, is bound by a
+  pattern, or stands in a hosted scope (`BindLate`'s `unbuilt`: R, no test); the late
+  names of `LateFieldPlaces` and `LateTakerResults` read at the build by a line that
+  takes a value there and is not deferred (their `unbuilt`: unsure G, as
+  `MarkLateLets`'); and in `DeferredLine`, a line that takes the late name and whose
+  places are counted as built, where the late result is no pure choice's (an arm that
+  reads the block and gives its result from what its own lines build, a late widget
+  result: the places of the row that gives the result take their numbers from a count
+  that reads the result; it needs that row built with no `base` and numbered after the
+  line, as `Wx.lateGens` does inside a row. R, no test), and one whose plain result no
+  name binds (a pattern's, or the block's own result. R, no test).
+  A line whose late names are all plain parts of a late place's bundle
   (`{name}#lateplace`) is neither deferred nor refused: it is built in its place's
   order, and one with a plain result splits the block (`?LatePlaceTakerAt`:
   sem-ch09-host-late-plain-part-clause-widget-result,
-  sem-ch09-host-late-plain-part-building-match-result). Left refused there: such a
-  line written above the place whose part it takes.
+  sem-ch09-host-late-plain-part-building-match-result), or, written above the place
+  whose part it takes, binds its result to a late name
+  (sem-ch09-host-late-plain-part-taken-above). A late place's plain part under a
+  pattern of its own binds the pattern's names late
+  (sem-ch09-host-late-plain-part-nested-pattern). Not lowered and not a refusal of the
+  back end's: such a line written above the place, whose clauses differ in width, so
+  that the place's own path reads its own answer (a host's supplier is handed the
+  path); it stops at `PlaceNumber`'s refusal below. Unsure: C.
 - lower/jobs.prism: none added. A bare `for` in a job is lowered (`ForJob`), no test of
   the job form; the plain form is sem-ch05-update-for-bare.
-- lower/node/finish.prism (`PlaceNumber`) a place read at its block's build before the
-  node exists (a first-value query, a host made in the build) after a building `match`,
-  `if` or widget of several clauses whose rows differ in width and are built after the
-  node. No test. The `row_base` of a line built early there (`EarlyChoiceLine`,
-  `EarlyClauseLine`) is lowered: the row is numbered after the node (`NumberedLate`,
-  sem-ch04-building-match-on-built-late-value-above).
-- lower/node/finish.prism (`PlaceNumber`), lower/node/switch.prism (`ArmRowOf`) in a row
-  numbered after its block's node (`Wx.baseLate`): a place spelled in the row's own
-  build before its node (a host in the arm, a hosted place's first value), and the
-  row's plain result read from a generation the row builds after its node (a building
-  `match` inside the arm that is not built early). Both R.
+- lower/node/finish.prism (`PlaceNumber`) a first-value query at its block's build,
+  before the node exists, after a building `match`, `if` or widget of several clauses
+  whose rows differ in width and are built after the node. R, no test. A host there is
+  lowered: made at the root and placed once the node stands (`PlaceUnknownAtBuild`,
+  prism_rtl's `Host::place_at`). The `row_base` of a line built early there
+  (`EarlyChoiceLine`, `EarlyClauseLine`) is lowered: the row is numbered after the node
+  (`NumberedLate`, sem-ch04-building-match-on-built-late-value-above).
+- In a row numbered after its block's node (`Wx.baseLate`): a host in the arm is
+  lowered (sem-ch04-building-match-on-built-late-value-above-host-in-arm), and so is
+  the row's plain result read from a building `match` inside the arm (`Wx.lateGens`,
+  sem-ch04-building-match-on-built-late-value-above-inner-match). Left refused, all
+  R with no test: lower/node/finish.prism (`PlaceNumber`) a hosted node's own
+  first-value query spelled before its node in such a row;
+  lower/node/elements.prism (`ElementOutputOf`) a hosted place with a plain answer
+  under a host placed after its node; lower/node/switch.prism (`ArmRowOf`) the row's
+  late plain result beside a `for`, a `rebuild` or a widget that calls itself in the
+  arm, and a widget that calls itself in a row that builds its generations before it
+  is numbered.
 - gap ID, the part left: a widget that calls itself and has a `$` or event parameter
   beside a result or with time below its top, a
   blueprint parameter whose argument is no blueprint value the lowering makes (a widget

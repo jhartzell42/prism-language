@@ -468,6 +468,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   - a place of the node whose field reads a late name is live over the node's getters
     (`ElementLine`): it goes out where every place does, after the node's rows are
     built, its level read from the node;
+  - such a place of the World's with a plain answer bound to a name
+    (`c <- Pad.Count(name="count {n}")`) asks its first value where the generation that
+    gives the late result is built, right after the row and before the holds' late
+    first values (`LateFieldPlaces`, `Wx.lateAsks`, `WithLateInits`), with the element
+    its getter reads then; the name is late, the value of a `Hold<Option<T>>` written
+    once (`LatePlainBn`). Refused: the same with a `$` or a bundle answer, with a
+    pattern for the answer, or in a hosted scope (the `unbuilt` marker of `BindLate`);
   - a plain `let` of the node that reads a late name is late too (`MarkLateLets`): a
     getter of the node that computes it (`late_{name}`, `LateLetGetters`), bound under
     `{name}#late` as the split line's names are, so what reads it reads it late in turn;
@@ -480,19 +487,26 @@ it make every program an interpreter run, and every type mistake a runtime fault
     reads the block through the node, the late name through its getter, and is built
     after every other builder and generation of its scope (`Wx.deferredGens`,
     `BuildSteps`), the row that gives the late result among them. A plain `let` below
-    the split that such a line reads is the node's late `let` (`HoistedLines`). Two
-    such lines are refused: one whose places are counted as built (a building `match`
-    or `if` inside it: the rows after it were numbered before it was built), and one
-    that gives a plain result of its own;
-  - a building `match` or `if` above that reads the plain result of a building `match`
-    or `if` (`if n > 15:` above `n <- match mode:`) needs the result before either row
+    the split that such a line reads is the node's late `let` (`HoistedLines`). Such
+    a line's plain result bound to a name (`w <- @Wide n`) is late itself: the name is
+    marked before any line is lowered (`LateTakerResults`, `{name}#taker`), its getter
+    over the row's kept result made at the line (`LateGetters`). Two such lines are
+    refused: one whose places are counted as built (a building `match` or `if` inside
+    it: the rows after it were numbered before it was built), and one whose plain
+    result no name binds (a pattern's, or the block's own result);
+  - a building line above that takes the plain result of a building `match` or `if`
+    at its build (`if n > 15:` above `n <- match mode:`, a widget's plain argument, a
+    builder's rows) needs the result before either row
     is numbered. Where every arm gives its result from what it reads of the block, its
     own pattern and its own plain `let`s, and from nothing its own lines build
     (`IsPureChoiceAt`), the result is computed in the block's build as a plain `match`
     or `if` over the arms' plain `let`s and results (`PureChoiceValue`): the line is
     not late, the block is not split at it, and both generations are built in place
-    order (ruling TC), the row's own copy of the result unread. An arm whose result
-    reads what its own lines build is the refused case above.
+    order (ruling TC), the row's own copy of the result unread, and the line above may
+    count its places as built and give a plain result of its own. A `match` with no
+    guard whose arms read nothing of the block is built early instead where no
+    building `match` or `if` takes it (`IsEarlyChoiceAt`, `IsPureChoiceTakenBy`). An
+    arm whose result reads what its own lines build is the refused case above.
 - **A line is late** (`IsLateExpr`) when it is a building `match` or `if` with a plain
   result, a widget block or a widget of one clause whose block ends late, a widget
   parameter applied whose argument is late (read in the caller's environment), or a
@@ -883,10 +897,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `deliver`. A transparent row is handed the path with its block's gaps already put
   back, so each node undoes only its own.
 - A hosted scope has its own sequence, so its methods are `place_k` and `seat_k`.
-- A place read at the block's build before the node exists (a first-value query, a host
-  made in the build) after a gappy generation built after the node has no number yet;
-  that is refused loudly. A generation built early gives its gap as a local
-  (`{name}_gap_now`).
+- A first-value query at the block's build, before the node exists, after a gappy
+  generation built after the node has no number yet; that is refused loudly (a host
+  there is placed after the node, below). A generation built early gives its gap as a
+  local (`{name}_gap_now`).
 - A generation built early (`EarlyChoiceLine`, `EarlyClauseLine`) below a gappy
   generation built after the node cannot be handed its `base` in the build: the line
   above reads the early row's plain result to choose its own row. Its row is built in
@@ -901,10 +915,30 @@ it make every program an interpreter run, and every type mistake a runtime fault
   own generations built by then (`NumberOf`). The block's construction step calls it at
   the line's place, after the generations above it (`ScopeSteps`: the step waits for
   the gappy generations before it, and is deferred behind a deferred one). An early
-  line inside such a row is numbered late in turn, in the row's kept step. Refused in
-  such a row: a place spelled in the row's build before its node (a host, a hosted
-  place's first value), and a plain result read from a generation the row builds
-  after its node.
+  line inside such a row is numbered late in turn, in the row's kept step.
+- **Such a row whose block ends on a late plain result** (a building `match` inside the
+  arm whose result the arm gives) is read by its block right after its build, so it
+  builds its own generations there (`Wx.lateGens`, `LateGenerations`): each
+  generation's rows are built after the row's node with no `base`, numbered late in
+  turn (`ArmRowOf`'s `weakLate`), and leave the row the step that numbers them in its
+  field `{name}_number` (`NumberedByParent`: the row's `number_places` at
+  `parent.place(v)`). What the row keeps in `number_later` is then the rest: those
+  steps taken and run in the order of the places (`NumberTaken`, `ScopeSteps` by
+  `Wx.genPhase`), the builders, the places sent, the subscriptions. A generation built
+  again after the row is numbered (`numbered`) numbers its new row at once
+  (`LateRowSelect`). Every row inside such a row does the same, so each tells its
+  block what its generations left unbuilt when it is built. Refused there: the result
+  beside a `for`, a `rebuild` or a widget that calls itself in the arm (their rows
+  take their numbers as they are built), and a widget that calls itself in any row
+  inside.
+- **A host whose position has no number at the build** (`PlaceUnknownAtBuild`: in a row
+  numbered late, or below a gappy generation built after the node) is made at
+  `Path::root()` and placed once the node stands, where the construction step reaches
+  its rows (`Wx.unplacedHosts`, `ScopeSteps`, prism_rtl's `Host::place_at`); its
+  scope's places ask their first values after that, as a late host's do
+  (`Wx.lateHosts`). Refused: a hosted place with a plain answer under such a host, and
+  a hosted node's own first-value query spelled before its node in a row numbered
+  late (`PlaceNumber`).
 - **A widget that calls itself**, of one clause or of several (plain parameters, no type
   parameter, nothing or a plain value given back), is as deep as
   its data (`SharedClauseLine`). A plain result is kept by each row (`result_value`) and
@@ -1087,6 +1121,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
     (`WholeFns`): the host's line makes the live dynamic (`WholeArgs`), the closure
     captures it, and the function's answer over it is that `Dynamic` mapped into the
     tag's case (`?HeldDynamic`).
+    A function of the host's block with a `$` parameter (`fn @Supply $d, e` beside the
+    host's line, called `@Supply $count, e`) answers the same way: its clause's text
+    is read with its parameters marked (`WithFnParameters`), the host's line makes no
+    getter for an answer that reads one (`ReadsFnParameter`), and where the function
+    is inlined the parameter is a local holding the caller's dynamic. Refused: such an
+    answer that reads the parameter beside a dynamic of the block.
     A computed answer in flight to a place whose key left is
     dropped. Nested hosts add one tick per computing layer and none per
     forwarding layer.
@@ -1129,9 +1169,14 @@ it make every program an interpreter run, and every type mistake a runtime fault
   the order of its place (the first values are asked before any generation of the
   scope is built), so its places are counted as built; one that gives a plain result
   (`w <- @Wide port`, `w <- match port: ..`) is where the block is split, as at any
-  late line (`?LatePlaceTakerAt`, `SplitBlockInto`); and a hold that starts from it is
+  late line (`?LatePlaceTakerAt`, `SplitBlockInto`); written above the place line
+  whose part it takes, the line binds its result to a late name instead and the block
+  is not split (`LateTakerResults`); and a hold that starts from it is
   set by a method of the node the construction step calls after the scope's places
-  have asked (`Wx.lateStarts`).
+  have asked (`Wx.lateStarts`). A plain part taken apart by a pattern of its own
+  (`((((id, owner)), !rx, $peers))`) has one hold, kept under the pattern's own key
+  (`PartHoldKey`, `?BindingOfName`), and each name the pattern binds is a late name
+  whose getter matches the part by the pattern (`LateGetters`).
 - **Requests** of a hosted place go to the host (`host_k.request`): out with the forwarded
   element, or nowhere when the supplier answered the place.
 - **`@HostSome`** is `@HostDocument` through `rt::forward_on_none` (`nil` forwards).
