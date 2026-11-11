@@ -271,7 +271,7 @@ ApplyRule: unbounded fn Env, St, Text, Col, [Ty], Ty, [Arg], Range -> ((Ty, St))
 fn ApplyRule env, st, fname, col, params, res, args, span:
     let n = Len args
     let cmp = IsComparison fname
-    let ((argTys, st1)) = Fold (Range0 n), (([[]], st)), \|((acc, s)), i|
+    let ((inferred, st1)) = Fold (Range0 n), (([[]], st)), \|((acc, s)), i|
         let a = Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)
         if IsLambda a.value: (((Push acc, TyErr), s))
         else:
@@ -279,6 +279,7 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
             match (((Walk s2, (Or params[i], TyErr)), (Walk s2, t))):
                 (((TyFn pc, ignore, ignore), (TyFn ac, aps, ar))): (((Push acc, (TyFn pc, aps, ar)), (AddLeq s2, ac, pc, a.value.span, "arg", fname, "")))
                 otherwise: (((Push acc, t), s2))
+    let argTys = PlainBeside st1, params, inferred
     let ((st2, whole)) = Fold (Range0 n), ((st1, [[]])), \|((s, done)), i|
         let a = Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)
         let at = Or argTys[i], TyErr
@@ -326,6 +327,24 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
     let lifted = Filter (Range0 n), \|i| HasRange peeled, (Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)).value.span
     let st10 = if pl.broken or (Len pl.opts) != 1: st9 else: NoteLift st9, span, (Or pl.opts[0], ""), pl.optArgs
     ((result, (NoteApp st10, span, fname, kind, layer, lifted, (Or pl.opts[0], ""), callCol)))
+
+# Two arguments at one type variable, one a `[a]+` and one the `[a]` (an operator's two
+# sides, `Choose xs, ys`, a map literal's values): the conversion from a non-empty
+# collection is symmetric (Jimmy's ruling NS), so the `[a]+` is read as the `[a]` whichever
+# argument comes first. The arguments' types, each `[a]+` at such a variable its `[a]`.
+PlainBeside: unbounded fn St, [Ty], [Ty] -> [Ty]
+fn PlainBeside st, params, argTys:
+    let n = Len argTys
+    # the variables a plain collection stands at
+    let plainAt = Fold (Range0 n), [[]], \|acc, i| match Walk st, (Or params[i], TyErr):
+        TyFlex v if IsPlainCollection st, (Or argTys[i], TyErr): Push acc, v
+        otherwise: acc
+    if (Len plainAt) == 0: argTys
+    else: Each (Range0 n), \|i|
+        let at = Or argTys[i], TyErr
+        match (((Walk st, (Or params[i], TyErr)), (?NonEmptyColl st, at))):
+            (((TyFlex v), (? c))) if HasNat plainAt, v: c
+            otherwise: at
 
 # An existential at a parameter that is not one is unpacked there (Type System ch. 5,
 # "Existentials are dictionaries"; doubt EP): the parameter's bare variable becomes a fresh

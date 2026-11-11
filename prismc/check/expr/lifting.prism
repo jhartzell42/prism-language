@@ -204,7 +204,8 @@ fn SubstRigid name, by, t = match t:
     other: other
 
 MatchResult: unbounded fn Env, St, Text, [((Text, Range))], Ty, Range -> ((Ty, St))
-fn MatchResult env, st, sh, layers, res, span:
+fn MatchResult env, st, sh, layers, joined, span:
+    let res = ArmResult st, joined
     let events = Filter layers, \|((h, ignore))| h == "!"
     let dyns = Filter layers, \|((h, ignore))| h == "$"
     let blue = Filter layers, \|((h, ignore))| h == "@"
@@ -239,8 +240,21 @@ fn InferIf env, st, c, thenB, ?elseB, span, ?expected = match c:
 # An arm's plain layer against the match's: an arm that is a bare `Error` takes a fault
 # variable the other arms decide, so `if c: Error(..) else: ~ unit` is a `~unit` (pick ER);
 # its place was asked about at its tail (`NoteFaultAt`).
+# The conversion from a `[a]+` to the `[a]` is symmetric between arms (Jimmy's ruling NS):
+# an `[a]` arm after `[a]+` arms meets the collection they promise, and the construct's own
+# value is then the `[a]` (`ArmResult`); the arms before it stay the `[a]+` they are.
 UnifyArm: unbounded fn St, Ty, Ty, Range -> St
-fn UnifyArm st, res, t, span = UnifyNoted st, res, t, span
+fn UnifyArm st, res, t, span = match ((res, (?NonEmptyColl st, res), (IsPlainCollection st, t))):
+    (((TyFlex n), (? c), True)): update (Unify st, c, t, span):
+        &_.plainArms <= Push &_.plainArms, n
+    otherwise: UnifyNoted st, res, t, span
+
+# The value of a match or an `if` whose arms met at the variable `joined`: the collection,
+# when a `[a]+` arm stood beside an `[a]` arm.
+ArmResult: unbounded fn St, Ty -> Ty
+fn ArmResult st, joined = match joined:
+    TyFlex n if HasNat st.plainArms, n: Or (?NonEmptyColl st, joined), joined
+    otherwise: joined
 
 LayerHead: fn Text -> Text
 fn LayerHead h = if IsTimeSigil h: h else: if h == "@": "@" else: ""

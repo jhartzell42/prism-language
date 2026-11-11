@@ -49,8 +49,30 @@ use Check.Shrink.Summaries.*
 InferArray: unbounded fn Env, St, [Expr], Range -> ((Ty, St))
 fn InferArray env, st, es, span:
     let ((v, st2)) = FreshVar st, False, ""
-    let st3 = Fold es, st2, \|s, x| Check env, s, x, v
-    ((TyArray v, st3))
+    let ((st3, plain)) = Fold es, ((st2, False)), \|((s, seen)), x|
+        let ((s2, beside)) = CheckEntry env, s, x, v
+        ((s2, seen or beside))
+    # an `[a]` entry beside `[a]+` entries: the array's entries are the `[a]` (ruling NS)
+    let entry = if plain: Or (?NonEmptyColl st3, v), v else: v
+    ((TyArray entry, st3))
+
+# An array's entry against the entries before it. The conversion from a `[a]+` to the `[a]`
+# is symmetric (Jimmy's ruling NS): an `[a]` entry after `[a]+` entries meets the collection
+# they promise, and says so, since the array's entries are then the `[a]`.
+CheckEntry: unbounded fn Env, St, Expr, Ty -> ((St, Bool))
+fn CheckEntry env, st, e, expected = match e.kind:
+    ELambda ignore, ignore: (((Check env, st, e, expected), False))
+    EMatch ignore, ignore: (((Check env, st, e, expected), False))
+    EIf ignore, ignore, ignore: (((Check env, st, e, expected), False))
+    EAny ignore: (((Check env, st, e, expected), False))
+    EGroup x:
+        let ((st2, beside)) = CheckEntry env, st, x, expected
+        (((NoteTy st2, e.span, expected), beside))
+    otherwise:
+        let ((t, st2)) = Infer env, st, e
+        match ?NonEmptyColl st2, expected:
+            ? c if IsPlainCollection st2, t: (((UnifyAt st2, c, t, e.span), True))
+            otherwise: (((UnifyAt st2, expected, t, e.span), False))
 
 # A map literal lifts over a `$` or `!` among its entries (which
 # Semantics ch. 4's `{$next: Added} on !add` needs); its keys are `^Ord`.
