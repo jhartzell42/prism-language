@@ -576,8 +576,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
   constructor, a host's supplier, what a lambda gives, the operand of `?`, a part of a
   tuple or an array, the value of a `let` (`LetValues`: `let @w = @Pair`, read where
   `@w` is), and a blueprint argument of a widget that stands in one (`@Frame @Pair`).
-  A widget can be one when it has no widget function parameter and its `$` and event
-  parameters have no time below their top, whatever it gives back (`?ValuedCases`).
+  A widget can be one when its `$` and event parameters have no time below their top,
+  whatever it gives back (`?ValuedCases`).
   - A generic widget is one for each set of types the program's readings give its type
     parameters (`?ValuedTypes`: read off the arguments' types as an inlined call reads
     them, and off the widget's own type where it is read). `Lx.valued` is keyed by the
@@ -596,7 +596,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
     other types included (`InstanceUses`, `?GrowInstances`); an impl's method has the
     types its impl's head takes wherever a constraint is solved by that impl (the
     checker's `ImplNote`s; `ImplTargets`, which follows the impl's own bounds), and a
-    default the impl leaves unwritten has the type. Only the definitions that can
+    default the impl leaves unwritten has the type. A trait method with type
+    parameters of its own (`?FrameWith: fn a, b -> ?@unit`) is instantiated where it is
+    named (`UseOfMethod`, `MethodTargets`): the method of the impl whose head the
+    trait's parameter has there, or the trait's default, at the head's types and at
+    the types the name's type gives the method's own (`DefinitionRigids` counts both;
+    `ImplTargets` leaves such a method out). Only the definitions that can
     reach the one asked for are followed (`RelevantDefinitions`). The fixed point has
     no count: it stops with no answer where a new instantiation's line of parents
     holds the same definition at types embedded in the new one's (`GrowsFrom`,
@@ -659,8 +664,18 @@ it make every program an interpreter run, and every type mistake a runtime fault
     methods). A host's row gives them to the enclosing host (`HostRow::entries`,
     `HostRow::deliver`); a block that applied the value gives them as its generation's
     (`AppliedBlueprint`).
-  - A widget with a widget function parameter is not among them, and is refused where
-    it is read as a value.
+  - A widget function parameter of such a widget (`@Frame @Row` as a value) is a
+    function value of the row, a field as a plain parameter's binder is. A line of the
+    row that applies it (`Inner 1`) applies the function and then the blueprint it
+    gives, as any blueprint value is applied (`AppliedFunctionLine`,
+    `AppliedBlueprintLine`); the row handing it on to a widget it inlines does the
+    same there (`ApplyWidgetParam`). The argument is read as a value where the widget
+    is: a lambda is its closure, and a widget with places named and not applied
+    (`@Row`) is a function value that gives the widget's blueprint at its arguments
+    (`WidgetNamed`), so that widget has rows of its own too (`ValueWidgetsAt`).
+  - A function value a widget block holds (a `let` of the block, `let Shows = Chosen
+    "shows"`) applied by a line of the block (`Shows 1`) is applied the same way
+    (`WidgetLine`, `AppliedFunctionLine`).
 - **A widget defined in a block read as a value** (`Card(@body=@line)`, `?Pick True,
   @line`) is a `Blueprint` its line makes at the build before the node, kept in a field
   (`BlueprintValuesAt`, `blueprint_{name}`): it builds the widget's block as a row of its

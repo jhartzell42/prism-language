@@ -80,7 +80,21 @@ fn WidgetLine wx, benv, menv, e, ?bound:
         otherwise: match ?param:
             ? (BnWidget x, cbenv, cmenv, clx): ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound
             ? (BnLocalWidget b): LocalWidgetLine wx, benv, menv, b, e
+            # a function value the node holds, applied (`Inner 1` in a row a blueprint
+            # value builds, whose widget function parameter is a value of the row; a
+            # `let` of the block that names a function giving a blueprint): the blueprint
+            # it gives is applied as any blueprint value (`AppliedBlueprintLine`)
+            ? (BnLocal ignore, ignore, ignore) if (Len args) > 0: AppliedFunctionLine wx, menv, wx.lx, menv, callee, e, args
             otherwise: WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target
+
+# A function value that gives a blueprint (`function`, read in `clx` and `cmenv`, where
+# it stands), applied at the line `e` to the line's arguments, which are read in the
+# line's own environment: the blueprint it gives is applied as any blueprint value.
+AppliedFunctionLine: unbounded fn Wx, Env, Lx, Env, Expr, Expr, [Arg] -> ((Wx, Wres))
+fn AppliedFunctionLine wx, menv, clx, cmenv, function, e, args:
+    let held = ValueOf clx, cmenv, function
+    let made = XApply (Ref held), (Each args, \|a| ValueArgument wx.lx, menv, a.value)
+    AppliedBlueprintLine wx, e, (XRef made)
 
 # A widget parameter applied (`@child` as a statement): its argument lowered here, in its
 # caller's environments and context, so its places take this node's next positions
@@ -97,6 +111,9 @@ fn ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound:
     if (Len args) > 0: match (Ungrouped x).kind:
         EName n: match (if (Len n.path) == 1: cmenv.names[SNameKey n] else: nil):
             ? (BnWidget x2, cbenv2, cmenv2, clx2): ApplyWidgetParam wx, benv, menv, x2, cbenv2, cmenv2, clx2, e, args, ?bound
+            # a function value its caller holds (a row a blueprint value builds, handing
+            # its own widget function parameter on)
+            ? (BnLocal ignore, ignore, ignore): AppliedFunctionLine wx, menv, clx, cmenv, x, e, args
             otherwise:
                 let ((?q, ignore)) = ResolveValue clx.g, clx.home, n
                 let ?target = match ?bound:
@@ -148,10 +165,7 @@ fn ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound:
         # value, read where the argument stands, applied to the line's arguments gives
         # a blueprint, which the line applies as any blueprint value
         # (`AppliedBlueprintLine`)
-        otherwise:
-            let function = ValueOf clx, cmenv, x
-            let made = XApply (Ref function), (Each args, \|a| ValueArgument wx.lx, menv, a.value)
-            AppliedBlueprintLine wx, e, (XRef made)
+        otherwise: AppliedFunctionLine wx, menv, clx, cmenv, x, e, args
     else:
         let lx = wx.lx
         let inner = update wx:

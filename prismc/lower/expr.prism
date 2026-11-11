@@ -1110,8 +1110,8 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
         ? tg: VlOwned (XCall (HelperRef "fault_kind"), [[XStr tg.name]]), OutPod
         nil: if Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsLetDef d): VlOwned (XCall (ValueRef lx, qk), [[]]), t
         else: match lx.g.vals[qk]:
-            ? v if HasKey lx.valued, (ValuedKeyAt lx, qk, span, [[]]): WidgetBlueprintValue lx, emptyEnv, qk, span, [[]], t
-            ? v if ((IsWidgetFn v) or IsWidgetTy v.scheme.ty) and not (IsValueWidget lx, qk): Or (?OpenWidgetBlueprintValue lx, emptyEnv, qk, span, [[]], t), (VlOwned (Refusal (OpenWidgetValueWords lx, qk)), t)
+            ? v if HasKey lx.valued, (ValuedKeyAt lx, qk, span, [[]]): WidgetNamed lx, qk, span, v, t
+            ? v if ((IsWidgetFn v) or IsWidgetTy v.scheme.ty) and not (IsValueWidget lx, qk): WidgetNamed lx, qk, span, v, t
             ? v:
                 let isLet = Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsLetDef d)
                 if isLet: VlOwned (XCall (ValueRef lx, qk), [[]]), t
@@ -1133,6 +1133,27 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
                     otherwise: VlOwned (XCall (RefRuntime "std::Rc::new"), [[XPath (ValueRef lx, qk)]]), t
             nil: VlOwned (InternalBug "the global {qk}"), t
 
+# A widget with places named and not applied, read as a value. One that takes no
+# argument is its blueprint. One that takes arguments (`@Row` given for a widget
+# function parameter of a widget that is itself read as a value, `@Frame @Row`) is a
+# function value: applied, it gives the blueprint of the widget at those arguments
+# (`WidgetBlueprintValueFrom`, the arguments `given`), which the line that applies the
+# function applies (`AppliedFunctionLine`).
+WidgetNamed: unbounded fn Lx, Text, Range, ValInfo, OutTy -> Vl
+fn WidgetNamed lx, qk, span, v, t:
+    let Made = \|given, gives| if HasKey lx.valued, (ValuedKeyAt lx, qk, span, [[]]): WidgetBlueprintValueFrom lx, lx, False, emptyEnv, qk, span, [[]], given, gives else: Or (?OpenWidgetBlueprintValue lx, emptyEnv, qk, span, [[]], given, gives), (VlOwned (Refusal (OpenWidgetValueWords lx, qk)), gives)
+    let taken = match v.scheme.ty:
+        TyFn ignore, ps, ignore: Len ps
+        otherwise: 0
+    if taken == 0: Made [[]], t
+    else: match t:
+        OutFn pts, gives:
+            let names = Each (Range0 (Len pts)), \|i| "widget_parameter_{i}"
+            let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind "widget_parameter_{i}"), (OutRef (Or pts[i], OutUnit))
+            let made = Made (Each names, \|name| XClone (XVar name)), gives
+            VlOwned (XCall (RefRuntime "std::Rc::new"), [[(XClosure False, pas, (Own made))]]), t
+        otherwise: VlOwned (InternalBug "the widget function {BareName qk} named as a value of a type that is no bounded function's"), t
+
 # A widget function: its result a blueprint.
 # A widget with places read as a value (`Lx.valued`): the blueprint that builds its row.
 # The arguments are read here, once, and kept by the blueprint; each build chooses the
@@ -1147,7 +1168,7 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
 # hosted scope the blueprint builds the widget's hosted row, given the host and what
 # tells it that a place of the row's came or went.
 WidgetBlueprintValue: unbounded fn Lx, Env, Text, Range, [Arg], OutTy -> Vl
-fn WidgetBlueprintValue lx, env, qk, calleeSpan, args, t = WidgetBlueprintValueFrom lx, lx, False, env, qk, calleeSpan, args, t
+fn WidgetBlueprintValue lx, env, qk, calleeSpan, args, t = WidgetBlueprintValueFrom lx, lx, False, env, qk, calleeSpan, args, [[]], t
 
 # A generic widget read as a value in a generic function's body, given that function's
 # own type parameter (`fn ?Wrapped x = ?Pick True, (@Shown x, "n")`): the widget's rows
@@ -1159,8 +1180,8 @@ fn WidgetBlueprintValue lx, env, qk, calleeSpan, args, t = WidgetBlueprintValueF
 # over the impl's type parameters, and in a trait's default, over `Self`. No answer where
 # the definition's instantiations are no finite set or cannot all be read
 # (`?DefInstances`), or one of them has no rows (`?ValuedCases`).
-?OpenWidgetBlueprintValue: unbounded fn Lx, Env, Text, Range, [Arg], OutTy -> ?Vl
-fn ?OpenWidgetBlueprintValue lx, env, qk, calleeSpan, args, t = match ?EnclosingInstances lx:
+?OpenWidgetBlueprintValue: unbounded fn Lx, Env, Text, Range, [Arg], [Ex], OutTy -> ?Vl
+fn ?OpenWidgetBlueprintValue lx, env, qk, calleeSpan, args, given, t = match ?EnclosingInstances lx:
     nil: nil
     ? users:
         let At = \|user| update lx:
@@ -1177,13 +1198,15 @@ fn ?OpenWidgetBlueprintValue lx, env, qk, calleeSpan, args, t = match ?Enclosing
             let n = Len distinct
             let picked = Fold (Range0 n), XUnreachable, \|rest, i|
                 let user = Or distinct[Or (n -? (i + 1)), 0], [[]]
-                XIf (Chosen user), (Own (WidgetBlueprintValueFrom (At user), lx, True, env, qk, calleeSpan, args, t)), rest
+                XIf (Chosen user), (Own (WidgetBlueprintValueFrom (At user), lx, True, env, qk, calleeSpan, args, given, t)), rest
             ? (VlOwned picked, t)
 
 # `WidgetBlueprintValue`, its arguments read at `lxArguments` (the enclosing generic
-# function's own types where `recast` says so, `?OpenWidgetBlueprintValue`).
-WidgetBlueprintValueFrom: unbounded fn Lx, Lx, Bool, Env, Text, Range, [Arg], OutTy -> Vl
-fn WidgetBlueprintValueFrom lx, lxArguments, recast, env, qk, calleeSpan, args, t = match ((lx.valued[ValuedKeyAt lx, qk, calleeSpan, args], lx.g.vals[qk])):
+# function's own types where `recast` says so, `?OpenWidgetBlueprintValue`). A widget
+# named and not applied has no argument written: its arguments are `given`, the
+# parameters of the function value it is (`WidgetNamed`).
+WidgetBlueprintValueFrom: unbounded fn Lx, Lx, Bool, Env, Text, Range, [Arg], [Ex], OutTy -> Vl
+fn WidgetBlueprintValueFrom lx, lxArguments, recast, env, qk, calleeSpan, args, given, t = match ((lx.valued[ValuedKeyAt lx, qk, calleeSpan, args], lx.g.vals[qk])):
     ((? cases, ? declared)):
         # a generic widget's rows are those of the types this reading gives its type
         # parameters (`?ValuedTypes`), and its signature is read with them in place
@@ -1197,11 +1220,13 @@ fn WidgetBlueprintValueFrom lx, lxArguments, recast, env, qk, calleeSpan, args, 
         let ptys = match v.scheme.ty:
             TyFn ignore, ps, ignore: ps
             otherwise: [[]]
-        let names = Each (Range0 (Len args)), \|i| "widget_argument_{i}"
-        let hostedNames = Each (Range0 (Len args)), \|i| "hosted_widget_argument_{i}"
-        let lets = Fold (Range0 (Len args)), [[]], \|acc, i| match args[i]:
-            ? a:
-                let read = Own (ValueOf (if IsLiveParam (Or ptys[i], TyErr): AsWhole lxArguments else: lxArguments), env, a.value)
+        let reads = if (Len args) == 0: given else: Each (Range0 (Len args)), \|i| match args[i]:
+            ? a: Own (ValueOf (if IsLiveParam (Or ptys[i], TyErr): AsWhole lxArguments else: lxArguments), env, a.value)
+            nil: XUnit
+        let names = Each (Range0 (Len reads)), \|i| "widget_argument_{i}"
+        let hostedNames = Each (Range0 (Len reads)), \|i| "hosted_widget_argument_{i}"
+        let lets = Fold (Range0 (Len reads)), [[]], \|acc, i| match reads[i]:
+            ? read:
                 let taken = if recast: DoLet (PaBind "widget_argument_{i}"), (XCallAt (RefRuntime "prism_rtl::recast"), [[(OutTyOf lx, (Or ptys[i], TyErr))]], [[read]]) else: DoLet (PaBind "widget_argument_{i}"), read
                 Append acc, [[taken, (DoLet (PaBind "hosted_widget_argument_{i}"), (XClone (XVar "widget_argument_{i}")))]]
             nil: Append acc, [[(DoLet (PaBind "widget_argument_{i}"), XUnit), (DoLet (PaBind "hosted_widget_argument_{i}"), XUnit)]]
@@ -1693,7 +1718,7 @@ fn GlobalCall lx, env, qk, args, span, cspan, t:
         ? c: CtorApp lx, env, c, args, span
         nil: match lx.g.vals[qk]:
             ? v if HasKey lx.valued, (ValuedKeyAt lx, qk, cspan, args): WidgetBlueprintValue lx, env, qk, cspan, args, t
-            ? v if (IsWidgetFn v) and not (IsValueWidget lx, qk): Or (?OpenWidgetBlueprintValue lx, env, qk, cspan, args, t), (VlOwned (Refusal (OpenWidgetValueWords lx, qk)), t)
+            ? v if (IsWidgetFn v) and not (IsValueWidget lx, qk): Or (?OpenWidgetBlueprintValue lx, env, qk, cspan, args, [[]], t), (VlOwned (Refusal (OpenWidgetValueWords lx, qk)), t)
             ? v:
                 if v.sort == "method": MethodCall lx, env, v, args, span, t
                 else: if v.home == "Prelude": PreludeCall lx, env, qk, args, span, t

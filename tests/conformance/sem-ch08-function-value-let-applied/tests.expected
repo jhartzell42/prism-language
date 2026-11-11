@@ -1,0 +1,8 @@
+# Derived by hand from Semantics ch. 8 (a blueprint is built at the applying block's next positions; a widget applied inline adds no path segment), as sem-ch08-widget-parameter-call-argument has its one place. Never run.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="shows 1")
+    1: Ui.Label(text="between")
+    2: Ui.Label(text="shows 2")

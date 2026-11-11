@@ -69,11 +69,12 @@ Hosting
   (sem-ch09-host-bundle-dynamic-part-forwarded). A bundle nested in a tag's bundle
   output is read as a plain part: no test.
 - lower/expr.prism (`WidgetBlueprintValue`, `WidgetValueWords`) a widget with places as
-  a blueprint value is lowered where it has no widget function parameter, whatever it
-  gives back
+  a blueprint value is lowered whatever it gives back
   (sem-ch09-host-widget-answer, sem-ch08-blueprint-out-of-value,
   sem-ch08-widget-value-dynamic-parameter, -event-parameter, -blueprint-parameter,
-  -event-result, -let, -dynamic-result, -bundle-result, -function-result), a generic
+  -event-result, -let, -dynamic-result, -bundle-result, -function-result), one with a widget function parameter, a function
+  value of its row, its argument a widget named or a lambda
+  (sem-ch08-widget-value-widget-function-parameter), a generic
   one at each set of types its readings give it (sem-ch08-widget-value-generic), one
   that gives a bundle back under a tag's arm (sem-ch09-host-widget-bundle-answer), one
   whose block ends on a host's line (sem-ch08-widget-value-ends-on-host), a generic one
@@ -82,15 +83,14 @@ Hosting
   many generic functions deep (sem-ch08-widget-value-generic-ten-functions-deep), in a
   function that calls itself at other types
   (sem-ch08-widget-value-generic-function-at-other-type), in an impl's method at the
-  impl's type parameter (sem-ch08-widget-value-generic-in-method). Left
+  impl's type parameter (sem-ch08-widget-value-generic-in-method) and at the trait
+  method's own (sem-ch08-widget-value-generic-at-method-type-parameter). Left
   refused (`OpenWidgetValueWords`): a generic one read where a type parameter stays
   open and the program gives the definition it stands in no finite set of types
   (`?DefInstances`, `GrowsFrom`: a line of instantiations that holds one definition
   twice, the earlier types embedded in the later;
   sem-ch08-widget-value-generic-function-at-ever-larger-types, R; the plain function
-  alone is refused by rustc, ts-ch02-function-at-ever-larger-types), one read at a
-  trait method's own type parameter in an impl's method (R, no test), one with a
-  widget function parameter, or a `$` or event parameter with time below its top (no
+  alone is refused by rustc, ts-ch02-function-at-ever-larger-types), one with a `$` or event parameter with time below its top (no
   tests);
   one read in a place `ValuedWidgets` does not look (a record's field read back and
   given on is a value already). One built in a hosted scope builds its hosted row
@@ -243,7 +243,9 @@ Building `match`, clause widgets, `rebuild`
   sem-ch08-widget-recursion-deep-one-clause, sem-ch08-widget-recursion-deep-result).
 - lower/node/static.prism (`WidgetCall`) a widget this back end does not lower yet: no
   program found since a blueprint taken out of a value by a pattern is applied
-  (`ValueBlueprintLine`, sem-ch08-blueprint-out-of-value). A blueprint a `let` names is
+  (`ValueBlueprintLine`, sem-ch08-blueprint-out-of-value) and a function value a `let`
+  of the block names is applied by a line (`AppliedFunctionLine`,
+  sem-ch08-function-value-let-applied). A blueprint a `let` names is
   lowered (sem-ch08-blueprint-let), and a blueprint parameter of a widget of several
   clauses (sem-ch08-clause-widget-blueprint-parameter).
 - Lowered, no refusal left: LW (sem-ch08-late-result-widget-parameter); a `rebuild` of a

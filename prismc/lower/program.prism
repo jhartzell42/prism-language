@@ -281,8 +281,8 @@ fn RootWidgets lx:
 # tuple or an array, the value of a `let`. Each is lowered once more as rows of its own (`ValuedRows`), which the
 # blueprint made at the value site builds (`WidgetBlueprintValue`). A generic widget is
 # lowered so once for each set of types its readings give its type parameters
-# (`?ValuedTypes`). One with a widget function parameter is left out, and refused where
-# it is read as a value.
+# (`?ValuedTypes`). A widget function parameter is a function value of the row, and the
+# widget its argument names is read as a value too (`WidgetNamed`).
 ValuedWidgets: unbounded fn Lx -> (((Text ==> [((Text, Pa, [Cc], [Ex]))]), (Text ==> [((Text, [((Text, Ty))]))])))
 fn ValuedWidgets lx = Fold lx.g.defs, (({}, {})), \|acc, d|
     let lxd = update (InModule lx, d.file, d.home):
@@ -377,9 +377,9 @@ fn InstanceKey d = match d.body:
 # widget's own, an impl's for its method, the trait's parameter for a default.
 DefinitionRigids: unbounded fn Lx, Def -> [Text]
 fn DefinitionRigids lx, d = match d.body:
-    DbMethod ignore, ignore, im: SortTexts im.qs
+    DbMethod ignore, cls, im: SortTexts (UnionTexts im.qs, (MethodOwnRigids lx, cls, (TraitMethodKey lx, cls, d.name)))
     DbDefault ignore, cls: match lx.g.traits[cls]:
-        ? tr: [[tr.param]]
+        ? tr: SortTexts (UnionTexts [[tr.param]], (MethodOwnRigids lx, cls, d.qk))
         nil: [[]]
     DbFn ignore: match lx.g.vals[d.qk]:
         ? v: SortTexts (RigidsIn v.scheme.ty)
@@ -396,6 +396,9 @@ fn DefinitionRigids lx, d = match d.body:
 type InstanceUse = choice:
     UseOfDefinition Text, Text, (Text ==> Ty)
     UseOfImpl Text, Text, Ty
+    # a trait method with type parameters of its own, named: the method, and the types
+    # its name has there for the trait's parameter and its own
+    UseOfMethod Text, Text, (Text ==> Ty)
 derive ^Eq, ^Show
 
 # One instantiation the fixed point found, and the one whose body's use gave it (its
@@ -436,6 +439,7 @@ fn InstanceUses lx = Fold lx.g.defs, [[]], \|acc, d|
             EName n:
                 let ((?named, ignore)) = ResolveValue lx.g, lxd.home, n
                 match lx.g.vals[Or ?named, ""]:
+                    ? v if v.sort == "method" and (Len (MethodOwnRigids lx, (Or (Each v.scheme.bounds, \|((ignore, bound))| bound)[0], ""), (Or ?named, ""))) > 0: Push solved, (UseOfMethod user, (Or ?named, ""), (Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lxd, x.span), {}), {}))
                     ? v if (Len (RigidsIn v.scheme.ty)) > 0 and v.sort != "method" and not (HasNat callees, x.span.start): Push solved, (UseOfDefinition user, (Or ?named, ""), (Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lxd, x.span), {}), {}))
                     otherwise: solved
             otherwise: solved
@@ -453,6 +457,7 @@ UseUser: fn InstanceUse -> Text
 fn UseUser site = match site:
     UseOfDefinition user, ignore, ignore: user
     UseOfImpl user, ignore, ignore: user
+    UseOfMethod user, ignore, ignore: user
 
 # Whether a use may instantiate one of `relevant`: a use by name, of that name; a solved
 # constraint, of any impl's method or any default among them (which impl solves it is
@@ -460,10 +465,29 @@ fn UseUser site = match site:
 ReachesRelevant: unbounded fn Lx, [Text], InstanceUse -> Bool
 fn ReachesRelevant lx, relevant, site = match site:
     UseOfDefinition ignore, target, ignore: HasText relevant, target
-    UseOfImpl ignore, ignore, ignore: Fold lx.g.defs, False, \|found, d| found or match d.body:
-        DbMethod ignore, ignore, ignore: HasText relevant, (InstanceKey d)
-        DbDefault ignore, ignore: HasText relevant, (InstanceKey d)
-        otherwise: False
+    UseOfImpl ignore, ignore, ignore: HoldsMethod lx, relevant
+    UseOfMethod ignore, ignore, ignore: HoldsMethod lx, relevant
+
+# Whether an impl's method or a trait's default is among `relevant`.
+HoldsMethod: unbounded fn Lx, [Text] -> Bool
+fn HoldsMethod lx, relevant = Fold lx.g.defs, False, \|found, d| found or match d.body:
+    DbMethod ignore, ignore, ignore: HasText relevant, (InstanceKey d)
+    DbDefault ignore, ignore: HasText relevant, (InstanceKey d)
+    otherwise: False
+
+# A trait's method by its bare name: its key among the program's values ("" for none).
+TraitMethodKey: unbounded fn Lx, Text, Text -> Text
+fn TraitMethodKey lx, cls, name = match lx.g.traits[cls]:
+    ? tr: Fold tr.methods, "", \|found, k| if found == "" and ((BareName k) == name or (DropPrefix k, "{tr.home}.") == name): k else: found
+    nil: ""
+
+# The type parameters of a trait method's own, by name: those of its signature beside
+# the trait's parameter (`?FrameWith: fn a, b -> ?@unit` of `trait ^Framed a` has `b`).
+# They are decided at each call of the method, not by the impl that answers it.
+MethodOwnRigids: unbounded fn Lx, Text, Text -> [Text]
+fn MethodOwnRigids lx, cls, methodQk = match ((lx.g.traits[cls], lx.g.vals[methodQk])):
+    ((? tr, ? v)): SortTexts (Filter (RigidsIn v.scheme.ty), \|q| q != tr.param)
+    otherwise: [[]]
 
 # The definitions whose instantiations decide those of `relevant`: each generic
 # definition with a use that may instantiate one of them, and so on to the end (the
@@ -575,6 +599,50 @@ fn ?UseTargets lx, site, types:
         UseOfImpl ignore, cls, ty:
             let at = SubstTy lxu, ty
             if (Len (RigidsIn at)) > 0: nil else: ? (ImplTargets lx, cls, at)
+        # a method with type parameters of its own, named: the method of the impl whose
+        # head the trait's parameter has there (or the trait's default that impl leaves
+        # unwritten), at the head's types and at the types the use gives the method's own
+        UseOfMethod ignore, methodQk, found: match lx.g.vals[methodQk]:
+            ? v:
+                let cls = Or (Each v.scheme.bounds, \|((ignore, bound))| bound)[0], ""
+                let own = MethodOwnRigids lx, cls, methodQk
+                let ?ownTypes = ?ClosedTypes own, (Fold own, {}, \|m, q| match found[q]:
+                    ? t: Insert m, q, (SubstTy lxu, t)
+                    nil: m)
+                let ?at = match lx.g.traits[cls]:
+                    ? tr: match found[tr.param]:
+                        ? t: ? (SubstTy lxu, t)
+                        nil: nil
+                    nil: nil
+                match ((?ownTypes, ?at)):
+                    ((? ownTypes, ? at)): if (Len (RigidsIn at)) > 0: nil else: ? (MethodTargets lx, cls, methodQk, at, ownTypes)
+                    otherwise: nil
+            nil: nil
+
+# The definition a call of a trait method with type parameters of its own instantiates,
+# the trait's parameter at the closed type `ty`: the method of the impl whose head the
+# type has, at the types the head's parameters take and the method's own types; the
+# trait's default where that impl leaves the method unwritten, at the type and the
+# method's own types.
+MethodTargets: unbounded fn Lx, Text, Text, Ty, [((Text, Ty))] -> [((Text, [((Text, Ty))]))]
+fn MethodTargets lx, cls, methodQk, ty, ownTypes = Fold (Or lx.g.impls[cls], [[]]), [[]], \|acc, im| match ?ParamMatch (Unrigid im.head), ty, {}:
+    nil: acc
+    ? matched:
+        let taken = Each (SortTexts im.qs), \|q| ((q, (Or matched[q], TyErr)))
+        let written = Filter lx.g.defs, \|d| (IsMethodOf d, im) and (TraitMethodKey lx, cls, d.name) == methodQk
+        let methods = Fold written, acc, \|more, d| Push more, (((InstanceKey d), (InstanceTypes taken, ownTypes)))
+        if (Len written) > 0: methods else: match lx.g.traits[cls]:
+            ? tr: if HasText tr.defaults, methodQk: Push methods, ((methodQk, (InstanceTypes [[((tr.param, ty))]], ownTypes))) else: methods
+            nil: methods
+
+# An instantiation's types in its type parameters' order by name (`DefinitionRigids`):
+# an impl's or a trait's, and a method's own.
+InstanceTypes: fn [((Text, Ty))], [((Text, Ty))] -> [((Text, Ty))]
+fn InstanceTypes outer, own:
+    let all = Append outer, own
+    Fold (SortTexts (Each all, \|((q, ignore))| q)), [[]], \|acc, q| match (Filter all, \|((other, ignore))| other == q)[0]:
+        ? found: Push acc, found
+        nil: acc
 
 # The definitions a constraint instantiates, solved for a closed type: each method of
 # the impl whose head the type has, at the types the head's parameters take; each
@@ -587,9 +655,11 @@ fn ImplTargets lx, cls, ty = Fold (Or lx.g.impls[cls], [[]]), [[]], \|acc, im| m
     ? matched:
         let taken = Each (SortTexts im.qs), \|q| ((q, (Or matched[q], TyErr)))
         let written = Filter lx.g.defs, \|d| IsMethodOf d, im
-        let methods = Fold written, acc, \|more, d| Push more, (((InstanceKey d), taken))
+        # (a method with type parameters of its own is instantiated where it is called,
+        # `UseOfMethod`)
+        let methods = Fold written, acc, \|more, d| if (Len (MethodOwnRigids lx, cls, (TraitMethodKey lx, cls, d.name))) > 0: more else: Push more, (((InstanceKey d), taken))
         let defaults = match lx.g.traits[cls]:
-            ? tr: Fold tr.defaults, methods, \|more, defaultQk| if Fold written, False, \|found, d| found or d.name == (BareName defaultQk): more else: Push more, ((defaultQk, [[((tr.param, ty))]]))
+            ? tr: Fold tr.defaults, methods, \|more, defaultQk| if (Len (MethodOwnRigids lx, cls, defaultQk)) > 0 or Fold written, False, \|found, d| found or d.name == (BareName defaultQk): more else: Push more, ((defaultQk, [[((tr.param, ty))]]))
             nil: methods
         Fold im.bounds, defaults, \|more, ((q, bound))| match matched[q]:
             ? part: Append more, (ImplTargets lx, bound, part)
@@ -698,7 +768,9 @@ fn ValueWidgetsAt lx, e = match e.kind:
     EIf ignore, yes, nil: ValueWidgetsOfBlock lx, yes
     # a widget applied to its arguments, and the widgets its blueprint arguments are,
     # values of the row the blueprint builds
-    ECall c, args, ignore, ignore: Fold args, (PlacedWidget lx, (BlueprintQk lx, c), c.span, args), \|acc, a| if (LayerOf (TypeAt lx, a.value.span)) == LyBlueprint: Append acc, (ValueWidgetsAt lx, a.value) else: acc
+    # (and the widget a widget function argument names, `@Frame @Row`: a function value
+    # of the row, `WidgetNamed`)
+    ECall c, args, ignore, ignore: Fold args, (PlacedWidget lx, (BlueprintQk lx, c), c.span, args), \|acc, a| if (LayerOf (TypeAt lx, a.value.span)) == LyBlueprint or IsWidgetFnTy (Peel (TypeAt lx, a.value.span)): Append acc, (ValueWidgetsAt lx, a.value) else: acc
     EName ignore: PlacedWidget lx, (BlueprintQk lx, e), e.span, [[]]
     otherwise: [[]]
 
@@ -743,8 +815,8 @@ ValuedStemAt: fn Text, Nat, [((Text, Ty))] -> Text
 fn ValuedStemAt qk, k, types = if (Len types) == 0: ValuedStem qk else: "{ValuedStem qk}_at{k}_"
 
 # A valued widget's clauses as a blueprint chooses and builds them (`SharedCaseOf`), when
-# it can be one: no widget function parameter, no `$` or event parameter with time below
-# its top; whatever it gives back. A generic widget's are made once for each set of
+# it can be one: no `$` or event parameter with time below its top; whatever it gives
+# back. A generic widget's are made once for each set of
 # types the program's readings give its type parameters (`types`, `ValuedKey`).
 ?ValuedCases: unbounded fn Lx, Text, [((Text, Ty))], Text -> ?[((Text, Pa, [Cc], [Ex]))]
 fn ?ValuedCases lx, qk, types, stem = match lx.g.vals[qk]:
@@ -763,8 +835,9 @@ fn ?ValuedCases lx, qk, types, stem = match lx.g.vals[qk]:
             otherwise: False
         # a plain parameter; a `$` or an event parameter, the caller's live value the row
         # holds (`LiveParams`); a blueprint parameter, a value of the row
-        # (`ClauseRowOf`); never a widget function's
-        let plainParams = Fold ptys, True, \|ok, pt| ok and not (IsWidgetFnTy pt) and ((LayerOf pt) == LyPlain or (LayerOf pt) == LyBlueprint or IsLiveParam pt)
+        # (`ClauseRowOf`); a widget function parameter, a function value of the row,
+        # which gives the blueprint a line of the row applies (`AppliedFunctionLine`)
+        let plainParams = Fold ptys, True, \|ok, pt| ok and ((IsWidgetFnTy pt) or (LayerOf pt) == LyPlain or (LayerOf pt) == LyBlueprint or IsLiveParam pt)
         if not (plainResult and plainParams): nil
         else:
             let clauses = ClausesOf lx.g, qk
