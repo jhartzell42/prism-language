@@ -448,8 +448,13 @@ reaches it.
   reaches this: `#tag` is bound only by `TagPat`, always as a path.
 - lower/expr.prism:723 `@Element` without its element. The checker refuses it:
   tests/checker/neg/element-without-its-element.
-- lower/expr.prism:764 an event read as a value: reached, see R, Hosting. A `let !again =
-  !go` in a block is not the case: sem-ch04-event-let passes.
+- lower/expr.prism (`NameValueOf`) an event read as a value: an event's name with no
+  value port. Every event a block binds has one (`PreBindName`, `BindEventParam`), a
+  row reads its block's (`WholeOfBlock`), and an event parameter of a widget that calls
+  itself is the `Event` its row holds (sem-ch08-widget-recursion-event-parameter-read-as-value).
+  No program found for what is left (a bundle's event part bound whole, by a pattern, or
+  as a widget's parameter, in a block and in a row, each passes); not proved unreachable,
+  so it stays a refusal.
 - lower/expr.prism:765 a tuple pattern's binding as a value: reached, see R, Bundles.
 - lower/expr.prism:766 a widget parameter read as a plain value. The nearest program, a
   widget parameter passed on to another widget, passes: sem-ch08-widget-parameter-passed.

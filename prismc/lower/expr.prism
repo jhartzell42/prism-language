@@ -402,7 +402,9 @@ fn WholeValueOf lx, env, e:
         # `$ $q` is lifted over `$q` (a bare type variable lifts, Type System ch. 4): a map
         # to a constant of each value
         EFreeSigil "$", x: if not (NotLifted lx, e.span): DynamicLift lx, env, e
-        else: if (LayerOf (TypeAt lx, x.span)) == LyDyn: ValueOf lx, env, x else: VlOwned (XCall (HelperRef "dyn_constant"), [[Own (ValueOf lxp, env, x)]]), (OutDyn (OutTyOf lx, (Peel full)))
+        # (a constant of a value that holds time below its top keeps that value's dynamics
+        # whole, `ConstantOfTimeAt`: `$ (($ (($a, "in")), 3))`)
+        else: if (LayerOf (TypeAt lx, x.span)) == LyDyn: ValueOf lx, env, x else: VlOwned (XCall (HelperRef "dyn_constant"), [[Own (ValueOf (if ConstantOfTimeAt lx, e: lx else: lxp), env, x)]]), (OutDyn (OutTyOf lx, (Peel full)))
         otherwise:
             if not (NotLifted lx, e.span): DynamicLift lx, env, e
             else: ValueByKind lx, env, e
@@ -1090,7 +1092,11 @@ fn NameValueOf lx, env, n, span:
         ? (BnDyn x, ignore, dt): VlOwned x, dt
         ? (BnEv ignore, et): match env.names["{nkey}#port"]:
             ? (BnLocal pf, ignore, ignore): VlOwned (XCall (RefRuntime "prism_rtl::Event::of"), [[XRef pf]]), (OutEvent (OutTyOf lx, (Peel (Peel (TypeAt lx, span)))))
-            otherwise: VlOwned (Refusal "an event read as a value"), et
+            otherwise: match env.names["#whole#{nkey}"]:
+                # an event parameter of a widget that calls itself: the caller's event
+                # the shared row holds (`LiveParams`)
+                ? (BnLocal held, mode, (OutEvent heldTy)): LocalPlace held, mode, (OutEvent heldTy)
+                otherwise: VlOwned (Refusal "an event read as a value"), et
         # a named bundle that is one value of the build (`BundleValue`)
         ? (BnParts ignore): match env.names["{nkey}#value"]:
             ? (BnLocal rs, mode, lt): LocalPlace rs, mode, lt
@@ -1689,9 +1695,9 @@ fn ElementValue lx, env, tg, args:
     let missing = Filter (Range0 n), \|i| not (Fold argued, False, \|seen, ((j, ignore))| seen or j == i)
     let Local = \|i| "desc_f{i}"
     let FieldOf = \|i| Or tg.fields[i], (("", TyErr))
-    let TyAt = \|i| match FieldOf i:
+    let FieldTypeAt = \|i| match FieldOf i:
         ((ignore, ft)): ft
-    let LayerAt = \|i| LayerOf (TyAt i)
+    let LayerAt = \|i| LayerOf (FieldTypeAt i)
     let NameAt = \|i| match FieldOf i:
         ((fname, ignore)): fname
     let lets = Each argued, \|((i, x))|
@@ -1716,7 +1722,7 @@ fn ElementValue lx, env, tg, args:
         if (LayerAt i) == LyDyn: (((Spell i), (XClone (XVar (NameOfDyn i))))) else: (((Spell i), (XClone (XVar "{Local i}_l"))))
     let level = XCtor variant, [[(XRecord structPath, levelFields)]]
     let keeps = Each (Filter inLevel, \|((i, ignore))| (LayerAt i) != LyDyn), \|((i, ignore))| DoLet (PaBind "{Local i}_l"), (XClone (XVar (Local i)))
-    let tys = Each dyns, \|((i, ignore))| TagFieldOut lx, (TyAt i)
+    let tys = Each dyns, \|((i, ignore))| TagFieldOut lx, (FieldTypeAt i)
     let mapped = match dyns:
         [[]]: XCall (HelperRef "dyn_constant"), [[level]]
         [[((i, ignore))]]: XMethod (XVar (Local i)), "map", [[(XClosure True, [[(PaTyped (PaBind (Or names[0], "y")), (OutRef (Or tys[0], OutUnit)))]], level)]]
