@@ -626,7 +626,8 @@ pub fn element_blueprint<E: Level + Eq, A: AnswerOf<E>>(e: &Element<E>) -> Bluep
 /// and push there is handed to the sink, the child's place; each firing of an event field
 /// is the place's request. In a hosted scope the place is the row's own in the enclosing
 /// host's document: an entry of its own (`Supplied::entry`), which takes its level at the
-/// build and each time it moves; an enclosing host's answer there is handed to the sink.
+/// build and each time it moves; an enclosing host's answer there is handed to the sink,
+/// and a request there goes to the enclosing host ([`HostOf::request_from`]).
 pub fn described_blueprint<E: Level + Eq, A: AnswerOf<E>>(d: &Described<E>) -> Blueprint<E, A> {
     let d = d.clone();
     Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, cx| {
@@ -661,9 +662,6 @@ pub fn described_blueprint<E: Level + Eq, A: AnswerOf<E>>(d: &Described<E>) -> B
                 Ok(Supplied { node, first, forwards: false, entry: None })
             }
             Scope::Hosted(host) => {
-                if !d.requests.is_empty() {
-                    return Err(Fault::answer(format!("not lowered yet: an element value with an event field placed at {at} in a hosted scope")));
-                }
                 // a place of the row's own in the enclosing host's document: an entry that
                 // takes the level at the build and again each time it moves
                 let entry = Entry::new("an element value's place");
@@ -680,6 +678,13 @@ pub fn described_blueprint<E: Level + Eq, A: AnswerOf<E>>(d: &Described<E>) -> B
                     Ok(())
                 }));
                 node.handle.set(Some(h));
+                // each firing of an event field is the place's request, a request of the
+                // enclosing host's child: its row for the place hears it and hands it on
+                for (field, firings) in d.requests.iter() {
+                    let (to, field, outer) = (at.clone(), field.clone(), host.clone());
+                    let h = firings.port.subscribe(Rc::new(move |v: &Pod, cx: &mut Cx| outer.request_from(&to, field.as_deref(), v.clone(), cx)));
+                    node.requests.borrow_mut().push((firings.port.clone(), h));
+                }
                 Ok(Supplied { node, first, forwards: false, entry: Some(entry) })
             }
         }
@@ -767,6 +772,9 @@ pub trait HostOf<E, A> {
     fn first_value(&self, place: &Path, element: &E, entry: &Rc<Entry<E>>, cx: &mut Cx) -> Result<Option<A>, Fault>;
     fn supplier(&self) -> &Supplier<E, A>;
     fn scope(&self) -> Scope<E, A>;
+    /// A request from the place `place` of this host's child, which a host under this one
+    /// hands up (a forwarded element's, or a placed description's): [`Host::request`].
+    fn request_from(&self, place: &Path, field: Option<&str>, value: Pod, cx: &mut Cx) -> Done;
 }
 
 /// The rows of a host's `for p, e <- $doc`, which the owner keeps in a field.
@@ -861,6 +869,9 @@ impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> HostOf<E, A> for Host<E, A, P> {
             Some(h) => Scope::Hosted(h.clone()),
             None => Scope::World,
         }
+    }
+    fn request_from(&self, place: &Path, field: Option<&str>, value: Pod, cx: &mut Cx) -> Done {
+        self.request(place, field, value, cx)
     }
 }
 
@@ -959,7 +970,14 @@ impl<E: Clone + Eq + 'static, A: Clone + 'static> HostRow<E, A> {
     pub fn request(&self, field: Option<&str>, value: Pod, cx: &mut Cx) -> Done {
         self.requests.fire((field.map(String::from), value.clone()), cx)?;
         if self.forwards() {
-            cx.request(self.path.at(0), field, value);
+            // the forwarded element is the host's own at `0` under the row: out to the
+            // World, or, under a host that is itself hosted, a place of the enclosing
+            // host's child, whose row decides again (a request rises host by host, each
+            // adding its key)
+            match self.host().scope() {
+                Scope::World => cx.request(self.path.at(0), field, value),
+                Scope::Hosted(outer) => outer.request_from(&self.path.at(0), field, value, cx)?,
+            }
         }
         Ok(())
     }

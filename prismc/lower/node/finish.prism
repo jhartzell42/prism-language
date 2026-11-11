@@ -296,7 +296,7 @@ fn FinishNode wx0, qk, params, isRow:
     # the World's answers, by path, to the places that go to it; a hosted place is answered
     # typed by its host, through `host_k_answer` (the places of scope `k`) or `deliver` (a
     # hosted node's own)
-    let answers = Append (Each (Filter wx.answers, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, id, t, ignore))| AnswerArm wx, pos, id, t), (Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, f, t, ignore))| DynAnswerArm sinks, pos, f, t)
+    let answers = Append (Each (Filter wx.answers, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, id, t, ignore))| AnswerArm wx, pos, id, t), (Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| (Emits wx, pos) and not (Fold wx.answers, False, \|seen, ((apos, ignore, ignore, ignore))| seen or apos == pos)), \|((pos, f, t, ignore))| DynAnswerArm sinks, pos, f, t)
     let forwards = Append (Each (Filter wx.builders, \|b| Emits wx, b.pos), \|b| (((PosPat b.pos, keyTail), (ForwardAnswer b)))), (Fold (Filter wx.gens, \|gd| Emits wx, gd.pos), [[]], \|acc, gd| Append acc, (GenForwards gd))
     let hostMethods = Fold wx.hosts, [[]], \|acc, h| Append acc, [[(TypedDispatch sinks, "{h.name}_answer", h.scope), (HostMoved sinks, h)]]
     let gathered = Filter wx.snaps, \|sn| not (sn.before or (IsGeneration wx, sn.builder))
@@ -502,8 +502,9 @@ DynPlaceWrite: fn Sinks, Text, Ex -> [Do]
 fn DynPlaceWrite sk, f, value = Append [[DoExpr (XMethod (XField XSelf, "{f}"), "set", [[value, XCx]])]], (HoldWritten sk, f)
 
 # What an "updated" node cannot be given: a read of anything that is not a hold a sink of
-# this node writes, a dynamic `let` over such, or a structural dynamic of the node (its
-# publication writes it as a hold, pick ST). A row's or a generation's reads through the
+# this node writes, a dynamic `let` over such, a generation's dynamic result the node keeps
+# (`KeptDyn`), or a structural dynamic of the node (its publication writes it as a hold,
+# pick ST). A row's or a generation's reads through the
 # parent are checked where the block is finished, as the block's own: a name the row hears a write behind must stand over a hold
 # of the block, a structural dynamic of the block (published as a hold is written:
 # `sem-ch04-row-updated-structural`) or a name the block hears itself. Refused loudly rather
@@ -513,17 +514,23 @@ fn UpdatedGaps wx, gns:
     let holds = Fold wx.fields, [[]], \|acc, ((f, t, ignore))| if IsHold t: Push acc, f else: acc
     let derived = Keys wx.dynReads
     let roots = SnapNames wx
+    # a generation's dynamic result the block keeps (`KeptDyn`: a clause widget's, a
+    # building arm's): its row tells the block of each write behind it
+    # (`{name}_result_moved`), which marks the "updated" nodes over it as a hold's sink
+    # does; the wake it asks runs at the next height when the row's write came later
+    # (`Cx::wake`'s clamp)
+    let kept = Each wx.clauseResults, \|n| "{n}_res"
     let own = Fold (Filter gns, \|g| g.kind == GnUpdated), [[]], \|acc, g| Fold g.reads, acc, \|a, r| match r:
         # a row or a generation is told of its block's writes (`parent_wrote_{m}`)
         ParentRead ignore: a
         OwnRead f:
-            if (HasText holds, f) or (HasText derived, f) or (HasText roots, f): a
+            if (HasText holds, f) or (HasText derived, f) or (HasText roots, f) or (HasText kept, f): a
             else: Push a, (RefusalDo "`!Updated` of a dynamic that reads `{f}`, which no sink of this node writes (no height for its event)")
     let hears = Append (Each wx.pending, \|p| UpdatedHears p.wx), (Each (Filter wx.rowMarks, \|rm| rm.kind == GenerationRow), \|rm| rm.wrote)
     Fold hears, own, \|acc, ms| Fold ms, acc, \|a, m|
         let behind = ReadsClosed wx.dynReads, [[OwnRead m]]
         let written = Fold behind, False, \|w, r| w or match r:
-            OwnRead h: HasText holds, h
+            OwnRead h: (HasText holds, h) or HasText kept, h
             ParentRead ignore: True
         # a structural dynamic the block publishes at the start of a tick is written as a
         # hold is (`HoldWritten` of its name), so the row's marks are in the publication
