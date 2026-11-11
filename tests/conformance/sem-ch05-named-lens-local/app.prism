@@ -1,0 +1,41 @@
+# Semantics ch. 5: a named lens applied to a local. "Words": a lens path is "a reference
+# built from `&_` or a local by field and index steps"; appendix A.6: `ref ::= "&_" lens*
+# | "&" lname lens* | "&" uname ref`, so `&Acc &machine` is a reference as `&Acc &_` is.
+# The local holds a value ("The borrow rule": "A local holds a value, not a reference"),
+# so the block's `vm` is unchanged.
+# Written by Claude on the claude-lowering branch; subject to change.
+test mod Tests
+type Regs = record:
+    acc: Int
+    x: Int
+derive ^Eq, ^Show
+
+type Vm = record:
+    pc: Nat
+    regs: Regs
+    steps: Nat
+derive ^Eq, ^Show
+
+&Acc: fn &Vm -> &Int
+fn &Acc &vm = &vm.regs.acc
+
+AccAfter: fn Vm, Int -> Int
+fn AccAfter vm, n = update 0:
+    let &machine = vm
+    &Acc &machine += n
+    &Acc &machine *= 2
+    &_ <= &Acc &machine
+
+# A lens over a local's part: the lens path `&machine.regs` is not a `Vm`, so the lens is
+# one over `Regs`.
+&Spare: fn &Regs -> &Int
+fn &Spare &regs = &regs.x
+
+SpareAfter: fn Vm -> ((Int, Int))
+fn SpareAfter vm = update ((0, 0)):
+    let &machine = vm
+    &Spare &machine.regs <= 40
+    &Spare &machine.regs += 2
+    &_ <= ((&Spare &machine.regs, vm.regs.x))
+
+let boot = Vm(pc=4, regs=Regs(acc=7, x=5), steps=2)

@@ -1,0 +1,8 @@
+# The tests of sem-ch05-named-lens-local.
+emit r
+use App.*
+
+check lens_over_a_local:
+    AccAfter boot, 3 => 20
+    SpareAfter boot => ((42, 5))
+    boot => Vm(pc=4, regs=Regs(acc=7, x=5), steps=2)
