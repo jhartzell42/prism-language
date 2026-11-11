@@ -172,6 +172,7 @@ fn WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target:
         "Prelude.@Switch": SwitchLine wx, menv, args
         "Prelude.@Flatten": FlattenLine wx, menv, args, ?bound
         "Prelude.@Defer": DeferLine wx, menv, args, e, ?target
+        "Prelude.@Later": LaterLine wx, benv, menv, args, e, ?target
         "Prelude.@Distinct": DistinctLine wx, menv, args, e, ?bound
         "Prelude.@PerKey": PerKeyLine wx, menv, args, ?bound
         "Prelude.@Run": RunLine wx, benv, args, e, ?target
@@ -487,6 +488,61 @@ fn DeferLine wx, menv, args, e, ?target:
             (((Connect wx5, r, (SkArm field)), (WrEv (EvRefOf wx5, id))))
         nil: ((wx4, (WrEv (EvRefOf wx4, id))))
 
+# `@Later !e` (Semantics Appendix B: "each firing answered one tick later, through a
+# zero-delay `Time.After`. A World implements time, so this one goes through a World"): a
+# `Time.After` at the block's next position, a place of the block as an inlined widget's
+# is (ch. 8). Each firing of `!e` queues its value (`prism_rtl::Later`) and asks the place
+# for a wake of no delay and of the empty context; each answer at the place fires the
+# oldest value still queued. The wake asked is the record of `Time.After`'s request
+# field, built from the prelude's declaration.
+LaterLine: unbounded fn Wx, Env, Env, [Arg], Expr, ?Nat -> ((Wx, Wres))
+fn LaterLine wx, benv, menv, args, e, ?target:
+    let lx = wx.lx
+    let t = OutTyOf lx, (OutOf (TypeAt lx, e.span))
+    match ((lx.g.tags["Time.After"], args[0])):
+        ((? tg, ? a)):
+            let ((wakesName, wakeTy)) = Or (Fold tg.fields, nil, \|?found, ((fname, ft))| if (LayerOf ft) == LyEv: ? ((fname, (Peel ft))) else: ?found), (("", TyErr))
+            let ((queue, wx1)) = FreshName wx, "later"
+            let wx2 = AddFieldLast wx1, queue, (OutNamed (RefRuntime "prism_rtl::Later"), [[t]]), "`@Later`'s firings not answered yet, oldest first", (XCall (RefRuntime "prism_rtl::Later::new"), [[]])
+            let ((r, wx3)) = EventRef wx2, menv, a.value
+            # the value queued first, then the wake asked: the sinks run in page order
+            let wx4 = Connect wx3, r, (SkLater queue)
+            let wake = WakeOfNoDelay lx, wakeTy
+            let asks = EvRef(node=r.node, owner=r.owner, pipe=(\|x, K| r.pipe x, \|ignore| K wake))
+            let ((wx5, placed)) = ElementPlaced wx4, benv, menv, tg, [[]], [[((wakesName, asks, (OutTyOf lx, wakeTy)))]], (ElementOut lx, tg, tg.out), nil
+            let ((out, wx6)) = match ?target:
+                ? n: ((n, wx5))
+                nil: AddGn wx5, "{queue}_fired", t, GnNamed, 0
+            match placed:
+                WrEv answered:
+                    let oldest = EvRef(node=answered.node, owner=answered.owner, pipe=(\|x, K| answered.pipe x, \|ignore| Append [[(DoLet (PaBind "{queue}_value"), (XMethod (XField XSelf, queue), "answered", [[]]))]], (K (XVar "{queue}_value"))))
+                    (((Connect wx6, oldest, (SkNode out)), (WrEv (EvRefOf wx6, out))))
+                otherwise:
+                    let wx7 = update wx6:
+                        &_.build <= Push &_.build, (InternalBugDo "`Time.After`, placed for an `@Later`, answers no event")
+                    ((wx7, WrUnit))
+        otherwise:
+            let wx2 = update wx:
+                &_.build <= Push &_.build, (InternalBugDo "an `@Later` without its event, or a prelude without `Time.After`")
+            ((wx2, WrUnit))
+
+# The wake an `@Later` asks its `Time.After` for: the request field's record, each field
+# the zero of its type (a duration of nothing, the empty text).
+WakeOfNoDelay: unbounded fn Lx, Ty -> Ex
+fn WakeOfNoDelay lx, wakeTy = match wakeTy:
+    TyCon name, ignore:
+        let owner = Or lx.g.types[name], dummyTyInfo
+        match owner.body:
+            BRecord fs: XRecord (RefIn lx, owner.home, (TypeItemName name)), (Each fs, \|((fname, ft))| (((FieldSpell owner.home, fname, ft), (WakeFieldOfNoDelay (OutTyOf lx, ft)))))
+            otherwise: InternalBug "`Time.After`'s wake is not a record"
+    otherwise: InternalBug "`Time.After`'s request field is not of a named type"
+
+WakeFieldOfNoDelay: fn OutTy -> Ex
+fn WakeFieldOfNoDelay t = match t:
+    OutDuration: XDuration "0"
+    OutText: XText ""
+    otherwise: InternalBug "a field of `Time.After`'s wake that is neither a duration nor a text"
+
 # `$y <- @Distinct $x` (Jimmy, 5 November, reversing Appendix B's D-DT): `$x`'s value,
 # whose update event fires only when it changed. A hold of an option, `None` until the
 # build sets it to `$x`'s value after the tick (as `@Flatten` adopts its first inner;
@@ -712,7 +768,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                 # for a widget of several clauses, whose generation would lower the call
                 # again, without end.
                 let wx2 = update wx:
-                    &_.build <= Push &_.build, (RefusalDo "the builtin widget {BareName qk}")
+                    &_.build <= Push &_.build, (InternalBugDo "the builtin widget {BareName qk} has no body and no lowering")
                 ((wx2, WrUnit))
             else:
                 # A widget of several clauses in a static position: the clause is chosen at

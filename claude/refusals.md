@@ -166,8 +166,6 @@ Catch-alls
   blueprint taken out of a value. A building `if` with no `else`
   (sem-ch04-building-if-no-else) and a bare call of a widget defined inside the block
   (sem-ch04-local-widget) are lowered.
-- lower/node/static.prism:715 the builtin widget {name}. Program: `@Later !go`, the one
-  prelude widget with no body and no case. Test: sem-appB-later.
 - lower/expr.prism:621 {kind} as a value: see C for a `for` and a `rebuild` as a plain
   function's value; a suffixed operator, a monad block and a lens stop at the parser or
   the checker (`unsupported`).

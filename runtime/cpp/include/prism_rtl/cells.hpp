@@ -27,6 +27,7 @@
 #include "prism_rtl/rc.hpp"
 #include <algorithm>
 #include <any>
+#include <deque>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -546,6 +547,28 @@ public:
 
 private:
     std::optional<std::pair<T, Tick>> armed_;
+};
+
+/// `@Later: fn !a -> @!a` (Semantics Appendix B): each firing answered one tick later,
+/// through a zero-delay `Time.After`. The firings whose wake the World has not answered
+/// yet, oldest first: `Later::queue` at each firing, as the wake is asked;
+/// `Later::answered` at each answer of the place, which gives the oldest back.
+template <class T>
+class Later {
+public:
+    /// The argument fired: kept until its wake is answered.
+    void queue(T v) const { pending_.push_back(std::move(v)); }
+    /// The place was answered: the oldest firing still kept. An answer with none kept is
+    /// a World answering a wake nobody asked for.
+    T answered() const {
+        if (pending_.empty()) panic("an answer at the place of an `@Later` that asked for no wake");
+        T v = std::move(pending_.front());
+        pending_.pop_front();
+        return v;
+    }
+
+private:
+    mutable std::deque<T> pending_;
 };
 
 template <class B>

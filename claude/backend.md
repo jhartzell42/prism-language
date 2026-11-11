@@ -716,6 +716,14 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **`@Defer !e`** → an `rt::Defer<A>` field: `arm(v, node, cx)` in the firing tick, and
   in the next one `Node::deferred` reads `fired(cx)`. An armed `@Defer` or a non-empty
   started list sets `TickOut::pending`.
+- **`@Later !e`** → a `Time.After` at the block's next position (a place of the block,
+  as an inlined widget's is) and a `prism_rtl::Later<A>` field, the firings whose wake
+  has not been answered, oldest first. Each firing of `!e` calls `queue(v)` and asks the
+  place for a wake, the request field's record with a duration of nothing and the empty
+  context; each answer at the place calls `answered()` and fires the oldest value. The
+  place is made by `ElementPlaced`, the part of an element's line after its tag is
+  known, which takes the request field's event from `LaterLine`. An answer with nothing
+  queued panics.
 
 ## Printing
 
