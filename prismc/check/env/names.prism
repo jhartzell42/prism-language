@@ -266,6 +266,25 @@ fn ResolveValue g, m, n:
         else: if (HasKey g.vals, qk) or (HasKey g.ctors, qk): ((? qk, ""))
         else: ((nil, "unknown"))
 
+# A field read whose receiver is a module's name and no value's (`Words.base`; Semantics
+# ch. 6: every declaration of a module is reachable by its qualified name; ruling QN: a
+# qualified name needs no `use`): the qualified name it is, when the module declares
+# that value. The parser reads a lowercase word after a dot as a field (Semantics ch. 2),
+# so the name is found here, by what is declared. A local of the receiver's name is the
+# caller's to rule out.
+?QualifiedField: fn G, Text, Expr, Text, Ident -> ?SName
+fn ?QualifiedField g, m, recv, sigils, name = match recv.kind:
+    EName r:
+        if r.sigils != "": nil
+        else:
+            let ((?value, ignore)) = ResolveValue g, m, r
+            let n = SName(sigils=sigils, path=(Push r.path, name.name), span=r.span)
+            let ((?qk, why)) = ResolveValue g, m, n
+            match ((?value, ?qk)):
+                ((nil, ? ignore)): if why == "": ? n else: nil
+                otherwise: nil
+    otherwise: nil
+
 # Two bare candidates for a trait's name (Semantics ch. 6, "Two bare names that collide
 # are an error at the use, both candidates named"): reported where the name is written;
 # reading goes on with the first.

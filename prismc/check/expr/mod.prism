@@ -165,7 +165,10 @@ fn InferKind env, st, e = match e.kind:
     EUnary op, x: InferUnary env, st, op, x, e.span
     ESuffixed ignore, ignore, ignore, ignore: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement suffixed operators")))
     EFreeSigil s, x: InferFreeSigil env, st, s, x, e.span
-    EField recv, sigils, name: InferField env, st, recv, sigils, name, e.span
+    # (a module's lowercase declaration written qualified, `Words.base`, is a name)
+    EField recv, sigils, name: match ?QualifiedFieldAt env, recv, sigils, name:
+        ? n: InferName env, st, n, e.span
+        nil: InferField env, st, recv, sigils, name, e.span
     EIndex recv, idx: InferIndex env, st, recv, idx, e.span
     ETopicField ignore: InferLambda env, st, e, nil
     ETopicIndex ignore: InferLambda env, st, e, nil
@@ -308,6 +311,12 @@ fn EnvCx env:
 # ---------------------------------------------------------------------------------------
 # Names
 # ---------------------------------------------------------------------------------------
+
+# `?QualifiedField` where no local hides the receiver's name.
+?QualifiedFieldAt: fn Env, Expr, Text, Ident -> ?SName
+fn ?QualifiedFieldAt env, recv, sigils, name = match recv.kind:
+    EName r: if HasKey env.locals, (SNameKey r): nil else: ?QualifiedField env.g, env.home, recv, sigils, name
+    otherwise: nil
 
 InferName: unbounded fn Env, St, SName, Range -> ((Ty, St))
 fn InferName env, st, n, span:

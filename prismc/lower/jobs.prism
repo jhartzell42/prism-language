@@ -446,13 +446,23 @@ fn ForJob lx, outer, env, ?binders, source, body, span, restReads, Cont:
     # state across a cycle, so the entry is a state of the turn's own (`&s`, which an inner
     # loop's job takes with the rest), written back to its place by its key as the turn
     # ends.
+    # The bare form rebinds `&_` to the entry (Semantics ch. 5, "Statements"): over a
+    # reference path a state of the turn's own written back as `&s` is, over a plain
+    # value the turn's copy. The block's own `&_` stays a state of the turn under
+    # `blockKey`, so a job inside the turn takes it with the rest, and the entry is
+    # written back through it.
+    let bare = IsBareFor ?binders
+    let blockKey = "&_#block{span.start}"
     let ?ref = match ?RefBinder ?binders:
-        ? n: if IsRefPath source: ? n else: nil
-        nil: nil
+        ? n: if IsRefPath source: ? (SNameKey n) else: nil
+        nil: if bare and IsRefPath source: ? "&_" else: nil
+    let envT = if not bare: envK else: match envK.names["&_"]:
+        ? b: Bind envK, blockKey, b
+        nil: envK
     let refName = "r{span.start}"
     let ((binds, envB)) = match ((?ref, ?binders)):
-        ((? n, ignore)): (([[(DoLet (PaTyped (PaMut refName), vt), (XVar valName))]], (Bind envK, (SNameKey n), (BnLocal (XVar refName), Owned, vt))))
-        ((nil, nil)): (([[]], envK))
+        ((? nkey, ignore)): (([[(DoLet (PaTyped (PaMut refName), vt), (XVar valName))]], (Bind envT, nkey, (BnLocal (XVar refName), Owned, vt))))
+        ((nil, nil)): (([[(DoLet (PaTyped (PaMut refName), vt), (XClone (XVar valName)))]], (Bind envT, "&_", (BnLocal (XVar refName), Owned, vt))))
         ((nil, ? fb)): match fb.?second:
             nil:
                 let po = RustPat lx, fb.first, vty, Owned, "e{span.start}"
@@ -464,9 +474,11 @@ fn ForJob lx, outer, env, ?binders, source, body, span, restReads, Cont:
     let done = XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[pack]]
     let Ended = \|o2, ignore|
         match ?ref:
-            ? n:
-                let entry = XDeref (XCall (HelperRef (if isArray: "at_mut" else: "at_mut_map")), [[(XRefMut (PlaceOf lx, o2, source)), (XRef (XVar keyName))]])
-                let kept = match o2.names[SNameKey n]:
+            ? nkey:
+                # (the path is the block's: its `&_`, not the turn's)
+                let o2b = WithBlockTopic o2, blockKey
+                let entry = XDeref (XCall (HelperRef (if isArray: "at_mut" else: "at_mut_map")), [[(XRefMut (PlaceOf lx, o2b, source)), (XRef (XVar keyName))]])
+                let kept = match o2.names[nkey]:
                     ? (BnLocal rs, ignore, ignore): rs
                     otherwise: InternalBug "a `for &` entry's state lost in its turn"
                 XBlock [[(DoAssign entry, kept)]], done
@@ -480,6 +492,13 @@ fn ForJob lx, outer, env, ?binders, source, body, span, restReads, Cont:
     let looping = HelperRef (if isArray: "for_turns_indexed" else: "for_turns_keyed")
     let enter = XCall (HelperRef "call_then"), [[(XCall looping, [[src, pack, stepFn]]), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))]]
     Prepend outDos, enter
+
+# An environment whose `&_` is the block's own again, kept under `blockKey` through a
+# bare `for`'s turn (`ForJob`).
+WithBlockTopic: fn Env, Text -> Env
+fn WithBlockTopic env, blockKey = match env.names[blockKey]:
+    ? b: Bind env, "&_", b
+    nil: env
 
 # The name an instantiation's key is of (`Twin#inst1`, pick LG); any other key itself.
 InstanceOf: fn Text -> Text

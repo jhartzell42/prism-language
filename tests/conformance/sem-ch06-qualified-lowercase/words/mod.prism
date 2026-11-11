@@ -1,0 +1,12 @@
+# The module `Words` of sem-ch06-qualified-lowercase.
+emit Ui.*
+
+type Pair = record:
+    left: Nat
+    right: Nat
+
+let base = 21
+let pair = Pair(left=5, right=6)
+
+Twice: fn Nat -> Nat
+fn Twice n = n * 2

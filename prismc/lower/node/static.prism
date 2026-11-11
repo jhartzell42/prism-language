@@ -461,13 +461,15 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
     # an element parameter's argument; Type System ch. 2: an element applied is a plain
     # value): its `$` fields are held as `Dynamic`s (`ElementValue`), so the readers they
     # are written over are live dynamics too
+    # and a constructor with a `$` field (`Gauge($level=$n, name="tank")`), which holds
+    # the field's `Dynamic` (`CtorArgs`)
     let elementValues = ElementValuesIn lx, e
     # and a call of a widget that calls itself with a `$` parameter, lowered as shared
     # rows, which hold the caller's dynamic live (`SharesAt`, `LiveParams`); a shared
     # row's own live parameter is such a value already (`#whole#{name}`)
     let sharedCalls = SharedLiveCalls wx, menv, e
     let calls = Filter (ExprsIn e), \|x| match x.kind:
-        ECall c, ignore, ignore, ignore: (IsWholeObject lx, x) or (IsWholeFn lx, (CalleeKey lx, c)) or (CalleeKey lx, c) == "Prelude.@Flatten" or (CalleeKey lx, c) == "Prelude.@Switch" or (HasText elementValues, (DynKey x)) or HasText sharedCalls, (DynKey x)
+        ECall c, ignore, ignore, ignore: (IsWholeObject lx, x) or (IsWholeFn lx, (CalleeKey lx, c)) or (CalleeKey lx, c) == "Prelude.@Flatten" or (CalleeKey lx, c) == "Prelude.@Switch" or (HasText elementValues, (DynKey x)) or (HasText sharedCalls, (DynKey x)) or IsDynamicFieldCtor lx, (CalleeKey lx, c)
         otherwise: False
     # and `!Updated $d` inside a lambda of the line (a supplier's `@ !Filter (?Pick p,
     # !Updated $state)`): an event value there, over `$d`'s live dynamic (`?UpdatedValue`)
@@ -1082,6 +1084,8 @@ fn ?ParamMatch pat, t, m = match ((pat, t)):
     ((TyArray x, TyArray y)): ?ParamMatch x, y, m
     (((TyMap k1, v1), (TyMap k2, v2))): ?ParamMatchAll [[k1, v1]], [[k2, v2]], m
     (((TySig s1, i1), (TySig s2, i2))): if s1 == s2: ?ParamMatch i1, i2, m else: nil
+    # an element parameter (`Element Ui.* o` against `Element Ui.* !Click`): its output
+    (((TyElem ignore, o1), (TyElem ignore, o2))): ?ParamMatch o1, o2, m
     otherwise: if pat == t: ? m else: nil
 
 ?ParamMatchAll: unbounded fn [Ty], [Ty], (Text ==> Ty) -> ?(Text ==> Ty)
@@ -1100,6 +1104,7 @@ fn RigidsIn t = match t:
     TyMap k, v: UnionTexts (RigidsIn k), (RigidsIn v)
     TySig ignore, i: RigidsIn i
     TyAt i, ignore: RigidsIn i
+    TyElem ignore, o: RigidsIn o
     TyFn ignore, ps, r: Fold ps, (RigidsIn r), \|acc, a| UnionTexts acc, (RigidsIn a)
     otherwise: [[]]
 
@@ -1112,6 +1117,7 @@ fn Unrigid t = match t:
     TyArray e: TyArray (Unrigid e)
     TyMap k, v: TyMap (Unrigid k), (Unrigid v)
     TySig s, i: TySig s, (Unrigid i)
+    TyElem rw, o: TyElem rw, (Unrigid o)
     TyAt i, rw: TyAt (Unrigid i), rw
     TyFn c, ps, r: TyFn c, (Each ps, \|a| Unrigid a), (Unrigid r)
     other: other

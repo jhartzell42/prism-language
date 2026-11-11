@@ -644,7 +644,11 @@ fn PlainValueByKind lx, env, e:
                 ((OutDyn ignore, ignore)): VlOwned (XCall (HelperRef "dyn_constant"), [[Own v]]), t
                 otherwise: v
         EFreeSigil ignore, x: ValueOf lx, env, x
-        EField r, ignore, name: FieldValue lx, env, r, name.name
+        # (a module's lowercase declaration written qualified, `Words.base`, is a name,
+        # as the checker read it: `?QualifiedField`)
+        EField r, sigils, name: match ?QualifiedFieldIn lx, env, r, sigils, name:
+            ? n: NameValue lx, env, n, e.span
+            nil: FieldValue lx, env, r, name.name
         EIndex r, i: IndexValue lx, env, r, i, t
         ELambda ?ps, body: LambdaValue lx, env, e, (Or ?ps, [[]]), body
         EIf c, thenB, ?elseB: IfValue lx, env, c, thenB, ?elseB, t
@@ -670,7 +674,9 @@ fn AnyValue lx, env, x, t:
     let packedTy = OutNamed (RefRuntime "prism_rtl::Packed"), [[]]
     match Peel t:
         TyAny bounds:
-            if IsShowOnly bounds: VlOwned (XCall (RefRuntime "std::Rc::new"), [[v]]), OutShowAny
+            # (the packing says its type: an argument behind a reference and an array's
+            # element are not coerced to it where they stand)
+            if IsShowOnly bounds: VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[v]]), OutShowAny), OutShowAny
             else:
                 let all = BoundsClosed lx, bounds
                 let refused = Fold all, "", \|found, b| if found != "": found else: if IsPackingBound b: "" else: match lx.g.traits[b]:
@@ -682,7 +688,7 @@ fn AnyValue lx, env, x, t:
                         ? tr: XMethod acc, "with_dictionary", [[(XPath (PackedDictionaryOf lx, tr))]]
                         nil: acc
                     VlOwned (XMethod packing, "packed", [[]]), packedTy
-        otherwise: VlOwned (XCall (RefRuntime "std::Rc::new"), [[v]]), OutShowAny
+        otherwise: VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[v]]), OutShowAny), OutShowAny
 
 # A bound the runtime's packing takes by itself.
 IsPackingBound: fn Text -> Bool
@@ -888,6 +894,12 @@ NameValue: unbounded fn Lx, Env, SName, Range -> Vl
 fn NameValue lx, env, n, span = match env.names["#whole@{span.start}:{span.end}"]:
     ? (BnLocal rs, mode, lt): LocalPlace rs, mode, lt
     otherwise: NameValueOf lx, env, n, span
+
+# `?QualifiedField` where no name of the environment hides the receiver's.
+?QualifiedFieldIn: fn Lx, Env, Expr, Text, Ident -> ?SName
+fn ?QualifiedFieldIn lx, env, recv, sigils, name = match recv.kind:
+    EName r: if HasKey env.names, (SNameKey r): nil else: ?QualifiedField lx.g, lx.home, recv, sigils, name
+    otherwise: nil
 
 NameValueOf: unbounded fn Lx, Env, SName, Range -> Vl
 fn NameValueOf lx, env, n, span:
@@ -1713,6 +1725,13 @@ fn IsNamedArg a = match a.?name:
     ? ignore: True
     nil: False
 
+# Whether a constructor has a `$` field: its arguments there are taken whole
+# (`CtorArgs`), so a line that applies it makes their readers live dynamics (`WholeArgs`).
+IsDynamicFieldCtor: fn Lx, Text -> Bool
+fn IsDynamicFieldCtor lx, qk = match lx.g.ctors[qk]:
+    ? c: Fold c.args, False, \|seen, t| seen or (LayerOf t) == LyDyn
+    nil: False
+
 # A constructor's arguments, by position or by field name, owned, an `Rc` where the
 # field is recursive.
 CtorArgs: unbounded fn Lx, Env, CtorInfo, [Arg] -> [Ex]
@@ -1724,7 +1743,13 @@ fn CtorArgs lx, env, c, args:
     else: Each args, \|a| ? a.value
     Each (Range0 (Len ordered)), \|i| match ordered[i]:
         ? (? x):
-            let v = Own (ValueOf lx, env, x)
+            # a `$` field holds a `Dynamic` (Type System ch. 1, field sigils): its value
+            # goes in whole, the live dynamic its line made for a reader (`WholeArgs`,
+            # `IsDynamicFieldCtor`), never the reader's value at the moment
+            let wholeAt = (not lx.whole) and (LayerOf (Or c.args[i], TyErr)) == LyDyn
+            let lxw = update lx:
+                &_.whole <= True
+            let v = if wholeAt: Own (ValueOf lxw, env, x) else: Own (ValueOf lx, env, x)
             if c.owner == "Prelude.Error" and i == 0: v
             else: if RcField lx, c.name, i: XCall (RefRuntime "std::Rc::new"), [[v]] else: v
         otherwise: (XCall (RefRuntime "std::Default::default"), [[]])
