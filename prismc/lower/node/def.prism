@@ -1341,6 +1341,16 @@ fn ResultOf wx, benv, menv, x:
 # the live dynamic made for it here (`WholeArgsAt`), each event its port's.
 WholeResultOf: unbounded fn Wx, Env, Env, Expr -> ((Wres, Wx))
 fn WholeResultOf wx, benv, menv, x:
+    let ?named = match (Ungrouped x).kind:
+        EName n: if (Len n.path) == 1: menv.names[SNameKey n] else: nil
+        otherwise: nil
+    match ?named:
+        # the bundle a line of the generation named whole (`both <- @Counter _`, `@ both`)
+        ? (BnParts bs): WholeNamedOf wx, benv, x, bs
+        otherwise: WholeWrittenOf wx, benv, menv, x
+
+WholeWrittenOf: unbounded fn Wx, Env, Env, Expr -> ((Wres, Wx))
+fn WholeWrittenOf wx, benv, menv, x:
     let lx = wx.lx
     let full = TypeAt lx, x.span
     let readers = Filter (ExprsIn x), \|y| match y.kind:
@@ -1350,6 +1360,82 @@ fn WholeResultOf wx, benv, menv, x:
     let lxw = update lx:
         &_.whole <= True
     (((WrPlain (Own (ValueOf lxw, be1, x)), (OutTyOf lx, full)), wx1))
+
+# A named bundle as one value (`WholeResultOf`): each part by its binding. An event part
+# is the event of a port it fires, made before the node (as a named event's value form
+# is, `PreBindName`); a dynamic part a live `Dynamic` over the node's link (`LiveDynamic`);
+# a plain part its value at the build.
+WholeNamedOf: unbounded fn Wx, Env, Expr, [?Bn] -> ((Wres, Wx))
+fn WholeNamedOf wx, benv, x, parts:
+    let lx = wx.lx
+    let full = TypeAt lx, x.span
+    let tys = BundlePartTys full
+    let stem = Snake (SrcText lx, lx.file, x.span)
+    let builds = match (Ungrouped x).kind:
+        EName n: match benv.names[SNameKey n]:
+            ? (BnParts bs): PlainAtBuild parts, bs
+            otherwise: parts
+        otherwise: parts
+    let ((values, wx2)) = Fold builds, (([[]], wx)), \|((acc, w)), ?b|
+        let i = Len acc
+        let partTy = Or tys[i], TyErr
+        match ?b:
+            ? (BnEv r, ignore):
+                let et = OutTyOf lx, (Peel (Peel partTy))
+                let ((rs, w1)) = FreshName w, "{stem}_part{i}"
+                let pf = "{rs}_v_port"
+                let pt = OutRc (OutPort et)
+                let w2 = update (Connect w1, r, (SkPort "{rs}_v")):
+                    &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind pf), pt), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]]))
+                    &_.fields <= Push &_.fields, ((pf, pt, "part {i} of the bundle `{SrcText lx, lx.file, x.span}` as a value: the port it fires"))
+                    &_.moves <= Push &_.moves, ((pf, (XClone (XVar pf))))
+                (((Push acc, (XCall (RefRuntime "prism_rtl::Event::of"), [[(XRef (XVar pf))]])), w2))
+            ? (BnDyn ex, rds, t):
+                let ((dyn, w2)) = LiveDynamic w, "whole_{stem}_part{i}", ex, rds, t, "part {i} of the bundle `{SrcText lx, lx.file, x.span}`"
+                (((Push acc, dyn), w2))
+            ? (BnHold f, t):
+                let ((dyn, w2)) = LiveDynamic w, "whole_{stem}_part{i}", (XMethod (XField XSelf, f), "get", [[XCx]]), [[OwnRead f]], t, "part {i} of the bundle `{SrcText lx, lx.file, x.span}`"
+                (((Push acc, dyn), w2))
+            ? (BnLocal ex, ignore, ignore): (((Push acc, ex), w))
+            otherwise: (((Push acc, (Refusal "a bundle inside a named bundle a `rebuild`'s generation ends on")), w))
+    (((WrPlain (XTuple values), (OutTyOf lx, full)), wx2))
+
+# A dynamic of the node as a live `Dynamic` value (`WholeArgsAt` makes one for a reader a
+# line names): read through the node's link by a getter, its update event a port the
+# writes behind it fire, made once at the build and kept in a field. Its value before the
+# node is linked is the `{f}_init` of the one hold or dynamic `let` it reads, when that
+# has one; a read before the link is unreachable otherwise. Gives the build's local.
+LiveDynamic: fn Wx, Text, Ex, [Read], OutTy, Text -> ((Ex, Wx))
+fn LiveDynamic wx, stem, ex, reads, t, what:
+    let owner = "whole_owner"
+    let wx1 = if HasText wx.taken, owner: wx else: update wx:
+        &_.taken <= Push &_.taken, owner
+        &_.lets <= Push &_.lets, (DoLet (PaBind owner), (XCall (RefRuntime "prism_rtl::Link::<{wx.node}>::new"), [[]]))
+        &_.build <= Push &_.build, (DoExpr (XMethod (XVar owner), "link", [[(XRef (XVar "node"))]]))
+    let ((name, w1)) = FreshName wx1, stem
+    let port = "{name}_port"
+    let dyn = "{name}_dyn"
+    let ?first = match reads:
+        [[OwnRead f]]: if HasText w1.inited, f: ? (XVar "{f}_init") else: nil
+        otherwise: nil
+    let unlinked = match ?first:
+        ? ignore: XClone (XVar "at_build")
+        nil: XUnreachable
+    let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(XMethod (XVar "owner"), name, [[XCx]])), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=unlinked)]]
+    let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, t)
+    let linked = [[(DoLet (PaBind "link"), (XClone (XVar owner)))]]
+    let captured = match ?first:
+        ? v: Push linked, (DoLet (PaBind "at_build"), (XClone v))
+        nil: linked
+    let made = XBlock captured, (XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar port))]])
+    let w2 = update w1:
+        &_.taken <= Append &_.taken, [[port, dyn]]
+        &_.getters <= Push &_.getters, (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="{what}, read at the read point."))
+        &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind port), (OutRc (OutPort OutUnit))), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]])), (DoLet (PaTyped (PaBind dyn), (OutDyn t)), made)]]
+        &_.fields <= Append &_.fields, [[((port, (OutRc (OutPort OutUnit)), "`{name}` moved: its dynamic's update event")), ((dyn, (OutDyn t), "{what} as a live dynamic"))]]
+        &_.moves <= Append &_.moves, [[((port, (XClone (XVar port)))), ((dyn, (XClone (XVar dyn))))]]
+        &_.dynAnswers <= Push &_.dynAnswers, ((name, reads))
+    (((XClone (XVar dyn)), (OnceField w2, name)))
 
 ResultOfTyped: unbounded fn Wx, Env, Env, Expr, Ty, OutTy -> ((Wres, Wx))
 fn ResultOfTyped wx, benv, menv, x, full, t:
