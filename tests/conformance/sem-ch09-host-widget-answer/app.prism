@@ -1,0 +1,29 @@
+# A widget function's blueprint as a supplier's answer (Semantics ch. 9, "How a supplier
+# answers": "The supplier's blueprint is built when the child's place is built, in the
+# construction step of that tick, in the host's scope, and lives exactly as long as the
+# place"; a plain output is answered once, by a plain value). `@Answerer n` builds a place
+# of its own, which stands under the supplier's row at `0/[0]/0`, and its result is the
+# answer to the child's `Pad.Ask`. Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+tag Pad.Ask of Element Text:
+    name: Text
+
+@guest: @unit emit Ui.* | Pad.*
+@guest:
+    heard <- Pad.Ask(name="a")                                  # 0
+    Ui.Label($text=$"guest heard {heard}")                      # 1
+
+@Answerer: fn Text -> @Text
+fn @Answerer name:
+    Ui.Label($text=$"answering {name}")                         # 0
+    @ "yes {name}"
+
+@host: @unit
+@host:
+    ignore <- @HostDocument @guest, \|p, e| match e:            # 0/[p]
+        Pad.Ask(name=n): @Answerer n
+        otherwise: @Element e

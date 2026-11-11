@@ -1,0 +1,7 @@
+# Derived by hand from Semantics ch. 9 ("How a supplier answers": the supplier's blueprint is built when the child's place is built, in the host's scope; a plain output is answered once, by a plain value, at the place's build; `@Element e` re-emits the child's element at `pos/[p]/0`) and ch. 8 (a widget function's lines take positions from 0 in the scope that builds it): the answering widget's label stands under the row of the child's place 0, the child's label is forwarded under the row of its place 1. Never run: prismc refuses the program.
+test a_widget_answers_a_place
+
+tick 0
+  added:
+    0/[0]/0: Ui.Label(text="answering a")
+    0/[1]/0: Ui.Label(text="guest heard yes a")
