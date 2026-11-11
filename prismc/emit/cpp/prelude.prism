@@ -561,6 +561,21 @@ std::vector<::prism_rtl::Segment> seated(std::span<const ::prism_rtl::Segment> a
 /// Seated segments as a node's arms match them.
 inline std::span<const ::prism_rtl::Segment> segments_of(const std::vector<::prism_rtl::Segment>& seated) { return seated; }
 
+/// Whether an answer's first segment is a position among `width` from `from` on: the
+/// positions of a generation too wide for an arm each (a widget that calls itself;
+/// claude/backend.md, "Positions").
+inline bool within_positions(std::span<const ::prism_rtl::Segment> at, ::std::uint32_t from, ::std::uint32_t width) {
+    return !at.empty() && at.front().kind() == ::prism_rtl::Segment::Kind::Pos && at.front().number() >= from && at.front().number() - from < width;
+}
+
+/// An answer's segments with the first, a position, counted from `from`: as a row
+/// numbered from 0 matches it.
+inline std::vector<::prism_rtl::Segment> rebased(std::span<const ::prism_rtl::Segment> at, ::std::uint32_t from) {
+    std::vector<::prism_rtl::Segment> out(at.begin(), at.end());
+    if (!out.empty() && out.front().kind() == ::prism_rtl::Segment::Kind::Pos) out.front() = ::prism_rtl::Segment::pos(out.front().number() - from);
+    return out;
+}
+
 /// `?ParseNat`.
 inline std::optional<Nat> parse_nat_opt(const Text& t) {
     std::string_view s = t.view();

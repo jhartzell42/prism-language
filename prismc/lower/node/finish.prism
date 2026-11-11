@@ -322,7 +322,7 @@ fn FinishNode wx0, qk, params, isRow:
     let subFields = Each wx.subs, \|((ev, m, t))| (("{m}_sub", (OutNamed (RefRuntime "std::Cell"), [[(OutOpt (OutNamed (RefRuntime "rt::Handle"), [[]]))]]), "the subscription to the parent's `!{ev}`"))
     let subInits = Each wx.subs, \|((ev, m, t))| (("{m}_sub", (XCall (RefRuntime "std::Cell::new"), [[XNone]])))
     let fallible = wx.fallible or isRow or (Len wx.builders) > 0 or (Len wx.gens) > 0
-    NodeDef(name=wx.node, prism=(BareName qk), doc=(DefinitionText wx.lx, qk), params=params, fields=(Append (Append (Append (Append wx.fields, wakesField), genFields), portFields), subFields), consts=consts, lets=wx.lets, inits=(Append wx.inits, (Append (Append (Append (Append wx.moves, wakesInit), genInits), portInits), subInits)), build=(Append (Append (Append (Append (Filter wx.build, IsOwnerLink), rowsBuilt), (Filter wx.build, \|d| not (IsOwnerLink d))), subscribed), startedReg), fallible=fallible, methods=(Append (Append (Append (Append (Append (Append (Append (Append evMethods, gatherIns), placeGetters), wx.getters), rowMethods), heard), hostMethods), gatheredMoved), (Append movedMethod, (PlaceMethods wx))), answers=(Append answers, forwards), hooks=hooks, builders=wx.builders, wakes=many, children=wx.rows, gens=wx.gens, subs=wx.subs, top=top, rowKind=(if isRow: (if isGen: GenerationRow else: ForRow) else: NotARow), hosted=hostedMethods)
+    NodeDef(name=wx.node, prism=(BareName qk), doc=(DefinitionText wx.lx, qk), params=params, fields=(Append (Append (Append (Append wx.fields, wakesField), genFields), portFields), subFields), consts=consts, lets=wx.lets, inits=(Append wx.inits, (Append (Append (Append (Append wx.moves, wakesInit), genInits), portInits), subInits)), build=(Append (Append (Append (Append (Filter wx.build, IsOwnerLink), rowsBuilt), (Filter wx.build, \|d| not (IsOwnerLink d))), subscribed), startedReg), fallible=fallible, methods=(Append (Append (Append (Append (Append (Append (Append (Append evMethods, gatherIns), placeGetters), wx.getters), rowMethods), heard), hostMethods), gatheredMoved), (Append movedMethod, (PlaceMethods wx))), answers=(Append (Append answers, forwards), (WideForward (Filter wx.gens, \|gd| (IsWideGen gd) and Emits wx, gd.pos))), hooks=hooks, builders=wx.builders, wakes=many, children=wx.rows, gens=wx.gens, subs=wx.subs, top=top, rowKind=(if isRow: (if isGen: GenerationRow else: ForRow) else: NotARow), hosted=hostedMethods)
 
 IsGeneration: fn Wx, Text -> Bool
 fn IsGeneration wx, name = (Len (Filter wx.gens, \|gd| gd.name == name)) > 0
@@ -732,7 +732,7 @@ fn PlaceMethods wx:
         let inner = MethDef(name="inner_gap", recv=RecvRef, params=[[]], cx=CxNone, ret=OutCount, body=[[]], tail=(Fold gaps, (XIndex 0), \|x, gd| XBin OpAdd, x, (GapGet gd)), doc="How many positions this row's own generations left unbuilt.")
         Append acc, (Append [[place]], (if (Len gaps) == 0: [[]] else: (if k == 0 and IsSomeNat wx.?based: [[seat, inner]] else: [[seat]])))
 
-let dummyGenDef = GenDef(name="", pos=Pos(scope=0, at=0), at=(XUnit), source=(XUnit), valueTy=OutUnit, select=(XUnit), transparent=False, width=0, moved="", early=False, gappy=False)
+let dummyGenDef = GenDef(name="", pos=Pos(scope=0, at=0), at=(XUnit), source=(XUnit), valueTy=OutUnit, select=(XUnit), transparent=False, width=0, moved="", early=False, gappy=False, rebased=False)
 
 # An answer's segments with the first, a position, seated (`PlaceMethods`), when the
 # node has gaps in the scope; else the segments as they came.

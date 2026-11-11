@@ -698,7 +698,10 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                     ? a:
                         # a clause that calls its own widget is lowered level by level, as an
                         # inlined widget is, to the same depth (`TooDeep`)
-                        if (Recursion wx.inlining, qk) > 16: TooDeep wx, qk, e
+                        # (a widget with plain parameters and no result, which calls itself
+                        # as deep as its data: rows shared by every call, `SharedClauseLine`)
+                        if (Recursion wx.inlining, qk) > 0 and IsSharable wx, v, e: SharedClauseLine wx, menv, a.value, qk, v, e, args
+                        else: if (Recursion wx.inlining, qk) > 16: TooDeep wx, qk, e
                         else:
                             let call = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
                             let inside = update wx:
