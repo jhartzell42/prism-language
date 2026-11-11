@@ -1,0 +1,15 @@
+# `@Element` written without its element is refused by the checker (Semantics ch. 8:
+# `@Element: fn Element r o -> @o emit r`), as a line and as a supplier's answer, so the
+# back end's guard (lower/expr.prism, "`@Element` without its element") is not reached.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+use Ui.*
+
+@child: @unit
+@child:
+    Ui.Label($text=$"child")
+
+@page: @unit
+@page:
+    @Element
+    ignore <- @HostDocument @child, \|p, e| @Element
