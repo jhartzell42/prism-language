@@ -141,6 +141,7 @@ fn TypesNamedIn tp, file:
 
 TyConNames: unbounded fn Ty -> [Text]
 fn TyConNames t = match t:
+    TyCon "Prelude.NonEmpty", [[c]]: TyConNames c
     TyCon n, args: Fold args, [[n]], \|acc, a| UnionTexts acc, (TyConNames a)
     TyFn ignore, ps, r: Fold ps, (TyConNames r), \|acc, a| UnionTexts acc, (TyConNames a)
     TyTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (TyConNames a)
@@ -549,6 +550,7 @@ fn TyPodable lx, t, seen = match t:
     TyTuple ts: Fold ts, True, \|ok, x| ok and TyPodable lx, x, seen
     TyArray e: TyPodable lx, e, seen
     TyMap k, v: (TyPodable lx, k, seen) and TyPodable lx, v, seen
+    TyCon "Prelude.NonEmpty", [[c]]: TyPodable lx, c, seen
     TyCon n, args:
         if HasText seen, n: True
         else:
@@ -580,6 +582,7 @@ fn TyHasEq lx, t, seen = match t:
     TyMap k, v: (TyHasEq lx, k, seen) and TyHasEq lx, v, seen
     TyElem ignore, ignore: True
     TyElemAny ignore: True
+    TyCon "Prelude.NonEmpty", [[c]]: TyHasEq lx, c, seen
     TyCon n, args:
         if HasText seen, n: True
         else:

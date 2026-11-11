@@ -127,9 +127,25 @@ fn ?LocalTarget sk, d, site = match site.rels["lfn:{site.callee}"]:
 
 # The relations a clause's walk starts from: its module's seeds, its parameters'.
 ClauseBase: unbounded fn Shrink, Def, FnClause -> (Text ==> Rel)
-fn ClauseBase sk, d, c = match sk.localBase[d.qk]:
-    ? b: ParamRelsOn b, c.params
-    nil: ParamRelsOn (Insert (Or sk.seeds[d.home], {}), "file:", Rel(param=d.file, strict=False)), c.params
+fn ClauseBase sk, d, c:
+    let base = match sk.localBase[d.qk]:
+        ? b: ParamRelsOn b, c.params
+        nil: ParamRelsOn (Insert (Or sk.seeds[d.home], {}), "file:", Rel(param=d.file, strict=False)), c.params
+    NonEmptyParams sk, d, c, base
+
+# A parameter the signature types `[a]+` or `(K ==> V)+` is known non-empty from the
+# clause's first line (`ne:`, as a pattern that took an element shows; Type System ch. 2,
+# "Collections").
+NonEmptyParams: fn Shrink, Def, FnClause, (Text ==> Rel) -> (Text ==> Rel)
+fn NonEmptyParams sk, d, c, base = match sk.g.vals[d.qk]:
+    ? v: match v.scheme.ty:
+        TyFn ignore, declared, ignore: Fold (Range0 (Len c.params)), base, \|m, i| match ((c.params[i], declared[i])):
+            ((? p, ? (TyCon "Prelude.NonEmpty", ignore))): match p.kind:
+                PName n: Insert m, "ne:{SNameKey n}", noRel
+                otherwise: m
+            otherwise: m
+        otherwise: base
+    nil: base
 
 # The key a site's name calls: an operator by its spelling, as inference reads it; a
 # template call's `<@Name` as `@Name`, else `Name`, as lowering reads it.

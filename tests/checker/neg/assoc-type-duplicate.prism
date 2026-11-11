@@ -1,0 +1,16 @@
+# `duplicate-name`: an associated type is a type-level name of its trait's module (Type
+# System rulings round 7, AK), so it and a type of that module cannot share a name, in
+# either order. Written by Claude on the claude-bugs branch; subject to change.
+type Item = record:
+    count: Nat
+
+trait ^Box a:
+    type Item
+    Open: fn a -> Nat
+
+trait ^Bag a:
+    type Stuff
+    Pour: fn a -> Nat
+
+type Stuff = record:
+    label: Text

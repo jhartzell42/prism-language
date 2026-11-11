@@ -77,12 +77,15 @@ fn CallGlobal env, st0, n, args, span, explicit, cspan:
     let name = SNameKey n
     let st1 = CollisionAt env, st0, why, name, n.span
     let st = match ?qk:
-        ? qk: NoteGlobal st1, n.span, qk
+        ? qk: NoteGlobal st1, n.span, (if why == "answer": AnswerTag qk else: qk)
         nil: st1
     match ?qk:
         nil: ((TyErr, (Err st, "unknown-name", n.span, "nothing declares `{name}` here")))
         ? qk:
             if why == "tag": TagApp env, st, qk, args, span, cspan
+            else: if why == "answer":
+                let ((t, st2)) = AnswerConstructor env, st, (AnswerTag qk), n.span
+                ApplyFn env, (NoteCallee st2, n.span, cspan, t), name, t, args, span
             else: if (IsLocalMaker qk) and not env.inUpdate: ((TyErr, (LocalOutside st, qk, span)))
             else: match env.g.vals[qk]:
                 ? v:
@@ -449,7 +452,7 @@ CtorApp: unbounded fn Env, St, CtorInfo, [Arg], Range, Range -> ((Ty, St))
 fn CtorApp env, st, c, args, span, cspan:
     let ((self, st0, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), span, [[]]
     let fieldTys = Each c.args, \|t| SubstQ inst, t
-    let st1 = NoteTy st0, cspan, (TyFn CBound, fieldTys, self)
+    let st1 = NamedTwice (NoteTy st0, cspan, (TyFn CBound, fieldTys, self)), args
     let named = Filter args, \|a| a.?name != nil
     let lifts = (Len c.params) == 0
     if (Len named) > 0 and (Len c.fields) > 0:
@@ -492,7 +495,8 @@ TagApp: unbounded fn Env, St, Text, [Arg], Range, Range -> ((Ty, St))
 fn TagApp env, st, name, args, span, cspan = match env.g.tags[name]:
     nil: ((TyErr, (Err st, "unknown-name", span, "no tag `{name}`")))
     ? tg:
-        let ((out, st1, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span, [[]]
+        let ((out, st1a, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span, [[]]
+        let st1 = NamedTwice st1a, args
         let element = tg.kind == "Element"
         let ((layer, st2)) = Fold args, (("", st1)), \|((lay, s)), a| match a.?name:
             ? id: match ?FieldOfTag tg, id.name:
@@ -600,7 +604,7 @@ fn InferBareLambda env, st, e, ?expected:
                 else: (([[]], nil, (Err st, "mismatch", e.span, "this lambda takes {CountWord (Len params)} parameter{if (Len params) == 1: "" else: "s"}; here {CountWord (Len ps)} {if (Len ps) == 1: "is" else: "are"} wanted")))
             otherwise: (([[]], nil, st))
         nil: (([[]], nil, st))
-    let ((env2, ptys, st1)) = Fold (Range0 (Len params)), ((env, [[]], st0)), \|((en, acc, s)), i|
+    let ((env2, ptys, st1)) = Fold (Range0 (Len params)), ((env, [[]], (BoundTwice env, st0, params))), \|((en, acc, s)), i|
         let p = Or params[i], Pattern(kind=PIgnore, span=e.span)
         let ((pt, s2)) = match expParams[i]:
             ? t: ((t, s))
@@ -651,6 +655,14 @@ fn TopicFieldExpr span, f = Expr(kind=(EField (TopicExpr span), "", f), span=spa
 
 TopicIndexExpr: fn Range, Expr -> Expr
 fn TopicIndexExpr span, x = Expr(kind=(EIndex (TopicExpr span), x), span=span)
+
+# `collision`: a construction names a field once.
+NamedTwice: fn St, [Arg] -> St
+fn NamedTwice st, args:
+    let ((ignore, checked)) = Fold args, (([[]], st)), \|((seen, s)), a| match a.?name:
+        ? id: if HasText seen, id.name: ((seen, (Err s, "collision", a.span, "`{id.name}` is given twice"))) else: (((Push seen, id.name), s))
+        nil: ((seen, s))
+    checked
 
 ArgNamed: fn Arg, Text -> Bool
 fn ArgNamed a, f = match a.?name:

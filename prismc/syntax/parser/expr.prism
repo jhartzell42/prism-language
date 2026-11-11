@@ -116,9 +116,13 @@ fn ClimbStep c, min, commas:
     let p = c.p
     # `as`, level 12: "a cast, a type on its right".
     if (AtKw p, "as") and min <= 12:
-        let ((ty, p2)) = ParseType (Adv p)
-        # `ranks as [Text]+?`: the checked cast's `?` (doubt PQ).
-        let checked = (Kind p2) == (KFree "?") and (Tk p2).touches
+        let ((ty0, p2)) = ParseType (Adv p)
+        # `ranks as [Text]+?`: the checked cast's `?` (doubt PQ). After a parenthesized map
+        # type, `(K ==> V)+?` is one operator token to the lexer, read here as the non-empty
+        # mark and the `?`.
+        let afterParenthesis = PlusTouchesParenthesis p2, "+?"
+        let checked = afterParenthesis or ((Kind p2) == (KFree "?") and (Tk p2).touches)
+        let ty = if afterParenthesis: Type(kind=(TNonEmpty ty0), span=(To ty0.span, (Here p2))) else: ty0
         let p3 = if checked: Adv p2 else: p2
         update c:
             &_.lhs <= Expr(kind=(ECast &_.lhs, ty, checked), span=(To &_.lhs.span, (Prev p3)))
@@ -203,8 +207,7 @@ fn PostfixStep e, p, commas = match Kind p:
         ((Expr(kind=(ETypeArgs e, types), span=(To e.span, (Prev q))), q, True))
     KNonEmpty:
         let span = Here p
-        let q = OutOfScope (Adv p), span, "non-empty arrays", "the non-empty mark `+` is out of this compiler"
-        ((Expr(kind=(ENonEmpty e), span=(To e.span, span)), q, True))
+        ((Expr(kind=(ENonEmpty e), span=(To e.span, span)), (Adv p), True))
     otherwise: ((e, p, False))
 
 FieldOrMethod: unbounded fn Expr, Ps, Bool -> ((Expr, Ps, Bool))

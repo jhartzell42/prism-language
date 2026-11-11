@@ -62,6 +62,12 @@ fn UnifyNoted st, expected, found, span = match Walk st, found:
     TySig "!", i: match (((Walk st, i), (Walk st, expected))):
         (((TyCon "Prelude.Error", [[]]), (TySig "!", (TySig "~", ignore)))): st
         otherwise: Unify st, expected, found, span
+    # the one implicit conversion: a `[a]+` fills a place already known to want an `[a]`
+    # (Type System ch. 2, "Collections"; there is no subtyping)
+    TyCon "Prelude.NonEmpty", [[c]]: match Walk st, expected:
+        TyArray ignore: Unify st, expected, c, span
+        TyMap ignore, ignore: Unify st, expected, c, span
+        otherwise: Unify st, expected, found, span
     otherwise: Unify st, expected, found, span
 
 # The variable of an `Error` value at `span` (`St.faultVars`).

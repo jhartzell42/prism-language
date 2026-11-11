@@ -1,0 +1,9 @@
+tests/checker/neg/assoc-type-duplicate.prism:8: error[duplicate-name]: `Item` is already a type of this module
+        type Item
+        ^^^^^^^^^
+  fix: rename one of them, or declare the trait in a module of its own
+tests/checker/neg/assoc-type-duplicate.prism:15: error[duplicate-name]: `Stuff` is already an associated type of `^Bag` in this module
+    type Stuff = record:
+    ^^^^^^^^^^^^^^^^^^^^
+  fix: rename one of them, or declare the trait in a module of its own
+2 errors

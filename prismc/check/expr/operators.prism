@@ -242,7 +242,8 @@ fn InferIndex env, st, recv, idx, span:
     match Walk st3, coll0:
         TyCon "Text", [[]]: ((TyErr, (ErrFix st3, "mismatch", span, "a text has no index: a position in a text is a cursor", "walk it with `Front` and `?Step`, or make a cursor from a byte offset with `?CursorAt`")))
         otherwise:
-            let ((coll, keyTy)) = match Walk st3, coll0:
+            # a non-empty collection indexes as the collection it is
+            let ((coll, keyTy)) = match Walk st3, (Or (?NonEmptyColl st3, coll0), coll0):
                 TyMap ignore, ignore: (((TyMap k, v), k))
                 TyCon "Table", ignore: (((TyCon "Table", [[k, v]]), k))
                 TyCon "Buffer", ignore: (((TyCon "Buffer", [[v]]), tNat))

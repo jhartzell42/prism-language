@@ -84,10 +84,51 @@ fn BindPattern env, st, p, t, refutable = match p.kind:
         Fold (Range0 (Len ps)), ((env, st3)), \|((en, s)), i| BindPattern en, s, (Or ps[i], Pattern(kind=PIgnore, span=p.span)), (Or vs[i], TyErr), refutable
     PArray ps:
         let ((v, st2)) = FreshVar st, False, ""
-        let st3 = Unify st2, t, (TyArray v), p.span
+        # a non-empty array is matched as the array it is, and has no length zero (Type
+        # System ch. 2, "Exhaustiveness, with rows")
+        let st3 = match ?NonEmptyColl st2, t:
+            ? c:
+                let s = Unify st2, c, (TyArray v), p.span
+                if (Len ps) == 0: ErrFix s, "unreachable", p.span, "a non-empty array has no length zero", "remove the arm" else: s
+            nil: Unify st2, t, (TyArray v), p.span
         Fold ps, ((env, st3)), \|((en, s)), q| BindPattern en, s, q, v, refutable
     PGroup q: BindPattern env, st, q, t, refutable
     PFamily q: BindFamily env, st, (Dotted q.path), t, p.span
+
+# `collision`: the patterns of one parameter list, or one pattern, bind a name once. A
+# constructor a pattern names binds nothing.
+BoundTwice: unbounded fn Env, St, [Pattern] -> St
+fn BoundTwice env, st, patterns:
+    let binders = Fold patterns, [[]], \|acc, p| Append acc, (BindersOf env, p)
+    let ((ignore, checked)) = Fold binders, (([[]], st)), \|((seen, s)), ((name, at))|
+        if HasText seen, name: ((seen, (Err s, "collision", at, "`{name}` is bound twice here"))) else: (((Push seen, name), s))
+    checked
+
+# The binders of a pattern with where each stands (`PatternBinders`), less the names that
+# are constructors where the pattern stands.
+BindersOf: unbounded fn Env, Pattern -> [((Text, Range))]
+fn BindersOf env, p = match p.kind:
+    PName n: if (Len n.path) > 1 or ((Len n.sigils) == 0 and (IsUpperText (Or n.path[0], "")) and (IsCtorName env, n)): [[]] else: [[((SNameKey n, n.span))]]
+    PCtor ignore, ps: Fold ps, [[]], \|acc, q| Append acc, (BindersOf env, q)
+    PRecord ignore, fs, ignore: Fold fs, [[]], \|acc, f| Append acc, (BindersOf env, f.pattern)
+    PSigil ignore, q: BindersOf env, q
+    PTuple ps: Fold ps, [[]], \|acc, q| Append acc, (BindersOf env, q)
+    PArray ps: Fold ps, [[]], \|acc, q| Append acc, (BindersOf env, q)
+    PGroup q: BindersOf env, q
+    otherwise: [[]]
+
+# `collision`: a written name is bound once per block (Semantics ch. 4, "Binding groups and
+# cycles"), by its `let`s and binds; `_` and `$_` are rebound freely.
+BlockBoundOnce: unbounded fn Env, St, [Stmt] -> St
+fn BlockBoundOnce env, st, stmts:
+    let binders = Fold stmts, [[]], \|acc, s| match s.kind:
+        SBind p, ignore, ignore: Append acc, (BindersOf env, p)
+        SLet p, ignore, ignore: Append acc, (BindersOf env, p)
+        otherwise: acc
+    let ((ignore, checked)) = Fold binders, (([[]], st)), \|((seen, s)), ((name, at))|
+        if name == "_" or name == "$_": ((seen, s))
+        else: if HasText seen, name: ((seen, (ErrFix s, "collision", at, "`{name}` is bound twice in this block", "a written name is bound once per block: give the second another name"))) else: (((Push seen, name), s))
+    checked
 
 IsCtorName: fn Env, SName -> Bool
 fn IsCtorName env, n:

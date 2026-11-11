@@ -371,7 +371,7 @@ fn ErrorPat lx, fps, ty, mode, fresh:
 # `[[a, b]]`: the length, then each element by index.
 ArrayPat: unbounded fn Lx, [Pattern], Ty, Holding, Text -> PatOut
 fn ArrayPat lx, ps, ty, mode, fresh:
-    let et = match Peel ty:
+    let et = match PlainCollections (Peel ty):
         TyArray x: x
         otherwise: TyErr
     let arr = LocalPlace (XVar fresh), mode, (OutTyOf lx, (Peel ty))
