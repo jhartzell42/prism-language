@@ -329,9 +329,20 @@ fn FinishNode wx0, qk, params, isRow:
     let subFields = Each wx.subs, \|((ev, m, t))| (("{m}_sub", (OutNamed (RefRuntime "std::Cell"), [[(OutOpt (OutNamed (RefRuntime "rt::Handle"), [[]]))]]), "the subscription to the parent's `!{ev}`"))
     let subInits = Each wx.subs, \|((ev, m, t))| (("{m}_sub", (XCall (RefRuntime "std::Cell::new"), [[XNone]])))
     let fallible = wx.fallible or isRow or (Len wx.builders) > 0 or (Len wx.gens) > 0
+    # a row that builds its generations before it is numbered (`Wx.lateGens`): the step
+    # that numbers each generation's row, left by the row (`NumberedByParent`), and
+    # whether the row itself is numbered yet
+    let lateRows = Filter wx.gens, \|gd| HasText wx.lateRowGens, gd.name
+    let numberFields = Append (Each lateRows, \|gd| (("{gd.name}_number", (OutCell (OutOpt laterTy)), "what numbers the current row of `{gd.name}`, until this row is numbered itself"))), (if wx.lateGens: [[(("numbered", (OutNamed (RefRuntime "std::Cell"), [[OutBool]]), "whether the row is numbered yet"))]] else: [[]])
+    let numberInits = Append (Each lateRows, \|gd| (("{gd.name}_number", (XCall (RefRuntime "std::RefCell::new"), [[XNone]])))), (if wx.lateGens: [[(("numbered", (XCall (RefRuntime "std::Cell::new"), [[XBool False]])))]] else: [[]])
+    # (the links, the generations built at once and the row's own step left with its
+    # block stand outside what waits for the row's number, `LateGenerations`)
+    let nowSteps = if wx.lateGens: BuildSteps (PhaseOf sinks, 1), True else: [[]]
+    let laterSteps = if wx.lateGens: BuildSteps (PhaseOf sinks, 2), True else: [[]]
+    let lateGenerations = Append (Append (Append (Filter wx.build, IsOwnerLink), links), (LateNumbering (Append (Append (Append laterSteps, (Filter wx.build, \|d| not (IsOwnerLink d))), subscribed), startedReg))), nowSteps
     # what the build does once the node is made
     let afterNode = Append (Append (Append (Append (Filter wx.build, IsOwnerLink), rowsBuilt), (Filter wx.build, \|d| not (IsOwnerLink d))), subscribed), startedReg
-    NodeDef(name=wx.node, prism=(BareName qk), doc=(DefinitionText wx.lx, qk), params=params, fields=(Append (Append (Append (Append wx.fields, wakesField), genFields), portFields), subFields), consts=consts, lets=wx.lets, inits=(Append wx.inits, (Append (Append (Append (Append wx.moves, wakesInit), genInits), portInits), subInits)), build=(if wx.baseLate: LateNumbering afterNode else: afterNode), fallible=fallible, methods=(Append (if wx.baseLate: [[(NumberPlaces wx)]] else: [[]]), (Append (Append (Append (Append (Append (Append (Append (Append evMethods, gatherIns), placeGetters), wx.getters), rowMethods), heard), hostMethods), gatheredMoved), (Append movedMethod, (PlaceMethods wx)))), answers=(Append (Append answers, forwards), (WideForward (Filter wx.gens, \|gd| (IsWideGen gd) and Emits wx, gd.pos))), hooks=hooks, builders=wx.builders, wakes=many, children=wx.rows, gens=wx.gens, subs=wx.subs, top=top, rowKind=(if isRow: (if isGen: GenerationRow else: ForRow) else: NotARow), hosted=hostedMethods)
+    NodeDef(name=wx.node, prism=(BareName qk), doc=(DefinitionText wx.lx, qk), params=params, fields=(Append (Append (Append (Append (Append wx.fields, wakesField), genFields), portFields), subFields), numberFields), consts=consts, lets=wx.lets, inits=(Append wx.inits, (Append (Append (Append (Append wx.moves, wakesInit), genInits), portInits), (Append subInits, numberInits))), build=(Append (if wx.lateGens: lateGenerations else: if wx.baseLate: LateNumbering afterNode else: afterNode), wx.numberedBy), fallible=fallible, methods=(Append (if wx.baseLate: [[(NumberPlaces wx)]] else: [[]]), (Append (Append (Append (Append (Append (Append (Append (Append evMethods, gatherIns), placeGetters), wx.getters), rowMethods), heard), hostMethods), gatheredMoved), (Append movedMethod, (PlaceMethods wx)))), answers=(Append (Append answers, forwards), (WideForward (Filter wx.gens, \|gd| (IsWideGen gd) and Emits wx, gd.pos))), hooks=hooks, builders=wx.builders, wakes=many, children=wx.rows, gens=(Each wx.gens, \|gd| if HasText wx.lateRowGens, gd.name: LateRowSelect gd else: gd), subs=wx.subs, top=top, rowKind=(if isRow: (if isGen: GenerationRow else: ForRow) else: NotARow), hosted=hostedMethods)
 
 IsGeneration: fn Wx, Text -> Bool
 fn IsGeneration wx, name = (Len (Filter wx.gens, \|gd| gd.name == name)) > 0
@@ -411,7 +422,9 @@ fn BuildSteps sk, atBuild:
     # line (`ScopeSteps`)
     Fold (Range0 ((Len wx.scopes) + 1)), [[]], \|acc, i|
         let k = Or ((Len wx.scopes) -? i), 0
-        if HasNat wx.lateHosts, k: acc else: Append acc, (ScopeSteps sk, atBuild, k, ((Len wx.scopes) + 1))
+        # (what a row that builds its generations before it is numbered does at once is
+        # of its own scope, `Wx.genPhase`)
+        if (HasNat wx.lateHosts, k) or (wx.genPhase == 1 and k != 0): acc else: Append acc, (ScopeSteps sk, atBuild, k, ((Len wx.scopes) + 1))
 
 # One scope's part of the construction step: its builders and generations in the order
 # of their places, then (at the build) its live hosted places' entries. A host of the
@@ -433,17 +446,23 @@ fn ScopeSteps sk, atBuild, k, fuel = match fuel -? 1:
         let Builder = \|b|
             let before = Each (Filter wx.snaps, \|sn| sn.before and sn.builder == b.name), Take
             let after = Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == b.name), Take
-            Append (LateChild b), (Append (Push before, (DoExpr (TryOf (XMethod recv, "{b.name}_build", [[XCx]])))), after)
+            if wx.genPhase == 1: [[]] else: Append (LateChild b), (Append (Push before, (DoExpr (TryOf (XMethod recv, "{b.name}_build", [[XCx]])))), after)
         # a `rebuild` handing back a dynamic: its snapshot taken after the generation is built
         let Gen = \|gd|
             # (an early generation is built already; one numbered late, `Wx.lateNumbered`,
             # sends its places here, the generations above it built)
             let built = if atBuild and gd.early: (if HasText wx.lateNumbered, gd.name: DoExpr (TryOf (XApply (XVar "{gd.name}_number"), [[XCx]])) else: DoExpr (XUnit)) else: if atBuild: DoExpr (TryOf (XMethod recv, "{gd.name}_build", [[XCx]])) else: DoIf (XMethod (XField XSelf, "{gd.name}_stale"), "replace", [[(XBool False)]]), [[DoExpr (TryOf (XMethod (XSelf), "{gd.name}_build", [[XCx]]))]], [[]]
-            Append [[built]], (Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == gd.name), Take)
+            # (a row that builds its generations before it is numbered, `Wx.lateGens`:
+            # at once the generations whose rows are numbered late, `Wx.lateRowGens`;
+            # once it is numbered those rows' numbers, and every other step whole)
+            let lateRow = k == 0 and HasText wx.lateRowGens, gd.name
+            if wx.genPhase == 1 and not lateRow: [[]]
+            else: if wx.genPhase == 2 and lateRow: [[(NumberTaken recv, gd.name)]]
+            else: Append [[built]], (Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == gd.name), Take)
         # at the build, a scope's live hosted places take their entries once its builders and
         # generations have run (the structure they read has settled), before the host whose
         # child they are builds its rows over them
-        let entries = if atBuild: Each (Filter wx.places, \|pl| pl.pos.scope == k and pl.entry != "" and pl.getter != ""), \|pl| EntryTake recv, pl else: [[]]
+        let entries = if atBuild and wx.genPhase != 1: Each (Filter wx.places, \|pl| pl.pos.scope == k and pl.entry != "" and pl.getter != ""), \|pl| EntryTake recv, pl else: [[]]
         # a scope's builders and generations in the order of their places (ruling TC: places
         # are counted as they are built), so a `for` whose source reads the result of a
         # clause widget above it finds that generation built
@@ -774,6 +793,35 @@ fn LateNumbering build:
     let kept = XBlock [[(DoLet (PaBind "node"), (XClone (XVar "node"))), (DoLet (PaTyped (PaBind "number"), laterTy), (XLater (XBlock build, (XUnit))))]], (XVar "number")
     [[(DoAssign (XDeref (XMethod (XField (XVar "node"), "number_later"), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[kept]]))]]
 
+# A row numbered late that builds its generations in its build (`Wx.lateGens`,
+# `LateGenerations`): its block ends on a late plain result, which the block that built
+# the row reads right after the row's build (`result_value`), from a generation the row
+# builds after its own node. So the row builds each such generation at once, its rows
+# with no `base` and numbered late in turn (`ArmRowOf`, `weakLate`), and what waits for
+# the row's number is the rest: each of those rows numbered, in the order of their
+# places (`{name}_number`, `NumberTaken`), the builders, the places sent, the
+# subscriptions. Every row inside such a row does the same, so each tells its block what
+# its generations left unbuilt when it is built.
+
+# The step that numbers the current row of a generation, taken and run.
+NumberTaken: fn Ex, Text -> Do
+fn NumberTaken recv, name = DoScope [[(DoLet (PaBind "number"), (XMethod (XMethod (XField recv, "{name}_number"), "borrow_mut", [[]]), "take", [[]])), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "number"]]), (XVar "number"), [[(DoExpr (TryOf (XApply (XVar "number"), [[XCx]])))]], [[]])]]
+
+# A generation of such a row whose rows are numbered late: built again once the row is
+# numbered (its source moved in a later tick), its new row is numbered at once.
+LateRowSelect: fn GenDef -> GenDef
+fn LateRowSelect gd = update gd:
+    &_.select <= XBlock [[(DoLet (PaBind "row"), gd.select), (DoIf (XMethod (XField XSelf, "numbered"), "get", [[]]), [[(NumberTaken XSelf, gd.name)]], [[]])]], (XVar "row")
+
+# The sinks with the part of the construction step to write (`Wx.genPhase`).
+PhaseOf: fn Sinks, Nat -> Sinks
+fn PhaseOf sk, phase = update sk:
+    &_.wx <= WithGenPhase &_.wx, phase
+
+WithGenPhase: fn Wx, Nat -> Wx
+fn WithGenPhase wx, phase = update wx:
+    &_.genPhase <= phase
+
 # (`prism_rtl::cx::Later`: the crate's root does not export the name)
 let laterTy = OutNamed (RefRuntime "prism_rtl::cx::Later"), [[]]
 
@@ -783,7 +831,9 @@ fn NumberPlaces wx:
     let set = DoExpr (XMethod (XField XSelf, "base"), "set", [[(XVar "base")]])
     let taken = DoLet (PaBind "number"), (XMethod (XMethod (XField XSelf, "number_later"), "borrow_mut", [[]]), "take", [[]])
     let run = DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "number"]]), (XVar "number"), [[(DoExpr (TryOf (XApply (XVar "number"), [[XCx]])))]], [[]]
-    MethDef(name="number_places", recv=RecvRc, params=[[(("base", OutCount))]], cx=CxMut, ret=(OutNamed (RefRuntime "rt::Done"), [[]]), body=[[set, taken, run]], tail=(XCtor (RefRuntime "std::Ok"), [[XUnit]]), doc="The row's places numbered from `base`, where its first position stands as built, and sent: the row was built before its block's node, below a generation built after it (ruling TC: places are counted as they are built).")
+    # (a row that builds its generations at its build tells them it is numbered now, `LateRowSelect`)
+    let told = if wx.lateGens: [[(DoExpr (XMethod (XField XSelf, "numbered"), "set", [[(XBool True)]]))]] else: [[]]
+    MethDef(name="number_places", recv=RecvRc, params=[[(("base", OutCount))]], cx=CxMut, ret=(OutNamed (RefRuntime "rt::Done"), [[]]), body=(Append (Append [[set]], told), [[taken, run]]), tail=(XCtor (RefRuntime "std::Ok"), [[XUnit]]), doc="The row's places numbered from `base`, where its first position stands as built, and sent: the row was built before its block's node, below a generation built after it (ruling TC: places are counted as they are built).")
 
 # The node's method that gives a position of scope `k` as built, and the one that gives
 # back the position an answer's names (`PlaceMethods`).

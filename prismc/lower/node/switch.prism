@@ -1041,11 +1041,15 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
     # (a row built before its block's node and numbered after it, `NumberedLate`, is
     # built with no `base`: the field is a cell `number_places` sets, and what the build
     # does after the row's node waits in `number_later`, `LateNumbering`)
-    let numberedLate = transparent and (not zeroBased) and (IsLinkTy parentTy) and NumberedLate wx, wx.pos
+    # (and a row of a generation of a row that builds its generations before it is
+    # numbered, `Wx.lateGens`: built after that row's node, with no `base` either, it
+    # leaves that row the step that numbers it, `NumberedByParent`)
+    let weakLate = transparent and (not zeroBased) and (IsWeakTy parentTy) and wx.lateGens and wx.pos.scope == 0
+    let numberedLate = weakLate or (transparent and (not zeroBased) and (IsLinkTy parentTy) and NumberedLate wx, wx.pos)
     let baseField = if numberedLate: [[(("base", (OutNamed (RefRuntime "std::Cell"), [[OutCount]]), "where the row's first position stands as built, set when the row is numbered")), (("number_later", (OutCell (OutOpt laterTy)), "what the row's build does once it is numbered"))]] else: if transparent: [[(("base", OutCount, "where the row's first position stands as built"))]] else: [[]]
     let rowFields = Append (Push (Each fields, \|((f, t, bn))| ((f, t, "`{bn}`"))), (("parent", parentTy, "the node of the `rebuild`"))), baseField
     let rowInits = Append (Each fields, \|((f, ignore, ignore))| ((f, (XClone (XVar f))))), (if numberedLate: [[(("base", (XCall (RefRuntime "std::Cell::new"), [[XIndex 0]]))), (("number_later", (XCall (RefRuntime "std::RefCell::new"), [[XNone]])))]] else: if transparent: [[(("base", (XVar "base")))]] else: [[]])
-    let rowTaken = Append (Append nodeHooks, (Push (Push (Each fields, \|((f, ignore, ignore))| f), "parent"), "result_value")), [["base", "place", "seat", "inner_gap", "number_later", "number_places", "number"]]
+    let rowTaken = Append (Append nodeHooks, (Push (Push (Each fields, \|((f, ignore, ignore))| f), "parent"), "result_value")), [["base", "place", "seat", "inner_gap", "number_later", "number_places", "number", "numbered"]]
     # a shared row in a hosted scope holds no block to tell that a place of its may have
     # moved: it is built with `moved`, its caller's telling (`sharedMoved`,
     # `DocumentMoved`)
@@ -1069,6 +1073,8 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
     let r0000 = NewWx lxc, rowName, rowFields, rowInits, [[(("parent", (XClone (XVar "parent"))))]], [[]], {}, rowTaken, wx.inlining, ?hostedBy
     let r000 = update r0000:
         &_.baseLate <= numberedLate
+        &_.lateGens <= numberedLate and (wx.lateGens or IsLateBlock lxc, (if readsBlock: menv else: emptyEnv), body, 16)
+        &_.numberedBy <= if weakLate: [[(NumberedByParent wx, wx.pos, genName)]] else: [[]]
     let r00 = if (Len movedParam) == 0: r000 else: update r000:
         &_.taken <= Push &_.taken, "moved"
         &_.fields <= Push &_.fields, (("moved", movedTy, "what tells the row's host that a place of the row's may have moved"))
@@ -1129,22 +1135,31 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
                 &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=(XClone (XField XSelf, f)), doc="The clause's plain result, which the block that built the generation reads."))
             ((r2p, ? rt))
         # a late plain result: the row reads it from itself, its own rows built by then
+        # (a row numbered late reads it at its build: its generations are built there,
+        # `Wx.lateGens`, where each one's rows can be numbered after they are built)
         WrLate ex, rt: (((update r2:
-            &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=(if numberedLate: Refusal "the plain result of an arm or a clause that is built before its block's node and numbered after it, read from a generation the arm builds after its own node (a building `match` inside the arm whose result the arm gives)" else: ex), doc="The clause's plain result, which the block that built the generation reads."))), ? rt))
+            &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=(if numberedLate and not (r2.lateGens and (Len (UnnumberedSteps r2)) == 0): Refusal "the plain result of an arm or a clause that is built before its block's node and numbered after it, read from a generation the arm builds after its own node whose rows take their numbers as they are built (a `for`, a `rebuild` or a widget that calls itself beside the building `match` whose result the arm gives)" else: ex), doc="The clause's plain result, which the block that built the generation reads."))), ? rt))
         # a dynamic result: the row's getter `result` and `result_dynamic`, a write behind it
         # telling the block (`GenResult`, `DynClauseLine`)
         WrDyn ex, rds, rt: (((GenResult r2, genName, ex, rds, rt), nil))
         otherwise: ((r2, nil))
     let baseParam = if transparent and not numberedLate: [[(("base", OutCount))]] else: [[]]
+    # a row that builds its generations before it is numbered tells its block what they
+    # left unbuilt at once: a generation of its own that is built once it is numbered
+    # would be counted too late
+    let r3n = if r3.lateGens and (Len (Filter (UnnumberedSteps r3), \|counted| counted)) > 0: (update r3:
+        &_.build <= Push &_.build, (RefusalDo "a widget that calls itself in an arm or a clause that is built before its block's node and numbered after it, beside a line whose plain result the arm gives or below a building `match` or `if` of that arm")) else: r3
     # a shared row tells how many places it built: its positions less what its own
     # generations left unbuilt
     let ownGaps = (Len (Filter r3.gens, \|gd| gd.gappy and gd.pos.scope == 0)) > 0
     let positions = XIndex (Or (r2.pos.at -? r0.pos.at), 0)
-    let r3b = if not zeroBased: r3 else: update r3:
+    let r3b = if not zeroBased: r3n else: update r3n:
         &_.taken <= Push &_.taken, "built"
         &_.getters <= Push &_.getters, (MethDef(name="built", recv=RecvRef, params=[[]], cx=CxNone, ret=OutCount, body=[[]], tail=(if ownGaps: XBin OpSub, positions, (XMethod XSelf, "inner_gap", [[]]) else: positions), doc="How many places the row built (ruling TC: places are counted as they are built)."))
     let node = FinishNode r3b, rowName, (Append (Append (Append (Each fields, \|((f, t, ignore))| ((f, t))), liveParams), baseParam), (Append (Append [[(("parent", parentTy))]], hostedParams), movedParam)), True
-    let p2 = GenMarked p1, genName, r3b
+    let p2m = GenMarked p1, genName, r3b
+    let p2 = if not weakLate: p2m else: update p2m:
+        &_.lateRowGens <= AddText &_.lateRowGens, genName
     let passed0 = Each fields, \|((f, t, bn))| match binds[bn]:
         ? (BnLocal rs, mode, bt): Own (VlPlace rs, mode, bt)
         otherwise: XClone (XVar f)
@@ -1696,6 +1711,31 @@ fn NumberOf wx, pos, name, link, ?gap:
         ? g: [[(DoExpr (XMethod (XField (XVar "node"), "{name}_gap"), "set", [[g]]))]]
         nil: [[]]
     XBlock [[(DoLet (PaBind "row"), (XClone (XVar "row"))), (DoLet (PaBind "numbered_link"), (XClone (XVar link))), (DoLet (PaTyped (PaBind "number"), laterTy), (XLater (XBlock (Append [[owner, numbered]], gapSet), (XUnit))))]], (XVar "number")
+
+IsWeakTy: fn OutTy -> Bool
+fn IsWeakTy t = match t:
+    OutWeak ignore: True
+    otherwise: False
+
+# What a row that builds its generations before it is numbered (`Wx.lateGens`) cannot
+# build there: each builder of its own scope and each generation built after its node
+# whose rows are not numbered late (`Wx.lateRowGens`), with whether its places are
+# counted as built (a gappy generation's; a builder's are not).
+UnnumberedSteps: fn Wx -> [Bool]
+fn UnnumberedSteps wx = Append (Each (Filter wx.builders, \|b| b.pos.scope == 0), \|b| False), (Each (Filter wx.gens, \|gd| gd.pos.scope == 0 and (not gd.early) and not (HasText wx.lateRowGens, gd.name)), \|gd| gd.gappy)
+
+# What a row built after its block's node and numbered late (`ArmRowOf`, `weakLate`)
+# does at the end of its build: it leaves the block, itself a row numbered late that
+# builds its generations in its build (`Wx.lateGens`), the step that numbers it, in the
+# block's field `{name}_number`: the row's `number_places` with the generation's
+# position as the block has it built by then. The block calls the step when it is
+# numbered itself (`ScopeSteps`), or at once where the generation is built again after
+# that (`LateRowSelect`). `wx`: the block, `pos`: the generation's position in it.
+NumberedByParent: fn Wx, Pos, Text -> Do
+fn NumberedByParent wx, pos, genName:
+    let numbered = DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "parent"]]), (XUpgrade (XField (XVar "row"), "parent")), [[(DoExpr (TryOf (XMethod (XVar "row"), "number_places", [[(XMethod (XVar "parent"), (PlaceMethod pos.scope), [[XIndex pos.at]]), XCx]])))]], [[]]
+    let step = XBlock [[(DoLet (PaBind "row"), (XClone (XVar "node"))), (DoLet (PaTyped (PaBind "number"), laterTy), (XLater (XBlock [[numbered]], (XUnit))))]], (XVar "number")
+    DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "parent"]]), (XUpgrade (XField (XVar "node"), "parent")), [[(DoAssign (XDeref (XMethod (XField (XVar "parent"), "{genName}_number"), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[step]]))]], [[]]
 
 IsLinkTy: fn OutTy -> Bool
 fn IsLinkTy t = match t:
