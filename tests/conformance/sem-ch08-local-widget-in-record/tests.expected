@@ -1,0 +1,9 @@
+# Derived by hand from Semantics ch. 8 (a blueprint builds nothing until a block applies it; a widget application is transparent, each place taking the next number of the block that applies it) and ch. 3 (a widget defined in a block reads the block's names): the stored widget is built twice, by `@Show` and by the page, each a label reading `n`.
+test a_local_widget_is_stored
+
+tick 0
+  added:
+    0: Ui.Label(text="a card")
+    1: Ui.Label(text="line 7")
+    2: Ui.Label(text="line 7")
+    3: Ui.Label(text="end")
