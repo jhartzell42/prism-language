@@ -3,9 +3,8 @@
 # hands each place its key names that answer, as a computed answer, the next tick's input,
 # which is owed; the supplier forwards the rest, whose answers from the World arrive in
 # their own tick. The paths come from the host's own document, one tick behind. An answer
-# is made with `AnswerOf`, the value as plain data that the place decodes by its tag, as
-# it decodes a World's (prismc's first ruling HL: the books name no way to make an
-# `Answer c`). Written by Claude on the claude-lowering branch; subject to change.
+# is made with its tag's answer constructor, `Ui.Button.Answer click` (Semantics rulings
+# round 12, AQ). Written by Claude on the claude-lowering branch; subject to change.
 emit Ui.*
 test mod Tests
 use Ui.*
@@ -19,5 +18,5 @@ use Ui.*
 @list: @unit
 @list:
     !send <- Ui.Button($label=$"send")                                   # 0
-    let !answers = (Map (Each (Take (Keys $doc), 1), \|p| ((p, AnswerOf click)))) on !send
+    let !answers = (Map (Each (Take (Keys $doc), 1), \|p| ((p, Ui.Button.Answer click)))) on !send
     ((ignore, $doc)) <- @HostList @child, !answers, \|p, e| @Element e   # 1/[p]/0
