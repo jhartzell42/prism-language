@@ -554,8 +554,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
 
 - **A local function** (`fn Add a, x = ..` in a block) is inlined where it is called, its
   parameters bound to the arguments (a pattern parameter matched against its argument),
-  and is a closure of its clause where it is named as a value, at the type it is used at
-  there; a generic one as a value, and one that calls itself, are refused.
+  and is a closure where it is named as a value, at the type it is used at there: its
+  clause as a lambda, or with several clauses one closure whose body matches its
+  arguments against the clauses' patterns in order (`LocalClausesClosure`). One the
+  checker generalized is lowered at each use's instantiation (`LocalFnLx`), so a
+  closure of it is made per use, at the type used there. One whose body reaches its own
+  name (itself, or through the block's other local functions) is a recursion
+  (`RecursiveLocalFn`): one closure that takes itself first and its arguments owned as
+  one value, given to the prelude's `recursive` with the first arguments
+  (`recursive::<(Nat, Nat), Nat>(&|go, (k, acc)| .., (n, 0))`); its body calls `go` for
+  the function's own name. A closure cannot name itself, and a nested `fn` item could
+  read neither the block's locals nor the enclosing function's type parameters.
 - **`@Machine step, s, !e`** calls a named step by its path; any other step is a function
   value made at the build and kept in a field (`{m}_step`).
 - **A duration literal** is `Duration(ns)`, its signed nanoseconds (`DurationNanos`); in C++

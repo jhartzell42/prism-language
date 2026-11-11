@@ -788,6 +788,14 @@ JobRef<Map<K, V>> filter_map_job(Map<K, V> m, F keep) {
     });
 }
 
+/// A local function that calls itself: `step` is the function as one closure that takes
+/// itself first (what its body calls for its own name) and its arguments as one value.
+template <class A, class R, class F>
+R recursive(const F& step, A first) {
+    ::std::function<R(A)> again = [&](A next) -> R { return step(again, std::move(next)); };
+    return again(std::move(first));
+}
+
 /// A job run to its result inside the cycle: a call of an unbounded function value from
 /// direct-style code (gap DS of prismc/README.md).
 template <class B>

@@ -2202,8 +2202,7 @@ a hosted scope (pick HO); a bundle as a root's result, and a `for` row, a `rebui
 generation or a widget clause ending on a bundle (a widget block's bundle result is
 lowered, each part its own result, `WrParts`: `sem-ch04-bundle-result`); `@Flatten` of a dynamic that is not a `rebuild`'s (a `for` over a map of dynamics binds the value under the key, pick FV),
 `!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
-structural dynamic of its block (gap SU), a local function whose
-parameters are not names or used as a value, `!MergeAll` of a list that is not a
+structural dynamic of its block (gap SU), `!MergeAll` of a list that is not a
 literal, lines of a block that read each
 other at the build (pick BO), and the zombie and
 dead states (`leave`, `clean_up`, `edges`).

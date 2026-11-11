@@ -1012,6 +1012,12 @@ pub fn filter_map_job<K: Ord + Clone + 'static, V: Clone + 'static>(m: Map<K, V>
     }))
 }
 
+/// A local function that calls itself: `step` is the function as one closure that takes
+/// itself first (what its body calls for its own name) and its arguments as one value.
+pub fn recursive<A, R>(step: &dyn for<'a> Fn(&'a dyn Fn(A) -> R, A) -> R, first: A) -> R {
+    step(&|next| recursive(step, next), first)
+}
+
 /// A job run to its result inside the cycle: a call of an unbounded function value from
 /// direct-style code (gap DS of prismc/README.md).
 pub fn run_to_end<B>(job: Rc<dyn Job<B>>) -> B {
