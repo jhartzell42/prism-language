@@ -1,0 +1,7 @@
+# The tests of sem-ch04-named-bundle-in-row-of-row.
+emit Ui.*
+use App.*
+
+test inner_rows_follow_the_part, @main:
+    build
+    click at 0

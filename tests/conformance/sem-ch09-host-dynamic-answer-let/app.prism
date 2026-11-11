@@ -1,0 +1,24 @@
+# A supplier's dynamic answer made by a `let` of the host's block, outside the arm that
+# gives it (Semantics ch. 9, "How a supplier answers"; round 3 DY; Type System ch. 2: a
+# blueprint is a value, so a `let` binds one). sem-ch09-host-answer-without-arm's
+# `let @seven = @ 7` with a live dynamic. Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Gauge of Element $Nat:
+    name: Text
+
+@child: @unit
+@child:
+    $n <- Pad.Gauge(name="g")
+    Ui.Label($text=$"gauge {$n}")
+
+@host: @unit
+@host:
+    !go <- Ui.Button($label=$"go")
+    $level <- 1 then $level + 1 on !go
+    let @$live = @ $level
+    ignore <- @HostDocument @child, \|p, e| match e:
+        Pad.Gauge(..): @$live
+        otherwise: @Element e

@@ -1,0 +1,8 @@
+# The tests of sem-ch08-let-pattern-event-in-tuple.
+emit Ui.*
+use App.*
+
+test the_inner_parts_are_bound, @main:
+    build
+    click at 0
+        => expect Ui.Label(text="10: 2 guests, 1 clicks")
