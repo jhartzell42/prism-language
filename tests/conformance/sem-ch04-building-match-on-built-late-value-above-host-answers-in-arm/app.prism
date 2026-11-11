@@ -1,0 +1,52 @@
+# sem-ch04-building-match-on-built-late-value-above-host-in-arm where the host in the arm
+# answers a place of its child with a plain value: the child's place asks its first
+# value of a host whose own place takes its number from what the `match` above built
+# (Semantics ch. 4, "Binding groups and cycles": "the order of a group's lines decides
+# positions and nothing else"; ch. 9, "How a supplier answers": a plain answer is the
+# place's first value; ch. 8, "A new place's first value"; ruling TC: places are counted
+# as they are built). Nothing here is a cycle.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+tag Pad.Count of Element Nat:
+    name: Text
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Sized: fn Text -> @Nat
+fn @Sized t:
+    Ui.Label($text=$"{t}")
+    @ Len t
+
+@note: @unit
+@note:
+    c <- Pad.Count(name="notes")                                       # h0
+    Ui.Label($text=$"note {c}")                                        # h1
+
+@Panel: fn Mode -> @unit
+fn @Panel mode:
+    match n -? 15:                                                     # 0 and 1, or 0
+        ? over:
+            Ui.Label($text=$"over by {over}")
+        nil:
+            Ui.Label($text=$"under")
+            Ui.Label($text=$"at {n}")
+    n <- match mode:
+        Loud t:
+            size <- @Sized t                                           # 2
+            ignore <- @HostDocument @note, \|p, e| match e:            # 3/[p]
+                Pad.Count(..): @ 4
+                otherwise: @Element e
+            @ size + 9
+        Soft:
+            @ 20
+    Ui.Label($text=$"below {n}")                                       # 4, or 1
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    @Panel mode
