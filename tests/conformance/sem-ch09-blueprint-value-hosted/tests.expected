@@ -1,0 +1,8 @@
+# Derived by hand from Semantics ch. 8 (a blueprint value is built at the applying block's next positions), ch. 9 (a forwarding host's place for the child's place p is 0/[p]/0) and ruling TC: the blueprint builds the child's places 0 and 1, and the child's own label is its place 2. Never run: prismc refuses the program.
+test a_blueprint_value_under_a_host
+
+tick 0
+  added:
+    0/[0]/0: Ui.Label(text="left")
+    0/[1]/0: Ui.Label(text="right")
+    0/[2]/0: Ui.Label(text="end")
