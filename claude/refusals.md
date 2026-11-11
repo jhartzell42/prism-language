@@ -48,13 +48,6 @@ Hosting
   `Pad.Echo($?latest=$l)`): the tag's variables are plain data in its structs
   (`TagFieldOut`), and a type the arm writes with the variable is spelled as a type
   parameter no item declares. No refusal, no test.
-- Lowered, each with its test: a request heard by a supplier's arm and by the host's
-  body out of its document (sem-ch09-hosting-host-hears-request,
-  sem-ch09-hosting-body-reads-request), a widget's event parameter read as a value
-  (sem-ch09-hosting-per-role-event-parameter), a request through a host that is itself
-  hosted (sem-ch09-host-nested-request), an answer constructor as a function value
-  (sem-ch09-answer-constructor-value), a bundle answer given as a value
-  (sem-ch09-host-bundle-answer-named).
 
 Bundles
 - lower/node/def.prism:99 a bundle with two dynamic parts as the root's result. No test.
@@ -122,17 +115,12 @@ Dynamics and events
 - lower/expr.prism:549 a lift over a sigil of {kind}. No program found.
 - lower/patterns.prism:332 a pattern inside an element's `$` field: see C
   (`Ui.Label($text=$"x")` passes the checker; `$text="x"` is a mismatch there).
-- Lowered, each with its test: an event field in an element pattern, over a live element,
-  a description and a document's entry (sem-ch09-element-pattern-event-field); an
-  interpolation lifted over `?` (ts-ch04-interpolation-lifts-optional).
 
 Functions
-- Lowered, each with its test: a generic `let` of a widget block that nothing reads, which
-  is given no field (ts-ch05-generic-let-unused); an `Error`'s `message` read as a `Text`
-  (ts-ch02-field-reads); a fault kind as a value, its name as plain data
-  (sem-ch10-fault-kind-value); the prelude's `Turn b` built and matched by a program
-  (sem-appB-turn-value, Rust only: the C++ prelude has no `PreludeTurn`); a trait method
-  as a function value (ts-ch03-method-function-value).
+- lower/node/def.prism (`LetLine`) a widget block's `let` of a pattern that is no name
+  and no tuple of names and binds a dynamic or an event inside it (`let
+  Gauge($level=$l, name=nm) = ..`). Test: sem-ch08-let-pattern-dynamic-in-widget. With
+  plain names only it is lowered (sem-ch08-let-pattern-in-widget).
 - lower/expr.prism `StartsAsBounded`: a function value of its callee's own color inside
   the value a call returns, at a call that makes the color bounded, where a map, a named
   type or another function's type holds it. Through an array, an optional, a `~T` and a
@@ -185,13 +173,8 @@ first value of an element value placed in a hosted scope (DH2) holds through two
 
 ## rustc refuses prismc's output
 
-No refusal: prismc writes a crate and rustc refuses it. Each is an R, critical. The
-lowerings written for these have not been run: sem-ch09-host-bundle-answer-named,
-sem-ch09-answer-constructor-value, sem-ch07-flatten-held-above, ts-ch04-whole-row-parent,
-ts-ch04-whole-hosted-result, ts-ch04-interpolation-lifts-optional,
-sem-ch10-fault-kind-value, sem-appB-turn-value, ts-ch03-method-function-value,
-sem-ch09-hosting-per-role-inline-update (`!Filter` of `!Updated $d` written in place) and
-sem-ch09-generic-tag-live-field (a generic tag with a `$` field of its variable).
+No refusal: prismc writes a crate and rustc refuses it. Each is an R, critical. None is
+known that has no lowering written; none of the lowerings written has been run.
 
 ## C: wrong programs the checker lets through
 
