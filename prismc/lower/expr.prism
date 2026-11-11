@@ -791,7 +791,8 @@ fn NameValue lx, env, n, span:
                 ? "True": VlOwned (XBool True), OutBool
                 ? "False": VlOwned (XBool False), OutBool
                 ? "Prelude.never": VlOwned (XCall (RefRuntime "rt::Event::never"), [[]]), t
-                ? qk: match lx.g.tags[qk]:
+                ? qk: if why == "answer": AnswerFn lx, qk, t
+                else: match lx.g.tags[qk]:
                     ? tg if tg.kind != "Prelude.Fault" and why == "tag": TagValue lx, env, tg, [[]]
                     otherwise: GlobalValue lx, qk, span, t
                 nil: VlOwned (InternalBug "the name {nkey}, which nothing declares"), t
@@ -992,9 +993,9 @@ fn ArgumentByKind lx, env, e = match e.kind:
                 match ?local:
                     ? ignore: ClosureRef (ValueOf lx, env, e)
                     nil:
-                        let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
+                        let ((?qk, why)) = ResolveValue lx.g, lx.home, n
                         match ?qk:
-                            ? qk: if HasKey lx.g.ctors, qk: ClosureRef (ValueOf lx, env, e) else: XRef (XPath (ValueRef lx, qk))
+                            ? qk: if (HasKey lx.g.ctors, qk) or why == "answer": ClosureRef (ValueOf lx, env, e) else: XRef (XPath (ValueRef lx, qk))
                             nil: Ref (ValueOf lx, env, e)
             otherwise: Ref (ValueOf lx, env, e)
     otherwise: Ref (ValueOf lx, env, e)
@@ -1049,6 +1050,22 @@ AnswerValue: unbounded fn Lx, Env, Text, [Arg], OutTy -> Vl
 fn AnswerValue lx, env, constructor, args, t = match ((lx.g.tags[AnswerTag constructor], args[0])):
     ((? tg, ? a)): VlOwned (XCtor (AnswerVariant tg), [[(OwnAs (AnswerTy lx, tg), (ValueOf lx, env, a.value))]]), t
     otherwise: VlOwned (InternalBug "the answer constructor {constructor} of no tag or with no argument"), t
+
+# `Ui.Button.Answer` named, not applied (`Each cs, Ui.Button.Answer`): a closure building
+# the tag's variant from its argument, as a constructor's function value is (`CtorFn`),
+# which a bounded value takes by reference and a `Start` owns.
+AnswerFn: unbounded fn Lx, Text, OutTy -> Vl
+fn AnswerFn lx, constructor, t = match lx.g.tags[AnswerTag constructor]:
+    ? tg:
+        let carried = AnswerTy lx, tg
+        match t:
+            OutJobFn a, ignore:
+                let made = XCtor (AnswerVariant tg), [[(OwnAs carried, (VlPlace (XVar "a0"), Owned, a))]]
+                VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure True, [[(PaTyped (PaBind "a0"), a)]], (XCall (HelperRef "once_job"), [[(XClosure True, [[]], (XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[made]]))]]))]]), t), t
+            otherwise:
+                let made = XCtor (AnswerVariant tg), [[(OwnAs carried, (VlPlace (XVar "a0"), ByRef, carried))]]
+                VlOwned (XCall (RefRuntime "std::Rc::new"), [[(XClosure False, [[(PaTyped (PaBind "a0"), (OutRef carried))]], made)]]), t
+    nil: VlOwned (InternalBug "the answer constructor {constructor} of no tag"), t
 
 # An element applied as a plain value (gap LE; Type System ch. 2, "Names and sigils":
 # `Ui.Button(..)` before anything binds it is a plain value): a description, plain data
