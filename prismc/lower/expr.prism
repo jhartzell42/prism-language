@@ -2499,7 +2499,9 @@ fn WithBlueprintReads env, read = Fold (Range0 4), read, \|acc, ignore| Fold acc
 
 LambdaCaptures: unbounded fn Env, [Text] -> (([Do], Env))
 fn LambdaCaptures env, written:
-    let read = WithBlueprintReads env, written
+    # (and what a function of the block the body calls reads: it is inlined where it is
+    # called, `InlineLocalFn`, so its clauses' reads are the body's)
+    let read = WithBlueprintReads env, (LocalFnNamesClosed env, written)
     let caps0 = Filter read, \|n| match env.names[n]:
         ? (BnLocal ignore, ignore, ignore): True
         otherwise: False
