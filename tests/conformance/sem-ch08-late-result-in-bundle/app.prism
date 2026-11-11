@@ -1,0 +1,30 @@
+# A widget block that ends on a bundle one of whose parts is a building `match`'s plain
+# result (Semantics ch. 4: a building `match`'s arm "is fixed for the life of the block
+# and adds no path segment"; ch. 8: `<-` builds the child and binds its result; Type
+# System ch. 2, "Bundles"). Written by Claude on the claude-lowering branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Choose: fn Mode -> @((Nat, !Click))
+fn @Choose mode:
+    n <- match mode:
+        Loud t:
+            Ui.Label($text=$"{t}")                                     # 0
+            @ 10
+        Soft:
+            @ 20
+    !go <- Ui.Button($label=$"go")                                     # 1, or 0
+    @ ((n, !go))
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    ((n, !go)) <- @Choose mode                                         # 0 and 1, or 0
+    $gone <- 0 then $gone + n on !go
+    Ui.Label($text=$"n {n}, gone {$gone}")                             # 2, or 1
