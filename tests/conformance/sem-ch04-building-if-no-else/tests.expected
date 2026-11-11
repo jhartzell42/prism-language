@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 4 (a building `if` over a plain scrutinee: the arm is fixed for the life of the block and adds no path segment; an `if` with no `else` builds its arm or nothing) and ruling TC (places are counted as they are built, so the label below is 1 after the arm and 0 without it).
+test the_arm_is_built
+
+tick 0
+  added:
+    0: Ui.Label(text="loud")
+    1: Ui.Label(text="always")
+
+test nothing_is_built
+
+tick 0
+  added:
+    0: Ui.Label(text="always")
