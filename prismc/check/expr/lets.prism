@@ -354,17 +354,24 @@ fn CheckLocalClauses env, st, f, clauses, span:
                 let st2 = CheckClauses env, st, name, clauses, sc, span
                 ((env, st2))
             else:
+                # The function's own variable at its own level, so that reading the body
+                # does not pull the type's variables down to the block's level and the
+                # function generalizes (Type System ch. 5, "A local `let` generalizes"); the
+                # body's calls of the function itself read it, monomorphic.
                 let st0 = EnterLevel st
-                let ((lt, st1)) = if (Len clauses) == 1: ClauseLambda env, st0, f else: ClausesLambda env, st0, name, clauses, span
-                let st2 = Unify st1, sc.ty, lt, span
+                let ((own, st0b)) = FreshVar st0, False, ""
+                let inside = WithLocal env, name, (Mono own)
+                let ((lt, st1)) = if (Len clauses) == 1: ClauseLambda inside, st0b, f else: ClausesLambda inside, st0b, name, clauses, span
+                let st2 = Unify st1, own, lt, span
                 let st3 = SolveWants env.g, st2, env.givens, False
                 let st4 = LeaveLevel st3
-                let t = Zonk st4, sc.ty
-                if HoldsNode st4, t: ((env, st4))
+                let t = Zonk st4, own
+                if HoldsNode st4, t: ((env, (Unify st4, sc.ty, t, span)))
                 else:
                     let ((keep, bounds, st5)) = WantsAbove st4, t, True
                     let ((sc2, st6)) = Generalize st5, t, keep, bounds
-                    (((WithLocal env, name, sc2), st6))
+                    # the variable bound ahead takes the monomorphic type, as a `let`'s does
+                    (((WithLocal env, name, sc2), (Unify (NoteGen st6, (DefNameSpan f.name), name, sc2), sc.ty, t, span)))
         nil: ((env, st))
 
 # Several clauses as one lambda: its parameters and result fresh, each clause's patterns
