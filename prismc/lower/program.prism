@@ -281,8 +281,8 @@ fn RootWidgets lx:
 # tuple or an array, the value of a `let`. Each is lowered once more as rows of its own (`ValuedRows`), which the
 # blueprint made at the value site builds (`WidgetBlueprintValue`). A generic widget is
 # lowered so once for each set of types its readings give its type parameters
-# (`?ValuedTypes`). One with a widget function parameter is left out, and refused where
-# it is read as a value.
+# (`?ValuedTypes`). A widget function parameter is a function value of the row, and the
+# widget its argument names is read as a value too (`WidgetNamed`).
 ValuedWidgets: unbounded fn Lx -> (((Text ==> [((Text, Pa, [Cc], [Ex]))]), (Text ==> [((Text, [((Text, Ty))]))])))
 fn ValuedWidgets lx = Fold lx.g.defs, (({}, {})), \|acc, d|
     let lxd = update (InModule lx, d.file, d.home):
@@ -698,7 +698,9 @@ fn ValueWidgetsAt lx, e = match e.kind:
     EIf ignore, yes, nil: ValueWidgetsOfBlock lx, yes
     # a widget applied to its arguments, and the widgets its blueprint arguments are,
     # values of the row the blueprint builds
-    ECall c, args, ignore, ignore: Fold args, (PlacedWidget lx, (BlueprintQk lx, c), c.span, args), \|acc, a| if (LayerOf (TypeAt lx, a.value.span)) == LyBlueprint: Append acc, (ValueWidgetsAt lx, a.value) else: acc
+    # (and the widget a widget function argument names, `@Frame @Row`: a function value
+    # of the row, `WidgetNamed`)
+    ECall c, args, ignore, ignore: Fold args, (PlacedWidget lx, (BlueprintQk lx, c), c.span, args), \|acc, a| if (LayerOf (TypeAt lx, a.value.span)) == LyBlueprint or IsWidgetFnTy (Peel (TypeAt lx, a.value.span)): Append acc, (ValueWidgetsAt lx, a.value) else: acc
     EName ignore: PlacedWidget lx, (BlueprintQk lx, e), e.span, [[]]
     otherwise: [[]]
 
@@ -743,8 +745,8 @@ ValuedStemAt: fn Text, Nat, [((Text, Ty))] -> Text
 fn ValuedStemAt qk, k, types = if (Len types) == 0: ValuedStem qk else: "{ValuedStem qk}_at{k}_"
 
 # A valued widget's clauses as a blueprint chooses and builds them (`SharedCaseOf`), when
-# it can be one: no widget function parameter, no `$` or event parameter with time below
-# its top; whatever it gives back. A generic widget's are made once for each set of
+# it can be one: no `$` or event parameter with time below its top; whatever it gives
+# back. A generic widget's are made once for each set of
 # types the program's readings give its type parameters (`types`, `ValuedKey`).
 ?ValuedCases: unbounded fn Lx, Text, [((Text, Ty))], Text -> ?[((Text, Pa, [Cc], [Ex]))]
 fn ?ValuedCases lx, qk, types, stem = match lx.g.vals[qk]:
@@ -763,8 +765,9 @@ fn ?ValuedCases lx, qk, types, stem = match lx.g.vals[qk]:
             otherwise: False
         # a plain parameter; a `$` or an event parameter, the caller's live value the row
         # holds (`LiveParams`); a blueprint parameter, a value of the row
-        # (`ClauseRowOf`); never a widget function's
-        let plainParams = Fold ptys, True, \|ok, pt| ok and not (IsWidgetFnTy pt) and ((LayerOf pt) == LyPlain or (LayerOf pt) == LyBlueprint or IsLiveParam pt)
+        # (`ClauseRowOf`); a widget function parameter, a function value of the row,
+        # which gives the blueprint a line of the row applies (`AppliedFunctionLine`)
+        let plainParams = Fold ptys, True, \|ok, pt| ok and ((IsWidgetFnTy pt) or (LayerOf pt) == LyPlain or (LayerOf pt) == LyBlueprint or IsLiveParam pt)
         if not (plainResult and plainParams): nil
         else:
             let clauses = ClausesOf lx.g, qk
