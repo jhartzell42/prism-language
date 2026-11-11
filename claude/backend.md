@@ -330,6 +330,22 @@ it make every program an interpreter run, and every type mistake a runtime fault
   parameter applied whose argument is late (read in the caller's environment), or a
   local widget whose block is. A late bind on a block's last line splits it too, with
   no lower generation.
+- **A building `if` with no `else`** (ruling IE2) is a building `if` whose other arm is
+  an empty block: it builds its arm or nothing, and the later places count from what was
+  built.
+- **A widget function parameter** (`Inner: fn Nat -> @unit`, given `@Row`) is bound as a
+  blueprint parameter is, the argument's text with its caller's environments; `Inner 1`
+  applies the function the argument names to the line's arguments, read in the line's
+  environments (`ApplyWidgetParam`). A function value that is no name is refused.
+- **A clause widget's `$` argument that its caller reads through its own parent** (the
+  caller a row, the dynamic its block's) is a getter of the caller (`clause_dynamic`),
+  read by the clause's row through its parent; the caller hears its block's write behind
+  it and marks the row (`ClauseDynArg`).
+- **The root's bundle result** is told part by part (`RootResultOf`): each plain part at
+  the build, each firing of an event part after, one dynamic part as a root's dynamic
+  result is.
+- **A `let` of a name bound to a bundle** (`let same = both`) binds the same parts
+  (`?BundleNamed`).
 - **A widget defined in a block** (`@line:` and its block) is bound to its block
   (`BnLocalWidget`) and lowered at each line that applies it, in that line's
   environments, at the node's next positions (`LocalWidgetLine`).

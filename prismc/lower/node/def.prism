@@ -78,22 +78,31 @@ fn OverNode x = match x:
     otherwise: x
 
 # The root's result goes to the World (claude/backend.md: `cx.result(..)`).
-RootResult: fn Wx -> Wx
-fn RootResult wx = match wx.result:
+RootResult: unbounded fn Wx -> Wx
+fn RootResult wx = RootResultOf wx, wx.result
+
+# One result told the World: an event's firings, a dynamic at the build and whenever it
+# moves, a plain value at the build. A bundle is told part by part (Type System ch. 2,
+# "Bundles and sparse tuples"): its plain parts at the build, each firing of its event
+# parts after.
+RootResultOf: unbounded fn Wx, Wres -> Wx
+fn RootResultOf wx, res = match res:
     WrEv r: Connect wx, r, SkResult
-    WrDyn x, rds, t: update wx:
-        &_.rootDyn <= ? ((x, rds, t))
-        &_.getters <= Push &_.getters, MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxRef, ret=OutPod, body=[[]], tail=(XMethod x, "to_pod", [[]]), doc="The root's dynamic result, pulled after the tick.")
-        &_.fields <= Push &_.fields, (("result_last", (OutCell (OutOpt OutPod)), "the result the World last heard"))
-        &_.moves <= Push &_.moves, (("result_last", (XCall (RefRuntime "std::RefCell::new"), [[XNone]])))
-        &_.build <= Push &_.build, (DoScope (ResultTold (XVar "node")))
+    WrDyn x, rds, t: match wx.?rootDyn:
+        nil: update wx:
+            &_.rootDyn <= ? ((x, rds, t))
+            &_.getters <= Push &_.getters, MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxRef, ret=OutPod, body=[[]], tail=(XMethod x, "to_pod", [[]]), doc="The root's dynamic result, pulled after the tick.")
+            &_.fields <= Push &_.fields, (("result_last", (OutCell (OutOpt OutPod)), "the result the World last heard"))
+            &_.moves <= Push &_.moves, (("result_last", (XCall (RefRuntime "std::RefCell::new"), [[XNone]])))
+            &_.build <= Push &_.build, (DoScope (ResultTold (XVar "node")))
+        ? ignore: update wx:
+            &_.build <= Push &_.build, (RefusalDo "a bundle with two dynamic parts as the root's result")
     WrPlain x, ignore: update wx:
         &_.build <= Push &_.build, (DoExpr (XMethod (XCx), "result", [[(XCtor (RefRuntime "rt::Outcome::Value"), [[(XMethod x, "to_pod", [[]])]])]]))
     # a late result: read from the node once its rows are built
     WrLate x, ignore: update wx:
         &_.build <= Push &_.build, (DoExpr (XMethod (XCx), "result", [[(XCtor (RefRuntime "rt::Outcome::Value"), [[(XMethod (OverNode x), "to_pod", [[]])]])]]))
-    WrParts ignore: update wx:
-        &_.build <= Push &_.build, (RefusalDo "a bundle as the root's result: a World hears a plain value, a dynamic or an event")
+    WrParts parts: Fold parts, wx, \|w, part| RootResultOf w, part
     otherwise: wx
 
 # A block's statements into the node, names bound before any line is read (one binding
@@ -633,7 +642,8 @@ fn PreBindName wx, benv, menv, n, how:
     let ((rs, wx1)) = FreshName wx, (LocalNameAt lx, nkey, n.span)
     # a bundle bound to a name (the window library's generic `r`) is its parts' bindings,
     # bound where its line is lowered (`BundleBn`)
-    if (how == AsBind or how == AsResult) and IsBundle full: ((wx, benv, menv))
+    # (a `let` of a bundle is the bundle it names, bound at its line: `WidgetStmt`)
+    if (how == AsBind or how == AsResult or how == AsLet) and IsBundle full: ((wx, benv, menv))
     else: if layer == LyEv or IsSwitched full:
         let et = OutTyOf lx, (Peel (Peel full))
         let ((id, wx2)) = AddGn wx1, rs, et, GnNamed, 0
@@ -764,9 +774,12 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
         SIgnore e:
             let ((wx2, ignore)) = BuildLine wx, benv, menv, e, nil
             ((wx2, benv, menv))
-        SLet p, ignore, e:
-            let ((wx2, be2)) = LetLine wx, benv, menv, p, e
-            ((wx2, be2, menv))
+        SLet p, ignore, e: match ?BundleNamed menv, p, e:
+            # a bundle given another name (`let same = both`): the same parts
+            ? ((n, b)): ((wx, (Bind benv, (SNameKey n), b), (Bind menv, (SNameKey n), b)))
+            nil:
+                let ((wx2, be2)) = LetLine wx, benv, menv, p, e
+                ((wx2, be2, menv))
         SExpr e: match e.kind:
             EFreeSigil "@", x:
                 let ((res, wx2)) = ResultOf wx, benv, menv, x
@@ -786,6 +799,16 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
             let wx2 = update wx:
                 &_.build <= Push &_.build, (InternalBugDo "a statement of a widget block that is none of its kinds")
             ((wx2, benv, menv))
+
+# A `let` of a name whose value is a name bound to a bundle's parts: the name and the
+# parts.
+?BundleNamed: unbounded fn Env, Pattern, Expr -> ?((SName, Bn))
+fn ?BundleNamed menv, p, e = match ((p.kind, e.kind)):
+    ((PName n, EName m)): match (if (Len m.path) == 1: menv.names[SNameKey m] else: nil):
+        ? (BnParts bs): ? ((n, (BnParts bs)))
+        otherwise: nil
+    ((ignore, EGroup x)): ?BundleNamed menv, p, x
+    otherwise: nil
 
 # A host's child's result bound to the first part of the line's pattern, whatever type
 # the checker gave the name (a generic `a` in the window library's `((r, $elems))`): an
@@ -1155,11 +1178,9 @@ fn BuildLine wx, benv, menv, e, ?bound:
         EFor ?binders, source, body: ForLine wx, benv, menv, ?binders, source, body, e, ?bound
         ERebuild scrut, body: RebuildLine wx, benv, menv, scrut, body, e, ?bound
         EIf c, thenB, (? elseB): IfGenLine wx, menv, c, thenB, elseB, e
-        # a building `if` has an `else` (ruling IE): the checker refuses one without
-        EIf ignore, ignore, nil:
-            let wx2 = update wx:
-                &_.build <= Push &_.build, (InternalBugDo "a building `if` with no `else`")
-            ((wx2, WrUnit))
+        # a building `if` with no `else` builds its arm or nothing (ruling IE2): the other
+        # arm is an empty block, and the block's later places count from what was built
+        EIf c, thenB, nil: IfGenLine wx, menv, c, thenB, (Block(stmts=[[]], inline=True, span=e.span)), e
         EMatch s, arms: MatchGenLine wx, menv, s, arms, e
         otherwise: match Peel full:
             TyElem ignore, ignore: ElementLine wx, benv, menv, e, ?bound
