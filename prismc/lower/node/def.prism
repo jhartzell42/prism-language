@@ -1206,7 +1206,10 @@ fn ReadsAtBuild s = match s.kind:
 PreBind: unbounded fn Wx, Env, Env, Stmt -> ((Wx, Env, Env))
 fn PreBind wx, benv, menv, s = match s.kind:
     SBind p, init, ?step:
-        let how = if ?step == nil and (GivesResult wx.lx, menv, init): AsResult else: if ?step != nil and (ReadsLate menv, init): AsLateHold else: HowBound ?step
+        # a `$` place of a hosted child whose host answers late (`Wx.lateHosts`) has no
+        # first value until the node stands (`LateFirstPlace`)
+        let latePlace = ?step == nil and (HasNat wx.lateHosts, wx.pos.scope) and ((IsDynamicPlace wx.lx, init) or IsBundlePlace wx.lx, init)
+        let how = if latePlace: AsLatePlace else: if ?step == nil and (GivesResult wx.lx, menv, init): AsResult else: if ?step != nil and (ReadsLate menv, init): AsLateHold else: HowBound ?step
         match p.kind:
             PName n: PreBindName wx, benv, menv, n, how
             PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
@@ -1285,6 +1288,7 @@ type HowBound = choice:
     AsLet
     AsResult                   # `p <- e` where `e` is a widget the node inlines: its result
     AsLateHold                 # a hold whose first value reads a late result (`BindLate`)
+    AsLatePlace                # a `$` place whose first value is asked once the node stands (`Wx.lateHosts`)
 derive ^Eq, ^Show
 
 # Whether a bind line's right side is a widget this node inlines, a widget block or a widget
@@ -1350,7 +1354,7 @@ fn PreBindName wx, benv, menv, n, how:
     # a bundle bound to a name (the window library's generic `r`) is its parts' bindings,
     # bound where its line is lowered (`BundleBn`)
     # (a `let` of a bundle is the bundle it names, bound at its line: `WidgetStmt`)
-    if (how == AsBind or how == AsResult or how == AsLet) and IsBundle full: ((wx, benv, menv))
+    if (how == AsBind or how == AsResult or how == AsLet or how == AsLatePlace) and IsBundle full: ((wx, benv, menv))
     else: if layer == LyEv or IsSwitched full:
         let et = OutTyOf lx, (Peel (Peel full))
         let ((id, wx2)) = AddGn wx1, rs, et, GnNamed, 0
@@ -1383,6 +1387,11 @@ fn PreBindName wx, benv, menv, n, how:
         ((LyDyn, AsLateHold)):
             let b = BnDyn (XMethod (XMethod (XField XSelf, rs), "get", [[XCx]]), "expect", [[(XStr "a hold that starts from a late result is set when that result is built")]]), [[OwnRead rs]], t
             ((wx1, (Bind benv, nkey, b), (Bind menv, nkey, b)))
+        # a place's hold with no value until its first value is asked, once the node
+        # stands: read as the value it holds from then on (`LateFirstPlace`)
+        ((LyDyn, AsLatePlace)):
+            let b = LatePlaceBn rs, t
+            ((wx1, (Bind benv, nkey, b), (Bind menv, nkey, b)))
         ((LyDyn, ignore)):
             let b = BnHold rs, t
             ((wx1, (Bind benv, nkey, b), (Bind menv, nkey, b)))
@@ -1402,6 +1411,16 @@ fn PreBindName wx, benv, menv, n, how:
             nil:
                 let ((be, me)) = BindPlain benv, menv, nkey, rs, t
                 ((wx1, be, me))
+
+# A late place's hold `f` as its readers read it: the value it holds once its first value
+# is asked.
+LatePlaceBn: fn Text, OutTy -> Bn
+fn LatePlaceBn f, t = BnDyn (XMethod (XMethod (XField XSelf, f), "get", [[XCx]]), "expect", [[(XStr "a hosted place's first value is asked once its node stands")]]), [[OwnRead f]], t
+
+# The hold of a name bound as a late place's (`LatePlaceBn`).
+?LatePlaceHold: fn ?Bn -> ?Text
+fn ?LatePlaceHold (? (BnDyn (XMethod (XMethod (XField XSelf, f), "get", ignore), "expect", ignore), ignore, ignore)) = ? f
+fn ?LatePlaceHold ?other = nil
 
 WithUse: fn Env, Text, Text -> Env
 fn WithUse env, ukey, bkey = update env:

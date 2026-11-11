@@ -18,16 +18,22 @@ spell".
 ## R: legal programs not lowered
 
 Hosting
-- lower/expr.prism (`DynamicBlueprint`, `WrittenPart`) a supplier's dynamic answer, or
-  a bundle answer's `$` part, that reads a structural dynamic (a `for`'s gathered
-  result, a `rebuild`'s): it has no value when the child's place asks its first value,
-  in the owner's build before its builders run
-  (sem-ch09-host-dynamic-answer-structural, sem-ch09-host-bundle-answer-structural-part).
-  Lowered: the host's own pushed place and a `let` below the host's line
-  (sem-ch09-host-dynamic-answer-late); a name of the parent, read by a host in a row
-  (sem-ch09-host-dynamic-answer-reads-parent, sem-ch09-host-bundle-answer-parent-part);
-  an answer through a blueprint a `let` names (sem-ch09-host-dynamic-answer-let,
-  sem-ch09-host-event-answer-let).
+- lower/node/elements.prism (`BundleOutputOf`) a place of a tag whose answer has a plain
+  part beside a `$` part, in a hosted scope whose host answers with a dynamic that has no
+  value while its node is being made: the place's state is asked once the node stands,
+  and a plain part is read by the build once, before it. No test.
+  Lowered: a supplier's dynamic answer, or a bundle answer's `$` part, that reads a
+  structural dynamic (a `for`'s gathered result, a `rebuild`'s): the child's `$` places
+  ask their first values where the construction step reaches the host's line
+  (`LateFirstPlace`; sem-ch09-host-dynamic-answer-structural,
+  sem-ch09-host-bundle-answer-structural-part); the host's own pushed place and a `let`
+  below the host's line (sem-ch09-host-dynamic-answer-late); a name of the parent, read
+  by a host in a row (sem-ch09-host-dynamic-answer-reads-parent,
+  sem-ch09-host-bundle-answer-parent-part); an answer through a blueprint a `let` names
+  (sem-ch09-host-dynamic-answer-let, sem-ch09-host-event-answer-let).
+  lower/expr.prism (`DynamicBlueprint`, `WrittenPart`): the two refusals stand for a
+  dynamic answer whose line made no getter for it, which no program reaches now that
+  `DynamicAnswers` makes one for every dynamic answer (unsure: G).
 - lower/expr.prism:703 `@ x` outside a tag arm where `x` is no plain data (a function).
   No test. Any other answer outside an arm is lowered: plain data in `Answer`'s case of
   no tag, read by the place that takes it (sem-ch09-host-answer-without-arm).

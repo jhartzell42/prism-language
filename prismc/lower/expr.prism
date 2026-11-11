@@ -878,8 +878,9 @@ fn PartsAnswerOf lx, env, what, parts, variant:
 ?PartDynamic: unbounded fn Lx, Env, Expr, Expr -> ?Ex
 fn ?PartDynamic lx, env, x, d = match ((env.names["#dyn{DynKey x}"], env.names["#owner"])):
     ((? (BnLocal (XVar getter), ignore, dt), ? (BnLocal (XVar owner), ignore, ignore))):
-        let atBuild = AnswerAtBuild lx, env, x, d
-        let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(XMethod (XVar "owner"), getter, [[XCx]])), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=(XClone (XVar "at_build")))]]
+        let late = HasKey env.names, "#dynlate{DynKey x}"
+        let atBuild = if late: XUnit else: AnswerAtBuild lx, env, x, d
+        let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(XMethod (XVar "owner"), getter, [[XCx]])), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=(if late: XUnreachable else: XClone (XVar "at_build")))]]
         let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, dt)
         ? (XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar "{getter}_portx"))]]))
     otherwise: nil
@@ -912,8 +913,9 @@ fn DynamicBlueprint lx, env, x, d, variant, t = match ?AnswerDynamic lx, env, x,
 ?AnswerDynamic: unbounded fn Lx, Env, Expr, Expr, Ref -> ?Ex
 fn ?AnswerDynamic lx, env, x, d, variant = match ((env.names["#dyn{DynKey x}"], env.names["#owner"])):
     ((? (BnLocal (XVar getter), ignore, dt), ? (BnLocal (XVar owner), ignore, ignore))):
-        let atBuild = AnswerAtBuild lx, env, x, d
-        let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(Tagged variant, (XMethod (XVar "owner"), getter, [[XCx]]))), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=(Tagged variant, (XClone (XVar "at_build"))))]]
+        let late = HasKey env.names, "#dynlate{DynKey x}"
+        let atBuild = if late: XUnit else: AnswerAtBuild lx, env, x, d
+        let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(Tagged variant, (XMethod (XVar "owner"), getter, [[XCx]]))), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=(if late: XUnreachable else: Tagged variant, (XClone (XVar "at_build"))))]]
         let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, (OutNamed answerRef, [[]]))
         ? (XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar "{getter}_portx"))]]))
     otherwise: nil
@@ -924,6 +926,9 @@ fn ?AnswerDynamic lx, env, x, d, variant = match ((env.names["#dyn{DynKey x}"], 
 TaggedOrHeld: unbounded fn Ref, OutTy, Ex -> Ex
 fn TaggedOrHeld variant, t, value = if variant == untaggedRef and not (Podable t): XCall (HelperRef "answer_held"), [[value]] else: Tagged variant, value
 
+# (A dynamic with no value while the owner's node is being made, `#dynlate{span}`, is
+# read through the owner's link alone: the child's places ask their first values once
+# the node stands, `DynamicAnswers`.)
 # A supplier's dynamic answer's value at the owner's build: the local the host's line took
 # it into, for a dynamic read through the owner's parent (`DynamicAnswers`,
 # `#dynbuild{span}`), or the dynamic over the names' values at the build (`InitEnv`).

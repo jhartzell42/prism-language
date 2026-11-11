@@ -405,22 +405,41 @@ fn HostMoved sk, h = MethDef(name="{h.name}_moved", recv=RecvRc, params=[[]], cx
 BuildSteps: fn Sinks, Bool -> [Do]
 fn BuildSteps sk, atBuild:
     let wx = sk.wx
-    let recv = if atBuild: XVar "node" else: XSelf
-    let Take = \|sn| if atBuild: SnapTakeAtBuild sn else: SnapTake sk, sn
-    let Builder = \|b|
-        let before = Each (Filter wx.snaps, \|sn| sn.before and sn.builder == b.name), Take
-        let after = Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == b.name), Take
-        Append (Push before, (DoExpr (TryOf (XMethod recv, "{b.name}_build", [[XCx]])))), after
-    # a `rebuild` handing back a dynamic: its snapshot taken after the generation is built
-    let Gen = \|gd|
-        let built = if atBuild and gd.early: DoExpr (XUnit) else: if atBuild: DoExpr (TryOf (XMethod recv, "{gd.name}_build", [[XCx]])) else: DoIf (XMethod (XField XSelf, "{gd.name}_stale"), "replace", [[(XBool False)]]), [[DoExpr (TryOf (XMethod (XSelf), "{gd.name}_build", [[XCx]]))]], [[]]
-        Append [[built]], (Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == gd.name), Take)
-    # at the build, a scope's live hosted places take their entries once its builders and
-    # generations have run (the structure they read has settled), before the host whose
-    # child they are builds its rows over them
-    let Entries = \|k| if atBuild: Each (Filter wx.places, \|pl| pl.pos.scope == k and pl.entry != "" and pl.getter != ""), \|pl| EntryTake recv, pl else: [[]]
+    # a hosted scope whose host answers late (`Wx.lateHosts`) is built at its host's
+    # line (`ScopeSteps`)
     Fold (Range0 ((Len wx.scopes) + 1)), [[]], \|acc, i|
         let k = Or ((Len wx.scopes) -? i), 0
+        if HasNat wx.lateHosts, k: acc else: Append acc, (ScopeSteps sk, atBuild, k, ((Len wx.scopes) + 1))
+
+# One scope's part of the construction step: its builders and generations in the order
+# of their places, then (at the build) its live hosted places' entries. A host of the
+# scope whose supplier answers with a dynamic that has no value while the node is being
+# made (`Wx.lateHosts`: it reads a structural dynamic of the owner's) has its child's
+# scope built here, where the step reaches the host's line, the builders above the host
+# run and their snapshots taken (Semantics ch. 7, "Structural dynamics": a builder in a
+# tick's construction step reads the value after it): the child's places ask their first
+# values (`Wx.lateFirsts`, at the build), then the child's own steps, then the host's
+# rows. `fuel` bounds the hosts inside hosts.
+ScopeSteps: fn Sinks, Bool, Nat, Nat -> [Do]
+fn ScopeSteps sk, atBuild, k, fuel = match fuel -? 1:
+    nil: [[]]
+    ? less:
+        let wx = sk.wx
+        let recv = if atBuild: XVar "node" else: XSelf
+        let Take = \|sn| if atBuild: SnapTakeAtBuild sn else: SnapTake sk, sn
+        let LateChild = \|b| Fold wx.hosts, [[]], \|a, h| if "{h.name}_rows" == b.name and HasNat wx.lateHosts, h.scope: Append (Append a, (if atBuild: (Fold wx.lateFirsts, [[]], \|firsts, ((scope, dos))| if scope == h.scope: Append firsts, dos else: firsts) else: [[]])), (ScopeSteps sk, atBuild, h.scope, less) else: a
+        let Builder = \|b|
+            let before = Each (Filter wx.snaps, \|sn| sn.before and sn.builder == b.name), Take
+            let after = Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == b.name), Take
+            Append (LateChild b), (Append (Push before, (DoExpr (TryOf (XMethod recv, "{b.name}_build", [[XCx]])))), after)
+        # a `rebuild` handing back a dynamic: its snapshot taken after the generation is built
+        let Gen = \|gd|
+            let built = if atBuild and gd.early: DoExpr (XUnit) else: if atBuild: DoExpr (TryOf (XMethod recv, "{gd.name}_build", [[XCx]])) else: DoIf (XMethod (XField XSelf, "{gd.name}_stale"), "replace", [[(XBool False)]]), [[DoExpr (TryOf (XMethod (XSelf), "{gd.name}_build", [[XCx]]))]], [[]]
+            Append [[built]], (Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == gd.name), Take)
+        # at the build, a scope's live hosted places take their entries once its builders and
+        # generations have run (the structure they read has settled), before the host whose
+        # child they are builds its rows over them
+        let entries = if atBuild: Each (Filter wx.places, \|pl| pl.pos.scope == k and pl.entry != "" and pl.getter != ""), \|pl| EntryTake recv, pl else: [[]]
         # a scope's builders and generations in the order of their places (ruling TC: places
         # are counted as they are built), so a `for` whose source reads the result of a
         # clause widget above it finds that generation built
@@ -430,7 +449,7 @@ fn BuildSteps sk, atBuild:
         # (`DeferredLine`)
         let deferred = Fold (Filter wx.gens, \|gd| gd.pos.scope == k and HasText wx.deferredGens, gd.name), [[]], \|a, gd| Append a, (Gen gd)
         let ordered = Fold (SortNats (Fold steps, [[]], \|seen, ((at, ignore))| if (Len (Filter seen, \|y| y == at)) == 0: Push seen, at else: seen)), [[]], \|a, at| Fold steps, a, \|a2, ((at2, dos))| if at2 == at: Append a2, dos else: a2
-        Append (Append (Append acc, ordered), deferred), (Entries k)
+        Append (Append ordered, deferred), entries
 
 # A hosted live place's entry taken, its level read from `recv` (the node in its build,
 # `self` in the patch pass): compared with the one that stood, published the tick after if
@@ -509,7 +528,8 @@ fn DynAnswerArm sk, pos, f, t = (((PosPat pos, [[]]), (XBlock (DynPlaceWrite sk,
 # hold's sink marks (the node patched, the builders and rows over it, the "updated" nodes
 # over it told at height 0, before any wake, so the wake is only asked).
 DynPlaceWrite: fn Sinks, Text, Ex -> [Do]
-fn DynPlaceWrite sk, f, value = Append [[DoExpr (XMethod (XField XSelf, "{f}"), "set", [[value, XCx]])]], (HoldWritten sk, f)
+# (A late place's hold holds the present value, `LateFirstPlace`.)
+fn DynPlaceWrite sk, f, value = Append [[DoExpr (XMethod (XField XSelf, "{f}"), "set", [[(if HasText sk.wx.latePlaces, f: XCtor (RefRuntime "std::Some"), [[value]] else: value), XCx]])]], (HoldWritten sk, f)
 
 # What an "updated" node cannot be given: a read of anything that is not a hold a sink of
 # this node writes, a dynamic `let` over such, a generation's dynamic result the node keeps

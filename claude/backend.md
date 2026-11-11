@@ -920,6 +920,21 @@ it make every program an interpreter run, and every type mistake a runtime fault
   the supplier row for the place early and keeps it in the rows, where the builder finds it
   present. This is the only early construction; it is why `Host` reaches its owner through
   a link filled in after `Rc::new`.
+- **A supplier's dynamic answer with no value while the owner is being made** (it reads a
+  structural dynamic of the owner's, a `for`'s gathered result or a `rebuild`'s;
+  Semantics ch. 7, "Structural dynamics": a builder in a tick's construction step and
+  the tick's outputs read the value after it) is read through the owner's link alone
+  (`#dynlate`, `DynamicAnswers`), and the host's scope is late (`Wx.lateHosts`). The
+  child's places with a `$` output have holds that are empty at the node's making
+  (`Hold<Option<T>>`, read as the value they hold, `LatePlaceBn`; a push writes the
+  present value) and ask their first values in the construction step where it reaches
+  the host's line (`LateFirstPlace`, `Wx.lateFirsts`, `ScopeSteps`): the owner's
+  builders above the host have run and their snapshots are taken, so the row the host
+  builds for the place reads the gathered dynamic over the rows built above it. A late
+  scope's own builders, generations and entries follow its first values, just before
+  its host's rows; any other hosted scope is built before the owner's own, as before.
+  Refused there: a bundle tag's plain part beside a `$` part (the build reads a plain
+  part once, before the node).
 - **Requests** of a hosted place go to the host (`host_k.request`): out with the forwarded
   element, or nowhere when the supplier answered the place.
 - **`@HostSome`** is `@HostDocument` through `rt::forward_on_none` (`nil` forwards).
