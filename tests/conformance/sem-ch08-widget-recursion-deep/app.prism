@@ -1,0 +1,20 @@
+# A widget that calls itself in a static position deeper than sixteen levels (gap ID):
+# every level is built, each level's place the next number (Semantics ch. 8; ruling TC).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Chain: fn Nat -> @unit
+fn @Chain 0:
+    Ui.Label($text=$"end")
+fn @Chain n:
+    Ui.Label($text=$"level {n}")
+    match n -? 1:
+        ? m: @Chain m
+        nil: Ui.Label($text=$"end")
+
+@main: @unit
+@main:
+    @Chain 20
+    Ui.Label($text=$"after")
