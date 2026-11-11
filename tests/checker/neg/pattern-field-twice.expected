@@ -1,0 +1,4 @@
+tests/checker/neg/pattern-field-twice.prism:9: error[collision]: `x` is matched twice
+    fn Left Point(x=a, x=b) = a + b
+                       ^^^
+1 error
