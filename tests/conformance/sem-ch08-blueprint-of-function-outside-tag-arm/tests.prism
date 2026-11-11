@@ -1,0 +1,6 @@
+# The tests of sem-ch08-blueprint-of-function-outside-tag-arm.
+emit Ui.*
+use App.*
+
+test it_builds, @page:
+    build
