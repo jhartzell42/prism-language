@@ -697,7 +697,10 @@ IsBundleAnswer: fn Lx, Expr -> Bool
 fn IsBundleAnswer lx, x = match x.kind:
     EGroup y: IsBundleAnswer lx, y
     ETuple es: Fold es, False, \|f, y| f or (LayerOf (TypeAt lx, y.span)) == LyEv
-    otherwise: False
+    # a bundle not written as a tuple (`@ pair`, `pair` a `let`): by its type
+    otherwise: match TypeAt lx, x.span:
+        TyTuple ts: Fold ts, False, \|f, part| f or (LayerOf part) == LyEv
+        otherwise: False
 
 BundleBlueprint: unbounded fn Lx, Env, Expr, Ref, OutTy -> Vl
 fn BundleBlueprint lx, env, x, variant, t = match x.kind:
@@ -714,7 +717,25 @@ fn BundleBlueprint lx, env, x, variant, t = match x.kind:
                 let wrapped = XMethod (Own (ValueOf lx, env, ev)), "map", [[(XClosure False, [[PaBind "v"]], (XCtor variant, [[(XClone (XVar "v"))]]))]]
                 VlOwned (XCall (RefRuntime "prism_rtl::bundle_blueprint::<crate::Elem, _>"), [[(XCtor firstVariant, [[firstVal]]), wrapped]]), t
             otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer with a `$` part or two event parts"), t
-    otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer that is not a tuple of its parts"), t
+    # a bundle that is a value already (`@ pair`): its parts are the tuple's, the plain
+    # ones cloned out for the first value, the event's mapped to the tag's variant
+    otherwise: match TypeAt lx, x.span:
+        TyTuple ts:
+            let places = Range0 (Len ts)
+            let LayerAt = \|i| LayerOf (Or ts[i], TyErr)
+            let plain = Filter places, \|i| (LayerAt i) == LyPlain
+            let evs = Filter places, \|i| (LayerAt i) == LyEv
+            let others = Filter places, \|i| (LayerAt i) == LyDyn
+            let whole = XVar "bundle_answer"
+            match ((env.names["#tagfirst"], evs, others)):
+                ((? (BnLocal (XPath firstVariant), ignore, ignore), [[ev]], [[]])):
+                    let firstVal = match plain:
+                        [[i]]: XClone (XPart whole, i)
+                        otherwise: XTuple (Each plain, \|i| XClone (XPart whole, i))
+                    let wrapped = XMethod (XPart whole, ev), "map", [[(XClosure False, [[PaBind "v"]], (XCtor variant, [[(XClone (XVar "v"))]]))]]
+                    VlOwned (XBlock [[(DoLet (PaBind "bundle_answer"), (Own (ValueOf lx, env, x)))]], (XCall (RefRuntime "prism_rtl::bundle_blueprint::<crate::Elem, _>"), [[(XCtor firstVariant, [[firstVal]]), wrapped]])), t
+                otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer with a `$` part or two event parts"), t
+        otherwise: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a bundle answer whose type is no tuple"), t
 
 PlainBlueprint: unbounded fn Lx, Env, Expr, Ref, OutTy -> Vl
 fn PlainBlueprint lx, env, x, variant, t = VlOwned (XCall (RefRuntime "prism_rtl::plain_blueprint::<crate::Elem, _>"), [[(XCtor variant, [[Own (ValueOf lx, env, x)]])]]), t
