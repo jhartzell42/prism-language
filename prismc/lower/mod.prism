@@ -288,6 +288,12 @@ fn TraitName cls = if HasPrefix cls, "Prelude.": Camel (BareName cls) else: "{Ca
 RefIn: fn Lx, Text, Text -> Ref
 fn RefIn lx, owner, name = RefItem (Or lx.rsMods[owner], (RustModName owner)), name, (PathIn lx, owner, name)
 
+# A type's name as the emitted code spells it: its own in CamelCase. The prelude's `Turn`
+# (Appendix B: what one cycle of a job gives, `More | Done b`) is `PreludeTurn`: the
+# runtime's `Turn` is the job's own, and the emitted prelude brings both into one module.
+TypeItemName: fn Text -> Text
+fn TypeItemName n = if n == "Prelude.Turn": "PreludeTurn" else: Camel (BareName n)
+
 # An item lowering makes in the module it lowers (a node, a job): bare at the site.
 SiteRef: fn Lx, Text -> Ref
 fn SiteRef lx, name = RefIn lx, lx.site, name

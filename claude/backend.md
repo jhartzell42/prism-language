@@ -87,6 +87,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
 ## Functions and lifting
 
 - **A plain function** → a Rust `fn` taking references, its clauses one `match`.
+- **A guard no checked program reaches** is an internal error: `InternalBug`,
+  `InternalBugDo`, `InternalBugType` put "a prismc bug: .." where a refusal's words go, and
+  `CompileProgram` reports it as `error[internal]`.
 - **Lifting is resolved by the checker**, so the emitted code is the lifted form: a pure
   transform of an event calls straight through; `$x on !e` samples at the read point;
   `$x + 1` is a getter, or an `rt::Cache` field when several readers share it; a lifted
@@ -395,6 +398,22 @@ it make every program an interpreter run, and every type mistake a runtime fault
   against the result, and each name it binds is moved into the field its prebinding made
   (`BinderNames`, `BindPatternResult`).
 
+- **A live dynamic** (`WholeArgs`: a reader of the node passed whole to a function, the
+  outer of a `@Flatten` written in place, `$d` under `!Updated` in a lambda of the line) is
+  a `Dynamic` made before the node whose read goes through a `prism_rtl::Link` to the
+  node's getter (`whole_{x}`), its update event a port the writes behind it fire.
+  - With a value at the build it reads that value until the node is linked.
+  - With none (a clause widget's result, a place's dynamic, a name of the parent), and in a
+    hold's step, it reads through the link alone; a read before the link is
+    `unreachable!()`. The links are made before every line's `let`s and linked first once
+    the node is made, before the builders.
+  - A row reads its block's live dynamics through its `parent` (`WholeOfBlock`), and hears
+    the block's writes behind its own (`RowHears`).
+  - A global dynamic passed whole is the constant its getter gives.
+- **`!Updated $d` as an event value** (in a supplier's closure, in a function taking `$d`
+  whole): the prelude's `updated`, which fires `d`'s value after the tick when `d`'s update
+  event fires. A widget's event parameter has a value port as a bound event has.
+
 ## Positions
 
 - Places are counted as they are built (ruling TC): after a building `match` or `if`, or
@@ -484,6 +503,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   matches as the description of its level, each `$` field its level projected. So a `$`
   field binds a `$T` in both forms. A function with an element parameter takes its time
   whole (`HasElementParam`), so its callers read what it gives.
+- **An event field in an element pattern** (`Pad.Bell(!rings=!r, ..)`, ruling EP) binds an
+  `Event`: the description's own, or, for a live element, the requests its place makes
+  through that field (`Live::requested`: the host row's `requests` port, filtered by the
+  field's name and decoded), fired in the tick of the request.
+- **A bundle answer that is a value** (`@ pair`) is taken apart by its type: the plain
+  parts cloned for the first value, the event part mapped to the tag's variant.
+- **A tag's answer constructor named, not applied**, is a closure building the variant.
 - **`@Element (Tag(..))` in a block** is the element statement at the line's own position
   (`ElementCallLine`; Semantics ch. 4).
 - **The way back is typed.** `crate::Answer` is emitted beside `crate::Elem` in `main.rs`:
@@ -551,6 +577,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
   it, or a value naming it calls. Any other widget function used as a value is refused.
 
 ## Local functions, `@Machine`, durations
+
+- **A fault kind as a value** (`Fs.NotFound` named, an `Error`'s `kind` read) is its name
+  as plain data, a `Pod` choice with no arguments (the prelude's `fault_kind`, `kind_of`);
+  `Error(kind=k, ..)` takes the name back (`error_of`). An `Error`'s `message` is a `Text`.
+- **The prelude's `Turn`** is `PreludeTurn` in the emitted prelude (`TypeItemName`): the
+  runtime's `Turn` is the job's.
+- **A trait method named as a value** is a closure calling it (`MethodFn`).
+- **An interpolation over a `?` or `~` hole** is a plain-layer lift: the checker notes it
+  with its holes, and the lowering matches each (`DirectOperands`).
 
 - **A local function** (`fn Add a, x = ..` in a block) is inlined where it is called, its
   parameters bound to the arguments (a pattern parameter matched against its argument),

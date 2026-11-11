@@ -100,6 +100,34 @@ pub enum PreludeTurn<B> {
     Done(B),
 }
 
+impl<B: Show> Show for PreludeTurn<B> {
+    fn show(&self, p: &mut Printer) {
+        match self {
+            PreludeTurn::More => p.choice("More", &[]),
+            PreludeTurn::Done(b) => p.choice("Done", &[b as &dyn Show]),
+        }
+    }
+}
+
+impl<B: ToPod> ToPod for PreludeTurn<B> {
+    fn to_pod(&self) -> Pod {
+        match self {
+            PreludeTurn::More => Pod::name("More"),
+            PreludeTurn::Done(b) => Pod::Choice("Done".into(), vec![b.to_pod()]),
+        }
+    }
+}
+
+impl<B: FromPod> FromPod for PreludeTurn<B> {
+    fn from_pod(p: &Pod) -> ::std::result::Result<Self, Fault> {
+        match p.structure() {
+            Pod::Choice(ctor, args) if &**ctor == "More" && args.is_empty() => Ok(PreludeTurn::More),
+            Pod::Choice(ctor, args) if &**ctor == "Done" && args.len() == 1 => Ok(PreludeTurn::Done(B::from_pod(&args[0])?)),
+            other => Err(Fault::answer(format!("expected a Turn, got {other:?}"))),
+        }
+    }
+}
+
 /// `tag Prelude.Unwrap of Element !a: value: !~a`. The prelude's element tags are variants
 /// of `crate::Elem` and `crate::Answer` like any program's (a hosted child may emit them).
 #[derive(Clone, PartialEq, Eq)]
@@ -1036,6 +1064,39 @@ pub fn dyn_constant<T: Clone + 'static>(v: T) -> Dynamic<T> {
 /// dynamic list, Type System ch. 4): prism_rtl's own node decides each tick's firing.
 pub fn merge_all<T: Clone + 'static>(events: &Array<Event<T>>) -> Event<Array<T>> {
     ::prism_rtl::merge_all(events)
+}
+
+/// A fault kind as a value (`Fs.NotFound` named, an `Error`'s `kind` read): its name, the
+/// choice with no arguments it crosses to a World as.
+pub fn fault_kind(name: &str) -> Pod {
+    Pod::name(name)
+}
+
+/// `e.kind`.
+pub fn kind_of(e: &Error) -> Pod {
+    Pod::name(&e.kind_p)
+}
+
+/// `Error(kind=k, message=m)` with `k` a value.
+pub fn error_of(kind: &Pod, message: Text) -> Error {
+    match kind.structure() {
+        Pod::Choice(name, _) => Error::new(name, message),
+        other => panic!("an `Error` of a kind that is no fault kind: {other:?}"),
+    }
+}
+
+/// `!Updated $d` as an event value (in a supplier's answer, or in a function that takes
+/// the dynamic whole): it fires `d`'s value after the tick, in the tick `d`'s update event
+/// fires (Semantics ch. 7, R3).
+pub fn updated<T: Clone + 'static>(d: &Dynamic<T>) -> Event<T> {
+    let port = ::std::rc::Rc::new(Port::new());
+    let out = port.clone();
+    let read = d.clone();
+    d.updates.subscribe(::std::rc::Rc::new(move |_: &(), cx: &mut Cx| {
+        let v = cx.after(|at| read.sample(at));
+        out.fire(v, cx)
+    }));
+    Event { owner: None, port }
 }
 
 /// `test`: each script under the Test World. With `--print` the transcripts go to

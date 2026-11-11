@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 3 (an impl is picked by the type the call is at; an impl's `where` gives its element's impl): `Blank 1` at `[Text]` is `["b1", "b2"]`, doubled each; at `((Nat, Text))` with 3 it is `((3, "b3"))`, doubled to `((6, "b3b3"))`; at `Text ==> Nat` with 4 it is `{"k": 4}`, doubled to 8.
+test an_impl_of_a_collection_is_used
+
+tick 0
+  added:
+    0: Ui.Label(text="[b1b1][b2b2] 6/b3b3 8")

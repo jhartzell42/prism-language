@@ -177,8 +177,8 @@ fn NamedTy lx, n, args = match lx.g.types[n]:
     ? ti: match ti.body:
         BAlias a: OutTyOf lx, a
         # A fault kind is its name (`Error`'s `kind`); any other row kind is its enum.
-        BRowKind: if n == "Prelude.Fault": OutPod else: OutNamed (RefIn lx, ti.home, (Camel (BareName n))), [[]]
-        otherwise: OutNamed (RefIn lx, ti.home, (Camel (BareName n))), args
+        BRowKind: if n == "Prelude.Fault": OutPod else: OutNamed (RefIn lx, ti.home, (TypeItemName n)), [[]]
+        otherwise: OutNamed (RefIn lx, ti.home, (TypeItemName n)), args
     nil: if HasKey lx.g.families, n: OutPod else: InternalBugType "the type `{n}`, which the checker did not declare"
 
 # A type with its outermost time layer peeled: what a value of it holds at one moment. A

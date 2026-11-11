@@ -462,7 +462,22 @@ IsEventValue: unbounded fn Lx, Env, Expr -> Bool
 fn IsEventValue lx, env, e = match e.kind:
     EName ignore: False
     EGroup ignore: False
-    otherwise: ((LayerOf (TypeAt lx, e.span)) == LyEv) and (not (Fold (Operands e), False, \|bound, c| bound or HasKey env.spans, (PlaceKey lx, c.span))) and HasEventSource lx, env, e
+    otherwise: ((LayerOf (TypeAt lx, e.span)) == LyEv) and (not (Fold (Operands e), False, \|bound, c| bound or HasKey env.spans, (PlaceKey lx, c.span))) and ((HasEventSource lx, env, e) or (?UpdatedValue lx, env, e) != nil)
+
+# `!Updated $d` where `$d` is a dynamic value here (a live dynamic its line made for a
+# supplier's closure, `WholeArgs`, or a local `Dynamic`, a parameter taken whole): the
+# event value of its updates (the prelude's `updated`). Its dynamic.
+?UpdatedValue: unbounded fn Lx, Env, Expr -> ?Expr
+fn ?UpdatedValue lx, env, e = match e.kind:
+    EGroup x: ?UpdatedValue lx, env, x
+    ECall c, args, ignore, ignore: if (CalleeKey lx, c) != "Prelude.!Updated": nil else: match args[0]:
+        ? a: match a.value.kind:
+            EName n: if HasKey env.names, "#whole{a.value.span.start}:{a.value.span.end}": ? a.value else: match env.names[SNameKey n]:
+                ? (BnLocal ignore, ignore, (OutDyn ignore)): ? a.value
+                otherwise: nil
+            otherwise: nil
+        nil: nil
+    otherwise: nil
 
 # Whether an event expression stands over an event value: a local of an event type (a
 # parameter taken as one), or a node's event that has its value port. A lifted function's
@@ -479,7 +494,7 @@ fn IsEventSource lx, env, c:
             ? (BnEv ignore, ignore): HasKey env.names, "{SNameKey n}#port"
             otherwise: False
         EGroup x: IsEventSource lx, env, x
-        otherwise: HasEventSource lx, env, c
+        otherwise: (HasEventSource lx, env, c) or (?UpdatedValue lx, env, c) != nil
 
 EventValueOf: unbounded fn Lx, Env, Expr -> Vl
 fn EventValueOf lx, env, e:
@@ -490,7 +505,9 @@ fn EventValueOf lx, env, e:
         otherwise: nil
     match ?filtered:
         ? a: VlOwned (XMethod (Own (ValueOf lx, env, a.value)), "filter_some", [[]]), et
-        nil:
+        nil: match ?UpdatedValue lx, env, e:
+          ? d: VlOwned (XCall (HelperRef "updated"), [[Ref (WholeValueOf lx, env, d)]]), et
+          nil:
             let evs = Filter (Operands e), \|x| (LayerOf (TypeAt lx, x.span)) == LyEv
             match evs:
                 [[one]]:
@@ -837,13 +854,16 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
                 if arity > 0: CtorFn lx, c, pts, span, t, True else: CtorApp lx, emptyEnv, c, [[]], span
             otherwise: CtorApp lx, emptyEnv, c, [[]], span
     nil: match lx.g.tags[qk]:
-        ? tg: VlOwned (XStr tg.name), t
+        # a fault kind named: a `Fault` value, its name (`fault_kind`); `Error(kind=..)`
+        # and `==` against an `Error`'s `kind` take it so
+        ? tg: VlOwned (XCall (HelperRef "fault_kind"), [[XStr tg.name]]), OutPod
         nil: if Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsLetDef d): VlOwned (XCall (ValueRef lx, qk), [[]]), t
         else: match lx.g.vals[qk]:
             ? v if (IsWidgetFn v) and not (IsValueWidget lx, qk): VlOwned (Refusal (WidgetValueWords qk)), t
             ? v:
                 let isLet = Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsLetDef d)
                 if isLet: VlOwned (XCall (ValueRef lx, qk), [[]]), t
+                else: if v.sort == "method": MethodFn lx, v, span, t
                 else: match t:
                     OutJobFn a, ignore:
                         let ((ps, ignore2)) = SchemeParts lx, qk
@@ -1020,7 +1040,7 @@ fn ArgumentByKind lx, env, e = match e.kind:
                     nil:
                         let ((?qk, why)) = ResolveValue lx.g, lx.home, n
                         match ?qk:
-                            ? qk: if (HasKey lx.g.ctors, qk) or why == "answer": ClosureRef (ValueOf lx, env, e) else: XRef (XPath (ValueRef lx, qk))
+                            ? qk: if (HasKey lx.g.ctors, qk) or why == "answer" or IsMethodKey lx, qk: ClosureRef (ValueOf lx, env, e) else: XRef (XPath (ValueRef lx, qk))
                             nil: Ref (ValueOf lx, env, e)
             otherwise: Ref (ValueOf lx, env, e)
     otherwise: Ref (ValueOf lx, env, e)
@@ -1319,14 +1339,16 @@ CtorApp: unbounded fn Lx, Env, CtorInfo, [Arg], Range -> Vl
 fn CtorApp lx, env, c, args, span:
     let t = OutTyOf lx, (Peel (TypeAt lx, span))
     let owner = Or lx.g.types[c.owner], dummyTyInfo
-    let tyPath = RefIn lx, owner.home, (Camel (BareName c.owner))
+    let tyPath = RefIn lx, owner.home, (TypeItemName c.owner)
     let vals = CtorArgs lx, env, c, args
     match c.owner:
         "Bool": VlOwned (XBool (c.name == "True")), OutBool
         "Prelude.Error":
-            let kind = Or vals[0], (XStr "")
             let msg = Or vals[1], (XText "")
-            let made = XCall (RefRuntime "rt::Error::new"), [[kind, msg]]
+            # the kind is a `Fault` value (`fault_kind`): the error keeps its name
+            let made = match Or vals[0], (XStr ""):
+                XStr name: XCall (RefRuntime "rt::Error::new"), [[(XStr name), msg]]
+                kind: XCall (HelperRef "error_of"), [[(XRef kind), msg]]
             match t:
                 OutRes ignore: Failing made, t
                 otherwise: VlOwned made, OutError
@@ -1418,6 +1440,31 @@ fn MethodCall lx, env, v, args, span, t:
         else:
             let path = RefIn lx, tr.home, "{TraitName cls}::{mname}"
             VlOwned (XCall path, (ArgsFor lx, env, v, args)), t
+
+IsMethodKey: fn Lx, Text -> Bool
+fn IsMethodKey lx, qk = match lx.g.vals[qk]:
+    ? v: v.sort == "method"
+    nil: False
+
+# A trait method named, not applied (`Each ns, Blank`): a closure calling it with its
+# arguments, each at a place no source has (as `CtorFn`), so the call is lowered as any
+# call of the method is: at the type the checker solved the trait at where the name
+# stands, or, where it recorded none there, by the trait's path, the target inferring the
+# type from the closure's use.
+MethodFn: unbounded fn Lx, ValInfo, Range, OutTy -> Vl
+fn MethodFn lx, v, span, t = match t:
+    OutFn pts, rt:
+        let names = Each (Range0 (Len pts)), \|i| "a{i}"
+        let fakes = Each (Range0 (Len pts)), \|i| Arg(marks="", ?name=nil, value=(Expr(kind=EAbsent, span=Range(start=(4000000000 + i), end=(4000000000 + i)))), span=Range(start=0, end=0))
+        let env = Fold (Range0 (Len pts)), emptyEnv, \|en, i| BindSpan en, (PlaceKey lx, (Range(start=(4000000000 + i), end=(4000000000 + i)))), (VlPlace (XVar (Or names[i], "a")), ByRef, (Or pts[i], OutUnit))
+        let cls = Or (Each v.scheme.bounds, \|((ignore, c))| c)[0], ""
+        let tr = Or lx.g.traits[cls], dummyTraitInfo
+        let unsolved = not (HasPrefix cls, "Prelude.") and (IsResultOnly lx, v.qk, tr.param) and (?SelfAt lx, span, cls) == nil
+        let made = if unsolved: XCall (RefIn lx, tr.home, "{TraitName cls}::{Or lx.rsNames[v.qk], (Snake (BareName v.qk))}"), (ArgsFor lx, env, v, fakes)
+            else: Own (MethodCall lx, env, v, fakes, span, rt)
+        let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "a")), (OutRef (Or pts[i], OutUnit))
+        VlOwned (XCall (RefRuntime "std::Rc::new"), [[(XClosure False, pas, made)]]), t
+    otherwise: VlOwned (Refusal "the trait method `{BareName v.qk}` as an unbounded function's value"), t
 
 # The type a call's want of a trait was solved at (its impl note).
 ?SelfAt: unbounded fn Lx, Range, Text -> ?OutTy
@@ -1617,7 +1664,10 @@ fn FieldValue lx, env, r, name:
     let x = match rv:
         VlPlace y, ignore, ignore: y
         VlOwned y, ignore: y
-    VlPlace (FieldOfEx lx, x, rty, f), mode, ft
+    # an `Error`'s `kind` is kept as its name: read, it is a `Fault` value (`kind_of`)
+    match rty:
+        TyCon "Prelude.Error", ignore if name == "kind": VlOwned (XCall (HelperRef "kind_of"), [[(XRef x)]]), OutPod
+        otherwise: VlPlace (FieldOfEx lx, x, rty, f), mode, ft
 
 # A field of a value of the program's type `rty`, by its owner type (`XFieldOf`); a type
 # lowering refused to name (`FieldInfo` says so) reads by the name alone.
@@ -1631,7 +1681,7 @@ fn FieldOfEx lx, x, rty, f = match ?FieldOwner lx, rty:
 fn ?FieldOwner lx, rty = match rty:
     TyCon "Prelude.Error", ignore: nil
     TyCon n, ignore: match lx.g.types[n]:
-        ? ti: ? (RefIn lx, ti.home, (Camel (BareName n)))
+        ? ti: ? (RefIn lx, ti.home, (TypeItemName n))
         nil: nil
     otherwise: nil
 
@@ -1639,7 +1689,7 @@ fn ?FieldOwner lx, rty = match rty:
 FieldInfo: unbounded fn Lx, Ty, Text -> ((OutTy, Bool, Text))
 fn FieldInfo lx, rty, name = match rty:
     # the runtimes' `Error`, a builtin record: `kind` (a `Fault`) and `message`, both plain
-    TyCon "Prelude.Error", ignore: (((InternalBugType "a field {name} of an Error"), False, (FieldSpell "Prelude", name, tText)))
+    TyCon "Prelude.Error", ignore: (((if name == "kind": OutPod else: OutText), False, (FieldSpell "Prelude", name, tText)))
     TyCon n, args: match lx.g.ctors[n]:
         ? c:
             let ?fix = Fold (Range0 (Len c.fields)), nil, \|?found, i| if (Or c.fields[i], "") == name: ? i else: ?found
@@ -1795,7 +1845,10 @@ fn PlainLambda lx, env, ps, body, ft:
     # An event the body reads as a value is its port, captured too; a hold or dynamic `let`
     # the body reads has its value at the build captured, for a supplier's dynamic answer
     # (round 3 DY).
-    let caps = Append (Append caps0, (Filter (Each read, \|n| "{n}#port"), \|n| HasKey env.names, n)), (Filter (Each read, \|n| "{n}#init"), \|n| HasKey env.names, n)
+    # and the live dynamics the block's line made (`WholeArgs`, `#whole{span}`): the body
+    # may read one (`!Updated $state` as an event value, a call taking `$d` whole)
+    let wholes = Filter (Keys env.names), \|n| HasPrefix n, "#whole"
+    let caps = Append (Append (Append caps0, (Filter (Each read, \|n| "{n}#port"), \|n| HasKey env.names, n)), (Filter (Each read, \|n| "{n}#init"), \|n| HasKey env.names, n)), wholes
     let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
         ? (BnLocal rs, mode, ct):
             let local = CaptureName rs

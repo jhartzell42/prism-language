@@ -341,7 +341,15 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
     let calls = Filter (ExprsIn e), \|x| match x.kind:
         ECall c, ignore, ignore, ignore: (IsWholeObject lx, x) or (IsWholeFn lx, (CalleeKey lx, c)) or (CalleeKey lx, c) == "Prelude.@Flatten" or (CalleeKey lx, c) == "Prelude.@Switch"
         otherwise: False
-    let roots = Fold calls, (if whole: [[e]] else: [[]]), \|acc, c| match c.kind:
+    # and `!Updated $d` inside a lambda of the line (a supplier's `@ !Filter (?Pick p,
+    # !Updated $state)`): an event value there, over `$d`'s live dynamic (`?UpdatedValue`)
+    let inLambdas = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
+        ELambda ignore, ignore: Append acc, (ExprsIn x)
+        otherwise: acc
+    let updatedCalls = Filter inLambdas, \|x| match x.kind:
+        ECall c, ignore, ignore, ignore: (CalleeKey lx, c) == "Prelude.!Updated"
+        otherwise: False
+    let roots = Fold (Append calls, updatedCalls), (if whole: [[e]] else: [[]]), \|acc, c| match c.kind:
         ECall ignore, args, ignore, ignore: Fold args, acc, \|acc2, a| Append acc2, (ExprsIn a.value)
         otherwise: acc
     let names0 = Fold roots, [[]], \|acc3, y| match y.kind:
@@ -841,7 +849,19 @@ fn BindParam wx, cbenv, cmenv, be, me, nkey, spelled, pty, arg:
         LyEv:
             let ((r, wx2)) = EventRef wx, cmenv, arg
             let b = BnEv r, t
-            ((wx2, (Bind be, nkey, b), (Bind me, nkey, b)))
+            # its value form, as a bound event's (`PreBindName`): a port the event fires,
+            # made before the node, which a supplier's closure or a function taking the
+            # event whole reads (`NameValue`)
+            let et = OutTyOf lx, (Peel (Peel pty))
+            let ((rs, wx3)) = FreshName wx2, "{spelled}_v"
+            let pf = "{rs}_port"
+            let pt = OutRc (OutPort et)
+            let wx4 = update (Connect wx3, r, (SkPort rs)):
+                &_.taken <= Push &_.taken, pf
+                &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind pf), pt), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]]))
+                &_.fields <= Push &_.fields, ((pf, pt, "`{nkey}` as a value: the port it fires"))
+                &_.moves <= Push &_.moves, ((pf, (XClone (XVar pf))))
+            ((wx4, (Bind (Bind be, nkey, b), "{nkey}#port", (BnLocal (XVar pf), Owned, pt)), (Bind (Bind me, nkey, b), "{nkey}#port", (BnLocal (XField XSelf, pf), Owned, pt))))
         LyDyn:
             # the argument's expression where the widget reads it; for a row of the widget's
             # (a `for` in it), which reads the node through its parent, a getter of it too,
