@@ -243,10 +243,12 @@ fn RowReads env, pref = Fold (Keys env.names), env, \|en, k| match env.names[k]:
     otherwise: en
 
 # The event bindings of a row's port environment (`RowEnv`) over a row's environment: the
-# block's events as the row's ports.
+# block's events as the row's ports; and a widget parameter the row applies, its
+# argument's environments as the row sees the caller's (`RowEnvNames`).
 EventsOf: fn Env, Env -> Env
 fn EventsOf ports, env = Fold (Keys ports.names), env, \|en, k| match ports.names[k]:
     ? (BnEv er, t): Bind en, k, (BnEv er, t)
+    ? (BnWidget x, cbenv, cmenv, clx): Bind en, k, (BnWidget x, cbenv, cmenv, clx)
     otherwise: en
 
 # A row's reads of its block, as the block's own reads: the block's writes of these mark
