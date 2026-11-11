@@ -614,13 +614,17 @@ fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent, parentTy, args, ze
     # a blueprint parameter (and a widget function's) is no value of the row: its argument
     # is the caller's text, built where the clause applies it (`ArmRowOf`, `widgets`), so
     # its pattern matches nothing of the scrutinee (`ClauseScrutinee`)
-    let widgets = Fold (Range0 (Len c.params)), [[]], \|acc, i| match ((ptys[i], c.params[i], args[i])):
+    # (a shared row holds no block: its blueprint parameter is a value of the row, a
+    # field as a plain parameter's binder is, applied as a blueprint value is,
+    # `ValueBlueprintLine`)
+    let valued = zeroBased and parentTy == OutUnit
+    let widgets = if valued: [[]] else: Fold (Range0 (Len c.params)), [[]], \|acc, i| match ((ptys[i], c.params[i], args[i])):
         ((? pt, ? p, ? a)) if IsBlueprintParam pt:
             let bn = PlainBinder lxc, p
             if bn == "": acc else: Push acc, ((bn, a.value))
         otherwise: acc
     let pats = Each (Range0 (Len c.params)), \|i| match ((ptys[i], c.params[i])):
-        ((? pt, ? p)) if IsBlueprintParam pt: nil
+        ((? pt, ? p)) if (IsBlueprintParam pt) and not valued: nil
         ((ignore, ?p)): ?p
     let body = match c.body:
         BodyBlock b: b
@@ -646,15 +650,54 @@ let wideGeneration = 1048576
 
 # Whether a widget of several clauses that calls itself is lowered as shared rows
 # (`SharedClauseLine`): its parameters are plain, it gives nothing or a plain value back,
-# it has no type parameter, and its places go to the World. Any other is lowered level by
-# level (`TooDeep`).
-IsSharable: unbounded fn Wx, ValInfo, Expr -> Bool
-fn IsSharable wx, v, e:
+# it has no type parameter, and its places go to the World. A blueprint parameter is
+# taken too, as a value of the row (`prism_rtl::Blueprint`), where the widget gives
+# nothing back and the call's argument is a blueprint value the lowering can make
+# (`IsBlueprintValued`). Any other is lowered level by level (`TooDeep`).
+IsSharable: unbounded fn Wx, Env, ValInfo, Expr, [Arg] -> Bool
+fn IsSharable wx, menv, v, e, args:
     let ptys = match v.scheme.ty:
         TyFn ignore, ps, ignore: ps
         otherwise: [[]]
     let plainResult = (ResultLayer (TypeAt wx.lx, e.span)) == LyPlain and not (IsBundle (LineOutFull wx.lx, e))
-    (not (IsHostedScope wx)) and plainResult and (Len (RigidsIn v.scheme.ty)) == 0 and Fold ptys, True, \|ok, pt| ok and (LayerOf pt) == LyPlain and not (IsWidgetFnTy pt)
+    let plainParams = Fold ptys, True, \|ok, pt| ok and (LayerOf pt) == LyPlain and not (IsWidgetFnTy pt)
+    let valuedParams = Fold (Range0 (Len ptys)), True, \|ok, i| ok and match ptys[i]:
+        ? pt: if IsWidgetFnTy pt: False else: if (LayerOf pt) == LyBlueprint: IsBlueprintValued wx.lx, menv, args[i] else: (LayerOf pt) == LyPlain
+        nil: True
+    let nothingBack = (OutTyOf wx.lx, (OutOf (TypeAt wx.lx, e.span))) == OutUnit
+    (not (IsHostedScope wx)) and plainResult and (Len (RigidsIn v.scheme.ty)) == 0 and (plainParams or (valuedParams and nothingBack))
+
+# Whether a call's blueprint argument is a value where the call stands: a blueprint the
+# node holds (a pattern's binder, a shared row's own parameter), or a widget the program
+# reads as a value (`Lx.valued`), named in place or through the caller's own parameter.
+IsBlueprintValued: unbounded fn Lx, Env, ?Arg -> Bool
+fn IsBlueprintValued lx, menv, ?a = match ?a:
+    nil: False
+    ? a: match (Ungrouped a.value).kind:
+        EName n: match (if (Len n.path) == 1: menv.names[SNameKey n] else: nil):
+            ? (BnLocal ignore, ignore, ignore): True
+            ? (BnWidget x, ignore, ignore, clx): HasKey lx.valued, (BlueprintQk clx, x)
+            nil: HasKey lx.valued, (BlueprintQk lx, a.value)
+            otherwise: False
+        otherwise: False
+
+# The arguments of a widget that calls itself as its shared rows' patterns match them
+# (`SharedCaseOf`): each plain argument's value, and each blueprint argument as a value,
+# the caller's own blueprint parameter read as the widget it names.
+SharedScrutinee: unbounded fn Lx, Env, ValInfo, [Arg] -> Ex
+fn SharedScrutinee lx, env, v, args:
+    let ptys = match v.scheme.ty:
+        TyFn ignore, ps, ignore: ps
+        otherwise: [[]]
+    let parts = Each (Range0 (Len args)), \|i| match ((ptys[i], args[i])):
+        ((? pt, ? a)) if (LayerOf pt) == LyBlueprint: match (Ungrouped a.value).kind:
+            EName n: match (if (Len n.path) == 1: env.names[SNameKey n] else: nil):
+                ? (BnWidget x, ignore, cmenv, clx): Ref (ValueOf clx, cmenv, x)
+                otherwise: Argument lx, env, a.value
+            otherwise: Argument lx, env, a.value
+        ((ignore, ? a)): Argument lx, env, a.value
+        otherwise: XUnit
+    XTuple parts
 
 # A widget of several clauses applied inside its own clause (Semantics ch. 8: a widget
 # may call itself, as deep as its data; ruling TC: places are counted as they are built).
@@ -699,7 +742,7 @@ fn SharedClauseLine wx, menv, scrut, qk, v, e, args:
     let arms = Each cases, \|((rowNode, pat, conds, passed))|
         let built = TryOf (XCall (RefChild (SiteRef lx, rowNode), "build"), (Append (Append [[(XClone (XVar "path"))]], passed), [[XUnit, XCx]]))
         XArm(pat=pat, conds=conds, body=(XBlock (Append (Append [[(DoLet (PaBind "row"), built)]], keeps), (GapSet name, (? gap))), (XCast (XVar "row"), rowObj)))
-    let select = WithRowBase wx, "self", pos, (Own (ArmsValue (ClauseScrutinee lx, menv, v, args), arms, "'select", rowObj))
+    let select = WithRowBase wx, "self", pos, (Own (ArmsValue (SharedScrutinee lx, menv, v, args), arms, "'select", rowObj))
     let wx3 = update wx2:
         &_.pos <= Pos(scope=pos.scope, at=pos.at + wideGeneration)
         &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=True, width=wideGeneration, moved="", early=False, gappy=True, rebased=True)

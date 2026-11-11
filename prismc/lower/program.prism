@@ -297,7 +297,9 @@ fn ValueWidgetsIn lx, e = match e.kind:
             ? v: IsWidgetTy (WidgetResultOf v.scheme.ty)
             nil: False
         if hosts: Fold (Drop args, 1), [[]], \|acc, a| Append acc, (ValueWidgetsAt lx, a.value)
-        else: if applies: [[]]
+        # a widget that calls itself takes its blueprint arguments as values past its
+        # first level (`IsSharable`)
+        else: if applies: (if CallsItself lx, qk: Fold args, [[]], \|acc, a| if (LayerOf (TypeAt lx, a.value.span)) == LyBlueprint: Append acc, (ValueWidgetsAt lx, a.value) else: acc else: [[]])
         else: Fold args, [[]], \|acc, a| Append acc, (ValueWidgetsAt lx, a.value)
     ELambda ignore, (LbExpr x): ValueWidgetsAt lx, x
     ELambda ignore, (LbBlock b): ValueWidgetsOfBlock lx, b
@@ -305,6 +307,16 @@ fn ValueWidgetsIn lx, e = match e.kind:
     ETuple xs: Fold xs, [[]], \|acc, x| Append acc, (ValueWidgetsAt lx, x)
     EArray xs: Fold xs, [[]], \|acc, x| Append acc, (ValueWidgetsAt lx, x)
     otherwise: [[]]
+
+# Whether a widget's own clauses apply it.
+CallsItself: unbounded fn Lx, Text -> Bool
+fn CallsItself lx, qk = match lx.g.vals[qk]:
+    nil: False
+    ? v:
+        let lxv = InModule lx, v.file, v.home
+        Fold (ClausesOf lx.g, qk), False, \|found, c| found or Fold (BodyExprs c.body), False, \|found2, x| found2 or match x.kind:
+            ECall callee, ignore, ignore, ignore: (BlueprintQk lxv, callee) == qk
+            otherwise: False
 
 # The widgets an expression in a value's place is: itself, or what its arms end on.
 ValueWidgetsAt: unbounded fn Lx, Expr -> [Text]
