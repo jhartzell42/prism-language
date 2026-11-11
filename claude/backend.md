@@ -938,7 +938,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `Path::root()` and placed once the node stands, where the construction step reaches
   its rows (`Wx.unplacedHosts`, `ScopeSteps`, prism_rtl's `Host::place_at`); its
   scope's places ask their first values after that, as a late host's do
-  (`Wx.lateHosts`). Refused: a hosted place with a plain answer under such a host, and
+  (`Wx.lateHosts`): a place with a plain answer bound to a name there is a late name
+  too, its hold set where the scope's places ask (`LateHostedAnswer`,
+  `ElementOutputOf`). Refused: such a place whose answer no plain name binds, and
   a hosted node's own first-value query spelled before its node in a row numbered
   late (`PlaceNumber`).
 - **A widget that calls itself**, of one clause or of several (plain parameters, no type
