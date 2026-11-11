@@ -1,4 +1,4 @@
-tests/checker/neg/lens-lent-read.prism:25: error[borrow-overlap]: `&_` is lent to the `for`
+tests/checker/neg/lens-lent-read.prism:26: error[borrow-overlap]: `&_` is lent to the `for`
             &s += &_.score.away
                   ^^^^^^^^^^^^^
   fix: read it before the loop with a `let`, or loop over the path the lens names

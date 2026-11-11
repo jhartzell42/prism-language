@@ -541,17 +541,71 @@ fn LensDefs lx, qk, clauses, sc:
     let ret = if LensEndsAtIndex lx, qk, (Len lx.g.defs): OutOpt (OutRefMut entry) else: OutRefMut part
     let read = FnDefOf lx, qk, clauses, sc
     let reference = FnDef(name=read.name, generics=read.generics, params=[[((parameter, (OutRefMut whole)))]], ret=ret, body=body, doc=read.doc, public=True)
+    # a body that steps through an index is read through the entry in place (`at_shared`)
+    let shared = Bind emptyEnv, binder, (BnLocal (XVar parameter), ByRef, whole)
+    let ?throughIndex = match clauses[0]:
+        ? c: match c.body:
+            BodyExpr e: if StepsThroughIndex e, True: ? (LensReadThrough lxb, shared, e) else: nil
+            BodyBlock ignore: nil
+        nil: nil
     let value = update read:
         &_.name <= "{read.name}_get"
         &_.doc <= ""
+        &_.body <= Or ?throughIndex, read.body
     [[reference, value]]
+
+# Whether a reference steps through an index below its last step (`&xs[1].acc`,
+# `&Acc &xs[1].cpu`): the entry is a place the path goes on from, which gives up when the
+# array does not hold it, as the block's own path does.
+StepsThroughIndex: unbounded fn Expr, Bool -> Bool
+fn StepsThroughIndex e, last = match e.kind:
+    EGroup x: StepsThroughIndex x, last
+    EField r, ignore, ignore: StepsThroughIndex r, False
+    EIndex r, ignore: if last: StepsThroughIndex r, False else: True
+    otherwise: match ?LensApplied e:
+        ? ((ignore, argument)): StepsThroughIndex argument, False
+        nil: False
+
+# The place a reference path names, borrowed shared, for a read: `PlaceOf` with the entry
+# of an index step read in place (`at_shared`).
+SharedPlaceOf: unbounded fn Lx, Env, Expr -> Ex
+fn SharedPlaceOf lx, env, e = match e.kind:
+    EName n: match env.names[SNameKey n]:
+        ? (BnLocal rs, ignore, ignore): rs
+        otherwise: XVar (Snake (SNameKey n))
+    EField r, ignore, name:
+        let rty = Peel (PlaceTy lx, r)
+        let ((ignore, ignore, f)) = FieldInfo lx, rty, name.name
+        FieldOfEx lx, (SharedPlaceOf lx, env, r), rty, f
+    EIndex r, k:
+        let helper = match CollectionOut (OutTyOf lx, (Peel (PlaceTy lx, r))):
+            OutMap ignore, ignore: HelperRef "at_shared_map"
+            otherwise: HelperRef "at_shared"
+        XDeref (XCall helper, [[(XRef (SharedPlaceOf lx, env, r)), (Argument lx, env, k)]])
+    EGroup x: SharedPlaceOf lx, env, x
+    otherwise: InternalBug "a reference path read through an index that this back end does not lower"
+
+# A reference that steps through an index, read: the part's value by the shared place, an
+# index at its end as `xs[i]`, a lens applied by its read function.
+LensReadThrough: unbounded fn Lx, Env, Expr -> Ex
+fn LensReadThrough lx, env, e = match e.kind:
+    EGroup x: LensReadThrough lx, env, x
+    EIndex r, k: XCall (HelperRef "index"), [[(XRef (SharedPlaceOf lx, env, r)), (Argument lx, env, k)]]
+    otherwise: match ?LensCall lx, e:
+        ? ((qk, argument)): XCall (LensReadRef lx, qk), [[(XRef (SharedPlaceOf lx, env, argument))]]
+        nil: XClone (SharedPlaceOf lx, env, e)
+
+# A lens's read function.
+LensReadRef: fn Lx, Text -> Ref
+fn LensReadRef lx, qk:
+    let owner = match lx.g.vals[qk]:
+        ? v: v.home
+        nil: OwnerOf qk
+    RefIn lx, owner, "{Or lx.rsNames[qk], (Snake (BareName qk))}_get"
 
 # A lens applied in expression position is read: its read function over the argument's
 # value (`acc_l_get(&this)`).
 LensRead: unbounded fn Lx, Env, Text, Expr, OutTy -> Vl
 fn LensRead lx, env, qk, argument, t:
-    let owner = match lx.g.vals[qk]:
-        ? v: v.home
-        nil: OwnerOf qk
-    let read = RefIn lx, owner, "{Or lx.rsNames[qk], (Snake (BareName qk))}_get"
-    VlOwned (XCall read, [[(Ref (ValueOf lx, env, argument))]]), t
+    let whole = if StepsThroughIndex argument, False: XRef (SharedPlaceOf lx, env, argument) else: Ref (ValueOf lx, env, argument)
+    VlOwned (XCall (LensReadRef lx, qk), [[whole]]), t
