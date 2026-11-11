@@ -132,7 +132,7 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
             let wx6 = update wx5:
                 &_.gns <= Each &_.gns, \|n| if n.id == gid: WithInputs n, [["{name}_gathered"]] else: n
             let rowDone = Connect rowWxR, r, (SkUp "{name}_all_in")
-            let wx7 = AddBuilder wx6, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowDone, qk=rowName, params=rowParams, ?gather=(? gid))), passed
+            let wx7 = AddBuilder wx6, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowDone, qk=rowName, params=rowParams, gathers=[[gid]])), passed
             ((wx7, (WrEv (EvRefOf wx7, gid))))
         WrDyn ex, resultReads, rt:
             # The gathered dynamic `$(K ==> T)` is structural (pick ST): the rows' results by
@@ -148,8 +148,8 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
                 ParentRead ignore: False
             let rowDone = update rowWxR:
                 &_.getters <= Push &_.getters, (MethDef(name="result", recv=RecvRef, params=[[]], cx=CxRef, ret=rt, body=[[]], tail=ex, doc="The row's result, which the block gathers by key."))
-                &_.resultMoved <= if (Len ownBehind) > 0: ? (("{gathered}_moved", ownBehind)) else: nil
-            let wx4 = AddBuilder wx3, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowDone, qk=rowName, params=rowParams, ?gather=nil)), passed
+                &_.resultMoved <= if (Len ownBehind) > 0: Push &_.resultMoved, (("{gathered}_moved", ownBehind)) else: &_.resultMoved
+            let wx4 = AddBuilder wx3, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowDone, qk=rowName, params=rowParams, gathers=[[]])), passed
             let all = (XMethod (XMethod (XMethod (XMethod (XField XSelf, name), "borrow", [[]]), "iter", [[]]), "map", [[(XClosure False, [[PaTuple [[PaBind "k", PaBind "row"]]]], (XTuple [[XClone (XVar "k"), (XMethod (XVar "row"), "result", [[XCx]])]]))]]), "collect", [[]])
             let what = "the dynamic gathered by the `for` at place {PlaceText pos}"
             let wx5 = update wx4:
@@ -160,13 +160,103 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
                 &_.snaps <= Push &_.snaps, SnapDef(name=gathered, live="{gathered}_now", ty=gatheredTy, eq=(TyHasEq lx, (Peel full), [[]]), builder=name, before=False, what=what)
                 &_.dynReads <= Insert &_.dynReads, "{gathered}_now", (UnionReads reads, (BlockReads (ReadsClosed rowWxR.dynReads, resultReads)))
             ((wx5, (WrDyn (XMethod (XSelf), gathered, [[XCx]]), [[OwnRead gathered]], gatheredTy)))
-        WrParts ignore:
-            let wx4 = update wx3:
-                &_.build <= Push &_.build, (RefusalDo "a `for` whose rows end on a bundle (Semantics ch. 4: gathered part by part)")
-            ((wx4, WrUnit))
+        # a bundle, gathered part by part (Semantics ch. 4, "`for`")
+        WrParts parts:
+            let gathered = ForParts (ForGathered(block=wx3, rowWx=rowWxR, gathers=[[]])), name, pos, kt, (BundlePartTys full), parts, "", reads
+            let wx4 = AddBuilder gathered.state.block, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=gathered.state.rowWx, qk=rowName, params=rowParams, gathers=gathered.state.gathers)), passed
+            ((wx4, (WrParts gathered.parts)))
         otherwise:
-            let wx4 = AddBuilder wx3, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowWxR, qk=rowName, params=rowParams, ?gather=nil)), passed
+            let wx4 = AddBuilder wx3, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowWxR, qk=rowName, params=rowParams, gathers=[[]])), passed
             ((wx4, WrUnit))
+
+# The parts of a bundle type (Type System ch. 2, "Bundles and sparse tuples"): a tuple's
+# components, a blueprint's output's.
+BundlePartTys: fn Ty -> [Ty]
+fn BundlePartTys t = match t:
+    TyTuple ts: ts
+    TyAt i, ignore: BundlePartTys i
+    TySig "&", i: BundlePartTys i
+    otherwise: [[]]
+
+# A `for` gathering its rows' bundle: the block and the row as each part is gathered, and
+# the block's gathers of the row's firings (`PendingRow.gathers`).
+type ForGathered = record:
+    block: Wx
+    rowWx: Wx
+    gathers: [Nat]
+
+type ForGatheredParts = record:
+    state: ForGathered
+    parts: [Wres]
+
+# A `for` whose rows end on a bundle (Semantics ch. 4, "`for`": "a bundle | the bundle,
+# gathered field by field"): each part is gathered as a row's one result of its kind is.
+# An event part's firings are consolidated by key into the block's `{name}_p{i}_all`, one
+# firing a tick; a dynamic part's values by key are the structural dynamic
+# `{name}_p{i}_all` (pick ST), the row's getter `result_p{i}` behind it; a plain part is a
+# dynamic no write moves; a bundle inside the bundle is gathered by its own parts
+# (`{name}_p{i}_{j}`). `tys`: the gathered parts' types, the `for`'s own.
+ForParts: unbounded fn ForGathered, Text, Pos, OutTy, [Ty], [Wres], Text, [Read] -> ForGatheredParts
+fn ForParts start, name, pos, kt, tys, parts, prefix, reads = Fold (Range0 (Len parts)), (ForGatheredParts(state=start, parts=[[]])), \|acc, i|
+    let suffix = if prefix == "": "p{i}" else: "{prefix}_{i}"
+    let ((state, res)) = ForPart acc.state, name, pos, kt, (Or tys[i], TyErr), (Or parts[i], WrUnit), suffix, reads
+    ForGatheredParts(state=state, parts=(Push acc.parts, res))
+
+ForPart: unbounded fn ForGathered, Text, Pos, OutTy, Ty, Wres, Text, [Read] -> ((ForGathered, Wres))
+fn ForPart st, name, pos, kt, full, part, suffix, reads:
+    let lx = st.block.lx
+    let part2 = match part:
+        WrHosted inner, ignore: inner
+        otherwise: part
+    match part2:
+        WrEv r:
+            let outTy = OutTyOf lx, (Peel full)
+            let ((gid, b1)) = AddGn st.block, "{name}_{suffix}_all", outTy, GnGather, 1
+            let b2 = AddFieldLast b1, "{name}_{suffix}_gathered", (OutStamped outTy), "the rows' firings of part {suffix} this tick, by key", (XCall (RefRuntime "rt::Stamped::new"), [[]])
+            let b3 = update b2:
+                &_.gns <= Each &_.gns, \|n| if n.id == gid: WithInputs n, [["{name}_{suffix}_gathered"]] else: n
+            let rowDone = Connect st.rowWx, r, (SkUp "{name}_{suffix}_all_in")
+            (((ForGathered(block=b3, rowWx=rowDone, gathers=(Push st.gathers, gid))), (WrEv (EvRefOf b3, gid))))
+        WrDyn ex, resultReads, rt: ForDynPart st, name, pos, kt, full, ex, resultReads, rt, suffix, reads
+        # a plain part is the row's from its build on: kept in a field of the row, read
+        # as a dynamic no write moves
+        WrPlain ex, rt:
+            let ((f, rw1)) = FreshName st.rowWx, "result"
+            let rw2 = update rw1:
+                &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind f), rt), ex)
+                &_.fields <= Push &_.fields, ((f, rt, "the row's plain result, part {suffix}"))
+                &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
+            ForDynPart (ForGathered(block=st.block, rowWx=rw2, gathers=st.gathers)), name, pos, kt, full, (XClone (XField XSelf, f)), [[]], rt, suffix, reads
+        WrLate ex, rt: ForDynPart st, name, pos, kt, full, ex, [[]], rt, suffix, reads
+        WrParts inner:
+            let gathered = ForParts st, name, pos, kt, (BundlePartTys full), inner, suffix, reads
+            ((gathered.state, (WrParts gathered.parts)))
+        otherwise: ((st, WrUnit))
+
+# A dynamic part gathered: as a `for` whose rows end on a dynamic (`ForLine`).
+ForDynPart: unbounded fn ForGathered, Text, Pos, OutTy, Ty, Ex, [Read], OutTy, Text, [Read] -> ((ForGathered, Wres))
+fn ForDynPart st, name, pos, kt, full, ex, resultReads, rt, suffix, reads:
+    let lx = st.block.lx
+    let gathered = "{name}_{suffix}_all"
+    let rowResult = "result_{suffix}"
+    let gatheredTy = OutMap kt, rt
+    let ownBehind = Filter (ReadsClosed st.rowWx.dynReads, resultReads), \|r| match r:
+        OwnRead ignore: True
+        ParentRead ignore: False
+    let rowDone = update st.rowWx:
+        &_.taken <= Push &_.taken, rowResult
+        &_.getters <= Push &_.getters, (MethDef(name=rowResult, recv=RecvRef, params=[[]], cx=CxRef, ret=rt, body=[[]], tail=ex, doc="Part {suffix} of the row's result, which the block gathers by key."))
+        &_.resultMoved <= if (Len ownBehind) > 0: Push &_.resultMoved, (("{gathered}_moved", ownBehind)) else: &_.resultMoved
+    let all = (XMethod (XMethod (XMethod (XMethod (XField XSelf, name), "borrow", [[]]), "iter", [[]]), "map", [[(XClosure False, [[PaTuple [[PaBind "k", PaBind "row"]]]], (XTuple [[XClone (XVar "k"), (XMethod (XVar "row"), rowResult, [[XCx]])]]))]]), "collect", [[]])
+    let what = "part {suffix} of the bundle gathered by the `for` at place {PlaceText pos}"
+    let block = update st.block:
+        &_.taken <= Append &_.taken, [[gathered, "{gathered}_now", "{gathered}_snap", "{gathered}_moved", "{gathered}_publish"]]
+        &_.getters <= Append &_.getters, [[(MethDef(name="{gathered}_now", recv=RecvRef, params=[[]], cx=CxRef, ret=gatheredTy, body=[[]], tail=all, doc="Part {suffix} of the rows' results by key, computed live: what the snapshot of the gathered dynamic is taken from (pick ST).")), (SnapGetter gathered, gatheredTy, "Part {suffix} of the `for`'s bundle, the rows' values by key, a structural dynamic (pick ST): one tick behind the rows.")]]
+        &_.fields <= Push &_.fields, (("{gathered}_snap", (OutSnapshot gatheredTy), "part {suffix} of the bundle of the `for` at place {PlaceText pos}, structural: its snapshots and the lagged dynamic (pick ST)"))
+        &_.inits <= Push &_.inits, (("{gathered}_snap", (XCall (RefRuntime "rt::Snapshot::new"), [[XStr what]])))
+        &_.snaps <= Push &_.snaps, SnapDef(name=gathered, live="{gathered}_now", ty=gatheredTy, eq=(TyHasEq lx, (Peel full), [[]]), builder=name, before=False, what=what)
+        &_.dynReads <= Insert &_.dynReads, "{gathered}_now", (UnionReads reads, (BlockReads (ReadsClosed st.rowWx.dynReads, resultReads)))
+    (((ForGathered(block=block, rowWx=rowDone, gathers=st.gathers)), (WrDyn (XMethod (XSelf), gathered, [[XCx]]), [[OwnRead gathered]], gatheredTy)))
 
 # A row's entry, `$_`: the block's source at the row's key, at the read point (a projection
 # of the block's holds, written by nobody, pick RE). From the row's leaving on, the value as

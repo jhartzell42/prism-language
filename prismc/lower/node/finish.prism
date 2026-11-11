@@ -178,9 +178,7 @@ fn HoldWritten sk, f:
     # the build is listed once: here, or by the marks when a snapshot is marked
     let rebuildIt = if builds and not (ListsBuild sk, r): Append stales, [[DoExpr (XMethod (XCx), "build_later", [[(XClone XSelf)]])]] else: stales
     # a row whose result its block gathers tells the block when a hold behind the result moves
-    let gathered = match sk.wx.?resultMoved:
-        ? ((m, rds)): if HasRead rds, r: [[(DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "parent"]]), (XUpgrade (XField XSelf, "parent")), [[DoExpr (XMethod (XVar "parent"), m, [[XCx]])]], [[]])]] else: [[]]
-        nil: [[]]
+    let gathered = Fold sk.wx.resultMoved, [[]], \|acc, ((m, rds))| if HasRead rds, r: Push acc, (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "parent"]]), (XUpgrade (XField XSelf, "parent")), [[DoExpr (XMethod (XVar "parent"), m, [[XCx]])]], [[]]) else: acc
     Append (Append (Append (Append (Append dirty, told), rebuildIt), rowMarks), gathered), (MovedMarks sk, f)
 
 # The host whose document a position's place is an entry of, as the methods spell it: the
@@ -538,9 +536,7 @@ fn FinishPending wx, gns = Fold wx.pending, (([[]], gns)), \|((defs, cur)), p|
         &_.floors <= floors
         &_.gns <= Each &_.gns, \|g| if g.kind == GnUpdated: WithFloor g, (ParentFloor wx, cur, (ReadsClosed p.wx.dynReads, g.reads)) else: g
     let def = FinishNode floored, p.qk, p.params, True
-    let next = match p.?gather:
-        ? gid: Each cur, \|g| if g.id == gid: WithHeight g, (def.top + 1) else: g
-        nil: cur
+    let next = Each cur, \|g| if HasNat p.gathers, g.id: WithHeight g, (def.top + 1) else: g
     (((Push defs, def), next))
 
 # One above the block's writers of the holds behind what a row reads through the parent,

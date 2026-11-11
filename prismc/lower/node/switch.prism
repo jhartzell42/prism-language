@@ -235,7 +235,8 @@ fn ClauseWidgetLine wx, benv, menv, scrut, call, qk, v, e, args:
     let lx = wx.lx
     let outTy = OutTyOf lx, (OutOf (TypeAt lx, e.span))
     let layer = ResultLayer (TypeAt lx, e.span)
-    if layer == LyPlain and outTy != OutUnit: EarlyClauseLine wx, benv, menv, scrut, qk, v, e, args, outTy
+    if IsBundle (LineOutFull lx, e): BundleClauseLine wx, menv, scrut, call, qk, v, e
+    else: if layer == LyPlain and outTy != OutUnit: EarlyClauseLine wx, benv, menv, scrut, qk, v, e, args, outTy
     else: if layer == LyDyn: DynClauseLine wx, menv, scrut, call, qk, v, e
     else: StaticClauseLine wx, menv, scrut, call, qk, v, e
 
@@ -289,6 +290,47 @@ fn DynClauseLine wx, menv, scrut, call, qk, v, e:
         &_.genHolds <= Push &_.genHolds, ((name, reads))
         &_.rows <= Fold cases, &_.rows, \|acc, gc| Append (Push acc, gc.node), gc.node.children
     KeptDynResult wx3, name, rows
+
+# A static widget of several clauses whose clauses end on a bundle (Type System ch. 2,
+# "Bundles and sparse tuples"; Semantics ch. 8: the left side of `<-` is a pattern for the
+# output): the generation is built as a static one is, after the block's node, and the row
+# the arguments choose hands the block its bundle part by part (`RowPartsOut`,
+# `KeepParts`): an event part fires the block's event, a dynamic part is kept and read
+# through its getter, a plain part is late.
+BundleClauseLine: unbounded fn Wx, Env, Expr, Block, Text, ValInfo, Expr -> ((Wx, Wres))
+fn BundleClauseLine wx, menv, scrut, call, qk, v, e:
+    let lx = wx.lx
+    let pos = wx.pos
+    let callArgs = match ?ClauseCall lx, call:
+        ? ((ignore, xs)): xs
+        nil: [[]]
+    let ((srcEx, reads)) = DynamicExpr wx, menv, scrut
+    let vt = OutTyOf lx, (Peel (TypeAt lx, scrut.span))
+    let ((name, wx1)) = FreshName wx, "generation"
+    let clauses = ClausesOf lx.g, qk
+    let rowName = "{wx.node}Gen{RowSuffix wx}"
+    let ((rows, wx2)) = Fold (Range0 (Len clauses)), (([[]], wx1)), \|((acc, w)), i|
+        let c = Or clauses[i], dummyClause
+        let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name, True, (OutWeak wx.node), callArgs
+        (((Push acc, cr), cr.parent))
+    let width = Fold rows, 0, \|acc, cr| Max acc, cr.width
+    let cases = Each rows, \|cr| cr.case
+    let rowObj = OutObj (OutNamed (RefRuntime "rt::Row"), [[]])
+    let kept = KeepParts wx2, name, (RowsBundle rows), (BundlePartTys (LineOutFull lx, e))
+    let scrutEx = XTuple (Each callArgs, \|a| Argument lx, menv, a.value)
+    let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
+    let gaps = RowGaps rows, width
+    let arms = Fold cases, [[]], \|built, c|
+        let i = Len built
+        let made = TryOf (XCall (RefChild (SiteRef lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), tail))
+        Push built, (XArm(pat=c.pat, conds=c.conds, body=(XBlock (Append (Append [[(DoLet (PaBind "row"), made)]], kept.keeps), (GapSet name, (Or gaps[i], nil))), (XCast (XVar "row"), rowObj))))
+    let select = WithRowBase wx, "self", pos, (Own (ArmsValue scrutEx, arms, "'select", rowObj))
+    let wx3 = update kept.wx:
+        &_.pos <= Pos(scope=pos.scope, at=pos.at + width)
+        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=True, width=width, moved=(Or (?HostedRows wx), ""), early=False, gappy=(IsGappy gaps))
+        &_.genHolds <= Push &_.genHolds, ((name, reads))
+        &_.rows <= Fold cases, &_.rows, \|acc, gc| Append (Push acc, gc.node), gc.node.children
+    ((wx3, (WrParts kept.results)))
 
 StaticClauseLine: unbounded fn Wx, Env, Expr, Block, Text, ValInfo, Expr -> ((Wx, Wres))
 fn StaticClauseLine wx, menv, scrut, call, qk, v, e:
@@ -451,6 +493,8 @@ type ClauseRow = record:
     # Whether a generation of the row's own leaves positions unbuilt (`GenDef.gappy`): the
     # row has `inner_gap`.
     inner: Bool
+    # The row's bundle result, part by part (`RowPartsOut`); empty when it ends on none.
+    parts: [RowPart]
 
 # One clause's generation: its parameters' binders the row's fields, chosen by matching
 # the arguments (in the block, `_` the generation's value).
@@ -559,10 +603,13 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
         ? g: Connect r, (EvRefOf r, g.id), (SkUp blocks)
         nil: update r:
             &_.build <= Push &_.build, (InternalBugDo "the event `{mine}` of a split block's lower lines has no node in their row")
+    # a bundle: handed to the block part by part (`RowPartsOut`)
+    let ((r2b, parts)) = match r2.result:
+        WrParts ps: RowPartsOut r2, genName, "", ps
+        otherwise: ((r2, [[]]))
     let ((r3, ?plain)) = match r2.result:
         WrEv r: (((Connect r2, r, (SkUp upName)), nil))
-        WrParts ignore: (((update r2:
-            &_.build <= Push &_.build, (RefusalDo "a widget of several clauses whose clause ends on a bundle")), nil))
+        WrParts ignore: ((r2b, nil))
         # a plain result, computed at the generation's build and kept in a field of the
         # row, read by the block that built it: early for a clause (`EarlyClauseLine`),
         # after its node for an arm of a building `match` or `if` (`BuildingChoiceLine`)
@@ -590,7 +637,7 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
     # the block's `row_base` where it builds the row (`WithRowBase`)
     let passed = if transparent: Push passed0, (XVar "row_base") else: passed0
     let inner = (Len (Filter r3.gens, \|gd| gd.gappy and gd.pos.scope == 0)) > 0
-    ClauseRow(case=GenCase(node=node, params=(Each fields, \|((f, t, ignore))| ((f, t))), pat=pa, conds=(Append (Fold pos, [[]], \|acc, o| Append acc, o.conds), guardConds), passed=passed), parent=p2, width=(Or (r2.pos.at -? r0.pos.at), 0), inner=inner, ?plain=?plain, resultReads=(ResultParentReads r2), ?resultTy=(?ResultDynTy r2))
+    ClauseRow(case=GenCase(node=node, params=(Each fields, \|((f, t, ignore))| ((f, t))), pat=pa, conds=(Append (Fold pos, [[]], \|acc, o| Append acc, o.conds), guardConds), passed=passed), parent=p2, width=(Or (r2.pos.at -? r0.pos.at), 0), inner=inner, parts=parts, ?plain=?plain, resultReads=(ResultParentReads r2), ?resultTy=(?ResultDynTy r2))
 
 ?ResultDynTy: fn Wx -> ?OutTy
 fn ?ResultDynTy r = match r.result:
@@ -631,12 +678,15 @@ fn OverEnv outer, inner = Fold (Keys inner.names), outer, \|en, k| match inner.n
 # arm (`SplitBlockInto`), or by whatever reads the block's own result.
 # `ups`: the rows' events the block prebound, each with the block's method it fires
 # (`SplitBlockInto`).
-BuildingChoiceLine: unbounded fn Wx, Env, Ex, [?Pattern], Ty, [?Expr], [Block], OutTy, Layer, [((Text, Text))] -> ((Wx, Wres))
-fn BuildingChoiceLine wx, menv, scrut, pats, sty, guards, bodies, outTy, layer, ups:
+# `outFull`: what the arms give back as the checker has it; arms that end on a bundle hand
+# it to the block part by part (`KeepParts`), a plain part late.
+BuildingChoiceLine: unbounded fn Wx, Env, Ex, [?Pattern], Ty, [?Expr], [Block], OutTy, Layer, Ty, [((Text, Text))] -> ((Wx, Wres))
+fn BuildingChoiceLine wx, menv, scrut, pats, sty, guards, bodies, outTy, layer, outFull, ups:
     let lx = wx.lx
     let pos = wx.pos
+    let bundled = IsBundle outFull
     let ((name, wx1)) = FreshName wx, "arm"
-    let ((upId, wx2)) = AddGn wx1, "{name}_fired", outTy, GnNamed, 0
+    let ((upId, wx2)) = AddGn wx1, "{name}_fired", (if bundled: OutUnit else: outTy), GnNamed, 0
     let rowName = "{wx.node}Arm{RowSuffix wx}"
     let ((rows, wx3)) = Fold (Range0 (Len bodies)), (([[]], wx2)), \|((acc, w)), i|
         let cr = ArmRowOf w, menv, lx, [[(Or pats[i], nil)]], [[sty]], (Or guards[i], nil), (Or bodies[i], dummyBlockS), "{rowName}{i}", name, True, True, (OutWeak wx.node), [[]], ups
@@ -654,21 +704,23 @@ fn BuildingChoiceLine wx, menv, scrut, pats, sty, guards, bodies, outTy, layer, 
     # an arm's plain result kept by the block
     let keptPlain = DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XMethod (XVar "row"), "result_value", [[]])]])
     let gaps = RowGaps rows, width
+    let bundle = if bundled: KeepParts wx3, name, (RowsBundle rows), (BundlePartTys outFull) else: KeptParts(wx=wx3, keeps=[[]], results=[[]])
     let arms = Fold cases, [[]], \|built, c|
         let i = Len built
         let made = TryOf (XCall (RefChild (SiteRef lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), tail))
         let set = GapSet name, (Or gaps[i], nil)
-        let keeps = Append (if isDyn: [[kept]] else: if allPlain: [[keptPlain]] else: [[]]), set
+        let keeps = Append (Append (if isDyn: [[kept]] else: if allPlain: [[keptPlain]] else: [[]]), bundle.keeps), set
         let body = if (Len keeps) == 0: XCast made, rowObj else: XBlock (Append [[(DoLet (PaBind "row"), made)]], keeps), (XCast (XVar "row"), rowObj)
         Push built, (XArm(pat=c.pat, conds=c.conds, body=body))
     let select = WithRowBase wx, "self", pos, (Own (ArmsValue (XTuple [[scrut]]), arms, "'select", (OutObj (OutNamed (RefRuntime "rt::Row"), [[]]))))
-    let wx4 = update wx3:
+    let wx4 = update bundle.wx:
         &_.pos <= Pos(scope=pos.scope, at=pos.at + width)
         &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=True, width=width, moved=(Or (?HostedRows wx), ""), early=False, gappy=(IsGappy gaps))
         &_.genHolds <= Push &_.genHolds, ((name, [[]]))
         &_.rows <= Fold cases, &_.rows, \|acc, gc| Append (Push acc, gc.node), gc.node.children
         &_.getters <= Push &_.getters, (GenUp name, (GnOf wx3, upId).name, (GnOf wx3, upId).ty)
-    if isDyn: KeptDynResult wx4, name, rows
+    if bundled: ((wx4, (WrParts bundle.results)))
+    else: if isDyn: KeptDynResult wx4, name, rows
     else: if (Len plainRows) > 0:
         if allPlain:
             let read = XClone (XMethod (XMethod (XMethod (XField XSelf, res), "borrow", [[]]), "as_ref", [[]]), "expect", [[(XStr "an arm built before what reads its result")]])
@@ -689,12 +741,18 @@ fn BuildingChoiceLine wx, menv, scrut, pats, sty, guards, bodies, outTy, layer, 
 # own behind it marks them as any write of the block's does.
 KeptDynResult: fn Wx, Text, [ClauseRow] -> ((Wx, Wres))
 fn KeptDynResult wx, name, rows:
-    let res = "{name}_res"
-    let getter = "{name}_value"
     let t = match (Or (Each rows, \|cr| cr.?resultTy)[0], nil):
         ? x: x
         nil: OutUnit
-    let behind = Fold rows, [[OwnRead res]], \|acc, cr| Fold cr.resultReads, acc, \|a, rd| match rd:
+    KeptDyn wx, name, t, (Fold rows, [[]], \|acc, cr| UnionReads acc, cr.resultReads)
+
+# A row's dynamic the block keeps in `{name}_res`: its type, and what it reads of the
+# block (the rows' reads through their parent).
+KeptDyn: fn Wx, Text, OutTy, [Read] -> ((Wx, Wres))
+fn KeptDyn wx, name, t, parentReads:
+    let res = "{name}_res"
+    let getter = "{name}_value"
+    let behind = Fold parentReads, [[OwnRead res]], \|a, rd| match rd:
         ParentRead m: AddRead a, (OwnRead m)
         OwnRead m: AddRead a, (OwnRead m)
     let read = XMethod (XMethod (XMethod (XMethod (XField XSelf, res), "borrow", [[]]), "as_ref", [[]]), "expect", [[(XStr "a generation built with its block")]]), "sample", [[XCx]]
@@ -709,7 +767,7 @@ fn KeptDynResult wx, name, rows:
 
 # `match s:` with building arms.
 MatchGenLine: unbounded fn Wx, Env, Expr, [Arm], Expr -> ((Wx, Wres))
-fn MatchGenLine wx, menv, s, arms, e = BuildingChoiceLine wx, menv, (Argument wx.lx, menv, s), (Each arms, \|a| a.?pattern), (TypeAt wx.lx, s.span), (Each arms, \|a| a.?guard), (Each arms, \|a| a.body), (ChoiceOutTy wx.lx, e), (ResultLayer (TypeAt wx.lx, e.span)), [[]]
+fn MatchGenLine wx, menv, s, arms, e = BuildingChoiceLine wx, menv, (Argument wx.lx, menv, s), (Each arms, \|a| a.?pattern), (TypeAt wx.lx, s.span), (Each arms, \|a| a.?guard), (Each arms, \|a| a.body), (ChoiceOutTy wx.lx, e), (ResultLayer (TypeAt wx.lx, e.span)), (LineOutFull wx.lx, e), [[]]
 
 # What a building `match` or `if` gives back, lowered.
 ChoiceOutTy: unbounded fn Lx, Expr -> OutTy
@@ -719,8 +777,8 @@ fn ChoiceOutTy lx, e = OutTyOf lx, (OutOf (TypeAt lx, e.span))
 # matched against `x`.
 IfGenLine: unbounded fn Wx, Env, Cond, Block, Block, Expr -> ((Wx, Wres))
 fn IfGenLine wx, menv, c, thenB, elseB, e = match c:
-    CondExpr x: BuildingChoiceLine wx, menv, (XUnit), [[nil, nil]], (TyCon "unit", [[]]), [[(? x), nil]], [[thenB, elseB]], (ChoiceOutTy wx.lx, e), (ResultLayer (TypeAt wx.lx, e.span)), [[]]
-    CondBind p, x, ?g: BuildingChoiceLine wx, menv, (Argument wx.lx, menv, x), [[(? p), nil]], (TypeAt wx.lx, x.span), [[?g, nil]], [[thenB, elseB]], (ChoiceOutTy wx.lx, e), (ResultLayer (TypeAt wx.lx, e.span)), [[]]
+    CondExpr x: BuildingChoiceLine wx, menv, (XUnit), [[nil, nil]], (TyCon "unit", [[]]), [[(? x), nil]], [[thenB, elseB]], (ChoiceOutTy wx.lx, e), (ResultLayer (TypeAt wx.lx, e.span)), (LineOutFull wx.lx, e), [[]]
+    CondBind p, x, ?g: BuildingChoiceLine wx, menv, (Argument wx.lx, menv, x), [[(? p), nil]], (TypeAt wx.lx, x.span), [[?g, nil]], [[thenB, elseB]], (ChoiceOutTy wx.lx, e), (ResultLayer (TypeAt wx.lx, e.span)), (LineOutFull wx.lx, e), [[]]
 
 let dummyBlockS = Block(stmts=[[]], inline=True, span=Range(start=0, end=0))
 
@@ -739,7 +797,9 @@ fn GenRowOf wx, menv, body, vt, rowName, genName:
     let lx = wx.lx
     let upName = "{genName}_up"
     let r00 = NewWx lx, rowName, [[(("value", vt, "the generation's value, `_`")), (("parent", (OutWeak wx.node), "the node of the `rebuild`"))]], [[(("value", (XClone (XVar "value"))))]], [[(("parent", (XVar "parent")))]], [[]], {}, (Append nodeHooks, [["value", "parent", "result", "result_dynamic"]]), wx.inlining, (?HostedRows wx)
-    let r0 = GenCurrent r00, wx, genName
+    # a block that ends on a bundle gives it as one value (`WholeResultOf`)
+    let r0 = update (GenCurrent r00, wx, genName):
+        &_.wholeResultAt <= BundleResultKey lx, body
     let ((p1, r1, ports)) = RowEnv wx, r0, menv, body
     let be = Bind (BuildSpelling ports), "_", (BnLocal (XVar "value"), Owned, vt)
     let me = Bind ports, "_", (BnLocal (XField XSelf, "value"), Owned, vt)
@@ -760,7 +820,7 @@ fn GenRowOf wx, menv, body, vt, rowName, genName:
             &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=ex, doc="The generation's plain result, which the `rebuild`'s dynamic is while the generation stands."))), nil, ? rt))
         WrParts ignore:
             let r2b = update r2:
-                &_.build <= Push &_.build, (RefusalDo "a `rebuild` whose block ends on a bundle")
+                &_.build <= Push &_.build, (RefusalDo "a `rebuild` whose block ends on a bundle that is not written out as a tuple where the block ends")
             ((r2b, nil, nil))
         otherwise: ((r2, nil, nil))
     let r4 = GenHears r3, genName
@@ -770,15 +830,134 @@ fn GenRowOf wx, menv, body, vt, rowName, genName:
 # `Dynamic` the block keeps of it, and the block told through `{genName}_result_moved` when
 # a hold of the generation's own behind it is written.
 GenResult: fn Wx, Text, Ex, [Read], OutTy -> Wx
-fn GenResult r, genName, ex, resultReads, rt:
+fn GenResult r, genName, ex, resultReads, rt = GenResultNamed r, "result", "result_dynamic", "{genName}_result_moved", ex, resultReads, rt
+
+# The same under the names given: the getter, the `Dynamic` of it, and the block's method
+# a write behind it calls (a bundle's dynamic parts each have their own, `RowPartOut`).
+GenResultNamed: fn Wx, Text, Text, Text, Ex, [Read], OutTy -> Wx
+fn GenResultNamed r, getter, dynamic, moved, ex, resultReads, rt:
     let ownBehind = Filter (ReadsClosed r.dynReads, resultReads), \|rd| match rd:
         OwnRead ignore: True
         ParentRead ignore: False
-    let made = XCall (RefRuntime "rt::Dynamic::of"), [[(XClosure True, [[PaBind "cx"]], (XMethod (XVar "me"), "result", [[XCx]])), (XRef (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]]))]]
-    let doc = "The generation's result as a dynamic, which the block keeps while the generation is current; the block hears it move through `{genName}_result_moved`, not through the dynamic's port."
+    let made = XCall (RefRuntime "rt::Dynamic::of"), [[(XClosure True, [[PaBind "cx"]], (XMethod (XVar "me"), getter, [[XCx]])), (XRef (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]]))]]
+    let doc = "The generation's result as a dynamic, which the block keeps while the generation is current; the block hears it move through `{moved}`, not through the dynamic's port."
     update r:
-        &_.getters <= Append &_.getters, [[(MethDef(name="result", recv=RecvRef, params=[[]], cx=CxRef, ret=rt, body=[[]], tail=ex, doc="The generation's result, which the `rebuild` hands back.")), (MethDef(name="result_dynamic", recv=RecvRc, params=[[]], cx=CxNone, ret=(OutDyn rt), body=[[(DoLet (PaBind "me"), (XClone XSelf))]], tail=made, doc=doc))]]
-        &_.resultMoved <= if (Len ownBehind) > 0: ? (("{genName}_result_moved", ownBehind)) else: nil
+        &_.getters <= Append &_.getters, [[(MethDef(name=getter, recv=RecvRef, params=[[]], cx=CxRef, ret=rt, body=[[]], tail=ex, doc="The generation's result, which its block reads.")), (MethDef(name=dynamic, recv=RecvRc, params=[[]], cx=CxNone, ret=(OutDyn rt), body=[[(DoLet (PaBind "me"), (XClone XSelf))]], tail=made, doc=doc))]]
+        &_.resultMoved <= if (Len ownBehind) > 0: Push &_.resultMoved, ((moved, ownBehind)) else: &_.resultMoved
+
+# A bundle a row hands its block, part by part (Type System ch. 2, "Bundles and sparse
+# tuples"): what each part is, by its place in the bundle (`p0`, `p1`, inside a bundle of
+# the bundle `p1_0`).
+type RowPart = choice:
+    # an event: the row fires the block's `{generation}_{place}_up`
+    RowPartEvent Text
+    # a dynamic: the row's `result_{place}` and `result_dynamic_{place}`, its type, and
+    # what it reads of the block
+    RowPartDynamic Text, OutTy, [Read]
+    # a plain value: the row's `result_value_{place}`, and its type
+    RowPartPlain Text, OutTy
+    RowPartNothing
+    RowPartParts [RowPart]
+derive ^Eq, ^Show
+
+# The row's side of a bundle: each event part fires up, each dynamic part has its getter,
+# its `Dynamic` and the block's method a write behind it calls, each plain part is kept in
+# a field (a late one read from the row itself, its own rows built by then).
+RowPartsOut: unbounded fn Wx, Text, Text, [Wres] -> ((Wx, [RowPart]))
+fn RowPartsOut r, genName, prefix, parts = Fold (Range0 (Len parts)), ((r, [[]])), \|((w, acc)), i|
+    let place = if prefix == "": "p{i}" else: "{prefix}_{i}"
+    let ((w2, part)) = RowPartOut w, genName, place, (Or parts[i], WrUnit)
+    ((w2, (Push acc, part)))
+
+RowPartOut: unbounded fn Wx, Text, Text, Wres -> ((Wx, RowPart))
+fn RowPartOut r, genName, place, part = match part:
+    WrEv er: (((Connect r, er, (SkUp "{genName}_{place}_up")), (RowPartEvent place)))
+    WrDyn ex, rds, rt:
+        let parentReads = Filter (ReadsClosed r.dynReads, rds), \|rd| IsParentRead rd
+        (((GenResultNamed r, "result_{place}", "result_dynamic_{place}", "{genName}_{place}_result_moved", ex, rds, rt), (RowPartDynamic place, rt, parentReads)))
+    WrPlain ex, rt:
+        let ((f, rf)) = FreshName r, "result"
+        let r2 = update rf:
+            &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind f), rt), ex)
+            &_.fields <= Push &_.fields, ((f, rt, "a plain part of the row's bundle"))
+            &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
+            &_.getters <= Push &_.getters, (MethDef(name="result_value_{place}", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=(XClone (XField XSelf, f)), doc="A plain part of the row's bundle, which the block that built the row reads."))
+        ((r2, (RowPartPlain place, rt)))
+    WrLate ex, rt: (((update r:
+        &_.getters <= Push &_.getters, (MethDef(name="result_value_{place}", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=ex, doc="A plain part of the row's bundle, which the block that built the row reads."))), (RowPartPlain place, rt)))
+    WrParts inner:
+        let ((r2, ps)) = RowPartsOut r, genName, place, inner
+        ((r2, (RowPartParts ps)))
+    WrHosted inner, ignore: RowPartOut r, genName, place, inner
+    WrUnit: ((r, RowPartNothing))
+
+# The bundle the rows of one generation hand their block: the first row's parts, a
+# dynamic part reading of the block what any row's reads.
+RowsBundle: unbounded fn [ClauseRow] -> [RowPart]
+fn RowsBundle rows = Fold rows, (Or (Each rows, \|cr| cr.parts)[0], [[]]), \|acc, cr| MergeRowParts acc, cr.parts
+
+MergeRowParts: unbounded fn [RowPart], [RowPart] -> [RowPart]
+fn MergeRowParts xs, ys = Each (Range0 (Len xs)), \|i| match (((Or xs[i], RowPartNothing), (Or ys[i], RowPartNothing))):
+    (((RowPartDynamic place, t, a), (RowPartDynamic ignore, ignore, b))): RowPartDynamic place, t, (UnionReads a, b)
+    (((RowPartParts a), (RowPartParts b))): RowPartParts (MergeRowParts a, b)
+    ((x, ignore)): x
+
+# The block's side of a row's bundle: the results its line gives, and what the block
+# does where the row just built is the local `row`.
+type KeptParts = record:
+    wx: Wx
+    keeps: [Do]
+    results: [Wres]
+
+# Each part kept by the block of the generation `name`: an event part is a node of the
+# block's graph the row fires through `{name}_{place}_up`; a dynamic part is kept in
+# `{name}_{place}_res` and read through its getter, a write behind it in the row marking
+# the block's readers (`KeptDyn`); a plain part is kept in `{name}_{place}_res` from the
+# row's build on, late (`WrLate`). `tys`: the parts' types as the checker has them.
+KeepParts: unbounded fn Wx, Text, [RowPart], [Ty] -> KeptParts
+fn KeepParts wx, name, parts, tys = Fold (Range0 (Len parts)), (KeptParts(wx=wx, keeps=[[]], results=[[]])), \|acc, i|
+    let ((w, keeps, res)) = KeepPart acc.wx, name, (Or parts[i], RowPartNothing), (Or tys[i], TyErr)
+    KeptParts(wx=w, keeps=(Append acc.keeps, keeps), results=(Push acc.results, res))
+
+KeepPart: unbounded fn Wx, Text, RowPart, Ty -> ((Wx, [Do], Wres))
+fn KeepPart wx, name, part, ty = match part:
+    RowPartEvent place:
+        let et = OutTyOf wx.lx, (Peel ty)
+        let fired = "{name}_{place}_fired"
+        let ((id, w1)) = AddGn wx, fired, et, GnNamed, 0
+        let w2 = update w1:
+            &_.taken <= Append &_.taken, [[fired, "{name}_{place}_up"]]
+            &_.getters <= Push &_.getters, (MethDef(name="{name}_{place}_up", recv=RecvRc, params=[[(("v", et))]], cx=CxMut, ret=OutUnit, body=[[(SelfCall fired, [[(XVar "v")]])]], tail=(XUnit), doc="An event part of the generation's bundle fires the line's event."))
+        ((w2, [[]], (WrEv (EvRefOf w2, id))))
+    RowPartDynamic place, t, reads:
+        let ((w1, res)) = KeptDyn wx, "{name}_{place}", t, reads
+        let kept = DoAssign (XDeref (XMethod (XField XSelf, "{name}_{place}_res"), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XMethod (XVar "row"), "result_dynamic_{place}", [[]])]])
+        ((w1, [[kept]], res))
+    RowPartPlain place, t:
+        let res = "{name}_{place}_res"
+        let kept = DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XMethod (XVar "row"), "result_value_{place}", [[]])]])
+        let read = XClone (XMethod (XMethod (XMethod (XField XSelf, res), "borrow", [[]]), "as_ref", [[]]), "expect", [[(XStr "a row built before what reads its result")]])
+        let w1 = update wx:
+            &_.taken <= Push &_.taken, res
+            &_.fields <= Push &_.fields, ((res, (OutCell (OutOpt t)), "a plain part of the generation's bundle, kept from the row's build on"))
+            &_.inits <= Push &_.inits, ((res, (XCall (RefRuntime "std::RefCell::new"), [[XNone]])))
+        ((w1, [[kept]], (WrLate read, t)))
+    RowPartParts inner:
+        let kept = KeepParts wx, name, inner, (BundlePartTys ty)
+        ((kept.wx, kept.keeps, (WrParts kept.results)))
+    RowPartNothing: ((wx, [[]], WrUnit))
+
+# The place of the expression a block ends on with `@`, when that is a bundle: the key
+# `WholeResultOf` knows the result line by; "" otherwise.
+BundleResultKey: fn Lx, Block -> Text
+fn BundleResultKey lx, body = match (Or body.stmts[Dec (Len body.stmts)], dummyStmtL).kind:
+    SExpr y: match y.kind:
+        EFreeSigil "@", x: if IsBundle (TypeAt lx, x.span): ResultKey lx, x else: ""
+        otherwise: ""
+    otherwise: ""
+
+ResultKey: fn Lx, Expr -> Text
+fn ResultKey lx, x = "{lx.file}:{x.span.start}:{x.span.end}"
 
 # The block's writes behind what a generation's places read mark the generation (gap DY;
 # `RowMarks` of kind `GenerationRow`: the current one is dirtied), and the block's names the

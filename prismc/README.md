@@ -2198,9 +2198,7 @@ naming the construct, and `CompileProgram` reports every distinct one as
 `error[not-lowered]` and fails, the crate still written for reading:
 a supplier's answer `@ x` outside a tag arm, a dynamic answer over what has
 no value at the owner's build, a widget-function blueprint as an answer, and a bundle in
-a hosted scope (pick HO); a bundle as a root's result, and a `for` row, a `rebuild`'s
-generation or a widget clause ending on a bundle (a widget block's bundle result is
-lowered, each part its own result, `WrParts`: `sem-ch04-bundle-result`); `@Flatten` of a dynamic that is not a `rebuild`'s (a `for` over a map of dynamics binds the value under the key, pick FV),
+a hosted scope (pick HO); `@Flatten` of a dynamic that is not a `rebuild`'s (a `for` over a map of dynamics binds the value under the key, pick FV),
 `!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
 structural dynamic of its block (gap SU), a local function whose
 parameters are not names or used as a value, `!MergeAll` of a list that is not a

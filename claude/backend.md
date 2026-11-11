@@ -346,6 +346,34 @@ it make every program an interpreter run, and every type mistake a runtime fault
   result is.
 - **A `let` of a name bound to a bundle** (`let same = both`) binds the same parts
   (`?BundleNamed`).
+- **A row that ends on a bundle hands it to its block part by part** (`RowPartsOut`,
+  `KeepParts`; a clause of a widget of several clauses, an arm of a building `match` or
+  `if`, the lower generation of a split block). Part `i` is `p{i}`, a part of a bundle
+  inside the bundle `p{i}_{j}`:
+  - an event part fires the block's `{generation}_p{i}_up`, a node of the block's graph;
+  - a dynamic part is the row's `result_p{i}` and `result_dynamic_p{i}`, kept by the
+    block in `{generation}_p{i}_res` and read through `{generation}_p{i}_value`; a write
+    behind it in the row calls `{generation}_p{i}_result_moved` (`KeptDyn`);
+  - a plain part is the row's `result_value_p{i}`, kept by the block in
+    `{generation}_p{i}_res` from the row's build on, and late (`WrLate`).
+  A widget of several clauses that ends on a bundle is built after the block's node
+  (`BundleClauseLine`), whatever its parts.
+- **A line that binds a bundle with a plain part from a row is late** (`IsPlainResult`,
+  `PlainIn`), and its block is split at it. The bundle's events and dynamics are names
+  of the node, prebound as any line's (`PreBind`) and bound where the line is lowered
+  (`BindParts`); its plain parts are the late names (`BindLate`, each read by itself,
+  `LateParts`), and the lower generation matches the plain parts' patterns against
+  their reads (`LowerBinder`). A bundle with no plain part splits nothing.
+- **A `for` whose rows end on a bundle** gathers it part by part (`ForParts`): an event
+  part into `{name}_p{i}_all`, one firing a tick by key, a dynamic part into the
+  structural dynamic `{name}_p{i}_all`, a plain part as a dynamic no write moves. The
+  row has one `result_p{i}` per dynamic part and tells the block of a write behind each
+  (`Wx.resultMoved`, a list); the block's gathers of one row are `PendingRow.gathers`.
+- **A `rebuild` whose block ends on a bundle** gives a dynamic of the bundle as one
+  value (`WholeResultOf`, `Wx.wholeResultAt`): the generation's plain result is the
+  tuple with each event as its port's `Event` and each dynamic it names as the live
+  `Dynamic` made for it (`WholeArgsAt`). A bundle that is not written out as a tuple
+  where the block ends is refused.
 - **A widget defined in a block** (`@line:` and its block) is bound to its block
   (`BnLocalWidget`) and lowered at each line that applies it, in that line's
   environments, at the node's next positions (`LocalWidgetLine`).
