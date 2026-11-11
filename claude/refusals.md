@@ -114,14 +114,19 @@ Bundles
   The name is bound before the block's lines (`PreBindWhole`), so a line above the split
   reads it (sem-ch08-late-part-bundle-named-read-above), and a `let` of a bundle written
   out over a late name is late (`LateBundleLet`, sem-ch04-late-let-bundle-above).
+  A `let` whose tuple pattern takes a late bundle apart names its plain parts late
+  (`LatePartNames`, sem-ch08-late-part-bundle-let-pattern-above); a late bundle read
+  as one value from the node's methods is a getter over its parts (`LateBundleValue`,
+  sem-ch08-late-bundle-read-as-value-above); a `let` of a bundle read by a line above
+  it is lowered above that line (`BundleLetsEarly`, sem-ch04-let-bundle-read-above,
+  sem-ch04-late-let-bundle-read-above).
   Left, no tests: lower/node/def.prism (`PreBindWholeParts`, `LateBundleParts`: "a late
-  plain part of the bundle .. read at its block's build") a `let` of the block's node,
-  above the split, whose tuple pattern takes a late bundle apart and names its plain
-  part (`let ((step, !go)) = both` above `both <- ..`); (`PreBindWhole`,
-  `MarkLateBundle`: "read as one value at its block's build") a late bundle read whole
-  as a value (a supplier's `@ both`); a bundle inside the bundle whose late part a
-  nested tuple pattern binds is not bound late; a `let` of a bundle read by a line
-  above the `let` finds no binding (a bundle's name is bound at its line).
+  plain part of the bundle .. read at its block's build") a late plain part read at the
+  build by a pattern inside the tuple pattern (`let ((((a, b)), !go)) = both`);
+  (`PreBindWhole`, `MarkLateBundle`: "read as one value at its block's build") a late
+  bundle read whole as a value at the build (a supplier's `@ both`, whose closure is
+  made before the node); a late bundle with a bundle inside read as one value; another
+  name of a bundle (`let same = both`) read as one value.
   A dynamic part of a named bundle read by a row of a row is read through a getter of
   the row between (`ThroughGetter`, sem-ch04-named-bundle-in-row-of-row).
 - A `rebuild` whose block ends on a bundle a line named whole (`@ both`) is lowered
@@ -129,13 +134,14 @@ Bundles
   too (`WholePartsOf`, sem-ch04-rebuild-nested-bundle-result), a named bundle inside a
   tuple written out (sem-ch04-rebuild-bundle-in-tuple-result) and a block that ends on
   the line that gives the bundle (`WholeOfResults`, sem-ch04-rebuild-ends-on-widget-bundle).
-- lower/node/static.prism (`BindBundleParam`) a widget's parameter pattern over a bundle
-  given neither a tuple written out nor a name bound to one (a function's result): the
-  bundle is a value of the run there, to be taken apart as a `let`'s is
-  (`LetPatternDynamics`). No test. (`BindParamPattern`) a widget's parameter pattern
-  that takes an event or a dynamic out of a value that is no bundle (a record's `$`
-  field): the same. No test. Lowered: a tuple pattern over a bundle written out or
-  named, and any pattern over a plain value (sem-ch08-widget-parameter-pattern).
+- lower/node/static.prism (`BindTimePatternParam`) a widget's parameter pattern that
+  names a bundle of its own inside a value that is neither a bundle written out nor a
+  name bound to one (`fn @W ((id, both)):` given a function's result, `both` a bundle):
+  class R, no test. Lowered: a tuple pattern over a bundle written out or named, any
+  pattern over a plain value (sem-ch08-widget-parameter-pattern), a tuple pattern over
+  a bundle that is a value (sem-ch08-widget-parameter-pattern-bundle-value), and a
+  pattern that binds an event or a dynamic out of a value that is no bundle
+  (sem-ch08-widget-parameter-pattern-record-dynamic).
 - A root's bundle with several dynamic parts is told part by part
   (sem-ch07-root-bundle-two-dynamics).
 - lower/node/switch.prism:216 a `rebuild` whose generation gives a dynamic it does not

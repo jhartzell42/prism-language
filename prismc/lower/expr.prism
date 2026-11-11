@@ -808,7 +808,9 @@ fn WrittenPart lx, env, y = match LayerOf (TypeAt lx, y.span):
         nil: PartPlain (Own (ValueOf lx, env, (Or (?ConstantDynamic y), y)))
         ? d: match ?PartDynamic lx, env, y, d:
             ? dynamic: PartLive dynamic
-            nil: PartRefused "`{SrcText lx, lx.file, y.span}`, a bundle answer's `$` part that reads what has no value at the owner's build (a structural dynamic)"
+            nil: match ?HeldDynamic lx, env, d:
+                ? held: PartLive held
+                nil: PartRefused "`{SrcText lx, lx.file, y.span}`, a bundle answer's `$` part written where its host's line does not read it (a local function of the block)"
     otherwise: PartPlain (Own (ValueOf lx, env, y))
 
 # A bundle answer of its parts (round 3 DY). The plain and `$` parts are the state: one
@@ -925,7 +927,28 @@ fn PlainBlueprint lx, env, x, variant, t = VlOwned (XCall (RefRuntime "prism_rtl
 DynamicBlueprint: unbounded fn Lx, Env, Expr, Expr, Ref, OutTy -> Vl
 fn DynamicBlueprint lx, env, x, d, variant, t = match ?AnswerDynamic lx, env, x, d, variant:
     ? dynamic: VlOwned (XCall (RefRuntime "prism_rtl::dynamic_blueprint::<crate::Elem, _>"), [[dynamic]]), t
-    nil: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer that reads what has no value at the owner's build (a structural dynamic)"), t
+    nil: match ?HeldDynamic lx, env, d:
+        # a dynamic the function holds as a value (a named supplier's `$` parameter):
+        # that `Dynamic`, each value in the tag's case
+        ? held:
+            let heldTy = OutTyOf lx, (Peel (TypeAt lx, d.span))
+            let tagged = XClosure True, [[(PaTyped (PaBind "v"), (OutRef heldTy))]], (TaggedOrHeld variant, heldTy, (XClone (XVar "v")))
+            VlOwned (XCall (RefRuntime "prism_rtl::dynamic_blueprint::<crate::Elem, _>"), [[(XMethod held, "map", [[tagged]])]]), t
+        nil: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer written where its host's line does not read it (a local function of the block)"), t
+
+# A supplier's dynamic answer `d` where no host's line made a getter for it
+# (`DynamicAnswers` binds none: the answer is written in a function, a named supplier's
+# body), when everything it reads is a value the function holds (its `$` parameter, a
+# `Dynamic`): the `Dynamic` the expression gives there. `nil` when it reads a name of a
+# node (a hold, a dynamic `let`), which only its owner's getter reads.
+?HeldDynamic: unbounded fn Lx, Env, Expr -> ?Ex
+fn ?HeldDynamic lx, env, d:
+    let held = Fold (ReadNames (ExprsIn d)), True, \|ok, n| ok and match env.names[n]:
+        ? (BnLocal ignore, ignore, ignore): True
+        ? (BnLocalFn ignore): True
+        nil: True
+        otherwise: False
+    if held and not (HasKey env.names, "#owner"): ? (Own (ValueOf lx, env, d)) else: nil
 
 # A supplier's dynamic `d` (the `x` of `@ x`, or a `$` part of a bundle answer) as a
 # `Dynamic` of `crate::Answer` under `variant`, read through the owner's link

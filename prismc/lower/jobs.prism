@@ -161,7 +161,7 @@ fn GenericLetTail lx, env, b, s, n, gn, x, k, Rest:
         ? inst:
             let lxk = AtInstance lx, inst
             let last = k + 1 >= (Len distinct)
-            let Bound = \|en, value|
+            let WithBound = \|en, value|
                 let ((dos, en2)) = GenericLetBound lx, en, n, gn, k, value
                 let en3 = if last: en2 else: Fold (ExprsIn x), en2, \|e2, inner| update e2:
                     &_.spans <= Remove &_.spans, (PlaceKey lx, inner.span)
@@ -172,8 +172,8 @@ fn GenericLetTail lx, env, b, s, n, gn, x, k, Rest:
                     if BranchJobs lxk, env, x:
                         # what follows reads the statement again for the next instantiation
                         let from = if last: Range(start=s.span.end, end=s.span.end) else: s.span
-                        KValue lxk, env, from, b, x, "{s.span.start}w{k}", Bound
-                    else: Bound env, (Own (ValueOf lxk, env, x))
+                        KValue lxk, env, from, b, x, "{s.span.start}w{k}", WithBound
+                    else: WithBound env, (Own (ValueOf lxk, env, x))
 
 # D6 for a call a statement's value needs from a branch: an arm of a `match`, a branch of
 # an `if`, the right of `and` or `or` (DS). What follows the statement is bound once, a

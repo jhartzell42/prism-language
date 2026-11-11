@@ -380,9 +380,20 @@ it make every program an interpreter run, and every type mistake a runtime fault
   ((n + 1, !go))` above `n <- match ..`) is late too (`MarkLateLets`, `MarkLateBundle`):
   the plain part is a getter computed from the node, with no value at the build
   (`LateBundleLet`); the other parts are bound as any bundle's; a building line that
-  reads the name waits for the late result (`DeferredLine`). Refused: a `let` in the
-  block's node whose tuple pattern takes a late bundle apart and names its plain part
-  (the part has no value at the build), and a late bundle read as one value.
+  reads the name waits for the late result (`DeferredLine`). A `let` whose tuple
+  pattern takes a late bundle apart (`let ((step, !go)) = both`) names each plain part
+  as a late name (`LatePartNames`): a getter of the node that the `let`'s line gives
+  the part's read to (`BindNamedPart`), with no value at the build. A late bundle read
+  as one value from the node's methods (a place's field over `StepOf both`, a late
+  `let`, a hold's step) is a getter of the node bound under `{name}#value`
+  (`LateBundleValue`): the tuple of a plain part's read, an event part's event over a
+  port its node fires, a `$` part's live `Dynamic`. Refused: a late bundle read as one
+  value at the build (a supplier's `@ both`).
+- **A `let` that names a bundle stands above the first line that reads the name**
+  (`BundleLetsEarly`, in `LinesInto`): a bundle's name is its parts, bound where its
+  `let` is lowered, and a `let` builds no place, so a line written above it (`@Counter
+  pair` above `let pair = ((3, !go))`) is lowered after it and keeps its position. The
+  block's result is still its last line as written (`IsLastLine`).
 - **The split block's lines read each other across the split** (Semantics ch. 4: line
   order decides positions and nothing else):
   - the lines below that build no place (a hold, a `let`, a local function, a local
@@ -521,9 +532,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   gives each pattern the part's binding (`BindPartsParam`), an event with its value
   form (`BindEventParam`), a plain part as a field. Any other pattern is over a plain
   value: the argument is a local of the build, matched once there, each name a field
-  (`BindPlainPatternValue`). Refused: a bundle argument that is neither written out nor
-  a name (a function's result), and a pattern that takes an event or a dynamic out of
-  a value that is no bundle (a record's `$` field).
+  (`BindPlainPatternValue`). A pattern that binds an event or a dynamic out of a value
+  (a record's `$` field, `fn @Shown Gauge($level=$l, name=nm):`; a tuple over a bundle
+  that is a function's result) binds its names as a `let`'s are and takes the argument
+  apart as a `let`'s value is (`BindTimePatternParam`, `PatternDynamics`): a getter of
+  the node reads the argument in its caller's environment, each dynamic's getter
+  matches it and samples what the binder holds, each event's node hears the event the
+  value holds. Refused: a name that is a bundle of its own inside such a value.
 - **`@Element made` as a line, `made` a `let` of the block bound to a tag applied**
   (Semantics ch. 8, "Elements and the element statement") is that element's line at
   the placing line's position, lowered in the placing line's environments
