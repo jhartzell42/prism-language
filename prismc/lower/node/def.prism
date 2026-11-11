@@ -115,11 +115,67 @@ fn RootResultOf wx, res = match res:
 BlockInto: unbounded fn Wx, Env, Env, Block -> Wx
 fn BlockInto wx, benv0, menv0, b:
     let ((benv, menv)) = WithElementLets wx.lx, benv0, menv0, b
+    let env = WithLocalWidgets menv, b
+    let wxe = update wx:
+        &_.earlyChoices <= Fold (Range0 (Len b.stmts)), &_.earlyChoices, \|acc, i| if IsEarlyChoiceAt wx.lx, env, b, i: AddText acc, (EarlyChoiceKey (Or b.stmts[i], dummyStmtL)) else: acc
     match ?LateLineAt wx.lx, menv, b, 16:
-        ? k: SplitBlockInto wx, benv, menv, b, k
+        ? k: SplitBlockInto wxe, benv, menv, b, k
         nil:
-            let ((wx2, ignore, ignore)) = LinesInto wx, benv, menv, b, False
+            let ((wx2, ignore, ignore)) = LinesInto wxe, benv, menv, b, False
             wx2
+
+# A building `match` whose plain result a line above it takes as a value at the build (a
+# widget's plain argument, a builder's rows; Semantics ch. 4: the order of a group's
+# lines decides positions and nothing else): its generation is built early, in the
+# block's own build before the node (`EarlyChoiceLine`), so the result is a value of the
+# build like any other and the block is not split at the line. That works where the
+# arms read nothing of the block (the node does not exist yet when the arm is built) and
+# no arm has a guard; any other such line is late, and the line above that takes its name
+# is refused there (`BindLate`).
+IsEarlyChoiceAt: unbounded fn Lx, Env, Block, Nat -> Bool
+fn IsEarlyChoiceAt lx, menv, b, i = match (Or b.stmts[i], dummyStmtL).kind:
+    SBind p, e, nil: match (Ungrouped e).kind:
+        EMatch ignore, arms:
+            let names = Filter (PatternNames p), \|n| not (IsTimeName n)
+            let plain = (IsPlainResult lx, e) and not (IsBundle (LineOutFull lx, e))
+            let unguarded = Fold arms, True, \|ok, a| ok and a.?guard == nil
+            let blockDefs = Fold b.stmts, [[]], \|acc, st| UnionTexts acc, (Check.Blocks.GroupDefs st)
+            let closed = Fold arms, True, \|ok, a|
+                let own = match a.?pattern:
+                    ? q: PatternNames q
+                    nil: [[]]
+                ok and Fold (FreeReads (BlockExprs a.body), [[((own, a.span))]]), True, \|ok2, n| ok2 and (not (HasKey menv.names, n)) and not (HasText blockDefs, n)
+            let taken = Fold (Range0 i), False, \|f, j| f or TakesAtBuild lx, (Or b.stmts[j], dummyStmtL), names
+            plain and unguarded and closed and taken
+        otherwise: False
+    otherwise: False
+
+# The key an early building `match` line is known by (`Wx.earlyChoices`).
+EarlyChoiceKey: fn Stmt -> Text
+fn EarlyChoiceKey s = match s.kind:
+    SBind ignore, e, nil: InitKey (Ungrouped e)
+    otherwise: ""
+
+# Whether a line takes one of some names as a value at the build: a line that builds and
+# is no element's (an element's field is live over a late name's getter, `ElementLine`).
+TakesAtBuild: unbounded fn Lx, Stmt, [Text] -> Bool
+fn TakesAtBuild lx, st, names:
+    let ?line = match st.kind:
+        SBind ignore, e, nil: ? e
+        SIgnore e: ? e
+        SExpr e: ? e
+        otherwise: nil
+    match ?line:
+        ? e:
+            let tagName = match (Ungrouped e).kind:
+                ECall c, ignore, ignore, ignore: TagNameOf lx, c
+                EName ignore: TagNameOf lx, (Ungrouped e)
+                otherwise: ""
+            let placed = match lx.g.tags[tagName]:
+                ? tg: tg.kind == "Element"
+                nil: False
+            (not placed) and Fold (ReadsOfLine st), False, \|f, n| f or HasText names, n
+        nil: False
 
 # A block's `let`s of an element tag applied (`let made = Ui.Label(..)`; Semantics ch. 8,
 # "Elements and the element statement": the `let` is a value and `@Element made` a
@@ -213,7 +269,7 @@ fn ?LateLineAt lx, menv, b, depth:
     Fold (Range0 (Len b.stmts)), nil, \|?found, i| match ?found:
         ? k: ? k
         nil: match (Or b.stmts[i], dummyStmtL).kind:
-            SBind ignore, e, nil: if IsLateExpr lx, env, e, depth: ? i else: nil
+            SBind ignore, e, nil: if (IsLateExpr lx, env, e, depth) and not (IsEarlyChoiceAt lx, env, b, i): ? i else: nil
             otherwise: nil
 
 # An environment with a block's own local widgets (`@line:` and its block), as `PreBind`
@@ -1694,10 +1750,64 @@ fn LetLine wx, benv, menv, p, e:
             otherwise: if Fold (BinderNames p), True, \|ok, n| ok and IsPlainPart menv.names[SNameKey n]:
                 let t = OutTyOf lx, (Peel (TypeAt lx, e.span))
                 (((BindPatternResult wx, menv, p, (Own (ValueOf lx, benv, e)), t, (Peel (TypeAt lx, e.span))), benv))
+            # a pattern that binds dynamics inside it, and no event (`LetPatternDynamics`)
+            else: if Fold (BinderNames p), True, \|ok, n| ok and ((IsPlainPart menv.names[SNameKey n]) or IsGetterPart menv.names[SNameKey n]): (((LetPatternDynamics wx, benv, menv, p, e), benv))
             else:
                 let wx2 = update wx:
-                    &_.build <= Push &_.build, (RefusalDo "a widget block's `let` of this pattern (`{SrcText lx, lx.file, p.span}`), which binds a dynamic or an event inside it")
+                    &_.build <= Push &_.build, (RefusalDo "a widget block's `let` of this pattern (`{SrcText lx, lx.file, p.span}`), which binds an event inside it")
                 ((wx2, benv))
+
+# A name prebound as a dynamic `let`'s getter (`PreBindName`).
+IsGetterPart: fn ?Bn -> Bool
+fn IsGetterPart (? (BnDyn (XMethod XSelf, ignore, ignore), ignore, ignore)) = True
+fn IsGetterPart ?other = False
+
+# A `let` whose pattern binds dynamics inside it (`let Gauge($level=$l, name=nm) = ..`;
+# Semantics ch. 4: a `let` names what its pattern binds, and a dynamic named is that
+# dynamic). The whole value is a getter of the node, made from what it reads as a value
+# that holds dynamics is (`PreBindName`, gap LF); each `$` binder's getter, which its
+# prebinding named, matches that value by the pattern and samples the dynamic the binder
+# holds, and reads the whole value's getter, so what moves behind the value marks the
+# binder's readers. The plain binders are fields, matched once at the build.
+LetPatternDynamics: unbounded fn Wx, Env, Env, Pattern, Expr -> Wx
+fn LetPatternDynamics wx, benv, menv, p, e:
+    let lx = wx.lx
+    let ty = Peel (TypeAt lx, e.span)
+    let t = OutTyOf lx, ty
+    let ((whole, wx1)) = FreshName wx, "let_whole"
+    let ((ex, reads)) = DynamicExpr wx1, menv, e
+    let wx2 = update wx1:
+        &_.getters <= Push &_.getters, (MethDef(name=whole, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="`{SrcText lx, lx.file, e.span}`, the value a `let`'s pattern takes apart, read at the read point."))
+        &_.dynReads <= Insert &_.dynReads, whole, reads
+    let o = RustPat lx, p, ty, ByRef, "let_whole_value"
+    let wx3 = Fold (BinderNames p), wx2, \|w, n| match ((menv.names[SNameKey n], (Fold o.binds, nil, \|?found, ((k, b))| if k == SNameKey n: ? b else: ?found))):
+        (((? (BnDyn (XMethod XSelf, rs, ignore), ignore, bt)), (? (BnLocal held, ignore, ignore)))):
+            let arm = XArm(pat=o.pa, conds=o.conds, body=(XMethod held, "sample", [[XCx]]))
+            let other = XArm(pat=PaWild, conds=[[]], body=(XUnreachable))
+            let tail = XBlock [[(DoLet (PaTyped (PaBind "let_whole_value"), t), (XMethod XSelf, whole, [[XCx]]))]], (Own (ArmsValue (XRef (XVar "let_whole_value")), [[arm, other]], "'bound", bt))
+            update w:
+                &_.getters <= Push &_.getters, (MethDef(name=rs, recv=RecvRef, params=[[]], cx=CxRef, ret=bt, body=[[]], tail=tail, doc="`{SNameKey n}`, a dynamic a `let`'s pattern binds"))
+                &_.dynReads <= Insert &_.dynReads, rs, [[OwnRead whole]]
+        (((? (BnDyn ignore, ignore, ignore)), ignore)): update w:
+            &_.build <= Push &_.build, (InternalBugDo "the dynamic `{SNameKey n}` of a `let`'s pattern, which the pattern does not bind")
+        otherwise: w
+    # the plain binders: the value computed at the build and matched once there, each
+    # name moved into the field its prebinding named (as `BindPatternResult` does)
+    let plain = Fold (BinderNames p), [[]], \|acc, n| match ((menv.names[SNameKey n], (Fold o.binds, nil, \|?found, ((k, b))| if k == SNameKey n: ? b else: ?found))):
+        (((? (BnLocal rx, ignore, bt)), (? (BnLocal rs, mode, vt)))): Push acc, (((PlaceStem rx), bt, (Own (VlPlace rs, mode, vt))))
+        otherwise: acc
+    if (Len plain) == 0: wx3
+    else:
+        let ((tmp, wx4)) = FreshName wx3, "result"
+        let ob = RustPat lx, p, ty, ByRef, tmp
+        let all = OutTuple (Each plain, \|((ignore, bt, ignore))| bt)
+        let arm = XArm(pat=ob.pa, conds=ob.conds, body=(XTuple (Each plain, \|((ignore, ignore, v))| v)))
+        let other = XArm(pat=PaWild, conds=[[]], body=(XUnreachable))
+        let matched = Own (ArmsValue (XRef (XVar tmp)), [[arm, other]], "'bound", all)
+        update wx4:
+            &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind tmp), t), (Own (ValueOf lx, benv, e))), (DoLet (PaTyped (PaTuple (Each plain, \|((f, ignore, ignore))| PaBind f)), all), matched)]]
+            &_.fields <= Append &_.fields, (Each plain, \|((f, bt, ignore))| ((f, bt, "a name of a `let`'s pattern")))
+            &_.inits <= Append &_.inits, (Each plain, \|((f, ignore, ignore))| ((f, (XClone (XVar f)))))
 
 # A part of a tuple pattern as its prebinding has it: a plain name, or none (`ignore`).
 IsPlainPart: fn ?Bn -> Bool
@@ -1748,7 +1858,7 @@ fn BuildLine wx, benv, menv, e, ?bound:
         # a building `if` with no `else` builds its arm or nothing (ruling IE2): the other
         # arm is an empty block, and the block's later places count from what was built
         EIf c, thenB, nil: IfGenLine wx, menv, c, thenB, (Block(stmts=[[]], inline=True, span=e.span)), e
-        EMatch s, arms: MatchGenLine wx, menv, s, arms, e
+        EMatch s, arms: if HasText wx.earlyChoices, (InitKey e): EarlyChoiceLine wx, benv, menv, s, arms, e else: MatchGenLine wx, menv, s, arms, e
         otherwise: match Peel full:
             TyElem ignore, ignore: ElementLine wx, benv, menv, e, ?bound
             TyAt ignore, ignore: WidgetLine wx, benv, menv, e, ?bound

@@ -127,8 +127,11 @@ fn RowPartsBn parent, rowWx, n, parts = Fold parts, ((parent, rowWx, [[]])), \|(
 RowPartBn: unbounded fn Wx, Wx, Text, ?Bn -> ((Wx, Wx, ?Bn))
 fn RowPartBn p, r, n, ?b = match ?b:
     ? (BnLocal rs, mode, t): ((p, r, (? (BnLocal (OverParent rs), Owned, t))))
-    ? (BnEv er, t):
+    # (a bundle's event part is bound with no type of its own, `BundleBn`: the type is
+    # its node's in the block)
+    ? (BnEv er, ignore):
         let pname = (GnOf p, er.node).name
+        let t = (GnOf p, er.node).ty
         let ((rs, r1)) = FreshName r, (Snake n)
         let ((id, r2)) = AddGn r1, rs, t, GnPort, 0
         let r3 = update r2:
@@ -469,6 +472,60 @@ fn EarlyClauseLine wx, benv, menv, scrut, qk, v, e, args, outTy:
         &_.genHolds <= Push &_.genHolds, ((name, [[]]))
         &_.rows <= Fold cases, &_.rows, \|acc, gc| Append (Push acc, gc.node), gc.node.children
     ((wx3, (WrPlain (XClone (XVar first)), outTy)))
+
+# A building `match` built early (`IsEarlyChoiceAt`): its generation is built in the
+# block's own build, before the block's node, at the line's point, the arm chosen by
+# matching the scrutinee as the build reads it, as a static widget of several clauses
+# with a plain result is (`EarlyClauseLine`). The arm's row reads nothing of the block
+# and holds it through a link; it hands its plain result back with itself, a value of
+# the build. The node keeps the row as its generation from then on, built once.
+EarlyChoiceLine: unbounded fn Wx, Env, Env, Expr, [Arm], Expr -> ((Wx, Wres))
+fn EarlyChoiceLine wx, benv, menv, s, arms, e:
+    let lx = wx.lx
+    let pos = wx.pos
+    let outTy = ChoiceOutTy lx, e
+    let sty = TypeAt lx, s.span
+    let ((name, wx1)) = FreshName wx, "arm"
+    let link = "{name}_link"
+    let first = "{name}_first"
+    let rowLocal = "{name}_row"
+    let linkTy = OutNamed (RefRuntime "prism_rtl::Link"), [[(OutNamed (SiteRef lx, wx.node), [[]])]]
+    let rowName = "{wx.node}Arm{RowSuffix wx}"
+    let ((rows, wx2)) = Fold (Range0 (Len arms)), (([[]], wx1)), \|((acc, w)), i|
+        let a = Or arms[i], dummyArmS
+        let cr = ArmRowOf w, menv, lx, [[a.?pattern]], [[sty]], nil, a.body, "{rowName}{i}", name, True, False, linkTy, [[]], [[]], [[]], False
+        (((Push acc, cr), cr.parent))
+    let width = Fold rows, 0, \|acc, cr| Max acc, cr.width
+    let cases = Each rows, \|cr| cr.case
+    let rowObj = OutObj (OutNamed (RefRuntime "rt::Row"), [[]])
+    let hostAtBuild = match ?HostedRows wx:
+        ? ignore: [[(XClone (XVar (HostLocal wx, pos)))]]
+        nil: [[]]
+    let Made = \|c, parent, host| TryOf (XCall (RefChild (SiteRef lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), (Append (Append [[parent]], host), [[XCx]])))
+    let gaps = RowGaps rows, width
+    let gapNow = "{name}_gap_now"
+    let earlyArms = Fold cases, [[]], \|built, c|
+        let i = Len built
+        Push built, (XArm(pat=c.pat, conds=c.conds, body=(XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XVar link)), hostAtBuild))]], (XTuple [[(XMethod (XVar "row"), "result_value", [[]]), (XCast (XVar "row"), rowObj), (Or (Or gaps[i], nil), (XIndex 0))]]))))
+    let methodArms = Each cases, \|c| XArm(pat=c.pat, conds=c.conds, body=(XCast (Made c, (XClone (XField XSelf, link)), (HostedPassed wx)), rowObj))
+    let atBuild = XTuple [[(Argument lx, benv, s)]]
+    let inMethod = XTuple [[(Argument lx, menv, s)]]
+    let built = WithRowBase wx, "", pos, (Own (ArmsValue atBuild, earlyArms, "'select", (OutTuple [[outTy, rowObj, OutCount]])))
+    let select = WithRowBase wx, "self", pos, (Own (ArmsValue inMethod, methodArms, "'select", rowObj))
+    let wx3 = update wx2:
+        &_.taken <= Append &_.taken, [[link, first, rowLocal, gapNow]]
+        &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind link), linkTy), (XCall (RefRuntime "prism_rtl::Link::<{wx.node}>::new"), [[]])), (DoLet (PaTuple [[(PaBind first), (PaBind rowLocal), (PaBind gapNow)]]), built)]]
+        &_.fields <= Push &_.fields, ((link, linkTy, "the link the arm at place {PlaceText pos} holds this node through, built before it"))
+        &_.inits <= Push &_.inits, ((link, (XClone (XVar link))))
+        &_.build <= Push &_.build, (DoExpr (XMethod (XVar link), "link", [[(XRef (XVar "node"))]]))
+        &_.fallible <= True
+        &_.pos <= Pos(scope=pos.scope, at=pos.at + width)
+        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=True, width=width, moved=(Or (?HostedRows wx), ""), early=True, gappy=(IsGappy gaps), rebased=False)
+        &_.genHolds <= Push &_.genHolds, ((name, [[]]))
+        &_.rows <= Fold cases, &_.rows, \|acc, gc| Append (Push acc, gc.node), gc.node.children
+    ((wx3, (WrPlain (XClone (XVar first)), outTy)))
+
+let dummyArmS = Arm(?pattern=nil, ?guard=nil, body=dummyBlockS, span=Range(start=0, end=0))
 
 # Whether the node's places go to a host's document rather than the World's.
 IsHostedScope: fn Wx -> Bool

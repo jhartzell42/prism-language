@@ -176,6 +176,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **Requests.** A request field's firing → `cx.request(path, field, edge)`, `field` set
   when the tag has several.
 - **The root's result** → `cx.result(Outcome::Value(..) | Outcome::Fired(..))`.
+  A tick holds every result told in it, in the order told (`TickOut.results`): a root
+  that ends on a bundle tells each part by itself, a dynamic part at the build and in
+  each tick it moves (`result_value`, `result_value_1`, .. each with its own
+  `result_last`).
 - **Demand.** A path that feeds only an output with no subscription is gated by its
   port's `demand()`, keeping its value at the fork point in a `Stamped` (Graph ch. 4,
   "Paths inside a widget node").
@@ -330,6 +334,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
   an arm's is, a plain one late again. So a late result travels up: a caller's line that
   binds it splits the caller's block in turn (`IsLateExpr`), a row keeps it behind its
   `result_value`, and the root tells the World in its build once its rows are built.
+- **A building `match` whose plain result a line above takes as a value at the build** (a
+  widget's plain argument, a builder's rows) is built early instead, in the block's own
+  build before the node, as a clause widget with a plain result is (`EarlyChoiceLine`,
+  `IsEarlyChoiceAt`): where no arm has a guard or reads a name of the block, since the
+  node does not exist yet when the arm is built. The result is then a value of the
+  build and the block is not split at the line.
+- **A bundle with a late plain part bound whole to one name** is the name's parts
+  (`BindWhole`): an event or a dynamic as the line gives it, a plain part a getter of
+  the node; the lines below the split read the name part by part through the node
+  (`RowPartsBn`). A late plain part bound by a pattern of its own gives each name a
+  getter that matches the part by the pattern (`LateName.within`).
 - **The split block's lines read each other across the split** (Semantics ch. 4: line
   order decides positions and nothing else):
   - the lines below that build no place (a hold, a `let`, a local function, a local
@@ -482,8 +497,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   made in the build) after a gappy generation built after the node has no number yet;
   that is refused loudly. A generation built early gives its gap as a local
   (`{name}_gap_now`).
-- **A widget of several clauses that calls itself** (plain parameters, no result, its
-  places the World's) is as deep as its data (`SharedClauseLine`). The outermost call is
+- **A widget that calls itself**, of one clause or of several (plain parameters, no type
+  parameter, nothing or a plain value given back, its places the World's), is as deep as
+  its data (`SharedClauseLine`). A plain result is kept by each row (`result_value`) and
+  by the calling block in `{generation}_res` from the row's build on, late; a block that
+  binds it is split at that line (`IsRecursingCall`, `Lx.recursing`). The outermost call is
   lowered as any; a call inside the widget's own clause makes the clauses once more as
   rows shared by every further call (`Lx.shared`): one row type per clause, numbered
   from 0 (`zeroBased`), built with `base`, holding no block, each with `built()`, how
