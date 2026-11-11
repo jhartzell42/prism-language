@@ -1,0 +1,22 @@
+# Derived by hand from Semantics ch. 4 (a building `match`'s arm adds no path segment), ch. 8 (a blueprint is built at the applying block's next positions; `<-` binds its result) and ruling TC (places counted as built): the widget builds 0 and 1, the arm's label is 2, the last label 3.
+test picked
+
+tick 0
+  added:
+    0: Ui.Label(text="press")
+    1: Ui.Button(label="go")
+    2: Ui.Label(text="total 0")
+    3: Ui.Label(text="end")
+
+tick 1
+  in:
+    1: click
+  changed:
+    2: Ui.Label(text="total 1")
+
+test not_picked
+
+tick 0
+  added:
+    0: Ui.Label(text="none")
+    1: Ui.Label(text="end")
