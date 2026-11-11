@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 4: `Go 4, 0` adds 4, 3, 2, 1.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="sum 10")
