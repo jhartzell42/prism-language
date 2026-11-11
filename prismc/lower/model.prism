@@ -774,6 +774,12 @@ type AnswerCase = record:
     # a World's first value decodes to (`decode_first`); the variant above carries the
     # event part, the answers (pick HO).
     ?first: OutTy
+    # A bundle's tag with a part that is no plain data (a function): the bundle whole,
+    # as a blueprint made outside the tag's arm holds it (`PartsBlueprint`), and the
+    # function from one such value to the tag's parts answer (`PartsAnswerOf`), by which
+    # a host's row answers its place (prism_rtl's `AnswerOf::held_parts`).
+    ?heldWhole: OutTy
+    ?heldParts: Ex
 derive ^Eq, ^Show
 
 # Whether an expression reads the local `n` anywhere in it (its `XVar`s), as a printer

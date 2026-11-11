@@ -461,7 +461,7 @@ fn AnswerParts cp, a:
     let held = "template <class T> ::std::optional<T> held_as() const \{ if (auto h = ::std::get_if<Held_a>(&cases())) if (auto v = ::std::any_cast<T>(&h->a0)) return *v; return ::std::nullopt; \}\ntemplate <class T> crate::prelude::Result<T> held() const \{ if (auto v = held_as<T>()) return *v; return crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where a blueprint value's result that is no plain data was expected\"))); \}"
     let accessors = Join (Append (Each a.cases, \|c| "crate::prelude::Result<{CppType cp, c.ty}> {c.accessor}() const;"), (Each firsts, \|((c, ft))| "crate::prelude::Result<{CppType cp, ft}> {c.accessor}_first() const;")), "\n"
     let plain = "template <class T> crate::prelude::Result<T> plain() const \{ if (auto u = ::std::get_if<Untagged_a>(&cases())) return ::prism_rtl::from_pod<T>(u->a0); return crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where a blueprint value's plain result was expected\"))); \}"
-    let members = "const char* tag() const;\n{accessors}\n{plain}\n{held}\nstatic crate::prelude::Result<Answer> decode(const Elem& e, const crate::prelude::Pod& v);\nstatic crate::prelude::Result<Answer> decode_first(const Elem& e, const crate::prelude::Pod& v);"
+    let members = "const char* tag() const;\n{accessors}\n{plain}\n{held}\nstatic crate::prelude::Result<Answer> decode(const Elem& e, const crate::prelude::Pod& v);\nstatic crate::prelude::Result<Answer> decode_first(const Elem& e, const crate::prelude::Pod& v);\nstatic ::std::optional<::prism_rtl::PartsAnswer<Answer>> held_parts(const Elem& e, const Answer& answer);"
     let cases0 = Join (Append (Each a.cases, \|c| CaseDecl c.variant, "{CppType cp, c.ty} a0;"), (Each firsts, \|((c, ft))| CaseDecl "{c.variant}First", "{CppType cp, ft} a0;")), "\n"
     let cases = "{cases0}\n{CaseDecl "Untagged_a", "crate::prelude::Pod a0;"}\n{CaseDecl "Held_a", "::std::any a0;"}"
     let cls = ChoiceClass (CppDoc "`Answer c`: an answer to an element, typed by its tag (Semantics ch. 9): what a host's\nsupplier answers a child place with, and what a World's answer to a forwarded element\ndecodes to, carrying the tag's output."), "", "Answer", cases, (Join names, ", "), members
@@ -473,7 +473,13 @@ fn AnswerParts cp, a:
     let getters = Each a.cases, \|c| CppFunction (CppDoc "A `{c.tagName}`'s answer."), "crate::prelude::Result<{CppType cp, c.ty}> Answer::{c.accessor}() const", "if (auto c = ::std::get_if<{c.variant}>(&cases())) return c->a0;\n{CppOutsideArm cp, c.ty}\nreturn crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where {c.tagName}'s was expected\")));"
     let decodes = Join (Each a.cases, \|c| if Podable c.ty: "if (is<Elem::{c.variant}>(e)) return Answer({c.variant}\{TRY(::prism_rtl::from_pod<{CppType cp, c.ty}>(v))\});" else: "if (is<Elem::{c.variant}>(e)) {CppNoWorldAnswer c.tagName}"), "\n"
     let decode = CppFunction (CppDoc "A World's answer to the element `e`, decoded by its tag."), "crate::prelude::Result<Answer> Answer::decode(const Elem& e, const crate::prelude::Pod& v)", "{decodes}\n::prism_rtl::unreachable();"
-    Parts(forward=[["class Answer;"]], values=[[ValueDecl(path="Answer", deps=[[]], text=cls)]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append [[tagFn]], (Append (Append getters, firstGetters), [[decode, decodeFirst]])))
+    # a bundle held whole, answered to a place of a tag that takes such a bundle
+    let heldArms = Fold a.cases, [[]], \|acc, c| match ((c.?heldWhole, c.?heldParts)):
+        ((? whole, ? parts)): Push acc, "if (is<Elem::{c.variant}>(e)) \{ if (auto whole = answer.held_as<{CppType cp, whole}>()) return ({CppExpr cp, parts})(*whole); return ::std::nullopt; \}"
+        otherwise: acc
+    let helds = Join heldArms, "\n"
+    let heldParts = CppFunction (CppDoc "An answer held whole (a bundle with a part that is no plain data, made outside a tag's\narm) as the parts the tag of `e` takes."), "::std::optional<::prism_rtl::PartsAnswer<Answer>> Answer::held_parts(const Elem& e, const Answer& answer)", "{helds}\nreturn ::std::nullopt;"
+    Parts(forward=[["class Answer;"]], values=[[ValueDecl(path="Answer", deps=[[]], text=cls)]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append [[tagFn]], (Append (Append getters, firstGetters), [[decode, decodeFirst, heldParts]])))
 
 # A step machine (D6): a job struct, its `cycle`, its `Start`.
 JobParts: unbounded fn Cp, JobDef -> Parts
