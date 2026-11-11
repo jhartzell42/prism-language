@@ -1,0 +1,25 @@
+# A supplier that answers with another name of a named bundle, `let same = pair` and
+# `@ same` (Semantics ch. 9, "How a supplier answers"; Type System ch. 2, "Bundles": a
+# bundle is a plain aggregate, a value, so a `let` gives it another name and the name is
+# read as one value). sem-ch09-host-bundle-answer-named with the bundle named twice.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Door of Element ((Text, !Nat)):
+    name: Text
+
+@doors: @unit
+@doors:
+    ((door, !knocks)) <- Pad.Door(name="front")              # 0
+    $count <- 0 then $count + !knocks
+    Ui.Label($text=$"{door}: {$count}")                       # 1
+
+@computed: @unit
+@computed:
+    !go <- Ui.Button($label=$"knock")                         # 0
+    let pair = (("mock", 2 on !go))
+    let same = pair
+    ignore <- @HostDocument @doors, \|p, e| match e:         # 1/[p]
+        Pad.Door(..): @ same
+        otherwise: @Element e

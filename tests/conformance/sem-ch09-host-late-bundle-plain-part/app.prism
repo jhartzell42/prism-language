@@ -1,0 +1,28 @@
+# A place whose tag answers a bundle with a plain part beside an event part and a `$`
+# part, in a hosted child whose host answers the `$` part with a structural dynamic, a
+# `for`'s gathered result (Semantics ch. 9, "How a supplier answers"; ch. 7, "Structural
+# dynamics", round 3 ST; round 3 DY; Type System ch. 2, "Bundles": a supplier answers the
+# bundle part by part). sem-ch09-host-bundle-answer-structural-part with a plain part.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Socket of Element ((Nat, !Text, $Nat)):
+    address: Text
+
+@chat: @unit
+@chat:
+    ((port, !rx, $peers)) <- Pad.Socket(address="chat:7000")
+    $last <- "none" then !rx
+    Ui.Label($text=$"{port} {$peers}: {$last}")
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")
+    $names <- {1: "one"} then Insert $names, 2, "two" on !add
+    $lens <- for k, $name <- $names:
+        Ui.Label($text=$name)
+        @ Len $name
+    ignore <- @HostDocument @chat, \|p, e| match e:
+        Pad.Socket(..): @ ((7, "hello" on !add, Size $lens))
+        otherwise: @Element e

@@ -1,0 +1,42 @@
+# A supplier that answers with a bundle whose plain part is late, bound whole to one name
+# below the host's line: `@ both` above `both <- @Choose mode` (Semantics ch. 4, "Binding
+# groups and cycles": any line may use any name the block binds, and the order of a
+# group's lines decides positions and nothing else; ch. 9, "How a supplier answers": the
+# supplier's blueprint "can read anything the host's block binds"; Type System ch. 2,
+# "Bundles": a bundle is a plain aggregate, a value). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+tag Pad.Dial of Element ((Nat, !Click)):
+    name: Text
+
+@dial: @unit
+@dial:
+    ((step, !tap)) <- Pad.Dial(name="dial")                            # 0
+    $turned <- 0 then $turned + step on !tap
+    Ui.Label($text=$"step {step}: {$turned}")                          # 1
+
+@Choose: fn Mode -> @((Nat, !Click))
+fn @Choose mode:
+    n <- match mode:
+        Loud t:
+            Ui.Label($text=$"{t}")
+            @ 10
+        Soft:
+            @ 20
+    !go <- Ui.Button($label=$"go")
+    @ ((n, !go))
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    ignore <- @HostDocument @dial, \|p, e| match e:                    # 0/[p]
+        Pad.Dial(..): @ both
+        otherwise: @Element e
+    both <- @Choose mode                                               # 1 and 2, or 1
