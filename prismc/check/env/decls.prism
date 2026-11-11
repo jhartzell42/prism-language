@@ -172,8 +172,8 @@ fn ConvertTypeDecl g, st0, info, d = match d.kind:
                             &_.types <= Insert &_.types, name, (WithBody ti, (BRecord fields))
                             &_.ctors <= Insert &_.ctors, name, ctor
                         ((upd, st2))
-                    TbChoice cs: ConvCases g, st, cx, ti, name, params, self, cs
-                    TbNewtype c: ConvCases g, st, cx, ti, name, params, self, [[c]]
+                    TbChoice cs: ConvCases g, (CaseRowsBound st, info, (Dotted t.name.path), cs), cx, ti, name, params, self, cs
+                    TbNewtype c: ConvCases g, (CaseRowsBound st, info, (Dotted t.name.path), [[c]]), cx, ti, name, params, self, [[c]]
                     TbUnit i:
                         let stUnit = SecondConstructor g, st, (QualKey info.name, i.name), name, i.span
                         let ctor = CtorInfo(name=(QualKey info.name, i.name), owner=name, params=params, args=[[]], fields=[[]], ty=self, index=0)
@@ -384,6 +384,14 @@ fn FieldRowBound st, info, owner, f:
     if info.rowVar == "" or not takesScope: st
     else: ErrFix st, "unknown-name", f.span, "the field `{f.sigils}{f.name.name}` of `{owner}` emits the module's row `{info.rowVar}`, and a record has no row of its own", "write the row on the field's type, as `emit Ui.*`"
 
+# A choice's case that holds a blueprint emitting the scope's row, in a module whose row
+# is a variable: a choice is no signature either, so the case writes its own row, as a
+# record's field does (`FieldRowBound`).
+CaseRowsBound: unbounded fn St, ModInfo, Text, [Case] -> St
+fn CaseRowsBound st, info, owner, cs = if info.rowVar == "": st else: Fold cs, st, \|s, c|
+    if Fold c.args, False, \|seen, a| seen or UsesScope a: ErrFix s, "unknown-name", c.span, "the case `{SNameKey c.name}` of `{owner}` emits the module's row `{info.rowVar}`, and a choice has no row of its own", "write the row on the case's type, as `emit Ui.*`"
+    else: s
+
 # Whether a field's type writes its row with `emit`.
 WritesEmit: unbounded fn Type -> Bool
 fn WritesEmit t = match t.kind:
@@ -526,7 +534,7 @@ fn ConvTag g, st, info, t, span:
     let st5 = Fold t.fields, st4, \|s, f| Fold (TypeVarPlaces [[]], f.ty), s, \|s2, ((v, at))|
         if HasText indexed, v: s2
         else: ErrFix s2, "field-variable", at, "the type variable `{v}` in the field `{f.name.name}` of `{name}` does not appear in the tag's output, `{outText}`", "put `{v}` in the output, or give the field a type without it"
-    let tg = TagInfo(name=name, family=family, kind=kind, out=out, qs=qs, rqs=(if info.rowVar == "": [[]] else: [[info.rowVar]]), bounds=bs, fields=fields, home=info.name, file=info.file, span=span)
+    let tg = TagInfo(name=name, family=family, kind=kind, out=out, qs=qs, rqs=(if info.rowVar == "": [[]] else: [[info.rowVar]]), bounds=bs, fields=fields, fieldAt=(Each t.fields, \|f| (("{f.sigils}{f.name.name}", f.span))), home=info.name, file=info.file, span=span)
     let upd = update g:
         if not (HasKey &_.tags, name):
             &_.tags <= Insert &_.tags, name, tg

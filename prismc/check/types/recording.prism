@@ -108,6 +108,13 @@ fn FaultsSettled st0:
     update checked:
         &_.file <= st.file
 
+# Where a block's result is reported: its last line, whose value is the result (Semantics
+# ch. 4), not the block from its first line.
+ResultSpan: fn Block -> Range
+fn ResultSpan b = match ?Last b.stmts:
+    ? s: s.span
+    nil: b.span
+
 # The span a block's value comes from: its last statement's expression, else the block.
 TailSpan: fn Block -> Range
 fn TailSpan b = match ?Last b.stmts:

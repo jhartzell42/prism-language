@@ -204,6 +204,15 @@ type St = record:
     # Every local binder's id and every use's, in the order checked (`IsClosed`).
     binderIds: [Nat]
     useIds: [Nat]
+    # Each use of a trait's method, by its file and place (`UseKey`), with the method's
+    # key: a want made there is the method's own, and not a function's bound, when it is
+    # asked of a packed value (Jimmy's ruling EX; `AskOfPacked`).
+    methodUses: (Text ==> Text)
+    # Each `any e` whose existential was not known where it stood (a constructor's field,
+    # an argument, an array's element): its bounds are wanted at `e`'s type once the
+    # variable it gave is an existential (Type System ch. 5, "Existentials are
+    # dictionaries"; `ResolvePacks`).
+    packs: [Pack]
 derive ^Eq, ^Show
 
 type AssocImpl = record:
@@ -234,8 +243,21 @@ type Waiting = record:
     file: Nat
 derive ^Eq, ^Show
 
+# An `any e` waiting for the existential it meets: the variable it gave, `e`'s type, and
+# where it stands.
+type Pack = record:
+    result: Ty
+    inner: Ty
+    file: Nat
+    span: Range
+derive ^Eq, ^Show
+
+# A place's key in `methodUses`.
+UseKey: fn Nat, Range -> Text
+fn UseKey file, span = "{file}:{span.start}:{span.end}"
+
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, unsignedFns=[[]], localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], plainArms=[[]], faultQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]])
+fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, unsignedFns=[[]], localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], plainArms=[[]], faultQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={}, packs=[[]])
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed)
