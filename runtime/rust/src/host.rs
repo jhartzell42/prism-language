@@ -1125,7 +1125,7 @@ pub type Rows<E, A> = Rc<RefCell<Map<Path, Rc<HostRow<E, A>>>>>;
 /// owner's emitted typed dispatch.
 pub struct Host<E, A, P> {
     me: Weak<Host<E, A, P>>,
-    at: Path,
+    at: RefCell<Path>,
     owner: RefCell<Weak<P>>,
     rows: Rows<E, A>,
     supplier: Supplier<E, A>,
@@ -1139,7 +1139,15 @@ impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> Host<E, A, P> {
     /// `enclosing` the host whose scope the line stands in, if any; `deliver` and `moved`
     /// the owner's emitted `host_k_answer` and `host_k_moved`.
     pub fn new(at: Path, rows: Rows<E, A>, supplier: Supplier<E, A>, enclosing: Option<Rc<dyn HostOf<E, A>>>, deliver: fn(&Rc<P>, &Path, &A, &mut Cx) -> Done, moved: fn(&Rc<P>, &mut Cx)) -> Rc<Host<E, A, P>> {
-        Rc::new_cyclic(|me| Host { me: me.clone(), at, owner: RefCell::new(Weak::new()), rows, supplier, enclosing, deliver, moved })
+        Rc::new_cyclic(|me| Host { me: me.clone(), at: RefCell::new(at), owner: RefCell::new(Weak::new()), rows, supplier, enclosing, deliver, moved })
+    }
+
+    /// The host's place, told once the owner's node stands: a host made in the build of
+    /// a node whose places take their numbers after it (places are counted as they are
+    /// built) is made at the root and placed here, before its rows are built and before
+    /// any child place asks its first value.
+    pub fn place_at(&self, at: Path) {
+        *self.at.borrow_mut() = at;
     }
 
     /// The owner's node, once made: the rows read the document and answer through it.
@@ -1185,7 +1193,7 @@ impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> Host<E, A, P> {
         let row = self.rows.borrow().get(place).cloned();
         match row {
             Some(row) => row.request(field, value, cx),
-            None => Err(Fault::answer(format!("a request from {place}, which has no row under the host at {}", self.at))),
+            None => Err(Fault::answer(format!("a request from {place}, which has no row under the host at {}", self.at.borrow()))),
         }
     }
 }
@@ -1198,7 +1206,7 @@ impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> HostOf<E, A> for Host<E, A, P> {
     /// sync"): the supplier row for the place is built now, before the owner's node, and
     /// kept where the builder finds it. The one early construction.
     fn first_value(&self, place: &Path, element: &E, entry: &Rc<Entry<E>>, cx: &mut Cx) -> Result<Option<A>, Fault> {
-        let row = HostRow::early(self.at.child(Segment::Key(place.to_pod())), place.clone(), element.clone(), entry.clone(), self.me(), cx)?;
+        let row = HostRow::early(self.at.borrow().child(Segment::Key(place.to_pod())), place.clone(), element.clone(), entry.clone(), self.me(), cx)?;
         let first = row.first();
         self.rows.borrow_mut().insert(place.clone(), row);
         Ok(first)

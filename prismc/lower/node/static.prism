@@ -603,7 +603,13 @@ fn HostLine wx, benv, menv, form, args, ?bound:
             let supplier = if (Len dynLets) == 0: supplier0 else: XBlock dynLets, supplier0
             # the scope the host's rows build in: the World's, or the enclosing host's
             let enclosing = if Emits wx, pos: XNone else: XCtor (RefRuntime "std::Some"), [[(XCast (XClone (XVar (HostLocal wx, pos))), hostOfTy)]]
-            let made = XCall (RefRuntime "prism_rtl::Host::new"), [[(PlaceAt wx, "", pos), (XClone (XVar rowsName)), supplier, enclosing, (XPath (RefChild (SiteRef lx, wx.node), "{hf}_answer")), (XPath (RefChild (SiteRef lx, wx.node), "{hf}_moved"))]]
+            # a host whose position has no number at the build (ruling TC: places are
+            # counted as they are built; `PlaceUnknownAtBuild`) is made at the root and
+            # placed once the node stands, where the construction step reaches its
+            # line (`Wx.unplacedHosts`, `ScopeSteps`); its scope's places ask their
+            # first values after that, as a late host's do (`Wx.lateHosts`)
+            let unplaced = PlaceUnknownAtBuild wx, pos
+            let made = XCall (RefRuntime "prism_rtl::Host::new"), [[(if unplaced: XCall (RefRuntime "rt::Path::root"), [[]] else: PlaceAt wx, "", pos), (XClone (XVar rowsName)), supplier, enclosing, (XPath (RefChild (SiteRef lx, wx.node), "{hf}_answer")), (XPath (RefChild (SiteRef lx, wx.node), "{hf}_moved"))]]
             let hostTy = OutRc (OutNamed (RefRuntime "prism_rtl::Host"), [[elemTy, answerTy, (OutNamed (SiteRef lx, wx.node), [[]])]])
             let rowsTy = OutNamed (RefRuntime "prism_rtl::Rows"), [[elemTy, answerTy]]
             # the document is `$(Path ==> $Elem c)` (Jimmy, 6 November 2026): the owner keeps
@@ -620,6 +626,8 @@ fn HostLine wx, benv, menv, form, args, ?bound:
                 &_.moves <= Append &_.moves, [[((hf, (XClone (XVar hf)))), ((rowsName, (XClone (XVar rowsName))))]]
                 &_.inits <= Append &_.inits, [[(("{docGetter}_snap", (XCall (RefRuntime "rt::Snapshot::new"), [[XStr what]]))), (("{rowsName}_from", (XCall (RefRuntime "std::RefCell::new"), [[(XCall (RefRuntime "rt::Map::new"), [[]])]])))]]
                 &_.hosts <= Push &_.hosts, HostDef(pos=pos, name=hf, scope=k)
+                &_.unplacedHosts <= if unplaced: Push &_.unplacedHosts, hf else: &_.unplacedHosts
+                &_.lateHosts <= if unplaced and not (HasNat &_.lateHosts, k): Push &_.lateHosts, k else: &_.lateHosts
                 &_.snaps <= Push &_.snaps, SnapDef(name=docGetter, live="{docGetter}_now", ty=hostDocTy, eq=True, builder=rowsName, before=True, what=what)
                 &_.getters <= Append &_.getters, [[(MethDef(name=docGetter, recv=RecvRef, params=[[]], cx=CxRef, ret=docTy, body=[[]], tail=(XField (XMethod (XField XSelf, "{docGetter}_snap"), "get", [[XCx]]), "doc"), doc="The document of the child hosted at place {PlaceText pos}, `$doc`, its outer a structural dynamic (pick ST): one tick behind the child's places, the snapshot of the tick before the tick the read point is after; each entry the place's own dynamic.")), (MethDef(name="{docGetter}_direct", recv=RecvRef, params=[[]], cx=CxRef, ret=directTy, body=[[]], tail=(XField (XMethod (XField XSelf, "{docGetter}_snap"), "current", [[XCx]]), "places"), doc="The places of the child hosted at place {PlaceText pos}, not the lagged `$doc`: the snapshot taken in this tick's construction step, the places as the tick opened during propagation. The host's own `for` reads it, so a newborn child place gets its row in the tick it is born (pick ST)."))]]
                 &_.scopes <= Push &_.scopes, hf

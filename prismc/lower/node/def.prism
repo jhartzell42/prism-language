@@ -193,7 +193,7 @@ fn IsEarlyChoiceAt lx, menv, b, i = match (Or b.stmts[i], dummyStmtL).kind:
                     nil: [[]]
                 ok and Fold (FreeReads (BlockExprs a.body), [[((own, a.span))]]), True, \|ok2, n| ok2 and (not (HasKey menv.names, n)) and not (HasText blockDefs, n)
             let taken = Fold (Range0 i), False, \|f, j| f or TakesAtBuild lx, (Or b.stmts[j], dummyStmtL), names
-            plain and unguarded and closed and taken and not (IsPureChoiceAt lx, menv, b, i, 16)
+            plain and unguarded and closed and taken and not (IsPureChoiceTakenBy lx, menv, b, i, 16, True)
         otherwise: False
     otherwise: False
 
@@ -209,12 +209,23 @@ fn IsEarlyChoiceAt lx, menv, b, i = match (Or b.stmts[i], dummyStmtL).kind:
 # build like any other. The line is not late then, the block is not split at it, and both
 # lines are built in place order as any generations are. What the arms read must have a
 # value at the build: no plain name another late line of the block binds.
+# Any other line above that takes the result at its build (a widget's plain argument, a
+# builder's rows) reads the same value of the build where the arms are such: the line
+# is built at its own place with the value, its places counted as built and its own
+# plain result a value of the build or late as any line's, where a row that waited for
+# the arm's row (`DeferredLine`) could be neither. A line whose arms read nothing of
+# the block and have no guard is built early instead when no choice line takes it
+# (`IsEarlyChoiceAt`).
 IsPureChoiceAt: unbounded fn Lx, Env, Block, Nat, Nat -> Bool
-fn IsPureChoiceAt lx, menv, b, i, depth = match (Or b.stmts[i], dummyStmtL).kind:
+fn IsPureChoiceAt lx, menv, b, i, depth = IsPureChoiceTakenBy lx, menv, b, i, depth, False
+
+# `choicesOnly`: only a building `match` or `if` above counts as taking the result.
+IsPureChoiceTakenBy: unbounded fn Lx, Env, Block, Nat, Nat, Bool -> Bool
+fn IsPureChoiceTakenBy lx, menv, b, i, depth, choicesOnly = match (Or b.stmts[i], dummyStmtL).kind:
     SBind p, e, nil:
         let names = Filter (PatternNames p), \|n| not (IsTimeName n)
         let plain = (IsPlainResult lx, e) and not (IsBundle (LineOutFull lx, e))
-        let taken = Fold (Range0 i), False, \|f, j| f or ((IsChoiceLine (Or b.stmts[j], dummyStmtL)) and TakesAtBuild lx, (Or b.stmts[j], dummyStmtL), names)
+        let taken = Fold (Range0 i), False, \|f, j| f or (((not choicesOnly) or IsChoiceLine (Or b.stmts[j], dummyStmtL)) and TakesAtBuild lx, (Or b.stmts[j], dummyStmtL), names)
         if not (plain and taken): False
         else: match ?PureChoice e:
             ? ((heads, bodies)):
@@ -620,8 +631,10 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
     let lx = wx00.lx
     # the late first values of an enclosing split wait for their own line
     let outerLate = wx00.lateInits
+    let outerAsks = wx00.lateAsks
     let wxa = update wx00:
         &_.lateInits <= [[]]
+        &_.lateAsks <= [[]]
     let s = Or b.stmts[k], dummyStmtL
     # a split line that binds a bundle: its events and dynamics are names of the node,
     # prebound as any line's are, and only its plain parts are late
@@ -685,8 +698,9 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
                 (((WrParts parts), ignore, ? n)): BindWhole wx2g, be1, me1, n, parts, partReads
                 (((WrParts parts), PTuple ps, nil)): BindParts wx2g, be1, me1, (Each parts, \|q| if IsTimePart q: q else: WrUnit), ps, [[]]
                 otherwise: ((wx2g, be1, me1))
-            let wx2s = update (WithLateInits wx2b, wx2b.lateInits):
+            let wx2s = update (WithLateInits wx2b, (Append wx2b.lateAsks, wx2b.lateInits)):
                 &_.lateInits <= outerLate
+                &_.lateAsks <= outerAsks
             if (Len staying) == 0: SetResult wx2s, WrUnit
             else:
                 # what the lines below give back: the block's result
@@ -1103,7 +1117,39 @@ fn MarkLateLets wx, benv, menv, fns, stmts, fuel:
             SLet ignore, ignore, e: ReadsLateOfPlaces fns, me, e
             otherwise: False
         ((w2, (Bind (Bind be1, nkey, unbuilt), "{nkey}#late", unbuilt), (if ofPlaces: Bind me3, "{nkey}#lateplace", unbuilt else: me3), True))
-    if grew and fuel > 0: MarkLateLets wx2, be2, me2, fns, stmts, (Dec fuel) else: ((wx2, be2, me2))
+    # (and a World's place with a plain answer whose constant field reads a late name: the
+    # name it binds is late, `LateFieldPlaces`)
+    let ((wx3, be3, me3, grew3)) = Fold stmts, ((wx2, be2, me2, grew)), \|((w, be, me, ch)), s| LateFieldPlaces w, be, me, fns, s, ch
+    if grew3 and fuel > 0: MarkLateLets wx3, be3, me3, fns, stmts, (Dec fuel) else: ((wx3, be3, me3))
+
+# A World's place with a plain answer bound to a name, whose constant field reads a late
+# name that waits for a row (Semantics ch. 4, "Binding groups and cycles": the order of a
+# group's lines decides positions and nothing else; ch. 8, "A new place's first value":
+# a state is keyed by the element's value): the element has no value at the block's
+# build, so the place asks its first value where the generation that gives the late
+# result is built (`Wx.lateAsks`, `ElementOutputOf`), with the element its getter reads
+# then. The name is late (`{name}#late`): in the methods the value its hold has from
+# then on (`LatePlainBn`, a `Hold<Option<T>>` written once), at the build nothing. What
+# reads it reads it as any late name. `grew`: whether a name was marked before; True
+# when this marks one.
+LateFieldPlaces: unbounded fn Wx, Env, Env, Env, Stmt, Bool -> ((Wx, Env, Env, Bool))
+fn LateFieldPlaces wx, benv, menv, fns, s, grew = match s.kind:
+    SBind p, init, nil: match p.kind:
+        PName n:
+            let nkey = SNameKey n
+            let lx = WidgetLetLx wx.lx, n.span
+            let full = BinderTy lx, n.span
+            let placed = match Peel (TypeAt wx.lx, init.span):
+                TyElem ignore, ignore: True
+                otherwise: False
+            if (not placed) or (not (Emits wx, wx.pos)) or (IsTimeName nkey) or (HasKey menv.names, "{nkey}#late") or (LayerOf full) != LyPlain or (TimeWithin full) or (IsBundle full) or (not (ReadsLateVia fns, menv, init)) or (ReadsLateOfPlaces fns, menv, init): ((wx, benv, menv, grew))
+            else:
+                let t = OutTyOf lx, (Peel full)
+                let ((rs, w2)) = FreshName wx, (LocalNameAt lx, nkey, n.span)
+                let unbuilt = BnLocal (Refusal "the answer `{nkey}` of a place whose constant field reads a late result, read at its block's build by a line of the block's node that takes a value there"), Owned, t
+                ((w2, (Bind (Bind benv, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind menv, nkey, (LatePlainBn rs, t)), "{nkey}#late", unbuilt), True))
+        otherwise: ((wx, benv, menv, grew))
+    otherwise: ((wx, benv, menv, grew))
 
 # The plain parts of a bundle a place answers (`((port, !rx, $peers)) <- Pad.Socket(..)`)
 # in a hosted scope whose host answers late (`Wx.lateHosts`): the place asks its first
@@ -1433,7 +1479,9 @@ fn PreBind wx, benv, menv, s = match s.kind:
         let latePlace = ?step == nil and (HasNat wx.lateHosts, wx.pos.scope) and ((IsDynamicPlace wx.lx, init) or IsBundlePlace wx.lx, init)
         let how = if latePlace: AsLatePlace else: if ?step == nil and (GivesResult wx.lx, menv, init): AsResult else: if ?step != nil and (ReadsLate menv, init): AsLateHold else: HowBound ?step
         match p.kind:
-            PName n: PreBindName wx, benv, menv, n, how
+            # (the answer of a place whose field reads a late result is a late name
+            # already, `LateFieldPlaces`)
+            PName n: if ?step == nil and IsSome (?LatePlainHold menv.names[SNameKey n]): ((wx, benv, menv)) else: PreBindName wx, benv, menv, n, how
             PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
                 # (a late place's plain part is a late name already, `LatePlaceParts`)
                 PName n: if latePlace and IsSome (?LatePlainHold me.names[SNameKey n]): ((w, be, me)) else: PreBindName w, be, me, n, how
