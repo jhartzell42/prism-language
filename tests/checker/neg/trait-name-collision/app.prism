@@ -1,0 +1,27 @@
+# Two bare names that collide are an error at the use (Semantics ch. 6, "A file is a
+# module"), and a trait's name is one: `^Named` comes in bare from `Birds` and from
+# `Fish`, and an impl's head, a `where` bound and an existential each took the first
+# silently. `^Birds.Named` says which. The expected text is derived by hand from the book
+# and a value's diagnostic. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+mod Birds
+mod Fish
+use Birds.*
+use Fish.*
+use Ui.*
+
+impl ^Named Nat:
+    fn Describe n = "a number"
+
+Title: fn a -> Text where a: ^Named
+fn Title x = "titled"
+
+Packed: fn any ^Named -> Text
+fn Packed x = "packed"
+
+impl ^Birds.Named Text:
+    fn Describe t = t
+
+@main: @unit
+@main:
+    Ui.Label($text=$"x")

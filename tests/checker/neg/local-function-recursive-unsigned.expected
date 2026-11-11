@@ -1,0 +1,5 @@
+tests/checker/neg/local-function-recursive-unsigned.prism:14: error[no-signature]: `Go` calls itself and has no signature line: a block's function that calls itself needs one, as a top-level function does
+        fn Go k, acc = match k -? 1:
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: write `Go: fn ... -> ...` above it, in its block
+1 error

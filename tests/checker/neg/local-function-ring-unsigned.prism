@@ -1,0 +1,21 @@
+# Two functions of a block that call each other, neither with a signature line (Jimmy's
+# ruling LS: a local function that calls itself, directly or through a ring of local
+# functions, needs a signature line): each is `no-signature`, naming the other. The
+# expected text is derived by hand from the ruling. Written by Claude on the claude-bugs
+# branch; subject to change.
+emit Ui.*
+use Ui.*
+
+IsEven: fn Nat -> Bool
+fn IsEven n:
+    fn Even k = match k -? 1:
+        ? less: Odd less
+        nil: True
+    fn Odd k = match k -? 1:
+        ? less: Even less
+        nil: False
+    Even n
+
+@page: @unit
+@page:
+    Ui.Label($text=$"even {IsEven 4}")

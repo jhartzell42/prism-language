@@ -561,6 +561,7 @@ fn ArgMarks st, owner, field, declared, marks, span:
 # The sigils a field's name carries: its declared type's outer layers.
 NameSigils: fn Ty -> Text
 fn NameSigils (TySig s, inner) = "{s}{NameSigils inner}"
+fn NameSigils (TyAt inner, ignore) = "@{NameSigils inner}"
 fn NameSigils other = ""
 
 ?FieldOfTag: fn TagInfo, Text -> ?Ty

@@ -1,0 +1,52 @@
+# A pattern cannot test a dynamic's value (ruling LP; neg/live-field-pattern is its
+# literal): under an element's `$` field every pattern that can fail is refused, a bare
+# constructor (`$lit=True`), one written with the field's mark (`$lit=$True`, which is no
+# binder: `True` is a constructor), a tuple with a part that can fail, and `? n`. Binding
+# the field (`$lit=$b`, `$?last=$?l`) stays legal. The expected text is derived by hand
+# from the ruling and neg/live-field-pattern's wording. Written by Claude on the
+# claude-bugs branch; subject to change.
+emit Ui.* | Pad.*
+use Ui.*
+
+type Mode = choice:
+    Quiet
+    Loud
+
+tag Pad.Dial of Element:
+    $lit: Bool
+    $mode: Mode
+    $pair: ((Nat, Bool))
+    $?last: Nat
+
+IsLit: fn Element Pad.* o -> Bool
+fn IsLit e = match e:
+    Pad.Dial($lit=True): True
+    otherwise: False
+
+IsLitMarked: fn Element Pad.* o -> Bool
+fn IsLitMarked e = match e:
+    Pad.Dial($lit=$True): True
+    otherwise: False
+
+IsLoud: fn Element Pad.* o -> Bool
+fn IsLoud e = match e:
+    Pad.Dial($mode=$Loud): True
+    otherwise: False
+
+StartsAtZero: fn Element Pad.* o -> Bool
+fn StartsAtZero e = match e:
+    Pad.Dial($pair=((0, b))): True
+    otherwise: False
+
+HasLast: fn Element Pad.* o -> Bool
+fn HasLast e = match e:
+    Pad.Dial($?last=? n): True
+    otherwise: False
+
+Binds: fn Element Pad.* o -> Bool
+fn Binds e = match e:
+    Pad.Dial($lit=$b, $mode=$m, $pair=$p, $?last=$?l): True
+
+@page: @unit
+@page:
+    Ui.Label($text=$"x")
