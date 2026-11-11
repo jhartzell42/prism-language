@@ -1,0 +1,196 @@
+# The board's tests: two boards in one window, pressed by path. A place under the window is
+# pressed through the scene's `Draw.Clickable` for it (`whiteE2`, `blackBack`: each place's
+# key names its seat), and every press is followed by `compute until idle`, since it
+# reaches its seat through layers of hosts. The transcript prints the window's whole scene
+# at every change and is not kept; each test passes on its own checks.
+# Written by Claude on the claude-document-chess branch; subject to change.
+emit Pane.* | Gui.* | Console.* | Seat.* | Play.* | Watch.*
+use App.*
+use Tables.*
+use Window.*
+use Window.Panes.*
+
+test boards_show_the_opening, @main:
+    build
+    compute until idle
+        => expect Draw.Text(text="White: White to move", ..)
+        => expect Draw.Text(text="Black: White to move", ..)
+
+# The fool's mate, each move two presses on the mover's own board. Both boards show the
+# result, each from its own seat's answer.
+test fools_mate_on_two_boards, @main:
+    build
+    compute until idle
+    click element 0/[whiteF2]/0
+    compute until idle
+    click element 0/[whiteF3]/0
+    compute until idle
+    click element 0/[blackE7]/0
+    compute until idle
+    click element 0/[blackE5]/0
+    compute until idle
+    click element 0/[whiteG2]/0
+    compute until idle
+    click element 0/[whiteG4]/0
+    compute until idle
+    click element 0/[blackD8]/0
+    compute until idle
+    click element 0/[blackH4]/0
+    compute until idle
+        => expect Draw.Text(text="White: White has been checkmated", ..)
+        => expect Draw.Text(text="Black: White has been checkmated", ..)
+        => expect_count Draw.Text(text="2. g2g4 [d8h4]", ..), 2
+
+# A move the rules refuse, and a move out of turn: each board shows the typed reason of
+# its own last response, in its own words; the other board shows none.
+test declined_on_a_board, @main:
+    build
+    compute until idle
+    click element 0/[whiteE2]/0
+    compute until idle
+    click element 0/[whiteE5]/0
+    compute until idle
+        => expect Draw.Text(text="declined: a Pawn does not move so", ..)
+        => expect Draw.Text(text="White: White to move", ..)
+    click element 0/[blackE7]/0
+    compute until idle
+    click element 0/[blackE5]/0
+    compute until idle
+        => expect Draw.Text(text="declined: it is not your move", ..)
+    click element 0/[whiteE2]/0
+    compute until idle
+    click element 0/[whiteE4]/0
+    compute until idle
+        => expect_none Draw.Text(text="declined: a Pawn does not move so", ..)
+        => expect Draw.Text(text="White: Black to move", ..)
+
+# Back and Forward show earlier positions out of the game the seat is told; the move that
+# led to the position shown is in brackets, on that board alone.
+test back_and_forward, @main:
+    build
+    compute until idle
+    click element 0/[whiteE2]/0
+    compute until idle
+    click element 0/[whiteE4]/0
+    compute until idle
+    click element 0/[blackE7]/0
+    compute until idle
+    click element 0/[blackE5]/0
+    compute until idle
+        => expect_count Draw.Text(text="1. e2e4 [e7e5]", ..), 2
+    click element 0/[whiteBack]/0
+    compute until idle
+        => expect Draw.Text(text="1. [e2e4] e7e5", ..)
+        => expect Draw.Text(text="1. e2e4 [e7e5]", ..)
+    click element 0/[whiteBack]/0
+    compute until idle
+        => expect Draw.Text(text="1. e2e4 e7e5", ..)
+    click element 0/[whiteBack]/0
+    compute until idle
+    click element 0/[whiteForward]/0
+    compute until idle
+    click element 0/[whiteForward]/0
+    compute until idle
+        => expect_count Draw.Text(text="1. e2e4 [e7e5]", ..), 2
+
+# A pawn moved to its last rank opens the dialog; Cancel sends nothing, and a piece chosen
+# sends the promoting move.
+test promotion_dialog, @main:
+    build
+    compute until idle
+    click element 0/[whiteA2]/0
+    compute until idle
+    click element 0/[whiteA4]/0
+    compute until idle
+    click element 0/[blackB7]/0
+    compute until idle
+    click element 0/[blackB5]/0
+    compute until idle
+    click element 0/[whiteA4]/0
+    compute until idle
+    click element 0/[whiteB5]/0
+    compute until idle
+    click element 0/[blackA7]/0
+    compute until idle
+    click element 0/[blackA6]/0
+    compute until idle
+    click element 0/[whiteB5]/0
+    compute until idle
+    click element 0/[whiteA6]/0
+    compute until idle
+    click element 0/[blackC8]/0
+    compute until idle
+    click element 0/[blackB7]/0
+    compute until idle
+    click element 0/[whiteA6]/0
+    compute until idle
+    click element 0/[whiteB7]/0
+    compute until idle
+    click element 0/[blackB8]/0
+    compute until idle
+    click element 0/[blackC6]/0
+    compute until idle
+    click element 0/[whiteB7]/0
+    compute until idle
+    click element 0/[whiteA8]/0
+    compute until idle
+        => expect Draw.Text(text="White's pawn becomes", ..)
+        => expect Draw.Text(text="White: White to move", ..)
+    click element 0/[whiteCancel]/0
+    compute until idle
+        => expect_none Draw.Text(text="White's pawn becomes", ..)
+        => expect Draw.Text(text="White: White to move", ..)
+    click element 0/[whiteB7]/0
+    compute until idle
+    click element 0/[whiteA8]/0
+    compute until idle
+    click element 0/[whiteKnight]/0
+    compute until idle
+        => expect_none Draw.Text(text="White's pawn becomes", ..)
+        => expect_count Draw.Text(text="5. [b7a8n]", ..), 2
+        => expect Draw.Text(text="White: Black to move", ..)
+
+# A draw offered on one board and accepted on the other; then nothing more is taken.
+test draw_by_buttons, @main:
+    build
+    compute until idle
+    click element 0/[blackAccept]/0
+    compute until idle
+        => expect Draw.Text(text="declined: no draw has been offered to you", ..)
+    click element 0/[whiteOffer]/0
+    compute until idle
+        => expect Draw.Text(text="Black: White to move; a draw is offered", ..)
+    click element 0/[blackAccept]/0
+    compute until idle
+        => expect Draw.Text(text="White: a draw by agreement", ..)
+    click element 0/[whiteResign]/0
+    compute until idle
+        => expect Draw.Text(text="declined: the game is over: a draw by agreement", ..)
+
+# Two boards and a spectator at a terminal: a move on a board is a line at the terminal.
+test boards_with_a_terminal_watching, @watched:
+    build
+    compute until idle
+    click element 0/[whiteE2]/0
+    compute until idle
+    click element 0/[whiteE4]/0
+    compute until idle
+    send Console.Read(name="ada", ..), "moves"
+    compute until idle
+
+# White at a board, Black at a terminal: White's move is a line at Black's terminal, and
+# Black's line moves a piece on White's board.
+test board_against_a_terminal, @againstTerminal:
+    build
+    compute until idle
+    click element 0/[whiteE2]/0
+    compute until idle
+    click element 0/[whiteE4]/0
+    compute until idle
+    send Console.Read(name="Black", ..), "e7e5"
+    compute until idle
+        => expect Draw.Text(text="White: White to move", ..)
+        => expect Draw.Text(text="1. e2e4 [e7e5]", ..)
+    send Console.Read(name="Black", ..), "resign"
+    compute until idle
+        => expect Draw.Text(text="White: Black has resigned", ..)

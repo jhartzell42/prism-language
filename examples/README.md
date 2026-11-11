@@ -9,6 +9,9 @@ under `tests/compiled/run.sh`.*
 
 ## The programs
 
+- **`chess/`**: chess the document way: one game as a document in memory, and boards,
+  terminals and scripts as participants that hold its seats (chess/README.md,
+  claude/document-chess.md).
 - **`basic-chess/`**: chess in three modules, the program the self-hosting branch compiles and
   opens in a window.
   - `rules/`, module `Rules`: the rule book as plain functions, with no time in them

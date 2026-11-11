@@ -1,0 +1,212 @@
+# The tests at text interfaces and with scripted players. Each test's own `expect` lines
+# are what it is held to: the transcript prints every label of three boards at the build
+# and is over the repository's limit for a kept transcript, so none is kept. A move at the
+# hot seat is two inputs: the move typed into the box, then the button. Each test builds
+# and computes twice before anyone moves, which a seat's first answer no longer needs: it
+# is told the game in the tick it is built.
+# Written by Claude on the claude-document-chess branch; subject to change.
+emit Ui.* | Seat.* | Play.* | Watch.*
+use Tables.*
+use Documents.*
+use Rules.*
+use Game.*
+
+# ---- the hot seat: two players at text interfaces and a spectator
+
+# The scholar's mate, to checkmate. Each move's response comes a tick after its button, and
+# both players and the spectator show the new board in that same tick.
+test scholars_mate, @hotSeat:
+    build
+    compute
+    compute
+        => expect Ui.Label(text="White's view: White to move")
+    send Ui.TextInput(name="White's move", ..), Letter "e2e4"
+    click Ui.Button(label="White: move")
+    send Ui.TextInput(name="Black's move", ..), Letter "e7e5"
+    click Ui.Button(label="Black: move")
+    send Ui.TextInput(name="White's move", ..), Letter "d1h5"
+    click Ui.Button(label="White: move")
+    send Ui.TextInput(name="Black's move", ..), Letter "b8c6"
+    click Ui.Button(label="Black: move")
+    send Ui.TextInput(name="White's move", ..), Letter "f1c4"
+    click Ui.Button(label="White: move")
+    send Ui.TextInput(name="Black's move", ..), Letter "g8f6"
+    click Ui.Button(label="Black: move")
+    send Ui.TextInput(name="White's move", ..), Letter "h5f7"
+    click Ui.Button(label="White: move")
+    compute
+        => expect Ui.Label(text="White's last request: accepted")
+        => expect Ui.Label(text="White's view: Black has been checkmated")
+        => expect Ui.Label(text="Black's view: Black has been checkmated")
+        => expect Ui.Label(text="ada watches: Black has been checkmated")
+        => expect Ui.Label(text="moves: e2e4 e7e5 d1h5 b8c6 f1c4 g8f6 h5f7")
+
+# An illegal move is declined with its reason, `IllegalMove (NotHowThatPieceMoves Pawn)`,
+# which the player puts into words, and no board moves; then a move that would leave the
+# mover's king in check.
+test illegal_move_declined, @hotSeat:
+    build
+    compute
+    compute
+    send Ui.TextInput(name="White's move", ..), Letter "e2e5"
+    click Ui.Button(label="White: move")
+    compute
+        => expect Ui.Label(text="White's last request: declined: a Pawn does not move so")
+        => expect Ui.Label(text="ada watches: White to move")
+    send Ui.TextInput(name="White's move", ..), Letter "e2e4"
+    click Ui.Button(label="White: move")
+    send Ui.TextInput(name="Black's move", ..), Letter "f7f5"
+    click Ui.Button(label="Black: move")
+    send Ui.TextInput(name="White's move", ..), Letter "d1h5"
+    click Ui.Button(label="White: move")
+    send Ui.TextInput(name="Black's move", ..), Letter "a7a6"
+    click Ui.Button(label="Black: move")
+    compute
+        => expect Ui.Label(text="Black's last request: declined: it would leave your king in check")
+        => expect Ui.Label(text="Black's view: Black to move, in check")
+
+# Black moves first: declined with `NotYourTurn`, since the document knows whose move it
+# is. Text that is no move never leaves the player.
+test out_of_turn_declined, @hotSeat:
+    build
+    compute
+    compute
+    send Ui.TextInput(name="Black's move", ..), Letter "e7e5"
+    click Ui.Button(label="Black: move")
+    compute
+        => expect Ui.Label(text="Black's last request: declined: it is not your move")
+    send Ui.TextInput(name="White's move", ..), Letter "castle"
+    click Ui.Button(label="White: move")
+        => expect Ui.Label(text="White's last request: cannot read `castle` as a move")
+    send Ui.TextInput(name="White's move", ..), Letter "e2e4q"
+    click Ui.Button(label="White: move")
+    compute
+        => expect Ui.Label(text="White's last request: declined: no pawn becomes a Queen by that move")
+
+# Black resigns after White's first move; the game is over for every seat, and a move
+# after it is declined.
+test resignation, @hotSeat:
+    build
+    compute
+    compute
+    send Ui.TextInput(name="White's move", ..), Letter "e2e4"
+    click Ui.Button(label="White: move")
+    click Ui.Button(label="Black: resign")
+    compute
+        => expect Ui.Label(text="ada watches: Black has resigned")
+        => expect Ui.Label(text="White's view: Black has resigned")
+    send Ui.TextInput(name="White's move", ..), Letter "d2d4"
+    click Ui.Button(label="White: move")
+    compute
+        => expect Ui.Label(text="White's last request: declined: the game is over: Black has resigned")
+
+# A draw accepted before any offer is declined; White offers, Black sees the offer and
+# accepts.
+test draw_by_agreement, @hotSeat:
+    build
+    compute
+    compute
+    click Ui.Button(label="Black: accept the draw")
+    click Ui.Button(label="White: offer a draw")
+        => expect Ui.Label(text="Black's last request: declined: no draw has been offered to you")
+    compute
+        => expect Ui.Label(text="Black's view: White to move; a draw is offered")
+    click Ui.Button(label="Black: accept the draw")
+    compute
+        => expect Ui.Label(text="ada watches: a draw by agreement")
+
+# A spectator joins a game under way and leaves it. bea is seated by the table after two
+# moves, is told the game as it stands in the tick she is seated, sees the next move in the tick ada
+# does, and leaves by her own button; no other seat's place is touched.
+test spectator_joins_and_leaves, @hotSeat:
+    build
+    compute
+    compute
+    send Ui.TextInput(name="White's move", ..), Letter "e2e4"
+    click Ui.Button(label="White: move")
+    send Ui.TextInput(name="Black's move", ..), Letter "e7e5"
+    click Ui.Button(label="Black: move")
+    click Ui.Button(label="bea joins")
+    compute
+    compute
+        => expect Ui.Label(text="bea watches: White to move")
+    send Ui.TextInput(name="White's move", ..), Letter "g1f3"
+    click Ui.Button(label="White: move")
+    compute
+        => expect Ui.Label(text="bea watches: Black to move")
+    click Ui.Button(label="bea: leave")
+    send Ui.TextInput(name="Black's move", ..), Letter "b8c6"
+    click Ui.Button(label="Black: move")
+    compute
+        => expect Ui.Label(text="ada watches: White to move")
+
+# Resign and leave in one tick: White's button fires its request, to resign, and its
+# seat's leaving. The request is applied, then the seat goes: White's places are torn down in that tick, and
+# Black and the spectator are told White has resigned in the next.
+test resign_and_leave, @hotSeat:
+    build
+    compute
+    compute
+    click Ui.Button(label="White: resign and leave")
+    compute
+        => expect Ui.Label(text="Black's view: White has resigned")
+        => expect Ui.Label(text="ada watches: White has resigned")
+
+# ---- scripted players and a spectator
+
+# The fool's mate by two scripts, a tick at a time: the spectator's board and move list
+# change with every move. A scripted player asks in the tick after the build, when
+# `@started` fires with its first answer; its move shows a tick later.
+test spectator_sees_each_move, @foolsMate:
+    build
+        => expect Ui.Label(text="ada watches: White to move")
+    compute
+    compute
+        => expect Ui.Label(text="moves: f2f3")
+    compute
+        => expect Ui.Label(text="moves: f2f3 e7e5")
+    compute
+        => expect Ui.Label(text="moves: f2f3 e7e5 g2g4")
+    compute
+        => expect Ui.Label(text="moves: f2f3 e7e5 g2g4 d8h4")
+        => expect Ui.Label(text="ada watches: White has been checkmated")
+    compute until idle
+
+# White castles short on its fourth move: the king on g1, the rook on f1.
+test castling, @castling:
+    build
+    compute until idle
+        => expect Ui.Label(text="1  R N B Q . R K .")
+        => expect Ui.Label(text="moves: e2e4 e7e5 g1f3 b8c6 f1c4 f8c5 e1g1")
+
+# White's pawn takes on d6 in passing: the pawn on d5 is gone.
+test en_passant, @enPassant:
+    build
+    compute until idle
+        => expect Ui.Label(text="6  p . . P . . . .")
+        => expect Ui.Label(text="5  . . . . . . . .")
+        => expect Ui.Label(text="moves: e2e4 a7a6 e4e5 d7d5 e5d6")
+
+# White's pawn takes on a8 and becomes a knight.
+test promotion, @promotion:
+    build
+    compute until idle
+        => expect Ui.Label(text="8  N . . q k b n r")
+        => expect Ui.Label(text="moves: a2a4 b7b5 a4b5 a7a6 b5a6 c8b7 a6b7 b8c6 b7a8n")
+
+# Two players ask in one tick under the default order: White for e2e4 and Black for e7e5,
+# both in the tick after the build. A player's place orders by its seat, and `Player White`
+# is before `Player Black`: White's request is applied in that tick and Black's waits, is
+# applied a tick later against the game White's move left, and is accepted then.
+test both_players_ask_in_one_tick, @bothOpen:
+    build
+        => expect Ui.Label(text="ada watches: White to move")
+    compute
+    compute
+        => expect Ui.Label(text="White (scripted): accepted")
+        => expect Ui.Label(text="Black (scripted): nothing yet")
+        => expect Ui.Label(text="moves: e2e4")
+    compute
+        => expect Ui.Label(text="Black (scripted): accepted")
+        => expect Ui.Label(text="moves: e2e4 e7e5")
+    compute

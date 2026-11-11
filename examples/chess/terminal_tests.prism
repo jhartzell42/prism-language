@@ -1,0 +1,129 @@
+# The tests at terminals: two players and a spectator, nothing but lines.
+# Each step says what each terminal prints in its tick (`requested`), taken from a run of
+# the same participants under today's forms of the hosting; no transcript is kept, since a
+# place's path under a seat is the compiler's to give.
+# Written by Claude on the claude-document-chess branch; subject to change.
+emit Console.* | Seat.* | Play.* | Watch.*
+use Tables.*
+
+# ---- the command line: two players and a spectator, each at a terminal
+
+# The fool's mate, a line at a time. A move accepted prints `ok` at the terminal that typed
+# it and the move at the two others, a tick after the line; `legal` and `moves` are
+# answered in the tick they are typed.
+test fools_mate_at_terminals, @terminals:
+    build
+    compute
+    compute
+    send Console.Read(name="White", ..), "f2f3"
+    send Console.Read(name="Black", ..), "e7e5"
+        => requested Console.Print(name="Black", ..), [["f2f3"]]
+        => requested Console.Print(name="White", ..), [["ok"]]
+        => requested Console.Print(name="ada", ..), [["f2f3"]]
+    send Console.Read(name="White", ..), "g2g4"
+        => requested Console.Print(name="Black", ..), [["ok"]]
+        => requested Console.Print(name="White", ..), [["e7e5"]]
+        => requested Console.Print(name="ada", ..), [["e7e5"]]
+    compute
+        => requested Console.Print(name="Black", ..), [["g2g4"]]
+        => requested Console.Print(name="White", ..), [["ok"]]
+        => requested Console.Print(name="ada", ..), [["g2g4"]]
+    send Console.Read(name="Black", ..), "legal"
+        => requested Console.Print(name="Black", ..), [["a7a5 a7a6 b7b5 b7b6 b8a6 b8c6 c7c5 c7c6 d7d5 d7d6 d8e7 d8f6 d8g5 d8h4 e5e4 e8e7 f7f5 f7f6 f8a3 f8b4 f8c5 f8d6 f8e7 g7g5 g7g6 g8e7 g8f6 g8h6 h7h5 h7h6"]]
+    send Console.Read(name="Black", ..), "d8h4"
+    send Console.Read(name="ada", ..), "moves"
+        => requested Console.Print(name="Black", ..), [["ok", "over: White has been checkmated"]]
+        => requested Console.Print(name="White", ..), [["d8h4", "over: White has been checkmated"]]
+        => requested Console.Print(name="ada", ..), [["d8h4", "over: White has been checkmated", "f2f3 e7e5 g2g4"]]
+    send Console.Read(name="White", ..), "a2a3"
+    compute
+        => requested Console.Print(name="White", ..), [["declined: the game is over: White has been checkmated"]]
+
+# What a terminal says to a line it does not take: a move the rules refuse, a line that is
+# no move, a move out of turn, a request at a spectator's terminal.
+test declined_at_terminals, @terminals:
+    build
+    compute
+    compute
+    send Console.Read(name="White", ..), "e2e5"
+    send Console.Read(name="White", ..), "castle"
+        => requested Console.Print(name="White", ..), [["declined: a Pawn does not move so", "cannot read `castle`"]]
+    send Console.Read(name="Black", ..), "e7e5"
+    send Console.Read(name="ada", ..), "e2e4"
+        => requested Console.Print(name="Black", ..), [["declined: it is not your move"]]
+        => requested Console.Print(name="ada", ..), [["a spectator asks for nothing"]]
+    send Console.Read(name="White", ..), "moves"
+        => requested Console.Print(name="White", ..), [[""]]
+    compute
+
+# A draw offered and accepted; then a draw by repetition, and what the terminals print.
+test draw_agreed_at_terminals, @terminals:
+    build
+    compute
+    compute
+    send Console.Read(name="Black", ..), "accept"
+    send Console.Read(name="White", ..), "draw"
+        => requested Console.Print(name="Black", ..), [["declined: no draw has been offered to you"]]
+    send Console.Read(name="Black", ..), "accept"
+        => requested Console.Print(name="Black", ..), [["draw offered"]]
+        => requested Console.Print(name="White", ..), [["ok"]]
+        => requested Console.Print(name="ada", ..), [["draw offered"]]
+    compute
+        => requested Console.Print(name="Black", ..), [["ok", "over: a draw by agreement"]]
+        => requested Console.Print(name="White", ..), [["over: a draw by agreement"]]
+        => requested Console.Print(name="ada", ..), [["over: a draw by agreement"]]
+
+test repetition_at_terminals, @terminals:
+    build
+    compute
+    compute
+    send Console.Read(name="White", ..), "g1f3"
+    send Console.Read(name="Black", ..), "g8f6"
+        => requested Console.Print(name="Black", ..), [["g1f3"]]
+        => requested Console.Print(name="White", ..), [["ok"]]
+        => requested Console.Print(name="ada", ..), [["g1f3"]]
+    send Console.Read(name="White", ..), "f3g1"
+        => requested Console.Print(name="Black", ..), [["ok"]]
+        => requested Console.Print(name="White", ..), [["g8f6"]]
+        => requested Console.Print(name="ada", ..), [["g8f6"]]
+    send Console.Read(name="Black", ..), "f6g8"
+        => requested Console.Print(name="Black", ..), [["f3g1"]]
+        => requested Console.Print(name="White", ..), [["ok"]]
+        => requested Console.Print(name="ada", ..), [["f3g1"]]
+    send Console.Read(name="White", ..), "g1f3"
+        => requested Console.Print(name="Black", ..), [["ok"]]
+        => requested Console.Print(name="White", ..), [["f6g8"]]
+        => requested Console.Print(name="ada", ..), [["f6g8"]]
+    send Console.Read(name="Black", ..), "g8f6"
+        => requested Console.Print(name="Black", ..), [["g1f3"]]
+        => requested Console.Print(name="White", ..), [["ok"]]
+        => requested Console.Print(name="ada", ..), [["g1f3"]]
+    send Console.Read(name="White", ..), "f3g1"
+        => requested Console.Print(name="Black", ..), [["ok"]]
+        => requested Console.Print(name="White", ..), [["g8f6"]]
+        => requested Console.Print(name="ada", ..), [["g8f6"]]
+    send Console.Read(name="Black", ..), "f6g8"
+        => requested Console.Print(name="Black", ..), [["f3g1"]]
+        => requested Console.Print(name="White", ..), [["ok"]]
+        => requested Console.Print(name="ada", ..), [["f3g1"]]
+    compute
+        => requested Console.Print(name="Black", ..), [["ok", "over: a draw: one position three times"]]
+        => requested Console.Print(name="White", ..), [["f6g8", "over: a draw: one position three times"]]
+        => requested Console.Print(name="ada", ..), [["f6g8", "over: a draw: one position three times"]]
+
+# Black resigns; ada leaves; White leaves without resigning.
+test resigning_and_leaving_at_terminals, @terminals:
+    build
+    compute
+    compute
+    send Console.Read(name="White", ..), "e2e4"
+    send Console.Read(name="Black", ..), "resign"
+        => requested Console.Print(name="Black", ..), [["e2e4"]]
+        => requested Console.Print(name="White", ..), [["ok"]]
+        => requested Console.Print(name="ada", ..), [["e2e4"]]
+    send Console.Read(name="ada", ..), "leave"
+        => requested Console.Print(name="Black", ..), [["ok", "over: Black has resigned"]]
+        => requested Console.Print(name="White", ..), [["over: Black has resigned"]]
+        => requested Console.Print(name="ada", ..), [["over: Black has resigned"]]
+    send Console.Read(name="White", ..), "leave"
+    compute

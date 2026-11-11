@@ -1,0 +1,84 @@
+check moves_and_turns
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok
+9: ok
+10: ok
+11: ok
+
+check declined_line
+1: ok
+
+check check_and_mate
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+
+check stalemate
+1: ok
+
+check castling
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok
+9: ok
+
+check en_passant
+1: ok
+2: ok
+3: ok
+
+check promotion
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+
+check resigning_and_draws
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+
+check draws
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok
+9: ok
+10: ok
+11: ok
+12: ok
+13: ok
+14: ok
+15: ok
+
+check notation
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+
