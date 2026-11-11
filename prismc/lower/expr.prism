@@ -576,6 +576,12 @@ fn DirectOperands e = match e.kind:
     EField r, ignore, ignore: [[r]]
     EIndex r, i: [[r, i]]
     EMap kvs: Fold kvs, [[]], \|acc, ((k, v))| Append acc, [[k, v]]
+    # an interpolated text's holes: it is the text builder applied to each
+    ELit l: match l.kind:
+        LText segs: Fold segs, [[]], \|acc, sg| match sg:
+            SegPlaceholder x: Push acc, x
+            otherwise: acc
+        otherwise: [[]]
     otherwise: [[]]
 
 PlainValueByKind: unbounded fn Lx, Env, Expr -> Vl

@@ -444,7 +444,7 @@ fn InferText env, st, segs, dollar, span:
         otherwise: acc
     if (Len holes) == 0: ((tText, st))
     else:
-        let ((events, dyns, opts, st2, lifted)) = Fold (Range0 (Len holes)), (([[]], 0, [[]], st, [[]])), \|((ev, dy, op, s, li)), hi|
+        let ((events, dyns, opts, st2, lifted, optHoles)) = Fold (Range0 (Len holes)), (([[]], 0, [[]], st, [[]], [[]])), \|((ev, dy, op, s, li, oh)), hi|
             let x = Or holes[hi], Expr(kind=EError, span=span)
             let ((t, s2)) = Infer env, s, x
             let head = HeadSigil s2, t
@@ -457,7 +457,8 @@ fn InferText env, st, segs, dollar, span:
             let dy2 = if head == "$": dy + 1 else: dy
             let op2 = if IsPlainSigil ih: AddText op, ih else: op
             let li2 = if IsTimeSigil head: Push li, hi else: li
-            ((ev2, dy2, op2, s4, li2))
+            let oh2 = if IsPlainSigil ih: Push oh, x.span else: oh
+            ((ev2, dy2, op2, s4, li2, oh2))
         let st3 = if dollar and (Len events) > 0: Err st2, "event-in-text", (Or events[0], span), "an event in a dynamic text"
             else: if (Len events) > 1: ErrFix st2, "two-events", (Or events[1], span), "two events in one operation", "merge them with `<|`, or hold one first"
             else: st2
@@ -468,7 +469,10 @@ fn InferText env, st, segs, dollar, span:
         let layer = if (Len events) > 0 and not dollar: "!" else: if dyns > 0 or dollar: "$" else: ""
         let res = if layer == "": withOpt else: TySig layer, withOpt
         let kind = if layer == "": "plain" else: if (Len lifted) == 0: "const" else: "map"
-        ((res, (NoteApp st4, span, "text", kind, layer, lifted, (Or opts[0], ""), CBound)))
+        # the lift over a `?` or `~` hole is noted with the holes it peels, as an
+        # application's is (`NoteLift`), for the lowering's `match` of each
+        let st5 = if (Len opts) == 1: NoteLift st4, span, (Or opts[0], ""), optHoles else: st4
+        ((res, (NoteApp st5, span, "text", kind, layer, lifted, (Or opts[0], ""), CBound)))
 
 # A placeholder that is not a text prints through `^Show`.
 ShowWant: unbounded fn St, Ty, Range -> St
