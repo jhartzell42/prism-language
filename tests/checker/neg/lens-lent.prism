@@ -1,0 +1,26 @@
+# `borrow-overlap` through a named lens (Semantics ch. 5, "The borrow rule": "A lens's
+# result is alive while its argument is", and "A `for` reference is alive for the loop's
+# body, and its path is lent to the loop"): a `for` over a lens applied to `&_` lends all
+# of `&_`, since the lens's signature does not say which part it names. With the path
+# written, `&_.score.home += 1` is fine (the book's `Clear`).
+# Written by Claude on the claude-lowering branch; subject to change.
+type Score = record:
+    home: Nat
+    away: Nat
+
+type Fixture = record:
+    score: Score
+    stoppage: [Nat]
+
+&Stoppage: fn &Fixture -> &[Nat]
+fn &Stoppage &fixture = &fixture.stoppage
+
+Clear: fn Fixture -> Fixture
+fn Clear f = update f:
+    for &s <- &Stoppage &_:
+        &s += 1
+        &_.score.home += 1
+    for &s <- &_.stoppage:
+        &s += 1
+        &_.score.home += 1
+        &Stoppage &_ <= [[]]
