@@ -1016,6 +1016,29 @@ Dynamic<T> dyn_constant(T v) { return Dynamic<T>::constant(std::move(v)); }
 template <class T>
 Event<Array<T>> merge_all(const Array<Event<T>>& events) { return ::prism_rtl::merge_all(events); }
 
+/// `!Union a, b` as an event value (in a plain function's body): `!MergeAll` of the two,
+/// the maps that fired joined as `Union` joins.
+template <class K, class V>
+Event<Map<K, V>> union_ev(const Event<Map<K, V>>& a, const Event<Map<K, V>>& b) {
+    return ::prism_rtl::merge_all(Array<Event<Map<K, V>>>{a, b}).map([](const Array<Map<K, V>>& fired) {
+        Map<K, V> all;
+        for (const auto& one : fired) all = union_(all, one);
+        return all;
+    });
+}
+
+/// `!MergeWith f, events` as an event value: `!MergeAll` of the list, the values that
+/// fired folded by `f` in the list's order.
+template <class F, class T>
+Event<T> merge_with(F f, const Array<Event<T>>& events) {
+    return ::prism_rtl::merge_all(events).map([f](const Array<T>& fired) {
+        auto it = fired.begin();
+        T all = *it;
+        for (++it; it != fired.end(); ++it) all = f(all, *it);
+        return all;
+    });
+}
+
 /// A value given for a generic tag's field or answer, as the tag's own types hold it: the
 /// same plain data at the type with each of the tag's variables a `Pod` (and back). The
 /// two types differ only there, so the decoding cannot fail.

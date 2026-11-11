@@ -1514,6 +1514,27 @@ pub fn merge_all<T: Clone + 'static>(events: &Array<Event<T>>) -> Event<Array<T>
     ::prism_rtl::merge_all(events)
 }
 
+/// `!Union a, b` as an event value (in a plain function's body, where no node of a block
+/// decides the merge): `!MergeAll` of the two, the maps that fired joined as `Union` joins.
+pub fn union_ev<K: Ord + Clone + 'static, V: Clone + 'static>(a: &Event<Map<K, V>>, b: &Event<Map<K, V>>) -> Event<Map<K, V>> {
+    ::prism_rtl::merge_all(&Array::from(vec![a.clone(), b.clone()])).map(|fired: &Array<Map<K, V>>| {
+        let mut maps = fired.iter();
+        let first = maps.next().cloned().unwrap_or_else(Map::new);
+        maps.fold(first, |all, one| union(&all, one))
+    })
+}
+
+/// `!MergeWith f, events` as an event value: `!MergeAll` of the list, the values that
+/// fired folded by `f` in the list's order.
+pub fn merge_with<T: Clone + 'static, F: Fn(&T, &T) -> T + Clone + 'static>(f: &F, events: &Array<Event<T>>) -> Event<T> {
+    let f = f.clone();
+    ::prism_rtl::merge_all(events).map(move |fired: &Array<T>| {
+        let mut values = fired.iter();
+        let first = values.next().cloned().expect("a `!MergeAll` firing holds a value");
+        values.fold(first, |all, one| f(&all, one))
+    })
+}
+
 /// A value given for a generic tag's field or answer, as the tag's own types hold it: the
 /// same plain data at the type with each of the tag's variables a `Pod` (and back, where
 /// a place reads its answer at the type it was placed at). The two types differ only
