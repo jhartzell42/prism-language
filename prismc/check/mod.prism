@@ -258,8 +258,10 @@ fn CheckMethod env, st, d, clauses, cls, im = match ?MethodKey env.g, cls, d.nam
         ? v:
             let ti = Or env.g.traits[cls], dummyTrait
             let head = SubstQ (Inst(tys=(Fold im.qs, {}, \|m, q| Insert m, q, (TyRigid q)), rows={}, cols={})), im.head
-            let ty = SubstQ (Inst(tys={ti.param: head}, rows={}, cols={})), v.scheme.ty
-            let sc = Scheme(eqs=[[]], qs=(Filter v.scheme.qs, \|q| q != ti.param), plainQs=[[]], rqs=v.scheme.rqs, cqs=v.scheme.cqs, cjoins=v.scheme.cjoins, bounds=(Filter v.scheme.bounds, \|((q, ignore))| q != ti.param), ty=ty)
+            # the method's own variables are apart from the head's of one name (`SchemeApart`)
+            let own = SchemeApart (Scheme(eqs=[[]], qs=(Filter v.scheme.qs, \|q| q != ti.param), plainQs=[[]], rqs=v.scheme.rqs, cqs=v.scheme.cqs, cjoins=v.scheme.cjoins, bounds=(Filter v.scheme.bounds, \|((q, ignore))| q != ti.param), ty=v.scheme.ty)), im.qs
+            let sc = update own:
+                &_.ty <= SubstQ (Inst(tys={ti.param: head}, rows={}, cols={})), &_.ty
             let env2 = update env:
                 &_.givens <= im.bounds
             CheckClauses env2, st, d.name, clauses, sc, d.span
