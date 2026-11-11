@@ -1,0 +1,27 @@
+# A one-clause widget whose parameter is a tuple pattern that names a bundle inside the
+# value it is given, a function's result: `fn @Labelled ((id, both)):` given
+# `Tagged "b", !more, $guests`, and `both` handed on as a bundle (Semantics ch. 8: a
+# widget's parameters bind as patterns do; Type System ch. 2, "Bundles": a bundle is a
+# plain aggregate, a value a function gives and a name binds). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Tagged: fn Text, !Click, $Nat -> ((Text, ((!Click, $Nat))))
+fn Tagged id, !tap, $count = ((id, ((!tap, $count))))
+
+@Counted: fn Text, ((!Click, $Nat)) -> @unit
+fn @Counted name, ((!more, $guests)):
+    $clicks <- 0 then $clicks + 1 on !more
+    Ui.Label($text=$"{name}: {$guests} guests, {$clicks} clicks")
+
+@Labelled: fn ((Text, ((!Click, $Nat)))) -> @unit
+fn @Labelled ((id, both)):
+    @Counted id, both
+
+@main: @unit
+@main:
+    !more <- Ui.Button($label=$"more")                            # 0
+    $guests <- 1 then $guests + 1 on !more
+    @Labelled (Tagged "b", !more, $guests)                        # 1
