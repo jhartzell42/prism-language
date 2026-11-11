@@ -142,14 +142,13 @@ Bundles
   too (`WholePartsOf`, sem-ch04-rebuild-nested-bundle-result), a named bundle inside a
   tuple written out (sem-ch04-rebuild-bundle-in-tuple-result) and a block that ends on
   the line that gives the bundle (`WholeOfResults`, sem-ch04-rebuild-ends-on-widget-bundle).
-- lower/node/static.prism (`BindTimePatternParam`) a widget's parameter pattern that
-  names a bundle of its own inside a value that is neither a bundle written out nor a
-  name bound to one (`fn @W ((id, both)):` given a function's result, `both` a bundle):
-  class R, no test. Lowered: a tuple pattern over a bundle written out or named, any
-  pattern over a plain value (sem-ch08-widget-parameter-pattern), a tuple pattern over
-  a bundle that is a value (sem-ch08-widget-parameter-pattern-bundle-value), and a
-  pattern that binds an event or a dynamic out of a value that is no bundle
-  (sem-ch08-widget-parameter-pattern-record-dynamic).
+- A widget's parameter pattern is lowered: a tuple pattern over a bundle written out
+  or named, any pattern over a plain value (sem-ch08-widget-parameter-pattern), a tuple
+  pattern over a bundle that is a value (sem-ch08-widget-parameter-pattern-bundle-value),
+  a pattern that binds an event or a dynamic out of a value that is no bundle
+  (sem-ch08-widget-parameter-pattern-record-dynamic), and a pattern that names a bundle
+  of its own inside a value (`fn @W ((id, both)):` given a function's result,
+  `PreBindBundleBinder`; sem-ch08-widget-parameter-pattern-bundle-inside-value).
 - A root's bundle with several dynamic parts is told part by part
   (sem-ch07-root-bundle-two-dynamics).
 - lower/node/switch.prism:216 a `rebuild` whose generation gives a dynamic it does not

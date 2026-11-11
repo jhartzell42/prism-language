@@ -541,7 +541,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   apart as a `let`'s value is (`BindTimePatternParam`, `PatternDynamics`): a getter of
   the node reads the argument in its caller's environment, each dynamic's getter
   matches it and samples what the binder holds, each event's node hears the event the
-  value holds. Refused: a name that is a bundle of its own inside such a value.
+  value holds. A name that is a bundle of its own inside such a value (`fn @Labelled
+  ((id, both)):` given a function's result) is its parts, bound first
+  (`PreBindBundleBinder`: an event part a node, a dynamic part a getter, a plain part a
+  field) and read out of what the name holds in the matched value by their places in
+  the bundle (`BundleBinderParts`, `BundleBinderPlains`).
 - **`@Element made` as a line, `made` a `let` of the block bound to a tag applied**
   (Semantics ch. 8, "Elements and the element statement") is that element's line at
   the placing line's position, lowered in the placing line's environments

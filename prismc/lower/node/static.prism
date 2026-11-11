@@ -1632,18 +1632,22 @@ fn PatternBindsTime lxc, p = Fold (BinderNames p), False, \|found, n| found or (
 # the node reads the argument where the caller wrote it, each dynamic's getter matches it
 # by the pattern and samples what the binder holds, each event's node hears the event
 # the value holds, each plain name is matched once at the build. A name that is a bundle
-# of its own inside such a value is refused.
+# of its own inside such a value (`fn @Labelled ((id, both)):` given a function's
+# result) is its parts (`PreBindBundleBinder`), each read out of the value by the
+# pattern and its place in the bundle (`BundleBinderParts`).
 BindTimePatternParam: unbounded fn Wx, Env, Env, Env, Env, Lx, Pattern, Expr -> ((Wx, Env, Env))
 fn BindTimePatternParam wx, cbenv, cmenv, be, me, lxc, p, arg:
     let lx = wx.lx
-    if Fold (BinderNames p), False, \|found, n| found or IsBundle (BinderTy lxc, n.span): (((update wx:
-        &_.build <= Push &_.build, (RefusalDo "a widget's parameter pattern (`{SrcText lxc, lxc.file, p.span}`) that names a bundle inside a value that is neither a bundle written out nor a name bound to one")), be, me))
-    else:
-        let ((named, be1, me1)) = Fold (BinderNames p), (((update wx:
-            &_.lx <= lxc), be, me)), \|((w, b, m)), n| PreBindName w, b, m, n, AsLet
-        let back = update named:
-            &_.lx <= lx
-        (((PatternDynamics back, cbenv, cmenv, me1, lxc, p, arg), be1, me1))
+    let ((named, be1, me1)) = Fold (BinderNames p), (((update wx:
+        &_.lx <= lxc), be, me)), \|((w, b, m)), n|
+        let full = BinderTy lxc, n.span
+        if IsBundle full:
+            let ((w2, builds, methods)) = PreBindBundleBinder w, (LocalNameAt lxc, (SNameKey n), n.span), (BundlePartTys full)
+            ((w2, (Bind b, (SNameKey n), (BnParts builds)), (Bind m, (SNameKey n), (BnParts methods))))
+        else: PreBindName w, b, m, n, AsLet
+    let back = update named:
+        &_.lx <= lx
+    (((PatternDynamics back, cbenv, cmenv, me1, lxc, p, arg), be1, me1))
 
 # A parameter's pattern over a plain value: the argument a local of the build, matched
 # once there by the pattern, each name it binds moved into a field of the node, as a
