@@ -2209,13 +2209,11 @@ a supplier's answer `@ x` outside a tag arm, a dynamic answer over what has
 no value at the owner's build, a widget-function blueprint as an answer, and a bundle in
 a hosted scope (pick HO); a bundle as a root's result, and a `for` row, a `rebuild`'s
 generation or a widget clause ending on a bundle (a widget block's bundle result is
-lowered, each part its own result, `WrParts`: `sem-ch04-bundle-result`); a widget's plain
-result bound by a pattern other than a name, `ignore` or a tuple of those; `@Flatten` of a dynamic that is not a `rebuild`'s (a `for` over a map of dynamics binds the value under the key, pick FV),
+lowered, each part its own result, `WrParts`: `sem-ch04-bundle-result`); `@Flatten` of a dynamic that is not a `rebuild`'s (a `for` over a map of dynamics binds the value under the key, pick FV),
 `!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
 structural dynamic of its block (gap SU), a local function whose
 parameters are not names or used as a value, `!MergeAll` of a list that is not a
-literal, building `match`
-and `if`, lines of a block that read each
+literal, lines of a block that read each
 other at the build (pick BO), and the zombie and
 dead states (`leave`, `clean_up`, `edges`).
 

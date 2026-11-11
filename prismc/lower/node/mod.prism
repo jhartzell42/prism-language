@@ -185,6 +185,9 @@ type Wres = choice:
     WrEv EvRef
     WrDyn Ex, [Read], OutTy
     WrPlain Ex, OutTy
+    # A plain result the node reads from itself once its rows are built (`SplitBlockInto`):
+    # an expression of the node's methods, never of its build's locals.
+    WrLate Ex, OutTy
     WrUnit
     # A host's output: its child's result, the first part of the line's tuple pattern, and
     # the child's document, the second part (pick HO).

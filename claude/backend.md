@@ -297,9 +297,25 @@ it make every program an interpreter run, and every type mistake a runtime fault
   - a plain one, which the block reads in its build: the clause's row is built in the
     block's own build, before its node, at the line's point (`GenDef.early`), holding
     the block through a `prism_rtl::Link` linked once the node is made, and hands back
-    its `result_value` with itself (`EarlyClauseLine`). A building `match` or `if` whose
-    arm ends on a plain result is refused: its arm reads the block's names through a
-    parent that does not exist before the node.
+    its `result_value` with itself (`EarlyClauseLine`).
+- **A building `match` or `if` whose arm ends on a plain result splits its block's build**
+  (Semantics ch. 4 and ch. 8: the arm reads the block's names, and places are born in
+  source order). The arm's row is built once, after the node, as any arm's; the node
+  keeps its `result_value` in `{arm}_res` from then on. That result is late (`WrLate`): an
+  expression of the node's methods, with no value among the build's locals. The lines
+  below the line that binds it are one more generation of the block, built once after
+  the arm's, transparent, at the block's next positions: the line's pattern is its
+  binder, the kept result its value, and it reads the block's names through the node as
+  an arm does (`SplitBlockInto`). Its result is the block's: an event's or a dynamic's as
+  an arm's is, a plain one late again. So a late result travels up: a caller's line that
+  binds it splits the caller's block in turn (`IsLateExpr`), a row keeps it behind its
+  `result_value`, and the root tells the World in its build once its rows are built.
+  A line above the split does not read a name bound below it.
+- **A widget's plain result bound by a pattern** (`((Extent(wide=w, high=h), ((d, t)))) <-
+  @Measure 3`): a name or a tuple of names takes its parts as locals of the build, each
+  moved into its field (`BindPlainResult`); any other pattern is matched once in the build
+  against the result, and each name it binds is moved into the field its prebinding made
+  (`BinderNames`, `BindPatternResult`).
 
 ## Hosting
 

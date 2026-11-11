@@ -121,6 +121,9 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
                 &_.fields <= Push &_.fields, ((f, rt, "the row's plain result"))
                 &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
                 &_.result <= WrDyn (XClone (XField XSelf, f)), [[]], rt
+        # a late one: read from the row once its own rows are built
+        WrLate ex, rt: update rowWx:
+            &_.result <= WrDyn ex, [[]], rt
         otherwise: rowWx
     match rowWxR.result:
         WrEv r:

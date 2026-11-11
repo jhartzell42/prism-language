@@ -487,19 +487,19 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
         WrParts ignore: (((update r2:
             &_.build <= Push &_.build, (RefusalDo "a widget of several clauses whose clause ends on a bundle")), nil))
         # a plain result, computed at the generation's build and kept in a field of the
-        # row, read by the block that built it early (`EarlyClauseLine`); an arm of a
-        # building `match` or `if` hands back none but an event
+        # row, read by the block that built it: early for a clause (`EarlyClauseLine`),
+        # after its node for an arm of a building `match` or `if` (`BuildingChoiceLine`)
         WrPlain ex, rt:
-            if readsBlock: (((update r2:
-                &_.build <= Push &_.build, (RefusalDo "a building `match` or `if` whose arm ends on a plain result")), nil))
-            else:
-                let ((f, rf)) = FreshName r2, "result"
-                let r2p = update rf:
-                    &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind f), rt), ex)
-                    &_.fields <= Push &_.fields, ((f, rt, "the clause's plain result"))
-                    &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
-                    &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=(XClone (XField XSelf, f)), doc="The clause's plain result, which the block that built the generation reads."))
-                ((r2p, ? rt))
+            let ((f, rf)) = FreshName r2, "result"
+            let r2p = update rf:
+                &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind f), rt), ex)
+                &_.fields <= Push &_.fields, ((f, rt, "the clause's plain result"))
+                &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
+                &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=(XClone (XField XSelf, f)), doc="The clause's plain result, which the block that built the generation reads."))
+            ((r2p, ? rt))
+        # a late plain result: the row reads it from itself, its own rows built by then
+        WrLate ex, rt: (((update r2:
+            &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=ex, doc="The clause's plain result, which the block that built the generation reads."))), ? rt))
         # a dynamic result: the row's getter `result` and `result_dynamic`, a write behind it
         # telling the block (`GenResult`, `DynClauseLine`)
         WrDyn ex, rds, rt: (((GenResult r2, genName, ex, rds, rt), nil))
@@ -544,12 +544,15 @@ fn OverEnv outer, inner = Fold (Keys inner.names), outer, \|en, k| match inner.n
 # widest one's positions (pick CS). The arm's block reads the block's names (through the
 # row's `parent`, `RowEnv`) and its pattern's binders (the row's fields). An arm's event
 # result fires the line's event.
-BuildingChoiceLine: unbounded fn Wx, Env, Ex, [?Pattern], Ty, [?Expr], [Block], Expr -> ((Wx, Wres))
-fn BuildingChoiceLine wx, menv, scrut, pats, sty, guards, bodies, e:
+# `outTy` and `layer` are what the arms give back. An arm that ends on a plain result keeps
+# it in its row, and the node keeps it too, in `{name}_res`, from the arm's build on: the
+# line's result is late (`WrLate`), read there by the lines a split block builds after the
+# arm (`SplitBlockInto`), or by whatever reads the block's own result.
+BuildingChoiceLine: unbounded fn Wx, Env, Ex, [?Pattern], Ty, [?Expr], [Block], OutTy, Layer -> ((Wx, Wres))
+fn BuildingChoiceLine wx, menv, scrut, pats, sty, guards, bodies, outTy, layer:
     let lx = wx.lx
     let pos = wx.pos
     let ((name, wx1)) = FreshName wx, "arm"
-    let outTy = OutTyOf lx, (OutOf (TypeAt lx, e.span))
     let ((upId, wx2)) = AddGn wx1, "{name}_fired", outTy, GnNamed, 0
     let rowName = "{wx.node}Arm{RowSuffix wx}"
     let ((rows, wx3)) = Fold (Range0 (Len bodies)), (([[]], wx2)), \|((acc, w)), i|
@@ -557,15 +560,19 @@ fn BuildingChoiceLine wx, menv, scrut, pats, sty, guards, bodies, e:
         (((Push acc, cr), cr.parent))
     let width = Fold rows, 0, \|acc, cr| Max acc, cr.width
     let cases = Each rows, \|cr| cr.case
-    let isDyn = (ResultLayer (TypeAt lx, e.span)) == LyDyn
+    let isDyn = layer == LyDyn
+    let plainRows = Filter rows, \|cr| IsSome cr.?plain
+    let allPlain = (Len plainRows) == (Len rows)
     let res = "{name}_res"
     let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
     let rowObj = OutObj (OutNamed (RefRuntime "rt::Row"), [[]])
     # an arm's dynamic result kept by the block (`DynClauseLine`)
     let kept = DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XMethod (XVar "row"), "result_dynamic", [[]])]])
+    # an arm's plain result kept by the block
+    let keptPlain = DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XMethod (XVar "row"), "result_value", [[]])]])
     let arms = Each cases, \|c|
         let made = TryOf (XCall (RefChild (SiteRef lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), tail))
-        let body = if isDyn: XBlock [[(DoLet (PaBind "row"), made), kept]], (XCast (XVar "row"), rowObj) else: XCast made, rowObj
+        let body = if isDyn: XBlock [[(DoLet (PaBind "row"), made), kept]], (XCast (XVar "row"), rowObj) else: if allPlain: XBlock [[(DoLet (PaBind "row"), made), keptPlain]], (XCast (XVar "row"), rowObj) else: XCast made, rowObj
         XArm(pat=c.pat, conds=c.conds, body=body)
     let select = Own (ArmsValue (XTuple [[scrut]]), arms, "'select", (OutObj (OutNamed (RefRuntime "rt::Row"), [[]])))
     let wx4 = update wx3:
@@ -575,6 +582,18 @@ fn BuildingChoiceLine wx, menv, scrut, pats, sty, guards, bodies, e:
         &_.rows <= Fold cases, &_.rows, \|acc, gc| Append (Push acc, gc.node), gc.node.children
         &_.getters <= Push &_.getters, (GenUp name, (GnOf wx3, upId).name, (GnOf wx3, upId).ty)
     if isDyn: KeptDynResult wx4, name, rows
+    else: if (Len plainRows) > 0:
+        if allPlain:
+            let read = XClone (XMethod (XMethod (XMethod (XField XSelf, res), "borrow", [[]]), "as_ref", [[]]), "expect", [[(XStr "an arm built before what reads its result")]])
+            let wx5 = update wx4:
+                &_.taken <= Push &_.taken, res
+                &_.fields <= Push &_.fields, ((res, (OutCell (OutOpt outTy)), "the arm's plain result, kept from its build on"))
+                &_.inits <= Push &_.inits, ((res, (XCall (RefRuntime "std::RefCell::new"), [[XNone]])))
+            ((wx5, (WrLate read, outTy)))
+        else:
+            let wx5 = update wx4:
+                &_.build <= Push &_.build, (RefusalDo "a building `match` or `if` whose arms do not all end on a plain result")
+            ((wx5, WrUnit))
     else: if outTy == OutUnit: ((wx4, WrUnit)) else: ((wx4, (WrEv (EvRefOf wx4, upId))))
 
 # A generation's dynamic result kept by the block in `{name}_res` (a static clause's, an arm
@@ -603,14 +622,18 @@ fn KeptDynResult wx, name, rows:
 
 # `match s:` with building arms.
 MatchGenLine: unbounded fn Wx, Env, Expr, [Arm], Expr -> ((Wx, Wres))
-fn MatchGenLine wx, menv, s, arms, e = BuildingChoiceLine wx, menv, (Argument wx.lx, menv, s), (Each arms, \|a| a.?pattern), (TypeAt wx.lx, s.span), (Each arms, \|a| a.?guard), (Each arms, \|a| a.body), e
+fn MatchGenLine wx, menv, s, arms, e = BuildingChoiceLine wx, menv, (Argument wx.lx, menv, s), (Each arms, \|a| a.?pattern), (TypeAt wx.lx, s.span), (Each arms, \|a| a.?guard), (Each arms, \|a| a.body), (ChoiceOutTy wx.lx, e), (ResultLayer (TypeAt wx.lx, e.span))
+
+# What a building `match` or `if` gives back, lowered.
+ChoiceOutTy: unbounded fn Lx, Expr -> OutTy
+fn ChoiceOutTy lx, e = OutTyOf lx, (OutOf (TypeAt lx, e.span))
 
 # `if c:` and `if p <- x:` with building arms: the condition a guard, or the pattern
 # matched against `x`.
 IfGenLine: unbounded fn Wx, Env, Cond, Block, Block, Expr -> ((Wx, Wres))
 fn IfGenLine wx, menv, c, thenB, elseB, e = match c:
-    CondExpr x: BuildingChoiceLine wx, menv, (XUnit), [[nil, nil]], (TyCon "unit", [[]]), [[(? x), nil]], [[thenB, elseB]], e
-    CondBind p, x, ?g: BuildingChoiceLine wx, menv, (Argument wx.lx, menv, x), [[(? p), nil]], (TypeAt wx.lx, x.span), [[?g, nil]], [[thenB, elseB]], e
+    CondExpr x: BuildingChoiceLine wx, menv, (XUnit), [[nil, nil]], (TyCon "unit", [[]]), [[(? x), nil]], [[thenB, elseB]], (ChoiceOutTy wx.lx, e), (ResultLayer (TypeAt wx.lx, e.span))
+    CondBind p, x, ?g: BuildingChoiceLine wx, menv, (Argument wx.lx, menv, x), [[(? p), nil]], (TypeAt wx.lx, x.span), [[?g, nil]], [[thenB, elseB]], (ChoiceOutTy wx.lx, e), (ResultLayer (TypeAt wx.lx, e.span))
 
 let dummyBlockS = Block(stmts=[[]], inline=True, span=Range(start=0, end=0))
 
@@ -646,6 +669,8 @@ fn GenRowOf wx, menv, body, vt, rowName, genName:
                 &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
                 &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=(XClone (XField XSelf, f)), doc="The generation's plain result, which the `rebuild`'s dynamic is while the generation stands."))
             ((r2p, nil, ? rt))
+        WrLate ex, rt: (((update r2:
+            &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=ex, doc="The generation's plain result, which the `rebuild`'s dynamic is while the generation stands."))), nil, ? rt))
         WrParts ignore:
             let r2b = update r2:
                 &_.build <= Push &_.build, (RefusalDo "a `rebuild` whose block ends on a bundle")
