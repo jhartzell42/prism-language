@@ -314,7 +314,7 @@ fn IsLateExpr lx, menv, e, depth = match e.kind:
                             # `AppliedBlueprintLine`): a plain answer is known once the
                             # blueprint is built, after the node
                             ? "Prelude.@Element": match args[0]:
-                                ? a: (not (IsTagApplication lx, a.value)) and (not (IsSome (?ElementLet menv, a.value))) and (IsPlainResult lx, e) and not (IsBundle (LineOutFull lx, e))
+                                ? a: (not (IsTagApplication lx, a.value)) and (not (IsSome (?ElementLet menv, a.value))) and IsPlainResult lx, e
                                 nil: False
                             ? q: match lx.g.vals[q]:
                                 ? v if IsRecursingCall lx, q, v, e: True

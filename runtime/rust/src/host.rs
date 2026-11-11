@@ -567,6 +567,40 @@ pub fn widget_event_blueprint<E: 'static, A: 'static, T: Clone + 'static>(
     })
 }
 
+/// A widget that gives a dynamic back as a blueprint value under a tag's arm: as
+/// [`widget_blueprint`], the row's result its live dynamic. Its value at the row's build
+/// is the place's first value, made an answer by `answer`; each later move of it is a
+/// push to the place, an input of the next tick, which is owed, sampled when it is
+/// delivered, as [`dynamic_blueprint`]'s is (several marks in one tick are one push).
+/// The subscription lives as long as the row, whose port it is.
+pub fn widget_dynamic_blueprint<E: 'static, A: 'static, T: Clone + 'static>(
+    build: impl Fn(Path, u32, &mut Cx) -> Result<BuiltWidget<E, A, Dynamic<T>>, Fault> + 'static,
+    build_hosted: impl Fn(Path, u32, Rc<dyn HostOf<E, A>>, Moved, &mut Cx) -> Result<BuiltWidget<E, A, Dynamic<T>>, Fault> + 'static,
+    answer: impl Fn(&T) -> A + 'static,
+) -> Blueprint<E, A> {
+    let answer = Rc::new(answer);
+    Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, base, cx| {
+        let (made, hosted) = match scope {
+            Scope::World => (build(path, base, cx)?, false),
+            Scope::Hosted(host) => (build_hosted(path, base, host.clone(), host_moved(host), cx)?, true),
+        };
+        let first = answer(&made.result.sample(cx));
+        let (read, answered) = (made.result.clone(), answer.clone());
+        let queued: Stamped<()> = Stamped::new();
+        let _ = made.result.updates.subscribe(Rc::new(move |_: &(), cx: &mut Cx| {
+            if queued.fired(cx) {
+                return Ok(());
+            }
+            queued.set((), cx);
+            let (read, sink, answered) = (read.clone(), sink.clone(), answered.clone());
+            cx.answer_later(Box::new(move |cx| sink(&answered(&read.sample(cx)), cx)));
+            Ok(())
+        }));
+        let (document, deliver) = if hosted { (Some(made.document), Some(made.deliver)) } else { (None, None) };
+        Ok(Supplied { node: made.node, first: Some(first), forwards: false, entry: None, built: made.built, leave: Some(made.leave), document, deliver })
+    })
+}
+
 /// A host's telling as a [`Moved`]: the host held weakly, told while it lives.
 pub fn host_moved<E: 'static, A: 'static>(host: &Rc<dyn HostOf<E, A>>) -> Moved {
     let weak = Rc::downgrade(host);

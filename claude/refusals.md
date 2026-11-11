@@ -43,13 +43,15 @@ Hosting
   output is read as a plain part: no test.
 - lower/expr.prism (`WidgetBlueprintValue`, `WidgetValueWords`) a widget with places as
   a blueprint value is lowered where it has no type parameter and no widget function
-  parameter, and gives nothing, a plain value or an event back
+  parameter, whatever it gives back
   (sem-ch09-host-widget-answer, sem-ch08-blueprint-out-of-value,
   sem-ch08-widget-value-dynamic-parameter, -event-parameter, -blueprint-parameter,
-  -event-result, -let). Left refused: one with a type parameter
-  (sem-ch08-widget-value-generic), a dynamic, a bundle or a function result
-  (sem-ch08-widget-value-dynamic-result, -bundle-result, -function-result), a widget
+  -event-result, -let, -dynamic-result, -bundle-result, -function-result). Left
+  refused: one with a type parameter (sem-ch08-widget-value-generic), a widget
   function parameter, or a `$` or event parameter with time below its top (no tests);
+  one that gives a bundle back read under a tag's arm (R, no test: "as a supplier's
+  answer under a tag's arm, its result a bundle"); one whose block ends on a host's
+  line (R, no test: `ValueRowWhole`);
   one read in a place `ValuedWidgets` does not look (a record's field read back and
   given on is a value already). One built in a hosted scope builds its hosted row
   (sem-ch09-host-widget-answer-hosted).
@@ -57,8 +59,9 @@ Hosting
   value is lowered (sem-ch08-local-widget-passed-as-value, sem-ch08-local-widget-in-record).
   One whose places read a dynamic of the block is lowered
   (sem-ch08-local-widget-value-reads-dynamic), and one in a hosted scope and one that
-  gives a plain value back. Left refused: one that gives an event, a dynamic, a bundle
-  or a value that is no plain data back (refused where the value is read). One a
+  gives a plain value, an event, a dynamic, a bundle or a function back
+  (sem-ch08-local-widget-value-gives-back, -gives-event, -gives-dynamic, -gives-bundle,
+  -gives-function). One a
   `let` names is the same value (sem-ch08-local-widget-value-let). lower/expr.prism
   (`NameValueOf`) "a widget
   defined in a block read as a blueprint value" stands for a reading outside a line's
@@ -69,9 +72,10 @@ Hosting
   back, which hears the blueprint's answers, and a line that binds a plain result
   (sem-ch08-blueprint-value-gives-back), in a hosted scope too
   (sem-ch09-blueprint-value-hosted), and a line that binds a dynamic
-  (sem-ch08-element-value-dynamic-statement). Left refused: one that gives a bundle
-  back (sem-ch08-widget-value-bundle-result reaches it, behind the widget's own
-  refusal as a value).
+  (sem-ch08-element-value-dynamic-statement), and a line that binds a bundle
+  (`AppliedBundleLine`: sem-ch08-element-value-bundle-statement,
+  sem-ch08-widget-value-bundle-result). A bundle answered as a generic tag's is read
+  through no tag (a fault of the run: no test).
 - lower/node/static.prism:104 a widget function parameter applied to arguments whose
   argument is a function value that is no name (a lambda). No test. A named widget
   function passed and applied is lowered (sem-ch08-widget-parameter-applied).

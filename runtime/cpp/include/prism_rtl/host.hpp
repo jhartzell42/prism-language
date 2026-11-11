@@ -694,6 +694,35 @@ Blueprint<E, A> widget_event_blueprint(Build build, BuildHosted build_hosted, An
     };
 }
 
+/// A widget that gives a dynamic back as a blueprint value under a tag's arm: as
+/// `widget_blueprint`, the row's result its live dynamic. Its value at the row's build is
+/// the place's first value, made an answer by `answer`; each later move of it is a push
+/// to the place, an input of the next tick, which is owed, sampled when it is delivered,
+/// as `dynamic_blueprint`'s is (several marks in one tick are one push).
+template <class E, class A, class Build, class BuildHosted, class AnswerFn>
+Blueprint<E, A> widget_dynamic_blueprint(Build build, BuildHosted build_hosted, AnswerFn answer) {
+    return [build, build_hosted, answer](Path path, Sink<A> sink, const Scope<E, A>& scope, std::uint32_t base, Cx& cx) -> Result<Supplied<E, A>> {
+        auto follow = [sink, answer](const auto& d, Cx& cx) -> A {
+            auto queued = make_rc<Stamped<Unit>>();
+            deref(d.updates).subscribe([d, sink, answer, queued](const Unit&, Cx& cx) -> Done {
+                if (queued->fired(cx)) return {};
+                queued->set(Unit{}, cx);
+                cx.answer_later([d, sink, answer](Cx& cx) { return sink(answer(d.sample(cx)), cx); });
+                return {};
+            });
+            return answer(d.sample(cx));
+        };
+        if (scope.is_world()) {
+            auto made = TRY(build(path, base, cx));
+            A first = follow(made.result, cx);
+            return Supplied<E, A>{made.node, first, false, nullptr, made.built, made.leave};
+        }
+        auto made = TRY(build_hosted(path, base, scope.hosted, host_moved<E, A>(scope.hosted), cx));
+        A first = follow(made.result, cx);
+        return Supplied<E, A>{made.node, first, false, nullptr, made.built, made.leave, made.document, made.deliver};
+    };
+}
+
 /// The rows a blueprint value of a block's own widget built (Semantics ch. 8: a blueprint
 /// builds as often as it is applied), held weakly: the block's write behind what their
 /// places read marks each one that lives. A row that left is dropped from the list when

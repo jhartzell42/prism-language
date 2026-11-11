@@ -371,6 +371,18 @@ impl Answer {
             other => ::std::result::Result::Err(crate::prelude::Fault::answer(format!("an answer for {}, where a blueprint value's plain result was expected", other.tag()))),
         }
     }
+    /// An answer made outside a tag's arm that is no plain data (a function, a dynamic, a
+    /// bundle with its events and dynamics whole), when it is one and holds a `T`.
+    pub fn held_as<T: Clone + 'static>(&self) -> ::std::option::Option<T> {
+        match self {
+            Answer::Held_a(v) => v.downcast_ref::<T>().cloned(),
+            _ => ::std::option::Option::None,
+        }
+    }
+    /// The same, read at the type of the line that binds it: any other answer is a fault.
+    pub fn held<T: Clone + 'static>(&self) -> ::std::result::Result<T, crate::prelude::Fault> {
+        self.held_as::<T>().ok_or_else(|| crate::prelude::Fault::answer(format!("an answer for {}, where a blueprint value's result that is no plain data was expected", self.tag())))
+    }
 }
 
 impl ::prism_rtl::AnswerOf<Elem> for Answer {
