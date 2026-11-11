@@ -811,6 +811,51 @@ impl Row for ::prism_rtl::HostRow<crate::Elem, crate::Answer> {
     }
 }
 
+/// A widget's row as its blueprint built it (prism_rtl's `widget_blueprint`): the row as a
+/// node, its leaving, how many places it built, and the widget's plain result.
+pub fn built_widget<N: Row + 'static, R>(built: usize, result: R, row: Rc<N>) -> ::prism_rtl::BuiltWidget<R> {
+    let leaving = row.clone();
+    ::prism_rtl::BuiltWidget { node: row, leave: Rc::new(move |cx: &mut Cx| leaving.leave_row(cx)), built, result }
+}
+
+/// A blueprint value a block applied: what it built, as the block's generation at the
+/// line. A World's answer under it goes to the blueprint's node, the position counted
+/// from the blueprint's first.
+pub struct AppliedBlueprint {
+    supplied: ::prism_rtl::Supplied<crate::Elem, crate::Answer>,
+}
+
+impl Node for AppliedBlueprint {
+    fn answer(self: Rc<Self>, at: &[Segment], v: &Pod, cx: &mut Cx) -> Done {
+        self.supplied.node.clone().answer(at, v, cx)
+    }
+}
+
+impl Row for AppliedBlueprint {
+    fn leave_row(&self, cx: &mut Cx) {
+        match &self.supplied.leave {
+            Some(leave) => leave(cx),
+            None => {
+                let done = self.supplied.node.clone().leave(cx);
+                cx.keep(done);
+            }
+        }
+    }
+}
+
+/// A blueprint value applied by a block at one of its lines (Semantics ch. 8: "a blueprint
+/// builds nothing until a block applies it", at the applying block's next positions): built
+/// at the block's path, its places numbered from `base`, in the World's scope. Gives the
+/// generation and how many places it built. A blueprint that answers (`@ x`, an event's, a
+/// dynamic's) builds no place here, and what it answers is the line's result, which a line
+/// of unit drops.
+pub fn apply_blueprint(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: usize, cx: &mut Cx) -> Result<(Rc<dyn Row>, usize), Fault> {
+    let sink: ::prism_rtl::Sink<crate::Answer> = Rc::new(|_: &crate::Answer, _: &mut Cx| Ok(()));
+    let supplied = blueprint(path, sink, &::prism_rtl::Scope::World, base, cx)?;
+    let built = supplied.built;
+    Ok((Rc::new(AppliedBlueprint { supplied }), built))
+}
+
 /// A row subscribing to its block's port for one event: the row heard weakly, the handle
 /// kept for its leaving (claude/backend.md: `Port::subscribe`).
 pub fn subscribe_row<N: Node, P, T: Clone + 'static>(node: &Rc<N>, parent: Option<Rc<P>>, port: impl Fn(&P) -> &Port<T>, call: impl Fn(&Rc<N>, &T, &mut Cx) + 'static, slot: &::std::cell::Cell<Option<Handle>>) {

@@ -67,7 +67,15 @@ fn WidgetLine wx, benv, menv, e, ?bound:
     let ?named = match callee.kind:
         EName n: if (Len n.path) == 1 and (Len args) == 0: menv.names["{SNameKey n}#blueprint"] else: nil
         otherwise: nil
-    match ?named:
+    # a blueprint that is a value of the node: a pattern's binder, a field of a record
+    let held = match e.kind:
+        EField ignore, ignore, ignore: True
+        EName n: match (if (Len n.path) == 1: menv.names[SNameKey n] else: nil):
+            ? (BnLocal ignore, ignore, ignore): True
+            otherwise: False
+        otherwise: False
+    if held: ValueBlueprintLine wx, menv, e
+    else: match ?named:
         ? (BnWidget x, ignore, ignore, ignore): LetBlueprintLine wx, benv, menv, x, e, ?bound
         otherwise: match ?param:
             ? (BnWidget x, cbenv, cmenv, clx): ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound
@@ -111,6 +119,39 @@ fn ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound:
         let back = update done:
             &_.lx <= lx
         ((back, res))
+
+# A blueprint value applied (`? @t: @t`, `ignore <- card.@body`; Semantics ch. 8: "a
+# blueprint builds nothing until a block applies it", at the applying block's next
+# positions; Type System ch. 2: a blueprint is an opaque handle and still a value). The
+# value is prism_rtl's `Blueprint`, which the node builds at its own path from the line's
+# position as built (the prelude's `apply_blueprint`), once. What it builds is the node's
+# generation at the line, transparent, `wideGeneration` positions wide and gappy, as a
+# call of a widget that calls itself is (`SharedClauseLine`): the node keeps what the
+# blueprint did not build of them, so the later places are counted as built (ruling TC),
+# and an answer under it is handed on with its position counted from the generation's
+# first. A blueprint value that gives something back, and one applied in a hosted scope,
+# are refused.
+ValueBlueprintLine: unbounded fn Wx, Env, Expr -> ((Wx, Wres))
+fn ValueBlueprintLine wx, menv, e:
+    let lx = wx.lx
+    let pos = wx.pos
+    let outTy = OutTyOf lx, (OutOf (TypeAt lx, e.span))
+    if (IsHostedScope wx) or outTy != OutUnit:
+        let words = if outTy != OutUnit: "a blueprint value applied in a block that gives something back (`{SrcText lx, lx.file, e.span}`)" else: "a blueprint value applied in a hosted scope (`{SrcText lx, lx.file, e.span}`)"
+        let wx2 = update wx:
+            &_.build <= Push &_.build, (RefusalDo words)
+        ((wx2, WrUnit))
+    else:
+        let ((name, wx1)) = FreshName wx, "generation"
+        let applied = TryOf (XCall (HelperRef "apply_blueprint"), [[(Ref (ValueOf lx, menv, e)), (XClone (XVar "path")), (XVar "row_base"), XCx]])
+        let gap = XBin OpSub, (XIndex wideGeneration), (XVar "built")
+        let select = WithRowBase wx, "self", pos, (XBlock (Append [[(DoLet (PaTuple [[(PaBind "row"), (PaBind "built")]]), applied)]], (GapSet name, (? gap))), (XVar "row"))
+        let wx3 = update wx1:
+            &_.pos <= Pos(scope=pos.scope, at=pos.at + wideGeneration)
+            &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=True, width=wideGeneration, moved="", early=False, gappy=True, rebased=True)
+            &_.genHolds <= Push &_.genHolds, ((name, [[]]))
+            &_.fallible <= True
+        ((wx3, WrUnit))
 
 # A blueprint a `let` of the block names, applied (`let @w = @Tile k`, then `@w`): its
 # expression built here, in this line's environments, at this node's next positions,

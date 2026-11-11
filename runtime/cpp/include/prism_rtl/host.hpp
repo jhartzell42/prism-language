@@ -521,6 +521,12 @@ struct Supplied {
     /// A place of the blueprint's own at the row's `0` in a hosted scope (an element value
     /// placed, `described_blueprint`): its entry, which the enclosing host's document holds.
     Rc<Entry<E>> entry = nullptr;
+    /// How many places of its own the blueprint built from the base it was given (a
+    /// widget's blueprint, `widget_blueprint`; ruling TC: places are counted as built).
+    std::size_t built = 0;
+    /// How a widget's blueprint leaves: its row's places torn down, the row with them.
+    /// The other forms leave by their node.
+    std::function<void(Cx&)> leave = nullptr;
 };
 
 /// The program's answer type, which a World's answer to an element decodes into by the
@@ -547,9 +553,11 @@ struct Scope {
 };
 
 /// `@o` as a value (claude/backend.md, "Types"): built at a path with the sink that answers
-/// the child's place, in the scope of the host whose row builds it.
+/// the child's place, in the scope of the host whose row builds it, its own places
+/// numbered from the base it is given (0 under a host's row; a block that applies the
+/// value gives its next position as built).
 template <class E, class A>
-using Blueprint = std::function<Result<Supplied<E, A>>(Path, Sink<A>, const Scope<E, A>&, Cx&)>;
+using Blueprint = std::function<Result<Supplied<E, A>>(Path, Sink<A>, const Scope<E, A>&, std::size_t, Cx&)>;
 
 /// A host's supplier, in the `@HostDocument` form: a blueprint for every child place.
 template <class E, class A>
@@ -585,10 +593,34 @@ Done later(const Sink<A>& sink, A v, Cx& cx) {
 
 }  // namespace detail
 
+/// A widget's row as its blueprint built it: the row's node, how it leaves, how many
+/// places it built, and the widget's plain result (unit when it gives none).
+template <class R>
+struct BuiltWidget {
+    NodeRef node;
+    std::function<void(Cx&)> leave;
+    std::size_t built = 0;
+    R result;
+};
+
+/// A widget with places as a blueprint value (Semantics ch. 8: a blueprint builds nothing
+/// until it is applied): `build` makes the widget's row at the path, its places numbered
+/// from the base, in the World's scope; `answer` makes the widget's plain result the
+/// place's first value (nothing for a widget that gives none). Built in a hosted scope it
+/// is a fault: the row's places are the World's.
+template <class E, class A, class R>
+Blueprint<E, A> widget_blueprint(std::function<Result<BuiltWidget<R>>(Path, std::size_t, Cx&)> build, std::function<std::optional<A>(R)> answer) {
+    return [build, answer](Path path, Sink<A>, const Scope<E, A>& scope, std::size_t base, Cx& cx) -> Result<Supplied<E, A>> {
+        if (!scope.is_world()) return unexpected(Fault::answer("a widget with places built as a blueprint value at " + path.to_string() + " in a hosted scope: prismc does not lower it yet"));
+        auto made = TRY(build(path, base, cx));
+        return Supplied<E, A>{made.node, answer(std::move(made.result)), false, nullptr, made.built, made.leave};
+    };
+}
+
 /// `@ x`: no places, the first value `x`, once.
 template <class E, class A>
 Blueprint<E, A> plain_blueprint(A x) {
-    return [x](Path, Sink<A>, const Scope<E, A>&, Cx&) -> Result<Supplied<E, A>> {
+    return [x](Path, Sink<A>, const Scope<E, A>&, std::size_t, Cx&) -> Result<Supplied<E, A>> {
         return Supplied<E, A>{make_rc<detail::Inert>(), x, false};
     };
 }
@@ -596,7 +628,7 @@ Blueprint<E, A> plain_blueprint(A x) {
 /// `@ never`: no places, no first value, no answer.
 template <class E, class A>
 Blueprint<E, A> never_blueprint() {
-    return [](Path, Sink<A>, const Scope<E, A>&, Cx&) -> Result<Supplied<E, A>> {
+    return [](Path, Sink<A>, const Scope<E, A>&, std::size_t, Cx&) -> Result<Supplied<E, A>> {
         return Supplied<E, A>{make_rc<detail::Inert>(), std::nullopt, false};
     };
 }
@@ -604,7 +636,7 @@ Blueprint<E, A> never_blueprint() {
 /// `@ !e`: each firing of `e` is an answer to the child's place, a tick late.
 template <class E, class A>
 Blueprint<E, A> event_blueprint(Event<A> e) {
-    return [e](Path, Sink<A> sink, const Scope<E, A>&, Cx&) -> Result<Supplied<E, A>> {
+    return [e](Path, Sink<A> sink, const Scope<E, A>&, std::size_t, Cx&) -> Result<Supplied<E, A>> {
         auto node = make_rc<detail::Subscribed<A>>(e.port);
         node->handle = e.port->subscribe([sink](const A& v, Cx& cx) { return detail::later(sink, v, cx); });
         return Supplied<E, A>{node, std::nullopt, false};
@@ -615,7 +647,7 @@ Blueprint<E, A> event_blueprint(Event<A> e) {
 /// once; each firing of `e` an answer to the child's place, a tick late.
 template <class E, class A>
 Blueprint<E, A> bundle_blueprint(A first, Event<A> e) {
-    return [first, e](Path, Sink<A> sink, const Scope<E, A>&, Cx&) -> Result<Supplied<E, A>> {
+    return [first, e](Path, Sink<A> sink, const Scope<E, A>&, std::size_t, Cx&) -> Result<Supplied<E, A>> {
         auto node = make_rc<detail::Subscribed<A>>(e.port);
         node->handle = e.port->subscribe([sink](const A& v, Cx& cx) { return detail::later(sink, v, cx); });
         return Supplied<E, A>{node, first, false};
@@ -630,7 +662,7 @@ Blueprint<E, A> bundle_blueprint(A first, Event<A> e) {
 /// change whatever height the change came at, and several marks in one tick are one push.
 template <class E, class A>
 Blueprint<E, A> dynamic_blueprint(Dynamic<A> d) {
-    return [d](Path, Sink<A> sink, const Scope<E, A>&, Cx& cx) -> Result<Supplied<E, A>> {
+    return [d](Path, Sink<A> sink, const Scope<E, A>&, std::size_t, Cx& cx) -> Result<Supplied<E, A>> {
         A first = d.sample(cx);
         auto node = make_rc<detail::Subscribed<Unit>>(d.updates);
         auto queued = make_rc<Stamped<Unit>>();
@@ -758,7 +790,7 @@ struct Placed : Node {
 template <class E, class A>
     requires AnswerOf<A, E>
 Blueprint<E, A> described_blueprint(const Described<E>& d) {
-    return [d](Path path, Sink<A> sink, const Scope<E, A>& scope, Cx& cx) -> Result<Supplied<E, A>> {
+    return [d](Path path, Sink<A> sink, const Scope<E, A>& scope, std::size_t, Cx& cx) -> Result<Supplied<E, A>> {
         Path at = path.at(0);
         E identity = d.level.sample(cx);
         auto node = make_rc<detail::Placed<E, A>>(at, identity, d.level, std::move(sink));
@@ -821,7 +853,7 @@ template <class E, class A>
 Blueprint<E, A> element_blueprint(const Element<E>& value) {
     if (const Described<E>* d = std::get_if<Described<E>>(&value.form)) return described_blueprint<E, A>(*d);
     const Live<E>& e = std::get<Live<E>>(value.form);
-    return [e](Path path, Sink<A> sink, const Scope<E, A>& scope, Cx& cx) -> Result<Supplied<E, A>> {
+    return [e](Path path, Sink<A> sink, const Scope<E, A>& scope, std::size_t, Cx& cx) -> Result<Supplied<E, A>> {
         Path at = path.at(0);
         // The level at the build is the identity: a row is built from the entry after the
         // tick, and an early row's entry cannot be read until its host's node is made.
@@ -932,7 +964,7 @@ public:
         };
         Element<E> element = node->element(std::move(value));
         Blueprint<E, A> blueprint = host->supplier()(node->key_, element);
-        auto supplied = TRY(blueprint(node->path_, node->sink_, host->scope(), cx));
+        auto supplied = TRY(blueprint(node->path_, node->sink_, host->scope(), 0, cx));
         node->supplied_ = std::move(supplied);
         return node;
     }
@@ -991,8 +1023,10 @@ public:
         left_ = true;
         if (supplied_) {
             NodeRef node = std::move(supplied_->node);
+            std::function<void(Cx&)> leave = std::move(supplied_->leave);
             supplied_.reset();
-            cx.keep(node->leave(cx));
+            if (leave) leave(cx);
+            else cx.keep(node->leave(cx));
         }
     }
 

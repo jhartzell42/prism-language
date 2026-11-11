@@ -73,10 +73,11 @@ fn LowerProgram srcs, trees, shown, tp, name:
     let mods = NeededMods g, shown
     let rsMods = Fold mods, {}, \|acc, m| Insert acc, m, (RustModName m)
     let modSegments = Fold (Values rsMods), {}, \|acc, p| Fold (SplitOn p, "::"), acc, \|a2, seg| Insert a2, seg, True
-    let lx0 = Lx(g=g, tys=tys, apps=apps, lifts=(Fold tp.lifts, {}, \|m, n| Insert m, (AtKey n.at), n), binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, modSegments=modSegments, rsNames=(ValueNames g), layouts=(Layouts g), unbs=[[]], notes=[[]], globals=(GlobalNames g), inNode=False, whole=False, wholeFns={}, noCx=False, unshrunk=(Fold tp.unshrunk, {}, \|m, a| Insert m, (AtKey a), True), gens=gens, insts=insts, quants=quants, genOfQ=genOfQ, useInsts=useInsts, localIds=(Fold tp.locals, {}, \|m, n| Insert m, (AtKey n.at), n.id), useIds=(Fold tp.uses, {}, \|m, n| Insert m, (AtKey n.at), n.id), useNames=(Fold tp.uses, {}, \|m, n| Insert m, n.at.file, (Push (Or m[n.at.file], [[]]), ((n.at.span.start, n.name)))), callIds=(Fold tp.calls, {}, \|m, n| Insert m, (AtKey n.at), n.id), inlined="", subst={}, csubst={}, faults=(Fold tp.faults, {}, \|m, n| Insert m, (AtKey n.at), n.ty), shared={}, recursing=[[]])
+    let lx0 = Lx(g=g, tys=tys, apps=apps, lifts=(Fold tp.lifts, {}, \|m, n| Insert m, (AtKey n.at), n), binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, modSegments=modSegments, rsNames=(ValueNames g), layouts=(Layouts g), unbs=[[]], notes=[[]], globals=(GlobalNames g), inNode=False, whole=False, wholeFns={}, noCx=False, unshrunk=(Fold tp.unshrunk, {}, \|m, a| Insert m, (AtKey a), True), gens=gens, insts=insts, quants=quants, genOfQ=genOfQ, useInsts=useInsts, localIds=(Fold tp.locals, {}, \|m, n| Insert m, (AtKey n.at), n.id), useIds=(Fold tp.uses, {}, \|m, n| Insert m, (AtKey n.at), n.id), useNames=(Fold tp.uses, {}, \|m, n| Insert m, n.at.file, (Push (Or m[n.at.file], [[]]), ((n.at.span.start, n.name)))), callIds=(Fold tp.calls, {}, \|m, n| Insert m, (AtKey n.at), n.id), inlined="", subst={}, csubst={}, faults=(Fold tp.faults, {}, \|m, n| Insert m, (AtKey n.at), n.ty), shared={}, recursing=[[]], valued={})
     let lx = update lx0:
         &_.unbs <= JobRoots lx0
         &_.wholeFns <= WholeFns lx0
+        &_.valued <= ValuedWidgets lx0
     let roots = RootWidgets lx
     let modDefs = Each mods, \|m| ModDefOf lx, m, roots, (Or g.mods[m], dummyMod), mods
     let programs = Each roots, \|((qk, ignore))| ProgDefOf lx, qk
@@ -270,6 +271,117 @@ fn RootWidgets lx:
         otherwise: acc
     let main = Fold lx.g.defs, [[]], \|acc, d| if IsMain d.qk: Push acc, ((d.qk, False)) else: acc
     Fold main, tested, \|acc, ((k, b))| if HasText (Each acc, \|((q, ignore))| q), k: acc else: Push acc, ((k, b))
+
+# The widgets with places that the program reads as blueprint values (Type System ch. 2:
+# a blueprint is an opaque handle and still a value; Semantics ch. 8: it builds nothing
+# until a block applies it): an argument of a function that is no widget or of a
+# constructor, a host's supplier, what a lambda gives, the operand of `?`, a part of a
+# tuple or an array. Each is lowered once more as rows of its own (`ValuedRows`), which the
+# blueprint made at the value site builds (`WidgetBlueprintValue`). One whose parameters
+# are not all plain, with a type parameter, or with an event, dynamic or bundle result is
+# left out, and refused where it is read as a value.
+ValuedWidgets: unbounded fn Lx -> (Text ==> [((Text, Pa, [Cc], [Ex]))])
+fn ValuedWidgets lx = Fold lx.g.defs, {}, \|acc, d|
+    let lxd = InModule lx, d.file, d.home
+    Fold (DefExprs d), acc, \|m, e| Fold (ValueWidgetsIn lxd, e), m, \|m2, qk| if HasKey m2, qk: m2 else: match ?ValuedCases lx, qk:
+        ? cases: Insert m2, qk, cases
+        nil: m2
+
+# The widgets one expression holds in a value's place.
+ValueWidgetsIn: unbounded fn Lx, Expr -> [Text]
+fn ValueWidgetsIn lx, e = match e.kind:
+    ECall c, args, ignore, ignore:
+        let qk = BlueprintQk lx, c
+        let hosts = qk == "Prelude.@HostDocument" or qk == "Prelude.@HostSome" or qk == "Prelude.@HostList"
+        let applies = match lx.g.vals[qk]:
+            ? v: IsWidgetTy (WidgetResultOf v.scheme.ty)
+            nil: False
+        if hosts: Fold (Drop args, 1), [[]], \|acc, a| Append acc, (ValueWidgetsAt lx, a.value)
+        else: if applies: [[]]
+        else: Fold args, [[]], \|acc, a| Append acc, (ValueWidgetsAt lx, a.value)
+    ELambda ignore, (LbExpr x): ValueWidgetsAt lx, x
+    ELambda ignore, (LbBlock b): ValueWidgetsOfBlock lx, b
+    EFreeSigil "?", x: ValueWidgetsAt lx, x
+    ETuple xs: Fold xs, [[]], \|acc, x| Append acc, (ValueWidgetsAt lx, x)
+    EArray xs: Fold xs, [[]], \|acc, x| Append acc, (ValueWidgetsAt lx, x)
+    otherwise: [[]]
+
+# The widgets an expression in a value's place is: itself, or what its arms end on.
+ValueWidgetsAt: unbounded fn Lx, Expr -> [Text]
+fn ValueWidgetsAt lx, e = match e.kind:
+    EGroup x: ValueWidgetsAt lx, x
+    EMatch ignore, arms: Fold arms, [[]], \|acc, a| Append acc, (ValueWidgetsOfBlock lx, a.body)
+    EIf ignore, yes, (? no): Append (ValueWidgetsOfBlock lx, yes), (ValueWidgetsOfBlock lx, no)
+    EIf ignore, yes, nil: ValueWidgetsOfBlock lx, yes
+    ECall c, ignore, ignore, ignore: PlacedWidget lx, (BlueprintQk lx, c)
+    EName ignore: PlacedWidget lx, (BlueprintQk lx, e)
+    otherwise: [[]]
+
+ValueWidgetsOfBlock: unbounded fn Lx, Block -> [Text]
+fn ValueWidgetsOfBlock lx, b = match (Or b.stmts[Dec (Len b.stmts)], dummyStmtL).kind:
+    SExpr x: ValueWidgetsAt lx, x
+    otherwise: [[]]
+
+# A widget with places by its name: one the program defines that is no pure blueprint
+# (`IsValueWidget`).
+PlacedWidget: unbounded fn Lx, Text -> [Text]
+fn PlacedWidget lx, qk = match lx.g.vals[qk]:
+    ? v:
+        let defined = Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsWidgetDef d)
+        if defined and (IsWidgetTy (WidgetResultOf v.scheme.ty)) and not (IsValueWidget lx, qk): [[qk]] else: [[]]
+    nil: [[]]
+
+IsWidgetDef: fn Def -> Bool
+fn IsWidgetDef d = match d.body:
+    DbWidget ignore: True
+    DbFn ignore: True
+    otherwise: False
+
+# What a widget gives: its own type when it takes no arguments.
+WidgetResultOf: fn Ty -> Ty
+fn WidgetResultOf t = match t:
+    TyFn ignore, ignore, r: r
+    otherwise: t
+
+# The stem of the names of a valued widget's rows: `{stem}{i}` is clause `i`'s.
+ValuedStem: fn Text -> Text
+fn ValuedStem qk = "{Camel (BareName qk)}_value"
+
+# A valued widget's clauses as a blueprint chooses and builds them (`SharedCaseOf`), when
+# it can be one: plain parameters, no type parameter, nothing or a plain value given back.
+?ValuedCases: unbounded fn Lx, Text -> ?[((Text, Pa, [Cc], [Ex]))]
+fn ?ValuedCases lx, qk = match lx.g.vals[qk]:
+    nil: nil
+    ? v:
+        let ptys = match v.scheme.ty:
+            TyFn ignore, ps, ignore: ps
+            otherwise: [[]]
+        let plainResult = match WidgetResultOf v.scheme.ty:
+            TyAt i, ignore: (LayerOf i) == LyPlain and not (IsBundle (Peel i))
+            otherwise: False
+        let plainParams = Fold ptys, True, \|ok, pt| ok and (LayerOf pt) == LyPlain and not (IsWidgetFnTy pt)
+        if not (plainResult and plainParams and (Len (RigidsIn v.scheme.ty)) == 0): nil
+        else:
+            let lxv = InModuleAt lx, v.file, v.home, v.home
+            let clauses = ClausesOf lx.g, qk
+            let stem = ValuedStem qk
+            if (Len clauses) == 0: ? [[(("{stem}0", (PaTuple [[]]), [[]], [[(XVar "row_base")]]))]]
+            else: ? (Each (Range0 (Len clauses)), \|i| SharedCaseOf lxv, v, (Or clauses[i], dummyClause), "{stem}{i}")
+
+# A valued widget's rows, items of its module: each clause lowered as a row of its own,
+# its places numbered from 0 and built from a base, holding no block, telling how many
+# places it built, as the rows of a widget that calls itself are (`SharedClauseLine`).
+ValuedRows: unbounded fn Lx, Text, ?Block -> [Item]
+fn ValuedRows lx, qk, ?body = match ((lx.valued[qk], lx.g.vals[qk])):
+    ((? ignore, ? v)):
+        let stem = ValuedStem qk
+        let wx0 = NewWx lx, "{stem}s", [[]], [[]], [[]], [[]], {}, nodeHooks, [[]], nil
+        let clauses = ClausesOf lx.g, qk
+        let rows = match ?body:
+            ? b: if (Len clauses) > 0: [[]] else: [[(ArmRowOf wx0, emptyEnv, lx, [[]], [[]], nil, b, "{stem}0", "valued", True, False, OutUnit, [[]], [[]], [[]], True)]]
+            nil: Each (Range0 (Len clauses)), \|i| ClauseRowOf wx0, emptyEnv, (Or clauses[i], dummyClause), v, "{stem}{i}", "valued", True, OutUnit, [[]], True
+        Fold rows, [[]], \|acc, cr| Append (Push acc, (ItNode cr.case.node)), (Each cr.case.node.children, \|c| ItNode c)
+    otherwise: [[]]
 
 # The root module's `@main` (`@$main` too: Semantics ch. 6).
 IsMain: fn Text -> Bool
@@ -490,16 +602,17 @@ fn DefItems lx, d, roots:
     let isRoot = HasText (Each roots, \|((q, ignore))| q), d.qk
     match d.body:
         DbWidget w:
-            if isRoot: NodeItems (NodeDefOf lx, d.qk, [[]], w.body, (Or lx.g.vals[d.qk], (Builtin d.qk, (Mono TyErr))).scheme, True)
-            else: [[ItNote "`{d.name}` is inlined where it is applied."]]
+            let valued = ValuedRows lx, d.qk, (? w.body)
+            if isRoot: Append (NodeItems (NodeDefOf lx, d.qk, [[]], w.body, (Or lx.g.vals[d.qk], (Builtin d.qk, (Mono TyErr))).scheme, True)), valued
+            else: Push valued, (ItNote "`{d.name}` is inlined where it is applied.")
         DbFn clauses: match lx.g.vals[d.qk]:
             nil: [[]]
             ? v: match v.scheme.ty:
                 TyFn ignore, ignore, (TyAt ignore, ignore):
                     if not isRoot:
                         if IsValueWidget lx, d.qk: [[ItFn (FnDefOf lx, d.qk, clauses, v.scheme)]]
-                        else: [[ItNote "`{d.name}` is inlined where it is applied."]]
-                    else: match clauses:
+                        else: Push (ValuedRows lx, d.qk, nil), (ItNote "`{d.name}` is inlined where it is applied.")
+                    else: Append (ValuedRows lx, d.qk, nil), match clauses:
                         [[c]]: match c.body:
                             BodyBlock b: NodeItems (NodeDefOf lx, d.qk, c.params, b, v.scheme, True)
                             otherwise: [[ItRefused "`{d.name}`, a root widget whose body is one expression"]]

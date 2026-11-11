@@ -914,6 +914,7 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
         ? tg: VlOwned (XCall (HelperRef "fault_kind"), [[XStr tg.name]]), OutPod
         nil: if Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsLetDef d): VlOwned (XCall (ValueRef lx, qk), [[]]), t
         else: match lx.g.vals[qk]:
+            ? v if HasKey lx.valued, qk: WidgetBlueprintValue lx, emptyEnv, qk, [[]], t
             ? v if (IsWidgetFn v) and not (IsValueWidget lx, qk): VlOwned (Refusal (WidgetValueWords qk)), t
             ? v:
                 let isLet = Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsLetDef d)
@@ -937,6 +938,37 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
             nil: VlOwned (InternalBug "the global {qk}"), t
 
 # A widget function: its result a blueprint.
+# A widget with places read as a value (`Lx.valued`): the blueprint that builds its row.
+# The arguments are read here, once, and kept by the blueprint; each build chooses the
+# clause by them and builds its row at the path it is given, the places numbered from the
+# base (prism_rtl's `widget_blueprint`). A plain result is the first value of the place
+# the blueprint answers, under the arm's tag as `@ x` is (`PureBlueprint`).
+WidgetBlueprintValue: unbounded fn Lx, Env, Text, [Arg], OutTy -> Vl
+fn WidgetBlueprintValue lx, env, qk, args, t = match ((lx.valued[qk], lx.g.vals[qk])):
+    ((? cases, ? v)):
+        let gives = match v.scheme.ty:
+            TyFn ignore, ignore, r: r
+            otherwise: v.scheme.ty
+        let resTy = OutTyOf lx, (OutOf gives)
+        let names = Each (Range0 (Len args)), \|i| "widget_argument_{i}"
+        let lets = Each (Range0 (Len args)), \|i| match args[i]:
+            ? a: DoLet (PaBind "widget_argument_{i}"), (Own (ValueOf lx, env, a.value))
+            nil: DoLet (PaBind "widget_argument_{i}"), XUnit
+        let arms = Each cases, \|((rowNode, pat, conds, passed))|
+            let made = TryOf (XCall (RefChild (RefIn lx, v.home, rowNode), "build"), (Append (Append [[(XClone (XVar "path"))]], passed), [[XUnit, XCx]]))
+            let result = if resTy == OutUnit: XUnit else: XMethod (XVar "row"), "result_value", [[]]
+            XArm(pat=pat, conds=conds, body=(XBlock [[(DoLet (PaBind "row"), made)]], (XCall (HelperRef "built_widget"), [[(XMethod (XVar "row"), "built", [[]]), result, (XVar "row")]])))
+        let builtTy = OutNamed (RefRuntime "prism_rtl::BuiltWidget"), [[resTy]]
+        let select = Own (ArmsValue (XTuple (Each names, \|n| XRef (XVar n))), arms, "'select", builtTy)
+        let build = XClosure True, [[(PaBind "path"), (PaBind "row_base"), (PaBind "cx")]], (XCtor (RefRuntime "std::Ok"), [[select]])
+        let variant = match env.names["#tag"]:
+            ? (BnLocal (XPath tagged), ignore, ignore): tagged
+            otherwise: untaggedRef
+        let answer = if resTy == OutUnit: XClosure False, [[PaWild]], XNone else: XClosure False, [[PaBind "widget_result"]], (XCtor (RefRuntime "std::Some"), [[(Tagged variant, (XVar "widget_result"))]])
+        if resTy != OutUnit and variant == untaggedRef and not (Podable resTy): VlOwned (Refusal "the widget {BareName qk} as a blueprint value outside a tag arm, its result no plain data"), t
+        else: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_blueprint::<crate::Elem, crate::Answer, _>"), [[build, answer]])), t
+    otherwise: VlOwned (Refusal (WidgetValueWords qk)), t
+
 IsWidgetFn: fn ValInfo -> Bool
 fn IsWidgetFn v = match v.scheme.ty:
     TyFn ignore, ignore, (TyAt ignore, ignore): True
@@ -1341,6 +1373,7 @@ fn GlobalCall lx, env, qk, args, span, cspan, t:
     match lx.g.ctors[qk]:
         ? c: CtorApp lx, env, c, args, span
         nil: match lx.g.vals[qk]:
+            ? v if HasKey lx.valued, qk: WidgetBlueprintValue lx, env, qk, args, t
             ? v if (IsWidgetFn v) and not (IsValueWidget lx, qk): VlOwned (Refusal (WidgetValueWords qk)), t
             ? v:
                 if v.sort == "method": MethodCall lx, env, v, args, span, t
