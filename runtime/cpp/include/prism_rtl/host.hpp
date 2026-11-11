@@ -823,6 +823,12 @@ struct Placed : Node {
         auto a = TRY(A::decode_first(element, v));
         return sink(a, cx);
     }
+    /// The World's place after its level's update event fired: the level at the read
+    /// point, sent again (the diff decides whether it moved).
+    Done patch(Cx& cx) override {
+        if (!entry) cx.changed(at, level_pod(level.sample(cx), cx));
+        return {};
+    }
     Done leave(Cx& cx) override {
         if (handle) {
             level.updates->unsubscribe(*std::exchange(handle, std::nullopt));
@@ -860,7 +866,9 @@ Blueprint<E, A> described_blueprint(const Described<E>& d) {
                 first = std::move(a);
             }
             node->handle = d.level.updates->subscribe([weak](const Unit&, Cx& cx) -> Done {
-                if (auto n = weak.lock()) cx.changed(n->at, level_pod(n->level.sample(cx), cx));
+                // fired during propagation, where a read still gives the value before the
+                // tick: the node is marked, and its patch reads the level
+                if (auto n = weak.lock()) cx.dirty(n);
                 return {};
             });
             for (const auto& [field, firings] : d.requests) {
