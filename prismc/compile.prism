@@ -126,29 +126,22 @@ fn CompileProgram job:
                 let model = Lower.Program.LowerProgram pp.srcs, pp.trees, pp.shown, report.typed, job.name
                 let files = if job.target == "cpp": Emit.Cpp.Program.EmitCpp model, job.runtime, read.scripts else: Emit.Rust.Items.EmitCrate model, job.runtime, read.scripts
                 let refused = Fold files, [[]], \|acc, ((path, text))| Fold (Refusals text), acc, \|a, r| AddText a, "{path}: {r}"
-                let bugs = Fold files, [[]], \|acc, ((path, text))| Fold (Bugs text), acc, \|a, r| AddText a, "{path}: {r}"
-                if (Len refused) == 0 and (Len bugs) == 0: Compiled(files=files, failed=False, report="")
-                else: Compiled(files=files, failed=True, report="{Concat (Each bugs, \|r| "error[internal]: {r}\n")}{Concat (Each refused, \|r| "error[not-lowered]: {r}\n")}{RefusedCount refused}{if (Len refused) > 0 and (Len bugs) > 0: "; " else: ""}{BugCount bugs}")
+                if (Len refused) == 0: Compiled(files=files, failed=False, report="")
+                else: Compiled(files=files, failed=True, report="{Concat (Each refused, \|r| "error[{RefusalClass r}]: {r}\n")}{Len refused} construct{if (Len refused) == 1: "" else: "s"} the back end does not lower (the crate is written, with a `compile_error!` at each)")
 
-RefusedCount: fn [Text] -> Text
-fn RefusedCount refused = if (Len refused) == 0: "" else: "{Len refused} construct{if (Len refused) == 1: "" else: "s"} the back end does not lower (the crate is written, with a `compile_error!` at each)"
-
-BugCount: fn [Text] -> Text
-fn BugCount bugs = if (Len bugs) == 0: "" else: "{Len bugs} internal error{if (Len bugs) == 1: "" else: "s"} of prismc (a guard no checked program should reach; the crate is written, with a `compile_error!` at each)"
+# A refusal's class in the report: `internal` for a guard no checked program reaches (the
+# message, after its file, begins "a prismc bug: ", `Lower.Expr.InternalBug`), else
+# `not-lowered`.
+RefusalClass: fn Text -> Text
+fn RefusalClass r = if (Len (SplitOn r, ": a prismc bug: ")) > 1: "internal" else: "not-lowered"
 
 # What lowering refused, as the emitted text marks it (`Lower.Refusal`, whose words these
 # are): each distinct message once.
 Refusals: fn Text -> [Text]
-fn Refusals text = MarkedWords text, "compile_error!(\"prismc does not lower ", ""
-
-# What lowering found of its own mistakes (`Lower.Expr.Bug`), each distinct message once.
-Bugs: fn Text -> [Text]
-fn Bugs text = MarkedWords text, "compile_error!(\"a prismc bug: ", "a prismc bug: "
-
-MarkedWords: fn Text, Text, Text -> [Text]
-fn MarkedWords text, marker, before:
+fn Refusals text:
+    let marker = "compile_error!(\"prismc does not lower "
     let parts = SplitOn text, marker
-    Fold (Drop parts, 1), [[]], \|acc, part| AddText acc, "{before}{Or (SplitOn part, "\")")[0], part}"
+    Fold (Drop parts, 1), [[]], \|acc, part| AddText acc, (Or (SplitOn part, "\")")[0], part)
 
 # A tree without its `test` declarations: the checker reads a test's blueprint by its
 # root's signature, which a `@name:` block has none of, so tests are checked by running

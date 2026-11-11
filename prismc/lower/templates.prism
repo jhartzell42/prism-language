@@ -87,7 +87,7 @@ fn TemplatePartDos lx, env, part = match part:
                 nil: Append (Each args, \|a| Argument lx, env, a.value), body
         let call = match ?callee:
             ? c: XCall c, passed
-            nil: Bug "a template call of `{SNameKey n}`, which names no function"
+            nil: InternalBug "a template call of `{SNameKey n}`, which names no function"
         [[DoExpr (XCall (HelperRef "place"), [[(XRefMut (XVar "out")), (XRef call), XNone]])]]
 
 # A template call's arguments in place order (pick TK, as the checker reads them): the
@@ -102,7 +102,7 @@ fn TemplateArgs lx, env, qk, args, body:
         if (Len body) > 0 and j + 1 == arity: Or body[0], (XUnit)
         else: match ?AttrAt clauses, j, args:
             ? a: Argument lx, env, a.value
-            nil: Bug "a template call that fills no argument at place {j}"
+            nil: InternalBug "a template call that fills no argument at place {j}"
 
 ?AttrAt: fn [FnClause], Nat, [Arg] -> ?Arg
 fn ?AttrAt clauses, j, args:
@@ -369,7 +369,7 @@ fn PlaceOf lx, env, e = match e.kind:
             otherwise: HelperRef "at_mut"
         XDeref (XCall f, [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k)]])
     EGroup x: PlaceOf lx, env, x
-    otherwise: Bug "a reference path this back end does not lower"
+    otherwise: InternalBug "a reference path this back end does not lower"
 
 # A reference path's type: the checker's where it recorded one, else from the path's own
 # parts (an index place's element, a field place's declared type).

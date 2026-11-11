@@ -129,7 +129,7 @@ fn CppExpr cp, x = match x:
     XFormatStr parts: CppFormat cp, parts, "::prism_rtl::str"
     XIsCase y, [[]]: "false"
     XIsCase y, cs: "({Join (Each cs, \|c| CaseTest cp, c, (CppTightPlace cp, y)), " || "})"
-    XRefusal what: "compile_error!(\"{RefusalWords (Escape what)}\")"
+    XRefusal what: "compile_error!(\"{loweringRefusal}{Escape what}\")"
     XUnreachable: "throw ::prism_rtl::Panic(\"entered unreachable code\")"
     XCall f, args: CppCall cp, f, args
     XCallAt f, tys, args: "{FreeCallPath cp, f}<{CppTypes cp, tys}>({CppArgs cp, args})"

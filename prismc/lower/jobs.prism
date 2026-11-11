@@ -288,8 +288,8 @@ fn StmtJob lx, outer, env, s, rest, Cont = match s.kind:
         EFor ?binders, source, body: match ?RefBinder ?binders:
             ? ignore: Refusal "a cycle-point `while` in a `for &` of an `update` block, whose references a job cannot keep (gap LP)"
             nil: ForJob lx, outer, env, ?binders, source, body, s.span, rest, Cont
-        otherwise: Bug "a cycle-point `while` in {KindWords x.kind} (gap LP)"
-    otherwise: Bug "a cycle-point `while` in this statement (gap LP)"
+        otherwise: InternalBug "a cycle-point `while` in {KindWords x.kind} (gap LP)"
+    otherwise: InternalBug "a cycle-point `while` in this statement (gap LP)"
 
 Prepend: fn [Do], Ex -> Ex
 fn Prepend dos, (XBlock more, last) = XBlock (Append dos, more), last
@@ -567,7 +567,7 @@ fn FrameJob lx, env2, c, ?qk, base, args, call:
             ? f: (((StartCall f, vals), (HelperRef "call_value")))
             nil: match ?PreludeJobCall lx, env2, call:
                 ? pj: ((pj, (HelperRef "call_value")))
-                nil: (((Bug "a call this frame cannot enter"), (HelperRef "call_then")))
+                nil: (((InternalBug "a call this frame cannot enter"), (HelperRef "call_then")))
 
 # A frame's call lifted over `?` or `~`, from its first peeled operand (`LiftOperands`, the
 # plain form): each matched in turn, its value bound where the operand stands; with all

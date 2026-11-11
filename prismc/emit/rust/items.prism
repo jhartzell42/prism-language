@@ -58,7 +58,7 @@ fn RustItem it = match it:
     ItJob j: RustJob j
     ItNode n: RustNode n
     ItNote t: "// {t}\n"
-    ItRefused t: "compile_error!(\"{RefusalWords (Escape t)}\");\n"
+    ItRefused t: "compile_error!(\"{loweringRefusal}{Escape t}\");\n"
 
 RustTrait: unbounded fn TraitDef -> Text
 fn RustTrait t:

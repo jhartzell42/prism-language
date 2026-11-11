@@ -142,7 +142,7 @@ fn Refusal what = XRefusal what
 # `?` of a value, which must be a temporary: the C++ printer's TRY moves out of its operand,
 # so `?` of a place (a local, a field, a part of one) is refused, naming the place.
 TryOf: fn Ex -> Ex
-fn TryOf x = if IsNamedPlace x: Bug "`?` of the place `{PlaceStem x}`, which C++'s TRY would move out of (only a temporary may be tried)" else: XTry x
+fn TryOf x = if IsNamedPlace x: InternalBug "`?` of the place `{PlaceStem x}`, which C++'s TRY would move out of (only a temporary may be tried)" else: XTry x
 
 IsNamedPlace: fn Ex -> Bool
 fn IsNamedPlace x = match x:
@@ -157,26 +157,22 @@ fn IsNamedPlace x = match x:
 
 let loweringRefusal = "prismc does not lower "
 
-# A guard no checked program reaches (claude/refusals.md, class G) is prismc's own mistake,
-# reported as an internal error: the same `compile_error!`, its words opening with
-# `bugWords`, which `CompileProgram` reports apart from what is not lowered.
-let bugWords = "a prismc bug: "
-
-Bug: fn Text -> Ex
-fn Bug what = XRefusal "{bugWords}{what}"
-
-BugDo: fn Text -> Do
-fn BugDo what = DoExpr (Bug what)
-
-BugType: fn Text -> OutTy
-fn BugType what = OutRefused "{bugWords}{what}"
-
-# The words of a `compile_error!`: a bug's as they are, a refusal's after `loweringRefusal`.
-RefusalWords: fn Text -> Text
-fn RefusalWords what = if HasPrefix what, bugWords: what else: "{loweringRefusal}{what}"
-
 RefusalDo: fn Text -> Do
 fn RefusalDo what = DoExpr (Refusal what)
+
+# A guard no checked program reaches: an internal error, "a prismc bug: ..", marked in the
+# emitted files as a refusal is and reported by `CompileProgram` as `error[internal]`.
+let internalBug = "a prismc bug: "
+
+InternalBug: fn Text -> Ex
+fn InternalBug what = XRefusal "{internalBug}{what}"
+
+InternalBugDo: fn Text -> Do
+fn InternalBugDo what = DoExpr (InternalBug what)
+
+# The same for a type the lowering cannot spell.
+InternalBugType: fn Text -> OutTy
+fn InternalBugType what = OutRefused "{internalBug}{what}"
 
 ValueOf: unbounded fn Lx, Env, Expr -> Vl
 fn ValueOf lx, env, e = match env.spans[PlaceKey lx, e.span]:
@@ -509,7 +505,7 @@ fn EventValueOf lx, env, e:
                     let body = Own (ValueByKind lx, env2, e)
                     let mapped = XMethod src, "map", [[(XClosure True, [[(PaTyped (PaBind "y_ev"), (OutRef it))]], body)]]
                     VlOwned (XBlock (Push dos, (DoLet (PaBind "src_ev"), src)), (XMethod (XVar "src_ev"), "map", [[(XClosure True, [[(PaTyped (PaBind "y_ev"), (OutRef it))]], body)]])), et
-                otherwise: VlOwned (Bug "an event value of several events"), et
+                otherwise: VlOwned (InternalBug "an event value of several events"), et
 
 # An expression the checker lifted over a `?` or `~` at the plain layer is its plain value
 # under a `match` of each operand it peeled; any other is lowered by its kind.
@@ -682,10 +678,10 @@ fn PureBlueprint lx, env, x, t:
             LyDyn: match ?DynamicAnswer lx, x:
                 nil: match x.kind:
                     EFreeSigil "$", inner: PlainBlueprint lx, env, inner, variant, t
-                    otherwise: VlOwned (Bug "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer of no known form"), t
+                    otherwise: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer of no known form"), t
                 ? d: DynamicBlueprint lx, env, x, d, variant, t
             otherwise: PlainBlueprint lx, env, x, variant, t
-        otherwise: VlOwned (Bug "a supplier's answer under a tag the arm does not name"), t
+        otherwise: VlOwned (InternalBug "a supplier's answer under a tag the arm does not name"), t
 
 # `@ ((x, !e))` under a bundle tag's arm (Type System ch. 2, "Bundles"; pick HO): a tuple
 # whose parts are plain values and one event. The plain parts are the place's first value,
@@ -738,7 +734,7 @@ fn DynamicBlueprint lx, env, x, d, variant, t = match ((env.names["#dyn{DynKey x
 ElementBlueprint: unbounded fn Lx, Env, [Arg], OutTy -> Vl
 fn ElementBlueprint lx, env, args, t = match args[0]:
     ? a: VlOwned (XCall (RefRuntime "prism_rtl::element_blueprint::<crate::Elem, crate::Answer>"), [[Ref (ValueOf lx, env, a.value)]]), t
-    nil: VlOwned (Bug "`@Element` without its element"), t
+    nil: VlOwned (InternalBug "`@Element` without its element"), t
 
 # `xs as [a]+?`: the collection when it has an element, else `nil`.
 CheckedCastValue: unbounded fn Lx, Env, Expr, OutTy -> Vl
@@ -779,9 +775,9 @@ fn NameValue lx, env, n, span:
         ? (BnDyn x, ignore, dt): VlOwned x, dt
         ? (BnEv ignore, et): match env.names["{nkey}#port"]:
             ? (BnLocal pf, ignore, ignore): VlOwned (XCall (RefRuntime "prism_rtl::Event::of"), [[XRef pf]]), (OutEvent (OutTyOf lx, (Peel (Peel (TypeAt lx, span)))))
-            otherwise: VlOwned (Bug "an event read as a value"), et
+            otherwise: VlOwned (InternalBug "an event read as a value"), et
         ? (BnParts ignore): VlOwned (Refusal "a tuple pattern's binding as a value"), t
-        ? (BnWidget ignore, ignore, ignore, ignore): VlOwned (Bug "a widget parameter read as a plain value"), t
+        ? (BnWidget ignore, ignore, ignore, ignore): VlOwned (InternalBug "a widget parameter read as a plain value"), t
         ? (BnLocalFn cs): LocalFnValue lx, env, cs, t
         nil:
             let ((?qk, why)) = ResolveValue lx.g, lx.home, n
@@ -792,7 +788,7 @@ fn NameValue lx, env, n, span:
                 ? qk: match lx.g.tags[qk]:
                     ? tg if tg.kind != "Prelude.Fault" and why == "tag": TagValue lx, env, tg, [[]]
                     otherwise: GlobalValue lx, qk, span, t
-                nil: VlOwned (Bug "the name {nkey}, which nothing declares"), t
+                nil: VlOwned (InternalBug "the name {nkey}, which nothing declares"), t
 
 # A global named, not called: a constructor with no fields, a top-level `let` (its
 # getter), a fault kind, or a function as a value.
@@ -831,7 +827,7 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
                         let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "a")), (OutRef (Or pts[i], OutUnit))
                         VlOwned (XCall (RefRuntime "std::Rc::new"), [[(XClosure False, pas, (XCall (ValueRef lx, qk), (Each names, \|nm| XVar nm)))]]), t
                     otherwise: VlOwned (XCall (RefRuntime "std::Rc::new"), [[XPath (ValueRef lx, qk)]]), t
-            nil: VlOwned (Bug "the global {qk}"), t
+            nil: VlOwned (InternalBug "the global {qk}"), t
 
 # A widget function: its result a blueprint.
 IsWidgetFn: fn ValInfo -> Bool
@@ -883,7 +879,7 @@ fn Application lx, env, callee, args, span:
                             otherwise: if why == "answer": AnswerValue lx, env, qk, args, t
                             else: if qk == "Prelude.@Element": ElementBlueprint lx, env, args, t
                             else: GlobalCall lx, env, qk, args, span, callee.span, t
-                        nil: VlOwned (Bug "a call of {nkey}, which nothing declares"), t
+                        nil: VlOwned (InternalBug "a call of {nkey}, which nothing declares"), t
         EGroup x: Application lx, env, x, args, span
         otherwise:
             let f = ValueOf lx, env, callee
@@ -1046,7 +1042,7 @@ fn TagValue lx, env, tg, args:
 AnswerValue: unbounded fn Lx, Env, Text, [Arg], OutTy -> Vl
 fn AnswerValue lx, env, constructor, args, t = match ((lx.g.tags[AnswerTag constructor], args[0])):
     ((? tg, ? a)): VlOwned (XCtor (AnswerVariant tg), [[(OwnAs (AnswerTy lx, tg), (ValueOf lx, env, a.value))]]), t
-    otherwise: VlOwned (Bug "the answer constructor {constructor} of no tag or with no argument"), t
+    otherwise: VlOwned (InternalBug "the answer constructor {constructor} of no tag or with no argument"), t
 
 # An element applied as a plain value (gap LE; Type System ch. 2, "Names and sigils":
 # `Ui.Button(..)` before anything binds it is a plain value): a description, plain data
@@ -1130,7 +1126,7 @@ fn ElementValue lx, env, tg, args:
         let pods = XMethod (XVar (Local i)), "map", [[(XClosure True, [[(PaTyped (PaBind "v"), (OutRef (OutTyOf lx, (Peel fty))))]], (XMethod (XVar "v"), "to_pod", [[]]))]]
         XMethod acc, "request", [[fieldEx, pods]]
     let value = XCall (RefRuntime "prism_rtl::described_element"), [[requested]]
-    if (Len missing) > 0: VlOwned (Bug "an element value ({tg.name}) without its field `{Or (Each missing, \|i| NameAt i)[0], ""}`"), t
+    if (Len missing) > 0: VlOwned (InternalBug "an element value ({tg.name}) without its field `{Or (Each missing, \|i| NameAt i)[0], ""}`"), t
     else: VlOwned (XBlock lets, value), t
 
 # A call of a global: a constructor, a trait method, a prelude function, a program's own.
@@ -1149,7 +1145,7 @@ fn GlobalCall lx, env, qk, args, span, cspan, t:
                         ? tys: XCallAt (ValueRef lx, qk), tys, callArgs
                         nil: XCall (ValueRef lx, qk), callArgs
                     AsInstance call, (ResultRepr lx, v), t
-            nil: VlOwned (Bug "a call of {qk}"), t
+            nil: VlOwned (InternalBug "a call of {qk}"), t
 
 # A generic function's type arguments at a call, in its type parameters' order, when one of
 # them is in no parameter's type (`?Nothing: fn Nat -> ?a`): read off the callee's type at
@@ -1177,8 +1173,8 @@ TypeArgOf: unbounded fn Lx, Text, ?(Text ==> Ty), Text -> OutTy
 fn TypeArgOf lx, qk, ?m, q = match ?m:
     ? m: match m[q]:
         ? x: OutTyOf lx, x
-        nil: BugType "the type `{q}` of a call of `{BareName qk}`, which its type at the call does not give"
-    nil: BugType "the type arguments of a call of `{BareName qk}`, whose type at the call does not match its signature"
+        nil: InternalBugType "the type `{q}` of a call of `{BareName qk}`, which its type at the call does not give"
+    nil: InternalBugType "the type arguments of a call of `{BareName qk}`, whose type at the call does not match its signature"
 
 # One-way matching of a scheme's type against its type at a use: each quantified variable's
 # type there.
@@ -1305,7 +1301,7 @@ fn CtorApp lx, env, c, args, span:
                 # whose target cannot infer the type arguments spells (C++)
                 if (Len owner.params) > 0 and not isUnitType and not isNewtype: VlOwned (XTyped made, (BuiltTy t)), t
                 else: VlOwned made, t
-            otherwise: VlOwned (Bug "a constructor of {c.owner}"), t
+            otherwise: VlOwned (InternalBug "a constructor of {c.owner}"), t
 
 # The type a constructor builds: its own, or the result of the function it is used as.
 BuiltTy: fn OutTy -> OutTy
@@ -1370,7 +1366,7 @@ fn MethodCall lx, env, v, args, span, t:
         # which the checker's impl note at the call says
         if IsResultOnly lx, v.qk, tr.param: match ?SelfAt lx, span, cls:
             ? self: VlOwned (XCallSelf (RefIn lx, tr.home, (TraitName cls)), mname, self, (ArgsFor lx, env, v, args)), t
-            nil: VlOwned (Bug "a call of `{m}` at a type the checker did not record"), t
+            nil: VlOwned (InternalBug "a call of `{m}` at a type the checker did not record"), t
         else:
             let path = RefIn lx, tr.home, "{TraitName cls}::{mname}"
             VlOwned (XCall path, (ArgsFor lx, env, v, args)), t
@@ -1432,7 +1428,7 @@ fn OpValue lx, op, a, b, span, t:
 OpOf: fn Text, Ex, Ex -> Ex
 fn OpOf op, a, b = match ?BinOpOf op:
     ? o: XBin o, a, b
-    nil: Bug "the operator `{op}`"
+    nil: InternalBug "the operator `{op}`"
 
 NumMethod: fn Text -> Text
 fn NumMethod "+" = "add"
@@ -1595,7 +1591,7 @@ fn ?FieldOwner lx, rty = match rty:
 FieldInfo: unbounded fn Lx, Ty, Text -> ((OutTy, Bool, Text))
 fn FieldInfo lx, rty, name = match rty:
     # the runtimes' `Error`, a builtin record: `kind` (a `Fault`) and `message`, both plain
-    TyCon "Prelude.Error", ignore: (((BugType "a field {name} of an Error"), False, (FieldSpell "Prelude", name, tText)))
+    TyCon "Prelude.Error", ignore: (((InternalBugType "a field {name} of an Error"), False, (FieldSpell "Prelude", name, tText)))
     TyCon n, args: match lx.g.ctors[n]:
         ? c:
             let ?fix = Fold (Range0 (Len c.fields)), nil, \|?found, i| if (Or c.fields[i], "") == name: ? i else: ?found
@@ -1604,9 +1600,9 @@ fn FieldInfo lx, rty, name = match rty:
                     let ft = Or c.args[i], TyErr
                     let inst = Instantiated ft, c.params, args
                     (((OutTyOf lx, inst), (RcField lx, c.name, i), (FieldSpell (OwnerOf c.owner), (Or c.fields[i], name), ft)))
-                nil: (((BugType "a field {name}"), False, (FieldByName lx, name)))
-        nil: (((BugType "a field {name}"), False, (FieldByName lx, name)))
-    otherwise: (((BugType "a field {name} of a non-record"), False, (FieldByName lx, name)))
+                nil: (((InternalBugType "a field {name}"), False, (FieldByName lx, name)))
+        nil: (((InternalBugType "a field {name}"), False, (FieldByName lx, name)))
+    otherwise: (((InternalBugType "a field {name} of a non-record"), False, (FieldByName lx, name)))
 
 # A field's spelling where lowering has no record type for the place it is read from (an
 # update's `&_[k].f`, a pattern's binder): the one every record with a field of that name
@@ -1908,7 +1904,7 @@ fn ClosureParams lx, env, ps, pts, typed = Fold (Range0 (Len ps)), (([[]], env))
     ? p:
         let po = RustPat lx, p, (BinderTyOfPattern lx, p), ByRef, "a{p.span.start}"
         let en2 = BindAll en, po.binds
-        let pa = if typed: PaTyped po.pa, (OutRef (Or pts[i], (BugType "a parameter"))) else: po.pa
+        let pa = if typed: PaTyped po.pa, (OutRef (Or pts[i], (InternalBugType "a parameter"))) else: po.pa
         (((Push acc, pa), en2))
     nil: ((acc, en))
 
@@ -2063,7 +2059,7 @@ fn BlockStmt lx, env, s = match s.kind:
     SSignature ignore: (([[]], env))
     # a local function: inlined where it is called, a closure where it is a value
     SFn f: (([[]], (Bind env, (DefNameText f.name), (WithClause env, (DefNameText f.name), f))))
-    otherwise: (([[BugDo "a statement this back end does not lower yet"]], env))
+    otherwise: (([[InternalBugDo "a statement this back end does not lower yet"]], env))
 
 # A generalized local `let` (pick LG): its value lowered once per distinct instantiation
 # its uses have, each a binding of its own (`twin_fn_0`, `twin_fn_1`; one alone keeps the

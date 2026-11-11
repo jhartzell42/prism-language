@@ -402,7 +402,7 @@ fn DistinctLine wx, menv, args, e, ?bound:
     match args[0]:
         nil:
             let wx2 = update wx:
-                &_.build <= Push &_.build, (RefusalDo "an `@Distinct` without its dynamic")
+                &_.build <= Push &_.build, (InternalBugDo "an `@Distinct` without its dynamic")
             ((wx2, WrUnit))
         ? a:
             # the type of the values: its argument's, one layer peeled
@@ -443,7 +443,7 @@ fn PerKeyLine wx, menv, args, ?bound:
     match args[0]:
         nil:
             let wx2 = update wx:
-                &_.build <= Push &_.build, (RefusalDo "an `@PerKey` without its dynamic")
+                &_.build <= Push &_.build, (InternalBugDo "an `@PerKey` without its dynamic")
             ((wx2, WrUnit))
         ? a:
             # the map's key and value types: its argument's, one layer peeled
@@ -489,7 +489,7 @@ fn RunLine wx, benv, args, e, ?target:
                 let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
                 XPath (StartRef lx, (Or ?q, ""))
             otherwise: Refusal "an `@Run` of a function value that is not a name"
-        nil: Refusal "an `@Run` without its function"
+        nil: InternalBug "an `@Run` without its function"
     let x = match args[1]:
         ? a: Own (ValueOf lx, benv, a.value)
         nil: XUnit
@@ -543,7 +543,7 @@ fn MachineLine wx, benv, menv, args, e, ?target:
             (((Connect wx4, r, (SkMachine "{f}_state", sp, out)), (WrEv (EvRefOf wx4, out))))
         otherwise:
             let wx2 = update wx1:
-                &_.build <= Push &_.build, (RefusalDo "an `@Machine` without its step, state or event")
+                &_.build <= Push &_.build, (InternalBugDo "an `@Machine` without its step, state or event")
             ((wx2, WrUnit))
 
 # `@Element x` in a block (gap LE; Semantics ch. 4, "Elements": `!click <- @Element
@@ -657,7 +657,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                     &_.result <= WrUnit
                 if (Len unmatched) > 0:
                     let wx2 = update wx:
-                        &_.build <= Push &_.build, (RefusalDo "the generic widget {BareName qk} at a call whose types its parameters' do not match")
+                        &_.build <= Push &_.build, (InternalBugDo "the generic widget {BareName qk} at a call whose types its parameters' do not match")
                     ((wx2, WrUnit))
                 else:
                     let done = BlockInto inner, be1, me1, body

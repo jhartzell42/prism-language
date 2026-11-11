@@ -224,7 +224,7 @@ fn SplitBlockInto wx, benv, menv, b, k:
             let ((wx3, res)) = BuildingChoiceLine wx2, me1, kept, [[? p]], (OutOf (TypeAt lx, e.span)), [[nil]], [[rest]], outTy, layer
             SetResult wx3, res
         otherwise: update wx1:
-            &_.build <= Push &_.build, (RefusalDo "a block split at a line that binds nothing")
+            &_.build <= Push &_.build, (InternalBugDo "a block split at a line that binds nothing")
 
 # A name's value at the build, `{name}#init`, bound before any line so that a line above
 # reads it (`InitEnv`), in the build's order: a hold's, the local `{f}_init` its line
@@ -269,7 +269,7 @@ fn BuildInOrder wx, stmts, order, start, ends:
     let wx2 = update wx:
         &_.lets <= Append lets, (Drop wx.lets, last)
     Fold cyclic, wx2, \|w, comp| update w:
-        &_.build <= Push &_.build, (RefusalDo "lines that read each other at the build ({Join (Fold comp, [[]], \|acc, i| Append acc, (Check.Blocks.GroupDefs (Or stmts[i], dummyStmtL))), ", "}): a cycle among values")
+        &_.build <= Push &_.build, (InternalBugDo "lines that read each other at the build ({Join (Fold comp, [[]], \|acc, i| Append acc, (Check.Blocks.GroupDefs (Or stmts[i], dummyStmtL))), ", "}): a cycle among values")
 
 # A block's lines in strongly connected components of what each reads at the build, each
 # after the ones it reads, ties in page order. An event has no value at the build (its port
@@ -684,7 +684,7 @@ fn BindPlainResult wx, menv, p, ex, t = match p.kind:
 
 RefusePlainResult: fn Wx, Pattern -> Wx
 fn RefusePlainResult wx, p = update wx:
-    &_.build <= Push &_.build, (RefusalDo "a widget's plain result bound by this pattern: a name, or a tuple of names, binds one")
+    &_.build <= Push &_.build, (InternalBugDo "a widget's plain result bound by a pattern that left a name without its field or its local")
 
 # A result as the binding a name of it has.
 BundleBn: fn Wres -> Bn
@@ -862,7 +862,7 @@ fn LetLine wx, benv, menv, p, e:
                             match menv.names[bkey]:
                                 ? (BnLocal rk, ignore, tk): WidgetLetField w, (PlaceStem rk), tk, (Own (ValueOf lxk, benv, e)), "`{nkey}` at its instantiation {k}"
                                 otherwise: update w:
-                                    &_.build <= Push &_.build, (RefusalDo "`{nkey}` at its instantiation {k}, which has no binding")
+                                    &_.build <= Push &_.build, (InternalBugDo "`{nkey}` at its instantiation {k}, which has no binding")
                         ((wxn, benv))
                     otherwise: ((wx, benv))
                 nil:
@@ -935,5 +935,5 @@ fn BuildLine wx, benv, menv, e, ?bound:
             TyAt ignore, ignore: WidgetLine wx, benv, menv, e, ?bound
             otherwise:
                 let wx2 = update wx:
-                    &_.build <= Push &_.build, (RefusalDo "a building line this back end does not lower yet")
+                    &_.build <= Push &_.build, (InternalBugDo "a building line that is no element, blueprint or builder")
                 ((wx2, WrUnit))
