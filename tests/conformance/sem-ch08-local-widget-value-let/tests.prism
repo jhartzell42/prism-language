@@ -1,0 +1,9 @@
+# The tests of sem-ch08-local-widget-value-let.
+emit Ui.*
+use App.*
+
+test picked, @Page True:
+    build
+
+test not_picked, @Page False:
+    build
