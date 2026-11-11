@@ -93,3 +93,10 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   can. I was leaning too heavily on Haskell semantics where you have to do `when check $
   do`". With ruling TC, the places after an else-less building `if` count from what was
   built.
+
+## 11 November 2026
+
+- **LS** A local function that calls itself needs a signature line, as a top-level
+  function does. Jimmy: "Self calling local function needs a signature why not?" Refused:
+  proving that an unsigned one shrinks at the types it is used at. An unsigned local
+  function that does not call itself is generalized as before.
