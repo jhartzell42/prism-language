@@ -303,12 +303,22 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
     let roots = Fold calls, (if whole: [[e]] else: [[]]), \|acc, c| match c.kind:
         ECall ignore, args, ignore, ignore: Fold args, acc, \|acc2, a| Append acc2, (ExprsIn a.value)
         otherwise: acc
-    let names = Fold roots, [[]], \|acc3, y| match y.kind:
+    let names0 = Fold roots, [[]], \|acc3, y| match y.kind:
             EName n: if HasKey menv.names, "#whole{DynKey y}": acc3 else: match menv.names[SNameKey n]:
                 ? (BnHold ignore, ignore): if (LayerOf (TypeAt lx, y.span)) == LyDyn and not (HasText (Each acc3, \|z| DynKey z), (DynKey y)): Push acc3, y else: acc3
                 ? (BnDyn ignore, ignore, ignore): if (LayerOf (TypeAt lx, y.span)) == LyDyn and not (HasText (Each acc3, \|z| DynKey z), (DynKey y)): Push acc3, y else: acc3
                 otherwise: acc3
             otherwise: acc3
+    # `@Flatten`'s outer written in place (`@Flatten ($Pick $useB, $a, $b)`): the expression
+    # itself as a live dynamic of dynamics, after the names it passes whole (`HeldFlatten`)
+    let outers = Fold calls, [[]], \|acc, c| match c.kind:
+        ECall callee, args, ignore, ignore: if (CalleeKey lx, callee) != "Prelude.@Flatten": acc else: match args[0]:
+            ? a: match a.value.kind:
+                EName ignore: acc
+                otherwise: if (LayerOf (TypeAt lx, a.value.span)) == LyDyn and not (HasKey menv.names, "#whole{DynKey a.value}"): Push acc, a.value else: acc
+            nil: acc
+        otherwise: acc
+    let names = Append names0, outers
     if (Len names) == 0: ((wx, benv, menv))
     else:
         let owner = "whole_owner"
@@ -317,7 +327,10 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
             &_.lets <= Push &_.lets, (DoLet (PaBind owner), (XCall (RefRuntime "prism_rtl::Link::<{wx.node}>::new"), [[]]))
             &_.build <= Push &_.build, (DoExpr (XMethod (XVar owner), "link", [[(XRef (XVar "node"))]]))
         Fold names, ((wx1, benv, menv)), \|((w, be, me)), y|
-            let ((name, w1)) = FreshName w, "whole_{(Snake (SrcText lx, lx.file, y.span))}"
+            let stem = match y.kind:
+                EName ignore: "whole_{(Snake (SrcText lx, lx.file, y.span))}"
+                otherwise: "whole_outer"
+            let ((name, w1)) = FreshName w, stem
             let port = "{name}_port"
             let dyn = "{name}_dyn"
             let ((ex, reads)) = DynamicExpr w1, me, y

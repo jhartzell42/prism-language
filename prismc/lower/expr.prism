@@ -1951,7 +1951,7 @@ fn ClosureParams lx, env, ps, pts, typed = Fold (Range0 (Len ps)), (([[]], env))
     ? p:
         let po = RustPat lx, p, (BinderTyOfPattern lx, p), ByRef, "a{p.span.start}"
         let en2 = BindAll en, po.binds
-        let pa = if typed: PaTyped po.pa, (OutRef (Or pts[i], (InternalBugType "a parameter"))) else: po.pa
+        let pa = if typed: PaTyped po.pa, (OutRef (Or pts[i], (OutRefused "a parameter"))) else: po.pa
         (((Push acc, pa), en2))
     nil: ((acc, en))
 
