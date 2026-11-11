@@ -2552,10 +2552,20 @@ ClosureParams: unbounded fn Lx, Env, [Pattern], [OutTy], Bool -> (([Pa], Env))
 fn ClosureParams lx, env, ps, pts, typed = Fold (Range0 (Len ps)), (([[]], env)), \|((acc, en)), i| match ps[i]:
     ? p:
         let po = RustPat lx, p, (BinderTyOfPattern lx, p), ByRef, "a{p.span.start}"
-        let en2 = BindAll en, po.binds
+        let en2 = BindAll en, (Each po.binds, HeldFunction)
         let pa = if typed: PaTyped po.pa, (OutRef (Or pts[i], (OutRefused "a parameter"))) else: po.pa
         (((Push acc, pa), en2))
     nil: ((acc, en))
+
+# A closure parameter's binder of a function type: a function value is held in an `Rc`
+# wherever it is a value, so the binder is a `&Rc<dyn Fn>`, the place behind it the `Rc`
+# itself: cloned as a value, and borrowed through where a `&dyn Fn` is taken
+# (`ClosureRef`, which takes a `ByRef` function for a named function's parameter, a
+# `&dyn Fn` already).
+HeldFunction: fn ((Text, Bn)) -> ((Text, Bn))
+fn HeldFunction ((n, b)) = match b:
+    BnLocal x, ByRef, (OutFn pts, r): ((n, (BnLocal (XDeref x), Owned, (OutFn pts, r))))
+    otherwise: ((n, b))
 
 BindAll: fn Env, [((Text, Bn))] -> Env
 fn BindAll env, bs = Fold bs, env, \|en, ((n, b))| Bind en, n, b

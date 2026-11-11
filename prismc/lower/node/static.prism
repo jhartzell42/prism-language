@@ -1348,7 +1348,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                     let pty = SubstTy lxp, (Or ptys[i], TyErr)
                     match args[i]:
                         nil: ((w, be, me))
-                        ? a: BindParam w, benv, menv, be, me, nkey, (LocalNameAt lxc, nkey, p.span), pty, a.value
+                        ? a: if nkey != "": BindParam w, benv, menv, be, me, nkey, (LocalNameAt lxc, nkey, p.span), pty, a.value else: BindParamPattern w, benv, menv, be, me, lxc, p, pty, a.value
                 let callSpan = match e.kind:
                     ECall c, ignore, ignore, ignore: c.span
                     otherwise: e.span
@@ -1504,20 +1504,7 @@ fn BindParam wx, cbenv, cmenv, be, me, nkey, spelled, pty, arg:
             ((wx, (Bind be, nkey, b), (Bind me, nkey, b)))
         LyEv:
             let ((r, wx2)) = EventRef wx, cmenv, arg
-            let b = BnEv r, t
-            # its value form, as a bound event's (`PreBindName`): a port the event fires,
-            # made before the node, which a supplier's closure or a function taking the
-            # event whole reads (`NameValue`)
-            let et = OutTyOf lx, (Peel (Peel pty))
-            let ((rs, wx3)) = FreshName wx2, "{spelled}_v"
-            let pf = "{rs}_port"
-            let pt = OutRc (OutPort et)
-            let wx4 = update (Connect wx3, r, (SkPort rs)):
-                &_.taken <= Push &_.taken, pf
-                &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind pf), pt), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]]))
-                &_.fields <= Push &_.fields, ((pf, pt, "`{nkey}` as a value: the port it fires"))
-                &_.moves <= Push &_.moves, ((pf, (XClone (XVar pf))))
-            ((wx4, (Bind (Bind be, nkey, b), "{nkey}#port", (BnLocal (XVar pf), Owned, pt)), (Bind (Bind me, nkey, b), "{nkey}#port", (BnLocal (XField XSelf, pf), Owned, pt))))
+            BindEventParam wx2, be, me, nkey, spelled, pty, r
         LyDyn:
             # the argument's expression where the widget reads it; for a row of the widget's
             # (a `for` in it), which reads the node through its parent, a getter of it too,
@@ -1552,3 +1539,141 @@ fn BindParam wx, cbenv, cmenv, be, me, nkey, spelled, pty, arg:
                 &_.inits <= Push &_.inits, ((rs, (XClone (XVar rs))))
             let ((be2, me2)) = BindPlain be, me, nkey, rs, t
             ((wx3, be2, me2))
+
+# An event parameter of an inlined widget bound to the caller's event (`BindParam`), with
+# its value form, as a bound event's (`PreBindName`): a port the event fires, made before
+# the node, which a supplier's closure or a function taking the event whole reads
+# (`NameValue`).
+BindEventParam: unbounded fn Wx, Env, Env, Text, Text, Ty, EvRef -> ((Wx, Env, Env))
+fn BindEventParam wx2, be, me, nkey, spelled, pty, r:
+    let lx = wx2.lx
+    let b = BnEv r, (OutTyOf lx, (Peel pty))
+    let et = OutTyOf lx, (Peel (Peel pty))
+    let ((rs, wx3)) = FreshName wx2, "{spelled}_v"
+    let pf = "{rs}_port"
+    let pt = OutRc (OutPort et)
+    let wx4 = update (Connect wx3, r, (SkPort rs)):
+        &_.taken <= Push &_.taken, pf
+        &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind pf), pt), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]]))
+        &_.fields <= Push &_.fields, ((pf, pt, "`{nkey}` as a value: the port it fires"))
+        &_.moves <= Push &_.moves, ((pf, (XClone (XVar pf))))
+    ((wx4, (Bind (Bind be, nkey, b), "{nkey}#port", (BnLocal (XVar pf), Owned, pt)), (Bind (Bind me, nkey, b), "{nkey}#port", (BnLocal (XField XSelf, pf), Owned, pt))))
+
+# A parameter of an inlined widget that is a pattern, not one name (Semantics ch. 8: a
+# widget's parameters are patterns, as a function's are; a widget of one clause takes
+# only a pattern that cannot fail). `ignore` binds nothing. A tuple over a bundle takes
+# the bundle apart (`BindBundleParam`). Any other pattern is over a plain value: the
+# argument is computed at the build and matched once there, each name the pattern binds
+# a field of the node (`BindPlainPatternParam`). A pattern that takes an event or a
+# dynamic out of a value that is no bundle (a record's `$` field) is refused.
+BindParamPattern: unbounded fn Wx, Env, Env, Env, Env, Lx, Pattern, Ty, Expr -> ((Wx, Env, Env))
+fn BindParamPattern wx, cbenv, cmenv, be, me, lxc, p, pty, arg = match p.kind:
+    PGroup q: BindParamPattern wx, cbenv, cmenv, be, me, lxc, q, pty, arg
+    PIgnore: ((wx, be, me))
+    otherwise:
+        let nkey = PlainBinder lxc, p
+        if nkey != "": BindParam wx, cbenv, cmenv, be, me, nkey, (LocalNameAt lxc, nkey, p.span), pty, arg
+        else: if IsBundle (Peel pty): BindBundleParam wx, cbenv, cmenv, be, me, lxc, p, (Peel pty), arg
+        else: if TimeWithin pty: (((update wx:
+            &_.build <= Push &_.build, (RefusalDo "a widget's parameter pattern (`{SrcText lxc, lxc.file, p.span}`) that takes an event or a dynamic out of a value that is no bundle")), be, me))
+        else: BindPlainPatternParam wx, cbenv, be, me, lxc, p, pty, arg
+
+# A parameter's pattern over a plain value: the argument a local of the build, matched
+# once there by the pattern, each name it binds moved into a field of the node, as a
+# widget's plain result bound by a pattern is (`BindPatternResult`).
+BindPlainPatternParam: unbounded fn Wx, Env, Env, Env, Lx, Pattern, Ty, Expr -> ((Wx, Env, Env))
+fn BindPlainPatternParam wx, cbenv, be, me, lxc, p, pty, arg = BindPlainPatternValue wx, be, me, lxc, p, pty, (Own (ValueOf wx.lx, cbenv, arg))
+
+# The same over the value given, an expression of the build.
+BindPlainPatternValue: unbounded fn Wx, Env, Env, Lx, Pattern, Ty, Ex -> ((Wx, Env, Env))
+fn BindPlainPatternValue wx, be, me, lxc, p, pty, value:
+    let lx = wx.lx
+    let t = OutTyOf lx, (Peel pty)
+    let ((tmp, wx1)) = FreshName wx, "argument"
+    let o = RustPat lxc, p, (Peel pty), ByRef, tmp
+    let names = BinderNames p
+    # each name the pattern binds: its key, its field, its type, its value out of the match
+    let ((wx2, bound)) = Fold o.binds, ((wx1, [[]])), \|((w, acc)), ((k, b))| match b:
+        BnLocal rs, mode, vt:
+            let span = Fold names, p.span, \|found, n| if (SNameKey n) == k: n.span else: found
+            let ((f, w2)) = FreshName w, (LocalNameAt lxc, k, span)
+            ((w2, (Push acc, ((k, f, vt, (Own (VlPlace rs, mode, vt)))))))
+        otherwise: ((w, acc))
+    let all = OutTuple (Each bound, \|((ignore, ignore, vt, ignore))| vt)
+    let arm = XArm(pat=o.pa, conds=o.conds, body=(XTuple (Each bound, \|((ignore, ignore, ignore, v))| v)))
+    let other = XArm(pat=PaWild, conds=[[]], body=(XUnreachable))
+    let matched = Own (ArmsValue (XRef (XVar tmp)), [[arm, other]], "'bound", all)
+    let wx3 = update wx2:
+        &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind tmp), t), value), (DoLet (PaTyped (PaTuple (Each bound, \|((ignore, f, ignore, ignore))| PaBind f)), all), matched)]]
+        &_.fields <= Append &_.fields, (Each bound, \|((k, f, vt, ignore))| ((f, vt, "`{k}`, a name of a widget's parameter pattern")))
+        &_.inits <= Append &_.inits, (Each bound, \|((ignore, f, ignore, ignore))| ((f, (XClone (XVar f)))))
+    let ((be2, me2)) = Fold bound, ((be, me)), \|((b, m)), ((k, f, vt, ignore))| BindPlain b, m, k, f, vt
+    if (Len bound) == (Len names): ((wx3, be2, me2))
+    else: (((update wx3:
+        &_.build <= Push &_.build, (InternalBugDo "a widget's parameter pattern (`{SrcText lxc, lxc.file, p.span}`) that left a name without its field")), be2, me2))
+
+# A parameter's tuple pattern over a bundle (Type System ch. 2, "Bundles": a bundle is a
+# plain aggregate, so a parameter's tuple pattern takes it apart). Given a bundle written
+# out, each pattern of the tuple takes its part's expression as a parameter of its own
+# takes its argument; given a name bound to a bundle, each takes the part's binding
+# (`BindPartsParam`). A bundle that is neither (a function's result) is refused.
+BindBundleParam: unbounded fn Wx, Env, Env, Env, Env, Lx, Pattern, Ty, Expr -> ((Wx, Env, Env))
+fn BindBundleParam wx, cbenv, cmenv, be, me, lxc, p, pty, arg = match ((p.kind, (Ungrouped arg).kind)):
+    ((PGroup q, ignore)): BindBundleParam wx, cbenv, cmenv, be, me, lxc, q, pty, arg
+    ((PTuple ps, ETuple xs)): Fold (Range0 (Len ps)), ((wx, be, me)), \|((w, b, m)), i| match ((ps[i], xs[i])):
+        ((? q, ? x)): BindParamPattern w, cbenv, cmenv, b, m, lxc, q, (Or (BundlePartTys pty)[i], TyErr), x
+        otherwise: ((w, b, m))
+    ((PTuple ps, EName n)): match (if (Len n.path) == 1: cmenv.names[SNameKey n] else: nil):
+        ? (BnParts methods):
+            let builds = match cbenv.names[SNameKey n]:
+                ? (BnParts bs): PlainAtBuild methods, bs
+                otherwise: methods
+            BindPartsParam wx, be, me, lxc, ps, (BundlePartTys pty), methods, builds
+        otherwise: (((update wx:
+            &_.build <= Push &_.build, (InternalBugDo "a widget's bundle parameter given the name `{SNameKey n}`, which is bound to no bundle")), be, me))
+    otherwise: (((update wx:
+        &_.build <= Push &_.build, (RefusalDo "a widget's parameter pattern (`{SrcText lxc, lxc.file, p.span}`) over a bundle given neither a tuple written out nor a name bound to one")), be, me))
+
+# A parameter's tuple pattern over a named bundle's parts, each name the part at its
+# place: an event with its value form (`BindEventParam`); a dynamic or a bundle inside as
+# the caller binds it; a plain part a field of the node, read by the build as the local
+# and by the methods as the field; a tuple pattern over a bundle inside takes that apart
+# in turn; any other pattern over a plain part is matched once at the build.
+BindPartsParam: unbounded fn Wx, Env, Env, Lx, [Pattern], [Ty], [?Bn], [?Bn] -> ((Wx, Env, Env))
+fn BindPartsParam wx, be, me, lxc, ps, tys, methods, builds = Fold (Range0 (Len ps)), ((wx, be, me)), \|((w, b, m)), i| match ((ps[i], (?PartOf methods, i))):
+    ((? q, ? part)): BindPartParam w, b, m, lxc, q, (Or tys[i], TyErr), part, (?PartOf builds, i)
+    otherwise: ((w, b, m))
+
+BindPartParam: unbounded fn Wx, Env, Env, Lx, Pattern, Ty, Bn, ?Bn -> ((Wx, Env, Env))
+fn BindPartParam wx, be, me, lxc, p, ty, part, ?built:
+    let nkey = PlainBinder lxc, p
+    let atBuild = Or ?built, part
+    match ((p.kind, part)):
+        ((PGroup q, ignore)): BindPartParam wx, be, me, lxc, q, ty, part, ?built
+        ((PIgnore, ignore)): ((wx, be, me))
+        ((PTuple qs, BnParts ms)):
+            let bs = match ?built:
+                ? (BnParts xs): xs
+                otherwise: ms
+            BindPartsParam wx, be, me, lxc, qs, (BundlePartTys ty), ms, bs
+        (((PName ignore), (BnEv r, ignore))) if nkey != "": BindEventParam wx, be, me, nkey, (LocalNameAt lxc, nkey, p.span), ty, r
+        (((PName ignore), (BnLocal ignore, ignore, ignore))) if nkey != "": match atBuild:
+            BnLocal ex, mode, t:
+                let ((rs, wx2)) = FreshName wx, (LocalNameAt lxc, nkey, p.span)
+                let wx3 = update wx2:
+                    &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind rs), t), (Own (VlPlace ex, mode, t)))
+                    &_.fields <= Push &_.fields, ((rs, t, "`{nkey}`"))
+                    &_.inits <= Push &_.inits, ((rs, (XClone (XVar rs))))
+                let ((be2, me2)) = BindPlain be, me, nkey, rs, t
+                ((wx3, be2, me2))
+            otherwise: (((update wx:
+                &_.build <= Push &_.build, (InternalBugDo "a plain part of a named bundle with no binding at the build")), be, me))
+        ((PName ignore, ignore)) if nkey != "": ((wx, (Bind be, nkey, atBuild), (Bind me, nkey, part)))
+        # any other pattern over a plain part: matched once at the build
+        ((ignore, (BnLocal ignore, ignore, ignore))): match atBuild:
+            BnLocal ex, mode, t: BindPlainPatternValue wx, be, me, lxc, p, ty, (Own (VlPlace ex, mode, t))
+            otherwise: (((update wx:
+                &_.build <= Push &_.build, (InternalBugDo "a plain part of a named bundle with no binding at the build")), be, me))
+        otherwise: (((update wx:
+            &_.build <= Push &_.build, (InternalBugDo "a widget's parameter pattern (`{SrcText lxc, lxc.file, p.span}`) over a part of a named bundle that it does not match")), be, me))
+
