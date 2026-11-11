@@ -342,13 +342,31 @@ fn HoldStmt env, st, p, init, step, span:
     if (HeadSigil st4, stepTy) == "!" or stepTy == TyErr: Unify st4, (TySig "!", v), stepTy, step.span
     else: ErrFix st4, "mismatch", step.span, "a hold's step is an event; this is `{ShowTy st4, stepTy}`", "fire it with an event: `... on !e`"
 
-# `ignore <- e` drops a build's or an element's result on purpose: `e` is what `<-` binds
-# (a blueprint, an element, a `rebuild` or `for`, a building `match` or `if`), and anything
-# else is refused as a bind of it is (Semantics ch. 8, "`<-` has three readings").
+# `ignore <- e` drops a build's or an element's result on purpose; a building `match` or
+# `if` is built as a bind of it is.
 IgnoreStmt: unbounded fn Env, St, Expr, Range -> St
 fn IgnoreStmt env, st, e, span:
-    let ((ignore, st2)) = BoundValue env, st, e
-    st2
+    if IsBuildingChoice env, st, e:
+        let ((ignore, st2)) = BoundValue env, st, e
+        st2
+    else:
+        let ((t, st1)) = Infer env, st, e
+        match Walk st1, t:
+            TyAt ignore, ignore:
+                let ((ignore, st2)) = BindOutput env, st1, t, e.span
+                st2
+            TyElem ignore, ignore:
+                let ((ignore, st2)) = BindOutput env, st1, t, e.span
+                st2
+            TySig ignore, inner: match Walk st1, inner:
+                TyAt ignore, ignore:
+                    let ((ignore, st2)) = BindOutput env, st1, t, e.span
+                    st2
+                TyElem ignore, ignore:
+                    let ((ignore, st2)) = BindOutput env, st1, t, e.span
+                    st2
+                otherwise: st1
+            otherwise: st1
 
 # A bare line: an element emits, a blueprint builds, a building `match` or `if` picks its
 # arm once, `@ v` ends the block on `v`. Before the last line its result is `unit` or the
