@@ -110,6 +110,9 @@ type TraitInfo = record:
     methods: [Text]
     defaults: [Text]
     assocs: [Text]
+    # The associated types the trait gives a default, each with the default over the
+    # trait's parameter (`type Item = a`).
+    assocDefaults: [((Text, Ty))]
     file: Nat
     span: Range
 derive ^Eq, ^Show

@@ -284,9 +284,31 @@ fn MissingDefinitions g, st0:
     update st:
         &_.file <= st0.file
 
+# A trait's default for an associated type (`type Item = a` under the trait; Jimmy's ruling
+# AD): an impl that does not state the type takes the default, the trait's parameter read
+# as the impl's head, so `Item Crate` is `Crate`. The impl then holds the choice as if it
+# were written, which is what the associated type's uses and both back ends read.
+ImplDefaults: unbounded fn G, St -> ((G, St))
+fn ImplDefaults g, st = Fold (Values g.traits), ((g, st)), \|((g1, st1)), tr|
+    if (Len tr.assocDefaults) == 0: ((g1, st1))
+    else:
+        let ((impls, added)) = Fold (Or g1.impls[tr.name], [[]]), (([[]], [[]])), \|((done, new)), im|
+            let taken = Fold tr.assocDefaults, [[]], \|acc, ((assoc, value))|
+                if im.derived or (Fold im.assocs, False, \|seen, ((chosen, ignore))| seen or chosen == assoc): acc
+                else: Push acc, ((assoc, (SubstQ Inst(tys={tr.param: im.head}, rows={}, cols={}), value)))
+            let filled = update im:
+                &_.assocs <= Append &_.assocs, taken
+            (((Push done, filled), (Append new, (Each taken, \|((an, at))| AssocImpl(cls=im.cls, name=an, head=im.head, qs=im.qs, value=at)))))
+        let g2 = update g1:
+            &_.impls <= Insert &_.impls, tr.name, impls
+        let st2 = update st1:
+            &_.assocImpls <= Append &_.assocImpls, added
+        ((g2, st2))
+
 # `impl-lacks`: an impl of a program's own file gives each method its trait declares
-# without a default body and chooses each associated type (Type System ch. 3: "An impl
-# gives each method its definition lines", "an associated type, which each impl chooses");
+# without a default body and chooses each associated type its trait gives no default (Type
+# System ch. 3: "An impl gives each method its definition lines", "an associated type,
+# which each impl chooses"; `ImplDefaults` has filled in the defaults);
 # an associated type its trait does not declare is refused as a method is. The prelude
 # module's impls lean on the back ends' builtins, as its signature lines do.
 ImplsComplete: unbounded fn G, St -> St
@@ -359,7 +381,13 @@ fn ConvTrait g, st, info, t, span:
     let st1 = if (Len t.params) > 1: Err st, "unsupported", span, "this checker does not implement traits of several types" else: st
     let cx = CxOf g, info.name
     let ((supers, st2)) = ConvBounds cx, st1, t.bounds
-    let ((g3, st3, methods, defaults, assocs)) = Fold t.items, ((g, st2, [[]], [[]], [[]])), \|((gg, s, ms, ds, assocAcc)), it| match it:
+    # a default for an associated type, `type Item = a`, read over the trait's parameter
+    let ((assocDefaults, st2d)) = Fold t.items, (([[]], st2)), \|((acc, s)), it| match it:
+        TiAssocType n, ignore, (? v), ignore:
+            let ((vt, s2)) = ConvType cx, s, v
+            (((Push acc, ((n.name, vt))), s2))
+        otherwise: ((acc, s))
+    let ((g3, st3, methods, defaults, assocs)) = Fold t.items, ((g, st2d, [[]], [[]], [[]])), \|((gg, s, ms, ds, assocAcc)), it| match it:
         TiSignature sg:
             let mname = DefNameText sg.name
             let qk = QualKey info.name, mname
@@ -380,7 +408,7 @@ fn ConvTrait g, st, info, t, span:
             ((upd, s, ms, (Push ds, qk), assocAcc))
         TiAssocType n, ignore, ignore, ignore: ((gg, s, ms, ds, (Push assocAcc, n.name)))
         TiAssocRow ignore, r: ((gg, (Err s, "unsupported", r, "this checker does not implement associated rows"), ms, ds, assocAcc))
-    let ti = TraitInfo(name=name, home=info.name, param=param, supers=(Each supers, \|((ignore, k))| k), methods=methods, defaults=defaults, assocs=assocs, file=info.file, span=span)
+    let ti = TraitInfo(name=name, home=info.name, param=param, supers=(Each supers, \|((ignore, k))| k), methods=methods, defaults=defaults, assocs=assocs, assocDefaults=assocDefaults, file=info.file, span=span)
     let upd3 = update g3:
         &_.traits <= Insert &_.traits, name, ti
     ((upd3, st3))

@@ -77,7 +77,8 @@ fn CheckProgram srcs, trees, world, shown, recording, unused, pre:
         &_.preludeFrom <= shown
     let st0 = update stb:
         &_.recording <= recording
-    let ((g1, st1)) = TopLets g0, (ImplsComplete g0, (MissingDefinitions g0, st0))
+    let ((g0d, st0d)) = ImplDefaults g0, st0
+    let ((g1, st1)) = TopLets g0d, (ImplsComplete g0d, (MissingDefinitions g0d, st0d))
     let ((failed, st2)) = Fold g1.defs, (([[]], st1)), \|((bad, s)), d|
         let before = Len s.diags
         let s2 = CheckDef g1, s, d
