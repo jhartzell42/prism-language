@@ -140,7 +140,11 @@ fn RowPartBn p, r, n, ?b = match ?b:
         ((p2, r3, (? (BnEv (EvRefOf r3, id), t))))
     ? (BnDyn ex, rds, t):
         if (OnSelfRooted ex) and Fold rds, True, \|f, rd| f and IsOwnRead rd: ((p, r, (? (BnDyn (OverParent ex), (Each rds, \|rd| AsParentRead rd), t))))
-        else: ((p, r, (? (BnLocal (Refusal "a dynamic part of a named bundle read by a row of a row, which stands on no node of the row's block"), Owned, t))))
+        # a part that stands on no node of the block's own (the block is a row that reads
+        # the bundle through its own parent): through a getter of the block
+        else:
+            let ((over, p2)) = ThroughGetter p, n, ex, rds, t
+            ((p2, r, (? over)))
     ? (BnHold f, t): ((p, r, (? (BnDyn (XMethod (XField parentRef, f), "get", [[XCx]]), [[ParentRead f]], t))))
     ? (BnParts bs):
         let ((p2, r2, over)) = RowPartsBn p, r, n, bs
@@ -169,7 +173,25 @@ fn RowParamEnv p, r, env, menv, n = match menv.names["{n}#row"]:
     # late result, `PreBindName`): the same expression through the parent
     otherwise: match menv.names[n]:
         ? (BnDyn ex, rds, t) if (OnSelfRooted ex) and Fold rds, True, \|f, rd| f and IsOwnRead rd: ((p, r, (Bind env, n, (BnDyn (OverParent ex), (Each rds, \|rd| AsParentRead rd), t))))
+        # a dynamic that stands on no node of the block's own (what the block, a row
+        # itself, reads through its own parent): through a getter of the block
+        ? (BnDyn ex, rds, t):
+            let ((over, p2)) = ThroughGetter p, n, ex, rds, t
+            ((p2, r, (Bind env, n, over)))
         otherwise: ((p, r, env))
+
+# A dynamic of a block that does not stand on the block's own node (a row's read of the
+# block around it, through its `parent`), as the block's own rows read it (Semantics
+# ch. 4: a row reads the names of the blocks around it, at any depth): a getter of the
+# block over the read, which the row reads through its parent as any dynamic `let` of
+# the block, so the writes behind it reach the row through the block (`RowHears`).
+ThroughGetter: fn Wx, Text, Ex, [Read], OutTy -> ((Bn, Wx))
+fn ThroughGetter p, n, ex, rds, t:
+    let ((getter, p1)) = FreshName p, "through_{Snake n}"
+    let p2 = update p1:
+        &_.getters <= Push &_.getters, (MethDef(name=getter, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="`{n}` of a block around this one, as this block's rows read it through it."))
+        &_.dynReads <= Insert &_.dynReads, getter, rds
+    (((BnDyn (XMethod parentRef, getter, [[XCx]]), [[ParentRead getter]], t), p2))
 
 # A place of the block as a row's methods read it: through the parent (a row of a row reads
 # its own parent's places through that row's parent in turn).
@@ -1355,10 +1377,24 @@ fn GenRowOf wx, menv, body, vt, rowName, genName:
             ((r2p, nil, ? rt))
         WrLate ex, rt: (((update r2:
             &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=ex, doc="The generation's plain result, which the `rebuild`'s dynamic is while the generation stands."))), nil, ? rt))
-        WrParts ignore:
-            let r2b = update r2:
-                &_.build <= Push &_.build, (RefusalDo "a `rebuild` whose block ends on a bundle that is not written out as a tuple where the block ends")
-            ((r2b, nil, nil))
+        # a block that ends on a line that gives a bundle (`@Counter _` last, no name
+        # between): the bundle as one value, as a named one is (`WholeOfResults`)
+        WrParts parts:
+            let full = match (Or body.stmts[Dec (Len body.stmts)], dummyStmtL).kind:
+                SExpr y: LineOutFull lx, y
+                otherwise: TyErr
+            let rt = OutTyOf lx, full
+            let ((value, late, rw)) = WholeOfResults r2, "result", "the bundle the generation ends on", (BundlePartTys full), parts
+            if late: (((update rw:
+                &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=value, doc="The generation's plain result, which the `rebuild`'s dynamic is while the generation stands."))), nil, ? rt))
+            else:
+                let ((f, rf)) = FreshName rw, "result"
+                let r2p = update rf:
+                    &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind f), rt), value)
+                    &_.fields <= Push &_.fields, ((f, rt, "the generation's plain result"))
+                    &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
+                    &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=(XClone (XField XSelf, f)), doc="The generation's plain result, which the `rebuild`'s dynamic is while the generation stands."))
+                ((r2p, nil, ? rt))
         otherwise: ((r2, nil, nil))
     let r4 = GenHears r3, genName
     GenRow(node=(FinishNode r4, rowName, (Append [[(("value", vt)), (("parent", (OutWeak wx.node)))]], (HostedParams wx)), True), parent=(GenMarked p1, genName, r3), ?dynResult=?dynResult, ?plainResult=?plainResult)
@@ -1541,7 +1577,7 @@ fn GenCurrent r, parent, genName:
         &_.getters <= Push &_.getters, (MethDef(name="current", recv=RecvRef, params=[[]], cx=CxNone, ret=OutBool, body=[[]], tail=tail, doc="Whether this generation is still its block's current one after the tick: it builds only then."))
 
 # A row's names as its constructor spells them: the block through the `parent` argument.
-BuildSpelling: fn Env -> Env
+BuildSpelling: unbounded fn Env -> Env
 fn BuildSpelling env = Fold (Keys env.names), env, \|en, k| match env.names[k]:
     ? (BnLocal rs, mode, t): match ?ThroughParent rs:
         ? x: Bind en, k, (BnLocal x, mode, t)
@@ -1552,16 +1588,20 @@ fn BuildSpelling env = Fold (Keys env.names), env, \|en, k| match env.names[k]:
     ? (BnParts bs): Bind en, k, (BnParts (PartsAtBuild bs))
     otherwise: en
 
-# A named bundle's parts as a row's constructor spells them (`BuildSpelling`).
-# (A bundle inside the bundle keeps its parts as they are.)
-PartsAtBuild: fn [?Bn] -> [?Bn]
+# A named bundle's parts as a row's constructor spells them (`BuildSpelling`): a plain
+# part and a dynamic through the `parent` argument, a bundle inside the same way.
+PartsAtBuild: unbounded fn [?Bn] -> [?Bn]
 fn PartsAtBuild parts = Each parts, \|?b| ?PartSpelledAtBuild ?b
 
-?PartSpelledAtBuild: fn ?Bn -> ?Bn
+?PartSpelledAtBuild: unbounded fn ?Bn -> ?Bn
 fn ?PartSpelledAtBuild ?b = match ?b:
     ? (BnLocal rs, mode, t): match ?ThroughParent rs:
         ? x: ? (BnLocal x, mode, t)
         nil: ?b
+    ? (BnDyn (XMethod rs, m, xs), ds, t): match ?ThroughParent rs:
+        ? x: ? (BnDyn (XMethod x, m, xs), ds, t)
+        nil: ?b
+    ? (BnParts inner): ? (BnParts (PartsAtBuild inner))
     otherwise: ?b
 
 # The generation built: the one case, its row's constructor. `ofRebuild`: the clause

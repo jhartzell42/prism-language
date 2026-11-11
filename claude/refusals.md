@@ -95,11 +95,21 @@ Bundles
   apart by a pattern of its own is read by that pattern (sem-ch08-late-part-nested-pattern).
   Left: a line of the block's node below the split that reads the whole name (`let same =
   both`) finds no binding ("the name both, which nothing declares"); a bundle inside the
-  bundle whose late part a nested tuple pattern binds is not bound late; a dynamic part of
-  a named bundle read by a row of a row (lower/node/switch.prism, `RowPartBn`). No tests.
+  bundle whose late part a nested tuple pattern binds is not bound late. No tests.
+  A dynamic part of a named bundle read by a row of a row is read through a getter of
+  the row between (`ThroughGetter`, sem-ch04-named-bundle-in-row-of-row).
 - A `rebuild` whose block ends on a bundle a line named whole (`@ both`) is lowered
-  (`WholeNamedOf`, sem-ch04-rebuild-named-bundle-result); a bundle inside that bundle is
-  refused there. No test.
+  (`WholeNamedOf`, sem-ch04-rebuild-named-bundle-result), a bundle inside that bundle
+  too (`WholePartsOf`, sem-ch04-rebuild-nested-bundle-result), a named bundle inside a
+  tuple written out (sem-ch04-rebuild-bundle-in-tuple-result) and a block that ends on
+  the line that gives the bundle (`WholeOfResults`, sem-ch04-rebuild-ends-on-widget-bundle).
+- lower/node/static.prism (`BindBundleParam`) a widget's parameter pattern over a bundle
+  given neither a tuple written out nor a name bound to one (a function's result): the
+  bundle is a value of the run there, to be taken apart as a `let`'s is
+  (`LetPatternDynamics`). No test. (`BindParamPattern`) a widget's parameter pattern
+  that takes an event or a dynamic out of a value that is no bundle (a record's `$`
+  field): the same. No test. Lowered: a tuple pattern over a bundle written out or
+  named, and any pattern over a plain value (sem-ch08-widget-parameter-pattern).
 - A root's bundle with several dynamic parts is told part by part
   (sem-ch07-root-bundle-two-dynamics).
 - lower/node/switch.prism:216 a `rebuild` whose generation gives a dynamic it does not

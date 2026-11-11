@@ -1213,9 +1213,11 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
                     ResultGetter wx3, menv, n, ex, rds, t, (Bind benv, (SNameKey n), b), (Bind menv, (SNameKey n), b)
                 (((WrHosted inner, doc), PTuple ps)): BindHosted wx3, benv, menv, inner, doc, ps
                 (((WrParts parts), PTuple ps)): BindParts wx2, benv, menv, parts, ps
+                # a bundle bound whole to one name: the name is its parts, each plain
+                # part a field of the node (`FieldedParts`)
                 (((WrParts parts), PName n)):
-                    let b = BundleBn res
-                    ((wx3, (Bind benv, (SNameKey n), b), (Bind menv, (SNameKey n), b)))
+                    let ((wx4, builds, methods)) = FieldedParts wx3, (Snake (SNameKey n)), parts
+                    ((wx4, (Bind benv, (SNameKey n), (BnParts builds)), (Bind menv, (SNameKey n), (BnParts methods))))
                 (((WrPlain ex, t), ignore)): if IsNamesPattern p: (((BindPlainResult wx3, menv, p, ex, t), benv, menv)) else: (((BindPatternResult wx3, menv, p, ex, t, (OutOf (TypeAt lx, e.span))), benv, menv))
                 # a late result is bound where its block is split (`SplitBlockInto`): a
                 # line that binds one here was not seen to be late (`IsLateExpr`)
@@ -1243,14 +1245,23 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
                 if (IsPlacedLet menv, p) or IsLateLet menv, p: ((wx, benv, menv))
                 else: match ?BundleWritten lx, p, e:
                   # a bundle written out and named (`let pair = (("mock", 2 on !go))`): each
-                  # part its own result, as `@ ((..))` gives them, the name its parts
+                  # part its own result, as `@ ((..))` gives them, the name its parts, each
+                  # plain part a field of the node (`FieldedParts`)
                   ? ((n, tuple)):
                     let ((res, wx2)) = ResultOf wx, benv, menv, tuple
-                    let b = BundleBn res
-                    BundleValue wx2, (Bind benv, (SNameKey n), b), (Bind menv, (SNameKey n), b), n, tuple, res
-                  nil:
-                    let ((wx2, be2)) = LetLine wx, benv, menv, p, e
-                    ((wx2, be2, menv))
+                    let ((wx2f, builds, methods)) = FieldedParts wx2, (Snake (SNameKey n)), (ResultParts res)
+                    BundleValue wx2f, (Bind benv, (SNameKey n), (BnParts builds)), (Bind menv, (SNameKey n), (BnParts methods)), n, tuple, (BnRes (BnParts builds))
+                  nil: match ?NamedBundleTaken menv, p, e:
+                    # a named bundle taken apart by a tuple pattern
+                    # (`let ((ten, ((!more, $guests)))) = all`, `BindNamedParts`)
+                    ? ((ps, methods)):
+                        let builds = match ?NamedBundleTaken benv, p, e:
+                            ? ((ignore, bs)): PlainAtBuild methods, bs
+                            nil: methods
+                        BindNamedParts wx, benv, menv, ps, (BundlePartTys (TypeAt lx, e.span)), methods, builds
+                    nil:
+                        let ((wx2, be2)) = LetLine wx, benv, menv, p, e
+                        ((wx2, be2, menv))
         SExpr e: match e.kind:
             EFreeSigil "@", x:
                 let ((res, wx2)) = if wx.wholeResultAt != "" and wx.wholeResultAt == ResultKey lx, x: WholeResultOf wx, benv, menv, x else: ResultOf wx, benv, menv, x
@@ -1396,11 +1407,106 @@ fn BindParts wx, benv, menv, parts, ps = Fold (Range0 (Len ps)), ((wx, benv, men
             WrDyn ex, rds, t:
                 let b = BnDyn ex, rds, t
                 ResultGetter w, me, n, ex, rds, t, (Bind be, (SNameKey n), b), (Bind me, (SNameKey n), b)
+            # a plain part: computed in the build's `let`s and moved into the field its
+            # name was prebound to, as a widget's plain result is (`BindPlainResult`), so
+            # the build reads the local and the methods the field
+            WrPlain ex, t if IsFieldPart me.names[SNameKey n]: (((BindPlainResult w, me, p, ex, t), be, me))
+            # a bundle inside the bundle bound to a name: its parts, each plain one a field
+            WrParts inner:
+                let ((w2, builds, methods)) = FieldedParts w, (Snake (SNameKey n)), inner
+                ((w2, (Bind be, (SNameKey n), (BnParts builds)), (Bind me, (SNameKey n), (BnParts methods))))
             otherwise:
                 let b = BundleBn part
                 ((w, (Bind be, (SNameKey n), b), (Bind me, (SNameKey n), b)))
         otherwise: ((w, be, me))
     otherwise: ((w, be, me))
+
+# A name prebound as a plain value's field of the node (`BindPlain`).
+IsFieldPart: fn ?Bn -> Bool
+fn IsFieldPart (? (BnLocal (XField XSelf, ignore), ignore, ignore)) = True
+fn IsFieldPart ?other = False
+
+# The parts of a bundle result.
+ResultParts: fn Wres -> [Wres]
+fn ResultParts res = match res:
+    WrParts parts: parts
+    otherwise: [[]]
+
+# A bundle's parts as a name bound to the whole bundle has them (Type System ch. 2,
+# "Bundles": a bundle is a plain aggregate, so a name binds it): an event and a dynamic as
+# the line gives them; a plain part with a value at the build computed once in the
+# build's `let`s and kept in a field of the node, so the build reads the local, the
+# methods the field, and a row the field through its parent; a bundle inside the same
+# way. Gives the parts as the build binds them and as the methods do.
+FieldedParts: unbounded fn Wx, Text, [Wres] -> ((Wx, [?Bn], [?Bn]))
+fn FieldedParts wx, stem, parts = Fold parts, ((wx, [[]], [[]])), \|((w, builds, methods)), part|
+    let i = Len builds
+    match part:
+        WrPlain ex, t:
+            let ((f, w1)) = FreshName w, "{stem}_part{i}"
+            let w2 = update w1:
+                &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind f), t), ex)
+                &_.fields <= Push &_.fields, ((f, t, "plain part {i} of the bundle `{stem}`"))
+                &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
+            ((w2, (Append builds, [[(? (BnLocal (XVar f), Owned, t))]]), (Append methods, [[(? (BnLocal (XField XSelf, f), Owned, t))]])))
+        WrParts inner:
+            let ((w2, bs, ms)) = FieldedParts w, "{stem}_part{i}", inner
+            ((w2, (Append builds, [[(? (BnParts bs))]]), (Append methods, [[(? (BnParts ms))]])))
+        WrHosted inner, ignore:
+            let ((w2, bs, ms)) = FieldedParts w, "{stem}_part{i}", [[inner]]
+            ((w2, (Append builds, [[(?PartOf bs, 0)]]), (Append methods, [[(?PartOf ms, 0)]])))
+        otherwise:
+            let b = BundleBn part
+            ((w, (Append builds, [[(? b)]]), (Append methods, [[(? b)]])))
+
+# A `let` whose pattern is a tuple and whose value is a name bound to a bundle's parts:
+# the tuple's patterns and the parts.
+?NamedBundleTaken: unbounded fn Env, Pattern, Expr -> ?(([Pattern], [?Bn]))
+fn ?NamedBundleTaken env, p, e = match ((p.kind, e.kind)):
+    ((PGroup q, ignore)): ?NamedBundleTaken env, q, e
+    ((ignore, EGroup x)): ?NamedBundleTaken env, p, x
+    ((PTuple ps, EName m)): match (if (Len m.path) == 1: env.names[SNameKey m] else: nil):
+        ? (BnParts bs): ? ((ps, bs))
+        otherwise: nil
+    otherwise: nil
+
+# A named bundle taken apart by a `let`'s tuple pattern (Semantics ch. 4: `let` binds by
+# any pattern that cannot fail; Type System ch. 2, "Bundles": nested freely): each name is
+# the part at its place. An event part feeds the node its name was prebound to; a dynamic
+# part is the getter its name was prebound to; a plain part is moved into its name's
+# field; a bundle inside is taken apart by its own tuple pattern, or bound whole to its
+# name; a plain part under any other pattern is matched once at the build
+# (`BindPatternResult`). `tys`: the parts' types as the checker has them.
+BindNamedParts: unbounded fn Wx, Env, Env, [Pattern], [Ty], [?Bn], [?Bn] -> ((Wx, Env, Env))
+fn BindNamedParts wx, benv, menv, ps, tys, methods, builds = Fold (Range0 (Len ps)), ((wx, benv, menv)), \|((w, be, me)), i| match ((ps[i], (?PartOf methods, i))):
+    ((? p, ? m)): BindNamedPart w, be, me, p, (Or tys[i], TyErr), m, (?PartOf builds, i)
+    otherwise: ((w, be, me))
+
+BindNamedPart: unbounded fn Wx, Env, Env, Pattern, Ty, Bn, ?Bn -> ((Wx, Env, Env))
+fn BindNamedPart wx, benv, menv, p, ty, m, ?built = match ((p.kind, m)):
+    ((PGroup q, ignore)): BindNamedPart wx, benv, menv, q, ty, m, ?built
+    ((PIgnore, ignore)): ((wx, benv, menv))
+    ((PTuple qs, BnParts ms)):
+        let bs = match ?built:
+            ? (BnParts xs): xs
+            otherwise: ms
+        BindNamedParts wx, benv, menv, qs, (BundlePartTys ty), ms, bs
+    (((PName n), (BnEv r, ignore))): (((BindRes wx, menv, p, (WrEv r)), benv, menv))
+    (((PName n), (BnDyn ex, rds, t))): ResultGetter wx, menv, n, ex, rds, t, benv, menv
+    (((PName n), (BnHold f, t))): ResultGetter wx, menv, n, (XMethod (XField XSelf, f), "get", [[XCx]]), [[OwnRead f]], t, benv, menv
+    (((PName n), (BnParts ms))):
+        let bs = match ?built:
+            ? (BnParts xs): xs
+            otherwise: ms
+        ((wx, (Bind benv, (SNameKey n), (BnParts bs)), (Bind menv, (SNameKey n), (BnParts ms))))
+    ((ignore, (BnLocal ignore, ignore, ignore))): match ?built:
+        ? (BnLocal ex, mode, t):
+            let v = Own (VlPlace ex, mode, t)
+            if IsNamesPattern p: (((BindPlainResult wx, menv, p, v, t), benv, menv)) else: (((BindPatternResult wx, menv, p, v, t, ty), benv, menv))
+        otherwise: (((update wx:
+            &_.build <= Push &_.build, (InternalBugDo "a plain part of a named bundle with no binding at the build")), benv, menv))
+    otherwise: (((update wx:
+        &_.build <= Push &_.build, (InternalBugDo "a `let`'s pattern over a named bundle (`{SrcText wx.lx, wx.lx.file, p.span}`) that does not match the part it takes")), benv, menv))
 
 # A widget's dynamic result bound to a name prebound as a getter (`AsResult`): the getter,
 # so the lines above that read it read the result. Any other name is unchanged.
@@ -1467,7 +1573,8 @@ BnRes: fn Bn -> Wres
 fn BnRes b = match b:
     BnEv r, ignore: WrEv r
     BnDyn ex, rds, t: WrDyn ex, rds, t
-    BnLocal ex, ignore, t: if t == OutUnit: WrUnit else: WrPlain ex, t
+    # (a plain part is a place, a field or a local of the build: its value is a copy)
+    BnLocal ex, mode, t: if t == OutUnit: WrUnit else: WrPlain (Own (VlPlace ex, mode, t)), t
     BnParts bs: WrParts (Each bs, PartRes)
     otherwise: WrUnit
 
@@ -1547,7 +1654,22 @@ fn WholeWrittenOf wx, benv, menv, x:
     let readers = Filter (ExprsIn x), \|y| match y.kind:
         EName ignore: (LayerOf (TypeAt lx, y.span)) == LyDyn
         otherwise: False
-    let ((wx1, be1, ignore)) = Fold readers, ((wx, benv, menv)), \|((w, be, me)), y| WholeArgsAt w, be, me, y, True, False
+    let ((wx1w, be1w, ignore)) = Fold readers, ((wx, benv, menv)), \|((w, be, me)), y| WholeArgsAt w, be, me, y, True, False
+    # a bundle a line named whole, inside the one written (`@ ((_, both))`): one value
+    # too, bound under `{name}#value` (`NameValue` reads it there)
+    let ((wx1, be1)) = Fold (ExprsIn x), ((wx1w, be1w)), \|((w, be)), y| match y.kind:
+        EName n: match (((if (Len n.path) == 1: menv.names[SNameKey n] else: nil), (HasKey be.names, "{SNameKey n}#value"))):
+            (((? (BnParts bs)), False)):
+                let ((res, w2)) = WholeNamedOf w, be, y, bs
+                match res:
+                    WrPlain ex, t:
+                        let ((vf, w3)) = FreshName w2, "{Snake (SNameKey n)}_bundle"
+                        let w4 = update w3:
+                            &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind vf), t), ex)
+                        ((w4, (Bind be, "{SNameKey n}#value", (BnLocal (XVar vf), Owned, t))))
+                    otherwise: ((w2, be))
+            otherwise: ((w, be))
+        otherwise: ((w, be))
     let lxw = update lx:
         &_.whole <= True
     (((WrPlain (Own (ValueOf lxw, be1, x)), (OutTyOf lx, full)), wx1))
@@ -1555,41 +1677,94 @@ fn WholeWrittenOf wx, benv, menv, x:
 # A named bundle as one value (`WholeResultOf`): each part by its binding. An event part
 # is the event of a port it fires, made before the node (as a named event's value form
 # is, `PreBindName`); a dynamic part a live `Dynamic` over the node's link (`LiveDynamic`);
-# a plain part its value at the build.
+# a plain part its value at the build; a bundle inside the bundle the tuple of its own
+# parts, made the same way (`WholePartsOf`).
 WholeNamedOf: unbounded fn Wx, Env, Expr, [?Bn] -> ((Wres, Wx))
 fn WholeNamedOf wx, benv, x, parts:
     let lx = wx.lx
     let full = TypeAt lx, x.span
-    let tys = BundlePartTys full
-    let stem = Snake (SrcText lx, lx.file, x.span)
     let builds = match (Ungrouped x).kind:
         EName n: match benv.names[SNameKey n]:
             ? (BnParts bs): PlainAtBuild parts, bs
             otherwise: parts
         otherwise: parts
-    let ((values, wx2)) = Fold builds, (([[]], wx)), \|((acc, w)), ?b|
-        let i = Len acc
-        let partTy = Or tys[i], TyErr
-        match ?b:
-            ? (BnEv r, ignore):
-                let et = OutTyOf lx, (Peel (Peel partTy))
-                let ((rs, w1)) = FreshName w, "{stem}_part{i}"
-                let pf = "{rs}_v_port"
-                let pt = OutRc (OutPort et)
-                let w2 = update (Connect w1, r, (SkPort "{rs}_v")):
-                    &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind pf), pt), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]]))
-                    &_.fields <= Push &_.fields, ((pf, pt, "part {i} of the bundle `{SrcText lx, lx.file, x.span}` as a value: the port it fires"))
-                    &_.moves <= Push &_.moves, ((pf, (XClone (XVar pf))))
-                (((Push acc, (XCall (RefRuntime "prism_rtl::Event::of"), [[(XRef (XVar pf))]])), w2))
-            ? (BnDyn ex, rds, t):
-                let ((dyn, w2)) = LiveDynamic w, "whole_{stem}_part{i}", ex, rds, t, "part {i} of the bundle `{SrcText lx, lx.file, x.span}`"
-                (((Push acc, dyn), w2))
-            ? (BnHold f, t):
-                let ((dyn, w2)) = LiveDynamic w, "whole_{stem}_part{i}", (XMethod (XField XSelf, f), "get", [[XCx]]), [[OwnRead f]], t, "part {i} of the bundle `{SrcText lx, lx.file, x.span}`"
-                (((Push acc, dyn), w2))
-            ? (BnLocal ex, ignore, ignore): (((Push acc, ex), w))
-            otherwise: (((Push acc, (Refusal "a bundle inside a named bundle a `rebuild`'s generation ends on")), w))
+    let ((values, wx2)) = WholePartsOf wx, (Snake (SrcText lx, lx.file, x.span)), "the bundle `{SrcText lx, lx.file, x.span}`", (BundlePartTys full), builds
     (((WrPlain (XTuple values), (OutTyOf lx, full)), wx2))
+
+# The parts of a bundle, each as a value of the build (`WholeNamedOf`). `stem` names the
+# ports and the live dynamics made, `what` says whose parts they are, `tys` are the parts'
+# types as the checker has them, `builds` their bindings with each plain part as the build
+# spells it (`PlainAtBuild`).
+WholePartsOf: unbounded fn Wx, Text, Text, [Ty], [?Bn] -> (([Ex], Wx))
+fn WholePartsOf wx, stem, what, tys, builds = Fold builds, (([[]], wx)), \|((acc, w)), ?b|
+    let lx = w.lx
+    let i = Len acc
+    let partTy = Or tys[i], TyErr
+    match ?b:
+        ? (BnEv r, ignore):
+            let et = OutTyOf lx, (Peel (Peel partTy))
+            let ((rs, w1)) = FreshName w, "{stem}_part{i}"
+            let pf = "{rs}_v_port"
+            let pt = OutRc (OutPort et)
+            let w2 = update (Connect w1, r, (SkPort "{rs}_v")):
+                &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind pf), pt), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]]))
+                &_.fields <= Push &_.fields, ((pf, pt, "part {i} of {what} as a value: the port it fires"))
+                &_.moves <= Push &_.moves, ((pf, (XClone (XVar pf))))
+            (((Push acc, (XCall (RefRuntime "prism_rtl::Event::of"), [[(XRef (XVar pf))]])), w2))
+        ? (BnDyn ex, rds, t):
+            let ((dyn, w2)) = LiveDynamic w, "whole_{stem}_part{i}", ex, rds, t, "part {i} of {what}"
+            (((Push acc, dyn), w2))
+        ? (BnHold f, t):
+            let ((dyn, w2)) = LiveDynamic w, "whole_{stem}_part{i}", (XMethod (XField XSelf, f), "get", [[XCx]]), [[OwnRead f]], t, "part {i} of {what}"
+            (((Push acc, dyn), w2))
+        ? (BnLocal ex, mode, t): (((Push acc, (Own (VlPlace ex, mode, t))), w))
+        # a bundle inside the bundle: the tuple of its own parts
+        ? (BnParts inner):
+            let ((values, w2)) = WholePartsOf w, "{stem}_part{i}", "part {i} of {what}", (BundlePartTys partTy), inner
+            (((Push acc, (XTuple values)), w2))
+        otherwise: (((Push acc, (InternalBug "part {i} of {what}, bound as no event, dynamic, value or bundle")), w))
+
+# The bundle a line gave, part by part (`WrParts`), as one value (a `rebuild`'s generation
+# that ends on `@Counter _`): each part as `WholePartsOf` makes it. With no late plain
+# part inside, the value is the build's; with one, it is read from the node once the row
+# that gives the late part is built, every other part kept in a field of the node from
+# the build on. Gives the value and whether it is late.
+WholeOfResults: unbounded fn Wx, Text, Text, [Ty], [Wres] -> ((Ex, Bool, Wx))
+fn WholeOfResults wx, stem, what, tys, parts:
+    if not (HasLatePart parts):
+        let ((values, wx2)) = WholePartsOf wx, stem, what, tys, (Each parts, \|q| ? (BundleBn q))
+        (((XTuple values), False, wx2))
+    else:
+        let ((values, wx2)) = Fold parts, (([[]], wx)), \|((acc, w)), part|
+            let i = Len acc
+            let partTy = Or tys[i], TyErr
+            match part:
+                WrLate read, ignore: (((Push acc, read), w))
+                WrParts inner:
+                    let ((value, ignore, w2)) = WholeOfResults w, "{stem}_part{i}", "part {i} of {what}", (BundlePartTys partTy), inner
+                    if HasLatePart inner: (((Push acc, value), w2)) else: KeptPart acc, w2, value, (OutTyOf w.lx, partTy), "part {i} of {what}"
+                otherwise:
+                    let ((made, w2)) = WholePartsOf w, "{stem}_part{i}", what, [[partTy]], [[(? (BundleBn part))]]
+                    KeptPart acc, w2, (Or made[0], XUnit), (OutTyOf w.lx, partTy), "part {i} of {what}"
+        (((XTuple values), True, wx2))
+
+# A value of the build kept in a field of the node, and its read there (`WholeOfResults`).
+KeptPart: fn [Ex], Wx, Ex, OutTy, Text -> (([Ex], Wx))
+fn KeptPart acc, wx, value, t, what:
+    let ((f, w1)) = FreshName wx, "kept_part"
+    let w2 = update w1:
+        &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind f), t), value)
+        &_.fields <= Push &_.fields, ((f, t, "{what}, kept beside a late part"))
+        &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
+    (((Push acc, (XClone (XField XSelf, f))), w2))
+
+# Whether a bundle's parts have a late plain part among them, at any depth.
+HasLatePart: unbounded fn [Wres] -> Bool
+fn HasLatePart parts = Fold parts, False, \|found, part| found or match part:
+    WrLate ignore, ignore: True
+    WrParts inner: HasLatePart inner
+    WrHosted inner, ignore: HasLatePart [[inner]]
+    otherwise: False
 
 # A dynamic of the node as a live `Dynamic` value (`WholeArgsAt` makes one for a reader a
 # line names): read through the node's link by a getter, its update event a port the

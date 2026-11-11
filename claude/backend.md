@@ -452,8 +452,45 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A `rebuild` whose block ends on a bundle** gives a dynamic of the bundle as one
   value (`WholeResultOf`, `Wx.wholeResultAt`): the generation's plain result is the
   tuple with each event as its port's `Event` and each dynamic it names as the live
-  `Dynamic` made for it (`WholeArgsAt`). A bundle that is not written out as a tuple
-  where the block ends is refused.
+  `Dynamic` made for it (`WholeArgsAt`). A bundle a line named whole (`@ both`) is the
+  tuple of its parts by their bindings (`WholeNamedOf`, `WholePartsOf`): an event the
+  `Event` of a port it fires, a dynamic a live `Dynamic` over the node's link
+  (`LiveDynamic`), a plain part its value at the build, a bundle inside the tuple of its
+  own parts, made the same way. A named bundle inside a tuple written out (`@ ((_,
+  both))`) is that value under `{name}#value` (`WholeWrittenOf`). A block that ends on a
+  line that gives a bundle with no name between (`@Counter _` last) gives the same value
+  from the line's parts (`WholeOfResults`); with a late plain part inside, the value is
+  read from the row once the part's row is built, every other part kept in a field.
+- **A name bound to a whole bundle is its parts** (`BnParts`; `both <- @Counter 1`, `let
+  pair = ((..))`, a name inside a tuple pattern over a bundle). Each plain part with a
+  value at the build is a field of the node (`FieldedParts`): the build reads the local,
+  the methods the field, a row the field through its parent. A plain part bound by a
+  tuple pattern's name is moved into the field its name was prebound to (`BindParts`,
+  `BindPlainResult`). A `let` whose tuple pattern takes a named bundle apart (`let ((ten,
+  ((!more, $guests)))) = all`) binds each name to the part at its place
+  (`BindNamedParts`): an event part feeds the name's node, a dynamic part is the name's
+  getter, a plain part the name's field, a bundle inside is taken apart in turn or
+  bound whole.
+- **A row reads a named bundle of its block** part by part (`RowPartsBn`; a `for`'s row
+  takes them from its port environment, `BundlesOf`): an event through a port of the
+  row, a dynamic and a plain part through the parent, in the build through the `parent`
+  argument (`PartsAtBuild`).
+- **A row of a row reads a dynamic of the block around both** through a getter of the
+  row between (`through_{name}`; `RowReadGetters` for a `for`'s rows, `ThroughGetter`
+  for a generation's and for a bundle's part): the block's own read of its parent,
+  which the inner row reads through its parent as any dynamic `let` of the block, so
+  the outer block's writes reach the inner rows through the row between (`RowHears`,
+  `parent_wrote_{m}`).
+- **A widget's parameter that is a pattern** (one clause, so a pattern that cannot
+  fail; `BindParamPattern`). A tuple over a bundle takes the argument apart
+  (`BindBundleParam`): written out, each pattern of the tuple takes its part's
+  expression as a parameter of its own takes its argument; a name bound to a bundle
+  gives each pattern the part's binding (`BindPartsParam`), an event with its value
+  form (`BindEventParam`), a plain part as a field. Any other pattern is over a plain
+  value: the argument is a local of the build, matched once there, each name a field
+  (`BindPlainPatternValue`). Refused: a bundle argument that is neither written out nor
+  a name (a function's result), and a pattern that takes an event or a dynamic out of
+  a value that is no bundle (a record's `$` field).
 - **`@Element made` as a line, `made` a `let` of the block bound to a tag applied**
   (Semantics ch. 8, "Elements and the element statement") is that element's line at
   the placing line's position, lowered in the placing line's environments
