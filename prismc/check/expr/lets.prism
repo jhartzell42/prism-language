@@ -188,7 +188,10 @@ fn PreBind env, st, s = match s.kind:
             nil:
                 let ((v, st2)) = FreshVar st, False, ""
                 BindLocalId (WithLocal env, name, (Mono v)), st2, name, (DefNameSpan f.name)
-    SLet p, ignore, ignore: match p.kind:
+    SLet p, ignore, e: match p.kind:
+        # a constructor's name is its pattern and binds nothing (`CheckLetValue`); under a
+        # lambda the name is bound all the same, so its uses say nothing more
+        PName ignore if (LetNamesConstructor env, p) and not (IsLambda e): ((env, st))
         PName n:
             let ((v, st1)) = FreshVar st, True, (SNameKey n)
             let st2 = AtBinder st1, v, n.span
@@ -233,6 +236,18 @@ fn ?BuilderHead env, e = match e.kind:
 
 CheckLetValue: unbounded fn Env, St, Pattern, ?Type, Expr, Range -> ((Env, St))
 fn CheckLetValue env, st, p, ?ty, e, span:
+    # A name that is a constructor's: a pattern's capitalised name that resolves to a
+    # constructor is the constructor, and the value is matched against it. A lambda is no
+    # constructor's value, and the line was meant to name a function: say so, and bind
+    # the name all the same, so that its uses say nothing more.
+    let named = LetNamesConstructor env, p
+    let name = SrcText env, p.span
+    let st1 = if named and IsLambda e: ErrFix st, "collision", p.span, "`{name}` is a constructor here, and a pattern's `{name}` is the constructor: this `let` names no function", "give the function another name" else: st
+    let q = if named and not (IsLambda e): Pattern(kind=(PGroup p), span=p.span) else: p
+    CheckLetBinding env, st1, q, ?ty, e, span
+
+CheckLetBinding: unbounded fn Env, St, Pattern, ?Type, Expr, Range -> ((Env, St))
+fn CheckLetBinding env, st, p, ?ty, e, span:
     let st0 = EnterLevel st
     let ((?annot, st1)) = match ?ty:
         ? t:
