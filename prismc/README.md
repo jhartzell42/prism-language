@@ -1816,9 +1816,7 @@ Each is Claude's, for Jimmy to overturn.
   such values in `{rs}_init` too (`LetLine`), bound in the build environment under
   `{name}#init`, captured by the supplier's closure, and `InitEnv` reads the dynamic's
   expression over them. A dynamic answer reading what has no value at the build (a pushed
-  place's hold, a structural dynamic, a `let` after the host's line) is refused loudly. A
-  widget-function blueprint as an answer, and a bundle in a hosted scope, are refused
-  too.
+  place's hold, a structural dynamic, a `let` after the host's line) is refused loudly.
 
   A row of a hosted child's `for` or `rebuild` (`Wx.hostedBy`) emits nothing of its own
   either: it takes the enclosing host (`enclosing: Rc<dyn HostOf>`) as a parameter of its
