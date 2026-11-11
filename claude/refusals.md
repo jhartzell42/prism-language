@@ -199,7 +199,12 @@ Building `match`, clause widgets, `rebuild`
   from a count that reads the result; it needs a row built in two steps, its result
   first and its places sent after. No test), and one that gives a plain result of its
   own (no program found: sem-ch04-late-value-above-gives-result is built early and
-  passes).
+  passes). A line whose late names are all plain parts of a late place's bundle
+  (`{name}#lateplace`) is neither deferred nor refused: it is built in its place's
+  order, and one with a plain result splits the block (`?LatePlaceTakerAt`:
+  sem-ch09-host-late-plain-part-clause-widget-result,
+  sem-ch09-host-late-plain-part-building-match-result). Left refused there: such a
+  line written above the place whose part it takes.
 - lower/jobs.prism: none added. A bare `for` in a job is lowered (`ForJob`), no test of
   the job form; the plain form is sem-ch05-update-for-bare.
 - lower/node/finish.prism (`PlaceNumber`) a place read at its block's build before the
