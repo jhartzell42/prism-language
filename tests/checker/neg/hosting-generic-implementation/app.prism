@@ -1,0 +1,102 @@
+# From prism-notes, claude/04-domains-and-documents/evidence/hosting/14-generic-implementation-text-answer/app.prism: attempt 14 of the Bible's document hosting against prismc at 10ca993, committed as written. A wrong program: the request tag's field has a type variable its output does not (Type System ch. 2: a variable in a field must appear in the index; a generic tag's output is a scheme, its variables shared with its fields).
+# Attempt 14: attempt 13 with `Read` giving text, so no bound on an associated type is
+# needed. One generic `@InMemory` over `^Rules`; the request tag takes its request as a type
+# variable; the query is answered as text.
+# Written by Claude (an implementation agent), 10 November 2026; subject to change.
+emit Ui.* | Seat.*
+test mod Tests
+
+type Response = choice:
+    Accepted
+    Refused Text
+derive ^Eq, ^Show
+
+type Stepped s = choice:
+    Next s
+    Denied Text
+
+trait ^Rules s:
+    type Request
+    Step: fn s, Request s -> Stepped s
+    Read: fn s -> Text
+
+tag Seat.Request of Element !Response:
+    $?latest: ((Nat, r))
+
+tag Seat.Query of Element $Text:
+    whole: unit
+
+@Ask: fn !r -> @!Response emit Seat.*
+fn @Ask !requests:
+    !numbered <- @Numbered !requests
+    $?latest <- nil then ? !numbered
+    !response <- Seat.Request($?latest=$?latest)
+    @ !response
+
+# The implementation's state: the document's, each request place's last number, and the
+# last step's responses by place.
+type Kept s = record:
+    state: s
+    seen: (Path ==> Nat)
+    judged: (Path ==> Response)
+
+StepOne: fn Kept s, ((Path, Nat, Request s)) -> Kept s where s: ^Rules
+fn StepOne k, ((p, n, r)) = if (?Get k.seen, p) == (? n): k else: match Step k.state, r:
+    Next s: Kept(state=s, seen=(Insert k.seen, p, n), judged=(Insert k.judged, p, Accepted))
+    Denied why: Kept(state=k.state, seen=(Insert k.seen, p, n), judged=(Insert k.judged, p, (Refused why)))
+
+StepAll: fn Kept s, [((Path, Nat, Request s))] -> Kept s where s: ^Rules
+fn StepAll k, asked = Fold asked, Kept(state=k.state, seen=k.seen, judged={}), StepOne
+
+?ResponseTo: fn Path, Kept s -> ?Response
+fn ?ResponseTo p, k = ?Get k.judged, p
+
+Asked: fn (Path ==> Elem (Ui.* | Seat.*)) -> [((Path, Nat, r))]
+fn Asked doc = Fold doc, [[]], \|acc, p, e| match e:
+    Seat.Request($?latest=$?l): match $?l:
+        ? ((n, r)): Push acc, ((p, n, r))
+        nil: acc
+    Seat.Query(..): acc
+    Ui.*: acc
+
+Told: fn Kept s -> Text where s: ^Rules
+fn Told k = Read k.state
+
+@InMemory: fn s, @a emit Ui.* | Seat.* -> @a emit Ui.* where s: ^Rules
+fn @InMemory initial, @guest:
+    let !stepped = !Updated $kept
+    ((result, $doc)) <- @HostDocument @guest, \|p, e| match e:
+        Seat.Request(..): @ !Filter (?ResponseTo p, !stepped)
+        Seat.Query(..): @ Told $kept
+        otherwise: @Element e
+    $now <- for p, $e <- $doc:
+        @ $e
+    $kept <- Kept(state=initial, seen={}, judged={}) then StepAll $kept, !Updated (Asked $now)
+    @ result
+
+# One document: a counter that refuses to pass ten.
+type Counter = record:
+    total: Nat
+derive ^Eq, ^Show
+
+impl ^Rules Counter:
+    type Request = Nat
+    fn Step c, r = if c.total + r > 10: Denied "{c.total} + {r} passes ten" else: Next Counter(total=c.total + r)
+    fn Read c = "{c.total}"
+
+Said: fn Response -> Text
+fn Said Accepted = "accepted"
+fn Said (Refused why) = "refused: {why}"
+
+@guest: @unit
+@guest:
+    !two <- Ui.Button($label=$"add 2")                         # 0
+    !nine <- Ui.Button($label=$"add 9")                        # 1
+    !response <- @Ask ((2 on !two) <| (9 on !nine))            # 2/0
+    $total <- Seat.Query(whole=unit)                           # 3
+    $last <- "nothing yet" then Said !response
+    Ui.Label($text=$"guest: total {$total}, {$last}")          # 4
+
+@host: @unit
+@host:
+    @InMemory Counter(total=0), @guest
