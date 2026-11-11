@@ -1012,6 +1012,15 @@ fn ?QualifiedFieldIn lx, env, recv, sigils, name = match recv.kind:
     EName r: if HasKey env.names, (SNameKey r): nil else: ?QualifiedField lx.g, lx.home, recv, sigils, name
     otherwise: nil
 
+# The environment a widget's blueprint parameter's argument is read in where the
+# parameter is read as a value: its caller's, with what the reading place binds beside
+# its names (every name that begins `#`: the arm's tag, the supplier's link to its owner
+# and its dynamic answers' getters, the live dynamics of the line).
+ParameterEnv: fn Env, Env -> Env
+fn ParameterEnv env, cbenv = Fold (Keys env.names), cbenv, \|en, name| if not (HasPrefix name, "#"): en else: match env.names[name]:
+    ? b: Bind en, name, b
+    nil: en
+
 NameValueOf: unbounded fn Lx, Env, SName, Range -> Vl
 fn NameValueOf lx, env, n, span:
     let nkey = NameKeyAt lx, env, n, span
@@ -1028,7 +1037,10 @@ fn NameValueOf lx, env, n, span:
         ? (BnParts ignore): match env.names["{nkey}#value"]:
             ? (BnLocal rs, mode, lt): LocalPlace rs, mode, lt
             otherwise: VlOwned (Refusal "a tuple pattern's binding as a value"), t
-        ? (BnWidget ignore, ignore, ignore, ignore): VlOwned (InternalBug "a widget parameter read as a plain value"), t
+        # a widget's blueprint parameter read as a value (a supplier's arm that gives
+        # `@answer`): its argument in the name's place, read in its caller's environment
+        # and context, under what this place adds (`ParameterEnv`)
+        ? (BnWidget argument, cbenv, ignore, clx): ValueOf clx, (ParameterEnv env, cbenv), argument
         ? (BnLocalFn cs): LocalFnValue (LocalFnLx lx, span), env, cs, t
         ? (BnLocalWidget ignore): VlOwned (Refusal "a widget defined in a block read as a blueprint value (it is lowered where a line applies it)"), t
         nil: match (if (Len n.path) == 1: env.names["{nkey}#blueprint"] else: nil):
@@ -2474,7 +2486,14 @@ fn LambdaCaptures env, written:
             let d = DoLet (PaBind local), (Own (LocalPlace rs, mode, ct))
             (((Push acc, d), (Bind en, n, (BnLocal (XVar local), Owned, ct))))
         otherwise: ((acc, en))
-    ((dos, env1))
+    # and what the argument of a widget's blueprint parameter reads, which the body reads
+    # as the argument in the name's place (`NameValueOf`): captured from its caller's
+    # environment, which the parameter then holds
+    Fold read, ((dos, env1)), \|((acc, en)), n| match env.names[n]:
+        ? (BnWidget argument, cbenv, cmenv, clx):
+            let ((more, captured)) = LambdaCaptures cbenv, (FreeReads (ExprsIn argument), [[]])
+            (((Append acc, more), (Bind en, n, (BnWidget argument, captured, cmenv, clx))))
+        otherwise: ((acc, en))
 
 PlainLambda: unbounded fn Lx, Env, [Pattern], LambdaBody, OutTy -> Vl
 fn PlainLambda lx, env, ps, body, ft:

@@ -929,7 +929,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the getter's port (`RowHears`). An answer through a blueprint a `let` names (`let
     @$live = @ $level`) is its expression in the name's place: `DynamicAnswers` reads
     the `let`'s expression, and the supplier's closure captures what it reads
-    (`WithBlueprintReads`). A computed answer in flight to a place whose key left is
+    (`WithBlueprintReads`). An answer through a widget's blueprint parameter (`fn
+    @Hosting @answer:` whose supplier's arm gives `@answer`) is the argument in the
+    name's place, read in its caller's environment and context under the arm's tag and
+    the supplier's link (`ParameterEnv`): `DynamicAnswers` reads the argument with its
+    caller's environments (`AnswerTexts`, a parameter handed on followed to its own
+    argument), and the supplier's closure captures what the argument reads from the
+    caller's environment (`LambdaCaptures`). A computed answer in flight to a place whose key left is
     dropped. Nested hosts add one tick per computing layer and none per
     forwarding layer.
 - **First values.** A child place with a first value asks the host at its build

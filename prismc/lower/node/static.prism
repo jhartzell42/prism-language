@@ -643,18 +643,14 @@ fn DynamicAnswers wx, benv, menv, hf, k, sup:
     # the part: `BundleBlueprint`)
     # (and the answers of a blueprint a `let` of the block names, `let @$live = @ $level`,
     # which the supplier reads as its expression: `NameValueOf`)
-    let written = ExprsIn sup
-    let named = Fold written, [[]], \|acc, x| match x.kind:
-        EName n: match (if (Len n.path) == 1: menv.names["{SNameKey n}#blueprint"] else: nil):
-            ? (BnWidget held, ignore, ignore, ignore): Append acc, (ExprsIn held)
-            otherwise: acc
-        otherwise: acc
-    let dyns = Fold (Append written, named), [[]], \|acc, x| match x.kind:
-        EFreeSigil "@", y: match ?DynamicAnswer lx, y:
-            ? d: Push acc, ((y, d))
+    # (and the answers of a widget's blueprint parameter the supplier gives, `@answer`
+    # under an arm: the argument's text, read in its caller's environments, `AnswerTexts`)
+    let dyns = Fold (AnswerTexts lx, benv, menv, (ExprsIn sup), 8), [[]], \|acc, ((x, be, me, lxd))| match x.kind:
+        EFreeSigil "@", y: match ?DynamicAnswer lxd, y:
+            ? d: Push acc, ((y, d, be, me, lxd))
             nil: match (Ungrouped y).kind:
-                ETuple parts: Fold parts, acc, \|acc2, part| match ?DynamicAnswer lx, part:
-                    ? d: if (?ConstantDynamic part) == nil: Push acc2, ((part, d)) else: acc2
+                ETuple parts: Fold parts, acc, \|acc2, part| match ?DynamicAnswer lxd, part:
+                    ? d: if (?ConstantDynamic part) == nil: Push acc2, ((part, d, be, me, lxd)) else: acc2
                     nil: acc2
                 otherwise: acc
         otherwise: acc
@@ -669,11 +665,12 @@ fn DynamicAnswers wx, benv, menv, hf, k, sup:
         let env0 = Bind benv, "#owner", (BnLocal (XVar "{owner}x"), Owned, OutUnit)
         let lets0 = [[(DoLet (PaBind "{owner}x"), (XClone (XVar owner)))]]
         Fold (Range0 (Len dyns)), ((wx1, env0, lets0)), \|((w, en, ls)), j| match dyns[j]:
-            ? ((y, d)):
+            ? ((y, d, be, me, lxd)):
                 let name = "{hf}_dyn_{j + 1}"
                 let port = "{name}_port"
-                let ((ex, reads)) = DynamicExpr w, menv, d
-                let t = OutTyOf lx, (Peel (TypeAt lx, d.span))
+                let ((ex, reads)) = DynamicExpr (update w:
+                    &_.lx <= lxd), me, d
+                let t = OutTyOf lxd, (Peel (TypeAt lxd, d.span))
                 # what it reads through the parent has its value at this node's build, read
                 # there through the parent, which is built (`BuildSpelling`): the value at
                 # the build is taken at the host's line, a local the supplier copies
@@ -684,19 +681,19 @@ fn DynamicAnswers wx, benv, menv, hf, k, sup:
                     OwnRead f: HasText w.inited, f
                     ParentRead ignore: True
                 # no value while the node is being made: the scope's places ask late
-                let late = not (valued and NamesInitedOrParent w, benv, d)
+                let late = not (valued and NamesInitedOrParent w, be, d)
                 let atBuild = "{name}_at_build"
                 let w0 = if late and not (HasNat w.lateHosts, k): (update w:
                     &_.lateHosts <= Push &_.lateHosts, k) else: w
                 let w1 = if late or not throughParent: w0 else: update w0:
                     &_.taken <= Push &_.taken, atBuild
-                    &_.lets <= Push &_.lets, (DoLet (PaBind atBuild), (Own (ValueOf lx, (InitEnv benv), d)))
+                    &_.lets <= Push &_.lets, (DoLet (PaBind atBuild), (Own (ValueOf lxd, (InitEnv be), d)))
                 let en0 = if late: Bind en, "#dynlate{DynKey y}", (BnLocal XUnit, Owned, OutUnit) else: en
                 let en1 = if throughParent and not late: Bind en0, "#dynbuild{DynKey y}", (BnLocal (XVar "{atBuild}x"), Owned, t) else: en0
                 let ls1 = if throughParent and not late: Push ls, (DoLet (PaBind "{atBuild}x"), (XClone (XVar atBuild))) else: ls
                 let w2 = update w1:
                     &_.taken <= Append &_.taken, [[name, port]]
-                    &_.getters <= Push &_.getters, (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="The host at `{hf}`'s dynamic answer `{SrcText lx, lx.file, y.span}`, read at the read point (round 3 DY)."))
+                    &_.getters <= Push &_.getters, (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="The host at `{hf}`'s dynamic answer `{SrcText lxd, lxd.file, y.span}`, read at the read point (round 3 DY)."))
                     &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind port), (OutRc (OutPort OutUnit))), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]]))
                     &_.fields <= Push &_.fields, ((port, (OutRc (OutPort OutUnit)), "the dynamic answer `{name}` moved: its blueprints push the child's place next tick"))
                     &_.moves <= Push &_.moves, ((port, (XClone (XVar port))))
@@ -704,6 +701,23 @@ fn DynamicAnswers wx, benv, menv, hf, k, sup:
                 let w3 = OnceField w2, name
                 ((w3, (Bind en1, "#dyn{DynKey y}", (BnLocal (XVar name), Owned, t)), (Push ls1, (DoLet (PaBind "{port}x"), (XClone (XVar port))))))
             nil: ((w, en, ls))
+
+# The expressions a supplier's answers are written in, each with the environments and
+# the context it is read in: the supplier's own text; the expression of a blueprint a
+# `let` of the block names, in the supplier's place; and the argument of a widget's
+# blueprint parameter the supplier names (`fn @Hosting @answer:` whose supplier's arm
+# gives `@answer`), in its caller's environments, a parameter handed on followed to its
+# own argument.
+AnswerTexts: unbounded fn Lx, Env, Env, [Expr], Nat -> [((Expr, Env, Env, Lx))]
+fn AnswerTexts lx, benv, menv, written, depth = Fold written, [[]], \|acc, x|
+    let own = Push acc, ((x, benv, menv, lx))
+    match x.kind:
+        EName n: if (Len n.path) != 1 or depth == 0: own else: match menv.names["{SNameKey n}#blueprint"]:
+            ? (BnWidget held, ignore, ignore, ignore): Append own, (AnswerTexts lx, benv, menv, (ExprsIn held), (Dec depth))
+            otherwise: match menv.names[SNameKey n]:
+                ? (BnWidget argument, cbenv, cmenv, clx): Append own, (AnswerTexts clx, cbenv, cmenv, (ExprsIn argument), (Dec depth))
+                otherwise: own
+        otherwise: own
 
 # Whether every dynamic name an expression reads has its value at the build, or is read
 # through the parent, which is built (`NamesInited`, `BuildSpelling`).
