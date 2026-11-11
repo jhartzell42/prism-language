@@ -553,9 +553,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
   positions the first segment is among (the prelude's `within_positions`) and hands the
   answer on, to a shared row with the position counted from the generation's first
   (`rebased`, `GenDef.rebased`).
-- Any other widget that calls itself (a `$`, event or blueprint parameter, a result, one
-  clause, a hosted scope) is lowered level by level, to the sixteen levels an inlined
-  widget is (`TooDeep`: a tree deeper than that faults at its build).
+- A blueprint parameter of such a widget, where the widget gives nothing back and the
+  call's argument is a blueprint value the lowering can make (`IsBlueprintValued`: a
+  widget in `Lx.valued`, named in place or through the caller's own parameter, or a
+  blueprint the node holds), is a value of the shared row: a field holding the
+  `prism_rtl::Blueprint`, matched and passed on as a plain argument is
+  (`SharedScrutinee`), applied as any blueprint value (`ValueBlueprintLine`).
+  `ValuedWidgets` reads the blueprint arguments of a call of a widget that calls itself.
+- Any other widget that calls itself (a `$` or event parameter, a blueprint parameter
+  whose argument is no such value or beside a result, an event, dynamic or bundle
+  result, a type parameter, a hosted scope) is lowered level by level, to the sixteen
+  levels an inlined widget is (`TooDeep`: a tree deeper than that faults at its build).
 
 ## Hosting
 
