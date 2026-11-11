@@ -1031,18 +1031,29 @@ public:
 };
 
 /// A widget's row as its blueprint built it (prism_rtl's `widget_blueprint`): the row as a
-/// node, its leaving, how many places it built, and the widget's plain result.
+/// node, its leaving, how many places it built, the widget's plain result, and, for a
+/// row built in a hosted scope, its places' entries and a host's typed answer to one.
 template <class N, class R>
-::prism_rtl::BuiltWidget<R> built_widget(std::uint32_t built, R result, ::prism_rtl::Rc<N> row) {
-    return ::prism_rtl::BuiltWidget<R>{row, [row](Cx& cx) { row->leave_row(cx); }, built, std::move(result)};
+::prism_rtl::BuiltWidget<Elem, Answer, R> built_widget(std::uint32_t built, R result, ::prism_rtl::Rc<N> row) {
+    return ::prism_rtl::BuiltWidget<Elem, Answer, R>{
+        row,
+        [row](Cx& cx) { row->leave_row(cx); },
+        built,
+        std::move(result),
+        [row](const Cx& cx) { return row->document(cx); },
+        [row](std::span<const Segment> at, const Answer& v, Cx& cx) -> Done { return row->deliver(at, v, cx); }};
 }
 
 /// A blueprint value a block applied: what it built, as the block's generation at the
 /// line. A World's answer under it goes to the blueprint's node, the position counted
-/// from the blueprint's first.
+/// from the blueprint's first. In a hosted scope its places are entries of the host's
+/// document: a widget's row's own, or the one place of an element forwarded or placed,
+/// at the base the blueprint was built from, whose answer from the host goes to the
+/// blueprint's sink.
 class AppliedBlueprint : public Row {
 public:
-    explicit AppliedBlueprint(::prism_rtl::Supplied<Elem, Answer> supplied) : supplied_(std::move(supplied)) {}
+    AppliedBlueprint(::prism_rtl::Supplied<Elem, Answer> supplied, std::uint32_t base, ::prism_rtl::Sink<Answer> sink)
+        : supplied_(std::move(supplied)), base_(base), sink_(std::move(sink)) {}
     Done answer(std::span<const Segment> at, const Pod& v, Cx& cx) override {
         return supplied_.node->answer(at, v, cx);
     }
@@ -1050,38 +1061,81 @@ public:
         if (supplied_.leave) supplied_.leave(cx);
         else cx.keep(supplied_.node->leave(cx));
     }
+    std::vector<std::tuple<Path, ::prism_rtl::Rc<::prism_rtl::Entry<Elem>>>> document(const Cx& cx) const override {
+        if (supplied_.document) return supplied_.document(cx);
+        std::vector<std::tuple<Path, ::prism_rtl::Rc<::prism_rtl::Entry<Elem>>>> out;
+        if (supplied_.entry) out.emplace_back(Path::root().at(base_), supplied_.entry);
+        return out;
+    }
+    Done deliver(std::span<const Segment> at, const Answer& v, Cx& cx) override {
+        if (supplied_.deliver) return supplied_.deliver(at, v, cx);
+        if (at.size() == 1 && at[0].is_pos(0) && supplied_.entry) return sink_(v, cx);
+        return unexpected(Fault::answer(str("no hosted place at ", path_of(at), " under a blueprint value applied")));
+    }
 
 private:
     ::prism_rtl::Supplied<Elem, Answer> supplied_;
+    std::uint32_t base_;
+    ::prism_rtl::Sink<Answer> sink_;
 };
 
-/// A blueprint value applied by a block at one of its lines (Semantics ch. 8: "a blueprint
-/// builds nothing until a block applies it", at the applying block's next positions): built
-/// at the block's path, its places numbered from `base`, in the World's scope. Gives the
-/// generation and how many places it built. A blueprint that answers (`@ x`, an event's, a
-/// dynamic's) builds no place here, and what it answers is the line's result, which a line
-/// of unit drops.
-/// A blueprint value applied by a line that hears it (`!go <- @Element e`): as
-/// `apply_blueprint`, with `hear` the blueprint's sink, called with each answer to the
-/// place the blueprint answers, in the tick the answer comes.
+/// The scope a blueprint value is applied in: the World's, or the host's whose document
+/// the applying block's places are entries of.
+inline ::prism_rtl::Scope<Elem, Answer> applied_scope(std::optional<::prism_rtl::Rc<::prism_rtl::HostOf<Elem, Answer>>> hosted) {
+    return hosted ? ::prism_rtl::Scope<Elem, Answer>::in(*hosted) : ::prism_rtl::Scope<Elem, Answer>::world();
+}
+
+/// A blueprint value applied by a line that hears it (`!go <- @Element e`): built at the
+/// block's path, its places numbered from `base`, in the block's scope (`hosted` the host
+/// of a block in a hosted scope), with `hear` the blueprint's sink, called with each
+/// answer to the place the blueprint answers, in the tick the answer comes. Gives the
+/// generation and how many places it built.
 template <class Hear>
-Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint_heard(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, Hear hear, Cx& cx) {
+Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint_heard(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, std::optional<::prism_rtl::Rc<::prism_rtl::HostOf<Elem, Answer>>> hosted, Hear hear, Cx& cx) {
     ::prism_rtl::Sink<Answer> sink = [hear = std::move(hear)](const Answer& answer, Cx& cx) -> Done { return hear(answer, cx); };
-    auto supplied = TRY(blueprint(std::move(path), sink, ::prism_rtl::Scope<Elem, Answer>::world(), base, cx));
+    auto supplied = TRY(blueprint(std::move(path), sink, applied_scope(std::move(hosted)), base, cx));
     std::uint32_t built = supplied.built;
-    return std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied)), built};
+    return std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied), base, sink), built};
 }
 
 /// A blueprint value applied by a line that binds its plain result (`n <- @t`): as
 /// `apply_blueprint`, with the first answer of the place the blueprint answers, which a
 /// blueprint that gives a plain value has at its build.
-inline Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t, Answer>> apply_blueprint_answered(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, Cx& cx) {
+inline Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t, Answer>> apply_blueprint_answered(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, std::optional<::prism_rtl::Rc<::prism_rtl::HostOf<Elem, Answer>>> hosted, Cx& cx) {
     ::prism_rtl::Sink<Answer> sink = [](const Answer&, Cx&) -> Done { return {}; };
-    auto supplied = TRY(blueprint(std::move(path), sink, ::prism_rtl::Scope<Elem, Answer>::world(), base, cx));
+    auto supplied = TRY(blueprint(std::move(path), sink, applied_scope(std::move(hosted)), base, cx));
     std::uint32_t built = supplied.built;
     if (!supplied.first) return unexpected(Fault::answer("a blueprint value that gives a plain value answered nothing at its build"));
     Answer first = *supplied.first;
-    return std::tuple<::prism_rtl::Rc<Row>, std::uint32_t, Answer>{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied)), built, std::move(first)};
+    return std::tuple<::prism_rtl::Rc<Row>, std::uint32_t, Answer>{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied), base, sink), built, std::move(first)};
+}
+
+/// A blueprint value applied by a line that binds a dynamic (`$d <- @$t`): as
+/// `apply_blueprint`, with the dynamic the blueprint gives: its value at the build the
+/// first answer of the place the blueprint answers, and each later answer a new value,
+/// in the tick the answer comes. `take` reads an answer at the line's type.
+template <class Take>
+auto apply_blueprint_dynamic(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, std::optional<::prism_rtl::Rc<::prism_rtl::HostOf<Elem, Answer>>> hosted, Take take, Cx& cx) {
+    using T = typename std::invoke_result_t<Take, const Answer&>::value_type;
+    using Made = std::tuple<::prism_rtl::Rc<Row>, std::uint32_t, ::prism_rtl::Dynamic<T>>;
+    auto cell = ::prism_rtl::make_rc<std::optional<::prism_rtl::Hold<T>>>();
+    auto updates = ::prism_rtl::make_rc<::prism_rtl::Port<Unit>>();
+    ::prism_rtl::Sink<Answer> sink = [cell, updates, take](const Answer& answer, Cx& cx) -> Done {
+        auto v = TRY(take(answer));
+        if (!*cell) return unexpected(Fault::answer("a blueprint value that gives a dynamic was answered before its build ended"));
+        (*cell)->set(std::move(v), cx);
+        return updates->fire(Unit{}, cx);
+    };
+    auto run = [&]() -> Result<Made> {
+        auto supplied = TRY(blueprint(std::move(path), sink, applied_scope(std::move(hosted)), base, cx));
+        std::uint32_t built = supplied.built;
+        if (!supplied.first) return unexpected(Fault::answer("a blueprint value that gives a dynamic answered nothing at its build"));
+        auto first = TRY(take(*supplied.first));
+        cell->emplace(std::move(first), cx);
+        auto read = [cell](const Cx& cx) { return (*cell)->get(cx); };
+        return Made{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied), base, sink), built, ::prism_rtl::Dynamic<T>{nullptr, read, updates}};
+    };
+    return run();
 }
 
 /// An answer made outside a tag's arm (a widget's plain result as a blueprint value
@@ -1091,8 +1145,14 @@ Result<T> answer_plain(const A& answer) {
     return answer.template plain<T>();
 }
 
-inline Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, Cx& cx) {
-    return apply_blueprint_heard(blueprint, std::move(path), base, [](const Answer&, Cx&) -> Done { return {}; }, cx);
+/// A blueprint value applied by a block at one of its lines (Semantics ch. 8: "a blueprint
+/// builds nothing until a block applies it", at the applying block's next positions): as
+/// `apply_blueprint_heard`, hearing nothing. A blueprint that answers (`@ x`, an event's,
+/// a dynamic's) builds no place here, and what it answers is the line's result, which a
+/// line of unit drops.
+inline Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, std::optional<::prism_rtl::Rc<::prism_rtl::HostOf<Elem, Answer>>> hosted, Cx& cx) {
+    return apply_blueprint_heard(blueprint, std::move(path), base, std::move(hosted), [](const Answer&, Cx&) -> Done { return {}; }, cx);
+}
 }
 
 /// A row subscribing to its block's port for one event: the row heard weakly, the handle

@@ -141,9 +141,15 @@ fn ValueBlueprintLine wx, menv, e = AppliedBlueprintLine wx, e, (Ref (ValueOf wx
 # takes the blueprint's first answer (the prelude's `apply_blueprint_answered`), read
 # at the line's type (`answer_plain`: a widget's result as a blueprint value gives it,
 # `WidgetBlueprintValue`), and keeps it in `{generation}_res` from the build on, late
-# (`WrLate`, `IsLateExpr`), as a call of a widget that calls itself keeps its own. A
-# blueprint value that gives a dynamic or a bundle back, and one applied in a hosted
-# scope, are refused.
+# (`WrLate`, `IsLateExpr`), as a call of a widget that calls itself keeps its own. In a
+# hosted scope the blueprint is built in the scope of the host whose document the
+# node's places are entries of, and what it built is a row of that document (the
+# prelude's `AppliedBlueprint`: its `document` and `deliver`). A line that binds a
+# dynamic (`$d <- @$t`, `$level <- @Element e`) takes the dynamic the prelude's
+# `apply_blueprint_dynamic` makes of the blueprint's answers (the first its value at the
+# build, each later one a new value in the tick it comes) and keeps it as a
+# generation's dynamic result is kept (`KeptDyn`). A blueprint value that gives a
+# bundle back is refused.
 AppliedBlueprintLine: unbounded fn Wx, Expr, Ex -> ((Wx, Wres))
 fn AppliedBlueprintLine wx, e, blueprint:
     let lx = wx.lx
@@ -151,29 +157,45 @@ fn AppliedBlueprintLine wx, e, blueprint:
     let outTy = OutTyOf lx, (OutOf (TypeAt lx, e.span))
     let heard = (ResultLayer (TypeAt lx, e.span)) == LyEv
     let answered = outTy != OutUnit and (ResultLayer (TypeAt lx, e.span)) == LyPlain and not (IsBundle (LineOutFull lx, e))
-    if (IsHostedScope wx) or (outTy != OutUnit and not heard and not answered):
-        let words = if IsHostedScope wx: "a blueprint value applied in a hosted scope (`{SrcText lx, lx.file, e.span}`)" else: "a blueprint value applied in a block that gives a dynamic or a bundle back (`{SrcText lx, lx.file, e.span}`)"
+    let dynamic = (ResultLayer (TypeAt lx, e.span)) == LyDyn and not (IsBundle (LineOutFull lx, e))
+    if outTy != OutUnit and not heard and not answered and not dynamic:
+        let words = "a blueprint value applied in a block that gives a bundle back (`{SrcText lx, lx.file, e.span}`)"
         let wx2 = update wx:
             &_.build <= Push &_.build, (RefusalDo words)
         ((wx2, WrUnit))
     else:
         let ((name, wx1)) = FreshName wx, "generation"
         let ((upId, wx2)) = if heard: AddGn wx1, "{name}_fired", outTy, GnNamed, 0 else: ((0, wx1))
-        let at = [[blueprint, (XClone (XVar "path")), (XVar "row_base")]]
-        let applied = if heard: TryOf (XCall (HelperRef "apply_blueprint_heard"), (Append at, [[(AnswerSink lx, name, outTy), XCx]])) else: if answered: TryOf (XCall (HelperRef "apply_blueprint_answered"), (Push at, XCx)) else: TryOf (XCall (HelperRef "apply_blueprint"), (Push at, XCx))
+        # the scope the blueprint is built in: the World's, or the host's whose document
+        # this node's places at the line are entries of
+        let hostedIn = if IsHostedScope wx: XCtor (RefRuntime "std::Some"), [[(XCast (XClone (HostFieldEx wx, pos)), hostOfTy)]] else: XNone
+        let at = [[blueprint, (XClone (XVar "path")), (XVar "row_base"), hostedIn]]
+        # a line that binds a dynamic: each answer read at the line's type
+        let taker = XClosure False, [[(PaBind "answer")]], (XCtor (RefRuntime "std::Ok"), [[(FirstAnswerTaken lx, outTy, "answer")]])
+        let applied = if heard: TryOf (XCall (HelperRef "apply_blueprint_heard"), (Append at, [[(AnswerSink lx, name, outTy), XCx]])) else: if dynamic: TryOf (XCall (HelperRef "apply_blueprint_dynamic"), (Append at, [[taker, XCx]])) else: if answered: TryOf (XCall (HelperRef "apply_blueprint_answered"), (Push at, XCx)) else: TryOf (XCall (HelperRef "apply_blueprint"), (Push at, XCx))
         let gap = XBin OpSub, (XIndex wideGeneration), (XVar "built")
         let hearer = if heard: [[(DoLet (PaBind "heard_by"), (XWeak XSelf))]] else: [[]]
         let res = "{name}_res"
-        let made = if answered: PaTuple [[(PaBind "row"), (PaBind "built"), (PaBind "answered")]] else: PaTuple [[(PaBind "row"), (PaBind "built")]]
-        let keeps = if answered: [[(DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(TryOf (XCallAt (HelperRef "answer_plain"), [[outTy]], [[(XRef (XVar "answered"))]]))]]))]] else: [[]]
+        let follow = "{name}_follow"
+        let made = if answered: PaTuple [[(PaBind "row"), (PaBind "built"), (PaBind "answered")]] else: if dynamic: PaTuple [[(PaBind "row"), (PaBind "built"), (PaBind "given")]] else: PaTuple [[(PaBind "row"), (PaBind "built")]]
+        # the dynamic the blueprint gives is kept as a generation's dynamic result is
+        # (`KeptDyn`), and the node follows its update event: each firing marks what
+        # reads it (`{name}_result_moved`)
+        let keeps = if dynamic: [[(DoExpr (XMethod (XField XSelf, follow), "follow", [[(XRef (XField (XVar "given"), "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef lx, wx.node), "{name}_result_moved"))]])), (DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XVar "given")]]))]] else: if answered: [[(DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(FirstAnswerTaken lx, outTy, "answered")]]))]] else: [[]]
         let select = WithRowBase wx, "self", pos, (XBlock (Append (Append (Append hearer, [[(DoLet made, applied)]]), keeps), (GapSet name, (? gap))), (XVar "row"))
         let wx3 = update wx2:
             &_.pos <= Pos(scope=pos.scope, at=pos.at + wideGeneration)
-            &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=True, width=wideGeneration, moved="", early=False, gappy=True, rebased=True)
+            &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=True, width=wideGeneration, moved=(Or (?HostedRows wx), ""), early=False, gappy=True, rebased=True)
             &_.genHolds <= Push &_.genHolds, ((name, [[]]))
             &_.fallible <= True
             &_.getters <= if heard: Push &_.getters, (GenUp name, (GnOf wx2, upId).name, (GnOf wx2, upId).ty) else: &_.getters
         if heard: ((wx3, (WrEv (EvRefOf wx3, upId))))
+        else: if dynamic:
+            let wx4 = update wx3:
+                &_.taken <= Push &_.taken, follow
+                &_.fields <= Push &_.fields, ((follow, (OutNamed (RefRuntime "prism_rtl::Follow"), [[]]), "the subscription to the update event of the dynamic the blueprint value gives"))
+                &_.moves <= Push &_.moves, ((follow, (XCall (RefRuntime "prism_rtl::Follow::new"), [[]])))
+            KeptDyn wx4, name, outTy, [[]]
         else: if answered:
             let read = XClone (XMethod (XMethod (XMethod (XField XSelf, res), "borrow", [[]]), "as_ref", [[]]), "expect", [[(XStr "a blueprint value applied before what reads its result")]])
             let wx4 = update wx3:
@@ -191,13 +213,33 @@ fn AppliedBlueprintLine wx, e, blueprint:
 # other answer is a fault (the accessor's).
 AnswerSink: unbounded fn Lx, Text, OutTy -> Ex
 fn AnswerSink lx, name, t:
-    let tags = Filter (Values lx.g.tags), \|tg| tg.kind == "Element" and ((AnswerOpen lx, tg) or (AnswerTy lx, tg) == t)
-    let Taken = \|tg| RecodedAnswer (AnswerOpen lx, tg), (AnswerTy lx, tg), t, (TryOf (XMethod (XVar "answer"), (AnswerAccessor tg), [[]]))
-    let fired = match tags[0]:
-        ? first: Fold (Drop tags, 1), (Taken first), \|rest, tg| XIf (XIsCase (XVar "answer"), [[AnswerVariant tg]]), (Taken tg), rest
+    let fired = match ?AnswerByTag lx, t, "answer":
+        ? taken: taken
         nil: InternalBug "a blueprint's answers heard at a type no element tag of the program answers with"
     let up = DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "block"]]), (XUpgrade (XVar "heard_by")), [[(DoExpr (XMethod (XVar "block"), "{name}_up", [[(XVar "fired"), XCx]]))]], [[]]
     XClosure True, [[(PaBind "answer"), (PaBind "cx")]], (XBlock [[(DoLet (PaBind "fired"), fired), up]], (XCtor (RefRuntime "std::Ok"), [[XUnit]]))
+
+# An answer (the local `answer`, a `crate::Answer`) read at the type `t` by the tag it
+# is under: the program's element tags whose answers are of that type, and its generic
+# ones, whose answers are recoded to it. An answer made outside a tag's arm is read at
+# the first one's type (its accessor reads plain data so), and an answer under any other
+# tag is the accessor's fault. `nil` when no tag answers with the type.
+?AnswerByTag: unbounded fn Lx, OutTy, Text -> ?Ex
+fn ?AnswerByTag lx, t, answer:
+    let tags = Filter (Values lx.g.tags), \|tg| tg.kind == "Element" and ((AnswerOpen lx, tg) or (AnswerTy lx, tg) == t)
+    let Taken = \|tg| RecodedAnswer (AnswerOpen lx, tg), (AnswerTy lx, tg), t, (TryOf (XMethod (XVar answer), (AnswerAccessor tg), [[]]))
+    match tags[0]:
+        ? first: ? (Fold (Drop tags, 1), (Taken first), \|rest, tg| XIf (XIsCase (XVar answer), [[AnswerVariant tg]]), (Taken tg), rest)
+        nil: nil
+
+# The first answer of a blueprint value a line binds (`n <- @t`), read at the line's
+# type: under the tag whose arm made the blueprint (`@Answerer n` in a supplier's arm
+# answers under that arm's tag), or outside any (a widget read as a value elsewhere
+# answers plain data, `answer_plain`).
+FirstAnswerTaken: unbounded fn Lx, OutTy, Text -> Ex
+fn FirstAnswerTaken lx, t, answer = match ?AnswerByTag lx, t, answer:
+    ? taken: taken
+    nil: TryOf (XCallAt (HelperRef "answer_plain"), [[t]], [[(XRef (XVar answer))]])
 
 # A blueprint a `let` of the block names, applied (`let @w = @Tile k`, then `@w`): its
 # expression built here, in this line's environments, at this node's next positions,
@@ -324,7 +366,7 @@ fn HostLine wx, benv, menv, form, args, ?bound:
             let supplier = if (Len dynLets) == 0: supplier0 else: XBlock dynLets, supplier0
             # the scope the host's rows build in: the World's, or the enclosing host's
             let enclosing = if Emits wx, pos: XNone else: XCtor (RefRuntime "std::Some"), [[(XCast (XClone (XVar (HostLocal wx, pos))), hostOfTy)]]
-            let made = XCall (RefRuntime "prism_rtl::Host::new"), [[(PlaceAt wx, "", pos), (XClone (XVar rowsName)), supplier, enclosing, (XPath (RefChild (SiteRef lx, wx.node), "{hf}_answer"))]]
+            let made = XCall (RefRuntime "prism_rtl::Host::new"), [[(PlaceAt wx, "", pos), (XClone (XVar rowsName)), supplier, enclosing, (XPath (RefChild (SiteRef lx, wx.node), "{hf}_answer")), (XPath (RefChild (SiteRef lx, wx.node), "{hf}_moved"))]]
             let hostTy = OutRc (OutNamed (RefRuntime "prism_rtl::Host"), [[elemTy, answerTy, (OutNamed (SiteRef lx, wx.node), [[]])]])
             let rowsTy = OutNamed (RefRuntime "prism_rtl::Rows"), [[elemTy, answerTy]]
             # the document is `$(Path ==> $Elem c)` (Jimmy, 6 November 2026): the owner keeps
@@ -555,10 +597,11 @@ fn ElementValuesIn lx, e:
 # built from a base, which holds this node through its link and reads the block's names
 # through it as an arm's row does (`ArmRowOf`). One row type a widget and node; bound
 # under `#whole@{span}` for `NameValue`, a `#whole` key so that a row and a closure of the
-# line see it as they see a live dynamic. A row's place that reads a dynamic of the block
-# is marked by no one (the block keeps no list of the rows its blueprints built), so such
-# a widget is refused as a value, as one that gives something back and one in a hosted
-# scope are.
+# line see it as they see a live dynamic. The widget is lowered twice (`ValueRowOf`), for
+# the World's scope and for a hosted one: the value is built in the scope of the block
+# that applies it. A widget that gives a plain value back answers with it as a top-level
+# widget read as a value does (`WidgetBlueprintValue`); one that gives an event, a
+# dynamic or a bundle back is refused as a value.
 # What a widget gives: its own type when it takes no arguments.
 WidgetResultOf: fn Ty -> Ty
 fn WidgetResultOf t = match t:
@@ -607,27 +650,62 @@ fn BlueprintValuesAt wx, benv, menv, e:
                 &_.lets <= Push &_.lets, (DoLet (PaBind owner), (XCall (RefRuntime "prism_rtl::Link::<{w.node}>::new"), [[]]))
                 &_.build <= Push &_.build, (DoExpr (XMethod (XVar owner), "link", [[(XRef (XVar "node"))]]))
             let ((f, w1)) = FreshName w0, "blueprint_{Snake nkey}"
-            let linkTy = OutNamed (RefRuntime "prism_rtl::Link"), [[(OutNamed (SiteRef lx, w.node), [[]])]]
-            let cr = ArmRowOf w1, me, lx, [[]], [[]], nil, b, "{w.node}Value{RowSuffix w1}", f, True, True, linkTy, [[]], [[]], [[]], True
-            let marked = Fold (Drop cr.parent.rowMarks, (Len w1.rowMarks)), False, \|found, rm| found or (rm.builder == f and (Len rm.reads) > 0)
             let gives = OutTyOf lx, (OutOf (TypeAt lx, y.span))
-            let ?refused = if IsHostedScope w: ? "the widget `{nkey}` of a block as a blueprint value in a hosted scope" else: if gives != OutUnit: ? "the widget `{nkey}` of a block as a blueprint value that gives something back" else: if marked: ? "the widget `{nkey}` of a block as a blueprint value whose places read a dynamic of the block" else: nil
-            match ?refused:
-                ? words: (((update w1:
-                    &_.build <= Push &_.build, (RefusalDo words)), be, me))
-                nil:
-                    let made = TryOf (XCall (RefChild (SiteRef lx, cr.case.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], cr.case.passed), [[(XClone (XVar "link")), XCx]]))
-                    let built = XBlock [[(DoLet (PaBind "row"), made)]], (XCall (HelperRef "built_widget"), [[(XMethod (XVar "row"), "built", [[]]), XUnit, (XVar "row")]])
-                    let build = XClosure True, [[(PaBind "path"), (PaBind "row_base"), (PaBind "cx")]], (XCtor (RefRuntime "std::Ok"), [[built]])
-                    let value = XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner)))]], (XCall (RefRuntime "prism_rtl::widget_blueprint::<crate::Elem, crate::Answer, _>"), [[build, (XClosure False, [[PaWild]], XNone)]])
-                    let w2 = update cr.parent:
-                        &_.rows <= Append (Push &_.rows, cr.case.node), cr.case.node.children
-                        &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind f), blueprintTy), value)
-                        &_.fields <= Push &_.fields, ((f, blueprintTy, "the widget `{nkey}` of the block as a blueprint value"))
-                        &_.moves <= Push &_.moves, ((f, (XClone (XVar f))))
-                    let atBuild = BnLocal (XVar f), Owned, blueprintTy
-                    let inMethod = BnLocal (XField XSelf, f), Owned, blueprintTy
-                    ((w2, (Bind (Bind be, "#whole@widget:{nkey}", atBuild), "#whole@{DynKey y}", atBuild), (Bind (Bind me, "#whole@widget:{nkey}", inMethod), "#whole@{DynKey y}", inMethod)))
+            let plain = match TypeAt lx, y.span:
+                TyAt i, ignore: (LayerOf i) == LyPlain and not (IsBundle (Peel i))
+                otherwise: False
+            if not (plain and (gives == OutUnit or Podable gives)): (((update w1:
+                &_.build <= Push &_.build, (RefusalDo "the widget `{nkey}` of a block as a blueprint value that gives an event, a dynamic, a bundle or a value that is no plain data back")), be, me))
+            else:
+                let ((w2, world)) = ValueRowOf w1, me, b, f, False, gives
+                let ((w3, hosted)) = ValueRowOf w2, me, b, f, True, gives
+                let answer = if gives == OutUnit: XClosure False, [[PaWild]], XNone else: XClosure False, [[PaBind "widget_result"]], (XCtor (RefRuntime "std::Some"), [[(Tagged untaggedRef, (XVar "widget_result"))]])
+                let held = [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "hosted_link"), (XClone (XVar owner))), (DoLet (PaBind "rows"), (XClone (XVar "{f}_rows"))), (DoLet (PaBind "hosted_rows"), (XClone (XVar "{f}_hosted_rows")))]]
+                let value = XBlock held, (XCall (RefRuntime "prism_rtl::widget_blueprint::<crate::Elem, crate::Answer, _>"), [[world, hosted, answer]])
+                let w4 = update w3:
+                    &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind f), blueprintTy), value)
+                    &_.fields <= Push &_.fields, ((f, blueprintTy, "the widget `{nkey}` of the block as a blueprint value"))
+                    &_.moves <= Push &_.moves, ((f, (XClone (XVar f))))
+                let atBuild = BnLocal (XVar f), Owned, blueprintTy
+                let inMethod = BnLocal (XField XSelf, f), Owned, blueprintTy
+                ((w4, (Bind (Bind be, "#whole@widget:{nkey}", atBuild), "#whole@{DynKey y}", atBuild), (Bind (Bind me, "#whole@widget:{nkey}", inMethod), "#whole@{DynKey y}", inMethod)))
+
+# One of the two rows of a block's own widget as a blueprint value (`BlueprintValuesAt`):
+# the row whose places are the World's, or (`hosted`) the one whose places are entries of
+# the document of the host it is built under, given that host and what tells it as a
+# shared row is (`Wx.?valuedAs`, `ArmRowOf`). The block keeps the rows the blueprint
+# built in `{f}_rows` (`{f}_hosted_rows`), weakly (`prism_rtl::WeakRows`), and a write
+# behind what their places read of the block marks each that lives (`RowMarks` of kind
+# `ValueRow`, `RowWritten`). Gives the block and the blueprint's closure that builds the
+# row: `path, row_base, cx`, and for a hosted row `enclosing` and `moved` before `cx`.
+ValueRowOf: unbounded fn Wx, Env, Block, Text, Bool, OutTy -> ((Wx, Ex))
+fn ValueRowOf w, me, b, f, hosted, gives:
+    let lx = w.lx
+    let genName = if hosted: "{f}_hosted" else: f
+    let rowName = if hosted: "{w.node}HostedValue{RowSuffix w}" else: "{w.node}Value{RowSuffix w}"
+    let linkTy = OutNamed (RefRuntime "prism_rtl::Link"), [[(OutNamed (SiteRef lx, w.node), [[]])]]
+    let asked = update w:
+        &_.valuedAs <= ? hosted
+    let cr = ArmRowOf asked, me, lx, [[]], [[]], nil, b, rowName, genName, True, True, linkTy, [[]], [[]], [[]], True
+    let rows = "{genName}_rows"
+    let rowsTy = OutNamed (RefRuntime "prism_rtl::WeakRows"), [[(OutNamed (SiteRef lx, rowName), [[]])]]
+    let link = if hosted: "hosted_link" else: "link"
+    let kept = if hosted: "hosted_rows" else: "rows"
+    let tail = if hosted: [[(XClone (XVar link)), (XClone (XVar "enclosing")), (XClone (XVar "moved")), XCx]] else: [[(XClone (XVar link)), XCx]]
+    let made = TryOf (XCall (RefChild (SiteRef lx, cr.case.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], cr.case.passed), tail))
+    let result = if gives == OutUnit: XUnit else: XMethod (XVar "row"), "result_value", [[]]
+    let built = XBlock [[(DoLet (PaBind "row"), made), (DoExpr (XMethod (XVar kept), "add", [[(XRef (XVar "row"))]]))]], (XCall (HelperRef "built_widget"), [[(XMethod (XVar "row"), "built", [[]]), result, (XVar "row")]])
+    let params = if hosted: [[(PaBind "path"), (PaBind "row_base"), (PaBind "enclosing"), (PaBind "moved"), (PaBind "cx")]] else: [[(PaBind "path"), (PaBind "row_base"), (PaBind "cx")]]
+    let build = XClosure True, params, (XCtor (RefRuntime "std::Ok"), [[built]])
+    let w2 = update cr.parent:
+        &_.valuedAs <= nil
+        &_.rows <= Append (Push &_.rows, cr.case.node), cr.case.node.children
+        &_.taken <= Push &_.taken, rows
+        &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind rows), rowsTy), (XCall (RefRuntime "prism_rtl::WeakRows::<{rowName}>::new"), [[]]))
+        &_.fields <= Push &_.fields, ((rows, rowsTy, "the rows the blueprint value of the block's widget built, held weakly"))
+        &_.moves <= Push &_.moves, ((rows, (XClone (XVar rows))))
+        &_.rowMarks <= Each &_.rowMarks, \|rm| if rm.builder == genName and rm.kind == GenerationRow: RowMarks(builder=rm.builder, reads=rm.reads, wrote=rm.wrote, builds=rm.builds, kind=ValueRow) else: rm
+    ((w2, build))
 
 # The dynamic a supplier's `@ x` answers with, when `x` is a dynamic that is not a constant:
 # `x` itself, or the `d` of `$ d` when `d` is a dynamic already.

@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 9 as ruled (round 3 DY: the answer's first value is read in the birth tick, each later change is a push delivered the next tick, owed) and ch. 8 (a host in a row re-emits its child's places under the row's path).
+test a_parent_dynamic_answers
+
+tick 0
+  added:
+    0: Ui.Button(label="more")
+    1/[1]/0/[1]/0: Ui.Label(text="0 rows")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1/[1]/0/[1]/0: Ui.Label(text="1 rows")

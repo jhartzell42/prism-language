@@ -1,0 +1,24 @@
+# A supplier answers a bundle of two `$` parts with two dynamics of the host (Type System
+# ch. 2, "Bundles and sparse tuples"; Semantics ch. 9, "How a supplier answers"; round 3
+# DY: a dynamic answer gives the place its first value in the birth tick and each later
+# change is a push delivered the next tick). Written by Claude on the claude-lowering
+# branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Link of Element (($Text, $Nat)):
+    address: Text
+
+@chat: @unit
+@chat:
+    (($state, $peers)) <- Pad.Link(address="chat:7000")
+    Ui.Label($text=$"{$state}, {$peers} peers")
+
+@mocked: @unit
+@mocked:
+    !join <- Ui.Button($label=$"join")
+    $count <- 0 then $count + 1 on !join
+    $mood <- "idle" then "busy" on !join
+    ignore <- @HostDocument @chat, \|p, e| match e:
+        Pad.Link(..): @ (($mood, $count))
+        otherwise: @Element e

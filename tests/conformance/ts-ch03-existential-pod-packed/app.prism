@@ -1,0 +1,24 @@
+# Values of two types packed as `any ^Pod` and counted (Type System ch. 3: `any ^Trait`
+# packs a value with its dictionary; ch. 2: `^Pod` is derived; ruling EX: the packing is
+# legal, a method that needs one dictionary for a collection is the checker's error at
+# its call). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Sq = record:
+    file: Nat
+    rank: Nat
+derive ^Eq, ^Show, ^Pod
+
+type Mark = choice:
+    Cross
+    Ring
+derive ^Eq, ^Show, ^Pod
+
+Saved: fn [any ^Pod] -> Nat
+fn Saved vs = Len vs
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Saved [[any Sq(file=4, rank=3), any Ring]]} saved")

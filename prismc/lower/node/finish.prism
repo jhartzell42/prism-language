@@ -482,7 +482,7 @@ DocumentBody: fn Wx, (fn Ex, Ex -> Do), [Place], [ForDef], [GenDef] -> [Do]
 fn DocumentBody wx, Add, places, builders, gens:
     let statics = Each places, \|pl| Add (XMethod (XCall (RefRuntime "rt::Path::root"), [[]]), "at", [[(PlaceNumber wx, "self", pl.pos)]]), (XClone (XField XSelf, pl.entry))
     # a host's own rows (prism_rtl's) give their forwarded places' entries
-    let RowDoc = \|b| if HasPrefix b.rowNode, "prism_rtl::HostRow": XMethod (XVar "row"), "entries", [[]] else: XMethod (XVar "row"), "document", [[XCx]]
+    let RowDoc = \|b| if HasPrefix b.rowNode, "prism_rtl::HostRow": XMethod (XVar "row"), "entries", [[XCx]] else: XMethod (XVar "row"), "document", [[XCx]]
     let rows = Each builders, \|b| DoFor (PaTuple [[PaBind "k", PaBind "row"]]), (XMethod (XMethod (XField XSelf, b.name), "borrow", [[]]), "iter", [[]]), [[(DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (RowDoc b), [[(Add (XMethod (XMethod (XMethod (XCall (RefRuntime "rt::Path::root"), [[]]), "at", [[(PlaceNumber wx, "self", b.pos)]]), "child", [[(XCtor (RefRuntime "rt::Segment::Key"), [[(XMethod (XVar "k"), "to_pod", [[]])]])]]), "join", [[XRef (XVar "p")]]), (XVar "e"))]])]]
     # a transparent generation's places stand at the block's own positions (a static
     # widget of several clauses, a building `match`'s arm): their paths are the block's
@@ -532,7 +532,7 @@ fn UpdatedGaps wx, gns:
         OwnRead f:
             if (HasText holds, f) or (HasText derived, f) or (HasText roots, f) or (HasText kept, f): a
             else: Push a, (RefusalDo "`!Updated` of a dynamic that reads `{f}`, which no sink of this node writes (no height for its event)")
-    let hears = Append (Each wx.pending, \|p| UpdatedHears p.wx), (Each (Filter wx.rowMarks, \|rm| rm.kind == GenerationRow), \|rm| rm.wrote)
+    let hears = Append (Each wx.pending, \|p| UpdatedHears p.wx), (Each (Filter wx.rowMarks, \|rm| rm.kind == GenerationRow or rm.kind == ValueRow), \|rm| rm.wrote)
     Fold hears, own, \|acc, ms| Fold ms, acc, \|a, m|
         let behind = ReadsClosed wx.dynReads, [[OwnRead m]]
         let written = Fold behind, False, \|w, r| w or match r:
@@ -620,7 +620,8 @@ fn UpdatedHears wx = Fold (Filter wx.gns, \|g| g.kind == GnUpdated), [[]], \|acc
 
 # A write behind a read of the block (a hold of it, or a name it reads through its own
 # parent): the rows of a `for` whose places read it are dirtied, and the rows that hear it
-# are told through `parent_wrote_{m}`.
+# are told through `parent_wrote_{m}`; the rows a blueprint value of the block's own
+# widget built are dirtied each, and hear as a generation does.
 RowWritten: fn Wx, RowMarks, Read -> [Do]
 fn RowWritten wx, rm, r:
     let dirty = if HasRead (ReadsClosed wx.dynReads, rm.reads), r: [[DoExpr (XMethod XCx, "dirty", [[XClone (XVar "row")]])]] else: [[]]
@@ -631,6 +632,8 @@ fn RowWritten wx, rm, r:
     let fired = Each hit, \|m| DoExpr (XCall (HelperRef "no_fault"), [[(XMethod (XField XSelf, "{rm.builder}_wrote_{m}_port"), "fire", [[XUnit, XCx]])]])
     match rm.kind:
         GenerationRow: if (Len dirty) == 0: fired else: Push fired, (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XMethod (XMethod (XField XSelf, rm.builder), "borrow", [[]]), "as_ref", [[]]), dirty, [[]])
+        # every row the widget's blueprint built that lives (`prism_rtl::WeakRows`)
+        ValueRow: if (Len dirty) == 0: fired else: Push fired, (DoFor (PaBind "row"), (XMethod (XField XSelf, "{rm.builder}_rows"), "live", [[]]), dirty)
         otherwise:
             let body = Append dirty, told
             if (Len body) == 0: [[]] else: [[(DoFor (PaBind "row"), (XMethod (XMethod (XField XSelf, rm.builder), "borrow", [[]]), "values", [[]]), body)]]

@@ -1,0 +1,15 @@
+# Values packed as `any ^Num` and counted (Type System ch. 3: `any ^Trait` packs a value
+# with its dictionary; ruling EX: what cannot be done with a packed value is calling a
+# method that needs one dictionary for two values, a checker error at the call, so the
+# packing itself is legal). Written by Claude on the claude-lowering branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Zeros: fn [any ^Num] -> Nat
+fn Zeros vs = Len vs
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Zeros [[any 21, any 2.5]]} numbers")

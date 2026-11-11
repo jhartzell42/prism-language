@@ -377,17 +377,26 @@ fn ?ValuedCases lx, qk = match lx.g.vals[qk]:
 # A valued widget's rows, items of its module: each clause lowered as a row of its own,
 # its places numbered from 0 and built from a base, holding no block, telling how many
 # places it built, as the rows of a widget that calls itself are (`SharedClauseLine`).
+# Each clause is lowered twice: the row whose places are the World's, and the row built
+# under a host (`HostedValuedRow`), whose places are entries of that host's document and
+# which is given the host and what tells it, as a shared row in a hosted scope is. A
+# blueprint value is built in the scope of what applies it, which no value site knows.
 ValuedRows: unbounded fn Lx, Text, ?Block -> [Item]
 fn ValuedRows lx, qk, ?body = match ((lx.valued[qk], lx.g.vals[qk])):
-    ((? ignore, ? v)):
-        let stem = ValuedStem qk
-        let wx0 = NewWx lx, "{stem}s", [[]], [[]], [[]], [[]], {}, nodeHooks, [[]], nil
-        let clauses = ClausesOf lx.g, qk
-        let rows = match ?body:
-            ? b: if (Len clauses) > 0: [[]] else: [[(ArmRowOf wx0, emptyEnv, lx, [[]], [[]], nil, b, "{stem}0", "valued", True, False, OutUnit, [[]], [[]], [[]], True)]]
-            nil: Each (Range0 (Len clauses)), \|i| ClauseRowOf wx0, emptyEnv, (Or clauses[i], dummyClause), v, "{stem}{i}", "valued", True, OutUnit, [[]], True
-        Fold rows, [[]], \|acc, cr| Append (Push acc, (ItNode cr.case.node)), (Each cr.case.node.children, \|c| ItNode c)
+    ((? ignore, ? v)): Append (ValuedRowsIn lx, qk, ?body, v, False), (ValuedRowsIn lx, qk, ?body, v, True)
     otherwise: [[]]
+
+ValuedRowsIn: unbounded fn Lx, Text, ?Block, ValInfo, Bool -> [Item]
+fn ValuedRowsIn lx, qk, ?body, v, hosted:
+    let stem = ValuedStem qk
+    let Named = \|i| if hosted: HostedValuedRow "{stem}{i}" else: "{stem}{i}"
+    let ?hostedBy = if hosted: ? sharedMoved else: nil
+    let wx0 = NewWx lx, "{stem}s", [[]], [[]], [[]], [[]], {}, nodeHooks, [[]], ?hostedBy
+    let clauses = ClausesOf lx.g, qk
+    let rows = match ?body:
+        ? b: if (Len clauses) > 0: [[]] else: [[(ArmRowOf wx0, emptyEnv, lx, [[]], [[]], nil, b, (Named 0), "valued", True, False, OutUnit, [[]], [[]], [[]], True)]]
+        nil: Each (Range0 (Len clauses)), \|i| ClauseRowOf wx0, emptyEnv, (Or clauses[i], dummyClause), v, (Named i), "valued", True, OutUnit, [[]], True
+    Fold rows, [[]], \|acc, cr| Append (Push acc, (ItNode cr.case.node)), (Each cr.case.node.children, \|c| ItNode c)
 
 # The root module's `@main` (`@$main` too: Semantics ch. 6).
 IsMain: fn Text -> Bool

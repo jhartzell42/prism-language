@@ -1,0 +1,24 @@
+# Derived by hand from Semantics ch. 9 as ruled (an event answer is the next tick's input, owed) and Type System ch. 2 ("Bundles": a `let` binds a bundle; it is answered part by part).
+test a_named_bundle_of_two_events
+
+tick 0
+  added:
+    0: Ui.Button(label="say")
+    1: Ui.Button(label="drop")
+    2/[1]/0: Ui.Label(text="none, 0 lost")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    2/[1]/0: Ui.Label(text="hello, 0 lost")
+
+tick 3
+  in:
+    1: click
+
+tick 4
+  changed:
+    2/[1]/0: Ui.Label(text="hello, 3 lost")

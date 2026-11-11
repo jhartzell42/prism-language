@@ -1,0 +1,13 @@
+# The tests of sem-ch08-late-part-bundle-named-read-above.
+emit Ui.*
+use App.*
+
+test loud, @Page (Loud "x"):
+    build
+    click at 2
+        => expect Ui.Label(text="total 10")
+
+test soft, @Page Soft:
+    build
+    click at 1
+        => expect Ui.Label(text="total 20")

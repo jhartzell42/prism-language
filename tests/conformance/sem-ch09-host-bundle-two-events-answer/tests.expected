@@ -1,0 +1,33 @@
+# Derived by hand from Semantics ch. 9 as ruled (an event answer is the next tick's input, owed) and Type System ch. 2 ("Bundles": the bundle is answered part by part): each of the host's events reaches its own part of the child's place one tick after its click.
+test two_event_parts_answered
+
+tick 0
+  added:
+    0: Ui.Button(label="say")
+    1: Ui.Button(label="drop")
+    2/[1]/0: Ui.Label(text="none, 0 lost")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    2/[1]/0: Ui.Label(text="hello, 0 lost")
+
+tick 3
+  in:
+    1: click
+
+tick 4
+  changed:
+    2/[1]/0: Ui.Label(text="hello, 3 lost")
+
+tick 5
+  in:
+    0: click
+    1: click
+
+tick 6
+  changed:
+    2/[1]/0: Ui.Label(text="hello, 6 lost")

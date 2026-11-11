@@ -1,0 +1,23 @@
+# Derived by hand from Semantics ch. 9 as ruled (round 3 DY: a supplier's dynamic answer gives the place its first value in the birth tick, and each later change is a push delivered the next tick, which is owed) and Type System ch. 2 ("Bundles": the bundle is answered part by part): both parts stay live.
+test two_dynamic_parts_answered
+
+tick 0
+  added:
+    0: Ui.Button(label="join")
+    1/[1]/0: Ui.Label(text="idle, 0 peers")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1/[1]/0: Ui.Label(text="busy, 1 peers")
+
+tick 3
+  in:
+    0: click
+
+tick 4
+  changed:
+    1/[1]/0: Ui.Label(text="busy, 2 peers")

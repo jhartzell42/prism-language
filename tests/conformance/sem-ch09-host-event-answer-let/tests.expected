@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 9 as ruled (an event answer is the next tick's input, owed): the click fires the host's event in tick 1 and the child's place hears 3 in tick 2.
+test a_named_event_answer
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1/[1]/0: Ui.Label(text="sum 0")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1/[1]/0: Ui.Label(text="sum 3")
