@@ -426,6 +426,14 @@ void set_index(Array<A>& xs, const Nat& i, std::optional<A> v) {
     if (!v) panic(str("`&xs[", i, "] <= nil`: an array's entry cannot be removed"));
     xs.set(ix(i), std::move(*v));
 }
+/// The entry a reference path steps through, read in place: it gives up on an index the
+/// array does not hold, as the path's place does (`at_mut`).
+template <class A>
+const A& at_shared(const Array<A>& xs, const Nat& i) {
+    auto x = xs.get(ix(i));
+    if (!x) panic("an `&` path through an index the array does not hold");
+    return *x;
+}
 /// The part a named lens names at an array's index (Semantics ch. 5): the entry in place,
 /// or none past the array's end.
 template <class A>

@@ -654,6 +654,12 @@ pub fn set_index<A: Clone>(xs: &mut Array<A>, i: &Nat, v: Option<A>) {
     }
 }
 
+/// The entry a reference path steps through, read in place: it gives up on an index the
+/// array does not hold, as the path's place does (`at_mut`).
+pub fn at_shared<'a, A>(xs: &'a Array<A>, i: &Nat) -> &'a A {
+    xs.get(ix(i)).expect("an `&` path through an index the array does not hold")
+}
+
 /// The part a named lens names at an array's index (Semantics ch. 5): the entry in place,
 /// or none past the array's end.
 pub fn part_mut<'a, A: Clone>(xs: &'a mut Array<A>, i: &Nat) -> Option<&'a mut A> {
