@@ -369,7 +369,12 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
     let head = Block(stmts=(Append (Take b.stmts, k), hoisted), inline=b.inline, span=b.span)
     let rest = Block(stmts=staying, inline=b.inline, span=b.span)
     let ((wxu, beu, meu, ups)) = PreBindUps wx, benv, menv, staying
-    let ((wxl, bel, mel, lates)) = BindLate wxu, beu, meu, s
+    # a bundle bound whole to one name (`both <- @Choose mode`): the name is its parts,
+    # bound once the line is built (`BindWhole`)
+    let ?whole = if not bundled: nil else: match s.kind:
+        SBind p, ignore, nil: ?OneName p
+        otherwise: nil
+    let ((wxl, bel, mel, lates)) = if ?whole == nil: BindLate wxu, beu, meu, s else: ((wxu, beu, meu, [[]]))
     let ((wx0, be0, me0)) = LinesInto wxl, bel, mel, head, True
     let ((wx1, be1, me1)) = Fold (LineExprs s), ((wx0, be0, me0)), \|((w, be, me)), e| WholeArgs w, be, me, e, False
     match s.kind:
@@ -383,8 +388,9 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
                 otherwise: Refusal "a block split at a line whose result is not late"
             let wx2g = LateGetters wx2, lates, kept, partReads
             # a bundle's events and dynamics, bound in the node as its line binds them
-            let ((wx2b, ignore, me2)) = match ((late, p.kind)):
-                (((WrParts parts), PTuple ps)): BindParts wx2g, be1, me1, (Each parts, \|q| if IsTimePart q: q else: WrUnit), ps
+            let ((wx2b, ignore, me2)) = match ((late, p.kind, ?whole)):
+                (((WrParts parts), ignore, ? n)): BindWhole wx2g, be1, me1, n, parts, partReads
+                (((WrParts parts), PTuple ps, nil)): BindParts wx2g, be1, me1, (Each parts, \|q| if IsTimePart q: q else: WrUnit), ps
                 otherwise: ((wx2g, be1, me1))
             let wx2s = update (WithLateInits wx2b, wx2b.lateInits):
                 &_.lateInits <= outerLate
@@ -405,6 +411,39 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
                 SetResult wx3, res
         otherwise: update wx1:
             &_.build <= Push &_.build, (InternalBugDo "a block split at a line that binds nothing")
+
+# The one name a pattern is (`both`, `(both)`).
+?OneName: fn Pattern -> ?SName
+fn ?OneName p = match p.kind:
+    PName n: ? n
+    PGroup q: ?OneName q
+    otherwise: nil
+
+# A bundle with a late plain part bound whole to one name where its block is split
+# (Type System ch. 2, "Bundles": a bundle is a plain aggregate, so a name binds it): the
+# name is its parts (`BnParts`), an event or a dynamic as the line gives it, a plain part
+# a getter of the node over its read (`LateParts`). At the build a plain part has no
+# value yet; the lines below the split read the name through the node (`RowEnvNames`).
+BindWhole: unbounded fn Wx, Env, Env, SName, [Wres], [((Nat, Ex))] -> ((Wx, Env, Env))
+fn BindWhole wx, benv, menv, n, parts, partReads:
+    let nkey = SNameKey n
+    let ((wx2, builds, methods)) = Fold (Range0 (Len parts)), ((wx, [[]], [[]])), \|((w, bs, ms)), i|
+        let part = Or parts[i], WrUnit
+        let ?plain = match part:
+            WrLate ignore, t: ? t
+            WrPlain ignore, t: ? t
+            otherwise: nil
+        match ((?plain, (?PartRead partReads, i))):
+            ((? t, ? read)):
+                let ((getter, w2)) = FreshName w, "late_{LocalNameAt w.lx, nkey, n.span}_p{i}"
+                let w3 = update w2:
+                    &_.getters <= Push &_.getters, (MethDef(name=getter, recv=RecvRef, params=[[]], cx=CxNone, ret=t, body=[[]], tail=read, doc="A late plain part of the bundle `{nkey}`, read once the row that gives it is built."))
+                let unbuilt = BnLocal (Refusal "a late plain part of the bundle `{nkey}` read at its block's build by a line of the block's node"), Owned, t
+                ((w3, (Append bs, [[(? unbuilt)]]), (Append ms, [[(? (BnLocal (XMethod XSelf, getter, [[]]), Owned, t))]])))
+            otherwise:
+                let b = BundleBn part
+                ((w, (Append bs, [[(? b)]]), (Append ms, [[(? b)]])))
+    ((wx2, (Bind benv, nkey, (BnParts builds)), (Bind menv, nkey, (BnParts methods))))
 
 # Whether a name is an event's or a dynamic's, by its sigil.
 IsTimeName: fn Text -> Bool
@@ -540,41 +579,69 @@ fn WithoutNames env, gone:
 # result is not built until the node is (`{name}#late` marks the name, `NamesInited`). A
 # name, or a tuple of names, is bound so; another pattern's names are the lower
 # generation's alone.
-BindLate: unbounded fn Wx, Env, Env, Stmt -> ((Wx, Env, Env, [((Text, ?Nat, OutTy))]))
+BindLate: unbounded fn Wx, Env, Env, Stmt -> ((Wx, Env, Env, [LateName]))
 fn BindLate wx, benv, menv, s = match s.kind:
-    SBind p, ignore, nil:
+    SBind p, e, nil:
+        let partTys = BundlePartTys (LineOutFull wx.lx, e)
         let parts = match p.kind:
-            PName n: [[((n, nil))]]
+            PName n: [[((n, nil, nil))]]
             PGroup q: match q.kind:
-                PName n: [[((n, nil))]]
+                PName n: [[((n, nil, nil))]]
                 otherwise: [[]]
             # of a bundle's pattern, the plain parts' names: an event's or a dynamic's is
-            # a name of the node (`SplitBlockInto`)
+            # a name of the node (`SplitBlockInto`); a plain part taken apart by a
+            # pattern of its own (`((((n, name)), !go))`) gives each name it binds, read
+            # out of the part by that pattern
             PTuple ps: Fold (Range0 (Len ps)), [[]], \|acc, i| match (Or ps[i], dummyPat).kind:
-                PName n: if IsTimeName (SNameKey n): acc else: Push acc, ((n, ? i))
-                otherwise: acc
+                PName n: if IsTimeName (SNameKey n): acc else: Push acc, ((n, ? i, nil))
+                otherwise:
+                    let partTy = Or partTys[i], TyErr
+                    if IsBundle partTy: acc
+                    else: Fold (BinderNames (Or ps[i], dummyPat)), acc, \|a, n| if IsTimeName (SNameKey n): a else: Push a, ((n, ? i, ? (((Or ps[i], dummyPat), partTy))))
             otherwise: [[]]
-        Fold parts, ((wx, benv, menv, [[]])), \|((w, be, me, acc)), ((n, ?part))|
+        Fold parts, ((wx, benv, menv, [[]])), \|((w, be, me, acc)), ((n, ?part, ?within))|
             let nkey = SNameKey n
             let t = OutTyOf w.lx, (Peel (BinderTy w.lx, n.span))
             let ((getter, w2)) = FreshName w, "late_{LocalNameAt w.lx, nkey, n.span}"
             let unbuilt = BnLocal (Refusal "the late result `{nkey}` read at its block's build by a line of the block's node (a place's constant field or a plain `let` above the line that binds it)"), Owned, t
             let be2 = Bind (Bind be, nkey, unbuilt), "{nkey}#late", unbuilt
             let me2 = Bind (Bind me, nkey, (BnLocal (XMethod XSelf, getter, [[]]), Owned, t)), "{nkey}#late", unbuilt
-            ((w2, be2, me2, (Push acc, ((getter, ?part, t)))))
+            ((w2, be2, me2, (Push acc, (LateName(getter=getter, ?part=?part, ty=t, name=nkey, ?within=?within)))))
     otherwise: ((wx, benv, menv, [[]]))
 
-# The getters `BindLate` named, over the kept result: the result, or its part.
+# A late name's getter (`BindLate`): the part of the bundle it reads (none: the whole
+# result), its type, and the pattern that takes the part apart with the part's type when
+# the name is inside one.
+type LateName = record:
+    getter: Text
+    ?part: Nat
+    ty: OutTy
+    name: Text
+    ?within: ((Pattern, Ty))
+
+# The getters `BindLate` named, over the kept result: the result, or its part, or the
+# name a pattern binds inside the part.
 # `partReads`: a bundle's plain parts, each read by itself (`LateParts`).
-LateGetters: fn Wx, [((Text, ?Nat, OutTy))], Ex, [((Nat, Ex))] -> Wx
-fn LateGetters wx, lates, kept, partReads = Fold lates, wx, \|w, ((getter, ?part, t))|
-    let tail = match ?part:
+LateGetters: unbounded fn Wx, [LateName], Ex, [((Nat, Ex))] -> Wx
+fn LateGetters wx, lates, kept, partReads = Fold lates, wx, \|w, late|
+    let read = match late.?part:
         ? i: match ?PartRead partReads, i:
             ? read: read
             nil: XClone (XPart kept, i)
         nil: kept
+    let tail = match late.?within:
+        ? ((q, partTy)):
+            let o = RustPat w.lx, q, partTy, ByRef, "late_part"
+            let ?bound = Fold o.binds, nil, \|?found, ((k, b))| if k == late.name: ? b else: ?found
+            match ?bound:
+                ? (BnLocal rs, mode, vt):
+                    let arm = XArm(pat=o.pa, conds=o.conds, body=(Own (VlPlace rs, mode, vt)))
+                    let other = XArm(pat=PaWild, conds=[[]], body=(XUnreachable))
+                    XBlock [[(DoLet (PaTyped (PaBind "late_part"), (OutTyOf w.lx, (Peel partTy))), read)]], (Own (ArmsValue (XRef (XVar "late_part")), [[arm, other]], "'bound", late.ty))
+                otherwise: InternalBug "the late name `{late.name}`, which the pattern of its part does not bind"
+        nil: read
     update w:
-        &_.getters <= Push &_.getters, (MethDef(name=getter, recv=RecvRef, params=[[]], cx=CxNone, ret=t, body=[[]], tail=tail, doc="A late result, read once the row that gives it is built."))
+        &_.getters <= Push &_.getters, (MethDef(name=late.getter, recv=RecvRef, params=[[]], cx=CxNone, ret=late.ty, body=[[]], tail=tail, doc="A late result, read once the row that gives it is built."))
 
 # The late first values (`HoldLine`) set where the generation that gives the late result
 # is built: the last generation the split line made, after its row.
@@ -1218,6 +1285,22 @@ fn PartRes ?b = match ?b:
     ? b: BnRes b
     nil: WrUnit
 
+# A named bundle's parts as its methods bind them, each plain part as the build binds it.
+PlainAtBuild: unbounded fn [?Bn], [?Bn] -> [?Bn]
+fn PlainAtBuild methods, builds = Fold methods, [[]], \|acc, ?m| Append acc, [[(?PartAtBuild ?m, (?PartOf builds, (Len acc)))]]
+
+?PartAtBuild: unbounded fn ?Bn, ?Bn -> ?Bn
+fn ?PartAtBuild ?m, ?b = match ((?m, ?b)):
+    (((? (BnLocal ignore, ignore, ignore)), (? (BnLocal ex, mode, t)))): ? (BnLocal ex, mode, t)
+    (((? (BnParts ms)), (? (BnParts bs)))): ? (BnParts (PlainAtBuild ms, bs))
+    otherwise: ?m
+
+# The part of a named bundle at a place.
+?PartOf: fn [?Bn], Nat -> ?Bn
+fn ?PartOf parts, i:
+    let ((ignore, ?found)) = Fold parts, ((0, nil)), \|((k, ?f)), ?b| if k == i: ((k + 1, ?b)) else: ((k + 1, ?f))
+    ?found
+
 SetResult: fn Wx, Wres -> Wx
 fn SetResult wx, res = update wx:
     &_.result <= res
@@ -1234,7 +1317,15 @@ fn ResultOf wx, benv, menv, x:
     match ?bound:
         ? (BnEv r, ignore): ((WrEv r, wx))
         ? (BnDyn ex, rds, bt): (((WrDyn ex, rds, bt), wx))
-        ? (BnParts bs): ((BnRes (BnParts bs), wx))
+        # a named bundle: its plain parts as the build spells them (a row's through its
+        # `parent` argument, `BuildSpelling`)
+        ? (BnParts bs):
+            let ?built = match x.kind:
+                EName n: benv.names[SNameKey n]
+                otherwise: nil
+            match ?built:
+                ? (BnParts builds): ((BnRes (BnParts (PlainAtBuild bs, builds)), wx))
+                otherwise: ((BnRes (BnParts bs), wx))
         otherwise: match x.kind:
             # a bundle written out, `((!clicks, $count))`: each part its own result
             ETuple xs if IsBundle full:

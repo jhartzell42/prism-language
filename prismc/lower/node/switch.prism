@@ -111,7 +111,38 @@ fn RowEnvNames parent, rowWx, menv, written:
             else: RowParamEnv p, r, env, menv, n
         ? (BnDyn ignore, ignore, ignore): RowParamEnv p, r, env, menv, n
         ? (BnHold f, t): ((p, r, (Bind env, n, (BnDyn (XMethod (XField parentRef, f), "get", [[XCx]]), [[ParentRead f]], t))))
+        # a bundle the block names whole: each part as the block's name of its kind is
+        ? (BnParts bs):
+            let ((p2, r2, over)) = RowPartsBn p, r, n, bs
+            ((p2, r2, (Bind env, n, (BnParts over))))
         otherwise: ((p, r, env))
+
+# A named bundle's parts as a row reads them (`RowEnvNames`): a plain part and a dynamic
+# of the block's own through the parent, an event through a port of the row.
+RowPartsBn: unbounded fn Wx, Wx, Text, [?Bn] -> ((Wx, Wx, [?Bn]))
+fn RowPartsBn parent, rowWx, n, parts = Fold parts, ((parent, rowWx, [[]])), \|((p, r, acc)), ?b|
+    let ((p2, r2, ?over)) = RowPartBn p, r, "{n}_{Len acc}", ?b
+    ((p2, r2, (Append acc, [[?over]])))
+
+RowPartBn: unbounded fn Wx, Wx, Text, ?Bn -> ((Wx, Wx, ?Bn))
+fn RowPartBn p, r, n, ?b = match ?b:
+    ? (BnLocal rs, mode, t): ((p, r, (? (BnLocal (OverParent rs), Owned, t))))
+    ? (BnEv er, t):
+        let pname = (GnOf p, er.node).name
+        let ((rs, r1)) = FreshName r, (Snake n)
+        let ((id, r2)) = AddGn r1, rs, t, GnPort, 0
+        let r3 = update r2:
+            &_.subs <= Push &_.subs, ((pname, rs, t))
+        let p2 = if HasText p.ports, pname: p else: Connect (WithPort p, pname), (EvRefOf p, er.node), (SkPort pname)
+        ((p2, r3, (? (BnEv (EvRefOf r3, id), t))))
+    ? (BnDyn ex, rds, t):
+        if (OnSelfRooted ex) and Fold rds, True, \|f, rd| f and IsOwnRead rd: ((p, r, (? (BnDyn (OverParent ex), (Each rds, \|rd| AsParentRead rd), t))))
+        else: ((p, r, (? (BnLocal (Refusal "a dynamic part of a named bundle read by a row of a row, which stands on no node of the row's block"), Owned, t))))
+    ? (BnHold f, t): ((p, r, (? (BnDyn (XMethod (XField parentRef, f), "get", [[XCx]]), [[ParentRead f]], t))))
+    ? (BnParts bs):
+        let ((p2, r2, over)) = RowPartsBn p, r, n, bs
+        ((p2, r2, (? (BnParts over))))
+    otherwise: ((p, r, nil))
 
 # The block's live dynamics (`WholeArgs`, bound under `#whole{span}` for every reader its
 # lines pass whole, the lines of its rows' bodies too) as a row reads them: the block's
@@ -1159,7 +1190,20 @@ fn BuildSpelling env = Fold (Keys env.names), env, \|en, k| match env.names[k]:
     ? (BnDyn (XMethod rs, m, xs), ds, t): match ?ThroughParent rs:
         ? x: Bind en, k, (BnDyn (XMethod x, m, xs), ds, t)
         nil: en
+    ? (BnParts bs): Bind en, k, (BnParts (PartsAtBuild bs))
     otherwise: en
+
+# A named bundle's parts as a row's constructor spells them (`BuildSpelling`).
+# (A bundle inside the bundle keeps its parts as they are.)
+PartsAtBuild: fn [?Bn] -> [?Bn]
+fn PartsAtBuild parts = Each parts, \|?b| ?PartSpelledAtBuild ?b
+
+?PartSpelledAtBuild: fn ?Bn -> ?Bn
+fn ?PartSpelledAtBuild ?b = match ?b:
+    ? (BnLocal rs, mode, t): match ?ThroughParent rs:
+        ? x: ? (BnLocal x, mode, t)
+        nil: ?b
+    otherwise: ?b
 
 # The generation built: the one case, its row's constructor. `ofRebuild`: the clause
 # call is a `rebuild`'s whole block, so its `_` is the builder's `value`; a static
