@@ -1,0 +1,4 @@
+tests/checker/neg/for-in-let.prism:17: error[mismatch]: expected `Nat ==> Nat`, found `@(Nat ==> Nat)`
+        Ui.Label($text=$"{Count doubled}")
+                                ^^^^^^^^
+1 error
