@@ -387,8 +387,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   as one value from the node's methods (a place's field over `StepOf both`, a late
   `let`, a hold's step) is a getter of the node bound under `{name}#value`
   (`LateBundleValue`): the tuple of a plain part's read, an event part's event over a
-  port its node fires, a `$` part's live `Dynamic`. Refused: a late bundle read as one
-  value at the build (a supplier's `@ both`).
+  port its node fires, a `$` part's live `Dynamic`. A building line that takes the
+  bundle as one value (a host whose supplier gives `@ both`) is a deferred row
+  (`DeferredLine`), and a row reads its block's `{name}#value` through its parent
+  (`WholeOfBlock`), as it reads the block's event ports (`{name}#port`).
 - **A `let` that names a bundle stands above the first line that reads the name**
   (`BundleLetsEarly`, in `LinesInto`): a bundle's name is its parts, bound where its
   `let` is lowered, and a `let` builds no place, so a line written above it (`@Counter
@@ -469,7 +471,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
   the build, each firing of an event part after, one dynamic part as a root's dynamic
   result is.
 - **A `let` of a name bound to a bundle** (`let same = both`) binds the same parts
-  (`?BundleNamed`).
+  (`?BundleNamed`), and the bundle as one value where the name it renames has one
+  (`ValueRenamed`: `{name}#value`, a supplier's `@ same`, a function's argument).
 - **A row that ends on a bundle hands it to its block part by part** (`RowPartsOut`,
   `KeepParts`; a clause of a widget of several clauses, an arm of a building `match` or
   `if`, the lower generation of a split block). Part `i` is `p{i}`, a part of a bundle
@@ -950,7 +953,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the supplier's link (`ParameterEnv`): `DynamicAnswers` reads the argument with its
     caller's environments (`AnswerTexts`, a parameter handed on followed to its own
     argument), and the supplier's closure captures what the argument reads from the
-    caller's environment (`LambdaCaptures`). A computed answer in flight to a place whose key left is
+    caller's environment (`LambdaCaptures`). An answer in a function of the block the
+    supplier calls (`fn @Supply e` beside the host's line) is the supplier's text too:
+    the function is inlined where it is called, and `AnswerTexts` reads its clauses.
+    A computed answer in flight to a place whose key left is
     dropped. Nested hosts add one tick per computing layer and none per
     forwarding layer.
 - **First values.** A child place with a first value asks the host at its build
@@ -978,8 +984,14 @@ it make every program an interpreter run, and every type mistake a runtime fault
   first values read every row of the build wherever the `for` stands. A builder's `$`
   result is prebound as a getter of the node (`GivesResult`, `ResultGetter`), which a
   line above the builder reads.
-  Refused there: a bundle tag's plain part beside a `$` part (the build reads a plain
-  part once, before the node).
+  A bundle tag's plain part beside a `$` part (`((port, !rx, $peers)) <- Pad.Socket(..)`)
+  is a late name there (`LatePlaceParts`, `{name}#late`, `{name}#lateplace`): its hold
+  is a `Hold<Option<T>>` too, set once where the place asks (`LatePlainPart`) and read
+  with no read point (`newest`, `LatePlainBn`). Its readers are a late name's: a place's
+  field is live over it, a plain `let` that reads it is late in turn, a building line
+  that takes it is a deferred generation of the scope (`DeferredLine`), built after the
+  first values, and a hold that starts from it is set by a method of the node the
+  construction step calls after the scope's places have asked (`Wx.lateStarts`).
 - **Requests** of a hosted place go to the host (`host_k.request`): out with the forwarded
   element, or nowhere when the supplier answered the place.
 - **`@HostSome`** is `@HostDocument` through `rt::forward_on_none` (`nil` forwards).

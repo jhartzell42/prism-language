@@ -18,11 +18,13 @@ spell".
 ## R: legal programs not lowered
 
 Hosting
-- lower/node/elements.prism (`BundleOutputOf`) a place of a tag whose answer has a plain
-  part beside a `$` part, in a hosted scope whose host answers with a dynamic that has no
-  value while its node is being made: the place's state is asked once the node stands,
-  and a plain part is read by the build once, before it. No test.
-  Lowered: a supplier's dynamic answer, or a bundle answer's `$` part, that reads a
+- Lowered: a place of a tag whose answer has a plain part beside a `$` part, in a
+  hosted scope whose host answers with a dynamic that has no value while its node is
+  being made: the plain part is a late name, set where the place asks its first value
+  (`LatePlaceParts`; sem-ch09-host-late-bundle-plain-part). What stays of it is a late
+  name's (lower/node/def.prism `LatePlaceParts`: "the plain part .. of a late place's
+  answer read at its block's build", a place's constant field in a line that is no
+  element's own; `DeferredLine`'s two, under "Late results"). A supplier's dynamic answer, or a bundle answer's `$` part, that reads a
   structural dynamic (a `for`'s gathered result, a `rebuild`'s): the child's `$` places
   ask their first values where the construction step reaches the host's line
   (`LateFirstPlace`; sem-ch09-host-dynamic-answer-structural,
@@ -32,8 +34,11 @@ Hosting
   sem-ch09-host-bundle-answer-parent-part); an answer through a blueprint a `let` names
   (sem-ch09-host-dynamic-answer-let, sem-ch09-host-event-answer-let).
   lower/expr.prism (`DynamicBlueprint`, `WrittenPart`): the two refusals stand for a
-  dynamic answer whose line made no getter for it, which no program reaches now that
-  `DynamicAnswers` makes one for every dynamic answer (unsure: G).
+  dynamic answer whose line made no getter for it, which no known program reaches:
+  `DynamicAnswers` makes one for every dynamic answer in the supplier's text, a
+  blueprint `let`, a blueprint parameter's argument and a function of the block the
+  supplier calls (sem-ch09-host-local-supplier-dynamic-answer,
+  sem-ch09-host-local-supplier-bundle-answer). Unsure: G.
 - `@ x` outside a tag arm is lowered: plain data in `Answer`'s case of no tag, read by
   the place that takes it (sem-ch09-host-answer-without-arm); a value that is no plain
   data (a function) held as it is and read at the type of the line that binds it
@@ -123,10 +128,13 @@ Bundles
   Left, no tests: lower/node/def.prism (`PreBindWholeParts`, `LateBundleParts`: "a late
   plain part of the bundle .. read at its block's build") a late plain part read at the
   build by a pattern inside the tuple pattern (`let ((((a, b)), !go)) = both`);
-  (`PreBindWhole`, `MarkLateBundle`: "read as one value at its block's build") a late
-  bundle read whole as a value at the build (a supplier's `@ both`, whose closure is
-  made before the node); a late bundle with a bundle inside read as one value; another
-  name of a bundle (`let same = both`) read as one value.
+  a late bundle with a bundle inside read as one value.
+  (`PreBindWhole`, `MarkLateBundle`: "read as one value at its block's build") marks a
+  late bundle's value at the build, which no known line reads: an element's field over
+  it is live, a `let` over it late, a hold that starts from it set late, and a building
+  line that takes it (a host whose supplier gives `@ both`) is a deferred row, which
+  reads the block's getter through its parent (`WholeOfBlock`,
+  sem-ch09-host-late-bundle-answer-above). Unsure: G.
   A dynamic part of a named bundle read by a row of a row is read through a getter of
   the row between (`ThroughGetter`, sem-ch04-named-bundle-in-row-of-row).
 - A `rebuild` whose block ends on a bundle a line named whole (`@ both`) is lowered

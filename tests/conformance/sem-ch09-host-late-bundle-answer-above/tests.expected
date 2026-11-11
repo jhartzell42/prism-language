@@ -1,0 +1,31 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": the order of a group's lines decides positions and nothing else; a block's build is one tick's), ch. 9 (a supplier's plain answer is the place's first value, read in its birth tick; an event answer is the next tick's input, owed), Type System ch. 2 (a bundle's plain part is its first value, its event part its answers) and ruling TC (places counted as built): the host is place 0 and its child's label reads the arm's result; the loud arm builds 1, so the button is 2; the soft arm builds none, so it is 1; the click's event part is heard in tick 2.
+test loud
+
+tick 0
+  added:
+    0/[1]/0: Ui.Label(text="step 10: 0")
+    1: Ui.Label(text="x")
+    2: Ui.Button(label="go")
+
+tick 1
+  in:
+    2: click
+
+tick 2
+  changed:
+    0/[1]/0: Ui.Label(text="step 10: 10")
+
+test soft
+
+tick 0
+  added:
+    0/[1]/0: Ui.Label(text="step 20: 0")
+    1: Ui.Button(label="go")
+
+tick 1
+  in:
+    1: click
+
+tick 2
+  changed:
+    0/[1]/0: Ui.Label(text="step 20: 20")
