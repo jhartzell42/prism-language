@@ -1,0 +1,7 @@
+# The tests of sem-ch09-host-widget-answer.
+emit Ui.* | Pad.*
+use App.*
+
+test a_widget_answers_a_place, @host:
+    build
+        => expect Ui.Label(text="guest heard yes a")
