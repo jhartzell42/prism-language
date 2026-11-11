@@ -130,6 +130,13 @@ fn BlockBoundOnce env, st, stmts:
         else: if HasText seen, name: ((seen, (ErrFix s, "collision", at, "`{name}` is bound twice in this block", "a written name is bound once per block: give the second another name"))) else: (((Push seen, name), s))
     checked
 
+# A `let`'s bare capitalised name that resolves to a constructor: as in every other
+# pattern (`BindPattern`), it is the constructor, and the `let` binds no name by it.
+LetNamesConstructor: fn Env, Pattern -> Bool
+fn LetNamesConstructor env, p = match p.kind:
+    PName n: (Len n.path) == 1 and (Len n.sigils) == 0 and (IsUpperText (Or n.path[0], "")) and IsCtorName env, n
+    otherwise: False
+
 IsCtorName: fn Env, SName -> Bool
 fn IsCtorName env, n:
     let ((?qk, ignore)) = ResolveValue env.g, env.home, n

@@ -1,0 +1,13 @@
+tests/checker/neg/let-names-constructor.prism:19: error[collision]: `Bound` is a constructor here, and a pattern's `Bound` is the constructor: this `let` names no function
+        let Bound = \|a, b| a + b
+            ^^^^^
+  fix: give the function another name
+tests/checker/neg/let-names-constructor.prism:24: error[collision]: `Heads` is a constructor here, and a pattern's `Heads` is the constructor: this `let` names no function
+        let Heads = \|a| a + 1
+            ^^^^^
+  fix: give the function another name
+tests/checker/neg/let-names-constructor.prism:30: error[not-exhaustive]: this pattern misses `Tails`, and a `let` takes a pattern that always matches
+        let Heads = coin
+            ^^^^^
+  fix: bind a name and `match` on it
+3 errors
