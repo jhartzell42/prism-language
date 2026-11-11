@@ -1,0 +1,14 @@
+# Semantics ch. 5: a reference path that steps through an index to a field of the entry,
+# read in expression position ("A reference in expression position, passed to a plain
+# parameter, is read"). The checker types `&_[1].acc` as the field, and the same path on
+# the left of `<=` is lowered (the entry in place).
+# Written by Claude on the claude-lowering branch; subject to change.
+test mod Tests
+type Regs = record:
+    acc: Int
+    x: Int
+derive ^Eq, ^Show
+
+Carry: fn [Regs] -> [Regs]
+fn Carry machines = update machines:
+    &_[0].x <= &_[1].acc + 1

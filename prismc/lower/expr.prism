@@ -684,7 +684,9 @@ fn PlainValueByKind lx, env, e:
         # as the checker read it: `?QualifiedField`)
         EField r, sigils, name: match ?QualifiedFieldIn lx, env, r, sigils, name:
             ? n: NameValue lx, env, n, e.span
-            nil: FieldValue lx, env, r, name.name
+            # a reference path through an index to a field (`&_[1].acc`), read: the entry
+            # in place, as the path's place is on the left of `<=`
+            nil: if (IsRefPath e) and (StepsThroughIndex e, True): VlOwned (XClone (SharedPlaceOf lx, env, e)), t else: FieldValue lx, env, r, name.name
         EIndex r, i: IndexValue lx, env, r, i, t
         ELambda ?ps, body: LambdaValue lx, env, e, (Or ?ps, [[]]), body
         EIf c, thenB, ?elseB: IfValue lx, env, c, thenB, ?elseB, t
