@@ -188,10 +188,13 @@ Building `match`, clause widgets, `rebuild`
   passes).
 - lower/jobs.prism: none added. A bare `for` in a job is lowered (`ForJob`), no test of
   the job form; the plain form is sem-ch05-update-for-bare.
-- lower/node/finish.prism:699 a place read at its block's build before the node exists
-  (a first-value query, a host made in the build) after a building `match`, `if` or
-  widget of several clauses whose rows differ in width and are built after the node. No
-  test.
+- lower/node/finish.prism (`PlaceNumber`) a place read at its block's build before the
+  node exists (a first-value query, a host made in the build, the `row_base` of a
+  building `match` built early, `EarlyChoiceLine`) after a building `match`, `if` or
+  widget of several clauses whose rows differ in width and are built after the node.
+  Test, red: sem-ch04-building-match-on-built-late-value-above (the lower `match` is
+  built early, its arm's result read from what the arm builds, and its row's first
+  position counts what the `match` above it built, which reads that result).
 - gap ID, the part left: a widget that calls itself and has a `$` or event parameter
   beside a result or with time below its top, a
   blueprint parameter whose argument is no blueprint value the lowering makes (a widget
