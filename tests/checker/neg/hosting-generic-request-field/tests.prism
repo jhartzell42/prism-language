@@ -1,0 +1,18 @@
+# From prism-notes, claude/04-domains-and-documents/evidence/hosting/15-generic-request-field/tests.prism: attempt 15 of the Bible's document hosting against prismc at 10ca993, committed as written. A wrong program: the request tag's field has a type variable its output does not (Type System ch. 2: a variable in a field must appear in the index; a generic tag's output is a scheme, its variables shared with its fields).
+# Attempt 15's test: an accepted request, then a refused one.
+# Written by Claude (an implementation agent), 10 November 2026; subject to change.
+emit Ui.* | Seat.*
+use App.*
+
+test requests_change_the_state_and_are_answered, @host:
+    build
+    click Ui.Button(label="add 2")
+    compute
+    compute
+    compute
+    compute
+    click Ui.Button(label="add 9")
+    compute
+    compute
+    compute
+    compute
