@@ -1,0 +1,25 @@
+# Derived by hand from Type System ch. 2 ("Bundles and sparse tuples") and Semantics ch. 8 ("The patch": an answer is an `Edge`, only the event components that fired; a response is addressed by path): each answer fires the parts it holds, in the tick it comes in.
+test two_events
+
+tick 0
+  added:
+    0: Pad.Line(address="chat:7000")
+    1: Ui.Label(text="none, 0 lost")
+
+tick 1
+  in:
+    0: (("hello", -))
+  changed:
+    1: Ui.Label(text="hello, 0 lost")
+
+tick 2
+  in:
+    0: ((-, 3))
+  changed:
+    1: Ui.Label(text="hello, 3 lost")
+
+tick 3
+  in:
+    0: (("bye", 2))
+  changed:
+    1: Ui.Label(text="bye, 5 lost")
