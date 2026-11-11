@@ -1,0 +1,32 @@
+# A generic widget taken as a blueprint value in a generic function that calls itself at
+# a larger type than its own, `[a]` for `a` (Type System ch. 2: "Recursion at other
+# indices needs the signature", so a signed function may call itself at other types, and
+# no passage bounds them; ch. 5: a type variable is decided at each call; Semantics
+# ch. 8: "a blueprint builds nothing until a block applies it"). The program gives the
+# function no finite set of types: each call is at a type one array deeper, and how deep
+# the run goes is the number it is given.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Counted: fn [a], Text -> @unit
+fn @Counted xs, label:
+    Ui.Label($text=$"{label}={Len xs}")
+
+?Wrapped: fn [a], Nat -> ?@unit
+fn ?Wrapped xs, more = match more -? 1:
+    ? less: ?Wrapped [[xs]], less
+    nil: ?Pick True, (@Counted xs, "n")
+
+@Page: @unit
+@Page:
+    match ?Wrapped [[7, 8]], 2:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    match ?Wrapped [[7, 8]], 0:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
