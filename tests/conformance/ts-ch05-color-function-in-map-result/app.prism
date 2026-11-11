@@ -1,0 +1,29 @@
+# A function value of its callee's own color inside a map and inside another function's
+# result, in the value a call returns (Type System ch. 5: a color variable is decided at
+# each call; here both calls make `u` bounded, so what comes back holds bounded
+# functions, called at once).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Named: u fn (u fn Nat -> Nat) -> (Text ==> (u fn Nat -> Nat))
+fn Named F = {"once": F}
+
+Later: u fn (u fn Nat -> Nat) -> (fn Nat -> (u fn Nat -> Nat))
+fn Later F = \|ignore| F
+
+ByName: fn Nat -> Nat
+fn ByName k:
+    let fs = Named (\|n| n + 1)
+    Fold fs, k, \|acc, name, F| F acc
+
+Deferred: fn Nat -> Nat
+fn Deferred k:
+    let Pick = Later (\|n| n * 2)
+    let F = Pick 0
+    F k
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{ByName 5} {Deferred 5}")                   # 0
