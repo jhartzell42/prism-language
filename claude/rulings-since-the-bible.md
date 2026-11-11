@@ -71,3 +71,11 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
 - **IE** An `if` needs its `else`, a building `if` included: `if loud:` and a block with
   no `else` is a checker error. Jimmy: "no helll no if needs else". Refused: an else-less
   building `if` that builds its arm or nothing.
+- **ZD** A second block for a widget that takes no arguments is a name defined twice:
+  `collision`, in both spellings (two bare `@Twice:` blocks, and `fn @Twice:` twice).
+  Jimmy: "yeah this is a name defined twice". Refused: `unreachable`, whose fix line
+  ("put it above the clause that covers it") makes no sense with no arguments to tell
+  clauses apart.
+- **HA** A hold above a building `match` may begin at the `match`'s plain result: a
+  block's bindings are a group and may be cyclic, and line order decides positions only.
+  Jimmy: "why wouldn't this be legal?" and "bindings are cyclic man".
