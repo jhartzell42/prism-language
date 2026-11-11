@@ -352,11 +352,6 @@ fn UpdMatch lx, env, scrut, arms:
     if Fold arms3, False, \|f, a| f or (Len a.conds) > 0: DoExpr (Own (ArmsValue (Ref sv), arms3, "'u{scrut.span.start}", OutUnit))
     else: DoMatch (Ref sv), (Each arms3, \|a| ((a.pat, (ArmDos a.body))))
 
-# Conditions joined by `&&`.
-AllOf: fn [Ex] -> Ex
-fn AllOf [[one]] = one
-fn AllOf xs = Fold (Drop xs, 1), (Or xs[0], (XBool True)), \|acc, x| XBin OpAnd, acc, x
-
 ArmDos: fn Ex -> [Do]
 fn ArmDos (XBlock dos, ignore) = dos
 fn ArmDos x = [[DoExpr x]]

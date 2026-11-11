@@ -575,11 +575,6 @@ fn LiftOperands lx, lxIn, env, e, sigil, operands, t = match operands:
         let arms = [[XArm(pat=(PaCtor (RefRuntime (if sigil == "~": "std::Ok" else: "std::Some")), [[PaBind x]]), conds=[[]], body=body), failArm]]
         XMatch (if owned: Own sv else: Ref sv), arms, False, t
 
-IsLiftedAt: fn Lx, Range -> Bool
-fn IsLiftedAt lx, r = match lx.lifts[PlaceKey lx, r]:
-    ? ln: (Len ln.operands) > 0
-    nil: False
-
 # The operand of an expression at a place: a field read's receiver, an argument, an
 # operator's operand.
 ?OperandAt: fn Expr, Range -> ?Expr
