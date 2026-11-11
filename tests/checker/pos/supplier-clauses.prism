@@ -1,0 +1,28 @@
+# A supplier written by clauses, each clause's pattern a tag: a clause's tag pattern
+# refines the element's output as a `match` arm's does (Semantics ch. 9: "Matching a tag
+# refines its output"; Type System ch. 5, "Refinement at tag matches"; Semantics ch. 3: a
+# function's clauses are a `match` on its arguments), so `@ 7` answers `Pad.Num` and
+# `@ "w"` answers `Pad.Word`. Written by Claude on the claude-lowering branch; subject to
+# change.
+emit Ui.* | Pad.*
+
+tag Pad.Num of Element Nat:
+    name: Text
+
+tag Pad.Word of Element Text:
+    name: Text
+
+@child: @Text emit Pad.*
+@child:
+    n <- Pad.Num(name="a")
+    w <- Pad.Word(name="b")
+    @ "{w}{n}"
+
+@Supply: fn Path, Element Pad.* o -> @o
+fn @Supply p, (Pad.Num(..)) = @ 7
+fn @Supply p, (Pad.Word(..)) = @ "w"
+
+@page: @unit
+@page:
+    ((got, ignore)) <- @HostDocument @child, @Supply
+    Ui.Label($text=$"{got}")
