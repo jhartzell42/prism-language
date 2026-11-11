@@ -172,10 +172,13 @@ Dynamics and events
   (`Ui.Label($text=$"x")` passes the checker; `$text="x"` is a mismatch there).
 
 Functions
-- lower/node/def.prism (`LetLine`) a widget block's `let` of a pattern that is no name
-  and no tuple of names and binds an event inside it. No test. With plain names it is
-  lowered (sem-ch08-let-pattern-in-widget), and with dynamics inside it
-  (`LetPatternDynamics`, sem-ch08-let-pattern-dynamic-in-widget).
+- A widget block's `let` of a pattern that is no name and no tuple of names is
+  lowered: with plain names (sem-ch08-let-pattern-in-widget), with dynamics inside it
+  and with events inside it (`LetPatternDynamics`,
+  sem-ch08-let-pattern-dynamic-in-widget, sem-ch08-let-pattern-event-in-record). Left:
+  the value taken apart is a nested bundle a line named whole (`let ((ten, ((!more,
+  $guests)))) = all`, sem-ch08-let-pattern-event-in-tuple: lower/expr.prism, "a tuple
+  pattern's binding as a value").
 - lower/expr.prism `Recolored`: a function value of its callee's own color inside the
   value a call returns, at a call that makes the color bounded, is made again through
   every type that can hold it (ts-ch05-color-function-in-result, -in-map-result,

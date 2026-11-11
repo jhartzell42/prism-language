@@ -912,7 +912,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   (`HeadWord`: a named type's name, a collection's shape with its parts).
 - **A widget block's `let` of a record's or a constructor's pattern** computes the value
   at the build, matches it once there and moves each name it binds into its own field
-  (`BindPatternResult`, as a widget's plain result bound by a pattern).
+  (`BindPatternResult`, as a widget's plain result bound by a pattern). A pattern that
+  binds a dynamic or an event inside it (`LetPatternDynamics`) keeps the whole value as
+  a getter of the node: a `$` binder's getter matches it and samples the dynamic it
+  holds; an event binder's port node is subscribed at the build to the event the value
+  holds (read out by the pattern, `{heard}_event`) and feeds the name's own node.
 - **`for &v <- &m:` over a map** (ruling FM) takes the keys before the first step and
   reads each entry's place through its key (`keys`, `at_mut_map`), in key order.
 - **A `while` or an `if` bind in an `update` block whose pattern has conditions** (a
