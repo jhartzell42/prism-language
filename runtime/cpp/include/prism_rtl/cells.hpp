@@ -438,18 +438,26 @@ struct Live {
 
     /// One event field of the live element as an `!T` (an element pattern's `!field=!r`,
     /// ruling EP): each request the place makes through `field` (none: the tag's only
-    /// event field), decoded, in the tick the place fires it.
-    template <class T>
-    Event<T> requested(std::optional<std::string> field) const {
-        auto port = make_rc<Port<T>>();
-        requests->subscribe([port, field](const std::pair<std::optional<std::string>, Pod>& request, Cx& cx) -> Done {
-            if (request.first != field) return {};
-            auto decoded = from_pod<T>(request.second);
-            if (!decoded) return unexpected(decoded.error());
-            return port->fire(*decoded, cx);
-        });
-        return Event<T>{nullptr, port};
-    }
+    /// event field), decoded, in the tick the place fires it. The event's type is the one
+    /// the value is given to (a description's field): C++ deduces no template argument
+    /// from a result, so `requested` gives a `Requested`, which converts to that `Event<T>`.
+    struct Requested {
+        Rc<Port<std::pair<std::optional<std::string>, Pod>>> requests;
+        std::optional<std::string> field;
+
+        template <class T>
+        operator Event<T>() const {
+            auto port = make_rc<Port<T>>();
+            requests->subscribe([port, field = field](const std::pair<std::optional<std::string>, Pod>& request, Cx& cx) -> Done {
+                if (request.first != field) return {};
+                auto decoded = from_pod<T>(request.second);
+                if (!decoded) return unexpected(decoded.error());
+                return port->fire(*decoded, cx);
+            });
+            return Event<T>{nullptr, port};
+        }
+    };
+    Requested requested(std::optional<std::string> field) const { return Requested{requests, std::move(field)}; }
 };
 
 /// An element applied as a plain value, before a statement or a host places it (Type System

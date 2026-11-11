@@ -78,6 +78,46 @@ inline Result<Pod> field(const Pod& p, const char* name) {
     return unexpected(Fault::answer(str("no field ", name, " in ", p)));
 }
 
+/// `type Turn b = choice: More | Done b` (the prelude's; `::prism_rtl::Turn` is the job's),
+/// as a program's own choice is emitted: a case struct each, positional fields `a0`.
+template <class B>
+class PreludeTurn {
+public:
+    using prism_value = void;
+    struct More {
+        bool operator==(const More&) const = default;
+    };
+    struct Done {
+        B a0;
+        bool operator==(const Done&) const = default;
+    };
+    using Cases = std::variant<More, Done>;
+    template <class C>
+        requires ::prism_rtl::one_of<C, More, Done>
+    PreludeTurn(C c) : cases_(std::move(c)) {}
+    const Cases& cases() const { return cases_; }
+    void show(Printer& p) const {
+        if (auto c = ::std::get_if<More>(&cases())) p.choice("More", {});
+        else if (auto c = ::std::get_if<Done>(&cases())) p.choice("Done", {c->a0});
+    }
+    Pod to_pod() const {
+        return ::std::holds_alternative<More>(cases()) ? Pod::choice("More", {})
+            : Pod::choice("Done", {::prism_rtl::to_pod(::std::get<Done>(cases()).a0)});
+    }
+    static Result<PreludeTurn<B>> from_pod(const Pod& whole) {
+        const Pod& p = whole.structure();
+        if (auto c = p.if_choice()) {
+            if (c->ctor == "More" && c->args.size() == 0) return PreludeTurn<B>(More{});
+            if (c->ctor == "Done" && c->args.size() == 1) return PreludeTurn<B>(Done{TRY(::prism_rtl::from_pod<B>(c->args[0]))});
+        }
+        return mismatch<PreludeTurn<B>>("a Turn", p);
+    }
+    friend bool operator==(const PreludeTurn& a, const PreludeTurn& b) { return a.cases() == b.cases(); }
+
+private:
+    Cases cases_;
+};
+
 /// `type Span = record: file, line, column, binding`.
 struct Span {
     using prism_value = void;
