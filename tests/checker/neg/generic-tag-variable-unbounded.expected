@@ -1,0 +1,5 @@
+tests/checker/neg/generic-tag-variable-unbounded.prism:8: error[tag-variable]: the type variable `r` of the tag `Pad.Echo` has no `^Show` bound: every field and every output prints
+    tag Pad.Echo of Element !r:
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: write `where r: ^Show` on the tag's line
+1 error
