@@ -787,6 +787,24 @@ it make every program an interpreter run, and every type mistake a runtime fault
   made in the build) after a gappy generation built after the node has no number yet;
   that is refused loudly. A generation built early gives its gap as a local
   (`{name}_gap_now`).
+- A generation built early (`EarlyChoiceLine`, `EarlyClauseLine`) below a gappy
+  generation built after the node cannot be handed its `base` in the build: the line
+  above reads the early row's plain result to choose its own row. Its row is built in
+  two steps (`NumberedLate`, `Wx.lateNumbered`, `Wx.baseLate`). The row's build takes no
+  `base`: it computes its lets and its result and makes its node, and keeps everything
+  a build does after the node (links, the construction step, the places sent with
+  `cx.added`, subscriptions) as one `Later` in its field `number_later`, with the
+  build's values it reads (`LateNumbering`). Its `base` is a cell, read by `place`.
+  The block's early arm hands back a fourth value, `{name}_number`, a `Later` over the
+  typed row and the arm's link: it calls the row's `number_places(base, cx)` with the
+  line's position as built (`node.place(v)`), then sets `{name}_gap` again, the row's
+  own generations built by then (`NumberOf`). The block's construction step calls it at
+  the line's place, after the generations above it (`ScopeSteps`: the step waits for
+  the gappy generations before it, and is deferred behind a deferred one). An early
+  line inside such a row is numbered late in turn, in the row's kept step. Refused in
+  such a row: a place spelled in the row's build before its node (a host, a hosted
+  place's first value), and a plain result read from a generation the row builds
+  after its node.
 - **A widget that calls itself**, of one clause or of several (plain parameters, no type
   parameter, nothing or a plain value given back), is as deep as
   its data (`SharedClauseLine`). A plain result is kept by each row (`result_value`) and
@@ -983,11 +1001,16 @@ it make every program an interpreter run, and every type mistake a runtime fault
   builds for the place reads the gathered dynamic over the rows built above it. A late
   scope's own builders, generations and entries follow its first values, just before
   its host's rows; any other hosted scope is built before the owner's own, as before.
-  A late host written above the builder whose structural dynamic its supplier answers
-  with (`$lens <- for ..` below the host) is built once that builder is: its step
-  stands after the last builder or generation its answers read (`AnswersAt`, by the
-  answers' reads closed over the node's getters and the snapshots' builders), so the
-  first values read every row of the build wherever the `for` stands. A builder's `$`
+  A scope's steps wait for the structure they read (`ScopeSteps`): each builder and
+  generation stands at its place, and one whose build reads a structural dynamic of
+  another (by its reads closed over the node's getters, and the snapshots' builders)
+  stands after that one, at its place and one rank on. So a late host written above the
+  builder whose structural dynamic its supplier answers with (`$lens <- for ..` below
+  the host) is built once that builder is, and its child's first values read every row
+  of the build wherever the `for` stands; and a `for` or a generation whose source
+  reads a host's `$doc` or a gathered result is built after that host or `for`, moved
+  or not (a `rebuild Size $doc` between the late host and the `for`:
+  sem-ch09-host-above-for-doc-read-between). A builder's `$`
   result is prebound as a getter of the node (`GivesResult`, `ResultGetter`), which a
   line above the builder reads.
   A bundle tag's plain part beside a `$` part (`((port, !rx, $peers)) <- Pad.Socket(..)`)
