@@ -1,36 +1,32 @@
-# A blueprint value made under a tag's arm and applied by a block: a plain function
-# matches an element and gives the blueprint of a widget that answers it, inside an
-# option; the block takes it out, applies it and binds its plain result (Semantics ch. 9,
-# "How a supplier answers": under a tag's arm a blueprint answers with that tag's output;
-# ch. 8: "a blueprint builds nothing until a block applies it", at the applying block's
-# next positions; `<-` builds the child and binds its result; Type System ch. 2: a
-# blueprint is an opaque handle and still a value). Written by Claude on the
-# claude-lowering branch; subject to change.
-emit Ui.*
+# A blueprint value made under a tag's arm, a widget with a plain result, taken out of the
+# option the function gives and applied by a block that binds its result (Semantics
+# ch. 8: "a blueprint builds nothing until a block applies it", and `<-` binds its result;
+# Type System ch. 2: a blueprint is an opaque handle and still a value, the same value
+# whichever arm made it). Written by Claude on the claude-lowering branch; subject to
+# change.
+emit Ui.* | Pad.*
 test mod Tests
-use Ui.*
 
-tag Pad.Ask of Element Text:
-    name: Text
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
 
-tag Pad.Skip of Element Nat:
-    name: Text
+tag Pad.Ask of Element Nat:
+    question: Text
 
-@Answerer: fn Text -> @Text
-fn @Answerer name:
-    Ui.Label($text=$"answering {name}")                         # 0
-    @ "yes {name}"
+@Answerer: fn Nat -> @Nat
+fn @Answerer n:
+    Ui.Label($text=$"answering {n}")
+    @ n + 1
 
-?Offer: fn Element Pad.* o -> ?@o
-fn ?Offer e = match e:
-    Pad.Ask(name=n): ? @Answerer n
-    Pad.Skip(..): nil
+?Made: fn Element (Ui.* | Pad.*) o -> ?@Nat
+fn ?Made e = match e:
+    Pad.Ask(..): ? (@Answerer 3)
+    otherwise: nil
 
-@page: @unit
-@page:
-    match ?Offer (Pad.Ask(name="a")):                           # 0 and 1
+@host: @unit
+@host:
+    match ?Made (Pad.Ask(question="x")):
         ? @t:
-            heard <- @t
-            Ui.Label($text=$"heard {heard}")
+            n <- @t
+            Ui.Label($text=$"got {n}")
         nil: Ui.Label($text=$"none")
-    Ui.Label($text=$"end")                                      # 2
