@@ -1,0 +1,19 @@
+# Derived by hand from the transcript of sem-ch08-element-value-bundle-statement (the same program with the event's type written in the tag; Semantics ch. 9: a tag's variable is decided where the element is made, and its answers are read at that type). Never run.
+test a_placed_socket
+
+tick 0
+  added:
+    0: Pad.Socket(address="chat:7000")
+    1: Ui.Label(text="up: none")
+
+tick 1
+  in:
+    0: "hello"
+  changed:
+    1: Ui.Label(text="up: hello")
+
+tick 2
+  in:
+    Pad.Socket(address="chat:7000") = "down"
+  changed:
+    1: Ui.Label(text="down: hello")

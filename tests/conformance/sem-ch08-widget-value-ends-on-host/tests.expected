@@ -1,0 +1,25 @@
+# Derived by hand from Semantics ch. 4 (a building `match`'s arm adds no path segment), ch. 8 (a blueprint builds nothing until a block applies it; it is built at the applying block's next positions) and ruling TC (places counted as built); ch. 9 and Jimmy's ruling of 6 November 2026 (the host document is `$(Path ==> $Elem c)`) with ch. 7 (round 3 ST, both levels structural; TK, an owed tick is not skipped), as sem-ch09-host-doc-entries has them: the click on "add" makes a place, the row is built and forwarded in its tick, and the outer document moves in the owed tick 2. Never run.
+test picked
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="add")
+    1: Ui.Label(text="0 moves")
+    2: Ui.Label(text="end")
+
+tick 1
+  in:
+    0/[0]/0: click
+  added:
+    0/[1/[0]/0]/0: Ui.Label(text="item 0")
+
+tick 2
+  changed:
+    1: Ui.Label(text="1 moves")
+
+test not_picked
+
+tick 0
+  added:
+    0: Ui.Label(text="none")
+    1: Ui.Label(text="end")

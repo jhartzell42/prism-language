@@ -1,0 +1,29 @@
+# A widget with places that gives a bundle back, as a supplier's answer under a bundle
+# tag's arm (Semantics ch. 9, "How a supplier answers": the supplier's blueprint is built
+# when the child's place is built, in the host's scope; Type System ch. 2, "Bundles": a
+# bundle's plain part is the place's first value, its event part its answers).
+# sem-ch09-host-widget-answer with sem-ch09-host-bundle's tag. Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+tag Pad.Door of Element ((Text, !Nat)):
+    name: Text
+
+@doors: @unit emit Ui.* | Pad.*
+@doors:
+    ((door, !knocks)) <- Pad.Door(name="front")                 # 0
+    $count <- 0 then $count + !knocks
+    Ui.Label($text=$"{door}: {$count}")                          # 1
+
+@Knocker: fn Text -> @((Text, !Nat))
+fn @Knocker name:
+    !go <- Ui.Button($label=$"knock {name}")                     # 0
+    @ (("mock", 2 on !go))
+
+@host: @unit
+@host:
+    ignore <- @HostDocument @doors, \|p, e| match e:            # 0/[p]
+        Pad.Door(name=n): @Knocker n
+        otherwise: @Element e
