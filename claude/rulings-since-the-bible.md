@@ -79,3 +79,9 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
 - **HA** A hold above a building `match` may begin at the `match`'s plain result: a
   block's bindings are a group and may be cyclic, and line order decides positions only.
   Jimmy: "why wouldn't this be legal?" and "bindings are cyclic man".
+- **LP** A pattern cannot test a dynamic's value: `Ui.Label($text=$"x")` as a pattern is a
+  checker error. Binding the field, `$text=$t`, stays legal. Jimmy: "this is crazy wrong
+  you can't match on a dynamic like this", and "correct" to the checker-error reading.
+- **BP** A `for` or a `rebuild` as a plain function's value is a checker mismatch, as a
+  building `match` there is; an interpolation lifts over `?` as any application does.
+  Claude's first rulings, shown to Jimmy with their programs and not overruled.

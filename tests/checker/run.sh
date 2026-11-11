@@ -37,11 +37,13 @@ ulimit -s unlimited 2>/dev/null || ulimit -s 1048576 2>/dev/null || true
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-# check NAME FILES...: the checker's report for a program, in $tmp/NAME.out
+# check NAME FILES...: the checker's report for a program, in $tmp/NAME.out. A checker that
+# does not end is cut at `$PRISM_CHECK_TIMEOUT` seconds (600), and the program fails as one
+# the checker wrote nothing for (neg/trait-where-ring).
 check() {
     local name=$1; shift
     rm -f "$tmp/$name.out"
-    "$prismc" --check --tests "$@" --out "$tmp/$name.out" > "$tmp/$name.err" 2>&1
+    timeout "${PRISM_CHECK_TIMEOUT:-600}" "$prismc" --check --tests "$@" --out "$tmp/$name.out" > "$tmp/$name.err" 2>&1
     if [ ! -f "$tmp/$name.out" ]; then
         { echo "(the checker wrote nothing)"; tail -3 "$tmp/$name.err"; } > "$tmp/$name.out"
     fi

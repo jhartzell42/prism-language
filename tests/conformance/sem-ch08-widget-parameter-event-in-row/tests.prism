@@ -1,0 +1,7 @@
+# The tests of sem-ch08-widget-parameter-event-in-row.
+emit Ui.*
+use App.*
+
+test each_row_hears_the_callers_event, @page:
+    build
+    click at 0
