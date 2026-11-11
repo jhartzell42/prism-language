@@ -389,6 +389,8 @@ fn AnswerGetter accessor, variant, tagName, ty = inline_text <rust>
 pub fn {{accessor}}(&self) -> ::std::result::Result<{{ty}}, crate::prelude::Fault> {
     match self {
         Answer::{{variant}}(v) => ::std::result::Result::Ok(v.clone()),
+        // an answer made outside a tag's arm: plain data, read at this tag's type
+        Answer::Untagged_a(p) => crate::prelude::FromPod::from_pod(p),
         other => ::std::result::Result::Err(crate::prelude::Fault::answer(format!("an answer for {}, where {{tagName}}'s was expected", other.tag()))),
     }
 }

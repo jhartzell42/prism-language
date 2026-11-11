@@ -684,8 +684,8 @@ fn AnyValue lx, env, x, t:
 # pattern on the live element (`Ui.Button(..): @ !tap`), which binds the tag (`#tag`). A
 # plain value, or a constant dynamic (`@ $ (~ Contents(..))`), is the place's first value
 # once; an event's firings are answers, each a tick late; `never` answers nothing. A dynamic
-# that is not a constant (`@ $hold`) is not lowered yet: its updates would be delayed
-# answers through prism_rtl's `dynamic_blueprint`, over a `Dynamic` of the hold.
+# that is not a constant (`@ $hold`) answers through prism_rtl's `dynamic_blueprint`
+# (`DynamicBlueprint`).
 PureBlueprint: unbounded fn Lx, Env, Expr, OutTy -> Vl
 fn PureBlueprint lx, env, x, t:
     let isNever = match x.kind:
@@ -695,11 +695,17 @@ fn PureBlueprint lx, env, x, t:
         otherwise: False
     if isNever: VlOwned (XCall (RefRuntime "prism_rtl::never_blueprint::<crate::Elem, crate::Answer>"), [[]]), t
     else: match env.names["#tag"]:
-        nil: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}` as a supplier's answer outside a tag arm: which tag's output it answers cannot be known"), t
+        # outside a tag's arm (a host's `let @seven = @ 7`, given by the arm that matched the
+        # tag): the answer as plain data, `Answer`'s case of no tag, which the place that
+        # takes it reads at its own tag's type (the accessors of `crate::Answer`)
+        nil:
+            let plainTy = OutTyOf lx, (Peel (TypeAt lx, x.span))
+            if not (IsBundleAnswer lx, x) and not (Podable plainTy): VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}` outside a tag arm, an answer that is no plain data"), t
+            else: PureBlueprint lx, (Bind (Bind env, "#tag", (BnLocal (XPath untaggedRef), Owned, OutUnit)), "#tagfirst", (BnLocal (XPath untaggedRef), Owned, OutUnit)), x, t
         ? (BnLocal (XPath variant), ignore, ignore) if IsBundleAnswer lx, x: BundleBlueprint lx, env, x, variant, t
         ? (BnLocal (XPath variant), ignore, ignore): match LayerOf (TypeAt lx, x.span):
             LyEv:
-                let wrapped = XMethod (Own (ValueOf lx, env, x)), "map", [[(XClosure False, [[PaBind "v"]], (XCtor variant, [[(XClone (XVar "v"))]]))]]
+                let wrapped = XMethod (Own (ValueOf lx, env, x)), "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (XClone (XVar "v"))))]]
                 VlOwned (XCall (RefRuntime "prism_rtl::event_blueprint::<crate::Elem, _>"), [[wrapped]]), t
             LyDyn: match ?DynamicAnswer lx, x:
                 nil: match x.kind:
@@ -734,8 +740,8 @@ fn BundleBlueprint lx, env, x, variant, t = match x.kind:
                 let firstVal = match plain:
                     [[y]]: Own (ValueOf lx, env, y)
                     otherwise: XTuple (Each plain, \|y| Own (ValueOf lx, env, y))
-                let wrapped = XMethod (Own (ValueOf lx, env, ev)), "map", [[(XClosure False, [[PaBind "v"]], (XCtor variant, [[(XClone (XVar "v"))]]))]]
-                VlOwned (XCall (RefRuntime "prism_rtl::bundle_blueprint::<crate::Elem, _>"), [[(XCtor firstVariant, [[firstVal]]), wrapped]]), t
+                let wrapped = XMethod (Own (ValueOf lx, env, ev)), "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (XClone (XVar "v"))))]]
+                VlOwned (XCall (RefRuntime "prism_rtl::bundle_blueprint::<crate::Elem, _>"), [[(Tagged firstVariant, firstVal), wrapped]]), t
             otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer with a `$` part or two event parts"), t
     # a bundle that is a value already (`@ pair`): its parts are the tuple's, the plain
     # ones cloned out for the first value, the event's mapped to the tag's variant
@@ -752,13 +758,13 @@ fn BundleBlueprint lx, env, x, variant, t = match x.kind:
                     let firstVal = match plain:
                         [[i]]: XClone (XPart whole, i)
                         otherwise: XTuple (Each plain, \|i| XClone (XPart whole, i))
-                    let wrapped = XMethod (XPart whole, ev), "map", [[(XClosure False, [[PaBind "v"]], (XCtor variant, [[(XClone (XVar "v"))]]))]]
-                    VlOwned (XBlock [[(DoLet (PaBind "bundle_answer"), (Own (ValueOf lx, env, x)))]], (XCall (RefRuntime "prism_rtl::bundle_blueprint::<crate::Elem, _>"), [[(XCtor firstVariant, [[firstVal]]), wrapped]])), t
+                    let wrapped = XMethod (XPart whole, ev), "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (XClone (XVar "v"))))]]
+                    VlOwned (XBlock [[(DoLet (PaBind "bundle_answer"), (Own (ValueOf lx, env, x)))]], (XCall (RefRuntime "prism_rtl::bundle_blueprint::<crate::Elem, _>"), [[(Tagged firstVariant, firstVal), wrapped]])), t
                 otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer with a `$` part or two event parts"), t
         otherwise: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a bundle answer whose type is no tuple"), t
 
 PlainBlueprint: unbounded fn Lx, Env, Expr, Ref, OutTy -> Vl
-fn PlainBlueprint lx, env, x, variant, t = VlOwned (XCall (RefRuntime "prism_rtl::plain_blueprint::<crate::Elem, _>"), [[(XCtor variant, [[Own (ValueOf lx, env, x)]])]]), t
+fn PlainBlueprint lx, env, x, variant, t = VlOwned (XCall (RefRuntime "prism_rtl::plain_blueprint::<crate::Elem, _>"), [[(Tagged variant, (Own (ValueOf lx, env, x)))]]), t
 
 # `@ $d` with `$d` a dynamic of the host that is not a constant (round 3 DY): prism_rtl's
 # `dynamic_blueprint` over a `Dynamic` of the tag's `Answer` whose read is the owner's getter
@@ -770,11 +776,16 @@ DynamicBlueprint: unbounded fn Lx, Env, Expr, Expr, Ref, OutTy -> Vl
 fn DynamicBlueprint lx, env, x, d, variant, t = match ((env.names["#dyn{DynKey x}"], env.names["#owner"])):
     ((? (BnLocal (XVar getter), ignore, dt), ? (BnLocal (XVar owner), ignore, ignore))):
         let atBuild = Own (ValueOf lx, (InitEnv env), d)
-        let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(XCtor variant, [[(XMethod (XVar "owner"), getter, [[XCx]])]])), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=(XCtor variant, [[(XClone (XVar "at_build"))]]))]]
+        let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(Tagged variant, (XMethod (XVar "owner"), getter, [[XCx]]))), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=(Tagged variant, (XClone (XVar "at_build"))))]]
         let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, (OutNamed answerRef, [[]]))
         let dynamic = XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar "{getter}_portx"))]])
         VlOwned (XCall (RefRuntime "prism_rtl::dynamic_blueprint::<crate::Elem, _>"), [[dynamic]]), t
     otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer that reads what has no value at the owner's build (a pushed place, a structural dynamic, or a `let` after the host's line)"), t
+
+# An answer in its tag's case of `crate::Answer`; with no tag, as plain data in the case
+# of no tag (`untaggedRef`).
+Tagged: fn Ref, Ex -> Ex
+fn Tagged variant, value = if variant == untaggedRef: XCtor variant, [[(XMethod value, "to_pod", [[]])]] else: XCtor variant, [[value]]
 
 # `@Element e` as a value: the forwarding blueprint, the child's element re-emitted in the
 # host's scope.

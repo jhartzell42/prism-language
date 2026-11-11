@@ -104,6 +104,10 @@ fn DropLastSegment p:
 # The crate's own row of every element tag and its answers (`crate::Elem`, `crate::Answer`).
 let elemRef = RefItem "", "Elem", "crate::Elem"
 let answerRef = RefItem "", "Answer", "crate::Answer"
+# `Answer`'s case of no tag: an answer made outside a tag's arm, plain data that the place
+# taking it reads at its own tag's type. Named as no tag's case is (a tag's is its name in
+# UpperCamelCase).
+let untaggedRef = RefChild answerRef, "Untagged_a"
 
 # A type of the output program (claude/backend.md, "Types"): the value types, and the
 # runtime's cells, ports, references and shared pointers a node is made of.
