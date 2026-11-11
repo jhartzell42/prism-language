@@ -127,8 +127,11 @@ fn RowPartsBn parent, rowWx, n, parts = Fold parts, ((parent, rowWx, [[]])), \|(
 RowPartBn: unbounded fn Wx, Wx, Text, ?Bn -> ((Wx, Wx, ?Bn))
 fn RowPartBn p, r, n, ?b = match ?b:
     ? (BnLocal rs, mode, t): ((p, r, (? (BnLocal (OverParent rs), Owned, t))))
-    ? (BnEv er, t):
+    # (a bundle's event part is bound with no type of its own, `BundleBn`: the type is
+    # its node's in the block)
+    ? (BnEv er, ignore):
         let pname = (GnOf p, er.node).name
+        let t = (GnOf p, er.node).ty
         let ((rs, r1)) = FreshName r, (Snake n)
         let ((id, r2)) = AddGn r1, rs, t, GnPort, 0
         let r3 = update r2:
