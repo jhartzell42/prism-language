@@ -1,0 +1,30 @@
+# A widget defined in a block stored in a record's field and built where a bind applies
+# the field (Semantics ch. 3: `fn` and its `@` form define in the block; ch. 8: "a
+# blueprint builds nothing until a block applies it", at the applying block's next
+# positions; Type System ch. 1, "Sigils on fields": a field's sigil is on its name, given
+# as `@body=` and read as `.@body`; ch. 2, "Rows in `emit` and in signatures": a blueprint
+# type with no `emit` of its own "emits the row of the scope it is written in", here the
+# module's `Ui.*`). The local widget reads the block's `n`. Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Card = record:
+    title: Text
+    @body: unit
+
+@Show: fn Card -> @unit
+fn @Show card:
+    Ui.Label($text=$"{card.title}")
+    ignore <- card.@body
+
+@page: @unit
+@page:
+    let n = 7
+    @line:
+        Ui.Label($text=$"line {n}")
+    let card = Card(title="a card", @body=@line)
+    @Show card                                                   # 0, 1
+    ignore <- card.@body                                         # 2
+    Ui.Label($text=$"end")                                       # 3
