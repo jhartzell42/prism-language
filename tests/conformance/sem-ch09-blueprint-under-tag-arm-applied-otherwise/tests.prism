@@ -1,0 +1,6 @@
+# The tests of sem-ch09-blueprint-under-tag-arm-applied.
+emit Ui.* | Pad.*
+use App.*
+
+test a_blueprint_made_under_a_tag_arm, @host:
+    build

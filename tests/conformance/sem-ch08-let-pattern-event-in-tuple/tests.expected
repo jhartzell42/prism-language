@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 4 (`let` binds by any pattern that cannot fail; a `let` takes no position) and ch. 8 (a widget application is transparent): the click steps the counter's hold and the block's own.
+test the_inner_parts_are_bound
+
+tick 0
+  added:
+    0: Ui.Button(label="more on 1")
+    1: Ui.Label(text="10: 1 guests, 0 clicks")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="10: 2 guests, 1 clicks")

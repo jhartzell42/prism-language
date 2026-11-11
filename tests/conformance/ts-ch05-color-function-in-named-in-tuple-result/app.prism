@@ -1,0 +1,24 @@
+# A function of its callee's own color kept in a named type inside a tuple, in the value a
+# call returns, at a call that makes the color bounded (Type System ch. 5: a `u fn`
+# takes its color from its call; a record holds a function as any value).
+# ts-ch05-color-function-in-nested-named-result with a tuple for the array. Written by Claude
+# on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Holder a = record:
+    item: a
+
+Held: u fn (u fn Nat -> Nat) -> ((Holder (u fn Nat -> Nat), Nat))
+fn Held F = ((Holder(item=F), 2))
+
+Through: fn Nat -> Nat
+fn Through k:
+    let ((h, more)) = Held (\|n| n + 1)
+    let F = h.item
+    (F k) + more
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Through 5}")                               # 0

@@ -1,0 +1,10 @@
+# The tests of sem-ch04-rebuild-nested-bundle-result.
+emit Ui.*
+use App.*
+
+test generations, @main:
+    build
+    click at 1/#0/0
+        => expect Ui.Label(text="page 1: 2")
+    click at 0
+        => expect Ui.Label(text="page 2: 1")

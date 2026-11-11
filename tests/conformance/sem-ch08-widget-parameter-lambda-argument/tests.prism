@@ -1,0 +1,6 @@
+# The tests of sem-ch08-widget-parameter-lambda-argument.
+emit Ui.*
+use App.*
+
+test a_lambda_is_applied_twice, @main:
+    build
