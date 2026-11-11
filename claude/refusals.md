@@ -93,9 +93,17 @@ Bundles
 - A bundle with a late plain part bound whole to a name (`both <- @Choose mode`) is its
   parts (`BindWhole`, sem-ch08-late-part-bundle-named), and a late plain part taken
   apart by a pattern of its own is read by that pattern (sem-ch08-late-part-nested-pattern).
-  Left: a line of the block's node below the split that reads the whole name (`let same =
-  both`) finds no binding ("the name both, which nothing declares"); a bundle inside the
-  bundle whose late part a nested tuple pattern binds is not bound late. No tests.
+  The name is bound before the block's lines (`PreBindWhole`), so a line above the split
+  reads it (sem-ch08-late-part-bundle-named-read-above), and a `let` of a bundle written
+  out over a late name is late (`LateBundleLet`, sem-ch04-late-let-bundle-above).
+  Left, no tests: lower/node/def.prism (`PreBindWholeParts`, `LateBundleParts`: "a late
+  plain part of the bundle .. read at its block's build") a `let` of the block's node,
+  above the split, whose tuple pattern takes a late bundle apart and names its plain
+  part (`let ((step, !go)) = both` above `both <- ..`); (`PreBindWhole`,
+  `MarkLateBundle`: "read as one value at its block's build") a late bundle read whole
+  as a value (a supplier's `@ both`); a bundle inside the bundle whose late part a
+  nested tuple pattern binds is not bound late; a `let` of a bundle read by a line
+  above the `let` finds no binding (a bundle's name is bound at its line).
   A dynamic part of a named bundle read by a row of a row is read through a getter of
   the row between (`ThroughGetter`, sem-ch04-named-bundle-in-row-of-row).
 - A `rebuild` whose block ends on a bundle a line named whole (`@ both`) is lowered
