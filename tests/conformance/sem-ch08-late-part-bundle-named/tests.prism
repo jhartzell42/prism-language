@@ -1,0 +1,13 @@
+# The tests of sem-ch08-late-part-bundle-named.
+emit Ui.*
+use App.*
+
+test loud, @Page (Loud "x"):
+    build
+    click at 1
+        => expect Ui.Label(text="n 10, gone 10")
+
+test soft, @Page Soft:
+    build
+    click at 0
+        => expect Ui.Label(text="n 20, gone 20")
