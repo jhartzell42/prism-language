@@ -100,3 +100,14 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   function does. Jimmy: "Self calling local function needs a signature why not?" Refused:
   proving that an unsigned one shrinks at the types it is used at. An unsigned local
   function that does not call itself is generalized as before.
+- **QN** A qualified name needs no `use`: `Ui.Label` is reached by its module's name, and
+  `use` is for writing a name bare. Jimmy: "I tend to agree—follow Rust". This overrules
+  Semantics chapter 6's "only through `use`". Refused: an error for a qualified name with
+  no `use`, with a `use` line added to every program that writes `Ui.Label`.
+- **KY** An `update` block's `for` over a map binds `key`, as a widget's `for` does; that
+  it does not today is a bug. Jimmy: "yes a bug".
+- **EX** A method that needs one dictionary for a collection of the trait's type, or has
+  no value of the type to read one from, cannot be called on `any ^Trait`: a checker
+  error. Each packed value keeps its own dictionary. Claude's ruling (the fixer proposed
+  the dictionary of an array's first element, an empty array a fault); told to Jimmy and
+  not overruled.
