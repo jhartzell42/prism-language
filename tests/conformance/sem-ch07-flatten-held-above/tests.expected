@@ -1,0 +1,22 @@
+# Derived by hand from Semantics ch. 4, "Binding groups and cycles" (the order of a group's lines decides positions and nothing else), and the transcript sem-ch07-flatten-held derives for the same lines in the other order (ruling FV): the inc moves the inner `$a` in its tick; the swap fires the outer at 2, the flatten adopts `$b` after 2 and reads 101 at 3. Only the positions differ: the label is 0, the buttons 1 and 2.
+test the_flatten_follows_and_adopts
+
+tick 0
+  added:
+    0: Ui.Label(text="0")
+    1: Ui.Button(label="inc")
+    2: Ui.Button(label="swap")
+
+tick 1
+  in:
+    1: click
+  changed:
+    0: Ui.Label(text="1")
+
+tick 2
+  in:
+    2: click
+
+tick 3
+  changed:
+    0: Ui.Label(text="101")
