@@ -1030,6 +1030,44 @@ public:
     }
 };
 
+/// A widget's row as its blueprint built it (prism_rtl's `widget_blueprint`): the row as a
+/// node, its leaving, how many places it built, and the widget's plain result.
+template <class N, class R>
+::prism_rtl::BuiltWidget<R> built_widget(std::uint32_t built, R result, ::prism_rtl::Rc<N> row) {
+    return ::prism_rtl::BuiltWidget<R>{row, [row](Cx& cx) { row->leave_row(cx); }, built, std::move(result)};
+}
+
+/// A blueprint value a block applied: what it built, as the block's generation at the
+/// line. A World's answer under it goes to the blueprint's node, the position counted
+/// from the blueprint's first.
+class AppliedBlueprint : public Row {
+public:
+    explicit AppliedBlueprint(::prism_rtl::Supplied<Elem, Answer> supplied) : supplied_(std::move(supplied)) {}
+    Done answer(std::span<const Segment> at, const Pod& v, Cx& cx) override {
+        return supplied_.node->answer(at, v, cx);
+    }
+    void leave_row(Cx& cx) override {
+        if (supplied_.leave) supplied_.leave(cx);
+        else cx.keep(supplied_.node->leave(cx));
+    }
+
+private:
+    ::prism_rtl::Supplied<Elem, Answer> supplied_;
+};
+
+/// A blueprint value applied by a block at one of its lines (Semantics ch. 8: "a blueprint
+/// builds nothing until a block applies it", at the applying block's next positions): built
+/// at the block's path, its places numbered from `base`, in the World's scope. Gives the
+/// generation and how many places it built. A blueprint that answers (`@ x`, an event's, a
+/// dynamic's) builds no place here, and what it answers is the line's result, which a line
+/// of unit drops.
+inline Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, Cx& cx) {
+    ::prism_rtl::Sink<Answer> sink = [](const Answer&, Cx&) -> Done { return {}; };
+    auto supplied = TRY(blueprint(std::move(path), sink, ::prism_rtl::Scope<Elem, Answer>::world(), base, cx));
+    std::uint32_t built = supplied.built;
+    return std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied)), built};
+}
+
 /// A row subscribing to its block's port for one event: the row heard weakly, the handle
 /// kept for its leaving (claude/backend.md: `Port::subscribe`).
 template <class N, class P, class Port, class Call>

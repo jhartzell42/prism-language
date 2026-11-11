@@ -436,8 +436,49 @@ it make every program an interpreter run, and every type mistake a runtime fault
   in that line's environments, at the node's next positions (`LetBlueprintLine`); a row
   that applies it sees what it reads through the parent (`RowEnvNames`). The `let` is
   no value of the node; where the name is read as a value it is the expression in its
-  place (`NameValue`). A blueprint taken out of a value by a pattern (`? @t`) is not
-  built in a block.
+  place (`NameValue`).
+- **A widget with places as a blueprint value** (Type System ch. 2: a blueprint is an
+  opaque handle and still a value; `?Pick b, @Pair`, a supplier's `Pad.Ask(name=n):
+  @Answerer n`). The program is read once for the widgets that stand in a value's place
+  (`ValuedWidgets`, `Lx.valued`): an argument of a function that is no widget or of a
+  constructor, a host's supplier, what a lambda gives, the operand of `?`, a part of a
+  tuple or an array.
+  - Each such widget is lowered once more as rows of its own, items of its module
+    (`ValuedRows`): one row type a clause, `{Widget}_value{i}`, its places numbered from 0
+    and built from a base, holding no block, telling how many places it built (`built`),
+    as the rows of a widget that calls itself are.
+  - The value is a `prism_rtl::Blueprint` made where the widget is read
+    (`WidgetBlueprintValue`, prism_rtl's `widget_blueprint`): the arguments are read
+    once and kept; each build chooses the clause by them and builds its row at the path
+    and base it is given. A plain result is the first value of the place the blueprint
+    answers, under the arm's tag as `@ x` is.
+  - A widget with a `$`, event or blueprint parameter, a type parameter, or an event,
+    dynamic or bundle result is not among them, and is refused where it is read as a
+    value. Built in a hosted scope the blueprint is a fault of the build.
+- **A widget defined in a block read as a value** (`Card(@body=@line)`, `?Pick True,
+  @line`) is a `Blueprint` its line makes at the build before the node, kept in a field
+  (`BlueprintValuesAt`, `blueprint_{name}`): it builds the widget's block as a row of its
+  own (`{Node}Value`), numbered from 0, which holds the node through its link and reads
+  the block's names through it as an arm's row does. Bound under `#whole@{span}`, so a
+  row and a closure of the line see it as they see a live dynamic. One whose places read
+  a dynamic of the block is refused (the block keeps no list of the rows its blueprints
+  built, so nothing would mark them), as one that gives something back and one in a
+  hosted scope are.
+- **A blueprint value applied by a block** (`? @t: @t`, `ignore <- card.@body`;
+  Semantics ch. 8: at the applying block's next positions) is the node's generation at
+  the line (`ValueBlueprintLine`): the prelude's `apply_blueprint` builds the value at
+  the node's path from the line's position as built, in the World's scope, and wraps
+  what it built as a `Row` (`AppliedBlueprint`). The generation is transparent,
+  `wideGeneration` positions wide and gappy, as a call of a widget that calls itself is,
+  so the later places are counted as built and an answer under it is handed on with its
+  position counted from the generation's first. A blueprint value that gives something
+  back and one applied in a hosted scope are refused.
+- **`prism_rtl::Blueprint`** is built with a base beside its path, sink and scope: 0
+  under a host's row, the line's position as built in a block. `Supplied` tells how many
+  places were built (`built`) and how a widget's row leaves (`leave`). The element forms
+  (`element_blueprint`, `described_blueprint`) put their one place at the base and
+  answer at the first position under what they built, so a block applies them as it
+  applies a widget's.
 - **A widget defined in a block** (`@line:` and its block) is bound to its block
   (`BnLocalWidget`) and lowered at each line that applies it, in that line's
   environments, at the node's next positions (`LocalWidgetLine`).
@@ -515,9 +556,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
   positions the first segment is among (the prelude's `within_positions`) and hands the
   answer on, to a shared row with the position counted from the generation's first
   (`rebased`, `GenDef.rebased`).
-- Any other widget that calls itself (a `$`, event or blueprint parameter, a result, one
-  clause, a hosted scope) is lowered level by level, to the sixteen levels an inlined
-  widget is (`TooDeep`: a tree deeper than that faults at its build).
+- A blueprint parameter of such a widget, where the widget gives nothing back and the
+  call's argument is a blueprint value the lowering can make (`IsBlueprintValued`: a
+  widget in `Lx.valued`, named in place or through the caller's own parameter, or a
+  blueprint the node holds), is a value of the shared row: a field holding the
+  `prism_rtl::Blueprint`, matched and passed on as a plain argument is
+  (`SharedScrutinee`), applied as any blueprint value (`ValueBlueprintLine`).
+  `ValuedWidgets` reads the blueprint arguments of a call of a widget that calls itself.
+- Any other widget that calls itself (a `$` or event parameter, a blueprint parameter
+  whose argument is no such value or beside a result, an event, dynamic or bundle
+  result, a type parameter, a hosted scope) is lowered level by level, to the sixteen
+  levels an inlined widget is (`TooDeep`: a tree deeper than that faults at its build).
 
 ## Hosting
 

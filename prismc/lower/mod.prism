@@ -138,6 +138,11 @@ type Lx = record:
     # there, when it is sharable, is a generation of shared rows, its plain result late
     # (`IsRecursingCall`).
     recursing: [Text]
+    # The widgets with places the program reads as blueprint values (`ValuedWidgets`): by
+    # widget, each clause's row, the pattern and conditions that choose it, and what its
+    # `build` is passed. The rows are items of the widget's module (`ValuedRows`), built
+    # by the blueprint a value site makes (`WidgetBlueprintValue`).
+    valued: (Text ==> [((Text, Pa, [Cc], [Ex]))])
 derive ^Eq, ^Show
 
 # A key into the typed tables: the file and the range.

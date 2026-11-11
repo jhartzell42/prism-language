@@ -416,11 +416,19 @@ pub struct Supplied<E, A> {
     /// placed, [`described_blueprint`]): its entry, which the enclosing host's document
     /// holds.
     pub entry: Option<Rc<Entry<E>>>,
+    /// How many places of its own the blueprint built from the base it was given (a
+    /// widget's blueprint, [`widget_blueprint`]; ruling TC: places are counted as built).
+    pub built: u32,
+    /// How a widget's blueprint leaves: its row's places torn down, the row with them.
+    /// The other forms leave by their node.
+    pub leave: Option<Rc<dyn Fn(&mut Cx)>>,
 }
 
 /// `@o` as a value (claude/backend.md, "Types"): built at a path with the sink that answers
-/// the child's place, in the scope of the host whose row builds it.
-pub type Blueprint<E, A> = Rc<dyn Fn(Path, Sink<A>, &Scope<E, A>, &mut Cx) -> Result<Supplied<E, A>, Fault>>;
+/// the child's place, in the scope of the host whose row builds it, its own places
+/// numbered from the base it is given (0 under a host's row; a block that applies the
+/// value gives its next position as built).
+pub type Blueprint<E, A> = Rc<dyn Fn(Path, Sink<A>, &Scope<E, A>, u32, &mut Cx) -> Result<Supplied<E, A>, Fault>>;
 
 /// A host's supplier, in the `@HostDocument` form: a blueprint for every child place.
 pub type Supplier<E, A> = Rc<dyn Fn(&Path, &Element<E>) -> Blueprint<E, A>>;
@@ -462,12 +470,36 @@ impl Node for Inert {}
 
 /// `@ x`: no places, the first value `x`, once.
 pub fn plain_blueprint<E: 'static, A: Clone + 'static>(x: A) -> Blueprint<E, A> {
-    Rc::new(move |_path, _sink, _scope, _cx| Ok(Supplied { node: Rc::new(Inert), first: Some(x.clone()), forwards: false, entry: None }))
+    Rc::new(move |_path, _sink, _scope, _base, _cx| Ok(Supplied { node: Rc::new(Inert), first: Some(x.clone()), forwards: false, entry: None, built: 0, leave: None }))
 }
 
 /// `@ never`: no places, no first value, no answer.
 pub fn never_blueprint<E: 'static, A: 'static>() -> Blueprint<E, A> {
-    Rc::new(move |_path, _sink, _scope, _cx| Ok(Supplied { node: Rc::new(Inert), first: None, forwards: false, entry: None }))
+    Rc::new(move |_path, _sink, _scope, _base, _cx| Ok(Supplied { node: Rc::new(Inert), first: None, forwards: false, entry: None, built: 0, leave: None }))
+}
+
+/// A widget's row as its blueprint built it: the row's node, how it leaves, how many
+/// places it built, and the widget's plain result (unit when it gives none).
+pub struct BuiltWidget<R> {
+    pub node: Rc<dyn Node>,
+    pub leave: Rc<dyn Fn(&mut Cx)>,
+    pub built: u32,
+    pub result: R,
+}
+
+/// A widget with places as a blueprint value (Semantics ch. 8: a blueprint builds nothing
+/// until it is applied): `build` makes the widget's row at the path, its places numbered
+/// from the base, in the World's scope; `answer` makes the widget's plain result the
+/// place's first value (nothing for a widget that gives none). Built in a hosted scope it
+/// is a fault: the row's places are the World's.
+pub fn widget_blueprint<E: 'static, A: 'static, R: 'static>(build: impl Fn(Path, u32, &mut Cx) -> Result<BuiltWidget<R>, Fault> + 'static, answer: impl Fn(R) -> Option<A> + 'static) -> Blueprint<E, A> {
+    Rc::new(move |path, _sink, scope: &Scope<E, A>, base, cx| {
+        if let Scope::Hosted(_) = scope {
+            return Err(Fault::answer(format!("a widget with places built as a blueprint value at {} in a hosted scope: prismc does not lower it yet", path)));
+        }
+        let made = build(path, base, cx)?;
+        Ok(Supplied { node: made.node, first: answer(made.result), forwards: false, entry: None, built: made.built, leave: Some(made.leave) })
+    })
 }
 
 /// A subscription a blueprint's node holds, let go when the row leaves.
@@ -494,22 +526,22 @@ fn later<A: Clone + 'static>(sink: &Sink<A>, v: A, cx: &mut Cx) -> Done {
 
 /// `@ !e`: each firing of `e` is an answer to the child's place, a tick late.
 pub fn event_blueprint<E: 'static, A: Clone + 'static>(e: Event<A>) -> Blueprint<E, A> {
-    Rc::new(move |_path, sink: Sink<A>, _scope, _cx| {
+    Rc::new(move |_path, sink: Sink<A>, _scope, _base, _cx| {
         let node = Rc::new(Subscribed { port: e.port.clone(), handle: Cell::new(None) });
         let h = e.port.subscribe(Rc::new(move |v: &A, cx: &mut Cx| later(&sink, v.clone(), cx)));
         node.handle.set(Some(h));
-        Ok(Supplied { node, first: None, forwards: false, entry: None })
+        Ok(Supplied { node, first: None, forwards: false, entry: None, built: 0, leave: None })
     })
 }
 
 /// `@ ((x, !e))` for a bundle's tag (pick HO): `x`, the plain parts, the place's first value,
 /// once; each firing of `e` an answer to the child's place, a tick late.
 pub fn bundle_blueprint<E: 'static, A: Clone + 'static>(first: A, e: Event<A>) -> Blueprint<E, A> {
-    Rc::new(move |_path, sink: Sink<A>, _scope, _cx| {
+    Rc::new(move |_path, sink: Sink<A>, _scope, _base, _cx| {
         let node = Rc::new(Subscribed { port: e.port.clone(), handle: Cell::new(None) });
         let h = e.port.subscribe(Rc::new(move |v: &A, cx: &mut Cx| later(&sink, v.clone(), cx)));
         node.handle.set(Some(h));
-        Ok(Supplied { node, first: Some(first.clone()), forwards: false, entry: None })
+        Ok(Supplied { node, first: Some(first.clone()), forwards: false, entry: None, built: 0, leave: None })
     })
 }
 
@@ -520,7 +552,7 @@ pub fn bundle_blueprint<E: 'static, A: Clone + 'static>(first: A, e: Event<A>) -
 /// delivered, at the next tick's read point, so it is the value after the tick of the
 /// change whatever height the change came at, and several marks in one tick are one push.
 pub fn dynamic_blueprint<E: 'static, A: Clone + 'static>(d: Dynamic<A>) -> Blueprint<E, A> {
-    Rc::new(move |_path, sink: Sink<A>, _scope, cx| {
+    Rc::new(move |_path, sink: Sink<A>, _scope, _base, cx| {
         let first = d.sample(cx);
         let node = Rc::new(Subscribed { port: d.updates.clone(), handle: Cell::new(None) });
         let read = d.clone();
@@ -535,7 +567,7 @@ pub fn dynamic_blueprint<E: 'static, A: Clone + 'static>(d: Dynamic<A>) -> Bluep
             Ok(())
         }));
         node.handle.set(Some(h));
-        Ok(Supplied { node, first: Some(first), forwards: false, entry: None })
+        Ok(Supplied { node, first: Some(first), forwards: false, entry: None, built: 0, leave: None })
     })
 }
 
@@ -589,8 +621,8 @@ pub fn element_blueprint<E: Level + Eq, A: AnswerOf<E>>(e: &Element<E>) -> Bluep
         Element::Live(l) => l.clone(),
         Element::Described(d) => return described_blueprint(d),
     };
-    Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, cx| {
-        let at = path.at(0);
+    Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, base, cx| {
+        let at = path.at(base);
         // The level at the build is the identity: a row is built from the entry after the
         // tick, and an early row's entry cannot be read until its host's node is made.
         let element = e.identity.level_pod(cx);
@@ -615,7 +647,7 @@ pub fn element_blueprint<E: Level + Eq, A: AnswerOf<E>>(e: &Element<E>) -> Bluep
                 cx.listen(element, &(node.clone() as Rc<dyn Node>));
             }
         }
-        Ok(Supplied { node, first, forwards: true, entry: None })
+        Ok(Supplied { node, first, forwards: true, entry: None, built: 1, leave: None })
     })
 }
 
@@ -630,8 +662,8 @@ pub fn element_blueprint<E: Level + Eq, A: AnswerOf<E>>(e: &Element<E>) -> Bluep
 /// and a request there goes to the enclosing host ([`HostOf::request_from`]).
 pub fn described_blueprint<E: Level + Eq, A: AnswerOf<E>>(d: &Described<E>) -> Blueprint<E, A> {
     let d = d.clone();
-    Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, cx| {
-        let at = path.at(0);
+    Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, base, cx| {
+        let at = path.at(base);
         let identity = d.level.sample(cx);
         let node = Rc::new(Placed { at: at.clone(), element: identity.clone(), level: d.level.clone(), sink, handle: Cell::new(None), requests: RefCell::new(Vec::new()), entry: RefCell::new(None) });
         let weak = Rc::downgrade(&node);
@@ -659,7 +691,7 @@ pub fn described_blueprint<E: Level + Eq, A: AnswerOf<E>>(d: &Described<E>) -> B
                 if first.is_some() {
                     cx.listen(element, &(node.clone() as Rc<dyn Node>));
                 }
-                Ok(Supplied { node, first, forwards: false, entry: None })
+                Ok(Supplied { node, first, forwards: false, entry: None, built: 1, leave: None })
             }
             Scope::Hosted(host) => {
                 // a place of the row's own in the enclosing host's document: an entry that
@@ -685,7 +717,7 @@ pub fn described_blueprint<E: Level + Eq, A: AnswerOf<E>>(d: &Described<E>) -> B
                     let h = firings.port.subscribe(Rc::new(move |v: &Pod, cx: &mut Cx| outer.request_from(&to, field.as_deref(), v.clone(), cx)));
                     node.requests.borrow_mut().push((firings.port.clone(), h));
                 }
-                Ok(Supplied { node, first, forwards: false, entry: Some(entry) })
+                Ok(Supplied { node, first, forwards: false, entry: Some(entry), built: 1, leave: None })
             }
         }
     })
@@ -925,7 +957,7 @@ impl<E: Clone + Eq + 'static, A: Clone + 'static> HostRow<E, A> {
         node.place.watch(weak);
         let element = node.element(identity);
         let blueprint = (host.supplier())(&node.key, &element);
-        let supplied = blueprint(node.path.clone(), node.sink.clone(), &host.scope(), cx)?;
+        let supplied = blueprint(node.path.clone(), node.sink.clone(), &host.scope(), 0, cx)?;
         *node.supplied.borrow_mut() = Some(supplied);
         Ok(node)
     }
@@ -1009,8 +1041,13 @@ impl<E: Clone + Eq + 'static, A: Clone + 'static> HostRow<E, A> {
     pub fn leave_row(&self, cx: &mut Cx) {
         self.left.set(true);
         if let Some(s) = self.supplied.borrow_mut().take() {
-            let done = s.node.leave(cx);
-            cx.keep(done);
+            match &s.leave {
+                Some(leave) => leave(cx),
+                None => {
+                    let done = s.node.leave(cx);
+                    cx.keep(done);
+                }
+            }
         }
     }
 }
