@@ -377,7 +377,8 @@ fn StaticClauseLine wx, menv, scrut, call, qk, v, e:
         &_.genHolds <= Push &_.genHolds, ((name, reads))
         &_.rows <= Fold cases, &_.rows, \|acc, gc| Append (Push acc, gc.node), gc.node.children
         &_.getters <= Push &_.getters, (GenUp name, (GnOf wx3, upId).name, (GnOf wx3, upId).ty)
-    ((wx4, (WrEv (EvRefOf wx4, upId))))
+    # a widget of `@unit` gives nothing back (a `for` whose rows end on it gathers nothing)
+    if (OutTyOf lx, (OutOf (TypeAt lx, e.span))) == OutUnit: ((wx4, WrUnit)) else: ((wx4, (WrEv (EvRefOf wx4, upId))))
 
 # A static widget of several clauses whose result is plain (Semantics ch. 4: `@ v` lifts a
 # plain value; ch. 8: `<-` builds the child and binds its result), which the block reads
