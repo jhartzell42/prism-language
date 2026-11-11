@@ -237,8 +237,10 @@ fn BindLevel env, st, p, level = match p.kind:
     otherwise: BindPattern env, st, p, level, True
 
 BindCtor: unbounded fn Env, St, Pattern, SName, [Pattern], Ty -> ((Env, St))
-fn BindCtor env, st, p, n, args, t:
+fn BindCtor env, st0, p, n, args, t:
     let ((?qk, why)) = ResolveValue env.g, env.home, n
+    # two bare candidates are an error at the use (Semantics ch. 6), and a pattern is one
+    let st = CollisionAt env, st0, why, (SNameKey n), n.span
     match ?qk:
         nil: ((env, (Err st, "unknown-name", n.span, "no constructor `{SNameKey n}`")))
         ? qk:
@@ -255,8 +257,9 @@ fn BindCtor env, st, p, n, args, t:
 # A record pattern: a record's fields by name or position, `..` for the rest; a tag
 # pattern refines the element's output in its arm (see `InferMatch`).
 BindRecord: unbounded fn Env, St, Pattern, SName, [FieldPat], Bool, Ty -> ((Env, St))
-fn BindRecord env, st, p, n, fields, rest, t:
+fn BindRecord env, st0, p, n, fields, rest, t:
     let ((?qk, why)) = ResolveValue env.g, env.home, n
+    let st = CollisionAt env, st0, why, (SNameKey n), n.span
     match ?qk:
         nil: ((env, (Err st, "unknown-name", n.span, "no record or tag `{SNameKey n}`")))
         ? qk:
