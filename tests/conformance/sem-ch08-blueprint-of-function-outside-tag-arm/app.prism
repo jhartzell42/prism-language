@@ -1,0 +1,19 @@
+# `@ F` in a plain function, outside any tag's arm, `F` a function: the blueprint with no
+# places whose output is the function, applied by a block's line that binds it (Type
+# System ch. 2: `@ x` is the blueprint whose output is `x`, and a function is a value;
+# Semantics ch. 8: a blueprint builds nothing until a block applies it). Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Made: fn (fn Nat -> Nat) -> ?@(fn Nat -> Nat)
+fn ?Made F = ? @ F
+
+@page: @unit
+@page:
+    match ?Made (\|n| n + 1):
+        ? @t:
+            F <- @t
+            Ui.Label($text=$"{F 5}")
+        nil: Ui.Label($text=$"none")
