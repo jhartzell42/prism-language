@@ -21,3 +21,11 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
 - **EL** The finished branch lowers everything the compiler knows it refuses. Jimmy: "I'd
   like the main Claude branch to contain proper lowering when you're done of everything
   you know about and not to have lies in the `README.md`."
+- **IB** An inner block may rebind a name written outside it: a lambda's parameter, a
+  clause's parameter, an arm's pattern, a `let` or a bind in an inner block each hide the
+  outer name inside that block. Jimmy: "Inner block rebinding is fine, I don't know why
+  it's forbidden". This overrules Semantics chapter 4's "an inner block does not rebind a
+  written name from outside" and its negative-space line "no rebinding of a written name".
+  A name bound twice in one block stays an error (`collision`), since a block's lines are
+  an unordered group. Refused: enforcing the book's sentence, which breaks 14 places (10
+  in prismc, 4 in two conformance programs).
