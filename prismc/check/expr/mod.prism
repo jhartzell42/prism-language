@@ -184,8 +184,15 @@ fn InferKind env, st, e = match e.kind:
     ELambda ignore, ignore: InferLambda env, st, e, nil
     EIf c, thenB, ?elseB: InferIf env, st, c, thenB, ?elseB, e.span, nil
     EMatch scrut, arms: InferMatch env, st, scrut, arms, e.span, nil
-    ERebuild scrut, body: InferRebuild env, st, scrut, body, e.span
-    EFor ?binders, source, body: InferFor env, st, ?binders, source, body, e.span
+    # A `rebuild` or a `for` written as a value builds nothing where it stands: it is the
+    # blueprint of what it would hand back (Semantics ch. 4), as `@widget:` is; `<-` or a
+    # line of a widget block builds it (`InferBuilt`). In an `update` block `for` is a loop.
+    ERebuild scrut, body:
+        let ((t, st2)) = InferRebuild env, st, scrut, body, e.span
+        (((TyAt t, env.scope), st2))
+    EFor ?binders, source, body:
+        let ((t, st2)) = InferFor env, st, ?binders, source, body, e.span
+        if env.inUpdate: ((t, st2)) else: (((TyAt t, env.scope), st2))
     EGiven b: InferGiven env, st, b, e.span
     EUpdate target, body: InferUpdate env, st, target, body, e.span
     EWidgetBlock b:

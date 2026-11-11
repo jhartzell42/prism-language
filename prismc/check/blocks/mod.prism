@@ -272,7 +272,7 @@ BoundValue: unbounded fn Env, St, Expr -> ((Ty, St))
 fn BoundValue env, st, e:
     if IsBuildingChoice env, st, e: BareLine env, st, e, True
     else:
-        let ((t, st1)) = Infer env, st, e
+        let ((t, st1)) = InferBuilt env, st, e
         if IsBuilder e: ((t, st1)) else: BindOutput env, st1, t, e.span
 
 # A `match` or `if` to the right of `<-` is a building one, as on a line of its own
@@ -285,6 +285,21 @@ fn IsBuildingChoice env, st, e = match e.kind:
     EIf ignore, ignore, ignore: True
     EGroup x: IsBuildingChoice env, st, x
     otherwise: False
+
+# A `rebuild` or a `for` where it is built, right of `<-` or on a line of a widget block:
+# what it hands back, where the same words as a value are its blueprint (`InferKind`).
+InferBuilt: unbounded fn Env, St, Expr -> ((Ty, St))
+fn InferBuilt env, st, e = match e.kind:
+    ERebuild scrut, body:
+        let ((t, st2)) = InferRebuild env, st, scrut, body, e.span
+        ((t, (NoteTy st2, e.span, t)))
+    EFor ?binders, source, body:
+        let ((t, st2)) = InferFor env, st, ?binders, source, body, e.span
+        ((t, (NoteTy st2, e.span, t)))
+    EGroup x:
+        let ((t, st2)) = InferBuilt env, st, x
+        ((t, (NoteTy st2, e.span, t)))
+    otherwise: Infer env, st, e
 
 IsBuilder: fn Expr -> Bool
 fn IsBuilder e = match e.kind:
@@ -383,7 +398,7 @@ fn BareLineKind env, st, e, last = match e.kind:
         if last: ((t, st2)) else: ((t, (Discarded st2, t, e.span)))
     EGroup x: BareLine env, st, x, last
     otherwise:
-        let ((t, st1)) = Infer env, st, e
+        let ((t, st1)) = InferBuilt env, st, e
         let ((res, st2)) = match Walk st1, t:
             TyAt ignore, ignore: BindOutput env, st1, t, e.span
             TyElem ignore, ignore: BindOutput env, st1, t, e.span
