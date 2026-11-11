@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 5 (a function is a value; a bounded function is called at once): the lambda at 1 gives 5, and 2 more is 7; `Double` at 1 gives 2, and 2 more is 4.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="11")
