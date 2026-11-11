@@ -845,7 +845,9 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
     # and `$ v` over a value that holds time below its top (`$ (($level, "main"))`): `v`
     # holds its dynamics whole (`ConstantOfTimeAt`)
     let constants = Filter (ExprsIn e), \|x| ConstantOfTimeAt lx, x
-    let roots = Fold (Append (Append calls, updatedCalls), constants), (if whole: [[e]] else: [[]]), \|acc, c| match c.kind:
+    # (a hold of dynamics' initial value, taken whole, is a name, `$$cur <- $a then ..`, or
+    # holds its readers inside, `$held <- (($a, "s")) then ..`)
+    let roots = Fold (Append (Append calls, updatedCalls), constants), (if whole: ExprsIn e else: [[]]), \|acc, c| match c.kind:
         ECall ignore, args, ignore, ignore: Fold args, acc, \|acc2, a| Append acc2, (ExprsIn a.value)
         EFreeSigil ignore, x: Append acc, (ExprsIn x)
         otherwise: acc

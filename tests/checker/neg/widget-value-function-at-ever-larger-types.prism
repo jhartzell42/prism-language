@@ -1,0 +1,22 @@
+# `grows-without-end`: a generic function that reads a generic widget as a value and
+# calls itself at `[a]` for `a` (ruling PG): the widget's rows cannot be made for each
+# type, there is no last one.
+emit Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Counted: fn [a], Text -> @unit
+fn @Counted xs, label:
+    Ui.Label($text=$"{label}={Len xs}")
+
+?Wrapped: fn [a], Nat -> ?@unit
+fn ?Wrapped xs, more = match more -? 1:
+    ? less: ?Wrapped [[xs]], less
+    nil: ?Pick True, (@Counted xs, "n")
+
+@page: @unit
+@page:
+    match ?Wrapped [[7, 8]], 2:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")

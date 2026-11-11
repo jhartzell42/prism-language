@@ -1,4 +1,4 @@
-tests/checker/neg/impl-and-method-type-parameter-one-name.prism:7: error[mismatch]: expected `b`, found `bb`
-    fn Pair xs, y = Show (Push xs, y)
-                                   ^
+tests/checker/neg/impl-and-method-type-parameter-one-name.prism:7: error[mismatch]: expected `b`, found `bbb`
+        fn Pair xs, y = Show (Push xs, y)
+                                       ^
 1 error
