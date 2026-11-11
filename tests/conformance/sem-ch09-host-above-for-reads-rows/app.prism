@@ -1,0 +1,29 @@
+# A host written above the `for` whose gathered result its supplier answers with
+# (Semantics ch. 7, "Structural dynamics", round 3 ST: a builder in a tick's construction
+# step and the tick's outputs read the value after it, so the place's first value reads
+# every row of the build, wherever the `for` stands; ch. 4, "Binding groups and cycles":
+# the order of a group's lines decides positions and nothing else).
+# sem-ch09-host-bundle-answer-structural-part with the host above the `for`.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Socket of Element ((!Text, $Nat)):
+    address: Text
+
+@chat: @unit
+@chat:
+    ((!rx, $peers)) <- Pad.Socket(address="chat:7000")
+    $last <- "none" then !rx
+    Ui.Label($text=$"{$peers}: {$last}")
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")                              # 0
+    $names <- {1: "one"} then Insert $names, 2, "two" on !add
+    ignore <- @HostDocument @chat, \|p, e| match e:               # 1/[p]
+        Pad.Socket(..): @ (("hello" on !add, Size $lens))
+        otherwise: @Element e
+    $lens <- for k, $name <- $names:                              # 2/[k]
+        Ui.Label($text=$name)
+        @ Len $name
