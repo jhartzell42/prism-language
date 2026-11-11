@@ -1084,6 +1084,8 @@ fn ?ParamMatch pat, t, m = match ((pat, t)):
     ((TyArray x, TyArray y)): ?ParamMatch x, y, m
     (((TyMap k1, v1), (TyMap k2, v2))): ?ParamMatchAll [[k1, v1]], [[k2, v2]], m
     (((TySig s1, i1), (TySig s2, i2))): if s1 == s2: ?ParamMatch i1, i2, m else: nil
+    # an element parameter (`Element Ui.* o` against `Element Ui.* !Click`): its output
+    (((TyElem ignore, o1), (TyElem ignore, o2))): ?ParamMatch o1, o2, m
     otherwise: if pat == t: ? m else: nil
 
 ?ParamMatchAll: unbounded fn [Ty], [Ty], (Text ==> Ty) -> ?(Text ==> Ty)
@@ -1102,6 +1104,7 @@ fn RigidsIn t = match t:
     TyMap k, v: UnionTexts (RigidsIn k), (RigidsIn v)
     TySig ignore, i: RigidsIn i
     TyAt i, ignore: RigidsIn i
+    TyElem ignore, o: RigidsIn o
     TyFn ignore, ps, r: Fold ps, (RigidsIn r), \|acc, a| UnionTexts acc, (RigidsIn a)
     otherwise: [[]]
 
@@ -1114,6 +1117,7 @@ fn Unrigid t = match t:
     TyArray e: TyArray (Unrigid e)
     TyMap k, v: TyMap (Unrigid k), (Unrigid v)
     TySig s, i: TySig s, (Unrigid i)
+    TyElem rw, o: TyElem rw, (Unrigid o)
     TyAt i, rw: TyAt (Unrigid i), rw
     TyFn c, ps, r: TyFn c, (Each ps, \|a| Unrigid a), (Unrigid r)
     other: other
