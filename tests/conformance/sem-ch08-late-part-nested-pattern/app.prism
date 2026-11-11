@@ -1,0 +1,31 @@
+# A late part of a bundle taken apart by a nested tuple pattern: the bundle's plain part
+# is a pair made from a building `match`'s plain result, known when the arm is built, and
+# the binder's pattern names the pair's two halves (Semantics ch. 4: a building `match`'s
+# arm "is fixed for the life of the block and adds no path segment"; ch. 8: `<-` builds
+# the child and binds its result by a pattern; Type System ch. 2, "Bundles"). Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Choose: fn Mode -> @((((Nat, Text)), !Click))
+fn @Choose mode:
+    n <- match mode:
+        Loud t:
+            Ui.Label($text=$"{t}")                                     # 0
+            @ 10
+        Soft:
+            @ 20
+    !go <- Ui.Button($label=$"go")                                     # 1, or 0
+    @ ((((n, "step {n}")), !go))
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    ((((n, name)), !go)) <- @Choose mode                                 # 0 and 1, or 0
+    $gone <- 0 then $gone + n on !go
+    Ui.Label($text=$"{name}, gone {$gone}")                            # 2, or 1
