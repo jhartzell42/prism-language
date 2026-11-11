@@ -1371,7 +1371,18 @@ fn LetLine wx, benv, menv, p, e:
             let ?insts = match p.kind:
                 PName n: ?ManyInstances lx, n.span
                 otherwise: nil
-            match ?insts:
+            # a generalized `let` nothing reads (`let empty = [[]]`, never used) has no
+            # instantiation, so no type to be a field of and no reader to miss it: a `let`
+            # builds nothing, and the node holds no field for it
+            let unread = match p.kind:
+                PName n: match lx.gens[PlaceKey lx, n.span]:
+                    ? gn: ((Len gn.tys) + (Len gn.cols)) > 0 and (Len (Instantiations lx, gn)) == 0
+                    nil: False
+                otherwise: False
+            # the instantiations to lower it at: none, several, or (`nil`) the one way below
+            let ?lowered = if unread: ? [[]] else: ?insts
+            match ?lowered:
+                ? [[]]: ((wx, benv))
                 # a field per instantiation (gap LW), each the value lowered at it
                 ? insts: match p.kind:
                     PName n:
