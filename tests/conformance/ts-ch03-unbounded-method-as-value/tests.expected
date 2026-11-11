@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 3 (the impl at `Nat` answers `Score`): 5 + 1 and 9 + 1. Never run.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="6 10")
