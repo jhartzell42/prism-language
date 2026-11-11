@@ -341,6 +341,24 @@ fn OwnsRow env, st, t = match Zonk st, t:
         nil: not (n == "Fault" or n == "Prelude.Fault")
     otherwise: True
 
+# `not-exhaustive` at a binder: a `let`, a `<-`, a `for` binder and a lambda parameter have
+# nowhere to go when their pattern fails, so the pattern is one that always matches (Type
+# System ch. 2); `what` names the place.
+AlwaysMatches: unbounded fn Env, St, Pattern, Ty, Text -> St
+fn AlwaysMatches env, st, p, t, what = if (OnlyBinds p) or (Zonk st, t) == TyErr: st else: match ?Witness env, st, [[ [[(ToPat env, p)]] ]], [[t]]:
+    ? w: ErrFix st, "not-exhaustive", p.span, "this pattern misses `{Join w, ", "}`, and {what} takes a pattern that always matches", "bind a name and `match` on it"
+    nil: st
+
+# A pattern of names, `ignore` and tuples of them: it tests nothing.
+OnlyBinds: fn Pattern -> Bool
+fn OnlyBinds p = match p.kind:
+    PName n: not (IsUpperText (Or n.path[0], "")) and (Len n.path) == 1
+    PIgnore: True
+    PTuple ps: Fold ps, True, \|ok, q| ok and OnlyBinds q
+    PGroup q: OnlyBinds q
+    PSigil s, q: s != "?" and s != "~" and OnlyBinds q
+    otherwise: False
+
 # A function's clauses are one match over its parameters.
 ClauseCoverage: unbounded fn Env, St, [FnClause], [Ty], Range -> St
 fn ClauseCoverage env, st, clauses, params, span:

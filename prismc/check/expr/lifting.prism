@@ -204,7 +204,8 @@ fn SubstRigid name, by, t = match t:
     other: other
 
 MatchResult: unbounded fn Env, St, Text, [((Text, Range))], Ty, Range -> ((Ty, St))
-fn MatchResult env, st, sh, layers, res, span:
+fn MatchResult env, st, sh, layers, joined, span:
+    let res = ArmResult st, joined
     let events = Filter layers, \|((h, ignore))| h == "!"
     let dyns = Filter layers, \|((h, ignore))| h == "$"
     let blue = Filter layers, \|((h, ignore))| h == "@"
@@ -225,7 +226,7 @@ fn InferIf env, st, c, thenB, ?elseB, span, ?expected = match c:
         let st2 = Unify st1, tBool, inner, e.span
         let ((res, st3)) = FreshVar st2, False, ""
         let ((layers, st4)) = IfBranches env, st3, env, thenB, ?elseB, res
-        MatchResult env, st4, sh, layers, res, span
+        MatchResult env, (NoElse st4, ?elseB, span), sh, layers, res, span
     CondBind p, e, ?gd:
         let ((et, st1)) = Infer env, st, e
         let ((env2, st2)) = BindPattern env, st1, p, et, True
@@ -234,13 +235,34 @@ fn InferIf env, st, c, thenB, ?elseB, span, ?expected = match c:
             nil: st2
         let ((res, st4)) = FreshVar st3, False, ""
         let ((layers, st5)) = IfBranches env2, st4, env, thenB, ?elseB, res
-        MatchResult env, st5, "", layers, res, span
+        MatchResult env, (NoElse st5, ?elseB, span), "", layers, res, span
+
+# `no-else`: an `if` that is a value chooses between two branches, so it has both (Jimmy's
+# rulings IE, IE2). A building `if` on a line of a widget block and an `update` block's
+# statement `if` may stand alone: they build, or do, their arm or nothing.
+NoElse: fn St, ?Block, Range -> St
+fn NoElse st, ?elseB, span = match ?elseB:
+    ? ignore: st
+    nil: ErrFix st, "no-else", span, "this `if` has no `else`: an `if` that is a value chooses between two branches", "add `else:` with the other branch's value"
 
 # An arm's plain layer against the match's: an arm that is a bare `Error` takes a fault
 # variable the other arms decide, so `if c: Error(..) else: ~ unit` is a `~unit` (pick ER);
 # its place was asked about at its tail (`NoteFaultAt`).
+# The conversion from a `[a]+` to the `[a]` is symmetric between arms (Jimmy's ruling NS):
+# an `[a]` arm after `[a]+` arms meets the collection they promise, and the construct's own
+# value is then the `[a]` (`ArmResult`); the arms before it stay the `[a]+` they are.
 UnifyArm: unbounded fn St, Ty, Ty, Range -> St
-fn UnifyArm st, res, t, span = UnifyNoted st, res, t, span
+fn UnifyArm st, res, t, span = match ((res, (?NonEmptyColl st, res), (IsPlainCollection st, t))):
+    (((TyFlex n), (? c), True)): update (Unify st, c, t, span):
+        &_.plainArms <= Push &_.plainArms, n
+    otherwise: UnifyNoted st, res, t, span
+
+# The value of a match or an `if` whose arms met at the variable `joined`: the collection,
+# when a `[a]+` arm stood beside an `[a]` arm.
+ArmResult: unbounded fn St, Ty -> Ty
+fn ArmResult st, joined = match joined:
+    TyFlex n if HasNat st.plainArms, n: Or (?NonEmptyColl st, joined), joined
+    otherwise: joined
 
 LayerHead: fn Text -> Text
 fn LayerHead h = if IsTimeSigil h: h else: if h == "@": "@" else: ""

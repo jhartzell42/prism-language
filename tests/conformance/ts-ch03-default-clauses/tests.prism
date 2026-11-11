@@ -1,0 +1,7 @@
+# The tests of ts-ch03-default-clauses (Type System chapter 3).
+emit Ui.*
+use App.*
+
+test default_clauses, @main:
+    build
+        => expect Ui.Label(text="7 17 21 50")

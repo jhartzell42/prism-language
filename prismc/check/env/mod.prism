@@ -110,6 +110,9 @@ type TraitInfo = record:
     methods: [Text]
     defaults: [Text]
     assocs: [Text]
+    # The associated types the trait gives a default, each with the default over the
+    # trait's parameter (`type Item = a`).
+    assocDefaults: [((Text, Ty))]
     file: Nat
     span: Range
 derive ^Eq, ^Show
@@ -219,11 +222,14 @@ fn BuildG srcs, trees:
     let g4 = update g3:
         &_.programRow <= ProgramRow &_
     let ((g6, st6)) = Fold (Keys g4.mods), ((g4, st3)), \|((g, st)), m| BuildTables g, st, m
-    let ((g6b, st6b)) = Fold (Keys g6.mods), ((g6, st6)), \|((g, st)), m| ConvertTypes g, st, m
+    let ((g6a, st6a)) = ConvertAliases g6, st6
+    let ((g6b, st6b)) = Fold (Keys g6a.mods), ((g6a, st6a)), \|((g, st)), m| ConvertTypes g, st, m
     let ((g7, st7)) = Fold (Keys g6b.mods), ((g6b, st6b)), \|((g, st)), m| ConvertDecls g, st, m
+    let st7a = TraitCycles g7, st7
     let g8 = DerivedImpls g7
-    let st8 = Coherence g8, (DerivedFields g8, (DerivedDynamics g8, st7))
-    ((g8, st8))
+    let st8 = Coherence g8, (DerivedFields g8, (DerivedDynamics g8, st7a))
+    # here, so that lowering, which builds the tables again, reads the defaults too
+    ImplDefaults g8, st8
 
 let emptyModule = Module(?name=nil, ?emitRow=nil, mods=[[]], uses=[[]], decls=[[]], ?template=nil, span=Range(start=0, end=0))
 

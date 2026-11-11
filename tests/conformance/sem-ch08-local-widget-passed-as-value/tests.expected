@@ -1,0 +1,8 @@
+# Derived by hand from Semantics ch. 4 (a building `match`'s arm adds no path segment), ch. 8 (a blueprint builds nothing until a block applies it; it is built at the applying block's next position) and ch. 3 (a widget defined in a block reads the block's names): the first `match` takes the blueprint out and builds its label, which reads `n`; the second builds the `nil` arm's.
+test a_local_widget_is_passed
+
+tick 0
+  added:
+    0: Ui.Label(text="line 7")
+    1: Ui.Label(text="none")
+    2: Ui.Label(text="end")

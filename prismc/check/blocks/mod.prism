@@ -261,10 +261,45 @@ fn WidgetStmt env, st, s, clauses, last = match s.kind:
 # `$` or `!` of elements, or a `$@a`, is `bind-dynamic`. The row goes in an obligation.
 BindStmt: unbounded fn Env, St, Pattern, Expr, Range -> St
 fn BindStmt env, st, p, e, span:
-    let ((t, st1)) = Infer env, st, e
-    let ((out, st2)) = if IsBuilder e: ((t, st1)) else: BindOutput env, st1, t, e.span
+    let ((out, st2)) = BoundValue env, st, e
     let ((ignore, st3)) = BindPattern env, st2, p, out, False
-    st3
+    AlwaysMatches env, st3, p, out, "`<-`"
+
+# What the right side of a `<-` gives its pattern, built: a building `match` or `if` what
+# its chosen arm ends on, a `rebuild` or `for` what it hands back, anything else a
+# blueprint's result or an element's output (`BindOutput`).
+BoundValue: unbounded fn Env, St, Expr -> ((Ty, St))
+fn BoundValue env, st, e:
+    if IsBuildingChoice env, st, e: BareLine env, st, e, True
+    else:
+        let ((t, st1)) = InferBuilt env, st, e
+        if IsBuilder e: ((t, st1)) else: BindOutput env, st1, t, e.span
+
+# A `match` or `if` to the right of `<-` is a building one, as on a line of its own
+# (Semantics ch. 4, "The widget block"): its arms are widget blocks, each built once, and
+# the bind takes what the chosen arm ends on (`@ 3`, `@ !w`). A `match` over an element is
+# a supplier's (`IsElementMatch`), read as an expression.
+IsBuildingChoice: unbounded fn Env, St, Expr -> Bool
+fn IsBuildingChoice env, st, e = match e.kind:
+    EMatch ignore, ignore: not (IsElementMatch env, st, e)
+    EIf ignore, ignore, ignore: True
+    EGroup x: IsBuildingChoice env, st, x
+    otherwise: False
+
+# A `rebuild` or a `for` where it is built, right of `<-` or on a line of a widget block:
+# what it hands back, where the same words as a value are its blueprint (`InferKind`).
+InferBuilt: unbounded fn Env, St, Expr -> ((Ty, St))
+fn InferBuilt env, st, e = match e.kind:
+    ERebuild scrut, body:
+        let ((t, st2)) = InferRebuild env, st, scrut, body, e.span
+        ((t, (NoteTy st2, e.span, t)))
+    EFor ?binders, source, body:
+        let ((t, st2)) = InferFor env, st, ?binders, source, body, e.span
+        ((t, (NoteTy st2, e.span, t)))
+    EGroup x:
+        let ((t, st2)) = InferBuilt env, st, x
+        ((t, (NoteTy st2, e.span, t)))
+    otherwise: Infer env, st, e
 
 IsBuilder: fn Expr -> Bool
 fn IsBuilder e = match e.kind:
@@ -322,26 +357,13 @@ fn HoldStmt env, st, p, init, step, span:
     if (HeadSigil st4, stepTy) == "!" or stepTy == TyErr: Unify st4, (TySig "!", v), stepTy, step.span
     else: ErrFix st4, "mismatch", step.span, "a hold's step is an event; this is `{ShowTy st4, stepTy}`", "fire it with an event: `... on !e`"
 
-# `ignore <- e` drops a build's or an element's result on purpose.
+# `ignore <- e` drops a build's or an element's result on purpose: `e` is what `<-` binds
+# (a blueprint, an element, a `rebuild` or `for`, a building `match` or `if`), and anything
+# else is refused as a bind of it is (Semantics ch. 8, "`<-` has three readings").
 IgnoreStmt: unbounded fn Env, St, Expr, Range -> St
 fn IgnoreStmt env, st, e, span:
-    let ((t, st1)) = Infer env, st, e
-    match Walk st1, t:
-        TyAt ignore, ignore:
-            let ((ignore, st2)) = BindOutput env, st1, t, e.span
-            st2
-        TyElem ignore, ignore:
-            let ((ignore, st2)) = BindOutput env, st1, t, e.span
-            st2
-        TySig ignore, inner: match Walk st1, inner:
-            TyAt ignore, ignore:
-                let ((ignore, st2)) = BindOutput env, st1, t, e.span
-                st2
-            TyElem ignore, ignore:
-                let ((ignore, st2)) = BindOutput env, st1, t, e.span
-                st2
-            otherwise: st1
-        otherwise: st1
+    let ((ignore, st2)) = BoundValue env, st, e
+    st2
 
 # A bare line: an element emits, a blueprint builds, a building `match` or `if` picks its
 # arm once, `@ v` ends the block on `v`. Before the last line its result is `unit` or the
@@ -376,7 +398,7 @@ fn BareLineKind env, st, e, last = match e.kind:
         if last: ((t, st2)) else: ((t, (Discarded st2, t, e.span)))
     EGroup x: BareLine env, st, x, last
     otherwise:
-        let ((t, st1)) = Infer env, st, e
+        let ((t, st1)) = InferBuilt env, st, e
         let ((res, st2)) = match Walk st1, t:
             TyAt ignore, ignore: BindOutput env, st1, t, e.span
             TyElem ignore, ignore: BindOutput env, st1, t, e.span

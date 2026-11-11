@@ -1,0 +1,33 @@
+# A trait's default body written in several clauses is one definition (Type System ch. 3,
+# "An impl gives each method its definition lines"; Semantics ch. 3, clauses): the clauses
+# are tried in order, together they cover the parameters, and an impl that defines the
+# method itself replaces them all. Written by Claude on the claude-bugs branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+
+trait ^Scored a:
+    Base: fn a -> Nat
+    Score: fn a, Nat -> Nat
+    fn Score x, 0 = Base x
+    fn Score x, 1 = (Base x) + 10
+    fn Score x, n = (Base x) * n
+
+type Card = record:
+    rank: Nat
+
+type Joker = record:
+    wild: Bool
+
+impl ^Scored Card:
+    fn Base c = c.rank
+
+impl ^Scored Joker:
+    fn Base j = 50
+    fn Score j, n = 50
+
+@main: @unit
+@main:
+    let card = Card(rank=7)
+    let joker = Joker(wild=True)
+    Ui.Label($text=$"{Score card, 0} {Score card, 1} {Score card, 3} {Score joker, 3}")    # 0

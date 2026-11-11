@@ -1,0 +1,18 @@
+# An impl whose head is no type is reported once, for the head: it is no second impl of
+# anything, so no `impl-duplicate` or `impl-overlap` follows the head's own error. Written
+# by Claude on the claude-bugs branch; subject to change.
+trait ^Named a:
+    Name: fn a -> Text
+
+type Pair a = record:
+    one: a
+    two: a
+
+impl ^Named Missing:
+    fn Name m = "none"
+
+impl ^Named Pair:
+    fn Name p = "bare"
+
+impl ^Named (Pair a b):
+    fn Name p = "two"

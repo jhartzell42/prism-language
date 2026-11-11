@@ -213,7 +213,26 @@ fn CheckGroupStmt env, st, stmts, i, last = match (Or stmts[i], dummyStmt).kind:
 # has no `$` or `!` outside every arrow (round 1 DB1a), and, when its right side is not a
 # lambda, over no variable with a trait constraint (doubt MR).
 CheckLet: unbounded fn Env, St, Pattern, ?Type, Expr, Range -> ((Env, St))
-fn CheckLet env, st, p, ?ty, e, span:
+fn CheckLet env, st, p, ?ty, e, span = match ?BuilderHead env, e:
+    ? ((word, built, head)) if not env.inUpdate:
+        # a `for` or a `rebuild` builds, and a `let` builds nothing (Semantics ch. 4): the
+        # name is bound to an error's type, so its uses say nothing more
+        let ((ignore, st1)) = Infer env, st, e
+        let st2 = ErrFix st1, "mismatch", e.span, "a `{word}` builds its {built} and `let` builds nothing", "bind its result with `<-`: `{SrcText env, p.span} <- {head} ..`"
+        BindPattern env, st2, p, TyErr, False
+    otherwise: CheckLetValue env, st, p, ?ty, e, span
+
+# A `for` or `rebuild` (under any group): its word, what it builds, and its text up to its
+# block's colon.
+?BuilderHead: fn Env, Expr -> ?((Text, Text, Text))
+fn ?BuilderHead env, e = match e.kind:
+    EFor ignore, ignore, body: ? (("for", "rows", (TrimTrailing (SrcText env, Range(start=e.span.start, end=body.span.start)), " \n\t")))
+    ERebuild ignore, body: ? (("rebuild", "block", (TrimTrailing (SrcText env, Range(start=e.span.start, end=body.span.start)), " \n\t")))
+    EGroup x: ?BuilderHead env, x
+    otherwise: nil
+
+CheckLetValue: unbounded fn Env, St, Pattern, ?Type, Expr, Range -> ((Env, St))
+fn CheckLetValue env, st, p, ?ty, e, span:
     let st0 = EnterLevel st
     let ((?annot, st1)) = match ?ty:
         ? t:
@@ -266,7 +285,8 @@ fn CheckLet env, st, p, ?ty, e, span:
                 (((WithLocal env2, name, sc), (Ahead (NoteGen st9, n.span, name, sc))))
         otherwise:
             let st6 = LeaveLevel st5
-            BindPattern env, st6, p, (Zonk st6, pre), False
+            let ((env2, st7)) = BindPattern env, st6, p, (Zonk st6, pre), False
+            ((env2, (AlwaysMatches env, st7, p, pre, "a `let`")))
 
 AheadUnify: unbounded fn Env, St, Text, Ty, Ty, Range -> St
 fn AheadUnify env, st, name, pre, t, span = match env.locals[name]:
@@ -354,17 +374,24 @@ fn CheckLocalClauses env, st, f, clauses, span:
                 let st2 = CheckClauses env, st, name, clauses, sc, span
                 ((env, st2))
             else:
+                # The function's own variable at its own level, so that reading the body
+                # does not pull the type's variables down to the block's level and the
+                # function generalizes (Type System ch. 5, "A local `let` generalizes"); the
+                # body's calls of the function itself read it, monomorphic.
                 let st0 = EnterLevel st
-                let ((lt, st1)) = if (Len clauses) == 1: ClauseLambda env, st0, f else: ClausesLambda env, st0, name, clauses, span
-                let st2 = Unify st1, sc.ty, lt, span
+                let ((own, st0b)) = FreshVar st0, False, ""
+                let inside = WithLocal env, name, (Mono own)
+                let ((lt, st1)) = if (Len clauses) == 1: ClauseLambda inside, st0b, f else: ClausesLambda inside, st0b, name, clauses, span
+                let st2 = Unify st1, own, lt, span
                 let st3 = SolveWants env.g, st2, env.givens, False
                 let st4 = LeaveLevel st3
-                let t = Zonk st4, sc.ty
-                if HoldsNode st4, t: ((env, st4))
+                let t = Zonk st4, own
+                if HoldsNode st4, t: ((env, (Unify st4, sc.ty, t, span)))
                 else:
                     let ((keep, bounds, st5)) = WantsAbove st4, t, True
                     let ((sc2, st6)) = Generalize st5, t, keep, bounds
-                    (((WithLocal env, name, sc2), st6))
+                    # the variable bound ahead takes the monomorphic type, as a `let`'s does
+                    (((WithLocal env, name, sc2), (Unify (NoteGen st6, (DefNameSpan f.name), name, sc2), sc.ty, t, span)))
         nil: ((env, st))
 
 # Several clauses as one lambda: its parameters and result fresh, each clause's patterns
@@ -442,8 +469,10 @@ fn CheckClauses env, st, name, clauses, sc, span:
                 &_.color <= outerColor
                 &_.colorFlex <= outerFlex
         other:
+            # a definition without parameters has nothing for a second clause to tell
+            # apart: its name is defined twice (`collision`, Jimmy's ruling ZD)
             let st1 = Fold clauses, st, \|s, c| CheckClause env2, s, c, [[]], other
-            st1
+            Fold (Drop clauses, 1), st1, \|s, c| if (Len c.params) == 0: Err s, "collision", c.span, "`{name}` is defined twice" else: s
 
 CheckClause: unbounded fn Env, St, FnClause, [Ty], Ty -> St
 fn CheckClause env, st, c, params, res:
@@ -451,7 +480,19 @@ fn CheckClause env, st, c, params, res:
         Err st, "mismatch", c.span, "this clause takes {CountWord (Len c.params)} parameter{if (Len c.params) == 1: "" else: "s"}; the signature has {CountWord (Len params)}"
     else:
         let ((env2, st1)) = Fold (Range0 (Len params)), ((env, (BoundTwice env, st, c.params))), \|((en, s)), i| BindPattern en, s, (Or c.params[i], Pattern(kind=PIgnore, span=c.span)), (Or params[i], TyErr), True
-        CheckBody env2, st1, c.body, res
+        CheckBody env2, st1, c.body, (RefinedResult env, st1, c.params, params, res)
+
+# A clause's result where its tag patterns stand: a parameter that is an element with a
+# rigid output, matched by a tag's pattern, refines the output to the tag's in the clause's
+# body, as a `match` arm's tag does (Type System ch. 5, "Refinement at tag matches";
+# Semantics ch. 3: a function's clauses are a `match` on its arguments). So a supplier
+# `fn @Supply p, (Pad.Num(..)) = @ 7` under `fn Path, Element Pad.* o -> @o` answers a `Nat`.
+RefinedResult: unbounded fn Env, St, [Pattern], [Ty], Ty -> Ty
+fn RefinedResult env, st, patterns, params, res = Fold (Range0 (Len params)), res, \|r, i| match ((patterns[i], (Walk st, (Or params[i], TyErr)))):
+    (((? p), (TyElem ignore, o))): match (((Walk st, o), (?TagOfPattern env, p))):
+        (((TyRigid name), (? tg))): SubstRigid name, tg.out, r
+        otherwise: r
+    otherwise: r
 
 # A body against its result type, in the block the name's mark opens: `@` a widget block,
 # `?` or `~` a `given:` body, anything else an expression block (Semantics ch. 4).

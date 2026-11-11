@@ -184,8 +184,15 @@ fn InferKind env, st, e = match e.kind:
     ELambda ignore, ignore: InferLambda env, st, e, nil
     EIf c, thenB, ?elseB: InferIf env, st, c, thenB, ?elseB, e.span, nil
     EMatch scrut, arms: InferMatch env, st, scrut, arms, e.span, nil
-    ERebuild scrut, body: InferRebuild env, st, scrut, body, e.span
-    EFor ?binders, source, body: InferFor env, st, ?binders, source, body, e.span
+    # A `rebuild` or a `for` written as a value builds nothing where it stands: it is the
+    # blueprint of what it would hand back (Semantics ch. 4), as `@widget:` is; `<-` or a
+    # line of a widget block builds it (`InferBuilt`). In an `update` block `for` is a loop.
+    ERebuild scrut, body:
+        let ((t, st2)) = InferRebuild env, st, scrut, body, e.span
+        (((TyAt t, env.scope), st2))
+    EFor ?binders, source, body:
+        let ((t, st2)) = InferFor env, st, ?binders, source, body, e.span
+        if env.inUpdate: ((t, st2)) else: (((TyAt t, env.scope), st2))
     EGiven b: InferGiven env, st, b, e.span
     EUpdate target, body: InferUpdate env, st, target, body, e.span
     EWidgetBlock b:
@@ -384,8 +391,12 @@ InferBound: fn Env, St, Text, Range -> ((Ty, St))
 fn InferBound env, st, b, span = match env.locals[b]:
     ? sc: ((sc.ty, st))
     nil:
+        # `ix`, `jx` and `kx` are bound by the loops around them (Semantics ch. 4, "Every
+        # loop body has `ix`"); with no such loop the word names nothing
         if b == "key": ((TyErr, (Err st, "unknown-name", span, "`key` is bound only in a loop over a map")))
-        else: ((tNat, st))
+        else: if b == "ix": ((TyErr, (Err st, "unknown-name", span, "`ix` outside a loop: it names the index of the `for` it stands in")))
+        else: if b == "jx": ((TyErr, (Err st, "unknown-name", span, "`jx` outside two loops: it names the index of the `for` around the one it stands in")))
+        else: ((TyErr, (Err st, "unknown-name", span, "`{b}` outside three loops: it names the index of the `for` two around the one it stands in")))
 
 # ---------------------------------------------------------------------------------------
 # Literals

@@ -1,0 +1,26 @@
+# A widget defined in a block read as a blueprint value: passed to a plain function that
+# takes any blueprint `@a` and gives it back inside an option, then applied by the arm
+# that takes it out (Semantics ch. 3: `fn` and its `@` form define in the block; ch. 8:
+# "a blueprint builds nothing until a block applies it", and it is built where it is
+# applied, at the applying block's next positions; Type System ch. 2: a blueprint is an
+# opaque handle and still a value). The local widget reads the block's `n`. Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@page: @unit
+@page:
+    let n = 7
+    @line:
+        Ui.Label($text=$"line {n}")
+    match ?Pick True, @line:                                     # 0
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    match ?Pick False, @line:                                    # 1
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    Ui.Label($text=$"end")                                       # 2

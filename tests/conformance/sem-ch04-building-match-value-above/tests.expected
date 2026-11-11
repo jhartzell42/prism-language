@@ -1,0 +1,31 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": any line may use any name the block binds; the order of a group's lines decides positions and nothing else; R7: a new row is built at the end of the click's tick), ch. 8 (`<-` binds the arm's plain result; a widget application is transparent) and ruling TC (places counted as built: the loud arm builds one place, so the last label is the panel's 3; the soft arm builds none, so it is 2). The tile and every row, the one built in tick 1 too, read the arm's result.
+test loud
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Ui.Label(text="tile 10")
+    2/[0]/0: Ui.Label(text="a of 10")
+    3: Ui.Label(text="x")
+    4: Ui.Label(text="below 10")
+
+tick 1
+  in:
+    0: click
+  added:
+    2/[1]/0: Ui.Label(text="b of 10")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Ui.Label(text="tile 20")
+    2/[0]/0: Ui.Label(text="a of 20")
+    3: Ui.Label(text="below 20")
+
+tick 1
+  in:
+    0: click
+  added:
+    2/[1]/0: Ui.Label(text="b of 20")
