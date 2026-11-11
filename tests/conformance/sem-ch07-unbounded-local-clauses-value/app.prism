@@ -1,0 +1,25 @@
+# A local function of several clauses that is not bounded, passed as a value (Semantics
+# ch. 4: `fn` lines in clauses, a function is a value; ch. 7: an unbounded function is a
+# bounded body iterated, and entering one is a cycle point, D6). `Step` calls `Inc`, an
+# unbounded function, so it is one itself; `Apply` takes it as a `Start`.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Inc: unbounded fn Nat -> Nat
+fn Inc n = n + 1
+
+Apply: unbounded fn (unbounded fn Nat -> Nat), Nat -> Nat
+fn Apply F, n = F n
+
+Work: unbounded fn Nat -> Nat
+fn Work n:
+    fn Step 0 = Inc 10
+    fn Step k = Inc k
+    Apply Step, n
+
+@Counted: fn Nat -> @unit
+fn @Counted n:
+    !done <- @Run Work, n                                   # 0
+    $shown <- "working" then Show !done
+    Ui.Label($text=$shown)                                   # 1
