@@ -1,0 +1,11 @@
+# The tests of sem-ch08-widget-value-bundle-result.
+emit Ui.*
+use App.*
+
+test picked, @Page True:
+    build
+    click at 0
+        => expect Ui.Label(text="total 5")
+
+test not_picked, @Page False:
+    build
