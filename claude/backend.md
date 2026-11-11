@@ -577,10 +577,26 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `prism_rtl::Blueprint`, matched and passed on as a plain argument is
   (`SharedScrutinee`), applied as any blueprint value (`ValueBlueprintLine`).
   `ValuedWidgets` reads the blueprint arguments of a call of a widget that calls itself.
-- Any other widget that calls itself (a `$` or event parameter, a blueprint parameter
-  whose argument is no such value or beside a result, an event, dynamic or bundle
-  result, a type parameter, a hosted scope) is lowered level by level, to the sixteen
-  levels an inlined widget is (`TooDeep`: a tree deeper than that faults at its build).
+- A `$` or an event parameter of such a widget, where the widget gives nothing back, is
+  the caller's live value held by the shared row (`IsLiveParam`, `LiveParams`): a
+  `Dynamic` the call's line makes for the reader it is given (`WholeArgsAt`,
+  `SharedLiveCalls`), an `Event` made of the event's port. Every call of such a widget
+  is lowered as shared rows, the outermost too (`SharesAt`), so each level is handed
+  the value itself.
+  - The row reads a `$` parameter through its getter `{name}_param_value`, which
+    samples the dynamic at the read point, and follows the dynamic's update event
+    (`prism_rtl::Follow`): each firing marks what reads the getter
+    (`{name}_param_result_moved`).
+  - An event parameter is a port node of the row's graph, fed by a subscription the
+    build makes to the event's port (`subscribe_row`).
+  - The value is bound under `#whole#{name}`: a call inside hands it on as it is
+    (`SharedScrutinee`), and an arm's row of the row's reads it through its parent
+    (`WholeOfBlock`).
+- Any other widget that calls itself (a `$` or event parameter with time below its top
+  or beside a result, a blueprint parameter whose argument is no such value or beside a
+  result, an event, dynamic or bundle result, a type parameter, a hosted scope) is
+  lowered level by level, to the sixteen levels an inlined widget is (`TooDeep`: a tree
+  deeper than that faults at its build).
 
 ## Hosting
 

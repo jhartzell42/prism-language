@@ -439,8 +439,12 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
     # value): its `$` fields are held as `Dynamic`s (`ElementValue`), so the readers they
     # are written over are live dynamics too
     let elementValues = ElementValuesIn lx, e
+    # and a call of a widget that calls itself with a `$` parameter, lowered as shared
+    # rows, which hold the caller's dynamic live (`SharesAt`, `LiveParams`); a shared
+    # row's own live parameter is such a value already (`#whole#{name}`)
+    let sharedCalls = SharedLiveCalls wx, menv, e
     let calls = Filter (ExprsIn e), \|x| match x.kind:
-        ECall c, ignore, ignore, ignore: (IsWholeObject lx, x) or (IsWholeFn lx, (CalleeKey lx, c)) or (CalleeKey lx, c) == "Prelude.@Flatten" or (CalleeKey lx, c) == "Prelude.@Switch" or HasText elementValues, (DynKey x)
+        ECall c, ignore, ignore, ignore: (IsWholeObject lx, x) or (IsWholeFn lx, (CalleeKey lx, c)) or (CalleeKey lx, c) == "Prelude.@Flatten" or (CalleeKey lx, c) == "Prelude.@Switch" or (HasText elementValues, (DynKey x)) or HasText sharedCalls, (DynKey x)
         otherwise: False
     # and `!Updated $d` inside a lambda of the line (a supplier's `@ !Filter (?Pick p,
     # !Updated $state)`): an event value there, over `$d`'s live dynamic (`?UpdatedValue`)
@@ -454,7 +458,7 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
         ECall ignore, args, ignore, ignore: Fold args, acc, \|acc2, a| Append acc2, (ExprsIn a.value)
         otherwise: acc
     let names0 = Fold roots, [[]], \|acc3, y| match y.kind:
-            EName n: if HasKey menv.names, "#whole{DynKey y}": acc3 else: match menv.names[SNameKey n]:
+            EName n: if (HasKey menv.names, "#whole{DynKey y}") or HasKey menv.names, "#whole#{SNameKey n}": acc3 else: match menv.names[SNameKey n]:
                 ? (BnHold ignore, ignore): if (LayerOf (TypeAt lx, y.span)) == LyDyn and not (HasText (Each acc3, \|z| DynKey z), (DynKey y)): Push acc3, y else: acc3
                 ? (BnDyn ignore, ignore, ignore): if (LayerOf (TypeAt lx, y.span)) == LyDyn and not (HasText (Each acc3, \|z| DynKey z), (DynKey y)): Push acc3, y else: acc3
                 otherwise: acc3
@@ -964,7 +968,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                         # inlined widget is, to the same depth (`TooDeep`)
                         # (a widget with plain parameters and no result, which calls itself
                         # as deep as its data: rows shared by every call, `SharedClauseLine`)
-                        if (Recursion wx.inlining, qk) > 0 and IsSharable wx, menv, v, e, args: SharedClauseLine wx, menv, a.value, qk, v, e, args
+                        if SharesAt wx, menv, qk, v, e, args: SharedClauseLine wx, menv, a.value, qk, v, e, args
                         else: if (Recursion wx.inlining, qk) > 16: TooDeep wx, qk, e
                         else:
                             let call = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
@@ -984,7 +988,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
             # a widget of one clause that calls itself, with plain parameters and no
             # result: past its first level, rows shared by every call, as a widget of
             # several clauses has (`SharedClauseLine`; its one clause is the one row)
-            let sharedOne = (Recursion wx.inlining, qk) > 0 and (Len clauses) == 1 and (Len args) > 0 and IsSharable wx, menv, v, e, args
+            let sharedOne = (Len clauses) == 1 and (Len args) > 0 and SharesAt wx, menv, qk, v, e, args
             if sharedOne: SharedClauseLine wx, menv, (Or args[0], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0)))).value, qk, v, e, args
             else: if (Recursion wx.inlining, qk) > 16: TooDeep wx, qk, e
             else:

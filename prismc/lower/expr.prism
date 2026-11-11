@@ -355,7 +355,10 @@ fn WholeValueOf lx, env, e:
         EGroup x: ValueOf lx, env, x
         EName n: match env.names["#whole{e.span.start}:{e.span.end}"]:
             ? (BnLocal x, mode, dt): LocalPlace x, mode, dt
-            otherwise:
+            otherwise: match (if (Len n.path) == 1: env.names["#whole#{SNameKey n}"] else: nil):
+              # a shared row's live parameter: the `Dynamic` the row holds (`LiveParams`)
+              ? (BnLocal x, mode, dt): LocalPlace x, mode, dt
+              otherwise:
                 let v = ValueByKind lx, env, e
                 let local = (Len n.path) == 1 and match env.names[SNameKey n]:
                     ? (BnLocal ignore, ignore, ignore): True
