@@ -385,6 +385,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
   - a plain `let` of the node that reads a late name is late too (`MarkLateLets`): a
     getter of the node that computes it (`late_{name}`, `LateLetGetters`), bound under
     `{name}#late` as the split line's names are, so what reads it reads it late in turn;
+    a `let` of a pattern whose names are plain (`let ((low, high)) = Sides n`) is late
+    with every name it binds: one getter computes the whole value (`late_whole`), and
+    each name's getter matches it by the pattern;
   - a building line of the node that reads a late name and is no element's (a widget's
     plain argument, a `for` above the split, a building `match` over the name) is a
     generation of one arm at its own positions (`DeferredLine`, `IsLateTaker`): its row
@@ -823,8 +826,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
     when delivered, so it carries the value after the tick of the change. The owner emits a
     getter per dynamic answer and fires its update port at every write behind it; the
     supplier reads the getter through an `rt::Link` to the owner, and the dynamic's value
-    at the build while the owner is being made. A computed answer in flight to a place
-    whose key left is dropped. Nested hosts add one tick per computing layer and none per
+    at the build while the owner is being made. A dynamic read through the owner's parent
+    (a host in a row answering with the block's `$n`) has its value at the build taken
+    at the host's line, through the parent, into a local the supplier copies
+    (`{getter}_at_build`, `AnswerAtBuild`); the block's write tells the row, which fires
+    the getter's port (`RowHears`). An answer through a blueprint a `let` names (`let
+    @$live = @ $level`) is its expression in the name's place: `DynamicAnswers` reads
+    the `let`'s expression, and the supplier's closure captures what it reads
+    (`WithBlueprintReads`). A computed answer in flight to a place whose key left is
+    dropped. Nested hosts add one tick per computing layer and none per
     forwarding layer.
 - **First values.** A child place with a first value asks the host at its build
   (`host_k.first_value(&place, &elem, &entry, cx)`), before the owner's node exists: the host builds
@@ -939,7 +949,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   (`HeadWord`: a named type's name, a collection's shape with its parts).
 - **A widget block's `let` of a record's or a constructor's pattern** computes the value
   at the build, matches it once there and moves each name it binds into its own field
-  (`BindPatternResult`, as a widget's plain result bound by a pattern).
+  (`BindPatternResult`, as a widget's plain result bound by a pattern). A pattern that
+  binds a dynamic or an event inside it (`LetPatternDynamics`) keeps the whole value as
+  a getter of the node: a `$` binder's getter matches it and samples the dynamic it
+  holds; an event binder's port node is subscribed at the build to the event the value
+  holds (read out by the pattern, `{heard}_event`) and feeds the name's own node.
 - **`for &v <- &m:` over a map** (ruling FM) takes the keys before the first step and
   reads each entry's place through its key (`keys`, `at_mut_map`), in key order.
 - **A `while` or an `if` bind in an `update` block whose pattern has conditions** (a

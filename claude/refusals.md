@@ -18,16 +18,20 @@ spell".
 ## R: legal programs not lowered
 
 Hosting
-- lower/expr.prism:796 a supplier's dynamic answer that reads what has no value at the
-  owner's build: a structural dynamic (a `for`'s gathered result, a `rebuild`'s) or a
-  name of the parent. No test. The host's own pushed place and a `let` below the host's
-  line are lowered (sem-ch09-host-dynamic-answer-late).
+- lower/expr.prism (`DynamicBlueprint`, `WrittenPart`) a supplier's dynamic answer, or
+  a bundle answer's `$` part, that reads a structural dynamic (a `for`'s gathered
+  result, a `rebuild`'s): it has no value when the child's place asks its first value,
+  in the owner's build before its builders run
+  (sem-ch09-host-dynamic-answer-structural, sem-ch09-host-bundle-answer-structural-part).
+  Lowered: the host's own pushed place and a `let` below the host's line
+  (sem-ch09-host-dynamic-answer-late); a name of the parent, read by a host in a row
+  (sem-ch09-host-dynamic-answer-reads-parent, sem-ch09-host-bundle-answer-parent-part);
+  an answer through a blueprint a `let` names (sem-ch09-host-dynamic-answer-let,
+  sem-ch09-host-event-answer-let).
 - lower/expr.prism:703 `@ x` outside a tag arm where `x` is no plain data (a function).
   No test. Any other answer outside an arm is lowered: plain data in `Answer`'s case of
   no tag, read by the place that takes it (sem-ch09-host-answer-without-arm).
-- lower/expr.prism (`WrittenPart`) a bundle answer's `$` part that reads what has no
-  value at the owner's build (sem-ch09-host-bundle-answer-structural-part,
-  -parent-part). Every other bundle answer is lowered, any mix of plain, `$` and event
+- Every other bundle answer is lowered, any mix of plain, `$` and event
   parts, written as a tuple or given as a value (`PartsBlueprint`:
   sem-ch09-host-bundle-two-events-answer, -two-dynamics-answer,
   -plain-beside-dynamic-answer, sem-ch09-host-bundle-live-dynamic-answer,
@@ -112,13 +116,15 @@ Building `match`, clause widgets, `rebuild`
   sem-ch04-late-widget-result-value-above, sem-ch04-late-let-value-above); a building
   `match` with no guard whose arms read nothing of the block is built early
   (`EarlyChoiceLine`, sem-ch04-building-match-value-above); a place's field, a plain
-  `let` of one name and a hold's first value are late in turn
+  `let` (of one name, or of a pattern whose names are plain:
+  sem-ch04-late-let-pattern-above) and a hold's first value are late in turn
   (sem-ch04-building-match-read-above, sem-ch04-building-match-hold-above). Left
-  refused, no tests: a `let` of a pattern that is no one name, or of a bundle or a type
-  with time inside, that reads the late name (the three `unbuilt` refusals of
-  `BindLate`, `MarkLateLets` and `BindWhole`); and in `DeferredLine`, a line that takes
-  the late name and whose places are counted as built, and one that gives a plain
-  result of its own.
+  refused: a `let` of a bundle or of a type with time inside that reads the late name
+  (the `unbuilt` refusals of `BindLate`, `MarkLateLets` and `BindWhole`:
+  sem-ch04-late-let-bundle-above, sem-ch08-late-part-bundle-named-read-above); and in
+  `DeferredLine`, a line that takes the late name and whose places are counted as
+  built, and one that gives a plain result of its own (no program found:
+  sem-ch04-late-value-above-gives-result is built early and passes).
 - lower/jobs.prism: none added. A bare `for` in a job is lowered (`ForJob`), no test of
   the job form; the plain form is sem-ch05-update-for-bare.
 - lower/node/finish.prism:699 a place read at its block's build before the node exists
@@ -176,10 +182,13 @@ Dynamics and events
   (`Ui.Label($text=$"x")` passes the checker; `$text="x"` is a mismatch there).
 
 Functions
-- lower/node/def.prism (`LetLine`) a widget block's `let` of a pattern that is no name
-  and no tuple of names and binds an event inside it. No test. With plain names it is
-  lowered (sem-ch08-let-pattern-in-widget), and with dynamics inside it
-  (`LetPatternDynamics`, sem-ch08-let-pattern-dynamic-in-widget).
+- A widget block's `let` of a pattern that is no name and no tuple of names is
+  lowered: with plain names (sem-ch08-let-pattern-in-widget), with dynamics inside it
+  and with events inside it (`LetPatternDynamics`,
+  sem-ch08-let-pattern-dynamic-in-widget, sem-ch08-let-pattern-event-in-record). Left:
+  the value taken apart is a nested bundle a line named whole (`let ((ten, ((!more,
+  $guests)))) = all`, sem-ch08-let-pattern-event-in-tuple: lower/expr.prism, "a tuple
+  pattern's binding as a value").
 - lower/expr.prism `Recolored`: a function value of its callee's own color inside the
   value a call returns, at a call that makes the color bounded, is made again through
   every type that can hold it (ts-ch05-color-function-in-result, -in-map-result,

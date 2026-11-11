@@ -624,8 +624,8 @@ fn HoistedLines below, lateNames, aboveReads:
     let fixed = Filter below, \|st| not (HasStmt candidates, st)
     HoistedAmong candidates, (Fold fixed, [[]], \|acc, st| UnionTexts acc, (NonEventDefs st)), lateNames, aboveReads
 
-# Whether a `let`'s pattern is one name that a line above the split reads (a late `let`
-# is one name, `?LateLetName`).
+# Whether a `let`'s pattern is one name that a line above the split reads (a `let`
+# hoisted from below the split is one name).
 IsOneNameReadAbove: fn Pattern, [Text] -> Bool
 fn IsOneNameReadAbove p, aboveReads = match p.kind:
     PName n: HasText aboveReads, (SNameKey n)
@@ -775,54 +775,68 @@ fn IsFnLine s = match s.kind:
     SFn ignore: True
     otherwise: False
 
-# A plain `let` of one name in a split block's node whose value reads a late name
-# (Semantics ch. 4: the order of a group's lines decides positions and nothing else): the
-# `let` is late too. Its name is bound as a split line's is (`BindLate`): in the methods
-# a getter that computes the value from the node, at the build nothing, under
-# `{name}#late`. What reads it reads it as a late name: a place's field is live over it
-# (`ElementLine`), a hold that starts from it is set when the result is built, another
-# plain `let` is late in turn (so the marking runs until nothing more is marked).
+# A plain `let` in a split block's node whose value reads a late name (Semantics ch. 4: the
+# order of a group's lines decides positions and nothing else): the `let` is late too.
+# Each name it binds is bound as a split line's is (`BindLate`): in the methods a getter
+# that computes the value from the node, at the build nothing, under `{name}#late`. What
+# reads it reads it as a late name: a place's field is live over it (`ElementLine`), a
+# hold that starts from it is set when the result is built, another plain `let` is late
+# in turn (so the marking runs until nothing more is marked). A `let` of a pattern (a
+# tuple's, a record's, `let ((low, high)) = Sides n`) is late with every name it binds.
 MarkLateLets: unbounded fn Wx, Env, Env, Env, [Stmt], Nat -> ((Wx, Env, Env))
 fn MarkLateLets wx, benv, menv, fns, stmts, fuel:
-    let ((wx2, be2, me2, grew)) = Fold stmts, ((wx, benv, menv, False)), \|((w, be, me, ch)), s| match ?LateLetName w.lx, fns, me, s:
-        ? n:
-            let nkey = SNameKey n
-            let t = OutTyOf w.lx, (Peel (BinderTy w.lx, n.span))
-            let ((getter, w2)) = FreshName w, "late_{LocalNameAt w.lx, nkey, n.span}"
-            let unbuilt = BnLocal (Refusal "the late `let` `{nkey}` read at its block's build by a line of the block's node that takes a value there (a widget's plain argument, a builder's plain local)"), Owned, t
-            ((w2, (Bind (Bind be, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind me, nkey, (BnLocal (XMethod XSelf, getter, [[]]), Owned, t)), "{nkey}#late", unbuilt), True))
-        nil: ((w, be, me, ch))
+    let ((wx2, be2, me2, grew)) = Fold stmts, ((wx, benv, menv, False)), \|((w, be, me, ch)), s| Fold (LateLetNames w.lx, fns, me, s), ((w, be, me, ch)), \|((w1, be1, me1, ignore)), n|
+        let nkey = SNameKey n
+        let t = OutTyOf w1.lx, (Peel (BinderTy w1.lx, n.span))
+        let ((getter, w2)) = FreshName w1, "late_{LocalNameAt w1.lx, nkey, n.span}"
+        let unbuilt = BnLocal (Refusal "the late `let` `{nkey}` read at its block's build by a line of the block's node that takes a value there (a widget's plain argument, a builder's plain local)"), Owned, t
+        ((w2, (Bind (Bind be1, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind me1, nkey, (BnLocal (XMethod XSelf, getter, [[]]), Owned, t)), "{nkey}#late", unbuilt), True))
     if grew and fuel > 0: MarkLateLets wx2, be2, me2, fns, stmts, (Dec fuel) else: ((wx2, be2, me2))
 
-# The name of a `let` that becomes late: a plain value of one type, not late yet, that
-# reads a late name.
-?LateLetName: unbounded fn Lx, Env, Env, Stmt -> ?SName
-fn ?LateLetName lx, fns, me, s = match s.kind:
-    SLet p, ignore, e: match p.kind:
-        PName n:
+# The names of a `let` that becomes late: each a plain value of one type, none late yet,
+# and the `let`'s value reads a late name. None when the `let` is not such a one.
+LateLetNames: unbounded fn Lx, Env, Env, Stmt -> [SName]
+fn LateLetNames lx, fns, me, s = match s.kind:
+    SLet p, ignore, e:
+        let names = BinderNames p
+        let plain = Fold names, True, \|ok, n|
             let nkey = SNameKey n
             let full = BinderTy lx, n.span
-            if (IsTimeName nkey) or (HasKey me.names, "{nkey}#late") or (HasKey me.names, "{nkey}#placed"): nil
-            else: if (LayerOf full) != LyPlain or (TimeWithin full) or (IsBundle full) or (IsSome (?ManyInstances lx, n.span)): nil
-            else: if ReadsLateVia fns, me, e: ? n else: nil
-        otherwise: nil
-    otherwise: nil
+            ok and not ((IsTimeName nkey) or (HasKey me.names, "{nkey}#late") or (HasKey me.names, "{nkey}#placed") or (LayerOf full) != LyPlain or (TimeWithin full) or (IsBundle full) or (IsSome (?ManyInstances lx, n.span)))
+        if (Len names) > 0 and plain and ReadsLateVia fns, me, e: names else: [[]]
+    otherwise: [[]]
 
-# Whether a `let` binds a late name (`MarkLateLets`).
-IsLateLet: fn Env, Pattern -> Bool
-fn IsLateLet menv, p = match p.kind:
-    PName n: HasKey menv.names, "{SNameKey n}#late"
-    otherwise: False
+# Whether a `let` binds late names (`MarkLateLets`).
+IsLateLet: unbounded fn Env, Pattern -> Bool
+fn IsLateLet menv, p:
+    let names = BinderNames p
+    (Len names) > 0 and Fold names, True, \|ok, n| ok and HasKey menv.names, "{SNameKey n}#late"
 
-# The late `let`s' getters, the value computed from the node in its methods.
+# The late `let`s' getters, the value computed from the node in its methods. A pattern's
+# `let` has one for the whole value, which each name's getter matches by the pattern.
 LateLetGetters: unbounded fn Wx, Env, [Stmt] -> Wx
 fn LateLetGetters wx, menv, stmts = Fold stmts, wx, \|w, s| match s.kind:
-    SLet p, ignore, e: match p.kind:
-        PName n: if not (IsLateLet menv, p): w else: match menv.names[SNameKey n]:
+    SLet p, ignore, e: if not (IsLateLet menv, p): w else: match p.kind:
+        PName n: match menv.names[SNameKey n]:
             ? (BnLocal (XMethod XSelf, getter, ignore), ignore, t): update w:
                 &_.getters <= Push &_.getters, (MethDef(name=getter, recv=RecvRef, params=[[]], cx=CxNone, ret=t, body=[[]], tail=(Own (ValueOf w.lx, menv, e)), doc="`{SNameKey n}`, a `let` that reads a late result: computed from the node once the row that gives the result is built."))
             otherwise: w
-        otherwise: w
+        otherwise:
+            let ty = Peel (TypeAt w.lx, e.span)
+            let t = OutTyOf w.lx, ty
+            let ((whole, w1)) = FreshName w, "late_whole"
+            let o = RustPat w.lx, p, ty, ByRef, "late_whole_value"
+            let w2 = update w1:
+                &_.getters <= Push &_.getters, (MethDef(name=whole, recv=RecvRef, params=[[]], cx=CxNone, ret=t, body=[[]], tail=(Own (ValueOf w.lx, menv, e)), doc="`{SrcText w.lx, w.lx.file, e.span}`, the value a late `let`'s pattern takes apart: computed from the node once the row that gives the late result is built."))
+            Fold (BinderNames p), w2, \|w3, n| match ((menv.names[SNameKey n], (Fold o.binds, nil, \|?found, ((k, b))| if k == SNameKey n: ? b else: ?found))):
+                (((? (BnLocal (XMethod XSelf, getter, ignore), ignore, bt)), (? (BnLocal rs, mode, vt)))):
+                    let arm = XArm(pat=o.pa, conds=o.conds, body=(Own (VlPlace rs, mode, vt)))
+                    let other = XArm(pat=PaWild, conds=[[]], body=(XUnreachable))
+                    let tail = XBlock [[(DoLet (PaTyped (PaBind "late_whole_value"), t), (XMethod XSelf, whole, [[]]))]], (Own (ArmsValue (XRef (XVar "late_whole_value")), [[arm, other]], "'bound", bt))
+                    update w3:
+                        &_.getters <= Push &_.getters, (MethDef(name=getter, recv=RecvRef, params=[[]], cx=CxNone, ret=bt, body=[[]], tail=tail, doc="`{SNameKey n}`, a name of a `let`'s pattern that reads a late result."))
+                otherwise: update w3:
+                    &_.build <= Push &_.build, (InternalBugDo "the name `{SNameKey n}` of a late `let`'s pattern, which the pattern does not bind")
     otherwise: w
 
 # A name's value at the build, `{name}#init`, bound before any line so that a line above
@@ -936,8 +950,8 @@ fn PreBind wx, benv, menv, s = match s.kind:
             otherwise: if ?step == nil: (Fold (BinderNames p), ((wx, benv, menv)), \|((w2, be2, me2)), n| PreBindName w2, be2, me2, n, how) else: ((wx, benv, menv))
     # a `let` of any other pattern (a record's, a constructor's, a tuple inside a tuple):
     # each name it binds (`BindPatternResult`)
-    SLet p, ignore, ignore: match p.kind:
-        PName n: if (IsPlacedLet menv, p) or IsLateLet menv, p: ((wx, benv, menv)) else: PreBindName wx, benv, menv, n, AsLet
+    SLet p, ignore, ignore: if IsLateLet menv, p: ((wx, benv, menv)) else: match p.kind:
+        PName n: if IsPlacedLet menv, p: ((wx, benv, menv)) else: PreBindName wx, benv, menv, n, AsLet
         PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
             PName n: PreBindName w, be, me, n, AsLet
             otherwise: Fold (BinderNames q), ((w, be, me)), \|((w2, be2, me2)), n| PreBindName w2, be2, me2, n, AsLet
@@ -1814,17 +1828,22 @@ fn LetLine wx, benv, menv, p, e:
             otherwise: if Fold (BinderNames p), True, \|ok, n| ok and IsPlainPart menv.names[SNameKey n]:
                 let t = OutTyOf lx, (Peel (TypeAt lx, e.span))
                 (((BindPatternResult wx, menv, p, (Own (ValueOf lx, benv, e)), t, (Peel (TypeAt lx, e.span))), benv))
-            # a pattern that binds dynamics inside it, and no event (`LetPatternDynamics`)
-            else: if Fold (BinderNames p), True, \|ok, n| ok and ((IsPlainPart menv.names[SNameKey n]) or IsGetterPart menv.names[SNameKey n]): (((LetPatternDynamics wx, benv, menv, p, e), benv))
+            # a pattern that binds dynamics or events inside it (`LetPatternDynamics`)
+            else: if Fold (BinderNames p), True, \|ok, n| ok and ((IsPlainPart menv.names[SNameKey n]) or (IsGetterPart menv.names[SNameKey n]) or IsEventPart menv.names[SNameKey n]): (((LetPatternDynamics wx, benv, menv, p, e), benv))
             else:
                 let wx2 = update wx:
-                    &_.build <= Push &_.build, (RefusalDo "a widget block's `let` of this pattern (`{SrcText lx, lx.file, p.span}`), which binds an event inside it")
+                    &_.build <= Push &_.build, (InternalBugDo "a widget block's `let` of this pattern (`{SrcText lx, lx.file, p.span}`), whose names are bound as no plain value, dynamic or event")
                 ((wx2, benv))
 
 # A name prebound as a dynamic `let`'s getter (`PreBindName`).
 IsGetterPart: fn ?Bn -> Bool
 fn IsGetterPart (? (BnDyn (XMethod XSelf, ignore, ignore), ignore, ignore)) = True
 fn IsGetterPart ?other = False
+
+# A name prebound as an event's node (`PreBindName`).
+IsEventPart: fn ?Bn -> Bool
+fn IsEventPart (? (BnEv ignore, ignore)) = True
+fn IsEventPart ?other = False
 
 # A `let` whose pattern binds dynamics inside it (`let Gauge($level=$l, name=nm) = ..`;
 # Semantics ch. 4: a `let` names what its pattern binds, and a dynamic named is that
@@ -1854,6 +1873,27 @@ fn LetPatternDynamics wx, benv, menv, p, e:
                 &_.dynReads <= Insert &_.dynReads, rs, [[OwnRead whole]]
         (((? (BnDyn ignore, ignore, ignore)), ignore)): update w:
             &_.build <= Push &_.build, (InternalBugDo "the dynamic `{SNameKey n}` of a `let`'s pattern, which the pattern does not bind")
+        # an event the pattern binds (`let Knob(name=name, !turned=!t) = knob`): the event
+        # the value holds, read out of it by the pattern through a getter once the node is
+        # made, and heard by a port node the build subscribes to it, as an event value a
+        # function gave whole is (`EventObjectRef`); the port node feeds the name's node
+        (((? (BnEv er, ignore)), (? (BnLocal held, ignore, ignore)))):
+            let et = (GnOf w, er.node).ty
+            let ((heard, w1)) = FreshName w, "heard"
+            let ((id, w2)) = AddGn w1, heard, et, GnPort, 0
+            let arm = XArm(pat=o.pa, conds=o.conds, body=(XClone held))
+            let other = XArm(pat=PaWild, conds=[[]], body=(XUnreachable))
+            let tail = XBlock [[(DoLet (PaTyped (PaBind "let_whole_value"), t), (XMethod XSelf, whole, [[XCx]]))]], (Own (ArmsValue (XRef (XVar "let_whole_value")), [[arm, other]], "'bound", (OutEvent et)))
+            let getter = MethDef(name="{heard}_event", recv=RecvRef, params=[[]], cx=CxRef, ret=(OutEvent et), body=[[]], tail=tail, doc="`{SNameKey n}`, an event a `let`'s pattern binds, as the value holds it.")
+            let port = XClosure False, [[PaBind "ev"]], (XRef (XField (XVar "ev"), "port"))
+            let call = XClosure False, [[PaBind "n", PaBind "v", PaBind "cx"]], (XMethod (XVar "n"), heard, [[XClone (XVar "v"), XCx]])
+            let sub = DoExpr (XCall (HelperRef "subscribe_row"), [[(XRef (XVar "node")), (XCtor (RefRuntime "std::Some"), [[(XCall (RefRuntime "std::Rc::new"), [[(XMethod (XVar "node"), "{heard}_event", [[XCx]])]])]]), port, call, (XRef (XField (XVar "node"), "{heard}_sub"))]])
+            let w3 = update (AddField w2, "{heard}_sub", (OutNamed (RefRuntime "std::Cell"), [[(OutOpt (OutNamed (RefRuntime "rt::Handle"), [[]]))]]), "the subscription to `{SNameKey n}` as the `let`'s value holds it", (XCall (RefRuntime "std::Cell::new"), [[XNone]])):
+                &_.getters <= Push &_.getters, getter
+                &_.build <= Push &_.build, sub
+            Connect w3, (EvRefOf w3, id), (SkNode er.node)
+        (((? (BnEv ignore, ignore)), ignore)): update w:
+            &_.build <= Push &_.build, (InternalBugDo "the event `{SNameKey n}` of a `let`'s pattern, which the pattern does not bind")
         otherwise: w
     # the plain binders: the value computed at the build and matched once there, each
     # name moved into the field its prebinding named (as `BindPatternResult` does)
