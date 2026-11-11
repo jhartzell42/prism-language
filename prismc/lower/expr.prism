@@ -817,10 +817,32 @@ fn WrittenPart lx, env, y = match LayerOf (TypeAt lx, y.span):
 # else read from the live parts' dynamics at the read point and moved when any of them
 # moves. Each event part is mapped to the tag's answer case: of one event part its value,
 # of several a sparse tuple holding that part alone.
+# Outside a tag's arm a bundle with a part that is no plain data (a function, `@ ((F,
+# !go))` in a plain function) has no state `Answer`'s case of no tag can hold: it is
+# answered held whole, once, its events and dynamics as values (`answer_held`), as a
+# widget's bundle is (`WidgetBlueprintValue`), and the line that binds it reads it so
+# (`AppliedBundleLine`).
 PartsBlueprint: unbounded fn Lx, Env, Expr, [AnswerPart], Ref -> Ex
-fn PartsBlueprint lx, env, x, parts, variant = match PartsAnswerOf lx, env, "`@ {SrcText lx, lx.file, x.span}`", parts, variant:
-    XBlock lets, answer: XBlock lets, (XCall (RefRuntime "prism_rtl::parts_blueprint::<crate::Elem, _>"), [[answer]])
-    other: other
+fn PartsBlueprint lx, env, x, parts, variant:
+    let partTys = match TypeAt lx, x.span:
+        TyTuple ts: ts
+        otherwise: [[]]
+    let heldWhole = variant == untaggedRef and Fold partTys, False, \|found, part| found or not (Podable (OutTyOf lx, (Peel part)))
+    let refused = Fold parts, "", \|found, part| if found != "": found else: match part:
+        PartRefused why: why
+        otherwise: ""
+    if heldWhole and refused != "": Refusal refused
+    else: if heldWhole:
+        let whole = Each (Range0 (Len parts)), \|i| match parts[i]:
+            # a constant `$` part is its value: the dynamic that never moves
+            ? (PartPlain v): if (LayerOf (Or partTys[i], TyErr)) == LyDyn: XCall (HelperRef "dyn_constant"), [[v]] else: v
+            ? (PartLive d): d
+            ? (PartEvent ev, ignore): ev
+            otherwise: XUnit
+        XCall (RefRuntime "prism_rtl::plain_blueprint::<crate::Elem, _>"), [[(XCall (HelperRef "answer_held"), [[(XTuple whole)]])]]
+    else: match PartsAnswerOf lx, env, "`@ {SrcText lx, lx.file, x.span}`", parts, variant:
+        XBlock lets, answer: XBlock lets, (XCall (RefRuntime "prism_rtl::parts_blueprint::<crate::Elem, _>"), [[answer]])
+        other: other
 
 # The bundle answer of its parts (prism_rtl's `PartsAnswer`), in a block that names the
 # state's parts; a refusal or an internal error in its place. `what` names the answer in

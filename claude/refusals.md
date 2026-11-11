@@ -33,6 +33,8 @@ Hosting
   data (a function) held as it is and read at the type of the line that binds it
   (`TaggedOrHeld`: sem-ch08-blueprint-of-function-outside-tag-arm,
   ts-ch05-color-function-in-blueprint-result).
+  A bundle with such a part outside an arm is held whole, its events and dynamics as
+  values (`PartsBlueprint`: sem-ch08-blueprint-of-bundle-with-function-outside-tag-arm).
 - Every other bundle answer is lowered, any mix of plain, `$` and event
   parts, written as a tuple or given as a value (`PartsBlueprint`:
   sem-ch09-host-bundle-two-events-answer, -two-dynamics-answer,
