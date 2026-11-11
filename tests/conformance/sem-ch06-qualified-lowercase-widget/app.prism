@@ -1,0 +1,22 @@
+# A lowercase widget of another module written qualified, `@Parts.header`: applied as a
+# line of a block, and read as a blueprint value (Semantics ch. 6: every declaration of
+# a module is reachable by its qualified name, written `@Birds.Spotter`, the sigil
+# before the module's name, and "a qualified name is one token"; Jimmy's ruling QN: a
+# qualified name needs no `use`; ch. 8: a blueprint builds where a block applies it).
+# sem-ch06-qualified-lowercase with a widget for the `let`. Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+mod Parts
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@page: @unit
+@page:
+    @Parts.header                                                # 0
+    match ?Pick True, @Parts.header:                             # 1
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    Ui.Label($text=$"end")                                       # 2
