@@ -1,0 +1,24 @@
+# A widget block's `let` names a function value that gives a blueprint, and lines of
+# the block apply it to arguments (Type System ch. 2: a function is a value, and a
+# blueprint is a value a function may give; Semantics ch. 8: "a blueprint builds
+# nothing until a block applies it", then at the applying block's next positions).
+# sem-ch08-widget-parameter-call-argument with the function value named by a `let`
+# of the block that applies it. Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Shower: fn Text, Nat -> @unit
+fn @Shower label, n:
+    Ui.Label($text=$"{label} {n}")
+
+Chosen: fn Text -> (fn Nat -> @unit)
+fn Chosen label = \|n| @Shower label, n
+
+@main: @unit
+@main:
+    let Shows = Chosen "shows"
+    Shows 1
+    Ui.Label($text=$"between")
+    Shows 2
