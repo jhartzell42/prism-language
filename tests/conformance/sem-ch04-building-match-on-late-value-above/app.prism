@@ -1,0 +1,33 @@
+# A building `match` over a building `match`'s plain result, written above it, its arms of
+# different widths (Semantics ch. 4, "Binding groups and cycles": any line may use any
+# name the block binds, and "the order of a group's lines decides positions and nothing
+# else"; ruling TC: places are counted as they are built). Nothing here is a cycle.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Panel: fn Mode -> @unit
+fn @Panel mode:
+    match n -? 15:                                                     # 0 and 1, or 0
+        ? over:
+            Ui.Label($text=$"over by {over}")
+        nil:
+            Ui.Label($text=$"under")
+            Ui.Label($text=$"at {n}")
+    n <- match mode:
+        Loud t:
+            Ui.Label($text=$"{t}")                                     # 2
+            @ 10
+        Soft:
+            @ 20
+    Ui.Label($text=$"below {n}")                                       # 3, or 1
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    @Panel mode
