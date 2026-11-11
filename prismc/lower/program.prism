@@ -278,7 +278,7 @@ fn RootWidgets lx:
 # a blueprint is an opaque handle and still a value; Semantics ch. 8: it builds nothing
 # until a block applies it): an argument of a function that is no widget or of a
 # constructor, a host's supplier, what a lambda gives, the operand of `?`, a part of a
-# tuple or an array, the value of a `let`. Each is lowered once more as rows of its own (`ValuedRows`), which the
+# tuple or an array, the value of a `let`, what a `<=` writes. Each is lowered once more as rows of its own (`ValuedRows`), which the
 # blueprint made at the value site builds (`WidgetBlueprintValue`). A generic widget is
 # lowered so once for each set of types its readings give its type parameters
 # (`?ValuedTypes`). A widget function parameter is a function value of the row, and the
@@ -732,7 +732,7 @@ fn ValInfoAt lx, v:
     update v:
         &_.scheme <= scheme
 
-# The value of every `let` of a definition, at any depth: its body's own, and those of
+# The value of every `let` and every `<=` of a definition, at any depth: its body's own, and those of
 # every block an expression of it holds.
 LetValues: unbounded fn Def -> [Expr]
 fn LetValues d:
@@ -748,10 +748,12 @@ BodyLets: unbounded fn FnBody -> [Expr]
 fn BodyLets (BodyExpr ignore) = [[]]
 fn BodyLets (BodyBlock b) = StatementLets b.stmts
 
-# The `let`s among statements, and those of the functions, widgets and loops they define.
+# The `let`s among statements, and those of the functions, widgets and loops they define;
+# and what a `<=` writes, a value as a `let`'s is (`&_.body <= @Row 2` in an `update`).
 StatementLets: unbounded fn [Stmt] -> [Expr]
 fn StatementLets stmts = Fold stmts, [[]], \|acc, s| match s.kind:
     SLet ignore, ignore, e: Push acc, e
+    SSet ignore, e: Push acc, e
     SFn f: Append acc, (BodyLets f.body)
     SWidget w: Append acc, (StatementLets w.body.stmts)
     SWhile ignore, b: Append acc, (StatementLets b.stmts)
@@ -815,6 +817,8 @@ fn ValueWidgetsAt lx, e = match e.kind:
     # of the row, `WidgetNamed`)
     ECall c, args, ignore, ignore: Fold args, (PlacedWidget lx, (BlueprintQk lx, c), c.span, args), \|acc, a| if (LayerOf (TypeAt lx, a.value.span)) == LyBlueprint or IsWidgetFnTy (Peel (TypeAt lx, a.value.span)): Append acc, (ValueWidgetsAt lx, a.value) else: acc
     EName ignore: PlacedWidget lx, (BlueprintQk lx, e), e.span, [[]]
+    # (a module's lowercase widget written qualified, `@Parts.header`)
+    EField ignore, ignore2, ignore3: PlacedWidget lx, (BlueprintQk lx, e), e.span, [[]]
     otherwise: [[]]
 
 ValueWidgetsOfBlock: unbounded fn Lx, Block -> [((Text, [((Text, Ty))]))]
@@ -829,18 +833,41 @@ PlacedWidget: unbounded fn Lx, Text, Range, [Arg] -> [((Text, [((Text, Ty))]))]
 fn PlacedWidget lx, qk, calleeSpan, args = match lx.g.vals[qk]:
     ? v:
         let defined = Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsWidgetDef d)
+        # (a reading inside a generalized `let` or local function, at that one's own
+        # type variable, is a reading at each of its instantiations, `AtLetInstantiations`)
+        let Closed = \|lxAt, types| Fold (AtLetInstantiations lxAt, types), [[]], \|acc, lxk| match ?ValuedTypes lxk, v, calleeSpan, args:
+            ? closed: Push acc, ((qk, closed))
+            nil: acc
         if defined and (IsWidgetTy (WidgetResultOf v.scheme.ty)) and not (IsValueWidget lx, qk): match ?ValuedTypes lx, v, calleeSpan, args:
-            ? types: [[((qk, types))]]
+            ? types: Closed lx, types
             # a type parameter of the definition the reading stands in stays open: the
             # reading at each of that definition's instantiations
             nil: Fold (Or (?EnclosingInstances lx), [[]]), [[]], \|acc, user|
                 let lxu = update lx:
                     &_.subst <= Fold user, &_.subst, \|m, ((q, t))| Insert m, q, t
                 match ?ValuedTypes lxu, v, calleeSpan, args:
-                    ? types: Push acc, ((qk, types))
+                    ? types: Append acc, (Closed lxu, types)
                     nil: acc
         else: [[]]
     nil: [[]]
+
+# The lowerings a reading's types are closed at: the lowering itself where the types
+# hold no variable of a generalized `let`; else one for each instantiation the `let`'s
+# uses give that variable (`Instantiations`; the one at `unit` for a `let` no use
+# reads, which is lowered so, `LetInstantiations`), and so on for the next variable.
+AtLetInstantiations: unbounded fn Lx, [((Text, Ty))] -> [Lx]
+fn AtLetInstantiations lx, types:
+    let unclosed = Fold types, [[]], \|acc, ((ignore, t))| Append acc, (OpenTyQs lx, t)
+    match unclosed[0]:
+        nil: [[lx]]
+        ? q: match lx.genOfQ[q]:
+            nil: [[lx]]
+            ? gn:
+                let read = Instantiations lx, gn
+                let instantiations = if (Len read) > 0: read else: [[(((Each gn.tys, \|variable| ((variable, (TyTuple [[]])))), (Each gn.cols, \|c| ((c, CBound)))))]]
+                Fold instantiations, [[]], \|acc, instantiation|
+                    let lxk = AtInstance lx, instantiation
+                    Append acc, (AtLetInstantiations lxk, (Each types, \|((name, t))| ((name, (SubstTy lxk, t)))))
 
 IsWidgetDef: fn Def -> Bool
 fn IsWidgetDef d = match d.body:
@@ -858,8 +885,8 @@ ValuedStemAt: fn Text, Nat, [((Text, Ty))] -> Text
 fn ValuedStemAt qk, k, types = if (Len types) == 0: ValuedStem qk else: "{ValuedStem qk}_at{k}_"
 
 # A valued widget's clauses as a blueprint chooses and builds them (`SharedCaseOf`), when
-# it can be one: no `$` or event parameter with time below its top; whatever it gives
-# back. A generic widget's are made once for each set of
+# whatever its parameters are and whatever it gives back: no answer only for a name that
+# is no widget's. A generic widget's are made once for each set of
 # types the program's readings give its type parameters (`types`, `ValuedKey`).
 ?ValuedCases: unbounded fn Lx, Text, [((Text, Ty))], Text -> ?[((Text, Pa, [Cc], [Ex]))]
 fn ?ValuedCases lx, qk, types, stem = match lx.g.vals[qk]:
@@ -927,6 +954,13 @@ fn BlueprintQk lx, e = match e.kind:
     EName n:
         let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
         Or ?q, ""
+    # a module's lowercase declaration written qualified (`@Parts.header`), which the
+    # parser reads as a field (`?QualifiedField`)
+    EField r, sigils, name: match ?QualifiedField lx.g, lx.home, r, sigils, name:
+        ? n:
+            let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
+            Or ?q, ""
+        nil: ""
     otherwise: ""
 
 # A widget function that is a value (gap NS): a supplier, answering an element it is given

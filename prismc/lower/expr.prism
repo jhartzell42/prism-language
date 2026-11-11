@@ -1152,7 +1152,18 @@ fn WidgetNamed lx, qk, span, v, t:
             let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind "widget_parameter_{i}"), (OutRef (Or pts[i], OutUnit))
             let made = Made (Each names, \|name| XClone (XVar name)), gives
             VlOwned (XCall (RefRuntime "std::Rc::new"), [[(XClosure False, pas, (Own made))]]), t
-        otherwise: VlOwned (InternalBug "the widget function {BareName qk} named as a value of a type that is no bounded function's"), t
+        # a widget signed `unbounded fn`, named: a `Start` whose job answers in its first
+        # cycle with the blueprint, as a constructor named where a `Start` is wanted is
+        # (`CtorFn`)
+        OutJobFn a, gives:
+            let pts = match a:
+                OutTuple ts: if taken == 1: [[a]] else: ts
+                otherwise: [[a]]
+            let names = Each (Range0 (Len pts)), \|i| "widget_parameter_{i}"
+            let pa = if (Len pts) == 1: PaTyped (PaBind "widget_parameter_0"), a else: PaTyped (PaTuple (Each names, \|name| PaBind name)), a
+            let made = Made (Each names, \|name| XClone (XVar name)), gives
+            VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure True, [[pa]], (XCall (HelperRef "once_job"), [[(XClosure True, [[]], (XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[(Own made)]]))]]))]]), t), t
+        otherwise: VlOwned (InternalBug "the widget function {BareName qk} named as a value of a type that is no function's"), t
 
 # A widget function: its result a blueprint.
 # A widget with places read as a value (`Lx.valued`): the blueprint that builds its row.
@@ -2164,7 +2175,23 @@ fn MethodFn lx, v, span, t = match t:
         let made = Own (MethodCall lx, env, v, fakes, span, rt)
         let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "a")), (OutRef (Or pts[i], OutUnit))
         VlOwned (XCall (RefRuntime "std::Rc::new"), [[(XClosure False, pas, made)]]), t
-    otherwise: VlOwned (Refusal "the trait method `{BareName v.qk}` as an unbounded function's value"), t
+    # a method signed `unbounded fn` (`Score: unbounded fn a -> Nat`): a `Start` whose
+    # job answers in its first cycle with the method's call, as a constructor named
+    # where a `Start` is wanted is (`CtorFn`)
+    OutJobFn a, rt:
+        let arity = match v.scheme.ty:
+            TyFn ignore, ps, ignore2: Len ps
+            otherwise: 1
+        let pts = match a:
+            OutTuple ts: if arity == 1: [[a]] else: ts
+            otherwise: [[a]]
+        let names = Each (Range0 (Len pts)), \|i| "a{i}"
+        let fakes = Each (Range0 (Len pts)), \|i| Arg(marks="", ?name=nil, value=(Expr(kind=EAbsent, span=Range(start=(4000000000 + i), end=(4000000000 + i)))), span=Range(start=0, end=0))
+        let env = Fold (Range0 (Len pts)), emptyEnv, \|en, i| BindSpan en, (PlaceKey lx, (Range(start=(4000000000 + i), end=(4000000000 + i)))), (VlPlace (XVar (Or names[i], "a")), Owned, (Or pts[i], OutUnit))
+        let made = Own (MethodCall lx, env, v, fakes, span, rt)
+        let pa = if (Len pts) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
+        VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure True, [[pa]], (XCall (HelperRef "once_job"), [[(XClosure True, [[]], (XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[made]]))]]))]]), t), t
+    otherwise: VlOwned (InternalBug "the trait method `{BareName v.qk}` named as a value of a type that is no function's"), t
 
 # The type a call's want of a trait was solved at (its impl note).
 ?SelfAt: unbounded fn Lx, Range, Text -> ?OutTy
