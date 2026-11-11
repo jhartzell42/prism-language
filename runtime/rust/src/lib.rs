@@ -51,7 +51,7 @@ pub use collections::{Array, Cursor, Map, Text};
 pub fn same_keys<K: Ord + Clone, V: Clone, W: Clone>(a: &Map<K, V>, b: &Map<K, W>) -> bool {
     a.same_keys(b)
 }
-pub use cx::{Cx, Done, Later, Node, Runtime};
+pub use cx::{Cx, Done, Node, Runtime};
 pub use doc::{Document, Edit, Patch, Request};
 pub use existential::{Packed, Packing};
 pub use host::{AnswerOf, Blueprint, Entry, Follow, Host, HostDoc, HostOf, HostRow, Level, Link, PerKey, Rows, Scope, Sink, Supplied, Supplier, Watch, bundle_blueprint, dynamic_blueprint, dynamics_pod, dynamics_ports, described_blueprint, element_blueprint, event_blueprint, forward_on_none, never_blueprint, plain_blueprint};
