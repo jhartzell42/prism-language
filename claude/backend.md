@@ -457,8 +457,24 @@ it make every program an interpreter run, and every type mistake a runtime fault
   made in the build) after a gappy generation built after the node has no number yet;
   that is refused loudly. A generation built early gives its gap as a local
   (`{name}_gap_now`).
-- A clause that calls its own widget is lowered level by level, to the sixteen levels an
-  inlined widget is (`TooDeep`: a tree deeper than that faults at its build).
+- **A widget of several clauses that calls itself** (plain parameters, no result, its
+  places the World's) is as deep as its data (`SharedClauseLine`). The outermost call is
+  lowered as any; a call inside the widget's own clause makes the clauses once more as
+  rows shared by every further call (`Lx.shared`): one row type per clause, numbered
+  from 0 (`zeroBased`), built with `base`, holding no block, each with `built()`, how
+  many places it built (its positions less what its own generations left unbuilt).
+- Such a call is a transparent generation `wideGeneration` (2^20) positions wide in its
+  block's numbering, gappy, its gap what the row did not build of them, so every
+  position after it is counted as built by the same `place` and `seat` as any gappy
+  generation's. A call builds fewer than 2^20 places.
+- A generation that wide (one that holds such a call is too) has no arm per position:
+  the node's last answer arm takes any path (`WideForward`), finds the generation whose
+  positions the first segment is among (the prelude's `within_positions`) and hands the
+  answer on, to a shared row with the position counted from the generation's first
+  (`rebased`, `GenDef.rebased`).
+- Any other widget that calls itself (a `$`, event or blueprint parameter, a result, one
+  clause, a hosted scope) is lowered level by level, to the sixteen levels an inlined
+  widget is (`TooDeep`: a tree deeper than that faults at its build).
 
 ## Hosting
 

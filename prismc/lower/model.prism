@@ -591,6 +591,10 @@ type GenDef = record:
     # the `width` positions the chosen row left unbuilt in `{name}_gap`, and the places
     # after it stand that many positions lower (`PlaceNumber`, the node's `place`).
     gappy: Bool
+    # A generation of a widget that calls itself (`SharedClauseLine`): its rows are one
+    # type per clause shared by every call, numbered from 0, so the node hands an answer
+    # on with its position counted from the generation's first (`WideForward`).
+    rebased: Bool
 derive ^Eq, ^Show
 
 # A `for` builder (claude/backend.md, "Dynamic structure"): a map of rows, each a node of

@@ -130,6 +130,10 @@ type Lx = record:
     # The expressions whose `Error` value is the failure of the `~T` it meets, with that
     # type, by place (the typed output's `faults`).
     faults: (Text ==> Ty)
+    # The widgets that call themselves whose rows are being lowered around this place
+    # (`SharedClauseLine`): by widget, each clause's row, the pattern and conditions that
+    # choose it, and what its `build` is passed.
+    shared: (Text ==> [((Text, Pa, [Cc], [Ex]))])
 derive ^Eq, ^Show
 
 # A key into the typed tables: the file and the range.
