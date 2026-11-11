@@ -1,0 +1,12 @@
+# Derived by hand from Semantics ch. 7 (a cycle point sits "at every call of an unbounded function from an unbounded function"): entering `Through` and its call of `Empty` are two cycles, as ts-ch05-color-function-in-unbounded-function-result has an entry and one call. 0 + 5 at tick 2. Never run.
+test it_runs
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 2 ticks, 1 to 2
+
+tick 2
+  changed:
+    1: Ui.Label(text="5")
