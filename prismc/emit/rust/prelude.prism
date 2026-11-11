@@ -100,6 +100,34 @@ pub enum PreludeTurn<B> {
     Done(B),
 }
 
+impl<B: Show> Show for PreludeTurn<B> {
+    fn show(&self, p: &mut Printer) {
+        match self {
+            PreludeTurn::More => p.choice("More", &[]),
+            PreludeTurn::Done(b) => p.choice("Done", &[b as &dyn Show]),
+        }
+    }
+}
+
+impl<B: ToPod> ToPod for PreludeTurn<B> {
+    fn to_pod(&self) -> Pod {
+        match self {
+            PreludeTurn::More => Pod::name("More"),
+            PreludeTurn::Done(b) => Pod::Choice("Done".into(), vec![b.to_pod()]),
+        }
+    }
+}
+
+impl<B: FromPod> FromPod for PreludeTurn<B> {
+    fn from_pod(p: &Pod) -> ::std::result::Result<Self, Fault> {
+        match p.structure() {
+            Pod::Choice(ctor, args) if &**ctor == "More" && args.is_empty() => Ok(PreludeTurn::More),
+            Pod::Choice(ctor, args) if &**ctor == "Done" && args.len() == 1 => Ok(PreludeTurn::Done(B::from_pod(&args[0])?)),
+            other => Err(Fault::answer(format!("expected a Turn, got {other:?}"))),
+        }
+    }
+}
+
 /// `tag Prelude.Unwrap of Element !a: value: !~a`. The prelude's element tags are variants
 /// of `crate::Elem` and `crate::Answer` like any program's (a hosted child may emit them).
 #[derive(Clone, PartialEq, Eq)]

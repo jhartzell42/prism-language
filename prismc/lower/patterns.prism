@@ -142,7 +142,7 @@ fn CtorPat lx, n, ps, ty, mode, fresh:
         ? qk: match lx.g.ctors[qk]:
             ? c:
                 let owner = Or lx.g.types[c.owner], dummyTyInfo
-                let tyPath = RefIn lx, owner.home, (Camel (BareName c.owner))
+                let tyPath = RefIn lx, owner.home, (TypeItemName c.owner)
                 let args = match Peel ty:
                     TyCon ignore, xs: xs
                     otherwise: [[]]
@@ -197,7 +197,7 @@ fn RecordPat lx, n, fps, rest, ty, mode, fresh:
     else: match lx.g.ctors[qk]:
         ? c:
             let owner = Or lx.g.types[c.owner], dummyTyInfo
-            let tyPath = RefIn lx, owner.home, (Camel (BareName c.owner))
+            let tyPath = RefIn lx, owner.home, (TypeItemName c.owner)
             match owner.body:
                 # `Box(..)` on a choice's positional case: that case, every field ignored
                 BChoice cases if (Len fps) == 0: RestCasePat c, cases, tyPath
