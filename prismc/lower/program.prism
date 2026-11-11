@@ -377,7 +377,7 @@ fn InstanceKey d = match d.body:
 # widget's own, an impl's for its method, the trait's parameter for a default.
 DefinitionRigids: unbounded fn Lx, Def -> [Text]
 fn DefinitionRigids lx, d = match d.body:
-    DbMethod ignore, cls, im: SortTexts (UnionTexts im.qs, (MethodOwnRigids lx, cls, (TraitMethodKey lx, cls, d.name)))
+    DbMethod ignore, cls, im: SortTexts (UnionTexts im.qs, (Each (MethodOwnRigids lx, cls, (TraitMethodKey lx, cls, d.name)), \|q| MethodOwnName lx, cls, (TraitMethodKey lx, cls, d.name), im, q))
     DbDefault ignore, cls: match lx.g.traits[cls]:
         ? tr: SortTexts (UnionTexts [[tr.param]], (MethodOwnRigids lx, cls, d.qk))
         nil: [[]]
@@ -492,6 +492,13 @@ MethodOwnRigids: unbounded fn Lx, Text, Text -> [Text]
 fn MethodOwnRigids lx, cls, methodQk = match ((lx.g.traits[cls], lx.g.vals[methodQk])):
     ((? tr, ? v)): SortTexts (Filter (RigidsIn v.scheme.ty), \|q| q != tr.param)
     otherwise: [[]]
+
+# The name one of them has in an impl's method: its own, or one apart from the impl's
+# type parameter of the same name (`ApartName`, as the checker read the method's body).
+MethodOwnName: unbounded fn Lx, Text, Text, ImplInfo, Text -> Text
+fn MethodOwnName lx, cls, methodQk, im, q = match ((lx.g.traits[cls], lx.g.vals[methodQk])):
+    ((? tr, ? v)): ApartName q, im.qs, (Filter v.scheme.qs, \|own| own != tr.param)
+    otherwise: q
 
 # The definitions whose instantiations decide those of `relevant`: each generic
 # definition with a use that may instantiate one of them, and so on to the end (the
@@ -673,7 +680,8 @@ fn MethodTargets lx, cls, methodQk, ty, ownTypes = Fold (Or lx.g.impls[cls], [[]
     ? matched:
         let taken = Each (SortTexts im.qs), \|q| ((q, (Or matched[q], TyErr)))
         let written = Filter lx.g.defs, \|d| (IsMethodOf d, im) and (TraitMethodKey lx, cls, d.name) == methodQk
-        let methods = Fold written, acc, \|more, d| Push more, (((InstanceKey d), (InstanceTypes taken, ownTypes)))
+        let ownThere = Each ownTypes, \|((q, t))| (((MethodOwnName lx, cls, methodQk, im, q), t))
+        let methods = Fold written, acc, \|more, d| Push more, (((InstanceKey d), (InstanceTypes taken, ownThere)))
         if (Len written) > 0: methods else: match lx.g.traits[cls]:
             ? tr: if HasText tr.defaults, methodQk: Push methods, ((methodQk, (InstanceTypes [[((tr.param, ty))]], ownTypes))) else: methods
             nil: methods
