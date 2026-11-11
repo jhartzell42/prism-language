@@ -466,7 +466,13 @@ fn NewWx lx, name, fields, inits, moves, getters, dynReads, taken, inlining, ?ho
     let hostedInits = match ?hostedBy:
         ? ignore: [[(("enclosing", (XVar "enclosing")))]]
         nil: [[]]
-    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, ?valuedAs=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], bundles=[[]], scopes=[[]], ?hostedBy=?hostedBy, rootDyns=[[]], genOf="", rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=[[]], dynAnswers=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]], lateAsks=[[]], lateGens=False, lateRowGens=[[]], genPhase=0, numberedBy=[[]], unplacedHosts=[[]], wholeResultAt="", earlyChoices=[[]], deferredGens=[[]], lateHosts=[[]], lateFirsts=[[]], lateStarts=[[]], latePlaces=[[]], lateNumbered=[[]], baseLate=False)
+    # a hosted row names its places by paths relative to itself; its host knows them by
+    # their paths under the host's child: the row's `build` first takes the host as the
+    # row reaches it (`prism_rtl::host_under`, the row's path before every place it names)
+    let hostedLets = match ?hostedBy:
+        ? ignore: [[(DoLet (PaBind "enclosing"), (XCall (RefRuntime "prism_rtl::host_under"), [[(XVar "enclosing"), (XRef (XVar "path"))]]))]]
+        nil: [[]]
+    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=hostedLets, build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, ?valuedAs=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], bundles=[[]], scopes=[[]], ?hostedBy=?hostedBy, rootDyns=[[]], genOf="", rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=[[]], dynAnswers=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]], lateAsks=[[]], lateGens=False, lateRowGens=[[]], genPhase=0, numberedBy=[[]], unplacedHosts=[[]], wholeResultAt="", earlyChoices=[[]], deferredGens=[[]], lateHosts=[[]], lateFirsts=[[]], lateStarts=[[]], latePlaces=[[]], lateNumbered=[[]], baseLate=False)
 
 # A name not yet taken in the node: `base`, else `base_2`, `base_3`.
 FreshName: fn Wx, Text -> ((Text, Wx))

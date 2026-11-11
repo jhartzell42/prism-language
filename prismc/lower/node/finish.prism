@@ -126,7 +126,9 @@ fn RequestCode sk, pos, field, y:
     # a hosted place's request goes to its host: out with a forwarded element, else nowhere
     if Emits sk.wx, pos: [[DoExpr (XMethod (XCx), "request", [[(PlaceAt sk.wx, "self", pos), fieldEx, (XMethod y, "to_pod", [[]])]])]]
     # the host's answer first, then kept: `cx` is borrowed once at a time
-    else: [[(DoLet (PaBind "requested"), (XMethod (HostFieldEx sk.wx, pos), "request", [[(XRef (PlaceAt sk.wx, "self", pos)), fieldEx, (XMethod y, "to_pod", [[]]), XCx]])), (DoExpr (XMethod (XCx), "keep", [[(XVar "requested")]]))]]
+    # (the host of the block's own scope is a `Host`, whose method is `request`; a row's
+    # enclosing host is a `HostOf`, whose method is `request_from`)
+    else: [[(DoLet (PaBind "requested"), (XMethod (HostFieldEx sk.wx, pos), (if pos.scope == 0: "request_from" else: "request"), [[(XRef (PlaceAt sk.wx, "self", pos)), fieldEx, (XMethod y, "to_pod", [[]]), XCx]])), (DoExpr (XMethod (XCx), "keep", [[(XVar "requested")]]))]]
 
 # What a firing does at its sink.
 SinkCode: fn Sinks, Sk, Ex -> [Do]
