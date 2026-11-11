@@ -875,10 +875,11 @@ pub fn described_blueprint<E: Level + Eq, A: AnswerOf<E>>(d: &Described<E>) -> B
             Scope::World => {
                 let element = identity.level_pod(cx);
                 let first = cx.first_value(&element).map(|v| A::decode_first(&identity, &v)).transpose()?;
+                // the level's update event fires during propagation, where a read still gives
+                // the value before the tick: the node is marked, and its patch reads the level
                 let h = d.level.updates.subscribe(Rc::new(move |_: &(), cx: &mut Cx| {
                     if let Some(n) = weak.upgrade() {
-                        let now = n.level.sample(cx).level_pod(cx);
-                        cx.changed(n.at.clone(), now);
+                        cx.dirty(n);
                     }
                     Ok(())
                 }));
@@ -953,6 +954,15 @@ impl<E: Level + Eq, A: AnswerOf<E>> Node for Placed<E, A> {
     /// tag's first-value case carries (`decode_first`; any other tag's is its answer).
     fn push(self: Rc<Self>, _element: &Pod, v: &Pod, cx: &mut Cx) -> Done {
         (self.sink)(&A::decode_first(&self.element, v)?, cx)
+    }
+    /// The World's place after its level's update event fired: the level at the read
+    /// point, sent again (the diff decides whether it moved).
+    fn patch(self: Rc<Self>, cx: &mut Cx) -> Done {
+        if self.entry.borrow().is_none() {
+            let now = self.level.sample(cx).level_pod(cx);
+            cx.changed(self.at.clone(), now);
+        }
+        Ok(())
     }
     fn leave(self: Rc<Self>, cx: &mut Cx) -> Done {
         if let Some(h) = self.handle.take() {

@@ -309,6 +309,13 @@ fn IsLateExpr lx, menv, e, depth = match e.kind:
                     otherwise:
                         let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
                         match ?q:
+                            # `@Element e` of an element value (a parameter, a call's
+                            # result) is its blueprint applied (`ElementCallLine`,
+                            # `AppliedBlueprintLine`): a plain answer is known once the
+                            # blueprint is built, after the node
+                            ? "Prelude.@Element": match args[0]:
+                                ? a: (not (IsTagApplication lx, a.value)) and (not (IsSome (?ElementLet menv, a.value))) and (IsPlainResult lx, e) and not (IsBundle (LineOutFull lx, e))
+                                nil: False
                             ? q: match lx.g.vals[q]:
                                 ? v if IsRecursingCall lx, q, v, e: True
                                 ? v: match ?OneBody lx, q:

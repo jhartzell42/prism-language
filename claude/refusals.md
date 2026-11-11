@@ -314,7 +314,8 @@ reaches it.
   `if` whose arms do not all end on a plain result, a `rebuild` that hands back no
   dynamic whose generation is a clause widget ending on a plain result, and a late plain
   result bound where its block is not split (`IsLateExpr` follows a chain of sixteen
-  widgets; a longer one would reach it).
+  widgets; a longer one would reach it). `@Element e` of an element value that answers
+  plain data is late (sem-ch08-element-parameter-plain-result reached the guard).
 - lower/expr.prism:667 a supplier's dynamic answer of no known form. No program reaches
   this: `?DynamicAnswer` takes every dynamic but `$ plain`, which the line above takes.
   The nearest program, `@ $~Shout $motd`, passes: sem-ch09-host-dynamic-answer-call.
