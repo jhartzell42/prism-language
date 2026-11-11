@@ -1092,7 +1092,11 @@ fn NameValueOf lx, env, n, span:
         ? (BnDyn x, ignore, dt): VlOwned x, dt
         ? (BnEv ignore, et): match env.names["{nkey}#port"]:
             ? (BnLocal pf, ignore, ignore): VlOwned (XCall (RefRuntime "prism_rtl::Event::of"), [[XRef pf]]), (OutEvent (OutTyOf lx, (Peel (Peel (TypeAt lx, span)))))
-            otherwise: VlOwned (Refusal "an event read as a value"), et
+            otherwise: match env.names["#whole#{nkey}"]:
+                # an event parameter of a widget that calls itself: the caller's event
+                # the shared row holds (`LiveParams`)
+                ? (BnLocal held, mode, (OutEvent heldTy)): LocalPlace held, mode, (OutEvent heldTy)
+                otherwise: VlOwned (Refusal "an event read as a value"), et
         # a named bundle that is one value of the build (`BundleValue`)
         ? (BnParts ignore): match env.names["{nkey}#value"]:
             ? (BnLocal rs, mode, lt): LocalPlace rs, mode, lt

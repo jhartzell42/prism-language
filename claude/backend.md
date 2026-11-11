@@ -944,7 +944,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
     build makes to the event's port (`subscribe_row`).
   - The value is bound under `#whole#{name}`: a call inside hands it on as it is
     (`SharedScrutinee`), and an arm's row of the row's reads it through its parent
-    (`WholeOfBlock`).
+    (`WholeOfBlock`). An event parameter read as a value in the block (`!Fired ((!go,
+    n))`, handed whole to a function) is that `Event` (`NameValueOf`).
 - In a hosted scope a shared row is given its host (`enclosing`, as any hosted row) and
   `moved`, a `prism_rtl::Moved` made of the node that builds it (`moved_by`: that node's
   `{host}_moved` or `document_moved`): the row holds no block, so its `document_moved`
