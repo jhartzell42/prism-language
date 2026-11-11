@@ -115,11 +115,67 @@ fn RootResultOf wx, res = match res:
 BlockInto: unbounded fn Wx, Env, Env, Block -> Wx
 fn BlockInto wx, benv0, menv0, b:
     let ((benv, menv)) = WithElementLets wx.lx, benv0, menv0, b
+    let env = WithLocalWidgets menv, b
+    let wxe = update wx:
+        &_.earlyChoices <= Fold (Range0 (Len b.stmts)), &_.earlyChoices, \|acc, i| if IsEarlyChoiceAt wx.lx, env, b, i: AddText acc, (EarlyChoiceKey (Or b.stmts[i], dummyStmtL)) else: acc
     match ?LateLineAt wx.lx, menv, b, 16:
-        ? k: SplitBlockInto wx, benv, menv, b, k
+        ? k: SplitBlockInto wxe, benv, menv, b, k
         nil:
-            let ((wx2, ignore, ignore)) = LinesInto wx, benv, menv, b, False
+            let ((wx2, ignore, ignore)) = LinesInto wxe, benv, menv, b, False
             wx2
+
+# A building `match` whose plain result a line above it takes as a value at the build (a
+# widget's plain argument, a builder's rows; Semantics ch. 4: the order of a group's
+# lines decides positions and nothing else): its generation is built early, in the
+# block's own build before the node (`EarlyChoiceLine`), so the result is a value of the
+# build like any other and the block is not split at the line. That works where the
+# arms read nothing of the block (the node does not exist yet when the arm is built) and
+# no arm has a guard; any other such line is late, and the line above that takes its name
+# is refused there (`BindLate`).
+IsEarlyChoiceAt: unbounded fn Lx, Env, Block, Nat -> Bool
+fn IsEarlyChoiceAt lx, menv, b, i = match (Or b.stmts[i], dummyStmtL).kind:
+    SBind p, e, nil: match (Ungrouped e).kind:
+        EMatch ignore, arms:
+            let names = Filter (PatternNames p), \|n| not (IsTimeName n)
+            let plain = (IsPlainResult lx, e) and not (IsBundle (LineOutFull lx, e))
+            let unguarded = Fold arms, True, \|ok, a| ok and a.?guard == nil
+            let blockDefs = Fold b.stmts, [[]], \|acc, st| UnionTexts acc, (Check.Blocks.GroupDefs st)
+            let closed = Fold arms, True, \|ok, a|
+                let own = match a.?pattern:
+                    ? q: PatternNames q
+                    nil: [[]]
+                ok and Fold (FreeReads (BlockExprs a.body), [[((own, a.span))]]), True, \|ok2, n| ok2 and (not (HasKey menv.names, n)) and not (HasText blockDefs, n)
+            let taken = Fold (Range0 i), False, \|f, j| f or TakesAtBuild lx, (Or b.stmts[j], dummyStmtL), names
+            plain and unguarded and closed and taken
+        otherwise: False
+    otherwise: False
+
+# The key an early building `match` line is known by (`Wx.earlyChoices`).
+EarlyChoiceKey: fn Stmt -> Text
+fn EarlyChoiceKey s = match s.kind:
+    SBind ignore, e, nil: InitKey (Ungrouped e)
+    otherwise: ""
+
+# Whether a line takes one of some names as a value at the build: a line that builds and
+# is no element's (an element's field is live over a late name's getter, `ElementLine`).
+TakesAtBuild: unbounded fn Lx, Stmt, [Text] -> Bool
+fn TakesAtBuild lx, st, names:
+    let ?line = match st.kind:
+        SBind ignore, e, nil: ? e
+        SIgnore e: ? e
+        SExpr e: ? e
+        otherwise: nil
+    match ?line:
+        ? e:
+            let tagName = match (Ungrouped e).kind:
+                ECall c, ignore, ignore, ignore: TagNameOf lx, c
+                EName ignore: TagNameOf lx, (Ungrouped e)
+                otherwise: ""
+            let placed = match lx.g.tags[tagName]:
+                ? tg: tg.kind == "Element"
+                nil: False
+            (not placed) and Fold (ReadsOfLine st), False, \|f, n| f or HasText names, n
+        nil: False
 
 # A block's `let`s of an element tag applied (`let made = Ui.Label(..)`; Semantics ch. 8,
 # "Elements and the element statement": the `let` is a value and `@Element made` a
@@ -213,7 +269,7 @@ fn ?LateLineAt lx, menv, b, depth:
     Fold (Range0 (Len b.stmts)), nil, \|?found, i| match ?found:
         ? k: ? k
         nil: match (Or b.stmts[i], dummyStmtL).kind:
-            SBind ignore, e, nil: if IsLateExpr lx, env, e, depth: ? i else: nil
+            SBind ignore, e, nil: if (IsLateExpr lx, env, e, depth) and not (IsEarlyChoiceAt lx, env, b, i): ? i else: nil
             otherwise: nil
 
 # An environment with a block's own local widgets (`@line:` and its block), as `PreBind`
@@ -1802,7 +1858,7 @@ fn BuildLine wx, benv, menv, e, ?bound:
         # a building `if` with no `else` builds its arm or nothing (ruling IE2): the other
         # arm is an empty block, and the block's later places count from what was built
         EIf c, thenB, nil: IfGenLine wx, menv, c, thenB, (Block(stmts=[[]], inline=True, span=e.span)), e
-        EMatch s, arms: MatchGenLine wx, menv, s, arms, e
+        EMatch s, arms: if HasText wx.earlyChoices, (InitKey e): EarlyChoiceLine wx, benv, menv, s, arms, e else: MatchGenLine wx, menv, s, arms, e
         otherwise: match Peel full:
             TyElem ignore, ignore: ElementLine wx, benv, menv, e, ?bound
             TyAt ignore, ignore: WidgetLine wx, benv, menv, e, ?bound

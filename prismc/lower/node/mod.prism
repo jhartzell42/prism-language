@@ -297,6 +297,9 @@ type Wx = record:
     # expression (`ResultKey`), which is lowered as one value, its events and dynamics
     # whole (`WholeResultOf`); "" otherwise.
     wholeResultAt: Text
+    # The building `match` lines of the node's blocks that are built early, before the
+    # node (`EarlyChoiceLine`), by their expressions' places (`InitKey`).
+    earlyChoices: [Text]
 
 # A flatten: `$a <- @Flatten $$x` over a `rebuild`'s dynamic `$$x` (Semantics ch. 7,
 # "`rebuild`, `@Switch` and `@Flatten` across ticks"), or a `for` row's `$v` over
@@ -382,7 +385,7 @@ fn NewWx lx, name, fields, inits, moves, getters, dynReads, taken, inlining, ?ho
     let hostedInits = match ?hostedBy:
         ? ignore: [[(("enclosing", (XVar "enclosing")))]]
         nil: [[]]
-    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], ?hostedBy=?hostedBy, rootDyns=[[]], genOf="", rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=[[]], dynAnswers=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]], wholeResultAt="")
+    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], ?hostedBy=?hostedBy, rootDyns=[[]], genOf="", rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=[[]], dynAnswers=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]], wholeResultAt="", earlyChoices=[[]])
 
 # A name not yet taken in the node: `base`, else `base_2`, `base_3`.
 FreshName: fn Wx, Text -> ((Text, Wx))
