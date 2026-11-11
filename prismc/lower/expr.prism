@@ -662,22 +662,40 @@ fn PlainValueByKind lx, env, e:
 
 # `any x` (Type System ch. 5, "Existentials are dictionaries"): the value with the impls of
 # the existential's bounds at its type, taken while its type is known; an `any ^Show` is
-# a `dyn Show`. A bound with no impl in the runtime's packing (a program's own trait) is
-# refused.
+# a `dyn Show`. `^Show`, `^Eq` and `^Ord` are the runtime's packing's own; a program's
+# trait gives its dictionary at the value's type (`PackedDef`), and so does each trait
+# above it. A bound with neither (another trait of the prelude; a program's trait with a
+# method that cannot be asked of a packed value, `?PackedDefOf`) is refused.
 AnyValue: unbounded fn Lx, Env, Expr, Ty -> Vl
 fn AnyValue lx, env, x, t:
     let v = Own (ValueOf lx, env, x)
+    let packedTy = OutNamed (RefRuntime "prism_rtl::Packed"), [[]]
     match Peel t:
         TyAny bounds:
             if IsShowOnly bounds: VlOwned (XCall (RefRuntime "std::Rc::new"), [[v]]), OutShowAny
             else:
-                let names = Each bounds, \|b| BareName b
-                let others = Filter names, \|b| not (HasText [["Show", "Eq", "Ord"]], b)
-                if (Len others) > 0: VlOwned (Refusal "an existential of `^{Or others[0], ""}`: a packed value takes `^Eq`, `^Ord` and `^Show`"), (OutNamed (RefRuntime "prism_rtl::Packed"), [[]])
+                let all = BoundsClosed lx, bounds
+                let refused = Fold all, "", \|found, b| if found != "": found else: if IsPackingBound b: "" else: match lx.g.traits[b]:
+                    ? tr: if (?PackedDefOf lx, tr) == nil: "an existential of `^{BareName b}`: a method with a type parameter of its own, or one that takes the trait's type inside another type or in no parameter, cannot be asked of a hidden value" else: ""
+                    nil: "an existential of `^{BareName b}`: a packed value takes `^Eq`, `^Ord`, `^Show` and the program's traits"
+                if refused != "": VlOwned (Refusal refused), packedTy
                 else:
-                    let packing = Fold names, (XCall (RefRuntime "prism_rtl::Packed::of"), [[v]]), \|acc, b| XMethod acc, "with_{Lower b}", [[]]
-                    VlOwned (XMethod packing, "packed", [[]]), (OutNamed (RefRuntime "prism_rtl::Packed"), [[]])
+                    let packing = Fold all, (XCall (RefRuntime "prism_rtl::Packed::of"), [[v]]), \|acc, b| if IsPackingBound b: XMethod acc, "with_{Lower (BareName b)}", [[]] else: match lx.g.traits[b]:
+                        ? tr: XMethod acc, "with_dictionary", [[(XPath (PackedDictionaryOf lx, tr))]]
+                        nil: acc
+                    VlOwned (XMethod packing, "packed", [[]]), packedTy
         otherwise: VlOwned (XCall (RefRuntime "std::Rc::new"), [[v]]), OutShowAny
+
+# A bound the runtime's packing takes by itself.
+IsPackingBound: fn Text -> Bool
+fn IsPackingBound b = HasText [["Prelude.Show", "Prelude.Eq", "Prelude.Ord", "Show", "Eq", "Ord"]], b
+
+# An existential's bounds with every trait above them (a trait's impl needs its
+# supertraits' impls), each once.
+BoundsClosed: fn Lx, [Text] -> [Text]
+fn BoundsClosed lx, bounds = Fold (Range0 8), bounds, \|acc, ignore| Fold acc, acc, \|a, b| match lx.g.traits[b]:
+    ? tr: UnionTexts a, tr.supers
+    nil: a
 
 # `@ x` as a value (a supplier's arm; pick HO): a blueprint with no places whose output is
 # `x`, typed as the tag's variant of `crate::Answer`, so the arm must stand under a tag

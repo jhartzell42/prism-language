@@ -73,6 +73,23 @@ it make every program an interpreter run, and every type mistake a runtime fault
   total); generics → Rust generics bounded by `Eq` and `Ord` for `^Eq` and `^Ord`,
   monomorphized by rustc (doubt MO).
 - An existential `any ^Show` → `Rc<dyn Show>`.
+- Any other existential → `prism_rtl::Packed`: the value behind `Rc<dyn Any>` and the
+  impls its packing found. `^Show`, `^Eq`, `^Ord` are the packing's own (`with_show`,
+  ..). A program's trait is a dictionary the compiler emits beside the trait (`ItPacked`,
+  `PackedDef`): `Weighed_t_packed`, a struct of one function per method over packed
+  values; `weighed_t_packed_of`, which makes it at a type from a value of it (each entry
+  reads the hidden values with `Packed::held::<T>()`, calls the impl at `T`, and hides a
+  result of the trait's type again with `Packed::repacked`); and `impl Weighed_t for
+  Packed`, each method asking the dictionary found in its first hidden argument
+  (`Packed::dictionary::<Weighed_t_packed>()`). `any x` packs with
+  `.with_dictionary(weighed_t_packed_of)` per program trait among its bounds and the
+  traits above them, so an impl of any head, generic ones too, is kept: the dictionary is
+  made where the value's type is known. A trait has a dictionary when each method has no
+  type parameter of its own, takes the trait's type as at least one whole parameter and
+  names it nowhere else but as its whole result (`?PackedDefOf`). In C++ the dictionary
+  holds function pointers, `weighed_t_packed_of` is a function object whose call is a
+  template among the generic definitions, and the impl is an overload in the trait's
+  namespace.
 - An element tag → a struct per tag holding its `Level` fields, with `ToPod`, and the Rust
   type of its output.
 - A row kind other than `Fault` (`type Draw = row`) → an `enum` with a variant per tag of

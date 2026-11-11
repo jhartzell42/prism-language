@@ -472,10 +472,16 @@ fn ModDefOf lx0, m, roots, info, mods:
     let types = Fold (Values lx.g.types), [[]], \|acc, ti| if ti.home == m: Append acc, (TyDefs lx, ti) else: acc
     let tags = Fold (Values lx.g.tags), [[]], \|acc, tg| if tg.home == m and tg.kind != "Prelude.Fault": Append acc, (TagItems lx, tg) else: acc
     let defs = Fold lx.g.defs, [[]], \|acc, d| if d.home == m: Append acc, (DefItems (InModule lx, d.file, m), d, roots) else: acc
-    let traits = Fold (Values lx.g.traits), [[]], \|acc, tr| if tr.home == m: Push acc, (ItTrait (TraitDefOf lx, tr)) else: acc
+    let traits = Fold (Values lx.g.traits), [[]], \|acc, tr| if tr.home == m: Append (Push acc, (ItTrait (TraitDefOf lx, tr))), (PackedItems lx, tr) else: acc
     let impls = Fold (Values lx.g.impls), [[]], \|acc, ims| Fold ims, acc, \|a, im| if im.home == m and not im.derived: Push a, (ItImpl (ImplDefOf (InModule lx, im.file, m), im)) else: a
     let uses = Filter (Each mods, \|o| RustModName o), \|o| o != (RustModName m)
     ModDef(name=(RustModName m), prism=m, path=path, uses=uses, complete=[[]], declared=[[]], typesWith=[[]], items=(Append (Append (Append (Append types, tags), traits), impls), defs))
+
+# A trait's dictionary and impl for an existential, when it has one (`?PackedDefOf`).
+PackedItems: unbounded fn Lx, TraitInfo -> [Item]
+fn PackedItems lx, tr = match ?PackedDefOf lx, tr:
+    ? pd: [[ItPacked pd]]
+    nil: [[]]
 
 # A definition's items: a function (and its job when `@Run` cycles it), a node for a root
 # widget, a getter for a `let`.

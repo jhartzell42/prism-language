@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 5, "Existentials are dictionaries" (the value keeps the impl of the type it hides): `Total` of two hidden 3s is 6, of two hidden "ab"s their lengths' sum, 4.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="6 4")

@@ -260,13 +260,23 @@ public:
             cmp_ = [](const void* x, const void* y) -> std::strong_ordering { return *static_cast<const T*>(x) <=> *static_cast<const T*>(y); };
             return std::move(*this);
         }
-        Packed packed() && { return Packed(std::move(value_), &typeid(T), show_, eq_, cmp_); }
+        /// A program's trait: its dictionary at the value's type, which `make` gives from
+        /// the value (the emitted `.._packed_of`).
+        template <class F>
+        Packing&& with_dictionary(F make) && {
+            auto made = make(*static_cast<const T*>(value_.get()));
+            using D = decltype(made);
+            dictionaries_.emplace_back(&typeid(D), std::make_shared<const D>(std::move(made)));
+            return std::move(*this);
+        }
+        Packed packed() && { return Packed(std::move(value_), &typeid(T), show_, eq_, cmp_, std::move(dictionaries_)); }
 
     private:
         std::shared_ptr<const void> value_;
         void (*show_)(const void*, Printer&) = nullptr;
         bool (*eq_)(const void*, const void*) = nullptr;
         std::strong_ordering (*cmp_)(const void*, const void*) = nullptr;
+        std::vector<std::pair<const std::type_info*, std::shared_ptr<const void>>> dictionaries_;
     };
 
     template <class T>
@@ -287,10 +297,31 @@ public:
         return cmp_(value_.get(), o.value_.get());
     }
 
+    /// The hidden value at its own type: a dictionary's function reads it at the type the
+    /// dictionary was made at.
+    template <class T>
+    const T& held() const {
+        if (*type_ != typeid(T)) panic("two existentials of different types met (the checker unpacks each into a type of its own)");
+        return *static_cast<const T*>(value_.get());
+    }
+    /// The dictionary of a program's trait, by the dictionary's type.
+    template <class D>
+    const D& dictionary() const {
+        for (const auto& d : dictionaries_)
+            if (*d.first == typeid(D)) return *static_cast<const D*>(d.second.get());
+        panic("an existential asked for a trait it was not packed with");
+    }
+    /// A value of the hidden type a method gave back, hidden again with this one's impls.
+    template <class T>
+    Packed repacked(T value) const {
+        return Packed(std::make_shared<const T>(std::move(value)), &typeid(T), show_, eq_, cmp_, dictionaries_);
+    }
+
 private:
     Packed(std::shared_ptr<const void> v, const std::type_info* type, void (*show)(const void*, Printer&),
-           bool (*eq)(const void*, const void*), std::strong_ordering (*cmp)(const void*, const void*))
-        : value_(std::move(v)), type_(type), show_(show), eq_(eq), cmp_(cmp) {}
+           bool (*eq)(const void*, const void*), std::strong_ordering (*cmp)(const void*, const void*),
+           std::vector<std::pair<const std::type_info*, std::shared_ptr<const void>>> dictionaries)
+        : value_(std::move(v)), type_(type), show_(show), eq_(eq), cmp_(cmp), dictionaries_(std::move(dictionaries)) {}
     void same(const Packed& o) const {
         if (*type_ != *o.type_) panic("two existentials of different types met (the checker unpacks each into a type of its own)");
     }
@@ -299,6 +330,7 @@ private:
     void (*show_)(const void*, Printer&);
     bool (*eq_)(const void*, const void*);
     std::strong_ordering (*cmp_)(const void*, const void*);
+    std::vector<std::pair<const std::type_info*, std::shared_ptr<const void>>> dictionaries_;
 };
 
 }  // namespace prism_rtl
