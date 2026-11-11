@@ -1,0 +1,13 @@
+# The tests of sem-ch09-host-nested-request.
+emit Ui.* | Test.*
+use App.*
+
+test one_host, @inner:
+    build
+    click at 0
+        => requested Test.Log, "went"
+
+test two_hosts, @page:
+    build
+    click at 0/[0]/0
+        => requested Test.Log, "went"
