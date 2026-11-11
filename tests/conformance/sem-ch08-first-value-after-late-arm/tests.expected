@@ -1,0 +1,43 @@
+# Derived by hand from ruling TC (places counted as built: the loud arm builds place 0, so the watch is 1, its label 2 and the host 3; the soft arm builds none, so they are 0, 1 and 2), Semantics ch. 8 ("A new place's first value"; pushes are keyed by the element's value) and ch. 9 (a forwarding host's places stand at pos/[p]/0; a hosted place's first value and pushes reach it with no delay).
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="x")
+    1: Fs.Contents(path="motd")
+    2: Ui.Label(text="10: top")
+    3/[0]/0: Fs.Contents(path="inner")
+    3/[1]/0: Ui.Label(text="under")
+
+tick 1
+  in:
+    Fs.Contents(path="inner") = ~ Contents(text="moved")
+  changed:
+    3/[1]/0: Ui.Label(text="moved")
+
+tick 2
+  in:
+    Fs.Contents(path="motd") = ~ Contents(text="new")
+  changed:
+    2: Ui.Label(text="10: new")
+
+test soft
+
+tick 0
+  added:
+    0: Fs.Contents(path="motd")
+    1: Ui.Label(text="20: top")
+    2/[0]/0: Fs.Contents(path="inner")
+    2/[1]/0: Ui.Label(text="under")
+
+tick 1
+  in:
+    Fs.Contents(path="inner") = ~ Contents(text="moved")
+  changed:
+    2/[1]/0: Ui.Label(text="moved")
+
+tick 2
+  in:
+    Fs.Contents(path="motd") = ~ Contents(text="new")
+  changed:
+    1: Ui.Label(text="20: new")
