@@ -1,0 +1,86 @@
+# probe 2: the counter document
+emit rest | Ui.* | Count.* | View.* | CounterSeat.*
+use Documents.*
+
+type Presser = choice:
+    Presser Text
+derive ^Eq, ^Ord, ^Show
+
+type Viewer = choice:
+    Viewer Text
+derive ^Eq, ^Ord, ^Show
+
+type Add = choice:
+    Add Nat
+derive ^Eq, ^Show
+
+type Asks = choice:
+    Whole
+derive ^Eq, ^Show
+
+type Nothing = choice:
+    NoChange
+derive ^Eq, ^Show
+
+impl ^Seat Presser:
+    type State = Nat
+    type Request = Add
+    type Query = Asks
+    type Told = Nat
+    fn Step total, seat, (Add n) = if total + n > 5: Denied "the count stops at five" else: Next (total + n)
+    fn Read total, seat, Whole = total
+
+impl ^Seat Viewer:
+    type State = Nat
+    type Request = Nothing
+    type Query = Asks
+    type Told = Bool
+    fn Step total, seat, NoChange = Denied "a viewer asks for no change"
+    fn Read total, seat, Whole = total > 0
+
+tag Count.Request of Element !Response:
+    !requests: Add
+
+tag Count.Query of Element $Nat:
+    $query: Asks
+
+tag View.Query of Element $Bool:
+    $query: Asks
+
+!Requested: fn Elem (rest | Count.*) -> !Add
+fn !Requested e = match e:
+    Count.Request(!requests=!r): !r
+    otherwise: never
+
+tag CounterSeat.State of Element $Nat
+
+?Mine: fn Presser, (Place ==> Response), Path -> ?Response
+fn ?Mine seat, responses, p = ?ResponseTo seat, p, responses
+
+@HostPressers: fn $(Presser ==> v), (fn Presser -> @a emit rest | Count.*), !(Place ==> Response) -> @!(Presser ==> (Path ==> Asked Nat)) emit rest | CounterSeat.*
+fn @HostPressers $seats, Guest, !responses:
+    !heard <- for seat, $sitting <- $seats:
+        $state <- CounterSeat.State()
+        let !mine = !responses
+        let $told = Read $state, seat, Whole
+        ((ignore, $doc)) <- @HostDocument (Guest seat), \|p, e| match e:
+            Count.Request(..): @ !Filter (?Mine seat, !mine, p)
+            Count.Query(..): @ $told
+            otherwise: @Element e
+        !asked <- for p, $e <- $doc:
+            !r <- @Switch (!Requested $e)
+            @ Asking seat, p, !r
+        @ !asked
+    @ !heard
+
+@HostCounter: fn $(Presser ==> v), (fn Presser -> @a emit rest | Count.*), $Nat, !(Place ==> Response) -> @((unit, ![Asked Nat])) emit rest
+fn @HostCounter $seats, Guest, $state, !responses:
+    ((!heard, ignore)) <- @HostDocument (@HostPressers $seats, Guest, !responses), \|p, e| match e:
+        CounterSeat.State(..): @ $state
+        otherwise: @Element e
+    @ ((unit, InOrder !heard))
+
+@Sat: fn k, $v, (fn k, v -> @a emit r) -> @$a emit r
+fn @Sat seat, $sitting, Guest:
+    rebuild $sitting:
+        Guest seat, _

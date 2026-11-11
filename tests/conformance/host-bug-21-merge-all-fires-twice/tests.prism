@@ -1,0 +1,11 @@
+emit Ui.* | Tell.* | Keep.* | View.*
+use App.*
+
+test removed_seat_request_dropped, @table:
+    build
+    click Ui.Button(label="fay joins, eager at 1")
+    compute
+    compute
+    click Ui.Button(label="ada +1")
+    click Ui.Button(label="fay is removed")
+    compute

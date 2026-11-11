@@ -1,0 +1,268 @@
+# Documents: the hosting library. A document is what seats take part in; this module holds
+# what every document shares: the response, the step's result, the trait a role's seat type
+# implements, the order of one tick's requests, what a role's host does with its seats,
+# and the in-memory implementation, written once.
+# Written by Claude (an implementation agent), 11 November 2026; evidence for Part IV;
+# subject to change.
+emit rest
+
+# What a request is answered with: accepted, or declined with a reason of the document's
+# own type `d`.
+type Response d = choice:
+    Accepted
+    Declined d
+derive ^Eq, ^Show
+
+# What a step gives: the next state, or a denial and its reason (chapter 4).
+type Stepped s d = choice:
+    Next s
+    Denied d
+derive ^Eq, ^Show
+
+# One role of one document. A value of `r` is one seat of the role: `Player White`,
+# `Spectator "ada"`. The associated types are chapter 3's facts per role, and `Step` and
+# `Read` are chapter 4's pure rules, each taking the seat that asks.
+trait ^Seat r:
+    type State                          # the document's state, the same for every role
+    type Request                        # what this role may ask to change
+    type Reason                         # why a request of this role is declined
+    type Query                          # what this role may ask to know
+    type Told                           # what this role is told
+    Step: fn State r, r, Request r -> Stepped (State r) (Reason r)
+    Read: fn State r, r, Query r -> Told r
+
+# Where a request was made: the seat, as a value of the document's seat type `k`, and the
+# place within the seat's guest. Places order by seat, then by place.
+type Place k = record:
+    seat: k
+    at: Path
+derive ^Eq, ^Ord, ^Show
+
+# One request as the implementation takes it: its place, and the step it asks for, with
+# the seat and the request already inside. This is what lets one implementation take the
+# requests of every role: the role's types end here.
+type Asked s k d = record:
+    place: Place k
+    step: fn s -> Stepped s d
+
+# A request of a document whose one requesting role gives the document its seat type and
+# its reason type.
+Asking: fn r, Path, Request r -> Asked (State r) r (Reason r) where r: ^Seat
+fn Asking seat, at, request = Asked(place=Place(seat=seat, at=at), step=(\|state| Step state, seat, request))
+
+# A step's result with its reason made a reason of the document: what a document with
+# several requesting roles, each with a reason type of its own, wraps each role's step in.
+Lifted: fn (fn a -> d), Stepped s a -> Stepped s d
+fn Lifted Raise, (Next state) = Next state
+fn Lifted Raise, (Denied why) = Denied (Raise why)
+
+# ---- the order of one tick's requests
+
+# What a document does with the requests that are due in a tick: which it applies in this
+# tick, in the order listed, and which wait for the next tick.
+type Ordered s k d = record:
+    apply: [Asked s k d]
+    wait: [Asked s k d]
+
+# The default order: one request a tick. The requests due are those that waited, the
+# longest first, then this tick's own by place; the first is applied and each other waits
+# a tick, so no request is declined for arriving with another.
+OneATick: fn [Asked s k d] -> Ordered s k d
+fn OneATick due = Ordered(apply=(Take due, 1), wait=(Drop due, 1))
+
+# An order a document may name instead: every request in the tick it is made, by place.
+AllAtOnce: fn [Asked s k d] -> Ordered s k d
+fn AllAtOnce due = Ordered(apply=due, wait=[[]])
+
+# This tick's own requests by place: by the document's seat order, then by place in the
+# seat's guest.
+ByPlace: fn [Asked s k d] -> [Asked s k d] where k: ^Ord
+fn ByPlace asked = Values (Fold asked, {}, \|all, one| Insert all, one.place, one)
+
+# The state after some requests of one tick, the response to each by place, whether any
+# was accepted, and the requests that wait.
+type Kept s k d = record:
+    state: s
+    responses: (Place k ==> Response d)
+    moved: Bool
+    waiting: [Asked s k d]
+
+StepOne: fn Kept s k d, Asked s k d -> Kept s k d where k: ^Ord
+fn StepOne kept, asked:
+    let Apply = asked.step
+    match Apply kept.state:
+        Next state: Kept(state=state, responses=(Insert kept.responses, asked.place, Accepted), moved=True, waiting=kept.waiting)
+        Denied why: Kept(state=kept.state, responses=(Insert kept.responses, asked.place, (Declined why)), moved=kept.moved, waiting=kept.waiting)
+
+# One tick: the requests that waited and those that arrived are due; the document's order
+# says which are applied, each against the state the one before left, and which wait.
+StepTick: fn (fn [Asked s k d] -> Ordered s k d), s, [Asked s k d], [Asked s k d] -> Kept s k d where k: ^Ord
+fn StepTick Order, state, waiting, arrived:
+    let turn = Order (Append waiting, (ByPlace arrived))
+    Fold turn.apply, Kept(state=state, responses={}, moved=False, waiting=turn.wait), StepOne
+
+?StateOf: fn Kept s k d -> ?s
+fn ?StateOf kept = if kept.moved: ? kept.state else: nil
+
+ResponsesOf: fn Kept s k d -> (Place k ==> Response d)
+fn ResponsesOf kept = kept.responses
+
+WaitingOf: fn Kept s k d -> [Asked s k d]
+fn WaitingOf kept = kept.waiting
+
+?StillWaiting: fn Kept s k d -> ?unit
+fn ?StillWaiting kept = if (Len kept.waiting) == 0: nil else: ? unit
+
+# ---- the in-memory implementation (chapter 6), for every document
+
+# One hold for the state, one for the requests that wait. `HostSeats` is the document's
+# own function that hosts its seats (chapter 5: "each document writes `@HostSeats`"); it
+# is given the state and each tick's responses, and gives back each tick's requests.
+# `Order` is the document's order of one tick's requests.
+@InMemoryOrdered: fn s, (fn [Asked s k d] -> Ordered s k d), (fn $s, !(Place k ==> Response d) -> @![Asked s k d] emit rest) -> @unit emit rest where k: ^Ord
+fn @InMemoryOrdered initial, Order, HostSeats:
+    !arrived <- HostSeats $state, !responses
+    !again <- @Defer (!Filter (?StillWaiting !outcome))     # a tick after a request waits
+    let !due = !arrived <| ([[]] on !again)
+    let !outcome = StepTick Order, $state, $waiting, !due
+    $state <- initial then !Filter (?StateOf !outcome)      # the hold
+    $waiting <- [[]] then WaitingOf !outcome
+    $answered <- {} then ResponsesOf !outcome
+    let !responses = !Updated $answered
+
+# The same with the default order.
+@InMemory: fn s, (fn $s, !(Place k ==> Response d) -> @![Asked s k d] emit rest) -> @unit emit rest where k: ^Ord
+fn @InMemory initial, HostSeats = @InMemoryOrdered initial, OneATick, HostSeats
+
+# ---- what a role's host is written with
+
+# What a seat's request place is answered with: its own response of this tick, if any.
+?ResponseTo: fn k, Path, (Place k ==> Response d) -> ?(Response d) where k: ^Ord
+fn ?ResponseTo seat, at, responses = ?Get responses, Place(seat=seat, at=at)
+
+# The same for a role with a reason type of its own: `Lower` gives this role's reason out
+# of the document's.
+?Lowered: fn (fn d -> ?a), ?(Response d) -> ?(Response a)
+fn ?Lowered Lower, nil = nil
+fn ?Lowered Lower, (? Accepted) = ? Accepted
+fn ?Lowered Lower, (? (Declined why)) = match Lower why:
+    ? mine: ? (Declined mine)
+    nil: nil
+
+# The state as each seat's host hears it: when it changes, a tick after the role's seats
+# change, and a tick after the document is built. A seat's host keeps what it hears in its
+# own hold.
+@News: fn $s, !a -> @!s
+fn @News $state, !reseated:
+    !first <- @started
+    !settled <- @Defer !reseated
+    @ (!Updated $state) <| ($state on !settled) <| ($state on !first)
+
+# A role's seats as a `for` reads them: one key per seat and what sits there, so a seat
+# whose sitting changes is a new key, and that seat alone is built again.
+Sittings: fn (k ==> v) -> (((k, v)) ==> unit) where k: ^Ord, v: ^Ord
+fn Sittings seats = Fold (Keys seats), {}, \|all, k| match ?Get seats, k:
+    ? v: Insert all, ((k, v)), unit
+    nil: all
+
+SeatOf: fn ((k, v)) -> k
+fn SeatOf ((k, v)) = k
+
+SittingOf: fn ((k, v)) -> v
+fn SittingOf ((k, v)) = v
+
+# What a participant's leaving element fires: a unit type of the library's own.
+type Leaves = leaves
+derive ^Eq, ^Show
+
+# What a role's host hears from one place of a seat's guest: a request, or that the
+# participant leaves.
+type Heard a = choice:
+    Requested a
+    Leaving
+
+# What happens to one role's seats in one tick. The first two are the host's doing, the
+# third the participants': which is how a seat the host removes is told from a seat whose
+# participant leaves.
+type Happening k v a = choice:
+    Seating [((k, v))]                                  # the host seats these, or changes what sits there
+    Removing [k]                                        # the host removes these
+    Hearing [((k, [Heard a]))]                          # what each seat's guest fired
+
+# The three as a role's host makes them from its events.
+Pairs: fn (k ==> v) -> [((k, v))] where k: ^Ord
+fn Pairs seated = Fold (Keys seated), [[]], \|all, seat| match ?Get seated, seat:
+    ? sitting: Push all, ((seat, sitting))
+    nil: all
+
+Seats: fn (k ==> v) -> Happening k v a where k: ^Ord
+fn Seats seated = Seating (Pairs seated)
+
+Removes: fn [k] -> Happening k v a
+fn Removes removed = Removing removed
+
+Hears: fn (((k, v)) ==> (Path ==> Heard a)) -> Happening k v a where k: ^Ord, v: ^Ord
+fn Hears heard = Hearing (Fold (Keys heard), [[]], \|all, both| Push all, (((SeatOf both), (Values (Or (?Get heard, both), {})))))
+
+Requests: fn a -> Heard a
+fn Requests request = Requested request
+
+Has: fn [k], k -> Bool where k: ^Eq
+fn Has seats, seat = Fold seats, False, \|found, one| found or one == seat
+
+# the seats the host removes in a tick
+Removed: fn [Happening k v a] -> [k]
+fn Removed happenings = Fold happenings, [[]], \|all, one| match one:
+    Removing seats: Append all, seats
+    otherwise: all
+
+RequestsAmong: fn [Heard a] -> [a]
+fn RequestsAmong heard = Fold heard, [[]], \|all, one| match one:
+    Requested request: Push all, request
+    Leaving: all
+
+Departs: fn [Heard a] -> Bool
+fn Departs heard = Fold heard, False, \|gone, one| match one:
+    Requested request: gone
+    Leaving: True
+
+# The requests a role's host passes on in a tick. A seat the host removes in this tick is
+# gone first: its requests of this tick are dropped. A seat whose participant leaves in
+# this tick goes after them: its requests of this tick are passed on.
+RequestsOf: fn [Happening k v a] -> [a] where k: ^Eq
+fn RequestsOf happenings:
+    let removed = Removed happenings
+    Fold happenings, [[]], \|all, one| match one:
+        Hearing heard: Fold heard, all, \|some, ((seat, fired))| if Has removed, seat: some else: Append some, (RequestsAmong fired)
+        otherwise: all
+
+?Requests: fn [Happening k v a] -> ?[a] where k: ^Eq
+fn ?Requests happenings = if (Len (RequestsOf happenings)) == 0: nil else: ? (RequestsOf happenings)
+
+# Whether a tick changes who sits where: a role's host tells its seats the state again a
+# tick after one does.
+?Reseating: fn [Happening k v a] -> ?unit
+fn ?Reseating happenings = Fold happenings, nil, \|?some, one| match one:
+    Seating more: ? unit
+    Removing gone: ? unit
+    Hearing heard: Fold heard, ?some, \|?still, ((seat, fired))| if Departs fired: ? unit else: ?still
+
+# The role's seats after a tick: those the host seats come, those it removes go, and those
+# whose participant leaves go.
+Reseated: fn (k ==> v), [Happening k v a] -> (k ==> v) where k: ^Ord
+fn Reseated seats, happenings = Fold happenings, seats, \|now, one| match one:
+    Seating more: Fold more, now, \|all, ((seat, sitting))| Insert all, seat, sitting
+    Removing gone: Fold gone, now, Remove
+    Hearing heard: Fold heard, now, \|still, ((seat, fired))| if Departs fired: Remove still, seat else: still
+
+One: fn Nat, a -> (Nat ==> a)
+fn One n, a = {n: a}
+
+# One tick's happenings out of the union a role's host makes of its three events, each
+# under a number of its own (`One 0`, `One 1`, `One 2`).
+Happened: fn (Nat ==> Happening k v a) -> [Happening k v a]
+fn Happened united = Values united
+
+# The requests of several role hosts out of the union a program makes of their events.
+Together: fn (Nat ==> [a]) -> [a]
+fn Together united = Fold (Values united), [[]], \|all, list| Append all, list
