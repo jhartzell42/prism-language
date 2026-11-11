@@ -449,8 +449,10 @@ fn CheckClauses env, st, name, clauses, sc, span:
                 &_.color <= outerColor
                 &_.colorFlex <= outerFlex
         other:
+            # a definition without parameters has nothing for a second clause to tell
+            # apart: the second is `unreachable`
             let st1 = Fold clauses, st, \|s, c| CheckClause env2, s, c, [[]], other
-            st1
+            ClauseCoverage env2, st1, clauses, [[]], span
 
 CheckClause: unbounded fn Env, St, FnClause, [Ty], Ty -> St
 fn CheckClause env, st, c, params, res:
