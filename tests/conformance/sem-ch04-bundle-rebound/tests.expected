@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 8 (a widget is transparent: the button is place 0 and the label place 1) and Type System ch. 2 ("Bundles"): sem-ch04-bundle-result's transcript, the bundle named twice on its way; the click moves the count and the hold fed by the bundle's event in the same tick.
+test a_bundle_named_twice
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="0 after 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1 after 1")
