@@ -786,9 +786,6 @@ Blueprint<E, A> described_blueprint(const Described<E>& d) {
             if (first) cx.listen(element, node);
             return Supplied<E, A>{node, std::move(first), false};
         }
-        if (!d.requests.empty()) {
-            return unexpected(Fault::answer("not lowered yet: an element value with an event field placed at " + at.to_string() + " in a hosted scope"));
-        }
         // a place of the row's own in the enclosing host's document: an entry that takes the
         // level at the build and again each time it moves
         Rc<Entry<E>> entry = Entry<E>::make("an element value's place");
@@ -800,6 +797,16 @@ Blueprint<E, A> described_blueprint(const Described<E>& d) {
             if (auto n = weak.lock()) n->entry->take(n->level.sample(cx), cx);
             return {};
         });
+        // each firing of an event field is the place's request, a request of the enclosing
+        // host's child: its row for the place hears it and hands it on
+        for (const auto& [field, firings] : d.requests) {
+            auto f = field;
+            auto outer = scope.hosted;
+            Handle h = firings.port->subscribe([at, f, outer](const Pod& v, Cx& cx) -> Done {
+                return outer->request_from(at, f, v, cx);
+            });
+            node->requests.emplace_back(firings.port, h);
+        }
         return Supplied<E, A>{node, std::move(first), false, entry};
     };
 }
@@ -872,6 +879,9 @@ public:
                                                  Cx& cx) = 0;
     virtual const Supplier<E, A>& supplier() const = 0;
     virtual Scope<E, A> scope() const = 0;
+    /// A request from the place `place` of this host's child, which a host under this one
+    /// hands up (a forwarded element's, or a placed description's): `Host::request`.
+    virtual Done request_from(const Path& place, std::optional<std::string> field, Pod value, Cx& cx) const = 0;
 };
 
 template <class E, class A>
@@ -946,7 +956,15 @@ public:
     /// The live element's event field hears it first (`Live::requested`).
     Done request(std::optional<std::string> field, Pod value, Cx& cx) const {
         TRY(requests_->fire(std::pair<std::optional<std::string>, Pod>{field, value}, cx));
-        if (forwards()) cx.request(path_.at(0), std::move(field), std::move(value));
+        if (forwards()) {
+            // the forwarded element is the host's own at `0` under the row: out to the
+            // World, or, under a host that is itself hosted, a place of the enclosing
+            // host's child, whose row decides again (a request rises host by host, each
+            // adding its key)
+            Scope<E, A> scope = host()->scope();
+            if (scope.hosted) return scope.hosted->request_from(path_.at(0), std::move(field), std::move(value), cx);
+            cx.request(path_.at(0), std::move(field), std::move(value));
+        }
         return {};
     }
 
@@ -1095,6 +1113,9 @@ public:
     }
     const Supplier<E, A>& supplier() const override { return supplier_; }
     Scope<E, A> scope() const override { return enclosing_ ? Scope<E, A>::in(enclosing_) : Scope<E, A>::world(); }
+    Done request_from(const Path& place, std::optional<std::string> field, Pod value, Cx& cx) const override {
+        return request(place, std::move(field), std::move(value), cx);
+    }
 
     const Rows<E, A>& rows() const { return rows_; }
 
