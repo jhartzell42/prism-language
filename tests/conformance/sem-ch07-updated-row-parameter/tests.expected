@@ -1,0 +1,19 @@
+# Derived by hand from Semantics ch. 7 (R3: a dynamic's update event fires at n with the value after n) and ch. 4 (a row reads its block's names): each click writes `$a`, and the row's `!Updated $c` fires in that tick.
+test a_row_hears_its_blocks_parameter
+
+tick 0
+  added:
+    0: Ui.Button(label="bump")
+    1/["x"]/0: Ui.Label(text="x heard 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1/["x"]/0: Ui.Label(text="x heard 1")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1/["x"]/0: Ui.Label(text="x heard 2")
