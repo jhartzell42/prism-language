@@ -1,0 +1,33 @@
+# A field is a record's (Type System ch. 2, records): a row's value, a choice, a tuple and a
+# number have none, and the checker refuses the read, so the back end's
+# guards "a field {name}" and "a field {name} of a non-record" (lower/expr.prism,
+# `FieldInfo`) are not reached. Written by Claude on the claude-lowering branch; subject
+# to change.
+emit Ui.*
+use Ui.*
+
+type Ink = row
+derive ^Eq, ^Show
+
+tag Ink.Line of Ink:
+    from: Nat
+    to: Nat
+
+type One = choice:
+    Only Nat, Text
+
+OfRow: fn Ink -> Nat
+fn OfRow i = i.to
+
+OfChoice: fn One -> Nat
+fn OfChoice o = o.count
+
+OfTuple: fn ((Nat, Text)) -> Nat
+fn OfTuple t = t.first
+
+OfNumber: fn Nat -> Nat
+fn OfNumber n = n.size
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{OfRow (Ink.Line(from=1, to=4))}")

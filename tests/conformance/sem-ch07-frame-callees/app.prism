@@ -1,0 +1,47 @@
+# An unbounded function value called from every place a value can come from (Semantics ch.
+# 7, D6: entering a call is a cycle point): a record's field, a `let`, a lambda, a list's
+# elements under `Fold`, a tuple pattern's part and an optional's payload. Pins the back
+# end's guard "a call this frame cannot enter" (lower/jobs.prism, `FrameJob`). Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Ops = record:
+    step: unbounded fn Nat -> Nat
+    label: Text
+
+Inc: unbounded fn Nat -> Nat
+fn Inc n = n + 1
+
+Pick: fn Bool -> (unbounded fn Nat -> Nat)
+fn Pick b = if b: Inc else: \|x| x * 3
+
+ByField: unbounded fn Ops, Nat -> Nat
+fn ByField ops, n = (ops.step n) + 1
+
+ByLet: unbounded fn Nat -> Nat
+fn ByLet n:
+    let F = Pick True
+    let G = \|x| Inc (Inc x)
+    (F (G n)) + 1
+
+ByList: unbounded fn [(unbounded fn Nat -> Nat)], Nat -> Nat
+fn ByList fs, n = Fold fs, n, \|acc, F| F acc
+
+ByTuple: unbounded fn (((unbounded fn Nat -> Nat), Nat)) -> Nat
+fn ByTuple ((F, n)) = (F n) + 1
+
+ByMatch: unbounded fn ?(unbounded fn Nat -> Nat), Nat -> Nat
+fn ByMatch ?F, n = match ?F:
+    ? G: (G n) + 1
+    nil: n
+
+Run: unbounded fn Nat -> Nat
+fn Run n = (ByField (Ops(step=Inc, label="x")), n) + (ByLet n) + (ByList [[Inc, (Pick False)]], n) + (ByTuple ((Inc, n))) + (ByMatch (? Inc), n)
+
+@main: @unit
+@main:
+    !done <- @Run Run, 1
+    $shown <- "working" then Show !done
+    Ui.Label($text=$shown)

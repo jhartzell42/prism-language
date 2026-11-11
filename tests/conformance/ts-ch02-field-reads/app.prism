@@ -1,0 +1,75 @@
+# A field read wherever one can stand (Type System ch. 2, records): of the prelude's
+# `Error`, of an alias of a generic record, under `?`, `~` and `$`, in an `update` block,
+# in lambdas whose parameters are patterns, and constructor patterns nested through a
+# recursive choice's payloads. The back end types no field of an `Error`
+# (lower/expr.prism, `FieldInfo`: "a field of an Error"), and its message in a placeholder
+# prints as `Show` would, in quotes. Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Pair a b = record:
+    left: a
+    right: b
+derive ^Eq, ^Show
+
+type Named = Pair Text Nat
+
+type Shape = choice:
+    Circle Nat
+    Box Pair Nat Nat
+derive ^Eq, ^Show
+
+type Tree = choice:
+    Leaf Nat
+    Node Tree, Tree
+derive ^Eq, ^Show
+
+Gone: fn Nat -> Error
+fn Gone n = Error(kind=Fs.NotFound, message="gone {n}")
+
+Why: fn Error -> Text
+fn Why e = "missing: {e.message}"
+
+Louder: fn Error -> Error
+fn Louder e = update e:
+    &_.message <= "{&_.message}!"
+
+Lefts: fn [Named] -> [Text]
+fn Lefts ns = Each ns, \|n| n.left
+
+Bump: fn Named -> Named
+fn Bump n = update n:
+    &_.right <= &_.right + 1
+
+?Right: fn ?Named -> ?Nat
+fn ?Right ?n = ?n.right
+
+~Message: fn ~Named -> ~Text
+fn ~Message ~n = ~n.left
+
+Deep: fn Tree -> Nat
+fn Deep (Node (Node (Leaf a), ignore), (Leaf b)) = a + b
+fn Deep (Node l, r) = (Deep l) + (Deep r)
+fn Deep (Leaf n) = n
+
+Width: fn Shape -> Nat
+fn Width (Box Pair(left=l, ..)) = l
+fn Width (Circle r) = r * 2
+
+Told: fn ~Text -> Text
+fn Told (~ t) = t
+fn Told (Error(message=m, ..)) = m
+
+@main: @unit
+@main:
+    let e = Gone 1
+    let n = Pair(left="a", right=1)
+    let Add = \|a, b| a + b
+    let Swap = \|((a, b))| ((b, a))
+    let Both = \|(Pair(left=l, right=r)), k| "{l}{r + k}"
+    let ((x, y)) = Swap ((1, "one"))
+    let $live = $ n
+    Ui.Label($text=$"{Why e} {(Louder e).message} {Len (Lefts [[n]])} {(Bump n).right} {Or (?Right (? n)), 0} {$live.left} {Add 1, 2} {x} {y} {Both n, 2}")
+    Ui.Label($text=$"{Deep (Node (Node (Leaf 1), (Leaf 2)), (Leaf 3))} {Width (Box (Pair(left=4, right=5)))} {Told (~Message (~ n))}")

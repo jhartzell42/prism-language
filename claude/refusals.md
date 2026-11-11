@@ -10,8 +10,10 @@ entry marked "unsure" was not tested.
 - **C**: a wrong program. It becomes a checker error with a diagnostic, failing test first.
 
 Besides these, `OutRefused` (a type the lowering does not spell) stands at 15 places in
-lower/expr.prism, model.prism, patterns.prism and types.prism; each is a G unless a
-program below reaches it.
+lower/expr.prism, model.prism, patterns.prism and types.prism: twelve that make one, the
+type's definition in model.prism and two matches on it. Two are reached (see R, Functions:
+a generic `let` nothing reads, and a field of an `Error`); the others are under G, "Types the lowering does not
+spell".
 
 ## R: legal programs not lowered
 
@@ -56,7 +58,9 @@ Bundles
   lower/node/switch.prism:488. Test: sem-ch08-late-result-in-bundle.
 - lower/expr.prism:765 a tuple pattern's binding as a value. Program: `both <- @counter`,
   `let same = both`, `@ same`. Test: sem-ch04-bundle-rebound.
-- lower/node/def.prism:96 a bundle as the root's result: see C.
+- lower/node/def.prism:96 a bundle as the root's result. Program: `@main: @((!Nat,
+  Text))` ending `@ ((($n + 1) on !go, "ready"))`; the World hears the plain part at the
+  build and each firing of the event after. Test: sem-ch07-root-bundle-result.
 
 Building `match`, clause widgets, `rebuild`
 - lower/node/def.prism:553 a late plain result bound where its block is not split (LW).
@@ -73,6 +77,10 @@ Building `match`, clause widgets, `rebuild`
   where `$count` is the block's hold. Test: sem-ch08-clause-dynamic-through-parent.
 - lower/node/static.prism:79 a widget parameter applied to arguments: see Hosting, the
   widget function passed as an argument.
+- A hold above a split that begins at the late result (`$gone <- n then ..` above `n <-
+  match mode:`): legal, since the order of a group's lines decides positions and nothing
+  else (Semantics ch. 4); refused today as "the name n, which nothing declares". Test:
+  sem-ch04-building-match-hold-above.
 - SP2, SP3 (tests: sem-ch04-building-match-plain-group; lines below a split reading a
   widget parameter or a local function).
 - TC (tests: sem-ch08-places-counted-as-built, sem-ch04-building-match-mixed-arms), PR (a
@@ -121,6 +129,21 @@ Functions
   sem-ch04-local-function-recursive.
 - lower/expr.prism:939 a local function of several clauses as a value. Test:
   sem-ch04-local-function-clauses-value.
+- lower/expr.prism:1893 ("a parameter") and the emitters' "a quantified type variable ..:
+  no instantiation gives it a type": a generic `let` of a widget block that nothing
+  reads. Program: `let Same = \|x| x`, `let empty = [[]]`, `let pair = ((nil, [[]]))`,
+  `let blanks = Each [[1, 2]], ?Nothing`, none read. Test: ts-ch05-generic-let-unused.
+- lower/expr.prism:1580 a field of an `Error` has no type in the back end: no refusal,
+  and `"{e.message}"` prints the message as `Show` would, in quotes. Test:
+  ts-ch02-field-reads.
+- A fault kind as a value (`e.kind == Fs.NotFound`, a list of kinds, a record's field of
+  type `Fault`, a generic call at `Fault`): no refusal; rustc refuses the crate. Test:
+  sem-ch10-fault-kind-value.
+- The prelude's `Turn b` built and matched by a program (`Done x`, `More`): no refusal;
+  rustc refuses the crate (the runtime's `Turn` is the job's own). Test:
+  sem-appB-turn-value.
+- A trait method passed as a function value (`Each ns, Blank`, `Each xs, Twice`): no
+  refusal; rustc refuses the crate. Test: ts-ch03-method-function-value.
 - lower/expr.prism:940 a generic local function as a value. The checker stops it first:
   a local `fn Same x = x` is not generalized (mismatch at its second use). Tests:
   tests/checker/pos/local-function-generic-value.prism,
@@ -186,13 +209,26 @@ first value of an element value placed in a hosted scope (DH2) holds through two
 ## C: wrong programs the checker lets through
 
 - lower/node/def.prism:272 lines that read each other at the build: a cycle among values.
-- lower/node/def.prism:96 a bundle as the root's result (a World hears a plain value, a
-  dynamic or an event). Unsure: the book may let a root give a bundle; then R.
-- lower/expr.prism:576 `{b}` outside a `for`.
-- lower/expr.prism:1012 a fault kind applied. Unsure; read as C.
-- lower/expr.prism:1115 an element value without one of its fields. Unsure: G if the
-  checker already demands every field.
-- A hold above a split that needs the late result at its build (SP2): both lines named.
+- lower/expr.prism:576 `{b}` outside a `for`. Test:
+  tests/checker/neg/bound-word-outside-for.
+- lower/expr.prism:1012 a fault kind applied. A fault kind is its tag alone (Semantics
+  ch. 10: every kind is declared bare, and a row kind with no output has values that are
+  its tags), so `Fs.NotFound()` is wrong, and so is a tag `of Fault` that declares a
+  field, whose use `Disk.Full(left=n)` reaches the same refusal. Tests:
+  tests/checker/neg/fault-kind-applied and tests/checker/neg/fault-kind-fields.
+- A refutable pattern in a `let`, a lambda parameter, a `for` binder or a `<-` of a
+  widget block (Type System ch. 2, "Patterns and exhaustiveness": these take irrefutable
+  ones): the checker says nothing, and the back end refuses the names the pattern binds
+  ("the name t, which nothing declares") or the `let` (lower/node/def.prism:883). Test:
+  tests/checker/neg/refutable-binder.
+- A `for` bound by a `let` in a widget block (`let m = for x <- xs: @ x * 2`): the
+  checker types it as the plain map, and the back end refuses it at lower/expr.prism:621
+  ("a `for` outside a widget block as a value"). Test: tests/checker/neg/for-in-let.
+- A tag pattern that names a field twice (`Ui.Button($label=$a, $label=$b)`): the
+  checker says nothing. Test: tests/checker/neg/tag-pattern-field-twice.
+- A ring of trait `where` clauses (`trait ^Up a where a: ^Down` and back): the checker
+  does not end. Test: tests/checker/neg/trait-where-ring (tests/checker/run.sh cuts a
+  check at 600 seconds).
 - `ignore <-` of a function that was not applied (`ignore <- @Row`, `ignore <-
   @HostDocument`): the checker says nothing, and the back end refuses the line at
   lower/node/def.prism:938. Test: tests/checker/neg/ignore-binds-a-function.
@@ -249,15 +285,51 @@ reaches it.
   crate: see R, Hosting.
 - lower/expr.prism:1290 a constructor of an unknown owner. No program found: a
   constructor's owner is a choice or a record by its declaration.
-- lower/expr.prism:1355 a method call at a type the checker did not record. No program
-  found; not probed.
-- lower/expr.prism:1417 an unknown operator. No program found: the parser reads only the
-  operators it knows; whether each has a case in `?BinOpOf` was not probed.
+- lower/expr.prism:1115 an element value without one of its fields. The checker refuses
+  it ("`Ui.Label` needs `text`"): tests/checker/neg/element-value-without-field.
+- lower/expr.prism:1355 a method call at a type the checker did not record. The nearest
+  program, a method whose type is only in its result called from an argument's type,
+  under a generic function's bound, as a function value, in a returned lambda and at a
+  generic record's impl, passes: ts-ch03-result-only-method.
+- lower/expr.prism:1417 an unknown operator. The nearest program, every operator the
+  parser reads at `Nat`, `Int`, `Float`, texts, records, tuples, arrays, a generic type
+  and under `?`, passes: ts-ch03-operators.
 - lower/patterns.prism:164, 165, 207 a pattern of an unknown constructor. The checker
   refuses the name: tests/checker/neg/unknown-constructor-pattern.
-- lower/jobs.prism:570 a call a frame cannot enter. No program found; not probed.
+- lower/jobs.prism:570 a call a frame cannot enter. The nearest program, an unbounded
+  function value called from a record's field, a `let`, a lambda, a list under `Fold`, a
+  tuple pattern's part and an optional's payload, passes: sem-ch07-frame-callees.
 - lower/templates.prism:90, 105 a template call that names no function or fills no
   argument. The checker refuses each: tests/checker/neg/template-unknown and
   tests/checker/neg/template-missing-argument.
 - emit/cpp/expr.prism:332, 347, 567, 575 a constructor, record or pattern of no type the
   C++ emitter knows. Not probed: the C++ target is not run in this phase.
+
+Types the lowering does not spell (`OutRefused`)
+- lower/expr.prism:1162, 1163 a type argument of a call that its type at the call does
+  not give. The nearest program, a generic function whose type parameter is in no
+  parameter's type, called from an annotation, from the caller's own type parameter, in
+  a lambda, as a function value and in a `let` read at one type, passes:
+  ts-ch05-type-arguments-at-call.
+- lower/types.prism:107 a type variable the checker left undecided. The same program
+  passes; an unread generic `let` in a plain function is lowered, and in a widget block
+  it takes another path: see R, Functions.
+- lower/expr.prism:1580 a field of an `Error`: reached, see R, Functions.
+- lower/expr.prism:1589, 1590, 1591 a field of a type with no constructor, of a
+  non-record. The checker refuses a field of a row's value, a choice, a tuple or a number
+  (tests/checker/neg/field-of-no-record); fields of an alias of a generic record, under
+  `?`, `~` and `$` and in an `update` block are lowered (ts-ch02-field-reads, which fails
+  only on the `Error`'s message).
+- lower/patterns.prism:186 a payload behind a reference. Nested constructor patterns
+  through a recursive choice are lowered (ts-ch02-field-reads): the refused type is the
+  place's own and is never printed.
+- lower/types.prism:113 a type the checker did not find. No program reaches this: the
+  checker makes it only beside an error, and a program with an error is not lowered.
+- lower/types.prism:182 a type the checker did not declare. The nearest program, the
+  prelude's `Ordering`, `Turn`, `Span`, `Duration`, `Fault` and `Exception` as fields and
+  as the types of generic calls, passes: ts-ch02-prelude-types-named.
+- lower/types.prism:469 an associated type no trait declares. No program reaches this:
+  the checker makes an associated type only from a name a trait declared.
+- lower/expr.prism:1764, lower/types.prism:272 and lower/model.prism:169 are the type's
+  own matches and definition.
+

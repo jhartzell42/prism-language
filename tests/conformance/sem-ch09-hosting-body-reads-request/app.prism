@@ -1,0 +1,35 @@
+# From prism-notes, claude/04-domains-and-documents/evidence/hosting/02-body-reads-request/app.prism: attempt 02 of the Bible's document hosting against prismc at 10ca993, committed as written.
+# Attempt 02: the host's body reads a request's `!` field out of its document, entry by
+# entry, and merges the firings. The checker takes it; the back end refuses it.
+# Written by Claude (an implementation agent), 10 November 2026; subject to change.
+emit Ui.* | Seat.*
+test mod Tests
+
+tag Seat.Request of Element !Text:
+    !requests: Text
+
+@guest: @unit
+@guest:
+    !press <- Ui.Button($label=$"move")                        # 0
+    !said <- Seat.Request(!requests=("e2e4" on !press))        # 1
+    $last <- "" then !said
+    Ui.Label($text=$"heard: {$last}")                          # 2
+
+!Fired: fn Elem (Ui.* | Seat.*) -> !Text
+fn !Fired e = match e:
+    Seat.Request(!requests=!r): !r
+    otherwise: never
+
+@host: @unit
+@host:
+    ((ignore, $doc)) <- @HostDocument @guest, \|p, e| match e:           # 0/[p]
+        Seat.Request(..): @ !Filter (?Mine p, !heard)
+        otherwise: @Element e
+    $evs <- for p, $e <- $doc:
+        @ !Fired $e
+    !heard <- @Switch (!MergeAll (Values $evs))
+    $count <- 0 then $count + 1 on !heard
+    Ui.Label($text=$"host heard {$count}")
+
+?Mine: fn Path, [Text] -> ?Text
+fn ?Mine p, ts = ? "ok {Len ts}"

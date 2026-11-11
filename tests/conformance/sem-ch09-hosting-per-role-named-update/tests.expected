@@ -1,0 +1,60 @@
+# The transcript prismc at 10ca993 gave for attempt 11 (the evidence's transcript.txt), kept byte for byte: it pins the behaviour the Bible's Part IV relies on, with the live-field workaround's three ticks from request to response.
+test seats_come_and_go
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="White +1")
+    0/[3]/0: Ui.Label(text="White sees 0, White to move; nothing yet")
+    2/[0]/0: Ui.Button(label="Black +1")
+    2/[3]/0: Ui.Label(text="Black sees 0, White to move; nothing yet")
+    4: Ui.Button(label="ada joins")
+    5: Ui.Button(label="ada leaves")
+
+tick 1
+  in:
+    0/[0]/0: click
+
+tick 2
+
+tick 3
+
+tick 4
+  changed:
+    0/[3]/0: Ui.Label(text="White sees 1, Black to move; accepted")
+    2/[3]/0: Ui.Label(text="Black sees 1, Black to move; nothing yet")
+
+tick 5
+  in:
+    4: click
+  added:
+    6/[0/["ada"]/0]/0: Ui.Label(text="ada has a seat")
+    6/[0/["ada"]/2]/0: Ui.Label(text="spectator sees 1, Black to move")
+
+tick 6
+
+tick 7
+
+tick 8
+  in:
+    2/[0]/0: click
+
+tick 9
+
+tick 10
+
+tick 11
+  changed:
+    0/[3]/0: Ui.Label(text="White sees 2, White to move; accepted")
+    2/[3]/0: Ui.Label(text="Black sees 2, White to move; accepted")
+    6/[0/["ada"]/2]/0: Ui.Label(text="spectator sees 2, White to move")
+
+tick 12
+  in:
+    5: click
+  torn down:
+    6/[0/["ada"]/0]/0: Ui.Label(text="ada has a seat")
+    6/[0/["ada"]/2]/0: Ui.Label(text="spectator sees 2, White to move")
+
+tick 13
+
+tick 14
