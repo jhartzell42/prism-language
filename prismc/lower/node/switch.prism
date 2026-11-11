@@ -155,8 +155,11 @@ fn RowPartBn p, r, n, ?b = match ?b:
 # lines pass whole, the lines of its rows' bodies too) as a row reads them: the block's
 # fields through the row's `parent`, in the row's methods, or through its `parent`
 # argument in its build (`build`).
+# The same for the value form of each event the block names (`{name}#port`, the port
+# the event fires, a field of the block): a supplier in the row that answers with the
+# block's event holds the block's port, reached through the parent.
 WholeOfBlock: fn Env, Env, Bool -> Env
-fn WholeOfBlock menv, env, build = Fold (Keys menv.names), env, \|en, k| if not (HasPrefix k, "#whole"): en else: match menv.names[k]:
+fn WholeOfBlock menv, env, build = Fold (Keys menv.names), env, \|en, k| if not ((HasPrefix k, "#whole") or ((?BeforeSuffix k, "#port") != nil)): en else: match menv.names[k]:
     ? (BnLocal rs, mode, t):
         let over = OverParent rs
         if not build: Bind en, k, (BnLocal over, Owned, t)

@@ -971,6 +971,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   builds for the place reads the gathered dynamic over the rows built above it. A late
   scope's own builders, generations and entries follow its first values, just before
   its host's rows; any other hosted scope is built before the owner's own, as before.
+  A late host written above the builder whose structural dynamic its supplier answers
+  with (`$lens <- for ..` below the host) is built once that builder is: its step
+  stands after the last builder or generation its answers read (`AnswersAt`, by the
+  answers' reads closed over the node's getters and the snapshots' builders), so the
+  first values read every row of the build wherever the `for` stands. A builder's `$`
+  result is prebound as a getter of the node (`GivesResult`, `ResultGetter`), which a
+  line above the builder reads.
   Refused there: a bundle tag's plain part beside a `$` part (the build reads a plain
   part once, before the node).
 - **Requests** of a hosted place go to the host (`host_k.request`): out with the forwarded
