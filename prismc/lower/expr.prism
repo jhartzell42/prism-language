@@ -1582,19 +1582,16 @@ fn IsMethodKey lx, qk = match lx.g.vals[qk]:
 # A trait method named, not applied (`Each ns, Blank`): a closure calling it with its
 # arguments, each at a place no source has (as `CtorFn`), so the call is lowered as any
 # call of the method is: at the type the checker solved the trait at where the name
-# stands, or, where it recorded none there, by the trait's path, the target inferring the
-# type from the closure's use.
+# stands. The checker notes that type at the name for every want it solves (`Solved`, by
+# the span the name's scheme was instantiated at), a given and a quantified one included,
+# so a method whose type is only in its result has it there (`MethodCall`'s `?SelfAt`).
 MethodFn: unbounded fn Lx, ValInfo, Range, OutTy -> Vl
 fn MethodFn lx, v, span, t = match t:
     OutFn pts, rt:
         let names = Each (Range0 (Len pts)), \|i| "a{i}"
         let fakes = Each (Range0 (Len pts)), \|i| Arg(marks="", ?name=nil, value=(Expr(kind=EAbsent, span=Range(start=(4000000000 + i), end=(4000000000 + i)))), span=Range(start=0, end=0))
         let env = Fold (Range0 (Len pts)), emptyEnv, \|en, i| BindSpan en, (PlaceKey lx, (Range(start=(4000000000 + i), end=(4000000000 + i)))), (VlPlace (XVar (Or names[i], "a")), ByRef, (Or pts[i], OutUnit))
-        let cls = Or (Each v.scheme.bounds, \|((ignore, c))| c)[0], ""
-        let tr = Or lx.g.traits[cls], dummyTraitInfo
-        let unsolved = not (HasPrefix cls, "Prelude.") and (IsResultOnly lx, v.qk, tr.param) and (?SelfAt lx, span, cls) == nil
-        let made = if unsolved: XCall (RefIn lx, tr.home, "{TraitName cls}::{Or lx.rsNames[v.qk], (Snake (BareName v.qk))}"), (ArgsFor lx, env, v, fakes)
-            else: Own (MethodCall lx, env, v, fakes, span, rt)
+        let made = Own (MethodCall lx, env, v, fakes, span, rt)
         let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "a")), (OutRef (Or pts[i], OutUnit))
         VlOwned (XCall (RefRuntime "std::Rc::new"), [[(XClosure False, pas, made)]]), t
     otherwise: VlOwned (Refusal "the trait method `{BareName v.qk}` as an unbounded function's value"), t
