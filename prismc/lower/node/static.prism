@@ -90,7 +90,8 @@ fn WidgetLine wx, benv, menv, e, ?bound:
 # A widget function parameter applied to arguments (`Inner 1`, `Inner: fn Nat -> @unit`
 # given `@Row`): the function the argument names, applied here to the line's arguments,
 # which are read in this line's environments; a parameter handed on names its own
-# argument in turn; a lambda's body is lowered here, its parameters the line's arguments.
+# argument in turn; a lambda's body is lowered here, its parameters the line's arguments;
+# any other function value is applied, and the blueprint it gives is applied.
 ApplyWidgetParam: unbounded fn Wx, Env, Env, Expr, Env, Env, Lx, Expr, [Arg], ?Bn -> ((Wx, Wres))
 fn ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound:
     if (Len args) > 0: match (Ungrouped x).kind:
@@ -143,10 +144,14 @@ fn ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound:
                 &_.lx <= lx
                 &_.result <= wx.result
             ((back, done.result))
+        # any other function value (`@Use (Chosen "shows")`, a call's result; a field): the
+        # value, read where the argument stands, applied to the line's arguments gives
+        # a blueprint, which the line applies as any blueprint value
+        # (`AppliedBlueprintLine`)
         otherwise:
-            let wx2 = update wx:
-                &_.build <= Push &_.build, (RefusalDo "a widget function parameter applied to arguments whose argument is a function value that is neither a name nor a lambda")
-            ((wx2, WrUnit))
+            let function = ValueOf clx, cmenv, x
+            let made = XApply (Ref function), (Each args, \|a| ValueArgument wx.lx, menv, a.value)
+            AppliedBlueprintLine wx, e, (XRef made)
     else:
         let lx = wx.lx
         let inner = update wx:

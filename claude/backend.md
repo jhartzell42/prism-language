@@ -413,8 +413,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   the lambda's body is lowered at the line, in the lambda's own file: its parameters
   are bound to the line's arguments by layer as an inlined widget's are (`BindParam`),
   over the environments the lambda closes over, and its names are kept apart for each
-  application by the line's call (`Lx.inlined`). A function value that is neither a
-  name nor a lambda (a call's result, a field) is refused.
+  application by the line's call (`Lx.inlined`). Any other function value (a call's
+  result, a field) is read where the argument stands and applied to the line's
+  arguments, and the blueprint it gives is applied as any blueprint value
+  (`AppliedBlueprintLine`).
 - **A clause widget's blueprint parameter** (`fn @Show True, @w:`), and a widget
   function parameter of one, is bound in the clause's row as an inlined widget's is
   (`BindParam`): the caller's argument's text with the caller's environments as the row

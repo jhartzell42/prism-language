@@ -51,7 +51,8 @@ Hosting
   that gives a bundle back under a tag's arm (sem-ch09-host-widget-bundle-answer), one
   whose block ends on a host's line (sem-ch08-widget-value-ends-on-host). Left
   refused: a generic one read where a type parameter of its stays open (inside a
-  generic function or widget, given that one's own parameter: R, no test), one with a
+  generic function or widget, given that one's own parameter: R,
+  sem-ch08-widget-value-generic-in-function), one with a
   widget function parameter, or a `$` or event parameter with time below its top (no
   tests);
   one read in a place `ValuedWidgets` does not look (a record's field read back and
@@ -79,10 +80,10 @@ Hosting
   sem-ch08-widget-value-bundle-result). A bundle answered as a generic tag's is read
   through no tag (a fault of the run: no test).
 - lower/node/static.prism (`ApplyWidgetParam`) a widget function parameter applied to
-  arguments whose argument is a function value that is neither a name nor a lambda (a
-  call's result, a field): R, no test. A named widget function passed and applied is
-  lowered (sem-ch08-widget-parameter-applied), and a lambda
-  (sem-ch08-widget-parameter-lambda-argument).
+  arguments is lowered whatever its argument: a named widget function
+  (sem-ch08-widget-parameter-applied), a lambda
+  (sem-ch08-widget-parameter-lambda-argument), any other function value
+  (sem-ch08-widget-parameter-call-argument).
 - lower/node/static.prism:778 a generic widget at a call whose types its parameters' do
   not match. No program found: a blueprint parameter and a function parameter are
   matched through (sem-ch08-generic-widget-blueprint-parameter).
