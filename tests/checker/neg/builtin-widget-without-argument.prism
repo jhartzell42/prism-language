@@ -1,0 +1,21 @@
+# A builtin widget written without its arguments is refused by the checker, which counts
+# arguments (Semantics Appendix B gives each its signature), so the back end's guards for
+# `@Distinct`, `@PerKey`, `@Run` and `@Machine` without an argument
+# (lower/node/static.prism) are not reached. Written by Claude on the claude-lowering
+# branch; subject to change.
+emit Ui.*
+use Ui.*
+
+@child: @unit
+@child:
+    Ui.Label($text=$"child")
+
+@page: @unit
+@page:
+    !go <- Ui.Button($label=$"go")
+    $n <- 0 then $n + 1 on !go
+    $d <- @Distinct
+    $m <- @PerKey
+    r <- @Run
+    $s <- @Machine
+    Ui.Label($text=$"{$n}")
