@@ -175,7 +175,10 @@ fn BorrowStmts env, st, stmts, lent = Fold stmts, st, \|s, stmt| match stmt.kind
         EFor ?binders, source, body:
             let path = LentPath source
             let lent2 = if (Len path) > 0 and ?binders != nil: Push lent, path else: lent
-            BorrowStmts env, s, body.stmts, lent2
+            # over a named lens applied, the lens's result is alive for the body, and so
+            # is its argument: a read of an overlapping part there is a second reference
+            let s1 = if (Len path) > 0 and ?binders != nil and (IsLensSource source): HeldReads env, s, body.stmts, path else: s
+            BorrowStmts env, s1, body.stmts, lent2
         EIf ignore, tb, ?eb:
             let s2 = BorrowStmts env, s, tb.stmts, lent
             match ?eb:
@@ -189,6 +192,55 @@ CheckLent: unbounded fn Env, St, Expr, [ [Text] ] -> St
 fn CheckLent env, st, t, lent:
     let path = LentPath t
     Fold lent, st, \|s, l| if (Len path) > 0 and (IsPrefix l, path) or (IsPrefix path, l): ErrFix s, "borrow-overlap", t.span, "`{Join l, "."}` is lent to the `for`", "set it after the loop, or loop over a copy" else: s
+
+IsLensSource: unbounded fn Expr -> Bool
+fn IsLensSource e = match e.kind:
+    EGroup x: IsLensSource x
+    otherwise: match ?LensApplied e:
+        ? ignore: True
+        nil: False
+
+# The reads, inside a loop's body, of references that overlap the path `held` (the
+# argument of the lens the loop runs over): each is `borrow-overlap`. A set's left side is
+# `CheckLent`'s, and a path's own receivers are not reads of their own.
+HeldReads: unbounded fn Env, St, [Stmt], [Text] -> St
+fn HeldReads env, st, stmts, held:
+    let targets = SetTargetSpans stmts
+    let references = Filter (StmtsExprs stmts), \|x| (Len (LentPath x)) > 0
+    let receivers = Fold references, targets, \|acc, x| Append acc, (PathReceivers x)
+    Fold references, st, \|s, x|
+        let path = LentPath x
+        let inner = Fold receivers, False, \|seen, r| seen or r == x.span
+        if inner or not ((IsPrefix held, path) or (IsPrefix path, held)): s
+        else: ErrFix s, "borrow-overlap", x.span, "`{Join held, "."}` is lent to the `for`", "read it before the loop with a `let`, or loop over the path the lens names"
+
+# The spans of the expressions a reference is built from: a path's receivers, a lens's
+# argument.
+PathReceivers: unbounded fn Expr -> [Range]
+fn PathReceivers e = match e.kind:
+    EField r, ignore, ignore: Push (PathReceivers r), r.span
+    EIndex r, ignore: Push (PathReceivers r), r.span
+    EGroup x: Push (PathReceivers x), x.span
+    otherwise: match ?LensApplied e:
+        ? ((ignore, argument)): Push (PathReceivers argument), argument.span
+        nil: [[]]
+
+# The spans of the left sides of the sets and accumulations among statements.
+SetTargetSpans: unbounded fn [Stmt] -> [Range]
+fn SetTargetSpans stmts = Fold stmts, [[]], \|acc, stmt| match stmt.kind:
+    SSet t, ignore: Push acc, t.span
+    SAccum t, ignore, ignore: Push acc, t.span
+    SWhile ignore, body: Append acc, (SetTargetSpans body.stmts)
+    SExpr e: match e.kind:
+        EFor ignore, ignore, body: Append acc, (SetTargetSpans body.stmts)
+        EIf ignore, tb, ?eb:
+            let found = Append acc, (SetTargetSpans tb.stmts)
+            match ?eb:
+                ? x: Append found, (SetTargetSpans x.stmts)
+                nil: found
+        EMatch ignore, arms: Fold arms, acc, \|found, a| Append found, (SetTargetSpans a.body.stmts)
+        otherwise: acc
+    otherwise: acc
 
 IsPrefix: fn [Text], [Text] -> Bool
 fn IsPrefix a, b = (Len a) <= (Len b) and (Take b, (Len a)) == a
