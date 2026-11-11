@@ -1064,6 +1064,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
   is read from the tag's own case or, made outside the arm, from the case that holds
   it as it is (`Held_a`; the emitters' `OutsideArm`). A World answers with plain data,
   so its answer for such a tag is a fault of the run (`NoWorldAnswer`).
+  A bundle with such a part made outside the arm is held whole (`PartsBlueprint`); the
+  host's row that takes it for a place asks `Answer::held_parts` (emitted per bundle
+  tag with such a part, `?HeldWholeTy`, `?HeldPartsOf`) for the tag's parts answer of
+  it, and answers the place as `parts_blueprint` does: the state its first value, each
+  firing of an event part an answer a tick late; the subscriptions leave with the row
+  (`HostRow::held`).
 - **A place whose element answers a dynamic has its value at the build**: its first
   value stands in the local `{f}_init` (`DynamicPlace`), bound as the name's value at the
   build (`PreInit`), so a supplier's dynamic answer over the host's own pushed place

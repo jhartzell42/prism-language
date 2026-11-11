@@ -1215,7 +1215,31 @@ fn TagHoldsDyn lx, tg = Fold (TagDefOf lx, tg).fields, False, \|f, ((ignore, ign
 AnswerEnum: unbounded fn Lx, [Text] -> AnswerDef
 fn AnswerEnum lx, mods:
     let tags = KindTags lx, "Element", (Push mods, "Prelude")
-    AnswerDef(cases=(Each tags, \|tg| AnswerCase(variant=(TagStruct tg.name), accessor=(AnswerAccessor tg), structPath=(RootRef tg.home, (TagStructOf tg)), tagName=tg.name, ty=(AnswerTy lx, tg), ?first=(?BundleFirstTy lx, tg))))
+    AnswerDef(cases=(Each tags, \|tg| AnswerCase(variant=(TagStruct tg.name), accessor=(AnswerAccessor tg), structPath=(RootRef tg.home, (TagStructOf tg)), tagName=tg.name, ty=(AnswerTy lx, tg), ?first=(?BundleFirstTy lx, tg), ?heldWhole=(?HeldWholeTy lx, tg), ?heldParts=(?HeldPartsOf lx, tg))))
+
+# A bundle tag's output as one value, its events and dynamics whole, when a part of it
+# is no plain data (a function): what a blueprint of such a bundle made outside the
+# tag's arm answers with, held (`PartsBlueprint`). `nil` for any other tag.
+?HeldWholeTy: unbounded fn Lx, TagInfo -> ?OutTy
+fn ?HeldWholeTy lx, tg = match Peel tg.out:
+    TyTuple parts: if Fold parts, False, \|found, part| found or not (Podable (OutTyOf lx, (Peel part))): ? (OutTyOf lx, (TyTuple parts)) else: nil
+    otherwise: nil
+
+# The function from such a value to the tag's parts answer: each part read out of the
+# value, answered as the bundle written under the tag's arm is (`PartsAnswerOf`).
+?HeldPartsOf: unbounded fn Lx, TagInfo -> ?Ex
+fn ?HeldPartsOf lx, tg = match (((?HeldWholeTy lx, tg), (Peel tg.out))):
+    ((? whole, TyTuple parts)):
+        let read = Each (Range0 (Len parts)), \|i|
+            let part = Or parts[i], TyErr
+            let value = XClone (XPart (XVar "held_whole"), i)
+            match LayerOf part:
+                LyEv: PartEvent value, (OutTyOf lx, (Peel part))
+                LyDyn: PartLive value
+                otherwise: PartPlain value
+        let env = Bind (Bind emptyEnv, "#tag", (BnLocal (XPath (AnswerVariant tg)), Owned, OutUnit)), "#tagfirst", (BnLocal (XPath (AnswerFirstVariant tg)), Owned, OutUnit)
+        ? (XClosure False, [[(PaTyped (PaBind "held_whole"), (OutRef whole))]], (PartsAnswerOf lx, env, "a bundle held whole as {tg.name}'s answer", read, (AnswerVariant tg)))
+    otherwise: nil
 
 # A bundle tag's state (Type System ch. 2, "Bundles"): its plain and `$` parts' values, one
 # part itself, several a tuple in the tag's order; `nil` for a tag whose output is no

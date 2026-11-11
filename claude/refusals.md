@@ -46,6 +46,9 @@ Hosting
   ts-ch05-color-function-in-blueprint-result).
   A bundle with such a part outside an arm is held whole, its events and dynamics as
   values (`PartsBlueprint`: sem-ch08-blueprint-of-bundle-with-function-outside-tag-arm).
+  Given to a host's place by the arm that matched its tag, the held bundle is answered
+  part by part, as the bundle written under the arm is (`?HeldPartsOf`, prism_rtl's
+  `AnswerOf::held_parts`: sem-ch09-host-held-bundle-answer).
 - A tag whose output holds a part that is no plain data (a function) is answered by a
   host, under the tag's arm part by part (sem-ch09-host-bundle-function-part-answer);
   `crate::Answer` reads such a part from its own case or from the case held whole

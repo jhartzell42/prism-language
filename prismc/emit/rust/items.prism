@@ -354,7 +354,12 @@ fn RustAnswer a:
     # to answer, and a World's answer for it a fault
     let decodes = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Each a.cases, \|c| if Podable c.ty: "Elem::{c.variant}(..) => ::std::result::Result::Ok(Answer::{c.variant}({DecodeHead c.ty}::from_pod(v)?))," else: "Elem::{c.variant}(..) => {NoWorldAnswer c.tagName},"), "\n"
     let decodeFirsts = Join (Push (Each firsts, \|((c, ft))| if Podable ft: "Elem::{c.variant}(..) => ::std::result::Result::Ok(Answer::{c.variant}First({DecodeHead ft}::from_pod(v)?))," else: "Elem::{c.variant}(..) => {NoWorldAnswer c.tagName},"), "_ => Self::decode(e, v),"), "\n"
-    AnswerType cases, tags, accessors, decodes, decodeFirsts
+    # a bundle held whole, answered to a place of a tag that takes such a bundle
+    let heldArms = Fold a.cases, [[]], \|acc, c| match ((c.?heldWhole, c.?heldParts)):
+        ((? whole, ? parts)): Push acc, "Elem::{c.variant}(..) => answer.held_as::<{Type whole}>().map(|whole| ({Expression parts})(&whole)),"
+        otherwise: acc
+    let helds = Join (Push heldArms, "_ => ::std::option::Option::None,"), "\n"
+    AnswerType cases, tags, accessors, decodes, decodeFirsts, helds
 
 # An accessor's arm for an answer made outside a tag's arm, read at the type the tag's
 # place takes: plain data from `Answer`'s case of no tag; a value that is no plain data

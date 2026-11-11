@@ -569,6 +569,10 @@ concept AnswerOf = std::copyable<A> && requires(const E& e, const Pod& p) {
     { A::decode(e, p) } -> std::same_as<Result<A>>;
     { A::decode_first(e, p) } -> std::same_as<Result<A>>;
 };
+// The emitted `Answer` also has `static std::optional<PartsAnswer<A>> held_parts(const E&,
+// const A&)`: an answer held whole (a bundle with a part that is no plain data, made
+// outside a tag's arm) as the parts the element's tag takes, which a host's row answers
+// its place with (`HostRow`); `nullopt` for any other answer.
 
 template <class E, class A>
 class HostOf;
@@ -1223,9 +1227,20 @@ public:
             if (r && !r->left_) return r->host()->deliver(r->key_, v, cx);
             return {};
         };
+        E identity = value;
         Element<E> element = node->element(std::move(value));
         Blueprint<E, A> blueprint = host->supplier()(node->key_, element);
         auto supplied = TRY(blueprint(node->path_, node->sink_, host->scope(), 0, cx));
+        // a bundle made outside the tag's arm and held whole is answered part by part
+        // (the emitted `Answer::held_parts`): its state the place's first value, each
+        // firing of an event part an answer
+        if (supplied.first) {
+            if (auto parts = A::held_parts(identity, *supplied.first)) {
+                auto subscribed = make_rc<detail::SubscribedParts<A>>();
+                supplied.first = detail::answer_parts(*parts, node->sink_, *subscribed, cx);
+                node->held_ = subscribed;
+            }
+        }
         node->supplied_ = std::move(supplied);
         return node;
     }
@@ -1290,6 +1305,11 @@ public:
     /// answer in flight is dropped. The emitted prelude's `Row` calls this.
     void leave_row(Cx& cx) {
         left_ = true;
+        if (held_) {
+            NodeRef held = std::move(held_);
+            held_ = nullptr;
+            cx.keep(held->leave(cx));
+        }
         if (supplied_) {
             NodeRef node = std::move(supplied_->node);
             std::function<void(Cx&)> leave = std::move(supplied_->leave);
@@ -1346,6 +1366,9 @@ private:
     Weak<HostOf<E, A>> host_;
     /// The key left: a computed answer in flight to the place is dropped.
     bool left_ = false;
+    /// The subscriptions of a bundle answered held whole (`Answer::held_parts`): they
+    /// leave with the row.
+    NodeRef held_ = nullptr;
     Sink<A> sink_;
     std::optional<Supplied<E, A>> supplied_;
     /// The entry moved: readers of the live element's level (a forwarded element) read it

@@ -480,6 +480,13 @@ pub trait AnswerOf<E>: Clone + 'static {
     fn decode_first(element: &E, v: &Pod) -> Result<Self, Fault> {
         Self::decode(element, v)
     }
+    /// An answer held whole (a bundle with a part that is no plain data, made outside a
+    /// tag's arm), as the parts the element's tag takes: its state and its events, which a
+    /// host's place is answered with as [`parts_blueprint`] answers. `None` for any other
+    /// answer, and for an element whose tag has no such bundle.
+    fn held_parts(_element: &E, _answer: &Self) -> Option<PartsAnswer<Self>> {
+        None
+    }
 }
 
 /// Where a node's places go (claude/backend.md, "Hosting"): the document, or an enclosing
@@ -1229,6 +1236,9 @@ pub struct HostRow<E, A> {
     host: Weak<dyn HostOf<E, A>>,
     /// The key left: a computed answer in flight to the place is dropped.
     left: Cell<bool>,
+    /// The subscriptions of a bundle answered held whole ([`AnswerOf::held_parts`]): they
+    /// leave with the row.
+    held: RefCell<Option<Rc<dyn Node>>>,
     sink: Sink<A>,
     supplied: RefCell<Option<Supplied<E, A>>>,
     /// The entry moved: readers of the live element's level (a forwarded element) read it
@@ -1238,7 +1248,7 @@ pub struct HostRow<E, A> {
     requests: Rc<Port<(Option<String>, Pod)>>,
 }
 
-impl<E: Clone + Eq + 'static, A: Clone + 'static> HostRow<E, A> {
+impl<E: Clone + Eq + 'static, A: AnswerOf<E>> HostRow<E, A> {
     /// Built after propagation, from the entry after the tick (R7): the supplier is asked
     /// for the place's blueprint, and the blueprint is built under the row's path, in the
     /// host's scope. The `for` machinery of the emitted code calls this with the host as
@@ -1260,13 +1270,20 @@ impl<E: Clone + Eq + 'static, A: Clone + 'static> HostRow<E, A> {
                 Some(row) if !row.left.get() => row.host().deliver(&row.key, v, cx),
                 _ => Ok(()),
             });
-            HostRow { path, key, place, host: Rc::downgrade(&host), left: Cell::new(false), sink, supplied: RefCell::new(None), level_moved: Rc::new(Port::new()), requests: Rc::new(Port::new()) }
+            HostRow { path, key, place, host: Rc::downgrade(&host), left: Cell::new(false), held: RefCell::new(None), sink, supplied: RefCell::new(None), level_moved: Rc::new(Port::new()), requests: Rc::new(Port::new()) }
         });
         let weak: Weak<dyn Node> = Rc::downgrade(&(node.clone() as Rc<dyn Node>));
         node.place.watch(weak);
-        let element = node.element(identity);
+        let element = node.element(identity.clone());
         let blueprint = (host.supplier())(&node.key, &element);
-        let supplied = blueprint(node.path.clone(), node.sink.clone(), &host.scope(), 0, cx)?;
+        let mut supplied = blueprint(node.path.clone(), node.sink.clone(), &host.scope(), 0, cx)?;
+        // a bundle made outside the tag's arm and held whole is answered part by part: its
+        // state the place's first value, each firing of an event part an answer
+        if let Some(parts) = supplied.first.as_ref().and_then(|first| A::held_parts(&identity, first)) {
+            let (first, subscribed) = answer_parts(&parts, &node.sink, cx);
+            supplied.first = first;
+            *node.held.borrow_mut() = Some(Rc::new(subscribed));
+        }
         *node.supplied.borrow_mut() = Some(supplied);
         Ok(node)
     }
@@ -1359,6 +1376,10 @@ impl<E: Clone + Eq + 'static, A: Clone + 'static> HostRow<E, A> {
     /// answer in flight is dropped. The emitted prelude's `Row` calls this.
     pub fn leave_row(&self, cx: &mut Cx) {
         self.left.set(true);
+        if let Some(held) = self.held.borrow_mut().take() {
+            let done = held.leave(cx);
+            cx.keep(done);
+        }
         if let Some(s) = self.supplied.borrow_mut().take() {
             match &s.leave {
                 Some(leave) => leave(cx),
