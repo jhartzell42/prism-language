@@ -792,6 +792,19 @@ fn AnswerArm wx, pos, id, t:
 TypedAnswerArm: unbounded fn Wx, Pos, Nat, OutTy, Text -> ((Pa, [Do]))
 fn TypedAnswerArm wx, pos, id, placed, acc = (((PosPat pos, [[]]), [[(SelfCall (GnOf wx, id).name, [[(AnswerTaken wx.lx, acc, placed, (TryOf (XMethod (XVar "v"), acc, [[]])))]])]]))
 
+# A host's typed answer to a bundle's place with an event part and a `$` part: the tag's
+# first-value case of `crate::Answer` is a push to the `$` part (a supplier's live `$`
+# part moving, a forwarded push), written to the part's hold; any other is the event
+# part's answer.
+BundlePlaceArm: unbounded fn Sinks, Pos, Nat, OutTy, Text, Text, OutTy, Text -> ((Pa, [Do]))
+fn BundlePlaceArm sk, pos, id, placed, acc, f, dplaced, dacc:
+    let ((pa, answered)) = TypedAnswerArm sk.wx, pos, id, placed, acc
+    let ((ignore, pushed)) = TypedDynArm sk, pos, f, dplaced, dacc
+    let ?named = Fold (Values sk.wx.lx.g.tags), nil, \|?found, tg| if tg.kind == "Element" and "{AnswerAccessor tg}_first" == dacc: ? tg else: ?found
+    match ?named:
+        ? tg: ((pa, [[(DoIf (XIsCase (XVar "v"), [[AnswerFirstVariant tg]]), pushed, answered)]]))
+        nil: ((pa, [[(DoExpr (InternalBug "a bundle's place whose `$` part is taken by `{dacc}`, which is no tag's first-value accessor"))]]))
+
 TypedDynArm: unbounded fn Sinks, Pos, Text, OutTy, Text -> ((Pa, [Do]))
 fn TypedDynArm sk, pos, f, placed, acc = (((PosPat pos, [[]]), (DynPlaceWrite sk, f, (AnswerTaken sk.wx.lx, acc, placed, (TryOf (XMethod (XVar "v"), acc, [[]]))))))
 
@@ -831,8 +844,15 @@ fn TypedDispatch sk, name, scope:
     let ((recv, param, segs0, doc)) = if scope > 0: ((RecvRc, (("place", (OutRef OutPath))), (XMethod (XVar "place"), "segments", [[]]), "The host at place {PlaceText (Or wx.hosts[Dec scope], dummyHost).pos} answers its child's place `place` (pick HO): into the child's input method, a hold the place's element answers, or the row of a `for` or `rebuild` under it."))
         else: ((RecvOwned, (("at", (OutRef (OutSlice (OutNamed (RefRuntime "rt::Segment"), [[]]))))), (XVar "at"), "A host's answer to a place of this row's own, `at` under the row (pick HO): into the input method, a hold, or a row under it."))
     let ((seating, segs)) = Seated wx, scope, segs0
-    let answers = Each (Filter wx.answers, \|((pos, ignore, ignore, ignore))| InScope pos), \|((pos, id, placed, acc))| TypedAnswerArm wx, pos, id, placed, acc
-    let dyns = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| InScope pos), \|((pos, f, placed, acc))| TypedDynArm sk, pos, f, placed, acc
+    # a bundle's place with an event part and a `$` part has both (`BundleOutputOf`): one
+    # arm, which takes the tag's first-value case as a push to the `$` part's hold and
+    # any other answer as the event's (`BundlePlaceArm`)
+    let DynAt = \|at| (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| pos == at)[0]
+    let AnswerAt = \|at| (Filter wx.answers, \|((pos, ignore, ignore, ignore))| pos == at)[0]
+    let answers = Each (Filter wx.answers, \|((pos, ignore, ignore, ignore))| InScope pos), \|((pos, id, placed, acc))| match DynAt pos:
+        ? ((ignore, f, dplaced, dacc)): BundlePlaceArm sk, pos, id, placed, acc, f, dplaced, dacc
+        nil: TypedAnswerArm wx, pos, id, placed, acc
+    let dyns = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| (InScope pos) and (AnswerAt pos) == nil), \|((pos, f, placed, acc))| TypedDynArm sk, pos, f, placed, acc
     let rows = Each (Filter wx.builders, \|b| InScope b.pos), \|b| TypedForwardArm b, segs
     let gens = Fold (Filter wx.gens, \|gd| InScope gd.pos), [[]], \|acc, gd| Append acc, (TypedGenArms gd, segs)
     let none = ((PaWild, [[DoReturn (XCtor (RefRuntime "std::Err"), [[(XCall (RefRuntime "rt::Fault::answer"), [[(XFormatStr [[(XText "no hosted place at "), (XCtor (RefRuntime "rt::Path"), [[(XMethod segs, "to_vec", [[]])]]), (XText " to answer")]])]])]])]]))

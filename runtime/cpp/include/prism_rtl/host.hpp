@@ -598,6 +598,22 @@ struct Subscribed : Node {
     }
 };
 
+/// The two subscriptions of a bundle answer with a `$` part (`bundle_dynamic_blueprint`),
+/// let go when the row leaves.
+template <class T>
+struct SubscribedBoth : Node {
+    Rc<Port<T>> event;
+    std::optional<Handle> event_handle;
+    Rc<Port<Unit>> updates;
+    std::optional<Handle> updates_handle;
+    SubscribedBoth(Rc<Port<T>> e, Rc<Port<Unit>> u) : event(std::move(e)), updates(std::move(u)) {}
+    Done leave(Cx&) override {
+        if (event_handle) event->unsubscribe(*std::exchange(event_handle, std::nullopt));
+        if (updates_handle) updates->unsubscribe(*std::exchange(updates_handle, std::nullopt));
+        return {};
+    }
+};
+
 /// A computed answer: delivered as an input of the next tick, which is owed.
 template <class A>
 Done later(const Sink<A>& sink, A v, Cx& cx) {
@@ -665,6 +681,29 @@ Blueprint<E, A> bundle_blueprint(A first, Event<A> e) {
         auto node = make_rc<detail::Subscribed<A>>(e.port);
         node->handle = e.port->subscribe([sink](const A& v, Cx& cx) { return detail::later(sink, v, cx); });
         return Supplied<E, A>{node, first, false};
+    };
+}
+
+/// `@ ((!e, $d))` for a bundle's tag with a `$` part (Type System ch. 2, "Bundles"; round
+/// 3 DY): `d` is the `$` part in the tag's first-value case, `e` the event part in the
+/// tag's own. `d`'s value is the place's first value, read at the build; each later
+/// change of `d` is a push to the place and each firing of `e` an answer, both inputs of
+/// the next tick, which is owed. As `dynamic_blueprint`, several marks of `d` in one tick
+/// are one push, sampled when it is delivered.
+template <class E, class A>
+Blueprint<E, A> bundle_dynamic_blueprint(Dynamic<A> d, Event<A> e) {
+    return [d, e](Path, Sink<A> sink, const Scope<E, A>&, std::uint32_t, Cx& cx) -> Result<Supplied<E, A>> {
+        A first = d.sample(cx);
+        auto node = make_rc<detail::SubscribedBoth<A>>(e.port, d.updates);
+        node->event_handle = e.port->subscribe([sink](const A& v, Cx& cx) { return detail::later(sink, v, cx); });
+        auto queued = make_rc<Stamped<Unit>>();
+        node->updates_handle = d.updates->subscribe([d, sink, queued](const Unit&, Cx& cx) -> Done {
+            if (queued->fired(cx)) return {};
+            queued->set(Unit{}, cx);
+            cx.answer_later([d, sink](Cx& cx) { return sink(d.sample(cx), cx); });
+            return {};
+        });
+        return Supplied<E, A>{node, std::move(first), false};
     };
 }
 
@@ -738,8 +777,10 @@ struct Forward : Node {
         }
         return unexpected(Fault::answer("no place at " + path_of(rest).to_string() + " under a forwarded element"));
     }
+    /// A push is to the element's `$` output: of a bundle's tag its `$` part, which the
+    /// tag's first-value case carries (`decode_first`; any other tag's is its answer).
     Done push(const Pod&, const Pod& v, Cx& cx) override {
-        auto a = TRY(A::decode(element, v));
+        auto a = TRY(A::decode_first(element, v));
         return sink(a, cx);
     }
     Done leave(Cx& cx) override {
@@ -776,8 +817,10 @@ struct Placed : Node {
         }
         return unexpected(Fault::answer("no place at " + path_of(rest).to_string() + " under a placed element value"));
     }
+    /// A push is to the element's `$` output: of a bundle's tag its `$` part, which the
+    /// tag's first-value case carries (`decode_first`; any other tag's is its answer).
     Done push(const Pod&, const Pod& v, Cx& cx) override {
-        auto a = TRY(A::decode(element, v));
+        auto a = TRY(A::decode_first(element, v));
         return sink(a, cx);
     }
     Done leave(Cx& cx) override {

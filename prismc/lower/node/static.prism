@@ -367,10 +367,16 @@ fn HostLine wx, benv, menv, form, args, ?bound:
 DynamicAnswers: unbounded fn Wx, Env, Env, Text, Expr -> ((Wx, Env, [Do]))
 fn DynamicAnswers wx, benv, menv, hf, sup:
     let lx = wx.lx
+    # (and a bundle answer's `$` parts, `@ (("hello" on !flip, $state))`, each keyed by
+    # the part: `BundleBlueprint`)
     let dyns = Fold (ExprsIn sup), [[]], \|acc, x| match x.kind:
         EFreeSigil "@", y: match ?DynamicAnswer lx, y:
             ? d: Push acc, ((y, d))
-            nil: acc
+            nil: match (Ungrouped y).kind:
+                ETuple parts: Fold parts, acc, \|acc2, part| match ?DynamicAnswer lx, part:
+                    ? d: if (?ConstantDynamic part) == nil: Push acc2, ((part, d)) else: acc2
+                    nil: acc2
+                otherwise: acc
         otherwise: acc
     if (Len dyns) == 0: ((wx, benv, [[]]))
     else:

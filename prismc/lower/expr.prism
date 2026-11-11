@@ -776,7 +776,18 @@ fn BundleBlueprint lx, env, x, variant, t = match x.kind:
                 let firstVal = Own (ValueOf lx, env, (Or (?ConstantDynamic d), d))
                 let wrapped = XMethod (AnswerEvent lx, env, ev), "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (XClone (XVar "v"))))]]
                 VlOwned (XCall (RefRuntime "prism_rtl::bundle_blueprint::<crate::Elem, _>"), [[(Tagged firstVariant, firstVal), wrapped]]), t
-            otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer with two event parts, or a `$` part that is no constant or stands beside a plain part"), t
+            # a live `$` part beside the event and no plain part (`@ (("hello" on !flip,
+            # $state))`; round 3 DY): the dynamic in the tag's first-value case, its value
+            # the place's first value and each later change a push (prism_rtl's
+            # `bundle_dynamic_blueprint`)
+            ((? (BnLocal (XPath firstVariant), ignore, ignore), [[ev]], [[d]])) if (Len plain) == 0: match ?DynamicAnswer lx, d:
+                ? inner: match ?AnswerDynamic lx, env, d, inner, firstVariant:
+                    ? dynamic:
+                        let wrapped = XMethod (AnswerEvent lx, env, ev), "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (XClone (XVar "v"))))]]
+                        VlOwned (XCall (RefRuntime "prism_rtl::bundle_dynamic_blueprint::<crate::Elem, _>"), [[dynamic, wrapped]]), t
+                    nil: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer whose `$` part reads what has no value at the owner's build (a structural dynamic, or a name of the parent)"), t
+                nil: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a bundle answer whose `$` part is no dynamic"), t
+            otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer with two event parts, two `$` parts, or a `$` part beside a plain part"), t
     # a bundle that is a value already (`@ pair`): its parts are the tuple's, the plain
     # ones cloned out for the first value, the event's mapped to the tag's variant
     otherwise: match TypeAt lx, x.span:
@@ -814,14 +825,22 @@ fn PlainBlueprint lx, env, x, variant, t = VlOwned (XCall (RefRuntime "prism_rtl
 # (`DynamicAnswers`). The first value is read at the row's build, each later update is a push
 # delivered the next tick.
 DynamicBlueprint: unbounded fn Lx, Env, Expr, Expr, Ref, OutTy -> Vl
-fn DynamicBlueprint lx, env, x, d, variant, t = match ((env.names["#dyn{DynKey x}"], env.names["#owner"])):
+fn DynamicBlueprint lx, env, x, d, variant, t = match ?AnswerDynamic lx, env, x, d, variant:
+    ? dynamic: VlOwned (XCall (RefRuntime "prism_rtl::dynamic_blueprint::<crate::Elem, _>"), [[dynamic]]), t
+    nil: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer that reads what has no value at the owner's build (a structural dynamic, or a name of the parent)"), t
+
+# A supplier's dynamic `d` (the `x` of `@ x`, or a `$` part of a bundle answer) as a
+# `Dynamic` of `crate::Answer` under `variant`, read through the owner's link
+# (`DynamicAnswers`); `nil` when its line made no getter for it (it reads what has no
+# value at the owner's build).
+?AnswerDynamic: unbounded fn Lx, Env, Expr, Expr, Ref -> ?Ex
+fn ?AnswerDynamic lx, env, x, d, variant = match ((env.names["#dyn{DynKey x}"], env.names["#owner"])):
     ((? (BnLocal (XVar getter), ignore, dt), ? (BnLocal (XVar owner), ignore, ignore))):
         let atBuild = Own (ValueOf lx, (InitEnv env), d)
         let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(Tagged variant, (XMethod (XVar "owner"), getter, [[XCx]]))), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=(Tagged variant, (XClone (XVar "at_build"))))]]
         let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, (OutNamed answerRef, [[]]))
-        let dynamic = XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar "{getter}_portx"))]])
-        VlOwned (XCall (RefRuntime "prism_rtl::dynamic_blueprint::<crate::Elem, _>"), [[dynamic]]), t
-    otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer that reads what has no value at the owner's build (a structural dynamic, or a name of the parent)"), t
+        ? (XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar "{getter}_portx"))]]))
+    otherwise: nil
 
 # An answer in its tag's case of `crate::Answer`; with no tag, as plain data in the case
 # of no tag (`untaggedRef`).

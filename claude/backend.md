@@ -758,6 +758,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
   the element, the event part answered by path. In a hosted scope the tag's first-value
   variant carries the `$` part: a supplier's constant `$` part (`@ ((never, $ "offline"))`)
   is the first value.
+  - A supplier's live `$` part (`@ (("hello" on !flip, $state))`) is a `Dynamic` of the
+    first-value variant, read through the owner's link as a dynamic answer's is
+    (`DynamicAnswers` keys it by the part, `?AnswerDynamic`), given to prism_rtl's
+    `bundle_dynamic_blueprint` beside the event: its value at the row's build is the
+    first value, each later change a push delivered the next tick, each firing of the
+    event an answer a tick late.
+  - A forwarded element's push from the World is decoded by `decode_first` (`Forward`,
+    `Placed`): of a bundle's tag the first-value variant, of any other its answer.
+  - The child's typed dispatch has one arm for such a place (`BundlePlaceArm`): the
+    first-value variant is written to the `$` part's hold, any other answer fires the
+    event part.
 - **A bundle in a hosted scope** (a tag whose output is plain parts and one event part):
   `crate::Answer` has a second variant per bundle tag, `{Tag}First`, its plain parts; the
   place's first value is that variant (`{tag}_first()`), from a supplier's

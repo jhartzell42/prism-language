@@ -532,6 +532,27 @@ impl<T: Clone + 'static> Node for Subscribed<T> {
     }
 }
 
+/// The two subscriptions of a bundle answer with a `$` part
+/// ([`bundle_dynamic_blueprint`]), let go when the row leaves.
+struct SubscribedBoth<T> {
+    event: Rc<Port<T>>,
+    event_handle: Cell<Option<Handle>>,
+    updates: Rc<Port<()>>,
+    updates_handle: Cell<Option<Handle>>,
+}
+
+impl<T: Clone + 'static> Node for SubscribedBoth<T> {
+    fn leave(self: Rc<Self>, _cx: &mut Cx) -> Done {
+        if let Some(h) = self.event_handle.take() {
+            self.event.unsubscribe(h);
+        }
+        if let Some(h) = self.updates_handle.take() {
+            self.updates.unsubscribe(h);
+        }
+        Ok(())
+    }
+}
+
 /// A computed answer: delivered as an input of the next tick, which is owed.
 fn later<A: Clone + 'static>(sink: &Sink<A>, v: A, cx: &mut Cx) -> Done {
     let sink = sink.clone();
@@ -557,6 +578,35 @@ pub fn bundle_blueprint<E: 'static, A: Clone + 'static>(first: A, e: Event<A>) -
         let h = e.port.subscribe(Rc::new(move |v: &A, cx: &mut Cx| later(&sink, v.clone(), cx)));
         node.handle.set(Some(h));
         Ok(Supplied { node, first: Some(first.clone()), forwards: false, entry: None, built: 0, leave: None })
+    })
+}
+
+/// `@ ((!e, $d))` for a bundle's tag with a `$` part (Type System ch. 2, "Bundles"; round
+/// 3 DY): `d` is the `$` part in the tag's first-value case, `e` the event part in the
+/// tag's own. `d`'s value is the place's first value, read at the build; each later
+/// change of `d` is a push to the place and each firing of `e` an answer, both inputs of
+/// the next tick, which is owed. As [`dynamic_blueprint`], several marks of `d` in one
+/// tick are one push, sampled when it is delivered.
+pub fn bundle_dynamic_blueprint<E: 'static, A: Clone + 'static>(d: Dynamic<A>, e: Event<A>) -> Blueprint<E, A> {
+    Rc::new(move |_path, sink: Sink<A>, _scope, _base, cx| {
+        let first = d.sample(cx);
+        let node = Rc::new(SubscribedBoth { event: e.port.clone(), event_handle: Cell::new(None), updates: d.updates.clone(), updates_handle: Cell::new(None) });
+        let answers = sink.clone();
+        let h = e.port.subscribe(Rc::new(move |v: &A, cx: &mut Cx| later(&answers, v.clone(), cx)));
+        node.event_handle.set(Some(h));
+        let read = d.clone();
+        let queued: Stamped<()> = Stamped::new();
+        let h = d.updates.subscribe(Rc::new(move |_: &(), cx: &mut Cx| {
+            if queued.fired(cx) {
+                return Ok(());
+            }
+            queued.set((), cx);
+            let (read, sink) = (read.clone(), sink.clone());
+            cx.answer_later(Box::new(move |cx| sink(&read.sample(cx), cx)));
+            Ok(())
+        }));
+        node.updates_handle.set(Some(h));
+        Ok(Supplied { node, first: Some(first), forwards: false, entry: None, built: 0, leave: None })
     })
 }
 
@@ -760,8 +810,10 @@ impl<E: Level + Eq, A: AnswerOf<E>> Node for Placed<E, A> {
             _ => Err(Fault::answer(format!("no place at {} under a placed element value", Path(at.to_vec())))),
         }
     }
+    /// A push is to the element's `$` output: of a bundle's tag its `$` part, which the
+    /// tag's first-value case carries (`decode_first`; any other tag's is its answer).
     fn push(self: Rc<Self>, _element: &Pod, v: &Pod, cx: &mut Cx) -> Done {
-        (self.sink)(&A::decode(&self.element, v)?, cx)
+        (self.sink)(&A::decode_first(&self.element, v)?, cx)
     }
     fn leave(self: Rc<Self>, cx: &mut Cx) -> Done {
         if let Some(h) = self.handle.take() {
@@ -794,8 +846,10 @@ impl<E: Level, A: AnswerOf<E>> Node for Forward<E, A> {
             _ => Err(Fault::answer(format!("no place at {} under a forwarded element", Path(at.to_vec())))),
         }
     }
+    /// A push is to the element's `$` output: of a bundle's tag its `$` part, which the
+    /// tag's first-value case carries (`decode_first`; any other tag's is its answer).
     fn push(self: Rc<Self>, _element: &Pod, v: &Pod, cx: &mut Cx) -> Done {
-        (self.sink)(&A::decode(&self.element, v)?, cx)
+        (self.sink)(&A::decode_first(&self.element, v)?, cx)
     }
     fn leave(self: Rc<Self>, cx: &mut Cx) -> Done {
         if let Some(h) = self.handle.take() {
