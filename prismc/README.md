@@ -2195,12 +2195,11 @@ chess and of two on the self-compile.
 Each is refused loudly: lowering emits a `compile_error!("prismc does not lower ..")`
 naming the construct, and `CompileProgram` reports every distinct one as
 `error[not-lowered]` and fails, the crate still written for reading:
-a supplier's answer `@ x` outside a tag arm, a dynamic answer over what has
+a dynamic answer over what has
 no value at the owner's build, a widget-function blueprint as an answer, and a bundle in
 a hosted scope (pick HO); `@Flatten` of a dynamic that is not a `rebuild`'s (a `for` over a map of dynamics binds the value under the key, pick FV),
 `!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
-structural dynamic of its block (gap SU), `!MergeAll` of a list that is not a
-literal, lines of a block that read each
+structural dynamic of its block (gap SU), lines of a block that read each
 other at the build (pick BO), and the zombie and
 dead states (`leave`, `clean_up`, `edges`).
 
