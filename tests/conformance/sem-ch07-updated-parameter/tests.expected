@@ -1,0 +1,19 @@
+# Derived by hand from Semantics ch. 7 (R3: a dynamic's update event fires at n with the value after n) and ch. 8 (a widget's dynamic parameter is the caller's dynamic): each click writes `$a`, and the widget's `!Updated $c` fires in that tick with the new value.
+test a_widget_hears_its_parameter
+
+tick 0
+  added:
+    0: Ui.Button(label="bump")
+    1: Ui.Label(text="heard 0, last 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="heard 1, last 1")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="heard 2, last 2")
