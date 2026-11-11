@@ -1,0 +1,32 @@
+# A builder between a host and the `for` whose gathered result the host's supplier
+# answers with, reading the host's `$doc` at the build: the `rebuild` reads the child's
+# document as built, and the child's first value reads every row of the build (Semantics
+# ch. 7, "Structural dynamics": a builder in a tick's construction step and the tick's
+# outputs read the value after it, round 3 ST; ch. 8: the order of a block's lines
+# decides positions; ch. 4, "Binding groups and cycles": and nothing else).
+# sem-ch09-host-above-for-reads-rows with a `rebuild` over the document between the two.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Socket of Element ((!Text, $Nat)):
+    address: Text
+
+@chat: @unit
+@chat:
+    ((!rx, $peers)) <- Pad.Socket(address="chat:7000")
+    $last <- "none" then !rx
+    Ui.Label($text=$"{$peers}: {$last}")
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")                              # 0
+    $names <- {1: "one"} then Insert $names, 2, "two" on !add
+    ((ignore, $doc)) <- @HostDocument @chat, \|p, e| match e:     # 1/[p]
+        Pad.Socket(..): @ (("hello" on !add, Size $lens))
+        otherwise: @Element e
+    ignore <- rebuild Size $doc:                                  # 2/#g
+        Ui.Label($text=$"{_} places")                             # 2/#g/0
+    $lens <- for k, $name <- $names:                              # 3/[k]
+        Ui.Label($text=$name)
+        @ Len $name
