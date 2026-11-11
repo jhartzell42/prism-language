@@ -774,7 +774,8 @@ fn LateNumbering build:
     let kept = XBlock [[(DoLet (PaBind "node"), (XClone (XVar "node"))), (DoLet (PaTyped (PaBind "number"), laterTy), (XLater (XBlock build, (XUnit))))]], (XVar "number")
     [[(DoAssign (XDeref (XMethod (XField (XVar "node"), "number_later"), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[kept]]))]]
 
-let laterTy = OutNamed (RefRuntime "rt::Later"), [[]]
+# (`prism_rtl::cx::Later`: the crate's root does not export the name)
+let laterTy = OutNamed (RefRuntime "prism_rtl::cx::Later"), [[]]
 
 # A row numbered late: `base` set, then what its build kept for now.
 NumberPlaces: fn Wx -> MethDef
