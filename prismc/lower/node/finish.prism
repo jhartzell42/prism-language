@@ -446,7 +446,9 @@ fn ScopeSteps sk, atBuild, k, fuel = match fuel -? 1:
         let Builder = \|b|
             let before = Each (Filter wx.snaps, \|sn| sn.before and sn.builder == b.name), Take
             let after = Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == b.name), Take
-            if wx.genPhase == 1: [[]] else: Append (LateChild b), (Append (Push before, (DoExpr (TryOf (XMethod recv, "{b.name}_build", [[XCx]])))), after)
+            # (a host made at no place of its own is placed first, `Wx.unplacedHosts`)
+            let placed = if not atBuild: [[]] else: Fold wx.hosts, [[]], \|a, h| if "{h.name}_rows" == b.name and HasText wx.unplacedHosts, h.name: Push a, (DoExpr (XMethod (XField recv, h.name), "place_at", [[(PlaceAt wx, "node", h.pos)]])) else: a
+            if wx.genPhase == 1: [[]] else: Append placed, (Append (LateChild b), (Append (Push before, (DoExpr (TryOf (XMethod recv, "{b.name}_build", [[XCx]])))), after))
         # a `rebuild` handing back a dynamic: its snapshot taken after the generation is built
         let Gen = \|gd|
             # (an early generation is built already; one numbered late, `Wx.lateNumbered`,
@@ -768,6 +770,13 @@ fn PlaceAt wx, recv, pos:
     let at = [[(PlaceNumber wx, recv, pos)]]
     if Emits wx, pos: XMethod (if recv == "": XVar "path" else: (if recv == "self": XField XSelf, "path" else: XField (XVar recv), "path")), "at", at
     else: XMethod (XCall (RefRuntime "rt::Path::root"), [[]]), "at", at
+
+# Whether a position has no number in the block's build, before the node exists
+# (`PlaceNumber` with no receiver): the block is a row numbered late, whose `base` is
+# set after its node, or a gappy generation before the position is built after the
+# node or numbered late, so what it leaves unbuilt is not known yet.
+PlaceUnknownAtBuild: fn Wx, Pos -> Bool
+fn PlaceUnknownAtBuild wx, pos = (pos.scope == 0 and wx.baseLate and IsSomeNat wx.?based) or (Len (Filter (GapsBefore wx, pos), \|gd| (not gd.early) or HasText wx.lateNumbered, gd.name)) > 0
 
 # The gappy generations of a position's scope that end at or before it (`GenDef.gappy`).
 GapsBefore: fn Wx, Pos -> [GenDef]

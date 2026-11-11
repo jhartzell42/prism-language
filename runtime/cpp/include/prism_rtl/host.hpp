@@ -1402,6 +1402,12 @@ public:
     /// The owner's node, once made: the rows read the document and answer through it.
     void link(const Rc<P>& owner) { owner_ = owner; }
 
+    /// The host's place, told once the owner's node stands: a host made in the build of
+    /// a node whose places take their numbers after it (places are counted as they are
+    /// built) is made at the root and placed here, before its rows are built and before
+    /// any child place asks its first value.
+    void place_at(Path at) { at_ = std::move(at); }
+
     /// `@HostList`'s answers sent down by path (Semantics ch. 9, the list form; rulings
     /// round 12, AQ): each firing of `answers` hands the place at each of its keys that
     /// answer, typed by its tag, as a computed answer, the next tick's input, which is
