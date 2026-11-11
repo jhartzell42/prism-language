@@ -7,3 +7,4 @@ test a_firing_comes_back_a_tick_later, @page:
     click at 0
         => requested Time.After, Wake(after=0s, context="")
     send at 1, Wake(after=0s, context="")
+        => expect Ui.Label(text="later 1")
