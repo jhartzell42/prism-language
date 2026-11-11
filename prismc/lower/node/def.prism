@@ -2321,7 +2321,15 @@ fn IsEventPart ?other = False
 # holds, and reads the whole value's getter, so what moves behind the value marks the
 # binder's readers. The plain binders are fields, matched once at the build.
 LetPatternDynamics: unbounded fn Wx, Env, Env, Pattern, Expr -> Wx
-fn LetPatternDynamics wx, benv, menv, p, e:
+fn LetPatternDynamics wx, benv, menv, p, e = PatternDynamics wx, benv, menv, menv, wx.lx, p, e
+
+# The same for any pattern over a value that holds dynamics or events: a `let`'s, and an
+# inlined widget's parameter pattern over its argument (`BindTimePatternParam`). The
+# value `e` is read in `benv` and `menv` and the node's context; the pattern is written
+# in the context `lxp`, and its names are prebound in `penv` (the `let`'s own block, or
+# the widget's).
+PatternDynamics: unbounded fn Wx, Env, Env, Env, Lx, Pattern, Expr -> Wx
+fn PatternDynamics wx, benv, menv, penv, lxp, p, e:
     let lx = wx.lx
     let ty = Peel (TypeAt lx, e.span)
     let t = OutTyOf lx, ty
@@ -2330,8 +2338,8 @@ fn LetPatternDynamics wx, benv, menv, p, e:
     let wx2 = update wx1:
         &_.getters <= Push &_.getters, (MethDef(name=whole, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="`{SrcText lx, lx.file, e.span}`, the value a `let`'s pattern takes apart, read at the read point."))
         &_.dynReads <= Insert &_.dynReads, whole, reads
-    let o = RustPat lx, p, ty, ByRef, "let_whole_value"
-    let wx3 = Fold (BinderNames p), wx2, \|w, n| match ((menv.names[SNameKey n], (Fold o.binds, nil, \|?found, ((k, b))| if k == SNameKey n: ? b else: ?found))):
+    let o = RustPat lxp, p, ty, ByRef, "let_whole_value"
+    let wx3 = Fold (BinderNames p), wx2, \|w, n| match ((penv.names[SNameKey n], (Fold o.binds, nil, \|?found, ((k, b))| if k == SNameKey n: ? b else: ?found))):
         (((? (BnDyn (XMethod XSelf, rs, ignore), ignore, bt)), (? (BnLocal held, ignore, ignore)))):
             let arm = XArm(pat=o.pa, conds=o.conds, body=(XMethod held, "sample", [[XCx]]))
             let other = XArm(pat=PaWild, conds=[[]], body=(XUnreachable))
@@ -2365,13 +2373,13 @@ fn LetPatternDynamics wx, benv, menv, p, e:
         otherwise: w
     # the plain binders: the value computed at the build and matched once there, each
     # name moved into the field its prebinding named (as `BindPatternResult` does)
-    let plain = Fold (BinderNames p), [[]], \|acc, n| match ((menv.names[SNameKey n], (Fold o.binds, nil, \|?found, ((k, b))| if k == SNameKey n: ? b else: ?found))):
+    let plain = Fold (BinderNames p), [[]], \|acc, n| match ((penv.names[SNameKey n], (Fold o.binds, nil, \|?found, ((k, b))| if k == SNameKey n: ? b else: ?found))):
         (((? (BnLocal rx, ignore, bt)), (? (BnLocal rs, mode, vt)))): Push acc, (((PlaceStem rx), bt, (Own (VlPlace rs, mode, vt))))
         otherwise: acc
     if (Len plain) == 0: wx3
     else:
         let ((tmp, wx4)) = FreshName wx3, "result"
-        let ob = RustPat lx, p, ty, ByRef, tmp
+        let ob = RustPat lxp, p, ty, ByRef, tmp
         let all = OutTuple (Each plain, \|((ignore, bt, ignore))| bt)
         let arm = XArm(pat=ob.pa, conds=ob.conds, body=(XTuple (Each plain, \|((ignore, ignore, v))| v)))
         let other = XArm(pat=PaWild, conds=[[]], body=(XUnreachable))

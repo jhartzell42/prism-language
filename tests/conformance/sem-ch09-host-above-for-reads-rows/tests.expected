@@ -1,0 +1,22 @@
+# Derived by hand from Semantics ch. 7 as ruled (round 3 ST: a builder in a tick's construction step and the tick's outputs read a structural dynamic's value after it; a gathered dynamic moves at n+1, an owed tick) and ch. 9 (an event answer is the next tick's input, owed; round 3 DY: a dynamic answer's change is a push delivered the next tick, owed): the place's first value reads the one row of the build, though the `for` stands below the host; the click's event part is heard in tick 2; the row born in tick 1 moves the gathered dynamic in tick 2, heard in tick 3.
+test the_host_above_reads_every_row
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/[1]/0: Ui.Label(text="1: none")
+    2/[1]/0: Ui.Label(text="one")
+
+tick 1
+  in:
+    0: click
+  added:
+    2/[2]/0: Ui.Label(text="two")
+
+tick 2
+  changed:
+    1/[1]/0: Ui.Label(text="1: hello")
+
+tick 3
+  changed:
+    1/[1]/0: Ui.Label(text="2: hello")

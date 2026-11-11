@@ -1,0 +1,40 @@
+# A building `match` over a building `match`'s plain result, written above it, where the
+# lower `match`'s arm gives its result from what its own lines build (Semantics ch. 4,
+# "Binding groups and cycles": any line may use any name the block binds, and "the order
+# of a group's lines decides positions and nothing else"; ruling TC: places are counted
+# as they are built). sem-ch04-building-match-on-late-value-above with the loud arm's
+# result read from a widget the arm builds. Nothing here is a cycle.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Sized: fn Text -> @Nat
+fn @Sized t:
+    Ui.Label($text=$"{t}")
+    @ Len t
+
+@Panel: fn Mode -> @unit
+fn @Panel mode:
+    match n -? 15:                                                     # 0 and 1, or 0
+        ? over:
+            Ui.Label($text=$"over by {over}")
+        nil:
+            Ui.Label($text=$"under")
+            Ui.Label($text=$"at {n}")
+    n <- match mode:
+        Loud t:
+            size <- @Sized t                                           # 2
+            @ size + 9
+        Soft:
+            @ 20
+    Ui.Label($text=$"below {n}")                                       # 3, or 1
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    @Panel mode

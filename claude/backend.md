@@ -521,9 +521,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   gives each pattern the part's binding (`BindPartsParam`), an event with its value
   form (`BindEventParam`), a plain part as a field. Any other pattern is over a plain
   value: the argument is a local of the build, matched once there, each name a field
-  (`BindPlainPatternValue`). Refused: a bundle argument that is neither written out nor
-  a name (a function's result), and a pattern that takes an event or a dynamic out of
-  a value that is no bundle (a record's `$` field).
+  (`BindPlainPatternValue`). A pattern that binds an event or a dynamic out of a value
+  (a record's `$` field, `fn @Shown Gauge($level=$l, name=nm):`; a tuple over a bundle
+  that is a function's result) binds its names as a `let`'s are and takes the argument
+  apart as a `let`'s value is (`BindTimePatternParam`, `PatternDynamics`): a getter of
+  the node reads the argument in its caller's environment, each dynamic's getter
+  matches it and samples what the binder holds, each event's node hears the event the
+  value holds. Refused: a name that is a bundle of its own inside such a value.
 - **`@Element made` as a line, `made` a `let` of the block bound to a tag applied**
   (Semantics ch. 8, "Elements and the element statement") is that element's line at
   the placing line's position, lowered in the placing line's environments

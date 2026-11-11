@@ -1,0 +1,16 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": the order of a group's lines decides positions and nothing else; a building `match`'s arm adds no path segment), ch. 8 (a widget application is transparent, its plain result a value of the build) and ruling TC (places counted as built): loud gives 1 + 9, so the upper `match` takes `nil` and builds 0 and 1, the lower arm's label is 2 and the last label 3; soft gives 20, so the upper `match` builds 0, the lower arm nothing, and the last label is 1.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="under")
+    1: Ui.Label(text="at 10")
+    2: Ui.Label(text="x")
+    3: Ui.Label(text="below 10")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="over by 5")
+    1: Ui.Label(text="below 20")
