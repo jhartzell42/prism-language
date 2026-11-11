@@ -1,0 +1,43 @@
+# Derived by hand: ticks 0 to 2 are the bug's recorded transcript (prism-notes, evidence/documents/bugs/24); ticks 3 and 4 are by Semantics ch. 7 ("double firings never": a `for`'s gathered event fires once in a tick, with both elements' occurrences, so `$fired` is written once): ada's request is applied and ada's seat is torn down in tick 3, and bob is told the total 1 in tick 4, as the hosting library's own `request_and_leave` shows (evidence/documents/tests.expected).
+test request_and_leave
+
+tick 0
+  added:
+    0: Ui.Button(label="cy joins")
+    1: Ui.Button(label="cy is removed")
+    2: Ui.Button(label="ada is removed")
+    3: Ui.Button(label="bob becomes eager")
+    4: Ui.Button(label="dee and eve join, eager at 3")
+    5: Ui.Button(label="dee, eve and gus join, eager at 2")
+    6: Ui.Button(label="fay joins, eager at 1")
+    7: Ui.Button(label="fay is removed")
+    8: Ui.Button(label="kay joins")
+    9: Ui.Button(label="dee and kay join, eager at 4")
+    11/[(((Teller "ada"), Person))]/0/[1]/0: Ui.Button(label="ada +1")
+    11/[(((Teller "ada"), Person))]/0/[2]/0: Ui.Button(label="ada +2")
+    11/[(((Teller "ada"), Person))]/0/[3]/0: Ui.Button(label="ada +1 and leaves")
+    11/[(((Teller "ada"), Person))]/0/[6]/0: Ui.Label(text="ada: (loading); nothing yet")
+    11/[(((Teller "bob"), Person))]/0/[1]/0: Ui.Button(label="bob +1")
+    11/[(((Teller "bob"), Person))]/0/[2]/0: Ui.Button(label="bob +2")
+    11/[(((Teller "bob"), Person))]/0/[3]/0: Ui.Button(label="bob +1 and leaves")
+    11/[(((Teller "bob"), Person))]/0/[6]/0: Ui.Label(text="bob: (loading); nothing yet")
+
+tick 1
+
+tick 2
+  changed:
+    11/[(((Teller "ada"), Person))]/0/[6]/0: Ui.Label(text="ada: total 0, may add; nothing yet")
+    11/[(((Teller "bob"), Person))]/0/[6]/0: Ui.Label(text="bob: total 0, may add; nothing yet")
+
+tick 3
+  in:
+    11/[(((Teller "ada"), Person))]/0/[3]/0: click
+  torn down:
+    11/[(((Teller "ada"), Person))]/0/[1]/0: Ui.Button(label="ada +1")
+    11/[(((Teller "ada"), Person))]/0/[2]/0: Ui.Button(label="ada +2")
+    11/[(((Teller "ada"), Person))]/0/[3]/0: Ui.Button(label="ada +1 and leaves")
+    11/[(((Teller "ada"), Person))]/0/[6]/0: Ui.Label(text="ada: total 0, may add; nothing yet")
+
+tick 4
+  changed:
+    11/[(((Teller "bob"), Person))]/0/[6]/0: Ui.Label(text="bob: total 1, may add; nothing yet")

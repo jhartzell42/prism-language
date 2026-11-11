@@ -1,0 +1,8 @@
+# Derived by hand from the bug's recorded transcript (prism-notes, evidence/documents/bugs/28) and Semantics ch. 5 (a `for` over a map visits its entries in key order) with the type's derived `^Ord` (`White < Black`): a tick's lists are in path order, and a path's key orders as the key type does.
+test entries_in_key_order
+
+tick 0
+  added:
+    0: Ui.Label(text="keys: White Black; White < Black: True")
+    1/[White]/0: Ui.Label(text="White")
+    1/[Black]/0: Ui.Label(text="Black")

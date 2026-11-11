@@ -1,0 +1,109 @@
+# Documents: the hosting library. A document is what seats take part in; this module holds
+# what every document shares: the response, the step's result, the trait a role's seat type
+# implements, and the in-memory implementation, written once.
+# Written by Claude (an implementation agent), 11 November 2026; evidence for Part IV;
+# subject to change.
+emit rest
+
+# What a request is answered with. Chapter 3 names the second case `Error`; the prelude's
+# record has that name, so it is `Declined` here (NOTES, doubt EN).
+type Response = choice:
+    Accepted
+    Declined Text
+derive ^Eq, ^Show
+
+# What a step gives: the next state, or a denial and its reason (chapter 4).
+type Stepped s = choice:
+    Next s
+    Denied Text
+
+# One role of one document. A value of `r` is one seat of the role: `Player White`,
+# `Spectator "ada"`. The four associated types are chapter 3's facts per role, and `Step`
+# and `Read` are chapter 4's pure rules, each taking the seat that asks.
+trait ^Seat r:
+    type State                          # the document's state, the same for every role
+    type Request                        # what this role may ask to change
+    type Query                          # what this role may ask to know
+    type Told                           # what this role is told
+    Step: fn State r, r, Request r -> Stepped (State r)
+    Read: fn State r, r, Query r -> Told r
+
+# Where a request was made: the seat, printed, and the place within the seat's guest.
+type Place = record:
+    seat: Text
+    at: Path
+derive ^Eq, ^Ord, ^Show
+
+# One request as the implementation takes it: its place, and the step it asks for, with
+# the seat and the request already inside. This is what lets one implementation take the
+# requests of every role: the role's types end here.
+type Asked s = record:
+    place: Place
+    step: fn s -> Stepped s
+
+Asking: fn r, Path, Request r -> Asked (State r) where r: ^Seat, r: ^Show
+fn Asking seat, at, request = Asked(place=Place(seat=(Show seat), at=at), step=(\|state| Step state, seat, request))
+
+# The state after some requests of one tick, and the response to each by place.
+type Kept s = record:
+    state: s
+    responses: (Place ==> Response)
+
+StepOne: fn Kept s, Asked s -> Kept s
+fn StepOne kept, asked:
+    let Apply = asked.step
+    match Apply kept.state:
+        Next state: Kept(state=state, responses=(Insert kept.responses, asked.place, Accepted))
+        Denied why: Kept(state=kept.state, responses=(Insert kept.responses, asked.place, (Declined why)))
+
+# One tick's requests, folded in the order given, each against the state the one before
+# left (chapter 3, doubt SO).
+StepAll: fn s, [Asked s] -> Kept s
+fn StepAll state, asked = Fold asked, Kept(state=state, responses={}), StepOne
+
+StateOf: fn Kept s -> s
+fn StateOf kept = kept.state
+
+ResponsesOf: fn Kept s -> (Place ==> Response)
+fn ResponsesOf kept = kept.responses
+
+# The in-memory implementation (chapter 6), for every document: one hold for the state.
+# `HostSeats` is the document's own function that hosts its seats (chapter 5: "each
+# document writes `@HostSeats`"); it is given the state and each tick's responses, and
+# gives back each tick's requests in fold order.
+@InMemory: fn s, (fn $s, !(Place ==> Response) -> @![Asked s] emit rest) -> @unit emit rest
+fn @InMemory initial, HostSeats:
+    !asked <- HostSeats $state, !responses
+    let !outcome = StepAll $state, !asked
+    $state <- initial then StateOf !outcome                 # the hold
+    $answered <- {} then ResponsesOf !outcome
+    let !responses = !Updated $answered
+
+# What a seat's request place is answered with: its own response of this tick, if any.
+?ResponseTo: fn r, Path, (Place ==> Response) -> ?Response where r: ^Show
+fn ?ResponseTo seat, at, responses = ?Get responses, Place(seat=(Show seat), at=at)
+
+# The state as each seat's host hears it: when it changes, a tick after a seat joins, and
+# a tick after the document is built. A seat's host keeps what it hears in its own hold.
+@News: fn $s, $(k ==> v) -> @!s
+fn @News $state, $seats:
+    !first <- @started
+    !settled <- @Defer (!Updated $seats)
+    @ (!Updated $state) <| ($state on !settled) <| ($state on !first)
+
+# A role's seats as a `for` reads them: one key per seat and what sits there, so a seat
+# whose sitting changes is a new key, and that seat alone is built again.
+Sittings: fn (k ==> v) -> (((k, v)) ==> unit) where k: ^Ord, v: ^Ord
+fn Sittings seats = Fold (Keys seats), {}, \|all, k| match ?Get seats, k:
+    ? v: Insert all, ((k, v)), unit
+    nil: all
+
+SeatOf: fn ((k, v)) -> k
+fn SeatOf ((k, v)) = k
+
+SittingOf: fn ((k, v)) -> v
+fn SittingOf ((k, v)) = v
+
+# One role's requests of a tick in fold order: by seat, then by place.
+InOrder: fn (k ==> (Path ==> a)) -> [a]
+fn InOrder asked = Fold (Values asked), [[]], \|all, places| Append all, (Values places)

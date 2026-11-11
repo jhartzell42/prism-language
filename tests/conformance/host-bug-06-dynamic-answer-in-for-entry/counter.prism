@@ -1,0 +1,71 @@
+# probe 2: the counter document
+emit rest | Ui.* | Count.* | View.*
+use Documents.*
+
+type Presser = choice:
+    Presser Text
+derive ^Eq, ^Ord, ^Show
+
+type Viewer = choice:
+    Viewer Text
+derive ^Eq, ^Ord, ^Show
+
+type Add = choice:
+    Add Nat
+derive ^Eq, ^Show
+
+type Asks = choice:
+    Whole
+derive ^Eq, ^Show
+
+type Nothing = choice:
+    Nothing
+derive ^Eq, ^Show
+
+impl ^Seat Presser:
+    type State = Nat
+    type Request = Add
+    type Query = Asks
+    type Told = Nat
+    fn Step total, seat, (Add n) = if total + n > 5: Denied "the count stops at five" else: Next (total + n)
+    fn Read total, seat, Whole = total
+
+impl ^Seat Viewer:
+    type State = Nat
+    type Request = Nothing
+    type Query = Asks
+    type Told = Bool
+    fn Step total, seat, Nothing = Denied "a viewer asks for no change"
+    fn Read total, seat, Whole = total > 0
+
+tag Count.Request of Element !Response:
+    !requests: Add
+
+tag Count.Query of Element $Nat:
+    $query: Asks
+
+tag View.Query of Element $Bool:
+    $query: Asks
+
+!Requested: fn Elem (rest | Count.*) -> !Add
+fn !Requested e = match e:
+    Count.Request(!requests=!r): !r
+    otherwise: never
+
+@HostPressers: fn $(Presser ==> v), (fn Presser, v -> @a emit rest | Count.*), $Nat, !(Place ==> Response) -> @!(Presser ==> (Path ==> Asked Nat)) emit rest
+fn @HostPressers $seats, Guest, $state, !responses:
+    !heard <- for seat, $sitting <- $seats:
+        ((ignore, $doc)) <- @HostDocument (@Sat seat, $sitting, Guest), \|p, e| match e:
+            Count.Request(..): @ !Filter (?ResponseTo seat, p, !responses)
+            Count.Query(..): @ Read $state, seat, Whole
+            otherwise: @Element e
+        !asked <- for p, $e <- $doc:
+            !r <- @Switch (!Requested $e)
+            @ Asking seat, p, !r
+        @ !asked
+    @ !heard
+
+@Sat: fn k, $v, (fn k, v -> @a emit r) -> @$a emit r
+fn @Sat seat, $sitting, Guest:
+    rebuild $sitting:
+        Guest seat, _

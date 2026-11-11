@@ -1,0 +1,90 @@
+# Chess, the document way: one chess game in memory, and programs that seat participants
+# at it. `@hotSeat` seats two players at text interfaces and a spectator, and a button
+# seats a second spectator; the scripted programs seat two scripted players and a
+# spectator; `@bothOpen` seats two players that ask in one tick.
+# Written by Claude (an implementation agent), 11 November 2026; evidence for Part IV;
+# subject to change.
+emit Ui.* | Play.* | Watch.*
+mod Documents
+mod Rules
+mod Notation
+mod Squares
+mod Game
+mod Lines
+mod Participants
+test mod Tests
+use Documents.*
+use Rules.*
+use Notation.*
+use Squares.*
+use Game.*
+use Participants.*
+
+let white = Player White
+let black = Player Black
+let ada = Spectator "ada"
+let bea = Spectator "bea"
+
+# The hot seat's seats: the game's `@HostSeats` (chapter 5). It is given the state and each
+# tick's responses and hands them to the role hosts; no participant is given either.
+@HotSeat: fn $ChessGame, ![Responded Player ChessReason] -> @![Asked ChessGame Player (Responded Player ChessReason)] emit Ui.*
+fn @HotSeat $state, !responses:
+    !beaJoins <- Ui.Button($label=$"bea joins")                                                  # 0
+    !asked <- @HostPlayers {white: unit, black: unit}, never, never, @TextPlayer, $state, !responses   # 1, 2
+    @HostSpectators {ada: unit}, ({bea: unit}) on !beaJoins, never, @SpectatorView, $state      # 3, 4
+    @ !asked
+
+# One game in memory, two players and a spectator.
+@hotSeat: @unit
+@hotSeat:
+    @InMemory fresh, @HotSeat
+
+# A script as a program writes it: moves as values, each a request to play it.
+Plays: fn [Move] -> [PlayerRequest]
+fn Plays moves = Each moves, \|move| Play move
+
+# Two scripted players and a spectator.
+@ScriptedSeats: fn [PlayerRequest], [PlayerRequest], $ChessGame, ![Responded Player ChessReason] -> @![Asked ChessGame Player (Responded Player ChessReason)] emit Ui.*
+fn @ScriptedSeats whiteScript, blackScript, $state, !responses:
+    !asked <- @HostPlayers {white: whiteScript, black: blackScript}, never, never, @ScriptedPlayer, $state, !responses   # 0, 1
+    @HostSpectators {ada: unit}, never, never, @SpectatorView, $state                                                    # 2, 3
+    @ !asked
+
+@FoolsMateSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Asked ChessGame Player (Responded Player ChessReason)] emit Ui.*
+fn @FoolsMateSeats $state, !responses = @ScriptedSeats (Plays [[(Moving f2, f3), (Moving g2, g4)]]), (Plays [[(Moving e7, e5), (Moving d8, h4)]]), $state, !responses
+
+@CastlingSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Asked ChessGame Player (Responded Player ChessReason)] emit Ui.*
+fn @CastlingSeats $state, !responses = @ScriptedSeats (Plays [[(Moving e2, e4), (Moving g1, f3), (Moving f1, c4), (Moving e1, g1)]]), (Plays [[(Moving e7, e5), (Moving b8, c6), (Moving f8, c5)]]), $state, !responses
+
+@EnPassantSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Asked ChessGame Player (Responded Player ChessReason)] emit Ui.*
+fn @EnPassantSeats $state, !responses = @ScriptedSeats (Plays [[(Moving e2, e4), (Moving e4, e5), (Moving e5, d6)]]), (Plays [[(Moving a7, a6), (Moving d7, d5)]]), $state, !responses
+
+@PromotionSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Asked ChessGame Player (Responded Player ChessReason)] emit Ui.*
+fn @PromotionSeats $state, !responses = @ScriptedSeats (Plays [[(Moving a2, a4), (Moving a4, b5), (Moving b5, a6), (Moving a6, b7), (Promoting b7, a8, Knight)]]), (Plays [[(Moving b7, b5), (Moving a7, a6), (Moving c8, b7), (Moving b8, c6)]]), $state, !responses
+
+# Two players that each ask once, in one tick: White for e2e4, Black for e7e5.
+@OpeningSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Asked ChessGame Player (Responded Player ChessReason)] emit Ui.*
+fn @OpeningSeats $state, !responses:
+    !asked <- @HostPlayers {white: (Play (Moving e2, e4)), black: (Play (Moving e7, e5))}, never, never, @OpeningPlayer, $state, !responses   # 0, 1
+    @HostSpectators {ada: unit}, never, never, @SpectatorView, $state                                                    # 2, 3
+    @ !asked
+
+@foolsMate: @unit
+@foolsMate:
+    @InMemory fresh, @FoolsMateSeats
+
+@castling: @unit
+@castling:
+    @InMemory fresh, @CastlingSeats
+
+@enPassant: @unit
+@enPassant:
+    @InMemory fresh, @EnPassantSeats
+
+@promotion: @unit
+@promotion:
+    @InMemory fresh, @PromotionSeats
+
+@bothOpen: @unit
+@bothOpen:
+    @InMemory fresh, @OpeningSeats

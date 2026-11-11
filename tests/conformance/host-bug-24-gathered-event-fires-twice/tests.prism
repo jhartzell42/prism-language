@@ -1,0 +1,8 @@
+emit Ui.* | Tell.* | Keep.* | View.*
+use App.*
+test request_and_leave, @table:
+    build
+    compute
+    compute
+    click Ui.Button(label="ada +1 and leaves")
+    compute
