@@ -1,0 +1,17 @@
+# Derived by hand from Semantics ch. 4 (a building `match`'s arm adds no path segment), ch. 8 (a blueprint builds nothing until a block applies it; it is built at the applying block's next positions) and ruling TC (places counted as built): the frame builds 0 to 3, its argument at 1 and 2, so the last label is 4; the `nil` arm builds 0, so it is 1.
+test picked
+
+tick 0
+  added:
+    0: Ui.Label(text="top")
+    1: Ui.Label(text="left")
+    2: Ui.Label(text="right")
+    3: Ui.Label(text="bottom")
+    4: Ui.Label(text="end")
+
+test not_picked
+
+tick 0
+  added:
+    0: Ui.Label(text="none")
+    1: Ui.Label(text="end")
