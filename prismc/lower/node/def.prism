@@ -1694,10 +1694,64 @@ fn LetLine wx, benv, menv, p, e:
             otherwise: if Fold (BinderNames p), True, \|ok, n| ok and IsPlainPart menv.names[SNameKey n]:
                 let t = OutTyOf lx, (Peel (TypeAt lx, e.span))
                 (((BindPatternResult wx, menv, p, (Own (ValueOf lx, benv, e)), t, (Peel (TypeAt lx, e.span))), benv))
+            # a pattern that binds dynamics inside it, and no event (`LetPatternDynamics`)
+            else: if Fold (BinderNames p), True, \|ok, n| ok and ((IsPlainPart menv.names[SNameKey n]) or IsGetterPart menv.names[SNameKey n]): (((LetPatternDynamics wx, benv, menv, p, e), benv))
             else:
                 let wx2 = update wx:
-                    &_.build <= Push &_.build, (RefusalDo "a widget block's `let` of this pattern (`{SrcText lx, lx.file, p.span}`), which binds a dynamic or an event inside it")
+                    &_.build <= Push &_.build, (RefusalDo "a widget block's `let` of this pattern (`{SrcText lx, lx.file, p.span}`), which binds an event inside it")
                 ((wx2, benv))
+
+# A name prebound as a dynamic `let`'s getter (`PreBindName`).
+IsGetterPart: fn ?Bn -> Bool
+fn IsGetterPart (? (BnDyn (XMethod XSelf, ignore, ignore), ignore, ignore)) = True
+fn IsGetterPart ?other = False
+
+# A `let` whose pattern binds dynamics inside it (`let Gauge($level=$l, name=nm) = ..`;
+# Semantics ch. 4: a `let` names what its pattern binds, and a dynamic named is that
+# dynamic). The whole value is a getter of the node, made from what it reads as a value
+# that holds dynamics is (`PreBindName`, gap LF); each `$` binder's getter, which its
+# prebinding named, matches that value by the pattern and samples the dynamic the binder
+# holds, and reads the whole value's getter, so what moves behind the value marks the
+# binder's readers. The plain binders are fields, matched once at the build.
+LetPatternDynamics: unbounded fn Wx, Env, Env, Pattern, Expr -> Wx
+fn LetPatternDynamics wx, benv, menv, p, e:
+    let lx = wx.lx
+    let ty = Peel (TypeAt lx, e.span)
+    let t = OutTyOf lx, ty
+    let ((whole, wx1)) = FreshName wx, "let_whole"
+    let ((ex, reads)) = DynamicExpr wx1, menv, e
+    let wx2 = update wx1:
+        &_.getters <= Push &_.getters, (MethDef(name=whole, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="`{SrcText lx, lx.file, e.span}`, the value a `let`'s pattern takes apart, read at the read point."))
+        &_.dynReads <= Insert &_.dynReads, whole, reads
+    let o = RustPat lx, p, ty, ByRef, "let_whole_value"
+    let wx3 = Fold (BinderNames p), wx2, \|w, n| match ((menv.names[SNameKey n], (Fold o.binds, nil, \|?found, ((k, b))| if k == SNameKey n: ? b else: ?found))):
+        (((? (BnDyn (XMethod XSelf, rs, ignore), ignore, bt)), (? (BnLocal held, ignore, ignore)))):
+            let arm = XArm(pat=o.pa, conds=o.conds, body=(XMethod held, "sample", [[XCx]]))
+            let other = XArm(pat=PaWild, conds=[[]], body=(XUnreachable))
+            let tail = XBlock [[(DoLet (PaTyped (PaBind "let_whole_value"), t), (XMethod XSelf, whole, [[XCx]]))]], (Own (ArmsValue (XRef (XVar "let_whole_value")), [[arm, other]], "'bound", bt))
+            update w:
+                &_.getters <= Push &_.getters, (MethDef(name=rs, recv=RecvRef, params=[[]], cx=CxRef, ret=bt, body=[[]], tail=tail, doc="`{SNameKey n}`, a dynamic a `let`'s pattern binds"))
+                &_.dynReads <= Insert &_.dynReads, rs, [[OwnRead whole]]
+        (((? (BnDyn ignore, ignore, ignore)), ignore)): update w:
+            &_.build <= Push &_.build, (InternalBugDo "the dynamic `{SNameKey n}` of a `let`'s pattern, which the pattern does not bind")
+        otherwise: w
+    # the plain binders: the value computed at the build and matched once there, each
+    # name moved into the field its prebinding named (as `BindPatternResult` does)
+    let plain = Fold (BinderNames p), [[]], \|acc, n| match ((menv.names[SNameKey n], (Fold o.binds, nil, \|?found, ((k, b))| if k == SNameKey n: ? b else: ?found))):
+        (((? (BnLocal rx, ignore, bt)), (? (BnLocal rs, mode, vt)))): Push acc, (((PlaceStem rx), bt, (Own (VlPlace rs, mode, vt))))
+        otherwise: acc
+    if (Len plain) == 0: wx3
+    else:
+        let ((tmp, wx4)) = FreshName wx3, "result"
+        let ob = RustPat lx, p, ty, ByRef, tmp
+        let all = OutTuple (Each plain, \|((ignore, bt, ignore))| bt)
+        let arm = XArm(pat=ob.pa, conds=ob.conds, body=(XTuple (Each plain, \|((ignore, ignore, v))| v)))
+        let other = XArm(pat=PaWild, conds=[[]], body=(XUnreachable))
+        let matched = Own (ArmsValue (XRef (XVar tmp)), [[arm, other]], "'bound", all)
+        update wx4:
+            &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind tmp), t), (Own (ValueOf lx, benv, e))), (DoLet (PaTyped (PaTuple (Each plain, \|((f, ignore, ignore))| PaBind f)), all), matched)]]
+            &_.fields <= Append &_.fields, (Each plain, \|((f, bt, ignore))| ((f, bt, "a name of a `let`'s pattern")))
+            &_.inits <= Append &_.inits, (Each plain, \|((f, ignore, ignore))| ((f, (XClone (XVar f)))))
 
 # A part of a tuple pattern as its prebinding has it: a plain name, or none (`ignore`).
 IsPlainPart: fn ?Bn -> Bool
