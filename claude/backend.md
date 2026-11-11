@@ -146,7 +146,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A trait method's own type parameter with the name of its impl's** (`impl ^Paired [b]`
   with `Pair: fn a, b -> Text`) is another variable: in that impl's method it has a name
   apart (`ApartName`, `SchemeApart`: its name followed by every type parameter's of the
-  impl and the method, `bb`), in the checker's types of the body and in the emitted
+  impl and the method, `bbb`), in the checker's types of the body and in the emitted
   generics alike (`ImplDefOf`, `MethodOwnName`).
 - **A type parameter** of a function, of an impl and of a trait method's own is bounded
   `'static` in Rust (`StaticGenerics`, in a trait's declaration, its impls and its packed
