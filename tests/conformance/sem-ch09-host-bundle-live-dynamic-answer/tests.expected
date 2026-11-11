@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 9 as ruled (round 3 DY: a supplier's dynamic answer gives the place its first value in the birth tick, and each later change is a push delivered the next tick, which is owed; an event answer is the next tick's input, owed) and Type System ch. 2 ("Bundles": the bundle is answered part by part): the click moves the host's hold and fires its event in tick 1, and the child's place hears both in tick 2.
+test a_live_dynamic_part
+
+tick 0
+  added:
+    0: Ui.Button(label="flip")
+    1/[1]/0: Ui.Label(text="down: none")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1/[1]/0: Ui.Label(text="up: hello")

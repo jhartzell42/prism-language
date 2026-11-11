@@ -1,0 +1,11 @@
+# The tests of sem-ch09-host-bundle-dynamic-part-forwarded.
+emit Ui.* | Pad.*
+use App.*
+
+test a_forwarded_socket, @forwarded:
+    with Pad.Socket(address="chat:7000") = "up", build
+        => expect Ui.Label(text="up: none")
+    send Pad.Socket(..), "hello"
+        => expect Ui.Label(text="up: hello")
+    push Pad.Socket(address="chat:7000") = "down"
+        => expect Ui.Label(text="down: hello")

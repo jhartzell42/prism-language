@@ -1,0 +1,28 @@
+# Derived by hand from ruling TC and Semantics ch. 8 (a blueprint parameter is built where the widget applies it, at the next positions): levels 20 down to 1 take places 0 to 19, the blueprint's two labels 20 and 21, and the caller's label the next number, 22.
+test twenty_levels_pass_a_blueprint
+
+tick 0
+  added:
+    0: Ui.Label(text="level 20")
+    1: Ui.Label(text="level 19")
+    2: Ui.Label(text="level 18")
+    3: Ui.Label(text="level 17")
+    4: Ui.Label(text="level 16")
+    5: Ui.Label(text="level 15")
+    6: Ui.Label(text="level 14")
+    7: Ui.Label(text="level 13")
+    8: Ui.Label(text="level 12")
+    9: Ui.Label(text="level 11")
+    10: Ui.Label(text="level 10")
+    11: Ui.Label(text="level 9")
+    12: Ui.Label(text="level 8")
+    13: Ui.Label(text="level 7")
+    14: Ui.Label(text="level 6")
+    15: Ui.Label(text="level 5")
+    16: Ui.Label(text="level 4")
+    17: Ui.Label(text="level 3")
+    18: Ui.Label(text="level 2")
+    19: Ui.Label(text="level 1")
+    20: Ui.Label(text="mark")
+    21: Ui.Label(text="end")
+    22: Ui.Label(text="after")

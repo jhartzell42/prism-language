@@ -1,0 +1,55 @@
+# Derived by hand from rulings TC and IE2 and Semantics ch. 4 and ch. 8 (an arm adds no path segment; a widget application is transparent): by `match`, levels 20 down to 0 take places 0 to 20, the `nil` arm's label 21 and the caller's 22; by `if`, steps 20 down to 0 take places 0 to 20, the last builds nothing more, and the caller's label is 21.
+test twenty_levels_by_match
+
+tick 0
+  added:
+    0: Ui.Label(text="level 20")
+    1: Ui.Label(text="level 19")
+    2: Ui.Label(text="level 18")
+    3: Ui.Label(text="level 17")
+    4: Ui.Label(text="level 16")
+    5: Ui.Label(text="level 15")
+    6: Ui.Label(text="level 14")
+    7: Ui.Label(text="level 13")
+    8: Ui.Label(text="level 12")
+    9: Ui.Label(text="level 11")
+    10: Ui.Label(text="level 10")
+    11: Ui.Label(text="level 9")
+    12: Ui.Label(text="level 8")
+    13: Ui.Label(text="level 7")
+    14: Ui.Label(text="level 6")
+    15: Ui.Label(text="level 5")
+    16: Ui.Label(text="level 4")
+    17: Ui.Label(text="level 3")
+    18: Ui.Label(text="level 2")
+    19: Ui.Label(text="level 1")
+    20: Ui.Label(text="level 0")
+    21: Ui.Label(text="end")
+    22: Ui.Label(text="after")
+
+test twenty_levels_by_if
+
+tick 0
+  added:
+    0: Ui.Label(text="step 20")
+    1: Ui.Label(text="step 19")
+    2: Ui.Label(text="step 18")
+    3: Ui.Label(text="step 17")
+    4: Ui.Label(text="step 16")
+    5: Ui.Label(text="step 15")
+    6: Ui.Label(text="step 14")
+    7: Ui.Label(text="step 13")
+    8: Ui.Label(text="step 12")
+    9: Ui.Label(text="step 11")
+    10: Ui.Label(text="step 10")
+    11: Ui.Label(text="step 9")
+    12: Ui.Label(text="step 8")
+    13: Ui.Label(text="step 7")
+    14: Ui.Label(text="step 6")
+    15: Ui.Label(text="step 5")
+    16: Ui.Label(text="step 4")
+    17: Ui.Label(text="step 3")
+    18: Ui.Label(text="step 2")
+    19: Ui.Label(text="step 1")
+    20: Ui.Label(text="step 0")
+    21: Ui.Label(text="after")

@@ -1,0 +1,22 @@
+# A bundle with a `$` part in a hosted scope, forwarded: the World's first value, its
+# answers to the event part and its pushes to the `$` part reach the child's place
+# through the host (Semantics ch. 9: a forwarded element is re-emitted at `host/[p]/0`,
+# and "A forwarded answer is this tick's input"; ch. 8, "A new place's first value" and
+# "The patch": a type with both inside "becomes two channels with one input"; Type
+# System ch. 2, "Bundles and sparse tuples"). Written by Claude on the claude-lowering
+# branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Socket of Element ((!Text, $Text)):
+    address: Text
+
+@chat: @unit
+@chat:
+    ((!rx, $link)) <- Pad.Socket(address="chat:7000")           # 0
+    $last <- "none" then !rx
+    Ui.Label($text=$"{$link}: {$last}")                          # 1
+
+@forwarded: @unit
+@forwarded:
+    ignore <- @HostDocument @chat, \|p, e| @Element e           # 0/[p]/0

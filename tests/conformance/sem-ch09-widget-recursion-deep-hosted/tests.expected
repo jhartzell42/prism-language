@@ -1,0 +1,27 @@
+# Derived by hand from ruling TC, Semantics ch. 8 and ch. 9 (a forwarding host's place for the child's place p is 0/[p]/0): the child's levels 20 down to 1 are its places 0 to 19, the last clause's label 20, and its own label 21.
+test twenty_levels_under_a_host
+
+tick 0
+  added:
+    0/[0]/0: Ui.Label(text="level 20")
+    0/[1]/0: Ui.Label(text="level 19")
+    0/[2]/0: Ui.Label(text="level 18")
+    0/[3]/0: Ui.Label(text="level 17")
+    0/[4]/0: Ui.Label(text="level 16")
+    0/[5]/0: Ui.Label(text="level 15")
+    0/[6]/0: Ui.Label(text="level 14")
+    0/[7]/0: Ui.Label(text="level 13")
+    0/[8]/0: Ui.Label(text="level 12")
+    0/[9]/0: Ui.Label(text="level 11")
+    0/[10]/0: Ui.Label(text="level 10")
+    0/[11]/0: Ui.Label(text="level 9")
+    0/[12]/0: Ui.Label(text="level 8")
+    0/[13]/0: Ui.Label(text="level 7")
+    0/[14]/0: Ui.Label(text="level 6")
+    0/[15]/0: Ui.Label(text="level 5")
+    0/[16]/0: Ui.Label(text="level 4")
+    0/[17]/0: Ui.Label(text="level 3")
+    0/[18]/0: Ui.Label(text="level 2")
+    0/[19]/0: Ui.Label(text="level 1")
+    0/[20]/0: Ui.Label(text="end")
+    0/[21]/0: Ui.Label(text="after")

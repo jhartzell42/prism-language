@@ -1,0 +1,7 @@
+# The tests of sem-ch08-widget-recursion-deep-result.
+emit Ui.*
+use App.*
+
+test twenty_levels_give_a_result, @main:
+    build
+        => expect Ui.Label(text="total 210")

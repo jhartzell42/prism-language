@@ -1,0 +1,9 @@
+# The tests of sem-ch08-widget-recursion-deep-event-parameter.
+emit Ui.*
+use App.*
+
+test twenty_levels_hear_an_event, @main:
+    build
+        => expect Ui.Label(text="after")
+    click at 0
+        => expect Ui.Label(text="end: 1")

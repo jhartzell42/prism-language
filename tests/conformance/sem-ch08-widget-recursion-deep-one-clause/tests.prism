@@ -1,0 +1,11 @@
+# The tests of sem-ch08-widget-recursion-deep-one-clause.
+emit Ui.*
+use App.*
+
+test twenty_levels_by_match, @matched:
+    build
+        => expect Ui.Label(text="after")
+
+test twenty_levels_by_if, @iffed:
+    build
+        => expect Ui.Label(text="after")
