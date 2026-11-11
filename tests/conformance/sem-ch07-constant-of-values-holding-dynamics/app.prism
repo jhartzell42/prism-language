@@ -1,0 +1,29 @@
+# `$ v` over a value that holds a dynamic below its top: a tuple, an array, and a tuple
+# that holds such a constant again (Type System ch. 1: a dynamic of a tuple that holds
+# a dynamic is a type as any other; Semantics ch. 7: `$ v` is the constant of `v`). The
+# value holds the dynamic itself, not a copy of what it held at the build: `@Flatten`
+# over the tuple's part follows `$a`. Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+$First: fn (($Nat, Text)) -> $Nat
+fn $First (($n, ignore)) = $n
+
+Named: fn (($Nat, Text)) -> Text
+fn Named ((ignore, name)) = name
+
+Deep: fn (($(($Nat, Text)), Nat)) -> Nat
+fn Deep ((ignore, n)) = n
+
+@page: @unit
+@page:
+    !inc <- Ui.Button($label=$"inc")                         # 0
+    $a <- 0 then $a + 1 on !inc
+    let $pair = $ (($a, "main"))
+    let $both = $ [[$a, $a]]
+    let $deep = $ (($ (($a, "in")), 3))
+    let $$first = $First $pair
+    $shown <- @Flatten $$first
+    Ui.Label($text=$"{$shown} {Named $pair} {Len $both} {Deep $deep}")    # 1
