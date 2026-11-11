@@ -60,7 +60,10 @@ fn NodeParts cp, n:
     let decl = NodeClass doc, n.name, base, fields, consts, "{n.name}({ctorParams}) : {ctorInits} \{\}", decls
     # the constructor's arguments in the order the fields are declared
     let byField = Each n.fields, \|((f, ignore, ignore))| Or (Fold n.inits, nil, \|?found, ((g, v))| if g == f: ? v else: ?found), (XVar f)
-    let ((letsText, lcp)) = CppStatementsCp ncp, n.lets
+    # a parameter of `make` that is a shared pointer by its type (a row's `enclosing` host)
+    # is reached by `->`
+    let pcp = Fold n.params, ncp, \|c, ((p, t))| if IsPointerTy c, (Unref t): Pointing c, p else: c
+    let ((letsText, lcp)) = CppStatementsCp pcp, n.lets
     let args = Join (Append [["path"]], (Each byField, \|v| CppExpr lcp, v)), ", "
     let tail = if n.fallible: "return node;" else: "return node;"
     let make = NodeMake n.name, "{ret} {n.name}::make(crate::prelude::Path path, {params}crate::prelude::Cx& cx)", letsText, args, (Join (Filter [[(CppStatements (Pointing lcp, "node"), n.build), tail]], \|s| s != ""), "\n")

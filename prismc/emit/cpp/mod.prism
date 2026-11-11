@@ -183,9 +183,9 @@ fn Context model:
     Fold model.mods, withElem, \|cp, m| Fold m.items, cp, \|c, it| AddModelItem c, m.name, it
 
 # The prelude's own types and constructors (prelude.prism beside this file).
-let preludeTypes = {"prelude::Ordering": TyInfo(kind="choice", fields=[[]], params=[[]]), "prelude::Span": TyInfo(kind="record", fields=[["file_p", "line_p", "column_p", "binding_p"]], params=[[]]), "prelude::Exception": TyInfo(kind="record", fields=[["kind_p", "message_p", "spans_p", "path_o"]], params=[[]]), "prelude::Duration": TyInfo(kind="newtype", fields=[[]], params=[[]]), "prelude::PreludeUnwrap": TyInfo(kind="tag", fields=[[]], params=[[]]), "prelude::PreludeExceptions": TyInfo(kind="tag", fields=[[]], params=[[]])}
+let preludeTypes = {"prelude::Ordering": TyInfo(kind="choice", fields=[[]], params=[[]]), "prelude::PreludeTurn": TyInfo(kind="choice", fields=[[]], params=[["B"]]), "prelude::Span": TyInfo(kind="record", fields=[["file_p", "line_p", "column_p", "binding_p"]], params=[[]]), "prelude::Exception": TyInfo(kind="record", fields=[["kind_p", "message_p", "spans_p", "path_o"]], params=[[]]), "prelude::Duration": TyInfo(kind="newtype", fields=[[]], params=[[]]), "prelude::PreludeUnwrap": TyInfo(kind="tag", fields=[[]], params=[[]]), "prelude::PreludeExceptions": TyInfo(kind="tag", fields=[[]], params=[[]])}
 
-let preludeCtors = {"prelude::Ordering::Less": "choice", "prelude::Ordering::Equal": "choice", "prelude::Ordering::Greater": "choice"}
+let preludeCtors = {"prelude::Ordering::Less": "choice", "prelude::Ordering::Equal": "choice", "prelude::Ordering::Greater": "choice", "prelude::PreludeTurn::More": "choice", "prelude::PreludeTurn::Done": "choice"}
 
 # What every node has: its path, and the runtime's methods a node is called by.
 let nodeBase = {"make": True, "push": True, "wake": True, "started": True, "deferred": True, "build": True, "swap": True, "leave": True, "patch": True, "edges": True, "release": True, "clean_up": True, "path": True, "leave_row": True, "answer": True, "document": True, "entries": True, "deliver": True, "document_moved": True, "me": True, "result_dynamic": True}
@@ -193,7 +193,7 @@ let nodeBase = {"make": True, "push": True, "wake": True, "started": True, "defe
 AddModelItem: fn Cp, Text, Item -> Cp
 fn AddModelItem cp, m, it = match it:
     ItType t: AddType cp, m, t
-    ItTag t: AddTy cp, "{m}::{t.name}", TyInfo(kind="tag", fields=(Each t.fields, \|((ignore, f, ignore))| f), params=[[]])
+    ItTag t: AddTy cp, "{m}::{t.name}", TyInfo(kind="tag", fields=(Append (Each t.fields, \|((ignore, f, ignore))| f), (Each t.events, \|((f, ignore))| f)), params=[[]])
     ItRow r: AddRow cp, m, r
     ItJob j: AddTy cp, "{m}::{j.name}", TyInfo(kind="job", fields=(Each j.fields, \|((f, ignore))| f), params=(Each j.generics, \|((g, ignore))| g))
     ItNode n: AddNode cp, m, n
