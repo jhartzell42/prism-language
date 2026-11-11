@@ -172,7 +172,7 @@ fn ItemParts cp, it = match it:
     ItTrait t: TraitParts cp, t
     ItImpl i: ImplParts cp, i
     ItNote t: ProtosDefs [[]], [["// {t}"]]
-    ItRefused t: ProtosDefs [[]], [["compile_error!(\"{loweringRefusal}{Escape t}\");"]]
+    ItRefused t: ProtosDefs [[]], [["compile_error!(\"{RefusalWords (Escape t)}\");"]]
 
 FnParts: unbounded fn Cp, FnDef -> Parts
 fn FnParts cp, f:

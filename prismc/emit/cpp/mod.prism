@@ -314,8 +314,8 @@ fn CppType cp, t = match t:
     # a trait's associated type is a class template of its namespace, each impl's choice a
     # specialization at the impl's head (`TraitParts`, `ImplParts`)
     OutAssoc tr, n, a: "typename {TypePath tr}::{n}<{CppType cp, a}>::type"
-    OutRefused what: "compile_error!(\"{loweringRefusal}{what}\")"
-    OutQuantified b: "compile_error!(\"{loweringRefusal}a quantified type variable of `{b}`: no instantiation gives it a type\")"
+    OutRefused what: "compile_error!(\"{RefusalWords what}\")"
+    OutQuantified b: "compile_error!(\"{bugWords}a quantified type variable of `{b}`: no instantiation gives it a type\")"
 
 CppTypes: unbounded fn Cp, [OutTy] -> Text
 fn CppTypes cp, ts = Join (Each ts, \|t| CppType cp, t), ", "

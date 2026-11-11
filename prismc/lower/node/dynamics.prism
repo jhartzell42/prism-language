@@ -189,7 +189,7 @@ fn MergeAllEvent wx, menv, args, t = match args[0]:
         else:
             let ((r, w1)) = NeverEvent wx, t
             let w2 = update w1:
-                &_.build <= Push &_.build, (RefusalDo "`!MergeAll` of `{SrcText wx.lx, wx.lx.file, a.value.span}`, a list that is not plain, read as an event")
+                &_.build <= Push &_.build, (BugDo "`!MergeAll` of `{SrcText wx.lx, wx.lx.file, a.value.span}`, a list that is not plain, read as an event")
             ((r, w2))
     nil: NeverEvent wx, t
 

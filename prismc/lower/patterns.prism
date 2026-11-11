@@ -161,8 +161,8 @@ fn CtorPat lx, n, ps, ty, mode, fresh:
                         let path = if isUnitType or isNewtype: tyPath else: RefChild tyPath, (Camel (BareName c.name))
                         if (Len c.args) == 0: PatOut(pa=(PaUnit path), conds=[[]], binds=[[]])
                         else: PatOut(pa=(PaCtor path, pas), conds=conds, binds=binds)
-            nil: PatOut(pa=PaWild, conds=[[CcIf (Refusal "a pattern of {qk}")]], binds=[[]])
-        nil: PatOut(pa=PaWild, conds=[[CcIf (Refusal "a pattern of an unknown constructor")]], binds=[[]])
+            nil: PatOut(pa=PaWild, conds=[[CcIf (Bug "a pattern of {qk}")]], binds=[[]])
+        nil: PatOut(pa=PaWild, conds=[[CcIf (Bug "a pattern of an unknown constructor")]], binds=[[]])
 
 # A constructor's field `i` in a pattern: through an `Rc`, a binder holds the `Rc` and a
 # nested pattern matches behind it in a `let`.
@@ -183,7 +183,7 @@ fn SubPat lx, c, i, p, ty, mode, fresh:
 BehindRc: unbounded fn Lx, Pattern, Ty, Holding, Text -> PatOut
 fn BehindRc lx, p, ty, rcMode, fresh:
     let inner = RustPat lx, p, ty, ByRef, "{fresh}_r"
-    let place = Ref (LocalPlace (XVar fresh), rcMode, (OutRefused "a payload"))
+    let place = Ref (LocalPlace (XVar fresh), rcMode, (BugType "a payload"))
     PatOut(pa=(PaBind fresh), conds=(Append [[(CcLet inner.pa, place)]], inner.conds), binds=inner.binds)
 
 # `Rec(f=p, ..)` (a record) or `Error(kind=K, ..)` (the prelude's error, matched in `~T`
@@ -204,7 +204,7 @@ fn RecordPat lx, n, fps, rest, ty, mode, fresh:
                 otherwise: FieldsPat lx, c, fps, rest, ty, mode, fresh, tyPath
         nil: match lx.g.tags[qk]:
             ? tg: TagPat lx, tg, fps, rest, ty, mode, fresh
-            nil: PatOut(pa=PaWild, conds=[[CcIf (Refusal "a pattern of {qk}")]], binds=[[]])
+            nil: PatOut(pa=PaWild, conds=[[CcIf (Bug "a pattern of {qk}")]], binds=[[]])
 
 RestCasePat: fn CtorInfo, [((Text, [Ty]))], Ref -> PatOut
 fn RestCasePat c, cases, tyPath:

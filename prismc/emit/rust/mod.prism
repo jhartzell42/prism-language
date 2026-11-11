@@ -94,8 +94,8 @@ fn Type t = match t:
     OutTurn: "() /* the job's turn */"
     OutAssoc tr, n, (OutNamed (RefRuntime "Self"), [[]]): "Self::{n}"
     OutAssoc tr, n, a: "<{Type a} as {tr}>::{n}"
-    OutRefused what: "compile_error!(\"{loweringRefusal}{what}\")"
-    OutQuantified b: "compile_error!(\"{loweringRefusal}a quantified type variable of `{b}`: no instantiation gives it a type\")"
+    OutRefused what: "compile_error!(\"{RefusalWords what}\")"
+    OutQuantified b: "compile_error!(\"{bugWords}a quantified type variable of `{b}`: no instantiation gives it a type\")"
 
 # A path the model writes as Rust spells it: the standard library's items, which the model
 # marks `std::` (`std::Rc::new`, `std::Some`), from the root (`::std::rc::Rc::new`,
@@ -212,7 +212,7 @@ fn Expression x = match x:
     XFormatStr parts: FormatStr parts
     XIsCase y, [[]]: "false"
     XIsCase y, cs: "matches!({Expression y}, {Join (Each cs, \|c| "{RsRef c}(..)"), " | "})"
-    XRefusal what: "compile_error!(\"{loweringRefusal}{Escape what}\")"
+    XRefusal what: "compile_error!(\"{RefusalWords (Escape what)}\")"
     XUnreachable: "unreachable!()"
     XCall f, args: "{RsRef f}({Args args})"
     XCallAt f, tys, args: "{RsRef f}::<{Types tys}>({Args args})"
