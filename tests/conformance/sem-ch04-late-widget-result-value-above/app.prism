@@ -1,0 +1,39 @@
+# A widget's late plain result taken as a value at the build by a line above it: the
+# widget ends on a building `match`'s result, which is known once its arm is built
+# (Semantics ch. 4, "Binding groups and cycles": a widget block is one binding group, any
+# line may use any name the block binds, and "the order of a group's lines decides
+# positions and nothing else"; ch. 8: `<-` builds the child and binds its result).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Tile: fn Nat -> @unit
+fn @Tile k:
+    Ui.Label($text=$"tile {k}")
+
+@Measure: fn Mode -> @Nat
+fn @Measure mode:
+    k <- match mode:
+        Loud t:
+            Ui.Label($text=$"{t}")
+            @ 10
+        Soft:
+            @ 20
+    Ui.Label($text=$"measured")
+    @ k
+
+@Panel: fn Mode -> @unit
+fn @Panel mode:
+    @Tile n                                                            # 0
+    n <- @Measure mode                                                 # 1 and 2, or 1
+    Ui.Label($text=$"below {n}")                                       # 3, or 2
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    @Panel mode
