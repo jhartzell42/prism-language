@@ -102,7 +102,7 @@ fn RootResult wx = match wx.result:
 # the order of what the lines read (Semantics ch. 4: the order of the lines decides
 # positions and nothing else), so a line reads at the build a name bound below it.
 BlockInto: unbounded fn Wx, Env, Env, Block -> Wx
-fn BlockInto wx, benv, menv, b = match ?LateLineAt wx.lx, b, 16:
+fn BlockInto wx, benv, menv, b = match ?LateLineAt wx.lx, menv, b, 16:
     ? k: SplitBlockInto wx, benv, menv, b, k
     nil:
         let ((wx2, ignore, ignore)) = LinesInto wx, benv, menv, b, False
@@ -127,41 +127,70 @@ fn LinesInto wx, benv, menv, b, open:
 # built: the plain result of a building `match` or `if` (the arm's row keeps it), and of a
 # block split around such a line (`SplitBlockInto`), which the lines below the split give.
 
-# The first line of a block that binds a late result with lines after it (`n <- match
-# mode: ..`, Semantics ch. 4 and ch. 8): where the block's build is split.
-?LateLineAt: unbounded fn Lx, Block, Nat -> ?Nat
-fn ?LateLineAt lx, b, depth:
-    let n = Len b.stmts
-    Fold (Range0 n), nil, \|?found, i| match ?found:
+# The first line of a block that binds a late result (`n <- match mode: ..`, Semantics ch.
+# 4 and ch. 8): where the block's build is split. `menv` gives the widget parameters and
+# the local widgets a line may apply.
+?LateLineAt: unbounded fn Lx, Env, Block, Nat -> ?Nat
+fn ?LateLineAt lx, menv, b, depth:
+    let env = WithLocalWidgets menv, b
+    Fold (Range0 (Len b.stmts)), nil, \|?found, i| match ?found:
         ? k: ? k
         nil: match (Or b.stmts[i], dummyStmtL).kind:
-            SBind ignore, e, nil: if i + 1 < n and IsLateExpr lx, e, depth: ? i else: nil
+            SBind ignore, e, nil: if IsLateExpr lx, env, e, depth: ? i else: nil
             otherwise: nil
 
+# An environment with a block's own local widgets (`@line:` and its block), as `PreBind`
+# binds them.
+WithLocalWidgets: fn Env, Block -> Env
+fn WithLocalWidgets env, b = Fold b.stmts, env, \|en, s| match s.kind:
+    SWidget w: Bind en, (SNameKey w.name), (BnLocalWidget w.body)
+    otherwise: en
+
 # Whether a building line's result is late: a building `match` or `if` whose arms end on a
-# plain result, a widget block that ends late, or a widget of one clause applied whose
-# block does. `depth` bounds the walk through widgets that apply each other.
-IsLateExpr: unbounded fn Lx, Expr, Nat -> Bool
-fn IsLateExpr lx, e, depth = match e.kind:
-    EGroup x: IsLateExpr lx, x, depth
+# plain result, a widget block that ends late, a widget of one clause applied whose block
+# does, a widget parameter applied whose argument is late, or a local widget whose block
+# is. `depth` bounds the walk through widgets that apply each other.
+IsLateExpr: unbounded fn Lx, Env, Expr, Nat -> Bool
+fn IsLateExpr lx, menv, e, depth = match e.kind:
+    EGroup x: IsLateExpr lx, menv, x, depth
     EIf ignore, ignore, (? ignore): IsPlainResult lx, e
     EMatch ignore, ignore: IsPlainResult lx, e
-    EWidgetBlock b: IsLateBlock lx, b, depth
+    EWidgetBlock b: IsLateBlock lx, menv, b, depth
     otherwise:
-        let callee = match e.kind:
-            ECall c, ignore, ignore, ignore: c
-            otherwise: e
+        let ((callee, args)) = match e.kind:
+            ECall c, xs, ignore, ignore: ((c, xs))
+            otherwise: ((e, [[]]))
         match callee.kind:
             EName n:
-                let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
-                match ?q:
-                    ? q: match lx.g.vals[q]:
-                        ? v: match ?OneBody lx, q:
-                            ? body: depth > 0 and (IsPlainResult lx, e) and IsLateBlock (InModuleAt lx, v.file, v.home, lx.site), body, (Dec depth)
+                let ?local = if (Len n.path) == 1: menv.names[SNameKey n] else: nil
+                match ?local:
+                    # a widget parameter applied: its argument, in its caller's environment
+                    ? (BnWidget x, ignore, cmenv, clx): depth > 0 and IsLateExpr clx, cmenv, x, (Dec depth)
+                    ? (BnLocalWidget wb): depth > 0 and IsLateBlock lx, menv, wb, (Dec depth)
+                    otherwise:
+                        let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
+                        match ?q:
+                            ? q: match lx.g.vals[q]:
+                                ? v: match ?OneBody lx, q:
+                                    ? body: depth > 0 and (IsPlainResult lx, e) and IsLateBlock (InModuleAt lx, v.file, v.home, lx.site), (CalleeWidgetEnv lx, menv, q, v, args), body, (Dec depth)
+                                    nil: False
+                                nil: False
                             nil: False
-                        nil: False
-                    nil: False
             otherwise: False
+
+# The environment a widget of one clause reads its widget parameters in, for lateness: each
+# blueprint parameter bound to the call's argument with the caller's environment.
+CalleeWidgetEnv: unbounded fn Lx, Env, Text, ValInfo, [Arg] -> Env
+fn CalleeWidgetEnv lx, menv, qk, v, args:
+    let lxc = InModuleAt lx, v.file, v.home, lx.site
+    let ptys = match v.scheme.ty:
+        TyFn ignore, ps, ignore: ps
+        otherwise: [[]]
+    match ClausesOf lx.g, qk:
+        [[c]]: Fold (Range0 (Len c.params)), emptyEnv, \|en, i| match ((c.params[i], ptys[i], args[i])):
+            ((? p, ? pt, ? a)) if (LayerOf pt) == LyBlueprint: Bind en, (PlainBinder lxc, p), (BnWidget a.value, emptyEnv, menv, lx)
+            otherwise: en
+        otherwise: emptyEnv
 
 # The block of a widget of one clause (`InlineWidget`).
 ?OneBody: unbounded fn Lx, Text -> ?Block
@@ -175,9 +204,9 @@ fn ?OneBody lx, qk = match ?WidgetDeclOf lx.g, qk:
 
 # Whether a block's result is late: it ends on a plain result, and it is split, or its
 # last line's own result is late.
-IsLateBlock: unbounded fn Lx, Block, Nat -> Bool
-fn IsLateBlock lx, b, depth = match (Or b.stmts[Dec (Len b.stmts)], dummyStmtL).kind:
-    SExpr x: (IsPlainResult lx, x) and ((IsSome (?LateLineAt lx, b, depth)) or IsLateExpr lx, x, depth)
+IsLateBlock: unbounded fn Lx, Env, Block, Nat -> Bool
+fn IsLateBlock lx, menv, b, depth = match (Or b.stmts[Dec (Len b.stmts)], dummyStmtL).kind:
+    SExpr x: (IsPlainResult lx, x) and ((IsSome (?LateLineAt lx, menv, b, depth)) or IsLateExpr lx, (WithLocalWidgets menv, b), x, depth)
     otherwise: False
 
 IsPlainResult: unbounded fn Lx, Expr -> Bool
@@ -197,19 +226,48 @@ fn LineResult lx, e:
 # A block whose line `k` binds a late result (Semantics ch. 4: a building `match`'s arm is
 # fixed for the life of the block and adds no path segment; ch. 8: `<-` builds the child
 # and binds its result, and a block's places are born in source order): the block's build
-# is split around that line. The lines above it are the node's as ever. The line's row is
-# built once, after the node, and reads the block's names through it; the node keeps its
-# plain result (`BuildingChoiceLine`). The lines below it are one more generation, built
-# once after that row, at the block's next positions, the line's pattern its binder and the
-# kept result its value; it reads the block's names through the node as an arm does, and
-# its result is the block's: an event's or a dynamic's as an arm's is, a plain one late.
+# is split around that line. The line's row is built once, after the node, and reads the
+# block's names through it; the node keeps its plain result (`BuildingChoiceLine`). The
+# lines below that build a place, or that read at their build what such a line binds, are
+# one more generation, built once after that row, at the block's next positions, the
+# line's pattern its binder and the kept result its value; it reads the block's names
+# through the node as an arm does, and its result is the block's: an event's or a
+# dynamic's as an arm's is, a plain one late.
+# The order of the lines decides positions and nothing else (Semantics ch. 4), so the
+# node's lines and the lower generation's read each other:
+# - the lines below the split that build no place (a hold, a `let`, a local function, a
+#   local widget) and read nothing a lower place line binds but events are the node's
+#   (`HoistedLines`), lowered with the lines above;
+# - an event a lower place line binds is a node of the block too, prebound, which the
+#   lower generation's own event fires (`PreBindUps`);
+# - the line's names are bound in the node's methods to getters over the kept result
+#   (`BindLate`), so a hold's step, a dynamic `let` and a place's live field read them; a
+#   hold whose first value reads one is set when the line's row is built (`HoldLine`).
 SplitBlockInto: unbounded fn Wx, Env, Env, Block, Nat -> Wx
-fn SplitBlockInto wx, benv, menv, b, k:
-    let lx = wx.lx
-    let head = Block(stmts=(Take b.stmts, k), inline=b.inline, span=b.span)
-    let rest = Block(stmts=(Drop b.stmts, k + 1), inline=b.inline, span=b.span)
-    let ((wx0, be0, me0)) = LinesInto wx, benv, menv, head, True
+fn SplitBlockInto wx00, benv, menv, b, k:
+    let lx = wx00.lx
+    # the late first values of an enclosing split wait for their own line
+    let outerLate = wx00.lateInits
+    let wx = update wx00:
+        &_.lateInits <= [[]]
     let s = Or b.stmts[k], dummyStmtL
+    let lateNames = match s.kind:
+        SBind p, ignore, nil: PatternNames p
+        otherwise: [[]]
+    let below = Drop b.stmts, k + 1
+    let hoisted = HoistedLines below, lateNames
+    let staying0 = Filter below, \|st| not (HasStmt hoisted, st)
+    # the block's result is its last line's: when that line is the node's, the lower
+    # generation gives nothing back
+    let lastHoisted = match b.stmts[Dec (Len b.stmts)]:
+        ? st: (k + 1 < (Len b.stmts)) and HasStmt hoisted, st
+        nil: False
+    let staying = if lastHoisted: Unresulted staying0 else: staying0
+    let head = Block(stmts=(Append (Take b.stmts, k), hoisted), inline=b.inline, span=b.span)
+    let rest = Block(stmts=staying, inline=b.inline, span=b.span)
+    let ((wxu, beu, meu, ups)) = PreBindUps wx, benv, menv, staying
+    let ((wxl, bel, mel, lates)) = BindLate wxu, beu, meu, s
+    let ((wx0, be0, me0)) = LinesInto wxl, bel, mel, head, True
     let ((wx1, be1, me1)) = Fold (LineExprs s), ((wx0, be0, me0)), \|((w, be, me)), e| WholeArgs w, be, me, e, False
     match s.kind:
         SBind p, e, nil:
@@ -217,14 +275,153 @@ fn SplitBlockInto wx, benv, menv, b, k:
             let kept = match late:
                 WrLate read, ignore: read
                 otherwise: Refusal "a block split at a line whose result is not late"
-            # what the lines below give back: the block's result
-            let ((outTy, layer)) = match (Or rest.stmts[Dec (Len rest.stmts)], dummyStmtL).kind:
-                SExpr x: LineResult lx, x
-                otherwise: ((OutUnit, LyPlain))
-            let ((wx3, res)) = BuildingChoiceLine wx2, me1, kept, [[? p]], (OutOf (TypeAt lx, e.span)), [[nil]], [[rest]], outTy, layer
-            SetResult wx3, res
+            let wx2g = LateGetters wx2, lates, kept
+            let wx2s = update (WithLateInits wx2g, wx2g.lateInits):
+                &_.lateInits <= outerLate
+            if (Len staying) == 0: SetResult wx2s, WrUnit
+            else:
+                # what the lines below give back: the block's result
+                let ((outTy, layer)) = match (Or rest.stmts[Dec (Len rest.stmts)], dummyStmtL).kind:
+                    SExpr x: LineResult lx, x
+                    otherwise: ((OutUnit, LyPlain))
+                # the lower generation binds its own events: it reads none of them as the block's
+                let rowEnv = WithoutNames me1, (Each ups, \|((nkey, ignore, ignore))| nkey)
+                let ((wx3, res)) = BuildingChoiceLine wx2s, rowEnv, kept, [[? p]], (OutOf (TypeAt lx, e.span)), [[nil]], [[rest]], outTy, layer, (Each ups, \|((ignore, mine, blocks))| ((mine, blocks)))
+                SetResult wx3, res
         otherwise: update wx1:
             &_.build <= Push &_.build, (InternalBugDo "a block split at a line that binds nothing")
+
+HasStmt: fn [Stmt], Stmt -> Bool
+fn HasStmt sts, st = Fold sts, False, \|f, x| f or (x.span.start == st.span.start and x.span.end == st.span.end)
+
+# Lines whose last gives nothing back: a bare building line last is built and its result
+# dropped.
+Unresulted: fn [Stmt] -> [Stmt]
+fn Unresulted sts = match sts[Dec (Len sts)]:
+    ? last: match last.kind:
+        SExpr e: match e.kind:
+            EFreeSigil "@", ignore: sts
+            otherwise: Push (Take sts, (Dec (Len sts))), (Stmt(kind=(SIgnore e), span=last.span))
+        otherwise: sts
+    nil: sts
+
+# The lines below a split that are the node's: a hold, a `let`, a local function, a local
+# widget, a signature, which build no place, and which read nothing bound by a line that
+# stays below but events (those fire up, `PreBindUps`). A plain `let` that reads the
+# split line's names stays too: its value is a local of the lower generation's build.
+# What a line that stays binds, the lines that read it stay with it.
+HoistedLines: unbounded fn [Stmt], [Text] -> [Stmt]
+fn HoistedLines below, lateNames:
+    let candidates = Filter below, \|st| match st.kind:
+        SBind ignore, ignore, (? ignore): True
+        SLet ignore, ignore, ignore: True
+        SFn ignore: True
+        SWidget ignore: True
+        SSignature ignore: True
+        SEmit ignore: True
+        otherwise: False
+    let fixed = Filter below, \|st| not (HasStmt candidates, st)
+    HoistedAmong candidates, (Fold fixed, [[]], \|acc, st| UnionTexts acc, (NonEventDefs st)), lateNames
+
+HoistedAmong: unbounded fn [Stmt], [Text], [Text] -> [Stmt]
+fn HoistedAmong candidates, blocking, lateNames:
+    let Stays = \|st|
+        let reads = ReadsOfLine st
+        let plainLet = match st.kind:
+            SLet p, ignore, ignore: Fold (PatternNames p), False, \|f, n| f or not ((HasPrefix n, "$") or (HasPrefix n, "!"))
+            otherwise: False
+        (Fold reads, False, \|f, n| f or HasText blocking, n) or (plainLet and Fold reads, False, \|f, n| f or HasText lateNames, n)
+    let out = Filter candidates, Stays
+    if (Len out) == 0: candidates
+    else: HoistedAmong (Filter candidates, \|st| not (HasStmt out, st)), (Fold out, blocking, \|acc, st| UnionTexts acc, (NonEventDefs st)), lateNames
+
+# The block's names a line reads anywhere in it (`ReadsAtBuild` is the build's alone).
+ReadsOfLine: unbounded fn Stmt -> [Text]
+fn ReadsOfLine s = match s.kind:
+    SFn f: FreeReads (StmtExprs s), [[(((Fold f.params, [[]], \|acc, q| Append acc, (PatternNames q)), f.span))]]
+    otherwise: FreeReads (StmtExprs s), [[]]
+
+NonEventDefs: unbounded fn Stmt -> [Text]
+fn NonEventDefs s = Filter (Check.Blocks.GroupDefs s), \|d| not (HasPrefix d, "!")
+
+# The events the lines that stay below a split bind, prebound in the node as its own
+# (`PreBindName`): a line of the node reads one as any event of the block, and the lower
+# generation's own event fires it (`ArmRowOf`, `ups`). Each: the name, the lower
+# generation's node for it (named as `PreBindName` names it there), the block's method.
+PreBindUps: unbounded fn Wx, Env, Env, [Stmt] -> ((Wx, Env, Env, [((Text, Text, Text))]))
+fn PreBindUps wx, benv, menv, staying:
+    let binders = Fold staying, [[]], \|acc, st| match st.kind:
+        SBind p, ignore, nil: Append acc, (Each (Filter (BinderNames p), \|n| HasPrefix (SNameKey n), "!"), \|n| ((n, AsBind)))
+        SLet p, ignore, ignore: Append acc, (Each (Filter (BinderNames p), \|n| HasPrefix (SNameKey n), "!"), \|n| ((n, AsLet)))
+        otherwise: acc
+    Fold binders, ((wx, benv, menv, [[]])), \|((w, be, me, acc)), ((n, how))|
+        let ((w2, be2, me2)) = PreBindName w, be, me, n, how
+        match me2.names[SNameKey n]:
+            ? (BnEv er, ignore): ((w2, be2, me2, (Push acc, (((SNameKey n), (LocalNameAt (WidgetLetLx w.lx, n.span), (SNameKey n), n.span), (GnOf w2, er.node).name)))))
+            otherwise: ((w2, be2, me2, acc))
+
+# An environment without some names.
+WithoutNames: fn Env, [Text] -> Env
+fn WithoutNames env, gone:
+    let bare = update env:
+        &_.names <= {}
+    Fold (Keys env.names), bare, \|en, nm| match env.names[nm]:
+        ? bn: if HasText gone, nm: en else: Bind en, nm, bn
+        nil: en
+
+# The names a split line binds, as the node's lines read them (`SplitBlockInto`): in the
+# methods a getter over the kept result (`LateGetters`); at the build nothing, since the
+# result is not built until the node is (`{name}#late` marks the name, `NamesInited`). A
+# name, or a tuple of names, is bound so; another pattern's names are the lower
+# generation's alone.
+BindLate: unbounded fn Wx, Env, Env, Stmt -> ((Wx, Env, Env, [((Text, ?Nat, OutTy))]))
+fn BindLate wx, benv, menv, s = match s.kind:
+    SBind p, ignore, nil:
+        let parts = match p.kind:
+            PName n: [[((n, nil))]]
+            PGroup q: match q.kind:
+                PName n: [[((n, nil))]]
+                otherwise: [[]]
+            PTuple ps: Fold (Range0 (Len ps)), [[]], \|acc, i| match (Or ps[i], dummyPat).kind:
+                PName n: Push acc, ((n, ? i))
+                otherwise: acc
+            otherwise: [[]]
+        Fold parts, ((wx, benv, menv, [[]])), \|((w, be, me, acc)), ((n, ?part))|
+            let nkey = SNameKey n
+            let t = OutTyOf w.lx, (Peel (BinderTy w.lx, n.span))
+            let ((getter, w2)) = FreshName w, "late_{LocalNameAt w.lx, nkey, n.span}"
+            let unbuilt = BnLocal (Refusal "the late result `{nkey}` read at its block's build by a line of the block's node (a place's constant field or a plain `let` above the line that binds it)"), Owned, t
+            let be2 = Bind (Bind be, nkey, unbuilt), "{nkey}#late", unbuilt
+            let me2 = Bind (Bind me, nkey, (BnLocal (XMethod XSelf, getter, [[]]), Owned, t)), "{nkey}#late", unbuilt
+            ((w2, be2, me2, (Push acc, ((getter, ?part, t)))))
+    otherwise: ((wx, benv, menv, [[]]))
+
+# The getters `BindLate` named, over the kept result: the result, or its part.
+LateGetters: fn Wx, [((Text, ?Nat, OutTy))], Ex -> Wx
+fn LateGetters wx, lates, kept = Fold lates, wx, \|w, ((getter, ?part, t))|
+    let tail = match ?part:
+        ? i: XClone (XPart kept, i)
+        nil: kept
+    update w:
+        &_.getters <= Push &_.getters, (MethDef(name=getter, recv=RecvRef, params=[[]], cx=CxNone, ret=t, body=[[]], tail=tail, doc="A late result, read once the row that gives it is built."))
+
+# The late first values (`HoldLine`) set where the generation that gives the late result
+# is built: the last generation the split line made, after its row.
+WithLateInits: fn Wx, [Do] -> Wx
+fn WithLateInits wx, sets:
+    if (Len sets) == 0: wx
+    else: match wx.gens[Dec (Len wx.gens)]:
+        ? gd:
+            let gd2 = update gd:
+                &_.select <= XBlock (Append [[(DoLet (PaBind "row"), gd.select)]], sets), (XVar "row")
+            update wx:
+                &_.gens <= Push (Take &_.gens, (Dec (Len &_.gens))), gd2
+        nil: update wx:
+            &_.build <= Push &_.build, (InternalBugDo "a late result with no generation that gives it")
+
+# Whether an expression reads a split line's name (`BindLate`).
+ReadsLate: unbounded fn Env, Expr -> Bool
+fn ReadsLate env, e = Fold (FreeReads (ExprsIn e), [[]]), False, \|f, n| f or HasKey env.names, "{n}#late"
 
 # A name's value at the build, `{name}#init`, bound before any line so that a line above
 # reads it (`InitEnv`), in the build's order: a hold's, the local `{f}_init` its line
@@ -299,7 +496,7 @@ fn ReadsAtBuild s = match s.kind:
 PreBind: unbounded fn Wx, Env, Env, Stmt -> ((Wx, Env, Env))
 fn PreBind wx, benv, menv, s = match s.kind:
     SBind p, init, ?step:
-        let how = if ?step == nil and (GivesResult wx.lx, menv, init): AsResult else: HowBound ?step
+        let how = if ?step == nil and (GivesResult wx.lx, menv, init): AsResult else: if ?step != nil and (ReadsLate menv, init): AsLateHold else: HowBound ?step
         match p.kind:
             PName n: PreBindName wx, benv, menv, n, how
             PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
@@ -316,6 +513,9 @@ fn PreBind wx, benv, menv, s = match s.kind:
     SFn c:
         let fname = DefNameText c.name
         ((wx, (Bind benv, fname, (WithClause benv, fname, c)), (Bind menv, fname, (WithClause menv, fname, c))))
+    # a widget defined in the block (`@line:` and its block): its block, lowered where
+    # the name is applied (`LocalWidgetLine`)
+    SWidget w: ((wx, (Bind benv, (SNameKey w.name), (BnLocalWidget w.body)), (Bind menv, (SNameKey w.name), (BnLocalWidget w.body))))
     otherwise: ((wx, benv, menv))
 
 # The names a pattern binds, as written: every name in it that is no constructor's (a
@@ -372,6 +572,7 @@ type HowBound = choice:
     AsBind
     AsLet
     AsResult                   # `p <- e` where `e` is a widget the node inlines: its result
+    AsLateHold                 # a hold whose first value reads a late result (`BindLate`)
 derive ^Eq, ^Show
 
 # Whether a bind line's right side is a widget this node inlines, a widget block or a widget
@@ -460,6 +661,11 @@ fn PreBindName wx, benv, menv, n, how:
         ((LyDyn, AsResult)):
             let b = BnDyn (XMethod (XSelf), rs, [[XCx]]), [[OwnRead rs]], t
             ((wx1, (Bind benv, nkey, b), (Bind menv, nkey, b)))
+        # a hold with no value until the late result it starts from is built: read as the
+        # value it holds from then on (`HoldLine`)
+        ((LyDyn, AsLateHold)):
+            let b = BnDyn (XMethod (XMethod (XField XSelf, rs), "get", [[XCx]]), "expect", [[(XStr "a hold that starts from a late result is set when that result is built")]]), [[OwnRead rs]], t
+            ((wx1, (Bind benv, nkey, b), (Bind menv, nkey, b)))
         ((LyDyn, ignore)):
             let b = BnHold rs, t
             ((wx1, (Bind benv, nkey, b), (Bind menv, nkey, b)))
@@ -547,10 +753,10 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
                     let b = BundleBn res
                     ((wx3, (Bind benv, (SNameKey n), b), (Bind menv, (SNameKey n), b)))
                 (((WrPlain ex, t), ignore)): if IsNamesPattern p: (((BindPlainResult wx3, menv, p, ex, t), benv, menv)) else: (((BindPatternResult wx3, menv, p, ex, t, (OutOf (TypeAt lx, e.span))), benv, menv))
-                # a late result is bound by the lines below it, in their own generation
-                # (`SplitBlockInto`); here it has no reader
+                # a late result is bound where its block is split (`SplitBlockInto`): a
+                # line that binds one here was not seen to be late (`IsLateExpr`)
                 (((WrLate ignore, ignore), ignore)): (((update wx3:
-                    &_.build <= Push &_.build, (RefusalDo "a late plain result bound where its block is not split (a widget parameter's or a local widget's)")), benv, menv))
+                    &_.build <= Push &_.build, (InternalBugDo "a late plain result bound where its block is not split")), benv, menv))
                 otherwise: ((wx3, benv, menv))
         SBind p, init, (? step):
             let ((wx2, be2)) = HoldLine wx, benv, menv, p, init, step
@@ -574,9 +780,11 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
         SEmit ignore: ((wx, benv, menv))
         SSignature ignore: ((wx, benv, menv))
         SFn c: ((wx, benv, menv))
+        # a widget defined in the block builds nothing where it is defined (`PreBind`)
+        SWidget ignore: ((wx, benv, menv))
         otherwise:
             let wx2 = update wx:
-                &_.build <= Push &_.build, (RefusalDo "a statement this back end does not lower yet")
+                &_.build <= Push &_.build, (InternalBugDo "a statement of a widget block that is none of its kinds")
             ((wx2, benv, menv))
 
 # A host's child's result bound to the first part of the line's pattern, whatever type
@@ -777,7 +985,25 @@ fn HoldLine wx, benv, menv, p, init, step:
                 &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind "{f}_init"), t), iv)
                 &_.inited <= Push &_.inited, f
             ((wx3, (Bind benv, "{PatText p}#init", (BnLocal (XVar "{f}_init"), Owned, t))))
+        # a hold that starts from a late result (`PreBindName`, `AsLateHold`): empty until
+        # the generation that gives the result is built, which sets it (`WithLateInits`);
+        # its step writes it as any hold's
+        ? (BnDyn (XMethod (XMethod (XField XSelf, f), "get", ignore), "expect", ignore), ignore, t):
+            let lxi = update lx:
+                &_.whole <= IsHeldHold lx, p
+            let iv = Own (ValueOf lxi, menv, init)
+            let set = DoExpr (XMethod (XField XSelf, f), "set", [[(XCtor (RefRuntime "std::Some"), [[iv]]), XCx]])
+            let ((r, wx1)) = EventRef wx, menv, step
+            let wx2 = update (Connect wx1, (SomePipe r), (SkHold f)):
+                &_.fields <= Push &_.fields, ((f, (OutHold (OutOpt t)), "`{PatText p}`, set when the late result it starts from is built"))
+                &_.moves <= Push &_.moves, ((f, (XCall (RefRuntime "rt::Hold::new"), [[XNone, XCx]])))
+                &_.lateInits <= Push &_.lateInits, set
+            ((wx2, benv))
         otherwise: ((wx, benv))
+
+# An event's firings as the present values of an option.
+SomePipe: fn EvRef -> EvRef
+fn SomePipe r = EvRef(node=r.node, owner=r.owner, pipe=(\|x, K| r.pipe x, \|y| K (XCtor (RefRuntime "std::Some"), [[y]])))
 
 # The build environment with every name that has a value at the build (`{name}#init`) read
 # as that local: what a supplier's dynamic answer evaluates to while the owner's node is
@@ -799,7 +1025,7 @@ fn AllInited wx, reads = Fold (ReadsClosed wx.dynReads, reads), True, \|ok, r| o
 # ..`) has none, though everything behind it may: its value is read through the node, which
 # does not exist while it is being built.
 NamesInited: unbounded fn Env, Expr -> Bool
-fn NamesInited env, e = Fold (ReadNames (ExprsIn e)), True, \|ok, n| ok and match env.names[n]:
+fn NamesInited env, e = Fold (ReadNames (ExprsIn e)), True, \|ok, n| ok and (not (HasKey env.names, "{n}#late")) and match env.names[n]:
     ? (BnDyn ignore, ignore, ignore): HasKey env.names, "{n}#init"
     ? (BnHold ignore, ignore): HasKey env.names, "{n}#init"
     otherwise: True
@@ -929,6 +1155,11 @@ fn BuildLine wx, benv, menv, e, ?bound:
         EFor ?binders, source, body: ForLine wx, benv, menv, ?binders, source, body, e, ?bound
         ERebuild scrut, body: RebuildLine wx, benv, menv, scrut, body, e, ?bound
         EIf c, thenB, (? elseB): IfGenLine wx, menv, c, thenB, elseB, e
+        # a building `if` has an `else` (ruling IE): the checker refuses one without
+        EIf ignore, ignore, nil:
+            let wx2 = update wx:
+                &_.build <= Push &_.build, (InternalBugDo "a building `if` with no `else`")
+            ((wx2, WrUnit))
         EMatch s, arms: MatchGenLine wx, menv, s, arms, e
         otherwise: match Peel full:
             TyElem ignore, ignore: ElementLine wx, benv, menv, e, ?bound

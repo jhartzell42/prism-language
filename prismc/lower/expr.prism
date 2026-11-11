@@ -775,6 +775,7 @@ fn NameValue lx, env, n, span:
         ? (BnParts ignore): VlOwned (Refusal "a tuple pattern's binding as a value"), t
         ? (BnWidget ignore, ignore, ignore, ignore): VlOwned (Refusal "a widget parameter read as a plain value"), t
         ? (BnLocalFn cs): LocalFnValue lx, env, cs, t
+        ? (BnLocalWidget ignore): VlOwned (Refusal "a widget defined in a block read as a blueprint value (it is lowered where a line applies it)"), t
         nil:
             let ((?qk, why)) = ResolveValue lx.g, lx.home, n
             match ?qk:

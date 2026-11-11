@@ -64,6 +64,7 @@ fn WidgetLine wx, benv, menv, e, ?bound:
         otherwise: nil
     match ?param:
         ? (BnWidget x, cbenv, cmenv, clx): ApplyWidgetParam wx, x, cbenv, cmenv, clx, (Len args)
+        ? (BnLocalWidget b): LocalWidgetLine wx, benv, menv, b, e
         otherwise: WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target
 
 # A widget parameter applied (`@child` as a statement): its argument lowered here, in its
@@ -86,6 +87,29 @@ fn ApplyWidgetParam wx, x, cbenv, cmenv, clx, nargs:
         let back = update done:
             &_.lx <= lx
         ((back, res))
+
+# A widget defined in a block (`@line:` and its block) applied: its block lowered here, in
+# the environments of the line that applies it (the block's names, as a row of the block
+# reads them when the line stands in one), at this node's next positions, once per
+# application. Its locals take the application's id as an inlined widget's do, so two
+# applications in one build spell them apart.
+LocalWidgetLine: unbounded fn Wx, Env, Env, Block, Expr -> ((Wx, Wres))
+fn LocalWidgetLine wx, benv, menv, b, e:
+    let lx = wx.lx
+    let callSpan = match e.kind:
+        ECall c, ignore, ignore, ignore: c.span
+        otherwise: e.span
+    let lxi = update lx:
+        &_.inlined <= match lx.callIds[PlaceKey lx, callSpan]:
+            ? id: "{lx.inlined}_{Base32 id}"
+            # an application the checker gave no id: its place in the source
+            nil: "{lx.inlined}_at{Base32 callSpan.start}"
+    let inner = update wx:
+        &_.lx <= lxi
+    let ((done, res)) = InlineBlock inner, benv, menv, b, lxi
+    let back = update done:
+        &_.lx <= lx
+    ((back, res))
 
 # A widget block in a static position, `@widget:` applied: its statements lowered into this
 # node in a scope of their own.
@@ -657,7 +681,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                     &_.result <= WrUnit
                 if (Len unmatched) > 0:
                     let wx2 = update wx:
-                        &_.build <= Push &_.build, (InternalBugDo "the generic widget {BareName qk} at a call whose types its parameters' do not match")
+                        &_.build <= Push &_.build, (RefusalDo "the generic widget {BareName qk} at a call whose types its parameters' do not match")
                     ((wx2, WrUnit))
                 else:
                     let done = BlockInto inner, be1, me1, body

@@ -343,6 +343,9 @@ type Bn = choice:
     # a local function, its clauses in order (Semantics ch. 4: `fn` lines in a block, in
     # clauses)
     BnLocalFn [FnClause]
+    # A widget defined in a block (`@line:` and its block): its block, lowered where the
+    # name is applied, in the environments of that line.
+    BnLocalWidget Block
 
 type Env = record:
     names: (Text ==> Bn)

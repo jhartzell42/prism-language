@@ -310,7 +310,34 @@ it make every program an interpreter run, and every type mistake a runtime fault
   an arm's is, a plain one late again. So a late result travels up: a caller's line that
   binds it splits the caller's block in turn (`IsLateExpr`), a row keeps it behind its
   `result_value`, and the root tells the World in its build once its rows are built.
-  A line above the split does not read a name bound below it.
+- **The split block's lines read each other across the split** (Semantics ch. 4: line
+  order decides positions and nothing else):
+  - the lines below that build no place (a hold, a `let`, a local function, a local
+    widget) and read nothing a lower place line binds but events are lowered into the
+    node with the lines above (`HoistedLines`);
+  - an event a lower place line binds is a node of the block too, prebound, and the
+    lower generation's own event fires it (`PreBindUps`, the row's `SkUp`);
+  - the split line's names are getters of the node over the kept result (`late_{name}`,
+    `BindLate`), which a hold's step, a dynamic `let` and a place's live field read;
+  - a hold whose first value reads one (`$h <- n then ..` above `n <- match ..`) is a
+    `Hold<Option<T>>`, empty until the row that gives the result is built, set in that
+    generation's build right after the row (`WithLateInits`), before the lower
+    generation is built and before any place goes out;
+  - a place's constant field or a plain `let` of the node that reads the late name at
+    the build is refused, naming it.
+- **A line is late** (`IsLateExpr`) when it is a building `match` or `if` with a plain
+  result, a widget block or a widget of one clause whose block ends late, a widget
+  parameter applied whose argument is late (read in the caller's environment), or a
+  local widget whose block is. A late bind on a block's last line splits it too, with
+  no lower generation.
+- **A widget defined in a block** (`@line:` and its block) is bound to its block
+  (`BnLocalWidget`) and lowered at each line that applies it, in that line's
+  environments, at the node's next positions (`LocalWidgetLine`).
+- **A row's view of its block** (`RowEnvNames`) carries the block's local functions and
+  local widgets as they are, with the names their bodies read, and a widget parameter
+  with its argument's environments seen through the row: the caller's events as ports
+  of the row, its values and dynamics through the parent. A `for` row takes its widget
+  parameters the same way (`EventsOf`).
 - **A widget's plain result bound by a pattern** (`((Extent(wide=w, high=h), ((d, t)))) <-
   @Measure 3`): a name or a tuple of names takes its parts as locals of the build, each
   moved into its field (`BindPlainResult`); any other pattern is matched once in the build
