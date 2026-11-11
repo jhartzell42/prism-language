@@ -787,6 +787,24 @@ it make every program an interpreter run, and every type mistake a runtime fault
   made in the build) after a gappy generation built after the node has no number yet;
   that is refused loudly. A generation built early gives its gap as a local
   (`{name}_gap_now`).
+- A generation built early (`EarlyChoiceLine`, `EarlyClauseLine`) below a gappy
+  generation built after the node cannot be handed its `base` in the build: the line
+  above reads the early row's plain result to choose its own row. Its row is built in
+  two steps (`NumberedLate`, `Wx.lateNumbered`, `Wx.baseLate`). The row's build takes no
+  `base`: it computes its lets and its result and makes its node, and keeps everything
+  a build does after the node (links, the construction step, the places sent with
+  `cx.added`, subscriptions) as one `Later` in its field `number_later`, with the
+  build's values it reads (`LateNumbering`). Its `base` is a cell, read by `place`.
+  The block's early arm hands back a fourth value, `{name}_number`, a `Later` over the
+  typed row and the arm's link: it calls the row's `number_places(base, cx)` with the
+  line's position as built (`node.place(v)`), then sets `{name}_gap` again, the row's
+  own generations built by then (`NumberOf`). The block's construction step calls it at
+  the line's place, after the generations above it (`ScopeSteps`: the step waits for
+  the gappy generations before it, and is deferred behind a deferred one). An early
+  line inside such a row is numbered late in turn, in the row's kept step. Refused in
+  such a row: a place spelled in the row's build before its node (a host, a hosted
+  place's first value), and a plain result read from a generation the row builds
+  after its node.
 - **A widget that calls itself**, of one clause or of several (plain parameters, no type
   parameter, nothing or a plain value given back), is as deep as
   its data (`SharedClauseLine`). A plain result is kept by each row (`result_value`) and

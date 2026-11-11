@@ -479,19 +479,25 @@ fn EarlyClauseLine wx, benv, menv, scrut, qk, v, e, args, outTy:
     let Made = \|c, parent, host| TryOf (XCall (RefChild (SiteRef lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), (Append (Append [[parent]], host), [[XCx]])))
     let gaps = RowGaps rows, width
     let gapNow = "{name}_gap_now"
+    # below a generation built after the node the row is numbered after it too
+    # (`NumberedLate`): the build keeps `{name}_number`, which the construction step
+    # calls at the line (`ScopeSteps`)
+    let late = NumberedLate wx, pos
+    let number = "{name}_number"
     let earlyArms = Fold cases, [[]], \|built, c|
         let i = Len built
-        Push built, (XArm(pat=c.pat, conds=c.conds, body=(XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XVar link)), hostAtBuild))]], (XTuple [[(XMethod (XVar "row"), "result_value", [[]]), (XCast (XClone (XVar "row")), rowObj), (Or (Or gaps[i], nil), (XIndex 0))]]))))
-    let methodArms = Each cases, \|c| XArm(pat=c.pat, conds=c.conds, body=(XCast (Made c, (XClone (XField XSelf, link)), (HostedPassed wx)), rowObj))
+        Push built, (XArm(pat=c.pat, conds=c.conds, body=(XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XVar link)), hostAtBuild))]], (XTuple (Append [[(XMethod (XVar "row"), "result_value", [[]]), (XCast (XClone (XVar "row")), rowObj), (Or (Or gaps[i], nil), (XIndex 0))]], (if late: [[(NumberOf wx, pos, name, link, (Or gaps[i], nil))]] else: [[]]))))))
+    let methodArms = Each cases, \|c| XArm(pat=c.pat, conds=c.conds, body=(if late: XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XField XSelf, link)), (HostedPassed wx))), (DoExpr (TryOf (XMethod (XVar "row"), "number_places", [[(XVar "row_base"), XCx]])))]], (XCast (XVar "row"), rowObj) else: XCast (Made c, (XClone (XField XSelf, link)), (HostedPassed wx)), rowObj))
     let atBuild = ClauseScrutinee lx, benv, v, args
     # the arguments as the node's methods read them (in a generation's row `_` is the
     # row's own value, never the builder's `value`, which here is unit)
     let inMethod = ClauseScrutinee lx, menv, v, args
-    let built = WithRowBase wx, "", pos, (Own (ArmsValue atBuild, earlyArms, "'select", (OutTuple [[outTy, rowObj, OutCount]])))
+    let built = if late: Own (ArmsValue atBuild, earlyArms, "'select", (OutTuple [[outTy, rowObj, OutCount, laterTy]])) else: WithRowBase wx, "", pos, (Own (ArmsValue atBuild, earlyArms, "'select", (OutTuple [[outTy, rowObj, OutCount]])))
     let select = WithRowBase wx, "self", pos, (Own (ArmsValue inMethod, methodArms, "'select", rowObj))
     let wx3 = update wx2:
-        &_.taken <= Append &_.taken, [[link, first, rowLocal, gapNow]]
-        &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind link), linkTy), (XCall (RefRuntime "prism_rtl::Link::<{wx.node}>::new"), [[]])), (DoLet (PaTuple [[(PaBind first), (PaBind rowLocal), (PaBind gapNow)]]), built)]]
+        &_.taken <= Append &_.taken, [[link, first, rowLocal, gapNow, number]]
+        &_.lateNumbered <= if late: Push &_.lateNumbered, name else: &_.lateNumbered
+        &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind link), linkTy), (XCall (RefRuntime "prism_rtl::Link::<{wx.node}>::new"), [[]])), (DoLet (PaTuple (Append [[(PaBind first), (PaBind rowLocal), (PaBind gapNow)]], (if late: [[(PaBind number)]] else: [[]]))), built)]]
         &_.fields <= Push &_.fields, ((link, linkTy, "the link the generation at place {PlaceText pos} holds this node through, built before it"))
         &_.inits <= Push &_.inits, ((link, (XClone (XVar link))))
         &_.build <= Push &_.build, (DoExpr (XMethod (XVar link), "link", [[(XRef (XVar "node"))]]))
@@ -533,17 +539,23 @@ fn EarlyChoiceLine wx, benv, menv, s, arms, e:
     let Made = \|c, parent, host| TryOf (XCall (RefChild (SiteRef lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), (Append (Append [[parent]], host), [[XCx]])))
     let gaps = RowGaps rows, width
     let gapNow = "{name}_gap_now"
+    # below a generation built after the node the row is numbered after it too
+    # (`NumberedLate`): the build keeps `{name}_number`, which the construction step
+    # calls at the line (`ScopeSteps`)
+    let late = NumberedLate wx, pos
+    let number = "{name}_number"
     let earlyArms = Fold cases, [[]], \|built, c|
         let i = Len built
-        Push built, (XArm(pat=c.pat, conds=c.conds, body=(XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XVar link)), hostAtBuild))]], (XTuple [[(XMethod (XVar "row"), "result_value", [[]]), (XCast (XClone (XVar "row")), rowObj), (Or (Or gaps[i], nil), (XIndex 0))]]))))
-    let methodArms = Each cases, \|c| XArm(pat=c.pat, conds=c.conds, body=(XCast (Made c, (XClone (XField XSelf, link)), (HostedPassed wx)), rowObj))
+        Push built, (XArm(pat=c.pat, conds=c.conds, body=(XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XVar link)), hostAtBuild))]], (XTuple (Append [[(XMethod (XVar "row"), "result_value", [[]]), (XCast (XClone (XVar "row")), rowObj), (Or (Or gaps[i], nil), (XIndex 0))]], (if late: [[(NumberOf wx, pos, name, link, (Or gaps[i], nil))]] else: [[]]))))))
+    let methodArms = Each cases, \|c| XArm(pat=c.pat, conds=c.conds, body=(if late: XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XField XSelf, link)), (HostedPassed wx))), (DoExpr (TryOf (XMethod (XVar "row"), "number_places", [[(XVar "row_base"), XCx]])))]], (XCast (XVar "row"), rowObj) else: XCast (Made c, (XClone (XField XSelf, link)), (HostedPassed wx)), rowObj))
     let atBuild = XTuple [[(Argument lx, benv, s)]]
     let inMethod = XTuple [[(Argument lx, menv, s)]]
-    let built = WithRowBase wx, "", pos, (Own (ArmsValue atBuild, earlyArms, "'select", (OutTuple [[outTy, rowObj, OutCount]])))
+    let built = if late: Own (ArmsValue atBuild, earlyArms, "'select", (OutTuple [[outTy, rowObj, OutCount, laterTy]])) else: WithRowBase wx, "", pos, (Own (ArmsValue atBuild, earlyArms, "'select", (OutTuple [[outTy, rowObj, OutCount]])))
     let select = WithRowBase wx, "self", pos, (Own (ArmsValue inMethod, methodArms, "'select", rowObj))
     let wx3 = update wx2:
-        &_.taken <= Append &_.taken, [[link, first, rowLocal, gapNow]]
-        &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind link), linkTy), (XCall (RefRuntime "prism_rtl::Link::<{wx.node}>::new"), [[]])), (DoLet (PaTuple [[(PaBind first), (PaBind rowLocal), (PaBind gapNow)]]), built)]]
+        &_.taken <= Append &_.taken, [[link, first, rowLocal, gapNow, number]]
+        &_.lateNumbered <= if late: Push &_.lateNumbered, name else: &_.lateNumbered
+        &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind link), linkTy), (XCall (RefRuntime "prism_rtl::Link::<{wx.node}>::new"), [[]])), (DoLet (PaTuple (Append [[(PaBind first), (PaBind rowLocal), (PaBind gapNow)]], (if late: [[(PaBind number)]] else: [[]]))), built)]]
         &_.fields <= Push &_.fields, ((link, linkTy, "the link the arm at place {PlaceText pos} holds this node through, built before it"))
         &_.inits <= Push &_.inits, ((link, (XClone (XVar link))))
         &_.build <= Push &_.build, (DoExpr (XMethod (XVar link), "link", [[(XRef (XVar "node"))]]))
@@ -1020,10 +1032,14 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
     let fields = Each binders, \|((bn, r))| (((Snake bn), (OutTyOf lxc, (Peel (BinderTy lxc, r))), bn))
     # a transparent row is built with `base`, where its first position stands as built
     # (ruling TC; `PlaceNumber`)
-    let baseField = if transparent: [[(("base", OutCount, "where the row's first position stands as built"))]] else: [[]]
+    # (a row built before its block's node and numbered after it, `NumberedLate`, is
+    # built with no `base`: the field is a cell `number_places` sets, and what the build
+    # does after the row's node waits in `number_later`, `LateNumbering`)
+    let numberedLate = transparent and (not zeroBased) and (IsLinkTy parentTy) and NumberedLate wx, wx.pos
+    let baseField = if numberedLate: [[(("base", (OutNamed (RefRuntime "std::Cell"), [[OutCount]]), "where the row's first position stands as built, set when the row is numbered")), (("number_later", (OutCell (OutOpt laterTy)), "what the row's build does once it is numbered"))]] else: if transparent: [[(("base", OutCount, "where the row's first position stands as built"))]] else: [[]]
     let rowFields = Append (Push (Each fields, \|((f, t, bn))| ((f, t, "`{bn}`"))), (("parent", parentTy, "the node of the `rebuild`"))), baseField
-    let rowInits = Append (Each fields, \|((f, ignore, ignore))| ((f, (XClone (XVar f))))), (if transparent: [[(("base", (XVar "base")))]] else: [[]])
-    let rowTaken = Append (Append nodeHooks, (Push (Push (Each fields, \|((f, ignore, ignore))| f), "parent"), "result_value")), [["base", "place", "seat", "inner_gap"]]
+    let rowInits = Append (Each fields, \|((f, ignore, ignore))| ((f, (XClone (XVar f))))), (if numberedLate: [[(("base", (XCall (RefRuntime "std::Cell::new"), [[XIndex 0]]))), (("number_later", (XCall (RefRuntime "std::RefCell::new"), [[XNone]])))]] else: if transparent: [[(("base", (XVar "base")))]] else: [[]])
+    let rowTaken = Append (Append nodeHooks, (Push (Push (Each fields, \|((f, ignore, ignore))| f), "parent"), "result_value")), [["base", "place", "seat", "inner_gap", "number_later", "number_places", "number"]]
     # a shared row in a hosted scope holds no block to tell that a place of its may have
     # moved: it is built with `moved`, its caller's telling (`sharedMoved`,
     # `DocumentMoved`)
@@ -1044,7 +1060,9 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
         ? ignore: [[(("enclosing", hostOfTy))]]
         nil: [[]]
     let movedParam = if shared and IsSome ?hostedBy: [[(("moved", movedTy))]] else: [[]]
-    let r000 = NewWx lxc, rowName, rowFields, rowInits, [[(("parent", (XClone (XVar "parent"))))]], [[]], {}, rowTaken, wx.inlining, ?hostedBy
+    let r0000 = NewWx lxc, rowName, rowFields, rowInits, [[(("parent", (XClone (XVar "parent"))))]], [[]], {}, rowTaken, wx.inlining, ?hostedBy
+    let r000 = update r0000:
+        &_.baseLate <= numberedLate
     let r00 = if (Len movedParam) == 0: r000 else: update r000:
         &_.taken <= Push &_.taken, "moved"
         &_.fields <= Push &_.fields, (("moved", movedTy, "what tells the row's host that a place of the row's may have moved"))
@@ -1106,12 +1124,12 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
             ((r2p, ? rt))
         # a late plain result: the row reads it from itself, its own rows built by then
         WrLate ex, rt: (((update r2:
-            &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=ex, doc="The clause's plain result, which the block that built the generation reads."))), ? rt))
+            &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=(if numberedLate: Refusal "the plain result of an arm or a clause that is built before its block's node and numbered after it, read from a generation the arm builds after its own node (a building `match` inside the arm whose result the arm gives)" else: ex), doc="The clause's plain result, which the block that built the generation reads."))), ? rt))
         # a dynamic result: the row's getter `result` and `result_dynamic`, a write behind it
         # telling the block (`GenResult`, `DynClauseLine`)
         WrDyn ex, rds, rt: (((GenResult r2, genName, ex, rds, rt), nil))
         otherwise: ((r2, nil))
-    let baseParam = if transparent: [[(("base", OutCount))]] else: [[]]
+    let baseParam = if transparent and not numberedLate: [[(("base", OutCount))]] else: [[]]
     # a shared row tells how many places it built: its positions less what its own
     # generations left unbuilt
     let ownGaps = (Len (Filter r3.gens, \|gd| gd.gappy and gd.pos.scope == 0)) > 0
@@ -1125,7 +1143,7 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
         ? (BnLocal rs, mode, bt): Own (VlPlace rs, mode, bt)
         otherwise: XClone (XVar f)
     # the block's `row_base` where it builds the row (`WithRowBase`)
-    let passed = if transparent: Push passed0, (XVar "row_base") else: passed0
+    let passed = if transparent and not numberedLate: Push passed0, (XVar "row_base") else: passed0
     let inner = (Len (Filter r3.gens, \|gd| gd.gappy and gd.pos.scope == 0)) > 0
     ClauseRow(case=GenCase(node=node, params=(Each fields, \|((f, t, ignore))| ((f, t))), pat=pa, conds=(Append (Fold pos, [[]], \|acc, o| Append acc, o.conds), guardConds), passed=passed), parent=p2, width=(Or (r2.pos.at -? r0.pos.at), 0), inner=inner, parts=parts, ?plain=?plain, resultReads=(ResultParentReads r2), ?resultTy=(?ResultDynTy r2))
 
@@ -1658,6 +1676,25 @@ fn IsGappy gaps = Fold gaps, False, \|f, ?g| f or IsSome ?g
 GapSet: fn Text, ?Ex -> [Do]
 fn GapSet name, (? x) = [[DoExpr (XMethod (XField XSelf, "{name}_gap"), "set", [[x]])]]
 fn GapSet name, nil = [[]]
+
+# What numbers the row an early arm built, for the block's construction step to call
+# once the generations above the line are built (`NumberedLate`, `ScopeSteps`): the
+# typed row's `number_places` with the line's position as built, read from the block
+# through the arm's link, and then what the row left unbuilt, its own generations
+# built by now, kept by the block (`GapSet`).
+NumberOf: fn Wx, Pos, Text, Text, ?Ex -> Ex
+fn NumberOf wx, pos, name, link, ?gap:
+    let owner = DoLet (PaBind "node"), (XMethod (XMethod (XVar "numbered_link"), "owner", [[]]), "expect", [[(XStr "a row is numbered once its block's node stands")]])
+    let numbered = DoExpr (TryOf (XMethod (XVar "row"), "number_places", [[(PlaceNumber wx, "node", pos), XCx]]))
+    let gapSet = match ?gap:
+        ? g: [[(DoExpr (XMethod (XField (XVar "node"), "{name}_gap"), "set", [[g]]))]]
+        nil: [[]]
+    XBlock [[(DoLet (PaBind "row"), (XClone (XVar "row"))), (DoLet (PaBind "numbered_link"), (XClone (XVar link))), (DoLet (PaTyped (PaBind "number"), laterTy), (XLater (XBlock (Append [[owner, numbered]], gapSet), (XUnit))))]], (XVar "number")
+
+IsLinkTy: fn OutTy -> Bool
+fn IsLinkTy t = match t:
+    OutNamed (RefRuntime "prism_rtl::Link"), ignore: True
+    otherwise: False
 
 # A transparent generation's rows are built with where the generation's first position
 # stands as built, `row_base` (`ArmRowOf`): `recv` as `PlaceNumber` takes it.
