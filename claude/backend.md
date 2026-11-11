@@ -387,8 +387,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   as one value from the node's methods (a place's field over `StepOf both`, a late
   `let`, a hold's step) is a getter of the node bound under `{name}#value`
   (`LateBundleValue`): the tuple of a plain part's read, an event part's event over a
-  port its node fires, a `$` part's live `Dynamic`. Refused: a late bundle read as one
-  value at the build (a supplier's `@ both`).
+  port its node fires, a `$` part's live `Dynamic`. A building line that takes the
+  bundle as one value (a host whose supplier gives `@ both`) is a deferred row
+  (`DeferredLine`), and a row reads its block's `{name}#value` through its parent
+  (`WholeOfBlock`), as it reads the block's event ports (`{name}#port`).
 - **A `let` that names a bundle stands above the first line that reads the name**
   (`BundleLetsEarly`, in `LinesInto`): a bundle's name is its parts, bound where its
   `let` is lowered, and a `let` builds no place, so a line written above it (`@Counter

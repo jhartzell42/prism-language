@@ -125,10 +125,13 @@ Bundles
   Left, no tests: lower/node/def.prism (`PreBindWholeParts`, `LateBundleParts`: "a late
   plain part of the bundle .. read at its block's build") a late plain part read at the
   build by a pattern inside the tuple pattern (`let ((((a, b)), !go)) = both`);
-  (`PreBindWhole`, `MarkLateBundle`: "read as one value at its block's build") a late
-  bundle read whole as a value at the build (a supplier's `@ both`, whose closure is
-  made before the node); a late bundle with a bundle inside read as one value; another
-  name of a bundle (`let same = both`) read as one value.
+  a late bundle with a bundle inside read as one value.
+  (`PreBindWhole`, `MarkLateBundle`: "read as one value at its block's build") marks a
+  late bundle's value at the build, which no known line reads: an element's field over
+  it is live, a `let` over it late, a hold that starts from it set late, and a building
+  line that takes it (a host whose supplier gives `@ both`) is a deferred row, which
+  reads the block's getter through its parent (`WholeOfBlock`,
+  sem-ch09-host-late-bundle-answer-above). Unsure: G.
   A dynamic part of a named bundle read by a row of a row is read through a getter of
   the row between (`ThroughGetter`, sem-ch04-named-bundle-in-row-of-row).
 - A `rebuild` whose block ends on a bundle a line named whole (`@ both`) is lowered
