@@ -55,8 +55,10 @@ Hosting
   sem-ch08-element-parameter-statement): a line of unit, a line that gives an event
   back, which hears the blueprint's answers, and a line that binds a plain result
   (sem-ch08-blueprint-value-gives-back), in a hosted scope too
-  (sem-ch09-blueprint-value-hosted). Left refused: one that gives a dynamic or a
-  bundle back.
+  (sem-ch09-blueprint-value-hosted), and a line that binds a dynamic
+  (sem-ch08-element-value-dynamic-statement). Left refused: one that gives a bundle
+  back (sem-ch08-widget-value-bundle-result reaches it, behind the widget's own
+  refusal as a value).
 - lower/node/static.prism:104 a widget function parameter applied to arguments whose
   argument is a function value that is no name (a lambda). No test. A named widget
   function passed and applied is lowered (sem-ch08-widget-parameter-applied).
