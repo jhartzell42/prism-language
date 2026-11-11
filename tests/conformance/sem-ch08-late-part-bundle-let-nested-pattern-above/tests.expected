@@ -1,0 +1,27 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": the order of a group's lines decides positions and nothing else), ch. 8 (a widget application is transparent) and ruling TC (places counted as built): the total's label is 0; the loud arm builds 1, so the button is 2; the soft arm builds none, so it is 1; each click adds the arm's result, which the pattern inside the tuple pattern names with the text beside it.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="0 steps")
+    1: Ui.Label(text="x")
+    2: Ui.Button(label="go")
+
+tick 1
+  in:
+    2: click
+  changed:
+    0: Ui.Label(text="10 steps")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="0 steps")
+    1: Ui.Button(label="go")
+
+tick 1
+  in:
+    1: click
+  changed:
+    0: Ui.Label(text="20 steps")

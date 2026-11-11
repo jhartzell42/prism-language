@@ -1,0 +1,34 @@
+# A `let` whose tuple pattern takes a late bundle apart with a pattern of its own over
+# the late plain part, above the line that binds the bundle: `let ((((step, noun)), !go))
+# = both`, the plain part a tuple (Semantics ch. 4, "Binding groups and cycles": any line
+# may use any name the block binds, and the order of a group's lines decides positions
+# and nothing else; a `let` takes any pattern that cannot fail; Type System ch. 2,
+# "Bundles": nested freely). sem-ch08-late-part-bundle-let-pattern-above with a pattern
+# inside the tuple pattern. Written by Claude on the claude-lowering branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Choose: fn Mode -> @((((Nat, Text)), !Click))
+fn @Choose mode:
+    n <- match mode:
+        Loud t:
+            Ui.Label($text=$"{t}")
+            @ 10
+        Soft:
+            @ 20
+    !go <- Ui.Button($label=$"go")
+    @ ((((n, "steps")), !go))
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    let ((((step, noun)), !go)) = both
+    $total <- 0 then $total + step on !go
+    Ui.Label($text=$"{$total} {noun}")
+    both <- @Choose mode
