@@ -108,13 +108,15 @@ Building `match`, clause widgets, `rebuild`
   sem-ch04-late-widget-result-value-above, sem-ch04-late-let-value-above); a building
   `match` with no guard whose arms read nothing of the block is built early
   (`EarlyChoiceLine`, sem-ch04-building-match-value-above); a place's field, a plain
-  `let` of one name and a hold's first value are late in turn
+  `let` (of one name, or of a pattern whose names are plain:
+  sem-ch04-late-let-pattern-above) and a hold's first value are late in turn
   (sem-ch04-building-match-read-above, sem-ch04-building-match-hold-above). Left
-  refused, no tests: a `let` of a pattern that is no one name, or of a bundle or a type
-  with time inside, that reads the late name (the three `unbuilt` refusals of
-  `BindLate`, `MarkLateLets` and `BindWhole`); and in `DeferredLine`, a line that takes
-  the late name and whose places are counted as built, and one that gives a plain
-  result of its own.
+  refused: a `let` of a bundle or of a type with time inside that reads the late name
+  (the `unbuilt` refusals of `BindLate`, `MarkLateLets` and `BindWhole`:
+  sem-ch04-late-let-bundle-above, sem-ch08-late-part-bundle-named-read-above); and in
+  `DeferredLine`, a line that takes the late name and whose places are counted as
+  built, and one that gives a plain result of its own (no program found:
+  sem-ch04-late-value-above-gives-result is built early and passes).
 - lower/jobs.prism: none added. A bare `for` in a job is lowered (`ForJob`), no test of
   the job form; the plain form is sem-ch05-update-for-bare.
 - lower/node/finish.prism:699 a place read at its block's build before the node exists

@@ -385,6 +385,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
   - a plain `let` of the node that reads a late name is late too (`MarkLateLets`): a
     getter of the node that computes it (`late_{name}`, `LateLetGetters`), bound under
     `{name}#late` as the split line's names are, so what reads it reads it late in turn;
+    a `let` of a pattern whose names are plain (`let ((low, high)) = Sides n`) is late
+    with every name it binds: one getter computes the whole value (`late_whole`), and
+    each name's getter matches it by the pattern;
   - a building line of the node that reads a late name and is no element's (a widget's
     plain argument, a `for` above the split, a building `match` over the name) is a
     generation of one arm at its own positions (`DeferredLine`, `IsLateTaker`): its row
