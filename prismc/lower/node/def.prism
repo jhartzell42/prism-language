@@ -118,11 +118,58 @@ fn BlockInto wx, benv0, menv0, b:
     let env = WithLocalWidgets menv, b
     let wxe = update wx:
         &_.earlyChoices <= Fold (Range0 (Len b.stmts)), &_.earlyChoices, \|acc, i| if IsEarlyChoiceAt wx.lx, env, b, i: AddText acc, (EarlyChoiceKey (Or b.stmts[i], dummyStmtL)) else: if IsPureChoiceAt wx.lx, env, b, i, 16: AddText acc, (PureChoiceStmtKey (Or b.stmts[i], dummyStmtL)) else: acc
-    match ?LateLineAt wx.lx, menv, b, 16:
+    match ?EarlierLine (?LateLineAt wx.lx, menv, b, 16), (?LatePlaceTakerAt wx, b):
         ? k: SplitBlockInto wxe, benv, menv, b, k
         nil:
             let ((wx2, ignore, ignore)) = LinesInto wxe, benv, menv, b, False
             wx2
+
+# The earlier of two lines, either of which may be none.
+?EarlierLine: fn ?Nat, ?Nat -> ?Nat
+fn ?EarlierLine (? a), (? b) = ? (Min a, b)
+fn ?EarlierLine (? a), nil = ? a
+fn ?EarlierLine nil, ?b = ?b
+
+# In a hosted scope whose host answers late (`Wx.lateHosts`), the first building line
+# that gives a plain result and takes, at its build, a plain part of a bundle place
+# written above it (`LatePlaceParts`: the part has its value once the node stands and
+# the scope's places have asked their first values), or a plain `let` over one: a
+# widget of several clauses or a building `match` over the part
+# (`w <- @Wide port`). The line cannot be built in the block's build, so its plain
+# result is late and the block is split at it as at any late line (`SplitBlockInto`);
+# the line itself is built after the node in its place's order (`DeferredLine`).
+?LatePlaceTakerAt: unbounded fn Wx, Block -> ?Nat
+fn ?LatePlaceTakerAt wx, b = if not (HasNat wx.lateHosts, wx.pos.scope): nil else:
+    let lx = wx.lx
+    Fold (Range0 (Len b.stmts)), nil, \|?found, i| match ?found:
+        ? k: ? k
+        nil:
+            let above = Take b.stmts, i
+            let parts = Fold above, [[]], \|acc, st| match st.kind:
+                SBind whole, init, nil: if not (IsBundlePlace lx, init): acc else: Fold (TupleParts whole), acc, \|acc2, q| match q.kind:
+                    PName n:
+                        let full = BinderTy (WidgetLetLx lx, n.span), n.span
+                        if (IsTimeName (SNameKey n)) or (LayerOf full) != LyPlain or (TimeWithin full) or IsBundle full: acc2 else: AddText acc2, (SNameKey n)
+                    otherwise: acc2
+                otherwise: acc
+            let late = Fold above, parts, \|acc, ignore| Fold above, acc, \|acc2, st| match st.kind:
+                SLet q, ignore, x: if (Len (Filter (FreeReads (ExprsIn x), [[]]), \|n| HasText acc2, n)) > 0: UnionTexts acc2, (PatternNames q) else: acc2
+                otherwise: acc2
+            match (Or b.stmts[i], dummyStmtL).kind:
+                SBind q, e, nil:
+                    let binds = (Len (Filter (PatternNames q), \|n| not (IsTimeName n))) > 0
+                    let placed = match Peel (TypeAt lx, e.span):
+                        TyElem ignore, ignore: True
+                        otherwise: False
+                    let takes = (Len (Filter (FreeReads (ExprsIn e), [[]]), \|n| HasText late, n)) > 0
+                    if binds and takes and (not placed) and IsPlainResult lx, e: ? i else: nil
+                otherwise: nil
+
+# The patterns a tuple pattern names, none for any other pattern.
+TupleParts: fn Pattern -> [Pattern]
+fn TupleParts p = match p.kind:
+    PTuple ps: ps
+    otherwise: [[]]
 
 # A building `match` whose plain result a line above it takes as a value at the build (a
 # widget's plain argument, a builder's rows; Semantics ch. 4: the order of a group's
@@ -2753,6 +2800,11 @@ fn IsLateTaker lx, menv, e = match e.kind:
 # then. Two lines stay refused: one whose places are counted as built (the rows after it
 # were numbered before it was built), and one that gives a plain result of its own (the
 # block is split at one line).
+# A line whose late names are all a late place's plain parts (`{name}#lateplace`:
+# their values stand once the scope's places have asked, before any generation of the
+# scope is built, `ScopeSteps`) waits for no row: its generation is built in the order
+# of its place as any other, so its places are counted as built and its plain result
+# is late as an arm's is (the block is split at the line, `?LatePlaceTakerAt`).
 DeferredLine: unbounded fn Wx, Env, Expr -> ((Wx, Wres))
 fn DeferredLine wx, menv, e:
     let lx = wx.lx
@@ -2760,7 +2812,7 @@ fn DeferredLine wx, menv, e:
     let body = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
     let ((wx2, res)) = BuildingChoiceLine wx, menv, (XUnit), [[nil]], (TyCon "unit", [[]]), [[nil]], [[body]], outTy, layer, (LineOutFull lx, e), [[]]
     match wx2.gens[Dec (Len wx2.gens)]:
-        ? gd:
+        ? gd: if ReadsLateOfPlaces menv, menv, e: ((wx2, res)) else:
             let wx3 = update wx2:
                 &_.deferredGens <= Push &_.deferredGens, gd.name
             let wx4 = if not gd.gappy: wx3 else: update wx3:

@@ -1,0 +1,9 @@
+# The tests of sem-ch09-host-late-plain-part-clause-widget-result.
+emit Ui.* | Pad.*
+use App.*
+
+test a_late_plain_part_is_taken, @host:
+    build
+    click at 0
+    compute
+    compute

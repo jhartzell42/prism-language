@@ -158,7 +158,17 @@ fn ElementPlaced wx, benv, menv, tg, args, fed, out, ?bound:
     let wx4 = update wx3d:
         &_.places <= Push &_.places, Place(pos=pos, level=level, getter=getter, reads=reads, entry=entry, watch=watch)
         &_.build <= if emits: (if deep: Push &_.build, (DoScope sent) else: Append &_.build, sent) else: &_.build
-    ElementOutput wx4, menv, tg, out, pos, ?bound, atBuild
+    # a place that asks its first value once the node stands (`LateFirstPlace`, a `$`
+    # output or a bundle's state in a hosted scope whose host answers late) asks with
+    # the element its fields have then: one whose field reads a late name (the plain
+    # part of a late place above it) is read by its getter, from the node
+    let partsBound = match ?bound:
+        ? (BnParts ignore): True
+        otherwise: False
+    let asksLate = (HasNat wx4.lateHosts, pos.scope) and match tg.out:
+        TyTuple cs: partsBound and Fold cs, False, \|found, c| found or (LayerOf c) != LyEv
+        other: (not partsBound) and (LayerOf other) == LyDyn
+    ElementOutput wx4, menv, tg, out, pos, ?bound, (if late and asksLate: added else: atBuild)
 
 # An element's output type at this application: the tag's, instantiated by the checker
 # (`Prelude.Unwrap`'s `!a` is `!unit` where its value is `!~unit`). A type variable the

@@ -1029,9 +1029,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   is a `Hold<Option<T>>` too, set once where the place asks (`LatePlainPart`) and read
   with no read point (`newest`, `LatePlainBn`). Its readers are a late name's: a place's
   field is live over it, a plain `let` that reads it is late in turn, a building line
-  that takes it is a deferred generation of the scope (`DeferredLine`), built after the
-  first values, and a hold that starts from it is set by a method of the node the
-  construction step calls after the scope's places have asked (`Wx.lateStarts`).
+  that takes it is a generation of one arm (`DeferredLine`), built after the node in
+  the order of its place (the first values are asked before any generation of the
+  scope is built), so its places are counted as built; one that gives a plain result
+  (`w <- @Wide port`, `w <- match port: ..`) is where the block is split, as at any
+  late line (`?LatePlaceTakerAt`, `SplitBlockInto`); and a hold that starts from it is
+  set by a method of the node the construction step calls after the scope's places
+  have asked (`Wx.lateStarts`).
 - **Requests** of a hosted place go to the host (`host_k.request`): out with the forwarded
   element, or nowhere when the supplier answered the place.
 - **`@HostSome`** is `@HostDocument` through `rt::forward_on_none` (`nil` forwards).
