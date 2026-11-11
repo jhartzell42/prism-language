@@ -18,16 +18,20 @@ spell".
 ## R: legal programs not lowered
 
 Hosting
-- lower/expr.prism:796 a supplier's dynamic answer that reads what has no value at the
-  owner's build: a structural dynamic (a `for`'s gathered result, a `rebuild`'s) or a
-  name of the parent. No test. The host's own pushed place and a `let` below the host's
-  line are lowered (sem-ch09-host-dynamic-answer-late).
+- lower/expr.prism (`DynamicBlueprint`, `WrittenPart`) a supplier's dynamic answer, or
+  a bundle answer's `$` part, that reads a structural dynamic (a `for`'s gathered
+  result, a `rebuild`'s): it has no value when the child's place asks its first value,
+  in the owner's build before its builders run
+  (sem-ch09-host-dynamic-answer-structural, sem-ch09-host-bundle-answer-structural-part).
+  Lowered: the host's own pushed place and a `let` below the host's line
+  (sem-ch09-host-dynamic-answer-late); a name of the parent, read by a host in a row
+  (sem-ch09-host-dynamic-answer-reads-parent, sem-ch09-host-bundle-answer-parent-part);
+  an answer through a blueprint a `let` names (sem-ch09-host-dynamic-answer-let,
+  sem-ch09-host-event-answer-let).
 - lower/expr.prism:703 `@ x` outside a tag arm where `x` is no plain data (a function).
   No test. Any other answer outside an arm is lowered: plain data in `Answer`'s case of
   no tag, read by the place that takes it (sem-ch09-host-answer-without-arm).
-- lower/expr.prism (`WrittenPart`) a bundle answer's `$` part that reads what has no
-  value at the owner's build (sem-ch09-host-bundle-answer-structural-part,
-  -parent-part). Every other bundle answer is lowered, any mix of plain, `$` and event
+- Every other bundle answer is lowered, any mix of plain, `$` and event
   parts, written as a tuple or given as a value (`PartsBlueprint`:
   sem-ch09-host-bundle-two-events-answer, -two-dynamics-answer,
   -plain-beside-dynamic-answer, sem-ch09-host-bundle-live-dynamic-answer,

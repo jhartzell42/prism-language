@@ -799,8 +799,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
     when delivered, so it carries the value after the tick of the change. The owner emits a
     getter per dynamic answer and fires its update port at every write behind it; the
     supplier reads the getter through an `rt::Link` to the owner, and the dynamic's value
-    at the build while the owner is being made. A computed answer in flight to a place
-    whose key left is dropped. Nested hosts add one tick per computing layer and none per
+    at the build while the owner is being made. A dynamic read through the owner's parent
+    (a host in a row answering with the block's `$n`) has its value at the build taken
+    at the host's line, through the parent, into a local the supplier copies
+    (`{getter}_at_build`, `AnswerAtBuild`); the block's write tells the row, which fires
+    the getter's port (`RowHears`). An answer through a blueprint a `let` names (`let
+    @$live = @ $level`) is its expression in the name's place: `DynamicAnswers` reads
+    the `let`'s expression, and the supplier's closure captures what it reads
+    (`WithBlueprintReads`). A computed answer in flight to a place whose key left is
+    dropped. Nested hosts add one tick per computing layer and none per
     forwarding layer.
 - **First values.** A child place with a first value asks the host at its build
   (`host_k.first_value(&place, &elem, &entry, cx)`), before the owner's node exists: the host builds
