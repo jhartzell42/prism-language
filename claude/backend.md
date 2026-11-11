@@ -374,6 +374,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   tuple with each event as its port's `Event` and each dynamic it names as the live
   `Dynamic` made for it (`WholeArgsAt`). A bundle that is not written out as a tuple
   where the block ends is refused.
+- **`@Element made` as a line, `made` a `let` of the block bound to a tag applied**
+  (Semantics ch. 8, "Elements and the element statement") is that element's line at
+  the placing line's position, lowered in the placing line's environments
+  (`WithElementLets`, `ElementCallLine`); a row that places it sees what its fields read
+  through the parent (`RowEnvNames`). A `let` no line reads but to place it is no value
+  of the node. `@Element` of any other element value in a block (a parameter, a call's
+  result) is refused.
 - **A widget defined in a block** (`@line:` and its block) is bound to its block
   (`BnLocalWidget`) and lowered at each line that applies it, in that line's
   environments, at the node's next positions (`LocalWidgetLine`).

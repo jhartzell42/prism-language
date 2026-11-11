@@ -111,11 +111,61 @@ fn RootResultOf wx, res = match res:
 # the order of what the lines read (Semantics ch. 4: the order of the lines decides
 # positions and nothing else), so a line reads at the build a name bound below it.
 BlockInto: unbounded fn Wx, Env, Env, Block -> Wx
-fn BlockInto wx, benv, menv, b = match ?LateLineAt wx.lx, menv, b, 16:
-    ? k: SplitBlockInto wx, benv, menv, b, k
-    nil:
-        let ((wx2, ignore, ignore)) = LinesInto wx, benv, menv, b, False
-        wx2
+fn BlockInto wx, benv0, menv0, b:
+    let ((benv, menv)) = WithElementLets wx.lx, benv0, menv0, b
+    match ?LateLineAt wx.lx, menv, b, 16:
+        ? k: SplitBlockInto wx, benv, menv, b, k
+        nil:
+            let ((wx2, ignore, ignore)) = LinesInto wx, benv, menv, b, False
+            wx2
+
+# A block's `let`s of an element tag applied (`let made = Ui.Label(..)`; Semantics ch. 8,
+# "Elements and the element statement": the `let` is a value and `@Element made` a
+# blueprint, the element statement at the same path): each name's expression is kept
+# under `{name}#element`, and `@Element made` as a line is that element's line
+# (`ElementCallLine`), lowered in the placing line's environments. A name no line reads
+# but to place it is marked `{name}#placed`: its `let` is no value of the node, and
+# nothing is lowered for it.
+WithElementLets: unbounded fn Lx, Env, Env, Block -> ((Env, Env))
+fn WithElementLets lx, benv, menv, b = Fold b.stmts, ((benv, menv)), \|((be, me)), s| match s.kind:
+    SLet p, ignore, e: match p.kind:
+        PName n:
+            if not (IsTagApplication lx, e): ((be, me))
+            else:
+                let nkey = SNameKey n
+                let held = BnWidget (Ungrouped e), emptyEnv, emptyEnv, lx
+                let others = Filter b.stmts, \|st| (HasText (ReadsOfLine st), nkey) and (?PlacedName lx, st) != (? nkey)
+                let be1 = Bind be, "{nkey}#element", held
+                let me1 = Bind me, "{nkey}#element", held
+                if (Len others) == 0: (((Bind be1, "{nkey}#placed", held), (Bind me1, "{nkey}#placed", held))) else: ((be1, me1))
+        otherwise: ((be, me))
+    otherwise: ((be, me))
+
+# The name a line places with `@Element` (`@Element made`, `!go <- @Element button`).
+?PlacedName: unbounded fn Lx, Stmt -> ?Text
+fn ?PlacedName lx, s:
+    let ?line = match s.kind:
+        SBind ignore, e, nil: ? e
+        SIgnore e: ? e
+        SExpr e: ? e
+        otherwise: nil
+    match ?line:
+        ? e: match (Ungrouped e).kind:
+            ECall c, args, ignore, ignore:
+                if (CalleeKey lx, c) != "Prelude.@Element": nil
+                else: match args[0]:
+                    ? a: match (Ungrouped a.value).kind:
+                        EName n: if (Len n.path) == 1: ? (SNameKey n) else: nil
+                        otherwise: nil
+                    nil: nil
+            otherwise: nil
+        nil: nil
+
+# Whether a `let` binds a name that is only placed (`WithElementLets`).
+IsPlacedLet: fn Env, Pattern -> Bool
+fn IsPlacedLet menv, p = match p.kind:
+    PName n: HasKey menv.names, "{SNameKey n}#placed"
+    otherwise: False
 
 # A block's lines lowered into the node, and the environments after them. `open`: the
 # block goes on after these lines (`SplitBlockInto`), so the last of them is not its
@@ -617,7 +667,7 @@ fn PreBind wx, benv, menv, s = match s.kind:
                 otherwise: if ?step == nil: (Fold (BinderNames q), ((w, be, me)), \|((w2, be2, me2)), n| PreBindName w2, be2, me2, n, how) else: ((w, be, me))
             otherwise: if ?step == nil: (Fold (BinderNames p), ((wx, benv, menv)), \|((w2, be2, me2)), n| PreBindName w2, be2, me2, n, how) else: ((wx, benv, menv))
     SLet p, ignore, ignore: match p.kind:
-        PName n: PreBindName wx, benv, menv, n, AsLet
+        PName n: if IsPlacedLet menv, p: ((wx, benv, menv)) else: PreBindName wx, benv, menv, n, AsLet
         PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
             PName n: PreBindName w, be, me, n, AsLet
             otherwise: ((w, be, me))
@@ -889,8 +939,11 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
             # a bundle given another name (`let same = both`): the same parts
             ? ((n, b)): ((wx, (Bind benv, (SNameKey n), b), (Bind menv, (SNameKey n), b)))
             nil:
-                let ((wx2, be2)) = LetLine wx, benv, menv, p, e
-                ((wx2, be2, menv))
+                # an element only placed is no value of the node (`WithElementLets`)
+                if IsPlacedLet menv, p: ((wx, benv, menv))
+                else:
+                    let ((wx2, be2)) = LetLine wx, benv, menv, p, e
+                    ((wx2, be2, menv))
         SExpr e: match e.kind:
             EFreeSigil "@", x:
                 let ((res, wx2)) = if wx.wholeResultAt != "" and wx.wholeResultAt == ResultKey lx, x: WholeResultOf wx, benv, menv, x else: ResultOf wx, benv, menv, x

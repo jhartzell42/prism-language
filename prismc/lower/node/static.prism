@@ -618,11 +618,24 @@ fn ElementCallLine wx, benv, menv, args, ?bound:
     let lx = wx.lx
     match args[0]:
         ? a if IsTagApplication lx, a.value: ElementLine wx, benv, menv, (Ungrouped a.value), ?bound
+        # a name a `let` of the block binds to a tag applied (`WithElementLets`): that
+        # element's line, here
+        ? a if IsSome (?ElementLet menv, a.value): match ?ElementLet menv, a.value:
+            ? x: ElementLine wx, benv, menv, x, ?bound
+            nil: ((wx, WrUnit))
         otherwise:
             let wx2 = update wx:
                 &_.pos <= NextPos &_.pos
-                &_.build <= Push &_.build, (RefusalDo "not lowered yet: `@Element` in a block of an element value that is not a tag applied in place (gap LE)")
+                &_.build <= Push &_.build, (RefusalDo "not lowered yet: `@Element` in a block of an element value that is neither a tag applied in place nor a name a `let` of the block binds to one (gap LE)")
             ((wx2, WrUnit))
+
+# The tag application a `let` of the block binds a name to (`WithElementLets`).
+?ElementLet: fn Env, Expr -> ?Expr
+fn ?ElementLet menv, e = match (Ungrouped e).kind:
+    EName n: if (Len n.path) != 1: nil else: match menv.names["{SNameKey n}#element"]:
+        ? (BnWidget x, ignore, ignore, ignore): ? x
+        otherwise: nil
+    otherwise: nil
 
 # An expression out of its parentheses.
 Ungrouped: fn Expr -> Expr

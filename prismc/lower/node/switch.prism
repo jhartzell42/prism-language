@@ -54,9 +54,14 @@ fn RowEnv parent, rowWx, menv, body = RowEnvNames parent, rowWx, menv, (ReadName
 # the row calls or applies is lowered in the row, so what its body reads the row reads.
 RowNamesClosed: unbounded fn Env, [Text] -> [Text]
 fn RowNamesClosed menv, names:
-    let more = Fold names, names, \|acc, n| match menv.names[n]:
+    let more0 = Fold names, names, \|acc, n| match menv.names[n]:
         ? (BnLocalWidget b): UnionTexts acc, (ReadNames (BlockExprs b))
         ? (BnLocalFn cs): Fold cs, acc, \|a, c| UnionTexts a, (ReadNames (ClauseExprs c))
+        otherwise: acc
+    # an element a `let` of the block names, placed in the row (`WithElementLets`): what
+    # its fields read
+    let more = Fold names, more0, \|acc, n| match menv.names["{n}#element"]:
+        ? (BnWidget x, ignore, ignore, ignore): UnionTexts acc, (ReadNames (ExprsIn x))
         otherwise: acc
     if (Len more) == (Len names): names else: RowNamesClosed menv, more
 
@@ -73,7 +78,10 @@ fn ClauseExprs c = match c.body:
 RowEnvNames: unbounded fn Wx, Wx, Env, [Text] -> ((Wx, Wx, Env))
 fn RowEnvNames parent, rowWx, menv, written:
     let names = RowNamesClosed menv, written
-    Fold names, ((parent, rowWx, (WholeOfBlock menv, emptyEnv, False))), \|((p, r, env)), n| match menv.names[n]:
+    let elements = Fold names, (WholeOfBlock menv, emptyEnv, False), \|en, n| match menv.names["{n}#element"]:
+        ? held: Bind en, "{n}#element", held
+        nil: en
+    Fold names, ((parent, rowWx, elements)), \|((p, r, env)), n| match menv.names[n]:
         ? (BnLocal rs, mode, t): ((p, r, (Bind env, n, (BnLocal (OverParent rs), Owned, t))))
         ? (BnLocalWidget b): ((p, r, (Bind env, n, (BnLocalWidget b))))
         ? (BnLocalFn cs): ((p, r, (Bind env, n, (BnLocalFn cs))))
