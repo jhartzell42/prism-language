@@ -599,9 +599,28 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A fault kind as a value** (`Fs.NotFound` named, an `Error`'s `kind` read) is its name
   as plain data, a `Pod` choice with no arguments (the prelude's `fault_kind`, `kind_of`);
   `Error(kind=k, ..)` takes the name back (`error_of`). An `Error`'s `message` is a `Text`.
-- **The prelude's `Turn`** is `PreludeTurn` in the emitted prelude (`TypeItemName`): the
-  runtime's `Turn` is the job's.
+- **The prelude's `Turn`** is `PreludeTurn` in both emitted preludes (`TypeItemName`): the
+  runtime's `Turn` is the job's. In C++ it has the form of a program's own choice (a case
+  struct each, positional fields `a0`).
 - **A trait method named as a value** is a closure calling it (`MethodFn`).
+- **A function value of its callee's own color in a call's result** (`[u fn Nat -> Nat]`
+  at a call that makes `u` bounded) is a `Start` in the callee's signature; the call's
+  value is rebuilt with each wrapped as the bounded function it is (`StartsAsBounded`):
+  through an array (the prelude's `each`), an optional, a `~T` and a tuple.
+- **`@Run` of a function value that is no global name** (a lambda, a local, a call's
+  result) takes the `Start` it is or is made (`AsJobValue`).
+- **A widget block's `let` of a record's or a constructor's pattern** computes the value
+  at the build, matches it once there and moves each name it binds into its own field
+  (`BindPatternResult`, as a widget's plain result bound by a pattern).
+- **`for &v <- &m:` over a map** (ruling FM) takes the keys before the first step and
+  reads each entry's place through its key (`keys`, `at_mut_map`), in key order.
+- **A `while` or an `if` bind in an `update` block whose pattern has conditions** (a
+  literal, a payload behind an `Rc`): the `while` leaves the loop at the first that fails
+  (`let .. else` for a payload), the `if` is a value `match`'s arm with its `else` the
+  other.
+- **A cycle-point `while` inside `for &s <- &xs:`** (`ForJob`): a job keeps no reference
+  across a cycle, so the entry is a state of the turn's own, which the inner loop's job
+  takes with the block's state, written back to its place by its key as the turn ends.
 - **An interpolation over a `?` or `~` hole** is a plain-layer lift: the checker notes it
   with its holes, and the lowering matches each (`DirectOperands`).
 

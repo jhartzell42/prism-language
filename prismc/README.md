@@ -1929,8 +1929,7 @@ ruling taken (Claude's).
   makes the `for` a loop over its entries whose test is taking the next one, each turn a
   job (`ForJob`, the preludes' `for_turns_keyed` and `for_turns_indexed`), so
   `sem-ch07-while-match-for` costs 5 ticks in a `match` and 9 for a `for` of two entries
-  of 2 and 1 turns. A loop job in a `for &s <- &_:` is refused (its references cannot
-  outlive a cycle).
+  of 2 and 1 turns.
 - **FA A field's `.` or `->`** is chosen by the receiver's type where `?Pointer` knows it,
   and only otherwise by its name, `->` when any node has a member of that name
   (`cp.members`). Where the type is not known, a value's field named as some node's
