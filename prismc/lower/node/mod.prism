@@ -454,6 +454,18 @@ type PendingRow = record:
 # The names a node's own methods and the `Node` interface take.
 let nodeHooks = [["path", "build", "wake", "started", "deferred", "answer", "push", "swap", "leave", "patch", "clean_up", "edges", "release", "leave_row", "remove_places"]]
 
+# A hosted row built at a path of its own (a `for`'s row, a `rebuild`'s generation, a row
+# numbered from 0 where a widget's value is applied) names its places by paths relative to
+# itself, and its host knows them by their paths under the host's child: the row's `build`
+# first takes the host as the row reaches it (`prism_rtl::host_under`: the row's path
+# before every place it names). An arm of a building `match` or `if` is numbered in its
+# block's own places and built at its block's path: it takes its block's host as it is.
+UnderItsPath: fn Wx, ?Text -> Wx
+fn UnderItsPath wx, ?hostedBy = match ?hostedBy:
+    ? ignore: update wx:
+        &_.lets <= Append [[(DoLet (PaBind "enclosing"), (XCall (RefRuntime "prism_rtl::host_under"), [[(XVar "enclosing"), (XRef (XVar "path"))]]))]], &_.lets
+    nil: wx
+
 # A fresh node state: its fields, initializers, getters, dynamic reads and taken names given,
 # no graph and no places yet. `?hostedBy` is set for a row of a hosted child's `for` or
 # `rebuild` (its places are the enclosing host's; the name is the parent's method it tells
@@ -466,13 +478,7 @@ fn NewWx lx, name, fields, inits, moves, getters, dynReads, taken, inlining, ?ho
     let hostedInits = match ?hostedBy:
         ? ignore: [[(("enclosing", (XVar "enclosing")))]]
         nil: [[]]
-    # a hosted row names its places by paths relative to itself; its host knows them by
-    # their paths under the host's child: the row's `build` first takes the host as the
-    # row reaches it (`prism_rtl::host_under`, the row's path before every place it names)
-    let hostedLets = match ?hostedBy:
-        ? ignore: [[(DoLet (PaBind "enclosing"), (XCall (RefRuntime "prism_rtl::host_under"), [[(XVar "enclosing"), (XRef (XVar "path"))]]))]]
-        nil: [[]]
-    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=hostedLets, build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, ?valuedAs=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], bundles=[[]], scopes=[[]], ?hostedBy=?hostedBy, rootDyns=[[]], genOf="", rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=[[]], dynAnswers=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]], lateAsks=[[]], lateGens=False, lateRowGens=[[]], genPhase=0, numberedBy=[[]], unplacedHosts=[[]], wholeResultAt="", earlyChoices=[[]], deferredGens=[[]], lateHosts=[[]], lateFirsts=[[]], lateStarts=[[]], latePlaces=[[]], lateNumbered=[[]], baseLate=False)
+    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, ?valuedAs=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], bundles=[[]], scopes=[[]], ?hostedBy=?hostedBy, rootDyns=[[]], genOf="", rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=[[]], dynAnswers=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]], lateAsks=[[]], lateGens=False, lateRowGens=[[]], genPhase=0, numberedBy=[[]], unplacedHosts=[[]], wholeResultAt="", earlyChoices=[[]], deferredGens=[[]], lateHosts=[[]], lateFirsts=[[]], lateStarts=[[]], latePlaces=[[]], lateNumbered=[[]], baseLate=False)
 
 # A name not yet taken in the node: `base`, else `base_2`, `base_3`.
 FreshName: fn Wx, Text -> ((Text, Wx))
