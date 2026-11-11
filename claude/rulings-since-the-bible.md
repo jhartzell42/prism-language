@@ -48,3 +48,11 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   operator: `[Nat]+ == [Nat]` checks as `[Nat] == [Nat]+` does. Jimmy: "change it".
   Refused: the conversion only at the right operand, the old rule as written. Where: Type
   System chapter 2, "Collections".
+- **RA** Every lowering refusal is fixed by its class. A legal program the back end does
+  not lower is lowered ("fix these all"); a program that is wrong gets a checker error; a
+  guard no checked program reaches becomes an internal error. Jimmy: "apply appropriate
+  fixes based on category".
+- **BT** Work in bigger batches, one build per batch, and C++ last. Jimmy: "fix bugs in
+  bigger batches rather than doing full builds after each one and save fixing C++ until
+  the end when you make one big commit in the branch." During the run a fix is verified
+  on Rust; the C++ fixes land as one commit after one C++ pass at the end.
