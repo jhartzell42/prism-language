@@ -1070,7 +1070,8 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
         ? ignore: [[(("enclosing", hostOfTy))]]
         nil: [[]]
     let movedParam = if shared and IsSome ?hostedBy: [[(("moved", movedTy))]] else: [[]]
-    let r0000 = NewWx lxc, rowName, rowFields, rowInits, [[(("parent", (XClone (XVar "parent"))))]], [[]], {}, rowTaken, wx.inlining, ?hostedBy
+    let rowFresh = NewWx lxc, rowName, rowFields, rowInits, [[(("parent", (XClone (XVar "parent"))))]], [[]], {}, rowTaken, wx.inlining, ?hostedBy
+    let r0000 = if zeroBased: UnderItsPath rowFresh, ?hostedBy else: rowFresh
     let r000 = update r0000:
         &_.baseLate <= numberedLate
         &_.lateGens <= numberedLate and (wx.lateGens or IsLateBlock lxc, (if readsBlock: menv else: emptyEnv), body, 16)
@@ -1410,7 +1411,7 @@ GenRowOf: unbounded fn Wx, Env, Block, OutTy, Text, Text -> GenRow
 fn GenRowOf wx, menv, body, vt, rowName, genName:
     let lx = wx.lx
     let upName = "{genName}_up"
-    let r00 = NewWx lx, rowName, [[(("value", vt, "the generation's value, `_`")), (("parent", (OutWeak wx.node), "the node of the `rebuild`"))]], [[(("value", (XClone (XVar "value"))))]], [[(("parent", (XClone (XVar "parent"))))]], [[]], {}, (Append nodeHooks, [["value", "parent", "result", "result_dynamic"]]), wx.inlining, (?HostedRows wx)
+    let r00 = UnderItsPath (NewWx lx, rowName, [[(("value", vt, "the generation's value, `_`")), (("parent", (OutWeak wx.node), "the node of the `rebuild`"))]], [[(("value", (XClone (XVar "value"))))]], [[(("parent", (XClone (XVar "parent"))))]], [[]], {}, (Append nodeHooks, [["value", "parent", "result", "result_dynamic"]]), wx.inlining, (?HostedRows wx)), (?HostedRows wx)
     # a block that ends on a bundle gives it as one value (`WholeResultOf`)
     let r0 = update (GenCurrent r00, wx, genName):
         &_.wholeResultAt <= BundleResultKey lx, body

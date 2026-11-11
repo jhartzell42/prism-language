@@ -1,0 +1,191 @@
+# The participants of a chess game: guest domains that only hold seats. Each one's `emit`
+# line is everything it can reach: a text interface and its own seat's language. None can
+# name the game's state, another seat, or the implementation. A participant is sent the
+# game and, when a request is declined, a reason; drawing the board and putting the
+# status and the reason into words are its own work.
+# Written by Claude (an implementation agent), 11 November 2026; evidence for Part IV;
+# subject to change.
+emit rest | Ui.* | Play.* | Watch.*
+use Documents.*
+use Rules.*
+use Notation.*
+use Game.*
+use Ui.*
+
+# ---- the words
+
+ResultText: fn Result -> Text
+fn ResultText (Checkmated color) = "{color} has been checkmated"
+fn ResultText Stalemate = "stalemate"
+fn ResultText (Resigned color) = "{color} has resigned"
+fn ResultText DrawAgreed = "a draw by agreement"
+
+StatusText: fn ChessGame -> Text
+fn StatusText game = match game.?result:
+    ? result: ResultText result
+    nil: if InCheck game.position, game.position.turn: "{game.position.turn} to move, in check" else: "{game.position.turn} to move"
+
+FaultText: fn MoveFault -> Text
+fn FaultText OwnPieceThere = "your own piece stands there"
+fn FaultText (PromotionTo man) = "a pawn never becomes a {man}"
+fn FaultText PromotionNotNamed = "name what the pawn becomes"
+fn FaultText (NothingPromotes man) = "no pawn becomes a {man} by that move"
+fn FaultText (NotHowThatPieceMoves man) = "a {man} does not move so"
+fn FaultText PathBlocked = "a piece stands in the way"
+fn FaultText NothingToCapture = "there is nothing to capture"
+fn FaultText CastlingRightSpent = "the right to castle there is spent"
+fn FaultText CastlingOutOfCheck = "no castling out of check"
+fn FaultText CastlingThroughCheck = "no castling through check"
+fn FaultText LeavesKingInCheck = "it would leave your king in check"
+
+ReasonText: fn ChessReason -> Text
+fn ReasonText NotYourTurn = "it is not your move"
+fn ReasonText (GameOver result) = "the game is over: {ResultText result}"
+fn ReasonText (NoPieceThere square) = "no piece on {square}"
+fn ReasonText (NotYourPiece square) = "the piece on {square} is not yours"
+fn ReasonText (IllegalMove fault) = FaultText fault
+fn ReasonText NoDrawOffered = "no draw has been offered to you"
+fn ReasonText DrawAlreadyOffered = "you have already offered a draw"
+
+Said: fn Response ChessReason -> Text
+fn Said Accepted = "accepted"
+fn Said (Declined why) = "declined: {ReasonText why}"
+
+# ---- the board
+
+# the board's ranks as a `for` reads them: the eighth rank first
+let ranksDown = {0: 7, 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1, 7: 0}
+
+# The board as eight lines of text, and the files under them; until the board is told,
+# the ranks' numbers alone.
+@BoardText: fn $?(Square ==> Piece) -> @unit emit Ui.*
+fn @BoardText $?board:
+    for down, rank <- ranksDown:                                    # [down]
+        Ui.Label($text=(RankLine $?board, rank))
+    Ui.Label($text=$"   a b c d e f g h")
+
+# ---- a player
+
+?BoardOf: fn ?PlayerTold -> ?(Square ==> Piece)
+fn ?BoardOf nil = nil
+fn ?BoardOf (? told) = ? told.game.position.board
+
+StatusOf: fn Color, ?PlayerTold -> Text
+fn StatusOf color, nil = "(loading)"
+fn StatusOf color, (? told) = if told.game.?offered == (? (Opponent color)): "{StatusText told.game}; a draw is offered" else: StatusText told.game
+
+LegalOf: fn ?PlayerTold -> Text
+fn LegalOf nil = ""
+fn LegalOf (? told) = if told.legal == [[]]: "" else: "legal: {Joined (Each told.legal, Spelled), " "}"
+
+# a key typed into the move box: a letter is added at the end, a backspace takes one off
+Typed: fn Text, Key -> Text
+fn Typed text, (Letter letters) = "{text}{letters}"
+fn Typed text, Backspace = match ?StepBack (Back text):
+    ? ((last, before)): Before before
+    nil: text
+
+# What a text player shows of its last request: nothing asked yet, what was typed and
+# is no move, or the document's response. Text that is no move never leaves the player.
+type Last = choice:
+    NothingAsked
+    CouldNotRead Text
+    Answered (Response ChessReason)
+derive ^Eq, ^Show
+
+LastText: fn Last -> Text
+fn LastText NothingAsked = "none yet"
+fn LastText (CouldNotRead typed) = "cannot read `{typed}` as a move"
+fn LastText (Answered response) = Said response
+
+?Unread: fn Text -> ?Last
+fn ?Unread typed = if (?ParseMove typed) == nil: ? (CouldNotRead typed) else: nil
+
+Returned: fn Response ChessReason -> Last
+fn Returned response = Answered response
+
+# A player at a text interface: the board as text, a status line, the legal moves while
+# it is this seat's move, a box for a move in coordinates (`e2e4`, `e7e8n`), and buttons
+# to send the move, resign, offer a draw, accept one, and resign and leave at once. It
+# sends whatever is typed: the document decides what is legal and whose move it is.
+@TextPlayer: fn Player, unit -> @unit emit Ui.* | Play.*
+fn @TextPlayer seat, sitting:
+    let color = ColorOf seat
+    let name = Show color
+    $?told <- Play.Query($query=$ Whole)                             # 0
+    @BoardText (?BoardOf $?told)                                     # 1, 2
+    Ui.Label($text=$"{name}'s view: {StatusOf color, $?told}")       # 3
+    Ui.Label($text=(LegalOf $?told))                                 # 4
+    !key <- Ui.TextInput(name="{name}'s move", $text=$typed)         # 5
+    !enter <- Ui.Button($label=$"{name}: move")                      # 6
+    !resign <- Ui.Button($label=$"{name}: resign")                   # 7
+    !offer <- Ui.Button($label=$"{name}: offer a draw")              # 8
+    !accept <- Ui.Button($label=$"{name}: accept the draw")          # 9
+    !quit <- Ui.Button($label=$"{name}: resign and leave")           # 10
+    $typed <- "" then (Typed $typed, !key) <| ("" on !enter)
+    let !entered = $typed on !enter
+    let !move = !Filter (?ParseMove !entered)
+    !response <- Play.Request(!requests=((Play !move) <| (Resign on !resign) <| (OfferDraw on !offer) <| (AcceptDraw on !accept)))   # 11
+    Play.Leave(!?leaves=((? Resign) on !quit))                       # 12
+    $last <- NothingAsked then (!Filter (?Unread !entered)) <| (Returned !response)
+    Ui.Label($text=$"{name}'s last request: {LastText $last}")       # 13
+
+# a scripted player's next request: its script's entry for this move number, when it is
+# told the game is on and it is its move
+?NextOf: fn Color, [PlayerRequest], ?PlayerTold -> ?PlayerRequest
+fn ?NextOf color, script, nil = nil
+fn ?NextOf color, script, (? told):
+    require told.game.?result == nil and told.game.position.turn == color
+    turn <- ?Div (Len told.game.moves), 2
+    script[turn]
+
+# A scripted player, for tests: it sends its script's requests in turn, each when its
+# seat's answer says it is its move, and shows the last response.
+@ScriptedPlayer: fn Player, [PlayerRequest] -> @unit emit Ui.* | Play.*
+fn @ScriptedPlayer seat, script:
+    $?told <- Play.Query($query=$ Whole)                             # 0
+    !response <- Play.Request(!requests=(!Filter (?NextOf (ColorOf seat), script, (!Updated $?told))))   # 1
+    $said <- "nothing yet" then Said !response
+    Ui.Label($text=$"{Show (ColorOf seat)} (scripted): {$said}")     # 2
+
+# a player's opening request: asked when it is told a game with no move played
+?Opening: fn PlayerRequest, ?PlayerTold -> ?PlayerRequest
+fn ?Opening request, nil = nil
+fn ?Opening request, (? told) = if told.game.?result == nil and (Len told.game.moves) == 0: ? request else: nil
+
+# A player that asks once, by itself, when it is told a game with no move played: two of
+# them ask in one tick. Its sitting is its request.
+@OpeningPlayer: fn Player, PlayerRequest -> @unit emit Ui.* | Play.*
+fn @OpeningPlayer seat, request:
+    $?told <- Play.Query($query=$ Whole)                             # 0
+    !response <- Play.Request(!requests=(!Filter (?Opening request, (!Updated $?told))))   # 1
+    $said <- "nothing yet" then Said !response
+    Ui.Label($text=$"{Show (ColorOf seat)} (opening): {$said}")      # 2
+
+# ---- a spectator
+
+?WatchedBoard: fn ?ChessGame -> ?(Square ==> Piece)
+fn ?WatchedBoard nil = nil
+fn ?WatchedBoard (? game) = ? game.position.board
+
+WatchedStatus: fn ?ChessGame -> Text
+fn WatchedStatus nil = "(loading)"
+fn WatchedStatus (? game) = StatusText game
+
+WatchedMoves: fn ?ChessGame -> Text
+fn WatchedMoves nil = "(loading)"
+fn WatchedMoves (? game) = Joined (Each game.moves, Spelled), " "
+
+WatcherName: fn Spectator -> Text
+fn WatcherName (Spectator name) = name
+
+# A spectator's view: the board, the status and the moves so far, and a button to leave.
+# Its language has `Watch.Query` and `Watch.Leave`, and no request.
+@SpectatorView: fn Spectator, unit -> @unit emit Ui.* | Watch.*
+fn @SpectatorView seat, sitting:
+    $?game <- Watch.Query($query=$ Whole)                            # 0
+    @BoardText (?WatchedBoard $?game)                                # 1, 2
+    Ui.Label($text=$"{WatcherName seat} watches: {WatchedStatus $?game}")   # 3
+    Ui.Label($text=$"moves: {WatchedMoves $?game}")                  # 4
+    !leave <- Ui.Button($label=$"{WatcherName seat}: leave")         # 5
+    Watch.Leave(!leaves=(leaves on !leave))                          # 6

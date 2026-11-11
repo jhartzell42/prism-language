@@ -60,8 +60,11 @@ fn RustPat lx, p, ty, mode, fresh = match p.kind:
     PName n:
         let nkey = SNameKey n
         let ((?qk, why)) = ResolveValue lx.g, lx.home, n
+        # (a lower-case name that is also a unit type's value, `leaves` beside `type Leaves =
+        # leaves`: the checker decides; where it bound the name, a lambda's parameter, the
+        # pattern is the binder it recorded, and where it matched the value it recorded none)
         let isCtor = match ?qk:
-            ? qk: (HasKey lx.g.ctors, qk) and ((IsUpperText (Base nkey)) or (Len n.path) > 1 or IsUnitCtor lx, qk)
+            ? qk: (HasKey lx.g.ctors, qk) and ((IsUpperText (Base nkey)) or (Len n.path) > 1 or ((IsUnitCtor lx, qk) and not (HasKey lx.binders, (PlaceKey lx, n.span))))
             nil: False
         let ?tagged = match ?qk:
             ? qk: lx.g.tags[qk]
