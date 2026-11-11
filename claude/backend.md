@@ -82,7 +82,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
     `[a]` arm, a value checked against an `[a]`, `xs as [a]`, the operand of `as [a]+?`.
     The checker asks at each such place when it sees the non-empty value
     (`NoteFaultAt`, `AskPlainAt`) and answers at the program's end (`PlainNotes`), since
-    an entry or an arm before the plain one is only known to be converted then. Where a
+    an entry or an arm before the plain one is only known to be converted then. The
+    question is asked under one time layer too (an arm that is a `$[a]+` beside a
+    `$[a]` arm of a lifted `if`): the value there is the sample, converted as any other,
+    or, where the dynamic or event is held whole, mapped to its collection's
+    (`PlainMapped`). Where a
     construct reads a collection of either type and no place wants the plain one, the
     lowering reads through the wrapper by the source's type (`Collection`,
     `CollectionOut`, `PlainOwned`): a `for`'s source (widget, job and `update`), an

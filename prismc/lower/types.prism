@@ -212,12 +212,24 @@ fn Collection t = match t:
     otherwise: t
 
 # A value read as the collection it is: a non-empty collection's value is its collection,
-# by reference through the wrapper (the prelude's `plain_collection`); any other value is
-# itself.
+# by reference through the wrapper (the prelude's `plain_collection`); a dynamic or an
+# event of one, held whole, is mapped to the dynamic or event of its collection; any
+# other value is itself.
 PlainValue: fn Vl -> Vl
 fn PlainValue v = match ?PlainOut (ValueTy v):
     ? c: VlPlace (XCall (HelperRef "plain_collection"), [[(Ref v)]]), ByRef, c
-    nil: v
+    nil: match ValueTy v:
+        OutDyn inner: match ?PlainOut inner:
+            ? c: VlOwned (PlainMapped v, inner), (OutDyn c)
+            nil: v
+        OutEvent inner: match ?PlainOut inner:
+            ? c: VlOwned (PlainMapped v, inner), (OutEvent c)
+            nil: v
+        otherwise: v
+
+# A dynamic or an event of a non-empty collection mapped to its collection's.
+PlainMapped: fn Vl, OutTy -> Ex
+fn PlainMapped v, inner = XMethod (Own v), "map", [[(XClosure True, [[(PaTyped (PaBind "non_empty"), (OutRef inner))]], (XClone (XCall (HelperRef "plain_collection"), [[(XVar "non_empty")]])))]]
 
 # An owned collection read out of an owned value that may be a non-empty collection's, by
 # the value's type.
