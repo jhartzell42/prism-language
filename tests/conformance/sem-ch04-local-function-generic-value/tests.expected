@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 5 (a local function is generalized, each use its own instance): `Same` is the identity at `Nat` and at `Text`.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="2 ab")

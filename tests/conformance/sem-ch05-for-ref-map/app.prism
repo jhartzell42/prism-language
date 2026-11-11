@@ -1,0 +1,16 @@
+# `for &v <- &_:` over a map (Semantics ch. 5: `for &s <- &p: B` is a fold over the
+# indices of `&p`, with `&s` as `&p[ix]`; a map's indices are its keys, in key order).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Bump: fn (Text ==> Nat) -> (Text ==> Nat)
+fn Bump m = update m:
+    for &v <- &_:
+        &v += 1
+
+@page: @unit
+@page:
+    let b = Bump {"a": 1, "b": 5}
+    Ui.Label($text=$"{Or b["a"], 0} {Or b["b"], 0} {Size b}")       # 0
