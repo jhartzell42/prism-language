@@ -1418,9 +1418,11 @@ fn GivesResult lx, menv, e = match e.kind:
     EGroup x: GivesResult lx, menv, x
     EWidgetBlock ignore: True
     # a builder that gives a bundle: each dynamic part is a getter of the node (`BindParts`)
-    EFor ignore, ignore, ignore: IsBundle (LineOutFull lx, e)
-    EMatch ignore, ignore: IsBundle (LineOutFull lx, e)
-    EIf ignore, ignore, ignore: IsBundle (LineOutFull lx, e)
+    # a builder that gives a dynamic (a `for`'s gathered result): a getter of the node,
+    # defined at the builder's line (`ResultGetter`), so a line above reads it
+    EFor ignore, ignore, ignore: (IsBundle (LineOutFull lx, e)) or (ResultLayer (TypeAt lx, e.span)) == LyDyn
+    EMatch ignore, ignore: (IsBundle (LineOutFull lx, e)) or (ResultLayer (TypeAt lx, e.span)) == LyDyn
+    EIf ignore, ignore, ignore: (IsBundle (LineOutFull lx, e)) or (ResultLayer (TypeAt lx, e.span)) == LyDyn
     otherwise:
         let callee = match e.kind:
             ECall c, ignore, ignore, ignore: c
