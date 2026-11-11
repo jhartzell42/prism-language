@@ -1032,7 +1032,14 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
                 # an element only placed is no value of the node (`WithElementLets`); a
                 # late `let` is a getter of the node (`MarkLateLets`)
                 if (IsPlacedLet menv, p) or IsLateLet menv, p: ((wx, benv, menv))
-                else:
+                else: match ?BundleWritten lx, p, e:
+                  # a bundle written out and named (`let pair = (("mock", 2 on !go))`): each
+                  # part its own result, as `@ ((..))` gives them, the name its parts
+                  ? ((n, tuple)):
+                    let ((res, wx2)) = ResultOf wx, benv, menv, tuple
+                    let b = BundleBn res
+                    ((wx2, (Bind benv, (SNameKey n), b), (Bind menv, (SNameKey n), b)))
+                  nil:
                     let ((wx2, be2)) = LetLine wx, benv, menv, p, e
                     ((wx2, be2, menv))
         SExpr e: match e.kind:
@@ -1054,6 +1061,13 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
             let wx2 = update wx:
                 &_.build <= Push &_.build, (InternalBugDo "a statement of a widget block that is none of its kinds")
             ((wx2, benv, menv))
+
+# A `let` of a name whose value is a bundle written out as a tuple: the name and the tuple.
+?BundleWritten: unbounded fn Lx, Pattern, Expr -> ?((SName, Expr))
+fn ?BundleWritten lx, p, e = match ((p.kind, e.kind)):
+    ((PName n, ETuple ignore)): if IsBundle (TypeAt lx, e.span): ? ((n, e)) else: nil
+    ((ignore, EGroup x)): ?BundleWritten lx, p, x
+    otherwise: nil
 
 # A `let` of a name whose value is a name bound to a bundle's parts: the name and the
 # parts.
