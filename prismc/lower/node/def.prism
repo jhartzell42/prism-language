@@ -636,7 +636,7 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
             # a bundle's events and dynamics, bound in the node as its line binds them
             let ((wx2b, ignore, me2)) = match ((late, p.kind, ?whole)):
                 (((WrParts parts), ignore, ? n)): BindWhole wx2g, be1, me1, n, parts, partReads
-                (((WrParts parts), PTuple ps, nil)): BindParts wx2g, be1, me1, (Each parts, \|q| if IsTimePart q: q else: WrUnit), ps
+                (((WrParts parts), PTuple ps, nil)): BindParts wx2g, be1, me1, (Each parts, \|q| if IsTimePart q: q else: WrUnit), ps, [[]]
                 otherwise: ((wx2g, be1, me1))
             let wx2s = update (WithLateInits wx2b, wx2b.lateInits):
                 &_.lateInits <= outerLate
@@ -1676,7 +1676,7 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
                     let b = BnDyn ex, rds, t
                     ResultGetter wx3, menv, n, ex, rds, t, (Bind benv, (SNameKey n), b), (Bind menv, (SNameKey n), b)
                 (((WrHosted inner, doc), PTuple ps)): BindHosted wx3, benv, menv, inner, doc, ps
-                (((WrParts parts), PTuple ps)): BindParts wx2, benv, menv, parts, ps
+                (((WrParts parts), PTuple ps)): BindParts wx2, benv, menv, parts, ps, (BundlePartTys (OutOf (TypeAt lx, e.span)))
                 # a bundle bound whole to one name: the name is its parts, each plain
                 # part a field of the node (`FieldedParts`)
                 (((WrParts parts), PName n)):
@@ -1880,12 +1880,16 @@ fn BindPart2 wx, benv, menv, ?p, ?b:
 
 # A bundle's parts bound by a tuple pattern, part by part: an event to the node its name
 # was prebound to, a dynamic as itself, a plain value as a local, a nested bundle by its
-# own pattern or as its name's parts.
-BindParts: unbounded fn Wx, Env, Env, [Wres], [Pattern] -> ((Wx, Env, Env))
-fn BindParts wx, benv, menv, parts, ps = Fold (Range0 (Len ps)), ((wx, benv, menv)), \|((w, be, me)), i| match ((ps[i], parts[i])):
+# own pattern or as its name's parts; a plain part under any other pattern (a pair
+# taken apart in place, `((((id, owner)), $state)) <- Pad.Port(..)`) is matched once at
+# the build, each name it binds moved into its field (`BindPatternResult`). `tys`: the
+# parts' types as the checker has them.
+BindParts: unbounded fn Wx, Env, Env, [Wres], [Pattern], [Ty] -> ((Wx, Env, Env))
+fn BindParts wx, benv, menv, parts, ps, tys = Fold (Range0 (Len ps)), ((wx, benv, menv)), \|((w, be, me)), i| match ((ps[i], parts[i])):
     ((? p, ? part)): match ((part, p.kind)):
         ((WrEv r, PName ignore)): (((BindRes w, me, p, part), be, me))
-        ((WrParts inner, PTuple qs)): BindParts w, be, me, inner, qs
+        ((WrParts inner, PTuple qs)): BindParts w, be, me, inner, qs, (BundlePartTys (Or tys[i], TyErr))
+        ((ignore, PIgnore)): ((w, be, me))
         ((ignore, PName n)): match part:
             WrUnit: ((w, be, me))
             WrDyn ex, rds, t:
@@ -1902,7 +1906,9 @@ fn BindParts wx, benv, menv, parts, ps = Fold (Range0 (Len ps)), ((wx, benv, men
             otherwise:
                 let b = BundleBn part
                 ((w, (Bind be, (SNameKey n), b), (Bind me, (SNameKey n), b)))
-        otherwise: ((w, be, me))
+        otherwise: match part:
+            WrPlain ex, t: (((BindPatternResult w, me, p, ex, t, (Or tys[i], TyErr)), be, me))
+            otherwise: ((w, be, me))
     otherwise: ((w, be, me))
 
 # A name prebound as a plain value's field of the node (`BindPlain`).
