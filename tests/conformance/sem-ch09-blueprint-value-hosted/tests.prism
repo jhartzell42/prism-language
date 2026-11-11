@@ -1,0 +1,6 @@
+# The tests of sem-ch09-blueprint-value-hosted.
+emit Ui.*
+use App.*
+
+test a_blueprint_value_under_a_host, @main:
+    build
