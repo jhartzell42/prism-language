@@ -202,12 +202,32 @@ fn Collect rev, seen, comp, k:
     if HasKey seen, k: ((seen, comp))
     else: Fold (Or rev[k], [[]]), (((Insert seen, k, True), (Push comp, k))), \|((s, c)), n| Collect rev, s, c, n
 
+# `no-signature`: a block's `fn` that calls itself, directly or through a ring of calls,
+# needs a signature line, as a top-level function does (Jimmy's ruling LS: "Self calling
+# local function needs a signature why not?"). One that does not call itself has none
+# and generalizes (Type System ch. 5). Reported for each such function of the cycle, and
+# the cycle is then not read for shrinking.
+UnsignedOnCycle: unbounded fn Shrink, St, [Text] -> St
+fn UnsignedOnCycle sk, st, comp = Fold comp, st, \|s, k| match ((sk.byKey[k], (?Last (SplitOn k, " ")))):
+    ((? d, ? place)) if (Contains k, " #local ") and HasText st.unsignedFns, place: match d.body:
+        DbFn clauses: match clauses[0]:
+            ? first:
+                let others = Filter comp, \|other| other != k
+                let how = if (Len others) == 0: "calls itself" else: "calls itself through {Join (Each others, \|other| "`{ShownKey other}`"), ", "}"
+                let s2 = ErrFix (WithFile s, d.file), "no-signature", first.span, "`{ShownKey k}` {how} and has no signature line: a block's function that calls itself needs one, as a top-level function does", "write `{ShownKey k}: fn ... -> ...` above it, in its block"
+                WithFile s2, s.file
+            nil: s
+        otherwise: s
+    otherwise: s
+
 # One cycle of the reference graph: cleared when every function on it is unbounded,
 # else every idempotent size-change graph of the composition closure needs a strictly
 # smaller edge from a parameter to itself.
 ShrinkComponent: unbounded fn Shrink, St, [Text] -> St
-fn ShrinkComponent sk, st, comp:
-    if Fold comp, True, \|ok, k| ok and IsUnboundedKey sk.g, (SigKeyOf sk, (Or sk.localOf[k], k)): st
+fn ShrinkComponent sk, st0, comp:
+    let st = UnsignedOnCycle sk, st0, comp
+    if (Len st.diags) > (Len st0.diags): st
+    else: if Fold comp, True, \|ok, k| ok and IsUnboundedKey sk.g, (SigKeyOf sk, (Or sk.localOf[k], k)): st
     else:
         let graphs = Fold sk.fns, [[]], \|acc, d| if HasText comp, d.qk: Append acc, (CallGraphs sk, d, comp) else: acc
         let closure = Closure graphs

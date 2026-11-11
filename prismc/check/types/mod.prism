@@ -169,6 +169,10 @@ type St = record:
     typed: TProgram
     choices: (Text ==> [Text])
     sizeTys: (Text ==> Ty)
+    # Every block's `fn` with no signature line, by its file and where its first clause
+    # starts (`FILE.START`, as the shrink check keys a local): one that calls itself is
+    # `no-signature` (Jimmy's ruling LS; `UnsignedOnCycle`).
+    unsignedFns: [Text]
     # The next local binder's id in the definition being checked, and the id each binder
     # (by file and place) was given, so a binder bound twice (ahead, then at its line)
     # keeps one id (pick UN).
@@ -231,7 +235,7 @@ type Waiting = record:
 derive ^Eq, ^Show
 
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], plainArms=[[]], faultQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]])
+fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, unsignedFns=[[]], localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], plainArms=[[]], faultQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]])
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed)

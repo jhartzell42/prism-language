@@ -385,7 +385,9 @@ fn CheckLocalClauses env, st, f, clauses, span:
                 # does not pull the type's variables down to the block's level and the
                 # function generalizes (Type System ch. 5, "A local `let` generalizes"); the
                 # body's calls of the function itself read it, monomorphic.
-                let st0 = EnterLevel st
+                let unsigned = update st:
+                    &_.unsignedFns <= Push &_.unsignedFns, "{st.file}.{f.span.start}"
+                let st0 = EnterLevel unsigned
                 let ((own, st0b)) = FreshVar st0, False, ""
                 let inside = WithLocal env, name, (Mono own)
                 let ((lt, st1)) = if (Len clauses) == 1: ClauseLambda inside, st0b, f else: ClausesLambda inside, st0b, name, clauses, span
