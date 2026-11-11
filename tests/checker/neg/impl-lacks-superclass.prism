@@ -1,0 +1,24 @@
+# A trait's `where` on its parameter asks every type of the trait for that impl too (Type
+# System ch. 3: `trait ^Num a where a: ^Eq`), so an impl at a type with no impl of the
+# trait above it is refused. Written by Claude on the claude-bugs branch; subject to change.
+trait ^Named a:
+    Name: fn a -> Text
+
+trait ^Titled a where a: ^Named:
+    Title: fn a -> Text
+
+type Book = record:
+    pages: Nat
+
+type Pair a = record:
+    one: a
+    two: a
+
+impl ^Named (Pair a):
+    fn Name p = "pair"
+
+impl ^Titled Book:
+    fn Title b = "book"
+
+impl ^Titled (Pair a):
+    fn Title p = Name p
