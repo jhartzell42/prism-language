@@ -1125,12 +1125,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
     (`WholeFns`): the host's line makes the live dynamic (`WholeArgs`), the closure
     captures it, and the function's answer over it is that `Dynamic` mapped into the
     tag's case (`?HeldDynamic`).
-    A function of the host's block with a `$` parameter (`fn @Supply $d, e` beside the
-    host's line, called `@Supply $count, e`) answers the same way: its clause's text
-    is read with its parameters marked (`WithFnParameters`), the host's line makes no
-    getter for an answer that reads one (`ReadsFnParameter`), and where the function
-    is inlined the parameter is a local holding the caller's dynamic. Refused: such an
-    answer that reads the parameter beside a dynamic of the block.
+    A function of the host's block (`fn @Supply e` beside the host's line) is inlined
+    at its call, so its clauses' text is the supplier's (`AnswerTexts`), read with the
+    clause's own parameters marked (`WithFnParameters`): the host's line makes no
+    getter for an answer that reads one (`ReadsFnParameter`). Refused: such an answer
+    (`fn @Supply $d, e` answering `@ $d`, called `@Supply $count, e`): the inlined
+    parameter is the argument's value, and no live dynamic is made for it.
     A computed answer in flight to a place whose key left is
     dropped. Nested hosts add one tick per computing layer and none per
     forwarding layer.

@@ -43,12 +43,15 @@ Hosting
   supplier's text, a blueprint `let`, a blueprint parameter's argument and a function
   of the block the supplier calls (sem-ch09-host-local-supplier-dynamic-answer,
   sem-ch09-host-local-supplier-bundle-answer), but none for an answer that reads a
-  parameter of that function: `fn @Supply $d, e` answering `@ $d` is lowered as the
-  dynamic the function holds (sem-ch09-host-local-supplier-dynamic-parameter), and the
-  two refusals stand for the answer that reads the parameter beside a dynamic of the
-  block (`@ $ ($d + $count)` there). R, no test. A supplier cannot be handed on as a
-  parameter of a widget (its type is of every output `o`; the checker has no such
-  parameter), and a method or a named function reads no name of the block.
+  parameter of that function: `fn @Supply $d, e` answering `@ $d`, called `@Supply
+  $count, e`, is the program the two refusals stand for
+  (sem-ch09-host-local-supplier-dynamic-parameter, red). R: it needs the host's line
+  to make the argument's live dynamic (`WholeArgs`, as for a named supplier with a `$`
+  parameter, `WholeFns`) and the inlined parameter to be a local of it
+  (`InlineLocalFn` binds the argument's value, spelled for the node's methods), so
+  that `?HeldDynamic` answers over it. A supplier cannot be handed on as a parameter
+  of a widget (its type is of every output `o`; the checker has no such parameter),
+  and a method or a named function reads no name of the block.
 - `@ x` outside a tag arm is lowered: plain data in `Answer`'s case of no tag, read by
   the place that takes it (sem-ch09-host-answer-without-arm); a value that is no plain
   data (a function) held as it is and read at the type of the line that binds it
