@@ -60,7 +60,11 @@ fn RowNamesClosed menv, names:
         otherwise: acc
     # an element a `let` of the block names, placed in the row (`WithElementLets`): what
     # its fields read
-    let more = Fold names, more0, \|acc, n| match menv.names["{n}#element"]:
+    let more1 = Fold names, more0, \|acc, n| match menv.names["{n}#element"]:
+        ? (BnWidget x, ignore, ignore, ignore): UnionTexts acc, (ReadNames (ExprsIn x))
+        otherwise: acc
+    # and a blueprint a `let` of the block names, built in the row: what it reads
+    let more = Fold names, more1, \|acc, n| match menv.names["{n}#blueprint"]:
         ? (BnWidget x, ignore, ignore, ignore): UnionTexts acc, (ReadNames (ExprsIn x))
         otherwise: acc
     if (Len more) == (Len names): names else: RowNamesClosed menv, more
@@ -78,8 +82,11 @@ fn ClauseExprs c = match c.body:
 RowEnvNames: unbounded fn Wx, Wx, Env, [Text] -> ((Wx, Wx, Env))
 fn RowEnvNames parent, rowWx, menv, written:
     let names = RowNamesClosed menv, written
-    let elements = Fold names, (WholeOfBlock menv, emptyEnv, False), \|en, n| match menv.names["{n}#element"]:
+    let elements0 = Fold names, (WholeOfBlock menv, emptyEnv, False), \|en, n| match menv.names["{n}#element"]:
         ? held: Bind en, "{n}#element", held
+        nil: en
+    let elements = Fold names, elements0, \|en, n| match menv.names["{n}#blueprint"]:
+        ? held: Bind en, "{n}#blueprint", held
         nil: en
     Fold names, ((parent, rowWx, elements)), \|((p, r, env)), n| match menv.names[n]:
         ? (BnLocal rs, mode, t): ((p, r, (Bind env, n, (BnLocal (OverParent rs), Owned, t))))
