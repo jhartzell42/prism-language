@@ -66,11 +66,18 @@ Hosting
   that gives a bundle back under a tag's arm (sem-ch09-host-widget-bundle-answer), one
   whose block ends on a host's line (sem-ch08-widget-value-ends-on-host), a generic one
   read in a generic function's body, given that function's own type parameter
-  (`?OpenWidgetBlueprintValue`: sem-ch08-widget-value-generic-in-function). Left
-  refused: a generic one read where a type parameter stays open and the instantiations
-  of the definition it stands in cannot all be read (`?DefInstances`: a use in a
-  method's body at the impl's type parameters, a definition that uses itself at other
-  types than its own; R, no tests), one with a
+  (`?OpenWidgetBlueprintValue`: sem-ch08-widget-value-generic-in-function), however
+  many generic functions deep (sem-ch08-widget-value-generic-ten-functions-deep), in a
+  function that calls itself at other types
+  (sem-ch08-widget-value-generic-function-at-other-type), in an impl's method at the
+  impl's type parameter (sem-ch08-widget-value-generic-in-method). Left
+  refused (`OpenWidgetValueWords`): a generic one read where a type parameter stays
+  open and the program gives the definition it stands in no finite set of types
+  (`?DefInstances`, `GrowsFrom`: a line of instantiations that holds one definition
+  twice, the earlier types embedded in the later;
+  sem-ch08-widget-value-generic-function-at-ever-larger-types, R; the plain function
+  alone is refused by rustc, ts-ch02-function-at-ever-larger-types), one read at a
+  trait method's own type parameter in an impl's method (R, no test), one with a
   widget function parameter, or a `$` or event parameter with time below its top (no
   tests);
   one read in a place `ValuedWidgets` does not look (a record's field read back and
@@ -189,12 +196,16 @@ Building `match`, clause widgets, `rebuild`
 - lower/jobs.prism: none added. A bare `for` in a job is lowered (`ForJob`), no test of
   the job form; the plain form is sem-ch05-update-for-bare.
 - lower/node/finish.prism (`PlaceNumber`) a place read at its block's build before the
-  node exists (a first-value query, a host made in the build, the `row_base` of a
-  building `match` built early, `EarlyChoiceLine`) after a building `match`, `if` or
-  widget of several clauses whose rows differ in width and are built after the node.
-  Test, red: sem-ch04-building-match-on-built-late-value-above (the lower `match` is
-  built early, its arm's result read from what the arm builds, and its row's first
-  position counts what the `match` above it built, which reads that result).
+  node exists (a first-value query, a host made in the build) after a building `match`,
+  `if` or widget of several clauses whose rows differ in width and are built after the
+  node. No test. The `row_base` of a line built early there (`EarlyChoiceLine`,
+  `EarlyClauseLine`) is lowered: the row is numbered after the node (`NumberedLate`,
+  sem-ch04-building-match-on-built-late-value-above).
+- lower/node/finish.prism (`PlaceNumber`), lower/node/switch.prism (`ArmRowOf`) in a row
+  numbered after its block's node (`Wx.baseLate`): a place spelled in the row's own
+  build before its node (a host in the arm, a hosted place's first value), and the
+  row's plain result read from a generation the row builds after its node (a building
+  `match` inside the arm that is not built early). Both R.
 - gap ID, the part left: a widget that calls itself and has a `$` or event parameter
   beside a result or with time below its top, a
   blueprint parameter whose argument is no blueprint value the lowering makes (a widget

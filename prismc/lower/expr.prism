@@ -1102,7 +1102,7 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
         nil: if Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsLetDef d): VlOwned (XCall (ValueRef lx, qk), [[]]), t
         else: match lx.g.vals[qk]:
             ? v if HasKey lx.valued, (ValuedKeyAt lx, qk, span, [[]]): WidgetBlueprintValue lx, emptyEnv, qk, span, [[]], t
-            ? v if ((IsWidgetFn v) or IsWidgetTy v.scheme.ty) and not (IsValueWidget lx, qk): Or (?OpenWidgetBlueprintValue lx, emptyEnv, qk, span, [[]], t), (VlOwned (Refusal (WidgetValueWords qk)), t)
+            ? v if ((IsWidgetFn v) or IsWidgetTy v.scheme.ty) and not (IsValueWidget lx, qk): Or (?OpenWidgetBlueprintValue lx, emptyEnv, qk, span, [[]], t), (VlOwned (Refusal (OpenWidgetValueWords lx, qk)), t)
             ? v:
                 let isLet = Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsLetDef d)
                 if isLet: VlOwned (XCall (ValueRef lx, qk), [[]]), t
@@ -1146,8 +1146,10 @@ fn WidgetBlueprintValue lx, env, qk, calleeSpan, args, t = WidgetBlueprintValueF
 # (`PlacedWidget`, `?DefInstances`), and the function, a target generic lowered once,
 # chooses among them by the types it runs at (prism_rtl's `type_key`). The arguments are
 # read at the function's own types and are the row's by the choice made (`recast`).
-# Nothing is chosen in a function the program never uses. No answer where the function's
-# instantiations cannot all be read, or one of them has no rows (`?ValuedCases`).
+# Nothing is chosen in a function the program never uses. The same in an impl's method,
+# over the impl's type parameters, and in a trait's default, over `Self`. No answer where
+# the definition's instantiations are no finite set or cannot all be read
+# (`?DefInstances`), or one of them has no rows (`?ValuedCases`).
 ?OpenWidgetBlueprintValue: unbounded fn Lx, Env, Text, Range, [Arg], OutTy -> ?Vl
 fn ?OpenWidgetBlueprintValue lx, env, qk, calleeSpan, args, t = match ?EnclosingInstances lx:
     nil: nil
@@ -1161,7 +1163,7 @@ fn ?OpenWidgetBlueprintValue lx, env, qk, calleeSpan, args, t = match ?Enclosing
         if not rowed: nil
         else:
             let Chosen = \|user| Fold user, (XBool True), \|sofar, ((q, ty))|
-                let same = XBin OpEq, (XCallAt (RefRuntime "prism_rtl::type_key"), [[(OutGen (Camel q))]], [[]]), (XCallAt (RefRuntime "prism_rtl::type_key"), [[(OutTyOf lx, ty)]], [[]])
+                let same = XBin OpEq, (XCallAt (RefRuntime "prism_rtl::type_key"), [[(OutTyOf lx, (TyRigid q))]], [[]]), (XCallAt (RefRuntime "prism_rtl::type_key"), [[(OutTyOf lx, ty)]], [[]])
                 if sofar == (XBool True): same else: XBin OpAnd, sofar, same
             let n = Len distinct
             let picked = Fold (Range0 n), XUnreachable, \|rest, i|
@@ -1260,6 +1262,15 @@ fn IsWidgetFn v = match v.scheme.ty:
 
 # A widget function as a value that is not one (pick HO): a supplier whose blueprint
 # builds places, or a widget that answers no element.
+# A widget read as a value that `?OpenWidgetBlueprintValue` has no answer for: in a
+# generic definition whose instantiations are no finite set or cannot all be read
+# (`?DefInstances`), the words say so; any other widget, `WidgetValueWords`.
+OpenWidgetValueWords: unbounded fn Lx, Text -> Text
+fn OpenWidgetValueWords lx, qk = match ((lx.inDefinition, ?EnclosingInstances lx)):
+    (("", ignore)): WidgetValueWords qk
+    ((ignore, ? ignore2)): WidgetValueWords qk
+    ((definition, nil)): "the generic widget function {BareName qk} as a value in {definition}, given a type parameter of that definition: its rows are made for each set of types the program gives the definition, and the program gives it no finite set (it reaches itself at types that hold its own, without end), or a use of it leaves a type parameter undecided"
+
 WidgetValueWords: fn Text -> Text
 fn WidgetValueWords qk = "the widget function {BareName qk} as a value: a blueprint value is a supplier's answer that builds no place (`@ x`, `@Element e`, a `match` of them); one with places is a widget-function blueprint as an answer (pick HO)"
 
@@ -1673,7 +1684,7 @@ fn GlobalCall lx, env, qk, args, span, cspan, t:
         ? c: CtorApp lx, env, c, args, span
         nil: match lx.g.vals[qk]:
             ? v if HasKey lx.valued, (ValuedKeyAt lx, qk, cspan, args): WidgetBlueprintValue lx, env, qk, cspan, args, t
-            ? v if (IsWidgetFn v) and not (IsValueWidget lx, qk): Or (?OpenWidgetBlueprintValue lx, env, qk, cspan, args, t), (VlOwned (Refusal (WidgetValueWords qk)), t)
+            ? v if (IsWidgetFn v) and not (IsValueWidget lx, qk): Or (?OpenWidgetBlueprintValue lx, env, qk, cspan, args, t), (VlOwned (Refusal (OpenWidgetValueWords lx, qk)), t)
             ? v:
                 if v.sort == "method": MethodCall lx, env, v, args, span, t
                 else: if v.home == "Prelude": PreludeCall lx, env, qk, args, span, t
