@@ -38,6 +38,15 @@ fn NoteFaultAt st, span, expected, found = match Walk st, found:
     TyCon "Prelude.Error", [[]]: update st:
         &_.faultQs <= Push &_.faultQs, Waiting(expected=expected, found=found, span=span, file=st.file)
     TyCon "Prelude.NonEmpty", ignore: AskPlainAt st, span, expected
+    # a dynamic or an event of a non-empty collection, where the dynamic or event of its
+    # plain collection may be wanted (an arm of a lifted `if` beside a plain one's)
+    TySig "$", inner: NotePlainUnder st, span, expected, inner
+    TySig "!", inner: NotePlainUnder st, span, expected, inner
+    otherwise: st
+
+NotePlainUnder: unbounded fn St, Range, Ty, Ty -> St
+fn NotePlainUnder st, span, expected, inner = match Walk st, inner:
+    TyCon "Prelude.NonEmpty", ignore: AskPlainAt st, span, expected
     otherwise: st
 
 # The question whether the expression at `span` stands where a plain collection is wanted,
@@ -49,13 +58,18 @@ fn AskPlainAt st, span, expected = update st:
 
 # The plain questions answered: each place whose wanted type is an array or a map, or is
 # the value of a match or an `if` with a `[a]` arm beside its `[a]+` arms (`UnifyArm`,
-# `St.plainArms`: the construct's own value is then the `[a]`, ruling NS).
+# `St.plainArms`: the construct's own value is then the `[a]`, ruling NS), or a dynamic or
+# an event of one.
 PlainNotes: unbounded fn St -> [SrcAt]
 fn PlainNotes st = Fold st.plainQs, [[]], \|acc, q|
     let joinedPlain = match q.expected:
         TyFlex n: HasNat st.plainArms, n
         otherwise: False
-    if joinedPlain or IsPlainCollection st, q.expected: Push acc, SrcAt(file=q.file, span=q.span) else: acc
+    let wanted = match Walk st, q.expected:
+        TySig "$", inner: inner
+        TySig "!", inner: inner
+        other: other
+    if joinedPlain or IsPlainCollection st, wanted: Push acc, SrcAt(file=q.file, span=q.span) else: acc
 
 # A value of type `found` at a place wanting `expected` (an argument, a value checked
 # against its type): an `Error` there is the place's `~T`'s failure when the place is one
