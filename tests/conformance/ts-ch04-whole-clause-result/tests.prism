@@ -1,0 +1,8 @@
+# The tests of ts-ch04-whole-clause-result.
+emit Ui.*
+use App.*
+
+test a_kept_dynamic_follows, @rows:
+    build
+    click at 0
+    click at 0
