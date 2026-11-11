@@ -1060,6 +1060,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **An answer made outside a tag's arm** (a host's `let @seven = @ 7`) is plain data in
   `Answer`'s case of no tag, `Untagged_a`; each accessor of `Answer` reads that case at its
   own tag's type, so the place that takes the answer decides what it is.
+  A tag's output that is no plain data (a function, alone or as a bundle's plain part)
+  is read from the tag's own case or, made outside the arm, from the case that holds
+  it as it is (`Held_a`; the emitters' `OutsideArm`). A World answers with plain data,
+  so its answer for such a tag is a fault of the run (`NoWorldAnswer`).
 - **A place whose element answers a dynamic has its value at the build**: its first
   value stands in the local `{f}_init` (`DynamicPlace`), bound as the name's value at the
   build (`PreInit`), so a supplier's dynamic answer over the host's own pushed place

@@ -349,10 +349,22 @@ fn RustAnswer a:
     # of the line that binds it (the prelude's `answer_held`, `Answer::held`)
     let cases = Join (Push (Push (Append (Each a.cases, \|c| "{c.variant}({Type c.ty}),"), (Each firsts, \|((c, ft))| "{c.variant}First({Type ft}),")), "Untagged_a(crate::prelude::Pod),"), "Held_a(::std::rc::Rc<dyn ::std::any::Any>),"), "\n"
     let tags = Join (Push (Push (Append (Each a.cases, \|c| "Answer::{c.variant}(_) => {RsRef c.structPath}::TAG,"), (Each firsts, \|((c, ft))| "Answer::{c.variant}First(_) => {RsRef c.structPath}::TAG,")), "Answer::Untagged_a(_) => \"no tag (an answer made outside a tag's arm)\","), "Answer::Held_a(_) => \"no tag (an answer made outside a tag's arm that is no plain data)\","), "\n"
-    let accessors = Join (Append (Each a.cases, \|c| AnswerGetter c.accessor, c.variant, c.tagName, (Type c.ty)), (Each firsts, \|((c, ft))| AnswerGetter "{c.accessor}_first", "{c.variant}First", c.tagName, (Type ft))), "\n"
-    let decodes = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Each a.cases, \|c| "Elem::{c.variant}(..) => ::std::result::Result::Ok(Answer::{c.variant}({DecodeHead c.ty}::from_pod(v)?)),"), "\n"
-    let decodeFirsts = Join (Push (Each firsts, \|((c, ft))| "Elem::{c.variant}(..) => ::std::result::Result::Ok(Answer::{c.variant}First({DecodeHead ft}::from_pod(v)?)),"), "_ => Self::decode(e, v),"), "\n"
+    let accessors = Join (Append (Each a.cases, \|c| AnswerGetter c.accessor, c.variant, c.tagName, (Type c.ty), (OutsideArm c.ty)), (Each firsts, \|((c, ft))| AnswerGetter "{c.accessor}_first", "{c.variant}First", c.tagName, (Type ft), (OutsideArm ft))), "\n"
+    # a World answers with plain data: an output that is none (a function) is a host's
+    # to answer, and a World's answer for it a fault
+    let decodes = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Each a.cases, \|c| if Podable c.ty: "Elem::{c.variant}(..) => ::std::result::Result::Ok(Answer::{c.variant}({DecodeHead c.ty}::from_pod(v)?))," else: "Elem::{c.variant}(..) => {NoWorldAnswer c.tagName},"), "\n"
+    let decodeFirsts = Join (Push (Each firsts, \|((c, ft))| if Podable ft: "Elem::{c.variant}(..) => ::std::result::Result::Ok(Answer::{c.variant}First({DecodeHead ft}::from_pod(v)?))," else: "Elem::{c.variant}(..) => {NoWorldAnswer c.tagName},"), "_ => Self::decode(e, v),"), "\n"
     AnswerType cases, tags, accessors, decodes, decodeFirsts
+
+# An accessor's arm for an answer made outside a tag's arm, read at the type the tag's
+# place takes: plain data from `Answer`'s case of no tag; a value that is no plain data
+# (a function) from the case that holds it as it is (the prelude's `answer_held`).
+OutsideArm: unbounded fn OutTy -> Text
+fn OutsideArm t = if Podable t: "Answer::Untagged_a(p) => crate::prelude::FromPod::from_pod(p)," else: "Answer::Held_a(_) => self.held(),"
+
+# A World's answer for a tag whose output is no plain data: a fault of the run.
+NoWorldAnswer: fn Text -> Text
+fn NoWorldAnswer tagName = "::std::result::Result::Err(crate::prelude::Fault::answer(::std::string::String::from(\"a World's answer for {tagName}, whose output is no plain data: a host answers it\")))"
 
 # ---------------------------------------------------------------------------------------
 # Nodes and programs

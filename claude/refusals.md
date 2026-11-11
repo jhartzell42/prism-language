@@ -46,6 +46,10 @@ Hosting
   ts-ch05-color-function-in-blueprint-result).
   A bundle with such a part outside an arm is held whole, its events and dynamics as
   values (`PartsBlueprint`: sem-ch08-blueprint-of-bundle-with-function-outside-tag-arm).
+- A tag whose output holds a part that is no plain data (a function) is answered by a
+  host, under the tag's arm part by part (sem-ch09-host-bundle-function-part-answer);
+  `crate::Answer` reads such a part from its own case or from the case held whole
+  (the emitters' `OutsideArm`), and a World's answer for the tag is a fault of the run.
 - Every other bundle answer is lowered, any mix of plain, `$` and event
   parts, written as a tuple or given as a value (`PartsBlueprint`:
   sem-ch09-host-bundle-two-events-answer, -two-dynamics-answer,

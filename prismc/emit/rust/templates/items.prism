@@ -403,14 +403,14 @@ impl ::prism_rtl::AnswerOf<Elem> for Answer {
 </rust>
 
 # One accessor of `Answer`: the tag's value, or a fault naming the tag the answer was for.
-AnswerGetter: fn Text, Text, Text, Text -> Text
-fn AnswerGetter accessor, variant, tagName, ty = inline_text <rust>
+# `outside` is the arm for an answer made outside a tag's arm (the emitter's `OutsideArm`).
+AnswerGetter: fn Text, Text, Text, Text, Text -> Text
+fn AnswerGetter accessor, variant, tagName, ty, outside = inline_text <rust>
 /// A `{{tagName}}`'s answer.
 pub fn {{accessor}}(&self) -> ::std::result::Result<{{ty}}, crate::prelude::Fault> {
     match self {
         Answer::{{variant}}(v) => ::std::result::Result::Ok(v.clone()),
-        // an answer made outside a tag's arm: plain data, read at this tag's type
-        Answer::Untagged_a(p) => crate::prelude::FromPod::from_pod(p),
+        {{outside}}
         other => ::std::result::Result::Err(crate::prelude::Fault::answer(format!("an answer for {}, where {{tagName}}'s was expected", other.tag()))),
     }
 }
