@@ -454,25 +454,33 @@ fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent, parentTy, args:
     # a `$` parameter's binder is the caller's dynamic, read through the row's parent where
     # the caller's own reading of it stands (Type System ch. 1; the caller's writes behind
     # it mark the row's places, `GenMarked`), never its value at the build
-    let dyns = Fold (Range0 (Len c.params)), [[]], \|acc, i| match ((ptys[i], c.params[i], args[i])):
+    let ((dyns, wxd)) = Fold (Range0 (Len c.params)), (([[]], wx)), \|((acc, w)), i| match ((ptys[i], c.params[i], args[i])):
         ((? pt, ? p, ? a)) if (LayerOf pt) == LyDyn:
             let bn = PlainBinder lxc, p
-            if bn == "": acc else: Push acc, ((bn, (ClauseDynArg wx, menv, a.value, (OutTyOf lxc, (Peel pt)))))
-        otherwise: acc
-    ArmRowOf wx, menv, lxc, pats, ptys, nil, body, rowName, genName, transparent, False, parentTy, dyns, [[]]
+            if bn == "": ((acc, w))
+            else:
+                let ((b, w2)) = ClauseDynArg w, menv, a.value, (OutTyOf lxc, (Peel pt))
+                (((Push acc, ((bn, b))), w2))
+        otherwise: ((acc, w))
+    ArmRowOf wxd, menv, lxc, pats, ptys, nil, body, rowName, genName, transparent, False, parentTy, dyns, [[]]
 
 # A caller's dynamic argument as a clause's row reads it: through its `parent`, the reads
-# the caller's ones of the block (`ParentRead`); one that does not stand on the caller's
-# own node is refused.
-ClauseDynArg: unbounded fn Wx, Env, Expr, OutTy -> Bn
+# the caller's ones of the block (`ParentRead`). One the caller itself reads through its
+# own parent (the caller is a row, the dynamic its block's) is a getter of the caller,
+# whose reads are the caller's: the clause's row reads the getter through its parent, and
+# the caller, hearing its block's write behind it, marks the clause's row as it marks any
+# row that reads a name of its own.
+ClauseDynArg: unbounded fn Wx, Env, Expr, OutTy -> ((Bn, Wx))
 fn ClauseDynArg wx, menv, x, t:
     let ((ex, reads)) = DynamicExpr wx, menv, x
-    let over = OverParent ex
-    let ok = (OnSelfRooted ex) and Fold reads, True, \|f, r| f and match r:
-        OwnRead ignore: True
-        ParentRead ignore: False
-    if ok: BnDyn over, (Each reads, \|r| AsParentRead r), t
-    else: BnDyn (Refusal "a widget of several clauses given a dynamic its caller reads through its own parent"), [[]], t
+    let ok = (OnSelfRooted ex) and Fold reads, True, \|f, r| f and IsOwnRead r
+    if ok: (((BnDyn (OverParent ex), (Each reads, \|r| AsParentRead r), t), wx))
+    else:
+        let ((getter, w1)) = FreshName wx, "clause_dynamic"
+        let w2 = update w1:
+            &_.getters <= Push &_.getters, (MethDef(name=getter, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="A dynamic argument of a widget of several clauses, as its row reads it through this node."))
+            &_.dynReads <= Insert &_.dynReads, getter, reads
+        (((BnDyn (XMethod parentRef, getter, [[XCx]]), [[ParentRead getter]], t), w2))
 
 AsParentRead: fn Read -> Read
 fn AsParentRead (OwnRead m) = ParentRead m
