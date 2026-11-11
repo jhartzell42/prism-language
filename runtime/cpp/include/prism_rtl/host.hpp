@@ -674,6 +674,26 @@ Blueprint<E, A> widget_blueprint(Build build, BuildHosted build_hosted, AnswerFn
     };
 }
 
+/// A widget that gives an event back as a blueprint value: as `widget_blueprint`, the
+/// row's result the port its event fires. Each firing is an answer to the place the
+/// blueprint answers, made of the event's value by `answer` and given to the sink of what
+/// applied the blueprint, in the tick of the firing. The subscription lives as long as
+/// the row, whose port it is.
+template <class E, class A, class Build, class BuildHosted, class AnswerFn>
+Blueprint<E, A> widget_event_blueprint(Build build, BuildHosted build_hosted, AnswerFn answer) {
+    return [build, build_hosted, answer](Path path, Sink<A> sink, const Scope<E, A>& scope, std::uint32_t base, Cx& cx) -> Result<Supplied<E, A>> {
+        auto hear = [sink, answer](const auto& v, Cx& cx) -> Done { return sink(answer(v), cx); };
+        if (scope.is_world()) {
+            auto made = TRY(build(path, base, cx));
+            made.result->subscribe(hear);
+            return Supplied<E, A>{made.node, std::nullopt, false, nullptr, made.built, made.leave};
+        }
+        auto made = TRY(build_hosted(path, base, scope.hosted, host_moved<E, A>(scope.hosted), cx));
+        made.result->subscribe(hear);
+        return Supplied<E, A>{made.node, std::nullopt, false, nullptr, made.built, made.leave, made.document, made.deliver};
+    };
+}
+
 /// The rows a blueprint value of a block's own widget built (Semantics ch. 8: a blueprint
 /// builds as often as it is applied), held weakly: the block's write behind what their
 /// places read marks each one that lives. A row that left is dropped from the list when
