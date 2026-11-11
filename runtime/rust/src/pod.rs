@@ -40,6 +40,9 @@ pub enum Pod {
     Map(Vec<(Pod, Pod)>),
     Nil,
     Some(Box<Pod>),
+    /// `-`: a part of a sparse tuple that is not there (Type System ch. 2, "Bundles and
+    /// sparse tuples"): an answer to a bundle of several events holds the parts that fired.
+    Absent,
     /// `~ x`.
     Ok(Box<Pod>),
     /// A failed `~T`: its `Error` record.
@@ -316,6 +319,43 @@ impl<T: FromPod> FromPod for Option<T> {
             Pod::Nil => Ok(None),
             Pod::Some(x) => T::from_pod(x).map(Some),
             other => mismatch("an option", other),
+        }
+    }
+}
+
+/// One part of a sparse tuple (Type System ch. 2, "Bundles and sparse tuples"): the part's
+/// value, or absent, `-`. An answer to a bundle of several events is a tuple of them, one
+/// per event part, holding the parts that fired.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct SparsePart<T>(pub Option<T>);
+
+impl<T> SparsePart<T> {
+    /// The part's value when it is there.
+    pub fn present(&self) -> Option<&T> {
+        self.0.as_ref()
+    }
+}
+
+/// A part of a sparse tuple that is there.
+pub fn sparse_present<T>(v: T) -> SparsePart<T> {
+    SparsePart(Some(v))
+}
+
+/// A part of a sparse tuple that is not there.
+pub fn sparse_absent<T>() -> SparsePart<T> {
+    SparsePart(None)
+}
+
+impl<T: ToPod> ToPod for SparsePart<T> {
+    fn to_pod(&self) -> Pod {
+        self.0.as_ref().map_or(Pod::Absent, ToPod::to_pod)
+    }
+}
+impl<T: FromPod> FromPod for SparsePart<T> {
+    fn from_pod(p: &Pod) -> Result<SparsePart<T>, Fault> {
+        match p {
+            Pod::Absent => Ok(SparsePart(None)),
+            other => T::from_pod(other).map(|v| SparsePart(Some(v))),
         }
     }
 }

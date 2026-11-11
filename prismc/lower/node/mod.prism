@@ -246,6 +246,8 @@ type Wx = record:
     # The places whose element answers a dynamic: position, the hold, its type, and the
     # tag's `Answer` accessor. An answer or a push there writes the hold.
     dynPlaces: [((Pos, Text, OutTy, Text))]
+    # The places whose element answers a bundle (`BundlePlace`).
+    bundles: [BundlePlace]
     # The hosts' fields, `hosts[k - 1].name` (`host_k`): kept apart for the positions'
     # spelling.
     scopes: [Text]
@@ -342,6 +344,26 @@ type RowMarks = record:
     builds: [Text]
     kind: RowKind
 
+# A place whose element answers a bundle (Type System ch. 2, "Bundles"; `BundleOutputOf`):
+# any mix of plain, `$` and event parts. Its state is its plain and `$` parts' values
+# (`stateTy`: one part itself, several a tuple of `stateParts`), the place's first value
+# and each push after it; each `$` part is a hold (`holds`: the part's place in the state,
+# the hold's field, its type), written by a push. Each event part is a graph node an
+# answer fires (`events`: the node, its type); an answer to several is a sparse tuple of
+# them. `stem` names the field the World's pushes are keyed by (`{stem}_element`), `""`
+# with no `$` part. The accessors take the state and the events' answer out of
+# `crate::Answer`; `firstVariant` is the tag's state case when it has event parts too.
+type BundlePlace = record:
+    pos: Pos
+    stem: Text
+    stateTy: OutTy
+    stateParts: Nat
+    holds: [((Nat, Text, OutTy))]
+    events: [((Nat, OutTy))]
+    stateAccessor: Text
+    eventAccessor: Text
+    firstVariant: Ref
+
 # A host of the block (`@HostDocument`, `@HostSome`; pick HO): its line's position, its
 # field (`host_k`, `k` the scope of its child's places), and that scope.
 type HostDef = record:
@@ -394,7 +416,7 @@ fn NewWx lx, name, fields, inits, moves, getters, dynReads, taken, inlining, ?ho
     let hostedInits = match ?hostedBy:
         ? ignore: [[(("enclosing", (XVar "enclosing")))]]
         nil: [[]]
-    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, ?valuedAs=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], ?hostedBy=?hostedBy, rootDyns=[[]], genOf="", rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=[[]], dynAnswers=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]], wholeResultAt="", earlyChoices=[[]], deferredGens=[[]])
+    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, ?valuedAs=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], bundles=[[]], scopes=[[]], ?hostedBy=?hostedBy, rootDyns=[[]], genOf="", rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=[[]], dynAnswers=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]], wholeResultAt="", earlyChoices=[[]], deferredGens=[[]])
 
 # A name not yet taken in the node: `base`, else `base_2`, `base_3`.
 FreshName: fn Wx, Text -> ((Text, Wx))

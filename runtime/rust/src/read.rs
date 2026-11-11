@@ -198,7 +198,9 @@ fn lex(src: &str) -> Result<Vec<Tok>, String> {
                 i += 2;
                 continue;
             }
-            let p = ["(", ")", "[", "]", "{", "}", ",", ":", "=", "?", "~", "/", "#"]
+            // `-` alone is a sparse tuple's absent part (`(("hello", -))`); a number's
+            // sign and `-inf` were read above
+            let p = ["(", ")", "[", "]", "{", "}", ",", ":", "=", "?", "~", "/", "#", "-"]
                 .into_iter()
                 .find(|p| p.starts_with(c))
                 .ok_or(format!("unexpected character {c:?}"))?;
@@ -336,6 +338,7 @@ impl Parser {
                 v
             }
             Some(Tok::P("((")) => Pod::Tuple(self.items("))")?),
+            Some(Tok::P("-")) => Pod::Absent,
             Some(Tok::P("[[")) => Pod::Array(self.items("]]")?),
             Some(Tok::P("{")) => {
                 let mut es = Vec::new();

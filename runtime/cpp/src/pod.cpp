@@ -53,6 +53,7 @@ std::strong_ordering operator<=>(const Pod& a, const Pod& b) {
     switch (a.kind()) {
     case K::Unit:
     case K::Nil:
+    case K::Absent:
         return std::strong_ordering::equal;
     case K::Bool:
         return *a.if_bool() <=> *b.if_bool();

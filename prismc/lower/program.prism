@@ -815,37 +815,45 @@ fn AnswerEnum lx, mods:
     let tags = KindTags lx, "Element", (Push mods, "Prelude")
     AnswerDef(cases=(Each tags, \|tg| AnswerCase(variant=(TagStruct tg.name), accessor=(AnswerAccessor tg), structPath=(RootRef tg.home, (TagStructOf tg)), tagName=tg.name, ty=(AnswerTy lx, tg), ?first=(?BundleFirstTy lx, tg))))
 
-# A bundle tag's plain parts as one type, its first value (`AnswerCase.first`), or with no
-# plain part its one `$` part's value; `nil` for a tag whose output is no bundle, or a
-# bundle of events alone.
-?BundleFirstTy: unbounded fn Lx, TagInfo -> ?OutTy
-fn ?BundleFirstTy lx, tg = match Peel tg.out:
-    TyTuple cs:
-        let plain = Filter cs, \|c| (LayerOf c) == LyPlain
-        let live = Filter cs, \|c| (LayerOf c) == LyDyn
-        let hasEv = Fold cs, False, \|f, c| f or (LayerOf c) == LyEv
-        if not hasEv: nil
-        else: match plain:
-            # no plain part and one `$` part (`((!Text, $Text))`): the `$` part's value,
-            # its first value and each push after it
-            [[]]: match live:
-                [[d]]: ? (TagFieldOut lx, d)
-                otherwise: nil
-            [[c]]: ? (TagFieldOut lx, c)
-            otherwise: ? (OutTuple (Each plain, \|c| TagFieldOut lx, c))
+# A bundle tag's state (Type System ch. 2, "Bundles"): its plain and `$` parts' values, one
+# part itself, several a tuple in the tag's order; `nil` for a tag whose output is no
+# tuple, or a tuple of events alone.
+?BundleStateTy: unbounded fn Lx, TagInfo -> ?OutTy
+fn ?BundleStateTy lx, tg = match Peel tg.out:
+    TyTuple cs: match Filter cs, \|c| (LayerOf c) != LyEv:
+        [[]]: nil
+        [[c]]: ? (TagFieldOut lx, c)
+        state: ? (OutTuple (Each state, \|c| TagFieldOut lx, c))
     otherwise: nil
 
-# What an answer to a tag's element carries: its output's value; of a bundle (a tuple with
-# an event part, `Gui.Window`'s `((WindowId, !WindowInput))`) the event part's, which is
-# what a World answers with; a variable of the tag, the answer as it came, a `Pod`
-# (`TagFieldOut`).
+# A bundle tag's state in a variant of its own (`AnswerCase.first`), when the tag has
+# event parts too: the place's first value and each push after it. A bundle of state
+# parts alone answers with its state in the tag's own variant (`AnswerTy`); `nil` for it,
+# for a tag whose output is no bundle, and for a bundle of events alone.
+?BundleFirstTy: unbounded fn Lx, TagInfo -> ?OutTy
+fn ?BundleFirstTy lx, tg = match Peel tg.out:
+    TyTuple cs: if Fold cs, False, \|f, c| f or (LayerOf c) == LyEv: ?BundleStateTy lx, tg else: nil
+    otherwise: nil
+
+# One part of a sparse tuple (prism_rtl's `SparsePart`): the part's value, or absent.
+SparsePartTy: fn OutTy -> OutTy
+fn SparsePartTy t = OutNamed (RefRuntime "prism_rtl::SparsePart"), [[t]]
+
+# What an answer to a tag's element carries: its output's value. Of a bundle (a tuple
+# with time inside, `Gui.Window`'s `((WindowId, !WindowInput))`) with one event part, the
+# event's value, which is what a World answers with; with several event parts, a sparse
+# tuple of them, the parts that fired (Type System ch. 2, "Bundles and sparse tuples");
+# with none, its state (`?BundleStateTy`). A variable of the tag is the answer as it
+# came, a `Pod` (`TagFieldOut`).
 AnswerTy: unbounded fn Lx, TagInfo -> OutTy
 fn AnswerTy lx, tg:
     let out = Peel tg.out
-    let part = match out:
-        TyTuple cs: Fold cs, out, \|found, c| if (LayerOf c) == LyEv: Peel c else: found
-        otherwise: out
-    TagFieldOut lx, part
+    match out:
+        TyTuple cs: if not (IsBundle out): TagFieldOut lx, out else: match Filter cs, \|c| (LayerOf c) == LyEv:
+            [[]]: Or (?BundleStateTy lx, tg), OutUnit
+            [[c]]: TagFieldOut lx, c
+            evs: OutTuple (Each evs, \|c| SparsePartTy (TagFieldOut lx, c))
+        otherwise: TagFieldOut lx, out
 
 # An answer taken out of its tag's variant (`v.pad_echo()?`), as the place that asked
 # reads it: itself, or of a generic tag (whose variant holds each variable as plain data,
