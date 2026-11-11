@@ -262,6 +262,17 @@ fn ResolveValue g, m, n:
         else: if (HasKey g.vals, qk) or (HasKey g.ctors, qk): ((? qk, ""))
         else: ((nil, "unknown"))
 
+# Two bare candidates for a trait's name (Semantics ch. 6, "Two bare names that collide
+# are an error at the use, both candidates named"): reported where the name is written;
+# reading goes on with the first.
+TraitCollisionAt: fn G, St, Text, [Text], Range -> St
+fn TraitCollisionAt g, st, m, path, span:
+    let keys = if (Len path) == 1: Or (Or g.bareTraits[m], {})[Or path[0], ""], [[]] else: [[]]
+    if (Len keys) < 2: st
+    else:
+        let qualified = Filter keys, \|k| Contains k, "."
+        ErrFix st, "collision", span, "`^{Dotted path}` is declared by more than one module this file reaches by a bare name: {Join (Each keys, \|k| "`^{k}`"), ", "}", "write the one meant qualified, as `^{Or qualified[0], (Dotted path)}`"
+
 # The name of a tag's answer constructor, under the tag's own: `Ui.Button.Answer`.
 let answerConstructor = "Answer"
 

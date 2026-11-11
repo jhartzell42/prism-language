@@ -612,7 +612,7 @@ fn ConvImpl g, st, info, i, span = match ?ResolveTrait g, info.name, i.traitRef.
     ? cls:
         let cx = CxOf g, info.name
         # the bounds before the head and the choices
-        let ((bs, st2a)) = ConvBounds cx, st, i.bounds
+        let ((bs, st2a)) = ConvBounds cx, (TraitCollisionAt g, st, info.name, i.traitRef.path, i.traitRef.span), i.bounds
         let st2 = BoundsNamed st2a, i.bounds, (TypeVarsOfType i.ty), "the impl's head", "the head"
         let ((head, st3)) = ConvType cx, st2, i.ty
         let ((assocs, st4)) = Fold i.items, (([[]], st3)), \|((acc, s)), it| match it:
