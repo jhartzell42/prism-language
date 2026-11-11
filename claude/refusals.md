@@ -155,11 +155,6 @@ Functions
   (`RecordStartsAsBounded`, ts-ch05-color-function-in-named-result). Through an array, an optional, a `~T`, a tuple, a map's values and a
   function's result it is lowered (ts-ch05-color-function-in-result,
   ts-ch05-color-function-in-map-result).
-- lower/expr.prism (`AnyValue`) an existential of a program's trait with a method that
-  cannot be asked of a hidden value (`?PackedDefOf`): a type parameter of its own, the
-  trait's type inside another type (`fn [a] -> Nat`) or in no parameter (`Empty: a`), an
-  associated type. Test: ts-ch03-existential-trait-inside-array. A prelude trait other
-  than `^Show`, `^Eq`, `^Ord` as a bound is refused there too.
 - lower/node/def.prism (`RefusePlainResult`) a widget's plain result bound by a pattern
   that left a name without its field: an internal error; `BindPatternResult` takes every
   pattern (sem-ch08-plain-result-pattern passes).
@@ -239,6 +234,16 @@ known that has no lowering written; none of the lowerings written has been run.
 - A supplier written by clauses (`fn @Supply p, (Pad.Num(..)) = @ 7`) is a legal program
   the checker refuses: a clause's tag pattern does not refine the output. Test:
   tests/checker/pos/supplier-clauses.prism.
+- lower/expr.prism (`AnyValue`) an existential of a program's trait with a method that
+  needs one dictionary for a whole collection or for no value at all (`?PackedDefOf`):
+  the trait's type inside another type (`fn [a] -> Nat`) or in no parameter (`Empty:
+  a`), a type parameter of its own, an associated type. The dictionary belongs to the
+  packing, one a packed value, so such a method cannot be asked of `any ^Trait` (the
+  coordinator's first ruling): the checker says nothing and the back end refuses it.
+  Tests: tests/checker/neg/existential-method-needs-one-dictionary;
+  tests/conformance/ts-ch03-existential-trait-inside-array is that wrong program with a
+  transcript. A prelude trait other than `^Show`, `^Eq`, `^Ord` as a bound is refused
+  there too (an R, no test).
 - A tag field's type variable that the tag's output does not have (`tag Seat.Request of
   Element !Response:` with `$?latest: ((Nat, r))`): the checker says nothing, a guest
   places the tag with a `Text` and the host's function reads the field as a `Nat`. Type
