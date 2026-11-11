@@ -1,0 +1,7 @@
+# The tests of sem-ch08-bundle-plain-part-in-live-field.
+emit Ui.*
+use App.*
+
+test the_plain_part_is_read_again, @main:
+    build
+    click at 0
