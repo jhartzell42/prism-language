@@ -165,7 +165,10 @@ fn CppExpr cp, x = match x:
     XFieldOf r, ignore, f: CppFieldOf cp, r, f
     XPart r, k: "::std::get<{k}>({AsValue cp, r})"
     XDecode t, y: "TRY(::prism_rtl::from_pod<{CppType cp, t}>({CppExpr cp, y}))"
-    XCast y, t: "static_cast<{CppType cp, t}>({CppExpr cp, y})"
+    # an empty value (`\{\}`) is no expression a cast takes: the type's own empty value
+    XCast y, t:
+        let e = CppExpr cp, y
+        if e == "\{\}": "{CppType cp, t}\{\}" else: "static_cast<{CppType cp, t}>({e})"
     # a generic choice's case through its type, which may depend on a type parameter
     # (`typename`, allowed before any qualified name)
     XTyped y, t: match y:
