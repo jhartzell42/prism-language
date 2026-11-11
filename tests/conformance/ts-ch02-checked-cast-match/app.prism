@@ -1,0 +1,22 @@
+# A `match` on a checked cast, written without parentheses (Type System ch. 2,
+# "Collections"; Semantics ch. 2, "Operators and punctuation"): in `match xs as [Nat]+?:`
+# the `+?` before the block's `:` is the non-empty mark and the checked cast's option, for
+# an array and for a map. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+FirstOr: fn [Nat], Nat -> Nat
+fn FirstOr xs, fallback = match xs as [Nat]+?:
+    nil: fallback
+    ? some: Or some[0], fallback
+
+Entries: fn (Nat ==> Text) -> Text
+fn Entries m = match m as (Nat ==> Text)+?:
+    nil: "none"
+    ? some: "some {Len some}"
+
+@main: @unit
+@main:
+    let empty: [Nat] = [[]]
+    let none: (Nat ==> Text) = {}
+    Ui.Label($text=$"{FirstOr [[4, 5]], 9} {FirstOr empty, 9} {Entries {1: "a", 2: "b"}} {Entries none}")    # 0
