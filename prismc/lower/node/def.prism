@@ -1119,8 +1119,51 @@ fn MarkLateLets wx, benv, menv, fns, stmts, fuel:
         ((w2, (Bind (Bind be1, nkey, unbuilt), "{nkey}#late", unbuilt), (if ofPlaces: Bind me3, "{nkey}#lateplace", unbuilt else: me3), True))
     # (and a World's place with a plain answer whose constant field reads a late name: the
     # name it binds is late, `LateFieldPlaces`)
-    let ((wx3, be3, me3, grew3)) = Fold stmts, ((wx2, be2, me2, grew)), \|((w, be, me, ch)), s| LateFieldPlaces w, be, me, fns, s, ch
+    let ((wx3p, be3p, me3p, grew3p)) = Fold stmts, ((wx2, be2, me2, grew)), \|((w, be, me, ch)), s| LateFieldPlaces w, be, me, fns, s, ch
+    # (and a building line that takes a late name and binds a plain result of its own to
+    # a name: the name is late, `LateTakerResults`)
+    let ((wx3, be3, me3, grew3)) = Fold stmts, ((wx3p, be3p, me3p, grew3p)), \|((w, be, me, ch)), s| LateTakerResults w, be, me, fns, s, ch
     if grew3 and fuel > 0: MarkLateLets wx3, be3, me3, fns, stmts, (Dec fuel) else: ((wx3, be3, me3))
+
+# A building line of the node that takes a late name at its build (`IsLateTaker`: a
+# widget's plain argument, a building `match` over it) and binds a plain result of its
+# own to a name (Semantics ch. 4, "Binding groups and cycles": any line may use any name
+# the block binds; ch. 8: `<-` builds the child and binds its plain result): the line
+# is a row built after the node (`DeferredLine`), so its result is late as an arm's is.
+# The name is a late name (`{name}#late`), bound before any line is lowered: in the
+# methods a getter of the node over the row's kept result, defined where the line is
+# lowered (`WidgetStmt`, `LateGetters`), at the build nothing. `{name}#taker` tells the
+# name from a split line's. What reads it reads it as any late name: a place's field is
+# live over it, a line that takes it is built after the line that gives it. `grew`:
+# whether a name was marked before; True when this marks one.
+LateTakerResults: unbounded fn Wx, Env, Env, Env, Stmt, Bool -> ((Wx, Env, Env, Bool))
+fn LateTakerResults wx, benv, menv, fns, s, grew = match s.kind:
+    SBind p, e, nil: match p.kind:
+        PName n:
+            let nkey = SNameKey n
+            let lx = WidgetLetLx wx.lx, n.span
+            let full = BinderTy lx, n.span
+            let placed = match Peel (TypeAt wx.lx, (Ungrouped e).span):
+                TyElem ignore, ignore: True
+                otherwise: False
+            if placed or (IsTimeName nkey) or (HasKey menv.names, "{nkey}#late") or (LayerOf full) != LyPlain or (TimeWithin full) or (IsBundle full) or (IsBundle (LineOutFull wx.lx, e)) or (not (IsPlainResult wx.lx, e)) or not (ReadsLateVia fns, menv, e): ((wx, benv, menv, grew))
+            else:
+                let t = OutTyOf lx, (Peel full)
+                let ((getter, w2)) = FreshName wx, "late_{LocalNameAt lx, nkey, n.span}"
+                let unbuilt = BnLocal (Refusal "the late result `{nkey}` of a line that takes a late name, read at its block's build by a line of the block's node that takes a value there"), Owned, t
+                let me2 = Bind (Bind (Bind menv, nkey, (BnLocal (XMethod XSelf, getter, [[]]), Owned, t)), "{nkey}#late", unbuilt), "{nkey}#taker", unbuilt
+                ((w2, (Bind (Bind benv, nkey, unbuilt), "{nkey}#late", unbuilt), me2, True))
+        otherwise: ((wx, benv, menv, grew))
+    otherwise: ((wx, benv, menv, grew))
+
+# Whether a line's binder is a name `LateTakerResults` marked: its binding is the
+# getter the line defines.
+?TakerGetter: fn Env, Pattern -> ?Text
+fn ?TakerGetter menv, p = match p.kind:
+    PName n: if not (HasKey menv.names, "{SNameKey n}#taker"): nil else: match menv.names[SNameKey n]:
+        ? (BnLocal (XMethod XSelf, getter, ignore), ignore, ignore): ? getter
+        otherwise: nil
+    otherwise: nil
 
 # A World's place with a plain answer bound to a name, whose constant field reads a late
 # name that waits for a row (Semantics ch. 4, "Binding groups and cycles": the order of a
@@ -1481,7 +1524,8 @@ fn PreBind wx, benv, menv, s = match s.kind:
         match p.kind:
             # (the answer of a place whose field reads a late result is a late name
             # already, `LateFieldPlaces`)
-            PName n: if ?step == nil and IsSome (?LatePlainHold menv.names[SNameKey n]): ((wx, benv, menv)) else: PreBindName wx, benv, menv, n, how
+            # (and the plain result of a line that takes a late name, `LateTakerResults`)
+            PName n: if ?step == nil and ((IsSome (?LatePlainHold menv.names[SNameKey n])) or HasKey menv.names, "{SNameKey n}#taker"): ((wx, benv, menv)) else: PreBindName wx, benv, menv, n, how
             PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
                 # (a late place's plain part is a late name already, `LatePlaceParts`)
                 PName n: if latePlace and IsSome (?LatePlainHold me.names[SNameKey n]): ((w, be, me)) else: PreBindName w, be, me, n, how
@@ -1764,9 +1808,14 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
     let lx = wx.lx
     match s.kind:
         SBind p, e, nil:
-            let ((wx2, res)) = BuildLine wx, benv, menv, e, (?BindingOf menv, p)
+            let ((wx2, res)) = if (IsSome (?TakerGetter menv, p)) and IsLateTaker wx.lx, menv, (Ungrouped e): DeferredLine wx, menv, (Ungrouped e), True else: BuildLine wx, benv, menv, e, (?BindingOf menv, p)
             let wx3 = BindRes wx2, menv, p, res
             match ((res, p.kind)):
+                # the plain result of a line that takes a late name
+                # (`LateTakerResults`): the name's getter, over the row's kept result
+                (((WrLate read, t), PName n)) if IsSome (?TakerGetter menv, p):
+                    let late = LateName(getter=(Or (?TakerGetter menv, p), ""), ?part=nil, ty=t, name=(SNameKey n), ?within=nil)
+                    (((LateGetters wx3, [[late]], read, [[]]), benv, menv))
                 (((WrDyn ex, rds, t), PName n)):
                     let b = BnDyn ex, rds, t
                     ResultGetter wx3, menv, n, ex, rds, t, (Bind benv, (SNameKey n), b), (Bind menv, (SNameKey n), b)
@@ -2829,7 +2878,7 @@ fn BindRes wx2, menv, p, res = match ?BindingOf menv, p:
 # A line that builds: an element (a place), a widget applied (inlined), or a builder. The
 # bound name, when there is one, is where the output goes.
 BuildLine: unbounded fn Wx, Env, Env, Expr, ?Bn -> ((Wx, Wres))
-fn BuildLine wx, benv, menv, e, ?bound = if IsLateTaker wx.lx, menv, e: DeferredLine wx, menv, e else: BuildLineNow wx, benv, menv, e, ?bound
+fn BuildLine wx, benv, menv, e, ?bound = if IsLateTaker wx.lx, menv, e: DeferredLine wx, menv, e, False else: BuildLineNow wx, benv, menv, e, ?bound
 
 # Whether a building line of a split block's node reads a late name (`BindLate`,
 # `MarkLateLets`) and is no element's (an element's field is live over the name's
@@ -2856,8 +2905,10 @@ fn IsLateTaker lx, menv, e = match e.kind:
 # scope is built, `ScopeSteps`) waits for no row: its generation is built in the order
 # of its place as any other, so its places are counted as built and its plain result
 # is late as an arm's is (the block is split at the line, `?LatePlaceTakerAt`).
-DeferredLine: unbounded fn Wx, Env, Expr -> ((Wx, Wres))
-fn DeferredLine wx, menv, e:
+# `named`: the line binds its plain result to a name that is late (`LateTakerResults`),
+# so the result is handed back late for the name's getter.
+DeferredLine: unbounded fn Wx, Env, Expr, Bool -> ((Wx, Wres))
+fn DeferredLine wx, menv, e, named:
     let lx = wx.lx
     let ((outTy, layer)) = LineResult lx, e
     let body = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
@@ -2869,8 +2920,8 @@ fn DeferredLine wx, menv, e:
             let wx4 = if not gd.gappy: wx3 else: update wx3:
                 &_.build <= Push &_.build, (RefusalDo "`{SrcText lx, lx.file, e.span}`, a line that takes a late result at its build, above the line that gives it, and whose places are counted as they are built (a building `match` or `if` inside it)")
             match res:
-                WrLate ignore, ignore: (((update wx4:
-                    &_.build <= Push &_.build, (RefusalDo "`{SrcText lx, lx.file, e.span}`, a line that takes a late result at its build, above the line that gives it, and gives a plain result of its own")), WrUnit))
+                WrLate ignore, ignore if not named: (((update wx4:
+                    &_.build <= Push &_.build, (RefusalDo "`{SrcText lx, lx.file, e.span}`, a line that takes a late result at its build, above the line that gives it, and gives a plain result of its own that no name binds (a pattern's, or the block's own result)")), WrUnit))
                 otherwise: ((wx4, res))
         nil: (((update wx2:
             &_.build <= Push &_.build, (InternalBugDo "a line that takes a late result, lowered to no generation")), WrUnit))
