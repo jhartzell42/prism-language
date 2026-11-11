@@ -406,6 +406,25 @@ fn TypeVarsInto acc, t = match t.kind:
     TNonEmpty x: TypeVarsInto acc, x
     otherwise: acc
 
+# Where each lowercase type variable of a type is first written.
+TypeVarPlaces: unbounded fn [((Text, Range))], Type -> [((Text, Range))]
+fn TypeVarPlaces acc, t = match t.kind:
+    TName n, args:
+        let name = Dotted n.path
+        let known = Fold acc, False, \|seen, ((v, ignore))| seen or v == name
+        let here = if (Len n.path) == 1 and (IsLowerText name) and (Len args) == 0 and not known: Push acc, ((name, t.span)) else: acc
+        let rest = if name == "Element" and (Len args) == 2: Drop args, 1 else: if name == "Elem": [[]] else: args
+        Fold rest, here, \|a, x| TypeVarPlaces a, x
+    TSigiled ignore, i: TypeVarPlaces acc, i
+    TArray e, ignore: TypeVarPlaces acc, e
+    TTuple ts: Fold ts, acc, \|a, x| TypeVarPlaces a, x
+    TGroup x: TypeVarPlaces acc, x
+    TMap k, v: TypeVarPlaces (TypeVarPlaces acc, k), v
+    TFn ignore, ps, res: TypeVarPlaces (Fold ps, acc, \|a, x| TypeVarPlaces a, x), res
+    TEmit ty, ignore: TypeVarPlaces acc, ty
+    TNonEmpty x: TypeVarPlaces acc, x
+    otherwise: acc
+
 ColorVarsOfType: unbounded fn Type -> [Text]
 fn ColorVarsOfType t = match t.kind:
     TFn (ColorVar v), ps, res:

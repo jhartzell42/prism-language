@@ -489,11 +489,21 @@ fn ConvTag g, st, info, t, span:
     let st4 = match t.fields[0]:
         ? f if kind == "Fault" or kind == "Prelude.Fault": ErrFix st4b, "mismatch", span, "the fault kind `{name}` declares a field, `{f.name.name}`; a fault kind is its tag alone", "say what failed in the message of the `Error`"
         otherwise: st4b
+    # `field-variable`: a variable in a field appears in the tag's output (Type System
+    # ch. 2, "A variable in a field must appear in the index"), which is what decides it
+    # where the tag is matched
+    let indexed = TypeVarsOfType t.ofType
+    let outText = match t.ofType.kind:
+        TName ignore, [[o]]: SpanText (Or g.srcs[info.file], (MkSrc "?", "")), o.span
+        otherwise: "unit"
+    let st5 = Fold t.fields, st4, \|s, f| Fold (TypeVarPlaces [[]], f.ty), s, \|s2, ((v, at))|
+        if HasText indexed, v: s2
+        else: ErrFix s2, "field-variable", at, "the type variable `{v}` in the field `{f.name.name}` of `{name}` does not appear in the tag's output, `{outText}`", "put `{v}` in the output, or give the field a type without it"
     let tg = TagInfo(name=name, family=family, kind=kind, out=out, qs=qs, rqs=(if info.rowVar == "": [[]] else: [[info.rowVar]]), bounds=bs, fields=fields, home=info.name, file=info.file, span=span)
     let upd = update g:
         if not (HasKey &_.tags, name):
             &_.tags <= Insert &_.tags, name, tg
-    ((upd, st4))
+    ((upd, st5))
 
 # The row kind a tag joins and its output: `Element !Click`, `Element` (unit), `Fault`.
 TagKind: unbounded fn G, Cx, St, Type -> ((Text, Ty, St))
