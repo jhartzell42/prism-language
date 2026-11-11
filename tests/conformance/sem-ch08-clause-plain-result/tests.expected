@@ -1,4 +1,4 @@
-# Derived by hand from Semantics ch. 4 and 8: the argument chooses the clause, whose places take the page's first positions (two wide, pick CS, so the page's own places are 2 to 4 either way), and its plain result is bound at the build.
+# Derived by hand from Semantics ch. 4 and 8: the argument chooses the clause, whose places take the page's first positions (the page's own places take the next numbers after the places the clause built, ruling TC: 2 to 4 after the clause of two, 1 to 3 after the clause of one), and its plain result is bound at the build.
 test some_clause
 
 tick 0
@@ -21,7 +21,7 @@ test none_clause
 tick 0
   added:
     0: Ui.Label(text="none")
-    2: Ui.Label(text="zero")
-    3: Ui.Button(label="go")
-    4: Ui.Label(text="zero 0")
+    1: Ui.Label(text="zero")
+    2: Ui.Button(label="go")
+    3: Ui.Label(text="zero 0")
   result: "zero"

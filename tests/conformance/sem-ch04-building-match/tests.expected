@@ -1,4 +1,4 @@
-# Derived by hand from Semantics ch. 4 (a building `match` or `if` picks its arm once, at the build, and adds no path segment) and ch. 8 (the arm's places take the block's next positions): `@Choose`'s label is 1 and its `match`'s widest arm has two places, so the `if` stands at 4 and the last label at 5 whichever arm is built (pick CS); the arm's button is the line's event.
+# Derived by hand from Semantics ch. 4 (a building `match` or `if` picks its arm once, at the build, and adds no path segment) and ch. 8 (the arm's places take the block's next positions): `@Choose`'s label is 1, and places are counted as they are built (ruling TC), so after the arm of two places the `if` stands at 4 and the last label at 5, and after an arm of one place at 3 and 4; the arm's button is the line's event.
 test a_loud_arm
 
 tick 0
@@ -29,8 +29,8 @@ tick 0
     0: Ui.Button(label="reset")
     1: Ui.Label(text="choose")
     2: Ui.Button(label="empty")
-    4: Ui.Label(text="count 2")
-    5: Ui.Label(text="hits 0")
+    3: Ui.Label(text="count 2")
+    4: Ui.Label(text="hits 0")
 
 test a_soft_arm
 
@@ -39,11 +39,11 @@ tick 0
     0: Ui.Button(label="reset")
     1: Ui.Label(text="choose")
     2: Ui.Button(label="soft")
-    4: Ui.Label(text="no count")
-    5: Ui.Label(text="hits 0")
+    3: Ui.Label(text="no count")
+    4: Ui.Label(text="hits 0")
 
 tick 1
   in:
     2: click
   changed:
-    5: Ui.Label(text="hits 1")
+    4: Ui.Label(text="hits 1")
