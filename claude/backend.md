@@ -429,7 +429,14 @@ it make every program an interpreter run, and every type mistake a runtime fault
   (`WithElementLets`, `ElementCallLine`); a row that places it sees what its fields read
   through the parent (`RowEnvNames`). A `let` no line reads but to place it is no value
   of the node. `@Element` of any other element value in a block (a parameter, a call's
-  result) is refused.
+  result) applies the value's blueprint (`prism_rtl::element_blueprint`: a live element
+  forwarded, a description placed) as a blueprint value is applied
+  (`AppliedBlueprintLine`).
+- **An element applied in a value's place** (`@Framed (Ui.Button($label=$"go {$n}"))`:
+  an argument of a call that is not `@Element`'s, a part of a tuple or an array, the
+  operand of `?`; `ElementValuesIn`) holds its `$` fields as `Dynamic`s, so its line makes
+  a live dynamic for every reader its fields are written over (`WholeArgsAt`), and a
+  field that is an expression is a map over them (`DynamicLift`).
 - **A blueprint a `let` of the block names** (`let @w = @Tile k`; Semantics ch. 8: a
   blueprint builds nothing until a block applies it) is its expression, kept under
   `{name}#blueprint` (`WithElementLets`) and built by each line that applies the name,
@@ -471,8 +478,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
   what it built as a `Row` (`AppliedBlueprint`). The generation is transparent,
   `wideGeneration` positions wide and gappy, as a call of a widget that calls itself is,
   so the later places are counted as built and an answer under it is handed on with its
-  position counted from the generation's first. A blueprint value that gives something
-  back and one applied in a hosted scope are refused.
+  position counted from the generation's first.
+  - A line that gives an event back (`!go <- @Element e`) hears the blueprint's sink
+    (the prelude's `apply_blueprint_heard`): each answer, a `crate::Answer` under the
+    tag of the element answered, is taken out at the line's type by that tag's accessor
+    (`AnswerSink`: the program's tags whose answers are of that type, and its generic
+    ones) and fires the line's event through the node's `{generation}_up`, as a
+    generation's row fires its block's.
+  - A blueprint value that gives a plain value, a dynamic or a bundle back, and one
+    applied in a hosted scope, are refused.
 - **`prism_rtl::Blueprint`** is built with a base beside its path, sink and scope: 0
   under a host's row, the line's position as built in a block. `Supplied` tells how many
   places were built (`built`) and how a widget's row leaves (`leave`). The element forms

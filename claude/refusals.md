@@ -46,13 +46,11 @@ Hosting
   something back, one in a hosted scope. lower/expr.prism (`NameValueOf`) "a widget
   defined in a block read as a blueprint value" stands for a reading outside a line's
   value places (inside a lambda's own block).
-- lower/node/static.prism (`ValueBlueprintLine`) a blueprint value applied by a block is
-  lowered. Left refused, no tests: one that gives something back (`n <- @t`), one
-  applied in a hosted scope.
-- lower/node/static.prism:667 `@Element` in a block of an element value that is neither
-  a tag applied in place nor a name a `let` of the block binds to one. Program: a widget
-  parameter `fn @Show e:` with the line `@Element e`. No test. The `let` form is lowered:
-  `let made = Ui.Label(..)`, then `@Element made` as a line (sem-ch08-element-value-statement).
+- lower/node/static.prism (`AppliedBlueprintLine`) a blueprint value applied by a block is
+  lowered, and so is `@Element` of any element value (a parameter, a call's result;
+  sem-ch08-element-parameter-statement): a line of unit, and a line that gives an event
+  back, which hears the blueprint's answers. Left refused: one that gives a plain value,
+  a dynamic or a bundle back (`n <- @t`), one applied in a hosted scope.
 - lower/node/static.prism:104 a widget function parameter applied to arguments whose
   argument is a function value that is no name (a lambda). No test. A named widget
   function passed and applied is lowered (sem-ch08-widget-parameter-applied).

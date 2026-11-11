@@ -850,7 +850,14 @@ impl Row for AppliedBlueprint {
 /// dynamic's) builds no place here, and what it answers is the line's result, which a line
 /// of unit drops.
 pub fn apply_blueprint(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: u32, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32), Fault> {
-    let sink: ::prism_rtl::Sink<crate::Answer> = Rc::new(|_: &crate::Answer, _: &mut Cx| Ok(()));
+    apply_blueprint_heard(blueprint, path, base, |_: &crate::Answer, _: &mut Cx| Ok(()), cx)
+}
+
+/// A blueprint value applied by a line that hears it (`!go <- @Element e`): as
+/// `apply_blueprint`, with `hear` the blueprint's sink, called with each answer to the
+/// place the blueprint answers, in the tick the answer comes.
+pub fn apply_blueprint_heard(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: u32, hear: impl Fn(&crate::Answer, &mut Cx) -> Done + 'static, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32), Fault> {
+    let sink: ::prism_rtl::Sink<crate::Answer> = Rc::new(hear);
     let supplied = blueprint(path, sink, &::prism_rtl::Scope::World, base, cx)?;
     let built = supplied.built;
     Ok((Rc::new(AppliedBlueprint { supplied }), built))

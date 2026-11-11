@@ -1061,11 +1061,19 @@ private:
 /// generation and how many places it built. A blueprint that answers (`@ x`, an event's, a
 /// dynamic's) builds no place here, and what it answers is the line's result, which a line
 /// of unit drops.
-inline Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, Cx& cx) {
-    ::prism_rtl::Sink<Answer> sink = [](const Answer&, Cx&) -> Done { return {}; };
+/// A blueprint value applied by a line that hears it (`!go <- @Element e`): as
+/// `apply_blueprint`, with `hear` the blueprint's sink, called with each answer to the
+/// place the blueprint answers, in the tick the answer comes.
+template <class Hear>
+Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint_heard(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, Hear hear, Cx& cx) {
+    ::prism_rtl::Sink<Answer> sink = [hear = std::move(hear)](const Answer& answer, Cx& cx) -> Done { return hear(answer, cx); };
     auto supplied = TRY(blueprint(std::move(path), sink, ::prism_rtl::Scope<Elem, Answer>::world(), base, cx));
     std::uint32_t built = supplied.built;
     return std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied)), built};
+}
+
+inline Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, Cx& cx) {
+    return apply_blueprint_heard(blueprint, std::move(path), base, [](const Answer&, Cx&) -> Done { return {}; }, cx);
 }
 
 /// A row subscribing to its block's port for one event: the row heard weakly, the handle
