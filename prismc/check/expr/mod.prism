@@ -146,7 +146,10 @@ fn Infer env, st, e:
 
 InferKind: unbounded fn Env, St, Expr -> ((Ty, St))
 fn InferKind env, st, e = match e.kind:
-    EName n: InferName env, st, n, e.span
+    # a named lens is no value: it is applied to a reference
+    EName n:
+        if (IsLensName n) and not (HasKey env.locals, (SNameKey n)): ((TyErr, (ErrFix st, "lens-argument", e.span, "the lens `{SNameKey n}` is no value: it is applied to a reference", "apply it in an `update` block, `{SNameKey n} &_`")))
+        else: InferName env, st, n, e.span
     ELit l: InferLit env, st, l, False, e.span
     EUnit marks: (((WithMarks marks, tUnit, env.scope), st))
     ENil marks:
@@ -160,7 +163,7 @@ fn InferKind env, st, e = match e.kind:
     EArray es: InferArray env, st, es, e.span
     EMap entries: InferMap env, st, entries, e.span
     EGroup x: Infer env, st, x
-    ECall callee, args, ignore, ignore: InferCall env, st, callee, args, e.span
+    ECall callee, args, ignore, ignore: InferCall env, (LensArgument env, st, e), callee, args, e.span
     EBinary op, lhs, rhs: InferBinary env, st, op, lhs, rhs, e.span
     EUnary op, x: InferUnary env, st, op, x, e.span
     ESuffixed ignore, ignore, ignore, ignore: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement suffixed operators")))
@@ -210,7 +213,7 @@ fn InferKind env, st, e = match e.kind:
         let ((t, st2)) = Infer env, st, x
         let ((v, st3)) = FreshVar st2, True, ""
         ((v, (WaitingPack st3, v, t, e.span)))
-    ELens ignore: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement named lenses and `Over`")))
+    ELens ignore: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement lens values and `Over`")))
     EError: ((TyErr, st))
 
 # `[[x, y]]+` and `{k: v}+`: a literal is non-empty only when it says so, and an empty one

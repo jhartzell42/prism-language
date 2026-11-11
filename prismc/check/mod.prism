@@ -175,7 +175,7 @@ fn CheckDef g, st, d:
         &_.cleqs <= [[]]
     let s1 = match d.body:
         DbFn clauses: match g.vals[d.qk]:
-            ? v: CheckClauses env, s0, d.name, clauses, v.scheme, d.span
+            ? v: if IsLensText d.name: CheckLens env, s0, d.name, clauses, v.scheme, d.span else: CheckClauses env, s0, d.name, clauses, v.scheme, d.span
             nil: s0
         DbWidget w: CheckWidgetDef env, s0, d, w
         DbLet l: match g.vals[d.qk]:

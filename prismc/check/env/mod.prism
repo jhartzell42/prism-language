@@ -203,6 +203,22 @@ DefNameSpan: fn DefName -> Range
 fn DefNameSpan (DefSName n) = n.span
 fn DefNameSpan (DefOp ignore, r) = r
 
+# A named lens's name where it is used (Semantics ch. 5; ruling LN): `&`, then an uppercase
+# name under whatever marks its part shows (`&Acc`, `&?Second`, `&Board.Acc`).
+IsLensName: fn SName -> Bool
+fn IsLensName n = (HasPrefix n.sigils, "&") and IsUpperText (Or (?Last n.path), "")
+
+# A named lens applied, `&Acc r` (appendix A.6: `ref ::= .. | "&" uname ref`): the lens's
+# name and its one argument.
+?LensApplied: fn Expr -> ?((SName, Expr))
+fn ?LensApplied e = match e.kind:
+    ECall callee, args, ignore, ignore: match callee.kind:
+        EName n: match args[0]:
+            ? a: if (IsLensName n) and (Len args) == 1: ? ((n, a.value)) else: nil
+            nil: nil
+        otherwise: nil
+    otherwise: nil
+
 IsLowerText: fn Text -> Bool
 fn IsLowerText t = IsLower (Head t)
 
