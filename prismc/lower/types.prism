@@ -61,9 +61,10 @@ fn OutTyOf lx, t = match t:
     TyCon "Regex", [[]]: OutRegex
     TyCon "RegexReplacement", [[]]: OutReplacement
     TyCon "Duration", [[]]: OutDuration
-    # `@HostList`'s answer sent down by path, plain data a place decodes by its tag, and the
-    # entries of its document, the places' elements (prismc's first ruling HL)
-    TyCon "Answer", [[]]: OutPod
+    # `Answer c`, an answer to an element typed by its tag (rulings round 12, AQ): the
+    # program's `crate::Answer`; `Wired`, the entries of a host's document, the places'
+    # elements (prismc's first ruling HL)
+    TyCon "Answer", ignore: answerTy
     TyCon "Wired", [[]]: OutNamed elemRef, [[]]
     TyCon "Prelude.Error", [[]]: OutError
     # a non-empty collection is the collection: its promise is the checker's

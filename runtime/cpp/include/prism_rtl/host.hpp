@@ -1050,15 +1050,14 @@ public:
     /// The owner's node, once made: the rows read the document and answer through it.
     void link(const Rc<P>& owner) { owner_ = owner; }
 
-    /// `@HostList`'s answers sent down by path (Semantics ch. 9, the list form; prismc's
-    /// first ruling HL): each firing of `answers` hands the place at each of its keys that
-    /// answer, decoded by the place's element as a World's answer is (a tag that does not
-    /// match is a fault of the tick), as a computed answer, the next tick's input, which is
+    /// `@HostList`'s answers sent down by path (Semantics ch. 9, the list form; rulings
+    /// round 12, AQ): each firing of `answers` hands the place at each of its keys that
+    /// answer, typed by its tag, as a computed answer, the next tick's input, which is
     /// owed. A key with no place is dropped, as an answer to a place that left is.
-    void hear(const Event<Map<Path, Pod>>& answers) {
+    void hear(const Event<Map<Path, A>>& answers) {
         Weak<Host> me = this->rc_from_this();
         // the subscription holds the host weakly and lives as long as the event's port
-        (void)answers.port->subscribe([me](const Map<Path, Pod>& m, Cx& cx) -> Done {
+        (void)answers.port->subscribe([me](const Map<Path, A>& m, Cx& cx) -> Done {
             auto host = me.lock();
             if (!host) return {};
             return host->send_down(m, cx);
@@ -1099,12 +1098,11 @@ private:
         : at_(std::move(at)), rows_(std::move(rows)), supplier_(std::move(supplier)), enclosing_(std::move(enclosing)),
           deliver_(std::move(deliver)) {}
 
-    Done send_down(const Map<Path, Pod>& m, Cx& cx) const {
+    Done send_down(const Map<Path, A>& m, Cx& cx) const {
         for (const auto& [p, v] : m) {
             if (auto row = rows_->get(p)) {
                 Rc<HostRow<E, A>> r = *row;
-                A a = TRY(A::decode(r->entry(cx), v));
-                r->answer_later(std::move(a), cx);
+                r->answer_later(v, cx);
             }
         }
         return {};

@@ -862,7 +862,8 @@ fn Application lx, env, callee, args, span:
                         # resolved to the tag only when written with its family.
                         ? qk: match lx.g.tags[qk]:
                             ? tg if why == "tag": TagValue lx, env, tg, args
-                            otherwise: if qk == "Prelude.@Element": ElementBlueprint lx, env, args, t
+                            otherwise: if why == "answer": AnswerValue lx, env, qk, args, t
+                            else: if qk == "Prelude.@Element": ElementBlueprint lx, env, args, t
                             else: GlobalCall lx, env, qk, args, span, callee.span, t
                         nil: VlOwned (Refusal "a call of {nkey}, which nothing declares"), t
         EGroup x: Application lx, env, x, args, span
@@ -1021,6 +1022,13 @@ fn TagValue lx, env, tg, args:
                     nil: (XCall (RefRuntime "std::Default::default"), [[]])
                 (((FieldSpell tg.home, fname, fty), v))
             VlOwned (XCtor variant, [[(XRecord structPath, fields)]]), t
+
+# `Ui.Button.Answer click`, a tag's answer constructor applied (rulings round 12, AQ): the
+# tag's variant of `crate::Answer` over what the tag's answer carries (`AnswerTy`).
+AnswerValue: unbounded fn Lx, Env, Text, [Arg], OutTy -> Vl
+fn AnswerValue lx, env, constructor, args, t = match ((lx.g.tags[AnswerTag constructor], args[0])):
+    ((? tg, ? a)): VlOwned (XCtor (AnswerVariant tg), [[(OwnAs (AnswerTy lx, tg), (ValueOf lx, env, a.value))]]), t
+    otherwise: VlOwned (Refusal "the answer constructor {constructor} of no tag or with no argument"), t
 
 # An element applied as a plain value (gap LE; Type System ch. 2, "Names and sigils":
 # `Ui.Button(..)` before anything binds it is a plain value): a description, plain data
@@ -1427,9 +1435,7 @@ fn PreludeCall lx, env, qk, args, span, t:
         ? a: OutTyOf lx, (Peel (TypeAt lx, a.value.span))
         nil: OutUnit
     let variant = PreludeVariant name, first
-    # `@HostList`'s answer goes as plain data (prismc's first ruling HL)
-    if qk == "Prelude.AnswerOf" and not (Podable first): VlOwned (Refusal "`AnswerOf` of a value that is not plain data"), t
-    else: match ?PreludeJob lx, env, variant, args:
+    match ?PreludeJob lx, env, variant, args:
         ? job: VlOwned (XCall (HelperRef "run_to_end"), [[job]]), t
         nil:
             let ps = match lx.g.vals[qk]:

@@ -426,11 +426,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
   element, or nowhere when the supplier answered the place.
 - **`@HostSome`** is `@HostDocument` through `rt::forward_on_none` (`nil` forwards).
 - **`@HostList @child, !answers, supplier`** is `@HostDocument` whose owner also hears
-  `!answers` (`Host::hear`): each firing's map hands the place at each key its answer,
-  decoded by the place's element as a World's answer is (`AnswerOf::decode`, a tag that
-  does not match is a fault of the tick), as a computed answer, the next tick's input
-  (`HostRow::answer_later`); a key with no place is dropped. `Answer c` is plain data
-  (`Pod`), made by the prelude's `AnswerOf`; `Wired c` is `Elem c` (prismc's first ruling HL).
+  `!answers` (`Host::hear`): each firing's map hands the place at each key its answer as
+  a computed answer, the next tick's input (`HostRow::answer_later`); an answer of a tag
+  the place is not of is a fault of the tick the place reads it in; a key with no place
+  is dropped. `Answer c` is `crate::Answer`, and a tag's answer constructor
+  (`Ui.Button.Answer click`, rulings round 12, AQ) is the tag's variant of it over what
+  the tag's answer carries (`AnswerValue`); `Wired c` is `Elem c` (prismc's first ruling HL).
 - **A bundle in a hosted scope** (a tag whose output is plain parts and one event part):
   `crate::Answer` has a second variant per bundle tag, `{Tag}First`, its plain parts; the
   place's first value is that variant (`{tag}_first()`), from a supplier's

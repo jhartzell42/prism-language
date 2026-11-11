@@ -805,26 +805,24 @@ impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> Host<E, A, P> {
         self.me.upgrade().expect("a host outlives its rows")
     }
 
-    /// `@HostList`'s answers sent down by path (Semantics ch. 9, the list form; prismc's
-    /// first ruling HL): each firing of `answers` hands the place at each of its keys that
-    /// answer, decoded by the place's element as a World's answer is (a tag that does not
-    /// match is a fault of the tick), as a computed answer, the next tick's input, which is
+    /// `@HostList`'s answers sent down by path (Semantics ch. 9, the list form; rulings
+    /// round 12, AQ): each firing of `answers` hands the place at each of its keys that
+    /// answer, typed by its tag, as a computed answer, the next tick's input, which is
     /// owed. A key with no place is dropped, as an answer to a place that left is.
-    pub fn hear(&self, answers: &Event<Map<Path, Pod>>) {
+    pub fn hear(&self, answers: &Event<Map<Path, A>>) {
         let me = self.me.clone();
         // the subscription holds the host weakly and lives as long as the event's port
-        let _ = answers.port.subscribe(Rc::new(move |m: &Map<Path, Pod>, cx: &mut Cx| match me.upgrade() {
+        let _ = answers.port.subscribe(Rc::new(move |m: &Map<Path, A>, cx: &mut Cx| match me.upgrade() {
             Some(host) => host.send_down(m, cx),
             None => Ok(()),
         }));
     }
 
-    fn send_down(&self, m: &Map<Path, Pod>, cx: &mut Cx) -> Done {
+    fn send_down(&self, m: &Map<Path, A>, cx: &mut Cx) -> Done {
         for (p, v) in m.iter() {
             let row = self.rows.borrow().get(p).cloned();
             if let Some(row) = row {
-                let a = A::decode(&row.entry(cx), v)?;
-                row.answer_later(a, cx);
+                row.answer_later(v.clone(), cx);
             }
         }
         Ok(())

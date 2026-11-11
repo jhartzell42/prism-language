@@ -245,11 +245,6 @@ Int: fn Nat -> Int
 ?U8: fn Int -> ?U8
 
 # Division and remainder as functions, `nil` for a zero divisor.
-# An answer `@HostList` sends down by path (Semantics ch. 9, the list form): the value as
-# plain data, decoded at the place by its tag as a World's answer is (prismc's first ruling
-# HL; the books name no way to make an `Answer c`). A value that is not plain data is
-# refused by the back end.
-AnswerOf: fn a -> Answer c
 ?Div: fn a, a -> ?a
 ?Mod: fn a, a -> ?a
 

@@ -649,11 +649,6 @@ pub fn split(r: &Regex, t: &Text) -> Array<Text> {
     r.split(t)
 }
 
-/// `AnswerOf: fn a -> Answer c`: an answer `@HostList` sends down, as plain data.
-pub fn answer_of<T: ToPod>(x: &T) -> Pod {
-    x.to_pod()
-}
-
 /// `?ParseNat`.
 pub fn parse_nat_opt(t: &Text) -> Option<Nat> {
     let s = t.as_str();
