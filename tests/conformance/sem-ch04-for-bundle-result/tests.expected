@@ -1,0 +1,20 @@
+# Derived by hand from Semantics ch. 4 ("`for`": a row ending on an event gives `!(K ==> T)`, firing with exactly the rows that fired; on a dynamic, `$(K ==> T)`; on a bundle, the bundle gathered field by field) and ch. 7 as ruled (round 3 ST: a `for`'s gathered `$(K ==> T)` is structural, its update fires the tick after its value moved, and that tick is owed): the gathered event counts the sale in the click's tick, the gathered dynamic shows it in the owed tick.
+test a_bundle_gathered_field_by_field
+
+tick 0
+  added:
+    0: Ui.Button(label="drop")
+    1/[1]/0: Ui.Button(label="ale")
+    1/[2]/0: Ui.Button(label="bun")
+    2: Ui.Label(text="sales 0")
+    3: Ui.Label(text="total 0")
+
+tick 1
+  in:
+    1/[1]/0: click
+  changed:
+    2: Ui.Label(text="sales 1")
+
+tick 2
+  changed:
+    3: Ui.Label(text="total 1")
