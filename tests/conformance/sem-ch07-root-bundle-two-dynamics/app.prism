@@ -1,0 +1,15 @@
+# A root that ends on a bundle with two `$` parts (Type System ch. 2, "Bundles and sparse
+# tuples": a plain aggregate with functor values inside): the World hears the root's
+# result (Semantics ch. 7, "The outputs"), each `$` part at the build and whenever it
+# moves, part by part in the bundle's order. Written by Claude on the claude-lowering
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@main: @(($Nat, $Text))
+@main:
+    !go <- Ui.Button($label=$"go")                                # 0
+    !flip <- Ui.Button($label=$"flip")                            # 1
+    $n <- 0 then $n + 1 on !go
+    $flips <- 0 then $flips + 10 on !flip
+    @ (($n, $"{$n}/{$flips}"))
