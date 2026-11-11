@@ -557,10 +557,15 @@ fn RunLine wx, benv, args, e, ?target:
         &_.taken <= Append &_.taken, [["{p}_job", "{p}_again", "{p}_started", "{p}_turn"]]
     let start = match args[0]:
         ? a: match a.value.kind:
+            # a named function by its `Start`; any other function value (a lambda, a local,
+            # a call's result) as the `Start` it is or is made (`AsJobValue`)
             EName n:
                 let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
-                XPath (StartRef lx, (Or ?q, ""))
-            otherwise: Refusal "an `@Run` of a function value that is not a name"
+                let ?local = if (Len n.path) == 1: benv.names[NameKeyAt lx, benv, n, a.value.span] else: nil
+                match ((?local, ?q)):
+                    ((nil, ? q)): XPath (StartRef lx, q)
+                    otherwise: AsJobValue lx, benv, a.value
+            otherwise: AsJobValue lx, benv, a.value
         nil: InternalBug "an `@Run` without its function"
     let x = match args[1]:
         ? a: Own (ValueOf lx, benv, a.value)
