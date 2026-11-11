@@ -383,7 +383,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
   reads the name waits for the late result (`DeferredLine`). A `let` whose tuple
   pattern takes a late bundle apart (`let ((step, !go)) = both`) names each plain part
   as a late name (`LatePartNames`): a getter of the node that the `let`'s line gives
-  the part's read to (`BindNamedPart`), with no value at the build. A late bundle read
+  the part's read to (`BindNamedPart`), with no value at the build; a pattern of its
+  own over a late plain part (`let ((((step, noun)), !go)) = both`) names each plain
+  name it binds late the same way, its getter the part's read matched by the pattern. A late bundle read
   as one value from the node's methods (a place's field over `StepOf both`, a late
   `let`, a hold's step) is a getter of the node bound under `{name}#value`
   (`LateBundleValue`): the tuple of a plain part's read, an event part's event over a

@@ -125,9 +125,13 @@ Bundles
   sem-ch08-late-bundle-read-as-value-above); a `let` of a bundle read by a line above
   it is lowered above that line (`BundleLetsEarly`, sem-ch04-let-bundle-read-above,
   sem-ch04-late-let-bundle-read-above).
+  A pattern inside the `let`'s tuple pattern over a late plain part names its plain
+  names late too (`let ((((step, noun)), !go)) = both`,
+  sem-ch08-late-part-bundle-let-nested-pattern-above).
   Left, no tests: lower/node/def.prism (`PreBindWholeParts`, `LateBundleParts`: "a late
-  plain part of the bundle .. read at its block's build") a late plain part read at the
-  build by a pattern inside the tuple pattern (`let ((((a, b)), !go)) = both`);
+  plain part of the bundle .. read at its block's build") a late plain part under a
+  pattern inside the tuple pattern that binds no name (`let ((((ignore, ignore)), !go))
+  = both`), which reads the part at the build to match nothing;
   a late bundle with a bundle inside read as one value.
   (`PreBindWhole`, `MarkLateBundle`: "read as one value at its block's build") marks a
   late bundle's value at the build, which no known line reads: an element's field over

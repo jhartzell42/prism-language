@@ -1199,16 +1199,19 @@ fn LateBundleParts wx, benv, menv, nkey, stem, tuple:
             let ((w2, bs, ms)) = FieldedParts w1, "{stem}_{i}", [[res]]
             ((w2, (Append builds, [[(?PartOf bs, 0)]]), (Append methods, [[(?PartOf ms, 0)]])))
 
-# The plain names a `let`'s tuple pattern names at its top, when the `let`'s value is a
-# name of a late bundle (`let ((step, !go)) = both`, `both` bound below with a late
-# plain part) and the name is not late yet: each is late as the bundle is, read through
-# a getter of the node that the `let`'s line gives its part to (`BindNamedPart`).
+# The plain names a `let`'s tuple pattern binds, at its top or inside a pattern of its
+# own (`let ((((step, noun)), !go)) = both`), when the `let`'s value is a name of a late
+# bundle (`let ((step, !go)) = both`, `both` bound below with a late plain part) and the
+# name is not late yet: each is late as the bundle is, read through a getter of the node
+# that the `let`'s line gives its part to (`BindNamedPart`).
 LatePartNames: unbounded fn Env, Stmt -> [SName]
 fn LatePartNames me, s = match s.kind:
     SLet p, ignore, e: if not (TakesLateBundle me, p, e): [[]] else: match (UngroupedPattern p).kind:
         PTuple ps: Fold ps, [[]], \|acc, q| match q.kind:
             PName n: if (IsTimeName (SNameKey n)) or HasKey me.names, "{SNameKey n}#late": acc else: Push acc, n
-            otherwise: acc
+            # a pattern inside the tuple pattern (over a late plain part, or a bundle
+            # inside the bundle): each plain name it binds
+            otherwise: Fold (BinderNames q), acc, \|more, n| if (IsTimeName (SNameKey n)) or HasKey me.names, "{SNameKey n}#late": more else: Push more, n
         otherwise: [[]]
     otherwise: [[]]
 
@@ -1397,7 +1400,7 @@ fn PreBind wx, benv, menv, s = match s.kind:
         PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
             # (a plain name of a late bundle's part is late already, `LatePartNames`)
             PName n: if HasKey me.names, "{SNameKey n}#late": ((w, be, me)) else: PreBindName w, be, me, n, AsLet
-            otherwise: Fold (BinderNames q), ((w, be, me)), \|((w2, be2, me2)), n| PreBindName w2, be2, me2, n, AsLet
+            otherwise: Fold (BinderNames q), ((w, be, me)), \|((w2, be2, me2)), n| if HasKey me2.names, "{SNameKey n}#late": ((w2, be2, me2)) else: PreBindName w2, be2, me2, n, AsLet
         otherwise: Fold (BinderNames p), ((wx, benv, menv)), \|((w2, be2, me2)), n| PreBindName w2, be2, me2, n, AsLet
     SFn c:
         let fname = DefNameText c.name
@@ -1987,6 +1990,21 @@ fn BindNamedPart wx, benv, menv, p, ty, m, ?built = match ((p.kind, m)):
             &_.getters <= Push &_.getters, (MethDef(name=getter, recv=RecvRef, params=[[]], cx=CxNone, ret=t, body=[[]], tail=(Own (VlPlace part, mode, t)), doc="`{SNameKey n}`, a plain part of a late bundle a `let`'s pattern names: read from the node once the row that gives it is built."))), benv, menv))
         otherwise: (((update wx:
             &_.build <= Push &_.build, (InternalBugDo "the late name `{SNameKey n}` of a `let`'s pattern over a late bundle, which has no getter")), benv, menv))
+    # a pattern of its own over a late plain part (`let ((((step, noun)), !go)) = both`):
+    # each name it binds is late (`LatePartNames`), and the getter its marking named
+    # reads the part from the node and matches it by the pattern
+    ((ignore, (BnLocal part, mode, t))) if IsLateLet menv, p:
+        let o = RustPat wx.lx, p, ty, ByRef, "late_part"
+        let wx2 = Fold (BinderNames p), wx, \|w, n| match ((menv.names[SNameKey n], (Fold o.binds, nil, \|?found, ((k, b))| if k == SNameKey n: ? b else: ?found))):
+            (((? (BnLocal (XMethod XSelf, getter, ignore), ignore, bt)), (? (BnLocal rs, held, vt)))):
+                let arm = XArm(pat=o.pa, conds=o.conds, body=(Own (VlPlace rs, held, vt)))
+                let other = XArm(pat=PaWild, conds=[[]], body=(XUnreachable))
+                let tail = XBlock [[(DoLet (PaTyped (PaBind "late_part"), t), (Own (VlPlace part, mode, t)))]], (Own (ArmsValue (XRef (XVar "late_part")), [[arm, other]], "'bound", bt))
+                update w:
+                    &_.getters <= Push &_.getters, (MethDef(name=getter, recv=RecvRef, params=[[]], cx=CxNone, ret=bt, body=[[]], tail=tail, doc="`{SNameKey n}`, a name a `let`'s pattern binds inside a plain part of a late bundle: read from the node once the row that gives the part is built."))
+            otherwise: update w:
+                &_.build <= Push &_.build, (InternalBugDo "the late name `{SNameKey n}` of a pattern over a late bundle's plain part, which has no getter or which the pattern does not bind")
+        ((wx2, benv, menv))
     ((ignore, (BnLocal ignore, ignore, ignore))): match ?built:
         ? (BnLocal ex, mode, t):
             let v = Own (VlPlace ex, mode, t)
