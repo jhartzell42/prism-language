@@ -1070,14 +1070,21 @@ fn ?BundleNamed menv, p, e = match ((p.kind, e.kind)):
 # event or a dynamic as itself, so `@ r` gives it on. The child's document is bound to the
 # second part: a dynamic of the owner's, its getter `host_k_doc` (pick HO), in place of the
 # hold the prebinding took it for.
-BindHosted: fn Wx, Env, Env, Wres, Bn, [Pattern] -> ((Wx, Env, Env))
+BindHosted: unbounded fn Wx, Env, Env, Wres, Bn, [Pattern] -> ((Wx, Env, Env))
 fn BindHosted wx, benv, menv, res, doc, ps:
     let ?r = match res:
         WrEv r: ? (BnEv r, OutUnit)
         WrDyn ex, rds, t: ? (BnDyn ex, rds, t)
         WrParts ignore: ? (BundleBn res)
         otherwise: nil
-    let wx1 = PartGetter (PartGetter wx, menv, ps[0], ?r), menv, ps[1], (? doc)
+    # the child's plain result (`@ "{w}{n}"` last in its block) is a value of the build,
+    # bound as any widget's plain result is (`BindPlainResult`)
+    let wx0 = match ((res, ps[0])):
+        (((WrPlain ex, t), ? p)): BindPlainResult wx, menv, p, ex, t
+        (((WrLate ignore, ignore), ? ignore)): update wx:
+            &_.build <= Push &_.build, (InternalBugDo "a hosted child's late plain result bound where its block is not split")
+        otherwise: wx
+    let wx1 = PartGetter (PartGetter wx0, menv, ps[0], ?r), menv, ps[1], (? doc)
     let ((be1, me1)) = BindPart benv, menv, ps[0], ?r
     BindPart2 wx1, be1, me1, ps[1], (? doc)
 
