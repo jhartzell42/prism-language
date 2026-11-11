@@ -345,6 +345,9 @@ struct Event {
     static Event never() { return Event{nullptr, make_rc<Port<T>>()}; }
     /// A node's own event as a value: the port its firing method fires.
     static Event of(const Rc<Port<T>>& port) { return Event{nullptr, port}; }
+    /// Events compare by identity, the port they fire, as dynamics do: an element's level
+    /// holds the events of its event fields (ruling EP).
+    bool operator==(const Event& o) const { return ptr_eq(port, o.port); }
     /// The event `f` of this one, a pure transform at each firing (a lifted call).
     template <class F>
     auto map(F f) const -> Event<std::invoke_result_t<F, const T&>> {

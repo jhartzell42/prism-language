@@ -1157,15 +1157,16 @@ fn ElementValue lx, env, tg, args:
     let desc = XRecord descPath, (Each argued, \|((i, ignore))| (((Spell i), (XClone (XVar (Local i))))))
     # the level: the plain fields' values and the `$` fields' values, mapped together
     let dyns = Filter argued, \|((i, ignore))| (LayerAt i) == LyDyn
-    let plains = Filter argued, \|((i, ignore))| (LayerAt i) == LyPlain
     let names = Each (Range0 (Len dyns)), \|k| "desc_y{k}"
     let NameOfDyn = \|i| Fold (Range0 (Len dyns)), "", \|found, k| match dyns[k]:
         ? ((j, ignore)): if j == i: Or names[k], "" else: found
         nil: found
-    let levelFields = Each (Filter argued, \|((i, ignore))| (LayerAt i) != LyEv), \|((i, ignore))|
+    # the level holds its event fields' events too (`LevelEvents`, ruling EP)
+    let inLevel = Filter argued, \|((i, ignore))| (LayerAt i) != LyEv or (Len (LevelEvents tg)) > 0
+    let levelFields = Each inLevel, \|((i, ignore))|
         if (LayerAt i) == LyDyn: (((Spell i), (XClone (XVar (NameOfDyn i))))) else: (((Spell i), (XClone (XVar "{Local i}_l"))))
     let level = XCtor variant, [[(XRecord structPath, levelFields)]]
-    let keeps = Each plains, \|((i, ignore))| DoLet (PaBind "{Local i}_l"), (XClone (XVar (Local i)))
+    let keeps = Each (Filter inLevel, \|((i, ignore))| (LayerAt i) != LyDyn), \|((i, ignore))| DoLet (PaBind "{Local i}_l"), (XClone (XVar (Local i)))
     let tys = Each dyns, \|((i, ignore))| TagFieldOut lx, (TyAt i)
     let mapped = match dyns:
         [[]]: XCall (HelperRef "dyn_constant"), [[level]]

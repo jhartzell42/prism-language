@@ -605,12 +605,14 @@ fn TypeDoc lx, ti = match lx.g.srcs[ti.file]:
     ? src: Trim (LineText src, (CLineOf src.starts, ti.span.start))
     nil: ti.name
 
-# A tag's struct: an element tag's `Level`, its plain and dynamic fields (an event field
-# is a request); any other tag's fields, all plain.
+# A tag's struct: an element tag's `Level`, its plain and dynamic fields and the events
+# of its event fields (`LevelEvents`; a firing is a request too); any other tag's fields,
+# all plain.
 TagDefOf: unbounded fn Lx, TagInfo -> TagDef
 fn TagDefOf lx, tg:
     let fields = Each (LevelFields tg), \|((fname, ft))| ((fname, (FieldSpell tg.home, fname, ft), (TagFieldOut lx, ft)))
-    TagDef(name=(TagStructOf tg), tagName=tg.name, fields=fields, doc=(TypeDoc lx, (TyInfo(name=tg.name, home=tg.home, params=[[]], body=BOpaque, derives=[[]], file=tg.file, span=tg.span))), pod=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and Podable t), eq=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and RuntimeEq t))
+    let events = Each (LevelEvents tg), \|((fname, ft))| (((FieldSpell tg.home, fname, ft), (TagFieldOut lx, ft)))
+    TagDef(name=(TagStructOf tg), tagName=tg.name, fields=fields, events=events, doc=(TypeDoc lx, (TyInfo(name=tg.name, home=tg.home, params=[[]], body=BOpaque, derives=[[]], file=tg.file, span=tg.span))), pod=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and Podable t), eq=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and RuntimeEq t))
 
 # A tag's items: its struct, and an element tag's description beside it.
 TagItems: unbounded fn Lx, TagInfo -> [Item]
@@ -631,6 +633,14 @@ fn DescFieldTy lx, ft = match LayerOf ft:
     LyDyn: OutDyn (TagFieldOut lx, ft)
     LyEv: OutEvent (TagFieldOut lx, ft)
     otherwise: TagFieldOut lx, ft
+
+# An element tag's event fields as its level holds them (ruling EP: an event field in an
+# element pattern binds the event the element was made with, and a document's entry is
+# matched as a description is): each the event itself, beside the plain and `$` fields.
+# The core prelude's own element tags, whose structs the prelude template writes, hold
+# none (`Prelude.Unwrap`'s `!~value` is heard as a request alone).
+LevelEvents: fn TagInfo -> [((Text, Ty))]
+fn LevelEvents tg = if tg.kind != "Element" or tg.home == "Prelude": [[]] else: Filter tg.fields, \|((ignore, ft))| (LayerOf ft) == LyEv
 
 LevelFields: fn TagInfo -> [((Text, Ty))]
 fn LevelFields tg = Filter tg.fields, \|((ignore, ft))| (LayerOf ft) != LyEv

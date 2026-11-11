@@ -423,6 +423,11 @@ type TagDef = record:
     name: Text
     tagName: Text
     fields: [((Text, Text, OutTy))]
+    # An element tag's event fields, each the event the element was made with (ruling EP):
+    # the field's spelled name and what it fires. No part of the element's plain data: a
+    # World sees a firing as a request, and an element read back from plain data has
+    # events that never fire.
+    events: [((Text, OutTy))]
     doc: Text
     # Every field is plain data (`Podable`): the struct is `Clone` and `PartialEq` and
     # reads back from a `Pod`, so a value holding it (a `[Draw]` in a record) can be data.

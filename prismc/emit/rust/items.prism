@@ -266,10 +266,11 @@ fn FromPodImpl t, head:
 
 RustTag: unbounded fn TagDef -> Text
 fn RustTag t:
-    let fields = Join (Each t.fields, \|((ignore, f, ft))| "pub {f}: {Type ft},"), "\n"
+    let fields = Join (Append (Each t.fields, \|((ignore, f, ft))| "pub {f}: {Type ft},"), (Each t.events, \|((f, et))| "pub {f}: {Type (OutEvent et)},")), "\n"
     let pods = Join (Each t.fields, \|((p, f, ignore))| "(\"{p}\", self.{f}.to_pod())"), ", "
     let derives = if t.eq: "::std::clone::Clone, ::std::cmp::PartialEq, ::std::cmp::Eq" else: "::std::clone::Clone"
-    let reads = Join (Each t.fields, \|((p, f, ignore))| "{f}: crate::prelude::FromPod::from_pod(crate::prelude::field(p, \"{p}\")?)?"), ", "
+    # an element read back from plain data was made with no event: each never fires
+    let reads = Join (Append (Each t.fields, \|((p, f, ignore))| "{f}: crate::prelude::FromPod::from_pod(crate::prelude::field(p, \"{p}\")?)?"), (Each t.events, \|((f, ignore))| "{f}: crate::prelude::Event::never()")), ", "
     let back = if t.pod: "\n{TagFromPod t.name, t.tagName, reads}" else: ""
     let deep = Fold t.fields, False, \|d, ((ignore, ignore, ft))| d or HoldsDyn ft
     let deepPods = Join (Each t.fields, \|((p, f, ft))| DeepField p, f, ft), ", "

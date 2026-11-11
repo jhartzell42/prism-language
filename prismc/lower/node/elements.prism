@@ -72,7 +72,28 @@ fn ElementLine wx, benv, menv, e, ?bound:
                         match LayerOf fty:
                             LyEv:
                                 let ((r, w2)) = EventRef w, menv, arg
-                                ((lf, cf, mf, rd, (Connect w2, r, (SkRequest pos, (RequestField tg, fname)))))
+                                let w3 = Connect w2, r, (SkRequest pos, (RequestField tg, fname))
+                                if (Len (LevelEvents tg)) == 0: ((lf, cf, mf, rd, w3))
+                                else:
+                                    # the event itself in the place's level (ruling EP; `LevelEvents`):
+                                    # a port the event fires, as a bound event's value form is
+                                    # (`PreBindName`), and the event of that port, made once so the
+                                    # level holds the same event for as long as the place lives
+                                    let et = OutTyOf lx, (Peel (TypeAt lx, arg.span))
+                                    let ((stem, w4)) = FreshName w3, "request_{PlaceText pos}_{Snake (FieldSpell tg.home, fname, fty)}"
+                                    let pf = "{stem}_port"
+                                    let ef = "{stem}_event"
+                                    let pt = OutRc (OutPort et)
+                                    let evTy = OutEvent (TagFieldOut lx, fty)
+                                    let made = RecodedWhole lx, fty, (XCall (RefRuntime "prism_rtl::Event::of"), [[XRef (XVar pf)]])
+                                    let w5 = update (Connect w4, r, (SkPort stem)):
+                                        &_.taken <= Append &_.taken, [[pf, ef]]
+                                        &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind pf), pt), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]])), (DoLet (PaTyped (PaBind ef), evTy), made)]]
+                                        &_.fields <= Append &_.fields, [[((pf, pt, "place {PlaceText pos}'s `{fname}`: the port it fires")), ((ef, evTy, "place {PlaceText pos}'s `{fname}` as its level holds it"))]]
+                                        &_.moves <= Append &_.moves, [[((pf, (XClone (XVar pf)))), ((ef, (XClone (XVar ef))))]]
+                                    let spelled = FieldSpell tg.home, fname, fty
+                                    let held = XClone (XField XSelf, ef)
+                                    (((Push lf, ((spelled, held))), (Push cf, ((spelled, (XClone (XVar ef))))), (Push mf, ((spelled, held))), rd, w5))
                             otherwise:
                                 let ((ex0, rds)) = DynamicExpr w, menv, arg
                                 # at the build every name with a value then reads it (`InitEnv`):

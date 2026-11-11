@@ -371,9 +371,10 @@ fn IndentCpp t = Join (Each (SplitOn t, "\n"), \|l| if l == "": "" else: "    {l
 # An element tag's `Level`: a struct of its fields, its tag, its plain data.
 TagParts: unbounded fn Cp, TagDef -> Parts
 fn TagParts cp, t:
-    let fields = Join (Each t.fields, \|((ignore, f, ft))| "{CppType cp, ft} {FieldId f};"), "\n"
+    let fields = Join (Append (Each t.fields, \|((ignore, f, ft))| "{CppType cp, ft} {FieldId f};"), (Each t.events, \|((f, et))| "{CppType cp, (OutEvent et)} {FieldId f};")), "\n"
     let pods = Join (Each t.fields, \|((p, f, ignore))| "\{\"{p}\", ::prism_rtl::to_pod({FieldId f})\}"), ", "
-    let reads = Join (Each t.fields, \|((p, f, ft))| ".{FieldId f} = TRY(::prism_rtl::from_pod<{CppType cp, ft}>(TRY(crate::prelude::field(p, \"{p}\"))))"), ", "
+    # an element read back from plain data was made with no event: each never fires
+    let reads = Join (Append (Each t.fields, \|((p, f, ft))| ".{FieldId f} = TRY(::prism_rtl::from_pod<{CppType cp, ft}>(TRY(crate::prelude::field(p, \"{p}\"))))"), (Each t.events, \|((f, et))| ".{FieldId f} = {CppType cp, (OutEvent et)}::never()")), ", "
     let eq = if t.eq: "bool operator==(const {t.name}&) const = default;" else: ""
     let back = if t.pod: "static crate::prelude::Result<{t.name}> from_pod(const crate::prelude::Pod& p);" else: ""
     # a level that holds dynamics as a World reads it, deep (doubt WD)
@@ -386,7 +387,7 @@ fn TagParts cp, t:
     let toPod = CppFunction "", "crate::prelude::Pod {t.name}::to_pod() const", "return crate::prelude::Pod::element(TAG, \{{pods}\});"
     let show = CppFunction "", "void {t.name}::show(crate::prelude::Printer& p) const", "::prism_rtl::to_pod(*this).structure();\ncrate::prelude::Show<crate::prelude::Pod>::show(::prism_rtl::to_pod(*this), p);"
     let fromPod = if t.pod: [[(CppFunction "", "crate::prelude::Result<{t.name}> {t.name}::from_pod(const crate::prelude::Pod& p)", "if (auto t = p.tag(); t && *t == TAG) return {t.name}\{{reads}\};\nreturn crate::prelude::mismatch<{t.name}>(\"a {t.tagName}\", p);")]] else: [[]]
-    let deps = Concat2 (Each t.fields, \|((ignore, ignore, ft))| ValueDeps cp, ft)
+    let deps = Concat2 (Append (Each t.fields, \|((ignore, ignore, ft))| ValueDeps cp, ft), (Each t.events, \|((ignore, et))| ValueDeps cp, et))
     Parts(forward=[["struct {t.name};"]], values=[[ValueDecl(path=(DeclPath cp, t.name), deps=deps, text=decl)]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append (Append [[toPod, show]], fromPod), levelDefs))
 
 # A level field as a World reads it (doubt WD): plain data as it is; a map of dynamics or a

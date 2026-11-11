@@ -415,6 +415,17 @@ impl<T> Clone for Event<T> {
     }
 }
 
+/// Events compare by identity, the port they fire, as dynamics do (`Dynamic`'s `PartialEq`):
+/// an element's level holds the events of its event fields (ruling EP), and a place whose
+/// level holds the same events has not moved.
+impl<T> PartialEq for Event<T> {
+    fn eq(&self, other: &Event<T>) -> bool {
+        Rc::ptr_eq(&self.port, &other.port)
+    }
+}
+
+impl<T> Eq for Event<T> {}
+
 impl<T: Clone + 'static> Event<T> {
     /// `never`: a port nothing fires.
     pub fn never() -> Event<T> {
