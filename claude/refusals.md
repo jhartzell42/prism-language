@@ -21,10 +21,15 @@ Hosting
 - Lowered: a place of a tag whose answer has a plain part beside a `$` part, in a
   hosted scope whose host answers with a dynamic that has no value while its node is
   being made: the plain part is a late name, set where the place asks its first value
-  (`LatePlaceParts`; sem-ch09-host-late-bundle-plain-part). What stays of it is a late
-  name's (lower/node/def.prism `LatePlaceParts`: "the plain part .. of a late place's
-  answer read at its block's build", a place's constant field in a line that is no
-  element's own; `DeferredLine`'s two, under "Late results"). A supplier's dynamic answer, or a bundle answer's `$` part, that reads a
+  (`LatePlaceParts`; sem-ch09-host-late-bundle-plain-part). A place below it with a
+  `$` output or a bundle's state, whose constant field reads the part, asks its first
+  value with the element read from the node (`ElementPlaced`,
+  sem-ch09-host-late-plain-part-in-place-field). What stays of it
+  (lower/node/def.prism `LatePlaceParts`: "the plain part .. of a late place's answer
+  read at its block's build"): a place with a PLAIN output whose constant field reads
+  the part (its first value is asked in the build, before the node; the output would
+  have to be a late name as the part is), and any such place written above the place
+  that gives the part. A supplier's dynamic answer, or a bundle answer's `$` part, that reads a
   structural dynamic (a `for`'s gathered result, a `rebuild`'s): the child's `$` places
   ask their first values where the construction step reaches the host's line
   (`LateFirstPlace`; sem-ch09-host-dynamic-answer-structural,
