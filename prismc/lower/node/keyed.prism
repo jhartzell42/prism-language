@@ -79,7 +79,7 @@ fn ForLine wx, benv0, menv0, ?binders, source, body, e, ?bound:
     let rowFields = Append [[(("key", kt, "the row's key")), (("left_entry", (OutCell (OutOpt vt)), "the entry as the tick its key left opened, kept from the row's leaving on (R8)")), (("parent", (OutWeak wx.node), "the node of the `for`"))]], (Each locals, \|l| ((l.field, l.ty, "`{l.name}`, the block's")))
     let rowMoves = Append [[(("key", (XClone (XVar "key")))), (("left_entry", (XCall (RefRuntime "std::RefCell::new"), [[XNone]]))), (("parent", (XClone (XVar "parent"))))]], (Each locals, \|l| ((l.field, (XVar l.field))))
     let rowTaken = Append (Append nodeHooks, [["key", "value", "parent", "entry", "left_entry"]]), (Each locals, \|l| l.field)
-    let rowWx0 = NewWx lx, rowName, rowFields, [[]], rowMoves, [[(EntryGetter srcGetter, vt)]], {"entry": [[ParentRead srcGetter]]}, rowTaken, wx.inlining, (?HostedRows wx)
+    let rowWx0 = UnderItsPath (NewWx lx, rowName, rowFields, [[]], rowMoves, [[(EntryGetter srcGetter, vt)]], {"entry": [[ParentRead srcGetter]]}, rowTaken, wx.inlining, (?HostedRows wx)), (?HostedRows wx)
     # The block's events the body names reach the row through ports, as a generation's do
     # (`RowEnv`): a port node in the row, subscribed to the block's port, which the block's
     # event fires. The row's own graph indexes none of the block's events.
