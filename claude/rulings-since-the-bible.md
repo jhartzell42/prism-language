@@ -85,3 +85,11 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
 - **BP** A `for` or a `rebuild` as a plain function's value is a checker mismatch, as a
   building `match` there is; an interpolation lifts over `?` as any application does.
   Claude's first rulings, shown to Jimmy with their programs and not overruled.
+- **IE2** (overrules IE above) A builder's `if` and a statement's `if` may stand without
+  an `else`: a building `if` in a widget block builds its arm or nothing, and an `update`
+  block's statement `if` changes something or does not. Only an `if` that is an
+  expression needs its `else`. Jimmy: "Fine, builders and statements can have raw ifs.
+  Damn. I didn't know widget blocks could have ifs guarding bindings but I guess they
+  can. I was leaning too heavily on Haskell semantics where you have to do `when check $
+  do`". With ruling TC, the places after an else-less building `if` count from what was
+  built.

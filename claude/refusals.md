@@ -44,6 +44,24 @@ Hosting
   `Inner 1`): refused as "the widget function @Row as a value" and at
   lower/node/static.prism:121. Test: sem-ch08-widget-parameter-applied.
 
+- lower/expr.prism:764 an event read as a value. Program: a widget function's event
+  parameter read in its supplier's arm, `fn @HostPlayer side, @guest, $state, !outcome:`
+  with the arm `Play.Request(..): @ !Filter (?ResponseTo side, p, !outcome)`. Test:
+  sem-ch09-hosting-per-role-event-parameter (hosting attempt 09 of the Bible's evidence,
+  as written).
+- lower/node/static.prism:651 a generic widget at a call whose types its parameters' do
+  not match. Program: a widget function with a bounded type variable that also takes a
+  blueprint `@a`, `@Framed: fn s, @a -> @a where s: ^Show` called as `@Framed 3, (@Guest
+  "one")`; `a` is left unmatched. With the bound alone (`fn s, Text`) or the blueprint
+  alone (`fn Nat, @a`) the call is lowered. Test:
+  sem-ch08-generic-widget-blueprint-parameter. Hosting attempt 14 reaches it too, and is
+  a wrong program for another reason: see C, a tag field's type variable.
+- lower/patterns.prism:268 (see Dynamics and events) stops a host hearing a guest's
+  request: a supplier's arm `Seat.Request(!requests=!r): @ "ok {!r}"`
+  (sem-ch09-hosting-host-hears-request) and the host's body reading each entry of its
+  document (sem-ch09-hosting-body-reads-request, which meets gap LF at `$evs` too);
+  hosting attempts 01 and 02, as written.
+
 Bundles
 - lower/node/keyed.prism:165 a `for` whose rows end on a bundle. Test:
   sem-ch04-for-bundle-result.
@@ -206,6 +224,29 @@ fresh at fresh paths (sem-ch04-row-teardown and sem-ch04-generation-teardown pas
 first value of an element value placed in a hosted scope (DH2) holds through two hosts
 (sem-ch09-host-described-first-value passes).
 
+## rustc refuses prismc's output
+
+No refusal: prismc writes a crate and rustc refuses it. Each is an R, critical. Entries
+above that end this way: sem-ch09-host-bundle-answer-named,
+sem-ch09-answer-constructor-value, sem-ch04-rebuild-clause-plain-result,
+sem-ch07-flatten-held-above, ts-ch04-whole-row-parent, ts-ch04-whole-hosted-result,
+ts-ch04-interpolation-lifts-optional, sem-ch10-fault-kind-value, sem-appB-turn-value,
+ts-ch03-method-function-value. Found by the Bible's document hosting:
+
+- `!Filter` of `!Updated $d` written in place: the crate calls
+  `crate::prelude::filter_ev` and `crate::prelude::updated`, which do not exist (E0425),
+  and reads `self` in a function without it (E0424). Program: a supplier's arm `@
+  !Filter (?ResponseTo side, p, !Updated $state)`, `$state` a parameter of the widget
+  function. Test: sem-ch09-hosting-per-role-inline-update (hosting attempt 10, as
+  written). A plain `fn !Echoed $?l = !Filter (!Updated $?l)` gives the same two E0425
+  with no supplier in sight. With the update named first, `let !stepped = !Updated
+  $state`, the program runs: sem-ch09-hosting-per-role-named-update passes.
+- A generic tag with a `$` field of its variable: `struct PadEcho_g` and `PadEcho_desc`
+  have a field of type `R` and no `<R>` (E0425; an E0308 follows). Program: `tag Pad.Echo
+  of Element !r:` with `$?latest: r`, placed at `Text`. Test:
+  sem-ch09-generic-tag-live-field. Hosting attempt 15 met it with a tag whose variable is
+  missing from its output, a wrong program: see C.
+
 ## C: wrong programs the checker lets through
 
 - lower/node/def.prism:272 lines that read each other at the build: a cycle among values.
@@ -238,6 +279,14 @@ first value of an element value placed in a hosted scope (DH2) holds through two
 - A supplier written by clauses (`fn @Supply p, (Pad.Num(..)) = @ 7`) is a legal program
   the checker refuses: a clause's tag pattern does not refine the output. Test:
   tests/checker/pos/supplier-clauses.prism.
+- A tag field's type variable that the tag's output does not have (`tag Seat.Request of
+  Element !Response:` with `$?latest: ((Nat, r))`): the checker says nothing, a guest
+  places the tag with a `Text` and the host's function reads the field as a `Nat`. Type
+  System ch. 2: a variable in a field must appear in the index, and a generic tag's
+  output is a scheme, its variables shared with its fields. Tests:
+  tests/checker/neg/hosting-generic-request-field (hosting attempt 15, as written; rustc
+  refuses its crate) and tests/checker/neg/hosting-generic-implementation (attempt 14, as
+  written; the back end refuses it at lower/node/static.prism:651).
 
 ## G: guards
 
@@ -260,8 +309,7 @@ reaches it.
 - lower/node/static.prism:613 a widget of several clauses that takes no arguments: see C,
   the second bare block.
 - lower/node/static.prism:651 a generic widget at a call whose types its parameters' do
-  not match. No program reaches this: the checker unifies the call with the signature
-  (sem-ch08-generic-widget is the nearest program, and passes).
+  not match: reached, see R, Hosting.
 - lower/node/switch.prism:758 a `rebuild` with no generation. No program reaches this: a
   `rebuild` has a block, and a block is one case.
 - lower/expr.prism:667 a supplier's dynamic answer of no known form. No program reaches
@@ -271,8 +319,8 @@ reaches it.
   reaches this: `#tag` is bound only by `TagPat`, always as a path.
 - lower/expr.prism:723 `@Element` without its element. The checker refuses it:
   tests/checker/neg/element-without-its-element.
-- lower/expr.prism:764 an event read as a value. The nearest program, `let !again =
-  !go`, passes: sem-ch04-event-let.
+- lower/expr.prism:764 an event read as a value: reached, see R, Hosting. A `let !again =
+  !go` in a block is not the case: sem-ch04-event-let passes.
 - lower/expr.prism:765 a tuple pattern's binding as a value: reached, see R, Bundles.
 - lower/expr.prism:766 a widget parameter read as a plain value. The nearest program, a
   widget parameter passed on to another widget, passes: sem-ch08-widget-parameter-passed.
