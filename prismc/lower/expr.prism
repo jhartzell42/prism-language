@@ -845,7 +845,7 @@ fn WrittenPart lx, env, y = match LayerOf (TypeAt lx, y.span):
             ? dynamic: PartLive dynamic
             nil: match ?HeldDynamic lx, env, d:
                 ? held: PartLive held
-                nil: PartRefused "`{SrcText lx, lx.file, y.span}`, a bundle answer's `$` part in a function of the host's block that reads the function's own parameter beside a dynamic of the block"
+                nil: PartRefused "`{SrcText lx, lx.file, y.span}`, a bundle answer's `$` part in a function of the host's block that reads the function's own parameter (the host's line makes no live dynamic for the argument)"
     otherwise: PartPlain (Own (ValueOf lx, env, y))
 
 # A bundle answer of its parts (round 3 DY). The plain and `$` parts are the state: one
@@ -969,7 +969,7 @@ fn DynamicBlueprint lx, env, x, d, variant, t = match ?AnswerDynamic lx, env, x,
             let heldTy = OutTyOf lx, (Peel (TypeAt lx, d.span))
             let tagged = XClosure True, [[(PaTyped (PaBind "v"), (OutRef heldTy))]], (TaggedOrHeld variant, heldTy, (XClone (XVar "v")))
             VlOwned (XCall (RefRuntime "prism_rtl::dynamic_blueprint::<crate::Elem, _>"), [[(XMethod held, "map", [[tagged]])]]), t
-        nil: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer in a function of the host's block that reads the function's own parameter beside a dynamic of the block"), t
+        nil: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer in a function of the host's block that reads the function's own parameter (the host's line makes no live dynamic for the argument)"), t
 
 # A supplier's dynamic answer `d` where no host's line made a getter for it
 # (`DynamicAnswers` binds none: the answer is written in a function, a named supplier's
@@ -983,13 +983,7 @@ fn ?HeldDynamic lx, env, d:
         ? (BnLocalFn ignore): True
         nil: True
         otherwise: False
-    # (in a host's own line, `#owner`, a dynamic of the block has its getter; one with
-    # none is held where it reads a `$` parameter of a function of the block inlined
-    # there, a local that holds the caller's dynamic, `InlineLocalFn`)
-    let ofParameter = Fold (ReadNames (ExprsIn d)), False, \|found, n| found or match env.names[n]:
-        ? (BnLocal ignore, ignore, (OutDyn ignore)): True
-        otherwise: False
-    if held and (ofParameter or not (HasKey env.names, "#owner")): ? (Own (ValueOf lx, env, d)) else: nil
+    if held and not (HasKey env.names, "#owner"): ? (Own (ValueOf lx, env, d)) else: nil
 
 # A supplier's dynamic `d` (the `x` of `@ x`, or a `$` part of a bundle answer) as a
 # `Dynamic` of `crate::Answer` under `variant`, read through the owner's link

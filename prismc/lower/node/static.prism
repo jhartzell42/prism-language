@@ -774,8 +774,9 @@ fn WithFnParameters env, c = Fold c.params, env, \|en, p| Fold (BinderNames p), 
 
 # Whether a supplier's dynamic answer reads a parameter of the block's function it is
 # written in (`WithFnParameters`): the host's line makes no getter for it, since the
-# parameter is bound only where the function is inlined; the answer is the dynamic the
-# function holds there (`?HeldDynamic`).
+# parameter is bound only where the function is inlined, and there the answer is refused
+# (`DynamicBlueprint`, `WrittenPart`): the inlined parameter is the argument's value, no
+# live dynamic.
 ReadsFnParameter: unbounded fn Env, Expr -> Bool
 fn ReadsFnParameter env, d = Fold (ReadNames (ExprsIn d)), False, \|found, n| found or HasKey env.names, "{n}#fnparameter"
 
