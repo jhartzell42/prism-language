@@ -1,0 +1,7 @@
+# Derived by hand from Semantics ch. 5 (`update` gives the record with the field written) and ch. 8 (a blueprint is built at the applying block's next positions): the field holds `@Row 2`, which the page's first line builds. Never run.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="row 2")
+    1: Ui.Label(text="t")
