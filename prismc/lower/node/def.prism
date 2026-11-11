@@ -1704,7 +1704,9 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
                 let atBuild = match ?BundleNamed benv, p, e:
                     ? ((ignore, spelled)): spelled
                     nil: b
-                ((wx, (Bind benv, (SNameKey n), atBuild), (Bind menv, (SNameKey n), b)))
+                # and the bundle as one value, where the name it renames has one
+                # (`BundleValue`, `LateBundleValue`: `{name}#value`)
+                ((wx, (ValueRenamed (Bind benv, (SNameKey n), atBuild), n, e), (ValueRenamed (Bind menv, (SNameKey n), b), n, e)))
             # a late bundle is its parts (`LateBundleLet`)
             nil: match (if IsLateBundleLet menv, p: ?BundleWritten lx, p, e else: nil):
               ? ((n, tuple)): LateBundleLet wx, benv, menv, n, tuple
@@ -1816,6 +1818,16 @@ fn ?BundleNamed menv, p, e = match ((p.kind, e.kind)):
         otherwise: nil
     ((ignore, EGroup x)): ?BundleNamed menv, p, x
     otherwise: nil
+
+# Another name of a bundle (`let same = both`, `?BundleNamed`) as one value: the value
+# of the name it renames (`{name}#value`), under its own name.
+ValueRenamed: unbounded fn Env, SName, Expr -> Env
+fn ValueRenamed env, n, e = match e.kind:
+    EGroup x: ValueRenamed env, n, x
+    EName m: match env.names["{SNameKey m}#value"]:
+        ? held: Bind env, "{SNameKey n}#value", held
+        nil: env
+    otherwise: env
 
 # A host's child's result bound to the first part of the line's pattern, whatever type
 # the checker gave the name (a generic `a` in the window library's `((r, $elems))`): an

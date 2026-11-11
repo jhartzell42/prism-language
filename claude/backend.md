@@ -471,7 +471,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
   the build, each firing of an event part after, one dynamic part as a root's dynamic
   result is.
 - **A `let` of a name bound to a bundle** (`let same = both`) binds the same parts
-  (`?BundleNamed`).
+  (`?BundleNamed`), and the bundle as one value where the name it renames has one
+  (`ValueRenamed`: `{name}#value`, a supplier's `@ same`, a function's argument).
 - **A row that ends on a bundle hands it to its block part by part** (`RowPartsOut`,
   `KeepParts`; a clause of a widget of several clauses, an arm of a building `match` or
   `if`, the lower generation of a split block). Part `i` is `p{i}`, a part of a bundle
