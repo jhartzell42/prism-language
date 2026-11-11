@@ -1,0 +1,43 @@
+# Derived by hand from Semantics ch. 4 ("`rebuild`": holds start over; places are new under the next `#g`; a generation is built at the end of the tick its dynamic changes; the old generation runs to the end of its tick, requests included, and its events become `never`) and ch. 8 ("The patch": a place built at the end of n is added in n, one that leaves at the end of n is removed in n).
+test an_old_generation_is_silent
+
+tick 0
+  added:
+    0: Ui.Button(label="next")
+    1: Ui.Button(label="ring")
+    2/#0/0: Ui.Button(label="hit 1")
+    2/#0/1: Test.Log
+    2/#0/2: Ui.Label(text="page 1: 0 hits")
+
+tick 1
+  in:
+    2/#0/0: click
+  changed:
+    2/#0/2: Ui.Label(text="page 1: 1 hits")
+
+tick 2
+  in:
+    0: click
+    1: click
+  added:
+    2/#1/0: Ui.Button(label="hit 2")
+    2/#1/1: Test.Log
+    2/#1/2: Ui.Label(text="page 2: 0 hits")
+  torn down:
+    2/#0/0: Ui.Button(label="hit 1")
+    2/#0/1: Test.Log
+    2/#0/2: Ui.Label(text="page 1: 1 hits")
+  requested:
+    2/#0/1: "ring 1"
+
+tick 3
+  in:
+    1: click
+  requested:
+    2/#1/1: "ring 2"
+
+tick 4
+  in:
+    2/#1/0: click
+  changed:
+    2/#1/2: Ui.Label(text="page 2: 1 hits")

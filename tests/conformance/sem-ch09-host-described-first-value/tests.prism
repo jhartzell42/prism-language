@@ -1,0 +1,16 @@
+# The tests of sem-ch09-host-described-first-value.
+emit Ui.* | Fs.*
+use App.*
+use Fs.*
+
+test jailed, @jail:
+    with Fs.Contents(path="/jail/motd") = ~ Contents(text="inside"), build
+        => expect Ui.Label(text="inside")
+    push Fs.Contents(path="/jail/motd") = ~ Contents(text="moved")
+        => expect Ui.Label(text="moved")
+
+test jailed_and_hosted, @page:
+    with Fs.Contents(path="/jail/motd") = ~ Contents(text="inside"), build
+        => expect Ui.Label(text="inside")
+    push Fs.Contents(path="/jail/motd") = ~ Contents(text="moved")
+        => expect Ui.Label(text="moved")

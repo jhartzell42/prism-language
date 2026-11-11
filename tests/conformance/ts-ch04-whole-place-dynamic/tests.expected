@@ -1,0 +1,7 @@
+# Derived by hand from Type System ch. 4, Application (a function whose parameter holds a dynamic below the top takes the dynamic whole), as ts-ch04-whole-dynamic-kept derives it for a hold of the block: `$g` is the place's dynamic, whose first value the World gives at the build, 5.
+test a_kept_dynamic_follows
+
+tick 0
+  added:
+    0: Pad.Gauge(name="g")
+    1/[0]/0: Ui.Label(text="row 5")

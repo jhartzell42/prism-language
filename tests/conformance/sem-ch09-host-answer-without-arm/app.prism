@@ -1,0 +1,28 @@
+# A supplier's answer written outside the tag's arm (Semantics ch. 9, "`@HostDocument` and
+# its forms": the supplier maps a place's path and element to a blueprint of that
+# element's output; "How a supplier answers": the supplier's blueprint "can read anything
+# the host's block binds", and a plain output is answered once, by a plain value). `@ 7`
+# is a blueprint of a `Nat`, bound by the host's `let`; the arm that matched `Pad.Num`
+# gives it. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Num of Element Nat:
+    name: Text
+
+tag Pad.Word of Element Text:
+    name: Text
+
+@child: @Text emit Pad.*
+@child:
+    n <- Pad.Num(name="a")                                   # 0
+    w <- Pad.Word(name="b")                                  # 1
+    @ "{w}{n}"
+
+@page: @unit
+@page:
+    let @seven = @ 7
+    ((got, ignore)) <- @HostDocument @child, \|p, e| match e:   # 0/[p]
+        Pad.Num(..): @seven
+        Pad.Word(..): @ "w"
+    Ui.Label($text=$"{got}")                                 # 1

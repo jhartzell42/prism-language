@@ -1,0 +1,20 @@
+# The tests of sem-ch09-host-dynamic-answer-late.
+emit Ui.* | Fs.*
+use App.*
+use Fs.*
+
+test a_pushed_place_answers, @redirect:
+    with Fs.Contents(path="/etc/real") = ~ Contents(text="first"), build
+        => expect Ui.Label(text="first")
+    push Fs.Contents(path="/etc/real") = ~ Contents(text="second")
+        => expect Ui.Label(text="first")
+    compute
+        => expect Ui.Label(text="second")
+
+test a_let_below_answers, @later:
+    build
+        => expect Ui.Label(text="first")
+    click at 0
+        => expect Ui.Label(text="first")
+    compute
+        => expect Ui.Label(text="second")

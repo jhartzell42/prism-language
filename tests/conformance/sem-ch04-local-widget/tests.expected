@@ -1,0 +1,8 @@
+# Derived by hand from Semantics ch. 4 ("anywhere an expression is wanted, `@widget:` does"; a blueprint builds wherever it stands bare) and ch. 8 (a widget block is transparent: its places take the caller's next numbers): the local blueprint is built once per bare line.
+test a_local_widget_is_built_twice
+
+tick 0
+  added:
+    0: Ui.Label(text="line 7")
+    1: Ui.Label(text="line 7")
+    2: Ui.Label(text="end")

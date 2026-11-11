@@ -1,0 +1,25 @@
+# "Refutable patterns stand in `match` arms, clauses, and `given:` binds; `let`, lambda
+# parameters, `for` binders and `<-` in a widget block take irrefutable ones" (Type System
+# ch. 2, "Patterns and exhaustiveness"). `(? x)` misses `nil` in each of the four. The
+# checker lets all four through, and prismc's back end refuses the names they bind ("the
+# name three, which nothing declares"); the checker should refuse each pattern. Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+use Ui.*
+
+First: fn [?Nat] -> Nat
+fn First xs = Fold xs, 0, \|acc, (? first)| acc + first
+
+@Measure: fn Nat -> @((Nat, ?Text))
+fn @Measure n:
+    Ui.Label($text=$"measure {n}")
+    @ ((n, (? "wide")))
+
+@main: @unit
+@main:
+    let ?maybe = ? 3
+    let (? three) = ?maybe
+    for (? each) <- [[(? 1), nil]]:
+        Ui.Label($text=$"{each}")
+    ((w, (? t))) <- @Measure 3
+    Ui.Label($text=$"{three} {First [[(? 1)]]} {w} {t}")

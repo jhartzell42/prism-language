@@ -1,0 +1,7 @@
+# The tests of sem-ch09-answer-constructor-value.
+emit Ui.*
+use App.*
+
+test a_constructor_mapped, @main:
+    build
+        => expect Ui.Label(text="2 answers")

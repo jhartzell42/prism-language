@@ -1,0 +1,8 @@
+# Derived by hand from Semantics ch. 8 (widget function applications and widget blocks are transparent: the parameter's label takes the next number where it is built, in `@Use`).
+test a_parameter_passed_on
+
+tick 0
+  added:
+    0: Ui.Label(text="outer")
+    1: Ui.Label(text="five")
+    2: Ui.Label(text="got 5")

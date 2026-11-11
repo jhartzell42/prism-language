@@ -1,0 +1,21 @@
+# Derived by hand from Semantics ch. 4 (a building `match` adds no path segment; its arm's result is the line's), ch. 8 (`<-` binds the result) and ruling TC (places counted as built: the last label takes the next number after the places the chosen arms built).
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="x")
+    1: Ui.Label(text="n 10")
+
+test soft_and_deep
+
+tick 0
+  added:
+    0: Ui.Label(text="deep")
+    1: Ui.Label(text="deeper")
+    2: Ui.Label(text="n 20")
+
+test soft_and_shallow
+
+tick 0
+  added:
+    0: Ui.Label(text="n 30")

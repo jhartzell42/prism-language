@@ -1,0 +1,14 @@
+# The tests of sem-ch04-generation-teardown.
+emit Ui.* | Test.*
+use App.*
+
+test an_old_generation_is_silent, @main:
+    build
+    click at 2/#0/0
+        => expect Ui.Label(text="page 1: 1 hits")
+    click at 0, click at 1
+        => expect Ui.Label(text="page 2: 0 hits")
+        => expect_none Ui.Label(text="page 1: 1 hits")
+    click at 1
+    click at 2/#1/0
+        => expect Ui.Label(text="page 2: 1 hits")

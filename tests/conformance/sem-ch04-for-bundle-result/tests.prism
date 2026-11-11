@@ -1,0 +1,10 @@
+# The tests of sem-ch04-for-bundle-result.
+emit Ui.*
+use App.*
+
+test a_bundle_gathered_field_by_field, @shop:
+    build
+    click at 1/[1]/0
+        => expect Ui.Label(text="sales 1")
+    compute
+        => expect Ui.Label(text="total 1")

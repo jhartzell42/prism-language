@@ -1,0 +1,17 @@
+# A row of a `for` passes its block's hold whole to a function that takes it so (Type
+# System ch. 4, Application; Semantics ch. 4: a row reads its block's names). `Wrap`
+# keeps the dynamic, and the inner `for` binds it as `$d`.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Wrap: fn $Nat -> [$Nat]
+fn Wrap $a = [[$a]]
+
+@rows: @unit
+@rows:
+    !inc <- Ui.Button($label=$"Inc")                             # 0
+    $count <- 0 then $count + 1 on !inc
+    for k, ignore <- $ {"x": unit}:                              # 1/[k]
+        for $d <- Wrap $count:                                   # 1/[k]/0/[0]
+            Ui.Label($text=$"{k} row {$d}")                      # 1/[k]/0/[0]/0

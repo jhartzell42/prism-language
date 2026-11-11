@@ -1,0 +1,21 @@
+tests/checker/neg/builtin-widget-without-argument.prism:17: error[mismatch]: `<-` binds a blueprint or an element; this is `fn $t20 -> @$t20`
+        $d <- @Distinct
+              ^^^^^^^^^
+tests/checker/neg/builtin-widget-without-argument.prism:17: error[ambiguous]: nothing decides `t20` in `^Eq t20`; annotate, or write a suffixed operator
+        $d <- @Distinct
+              ^^^^^^^^^
+  fix: annotate the value's type
+tests/checker/neg/builtin-widget-without-argument.prism:18: error[mismatch]: `<-` binds a blueprint or an element; this is `fn $(t22 ==> t23) -> @$(t22 ==> $t23)`
+        $m <- @PerKey
+              ^^^^^^^
+tests/checker/neg/builtin-widget-without-argument.prism:18: error[ambiguous]: nothing decides `t23` in `^Eq t23`; annotate, or write a suffixed operator
+        $m <- @PerKey
+              ^^^^^^^
+  fix: annotate the value's type
+tests/checker/neg/builtin-widget-without-argument.prism:19: error[mismatch]: `<-` binds a blueprint or an element; this is `fn unbounded fn t25 -> t26, t25 -> @!t26`
+        r <- @Run
+             ^^^^
+tests/checker/neg/builtin-widget-without-argument.prism:20: error[mismatch]: `<-` binds a blueprint or an element; this is `fn fn t28, t29 -> ((t28, ?t30)), t28, !t29 -> @!t30`
+        $s <- @Machine
+              ^^^^^^^^
+6 errors

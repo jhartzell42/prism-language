@@ -1,0 +1,11 @@
+# A template call that leaves out an argument of the function it calls is refused by the
+# checker, as a call is (Templates ch. 2), so the back end's guard "a template call that
+# fills no argument at place j" (lower/templates.prism) is not reached. Written by Claude
+# on the claude-lowering branch; subject to change.
+Quote: fn Text, Text -> Text
+fn Quote mark, text = "{mark} {text}"
+
+Broken: fn Text -> Text
+fn Broken t = inline_text <txt>
+<@Quote text={{t}}/>
+</txt>

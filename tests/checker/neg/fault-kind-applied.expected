@@ -1,0 +1,5 @@
+tests/checker/neg/fault-kind-applied.prism:11: error[mismatch]: `Fs.NotFound` is a fault kind and takes no arguments: its value is the tag
+    fn Gone n = Error(kind=Fs.NotFound(), message="gone {n}")
+                           ^^^^^^^^^^^^^
+  fix: write `Fs.NotFound`
+1 error

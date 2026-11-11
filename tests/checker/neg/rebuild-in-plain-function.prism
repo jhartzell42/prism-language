@@ -1,0 +1,15 @@
+# `rebuild` builds its block anew for each value of its dynamic (Semantics ch. 4), and
+# `@ v` lifts a value into the widget being built: a plain function builds nothing, so a
+# `rebuild` is a blueprint there, `@$Nat`, as a building `if` is (`@t`), and not the
+# dynamic the signature names. prismc's back end refuses it today ("a `rebuild` outside a
+# widget block as a value"); the checker should, as a mismatch.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+use Ui.*
+
+$Twice: fn $Nat -> $Nat
+fn $Twice $n = rebuild $n: @ _ * 2
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{$Twice ($ 1)}")

@@ -1,0 +1,19 @@
+# Derived by hand from Semantics ch. 7 (R3: a dynamic's update event fires at n with the value after n) and ch. 8 (`<-` binds the widget's result, here the clause's hold): each click writes the hold behind `$r`, and `!Updated $r` fires in that tick.
+test a_clause_widgets_result_is_heard
+
+tick 0
+  added:
+    0: Ui.Button(label="inc")
+    1: Ui.Label(text="1 heard 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="2 heard 1")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="3 heard 2")

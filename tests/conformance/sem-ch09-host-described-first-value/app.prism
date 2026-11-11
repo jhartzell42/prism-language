@@ -1,0 +1,29 @@
+# The first value of an element value placed in a hosted scope (Semantics ch. 9, "The
+# sandbox law": "a rewritten element (`Fs.File(path=(Within root, q), ..)`) is how a jail
+# confines"; "A forwarded answer is this tick's input"; ch. 8, "A new place's first
+# value"). `@jail` answers the child's watch with a watch of the same file under /jail,
+# which the World answers; `@page` hosts the jail and forwards everything, so the World's
+# first value and its pushes reach the child through two hosts in their own ticks.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Fs.*
+test mod Tests
+use Fs.*
+
+ShowResponse: fn ~Contents -> Text
+fn ShowResponse (~ c) = c.text
+fn ShowResponse (Error(..)) = "(cannot read)"
+
+@child: @unit
+@child:
+    $~motd <- Fs.Contents(path="motd")                          # 0
+    Ui.Label($text=$"{ShowResponse $~motd}")                     # 1
+
+@jail: @unit
+@jail:
+    ignore <- @HostDocument @child, \|p, e| match e:            # 0/[p]
+        Fs.Contents(path=q): @Element (Fs.Contents(path="/jail/{q}"))
+        otherwise: @Element e
+
+@page: @unit
+@page:
+    ignore <- @HostDocument @jail, \|q, e| @Element e           # 0/[q]

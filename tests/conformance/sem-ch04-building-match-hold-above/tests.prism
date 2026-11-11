@@ -1,0 +1,8 @@
+# The tests of sem-ch04-building-match-hold-above.
+emit Ui.*
+use App.*
+use Ui.*
+
+test a_hold_above_reads_the_arms_result, @main:
+    build
+    click at 2

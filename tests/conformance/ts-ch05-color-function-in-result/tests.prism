@@ -1,0 +1,7 @@
+# The tests of ts-ch05-color-function-in-result.
+emit Ui.*
+use App.*
+
+test it_builds, @page:
+    build
+        => expect Ui.Label(text="7")

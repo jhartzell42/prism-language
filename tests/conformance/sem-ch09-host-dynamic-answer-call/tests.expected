@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 9 as ruled (round 3 DY): a supplier's dynamic answer gives the place its first value in the birth tick, and each later change is a push delivered the next tick, which is owed; ch. 9's forwarding (re-emission at host/[p]/0).
+test a_call_result_answers
+
+tick 0
+  added:
+    0: Ui.Button(label="change")
+    1/[1]/0: Ui.Label(text="first!")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1/[1]/0: Ui.Label(text="second!")

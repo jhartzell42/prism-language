@@ -1,0 +1,9 @@
+# The tests of sem-ch09-element-pattern-event-field.
+emit Ui.* | Pad.*
+use App.*
+use Ui.*
+
+test a_pattern_binds_an_event_field, @page:
+    build
+    click at 0
+    click at 0

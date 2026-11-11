@@ -1,0 +1,9 @@
+# The tests of sem-ch07-updated-parameter.
+emit Ui.*
+use App.*
+use Ui.*
+
+test a_widget_hears_its_parameter, @page:
+    build
+    click at 0
+    click at 0

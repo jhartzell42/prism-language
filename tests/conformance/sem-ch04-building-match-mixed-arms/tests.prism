@@ -1,0 +1,15 @@
+# The tests of sem-ch04-building-match-mixed-arms.
+emit Ui.*
+use App.*
+
+test loud, @loud:
+    build
+        => expect Ui.Label(text="n 10")
+
+test soft_and_deep, @deep:
+    build
+        => expect Ui.Label(text="n 20")
+
+test soft_and_shallow, @shallow:
+    build
+        => expect Ui.Label(text="n 30")

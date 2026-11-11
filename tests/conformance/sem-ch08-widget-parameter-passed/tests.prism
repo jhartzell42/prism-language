@@ -1,0 +1,7 @@
+# The tests of sem-ch08-widget-parameter-passed.
+emit Ui.*
+use App.*
+
+test a_parameter_passed_on, @main:
+    build
+        => expect Ui.Label(text="got 5")

@@ -1,0 +1,22 @@
+# A hosted child's dynamic result passed whole to a function that takes it so (Type
+# System ch. 4, Application; Semantics ch. 9: `@HostDocument` gives the child's result
+# beside its document). Written by Claude on the claude-lowering branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Wrap: fn $Nat -> [$Nat]
+fn Wrap $a = [[$a]]
+
+@child: @$Nat
+@child:
+    !inc <- Ui.Button($label=$"inc")                             # 0
+    $n <- 0 then $n + 1 on !inc
+    @ $n
+
+@rows: @unit
+@rows:
+    (($r, ignore)) <- @HostDocument @child, \|p, e| @Element e    # 0/[p]
+    for $d <- Wrap $r:                                           # 1/[0]
+        Ui.Label($text=$"row {$d}")                              # 1/[0]/0

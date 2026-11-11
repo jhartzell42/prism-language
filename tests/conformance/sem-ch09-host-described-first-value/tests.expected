@@ -1,0 +1,26 @@
+# Derived by hand from Semantics ch. 9 ("A forwarded answer is this tick's input": the element the supplier places is the host's own at pos/[p]/0, and the World's first value and pushes for it are the child's place's, with no delay; a forwarding layer adds no tick and nests the path) and ch. 8 ("A new place's first value"; pushes are keyed by the element's value).
+test jailed
+
+tick 0
+  added:
+    0/[0]/0: Fs.Contents(path="/jail/motd")
+    0/[1]/0: Ui.Label(text="inside")
+
+tick 1
+  in:
+    Fs.Contents(path="/jail/motd") = ~ Contents(text="moved")
+  changed:
+    0/[1]/0: Ui.Label(text="moved")
+
+test jailed_and_hosted
+
+tick 0
+  added:
+    0/[0/[0]/0]/0: Fs.Contents(path="/jail/motd")
+    0/[0/[1]/0]/0: Ui.Label(text="inside")
+
+tick 1
+  in:
+    Fs.Contents(path="/jail/motd") = ~ Contents(text="moved")
+  changed:
+    0/[0/[1]/0]/0: Ui.Label(text="moved")
