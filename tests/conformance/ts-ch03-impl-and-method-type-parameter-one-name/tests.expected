@@ -1,0 +1,8 @@
+# Derived by hand from Type System ch. 3 (the impl at `Nat` and the impl at `[b]` answer `Pair`; `Show` of an array and of a text). Never run.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="7 with True")
+    1: Ui.Label(text="[[1, 2]] with \"t\"")
+    2: Ui.Label(text="[[\"a\"]] with True")
