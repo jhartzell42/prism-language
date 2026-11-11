@@ -9,7 +9,7 @@ test mod Tests
 
 type Response = choice:
     Accepted
-    Error Text
+    Declined Text
 derive ^Eq, ^Show
 
 tag Seat.Request of Element !Response:
@@ -24,7 +24,7 @@ fn @Ask !requests:
 
 Said: fn Response -> Text
 fn Said Accepted = "accepted"
-fn Said (Error why) = "refused: {why}"
+fn Said (Declined why) = "refused: {why}"
 
 @guest: @unit
 @guest:
