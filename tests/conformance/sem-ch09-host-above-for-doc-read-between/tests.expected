@@ -1,0 +1,9 @@
+# Derived by hand from Semantics ch. 7 as ruled (round 3 ST: a builder in a tick's construction step reads a structural dynamic's value after the tick, the structure as built), ch. 8 (the order of a block's lines decides positions: the host is 1, the `rebuild` 2, the `for` 3) and ch. 9 (a place's first value is read in its birth tick; the child's document has its answered place and its label): the child's label reads the one row of the build, and the `rebuild` reads the document's two places.
+test the_builder_between_reads_the_document
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/[1]/0: Ui.Label(text="1: none")
+    2/#0/0: Ui.Label(text="2 places")
+    3/[1]/0: Ui.Label(text="one")
