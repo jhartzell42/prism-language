@@ -147,17 +147,20 @@ Bundles
   A pattern inside the `let`'s tuple pattern over a late plain part names its plain
   names late too (`let ((((step, noun)), !go)) = both`,
   sem-ch08-late-part-bundle-let-nested-pattern-above).
-  Left, no tests: lower/node/def.prism (`PreBindWholeParts`, `LateBundleParts`: "a late
-  plain part of the bundle .. read at its block's build") a late plain part under a
-  pattern inside the tuple pattern that binds no name (`let ((((ignore, ignore)), !go))
-  = both`), which reads the part at the build to match nothing;
-  a late bundle with a bundle inside read as one value.
-  (`PreBindWhole`, `MarkLateBundle`: "read as one value at its block's build") marks a
-  late bundle's value at the build, which no known line reads: an element's field over
-  it is live, a `let` over it late, a hold that starts from it set late, and a building
-  line that takes it (a host whose supplier gives `@ both`) is a deferred row, which
-  reads the block's getter through its parent (`WholeOfBlock`,
-  sem-ch09-host-late-bundle-answer-above). Unsure: G.
+  A pattern there that binds no name (`let ((((ignore, ignore)), !go)) = both`) reads
+  nothing (sem-ch08-late-part-bundle-let-nested-pattern-above-nameless).
+  Left, no test: a late bundle with a bundle inside read as one value.
+  Left, R: the build-side markers of a late name (lower/node/def.prism `BindLate`,
+  `MarkLateLets`: "the late result .. read at its block's build"; `PreBindWhole`,
+  `MarkLateBundle`: "read as one value at its block's build"; `PreBindWholeParts`,
+  `LateBundleParts`: "a late plain part of the bundle ..") are reached by one kind of
+  line: a place whose first value is asked in the block's build (a plain output, or a
+  `$` output outside a late host's scope) and whose constant field reads the late name
+  (`c <- Pad.Count(name="count {n}")` above `n <- match ..`). Test, red:
+  sem-ch04-late-value-above-in-plain-place-field. An element's field with no output
+  asked at the build is live, a `let` over the name late, a hold that starts from it
+  set late, and a building line that takes it a deferred row
+  (sem-ch09-host-late-bundle-answer-above).
   A dynamic part of a named bundle read by a row of a row is read through a getter of
   the row between (`ThroughGetter`, sem-ch04-named-bundle-in-row-of-row).
 - A `rebuild` whose block ends on a bundle a line named whole (`@ both`) is lowered

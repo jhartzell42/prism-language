@@ -2058,6 +2058,9 @@ fn BindNamedPart wx, benv, menv, p, ty, m, ?built = match ((p.kind, m)):
             otherwise: update w:
                 &_.build <= Push &_.build, (InternalBugDo "the late name `{SNameKey n}` of a pattern over a late bundle's plain part, which has no getter or which the pattern does not bind")
         ((wx2, benv, menv))
+    # a pattern that binds no name (`((ignore, ignore))`) reads nothing: no pattern
+    # that can fail stands in a `let`
+    ((ignore, (BnLocal ignore, ignore, ignore))) if (Len (BinderNames p)) == 0: ((wx, benv, menv))
     ((ignore, (BnLocal ignore, ignore, ignore))): match ?built:
         ? (BnLocal ex, mode, t):
             let v = Own (VlPlace ex, mode, t)
