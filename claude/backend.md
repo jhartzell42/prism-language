@@ -1059,7 +1059,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
     argument), and the supplier's closure captures what the argument reads from the
     caller's environment (`LambdaCaptures`). An answer in a function of the block the
     supplier calls (`fn @Supply e` beside the host's line) is the supplier's text too:
-    the function is inlined where it is called, and `AnswerTexts` reads its clauses.
+    the function is inlined where it is called, `AnswerTexts` reads its clauses, and
+    the supplier's closure captures what they read (`LambdaCaptures` closes its reads
+    over the block's local functions). A widget function that is a value with a `$`
+    parameter (a named supplier, `fn @Supply $count, e`) takes the dynamic whole
+    (`WholeFns`): the host's line makes the live dynamic (`WholeArgs`), the closure
+    captures it, and the function's answer over it is that `Dynamic` mapped into the
+    tag's case (`?HeldDynamic`).
     A computed answer in flight to a place whose key left is
     dropped. Nested hosts add one tick per computing layer and none per
     forwarding layer.
@@ -1150,7 +1156,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A tag whose output is a bundle** (Type System ch. 2, "Bundles and sparse tuples":
   `((WindowId, !WindowInput))`, `((!Text, $Text))`, `((Nat, $Text))`, `(($Text, $Nat))`,
   `((!Text, !Nat))`) is one mechanism for any mix of plain, `$` and event parts
-  (`BundleOutputOf`, the node's `BundlePlace`s).
+  (`BundleOutputOf`, the node's `BundlePlace`s). A plain part the line's pattern takes
+  apart (`((((id, owner)), $state)) <- Pad.Port(..)`) is handed back as the build's
+  value and matched once by that pattern, each name moved into its field (`BindParts`,
+  `BindPatternResult`).
   - **The state** is the plain and `$` parts' values, one part itself, several a tuple in
     the tag's order. It is the place's first value (the World's first-value query, or the
     enclosing host's) and what each push after it holds, keyed by the element. A plain
