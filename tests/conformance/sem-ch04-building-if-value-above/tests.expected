@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": any line may use any name the block binds; the order of a group's lines decides positions and nothing else), ch. 8 (`<-` binds the branch's plain result) and ruling TC (places counted as built: the `else` branch builds place 1, so the last label is 2; the first branch builds none, so it is 1). Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="tile 10")
+    1: Ui.Label(text="loud")
+    2: Ui.Label(text="below 10")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="tile 20")
+    1: Ui.Label(text="below 20")
