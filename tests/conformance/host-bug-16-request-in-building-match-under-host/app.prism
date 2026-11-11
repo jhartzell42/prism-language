@@ -1,0 +1,71 @@
+# A table for the tally document: tellers and viewers come and go by the table's buttons.
+# The root of the hosting library's tests.
+# Written by Claude (an implementation agent), 11 November 2026; evidence for Part IV;
+# subject to change.
+emit Ui.* | Tell.* | View.*
+mod Documents
+mod Tally
+test mod Tests
+use Documents.*
+use Tally.*
+
+# What sits at a teller's seat: a person with a button, or a script that adds one when it
+# is told the total has reached a number.
+type Sitting = choice:
+    Person
+    Eager Nat
+derive ^Eq, ^Ord, ^Show
+
+Said: fn Response -> Text
+fn Said Accepted = "accepted"
+fn Said (Declined why) = "declined: {why}"
+
+Seen: fn ?TellerView -> Text
+fn Seen nil = "(loading)"
+fn Seen (? view) = "total {view.total}, {if view.mayAdd: "may add" else: "may not add"}"
+
+?Reached: fn Nat, ?TellerView -> ?Add
+fn ?Reached n, nil = nil
+fn ?Reached n, (? view) = if view.total == n: ? (Add 1) else: nil
+
+# A teller. It emits `Ui.*` and `Tell.*` and nothing else: it reaches the tally through
+# its seat's two elements only.
+@Teller: fn Teller, Sitting -> @unit emit Ui.* | Tell.*
+fn @Teller seat, sitting:
+    let name = NameOf seat
+    $?view <- Tell.Query($query=$ Whole)                                   # 0
+    match sitting:
+        Person:
+            !one <- Ui.Button($label=$"{name} +1")
+            !two <- Ui.Button($label=$"{name} +2")
+            !response <- Tell.Request(!requests=((Add 1) on !one <| (Add 2) on !two))
+            $last <- "nothing yet" then Said !response
+            Ui.Label($text=$"{name}: {Seen $?view}; {$last}")
+        Eager n:
+            !response <- Tell.Request(!requests=(!Filter (?Reached n, (!Updated $?view))))
+            $last <- "nothing yet" then Said !response
+            Ui.Label($text=$"{name} (eager at {n}): {Seen $?view}; {$last}")
+
+ViewerName: fn Viewer -> Text
+fn ViewerName (Viewer name) = name
+
+Watched: fn ?Nat -> Text
+fn Watched nil = "(loading)"
+fn Watched (? total) = "total {total}"
+
+# A viewer: `Ui.*` and `View.*`. `View.*` has a query and no request.
+@Watcher: fn Viewer, unit -> @unit emit Ui.* | View.*
+fn @Watcher seat, sitting:
+    $?total <- View.Query($query=$ Whole)
+    Ui.Label($text=$"{ViewerName seat} watches: {Watched $?total}")
+
+let ada = Teller "ada"
+let bob = Teller "bob"
+let cy = Viewer "cy"
+
+@Seats: fn $Tally, !(Place ==> Response) -> @![Asked Tally] emit Ui.*
+fn @Seats $state, !responses = @HostSeats ($ {ada: Person, bob: Person}), @Teller, ($ {cy: unit}), @Watcher, $state, !responses
+
+@table: @unit
+@table:
+    @InMemory empty, @Seats

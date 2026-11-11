@@ -1,0 +1,126 @@
+# Tally: a tiny document. Tellers add to a shared count that stops at five, and nobody
+# adds twice in a row; viewers watch. A teller is told the total and whether it may add;
+# a viewer is told the total and nothing else.
+# Written by Claude (an implementation agent), 11 November 2026; evidence for Part IV;
+# subject to change.
+emit rest | Tell.* | View.*
+use Documents.*
+
+# ---- the state and its rules: plain functions
+
+type Tally = record:
+    total: Nat
+    ?last: Text                          # who added last
+derive ^Eq, ^Show
+
+let empty = Tally(total=0, ?last=nil)
+
+# ---- the roles: each a seat type
+
+type Teller = choice:
+    Teller Text
+derive ^Eq, ^Ord, ^Show
+
+type Viewer = choice:
+    Viewer Text
+derive ^Eq, ^Ord, ^Show
+
+type Add = choice:
+    Add Nat
+derive ^Eq, ^Show
+
+type Asks = choice:
+    Whole
+derive ^Eq, ^Show
+
+# A viewer's request type has no value a viewer's language can send: the `View` family
+# has no request tag.
+type NoRequest = choice:
+    NoRequest
+derive ^Eq, ^Show
+
+type TellerView = record:
+    total: Nat
+    mayAdd: Bool
+derive ^Eq, ^Show
+
+NameOf: fn Teller -> Text
+fn NameOf (Teller name) = name
+
+AddTo: fn Tally, Text, Nat -> Stepped Tally
+fn AddTo tally, name, n = if tally.?last == ? name: Denied "not your turn: {name} added last" else:
+    if tally.total + n > 5: Denied "the count stops at five" else: Next Tally(total=tally.total + n, ?last=(? name))
+
+impl ^Seat Teller:
+    type State = Tally
+    type Request = Add
+    type Query = Asks
+    type Told = TellerView
+    fn Step tally, seat, (Add n) = AddTo tally, (NameOf seat), n
+    fn Read tally, seat, asks = TellerView(total=tally.total, mayAdd=(tally.?last != (? (NameOf seat)) and tally.total < 5))
+
+impl ^Seat Viewer:
+    type State = Tally
+    type Request = NoRequest
+    type Query = Asks
+    type Told = Nat
+    fn Step tally, seat, request = Denied "a viewer asks for no change"
+    fn Read tally, seat, asks = tally.total
+
+# ---- the two languages, one per role
+
+tag Tell.Request of Element !Response:
+    !requests: Add
+
+tag Tell.Query of Element $?TellerView:
+    $query: Asks
+
+tag View.Query of Element $?Nat:
+    $query: Asks
+
+# ---- hosting: one function per role, and the document's `@HostSeats`
+
+!AddsOf: fn Elem (rest | Tell.*) -> !Add
+fn !AddsOf e = match e:
+    Tell.Request(!requests=!r): !r
+    otherwise: never
+
+# The tellers. Each seat is one entry of the `for`, with its own host: the seat is the
+# entry's key, so no element names it.
+@HostTellers: fn $(Teller ==> v), (fn Teller, v -> @a emit rest | Tell.*), $Tally, !(Place ==> Response) -> @![Asked Tally] emit rest where v: ^Ord
+fn @HostTellers $seats, Guest, $state, !responses:
+    !news <- @News $state, $seats
+    !heard <- for both, $u <- (Sittings $seats):                    # [seat and sitting]
+        let seat = SeatOf both
+        let !now = !news
+        let !mine = !responses
+        $?told <- nil then ? (Read !now, seat, Whole)               # this seat's live answer
+        ((ignore, $doc)) <- @HostDocument (Guest seat, (SittingOf both)), \|p, e| match e:
+            Tell.Request(..): @ !Filter (?ResponseTo seat, p, !mine)
+            Tell.Query(..): @ $?told
+            otherwise: @Element e
+        !asked <- for p, $e <- $doc:                                # each request place
+            !r <- @Switch (!AddsOf $e)
+            @ Asking seat, p, !r
+        @ !asked
+    @ InOrder !heard
+
+# The viewers: the same, with no request arm, since `View.*` has no request tag.
+@HostViewers: fn $(Viewer ==> v), (fn Viewer, v -> @a emit rest | View.*), $Tally -> @unit emit rest where v: ^Ord
+fn @HostViewers $seats, Guest, $state:
+    !news <- @News $state, $seats
+    for both, $u <- (Sittings $seats):
+        let seat = SeatOf both
+        let !now = !news
+        $?told <- nil then ? (Read !now, seat, Whole)
+        ignore <- @HostDocument (Guest seat, (SittingOf both)), \|p, e| match e:
+            View.Query(..): @ $?told
+            otherwise: @Element e
+
+# The document's seats: a live map per role, and per role the function that builds a
+# seat's guest from what sits there.
+@HostSeats: fn $(Teller ==> v), (fn Teller, v -> @a emit rest | Tell.*), $(Viewer ==> w), (fn Viewer, w -> @b emit rest | View.*), $Tally, !(Place ==> Response) -> @![Asked Tally] emit rest where v: ^Ord, w: ^Ord
+fn @HostSeats $tellers, TellerGuest, $viewers, ViewerGuest, $state, !responses:
+    !asked <- @HostTellers $tellers, TellerGuest, $state, !responses    # tellers fold first
+    @HostViewers $viewers, ViewerGuest, $state
+    @ !asked
