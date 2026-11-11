@@ -229,7 +229,11 @@ fn WholeFns lx:
     # `Dynamic` with no read point in the body, so the function gives its time whole and its
     # callers read it (an implementation choice: `e.$field` is a `$T` either way, Type System
     # ch. 4)
-    let bySig = Fold fns, {}, \|m, ((d, ignore, v))| if (IsWholeSig v.scheme.ty) or HasElementParam v.scheme.ty: Insert m, d.qk, True else: m
+    # and a widget function that is a value (`IsValueWidget`: a named supplier, emitted as
+    # a function giving its blueprint) with a `$` parameter: its answer is over the
+    # dynamic itself (`@ $count`, `?HeldDynamic`), which has no read point in a function,
+    # so it takes the caller's live dynamic (`WholeArgs`) and its body lifts by mapping
+    let bySig = Fold fns, {}, \|m, ((d, ignore, v))| if (IsWholeSig v.scheme.ty) or (HasElementParam v.scheme.ty) or ((HasDynamicParam v.scheme.ty) and IsValueWidget lx, d.qk): Insert m, d.qk, True else: m
     # and those a call takes with time below the top of what it gives (`$Sel (True on
     # !swap), $a, $b`, a `!$Nat`: lifted over a plain parameter, the call gives the dynamic
     # it returns whole, Type System ch. 4)
@@ -289,6 +293,11 @@ fn HasElementParam t = match t:
     TyFn ignore, ps, r: (not (HasBlueprint r)) and Fold ps, False, \|seen, p| seen or match Peel p:
         TyElem ignore, ignore: True
         otherwise: False
+    otherwise: False
+
+HasDynamicParam: fn Ty -> Bool
+fn HasDynamicParam t = match t:
+    TyFn ignore, ps, ignore: Fold ps, False, \|seen, p| seen or (LayerOf p) == LyDyn
     otherwise: False
 
 IsWholeSig: fn Ty -> Bool
