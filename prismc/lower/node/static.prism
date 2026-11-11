@@ -1570,7 +1570,9 @@ fn BindEventParam wx2, be, me, nkey, spelled, pty, r:
     let lx = wx2.lx
     let b = BnEv r, (OutTyOf lx, (Peel pty))
     let et = OutTyOf lx, (Peel (Peel pty))
-    let ((rs, wx3)) = FreshName wx2, "{spelled}_v"
+    # (named apart from a bound event's own value port, `{name}_v_port`, `PreBindName`: a
+    # parameter and the caller's event may be spelled alike)
+    let ((rs, wx3)) = FreshName wx2, "{spelled}_arg_v"
     let pf = "{rs}_port"
     let pt = OutRc (OutPort et)
     let wx4 = update (Connect wx3, r, (SkPort rs)):
