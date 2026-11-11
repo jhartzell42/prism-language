@@ -281,6 +281,7 @@ fn CppType cp, t = match t:
     OutNamed (RefRuntime "std::Result"), [[a, b]]: "crate::prelude::Expected<{CppType cp, a}, {CppType cp, b}>"
     OutNamed n, [[]]: OwnTypePath cp, n
     OutNamed n, args: "{OwnTypePath cp, n}<{CppTypes cp, args}>"
+    OutOpt (OutRefMut i): "{CppType cp, i}*"
     OutOpt i: "::std::optional<{CppType cp, i}>"
     OutRes i: "crate::prelude::Fallible<{CppType cp, i}>"
     OutTuple ts: "::std::tuple<{CppTypes cp, ts}>"
@@ -290,6 +291,9 @@ fn CppType cp, t = match t:
     OutRef (OutFn ps, r): "const ::std::function<{CppType cp, r}({ParamTypes cp, ps})>&"
     OutRef (OutSlice i): "::std::span<const {CppType cp, i}>"
     OutRef i: "const {CppType cp, i}&"
+    # a named lens's result: the part itself, or a pointer to an array's entry that may be
+    # absent (`part_mut`)
+    OutRefMut i: "{CppType cp, i}&"
     OutJobFn a, b: "::prism_rtl::Fn<::prism_rtl::JobRef<{CppType cp, b}>({CppType cp, a})>"
     OutJob b: "::prism_rtl::JobRef<{CppType cp, b}>"
     OutEvent i: "crate::prelude::Event<{CppType cp, i}>"

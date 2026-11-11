@@ -1192,7 +1192,7 @@ fn DefItems lx, d, roots:
                             BodyBlock b: NodeItems (NodeDefOf lx, d.qk, c.params, b, v.scheme, True)
                             otherwise: [[ItRefused "`{d.name}`, a root widget whose body is one expression"]]
                         otherwise: [[ItRefused "`{d.name}`, a root widget of several clauses"]]
-                otherwise:
+                otherwise: if IsLensText d.qk: Each (LensDefs lx, d.qk, clauses, v.scheme), \|f| ItFn f else:
                     let f = ItFn (FnDefOf lx, d.qk, clauses, v.scheme)
                     if HasText lx.unbs, d.qk: [[f, ItJob (JobDefOf lx, d.qk, clauses, v.scheme)]] else: [[f]]
         DbLet l: [[ItFn (LetGetter lx, d.qk, l)]]

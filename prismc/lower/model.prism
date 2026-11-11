@@ -142,6 +142,8 @@ type OutTy = choice:
     OutGen Text
     OutRc OutTy
     OutRef OutTy
+    # What a named lens takes and gives back (Semantics ch. 5): Rust's `&mut T`, C++'s `T&`.
+    OutRefMut OutTy
     OutPod
     OutShowAny
     OutHold OutTy

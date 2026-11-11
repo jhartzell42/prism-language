@@ -654,6 +654,22 @@ pub fn set_index<A: Clone>(xs: &mut Array<A>, i: &Nat, v: Option<A>) {
     }
 }
 
+/// The part a named lens names at an array's index (Semantics ch. 5): the entry in place,
+/// or none past the array's end.
+pub fn part_mut<'a, A: Clone>(xs: &'a mut Array<A>, i: &Nat) -> Option<&'a mut A> {
+    xs.get_mut(ix(i))
+}
+
+/// `&Lens r <= v` where the lens ends at an array's index: `? x` writes the entry, as
+/// `set_index` does; an array has no entry to remove, and none to write past its end.
+pub fn set_part<A>(part: Option<&mut A>, v: Option<A>) {
+    match (part, v) {
+        (Some(place), Some(x)) => *place = x,
+        (None, Some(_)) => panic!("a lens to an index the array does not hold"),
+        (_, None) => panic!("a lens to an array's index set to `nil`: an array's entry cannot be removed"),
+    }
+}
+
 /// `&m[k] <= v` in an `&` block: `? x` writes the key, `nil` removes it.
 pub fn set_key<K: Ord + Clone, V: Clone>(m: &mut Map<K, V>, k: &K, v: Option<V>) {
     match v {

@@ -294,13 +294,15 @@ fn ?RefBinder (? fb) = match fb.?second:
 fn ?RefBinder nil = nil
 
 # A reference path: `&_`, a local `&x`, or a path from one.
-IsRefPath: fn Expr -> Bool
+IsRefPath: unbounded fn Expr -> Bool
 fn IsRefPath e = match e.kind:
     EName n: (HasPrefix n.sigils, "&")
     EField r, ignore, ignore: IsRefPath r
     EIndex r, ignore: IsRefPath r
     EGroup x: IsRefPath x
-    otherwise: False
+    otherwise: match ?LensApplied e:
+        ? ((ignore, argument)): IsRefPath argument
+        nil: False
 
 UpdForValues: unbounded fn Lx, Env, ?ForBinders, Expr, Block, Range, Ty -> Do
 fn UpdForValues lx, env, ?binders, source, body, span, sty:
@@ -393,7 +395,12 @@ fn PlaceOf lx, env, e = match e.kind:
             otherwise: HelperRef "at_mut"
         XDeref (XCall f, [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k)]])
     EGroup x: PlaceOf lx, env, x
-    otherwise: InternalBug "a reference path this back end does not lower"
+    # a named lens applied: what its reference names (`*acc(&mut this)`)
+    otherwise: match ?LensCall lx, e:
+        ? ((qk, argument)):
+            if LensEndsAtIndex lx, qk, (Len lx.g.defs): InternalBug "the place of a lens that ends at an index, which is set and read whole"
+            else: XTarget (LensCallEx lx, env, qk, argument)
+        nil: InternalBug "a reference path this back end does not lower"
 
 # A reference path's type: the checker's where it recorded one, else from the path's own
 # parts (an index place's element, a field place's declared type).
@@ -427,4 +434,119 @@ fn Assign lx, env, target, v = match target.kind:
             otherwise: HelperRef "set_index"
         DoExpr (XCall f, [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k), v]])
     EGroup x: Assign lx, env, x, v
-    otherwise: DoAssign (PlaceOf lx, env, target), v
+    otherwise: match ?LensCall lx, target:
+        # a lens that ends at an array's index: the value first (it may read what the lens
+        # borrows), then the entry written through the reference (`set_part`)
+        ? ((qk, argument)) if LensEndsAtIndex lx, qk, (Len lx.g.defs):
+            let held = "part{target.span.start}"
+            DoExpr (XBlock [[(DoLet (PaBind held), v)]], (XCall (HelperRef "set_part"), [[(LensCallEx lx, env, qk, argument), (XVar held)]]))
+        otherwise: DoAssign (PlaceOf lx, env, target), v
+
+# ---------------------------------------------------------------------------------------
+# Named lenses (Semantics ch. 5, "References and lens paths"; claude/backend.md)
+# ---------------------------------------------------------------------------------------
+
+# A named lens applied, `&Acc r`: the lens's key and its argument.
+?LensCall: unbounded fn Lx, Expr -> ?((Text, Expr))
+fn ?LensCall lx, e = match ?LensApplied e:
+    ? ((n, argument)):
+        let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
+        match ?qk:
+            ? qk: ? ((qk, argument))
+            nil: nil
+    nil: nil
+
+# The reference a lens gives back for an argument: its function over the argument's place
+# (`acc_l(&mut this.regs)`; C++ passes the place itself).
+LensCallEx: unbounded fn Lx, Env, Text, Expr -> Ex
+fn LensCallEx lx, env, qk, argument = XCall (ValueRef lx, qk), [[(XRefMut (PlaceOf lx, env, argument))]]
+
+# A lens's body, in the module that defines it.
+?LensBody: fn Lx, Text -> ?((Text, Expr))
+fn ?LensBody lx, qk = Fold lx.g.defs, nil, \|?found, d| match ?found:
+    ? ignore: ?found
+    nil: if d.qk != qk: nil else: match d.body:
+        DbFn clauses: match clauses[0]:
+            ? c: match c.body:
+                BodyExpr e: ? ((d.home, e))
+                BodyBlock ignore: nil
+            nil: nil
+        otherwise: nil
+
+# Whether a lens's path ends at an array's index, its own or that of the lens its body
+# applies: its part is the entry that may be absent, and its reference an optional one
+# (`part_mut`). `fuel` bounds the walk from lens to lens by the program's definitions.
+LensEndsAtIndex: unbounded fn Lx, Text, Nat -> Bool
+fn LensEndsAtIndex lx, qk, fuel = match fuel -? 1:
+    nil: False
+    ? left: match ?LensBody lx, qk:
+        ? ((home, body)):
+            let there = update lx:
+                &_.home <= home
+            PathEndsAtIndex there, body, left
+        nil: False
+
+PathEndsAtIndex: unbounded fn Lx, Expr, Nat -> Bool
+fn PathEndsAtIndex lx, e, fuel = match e.kind:
+    EGroup x: PathEndsAtIndex lx, x, fuel
+    EIndex ignore, ignore: True
+    otherwise: match ?LensCall lx, e:
+        ? ((qk, ignore)): LensEndsAtIndex lx, qk, fuel
+        nil: False
+
+# A lens's body as the reference it gives back: a path's place borrowed, an array's entry
+# that may be absent (`part_mut`), or the reference of the lens it applies.
+LensReference: unbounded fn Lx, Env, Expr -> Ex
+fn LensReference lx, env, e = match e.kind:
+    EGroup x: LensReference lx, env, x
+    EIndex r, k: XCall (HelperRef "part_mut"), [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k)]]
+    otherwise: match ?LensCall lx, e:
+        ? ((qk, argument)): LensCallEx lx, env, qk, argument
+        nil: XRefMut (PlaceOf lx, env, e)
+
+# A named lens as the target has it, two functions (claude/backend.md, "Named lenses"):
+# the reference, `fn acc_l(vm: &mut Vm) -> &mut Int` (one reference parameter: Rust's
+# lifetime elision is the book's rule; C++ `Int& acc_l(Vm& vm)`), which a set, an
+# accumulation, a `for` by reference and another lens go through; and the read,
+# `fn acc_l_get(vm: &Vm) -> Int`, the lens's body as the expression it also is, which a
+# reference in expression position calls (the translation's `Get`), so that a read
+# borrows nothing mutably.
+LensDefs: unbounded fn Lx, Text, [FnClause], Scheme -> [FnDef]
+fn LensDefs lx, qk, clauses, sc:
+    let lxb = update lx:
+        &_.noCx <= True
+        &_.inDefinition <= qk
+    let ((pts, part)) = SignatureOut lx, qk, sc
+    let whole = Or pts[0], OutUnit
+    let ((parameter, ignore)) = Or (ParamNames lx, clauses, pts)[0], (("whole", True))
+    let binder = match clauses[0]:
+        ? c: match c.params[0]:
+            ? p: PlainBinder lx, p
+            nil: ""
+        nil: ""
+    let env = Bind emptyEnv, binder, (BnLocal (XTarget (XVar parameter)), Owned, whole)
+    let body = match clauses[0]:
+        ? c: match c.body:
+            BodyExpr e: LensReference lxb, env, e
+            BodyBlock ignore: InternalBug "a lens whose body is a block"
+        nil: InternalBug "a lens without a clause"
+    let entry = match part:
+        OutOpt inside: inside
+        other: other
+    let ret = if LensEndsAtIndex lx, qk, (Len lx.g.defs): OutOpt (OutRefMut entry) else: OutRefMut part
+    let read = FnDefOf lx, qk, clauses, sc
+    let reference = FnDef(name=read.name, generics=read.generics, params=[[((parameter, (OutRefMut whole)))]], ret=ret, body=body, doc=read.doc, public=True)
+    let value = update read:
+        &_.name <= "{read.name}_get"
+        &_.doc <= ""
+    [[reference, value]]
+
+# A lens applied in expression position is read: its read function over the argument's
+# value (`acc_l_get(&this)`).
+LensRead: unbounded fn Lx, Env, Text, Expr, OutTy -> Vl
+fn LensRead lx, env, qk, argument, t:
+    let owner = match lx.g.vals[qk]:
+        ? v: v.home
+        nil: OwnerOf qk
+    let read = RefIn lx, owner, "{Or lx.rsNames[qk], (Snake (BareName qk))}_get"
+    VlOwned (XCall read, [[(Ref (ValueOf lx, env, argument))]]), t

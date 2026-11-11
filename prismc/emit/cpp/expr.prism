@@ -776,6 +776,7 @@ fn ClosureBinds cp, p, i = Concat (Each (PatBinds cp, p, "_p{i}"), \|b| "{b}\n")
 
 Unref: fn OutTy -> OutTy
 fn Unref (OutRef t) = t
+fn Unref (OutRefMut t) = t
 fn Unref t = t
 
 # A parameter's type: a value by `const&`, a reference as its referent's.
