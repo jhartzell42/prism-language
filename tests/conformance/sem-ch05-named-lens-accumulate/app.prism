@@ -1,0 +1,29 @@
+# Semantics ch. 5, "Statements": "`&r += e` and its kin (`-=`, `*=`, the rest of Type
+# System chapter 2's operators) apply the operator through the lens", with `&r` a named
+# lens applied ("Words": a reference is "an `&` name or path: .. `&Acc &_`").
+# Written by Claude on the claude-lowering branch; subject to change.
+test mod Tests
+type Regs = record:
+    acc: Int
+    x: Int
+derive ^Eq, ^Show
+
+type Vm = record:
+    pc: Nat
+    regs: Regs
+    steps: Nat
+derive ^Eq, ^Show
+
+&Acc: fn &Vm -> &Int
+fn &Acc &vm = &vm.regs.acc
+
+AddTo: fn Vm, Int -> Vm
+fn AddTo vm, n = update vm:
+    &Acc &_ += n
+
+Scale: fn Vm, Int -> Vm
+fn Scale vm, n = update vm:
+    &Acc &_ *= n
+    &Acc &_ -= 1
+
+let boot = Vm(pc=4, regs=Regs(acc=7, x=5), steps=2)
