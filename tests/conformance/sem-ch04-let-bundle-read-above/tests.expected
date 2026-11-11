@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": the order of a group's lines decides positions and nothing else), ch. 8 (a widget application is transparent) and ch. 7 (a hold's write lands in the tick of the firing): the counter reads the bundle named below it.
+test the_bundle_is_read_above
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="total 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="total 3")
