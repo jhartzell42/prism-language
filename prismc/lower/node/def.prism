@@ -1107,7 +1107,7 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
                   ? ((n, tuple)):
                     let ((res, wx2)) = ResultOf wx, benv, menv, tuple
                     let b = BundleBn res
-                    ((wx2, (Bind benv, (SNameKey n), b), (Bind menv, (SNameKey n), b)))
+                    BundleValue wx2, (Bind benv, (SNameKey n), b), (Bind menv, (SNameKey n), b), n, tuple, res
                   nil:
                     let ((wx2, be2)) = LetLine wx, benv, menv, p, e
                     ((wx2, be2, menv))
@@ -1137,6 +1137,49 @@ fn ?BundleWritten lx, p, e = match ((p.kind, e.kind)):
     ((PName n, ETuple ignore)): if IsBundle (TypeAt lx, e.span): ? ((n, e)) else: nil
     ((ignore, EGroup x)): ?BundleWritten lx, p, x
     otherwise: nil
+
+# A named bundle of plain parts and events as one value of the build (Type System ch. 2,
+# "Bundles": a plain aggregate with functor values inside), for what reads the name as a
+# value (a supplier's `@ pair`): each event part fires a port made before the node, as a
+# named event's value form does (`PreBindName`), and the tuple of the plain parts and those
+# ports' events is a field, bound under `{name}#value`. A bundle with a dynamic part or a
+# bundle inside has no such value here, and its name read as a value is refused there.
+BundleValue: unbounded fn Wx, Env, Env, SName, Expr, Wres -> ((Wx, Env, Env))
+fn BundleValue wx, benv, menv, n, tuple, res:
+    let lx = wx.lx
+    let nkey = SNameKey n
+    let parts = match res:
+        WrParts ps: ps
+        otherwise: [[]]
+    let es = match tuple.kind:
+        ETuple xs: xs
+        otherwise: [[]]
+    let simple = (Len parts) > 0 and (Len parts) == (Len es) and Fold parts, True, \|ok, part| ok and match part:
+        WrEv ignore: True
+        WrPlain ignore, ignore: True
+        otherwise: False
+    if not simple: ((wx, benv, menv))
+    else:
+        let ((values, wx1)) = Fold (Range0 (Len parts)), (([[]], wx)), \|((acc, w)), i| match ((parts[i], es[i])):
+            ((? (WrEv r), ? y)):
+                let et = OutTyOf lx, (Peel (Peel (TypeAt lx, y.span)))
+                let ((rs, w1)) = FreshName w, "{Snake nkey}_part{i}"
+                let pf = "{rs}_v_port"
+                let pt = OutRc (OutPort et)
+                let w2 = update (Connect w1, r, (SkPort "{rs}_v")):
+                    &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind pf), pt), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]]))
+                    &_.fields <= Push &_.fields, ((pf, pt, "part {i} of `{nkey}` as a value: the port it fires"))
+                    &_.moves <= Push &_.moves, ((pf, (XClone (XVar pf))))
+                (((Push acc, (XCall (RefRuntime "prism_rtl::Event::of"), [[(XRef (XVar pf))]])), w2))
+            ((? (WrPlain ex, ignore), ignore)): (((Push acc, ex), w))
+            otherwise: ((acc, w))
+        let t = OutTyOf lx, (TypeAt lx, tuple.span)
+        let ((vf, wx2)) = FreshName wx1, "{Snake nkey}_bundle"
+        let wx3 = update wx2:
+            &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind vf), t), (XTuple values))
+            &_.fields <= Push &_.fields, ((vf, t, "`{nkey}`, a bundle, as one value"))
+            &_.inits <= Push &_.inits, ((vf, (XClone (XVar vf))))
+        ((wx3, (Bind benv, "{nkey}#value", (BnLocal (XVar vf), Owned, t)), (Bind menv, "{nkey}#value", (BnLocal (XField XSelf, vf), Owned, t))))
 
 # A `let` of a name whose value is a name bound to a bundle's parts: the name and the
 # parts.
