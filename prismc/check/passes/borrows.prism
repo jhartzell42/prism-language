@@ -173,7 +173,7 @@ fn BorrowStmts env, st, stmts, lent = Fold stmts, st, \|s, stmt| match stmt.kind
     SWhile ignore, body: BorrowStmts env, s, body.stmts, lent
     SExpr e: match e.kind:
         EFor ?binders, source, body:
-            let path = RefPath source
+            let path = LentPath source
             let lent2 = if (Len path) > 0 and ?binders != nil: Push lent, path else: lent
             BorrowStmts env, s, body.stmts, lent2
         EIf ignore, tb, ?eb:
@@ -187,7 +187,7 @@ fn BorrowStmts env, st, stmts, lent = Fold stmts, st, \|s, stmt| match stmt.kind
 
 CheckLent: unbounded fn Env, St, Expr, [ [Text] ] -> St
 fn CheckLent env, st, t, lent:
-    let path = RefPath t
+    let path = LentPath t
     Fold lent, st, \|s, l| if (Len path) > 0 and (IsPrefix l, path) or (IsPrefix path, l): ErrFix s, "borrow-overlap", t.span, "`{Join l, "."}` is lent to the `for`", "set it after the loop, or loop over a copy" else: s
 
 IsPrefix: fn [Text], [Text] -> Bool
@@ -204,8 +204,19 @@ fn RefPath e = match e.kind:
         let p = RefPath r
         if (Len p) > 0: Push p, "[]" else: p
     EGroup x: RefPath x
-    # a named lens applied: its argument's path, since its signature does not say which
-    # part it names ("A lens's result is alive while its argument is")
+    # a named lens applied names some part of its argument: a step by the lens's name
     otherwise: match ?LensApplied e:
-        ? ((ignore, argument)): RefPath argument
+        ? ((n, argument)):
+            let p = RefPath argument
+            if (Len p) > 0: Push p, (SNameKey n) else: p
         nil: [[]]
+
+# The path a reference keeps alive, for the borrow rule: a lens path's own, and for a named
+# lens applied its argument's, since the lens's signature does not say which part it names
+# ("A lens's result is alive while its argument is").
+LentPath: unbounded fn Expr -> [Text]
+fn LentPath e = match e.kind:
+    EGroup x: LentPath x
+    otherwise: match ?LensApplied e:
+        ? ((ignore, argument)): LentPath argument
+        nil: RefPath e

@@ -344,7 +344,9 @@ fn FieldSpell ignore, fname, ft = "{GlobalBase fname}_{SigilOrKind fname, ft}"
 SigilOrKind: fn Text, Ty -> Text
 fn SigilOrKind name, t:
     let marks = MarksOf name
-    if Contains marks, "?": "o"
+    # a named lens (`&Acc` beside a function `Acc`)
+    if Contains marks, "&": "l"
+    else: if Contains marks, "?": "o"
     else: if Contains marks, "~": "r"
     else: if Contains marks, "!": "e"
     else: if Contains marks, "$": "d"

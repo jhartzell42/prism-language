@@ -650,7 +650,9 @@ fn PlainValueByKind lx, env, e:
         EMap [[]]: VlOwned (XTyped (XCall (RefRuntime "rt::Map::new"), [[]]), t), t
         EMap kvs: VlOwned (XCall (HelperRef "map_of"), [[XVec (Each kvs, \|((k, v))| XTuple [[Own (ValueOf lx, env, k), Own (ValueOf lx, env, v)]])]]), t
         EGroup x: ValueOf lx, env, x
-        ECall c, args, ignore, ignore: Application lx, env, c, args, e.span
+        ECall c, args, ignore, ignore: match ?LensCall lx, e:
+            ? ((qk, argument)): LensRead lx, env, qk, argument, t
+            nil: Application lx, env, c, args, e.span
         EMethod r, m, args: Application lx, env, (Expr(kind=(EName m), span=m.span)), (Append [[Arg(marks="", ?name=nil, value=r, span=r.span)]], args), e.span
         EBinary op, l, r: BinaryValue lx, env, op, l, r, e.span
         EUnary "not", x: VlOwned (XUnary OpNot, (AsBool (ValueOf lx, env, x))), OutBool

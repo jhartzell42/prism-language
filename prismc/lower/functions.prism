@@ -229,6 +229,7 @@ fn TyParamsIn t = match t:
     OutDyn x: TyParamsIn x
     OutRc x: TyParamsIn x
     OutRef x: TyParamsIn x
+    OutRefMut x: TyParamsIn x
     OutHold x: TyParamsIn x
     OutCell x: TyParamsIn x
     OutLive x: TyParamsIn x
