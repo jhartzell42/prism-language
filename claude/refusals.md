@@ -35,19 +35,25 @@ Hosting
   part is lowered (sem-ch09-bundle-dynamic-part), in a hosted scope too
   (sem-ch09-host-bundle-dynamic-part-forwarded).
 - lower/expr.prism (`WidgetBlueprintValue`, `WidgetValueWords`) a widget with places as
-  a blueprint value is lowered where its parameters are plain, it has no type parameter
-  and it gives nothing or a plain value back (sem-ch09-host-widget-answer,
-  sem-ch08-blueprint-out-of-value). Left refused, no tests: one with a `$`, event or
-  blueprint parameter, a type parameter, or an event, dynamic or bundle result; one read
-  in a place `ValuedWidgets` does not look (a record's field read back and given on is
-  a value already; a `let` in a plain function's body is not looked at). One built in a
-  hosted scope builds its hosted row (sem-ch09-host-widget-answer-hosted).
+  a blueprint value is lowered where it has no type parameter and no widget function
+  parameter, and gives nothing, a plain value or an event back
+  (sem-ch09-host-widget-answer, sem-ch08-blueprint-out-of-value,
+  sem-ch08-widget-value-dynamic-parameter, -event-parameter, -blueprint-parameter,
+  -event-result, -let). Left refused: one with a type parameter
+  (sem-ch08-widget-value-generic), a dynamic, a bundle or a function result
+  (sem-ch08-widget-value-dynamic-result, -bundle-result, -function-result), a widget
+  function parameter, or a `$` or event parameter with time below its top (no tests);
+  one read in a place `ValuedWidgets` does not look (a record's field read back and
+  given on is a value already). One built in a hosted scope builds its hosted row
+  (sem-ch09-host-widget-answer-hosted).
 - lower/node/static.prism (`BlueprintValuesAt`) a widget defined in a block read as a
   value is lowered (sem-ch08-local-widget-passed-as-value, sem-ch08-local-widget-in-record).
   One whose places read a dynamic of the block is lowered
   (sem-ch08-local-widget-value-reads-dynamic), and one in a hosted scope and one that
   gives a plain value back. Left refused: one that gives an event, a dynamic, a bundle
-  or a value that is no plain data back. lower/expr.prism (`NameValueOf`) "a widget
+  or a value that is no plain data back (refused where the value is read). One a
+  `let` names is the same value (sem-ch08-local-widget-value-let). lower/expr.prism
+  (`NameValueOf`) "a widget
   defined in a block read as a blueprint value" stands for a reading outside a line's
   value places (inside a lambda's own block).
 - lower/node/static.prism (`AppliedBlueprintLine`) a blueprint value applied by a block is
@@ -167,16 +173,16 @@ Functions
   and no tuple of names and binds an event inside it. No test. With plain names it is
   lowered (sem-ch08-let-pattern-in-widget), and with dynamics inside it
   (`LetPatternDynamics`, sem-ch08-let-pattern-dynamic-in-widget).
-- lower/expr.prism `StartsAsBounded`: a function value of its callee's own color inside
-  the value a call returns, at a call that makes the color bounded, where another
-  function's parameter holds it, or a named type inside a tuple, an optional, a `~T` or
-  a map.
-  No test. A record or a choice the call returns, and an array of either, is made again
-  (`?TypeStartsAsBounded`, ts-ch05-color-function-in-named-result,
-  ts-ch05-color-function-in-choice-result,
-  ts-ch05-color-function-in-nested-named-result). Through an array, an optional, a `~T`, a tuple, a map's values and a
-  function's result it is lowered (ts-ch05-color-function-in-result,
-  ts-ch05-color-function-in-map-result).
+- lower/expr.prism `Recolored`: a function value of its callee's own color inside the
+  value a call returns, at a call that makes the color bounded, is made again through
+  every type that can hold it (ts-ch05-color-function-in-result, -in-map-result,
+  -in-named-result, -in-choice-result, -in-nested-named-result, -in-named-in-tuple-result,
+  -in-optional-result, -in-result-result, -in-function-parameter-result). Left refused,
+  no tests: one held by a type alias or behind a blueprint (`Recolored`,
+  `NamedRecolored`), and a function of unbounded color whose own parameter or result
+  holds one (`FunctionRecolored`: a job's result is not mapped). A call whose result
+  holds a `Start` of the callee's color beside a function that stays a `Start` is not
+  walked (the guard at `GlobalCall`), no refusal, no test.
 - lower/node/def.prism (`RefusePlainResult`) a widget's plain result bound by a pattern
   that left a name without its field: an internal error; `BindPatternResult` takes every
   pattern (sem-ch08-plain-result-pattern passes).
@@ -264,8 +270,9 @@ known that has no lowering written; none of the lowerings written has been run.
   coordinator's first ruling): the checker says nothing and the back end refuses it.
   Tests: tests/checker/neg/existential-method-needs-one-dictionary;
   tests/conformance/ts-ch03-existential-trait-inside-array is that wrong program with a
-  transcript. A prelude trait other than `^Show`, `^Eq`, `^Ord` as a bound is refused
-  there too (an R, no test).
+  transcript. Every trait of the prelude is packed (ts-ch03-existential-num-packed,
+  ts-ch03-existential-pod-packed; ruling EX: packing is legal, and only the call of a
+  method that cannot dispatch is the error).
 - A tag field's type variable that the tag's output does not have (`tag Seat.Request of
   Element !Response:` with `$?latest: ((Nat, r))`): the checker says nothing, a guest
   places the tag with a `Text` and the host's function reads the field as a `Nat`. Type

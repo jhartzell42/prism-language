@@ -761,7 +761,9 @@ fn SharedLiveCalls wx, menv, e = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
     ECall c, args, ignore, ignore:
         let qk = BlueprintQk wx.lx, c
         match wx.lx.g.vals[qk]:
-            ? v: if (HasLiveParam v) and (IsWidgetTy (WidgetResultOf v.scheme.ty)) and SharesAt wx, menv, qk, v, x, args: Push acc, (DynKey x) else: acc
+            # (and a call of a widget the program reads as a value, whose blueprint keeps
+            # the caller's dynamic live for the rows it builds, `WidgetBlueprintValue`)
+            ? v: if (HasLiveParam v) and (IsWidgetTy (WidgetResultOf v.scheme.ty)) and ((HasKey wx.lx.valued, qk) or SharesAt wx, menv, qk, v, x, args): Push acc, (DynKey x) else: acc
             nil: acc
     otherwise: acc
 

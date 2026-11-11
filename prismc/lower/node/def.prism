@@ -455,7 +455,7 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
     let ((wxl, bel, mel, lates)) = if ?whole == nil: BindLate wxu, beu, meu, s else: ((wxu, beu, meu, [[]]))
     let ((wx0, be0, me0)) = LinesInto wxl, bel, mel, head, True
     let ((wx1w, be1w, me1w)) = Fold (LineExprs s), ((wx0, be0, me0)), \|((w, be, me)), e| WholeArgs w, be, me, e, False
-    let ((wx1, be1, me1)) = Fold (LineExprs s), ((wx1w, be1w, me1w)), \|((w, be, me)), e| BlueprintValuesAt w, be, me, e
+    let ((wx1, be1, me1)) = Fold (LineExprs s), ((wx1w, be1w, me1w)), \|((w, be, me)), e| BlueprintValuesAt w, be, me, e, (IsLetOfBlueprint s)
     match s.kind:
         SBind p, e, nil:
             let ((wx2a, late)) = BuildLine wx1, be1, me1, e, nil
@@ -1148,6 +1148,13 @@ fn LineExprs s = match s.kind:
     SExpr e: [[e]]
     otherwise: [[]]
 
+# Whether a statement is a `let` that names a blueprint (`let @w = @line`): its value
+# stands in a value's place (`BlueprintValuesAt`).
+IsLetOfBlueprint: fn Stmt -> Bool
+fn IsLetOfBlueprint s = match s.kind:
+    SLet ignore, ignore, ignore: True
+    otherwise: False
+
 # One statement of a widget block.
 WidgetStmt: unbounded fn Wx, Env, Env, Stmt, Bool -> ((Wx, Env, Env))
 fn WidgetStmt wx0, benv0, menv0, s, last:
@@ -1163,7 +1170,7 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
         otherwise: ""
     let ((wxw, benvw, menvw)) = Fold (LineExprs s), ((wx0, benv0, menv0)), \|((w, be, me)), e| WholeArgsAt w, be, me, e, (InitKey e) == heldInit, (InitKey e) == stepKey
     # and every widget of the block the line reads as a blueprint value
-    let ((wx, benv, menv)) = Fold (LineExprs s), ((wxw, benvw, menvw)), \|((w, be, me)), e| BlueprintValuesAt w, be, me, e
+    let ((wx, benv, menv)) = Fold (LineExprs s), ((wxw, benvw, menvw)), \|((w, be, me)), e| BlueprintValuesAt w, be, me, e, (IsLetOfBlueprint s)
     let lx = wx.lx
     match s.kind:
         SBind p, e, nil:

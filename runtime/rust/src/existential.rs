@@ -18,6 +18,7 @@ use std::any::Any;
 use std::cmp::Ordering;
 use std::rc::Rc;
 
+use crate::pod::{Fault, FromPod, Pod, ToPod};
 use crate::print::{Printer, Show};
 
 type ShowFn = fn(&dyn Any, &mut Printer);
@@ -77,6 +78,13 @@ impl<T: 'static> Packing<T> {
         self.cmp = Some(|x, y| same::<T>(x).cmp(same::<T>(y)));
         self
     }
+    /// `^Pod`: how the hidden value is told as plain data, kept as a dictionary.
+    pub fn with_pod_of(self) -> Self
+    where
+        T: ToPod,
+    {
+        self.with_dictionary(|_: &T| PodPacked { to_pod: |x| same::<T>(x).to_pod() })
+    }
     pub fn packed(self) -> Packed {
         Packed { value: Rc::new(self.value), show: self.show, eq: self.eq, cmp: self.cmp, dictionaries: self.dictionaries }
     }
@@ -102,6 +110,26 @@ impl Packed {
     /// A value of the hidden type a method gave back, hidden again with this one's impls.
     pub fn repacked<T: 'static>(&self, value: T) -> Packed {
         Packed { value: Rc::new(value), show: self.show, eq: self.eq, cmp: self.cmp, dictionaries: self.dictionaries.clone() }
+    }
+}
+
+/// `^Pod`'s dictionary of an existential: the hidden value as plain data.
+struct PodPacked {
+    to_pod: fn(&dyn Any) -> Pod,
+}
+
+/// An existential packed with `^Pod` is told as the plain data of the value it hides.
+impl ToPod for Packed {
+    fn to_pod(&self) -> Pod {
+        (self.dictionary::<PodPacked>().to_pod)(&*self.value)
+    }
+}
+
+/// Plain data names no type to hide (Type System ch. 5: an existential is made by `any`
+/// alone), so reading one as an existential is a fault of what handed it over.
+impl FromPod for Packed {
+    fn from_pod(p: &Pod) -> Result<Packed, Fault> {
+        crate::pod::mismatch("a value of a known type (an existential is made by `any`, never read from plain data)", p)
     }
 }
 
