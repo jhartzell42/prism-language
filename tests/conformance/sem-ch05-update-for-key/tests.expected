@@ -1,0 +1,6 @@
+# Derived by hand from the books' rules (Semantics ch. 4 and ch. 5; ruling KY): a map's entries in key order.
+test update_for_binds_key
+
+tick 0
+  added:
+    0: Ui.Label(text=" a=1 b=2")
