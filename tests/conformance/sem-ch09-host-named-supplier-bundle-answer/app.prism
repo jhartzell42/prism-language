@@ -1,0 +1,26 @@
+# A named widget function as a host's supplier that answers a bundle tag with an event
+# and a dynamic it takes as parameters (Semantics ch. 9, "How a supplier answers"; round
+# 3 DY: any dynamic of the host answers a `$` output; Type System ch. 2, "Bundles": a
+# supplier answers the bundle part by part). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Socket of Element ((!Text, $Nat)):
+    address: Text
+
+@chat: @unit
+@chat:
+    ((!rx, $peers)) <- Pad.Socket(address="chat:7000")
+    $last <- "none" then !rx
+    Ui.Label($text=$"{$peers}: {$last}")
+
+@Supply: fn !Ui.Click, $Nat, Element (Ui.* | Pad.*) o -> @o
+fn @Supply !add, $count, e = match e:
+    Pad.Socket(..): @ (("hello" on !add, $count))
+    otherwise: @Element e
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")                              # 0
+    $count <- 0 then $count + 1 on !add
+    ignore <- @HostDocument @chat, \|p, e| @Supply !add, $count, e   # 1/[p]
