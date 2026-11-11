@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 8 (a blueprint parameter is built where it is applied, reading its caller's names) and ch. 4 (a `for` row per key, at `pos/[k]`): never run.
+test each_row_hears_the_callers_event
+
+tick 0
+  added:
+    0: Ui.Button(label="c")
+    1/[0]/0: Ui.Label(text="k 0")
+    1/[1]/0: Ui.Label(text="k 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1/[0]/0: Ui.Label(text="k 1")
+    1/[1]/0: Ui.Label(text="k 1")
