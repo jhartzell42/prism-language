@@ -1689,9 +1689,9 @@ fn ElementValue lx, env, tg, args:
     let missing = Filter (Range0 n), \|i| not (Fold argued, False, \|seen, ((j, ignore))| seen or j == i)
     let Local = \|i| "desc_f{i}"
     let FieldOf = \|i| Or tg.fields[i], (("", TyErr))
-    let TyAt = \|i| match FieldOf i:
+    let FieldTypeAt = \|i| match FieldOf i:
         ((ignore, ft)): ft
-    let LayerAt = \|i| LayerOf (TyAt i)
+    let LayerAt = \|i| LayerOf (FieldTypeAt i)
     let NameAt = \|i| match FieldOf i:
         ((fname, ignore)): fname
     let lets = Each argued, \|((i, x))|
@@ -1716,7 +1716,7 @@ fn ElementValue lx, env, tg, args:
         if (LayerAt i) == LyDyn: (((Spell i), (XClone (XVar (NameOfDyn i))))) else: (((Spell i), (XClone (XVar "{Local i}_l"))))
     let level = XCtor variant, [[(XRecord structPath, levelFields)]]
     let keeps = Each (Filter inLevel, \|((i, ignore))| (LayerAt i) != LyDyn), \|((i, ignore))| DoLet (PaBind "{Local i}_l"), (XClone (XVar (Local i)))
-    let tys = Each dyns, \|((i, ignore))| TagFieldOut lx, (TyAt i)
+    let tys = Each dyns, \|((i, ignore))| TagFieldOut lx, (FieldTypeAt i)
     let mapped = match dyns:
         [[]]: XCall (HelperRef "dyn_constant"), [[level]]
         [[((i, ignore))]]: XMethod (XVar (Local i)), "map", [[(XClosure True, [[(PaTyped (PaBind (Or names[0], "y")), (OutRef (Or tys[0], OutUnit)))]], level)]]

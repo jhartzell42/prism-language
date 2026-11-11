@@ -466,11 +466,11 @@ fn BundleAssembled full, tags:
     let idx = Range0 (Len ts)
     let stateIx = Filter idx, \|i| (LayerOf (Or ts[i], TyErr)) != LyEv
     let evIx = Filter idx, \|i| (LayerOf (Or ts[i], TyErr)) == LyEv
-    let Place = \|xs, i| Fold (Range0 (Len xs)), 0, \|at, k| if (Or xs[k], 0) == i: k else: at
+    let PlaceAmong = \|xs, i| Fold (Range0 (Len xs)), 0, \|at, k| if (Or xs[k], 0) == i: k else: at
     let parts = Each idx, \|i| match LayerOf (Or ts[i], TyErr):
-        LyEv: if (Len evIx) == 1: XClone (XVar "events") else: XCall (HelperRef "event_part"), [[(XRef (XVar "events")), (XClosure False, [[PaBind "fired"]], (XClone (XPart (XVar "fired"), (Place evIx, i))))]]
-        LyDyn: if (Len stateIx) == 1: XClone (XVar "state") else: XCall (HelperRef "state_part"), [[(XRef (XVar "state")), (XClosure False, [[PaBind "held"]], (XClone (XPart (XVar "held"), (Place stateIx, i))))]]
-        otherwise: if (Len stateIx) == 1: XMethod (XVar "state"), "sample", [[XCx]] else: XClone (XPart (XMethod (XVar "state"), "sample", [[XCx]]), (Place stateIx, i))
+        LyEv: if (Len evIx) == 1: XClone (XVar "events") else: XCall (HelperRef "event_part"), [[(XRef (XVar "events")), (XClosure False, [[PaBind "fired"]], (XClone (XPart (XVar "fired"), (PlaceAmong evIx, i))))]]
+        LyDyn: if (Len stateIx) == 1: XClone (XVar "state") else: XCall (HelperRef "state_part"), [[(XRef (XVar "state")), (XClosure False, [[PaBind "held"]], (XClone (XPart (XVar "held"), (PlaceAmong stateIx, i))))]]
+        otherwise: if (Len stateIx) == 1: XMethod (XVar "state"), "sample", [[XCx]] else: XClone (XPart (XMethod (XVar "state"), "sample", [[XCx]]), (PlaceAmong stateIx, i))
     let made = XCtor (RefRuntime "std::Ok"), [[(XTuple parts)]]
     let missing = XCall (RefRuntime "rt::Fault::answer"), [[(XStr "a blueprint value that gives a bundle answered no state at its build")]]
     let body = if (Len tags) == 0: XCtor (RefRuntime "std::Err"), [[(XCall (RefRuntime "rt::Fault::answer"), [[(XStr "a blueprint value that gives a bundle answered with no bundle held whole, and no element tag of the program answers with one")]])]]
