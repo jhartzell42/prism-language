@@ -1,0 +1,9 @@
+# The tests of sem-ch09-host-late-plain-part-in-place-field.
+emit Ui.* | Pad.*
+use App.*
+
+test a_late_plain_part_names_a_place, @host:
+    build
+    click at 0
+    compute
+    compute
