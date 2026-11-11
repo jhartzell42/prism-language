@@ -1,0 +1,9 @@
+tests/checker/neg/alias-cycle.prism:4: error[alias-cycle]: the alias `Alias` names itself
+    type Alias = Other
+    ^^^^^^^^^^^^^^^^^^
+  fix: make one type of the ring a record, a choice or a newtype
+tests/checker/neg/alias-cycle.prism:5: error[alias-cycle]: the alias `Other` names itself
+    type Other = [Alias]
+    ^^^^^^^^^^^^^^^^^^^^
+  fix: make one type of the ring a record, a choice or a newtype
+2 errors
