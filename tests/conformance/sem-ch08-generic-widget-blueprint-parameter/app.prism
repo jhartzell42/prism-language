@@ -1,0 +1,27 @@
+# A generic widget function that takes a blueprint: `@Framed` over any `^Show` type, with a
+# guest `@a` whose result it gives back (Type System ch. 5: a signature's variables are
+# fresh at each call; Semantics ch. 8: a widget function's application is transparent, its
+# lines take the caller's positions). Hosting attempt 14 of the Bible's evidence
+# (prism-notes, claude/04-domains-and-documents/evidence/hosting/) calls such a widget,
+# `@InMemory Counter(total=0), @guest`; this is the smallest program of that kind.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Framed: fn s, @a -> @a where s: ^Show
+fn @Framed initial, @guest:
+    Ui.Label($text=$"starts at {Show initial}")
+    result <- @guest
+    @ result
+
+@Guest: fn Text -> @Text
+fn @Guest name:
+    Ui.Label($text=$"guest {name}")
+    @ name
+
+@host: @unit
+@host:
+    first <- @Framed 3, (@Guest "one")                            # 0, 1
+    second <- @Framed "three", (@Guest "two")                     # 2, 3
+    Ui.Label($text=$"{first} and {second}")                       # 4
