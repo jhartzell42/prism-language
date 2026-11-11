@@ -134,6 +134,10 @@ type Lx = record:
     # (`SharedClauseLine`): by widget, each clause's row, the pattern and conditions that
     # choose it, and what its `build` is passed.
     shared: (Text ==> [((Text, Pa, [Cc], [Ex]))])
+    # The widgets being lowered inside their own bodies (`InlineWidget`): a call of one
+    # there, when it is sharable, is a generation of shared rows, its plain result late
+    # (`IsRecursingCall`).
+    recursing: [Text]
 derive ^Eq, ^Show
 
 # A key into the typed tables: the file and the range.

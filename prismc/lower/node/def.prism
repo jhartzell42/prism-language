@@ -251,6 +251,7 @@ fn IsLateExpr lx, menv, e, depth = match e.kind:
                         let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
                         match ?q:
                             ? q: match lx.g.vals[q]:
+                                ? v if IsRecursingCall lx, q, v, e: True
                                 ? v: match ?OneBody lx, q:
                                     ? body: depth > 0 and (IsPlainResult lx, e) and IsLateBlock (InModuleAt lx, v.file, v.home, lx.site), (CalleeWidgetEnv lx, menv, q, v, args), body, (Dec depth)
                                     # a widget of several clauses that ends on a bundle
@@ -259,6 +260,19 @@ fn IsLateExpr lx, menv, e, depth = match e.kind:
                                 nil: False
                             nil: False
             otherwise: False
+
+# Whether a call is of a widget that calls itself, written inside that widget's own body,
+# and sharable (`IsSharable`) with a plain result: past the first level it is a
+# generation of shared rows built after its block's node (`SharedClauseLine`), so its
+# result is late. In a hosted scope the call is lowered level by level and its result may
+# have a value at the build: the block is split all the same (`SplitBlockInto` keeps
+# such a value in a field).
+IsRecursingCall: unbounded fn Lx, Text, ValInfo, Expr -> Bool
+fn IsRecursingCall lx, q, v, e:
+    let ptys = match v.scheme.ty:
+        TyFn ignore, ps, ignore: ps
+        otherwise: [[]]
+    (HasText lx.recursing, q) and (IsPlainResult lx, e) and (not (IsBundle (LineOutFull lx, e))) and (Len (RigidsIn v.scheme.ty)) == 0 and Fold ptys, True, \|ok, pt| ok and (LayerOf pt) == LyPlain and not (IsWidgetFnTy pt)
 
 # The environment a widget of one clause reads its widget parameters in, for lateness: each
 # blueprint parameter bound to the call's argument with the caller's environment.
@@ -384,11 +398,21 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
             let ((wx2a, late)) = BuildLine wx1, be1, me1, e, nil
             # a bundle's plain parts, each read from the node once its row is built
             let ((wx2, partReads)) = LateParts wx2a, late
-            let kept = match late:
-                WrLate read, ignore: read
-                WrParts ignore: XTuple (Each partReads, \|((ignore, read))| read)
-                otherwise: Refusal "a block split at a line whose result is not late"
-            let wx2g = LateGetters wx2, lates, kept, partReads
+            let ((wx2k, kept)) = match late:
+                WrLate read, ignore: ((wx2, read))
+                WrParts ignore: ((wx2, (XTuple (Each partReads, \|((ignore, read))| read))))
+                # a line taken for late whose result has a value at the build after all (a
+                # widget that calls itself, lowered level by level, `IsRecursingCall`):
+                # kept in a field of the node and read there, as a late one is
+                WrPlain ex, t:
+                    let ((f, w1)) = FreshName wx2, "split_result"
+                    let w2 = update w1:
+                        &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind f), t), ex)
+                        &_.fields <= Push &_.fields, ((f, t, "the plain result of the line a block is split at"))
+                        &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
+                    ((w2, (XClone (XField XSelf, f))))
+                otherwise: ((wx2, (Refusal "a block split at a line whose result is not late")))
+            let wx2g = LateGetters wx2k, lates, kept, partReads
             # a bundle's events and dynamics, bound in the node as its line binds them
             let ((wx2b, ignore, me2)) = match ((late, p.kind, ?whole)):
                 (((WrParts parts), ignore, ? n)): BindWhole wx2g, be1, me1, n, parts, partReads

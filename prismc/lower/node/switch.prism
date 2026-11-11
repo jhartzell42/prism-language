@@ -588,14 +588,16 @@ fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent, parentTy, args, ze
 let wideGeneration = 1048576
 
 # Whether a widget of several clauses that calls itself is lowered as shared rows
-# (`SharedClauseLine`): its parameters are plain, it gives nothing back, and its places
-# go to the World. Any other is lowered level by level (`TooDeep`).
+# (`SharedClauseLine`): its parameters are plain, it gives nothing or a plain value back,
+# it has no type parameter, and its places go to the World. Any other is lowered level by
+# level (`TooDeep`).
 IsSharable: unbounded fn Wx, ValInfo, Expr -> Bool
 fn IsSharable wx, v, e:
     let ptys = match v.scheme.ty:
         TyFn ignore, ps, ignore: ps
         otherwise: [[]]
-    (not (IsHostedScope wx)) and (OutTyOf wx.lx, (OutOf (TypeAt wx.lx, e.span))) == OutUnit and Fold ptys, True, \|ok, pt| ok and (LayerOf pt) == LyPlain and not (IsWidgetFnTy pt)
+    let plainResult = (ResultLayer (TypeAt wx.lx, e.span)) == LyPlain and not (IsBundle (LineOutFull wx.lx, e))
+    (not (IsHostedScope wx)) and plainResult and (Len (RigidsIn v.scheme.ty)) == 0 and Fold ptys, True, \|ok, pt| ok and (LayerOf pt) == LyPlain and not (IsWidgetFnTy pt)
 
 # A widget of several clauses applied inside its own clause (Semantics ch. 8: a widget
 # may call itself, as deep as its data; ruling TC: places are counted as they are built).
@@ -631,15 +633,28 @@ fn SharedClauseLine wx, menv, scrut, qk, v, e, args:
             ((heads, back))
     let rowObj = OutObj (OutNamed (RefRuntime "rt::Row"), [[]])
     let gap = XBin OpSub, (XIndex wideGeneration), (XMethod (XVar "row"), "built", [[]])
+    # a plain result: each clause's row keeps it (`result_value`, `ArmRowOf`), and the
+    # block keeps it from the row's build on, late (`WrLate`), as a building `match` keeps
+    # its arm's (`BuildingChoiceLine`)
+    let outTy = OutTyOf lx, (OutOf (TypeAt lx, e.span))
+    let res = "{name}_res"
+    let keeps = if outTy == OutUnit: [[]] else: [[(DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XMethod (XVar "row"), "result_value", [[]])]]))]]
     let arms = Each cases, \|((rowNode, pat, conds, passed))|
         let built = TryOf (XCall (RefChild (SiteRef lx, rowNode), "build"), (Append (Append [[(XClone (XVar "path"))]], passed), [[XUnit, XCx]]))
-        XArm(pat=pat, conds=conds, body=(XBlock (Append [[(DoLet (PaBind "row"), built)]], (GapSet name, (? gap))), (XCast (XVar "row"), rowObj)))
+        XArm(pat=pat, conds=conds, body=(XBlock (Append (Append [[(DoLet (PaBind "row"), built)]], keeps), (GapSet name, (? gap))), (XCast (XVar "row"), rowObj)))
     let select = WithRowBase wx, "self", pos, (Own (ArmsValue (ClauseScrutinee lx, menv, v, args), arms, "'select", rowObj))
     let wx3 = update wx2:
         &_.pos <= Pos(scope=pos.scope, at=pos.at + wideGeneration)
         &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=True, width=wideGeneration, moved="", early=False, gappy=True, rebased=True)
         &_.genHolds <= Push &_.genHolds, ((name, reads))
-    ((wx3, WrUnit))
+    if outTy == OutUnit: ((wx3, WrUnit))
+    else:
+        let read = XClone (XMethod (XMethod (XMethod (XField XSelf, res), "borrow", [[]]), "as_ref", [[]]), "expect", [[(XStr "a row built before what reads its result")]])
+        let wx4 = update wx3:
+            &_.taken <= Push &_.taken, res
+            &_.fields <= Push &_.fields, ((res, (OutCell (OutOpt outTy)), "the plain result of the widget that calls itself, kept from its row's build on"))
+            &_.inits <= Push &_.inits, ((res, (XCall (RefRuntime "std::RefCell::new"), [[XNone]])))
+        ((wx4, (WrLate read, outTy)))
 
 WithShared: fn Lx, Text, [((Text, Pa, [Cc], [Ex]))] -> Lx
 fn WithShared lx, qk, cases = update lx:

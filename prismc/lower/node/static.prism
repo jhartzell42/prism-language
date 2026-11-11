@@ -794,16 +794,23 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                             let call = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
                             let inside = update wx:
                                 &_.inlining <= Push &_.inlining, qk
+                                &_.lx <= WithRecursing lx, qk
                             let ((done, res)) = ClauseWidgetLine inside, benv, menv, a.value, call, qk, v, e, args
                             let outside = update done:
                                 &_.inlining <= wx.inlining
+                                &_.lx <= lx
                             ((outside, res))
                     nil:
                         let wx2 = update wx:
                             &_.build <= Push &_.build, (RefusalDo "a widget of several clauses that takes no arguments")
                         ((wx2, WrUnit))
         ? body:
-            if (Recursion wx.inlining, qk) > 16: TooDeep wx, qk, e
+            # a widget of one clause that calls itself, with plain parameters and no
+            # result: past its first level, rows shared by every call, as a widget of
+            # several clauses has (`SharedClauseLine`; its one clause is the one row)
+            let sharedOne = (Recursion wx.inlining, qk) > 0 and (Len clauses) == 1 and (Len args) > 0 and IsSharable wx, v, e
+            if sharedOne: SharedClauseLine wx, menv, (Or args[0], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0)))).value, qk, v, e, args
+            else: if (Recursion wx.inlining, qk) > 16: TooDeep wx, qk, e
             else:
                 let lxc = InModuleAt lx, v.file, v.home, lx.site
                 let ptys = match v.scheme.ty:
@@ -832,6 +839,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                         ? id: "{lx.inlined}_{Base32 id}"
                         nil: lx.inlined
                     &_.subst <= Fold (Keys (Or ?params, {})), &_.subst, \|m, q| Insert m, q, (Or (Or ?params, {})[q], TyErr)
+                    &_.recursing <= AddText lx.recursing, qk
                 let inner = update wx1:
                     &_.lx <= lxi
                     &_.inlining <= Push &_.inlining, qk
@@ -904,6 +912,10 @@ fn Unrigid t = match t:
     TyAt i, rw: TyAt (Unrigid i), rw
     TyFn c, ps, r: TyFn c, (Each ps, \|a| Unrigid a), (Unrigid r)
     other: other
+
+WithRecursing: fn Lx, Text -> Lx
+fn WithRecursing lx, qk = update lx:
+    &_.recursing <= AddText &_.recursing, qk
 
 # How many times the widget `qk` is already being inlined around this call: its recursion,
 # which alone is bounded; widgets that call other widgets nest as deep as they are written.
