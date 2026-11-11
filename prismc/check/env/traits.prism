@@ -372,7 +372,13 @@ fn SolveClass g, st, s0, Restore, givens, w, t:
     match ?parts:
         ? ps:
             if structural: (((Each ps, \|p| Want(cls=w.cls, ty=p, file=w.file, span=w.span, level=w.level)), (Solved st, w, t, "parts")))
-            else: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
+            # a tuple, an array or a map has the impls written for it (`impl ^Blank [a]
+            # where a: ^Blank`, Type System ch. 3), found as a named type's are
+            else: match ?FindImpl g, st, w.cls, t:
+                ? ((im, s2, how, ch)):
+                    let wants = Each im, \|((ty, cls))| Want(cls=cls, ty=ty, file=w.file, span=w.span, level=w.level)
+                    ((wants, (NoteChoice (Solved s2, w, t, how), w.file, w.span, w.cls, ch)))
+                nil: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
         nil: match t:
             TySig ignore, ignore: (([[]], st))
             TyElem rw, ignore: ElemTrait g, st, s0, Restore, w, t, bare, rw
