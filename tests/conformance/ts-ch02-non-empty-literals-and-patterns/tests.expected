@@ -1,0 +1,14 @@
+# Derived by hand from Type System ch. 2, "Collections" and "Exhaustiveness, with rows" (a non-empty array is matched as the array it is) and Semantics ch. 4 (a `for` builds a row for each key, and one for each new key): `Lead` gives 4, 4 + 5, a length of 3 and 0; `total` is 1 + (2 + 3). Never run.
+test literals_and_patterns
+
+tick 0
+  added:
+    0: Ui.Label(text="4 9 3 0 ann alone 1 2 people 2 6 same")
+    1: Ui.Button(label="more")
+    2/[1]/0: Ui.Label(text="1 x")
+
+tick 1
+  in:
+    1: click
+  added:
+    2/[2]/0: Ui.Label(text="2 y")

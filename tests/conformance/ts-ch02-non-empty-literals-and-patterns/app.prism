@@ -1,0 +1,36 @@
+# Non-empty literals and patterns below a type's top (Type System ch. 2, "Collections": a
+# literal is non-empty only when it says so, `[[x, y]]+`; "Exhaustiveness, with rows": a
+# non-empty array has no length zero): a `[Text]+` as a record's field and a tuple's part,
+# a `[Nat]+` under a `?` and as an array's entry, each matched by an array pattern there,
+# and a `for` over a `(Nat ==> Text)+`, which runs over it as over the map.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Team = record:
+    name: Text
+    members: [Text]+
+derive ^Eq
+
+Lead: fn ?[Nat]+ -> Nat
+fn Lead (? [[x]]) = x
+fn Lead (? [[x, y]]) = x + y
+fn Lead (? more) = Len more
+fn Lead nil = 0
+
+Head: fn (([Text]+, Nat)) -> Text
+fn Head (([[only]], n)) = "{only} alone {n}"
+fn Head ((people, n)) = "{Len people} people {n}"
+
+@main: @unit
+@main:
+    let team = Team(name="a", members=[["ann", "bo"]]+)
+    let again = Team(name="a", members=[["ann", "bo"]]+)
+    let nested = [[ [[1]]+, [[2, 3]]+ ]]
+    let total = Fold nested, 0, \|acc, xs| acc + (Lead (? xs))
+    let same = if team == again: "same" else: "differs"
+    Ui.Label($text=$"{Lead (? [[4]]+)} {Lead (? [[4, 5]]+)} {Lead (? [[4, 5, 6]]+)} {Lead nil} {Head (([["ann"]]+, 1))} {Head ((team.members, 2))} {total} {same}")    # 0
+    !more <- Ui.Button($label=$"more")                           # 1
+    $rows <- {1: "x"}+ then {1: "x", 2: "y"}+ on !more
+    for k, $v <- $rows:                                          # 2/[k]
+        Ui.Label($text=$"{k} {$v}")                               # 2/[k]/0
