@@ -340,6 +340,22 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `IsEarlyChoiceAt`): where no arm has a guard or reads a name of the block, since the
   node does not exist yet when the arm is built. The result is then a value of the
   build and the block is not split at the line.
+- **An `update` block's bare `for`** (`for &_.xs:`, `for xs:`; Semantics ch. 5,
+  "Statements") rebinds `&_` to the entry: over a reference path the element in place
+  (`UpdForRefs` under the key `&_`), over a plain value a `mut` copy of the turn's
+  (`UpdForValues`). In a job (`ForJob`) the entry is a state of the turn's own, written
+  back by its key over a reference path, and the block's own `&_` stays a state of the
+  turn under `&_#block{place}`, so a job inside the turn takes it with the rest.
+- **A constructor's `$` field** takes its argument whole (`CtorArgs`,
+  `IsDynamicFieldCtor`): a reader's live `Dynamic`, which the line makes as it does for a
+  function that takes time whole (`WholeArgsAt`).
+- **`any x` of `^Show` alone** is `Rc::new(x)` cast to `Rc<dyn Show>` where it is made
+  (`AnyValue`): an argument behind a reference and an array's element are not coerced.
+- **A module's lowercase declaration written qualified** (`Words.base`) is parsed as a
+  field read; the checker and the lowering read it as the qualified name where no value
+  `Words` is in scope and the module declares the value (`?QualifiedField`).
+- **A generic widget's type variable in an element parameter's output** (`Element Ui.*
+  o`) is matched at the call as any parameter's is (`?ParamMatch`, `Unrigid`, `RigidsIn`).
 - **A bundle with a late plain part bound whole to one name** is the name's parts
   (`BindWhole`): an event or a dynamic as the line gives it, a plain part a getter of
   the node; the lines below the split read the name part by part through the node
@@ -364,9 +380,16 @@ it make every program an interpreter run, and every type mistake a runtime fault
   - a plain `let` of the node that reads a late name is late too (`MarkLateLets`): a
     getter of the node that computes it (`late_{name}`, `LateLetGetters`), bound under
     `{name}#late` as the split line's names are, so what reads it reads it late in turn;
-  - a line of the node that takes a late name as a value at the build (a widget's plain
-    argument, a `for` row's plain local of a `for` above the split) is refused, naming
-    it.
+  - a building line of the node that reads a late name and is no element's (a widget's
+    plain argument, a `for` above the split, a building `match` over the name) is a
+    generation of one arm at its own positions (`DeferredLine`, `IsLateTaker`): its row
+    reads the block through the node, the late name through its getter, and is built
+    after every other builder and generation of its scope (`Wx.deferredGens`,
+    `BuildSteps`), the row that gives the late result among them. A plain `let` below
+    the split that such a line reads is the node's late `let` (`HoistedLines`). Two
+    such lines are refused: one whose places are counted as built (a building `match`
+    or `if` inside it: the rows after it were numbered before it was built), and one
+    that gives a plain result of its own.
 - **A line is late** (`IsLateExpr`) when it is a building `match` or `if` with a plain
   result, a widget block or a widget of one clause whose block ends late, a widget
   parameter applied whose argument is late (read in the caller's environment), or a

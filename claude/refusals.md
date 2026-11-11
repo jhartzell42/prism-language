@@ -89,14 +89,21 @@ Bundles
 
 Building `match`, clause widgets, `rebuild`
 - lower/node/def.prism (`BindLate`, `MarkLateLets`) a late result, or a `let` that reads
-  one, taken as a value at its block's build by a line of the block's node: a widget's
-  plain argument, a plain local of a `for` row built before the arm. A building `match`
-  with no guard whose arms read nothing of the block is built early instead
-  (`EarlyChoiceLine`, sem-ch04-building-match-value-above); left refused: an arm that
-  reads the block or has a guard, a building `if`, a widget's late result, and a `let`
-  of the late name taken as the value. No test of those. A place's field and a plain
-  `let` above the split are lowered (sem-ch04-building-match-read-above), as a hold that
-  begins at the result is (sem-ch04-building-match-hold-above).
+  one, read at its block's build by a line of the block's node. A building line that
+  reads one is built after the row that gives it (`DeferredLine`:
+  sem-ch04-building-match-value-above-arm-reads-block, sem-ch04-building-if-value-above,
+  sem-ch04-late-widget-result-value-above, sem-ch04-late-let-value-above); a building
+  `match` with no guard whose arms read nothing of the block is built early
+  (`EarlyChoiceLine`, sem-ch04-building-match-value-above); a place's field, a plain
+  `let` of one name and a hold's first value are late in turn
+  (sem-ch04-building-match-read-above, sem-ch04-building-match-hold-above). Left
+  refused, no tests: a `let` of a pattern that is no one name, or of a bundle or a type
+  with time inside, that reads the late name (the three `unbuilt` refusals of
+  `BindLate`, `MarkLateLets` and `BindWhole`); and in `DeferredLine`, a line that takes
+  the late name and whose places are counted as built, and one that gives a plain
+  result of its own.
+- lower/jobs.prism: none added. A bare `for` in a job is lowered (`ForJob`), no test of
+  the job form; the plain form is sem-ch05-update-for-bare.
 - lower/node/finish.prism:699 a place read at its block's build before the node exists
   (a first-value query, a host made in the build) after a building `match`, `if` or
   widget of several clauses whose rows differ in width and are built after the node. No
