@@ -1072,6 +1072,25 @@ Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint_heard(co
     return std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied)), built};
 }
 
+/// A blueprint value applied by a line that binds its plain result (`n <- @t`): as
+/// `apply_blueprint`, with the first answer of the place the blueprint answers, which a
+/// blueprint that gives a plain value has at its build.
+inline Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t, Answer>> apply_blueprint_answered(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, Cx& cx) {
+    ::prism_rtl::Sink<Answer> sink = [](const Answer&, Cx&) -> Done { return {}; };
+    auto supplied = TRY(blueprint(std::move(path), sink, ::prism_rtl::Scope<Elem, Answer>::world(), base, cx));
+    std::uint32_t built = supplied.built;
+    if (!supplied.first) return unexpected(Fault::answer("a blueprint value that gives a plain value answered nothing at its build"));
+    Answer first = *supplied.first;
+    return std::tuple<::prism_rtl::Rc<Row>, std::uint32_t, Answer>{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied)), built, std::move(first)};
+}
+
+/// An answer made outside a tag's arm (a widget's plain result as a blueprint value
+/// gives it), read at the type of the line that binds it.
+template <class T, class A>
+Result<T> answer_plain(const A& answer) {
+    return answer.template plain<T>();
+}
+
 inline Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, Cx& cx) {
     return apply_blueprint_heard(blueprint, std::move(path), base, [](const Answer&, Cx&) -> Done { return {}; }, cx);
 }

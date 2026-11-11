@@ -863,6 +863,23 @@ pub fn apply_blueprint_heard(blueprint: &::prism_rtl::Blueprint<crate::Elem, cra
     Ok((Rc::new(AppliedBlueprint { supplied }), built))
 }
 
+/// A blueprint value applied by a line that binds its plain result (`n <- @t`): as
+/// `apply_blueprint`, with the first answer of the place the blueprint answers, which a
+/// blueprint that gives a plain value has at its build.
+pub fn apply_blueprint_answered(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: u32, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32, crate::Answer), Fault> {
+    let sink: ::prism_rtl::Sink<crate::Answer> = Rc::new(|_: &crate::Answer, _: &mut Cx| Ok(()));
+    let supplied = blueprint(path, sink, &::prism_rtl::Scope::World, base, cx)?;
+    let built = supplied.built;
+    let first = supplied.first.clone().ok_or_else(|| Fault::answer("a blueprint value that gives a plain value answered nothing at its build".to_string()))?;
+    Ok((Rc::new(AppliedBlueprint { supplied }), built, first))
+}
+
+/// An answer made outside a tag's arm (a widget's plain result as a blueprint value
+/// gives it), read at the type of the line that binds it.
+pub fn answer_plain<T: FromPod>(answer: &crate::Answer) -> Result<T, Fault> {
+    answer.plain()
+}
+
 /// A row subscribing to its block's port for one event: the row heard weakly, the handle
 /// kept for its leaving (claude/backend.md: `Port::subscribe`).
 pub fn subscribe_row<N: Node, P, T: Clone + 'static>(node: &Rc<N>, parent: Option<Rc<P>>, port: impl Fn(&P) -> &Port<T>, call: impl Fn(&Rc<N>, &T, &mut Cx) + 'static, slot: &::std::cell::Cell<Option<Handle>>) {

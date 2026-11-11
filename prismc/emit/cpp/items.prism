@@ -445,7 +445,8 @@ fn AnswerParts cp, a:
     # lowering's `untaggedRef`)
     let names = Push (Append (Each a.cases, \|c| c.variant), (Each firsts, \|((c, ft))| "{c.variant}First")), "Untagged_a"
     let accessors = Join (Append (Each a.cases, \|c| "crate::prelude::Result<{CppType cp, c.ty}> {c.accessor}() const;"), (Each firsts, \|((c, ft))| "crate::prelude::Result<{CppType cp, ft}> {c.accessor}_first() const;")), "\n"
-    let members = "const char* tag() const;\n{accessors}\nstatic crate::prelude::Result<Answer> decode(const Elem& e, const crate::prelude::Pod& v);\nstatic crate::prelude::Result<Answer> decode_first(const Elem& e, const crate::prelude::Pod& v);"
+    let plain = "template <class T> crate::prelude::Result<T> plain() const \{ if (auto u = ::std::get_if<Untagged_a>(&cases())) return ::prism_rtl::from_pod<T>(u->a0); return crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where a blueprint value's plain result was expected\"))); \}"
+    let members = "const char* tag() const;\n{accessors}\n{plain}\nstatic crate::prelude::Result<Answer> decode(const Elem& e, const crate::prelude::Pod& v);\nstatic crate::prelude::Result<Answer> decode_first(const Elem& e, const crate::prelude::Pod& v);"
     let cases0 = Join (Append (Each a.cases, \|c| CaseDecl c.variant, "{CppType cp, c.ty} a0;"), (Each firsts, \|((c, ft))| CaseDecl "{c.variant}First", "{CppType cp, ft} a0;")), "\n"
     let cases = "{cases0}\n{CaseDecl "Untagged_a", "crate::prelude::Pod a0;"}"
     let cls = ChoiceClass (CppDoc "`Answer c`: an answer to an element, typed by its tag (Semantics ch. 9): what a host's\nsupplier answers a child place with, and what a World's answer to a forwarded element\ndecodes to, carrying the tag's output."), "", "Answer", cases, (Join names, ", "), members

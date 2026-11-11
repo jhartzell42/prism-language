@@ -363,6 +363,14 @@ impl Answer {
         }
     }
     {{accessors}}
+    /// An answer made outside a tag's arm, read at the type of the line that binds it (a
+    /// blueprint value's plain result).
+    pub fn plain<T: crate::prelude::FromPod>(&self) -> ::std::result::Result<T, crate::prelude::Fault> {
+        match self {
+            Answer::Untagged_a(p) => crate::prelude::FromPod::from_pod(p),
+            other => ::std::result::Result::Err(crate::prelude::Fault::answer(format!("an answer for {}, where a blueprint value's plain result was expected", other.tag()))),
+        }
+    }
 }
 
 impl ::prism_rtl::AnswerOf<Elem> for Answer {

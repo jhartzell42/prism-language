@@ -485,8 +485,14 @@ it make every program an interpreter run, and every type mistake a runtime fault
     (`AnswerSink`: the program's tags whose answers are of that type, and its generic
     ones) and fires the line's event through the node's `{generation}_up`, as a
     generation's row fires its block's.
-  - A blueprint value that gives a plain value, a dynamic or a bundle back, and one
-    applied in a hosted scope, are refused.
+  - A line that binds a plain result (`n <- @t`) takes the blueprint's first answer
+    (the prelude's `apply_blueprint_answered`), read at the line's type
+    (`answer_plain`, `Answer::plain`: a widget's result as a blueprint value gives it
+    outside a tag's arm, as plain data), and the node keeps it in `{generation}_res`
+    from the build on: the result is late (`WrLate`, `IsLateExpr`), as a call of a
+    widget that calls itself keeps its own.
+  - A blueprint value that gives a dynamic or a bundle back, and one applied in a
+    hosted scope, are refused.
 - **`prism_rtl::Blueprint`** is built with a base beside its path, sink and scope: 0
   under a host's row, the line's position as built in a block. `Supplied` tells how many
   places were built (`built`) and how a widget's row leaves (`leave`). The element forms

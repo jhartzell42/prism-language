@@ -137,16 +137,22 @@ fn ValueBlueprintLine wx, menv, e = AppliedBlueprintLine wx, e, (Ref (ValueOf wx
 # at the line `e`. A line that gives an event back (`!go <- @Element e`: the element
 # value's answers) hears the blueprint's sink: each answer, decoded by its tag
 # (`AnswerSink`), fires the line's event through the node's `{generation}_up`, as a
-# generation's row fires its block's. A blueprint value that gives a plain value, a
-# dynamic or a bundle back, and one applied in a hosted scope, are refused.
+# generation's row fires its block's. A line that binds a plain result (`n <- @t`)
+# takes the blueprint's first answer (the prelude's `apply_blueprint_answered`), read
+# at the line's type (`answer_plain`: a widget's result as a blueprint value gives it,
+# `WidgetBlueprintValue`), and keeps it in `{generation}_res` from the build on, late
+# (`WrLate`, `IsLateExpr`), as a call of a widget that calls itself keeps its own. A
+# blueprint value that gives a dynamic or a bundle back, and one applied in a hosted
+# scope, are refused.
 AppliedBlueprintLine: unbounded fn Wx, Expr, Ex -> ((Wx, Wres))
 fn AppliedBlueprintLine wx, e, blueprint:
     let lx = wx.lx
     let pos = wx.pos
     let outTy = OutTyOf lx, (OutOf (TypeAt lx, e.span))
     let heard = (ResultLayer (TypeAt lx, e.span)) == LyEv
-    if (IsHostedScope wx) or (outTy != OutUnit and not heard):
-        let words = if IsHostedScope wx: "a blueprint value applied in a hosted scope (`{SrcText lx, lx.file, e.span}`)" else: "a blueprint value applied in a block that gives a plain value, a dynamic or a bundle back (`{SrcText lx, lx.file, e.span}`)"
+    let answered = outTy != OutUnit and (ResultLayer (TypeAt lx, e.span)) == LyPlain and not (IsBundle (LineOutFull lx, e))
+    if (IsHostedScope wx) or (outTy != OutUnit and not heard and not answered):
+        let words = if IsHostedScope wx: "a blueprint value applied in a hosted scope (`{SrcText lx, lx.file, e.span}`)" else: "a blueprint value applied in a block that gives a dynamic or a bundle back (`{SrcText lx, lx.file, e.span}`)"
         let wx2 = update wx:
             &_.build <= Push &_.build, (RefusalDo words)
         ((wx2, WrUnit))
@@ -154,17 +160,28 @@ fn AppliedBlueprintLine wx, e, blueprint:
         let ((name, wx1)) = FreshName wx, "generation"
         let ((upId, wx2)) = if heard: AddGn wx1, "{name}_fired", outTy, GnNamed, 0 else: ((0, wx1))
         let at = [[blueprint, (XClone (XVar "path")), (XVar "row_base")]]
-        let applied = if heard: TryOf (XCall (HelperRef "apply_blueprint_heard"), (Append at, [[(AnswerSink lx, name, outTy), XCx]])) else: TryOf (XCall (HelperRef "apply_blueprint"), (Push at, XCx))
+        let applied = if heard: TryOf (XCall (HelperRef "apply_blueprint_heard"), (Append at, [[(AnswerSink lx, name, outTy), XCx]])) else: if answered: TryOf (XCall (HelperRef "apply_blueprint_answered"), (Push at, XCx)) else: TryOf (XCall (HelperRef "apply_blueprint"), (Push at, XCx))
         let gap = XBin OpSub, (XIndex wideGeneration), (XVar "built")
         let hearer = if heard: [[(DoLet (PaBind "heard_by"), (XWeak XSelf))]] else: [[]]
-        let select = WithRowBase wx, "self", pos, (XBlock (Append (Append hearer, [[(DoLet (PaTuple [[(PaBind "row"), (PaBind "built")]]), applied)]]), (GapSet name, (? gap))), (XVar "row"))
+        let res = "{name}_res"
+        let made = if answered: PaTuple [[(PaBind "row"), (PaBind "built"), (PaBind "answered")]] else: PaTuple [[(PaBind "row"), (PaBind "built")]]
+        let keeps = if answered: [[(DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(TryOf (XCallAt (HelperRef "answer_plain"), [[outTy]], [[(XRef (XVar "answered"))]]))]]))]] else: [[]]
+        let select = WithRowBase wx, "self", pos, (XBlock (Append (Append (Append hearer, [[(DoLet made, applied)]]), keeps), (GapSet name, (? gap))), (XVar "row"))
         let wx3 = update wx2:
             &_.pos <= Pos(scope=pos.scope, at=pos.at + wideGeneration)
             &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=True, width=wideGeneration, moved="", early=False, gappy=True, rebased=True)
             &_.genHolds <= Push &_.genHolds, ((name, [[]]))
             &_.fallible <= True
             &_.getters <= if heard: Push &_.getters, (GenUp name, (GnOf wx2, upId).name, (GnOf wx2, upId).ty) else: &_.getters
-        if heard: ((wx3, (WrEv (EvRefOf wx3, upId)))) else: ((wx3, WrUnit))
+        if heard: ((wx3, (WrEv (EvRefOf wx3, upId))))
+        else: if answered:
+            let read = XClone (XMethod (XMethod (XMethod (XField XSelf, res), "borrow", [[]]), "as_ref", [[]]), "expect", [[(XStr "a blueprint value applied before what reads its result")]])
+            let wx4 = update wx3:
+                &_.taken <= Push &_.taken, res
+                &_.fields <= Push &_.fields, ((res, (OutCell (OutOpt outTy)), "the plain result of the blueprint value applied, kept from its build on"))
+                &_.inits <= Push &_.inits, ((res, (XCall (RefRuntime "std::RefCell::new"), [[XNone]])))
+            ((wx4, (WrLate read, outTy)))
+        else: ((wx3, WrUnit))
 
 # The sink of a blueprint a line hears (`AppliedBlueprintLine`): each answer, a
 # `crate::Answer` under the tag of the element that was answered, taken out at the line's

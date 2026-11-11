@@ -50,9 +50,11 @@ Hosting
   value places (inside a lambda's own block).
 - lower/node/static.prism (`AppliedBlueprintLine`) a blueprint value applied by a block is
   lowered, and so is `@Element` of any element value (a parameter, a call's result;
-  sem-ch08-element-parameter-statement): a line of unit, and a line that gives an event
-  back, which hears the blueprint's answers. Left refused: one that gives a plain value,
-  a dynamic or a bundle back (`n <- @t`), one applied in a hosted scope.
+  sem-ch08-element-parameter-statement): a line of unit, a line that gives an event
+  back, which hears the blueprint's answers, and a line that binds a plain result
+  (sem-ch08-blueprint-value-gives-back). Left refused: one that gives a dynamic or a
+  bundle back (no test), one applied in a hosted scope
+  (sem-ch09-blueprint-value-hosted).
 - lower/node/static.prism:104 a widget function parameter applied to arguments whose
   argument is a function value that is no name (a lambda). No test. A named widget
   function passed and applied is lowered (sem-ch08-widget-parameter-applied).

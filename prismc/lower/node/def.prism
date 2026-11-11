@@ -303,6 +303,9 @@ fn IsLateExpr lx, menv, e, depth = match e.kind:
                     # a widget parameter applied: its argument, in its caller's environment
                     ? (BnWidget x, ignore, cmenv, clx): depth > 0 and IsLateExpr clx, cmenv, x, (Dec depth)
                     ? (BnLocalWidget wb): depth > 0 and IsLateBlock lx, menv, wb, (Dec depth)
+                    # a blueprint value the node holds, applied (`AppliedBlueprintLine`):
+                    # what it gives is known once it is built, after the node
+                    ? (BnLocal ignore, ignore, ignore): (Len args) == 0 and (LayerOf (TypeAt lx, e.span)) == LyBlueprint and IsPlainResult lx, e
                     otherwise:
                         let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
                         match ?q:
