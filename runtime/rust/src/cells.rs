@@ -663,11 +663,33 @@ pub struct Live<E> {
     pub identity: E,
     pub level: Dynamic<E>,
     pub entry: Rc<crate::host::Entry<E>>,
+    /// The place's requests as its host's row hears them: the event field's name when the
+    /// tag has several, and the value fired.
+    pub requests: Rc<Port<(Option<String>, crate::pod::Pod)>>,
 }
 
 impl<E: Clone> Clone for Live<E> {
     fn clone(&self) -> Live<E> {
-        Live { identity: self.identity.clone(), level: self.level.clone(), entry: self.entry.clone() }
+        Live { identity: self.identity.clone(), level: self.level.clone(), entry: self.entry.clone(), requests: self.requests.clone() }
+    }
+}
+
+impl<E> Live<E> {
+    /// One event field of the live element as an `!T` (an element pattern's `!field=!r`,
+    /// ruling EP): each request the place makes through `field` (`None`: the tag's only
+    /// event field), decoded, in the tick the place fires it. A value that does not decode
+    /// is a fault of that tick.
+    pub fn requested<T: crate::pod::FromPod + Clone + 'static>(&self, field: Option<&'static str>) -> Event<T> {
+        let port = Rc::new(Port::new());
+        let out = port.clone();
+        self.requests.subscribe(Rc::new(move |(f, v): &(Option<String>, crate::pod::Pod), cx: &mut Cx| {
+            if f.as_deref() == field {
+                out.fire(T::from_pod(v)?, cx)
+            } else {
+                Ok(())
+            }
+        }));
+        Event { owner: None, port }
     }
 }
 
