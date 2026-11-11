@@ -544,6 +544,29 @@ pub fn widget_blueprint<E: 'static, A: 'static, R: 'static>(
     })
 }
 
+/// A widget that gives an event back as a blueprint value: as [`widget_blueprint`], the
+/// row's result the port its event fires. Each firing is an answer to the place the
+/// blueprint answers, made of the event's value by `answer` and given to the sink of
+/// what applied the blueprint, in the tick of the firing. The subscription lives as long
+/// as the row, whose port it is.
+pub fn widget_event_blueprint<E: 'static, A: 'static, T: Clone + 'static>(
+    build: impl Fn(Path, u32, &mut Cx) -> Result<BuiltWidget<E, A, Rc<Port<T>>>, Fault> + 'static,
+    build_hosted: impl Fn(Path, u32, Rc<dyn HostOf<E, A>>, Moved, &mut Cx) -> Result<BuiltWidget<E, A, Rc<Port<T>>>, Fault> + 'static,
+    answer: impl Fn(&T) -> A + 'static,
+) -> Blueprint<E, A> {
+    let answer = Rc::new(answer);
+    Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, base, cx| {
+        let (made, hosted) = match scope {
+            Scope::World => (build(path, base, cx)?, false),
+            Scope::Hosted(host) => (build_hosted(path, base, host.clone(), host_moved(host), cx)?, true),
+        };
+        let answered = answer.clone();
+        let _ = made.result.subscribe(Rc::new(move |v: &T, cx: &mut Cx| sink(&answered(v), cx)));
+        let (document, deliver) = if hosted { (Some(made.document), Some(made.deliver)) } else { (None, None) };
+        Ok(Supplied { node: made.node, first: None, forwards: false, entry: None, built: made.built, leave: Some(made.leave), document, deliver })
+    })
+}
+
 /// A host's telling as a [`Moved`]: the host held weakly, told while it lives.
 pub fn host_moved<E: 'static, A: 'static>(host: &Rc<dyn HostOf<E, A>>) -> Moved {
     let weak = Rc::downgrade(host);

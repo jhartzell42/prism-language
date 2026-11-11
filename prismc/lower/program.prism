@@ -276,16 +276,58 @@ fn RootWidgets lx:
 # a blueprint is an opaque handle and still a value; Semantics ch. 8: it builds nothing
 # until a block applies it): an argument of a function that is no widget or of a
 # constructor, a host's supplier, what a lambda gives, the operand of `?`, a part of a
-# tuple or an array. Each is lowered once more as rows of its own (`ValuedRows`), which the
+# tuple or an array, the value of a `let`. Each is lowered once more as rows of its own (`ValuedRows`), which the
 # blueprint made at the value site builds (`WidgetBlueprintValue`). One whose parameters
 # are not all plain, with a type parameter, or with an event, dynamic or bundle result is
 # left out, and refused where it is read as a value.
 ValuedWidgets: unbounded fn Lx -> (Text ==> [((Text, Pa, [Cc], [Ex]))])
 fn ValuedWidgets lx = Fold lx.g.defs, {}, \|acc, d|
     let lxd = InModule lx, d.file, d.home
-    Fold (DefExprs d), acc, \|m, e| Fold (ValueWidgetsIn lxd, e), m, \|m2, qk| if HasKey m2, qk: m2 else: match ?ValuedCases lx, qk:
+    let held = Fold (DefExprs d), [[]], \|qks, e| Append qks, (ValueWidgetsIn lxd, e)
+    # a `let` names a value: the widget it names is read as one where the name is
+    let named = Fold (LetValues d), held, \|qks, e| Append qks, (ValueWidgetsAt lxd, e)
+    Fold named, acc, \|m2, qk| if HasKey m2, qk: m2 else: match ?ValuedCases lx, qk:
         ? cases: Insert m2, qk, cases
         nil: m2
+
+# The value of every `let` of a definition, at any depth: its body's own, and those of
+# every block an expression of it holds.
+LetValues: unbounded fn Def -> [Expr]
+fn LetValues d:
+    let own = match d.body:
+        DbFn clauses: Fold clauses, [[]], \|acc, c| Append acc, (BodyLets c.body)
+        DbMethod clauses, ignore, ignore: Fold clauses, [[]], \|acc, c| Append acc, (BodyLets c.body)
+        DbDefault clauses, ignore: Fold clauses, [[]], \|acc, c| Append acc, (BodyLets c.body)
+        DbWidget w: StatementLets w.body.stmts
+        otherwise: [[]]
+    Fold (DefExprs d), own, \|acc, e| Fold (BlocksHeld e), acc, \|acc2, b| Append acc2, (StatementLets b.stmts)
+
+BodyLets: unbounded fn FnBody -> [Expr]
+fn BodyLets (BodyExpr ignore) = [[]]
+fn BodyLets (BodyBlock b) = StatementLets b.stmts
+
+# The `let`s among statements, and those of the functions, widgets and loops they define.
+StatementLets: unbounded fn [Stmt] -> [Expr]
+fn StatementLets stmts = Fold stmts, [[]], \|acc, s| match s.kind:
+    SLet ignore, ignore, e: Push acc, e
+    SFn f: Append acc, (BodyLets f.body)
+    SWidget w: Append acc, (StatementLets w.body.stmts)
+    SWhile ignore, b: Append acc, (StatementLets b.stmts)
+    otherwise: acc
+
+# The blocks one expression holds itself (not those of the expressions inside it).
+BlocksHeld: fn Expr -> [Block]
+fn BlocksHeld e = match e.kind:
+    ELambda ignore, (LbBlock b): [[b]]
+    EIf ignore, yes, (? no): [[yes, no]]
+    EIf ignore, yes, nil: [[yes]]
+    EMatch ignore, arms: Each arms, \|a| a.body
+    ERebuild ignore, b: [[b]]
+    EFor ignore, ignore, b: [[b]]
+    EGiven b: [[b]]
+    EUpdate ignore, b: [[b]]
+    EWidgetBlock b: [[b]]
+    otherwise: [[]]
 
 # The widgets one expression holds in a value's place.
 ValueWidgetsIn: unbounded fn Lx, Expr -> [Text]
@@ -354,7 +396,8 @@ ValuedStem: fn Text -> Text
 fn ValuedStem qk = "{Camel (BareName qk)}_value"
 
 # A valued widget's clauses as a blueprint chooses and builds them (`SharedCaseOf`), when
-# it can be one: plain parameters, no type parameter, nothing or a plain value given back.
+# it can be one: plain parameters, no type parameter, nothing, a plain value or an event
+# given back.
 ?ValuedCases: unbounded fn Lx, Text -> ?[((Text, Pa, [Cc], [Ex]))]
 fn ?ValuedCases lx, qk = match lx.g.vals[qk]:
     nil: nil
@@ -362,8 +405,10 @@ fn ?ValuedCases lx, qk = match lx.g.vals[qk]:
         let ptys = match v.scheme.ty:
             TyFn ignore, ps, ignore: ps
             otherwise: [[]]
+        # nothing, a plain value, or an event with no time below its top (the row fires a
+        # port, `ValuedEventResult`)
         let plainResult = match WidgetResultOf v.scheme.ty:
-            TyAt i, ignore: (LayerOf i) == LyPlain and not (IsBundle (Peel i))
+            TyAt i, ignore: ((LayerOf i) == LyPlain and not (IsBundle (Peel i))) or ((LayerOf i) == LyEv and not (HasTime (Peel i)))
             otherwise: False
         let plainParams = Fold ptys, True, \|ok, pt| ok and (LayerOf pt) == LyPlain and not (IsWidgetFnTy pt)
         if not (plainResult and plainParams and (Len (RigidsIn v.scheme.ty)) == 0): nil
