@@ -72,7 +72,9 @@ fn RustTrait t:
 Signature: unbounded fn FnDef, Text -> Text
 fn Signature f, vis:
     let params = Join (Each f.params, \|((n, t))| "{n}: {Type t}"), ", "
-    "{vis}fn {f.name}{Generics f.generics}({params}) -> {Type f.ret}"
+    # A method's own type parameters live as long as the program, as a function's do
+    # (`RustFn`): its body may ask a type's key or build a closure over them.
+    "{vis}fn {f.name}{StaticGenerics f.generics}({params}) -> {Type f.ret}"
 
 TraitMethod: unbounded fn FnDef -> Text
 fn TraitMethod f = if f.public: Fn "", (Signature f, ""), (BodyLines f.body) else: "{Signature f, ""};"
@@ -393,7 +395,7 @@ fn RustNode n:
     let tail = if n.fallible: "::std::result::Result::Ok(node)" else: "node"
     let restText = if (Len n.build) == 0: tail else: "{Statements n.build}\n{tail}"
     let build = Build n.name, params, ret, (Statements n.lets), inits, restText
-    let methods = Join (Each n.methods, \|m| RustMethod m), "\n"
+    let methods = Join (Each n.methods, \|m| RustMethod m, "pub(crate) "), "\n"
     # a node with gaps of its own seats an answer's position first (the lowering's `seat`)
     let seating = if Fold n.methods, False, \|f, m| f or m.name == "seat": "let seated = crate::prelude::seated(at, |a| self.seat(a));\nlet at = crate::prelude::segments_of(&seated);" else: ""
     let answer = if (Len n.answers) == 0: "" else: Answer seating, (Join (Each n.answers, \|((pat, call))| "{Pattern pat} => {Expression call},"), "\n")
@@ -441,10 +443,13 @@ RustRowImpl: unbounded fn NodeDef -> Text
 fn RustRowImpl n:
     let kept = if n.rowKind == ForRow: [["*self.left_entry.borrow_mut() = ::std::option::Option::Some(self.entry(cx));"]] else: [[]]
     let unsubscribe = Each n.subs, \|((ev, m, ignore))| "if let (::std::option::Option::Some(p), ::std::option::Option::Some(h)) = (self.parent.upgrade(), self.{m}_sub.take()) \{\n    p.{ev}_port.unsubscribe(h);\n\}"
-    RowImpl n.name, (Join (Append (Push kept, "self.remove_places(cx);"), unsubscribe), "\n"), (Join (Each n.hosted, \|m| RustMethod m), "\n")
+    RowImpl n.name, (Join (Append (Push kept, "self.remove_places(cx);"), unsubscribe), "\n"), (Join (Each n.hosted, \|m| RustMethod m, ""), "\n")
 
-RustMethod: unbounded fn MethDef -> Text
-fn RustMethod m:
+# A node's method. One of its own is seen by the whole crate: a row is built, and its
+# methods called, by the block that reads its widget as a value, which may be another
+# module's (`@Parts.header` read in `App`). One of a `Row` impl has the trait's visibility.
+RustMethod: unbounded fn MethDef, Text -> Text
+fn RustMethod m, visibility:
     let recv = match m.recv:
         RecvRc: "self: &::std::rc::Rc<Self>"
         RecvRef: "&self"
@@ -455,7 +460,7 @@ fn RustMethod m:
         CxNone: ""
     let params = Concat (Each m.params, \|((p, t))| ", {p}: {Type t}")
     let ret = if m.ret == OutUnit: "" else: " -> {Type m.ret}"
-    let sig = "fn {m.name}({recv}{params}{cx}){ret}"
+    let sig = "{visibility}fn {m.name}({recv}{params}{cx}){ret}"
     let body = if m.ret == OutUnit: Statements m.body else: if (Len m.body) == 0: BodyLines m.tail else: "{Statements m.body}\n{BodyLines m.tail}"
     Method (Doc m.doc), sig, body
 

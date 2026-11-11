@@ -143,6 +143,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
 ## Functions and lifting
 
 - **A plain function** → a Rust `fn` taking references, its clauses one `match`.
+- **A type parameter** of a function, of an impl and of a trait method's own is bounded
+  `'static` in Rust (`StaticGenerics`, in a trait's declaration, its impls and its packed
+  dictionary alike): every Prism type lives as long as the program, and a body may ask a
+  type's key (`type_key`) or build a closure or a job over it.
 - **A guard no checked program reaches** is an internal error: `InternalBug`,
   `InternalBugDo`, `InternalBugType` put "a prismc bug: .." where a refusal's words go, and
   `CompileProgram` reports it as `error[internal]`.
@@ -175,6 +179,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
   one `rt::Stamped` per input a combinator reads, one `rt::Cache` per shared computed
   behavior, merged children's fields, and a `state` enum when the block has more than one
   state.
+- **A node's own methods** are `pub(crate)` in Rust (`RustMethod`): a widget's row is
+  built, and its methods called (`built`), by the block that reads the widget as a value,
+  which may be in another module (`@Parts.header` read in `App`).
 - **The constructor** `fn build(path, args, cx: &mut Cx) -> Rc<Self>` runs after
   propagation: holds take their initial values (`Hold::new(v, cx)`, stamped with the
   build tick), the hosts are linked, the builders run and the structural dynamics'
@@ -393,6 +400,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A constructor's `$` field** takes its argument whole (`CtorArgs`,
   `IsDynamicFieldCtor`): a reader's live `Dynamic`, which the line makes as it does for a
   function that takes time whole (`WholeArgsAt`).
+- **`$ v` over a value that holds time below its top** (`$ (($level, "main"))`, a
+  `$(($Nat, Text))`; `ConstantOfTimeAt`) builds `v` with its dynamics whole: each reader
+  in it is the live `Dynamic` the line makes for it (`WholeArgsAt`), so the tuple holds
+  `$level` itself and never a copy of its value.
 - **`any x` of `^Show` alone** is `Rc::new(x)` cast to `Rc<dyn Show>` where it is made
   (`AnyValue`): an argument behind a reference and an array's element are not coerced.
 - **A module's lowercase declaration written qualified** (`Words.base`) is parsed as a

@@ -1,0 +1,6 @@
+# The tests of ts-ch03-impl-and-method-type-parameter-one-name.
+emit Ui.*
+use App.*
+
+test it_builds, @Page:
+    build

@@ -348,6 +348,14 @@ fn NotLifted lx, span = match lx.apps[PlaceKey lx, span]:
     ? ap: ap.layer != "$" and ap.layer != "!"
     nil: True
 
+# Whether an expression is `$ v` over a value that holds time below its top (Type System
+# ch. 1: a dynamic of a tuple that holds a dynamic is a type as any other): `v`'s dynamics
+# are in it whole.
+ConstantOfTimeAt: fn Lx, Expr -> Bool
+fn ConstantOfTimeAt lx, e = match e.kind:
+    EFreeSigil "$", x: TimeWithin (TypeAt lx, x.span)
+    otherwise: False
+
 # Such a value where a reader is wanted: built with its time values whole, and sampled at
 # the read point when it is a dynamic. A plain function's body has no read point (gap LE).
 SampledObject: unbounded fn Lx, Env, Expr -> Vl
@@ -656,8 +664,13 @@ fn PlainValueByKind lx, env, e:
         EFreeSigil "@", x: PureBlueprint lx, env, x, t
         # a value of `$$a` holds a `$a` (`Peel`): `$ v` there is a constant of `v`, as in a
         # map's body over `$ $q`
+        # and a constant of a value that holds time below its top (`$ (($level, "main"))`, a
+        # `$(($Nat, Text))`): the value is built with its dynamics whole, each the live
+        # dynamic its line made (`ConstantOfTimeAt`, `WholeArgs`), never a copy of its value
         EFreeSigil "$", x:
-            let v = ValueOf lx, env, x
+            let lxw = update lx:
+                &_.whole <= True
+            let v = if ConstantOfTimeAt lx, e: ValueOf lxw, env, x else: ValueOf lx, env, x
             match ((t, (ValueTy v))):
                 ((OutDyn ignore, OutDyn ignore)): v
                 ((OutDyn ignore, ignore)): VlOwned (XCall (HelperRef "dyn_constant"), [[Own v]]), t
