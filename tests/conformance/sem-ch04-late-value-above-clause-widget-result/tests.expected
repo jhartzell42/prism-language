@@ -1,0 +1,16 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": the order of a group's lines decides positions and nothing else), ch. 8 (`<-` binds the clause's plain result; a widget application is transparent) and ruling TC (places counted as built): loud gives 10, so the first clause builds its label at 1 and gives 1, the next label is 2 and the arm's 3; soft gives 20, so the second clause builds nothing and gives 2, and the arm builds nothing.
+test loud
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Ui.Label(text="ten")
+    2: Ui.Label(text="wide 1")
+    3: Ui.Label(text="x 0")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Ui.Label(text="wide 2")
