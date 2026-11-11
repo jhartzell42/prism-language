@@ -412,6 +412,8 @@ fn ?RelOf m, e = match e.kind:
         nil: nil
     EIndex r, ignore: ?RelOf m, r
     EGroup x: ?RelOf m, x
+    # a cast is the value it casts, checked or not
+    ECast x, ignore, ignore: ?RelOf m, x
     otherwise: match ?CallOf e:
         ? ((c, args)): if IsNonNatMin m, e, c: nil else: ?RelOfCall m, c, args
         nil: nil
