@@ -1,0 +1,29 @@
+# An update block's `if p <- x` whose pattern tests more than a constructor (Semantics
+# ch. 5: an update block's `if` binds a pattern that may fail, and its block runs only when
+# the whole pattern matches): a literal inside a tuple, and a payload inside a recursive
+# choice's payload. Where the pattern fails the `else` runs, or nothing.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Chain = choice:
+    End
+    Link Nat, Chain
+derive ^Eq, ^Show
+
+FirstPair: fn Chain -> Nat
+fn FirstPair c = update 0:
+    if Link a, (Link b, rest) <- c:
+        &_ += a * b
+    else:
+        &_ += 100
+
+Zeroed: fn ((Nat, Nat)) -> Nat
+fn Zeroed pair = update 1:
+    if ((0, n)) <- pair:
+        &_ += n
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{FirstPair (Link 2, (Link 3, End))} {FirstPair (Link 5, End)} {Zeroed ((0, 7))} {Zeroed ((3, 7))}")   # 0
