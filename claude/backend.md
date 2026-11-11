@@ -596,7 +596,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
     other types included (`InstanceUses`, `?GrowInstances`); an impl's method has the
     types its impl's head takes wherever a constraint is solved by that impl (the
     checker's `ImplNote`s; `ImplTargets`, which follows the impl's own bounds), and a
-    default the impl leaves unwritten has the type. Only the definitions that can
+    default the impl leaves unwritten has the type. A trait method with type
+    parameters of its own (`?FrameWith: fn a, b -> ?@unit`) is instantiated where it is
+    named (`UseOfMethod`, `MethodTargets`): the method of the impl whose head the
+    trait's parameter has there, or the trait's default, at the head's types and at
+    the types the name's type gives the method's own (`DefinitionRigids` counts both;
+    `ImplTargets` leaves such a method out). Only the definitions that can
     reach the one asked for are followed (`RelevantDefinitions`). The fixed point has
     no count: it stops with no answer where a new instantiation's line of parents
     holds the same definition at types embedded in the new one's (`GrowsFrom`,

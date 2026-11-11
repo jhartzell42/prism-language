@@ -83,14 +83,14 @@ Hosting
   many generic functions deep (sem-ch08-widget-value-generic-ten-functions-deep), in a
   function that calls itself at other types
   (sem-ch08-widget-value-generic-function-at-other-type), in an impl's method at the
-  impl's type parameter (sem-ch08-widget-value-generic-in-method). Left
+  impl's type parameter (sem-ch08-widget-value-generic-in-method) and at the trait
+  method's own (sem-ch08-widget-value-generic-at-method-type-parameter). Left
   refused (`OpenWidgetValueWords`): a generic one read where a type parameter stays
   open and the program gives the definition it stands in no finite set of types
   (`?DefInstances`, `GrowsFrom`: a line of instantiations that holds one definition
   twice, the earlier types embedded in the later;
   sem-ch08-widget-value-generic-function-at-ever-larger-types, R; the plain function
-  alone is refused by rustc, ts-ch02-function-at-ever-larger-types), one read at a
-  trait method's own type parameter in an impl's method (R, no test), one with a `$` or event parameter with time below its top (no
+  alone is refused by rustc, ts-ch02-function-at-ever-larger-types), one with a `$` or event parameter with time below its top (no
   tests);
   one read in a place `ValuedWidgets` does not look (a record's field read back and
   given on is a value already). One built in a hosted scope builds its hosted row
