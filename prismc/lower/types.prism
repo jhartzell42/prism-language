@@ -67,8 +67,9 @@ fn OutTyOf lx, t = match t:
     TyCon "Answer", ignore: answerTy
     TyCon "Wired", [[]]: OutNamed elemRef, [[]]
     TyCon "Prelude.Error", [[]]: OutError
-    # a non-empty collection is the collection: its promise is the checker's
-    TyCon "Prelude.NonEmpty", [[c]]: OutTyOf lx, c
+    # a non-empty collection has a target type of its own, the prelude's wrapper of the
+    # collection (`NonEmptyOut`)
+    TyCon "Prelude.NonEmpty", [[c]]: NonEmptyOut (OutTyOf lx, c)
     TyCon "\u{0}Self", [[]]: OutNamed (RefRuntime "Self"), [[]]
     TyCon "Buffer", [[a]]: OutArray (OutTyOf lx, a)
     TyCon "Table", [[k, v]]: OutArray (OutTuple [[(OutTyOf lx, k), (OutTyOf lx, v)]])
@@ -180,6 +181,50 @@ fn NamedTy lx, n, args = match lx.g.types[n]:
         BRowKind: if n == "Prelude.Fault": OutPod else: OutNamed (RefIn lx, ti.home, (TypeItemName n)), [[]]
         otherwise: OutNamed (RefIn lx, ti.home, (TypeItemName n)), args
     nil: if HasKey lx.g.families, n: OutPod else: InternalBugType "the type `{n}`, which the checker did not declare"
+
+# A non-empty collection's target type (Type System ch. 2, "Collections": `[a]+` and
+# `(K ==> V)+`): the emitted prelude's `NonEmpty` over the collection's, a type of its own,
+# so an impl for `[a]+` and one for `[a]` are impls for two types, and a generic function
+# has an instantiation at each. A value of it is made by a non-empty literal
+# (`non_empty_of`) and by the checked conversion (`non_empty`, `non_empty_map`), and is
+# read as its collection where the checker found the collection wanted (`AsPlain`) and
+# where a construct reads a collection of either type (`Collection`, `PlainValue`).
+NonEmptyOut: fn OutTy -> OutTy
+fn NonEmptyOut c = OutNamed nonEmptyRef, [[c]]
+
+let nonEmptyRef = HelperRef "NonEmpty"
+
+# The collection's target type of a non-empty collection's, or nothing.
+?PlainOut: fn OutTy -> ?OutTy
+fn ?PlainOut t = match t:
+    OutNamed n, [[c]] if n == nonEmptyRef: ? c
+    otherwise: nil
+
+# A target type read as a collection's: a non-empty collection's is its collection's.
+CollectionOut: fn OutTy -> OutTy
+fn CollectionOut t = Or (?PlainOut t), t
+
+# A type read as a collection's (a `for`'s source, an indexed value, an array pattern's
+# scrutinee): a non-empty collection's is the collection's it promises.
+Collection: fn Ty -> Ty
+fn Collection t = match t:
+    TyCon "Prelude.NonEmpty", [[c]]: c
+    otherwise: t
+
+# A value read as the collection it is: a non-empty collection's value is its collection,
+# by reference through the wrapper (the prelude's `plain_collection`); any other value is
+# itself.
+PlainValue: fn Vl -> Vl
+fn PlainValue v = match ?PlainOut (ValueTy v):
+    ? c: VlPlace (XCall (HelperRef "plain_collection"), [[(Ref v)]]), ByRef, c
+    nil: v
+
+# An owned collection read out of an owned value that may be a non-empty collection's, by
+# the value's type.
+PlainOwned: fn Ty, Ex -> Ex
+fn PlainOwned t, x = match t:
+    TyCon "Prelude.NonEmpty", ignore: XClone (XCall (HelperRef "plain_collection"), [[(XRef x)]])
+    otherwise: x
 
 # A type with its outermost time layer peeled: what a value of it holds at one moment. A
 # `$$a` holds a `$a` (a dynamic of dynamics, Type System ch. 4: lifting is a map, never a

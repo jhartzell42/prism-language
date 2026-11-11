@@ -175,9 +175,19 @@ InternalBugType: fn Text -> OutTy
 fn InternalBugType what = OutRefused "{internalBug}{what}"
 
 ValueOf: unbounded fn Lx, Env, Expr -> Vl
-fn ValueOf lx, env, e = match env.spans[PlaceKey lx, e.span]:
-    ? v: v
-    nil: UnboundValueOf lx, env, e
+fn ValueOf lx, env, e:
+    let v = match env.spans[PlaceKey lx, e.span]:
+        ? found: found
+        nil: UnboundValueOf lx, env, e
+    AsPlain lx, e, v
+
+# A non-empty collection's value where the checker found its plain collection wanted (its
+# `plains`: an argument, an arm beside a plain one, an entry, a value checked against its
+# type): the collection it is (Type System ch. 2, "Collections", the one implicit
+# conversion; ruling NS). Only a value of the wrapper's type is converted: one already
+# the collection (bound converted, or lifted whole) is kept.
+AsPlain: fn Lx, Expr, Vl -> Vl
+fn AsPlain lx, e, v = if HasKey lx.plains, (PlaceKey lx, e.span): PlainValue v else: v
 
 # An event's value inside the expression that maps it is bound by the event's place in
 # the source (`Env.spans`), so the map is the plain expression over that value.
@@ -664,7 +674,8 @@ fn PlainValueByKind lx, env, e:
         EMatch s, arms: MatchValue lx, env, s, arms, t, e.span
         ETemplate tp: TemplateValue lx, env, tp
         ECast x, ignore, checked: if checked: CheckedCastValue lx, env, x, t else: ValueOf lx, env, x
-        ENonEmpty x: ValueOf lx, env, x
+        # `[[x, y]]+`, `{k: v}+`: the literal's collection in the non-empty type's wrapper
+        ENonEmpty x: VlOwned (XTyped (XCall (HelperRef "non_empty_of"), [[(Own (ValueOf lx, env, x))]]), t), t
         ETypeArgs x, ignore: ValueOf lx, env, x
         EGiven b: GivenValue lx, env, b, t, e.span
         EUpdate target, b: UpdateValue lx, env, target, b, t, e.span
@@ -1003,13 +1014,15 @@ fn ElementBlueprint lx, env, args, t = match args[0]:
     ? a: VlOwned (XCall (RefRuntime "prism_rtl::element_blueprint::<crate::Elem, crate::Answer>"), [[Ref (ValueOf lx, env, a.value)]]), t
     nil: VlOwned (InternalBug "`@Element` without its element"), t
 
-# `xs as [a]+?`: the collection when it has an element, else `nil`.
+# `xs as [a]+?`: the non-empty collection (the prelude's wrapper, `NonEmptyOut`) when the
+# collection has an element, else `nil`.
 CheckedCastValue: unbounded fn Lx, Env, Expr, OutTy -> Vl
 fn CheckedCastValue lx, env, x, t:
-    let helper = match OutTyOf lx, (Peel (TypeAt lx, x.span)):
+    let v = PlainValue (ValueOf lx, env, x)
+    let helper = match ValueTy v:
         OutMap ignore, ignore: "non_empty_map"
         otherwise: "non_empty"
-    VlOwned (XTyped (XCall (HelperRef helper), [[Ref (ValueOf lx, env, x)]]), t), t
+    VlOwned (XTyped (XCall (HelperRef helper), [[(Ref v)]]), t), t
 
 # The construct an expression is, in words, for a refusal (`Refusal`).
 KindWords: fn ExprKind -> Text
@@ -2240,8 +2253,10 @@ fn NumMethod other = "add"
 PreludeCall: unbounded fn Lx, Env, Text, [Arg], Range, OutTy -> Vl
 fn PreludeCall lx, env, qk, args, span, t:
     let name = Or lx.rsNames[qk], (Snake (BareName qk))
+    # (a non-empty collection is read by the variant of the collection it is: `Len` of a
+    # `(K ==> V)+` is `len_map`, which takes the wrapper as the map it holds)
     let first = match args[0]:
-        ? a: OutTyOf lx, (Peel (TypeAt lx, a.value.span))
+        ? a: CollectionOut (OutTyOf lx, (Peel (TypeAt lx, a.value.span)))
         nil: OutUnit
     let variant = PreludeVariant name, first
     match ?PreludeJob lx, env, variant, args:
@@ -2283,7 +2298,7 @@ fn ?PreludeJobCall lx, env, e = match e.kind:
                             if v.home == "Prelude":
                                 let name = Or lx.rsNames[qk], (Snake (BareName qk))
                                 let first = match args[0]:
-                                    ? a: OutTyOf lx, (Peel (TypeAt lx, a.value.span))
+                                    ? a: CollectionOut (OutTyOf lx, (Peel (TypeAt lx, a.value.span)))
                                     nil: OutUnit
                                 ?PreludeJob lx, env, (PreludeVariant name, first), args
                             else: nil
@@ -2430,7 +2445,7 @@ fn Instantiated t, params, args = match t:
 # `xs[i]`: an optional, of an array or a map (a text has no index: the checker refuses it).
 IndexValue: unbounded fn Lx, Env, Expr, Expr, OutTy -> Vl
 fn IndexValue lx, env, r, i, t:
-    let rt = OutTyOf lx, (Peel (TypeAt lx, r.span))
+    let rt = CollectionOut (OutTyOf lx, (Peel (TypeAt lx, r.span)))
     let f = match rt:
         OutMap ignore, ignore: HelperRef "get"
         otherwise: HelperRef "index"

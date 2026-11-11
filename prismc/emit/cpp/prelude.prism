@@ -323,11 +323,44 @@ inline Nat len_text(const Text& t) { return nat_of(t.len()); }
 template <class K, class V>
 Nat len_map(const Map<K, V>& m) { return nat_of(m.size()); }
 
-// `xs as [a]+?`: the collection when it has an element (Type System ch. 2, "Collections").
+/// `[a]+` and `(K ==> V)+` (Type System ch. 2, "Collections"): a collection with at least
+/// one entry, a type of its own beside its collection's, so an impl for `[a]+` and one for
+/// `[a]` are impls for two types and a generic function has an instantiation at each. It
+/// is read as the collection it is (its base class, `plain_collection`), and compares,
+/// prints and travels as plain data as that collection does. Only a non-empty literal
+/// (`non_empty_of`) and the checked conversion (`non_empty`, `non_empty_map`) make one.
+template <class C>
+struct NonEmpty : C {
+    using prism_value = void;
+    NonEmpty() = default;
+    explicit NonEmpty(C collection) : C(::std::move(collection)) {}
+    bool operator==(const NonEmpty& other) const { return static_cast<const C&>(*this) == static_cast<const C&>(other); }
+    auto operator<=>(const NonEmpty& other) const { return static_cast<const C&>(*this) <=> static_cast<const C&>(other); }
+    void show(Printer& p) const { Show<C>::show(static_cast<const C&>(*this), p); }
+    Pod to_pod() const { return ToPod<C>::to_pod(static_cast<const C&>(*this)); }
+    // Only a World hands a program data, and an empty collection is not a non-empty one's.
+    static Result<NonEmpty> from_pod(const Pod& whole) {
+        auto collection = prism_rtl::from_pod<C>(whole);
+        if (!collection) return unexpected(collection.error());
+        if (collection.value().size() == 0) return mismatch<NonEmpty>("a non-empty collection", whole);
+        return NonEmpty(::std::move(collection).value());
+    }
+};
+
+// `[[x, y]]+`, `{k: v}+`: a non-empty literal's collection, which the checker saw an entry in.
+template <class C>
+NonEmpty<C> non_empty_of(C collection) { return NonEmpty<C>(::std::move(collection)); }
+
+// A non-empty collection where its collection is wanted (the one implicit conversion).
+template <class C>
+const C& plain_collection(const NonEmpty<C>& xs) { return xs; }
+
+// `xs as [a]+?`: the non-empty collection when the collection has an element (Type System
+// ch. 2, "Collections").
 template <class A>
-::std::optional<Array<A>> non_empty(const Array<A>& xs) { if (xs.size() > 0) return xs; return ::std::nullopt; }
+::std::optional<NonEmpty<Array<A>>> non_empty(const Array<A>& xs) { if (xs.size() > 0) return NonEmpty<Array<A>>(xs); return ::std::nullopt; }
 template <class K, class V>
-::std::optional<Map<K, V>> non_empty_map(const Map<K, V>& m) { if (m.size() > 0) return m; return ::std::nullopt; }
+::std::optional<NonEmpty<Map<K, V>>> non_empty_map(const Map<K, V>& m) { if (m.size() > 0) return NonEmpty<Map<K, V>>(m); return ::std::nullopt; }
 
 template <class A>
 Array<A> append(const Array<A>& a, const Array<A>& b) { return a.concat(b); }

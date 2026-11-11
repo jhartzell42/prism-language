@@ -393,10 +393,11 @@ fn ErrorPat lx, fps, ty, mode, fresh:
 # `[[a, b]]`: the length, then each element by index.
 ArrayPat: unbounded fn Lx, [Pattern], Ty, Holding, Text -> PatOut
 fn ArrayPat lx, ps, ty, mode, fresh:
-    let et = match PlainCollections (Peel ty):
+    # (a non-empty array is matched as the array it is)
+    let et = match Collection (Peel ty):
         TyArray x: x
         otherwise: TyErr
-    let arr = LocalPlace (XVar fresh), mode, (OutTyOf lx, (Peel ty))
+    let arr = PlainValue (LocalPlace (XVar fresh), mode, (OutTyOf lx, (Peel ty)))
     let lenCond = CcIf (XBin OpEq, (XMethod (Ref arr), "len", [[]]), (XIndex (Len ps)))
     let subs = Each (Range0 (Len ps)), \|i| ((i, (RustPat lx, (Or ps[i], dummyPat), et, Owned, "{fresh}_{i}")))
     let conds = Fold subs, [[lenCond]], \|acc, ((i, o))| Append (Push acc, (CcLet (PaCtor (RefRuntime "std::Some"), [[o.pa]]), (XCall (HelperRef "index"), [[Ref arr, (XRef (XNat "{i}"))]]))), o.conds

@@ -293,6 +293,7 @@ fn HeadName other = ""
 # one collection of two types) are two functions.
 HeadWord: unbounded fn Ty -> Text
 fn HeadWord t = match t:
+    TyCon "Prelude.NonEmpty", [[c]]: "non_empty_{HeadWord c}"
     TyCon n, ignore: Snake (BareName n)
     TyArray x: "array_of_{HeadWord x}"
     TyMap k, v: "map_of_{HeadWord k}_to_{HeadWord v}"

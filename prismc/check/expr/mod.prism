@@ -238,7 +238,8 @@ fn CheckedCast env, st, x, ty, span:
         ? c:
             let ((xt, st3)) = Infer env, st2, x
             let coll = Or (?NonEmptyColl st3, xt), xt
-            (((TySig "?", t), (Unify st3, c, coll, x.span)))
+            # a non-empty collection checked again is read as the collection it is
+            (((TySig "?", t), (Unify (NoteFaultAt st3, x.span, c, xt), c, coll, x.span)))
 
 InferAll: unbounded fn Env, St, [Expr] -> (([Ty], St))
 fn InferAll env, st, es = Fold es, (([[]], st)), \|((acc, s)), x|

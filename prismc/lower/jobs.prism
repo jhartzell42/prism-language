@@ -471,8 +471,9 @@ fn ForJob lx, outer, env, ?binders, source, body, span, restReads, Cont:
     let pat = PaTuple (Each names, \|n| PaMut "{n}")
     let pack = XTuple (Each names, \|n| XVar n)
     let envS = Fold state, env, \|en, ((k, rs, bt))| Bind en, k, (BnLocal (XVar rs), Owned, bt)
-    let src = Own (ValueOf lx, env, source)
-    let sty = Peel (TypeAt lx, source.span)
+    # (a non-empty collection is run over as the collection it is)
+    let src = Own (PlainValue (ValueOf lx, env, source))
+    let sty = Collection (Peel (TypeAt lx, source.span))
     let ((kt, vt, isArray)) = match sty:
         TyArray v: ((OutNat, (OutTyOf lx, v), True))
         TyMap k, v: (((OutTyOf lx, k), (OutTyOf lx, v), False))

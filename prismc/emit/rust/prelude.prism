@@ -512,13 +512,89 @@ pub fn len_map<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Nat {
     nat_of(m.len())
 }
 
-// `xs as [a]+?`: the collection when it has an element (Type System ch. 2, "Collections").
-pub fn non_empty<A: Clone>(xs: &Array<A>) -> Option<Array<A>> {
-    if xs.len() > 0 { Some(xs.clone()) } else { None }
+/// `[a]+` and `(K ==> V)+` (Type System ch. 2, "Collections"): a collection with at least
+/// one entry, a type of its own beside its collection's, so an impl for `[a]+` and one for
+/// `[a]` are impls for two types and a generic function has an instantiation at each. It
+/// is read as the collection it holds (`Deref`, `plain_collection`), and compares, prints
+/// and travels as plain data as that collection does. Only a non-empty literal
+/// (`non_empty_of`) and the checked conversion (`non_empty`, `non_empty_map`) make one.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub struct NonEmpty<C>(C);
+
+impl<C> ::std::ops::Deref for NonEmpty<C> {
+    type Target = C;
+    fn deref(&self) -> &C {
+        &self.0
+    }
 }
 
-pub fn non_empty_map<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Option<Map<K, V>> {
-    if m.len() > 0 { Some(m.clone()) } else { None }
+// An entry written in place through an `update` path: the checker lets no path remove a
+// non-empty collection's last entry.
+impl<C> ::std::ops::DerefMut for NonEmpty<C> {
+    fn deref_mut(&mut self) -> &mut C {
+        &mut self.0
+    }
+}
+
+impl<C: Show> Show for NonEmpty<C> {
+    fn show(&self, p: &mut Printer) {
+        self.0.show(p);
+    }
+}
+
+impl<C: ToPod> ToPod for NonEmpty<C> {
+    fn to_pod(&self) -> Pod {
+        self.0.to_pod()
+    }
+}
+
+/// Whether a collection has an entry: what a `NonEmpty` promises of the one it holds.
+pub trait HasEntry {
+    fn has_entry(&self) -> bool;
+}
+
+impl<A> HasEntry for Array<A> {
+    fn has_entry(&self) -> bool {
+        !self.is_empty()
+    }
+}
+
+impl<K, V> HasEntry for Map<K, V> {
+    fn has_entry(&self) -> bool {
+        !self.is_empty()
+    }
+}
+
+// Only a World hands a program data, and an empty collection is not a non-empty one's.
+impl<C: FromPod + HasEntry> FromPod for NonEmpty<C> {
+    fn from_pod(p: &Pod) -> Result<NonEmpty<C>, Fault> {
+        let collection = C::from_pod(p)?;
+        if collection.has_entry() {
+            Ok(NonEmpty(collection))
+        } else {
+            ::prism_rtl::pod::mismatch("a non-empty collection", p)
+        }
+    }
+}
+
+// `[[x, y]]+`, `{k: v}+`: a non-empty literal's collection, which the checker saw an entry in.
+pub fn non_empty_of<C>(collection: C) -> NonEmpty<C> {
+    NonEmpty(collection)
+}
+
+// A non-empty collection where its collection is wanted (the one implicit conversion).
+pub fn plain_collection<C>(xs: &NonEmpty<C>) -> &C {
+    &xs.0
+}
+
+// `xs as [a]+?`: the non-empty collection when the collection has an element (Type System
+// ch. 2, "Collections").
+pub fn non_empty<A: Clone>(xs: &Array<A>) -> Option<NonEmpty<Array<A>>> {
+    if xs.len() > 0 { Some(NonEmpty(xs.clone())) } else { None }
+}
+
+pub fn non_empty_map<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Option<NonEmpty<Map<K, V>>> {
+    if m.len() > 0 { Some(NonEmpty(m.clone())) } else { None }
 }
 
 pub fn append<A: Clone>(a: &Array<A>, b: &Array<A>) -> Array<A> {

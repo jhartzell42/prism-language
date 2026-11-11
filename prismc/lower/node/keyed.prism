@@ -54,8 +54,10 @@ fn ForLine wx, benv0, menv0, ?binders, source, body, e, ?bound:
     let pos = wx.pos
     let wx1 = update wx:
         &_.pos <= NextPos &_.pos
-    let ((srcEx, reads)) = DynamicExpr wx1, menv0, source
-    let srcTy = Peel (TypeAt lx, source.span)
+    let ((srcEx0, reads)) = DynamicExpr wx1, menv0, source
+    # (a non-empty collection is run over as the collection it is)
+    let srcEx = PlainOwned (Peel (TypeAt lx, source.span)), srcEx0
+    let srcTy = Collection (Peel (TypeAt lx, source.span))
     let ((kt, vt, keyed)) = match srcTy:
         TyMap k, v: (((OutTyOf lx, k), (OutTyOf lx, v), True))
         TyArray v: ((OutNat, (OutTyOf lx, v), False))

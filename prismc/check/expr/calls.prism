@@ -282,7 +282,12 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
                 (((TyFn pc, ignore, ignore), (TyFn ac, aps, ar))): (((Push acc, (TyFn pc, aps, ar)), (AddLeq s2, ac, pc, a.value.span, "arg", fname, "")))
                 otherwise: (((Push acc, t), s2))
     let argTys = PlainBeside st1, params, inferred
-    let ((st2, whole)) = Fold (Range0 n), ((st1, [[]])), \|((s, done)), i|
+    # each `[a]+` argument read as the `[a]` beside an `[a]` one stands where the `[a]` is
+    # wanted (`PlainNotes`)
+    let st1b = Fold (Range0 n), st1, \|s, i| match (((?NonEmptyColl s, (Or inferred[i], TyErr)), (?NonEmptyColl s, (Or argTys[i], TyErr)))):
+        ((? c, nil)): AskPlainAt s, (Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)).value.span, c
+        otherwise: s
+    let ((st2, whole)) = Fold (Range0 n), ((st1b, [[]])), \|((s, done)), i|
         let a = Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)
         let at = Or argTys[i], TyErr
         let pnow = NormAssoc s, (Walk s, (Or params[i], TyErr))

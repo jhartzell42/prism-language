@@ -412,8 +412,14 @@ fn SolveOne g, st, givens, w:
         TySig s, inner:
             if (s == "?" or s == "~") and (HasText [["Eq", "Ord", "Show"]], (BareName w.cls)): (([[Want(cls=w.cls, ty=inner, file=w.file, span=w.span, level=w.level)]], (Solved st, w, t, "parts")))
             else: (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy st, t}`", "no trait has an impl at a sigiled type (Type System ch. 3, T6); take the layer off first")))
-        # a non-empty collection has the impls of the collection it is
-        TyCon "Prelude.NonEmpty", [[c]]: (([[Want(cls=w.cls, ty=c, file=w.file, span=w.span, level=w.level)]], st))
+        # a non-empty collection compares and prints as the collection it is, by its parts;
+        # any other trait is asked of the non-empty type itself, a type of its own with the
+        # impls written for it (`impl ^Named [a]+`, Type System ch. 2, "Collections": there
+        # is no subtyping; an `[a]`'s impl would build an empty `[a]+` where the trait's
+        # type is a result)
+        TyCon "Prelude.NonEmpty", [[c]]:
+            if HasText [["Eq", "Ord", "Show"]], (BareName w.cls): (([[Want(cls=w.cls, ty=c, file=w.file, span=w.span, level=w.level)]], st))
+            else: SolveAtHead g, st, s0, Restore, givens, w, t
         TyAt ignore, ignore: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy st, t}`")))
         TyFn ignore, ignore, ignore: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy st, t}`: functions do not compare or print")))
         otherwise: SolveAtHead g, st, s0, Restore, givens, w, t
@@ -479,7 +485,9 @@ fn SolveClass g, st, s0, Restore, givens, w, t:
                         let wants = Each im, \|((ty, cls))| Want(cls=cls, ty=ty, file=w.file, span=w.span, level=w.level)
                         ((wants, (NoteChoice (Solved s2, w, t, how), w.file, w.span, w.cls, ch)))
                     nil:
-                        let fix = if (bare == "Num" and con == "Text") or (IsRegexType con): "" else: "derive `^{bare}` on `{BareName con}`, or write `impl ^{bare} {BareName con}`"
+                        let fix = if (bare == "Num" and con == "Text") or (IsRegexType con): ""
+                        else: if con == "Prelude.NonEmpty": "write `impl ^{bare} {ShowTy st, t}`, or pass the collection it is, with `as {ShowTy st, (Or args[0], TyErr)}`"
+                        else: "derive `^{bare}` on `{BareName con}`, or write `impl ^{bare} {BareName con}`"
                         (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`", fix)))
             otherwise: (([[]], st))
 

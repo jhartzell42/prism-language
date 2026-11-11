@@ -61,6 +61,36 @@ it make every program an interpreter run, and every type mistake a runtime fault
   struct.
 - `?a` → `Option<A>`; `~a` → `Result<A, rt::Error>`; `((a, b))` → `(A, B)`; `[[a]]` →
   `rt::Array<A>`; `k ==> v` → `rt::Map<K, V>`.
+- `[a]+`, `(k ==> v)+` → `prelude::NonEmpty<rt::Array<A>>`, `prelude::NonEmpty<rt::Map<K,
+  V>>`: a type of its own in the emitted prelude of each target (`NonEmptyOut`), so
+  `impl ^Named [a]+` beside `impl ^Named [a]` are impls for two target types, and a
+  generic function has an instantiation at each (their words in a name differ too,
+  `non_empty_array_of_nat`, `HeadWord`).
+  - Rust: a tuple struct over the collection with `Deref` and `DerefMut` to it, the
+    derived `Clone`, `Eq`, `Ord`, `Hash`, and `Show`, `ToPod`, `FromPod` through the
+    collection's (`FromPod` refuses an empty one: only a World hands a program data).
+    C++: `template <class C> struct NonEmpty : C`, the collection its base class, with
+    `show`, `to_pod`, `from_pod` and the comparisons as a prelude value has them.
+  - Made in two places: a non-empty literal, `[[x, y]]+` → `prelude::non_empty_of(..)`
+    over the literal's collection; the checked conversion, `xs as [a]+?` →
+    `prelude::non_empty(&xs)` or `non_empty_map`, an `Option` of the wrapper.
+  - Read as its collection in two ways. Where the checker found the collection wanted
+    (the one implicit conversion, and ruling NS's symmetric cases), the place is in the
+    typed output's `plains`, and `ValueOf` gives the collection there, by reference
+    through `prelude::plain_collection` (`AsPlain`, `PlainValue`): an argument at an
+    `[a]` parameter, an `[a]+` argument or entry beside an `[a]` one, an arm beside an
+    `[a]` arm, a value checked against an `[a]`, `xs as [a]`, the operand of `as [a]+?`.
+    The checker asks at each such place when it sees the non-empty value
+    (`NoteFaultAt`, `AskPlainAt`) and answers at the program's end (`PlainNotes`), since
+    an entry or an arm before the plain one is only known to be converted then. Where a
+    construct reads a collection of either type and no place wants the plain one, the
+    lowering reads through the wrapper by the source's type (`Collection`,
+    `CollectionOut`, `PlainOwned`): a `for`'s source (widget, job and `update`), an
+    array pattern's scrutinee, an index path of an `update`, and the prelude's
+    variants chosen by the first argument's collection (`Len` of a `(k ==> v)+` is
+    `len_map`, which takes the wrapper as the map it holds).
+  - The checker solves a trait at `[a]+` by an impl for `[a]+`; `^Eq`, `^Ord` and `^Show`
+    go by the collection's parts, as they do for `[a]`.
 - `fn a -> b` as a value → `Rc<dyn Fn(A) -> B>`, captures cloned in (values are cheap to
   clone); a named function → a Rust `fn`.
 - `unbounded fn a -> b` as a value → `fn(A) -> Rc<dyn rt::Job<B>>`, its `Start`.

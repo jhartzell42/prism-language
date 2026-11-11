@@ -244,7 +244,8 @@ fn UpdStmt lx, env, s = match s.kind:
 # entry, none bind `key` and `_`.
 UpdFor: unbounded fn Lx, Env, ?ForBinders, Expr, Block, Range -> Do
 fn UpdFor lx, env, ?binders, source, body, span:
-    let sty = Peel (TypeAt lx, source.span)
+    # (a non-empty collection is run over as the collection it is)
+    let sty = Collection (Peel (TypeAt lx, source.span))
     match ?RefBinder ?binders:
         ? n: if IsRefPath source: UpdForRefs lx, env, (SNameKey n), source, body, span, sty else: UpdForValues lx, env, ?binders, source, body, span, sty
         # the bare form over a reference path (`for &_.xs:`) rebinds `&_` to the
@@ -303,7 +304,7 @@ fn IsRefPath e = match e.kind:
 
 UpdForValues: unbounded fn Lx, Env, ?ForBinders, Expr, Block, Range, Ty -> Do
 fn UpdForValues lx, env, ?binders, source, body, span, sty:
-    let src = Own (ValueOf lx, env, source)
+    let src = Own (PlainValue (ValueOf lx, env, source))
     let ((kt, vt, isArray)) = match sty:
         TyArray v: ((OutNat, (OutTyOf lx, v), True))
         TyMap k, v: (((OutTyOf lx, k), (OutTyOf lx, v), False))
@@ -386,7 +387,7 @@ fn PlaceOf lx, env, e = match e.kind:
         let ((ignore, ignore, f)) = FieldInfo lx, rty, name.name
         FieldOfEx lx, (PlaceOf lx, env, r), rty, f
     EIndex r, k:
-        let rt = OutTyOf lx, (Peel (PlaceTy lx, r))
+        let rt = CollectionOut (OutTyOf lx, (Peel (PlaceTy lx, r)))
         let f = match rt:
             OutMap ignore, ignore: HelperRef "at_mut_map"
             otherwise: HelperRef "at_mut"
@@ -399,7 +400,7 @@ fn PlaceOf lx, env, e = match e.kind:
 PlaceTy: unbounded fn Lx, Expr -> Ty
 fn PlaceTy lx, e = match TypeAt lx, e.span:
     TyErr: match e.kind:
-        EIndex r, ignore: match Peel (PlaceTy lx, r):
+        EIndex r, ignore: match Collection (Peel (PlaceTy lx, r)):
             TyArray el: el
             TyMap ignore, v: v
             otherwise: TyErr
@@ -420,7 +421,7 @@ fn FieldTy lx, rty, name = match rty:
 Assign: unbounded fn Lx, Env, Expr, Ex -> Do
 fn Assign lx, env, target, v = match target.kind:
     EIndex r, k:
-        let rt = OutTyOf lx, (Peel (PlaceTy lx, r))
+        let rt = CollectionOut (OutTyOf lx, (Peel (PlaceTy lx, r)))
         let f = match rt:
             OutMap ignore, ignore: HelperRef "set_key"
             otherwise: HelperRef "set_index"

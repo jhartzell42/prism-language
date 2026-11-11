@@ -54,7 +54,9 @@ fn InferArray env, st, es, span:
         ((s2, seen or beside))
     # an `[a]` entry beside `[a]+` entries: the array's entries are the `[a]` (ruling NS)
     let entry = if plain: Or (?NonEmptyColl st3, v), v else: v
-    ((TyArray entry, st3))
+    # each `[a]+` entry then stands where the `[a]` is wanted (`PlainNotes`)
+    let st4 = if plain: Fold es, st3, \|s, x| AskPlainAt s, x.span, entry else: st3
+    ((TyArray entry, st4))
 
 # An array's entry against the entries before it. The conversion from a `[a]+` to the `[a]`
 # is symmetric (Jimmy's ruling NS): an `[a]` entry after `[a]+` entries meets the collection

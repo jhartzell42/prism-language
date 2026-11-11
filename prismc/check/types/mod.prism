@@ -191,6 +191,10 @@ type St = record:
     # arm against the match's, a field, an element): at the program's end those where it
     # is one are the typed output's `faults` (`FaultNotes`).
     faultQs: [Waiting]
+    # The places a non-empty collection's value meets a type that may be its plain
+    # collection's (an argument, an arm against the match's, an entry): at the program's end
+    # those where it is one are the typed output's `plains` (`PlainNotes`).
+    plainQs: [Waiting]
     # Element constructions lifted at an identity field, each refused by the statement that
     # would build it (`LiftedElement`).
     elemLifts: [ElemLift]
@@ -257,7 +261,7 @@ UseKey: fn Nat, Range -> Text
 fn UseKey file, span = "{file}:{span.start}:{span.end}"
 
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, unsignedFns=[[]], localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], plainArms=[[]], faultQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={}, packs=[[]])
+fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, unsignedFns=[[]], localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], plainArms=[[]], faultQs=[[]], plainQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={}, packs=[[]])
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed)
