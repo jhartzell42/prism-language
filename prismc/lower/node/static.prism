@@ -113,6 +113,7 @@ fn WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target:
         "Prelude.@HostDocument": HostLine wx, benv, menv, HostEach, args, ?bound
         "Prelude.@HostSome": HostLine wx, benv, menv, HostSome, args, ?bound
         "Prelude.@HostList": HostLine wx, benv, menv, HostList, args, ?bound
+        "Prelude.@Element": ElementCallLine wx, benv, menv, args, ?bound
         otherwise: match lx.g.vals[qk]:
             ? v: InlineWidget wx, benv, menv, qk, v, args, e
             nil:
@@ -544,6 +545,34 @@ fn MachineLine wx, benv, menv, args, e, ?target:
             let wx2 = update wx1:
                 &_.build <= Push &_.build, (RefusalDo "an `@Machine` without its step, state or event")
             ((wx2, WrUnit))
+
+# `@Element x` in a block (gap LE; Semantics ch. 4, "Elements": `!click <- @Element
+# (Ui.Button(label=$l))` is the element statement, at the same path, since a function
+# application adds no segment to a path): a tag applied in place is that element's line.
+ElementCallLine: unbounded fn Wx, Env, Env, [Arg], ?Bn -> ((Wx, Wres))
+fn ElementCallLine wx, benv, menv, args, ?bound:
+    let lx = wx.lx
+    match args[0]:
+        ? a if IsTagApplication lx, a.value: ElementLine wx, benv, menv, (Ungrouped a.value), ?bound
+        otherwise:
+            let wx2 = update wx:
+                &_.pos <= NextPos &_.pos
+                &_.build <= Push &_.build, (RefusalDo "not lowered yet: `@Element` in a block of an element value that is not a tag applied in place (gap LE)")
+            ((wx2, WrUnit))
+
+# An expression out of its parentheses.
+Ungrouped: fn Expr -> Expr
+fn Ungrouped e = match e.kind:
+    EGroup x: Ungrouped x
+    otherwise: e
+
+# Whether an expression is an element tag applied, `Ui.Button(..)` or a bare tag.
+IsTagApplication: unbounded fn Lx, Expr -> Bool
+fn IsTagApplication lx, e = match e.kind:
+    EGroup x: IsTagApplication lx, x
+    ECall c, ignore, ignore, ignore: HasKey lx.g.tags, (TagNameOf lx, c)
+    EName ignore: HasKey lx.g.tags, (TagNameOf lx, e)
+    otherwise: False
 
 # A user widget inlined: its parameters bound to the arguments by layer (an event to the
 # caller's event, a dynamic to its reader, a plain value to a field), its block lowered

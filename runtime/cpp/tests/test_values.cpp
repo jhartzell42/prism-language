@@ -409,7 +409,7 @@ struct OwnerProgram : Program {
         Cx cx = p->rt.build(ready);
         auto owner = prism_rtl::make_rc<Owner>();
         owner->label.emplace(Text("press"), cx);
-        Supplier<Elem, Answer> supplier = [](const Path&, const Live<Elem>& e) { return element_blueprint<Elem, Answer>(e); };
+        Supplier<Elem, Answer> supplier = [](const Path&, const Element<Elem>& e) { return element_blueprint<Elem, Answer>(e); };
         owner->host = Host<Elem, Answer, Owner>::make(
             Path::root().at(5), owner->rows, supplier, nullptr,
             [](const prism_rtl::Rc<Owner>& o, const Path& place, const Answer& a, Cx& cx) {

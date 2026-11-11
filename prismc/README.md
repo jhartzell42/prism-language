@@ -1725,12 +1725,7 @@ Each is Claude's, for Jimmy to overturn.
   its `Pod`, `Draw.Rect(rect=Rect(..), paint=Grey)`), and `PartialEq`, `Eq` and `FromPod` when
   all its fields are plain data. A document's element, `Elem r` (the checker's WL), is
   `crate::Elem`, emitted in `main.rs`: a variant per element tag's `Level`, so a pattern
-  binds each field plain (`Ui.Label(text=$t)` binds the text in that tick). A live
-  element, `Element r o`, is `prism_rtl::Live<crate::Elem>`: its level at the build
-  (`identity`: the tag and plain fields, which never change while it lives) and its
-  level over time (`level`, a `Dynamic<Elem>`); a pattern matches the tag and plain
-  fields on the identity and binds a `$` field to `level.map(..)`, the field's dynamic
-  (gap LE). A tag and a record that share a key (`Fs.Contents`) are told apart as the
+  binds each field plain (`Ui.Label(text=$t)` binds the text in that tick). A tag and a record that share a key (`Fs.Contents`) are told apart as the
   checker does: the tag only when written with its family. `Dynamic`'s update port
   carries `()` (the value moved; readers read again), so a projection shares its
   source's port and `Dynamic::map` subscribes to nothing (`ts-ch02-row-values`).
@@ -2034,12 +2029,6 @@ ruling taken (Claude's).
   indexes (`EvRef.owner`); one read or wired in any other node crossed without a port,
   a lowering bug, and is refused naming it (`Crossed`). *Next:* the contract's `Dynamic` with its update
   port.
-- **LE A live element's `$` field in a plain function.** A plain function is lifted:
-  its `$` values are read at the caller's read point, and it has no `cx` to read a live
-  element's dynamic at. *First ruling:* refused loudly there (a supplier is lowered in
-  the build, as a value, so it is refused there too; `Lx.inNode` is never set). An element
-  applied as a plain value (not a place, not a supplier's argument) is refused too: only a
-  host makes a live element. *If otherwise:* lifted functions take `&Cx`.
 - **ID A widget recursing deeper than it is inlined.** A widget function that recurses as
   deep as its data (Semantics ch. 4) is inlined into each row it builds, a node type per
   level, sixteen levels of that widget deep (`InlineWidget`, counting the widget's own
@@ -2221,8 +2210,7 @@ no value at the owner's build, a widget-function blueprint as an answer, and a b
 a hosted scope (pick HO); a bundle as a root's result, and a `for` row, a `rebuild`'s
 generation or a widget clause ending on a bundle (a widget block's bundle result is
 lowered, each part its own result, `WrParts`: `sem-ch04-bundle-result`); a widget's plain
-result bound by a pattern other than a name, `ignore` or a tuple of those; an element applied as a plain value and a live element's `$` field read in a plain
-function (gap LE), `@Flatten` of a dynamic that is not a `rebuild`'s (a `for` over a map of dynamics binds the value under the key, pick FV),
+result bound by a pattern other than a name, `ignore` or a tuple of those; `@Flatten` of a dynamic that is not a `rebuild`'s (a `for` over a map of dynamics binds the value under the key, pick FV),
 `!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
 structural dynamic of its block (gap SU), a local function whose
 parameters are not names or used as a value, `!MergeAll` of a list that is not a

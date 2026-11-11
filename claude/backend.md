@@ -77,9 +77,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
   type of its output.
 - A row kind other than `Fault` (`type Draw = row`) → an `enum` with a variant per tag of
   the kind, each holding its tag's struct; `Elem r`, a document's element → `crate::Elem`,
-  a variant per element tag's `Level`; `Element r o`, a live element → `rt::Live<Elem>`,
-  its level at the build (tag and plain fields) and its level over time, a `Dynamic<Elem>`
-  (prismc/README.md, pick RV).
+  a variant per element tag's `Level`; `Element r o` → `rt::Element<Elem>`, either a live
+  element, `Live` (its level at the build, tag and plain fields, and its level over time, a
+  `Dynamic<Elem>`), or a description, `Described` (prismc/README.md, pick RV; gap LE).
+- An element tag also → a description record, `{Tag}_desc`: each field as an application
+  gives it, a `$` field its `Dynamic`, an event field its `Event`, a plain field its value
+  (`DescDefOf`, from the tag's declaration).
 
 ## Functions and lifting
 
@@ -339,10 +342,28 @@ it make every program an interpreter run, and every type mistake a runtime fault
   dispatch, linked to the node once it is made. The
   host holds its owner and each row holds the host weakly (the host outlives its rows), so
   no count cycle runs through a host and a torn-down host is freed with its rows (D5).
-- **`e` is the live element**, `rt::Live<Elem>`: its identity (the level at the build), its
-  level over time (a `Dynamic<Elem>` reading the place's entry as it stands, whose update is
-  the host row's patch), and the entry itself, which a forward into an enclosing host's
-  document hands on as the same place.
+- **`e` is the live element**, `rt::Element::Live`: its identity (the level at the build),
+  its level over time (a `Dynamic<Elem>` reading the place's entry as it stands, whose
+  update is the host row's patch), and the entry itself, which a forward into an enclosing
+  host's document hands on as the same place.
+- **An element applied as a plain value is a description** (gap LE; Type System ch. 2,
+  "Names and sigils"), `rt::Element::Described`: the tag's `_desc` record, its level over
+  time mapped from its `$` fields, and each event field's firings as the field's request
+  (`ElementValue`). It reads nothing until it is placed. `@Element d` places it
+  (`described_blueprint`): its level is read at the build and sent (`cx.added`), or taken
+  into an entry of its own in a hosted scope (`Supplied.entry`, which the enclosing host's
+  document holds as the row's place at `0`, `HostRow::entries`; the entry takes the level
+  again each time it moves, and an enclosing host's answer there goes to the child's
+  place). In the World's scope each move of its level sends it again, and its answers and
+  pushes are the child place's. A description with an event field placed in a hosted
+  scope is a fault at the build (doubt DQ).
+- **A pattern sees either form as the tag's description** (`DescView`,
+  `rt::element_view`). A description of the tag matches as it is. A live element of the tag
+  matches as the description of its level, each `$` field its level projected. So a `$`
+  field binds a `$T` in both forms. A function with an element parameter takes its time
+  whole (`HasElementParam`), so its callers read what it gives.
+- **`@Element (Tag(..))` in a block** is the element statement at the line's own position
+  (`ElementCallLine`; Semantics ch. 4).
 - **The way back is typed.** `crate::Answer` is emitted beside `crate::Elem` in `main.rs`:
   one variant per element tag carrying that tag's output type, an accessor per variant
   (`ui_button() -> Result<Click, Fault>`), and the decode of a World's answer by the

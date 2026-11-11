@@ -671,6 +671,74 @@ impl<E: Clone> Clone for Live<E> {
     }
 }
 
+/// An element applied as a plain value, before a statement or a host places it (Type System
+/// ch. 2, "Names and sigils"): its tag's description record as the program's own emitted
+/// type (`desc`, which a pattern takes back by its type, [`element_view`]), its level over
+/// time, mapped from its `$` fields, and each event field's firings, the requests of the
+/// place once it is placed. It reads nothing until it is placed.
+pub struct Described<E> {
+    pub desc: Rc<dyn std::any::Any>,
+    pub level: Dynamic<E>,
+    pub requests: Vec<(Option<String>, Event<crate::pod::Pod>)>,
+}
+
+impl<E> Clone for Described<E> {
+    fn clone(&self) -> Described<E> {
+        Described { desc: self.desc.clone(), level: self.level.clone(), requests: self.requests.clone() }
+    }
+}
+
+impl<E> Described<E> {
+    /// An event field of the description: its firings are the placed element's requests,
+    /// `field` naming it when the tag has several.
+    pub fn request(mut self, field: Option<&str>, firings: Event<crate::pod::Pod>) -> Described<E> {
+        self.requests.push((field.map(Into::into), firings));
+        self
+    }
+}
+
+/// A description of a tag: `desc` its description record, `level` its level over time.
+pub fn described<E, D: 'static>(desc: D, level: Dynamic<E>) -> Described<E> {
+    Described { desc: Rc::new(desc), level, requests: Vec::new() }
+}
+
+/// An element value, `Element r o` (Semantics RULINGS round 12, EV: elements are ordinary
+/// values): a live element, which a host's supplier receives, or a description, a tag
+/// applied.
+pub enum Element<E> {
+    Live(Live<E>),
+    Described(Described<E>),
+}
+
+impl<E: Clone> Clone for Element<E> {
+    fn clone(&self) -> Element<E> {
+        match self {
+            Element::Live(l) => Element::Live(l.clone()),
+            Element::Described(d) => Element::Described(d.clone()),
+        }
+    }
+}
+
+/// A description as an element value.
+pub fn described_element<E>(d: Described<E>) -> Element<E> {
+    Element::Described(d)
+}
+
+/// An element seen as the description `D` of one tag: a description of that tag as it is, a
+/// live element as `of_live` gives it (the description of its level, when it is of the
+/// tag), else `None`.
+pub fn element_view<E, D: Clone + 'static>(e: &Element<E>, of_live: impl Fn(&Live<E>) -> Option<D>) -> Option<D> {
+    match e {
+        Element::Live(l) => of_live(l),
+        Element::Described(d) => d.desc.downcast_ref::<D>().cloned(),
+    }
+}
+
+/// Whether an element is of the tag whose description is `D` ([`element_view`]).
+pub fn element_is<E, D: Clone + 'static>(e: &Element<E>, of_live: impl Fn(&Live<E>) -> Option<D>) -> bool {
+    element_view(e, of_live).is_some()
+}
+
 // ---------------------------------------------------------------------------------------
 // @Defer, and the step machines @Run cycles
 // ---------------------------------------------------------------------------------------

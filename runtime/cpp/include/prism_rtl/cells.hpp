@@ -26,6 +26,7 @@
 
 #include "prism_rtl/rc.hpp"
 #include <algorithm>
+#include <any>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -432,6 +433,63 @@ struct Live {
     Dynamic<E> level;
     Rc<Entry<E>> entry;
 };
+
+/// An element applied as a plain value, before a statement or a host places it (Type System
+/// ch. 2, "Names and sigils"): its tag's description record as the program's own emitted
+/// type (`desc`, which a pattern takes back by its type, `element_view`), its level over
+/// time, mapped from its `$` fields, and each event field's firings, the requests of the
+/// place once it is placed. It reads nothing until it is placed.
+template <class E>
+struct Described {
+    std::any desc;
+    Dynamic<E> level;
+    std::vector<std::pair<std::optional<std::string>, Event<Pod>>> requests;
+
+    /// An event field of the description: its firings are the placed element's requests,
+    /// `field` naming it when the tag has several.
+    Described request(std::optional<std::string> field, Event<Pod> firings) const {
+        Described out = *this;
+        out.requests.emplace_back(std::move(field), std::move(firings));
+        return out;
+    }
+};
+
+/// A description of a tag: `desc` its description record, `level` its level over time.
+template <class E, class D>
+Described<E> described(D desc, Dynamic<E> level) {
+    return Described<E>{std::any(std::move(desc)), std::move(level), {}};
+}
+
+/// An element value, `Element r o` (Semantics RULINGS round 12, EV: elements are ordinary
+/// values): a live element, which a host's supplier receives, or a description, a tag
+/// applied.
+template <class E>
+struct Element {
+    std::variant<Live<E>, Described<E>> form;
+};
+
+/// A description as an element value.
+template <class E>
+Element<E> described_element(Described<E> d) {
+    return Element<E>{std::move(d)};
+}
+
+/// An element seen as the description `D` of one tag: a description of that tag as it is, a
+/// live element as `of_live` gives it (the description of its level, when it is of the
+/// tag), else nothing.
+template <class E, class D, class F>
+std::optional<D> element_view(const Element<E>& e, F of_live) {
+    if (const Live<E>* l = std::get_if<Live<E>>(&e.form)) return of_live(*l);
+    const Described<E>& d = std::get<Described<E>>(e.form);
+    if (const D* x = std::any_cast<D>(&d.desc)) return *x;
+    return std::nullopt;
+}
+
+/// Whether an element is of the tag whose description is `D` (`element_view`).
+template <class E, class D, class F>
+bool element_is(const Element<E>& e, F of_live) {
+    return element_view<E, D, F>(e, std::move(of_live)).has_value();
+}
 
 // ---------------------------------------------------------------------------------------
 // @Defer, and the step machines @Run cycles

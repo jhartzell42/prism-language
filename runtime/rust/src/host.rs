@@ -46,7 +46,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
-use crate::cells::{Dynamic, Event, Handle, Hold, Live, Port, Snapshot, Stamped};
+use crate::cells::{Described, Dynamic, Element, Event, Handle, Hold, Live, Port, Snapshot, Stamped};
 use crate::collections::Map;
 use crate::cx::{Cx, Done, Node};
 use crate::pod::{Fault, Path, Pod, Segment, ToPod};
@@ -408,23 +408,27 @@ pub type Sink<A> = Rc<dyn Fn(&A, &mut Cx) -> Done>;
 /// the row's path), the place's first value when the output has one, and whether the
 /// blueprint forwards the element (then the child place's requests go out with it, at
 /// the row's `0`, and an enclosing host's answers to that place come back to the child).
-pub struct Supplied<A> {
+pub struct Supplied<E, A> {
     pub node: Rc<dyn Node>,
     pub first: Option<A>,
     pub forwards: bool,
+    /// A place of the blueprint's own at the row's `0` in a hosted scope (an element value
+    /// placed, [`described_blueprint`]): its entry, which the enclosing host's document
+    /// holds.
+    pub entry: Option<Rc<Entry<E>>>,
 }
 
 /// `@o` as a value (claude/backend.md, "Types"): built at a path with the sink that answers
 /// the child's place, in the scope of the host whose row builds it.
-pub type Blueprint<E, A> = Rc<dyn Fn(Path, Sink<A>, &Scope<E, A>, &mut Cx) -> Result<Supplied<A>, Fault>>;
+pub type Blueprint<E, A> = Rc<dyn Fn(Path, Sink<A>, &Scope<E, A>, &mut Cx) -> Result<Supplied<E, A>, Fault>>;
 
 /// A host's supplier, in the `@HostDocument` form: a blueprint for every child place.
-pub type Supplier<E, A> = Rc<dyn Fn(&Path, &Live<E>) -> Blueprint<E, A>>;
+pub type Supplier<E, A> = Rc<dyn Fn(&Path, &Element<E>) -> Blueprint<E, A>>;
 
 /// `@HostSome`'s supplier made `@HostDocument`'s (Semantics ch. 9, the derivation): `nil`
 /// means "not mine, forward it".
-pub fn forward_on_none<E: Level + Eq, A: AnswerOf<E>>(some: Rc<dyn Fn(&Path, &Live<E>) -> Option<Blueprint<E, A>>>) -> Supplier<E, A> {
-    Rc::new(move |p: &Path, e: &Live<E>| match some(p, e) {
+pub fn forward_on_none<E: Level + Eq, A: AnswerOf<E>>(some: Rc<dyn Fn(&Path, &Element<E>) -> Option<Blueprint<E, A>>>) -> Supplier<E, A> {
+    Rc::new(move |p: &Path, e: &Element<E>| match some(p, e) {
         Some(b) => b,
         None => element_blueprint(e),
     })
@@ -458,12 +462,12 @@ impl Node for Inert {}
 
 /// `@ x`: no places, the first value `x`, once.
 pub fn plain_blueprint<E: 'static, A: Clone + 'static>(x: A) -> Blueprint<E, A> {
-    Rc::new(move |_path, _sink, _scope, _cx| Ok(Supplied { node: Rc::new(Inert), first: Some(x.clone()), forwards: false }))
+    Rc::new(move |_path, _sink, _scope, _cx| Ok(Supplied { node: Rc::new(Inert), first: Some(x.clone()), forwards: false, entry: None }))
 }
 
 /// `@ never`: no places, no first value, no answer.
 pub fn never_blueprint<E: 'static, A: 'static>() -> Blueprint<E, A> {
-    Rc::new(move |_path, _sink, _scope, _cx| Ok(Supplied { node: Rc::new(Inert), first: None, forwards: false }))
+    Rc::new(move |_path, _sink, _scope, _cx| Ok(Supplied { node: Rc::new(Inert), first: None, forwards: false, entry: None }))
 }
 
 /// A subscription a blueprint's node holds, let go when the row leaves.
@@ -494,7 +498,7 @@ pub fn event_blueprint<E: 'static, A: Clone + 'static>(e: Event<A>) -> Blueprint
         let node = Rc::new(Subscribed { port: e.port.clone(), handle: Cell::new(None) });
         let h = e.port.subscribe(Rc::new(move |v: &A, cx: &mut Cx| later(&sink, v.clone(), cx)));
         node.handle.set(Some(h));
-        Ok(Supplied { node, first: None, forwards: false })
+        Ok(Supplied { node, first: None, forwards: false, entry: None })
     })
 }
 
@@ -505,7 +509,7 @@ pub fn bundle_blueprint<E: 'static, A: Clone + 'static>(first: A, e: Event<A>) -
         let node = Rc::new(Subscribed { port: e.port.clone(), handle: Cell::new(None) });
         let h = e.port.subscribe(Rc::new(move |v: &A, cx: &mut Cx| later(&sink, v.clone(), cx)));
         node.handle.set(Some(h));
-        Ok(Supplied { node, first: Some(first.clone()), forwards: false })
+        Ok(Supplied { node, first: Some(first.clone()), forwards: false, entry: None })
     })
 }
 
@@ -531,7 +535,7 @@ pub fn dynamic_blueprint<E: 'static, A: Clone + 'static>(d: Dynamic<A>) -> Bluep
             Ok(())
         }));
         node.handle.set(Some(h));
-        Ok(Supplied { node, first: Some(first), forwards: false })
+        Ok(Supplied { node, first: Some(first), forwards: false, entry: None })
     })
 }
 
@@ -578,8 +582,13 @@ impl<P> Link<P> {
 /// transparent rule). In the World's scope the place goes out with `cx.added` and its first
 /// value is the World's; in a hosted scope nothing goes out (the enclosing host's document
 /// reads the row), and the first value is the enclosing host's.
-pub fn element_blueprint<E: Level + Eq, A: AnswerOf<E>>(e: &Live<E>) -> Blueprint<E, A> {
-    let e = e.clone();
+///
+/// `@Element d` of a description places it ([`described_blueprint`]).
+pub fn element_blueprint<E: Level + Eq, A: AnswerOf<E>>(e: &Element<E>) -> Blueprint<E, A> {
+    let e = match e {
+        Element::Live(l) => l.clone(),
+        Element::Described(d) => return described_blueprint(d),
+    };
     Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, cx| {
         let at = path.at(0);
         // The level at the build is the identity: a row is built from the entry after the
@@ -606,8 +615,114 @@ pub fn element_blueprint<E: Level + Eq, A: AnswerOf<E>>(e: &Live<E>) -> Blueprin
                 cx.listen(element, &(node.clone() as Rc<dyn Node>));
             }
         }
-        Ok(Supplied { node, first, forwards: true })
+        Ok(Supplied { node, first, forwards: true, entry: None })
     })
+}
+
+/// `@Element d` of a description (Type System ch. 2: an element applied is a plain value
+/// until a statement or a host places it): a new element at `path/0`, as an inline element
+/// statement there is. Its level is read at the build and sent (`cx.added`), and sent again
+/// in the tick it moves; its first value is the World's, decoded by its tag; every answer
+/// and push there is handed to the sink, the child's place; each firing of an event field
+/// is the place's request. In a hosted scope the place is the row's own in the enclosing
+/// host's document: an entry of its own (`Supplied::entry`), which takes its level at the
+/// build and each time it moves; an enclosing host's answer there is handed to the sink.
+pub fn described_blueprint<E: Level + Eq, A: AnswerOf<E>>(d: &Described<E>) -> Blueprint<E, A> {
+    let d = d.clone();
+    Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, cx| {
+        let at = path.at(0);
+        let identity = d.level.sample(cx);
+        let node = Rc::new(Placed { at: at.clone(), element: identity.clone(), level: d.level.clone(), sink, handle: Cell::new(None), requests: RefCell::new(Vec::new()), entry: RefCell::new(None) });
+        let weak = Rc::downgrade(&node);
+        match scope {
+            Scope::World => {
+                let element = identity.level_pod(cx);
+                let first = cx.first_value(&element).map(|v| A::decode_first(&identity, &v)).transpose()?;
+                let h = d.level.updates.subscribe(Rc::new(move |_: &(), cx: &mut Cx| {
+                    if let Some(n) = weak.upgrade() {
+                        let now = n.level.sample(cx).level_pod(cx);
+                        cx.changed(n.at.clone(), now);
+                    }
+                    Ok(())
+                }));
+                node.handle.set(Some(h));
+                for (field, firings) in d.requests.iter() {
+                    let (to, field) = (at.clone(), field.clone());
+                    let h = firings.port.subscribe(Rc::new(move |v: &Pod, cx: &mut Cx| {
+                        cx.request(to.clone(), field.as_deref(), v.clone());
+                        Ok(())
+                    }));
+                    node.requests.borrow_mut().push((firings.port.clone(), h));
+                }
+                cx.added(at, element.clone());
+                if first.is_some() {
+                    cx.listen(element, &(node.clone() as Rc<dyn Node>));
+                }
+                Ok(Supplied { node, first, forwards: false, entry: None })
+            }
+            Scope::Hosted(host) => {
+                if !d.requests.is_empty() {
+                    return Err(Fault::answer(format!("not lowered yet: an element value with an event field placed at {at} in a hosted scope")));
+                }
+                // a place of the row's own in the enclosing host's document: an entry that
+                // takes the level at the build and again each time it moves
+                let entry = Entry::new("an element value's place");
+                entry.take(identity.clone(), cx);
+                let first = host.first_value(&at, &identity, &entry, cx)?;
+                *node.entry.borrow_mut() = Some(entry.clone());
+                let h = d.level.updates.subscribe(Rc::new(move |_: &(), cx: &mut Cx| {
+                    if let Some(n) = weak.upgrade() {
+                        let now = n.level.sample(cx);
+                        if let Some(e) = n.entry.borrow().as_ref() {
+                            e.take(now, cx);
+                        }
+                    }
+                    Ok(())
+                }));
+                node.handle.set(Some(h));
+                Ok(Supplied { node, first, forwards: false, entry: Some(entry) })
+            }
+        }
+    })
+}
+
+/// A placed description's node: one place, the description's element.
+struct Placed<E, A> {
+    at: Path,
+    /// The level at the build: its tag decodes the place's answers.
+    element: E,
+    level: Dynamic<E>,
+    sink: Sink<A>,
+    /// The re-emission on the level's updates.
+    handle: Cell<Option<Handle>>,
+    /// The event fields' subscriptions, the place's requests.
+    requests: RefCell<Vec<(Rc<Port<Pod>>, Handle)>>,
+    /// In a hosted scope, the place's entry in the enclosing host's document.
+    entry: RefCell<Option<Rc<Entry<E>>>>,
+}
+
+impl<E: Level + Eq, A: AnswerOf<E>> Node for Placed<E, A> {
+    fn answer(self: Rc<Self>, at: &[Segment], v: &Pod, cx: &mut Cx) -> Done {
+        match at {
+            [Segment::Pos(0)] => (self.sink)(&A::decode(&self.element, v)?, cx),
+            _ => Err(Fault::answer(format!("no place at {} under a placed element value", Path(at.to_vec())))),
+        }
+    }
+    fn push(self: Rc<Self>, _element: &Pod, v: &Pod, cx: &mut Cx) -> Done {
+        (self.sink)(&A::decode(&self.element, v)?, cx)
+    }
+    fn leave(self: Rc<Self>, cx: &mut Cx) -> Done {
+        if let Some(h) = self.handle.take() {
+            self.level.updates.unsubscribe(h);
+            if self.entry.borrow().is_none() {
+                cx.removed(self.at.clone());
+            }
+        }
+        for (port, h) in self.requests.borrow_mut().drain(..) {
+            port.unsubscribe(h);
+        }
+        Ok(())
+    }
 }
 
 /// A forwarding blueprint's node: one place, the child's element re-emitted.
@@ -765,7 +880,7 @@ pub struct HostRow<E, A> {
     /// The key left: a computed answer in flight to the place is dropped.
     left: Cell<bool>,
     sink: Sink<A>,
-    supplied: RefCell<Option<Supplied<A>>>,
+    supplied: RefCell<Option<Supplied<E, A>>>,
     /// The entry moved: readers of the live element's level (a forwarded element) read it
     /// again.
     level_moved: Rc<Port<()>>,
@@ -822,10 +937,10 @@ impl<E: Clone + Eq + 'static, A: Clone + 'static> HostRow<E, A> {
 
     /// The live element the supplier sees: the place's level at the build, and its level
     /// over time, the row's entry.
-    fn element(self: &Rc<Self>, identity: E) -> Live<E> {
+    fn element(self: &Rc<Self>, identity: E) -> Element<E> {
         let me = Rc::downgrade(self);
         let read = Rc::new(move |cx: &Cx| me.upgrade().expect("a live element outlives its host's row").entry(cx));
-        Live { identity, level: Dynamic { owner: None, read, updates: self.level_moved.clone() }, entry: self.place.clone() }
+        Element::Live(Live { identity, level: Dynamic { owner: None, read, updates: self.level_moved.clone() }, entry: self.place.clone() })
     }
 
     /// The row's entry at the read point: the place's level as it stands (its snapshot of
@@ -849,14 +964,20 @@ impl<E: Clone + Eq + 'static, A: Clone + 'static> HostRow<E, A> {
     /// The row's own places, for an enclosing host's document: the forwarded element at
     /// `0`, when there is one, which is the child's place itself (its entry).
     pub fn entries(&self) -> Vec<(Path, Rc<Entry<E>>)> {
-        if self.forwards() { vec![(Path::root().at(0), self.place.clone())] } else { Vec::new() }
+        if self.forwards() {
+            return vec![(Path::root().at(0), self.place.clone())];
+        }
+        match self.supplied.borrow().as_ref().and_then(|s| s.entry.clone()) {
+            Some(entry) => vec![(Path::root().at(0), entry)],
+            None => Vec::new(),
+        }
     }
 
     /// An enclosing host's typed answer to a place under the row: the forwarded element's,
     /// handed to the child's place now.
     pub fn deliver(&self, at: &[Segment], v: &A, cx: &mut Cx) -> Done {
         match at {
-            [Segment::Pos(0)] if self.forwards() => (self.sink)(v, cx),
+            [Segment::Pos(0)] if self.forwards() || self.supplied.borrow().as_ref().is_some_and(|s| s.entry.is_some()) => (self.sink)(v, cx),
             _ => Err(Fault::answer(format!("no hosted place at {} under the host row at {}", Path(at.to_vec()), self.path))),
         }
     }

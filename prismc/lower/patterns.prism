@@ -266,7 +266,7 @@ fn TagPat lx, tg, fps, rest, ty, mode, fresh:
         let ft = Fold tg.fields, TyErr, \|found, ((f, t))| if f == fname: t else: found
         match LayerOf ft:
             LyEv: ((nil, (PatOut(pa=PaWild, conds=[[CcIf (Refusal "an event field in an element pattern ({tg.name}.{fname})")]], binds=[[]]))))
-            LyDyn if live: ((nil, (LiveFieldPat lx, fp.pattern, variant, structPath, fname, (FieldSpell tg.home, fname, ft), ft, fresh)))
+            LyDyn if live: ((nil, (LiveFieldPat lx, fp.pattern, fname, (FieldSpell tg.home, fname, ft), ft, "{fresh}_v", (RefIn lx, tg.home, (DescStructOf tg)))))
             otherwise:
                 let o = RustPat lx, fp.pattern, (Peel ft), subMode, "{fresh}_{i}"
                 ((? (FieldSpell tg.home, fname, ft), o))
@@ -278,21 +278,49 @@ fn TagPat lx, tg, fps, rest, ty, mode, fresh:
     let level = PaCtor variant, [[(PaRecord structPath, fieldPas, True)]]
     # the arm names the tag: a `@ x` in it answers with the tag's variant of `crate::Answer`
     let tagged = Push (Push binds, (("#tag", (BnLocal (XPath (AnswerVariant tg)), Owned, OutUnit)))), (("#tagfirst", (BnLocal (XPath (AnswerFirstVariant tg)), Owned, OutUnit)))
-    if live: PatOut(pa=(PaBind fresh), conds=(Append [[(CcLet level, (XRef (XField (XVar fresh), "identity")))]], conds), binds=tagged)
+    # an element, live or a description, matched through its view as the tag's description
+    # (`DescView`), its plain fields' values and its `$` fields' dynamics
+    let view = "{fresh}_v"
+    let descPath = RefIn lx, tg.home, (DescStructOf tg)
+    let viewed = [[(CcLet (PaCtor (RefRuntime "std::Some"), [[PaBind view]]), (DescView lx, tg, fresh)), (CcLet (PaRecord descPath, fieldPas, True), (XRef (XVar view)))]]
+    if live: PatOut(pa=(PaBind fresh), conds=(Append viewed, conds), binds=tagged)
     else: PatOut(pa=level, conds=conds, binds=binds)
 
-# A live element's `$` field: a binder takes the field's dynamic, the element's level
-# projected (`Dynamic::map`). A plain function is lifted, its `$` values read at the
-# caller's read point, which it has no `cx` to read at, so there the binder is refused
-# (gap LE); a host's supplier, lowered in its node, binds the dynamic.
-LiveFieldPat: unbounded fn Lx, Pattern, Ref, Ref, Text, Text, Ty, Text -> PatOut
-fn LiveFieldPat lx, p, variant, structPath, fname, rsField, ft, fresh = match p.kind:
+# An element seen as its tag's description (`prism_rtl::element_view`): a description
+# when it is one of the tag's, a live element of the tag as the description of its level,
+# each `$` field its level projected (`Dynamic::map`), each event field one that never
+# fires (a pattern names none, `TagPat`), else `None`.
+DescView: unbounded fn Lx, TagInfo, Text -> Ex
+fn DescView lx, tg, fresh = DescViewBy lx, tg, fresh, "prism_rtl::element_view"
+
+# The view through one of the runtime's two readers: `element_view`, the description, or
+# `element_is`, whether there is one (a family pattern).
+DescViewBy: unbounded fn Lx, TagInfo, Text, Text -> Ex
+fn DescViewBy lx, tg, fresh, reader:
+    let ((variant, structPath)) = TagPaths lx, tg
+    let descPath = RefIn lx, tg.home, (DescStructOf tg)
+    let fields = Each tg.fields, \|((fname, ft))|
+        let f = FieldSpell tg.home, fname, ft
+        let v = match LayerOf ft:
+            LyDyn: LiveProjection "l", variant, structPath, f, (OutTyOf lx, (Peel ft))
+            LyEv: XCall (RefRuntime "rt::Event::never"), [[]]
+            otherwise: XClone (XFieldOf (XVar "x"), structPath, f)
+        ((f, v))
+    let some = XCtor (RefRuntime "std::Some"), [[(XRecord descPath, fields)]]
+    let descTy = OutNamed descPath, [[]]
+    let arms = [[XArm(pat=(PaCtor variant, [[PaBind "x"]]), conds=[[]], body=some), XArm(pat=PaWild, conds=[[]], body=(XTyped XNone, (OutOpt descTy)))]]
+    let liveTy = OutRef (OutNamed (RefRuntime "prism_rtl::Live"), [[(OutNamed elemRef, [[]])]])
+    let ofLive = XClosure False, [[(PaTyped (PaBind "l"), liveTy)]], (XMatch (XRef (XField (XVar "l"), "identity")), arms, False, (OutOpt descTy))
+    XCallAt (RefRuntime reader), [[(OutNamed elemRef, [[]]), descTy]], [[(XRef (XVar fresh)), ofLive]]
+
+# An element's `$` field: a binder takes the field's dynamic from the element's view
+# (`DescView`): a description's, or a live element's level projected.
+LiveFieldPat: unbounded fn Lx, Pattern, Text, Text, Ty, Text, Ref -> PatOut
+fn LiveFieldPat lx, p, fname, rsField, ft, view, descPath = match p.kind:
     PIgnore: PatOnly PaWild
-    PName n:
-        let rs = if lx.inNode: LiveProjection fresh, variant, structPath, rsField, (OutTyOf lx, (Peel ft)) else: Refusal "a live element's `$` field ({fname}) in a plain function, which has no read point (gap LE)"
-        PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal rs, Owned, (OutDyn (OutTyOf lx, (Peel ft))))))]])
-    PGroup q: LiveFieldPat lx, q, variant, structPath, fname, rsField, ft, fresh
-    otherwise: PatOut(pa=PaWild, conds=[[CcIf (Refusal "a pattern inside a live element's `$` field ({fname})")]], binds=[[]])
+    PName n: PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal (XClone (XFieldOf (XVar view), descPath, rsField)), Owned, (OutDyn (OutTyOf lx, (Peel ft))))))]])
+    PGroup q: LiveFieldPat lx, q, fname, rsField, ft, view, descPath
+    otherwise: PatOut(pa=PaWild, conds=[[CcIf (Refusal "a pattern inside an element's `$` field ({fname})")]], binds=[[]])
 
 LiveProjection: fn Text, Ref, Ref, Text, OutTy -> Ex
 fn LiveProjection fresh, variant, structPath, fname, ft:
@@ -310,8 +338,10 @@ fn FamilyPat lx, q, ty, fresh:
         TyCon k, ignore: k
         otherwise: ""
     let tags = Filter (KindTags lx, kind, (Keys lx.rsMods)), \|tg| tg.family == fam
-    let place = if IsLive ty: XField (XVar fresh), "identity" else: XVar fresh
-    PatOut(pa=(PaBind fresh), conds=[[CcIf (XIsCase place, (Each tags, \|tg| VariantOf lx, tg))]], binds=[[]])
+    # an element, live or a description, is one of the family's when its view as one of
+    # their descriptions is (`DescView`)
+    let isOne = if IsLive ty: Fold tags, (XBool False), \|acc, tg| XBin OpOr, acc, (DescViewBy lx, tg, fresh, "prism_rtl::element_is") else: XIsCase (XVar fresh), (Each tags, \|tg| VariantOf lx, tg)
+    PatOut(pa=(PaBind fresh), conds=[[CcIf isOne]], binds=[[]])
 
 # `Error(kind=Fs.NotFound, message=m)`: `Err(e)` and the kind compared after it.
 ErrorPat: unbounded fn Lx, [FieldPat], Ty, Holding, Text -> PatOut

@@ -44,7 +44,7 @@ pub mod regex;
 mod regex_dialect;
 pub mod world;
 
-pub use cells::{Cache, Defer, Demand, Dynamic, Event, Handle, Hold, Job, Listen, Live, MergeList, Port, merge_all, Snapshot, Stamped, Tick, Turn};
+pub use cells::{Cache, Defer, Demand, Described, Dynamic, Element, Event, Handle, Hold, Job, Listen, Live, MergeList, described, described_element, element_is, element_view, Port, merge_all, Snapshot, Stamped, Tick, Turn};
 pub use collections::{Array, Cursor, Map, Text};
 
 /// Whether two maps have the same keys, in order: a builder whose rows came or went.
@@ -54,7 +54,7 @@ pub fn same_keys<K: Ord + Clone, V: Clone, W: Clone>(a: &Map<K, V>, b: &Map<K, W
 pub use cx::{Cx, Done, Later, Node, Runtime};
 pub use doc::{Document, Edit, Patch, Request};
 pub use existential::{Packed, Packing};
-pub use host::{AnswerOf, Blueprint, Entry, Follow, Host, HostDoc, HostOf, HostRow, Level, Link, PerKey, Rows, Scope, Sink, Supplied, Supplier, Watch, bundle_blueprint, dynamic_blueprint, dynamics_pod, dynamics_ports, element_blueprint, event_blueprint, forward_on_none, never_blueprint, plain_blueprint};
+pub use host::{AnswerOf, Blueprint, Entry, Follow, Host, HostDoc, HostOf, HostRow, Level, Link, PerKey, Rows, Scope, Sink, Supplied, Supplier, Watch, bundle_blueprint, dynamic_blueprint, dynamics_pod, dynamics_ports, described_blueprint, element_blueprint, event_blueprint, forward_on_none, never_blueprint, plain_blueprint};
 pub use float::Float;
 pub use num::{Int, Nat};
 pub use pod::{Error, Fault, FromPod, Path, Pod, Segment, ToPod};

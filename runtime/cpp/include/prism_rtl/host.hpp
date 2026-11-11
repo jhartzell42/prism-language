@@ -513,11 +513,14 @@ using Sink = std::function<Done(const A&, Cx&)>;
 /// the row's path), the place's first value when the output has one, and whether the
 /// blueprint forwards the element (then the child place's requests go out with it, at
 /// the row's `0`, and an enclosing host's answers to that place come back to the child).
-template <class A>
+template <class E, class A>
 struct Supplied {
     NodeRef node;
     std::optional<A> first;
     bool forwards = false;
+    /// A place of the blueprint's own at the row's `0` in a hosted scope (an element value
+    /// placed, `described_blueprint`): its entry, which the enclosing host's document holds.
+    Rc<Entry<E>> entry = nullptr;
 };
 
 /// The program's answer type, which a World's answer to an element decodes into by the
@@ -546,11 +549,11 @@ struct Scope {
 /// `@o` as a value (claude/backend.md, "Types"): built at a path with the sink that answers
 /// the child's place, in the scope of the host whose row builds it.
 template <class E, class A>
-using Blueprint = std::function<Result<Supplied<A>>(Path, Sink<A>, const Scope<E, A>&, Cx&)>;
+using Blueprint = std::function<Result<Supplied<E, A>>(Path, Sink<A>, const Scope<E, A>&, Cx&)>;
 
 /// A host's supplier, in the `@HostDocument` form: a blueprint for every child place.
 template <class E, class A>
-using Supplier = std::function<Blueprint<E, A>(const Path&, const Live<E>&)>;
+using Supplier = std::function<Blueprint<E, A>(const Path&, const Element<E>&)>;
 
 // ---------------------------------------------------------------------------------------
 // The blueprint forms
@@ -585,26 +588,26 @@ Done later(const Sink<A>& sink, A v, Cx& cx) {
 /// `@ x`: no places, the first value `x`, once.
 template <class E, class A>
 Blueprint<E, A> plain_blueprint(A x) {
-    return [x](Path, Sink<A>, const Scope<E, A>&, Cx&) -> Result<Supplied<A>> {
-        return Supplied<A>{make_rc<detail::Inert>(), x, false};
+    return [x](Path, Sink<A>, const Scope<E, A>&, Cx&) -> Result<Supplied<E, A>> {
+        return Supplied<E, A>{make_rc<detail::Inert>(), x, false};
     };
 }
 
 /// `@ never`: no places, no first value, no answer.
 template <class E, class A>
 Blueprint<E, A> never_blueprint() {
-    return [](Path, Sink<A>, const Scope<E, A>&, Cx&) -> Result<Supplied<A>> {
-        return Supplied<A>{make_rc<detail::Inert>(), std::nullopt, false};
+    return [](Path, Sink<A>, const Scope<E, A>&, Cx&) -> Result<Supplied<E, A>> {
+        return Supplied<E, A>{make_rc<detail::Inert>(), std::nullopt, false};
     };
 }
 
 /// `@ !e`: each firing of `e` is an answer to the child's place, a tick late.
 template <class E, class A>
 Blueprint<E, A> event_blueprint(Event<A> e) {
-    return [e](Path, Sink<A> sink, const Scope<E, A>&, Cx&) -> Result<Supplied<A>> {
+    return [e](Path, Sink<A> sink, const Scope<E, A>&, Cx&) -> Result<Supplied<E, A>> {
         auto node = make_rc<detail::Subscribed<A>>(e.port);
         node->handle = e.port->subscribe([sink](const A& v, Cx& cx) { return detail::later(sink, v, cx); });
-        return Supplied<A>{node, std::nullopt, false};
+        return Supplied<E, A>{node, std::nullopt, false};
     };
 }
 
@@ -612,10 +615,10 @@ Blueprint<E, A> event_blueprint(Event<A> e) {
 /// once; each firing of `e` an answer to the child's place, a tick late.
 template <class E, class A>
 Blueprint<E, A> bundle_blueprint(A first, Event<A> e) {
-    return [first, e](Path, Sink<A> sink, const Scope<E, A>&, Cx&) -> Result<Supplied<A>> {
+    return [first, e](Path, Sink<A> sink, const Scope<E, A>&, Cx&) -> Result<Supplied<E, A>> {
         auto node = make_rc<detail::Subscribed<A>>(e.port);
         node->handle = e.port->subscribe([sink](const A& v, Cx& cx) { return detail::later(sink, v, cx); });
-        return Supplied<A>{node, first, false};
+        return Supplied<E, A>{node, first, false};
     };
 }
 
@@ -627,7 +630,7 @@ Blueprint<E, A> bundle_blueprint(A first, Event<A> e) {
 /// change whatever height the change came at, and several marks in one tick are one push.
 template <class E, class A>
 Blueprint<E, A> dynamic_blueprint(Dynamic<A> d) {
-    return [d](Path, Sink<A> sink, const Scope<E, A>&, Cx& cx) -> Result<Supplied<A>> {
+    return [d](Path, Sink<A> sink, const Scope<E, A>&, Cx& cx) -> Result<Supplied<E, A>> {
         A first = d.sample(cx);
         auto node = make_rc<detail::Subscribed<Unit>>(d.updates);
         auto queued = make_rc<Stamped<Unit>>();
@@ -637,7 +640,7 @@ Blueprint<E, A> dynamic_blueprint(Dynamic<A> d) {
             cx.answer_later([d, sink](Cx& cx) { return sink(d.sample(cx), cx); });
             return {};
         });
-        return Supplied<A>{node, std::move(first), false};
+        return Supplied<E, A>{node, std::move(first), false};
     };
 }
 
@@ -702,7 +705,104 @@ struct Forward : Node {
     }
 };
 
+/// A placed description's node: one place, the description's element.
+template <class E, class A>
+struct Placed : Node {
+    Path at;
+    /// The level at the build: its tag decodes the place's answers.
+    E element;
+    Dynamic<E> level;
+    Sink<A> sink;
+    /// The re-emission on the level's updates.
+    std::optional<Handle> handle;
+    /// The event fields' subscriptions, the place's requests.
+    std::vector<std::pair<Rc<Port<Pod>>, Handle>> requests;
+    /// In a hosted scope, the place's entry in the enclosing host's document.
+    Rc<Entry<E>> entry = nullptr;
+
+    Placed(Path at, E element, Dynamic<E> level, Sink<A> sink)
+        : at(std::move(at)), element(std::move(element)), level(std::move(level)), sink(std::move(sink)) {}
+
+    Done answer(std::span<const Segment> rest, const Pod& v, Cx& cx) override {
+        if (rest.size() == 1 && rest[0].is_pos(0)) {
+            auto a = TRY(A::decode(element, v));
+            return sink(a, cx);
+        }
+        return unexpected(Fault::answer("no place at " + path_of(rest).to_string() + " under a placed element value"));
+    }
+    Done push(const Pod&, const Pod& v, Cx& cx) override {
+        auto a = TRY(A::decode(element, v));
+        return sink(a, cx);
+    }
+    Done leave(Cx& cx) override {
+        if (handle) {
+            level.updates->unsubscribe(*std::exchange(handle, std::nullopt));
+            if (!entry) cx.removed(at);
+        }
+        for (auto& [port, h] : requests) port->unsubscribe(h);
+        requests.clear();
+        return {};
+    }
+};
+
 }  // namespace detail
+
+/// `@Element d` of a description (Type System ch. 2: an element applied is a plain value
+/// until a statement or a host places it): a new element at `path/0`, as an inline element
+/// statement there is. Its level is read at the build and sent (`cx.added`), and sent again
+/// in the tick it moves; its first value is the World's, decoded by its tag; every answer
+/// and push there is handed to the sink, the child's place; each firing of an event field
+/// is the place's request. In a hosted scope the place is the row's own in the enclosing
+/// host's document: an entry of its own (`Supplied::entry`), which takes its level at the
+/// build and each time it moves; an enclosing host's answer there is handed to the sink.
+template <class E, class A>
+    requires AnswerOf<A, E>
+Blueprint<E, A> described_blueprint(const Described<E>& d) {
+    return [d](Path path, Sink<A> sink, const Scope<E, A>& scope, Cx& cx) -> Result<Supplied<E, A>> {
+        Path at = path.at(0);
+        E identity = d.level.sample(cx);
+        auto node = make_rc<detail::Placed<E, A>>(at, identity, d.level, std::move(sink));
+        Weak<detail::Placed<E, A>> weak = node;
+        std::optional<A> first;
+        if (scope.is_world()) {
+            Pod element = level_pod(identity, cx);
+            if (auto v = cx.first_value(element)) {
+                auto a = TRY(A::decode_first(identity, *v));
+                first = std::move(a);
+            }
+            node->handle = d.level.updates->subscribe([weak](const Unit&, Cx& cx) -> Done {
+                if (auto n = weak.lock()) cx.changed(n->at, level_pod(n->level.sample(cx), cx));
+                return {};
+            });
+            for (const auto& [field, firings] : d.requests) {
+                auto f = field;
+                Handle h = firings.port->subscribe([at, f](const Pod& v, Cx& cx) -> Done {
+                    cx.request(at, f, v);
+                    return {};
+                });
+                node->requests.emplace_back(firings.port, h);
+            }
+            cx.added(at, element);
+            if (first) cx.listen(element, node);
+            return Supplied<E, A>{node, std::move(first), false};
+        }
+        if (!d.requests.empty()) {
+            return unexpected(Fault::answer("not lowered yet: an element value with an event field placed at " + at.to_string() + " in a hosted scope"));
+        }
+        // a place of the row's own in the enclosing host's document: an entry that takes the
+        // level at the build and again each time it moves
+        Rc<Entry<E>> entry = Entry<E>::make("an element value's place");
+        entry->take(identity, cx);
+        auto f = TRY(scope.hosted->first_value(at, identity, entry, cx));
+        first = std::move(f);
+        node->entry = entry;
+        node->handle = d.level.updates->subscribe([weak](const Unit&, Cx& cx) -> Done {
+            if (auto n = weak.lock()) n->entry->take(n->level.sample(cx), cx);
+            return {};
+        });
+        return Supplied<E, A>{node, std::move(first), false, entry};
+    };
+}
 
 /// `@Element e`: the child's element re-emitted at `path/0`, its level following the
 /// child's, every answer and push there handed to the child's place in the same tick (the
@@ -711,8 +811,10 @@ struct Forward : Node {
 /// reads the row), and the first value is the enclosing host's.
 template <class E, class A>
     requires AnswerOf<A, E>
-Blueprint<E, A> element_blueprint(const Live<E>& e) {
-    return [e](Path path, Sink<A> sink, const Scope<E, A>& scope, Cx& cx) -> Result<Supplied<A>> {
+Blueprint<E, A> element_blueprint(const Element<E>& value) {
+    if (const Described<E>* d = std::get_if<Described<E>>(&value.form)) return described_blueprint<E, A>(*d);
+    const Live<E>& e = std::get<Live<E>>(value.form);
+    return [e](Path path, Sink<A> sink, const Scope<E, A>& scope, Cx& cx) -> Result<Supplied<E, A>> {
         Path at = path.at(0);
         // The level at the build is the identity: a row is built from the entry after the
         // tick, and an early row's entry cannot be read until its host's node is made.
@@ -738,7 +840,7 @@ Blueprint<E, A> element_blueprint(const Live<E>& e) {
             cx.added(at, element);
             if (first) cx.listen(element, node);
         }
-        return Supplied<A>{node, std::move(first), true};
+        return Supplied<E, A>{node, std::move(first), true};
     };
 }
 
@@ -746,8 +848,8 @@ Blueprint<E, A> element_blueprint(const Live<E>& e) {
 /// means "not mine, forward it".
 template <class E, class A>
     requires AnswerOf<A, E>
-Supplier<E, A> forward_on_none(std::function<std::optional<Blueprint<E, A>>(const Path&, const Live<E>&)> some) {
-    return [some](const Path& p, const Live<E>& e) -> Blueprint<E, A> {
+Supplier<E, A> forward_on_none(std::function<std::optional<Blueprint<E, A>>(const Path&, const Element<E>&)> some) {
+    return [some](const Path& p, const Element<E>& e) -> Blueprint<E, A> {
         if (auto b = some(p, e)) return *b;
         return element_blueprint<E, A>(e);
     };
@@ -818,7 +920,7 @@ public:
             if (r && !r->left_) return r->host()->deliver(r->key_, v, cx);
             return {};
         };
-        Live<E> element = node->element(std::move(value));
+        Element<E> element = node->element(std::move(value));
         Blueprint<E, A> blueprint = host->supplier()(node->key_, element);
         auto supplied = TRY(blueprint(node->path_, node->sink_, host->scope(), cx));
         node->supplied_ = std::move(supplied);
@@ -849,13 +951,14 @@ public:
     /// `0`, when there is one, which is the child's place itself (its entry).
     std::vector<std::pair<Path, Rc<Entry<E>>>> entries() const {
         if (forwards()) return {{Path::root().at(0), place_}};
+        if (supplied_ && supplied_->entry) return {{Path::root().at(0), supplied_->entry}};
         return {};
     }
 
     /// An enclosing host's typed answer to a place under the row: the forwarded element's,
     /// handed to the child's place now.
     Done deliver(std::span<const Segment> at, const A& v, Cx& cx) const {
-        if (at.size() == 1 && at[0].is_pos(0) && forwards()) return sink_(v, cx);
+        if (at.size() == 1 && at[0].is_pos(0) && (forwards() || (supplied_ && supplied_->entry))) return sink_(v, cx);
         return unexpected(Fault::answer("no hosted place at " + path_of(at).to_string() + " under the host row at " +
                                         path_.to_string()));
     }
@@ -902,14 +1005,14 @@ private:
 
     /// The live element the supplier sees: the place's level at the build, and its level
     /// over time, the row's entry.
-    Live<E> element(E identity) {
+    Element<E> element(E identity) {
         Weak<HostRow> me = rc_static_cast<HostRow>(rc_from_this());
         auto read = make_rc<const std::function<E(const Cx&)>>([me](const Cx& cx) {
             auto r = me.lock();
             if (!r) panic("a live element outlives its host's row");
             return r->entry(cx);
         });
-        return Live<E>{std::move(identity), Dynamic<E>{nullptr, read, level_moved_}, place_};
+        return Element<E>{Live<E>{std::move(identity), Dynamic<E>{nullptr, read, level_moved_}, place_}};
     }
 
     Path path_;
@@ -919,7 +1022,7 @@ private:
     /// The key left: a computed answer in flight to the place is dropped.
     bool left_ = false;
     Sink<A> sink_;
-    std::optional<Supplied<A>> supplied_;
+    std::optional<Supplied<E, A>> supplied_;
     /// The entry moved: readers of the live element's level (a forwarded element) read it
     /// again.
     Rc<Port<Unit>> level_moved_;
