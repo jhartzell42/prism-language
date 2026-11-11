@@ -365,12 +365,19 @@ fn LocalFnName s = match s.kind:
     SFn f: DefNameText f.name
     otherwise: ""
 
+# Whether a local's type is the variable its block bound ahead, whatever it stands for now.
+IsBoundAhead: fn Ty -> Bool
+fn IsBoundAhead (TyFlex ignore) = True
+fn IsBoundAhead other = False
+
 CheckLocalClauses: unbounded fn Env, St, FnClause, [FnClause], Range -> ((Env, St))
 fn CheckLocalClauses env, st, f, clauses, span:
     let name = DefNameText f.name
     match env.locals[name]:
         ? sc:
-            if (Len sc.qs) > 0 or (Len sc.cqs) > 0 or not (IsFlexVar st, sc.ty):
+            # signed: a signature line's scheme. A name bound ahead is a variable (`PreBind`),
+            # and stays the unsigned function's when a use above its line decided its type
+            if (Len sc.qs) > 0 or (Len sc.cqs) > 0 or not (IsBoundAhead sc.ty):
                 let st2 = CheckClauses env, st, name, clauses, sc, span
                 ((env, st2))
             else:
