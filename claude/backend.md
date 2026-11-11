@@ -398,6 +398,14 @@ it make every program an interpreter run, and every type mistake a runtime fault
   through the parent (`RowEnvNames`). A `let` no line reads but to place it is no value
   of the node. `@Element` of any other element value in a block (a parameter, a call's
   result) is refused.
+- **A blueprint a `let` of the block names** (`let @w = @Tile k`; Semantics ch. 8: a
+  blueprint builds nothing until a block applies it) is its expression, kept under
+  `{name}#blueprint` (`WithElementLets`) and built by each line that applies the name,
+  in that line's environments, at the node's next positions (`LetBlueprintLine`); a row
+  that applies it sees what it reads through the parent (`RowEnvNames`). The `let` is
+  no value of the node; where the name is read as a value it is the expression in its
+  place (`NameValue`). A blueprint taken out of a value by a pattern (`? @t`) is not
+  built in a block.
 - **A widget defined in a block** (`@line:` and its block) is bound to its block
   (`BnLocalWidget`) and lowered at each line that applies it, in that line's
   environments, at the node's next positions (`LocalWidgetLine`).

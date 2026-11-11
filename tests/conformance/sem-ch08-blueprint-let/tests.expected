@@ -1,0 +1,8 @@
+# Derived by hand from Semantics ch. 8 (a blueprint builds nothing until a block applies it; each application builds it at the block's next positions) and ch. 4 (`let` names a value).
+test a_let_bound_blueprint_is_built_where_applied
+
+tick 0
+  added:
+    0: Ui.Label(text="tile 4")
+    1: Ui.Label(text="tile 4")
+    2: Ui.Label(text="double 8")
