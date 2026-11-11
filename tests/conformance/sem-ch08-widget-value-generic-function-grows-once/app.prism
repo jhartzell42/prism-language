@@ -1,0 +1,38 @@
+# A generic widget taken as a blueprint value in a generic function that calls itself at
+# a larger type once: `?Wrapped x, y` calls itself at `[b]` for `a` and at `Nat` for `b`,
+# so from `Nat`, `Nat` it runs at `[Nat]`, `Nat` and from there at `[Nat]`, `Nat` again:
+# two sets of types and no more (Type System ch. 2: "Recursion at other indices needs
+# the signature", so a signed function may call itself at other types; ch. 5: a type
+# variable is decided at each call; Semantics ch. 8: "a blueprint builds nothing until a
+# block applies it"). sem-ch08-widget-value-generic-function-at-other-type with a type
+# that grows and then stays. Written by Claude on the claude-lowering branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Shown: fn a, Text -> @unit where a: ^Show
+fn @Shown x, label:
+    Ui.Label($text=$"{label}={Show x}")
+
+?Wrapped: fn a, b, Nat -> ?@unit where a: ^Show, b: ^Show
+fn ?Wrapped x, y, more = match more -? 1:
+    ? less: ?Wrapped [[y]], less, less
+    nil: ?Pick True, (@Shown x, (Show y))
+
+@Page: @unit
+@Page:
+    let five: Nat = 5
+    let nine: Nat = 9
+    match ?Wrapped five, nine, 0:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    match ?Wrapped five, nine, 1:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    match ?Wrapped five, nine, 3:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
