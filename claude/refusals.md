@@ -42,16 +42,19 @@ Hosting
   (sem-ch09-host-bundle-dynamic-part-forwarded). A bundle nested in a tag's bundle
   output is read as a plain part: no test.
 - lower/expr.prism (`WidgetBlueprintValue`, `WidgetValueWords`) a widget with places as
-  a blueprint value is lowered where it has no type parameter and no widget function
-  parameter, whatever it gives back
+  a blueprint value is lowered where it has no widget function parameter, whatever it
+  gives back
   (sem-ch09-host-widget-answer, sem-ch08-blueprint-out-of-value,
   sem-ch08-widget-value-dynamic-parameter, -event-parameter, -blueprint-parameter,
-  -event-result, -let, -dynamic-result, -bundle-result, -function-result). Left
-  refused: one with a type parameter (sem-ch08-widget-value-generic), a widget
-  function parameter, or a `$` or event parameter with time below its top (no tests);
-  one that gives a bundle back read under a tag's arm (R, no test: "as a supplier's
-  answer under a tag's arm, its result a bundle"); one whose block ends on a host's
-  line (R, no test: `ValueRowWhole`);
+  -event-result, -let, -dynamic-result, -bundle-result, -function-result), a generic
+  one at each set of types its readings give it (sem-ch08-widget-value-generic), one
+  that gives a bundle back under a tag's arm (sem-ch09-host-widget-bundle-answer), one
+  whose block ends on a host's line (sem-ch08-widget-value-ends-on-host). Left
+  refused: a generic one read where a type parameter of its stays open (inside a
+  generic function or widget, given that one's own parameter: R,
+  sem-ch08-widget-value-generic-in-function), one with a
+  widget function parameter, or a `$` or event parameter with time below its top (no
+  tests);
   one read in a place `ValuedWidgets` does not look (a record's field read back and
   given on is a value already). One built in a hosted scope builds its hosted row
   (sem-ch09-host-widget-answer-hosted).
@@ -76,9 +79,11 @@ Hosting
   (`AppliedBundleLine`: sem-ch08-element-value-bundle-statement,
   sem-ch08-widget-value-bundle-result). A bundle answered as a generic tag's is read
   through no tag (a fault of the run: no test).
-- lower/node/static.prism:104 a widget function parameter applied to arguments whose
-  argument is a function value that is no name (a lambda). No test. A named widget
-  function passed and applied is lowered (sem-ch08-widget-parameter-applied).
+- lower/node/static.prism (`ApplyWidgetParam`) a widget function parameter applied to
+  arguments is lowered whatever its argument: a named widget function
+  (sem-ch08-widget-parameter-applied), a lambda
+  (sem-ch08-widget-parameter-lambda-argument), any other function value
+  (sem-ch08-widget-parameter-call-argument).
 - lower/node/static.prism:778 a generic widget at a call whose types its parameters' do
   not match. No program found: a blueprint parameter and a function parameter are
   matched through (sem-ch08-generic-widget-blueprint-parameter).
@@ -219,12 +224,19 @@ Functions
   value a call returns, at a call that makes the color bounded, is made again through
   every type that can hold it (ts-ch05-color-function-in-result, -in-map-result,
   -in-named-result, -in-choice-result, -in-nested-named-result, -in-named-in-tuple-result,
-  -in-optional-result, -in-result-result, -in-function-parameter-result). Left refused,
-  no tests: one held by a type alias or behind a blueprint (`Recolored`,
-  `NamedRecolored`), and a function of unbounded color whose own parameter or result
-  holds one (`FunctionRecolored`: a job's result is not mapped). A call whose result
-  holds a `Start` of the callee's color beside a function that stays a `Start` is not
-  walked (the guard at `GlobalCall`), no refusal, no test.
+  -in-optional-result, -in-result-result, -in-function-parameter-result), beside a
+  function that stays unbounded (ts-ch05-color-function-beside-unbounded-function-result)
+  and in the result of a function that stays unbounded
+  (ts-ch05-color-function-in-unbounded-function-result). A type alias is its target in
+  every type the checker gives (`ConvNamedType`), so `NamedRecolored` meets none (G, an
+  internal error). `Recolored`'s refusal of a type that is none of those is reached
+  only where the call's type does not match the callee's signature (no program found).
+  `FunctionRecolored`'s refusal is of a function whose color is a generalized `let`'s
+  that no use decides (`OutQuantified`, refused where its type is written). A function under an
+  event or a `$` inside the result is mapped (ts-ch05-color-function-in-event-result).
+  Not walked, with no refusal and no test: a function held by a blueprint inside the
+  result (`?Made F = ? @ F`: the blueprint's held answer is the `Start`, read as a
+  bounded function by the line that applies it, a fault of the run).
 - lower/node/def.prism (`RefusePlainResult`) a widget's plain result bound by a pattern
   that left a name without its field: an internal error; `BindPatternResult` takes every
   pattern (sem-ch08-plain-result-pattern passes).

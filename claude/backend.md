@@ -430,7 +430,14 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A widget function parameter** (`Inner: fn Nat -> @unit`, given `@Row`) is bound as a
   blueprint parameter is, the argument's text with its caller's environments; `Inner 1`
   applies the function the argument names to the line's arguments, read in the line's
-  environments (`ApplyWidgetParam`). A function value that is no name is refused.
+  environments (`ApplyWidgetParam`). Given a lambda (`@Use (\|F| @Shower label, F)`),
+  the lambda's body is lowered at the line, in the lambda's own file: its parameters
+  are bound to the line's arguments by layer as an inlined widget's are (`BindParam`),
+  over the environments the lambda closes over, and its names are kept apart for each
+  application by the line's call (`Lx.inlined`). Any other function value (a call's
+  result, a field) is read where the argument stands and applied to the line's
+  arguments, and the blueprint it gives is applied as any blueprint value
+  (`AppliedBlueprintLine`).
 - **A clause widget's blueprint parameter** (`fn @Show True, @w:`), and a widget
   function parameter of one, is bound in the clause's row as an inlined widget's is
   (`BindParam`): the caller's argument's text with the caller's environments as the row
@@ -540,9 +547,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
   constructor, a host's supplier, what a lambda gives, the operand of `?`, a part of a
   tuple or an array, the value of a `let` (`LetValues`: `let @w = @Pair`, read where
   `@w` is), and a blueprint argument of a widget that stands in one (`@Frame @Pair`).
-  A widget can be one when it has no type parameter and no widget function parameter,
-  and its `$` and event parameters have no time below their top, whatever it gives
-  back (`?ValuedCases`).
+  A widget can be one when it has no widget function parameter and its `$` and event
+  parameters have no time below their top, whatever it gives back (`?ValuedCases`).
+  - A generic widget is one for each set of types the program's readings give its type
+    parameters (`?ValuedTypes`: read off the arguments' types as an inlined call reads
+    them, and off the widget's own type where it is read). `Lx.valued` is keyed by the
+    widget and those types (`ValuedKey`), `Lx.valuedAt` lists a widget's readings in
+    the order the program has them; each has rows of its own, lowered with the types in
+    the substitution (`AtInstance`, `ValInfoAt`) and named `{Widget}_value_at{k}_{i}`
+    (`ValuedStemAt`). A reading that leaves a type parameter open (it stands in a
+    generic function or widget, whose own parameter it is given) has no rows and is
+    refused where it is read.
   - A `$` or an event parameter is the caller's live `Dynamic` or `Event`, which the
     blueprint keeps and each row it builds holds (`LiveParams`, as the shared rows of a
     widget that calls itself do); the line that reads the widget makes the dynamic
@@ -562,7 +577,14 @@ it make every program an interpreter run, and every type mistake a runtime fault
     no plain data (a function): the line that applies the blueprint reads the widget's
     own dynamic, events and value, so they move in the tick the widget's do. Under a
     tag's arm a dynamic result is the place's first value and each move of it a push
-    of the next tick, as `@ $d` is (prism_rtl's `widget_dynamic_blueprint`).
+    of the next tick, as `@ $d` is (prism_rtl's `widget_dynamic_blueprint`), and a
+    bundle is answered as a bundle that is a value already is (`@ pair`,
+    `PartsAnswerOf`): prism_rtl's `widget_parts_blueprint` builds the row and makes
+    the `PartsAnswer` of its one value, the plain and `$` parts the tag's state, each
+    event part the tag's answers, all but the first value inputs of the next tick.
+  - A widget whose block ends on a host's line gives the host's output: the tuple of
+    the child's result and the child's document, the document a live `Dynamic` over the
+    row as any dynamic of the result is (`ValueRowWhole`, `WrHosted`).
   - Each such widget is lowered once more as rows of its own, items of its module
     (`ValuedRows`): one row type a clause, `{Widget}_value{i}`, its places numbered from 0
     and built from a base, holding no block, telling how many places it built (`built`),
@@ -585,9 +607,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
     methods). A host's row gives them to the enclosing host (`HostRow::entries`,
     `HostRow::deliver`); a block that applied the value gives them as its generation's
     (`AppliedBlueprint`).
-  - A widget with a type parameter or a widget function parameter is not among them,
-    and is refused where it is read as a value; so is one that gives a bundle back read
-    under a tag's arm.
+  - A widget with a widget function parameter is not among them, and is refused where
+    it is read as a value.
 - **A widget defined in a block read as a value** (`Card(@body=@line)`, `?Pick True,
   @line`) is a `Blueprint` its line makes at the build before the node, kept in a field
   (`BlueprintValuesAt`, `blueprint_{name}`): it builds the widget's block as a row of its
@@ -985,14 +1006,20 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A function value of its callee's own color in a call's result** (`[u fn Nat -> Nat]`
   at a call that makes `u` bounded) is a `Start` in the callee's signature; the call's
   value is made again by one walk over its two types, the signature's and the call's
-  (`Recolored`): an array is mapped (the prelude's `each`), an optional and a `~T`
+  (`Recolored`): an array is mapped (the prelude's `each`), an event and a dynamic
+  are mapped (`Event::map`, `Dynamic::map`), an optional and a `~T`
   matched, a tuple taken apart, a map made again with `fold_map` and `insert`, a record
   made from its fields and a choice by a `match` over its cases, each field at its type
   under the signature's type arguments and under the call's (`NamedRecolored`), to any
   depth and in any nesting. A function is made again (`FunctionRecolored`): a `Start`
   where a bounded function is wanted runs each application's job to its end; a
   function's own parameter is walked the other way, where a bounded function is wrapped
-  as a `Start` that answers in its first cycle.
+  as a `Start` that answers in its first cycle; a `Start` that stays one and whose own
+  parameter or result holds the function is a `Start` that hands the held one its
+  arguments walked and maps its job's result (the prelude's `map_job`). The walk
+  starts from the signature's result at the types the call gives the callee's type
+  parameters, so the two types differ in color alone, and it is made whenever the two
+  differ: a function beside it that stays a `Start` is itself.
 - **A function value applied** (`Take (\|n| n * k)`, `Take Double`, `Take` a `let` or a
   parameter) takes each argument of a function type as a function value
   (`ValueArgument`); a named function takes a borrowed closure or a path there.

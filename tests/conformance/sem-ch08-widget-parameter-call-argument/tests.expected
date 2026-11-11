@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 8 (a widget function parameter is applied at the block's next positions; a blueprint builds where a block applies it), as sem-ch08-widget-parameter-lambda-argument has it. Never run.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="shows 1")

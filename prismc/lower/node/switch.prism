@@ -785,7 +785,7 @@ fn SharedLiveCalls wx, menv, e = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
         match wx.lx.g.vals[qk]:
             # (and a call of a widget the program reads as a value, whose blueprint keeps
             # the caller's dynamic live for the rows it builds, `WidgetBlueprintValue`)
-            ? v: if (HasLiveParam v) and (IsWidgetTy (WidgetResultOf v.scheme.ty)) and ((HasKey wx.lx.valued, qk) or SharesAt wx, menv, qk, v, x, args): Push acc, (DynKey x) else: acc
+            ? v: if (HasLiveParam v) and (IsWidgetTy (WidgetResultOf v.scheme.ty)) and ((HasKey wx.lx.valuedAt, qk) or SharesAt wx, menv, qk, v, x, args): Push acc, (DynKey x) else: acc
             nil: acc
     otherwise: acc
 
@@ -798,8 +798,8 @@ fn IsBlueprintValued lx, menv, ?a = match ?a:
     ? a: match (Ungrouped a.value).kind:
         EName n: match (if (Len n.path) == 1: menv.names[SNameKey n] else: nil):
             ? (BnLocal ignore, ignore, ignore): True
-            ? (BnWidget x, ignore, ignore, clx): HasKey lx.valued, (BlueprintQk clx, x)
-            nil: HasKey lx.valued, (BlueprintQk lx, a.value)
+            ? (BnWidget x, ignore, ignore, clx): HasKey lx.valuedAt, (BlueprintQk clx, x)
+            nil: HasKey lx.valuedAt, (BlueprintQk lx, a.value)
             otherwise: False
         otherwise: False
 
@@ -1083,6 +1083,8 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
         # dynamics whole (`ValueRowWhole`), which `result_value` reads from the row
         WrParts ignore if valueRow: ValueRowResult r2, lxc, body
         WrDyn ignore, ignore, ignore if valueRow: ValueRowResult r2, lxc, body
+        # (and a host's output, the row's block ending on a host's line)
+        WrHosted ignore, ignore if valueRow: ValueRowResult r2, lxc, body
         WrParts ignore: ((r2b, nil))
         # a plain result, computed at the generation's build and kept in a field of the
         # row, read by the block that built it: early for a clause (`EarlyClauseLine`),
@@ -1186,10 +1188,17 @@ fn ValueRowWhole r, lx, res, full, place = match res:
             let ((w2, v, t)) = ValueRowWhole w, lx, (Or parts[i], WrUnit), (Or tys[i], TyErr), "{place}_{i}"
             ((w2, (Push vs, v), (Push ts, t)))
         ((r2, (XTuple values), (OutTuple outs)))
-    WrHosted ignore, ignore:
-        let r2 = update r:
-            &_.build <= Push &_.build, (RefusalDo "a widget read as a blueprint value whose block ends on a host's line, its result the host's output")
-        ((r2, XUnit, OutUnit))
+    # a host's output (the block ends on a host's line): the bundle of its child's
+    # result and the child's document, a dynamic of the row
+    WrHosted inner, document:
+        let tys = BundlePartTys full
+        let ((r1, child, childTy)) = ValueRowWhole r, lx, inner, (Or tys[0], TyErr), "{place}_0"
+        match document:
+            BnDyn ex, reads, t:
+                let ((r2, held, heldTy)) = ValueRowWhole r1, lx, (WrDyn ex, reads, t), (Or tys[1], TyErr), "{place}_1"
+                ((r2, (XTuple [[child, held]]), (OutTuple [[childTy, heldTy]])))
+            # (a host without its child or its supplier is refused at its line, `HostLine`)
+            otherwise: ((r1, (InternalBug "a host's document that is no dynamic of its node, in the result of a row a blueprint value builds"), OutUnit))
     WrUnit: ((r, XUnit, OutUnit))
 
 # What a block's last line gives, lowered: the payload under its blueprint and its time.

@@ -90,7 +90,8 @@ fn WidgetLine wx, benv, menv, e, ?bound:
 # A widget function parameter applied to arguments (`Inner 1`, `Inner: fn Nat -> @unit`
 # given `@Row`): the function the argument names, applied here to the line's arguments,
 # which are read in this line's environments; a parameter handed on names its own
-# argument in turn. A function value that is no name is not lowered yet.
+# argument in turn; a lambda's body is lowered here, its parameters the line's arguments;
+# any other function value is applied, and the blueprint it gives is applied.
 ApplyWidgetParam: unbounded fn Wx, Env, Env, Expr, Env, Env, Lx, Expr, [Arg], ?Bn -> ((Wx, Wres))
 fn ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound:
     if (Len args) > 0: match (Ungrouped x).kind:
@@ -107,10 +108,50 @@ fn ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound:
                         let wx2 = update wx:
                             &_.build <= Push &_.build, (InternalBugDo "a widget function parameter whose argument names nothing")
                         ((wx2, WrUnit))
+        # a lambda (`@Use (\|F| @Shower label, F)`): its parameters bound to the line's
+        # arguments by layer as an inlined widget's are (`BindParam`: the arguments read
+        # in this line's environments), over the environments the lambda closes over;
+        # its body lowered here in the lambda's own file, its names apart for each
+        # application (`inlined`, by the line's call)
+        ELambda ?params, lambdaBody:
+            let lx = wx.lx
+            let lambda = Ungrouped x
+            let params = Or ?params, [[]]
+            let ptys = match TypeAt clx, lambda.span:
+                TyFn ignore, ps, ignore: ps
+                otherwise: [[]]
+            let ((wx1, be1, me1)) = Fold (Range0 (Len params)), ((wx, cbenv, cmenv)), \|((w, be, me)), i|
+                let p = Or params[i], dummyPat
+                let nkey = PlainBinder clx, p
+                match args[i]:
+                    nil: ((w, be, me))
+                    ? a: if nkey != "": BindParam w, benv, menv, be, me, nkey, (LocalNameAt clx, nkey, p.span), (Or ptys[i], TyErr), a.value else: BindParamPattern w, benv, menv, be, me, clx, p, (Or ptys[i], TyErr), a.value
+            let callSpan = match e.kind:
+                ECall c, ignore, ignore, ignore: c.span
+                otherwise: e.span
+            let lxi = update clx:
+                &_.inlined <= match lx.callIds[PlaceKey lx, callSpan]:
+                    ? id: "{lx.inlined}_{Base32 id}"
+                    nil: lx.inlined
+            let inner = update wx1:
+                &_.lx <= lxi
+                &_.result <= WrUnit
+            let body = match lambdaBody:
+                LbBlock b: b
+                LbExpr y: Block(stmts=[[Stmt(kind=(SExpr y), span=y.span)]], inline=True, span=y.span)
+            let done = BlockInto inner, be1, me1, body
+            let back = update done:
+                &_.lx <= lx
+                &_.result <= wx.result
+            ((back, done.result))
+        # any other function value (`@Use (Chosen "shows")`, a call's result; a field): the
+        # value, read where the argument stands, applied to the line's arguments gives
+        # a blueprint, which the line applies as any blueprint value
+        # (`AppliedBlueprintLine`)
         otherwise:
-            let wx2 = update wx:
-                &_.build <= Push &_.build, (RefusalDo "a widget function parameter applied to arguments whose argument is a function value that is no name")
-            ((wx2, WrUnit))
+            let function = ValueOf clx, cmenv, x
+            let made = XApply (Ref function), (Each args, \|a| ValueArgument wx.lx, menv, a.value)
+            AppliedBlueprintLine wx, e, (XRef made)
     else:
         let lx = wx.lx
         let inner = update wx:
@@ -264,7 +305,7 @@ fn AppliedBundleLine wx, e, blueprint:
     let hostedIn = if IsHostedScope wx: XCtor (RefRuntime "std::Some"), [[(XCast (XClone (HostFieldEx wx, pos)), hostOfTy)]] else: XNone
     let tags = BundleTagsOf lx, full
     let ((stateTy, eventsTy)) = BundleCarried lx, full
-    let applied = TryOf (XCallAt (HelperRef "apply_blueprint_whole"), [[wholeTy, stateTy, eventsTy]], [[blueprint, (XClone (XVar "path")), (XVar "row_base"), hostedIn, (BundleStateTaker tags, stateTy != OutUnit), (BundleEventTaker tags, eventsTy != OutUnit), (BundleAssembled full, tags), XCx]])
+    let applied = TryOf (XCallAt (HelperRef "apply_blueprint_whole"), [[wholeTy, stateTy, eventsTy]], [[blueprint, (XClone (XVar "path")), (XVar "row_base"), hostedIn, (BundleStateTaker lx, tags, stateTy), (BundleEventTaker lx, tags, eventsTy), (BundleAssembled full, tags), XCx]])
     let gap = XBin OpSub, (XIndex wideGeneration), (XVar "built")
     let keeps = DoAssign (XDeref (XMethod (XField XSelf, kept), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XVar "whole")]])
     let made = PaTuple [[(PaBind "row"), (PaBind "built"), (PaBind "whole")]]
@@ -326,7 +367,18 @@ fn AppliedPart wx, name, t, read, whole, place = match t:
 BundleTagsOf: unbounded fn Lx, Ty -> [TagInfo]
 fn BundleTagsOf lx, full:
     let flat = Fold (BundlePartTys full), True, \|ok, x| ok and not (IsBundle x)
-    if not flat: [[]] else: Filter (Values lx.g.tags), \|tg| tg.kind == "Element" and (IsBundle (Peel tg.out)) and (OutTyOf lx, (Peel tg.out)) == OutTyOf lx, full
+    # (a generic tag's output is matched with its variables open: `((!r, $Text))`
+    # answers a line that binds `((!Text, $Text))`, its answers recoded to the line's
+    # types, `AnswerTaken`)
+    let Answers = \|tg| (OutTyOf lx, (Peel tg.out)) == (OutTyOf lx, full) or ((AnswerOpen lx, tg) and MatchesOpen (BundlePartTys (Peel tg.out)), (BundlePartTys full))
+    if not flat: [[]] else: Filter (Values lx.g.tags), \|tg| tg.kind == "Element" and (IsBundle (Peel tg.out)) and Answers tg
+
+# Whether a generic tag's bundle output, part by part, is the bundle a line binds at some
+# types of the tag's variables.
+MatchesOpen: unbounded fn [Ty], [Ty] -> Bool
+fn MatchesOpen open, parts = (Len open) == (Len parts) and match ?ParamMatchAll (Each open, Unrigid), parts, {}:
+    ? ignore: True
+    nil: False
 
 # What the answers of a bundle's tag hold (`AnswerTy`, `?BundleStateTy`): the state, its
 # plain and `$` parts' values (one part itself, several a tuple), and the event parts'
@@ -350,10 +402,13 @@ fn BundleCarried lx, full:
 # tag's state case (its first-value case when the tag has event parts too, else its
 # own), the state; the answer at the build under no such case is read by the first
 # tag's accessor (which reads an answer made outside any tag); any other is no state.
-BundleStateTaker: unbounded fn [TagInfo], Bool -> Ex
-fn BundleStateTaker tags, hasState:
+BundleStateTaker: unbounded fn Lx, [TagInfo], OutTy -> Ex
+fn BundleStateTaker lx, tags, stateTy:
+    let hasState = stateTy != OutUnit
     let Variant = \|tg| if IsBundleTag tg: AnswerFirstVariant tg else: AnswerVariant tg
-    let Taken = \|tg| XCtor (RefRuntime "std::Some"), [[(TryOf (XMethod (XVar "answer"), (if IsBundleTag tg: "{AnswerAccessor tg}_first" else: AnswerAccessor tg), [[]]))]]
+    let Accessor = \|tg| if IsBundleTag tg: "{AnswerAccessor tg}_first" else: AnswerAccessor tg
+    # (a generic tag's state is recoded to the line's types, `AnswerTaken`)
+    let Taken = \|tg| XCtor (RefRuntime "std::Some"), [[(AnswerTaken lx, (Accessor tg), stateTy, (TryOf (XMethod (XVar "answer"), (Accessor tg), [[]])))]]
     let body = if not hasState: XNone else: match tags[0]:
         ? first: Fold tags, (XIf (XVar "first"), (Taken first), XNone), \|rest, tg| XIf (XIsCase (XVar "answer"), [[Variant tg]]), (Taken tg), rest
         nil: XNone
@@ -361,9 +416,11 @@ fn BundleStateTaker tags, hasState:
 
 # An answer read as the bundle's event parts' (`apply_blueprint_whole`'s `event`): by
 # the tag it is under, any other answer the first tag's accessor's fault.
-BundleEventTaker: unbounded fn [TagInfo], Bool -> Ex
-fn BundleEventTaker tags, hasEvents:
-    let Taken = \|tg| TryOf (XMethod (XVar "answer"), (AnswerAccessor tg), [[]])
+BundleEventTaker: unbounded fn Lx, [TagInfo], OutTy -> Ex
+fn BundleEventTaker lx, tags, eventsTy:
+    let hasEvents = eventsTy != OutUnit
+    # (a generic tag's answer is recoded to the line's types, `AnswerTaken`)
+    let Taken = \|tg| AnswerTaken lx, (AnswerAccessor tg), eventsTy, (TryOf (XMethod (XVar "answer"), (AnswerAccessor tg), [[]]))
     let body = match (if hasEvents: tags[0] else: nil):
         ? first: XCtor (RefRuntime "std::Ok"), [[(Fold (Drop tags, 1), (Taken first), \|rest, tg| XIf (XIsCase (XVar "answer"), [[AnswerVariant tg]]), (Taken tg), rest)]]
         nil: XCtor (RefRuntime "std::Err"), [[(XCall (RefRuntime "rt::Fault::answer"), [[(XStr "an answer to a blueprint value that gives a bundle, which no event part of the bundle is answered with")]])]]
