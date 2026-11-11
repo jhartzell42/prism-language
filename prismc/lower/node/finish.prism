@@ -273,7 +273,10 @@ fn FinishNode wx0, qk, params, isRow:
     let evMethods = Each (Filter wx.gns, \|g| g.kind != GnNever), \|g| MethDef(name=g.name, recv=RecvRc, params=[[(("v", g.ty))]], cx=CxMut, ret=OutUnit, body=(FiringCode sinks, g, (XVar "v")), tail=(XUnit), doc=(GnDoc g))
     let gatherIns = Append (Each (Filter wx.gns, \|g| g.kind == GnGather), \|g| GatherIn sinks, g), (Each (Filter wx.gns, \|g| g.kind == GnMergeList), \|g| MergeListIn sinks, g)
     let placeGetters = Each live, \|p| MethDef(name=p.getter, recv=RecvRef, params=[[]], cx=CxRef, ret=elemTy, body=[[]], tail=p.level, doc="Place {PlaceText p.pos}'s level, read at the read point.")
-    let wakeBody = if many: [[(WakeByHeight combs, heights)]] else: Each combs, \|g| Decide g
+    # a node with several heights runs the lowest one asked, then asks for a wake for the
+    # next one still asked (`Wakes::again`): two heights asked from one running height are
+    # one wake of the node
+    let wakeBody = if many: [[(WakeByHeight combs, heights), (DoExpr (XMethod (XField XSelf, "wakes"), "again", [[XCx, (XClone XSelf)]]))]] else: Each combs, \|g| Decide g
     let startedBody = Each wx.started, \|st| SelfCall (GnOf wx, st).name, [[XUnit]]
     let deferredBody = Each wx.defers, \|((f, id))| DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "v"]]), (XMethod (XField XSelf, "{f}"), "fired", [[XCx]]), [[(SelfCall (GnOf wx, id).name, [[(XVar "v")]])]], [[]]
     # the patch pass sends the World the places that go to it, and takes the entry of each
