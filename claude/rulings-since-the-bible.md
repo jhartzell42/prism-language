@@ -59,3 +59,12 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
 - **TF** Tests first for everything, then the fixes, then the run. Jimmy: "Make failing
   tests for all the bugs, then try to fix all of them, then run the tests." A lowering
   gap is called a bug.
+- **EP** An event field in an element pattern binds the event the description was made
+  with, a `!T`, as a `$` field binds a `$T`. Claude's first ruling; Jimmy: "your rulings
+  seem right". Where: Type System chapters 2 and 4.
+- **FM** `for &v` over a map is legal and visits each value by reference in key order.
+  Claude's first ruling; Jimmy: "your rulings seem right". Where: Semantics chapter 5.
+- **SC** A supplier written by clauses refines its output at a clause's tag pattern as a
+  `match` arm does: `fn @Supply p, (Pad.Num(..)) = @ 7` checks. The checker refusing it is
+  a bug. Claude's first ruling; Jimmy: "your rulings seem right". Where: Type System
+  chapter 5, "Refinement at tag matches".

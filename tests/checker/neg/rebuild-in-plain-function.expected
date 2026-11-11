@@ -1,0 +1,4 @@
+tests/checker/neg/rebuild-in-plain-function.prism:11: error[mismatch]: expected `$Nat`, found `@$Nat`
+    fn $Twice $n = rebuild $n: @ _ * 2
+                   ^^^^^^^^^^^^^^^^^^^
+1 error
