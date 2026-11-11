@@ -262,7 +262,10 @@ Building `match`, clause widgets, `rebuild`
   R with no test: lower/node/finish.prism (`PlaceNumber`) a hosted node's own
   first-value query spelled before its node in such a row;
   lower/node/elements.prism (`ElementOutputOf`) a hosted place with a plain answer
-  under a host placed after its node; lower/node/switch.prism (`ArmRowOf`) the row's
+  that no plain name binds, under a host placed after its node (bound to a name it is
+  lowered: `LateHostedAnswer`,
+  sem-ch04-building-match-on-built-late-value-above-host-answers-in-arm);
+  lower/node/switch.prism (`ArmRowOf`) the row's
   late plain result beside a `for`, a `rebuild` or a widget that calls itself in the
   arm, and a widget that calls itself in a row that builds its generations before it
   is numbered.
