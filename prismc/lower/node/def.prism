@@ -433,7 +433,10 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
         SBind p, ignore, nil: Filter (PatternNames p), \|n| not (IsTimeName n)
         otherwise: [[]]
     let below = Drop b.stmts, k + 1
-    let hoisted = HoistedLines below, lateNames
+    # a plain `let` below the split that a line above it reads is the node's, late as
+    # what it reads is (`MarkLateLets`)
+    let aboveReads = Fold (Take b.stmts, k), [[]], \|acc, st| UnionTexts acc, (ReadsOfLine st)
+    let hoisted = HoistedLines below, lateNames, aboveReads
     let staying0 = Filter below, \|st| not (HasStmt hoisted, st)
     # the block's result is its last line's: when that line is the node's, the lower
     # generation gives nothing back
@@ -601,8 +604,8 @@ fn Unresulted sts = match sts[Dec (Len sts)]:
 # stays below but events (those fire up, `PreBindUps`). A plain `let` that reads the
 # split line's names stays too: its value is a local of the lower generation's build.
 # What a line that stays binds, the lines that read it stay with it.
-HoistedLines: unbounded fn [Stmt], [Text] -> [Stmt]
-fn HoistedLines below, lateNames:
+HoistedLines: unbounded fn [Stmt], [Text], [Text] -> [Stmt]
+fn HoistedLines below, lateNames, aboveReads:
     let candidates = Filter below, \|st| match st.kind:
         SBind ignore, ignore, (? ignore): True
         SLet ignore, ignore, ignore: True
@@ -612,19 +615,26 @@ fn HoistedLines below, lateNames:
         SEmit ignore: True
         otherwise: False
     let fixed = Filter below, \|st| not (HasStmt candidates, st)
-    HoistedAmong candidates, (Fold fixed, [[]], \|acc, st| UnionTexts acc, (NonEventDefs st)), lateNames
+    HoistedAmong candidates, (Fold fixed, [[]], \|acc, st| UnionTexts acc, (NonEventDefs st)), lateNames, aboveReads
 
-HoistedAmong: unbounded fn [Stmt], [Text], [Text] -> [Stmt]
-fn HoistedAmong candidates, blocking, lateNames:
+# Whether a `let`'s pattern is one name that a line above the split reads (a late `let`
+# is one name, `?LateLetName`).
+IsOneNameReadAbove: fn Pattern, [Text] -> Bool
+fn IsOneNameReadAbove p, aboveReads = match p.kind:
+    PName n: HasText aboveReads, (SNameKey n)
+    otherwise: False
+
+HoistedAmong: unbounded fn [Stmt], [Text], [Text], [Text] -> [Stmt]
+fn HoistedAmong candidates, blocking, lateNames, aboveReads:
     let Stays = \|st|
         let reads = ReadsOfLine st
         let plainLet = match st.kind:
-            SLet p, ignore, ignore: Fold (PatternNames p), False, \|f, n| f or not ((HasPrefix n, "$") or (HasPrefix n, "!"))
+            SLet p, ignore, ignore: (Fold (PatternNames p), False, \|f, n| f or not ((HasPrefix n, "$") or (HasPrefix n, "!"))) and not IsOneNameReadAbove p, aboveReads
             otherwise: False
         (Fold reads, False, \|f, n| f or HasText blocking, n) or (plainLet and Fold reads, False, \|f, n| f or HasText lateNames, n)
     let out = Filter candidates, Stays
     if (Len out) == 0: candidates
-    else: HoistedAmong (Filter candidates, \|st| not (HasStmt out, st)), (Fold out, blocking, \|acc, st| UnionTexts acc, (NonEventDefs st)), lateNames
+    else: HoistedAmong (Filter candidates, \|st| not (HasStmt out, st)), (Fold out, blocking, \|acc, st| UnionTexts acc, (NonEventDefs st)), lateNames, aboveReads
 
 # The block's names a line reads anywhere in it (`ReadsAtBuild` is the build's alone).
 ReadsOfLine: unbounded fn Stmt -> [Text]
@@ -1858,7 +1868,49 @@ fn BindRes wx2, menv, p, res = match ?BindingOf menv, p:
 # A line that builds: an element (a place), a widget applied (inlined), or a builder. The
 # bound name, when there is one, is where the output goes.
 BuildLine: unbounded fn Wx, Env, Env, Expr, ?Bn -> ((Wx, Wres))
-fn BuildLine wx, benv, menv, e, ?bound:
+fn BuildLine wx, benv, menv, e, ?bound = if IsLateTaker wx.lx, menv, e: DeferredLine wx, menv, e else: BuildLineNow wx, benv, menv, e, ?bound
+
+# Whether a building line of a split block's node reads a late name (`BindLate`,
+# `MarkLateLets`) and is no element's (an element's field is live over the name's
+# getter, `ElementLine`): a line above the split that takes the late result.
+IsLateTaker: unbounded fn Lx, Env, Expr -> Bool
+fn IsLateTaker lx, menv, e = match e.kind:
+    EGroup ignore: False
+    otherwise: match Peel (TypeAt lx, e.span):
+        TyElem ignore, ignore: False
+        otherwise: ReadsLate menv, e
+
+# A building line of a split block's node that reads a late name (Semantics ch. 4,
+# "Binding groups and cycles": any line may use any name the block binds, and the order of
+# a group's lines decides positions and nothing else): the line is a generation of one
+# arm at its own positions, its row built once after the node as an arm's is
+# (`BuildingChoiceLine`), reading the block's names through the node, the late name
+# through its getter. The generation is built after every other of its scope
+# (`Wx.deferredGens`, `BuildSteps`), so the row that gives the late result is built by
+# then. Two lines stay refused: one whose places are counted as built (the rows after it
+# were numbered before it was built), and one that gives a plain result of its own (the
+# block is split at one line).
+DeferredLine: unbounded fn Wx, Env, Expr -> ((Wx, Wres))
+fn DeferredLine wx, menv, e:
+    let lx = wx.lx
+    let ((outTy, layer)) = LineResult lx, e
+    let body = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
+    let ((wx2, res)) = BuildingChoiceLine wx, menv, (XUnit), [[nil]], (TyCon "unit", [[]]), [[nil]], [[body]], outTy, layer, (LineOutFull lx, e), [[]]
+    match wx2.gens[Dec (Len wx2.gens)]:
+        ? gd:
+            let wx3 = update wx2:
+                &_.deferredGens <= Push &_.deferredGens, gd.name
+            let wx4 = if not gd.gappy: wx3 else: update wx3:
+                &_.build <= Push &_.build, (RefusalDo "`{SrcText lx, lx.file, e.span}`, a line that takes a late result at its build, above the line that gives it, and whose places are counted as they are built (a building `match` or `if` inside it)")
+            match res:
+                WrLate ignore, ignore: (((update wx4:
+                    &_.build <= Push &_.build, (RefusalDo "`{SrcText lx, lx.file, e.span}`, a line that takes a late result at its build, above the line that gives it, and gives a plain result of its own")), WrUnit))
+                otherwise: ((wx4, res))
+        nil: (((update wx2:
+            &_.build <= Push &_.build, (InternalBugDo "a line that takes a late result, lowered to no generation")), WrUnit))
+
+BuildLineNow: unbounded fn Wx, Env, Env, Expr, ?Bn -> ((Wx, Wres))
+fn BuildLineNow wx, benv, menv, e, ?bound:
     let lx = wx.lx
     let full = TypeAt lx, e.span
     match e.kind:
