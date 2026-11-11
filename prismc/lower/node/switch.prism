@@ -761,7 +761,9 @@ fn SharedLiveCalls wx, menv, e = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
     ECall c, args, ignore, ignore:
         let qk = BlueprintQk wx.lx, c
         match wx.lx.g.vals[qk]:
-            ? v: if (HasLiveParam v) and (IsWidgetTy (WidgetResultOf v.scheme.ty)) and SharesAt wx, menv, qk, v, x, args: Push acc, (DynKey x) else: acc
+            # (and a call of a widget the program reads as a value, whose blueprint keeps
+            # the caller's dynamic live for the rows it builds, `WidgetBlueprintValue`)
+            ? v: if (HasLiveParam v) and (IsWidgetTy (WidgetResultOf v.scheme.ty)) and ((HasKey wx.lx.valued, qk) or SharesAt wx, menv, qk, v, x, args): Push acc, (DynKey x) else: acc
             nil: acc
     otherwise: acc
 
@@ -1049,7 +1051,9 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
         WrParts ps: RowPartsOut r2, genName, "", ps
         otherwise: ((r2, [[]]))
     let ((r3, ?plain)) = match r2.result:
-        WrEv r: (((Connect r2, r, (SkUp upName)), nil))
+        # an event: it fires the block's; a row a blueprint value builds holds no block,
+        # and fires a port of its own (`ValuedEventResult`)
+        WrEv r: if zeroBased and parentTy == OutUnit: (((ValuedEventResult r2, r, (BlockGives lxc, body)), nil)) else: (((Connect r2, r, (SkUp upName)), nil))
         WrParts ignore: ((r2b, nil))
         # a plain result, computed at the generation's build and kept in a field of the
         # row, read by the block that built it: early for a clause (`EarlyClauseLine`),
@@ -1086,6 +1090,27 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
     let passed = if transparent: Push passed0, (XVar "row_base") else: passed0
     let inner = (Len (Filter r3.gens, \|gd| gd.gappy and gd.pos.scope == 0)) > 0
     ClauseRow(case=GenCase(node=node, params=(Each fields, \|((f, t, ignore))| ((f, t))), pat=pa, conds=(Append (Fold pos, [[]], \|acc, o| Append acc, o.conds), guardConds), passed=passed), parent=p2, width=(Or (r2.pos.at -? r0.pos.at), 0), inner=inner, parts=parts, ?plain=?plain, resultReads=(ResultParentReads r2), ?resultTy=(?ResultDynTy r2))
+
+# The event result of a row a blueprint value builds (`ValuedRows`): a port of the row's
+# that the event fires, handed out by `result_event`; the blueprint that built the row
+# subscribes the sink of what applied it (`WidgetBlueprintValue`, prism_rtl's
+# `widget_event_blueprint`).
+ValuedEventResult: fn Wx, EvRef, OutTy -> Wx
+fn ValuedEventResult r, event, t:
+    let portTy = OutRc (OutPort t)
+    let port = "result_event_port"
+    update (Connect r, event, (SkPort "result_event")):
+        &_.taken <= Append &_.taken, [["result_event", port]]
+        &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind port), portTy), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]]))
+        &_.fields <= Push &_.fields, ((port, portTy, "the port the row's event result fires"))
+        &_.moves <= Push &_.moves, ((port, (XClone (XVar port))))
+        &_.getters <= Push &_.getters, (MethDef(name="result_event", recv=RecvRef, params=[[]], cx=CxNone, ret=portTy, body=[[]], tail=(XClone (XField XSelf, port)), doc="The port the row's event result fires, which the blueprint that built the row subscribes to."))
+
+# What a block's last line gives, lowered: the payload under its blueprint and its time.
+BlockGives: unbounded fn Lx, Block -> OutTy
+fn BlockGives lx, b = match (Or b.stmts[Dec (Len b.stmts)], dummyStmtL).kind:
+    SExpr x: OutTyOf lx, (OutOf (TypeAt lx, x.span))
+    otherwise: OutUnit
 
 ?ResultDynTy: fn Wx -> ?OutTy
 fn ?ResultDynTy r = match r.result:

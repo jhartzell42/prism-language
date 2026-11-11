@@ -260,6 +260,12 @@ public:
             cmp_ = [](const void* x, const void* y) -> std::strong_ordering { return *static_cast<const T*>(x) <=> *static_cast<const T*>(y); };
             return std::move(*this);
         }
+        /// `^Num` and `^Pod`, the prelude's other traits (the lowering spells every
+        /// prelude trait's packing `with_` and its name): the bound holds at `T`, and
+        /// nothing is kept. An existential packed so can be held, passed and counted;
+        /// arithmetic on one and its plain data are not written for this target yet.
+        Packing&& with_num() && { return std::move(*this); }
+        Packing&& with_pod() && { return std::move(*this); }
         /// A program's trait: its dictionary at the value's type, which `make` gives from
         /// the value (the emitted `.._packed_of`).
         template <class F>

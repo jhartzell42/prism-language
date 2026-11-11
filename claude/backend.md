@@ -74,8 +74,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   monomorphized by rustc (doubt MO).
 - An existential `any ^Show` → `Rc<dyn Show>`.
 - Any other existential → `prism_rtl::Packed`: the value behind `Rc<dyn Any>` and the
-  impls its packing found. `^Show`, `^Eq`, `^Ord` are the packing's own (`with_show`,
-  ..). A program's trait is a dictionary the compiler emits beside the trait (`ItPacked`,
+  impls its packing found. A trait of the prelude is the packing's own, spelled from
+  its name (`?PreludeTrait`): `with_show`, `with_eq`, `with_ord` are prism_rtl's;
+  `with_num` and `with_pod` are the emitted Rust prelude's (`PreludePacking`), `^Num`
+  keeping its operators at the hidden type as a dictionary (`NumPacked`, with `Num` for
+  `Packed` over it) and `^Pod` how the hidden value is told as plain data (`ToPod` for
+  `Packed`). In C++ `with_num` and `with_pod` keep nothing: such an existential is
+  held, passed and counted, and has no arithmetic there. A program's trait is a dictionary the compiler emits beside the trait (`ItPacked`,
   `PackedDef`): `Weighed_t_packed`, a struct of one function per method over packed
   values; `weighed_t_packed_of`, which makes it at a type from a value of it (each entry
   reads the hidden values with `Packed::held::<T>()`, calls the impl at `T`, and hides a
@@ -472,7 +477,20 @@ it make every program an interpreter run, and every type mistake a runtime fault
   @Answerer n`). The program is read once for the widgets that stand in a value's place
   (`ValuedWidgets`, `Lx.valued`): an argument of a function that is no widget or of a
   constructor, a host's supplier, what a lambda gives, the operand of `?`, a part of a
-  tuple or an array.
+  tuple or an array, the value of a `let` (`LetValues`: `let @w = @Pair`, read where
+  `@w` is), and a blueprint argument of a widget that stands in one (`@Frame @Pair`).
+  A widget can be one when it has no type parameter and no widget function parameter,
+  its `$` and event parameters have no time below their top, and it gives nothing, a
+  plain value or an event back (`?ValuedCases`).
+  - A `$` or an event parameter is the caller's live `Dynamic` or `Event`, which the
+    blueprint keeps and each row it builds holds (`LiveParams`, as the shared rows of a
+    widget that calls itself do); the line that reads the widget makes the dynamic
+    (`WholeArgsAt`, `SharedLiveCalls`). A blueprint parameter is a value of the row,
+    applied as any blueprint value is.
+  - An event result is a port of the row's that the event fires
+    (`ValuedEventResult`, the row's `result_event`); prism_rtl's
+    `widget_event_blueprint` subscribes the sink of what applied the blueprint, each
+    firing an answer under the arm's tag or outside any, as a plain result is.
   - Each such widget is lowered once more as rows of its own, items of its module
     (`ValuedRows`): one row type a clause, `{Widget}_value{i}`, its places numbered from 0
     and built from a base, holding no block, telling how many places it built (`built`),
@@ -871,13 +889,18 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A trait method named as a value** is a closure calling it (`MethodFn`).
 - **A function value of its callee's own color in a call's result** (`[u fn Nat -> Nat]`
   at a call that makes `u` bounded) is a `Start` in the callee's signature; the call's
-  value is rebuilt with each wrapped as the bounded function it is (`StartsAsBounded`):
-  through an array (the prelude's `each`), an optional, a `~T`, a tuple, a map's values
-  (the map made again with `fold_map` and `insert`) and a function's result (a function
-  that calls it and wraps what it gives). A named type whose arguments hold one is made
-  again by its declaration (`?TypeStartsAsBounded`): a record from its fields, a choice
-  by a `match` over its cases, each field as its type under the call's arguments has
-  it; an array of either element by element.
+  value is made again by one walk over its two types, the signature's and the call's
+  (`Recolored`): an array is mapped (the prelude's `each`), an optional and a `~T`
+  matched, a tuple taken apart, a map made again with `fold_map` and `insert`, a record
+  made from its fields and a choice by a `match` over its cases, each field at its type
+  under the signature's type arguments and under the call's (`NamedRecolored`), to any
+  depth and in any nesting. A function is made again (`FunctionRecolored`): a `Start`
+  where a bounded function is wanted runs each application's job to its end; a
+  function's own parameter is walked the other way, where a bounded function is wrapped
+  as a `Start` that answers in its first cycle.
+- **A function value applied** (`Take (\|n| n * k)`, `Take Double`, `Take` a `let` or a
+  parameter) takes each argument of a function type as a function value
+  (`ValueArgument`); a named function takes a borrowed closure or a path there.
 - **`@Run` of a function value that is no function the program defines by clauses** (a
   lambda, a local, a call's result, a constructor, a trait's method, a function of the
   prelude) takes the `Start` it is or is made (`AsJobValue`); a function the program

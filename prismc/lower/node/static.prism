@@ -616,8 +616,8 @@ fn WidgetResultOf t = match t:
     TyFn ignore, ignore, r: r
     otherwise: t
 
-BlueprintValuesAt: unbounded fn Wx, Env, Env, Expr -> ((Wx, Env, Env))
-fn BlueprintValuesAt wx, benv, menv, e:
+BlueprintValuesAt: unbounded fn Wx, Env, Env, Expr, Bool -> ((Wx, Env, Env))
+fn BlueprintValuesAt wx, benv, menv, e, named:
     let lx = wx.lx
     # a widget's name handed to a widget as its blueprint argument is the caller's text
     # (`BindParam`), no value
@@ -636,8 +636,9 @@ fn BlueprintValuesAt wx, benv, menv, e:
         otherwise: False
     let applied = Each calls, \|x| DynKey x
     # a value's place: an argument of any other call (a function, a constructor), a part
-    # of a tuple or an array, the operand of `?`
-    let spots = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
+    # of a tuple or an array, the operand of `?`; and the value of a `let` (`named`:
+    # `let @w = @line`, read where `@w` is, `NameValueOf`)
+    let spots = Fold (ExprsIn e), (if named: [[(DynKey (Ungrouped e))]] else: [[]]), \|acc, x| match x.kind:
         ECall ignore, args, ignore, ignore: if HasText applied, (DynKey x): acc else: Fold args, acc, \|acc2, a| Push acc2, (DynKey (Ungrouped a.value))
         ETuple xs: Fold xs, acc, \|acc2, part| Push acc2, (DynKey (Ungrouped part))
         EArray xs: Fold xs, acc, \|acc2, part| Push acc2, (DynKey (Ungrouped part))
@@ -662,8 +663,11 @@ fn BlueprintValuesAt wx, benv, menv, e:
             let plain = match TypeAt lx, y.span:
                 TyAt i, ignore: (LayerOf i) == LyPlain and not (IsBundle (Peel i))
                 otherwise: False
-            if not (plain and (gives == OutUnit or Podable gives)): (((update w1:
-                &_.build <= Push &_.build, (RefusalDo "the widget `{nkey}` of a block as a blueprint value that gives an event, a dynamic, a bundle or a value that is no plain data back")), be, me))
+            # (refused where the value is read: a `let` that names the widget and is
+            # only applied reads none)
+            if not (plain and (gives == OutUnit or Podable gives)):
+                let refused = BnLocal (Refusal "the widget `{nkey}` of a block as a blueprint value that gives an event, a dynamic, a bundle or a value that is no plain data back"), Owned, blueprintTy
+                ((w1, (Bind be, "#whole@{DynKey y}", refused), (Bind me, "#whole@{DynKey y}", refused)))
             else:
                 let ((w2, world)) = ValueRowOf w1, me, b, f, False, gives
                 let ((w3, hosted)) = ValueRowOf w2, me, b, f, True, gives
