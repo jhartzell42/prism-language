@@ -900,6 +900,18 @@ Dynamic<T> dyn_constant(T v) { return Dynamic<T>::constant(std::move(v)); }
 template <class T>
 Event<Array<T>> merge_all(const Array<Event<T>>& events) { return ::prism_rtl::merge_all(events); }
 
+/// `!Updated $d` as an event value (in a supplier's answer, or in a function that takes
+/// the dynamic whole): it fires `d`'s value after the tick, in the tick `d`'s update event
+/// fires (Semantics ch. 7, R3).
+template <class T>
+Event<T> updated(const Dynamic<T>& d) {
+    auto port = ::prism_rtl::make_rc<Port<T>>();
+    d.updates->subscribe([port, d](const Unit&, Cx& cx) -> Done {
+        return port->fire(cx.after([&](const Cx& at) { return d.sample(at); }), cx);
+    });
+    return Event<T>{nullptr, port};
+}
+
 /// The root under the CLI World (`worlds/cli/cpp`).
 template <class P>
 int run_cli(const std::vector<std::string>& args) { return ::prism_world_cli::run<P>(args); }

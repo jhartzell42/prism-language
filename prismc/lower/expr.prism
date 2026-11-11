@@ -462,7 +462,22 @@ IsEventValue: unbounded fn Lx, Env, Expr -> Bool
 fn IsEventValue lx, env, e = match e.kind:
     EName ignore: False
     EGroup ignore: False
-    otherwise: ((LayerOf (TypeAt lx, e.span)) == LyEv) and (not (Fold (Operands e), False, \|bound, c| bound or HasKey env.spans, (PlaceKey lx, c.span))) and HasEventSource lx, env, e
+    otherwise: ((LayerOf (TypeAt lx, e.span)) == LyEv) and (not (Fold (Operands e), False, \|bound, c| bound or HasKey env.spans, (PlaceKey lx, c.span))) and ((HasEventSource lx, env, e) or (?UpdatedValue lx, env, e) != nil)
+
+# `!Updated $d` where `$d` is a dynamic value here (a live dynamic its line made for a
+# supplier's closure, `WholeArgs`, or a local `Dynamic`, a parameter taken whole): the
+# event value of its updates (the prelude's `updated`). Its dynamic.
+?UpdatedValue: unbounded fn Lx, Env, Expr -> ?Expr
+fn ?UpdatedValue lx, env, e = match e.kind:
+    EGroup x: ?UpdatedValue lx, env, x
+    ECall c, args, ignore, ignore: if (CalleeKey lx, c) != "Prelude.!Updated": nil else: match args[0]:
+        ? a: match a.value.kind:
+            EName n: if HasKey env.names, "#whole{a.value.span.start}:{a.value.span.end}": ? a.value else: match env.names[SNameKey n]:
+                ? (BnLocal ignore, ignore, (OutDyn ignore)): ? a.value
+                otherwise: nil
+            otherwise: nil
+        nil: nil
+    otherwise: nil
 
 # Whether an event expression stands over an event value: a local of an event type (a
 # parameter taken as one), or a node's event that has its value port. A lifted function's
@@ -479,7 +494,7 @@ fn IsEventSource lx, env, c:
             ? (BnEv ignore, ignore): HasKey env.names, "{SNameKey n}#port"
             otherwise: False
         EGroup x: IsEventSource lx, env, x
-        otherwise: HasEventSource lx, env, c
+        otherwise: (HasEventSource lx, env, c) or (?UpdatedValue lx, env, c) != nil
 
 EventValueOf: unbounded fn Lx, Env, Expr -> Vl
 fn EventValueOf lx, env, e:
@@ -490,7 +505,9 @@ fn EventValueOf lx, env, e:
         otherwise: nil
     match ?filtered:
         ? a: VlOwned (XMethod (Own (ValueOf lx, env, a.value)), "filter_some", [[]]), et
-        nil:
+        nil: match ?UpdatedValue lx, env, e:
+          ? d: VlOwned (XCall (HelperRef "updated"), [[Ref (WholeValueOf lx, env, d)]]), et
+          nil:
             let evs = Filter (Operands e), \|x| (LayerOf (TypeAt lx, x.span)) == LyEv
             match evs:
                 [[one]]:
@@ -1795,7 +1812,10 @@ fn PlainLambda lx, env, ps, body, ft:
     # An event the body reads as a value is its port, captured too; a hold or dynamic `let`
     # the body reads has its value at the build captured, for a supplier's dynamic answer
     # (round 3 DY).
-    let caps = Append (Append caps0, (Filter (Each read, \|n| "{n}#port"), \|n| HasKey env.names, n)), (Filter (Each read, \|n| "{n}#init"), \|n| HasKey env.names, n)
+    # and the live dynamics the block's line made (`WholeArgs`, `#whole{span}`): the body
+    # may read one (`!Updated $state` as an event value, a call taking `$d` whole)
+    let wholes = Filter (Keys env.names), \|n| HasPrefix n, "#whole"
+    let caps = Append (Append (Append caps0, (Filter (Each read, \|n| "{n}#port"), \|n| HasKey env.names, n)), (Filter (Each read, \|n| "{n}#init"), \|n| HasKey env.names, n)), wholes
     let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
         ? (BnLocal rs, mode, ct):
             let local = CaptureName rs
