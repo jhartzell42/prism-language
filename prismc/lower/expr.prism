@@ -2228,8 +2228,18 @@ fn LambdaValue lx, env, e, ps, body:
         OutJobFn a, ignore: JobLambda lx, env, ps, body, ft, a, (EntersLambda lx, e)
         otherwise: PlainLambda lx, env, ps, body, ft
 
+# Names read with what the blueprints among them read: a blueprint a `let` of the block
+# names (`let @!later = @ (3 on !go)`) is read as its expression in the name's place
+# (`NameValueOf`), so a lambda that reads the name reads what the expression reads, and
+# captures it (the event's port, a hold's value at the build).
+WithBlueprintReads: unbounded fn Env, [Text] -> [Text]
+fn WithBlueprintReads env, read = Fold (Range0 4), read, \|acc, ignore| Fold acc, acc, \|more, n| match env.names["{n}#blueprint"]:
+    ? (BnWidget x, ignore, ignore, ignore): UnionTexts more, (FreeReads (ExprsIn x), [[]])
+    otherwise: more
+
 LambdaCaptures: unbounded fn Env, [Text] -> (([Do], Env))
-fn LambdaCaptures env, read:
+fn LambdaCaptures env, written:
+    let read = WithBlueprintReads env, written
     let caps0 = Filter read, \|n| match env.names[n]:
         ? (BnLocal ignore, ignore, ignore): True
         otherwise: False
