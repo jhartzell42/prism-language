@@ -604,7 +604,7 @@ fn InferBareLambda env, st, e, ?expected:
                 else: (([[]], nil, (Err st, "mismatch", e.span, "this lambda takes {CountWord (Len params)} parameter{if (Len params) == 1: "" else: "s"}; here {CountWord (Len ps)} {if (Len ps) == 1: "is" else: "are"} wanted")))
             otherwise: (([[]], nil, st))
         nil: (([[]], nil, st))
-    let ((env2, ptys, st1)) = Fold (Range0 (Len params)), ((env, [[]], (BoundTwice st0, params))), \|((en, acc, s)), i|
+    let ((env2, ptys, st1)) = Fold (Range0 (Len params)), ((env, [[]], (BoundTwice env, st0, params))), \|((en, acc, s)), i|
         let p = Or params[i], Pattern(kind=PIgnore, span=e.span)
         let ((pt, s2)) = match expParams[i]:
             ? t: ((t, s))

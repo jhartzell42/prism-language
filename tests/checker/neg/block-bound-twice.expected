@@ -1,0 +1,9 @@
+tests/checker/neg/block-bound-twice.prism:9: error[collision]: `a` is bound twice in this block
+        let a = 2
+            ^
+  fix: a written name is bound once per block: give the second another name
+tests/checker/neg/block-bound-twice.prism:15: error[collision]: `!press` is bound twice in this block
+        !press <- Ui.Button($label=$"b")                              # 1
+        ^^^^^^
+  fix: a written name is bound once per block: give the second another name
+2 errors

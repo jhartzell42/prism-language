@@ -144,7 +144,7 @@ fn InferWidgetBlock env, st, b = InferWidgetBlockAt env, st, b, nil
 # written as the body's expression is.
 InferWidgetBlockAt: unbounded fn Env, St, Block, ?Ty -> ((Ty, St))
 fn InferWidgetBlockAt env, st, b, ?expected:
-    let ((env1, st1)) = BlockRow env, st, b.stmts
+    let ((env1, st1)) = BlockRow env, (BlockBoundOnce env, st, b.stmts), b.stmts
     let ((env2, st2)) = Fold b.stmts, ((env1, st1)), \|((en, s)), stmt| PreBindStmt en, s, stmt
     let n = Len b.stmts
     let ((env3, st3, ?res)) = Fold (WidgetGroupOrder b.stmts), ((env2, st2, nil)), \|((en, s, ?r)), i|
