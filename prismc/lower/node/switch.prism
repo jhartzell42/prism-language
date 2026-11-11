@@ -145,7 +145,7 @@ fn RebuildLine wx, benv, menv, scrut, body, e, ?bound:
             otherwise: AddGn wx2, "{name}_fired", (OutTyOf lx, (Peel (TypeAt lx, e.span))), GnNamed, 0
         let ((cases, wx4)) = GenCases wx3, menv, body, vt, name
         let rowDefs = Each cases, \|c| c.node
-        let select = GenSelect wx4, menv, body, cases, pos, [[]]
+        let select = GenSelect wx4, menv, body, cases, pos, [[]], True
         let wx5 = update wx4:
             &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=False, width=0, moved=(Or (?HostedRows wx), ""), early=False, gappy=False)
             &_.genHolds <= Push &_.genHolds, ((name, reads))
@@ -258,8 +258,9 @@ fn DynClauseLine wx, menv, scrut, call, qk, v, e:
     let width = Fold rows, 0, \|acc, cr| Max acc, cr.width
     let cases = Each rows, \|cr| cr.case
     let rowObj = OutObj (OutNamed (RefRuntime "rt::Row"), [[]])
-    let env = Bind menv, "_", (BnLocal (XVar "value"), Owned, OutUnit)
-    let scrutEx = XTuple (Each callArgs, \|a| Argument lx, env, a.value)
+    # the arguments as the block's methods read them: `_`, in a generation's row, is the
+    # row's own value
+    let scrutEx = XTuple (Each callArgs, \|a| Argument lx, menv, a.value)
     let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
     let gaps = RowGaps rows, width
     let arms = Fold cases, [[]], \|built, c|
@@ -298,7 +299,7 @@ fn StaticClauseLine wx, menv, scrut, call, qk, v, e:
     let width = Fold rows, 0, \|acc, cr| Max acc, cr.width
     let cases = Each rows, \|cr| cr.case
     let gaps = RowGaps rows, width
-    let select = WithRowBase wx, "self", pos, (GenSelect wx3, menv, call, cases, pos, (Each gaps, \|?g| GapSet name, ?g))
+    let select = WithRowBase wx, "self", pos, (GenSelect wx3, menv, call, cases, pos, (Each gaps, \|?g| GapSet name, ?g), False)
     let wx4 = update wx3:
         &_.pos <= Pos(scope=pos.scope, at=pos.at + width)
         &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=True, width=width, moved=(Or (?HostedRows wx), ""), early=False, gappy=(IsGappy gaps))
@@ -348,7 +349,9 @@ fn EarlyClauseLine wx, benv, menv, scrut, qk, v, e, args, outTy:
         Push built, (XArm(pat=c.pat, conds=c.conds, body=(XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XVar link)), hostAtBuild))]], (XTuple [[(XMethod (XVar "row"), "result_value", [[]]), (XCast (XVar "row"), rowObj), (Or (Or gaps[i], nil), (XIndex 0))]]))))
     let methodArms = Each cases, \|c| XArm(pat=c.pat, conds=c.conds, body=(XCast (Made c, (XClone (XField XSelf, link)), (HostedPassed wx)), rowObj))
     let atBuild = XTuple (Each args, \|a| Argument lx, benv, a.value)
-    let inMethod = XTuple (Each args, \|a| Argument lx, (Bind menv, "_", (BnLocal (XVar "value"), Owned, OutUnit)), a.value)
+    # the arguments as the node's methods read them (in a generation's row `_` is the
+    # row's own value, never the builder's `value`, which here is unit)
+    let inMethod = XTuple (Each args, \|a| Argument lx, menv, a.value)
     let built = WithRowBase wx, "", pos, (Own (ArmsValue atBuild, earlyArms, "'select", (OutTuple [[outTy, rowObj, OutCount]])))
     let select = WithRowBase wx, "self", pos, (Own (ArmsValue inMethod, methodArms, "'select", rowObj))
     let wx3 = update wx2:
@@ -395,7 +398,7 @@ fn GenCases wx, menv, body, vt, name:
                 # a `rebuild` of a clause call hands back no plain result
                 let p2 = match cr.?plain:
                     ? ignore: update cr.parent:
-                        &_.build <= Push &_.build, (RefusalDo "a `rebuild` whose generation is a widget of several clauses ending on a plain result")
+                        &_.build <= Push &_.build, (InternalBugDo "a `rebuild` that hands back no dynamic whose generation is a widget of several clauses ending on a plain result")
                     nil: cr.parent
                 (((Push acc, cr.case), p2))
         nil:
@@ -810,16 +813,18 @@ fn BuildSpelling env = Fold (Keys env.names), env, \|en, k| match env.names[k]:
         nil: en
     otherwise: en
 
-# The generation built: the one case, its row's constructor.
-GenSelect: unbounded fn Wx, Env, Block, [GenCase], Pos, [ [Do] ] -> Ex
-fn GenSelect wx, menv, body, cases, pos, sets:
+# The generation built: the one case, its row's constructor. `ofRebuild`: the clause
+# call is a `rebuild`'s whole block, so its `_` is the builder's `value`; a static
+# clause call reads its arguments as the block's methods do.
+GenSelect: unbounded fn Wx, Env, Block, [GenCase], Pos, [ [Do] ], Bool -> Ex
+fn GenSelect wx, menv, body, cases, pos, sets, ofRebuild:
     let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
     match ?ClauseCall wx.lx, body:
         nil: match cases[0]:
             ? c: TryOf (XCall (RefChild (SiteRef wx.lx, c.node.name), "build"), (Append [[(XVar "path"), (XVar "value")]], tail))
             nil: InternalBug "a `rebuild` with no generation"
         ? ((qk, args)):
-            let env = Bind menv, "_", (BnLocal (XVar "value"), Owned, OutUnit)
+            let env = if ofRebuild: Bind menv, "_", (BnLocal (XVar "value"), Owned, OutUnit) else: menv
             let scrut = XTuple (Each args, \|a| Argument wx.lx, env, a.value)
             let rowObj = OutObj (OutNamed (RefRuntime "rt::Row"), [[]])
             let arms = Fold cases, [[]], \|built, c|
