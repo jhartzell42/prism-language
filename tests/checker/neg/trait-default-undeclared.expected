@@ -1,0 +1,8 @@
+tests/checker/neg/trait-default-undeclared.prism:8: error[unreachable]: this clause is never reached
+        fn Area x = 2
+        ^^^^^^^^^^^^^
+  fix: remove the clause
+tests/checker/neg/trait-default-undeclared.prism:9: error[mismatch]: `^Shape` has no method `Extra`
+        fn Extra x = 0
+        ^^^^^^^^^^^^^^
+2 errors
