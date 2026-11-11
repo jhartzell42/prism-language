@@ -217,6 +217,22 @@ type St = record:
     # variable it gave is an existential (Type System ch. 5, "Existentials are
     # dictionaries"; `ResolvePacks`).
     packs: [Pack]
+    # The definition being checked, by its own key (`OwnKey`), and every use by name of a
+    # definition with type parameters, kept whether or not the typed program is
+    # recorded, for the growth check (`GrowthCheck`; ruling PG).
+    definition: Text
+    genericUses: [GenericUse]
+derive ^Eq, ^Show
+
+# One use by name of a definition with type parameters: the definition the use
+# stands in, the one it names, where, and the type the use gives each of the named
+# definition's type parameters (over the type parameters of the one it stands in).
+type GenericUse = record:
+    user: Text
+    target: Text
+    file: Nat
+    span: Range
+    types: [((Text, Ty))]
 derive ^Eq, ^Show
 
 type AssocImpl = record:
@@ -261,7 +277,7 @@ UseKey: fn Nat, Range -> Text
 fn UseKey file, span = "{file}:{span.start}:{span.end}"
 
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, unsignedFns=[[]], localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], plainArms=[[]], faultQs=[[]], plainQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={}, packs=[[]])
+fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, unsignedFns=[[]], localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], plainArms=[[]], faultQs=[[]], plainQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={}, packs=[[]], definition="", genericUses=[[]])
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed)

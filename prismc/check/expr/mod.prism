@@ -363,10 +363,18 @@ fn InferGlobal env, st0, n, span:
             else: if why == "answer": AnswerConstructor env, st, (AnswerTag qk), span
             else: if (IsLocalMaker qk) and not env.inUpdate: ((TyErr, (LocalOutside st, qk, span)))
             else: match env.g.vals[qk]:
-                ? v: Instantiate (NoteMethodUse (CallId st, qk, span), v, span), v.scheme, span
+                ? v:
+                    let ((t, st2, inst)) = InstantiateWith (NoteMethodUse (CallId st, qk, span), v, span), v.scheme, span, [[]]
+                    ((t, (if IsGenericUse v: NoteGenericUse st2, qk, v.scheme.qs, span, inst else: st2)))
                 nil: match env.g.ctors[qk]:
                     ? c: CtorValue env, st, c, span
                     nil: ((TyErr, (Err st, "unknown-name", span, "`{SNameKey n}` has no signature line or type")))
+
+# Whether a use of this value by its name is one the growth check follows (`GrowthCheck`;
+# ruling PG): a definition with type parameters, other than a trait's method, which an
+# impl answers.
+IsGenericUse: fn ValInfo -> Bool
+fn IsGenericUse v = (Len v.scheme.qs) > 0 and v.sort != "method"
 
 # Two bare candidates (Semantics ch. 6) are an error at the use; checking goes on with the
 # file's own declaration, else the first, so the rest of the line still checks.

@@ -91,7 +91,8 @@ fn CallGlobal env, st0, n, args, span, explicit, cspan:
                 ? v:
                     let ((t, st2i, inst)) = InstantiateWith st, v.scheme, span, explicit
                     let ((rigids, st2)) = RankTwo st2i, v.scheme, inst, (Len explicit), span
-                    let st3a = NoteCallee (NoteMethodUse st2, v, span), n.span, cspan, t
+                    let st2u = if IsGenericUse v: NoteGenericUse st2, qk, v.scheme.qs, n.span, inst else: st2
+                    let st3a = NoteCallee (NoteMethodUse st2u, v, span), n.span, cspan, t
                     let st3 = if (BareName qk) == "Min": NoteSizeTy st3a, span, (Walk st3a, t) else: st3a
                     if (BareName qk) == "Fold" and v.home == "Prelude": FoldApp env, st3, t, args, span
                     else:
@@ -263,6 +264,10 @@ Broken: fn Peeled, Bool -> Peeled
 fn Broken p, b = if not b: p else: update p:
     &_.broken <= True
 
+# What the application rule is told a map literal's name is (`InferMap`): the one
+# application that lifts over time among its entries and holds a blueprint whole.
+let mapLiteral = "a map literal"
+
 # The application rule (ch. 5): first the plain arguments, unified whole; then the
 # lambdas, against their parameters as far as known; then the layered arguments, peeled
 # at a plain or variable parameter. One row for the application; the result under the
@@ -273,6 +278,7 @@ ApplyRule: unbounded fn Env, St, Text, Col, [Ty], Ty, [Arg], Range -> ((Ty, St))
 fn ApplyRule env, st, fname, col, params, res, args, span:
     let n = Len args
     let cmp = IsComparison fname
+    let holds = fname == mapLiteral
     let ((inferred, st1)) = Fold (Range0 n), (([[]], st)), \|((acc, s)), i|
         let a = Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)
         if IsLambda a.value: (((Push acc, TyErr), s))
@@ -291,7 +297,9 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
         let a = Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)
         let at = Or argTys[i], TyErr
         let pnow = NormAssoc s, (Walk s, (Or params[i], TyErr))
-        let wholeNow = (IsTimeSigil (HeadSigil s, pnow)) or (HeadSigil s, pnow) == "@"
+        # (a map literal is a container: a blueprint among its entries goes in whole, as an
+        # array's does, ch. 4, "Where the table looks"; there is no lift over a blueprint)
+        let wholeNow = (IsTimeSigil (HeadSigil s, pnow)) or (HeadSigil s, pnow) == "@" or (holds and (HeadSigil s, at) == "@")
         if IsLambda a.value: ((s, done))
         else: if wholeNow and (StackOf s, at) != "": (((Unify s, pnow, at, a.value.span), (Push done, i)))
         else: if (StackOf s, at) != "" or (IsFreeHeaded s, at): ((s, done))

@@ -87,7 +87,13 @@ fn EventRef wx, menv, e:
             (((EvRefOf w4, id), w4))
         EBinary "on", l, r:
             let ((rr, w1)) = EventRef wx, menv, r
-            let value = Own (ValueOf lx, menv, l)
+            # an event of values that hold time (`(($b, "t")) on !swap`, `$b on !swap` as a
+            # hold of dynamics' step): the value holds its dynamics whole, each the live
+            # dynamic its line made (`WholeArgsAt`), never a copy of its value
+            let lxValue = if HasTime (Peel (TypeAt lx, e.span)): update lx:
+                &_.whole <= True
+            else: lx
+            let value = Own (ValueOf lxValue, menv, l)
             ((EvRef(node=rr.node, owner=rr.owner, pipe=(\|x, K| rr.pipe x, \|ignore| K value)), w1))
         ECall c, args, ignore, ignore: match CalleeKey lx, c:
             "Prelude.!Filter": FilterEvent wx, menv, args, False

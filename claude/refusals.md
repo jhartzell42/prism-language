@@ -98,16 +98,16 @@ Hosting
   method's own (sem-ch08-widget-value-generic-at-method-type-parameter). Left
   refused (`OpenWidgetValueWords`): a generic one read where a type parameter stays
   open and the program gives the definition it stands in no finite set of types
-  (`?DefInstances`, `GrowsFrom`: a line of instantiations by uses by name that gives a
-  type parameter a larger type holding itself, which is endless: a wrong program by
-  ruling PG, C, the checker lets it through,
-  tests/checker/neg/widget-value-function-at-ever-larger-types; and a line through a
-  constraint an impl solves that holds one definition twice, the earlier types
-  embedded in the later, which may be a finite program's: R, no test; types that grow
-  by uses by name and then stay are followed,
-  sem-ch08-widget-value-generic-function-grows-once; the plain function
-  alone is refused by rustc, C by ruling PG as well,
-  tests/checker/neg/function-at-ever-larger-types), one read in a place `ValuedWidgets` does not look (a record's field read back and
+  the lowering can find (`DefInstancesAnswer`, `?GrowsFrom`: a line through a
+  constraint an impl solves, or through a use whose types hold an associated type,
+  that holds one definition twice, the earlier types embedded in the later, which may
+  be a finite program's, `EndlessThroughImpl`: R, no test), or a use of the
+  definition leaves a type parameter undecided (`UndecidedParameter`). A line of
+  uses by name that gives a type parameter a larger type holding itself is the
+  checker's `grows-without-end` (ruling PG: tests/checker/neg/function-at-ever-larger-types,
+  neg/widget-value-function-at-ever-larger-types), so the lowering's stop at one
+  (`EndlessByName`) is G, an internal error; types that grow by uses by name and then
+  stay are followed (sem-ch08-widget-value-generic-function-grows-once). Also left: one read in a place `ValuedWidgets` does not look (a record's field read back and
   given on is a value already). One built in a hosted scope builds its hosted row
   (sem-ch09-host-widget-answer-hosted).
 - lower/node/static.prism (`BlueprintValuesAt`) a widget defined in a block read as a
@@ -347,9 +347,9 @@ Functions
   `FunctionRecolored`'s refusal is of a function whose color is a generalized `let`'s
   that no use decides (`OutQuantified`, refused where its type is written). A function under an
   event or a `$` inside the result is mapped (ts-ch05-color-function-in-event-result).
-  Not walked, with no refusal and no test: a function held by a blueprint inside the
-  result (`?Made F = ? @ F`: the blueprint's held answer is the `Start`, read as a
-  bounded function by the line that applies it, a fault of the run).
+  A function held by a blueprint inside the result is made again through the
+  blueprint's answers (`?Made F = ? @ F`, the prelude's `held_answers_mapped`:
+  ts-ch05-color-function-in-blueprint-result).
 - lower/node/def.prism (`RefusePlainResult`) a widget's plain result bound by a pattern
   that left a name without its field: an internal error; `BindPatternResult` takes every
   pattern (sem-ch08-plain-result-pattern passes).

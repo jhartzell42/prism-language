@@ -390,6 +390,9 @@ type TyDef = record:
     name: Text
     prism: Text
     params: [Text]
+    # The type parameters a map's key holds, in a field of the type or in a type a field
+    # names: an impl that reads the map (the printer's, the plain-data ones) orders them.
+    keyed: [Text]
     shape: TyShape
     cases: [CaseDef]
     eq: Bool
