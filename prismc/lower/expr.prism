@@ -742,7 +742,13 @@ fn BundleBlueprint lx, env, x, variant, t = match x.kind:
                     otherwise: XTuple (Each plain, \|y| Own (ValueOf lx, env, y))
                 let wrapped = XMethod (Own (ValueOf lx, env, ev)), "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (XClone (XVar "v"))))]]
                 VlOwned (XCall (RefRuntime "prism_rtl::bundle_blueprint::<crate::Elem, _>"), [[(Tagged firstVariant, firstVal), wrapped]]), t
-            otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer with a `$` part or two event parts"), t
+            # a constant `$` part beside the event and no plain part (`@ ((never, $
+            # "offline"))`, Semantics ch. 9): its value the place's first value, once
+            ((? (BnLocal (XPath firstVariant), ignore, ignore), [[ev]], [[d]])) if (Len plain) == 0 and (?ConstantDynamic d) != nil:
+                let firstVal = Own (ValueOf lx, env, (Or (?ConstantDynamic d), d))
+                let wrapped = XMethod (Own (ValueOf lx, env, ev)), "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (XClone (XVar "v"))))]]
+                VlOwned (XCall (RefRuntime "prism_rtl::bundle_blueprint::<crate::Elem, _>"), [[(Tagged firstVariant, firstVal), wrapped]]), t
+            otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer with two event parts, or a `$` part that is no constant or stands beside a plain part"), t
     # a bundle that is a value already (`@ pair`): its parts are the tuple's, the plain
     # ones cloned out for the first value, the event's mapped to the tag's variant
     otherwise: match TypeAt lx, x.span:
@@ -760,8 +766,15 @@ fn BundleBlueprint lx, env, x, variant, t = match x.kind:
                         otherwise: XTuple (Each plain, \|i| XClone (XPart whole, i))
                     let wrapped = XMethod (XPart whole, ev), "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (XClone (XVar "v"))))]]
                     VlOwned (XBlock [[(DoLet (PaBind "bundle_answer"), (Own (ValueOf lx, env, x)))]], (XCall (RefRuntime "prism_rtl::bundle_blueprint::<crate::Elem, _>"), [[(Tagged firstVariant, firstVal), wrapped]])), t
-                otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer with a `$` part or two event parts"), t
+                otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer given as a value with two event parts or a `$` part"), t
         otherwise: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a bundle answer whose type is no tuple"), t
+
+# `$ x` written in place: the `x` of a constant dynamic.
+?ConstantDynamic: fn Expr -> ?Expr
+fn ?ConstantDynamic d = match d.kind:
+    EGroup y: ?ConstantDynamic y
+    EFreeSigil "$", inner: ? inner
+    otherwise: nil
 
 PlainBlueprint: unbounded fn Lx, Env, Expr, Ref, OutTy -> Vl
 fn PlainBlueprint lx, env, x, variant, t = VlOwned (XCall (RefRuntime "prism_rtl::plain_blueprint::<crate::Elem, _>"), [[(Tagged variant, (Own (ValueOf lx, env, x)))]]), t

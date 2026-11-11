@@ -182,7 +182,7 @@ fn ElementOutput wx, menv, tg, out, pos, ?bound, level:
 # A bundle's output (`Gui.Window`'s `((WindowId, !WindowInput))`), taken apart by its
 # tuple pattern: the plain parts are the place's first value (one part itself, several a
 # tuple), the event part its answers (claude/backend.md, "Answers"; the World protocol's
-# bundle). A `$` part, or a second event part, is not lowered yet. In a hosted scope the
+# bundle); with no plain part, one `$` part is a pushed place's hold (`DynamicPlace`). In a hosted scope the
 # first value is the enclosing host's, typed, its tag's first-value variant of `Answer`
 # (pick HO).
 BundleOutput: unbounded fn Wx, TagInfo, OutTy, Pos, [?Bn], Ex -> ((Wx, Wres))
@@ -202,9 +202,22 @@ fn BundleOutputOf wx, tg, out, pos, parts, level:
     let dynIx = Filter idx, \|i| (Or layers[i], LyPlain) == LyDyn
     let wx1 = BundleFirst wx, tg, pos, plainIx, tys, parts, level
     let wx2 = Fold evIx, wx1, \|w, i| BundleAnswer w, tg, pos, (Or tys[i], OutUnit), (Or parts[i], nil)
-    if (Len evIx) > 1 or (Len dynIx) > 0:
+    # one `$` part beside the event part and no plain part (`((!Text, $Text))`; Semantics
+    # ch. 8: the `$` part's first value from the first-value query, its pushes keyed by the
+    # element, the event part's answers by path): a pushed place's hold (`DynamicPlace`),
+    # answered in a hosted scope by the tag's first-value variant
+    if (Len evIx) == 1 and (Len dynIx) == 1 and (Len plainIx) == 0:
+        let i = Or dynIx[0], 0
+        let t = match Or tys[i], OutUnit:
+            OutDyn inner: inner
+            other: other
+        let ((f, wx3)) = match parts[i]:
+            ? (? (BnHold hf, ignore)): ((hf, wx2))
+            otherwise: FreshName wx2, "place_{PlaceText pos}"
+        (((DynamicPlace wx3, tg, t, pos, f, level, "{AnswerAccessor tg}_first"), WrUnit))
+    else: if (Len evIx) > 1 or (Len dynIx) > 0:
         let wx3 = update wx2:
-            &_.build <= Push &_.build, (RefusalDo "a bundle with a `$` part or two event parts ({tg.name})")
+            &_.build <= Push &_.build, (RefusalDo "a bundle with two event parts, two `$` parts, or a `$` part beside a plain part ({tg.name})")
         ((wx3, WrUnit))
     else: ((wx2, WrUnit))
 
@@ -275,11 +288,14 @@ fn HostLocal wx, pos = if pos.scope == 0: "enclosing" else: Or wx.scopes[Dec pos
 AnswerVariant: fn TagInfo -> Ref
 fn AnswerVariant tg = RefChild answerRef, (TagStruct tg.name)
 
-# Whether a tag's output is a bundle with a plain part and an event part, whose first value
-# has a variant of its own (`?BundleFirstTy`).
+# Whether a tag's output is a bundle with an event part and a plain part, or an event part
+# and one `$` part, whose first value has a variant of its own (`?BundleFirstTy`).
 IsBundleTag: fn TagInfo -> Bool
 fn IsBundleTag tg = match Peel tg.out:
-    TyTuple cs: (Fold cs, False, \|f, c| f or (LayerOf c) == LyEv) and Fold cs, False, \|f, c| f or (LayerOf c) == LyPlain
+    TyTuple cs:
+        let Has = \|layer| Fold cs, False, \|f, c| f or (LayerOf c) == layer
+        let lives = Len (Filter cs, \|c| (LayerOf c) == LyDyn)
+        (Has LyEv) and ((Has LyPlain) or lives == 1)
     otherwise: False
 
 # A bundle tag's first-value variant (`AnswerCase.first`).
@@ -288,6 +304,31 @@ fn AnswerFirstVariant tg = RefChild answerRef, "{TagStruct tg.name}First"
 
 AnswerAccessor: fn TagInfo -> Text
 fn AnswerAccessor tg = Snake (TagStruct tg.name)
+
+# A place whose element answers a dynamic (a tag's `$` output, or a bundle's `$` part): the
+# hold `f` its pushes write, made with the place's first value, and its entry among the
+# node's pushed places with the `Answer` accessor a host's typed answer is taken by.
+DynamicPlace: unbounded fn Wx, TagInfo, OutTy, Pos, Text, Ex, Text -> Wx
+fn DynamicPlace wx1, tg, out, pos, f, level, accessor:
+    let emits = Emits wx1, pos
+    # a World's first value is plain data, decoded; a host's is typed already
+    let first = if emits: XDecode out, (XRef (XVar "first_{PlaceText pos}")) else: (XVar "first_{PlaceText pos}")
+    # the first value stands in the local `{f}_init`, the place's value at the build,
+    # which a supplier's dynamic answer reads while the node is being made (`PreInit`)
+    let wx2 = update wx1:
+        &_.lets <= Append &_.lets, [[(FirstValueLet wx1, pos, tg, level, out), (DoLet (PaTyped (PaBind "{f}_init"), out), first)]]
+        &_.fields <= Push &_.fields, ((f, OutHold out, "pushed to place {PlaceText pos}"))
+        &_.inits <= Push &_.inits, ((f, (XCall (RefRuntime "rt::Hold::new"), [[(XClone (XVar "{f}_init")), XCx]])))
+        &_.dynPlaces <= Push &_.dynPlaces, ((pos, f, out, accessor))
+        &_.fallible <= True
+    # a World's pushes are keyed by the element: the place listens for them; a hosted
+    # place's come typed from its host
+    if emits: update wx2:
+        &_.lets <= Push &_.lets, (DoLet (PaBind "{f}_element"), (XMethod level, "to_pod", [[]]))
+        &_.fields <= Push &_.fields, (("{f}_element", OutPod, "place {PlaceText pos}'s element, which pushes are keyed by"))
+        &_.moves <= Push &_.moves, (("{f}_element", (XClone (XVar "{f}_element"))))
+        &_.build <= Push &_.build, (DoExpr (XMethod (XCx), "listen", [[(XClone (XField (XVar "node"), "{f}_element")), (XRef (XCast (XClone (XVar "node")), (OutObj (OutNamed (RefRuntime "rt::Node"), [[]]))))]]))
+    else: wx2
 
 ElementOutputOf: unbounded fn Wx, Env, TagInfo, OutTy, Pos, ?Bn, Ex -> ((Wx, Wres))
 fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
@@ -306,25 +347,7 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
             let ((f, wx1)) = match ?bound:
                 ? (BnHold hf, ignore): ((hf, wx))
                 otherwise: FreshName wx, "place_{PlaceText pos}"
-            let emits = Emits wx, pos
-            # a World's first value is plain data, decoded; a host's is typed already
-            let first = if emits: XDecode out, (XRef (XVar "first_{PlaceText pos}")) else: (XVar "first_{PlaceText pos}")
-            # the first value stands in the local `{f}_init`, the place's value at the build,
-            # which a supplier's dynamic answer reads while the node is being made (`PreInit`)
-            let wx2 = update wx1:
-                &_.lets <= Append &_.lets, [[(FirstValueLet wx, pos, tg, level, out), (DoLet (PaTyped (PaBind "{f}_init"), out), first)]]
-                &_.fields <= Push &_.fields, ((f, OutHold out, "pushed to place {PlaceText pos}"))
-                &_.inits <= Push &_.inits, ((f, (XCall (RefRuntime "rt::Hold::new"), [[(XClone (XVar "{f}_init")), XCx]])))
-                &_.dynPlaces <= Push &_.dynPlaces, ((pos, f, out, (AnswerAccessor tg)))
-                &_.fallible <= True
-            # a World's pushes are keyed by the element: the place listens for them; a hosted
-            # place's come typed from its host
-            let wx3 = if emits: update wx2:
-                &_.lets <= Push &_.lets, (DoLet (PaBind "{f}_element"), (XMethod level, "to_pod", [[]]))
-                &_.fields <= Push &_.fields, (("{f}_element", OutPod, "place {PlaceText pos}'s element, which pushes are keyed by"))
-                &_.moves <= Push &_.moves, (("{f}_element", (XClone (XVar "{f}_element"))))
-                &_.build <= Push &_.build, (DoExpr (XMethod (XCx), "listen", [[(XClone (XField (XVar "node"), "{f}_element")), (XRef (XCast (XClone (XVar "node")), (OutObj (OutNamed (RefRuntime "rt::Node"), [[]]))))]]))
-            else: wx2
+            let wx3 = DynamicPlace wx1, tg, out, pos, f, level, (AnswerAccessor tg)
             ((wx3, (WrDyn (XMethod (XField XSelf, "{f}"), "get", [[XCx]]), [[OwnRead f]], out)))
         otherwise: match ?bound:
             ? (BnLocal rs, ignore, ignore):

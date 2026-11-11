@@ -291,7 +291,7 @@ fn FinishNode wx0, qk, params, isRow:
     # the World's answers, by path, to the places that go to it; a hosted place is answered
     # typed by its host, through `host_k_answer` (the places of scope `k`) or `deliver` (a
     # hosted node's own)
-    let answers = Append (Each (Filter wx.answers, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, id, t, ignore))| AnswerArm wx, pos, id, t), (Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, f, t, ignore))| DynAnswerArm sinks, pos, f, t)
+    let answers = Append (Each (Filter wx.answers, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, id, t, ignore))| AnswerArm wx, pos, id, t), (Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| (Emits wx, pos) and not (Fold wx.answers, False, \|seen, ((apos, ignore, ignore, ignore))| seen or apos == pos)), \|((pos, f, t, ignore))| DynAnswerArm sinks, pos, f, t)
     let forwards = Append (Each (Filter wx.builders, \|b| Emits wx, b.pos), \|b| (((PosPat b.pos, keyTail), (ForwardAnswer b)))), (Fold (Filter wx.gens, \|gd| Emits wx, gd.pos), [[]], \|acc, gd| Append acc, (GenForwards gd))
     let hostMethods = Fold wx.hosts, [[]], \|acc, h| Append acc, [[(TypedDispatch sinks, "{h.name}_answer", h.scope), (HostMoved sinks, h)]]
     let gathered = Filter wx.snaps, \|sn| not (sn.before or (IsGeneration wx, sn.builder))

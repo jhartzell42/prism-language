@@ -681,16 +681,22 @@ fn AnswerEnum lx, mods:
     let tags = KindTags lx, "Element", (Push mods, "Prelude")
     AnswerDef(cases=(Each tags, \|tg| AnswerCase(variant=(TagStruct tg.name), accessor=(AnswerAccessor tg), structPath=(RootRef tg.home, (TagStructOf tg)), tagName=tg.name, ty=(AnswerTy lx, tg), ?first=(?BundleFirstTy lx, tg))))
 
-# A bundle tag's plain parts as one type, its first value (`AnswerCase.first`); `nil` for
-# a tag whose output is no bundle, or a bundle with no plain part.
+# A bundle tag's plain parts as one type, its first value (`AnswerCase.first`), or with no
+# plain part its one `$` part's value; `nil` for a tag whose output is no bundle, or a
+# bundle of events alone.
 ?BundleFirstTy: unbounded fn Lx, TagInfo -> ?OutTy
 fn ?BundleFirstTy lx, tg = match Peel tg.out:
     TyTuple cs:
         let plain = Filter cs, \|c| (LayerOf c) == LyPlain
+        let live = Filter cs, \|c| (LayerOf c) == LyDyn
         let hasEv = Fold cs, False, \|f, c| f or (LayerOf c) == LyEv
         if not hasEv: nil
         else: match plain:
-            [[]]: nil
+            # no plain part and one `$` part (`((!Text, $Text))`): the `$` part's value,
+            # its first value and each push after it
+            [[]]: match live:
+                [[d]]: ? (TagFieldOut lx, d)
+                otherwise: nil
             [[c]]: ? (TagFieldOut lx, c)
             otherwise: ? (OutTuple (Each plain, \|c| TagFieldOut lx, c))
     otherwise: nil
@@ -713,9 +719,12 @@ fn AnswerTy lx, tg:
 AnswerTaken: unbounded fn Lx, Text, OutTy, Ex -> Ex
 fn AnswerTaken lx, accessor, placed, taken:
     let ?named = Fold (Values lx.g.tags), nil, \|?found, tg| if tg.kind == "Element" and (AnswerAccessor tg) == accessor: ? tg else: ?found
-    match ?named:
-        ? tg: RecodedAnswer (AnswerOpen lx, tg), (AnswerTy lx, tg), placed, taken
-        nil: InternalBug "an answer taken by `{accessor}`, which is no tag's accessor"
+    # a bundle's first-value accessor (`{accessor}_first`)
+    let ?first = Fold (Values lx.g.tags), nil, \|?found, tg| if tg.kind == "Element" and "{AnswerAccessor tg}_first" == accessor: ? tg else: ?found
+    match ((?named, ?first)):
+        ((? tg, ignore)): RecodedAnswer (AnswerOpen lx, tg), (AnswerTy lx, tg), placed, taken
+        ((nil, ? tg)): RecodedAnswer (AnswerOpen lx, tg), (Or (?BundleFirstTy lx, tg), OutUnit), placed, taken
+        otherwise: InternalBug "an answer taken by `{accessor}`, which is no tag's accessor"
 
 # Whether a tag's output has a variable of the tag.
 AnswerOpen: unbounded fn Lx, TagInfo -> Bool
