@@ -68,3 +68,6 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   `match` arm does: `fn @Supply p, (Pad.Num(..)) = @ 7` checks. The checker refusing it is
   a bug. Claude's first ruling; Jimmy: "your rulings seem right". Where: Type System
   chapter 5, "Refinement at tag matches".
+- **IE** An `if` needs its `else`, a building `if` included: `if loud:` and a block with
+  no `else` is a checker error. Jimmy: "no helll no if needs else". Refused: an else-less
+  building `if` that builds its arm or nothing.
