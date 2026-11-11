@@ -768,7 +768,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                 # for a widget of several clauses, whose generation would lower the call
                 # again, without end.
                 let wx2 = update wx:
-                    &_.build <= Push &_.build, (RefusalDo "the builtin widget {BareName qk}")
+                    &_.build <= Push &_.build, (InternalBugDo "the builtin widget {BareName qk} has no body and no lowering")
                 ((wx2, WrUnit))
             else:
                 # A widget of several clauses in a static position: the clause is chosen at
