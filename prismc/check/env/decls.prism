@@ -270,9 +270,9 @@ fn ConvertDecl g, st, info, d = match d.kind:
         let def = Def(qk=qk, name=(SNameKey w.name), home=info.name, file=info.file, span=d.span, body=(DbWidget w))
         let upd = update g:
             &_.defs <= Push &_.defs, def
-        # `unreachable`: a widget's block takes no arguments, so a second block of its name
-        # is a clause nothing chooses, as a second `fn @Name:` is
-        if Fold g.defs, False, \|seen, other| seen or (IsWidgetOf other, qk): ((upd, (ErrFix st, "unreachable", d.span, "this clause is never reached", "remove it, or put it above the clause that covers it")))
+        # `collision`: a widget's block takes no arguments, so a second block of its name
+        # defines the name twice, as a second `fn @Name:` does (Jimmy's ruling ZD)
+        if Fold g.defs, False, \|seen, other| seen or (IsWidgetOf other, qk): ((upd, (Err st, "collision", d.span, "`{SNameKey w.name}` is defined twice")))
         else: ((upd, st))
     DTag t: ConvTag g, st, info, t, d.span
     DTrait t: ConvTrait g, st, info, t, d.span

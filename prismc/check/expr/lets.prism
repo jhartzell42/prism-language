@@ -470,9 +470,9 @@ fn CheckClauses env, st, name, clauses, sc, span:
                 &_.colorFlex <= outerFlex
         other:
             # a definition without parameters has nothing for a second clause to tell
-            # apart: the second is `unreachable`
+            # apart: its name is defined twice (`collision`, Jimmy's ruling ZD)
             let st1 = Fold clauses, st, \|s, c| CheckClause env2, s, c, [[]], other
-            ClauseCoverage env2, st1, clauses, [[]], span
+            Fold (Drop clauses, 1), st1, \|s, c| if (Len c.params) == 0: Err s, "collision", c.span, "`{name}` is defined twice" else: s
 
 CheckClause: unbounded fn Env, St, FnClause, [Ty], Ty -> St
 fn CheckClause env, st, c, params, res:
