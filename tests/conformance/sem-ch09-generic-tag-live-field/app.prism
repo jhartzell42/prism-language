@@ -9,7 +9,7 @@ emit Ui.* | Pad.*
 test mod Tests
 use Ui.*
 
-tag Pad.Echo of Element !r:
+tag Pad.Echo of Element !r where r: ^Show:
     $?latest: r
 
 @guest: @unit

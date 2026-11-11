@@ -1,0 +1,26 @@
+# A supplier's bundle answer whose `$` part is live: `@ (("hello" on !flip, $state))`,
+# `$state` a hold of the host (Semantics ch. 9, "How a supplier answers": the supplier's
+# blueprint "can read anything the host's block binds"; round 3 DY: a dynamic answer
+# gives the place its first value in the birth tick and each later change is a push
+# delivered the next tick; an event answer is the next tick's input; Type System ch. 2,
+# "Bundles": a supplier answers the bundle part by part). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Socket of Element ((!Text, $Text)):
+    address: Text
+
+@chat: @unit
+@chat:
+    ((!rx, $link)) <- Pad.Socket(address="chat:7000")           # 0
+    $last <- "none" then !rx
+    Ui.Label($text=$"{$link}: {$last}")                          # 1
+
+@switched: @unit
+@switched:
+    !flip <- Ui.Button($label=$"flip")                           # 0
+    $state <- "down" then "up" on !flip
+    ignore <- @HostDocument @chat, \|p, e| match e:             # 1/[p]
+        Pad.Socket(..): @ (("hello" on !flip, $state))
+        otherwise: @Element e

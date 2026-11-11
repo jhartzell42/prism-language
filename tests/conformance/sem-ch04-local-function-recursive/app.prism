@@ -7,6 +7,7 @@ use Ui.*
 
 Total: fn Nat -> Nat
 fn Total n:
+    Go: fn Nat, Nat -> Nat
     fn Go k, acc = match k -? 1:
         ? less: Go less, acc + k
         nil: acc

@@ -1,0 +1,28 @@
+# A generic tag's variable as a type in a host's arm (Type System ch. 2: a generic tag's
+# output is a scheme, its variables shared with its fields; ch. 5, "Refinement at tag
+# matches": in the arm the output is `!r`, `r` the tag's variable, which the arm cannot
+# know). The arm binds the tag's live field, a `$?r`, and answers with its updates, an
+# `!r` (Semantics ch. 7: `!Updated $x` fires when `$x` changes; ch. 9, "How a supplier
+# answers": the blueprint reads the element's fields; an event answer is the next tick's
+# input). The guest places the tag at `Text` and hears its own field back. Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+tag Pad.Echo of Element !r where r: ^Show:
+    $?latest: r
+
+@guest: @unit
+@guest:
+    !press <- Ui.Button($label=$"press")                         # 0
+    $?latest <- nil then ? ("pressed" on !press)
+    !back <- Pad.Echo($?latest=$?latest)                         # 1
+    $heard <- "nothing" then !back
+    Ui.Label($text=$"heard {$heard}")                            # 2
+
+@host: @unit
+@host:
+    ignore <- @HostDocument @guest, \|p, e| match e:            # 0/[p]
+        Pad.Echo($?latest=$?l): @ !Filter (!Updated $?l)
+        otherwise: @Element e
