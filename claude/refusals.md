@@ -30,9 +30,10 @@ Hosting
 - lower/expr.prism:697 a bundle answer not written as a tuple. Program: `@ pair` under a
   bundle tag's arm, `pair` a `let`. The refusal is not reached: `pair` is lowered as a
   plain answer and rustc refuses the crate. Test: sem-ch09-host-bundle-answer-named.
-- lower/node/static.prism:560 `@Element` in a block of an element value that is not a
-  tag applied in place. Program: `let e = Ui.Label(..)`, then `@Element e` as a line.
-  Test: sem-ch08-element-value-statement.
+- lower/node/static.prism:667 `@Element` in a block of an element value that is neither
+  a tag applied in place nor a name a `let` of the block binds to one. Program: a widget
+  parameter `fn @Show e:` with the line `@Element e`. No test. The `let` form is lowered:
+  `let made = Ui.Label(..)`, then `@Element made` as a line (sem-ch08-element-value-statement).
 - lower/node/elements.prism:182 an element tag whose bundle output has a `$` part or two
   event parts. Program: a tag declared `((!Text, $Text))` placed in a block. Test:
   sem-ch09-bundle-dynamic-part.
@@ -40,9 +41,9 @@ Hosting
   field placed by a host that is itself hosted. Test: sem-ch09-host-nested-request.
 - A tag's answer constructor as a function value (`Each cs, Ui.Button.Answer`): no
   refusal; rustc refuses the crate. Test: sem-ch09-answer-constructor-value.
-- A widget function passed as an argument and applied (`fn @Frame Inner:` with the line
-  `Inner 1`): refused as "the widget function @Row as a value" and at
-  lower/node/static.prism:121. Test: sem-ch08-widget-parameter-applied.
+- lower/node/static.prism:104 a widget function parameter applied to arguments whose
+  argument is a function value that is no name (a lambda). No test. A named widget
+  function passed and applied is lowered (sem-ch08-widget-parameter-applied).
 
 - lower/expr.prism:764 an event read as a value. Program: a widget function's event
   parameter read in its supplier's arm, `fn @HostPlayer side, @guest, $state, !outcome:`
@@ -63,47 +64,49 @@ Hosting
   hosting attempts 01 and 02, as written.
 
 Bundles
-- lower/node/keyed.prism:165 a `for` whose rows end on a bundle. Test:
-  sem-ch04-for-bundle-result.
-- lower/node/switch.prism:488 a widget of several clauses whose clause ends on a bundle.
-  Test: sem-ch08-clause-bundle-result (its caller's tuple pattern also meets
-  lower/node/def.prism:687).
-- lower/node/switch.prism:676 a `rebuild` whose block ends on a bundle. Refused first at
-  lower/node/switch.prism:155. Test: sem-ch04-rebuild-bundle-result.
-- lower/node/def.prism:695 a late plain result in a bundle. Program: a block that ends
-  `@ ((n, !e))` where `n` is bound from a building `match`. Refused at
-  lower/node/def.prism:219 ("a block split at a line whose result is not late") and
-  lower/node/switch.prism:488. Test: sem-ch08-late-result-in-bundle.
-- lower/expr.prism:765 a tuple pattern's binding as a value. Program: `both <- @counter`,
-  `let same = both`, `@ same`. Test: sem-ch04-bundle-rebound.
-- lower/node/def.prism:96 a bundle as the root's result. Program: `@main: @((!Nat,
-  Text))` ending `@ ((($n + 1) on !go, "ready"))`; the World hears the plain part at the
-  build and each firing of the event after. Test: sem-ch07-root-bundle-result.
+- lower/node/def.prism:99 a bundle with two dynamic parts as the root's result. No test.
+  A root's bundle of plain parts, event parts and one dynamic part is lowered
+  (sem-ch07-root-bundle-result).
+- lower/node/def.prism:1181 a late plain part of a bundle bound whole to a name (`both <-
+  @Choose mode`, then `both` read). No test. Bound by a tuple pattern it is lowered
+  (sem-ch08-late-result-in-bundle); a bundle inside the bundle whose late part a nested
+  tuple pattern binds is not bound late.
+- lower/node/switch.prism:969 a `rebuild` whose block ends on a bundle that is not
+  written out as a tuple where the block ends (`@ both`). No test. Written out it is
+  lowered (sem-ch04-rebuild-bundle-result).
+- lower/node/switch.prism:216 a `rebuild` whose generation gives a dynamic it does not
+  lower: no program found since the bundle is lowered.
+- Lowered, no refusal left: a `for` whose rows end on a bundle
+  (sem-ch04-for-bundle-result); a widget of several clauses whose clause ends on a bundle
+  (sem-ch08-clause-bundle-result); a bundle given another name (sem-ch04-bundle-rebound).
 
 Building `match`, clause widgets, `rebuild`
-- lower/node/def.prism:553 a late plain result bound where its block is not split (LW).
-  Program: `n <- @w` where `@w` is a widget parameter whose block ends late.
-- lower/node/switch.prism:359 a `rebuild` whose generation is a widget of several
-  clauses ending on a plain result. Program: `$n <- rebuild $x: @Pick _` with
-  `fn @Pick 0: .. @ "zero"`. The refusal is not reached: rustc refuses the crate. Test:
-  sem-ch04-rebuild-clause-plain-result.
-- lower/node/switch.prism:155 a `rebuild` whose generation gives a dynamic it does not
-  lower. Reached by a block ending on a bundle (sem-ch04-rebuild-bundle-result). A block
-  ending on a constant dynamic is lowered (sem-ch04-rebuild-constant-dynamic passes).
-- lower/node/switch.prism:430 a widget of several clauses given a dynamic its caller
-  reads through its own parent. Program: inside a `for` row, `@Show (k == 1), $count`
-  where `$count` is the block's hold. Test: sem-ch08-clause-dynamic-through-parent.
-- lower/node/static.prism:79 a widget parameter applied to arguments: see Hosting, the
-  widget function passed as an argument.
-- A hold above a split that begins at the late result (`$gone <- n then ..` above `n <-
-  match mode:`): legal, since the order of a group's lines decides positions and nothing
-  else (Semantics ch. 4); refused today as "the name n, which nothing declares". Test:
-  sem-ch04-building-match-hold-above.
-- SP2, SP3 (tests: sem-ch04-building-match-plain-group; lines below a split reading a
-  widget parameter or a local function).
-- TC (tests: sem-ch08-places-counted-as-built, sem-ch04-building-match-mixed-arms), PR (a
-  clause widget that calls itself).
-- gap ID: a widget that calls itself deeper than sixteen levels.
+- lower/node/def.prism:561, 622 a late result, or a `let` that reads one, taken as a
+  value at its block's build by a line of the block's node: a widget's plain argument, a
+  plain local of a `for` row built before the arm. No test. A place's field and a plain
+  `let` above the split are lowered (sem-ch04-building-match-read-above), as a hold that
+  begins at the result is (sem-ch04-building-match-hold-above).
+- lower/node/finish.prism:699 a place read at its block's build before the node exists
+  (a first-value query, a host made in the build) after a building `match`, `if` or
+  widget of several clauses whose rows differ in width and are built after the node. No
+  test.
+- gap ID, the part left: a widget that calls itself and has a `$`, event or blueprint
+  parameter, a result, one clause, or stands in a hosted scope is lowered level by level
+  and faults at its build past sixteen levels (`TooDeep`). A program of the result form:
+  sem-ch04-widget-recursion-result. A widget of several clauses with
+  plain parameters and no result is as deep as its data, to 2^20 places a call
+  (sem-ch08-clause-widget-recursion, sem-ch08-widget-recursion-deep).
+- lower/node/static.prism:187 a widget this back end does not lower yet: a blueprint
+  taken out of a value by a pattern and applied (`match ?Pick b: ? @t: @t`). No test.
+  A blueprint a `let` names is lowered (sem-ch08-blueprint-let), and a blueprint
+  parameter of a widget of several clauses (sem-ch08-clause-widget-blueprint-parameter).
+- Lowered, no refusal left: LW (sem-ch08-late-result-widget-parameter); a `rebuild` of a
+  clause widget with a plain result (sem-ch04-rebuild-clause-plain-result); a clause
+  widget's dynamic read through its caller's parent
+  (sem-ch08-clause-dynamic-through-parent); SP2 and SP3
+  (sem-ch04-building-match-plain-group, sem-ch04-building-match-plain-reads); TC
+  (sem-ch08-places-counted-as-built, sem-ch04-building-match-mixed-arms); a `for` row
+  that calls its block's function (sem-ch04-for-local-function-reads-block).
 
 Dynamics and events
 - lower/node/finish.prism:518 `!Updated` of a dynamic no sink of the node writes (UP).
@@ -164,8 +167,9 @@ Functions
   tuple it is lowered (ts-ch05-color-function-in-result). No test for the rest.
 - lower/expr.prism:636 an existential of a program's own trait (`any ^Weighed`); `^A +
   ^B` is no syntax. Test: ts-ch03-existential-own-trait.
-- lower/node/def.prism:687 a widget's plain result bound by a pattern: a G,
-  `BindPatternResult` takes every other pattern (sem-ch08-plain-result-pattern passes).
+- lower/node/def.prism (`RefusePlainResult`) a widget's plain result bound by a pattern
+  that left a name without its field: an internal error; `BindPatternResult` takes every
+  pattern (sem-ch08-plain-result-pattern passes).
 
 Jobs and templates
 - lower/jobs.prism:291, 292 a cycle-point `while` in another expression or statement:
@@ -178,18 +182,19 @@ Jobs and templates
   `TryOf` is a call the back end itself generates.
 
 Catch-alls
-- lower/node/def.prism:579 a statement of a widget block not lowered yet. Program: a
-  widget defined inside a widget block, `@line:` and its block. Test:
-  sem-ch04-local-widget. Every other kind is a G: `require`, `forbid`, `while`, `<=`
-  and `+=` are a checker mismatch there, `return` a parse error.
+- lower/node/def.prism (`WidgetStmt`) a statement of a widget block that is none of its
+  kinds: an internal error. A widget defined inside a widget block is lowered
+  (sem-ch04-local-widget); `require`, `forbid`, `while`, `<=` and `+=` are a checker
+  mismatch there, `return` a parse error.
 - lower/expr.prism:2048 a statement of an expression block not lowered yet: a G, the
   checker refuses a bind, `emit`, `require`, `while` there (mismatch).
-- lower/node/def.prism:938 a building line not lowered yet: a G, the checker gives
-  mismatch for a bare line that is no element or blueprint.
-- lower/node/static.prism:121 a widget not lowered yet. Programs: a building `if` with
-  no `else` (sem-ch04-building-if-no-else); a bare call of a widget defined inside the
-  block (sem-ch04-local-widget); SP3.
-- lower/node/static.prism:600 the builtin widget {name}. Program: `@Later !go`, the one
+- lower/node/def.prism (`BuildLine`) a building line that is no element, blueprint or
+  builder: an internal error; the checker gives mismatch for such a bare line.
+- lower/node/static.prism:187 a widget not lowered yet: see Building `match`, the
+  blueprint taken out of a value. A building `if` with no `else`
+  (sem-ch04-building-if-no-else) and a bare call of a widget defined inside the block
+  (sem-ch04-local-widget) are lowered.
+- lower/node/static.prism:715 the builtin widget {name}. Program: `@Later !go`, the one
   prelude widget with no body and no case. Test: sem-appB-later.
 - lower/expr.prism:621 {kind} as a value: see C for a `for` and a `rebuild` as a plain
   function's value; a suffixed operator, a monad block and a lens stop at the parser or
@@ -230,7 +235,8 @@ ts-ch03-method-function-value. Found by the Bible's document hosting:
 
 ## C: wrong programs the checker lets through
 
-- lower/node/def.prism:272 lines that read each other at the build: a cycle among values.
+- lower/node/def.prism (`BuildInOrder`) lines that read each other at the build: an
+  internal error; the checker gives `prompt-cycle` (tests/checker/neg/build-cycle).
 - lower/expr.prism:576 `{b}` outside a `for`. Test:
   tests/checker/neg/bound-word-outside-for.
 - lower/expr.prism:1012 a fault kind applied. A fault kind is its tag alone (Semantics
@@ -274,25 +280,31 @@ ts-ch03-method-function-value. Found by the Bible's document hosting:
 Each with the nearest program a user could write and its test, or the reason no program
 reaches it.
 
-- lower/node/mod.prism:403 an event read in a node without a port. No program reaches
-  this: it reports a mistake of the lowering's own wiring, whatever the program.
+- lower/node/mod.prism (`Crossed`) an event read in a node without a port: an internal
+  error. It was reached by a widget parameter's event read in a row, which is lowered
+  (sem-ch08-widget-parameter-event-in-row).
 - lower/node/elements.prism:59 an element of an unknown tag. The checker refuses the
   name: tests/checker/neg/unknown-tag.
-- lower/node/def.prism:227 a block split at a line that binds nothing. No program reaches
-  this: `?LateLineAt` finds only binding lines. lower/node/def.prism:219 (a line whose
-  result is not late) is reached: see R, Bundles.
-- lower/node/def.prism:865 a name at an instantiation with no binding. No program
-  reaches this: the instantiations are the checker's own list for the `let`.
-- lower/node/static.prism:405, 446, 492, 546 `@Distinct`, `@PerKey`, `@Run`, `@Machine`
-  without an argument. The checker refuses each: tests/checker/neg/
-  builtin-widget-without-argument. lower/node/static.prism:216, a host without an
-  argument, stands behind `ignore <- @HostDocument`: see C.
-- lower/node/static.prism:613 a widget of several clauses that takes no arguments: see C,
+- lower/node/def.prism (`SplitBlockInto`) a block split at a line that binds nothing: an
+  internal error; `?LateLineAt` finds only binding lines. "A block split at a line whose
+  result is not late" (lower/node/def.prism:383) stays a refusal: no program found since
+  a bundle with no plain part splits nothing.
+- lower/node/def.prism (`LetLine`) a name at an instantiation with no binding: an
+  internal error; the instantiations are the checker's own list for the `let`.
+- lower/node/static.prism `@Distinct`, `@PerKey`, `@Run`, `@Machine` without an argument:
+  internal errors. The checker refuses each: tests/checker/neg/
+  builtin-widget-without-argument. lower/node/static.prism:282, a host without its child
+  or its supplier, stands behind `ignore <- @HostDocument`: see C.
+- lower/node/static.prism:740 a widget of several clauses that takes no arguments: see C,
   the second bare block.
 - lower/node/static.prism:651 a generic widget at a call whose types its parameters' do
   not match: reached, see R, Hosting.
-- lower/node/switch.prism:758 a `rebuild` with no generation. No program reaches this: a
-  `rebuild` has a block, and a block is one case.
+- lower/node/switch.prism (`GenSelect`) a `rebuild` with no generation: an internal
+  error; a `rebuild` has a block, and a block is one case. So are a building `match` or
+  `if` whose arms do not all end on a plain result, a `rebuild` that hands back no
+  dynamic whose generation is a clause widget ending on a plain result, and a late plain
+  result bound where its block is not split (`IsLateExpr` follows a chain of sixteen
+  widgets; a longer one would reach it).
 - lower/expr.prism:667 a supplier's dynamic answer of no known form. No program reaches
   this: `?DynamicAnswer` takes every dynamic but `$ plain`, which the line above takes.
   The nearest program, `@ $~Shout $motd`, passes: sem-ch09-host-dynamic-answer-call.
