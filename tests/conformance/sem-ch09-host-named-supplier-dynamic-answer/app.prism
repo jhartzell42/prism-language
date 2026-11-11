@@ -1,0 +1,25 @@
+# A named widget function as a host's supplier that answers with a dynamic it takes as a
+# parameter (Semantics ch. 9, "How a supplier answers"; round 3 DY: any dynamic of the
+# host answers a `$` output; ch. 8: a widget function takes a dynamic as any function
+# does). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Gauge of Element $Nat:
+    name: Text
+
+@meter: @unit
+@meter:
+    $level <- Pad.Gauge(name="tank")
+    Ui.Label($text=$"level {$level}")
+
+@Supply: fn $Nat, Element (Ui.* | Pad.*) o -> @o
+fn @Supply $count, e = match e:
+    Pad.Gauge(..): @ $count
+    otherwise: @Element e
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")                              # 0
+    $count <- 0 then $count + 1 on !add
+    ignore <- @HostDocument @meter, \|p, e| @Supply $count, e     # 1/[p]

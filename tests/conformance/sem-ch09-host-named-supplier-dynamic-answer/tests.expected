@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 9 (a dynamic output's first value is read in the birth tick; round 3 DY: a dynamic answer's change is a push delivered the next tick, owed): the place is born with the count's 0; the count's change in tick 1 is heard in tick 2.
+test a_parameter_dynamic_answers
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/[1]/0: Ui.Label(text="level 0")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1/[1]/0: Ui.Label(text="level 1")
