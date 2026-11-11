@@ -577,7 +577,11 @@ fn SharedPlaceOf lx, env, e = match e.kind:
         let rty = Peel (PlaceTy lx, r)
         let ((ignore, ignore, f)) = FieldInfo lx, rty, name.name
         FieldOfEx lx, (SharedPlaceOf lx, env, r), rty, f
-    EIndex r, k: XDeref (XCall (HelperRef "at_shared"), [[(XRef (SharedPlaceOf lx, env, r)), (Argument lx, env, k)]])
+    EIndex r, k:
+        let helper = match CollectionOut (OutTyOf lx, (Peel (PlaceTy lx, r))):
+            OutMap ignore, ignore: HelperRef "at_shared_map"
+            otherwise: HelperRef "at_shared"
+        XDeref (XCall helper, [[(XRef (SharedPlaceOf lx, env, r)), (Argument lx, env, k)]])
     EGroup x: SharedPlaceOf lx, env, x
     otherwise: InternalBug "a reference path read through an index that this back end does not lower"
 

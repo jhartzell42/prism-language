@@ -424,7 +424,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
   - A lens's body, or a lens's argument, that steps through an array's index
     (`&machines[1].acc`) is read through the entry in place: `SharedPlaceOf` is `PlaceOf`
     borrowed shared, its index step the prelude's `at_shared`, which gives up on an index
-    the array does not hold as `at_mut` does (`LensReadThrough`).
+    the array does not hold as `at_mut` does (`LensReadThrough`). The block's own path
+    through an index, read in expression position (`&_[0].x <= &_[1].acc + 1`), is the
+    same shared place (`at_shared`, `at_shared_map` for a key), copied.
   - The reference borrows all of its argument, as the book's rule has it, so two places
     keep rustc and the borrow rule equal: an accumulation through a lens reads the part
     by the read function (`UpdStmt`), and inside a `for` over a lens applied the checker

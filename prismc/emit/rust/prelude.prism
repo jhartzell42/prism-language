@@ -660,6 +660,10 @@ pub fn at_shared<'a, A>(xs: &'a Array<A>, i: &Nat) -> &'a A {
     xs.get(ix(i)).expect("an `&` path through an index the array does not hold")
 }
 
+pub fn at_shared_map<'a, K: Ord + Clone, V: Clone>(m: &'a Map<K, V>, k: &K) -> &'a V {
+    m.get(k).expect("an `&` path to a key the map does not hold")
+}
+
 /// The part a named lens names at an array's index (Semantics ch. 5): the entry in place,
 /// or none past the array's end.
 pub fn part_mut<'a, A: Clone>(xs: &'a mut Array<A>, i: &Nat) -> Option<&'a mut A> {

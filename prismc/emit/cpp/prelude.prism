@@ -434,6 +434,12 @@ const A& at_shared(const Array<A>& xs, const Nat& i) {
     if (!x) panic("an `&` path through an index the array does not hold");
     return *x;
 }
+template <class K, class V>
+const V& at_shared_map(const Map<K, V>& m, const K& k) {
+    auto v = m.get(k);
+    if (!v) panic("an `&` path to a key the map does not hold");
+    return *v;
+}
 /// The part a named lens names at an array's index (Semantics ch. 5): the entry in place,
 /// or none past the array's end.
 template <class A>
