@@ -1,0 +1,26 @@
+# A widget that calls itself in a static position deeper than sixteen levels and hands
+# its blueprint parameter down (Semantics ch. 4: "widget functions recurse as deep as
+# their data"; ch. 8: a blueprint parameter is built where the widget applies it, at the
+# widget's next positions; ruling TC). The last level builds the blueprint. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Chain: fn Nat, @unit -> @unit
+fn @Chain 0, @w:
+    @w
+fn @Chain n, @w:
+    Ui.Label($text=$"level {n}")
+    match n -? 1:
+        ? m: @Chain m, @w
+        nil: Ui.Label($text=$"end")
+
+@Mark: @unit
+@Mark:
+    Ui.Label($text=$"mark")
+    Ui.Label($text=$"end")
+
+@main: @unit
+@main:
+    @Chain 20, @Mark                                             # 0 to 21
+    Ui.Label($text=$"after")                                      # 22
