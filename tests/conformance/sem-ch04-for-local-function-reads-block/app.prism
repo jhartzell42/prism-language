@@ -1,0 +1,16 @@
+# A `for` row that calls a function defined in its block, whose body reads a plain `let`
+# of the block the row itself never names (Semantics ch. 3: `fn` "defines a function in
+# the block"; ch. 4: a row reads the names of the block it stands in).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@page: @unit
+@page:
+    let base = 10
+    fn Shifted k = k + base
+    !more <- Ui.Button($label=$"more")                           # 0
+    $names <- {1: "ale"} then Insert $names, 2, "bun" on !more
+    for k, $name <- $names:                                      # 1/[k]
+        Ui.Label($text=$"{$name} {Shifted k}")                   # 1/[k]/0
