@@ -1,0 +1,1 @@
+# The transcript prismc of host-1's gen1 h1 (the fix 735ac699 is the same in h2) gives, read by hand against the hosting library's own test of the same name (prism-notes, evidence/documents/tests.expected): a request at tick n is answered at n+1 (Semantics ch. 9).
