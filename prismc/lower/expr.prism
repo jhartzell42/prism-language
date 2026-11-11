@@ -1137,11 +1137,11 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
 # argument is its blueprint. One that takes arguments (`@Row` given for a widget
 # function parameter of a widget that is itself read as a value, `@Frame @Row`) is a
 # function value: applied, it gives the blueprint of the widget at those arguments
-# (`WidgetBlueprintValueFrom`, the arguments `given`), which the line that applies the
+# (`WidgetBlueprintValueFrom`, the arguments `handed`), which the line that applies the
 # function applies (`AppliedFunctionLine`).
 WidgetNamed: unbounded fn Lx, Text, Range, ValInfo, OutTy -> Vl
 fn WidgetNamed lx, qk, span, v, t:
-    let Made = \|given, gives| if HasKey lx.valued, (ValuedKeyAt lx, qk, span, [[]]): WidgetBlueprintValueFrom lx, lx, False, emptyEnv, qk, span, [[]], given, gives else: Or (?OpenWidgetBlueprintValue lx, emptyEnv, qk, span, [[]], given, gives), (VlOwned (Refusal (OpenWidgetValueWords lx, qk)), gives)
+    let Made = \|handed, gives| if HasKey lx.valued, (ValuedKeyAt lx, qk, span, [[]]): WidgetBlueprintValueFrom lx, lx, False, emptyEnv, qk, span, [[]], handed, gives else: Or (?OpenWidgetBlueprintValue lx, emptyEnv, qk, span, [[]], handed, gives), (VlOwned (Refusal (OpenWidgetValueWords lx, qk)), gives)
     let taken = match v.scheme.ty:
         TyFn ignore, ps, ignore: Len ps
         otherwise: 0
@@ -1181,7 +1181,7 @@ fn WidgetBlueprintValue lx, env, qk, calleeSpan, args, t = WidgetBlueprintValueF
 # the definition's instantiations are no finite set or cannot all be read
 # (`?DefInstances`), or one of them has no rows (`?ValuedCases`).
 ?OpenWidgetBlueprintValue: unbounded fn Lx, Env, Text, Range, [Arg], [Ex], OutTy -> ?Vl
-fn ?OpenWidgetBlueprintValue lx, env, qk, calleeSpan, args, given, t = match ?EnclosingInstances lx:
+fn ?OpenWidgetBlueprintValue lx, env, qk, calleeSpan, args, handed, t = match ?EnclosingInstances lx:
     nil: nil
     ? users:
         let At = \|user| update lx:
@@ -1198,15 +1198,15 @@ fn ?OpenWidgetBlueprintValue lx, env, qk, calleeSpan, args, given, t = match ?En
             let n = Len distinct
             let picked = Fold (Range0 n), XUnreachable, \|rest, i|
                 let user = Or distinct[Or (n -? (i + 1)), 0], [[]]
-                XIf (Chosen user), (Own (WidgetBlueprintValueFrom (At user), lx, True, env, qk, calleeSpan, args, given, t)), rest
+                XIf (Chosen user), (Own (WidgetBlueprintValueFrom (At user), lx, True, env, qk, calleeSpan, args, handed, t)), rest
             ? (VlOwned picked, t)
 
 # `WidgetBlueprintValue`, its arguments read at `lxArguments` (the enclosing generic
 # function's own types where `recast` says so, `?OpenWidgetBlueprintValue`). A widget
-# named and not applied has no argument written: its arguments are `given`, the
+# named and not applied has no argument written: its arguments are `handed`, the
 # parameters of the function value it is (`WidgetNamed`).
 WidgetBlueprintValueFrom: unbounded fn Lx, Lx, Bool, Env, Text, Range, [Arg], [Ex], OutTy -> Vl
-fn WidgetBlueprintValueFrom lx, lxArguments, recast, env, qk, calleeSpan, args, given, t = match ((lx.valued[ValuedKeyAt lx, qk, calleeSpan, args], lx.g.vals[qk])):
+fn WidgetBlueprintValueFrom lx, lxArguments, recast, env, qk, calleeSpan, args, handed, t = match ((lx.valued[ValuedKeyAt lx, qk, calleeSpan, args], lx.g.vals[qk])):
     ((? cases, ? declared)):
         # a generic widget's rows are those of the types this reading gives its type
         # parameters (`?ValuedTypes`), and its signature is read with them in place
@@ -1220,7 +1220,7 @@ fn WidgetBlueprintValueFrom lx, lxArguments, recast, env, qk, calleeSpan, args, 
         let ptys = match v.scheme.ty:
             TyFn ignore, ps, ignore: ps
             otherwise: [[]]
-        let reads = if (Len args) == 0: given else: Each (Range0 (Len args)), \|i| match args[i]:
+        let reads = if (Len args) == 0: handed else: Each (Range0 (Len args)), \|i| match args[i]:
             ? a: Own (ValueOf (if IsLiveParam (Or ptys[i], TyErr): AsWhole lxArguments else: lxArguments), env, a.value)
             nil: XUnit
         let names = Each (Range0 (Len reads)), \|i| "widget_argument_{i}"
