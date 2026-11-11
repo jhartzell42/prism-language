@@ -180,6 +180,29 @@ fn BindField env, st, p, ft, snapshot = match Walk st, ft:
     TySig s, level if snapshot and s == "$": BindLevel env, st, p, level
     otherwise: BindPattern env, st, p, ft, True
 
+# `live-field-pattern`: a blueprint's element has its `$` and `!` fields as nodes, which a
+# pattern binds; a literal or a constructor there would test a value the field has only in
+# a tick (Semantics ch. 8). A document's element has levels, which a pattern may test.
+LiveFieldTested: unbounded fn Env, St, Text, Pattern, Ty, Bool -> St
+fn LiveFieldTested env, st, fname, p, ft, snapshot = match Walk st, ft:
+    TySig s, ignore if (s == "$" or s == "!") and not snapshot and TestsValue p:
+        ErrFix st, "live-field-pattern", p.span, "an element's `{s}{fname}` binds its {if s == "$": "dynamic" else: "event"}; `{SrcText env, p.span}` would test a value the field has only in a tick", "bind it, `{s}{fname}={s}{Head fname}`, and read `{s}{Head fname}` where a tick reads it"
+    otherwise: st
+
+# Whether a pattern tests the value it meets: a literal, `nil`, a constructor's or a tag's
+# pattern, an array's, under any group or sigil.
+TestsValue: fn Pattern -> Bool
+fn TestsValue p = match p.kind:
+    PLit ignore: True
+    PNeg ignore: True
+    PNil: True
+    PCtor ignore, ignore: True
+    PRecord ignore, ignore, ignore: True
+    PArray ignore: True
+    PSigil ignore, q: TestsValue q
+    PGroup q: TestsValue q
+    otherwise: False
+
 BindLevel: unbounded fn Env, St, Pattern, Ty -> ((Env, St))
 fn BindLevel env, st, p, level = match p.kind:
     PName n:
@@ -258,7 +281,7 @@ fn BindTagPattern env, st, p, name, fields, rest, t = match env.g.tags[name]:
             let fp = Or fields[i], FieldPat(marks="", ?name=nil, pattern=Pattern(kind=PIgnore, span=p.span), span=p.span)
             let fname = FieldPatName fp, names, i
             match ?FieldOfTag tg, fname:
-                ? ft: BindField en, (PatMarks s, name, fname, ft, fp), fp.pattern, (SubstQ inst, ft), snapshot
+                ? ft: BindField en, (LiveFieldTested env, (PatMarks s, name, fname, ft, fp), fname, fp.pattern, ft, snapshot), fp.pattern, (SubstQ inst, ft), snapshot
                 nil: ((en, (Err s, "mismatch", fp.span, "`{name}` has no field `{fname}`")))
 
 # An element seen through a document: `Elem r`, the document's value type (Type System
