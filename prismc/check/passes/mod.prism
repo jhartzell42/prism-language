@@ -128,7 +128,8 @@ fn ToPat env, p = match p.kind:
     PName n:
         let bare = Or n.path[0], ""
         if (Len n.path) > 1 and HasKey env.g.tags, (Dotted n.path): PtCon "tag:{Dotted n.path}", [[]]
-        else: if (IsUpperText bare) and (Len n.sigils) == 0 and (IsCtorName env, n): PtCon (CtorKey env, n), [[]]
+        # (with a field's mark before it too, `$lit=$True`: a constructor, never a binder)
+        else: if (IsUpperText bare) and (IsCtorName env, (Unmarked n)): PtCon (CtorKey env, (Unmarked n)), [[]]
         else: PtAny
     PIgnore: PtAny
     PLit l: PtLit (LitText l)

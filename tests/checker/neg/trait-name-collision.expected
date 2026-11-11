@@ -1,0 +1,13 @@
+tests/checker/neg/trait-name-collision/app.prism:13: error[collision]: `^Named` is declared by more than one module this file reaches by a bare name: `^Birds.Named`, `^Fish.Named`
+    impl ^Named Nat:
+         ^^^^^^
+  fix: write the one meant qualified, as `^Birds.Named`
+tests/checker/neg/trait-name-collision/app.prism:16: error[collision]: `^Named` is declared by more than one module this file reaches by a bare name: `^Birds.Named`, `^Fish.Named`
+    Title: fn a -> Text where a: ^Named
+                                 ^^^^^^
+  fix: write the one meant qualified, as `^Birds.Named`
+tests/checker/neg/trait-name-collision/app.prism:19: error[collision]: `^Named` is declared by more than one module this file reaches by a bare name: `^Birds.Named`, `^Fish.Named`
+    Packed: fn any ^Named -> Text
+                   ^^^^^^
+  fix: write the one meant qualified, as `^Birds.Named`
+3 errors

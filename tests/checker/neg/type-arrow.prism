@@ -13,12 +13,12 @@ Omega: fn R -> Nat
 fn Omega r = Unwrap r, r
 
 type Stream = choice:
-    Done Nat
-    More (fn Nat -> Stream)
+    Last Nat
+    Next (fn Nat -> Stream)
 
 First: fn Stream -> Nat
-fn First (Done n) = n
-fn First (More ignore) = 0
+fn First (Last n) = n
+fn First (Next ignore) = 0
 
 type Knot = choice:
     Tie (unbounded fn Knot -> Nat)

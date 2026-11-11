@@ -217,6 +217,22 @@ fn TraitCycles g, st = Fold (Keys g.traits), st, \|s, name|
         nil: s
         ? ring: WithFile (ErrFix (WithFile s, ti.file), "trait-cycle", ti.span, "the trait `^{BareName name}` asks for itself: its `where` names a ring of traits, {Join (Each ring, \|r| "`^{BareName r}`"), ", "}", "drop the `where` of one trait of the ring"), s.file
 
+# `tag-variable`: a tag's type variable is bounded by `^Show` on the tag's line (Semantics
+# ch. 8's table, "tag variables: appear in the output; bounded by `^Show` on the line";
+# "Every field and every output prints"), by the bound itself or by one whose `where`s
+# reach `^Show`. Read once the traits are, so a bound's `where`s are known. The variables
+# are the output's.
+TagVariablesPrint: unbounded fn G, St -> St
+fn TagVariablesPrint g, st = Fold (Keys g.tags), st, \|s, name|
+    match g.tags[name]:
+        nil: s
+        ? tg: Fold tg.qs, s, \|s1, variable|
+            let prints = Fold tg.bounds, False, \|seen, ((bounded, cls))| seen or (bounded == variable and HasText (SuperClosure g, cls), "Prelude.Show")
+            # a variable of a field alone is `field-variable` already (`ConvTag`)
+            let inOutput = (SubstQ Inst(tys=(Insert {}, variable, TyErr), rows={}, cols={}), tg.out) != tg.out
+            if prints or not inOutput: s1
+            else: WithFile (ErrFix (WithFile s1, tg.file), "tag-variable", tg.span, "the type variable `{variable}` of the tag `{name}` has no `^Show` bound: every field and every output prints", "write `where {variable}: ^Show` on the tag's line"), s1.file
+
 # The ring from `name` back to itself through `where`s: its traits in the order the
 # `where`s name them, `name` first; none when no path of `where`s comes back.
 ?RingFrom: unbounded fn G, Text, [Text], [Text] -> ?[Text]

@@ -76,7 +76,7 @@ fn ConvType cx, st, t = match t.kind:
         ConvType inner, st2, ty
     TUnit sigils: (((WithMarks sigils, tUnit, cx.scope), st))
     TAny tr: match ?ResolveTrait cx.g, cx.home, tr.path:
-        ? k: ((TyAny [[k]], st))
+        ? k: ((TyAny [[k]], (TraitCollisionAt cx.g, st, cx.home, tr.path, tr.span)))
         nil: ((TyErr, (Err st, "unknown-name", tr.span, "no trait `^{Dotted tr.path}`")))
     TAbsent: ((TyErr, (Err st, "unsupported", t.span, "this checker does not implement sparse tuples")))
     TNonEmpty inner:
@@ -319,7 +319,7 @@ fn SigColName k = "u{k}"
 
 ConvBounds: fn Cx, St, [Bound] -> (([((Text, Text))], St))
 fn ConvBounds cx, st, bounds = Fold bounds, (([[]], st)), \|((acc, s)), b| Fold b.traits, ((acc, s)), \|((a2, s2)), tr| match ?ResolveTrait cx.g, cx.home, tr.path:
-    ? k: (((Push a2, ((b.var.name, k))), s2))
+    ? k: (((Push a2, ((b.var.name, k))), (TraitCollisionAt cx.g, s2, cx.home, tr.path, tr.span)))
     nil: ((a2, (Err s2, "unknown-name", tr.span, "no trait `^{Dotted tr.path}`")))
 
 # Whether a signature's type writes `$`, `!` or `@` anywhere (ch. 5, The color).
