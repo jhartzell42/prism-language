@@ -104,13 +104,13 @@ fn OutTyOf lx, t = match t:
         ? x: OutTyOf lx, x
         nil: match lx.quants["'{n}"]:
             ? b: OutQuantified b
-            nil: OutRefused "a type variable the checker left undecided (`t{n}`)"
+            nil: InternalBugType "a type variable the checker left undecided (`t{n}`)"
     TyAny bounds: if IsShowOnly bounds: OutShowAny else: OutNamed (RefRuntime "prism_rtl::Packed"), [[]]
     TyElem ignore, ignore: OutLive (OutNamed elemRef, [[]])
     TyElemAny ignore: OutNamed elemRef, [[]]
     TyAt i, ignore: blueprintTy
     TyAssoc tr, n, a: AssocOut lx, tr, n, a
-    TyErr: OutRefused "a type the checker did not find"
+    TyErr: InternalBugType "a type the checker did not find"
 
 # A blueprint as a value, `@o` (a supplier's answer): prism_rtl's, over the program's
 # element and answer enums (pick HO).
@@ -179,7 +179,7 @@ fn NamedTy lx, n, args = match lx.g.types[n]:
         # A fault kind is its name (`Error`'s `kind`); any other row kind is its enum.
         BRowKind: if n == "Prelude.Fault": OutPod else: OutNamed (RefIn lx, ti.home, (Camel (BareName n))), [[]]
         otherwise: OutNamed (RefIn lx, ti.home, (Camel (BareName n))), args
-    nil: if HasKey lx.g.families, n: OutPod else: OutRefused "the type `{n}`, which the checker did not declare"
+    nil: if HasKey lx.g.families, n: OutPod else: InternalBugType "the type `{n}`, which the checker did not declare"
 
 # A type with its outermost time layer peeled: what a value of it holds at one moment. A
 # `$$a` holds a `$a` (a dynamic of dynamics, Type System ch. 4: lifting is a map, never a
@@ -469,7 +469,7 @@ fn AssocOut lx, tr, n, a = match ?ImplAssoc lx.g, tr, n, a:
     ? t: OutTyOf lx, t
     nil: match lx.g.traits[tr]:
         ? info: OutAssoc (PathIn lx, info.home, (TraitName info.name)), (Camel n), (OutTyOf lx, a)
-        nil: OutRefused "an associated type `{n}` of `{tr}`, which no trait of the program declares"
+        nil: InternalBugType "an associated type `{n}` of `{tr}`, which no trait of the program declares"
 
 # The type the impl of the trait `tr` at a known head chooses for an associated type, its
 # variables the head's arguments.
