@@ -394,6 +394,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A module's lowercase declaration written qualified** (`Words.base`) is parsed as a
   field read; the checker and the lowering read it as the qualified name where no value
   `Words` is in scope and the module declares the value (`?QualifiedField`).
+  A lowercase widget written so (`@Parts.header`, the sigil before the module's name,
+  which the parser reads as the receiver's) is the widget: a line of it is inlined as
+  a call of the widget is (`WidgetLine`), and read as a value it is the widget's
+  blueprint (`BlueprintQk`, `ValueWidgetsAt`).
 - **A generic widget's type variable in an element parameter's output** (`Element Ui.*
   o`) is matched at the call as any parameter's is (`?ParamMatch`, `Unrigid`, `RigidsIn`).
 - **A bundle with a late plain part bound whole to one name** is the name's parts,
@@ -605,9 +609,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   (`ValuedWidgets`, `Lx.valued`): an argument of a function that is no widget or of a
   constructor, a host's supplier, what a lambda gives, the operand of `?`, a part of a
   tuple or an array, the value of a `let` (`LetValues`: `let @w = @Pair`, read where
-  `@w` is), and a blueprint argument of a widget that stands in one (`@Frame @Pair`).
-  A widget can be one when its `$` and event parameters have no time below their top,
-  whatever it gives back (`?ValuedCases`).
+  `@w` is), what a `<=` writes (`&_.body <= @Row 2` in an `update`), and a blueprint argument of a widget that stands in one (`@Frame @Pair`).
+  A widget can be one whatever its parameters are and whatever it gives back
+  (`?ValuedCases`); a `$` or an event parameter is the caller's live value, a dynamic
+  below its top included (`IsLiveParam`; the shared rows of a widget that calls itself
+  take only one with no time below its top, `IsShallowLiveParam`).
   - A generic widget is one for each set of types the program's readings give its type
     parameters (`?ValuedTypes`: read off the arguments' types as an inlined call reads
     them, and off the widget's own type where it is read). `Lx.valued` is keyed by the
@@ -655,6 +661,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
     program gives the definition no finite set of types (a function that calls itself
     at `[a]` for `a`), or a use leaves a type parameter undecided, the reading is
     refused (`OpenWidgetValueWords`).
+  - A generic widget read inside a generalized `let` or a generalized local function,
+    at that one's own type variable, has rows for each instantiation the `let`'s uses
+    give the variable (`AtLetInstantiations`); the `let` is lowered at each
+    instantiation, where the reading's types are closed.
   - A `$` or an event parameter is the caller's live `Dynamic` or `Event`, which the
     blueprint keeps and each row it builds holds (`LiveParams`, as the shared rows of a
     widget that calls itself do); the line that reads the widget makes the dynamic
@@ -713,11 +723,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
     is: a lambda is its closure, and a widget with places named and not applied
     (`@Row`) is a function value that gives the widget's blueprint at its arguments
     (`WidgetNamed`), so that widget has rows of its own too (`ValueWidgetsAt`).
+    Named where its type is an unbounded function's (a widget signed `unbounded fn`)
+    it is a `Start` whose job answers in its first cycle with that blueprint.
   - A function value a widget block holds (a `let` of the block, `let Shows = Chosen
     "shows"`) applied by a line of the block (`Shows 1`) is applied the same way
-    (`WidgetLine`, `AppliedFunctionLine`).
+    (`WidgetLine`, `AppliedFunctionLine`); an unbounded function's value, a `Start`,
+    is run to its end there as a call of one in an expression is.
 - **A widget defined in a block read as a value** (`Card(@body=@line)`, `?Pick True,
-  @line`) is a `Blueprint` its line makes at the build before the node, kept in a field
+  @line`; in the body of a function of the block too, `fn ?Made b = ?Pick b, @line`,
+  whose expressions a line that calls it reads as its own, `LocalFunctionExprs`) is a `Blueprint` its line makes at the build before the node, kept in a field
   (`BlueprintValuesAt`, `blueprint_{name}`): it builds the widget's block as a row of its
   own (`{Node}Value`), numbered from 0, which holds the node through its link and reads
   the block's names through it as an arm's row does. Bound under `#whole@{span}`, so a
@@ -1183,7 +1197,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **The prelude's `Turn`** is `PreludeTurn` in both emitted preludes (`TypeItemName`): the
   runtime's `Turn` is the job's. In C++ it has the form of a program's own choice (a case
   struct each, positional fields `a0`).
-- **A trait method named as a value** is a closure calling it (`MethodFn`).
+- **A trait method named as a value** is a closure calling it (`MethodFn`); one signed
+  `unbounded fn` is a `Start` whose job answers in its first cycle with the call
+  (ts-ch03-unbounded-method-as-value).
 - **A function value of its callee's own color in a call's result** (`[u fn Nat -> Nat]`
   at a call that makes `u` bounded) is a `Start` in the callee's signature; the call's
   value is made again by one walk over its two types, the signature's and the call's

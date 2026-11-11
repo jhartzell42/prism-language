@@ -72,7 +72,9 @@ Hosting
   a blueprint value is lowered whatever it gives back
   (sem-ch09-host-widget-answer, sem-ch08-blueprint-out-of-value,
   sem-ch08-widget-value-dynamic-parameter, -event-parameter, -blueprint-parameter,
-  -event-result, -let, -dynamic-result, -bundle-result, -function-result), one with a widget function parameter, a function
+  -event-result, -let, -dynamic-result, -bundle-result, -function-result), one whose `$` parameter holds a dynamic below its top
+  (sem-ch08-widget-value-dynamic-of-dynamics-parameter), one written by `<=` in an `update`
+  (sem-ch08-widget-value-written-in-update), one with a widget function parameter, a function
   value of its row, its argument a widget named or a lambda
   (sem-ch08-widget-value-widget-function-parameter), a generic
   one at each set of types its readings give it (sem-ch08-widget-value-generic), one
@@ -82,8 +84,9 @@ Hosting
   (`?OpenWidgetBlueprintValue`: sem-ch08-widget-value-generic-in-function), however
   many generic functions deep (sem-ch08-widget-value-generic-ten-functions-deep), in a
   function that calls itself at other types
-  (sem-ch08-widget-value-generic-function-at-other-type), in an impl's method at the
-  impl's type parameter (sem-ch08-widget-value-generic-in-method) and at the trait
+  (sem-ch08-widget-value-generic-function-at-other-type), in a generalized `let` or local
+  function of a block (sem-ch08-widget-value-generic-in-generalized-let), in an impl's
+  method at the impl's type parameter (sem-ch08-widget-value-generic-in-method) and at the trait
   method's own (sem-ch08-widget-value-generic-at-method-type-parameter). Left
   refused (`OpenWidgetValueWords`): a generic one read where a type parameter stays
   open and the program gives the definition it stands in no finite set of types
@@ -94,9 +97,7 @@ Hosting
   embedded in the later, which may be a finite program's: R, no test; types that grow
   by uses by name and then stay are followed,
   sem-ch08-widget-value-generic-function-grows-once; the plain function
-  alone is refused by rustc, ts-ch02-function-at-ever-larger-types), one with a `$` or event parameter with time below its top (no
-  tests);
-  one read in a place `ValuedWidgets` does not look (a record's field read back and
+  alone is refused by rustc, ts-ch02-function-at-ever-larger-types), one read in a place `ValuedWidgets` does not look (a record's field read back and
   given on is a value already). One built in a hosted scope builds its hosted row
   (sem-ch09-host-widget-answer-hosted).
 - lower/node/static.prism (`BlueprintValuesAt`) a widget defined in a block read as a
@@ -109,7 +110,9 @@ Hosting
   `let` names is the same value (sem-ch08-local-widget-value-let). lower/expr.prism
   (`NameValueOf`) "a widget
   defined in a block read as a blueprint value" stands for a reading outside a line's
-  value places (inside a lambda's own block).
+  value places; a reading in the body of a function of the block is one of the line
+  that calls it (sem-ch08-local-widget-value-in-local-function), and no program is
+  known that reaches the refusal.
 - lower/node/static.prism (`AppliedBlueprintLine`) a blueprint value applied by a block is
   lowered, and so is `@Element` of any element value (a parameter, a call's result;
   sem-ch08-element-parameter-statement): a line of unit, a line that gives an event
@@ -249,7 +252,8 @@ Building `match`, clause widgets, `rebuild`
   program found since a blueprint taken out of a value by a pattern is applied
   (`ValueBlueprintLine`, sem-ch08-blueprint-out-of-value) and a function value a `let`
   of the block names is applied by a line (`AppliedFunctionLine`,
-  sem-ch08-function-value-let-applied). A blueprint a `let` names is
+  sem-ch08-function-value-let-applied), an unbounded function's value too
+  (sem-ch08-unbounded-function-value-gives-blueprint). A blueprint a `let` names is
   lowered (sem-ch08-blueprint-let), and a blueprint parameter of a widget of several
   clauses (sem-ch08-clause-widget-blueprint-parameter).
 - Lowered, no refusal left: LW (sem-ch08-late-result-widget-parameter); a `rebuild` of a

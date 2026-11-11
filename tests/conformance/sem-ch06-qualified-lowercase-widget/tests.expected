@@ -1,0 +1,8 @@
+# Derived by hand from Semantics ch. 8 (a widget applied inline adds no path segment; a blueprint is built at the applying block's next positions) and ch. 4 (a building `match`'s arm adds no path segment). Never run.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="header")
+    1: Ui.Label(text="header")
+    2: Ui.Label(text="end")

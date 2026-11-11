@@ -686,11 +686,17 @@ fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent, parentTy, args, ze
         otherwise: ((acc, w))
     ArmRowOf wxd, menv, lxc, pats, ptys, nil, body, rowName, genName, transparent, False, parentTy, dyns, [[]], widgets, zeroBased
 
-# Whether a parameter of a widget that calls itself is held by its shared rows as the
-# caller's live value: a `$` parameter (a `Dynamic`) or an event parameter (an `Event`)
-# with no time below its top.
+# Whether a parameter is held by a row a blueprint value builds as the caller's live
+# value: a `$` parameter (a `Dynamic`) or an event parameter (an `Event`), whatever its
+# value holds (`$(($Nat, Text))`: the row samples the dynamic and reads the dynamic
+# inside as its inlined widget does).
 IsLiveParam: fn Ty -> Bool
-fn IsLiveParam pt = ((LayerOf pt) == LyDyn or (LayerOf pt) == LyEv) and not (HasTime (Peel pt))
+fn IsLiveParam pt = (LayerOf pt) == LyDyn or (LayerOf pt) == LyEv
+
+# The same for the shared rows of a widget that calls itself: one with no time below
+# its top (`IsSharable`).
+IsShallowLiveParam: fn Ty -> Bool
+fn IsShallowLiveParam pt = (IsLiveParam pt) and not (HasTime (Peel pt))
 
 HasLiveParam: fn ValInfo -> Bool
 fn HasLiveParam v = match v.scheme.ty:
@@ -782,7 +788,7 @@ fn IsSharable wx, menv, v, e, args:
     let plainResult = (ResultLayer (TypeAt wx.lx, e.span)) == LyPlain and not (IsBundle (LineOutFull wx.lx, e))
     let plainParams = Fold ptys, True, \|ok, pt| ok and (LayerOf pt) == LyPlain and not (IsWidgetFnTy pt)
     let valuedParams = Fold (Range0 (Len ptys)), True, \|ok, i| ok and match ptys[i]:
-        ? pt: if IsWidgetFnTy pt: False else: if (LayerOf pt) == LyBlueprint: IsBlueprintValued wx.lx, menv, args[i] else: (LayerOf pt) == LyPlain or IsLiveParam pt
+        ? pt: if IsWidgetFnTy pt: False else: if (LayerOf pt) == LyBlueprint: IsBlueprintValued wx.lx, menv, args[i] else: (LayerOf pt) == LyPlain or IsShallowLiveParam pt
         nil: True
     let nothingBack = (OutTyOf wx.lx, (OutOf (TypeAt wx.lx, e.span))) == OutUnit
     plainResult and (Len (RigidsIn v.scheme.ty)) == 0 and (plainParams or (valuedParams and nothingBack))

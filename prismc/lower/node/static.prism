@@ -51,11 +51,21 @@ fn WidgetLine wx, benv, menv, e, ?bound:
     let ((callee, args)) = match e.kind:
         ECall c, xs, ignore, ignore: ((c, xs))
         otherwise: ((e, [[]]))
+    # a module's lowercase widget written qualified (`@Parts.header`), which the parser
+    # reads as a field: the widget it names, where no name of the block hides the
+    # module's (`?QualifiedFieldIn`)
+    let ?qualified = match e.kind:
+        EField r, sigils, name: ?QualifiedFieldIn lx, menv, r, sigils, name
+        otherwise: nil
     let qk = match callee.kind:
         EName n:
             let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
             Or ?q, ""
-        otherwise: ""
+        otherwise: match ?qualified:
+            ? n:
+                let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
+                Or ?q, ""
+            nil: ""
     let ?target = match ?bound:
         ? (BnEv er, ignore): ? er.node
         otherwise: nil
@@ -69,7 +79,7 @@ fn WidgetLine wx, benv, menv, e, ?bound:
         otherwise: nil
     # a blueprint that is a value of the node: a pattern's binder, a field of a record
     let held = match e.kind:
-        EField ignore, ignore, ignore: True
+        EField ignore, ignore, ignore: (IsSome ?qualified) == False
         EName n: match (if (Len n.path) == 1: menv.names[SNameKey n] else: nil):
             ? (BnLocal ignore, ignore, ignore): True
             otherwise: False
@@ -90,10 +100,15 @@ fn WidgetLine wx, benv, menv, e, ?bound:
 # A function value that gives a blueprint (`function`, read in `clx` and `cmenv`, where
 # it stands), applied at the line `e` to the line's arguments, which are read in the
 # line's own environment: the blueprint it gives is applied as any blueprint value.
+# The function is bounded or unbounded (`F 1` of an `unbounded fn Nat -> @unit`).
 AppliedFunctionLine: unbounded fn Wx, Env, Lx, Env, Expr, Expr, [Arg] -> ((Wx, Wres))
 fn AppliedFunctionLine wx, menv, clx, cmenv, function, e, args:
     let held = ValueOf clx, cmenv, function
-    let made = XApply (Ref held), (Each args, \|a| ValueArgument wx.lx, menv, a.value)
+    # (an unbounded function's value is a `Start`, run to its end here as a call of one
+    # in an expression is, `Application`)
+    let made = match ValueTy held:
+        OutJobFn ignore, ignore2: XCall (HelperRef "run_to_end"), [[(StartCall held, (StartArgs wx.lx, menv, held, args))]]
+        otherwise: XApply (Ref held), (Each args, \|a| ValueArgument wx.lx, menv, a.value)
     AppliedBlueprintLine wx, e, (XRef made)
 
 # A widget parameter applied (`@child` as a statement): its argument lowered here, in its
@@ -887,12 +902,36 @@ fn WidgetResultOf t = match t:
     TyFn ignore, ignore, r: r
     otherwise: t
 
+# The expressions of the block's functions that `exprs` name, and of those these name
+# in turn (`seen`, by a clause's place), with the keys of what their clauses give.
+LocalFunctionExprs: unbounded fn Env, [Expr], [Nat], [Expr], [Text] -> (([Expr], [Text]))
+fn LocalFunctionExprs menv, exprs, seen, found, results:
+    let ((clauses, seenNow)) = Fold exprs, (([[]], seen)), \|((acc, known)), x| match x.kind:
+        EName n: match (if (Len n.path) == 1: menv.names[SNameKey n] else: nil):
+            ? (BnLocalFn cs): Fold cs, ((acc, known)), \|((acc2, known2)), c| if HasNat known2, c.span.start: ((acc2, known2)) else: (((Push acc2, c), (Push known2, c.span.start)))
+            otherwise: ((acc, known))
+        otherwise: ((acc, known))
+    if (Len clauses) == 0: ((found, results))
+    else:
+        let more = Fold clauses, [[]], \|acc, c| Append acc, (ClauseExprs c)
+        let handedBack = Fold clauses, results, \|acc, c| match c.body:
+            BodyExpr x: Push acc, (DynKey (Ungrouped x))
+            BodyBlock b: match (Or b.stmts[Dec (Len b.stmts)], dummyStmtL).kind:
+                SExpr x: Push acc, (DynKey (Ungrouped x))
+                otherwise: acc
+        LocalFunctionExprs menv, more, seenNow, (Append found, more), handedBack
+
 BlueprintValuesAt: unbounded fn Wx, Env, Env, Expr, Bool -> ((Wx, Env, Env))
 fn BlueprintValuesAt wx, benv, menv, e, named:
     let lx = wx.lx
     # a widget's name handed to a widget as its blueprint argument is the caller's text
     # (`BindParam`), no value
-    let calls = Filter (ExprsIn e), \|x| match x.kind:
+    # (the line's expressions, and those of the block's functions it calls, whose
+    # bodies are lowered where they are called, in the line's environments,
+    # `InlineLocalFn`: `fn ?Made b = ?Pick b, @line`)
+    let ((inFunctions, results)) = LocalFunctionExprs menv, (ExprsIn e), [[]], [[]], [[]]
+    let reached = Append (ExprsIn e), inFunctions
+    let calls = Filter reached, \|x| match x.kind:
         ECall c, ignore, ignore, ignore:
             let named = match lx.g.vals[CalleeKey lx, c]:
                 ? v: IsWidgetTy (WidgetResultOf v.scheme.ty)
@@ -909,13 +948,14 @@ fn BlueprintValuesAt wx, benv, menv, e, named:
     # a value's place: an argument of any other call (a function, a constructor), a part
     # of a tuple or an array, the operand of `?`; and the value of a `let` (`named`:
     # `let @w = @line`, read where `@w` is, `NameValueOf`)
-    let spots = Fold (ExprsIn e), (if named: [[(DynKey (Ungrouped e))]] else: [[]]), \|acc, x| match x.kind:
+    # (and what a function of the block gives, `fn @Made b = @line`)
+    let spots = Fold reached, (if named: Push results, (DynKey (Ungrouped e)) else: results), \|acc, x| match x.kind:
         ECall ignore, args, ignore, ignore: if HasText applied, (DynKey x): acc else: Fold args, acc, \|acc2, a| Push acc2, (DynKey (Ungrouped a.value))
         ETuple xs: Fold xs, acc, \|acc2, part| Push acc2, (DynKey (Ungrouped part))
         EArray xs: Fold xs, acc, \|acc2, part| Push acc2, (DynKey (Ungrouped part))
         EFreeSigil "?", operand: Push acc, (DynKey (Ungrouped operand))
         otherwise: acc
-    let names = Fold (ExprsIn e), [[]], \|acc, y| match y.kind:
+    let names = Fold reached, [[]], \|acc, y| match y.kind:
         EName n: match (if (Len n.path) == 1: menv.names[SNameKey n] else: nil):
             ? (BnLocalWidget b): if (not (HasText spots, (DynKey y))) or HasKey menv.names, "#whole@{DynKey y}": acc else: Push acc, ((y, (SNameKey n), b))
             otherwise: acc
