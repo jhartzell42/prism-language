@@ -76,8 +76,8 @@ fn TailHere lx, env, e = match e.kind:
             let ((ptys, ignore)) = SchemeParts lx, qk
             let fields = JobFieldNames lx, qk
             let vals = NamedArgsOwned lx, env, qk, args
-            if EntersAtOnce lx, qk, args: XMethod (XCall (RefIn lx, (OwnerOf qk), "start_{job}"), vals), "cycle", [[]]
-            else: if IsColorPoly lx, qk: XCtor (RefRuntime "prism_rtl::Turn::More"), [[(XCall (RefIn lx, (OwnerOf qk), "start_{job}"), vals)]]
+            if EntersAtOnce lx, qk, args: XMethod (StartOf lx, qk, callee, vals), "cycle", [[]]
+            else: if (IsColorPoly lx, qk) or JobByStart lx, qk: XCtor (RefRuntime "prism_rtl::Turn::More"), [[(StartOf lx, qk, callee, vals)]]
             else: XCtor (RefRuntime "prism_rtl::Turn::More"), [[(XCall (RefRuntime "std::Rc::new"), [[(XRecord jobName, (Each (Range0 (Len vals)), \|i| (((Or fields[i], "arg"), (Or vals[i], (XUnit))))))]])]]
         nil: match ?LocalJobFn lx, env, callee:
             ? f: XMethod (StartCall f, (StartArgs lx, env, f, args)), "cycle", [[]]
@@ -152,17 +152,18 @@ fn TailFromK lx, env, b, i, Last:
 # color no use decides is bounded there), and a call in a branch ends its branch in a
 # continuation over that instantiation's value (`KValue`). The places the frames of one
 # instantiation bound are unbound again before the next lowers the same expression. With
-# no use there is no instantiation and nothing is lowered.
+# no use the `let` runs once all the same, its calls frames of their own, unless it is a
+# lambda (`LetInstantiations`).
 GenericLetTail: unbounded fn Lx, Env, Block, Stmt, SName, GenNote, Expr, Nat, (unbounded fn Env -> Ex) -> Ex
 fn GenericLetTail lx, env, b, s, n, gn, x, k, Rest:
-    let distinct = Instantiations lx, gn
+    let distinct = LetInstantiations lx, gn, x
     match distinct[k]:
         nil: Rest env
         ? inst:
             let lxk = AtInstance lx, inst
             let last = k + 1 >= (Len distinct)
             let WithBound = \|en, value|
-                let ((dos, en2)) = GenericLetBound lx, en, n, gn, k, value
+                let ((dos, en2)) = GenericLetBound lx, en, n, gn, x, k, value
                 let en3 = if last: en2 else: Fold (ExprsIn x), en2, \|e2, inner| update e2:
                     &_.spans <= Remove &_.spans, (PlaceKey lx, inner.span)
                 Prepend dos, (GenericLetTail lx, en3, b, s, n, gn, x, k + 1, Rest)
@@ -664,7 +665,7 @@ fn FrameJob lx, env2, c, ?qk, base, args, call:
             ? f: StartArgs lx, env2, f, args
             nil: Each args, \|a| Own (ValueOf lx, env2, a.value)
     match ?qk:
-        ? q: (((XCall (RefIn lx, (OwnerOf q), "start_{base}"), vals), (HelperRef (if EntersAtOnce lx, q, args: "call_value" else: "call_then"))))
+        ? q: (((StartOf lx, q, c, vals), (HelperRef (if EntersAtOnce lx, q, args: "call_value" else: "call_then"))))
         nil: match ?LocalJobFn lx, env2, c:
             ? f: (((StartCall f, vals), (HelperRef "call_value")))
             nil: match ?PreludeJobCall lx, env2, call:
@@ -783,6 +784,29 @@ fn ?TailCallee lx, env, callee = match callee.kind:
                 ? qk: if (HasText lx.unbs, qk) and not (InPrelude lx, qk): ? qk else: nil
                 nil: nil
     otherwise: nil
+
+# Whether an unbounded function's job is made by its `Start` alone, never by its fields:
+# one with a type parameter that no parameter's type names (`unbounded fn Nat -> [a]`),
+# whose struct has a marker field for it that the `Start` fills (the emitters' job).
+JobByStart: unbounded fn Lx, Text -> Bool
+fn JobByStart lx, qk = match lx.g.vals[qk]:
+    ? v:
+        let ((ptys, ignore)) = SchemeParts lx, qk
+        let named = Fold ptys, [[]], \|acc, p| UnionTexts acc, (TyParamsIn (OutTyOf lx, (Peel p)))
+        Fold (SchemeGenerics lx, v.scheme), False, \|found, ((g, ignore2))| found or not (HasText named, g)
+    nil: False
+
+# The call of an unbounded function's `Start` at the callee `callee`. Where the job is
+# made by its `Start` alone (`JobByStart`: a type parameter no argument decides), the
+# type parameters are written out, as the callee's type there gives them.
+StartOf: unbounded fn Lx, Text, Expr, [Ex] -> Ex
+fn StartOf lx, qk, callee, vals:
+    let start = RefIn lx, (OwnerOf qk), "start_{Or lx.rsNames[qk], (Snake (BareName qk))}"
+    match lx.g.vals[qk]:
+        ? v if JobByStart lx, qk: match ?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, callee.span), {}:
+            ? found: if Fold v.scheme.qs, True, \|all, q| all and HasKey found, q: XCallAt start, (Each v.scheme.qs, \|q| OutTyOf lx, (Or found[q], TyErr)), vals else: XCall start, vals
+            nil: XCall start, vals
+        otherwise: XCall start, vals
 
 SchemeParts: fn Lx, Text -> (([Ty], Ty))
 fn SchemeParts lx, qk = match lx.g.vals[qk]:
