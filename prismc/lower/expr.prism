@@ -780,7 +780,7 @@ fn DynamicBlueprint lx, env, x, d, variant, t = match ((env.names["#dyn{DynKey x
         let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, (OutNamed answerRef, [[]]))
         let dynamic = XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar "{getter}_portx"))]])
         VlOwned (XCall (RefRuntime "prism_rtl::dynamic_blueprint::<crate::Elem, _>"), [[dynamic]]), t
-    otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer that reads what has no value at the owner's build (a pushed place, a structural dynamic, or a `let` after the host's line)"), t
+    otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer that reads what has no value at the owner's build (a structural dynamic, or a name of the parent)"), t
 
 # An answer in its tag's case of `crate::Answer`; with no tag, as plain data in the case
 # of no tag (`untaggedRef`).

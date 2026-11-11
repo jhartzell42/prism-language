@@ -290,9 +290,9 @@ fn HostLine wx, benv, menv, form, args, ?bound:
 # reads the getter through the owner's link, `host_k_owner`, linked at the build; while the
 # node is being made (an early row's first value) it reads the dynamic's value at the build,
 # `InitEnv`. Bound for `PureBlueprint` under `#owner` and `#dyn{span}`; the locals the
-# supplier's closure moves in are cloned first (`dynLets`). A dynamic answer reading what has
-# no value at the build (a pushed place, a structural dynamic, a later `let`) is refused
-# there, loudly.
+# supplier's closure moves in are cloned first (`dynLets`). The node's own pushed place has
+# its first value at the build (`PreInit`); a dynamic answer reading what has none (a
+# structural dynamic, a name of the parent) is refused there, loudly.
 DynamicAnswers: unbounded fn Wx, Env, Env, Text, Expr -> ((Wx, Env, [Do]))
 fn DynamicAnswers wx, benv, menv, hf, sup:
     let lx = wx.lx
