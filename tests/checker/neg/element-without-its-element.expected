@@ -1,0 +1,12 @@
+tests/checker/neg/element-without-its-element.prism:14: error[mismatch]: a bare line emits an element or builds a blueprint; this is `fn Element r2 t1 -> @t1`
+        @Element
+        ^^^^^^^^
+  fix: end the block on a value with `@ @Element`
+tests/checker/neg/element-without-its-element.prism:14: error[discarded]: this line's result is `fn Element r2 t1 -> @t1`; drop it with `ignore <-`
+        @Element
+        ^^^^^^^^
+  fix: write `ignore <-` in front of it, or bind it
+tests/checker/neg/element-without-its-element.prism:15: error[mismatch]: expected `@o'7`, found `fn Element r14 t13 -> @t13`
+        ignore <- @HostDocument @child, \|p, e| @Element
+                                                ^^^^^^^^
+3 errors

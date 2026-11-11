@@ -1,0 +1,17 @@
+# Derived by hand from Semantics ch. 4 ("`for`": a row per key under `pos/[k]`, the block's names live inside) and ch. 8 (a widget application is transparent; a `$` field changes in place, in the tick its dynamic moves).
+test rows_read_the_blocks_hold
+
+tick 0
+  added:
+    0: Ui.Button(label="inc")
+    1: Ui.Button(label="drop")
+    2/[1]/0: Ui.Label(text="big 0")
+    2/[2]/0: Ui.Label(text="small")
+    2/[2]/1: Ui.Label(text="0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2/[1]/0: Ui.Label(text="big 1")
+    2/[2]/1: Ui.Label(text="1")
