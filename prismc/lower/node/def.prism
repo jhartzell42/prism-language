@@ -193,7 +193,7 @@ fn IsEarlyChoiceAt lx, menv, b, i = match (Or b.stmts[i], dummyStmtL).kind:
                     nil: [[]]
                 ok and Fold (FreeReads (BlockExprs a.body), [[((own, a.span))]]), True, \|ok2, n| ok2 and (not (HasKey menv.names, n)) and not (HasText blockDefs, n)
             let taken = Fold (Range0 i), False, \|f, j| f or TakesAtBuild lx, (Or b.stmts[j], dummyStmtL), names
-            plain and unguarded and closed and taken and not (IsPureChoiceAt lx, menv, b, i, 16)
+            plain and unguarded and closed and taken and not (IsPureChoiceTakenBy lx, menv, b, i, 16, True)
         otherwise: False
     otherwise: False
 
@@ -209,12 +209,23 @@ fn IsEarlyChoiceAt lx, menv, b, i = match (Or b.stmts[i], dummyStmtL).kind:
 # build like any other. The line is not late then, the block is not split at it, and both
 # lines are built in place order as any generations are. What the arms read must have a
 # value at the build: no plain name another late line of the block binds.
+# Any other line above that takes the result at its build (a widget's plain argument, a
+# builder's rows) reads the same value of the build where the arms are such: the line
+# is built at its own place with the value, its places counted as built and its own
+# plain result a value of the build or late as any line's, where a row that waited for
+# the arm's row (`DeferredLine`) could be neither. A line whose arms read nothing of
+# the block and have no guard is built early instead when no choice line takes it
+# (`IsEarlyChoiceAt`).
 IsPureChoiceAt: unbounded fn Lx, Env, Block, Nat, Nat -> Bool
-fn IsPureChoiceAt lx, menv, b, i, depth = match (Or b.stmts[i], dummyStmtL).kind:
+fn IsPureChoiceAt lx, menv, b, i, depth = IsPureChoiceTakenBy lx, menv, b, i, depth, False
+
+# `choicesOnly`: only a building `match` or `if` above counts as taking the result.
+IsPureChoiceTakenBy: unbounded fn Lx, Env, Block, Nat, Nat, Bool -> Bool
+fn IsPureChoiceTakenBy lx, menv, b, i, depth, choicesOnly = match (Or b.stmts[i], dummyStmtL).kind:
     SBind p, e, nil:
         let names = Filter (PatternNames p), \|n| not (IsTimeName n)
         let plain = (IsPlainResult lx, e) and not (IsBundle (LineOutFull lx, e))
-        let taken = Fold (Range0 i), False, \|f, j| f or ((IsChoiceLine (Or b.stmts[j], dummyStmtL)) and TakesAtBuild lx, (Or b.stmts[j], dummyStmtL), names)
+        let taken = Fold (Range0 i), False, \|f, j| f or (((not choicesOnly) or IsChoiceLine (Or b.stmts[j], dummyStmtL)) and TakesAtBuild lx, (Or b.stmts[j], dummyStmtL), names)
         if not (plain and taken): False
         else: match ?PureChoice e:
             ? ((heads, bodies)):
