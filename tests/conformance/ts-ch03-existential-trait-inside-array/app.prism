@@ -1,0 +1,32 @@
+# An existential of a program's trait whose method takes the trait's type inside another
+# type (Type System ch. 3: "`any ^Show` is a value of some type that implements `^Show`,
+# the type hidden"; ch. 5, "Existentials are dictionaries": `any e` solves the bounds at
+# `e`'s type and stores them, and the value is unpacked at a parameter that is not one).
+# `Total` takes `[a]`: at the hidden type the dictionary's `Total` is asked of an array of
+# the hidden values.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+trait ^Counted a:
+    Total: fn [a] -> Nat
+
+impl ^Counted Nat:
+    fn Total ns = Fold ns, 0, \|acc, n| acc + n
+
+impl ^Counted Text:
+    fn Total ts = Fold ts, 0, \|acc, t| acc + Len t
+
+Hide: fn Nat -> any ^Counted
+fn Hide n = any n
+
+HideText: fn Text -> any ^Counted
+fn HideText t = any t
+
+Doubled: fn a -> Nat where a: ^Counted
+fn Doubled x = Total [[x, x]]
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Doubled (Hide 3)} {Doubled (HideText "ab")}")      # 0
