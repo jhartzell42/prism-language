@@ -56,3 +56,6 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   bigger batches rather than doing full builds after each one and save fixing C++ until
   the end when you make one big commit in the branch." During the run a fix is verified
   on Rust; the C++ fixes land as one commit after one C++ pass at the end.
+- **TF** Tests first for everything, then the fixes, then the run. Jimmy: "Make failing
+  tests for all the bugs, then try to fix all of them, then run the tests." A lowering
+  gap is called a bug.
