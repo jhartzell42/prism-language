@@ -46,6 +46,10 @@ Hosting
   ts-ch05-color-function-in-blueprint-result).
   A bundle with such a part outside an arm is held whole, its events and dynamics as
   values (`PartsBlueprint`: sem-ch08-blueprint-of-bundle-with-function-outside-tag-arm).
+- A tag whose output holds a part that is no plain data (a function) is answered by a
+  host, under the tag's arm part by part (sem-ch09-host-bundle-function-part-answer);
+  `crate::Answer` reads such a part from its own case or from the case held whole
+  (the emitters' `OutsideArm`), and a World's answer for the tag is a fault of the run.
 - Every other bundle answer is lowered, any mix of plain, `$` and event
   parts, written as a tuple or given as a value (`PartsBlueprint`:
   sem-ch09-host-bundle-two-events-answer, -two-dynamics-answer,
@@ -66,11 +70,18 @@ Hosting
   that gives a bundle back under a tag's arm (sem-ch09-host-widget-bundle-answer), one
   whose block ends on a host's line (sem-ch08-widget-value-ends-on-host), a generic one
   read in a generic function's body, given that function's own type parameter
-  (`?OpenWidgetBlueprintValue`: sem-ch08-widget-value-generic-in-function). Left
-  refused: a generic one read where a type parameter stays open and the instantiations
-  of the definition it stands in cannot all be read (`?DefInstances`: a use in a
-  method's body at the impl's type parameters, a definition that uses itself at other
-  types than its own; R, no tests), one with a
+  (`?OpenWidgetBlueprintValue`: sem-ch08-widget-value-generic-in-function), however
+  many generic functions deep (sem-ch08-widget-value-generic-ten-functions-deep), in a
+  function that calls itself at other types
+  (sem-ch08-widget-value-generic-function-at-other-type), in an impl's method at the
+  impl's type parameter (sem-ch08-widget-value-generic-in-method). Left
+  refused (`OpenWidgetValueWords`): a generic one read where a type parameter stays
+  open and the program gives the definition it stands in no finite set of types
+  (`?DefInstances`, `GrowsFrom`: a line of instantiations that holds one definition
+  twice, the earlier types embedded in the later;
+  sem-ch08-widget-value-generic-function-at-ever-larger-types, R; the plain function
+  alone is refused by rustc, ts-ch02-function-at-ever-larger-types), one read at a
+  trait method's own type parameter in an impl's method (R, no test), one with a
   widget function parameter, or a `$` or event parameter with time below its top (no
   tests);
   one read in a place `ValuedWidgets` does not look (a record's field read back and

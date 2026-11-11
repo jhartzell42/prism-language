@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 5 (a type variable is decided at each call): two calls deep the array holds one array. Never run.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="1")

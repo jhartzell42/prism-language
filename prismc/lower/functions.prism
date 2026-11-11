@@ -187,7 +187,14 @@ fn FnGenerics lx, qk, sc:
 
 # A plain function: its scheme's types, its clauses as a `match`.
 FnDefOf: unbounded fn Lx, Text, [FnClause], Scheme -> FnDef
-fn FnDefOf lx, qk, clauses, sc:
+fn FnDefOf lx, qk, clauses, sc = FnDefIn lx, qk, qk, clauses, sc
+
+# `FnDefOf` for a body that is not the definition of the function's own name: an impl's
+# method and a trait's default are lowered under their trait's method's name, and are
+# definitions of their own among the program's instantiations (`definition`, their
+# `InstanceKey`).
+FnDefIn: unbounded fn Lx, Text, Text, [FnClause], Scheme -> FnDef
+fn FnDefIn lx, definition, qk, clauses, sc:
     let ((ptys, res)) = SignatureTys sc
     # A plain function is lifted: its `$` and `!` values are read at the caller's read point
     # (gap LE), so its body has their values. One whose parameters or result hold a dynamic
@@ -197,7 +204,7 @@ fn FnDefOf lx, qk, clauses, sc:
     let lxb = update lx:
         &_.whole <= whole
         &_.noCx <= True
-        &_.inDefinition <= qk
+        &_.inDefinition <= definition
     let ((pts, ret)) = SignatureOut lx, qk, sc
     let names = ParamNames lx, clauses, pts
     let body = ClausesBody lxb, emptyEnv, clauses, names, ptys, FnBodyValue, "c", ret
@@ -344,7 +351,7 @@ fn TraitDefOf lx0, tr:
             &_.bounds <= Filter &_.bounds, \|((q, ignore))| q != tr.param
         let defaultQk = Fold tr.defaults, "", \|f, dq| if (BareName dq) == (BareName mq): dq else: f
         let clauses = if defaultQk == "": [[]] else: DefaultClauses lx.g, defaultQk
-        let fd = FnDefOf lx, mq, (if (Len clauses) == 0: [[dummyClause]] else: clauses), sc
+        let fd = FnDefIn lx, (if defaultQk == "": mq else: defaultQk), mq, (if (Len clauses) == 0: [[dummyClause]] else: clauses), sc
         update fd:
             &_.public <= (Len clauses) > 0
     TraitDef(name=(TraitName tr.name), resultOnly=(ResultOnlyNames lx, tr), assocs=(Each tr.assocs, \|a| Camel a), methods=methods, defaults=tr.defaults, doc=(TypeDoc lx, (TyInfo(name=tr.name, home=tr.home, params=[[]], body=BOpaque, derives=[[]], file=tr.file, span=tr.span))))
@@ -409,7 +416,7 @@ fn ImplDefOf lx, im:
             &_.ty <= Instantiated &_.ty, [[tr.param]], [[im.head]]
             &_.qs <= Filter &_.qs, \|q| q != tr.param
             &_.bounds <= Filter &_.bounds, \|((q, ignore))| q != tr.param
-        let fd = FnDefOf lx, mq, (MethodClauses d), sc
+        let fd = FnDefIn lx, (InstanceKey d), mq, (MethodClauses d), sc
         if (HasPrefix im.cls, "Prelude."): Renamed fd, "{Snake d.name}_{HeadWord im.head}" else: fd
     # an impl's `where` clauses bound its type parameters, as a function's do
     let generics = Each im.qs, \|q| ((Camel q, (ImplBounds lx, im, q)))

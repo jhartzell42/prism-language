@@ -1,0 +1,6 @@
+# The tests of ts-ch02-function-at-ever-larger-types.
+emit Ui.*
+use App.*
+
+test it_builds, @Page:
+    build
