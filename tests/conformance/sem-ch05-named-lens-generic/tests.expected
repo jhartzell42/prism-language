@@ -1,0 +1,5 @@
+# The book prints none for this program; written by hand from Semantics ch. 5 and Type
+# System ch. 3.
+check generic_lens
+1: ok
+2: ok
