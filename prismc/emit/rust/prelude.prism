@@ -693,6 +693,23 @@ pub fn segments_of(seated: &Vec<::prism_rtl::Segment>) -> &[::prism_rtl::Segment
     seated
 }
 
+/// Whether an answer's first segment is a position among `width` from `from` on: the
+/// positions of a generation too wide for an arm each (a widget that calls itself;
+/// claude/backend.md, "Positions").
+pub fn within_positions(at: &[::prism_rtl::Segment], from: u32, width: u32) -> bool {
+    matches!(at.first(), Some(::prism_rtl::Segment::Pos(a)) if *a >= from && *a - from < width)
+}
+
+/// An answer's segments with the first, a position, counted from `from`: as a row
+/// numbered from 0 matches it.
+pub fn rebased(at: &[::prism_rtl::Segment], from: u32) -> Vec<::prism_rtl::Segment> {
+    let mut out = at.to_vec();
+    if let Some(::prism_rtl::Segment::Pos(a)) = out.first_mut() {
+        *a -= from;
+    }
+    out
+}
+
 /// `?ParseNat`.
 pub fn parse_nat_opt(t: &Text) -> Option<Nat> {
     let s = t.as_str();
@@ -1010,6 +1027,12 @@ pub fn filter_map_job<K: Ord + Clone + 'static, V: Clone + 'static>(m: Map<K, V>
             acc
         })
     }))
+}
+
+/// A local function that calls itself: `step` is the function as one closure that takes
+/// itself first (what its body calls for its own name) and its arguments as one value.
+pub fn recursive<A, R>(step: &dyn for<'a> Fn(&'a dyn Fn(A) -> R, A) -> R, first: A) -> R {
+    step(&|next| recursive(step, next), first)
 }
 
 /// A job run to its result inside the cycle: a call of an unbounded function value from

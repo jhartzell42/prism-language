@@ -78,6 +78,46 @@ inline Result<Pod> field(const Pod& p, const char* name) {
     return unexpected(Fault::answer(str("no field ", name, " in ", p)));
 }
 
+/// `type Turn b = choice: More | Done b` (the prelude's; `::prism_rtl::Turn` is the job's),
+/// as a program's own choice is emitted: a case struct each, positional fields `a0`.
+template <class B>
+class PreludeTurn {
+public:
+    using prism_value = void;
+    struct More {
+        bool operator==(const More&) const = default;
+    };
+    struct Done {
+        B a0;
+        bool operator==(const Done&) const = default;
+    };
+    using Cases = std::variant<More, Done>;
+    template <class C>
+        requires ::prism_rtl::one_of<C, More, Done>
+    PreludeTurn(C c) : cases_(std::move(c)) {}
+    const Cases& cases() const { return cases_; }
+    void show(Printer& p) const {
+        if (auto c = ::std::get_if<More>(&cases())) p.choice("More", {});
+        else if (auto c = ::std::get_if<Done>(&cases())) p.choice("Done", {c->a0});
+    }
+    Pod to_pod() const {
+        return ::std::holds_alternative<More>(cases()) ? Pod::choice("More", {})
+            : Pod::choice("Done", {::prism_rtl::to_pod(::std::get<Done>(cases()).a0)});
+    }
+    static Result<PreludeTurn<B>> from_pod(const Pod& whole) {
+        const Pod& p = whole.structure();
+        if (auto c = p.if_choice()) {
+            if (c->ctor == "More" && c->args.size() == 0) return PreludeTurn<B>(More{});
+            if (c->ctor == "Done" && c->args.size() == 1) return PreludeTurn<B>(Done{TRY(::prism_rtl::from_pod<B>(c->args[0]))});
+        }
+        return mismatch<PreludeTurn<B>>("a Turn", p);
+    }
+    friend bool operator==(const PreludeTurn& a, const PreludeTurn& b) { return a.cases() == b.cases(); }
+
+private:
+    Cases cases_;
+};
+
 /// `type Span = record: file, line, column, binding`.
 struct Span {
     using prism_value = void;
@@ -521,6 +561,21 @@ std::vector<::prism_rtl::Segment> seated(std::span<const ::prism_rtl::Segment> a
 /// Seated segments as a node's arms match them.
 inline std::span<const ::prism_rtl::Segment> segments_of(const std::vector<::prism_rtl::Segment>& seated) { return seated; }
 
+/// Whether an answer's first segment is a position among `width` from `from` on: the
+/// positions of a generation too wide for an arm each (a widget that calls itself;
+/// claude/backend.md, "Positions").
+inline bool within_positions(std::span<const ::prism_rtl::Segment> at, ::std::uint32_t from, ::std::uint32_t width) {
+    return !at.empty() && at.front().kind() == ::prism_rtl::Segment::Kind::Pos && at.front().number() >= from && at.front().number() - from < width;
+}
+
+/// An answer's segments with the first, a position, counted from `from`: as a row
+/// numbered from 0 matches it.
+inline std::vector<::prism_rtl::Segment> rebased(std::span<const ::prism_rtl::Segment> at, ::std::uint32_t from) {
+    std::vector<::prism_rtl::Segment> out(at.begin(), at.end());
+    if (!out.empty() && out.front().kind() == ::prism_rtl::Segment::Kind::Pos) out.front() = ::prism_rtl::Segment::pos(out.front().number() - from);
+    return out;
+}
+
 /// `?ParseNat`.
 inline std::optional<Nat> parse_nat_opt(const Text& t) {
     std::string_view s = t.view();
@@ -786,6 +841,14 @@ JobRef<Map<K, V>> filter_map_job(Map<K, V> m, F keep) {
         auto kv = std::get<1>(p);
         return map_job(keep(kv), [acc, kv](bool k) { return k ? acc.inserted(std::get<0>(kv), std::get<1>(kv)) : acc; });
     });
+}
+
+/// A local function that calls itself: `step` is the function as one closure that takes
+/// itself first (what its body calls for its own name) and its arguments as one value.
+template <class A, class R, class F>
+R recursive(const F& step, A first) {
+    ::std::function<R(A)> again = [&](A next) -> R { return step(again, std::move(next)); };
+    return again(std::move(first));
 }
 
 /// A job run to its result inside the cycle: a call of an unbounded function value from

@@ -836,7 +836,7 @@ fn NameValue lx, env, n, span:
             otherwise: VlOwned (Refusal "an event read as a value"), et
         ? (BnParts ignore): VlOwned (Refusal "a tuple pattern's binding as a value"), t
         ? (BnWidget ignore, ignore, ignore, ignore): VlOwned (InternalBug "a widget parameter read as a plain value"), t
-        ? (BnLocalFn cs): LocalFnValue lx, env, cs, t
+        ? (BnLocalFn cs): LocalFnValue (LocalFnLx lx, span), env, cs, t
         ? (BnLocalWidget ignore): VlOwned (Refusal "a widget defined in a block read as a blueprint value (it is lowered where a line applies it)"), t
         nil:
             let ((?qk, why)) = ResolveValue lx.g, lx.home, n
@@ -925,7 +925,7 @@ fn Application lx, env, callee, args, span:
             let nkey = NameKeyAt lx, env, n, callee.span
             let ?local = if (Len n.path) == 1: env.names[nkey] else: nil
             match ?local:
-                ? (BnLocalFn cs): InlineLocalFn lx, env, cs, args, t
+                ? (BnLocalFn cs): InlineLocalFn (LocalFnLx lx, callee.span), env, cs, args, t
                 ? b:
                     let f = NameValue lx, env, n, callee.span
                     match ValueTy f:
@@ -951,16 +951,16 @@ fn Application lx, env, callee, args, span:
                 otherwise: VlOwned (XApply (Ref f), (Each args, \|a| Argument lx, env, a.value)), t
 
 # A local function called: its body inlined, each parameter a local bound to its
-# argument (the caller's environment, which the function's block shares). A clause whose
-# parameters are not names is not lowered yet.
+# argument (the caller's environment, which the function's block shares). One whose body
+# reaches its own name again is a recursion (`RecursiveLocalFn`).
 InlineLocalFn: unbounded fn Lx, Env, [FnClause], [Arg], OutTy -> Vl
 fn InlineLocalFn lx, env0, cs, args, t:
     let c = Or cs[0], dummyClause
     let names = Each c.params, \|p| PlainBinder lx, p
-    # a call inside the function's own body would inline it again, without end
     let mark = "#inlining{c.span.start}"
     let env = Bind env0, mark, (BnLocal XUnit, Owned, OutUnit)
-    if HasKey env0.names, mark: VlOwned (Refusal "a local function that calls itself ({DefNameText c.name})"), t
+    if LocalFnReachesItself env0, cs: RecursiveLocalFn lx, env0, cs, args, t
+    else: if HasKey env0.names, mark: VlOwned (InternalBug "a local function inlined in its own body ({DefNameText c.name})"), t
     else: if (Len cs) > 1 or Fold names, False, \|bad, nm| bad or nm == "": InlineLocalFnMatched lx, env0, env, cs, args, t
     else:
         let ((dos, env2)) = Fold (Range0 (Len names)), (([[]], env)), \|((acc, en)), i|
@@ -973,6 +973,64 @@ fn InlineLocalFn lx, env0, cs, args, t:
             (((Push acc, (DoLet (PaBind rs), (Own v))), (Bind en, nm, (BnLocal (XVar rs), Owned, bt))))
         VlOwned (XBlock dos, (FnBodyValue lx, env2, c.body)), t
 
+# The lowering at a use of a local function: one the checker generalized (Type System
+# ch. 5, "A local `let` generalizes") is lowered where it is used, at that use's
+# instantiation, so a closure of it is made once per use, at the type used there.
+LocalFnLx: fn Lx, Range -> Lx
+fn LocalFnLx lx, span = match lx.useInsts[PlaceKey lx, span]:
+    ? u: AtInstance lx, (InstAt lx, u)
+    nil: lx
+
+# Whether a local function's body reaches the function's own name, itself or through the
+# block's other local functions (each is inlined where it is called, so what its body
+# names the caller's body names).
+LocalFnReachesItself: unbounded fn Env, [FnClause] -> Bool
+fn LocalFnReachesItself env, cs:
+    let c = Or cs[0], dummyClause
+    HasText (LocalFnNamesClosed env, (LocalFnClauseNames cs)), (DefNameText c.name)
+
+LocalFnClauseNames: unbounded fn [FnClause] -> [Text]
+fn LocalFnClauseNames cs = Fold cs, [[]], \|acc, c| match c.body:
+    BodyBlock b: UnionTexts acc, (ReadNames (BlockExprs b))
+    BodyExpr x: UnionTexts acc, (ReadNames (ExprsIn x))
+
+LocalFnNamesClosed: unbounded fn Env, [Text] -> [Text]
+fn LocalFnNamesClosed env, names:
+    let more = Fold names, names, \|acc, n| match env.names[n]:
+        ? (BnLocalFn cs): UnionTexts acc, (LocalFnClauseNames cs)
+        otherwise: acc
+    if (Len more) == (Len names): names else: LocalFnNamesClosed env, more
+
+# A local function that calls itself (Semantics ch. 4: a `fn` line is a function of its
+# block, and a function may call itself). A closure cannot name itself, so the prelude's
+# `recursive` ties the knot: the function is one closure that takes itself first (`go`,
+# what its body calls for the function's own name) and its arguments owned, as one value
+# (a tuple when there are several); the call gives the closure and the first arguments.
+# The closure borrows what it reads of the block, as an inlined body does. The clauses
+# are matched in order, as at any call of a function with patterns.
+RecursiveLocalFn: unbounded fn Lx, Env, [FnClause], [Arg], OutTy -> Vl
+fn RecursiveLocalFn lx, env0, cs, args, t:
+    let c = Or cs[0], dummyClause
+    let mark = "#recursing{c.span.start}"
+    let owned = Each args, \|a| Own (ValueOf lx, env0, a.value)
+    let packed = if (Len owned) == 1: Or owned[0], XUnit else: XTuple owned
+    match env0.names[mark]:
+        ? (BnLocal again, ignore, ignore): VlOwned (XApply again, [[packed]]), t
+        otherwise:
+            let again = "{LocalName lx, (DefNameText c.name)}_{c.span.start}"
+            let atCall = Each args, \|a| SubstTy lx, (TypeAt lx, a.value.span)
+            let argTys = match Peel (SubstTy lx, (TypeAt lx, c.span)):
+                TyFn col, ps, r: if HasQuant (TyFn col, ps, r): atCall else: ps
+                otherwise: atCall
+            let outs = Each argTys, \|a| OutTyOf lx, a
+            let argTy = if (Len outs) == 1: Or outs[0], OutUnit else: OutTuple outs
+            let names = Each (Range0 (Len outs)), \|i| "{again}_{i}"
+            let pa = if (Len names) == 1: PaTyped (PaBind (Or names[0], "")), argTy else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), argTy
+            let env = Bind env0, mark, (BnLocal (XVar again), Owned, OutUnit)
+            let body = LocalFnMatch lx, env, cs, (Each names, \|nm| XVar nm), argTys, t
+            let step = XClosure False, [[(PaBind again), pa]], (Own body)
+            VlOwned (XCallAt (HelperRef "recursive"), [[argTy, t]], [[(XRef step), packed]]), t
+
 # A local function whose parameters are patterns, or of several clauses, called: the
 # arguments, owned, matched against each clause's patterns in order (the checker has them
 # exhaustive), its body over what they bind.
@@ -982,16 +1040,21 @@ fn InlineLocalFnMatched lx, callEnv, env, cs, args, t:
     let vals = Each (Range0 (Len first.params)), \|i| match args[i]:
         ? a: Own (ValueOf lx, callEnv, a.value)
         nil: XUnit
+    LocalFnMatch lx, env, cs, vals, (Each args, \|a| TypeAt lx, a.value.span), t
+
+# A local function's clauses over its arguments' values, each owned: one `match` of them
+# as a tuple, an arm per clause. `argTys` are the arguments' types, where a pattern that
+# is no name is read (a literal pattern has no type of its own: `fn Medal 0` of a Nat is
+# a Nat's 0).
+LocalFnMatch: unbounded fn Lx, Env, [FnClause], [Ex], [Ty], OutTy -> Vl
+fn LocalFnMatch lx, env, cs, vals, argTys, t:
+    let first = Or cs[0], dummyClause
     let arms = Each cs, \|c|
         let pos = Each (Range0 (Len c.params)), \|i|
             let p = Or c.params[i], dummyPat
-            # a pattern that is no name is read at its argument's type (a literal
-            # pattern has no type of its own: `fn Medal 0` of a Nat is a Nat's 0)
             let pt = match p.kind:
                 PName n: BinderTy lx, n.span
-                otherwise: match args[i]:
-                    ? a: TypeAt lx, a.value.span
-                    nil: TypeAt lx, p.span
+                otherwise: Or argTys[i], (TypeAt lx, p.span)
             RustPat lx, p, pt, Owned, "l{c.span.start}_{i}"
         let env2 = BindAll env, (Fold pos, [[]], \|acc, o| Append acc, o.binds)
         XArm(pat=(PaTuple (Each pos, \|o| o.pa)), conds=(Fold pos, [[]], \|acc, o| Append acc, o.conds), body=(FnBodyValue lx, env2, c.body))
@@ -1004,18 +1067,36 @@ fn WithClause env, name, c = match env.names[name]:
     ? (BnLocalFn cs) if (Fold cs, False, \|f, k| f or k.span == c.span) == False: BnLocalFn (Push cs, c)
     otherwise: BnLocalFn [[c]]
 
-# A local function as a value (`Fold xs, 0, Add`): a closure of its clause, made where it is
-# named, at the type it is used at there. One the checker generalized is used at a type its
-# body's own types do not say, so it is refused, loudly.
+# A local function as a value (`Fold xs, 0, Add`): a closure made where it is named, at
+# the type it is used at there (`LocalFnLx`). One of a single clause is that clause as a
+# lambda; one of several clauses is one closure whose body matches its arguments against
+# the clauses' patterns in order.
 LocalFnValue: unbounded fn Lx, Env, [FnClause], OutTy -> Vl
 fn LocalFnValue lx, env, cs, t:
     let c = Or cs[0], dummyClause
-    let body = match c.body:
-        BodyExpr e: LbExpr e
-        BodyBlock b: LbBlock b
-    if (Len cs) > 1: VlOwned (Refusal "a local function of several clauses as a value ({DefNameText c.name})"), t
-    else: if HasQuant (TypeAt lx, c.span): VlOwned (Refusal "a generic local function as a value ({DefNameText c.name})"), t
-    else: PlainLambda lx, env, c.params, body, t
+    if (Len cs) == 1: PlainLambda lx, env, c.params, (ClauseLambdaBody c), t
+    else: match t:
+        OutFn pts, r: LocalClausesClosure lx, env, cs, pts, r, t
+        otherwise: VlOwned (Refusal "a local function of several clauses as a value that is no bounded function ({DefNameText c.name})"), t
+
+ClauseLambdaBody: fn FnClause -> LambdaBody
+fn ClauseLambdaBody c = match c.body:
+    BodyExpr e: LbExpr e
+    BodyBlock b: LbBlock b
+
+LocalClausesClosure: unbounded fn Lx, Env, [FnClause], [OutTy], OutTy, OutTy -> Vl
+fn LocalClausesClosure lx, env, cs, pts, r, ft:
+    let c = Or cs[0], dummyClause
+    let reads = Fold cs, [[]], \|acc, k| UnionTexts acc, (LambdaReads k.params, (ClauseLambdaBody k))
+    let ((dos, env1)) = LambdaCaptures env, (WithInstances env, reads)
+    let names = Each (Range0 (Len pts)), \|i| "a{c.span.start}_{i}"
+    let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "")), (OutRef (Or pts[i], OutUnit))
+    let vals = Each (Range0 (Len pts)), \|i| Own (LocalPlace (XVar (Or names[i], "")), ByRef, (Or pts[i], OutUnit))
+    let argTys = match Peel (SubstTy lx, (TypeAt lx, c.span)):
+        TyFn ignore, ps, ignore: ps
+        otherwise: [[]]
+    let v = LocalFnMatch lx, env1, cs, vals, argTys, r
+    VlOwned (XBlock dos, (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure True, pas, (Own v))]]), ft)), ft
 
 HasQuant: fn Ty -> Bool
 fn HasQuant t = match t:
@@ -1290,13 +1371,36 @@ fn ResultRepr lx, v = match v.scheme.ty:
 # A call's result as its instantiation wants it: a `Start` where the call made the
 # function's color bounded is wrapped as the bounded function it is, each call run to its
 # end at once (`run_to_end`, which a bounded job reaches in its first cycles). A
-# `Start` inside another value at such a call is refused: no conversion reaches it.
+# `Start` inside the value (`[u fn Nat -> Nat]` at a call that makes `u` bounded) is
+# reached through what holds it (`StartsAsBounded`).
 AsInstance: unbounded fn Ex, OutTy, OutTy -> Vl
-fn AsInstance call, declared, t = match ((declared, t)):
-    (((OutJobFn ignore, ignore), (OutFn pts, ignore))): VlOwned (WrapAsBounded call, pts, t), t
-    otherwise:
-        if (HasJobFn declared) and not (HasJobFn t): VlOwned (Refusal "a function value of its callee's own color inside the value a call returns, at a call that makes the color bounded"), t
-        else: VlOwned call, t
+fn AsInstance call, declared, t = if (HasJobFn declared) and not (HasJobFn t): VlOwned (StartsAsBounded call, declared, t, 0), t else: VlOwned call, t
+
+# A value as its type at a call has it, each `Start` in it wrapped as the bounded function
+# the call made it (`WrapAsBounded`): through an array (the prelude's `each`), an optional,
+# a `~T` and a tuple, to any depth. `depth` keeps the names of nested levels apart. A
+# `Start` held by a function's own parameter or result, by a map or by a named type's
+# argument is refused, loudly: nothing here rebuilds those.
+StartsAsBounded: unbounded fn Ex, OutTy, OutTy, Nat -> Ex
+fn StartsAsBounded x, declared, t, depth:
+    let inner = "s{depth}"
+    if not (HasJobFn declared): x
+    else: match ((declared, t)):
+        (((OutJobFn ignore, ignore), (OutFn pts, ignore))): WrapAsBounded x, pts, t
+        ((OutArray d, OutArray e)): XCall (HelperRef "each"), [[(XRef x), (XRef (XClosure False, [[(PaTyped (PaBind inner), (OutRef d))]], (StartsAsBounded (XClone (XVar inner)), d, e, depth + 1)))]]
+        ((OutOpt d, OutOpt e)):
+            let some = XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind inner]]), conds=[[]], body=(XCtor (RefRuntime "std::Some"), [[(StartsAsBounded (XVar inner), d, e, depth + 1)]]))
+            let none = XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=XNone)
+            XMatch x, [[some, none]], False, t
+        ((OutRes d, OutRes e)):
+            let ok = XArm(pat=(PaCtor (RefRuntime "std::Ok"), [[PaBind inner]]), conds=[[]], body=(XCtor (RefRuntime "std::Ok"), [[(StartsAsBounded (XVar inner), d, e, depth + 1)]]))
+            let failed = XArm(pat=(PaCtor (RefRuntime "std::Err"), [[PaBind inner]]), conds=[[]], body=(XCtor (RefRuntime "std::Err"), [[(XVar inner)]]))
+            XMatch x, [[ok, failed]], False, t
+        ((OutTuple ds, OutTuple es)):
+            let names = Each (Range0 (Len ds)), \|i| "{inner}_{i}"
+            let parts = Each (Range0 (Len ds)), \|i| StartsAsBounded (XVar (Or names[i], "")), (Or ds[i], OutUnit), (Or es[i], OutUnit), depth + 1
+            XBlock [[(DoLet (PaTuple (Each names, \|nm| PaBind nm)), x)]], (XTuple parts)
+        otherwise: Refusal "a function value of its callee's own color in a map, a named type or another function's type, inside the value a call returns, at a call that makes the color bounded"
 
 HasJobFn: unbounded fn OutTy -> Bool
 fn HasJobFn t = match t:
@@ -1846,12 +1950,8 @@ fn LambdaValue lx, env, e, ps, body:
         OutJobFn a, ignore: JobLambda lx, env, ps, body, ft, a, (EntersLambda lx, e)
         otherwise: PlainLambda lx, env, ps, body, ft
 
-PlainLambda: unbounded fn Lx, Env, [Pattern], LambdaBody, OutTy -> Vl
-fn PlainLambda lx, env, ps, body, ft:
-    let pts = match ft:
-        OutFn xs, ignore: xs
-        otherwise: [[]]
-    let read = WithInstances env, (LambdaReads ps, body)
+LambdaCaptures: unbounded fn Env, [Text] -> (([Do], Env))
+fn LambdaCaptures env, read:
     let caps0 = Filter read, \|n| match env.names[n]:
         ? (BnLocal ignore, ignore, ignore): True
         otherwise: False
@@ -1868,6 +1968,14 @@ fn PlainLambda lx, env, ps, body, ft:
             let d = DoLet (PaBind local), (Own (LocalPlace rs, mode, ct))
             (((Push acc, d), (Bind en, n, (BnLocal (XVar local), Owned, ct))))
         otherwise: ((acc, en))
+    ((dos, env1))
+
+PlainLambda: unbounded fn Lx, Env, [Pattern], LambdaBody, OutTy -> Vl
+fn PlainLambda lx, env, ps, body, ft:
+    let pts = match ft:
+        OutFn xs, ignore: xs
+        otherwise: [[]]
+    let ((dos, env1)) = LambdaCaptures env, (WithInstances env, (LambdaReads ps, body))
     let ((pas, env2)) = ClosureParams lx, env1, ps, pts, True
     let v = LambdaBodyValue (WholeLambda lx, pts), env2, body
     # Cast to its function type, so that two lambdas meet where one type is wanted (an

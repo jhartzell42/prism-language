@@ -222,13 +222,14 @@ fn UpdStmt lx, env, s = match s.kind:
                 let ((inner2, ignore)) = UpdStmts lx, envB, body.stmts
                 # The pattern's conditions and the guard (`while ? left <- &fuel -? 1 if c:`)
                 # end the loop as a failed match does: a `break` when they do not hold.
+                # Each in order, since a later one reads what an earlier one bound: a test
+                # that fails leaves the loop, and so does a payload behind an `Rc` that does
+                # not match (`let .. else`).
                 let conds = Append po.conds, (GuardConds lx, envB, ?g)
-                let tests = Fold conds, [[]], \|acc, c| match c:
-                    CcIf t: Push acc, t
-                    otherwise: acc
-                let lets = Fold conds, False, \|f, c| f or IsLetCond c
-                let stop = if (Len tests) == 0: [[]] else: [[(DoIf (XUnary OpNot, (AllOf tests)), [[DoExpr (XVar "break")]], [[]])]]
-                let body2 = if lets: [[RefusalDo "a `while` whose pattern matches through an `Rc`"]] else: Append stop, inner2
+                let stop = Each conds, \|c| match c:
+                    CcIf t: DoIf (XUnary OpNot, t), [[DoExpr XBreakLoop]], [[]]
+                    CcLet pa, y: DoLetElse pa, y, XBreakLoop
+                let body2 = Append stop, inner2
                 (([[(DoWhileLet po.pa, (Own (ValueOf lx, env, x)), body2)]], env))
     SExpr x: match x.kind:
         EIf c, thenB, ?elseB: (([[(UpdIf lx, env, c, thenB, ?elseB)]], env))
@@ -249,7 +250,7 @@ fn UpdFor lx, env, ?binders, source, body, span:
         nil: UpdForValues lx, env, ?binders, source, body, span, sty
 
 # `for &s <- &_:` (Semantics ch. 5): a reference per entry of the array the path names, in
-# place; `ix` is its index. A map's entries are not handed by reference here.
+# place; `ix` is its index.
 UpdForRefs: unbounded fn Lx, Env, SName, Expr, Block, Range, Ty -> Do
 fn UpdForRefs lx, env, n, source, body, span, sty = match sty:
     TyArray v:
@@ -259,7 +260,16 @@ fn UpdForRefs lx, env, n, source, body, span, sty = match sty:
         let ((dos, ignore)) = UpdStmts lx, env1, body.stmts
         let head = DoLet (PaBind keyName), (XCall (HelperRef "nat_of"), [[(XVar "i{span.start}")]])
         DoFor (PaTuple [[(PaBind "i{span.start}"), (PaBind refName)]]), (XMethod (XMethod (PlaceOf lx, env, source), "iter_mut", [[]]), "enumerate", [[]]), (Append [[head]], dos)
-    otherwise: RefusalDo "a `for` by reference over what is not an array"
+    # a map (ruling FM): each value by reference in key order, the entry's place read
+    # through its key (`at_mut_map`), the keys taken before the first step; `key` is the key
+    TyMap k, v:
+        let keyName = "k{span.start}"
+        let place = PlaceOf lx, env, source
+        let entry = XDeref (XCall (HelperRef "at_mut_map"), [[(XRefMut place), (XRef (XVar keyName))]])
+        let env1 = Bind (Bind env, "key", (BnLocal (XVar keyName), Owned, (OutTyOf lx, k))), (SNameKey n), (BnLocal entry, Owned, (OutTyOf lx, v))
+        let ((dos, ignore)) = UpdStmts lx, env1, body.stmts
+        DoFor (PaBind keyName), (XMethod (XCall (HelperRef "keys"), [[(XRef place)]]), "into_iter", [[]]), dos
+    otherwise: InternalBugDo "a `for` by reference over what is no array and no map"
 
 # The one binder of a `for` when it is a reference, `&s`.
 ?RefBinder: fn ?ForBinders -> ?SName
@@ -322,7 +332,10 @@ fn UpdIf lx, env, c, thenB, ?elseB:
         CondBind p, x, ignore:
             let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "u{x.span.start}"
             let ((thenDos, ignore)) = UpdStmts lx, (BindAll env, po.binds), thenB.stmts
-            DoIfLet po.pa, (Own (ValueOf lx, env, x)), thenDos, elseDos
+            # a pattern with conditions (a literal, a payload behind an `Rc`) is a value
+            # `match`'s arm, the `else` its other arm
+            if (Len po.conds) == 0: DoIfLet po.pa, (Own (ValueOf lx, env, x)), thenDos, elseDos
+            else: DoExpr (Own (ArmsValue (Own (ValueOf lx, env, x)), [[XArm(pat=po.pa, conds=po.conds, body=(XBlock thenDos, (XUnit))), XArm(pat=PaWild, conds=[[]], body=(XBlock elseDos, (XUnit)))]], "'u{x.span.start}", OutUnit))
 
 UpdMatch: unbounded fn Lx, Env, Expr, [Arm] -> Do
 fn UpdMatch lx, env, scrut, arms:

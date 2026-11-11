@@ -457,8 +457,24 @@ it make every program an interpreter run, and every type mistake a runtime fault
   made in the build) after a gappy generation built after the node has no number yet;
   that is refused loudly. A generation built early gives its gap as a local
   (`{name}_gap_now`).
-- A clause that calls its own widget is lowered level by level, to the sixteen levels an
-  inlined widget is (`TooDeep`: a tree deeper than that faults at its build).
+- **A widget of several clauses that calls itself** (plain parameters, no result, its
+  places the World's) is as deep as its data (`SharedClauseLine`). The outermost call is
+  lowered as any; a call inside the widget's own clause makes the clauses once more as
+  rows shared by every further call (`Lx.shared`): one row type per clause, numbered
+  from 0 (`zeroBased`), built with `base`, holding no block, each with `built()`, how
+  many places it built (its positions less what its own generations left unbuilt).
+- Such a call is a transparent generation `wideGeneration` (2^20) positions wide in its
+  block's numbering, gappy, its gap what the row did not build of them, so every
+  position after it is counted as built by the same `place` and `seat` as any gappy
+  generation's. A call builds fewer than 2^20 places.
+- A generation that wide (one that holds such a call is too) has no arm per position:
+  the node's last answer arm takes any path (`WideForward`), finds the generation whose
+  positions the first segment is among (the prelude's `within_positions`) and hands the
+  answer on, to a shared row with the position counted from the generation's first
+  (`rebased`, `GenDef.rebased`).
+- Any other widget that calls itself (a `$`, event or blueprint parameter, a result, one
+  clause, a hosted scope) is lowered level by level, to the sixteen levels an inlined
+  widget is (`TooDeep`: a tree deeper than that faults at its build).
 
 ## Hosting
 
@@ -599,16 +615,44 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A fault kind as a value** (`Fs.NotFound` named, an `Error`'s `kind` read) is its name
   as plain data, a `Pod` choice with no arguments (the prelude's `fault_kind`, `kind_of`);
   `Error(kind=k, ..)` takes the name back (`error_of`). An `Error`'s `message` is a `Text`.
-- **The prelude's `Turn`** is `PreludeTurn` in the emitted prelude (`TypeItemName`): the
-  runtime's `Turn` is the job's.
+- **The prelude's `Turn`** is `PreludeTurn` in both emitted preludes (`TypeItemName`): the
+  runtime's `Turn` is the job's. In C++ it has the form of a program's own choice (a case
+  struct each, positional fields `a0`).
 - **A trait method named as a value** is a closure calling it (`MethodFn`).
+- **A function value of its callee's own color in a call's result** (`[u fn Nat -> Nat]`
+  at a call that makes `u` bounded) is a `Start` in the callee's signature; the call's
+  value is rebuilt with each wrapped as the bounded function it is (`StartsAsBounded`):
+  through an array (the prelude's `each`), an optional, a `~T` and a tuple.
+- **`@Run` of a function value that is no global name** (a lambda, a local, a call's
+  result) takes the `Start` it is or is made (`AsJobValue`).
+- **A widget block's `let` of a record's or a constructor's pattern** computes the value
+  at the build, matches it once there and moves each name it binds into its own field
+  (`BindPatternResult`, as a widget's plain result bound by a pattern).
+- **`for &v <- &m:` over a map** (ruling FM) takes the keys before the first step and
+  reads each entry's place through its key (`keys`, `at_mut_map`), in key order.
+- **A `while` or an `if` bind in an `update` block whose pattern has conditions** (a
+  literal, a payload behind an `Rc`): the `while` leaves the loop at the first that fails
+  (`let .. else` for a payload), the `if` is a value `match`'s arm with its `else` the
+  other.
+- **A cycle-point `while` inside `for &s <- &xs:`** (`ForJob`): a job keeps no reference
+  across a cycle, so the entry is a state of the turn's own, which the inner loop's job
+  takes with the block's state, written back to its place by its key as the turn ends.
 - **An interpolation over a `?` or `~` hole** is a plain-layer lift: the checker notes it
   with its holes, and the lowering matches each (`DirectOperands`).
 
 - **A local function** (`fn Add a, x = ..` in a block) is inlined where it is called, its
   parameters bound to the arguments (a pattern parameter matched against its argument),
-  and is a closure of its clause where it is named as a value, at the type it is used at
-  there; a generic one as a value, and one that calls itself, are refused.
+  and is a closure where it is named as a value, at the type it is used at there: its
+  clause as a lambda, or with several clauses one closure whose body matches its
+  arguments against the clauses' patterns in order (`LocalClausesClosure`). One the
+  checker generalized is lowered at each use's instantiation (`LocalFnLx`), so a
+  closure of it is made per use, at the type used there. One whose body reaches its own
+  name (itself, or through the block's other local functions) is a recursion
+  (`RecursiveLocalFn`): one closure that takes itself first and its arguments owned as
+  one value, given to the prelude's `recursive` with the first arguments
+  (`recursive::<(Nat, Nat), Nat>(&|go, (k, acc)| .., (n, 0))`); its body calls `go` for
+  the function's own name. A closure cannot name itself, and a nested `fn` item could
+  read neither the block's locals nor the enclosing function's type parameters.
 - **`@Machine step, s, !e`** calls a named step by its path; any other step is a function
   value made at the build and kept in a field (`{m}_step`).
 - **A duration literal** is `Duration(ns)`, its signed nanoseconds (`DurationNanos`); in C++

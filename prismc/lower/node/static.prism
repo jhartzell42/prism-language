@@ -557,10 +557,15 @@ fn RunLine wx, benv, args, e, ?target:
         &_.taken <= Append &_.taken, [["{p}_job", "{p}_again", "{p}_started", "{p}_turn"]]
     let start = match args[0]:
         ? a: match a.value.kind:
+            # a named function by its `Start`; any other function value (a lambda, a local,
+            # a call's result) as the `Start` it is or is made (`AsJobValue`)
             EName n:
                 let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
-                XPath (StartRef lx, (Or ?q, ""))
-            otherwise: Refusal "an `@Run` of a function value that is not a name"
+                let ?local = if (Len n.path) == 1: benv.names[NameKeyAt lx, benv, n, a.value.span] else: nil
+                match ((?local, ?q)):
+                    ((nil, ? q)): XPath (StartRef lx, q)
+                    otherwise: AsJobValue lx, benv, a.value
+            otherwise: AsJobValue lx, benv, a.value
         nil: InternalBug "an `@Run` without its function"
     let x = match args[1]:
         ? a: Own (ValueOf lx, benv, a.value)
@@ -693,7 +698,10 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                     ? a:
                         # a clause that calls its own widget is lowered level by level, as an
                         # inlined widget is, to the same depth (`TooDeep`)
-                        if (Recursion wx.inlining, qk) > 16: TooDeep wx, qk, e
+                        # (a widget with plain parameters and no result, which calls itself
+                        # as deep as its data: rows shared by every call, `SharedClauseLine`)
+                        if (Recursion wx.inlining, qk) > 0 and IsSharable wx, v, e: SharedClauseLine wx, menv, a.value, qk, v, e, args
+                        else: if (Recursion wx.inlining, qk) > 16: TooDeep wx, qk, e
                         else:
                             let call = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
                             let inside = update wx:

@@ -143,10 +143,6 @@ Dynamics and events
   rustc refuses the crate. Test: ts-ch04-interpolation-lifts-optional.
 
 Functions
-- lower/expr.prism:886 a local function that calls itself. Test:
-  sem-ch04-local-function-recursive.
-- lower/expr.prism:939 a local function of several clauses as a value. Test:
-  sem-ch04-local-function-clauses-value.
 - lower/expr.prism:1893 ("a parameter") and the emitters' "a quantified type variable ..:
   no instantiation gives it a type": a generic `let` of a widget block that nothing
   reads. Program: `let Same = \|x| x`, `let empty = [[]]`, `let pair = ((nil, [[]]))`,
@@ -162,34 +158,19 @@ Functions
   sem-appB-turn-value.
 - A trait method passed as a function value (`Each ns, Blank`, `Each xs, Twice`): no
   refusal; rustc refuses the crate. Test: ts-ch03-method-function-value.
-- lower/expr.prism:940 a generic local function as a value. The checker stops it first:
-  a local `fn Same x = x` is not generalized (mismatch at its second use). Tests:
-  tests/checker/pos/local-function-generic-value.prism,
-  sem-ch04-local-function-generic-value.
-- lower/expr.prism:1203 a function value of its callee's own color inside the value a
-  call returns, at a call that makes the color bounded. Program:
-  `Both: u fn (u fn Nat -> Nat) -> [u fn Nat -> Nat]` called with a lambda. Test:
-  ts-ch05-color-function-in-result.
+- lower/expr.prism `StartsAsBounded`: a function value of its callee's own color inside
+  the value a call returns, at a call that makes the color bounded, where a map, a named
+  type or another function's type holds it. Through an array, an optional, a `~T` and a
+  tuple it is lowered (ts-ch05-color-function-in-result). No test for the rest.
 - lower/expr.prism:636 an existential of a program's own trait (`any ^Weighed`); `^A +
   ^B` is no syntax. Test: ts-ch03-existential-own-trait.
-- lower/node/static.prism:491 `@Run` of a function value that is not a name. Program:
-  `@Run (\|n| n + 1), 3`. Test: sem-ch07-run-lambda.
-- lower/node/def.prism:883 a widget block's `let` of a pattern that is no name or tuple
-  of plain names. Test: sem-ch08-let-pattern-in-widget.
 - lower/node/def.prism:687 a widget's plain result bound by a pattern: a G,
   `BindPatternResult` takes every other pattern (sem-ch08-plain-result-pattern passes).
 
 Jobs and templates
-- lower/jobs.prism:289 a cycle-point `while` in a `for &` of an `update` block (gap LP).
-  Test: sem-ch07-while-in-for-ref.
 - lower/jobs.prism:291, 292 a cycle-point `while` in another expression or statement:
   a G, no program reaches this: `StmtJob` is entered only for a `while`, `if`, `match`
   or `for` (`HoldsCycleWhile`), and a nested `update` holding the loop compiles.
-- lower/templates.prism:231 a `while` whose pattern matches through an `Rc`. Program:
-  `while Link a, (Link b, rest) <- &cur:` over a recursive choice. Test:
-  sem-ch05-while-pattern-nested.
-- lower/templates.prism:262 a `for` by reference over what is not an array. Program:
-  `for &v <- &_:` over a map, which the checker allows. Test: sem-ch05-for-ref-map.
 - lower/templates.prism:372 a reference path this back end does not lower: a G, no
   program reaches this: the checker refuses any other left side of `<=` (mismatch) and
   a named lens (`unsupported`).

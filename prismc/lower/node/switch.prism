@@ -169,7 +169,7 @@ fn RebuildLine wx, benv, menv, scrut, body, e, ?bound:
         let rowDefs = Each cases, \|c| c.node
         let select = GenSelect wx4, menv, body, cases, pos, [[]], True
         let wx5 = update wx4:
-            &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=False, width=0, moved=(Or (?HostedRows wx), ""), early=False, gappy=False)
+            &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=False, width=0, moved=(Or (?HostedRows wx), ""), early=False, gappy=False, rebased=False)
             &_.genHolds <= Push &_.genHolds, ((name, reads))
             &_.rows <= Fold rowDefs, &_.rows, \|acc, rd| Append (Push acc, rd), rd.children
             &_.getters <= Push &_.getters, (GenUp name, (GnOf wx4, upId).name, (GnOf wx4, upId).ty)
@@ -219,7 +219,7 @@ fn RebuildDynamic wx, menv, body, srcEx, reads, vt, name, pos:
             let select = XBlock [[(DoLet (PaBind "row"), built), kept, marked]], (XVar "row")
             let current = XMethod (XClone (XMethod (XField XSelf, "{live}"), "borrow", [[]])), "expect", [[(XStr "a `rebuild` has a generation from its build on")]]
             let wx2 = update whole.parent:
-                &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=False, width=0, moved=(Or (?HostedRows wx), ""), early=False, gappy=False)
+                &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=False, width=0, moved=(Or (?HostedRows wx), ""), early=False, gappy=False, rebased=False)
                 &_.genHolds <= Push &_.genHolds, ((name, reads))
                 &_.rows <= Append (Push &_.rows, whole.node), whole.node.children
                 &_.taken <= Append &_.taken, [[result, live, "{result}_now", "{result}_snap", "{result}_publish", "{result}_moved"]]
@@ -276,7 +276,7 @@ fn DynClauseLine wx, menv, scrut, call, qk, v, e:
     let rowName = "{wx.node}Gen{RowSuffix wx}"
     let ((rows, wx2)) = Fold (Range0 (Len clauses)), (([[]], wx1)), \|((acc, w)), i|
         let c = Or clauses[i], dummyClause
-        let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name, True, (OutWeak wx.node), callArgs
+        let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name, True, (OutWeak wx.node), callArgs, False
         (((Push acc, cr), cr.parent))
     let width = Fold rows, 0, \|acc, cr| Max acc, cr.width
     let cases = Each rows, \|cr| cr.case
@@ -294,7 +294,7 @@ fn DynClauseLine wx, menv, scrut, call, qk, v, e:
     let select = WithRowBase wx, "self", pos, (Own (ArmsValue scrutEx, arms, "'select", rowObj))
     let wx3 = update wx2:
         &_.pos <= Pos(scope=pos.scope, at=pos.at + width)
-        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=True, width=width, moved=(Or (?HostedRows wx), ""), early=False, gappy=(IsGappy gaps))
+        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=True, width=width, moved=(Or (?HostedRows wx), ""), early=False, gappy=(IsGappy gaps), rebased=False)
         &_.genHolds <= Push &_.genHolds, ((name, reads))
         &_.rows <= Fold cases, &_.rows, \|acc, gc| Append (Push acc, gc.node), gc.node.children
     KeptDynResult wx3, name, rows
@@ -319,7 +319,7 @@ fn BundleClauseLine wx, menv, scrut, call, qk, v, e:
     let rowName = "{wx.node}Gen{RowSuffix wx}"
     let ((rows, wx2)) = Fold (Range0 (Len clauses)), (([[]], wx1)), \|((acc, w)), i|
         let c = Or clauses[i], dummyClause
-        let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name, True, (OutWeak wx.node), callArgs
+        let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name, True, (OutWeak wx.node), callArgs, False
         (((Push acc, cr), cr.parent))
     let width = Fold rows, 0, \|acc, cr| Max acc, cr.width
     let cases = Each rows, \|cr| cr.case
@@ -335,7 +335,7 @@ fn BundleClauseLine wx, menv, scrut, call, qk, v, e:
     let select = WithRowBase wx, "self", pos, (Own (ArmsValue scrutEx, arms, "'select", rowObj))
     let wx3 = update kept.wx:
         &_.pos <= Pos(scope=pos.scope, at=pos.at + width)
-        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=True, width=width, moved=(Or (?HostedRows wx), ""), early=False, gappy=(IsGappy gaps))
+        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=True, width=width, moved=(Or (?HostedRows wx), ""), early=False, gappy=(IsGappy gaps), rebased=False)
         &_.genHolds <= Push &_.genHolds, ((name, reads))
         &_.rows <= Fold cases, &_.rows, \|acc, gc| Append (Push acc, gc.node), gc.node.children
     ((wx3, (WrParts kept.results)))
@@ -357,7 +357,7 @@ fn StaticClauseLine wx, menv, scrut, call, qk, v, e:
     let rowName = "{wx.node}Gen{RowSuffix wx}"
     let ((rows, wx3)) = Fold (Range0 (Len clauses)), (([[]], wx2)), \|((acc, w)), i|
         let c = Or clauses[i], dummyClause
-        let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name, True, (OutWeak wx.node), callArgs
+        let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name, True, (OutWeak wx.node), callArgs, False
         (((Push acc, cr), cr.parent))
     # clauses of different widths take the widest one's positions (pick CS)
     let width = Fold rows, 0, \|acc, cr| Max acc, cr.width
@@ -366,7 +366,7 @@ fn StaticClauseLine wx, menv, scrut, call, qk, v, e:
     let select = WithRowBase wx, "self", pos, (GenSelect wx3, menv, call, cases, pos, (Each gaps, \|?g| GapSet name, ?g), False)
     let wx4 = update wx3:
         &_.pos <= Pos(scope=pos.scope, at=pos.at + width)
-        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=True, width=width, moved=(Or (?HostedRows wx), ""), early=False, gappy=(IsGappy gaps))
+        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=True, width=width, moved=(Or (?HostedRows wx), ""), early=False, gappy=(IsGappy gaps), rebased=False)
         &_.genHolds <= Push &_.genHolds, ((name, reads))
         &_.rows <= Fold cases, &_.rows, \|acc, gc| Append (Push acc, gc.node), gc.node.children
         &_.getters <= Push &_.getters, (GenUp name, (GnOf wx3, upId).name, (GnOf wx3, upId).ty)
@@ -392,7 +392,7 @@ fn EarlyClauseLine wx, benv, menv, scrut, qk, v, e, args, outTy:
     let rowName = "{wx.node}Gen{RowSuffix wx}"
     let ((rows, wx2)) = Fold (Range0 (Len clauses)), (([[]], wx1)), \|((acc, w)), i|
         let c = Or clauses[i], dummyClause
-        let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name, True, linkTy, args
+        let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name, True, linkTy, args, False
         (((Push acc, cr), cr.parent))
     let width = Fold rows, 0, \|acc, cr| Max acc, cr.width
     let cases = Each rows, \|cr| cr.case
@@ -426,7 +426,7 @@ fn EarlyClauseLine wx, benv, menv, scrut, qk, v, e, args, outTy:
         &_.build <= Push &_.build, (DoExpr (XMethod (XVar link), "link", [[(XRef (XVar "node"))]]))
         &_.fallible <= True
         &_.pos <= Pos(scope=pos.scope, at=pos.at + width)
-        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=True, width=width, moved=(Or (?HostedRows wx), ""), early=True, gappy=(IsGappy gaps))
+        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=True, width=width, moved=(Or (?HostedRows wx), ""), early=True, gappy=(IsGappy gaps), rebased=False)
         &_.genHolds <= Push &_.genHolds, ((name, [[]]))
         &_.rows <= Fold cases, &_.rows, \|acc, gc| Append (Push acc, gc.node), gc.node.children
     ((wx3, (WrPlain (XClone (XVar first)), outTy)))
@@ -458,7 +458,7 @@ fn GenCases wx, menv, body, vt, name:
             let v = ValOf lx, qk
             Fold (Range0 (Len clauses)), (([[]], wx)), \|((acc, w)), i|
                 let c = Or clauses[i], dummyClause
-                let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name, False, (OutWeak wx.node), args
+                let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name, False, (OutWeak wx.node), args, False
                 # a `rebuild` of a clause call hands back no plain result
                 let p2 = match cr.?plain:
                     ? ignore: update cr.parent:
@@ -506,8 +506,10 @@ type ClauseRow = record:
 
 # One clause's generation: its parameters' binders the row's fields, chosen by matching
 # the arguments (in the block, `_` the generation's value).
-ClauseRowOf: unbounded fn Wx, Env, FnClause, ValInfo, Text, Text, Bool, OutTy, [Arg] -> ClauseRow
-fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent, parentTy, args:
+# `zeroBased`: a row shared by every call of a widget that calls itself
+# (`SharedClauseLine`): its places are numbered from 0, whatever its caller's position.
+ClauseRowOf: unbounded fn Wx, Env, FnClause, ValInfo, Text, Text, Bool, OutTy, [Arg], Bool -> ClauseRow
+fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent, parentTy, args, zeroBased:
     let lx = wx.lx
     let lxc = InModuleAt lx, v.file, v.home, lx.site
     let ptys = match v.scheme.ty:
@@ -538,7 +540,89 @@ fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent, parentTy, args:
                 let ((b, w2)) = ClauseDynArg w, menv, a.value, (OutTyOf lxc, (Peel pt))
                 (((Push acc, ((bn, b))), w2))
         otherwise: ((acc, w))
-    ArmRowOf wxd, menv, lxc, pats, ptys, nil, body, rowName, genName, transparent, False, parentTy, dyns, [[]], widgets
+    ArmRowOf wxd, menv, lxc, pats, ptys, nil, body, rowName, genName, transparent, False, parentTy, dyns, [[]], widgets, zeroBased
+
+# How many positions a generation of a widget that calls itself takes in its block's
+# numbering (`SharedClauseLine`): more than any call builds, so the places after it have
+# positions of their own whatever the call builds, and the generation's gap is what it
+# did not build of them.
+let wideGeneration = 1048576
+
+# Whether a widget of several clauses that calls itself is lowered as shared rows
+# (`SharedClauseLine`): its parameters are plain, it gives nothing back, and its places
+# go to the World. Any other is lowered level by level (`TooDeep`).
+IsSharable: unbounded fn Wx, ValInfo, Expr -> Bool
+fn IsSharable wx, v, e:
+    let ptys = match v.scheme.ty:
+        TyFn ignore, ps, ignore: ps
+        otherwise: [[]]
+    (not (IsHostedScope wx)) and (OutTyOf wx.lx, (OutOf (TypeAt wx.lx, e.span))) == OutUnit and Fold ptys, True, \|ok, pt| ok and (LayerOf pt) == LyPlain and not (IsWidgetFnTy pt)
+
+# A widget of several clauses applied inside its own clause (Semantics ch. 8: a widget
+# may call itself, as deep as its data; ruling TC: places are counted as they are built).
+# Lowering the call level by level never ends, so the widget's clauses are lowered once
+# more as rows shared by every further call: one row type per clause, numbered from 0,
+# built with `base`, holding no block (a clause with plain parameters and no result
+# reads none), each telling how many places it built (`built`). The call is a
+# transparent generation `wideGeneration` positions wide, gappy: the block keeps what
+# the row did not build of them, so its later places are counted as built. The rows are
+# made at the first such call and named in `Lx.shared`, where the calls inside them find
+# them.
+SharedClauseLine: unbounded fn Wx, Env, Expr, Text, ValInfo, Expr, [Arg] -> ((Wx, Wres))
+fn SharedClauseLine wx, menv, scrut, qk, v, e, args:
+    let lx = wx.lx
+    let pos = wx.pos
+    let ((srcEx, reads)) = DynamicExpr wx, menv, scrut
+    let vt = OutTyOf lx, (Peel (TypeAt lx, scrut.span))
+    let ((name, wx1)) = FreshName wx, "generation"
+    let clauses = ClausesOf lx.g, qk
+    let ((cases, wx2)) = match lx.shared[qk]:
+        ? known: ((known, wx1))
+        nil:
+            let stem = "{wx.node}Rec{RowSuffix wx}C"
+            let heads = Each (Range0 (Len clauses)), \|i| SharedCaseOf lx, v, (Or clauses[i], dummyClause), "{stem}{i}"
+            let inside = update wx1:
+                &_.lx <= WithShared lx, qk, heads
+            let ((rows, made)) = Fold (Range0 (Len clauses)), (([[]], inside)), \|((acc, w)), i|
+                let cr = ClauseRowOf w, menv, (Or clauses[i], dummyClause), v, "{stem}{i}", name, True, OutUnit, args, True
+                (((Push acc, cr), cr.parent))
+            let back = update made:
+                &_.lx <= lx
+                &_.rows <= Fold rows, &_.rows, \|acc, cr| Append (Push acc, cr.case.node), cr.case.node.children
+            ((heads, back))
+    let rowObj = OutObj (OutNamed (RefRuntime "rt::Row"), [[]])
+    let gap = XBin OpSub, (XIndex wideGeneration), (XMethod (XVar "row"), "built", [[]])
+    let arms = Each cases, \|((rowNode, pat, conds, passed))|
+        let built = TryOf (XCall (RefChild (SiteRef lx, rowNode), "build"), (Append (Append [[(XClone (XVar "path"))]], passed), [[XUnit, XCx]]))
+        XArm(pat=pat, conds=conds, body=(XBlock (Append [[(DoLet (PaBind "row"), built)]], (GapSet name, (? gap))), (XCast (XVar "row"), rowObj)))
+    let select = WithRowBase wx, "self", pos, (Own (ArmsValue (ClauseScrutinee lx, menv, v, args), arms, "'select", rowObj))
+    let wx3 = update wx2:
+        &_.pos <= Pos(scope=pos.scope, at=pos.at + wideGeneration)
+        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=True, width=wideGeneration, moved="", early=False, gappy=True, rebased=True)
+        &_.genHolds <= Push &_.genHolds, ((name, reads))
+    ((wx3, WrUnit))
+
+WithShared: fn Lx, Text, [((Text, Pa, [Cc], [Ex]))] -> Lx
+fn WithShared lx, qk, cases = update lx:
+    &_.shared <= Insert &_.shared, qk, cases
+
+# One clause of a shared widget as a call chooses and builds it: its row, the pattern
+# and conditions over the arguments, and what the row's `build` is passed (the pattern's
+# binders, then `row_base`), as `ArmRowOf` makes them for the row itself.
+SharedCaseOf: unbounded fn Lx, ValInfo, FnClause, Text -> ((Text, Pa, [Cc], [Ex]))
+fn SharedCaseOf lx, v, c, rowName:
+    let lxc = InModuleAt lx, v.file, v.home, lx.site
+    let ptys = match v.scheme.ty:
+        TyFn ignore, ps, ignore: ps
+        otherwise: [[]]
+    let pos = Each (Range0 (Len c.params)), \|i| ArmPat lxc, c.params[i], (Or ptys[i], TyErr), ByRef, "c{i}"
+    let binds = Fold pos, {}, \|m, o| Fold o.binds, m, \|m2, ((n, b))| Insert m2, n, b
+    let named = Fold c.params, [[]], \|acc, p| Append acc, (PatternBinders p)
+    let binders = Filter named, \|((bn, ignore))| HasKey binds, bn
+    let passed = Each binders, \|((bn, ignore))| match binds[bn]:
+        ? (BnLocal rs, mode, bt): Own (VlPlace rs, mode, bt)
+        otherwise: XClone (XVar (Snake bn))
+    ((rowName, (PaTuple (Each pos, \|o| o.pa)), (Fold pos, [[]], \|acc, o| Append acc, o.conds), (Push passed, (XVar "row_base"))))
 
 # Whether a widget's parameter takes a blueprint or a widget function: the caller's text,
 # never a value (`BindParam`).
@@ -602,8 +686,11 @@ fn OnSelfRooted x = match x:
 # `widgets`: a clause's blueprint parameters, each with the caller's argument, bound as an
 # inlined widget's are (`BindParam`): the argument's text with the caller's environments
 # as the row sees them (`RowEnvNames`), built where the clause applies the parameter.
-ArmRowOf: unbounded fn Wx, Env, Lx, [?Pattern], [Ty], ?Expr, Block, Text, Text, Bool, Bool, OutTy, [((Text, Bn))], [((Text, Text))], [((Text, Expr))] -> ClauseRow
-fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transparent, readsBlock, parentTy, dyns, ups, widgets:
+# `zeroBased`: the row's places are numbered from 0, not from its block's position, and
+# it tells how many it built (`built`): a row shared by every call of a widget that calls
+# itself (`SharedClauseLine`).
+ArmRowOf: unbounded fn Wx, Env, Lx, [?Pattern], [Ty], ?Expr, Block, Text, Text, Bool, Bool, OutTy, [((Text, Bn))], [((Text, Text))], [((Text, Expr))], Bool -> ClauseRow
+fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transparent, readsBlock, parentTy, dyns, ups, widgets, zeroBased:
     let upName = "{genName}_up"
     let pos = Each (Range0 (Len pats)), \|i| ArmPat lxc, (Or pats[i], nil), (Or ptys[i], TyErr), ByRef, "c{i}"
     let pa = PaTuple (Each pos, \|o| o.pa)
@@ -626,10 +713,11 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
     # standing in its caller, the arm's places are numbered from the caller's position
     # (the row's own scope, 0: in a hosted scope the row's places are its host's through
     # the row's `?hostedBy`, as a `for` row's are)
+    let first = if zeroBased: 0 else: wx.pos.at
     let r0p = if transparent: (update r00:
-        &_.pos <= Pos(scope=0, at=wx.pos.at)) else: r00
+        &_.pos <= Pos(scope=0, at=first)) else: r00
     let r0 = if transparent: (update r0p:
-        &_.based <= ? wx.pos.at) else: r0p
+        &_.based <= ? first) else: r0p
     # a clause's body is its own function's: no name in it is its caller's (only an arm of a
     # `match` in the block reads the block's names, its events through ports of the row)
     let ((p1a, r1a, ports)) = if readsBlock: RowEnv wx, r0, menv, body else: ((wx, r0, emptyEnv))
@@ -673,8 +761,15 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
         WrDyn ex, rds, rt: (((GenResult r2, genName, ex, rds, rt), nil))
         otherwise: ((r2, nil))
     let baseParam = if transparent: [[(("base", OutCount))]] else: [[]]
-    let node = FinishNode r3, rowName, (Append (Append (Each fields, \|((f, t, ignore))| ((f, t))), baseParam), (Append [[(("parent", parentTy))]], (HostedParams wx))), True
-    let p2 = GenMarked p1, genName, r3
+    # a shared row tells how many places it built: its positions less what its own
+    # generations left unbuilt
+    let ownGaps = (Len (Filter r3.gens, \|gd| gd.gappy and gd.pos.scope == 0)) > 0
+    let positions = XIndex (Or (r2.pos.at -? r0.pos.at), 0)
+    let r3b = if not zeroBased: r3 else: update r3:
+        &_.taken <= Push &_.taken, "built"
+        &_.getters <= Push &_.getters, (MethDef(name="built", recv=RecvRef, params=[[]], cx=CxNone, ret=OutCount, body=[[]], tail=(if ownGaps: XBin OpSub, positions, (XMethod XSelf, "inner_gap", [[]]) else: positions), doc="How many places the row built (ruling TC: places are counted as they are built)."))
+    let node = FinishNode r3b, rowName, (Append (Append (Each fields, \|((f, t, ignore))| ((f, t))), baseParam), (Append [[(("parent", parentTy))]], (HostedParams wx))), True
+    let p2 = GenMarked p1, genName, r3b
     let passed0 = Each fields, \|((f, t, bn))| match binds[bn]:
         ? (BnLocal rs, mode, bt): Own (VlPlace rs, mode, bt)
         otherwise: XClone (XVar f)
@@ -733,7 +828,7 @@ fn BuildingChoiceLine wx, menv, scrut, pats, sty, guards, bodies, outTy, layer, 
     let ((upId, wx2)) = AddGn wx1, "{name}_fired", (if bundled: OutUnit else: outTy), GnNamed, 0
     let rowName = "{wx.node}Arm{RowSuffix wx}"
     let ((rows, wx3)) = Fold (Range0 (Len bodies)), (([[]], wx2)), \|((acc, w)), i|
-        let cr = ArmRowOf w, menv, lx, [[(Or pats[i], nil)]], [[sty]], (Or guards[i], nil), (Or bodies[i], dummyBlockS), "{rowName}{i}", name, True, True, (OutWeak wx.node), [[]], ups, [[]]
+        let cr = ArmRowOf w, menv, lx, [[(Or pats[i], nil)]], [[sty]], (Or guards[i], nil), (Or bodies[i], dummyBlockS), "{rowName}{i}", name, True, True, (OutWeak wx.node), [[]], ups, [[]], False
         (((Push acc, cr), cr.parent))
     let width = Fold rows, 0, \|acc, cr| Max acc, cr.width
     let cases = Each rows, \|cr| cr.case
@@ -759,7 +854,7 @@ fn BuildingChoiceLine wx, menv, scrut, pats, sty, guards, bodies, outTy, layer, 
     let select = WithRowBase wx, "self", pos, (Own (ArmsValue (XTuple [[scrut]]), arms, "'select", (OutObj (OutNamed (RefRuntime "rt::Row"), [[]]))))
     let wx4 = update bundle.wx:
         &_.pos <= Pos(scope=pos.scope, at=pos.at + width)
-        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=True, width=width, moved=(Or (?HostedRows wx), ""), early=False, gappy=(IsGappy gaps))
+        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=True, width=width, moved=(Or (?HostedRows wx), ""), early=False, gappy=(IsGappy gaps), rebased=False)
         &_.genHolds <= Push &_.genHolds, ((name, [[]]))
         &_.rows <= Fold cases, &_.rows, \|acc, gc| Append (Push acc, gc.node), gc.node.children
         &_.getters <= Push &_.getters, (GenUp name, (GnOf wx3, upId).name, (GnOf wx3, upId).ty)
@@ -1110,11 +1205,32 @@ fn GenUp name, upName, t = MethDef(name="{name}_up", recv=RecvRc, params=[[(("v"
 # generation; for a transparent one, at each of its positions in the block, whole.
 GenForwards: fn GenDef -> [((Pa, Ex))]
 fn GenForwards gd:
-    if gd.transparent: Each (Range0 gd.width), \|i|
+    if IsWideGen gd: [[]]
+    else: if gd.transparent: Each (Range0 gd.width), \|i|
         let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
         let body = XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[DoExpr (TryOf (XMethod (XVar "row"), "answer", [[(XVar "at"), (XVar "v"), XCx]]))]], [[]])]], (XUnit)
         (((PosPat (Pos(scope=gd.pos.scope, at=gd.pos.at + i)), [[PaRest ""]]), body))
     else: [[(((PosPat gd.pos, genTail), (ForwardGen gd)))]]
+
+# A transparent generation that holds a call of a widget that calls itself, or is one
+# (`SharedClauseLine`): too wide for an arm per position.
+IsWideGen: fn GenDef -> Bool
+fn IsWideGen gd = gd.transparent and gd.width >= wideGeneration
+
+# The answers the node's wide generations get, in one last arm over any path: the
+# generation whose positions the answer's first segment is among hands it on, to a
+# shared row with the position counted from the generation's first (`rebased`); an
+# answer among none is at no place.
+WideForward: fn [GenDef] -> [((Pa, Ex))]
+fn WideForward gens:
+    let none = [[(DoReturn (XCtor (RefRuntime "std::Err"), [[(XCall (RefRuntime "rt::Fault::answer"), [[(XStr "no answering place at this position")]])]]))]]
+    let chain = Fold gens, none, \|rest, gd|
+        let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
+        let moved = if gd.rebased: [[(DoLet (PaBind "rebased"), (XCall (HelperRef "rebased"), [[(XVar "at"), (XIndex gd.pos.at)]]))]] else: [[]]
+        let path = if gd.rebased: XCall (HelperRef "segments_of"), [[XRef (XVar "rebased")]] else: XVar "at"
+        let handed = Append moved, [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[DoExpr (TryOf (XMethod (XVar "row"), "answer", [[path, (XVar "v"), XCx]]))]], [[]])]]
+        [[(DoIf (XCall (HelperRef "within_positions"), [[(XVar "at"), (XIndex gd.pos.at), (XIndex gd.width)]]), handed, rest)]]
+    if (Len gens) == 0: [[]] else: [[(((PaSlice [[PaRest ""]]), (XBlock chain, (XUnit))))]]
 
 ForwardGen: fn GenDef -> Ex
 fn ForwardGen gd:
