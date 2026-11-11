@@ -513,6 +513,9 @@ fn CtorArgs env, st, c, args, ptys, self, lifts, span:
 TagApp: unbounded fn Env, St, Text, [Arg], Range, Range -> ((Ty, St))
 fn TagApp env, st, name, args, span, cspan = match env.g.tags[name]:
     nil: ((TyErr, (Err st, "unknown-name", span, "no tag `{name}`")))
+    # a fault kind is its tag alone (Semantics ch. 10): `Fs.NotFound()` applies a value
+    ? tg if (tg.kind == "Fault" or tg.kind == "Prelude.Fault") and (Len tg.fields) == 0:
+        (((TyCon tg.kind, [[]]), (ErrFix st, "mismatch", span, "`{name}` is a fault kind and takes no arguments: its value is the tag", "write `{name}`")))
     ? tg:
         let ((out, st1a, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span, [[]]
         let st1 = NamedTwice st1a, args
