@@ -119,7 +119,16 @@ fn ConvNamed cx, st, n, args, span:
                 let ((rw, st2)) = ConvRow cx, st, (Or args[0], dummyType)
                 ((TyElemAny rw, st2))
             otherwise: ((TyErr, (Err st, "kind", span, "`Elem` takes a row; here it has {CountWord (Len args)}")))
-    else: if name == "Answer" or name == "Wired":
+    else: if name == "Answer":
+        # `Answer c`: an answer to an element of any tag of row `c` (Semantics ch. 9; rulings
+        # round 12, AQ), the union of its tags' answer constructors (`AnswerType`)
+        match Len args:
+            0: (((AnswerType cx.scope), st))
+            1:
+                let ((rw, st2)) = ConvRow cx, st, (Or args[0], dummyType)
+                (((AnswerType rw), st2))
+            otherwise: ((TyErr, (Err st, "kind", span, "`Answer` takes a row; here it has {CountWord (Len args)}")))
+    else: if name == "Wired":
         (((TyCon name, [[]]), st))
     else: if name == "Instant":
         ((TyErr, (Err st, "unsupported", span, "this checker does not implement `Instant`")))

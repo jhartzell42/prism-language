@@ -77,12 +77,15 @@ fn CallGlobal env, st0, n, args, span, explicit, cspan:
     let name = SNameKey n
     let st1 = CollisionAt env, st0, why, name, n.span
     let st = match ?qk:
-        ? qk: NoteGlobal st1, n.span, qk
+        ? qk: NoteGlobal st1, n.span, (if why == "answer": AnswerTag qk else: qk)
         nil: st1
     match ?qk:
         nil: ((TyErr, (Err st, "unknown-name", n.span, "nothing declares `{name}` here")))
         ? qk:
             if why == "tag": TagApp env, st, qk, args, span, cspan
+            else: if why == "answer":
+                let ((t, st2)) = AnswerConstructor env, st, (AnswerTag qk), n.span
+                ApplyFn env, (NoteCallee st2, n.span, cspan, t), name, t, args, span
             else: if (IsLocalMaker qk) and not env.inUpdate: ((TyErr, (LocalOutside st, qk, span)))
             else: match env.g.vals[qk]:
                 ? v:

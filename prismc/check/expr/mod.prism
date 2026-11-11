@@ -321,13 +321,15 @@ InferGlobal: unbounded fn Env, St, SName, Range -> ((Ty, St))
 fn InferGlobal env, st0, n, span:
     let ((?qk, why)) = ResolveValue env.g, env.home, n
     let st1 = CollisionAt env, st0, why, (SNameKey n), span
+    # an answer constructor is its tag's module's
     let st = match ?qk:
-        ? qk: NoteGlobal st1, span, qk
+        ? qk: NoteGlobal st1, span, (if why == "answer": AnswerTag qk else: qk)
         nil: st1
     match ?qk:
         nil: ((TyErr, (Err st, "unknown-name", span, "nothing declares `{SNameKey n}` here")))
         ? qk:
             if why == "tag": TagValue env, st, qk, span
+            else: if why == "answer": AnswerConstructor env, st, (AnswerTag qk), span
             else: if (IsLocalMaker qk) and not env.inUpdate: ((TyErr, (LocalOutside st, qk, span)))
             else: match env.g.vals[qk]:
                 ? v: Instantiate (NoteMethodUse (CallId st, qk, span), v, span), v.scheme, span
@@ -364,6 +366,19 @@ fn TagValue env, st, name, span = match env.g.tags[name]:
             let ((out, st3)) = Instantiate st2, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span
             (((TyElem erow, out), st3))
         else: (((TyCon tg.kind, [[]]), st))
+
+# `Ui.Button.Answer`, the answer constructor of an element tag (Semantics rulings round 12,
+# AQ; ch. 9, `@HostList`): a function from what the tag's answer carries (`AnswerOfOutput`)
+# to an `Answer c`, for every row `c` that holds the tag's family, as the tag's element is
+# an `Element c o` of every such row. An answer of a family the row lacks is `row-lacks`.
+AnswerConstructor: unbounded fn Env, St, Text, Range -> ((Ty, St))
+fn AnswerConstructor env, st, name, span = match env.g.tags[name]:
+    nil: ((TyErr, (Err st, "unknown-name", span, "no tag `{name}`")))
+    ? tg:
+        let ((rw, st2)) = FreshRow st, [[tg.family]]
+        let answered = Rw(fams=[[tg.family]], minus=[[]], tail=rw.tail)
+        let ((out, st3)) = Instantiate st2, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span
+        (((TyFn CBound, [[AnswerOfOutput out]], (AnswerType answered)), st3))
 
 InferBound: fn Env, St, Text, Range -> ((Ty, St))
 fn InferBound env, st, b, span = match env.locals[b]:

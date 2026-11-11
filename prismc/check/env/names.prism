@@ -250,8 +250,25 @@ fn ResolveValue g, m, n:
         let last = Or (?Last n.path), ""
         let qk = QualKey qual, "{marks}{last}"
         if (Len marks) == 0 and (HasKey g.tags, (Dotted n.path)): ((? (Dotted n.path), "tag"))
+        # `Ui.Button.Answer`: the answer constructor every element tag declaration
+        # generates (Semantics rulings round 12, AQ), named under its tag. The key is the
+        # whole name, no value's, constructor's or tag's, so only a reader that asks for
+        # `"answer"` takes it (`AnswerTag` gives its tag's key)
+        else: if (Len marks) == 0 and last == answerConstructor and (DeclaresElementTag g, (Dotted (Take n.path, (Dec (Len n.path))))): ((? (Dotted n.path), "answer"))
         else: if (HasKey g.vals, qk) or (HasKey g.ctors, qk): ((? qk, ""))
         else: ((nil, "unknown"))
+
+# The name of a tag's answer constructor, under the tag's own: `Ui.Button.Answer`.
+let answerConstructor = "Answer"
+
+# The tag's key of an answer constructor's key: `Ui.Button` of `Ui.Button.Answer`.
+AnswerTag: fn Text -> Text
+fn AnswerTag constructor = Or (?BeforeSuffix constructor, ".{answerConstructor}"), constructor
+
+DeclaresElementTag: fn G, Text -> Bool
+fn DeclaresElementTag g, name = match g.tags[name]:
+    ? tg: tg.kind == "Element"
+    nil: False
 
 ResolveType: fn G, Text, [Text] -> ((?Text, Text))
 fn ResolveType g, m, path:
