@@ -1,0 +1,23 @@
+# A `rebuild` whose generation ends on a tuple written out, one part the generation's
+# value and one a bundle bound whole (Semantics ch. 4: a `rebuild`'s block gives its
+# result as any block does; Type System ch. 2, "Bundles": a plain aggregate with functor
+# values inside, nested freely). Written by Claude on the claude-lowering branch; subject
+# to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Counter: fn Nat -> @((!Click, $Nat))
+fn @Counter page:
+    !more <- Ui.Button($label=$"more on {page}")                  # 0
+    $guests <- 1 then $guests + 1 on !more
+    Ui.Label($text=$"page {page}: {$guests}")                     # 1
+    @ ((!more, $guests))
+
+@main: @unit
+@main:
+    !next <- Ui.Button($label=$"next")                            # 0
+    $page <- 1 then $page + 1 on !next
+    $kept <- rebuild $page:                                      # 1/#g
+        both <- @Counter _                                        # 1/#g/0, 1/#g/1
+        @ ((_, both))

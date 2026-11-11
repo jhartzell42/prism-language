@@ -1,8 +1,7 @@
-# Derived by hand from Semantics ch. 8 (a blueprint value is built at the applying block's next positions; `<-` binds the child's result) and ch. 9 (under a tag's arm a blueprint answers with the tag's output): the answering widget's label is 0, the arm's own label 1, the last label 2. Never run to the end: the build faults.
-test a_blueprint_of_a_tag_arm_applied
+# Derived by hand from Semantics ch. 4 (a building `match`'s arm adds no path segment) and ch. 8 (a blueprint is built at the applying block's next positions; `<-` binds its plain result): the widget builds 0 and gives 4.
+test a_blueprint_made_under_a_tag_arm
 
 tick 0
   added:
-    0: Ui.Label(text="answering a")
-    1: Ui.Label(text="heard yes a")
-    2: Ui.Label(text="end")
+    0: Ui.Label(text="answering 3")
+    1: Ui.Label(text="got 4")

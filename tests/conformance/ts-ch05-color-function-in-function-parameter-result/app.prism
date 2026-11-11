@@ -1,0 +1,19 @@
+# A function of its callee's own color in the parameter of the function a call returns, at
+# a call that makes the color bounded (Type System ch. 5: a color variable is decided at
+# each call; a function is a value and a function may give one back). Written by Claude
+# on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Taker: u fn (u fn Nat -> Nat) -> (fn (u fn Nat -> Nat) -> Nat)
+fn Taker F = \|G| (G 1) + (F 2)
+
+Through: fn Nat -> Nat
+fn Through k:
+    let Take = Taker (\|n| n + 1)
+    Take (\|n| n * k)
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Through 5}")                               # 0

@@ -1,0 +1,20 @@
+# A widget block's `let` of a record pattern that binds the record's event field
+# (Semantics ch. 4: `let` binds by any pattern that cannot fail; Type System ch. 2: a
+# record with a functor value inside is a bundle, and its constructor's parameters take
+# their arguments whole). Written by Claude on the claude-lowering branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Knob = record:
+    name: Text
+    !turned: Click
+
+@main: @unit
+@main:
+    !go <- Ui.Button($label=$"go")                                # 0
+    let knob = Knob(name="k", !turned=!go)
+    let Knob(name=name, !turned=!t) = knob
+    $turns <- 0 then $turns + 1 on !t
+    Ui.Label($text=$"{name}: {$turns}")                           # 1
