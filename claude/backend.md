@@ -139,6 +139,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
 ## Functions and lifting
 
 - **A plain function** → a Rust `fn` taking references, its clauses one `match`.
+- **A type parameter** of a function, of an impl and of a trait method's own is bounded
+  `'static` in Rust (`StaticGenerics`, in a trait's declaration, its impls and its packed
+  dictionary alike): every Prism type lives as long as the program, and a body may ask a
+  type's key (`type_key`) or build a closure or a job over it.
 - **A guard no checked program reaches** is an internal error: `InternalBug`,
   `InternalBugDo`, `InternalBugType` put "a prismc bug: .." where a refusal's words go, and
   `CompileProgram` reports it as `error[internal]`.

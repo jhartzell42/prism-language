@@ -72,7 +72,9 @@ fn RustTrait t:
 Signature: unbounded fn FnDef, Text -> Text
 fn Signature f, vis:
     let params = Join (Each f.params, \|((n, t))| "{n}: {Type t}"), ", "
-    "{vis}fn {f.name}{Generics f.generics}({params}) -> {Type f.ret}"
+    # A method's own type parameters live as long as the program, as a function's do
+    # (`RustFn`): its body may ask a type's key or build a closure over them.
+    "{vis}fn {f.name}{StaticGenerics f.generics}({params}) -> {Type f.ret}"
 
 TraitMethod: unbounded fn FnDef -> Text
 fn TraitMethod f = if f.public: Fn "", (Signature f, ""), (BodyLines f.body) else: "{Signature f, ""};"
