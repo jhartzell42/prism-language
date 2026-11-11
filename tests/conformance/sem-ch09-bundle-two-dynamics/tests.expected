@@ -1,0 +1,19 @@
+# Derived by hand from Type System ch. 2 ("Bundles and sparse tuples") and Semantics ch. 8 ("A new place's first value": the first-value query answers at the build; "The patch": pushes are keyed by the element's `Level`): the first value fills both `$` parts, and each push moves the parts whose values it changes.
+test two_dynamics
+
+tick 0
+  added:
+    0: Pad.Link(address="chat:7000")
+    1: Ui.Label(text="up, 2 peers")
+
+tick 1
+  in:
+    Pad.Link(address="chat:7000") = (("down", 2))
+  changed:
+    1: Ui.Label(text="down, 2 peers")
+
+tick 2
+  in:
+    Pad.Link(address="chat:7000") = (("up", 5))
+  changed:
+    1: Ui.Label(text="up, 5 peers")

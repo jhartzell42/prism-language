@@ -1,0 +1,26 @@
+# A widget that gives a dynamic back, taken as a blueprint value; the block that applies it binds the dynamic
+# (Semantics ch. 8: "a blueprint builds nothing until a block applies it", at the applying
+# block's next positions; Type System ch. 2: a blueprint is an opaque handle and still a
+# value; ch. 4: a building `match`'s arm adds no path segment). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Live: @$Nat
+@Live:
+    !inc <- Ui.Button($label=$"inc")
+    $n <- 7 then $n + 1 on !inc
+    @ $n
+
+@Page: fn Bool -> @unit
+fn @Page b:
+    match ?Pick b, @Live:                                        # 0 and 1, or 0
+        ? @$t:
+            $d <- @$t
+            Ui.Label($text=$"live {$d}")
+        nil: Ui.Label($text=$"none")
+    Ui.Label($text=$"end")                                       # 2, or 1

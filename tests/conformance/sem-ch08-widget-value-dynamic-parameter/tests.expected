@@ -1,0 +1,26 @@
+# Derived by hand from Semantics ch. 4 (a building `match`'s arm adds no path segment), ch. 8 (a blueprint builds nothing until a block applies it; it is built at the applying block's next positions) and ruling TC (places counted as built): the blueprint keeps the dynamic it was made with, so its place moves in the click's tick.
+test picked
+
+tick 0
+  added:
+    0: Ui.Button(label="inc")
+    1: Ui.Label(text="meter 7")
+    2: Ui.Label(text="end")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="meter 8")
+
+test not_picked
+
+tick 0
+  added:
+    0: Ui.Button(label="inc")
+    1: Ui.Label(text="none")
+    2: Ui.Label(text="end")
+
+tick 1
+  in:
+    0: click

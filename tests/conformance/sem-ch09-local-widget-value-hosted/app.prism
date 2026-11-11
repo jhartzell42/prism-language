@@ -1,0 +1,25 @@
+# A widget defined in a block, taken as a blueprint value and applied, in a hosted scope:
+# the child of a forwarding host (Semantics ch. 8: "a blueprint builds nothing until a
+# block applies it"; ch. 9: a forwarded element is re-emitted at `host/[p]/0`).
+# sem-ch09-blueprint-value-hosted with the block's own widget. Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@child: @unit
+@child:
+    let k = 7
+    @line:
+        Ui.Label($text=$"line {k}")
+    match ?Pick True, @line:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    Ui.Label($text=$"end")
+
+@main: @unit
+@main:
+    ignore <- @HostDocument @child, \|p, e| @Element e

@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": the order of a group's lines decides positions and nothing else), ch. 8 (a widget application is transparent; `<-` binds its result) and ruling TC (places counted as built: the loud arm builds place 1, so the last label is 2; the soft arm builds none, so it is 1).
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="tile 10")
+    1: Ui.Label(text="x")
+    2: Ui.Label(text="below 10, twice 20")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="tile 20")
+    1: Ui.Label(text="below 20, twice 40")

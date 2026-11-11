@@ -1,0 +1,25 @@
+# A supplier's bundle answer whose parts read the block around the host's own: the host
+# stands in a row and answers with the outer block's event and hold (Semantics ch. 9, "How
+# a supplier answers"; ch. 4: a row reads the names of the blocks around it; round 3 DY;
+# Type System ch. 2, "Bundles"). Written by Claude on the claude-lowering branch; subject
+# to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Socket of Element ((!Text, $Nat)):
+    address: Text
+
+@chat: @unit
+@chat:
+    ((!rx, $peers)) <- Pad.Socket(address="chat:7000")
+    $last <- "none" then !rx
+    Ui.Label($text=$"{$peers}: {$last}")
+
+@host: @unit
+@host:
+    !more <- Ui.Button($label=$"more")
+    $n <- 0 then $n + 1 on !more
+    for k, name <- {1: "one"}:
+        ignore <- @HostDocument @chat, \|p, e| match e:
+            Pad.Socket(..): @ (("hello" on !more, $n))
+            otherwise: @Element e

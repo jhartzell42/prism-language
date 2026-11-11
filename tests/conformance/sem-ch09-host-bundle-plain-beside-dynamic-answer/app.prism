@@ -1,0 +1,22 @@
+# A supplier answers a bundle of a plain part and a `$` part with a value and a dynamic of
+# the host (Type System ch. 2, "Bundles and sparse tuples"; Semantics ch. 9, "How a
+# supplier answers"; round 3 DY: the `$` part's later changes are pushes delivered the
+# next tick). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Port of Element ((Nat, $Text)):
+    address: Text
+
+@chat: @unit
+@chat:
+    ((id, $state)) <- Pad.Port(address="chat:7000")
+    Ui.Label($text=$"port {id}: {$state}")
+
+@mocked: @unit
+@mocked:
+    !flip <- Ui.Button($label=$"flip")
+    $mood <- "idle" then "busy" on !flip
+    ignore <- @HostDocument @chat, \|p, e| match e:
+        Pad.Port(..): @ ((7, $mood))
+        otherwise: @Element e
