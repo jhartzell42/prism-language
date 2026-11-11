@@ -707,7 +707,8 @@ fn DynamicAnswers wx, benv, menv, hf, k, sup:
 # `let` of the block names, in the supplier's place; and the argument of a widget's
 # blueprint parameter the supplier names (`fn @Hosting @answer:` whose supplier's arm
 # gives `@answer`), in its caller's environments, a parameter handed on followed to its
-# own argument.
+# own argument; and the clauses of a function of the block the supplier calls, in the
+# supplier's place.
 AnswerTexts: unbounded fn Lx, Env, Env, [Expr], Nat -> [((Expr, Env, Env, Lx))]
 fn AnswerTexts lx, benv, menv, written, depth = Fold written, [[]], \|acc, x|
     let own = Push acc, ((x, benv, menv, lx))
@@ -716,6 +717,10 @@ fn AnswerTexts lx, benv, menv, written, depth = Fold written, [[]], \|acc, x|
             ? (BnWidget held, ignore, ignore, ignore): Append own, (AnswerTexts lx, benv, menv, (ExprsIn held), (Dec depth))
             otherwise: match menv.names[SNameKey n]:
                 ? (BnWidget argument, cbenv, cmenv, clx): Append own, (AnswerTexts clx, cbenv, cmenv, (ExprsIn argument), (Dec depth))
+                # a function of the block the supplier calls (`fn @Supply e` beside the
+                # host's line): inlined where it is called (`InlineLocalFn`), so its
+                # clauses' text is the supplier's, read at that use's instantiation
+                ? (BnLocalFn cs): Fold cs, own, \|more, c| Append more, (AnswerTexts (LocalFnLx lx, x.span), benv, menv, (ClauseExprs c), (Dec depth))
                 otherwise: own
         otherwise: own
 

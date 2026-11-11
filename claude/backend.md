@@ -953,7 +953,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the supplier's link (`ParameterEnv`): `DynamicAnswers` reads the argument with its
     caller's environments (`AnswerTexts`, a parameter handed on followed to its own
     argument), and the supplier's closure captures what the argument reads from the
-    caller's environment (`LambdaCaptures`). A computed answer in flight to a place whose key left is
+    caller's environment (`LambdaCaptures`). An answer in a function of the block the
+    supplier calls (`fn @Supply e` beside the host's line) is the supplier's text too:
+    the function is inlined where it is called, and `AnswerTexts` reads its clauses.
+    A computed answer in flight to a place whose key left is
     dropped. Nested hosts add one tick per computing layer and none per
     forwarding layer.
 - **First values.** A child place with a first value asks the host at its build

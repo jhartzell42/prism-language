@@ -34,8 +34,11 @@ Hosting
   sem-ch09-host-bundle-answer-parent-part); an answer through a blueprint a `let` names
   (sem-ch09-host-dynamic-answer-let, sem-ch09-host-event-answer-let).
   lower/expr.prism (`DynamicBlueprint`, `WrittenPart`): the two refusals stand for a
-  dynamic answer whose line made no getter for it, which no program reaches now that
-  `DynamicAnswers` makes one for every dynamic answer (unsure: G).
+  dynamic answer whose line made no getter for it, which no known program reaches:
+  `DynamicAnswers` makes one for every dynamic answer in the supplier's text, a
+  blueprint `let`, a blueprint parameter's argument and a function of the block the
+  supplier calls (sem-ch09-host-local-supplier-dynamic-answer,
+  sem-ch09-host-local-supplier-bundle-answer). Unsure: G.
 - `@ x` outside a tag arm is lowered: plain data in `Answer`'s case of no tag, read by
   the place that takes it (sem-ch09-host-answer-without-arm); a value that is no plain
   data (a function) held as it is and read at the type of the line that binds it
