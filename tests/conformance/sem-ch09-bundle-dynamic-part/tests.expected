@@ -1,0 +1,25 @@
+# Derived by hand from Type System ch. 2 ("Bundles") and Semantics ch. 8 ("A new place's first value": the `$` part's first value from the first-value query; "The patch": answers and pushes on two channels; a response is addressed by path, a state keyed by the element's value) and ch. 9 (`@Offline`: a supplier answers the bundle part by part, `never` for the event, a constant dynamic for the `$` part, read at the place's build).
+test a_socket_under_the_world
+
+tick 0
+  added:
+    0: Pad.Socket(address="chat:7000")
+    1: Ui.Label(text="up: none")
+
+tick 1
+  in:
+    0: "hello"
+  changed:
+    1: Ui.Label(text="up: hello")
+
+tick 2
+  in:
+    Pad.Socket(address="chat:7000") = "down"
+  changed:
+    1: Ui.Label(text="down: hello")
+
+test a_socket_offline
+
+tick 0
+  added:
+    0/[1]/0: Ui.Label(text="offline: none")
