@@ -1,0 +1,9 @@
+# The tests of sem-appB-later.
+emit Ui.* | Time.*
+use App.*
+
+test a_firing_comes_back_a_tick_later, @page:
+    build
+    click at 0
+        => requested Time.After, Wake(after=0s, context="")
+    send at 1, Wake(after=0s, context="")
