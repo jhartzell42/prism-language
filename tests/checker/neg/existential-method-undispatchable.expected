@@ -1,0 +1,13 @@
+tests/checker/neg/existential-method-undispatchable.prism:34: error[existential-method]: `Weigh` cannot be asked of the value packed in `any ^Blank`: it takes the trait's type inside `[a]`, and a collection of packed values has no one dictionary
+        let weighed = Weigh h, [[]]
+                      ^^^^^^^^^^^^^
+  fix: ask it of a value whose type is known, before `any` packs it
+tests/checker/neg/existential-method-undispatchable.prism:35: error[existential-method]: `Convert` cannot be asked of the value packed in `any ^Blank`: it has a type parameter of its own, `b`, and a packed value's dictionary holds one function for a method
+        let converted = Convert h, \|n| n + 1
+                        ^^^^^^^^^^^^^^^^^^^^^
+  fix: ask it of a value whose type is known, before `any` packs it
+tests/checker/neg/existential-method-undispatchable.prism:36: error[existential-method]: `Fresh` asks `^Blank` of the value packed in `any ^Blank`, and its method `Weigh` cannot be asked of one: it takes the trait's type inside `[a]`, and a collection of packed values has no one dictionary
+        let fresh = Fresh h
+                    ^^^^^^^
+  fix: ask it of a value whose type is known, before `any` packs it
+3 errors
