@@ -1,0 +1,6 @@
+# The tests of ts-ch03-unbounded-method-as-value.
+emit Ui.*
+use App.*
+
+test it_builds, @Page:
+    build
