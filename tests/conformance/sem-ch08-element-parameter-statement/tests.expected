@@ -1,0 +1,28 @@
+# Derived by hand from Semantics ch. 8 ("Elements and the element statement": `@Element e` is the element statement at the same path, each taking the next number; a widget application is transparent; a `$` field is live, so the place changes in place) and Type System ch. 2 (an element is a plain value until a statement or a host places it): the passed button's label follows `$n` in the tick of the click, and its clicks are `!go`'s.
+test a_passed_element_is_placed
+
+tick 0
+  added:
+    0: Ui.Button(label="inc")
+    1: Ui.Label(text="frame")
+    2: Ui.Button(label="go 0")
+    3: Ui.Button(label="more!")
+    4: Ui.Label(text="went 0, shouts 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2: Ui.Button(label="go 1")
+
+tick 2
+  in:
+    2: click
+  changed:
+    4: Ui.Label(text="went 1, shouts 0")
+
+tick 3
+  in:
+    3: click
+  changed:
+    4: Ui.Label(text="went 1, shouts 1")

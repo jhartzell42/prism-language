@@ -1,0 +1,8 @@
+# The tests of sem-ch07-root-bundle-two-dynamics.
+emit Ui.*
+use App.*
+
+test a_root_ends_on_two_dynamics, @main:
+    build
+    click at 0
+    click at 1
