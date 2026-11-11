@@ -87,9 +87,13 @@ Hosting
   method's own (sem-ch08-widget-value-generic-at-method-type-parameter). Left
   refused (`OpenWidgetValueWords`): a generic one read where a type parameter stays
   open and the program gives the definition it stands in no finite set of types
-  (`?DefInstances`, `GrowsFrom`: a line of instantiations that holds one definition
-  twice, the earlier types embedded in the later;
-  sem-ch08-widget-value-generic-function-at-ever-larger-types, R; the plain function
+  (`?DefInstances`, `GrowsFrom`: a line of instantiations by uses by name that gives a
+  type parameter a larger type holding itself, which is endless,
+  sem-ch08-widget-value-generic-function-at-ever-larger-types, R; and a line through a
+  constraint an impl solves that holds one definition twice, the earlier types
+  embedded in the later, which may be a finite program's: R, no test; types that grow
+  by uses by name and then stay are followed,
+  sem-ch08-widget-value-generic-function-grows-once; the plain function
   alone is refused by rustc, ts-ch02-function-at-ever-larger-types), one with a `$` or event parameter with time below its top (no
   tests);
   one read in a place `ValuedWidgets` does not look (a record's field read back and

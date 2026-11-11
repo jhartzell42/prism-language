@@ -407,6 +407,10 @@ type Instantiation = record:
     definition: Text
     types: [((Text, Ty))]
     ?parent: Nat
+    # The use by name that gave it: each of its type parameters as the use wrote it,
+    # a type over the parent's type parameters. `nil` for a constraint an impl solves
+    # and for a use whose types hold an associated type.
+    ?step: [((Text, Ty))]
 derive ^Eq, ^Show
 
 # Every use of a generic function or widget and every constraint an impl solves, over
@@ -508,35 +512,69 @@ fn ?GrowInstances lx, uses, relevant, all, next = match all[next]:
 
 # What the uses in `user`'s body instantiate at the types `types` give `user`'s type
 # parameters, added to `all` where new. No answer where a use leaves a type parameter
-# undecided, and where the program has no finite set of instantiations: a new one whose
-# line of parents holds the same definition at types that are embedded in its own (each
-# found again inside the new one's) would be followed by ever larger ones. Any endless
-# line of instantiations holds such a pair (the types are finite trees over the
-# program's finitely many type formers), so the fixed point ends without a count.
+# undecided, and where the program has no finite set of instantiations (`GrowsFrom`).
 ?AddTargets: unbounded fn Lx, [InstanceUse], [Text], [Instantiation], Text, [((Text, Ty))], ?Nat -> ?[Instantiation]
 fn ?AddTargets lx, uses, relevant, all, user, types, ?parent = Fold uses, (? all), \|?acc, site| match ?acc:
     nil: nil
     ? acc: if (UseUser site) != user: ? acc else: match ?UseTargets lx, site, types:
         nil: nil
-        ? targets: Fold targets, (? acc), \|?sofar, ((definition, taken))| match ?sofar:
+        ? targets: Fold targets, (? acc), \|?sofar, ((definition, taken, ?step))| match ?sofar:
             nil: nil
             ? sofar:
                 let known = Fold sofar, False, \|seen, other| seen or (other.definition == definition and (Show other.types) == (Show taken))
                 if known or not (HasText relevant, definition): ? sofar
-                else: if GrowsFrom sofar, ?parent, definition, taken: nil
-                else: ? (Push sofar, Instantiation(definition=definition, types=taken, ?parent=?parent))
+                else: if GrowsFrom lx, sofar, ?parent, definition, taken, ?step: nil
+                else: ? (Push sofar, Instantiation(definition=definition, types=taken, ?parent=?parent, ?step=?step))
 
-# Whether the line of parents from `?at` holds `definition` at types embedded in `types`.
-GrowsFrom: unbounded fn [Instantiation], ?Nat, Text, [((Text, Ty))] -> Bool
-fn GrowsFrom all, ?at, definition, types = match ?at:
+# Whether a new instantiation of `definition` at `types` is one of an endless line: the
+# line of its parents from `?at` holds the same definition, and what led from there to
+# here would lead on from here for ever.
+# Where every step between the two is a use by name, the steps make one substitution
+# (`?composed`: each of the definition's type parameters as a type over the same
+# parameters, whatever types the earlier instantiation has), and the same steps are
+# taken again from the new instantiation, since every use in a body is followed at
+# every instantiation. The line is endless exactly when the substitution gives some
+# parameter a larger type that holds the parameter itself (`a` becomes `[a]`): each
+# round then makes that parameter's type larger. A substitution that gives none such
+# (`a` becomes `[b]`, `b` becomes `Nat`) is no reason to stop.
+# Where a step between the two is a constraint an impl solves, or its types hold an
+# associated type, which impl answers the next round depends on the types, and no
+# substitution says what follows: the line is taken for endless when the earlier types
+# are embedded in the new ones, each found again inside (`Embeds`).
+# The fixed point ends without a count. An endless line of instantiations has endlessly
+# many steps by an impl, and then two instantiations of one definition with such a
+# step between them and the earlier embedded in the later (the types are finite trees
+# over the program's finitely many type formers); or from some point on only uses by
+# name, and then types of unbounded depth, each layer added by one step to a parameter
+# of a definition, so some parameter of some definition is reached again from itself
+# with a layer added between: the substitution between those two holds it inside its
+# own larger type.
+GrowsFrom: unbounded fn Lx, [Instantiation], ?Nat, Text, [((Text, Ty))], ?[((Text, Ty))] -> Bool
+fn GrowsFrom lx, all, ?at, definition, types, ?composed = match ?at:
     nil: False
     ? at: match all[at]:
         nil: False
         ? above:
-            let embedded = above.definition == definition and (Len above.types) == (Len types) and Fold (Range0 (Len types)), True, \|every, i| every and match ((above.types[i], types[i])):
-                ((? ((ignore, small)), ? ((ignore2, large)))): Embeds small, large
-                otherwise: False
-            embedded or GrowsFrom all, above.?parent, definition, types
+            let grows = above.definition == definition and match ?composed:
+                ? composed: Fold composed, False, \|found, ((q, t))| found or (t != (TyRigid q) and HasText (RigidsIn t), q)
+                nil: (Len above.types) == (Len types) and Fold (Range0 (Len types)), True, \|every, i| every and match ((above.types[i], types[i])):
+                    ((? ((ignore, small)), ? ((ignore2, large)))): Embeds small, large
+                    otherwise: False
+            let ?further = match ((?composed, above.?step)):
+                ((? composed, ? step)):
+                    let lxStep = update lx:
+                        &_.subst <= Fold step, {}, \|m, ((q, t))| Insert m, q, t
+                        &_.csubst <= {}
+                    ? (Each composed, \|((q, t))| ((q, (SubstTyIn lxStep, t))))
+                otherwise: nil
+            grows or GrowsFrom lx, all, above.?parent, definition, types, ?further
+
+# Whether a type holds an associated type, which stands for another type once its
+# argument is known.
+HoldsAssociated: unbounded fn Ty -> Bool
+fn HoldsAssociated t = match t:
+    TyAssoc ignore, ignore, ignore2: True
+    otherwise: Fold (PartsOfType t), False, \|found, part| found or HoldsAssociated part
 
 # Whether one type is found inside another, former by former (the homeomorphic
 # embedding of trees): the same type, or found inside one of the other's parts, or of
@@ -581,7 +619,7 @@ fn TypeFormer t = match t:
 # use by name, that definition at the types the use gives, read at `types`; a solved
 # constraint, the methods of the impl whose head the type has (`ImplTargets`). No answer
 # where a type parameter stays undecided.
-?UseTargets: unbounded fn Lx, InstanceUse, [((Text, Ty))] -> ?[((Text, [((Text, Ty))]))]
+?UseTargets: unbounded fn Lx, InstanceUse, [((Text, Ty))] -> ?[((Text, [((Text, Ty))], ?[((Text, Ty))]))]
 fn ?UseTargets lx, site, types:
     let lxu = update lx:
         &_.subst <= Fold types, {}, \|m, ((q, t))| Insert m, q, t
@@ -592,13 +630,17 @@ fn ?UseTargets lx, site, types:
                 let read = Fold rigids, {}, \|m, q| match found[q]:
                     ? t: Insert m, q, (SubstTy lxu, t)
                     nil: m
+                let written = Fold (SortTexts rigids), [[]], \|acc, q| match found[q]:
+                    ? t: Push acc, ((q, t))
+                    nil: acc
+                let ?step = if Fold written, False, \|held, ((ignore, t))| held or HoldsAssociated t: nil else: ? written
                 match ?ClosedTypes rigids, read:
-                    ? taken: ? [[((target, taken))]]
+                    ? taken: ? [[((target, taken, ?step))]]
                     nil: nil
             nil: nil
         UseOfImpl ignore, cls, ty:
             let at = SubstTy lxu, ty
-            if (Len (RigidsIn at)) > 0: nil else: ? (ImplTargets lx, cls, at)
+            if (Len (RigidsIn at)) > 0: nil else: ? (Each (ImplTargets lx, cls, at), \|((definition, taken))| ((definition, taken, nil)))
         # a method with type parameters of its own, named: the method of the impl whose
         # head the trait's parameter has there (or the trait's default that impl leaves
         # unwritten), at the head's types and at the types the use gives the method's own
@@ -606,16 +648,17 @@ fn ?UseTargets lx, site, types:
             ? v:
                 let cls = Or (Each v.scheme.bounds, \|((ignore, bound))| bound)[0], ""
                 let own = MethodOwnRigids lx, cls, methodQk
-                let ?ownTypes = ?ClosedTypes own, (Fold own, {}, \|m, q| match found[q]:
+                let ownRead = Fold own, {}, \|m, q| match found[q]:
                     ? t: Insert m, q, (SubstTy lxu, t)
-                    nil: m)
+                    nil: m
+                let ?ownTypes = ?ClosedTypes own, ownRead
                 let ?at = match lx.g.traits[cls]:
                     ? tr: match found[tr.param]:
                         ? t: ? (SubstTy lxu, t)
                         nil: nil
                     nil: nil
                 match ((?ownTypes, ?at)):
-                    ((? ownTypes, ? at)): if (Len (RigidsIn at)) > 0: nil else: ? (MethodTargets lx, cls, methodQk, at, ownTypes)
+                    ((? ownTypes, ? at)): if (Len (RigidsIn at)) > 0: nil else: ? (Each (MethodTargets lx, cls, methodQk, at, ownTypes), \|((definition, taken))| ((definition, taken, nil)))
                     otherwise: nil
             nil: nil
 

@@ -603,10 +603,20 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the types the name's type gives the method's own (`DefinitionRigids` counts both;
     `ImplTargets` leaves such a method out). Only the definitions that can
     reach the one asked for are followed (`RelevantDefinitions`). The fixed point has
-    no count: it stops with no answer where a new instantiation's line of parents
-    holds the same definition at types embedded in the new one's (`GrowsFrom`,
-    `Embeds`: each type found again inside the larger), since every endless line of
-    instantiations holds such a pair. The function is a target generic, lowered once,
+    no count (`GrowsFrom`). Each instantiation keeps the use by name that gave it
+    (`Instantiation.?step`: its type parameters as types over its parent's). Where a
+    new instantiation's line of parents holds the same definition and every step
+    between is a use by name, the steps make one substitution over the definition's
+    type parameters, and the fixed point stops with no answer exactly when that
+    substitution gives a parameter a larger type that holds the parameter itself
+    (`a` becomes `[a]`): the same steps are taken again from the new instantiation,
+    for ever. Types that grow and then stay (`?Wrapped x, y` calling `?Wrapped [[y]],
+    less`: `a` becomes `[b]`, `b` becomes `Nat`) are followed to their end. Where a
+    step between the two is a constraint an impl solves, or holds an associated
+    type, no substitution says what follows, and the fixed point stops where the
+    earlier types are embedded in the new one's (`Embeds`: each type found again
+    inside the larger). Every endless line of instantiations meets one of the two
+    stops. The function is a target generic, lowered once,
     so where it runs it chooses among those rows by its type parameters
     (`?OpenWidgetBlueprintValue`: prism_rtl's `type_key` of each against the
     instantiation's types; two instantiations of one target type are one choice); the
