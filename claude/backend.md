@@ -408,7 +408,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **`$ v` over a value that holds time below its top** (`$ (($level, "main"))`, a
   `$(($Nat, Text))`; `ConstantOfTimeAt`) builds `v` with its dynamics whole: each reader
   in it is the live `Dynamic` the line makes for it (`WholeArgsAt`), so the tuple holds
-  `$level` itself and never a copy of its value.
+  `$level` itself and never a copy of its value. A hold whose value holds time below its
+  top takes its initial value whole in the same way, a name (`$$cur <- $a then ..`) or a
+  value written over readers (`$held <- (($a, "s")) then ..`).
 - **`any x` of `^Show` alone** is `Rc::new(x)` cast to `Rc<dyn Show>` where it is made
   (`AnyValue`): an argument behind a reference and an array's element are not coerced.
 - **A module's lowercase declaration written qualified** (`Words.base`) is parsed as a
