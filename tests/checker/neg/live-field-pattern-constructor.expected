@@ -1,0 +1,21 @@
+tests/checker/neg/live-field-pattern-constructor.prism:23: error[live-field-pattern]: an element's `$lit` binds its dynamic; `True` would test a value the field has only in a tick
+        Pad.Dial($lit=True): True
+                      ^^^^
+  fix: bind it, `$lit=$l`, and read `$l` where a tick reads it
+tests/checker/neg/live-field-pattern-constructor.prism:28: error[live-field-pattern]: an element's `$lit` binds its dynamic; `$True` would test a value the field has only in a tick
+        Pad.Dial($lit=$True): True
+                      ^^^^^
+  fix: bind it, `$lit=$l`, and read `$l` where a tick reads it
+tests/checker/neg/live-field-pattern-constructor.prism:33: error[live-field-pattern]: an element's `$mode` binds its dynamic; `$Loud` would test a value the field has only in a tick
+        Pad.Dial($mode=$Loud): True
+                       ^^^^^
+  fix: bind it, `$mode=$m`, and read `$m` where a tick reads it
+tests/checker/neg/live-field-pattern-constructor.prism:38: error[live-field-pattern]: an element's `$pair` binds its dynamic; `((0, b))` would test a value the field has only in a tick
+        Pad.Dial($pair=((0, b))): True
+                       ^^^^^^^^
+  fix: bind it, `$pair=$p`, and read `$p` where a tick reads it
+tests/checker/neg/live-field-pattern-constructor.prism:43: error[live-field-pattern]: an element's `$?last` binds its dynamic; `? n` would test a value the field has only in a tick
+        Pad.Dial($?last=? n): True
+                        ^^^
+  fix: bind it, `$?last=$?l`, and read `$?l` where a tick reads it
+5 errors
