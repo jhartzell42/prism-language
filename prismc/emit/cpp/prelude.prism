@@ -1155,6 +1155,24 @@ Answer answer_held(T v) {
     return Answer(Answer::Held_a{std::any(std::move(v))});
 }
 
+/// A blueprint whose held answers are made again (`answer_held`): one that holds the
+/// output whole, a `W`, through `whole`; one that holds one firing's or one move's value,
+/// a `P`, through `part`. Any other answer holds no such value and is itself.
+/// (`W` and `P` are the two closures' parameter types.)
+template <class Closure, class Result, class Held>
+Held held_parameter_of(Result (Closure::*)(const Held&) const);
+
+template <class Whole, class Part>
+::prism_rtl::Blueprint<Elem, Answer> held_answers_mapped(::prism_rtl::Blueprint<Elem, Answer> blueprint, Whole whole, Part part) {
+    using W = decltype(held_parameter_of(&Whole::operator()));
+    using P = decltype(held_parameter_of(&Part::operator()));
+    return ::prism_rtl::answers_mapped<Elem, Answer>(std::move(blueprint), [whole, part](const Answer& answer) -> Answer {
+        if (auto held = answer.template held_as<W>()) return answer_held(whole(*held));
+        if (auto held = answer.template held_as<P>()) return answer_held(part(*held));
+        return answer;
+    });
+}
+
 /// An answer held whole (`answer_held`), read at the type of the line that binds it.
 template <class T, class A>
 Result<T> held_answer(const A& answer) {

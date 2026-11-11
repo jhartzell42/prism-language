@@ -122,6 +122,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   right, whose present arm is the plain expression over the peeled values, wrapped back
   (`match get(ps, k) { Some(o) => Some(o.a.clone()), None => None }`), and whose absent arm
   is `None` (the leftmost `Err`). An unbounded call lifted so is a frame that matches first (below).
+- **A function that takes time whole** (`IsWholeFn`: a `$` or `!` below the top of a
+  parameter or of its result, `fn !Fired ((!made, more))`) takes and gives `Dynamic`s and
+  `Event`s. A `$` or `!` binder of a pattern in its body names the `Dynamic` or `Event`
+  itself (`RustPat`), and an application the checker lifted over one maps it
+  (`EventValueOf`, `DynamicLift`).
 - **`&` blocks** → native mutation of a fresh or unique value: `Rc::make_mut`, and the
   persistent collections' in-place updates (Compiler ch. 3, "Unique values").
 - **Fault `~`**: a fallible expression is a `Result<_, rt::Error>` and `?` propagates;
@@ -361,11 +366,23 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `Words` is in scope and the module declares the value (`?QualifiedField`).
 - **A generic widget's type variable in an element parameter's output** (`Element Ui.*
   o`) is matched at the call as any parameter's is (`?ParamMatch`, `Unrigid`, `RigidsIn`).
-- **A bundle with a late plain part bound whole to one name** is the name's parts
-  (`BindWhole`): an event or a dynamic as the line gives it, a plain part a getter of
-  the node; the lines below the split read the name part by part through the node
-  (`RowPartsBn`). A late plain part bound by a pattern of its own gives each name a
+- **A bundle with a late plain part bound whole to one name** is the name's parts,
+  bound before any line of the block is lowered (`PreBindWhole`): an event part a node
+  of the block that the line's event feeds once the line is built (`BindWhole`), a
+  dynamic part a getter defined then, a plain part a getter of the node over its read,
+  with no value at the build. The name is late (`{name}#late`): a building line above
+  the split that reads it (`@Counter both` above `both <- @Choose mode`) is built after
+  the row that gives the part (`DeferredLine`) and reads the parts through the node, as
+  the lines below the split do (`RowPartsBn`). Another name for it (`let same = both`)
+  is late as it is. A late plain part bound by a pattern of its own gives each name a
   getter that matches the part by the pattern (`LateName.within`).
+- **A `let` of a bundle written out whose plain part reads a late name** (`let pair =
+  ((n + 1, !go))` above `n <- match ..`) is late too (`MarkLateLets`, `MarkLateBundle`):
+  the plain part is a getter computed from the node, with no value at the build
+  (`LateBundleLet`); the other parts are bound as any bundle's; a building line that
+  reads the name waits for the late result (`DeferredLine`). Refused: a `let` in the
+  block's node whose tuple pattern takes a late bundle apart and names its plain part
+  (the part has no value at the build), and a late bundle read as one value.
 - **The split block's lines read each other across the split** (Semantics ch. 4: line
   order decides positions and nothing else):
   - the lines below that build no place (a hold, a `let`, a local function, a local
@@ -397,7 +414,16 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the split that such a line reads is the node's late `let` (`HoistedLines`). Two
     such lines are refused: one whose places are counted as built (a building `match`
     or `if` inside it: the rows after it were numbered before it was built), and one
-    that gives a plain result of its own.
+    that gives a plain result of its own;
+  - a building `match` or `if` above that reads the plain result of a building `match`
+    or `if` (`if n > 15:` above `n <- match mode:`) needs the result before either row
+    is numbered. Where every arm gives its result from what it reads of the block, its
+    own pattern and its own plain `let`s, and from nothing its own lines build
+    (`IsPureChoiceAt`), the result is computed in the block's build as a plain `match`
+    or `if` over the arms' plain `let`s and results (`PureChoiceValue`): the line is
+    not late, the block is not split at it, and both generations are built in place
+    order (ruling TC), the row's own copy of the result unread. An arm whose result
+    reads what its own lines build is the refused case above.
 - **A line is late** (`IsLateExpr`) when it is a building `match` or `if` with a plain
   result, a widget block or a widget of one clause whose block ends late, a widget
   parameter applied whose argument is late (read in the caller's environment), or a
@@ -534,9 +560,21 @@ it make every program an interpreter run, and every type mistake a runtime fault
     widget and those types (`ValuedKey`), `Lx.valuedAt` lists a widget's readings in
     the order the program has them; each has rows of its own, lowered with the types in
     the substitution (`AtInstance`, `ValInfoAt`) and named `{Widget}_value_at{k}_{i}`
-    (`ValuedStemAt`). A reading that leaves a type parameter open (it stands in a
-    generic function or widget, whose own parameter it is given) has no rows and is
-    refused where it is read.
+    (`ValuedStemAt`). A reading that leaves a type parameter open stands in a generic
+    function, whose own parameter it is given (`fn ?Wrapped x = ?Pick True, (@Shown x,
+    "n")`): it has rows for the types each of that function's instantiations gives it
+    (`PlacedWidget`). A definition's instantiations are the types its uses give its
+    type parameters over the whole program, a use in another generic definition's body
+    at each of that one's own (`?DefInstances`; `Lx.inDefinition` names the definition
+    being lowered). The function is a target generic, lowered once, so where it runs
+    it chooses among those rows by its type parameters (`?OpenWidgetBlueprintValue`:
+    prism_rtl's `type_key` of each against the instantiation's types; two
+    instantiations of one target type are one choice); the arguments are read at the
+    function's own types and are the row's by the choice made (`recast`). A function
+    the program never uses chooses nothing. Where the instantiations cannot all be
+    read (a use in a method's body at the impl's type parameters, a definition that
+    uses itself at other types than its own, more than eight definitions deep) the
+    reading is refused.
   - A `$` or an event parameter is the caller's live `Dynamic` or `Event`, which the
     blueprint keeps and each row it builds holds (`LiveParams`, as the shared rows of a
     widget that calls itself do); the line that reads the widget makes the dynamic
@@ -891,7 +929,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the getter's port (`RowHears`). An answer through a blueprint a `let` names (`let
     @$live = @ $level`) is its expression in the name's place: `DynamicAnswers` reads
     the `let`'s expression, and the supplier's closure captures what it reads
-    (`WithBlueprintReads`). A computed answer in flight to a place whose key left is
+    (`WithBlueprintReads`). An answer through a widget's blueprint parameter (`fn
+    @Hosting @answer:` whose supplier's arm gives `@answer`) is the argument in the
+    name's place, read in its caller's environment and context under the arm's tag and
+    the supplier's link (`ParameterEnv`): `DynamicAnswers` reads the argument with its
+    caller's environments (`AnswerTexts`, a parameter handed on followed to its own
+    argument), and the supplier's closure captures what the argument reads from the
+    caller's environment (`LambdaCaptures`). A computed answer in flight to a place whose key left is
     dropped. Nested hosts add one tick per computing layer and none per
     forwarding layer.
 - **First values.** A child place with a first value asks the host at its build
@@ -899,6 +943,21 @@ it make every program an interpreter run, and every type mistake a runtime fault
   the supplier row for the place early and keeps it in the rows, where the builder finds it
   present. This is the only early construction; it is why `Host` reaches its owner through
   a link filled in after `Rc::new`.
+- **A supplier's dynamic answer with no value while the owner is being made** (it reads a
+  structural dynamic of the owner's, a `for`'s gathered result or a `rebuild`'s;
+  Semantics ch. 7, "Structural dynamics": a builder in a tick's construction step and
+  the tick's outputs read the value after it) is read through the owner's link alone
+  (`#dynlate`, `DynamicAnswers`), and the host's scope is late (`Wx.lateHosts`). The
+  child's places with a `$` output have holds that are empty at the node's making
+  (`Hold<Option<T>>`, read as the value they hold, `LatePlaceBn`; a push writes the
+  present value) and ask their first values in the construction step where it reaches
+  the host's line (`LateFirstPlace`, `Wx.lateFirsts`, `ScopeSteps`): the owner's
+  builders above the host have run and their snapshots are taken, so the row the host
+  builds for the place reads the gathered dynamic over the rows built above it. A late
+  scope's own builders, generations and entries follow its first values, just before
+  its host's rows; any other hosted scope is built before the owner's own, as before.
+  Refused there: a bundle tag's plain part beside a `$` part (the build reads a plain
+  part once, before the node).
 - **Requests** of a hosted place go to the host (`host_k.request`): out with the forwarded
   element, or nowhere when the supplier answered the place.
 - **`@HostSome`** is `@HostDocument` through `rt::forward_on_none` (`nil` forwards).
@@ -998,7 +1057,14 @@ it make every program an interpreter run, and every type mistake a runtime fault
   arguments walked and maps its job's result (the prelude's `map_job`). The walk
   starts from the signature's result at the types the call gives the callee's type
   parameters, so the two types differ in color alone, and it is made whenever the two
-  differ: a function beside it that stays a `Start` is itself.
+  differ: a function beside it that stays a `Start` is itself. A blueprint that holds
+  the function (`?@(u fn Nat -> Nat)`) has its answers made again (prism_rtl's
+  `answers_mapped`, the prelude's `held_answers_mapped`): its first value and each
+  answer it gives, one that holds the output whole or one firing's or one move's value
+  (`answer_held`). A blueprint's target type names no output, so the walk is found by
+  the two types themselves (`HeldDiffers`, `BlueprintOutputs`). A call that is a frame
+  of an unbounded function's body walks the job's result the same way before the rest
+  of the source runs (`FrameTaker`, `?SignatureResult`).
 - **A function value applied** (`Take (\|n| n * k)`, `Take Double`, `Take` a `let` or a
   parameter) takes each argument of a function type as a function value
   (`ValueArgument`); a named function takes a borrowed closure or a path there.
@@ -1060,6 +1126,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
   arguments first: with all present the job is entered and its result, wrapped, resumes the
   source; an absent one resumes it at once with `nil` or the leftmost `Err`
   (`LiftedFrame`).
+- **A generalized `let` in an unbounded function's body** is lowered at each of its
+  instantiations, calls and all (`GenericLetTail`): a call its value makes is a frame at
+  that instantiation, where a color no use decides is bounded, and a call in a branch
+  ends the branch in a continuation over that instantiation's value (`KValue`, which a
+  statement's own branches use too, `KStmt`). The places one instantiation's frames
+  bound are unbound before the next lowers the same expression.
 - **`@Run`** is Appendix B's Prism definition over `@Machine` and `@Defer`, compiled like
   any widget and inlined into its caller's node: the job is a `Hold`, each cycle fires
   `!turns`, a `More` arms the `@Defer`, a `Finished` fires the result.

@@ -756,6 +756,19 @@ Blueprint<E, A> plain_blueprint(A x) {
     };
 }
 
+/// A blueprint whose answers are made again: its first value and each answer it gives the
+/// sink of what applies it, through `walk` (a function a blueprint holds, made the
+/// function its reader's type names).
+template <class E, class A, class Walk>
+Blueprint<E, A> answers_mapped(Blueprint<E, A> blueprint, Walk walk) {
+    return [blueprint, walk](Path path, Sink<A> sink, const Scope<E, A>& scope, std::uint32_t base, Cx& cx) -> Result<Supplied<E, A>> {
+        Sink<A> mapped = [sink, walk](const A& answer, Cx& cx) -> Done { return sink(walk(answer), cx); };
+        auto supplied = TRY(blueprint(path, mapped, scope, base, cx));
+        if (supplied.first) supplied.first = walk(*supplied.first);
+        return supplied;
+    };
+}
+
 /// `@ never`: no places, no first value, no answer.
 template <class E, class A>
 Blueprint<E, A> never_blueprint() {

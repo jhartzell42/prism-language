@@ -234,13 +234,27 @@ fn BundleOutputOf wx, tg, out, pos, parts, level:
     let one = (Len stateIx) == 1
     let stateTy = if one: ValueTy (Or stateIx[0], 0) else: OutTuple (Each stateIx, ValueTy)
     let whole = "bundle_{PlaceText pos}"
-    let wx2 = if (Len stateIx) == 0: wx1 else: update wx1:
-        &_.lets <= Append &_.lets, [[(FirstValueLet wx1, pos, tg, level, stateTy), (DoLet (PaBind whole), (if Emits wx1, pos: XDecode stateTy, (XRef (XVar "first_{PlaceText pos}")) else: XVar "first_{PlaceText pos}"))]]
+    # in a hosted scope whose host answers late, the state is asked once the node stands
+    # (`LateFirstPlace`): each `$` part's hold is empty until then; a plain part, which
+    # the build reads once, is refused there
+    let late = (Len stateIx) > 0 and HasNat wx.lateHosts, pos.scope
+    let latePlain = late and Fold stateIx, False, \|f, i| f or (Or layers[i], LyPlain) != LyDyn
+    let wholeLets = [[(FirstValueLet wx1, pos, tg, level, stateTy), (DoLet (PaBind whole), (if Emits wx1, pos: XDecode stateTy, (XRef (XVar "first_{PlaceText pos}")) else: XVar "first_{PlaceText pos}"))]]
+    let wx2 = if (Len stateIx) == 0: wx1 else: if latePlain: (update wx1:
+        &_.build <= Push &_.build, (RefusalDo "a place of the tag {tg.name}, whose answer has a plain part beside a `$` part, in a hosted scope whose host answers with a dynamic that has no value while its node is being made (a structural dynamic)")) else: if late: wx1 else: update wx1:
+        &_.lets <= Append &_.lets, wholeLets
         &_.fallible <= True
     let ((wx3, holds)) = Fold (Range0 (Len stateIx)), ((wx2, [[]])), \|((w, acc)), k|
         let i = Or stateIx[k], 0
         let part = if one: XVar whole else: XClone (XPart (XVar whole), k)
-        if (Or layers[i], LyPlain) == LyDyn:
+        if late and not latePlain:
+            let ((f, w1)) = match ?LatePlaceHold (Or parts[i], nil):
+                ? hf: ((hf, w))
+                nil: FreshName w, "place_{PlaceText pos}"
+            # the first part's step asks the whole state
+            let asked = Push (if k == 0: wholeLets else: [[]]), (LateFirstSet f, part)
+            (((LateFirstPlace w1, pos, f, (ValueTy i), asked), (Push acc, ((k, f, (ValueTy i))))))
+        else: if (Or layers[i], LyPlain) == LyDyn:
             let ((f, w1)) = match parts[i]:
                 ? (? (BnHold hf, ignore)): ((hf, w))
                 otherwise: FreshName w, "place_{PlaceText pos}"
@@ -351,6 +365,30 @@ fn DynamicPlace wx1, tg, out, pos, f, level, accessor:
         &_.build <= Push &_.build, (DoExpr (XMethod (XCx), "listen", [[(XClone (XField (XVar "node"), "{f}_element")), (XRef (XCast (XClone (XVar "node")), (OutObj (OutNamed (RefRuntime "rt::Node"), [[]]))))]]))
     else: wx2
 
+# A place with a `$` output in a hosted scope whose host answers with a dynamic that has
+# no value while the node is being made (`Wx.lateHosts`; Semantics ch. 9: a dynamic
+# output's first value is read in the birth tick; ch. 7, "Structural dynamics": the
+# tick's outputs read the value after it). Its hold `f` is empty at the node's making
+# (`Hold<Option<T>>`, read as the value it holds, `LatePlaceBn`) and is set where the
+# construction step reaches the host's line, the builders above it run (`BuildSteps`):
+# `asked`, the first value asked of the host and the hold set from it, is kept by scope
+# (`Wx.lateFirsts`). A push writes the present value (`DynPlaceWrite`).
+LateFirstPlace: fn Wx, Pos, Text, OutTy, [Do] -> Wx
+fn LateFirstPlace wx, pos, f, t, asked = update (LateFirstHold wx, pos, f, t):
+    &_.lateFirsts <= Push &_.lateFirsts, ((pos.scope, asked))
+
+# The hold of such a place, empty until its first value is asked.
+LateFirstHold: fn Wx, Pos, Text, OutTy -> Wx
+fn LateFirstHold wx, pos, f, t = update wx:
+    &_.fields <= Push &_.fields, ((f, (OutHold (OutOpt t)), "pushed to place {PlaceText pos}, empty until its first value is asked, once the node stands"))
+    &_.moves <= Push &_.moves, ((f, (XCall (RefRuntime "rt::Hold::new"), [[XNone, XCx]])))
+    &_.latePlaces <= Push &_.latePlaces, f
+    &_.fallible <= True
+
+# The hold set from its first value, in the build once the node stands.
+LateFirstSet: fn Text, Ex -> Do
+fn LateFirstSet f, first = DoExpr (XMethod (XField (XVar "node"), f), "set", [[(XCtor (RefRuntime "std::Some"), [[first]]), XCx]])
+
 ElementOutputOf: unbounded fn Wx, Env, TagInfo, OutTy, Pos, ?Bn, Ex -> ((Wx, Wres))
 fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
     let lx = wx.lx
@@ -364,6 +402,16 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
             let wx3 = update wx2:
                 &_.answers <= Push &_.answers, ((pos, id, out, (AnswerAccessor tg)))
             ((wx3, (WrEv (EvRefOf wx3, id))))
+        # in a hosted scope whose host answers late, the place asks its first value once
+        # the node stands (`LateFirstPlace`)
+        LyDyn if HasNat wx.lateHosts, pos.scope:
+            let ((f, wx1)) = match ?LatePlaceHold ?bound:
+                ? hf: ((hf, wx))
+                nil: FreshName wx, "place_{PlaceText pos}"
+            let asked = [[(FirstValueLet wx1, pos, tg, level, out), (LateFirstSet f, (XVar "first_{PlaceText pos}"))]]
+            let wx3 = update (LateFirstPlace wx1, pos, f, out, asked):
+                &_.dynPlaces <= Push &_.dynPlaces, ((pos, f, out, (AnswerAccessor tg)))
+            ((wx3, (BnRes (LatePlaceBn f, out))))
         LyDyn:
             let ((f, wx1)) = match ?bound:
                 ? (BnHold hf, ignore): ((hf, wx))

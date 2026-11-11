@@ -502,6 +502,20 @@ pub fn plain_blueprint<E: 'static, A: Clone + 'static>(x: A) -> Blueprint<E, A> 
     Rc::new(move |_path, _sink, _scope, _base, _cx| Ok(Supplied { node: Rc::new(Inert), first: Some(x.clone()), forwards: false, entry: None, built: 0, leave: None, document: None, deliver: None }))
 }
 
+/// A blueprint whose answers are made again: its first value and each answer it gives the
+/// sink of what applies it, through `walk` (a function a blueprint holds, made the
+/// function its reader's type names).
+pub fn answers_mapped<E: 'static, A: Clone + 'static>(blueprint: Blueprint<E, A>, walk: impl Fn(&A) -> A + 'static) -> Blueprint<E, A> {
+    let walk = Rc::new(walk);
+    Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, base, cx| {
+        let walked = walk.clone();
+        let mapped: Sink<A> = Rc::new(move |answer: &A, cx: &mut Cx| sink(&walked(answer), cx));
+        let mut supplied = blueprint(path, mapped, scope, base, cx)?;
+        supplied.first = supplied.first.as_ref().map(|first| walk(first));
+        Ok(supplied)
+    })
+}
+
 /// `@ never`: no places, no first value, no answer.
 pub fn never_blueprint<E: 'static, A: 'static>() -> Blueprint<E, A> {
     Rc::new(move |_path, _sink, _scope, _base, _cx| Ok(Supplied { node: Rc::new(Inert), first: None, forwards: false, entry: None, built: 0, leave: None, document: None, deliver: None }))

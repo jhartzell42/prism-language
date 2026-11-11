@@ -1,0 +1,7 @@
+# The tests of ts-ch04-whole-pattern-event-of-functions-lifted.
+emit Ui.*
+use App.*
+
+test it_fires, @page:
+    build
+    click at 0
