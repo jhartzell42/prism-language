@@ -1,0 +1,11 @@
+# Derived by hand from Semantics ch. 8 (a blueprint parameter is built where the widget applies it; a widget of several clauses is chosen by its plain arguments and is transparent) and the rulings since the Bible, TC (places are counted as they are built).
+test a_clause_builds_its_blueprint
+
+tick 0
+  added:
+    0: Ui.Label(text="shown")
+    1: Ui.Label(text="five")
+    2: Ui.Label(text="shown")
+    3: Ui.Label(text="line 7")
+    4: Ui.Label(text="hidden")
+    5: Ui.Label(text="end")

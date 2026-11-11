@@ -269,7 +269,8 @@ type Wx = record:
     snaps: [SnapDef]
     # A row whose result its block gathers (pick ST): the block's method that marks the
     # gathered snapshot, and the row's reads behind the result, a write of which calls it.
-    ?resultMoved: ((Text, [Read]))
+    # One per dynamic the row hands its block: a bundle's dynamic parts each have theirs.
+    resultMoved: [((Text, [Read]))]
     # A host's dynamic answers to its child's places (`@ $d`, round 3 DY): the owner's
     # getter for each, and what it reads, a write behind which fires the getter's port.
     dynAnswers: [((Text, [Read]))]
@@ -290,6 +291,10 @@ type Wx = record:
     # The first values of the holds that start from a late result (`HoldLine`), each set
     # where the generation that gives the result is built (`SplitBlockInto`).
     lateInits: [Do]
+    # A `rebuild`'s generation whose block ends on a bundle: the place of the result
+    # expression (`ResultKey`), which is lowered as one value, its events and dynamics
+    # whole (`WholeResultOf`); "" otherwise.
+    wholeResultAt: Text
 
 # A flatten: `$a <- @Flatten $$x` over a `rebuild`'s dynamic `$$x` (Semantics ch. 7,
 # "`rebuild`, `@Switch` and `@Flatten` across ticks"), or a `for` row's `$v` over
@@ -357,7 +362,8 @@ type PendingRow = record:
     wx: Wx
     qk: Text
     params: [((Text, OutTy))]
-    ?gather: Nat
+    # the block's gathers of the row's firings: one, or one per event part of a bundle
+    gathers: [Nat]
 
 # The names a node's own methods and the `Node` interface take.
 let nodeHooks = [["path", "build", "wake", "started", "deferred", "answer", "push", "swap", "leave", "patch", "clean_up", "edges", "release", "leave_row", "remove_places"]]
@@ -374,7 +380,7 @@ fn NewWx lx, name, fields, inits, moves, getters, dynReads, taken, inlining, ?ho
     let hostedInits = match ?hostedBy:
         ? ignore: [[(("enclosing", (XVar "enclosing")))]]
         nil: [[]]
-    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], ?hostedBy=?hostedBy, ?rootDyn=nil, genOf="", rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], ?resultMoved=nil, dynAnswers=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]])
+    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], ?hostedBy=?hostedBy, ?rootDyn=nil, genOf="", rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=[[]], dynAnswers=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]], wholeResultAt="")
 
 # A name not yet taken in the node: `base`, else `base_2`, `base_3`.
 FreshName: fn Wx, Text -> ((Text, Wx))
