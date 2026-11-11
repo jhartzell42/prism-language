@@ -194,6 +194,11 @@ fn IsLetOf d, qk = match d.body:
     DbLet ignore: d.qk == qk
     otherwise: False
 
+IsWidgetOf: fn Def, Text -> Bool
+fn IsWidgetOf d, qk = match d.body:
+    DbWidget ignore: d.qk == qk
+    otherwise: False
+
 # `collision`: a second field of one name in a record or a tag. The first stays the field.
 SecondField: fn St, [((Text, Ty))], Field -> St
 fn SecondField st, fields, f = if Fold fields, False, \|seen, ((fname, ignore))| seen or fname == f.name.name: Err st, "collision", f.span, "a second field `{f.name.name}`" else: st
@@ -265,7 +270,10 @@ fn ConvertDecl g, st, info, d = match d.kind:
         let def = Def(qk=qk, name=(SNameKey w.name), home=info.name, file=info.file, span=d.span, body=(DbWidget w))
         let upd = update g:
             &_.defs <= Push &_.defs, def
-        ((upd, st))
+        # `unreachable`: a widget's block takes no arguments, so a second block of its name
+        # is a clause nothing chooses, as a second `fn @Name:` is
+        if Fold g.defs, False, \|seen, other| seen or (IsWidgetOf other, qk): ((upd, (ErrFix st, "unreachable", d.span, "this clause is never reached", "remove it, or put it above the clause that covers it")))
+        else: ((upd, st))
     DTag t: ConvTag g, st, info, t, d.span
     DTrait t: ConvTrait g, st, info, t, d.span
     DImpl i: ConvImpl g, st, info, i, d.span
