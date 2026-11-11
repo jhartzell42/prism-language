@@ -657,7 +657,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                     &_.result <= WrUnit
                 if (Len unmatched) > 0:
                     let wx2 = update wx:
-                        &_.build <= Push &_.build, (InternalBugDo "the generic widget {BareName qk} at a call whose types its parameters' do not match")
+                        &_.build <= Push &_.build, (RefusalDo "the generic widget {BareName qk} at a call whose types its parameters' do not match")
                     ((wx2, WrUnit))
                 else:
                     let done = BlockInto inner, be1, me1, body
