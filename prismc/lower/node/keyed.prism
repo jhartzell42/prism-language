@@ -91,7 +91,7 @@ fn ForLine wx, benv0, menv0, ?binders, source, body, e, ?bound:
         &_.dynReads <= Insert &_.dynReads, srcGetter, reads
     let keyB = BnLocal (XVar "key"), Owned, kt
     let keyM = BnLocal (XField XSelf, "key"), Owned, kt
-    let benvL = WholeOfBlock menv, (BundlesOf ports, (EventsOf ports, (Fold locals, (RowReads benv, parentArg), \|en, l| Bind en, l.name, (BnLocal (XVar l.field), Owned, l.ty))), True), True
+    let benvL = WholeOfBlock menv, (BundlesOf ports, (EventsOf ports, (Fold locals, (WithoutBuildValues (RowReads benv, parentArg)), \|en, l| Bind en, l.name, (BnLocal (XVar l.field), Owned, l.ty))), True), True
     let menvL = WholeOfBlock menv, (BundlesOf ports, (EventsOf ports, (Fold locals, (RowReads menv, parentRef), \|en, l| Bind en, l.name, (BnLocal (XField XSelf, l.field), Owned, l.ty))), False), False
     let passed = Append (HostedPassed wx), (Each locals, \|l| l.passed)
     let rowParams = Append (Append [[(("key", kt)), (("value", vt)), (("parent", (OutWeak wx.node)))]], (HostedParams wx)), (Each locals, \|l| ((l.field, l.ty)))
@@ -336,6 +336,14 @@ fn RowReads env, pref = Fold (Keys env.names), env, \|en, k| match env.names[k]:
         ? (BnDyn (XMethod ignore, m, xs), ignore, t): Bind en, k, (BnDyn (XMethod pref, m, xs), [[ParentRead m]], t)
         otherwise: if (OnSelfRooted ex) and Fold rds, True, \|f, rd| f and IsOwnRead rd: Bind en, k, (BnDyn (OverBlock ex, pref), (Each rds, \|rd| AsParentRead rd), bt) else: en
     otherwise: en
+
+# A row's build environment without its block's values at the block's build
+# (`{name}#init`, locals of the block's constructor, which the row's constructor has
+# not): in the row a hold or a dynamic of the block is read through the parent, which is
+# built, at the build as at any read (`RowReads`), so a supplier's dynamic answer in the
+# row takes its value at the row's build there (`DynamicAnswers`).
+WithoutBuildValues: fn Env -> Env
+fn WithoutBuildValues env = WithoutNames env, (Filter (Keys env.names), \|k| (?BeforeSuffix k, "#init") != nil)
 
 # A node's expression of itself read through `pref`, the block as a row reaches it.
 OverBlock: fn Ex, Ex -> Ex
