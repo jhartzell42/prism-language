@@ -1,0 +1,15 @@
+# Derived by hand, never run: Semantics ch. 9 (the place the host answers adds nothing to the host's document, the rest is forwarded at 0/[p]/0; an event answer is the next tick's input, owed), ch. 7 (`!Updated $?l` fires in the tick the field changes) and ruling EP (a `$` field in an element pattern binds the description's own dynamic): the click moves the guest's field in tick 1, its update is the answer, and the guest hears it in tick 2.
+test a_generic_tag_is_echoed
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="press")
+    0/[2]/0: Ui.Label(text="heard nothing")
+
+tick 1
+  in:
+    0/[0]/0: click
+
+tick 2
+  changed:
+    0/[2]/0: Ui.Label(text="heard pressed")
