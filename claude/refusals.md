@@ -11,8 +11,8 @@ entry marked "unsure" was not tested.
 
 Besides these, `OutRefused` (a type the lowering does not spell) stands at 15 places in
 lower/expr.prism, model.prism, patterns.prism and types.prism: twelve that make one, the
-type's definition in model.prism and two matches on it. One is reached (see R, Functions:
-a generic `let` nothing reads); the others are under G, "Types the lowering does not
+type's definition in model.prism and two matches on it. Two are reached (see R, Functions:
+a generic `let` nothing reads, and a field of an `Error`); the others are under G, "Types the lowering does not
 spell".
 
 ## R: legal programs not lowered
@@ -133,6 +133,17 @@ Functions
   no instantiation gives it a type": a generic `let` of a widget block that nothing
   reads. Program: `let Same = \|x| x`, `let empty = [[]]`, `let pair = ((nil, [[]]))`,
   `let blanks = Each [[1, 2]], ?Nothing`, none read. Test: ts-ch05-generic-let-unused.
+- lower/expr.prism:1580 a field of an `Error` has no type in the back end: no refusal,
+  and `"{e.message}"` prints the message as `Show` would, in quotes. Test:
+  ts-ch02-field-reads.
+- A fault kind as a value (`e.kind == Fs.NotFound`, a list of kinds, a record's field of
+  type `Fault`, a generic call at `Fault`): no refusal; rustc refuses the crate. Test:
+  sem-ch10-fault-kind-value.
+- The prelude's `Turn b` built and matched by a program (`Done x`, `More`): no refusal;
+  rustc refuses the crate (the runtime's `Turn` is the job's own). Test:
+  sem-appB-turn-value.
+- A trait method passed as a function value (`Each ns, Blank`, `Each xs, Twice`): no
+  refusal; rustc refuses the crate. Test: ts-ch03-method-function-value.
 - lower/expr.prism:940 a generic local function as a value. The checker stops it first:
   a local `fn Same x = x` is not generalized (mismatch at its second use). Tests:
   tests/checker/pos/local-function-generic-value.prism,
@@ -303,14 +314,15 @@ Types the lowering does not spell (`OutRefused`)
 - lower/types.prism:107 a type variable the checker left undecided. The same program
   passes; an unread generic `let` in a plain function is lowered, and in a widget block
   it takes another path: see R, Functions.
-- lower/expr.prism:1580, 1589, 1590, 1591 a field of an `Error`, of a type with no
-  constructor, of a non-record. The nearest program, fields of `Error`, of an alias of a
-  generic record, under `?`, `~` and `$` and in an `update` block, passes:
-  ts-ch02-field-reads; the checker refuses a field of a row's value, a choice, a tuple
-  or a number (tests/checker/neg/field-of-no-record).
-- lower/patterns.prism:186 a payload behind a reference. The same program's nested
-  constructor patterns through a recursive choice pass: the refused type is the place's
-  own and is never printed.
+- lower/expr.prism:1580 a field of an `Error`: reached, see R, Functions.
+- lower/expr.prism:1589, 1590, 1591 a field of a type with no constructor, of a
+  non-record. The checker refuses a field of a row's value, a choice, a tuple or a number
+  (tests/checker/neg/field-of-no-record); fields of an alias of a generic record, under
+  `?`, `~` and `$` and in an `update` block are lowered (ts-ch02-field-reads, which fails
+  only on the `Error`'s message).
+- lower/patterns.prism:186 a payload behind a reference. Nested constructor patterns
+  through a recursive choice are lowered (ts-ch02-field-reads): the refused type is the
+  place's own and is never printed.
 - lower/types.prism:113 a type the checker did not find. No program reaches this: the
   checker makes it only beside an error, and a program with an error is not lowered.
 - lower/types.prism:182 a type the checker did not declare. The nearest program, the
