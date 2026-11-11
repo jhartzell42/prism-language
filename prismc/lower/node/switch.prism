@@ -1083,6 +1083,8 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
         # dynamics whole (`ValueRowWhole`), which `result_value` reads from the row
         WrParts ignore if valueRow: ValueRowResult r2, lxc, body
         WrDyn ignore, ignore, ignore if valueRow: ValueRowResult r2, lxc, body
+        # (and a host's output, the row's block ending on a host's line)
+        WrHosted ignore, ignore if valueRow: ValueRowResult r2, lxc, body
         WrParts ignore: ((r2b, nil))
         # a plain result, computed at the generation's build and kept in a field of the
         # row, read by the block that built it: early for a clause (`EarlyClauseLine`),

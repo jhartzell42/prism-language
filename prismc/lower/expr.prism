@@ -1591,10 +1591,17 @@ fn GlobalCall lx, env, qk, args, span, cspan, t:
                     # callee's type parameters (so the two differ in color alone) to
                     # the call's; a function beside it that stays a `Start` is itself
                     let callTy = Peel (SubstTy lx, (TypeAt lx, span))
+                    let ?calleeTypes = ?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, cspan), {}
                     let lxCallee = update lx:
-                        &_.subst <= Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, cspan), {}), {}
+                        &_.subst <= Or ?calleeTypes, {}
                         &_.csubst <= {}
-                    if (HasJobFn declared) and declared != (OutTyOf lx, callTy): VlOwned (Recolored lx, call, (SubstTy lxCallee, declaredTy), callTy, 0), t
+                    let signatureTy = SubstTy lxCallee, declaredTy
+                    # (where the callee's type at the call does not give its type
+                    # parameters, the walk is made when no `Start` is left at the call)
+                    let differs = match ?calleeTypes:
+                        ? ignore: (OutTyOf lx, signatureTy) != (OutTyOf lx, callTy)
+                        nil: not (HasJobFn t)
+                    if (HasJobFn declared) and differs: VlOwned (Recolored lx, call, signatureTy, callTy, 0), t
                     else: VlOwned call, t
             nil: VlOwned (InternalBug "a call of {qk}"), t
 
