@@ -1,0 +1,8 @@
+# The tests of sem-ch09-host-local-supplier-bundle-answer.
+emit Ui.* | Pad.*
+use App.*
+
+test local_function_parts_answer, @host:
+    build
+    click at 0
+    compute
