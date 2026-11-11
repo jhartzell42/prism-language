@@ -1,0 +1,6 @@
+# The tests of sem-ch08-local-widget-passed-as-value.
+emit Ui.*
+use App.*
+
+test a_local_widget_is_passed, @page:
+    build
