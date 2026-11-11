@@ -286,7 +286,7 @@ fn RootWidgets lx:
 ValuedWidgets: unbounded fn Lx -> (((Text ==> [((Text, Pa, [Cc], [Ex]))]), (Text ==> [((Text, [((Text, Ty))]))])))
 fn ValuedWidgets lx = Fold lx.g.defs, (({}, {})), \|acc, d|
     let lxd = update (InModule lx, d.file, d.home):
-        &_.inDefinition <= d.qk
+        &_.inDefinition <= InstanceKey d
     let held = Fold (DefExprs d), [[]], \|sites, e| Append sites, (ValueWidgetsIn lxd, e)
     # a `let` names a value: the widget it names is read as one where the name is
     let named = Fold (LetValues d), held, \|sites, e| Append sites, (ValueWidgetsAt lxd, e)
@@ -330,83 +330,276 @@ fn ?ClosedTypes rigids, found:
         nil: False
     if closed: ? (Each (SortTexts rigids), \|q| ((q, (Or found[q], TyErr)))) else: nil
 
-# The types the program gives a generic definition's type parameters, each set once: the
-# types each of its uses gives them, a use in another generic definition's body at each
-# of that one's own (a function is a target generic, lowered once; what its body builds
-# for one set of types, a widget's rows read as a value, is chosen by them where it runs,
-# `OpenWidgetBlueprintValue`). No answer where the uses cannot all be read: a use in a
-# method's body at the impl's type parameters, a definition that uses itself at other
-# types than its own, more than `fuel` definitions deep.
-?DefInstances: unbounded fn Lx, Text, Nat -> ?[ [((Text, Ty))] ]
-fn ?DefInstances lx, qk, fuel = match lx.g.vals[qk]:
-    nil: nil
-    ? v:
-        let rigids = RigidsIn v.scheme.ty
-        if (Len rigids) == 0: ? [[ [[]] ]]
-        else: if fuel == 0: nil
-        else: Fold lx.g.defs, (? [[]]), \|?known, d| match ?known:
+# The types the program gives a generic definition's type parameters, each set once: a
+# fixed point over the program's instantiations. A use that is closed gives its types; a
+# use in another generic definition's body gives them at each of that one's own
+# instantiations, however deep, the definition's uses of itself at other types included
+# (a function is a target generic, lowered once; what its body builds for one set of
+# types, a widget's rows read as a value, is chosen by them where it runs,
+# `OpenWidgetBlueprintValue`). An impl's method is instantiated wherever a constraint is
+# solved by its impl (the checker's `ImplNote`s), at the types the impl's head takes
+# there, and so is its trait's default the impl leaves unwritten. No answer where the
+# program has no finite set of them (`?GrowInstances`), or where a use leaves a type
+# parameter undecided.
+?DefInstances: unbounded fn Lx, Text -> ?[ [((Text, Ty))] ]
+fn ?DefInstances lxAt, wanted:
+    # the types as the checker wrote them, under no instantiation
+    let lx = update lxAt:
+        &_.subst <= {}
+    let definitions = Filter lx.g.defs, \|d| (InstanceKey d) == wanted
+    let rigids = Fold definitions, [[]], \|acc, d| UnionTexts acc, (DefinitionRigids lx, d)
+    if (Len definitions) == 0: nil
+    else: if (Len rigids) == 0: ? [[ [[]] ]]
+    else:
+        let uses = InstanceUses lx
+        let relevant = RelevantDefinitions lx, uses, [[wanted]]
+        let reaching = Filter uses, \|site| ReachesRelevant lx, relevant, site
+        # the uses in a definition with no type parameter are read once, at no types
+        let closed = Fold lx.g.defs, [[]], \|acc, d| if (Len (DefinitionRigids lx, d)) == 0 and not (HasText acc, (InstanceKey d)): Push acc, (InstanceKey d) else: acc
+        let ?seeded = Fold closed, (? [[]]), \|?acc, user| match ?acc:
             nil: nil
-            ? known:
-                let lxd = InModule lx, d.file, d.home
-                let exprs = DefExprs d
-                # a call of it: its type parameters off the callee's type there, else off
-                # the arguments
-                let ((?called, callees)) = Fold exprs, (((? known), [[]])), \|((?acc, spans)), x| match x.kind:
-                    ECall c, args, ignore, ignore: if (CalleeKey lxd, c) != qk: ((?acc, spans)) else:
-                        let ptys = match v.scheme.ty:
-                            TyFn ignore, ps, ignore: ps
-                            otherwise: [[]]
-                        let fromArguments = Fold (Range0 (Len ptys)), {}, \|m, i| match args[i]:
-                            ? a: Or (?ParamInstance (Or ptys[i], TyErr), (TypeAt lxd, a.value.span), m), m
-                            nil: m
-                        let found = Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lxd, c.span), {}), fromArguments
-                        (((?UseInstances lx, lxd, d, qk, rigids, found, fuel, ?acc), (Push spans, c.span.start)))
-                    otherwise: ((?acc, spans))
-                # its name as a value: off its type there
-                Fold exprs, ?called, \|?acc, x| match x.kind:
-                    EName n:
-                        let ((?named, ignore)) = ResolveValue lx.g, lxd.home, n
-                        if (?named != (? qk)) or (HasNat callees, x.span.start): ?acc
-                        else: match ?ParamMatch (Unrigid v.scheme.ty), (TypeAt lxd, x.span), {}:
-                            ? found: ?UseInstances lx, lxd, d, qk, rigids, found, fuel, ?acc
-                            nil: nil
-                    otherwise: ?acc
+            ? acc: ?AddTargets lx, reaching, relevant, acc, user, [[]], nil
+        match ?seeded:
+            nil: nil
+            ? seeded: match ?GrowInstances lx, reaching, relevant, seeded, 0:
+                nil: nil
+                ? all: ? (Fold all, [[]], \|acc, instantiation| if instantiation.definition == wanted: Push acc, instantiation.types else: acc)
 
-# One use's part of `?DefInstances`: the types it gives (`found`), added to those known.
-?UseInstances: unbounded fn Lx, Lx, Def, Text, [Text], (Text ==> Ty), Nat, ?[ [((Text, Ty))] ] -> ?[ [((Text, Ty))] ]
-fn ?UseInstances lx, lxd, d, qk, rigids, found, fuel, ?known = match ?known:
+# A definition's name among the program's instantiations: its qualified name, and for an
+# impl's method, which shares its trait's method's name with every other impl's, its
+# place too.
+InstanceKey: fn Def -> Text
+fn InstanceKey d = match d.body:
+    DbMethod ignore, ignore, ignore: "{d.qk} at {d.file}:{d.span.start}"
+    otherwise: d.qk
+
+# The type parameters a definition's body is written over, by name: a function's or a
+# widget's own, an impl's for its method, the trait's parameter for a default.
+DefinitionRigids: unbounded fn Lx, Def -> [Text]
+fn DefinitionRigids lx, d = match d.body:
+    DbMethod ignore, ignore, im: SortTexts im.qs
+    DbDefault ignore, cls: match lx.g.traits[cls]:
+        ? tr: [[tr.param]]
+        nil: [[]]
+    DbFn ignore: match lx.g.vals[d.qk]:
+        ? v: SortTexts (RigidsIn v.scheme.ty)
+        nil: [[]]
+    DbWidget ignore: match lx.g.vals[d.qk]:
+        ? v: SortTexts (RigidsIn v.scheme.ty)
+        nil: [[]]
+    otherwise: [[]]
+
+# One place of the program that instantiates a generic definition, by the definition it
+# stands in (`InstanceKey`): a use of a function or widget by its name, with the types
+# the use gives its type parameters, and a constraint an impl solves, with the trait and
+# the type. The types name the type parameters of the definition the place stands in.
+type InstanceUse = choice:
+    UseOfDefinition Text, Text, (Text ==> Ty)
+    UseOfImpl Text, Text, Ty
+derive ^Eq, ^Show
+
+# One instantiation the fixed point found, and the one whose body's use gave it (its
+# place in the list; `nil` for a use in a definition with no type parameter).
+type Instantiation = record:
+    definition: Text
+    types: [((Text, Ty))]
+    ?parent: Nat
+derive ^Eq, ^Show
+
+# Every use of a generic function or widget and every constraint an impl solves, over
+# the whole program.
+InstanceUses: unbounded fn Lx -> [InstanceUse]
+fn InstanceUses lx = Fold lx.g.defs, [[]], \|acc, d|
+    let lxd = InModule lx, d.file, d.home
+    let user = InstanceKey d
+    let exprs = InstantiatingExprs d
+    # a call of a generic definition: its type parameters off the callee's type there,
+    # else off the arguments
+    let ((called, callees)) = Fold exprs, ((acc, [[]])), \|((uses, spans)), x| match x.kind:
+        ECall c, args, ignore, ignore: match lx.g.vals[CalleeKey lxd, c]:
+            ? v if (Len (RigidsIn v.scheme.ty)) > 0 and v.sort != "method":
+                let ptys = match v.scheme.ty:
+                    TyFn ignore, ps, ignore: ps
+                    otherwise: [[]]
+                let fromArguments = Fold (Range0 (Len ptys)), {}, \|m, i| match args[i]:
+                    ? a: Or (?ParamInstance (Or ptys[i], TyErr), (TypeAt lxd, a.value.span), m), m
+                    nil: m
+                let found = Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lxd, c.span), {}), fromArguments
+                (((Push uses, (UseOfDefinition user, (CalleeKey lxd, c), found)), (Push spans, c.span.start)))
+            otherwise: ((uses, spans))
+        otherwise: ((uses, spans))
+    Fold exprs, called, \|uses, x|
+        # a constraint solved by a written impl at this place
+        let solved = Fold (Or lxd.impls[PlaceKey lxd, x.span], [[]]), uses, \|more, note| if HasPrefix note.how, "impl ": Push more, (UseOfImpl user, note.cls, note.ty) else: more
+        match x.kind:
+            # a generic definition's name as a value: off its type there
+            EName n:
+                let ((?named, ignore)) = ResolveValue lx.g, lxd.home, n
+                match lx.g.vals[Or ?named, ""]:
+                    ? v if (Len (RigidsIn v.scheme.ty)) > 0 and v.sort != "method" and not (HasNat callees, x.span.start): Push solved, (UseOfDefinition user, (Or ?named, ""), (Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lxd, x.span), {}), {}))
+                    otherwise: solved
+            otherwise: solved
+
+# Every expression of a definition that may instantiate another: its body's, a test's
+# blueprint, a check's lines.
+InstantiatingExprs: unbounded fn Def -> [Expr]
+fn InstantiatingExprs d = match d.body:
+    DbTest t: ExprsIn t.blueprint
+    DbCheck c: Fold c.lines, [[]], \|acc, line| Append acc, (ExprsIn line.expr)
+    otherwise: DefExprs d
+
+# The definition a use stands in.
+UseUser: fn InstanceUse -> Text
+fn UseUser site = match site:
+    UseOfDefinition user, ignore, ignore: user
+    UseOfImpl user, ignore, ignore: user
+
+# Whether a use may instantiate one of `relevant`: a use by name, of that name; a solved
+# constraint, of any impl's method or any default among them (which impl solves it is
+# known at the types alone).
+ReachesRelevant: unbounded fn Lx, [Text], InstanceUse -> Bool
+fn ReachesRelevant lx, relevant, site = match site:
+    UseOfDefinition ignore, target, ignore: HasText relevant, target
+    UseOfImpl ignore, ignore, ignore: Fold lx.g.defs, False, \|found, d| found or match d.body:
+        DbMethod ignore, ignore, ignore: HasText relevant, (InstanceKey d)
+        DbDefault ignore, ignore: HasText relevant, (InstanceKey d)
+        otherwise: False
+
+# The definitions whose instantiations decide those of `relevant`: each generic
+# definition with a use that may instantiate one of them, and so on to the end (the
+# definitions are finitely many, and each round adds one or stops).
+RelevantDefinitions: unbounded fn Lx, [InstanceUse], [Text] -> [Text]
+fn RelevantDefinitions lx, uses, relevant:
+    let grown = Fold uses, relevant, \|acc, site| if (HasText acc, (UseUser site)) or not (ReachesRelevant lx, acc, site): acc else: Push acc, (UseUser site)
+    if (Len grown) == (Len relevant): relevant else: RelevantDefinitions lx, uses, grown
+
+# The fixed point's step: the uses in the body of the instantiation at `next` are read
+# at its types, and what they instantiate is added behind; done when none is left.
+?GrowInstances: unbounded fn Lx, [InstanceUse], [Text], [Instantiation], Nat -> ?[Instantiation]
+fn ?GrowInstances lx, uses, relevant, all, next = match all[next]:
+    nil: ? all
+    ? instantiation: match ?AddTargets lx, uses, relevant, all, instantiation.definition, instantiation.types, (? next):
+        nil: nil
+        ? more: ?GrowInstances lx, uses, relevant, more, (next + 1)
+
+# What the uses in `user`'s body instantiate at the types `types` give `user`'s type
+# parameters, added to `all` where new. No answer where a use leaves a type parameter
+# undecided, and where the program has no finite set of instantiations: a new one whose
+# line of parents holds the same definition at types that are embedded in its own (each
+# found again inside the new one's) would be followed by ever larger ones. Any endless
+# line of instantiations holds such a pair (the types are finite trees over the
+# program's finitely many type formers), so the fixed point ends without a count.
+?AddTargets: unbounded fn Lx, [InstanceUse], [Text], [Instantiation], Text, [((Text, Ty))], ?Nat -> ?[Instantiation]
+fn ?AddTargets lx, uses, relevant, all, user, types, ?parent = Fold uses, (? all), \|?acc, site| match ?acc:
     nil: nil
-    ? known:
-        let Added = \|acc, types| if Fold acc, False, \|seen, other| seen or (Show other) == (Show types): acc else: Push acc, types
-        match ?ClosedTypes rigids, found:
-            ? types: ? (Added known, types)
-            nil:
-                let whole = Fold rigids, True, \|all, q| all and HasKey found, q
-                let itself = d.qk == qk and Fold rigids, True, \|all, q| all and found[q] == ? (TyRigid q)
-                let generic = match d.body:
-                    DbFn ignore: True
-                    DbWidget ignore: True
-                    otherwise: False
-                if not whole: nil
-                # the definition's own use of itself at its own type parameters adds none
-                else: if itself: ? known
-                else: if not generic or d.qk == qk: nil
-                else: match ?DefInstances lx, d.qk, (Dec fuel):
+    ? acc: if (UseUser site) != user: ? acc else: match ?UseTargets lx, site, types:
+        nil: nil
+        ? targets: Fold targets, (? acc), \|?sofar, ((definition, taken))| match ?sofar:
+            nil: nil
+            ? sofar:
+                let known = Fold sofar, False, \|seen, other| seen or (other.definition == definition and (Show other.types) == (Show taken))
+                if known or not (HasText relevant, definition): ? sofar
+                else: if GrowsFrom sofar, ?parent, definition, taken: nil
+                else: ? (Push sofar, Instantiation(definition=definition, types=taken, ?parent=?parent))
+
+# Whether the line of parents from `?at` holds `definition` at types embedded in `types`.
+GrowsFrom: unbounded fn [Instantiation], ?Nat, Text, [((Text, Ty))] -> Bool
+fn GrowsFrom all, ?at, definition, types = match ?at:
+    nil: False
+    ? at: match all[at]:
+        nil: False
+        ? above:
+            let embedded = above.definition == definition and (Len above.types) == (Len types) and Fold (Range0 (Len types)), True, \|every, i| every and match ((above.types[i], types[i])):
+                ((? ((ignore, small)), ? ((ignore2, large)))): Embeds small, large
+                otherwise: False
+            embedded or GrowsFrom all, above.?parent, definition, types
+
+# Whether one type is found inside another, former by former (the homeomorphic
+# embedding of trees): the same type, or found inside one of the other's parts, or of
+# the same former with each part found inside the part at its place.
+Embeds: unbounded fn Ty, Ty -> Bool
+fn Embeds small, large:
+    let smallParts = PartsOfType small
+    let largeParts = PartsOfType large
+    let inside = Fold largeParts, False, \|found, part| found or Embeds small, part
+    let sameFormer = (Len smallParts) == (Len largeParts) and (TypeFormer small) == (TypeFormer large)
+    small == large or inside or (sameFormer and Fold (Range0 (Len smallParts)), True, \|every, i| every and Embeds (Or smallParts[i], TyErr), (Or largeParts[i], TyErr))
+
+# A type's parts, in order.
+PartsOfType: fn Ty -> [Ty]
+fn PartsOfType t = match t:
+    TyCon ignore, args: args
+    TyFn ignore, ps, r: Push ps, r
+    TyTuple ts: ts
+    TyArray e: [[e]]
+    TyMap k, v: [[k, v]]
+    TySig ignore, i: [[i]]
+    TyAt i, ignore: [[i]]
+    TyElem ignore, o: [[o]]
+    TyAssoc ignore, ignore, x: [[x]]
+    otherwise: [[]]
+
+# A type's former: the type with nothing at its parts.
+TypeFormer: fn Ty -> Ty
+fn TypeFormer t = match t:
+    TyCon n, args: TyCon n, (Each args, \|ignore| TyErr)
+    TyFn c, ps, ignore: TyFn c, (Each ps, \|ignore2| TyErr), TyErr
+    TyTuple ts: TyTuple (Each ts, \|ignore| TyErr)
+    TyArray ignore: TyArray TyErr
+    TyMap ignore, ignore2: TyMap TyErr, TyErr
+    TySig s, ignore: TySig s, TyErr
+    TyAt ignore, r: TyAt TyErr, r
+    TyElem r, ignore: TyElem r, TyErr
+    TyAssoc cls, n, ignore: TyAssoc cls, n, TyErr
+    other: other
+
+# What one use instantiates where the definition it stands in has the types `types`: a
+# use by name, that definition at the types the use gives, read at `types`; a solved
+# constraint, the methods of the impl whose head the type has (`ImplTargets`). No answer
+# where a type parameter stays undecided.
+?UseTargets: unbounded fn Lx, InstanceUse, [((Text, Ty))] -> ?[((Text, [((Text, Ty))]))]
+fn ?UseTargets lx, site, types:
+    let lxu = update lx:
+        &_.subst <= Fold types, {}, \|m, ((q, t))| Insert m, q, t
+    match site:
+        UseOfDefinition ignore, target, found: match lx.g.vals[target]:
+            ? v:
+                let rigids = RigidsIn v.scheme.ty
+                let read = Fold rigids, {}, \|m, q| match found[q]:
+                    ? t: Insert m, q, (SubstTy lxu, t)
+                    nil: m
+                match ?ClosedTypes rigids, read:
+                    ? taken: ? [[((target, taken))]]
                     nil: nil
-                    ? users:
-                        let all = Fold users, known, \|acc, user|
-                            let lxu = update lxd:
-                                &_.subst <= Fold user, &_.subst, \|m, ((q, t))| Insert m, q, t
-                            match ?ClosedTypes rigids, (Fold rigids, {}, \|m, q| Insert m, q, (SubstTy lxu, (Or found[q], TyErr))):
-                                ? types: Added acc, types
-                                nil: acc
-                        ? all
+            nil: nil
+        UseOfImpl ignore, cls, ty:
+            let at = SubstTy lxu, ty
+            if (Len (RigidsIn at)) > 0: nil else: ? (ImplTargets lx, cls, at)
+
+# The definitions a constraint instantiates, solved for a closed type: each method of
+# the impl whose head the type has, at the types the head's parameters take; each
+# default of the trait that impl leaves unwritten, at the type; and the same for each
+# bound the impl puts on a parameter, at that parameter's type (a part of the type, so
+# this ends).
+ImplTargets: unbounded fn Lx, Text, Ty -> [((Text, [((Text, Ty))]))]
+fn ImplTargets lx, cls, ty = Fold (Or lx.g.impls[cls], [[]]), [[]], \|acc, im| match ?ParamMatch (Unrigid im.head), ty, {}:
+    nil: acc
+    ? matched:
+        let taken = Each (SortTexts im.qs), \|q| ((q, (Or matched[q], TyErr)))
+        let written = Filter lx.g.defs, \|d| IsMethodOf d, im
+        let methods = Fold written, acc, \|more, d| Push more, (((InstanceKey d), taken))
+        let defaults = match lx.g.traits[cls]:
+            ? tr: Fold tr.defaults, methods, \|more, defaultQk| if Fold written, False, \|found, d| found or d.name == (BareName defaultQk): more else: Push more, ((defaultQk, [[((tr.param, ty))]]))
+            nil: methods
+        Fold im.bounds, defaults, \|more, ((q, bound))| match matched[q]:
+            ? part: Append more, (ImplTargets lx, bound, part)
+            nil: more
 
 # The instantiations of the generic definition whose body is being lowered
 # (`Lx.inDefinition`, `?DefInstances`); the one of no types for a definition with no type
 # parameter.
 ?EnclosingInstances: unbounded fn Lx -> ?[ [((Text, Ty))] ]
-fn ?EnclosingInstances lx = if lx.inDefinition == "": nil else: ?DefInstances lx, lx.inDefinition, 8
+fn ?EnclosingInstances lx = if lx.inDefinition == "": nil else: ?DefInstances lx, lx.inDefinition
 
 # A valued widget's key where it is read (`ValuedKey`), "" where its type parameters stay
 # open.

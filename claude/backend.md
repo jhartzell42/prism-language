@@ -587,18 +587,29 @@ it make every program an interpreter run, and every type mistake a runtime fault
     (`ValuedStemAt`). A reading that leaves a type parameter open stands in a generic
     function, whose own parameter it is given (`fn ?Wrapped x = ?Pick True, (@Shown x,
     "n")`): it has rows for the types each of that function's instantiations gives it
-    (`PlacedWidget`). A definition's instantiations are the types its uses give its
-    type parameters over the whole program, a use in another generic definition's body
-    at each of that one's own (`?DefInstances`; `Lx.inDefinition` names the definition
-    being lowered). The function is a target generic, lowered once, so where it runs
-    it chooses among those rows by its type parameters (`?OpenWidgetBlueprintValue`:
-    prism_rtl's `type_key` of each against the instantiation's types; two
-    instantiations of one target type are one choice); the arguments are read at the
-    function's own types and are the row's by the choice made (`recast`). A function
-    the program never uses chooses nothing. Where the instantiations cannot all be
-    read (a use in a method's body at the impl's type parameters, a definition that
-    uses itself at other types than its own, more than eight definitions deep) the
-    reading is refused.
+    (`PlacedWidget`). The same in an impl's method, over the impl's type parameters,
+    and in a trait's default, over `Self`. A definition's instantiations are a fixed
+    point over the whole program (`?DefInstances`; `Lx.inDefinition` names the
+    definition being lowered, an impl's method by its place, `InstanceKey`): a use
+    with closed types gives them; a use in another generic definition's body gives
+    them at each of that one's own, however deep, a definition's uses of itself at
+    other types included (`InstanceUses`, `?GrowInstances`); an impl's method has the
+    types its impl's head takes wherever a constraint is solved by that impl (the
+    checker's `ImplNote`s; `ImplTargets`, which follows the impl's own bounds), and a
+    default the impl leaves unwritten has the type. Only the definitions that can
+    reach the one asked for are followed (`RelevantDefinitions`). The fixed point has
+    no count: it stops with no answer where a new instantiation's line of parents
+    holds the same definition at types embedded in the new one's (`GrowsFrom`,
+    `Embeds`: each type found again inside the larger), since every endless line of
+    instantiations holds such a pair. The function is a target generic, lowered once,
+    so where it runs it chooses among those rows by its type parameters
+    (`?OpenWidgetBlueprintValue`: prism_rtl's `type_key` of each against the
+    instantiation's types; two instantiations of one target type are one choice); the
+    arguments are read at the function's own types and are the row's by the choice
+    made (`recast`). A function the program never uses chooses nothing. Where the
+    program gives the definition no finite set of types (a function that calls itself
+    at `[a]` for `a`), or a use leaves a type parameter undecided, the reading is
+    refused (`OpenWidgetValueWords`).
   - A `$` or an event parameter is the caller's live `Dynamic` or `Event`, which the
     blueprint keeps and each row it builds holds (`LiveParams`, as the shared rows of a
     widget that calls itself do); the line that reads the widget makes the dynamic
