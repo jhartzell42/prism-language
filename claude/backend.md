@@ -759,8 +759,6 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `Event`: the description's own, or, for a live element, the requests its place makes
   through that field (`Live::requested`: the host row's `requests` port, filtered by the
   field's name and decoded), fired in the tick of the request.
-- **A bundle answer that is a value** (`@ pair`) is taken apart by its type: the plain
-  parts cloned for the first value, the event part mapped to the tag's variant.
 - **A tag's answer constructor named, not applied**, is a closure building the variant.
 - **`@Element (Tag(..))` in a block** is the element statement at the line's own position
   (`ElementCallLine`; Semantics ch. 4).
@@ -838,28 +836,42 @@ it make every program an interpreter run, and every type mistake a runtime fault
   value stands in the local `{f}_init` (`DynamicPlace`), bound as the name's value at the
   build (`PreInit`), so a supplier's dynamic answer over the host's own pushed place
   reads it while the node is being made.
-- **A bundle with one event part and one `$` part** (`((!Text, $Text))`): the `$` part is a
-  pushed place's hold, its first value the place's first value and its pushes keyed by
-  the element, the event part answered by path. In a hosted scope the tag's first-value
-  variant carries the `$` part: a supplier's constant `$` part (`@ ((never, $ "offline"))`)
-  is the first value.
-  - A supplier's live `$` part (`@ (("hello" on !flip, $state))`) is a `Dynamic` of the
-    first-value variant, read through the owner's link as a dynamic answer's is
-    (`DynamicAnswers` keys it by the part, `?AnswerDynamic`), given to prism_rtl's
-    `bundle_dynamic_blueprint` beside the event: its value at the row's build is the
-    first value, each later change a push delivered the next tick, each firing of the
-    event an answer a tick late.
-  - A forwarded element's push from the World is decoded by `decode_first` (`Forward`,
-    `Placed`): of a bundle's tag the first-value variant, of any other its answer.
-  - The child's typed dispatch has one arm for such a place (`BundlePlaceArm`): the
-    first-value variant is written to the `$` part's hold, any other answer fires the
-    event part.
-- **A bundle in a hosted scope** (a tag whose output is plain parts and one event part):
-  `crate::Answer` has a second variant per bundle tag, `{Tag}First`, its plain parts; the
-  place's first value is that variant (`{tag}_first()`), from a supplier's
-  `@ ((x, !e))` (`rt::bundle_blueprint`: `x` once, each firing of `e` a tick late) or from a
-  World's first value to a forwarded element (`AnswerOf::decode_first`); its answers are
-  the event part's variant, as in the World's scope.
+- **A tag whose output is a bundle** (Type System ch. 2, "Bundles and sparse tuples":
+  `((WindowId, !WindowInput))`, `((!Text, $Text))`, `((Nat, $Text))`, `(($Text, $Nat))`,
+  `((!Text, !Nat))`) is one mechanism for any mix of plain, `$` and event parts
+  (`BundleOutputOf`, the node's `BundlePlace`s).
+  - **The state** is the plain and `$` parts' values, one part itself, several a tuple in
+    the tag's order. It is the place's first value (the World's first-value query, or the
+    enclosing host's) and what each push after it holds, keyed by the element. A plain
+    part is a field read from the first value once. A `$` part is a hold made with its
+    part of the first value (the local `{f}_init`, the name's value at the build,
+    `PreInit`); a push writes every `$` part's hold with its part of the state
+    (`BundleStateWrite`), as any hold is written.
+  - **The event parts' answer** comes by path. Of one event part it is the part's value;
+    of several it is a sparse tuple, one `prism_rtl::SparsePart` per event part, and each
+    part that is there fires its event (`BundleEventsFire`). As plain data an absent part
+    is `Pod::Absent`, written and printed `-` (`(("hello", -))`). A bundle with no event
+    part is answered by path with its state.
+  - **In `crate::Answer`** the tag's variant carries the event parts' answer (`AnswerTy`),
+    and a tag with both event parts and a state has a second variant, `{Tag}First`, the
+    state (`?BundleFirstTy`, `{tag}_first()`); a bundle of state parts alone has its
+    state in the tag's own variant. A World's first value and its pushes to a forwarded
+    element decode to the state's variant (`AnswerOf::decode_first`), its answers to the
+    tag's own.
+  - **The child's typed dispatch has one arm for a bundle's place** (`BundleTypedArm`):
+    the state's variant is written to the `$` parts' holds, any other answer fires the
+    event parts.
+  - **A supplier's bundle answer** (`@ ((a, $b, !c))`, or `@ pair` of a bundle that is a
+    value) is `rt::parts_blueprint` over an `rt::PartsAnswer` (`PartsBlueprint`). The
+    state is one `Dynamic` of the state's variant: a constant when no `$` part is live
+    (a constant `$ v` is its value), else read at the read point from the plain parts,
+    cloned, and each live `$` part's own `Dynamic` (read through the owner's link as a
+    dynamic answer's is, `DynamicAnswers` keys the getter by the part, `?PartDynamic`),
+    and moved when any of them moves (`moved_by`). Its value at the row's build is the
+    place's first value; each later move is one push of the whole state, delivered the
+    next tick. Each event part is mapped to the tag's answer (of several event parts, a
+    sparse tuple holding that part alone); each firing is an answer a tick late, so two
+    parts that fire in one tick are two answers of the next.
 - **A named widget function as a supplier** (`@HostDocument @child, @Supply`): a widget
   function shaped as a supplier (a parameter `Element c o`, the result `@o`) whose clauses
   build no place (`@ x`, `@Element e`, a `match` or `if` of them, after `let`s) is emitted

@@ -54,10 +54,10 @@ pub fn same_keys<K: Ord + Clone, V: Clone, W: Clone>(a: &Map<K, V>, b: &Map<K, W
 pub use cx::{Cx, Done, Node, Runtime};
 pub use doc::{Document, Edit, Patch, Request};
 pub use existential::{Packed, Packing};
-pub use host::{AnswerOf, Blueprint, BuiltWidget, Moved, RowDeliver, RowDocument, WeakRows, bundle_dynamic_blueprint, host_moved, moved_by, widget_blueprint, widget_event_blueprint, Entry, Follow, Host, HostDoc, HostOf, HostRow, Level, Link, PerKey, Rows, Scope, Sink, Supplied, Supplier, Watch, bundle_blueprint, dynamic_blueprint, dynamics_pod, dynamics_ports, described_blueprint, element_blueprint, event_blueprint, forward_on_none, never_blueprint, plain_blueprint};
+pub use host::{AnswerOf, Blueprint, BuiltWidget, Moved, RowDeliver, RowDocument, WeakRows, PartsAnswer, parts_blueprint, parts_event, parts_state, host_moved, moved_by, widget_blueprint, widget_event_blueprint, Entry, Follow, Host, HostDoc, HostOf, HostRow, Level, Link, PerKey, Rows, Scope, Sink, Supplied, Supplier, Watch, dynamic_blueprint, dynamics_pod, dynamics_ports, described_blueprint, element_blueprint, event_blueprint, forward_on_none, never_blueprint, plain_blueprint};
 pub use float::Float;
 pub use num::{Int, Nat};
-pub use pod::{Error, Fault, FromPod, Path, Pod, Segment, ToPod};
+pub use pod::{Error, Fault, FromPod, Path, Pod, Segment, SparsePart, ToPod, sparse_absent, sparse_present};
 pub use print::{Printer, Show, show, show_text};
 pub use regex::{Group, Match, Regex, RegexError, RegexPart, RegexReplacement};
 pub use world::test_world::TestWorld;

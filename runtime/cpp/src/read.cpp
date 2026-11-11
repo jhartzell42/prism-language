@@ -266,7 +266,9 @@ Expected<std::vector<Tok>, Err> lex(std::string_view src) {
                 }
             if (done) continue;
             const char* found = nullptr;
-            for (const char* p : {"(", ")", "[", "]", "{", "}", ",", ":", "=", "?", "~", "/", "#"})
+            // `-` alone is a sparse tuple's absent part (`(("hello", -))`); a number's sign
+            // and `-inf` were read above
+            for (const char* p : {"(", ")", "[", "]", "{", "}", ",", ":", "=", "?", "~", "/", "#", "-"})
                 if (char32_t(p[0]) == c) found = p;
             if (!found) return unexpected(Err("unexpected character " + show(c)));
             // A `(` that touches a name opens fields: `Card(rank=Four)`, where
@@ -416,6 +418,7 @@ struct Parser {
                 if (auto e = close_paren(); !e) return unexpected(e.error());
                 return v;
             }
+            if (t->s == "-") return Pod::absent();
             if (t->s == "((") {
                 auto xs = items("))");
                 if (!xs) return unexpected(xs.error());

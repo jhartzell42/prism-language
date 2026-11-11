@@ -110,6 +110,9 @@ using Fields = std::vector<std::pair<std::string, Pod>>;
 /// - `Tuple`, `Array`, `Map` (entries in ascending key order);
 /// - `Nil`, `Some`, `Ok` (`~ x`), `Failed` (a failed `~T`: its `Error` record);
 /// - `Path`;
+/// - `Absent`: `-`, a part of a sparse tuple that is not there (Type System ch. 2,
+///   "Bundles and sparse tuples"): an answer to a bundle of several events holds the
+///   parts that fired;
 /// - `Shown`: a value whose type has its own `impl ^Show`: it prints as the impl's text
 ///   and matches as its structure (transcripts print by `^Show`, Type System ch. 2). The
 ///   text takes no part in equality or order, which go by the structure (a chess `Spot`
@@ -118,7 +121,7 @@ class Pod {
 public:
     enum class Kind : std::uint8_t {
         Unit, Bool, Int, Float, Char, Text, Duration, Record, Choice, Element,
-        Tuple, Array, Map, Nil, Some, Ok, Failed, Path, Shown,
+        Tuple, Array, Map, Nil, Some, Ok, Failed, Path, Shown, Absent,
     };
     struct Named {
         std::string name;
@@ -168,6 +171,8 @@ public:
         return Pod(std::in_place_index<18>, Shown{std::move(text), make_rc<const Pod>(std::move(structure))});
     }
 
+    static Pod absent() { return Pod(std::in_place_index<19>, Unit{}); }
+
     Kind kind() const { return Kind(v_.index()); }
     bool is(Kind k) const { return kind() == k; }
 
@@ -211,7 +216,7 @@ public:
 private:
     using V = std::variant<Unit, bool, Int, Float, char32_t, Text, Nanos, Named, Choice, Named, std::vector<Pod>,
                            std::vector<Pod>, Entries, Unit, Rc<const Pod>, Rc<const Pod>,
-                           Rc<const Pod>, prism_rtl::Path, Shown>;
+                           Rc<const Pod>, prism_rtl::Path, Shown, Unit>;
     template <std::size_t I, class... A>
     Pod(std::in_place_index_t<I> i, A&&... a) : v_(i, std::forward<A>(a)...) {}
     template <std::size_t I>
@@ -355,6 +360,39 @@ struct FromPod<std::optional<T>> {
             return std::optional<T>(std::move(v).value());
         }
         return mismatch<std::optional<T>>("an option", p);
+    }
+};
+
+/// One part of a sparse tuple (Type System ch. 2, "Bundles and sparse tuples"): the part's
+/// value, or absent, `-`. An answer to a bundle of several events is a tuple of them, one
+/// per event part, holding the parts that fired.
+template <class T>
+struct SparsePart {
+    std::optional<T> part;
+    /// The part's value when it is there.
+    const std::optional<T>& present() const { return part; }
+    friend bool operator==(const SparsePart&, const SparsePart&) = default;
+};
+
+/// A part of a sparse tuple that is there.
+template <class T>
+SparsePart<T> sparse_present(T v) { return SparsePart<T>{std::optional<T>(std::move(v))}; }
+
+/// A part of a sparse tuple that is not there.
+template <class T>
+SparsePart<T> sparse_absent() { return SparsePart<T>{std::nullopt}; }
+
+template <class T>
+struct ToPod<SparsePart<T>> {
+    static Pod to_pod(const SparsePart<T>& x) { return x.part ? prism_rtl::to_pod(*x.part) : Pod::absent(); }
+};
+template <class T>
+struct FromPod<SparsePart<T>> {
+    static Result<SparsePart<T>> from_pod(const Pod& p) {
+        if (p.is(Pod::Kind::Absent)) return SparsePart<T>{std::nullopt};
+        auto v = prism_rtl::from_pod<T>(p);
+        if (!v) return unexpected(v.error());
+        return SparsePart<T>{std::optional<T>(std::move(v).value())};
     }
 };
 

@@ -845,6 +845,16 @@ fn PreInit wx, benv, menv, s = match s.kind:
             let wx2 = update wx:
                 &_.inited <= AddText &_.inited, f
             ((wx2, (Bind benv, "{PatText p}#init", (BnLocal (XVar "{f}_init"), Owned, t))))
+        # a bundle's place (`((id, $state)) <- Pad.Port(..)`): each `$` part's hold has its
+        # part of the first value, the local `{f}_init` (`BundleOutputOf`)
+        ? (BnParts ignore): if not (IsBundlePlace wx.lx, placed): ((wx, benv)) else: match p.kind:
+            PTuple qs: Fold qs, ((wx, benv)), \|((w, be)), q| match ?BindingOfName menv, q:
+                ? (BnHold f, t):
+                    let w2 = update w:
+                        &_.inited <= AddText &_.inited, f
+                    ((w2, (Bind be, "{PatText q}#init", (BnLocal (XVar "{f}_init"), Owned, t))))
+                otherwise: ((w, be))
+            otherwise: ((wx, benv))
         otherwise: ((wx, benv))
     SLet p, ignore, e: match ?BindingOf menv, p:
         # the getter its prebinding named (`PreBindName`)
@@ -1258,8 +1268,9 @@ fn ?BundleWritten lx, p, e = match ((p.kind, e.kind)):
 # "Bundles": a plain aggregate with functor values inside), for what reads the name as a
 # value (a supplier's `@ pair`): each event part fires a port made before the node, as a
 # named event's value form does (`PreBindName`), and the tuple of the plain parts and those
-# ports' events is a field, bound under `{name}#value`. A bundle with a dynamic part or a
-# bundle inside has no such value here, and its name read as a value is refused there.
+# ports' events is a field, bound under `{name}#value`; a `$` part is in it as a live
+# `Dynamic` of the node (`LiveDynamic`). A bundle with a bundle inside has no such value
+# here, and its name read as a value is refused there.
 BundleValue: unbounded fn Wx, Env, Env, SName, Expr, Wres -> ((Wx, Env, Env))
 fn BundleValue wx, benv, menv, n, tuple, res:
     let lx = wx.lx
@@ -1273,6 +1284,7 @@ fn BundleValue wx, benv, menv, n, tuple, res:
     let simple = (Len parts) > 0 and (Len parts) == (Len es) and Fold parts, True, \|ok, part| ok and match part:
         WrEv ignore: True
         WrPlain ignore, ignore: True
+        WrDyn ignore, ignore, ignore: True
         otherwise: False
     if not simple: ((wx, benv, menv))
     else:
@@ -1288,6 +1300,10 @@ fn BundleValue wx, benv, menv, n, tuple, res:
                     &_.moves <= Push &_.moves, ((pf, (XClone (XVar pf))))
                 (((Push acc, (XCall (RefRuntime "prism_rtl::Event::of"), [[(XRef (XVar pf))]])), w2))
             ((? (WrPlain ex, ignore), ignore)): (((Push acc, ex), w))
+            # a `$` part: the node's dynamic as a live `Dynamic` (`LiveDynamic`)
+            ((? (WrDyn ex, reads, dt), ignore)):
+                let ((dyn, w1)) = LiveDynamic w, "{Snake nkey}_part{i}", ex, reads, dt, "part {i} of `{nkey}`"
+                (((Push acc, dyn), w1))
             otherwise: ((acc, w))
         let t = OutTyOf lx, (TypeAt lx, tuple.span)
         let ((vf, wx2)) = FreshName wx1, "{Snake nkey}_bundle"
@@ -1617,17 +1633,29 @@ fn ResultOfTyped wx, benv, menv, x, full, t:
 IsHeldHold: fn Lx, Pattern -> Bool
 fn IsHeldHold lx, p = TimeWithin (BinderTy lx, p.span)
 
-# Whether a bound line places an element whose tag's output is a dynamic.
-IsDynamicPlace: fn Lx, Expr -> Bool
-fn IsDynamicPlace lx, e:
+# The element tag a bound line places, when it places one.
+?PlacedTag: fn Lx, Expr -> ?TagInfo
+fn ?PlacedTag lx, e:
     let name = match e.kind:
         ECall c, ignore, ignore, ignore: TagNameOf lx, c
         EName ignore: TagNameOf lx, e
         EGroup x: TagNameOf lx, x
         otherwise: ""
     match lx.g.tags[name]:
-        ? tg: tg.kind == "Element" and (LayerOf tg.out) == LyDyn
-        nil: False
+        ? tg: if tg.kind == "Element": ? tg else: nil
+        nil: nil
+
+# Whether a bound line places an element whose tag's output is a dynamic.
+IsDynamicPlace: fn Lx, Expr -> Bool
+fn IsDynamicPlace lx, e = match ?PlacedTag lx, e:
+    ? tg: (LayerOf tg.out) == LyDyn
+    nil: False
+
+# Whether a bound line places an element whose tag's output is a bundle.
+IsBundlePlace: fn Lx, Expr -> Bool
+fn IsBundlePlace lx, e = match ?PlacedTag lx, e:
+    ? tg: IsBundle (Peel tg.out)
+    nil: False
 
 InitKey: fn Expr -> Text
 fn InitKey e = "{e.span.start}:{e.span.end}"

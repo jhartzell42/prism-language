@@ -25,15 +25,18 @@ Hosting
 - lower/expr.prism:703 `@ x` outside a tag arm where `x` is no plain data (a function).
   No test. Any other answer outside an arm is lowered: plain data in `Answer`'s case of
   no tag, read by the place that takes it (sem-ch09-host-answer-without-arm).
-- lower/expr.prism (`BundleBlueprint`) a bundle answer with two event parts, two `$`
-  parts, a `$` part beside a plain part, a `$` part that reads what has no value at the
-  owner's build, or a `$` part in a bundle given as a value.
-  No test. `@ ((never, $ "offline"))` is lowered (sem-ch09-bundle-dynamic-part), and a
-  live `$` part (sem-ch09-host-bundle-live-dynamic-answer).
-- lower/node/elements.prism:220 an element tag whose bundle output has two event parts,
-  two `$` parts, or a `$` part beside a plain part. No test. One event part and one `$`
-  part is lowered (sem-ch09-bundle-dynamic-part), in a hosted scope too
-  (sem-ch09-host-bundle-dynamic-part-forwarded).
+- lower/expr.prism (`WrittenPart`) a bundle answer's `$` part that reads what has no
+  value at the owner's build (sem-ch09-host-bundle-answer-structural-part,
+  -parent-part). Every other bundle answer is lowered, any mix of plain, `$` and event
+  parts, written as a tuple or given as a value (`PartsBlueprint`:
+  sem-ch09-host-bundle-two-events-answer, -two-dynamics-answer,
+  -plain-beside-dynamic-answer, sem-ch09-host-bundle-live-dynamic-answer,
+  sem-ch09-bundle-dynamic-part).
+- An element tag whose output is a bundle is lowered for any mix of plain, `$` and
+  event parts (`BundleOutputOf`: sem-ch09-bundle-two-events, -two-dynamics,
+  -plain-beside-dynamic, sem-ch09-bundle-dynamic-part), in a hosted scope too
+  (sem-ch09-host-bundle-dynamic-part-forwarded). A bundle nested in a tag's bundle
+  output is read as a plain part: no test.
 - lower/expr.prism (`WidgetBlueprintValue`, `WidgetValueWords`) a widget with places as
   a blueprint value is lowered where it has no type parameter and no widget function
   parameter, and gives nothing, a plain value or an event back

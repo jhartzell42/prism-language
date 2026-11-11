@@ -626,22 +626,24 @@ impl<T: Clone + 'static> Node for Subscribed<T> {
     }
 }
 
-/// The two subscriptions of a bundle answer with a `$` part
-/// ([`bundle_dynamic_blueprint`]), let go when the row leaves.
-struct SubscribedBoth<T> {
-    event: Rc<Port<T>>,
-    event_handle: Cell<Option<Handle>>,
-    updates: Rc<Port<()>>,
-    updates_handle: Cell<Option<Handle>>,
+/// The subscriptions of a bundle answer ([`parts_blueprint`]): one per event part, and one
+/// per port that says a `$` part moved, let go when the row leaves.
+struct SubscribedParts<T> {
+    events: Vec<(Rc<Port<T>>, Cell<Option<Handle>>)>,
+    updates: Vec<(Rc<Port<()>>, Cell<Option<Handle>>)>,
 }
 
-impl<T: Clone + 'static> Node for SubscribedBoth<T> {
+impl<T: Clone + 'static> Node for SubscribedParts<T> {
     fn leave(self: Rc<Self>, _cx: &mut Cx) -> Done {
-        if let Some(h) = self.event_handle.take() {
-            self.event.unsubscribe(h);
+        for (port, handle) in &self.events {
+            if let Some(h) = handle.take() {
+                port.unsubscribe(h);
+            }
         }
-        if let Some(h) = self.updates_handle.take() {
-            self.updates.unsubscribe(h);
+        for (port, handle) in &self.updates {
+            if let Some(h) = handle.take() {
+                port.unsubscribe(h);
+            }
         }
         Ok(())
     }
@@ -664,43 +666,81 @@ pub fn event_blueprint<E: 'static, A: Clone + 'static>(e: Event<A>) -> Blueprint
     })
 }
 
-/// `@ ((x, !e))` for a bundle's tag (pick HO): `x`, the plain parts, the place's first value,
-/// once; each firing of `e` an answer to the child's place, a tick late.
-pub fn bundle_blueprint<E: 'static, A: Clone + 'static>(first: A, e: Event<A>) -> Blueprint<E, A> {
-    Rc::new(move |_path, sink: Sink<A>, _scope, _base, _cx| {
-        let node = Rc::new(Subscribed { port: e.port.clone(), handle: Cell::new(None) });
-        let h = e.port.subscribe(Rc::new(move |v: &A, cx: &mut Cx| later(&sink, v.clone(), cx)));
-        node.handle.set(Some(h));
-        Ok(Supplied { node, first: Some(first.clone()), forwards: false, entry: None, built: 0, leave: None, document: None, deliver: None })
-    })
+/// A bundle answer's parts (Type System ch. 2, "Bundles"): `@ ((a, $b, !c, !d))` under a
+/// bundle tag's arm, any mix of plain, `$` and event parts. The plain and `$` parts are
+/// the place's state, one dynamic of the tag's state case (a constant when no part
+/// moves), with a port per `$` part that says the part moved; each event part is an event
+/// of the tag's answer case.
+pub struct PartsAnswer<A> {
+    state: Option<Dynamic<A>>,
+    moved: Vec<Rc<Port<()>>>,
+    events: Vec<Event<A>>,
 }
 
-/// `@ ((!e, $d))` for a bundle's tag with a `$` part (Type System ch. 2, "Bundles"; round
-/// 3 DY): `d` is the `$` part in the tag's first-value case, `e` the event part in the
-/// tag's own. `d`'s value is the place's first value, read at the build; each later
-/// change of `d` is a push to the place and each firing of `e` an answer, both inputs of
-/// the next tick, which is owed. As [`dynamic_blueprint`], several marks of `d` in one
-/// tick are one push, sampled when it is delivered.
-pub fn bundle_dynamic_blueprint<E: 'static, A: Clone + 'static>(d: Dynamic<A>, e: Event<A>) -> Blueprint<E, A> {
+/// A bundle answer with a state: its plain and `$` parts.
+pub fn parts_state<A>(state: Dynamic<A>) -> PartsAnswer<A> {
+    PartsAnswer { state: Some(state), moved: Vec::new(), events: Vec::new() }
+}
+
+/// A bundle answer with no state: its first event part.
+pub fn parts_event<A>(e: Event<A>) -> PartsAnswer<A> {
+    PartsAnswer { state: None, moved: Vec::new(), events: vec![e] }
+}
+
+impl<A> PartsAnswer<A> {
+    /// One more port that says the state moved (a second `$` part's).
+    pub fn moved_by(mut self, port: &Rc<Port<()>>) -> PartsAnswer<A> {
+        self.moved.push(port.clone());
+        self
+    }
+    /// One more event part.
+    pub fn event(mut self, e: Event<A>) -> PartsAnswer<A> {
+        self.events.push(e);
+        self
+    }
+}
+
+/// `@ ((a, $b, !c))` for a bundle's tag (pick HO; round 3 DY): the state's value at the
+/// row's build is the place's first value, read synchronously; each later move of a `$`
+/// part is a push of the whole state to the place, and each firing of an event part an
+/// answer, all inputs of the next tick, which is owed. As [`dynamic_blueprint`], several
+/// marks of the state in one tick are one push, sampled when it is delivered. Two event
+/// parts that fire in one tick are two answers of that next tick.
+pub fn parts_blueprint<E: 'static, A: Clone + 'static>(parts: PartsAnswer<A>) -> Blueprint<E, A> {
+    let parts = Rc::new(parts);
     Rc::new(move |_path, sink: Sink<A>, _scope, _base, cx| {
-        let first = d.sample(cx);
-        let node = Rc::new(SubscribedBoth { event: e.port.clone(), event_handle: Cell::new(None), updates: d.updates.clone(), updates_handle: Cell::new(None) });
-        let answers = sink.clone();
-        let h = e.port.subscribe(Rc::new(move |v: &A, cx: &mut Cx| later(&answers, v.clone(), cx)));
-        node.event_handle.set(Some(h));
-        let read = d.clone();
-        let queued: Stamped<()> = Stamped::new();
-        let h = d.updates.subscribe(Rc::new(move |_: &(), cx: &mut Cx| {
-            if queued.fired(cx) {
-                return Ok(());
+        let first = parts.state.as_ref().map(|d| d.sample(cx));
+        let mut events = Vec::new();
+        for e in &parts.events {
+            let answers = sink.clone();
+            let h = e.port.subscribe(Rc::new(move |v: &A, cx: &mut Cx| later(&answers, v.clone(), cx)));
+            events.push((e.port.clone(), Cell::new(Some(h))));
+        }
+        let mut updates = Vec::new();
+        if let Some(d) = &parts.state {
+            let queued: Rc<Stamped<()>> = Rc::new(Stamped::new());
+            let mut ports = vec![d.updates.clone()];
+            for port in &parts.moved {
+                if !ports.iter().any(|p| Rc::ptr_eq(p, port)) {
+                    ports.push(port.clone());
+                }
             }
-            queued.set((), cx);
-            let (read, sink) = (read.clone(), sink.clone());
-            cx.answer_later(Box::new(move |cx| sink(&read.sample(cx), cx)));
-            Ok(())
-        }));
-        node.updates_handle.set(Some(h));
-        Ok(Supplied { node, first: Some(first), forwards: false, entry: None, built: 0, leave: None, document: None, deliver: None })
+            for port in ports {
+                let (read, sink, queued) = (d.clone(), sink.clone(), queued.clone());
+                let h = port.subscribe(Rc::new(move |_: &(), cx: &mut Cx| {
+                    if queued.fired(cx) {
+                        return Ok(());
+                    }
+                    queued.set((), cx);
+                    let (read, sink) = (read.clone(), sink.clone());
+                    cx.answer_later(Box::new(move |cx| sink(&read.sample(cx), cx)));
+                    Ok(())
+                }));
+                updates.push((port, Cell::new(Some(h))));
+            }
+        }
+        let node = Rc::new(SubscribedParts { events, updates });
+        Ok(Supplied { node, first, forwards: false, entry: None, built: 0, leave: None, document: None, deliver: None })
     })
 }
 
@@ -835,10 +875,11 @@ pub fn described_blueprint<E: Level + Eq, A: AnswerOf<E>>(d: &Described<E>) -> B
             Scope::World => {
                 let element = identity.level_pod(cx);
                 let first = cx.first_value(&element).map(|v| A::decode_first(&identity, &v)).transpose()?;
+                // the level's update event fires during propagation, where a read still gives
+                // the value before the tick: the node is marked, and its patch reads the level
                 let h = d.level.updates.subscribe(Rc::new(move |_: &(), cx: &mut Cx| {
                     if let Some(n) = weak.upgrade() {
-                        let now = n.level.sample(cx).level_pod(cx);
-                        cx.changed(n.at.clone(), now);
+                        cx.dirty(n);
                     }
                     Ok(())
                 }));
@@ -913,6 +954,15 @@ impl<E: Level + Eq, A: AnswerOf<E>> Node for Placed<E, A> {
     /// tag's first-value case carries (`decode_first`; any other tag's is its answer).
     fn push(self: Rc<Self>, _element: &Pod, v: &Pod, cx: &mut Cx) -> Done {
         (self.sink)(&A::decode_first(&self.element, v)?, cx)
+    }
+    /// The World's place after its level's update event fired: the level at the read
+    /// point, sent again (the diff decides whether it moved).
+    fn patch(self: Rc<Self>, cx: &mut Cx) -> Done {
+        if self.entry.borrow().is_none() {
+            let now = self.level.sample(cx).level_pod(cx);
+            cx.changed(self.at.clone(), now);
+        }
+        Ok(())
     }
     fn leave(self: Rc<Self>, cx: &mut Cx) -> Done {
         if let Some(h) = self.handle.take() {

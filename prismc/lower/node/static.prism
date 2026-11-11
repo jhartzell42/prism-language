@@ -428,7 +428,15 @@ fn DynamicAnswers wx, benv, menv, hf, sup:
     let lx = wx.lx
     # (and a bundle answer's `$` parts, `@ (("hello" on !flip, $state))`, each keyed by
     # the part: `BundleBlueprint`)
-    let dyns = Fold (ExprsIn sup), [[]], \|acc, x| match x.kind:
+    # (and the answers of a blueprint a `let` of the block names, `let @$live = @ $level`,
+    # which the supplier reads as its expression: `NameValueOf`)
+    let written = ExprsIn sup
+    let named = Fold written, [[]], \|acc, x| match x.kind:
+        EName n: match (if (Len n.path) == 1: menv.names["{SNameKey n}#blueprint"] else: nil):
+            ? (BnWidget held, ignore, ignore, ignore): Append acc, (ExprsIn held)
+            otherwise: acc
+        otherwise: acc
+    let dyns = Fold (Append written, named), [[]], \|acc, x| match x.kind:
         EFreeSigil "@", y: match ?DynamicAnswer lx, y:
             ? d: Push acc, ((y, d))
             nil: match (Ungrouped y).kind:
