@@ -339,31 +339,53 @@ fn ?ClosedTypes rigids, found:
 # `OpenWidgetBlueprintValue`). An impl's method is instantiated wherever a constraint is
 # solved by its impl (the checker's `ImplNote`s), at the types the impl's head takes
 # there, and so is its trait's default the impl leaves unwritten. No answer where the
-# program has no finite set of them (`?GrowInstances`), or where a use leaves a type
+# program has no finite set of them (`GrowInstances`), or where a use leaves a type
 # parameter undecided.
 ?DefInstances: unbounded fn Lx, Text -> ?[ [((Text, Ty))] ]
-fn ?DefInstances lxAt, wanted:
+fn ?DefInstances lx, wanted = match DefInstancesAnswer lx, wanted:
+    InstancesReached all: ? (Each all, \|instantiation| instantiation.types)
+    otherwise: nil
+
+# What the fixed point over the program's instantiations answers: the instantiations,
+# or why there is no finite list of them to read.
+type InstancesAnswer = choice:
+    InstancesReached [Instantiation]
+    # a line of uses by name that gives a type parameter a larger type holding itself:
+    # the checker's `grows-without-end` (ruling PG), so no checked program has one
+    EndlessByName
+    # a line through a constraint an impl solves, or through an associated type, that
+    # holds one definition twice, the earlier types embedded in the later
+    EndlessThroughImpl
+    # a use leaves a type parameter undecided
+    UndecidedParameter
+    # nothing by that name is defined
+    NoDefinition
+derive ^Eq, ^Show
+
+# `?DefInstances` with its reason: the instantiations of `wanted` alone.
+DefInstancesAnswer: unbounded fn Lx, Text -> InstancesAnswer
+fn DefInstancesAnswer lxAt, wanted:
     # the types as the checker wrote them, under no instantiation
     let lx = update lxAt:
         &_.subst <= {}
     let definitions = Filter lx.g.defs, \|d| (InstanceKey d) == wanted
     let rigids = Fold definitions, [[]], \|acc, d| UnionTexts acc, (DefinitionRigids lx, d)
-    if (Len definitions) == 0: nil
-    else: if (Len rigids) == 0: ? [[ [[]] ]]
+    if (Len definitions) == 0: NoDefinition
+    else: if (Len rigids) == 0: InstancesReached [[Instantiation(definition=wanted, types=[[]], ?parent=nil, ?step=nil)]]
     else:
         let uses = InstanceUses lx
         let relevant = RelevantDefinitions lx, uses, [[wanted]]
         let reaching = Filter uses, \|site| ReachesRelevant lx, relevant, site
         # the uses in a definition with no type parameter are read once, at no types
         let closed = Fold lx.g.defs, [[]], \|acc, d| if (Len (DefinitionRigids lx, d)) == 0 and not (HasText acc, (InstanceKey d)): Push acc, (InstanceKey d) else: acc
-        let ?seeded = Fold closed, (? [[]]), \|?acc, user| match ?acc:
-            nil: nil
-            ? acc: ?AddTargets lx, reaching, relevant, acc, user, [[]], nil
-        match ?seeded:
-            nil: nil
-            ? seeded: match ?GrowInstances lx, reaching, relevant, seeded, 0:
-                nil: nil
-                ? all: ? (Fold all, [[]], \|acc, instantiation| if instantiation.definition == wanted: Push acc, instantiation.types else: acc)
+        let seeded = Fold closed, (InstancesReached [[]]), \|answer, user| match answer:
+            InstancesReached acc: AddTargets lx, reaching, relevant, acc, user, [[]], nil
+            otherwise: answer
+        match seeded:
+            InstancesReached seeds: match GrowInstances lx, reaching, relevant, seeds, 0:
+                InstancesReached all: InstancesReached (Filter all, \|instantiation| instantiation.definition == wanted)
+                other: other
+            other: other
 
 # A definition's name among the program's instantiations: its qualified name, and for an
 # impl's method, which shares its trait's method's name with every other impl's, its
@@ -510,28 +532,29 @@ fn RelevantDefinitions lx, uses, relevant:
 
 # The fixed point's step: the uses in the body of the instantiation at `next` are read
 # at its types, and what they instantiate is added behind; done when none is left.
-?GrowInstances: unbounded fn Lx, [InstanceUse], [Text], [Instantiation], Nat -> ?[Instantiation]
-fn ?GrowInstances lx, uses, relevant, all, next = match all[next]:
-    nil: ? all
-    ? instantiation: match ?AddTargets lx, uses, relevant, all, instantiation.definition, instantiation.types, (? next):
-        nil: nil
-        ? more: ?GrowInstances lx, uses, relevant, more, (next + 1)
+GrowInstances: unbounded fn Lx, [InstanceUse], [Text], [Instantiation], Nat -> InstancesAnswer
+fn GrowInstances lx, uses, relevant, all, next = match all[next]:
+    nil: InstancesReached all
+    ? instantiation: match AddTargets lx, uses, relevant, all, instantiation.definition, instantiation.types, (? next):
+        InstancesReached more: GrowInstances lx, uses, relevant, more, (next + 1)
+        other: other
 
 # What the uses in `user`'s body instantiate at the types `types` give `user`'s type
-# parameters, added to `all` where new. No answer where a use leaves a type parameter
-# undecided, and where the program has no finite set of instantiations (`GrowsFrom`).
-?AddTargets: unbounded fn Lx, [InstanceUse], [Text], [Instantiation], Text, [((Text, Ty))], ?Nat -> ?[Instantiation]
-fn ?AddTargets lx, uses, relevant, all, user, types, ?parent = Fold uses, (? all), \|?acc, site| match ?acc:
-    nil: nil
-    ? acc: if (UseUser site) != user: ? acc else: match ?UseTargets lx, site, types:
-        nil: nil
-        ? targets: Fold targets, (? acc), \|?sofar, ((definition, taken, ?step))| match ?sofar:
-            nil: nil
-            ? sofar:
+# parameters, added to `all` where new. No list where a use leaves a type parameter
+# undecided, and where the program has no finite set of instantiations (`?GrowsFrom`).
+AddTargets: unbounded fn Lx, [InstanceUse], [Text], [Instantiation], Text, [((Text, Ty))], ?Nat -> InstancesAnswer
+fn AddTargets lx, uses, relevant, all, user, types, ?parent = Fold uses, (InstancesReached all), \|answer, site| match answer:
+    InstancesReached acc: if (UseUser site) != user: answer else: match ?UseTargets lx, site, types:
+        nil: UndecidedParameter
+        ? targets: Fold targets, answer, \|inner, ((definition, taken, ?step))| match inner:
+            InstancesReached sofar:
                 let known = Fold sofar, False, \|seen, other| seen or (other.definition == definition and (Show other.types) == (Show taken))
-                if known or not (HasText relevant, definition): ? sofar
-                else: if GrowsFrom lx, sofar, ?parent, definition, taken, ?step: nil
-                else: ? (Push sofar, Instantiation(definition=definition, types=taken, ?parent=?parent, ?step=?step))
+                if known or not (HasText relevant, definition): inner
+                else: match ?GrowsFrom lx, sofar, ?parent, definition, taken, ?step:
+                    ? endless: endless
+                    nil: InstancesReached (Push sofar, Instantiation(definition=definition, types=taken, ?parent=?parent, ?step=?step))
+            otherwise: inner
+    otherwise: answer
 
 # Whether a new instantiation of `definition` at `types` is one of an endless line: the
 # line of its parents from `?at` holds the same definition, and what led from there to
@@ -556,17 +579,19 @@ fn ?AddTargets lx, uses, relevant, all, user, types, ?parent = Fold uses, (? all
 # of a definition, so some parameter of some definition is reached again from itself
 # with a layer added between: the substitution between those two holds it inside its
 # own larger type.
-GrowsFrom: unbounded fn Lx, [Instantiation], ?Nat, Text, [((Text, Ty))], ?[((Text, Ty))] -> Bool
-fn GrowsFrom lx, all, ?at, definition, types, ?composed = match ?at:
-    nil: False
+?GrowsFrom: unbounded fn Lx, [Instantiation], ?Nat, Text, [((Text, Ty))], ?[((Text, Ty))] -> ?InstancesAnswer
+fn ?GrowsFrom lx, all, ?at, definition, types, ?composed = match ?at:
+    nil: nil
     ? at: match all[at]:
-        nil: False
+        nil: nil
         ? above:
-            let grows = above.definition == definition and match ?composed:
-                ? composed: Fold composed, False, \|found, ((q, t))| found or (t != (TyRigid q) and HasText (RigidsIn t), q)
-                nil: (Len above.types) == (Len types) and Fold (Range0 (Len types)), True, \|every, i| every and match ((above.types[i], types[i])):
-                    ((? ((ignore, small)), ? ((ignore2, large)))): Embeds small, large
-                    otherwise: False
+            let ?grows = if above.definition != definition: nil else: match ?composed:
+                ? composed: if Fold composed, False, \|found, ((q, t))| found or (t != (TyRigid q) and HasText (RigidsIn t), q): ? EndlessByName else: nil
+                nil:
+                    let embedded = (Len above.types) == (Len types) and Fold (Range0 (Len types)), True, \|every, i| every and match ((above.types[i], types[i])):
+                        ((? ((ignore, small)), ? ((ignore2, large)))): Embeds small, large
+                        otherwise: False
+                    if embedded: ? EndlessThroughImpl else: nil
             let ?further = match ((?composed, above.?step)):
                 ((? composed, ? step)):
                     let lxStep = update lx:
@@ -574,7 +599,9 @@ fn GrowsFrom lx, all, ?at, definition, types, ?composed = match ?at:
                         &_.csubst <= {}
                     ? (Each composed, \|((q, t))| ((q, (SubstTyIn lxStep, t))))
                 otherwise: nil
-            grows or GrowsFrom lx, all, above.?parent, definition, types, ?further
+            match ?grows:
+                ? endless: ? endless
+                nil: ?GrowsFrom lx, all, above.?parent, definition, types, ?further
 
 # Whether a type holds an associated type, which stands for another type once its
 # argument is known.
@@ -721,6 +748,10 @@ fn ImplTargets lx, cls, ty = Fold (Or lx.g.impls[cls], [[]]), [[]], \|acc, im| m
 # parameter.
 ?EnclosingInstances: unbounded fn Lx -> ?[ [((Text, Ty))] ]
 fn ?EnclosingInstances lx = if lx.inDefinition == "": nil else: ?DefInstances lx, lx.inDefinition
+
+# The same with its reason (`DefInstancesAnswer`), for a refusal's words.
+EnclosingAnswer: unbounded fn Lx -> InstancesAnswer
+fn EnclosingAnswer lx = if lx.inDefinition == "": NoDefinition else: DefInstancesAnswer lx, lx.inDefinition
 
 # A valued widget's key where it is read (`ValuedKey`), "" where its type parameters stay
 # open.

@@ -91,7 +91,8 @@ fn CallGlobal env, st0, n, args, span, explicit, cspan:
                 ? v:
                     let ((t, st2i, inst)) = InstantiateWith st, v.scheme, span, explicit
                     let ((rigids, st2)) = RankTwo st2i, v.scheme, inst, (Len explicit), span
-                    let st3a = NoteCallee (NoteMethodUse st2, v, span), n.span, cspan, t
+                    let st2u = if IsGenericUse v: NoteGenericUse st2, qk, v.scheme.qs, n.span, inst else: st2
+                    let st3a = NoteCallee (NoteMethodUse st2u, v, span), n.span, cspan, t
                     let st3 = if (BareName qk) == "Min": NoteSizeTy st3a, span, (Walk st3a, t) else: st3a
                     if (BareName qk) == "Fold" and v.home == "Prelude": FoldApp env, st3, t, args, span
                     else:

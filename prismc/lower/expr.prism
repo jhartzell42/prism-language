@@ -1345,10 +1345,13 @@ fn IsWidgetFn v = match v.scheme.ty:
 # generic definition whose instantiations are no finite set or cannot all be read
 # (`?DefInstances`), the words say so; any other widget, `WidgetValueWords`.
 OpenWidgetValueWords: unbounded fn Lx, Text -> Text
-fn OpenWidgetValueWords lx, qk = match ((lx.inDefinition, ?EnclosingInstances lx)):
-    (("", ignore)): WidgetValueWords qk
-    ((ignore, ? ignore2)): WidgetValueWords qk
-    ((definition, nil)): "the generic widget function {BareName qk} as a value in {definition}, given a type parameter of that definition: its rows are made for each set of types the program gives the definition, and the program gives it no finite set (it reaches itself at types that hold its own, without end), or a use of it leaves a type parameter undecided"
+fn OpenWidgetValueWords lx, qk = match EnclosingAnswer lx:
+    NoDefinition: WidgetValueWords qk
+    InstancesReached ignore: WidgetValueWords qk
+    # the checker's `grows-without-end` (ruling PG): no checked program reaches this
+    EndlessByName: "{internalBug}the generic widget function {BareName qk} as a value in {lx.inDefinition}, which reaches itself by name at types that grow without end: the checker refuses such a definition (`grows-without-end`)"
+    EndlessThroughImpl: "the generic widget function {BareName qk} as a value in {lx.inDefinition}, given a type parameter of that definition: its rows are made for each set of types the program gives the definition, and the program gives it no finite set (it reaches itself through a constraint an impl solves or an associated type, at types that hold its earlier ones)"
+    UndecidedParameter: "the generic widget function {BareName qk} as a value in {lx.inDefinition}, given a type parameter of that definition: its rows are made for each set of types the program gives the definition, and a use of it leaves a type parameter undecided"
 
 WidgetValueWords: fn Text -> Text
 fn WidgetValueWords qk = "the widget function {BareName qk} as a value: a blueprint value is a supplier's answer that builds no place (`@ x`, `@Element e`, a `match` of them); one with places is a widget-function blueprint as an answer (pick HO)"

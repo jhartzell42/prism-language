@@ -700,7 +700,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
     definition being lowered, an impl's method by its place, `InstanceKey`): a use
     with closed types gives them; a use in another generic definition's body gives
     them at each of that one's own, however deep, a definition's uses of itself at
-    other types included (`InstanceUses`, `?GrowInstances`); an impl's method has the
+    other types included (`InstanceUses`, `GrowInstances`); an impl's method has the
     types its impl's head takes wherever a constraint is solved by that impl (the
     checker's `ImplNote`s; `ImplTargets`, which follows the impl's own bounds), and a
     default the impl leaves unwritten has the type. A trait method with type
@@ -710,7 +710,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the types the name's type gives the method's own (`DefinitionRigids` counts both;
     `ImplTargets` leaves such a method out). Only the definitions that can
     reach the one asked for are followed (`RelevantDefinitions`). The fixed point has
-    no count (`GrowsFrom`). Each instantiation keeps the use by name that gave it
+    no count (`?GrowsFrom`), and says why it has no list where it has none
+    (`InstancesAnswer`). Each instantiation keeps the use by name that gave it
     (`Instantiation.?step`: its type parameters as types over its parent's). Where a
     new instantiation's line of parents holds the same definition and every step
     between is a use by name, the steps make one substitution over the definition's
@@ -728,10 +729,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
     (`?OpenWidgetBlueprintValue`: prism_rtl's `type_key` of each against the
     instantiation's types; two instantiations of one target type are one choice); the
     arguments are read at the function's own types and are the row's by the choice
-    made (`recast`). A function the program never uses chooses nothing. Where the
-    program gives the definition no finite set of types (a function that calls itself
-    at `[a]` for `a`), or a use leaves a type parameter undecided, the reading is
-    refused (`OpenWidgetValueWords`).
+    made (`recast`). A function the program never uses chooses nothing. A line of uses
+    by name that grows without end (a function that calls itself at `[a]` for `a`) is
+    the checker's `grows-without-end` (ruling PG; `GrowthCheck` in prismc/check/mod.prism
+    walks the uses by name from each definition with type parameters, composing the
+    same substitutions over the definitions, not over the program's instantiations),
+    so the fixed point's stop at one is an internal error (`EndlessByName`). Where a
+    line through an impl's constraint or an associated type has no finite set of types
+    the lowering can find (`EndlessThroughImpl`), or a use leaves a type parameter
+    undecided (`UndecidedParameter`), the reading is refused (`OpenWidgetValueWords`).
   - A generic widget read inside a generalized `let` or a generalized local function,
     at that one's own type variable, has rows for each instantiation the `let`'s uses
     give the variable (`AtLetInstantiations`); the `let` is lowered at each
