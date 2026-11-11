@@ -63,7 +63,7 @@ fn WidgetLine wx, benv, menv, e, ?bound:
         EName n: if (Len n.path) == 1: menv.names[SNameKey n] else: nil
         otherwise: nil
     match ?param:
-        ? (BnWidget x, cbenv, cmenv, clx): ApplyWidgetParam wx, x, cbenv, cmenv, clx, (Len args)
+        ? (BnWidget x, cbenv, cmenv, clx): ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound
         ? (BnLocalWidget b): LocalWidgetLine wx, benv, menv, b, e
         otherwise: WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target
 
@@ -71,14 +71,31 @@ fn WidgetLine wx, benv, menv, e, ?bound:
 # caller's environments and context, so its places take this node's next positions
 # (transparent, Semantics ch. 8). It needs no bound of its own: the argument is the
 # caller's text, one frame out, so an application recurses only through a widget's
-# recursion, which `InlineWidget` bounds. A blueprint parameter applied to arguments is not
-# lowered yet.
-ApplyWidgetParam: unbounded fn Wx, Expr, Env, Env, Lx, Nat -> ((Wx, Wres))
-fn ApplyWidgetParam wx, x, cbenv, cmenv, clx, nargs:
-    if nargs > 0:
-        let wx2 = update wx:
-            &_.build <= Push &_.build, (RefusalDo "a widget parameter applied to arguments")
-        ((wx2, WrUnit))
+# recursion, which `InlineWidget` bounds.
+# A widget function parameter applied to arguments (`Inner 1`, `Inner: fn Nat -> @unit`
+# given `@Row`): the function the argument names, applied here to the line's arguments,
+# which are read in this line's environments; a parameter handed on names its own
+# argument in turn. A function value that is no name is not lowered yet.
+ApplyWidgetParam: unbounded fn Wx, Env, Env, Expr, Env, Env, Lx, Expr, [Arg], ?Bn -> ((Wx, Wres))
+fn ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound:
+    if (Len args) > 0: match (Ungrouped x).kind:
+        EName n: match (if (Len n.path) == 1: cmenv.names[SNameKey n] else: nil):
+            ? (BnWidget x2, cbenv2, cmenv2, clx2): ApplyWidgetParam wx, benv, menv, x2, cbenv2, cmenv2, clx2, e, args, ?bound
+            otherwise:
+                let ((?q, ignore)) = ResolveValue clx.g, clx.home, n
+                let ?target = match ?bound:
+                    ? (BnEv er, ignore): ? er.node
+                    otherwise: nil
+                match ?q:
+                    ? qk: WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target
+                    nil:
+                        let wx2 = update wx:
+                            &_.build <= Push &_.build, (InternalBugDo "a widget function parameter whose argument names nothing")
+                        ((wx2, WrUnit))
+        otherwise:
+            let wx2 = update wx:
+                &_.build <= Push &_.build, (RefusalDo "a widget function parameter applied to arguments whose argument is a function value that is no name")
+            ((wx2, WrUnit))
     else:
         let lx = wx.lx
         let inner = update wx:
@@ -794,6 +811,12 @@ fn ?DefWidget d, ?other = match d.body:
     DbWidget w: ? w
     otherwise: ?other
 
+# A function type that gives a blueprint: a widget function's.
+IsWidgetFnTy: fn Ty -> Bool
+fn IsWidgetFnTy t = match t:
+    TyFn ignore, ignore, r: IsWidgetTy r
+    otherwise: False
+
 # One parameter of an inlined widget, bound in the callee's environments from an argument
 # lowered in the caller's; its fields and getters spelled from `spelled`, its name as a
 # local (`LocalNameAt`).
@@ -801,7 +824,12 @@ BindParam: unbounded fn Wx, Env, Env, Env, Env, Text, Text, Ty, Expr -> ((Wx, En
 fn BindParam wx, cbenv, cmenv, be, me, nkey, spelled, pty, arg:
     let lx = wx.lx
     let t = OutTyOf lx, (Peel pty)
-    match LayerOf pty:
+    # a widget function (`Inner: fn Nat -> @unit`) is taken as a blueprint is: the
+    # argument's text with its caller's environments, applied where the widget applies it
+    if IsWidgetFnTy pty:
+        let b = BnWidget arg, cbenv, cmenv, lx
+        ((wx, (Bind be, nkey, b), (Bind me, nkey, b)))
+    else: match LayerOf pty:
         LyBlueprint:
             let b = BnWidget arg, cbenv, cmenv, lx
             ((wx, (Bind be, nkey, b), (Bind me, nkey, b)))
