@@ -347,9 +347,9 @@ Functions
   `FunctionRecolored`'s refusal is of a function whose color is a generalized `let`'s
   that no use decides (`OutQuantified`, refused where its type is written). A function under an
   event or a `$` inside the result is mapped (ts-ch05-color-function-in-event-result).
-  Not walked, with no refusal and no test: a function held by a blueprint inside the
-  result (`?Made F = ? @ F`: the blueprint's held answer is the `Start`, read as a
-  bounded function by the line that applies it, a fault of the run).
+  A function held by a blueprint inside the result is made again through the
+  blueprint's answers (`?Made F = ? @ F`, the prelude's `held_answers_mapped`:
+  ts-ch05-color-function-in-blueprint-result).
 - lower/node/def.prism (`RefusePlainResult`) a widget's plain result bound by a pattern
   that left a name without its field: an internal error; `BindPatternResult` takes every
   pattern (sem-ch08-plain-result-pattern passes).
