@@ -1,0 +1,9 @@
+tests/checker/neg/lens-map-key.prism:11: error[lens-map-key]: a named lens cannot end at a map key: a key's part is an entry, not a location
+    fn &?Named &registers = &registers["acc"]
+                            ^^^^^^^^^^^^^^^^^
+  fix: write the path in the `update` block
+tests/checker/neg/lens-map-key.prism:14: error[lens-map-key]: a named lens cannot step through a map key: a key's part is an entry, not a location
+    fn &Inside &machines = &machines["first"].acc
+                           ^^^^^^^^^^^^^^^^^^
+  fix: write the path in the `update` block
+2 errors
