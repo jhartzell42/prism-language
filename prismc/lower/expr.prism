@@ -870,7 +870,10 @@ fn NameValue lx, env, n, span:
         ? (BnEv ignore, et): match env.names["{nkey}#port"]:
             ? (BnLocal pf, ignore, ignore): VlOwned (XCall (RefRuntime "prism_rtl::Event::of"), [[XRef pf]]), (OutEvent (OutTyOf lx, (Peel (Peel (TypeAt lx, span)))))
             otherwise: VlOwned (Refusal "an event read as a value"), et
-        ? (BnParts ignore): VlOwned (Refusal "a tuple pattern's binding as a value"), t
+        # a named bundle that is one value of the build (`BundleValue`)
+        ? (BnParts ignore): match env.names["{nkey}#value"]:
+            ? (BnLocal rs, mode, lt): LocalPlace rs, mode, lt
+            otherwise: VlOwned (Refusal "a tuple pattern's binding as a value"), t
         ? (BnWidget ignore, ignore, ignore, ignore): VlOwned (InternalBug "a widget parameter read as a plain value"), t
         ? (BnLocalFn cs): LocalFnValue (LocalFnLx lx, span), env, cs, t
         ? (BnLocalWidget ignore): VlOwned (Refusal "a widget defined in a block read as a blueprint value (it is lowered where a line applies it)"), t
@@ -2009,7 +2012,9 @@ fn LambdaCaptures env, read:
     # and the live dynamics the block's line made (`WholeArgs`, `#whole{span}`): the body
     # may read one (`!Updated $state` as an event value, a call taking `$d` whole)
     let wholes = Filter (Keys env.names), \|n| HasPrefix n, "#whole"
-    let caps = Append (Append (Append caps0, (Filter (Each read, \|n| "{n}#port"), \|n| HasKey env.names, n)), (Filter (Each read, \|n| "{n}#init"), \|n| HasKey env.names, n)), wholes
+    let caps1 = Append (Append (Append caps0, (Filter (Each read, \|n| "{n}#port"), \|n| HasKey env.names, n)), (Filter (Each read, \|n| "{n}#init"), \|n| HasKey env.names, n)), wholes
+    # and a named bundle's value (`BundleValue`)
+    let caps = Append caps1, (Filter (Each read, \|n| "{n}#value"), \|n| HasKey env.names, n)
     let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
         ? (BnLocal rs, mode, ct):
             let local = CaptureName rs
