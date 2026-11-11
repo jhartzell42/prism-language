@@ -73,7 +73,7 @@ fn LowerProgram srcs, trees, shown, tp, name:
     let mods = NeededMods g, shown
     let rsMods = Fold mods, {}, \|acc, m| Insert acc, m, (RustModName m)
     let modSegments = Fold (Values rsMods), {}, \|acc, p| Fold (SplitOn p, "::"), acc, \|a2, seg| Insert a2, seg, True
-    let lx0 = Lx(g=g, tys=tys, apps=apps, lifts=(Fold tp.lifts, {}, \|m, n| Insert m, (AtKey n.at), n), binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, modSegments=modSegments, rsNames=(ValueNames g), layouts=(Layouts g), unbs=[[]], notes=[[]], globals=(GlobalNames g), inNode=False, whole=False, wholeFns={}, noCx=False, unshrunk=(Fold tp.unshrunk, {}, \|m, a| Insert m, (AtKey a), True), gens=gens, insts=insts, quants=quants, genOfQ=genOfQ, useInsts=useInsts, localIds=(Fold tp.locals, {}, \|m, n| Insert m, (AtKey n.at), n.id), useIds=(Fold tp.uses, {}, \|m, n| Insert m, (AtKey n.at), n.id), useNames=(Fold tp.uses, {}, \|m, n| Insert m, n.at.file, (Push (Or m[n.at.file], [[]]), ((n.at.span.start, n.name)))), callIds=(Fold tp.calls, {}, \|m, n| Insert m, (AtKey n.at), n.id), inlined="", subst={}, csubst={}, faults=(Fold tp.faults, {}, \|m, n| Insert m, (AtKey n.at), n.ty), shared={}, recursing=[[]], valued={}, valuedAt={})
+    let lx0 = Lx(g=g, tys=tys, apps=apps, lifts=(Fold tp.lifts, {}, \|m, n| Insert m, (AtKey n.at), n), binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, modSegments=modSegments, rsNames=(ValueNames g), layouts=(Layouts g), unbs=[[]], notes=[[]], globals=(GlobalNames g), inNode=False, whole=False, wholeFns={}, noCx=False, unshrunk=(Fold tp.unshrunk, {}, \|m, a| Insert m, (AtKey a), True), gens=gens, insts=insts, quants=quants, genOfQ=genOfQ, useInsts=useInsts, localIds=(Fold tp.locals, {}, \|m, n| Insert m, (AtKey n.at), n.id), useIds=(Fold tp.uses, {}, \|m, n| Insert m, (AtKey n.at), n.id), useNames=(Fold tp.uses, {}, \|m, n| Insert m, n.at.file, (Push (Or m[n.at.file], [[]]), ((n.at.span.start, n.name)))), callIds=(Fold tp.calls, {}, \|m, n| Insert m, (AtKey n.at), n.id), inlined="", subst={}, csubst={}, faults=(Fold tp.faults, {}, \|m, n| Insert m, (AtKey n.at), n.ty), shared={}, recursing=[[]], valued={}, valuedAt={}, inDefinition="")
     let ((valuedCases, valuedInstances)) = ValuedWidgets lx0
     let lx = update lx0:
         &_.unbs <= JobRoots lx0
@@ -285,7 +285,8 @@ fn RootWidgets lx:
 # it is read as a value.
 ValuedWidgets: unbounded fn Lx -> (((Text ==> [((Text, Pa, [Cc], [Ex]))]), (Text ==> [((Text, [((Text, Ty))]))])))
 fn ValuedWidgets lx = Fold lx.g.defs, (({}, {})), \|acc, d|
-    let lxd = InModule lx, d.file, d.home
+    let lxd = update (InModule lx, d.file, d.home):
+        &_.inDefinition <= d.qk
     let held = Fold (DefExprs d), [[]], \|sites, e| Append sites, (ValueWidgetsIn lxd, e)
     # a `let` names a value: the widget it names is read as one where the name is
     let named = Fold (LetValues d), held, \|sites, e| Append sites, (ValueWidgetsAt lxd, e)
@@ -318,10 +319,94 @@ fn ?ValuedTypes lx, v, calleeSpan, args:
             ? a: Or (?ParamInstance (Or ptys[i], TyErr), (TypeAt lx, a.value.span), m), m
             nil: m
         let found = if Fold rigids, True, \|all, q| all and HasKey fromArguments, q: fromArguments else: Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, calleeSpan), fromArguments), fromArguments
-        let closed = Fold rigids, True, \|all, q| all and match found[q]:
-            ? t: (Len (RigidsIn t)) == 0
-            nil: False
-        if closed: ? (Each (SortTexts rigids), \|q| ((q, (Or found[q], TyErr)))) else: nil
+        ?ClosedTypes rigids, found
+
+# The types found for a definition's type parameters, in the parameters' order by name,
+# when each has one and none names a type parameter.
+?ClosedTypes: unbounded fn [Text], (Text ==> Ty) -> ?[((Text, Ty))]
+fn ?ClosedTypes rigids, found:
+    let closed = Fold rigids, True, \|all, q| all and match found[q]:
+        ? t: (Len (RigidsIn t)) == 0
+        nil: False
+    if closed: ? (Each (SortTexts rigids), \|q| ((q, (Or found[q], TyErr)))) else: nil
+
+# The types the program gives a generic definition's type parameters, each set once: the
+# types each of its uses gives them, a use in another generic definition's body at each
+# of that one's own (a function is a target generic, lowered once; what its body builds
+# for one set of types, a widget's rows read as a value, is chosen by them where it runs,
+# `OpenWidgetBlueprintValue`). No answer where the uses cannot all be read: a use in a
+# method's body at the impl's type parameters, a definition that uses itself at other
+# types than its own, more than `fuel` definitions deep.
+?DefInstances: unbounded fn Lx, Text, Nat -> ?[ [((Text, Ty))] ]
+fn ?DefInstances lx, qk, fuel = match lx.g.vals[qk]:
+    nil: nil
+    ? v:
+        let rigids = RigidsIn v.scheme.ty
+        if (Len rigids) == 0: ? [[ [[]] ]]
+        else: if fuel == 0: nil
+        else: Fold lx.g.defs, (? [[]]), \|?known, d| match ?known:
+            nil: nil
+            ? known:
+                let lxd = InModule lx, d.file, d.home
+                let exprs = DefExprs d
+                # a call of it: its type parameters off the callee's type there, else off
+                # the arguments
+                let ((?called, callees)) = Fold exprs, (((? known), [[]])), \|((?acc, spans)), x| match x.kind:
+                    ECall c, args, ignore, ignore: if (CalleeKey lxd, c) != qk: ((?acc, spans)) else:
+                        let ptys = match v.scheme.ty:
+                            TyFn ignore, ps, ignore: ps
+                            otherwise: [[]]
+                        let fromArguments = Fold (Range0 (Len ptys)), {}, \|m, i| match args[i]:
+                            ? a: Or (?ParamInstance (Or ptys[i], TyErr), (TypeAt lxd, a.value.span), m), m
+                            nil: m
+                        let found = Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lxd, c.span), {}), fromArguments
+                        (((?UseInstances lx, lxd, d, qk, rigids, found, fuel, ?acc), (Push spans, c.span.start)))
+                    otherwise: ((?acc, spans))
+                # its name as a value: off its type there
+                Fold exprs, ?called, \|?acc, x| match x.kind:
+                    EName n:
+                        let ((?named, ignore)) = ResolveValue lx.g, lxd.home, n
+                        if (?named != (? qk)) or (HasNat callees, x.span.start): ?acc
+                        else: match ?ParamMatch (Unrigid v.scheme.ty), (TypeAt lxd, x.span), {}:
+                            ? found: ?UseInstances lx, lxd, d, qk, rigids, found, fuel, ?acc
+                            nil: nil
+                    otherwise: ?acc
+
+# One use's part of `?DefInstances`: the types it gives (`found`), added to those known.
+?UseInstances: unbounded fn Lx, Lx, Def, Text, [Text], (Text ==> Ty), Nat, ?[ [((Text, Ty))] ] -> ?[ [((Text, Ty))] ]
+fn ?UseInstances lx, lxd, d, qk, rigids, found, fuel, ?known = match ?known:
+    nil: nil
+    ? known:
+        let Added = \|acc, types| if Fold acc, False, \|seen, other| seen or (Show other) == (Show types): acc else: Push acc, types
+        match ?ClosedTypes rigids, found:
+            ? types: ? (Added known, types)
+            nil:
+                let whole = Fold rigids, True, \|all, q| all and HasKey found, q
+                let itself = d.qk == qk and Fold rigids, True, \|all, q| all and found[q] == ? (TyRigid q)
+                let generic = match d.body:
+                    DbFn ignore: True
+                    DbWidget ignore: True
+                    otherwise: False
+                if not whole: nil
+                # the definition's own use of itself at its own type parameters adds none
+                else: if itself: ? known
+                else: if not generic or d.qk == qk: nil
+                else: match ?DefInstances lx, d.qk, (Dec fuel):
+                    nil: nil
+                    ? users:
+                        let all = Fold users, known, \|acc, user|
+                            let lxu = update lxd:
+                                &_.subst <= Fold user, &_.subst, \|m, ((q, t))| Insert m, q, t
+                            match ?ClosedTypes rigids, (Fold rigids, {}, \|m, q| Insert m, q, (SubstTy lxu, (Or found[q], TyErr))):
+                                ? types: Added acc, types
+                                nil: acc
+                        ? all
+
+# The instantiations of the generic definition whose body is being lowered
+# (`Lx.inDefinition`, `?DefInstances`); the one of no types for a definition with no type
+# parameter.
+?EnclosingInstances: unbounded fn Lx -> ?[ [((Text, Ty))] ]
+fn ?EnclosingInstances lx = if lx.inDefinition == "": nil else: ?DefInstances lx, lx.inDefinition, 8
 
 # A valued widget's key where it is read (`ValuedKey`), "" where its type parameters stay
 # open.
@@ -438,7 +523,14 @@ fn PlacedWidget lx, qk, calleeSpan, args = match lx.g.vals[qk]:
         let defined = Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsWidgetDef d)
         if defined and (IsWidgetTy (WidgetResultOf v.scheme.ty)) and not (IsValueWidget lx, qk): match ?ValuedTypes lx, v, calleeSpan, args:
             ? types: [[((qk, types))]]
-            nil: [[]]
+            # a type parameter of the definition the reading stands in stays open: the
+            # reading at each of that definition's instantiations
+            nil: Fold (Or (?EnclosingInstances lx), [[]]), [[]], \|acc, user|
+                let lxu = update lx:
+                    &_.subst <= Fold user, &_.subst, \|m, ((q, t))| Insert m, q, t
+                match ?ValuedTypes lxu, v, calleeSpan, args:
+                    ? types: Push acc, ((qk, types))
+                    nil: acc
         else: [[]]
     nil: [[]]
 

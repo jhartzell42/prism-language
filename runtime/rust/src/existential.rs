@@ -158,3 +158,19 @@ impl Ord for Packed {
         (self.cmp.expect("an existential without ^Ord ordered"))(&*self.value, &*other.value)
     }
 }
+
+/// A type as a key (a generic function chooses by its type parameters what was made for
+/// each set of types the program gives them: a widget's rows read as a value).
+pub fn type_key<T: 'static>() -> std::any::TypeId {
+    std::any::TypeId::of::<T>()
+}
+
+/// A value at the type `To`, which is its own type (a generic function's value where the
+/// function's type parameters are known, [`type_key`]): the value itself.
+pub fn recast<To: 'static>(value: impl std::any::Any) -> To {
+    let mut held = Some(value);
+    match (&mut held as &mut dyn std::any::Any).downcast_mut::<Option<To>>() {
+        Some(same) => same.take().unwrap_or_else(|| unreachable!()),
+        None => panic!("a prismc bug: a value read at a type that is not its own"),
+    }
+}
