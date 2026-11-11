@@ -40,21 +40,23 @@ Hosting
   sem-ch08-blueprint-out-of-value). Left refused, no tests: one with a `$`, event or
   blueprint parameter, a type parameter, or an event, dynamic or bundle result; one read
   in a place `ValuedWidgets` does not look (a record's field read back and given on is
-  a value already; a `let` in a plain function's body is not looked at); and, a fault of
-  the build, one built in a hosted scope (prism_rtl's `widget_blueprint`).
+  a value already; a `let` in a plain function's body is not looked at). One built in a
+  hosted scope builds its hosted row (sem-ch09-host-widget-answer-hosted).
 - lower/node/static.prism (`BlueprintValuesAt`) a widget defined in a block read as a
   value is lowered (sem-ch08-local-widget-passed-as-value, sem-ch08-local-widget-in-record).
-  Left refused, no tests: one whose places read a dynamic of the block, one that gives
-  something back, one in a hosted scope. lower/expr.prism (`NameValueOf`) "a widget
+  One whose places read a dynamic of the block is lowered
+  (sem-ch08-local-widget-value-reads-dynamic), and one in a hosted scope and one that
+  gives a plain value back. Left refused: one that gives an event, a dynamic, a bundle
+  or a value that is no plain data back. lower/expr.prism (`NameValueOf`) "a widget
   defined in a block read as a blueprint value" stands for a reading outside a line's
   value places (inside a lambda's own block).
 - lower/node/static.prism (`AppliedBlueprintLine`) a blueprint value applied by a block is
   lowered, and so is `@Element` of any element value (a parameter, a call's result;
   sem-ch08-element-parameter-statement): a line of unit, a line that gives an event
   back, which hears the blueprint's answers, and a line that binds a plain result
-  (sem-ch08-blueprint-value-gives-back). Left refused: one that gives a dynamic or a
-  bundle back (no test), one applied in a hosted scope
-  (sem-ch09-blueprint-value-hosted).
+  (sem-ch08-blueprint-value-gives-back), in a hosted scope too
+  (sem-ch09-blueprint-value-hosted). Left refused: one that gives a dynamic or a
+  bundle back.
 - lower/node/static.prism:104 a widget function parameter applied to arguments whose
   argument is a function value that is no name (a lambda). No test. A named widget
   function passed and applied is lowered (sem-ch08-widget-parameter-applied).

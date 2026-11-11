@@ -523,6 +523,16 @@ private:
 template <class A>
 using Sink = std::function<Done(const A&, Cx&)>;
 
+/// A row's own places in a hosted scope: each place's entry by its path relative to the
+/// path the row was built at.
+template <class E>
+using RowDocument = std::function<std::vector<std::tuple<Path, Rc<Entry<E>>>>(const Cx&)>;
+
+/// A host's typed answer to a place of a row's own, the position counted from the row's
+/// first.
+template <class A>
+using RowDeliver = std::function<Done(std::span<const Segment>, const A&, Cx&)>;
+
 /// What a blueprint built for a child place gives back: its node (whose places are under
 /// the row's path), the place's first value when the output has one, and whether the
 /// blueprint forwards the element (then the child place's requests go out with it, at
@@ -541,6 +551,12 @@ struct Supplied {
     /// How a widget's blueprint leaves: its row's places torn down, the row with them.
     /// The other forms leave by their node.
     std::function<void(Cx&)> leave = nullptr;
+    /// A widget's blueprint built in a hosted scope: its row's own places, entries of the
+    /// enclosing host's document, by their paths relative to the path it was built at.
+    RowDocument<E> document = nullptr;
+    /// A widget's blueprint built in a hosted scope: an enclosing host's typed answer to a
+    /// place of its row's, the position counted from the row's first.
+    RowDeliver<A> deliver = nullptr;
 };
 
 /// The program's answer type, which a World's answer to an element decodes into by the
@@ -624,28 +640,64 @@ Done later(const Sink<A>& sink, A v, Cx& cx) {
 }  // namespace detail
 
 /// A widget's row as its blueprint built it: the row's node, how it leaves, how many
-/// places it built, and the widget's plain result (unit when it gives none).
-template <class R>
+/// places it built, the widget's plain result (unit when it gives none), and, for a row
+/// built in a hosted scope, its places' entries and a host's typed answer to one.
+template <class E, class A, class R>
 struct BuiltWidget {
     NodeRef node;
     std::function<void(Cx&)> leave;
     std::uint32_t built = 0;
     R result;
+    RowDocument<E> document = nullptr;
+    RowDeliver<A> deliver = nullptr;
 };
+
+/// A host's telling as a `Moved`: the host held weakly, told while it lives.
+template <class E, class A>
+Moved host_moved(const Rc<HostOf<E, A>>& host);
 
 /// A widget with places as a blueprint value (Semantics ch. 8: a blueprint builds nothing
 /// until it is applied): `build` makes the widget's row at the path, its places numbered
-/// from the base, in the World's scope; `answer` makes the widget's plain result the
-/// place's first value (nothing for a widget that gives none). Built in a hosted scope it
-/// is a fault: the row's places are the World's.
-template <class E, class A, class R>
-Blueprint<E, A> widget_blueprint(std::function<Result<BuiltWidget<R>>(Path, std::uint32_t, Cx&)> build, std::function<std::optional<A>(R)> answer) {
-    return [build, answer](Path path, Sink<A>, const Scope<E, A>& scope, std::uint32_t base, Cx& cx) -> Result<Supplied<E, A>> {
-        if (!scope.is_world()) return unexpected(Fault::answer("a widget with places built as a blueprint value at " + path.to_string() + " in a hosted scope: prismc does not lower it yet"));
-        auto made = TRY(build(path, base, cx));
-        return Supplied<E, A>{made.node, answer(std::move(made.result)), false, nullptr, made.built, made.leave};
+/// from the base, in the World's scope; `build_hosted` makes it in a hosted scope, its
+/// places entries of the host's document, given the host and what tells the host's owner
+/// that a place of the row's came or went (`HostOf::moved`); `answer` makes the widget's
+/// plain result the place's first value (nothing for a widget that gives none).
+template <class E, class A, class Build, class BuildHosted, class AnswerFn>
+Blueprint<E, A> widget_blueprint(Build build, BuildHosted build_hosted, AnswerFn answer) {
+    return [build, build_hosted, answer](Path path, Sink<A>, const Scope<E, A>& scope, std::uint32_t base, Cx& cx) -> Result<Supplied<E, A>> {
+        if (scope.is_world()) {
+            auto made = TRY(build(path, base, cx));
+            return Supplied<E, A>{made.node, answer(std::move(made.result)), false, nullptr, made.built, made.leave};
+        }
+        auto made = TRY(build_hosted(path, base, scope.hosted, host_moved<E, A>(scope.hosted), cx));
+        return Supplied<E, A>{made.node, answer(std::move(made.result)), false, nullptr, made.built, made.leave, made.document, made.deliver};
     };
 }
+
+/// The rows a blueprint value of a block's own widget built (Semantics ch. 8: a blueprint
+/// builds as often as it is applied), held weakly: the block's write behind what their
+/// places read marks each one that lives. A row that left is dropped from the list when
+/// the next one is added. Copies share the list.
+template <class N>
+class WeakRows {
+public:
+    WeakRows() : rows_(make_rc<std::vector<Weak<N>>>()) {}
+    /// A row the blueprint built.
+    void add(const Rc<N>& row) const {
+        std::erase_if(*rows_, [](const Weak<N>& w) { return !w.lock(); });
+        rows_->push_back(Weak<N>(row));
+    }
+    /// The rows that live.
+    std::vector<Rc<N>> live() const {
+        std::vector<Rc<N>> out;
+        for (const Weak<N>& w : *rows_)
+            if (auto row = w.lock()) out.push_back(row);
+        return out;
+    }
+
+private:
+    Rc<std::vector<Weak<N>>> rows_;
+};
 
 /// `@ x`: no places, the first value `x`, once.
 template <class E, class A>
@@ -936,7 +988,8 @@ Blueprint<E, A> element_blueprint(const Element<E>& value) {
             cx.added(at, element);
             if (first) cx.listen(element, node);
         }
-        return Supplied<E, A>{node, std::move(first), true, nullptr, 1};
+        // in a hosted scope the forwarded element is the child's place itself: its entry
+        return Supplied<E, A>{node, std::move(first), true, scope.is_world() ? nullptr : e.entry, 1};
     };
 }
 
@@ -971,7 +1024,20 @@ public:
     /// A request from the place `place` of this host's child, which a host under this one
     /// hands up (a forwarded element's, or a placed description's): `Host::request`.
     virtual Done request_from(const Path& place, std::optional<std::string> field, Pod value, Cx& cx) const = 0;
+    /// A place of this host's child came or went behind its document (a row a blueprint
+    /// built there built or tore down a place of its own): the owner's `host_k_moved`.
+    /// Nothing before the owner's node is made: its document's first snapshot is taken
+    /// after.
+    virtual void moved(Cx& cx) const = 0;
 };
+
+template <class E, class A>
+Moved host_moved(const Rc<HostOf<E, A>>& host) {
+    Weak<HostOf<E, A>> weak = host;
+    return [weak](Cx& cx) {
+        if (auto h = weak.lock()) h->moved(cx);
+    };
+}
 
 template <class E, class A>
 class HostRow;
@@ -1058,16 +1124,24 @@ public:
     }
 
     /// The row's own places, for an enclosing host's document: the forwarded element at
-    /// `0`, when there is one, which is the child's place itself (its entry).
-    std::vector<std::pair<Path, Rc<Entry<E>>>> entries() const {
+    /// `0`, when there is one, which is the child's place itself (its entry); a placed
+    /// element value's; or the places of a widget's row the blueprint built.
+    std::vector<std::pair<Path, Rc<Entry<E>>>> entries(const Cx& cx) const {
         if (forwards()) return {{Path::root().at(0), place_}};
+        if (supplied_ && supplied_->document) {
+            std::vector<std::pair<Path, Rc<Entry<E>>>> out;
+            for (auto& [p, e] : supplied_->document(cx)) out.emplace_back(p, e);
+            return out;
+        }
         if (supplied_ && supplied_->entry) return {{Path::root().at(0), supplied_->entry}};
         return {};
     }
 
     /// An enclosing host's typed answer to a place under the row: the forwarded element's,
-    /// handed to the child's place now.
+    /// handed to the child's place now; a place of a widget's row the blueprint built,
+    /// handed to the row.
     Done deliver(std::span<const Segment> at, const A& v, Cx& cx) const {
+        if (supplied_ && supplied_->deliver) return supplied_->deliver(at, v, cx);
         if (at.size() == 1 && at[0].is_pos(0) && (forwards() || (supplied_ && supplied_->entry))) return sink_(v, cx);
         return unexpected(Fault::answer("no hosted place at " + path_of(at).to_string() + " under the host row at " +
                                         path_.to_string()));
@@ -1151,14 +1225,16 @@ template <class E, class A, class P>
 class Host : public HostOf<E, A>, public RcFromThis<Host<E, A, P>> {
 public:
     using DeliverFn = std::function<Done(const Rc<P>&, const Path&, const A&, Cx&)>;
+    using MovedFn = std::function<void(const Rc<P>&, Cx&)>;
 
     /// Made in the owner's build, before its node: `rows` is the field the `for` keeps,
-    /// `enclosing` the host whose scope the line stands in, if any.
+    /// `enclosing` the host whose scope the line stands in, if any; `deliver` and `moved`
+    /// the owner's emitted `host_k_answer` and `host_k_moved`.
     static Rc<Host> make(Path at, Rows<E, A> rows, Supplier<E, A> supplier,
-                                      Rc<HostOf<E, A>> enclosing, DeliverFn deliver) {
+                                      Rc<HostOf<E, A>> enclosing, DeliverFn deliver, MovedFn moved) {
         return rc_placed<Host>([&](void* place) {
             return new (place) Host(std::move(at), std::move(rows), std::move(supplier), std::move(enclosing),
-                                    std::move(deliver));
+                                    std::move(deliver), std::move(moved));
         });
     }
 
@@ -1208,12 +1284,16 @@ public:
         return request(place, std::move(field), std::move(value), cx);
     }
 
+    void moved(Cx& cx) const override {
+        if (auto owner = owner_.lock()) moved_(owner, cx);
+    }
+
     const Rows<E, A>& rows() const { return rows_; }
 
 private:
-    Host(Path at, Rows<E, A> rows, Supplier<E, A> supplier, Rc<HostOf<E, A>> enclosing, DeliverFn deliver)
+    Host(Path at, Rows<E, A> rows, Supplier<E, A> supplier, Rc<HostOf<E, A>> enclosing, DeliverFn deliver, MovedFn moved)
         : at_(std::move(at)), rows_(std::move(rows)), supplier_(std::move(supplier)), enclosing_(std::move(enclosing)),
-          deliver_(std::move(deliver)) {}
+          deliver_(std::move(deliver)), moved_(std::move(moved)) {}
 
     Done send_down(const Map<Path, A>& m, Cx& cx) const {
         for (const auto& [p, v] : m) {
@@ -1237,6 +1317,7 @@ private:
     Supplier<E, A> supplier_;
     Rc<HostOf<E, A>> enclosing_;
     DeliverFn deliver_;
+    MovedFn moved_;
 };
 
 }  // namespace prism_rtl

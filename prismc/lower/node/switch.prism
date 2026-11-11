@@ -989,10 +989,22 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
     # a shared row in a hosted scope holds no block to tell that a place of its may have
     # moved: it is built with `moved`, its caller's telling (`sharedMoved`,
     # `DocumentMoved`)
-    let shared = zeroBased and parentTy == OutUnit
-    let ?hostedBy = match ?HostedRows wx:
+    # (a row of a block's own widget as a blueprint value is built in the scope of the
+    # block that applies the value, so its hosting is given, `Wx.?valuedAs`, and a hosted
+    # one is told its host as a shared row is)
+    let ?hostedRows = match wx.?valuedAs:
+        ? True: ? sharedMoved
+        ? False: nil
+        nil: ?HostedRows wx
+    let shared = (zeroBased and parentTy == OutUnit) or match wx.?valuedAs:
+        ? hosted: hosted
+        nil: False
+    let ?hostedBy = match ?hostedRows:
         ? m: if shared: ? sharedMoved else: ? m
         nil: nil
+    let hostedParams = match ?hostedRows:
+        ? ignore: [[(("enclosing", hostOfTy))]]
+        nil: [[]]
     let movedParam = if shared and IsSome ?hostedBy: [[(("moved", movedTy))]] else: [[]]
     let r000 = NewWx lxc, rowName, rowFields, rowInits, [[(("parent", (XClone (XVar "parent"))))]], [[]], {}, rowTaken, wx.inlining, ?hostedBy
     let r00 = if (Len movedParam) == 0: r000 else: update r000:
@@ -1058,7 +1070,7 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
     let r3b = if not zeroBased: r3 else: update r3:
         &_.taken <= Push &_.taken, "built"
         &_.getters <= Push &_.getters, (MethDef(name="built", recv=RecvRef, params=[[]], cx=CxNone, ret=OutCount, body=[[]], tail=(if ownGaps: XBin OpSub, positions, (XMethod XSelf, "inner_gap", [[]]) else: positions), doc="How many places the row built (ruling TC: places are counted as they are built)."))
-    let node = FinishNode r3b, rowName, (Append (Append (Append (Each fields, \|((f, t, ignore))| ((f, t))), liveParams), baseParam), (Append (Append [[(("parent", parentTy))]], (HostedParams wx)), movedParam)), True
+    let node = FinishNode r3b, rowName, (Append (Append (Append (Each fields, \|((f, t, ignore))| ((f, t))), liveParams), baseParam), (Append (Append [[(("parent", parentTy))]], hostedParams), movedParam)), True
     let p2 = GenMarked p1, genName, r3b
     let passed0 = Each fields, \|((f, t, bn))| match binds[bn]:
         ? (BnLocal rs, mode, bt): Own (VlPlace rs, mode, bt)

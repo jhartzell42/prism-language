@@ -476,29 +476,56 @@ it make every program an interpreter run, and every type mistake a runtime fault
   - Each such widget is lowered once more as rows of its own, items of its module
     (`ValuedRows`): one row type a clause, `{Widget}_value{i}`, its places numbered from 0
     and built from a base, holding no block, telling how many places it built (`built`),
-    as the rows of a widget that calls itself are.
+    as the rows of a widget that calls itself are. Each clause has a second row,
+    `{Widget}_value{i}_hosted`, for a hosted scope: its places are entries of a host's
+    document, and it is built with that host (`enclosing`) and what tells the host that
+    a place of the row's came or went (`moved`), as a shared row in a hosted scope is.
+    A blueprint value is built in the scope of what applies it, which no value site
+    knows, so both rows are emitted.
   - The value is a `prism_rtl::Blueprint` made where the widget is read
     (`WidgetBlueprintValue`, prism_rtl's `widget_blueprint`): the arguments are read
     once and kept; each build chooses the clause by them and builds its row at the path
-    and base it is given. A plain result is the first value of the place the blueprint
-    answers, under the arm's tag as `@ x` is.
+    and base it is given: the World's row in the World's scope, the hosted row under a
+    host, given the host of the scope and `prism_rtl::host_moved` of it (`HostOf::moved`,
+    the owner's `host_k_moved`). A plain result is the first value of the place the
+    blueprint answers, under the arm's tag as `@ x` is.
+  - What a hosted row built is read through `Supplied::document` (its places' entries
+    by their paths under the path it was built at) and answered through
+    `Supplied::deliver` (the prelude's `built_widget` makes both of the row's `Row`
+    methods). A host's row gives them to the enclosing host (`HostRow::entries`,
+    `HostRow::deliver`); a block that applied the value gives them as its generation's
+    (`AppliedBlueprint`).
   - A widget with a `$`, event or blueprint parameter, a type parameter, or an event,
     dynamic or bundle result is not among them, and is refused where it is read as a
-    value. Built in a hosted scope the blueprint is a fault of the build.
+    value.
 - **A widget defined in a block read as a value** (`Card(@body=@line)`, `?Pick True,
   @line`) is a `Blueprint` its line makes at the build before the node, kept in a field
   (`BlueprintValuesAt`, `blueprint_{name}`): it builds the widget's block as a row of its
   own (`{Node}Value`), numbered from 0, which holds the node through its link and reads
   the block's names through it as an arm's row does. Bound under `#whole@{span}`, so a
-  row and a closure of the line see it as they see a live dynamic. One whose places read
-  a dynamic of the block is refused (the block keeps no list of the rows its blueprints
-  built, so nothing would mark them), as one that gives something back and one in a
-  hosted scope are.
+  row and a closure of the line see it as they see a live dynamic.
+  - The widget has two rows (`ValueRowOf`): `{Node}Value` for the World's scope and
+    `{Node}HostedValue` for a hosted one, built with the host and its telling as a
+    valued widget's hosted row is (`Wx.?valuedAs` tells `ArmRowOf` which, whatever
+    scope the block stands in).
+  - The node keeps the rows the blueprint built, weakly (`prism_rtl::WeakRows`,
+    `{blueprint}_rows` and `{blueprint}_hosted_rows`; a blueprint builds as often as it
+    is applied). A write behind what the rows' places read of the block dirties each
+    row that lives (`RowMarks` of kind `ValueRow`, `RowWritten`), so a place that reads
+    a dynamic of the block changes in place.
+  - A widget that gives a plain value back answers with it outside any tag, as plain
+    data. One that gives an event, a dynamic, a bundle, or a value that is no plain
+    data back is refused as a value.
 - **A blueprint value applied by a block** (`? @t: @t`, `ignore <- card.@body`;
   Semantics ch. 8: at the applying block's next positions) is the node's generation at
   the line (`ValueBlueprintLine`): the prelude's `apply_blueprint` builds the value at
-  the node's path from the line's position as built, in the World's scope, and wraps
-  what it built as a `Row` (`AppliedBlueprint`). The generation is transparent,
+  the node's path from the line's position as built, in the node's scope (the World's,
+  or the host's whose document the node's places at the line are entries of), and wraps
+  what it built as a `Row` (`AppliedBlueprint`). In a hosted scope that row's `document`
+  is what the blueprint built (a widget's hosted row's places, or the one entry of an
+  element forwarded or placed, at the base) and its `deliver` hands a host's answer to
+  the widget's row or to the blueprint's sink; the generation tells the host that the
+  document moved as any generation of a hosted node does. The generation is transparent,
   `wideGeneration` positions wide and gappy, as a call of a widget that calls itself is,
   so the later places are counted as built and an answer under it is handed on with its
   position counted from the generation's first.
@@ -514,11 +541,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
     outside a tag's arm, as plain data), and the node keeps it in `{generation}_res`
     from the build on: the result is late (`WrLate`, `IsLateExpr`), as a call of a
     widget that calls itself keeps its own.
-  - A blueprint value that gives a dynamic or a bundle back, and one applied in a
-    hosted scope, are refused.
+  - A blueprint value that gives a dynamic or a bundle back is refused.
 - **`prism_rtl::Blueprint`** is built with a base beside its path, sink and scope: 0
   under a host's row, the line's position as built in a block. `Supplied` tells how many
-  places were built (`built`) and how a widget's row leaves (`leave`). The element forms
+  places were built (`built`), how a widget's row leaves (`leave`), and, for a widget's row
+  built in a hosted scope, its places' entries and a host's answer to one (`document`,
+  `deliver`). In a hosted scope a forwarded element's `entry` is the child place's own. The element forms
   (`element_blueprint`, `described_blueprint`) put their one place at the base and
   answer at the first position under what they built, so a block applies them as it
   applies a widget's.

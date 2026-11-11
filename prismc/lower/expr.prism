@@ -983,7 +983,9 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
 # The arguments are read here, once, and kept by the blueprint; each build chooses the
 # clause by them and builds its row at the path it is given, the places numbered from the
 # base (prism_rtl's `widget_blueprint`). A plain result is the first value of the place
-# the blueprint answers, under the arm's tag as `@ x` is (`PureBlueprint`).
+# the blueprint answers, under the arm's tag as `@ x` is (`PureBlueprint`). Built in a
+# hosted scope the blueprint builds the widget's hosted row, given the host and what
+# tells it that a place of the row's came or went.
 WidgetBlueprintValue: unbounded fn Lx, Env, Text, [Arg], OutTy -> Vl
 fn WidgetBlueprintValue lx, env, qk, args, t = match ((lx.valued[qk], lx.g.vals[qk])):
     ((? cases, ? v)):
@@ -992,23 +994,35 @@ fn WidgetBlueprintValue lx, env, qk, args, t = match ((lx.valued[qk], lx.g.vals[
             otherwise: v.scheme.ty
         let resTy = OutTyOf lx, (OutOf gives)
         let names = Each (Range0 (Len args)), \|i| "widget_argument_{i}"
-        let lets = Each (Range0 (Len args)), \|i| match args[i]:
-            ? a: DoLet (PaBind "widget_argument_{i}"), (Own (ValueOf lx, env, a.value))
-            nil: DoLet (PaBind "widget_argument_{i}"), XUnit
-        let arms = Each cases, \|((rowNode, pat, conds, passed))|
-            let made = TryOf (XCall (RefChild (RefIn lx, v.home, rowNode), "build"), (Append (Append [[(XClone (XVar "path"))]], passed), [[XUnit, XCx]]))
+        let hostedNames = Each (Range0 (Len args)), \|i| "hosted_widget_argument_{i}"
+        let lets = Fold (Range0 (Len args)), [[]], \|acc, i| match args[i]:
+            ? a: Append acc, [[(DoLet (PaBind "widget_argument_{i}"), (Own (ValueOf lx, env, a.value))), (DoLet (PaBind "hosted_widget_argument_{i}"), (XClone (XVar "widget_argument_{i}")))]]
+            nil: Append acc, [[(DoLet (PaBind "widget_argument_{i}"), XUnit), (DoLet (PaBind "hosted_widget_argument_{i}"), XUnit)]]
+        let builtTy = OutNamed (RefRuntime "prism_rtl::BuiltWidget"), [[elemTy, answerTy, resTy]]
+        # the row whose places are the World's, and the one built under a host
+        # (`ValuedRows`): the blueprint is built in the scope of what applies it
+        let Arms = \|hosted| Each cases, \|((rowNode, pat, conds, passed))|
+            let node = if hosted: HostedValuedRow rowNode else: rowNode
+            let tail = if hosted: [[XUnit, (XClone (XVar "enclosing")), (XClone (XVar "moved")), XCx]] else: [[XUnit, XCx]]
+            let made = TryOf (XCall (RefChild (RefIn lx, v.home, node), "build"), (Append (Append [[(XClone (XVar "path"))]], passed), tail))
             let result = if resTy == OutUnit: XUnit else: XMethod (XVar "row"), "result_value", [[]]
             XArm(pat=pat, conds=conds, body=(XBlock [[(DoLet (PaBind "row"), made)]], (XCall (HelperRef "built_widget"), [[(XMethod (XVar "row"), "built", [[]]), result, (XVar "row")]])))
-        let builtTy = OutNamed (RefRuntime "prism_rtl::BuiltWidget"), [[resTy]]
-        let select = Own (ArmsValue (XTuple (Each names, \|n| XRef (XVar n))), arms, "'select", builtTy)
+        let select = Own (ArmsValue (XTuple (Each names, \|n| XRef (XVar n))), (Arms False), "'select", builtTy)
+        let selectHosted = Own (ArmsValue (XTuple (Each hostedNames, \|n| XRef (XVar n))), (Arms True), "'select", builtTy)
         let build = XClosure True, [[(PaBind "path"), (PaBind "row_base"), (PaBind "cx")]], (XCtor (RefRuntime "std::Ok"), [[select]])
+        let buildHosted = XClosure True, [[(PaBind "path"), (PaBind "row_base"), (PaBind "enclosing"), (PaBind "moved"), (PaBind "cx")]], (XCtor (RefRuntime "std::Ok"), [[selectHosted]])
         let variant = match env.names["#tag"]:
             ? (BnLocal (XPath tagged), ignore, ignore): tagged
             otherwise: untaggedRef
         let answer = if resTy == OutUnit: XClosure False, [[PaWild]], XNone else: XClosure False, [[PaBind "widget_result"]], (XCtor (RefRuntime "std::Some"), [[(Tagged variant, (XVar "widget_result"))]])
         if resTy != OutUnit and variant == untaggedRef and not (Podable resTy): VlOwned (Refusal "the widget {BareName qk} as a blueprint value outside a tag arm, its result no plain data"), t
-        else: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_blueprint::<crate::Elem, crate::Answer, _>"), [[build, answer]])), t
+        else: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, answer]])), t
     otherwise: VlOwned (Refusal (WidgetValueWords qk)), t
+
+# The name of a valued widget's row built under a host, by its row for the World's scope
+# (`ValuedRows`).
+HostedValuedRow: fn Text -> Text
+fn HostedValuedRow rowNode = "{rowNode}_hosted"
 
 IsWidgetFn: fn ValInfo -> Bool
 fn IsWidgetFn v = match v.scheme.ty:

@@ -544,6 +544,9 @@ derive ^Eq, ^Show
 type RowKind = choice:
     ForRow
     GenerationRow
+    # the rows a blueprint value of a block's own widget built, as many as live
+    # (`BlueprintValuesAt`)
+    ValueRow
     NotARow
 derive ^Eq, ^Show
 

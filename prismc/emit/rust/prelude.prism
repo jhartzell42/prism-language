@@ -803,8 +803,7 @@ impl Row for ::prism_rtl::HostRow<crate::Elem, crate::Answer> {
         ::prism_rtl::HostRow::leave_row(self, cx)
     }
     fn document(&self, cx: &Cx) -> Vec<(Path, Rc<::prism_rtl::Entry<crate::Elem>>)> {
-        let _ = cx;
-        ::prism_rtl::HostRow::entries(self)
+        ::prism_rtl::HostRow::entries(self, cx)
     }
     fn deliver(self: Rc<Self>, at: &[Segment], v: &crate::Answer, cx: &mut Cx) -> Done {
         ::prism_rtl::HostRow::deliver(&self, at, v, cx)
@@ -812,17 +811,30 @@ impl Row for ::prism_rtl::HostRow<crate::Elem, crate::Answer> {
 }
 
 /// A widget's row as its blueprint built it (prism_rtl's `widget_blueprint`): the row as a
-/// node, its leaving, how many places it built, and the widget's plain result.
-pub fn built_widget<N: Row + 'static, R>(built: u32, result: R, row: Rc<N>) -> ::prism_rtl::BuiltWidget<R> {
-    let leaving = row.clone();
-    ::prism_rtl::BuiltWidget { node: row, leave: Rc::new(move |cx: &mut Cx| leaving.leave_row(cx)), built, result }
+/// node, its leaving, how many places it built, the widget's plain result, and, for a
+/// row built in a hosted scope, its places' entries and a host's typed answer to one.
+pub fn built_widget<N: Row + 'static, R>(built: u32, result: R, row: Rc<N>) -> ::prism_rtl::BuiltWidget<crate::Elem, crate::Answer, R> {
+    let (leaving, read, answered) = (row.clone(), row.clone(), row.clone());
+    ::prism_rtl::BuiltWidget {
+        node: row,
+        leave: Rc::new(move |cx: &mut Cx| leaving.leave_row(cx)),
+        built,
+        result,
+        document: Rc::new(move |cx: &Cx| read.document(cx)),
+        deliver: Rc::new(move |at: &[Segment], v: &crate::Answer, cx: &mut Cx| answered.clone().deliver(at, v, cx)),
+    }
 }
 
 /// A blueprint value a block applied: what it built, as the block's generation at the
 /// line. A World's answer under it goes to the blueprint's node, the position counted
-/// from the blueprint's first.
+/// from the blueprint's first. In a hosted scope its places are entries of the host's
+/// document: a widget's row's own, or the one place of an element forwarded or placed,
+/// at the base the blueprint was built from, whose answer from the host goes to the
+/// blueprint's sink.
 pub struct AppliedBlueprint {
     supplied: ::prism_rtl::Supplied<crate::Elem, crate::Answer>,
+    base: u32,
+    sink: ::prism_rtl::Sink<crate::Answer>,
 }
 
 impl Node for AppliedBlueprint {
@@ -841,37 +853,64 @@ impl Row for AppliedBlueprint {
             }
         }
     }
+    fn document(&self, cx: &Cx) -> Vec<(Path, Rc<::prism_rtl::Entry<crate::Elem>>)> {
+        if let Some(document) = &self.supplied.document {
+            return document(cx);
+        }
+        match &self.supplied.entry {
+            Some(entry) => vec![(Path::root().at(self.base), entry.clone())],
+            None => Vec::new(),
+        }
+    }
+    fn deliver(self: Rc<Self>, at: &[Segment], v: &crate::Answer, cx: &mut Cx) -> Done {
+        if let Some(deliver) = &self.supplied.deliver {
+            return deliver(at, v, cx);
+        }
+        match at {
+            [Segment::Pos(0)] if self.supplied.entry.is_some() => (self.sink)(v, cx),
+            _ => Err(Fault::answer(format!("no hosted place at {} under a blueprint value applied", Path(at.to_vec())))),
+        }
+    }
+}
+
+/// The scope a blueprint value is applied in: the World's, or the host's whose document
+/// the applying block's places are entries of.
+fn applied_scope(hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Answer>>>) -> ::prism_rtl::Scope<crate::Elem, crate::Answer> {
+    match hosted {
+        Some(host) => ::prism_rtl::Scope::Hosted(host),
+        None => ::prism_rtl::Scope::World,
+    }
 }
 
 /// A blueprint value applied by a block at one of its lines (Semantics ch. 8: "a blueprint
 /// builds nothing until a block applies it", at the applying block's next positions): built
-/// at the block's path, its places numbered from `base`, in the World's scope. Gives the
-/// generation and how many places it built. A blueprint that answers (`@ x`, an event's, a
-/// dynamic's) builds no place here, and what it answers is the line's result, which a line
-/// of unit drops.
-pub fn apply_blueprint(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: u32, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32), Fault> {
-    apply_blueprint_heard(blueprint, path, base, |_: &crate::Answer, _: &mut Cx| Ok(()), cx)
+/// at the block's path, its places numbered from `base`, in the block's scope (`hosted`
+/// the host of a block in a hosted scope). Gives the generation and how many places it
+/// built. A blueprint that answers (`@ x`, an event's, a dynamic's) builds no place here,
+/// and what it answers is the line's result, which a line of unit drops.
+pub fn apply_blueprint(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: u32, hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Answer>>>, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32), Fault> {
+    apply_blueprint_heard(blueprint, path, base, hosted, |_: &crate::Answer, _: &mut Cx| Ok(()), cx)
 }
 
 /// A blueprint value applied by a line that hears it (`!go <- @Element e`): as
 /// `apply_blueprint`, with `hear` the blueprint's sink, called with each answer to the
 /// place the blueprint answers, in the tick the answer comes.
-pub fn apply_blueprint_heard(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: u32, hear: impl Fn(&crate::Answer, &mut Cx) -> Done + 'static, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32), Fault> {
+pub fn apply_blueprint_heard(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: u32, hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Answer>>>, hear: impl Fn(&crate::Answer, &mut Cx) -> Done + 'static, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32), Fault> {
     let sink: ::prism_rtl::Sink<crate::Answer> = Rc::new(hear);
-    let supplied = blueprint(path, sink, &::prism_rtl::Scope::World, base, cx)?;
+    let supplied = blueprint(path, sink.clone(), &applied_scope(hosted), base, cx)?;
     let built = supplied.built;
-    Ok((Rc::new(AppliedBlueprint { supplied }), built))
+    Ok((Rc::new(AppliedBlueprint { supplied, base, sink }), built))
 }
 
 /// A blueprint value applied by a line that binds its plain result (`n <- @t`): as
 /// `apply_blueprint`, with the first answer of the place the blueprint answers, which a
 /// blueprint that gives a plain value has at its build.
-pub fn apply_blueprint_answered(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: u32, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32, crate::Answer), Fault> {
+pub fn apply_blueprint_answered(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: u32, hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Answer>>>, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32, crate::Answer), Fault> {
     let sink: ::prism_rtl::Sink<crate::Answer> = Rc::new(|_: &crate::Answer, _: &mut Cx| Ok(()));
-    let supplied = blueprint(path, sink, &::prism_rtl::Scope::World, base, cx)?;
+    let supplied = blueprint(path, sink.clone(), &applied_scope(hosted), base, cx)?;
     let built = supplied.built;
     let first = supplied.first.clone().ok_or_else(|| Fault::answer("a blueprint value that gives a plain value answered nothing at its build".to_string()))?;
-    Ok((Rc::new(AppliedBlueprint { supplied }), built, first))
+    Ok((Rc::new(AppliedBlueprint { supplied, base, sink }), built, first))
 }
 
 /// An answer made outside a tag's arm (a widget's plain result as a blueprint value
