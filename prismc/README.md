@@ -454,9 +454,7 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   `? x` of `xs[i]`, an array pattern of one element or more on `xs`), until something
   binds `xs` again. `Drop` of `[[]]` is `[[]]`, so `fn Loop xs = Loop (Drop xs, 1)` never
   ends (`neg/drop-unknown`, clean before); `(Len xs) > 0` shows nothing, since Semantics
-  ch. 7's smaller array is a tail "taken apart by `match`". The `+` non-empty type would
-  show it too, and the checker refuses non-empty arrays (`unsupported`), so no program
-  reaches that case yet. `neg/local-shadow`'s `Shrink` and `neg/fuel-call`'s `Drain` now
+  ch. 7's smaller array is a tail "taken apart by `match`". `neg/local-shadow`'s `Shrink` and `neg/fuel-call`'s `Drain` now
   take an element first. A call of the function is no larger than its
   argument `i`, and strictly smaller when that argument is. A summary is read without
   other summaries, so none depends on itself or on a chain, and a name the calling clause
