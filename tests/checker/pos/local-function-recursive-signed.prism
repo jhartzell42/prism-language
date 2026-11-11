@@ -1,0 +1,18 @@
+# A block's `fn` that calls itself, with its signature line (Jimmy's ruling LS: a local
+# function that calls itself needs one, as a top-level function does): `Go` shrinks on the
+# `? less` of `match k -? 1`, a `Nat`'s by its signature, and checks. Written by Claude on
+# the claude-bugs branch; subject to change.
+emit Ui.*
+use Ui.*
+
+Total: fn Nat -> Nat
+fn Total n:
+    Go: fn Nat, Nat -> Nat
+    fn Go k, acc = match k -? 1:
+        ? less: Go less, acc + k
+        nil: acc
+    Go n, 0
+
+@page: @unit
+@page:
+    Ui.Label($text=$"sum {Total 4}")

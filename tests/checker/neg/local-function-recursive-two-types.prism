@@ -1,15 +1,15 @@
-# A block's unsigned `fn` that calls itself on the `? less` of `match k -? 1`, used at
-# `Nat` and at `Int`: a generalized local function is checked for shrinking at the types
-# its uses give it, and at `Int` the `-?` is no shrink ("a smaller natural number",
-# Semantics ch. 7; an `Int`'s `-?` goes down forever), so the cycle may not end. The same
-# function used at `Nat` alone checks (pos/local-function-recursive-unsigned). The
-# expected text is derived by hand from the book and neg/may-not-end. Written by Claude on
-# the claude-bugs branch; subject to change.
+# A block's `fn` that calls itself on the `? less` of `match k -? 1`, signed for every
+# `^Num` type and used at `Nat` and at `Int`: the `-?` of a type that is not `Nat` is no
+# shrink ("a smaller natural number", Semantics ch. 7; an `Int`'s `-?` goes down forever),
+# so the cycle may not end. Signed at `Nat` it checks
+# (pos/local-function-recursive-signed). The expected text is derived by hand from the
+# book and neg/may-not-end. Written by Claude on the claude-bugs branch; subject to change.
 emit Ui.*
 use Ui.*
 
 Totals: fn Nat, Int -> ((Int, Nat))
 fn Totals n, i:
+    Go: fn a, a -> a where a: ^Num
     fn Go k, acc = match k -? 1:
         ? less: Go less, acc + k
         nil: acc
