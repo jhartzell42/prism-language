@@ -1,0 +1,19 @@
+# Derived by hand from Type System ch. 4, Application (a function whose parameter holds a dynamic below the top takes the dynamic whole), as ts-ch04-whole-dynamic-kept derives it for a hold of the block: the row passes its block's `$count` itself, so the inner row's label changes in the tick of each click.
+test a_kept_dynamic_follows
+
+tick 0
+  added:
+    0: Ui.Button(label="Inc")
+    1/["x"]/0/[0]/0: Ui.Label(text="x row 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1/["x"]/0/[0]/0: Ui.Label(text="x row 1")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1/["x"]/0/[0]/0: Ui.Label(text="x row 2")
