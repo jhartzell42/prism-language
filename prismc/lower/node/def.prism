@@ -1181,8 +1181,14 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
             let ((wx2, ignore)) = BuildLine wx, benv, menv, e, nil
             ((wx2, benv, menv))
         SLet p, ignore, e: match ?BundleNamed menv, p, e:
-            # a bundle given another name (`let same = both`): the same parts
-            ? ((n, b)): ((wx, (Bind benv, (SNameKey n), b), (Bind menv, (SNameKey n), b)))
+            # a bundle given another name (`let same = both`): the same parts, in the
+            # build as the build spells them (a row's build reads its block through its
+            # `parent` argument, `BuildSpelling`)
+            ? ((n, b)):
+                let atBuild = match ?BundleNamed benv, p, e:
+                    ? ((ignore, spelled)): spelled
+                    nil: b
+                ((wx, (Bind benv, (SNameKey n), atBuild), (Bind menv, (SNameKey n), b)))
             nil:
                 # an element only placed is no value of the node (`WithElementLets`); a
                 # late `let` is a getter of the node (`MarkLateLets`)
