@@ -283,7 +283,7 @@ fn DynClauseLine wx, menv, scrut, call, qk, v, e:
     let rowObj = OutObj (OutNamed (RefRuntime "rt::Row"), [[]])
     # the arguments as the block's methods read them: `_`, in a generation's row, is the
     # row's own value
-    let scrutEx = XTuple (Each callArgs, \|a| Argument lx, menv, a.value)
+    let scrutEx = ClauseScrutinee lx, menv, v, callArgs
     let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
     let gaps = RowGaps rows, width
     let arms = Fold cases, [[]], \|built, c|
@@ -325,7 +325,7 @@ fn BundleClauseLine wx, menv, scrut, call, qk, v, e:
     let cases = Each rows, \|cr| cr.case
     let rowObj = OutObj (OutNamed (RefRuntime "rt::Row"), [[]])
     let kept = KeepParts wx2, name, (RowsBundle rows), (BundlePartTys (LineOutFull lx, e))
-    let scrutEx = XTuple (Each callArgs, \|a| Argument lx, menv, a.value)
+    let scrutEx = ClauseScrutinee lx, menv, v, callArgs
     let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
     let gaps = RowGaps rows, width
     let arms = Fold cases, [[]], \|built, c|
@@ -412,10 +412,10 @@ fn EarlyClauseLine wx, benv, menv, scrut, qk, v, e, args, outTy:
         let i = Len built
         Push built, (XArm(pat=c.pat, conds=c.conds, body=(XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XVar link)), hostAtBuild))]], (XTuple [[(XMethod (XVar "row"), "result_value", [[]]), (XCast (XVar "row"), rowObj), (Or (Or gaps[i], nil), (XIndex 0))]]))))
     let methodArms = Each cases, \|c| XArm(pat=c.pat, conds=c.conds, body=(XCast (Made c, (XClone (XField XSelf, link)), (HostedPassed wx)), rowObj))
-    let atBuild = XTuple (Each args, \|a| Argument lx, benv, a.value)
+    let atBuild = ClauseScrutinee lx, benv, v, args
     # the arguments as the node's methods read them (in a generation's row `_` is the
     # row's own value, never the builder's `value`, which here is unit)
-    let inMethod = XTuple (Each args, \|a| Argument lx, menv, a.value)
+    let inMethod = ClauseScrutinee lx, menv, v, args
     let built = WithRowBase wx, "", pos, (Own (ArmsValue atBuild, earlyArms, "'select", (OutTuple [[outTy, rowObj, OutCount]])))
     let select = WithRowBase wx, "self", pos, (Own (ArmsValue inMethod, methodArms, "'select", rowObj))
     let wx3 = update wx2:
@@ -513,7 +513,17 @@ fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent, parentTy, args:
     let ptys = match v.scheme.ty:
         TyFn ignore, ps, ignore: ps
         otherwise: [[]]
-    let pats = Each c.params, \|p| ? p
+    # a blueprint parameter (and a widget function's) is no value of the row: its argument
+    # is the caller's text, built where the clause applies it (`ArmRowOf`, `widgets`), so
+    # its pattern matches nothing of the scrutinee (`ClauseScrutinee`)
+    let widgets = Fold (Range0 (Len c.params)), [[]], \|acc, i| match ((ptys[i], c.params[i], args[i])):
+        ((? pt, ? p, ? a)) if IsBlueprintParam pt:
+            let bn = PlainBinder lxc, p
+            if bn == "": acc else: Push acc, ((bn, a.value))
+        otherwise: acc
+    let pats = Each (Range0 (Len c.params)), \|i| match ((ptys[i], c.params[i])):
+        ((? pt, ? p)) if IsBlueprintParam pt: nil
+        ((ignore, ?p)): ?p
     let body = match c.body:
         BodyBlock b: b
         BodyExpr x: Block(stmts=[[(Stmt(kind=(SExpr x), span=x.span))]], inline=True, span=x.span)
@@ -528,7 +538,27 @@ fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent, parentTy, args:
                 let ((b, w2)) = ClauseDynArg w, menv, a.value, (OutTyOf lxc, (Peel pt))
                 (((Push acc, ((bn, b))), w2))
         otherwise: ((acc, w))
-    ArmRowOf wxd, menv, lxc, pats, ptys, nil, body, rowName, genName, transparent, False, parentTy, dyns, [[]]
+    ArmRowOf wxd, menv, lxc, pats, ptys, nil, body, rowName, genName, transparent, False, parentTy, dyns, [[]], widgets
+
+# Whether a widget's parameter takes a blueprint or a widget function: the caller's text,
+# never a value (`BindParam`).
+IsBlueprintParam: fn Ty -> Bool
+fn IsBlueprintParam pt = (LayerOf pt) == LyBlueprint or IsWidgetFnTy pt
+
+# The arguments of a widget of several clauses as its clauses' patterns match them: each
+# plain argument's value; nothing for a blueprint, which no pattern matches.
+ClauseScrutinee: unbounded fn Lx, Env, ValInfo, [Arg] -> Ex
+fn ClauseScrutinee lx, env, v, args:
+    let ptys = match v.scheme.ty:
+        TyFn ignore, ps, ignore: ps
+        otherwise: [[]]
+    XTuple (Each (Range0 (Len args)), \|i| ClauseArgument lx, env, ptys[i], args[i])
+
+ClauseArgument: unbounded fn Lx, Env, ?Ty, ?Arg -> Ex
+fn ClauseArgument lx, env, ?pt, ?a = match ((?pt, ?a)):
+    ((? pt, ? a)) if IsBlueprintParam pt: XUnit
+    ((ignore, ? a)): Argument lx, env, a.value
+    otherwise: XUnit
 
 # A caller's dynamic argument as a clause's row reads it: through its `parent`, the reads
 # the caller's ones of the block (`ParentRead`). One the caller itself reads through its
@@ -569,8 +599,11 @@ fn OnSelfRooted x = match x:
 # a block reads the block's names too (`readsBlock`, through `RowEnv`), its binders over
 # them. The row holds its block as `parentTy`: weakly, or through a link when the
 # generation is built before the block's node (`EarlyClauseLine`).
-ArmRowOf: unbounded fn Wx, Env, Lx, [?Pattern], [Ty], ?Expr, Block, Text, Text, Bool, Bool, OutTy, [((Text, Bn))], [((Text, Text))] -> ClauseRow
-fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transparent, readsBlock, parentTy, dyns, ups:
+# `widgets`: a clause's blueprint parameters, each with the caller's argument, bound as an
+# inlined widget's are (`BindParam`): the argument's text with the caller's environments
+# as the row sees them (`RowEnvNames`), built where the clause applies the parameter.
+ArmRowOf: unbounded fn Wx, Env, Lx, [?Pattern], [Ty], ?Expr, Block, Text, Text, Bool, Bool, OutTy, [((Text, Bn))], [((Text, Text))], [((Text, Expr))] -> ClauseRow
+fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transparent, readsBlock, parentTy, dyns, ups, widgets:
     let upName = "{genName}_up"
     let pos = Each (Range0 (Len pats)), \|i| ArmPat lxc, (Or pats[i], nil), (Or ptys[i], TyErr), ByRef, "c{i}"
     let pa = PaTuple (Each pos, \|o| o.pa)
@@ -580,7 +613,7 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
         nil: [[]]
     # the names the patterns bind: a bare case name (`Quiet`) binds nothing (gap AW)
     let named = Fold pats, [[]], \|acc, ?p| Append acc, (OptBinders ?p)
-    let dynNames = Each dyns, \|((n, ignore))| n
+    let dynNames = Append (Each dyns, \|((n, ignore))| n), (Each widgets, \|((n, ignore))| n)
     let binders = Filter named, \|((bn, ignore))| (HasKey binds, bn) and not (HasText dynNames, bn)
     let fields = Each binders, \|((bn, r))| (((Snake bn), (OutTyOf lxc, (Peel (BinderTy lxc, r))), bn))
     # a transparent row is built with `base`, where its first position stands as built
@@ -599,11 +632,14 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
         &_.based <= ? wx.pos.at) else: r0p
     # a clause's body is its own function's: no name in it is its caller's (only an arm of a
     # `match` in the block reads the block's names, its events through ports of the row)
-    let ((p1, r1, ports)) = if readsBlock: RowEnv wx, r0, menv, body else: ((wx, r0, emptyEnv))
+    let ((p1a, r1a, ports)) = if readsBlock: RowEnv wx, r0, menv, body else: ((wx, r0, emptyEnv))
+    let ((p1, r1, widgetEnv)) = Fold widgets, ((p1a, r1a, emptyEnv)), \|((p, r, en)), ((bn, x))|
+        let ((p2, r2, inner)) = RowEnvNames p, r, menv, (ReadNames (ExprsIn x))
+        ((p2, r2, (Bind en, bn, (BnWidget x, (BuildSpelling inner), inner, wx.lx))))
     let ((be0, me0)) = Fold fields, ((emptyEnv, emptyEnv)), \|((b, m)), ((f, t, bn))| BindPlain b, m, bn, f, t
     let dynEnv = BindAll emptyEnv, dyns
-    let me = OverEnv me0, dynEnv
-    let be = OverEnv be0, (BuildSpelling dynEnv)
+    let me = OverEnv (OverEnv me0, dynEnv), widgetEnv
+    let be = OverEnv (OverEnv be0, (BuildSpelling dynEnv)), widgetEnv
     # a binder hides the block's name it shadows
     let r2u = if readsBlock: BlockInto r1, (OverEnv (BuildSpelling ports), be), (OverEnv ports, me), body else: BlockInto r1, be, me, body
     # the row's events its block prebound (`SplitBlockInto`): each fires the block's
@@ -697,7 +733,7 @@ fn BuildingChoiceLine wx, menv, scrut, pats, sty, guards, bodies, outTy, layer, 
     let ((upId, wx2)) = AddGn wx1, "{name}_fired", (if bundled: OutUnit else: outTy), GnNamed, 0
     let rowName = "{wx.node}Arm{RowSuffix wx}"
     let ((rows, wx3)) = Fold (Range0 (Len bodies)), (([[]], wx2)), \|((acc, w)), i|
-        let cr = ArmRowOf w, menv, lx, [[(Or pats[i], nil)]], [[sty]], (Or guards[i], nil), (Or bodies[i], dummyBlockS), "{rowName}{i}", name, True, True, (OutWeak wx.node), [[]], ups
+        let cr = ArmRowOf w, menv, lx, [[(Or pats[i], nil)]], [[sty]], (Or guards[i], nil), (Or bodies[i], dummyBlockS), "{rowName}{i}", name, True, True, (OutWeak wx.node), [[]], ups, [[]]
         (((Push acc, cr), cr.parent))
     let width = Fold rows, 0, \|acc, cr| Max acc, cr.width
     let cases = Each rows, \|cr| cr.case
@@ -1034,7 +1070,7 @@ fn GenSelect wx, menv, body, cases, pos, sets, ofRebuild:
             nil: InternalBug "a `rebuild` with no generation"
         ? ((qk, args)):
             let env = if ofRebuild: Bind menv, "_", (BnLocal (XVar "value"), Owned, OutUnit) else: menv
-            let scrut = XTuple (Each args, \|a| Argument wx.lx, env, a.value)
+            let scrut = ClauseScrutinee wx.lx, env, (ValOf wx.lx, qk), args
             let rowObj = OutObj (OutNamed (RefRuntime "rt::Row"), [[]])
             let arms = Fold cases, [[]], \|built, c|
                 let i = Len built
