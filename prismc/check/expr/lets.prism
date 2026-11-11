@@ -213,7 +213,26 @@ fn CheckGroupStmt env, st, stmts, i, last = match (Or stmts[i], dummyStmt).kind:
 # has no `$` or `!` outside every arrow (round 1 DB1a), and, when its right side is not a
 # lambda, over no variable with a trait constraint (doubt MR).
 CheckLet: unbounded fn Env, St, Pattern, ?Type, Expr, Range -> ((Env, St))
-fn CheckLet env, st, p, ?ty, e, span:
+fn CheckLet env, st, p, ?ty, e, span = match ?BuilderHead env, e:
+    ? ((word, built, head)) if not env.inUpdate:
+        # a `for` or a `rebuild` builds, and a `let` builds nothing (Semantics ch. 4): the
+        # name is bound to an error's type, so its uses say nothing more
+        let ((t, st1)) = Infer env, st, e
+        let st2 = ErrFix st1, "mismatch", e.span, "a `{word}` builds its {built} and `let` builds nothing; this is `{ShowTy st1, t}`", "bind its result with `<-`: `{SrcText env, p.span} <- {head} ..`"
+        BindPattern env, st2, p, TyErr, False
+    otherwise: CheckLetValue env, st, p, ?ty, e, span
+
+# A `for` or `rebuild` (under any group): its word, what it builds, and its text up to its
+# block's colon.
+?BuilderHead: fn Env, Expr -> ?((Text, Text, Text))
+fn ?BuilderHead env, e = match e.kind:
+    EFor ignore, ignore, body: ? (("for", "rows", (TrimTrailing (SrcText env, Range(start=e.span.start, end=body.span.start)), " \n\t")))
+    ERebuild ignore, body: ? (("rebuild", "block", (TrimTrailing (SrcText env, Range(start=e.span.start, end=body.span.start)), " \n\t")))
+    EGroup x: ?BuilderHead env, x
+    otherwise: nil
+
+CheckLetValue: unbounded fn Env, St, Pattern, ?Type, Expr, Range -> ((Env, St))
+fn CheckLetValue env, st, p, ?ty, e, span:
     let st0 = EnterLevel st
     let ((?annot, st1)) = match ?ty:
         ? t:
