@@ -1,0 +1,20 @@
+# A rebuilt generation (Semantics ch. 4, "`rebuild`": "Holds start over", "Places are
+# new", "The old generation runs to the end of its tick ... and the old generation leaves
+# at the end of the tick, requests included", "Its holds die with it ... each event of
+# its own becomes `never`"). Each generation counts its own button and asks the World on
+# the block's `!ring`; in the tick the page changes the old generation still asks, and
+# afterwards only the new one does, with a fresh count at a fresh path. Written by Claude
+# on the claude-lowering branch; subject to change.
+emit Ui.* | Test.*
+test mod Tests
+
+@main: @unit
+@main:
+    !next <- Ui.Button($label=$"next")                            # 0
+    !ring <- Ui.Button($label=$"ring")                            # 1
+    $page <- 1 then $page + 1 on !next
+    rebuild $page:                                               # 2/#g
+        !hit <- Ui.Button($label=$"hit {_}")                      # 2/#g/0
+        $n <- 0 then $n + 1 on !hit
+        Test.Log(!requests="ring {_}" on !ring)                  # 2/#g/1
+        Ui.Label($text=$"page {_}: {$n} hits")                    # 2/#g/2
