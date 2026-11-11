@@ -396,6 +396,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A constructor's `$` field** takes its argument whole (`CtorArgs`,
   `IsDynamicFieldCtor`): a reader's live `Dynamic`, which the line makes as it does for a
   function that takes time whole (`WholeArgsAt`).
+- **`$ v` over a value that holds time below its top** (`$ (($level, "main"))`, a
+  `$(($Nat, Text))`; `ConstantOfTimeAt`) builds `v` with its dynamics whole: each reader
+  in it is the live `Dynamic` the line makes for it (`WholeArgsAt`), so the tuple holds
+  `$level` itself and never a copy of its value.
 - **`any x` of `^Show` alone** is `Rc::new(x)` cast to `Rc<dyn Show>` where it is made
   (`AnyValue`): an argument behind a reference and an array's element are not coerced.
 - **A module's lowercase declaration written qualified** (`Words.base`) is parsed as a
