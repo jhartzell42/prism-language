@@ -1129,6 +1129,8 @@ auto apply_blueprint_dynamic(const ::prism_rtl::Blueprint<Elem, Answer>& bluepri
     auto run = [&]() -> Result<Made> {
         auto supplied = TRY(blueprint(std::move(path), sink, applied_scope(std::move(hosted)), base, cx));
         std::uint32_t built = supplied.built;
+        // a widget's dynamic result, held whole: the line's dynamic is the widget's own
+        if (supplied.first) if (auto live = supplied.first->template held_as<::prism_rtl::Dynamic<T>>()) return Made{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied), base, sink), built, *live};
         if (!supplied.first) return unexpected(Fault::answer("a blueprint value that gives a dynamic answered nothing at its build"));
         auto first = TRY(take(*supplied.first));
         cell->emplace(std::move(first), cx);
@@ -1143,6 +1145,78 @@ auto apply_blueprint_dynamic(const ::prism_rtl::Blueprint<Elem, Answer>& bluepri
 template <class T, class A>
 Result<T> answer_plain(const A& answer) {
     return answer.template plain<T>();
+}
+
+/// An answer made outside a tag's arm that is no plain data: a widget's result as a
+/// blueprint value gives it when it is a function, a dynamic, or a bundle with its events
+/// and dynamics whole. Held as it is, and read back at the type of the line that binds it.
+template <class T>
+Answer answer_held(T v) {
+    return Answer(Answer::Held_a{std::any(std::move(v))});
+}
+
+/// An answer held whole (`answer_held`), read at the type of the line that binds it.
+template <class T, class A>
+Result<T> held_answer(const A& answer) {
+    return answer.template held<T>();
+}
+
+/// A blueprint value applied by a line that binds a bundle (`((step, !go)) <- @t`): as
+/// `apply_blueprint`, with the bundle as one value `W`, its events and dynamics whole.
+/// A widget's blueprint answers with that value held whole (`answer_held`), once, at its
+/// build. Any other blueprint answers as a bundle's tag does: `state` reads an answer
+/// that is the state (`first` for the answer at the build), `event` one that is the event
+/// parts', and `whole` makes the bundle of the state as a dynamic and of the event the
+/// later answers fire.
+template <class W, class S, class V, class State, class Heard, class Whole>
+Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t, W>> apply_blueprint_whole(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, std::optional<::prism_rtl::Rc<::prism_rtl::HostOf<Elem, Answer>>> hosted, State state, Heard event, Whole whole, Cx& cx) {
+    using Made = std::tuple<::prism_rtl::Rc<Row>, std::uint32_t, W>;
+    auto cell = ::prism_rtl::make_rc<std::optional<::prism_rtl::Hold<S>>>();
+    auto updates = ::prism_rtl::make_rc<::prism_rtl::Port<Unit>>();
+    auto events = ::prism_rtl::make_rc<::prism_rtl::Port<V>>();
+    ::prism_rtl::Sink<Answer> sink = [cell, updates, events, state, event](const Answer& answer, Cx& cx) -> Done {
+        std::optional<S> s = TRY(state(answer, false));
+        if (s) {
+            if (!*cell) return unexpected(Fault::answer("a blueprint value that gives a bundle was answered before its build ended"));
+            (*cell)->set(std::move(*s), cx);
+            return updates->fire(Unit{}, cx);
+        }
+        return events->fire(TRY(event(answer)), cx);
+    };
+    auto supplied = TRY(blueprint(std::move(path), sink, applied_scope(std::move(hosted)), base, cx));
+    std::uint32_t built = supplied.built;
+    if (supplied.first) {
+        if (auto live = supplied.first->template held_as<W>()) return Made{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied), base, sink), built, *live};
+        std::optional<S> s = TRY(state(*supplied.first, true));
+        if (!s) return unexpected(Fault::answer(str("a blueprint value that gives a bundle answered for ", supplied.first->tag(), " at its build, which is no state of the bundle")));
+        cell->emplace(std::move(*s), cx);
+        auto read = [cell](const Cx& cx) { return (*cell)->get(cx); };
+        W made = TRY(whole(std::optional<::prism_rtl::Dynamic<S>>(::prism_rtl::Dynamic<S>{nullptr, read, updates}), ::prism_rtl::Event<V>::of(events), cx));
+        return Made{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied), base, sink), built, std::move(made)};
+    }
+    W made = TRY(whole(std::optional<::prism_rtl::Dynamic<S>>(), ::prism_rtl::Event<V>::of(events), cx));
+    return Made{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied), base, sink), built, std::move(made)};
+}
+
+/// A `$` part of a bundle a blueprint value gives (`apply_blueprint_whole`): the state's
+/// part as a dynamic.
+template <class S, class Part>
+auto state_part(const ::prism_rtl::Dynamic<S>& state, Part part) {
+    return state.map(part);
+}
+
+/// One of several event parts of a bundle a blueprint value gives
+/// (`apply_blueprint_whole`): the firings of the sparse tuple that hold the part.
+template <class V, class Part>
+auto event_part(const ::prism_rtl::Event<V>& events, Part part) {
+    return ::prism_rtl::filter_some(events.map([part](const V& v) { return part(v).part; }));
+}
+
+/// An event part of a bundle a blueprint value gives, heard by the block that applied
+/// it: each firing is `hear`'s, in its tick. The subscription lives as long as the port.
+template <class T, class Hear>
+void hear_part(const ::prism_rtl::Event<T>& event, Hear hear) {
+    deref(event.port).subscribe([hear](const T& v, Cx& cx) -> Done { return hear(v, cx); });
 }
 
 /// A blueprint value applied by a block at one of its lines (Semantics ch. 8: "a blueprint
