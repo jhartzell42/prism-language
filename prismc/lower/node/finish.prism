@@ -427,7 +427,7 @@ fn ScopeSteps sk, atBuild, k, fuel = match fuel -? 1:
         let wx = sk.wx
         let recv = if atBuild: XVar "node" else: XSelf
         let Take = \|sn| if atBuild: SnapTakeAtBuild sn else: SnapTake sk, sn
-        let LateChild = \|b| Fold wx.hosts, [[]], \|a, h| if "{h.name}_rows" == b.name and HasNat wx.lateHosts, h.scope: Append (Append a, (if atBuild: (Fold wx.lateFirsts, [[]], \|firsts, ((scope, dos))| if scope == h.scope: Append firsts, dos else: firsts) else: [[]])), (ScopeSteps sk, atBuild, h.scope, less) else: a
+        let LateChild = \|b| Fold wx.hosts, [[]], \|a, h| if "{h.name}_rows" == b.name and HasNat wx.lateHosts, h.scope: Append (Append a, (if atBuild: (Fold (Append wx.lateFirsts, wx.lateStarts), [[]], \|firsts, ((scope, dos))| if scope == h.scope: Append firsts, dos else: firsts) else: [[]])), (ScopeSteps sk, atBuild, h.scope, less) else: a
         let Builder = \|b|
             let before = Each (Filter wx.snaps, \|sn| sn.before and sn.builder == b.name), Take
             let after = Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == b.name), Take
@@ -443,12 +443,35 @@ fn ScopeSteps sk, atBuild, k, fuel = match fuel -? 1:
         # a scope's builders and generations in the order of their places (ruling TC: places
         # are counted as they are built), so a `for` whose source reads the result of a
         # clause widget above it finds that generation built
-        let steps = Append (Each (Filter wx.builders, \|b| b.pos.scope == k), \|b| ((b.pos.at, (Builder b)))), (Each (Filter wx.gens, \|gd| gd.pos.scope == k and not (HasText wx.deferredGens, gd.name)), \|gd| ((gd.pos.at, (Gen gd))))
+        # a step whose build reads a structural dynamic of a builder or a generation
+        # written below it (Semantics ch. 7, "Structural dynamics": a builder in a tick's
+        # construction step reads the value after it; ch. 4: the order of a group's lines
+        # decides positions and nothing else) is built once that one is: a late host whose
+        # supplier answers with a `for`'s gathered result, so its child's first values
+        # read every row of the build; a `for` or a generation whose source reads a
+        # host's document or a gathered result, the host itself moved or not
+        # (each step with its name, its place and what it waits for: the builders and
+        # generations whose structural dynamics its build reads. A late host's rows read
+        # what its answers read; a `for` reads its source; a generation its scrutinee)
+        let HostReads = \|b| Fold wx.hosts, [[]], \|acc, h| if "{h.name}_rows" != b.name or not (HasNat wx.lateHosts, h.scope): acc else: Fold wx.dynAnswers, acc, \|acc2, ((name, reads))| if HasPrefix name, "{h.name}_dyn_": UnionReads acc2, reads else: acc2
+        let SourceReads = \|name| Or wx.dynReads["{name}_source"], [[]]
+        let GenReads = \|name| Fold wx.genHolds, [[]], \|acc, ((held, reads))| if held == name: UnionReads acc, reads else: acc
+        let BuildersRead = \|reads| Fold (ReadsClosed wx.dynReads, reads), [[]], \|acc, r| match r:
+            OwnRead f: Fold wx.snaps, acc, \|acc2, sn| if sn.name != f and sn.live != f: acc2 else: AddText acc2, sn.builder
+            ParentRead ignore: acc
+        let steps0 = Append (Each (Filter wx.builders, \|b| b.pos.scope == k), \|b| ((b.name, b.pos.at, 0, (BuildersRead (UnionReads (HostReads b), (SourceReads b.name))), (Builder b)))), (Each (Filter wx.gens, \|gd| gd.pos.scope == k and not (HasText wx.deferredGens, gd.name)), \|gd| ((gd.name, gd.pos.at, 0, (BuildersRead (GenReads gd.name)), (Gen gd))))
+        # a step that reads the structure of another stands after it: at the other's
+        # place, one rank on (so a chain keeps its order: the `for`, the late host that
+        # answers with its result, the builder that reads the host's document)
+        let Settle = \|steps| Each steps, \|((name, at, rank, waits, dos))|
+            let ((at2, rank2)) = Fold steps, ((at, rank)), \|((a, r)), ((other, otherAt, otherRank, ignore, ignore))| if other == name or not (HasText waits, other): ((a, r)) else: if otherAt > a or (otherAt == a and otherRank >= r): ((otherAt, otherRank + 1)) else: ((a, r))
+            ((name, at2, rank2, waits, dos))
+        let steps = Fold (Range0 (Len steps0)), steps0, \|acc, ignore| Settle acc
         # a line that takes a late result at its build is built once every other
         # generation of the scope is, the one that gives the result among them
         # (`DeferredLine`)
         let deferred = Fold (Filter wx.gens, \|gd| gd.pos.scope == k and HasText wx.deferredGens, gd.name), [[]], \|a, gd| Append a, (Gen gd)
-        let ordered = Fold (SortNats (Fold steps, [[]], \|seen, ((at, ignore))| if (Len (Filter seen, \|y| y == at)) == 0: Push seen, at else: seen)), [[]], \|a, at| Fold steps, a, \|a2, ((at2, dos))| if at2 == at: Append a2, dos else: a2
+        let ordered = Fold (SortNats (Fold steps, [[]], \|seen, ((ignore, at, ignore, ignore, ignore))| if (Len (Filter seen, \|y| y == at)) == 0: Push seen, at else: seen)), [[]], \|a, at| Fold (Range0 ((2 * (Len steps)) + 2)), a, \|a1, rank| Fold steps, a1, \|a2, ((ignore, at2, rank2, ignore, dos))| if at2 == at and rank2 == rank: Append a2, dos else: a2
         Append (Append ordered, deferred), entries
 
 # A hosted live place's entry taken, its level read from `recv` (the node in its build,

@@ -1,8 +1,8 @@
-# Derived by hand from Type System ch. 3, "Existentials" (a packed value keeps its own type's dictionary) and Semantics ch. 8's table of what prints: a record prints as its constructor applied, a `Nat` as its digits, a `Text` in an interpolation as itself.
+# Derived by hand from Type System ch. 3, "Existentials" (a packed value keeps its own type's dictionary) and Semantics ch. 8's table of what prints: a record prints as its constructor applied, a `Nat` as its digits, a `Text` in an interpolation as itself, and through `Show` quoted (appendix B, ruling CT).
 test it_builds
 
 tick 0
   added:
     0: Ui.Label(text="selected=Sq(file=4, rank=3)")
     1: Ui.Label(text="score=21")
-    2: Ui.Label(text="x <3><y>")
+    2: Ui.Label(text="\"x\" <3><\"y\">")

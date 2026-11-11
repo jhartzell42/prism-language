@@ -1,0 +1,8 @@
+# Derived by hand from Type System ch. 3 (the impl is the one of the type the call is at) and Semantics ch. 4 and ch. 8 (a building `match`'s arm adds no path segment; a blueprint is built at the applying block's next positions). Never run.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="non-empty plain")
+    1: Ui.Label(text="n=non-empty")
+    2: Ui.Label(text="n=plain")

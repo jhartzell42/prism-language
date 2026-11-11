@@ -808,7 +808,9 @@ fn WrittenPart lx, env, y = match LayerOf (TypeAt lx, y.span):
         nil: PartPlain (Own (ValueOf lx, env, (Or (?ConstantDynamic y), y)))
         ? d: match ?PartDynamic lx, env, y, d:
             ? dynamic: PartLive dynamic
-            nil: PartRefused "`{SrcText lx, lx.file, y.span}`, a bundle answer's `$` part that reads what has no value at the owner's build (a structural dynamic)"
+            nil: match ?HeldDynamic lx, env, d:
+                ? held: PartLive held
+                nil: PartRefused "`{SrcText lx, lx.file, y.span}`, a bundle answer's `$` part written where its host's line does not read it (a local function of the block)"
     otherwise: PartPlain (Own (ValueOf lx, env, y))
 
 # A bundle answer of its parts (round 3 DY). The plain and `$` parts are the state: one
@@ -925,7 +927,28 @@ fn PlainBlueprint lx, env, x, variant, t = VlOwned (XCall (RefRuntime "prism_rtl
 DynamicBlueprint: unbounded fn Lx, Env, Expr, Expr, Ref, OutTy -> Vl
 fn DynamicBlueprint lx, env, x, d, variant, t = match ?AnswerDynamic lx, env, x, d, variant:
     ? dynamic: VlOwned (XCall (RefRuntime "prism_rtl::dynamic_blueprint::<crate::Elem, _>"), [[dynamic]]), t
-    nil: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer that reads what has no value at the owner's build (a structural dynamic)"), t
+    nil: match ?HeldDynamic lx, env, d:
+        # a dynamic the function holds as a value (a named supplier's `$` parameter):
+        # that `Dynamic`, each value in the tag's case
+        ? held:
+            let heldTy = OutTyOf lx, (Peel (TypeAt lx, d.span))
+            let tagged = XClosure True, [[(PaTyped (PaBind "v"), (OutRef heldTy))]], (TaggedOrHeld variant, heldTy, (XClone (XVar "v")))
+            VlOwned (XCall (RefRuntime "prism_rtl::dynamic_blueprint::<crate::Elem, _>"), [[(XMethod held, "map", [[tagged]])]]), t
+        nil: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer written where its host's line does not read it (a local function of the block)"), t
+
+# A supplier's dynamic answer `d` where no host's line made a getter for it
+# (`DynamicAnswers` binds none: the answer is written in a function, a named supplier's
+# body), when everything it reads is a value the function holds (its `$` parameter, a
+# `Dynamic`): the `Dynamic` the expression gives there. `nil` when it reads a name of a
+# node (a hold, a dynamic `let`), which only its owner's getter reads.
+?HeldDynamic: unbounded fn Lx, Env, Expr -> ?Ex
+fn ?HeldDynamic lx, env, d:
+    let held = Fold (ReadNames (ExprsIn d)), True, \|ok, n| ok and match env.names[n]:
+        ? (BnLocal ignore, ignore, ignore): True
+        ? (BnLocalFn ignore): True
+        nil: True
+        otherwise: False
+    if held and not (HasKey env.names, "#owner"): ? (Own (ValueOf lx, env, d)) else: nil
 
 # A supplier's dynamic `d` (the `x` of `@ x`, or a `$` part of a bundle answer) as a
 # `Dynamic` of `crate::Answer` under `variant`, read through the owner's link
@@ -1501,10 +1524,12 @@ fn IsLambdaValue e = match e.kind:
     EGroup x: IsLambdaValue x
     otherwise: False
 
-# A bounded function value where a `&dyn Fn` is taken: a parameter that is one already
-# passes on; a closure held in an `Rc` is borrowed through it (`&*f`).
+# A bounded function value where a `&dyn Fn` is taken (a prelude function's parameter): a
+# function value is held in an `Rc` wherever it is one, a named function's parameter and
+# a pattern's binder a `&Rc<dyn Fn>`, so the closure is borrowed through it (`&**f`,
+# `&*f`).
 ClosureRef: fn Vl -> Ex
-fn ClosureRef (VlPlace x, ByRef, t) = x
+fn ClosureRef (VlPlace x, ByRef, t) = XRef (XDeref (XDeref x))
 fn ClosureRef (VlPlace x, ignore, t) = XRef (XDeref x)
 fn ClosureRef (VlOwned x, t) = XRef (XDeref x)
 
@@ -1937,7 +1962,14 @@ fn ArgsFor lx, env, v, args:
         # (True on !swap), $a, $b`): its sigiled dynamics go in whole, the live dynamics
         # their line made (`WholeArgs`); the lifted arguments are values
         let wholeAt = (not lx.whole) and (IsWholeFn lx, v.qk) and (LayerOf (Or ps[i], TyErr)) == LyDyn
+        # a parameter of a bounded function type is a function value, held as every
+        # function value is (the signature's `&Rc<dyn Fn>`): a lambda and a named function
+        # are made one (`ValueArgument`)
+        let bounded = match Peel (Or ps[i], TyErr):
+            TyFn CBound, ignore, ignore: True
+            otherwise: False
         if toUnbounded: XRef (AsJobValue lx, env, a.value)
+        else: if bounded: ValueArgument lx, env, a.value
         else: if wholeAt:
             let lxw = update lx:
                 &_.whole <= True
@@ -2693,8 +2725,7 @@ fn ClosureParams lx, env, ps, pts, typed = Fold (Range0 (Len ps)), (([[]], env))
 # A closure parameter's binder of a function type: a function value is held in an `Rc`
 # wherever it is a value, so the binder is a `&Rc<dyn Fn>`, the place behind it the `Rc`
 # itself: cloned as a value, and borrowed through where a `&dyn Fn` is taken
-# (`ClosureRef`, which takes a `ByRef` function for a named function's parameter, a
-# `&dyn Fn` already).
+# (`ClosureRef`).
 HeldFunction: fn ((Text, Bn)) -> ((Text, Bn))
 fn HeldFunction ((n, b)) = match b:
     BnLocal x, ByRef, (OutFn pts, r): ((n, (BnLocal (XDeref x), Owned, (OutFn pts, r))))

@@ -380,9 +380,24 @@ it make every program an interpreter run, and every type mistake a runtime fault
   ((n + 1, !go))` above `n <- match ..`) is late too (`MarkLateLets`, `MarkLateBundle`):
   the plain part is a getter computed from the node, with no value at the build
   (`LateBundleLet`); the other parts are bound as any bundle's; a building line that
-  reads the name waits for the late result (`DeferredLine`). Refused: a `let` in the
-  block's node whose tuple pattern takes a late bundle apart and names its plain part
-  (the part has no value at the build), and a late bundle read as one value.
+  reads the name waits for the late result (`DeferredLine`). A `let` whose tuple
+  pattern takes a late bundle apart (`let ((step, !go)) = both`) names each plain part
+  as a late name (`LatePartNames`): a getter of the node that the `let`'s line gives
+  the part's read to (`BindNamedPart`), with no value at the build; a pattern of its
+  own over a late plain part (`let ((((step, noun)), !go)) = both`) names each plain
+  name it binds late the same way, its getter the part's read matched by the pattern. A late bundle read
+  as one value from the node's methods (a place's field over `StepOf both`, a late
+  `let`, a hold's step) is a getter of the node bound under `{name}#value`
+  (`LateBundleValue`): the tuple of a plain part's read, an event part's event over a
+  port its node fires, a `$` part's live `Dynamic`. A building line that takes the
+  bundle as one value (a host whose supplier gives `@ both`) is a deferred row
+  (`DeferredLine`), and a row reads its block's `{name}#value` through its parent
+  (`WholeOfBlock`), as it reads the block's event ports (`{name}#port`).
+- **A `let` that names a bundle stands above the first line that reads the name**
+  (`BundleLetsEarly`, in `LinesInto`): a bundle's name is its parts, bound where its
+  `let` is lowered, and a `let` builds no place, so a line written above it (`@Counter
+  pair` above `let pair = ((3, !go))`) is lowered after it and keeps its position. The
+  block's result is still its last line as written (`IsLastLine`).
 - **The split block's lines read each other across the split** (Semantics ch. 4: line
   order decides positions and nothing else):
   - the lines below that build no place (a hold, a `let`, a local function, a local
@@ -458,7 +473,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
   the build, each firing of an event part after, one dynamic part as a root's dynamic
   result is.
 - **A `let` of a name bound to a bundle** (`let same = both`) binds the same parts
-  (`?BundleNamed`).
+  (`?BundleNamed`), and the bundle as one value where the name it renames has one
+  (`ValueRenamed`: `{name}#value`, a supplier's `@ same`, a function's argument).
 - **A row that ends on a bundle hands it to its block part by part** (`RowPartsOut`,
   `KeepParts`; a clause of a widget of several clauses, an arm of a building `match` or
   `if`, the lower generation of a split block). Part `i` is `p{i}`, a part of a bundle
@@ -521,9 +537,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
   gives each pattern the part's binding (`BindPartsParam`), an event with its value
   form (`BindEventParam`), a plain part as a field. Any other pattern is over a plain
   value: the argument is a local of the build, matched once there, each name a field
-  (`BindPlainPatternValue`). Refused: a bundle argument that is neither written out nor
-  a name (a function's result), and a pattern that takes an event or a dynamic out of
-  a value that is no bundle (a record's `$` field).
+  (`BindPlainPatternValue`). A pattern that binds an event or a dynamic out of a value
+  (a record's `$` field, `fn @Shown Gauge($level=$l, name=nm):`; a tuple over a bundle
+  that is a function's result) binds its names as a `let`'s are and takes the argument
+  apart as a `let`'s value is (`BindTimePatternParam`, `PatternDynamics`): a getter of
+  the node reads the argument in its caller's environment, each dynamic's getter
+  matches it and samples what the binder holds, each event's node hears the event the
+  value holds. A name that is a bundle of its own inside such a value (`fn @Labelled
+  ((id, both)):` given a function's result) is its parts, bound first
+  (`PreBindBundleBinder`: an event part a node, a dynamic part a getter, a plain part a
+  field) and read out of what the name holds in the matched value by their places in
+  the bundle (`BundleBinderParts`, `BundleBinderPlains`).
 - **`@Element made` as a line, `made` a `let` of the block bound to a tag applied**
   (Semantics ch. 8, "Elements and the element statement") is that element's line at
   the placing line's position, lowered in the placing line's environments
@@ -935,7 +959,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the supplier's link (`ParameterEnv`): `DynamicAnswers` reads the argument with its
     caller's environments (`AnswerTexts`, a parameter handed on followed to its own
     argument), and the supplier's closure captures what the argument reads from the
-    caller's environment (`LambdaCaptures`). A computed answer in flight to a place whose key left is
+    caller's environment (`LambdaCaptures`). An answer in a function of the block the
+    supplier calls (`fn @Supply e` beside the host's line) is the supplier's text too:
+    the function is inlined where it is called, and `AnswerTexts` reads its clauses.
+    A computed answer in flight to a place whose key left is
     dropped. Nested hosts add one tick per computing layer and none per
     forwarding layer.
 - **First values.** A child place with a first value asks the host at its build
@@ -956,8 +983,26 @@ it make every program an interpreter run, and every type mistake a runtime fault
   builds for the place reads the gathered dynamic over the rows built above it. A late
   scope's own builders, generations and entries follow its first values, just before
   its host's rows; any other hosted scope is built before the owner's own, as before.
-  Refused there: a bundle tag's plain part beside a `$` part (the build reads a plain
-  part once, before the node).
+  A scope's steps wait for the structure they read (`ScopeSteps`): each builder and
+  generation stands at its place, and one whose build reads a structural dynamic of
+  another (by its reads closed over the node's getters, and the snapshots' builders)
+  stands after that one, at its place and one rank on. So a late host written above the
+  builder whose structural dynamic its supplier answers with (`$lens <- for ..` below
+  the host) is built once that builder is, and its child's first values read every row
+  of the build wherever the `for` stands; and a `for` or a generation whose source
+  reads a host's `$doc` or a gathered result is built after that host or `for`, moved
+  or not (a `rebuild Size $doc` between the late host and the `for`:
+  sem-ch09-host-above-for-doc-read-between). A builder's `$`
+  result is prebound as a getter of the node (`GivesResult`, `ResultGetter`), which a
+  line above the builder reads.
+  A bundle tag's plain part beside a `$` part (`((port, !rx, $peers)) <- Pad.Socket(..)`)
+  is a late name there (`LatePlaceParts`, `{name}#late`, `{name}#lateplace`): its hold
+  is a `Hold<Option<T>>` too, set once where the place asks (`LatePlainPart`) and read
+  with no read point (`newest`, `LatePlainBn`). Its readers are a late name's: a place's
+  field is live over it, a plain `let` that reads it is late in turn, a building line
+  that takes it is a deferred generation of the scope (`DeferredLine`), built after the
+  first values, and a hold that starts from it is set by a method of the node the
+  construction step calls after the scope's places have asked (`Wx.lateStarts`).
 - **Requests** of a hosted place go to the host (`host_k.request`): out with the forwarded
   element, or nowhere when the supplier answered the place.
 - **`@HostSome`** is `@HostDocument` through `rt::forward_on_none` (`nil` forwards).
@@ -1067,7 +1112,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   of the source runs (`FrameTaker`, `?SignatureResult`).
 - **A function value applied** (`Take (\|n| n * k)`, `Take Double`, `Take` a `let` or a
   parameter) takes each argument of a function type as a function value
-  (`ValueArgument`); a named function takes a borrowed closure or a path there.
+  (`ValueArgument`). So does a named function of the program at a parameter of a bounded
+  function type (`ArgsFor`): its parameter is a `&Rc<dyn Fn>`, a function value it may
+  keep. A prelude function takes a borrowed closure or a path there, and a function
+  value handed on to one is borrowed through its `Rc` (`ClosureRef`).
 - **`@Run` of a function value that is no function the program defines by clauses** (a
   lambda, a local, a call's result, a constructor, a trait's method, a function of the
   prelude) takes the `Start` it is or is made (`AsJobValue`); a function the program

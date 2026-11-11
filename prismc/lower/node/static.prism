@@ -707,7 +707,8 @@ fn DynamicAnswers wx, benv, menv, hf, k, sup:
 # `let` of the block names, in the supplier's place; and the argument of a widget's
 # blueprint parameter the supplier names (`fn @Hosting @answer:` whose supplier's arm
 # gives `@answer`), in its caller's environments, a parameter handed on followed to its
-# own argument.
+# own argument; and the clauses of a function of the block the supplier calls, in the
+# supplier's place.
 AnswerTexts: unbounded fn Lx, Env, Env, [Expr], Nat -> [((Expr, Env, Env, Lx))]
 fn AnswerTexts lx, benv, menv, written, depth = Fold written, [[]], \|acc, x|
     let own = Push acc, ((x, benv, menv, lx))
@@ -716,6 +717,10 @@ fn AnswerTexts lx, benv, menv, written, depth = Fold written, [[]], \|acc, x|
             ? (BnWidget held, ignore, ignore, ignore): Append own, (AnswerTexts lx, benv, menv, (ExprsIn held), (Dec depth))
             otherwise: match menv.names[SNameKey n]:
                 ? (BnWidget argument, cbenv, cmenv, clx): Append own, (AnswerTexts clx, cbenv, cmenv, (ExprsIn argument), (Dec depth))
+                # a function of the block the supplier calls (`fn @Supply e` beside the
+                # host's line): inlined where it is called (`InlineLocalFn`), so its
+                # clauses' text is the supplier's, read at that use's instantiation
+                ? (BnLocalFn cs): Fold cs, own, \|more, c| Append more, (AnswerTexts (LocalFnLx lx, x.span), benv, menv, (ClauseExprs c), (Dec depth))
                 otherwise: own
         otherwise: own
 
@@ -1602,7 +1607,8 @@ fn BindEventParam wx2, be, me, nkey, spelled, pty, r:
 # the bundle apart (`BindBundleParam`). Any other pattern is over a plain value: the
 # argument is computed at the build and matched once there, each name the pattern binds
 # a field of the node (`BindPlainPatternParam`). A pattern that takes an event or a
-# dynamic out of a value that is no bundle (a record's `$` field) is refused.
+# dynamic out of a value that is no bundle (a record's `$` field) takes the argument
+# apart as a `let` does (`BindTimePatternParam`).
 BindParamPattern: unbounded fn Wx, Env, Env, Env, Env, Lx, Pattern, Ty, Expr -> ((Wx, Env, Env))
 fn BindParamPattern wx, cbenv, cmenv, be, me, lxc, p, pty, arg = match p.kind:
     PGroup q: BindParamPattern wx, cbenv, cmenv, be, me, lxc, q, pty, arg
@@ -1611,9 +1617,37 @@ fn BindParamPattern wx, cbenv, cmenv, be, me, lxc, p, pty, arg = match p.kind:
         let nkey = PlainBinder lxc, p
         if nkey != "": BindParam wx, cbenv, cmenv, be, me, nkey, (LocalNameAt lxc, nkey, p.span), pty, arg
         else: if IsBundle (Peel pty): BindBundleParam wx, cbenv, cmenv, be, me, lxc, p, (Peel pty), arg
-        else: if TimeWithin pty: (((update wx:
-            &_.build <= Push &_.build, (RefusalDo "a widget's parameter pattern (`{SrcText lxc, lxc.file, p.span}`) that takes an event or a dynamic out of a value that is no bundle")), be, me))
+        else: if PatternBindsTime lxc, p: BindTimePatternParam wx, cbenv, cmenv, be, me, lxc, p, arg
         else: BindPlainPatternParam wx, cbenv, be, me, lxc, p, pty, arg
+
+# Whether a pattern binds an event or a dynamic, or a value that holds one.
+PatternBindsTime: unbounded fn Lx, Pattern -> Bool
+fn PatternBindsTime lxc, p = Fold (BinderNames p), False, \|found, n| found or (IsTimeName (SNameKey n)) or TimeWithin (BinderTy lxc, n.span)
+
+# A parameter's pattern that binds an event or a dynamic out of its argument, where the
+# argument is a value (a record with a `$` field, `fn @Shown Gauge($level=$l, name=nm):`;
+# a bundle that is a function's result under a tuple pattern): the names are bound as a
+# `let`'s are (`PreBindName`: an event a node, a dynamic a getter, a plain name a field)
+# and the argument is taken apart as a `let`'s value is (`PatternDynamics`): a getter of
+# the node reads the argument where the caller wrote it, each dynamic's getter matches it
+# by the pattern and samples what the binder holds, each event's node hears the event
+# the value holds, each plain name is matched once at the build. A name that is a bundle
+# of its own inside such a value (`fn @Labelled ((id, both)):` given a function's
+# result) is its parts (`PreBindBundleBinder`), each read out of the value by the
+# pattern and its place in the bundle (`BundleBinderParts`).
+BindTimePatternParam: unbounded fn Wx, Env, Env, Env, Env, Lx, Pattern, Expr -> ((Wx, Env, Env))
+fn BindTimePatternParam wx, cbenv, cmenv, be, me, lxc, p, arg:
+    let lx = wx.lx
+    let ((named, be1, me1)) = Fold (BinderNames p), (((update wx:
+        &_.lx <= lxc), be, me)), \|((w, b, m)), n|
+        let full = BinderTy lxc, n.span
+        if IsBundle full:
+            let ((w2, builds, methods)) = PreBindBundleBinder w, (LocalNameAt lxc, (SNameKey n), n.span), (BundlePartTys full)
+            ((w2, (Bind b, (SNameKey n), (BnParts builds)), (Bind m, (SNameKey n), (BnParts methods))))
+        else: PreBindName w, b, m, n, AsLet
+    let back = update named:
+        &_.lx <= lx
+    (((PatternDynamics back, cbenv, cmenv, me1, lxc, p, arg), be1, me1))
 
 # A parameter's pattern over a plain value: the argument a local of the build, matched
 # once there by the pattern, each name it binds moved into a field of the node, as a
@@ -1653,7 +1687,8 @@ fn BindPlainPatternValue wx, be, me, lxc, p, pty, value:
 # plain aggregate, so a parameter's tuple pattern takes it apart). Given a bundle written
 # out, each pattern of the tuple takes its part's expression as a parameter of its own
 # takes its argument; given a name bound to a bundle, each takes the part's binding
-# (`BindPartsParam`). A bundle that is neither (a function's result) is refused.
+# (`BindPartsParam`). A bundle that is neither (a function's result) is a value taken
+# apart as a `let` takes one (`BindTimePatternParam`).
 BindBundleParam: unbounded fn Wx, Env, Env, Env, Env, Lx, Pattern, Ty, Expr -> ((Wx, Env, Env))
 fn BindBundleParam wx, cbenv, cmenv, be, me, lxc, p, pty, arg = match ((p.kind, (Ungrouped arg).kind)):
     ((PGroup q, ignore)): BindBundleParam wx, cbenv, cmenv, be, me, lxc, q, pty, arg
@@ -1668,8 +1703,7 @@ fn BindBundleParam wx, cbenv, cmenv, be, me, lxc, p, pty, arg = match ((p.kind, 
             BindPartsParam wx, be, me, lxc, ps, (BundlePartTys pty), methods, builds
         otherwise: (((update wx:
             &_.build <= Push &_.build, (InternalBugDo "a widget's bundle parameter given the name `{SNameKey n}`, which is bound to no bundle")), be, me))
-    otherwise: (((update wx:
-        &_.build <= Push &_.build, (RefusalDo "a widget's parameter pattern (`{SrcText lxc, lxc.file, p.span}`) over a bundle given neither a tuple written out nor a name bound to one")), be, me))
+    otherwise: BindTimePatternParam wx, cbenv, cmenv, be, me, lxc, p, arg
 
 # A parameter's tuple pattern over a named bundle's parts, each name the part at its
 # place: an event with its value form (`BindEventParam`); a dynamic or a bundle inside as
