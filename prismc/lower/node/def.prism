@@ -447,7 +447,10 @@ fn LinesInto wx, benv0, menv0, b, open:
         otherwise: en
     # (the plain parts of a late place's bundle are late names first, so a `let` that
     # reads one is late as it is: `LatePlaceParts`)
-    let ((wxp, benvp, menvp)) = Fold stmts, ((wx, benv0, menv0)), \|((w, be, me)), s| LatePlaceParts w, be, me, s
+    let ((wxq, benvq, menvq)) = Fold stmts, ((wx, benv0, menv0)), \|((w, be, me)), s| LatePlaceParts w, be, me, s
+    # (and the plain answer of a place under a host that is placed once the node stands,
+    # `LateHostedAnswer`)
+    let ((wxp, benvp, menvp)) = Fold stmts, ((wxq, benvq, menvq)), \|((w, be, me)), s| LateHostedAnswer w, be, me, s
     let ((wx0, benv, menv)) = MarkLateLets wxp, benvp, menvp, fns, stmts, (Len stmts)
     let ((wx1p, be1, me1)) = Fold stmts, ((wx0, benv, menv)), \|((w, be, me)), s| PreBind w, be, me, s
     let wx1 = LateLetGetters wx1p, me1, stmts
@@ -1251,6 +1254,31 @@ fn LatePlaceParts wx, benv, menv, s = match s.kind:
 # (`LatePlaceParts`): the pattern's place in the source.
 PartHoldKey: fn Pattern -> Text
 fn PartHoldKey q = "#parthold{q.span.start}:{q.span.end}"
+
+# A place with a plain answer bound to a name, in the scope of a host that is placed
+# once the node stands (`Wx.unplacedHosts`: the host has no place in the build, so the
+# place cannot ask it there): the place asks its first value where the scope's places
+# do, once the host is placed (`Wx.lateFirsts`, `ElementOutputOf`), and its name is a
+# late name as a late place's plain part is (`LatePlaceParts`): the value its hold has
+# from then on, `{name}#late`, `{name}#lateplace`.
+LateHostedAnswer: unbounded fn Wx, Env, Env, Stmt -> ((Wx, Env, Env))
+fn LateHostedAnswer wx, benv, menv, s = match s.kind:
+    SBind p, init, nil: match p.kind:
+        PName n:
+            let nkey = SNameKey n
+            let lx = WidgetLetLx wx.lx, n.span
+            let full = BinderTy lx, n.span
+            let placed = match Peel (TypeAt wx.lx, init.span):
+                TyElem ignore, ignore: True
+                otherwise: False
+            if (not placed) or wx.pos.scope == 0 or (not (HasText wx.unplacedHosts, (Or wx.scopes[Dec wx.pos.scope], ""))) or (IsTimeName nkey) or (HasKey menv.names, "{nkey}#late") or (LayerOf full) != LyPlain or (TimeWithin full) or IsBundle full: ((wx, benv, menv))
+            else:
+                let t = OutTyOf lx, (Peel full)
+                let ((rs, w2)) = FreshName wx, (LocalNameAt lx, nkey, n.span)
+                let unbuilt = BnLocal (Refusal "the plain answer `{nkey}` of a place under a host placed after its node, read at its block's build by a line of the block's node that takes a value there (a place's constant field)"), Owned, t
+                ((w2, (Bind (Bind benv, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind (Bind menv, nkey, (LatePlainBn rs, t)), "{nkey}#late", unbuilt), "{nkey}#lateplace", unbuilt)))
+        otherwise: ((wx, benv, menv))
+    otherwise: ((wx, benv, menv))
 
 # A late place's plain part as its readers read it: the value its hold `f` has once the
 # place has asked its first value (read with no read point: it is written once).

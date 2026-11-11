@@ -1,0 +1,47 @@
+# Semantics ch. 5, "References and lens paths": "A reference in expression position,
+# passed to a plain parameter, is read", and "Statements": "`let y = e` names a value:
+# `let a = &_.regs.acc` reads the part, and `a` does not change when the part does";
+# the reference here is a named lens applied, `&Acc &_`.
+# Written by Claude on the claude-lowering branch; subject to change.
+test mod Tests
+type Regs = record:
+    acc: Int
+    x: Int
+derive ^Eq, ^Show
+
+type Vm = record:
+    pc: Nat
+    regs: Regs
+    steps: Nat
+derive ^Eq, ^Show
+
+&Acc: fn &Vm -> &Int
+fn &Acc &vm = &vm.regs.acc
+
+Twice: fn Int -> Int
+fn Twice n = n + n
+
+# `a` is the part's value when the `let` ran.
+Mirror: fn Vm -> Vm
+fn Mirror vm = update vm:
+    let a = &Acc &_
+    &_.regs.acc <= 100
+    &_.regs.x <= a + 1
+
+# The right side is read before the left side's reference is formed.
+Copy: fn Vm -> Vm
+fn Copy vm = update vm:
+    &_.regs.x <= &Acc &_
+
+# Read as an operand, as a plain argument, and as a condition's operand.
+Reads: fn Vm -> Vm
+fn Reads vm = update vm:
+    &_.regs.x <= (&Acc &_) + 1
+    &_.regs.x += Twice (&Acc &_)
+    if (&Acc &_) < 0:
+        &_.pc <= 0
+    else:
+        &_.pc += 1
+
+let boot = Vm(pc=4, regs=Regs(acc=7, x=5), steps=2)
+let low = Vm(pc=4, regs=Regs(acc=-2, x=5), steps=2)

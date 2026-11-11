@@ -167,11 +167,12 @@ fn ElementPlaced wx, benv, menv, tg, args, fed, out, ?bound:
         otherwise: False
     let asksLate = (HasNat wx4.lateHosts, pos.scope) and match tg.out:
         TyTuple cs: partsBound and Fold cs, False, \|found, c| found or (LayerOf c) != LyEv
-        other: (not partsBound) and (LayerOf other) == LyDyn
+        # (and a plain answer bound to a late name there, `LateHostedAnswer`)
+        other: (not partsBound) and ((LayerOf other) == LyDyn or IsSome (?LatePlainHold ?bound))
     # a World's place with a plain answer whose field reads a late result
     # (`LateFieldPlaces`) asks where the generation that gives the result is built, in
     # a method of the node: the element is its getter's
-    let asksAtRow = late and (not partsBound) and IsSome (?LatePlainHold ?bound)
+    let asksAtRow = late and (not partsBound) and (Emits wx4, pos) and IsSome (?LatePlainHold ?bound)
     ElementOutput wx4, menv, tg, out, pos, ?bound, (if asksAtRow: XMethod XSelf, getter, [[XCx]] else: if late and asksLate: added else: atBuild)
 
 # An element's output type at this application: the tag's, instantiated by the checker
@@ -462,6 +463,15 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
         # that gives the late result is built (`Wx.lateAsks`), from the first value
         # asked there with the element the place's getter reads
         otherwise: match ?LatePlainHold ?bound:
+            # (in a hosted scope the name is `LateHostedAnswer`'s: the place asks its
+            # host where the scope's places do, once the host is placed)
+            ? f if not (Emits wx, pos):
+                let wx2 = update wx:
+                    &_.fields <= Push &_.fields, ((f, (OutHold (OutOpt out)), "place {PlaceText pos}'s answer, its first value: empty until that is asked, once its host is placed"))
+                    &_.moves <= Push &_.moves, ((f, (XCall (RefRuntime "rt::Hold::new"), [[XNone, XCx]])))
+                    &_.lateFirsts <= Push &_.lateFirsts, ((pos.scope, [[(FirstValueLet wx, pos, tg, level, out), (LateFirstSet f, (XVar "first_{PlaceText pos}"))]]))
+                    &_.fallible <= True
+                ((wx2, WrUnit))
             ? f:
                 let asked = [[(FirstValueLet wx, pos, tg, level, out), (DoExpr (XMethod (XField XSelf, f), "set", [[(XCtor (RefRuntime "std::Some"), [[(XDecode out, (XRef (XVar "first_{PlaceText pos}")))]]), XCx]]))]]
                 let wx2 = update wx:
