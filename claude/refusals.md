@@ -358,9 +358,13 @@ Jobs and templates
 - lower/jobs.prism:291, 292 a cycle-point `while` in another expression or statement:
   a G, no program reaches this: `StmtJob` is entered only for a `while`, `if`, `match`
   or `for` (`HoldsCycleWhile`), and a nested `update` holding the loop compiles.
-- lower/templates.prism:372 a reference path this back end does not lower: a G, no
-  program reaches this: the checker refuses any other left side of `<=` (mismatch) and
-  a named lens (`unsupported`).
+- lower/templates.prism (`PlaceOf`) a reference path this back end does not lower: a G, no
+  program reaches this: the checker refuses any other left side of `<=` (mismatch); a
+  named lens applied is lowered there (`LensCallEx`). Beside it, "the place of a lens that
+  ends at an index": a G, since such a lens's part is `?a`, which the checker gives no
+  `+=`, no `for` and no lens over it, and a set and a read go whole (`set_part`, the
+  lens's read function). In `LensDefs`, "a lens whose body is a block" and "a lens
+  without a clause": Gs, the checker's `lens-body` and `no-definition`.
 - lower/expr.prism:145 `?` of a place: a G, no program reaches this: every operand of
   `TryOf` is a call the back end itself generates.
 
@@ -378,8 +382,8 @@ Catch-alls
   (sem-ch04-building-if-no-else) and a bare call of a widget defined inside the block
   (sem-ch04-local-widget) are lowered.
 - lower/expr.prism:621 {kind} as a value: see C for a `for` and a `rebuild` as a plain
-  function's value; a suffixed operator, a monad block and a lens stop at the parser or
-  the checker (`unsupported`).
+  function's value; a suffixed operator, a monad block and a lens value (`&.score.home`) stop at
+  the parser or the checker (`unsupported`).
 - lower/expr.prism:515 a lift over a sigil of {kind}. No program found: the checker
   lifts only at applications, operators, fields, indexes and interpolations, each a
   direct operand.

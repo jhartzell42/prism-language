@@ -123,7 +123,14 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   yes". Recursion at another type that reaches a finite set of types stays legal with a
   signature (Type System chapter 2). Refused: a second lowering with the types passed at
   run time.
-- **NL** Named lenses (`&Acc: fn &Vm -> &Int`, Semantics chapter 5) and `Over` are out of
-  this compiler's scope: the checker's `unsupported` error stands. Jimmy: "Out of scope I
-  think". Lens paths inside an `update` block (`&_.regs.acc <= e`, `for &v <- &_`) are in
-  scope and lowered.
+- **NL** Named lenses (`&Acc: fn &Vm -> &Int`, applied as `&Acc &_`, Semantics chapter 5)
+  are in this compiler's scope. Jimmy: "It's just a function from references to
+  references". `Over`, `Get`, `Set`, the `^Lens` trait and lens values (`&.score.home`
+  outside an `update` block) are out of scope: the checker's `unsupported` error stands
+  for them.
+- **ME** A named lens cannot end at a map key, nor step through one: a checker error
+  (`lens-map-key`). Jimmy finds a `&` that is sometimes a real location and sometimes a
+  map entry wrong; entries want a type of their own with their own set operator, which is
+  a change to the language and not to this compiler. The `update` block's own map index
+  paths (`&_.board[sq] <= nil`) stay as they are, and a named lens may end at an array's
+  index.
