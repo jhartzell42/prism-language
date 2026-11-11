@@ -403,6 +403,7 @@ fn TypeVarsInto acc, t = match t.kind:
     TMap k, v: TypeVarsInto (TypeVarsInto acc, k), v
     TFn ignore, ps, res: TypeVarsInto (Fold ps, acc, \|a, x| TypeVarsInto a, x), res
     TEmit ty, ignore: TypeVarsInto acc, ty
+    TNonEmpty x: TypeVarsInto acc, x
     otherwise: acc
 
 ColorVarsOfType: unbounded fn Type -> [Text]

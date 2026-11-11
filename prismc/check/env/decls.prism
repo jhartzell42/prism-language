@@ -43,11 +43,116 @@ fn ConvertDecls g, st, m = match g.mods[m]:
         let s3 = MissingSignatures g2, s2, info
         ((g2, s3))
 
-ConvertTypeDecl: unbounded fn G, St, ModInfo, Decl -> ((G, St))
-fn ConvertTypeDecl g, st, info, d = match d.kind:
+# The aliases, before any other type is read: an alias is the type it names wherever it is
+# declared (Semantics ch. 6: a module's declarations stand in any order), so a field, a case
+# or another alias above it reads the type and never the alias's bare name. Each round reads
+# every alias with what the rounds before read, so a chain of n aliases is read in n rounds;
+# only the last round's diagnostics are kept. An alias that still names an alias then names
+# a ring of them and no type: `alias-cycle`.
+ConvertAliases: unbounded fn G, St -> ((G, St))
+fn ConvertAliases g, st:
+    let aliases = Fold (Values g.mods), [[]], \|acc, info| Fold info.tree.decls, acc, \|a, d| if IsAliasDecl d: Push a, ((info, d)) else: a
+    let quiet = Fold aliases, g, \|gg, ignore| Fold aliases, gg, \|g1, ((info, d))|
+        let ((g2, ignore)) = ConvertAlias g1, st, info, d
+        g2
+    let ((read, st2)) = Fold aliases, ((quiet, st)), \|((g1, s)), ((info, d))|
+        let ((g2, s2)) = ConvertAlias g1, (WithFile s, info.file), info, d
+        ((g2, (WithFile s2, st.file)))
+    Fold aliases, ((read, st2)), \|((g1, s)), ((info, d))| match d.kind:
+        DType t:
+            let name = QualKey info.name, (Dotted t.name.path)
+            let ti = Or read.types[name], dummyTyInfo
+            if ti.span != d.span or not (NamesAlias read, (AliasBody ti)): ((g1, s))
+            else:
+                let upd = update g1:
+                    &_.types <= Insert &_.types, name, (WithBody ti, (BAlias TyErr))
+                ((upd, (WithFile (ErrFix (WithFile s, info.file), "alias-cycle", d.span, "the alias `{Dotted t.name.path}` names a ring of aliases, and no type", "make one type of the ring a record, a choice or a newtype"), s.file)))
+        otherwise: ((g1, s))
+
+IsAliasDecl: fn Decl -> Bool
+fn IsAliasDecl d = match d.kind:
+    DType t: match t.?body:
+        ? body: match body:
+            TbAlias ignore: True
+            otherwise: False
+        nil: False
+    otherwise: False
+
+AliasBody: fn TyInfo -> Ty
+fn AliasBody ti = match ti.body:
+    BAlias t: t
+    otherwise: TyErr
+
+# One alias read as a type, with the aliases read so far expanded in it.
+ConvertAlias: unbounded fn G, St, ModInfo, Decl -> ((G, St))
+fn ConvertAlias g, st, info, d = match d.kind:
     DType t:
         let name = QualKey info.name, (Dotted t.name.path)
         let ti = Or g.types[name], dummyTyInfo
+        # a second type of one name (`collision`, `CollectDecl`) is not read: the first stays
+        if ti.span != d.span: ((g, st))
+        else: match t.?body:
+            ? body: match body:
+                TbAlias a:
+                    let ((at, st2)) = ConvType (CxOf g, info.name), st, a
+                    let upd = update g:
+                        &_.types <= Insert &_.types, name, (WithBody ti, (BAlias at))
+                    ((upd, st2))
+                otherwise: ((g, st))
+            nil: ((g, st))
+    otherwise: ((g, st))
+
+# Whether a type names an alias still, which a type read after the aliases never does.
+NamesAlias: unbounded fn G, Ty -> Bool
+fn NamesAlias g, t = match t:
+    TyCon n, args: (IsAliasBody (Or g.types[n], dummyTyInfo).body) or (AnyNamesAlias g, args)
+    TyFn ignore, ps, r: (AnyNamesAlias g, ps) or (NamesAlias g, r)
+    TyTuple ts: AnyNamesAlias g, ts
+    TyArray e: NamesAlias g, e
+    TyMap k, v: (NamesAlias g, k) or (NamesAlias g, v)
+    TySig ignore, i: NamesAlias g, i
+    TyAt i, ignore: NamesAlias g, i
+    TyElem ignore, o: NamesAlias g, o
+    TyAssoc ignore, ignore, a: NamesAlias g, a
+    otherwise: False
+
+AnyNamesAlias: unbounded fn G, [Ty] -> Bool
+fn AnyNamesAlias g, ts = Fold ts, False, \|seen, t| seen or NamesAlias g, t
+
+IsAliasBody: fn TyBody -> Bool
+fn IsAliasBody b = match b:
+    BAlias ignore: True
+    otherwise: False
+
+# A type's variables are its parameters (Type System ch. 2: "A record may take type
+# parameters, `type Pair a b = record:`"): the head names each once (`collision`), and a
+# field, a case or an alias names no other variable (`unknown-name`).
+TypeHeadVariables: unbounded fn St, TypeDecl -> St
+fn TypeHeadVariables st, t:
+    let params = Each t.params, \|p| p.name
+    let st1 = Fold (Range0 (Len t.params)), st, \|s, i|
+        match t.params[i]:
+            ? p: if HasText (Take params, i), p.name: Err s, "collision", p.span, "a second parameter `{p.name}`" else: s
+            nil: s
+    let written = match t.?body:
+        ? body: match body:
+            TbRecord fs: Each fs, \|f| f.ty
+            TbChoice cs: Fold cs, [[]], \|acc, c| Append acc, c.args
+            TbNewtype c: c.args
+            TbAlias a: [[a]]
+            otherwise: [[]]
+        nil: [[]]
+    let ((st2, ignore)) = Fold written, ((st1, params)), \|((s, known)), ty| Fold (TypeVarsOfType ty), ((s, known)), \|((s1, seen)), v|
+        if HasText seen, v: ((s1, seen))
+        else: (((ErrFix s1, "unknown-name", ty.span, "`{v}` is no parameter of `{Dotted t.name.path}`", "declare it in the head, `type {Join (Append [[Dotted t.name.path]], (Push params, v)), " "} = ...`"), (Push seen, v)))
+    st2
+
+ConvertTypeDecl: unbounded fn G, St, ModInfo, Decl -> ((G, St))
+fn ConvertTypeDecl g, st0, info, d = match d.kind:
+    DType t:
+        let name = QualKey info.name, (Dotted t.name.path)
+        let ti = Or g.types[name], dummyTyInfo
+        let st = if ti.span == d.span: TypeHeadVariables st0, t else: st0
         let cx = CxOf g, info.name
         let params = Each t.params, \|p| p.name
         let self = TyCon name, (Each params, \|p| TyQ p)
@@ -79,12 +184,9 @@ fn ConvertTypeDecl g, st, info, d = match d.kind:
                         let upd = update g:
                             &_.types <= Insert &_.types, name, (WithBody ti, BRowKind)
                         ((upd, st))
-                    TbAlias a:
-                        let ((at, st2)) = ConvType cx, st, a
-                        let upd = update g:
-                            &_.types <= Insert &_.types, name, (WithBody ti, (BAlias at))
-                        ((upd, st2))
-    otherwise: ((g, st))
+                    # read before every other type (`ConvertAliases`)
+                    TbAlias ignore: ((g, st))
+    otherwise: ((g, st0))
 
 # Whether a definition is the module-level `let` of this key.
 IsLetOf: fn Def, Text -> Bool
