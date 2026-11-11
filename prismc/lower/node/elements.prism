@@ -309,10 +309,12 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
             let emits = Emits wx, pos
             # a World's first value is plain data, decoded; a host's is typed already
             let first = if emits: XDecode out, (XRef (XVar "first_{PlaceText pos}")) else: (XVar "first_{PlaceText pos}")
+            # the first value stands in the local `{f}_init`, the place's value at the build,
+            # which a supplier's dynamic answer reads while the node is being made (`PreInit`)
             let wx2 = update wx1:
-                &_.lets <= Push &_.lets, (FirstValueLet wx, pos, tg, level, out)
+                &_.lets <= Append &_.lets, [[(FirstValueLet wx, pos, tg, level, out), (DoLet (PaTyped (PaBind "{f}_init"), out), first)]]
                 &_.fields <= Push &_.fields, ((f, OutHold out, "pushed to place {PlaceText pos}"))
-                &_.inits <= Push &_.inits, ((f, (XCall (RefRuntime "rt::Hold::new"), [[first, XCx]])))
+                &_.inits <= Push &_.inits, ((f, (XCall (RefRuntime "rt::Hold::new"), [[(XClone (XVar "{f}_init")), XCx]])))
                 &_.dynPlaces <= Push &_.dynPlaces, ((pos, f, out, (AnswerAccessor tg)))
                 &_.fallible <= True
             # a World's pushes are keyed by the element: the place listens for them; a hosted

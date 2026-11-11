@@ -656,6 +656,14 @@ fn PreInit wx, benv, menv, s = match s.kind:
                 &_.inited <= AddText &_.inited, f
             ((wx2, (Bind benv, "{PatText p}#init", (BnLocal (XVar "{f}_init"), Owned, t))))
         otherwise: ((wx, benv))
+    # a place whose element answers a dynamic (`$~real <- Fs.Contents(..)`): its first value,
+    # asked in the build's `let`s, the local `{f}_init` (`ElementOutputOf`)
+    SBind p, placed, nil: match ?BindingOf menv, p:
+        ? (BnHold f, t): if not (IsDynamicPlace wx.lx, placed): ((wx, benv)) else:
+            let wx2 = update wx:
+                &_.inited <= AddText &_.inited, f
+            ((wx2, (Bind benv, "{PatText p}#init", (BnLocal (XVar "{f}_init"), Owned, t))))
+        otherwise: ((wx, benv))
     SLet p, ignore, e: match ?BindingOf menv, p:
         # the getter its prebinding named (`PreBindName`)
         ? (BnDyn (XMethod XSelf, rs, ignore), ignore, t):
@@ -1237,6 +1245,18 @@ fn ResultOfTyped wx, benv, menv, x, full, t:
 # initial value and its step's values are dynamics taken whole.
 IsHeldHold: fn Lx, Pattern -> Bool
 fn IsHeldHold lx, p = TimeWithin (BinderTy lx, p.span)
+
+# Whether a bound line places an element whose tag's output is a dynamic.
+IsDynamicPlace: fn Lx, Expr -> Bool
+fn IsDynamicPlace lx, e:
+    let name = match e.kind:
+        ECall c, ignore, ignore, ignore: TagNameOf lx, c
+        EName ignore: TagNameOf lx, e
+        EGroup x: TagNameOf lx, x
+        otherwise: ""
+    match lx.g.tags[name]:
+        ? tg: tg.kind == "Element" and (LayerOf tg.out) == LyDyn
+        nil: False
 
 InitKey: fn Expr -> Text
 fn InitKey e = "{e.span.start}:{e.span.end}"
