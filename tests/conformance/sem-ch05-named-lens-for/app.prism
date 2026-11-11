@@ -1,0 +1,37 @@
+# Semantics ch. 5, "Statements": "`for &s <- &_.xs:` yields a reference per element", and
+# "Meaning by translation": "`for &s <- &p: B` is a fold over the indices of `&p`, with
+# `&s` as `&p[ix]`". The source is a reference, and a named lens applied is one
+# ("Words"), so the loop runs over the part the lens names; and the loop's own reference
+# may be a lens's argument.
+# Written by Claude on the claude-lowering branch; subject to change.
+test mod Tests
+type Score = record:
+    home: Nat
+    away: Nat
+derive ^Eq, ^Show
+
+type Fixture = record:
+    score: Score
+    stoppage: [Nat]
+    halves: [Score]
+derive ^Eq, ^Show
+
+&Stoppage: fn &Fixture -> &[Nat]
+fn &Stoppage &fixture = &fixture.stoppage
+
+&Home: fn &Score -> &Nat
+fn &Home &score = &score.home
+
+# A reference per element of the part the lens names.
+Extend: fn Fixture -> Fixture
+fn Extend f = update f:
+    for &s <- &Stoppage &_:
+        &s += ix + 1
+
+# The loop's reference handed to a lens.
+HomeGoals: fn Fixture -> Fixture
+fn HomeGoals f = update f:
+    for &half <- &_.halves:
+        &Home &half += 10
+
+let fixture = Fixture(score=Score(home=1, away=0), stoppage=[[2, 4]], halves=[[Score(home=1, away=0), Score(home=0, away=3)]])

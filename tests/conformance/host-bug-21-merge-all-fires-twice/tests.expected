@@ -1,0 +1,59 @@
+# Derived by hand: ticks 0 to 4 are the bug's recorded transcript (prism-notes, evidence/documents/bugs/21); tick 5 is by Semantics ch. 7 ("double firings never": `!MergeAll` of events that fire in one tick fires once, so the hold `$seats` is written once and the tick does not abort): ada's request of tick 4 is answered and fay's seat is torn down in tick 5, as the hosting library's own test of the same name shows with `!Union` (evidence/documents/tests.expected).
+test removed_seat_request_dropped
+
+tick 0
+  added:
+    0: Ui.Button(label="cy joins")
+    1: Ui.Button(label="cy is removed")
+    2: Ui.Button(label="ada is removed")
+    3: Ui.Button(label="bob becomes eager")
+    4: Ui.Button(label="dee and eve join, eager at 3")
+    5: Ui.Button(label="dee, eve and gus join, eager at 2")
+    6: Ui.Button(label="fay joins, eager at 1")
+    7: Ui.Button(label="fay is removed")
+    8: Ui.Button(label="kay joins")
+    9: Ui.Button(label="dee and kay join, eager at 4")
+    11/[(((Teller "ada"), Person))]/0/[1]/0: Ui.Button(label="ada +1")
+    11/[(((Teller "ada"), Person))]/0/[2]/0: Ui.Button(label="ada +2")
+    11/[(((Teller "ada"), Person))]/0/[3]/0: Ui.Button(label="ada +1 and leaves")
+    11/[(((Teller "ada"), Person))]/0/[6]/0: Ui.Label(text="ada: (loading); nothing yet")
+    11/[(((Teller "bob"), Person))]/0/[1]/0: Ui.Button(label="bob +1")
+    11/[(((Teller "bob"), Person))]/0/[2]/0: Ui.Button(label="bob +2")
+    11/[(((Teller "bob"), Person))]/0/[3]/0: Ui.Button(label="bob +1 and leaves")
+    11/[(((Teller "bob"), Person))]/0/[6]/0: Ui.Label(text="bob: (loading); nothing yet")
+
+tick 1
+  in:
+    6: click
+  added:
+    11/[(((Teller "fay"), (Eager 1)))]/0/[1]/0: Ui.Button(label="fay +1")
+    11/[(((Teller "fay"), (Eager 1)))]/0/[2]/0: Ui.Button(label="fay +2")
+    11/[(((Teller "fay"), (Eager 1)))]/0/[3]/0: Ui.Button(label="fay +1 and leaves")
+    11/[(((Teller "fay"), (Eager 1)))]/0/[6]/0: Ui.Label(text="fay (eager at 1): (loading); nothing yet")
+
+tick 2
+  changed:
+    11/[(((Teller "ada"), Person))]/0/[6]/0: Ui.Label(text="ada: total 0, may add; nothing yet")
+    11/[(((Teller "bob"), Person))]/0/[6]/0: Ui.Label(text="bob: total 0, may add; nothing yet")
+
+tick 3
+  changed:
+    11/[(((Teller "fay"), (Eager 1)))]/0/[6]/0: Ui.Label(text="fay (eager at 1): total 0, may add; nothing yet")
+
+tick 4
+  in:
+    11/[(((Teller "ada"), Person))]/0/[1]/0: click
+
+tick 5
+  in:
+    7: click
+  changed:
+    11/[(((Teller "ada"), Person))]/0/[6]/0: Ui.Label(text="ada: total 1, may not add; accepted")
+    11/[(((Teller "bob"), Person))]/0/[6]/0: Ui.Label(text="bob: total 1, may add; nothing yet")
+  torn down:
+    11/[(((Teller "fay"), (Eager 1)))]/0/[1]/0: Ui.Button(label="fay +1")
+    11/[(((Teller "fay"), (Eager 1)))]/0/[2]/0: Ui.Button(label="fay +2")
+    11/[(((Teller "fay"), (Eager 1)))]/0/[3]/0: Ui.Button(label="fay +1 and leaves")
+    11/[(((Teller "fay"), (Eager 1)))]/0/[6]/0: Ui.Label(text="fay (eager at 1): total 0, may add; nothing yet")
+
+tick 6

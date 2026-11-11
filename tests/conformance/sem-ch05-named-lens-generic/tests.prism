@@ -1,0 +1,7 @@
+# The tests of sem-ch05-named-lens-generic.
+emit r
+use App.*
+
+check generic_lens:
+    Count Pair(first=1, second="a") => Pair(first=2, second="a!")
+    Rename Pair(first="x", second=Pair(first=1, second=0)), "y" => Pair(first="y", second=Pair(first=3, second=30))

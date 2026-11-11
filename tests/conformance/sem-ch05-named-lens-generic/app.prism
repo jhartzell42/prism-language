@@ -1,0 +1,27 @@
+# Type System ch. 3, "Lenses": "A named lens is a function from one reference to a
+# reference, named with `&`"; a function's signature may have type variables (Type System
+# ch. 2), so a lens over a generic record is generic, and is applied at each type its
+# argument has.
+# Written by Claude on the claude-lowering branch; subject to change.
+test mod Tests
+type Pair a b = record:
+    first: a
+    second: b
+derive ^Eq, ^Show
+
+&First: fn &(Pair a b) -> &a
+fn &First &pair = &pair.first
+
+&Second: fn &(Pair a b) -> &b
+fn &Second &pair = &pair.second
+
+Count: fn Pair Nat Text -> Pair Nat Text
+fn Count p = update p:
+    &First &_ += 1
+    &Second &_ <= "{&Second &_}!"
+
+Rename: fn Pair Text (Pair Nat Nat), Text -> Pair Text (Pair Nat Nat)
+fn Rename p, name = update p:
+    &First &_ <= name
+    &First &Second &_ += 2
+    &Second &Second &_ <= (&First &Second &_) * 10

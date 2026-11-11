@@ -1,0 +1,21 @@
+# A `for` over a map keyed by a choice whose `^Ord` puts `White` first. The label shows
+# the map's keys in the type's order; the transcript lists the entries' places with
+# `Black` first.
+emit Ui.*
+test mod Tests
+
+type Color = choice:
+    White
+    Black
+derive ^Eq, ^Ord, ^Show
+
+let seats = {White: unit, Black: unit}
+
+Listed: fn [Color] -> Text
+fn Listed colors = Fold colors, "", \|all, color| "{all} {color}"
+
+@main: @unit
+@main:
+    Ui.Label($text=$"keys:{Listed (Keys seats)}; White < Black: {White < Black}")   # 0
+    for color, sitting <- seats:                                                     # 1
+        Ui.Label($text=$"{color}")

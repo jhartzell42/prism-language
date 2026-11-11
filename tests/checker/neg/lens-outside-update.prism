@@ -1,0 +1,22 @@
+# `lens-argument`: a lens is applied to a reference, and "no reference exists outside the
+# value an `update` block names" (Semantics ch. 5, "Rust's rule, without lifetimes. No
+# reference outlives its block"): applied to a plain value, in a plain function, it is
+# refused; and so is a plain value handed to it inside a block.
+# Written by Claude on the claude-lowering branch; subject to change.
+type Regs = record:
+    acc: Int
+    x: Int
+
+type Vm = record:
+    pc: Nat
+    regs: Regs
+
+&Acc: fn &Vm -> &Int
+fn &Acc &vm = &vm.regs.acc
+
+Peek: fn Vm -> Int
+fn Peek vm = &Acc vm
+
+Reset: fn Vm, Vm -> Vm
+fn Reset vm, other = update vm:
+    &_.regs.x <= &Acc other
