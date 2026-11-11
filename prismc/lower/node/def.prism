@@ -387,7 +387,10 @@ fn LinesInto wx, benv0, menv0, b, open:
     let fns = Fold (Filter stmts, IsFnLine), emptyEnv, \|en, s| match s.kind:
         SFn c: Bind en, (DefNameText c.name), (WithClause en, (DefNameText c.name), c)
         otherwise: en
-    let ((wx0, benv, menv)) = MarkLateLets wx, benv0, menv0, fns, stmts, (Len stmts)
+    # (the plain parts of a late place's bundle are late names first, so a `let` that
+    # reads one is late as it is: `LatePlaceParts`)
+    let ((wxp, benvp, menvp)) = Fold stmts, ((wx, benv0, menv0)), \|((w, be, me)), s| LatePlaceParts w, be, me, s
+    let ((wx0, benv, menv)) = MarkLateLets wxp, benvp, menvp, fns, stmts, (Len stmts)
     let ((wx1p, be1, me1)) = Fold stmts, ((wx0, benv, menv)), \|((w, be, me)), s| PreBind w, be, me, s
     let wx1 = LateLetGetters wx1p, me1, stmts
     let order = BuildOrder stmts
@@ -1046,8 +1049,60 @@ fn MarkLateLets wx, benv, menv, fns, stmts, fuel:
         let t = OutTyOf w1.lx, (Peel (BinderTy w1.lx, n.span))
         let ((getter, w2)) = FreshName w1, "late_{LocalNameAt w1.lx, nkey, n.span}"
         let unbuilt = BnLocal (Refusal "the late `let` `{nkey}` read at its block's build by a line of the block's node that takes a value there (a widget's plain argument, a builder's plain local)"), Owned, t
-        ((w2, (Bind (Bind be1, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind me1, nkey, (BnLocal (XMethod XSelf, getter, [[]]), Owned, t)), "{nkey}#late", unbuilt), True))
+        let me3 = Bind (Bind me1, nkey, (BnLocal (XMethod XSelf, getter, [[]]), Owned, t)), "{nkey}#late", unbuilt
+        # late only as a late place's plain parts are (`LatePlaceParts`): the name has its
+        # value once the scope's places have asked their first values
+        let ofPlaces = match s.kind:
+            SLet ignore, ignore, e: ReadsLateOfPlaces fns, me, e
+            otherwise: False
+        ((w2, (Bind (Bind be1, nkey, unbuilt), "{nkey}#late", unbuilt), (if ofPlaces: Bind me3, "{nkey}#lateplace", unbuilt else: me3), True))
     if grew and fuel > 0: MarkLateLets wx2, be2, me2, fns, stmts, (Dec fuel) else: ((wx2, be2, me2))
+
+# The plain parts of a bundle a place answers (`((port, !rx, $peers)) <- Pad.Socket(..)`)
+# in a hosted scope whose host answers late (`Wx.lateHosts`): the place asks its first
+# value once the node stands (`LateFirstPlace`), so each plain part the pattern names is
+# a late name (`{name}#late`), bound before any line of the block is lowered: in the
+# methods the value its hold has from then on (`LatePlainBn`, the hold a
+# `Hold<Option<T>>` that `BundleOutputOf` makes and sets), at the build nothing. What
+# reads it reads it as any late name: a place's field is live over it, a plain `let` is
+# late in turn (`MarkLateLets`), a building line that takes it is built after the
+# scope's places have asked (`DeferredLine`), a hold that starts from it is set then
+# (`HoldLine`, `Wx.lateStarts`). `{name}#lateplace` tells such a name from a split
+# line's, whose value waits for a row.
+LatePlaceParts: unbounded fn Wx, Env, Env, Stmt -> ((Wx, Env, Env))
+fn LatePlaceParts wx, benv, menv, s = match s.kind:
+    SBind p, init, nil: if not ((HasNat wx.lateHosts, wx.pos.scope) and IsBundlePlace wx.lx, init): ((wx, benv, menv)) else: match p.kind:
+        PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
+            PName n:
+                let nkey = SNameKey n
+                let lx = WidgetLetLx w.lx, n.span
+                let full = BinderTy lx, n.span
+                if (IsTimeName nkey) or (LayerOf full) != LyPlain or (TimeWithin full) or IsBundle full: ((w, be, me))
+                else:
+                    let t = OutTyOf lx, (Peel full)
+                    let ((rs, w2)) = FreshName w, (LocalNameAt lx, nkey, n.span)
+                    let unbuilt = BnLocal (Refusal "the plain part `{nkey}` of a late place's answer read at its block's build by a line of the block's node that takes a value there (a place's constant field)"), Owned, t
+                    ((w2, (Bind (Bind be, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind (Bind me, nkey, (LatePlainBn rs, t)), "{nkey}#late", unbuilt), "{nkey}#lateplace", unbuilt)))
+            otherwise: ((w, be, me))
+        otherwise: ((wx, benv, menv))
+    otherwise: ((wx, benv, menv))
+
+# A late place's plain part as its readers read it: the value its hold `f` has once the
+# place has asked its first value (read with no read point: it is written once).
+LatePlainBn: fn Text, OutTy -> Bn
+fn LatePlainBn f, t = BnLocal (XMethod (XMethod (XField XSelf, f), "newest", [[]]), "expect", [[(XStr "a hosted place's first value is asked once its node stands")]]), Owned, t
+
+# The hold of a name bound as a late place's plain part (`LatePlainBn`).
+?LatePlainHold: fn ?Bn -> ?Text
+fn ?LatePlainHold (? (BnLocal (XMethod (XMethod (XField XSelf, f), "newest", ignore), "expect", ignore), ignore, ignore)) = ? f
+fn ?LatePlainHold ?other = nil
+
+# Whether an expression reads a late name and every late name it reads is late as a late
+# place's plain parts are (`LatePlaceParts`, `{name}#lateplace`).
+ReadsLateOfPlaces: unbounded fn Env, Env, Expr -> Bool
+fn ReadsLateOfPlaces fns, env, e:
+    let lates = Filter (RowNamesClosed fns, (FreeReads (ExprsIn e), [[]])), \|n| HasKey env.names, "{n}#late"
+    (Len lates) > 0 and Fold lates, True, \|ok, n| ok and HasKey env.names, "{n}#lateplace"
 
 # Whether a statement is a `let` of a name whose value is a bundle written out with a
 # plain part that reads a late name (`let pair = ((n + 1, !go))`, `n` late), not yet
@@ -1330,7 +1385,8 @@ fn PreBind wx, benv, menv, s = match s.kind:
         match p.kind:
             PName n: PreBindName wx, benv, menv, n, how
             PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
-                PName n: PreBindName w, be, me, n, how
+                # (a late place's plain part is a late name already, `LatePlaceParts`)
+                PName n: if latePlace and IsSome (?LatePlainHold me.names[SNameKey n]): ((w, be, me)) else: PreBindName w, be, me, n, how
                 # a pattern inside the tuple: each name it binds (`BindPatternResult`)
                 otherwise: if ?step == nil: (Fold (BinderNames q), ((w, be, me)), \|((w2, be2, me2)), n| PreBindName w2, be2, me2, n, how) else: ((w, be, me))
             otherwise: if ?step == nil: (Fold (BinderNames p), ((wx, benv, menv)), \|((w2, be2, me2)), n| PreBindName w2, be2, me2, n, how) else: ((wx, benv, menv))
@@ -2299,8 +2355,20 @@ fn HoldLine wx, benv, menv, p, init, step:
             let wx2 = update (Connect wx1, (SomePipe r), (SkHold f)):
                 &_.fields <= Push &_.fields, ((f, (OutHold (OutOpt t)), "`{PatText p}`, set when the late result it starts from is built"))
                 &_.moves <= Push &_.moves, ((f, (XCall (RefRuntime "rt::Hold::new"), [[XNone, XCx]])))
-                &_.lateInits <= Push &_.lateInits, set
-            ((wx2, benv))
+            # late only as a late place's plain parts are (`LatePlaceParts`): set in the
+            # build once the scope's places have asked their first values, by a method of
+            # the node (`Wx.lateStarts`, `ScopeSteps`); any other waits for the
+            # generation that gives the result
+            if ReadsLateOfPlaces menv, menv, init:
+                let ((starter, wx3)) = FreshName wx2, "{f}_start"
+                let wx4 = update wx3:
+                    &_.getters <= Push &_.getters, (MethDef(name=starter, recv=RecvRef, params=[[]], cx=CxRef, ret=OutUnit, body=[[set]], tail=XUnit, doc="`{PatText p}` set from its first value, which reads a late place's plain part: called once the scope's places have asked their first values."))
+                    &_.lateStarts <= Push &_.lateStarts, ((wx.pos.scope, [[(DoExpr (XMethod (XVar "node"), starter, [[XCx]]))]]))
+                ((wx4, benv))
+            else:
+                let wx3 = update wx2:
+                    &_.lateInits <= Push &_.lateInits, set
+                ((wx3, benv))
         otherwise: ((wx, benv))
 
 # An event's firings as the present values of an option.

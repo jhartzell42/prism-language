@@ -18,11 +18,13 @@ spell".
 ## R: legal programs not lowered
 
 Hosting
-- lower/node/elements.prism (`BundleOutputOf`) a place of a tag whose answer has a plain
-  part beside a `$` part, in a hosted scope whose host answers with a dynamic that has no
-  value while its node is being made: the place's state is asked once the node stands,
-  and a plain part is read by the build once, before it. No test.
-  Lowered: a supplier's dynamic answer, or a bundle answer's `$` part, that reads a
+- Lowered: a place of a tag whose answer has a plain part beside a `$` part, in a
+  hosted scope whose host answers with a dynamic that has no value while its node is
+  being made: the plain part is a late name, set where the place asks its first value
+  (`LatePlaceParts`; sem-ch09-host-late-bundle-plain-part). What stays of it is a late
+  name's (lower/node/def.prism `LatePlaceParts`: "the plain part .. of a late place's
+  answer read at its block's build", a place's constant field in a line that is no
+  element's own; `DeferredLine`'s two, under "Late results"). A supplier's dynamic answer, or a bundle answer's `$` part, that reads a
   structural dynamic (a `for`'s gathered result, a `rebuild`'s): the child's `$` places
   ask their first values where the construction step reaches the host's line
   (`LateFirstPlace`; sem-ch09-host-dynamic-answer-structural,

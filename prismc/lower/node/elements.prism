@@ -235,25 +235,26 @@ fn BundleOutputOf wx, tg, out, pos, parts, level:
     let stateTy = if one: ValueTy (Or stateIx[0], 0) else: OutTuple (Each stateIx, ValueTy)
     let whole = "bundle_{PlaceText pos}"
     # in a hosted scope whose host answers late, the state is asked once the node stands
-    # (`LateFirstPlace`): each `$` part's hold is empty until then; a plain part, which
-    # the build reads once, is refused there
+    # (`LateFirstPlace`): each `$` part's hold is empty until then, and so is the hold of
+    # a plain part the pattern names, a late name (`LatePlaceParts`)
     let late = (Len stateIx) > 0 and HasNat wx.lateHosts, pos.scope
-    let latePlain = late and Fold stateIx, False, \|f, i| f or (Or layers[i], LyPlain) != LyDyn
     let wholeLets = [[(FirstValueLet wx1, pos, tg, level, stateTy), (DoLet (PaBind whole), (if Emits wx1, pos: XDecode stateTy, (XRef (XVar "first_{PlaceText pos}")) else: XVar "first_{PlaceText pos}"))]]
-    let wx2 = if (Len stateIx) == 0: wx1 else: if latePlain: (update wx1:
-        &_.build <= Push &_.build, (RefusalDo "a place of the tag {tg.name}, whose answer has a plain part beside a `$` part, in a hosted scope whose host answers with a dynamic that has no value while its node is being made (a structural dynamic)")) else: if late: wx1 else: update wx1:
+    let asksLate = update wx1:
+        &_.lateFirsts <= Push &_.lateFirsts, ((pos.scope, wholeLets))
+        &_.fallible <= True
+    let wx2 = if (Len stateIx) == 0: wx1 else: if late: asksLate else: update wx1:
         &_.lets <= Append &_.lets, wholeLets
         &_.fallible <= True
     let ((wx3, holds)) = Fold (Range0 (Len stateIx)), ((wx2, [[]])), \|((w, acc)), k|
         let i = Or stateIx[k], 0
         let part = if one: XVar whole else: XClone (XPart (XVar whole), k)
-        if late and not latePlain:
+        if late and (Or layers[i], LyPlain) == LyDyn:
             let ((f, w1)) = match ?LatePlaceHold (Or parts[i], nil):
                 ? hf: ((hf, w))
                 nil: FreshName w, "place_{PlaceText pos}"
-            # the first part's step asks the whole state
-            let asked = Push (if k == 0: wholeLets else: [[]]), (LateFirstSet f, part)
-            (((LateFirstPlace w1, pos, f, (ValueTy i), asked), (Push acc, ((k, f, (ValueTy i))))))
+            (((LateFirstPlace w1, pos, f, (ValueTy i), [[(LateFirstSet f, part)]]), (Push acc, ((k, f, (ValueTy i))))))
+        # a late place's plain part: its name's hold, written once (no push reaches it)
+        else: if late: (((LatePlainPart w, pos, (Or parts[i], nil), i, (ValueTy i), part), acc))
         else: if (Or layers[i], LyPlain) == LyDyn:
             let ((f, w1)) = match parts[i]:
                 ? (? (BnHold hf, ignore)): ((hf, w))
@@ -285,6 +286,18 @@ fn BundleOutputOf wx, tg, out, pos, parts, level:
     let wx5 = update wx4:
         &_.bundles <= Push &_.bundles, BundlePlace(pos=pos, stem=stem, stateTy=stateTy, stateParts=(Len stateIx), holds=holds, events=events, stateAccessor=(if (Len evIx) == 0: AnswerAccessor tg else: "{AnswerAccessor tg}_first"), eventAccessor=(AnswerAccessor tg), firstVariant=(AnswerFirstVariant tg))
     ((wx5, WrUnit))
+
+# A late place's plain part (`LatePlaceParts`): the hold of the name the pattern gives
+# it, empty at the node's making and set from the part of the first value where the
+# place asks it (`Wx.lateFirsts`); no push writes it. A part the pattern does not name
+# is read by nothing.
+LatePlainPart: fn Wx, Pos, ?Bn, Nat, OutTy, Ex -> Wx
+fn LatePlainPart wx, pos, ?bound, i, t, part = match ?LatePlainHold ?bound:
+    ? f: update wx:
+        &_.fields <= Push &_.fields, ((f, (OutHold (OutOpt t)), "place {PlaceText pos}'s answer, part {i}, read from its first value: empty until that is asked, once the node stands"))
+        &_.moves <= Push &_.moves, ((f, (XCall (RefRuntime "rt::Hold::new"), [[XNone, XCx]])))
+        &_.lateFirsts <= Push &_.lateFirsts, ((pos.scope, [[(LateFirstSet f, part)]]))
+    nil: wx
 
 # A bundle's event part: the node the place's answers fire, the bound name's or one of
 # the place's own.

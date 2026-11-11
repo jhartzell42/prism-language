@@ -978,8 +978,14 @@ it make every program an interpreter run, and every type mistake a runtime fault
   first values read every row of the build wherever the `for` stands. A builder's `$`
   result is prebound as a getter of the node (`GivesResult`, `ResultGetter`), which a
   line above the builder reads.
-  Refused there: a bundle tag's plain part beside a `$` part (the build reads a plain
-  part once, before the node).
+  A bundle tag's plain part beside a `$` part (`((port, !rx, $peers)) <- Pad.Socket(..)`)
+  is a late name there (`LatePlaceParts`, `{name}#late`, `{name}#lateplace`): its hold
+  is a `Hold<Option<T>>` too, set once where the place asks (`LatePlainPart`) and read
+  with no read point (`newest`, `LatePlainBn`). Its readers are a late name's: a place's
+  field is live over it, a plain `let` that reads it is late in turn, a building line
+  that takes it is a deferred generation of the scope (`DeferredLine`), built after the
+  first values, and a hold that starts from it is set by a method of the node the
+  construction step calls after the scope's places have asked (`Wx.lateStarts`).
 - **Requests** of a hosted place go to the host (`host_k.request`): out with the forwarded
   element, or nowhere when the supplier answered the place.
 - **`@HostSome`** is `@HostDocument` through `rt::forward_on_none` (`nil` forwards).

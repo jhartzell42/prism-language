@@ -427,7 +427,7 @@ fn ScopeSteps sk, atBuild, k, fuel = match fuel -? 1:
         let wx = sk.wx
         let recv = if atBuild: XVar "node" else: XSelf
         let Take = \|sn| if atBuild: SnapTakeAtBuild sn else: SnapTake sk, sn
-        let LateChild = \|b| Fold wx.hosts, [[]], \|a, h| if "{h.name}_rows" == b.name and HasNat wx.lateHosts, h.scope: Append (Append a, (if atBuild: (Fold wx.lateFirsts, [[]], \|firsts, ((scope, dos))| if scope == h.scope: Append firsts, dos else: firsts) else: [[]])), (ScopeSteps sk, atBuild, h.scope, less) else: a
+        let LateChild = \|b| Fold wx.hosts, [[]], \|a, h| if "{h.name}_rows" == b.name and HasNat wx.lateHosts, h.scope: Append (Append a, (if atBuild: (Fold (Append wx.lateFirsts, wx.lateStarts), [[]], \|firsts, ((scope, dos))| if scope == h.scope: Append firsts, dos else: firsts) else: [[]])), (ScopeSteps sk, atBuild, h.scope, less) else: a
         let Builder = \|b|
             let before = Each (Filter wx.snaps, \|sn| sn.before and sn.builder == b.name), Take
             let after = Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == b.name), Take
