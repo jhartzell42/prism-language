@@ -861,7 +861,14 @@ fn KindWords k = match k:
 
 # A name: a local, or a global value, constructor or `let`.
 NameValue: unbounded fn Lx, Env, SName, Range -> Vl
-fn NameValue lx, env, n, span:
+# a widget defined in a block, read as a value: the blueprint its line made for it
+# (`BlueprintValuesAt`)
+fn NameValue lx, env, n, span = match env.names["#whole@{span.start}:{span.end}"]:
+    ? (BnLocal rs, mode, lt): LocalPlace rs, mode, lt
+    otherwise: NameValueOf lx, env, n, span
+
+NameValueOf: unbounded fn Lx, Env, SName, Range -> Vl
+fn NameValueOf lx, env, n, span:
     let nkey = NameKeyAt lx, env, n, span
     let t = OutTyOf lx, (Peel (TypeAt lx, span))
     let ?local = if (Len n.path) == 1: env.names[nkey] else: nil

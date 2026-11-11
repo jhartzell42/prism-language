@@ -337,12 +337,6 @@ fn IsWidgetDef d = match d.body:
     DbFn ignore: True
     otherwise: False
 
-# What a widget gives: its own type when it takes no arguments.
-WidgetResultOf: fn Ty -> Ty
-fn WidgetResultOf t = match t:
-    TyFn ignore, ignore, r: r
-    otherwise: t
-
 # The stem of the names of a valued widget's rows: `{stem}{i}` is clause `i`'s.
 ValuedStem: fn Text -> Text
 fn ValuedStem qk = "{Camel (BareName qk)}_value"

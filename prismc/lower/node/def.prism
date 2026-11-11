@@ -448,7 +448,8 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
         otherwise: nil
     let ((wxl, bel, mel, lates)) = if ?whole == nil: BindLate wxu, beu, meu, s else: ((wxu, beu, meu, [[]]))
     let ((wx0, be0, me0)) = LinesInto wxl, bel, mel, head, True
-    let ((wx1, be1, me1)) = Fold (LineExprs s), ((wx0, be0, me0)), \|((w, be, me)), e| WholeArgs w, be, me, e, False
+    let ((wx1w, be1w, me1w)) = Fold (LineExprs s), ((wx0, be0, me0)), \|((w, be, me)), e| WholeArgs w, be, me, e, False
+    let ((wx1, be1, me1)) = Fold (LineExprs s), ((wx1w, be1w, me1w)), \|((w, be, me)), e| BlueprintValuesAt w, be, me, e
     match s.kind:
         SBind p, e, nil:
             let ((wx2a, late)) = BuildLine wx1, be1, me1, e, nil
@@ -1147,7 +1148,9 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
     let stepKey = match s.kind:
         SBind ignore, ignore, (? step): InitKey step
         otherwise: ""
-    let ((wx, benv, menv)) = Fold (LineExprs s), ((wx0, benv0, menv0)), \|((w, be, me)), e| WholeArgsAt w, be, me, e, (InitKey e) == heldInit, (InitKey e) == stepKey
+    let ((wxw, benvw, menvw)) = Fold (LineExprs s), ((wx0, benv0, menv0)), \|((w, be, me)), e| WholeArgsAt w, be, me, e, (InitKey e) == heldInit, (InitKey e) == stepKey
+    # and every widget of the block the line reads as a blueprint value
+    let ((wx, benv, menv)) = Fold (LineExprs s), ((wxw, benvw, menvw)), \|((w, be, me)), e| BlueprintValuesAt w, be, me, e
     let lx = wx.lx
     match s.kind:
         SBind p, e, nil:
