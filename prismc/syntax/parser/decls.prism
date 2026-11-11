@@ -214,9 +214,7 @@ ParseDefName: fn Ps -> ((DefName, Ps))
 fn ParseDefName p = match Kind p:
     KName n:
         let ((name, q)) = ParseSName p
-        let lens = (HasPrefix n.sigils, "&") and (IsUpperName name)
-        let q2 = if lens: OutOfScope q, name.span, "named lenses `&Home` and `Over`", "the named lens `{NameText name}` is out of this compiler" else: q
-        ((DefSName name, q2))
+        ((DefSName name, q))
     KOp op, ignore if p.inTrait:
         let name = DefOp op, (Here p)
         ((name, (Adv p)))

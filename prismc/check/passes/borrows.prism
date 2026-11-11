@@ -204,4 +204,8 @@ fn RefPath e = match e.kind:
         let p = RefPath r
         if (Len p) > 0: Push p, "[]" else: p
     EGroup x: RefPath x
-    otherwise: [[]]
+    # a named lens applied: its argument's path, since its signature does not say which
+    # part it names ("A lens's result is alive while its argument is")
+    otherwise: match ?LensApplied e:
+        ? ((ignore, argument)): RefPath argument
+        nil: [[]]

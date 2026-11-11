@@ -145,20 +145,20 @@ fn UpdateStmt env, st, s = match s.kind:
     otherwise: ((env, (Err st, "mismatch", s.span, "this statement belongs in a widget or `given:` block")))
 
 # The left side of a set is a reference: `&_`, a local, a lens path from either.
-RefTarget: fn Env, St, Expr -> St
+RefTarget: unbounded fn Env, St, Expr -> St
 fn RefTarget env, st, e = if IsRef e: st else: ErrFix st, "mismatch", e.span, "the left of `<=` is a reference: `&_`, a local `&x`, or a path from one", "write `&_.{SrcText env, e.span}`, or make a local with `let &x = ...`"
 
 # The left of a line `x <= e` that is no reference path: a path from a reference whose
 # field step shows the field's stack (a reference path writes its steps bare, `&_.note`
 # for a `?note` field), or no reference at all.
-SetWithoutReference: fn Env, St, Expr -> St
+SetWithoutReference: unbounded fn Env, St, Expr -> St
 fn SetWithoutReference env, st, left = match ?BarePath env, left:
     ? bare: ErrFix st, "mismatch", left.span, "a reference path writes its field steps bare; `{SrcText env, left.span}` shows a field's stack", "write `{bare}`"
     nil: ErrFix st, "mismatch", left.span, "the left of `<=` is a reference: `&_`, a local `&x`, or a path from one", "set a part of `&_`, or make a local with `let &x = ...`"
 
 # A path from a reference with its field steps written bare; none when it starts at no
 # reference.
-?BarePath: fn Env, Expr -> ?Text
+?BarePath: unbounded fn Env, Expr -> ?Text
 fn ?BarePath env, e = match e.kind:
     EName n: if HasPrefix n.sigils, "&": ? (SrcText env, e.span) else: nil
     EField r, ignore, field: match ?BarePath env, r:
@@ -168,15 +168,95 @@ fn ?BarePath env, e = match e.kind:
         ? root: ? "{root}[{SrcText env, index.span}]"
         nil: nil
     EGroup x: ?BarePath env, x
-    otherwise: nil
+    otherwise: match ?LensApplied e:
+        ? ((ignore, argument)): match ?BarePath env, argument:
+            ? ignore: ? (SrcText env, e.span)
+            nil: nil
+        nil: nil
 
-IsRef: fn Expr -> Bool
+IsRef: unbounded fn Expr -> Bool
 fn IsRef e = match e.kind:
     EName n: (HasPrefix n.sigils, "&")
     EField r, ignore, ignore: IsRef r
     EIndex r, ignore: IsRef r
     EGroup x: IsRef x
-    otherwise: False
+    # a named lens applied to a reference is one ("applying it gives back a reference")
+    otherwise: match ?LensApplied e:
+        ? ((ignore, argument)): IsRef argument
+        nil: False
+
+# ---------------------------------------------------------------------------------------
+# Named lenses (Semantics ch. 5, "References and lens paths"; Type System ch. 3, "Lenses")
+# ---------------------------------------------------------------------------------------
+
+# A named lens's definition, `fn &Acc &vm = &vm.regs.acc`: its one clause's parameter is
+# a reference, and its body a reference from that parameter, a lens path or a lens applied
+# to one ("A lens's result is alive while its argument is"; "Nothing else makes a
+# reference"). The body is read as an `update` block's statement is: the parameter is the
+# part it names, and so is the body. A lens whose signature was refused has no type, and
+# its body is not read.
+CheckLens: unbounded fn Env, St, Text, [FnClause], Scheme, Range -> St
+fn CheckLens env, st, name, clauses, sc, span = match sc.ty:
+    TyErr: st
+    otherwise:
+        let env2 = update env:
+            &_.inUpdate <= True
+        let st1 = CheckClauses env2, st, name, clauses, sc, span
+        let st2 = match clauses[0]:
+            ? c: LensClause env2, st1, c
+            nil: st1
+        Fold (Drop clauses, 1), st2, \|s, c| ErrFix s, "lens-body", c.span, "a lens has one clause: its body is one path", "delete this clause"
+
+LensClause: unbounded fn Env, St, FnClause -> St
+fn LensClause env, st, c = match c.params[0]:
+    ? p: match ?LensParameter p:
+        nil: ErrFix st, "lens-body", p.span, "a lens's parameter is a reference, written with `&`", "write `&{SrcText env, p.span}`, and the body as a path from it"
+        ? n:
+            let root = SNameKey n
+            let wrong = "a lens's body is a reference from its parameter: a path from `{root}`, or a lens applied to one"
+            match c.body:
+                BodyExpr e:
+                    if (IsRef e) and (Take (RefPath e), 1) == [[root]]: LensKeys env, st, e, True
+                    else: ErrFix st, "lens-body", e.span, wrong, "write a path, `{root}.field`"
+                BodyBlock b: ErrFix st, "lens-body", b.span, wrong, "write a path, `{root}.field`"
+    nil: st
+
+# A lens's parameter as written, `&vm`.
+?LensParameter: fn Pattern -> ?SName
+fn ?LensParameter p = match p.kind:
+    PName n: if (HasPrefix n.sigils, "&") and not (IsLensName n): ? n else: nil
+    PGroup q: ?LensParameter q
+    otherwise: nil
+
+# `lens-map-key` (Jimmy's ruling ME, 11 November): a named lens cannot end at a map key,
+# nor step through one: a key's part is an entry, not a location. The `update` block's own
+# index paths stay as they are, and a lens may end at an array's index or step through one.
+LensKeys: unbounded fn Env, St, Expr, Bool -> St
+fn LensKeys env, st, e, last = match e.kind:
+    EGroup x: LensKeys env, st, x, last
+    EField r, ignore, ignore: LensKeys env, st, r, False
+    EIndex r, ignore:
+        # the collection's type, read in a state that is dropped: its notes and errors are
+        # the body's already
+        let ((ct, read)) = Infer env, st, r
+        let keyed = match Walk read, (Or (?NonEmptyColl read, ct), ct):
+            TyMap ignore, ignore: True
+            TyCon "Table", ignore: True
+            otherwise: False
+        if keyed: ErrFix st, "lens-map-key", e.span, "a named lens cannot {if last: "end at" else: "step through"} a map key: a key's part is an entry, not a location", "write the path in the `update` block"
+        else: LensKeys env, st, r, False
+    otherwise: match ?LensApplied e:
+        ? ((ignore, argument)): LensKeys env, st, argument, False
+        nil: st
+
+# `lens-argument`: a named lens is applied to a reference, and no reference exists outside
+# an `update` block or a lens's body.
+LensArgument: unbounded fn Env, St, Expr -> St
+fn LensArgument env, st, e = match ?LensApplied e:
+    ? ((n, argument)):
+        if IsRef argument: st
+        else: ErrFix st, "lens-argument", e.span, "the lens `{SNameKey n}` is applied to a reference, and `{SrcText env, argument.span}` is a plain value", "apply it in an `update` block, to `&_`, a local `&x`, or a path from one"
+    nil: st
 
 UpdateIf: unbounded fn Env, St, Cond, Block, ?Block -> St
 fn UpdateIf env, st, c, thenB, ?elseB:
