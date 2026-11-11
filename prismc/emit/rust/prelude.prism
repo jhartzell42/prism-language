@@ -1066,6 +1066,17 @@ pub fn merge_all<T: Clone + 'static>(events: &Array<Event<T>>) -> Event<Array<T>
     ::prism_rtl::merge_all(events)
 }
 
+/// A value given for a generic tag's field or answer, as the tag's own types hold it: the
+/// same plain data at the type with each of the tag's variables a `Pod` (and back, where
+/// a place reads its answer at the type it was placed at). The two types differ only
+/// there, so the decoding cannot fail.
+pub fn recode<U: FromPod>(v: &impl ToPod) -> U {
+    match U::from_pod(&v.to_pod()) {
+        Ok(u) => u,
+        Err(fault) => panic!("a prismc bug: a generic tag's value did not recode: {fault:?}"),
+    }
+}
+
 /// A fault kind as a value (`Fs.NotFound` named, an `Error`'s `kind` read): its name, the
 /// choice with no arguments it crosses to a World as.
 pub fn fault_kind(name: &str) -> Pod {

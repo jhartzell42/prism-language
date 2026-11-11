@@ -305,7 +305,7 @@ fn DescViewBy lx, tg, fresh, reader:
     let fields = Each tg.fields, \|((fname, ft))|
         let f = FieldSpell tg.home, fname, ft
         let v = match LayerOf ft:
-            LyDyn: LiveProjection "l", variant, structPath, f, (OutTyOf lx, (Peel ft))
+            LyDyn: LiveProjection "l", variant, structPath, f, (TagFieldOut lx, ft)
             # a live element's event field: the requests its place makes through it,
             # named when the tag has several event fields (`SkRequest`)
             LyEv: XMethod (XVar "l"), "requested", [[(if (RequestField tg, fname) == "": XNone else: XCtor (RefRuntime "std::Some"), [[XStr (RequestField tg, fname)]])]]
@@ -323,7 +323,7 @@ fn DescViewBy lx, tg, fresh, reader:
 LiveFieldPat: unbounded fn Lx, Pattern, Text, Text, Ty, Text, Ref -> PatOut
 fn LiveFieldPat lx, p, fname, rsField, ft, view, descPath = match p.kind:
     PIgnore: PatOnly PaWild
-    PName n: PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal (XClone (XFieldOf (XVar view), descPath, rsField)), Owned, (OutDyn (OutTyOf lx, (Peel ft))))))]])
+    PName n: PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal (XClone (XFieldOf (XVar view), descPath, rsField)), Owned, (OutDyn (TagFieldOut lx, ft)))))]])
     PGroup q: LiveFieldPat lx, q, fname, rsField, ft, view, descPath
     otherwise: PatOut(pa=PaWild, conds=[[CcIf (Refusal "a pattern inside an element's `$` field ({fname})")]], binds=[[]])
 
@@ -332,7 +332,7 @@ fn LiveFieldPat lx, p, fname, rsField, ft, view, descPath = match p.kind:
 EventFieldPat: unbounded fn Lx, Pattern, Text, Text, Ty, Text, Ref -> PatOut
 fn EventFieldPat lx, p, fname, rsField, ft, view, descPath = match p.kind:
     PIgnore: PatOnly PaWild
-    PName n: PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal (XClone (XFieldOf (XVar view), descPath, rsField)), Owned, (OutEvent (OutTyOf lx, (Peel ft))))))]])
+    PName n: PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal (XClone (XFieldOf (XVar view), descPath, rsField)), Owned, (OutEvent (TagFieldOut lx, ft)))))]])
     PGroup q: EventFieldPat lx, q, fname, rsField, ft, view, descPath
     otherwise: PatOut(pa=PaWild, conds=[[CcIf (InternalBug "a pattern inside an element's event field ({fname})")]], binds=[[]])
 

@@ -776,11 +776,11 @@ fn AnswerArm wx, pos, id, t:
 
 # A host's typed answer to a place of its child (pick HO): the input method called with the
 # tag's variant of `crate::Answer` taken apart (a variant of another tag is a fault).
-TypedAnswerArm: fn Wx, Pos, Nat, Text -> ((Pa, [Do]))
-fn TypedAnswerArm wx, pos, id, acc = (((PosPat pos, [[]]), [[(SelfCall (GnOf wx, id).name, [[(TryOf (XMethod (XVar "v"), acc, [[]]))]])]]))
+TypedAnswerArm: unbounded fn Wx, Pos, Nat, OutTy, Text -> ((Pa, [Do]))
+fn TypedAnswerArm wx, pos, id, placed, acc = (((PosPat pos, [[]]), [[(SelfCall (GnOf wx, id).name, [[(AnswerTaken wx.lx, acc, placed, (TryOf (XMethod (XVar "v"), acc, [[]])))]])]]))
 
-TypedDynArm: fn Sinks, Pos, Text, Text -> ((Pa, [Do]))
-fn TypedDynArm sk, pos, f, acc = (((PosPat pos, [[]]), (DynPlaceWrite sk, f, (TryOf (XMethod (XVar "v"), acc, [[]])))))
+TypedDynArm: unbounded fn Sinks, Pos, Text, OutTy, Text -> ((Pa, [Do]))
+fn TypedDynArm sk, pos, f, placed, acc = (((PosPat pos, [[]]), (DynPlaceWrite sk, f, (AnswerTaken sk.wx.lx, acc, placed, (TryOf (XMethod (XVar "v"), acc, [[]]))))))
 
 # A host's typed answer under a `for`'s or a `rebuild`'s place of its child: to the row its
 # key names, or the current generation, which delivers it on (prelude `Row::deliver`).
@@ -809,7 +809,7 @@ fn TypedGenArm gd:
 # `host_k_answer` for the places of scope `k`, and a hosted node's `deliver` for its own
 # (`Row::deliver`, called by its host's rows). A place with no answer, or no place, is a
 # fault of the tick: a host answers only what its child asks.
-TypedDispatch: fn Sinks, Text, Nat -> MethDef
+TypedDispatch: unbounded fn Sinks, Text, Nat -> MethDef
 fn TypedDispatch sk, name, scope:
     let wx = sk.wx
     let InScope = \|p| p.scope == scope
@@ -818,8 +818,8 @@ fn TypedDispatch sk, name, scope:
     let ((recv, param, segs0, doc)) = if scope > 0: ((RecvRc, (("place", (OutRef OutPath))), (XMethod (XVar "place"), "segments", [[]]), "The host at place {PlaceText (Or wx.hosts[Dec scope], dummyHost).pos} answers its child's place `place` (pick HO): into the child's input method, a hold the place's element answers, or the row of a `for` or `rebuild` under it."))
         else: ((RecvOwned, (("at", (OutRef (OutSlice (OutNamed (RefRuntime "rt::Segment"), [[]]))))), (XVar "at"), "A host's answer to a place of this row's own, `at` under the row (pick HO): into the input method, a hold, or a row under it."))
     let ((seating, segs)) = Seated wx, scope, segs0
-    let answers = Each (Filter wx.answers, \|((pos, ignore, ignore, ignore))| InScope pos), \|((pos, id, ignore, acc))| TypedAnswerArm wx, pos, id, acc
-    let dyns = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| InScope pos), \|((pos, f, ignore, acc))| TypedDynArm sk, pos, f, acc
+    let answers = Each (Filter wx.answers, \|((pos, ignore, ignore, ignore))| InScope pos), \|((pos, id, placed, acc))| TypedAnswerArm wx, pos, id, placed, acc
+    let dyns = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| InScope pos), \|((pos, f, placed, acc))| TypedDynArm sk, pos, f, placed, acc
     let rows = Each (Filter wx.builders, \|b| InScope b.pos), \|b| TypedForwardArm b, segs
     let gens = Fold (Filter wx.gens, \|gd| InScope gd.pos), [[]], \|acc, gd| Append acc, (TypedGenArms gd, segs)
     let none = ((PaWild, [[DoReturn (XCtor (RefRuntime "std::Err"), [[(XCall (RefRuntime "rt::Fault::answer"), [[(XFormatStr [[(XText "no hosted place at "), (XCtor (RefRuntime "rt::Path"), [[(XMethod segs, "to_vec", [[]])]]), (XText " to answer")]])]])]])]]))

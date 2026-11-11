@@ -900,6 +900,16 @@ Dynamic<T> dyn_constant(T v) { return Dynamic<T>::constant(std::move(v)); }
 template <class T>
 Event<Array<T>> merge_all(const Array<Event<T>>& events) { return ::prism_rtl::merge_all(events); }
 
+/// A value given for a generic tag's field or answer, as the tag's own types hold it: the
+/// same plain data at the type with each of the tag's variables a `Pod` (and back). The
+/// two types differ only there, so the decoding cannot fail.
+template <class U, class T>
+U recode(const T& v) {
+    auto decoded = ::prism_rtl::from_pod<U>(::prism_rtl::to_pod(v));
+    if (!decoded) panic("a prismc bug: a generic tag's value did not recode");
+    return std::move(*decoded);
+}
+
 /// A fault kind as a value (`Fs.NotFound` named, an `Error`'s `kind` read): its name, the
 /// choice with no arguments it crosses to a World as.
 inline Pod fault_kind(const std::string& name) { return Pod::name(name); }

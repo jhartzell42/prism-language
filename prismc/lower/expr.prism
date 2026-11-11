@@ -1084,7 +1084,7 @@ fn TagValue lx, env, tg, args:
                     ? a: ? a.value
                     nil: nil
                 let v = match ?arg:
-                    ? x: Own (ValueOf lx, env, x)
+                    ? x: RecodedField lx, fty, (Own (ValueOf lx, env, x))
                     nil: (XCall (RefRuntime "std::Default::default"), [[]])
                 (((FieldSpell tg.home, fname, fty), v))
             VlOwned (XCtor variant, [[(XRecord structPath, fields)]]), t
@@ -1150,7 +1150,8 @@ fn ElementValue lx, env, tg, args:
         let v = match LayerOf fty:
             LyPlain: Own (ValueOf lx, env, x)
             otherwise: Own (ValueOf lxw, env, x)
-        DoLet (PaBind (Local i)), v
+        # a generic tag's field is held as plain data (`TagFieldOut`)
+        DoLet (PaBind (Local i)), (RecodedWhole lx, fty, v)
     let Spell = \|i| match FieldOf i:
         ((fname, fty)): FieldSpell tg.home, fname, fty
     let desc = XRecord descPath, (Each argued, \|((i, ignore))| (((Spell i), (XClone (XVar (Local i))))))
@@ -1165,7 +1166,7 @@ fn ElementValue lx, env, tg, args:
         if (LayerAt i) == LyDyn: (((Spell i), (XClone (XVar (NameOfDyn i))))) else: (((Spell i), (XClone (XVar "{Local i}_l"))))
     let level = XCtor variant, [[(XRecord structPath, levelFields)]]
     let keeps = Each plains, \|((i, ignore))| DoLet (PaBind "{Local i}_l"), (XClone (XVar (Local i)))
-    let tys = Each dyns, \|((i, ignore))| OutTyOf lx, (Peel (TyAt i))
+    let tys = Each dyns, \|((i, ignore))| TagFieldOut lx, (TyAt i)
     let mapped = match dyns:
         [[]]: XCall (HelperRef "dyn_constant"), [[level]]
         [[((i, ignore))]]: XMethod (XVar (Local i)), "map", [[(XClosure True, [[(PaTyped (PaBind (Or names[0], "y")), (OutRef (Or tys[0], OutUnit)))]], level)]]
@@ -1191,7 +1192,7 @@ fn ElementValue lx, env, tg, args:
         let ((fname, fty)) = FieldOf i
         let field = if (Len (Filter tg.fields, \|((ignore, ft))| (LayerOf ft) == LyEv)) > 1: fname else: ""
         let fieldEx = if field == "": XNone else: XCtor (RefRuntime "std::Some"), [[XStr field]]
-        let pods = XMethod (XVar (Local i)), "map", [[(XClosure True, [[(PaTyped (PaBind "v"), (OutRef (OutTyOf lx, (Peel fty))))]], (XMethod (XVar "v"), "to_pod", [[]]))]]
+        let pods = XMethod (XVar (Local i)), "map", [[(XClosure True, [[(PaTyped (PaBind "v"), (OutRef (TagFieldOut lx, fty)))]], (XMethod (XVar "v"), "to_pod", [[]]))]]
         XMethod acc, "request", [[fieldEx, pods]]
     let value = XCall (RefRuntime "prism_rtl::described_element"), [[requested]]
     if (Len missing) > 0: VlOwned (InternalBug "an element value ({tg.name}) without its field `{Or (Each missing, \|i| NameAt i)[0], ""}`"), t
