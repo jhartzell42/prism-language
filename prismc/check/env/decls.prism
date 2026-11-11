@@ -51,36 +51,51 @@ fn ConvertTypeDecl g, st, info, d = match d.kind:
         let cx = CxOf g, info.name
         let params = Each t.params, \|p| p.name
         let self = TyCon name, (Each params, \|p| TyQ p)
-        match t.?body:
-            nil: ((g, st))
-            ? body: match body:
-                TbRecord fs:
-                    let ((fields, st2)) = Fold fs, (([[]], st)), \|((acc, s)), f|
-                        let ((ft, s2)) = ConvType cx, (SigilsOnName s, f), f.ty
-                        (((Push acc, ((f.name.name, (FieldSigils f.sigils, ft)))), s2))
-                    let ctor = CtorInfo(name=name, owner=name, params=params, args=(Each fields, \|((ignore, ft))| ft), fields=(Each fields, \|((fname, ignore))| fname), ty=self, index=0)
-                    let upd = update g:
-                        &_.types <= Insert &_.types, name, (WithBody ti, (BRecord fields))
-                        &_.ctors <= Insert &_.ctors, name, ctor
-                    ((upd, st2))
-                TbChoice cs: ConvCases g, st, cx, ti, name, params, self, cs
-                TbNewtype c: ConvCases g, st, cx, ti, name, params, self, [[c]]
-                TbUnit i:
-                    let ctor = CtorInfo(name=(QualKey info.name, i.name), owner=name, params=params, args=[[]], fields=[[]], ty=self, index=0)
-                    let upd = update g:
-                        &_.types <= Insert &_.types, name, (WithBody ti, (BChoice [[((i.name, [[]]))]]))
-                        &_.ctors <= Insert &_.ctors, (QualKey info.name, i.name), ctor
-                    ((upd, st))
-                TbRow:
-                    let upd = update g:
-                        &_.types <= Insert &_.types, name, (WithBody ti, BRowKind)
-                    ((upd, st))
-                TbAlias a:
-                    let ((at, st2)) = ConvType cx, st, a
-                    let upd = update g:
-                        &_.types <= Insert &_.types, name, (WithBody ti, (BAlias at))
-                    ((upd, st2))
+        # a second type of one name (`collision`, `CollectDecl`) is not read: the first stays
+        if ti.span != d.span: ((g, st))
+        else: match t.?body:
+                nil: ((g, st))
+                ? body: match body:
+                    TbRecord fs:
+                        let ((fields, st2a)) = Fold fs, (([[]], st)), \|((acc, s)), f|
+                            let ((ft, s2)) = ConvType cx, (SigilsOnName (SecondField s, acc, f), f), f.ty
+                            (((Push acc, ((f.name.name, (FieldSigils f.sigils, ft)))), s2))
+                        let st2 = SecondConstructor g, st2a, name, name, d.span
+                        let ctor = CtorInfo(name=name, owner=name, params=params, args=(Each fields, \|((ignore, ft))| ft), fields=(Each fields, \|((fname, ignore))| fname), ty=self, index=0)
+                        let upd = update g:
+                            &_.types <= Insert &_.types, name, (WithBody ti, (BRecord fields))
+                            &_.ctors <= Insert &_.ctors, name, ctor
+                        ((upd, st2))
+                    TbChoice cs: ConvCases g, st, cx, ti, name, params, self, cs
+                    TbNewtype c: ConvCases g, st, cx, ti, name, params, self, [[c]]
+                    TbUnit i:
+                        let stUnit = SecondConstructor g, st, (QualKey info.name, i.name), name, i.span
+                        let ctor = CtorInfo(name=(QualKey info.name, i.name), owner=name, params=params, args=[[]], fields=[[]], ty=self, index=0)
+                        let upd = update g:
+                            &_.types <= Insert &_.types, name, (WithBody ti, (BChoice [[((i.name, [[]]))]]))
+                            &_.ctors <= Insert &_.ctors, (QualKey info.name, i.name), ctor
+                        ((upd, stUnit))
+                    TbRow:
+                        let upd = update g:
+                            &_.types <= Insert &_.types, name, (WithBody ti, BRowKind)
+                        ((upd, st))
+                    TbAlias a:
+                        let ((at, st2)) = ConvType cx, st, a
+                        let upd = update g:
+                            &_.types <= Insert &_.types, name, (WithBody ti, (BAlias at))
+                        ((upd, st2))
     otherwise: ((g, st))
+
+# `collision`: a second field of one name in a record or a tag. The first stays the field.
+SecondField: fn St, [((Text, Ty))], Field -> St
+fn SecondField st, fields, f = if Fold fields, False, \|seen, ((fname, ignore))| seen or fname == f.name.name: Err st, "collision", f.span, "a second field `{f.name.name}`" else: st
+
+# `collision`: a constructor's name is a value-level name of its module, so a choice names
+# it once and no second type of the module names it (a record is its own constructor).
+SecondConstructor: fn G, St, Text, Text, Range -> St
+fn SecondConstructor g, st, qk, owner, span = match g.ctors[qk]:
+    ? other: Err st, "collision", span, "a second constructor `{BareName qk}`{if other.owner == owner: "" else: ": `{BareName other.owner}` has one"}"
+    nil: st
 
 WithBody: fn TyInfo, TyBody -> TyInfo
 fn WithBody ti, b = update ti:
@@ -94,14 +109,18 @@ fn ConvCases g, st, cx, ti, name, params, self, cs:
             nil: s
         let ((args, s2)) = ConvTypes cx, s1, c.args
         (((Push acc, ((SNameKey c.name, args))), s2))
-    let g2 = Fold (Range0 (Len cases)), g, \|gg, i|
+    let ((g2, st3)) = Fold (Range0 (Len cases)), ((g, st2)), \|((gg, s)), i|
         let ((cn, args)) = Or cases[i], (("", [[]]))
         let qk = QualKey ti.home, cn
-        update gg:
+        let s2 = SecondConstructor gg, s, qk, name, (Or cs[i], dummyCase).span
+        let upd = update gg:
             &_.ctors <= Insert &_.ctors, qk, CtorInfo(name=qk, owner=name, params=params, args=args, fields=[[]], ty=self, index=i)
+        ((upd, s2))
     let upd = update g2:
         &_.types <= Insert &_.types, name, (WithBody ti, (BChoice cases))
-    ((upd, st2))
+    ((upd, st3))
+
+let dummyCase = Case(name=SName(sigils="", path=[[]], span=Range(start=0, end=0)), args=[[]], ?indexed=nil, span=Range(start=0, end=0))
 
 ConvertDecl: unbounded fn G, St, ModInfo, Decl -> ((G, St))
 fn ConvertDecl g, st, info, d = match d.kind:
@@ -262,13 +281,16 @@ fn ConvTag g, st, info, t, span:
     let cx = CxOf g, info.name
     let ((kind, out, st2)) = TagKind g, cx, st, t.ofType
     let ((fields, st3)) = Fold t.fields, (([[]], st2)), \|((acc, s)), f|
-        let ((ft, s2)) = ConvType cx, (SigilsOnName s, f), f.ty
+        let ((ft, s2)) = ConvType cx, (SigilsOnName (SecondField s, acc, f), f), f.ty
         (((Push acc, ((f.name.name, (FieldSigils f.sigils, ft)))), s2))
     let qs = Fold t.fields, (TypeVarsOfType t.ofType), \|acc, f| UnionTexts acc, (TypeVarsOfType f.ty)
-    let ((bs, st4)) = ConvBounds cx, st3, t.bounds
+    let ((bs, st4a)) = ConvBounds cx, st3, t.bounds
+    # `collision`: a tag is declared once; the first declaration stays the tag
+    let st4 = if HasKey g.tags, name: Err st4a, "collision", span, "a second tag `{name}`" else: st4a
     let tg = TagInfo(name=name, family=family, kind=kind, out=out, qs=qs, rqs=(if info.rowVar == "": [[]] else: [[info.rowVar]]), bounds=bs, fields=fields, home=info.name, file=info.file, span=span)
     let upd = update g:
-        &_.tags <= Insert &_.tags, name, tg
+        if not (HasKey &_.tags, name):
+            &_.tags <= Insert &_.tags, name, tg
     ((upd, st4))
 
 # The row kind a tag joins and its output: `Element !Click`, `Element` (unit), `Fault`.
@@ -305,7 +327,9 @@ fn ConvTrait g, st, info, t, span:
         TiSignature sg:
             let mname = DefNameText sg.name
             let qk = QualKey info.name, mname
-            let ((sc, s2)) = SigScheme cx, s, sg.ty, sg.bounds
+            let ((sc, s2a)) = SigScheme cx, s, sg.ty, sg.bounds
+            # `collision`: a method is signed once
+            let s2 = if HasText ms, qk: Err s2a, "collision", sg.span, "a second signature for `{mname}`" else: s2a
             let sc2 = update sc:
                 &_.qs <= if HasText &_.qs, param: &_.qs else: Append [[param]], &_.qs
                 &_.bounds <= Append [[((param, name))]], &_.bounds

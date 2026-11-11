@@ -41,6 +41,9 @@ fn CollectDecl g, st, info, d, ?lastType = match d.kind:
         let name = QualKey info.name, (Dotted t.name.path)
         let ti = TyInfo(name=name, home=info.name, params=(Each t.params, \|p| p.name), body=BOpaque, derives=[[]], file=info.file, span=d.span)
         if HasKey g.types, name: ((g, (Err st, "collision", d.span, "a second type `{Dotted t.name.path}`"), ?lastType))
+        # an associated type is a type-level name of its trait's module (AK): a trait above
+        # declared this name
+        else: if HasKey g.assocNames, name: ((g, (ErrFix st, "duplicate-name", d.span, "`{Dotted t.name.path}` is already an associated type of `^{BareName (Or g.assocNames[name], "")}` in this module", "rename one of them, or declare the trait in a module of its own"), ?lastType))
         else:
             let upd = update g:
                 &_.types <= Insert &_.types, name, ti
@@ -81,7 +84,8 @@ fn CollectDecl g, st, info, d, ?lastType = match d.kind:
                 let qkey = QualKey info.name, n.name
                 match m[qkey]:
                     ? other: ((m, (ErrFix s, "duplicate-name", aspan, "`{n.name}` is already an associated type of `^{BareName other}` in this module", "rename one of them, or declare the trait in a module of its own")))
-                    nil: (((Insert m, qkey, name), s))
+                    # a type above declared this name
+                    nil: if HasKey g.types, qkey: ((m, (ErrFix s, "duplicate-name", aspan, "`{n.name}` is already a type of this module", "rename one of them, or declare the trait in a module of its own"))) else: (((Insert m, qkey, name), s))
             otherwise: ((m, s))
         let upd = update g:
             &_.traits <= Insert &_.traits, name, ti
