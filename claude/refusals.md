@@ -32,8 +32,23 @@ Hosting
   two `$` parts, or a `$` part beside a plain part. No test. One event part and one `$`
   part is lowered (sem-ch09-bundle-dynamic-part); in a hosted scope the `$` part takes
   its first value, and a later push to it is a fault of the tick.
-- lower/expr.prism:889, 1316 a widget function with places as a blueprint value: a
-  supplier's arm `Pad.Ask(name=n): @Answerer n`. Test: sem-ch09-host-widget-answer.
+- lower/expr.prism (`WidgetBlueprintValue`, `WidgetValueWords`) a widget with places as
+  a blueprint value is lowered where its parameters are plain, it has no type parameter
+  and it gives nothing or a plain value back (sem-ch09-host-widget-answer,
+  sem-ch08-blueprint-out-of-value). Left refused, no tests: one with a `$`, event or
+  blueprint parameter, a type parameter, or an event, dynamic or bundle result; one read
+  in a place `ValuedWidgets` does not look (a record's field read back and given on is
+  a value already; a `let` in a plain function's body is not looked at); and, a fault of
+  the build, one built in a hosted scope (prism_rtl's `widget_blueprint`).
+- lower/node/static.prism (`BlueprintValuesAt`) a widget defined in a block read as a
+  value is lowered (sem-ch08-local-widget-passed-as-value, sem-ch08-local-widget-in-record).
+  Left refused, no tests: one whose places read a dynamic of the block, one that gives
+  something back, one in a hosted scope. lower/expr.prism (`NameValueOf`) "a widget
+  defined in a block read as a blueprint value" stands for a reading outside a line's
+  value places (inside a lambda's own block).
+- lower/node/static.prism (`ValueBlueprintLine`) a blueprint value applied by a block is
+  lowered. Left refused, no tests: one that gives something back (`n <- @t`), one
+  applied in a hosted scope.
 - lower/node/static.prism:667 `@Element` in a block of an element value that is neither
   a tag applied in place nor a name a `let` of the block binds to one. Program: a widget
   parameter `fn @Show e:` with the line `@Element e`. No test. The `let` form is lowered:
@@ -93,10 +108,11 @@ Building `match`, clause widgets, `rebuild`
   given back, is as deep as its data, to 2^20 places a call
   (sem-ch08-clause-widget-recursion, sem-ch08-widget-recursion-deep,
   sem-ch08-widget-recursion-deep-one-clause, sem-ch08-widget-recursion-deep-result).
-- lower/node/static.prism:187 a widget this back end does not lower yet: a blueprint
-  taken out of a value by a pattern and applied (`match ?Pick b: ? @t: @t`). No test.
-  A blueprint a `let` names is lowered (sem-ch08-blueprint-let), and a blueprint
-  parameter of a widget of several clauses (sem-ch08-clause-widget-blueprint-parameter).
+- lower/node/static.prism (`WidgetCall`) a widget this back end does not lower yet: no
+  program found since a blueprint taken out of a value by a pattern is applied
+  (`ValueBlueprintLine`, sem-ch08-blueprint-out-of-value). A blueprint a `let` names is
+  lowered (sem-ch08-blueprint-let), and a blueprint parameter of a widget of several
+  clauses (sem-ch08-clause-widget-blueprint-parameter).
 - Lowered, no refusal left: LW (sem-ch08-late-result-widget-parameter); a `rebuild` of a
   clause widget with a plain result (sem-ch04-rebuild-clause-plain-result); a clause
   widget's dynamic read through its caller's parent
@@ -167,8 +183,8 @@ Catch-alls
   checker refuses a bind, `emit`, `require`, `while` there (mismatch).
 - lower/node/def.prism (`BuildLine`) a building line that is no element, blueprint or
   builder: an internal error; the checker gives mismatch for such a bare line.
-- lower/node/static.prism:187 a widget not lowered yet: see Building `match`, the
-  blueprint taken out of a value. A building `if` with no `else`
+- lower/node/static.prism (`WidgetCall`) a widget not lowered yet: see Building `match`.
+  A building `if` with no `else`
   (sem-ch04-building-if-no-else) and a bare call of a widget defined inside the block
   (sem-ch04-local-widget) are lowered.
 - lower/expr.prism:621 {kind} as a value: see C for a `for` and a `rebuild` as a plain
