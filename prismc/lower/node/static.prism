@@ -124,7 +124,7 @@ fn ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound:
                 let nkey = PlainBinder clx, p
                 match args[i]:
                     nil: ((w, be, me))
-                    ? a: BindParam w, benv, menv, be, me, nkey, (LocalNameAt clx, nkey, p.span), (Or ptys[i], TyErr), a.value
+                    ? a: if nkey != "": BindParam w, benv, menv, be, me, nkey, (LocalNameAt clx, nkey, p.span), (Or ptys[i], TyErr), a.value else: BindParamPattern w, benv, menv, be, me, clx, p, (Or ptys[i], TyErr), a.value
             let callSpan = match e.kind:
                 ECall c, ignore, ignore, ignore: c.span
                 otherwise: e.span
