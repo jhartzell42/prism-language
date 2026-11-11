@@ -365,6 +365,9 @@ fn WholeValueOf lx, env, e:
                     # a local's value, never written again where it is bound (a root
                     # widget's argument): the constant it is
                     other if local: VlOwned (XCall (HelperRef "dyn_constant"), [[Own v]]), (OutDyn other)
+                    # a global dynamic (`let $four = $ 4`): no node writes it, so it is
+                    # the constant its getter gives
+                    other if (Len n.path) > 1 or not (HasKey env.names, (SNameKey n)): VlOwned (XCall (HelperRef "dyn_constant"), [[Own v]]), (OutDyn other)
                     otherwise: VlOwned (Refusal "`{SrcText lx, lx.file, e.span}` passed whole to a function that takes it so, where it has no live dynamic to give: a reader with no value at the build where the line reads it (gap LF)"), (OutDyn (OutTyOf lx, (Peel full)))
         # `$ $q` is lifted over `$q` (a bare type variable lifts, Type System ch. 4): a map
         # to a constant of each value

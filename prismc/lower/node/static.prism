@@ -282,7 +282,16 @@ fn OnceField wx, name = update wx:
 # `whole` says the line's expression is itself taken whole: a hold of dynamics' initial
 # value (`$$cur <- $a then ..`, `HoldLine`).
 WholeArgs: unbounded fn Wx, Env, Env, Expr, Bool -> ((Wx, Env, Env))
-fn WholeArgs wx, benv, menv, e, whole:
+fn WholeArgs wx, benv, menv, e, whole = WholeArgsAt wx, benv, menv, e, whole, False
+
+# `late` says nothing reads the line's expression before the node is made (a hold's step,
+# heard after the build): its live dynamics take no value at the build, so the lines whose
+# names it passes need not stand before it in the build. A reader with no value at the
+# build (a clause widget's result, a place's dynamic, a name of the parent) is made the
+# same way: read through the node's link alone, which is linked before any line's build
+# step runs; a read before that is unreachable.
+WholeArgsAt: unbounded fn Wx, Env, Env, Expr, Bool, Bool -> ((Wx, Env, Env))
+fn WholeArgsAt wx, benv, menv, e, whole, late:
     let lx = wx.lx
     # a call of a function that takes time whole, lifted or not (a lifted one, `$Sel (True
     # on !swap), $a, $b`, takes its sigiled arguments whole, `ArgsFor`), and `@Flatten`'s
@@ -313,22 +322,23 @@ fn WholeArgs wx, benv, menv, e, whole:
             let dyn = "{name}_dyn"
             let ((ex, reads)) = DynamicExpr w1, me, y
             let t = OutTyOf lx, (Peel (TypeAt lx, y.span))
-            if not (AllInited w1, reads): ((w1, be, me))
-            else:
-                let atBuild = Own (ValueOf lx, (InitEnv be), y)
-                let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(XMethod (XVar "owner"), name, [[XCx]])), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=(XClone (XVar "at_build")))]]
-                let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, t)
-                let made = XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar port))]])
-                let w2 = update w1:
-                    &_.taken <= Append &_.taken, [[port, dyn]]
-                    &_.getters <= Push &_.getters, (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="`{SrcText lx, lx.file, y.span}` passed whole to a function, read at the read point (gap LF)."))
-                    &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind port), (OutRc (OutPort OutUnit))), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]])), (DoLet (PaTyped (PaBind dyn), (OutDyn t)), made)]]
-                    &_.fields <= Append &_.fields, [[((port, (OutRc (OutPort OutUnit)), "`{name}` moved: its dynamic's update event")), ((dyn, (OutDyn t), "`{SrcText lx, lx.file, y.span}` as the live dynamic a function takes whole"))]]
-                    &_.moves <= Append &_.moves, [[((port, (XClone (XVar port)))), ((dyn, (XClone (XVar dyn))))]]
-                    &_.dynAnswers <= Push &_.dynAnswers, ((name, reads))
-                let w3 = OnceField w2, name
-                let wkey = "#whole{DynKey y}"
-                ((w3, (Bind be, wkey, (BnLocal (XVar dyn), Owned, (OutDyn t))), (Bind me, wkey, (BnLocal (XField XSelf, dyn), Owned, (OutDyn t)))))
+            let valued = (AllInited w1, reads) and not late
+            let unlinked = if valued: XClone (XVar "at_build") else: XUnreachable
+            let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(XMethod (XVar "owner"), name, [[XCx]])), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=unlinked)]]
+            let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, t)
+            let linked = [[(DoLet (PaBind "link"), (XClone (XVar owner)))]]
+            let captured = if valued: Push linked, (DoLet (PaBind "at_build"), (Own (ValueOf lx, (InitEnv be), y))) else: linked
+            let made = XBlock captured, (XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar port))]])
+            let w2 = update w1:
+                &_.taken <= Append &_.taken, [[port, dyn]]
+                &_.getters <= Push &_.getters, (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="`{SrcText lx, lx.file, y.span}` passed whole to a function, read at the read point (gap LF)."))
+                &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind port), (OutRc (OutPort OutUnit))), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]])), (DoLet (PaTyped (PaBind dyn), (OutDyn t)), made)]]
+                &_.fields <= Append &_.fields, [[((port, (OutRc (OutPort OutUnit)), "`{name}` moved: its dynamic's update event")), ((dyn, (OutDyn t), "`{SrcText lx, lx.file, y.span}` as the live dynamic a function takes whole"))]]
+                &_.moves <= Append &_.moves, [[((port, (XClone (XVar port)))), ((dyn, (XClone (XVar dyn))))]]
+                &_.dynAnswers <= Push &_.dynAnswers, ((name, reads))
+            let w3 = OnceField w2, name
+            let wkey = "#whole{DynKey y}"
+            ((w3, (Bind be, wkey, (BnLocal (XVar dyn), Owned, (OutDyn t))), (Bind me, wkey, (BnLocal (XField XSelf, dyn), Owned, (OutDyn t)))))
 
 # The dynamic a supplier's `@ x` answers with, when `x` is a dynamic that is not a constant:
 # `x` itself, or the `d` of `$ d` when `d` is a dynamic already.

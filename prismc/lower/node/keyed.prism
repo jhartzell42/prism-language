@@ -88,8 +88,8 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
         &_.dynReads <= Insert &_.dynReads, srcGetter, reads
     let keyB = BnLocal (XVar "key"), Owned, kt
     let keyM = BnLocal (XField XSelf, "key"), Owned, kt
-    let benvL = EventsOf ports, (Fold locals, (RowReads benv, parentArg), \|en, l| Bind en, l.name, (BnLocal (XVar l.field), Owned, l.ty))
-    let menvL = EventsOf ports, (Fold locals, (RowReads menv, parentRef), \|en, l| Bind en, l.name, (BnLocal (XField XSelf, l.field), Owned, l.ty))
+    let benvL = WholeOfBlock menv, (EventsOf ports, (Fold locals, (RowReads benv, parentArg), \|en, l| Bind en, l.name, (BnLocal (XVar l.field), Owned, l.ty))), True
+    let menvL = WholeOfBlock menv, (EventsOf ports, (Fold locals, (RowReads menv, parentRef), \|en, l| Bind en, l.name, (BnLocal (XField XSelf, l.field), Owned, l.ty))), False
     let passed = Append (HostedPassed wx), (Each locals, \|l| l.passed)
     let rowParams = Append (Append [[(("key", kt)), (("value", vt)), (("parent", (OutWeak wx.node)))]], (HostedParams wx)), (Each locals, \|l| ((l.field, l.ty)))
     # `$_`: in the build the entry after the tick, which the builder passes; in the methods the
