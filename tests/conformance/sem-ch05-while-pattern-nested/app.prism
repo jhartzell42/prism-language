@@ -1,0 +1,24 @@
+# A `while pattern <- e:` whose pattern goes two constructors deep into a recursive choice
+# (Semantics ch. 5, Statements: "`while pattern <- e:` ... the loop runs while the pattern
+# matches, and a pattern's names are bound for the turn"). `Pairs` multiplies the chain's
+# links two at a time and stops at the first chain with fewer than two.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Chain = choice:
+    End
+    Link Nat, Chain
+derive ^Eq, ^Show
+
+Pairs: fn Chain -> Nat
+fn Pairs c = update 0:
+    let &cur = c
+    while Link a, (Link b, rest) <- &cur:
+        &_ += a * b
+        &cur <= rest
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Pairs (Link 1, (Link 2, (Link 3, (Link 4, End))))} {Pairs (Link 5, End)}")   # 0
