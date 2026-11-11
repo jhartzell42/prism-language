@@ -1,0 +1,16 @@
+# `collision`: a written name is bound once per block (Semantics ch. 4, "Binding groups and
+# cycles"), in an expression block and in a widget block. Written by Claude on the
+# claude-bugs branch; subject to change.
+emit Ui.*
+
+Local: fn Nat -> Nat
+fn Local n:
+    let a = 1
+    let a = 2
+    a + n
+
+@main: @unit
+@main:
+    !press <- Ui.Button($label=$"a")                              # 0
+    !press <- Ui.Button($label=$"b")                              # 1
+    Ui.Label($text=$"c")                                          # 2
