@@ -1350,8 +1350,44 @@ fn GlobalCall lx, env, qk, args, span, cspan, t:
                     let call = match ?TypeArgsAt lx, qk, v.scheme, cspan:
                         ? tys: XCallAt (ValueRef lx, qk), tys, callArgs
                         nil: XCall (ValueRef lx, qk), callArgs
-                    AsInstance call, (ResultRepr lx, v), t
+                    let declared = ResultRepr lx, v
+                    let declaredTy = match v.scheme.ty:
+                        TyFn ignore, ignore, r: Peel r
+                        other: Peel other
+                    if (HasJobFn declared) and not (HasJobFn t): match ?RecordStartsAsBounded lx, call, declaredTy, (Peel (SubstTy lx, (TypeAt lx, span))), t:
+                        ? made: VlOwned made, t
+                        nil: AsInstance call, declared, t
+                    else: AsInstance call, declared, t
             nil: VlOwned (InternalBug "a call of {qk}"), t
+
+# A record a call returns whose type arguments hold a `Start` the call made bounded
+# (`Holder (u fn Nat -> Nat)` at a call that makes `u` bounded): the record made again,
+# each field as its type at the call has it (`StartsAsBounded`, by the field's type under
+# the declared arguments and under the call's). `nil` for any other type: a choice's
+# argument and a named type inside another type stay refused there.
+?RecordStartsAsBounded: unbounded fn Lx, Ex, Ty, Ty, OutTy -> ?Ex
+fn ?RecordStartsAsBounded lx, x, declaredTy, instanceTy, t = match ((declaredTy, instanceTy)):
+    (((TyCon n, declaredArgs), (TyCon m, instanceArgs))) if n == m: match lx.g.ctors[n]:
+        ? c:
+            let owner = Or lx.g.types[c.owner], dummyTyInfo
+            match owner.body:
+                BRecord ignore:
+                    if (Len c.fields) == 0: nil
+                    else:
+                        let tyPath = RefIn lx, owner.home, (TypeItemName c.owner)
+                        let fields = Each (Range0 (Len c.fields)), \|i|
+                            let ft = Or c.args[i], TyErr
+                            let spelled = FieldSpell (OwnerOf c.owner), (Or c.fields[i], ""), ft
+                            let declaredField = OutTyOf lx, (Instantiated ft, c.params, declaredArgs)
+                            let instanceField = OutTyOf lx, (Instantiated ft, c.params, instanceArgs)
+                            let boxed = RcField lx, c.name, i
+                            let read = Own (VlPlace (FieldOfEx lx, (XVar "held_record"), declaredTy, spelled), (if boxed: RcOwned else: Owned), declaredField)
+                            let wrapped = StartsAsBounded read, declaredField, instanceField, i + 1
+                            ((spelled, (if boxed: XCall (RefRuntime "std::Rc::new"), [[wrapped]] else: wrapped)))
+                        ? (XBlock [[(DoLet (PaBind "held_record"), x)]], (XTyped (XRecord tyPath, fields), t))
+                otherwise: nil
+        nil: nil
+    otherwise: nil
 
 # A generic function's type arguments at a call, in its type parameters' order, when one of
 # them is in no parameter's type (`?Nothing: fn Nat -> ?a`): read off the callee's type at
@@ -1430,6 +1466,16 @@ fn StartsAsBounded x, declared, t, depth:
     let inner = "s{depth}"
     if not (HasJobFn declared): x
     else: match ((declared, t)):
+        # a `Start` whose own result holds one (`fn Nat -> (u fn Nat -> Nat)` given by a
+        # function of the color): each application runs its job to the end and wraps
+        # what the job gives
+        (((OutJobFn ignore, dr), (OutFn pts, er))) if HasJobFn dr:
+            let jobName = "job_fn_{depth}"
+            let names = Each (Range0 (Len pts)), \|i| "a{i}"
+            let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "a")), (OutRef (Or pts[i], OutUnit))
+            let arg = if (Len pts) == 1: XClone (XVar "a0") else: XTuple (Each names, \|nm| XClone (XVar nm))
+            let ran = XCall (HelperRef "run_to_end"), [[(XApply (XVar jobName), [[arg]])]]
+            XBlock [[(DoLet (PaBind jobName), x)]], (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure True, pas, (StartsAsBounded ran, dr, er, depth + 1))]]), t)
         (((OutJobFn ignore, ignore), (OutFn pts, ignore))): WrapAsBounded x, pts, t
         ((OutArray d, OutArray e)): XCall (HelperRef "each"), [[(XRef x), (XRef (XClosure False, [[(PaTyped (PaBind inner), (OutRef d))]], (StartsAsBounded (XClone (XVar inner)), d, e, depth + 1)))]]
         ((OutOpt d, OutOpt e)):
