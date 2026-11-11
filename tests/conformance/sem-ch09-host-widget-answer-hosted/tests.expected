@@ -1,0 +1,7 @@
+# Derived by hand from Semantics ch. 9 ("How a supplier answers": the supplier's blueprint is built when the child's place is built, in the host's scope; a forwarding host's place for its child's place p is 0/[p]/0) and ch. 8 (a widget function's lines take positions from 0 in the scope that builds it): the inner host's places are 0/[0]/0, the answering widget's label, and 0/[1]/0, the guest's label forwarded, and the outer host forwards each under the row of that path. Never run: the build faults.
+test a_widget_answers_a_place_under_a_host
+
+tick 0
+  added:
+    0/[0/[0]/0]/0: Ui.Label(text="answering a")
+    0/[0/[1]/0]/0: Ui.Label(text="guest heard yes a")
