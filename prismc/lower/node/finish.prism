@@ -419,8 +419,12 @@ fn BuildSteps sk, atBuild:
     let Entries = \|k| if atBuild: Each (Filter wx.places, \|pl| pl.pos.scope == k and pl.entry != "" and pl.getter != ""), \|pl| EntryTake recv, pl else: [[]]
     Fold (Range0 ((Len wx.scopes) + 1)), [[]], \|acc, i|
         let k = Or ((Len wx.scopes) -? i), 0
-        let builders = Fold (Filter wx.builders, \|b| b.pos.scope == k), [[]], \|a, b| Append a, (Builder b)
-        Append (Append (Append acc, builders), (Fold (Filter wx.gens, \|gd| gd.pos.scope == k), [[]], \|a, gd| Append a, (Gen gd))), (Entries k)
+        # a scope's builders and generations in the order of their places (ruling TC: places
+        # are counted as they are built), so a `for` whose source reads the result of a
+        # clause widget above it finds that generation built
+        let steps = Append (Each (Filter wx.builders, \|b| b.pos.scope == k), \|b| ((b.pos.at, (Builder b)))), (Each (Filter wx.gens, \|gd| gd.pos.scope == k), \|gd| ((gd.pos.at, (Gen gd))))
+        let ordered = Fold (SortNats (Fold steps, [[]], \|seen, ((at, ignore))| if (Len (Filter seen, \|y| y == at)) == 0: Push seen, at else: seen)), [[]], \|a, at| Fold steps, a, \|a2, ((at2, dos))| if at2 == at: Append a2, dos else: a2
+        Append (Append acc, ordered), (Entries k)
 
 # A hosted live place's entry taken, its level read from `recv` (the node in its build,
 # `self` in the patch pass): compared with the one that stood, published the tick after if
