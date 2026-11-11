@@ -175,6 +175,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
   one `rt::Stamped` per input a combinator reads, one `rt::Cache` per shared computed
   behavior, merged children's fields, and a `state` enum when the block has more than one
   state.
+- **A node's own methods** are `pub(crate)` in Rust (`RustMethod`): a widget's row is
+  built, and its methods called (`built`), by the block that reads the widget as a value,
+  which may be in another module (`@Parts.header` read in `App`).
 - **The constructor** `fn build(path, args, cx: &mut Cx) -> Rc<Self>` runs after
   propagation: holds take their initial values (`Hold::new(v, cx)`, stamped with the
   build tick), the hosts are linked, the builders run and the structural dynamics'
