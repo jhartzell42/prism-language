@@ -382,8 +382,10 @@ impl Run<'_> {
             Ok(o) => {
                 self.doc.apply(&o.patch);
                 self.pending = o.pending;
-                if let Some(Outcome::Value(v)) = &o.result {
-                    self.last_result = Some(v.clone());
+                for outcome in &o.results {
+                    if let Outcome::Value(v) = outcome {
+                        self.last_result = Some(v.clone());
+                    }
                 }
                 self.observe(o);
                 if let Some(p) = self.program.as_mut() {
@@ -450,7 +452,7 @@ impl Run<'_> {
                 }
                 continue;
             };
-            let fired = |p: &Pattern| matches!(&o.result, Some(Outcome::Fired(v)) if p.matches(v));
+            let fired = |p: &Pattern| o.results.iter().any(|r| matches!(r, Outcome::Fired(v) if p.matches(v)));
             let requested = |p: &Pattern, v: &Pattern| {
                 o.requests.iter().any(|r| {
                     let place = self.doc.get(&r.path).or_else(|| t.before.get(&r.path));
@@ -509,10 +511,11 @@ pub fn print_tick(out: &mut String, n: usize, inputs: &[String], result: &Result
     section(out, "changed", places(&o.patch.changed));
     section(out, "torn down", places(&o.patch.removed));
     section(out, "requested", o.requests.iter().map(|r| r.to_string()).collect());
-    match &o.result {
-        Some(Outcome::Value(v)) => _ = writeln!(out, "  result: {v}"),
-        Some(Outcome::Fired(v)) => _ = writeln!(out, "  result: fired: {v}"),
-        None => {}
+    for outcome in &o.results {
+        match outcome {
+            Outcome::Value(v) => _ = writeln!(out, "  result: {v}"),
+            Outcome::Fired(v) => _ = writeln!(out, "  result: fired: {v}"),
+        }
     }
 }
 

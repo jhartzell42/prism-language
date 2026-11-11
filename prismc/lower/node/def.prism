@@ -84,19 +84,21 @@ fn RootResult wx = RootResultOf wx, wx.result
 # One result told the World: an event's firings, a dynamic at the build and whenever it
 # moves, a plain value at the build. A bundle is told part by part (Type System ch. 2,
 # "Bundles and sparse tuples"): its plain parts at the build, each firing of its event
-# parts after.
+# parts after, each dynamic part at the build and in each tick it moves, in the bundle's
+# order (a tick holds every result told in it). Each dynamic part has its own getter and
+# its own last value told (`RootResultStem`).
 RootResultOf: unbounded fn Wx, Wres -> Wx
 fn RootResultOf wx, res = match res:
     WrEv r: Connect wx, r, SkResult
-    WrDyn x, rds, t: match wx.?rootDyn:
-        nil: update wx:
-            &_.rootDyn <= ? ((x, rds, t))
-            &_.getters <= Push &_.getters, MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxRef, ret=OutPod, body=[[]], tail=(XMethod x, "to_pod", [[]]), doc="The root's dynamic result, pulled after the tick.")
-            &_.fields <= Push &_.fields, (("result_last", (OutCell (OutOpt OutPod)), "the result the World last heard"))
-            &_.moves <= Push &_.moves, (("result_last", (XCall (RefRuntime "std::RefCell::new"), [[XNone]])))
-            &_.build <= Push &_.build, (DoScope (ResultTold (XVar "node")))
-        ? ignore: update wx:
-            &_.build <= Push &_.build, (RefusalDo "a bundle with two dynamic parts as the root's result")
+    WrDyn x, rds, t:
+        let k = Len wx.rootDyns
+        update wx:
+            &_.rootDyns <= Push &_.rootDyns, ((x, rds, t))
+            &_.taken <= Append &_.taken, [[(RootResultStem "result_value", k), (RootResultStem "result_last", k)]]
+            &_.getters <= Push &_.getters, MethDef(name=(RootResultStem "result_value", k), recv=RecvRef, params=[[]], cx=CxRef, ret=OutPod, body=[[]], tail=(XMethod x, "to_pod", [[]]), doc="The root's dynamic result, pulled after the tick.")
+            &_.fields <= Push &_.fields, (((RootResultStem "result_last", k), (OutCell (OutOpt OutPod)), "the result the World last heard"))
+            &_.moves <= Push &_.moves, (((RootResultStem "result_last", k), (XCall (RefRuntime "std::RefCell::new"), [[XNone]])))
+            &_.build <= Push &_.build, (DoScope (ResultTold (XVar "node"), k))
     WrPlain x, ignore: update wx:
         &_.build <= Push &_.build, (DoExpr (XMethod (XCx), "result", [[(XCtor (RefRuntime "rt::Outcome::Value"), [[(XMethod x, "to_pod", [[]])]])]]))
     # a late result: read from the node once its rows are built

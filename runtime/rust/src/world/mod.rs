@@ -112,7 +112,9 @@ pub struct TickOut {
     pub patch: Patch,
     /// In document order, torn-down places included.
     pub requests: Vec<Request>,
-    pub result: Option<Outcome>,
+    /// The root's results told this tick, in the order told: one, or one a part of a
+    /// bundle.
+    pub results: Vec<Outcome>,
     /// Set while a newborn owes a tick or a `@Defer` is armed: a World that sees it ticks
     /// again, with no inputs if it has none (decisions.md D6).
     pub pending: bool,

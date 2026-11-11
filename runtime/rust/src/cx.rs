@@ -107,7 +107,7 @@ struct Gathered {
     armed: List,
     edits: Vec<Edit>,
     requests: Vec<Request>,
-    result: Option<Outcome>,
+    results: Vec<Outcome>,
     listens: Vec<(Pod, Weak<dyn Node>)>,
     zombies: Vec<Weak<dyn Node>>,
     cleanups: Vec<Rc<dyn Node>>,
@@ -266,9 +266,10 @@ impl Cx<'_> {
         }
     }
     /// The root's result: a plain one at the build, a dynamic one when it changes, an
-    /// event one when it fires.
+    /// event one when it fires. A root that ends on a bundle tells each part by itself, so
+    /// a tick holds the results in the order they were told.
     pub fn result(&mut self, outcome: Outcome) {
-        self.g.result = Some(outcome)
+        self.g.results.push(outcome)
     }
 
     /// A new place's first value: the ready state as the tick opened, with the tick's
@@ -388,7 +389,7 @@ impl Runtime {
             tick: cx.tick,
             patch: self.document.diff(g.edits),
             requests: g.requests,
-            result: g.result,
+            results: g.results,
             pending: !self.started.is_empty() || !self.armed.is_empty() || !self.later.is_empty(),
         })
     }

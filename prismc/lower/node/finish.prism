@@ -266,9 +266,7 @@ fn FinishNode wx0, qk, params, isRow:
     let many = (Len heights) > 1
     let consts = Each heights, \|h| (((WakeConst heights, h), h, "merges' height above the node's inputs"))
     let live = Filter wx.places, \|p| p.getter != ""
-    let rootReads = match wx.?rootDyn:
-        ? ((ignore, rds, ignore)): ReadsClosed wx.dynReads, rds
-        nil: [[]]
+    let rootReads = Fold wx.rootDyns, [[]], \|acc, ((ignore, rds, ignore))| UnionReads acc, (ReadsClosed wx.dynReads, rds)
     let dirtyHolds = Fold live, rootReads, \|acc, p| UnionReads acc, (ReadsClosed wx.dynReads, p.reads)
     let buildHolds = ReadsClosed wx.dynReads, wx.buildHolds
     let sinks = Sinks(wx=wx, dirty=dirtyHolds, builds=buildHolds, heights=heights, many=many)
@@ -650,21 +648,26 @@ Emits: fn Wx, Pos -> Bool
 fn Emits wx, pos = pos.scope == 0 and wx.?hostedBy == nil
 
 # The root's result at the build: computed, kept as the last one told, and told the World.
-ResultTold: fn Ex -> [Do]
-fn ResultTold node:
-    let r = DoLet (PaBind "r"), (XMethod node, "result_value", [[XCx]])
-    [[r, (ResultKept node), resultTell]]
+ResultTold: fn Ex, Nat -> [Do]
+fn ResultTold node, k:
+    let r = DoLet (PaBind "r"), (XMethod node, (RootResultStem "result_value", k), [[XCx]])
+    [[r, (ResultKept node, k), resultTell]]
+
+# The names of the root's dynamic results: the first `result_value` and `result_last`, each
+# later part of a bundle its own (`result_value_1`, `result_last_1`).
+RootResultStem: fn Text, Nat -> Text
+fn RootResultStem stem, k = if k == 0: stem else: "{stem}_{k}"
 
 # The root's result after a tick: told when it differs from the last one told.
-ResultMoved: fn Ex -> [Do]
-fn ResultMoved node:
-    let r = DoLet (PaBind "r"), (XMethod node, "result_value", [[XCx]])
-    let last = XMethod (XMethod (XField node, "result_last"), "borrow", [[]]), "as_ref", [[]]
+ResultMoved: fn Ex, Nat -> [Do]
+fn ResultMoved node, k:
+    let r = DoLet (PaBind "r"), (XMethod node, (RootResultStem "result_value", k), [[XCx]])
+    let last = XMethod (XMethod (XField node, (RootResultStem "result_last", k)), "borrow", [[]]), "as_ref", [[]]
     let differs = XBin OpNe, last, (XCtor (RefRuntime "std::Some"), [[XRef (XVar "r")]])
-    [[r, (DoIf differs, [[(ResultKept node), resultTell]], [[]])]]
+    [[r, (DoIf differs, [[(ResultKept node, k), resultTell]], [[]])]]
 
-ResultKept: fn Ex -> Do
-fn ResultKept node = DoAssign (XDeref (XMethod (XField node, "result_last"), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[XClone (XVar "r")]])
+ResultKept: fn Ex, Nat -> Do
+fn ResultKept node, k = DoAssign (XDeref (XMethod (XField node, (RootResultStem "result_last", k)), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[XClone (XVar "r")]])
 
 let resultTell = DoExpr (XMethod XCx, "result", [[(XCtor (RefRuntime "rt::Outcome::Value"), [[XVar "r"]])]])
 
@@ -776,9 +779,7 @@ fn ?HostedRows wx:
 
 # The root's dynamic result at the patch pass: sent when it moved.
 RootDynPatch: fn Wx -> [Do]
-fn RootDynPatch wx = match wx.?rootDyn:
-    ? ignore: [[DoLine (ResultMoved XSelf)]]
-    nil: [[]]
+fn RootDynPatch wx = Each (Range0 (Len wx.rootDyns)), \|k| DoLine (ResultMoved XSelf, k)
 
 # A World's answer at a place: the input method called with the decoded value.
 AnswerArm: fn Wx, Pos, Nat, OutTy -> ((Pa, Ex))

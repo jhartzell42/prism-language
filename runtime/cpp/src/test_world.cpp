@@ -680,7 +680,8 @@ struct Run {
             const TickOut& o = *result;
             doc.apply(o.patch);
             pending = o.pending;
-            if (o.result && o.result->kind == Outcome::Kind::Value) last_result = o.result->pod;
+            for (const auto& outcome : o.results)
+                if (outcome.kind == Outcome::Kind::Value) last_result = outcome.pod;
             observe(o);
             if (program) program->compact();
             log.push_back(std::move(logged));
@@ -741,7 +742,11 @@ struct Run {
                 continue;
             }
             const TickOut& o = *t.out;
-            auto fired = [&](const Pattern& p) { return o.result && o.result->kind == Outcome::Kind::Fired && p.matches(o.result->pod); };
+            auto fired = [&](const Pattern& p) {
+                for (const auto& outcome : o.results)
+                    if (outcome.kind == Outcome::Kind::Fired && p.matches(outcome.pod)) return true;
+                return false;
+            };
             auto requested = [&](const Pattern& p, const Pattern& v) {
                 for (const auto& r : o.requests) {
                     const Pod* place = doc.get(r.path);
@@ -840,9 +845,9 @@ void print_tick(std::string& out, std::size_t n, std::span<const std::string> in
     std::vector<std::string> rs;
     for (const auto& r : o.requests) rs.push_back(r.to_string());
     section("requested", rs);
-    if (o.result) {
-        if (o.result->kind == Outcome::Kind::Value) out += "  result: " + o.result->pod.to_string() + "\n";
-        else out += "  result: fired: " + o.result->pod.to_string() + "\n";
+    for (const auto& outcome : o.results) {
+        if (outcome.kind == Outcome::Kind::Value) out += "  result: " + outcome.pod.to_string() + "\n";
+        else out += "  result: fired: " + outcome.pod.to_string() + "\n";
     }
 }
 

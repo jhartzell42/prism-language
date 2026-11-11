@@ -110,7 +110,9 @@ struct TickOut {
     Patch patch;
     /// In document order, torn-down places included.
     std::vector<Request> requests;
-    std::optional<Outcome> result;
+    /// The root's results told this tick, in the order told: one, or one a part of a
+    /// bundle.
+    std::vector<Outcome> results;
     /// Set while a newborn owes a tick or a `@Defer` is armed: a World that sees it ticks
     /// again, with no inputs if it has none (decisions.md D6).
     bool pending = false;

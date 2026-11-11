@@ -107,7 +107,7 @@ struct Gathered {
     List builds, swaps, leaves, patches, started, armed;
     std::vector<Edit> edits;
     std::vector<Request> requests;
-    std::optional<Outcome> result;
+    std::vector<Outcome> results;
     std::vector<std::pair<Pod, Weak<Node>>> listens;
     std::vector<Weak<Node>> zombies;
     std::vector<NodeRef> cleanups;
@@ -209,7 +209,7 @@ public:
     }
     /// The root's result: a plain one at the build, a dynamic one when it changes, an
     /// event one when it fires.
-    void result(Outcome outcome) { g_.result = std::move(outcome); }
+    void result(Outcome outcome) { g_.results.push_back(std::move(outcome)); }
 
     /// A new place's first value: the ready state as the tick opened, with the tick's
     /// pushes on top (Semantics ch. 9, "Queries are sync, from a ready state").
