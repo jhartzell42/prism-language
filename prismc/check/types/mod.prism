@@ -195,7 +195,7 @@ type St = record:
     # places it meets later decide: a `~T`, so the value is its failure, or `Error`. The
     # definition's end makes `Error` of one nothing decided (`DefaultDef`), the program's
     # end refuses one decided as anything else (`FaultsSettled`); monomorphic till then
-    # (`KeepWaiting`). Each waits as `t = Error` at its value's place.
+    # (`KeepWaitingBut`). Each waits as `t = Error` at its value's place.
     faultVars: [Waiting]
     # Every local binder's id and every use's, in the order checked (`IsClosed`).
     binderIds: [Nat]

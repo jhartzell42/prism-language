@@ -126,11 +126,8 @@ fn Skolemize sc:
 # (`Item a` against `Text`): a scheme has no place for the equation, which would be
 # dropped, so the uses of the name decide the variable and the equation is checked. Before
 # a lambda's wanted constraints become bounds (`WantsAbove`), so that such a variable's
-# stay wanted.
-KeepWaiting: unbounded fn St -> St
-fn KeepWaiting st = KeepWaitingBut st, [[]]
-
-# `KeepWaiting`, but for the equations a closed `let` quantifies (`OwnEquations`).
+# stay wanted. Not so for the equations a closed `let` quantifies (`OwnEquations`), the
+# second argument.
 KeepWaitingBut: unbounded fn St, [Waiting] -> St
 fn KeepWaitingBut st, own:
     let fields = Fold st.fieldQs, [[]], \|acc, q| FreeVarsInto st, (FreeVarsInto st, acc, q.recv), q.result
@@ -145,7 +142,7 @@ fn Generalize st0, t, keep, bounds = GeneralizeIn st0, t, keep, bounds, [[]]
 # `let` (it mentions no local of an enclosing scope) passes its own (`OwnEquations`), as
 # GHC's MonoLocalBinds generalizes a closed binding with its type-family equations as
 # constraints; each use then meets them (ruling SH). One that captures a local passes none
-# and keeps their variables monomorphic (`KeepWaiting`).
+# and keeps their variables monomorphic (`KeepWaitingBut`).
 GeneralizeIn: unbounded fn St, Ty, [Nat], [((Nat, Text))], [Waiting] -> ((Scheme, St))
 fn GeneralizeIn st0, t, keep, bounds, own:
     let st = GeneralizeCols (KeepWaitingBut st0, own)
