@@ -1,0 +1,20 @@
+# `@Flatten` of a dynamic of dynamics written in place, a call, where
+# sem-ch07-flatten-mapped-constants names the same outer with a `let` (Semantics Appendix
+# B: `@Flatten: fn $$a -> @$a`; ch. 4: a `let` names a value and builds nothing, so the
+# two programs mean the same). Written by Claude on the claude-lowering branch; subject
+# to change.
+emit Ui.*
+test mod Tests
+
+$Pick: fn $Bool, $Nat, $Nat -> $$Nat
+fn $Pick $useB, $p, $q = if $useB: $ $q else: $ $p
+
+@page: @unit
+@page:
+    !inc <- Ui.Button($label=$"inc")                         # 0
+    !swap <- Ui.Button($label=$"swap")                       # 1
+    $a <- 0 then $a + 1 on !inc
+    $b <- 100 then $b + 1 on !inc
+    $useB <- False then True on !swap
+    $shown <- @Flatten ($Pick $useB, $a, $b)
+    Ui.Label($text=$"{$shown}")                              # 2
