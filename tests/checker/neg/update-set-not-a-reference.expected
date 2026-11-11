@@ -1,0 +1,9 @@
+tests/checker/neg/update-set-not-a-reference.prism:19: error[mismatch]: a reference path writes its field steps bare; `&_.?note` shows a field's stack
+        &_.?note <= ? t
+        ^^^^^^^^
+  fix: write `&_.note`
+tests/checker/neg/update-set-not-a-reference.prism:20: error[mismatch]: the left of `<=` is a reference: `&_`, a local `&x`, or a path from one
+        c.count <= 3
+        ^^^^^^^
+  fix: set a part of `&_`, or make a local with `let &x = ...`
+2 errors

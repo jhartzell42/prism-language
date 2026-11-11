@@ -1,0 +1,24 @@
+# In an `update` block a line `x <= e` is a set, never a comparison (Semantics ch. 5,
+# "Statements": "A comparison is never a statement, since a statement is `unit`, so the
+# two `<=`s never collide"), so one whose left side is no reference path is reported as a
+# set that names no reference, not as a discarded `Bool`: a path whose field step shows
+# the field's stack (a reference path writes its steps bare, prismc/README.md's RP), and
+# a plain value's field. The expected text is derived by hand. Written by Claude on the
+# claude-bugs branch; subject to change.
+emit Ui.*
+use Ui.*
+
+type Card = record:
+    title: Text
+    ?note: Text
+    count: Nat
+derive ^Eq, ^Show
+
+Noted: fn Card, Text -> Card
+fn Noted c, t = update c:
+    &_.?note <= ? t
+    c.count <= 3
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Noted (Card(title="a", ?note=nil, count=1)), "b"}")
