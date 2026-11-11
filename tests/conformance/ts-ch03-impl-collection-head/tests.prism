@@ -1,0 +1,7 @@
+# The tests of ts-ch03-impl-collection-head.
+emit Ui.*
+use App.*
+
+test an_impl_of_a_collection_is_used, @main:
+    build
+        => expect Ui.Label(text="[b1b1][b2b2] 6/b3b3 8")
