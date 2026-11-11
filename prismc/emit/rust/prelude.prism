@@ -26,7 +26,7 @@ pub use ::prism_rtl::*;
 /// their methods into scope and none of their names (the emitted modules' one import).
 pub mod traits {
     pub use ::prism_rtl::traits::*;
-    pub use super::{Modulo as _, Num as _, Row as _};
+    pub use super::{Modulo as _, Num as _, PreludePacking as _, Row as _};
 }
 
 // ---- Types ------------------------------------------------------------------------------
@@ -217,6 +217,91 @@ pub trait Num: Clone {
     }
     fn mul_opt(a: &Self, b: &Self) -> Option<Self> {
         Some(Self::mul(a, b))
+    }
+}
+
+// ---- Existentials of the prelude's traits ---------------------------------------------
+
+/// `^Num`'s impl at the type an existential hides (Type System ch. 5, "Existentials are
+/// dictionaries"): each operator over two values of that one type, the result hidden
+/// again with the first one's impls.
+pub struct NumPacked {
+    add: fn(&::prism_rtl::Packed, &::prism_rtl::Packed) -> ::prism_rtl::Packed,
+    sub: fn(&::prism_rtl::Packed, &::prism_rtl::Packed) -> ::prism_rtl::Packed,
+    mul: fn(&::prism_rtl::Packed, &::prism_rtl::Packed) -> ::prism_rtl::Packed,
+    div_opt: fn(&::prism_rtl::Packed, &::prism_rtl::Packed) -> Option<::prism_rtl::Packed>,
+    add_opt: fn(&::prism_rtl::Packed, &::prism_rtl::Packed) -> Option<::prism_rtl::Packed>,
+    sub_opt: fn(&::prism_rtl::Packed, &::prism_rtl::Packed) -> Option<::prism_rtl::Packed>,
+    mul_opt: fn(&::prism_rtl::Packed, &::prism_rtl::Packed) -> Option<::prism_rtl::Packed>,
+}
+
+fn num_packed_of<T: Num + 'static>(_: &T) -> NumPacked {
+    NumPacked {
+        add: |a, b| a.repacked(T::add(a.held::<T>(), b.held::<T>())),
+        sub: |a, b| a.repacked(T::sub(a.held::<T>(), b.held::<T>())),
+        mul: |a, b| a.repacked(T::mul(a.held::<T>(), b.held::<T>())),
+        div_opt: |a, b| T::div_opt(a.held::<T>(), b.held::<T>()).map(|v| a.repacked(v)),
+        add_opt: |a, b| T::add_opt(a.held::<T>(), b.held::<T>()).map(|v| a.repacked(v)),
+        sub_opt: |a, b| T::sub_opt(a.held::<T>(), b.held::<T>()).map(|v| a.repacked(v)),
+        mul_opt: |a, b| T::mul_opt(a.held::<T>(), b.held::<T>()).map(|v| a.repacked(v)),
+    }
+}
+
+/// `^Num` of an existential packed with it: the hidden type's impl, found in the first
+/// operand's dictionary. `zero` has no operand to find it in, and no program asks it of
+/// an existential (ruling EX: the checker refuses a method that cannot dispatch).
+impl Num for ::prism_rtl::Packed {
+    fn zero() -> ::prism_rtl::Packed {
+        panic!("a prismc bug: `^Num`'s zero asked of an existential, which has no value to find its impl in")
+    }
+    fn add(a: &::prism_rtl::Packed, b: &::prism_rtl::Packed) -> ::prism_rtl::Packed {
+        (a.dictionary::<NumPacked>().add)(a, b)
+    }
+    fn sub(a: &::prism_rtl::Packed, b: &::prism_rtl::Packed) -> ::prism_rtl::Packed {
+        (a.dictionary::<NumPacked>().sub)(a, b)
+    }
+    fn mul(a: &::prism_rtl::Packed, b: &::prism_rtl::Packed) -> ::prism_rtl::Packed {
+        (a.dictionary::<NumPacked>().mul)(a, b)
+    }
+    fn div_opt(a: &::prism_rtl::Packed, b: &::prism_rtl::Packed) -> Option<::prism_rtl::Packed> {
+        (a.dictionary::<NumPacked>().div_opt)(a, b)
+    }
+    fn add_opt(a: &::prism_rtl::Packed, b: &::prism_rtl::Packed) -> Option<::prism_rtl::Packed> {
+        (a.dictionary::<NumPacked>().add_opt)(a, b)
+    }
+    fn sub_opt(a: &::prism_rtl::Packed, b: &::prism_rtl::Packed) -> Option<::prism_rtl::Packed> {
+        (a.dictionary::<NumPacked>().sub_opt)(a, b)
+    }
+    fn mul_opt(a: &::prism_rtl::Packed, b: &::prism_rtl::Packed) -> Option<::prism_rtl::Packed> {
+        (a.dictionary::<NumPacked>().mul_opt)(a, b)
+    }
+}
+
+/// The packing of an existential with a trait of the prelude that prism_rtl's packing
+/// does not take by itself, each named `with_` and the trait's name as `with_show` is
+/// (the lowering spells every prelude trait's so): `^Num` keeps its impl at the hidden
+/// type (`NumPacked`); `^Pod` keeps how the hidden value is told as plain data.
+pub trait PreludePacking<T> {
+    fn with_num(self) -> Self
+    where
+        T: Num;
+    fn with_pod(self) -> Self
+    where
+        T: ::prism_rtl::ToPod;
+}
+
+impl<T: 'static> PreludePacking<T> for ::prism_rtl::Packing<T> {
+    fn with_num(self) -> Self
+    where
+        T: Num,
+    {
+        self.with_dictionary(num_packed_of::<T>)
+    }
+    fn with_pod(self) -> Self
+    where
+        T: ::prism_rtl::ToPod,
+    {
+        self.with_pod_of()
     }
 }
 

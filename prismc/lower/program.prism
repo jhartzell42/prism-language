@@ -367,7 +367,9 @@ fn ValueWidgetsAt lx, e = match e.kind:
     EMatch ignore, arms: Fold arms, [[]], \|acc, a| Append acc, (ValueWidgetsOfBlock lx, a.body)
     EIf ignore, yes, (? no): Append (ValueWidgetsOfBlock lx, yes), (ValueWidgetsOfBlock lx, no)
     EIf ignore, yes, nil: ValueWidgetsOfBlock lx, yes
-    ECall c, ignore, ignore, ignore: PlacedWidget lx, (BlueprintQk lx, c)
+    # a widget applied to its arguments, and the widgets its blueprint arguments are,
+    # values of the row the blueprint builds
+    ECall c, args, ignore, ignore: Fold args, (PlacedWidget lx, (BlueprintQk lx, c)), \|acc, a| if (LayerOf (TypeAt lx, a.value.span)) == LyBlueprint: Append acc, (ValueWidgetsAt lx, a.value) else: acc
     EName ignore: PlacedWidget lx, (BlueprintQk lx, e)
     otherwise: [[]]
 
@@ -396,8 +398,8 @@ ValuedStem: fn Text -> Text
 fn ValuedStem qk = "{Camel (BareName qk)}_value"
 
 # A valued widget's clauses as a blueprint chooses and builds them (`SharedCaseOf`), when
-# it can be one: plain parameters, no type parameter, nothing, a plain value or an event
-# given back.
+# it can be one: no widget function parameter, no type parameter, no `$` or event
+# parameter with time below its top, and nothing, a plain value or an event given back.
 ?ValuedCases: unbounded fn Lx, Text -> ?[((Text, Pa, [Cc], [Ex]))]
 fn ?ValuedCases lx, qk = match lx.g.vals[qk]:
     nil: nil
@@ -410,7 +412,10 @@ fn ?ValuedCases lx, qk = match lx.g.vals[qk]:
         let plainResult = match WidgetResultOf v.scheme.ty:
             TyAt i, ignore: ((LayerOf i) == LyPlain and not (IsBundle (Peel i))) or ((LayerOf i) == LyEv and not (HasTime (Peel i)))
             otherwise: False
-        let plainParams = Fold ptys, True, \|ok, pt| ok and (LayerOf pt) == LyPlain and not (IsWidgetFnTy pt)
+        # a plain parameter; a `$` or an event parameter, the caller's live value the row
+        # holds (`LiveParams`); a blueprint parameter, a value of the row
+        # (`ClauseRowOf`); never a widget function's
+        let plainParams = Fold ptys, True, \|ok, pt| ok and not (IsWidgetFnTy pt) and ((LayerOf pt) == LyPlain or (LayerOf pt) == LyBlueprint or IsLiveParam pt)
         if not (plainResult and plainParams and (Len (RigidsIn v.scheme.ty)) == 0): nil
         else:
             let lxv = InModuleAt lx, v.file, v.home, v.home
