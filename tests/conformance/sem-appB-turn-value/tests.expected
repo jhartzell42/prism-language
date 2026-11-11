@@ -1,0 +1,6 @@
+# Derived by hand from Appendix B, Types (`Turn b` is `More` or `Done b`): the record's turn is `Done 7`, `Next 1` is `More` and `Next 5` is `Done 5`.
+test a_turn_is_built_and_matched
+
+tick 0
+  added:
+    0: Ui.Label(text="last: done 7 more done 5 2")
