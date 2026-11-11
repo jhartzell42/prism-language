@@ -62,10 +62,17 @@ fn WidgetLine wx, benv, menv, e, ?bound:
     let ?param = match callee.kind:
         EName n: if (Len n.path) == 1: menv.names[SNameKey n] else: nil
         otherwise: nil
-    match ?param:
-        ? (BnWidget x, cbenv, cmenv, clx): ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound
-        ? (BnLocalWidget b): LocalWidgetLine wx, benv, menv, b, e
-        otherwise: WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target
+    # a blueprint a `let` of the block names (`WithElementLets`): its expression, built
+    # here in this line's environments
+    let ?named = match callee.kind:
+        EName n: if (Len n.path) == 1 and (Len args) == 0: menv.names["{SNameKey n}#blueprint"] else: nil
+        otherwise: nil
+    match ?named:
+        ? (BnWidget x, ignore, ignore, ignore): LetBlueprintLine wx, benv, menv, x, e, ?bound
+        otherwise: match ?param:
+            ? (BnWidget x, cbenv, cmenv, clx): ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound
+            ? (BnLocalWidget b): LocalWidgetLine wx, benv, menv, b, e
+            otherwise: WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target
 
 # A widget parameter applied (`@child` as a statement): its argument lowered here, in its
 # caller's environments and context, so its places take this node's next positions
@@ -104,6 +111,24 @@ fn ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound:
         let back = update done:
             &_.lx <= lx
         ((back, res))
+
+# A blueprint a `let` of the block names, applied (`let @w = @Tile k`, then `@w`): its
+# expression built here, in this line's environments, at this node's next positions,
+# once per application; its locals take the application's place, as a local widget's do
+# (`LocalWidgetLine`).
+LetBlueprintLine: unbounded fn Wx, Env, Env, Expr, Expr, ?Bn -> ((Wx, Wres))
+fn LetBlueprintLine wx, benv, menv, x, e, ?bound:
+    let lx = wx.lx
+    let lxi = update lx:
+        &_.inlined <= match lx.callIds[PlaceKey lx, e.span]:
+            ? id: "{lx.inlined}_{Base32 id}"
+            nil: "{lx.inlined}_at{Base32 e.span.start}"
+    let inner = update wx:
+        &_.lx <= lxi
+    let ((done, res)) = BuildLine inner, benv, menv, x, ?bound
+    let back = update done:
+        &_.lx <= lx
+    ((back, res))
 
 # A widget defined in a block (`@line:` and its block) applied: its block lowered here, in
 # the environments of the line that applies it (the block's names, as a row of the block

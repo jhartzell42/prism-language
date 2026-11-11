@@ -130,7 +130,16 @@ WithElementLets: unbounded fn Lx, Env, Env, Block -> ((Env, Env))
 fn WithElementLets lx, benv, menv, b = Fold b.stmts, ((benv, menv)), \|((be, me)), s| match s.kind:
     SLet p, ignore, e: match p.kind:
         PName n:
-            if not (IsTagApplication lx, e): ((be, me))
+            # a blueprint (`let @w = @Tile k`; Semantics ch. 8: a blueprint builds nothing
+            # until a block applies it): the name is its expression, kept under
+            # `{name}#blueprint` and built by each line that applies it, in that line's
+            # environments (`WidgetLine`); read as a value it is the expression in its
+            # place (`NameValue`). The `let` is no value of the node.
+            if (LayerOf (BinderTy lx, n.span)) == LyBlueprint:
+                let held = BnWidget (Ungrouped e), emptyEnv, emptyEnv, lx
+                let nkey = SNameKey n
+                (((Bind (Bind be, "{nkey}#blueprint", held), "{nkey}#placed", held), (Bind (Bind me, "{nkey}#blueprint", held), "{nkey}#placed", held)))
+            else: if not (IsTagApplication lx, e): ((be, me))
             else:
                 let nkey = SNameKey n
                 let held = BnWidget (Ungrouped e), emptyEnv, emptyEnv, lx
@@ -228,7 +237,10 @@ fn IsLateExpr lx, menv, e, depth = match e.kind:
             otherwise: ((e, [[]]))
         match callee.kind:
             EName n:
-                let ?local = if (Len n.path) == 1: menv.names[SNameKey n] else: nil
+                let ?local = if (Len n.path) != 1: nil else: match menv.names["{SNameKey n}#blueprint"]:
+                    # a blueprint a `let` of the block names: its expression, here
+                    ? (BnWidget x, ignore, ignore, ignore): ? (BnWidget x, emptyEnv, menv, lx)
+                    otherwise: menv.names[SNameKey n]
                 match ?local:
                     # a widget parameter applied: its argument, in its caller's environment
                     ? (BnWidget x, ignore, cmenv, clx): depth > 0 and IsLateExpr clx, cmenv, x, (Dec depth)
@@ -824,7 +836,7 @@ fn GivesResult lx, menv, e = match e.kind:
         match callee.kind:
             EName n: match menv.names[SNameKey n]:
                 ? (BnWidget ignore, ignore, ignore, ignore): True
-                otherwise:
+                otherwise: if HasKey menv.names, "{SNameKey n}#blueprint": True else:
                     let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
                     match ?q:
                         ? q: (IsGetterBuiltin q) or (IsHostBuiltin q) or ((not (IsPreludeName q)) and (lx.g.vals[q] != nil) and IsWidgetTy (Peel (TypeAt lx, e.span)))

@@ -827,7 +827,10 @@ fn NameValue lx, env, n, span:
         ? (BnWidget ignore, ignore, ignore, ignore): VlOwned (InternalBug "a widget parameter read as a plain value"), t
         ? (BnLocalFn cs): LocalFnValue lx, env, cs, t
         ? (BnLocalWidget ignore): VlOwned (Refusal "a widget defined in a block read as a blueprint value (it is lowered where a line applies it)"), t
-        nil:
+        nil: match (if (Len n.path) == 1: env.names["{nkey}#blueprint"] else: nil):
+          # a blueprint a `let` of a widget block names, read as a value: its expression
+          ? (BnWidget x, ignore, ignore, ignore): ValueOf lx, env, x
+          otherwise:
             let ((?qk, why)) = ResolveValue lx.g, lx.home, n
             match ?qk:
                 ? "True": VlOwned (XBool True), OutBool
