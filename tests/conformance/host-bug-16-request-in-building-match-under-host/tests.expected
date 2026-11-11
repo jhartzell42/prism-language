@@ -1,0 +1,30 @@
+# The transcript prismc of host-1's gen1 h2 (96e2ff8d's tree) gives, read by hand against the hosting library's own test of the same name (prism-notes, evidence/documents/tests.expected): a request at tick n is answered at n+1 (Semantics ch. 9).
+test accepted
+
+tick 0
+  added:
+    1/[(((Teller "ada"), Person))]/0/[1]/0: Ui.Button(label="ada +1")
+    1/[(((Teller "ada"), Person))]/0/[2]/0: Ui.Button(label="ada +2")
+    1/[(((Teller "ada"), Person))]/0/[4]/0: Ui.Label(text="ada: (loading); nothing yet")
+    1/[(((Teller "bob"), Person))]/0/[1]/0: Ui.Button(label="bob +1")
+    1/[(((Teller "bob"), Person))]/0/[2]/0: Ui.Button(label="bob +2")
+    1/[(((Teller "bob"), Person))]/0/[4]/0: Ui.Label(text="bob: (loading); nothing yet")
+    3/[(((Viewer "cy"), unit))]/0/[1]/0: Ui.Label(text="cy watches: (loading)")
+
+tick 1
+
+tick 2
+  in:
+    1/[(((Teller "ada"), Person))]/0/[1]/0: click
+  changed:
+    1/[(((Teller "ada"), Person))]/0/[4]/0: Ui.Label(text="ada: total 0, may add; nothing yet")
+    1/[(((Teller "bob"), Person))]/0/[4]/0: Ui.Label(text="bob: total 0, may add; nothing yet")
+    3/[(((Viewer "cy"), unit))]/0/[1]/0: Ui.Label(text="cy watches: total 0")
+
+tick 3
+  changed:
+    1/[(((Teller "ada"), Person))]/0/[4]/0: Ui.Label(text="ada: total 1, may not add; accepted")
+    1/[(((Teller "bob"), Person))]/0/[4]/0: Ui.Label(text="bob: total 1, may add; nothing yet")
+    3/[(((Viewer "cy"), unit))]/0/[1]/0: Ui.Label(text="cy watches: total 1")
+
+tick 4
