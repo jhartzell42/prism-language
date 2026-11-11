@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 2, "Collections" (`[a]+` is a type beside `[a]`; `xs as [a]` drops the promise) and ch. 3 (the impl is the one of the type the call is at): `some` and `[[7]]+` are `[Nat]+`, `plain` and `dropped` are `[Nat]`. Never run.
+test each_type_asks_its_own_impl
+
+tick 0
+  added:
+    0: Ui.Label(text="non-empty 2, plain 3, plain 2, non-empty 1")
