@@ -14,7 +14,7 @@ fn Entries m = match m as (Nat ==> Text)+?:
     nil: 0
     ? some: Len some
 
-Kept: fn [Nat] -> [Nat]+
+Kept: fn [Nat]+ -> [Nat]+
 fn Kept xs = match xs as [Nat]+:
     kept: kept
 

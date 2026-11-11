@@ -130,9 +130,11 @@ FirstOp: fn Lex -> Text
 fn FirstOp l = MatchHere (if FatArrowOn l: %/==>|<-|<=|<\||->|-=|-\?|\+=|\+\?|\*=|\*\?|\/=|==|>=|=>|<|>|-|\+|\*|\/|=/ else: %/==>|<-|<=|<\||->|-=|-\?|\+=|\+\?|\*=|\*\?|\/=|==|>=|<|>|-|\+|\*|\/|=/), l
 
 # "A `+` touching a closing double bracket or brace, with whitespace, a comma, a close
-# bracket or the end of the line after it, is the non-empty mark."
+# bracket or the end of the line after it, is the non-empty mark." A block's `:` ends it
+# too: `match xs as [a]+?:` is the mark, the checked cast's `?` and the block's colon
+# (Jimmy's ruling CL), since no operator is spelled `+:` or `+?:`.
 EndsMark: fn Text -> Bool
-fn EndsMark a = a == "" or (Contains " \n\u{d},)]\}", a)
+fn EndsMark a = a == "" or (Contains " \n\u{d},)]\}:", a)
 
 ClosesSquareOrBrace: fn ?Tok -> Bool
 fn ClosesSquareOrBrace (? t) = t.kind == (KClose "[") or t.kind == (KClose "\{")
