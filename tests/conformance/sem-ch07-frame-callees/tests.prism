@@ -1,0 +1,9 @@
+# The tests of sem-ch07-frame-callees.
+emit Ui.*
+use App.*
+
+test a_frame_enters_every_callee, @main:
+    build
+        => expect Ui.Label(text="working")
+    compute until idle
+        => expect Ui.Label(text="20")

@@ -1,0 +1,54 @@
+# Every binary operator the parser reads (Type System ch. 3: `^Eq`, `^Ord`, `^Num`; `mod`,
+# `and`, `or`, `<|`, `on`), at `Nat`, `Int`, `Float`, texts, records, tuples and arrays, at
+# a generic type under its bound, and lifted over `?`. Pins the back end's guard "the
+# operator" (lower/expr.prism, `OpOf`). Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Pair a b = record:
+    left: a
+    right: b
+derive ^Eq, ^Ord, ^Show
+
+Total: fn a, a -> a where a: ^Num
+fn Total x, y = ((x + y) * x) - y
+
+?Safe: fn a, a -> ?a where a: ^Num
+fn ?Safe x, y = match x +? y:
+    ? s: match s *? y:
+        ? p: p -? x
+        nil: nil
+    nil: nil
+
+Order: fn a, a -> Text where a: ^Ord
+fn Order x, y = if x < y: "lt" else: if x <= y: "le" else: if x > y and x >= y and x != y: "gt" else: "eq"
+
+Nats: fn Nat, Nat -> Text
+fn Nats x, y = "{x + y} {x * y} {Or (x -? y), 0} {Or (x / y), 0} {x mod y} {Or (x +? y), 0} {Or (x *? y), 0} {x == y} {x != y} {x < y} {x >= y}"
+
+Ints: fn Int, Int -> Text
+fn Ints x, y = "{x + y} {x - y} {x * y} {Or (x / y), 0} {x mod y} {Or (x -? y), 0} {-x} {x <= y} {x > y}"
+
+Floats: fn Float, Float -> Text
+fn Floats x, y = "{x + y} {x - y} {x * y} {x / y} {x < y}"
+
+Lifted: fn ?Nat, Nat -> Nat
+fn Lifted ?x, y = Or (?x + y), 0
+
+Shout: fn Text -> Text
+fn Shout t = "{t}!"
+
+@main: @unit
+@main:
+    let p = Pair(left=1, right="a")
+    let q = Pair(left=1, right="b")
+    !up <- Ui.Button($label=$"up")
+    !down <- Ui.Button($label=$"down")
+    let !either = (1 on !up) <| (2 on !down)
+    $last <- 0 then !either
+    Ui.Label($text=$"{Nats 7, 2}")
+    Ui.Label($text=$"{Ints 7, 2}")
+    Ui.Label($text=$"{Floats 1.5, 0.5}")
+    Ui.Label($text=$"{Total 3, 2} {Or (?Safe 3, 2), 0} {Order 1, 2} {Order "b", "a"} {Order p, q} {Order ((1, 2)), ((1, 2))} {Lifted (? 1), 2} {$last} {p == q} {[[1]] < [[2]]} {not (p != q) or "a" < "b"}")
