@@ -1,0 +1,8 @@
+# The tests of sem-ch09-generic-tag-live-field.
+emit Ui.* | Pad.*
+use App.*
+use Ui.*
+
+test a_generic_tag_is_placed_and_hosted, @host:
+    build
+    click Ui.Button(label="press")
