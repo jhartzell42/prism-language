@@ -1,0 +1,31 @@
+# A plain `let` and a place's field above a building `match` that read the arm's plain
+# result (Semantics ch. 4, "Binding groups and cycles": a widget block is one binding
+# group, any line may use any name the block binds, and "the order of a group's lines
+# decides positions and nothing else"; ch. 8: `<-` binds the arm's plain result). Nothing
+# here is a cycle: the `match` reads neither `twice` nor the label.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Panel: fn Mode -> @unit
+fn @Panel mode:
+    let twice = n * 2
+    Ui.Label($text=$"n {n}, twice {twice}")                            # 0
+    n <- match mode:                                                   # 1
+        Loud t:
+            Ui.Label($text=$"{t}")                                     # 1
+            @ 10
+        Soft:
+            Ui.Label($text=$"soft")                                    # 1
+            @ 20
+    Ui.Label($text=$"below {n}")                                       # 2
+
+@main: @unit
+@main:
+    @Panel (Loud "x")                                                  # 0, 1, 2
