@@ -461,13 +461,15 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
     # an element parameter's argument; Type System ch. 2: an element applied is a plain
     # value): its `$` fields are held as `Dynamic`s (`ElementValue`), so the readers they
     # are written over are live dynamics too
+    # and a constructor with a `$` field (`Gauge($level=$n, name="tank")`), which holds
+    # the field's `Dynamic` (`CtorArgs`)
     let elementValues = ElementValuesIn lx, e
     # and a call of a widget that calls itself with a `$` parameter, lowered as shared
     # rows, which hold the caller's dynamic live (`SharesAt`, `LiveParams`); a shared
     # row's own live parameter is such a value already (`#whole#{name}`)
     let sharedCalls = SharedLiveCalls wx, menv, e
     let calls = Filter (ExprsIn e), \|x| match x.kind:
-        ECall c, ignore, ignore, ignore: (IsWholeObject lx, x) or (IsWholeFn lx, (CalleeKey lx, c)) or (CalleeKey lx, c) == "Prelude.@Flatten" or (CalleeKey lx, c) == "Prelude.@Switch" or (HasText elementValues, (DynKey x)) or HasText sharedCalls, (DynKey x)
+        ECall c, ignore, ignore, ignore: (IsWholeObject lx, x) or (IsWholeFn lx, (CalleeKey lx, c)) or (CalleeKey lx, c) == "Prelude.@Flatten" or (CalleeKey lx, c) == "Prelude.@Switch" or (HasText elementValues, (DynKey x)) or (HasText sharedCalls, (DynKey x)) or IsDynamicFieldCtor lx, (CalleeKey lx, c)
         otherwise: False
     # and `!Updated $d` inside a lambda of the line (a supplier's `@ !Filter (?Pick p,
     # !Updated $state)`): an event value there, over `$d`'s live dynamic (`?UpdatedValue`)

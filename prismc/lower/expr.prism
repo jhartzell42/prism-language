@@ -1713,6 +1713,13 @@ fn IsNamedArg a = match a.?name:
     ? ignore: True
     nil: False
 
+# Whether a constructor has a `$` field: its arguments there are taken whole
+# (`CtorArgs`), so a line that applies it makes their readers live dynamics (`WholeArgs`).
+IsDynamicFieldCtor: fn Lx, Text -> Bool
+fn IsDynamicFieldCtor lx, qk = match lx.g.ctors[qk]:
+    ? c: Fold c.args, False, \|seen, t| seen or (LayerOf t) == LyDyn
+    nil: False
+
 # A constructor's arguments, by position or by field name, owned, an `Rc` where the
 # field is recursive.
 CtorArgs: unbounded fn Lx, Env, CtorInfo, [Arg] -> [Ex]
@@ -1724,7 +1731,13 @@ fn CtorArgs lx, env, c, args:
     else: Each args, \|a| ? a.value
     Each (Range0 (Len ordered)), \|i| match ordered[i]:
         ? (? x):
-            let v = Own (ValueOf lx, env, x)
+            # a `$` field holds a `Dynamic` (Type System ch. 1, field sigils): its value
+            # goes in whole, the live dynamic its line made for a reader (`WholeArgs`,
+            # `IsDynamicFieldCtor`), never the reader's value at the moment
+            let wholeAt = (not lx.whole) and (LayerOf (Or c.args[i], TyErr)) == LyDyn
+            let lxw = update lx:
+                &_.whole <= True
+            let v = if wholeAt: Own (ValueOf lxw, env, x) else: Own (ValueOf lx, env, x)
             if c.owner == "Prelude.Error" and i == 0: v
             else: if RcField lx, c.name, i: XCall (RefRuntime "std::Rc::new"), [[v]] else: v
         otherwise: (XCall (RefRuntime "std::Default::default"), [[]])
