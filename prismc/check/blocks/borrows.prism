@@ -166,7 +166,10 @@ fn UpdateFor env, st, ?binders, source, body, span:
         ? bs: match bs.?second:
             ? second:
                 let ((e1, s1)) = BindPattern (Unpending env1), st2, bs.first, k, False
-                BindPattern e1, s1, second, v, False
-            nil: BindPattern (Unpending env1), st2, bs.first, v, False
+                let ((e2, s2)) = BindPattern e1, (ForBinderMatches env, s1, bs.first, k), second, v, False
+                ((e2, (ForBinderMatches env, s2, second, v)))
+            nil:
+                let ((e2, s2)) = BindPattern (Unpending env1), st2, bs.first, v, False
+                ((e2, (ForBinderMatches env, s2, bs.first, v)))
     let ((ignore, st4)) = UpdateStmts env2, st3, body.stmts
     st4

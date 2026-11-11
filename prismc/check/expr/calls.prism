@@ -632,7 +632,7 @@ fn InferBareLambda env, st, e, ?expected:
             ? t: ((t, s))
             nil: FreshVar s, True, ""
         let ((en2, s3)) = BindPattern (Unpend en), s2, p, pt, False
-        ((en2, (Push acc, pt), s3))
+        ((en2, (Push acc, pt), (AlwaysMatches en, s3, p, pt, "a lambda parameter")))
     let outerColor = st1.color
     let outerWhy = st1.colorWhy
     let outerFlex = st1.colorFlex

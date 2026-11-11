@@ -263,7 +263,7 @@ BindStmt: unbounded fn Env, St, Pattern, Expr, Range -> St
 fn BindStmt env, st, p, e, span:
     let ((out, st2)) = BoundValue env, st, e
     let ((ignore, st3)) = BindPattern env, st2, p, out, False
-    st3
+    AlwaysMatches env, st3, p, out, "`<-`"
 
 # What the right side of a `<-` gives its pattern, built: a building `match` or `if` what
 # its chosen arm ends on, a `rebuild` or `for` what it hands back, anything else a

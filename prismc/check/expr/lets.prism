@@ -266,7 +266,8 @@ fn CheckLet env, st, p, ?ty, e, span:
                 (((WithLocal env2, name, sc), (Ahead (NoteGen st9, n.span, name, sc))))
         otherwise:
             let st6 = LeaveLevel st5
-            BindPattern env, st6, p, (Zonk st6, pre), False
+            let ((env2, st7)) = BindPattern env, st6, p, (Zonk st6, pre), False
+            ((env2, (AlwaysMatches env, st7, p, pre, "a `let`")))
 
 AheadUnify: unbounded fn Env, St, Text, Ty, Ty, Range -> St
 fn AheadUnify env, st, name, pre, t, span = match env.locals[name]:
