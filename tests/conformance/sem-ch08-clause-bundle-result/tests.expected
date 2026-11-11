@@ -1,0 +1,27 @@
+# Derived by hand from Semantics ch. 8 (a widget application is transparent; `<-` binds the child's result by a tuple pattern), Type System ch. 2 ("Bundles") and ruling TC (places counted as built: the caller's label is 1 after the one-place clause, 2 after the two-place clause); the chosen clause's event and hold are the caller's, so the label follows in the click's tick (as sem-ch08-clause-dynamic-result).
+test by_ones
+
+tick 0
+  added:
+    0: Ui.Button(label="up")
+    1: Ui.Label(text="0 hits, count 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1 hits, count 1")
+
+test by_tens
+
+tick 0
+  added:
+    0: Ui.Label(text="by tens")
+    1: Ui.Button(label="ten")
+    2: Ui.Label(text="0 hits, count 10")
+
+tick 1
+  in:
+    1: click
+  changed:
+    2: Ui.Label(text="1 hits, count 20")
