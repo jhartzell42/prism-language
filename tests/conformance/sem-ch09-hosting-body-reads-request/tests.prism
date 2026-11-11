@@ -1,0 +1,11 @@
+# From prism-notes, claude/04-domains-and-documents/evidence/hosting/02-body-reads-request/tests.prism: attempt 02 of the Bible's document hosting against prismc at 10ca993, committed as written.
+# Attempt 02's test.
+# Written by Claude (an implementation agent), 10 November 2026; subject to change.
+emit Ui.* | Seat.*
+use App.*
+
+test body_reads_the_request, @host:
+    build
+    click Ui.Button(label="move")
+    compute
+    compute
