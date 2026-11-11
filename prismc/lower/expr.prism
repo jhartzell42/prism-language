@@ -746,10 +746,17 @@ fn IsBundleAnswer lx, x = match x.kind:
         TyTuple ts: Fold ts, False, \|f, part| f or (LayerOf part) == LyEv
         otherwise: False
 
-# An answer's event, typed where it is made: `never` alone names no type its `map` can read
-# (`@ ((never, $ "offline"))`), so the event is a `let` of the checker's type for it.
+# An answer's event. `never` alone names no type its `map` can read (`@ ((never, $
+# "offline"))`), so it is a `let` of the checker's type for it; any other event has its
+# type from what makes it.
 AnswerEvent: unbounded fn Lx, Env, Expr -> Ex
-fn AnswerEvent lx, env, ev = XBlock [[(DoLet (PaTyped (PaBind "answer_event"), (OutTyOf lx, (TypeAt lx, ev.span))), (Own (ValueOf lx, env, ev)))]], (XVar "answer_event")
+fn AnswerEvent lx, env, ev = match ev.kind:
+    EGroup y: AnswerEvent lx, env, y
+    EName n:
+        let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
+        if ?qk == ? "Prelude.never": XBlock [[(DoLet (PaTyped (PaBind "answer_event"), (OutTyOf lx, (TypeAt lx, ev.span))), (Own (ValueOf lx, env, ev)))]], (XVar "answer_event")
+        else: Own (ValueOf lx, env, ev)
+    otherwise: Own (ValueOf lx, env, ev)
 
 BundleBlueprint: unbounded fn Lx, Env, Expr, Ref, OutTy -> Vl
 fn BundleBlueprint lx, env, x, variant, t = match x.kind:
