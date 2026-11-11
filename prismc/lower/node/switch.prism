@@ -716,7 +716,7 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
     let rowFields = Append (Push (Each fields, \|((f, t, bn))| ((f, t, "`{bn}`"))), (("parent", parentTy, "the node of the `rebuild`"))), baseField
     let rowInits = Append (Each fields, \|((f, ignore, ignore))| ((f, (XClone (XVar f))))), (if transparent: [[(("base", (XVar "base")))]] else: [[]])
     let rowTaken = Append (Append nodeHooks, (Push (Push (Each fields, \|((f, ignore, ignore))| f), "parent"), "result_value")), [["base", "place", "seat", "inner_gap"]]
-    let r00 = NewWx lxc, rowName, rowFields, rowInits, [[(("parent", (XVar "parent")))]], [[]], {}, rowTaken, wx.inlining, (?HostedRows wx)
+    let r00 = NewWx lxc, rowName, rowFields, rowInits, [[(("parent", (XClone (XVar "parent"))))]], [[]], {}, rowTaken, wx.inlining, (?HostedRows wx)
     # standing in its caller, the arm's places are numbered from the caller's position
     # (the row's own scope, 0: in a hosted scope the row's places are its host's through
     # the row's `?hostedBy`, as a `for` row's are)
@@ -942,7 +942,7 @@ GenRowOf: unbounded fn Wx, Env, Block, OutTy, Text, Text -> GenRow
 fn GenRowOf wx, menv, body, vt, rowName, genName:
     let lx = wx.lx
     let upName = "{genName}_up"
-    let r00 = NewWx lx, rowName, [[(("value", vt, "the generation's value, `_`")), (("parent", (OutWeak wx.node), "the node of the `rebuild`"))]], [[(("value", (XClone (XVar "value"))))]], [[(("parent", (XVar "parent")))]], [[]], {}, (Append nodeHooks, [["value", "parent", "result", "result_dynamic"]]), wx.inlining, (?HostedRows wx)
+    let r00 = NewWx lx, rowName, [[(("value", vt, "the generation's value, `_`")), (("parent", (OutWeak wx.node), "the node of the `rebuild`"))]], [[(("value", (XClone (XVar "value"))))]], [[(("parent", (XClone (XVar "parent"))))]], [[]], {}, (Append nodeHooks, [["value", "parent", "result", "result_dynamic"]]), wx.inlining, (?HostedRows wx)
     # a block that ends on a bundle gives it as one value (`WholeResultOf`)
     let r0 = update (GenCurrent r00, wx, genName):
         &_.wholeResultAt <= BundleResultKey lx, body
