@@ -117,7 +117,7 @@ fn BlockInto wx, benv0, menv0, b:
     let ((benv, menv)) = WithElementLets wx.lx, benv0, menv0, b
     let env = WithLocalWidgets menv, b
     let wxe = update wx:
-        &_.earlyChoices <= Fold (Range0 (Len b.stmts)), &_.earlyChoices, \|acc, i| if IsEarlyChoiceAt wx.lx, env, b, i: AddText acc, (EarlyChoiceKey (Or b.stmts[i], dummyStmtL)) else: acc
+        &_.earlyChoices <= Fold (Range0 (Len b.stmts)), &_.earlyChoices, \|acc, i| if IsEarlyChoiceAt wx.lx, env, b, i: AddText acc, (EarlyChoiceKey (Or b.stmts[i], dummyStmtL)) else: if IsPureChoiceAt wx.lx, env, b, i, 16: AddText acc, (PureChoiceStmtKey (Or b.stmts[i], dummyStmtL)) else: acc
     match ?LateLineAt wx.lx, menv, b, 16:
         ? k: SplitBlockInto wxe, benv, menv, b, k
         nil:
@@ -146,9 +146,116 @@ fn IsEarlyChoiceAt lx, menv, b, i = match (Or b.stmts[i], dummyStmtL).kind:
                     nil: [[]]
                 ok and Fold (FreeReads (BlockExprs a.body), [[((own, a.span))]]), True, \|ok2, n| ok2 and (not (HasKey menv.names, n)) and not (HasText blockDefs, n)
             let taken = Fold (Range0 i), False, \|f, j| f or TakesAtBuild lx, (Or b.stmts[j], dummyStmtL), names
-            plain and unguarded and closed and taken
+            plain and unguarded and closed and taken and not (IsPureChoiceAt lx, menv, b, i, 16)
         otherwise: False
     otherwise: False
+
+# A building `match` or `if` whose plain result a building `match` or `if` above it reads
+# (Semantics ch. 4: the order of a group's lines decides positions and nothing else;
+# ruling TC: places are counted as they are built). The line above builds a row or
+# another by the result, so the places of the line's own row take their numbers from a
+# count that reads the result that row gives: no order of building the two rows numbers
+# both. Where every arm gives its result from what it reads of the block, of its own
+# pattern and of its own plain `let`s, and from nothing its own lines build, the result
+# needs no row: it is computed in the block's build as a plain `match` or `if` over the
+# same arms, each arm its plain `let`s and its result (`PureChoiceValue`), a value of the
+# build like any other. The line is not late then, the block is not split at it, and both
+# lines are built in place order as any generations are. What the arms read must have a
+# value at the build: no plain name another late line of the block binds.
+IsPureChoiceAt: unbounded fn Lx, Env, Block, Nat, Nat -> Bool
+fn IsPureChoiceAt lx, menv, b, i, depth = match (Or b.stmts[i], dummyStmtL).kind:
+    SBind p, e, nil:
+        let names = Filter (PatternNames p), \|n| not (IsTimeName n)
+        let plain = (IsPlainResult lx, e) and not (IsBundle (LineOutFull lx, e))
+        let taken = Fold (Range0 i), False, \|f, j| f or ((IsChoiceLine (Or b.stmts[j], dummyStmtL)) and TakesAtBuild lx, (Or b.stmts[j], dummyStmtL), names)
+        if not (plain and taken): False
+        else: match ?PureChoice e:
+            ? ((heads, bodies)):
+                let lateDefs = Fold (Range0 (Len b.stmts)), [[]], \|acc, j| if j == i: acc else: match (Or b.stmts[j], dummyStmtL).kind:
+                    SBind q, x, nil: if IsLateExpr lx, menv, x, depth: UnionTexts acc, (Filter (PatternNames q), \|n| not (IsTimeName n)) else: acc
+                    otherwise: acc
+                let read = FreeReads (Fold bodies, heads, \|acc, body| Append acc, (BlockExprs (PureArm lx, body))), [[]]
+                (Fold bodies, True, \|ok, body| ok and IsPureArm lx, body) and Fold read, True, \|ok, n| ok and not (HasText lateDefs, n)
+            nil: False
+    otherwise: False
+
+# Whether a line is a building `match` or `if`.
+IsChoiceLine: fn Stmt -> Bool
+fn IsChoiceLine st:
+    let ?line = match st.kind:
+        SBind ignore, e, nil: ? e
+        SIgnore e: ? e
+        SExpr e: ? e
+        otherwise: nil
+    match ?line:
+        ? e: match (Ungrouped e).kind:
+            EIf ignore, ignore, ignore: True
+            EMatch ignore, ignore: True
+            otherwise: False
+        nil: False
+
+# A building `match` or `if` with an `else`, as what its arms are chosen by (the
+# scrutinee and the guards, or the condition) and its arms' blocks.
+?PureChoice: unbounded fn Expr -> ?(([Expr], [Block]))
+fn ?PureChoice e = match (Ungrouped e).kind:
+    EMatch s, arms: ? (((Fold arms, (ExprsIn s), \|acc, a| Append acc, (GuardExprs a.?guard)), (Each arms, \|a| a.body)))
+    EIf c, thenB, (? elseB): ? (((CondExprs c), [[thenB, elseB]]))
+    otherwise: nil
+
+GuardExprs: unbounded fn ?Expr -> [Expr]
+fn GuardExprs (? g) = ExprsIn g
+fn GuardExprs nil = [[]]
+
+# A `let` of plain names whose value holds no event and no dynamic.
+IsPlainLet: unbounded fn Lx, Stmt -> Bool
+fn IsPlainLet lx, st = match st.kind:
+    SLet p, ignore, e: (Fold (PatternNames p), True, \|ok, n| ok and not (IsTimeName n)) and not (TimeWithin (TypeAt lx, e.span))
+    otherwise: False
+
+# An arm's block as the value it gives: its plain `let`s and the expression it ends on
+# with `@`.
+PureArm: unbounded fn Lx, Block -> Block
+fn PureArm lx, body:
+    let lets = Filter (Take body.stmts, (Dec (Len body.stmts))), \|st| IsPlainLet lx, st
+    match (Or body.stmts[Dec (Len body.stmts)], dummyStmtL).kind:
+        SExpr y: match y.kind:
+            EFreeSigil "@", v: Block(stmts=(Push lets, (Stmt(kind=(SExpr v), span=v.span))), inline=body.inline, span=body.span)
+            otherwise: Block(stmts=lets, inline=body.inline, span=body.span)
+        otherwise: Block(stmts=lets, inline=body.inline, span=body.span)
+
+# Whether an arm ends on `@ v` and gives `v` from nothing its own lines build or bind
+# but its plain `let`s.
+IsPureArm: unbounded fn Lx, Block -> Bool
+fn IsPureArm lx, body:
+    let ends = match (Or body.stmts[Dec (Len body.stmts)], dummyStmtL).kind:
+        SExpr y: match y.kind:
+            EFreeSigil "@", ignore: True
+            otherwise: False
+        otherwise: False
+    let defs = Fold body.stmts, [[]], \|acc, st| if IsPlainLet lx, st: acc else: UnionTexts acc, (Check.Blocks.GroupDefs st)
+    ends and Fold (FreeReads (BlockExprs (PureArm lx, body)), [[]]), True, \|ok, n| ok and not (HasText defs, n)
+
+# The plain result of a pure building `match` or `if` (`IsPureChoiceAt`), computed in the
+# block's build: the same choice over each arm's plain `let`s and result.
+PureChoiceValue: unbounded fn Lx, Env, Expr -> Vl
+fn PureChoiceValue lx, benv, e:
+    let t = OutTyOf lx, (OutOf (TypeAt lx, e.span))
+    match (Ungrouped e).kind:
+        EMatch s, arms: MatchValue lx, benv, s, (Each arms, \|a| PureArmOf lx, a), t, e.span
+        EIf c, thenB, (? elseB): IfValue lx, benv, c, (PureArm lx, thenB), (? (PureArm lx, elseB)), t
+        otherwise: VlOwned (InternalBug "a pure building choice that is no `match` and no `if` with an `else`"), t
+
+PureArmOf: unbounded fn Lx, Arm -> Arm
+fn PureArmOf lx, a = Arm(?pattern=a.?pattern, ?guard=a.?guard, body=(PureArm lx, a.body), span=a.span)
+
+# The key a pure building choice's line is known by (in `Wx.earlyChoices`).
+PureChoiceKey: fn Expr -> Text
+fn PureChoiceKey e = "pure:{InitKey (Ungrouped e)}"
+
+PureChoiceStmtKey: fn Stmt -> Text
+fn PureChoiceStmtKey s = match s.kind:
+    SBind ignore, e, nil: PureChoiceKey e
+    otherwise: ""
 
 # The key an early building `match` line is known by (`Wx.earlyChoices`).
 EarlyChoiceKey: fn Stmt -> Text
@@ -269,7 +376,7 @@ fn ?LateLineAt lx, menv, b, depth:
     Fold (Range0 (Len b.stmts)), nil, \|?found, i| match ?found:
         ? k: ? k
         nil: match (Or b.stmts[i], dummyStmtL).kind:
-            SBind ignore, e, nil: if (IsLateExpr lx, env, e, depth) and not (IsEarlyChoiceAt lx, env, b, i): ? i else: nil
+            SBind ignore, e, nil: if (IsLateExpr lx, env, e, depth) and not ((IsEarlyChoiceAt lx, env, b, i) or IsPureChoiceAt lx, env, b, i, depth): ? i else: nil
             otherwise: nil
 
 # An environment with a block's own local widgets (`@line:` and its block), as `PreBind`
@@ -1380,6 +1487,11 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
                 (((WrPlain ex, t), ignore)): if IsNamesPattern p: (((BindPlainResult wx3, menv, p, ex, t), benv, menv)) else: (((BindPatternResult wx3, menv, p, ex, t, (OutOf (TypeAt lx, e.span))), benv, menv))
                 # a late result is bound where its block is split (`SplitBlockInto`): a
                 # line that binds one here was not seen to be late (`IsLateExpr`)
+                # a pure building choice's result is computed in the build
+                # (`PureChoiceValue`); the row's own copy of it is not read
+                (((WrLate ignore, t), ignore)) if HasText wx.earlyChoices, (PureChoiceKey e):
+                    let ex = Own (PureChoiceValue lx, benv, e)
+                    if IsNamesPattern p: (((BindPlainResult wx3, menv, p, ex, t), benv, menv)) else: (((BindPatternResult wx3, menv, p, ex, t, (OutOf (TypeAt lx, e.span))), benv, menv))
                 (((WrLate ignore, ignore), ignore)): (((update wx3:
                     &_.build <= Push &_.build, (InternalBugDo "a late plain result bound where its block is not split")), benv, menv))
                 otherwise: ((wx3, benv, menv))

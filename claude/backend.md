@@ -409,7 +409,16 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the split that such a line reads is the node's late `let` (`HoistedLines`). Two
     such lines are refused: one whose places are counted as built (a building `match`
     or `if` inside it: the rows after it were numbered before it was built), and one
-    that gives a plain result of its own.
+    that gives a plain result of its own;
+  - a building `match` or `if` above that reads the plain result of a building `match`
+    or `if` (`if n > 15:` above `n <- match mode:`) needs the result before either row
+    is numbered. Where every arm gives its result from what it reads of the block, its
+    own pattern and its own plain `let`s, and from nothing its own lines build
+    (`IsPureChoiceAt`), the result is computed in the block's build as a plain `match`
+    or `if` over the arms' plain `let`s and results (`PureChoiceValue`): the line is
+    not late, the block is not split at it, and both generations are built in place
+    order (ruling TC), the row's own copy of the result unread. An arm whose result
+    reads what its own lines build is the refused case above.
 - **A line is late** (`IsLateExpr`) when it is a building `match` or `if` with a plain
   result, a widget block or a widget of one clause whose block ends late, a widget
   parameter applied whose argument is late (read in the caller's environment), or a
