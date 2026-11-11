@@ -80,53 +80,100 @@ Building `match`, clause widgets, `rebuild`
 - gap ID: a widget that calls itself deeper than sixteen levels.
 
 Dynamics and events
-- lower/node/finish.prism:518, 528 `!Updated` of a dynamic no sink of the node (or of
-  the row's block) writes (UP, SU). Program: `!Updated $c` with `let $c = $ 1`, and with
-  `$c` a caller's parameter. Ruling: a constant never fires; a caller's is a port.
+- lower/node/finish.prism:518 `!Updated` of a dynamic no sink of the node writes (UP).
+  Program: `$r <- @Pick 1`, the dynamic result of a widget of several clauses, then
+  `!Updated $r`; a hosted child's dynamic result read in a row reaches it too. Test:
+  sem-ch07-updated-clause-result. A constant `let` and a widget's dynamic parameter are
+  not the case: sem-ch07-updated-constant and sem-ch07-updated-parameter pass.
+- lower/node/finish.prism:528 the same in a row over a name of its block (SU). No
+  program found: a row over its block's parameter passes
+  (sem-ch07-updated-row-parameter), and over a clause widget's result, a global and a
+  constant it compiles.
 - lower/node/switch.prism:867 `@Flatten` of a dynamic of dynamics with no live dynamic
-  at the build (LF).
+  at the build (LF). Program: `$shown <- @Flatten ($Pick $useB, $a, $b)`, the outer
+  written in place. Test: sem-ch07-flatten-call. With the outer a hold bound below the
+  `@Flatten` the refusal is not reached: rustc refuses the crate
+  (sem-ch07-flatten-held-above).
 - lower/expr.prism:354 a dynamic passed whole to a function where it has no live dynamic
-  (LF).
-- lower/expr.prism:327 a dynamic a function gives whole, read in a plain function.
-- lower/node/dynamics.prism:192 `!MergeAll` of a list that is not plain. Unsure a
-  program reaches it.
-- lower/expr.prism:494 an event value of several events. Unsure; read as R.
+  (LF). Programs: `Wrap $r` with `$r` a clause widget's result
+  (ts-ch04-whole-clause-result), with `$g` a place's dynamic
+  (ts-ch04-whole-place-dynamic); a global `let $four = $ 4`, a `for`'s `$v` over
+  `@PerKey` and a host's `$doc` reach it too, with no test. A row passing its block's
+  hold and a hosted child's result do not reach it: rustc refuses the crate
+  (ts-ch04-whole-row-parent, ts-ch04-whole-hosted-result).
+- lower/expr.prism:327 a dynamic a function gives whole, read in a plain function. No
+  program found: `fn $Kth n = Or (Consts n)[1], ($ 0)` compiles.
+- lower/node/dynamics.prism:192 `!MergeAll` of a list that is not plain: a G, the checker
+  gives `two-layers` for `!MergeAll $evs` read as an event.
+- lower/expr.prism:494 an event value of several events: a G, the checker gives
+  `two-events`.
 - lower/patterns.prism:268 an event field in an element pattern. Program:
-  `match e: Ui.Button(!press=p, ..): ..`.
-- lower/patterns.prism:323 a pattern inside an element's `$` field. Program:
-  `match e: Ui.Label($text="x"): ..`.
+  `match e: Pad.Bell(!rings=!r, ..): !r` over a description. Test:
+  sem-ch09-element-pattern-event-field.
+- lower/patterns.prism:323 a pattern inside an element's `$` field: see C
+  (`Ui.Label($text=$"x")` passes the checker; `$text="x"` is a mismatch there).
+- An interpolation lifted over `?` (`fn ?Greet ?name = "hello {?name}!"`): no refusal,
+  rustc refuses the crate. Test: ts-ch04-interpolation-lifts-optional.
 
 Functions
-- lower/expr.prism:886 a local function that calls itself.
-- lower/expr.prism:939 a local function of several clauses as a value.
-- lower/expr.prism:940 a generic local function as a value.
+- lower/expr.prism:886 a local function that calls itself. Test:
+  sem-ch04-local-function-recursive.
+- lower/expr.prism:939 a local function of several clauses as a value. Test:
+  sem-ch04-local-function-clauses-value.
+- lower/expr.prism:940 a generic local function as a value. The checker stops it first:
+  a local `fn Same x = x` is not generalized (mismatch at its second use). Tests:
+  tests/checker/pos/local-function-generic-value.prism,
+  sem-ch04-local-function-generic-value.
 - lower/expr.prism:1203 a function value of its callee's own color inside the value a
-  call returns, at a call that makes the color bounded.
-- lower/expr.prism:636 an existential of several traits (`^A + ^B`). Unsure of the form.
+  call returns, at a call that makes the color bounded. Program:
+  `Both: u fn (u fn Nat -> Nat) -> [u fn Nat -> Nat]` called with a lambda. Test:
+  ts-ch05-color-function-in-result.
+- lower/expr.prism:636 an existential of a program's own trait (`any ^Weighed`); `^A +
+  ^B` is no syntax. Test: ts-ch03-existential-own-trait.
 - lower/node/static.prism:491 `@Run` of a function value that is not a name. Program:
-  `@Run (\|| 1)`.
+  `@Run (\|n| n + 1), 3`. Test: sem-ch07-run-lambda.
 - lower/node/def.prism:883 a widget block's `let` of a pattern that is no name or tuple
-  of plain names. Program: `let Extent(w=w, ..) = e` in a widget block.
-- lower/node/def.prism:687 a widget's plain result bound by a pattern. Unsure:
-  `BindPatternResult` may cover every pattern and leave this a G.
+  of plain names. Test: sem-ch08-let-pattern-in-widget.
+- lower/node/def.prism:687 a widget's plain result bound by a pattern: a G,
+  `BindPatternResult` takes every other pattern (sem-ch08-plain-result-pattern passes).
 
 Jobs and templates
-- lower/jobs.prism:289, 291, 292 a cycle-point `while` in a `for &` of an `update`
-  block, in another expression, in another statement (gap LP).
-- lower/templates.prism:231 a `while` whose pattern matches through an `Rc`.
+- lower/jobs.prism:289 a cycle-point `while` in a `for &` of an `update` block (gap LP).
+  Test: sem-ch07-while-in-for-ref.
+- lower/jobs.prism:291, 292 a cycle-point `while` in another expression or statement:
+  a G, no program reaches this: `StmtJob` is entered only for a `while`, `if`, `match`
+  or `for` (`HoldsCycleWhile`), and a nested `update` holding the loop compiles.
+- lower/templates.prism:231 a `while` whose pattern matches through an `Rc`. Program:
+  `while Link a, (Link b, rest) <- &cur:` over a recursive choice. Test:
+  sem-ch05-while-pattern-nested.
 - lower/templates.prism:262 a `for` by reference over what is not an array. Program:
-  `for &x in map` in an `update` block. Unsure whether the checker allows it.
-- lower/templates.prism:372 a reference path this back end does not lower.
-- lower/expr.prism:145 `?` of a place, which C++'s TRY would move out of.
+  `for &v <- &_:` over a map, which the checker allows. Test: sem-ch05-for-ref-map.
+- lower/templates.prism:372 a reference path this back end does not lower: a G, no
+  program reaches this: the checker refuses any other left side of `<=` (mismatch) and
+  a named lens (`unsupported`).
+- lower/expr.prism:145 `?` of a place: a G, no program reaches this: every operand of
+  `TryOf` is a call the back end itself generates.
 
-Catch-alls (each is a G for the kinds that have a case, an R for any kind left; to be
-enumerated against the syntax tree's kinds)
-- lower/node/def.prism:579 and lower/expr.prism:2048 a statement not lowered yet.
-- lower/node/def.prism:938 a building line not lowered yet.
-- lower/node/static.prism:121 a widget not lowered yet.
-- lower/node/static.prism:600 the builtin widget {name}.
-- lower/expr.prism:621 {kind} as a value.
-- lower/expr.prism:515 a lift over a sigil of {kind}.
+Catch-alls
+- lower/node/def.prism:579 a statement of a widget block not lowered yet. Program: a
+  widget defined inside a widget block, `@line:` and its block. Test:
+  sem-ch04-local-widget. Every other kind is a G: `require`, `forbid`, `while`, `<=`
+  and `+=` are a checker mismatch there, `return` a parse error.
+- lower/expr.prism:2048 a statement of an expression block not lowered yet: a G, the
+  checker refuses a bind, `emit`, `require`, `while` there (mismatch).
+- lower/node/def.prism:938 a building line not lowered yet: a G, the checker gives
+  mismatch for a bare line that is no element or blueprint.
+- lower/node/static.prism:121 a widget not lowered yet. Programs: a building `if` with
+  no `else` (sem-ch04-building-if-no-else); a bare call of a widget defined inside the
+  block (sem-ch04-local-widget); SP3.
+- lower/node/static.prism:600 the builtin widget {name}. Program: `@Later !go`, the one
+  prelude widget with no body and no case. Test: sem-appB-later.
+- lower/expr.prism:621 {kind} as a value: see C for a `for` and a `rebuild` as a plain
+  function's value; a suffixed operator, a monad block and a lens stop at the parser or
+  the checker (`unsupported`).
+- lower/expr.prism:515 a lift over a sigil of {kind}. No program found: the checker
+  lifts only at applications, operators, fields, indexes and interpolations, each a
+  direct operand.
 
 Zombie and dead states: `leave`, `clean_up`, `edges` (no refusal; the README's entry).
 What a program can see of teardown holds: a `for` row whose key leaves and a replaced
