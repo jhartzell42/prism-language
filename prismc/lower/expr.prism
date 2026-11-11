@@ -723,7 +723,7 @@ fn PureBlueprint lx, env, x, t:
         ? (BnLocal (XPath variant), ignore, ignore) if IsBundleAnswer lx, x: BundleBlueprint lx, env, x, variant, t
         ? (BnLocal (XPath variant), ignore, ignore): match LayerOf (TypeAt lx, x.span):
             LyEv:
-                let wrapped = XMethod (Own (ValueOf lx, env, x)), "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (XClone (XVar "v"))))]]
+                let wrapped = XMethod (AnswerEvent lx, env, x), "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (XClone (XVar "v"))))]]
                 VlOwned (XCall (RefRuntime "prism_rtl::event_blueprint::<crate::Elem, _>"), [[wrapped]]), t
             LyDyn: match ?DynamicAnswer lx, x:
                 nil: match x.kind:
@@ -746,6 +746,11 @@ fn IsBundleAnswer lx, x = match x.kind:
         TyTuple ts: Fold ts, False, \|f, part| f or (LayerOf part) == LyEv
         otherwise: False
 
+# An answer's event, typed where it is made: `never` alone names no type its `map` can read
+# (`@ ((never, $ "offline"))`), so the event is a `let` of the checker's type for it.
+AnswerEvent: unbounded fn Lx, Env, Expr -> Ex
+fn AnswerEvent lx, env, ev = XBlock [[(DoLet (PaTyped (PaBind "answer_event"), (OutTyOf lx, (TypeAt lx, ev.span))), (Own (ValueOf lx, env, ev)))]], (XVar "answer_event")
+
 BundleBlueprint: unbounded fn Lx, Env, Expr, Ref, OutTy -> Vl
 fn BundleBlueprint lx, env, x, variant, t = match x.kind:
     EGroup y: BundleBlueprint lx, env, y, variant, t
@@ -758,13 +763,13 @@ fn BundleBlueprint lx, env, x, variant, t = match x.kind:
                 let firstVal = match plain:
                     [[y]]: Own (ValueOf lx, env, y)
                     otherwise: XTuple (Each plain, \|y| Own (ValueOf lx, env, y))
-                let wrapped = XMethod (Own (ValueOf lx, env, ev)), "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (XClone (XVar "v"))))]]
+                let wrapped = XMethod (AnswerEvent lx, env, ev), "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (XClone (XVar "v"))))]]
                 VlOwned (XCall (RefRuntime "prism_rtl::bundle_blueprint::<crate::Elem, _>"), [[(Tagged firstVariant, firstVal), wrapped]]), t
             # a constant `$` part beside the event and no plain part (`@ ((never, $
             # "offline"))`, Semantics ch. 9): its value the place's first value, once
             ((? (BnLocal (XPath firstVariant), ignore, ignore), [[ev]], [[d]])) if (Len plain) == 0 and (?ConstantDynamic d) != nil:
                 let firstVal = Own (ValueOf lx, env, (Or (?ConstantDynamic d), d))
-                let wrapped = XMethod (Own (ValueOf lx, env, ev)), "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (XClone (XVar "v"))))]]
+                let wrapped = XMethod (AnswerEvent lx, env, ev), "map", [[(XClosure False, [[PaBind "v"]], (Tagged variant, (XClone (XVar "v"))))]]
                 VlOwned (XCall (RefRuntime "prism_rtl::bundle_blueprint::<crate::Elem, _>"), [[(Tagged firstVariant, firstVal), wrapped]]), t
             otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer with two event parts, or a `$` part that is no constant or stands beside a plain part"), t
     # a bundle that is a value already (`@ pair`): its parts are the tuple's, the plain
