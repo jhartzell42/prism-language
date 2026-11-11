@@ -1,0 +1,26 @@
+# `borrow-overlap` for a read under a named lens (Semantics ch. 5, "The borrow rule": "One
+# `&` is alive to a part at a time inside the block"; "A lens's result is alive while its
+# argument is"; "A `for` reference is alive for the loop's body"): a `for` over a lens
+# applied to `&_` keeps all of `&_` alive for its body, so a read of a part of `&_` there
+# is a second reference to it. The loop's own reference and other locals are fine, and so
+# is the read made before the loop.
+# Written by Claude on the claude-lowering branch; subject to change.
+type Score = record:
+    home: Nat
+    away: Nat
+
+type Fixture = record:
+    score: Score
+    stoppage: [Nat]
+
+&Stoppage: fn &Fixture -> &[Nat]
+fn &Stoppage &fixture = &fixture.stoppage
+
+Extend: fn Fixture -> Fixture
+fn Extend f = update f:
+    let goals = &_.score.home
+    let &total = 0
+    for &s <- &Stoppage &_:
+        &s += goals
+        &total += &s
+        &s += &_.score.away

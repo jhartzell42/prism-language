@@ -396,6 +396,33 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `IsEarlyChoiceAt`): where no arm has a guard or reads a name of the block, since the
   node does not exist yet when the arm is built. The result is then a value of the
   build and the block is not split at the line.
+- **A named lens** (`&Acc: fn &Vm -> &Int`, `fn &Acc &vm = &vm.regs.acc`; Semantics ch. 5,
+  "References and lens paths") is two functions of the target (`LensDefs`), named by the
+  lens's name with the letter `l`:
+  - the reference, `fn acc_l(vm: &mut Vm) -> &mut Int` in Rust and `Int& acc_l(Vm& vm)`
+    in C++ (`OutRefMut`). One reference parameter, so Rust's lifetime elision is the
+    book's rule ("A lens's result is alive while its argument is") and no lifetime is
+    written. Its body is the path's place borrowed (`LensReference` over `PlaceOf`), or
+    the reference of the lens the body applies. A set, an accumulation, a `for` by
+    reference and a lens over it go through it: `PlaceOf` of `&Acc &_` is
+    `(*acc_l(&mut this))`, so `Assign`, `UpdForRefs` and the accumulating operators take
+    a lens applied as they take a path.
+  - the read, `fn acc_l_get(vm: &Vm) -> Int`: the lens's body lowered as the expression
+    it also is (`FnDefOf`), the translation's `Get`. A lens applied in expression
+    position calls it over its argument's value (`LensRead`), so a read borrows nothing
+    mutably: `(&Acc &_) + (&Acc &_)` and a read inside a closure are plain calls. This is
+    cool because rustc never sees two `&mut` of one value in one expression; the cost is
+    a copy of the argument where the argument is itself a lens applied.
+  - A lens whose path ends at an array's index (`&?Second: fn &[Int] -> &?Int`), its own
+    or that of the lens its body applies (`LensEndsAtIndex`), names an entry that may be
+    absent: its reference is `Option<&mut A>` (`A*` in C++), made by the prelude's
+    `part_mut`. A set goes through `set_part` (`? x` writes the entry; `nil`, or an index
+    past the end, gives up as the block's own `&xs[i] <= v` does), with the value held
+    first, since it may read what the reference borrows. Its read is `xs[i]`, `nil` past
+    the end. A lens to a map key is refused by the checker (`lens-map-key`, ruling ME), so
+    no reference is ever an entry of a map.
+  - Negative space: no lens value (`&.score.home`), no `Over`; a lens takes its one
+    reference and nothing else, so there is no lens with a key or an index handed in.
 - **An `update` block's bare `for`** (`for &_.xs:`, `for xs:`; Semantics ch. 5,
   "Statements") rebinds `&_` to the entry: over a reference path the element in place
   (`UpdForRefs` under the key `&_`), over a plain value a `mut` copy of the turn's
