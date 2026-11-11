@@ -272,6 +272,30 @@ fn MissingDefinitions g, st0:
     update st:
         &_.file <= st0.file
 
+# `impl-lacks`: an impl of a program's own file gives each method its trait declares
+# without a default body and chooses each associated type (Type System ch. 3: "An impl
+# gives each method its definition lines", "an associated type, which each impl chooses");
+# an associated type its trait does not declare is refused as a method is. The prelude
+# module's impls lean on the back ends' builtins, as its signature lines do.
+ImplsComplete: unbounded fn G, St -> St
+fn ImplsComplete g, st0:
+    let st = Fold (Values g.traits), st0, \|s0, tr| Fold (Or g.impls[tr.name], [[]]), s0, \|s1, im|
+        if im.derived or im.file >= g.preludeFrom or im.home == "Prelude": s1
+        else:
+            let shown = BareName tr.name
+            let s2 = update s1:
+                &_.file <= im.file
+            let s3 = Fold tr.methods, s2, \|s, method|
+                let defined = Fold im.methods, False, \|seen, m| seen or (BareName method) == m or (DropPrefix method, "{tr.home}.") == m
+                if defined or HasText tr.defaults, method: s
+                else: ErrFix s, "impl-lacks", im.span, "this impl of `^{shown}` lacks `{BareName method}`, which has no default body", "define it under the impl, `fn {BareName method} ...`"
+            let s4 = Fold tr.assocs, s3, \|s, assoc|
+                if Fold im.assocs, False, \|seen, ((chosen, ignore))| seen or chosen == assoc: s
+                else: ErrFix s, "impl-lacks", im.span, "this impl of `^{shown}` lacks `type {assoc}`", "choose it under the impl, `type {assoc} = ...`"
+            Fold im.assocs, s4, \|s, ((chosen, ignore))| if HasText tr.assocs, chosen: s else: Err s, "mismatch", im.span, "`^{shown}` has no associated type `{chosen}`"
+    update st:
+        &_.file <= st0.file
+
 # A tag (Semantics ch. 8's table): `of` a row kind, its output, its fields; a generic tag's
 # variables bounded on the line.
 ConvTag: unbounded fn G, St, ModInfo, TagDecl, Range -> ((G, St))
