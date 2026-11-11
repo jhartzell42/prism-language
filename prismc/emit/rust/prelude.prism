@@ -1038,6 +1038,25 @@ pub fn merge_all<T: Clone + 'static>(events: &Array<Event<T>>) -> Event<Array<T>
     ::prism_rtl::merge_all(events)
 }
 
+/// A fault kind as a value (`Fs.NotFound` named, an `Error`'s `kind` read): its name, the
+/// choice with no arguments it crosses to a World as.
+pub fn fault_kind(name: &str) -> Pod {
+    Pod::name(name)
+}
+
+/// `e.kind`.
+pub fn kind_of(e: &Error) -> Pod {
+    Pod::name(&e.kind_p)
+}
+
+/// `Error(kind=k, message=m)` with `k` a value.
+pub fn error_of(kind: &Pod, message: Text) -> Error {
+    match kind.structure() {
+        Pod::Choice(name, _) => Error::new(name, message),
+        other => panic!("an `Error` of a kind that is no fault kind: {other:?}"),
+    }
+}
+
 /// `!Updated $d` as an event value (in a supplier's answer, or in a function that takes
 /// the dynamic whole): it fires `d`'s value after the tick, in the tick `d`'s update event
 /// fires (Semantics ch. 7, R3).

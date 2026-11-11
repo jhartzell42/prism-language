@@ -854,7 +854,9 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
                 if arity > 0: CtorFn lx, c, pts, span, t, True else: CtorApp lx, emptyEnv, c, [[]], span
             otherwise: CtorApp lx, emptyEnv, c, [[]], span
     nil: match lx.g.tags[qk]:
-        ? tg: VlOwned (XStr tg.name), t
+        # a fault kind named: a `Fault` value, its name (`fault_kind`); `Error(kind=..)`
+        # and `==` against an `Error`'s `kind` take it so
+        ? tg: VlOwned (XCall (HelperRef "fault_kind"), [[XStr tg.name]]), OutPod
         nil: if Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsLetDef d): VlOwned (XCall (ValueRef lx, qk), [[]]), t
         else: match lx.g.vals[qk]:
             ? v if (IsWidgetFn v) and not (IsValueWidget lx, qk): VlOwned (Refusal (WidgetValueWords qk)), t
@@ -1341,9 +1343,11 @@ fn CtorApp lx, env, c, args, span:
     match c.owner:
         "Bool": VlOwned (XBool (c.name == "True")), OutBool
         "Prelude.Error":
-            let kind = Or vals[0], (XStr "")
             let msg = Or vals[1], (XText "")
-            let made = XCall (RefRuntime "rt::Error::new"), [[kind, msg]]
+            # the kind is a `Fault` value (`fault_kind`): the error keeps its name
+            let made = match Or vals[0], (XStr ""):
+                XStr name: XCall (RefRuntime "rt::Error::new"), [[(XStr name), msg]]
+                kind: XCall (HelperRef "error_of"), [[(XRef kind), msg]]
             match t:
                 OutRes ignore: Failing made, t
                 otherwise: VlOwned made, OutError
@@ -1634,7 +1638,10 @@ fn FieldValue lx, env, r, name:
     let x = match rv:
         VlPlace y, ignore, ignore: y
         VlOwned y, ignore: y
-    VlPlace (FieldOfEx lx, x, rty, f), mode, ft
+    # an `Error`'s `kind` is kept as its name: read, it is a `Fault` value (`kind_of`)
+    match rty:
+        TyCon "Prelude.Error", ignore if name == "kind": VlOwned (XCall (HelperRef "kind_of"), [[(XRef x)]]), OutPod
+        otherwise: VlPlace (FieldOfEx lx, x, rty, f), mode, ft
 
 # A field of a value of the program's type `rty`, by its owner type (`XFieldOf`); a type
 # lowering refused to name (`FieldInfo` says so) reads by the name alone.
@@ -1656,7 +1663,7 @@ fn ?FieldOwner lx, rty = match rty:
 FieldInfo: unbounded fn Lx, Ty, Text -> ((OutTy, Bool, Text))
 fn FieldInfo lx, rty, name = match rty:
     # the runtimes' `Error`, a builtin record: `kind` (a `Fault`) and `message`, both plain
-    TyCon "Prelude.Error", ignore: (((InternalBugType "a field {name} of an Error"), False, (FieldSpell "Prelude", name, tText)))
+    TyCon "Prelude.Error", ignore: (((if name == "kind": OutPod else: OutText), False, (FieldSpell "Prelude", name, tText)))
     TyCon n, args: match lx.g.ctors[n]:
         ? c:
             let ?fix = Fold (Range0 (Len c.fields)), nil, \|?found, i| if (Or c.fields[i], "") == name: ? i else: ?found

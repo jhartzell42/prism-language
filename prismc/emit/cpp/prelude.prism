@@ -900,6 +900,20 @@ Dynamic<T> dyn_constant(T v) { return Dynamic<T>::constant(std::move(v)); }
 template <class T>
 Event<Array<T>> merge_all(const Array<Event<T>>& events) { return ::prism_rtl::merge_all(events); }
 
+/// A fault kind as a value (`Fs.NotFound` named, an `Error`'s `kind` read): its name, the
+/// choice with no arguments it crosses to a World as.
+inline Pod fault_kind(const std::string& name) { return Pod::name(name); }
+
+/// `e.kind`.
+inline Pod kind_of(const Error& e) { return Pod::name(e.kind_p); }
+
+/// `Error(kind=k, message=m)` with `k` a value.
+inline Error error_of(const Pod& kind, Text message) {
+    const Pod::Choice* c = kind.structure().if_choice();
+    if (!c) panic("an `Error` of a kind that is no fault kind");
+    return Error(c->ctor, std::move(message));
+}
+
 /// `!Updated $d` as an event value (in a supplier's answer, or in a function that takes
 /// the dynamic whole): it fires `d`'s value after the tick, in the tick `d`'s update event
 /// fires (Semantics ch. 7, R3).
