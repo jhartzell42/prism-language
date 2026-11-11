@@ -221,7 +221,10 @@ fn BindRecord env, st, p, n, fields, rest, t:
                     Fold (Range0 (Len fields)), ((env, st2)), \|((en, s)), i|
                         let fp = Or fields[i], FieldPat(marks="", ?name=nil, pattern=Pattern(kind=PIgnore, span=p.span), span=p.span)
                         let fname = FieldPatName fp, c.fields, i
-                        match ?IndexOf c.fields, fname:
+                        # `collision`: a pattern names a field once, as a construction does
+                        let before = Fold (Range0 i), False, \|seen, k| seen or (FieldPatName (Or fields[k], fp), c.fields, k) == fname
+                        if before: ((en, (Err s, "collision", fp.span, "`{fname}` is matched twice")))
+                        else: match ?IndexOf c.fields, fname:
                             ? j: BindPattern en, (PatMarks s, (BareName c.owner), fname, (Or c.args[j], TyErr), fp), fp.pattern, (SubstQ inst, (Or c.args[j], TyErr)), True
                             nil: ((en, (Err s, "mismatch", fp.span, "`{BareName c.owner}` has no field `{fname}`")))
 

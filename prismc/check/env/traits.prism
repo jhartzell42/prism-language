@@ -132,9 +132,12 @@ fn CheckPair g, st, a, b:
     else: if a.file < b.file or (a.file == b.file and a.span.start <= b.span.start): CheckPairIn g, st, a, b
     else: CheckPairIn g, st, b, a
 
-# Two heads with different constructors never unify: most pairs of a trait's impls.
+# Two heads with different constructors never unify: most pairs of a trait's impls. A head
+# that is no type (its own error is reported where it is written) is no impl to meet.
 HeadsMayMeet: fn Ty, Ty -> Bool
 fn HeadsMayMeet (TyCon x, ignore), (TyCon y, ignore) = x == y
+fn HeadsMayMeet TyErr, ignore = False
+fn HeadsMayMeet ignore, TyErr = False
 fn HeadsMayMeet ignore, ignore = True
 
 CheckPairIn: unbounded fn G, St, ImplInfo, ImplInfo -> St
