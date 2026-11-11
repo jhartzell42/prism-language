@@ -1,0 +1,14 @@
+# Derived by hand from Semantics ch. 4, "Binding groups and cycles" (any line may use any name the block binds; the order of a group's lines decides positions and nothing else) and ch. 8 (`<-` binds the arm's plain result): the `Loud` arm gives 10, the hold above begins there, and a click adds 1.
+test a_hold_above_reads_the_arms_result
+
+tick 0
+  added:
+    0: Ui.Label(text="h 10")
+    1: Ui.Label(text="x")
+    2: Ui.Button(label="go 10")
+
+tick 1
+  in:
+    2: click
+  changed:
+    0: Ui.Label(text="h 11")

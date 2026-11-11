@@ -1,0 +1,31 @@
+# A hold above a building `match` whose initial value is the arm's plain result (Semantics
+# ch. 4, "Binding groups and cycles": a widget block is one binding group, any line may
+# use any name the block binds, and "the order of a group's lines decides positions and
+# nothing else"; ch. 8: `<-` binds the arm's plain result). The hold and the label that
+# reads it stand above the `match`; nothing here is a cycle.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Panel: fn Mode -> @unit
+fn @Panel mode:
+    $h <- n then $h + 1 on !go
+    Ui.Label($text=$"h {$h}")                                          # 0
+    n <- match mode:                                                   # 1
+        Loud t:
+            Ui.Label($text=$"{t}")                                     # 1
+            @ 10
+        Soft:
+            Ui.Label($text=$"soft")                                    # 1
+            @ 20
+    !go <- Ui.Button($label=$"go {n}")                                 # 2
+
+@main: @unit
+@main:
+    @Panel (Loud "x")                                                  # 0, 1, 2

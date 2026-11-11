@@ -1,0 +1,13 @@
+# A root's result is what its World hears after each tick (Semantics ch. 7, "The outputs":
+# the root's result), one value; a bundle is not data (Type System ch. 2, "Bundles and
+# sparse tuples"), so a root cannot end on one. prismc's back end refuses it today ("a
+# bundle as the root's result"); the checker should. Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+use Ui.*
+
+@main: @((!Nat, $Nat))
+@main:
+    !go <- Ui.Button($label=$"go")
+    $n <- 0 then $n + 1 on !go
+    @ ((($n + 1) on !go, $n))

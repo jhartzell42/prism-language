@@ -1,0 +1,5 @@
+tests/checker/neg/root-bundle-result.prism:9: error[root-bundle]: the root `@main` ends on a bundle, `((!Nat, $Nat))`; a World hears one plain value, dynamic or event
+    @main: @((!Nat, $Nat))
+           ^^^^^^^^^^^^^^^
+  fix: end the root on one part, or bind the bundle in a root that reads both
+1 error
