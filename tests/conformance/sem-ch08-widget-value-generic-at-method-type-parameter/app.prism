@@ -1,0 +1,45 @@
+# A generic widget taken as a blueprint value in an impl's method, given a value of the
+# trait method's own type parameter (Type System ch. 3: a method's signature may have
+# type variables beside the trait's parameter, decided at each call as any function's
+# are, ch. 5; ch. 2: a blueprint is an opaque handle and still a value; Semantics ch. 8:
+# "a blueprint builds nothing until a block applies it"). The page asks the `Nat` impl
+# at a `Text` and at a `Bool`, and the `Text` impl at a `Nat`.
+# sem-ch08-widget-value-generic-in-method with the type the method's own.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Shown: fn a, Text -> @unit where a: ^Show
+fn @Shown x, label:
+    Ui.Label($text=$"{label}={Show x}")
+
+trait ^Framed a:
+    ?FrameWith: fn a, b -> ?@unit where b: ^Show
+
+impl ^Framed Nat:
+    fn ?FrameWith n, x = ?Pick (n > 0), (@Shown x, "counted")
+
+impl ^Framed Text:
+    fn ?FrameWith label, x = ?Pick True, (@Shown x, label)
+
+@Page: @unit
+@Page:
+    let one: Nat = 1
+    let two: Nat = 2
+    let zero: Nat = 0
+    match ?FrameWith one, "a":
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    match ?FrameWith two, True:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    match ?FrameWith "named", 7:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    match ?FrameWith zero, 7:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
