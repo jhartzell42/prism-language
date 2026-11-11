@@ -1,0 +1,36 @@
+# Both outcomes of the checked conversion, told apart by a trait with an impl for `[Nat]+`
+# and one for `[Nat]` (Type System ch. 2, "Collections": `xs as [a]+?` checks the promise
+# and gives `?[a]+`; ruling CK): the value it gives is a `[Nat]+` and asks that impl, in a
+# generic function too, and where it gives `nil` the collection is still the `[Nat]`.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Named a:
+    Name: fn a -> Text
+
+impl ^Named [Nat]:
+    fn Name xs = "plain {Len xs}"
+
+impl ^Named [Nat]+:
+    fn Name xs = "non-empty {Len xs}"
+
+Twice: fn a -> Text where a: ^Named
+fn Twice x = "{Name x} {Name x}"
+
+Tell: fn [Nat] -> Text
+fn Tell xs = match xs as [Nat]+?:
+    ? kept: Twice kept
+    nil: Twice xs
+
+?Kept: fn [Nat] -> ?[Nat]+
+fn ?Kept xs = xs as [Nat]+?
+
+Told: fn ?[Nat]+ -> Text
+fn Told (? kept) = Name kept
+fn Told nil = "nothing"
+
+@main: @unit
+@main:
+    let empty: [Nat] = [[]]
+    Ui.Label($text=$"{Tell [[4, 5]]}, {Tell empty}, {Told (?Kept [[6]])}, {Told (?Kept empty)}")    # 0
