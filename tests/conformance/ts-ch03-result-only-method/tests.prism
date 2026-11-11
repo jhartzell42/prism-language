@@ -1,0 +1,7 @@
+# The tests of ts-ch03-result-only-method.
+emit Ui.*
+use App.*
+
+test a_method_is_called_at_its_results_type, @main:
+    build
+        => expect Ui.Label(text="1 blank 21 blank 3 4 blank 41 5 blank 5 7 2")
