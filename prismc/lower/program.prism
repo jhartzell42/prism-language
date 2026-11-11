@@ -1211,7 +1211,7 @@ fn TyDefs lx, ti:
         nil: acc
     let params = Each ti.params, \|p| Camel p
     let bare = BareName ti.name
-    let Mk = \|shape, cases| TyDef(name=(Camel bare), prism=bare, params=params, shape=shape, cases=cases, eq=(HasText derives, "Prelude.Eq"), ord=(HasText derives, "Prelude.Ord"), show=(if HasOwnShow lx, ti.name: ShownOwn else: if HasText derives, "Prelude.Show": ShownDerived else: NotShown), pod=((TyPodable lx, (TyCon ti.name, [[]]), [[]]) and Fold cases, True, \|ok, c| ok and Fold c.fields, True, \|ok2, ((ignore, ft))| ok2 and Podable ft), doc=(TypeDoc lx, ti))
+    let Mk = \|shape, cases| TyDef(name=(Camel bare), prism=bare, params=params, keyed=(Each (KeyedParameters lx, ti.name), \|q| Camel q), shape=shape, cases=cases, eq=(HasText derives, "Prelude.Eq"), ord=(HasText derives, "Prelude.Ord"), show=(if HasOwnShow lx, ti.name: ShownOwn else: if HasText derives, "Prelude.Show": ShownDerived else: NotShown), pod=((TyPodable lx, (TyCon ti.name, [[]]), [[]]) and Fold cases, True, \|ok, c| ok and Fold c.fields, True, \|ok2, ((ignore, ft))| ok2 and Podable ft), doc=(TypeDoc lx, ti))
     match ti.body:
         BRecord fs:
             let fields = Each (Range0 (Len fs)), \|i|
@@ -1230,6 +1230,43 @@ fn TyDefs lx, ti:
             [[ItType (Mk shape, defs)]]
         BRowKind: if ti.name == "Prelude.Fault": [[]] else: [[ItRow (RowDefOf lx, ti)]]
         otherwise: [[]]
+
+# The type parameters of a declared type that a map's key holds (`type Roster k v =
+# choice: Listed (k ==> v)` keys by `k`), in a field of the type or in a type a field
+# names at them: the least answer over the program's types with type parameters, found
+# by rounds that each add a parameter or stop (the parameters are finitely many).
+KeyedParameters: unbounded fn Lx, Text -> [Text]
+fn KeyedParameters lx, name = match lx.g.types[name]:
+    ? ti: if (Len ti.params) == 0: [[]] else: Or (KeyedRounds lx, {})[name], [[]]
+    nil: [[]]
+
+KeyedRounds: unbounded fn Lx, (Text ==> [Text]) -> (Text ==> [Text])
+fn KeyedRounds lx, known:
+    let next = Fold (Values lx.g.types), known, \|m, ti|
+        if (Len ti.params) == 0: m
+        else:
+            let fields = match ti.body:
+                BRecord fs: Each fs, \|((ignore, ft))| ft
+                BChoice cases: Fold cases, [[]], \|acc, ((ignore, ats))| Append acc, ats
+                otherwise: [[]]
+            let found = Fold fields, (Or m[ti.name], [[]]), \|acc, ft| UnionTexts acc, (KeyedIn lx, m, ft, False)
+            Insert m, ti.name, (Filter found, \|q| HasText ti.params, q)
+    if (Show next) == (Show known): known else: KeyedRounds lx, next
+
+# The type parameters in a type that a map's key holds, `inKey` inside one: a map's key;
+# a declared type's argument at a parameter that type keys by (`known`).
+KeyedIn: unbounded fn Lx, (Text ==> [Text]), Ty, Bool -> [Text]
+fn KeyedIn lx, known, t, inKey = match t:
+    TyQ q: if inKey: [[q]] else: [[]]
+    TyRigid q: if inKey: [[q]] else: [[]]
+    TyMap k, v: UnionTexts (KeyedIn lx, known, k, True), (KeyedIn lx, known, v, inKey)
+    TyCon n, args:
+        let params = match lx.g.types[n]:
+            ? ti: ti.params
+            nil: [[]]
+        let keyed = Or known[n], [[]]
+        Fold (Range0 (Len args)), [[]], \|acc, i| UnionTexts acc, (KeyedIn lx, known, (Or args[i], TyErr), (inKey or HasText keyed, (Or params[i], "")))
+    other: Fold (PartsOfType other), [[]], \|acc, part| UnionTexts acc, (KeyedIn lx, known, part, inKey)
 
 # Whether a checker type can cross to a World, through the declarations it names: a
 # record holding a function anywhere inside is not `^Pod` (a type reached again is taken
@@ -1320,7 +1357,7 @@ DescDefOf: unbounded fn Lx, TagInfo -> TyDef
 fn DescDefOf lx, tg:
     let name = DescStructOf tg
     let fields = Each tg.fields, \|((fname, ft))| (((FieldSpell tg.home, fname, ft), (DescFieldTy lx, ft)))
-    TyDef(name=name, prism=name, params=[[]], shape=ShapeRecord, cases=[[CaseDef(name=name, prism=name, fields=fields, labels=(Each tg.fields, \|((fname, ignore))| fname))]], eq=False, ord=False, show=NotShown, pod=False, doc="The description of `{tg.name}`: an element applied as a plain value, its fields as given.")
+    TyDef(name=name, prism=name, params=[[]], keyed=[[]], shape=ShapeRecord, cases=[[CaseDef(name=name, prism=name, fields=fields, labels=(Each tg.fields, \|((fname, ignore))| fname))]], eq=False, ord=False, show=NotShown, pod=False, doc="The description of `{tg.name}`: an element applied as a plain value, its fields as given.")
 
 DescFieldTy: unbounded fn Lx, Ty -> OutTy
 fn DescFieldTy lx, ft = match LayerOf ft:

@@ -1440,7 +1440,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A program's own `impl ^Show`** → `p.raw(&text)`.
 - **`derive ^Pod`** (and every type that crosses to a World) → `impl rt::ToPod`,
   `impl rt::FromPod`; a type with its own `^Show` crosses as `Pod::Shown(text, structure)`,
-  so a key prints `0/[e2]/0` and still matches structurally.
+  so a key prints `0/[e2]/0` and still matches structurally. A type parameter that a
+  map's key holds, in a field or in a type a field names at it (`TyDef.keyed`,
+  `KeyedParameters`: `type Roster k v = choice: Listed (k ==> v)`), is bounded by `Ord`
+  in the type's `Show`, `ToPod` and `FromPod` impls (`BoundedKeyed`), as prism_rtl's
+  impls for `Map` want; C++'s templates take the key's order where they use it.
 - **`Show x`** → `rt::show_text(&x)`.
 - **The transcript** is the Test World printing the `Pod`s it receives with the same
   printer, in Conformance ch. 1's sections.
