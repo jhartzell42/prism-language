@@ -1,0 +1,13 @@
+tests/checker/neg/non-empty-remove.prism:9: error[mismatch]: setting `nil` at an index removes it, and a `(Nat ==> Text)+` is non-empty
+        &_[k] <= nil
+                 ^^^
+  fix: update the plain collection (`as` drops the promise) and check the result with `as (Nat ==> Text)+?`
+tests/checker/neg/non-empty-remove.prism:13: error[mismatch]: setting `nil` at an index removes it, and a `[Nat]+` is non-empty
+        &_[0] <= nil
+                 ^^^
+  fix: update the plain collection (`as` drops the promise) and check the result with `as [Nat]+?`
+tests/checker/neg/non-empty-remove.prism:17: error[mismatch]: this may be `nil`, which set at an index removes it, and a `(Nat ==> Text)+` is non-empty
+        &_[to] <= m[from]
+                  ^^^^^^^
+  fix: write `? v` to set a value, or update the plain collection (`as` drops the promise) and check the result with `as (Nat ==> Text)+?`
+3 errors
