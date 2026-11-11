@@ -111,3 +111,19 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   error. Each packed value keeps its own dictionary. Claude's ruling (the fixer proposed
   the dictionary of an array's first element, an empty array a fault); told to Jimmy and
   not overruled.
+- **NI** A trait asked at `[a]+` is solved by an impl for `[a]+`, never by the impl for
+  `[a]`. With only `impl ^Sized [a]`, `Count ([[1, 2]] as [Nat]+)` is a `no-impl` error
+  whose fix line says to write `impl ^Sized [a]+` or to pass the collection with
+  `as [a]`. `^Eq`, `^Ord` and `^Show` at `[a]+` go by the collection's parts. A non-empty
+  value still converts where a plain `[a]` is wanted. Jimmy: "I agree." Refused: falling
+  back to the `[a]` impl for traits whose type is never a result. `[a]+` and
+  `(K ==> V)+` have a target type of their own on both targets.
+- **PG** A function that calls itself at a type that grows without end
+  (`fn Depth value, n: 1 + Depth [value], (n -? 1)`) is a checker error. Jimmy: "error
+  yes". Recursion at another type that reaches a finite set of types stays legal with a
+  signature (Type System chapter 2). Refused: a second lowering with the types passed at
+  run time.
+- **NL** Named lenses (`&Acc: fn &Vm -> &Int`, Semantics chapter 5) and `Over` are out of
+  this compiler's scope: the checker's `unsupported` error stands. Jimmy: "Out of scope I
+  think". Lens paths inside an `update` block (`&_.regs.acc <= e`, `for &v <- &_`) are in
+  scope and lowered.
