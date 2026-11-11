@@ -2910,21 +2910,33 @@ fn BlockStmt lx, env, s = match s.kind:
 # its uses have, each a binding of its own (`twin_fn_0`, `twin_fn_1`; one alone keeps the
 # plain name), each use bound to its instantiation's. An instantiation is this one's (an
 # enclosing generalized `let`'s) applied to what the use gives the variables. With no use
-# there is nothing to lower.
+# it is lowered once all the same, unless it is a lambda (`LetInstantiations`).
 GenericLet: unbounded fn Lx, Env, SName, GenNote, Expr -> (([Do], Env))
 fn GenericLet lx, env, n, gn, x:
-    let distinct = Instantiations lx, gn
+    let distinct = LetInstantiations lx, gn, x
     Fold (Range0 (Len distinct)), (([[]], env)), \|((dos, en)), k|
         let lxk = AtInstance lx, (Or distinct[k], (([[]], [[]])))
-        let ((made, en2)) = GenericLetBound lx, en, n, gn, k, (Own (ValueOf lxk, env, x))
+        let ((made, en2)) = GenericLetBound lx, en, n, gn, x, k, (Own (ValueOf lxk, env, x))
         (((Append dos, made), en2))
+
+# The instantiations a generalized `let` in a function's body is lowered at: those its
+# uses have (`Instantiations`). One no use reads still runs where it is written
+# (Semantics ch. 7: "The graph is lazy, the language is eager"), its calls with it, so it
+# is lowered once, each type variable at `unit` and each color bounded (a right side that
+# is no lambda generalizes over no constrained variable, Type System ch. 5, so any type
+# does). A lambda no use reads runs nothing and is not lowered.
+LetInstantiations: unbounded fn Lx, GenNote, Expr -> [(([((Text, Ty))], [((Text, Col))]))]
+fn LetInstantiations lx, gn, x:
+    let read = Instantiations lx, gn
+    if (Len read) > 0 or IsLambdaValue x: read
+    else: [[(((Each gn.tys, \|q| ((q, (TyTuple [[]])))), (Each gn.cols, \|c| ((c, CBound)))))]]
 
 # One instantiation of a generalized `let` bound to its value (`GenericLet`; an unbounded
 # function's body lowers each value itself, `GenericLetTail`).
-GenericLetBound: unbounded fn Lx, Env, SName, GenNote, Nat, Ex -> (([Do], Env))
-fn GenericLetBound lx, env, n, gn, k, value:
+GenericLetBound: unbounded fn Lx, Env, SName, GenNote, Expr, Nat, Ex -> (([Do], Env))
+fn GenericLetBound lx, env, n, gn, x, k, value:
     let nkey = SNameKey n
-    let distinct = Instantiations lx, gn
+    let distinct = LetInstantiations lx, gn, x
     let ((tys, cols)) = Or distinct[k], (([[]], [[]]))
     let lxk = AtInstance lx, ((tys, cols))
     let rs = LocalNameAt lx, nkey, n.span
@@ -2934,7 +2946,9 @@ fn GenericLetBound lx, env, n, gn, k, value:
     let en1 = Bind env, bkey, (BnLocal (XVar rk), Owned, bt)
     let en2 = update en1:
         &_.uses <= Insert &_.uses, "{nkey}#{Show ((tys, cols))}", bkey
-    (([[(DoLet (PaBind rk), value)]], en2))
+    # one no use reads has no reader to decide its type: the binding names it
+    let unread = (Len (Instantiations lx, gn)) == 0
+    (([[(DoLet (if unread: PaTyped (PaBind rk), bt else: PaBind rk), value)]], en2))
 
 # The distinct instantiations a generalized `let`'s uses have, in page order. A use
 # inside another generalized `let` (`Take` used in `Builder`) may be at that one's

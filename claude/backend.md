@@ -1222,7 +1222,16 @@ it make every program an interpreter run, and every type mistake a runtime fault
   that instantiation, where a color no use decides is bounded, and a call in a branch
   ends the branch in a continuation over that instantiation's value (`KValue`, which a
   statement's own branches use too, `KStmt`). The places one instantiation's frames
-  bound are unbound before the next lowers the same expression.
+  bound are unbound before the next lowers the same expression. One no use reads runs
+  where it is written all the same (Semantics ch. 7, "the language is eager"): it is
+  lowered once, each type variable at `unit` and each color bounded, its binding's type
+  named (`LetInstantiations`; in a bounded body too, `GenericLet`); an unread lambda is
+  not lowered.
+- **An unbounded function with a type parameter no parameter's type names**
+  (`unbounded fn Nat -> [a]`): its job's struct has a marker field for it
+  (`type_parameters`, Rust; C++ needs none), so the job is made by its `Start` alone
+  (`JobByStart`), and a call of the `Start` writes the type parameters out as the
+  callee's type there gives them (`StartOf`).
 - **`@Run`** is Appendix B's Prism definition over `@Machine` and `@Defer`, compiled like
   any widget and inlined into its caller's node: the job is a `Hold`, each cycle fires
   `!turns`, a `More` arms the `@Defer`, a `Finished` fires the result.

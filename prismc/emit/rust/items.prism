@@ -136,12 +136,20 @@ RustJob: unbounded fn JobDef -> Text
 fn RustJob j:
     let gnames = GenericNames (Each j.generics, \|((g, ignore))| g)
     # Public: a tail call from another module builds the job by its fields.
-    let fields = Join (Each j.fields, \|((n, t))| "pub {n}: {Type t},"), "\n"
+    # A type parameter no field names (one in the function's result alone, `unbounded fn
+    # Nat -> [a]`) is named by a marker field: Rust takes no struct with a type parameter
+    # it does not use. The job is then made by its `Start` alone (the lowering's
+    # `JobByStart`), which names the type parameters.
+    let named = Fold j.fields, [[]], \|acc, ((ignore, t))| Append acc, (TyParamsIn t)
+    let unnamed = Filter (Each j.generics, \|((g, ignore))| g), \|g| not (Fold named, False, \|found, other| found or other == g)
+    let marker = if (Len unnamed) == 0: [[]] else: [["pub type_parameters: ::std::marker::PhantomData<({Join unnamed, ", "},)>,"]]
+    let fields = Join (Append (Each j.fields, \|((n, t))| "pub {n}: {Type t},"), marker), "\n"
     let params = Join (Each j.fields, \|((n, t))| "{n}: {Type t}"), ", "
     # A job is an `Rc<dyn Job>`, so its type parameters live as long as the program.
     let bounded = StaticGenerics j.generics
     let start = "pub fn {j.start}{bounded}({params}) -> ::std::rc::Rc<dyn ::prism_rtl::Job<{Type j.ret}>>"
-    let startBody = "::std::rc::Rc::new({j.name} \{ {Join (Each j.fields, \|((n, ignore))| n), ", "} \})"
+    let made = Append (Each j.fields, \|((n, ignore))| n), (if (Len unnamed) == 0: [[]] else: [["type_parameters: ::std::marker::PhantomData"]])
+    let startBody = "::std::rc::Rc::new({j.name}{if gnames == "": "" else: "::{gnames}"} \{ {Join made, ", "} \})"
     Job (SourceDoc "", j.doc), j.name, gnames, bounded, fields, (Type j.ret), (BodyLines j.body), start, startBody
 
 # A type, its derives, and its printer and plain-data impls (claude/backend.md, "Printing").
