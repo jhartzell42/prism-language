@@ -621,8 +621,8 @@ pub fn element_blueprint<E: Level + Eq, A: AnswerOf<E>>(e: &Element<E>) -> Bluep
         Element::Live(l) => l.clone(),
         Element::Described(d) => return described_blueprint(d),
     };
-    Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, _base, cx| {
-        let at = path.at(0);
+    Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, base, cx| {
+        let at = path.at(base);
         // The level at the build is the identity: a row is built from the entry after the
         // tick, and an early row's entry cannot be read until its host's node is made.
         let element = e.identity.level_pod(cx);
@@ -647,7 +647,7 @@ pub fn element_blueprint<E: Level + Eq, A: AnswerOf<E>>(e: &Element<E>) -> Bluep
                 cx.listen(element, &(node.clone() as Rc<dyn Node>));
             }
         }
-        Ok(Supplied { node, first, forwards: true, entry: None, built: 0, leave: None })
+        Ok(Supplied { node, first, forwards: true, entry: None, built: 1, leave: None })
     })
 }
 
@@ -662,8 +662,8 @@ pub fn element_blueprint<E: Level + Eq, A: AnswerOf<E>>(e: &Element<E>) -> Bluep
 /// and a request there goes to the enclosing host ([`HostOf::request_from`]).
 pub fn described_blueprint<E: Level + Eq, A: AnswerOf<E>>(d: &Described<E>) -> Blueprint<E, A> {
     let d = d.clone();
-    Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, _base, cx| {
-        let at = path.at(0);
+    Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, base, cx| {
+        let at = path.at(base);
         let identity = d.level.sample(cx);
         let node = Rc::new(Placed { at: at.clone(), element: identity.clone(), level: d.level.clone(), sink, handle: Cell::new(None), requests: RefCell::new(Vec::new()), entry: RefCell::new(None) });
         let weak = Rc::downgrade(&node);
@@ -691,7 +691,7 @@ pub fn described_blueprint<E: Level + Eq, A: AnswerOf<E>>(d: &Described<E>) -> B
                 if first.is_some() {
                     cx.listen(element, &(node.clone() as Rc<dyn Node>));
                 }
-                Ok(Supplied { node, first, forwards: false, entry: None, built: 0, leave: None })
+                Ok(Supplied { node, first, forwards: false, entry: None, built: 1, leave: None })
             }
             Scope::Hosted(host) => {
                 // a place of the row's own in the enclosing host's document: an entry that
@@ -717,7 +717,7 @@ pub fn described_blueprint<E: Level + Eq, A: AnswerOf<E>>(d: &Described<E>) -> B
                     let h = firings.port.subscribe(Rc::new(move |v: &Pod, cx: &mut Cx| outer.request_from(&to, field.as_deref(), v.clone(), cx)));
                     node.requests.borrow_mut().push((firings.port.clone(), h));
                 }
-                Ok(Supplied { node, first, forwards: false, entry: Some(entry), built: 0, leave: None })
+                Ok(Supplied { node, first, forwards: false, entry: Some(entry), built: 1, leave: None })
             }
         }
     })

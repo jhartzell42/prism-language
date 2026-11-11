@@ -790,8 +790,8 @@ struct Placed : Node {
 template <class E, class A>
     requires AnswerOf<A, E>
 Blueprint<E, A> described_blueprint(const Described<E>& d) {
-    return [d](Path path, Sink<A> sink, const Scope<E, A>& scope, std::size_t, Cx& cx) -> Result<Supplied<E, A>> {
-        Path at = path.at(0);
+    return [d](Path path, Sink<A> sink, const Scope<E, A>& scope, std::size_t base, Cx& cx) -> Result<Supplied<E, A>> {
+        Path at = path.at(base);
         E identity = d.level.sample(cx);
         auto node = make_rc<detail::Placed<E, A>>(at, identity, d.level, std::move(sink));
         Weak<detail::Placed<E, A>> weak = node;
@@ -816,7 +816,7 @@ Blueprint<E, A> described_blueprint(const Described<E>& d) {
             }
             cx.added(at, element);
             if (first) cx.listen(element, node);
-            return Supplied<E, A>{node, std::move(first), false};
+            return Supplied<E, A>{node, std::move(first), false, nullptr, 1};
         }
         // a place of the row's own in the enclosing host's document: an entry that takes the
         // level at the build and again each time it moves
@@ -839,7 +839,7 @@ Blueprint<E, A> described_blueprint(const Described<E>& d) {
             });
             node->requests.emplace_back(firings.port, h);
         }
-        return Supplied<E, A>{node, std::move(first), false, entry};
+        return Supplied<E, A>{node, std::move(first), false, entry, 1};
     };
 }
 
@@ -853,8 +853,8 @@ template <class E, class A>
 Blueprint<E, A> element_blueprint(const Element<E>& value) {
     if (const Described<E>* d = std::get_if<Described<E>>(&value.form)) return described_blueprint<E, A>(*d);
     const Live<E>& e = std::get<Live<E>>(value.form);
-    return [e](Path path, Sink<A> sink, const Scope<E, A>& scope, std::size_t, Cx& cx) -> Result<Supplied<E, A>> {
-        Path at = path.at(0);
+    return [e](Path path, Sink<A> sink, const Scope<E, A>& scope, std::size_t base, Cx& cx) -> Result<Supplied<E, A>> {
+        Path at = path.at(base);
         // The level at the build is the identity: a row is built from the entry after the
         // tick, and an early row's entry cannot be read until its host's node is made.
         Pod element = level_pod(e.identity, cx);
@@ -879,7 +879,7 @@ Blueprint<E, A> element_blueprint(const Element<E>& value) {
             cx.added(at, element);
             if (first) cx.listen(element, node);
         }
-        return Supplied<E, A>{node, std::move(first), true};
+        return Supplied<E, A>{node, std::move(first), true, nullptr, 1};
     };
 }
 

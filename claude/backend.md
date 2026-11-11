@@ -475,7 +475,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   back and one applied in a hosted scope are refused.
 - **`prism_rtl::Blueprint`** is built with a base beside its path, sink and scope: 0
   under a host's row, the line's position as built in a block. `Supplied` tells how many
-  places were built (`built`) and how a widget's row leaves (`leave`).
+  places were built (`built`) and how a widget's row leaves (`leave`). The element forms
+  (`element_blueprint`, `described_blueprint`) put their one place at the base and
+  answer at the first position under what they built, so a block applies them as it
+  applies a widget's.
 - **A widget defined in a block** (`@line:` and its block) is bound to its block
   (`BnLocalWidget`) and lowered at each line that applies it, in that line's
   environments, at the node's next positions (`LocalWidgetLine`).
