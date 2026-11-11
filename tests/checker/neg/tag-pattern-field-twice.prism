@@ -1,0 +1,15 @@
+# A tag's pattern names a field once, as a record's does (neg pattern-field-twice on the
+# claude-bugs branch: "`x` is matched twice") and as an element applied does ("`label` is
+# given twice"): a second pattern for one field is refused. The checker lets it through
+# today. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+use Ui.*
+
+Name: fn Element Ui.* o -> Text
+fn Name e = match e:
+    Ui.Button($label=$a, $label=$b): "button"
+    otherwise: "other"
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Name (Ui.Label($text=$"x"))}")
