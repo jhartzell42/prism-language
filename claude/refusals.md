@@ -103,9 +103,17 @@ Bundles
 - A bundle with a late plain part bound whole to a name (`both <- @Choose mode`) is its
   parts (`BindWhole`, sem-ch08-late-part-bundle-named), and a late plain part taken
   apart by a pattern of its own is read by that pattern (sem-ch08-late-part-nested-pattern).
-  Left: a line of the block's node below the split that reads the whole name (`let same =
-  both`) finds no binding ("the name both, which nothing declares"); a bundle inside the
-  bundle whose late part a nested tuple pattern binds is not bound late. No tests.
+  The name is bound before the block's lines (`PreBindWhole`), so a line above the split
+  reads it (sem-ch08-late-part-bundle-named-read-above), and a `let` of a bundle written
+  out over a late name is late (`LateBundleLet`, sem-ch04-late-let-bundle-above).
+  Left, no tests: lower/node/def.prism (`PreBindWholeParts`, `LateBundleParts`: "a late
+  plain part of the bundle .. read at its block's build") a `let` of the block's node,
+  above the split, whose tuple pattern takes a late bundle apart and names its plain
+  part (`let ((step, !go)) = both` above `both <- ..`); (`PreBindWhole`,
+  `MarkLateBundle`: "read as one value at its block's build") a late bundle read whole
+  as a value (a supplier's `@ both`); a bundle inside the bundle whose late part a
+  nested tuple pattern binds is not bound late; a `let` of a bundle read by a line
+  above the `let` finds no binding (a bundle's name is bound at its line).
   A dynamic part of a named bundle read by a row of a row is read through a getter of
   the row between (`ThroughGetter`, sem-ch04-named-bundle-in-row-of-row).
 - A `rebuild` whose block ends on a bundle a line named whole (`@ both`) is lowered
@@ -138,13 +146,21 @@ Building `match`, clause widgets, `rebuild`
   (`EarlyChoiceLine`, sem-ch04-building-match-value-above); a place's field, a plain
   `let` (of one name, or of a pattern whose names are plain:
   sem-ch04-late-let-pattern-above) and a hold's first value are late in turn
-  (sem-ch04-building-match-read-above, sem-ch04-building-match-hold-above). Left
-  refused: a `let` of a bundle or of a type with time inside that reads the late name
-  (the `unbuilt` refusals of `BindLate`, `MarkLateLets` and `BindWhole`:
-  sem-ch04-late-let-bundle-above, sem-ch08-late-part-bundle-named-read-above); and in
-  `DeferredLine`, a line that takes the late name and whose places are counted as
-  built, and one that gives a plain result of its own (no program found:
-  sem-ch04-late-value-above-gives-result is built early and passes).
+  (sem-ch04-building-match-read-above, sem-ch04-building-match-hold-above). A `let` of
+  a bundle written out that reads the late name is late (`LateBundleLet`,
+  sem-ch04-late-let-bundle-above). A building `match` or `if` above that reads the
+  plain result of a building `match` or `if` whose arms give it from nothing their own
+  lines build takes it as a value of the build (`IsPureChoiceAt`, `PureChoiceValue`:
+  sem-ch04-building-if-on-late-value-above, sem-ch04-building-match-on-late-value-above).
+  Left refused: a `let` of a type with time inside that is no bundle and reads the late
+  name (the `unbuilt` refusals of `BindLate`, `MarkLateLets`); and in `DeferredLine`, a
+  line that takes the late name and whose places are counted as built, where the late
+  result is no pure choice's (an arm whose result reads what its own lines build, a
+  late widget result: the places of the row that gives the result take their numbers
+  from a count that reads the result; it needs a row built in two steps, its result
+  first and its places sent after. No test), and one that gives a plain result of its
+  own (no program found: sem-ch04-late-value-above-gives-result is built early and
+  passes).
 - lower/jobs.prism: none added. A bare `for` in a job is lowered (`ForJob`), no test of
   the job form; the plain form is sem-ch05-update-for-bare.
 - lower/node/finish.prism:699 a place read at its block's build before the node exists

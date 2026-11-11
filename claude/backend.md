@@ -366,11 +366,23 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `Words` is in scope and the module declares the value (`?QualifiedField`).
 - **A generic widget's type variable in an element parameter's output** (`Element Ui.*
   o`) is matched at the call as any parameter's is (`?ParamMatch`, `Unrigid`, `RigidsIn`).
-- **A bundle with a late plain part bound whole to one name** is the name's parts
-  (`BindWhole`): an event or a dynamic as the line gives it, a plain part a getter of
-  the node; the lines below the split read the name part by part through the node
-  (`RowPartsBn`). A late plain part bound by a pattern of its own gives each name a
+- **A bundle with a late plain part bound whole to one name** is the name's parts,
+  bound before any line of the block is lowered (`PreBindWhole`): an event part a node
+  of the block that the line's event feeds once the line is built (`BindWhole`), a
+  dynamic part a getter defined then, a plain part a getter of the node over its read,
+  with no value at the build. The name is late (`{name}#late`): a building line above
+  the split that reads it (`@Counter both` above `both <- @Choose mode`) is built after
+  the row that gives the part (`DeferredLine`) and reads the parts through the node, as
+  the lines below the split do (`RowPartsBn`). Another name for it (`let same = both`)
+  is late as it is. A late plain part bound by a pattern of its own gives each name a
   getter that matches the part by the pattern (`LateName.within`).
+- **A `let` of a bundle written out whose plain part reads a late name** (`let pair =
+  ((n + 1, !go))` above `n <- match ..`) is late too (`MarkLateLets`, `MarkLateBundle`):
+  the plain part is a getter computed from the node, with no value at the build
+  (`LateBundleLet`); the other parts are bound as any bundle's; a building line that
+  reads the name waits for the late result (`DeferredLine`). Refused: a `let` in the
+  block's node whose tuple pattern takes a late bundle apart and names its plain part
+  (the part has no value at the build), and a late bundle read as one value.
 - **The split block's lines read each other across the split** (Semantics ch. 4: line
   order decides positions and nothing else):
   - the lines below that build no place (a hold, a `let`, a local function, a local
@@ -402,7 +414,16 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the split that such a line reads is the node's late `let` (`HoistedLines`). Two
     such lines are refused: one whose places are counted as built (a building `match`
     or `if` inside it: the rows after it were numbered before it was built), and one
-    that gives a plain result of its own.
+    that gives a plain result of its own;
+  - a building `match` or `if` above that reads the plain result of a building `match`
+    or `if` (`if n > 15:` above `n <- match mode:`) needs the result before either row
+    is numbered. Where every arm gives its result from what it reads of the block, its
+    own pattern and its own plain `let`s, and from nothing its own lines build
+    (`IsPureChoiceAt`), the result is computed in the block's build as a plain `match`
+    or `if` over the arms' plain `let`s and results (`PureChoiceValue`): the line is
+    not late, the block is not split at it, and both generations are built in place
+    order (ruling TC), the row's own copy of the result unread. An arm whose result
+    reads what its own lines build is the refused case above.
 - **A line is late** (`IsLateExpr`) when it is a building `match` or `if` with a plain
   result, a widget block or a widget of one clause whose block ends late, a widget
   parameter applied whose argument is late (read in the caller's environment), or a
