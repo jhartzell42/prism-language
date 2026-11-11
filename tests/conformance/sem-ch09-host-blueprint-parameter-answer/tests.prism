@@ -1,0 +1,10 @@
+# The tests of sem-ch09-host-blueprint-parameter-answer.
+emit Ui.* | Pad.*
+use App.*
+
+test a_blueprint_parameter_answers, @host:
+    build
+        => expect Ui.Label(text="0: none")
+    click at 0
+    compute
+        => expect Ui.Label(text="1: hello")
