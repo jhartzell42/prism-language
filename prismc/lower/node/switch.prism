@@ -452,7 +452,7 @@ fn EarlyClauseLine wx, benv, menv, scrut, qk, v, e, args, outTy:
     let gapNow = "{name}_gap_now"
     let earlyArms = Fold cases, [[]], \|built, c|
         let i = Len built
-        Push built, (XArm(pat=c.pat, conds=c.conds, body=(XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XVar link)), hostAtBuild))]], (XTuple [[(XMethod (XVar "row"), "result_value", [[]]), (XCast (XVar "row"), rowObj), (Or (Or gaps[i], nil), (XIndex 0))]]))))
+        Push built, (XArm(pat=c.pat, conds=c.conds, body=(XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XVar link)), hostAtBuild))]], (XTuple [[(XMethod (XVar "row"), "result_value", [[]]), (XCast (XClone (XVar "row")), rowObj), (Or (Or gaps[i], nil), (XIndex 0))]]))))
     let methodArms = Each cases, \|c| XArm(pat=c.pat, conds=c.conds, body=(XCast (Made c, (XClone (XField XSelf, link)), (HostedPassed wx)), rowObj))
     let atBuild = ClauseScrutinee lx, benv, v, args
     # the arguments as the node's methods read them (in a generation's row `_` is the
@@ -506,7 +506,7 @@ fn EarlyChoiceLine wx, benv, menv, s, arms, e:
     let gapNow = "{name}_gap_now"
     let earlyArms = Fold cases, [[]], \|built, c|
         let i = Len built
-        Push built, (XArm(pat=c.pat, conds=c.conds, body=(XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XVar link)), hostAtBuild))]], (XTuple [[(XMethod (XVar "row"), "result_value", [[]]), (XCast (XVar "row"), rowObj), (Or (Or gaps[i], nil), (XIndex 0))]]))))
+        Push built, (XArm(pat=c.pat, conds=c.conds, body=(XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XVar link)), hostAtBuild))]], (XTuple [[(XMethod (XVar "row"), "result_value", [[]]), (XCast (XClone (XVar "row")), rowObj), (Or (Or gaps[i], nil), (XIndex 0))]]))))
     let methodArms = Each cases, \|c| XArm(pat=c.pat, conds=c.conds, body=(XCast (Made c, (XClone (XField XSelf, link)), (HostedPassed wx)), rowObj))
     let atBuild = XTuple [[(Argument lx, benv, s)]]
     let inMethod = XTuple [[(Argument lx, menv, s)]]
