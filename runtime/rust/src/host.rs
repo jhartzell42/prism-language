@@ -160,6 +160,21 @@ impl Follow {
     }
 }
 
+/// What a row that holds no block (a row shared by every call of a widget that calls
+/// itself) tells in a hosted scope when a place of its may have moved: the node that
+/// built it, through that node's own telling ([`moved_by`]).
+pub type Moved = Rc<dyn Fn(&mut Cx)>;
+
+/// `node`'s method `moved` as a [`Moved`]: the node held weakly, told while it lives.
+pub fn moved_by<N: 'static>(node: &Rc<N>, moved: fn(&Rc<N>, &mut Cx)) -> Moved {
+    let weak = Rc::downgrade(node);
+    Rc::new(move |cx: &mut Cx| {
+        if let Some(n) = weak.upgrade() {
+            moved(&n, cx);
+        }
+    })
+}
+
 impl Drop for Follow {
     fn drop(&mut self) {
         self.drop_sub();

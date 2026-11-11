@@ -101,12 +101,13 @@ Building `match`, clause widgets, `rebuild`
   beside a result or with time below its top, a
   blueprint parameter whose argument is no blueprint value the lowering makes (a widget
   of a block, a widget with a `$` parameter) or beside a result, an event, dynamic or
-  bundle result, a type parameter, or stands in a hosted scope is lowered level by level
-  and faults at its build past sixteen levels (`TooDeep`). Test:
-  sem-ch09-widget-recursion-deep-hosted. A `$` or an event parameter is as deep as its
-  data (sem-ch08-widget-recursion-deep-dynamic-parameter, -event-parameter), and so is
+  bundle result, or a type parameter is lowered level by level
+  and faults at its build past sixteen levels (`TooDeep`). No test. A `$` or an event
+  parameter is as deep as its
+  data (sem-ch08-widget-recursion-deep-dynamic-parameter, -event-parameter), and so are
   a blueprint parameter given a widget the program reads as a value
-  (sem-ch08-widget-recursion-deep-blueprint-parameter). A
+  (sem-ch08-widget-recursion-deep-blueprint-parameter) and a widget in a hosted scope
+  (sem-ch09-widget-recursion-deep-hosted). A
   widget of one clause or of several, with plain parameters and nothing or a plain value
   given back, is as deep as its data, to 2^20 places a call
   (sem-ch08-clause-widget-recursion, sem-ch08-widget-recursion-deep,

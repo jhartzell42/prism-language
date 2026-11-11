@@ -553,7 +553,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   that is refused loudly. A generation built early gives its gap as a local
   (`{name}_gap_now`).
 - **A widget that calls itself**, of one clause or of several (plain parameters, no type
-  parameter, nothing or a plain value given back, its places the World's), is as deep as
+  parameter, nothing or a plain value given back), is as deep as
   its data (`SharedClauseLine`). A plain result is kept by each row (`result_value`) and
   by the calling block in `{generation}_res` from the row's build on, late; a block that
   binds it is split at that line (`IsRecursingCall`, `Lx.recursing`). The outermost call is
@@ -592,11 +592,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
   - The value is bound under `#whole#{name}`: a call inside hands it on as it is
     (`SharedScrutinee`), and an arm's row of the row's reads it through its parent
     (`WholeOfBlock`).
+- In a hosted scope a shared row is given its host (`enclosing`, as any hosted row) and
+  `moved`, a `prism_rtl::Moved` made of the node that builds it (`moved_by`: that node's
+  `{host}_moved` or `document_moved`): the row holds no block, so its `document_moved`
+  calls that (`sharedMoved`, `DocumentMoved`). A host's typed answer reaches a
+  generation that wide through one last arm of the typed dispatch (`TypedWideForward`),
+  as the World's does through `WideForward`.
 - Any other widget that calls itself (a `$` or event parameter with time below its top
   or beside a result, a blueprint parameter whose argument is no such value or beside a
-  result, an event, dynamic or bundle result, a type parameter, a hosted scope) is
-  lowered level by level, to the sixteen levels an inlined widget is (`TooDeep`: a tree
-  deeper than that faults at its build).
+  result, an event, dynamic or bundle result, a type parameter) is lowered level by
+  level, to the sixteen levels an inlined widget is (`TooDeep`: a tree deeper than that
+  faults at its build).
 
 ## Hosting
 

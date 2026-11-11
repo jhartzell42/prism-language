@@ -727,7 +727,7 @@ let wideGeneration = 1048576
 
 # Whether a widget of several clauses that calls itself is lowered as shared rows
 # (`SharedClauseLine`): its parameters are plain, it gives nothing or a plain value back,
-# it has no type parameter, and its places go to the World. A blueprint parameter is
+# and it has no type parameter. A blueprint parameter is
 # taken too, as a value of the row (`prism_rtl::Blueprint`), where the widget gives
 # nothing back and the call's argument is a blueprint value the lowering can make
 # (`IsBlueprintValued`); a `$` or an event parameter too, as the caller's live value
@@ -744,7 +744,7 @@ fn IsSharable wx, menv, v, e, args:
         ? pt: if IsWidgetFnTy pt: False else: if (LayerOf pt) == LyBlueprint: IsBlueprintValued wx.lx, menv, args[i] else: (LayerOf pt) == LyPlain or IsLiveParam pt
         nil: True
     let nothingBack = (OutTyOf wx.lx, (OutOf (TypeAt wx.lx, e.span))) == OutUnit
-    (not (IsHostedScope wx)) and plainResult and (Len (RigidsIn v.scheme.ty)) == 0 and (plainParams or (valuedParams and nothingBack))
+    plainResult and (Len (RigidsIn v.scheme.ty)) == 0 and (plainParams or (valuedParams and nothingBack))
 
 # Whether a call of a widget is lowered as shared rows where it stands: inside the
 # widget's own clauses; and, for a widget that calls itself with a live parameter, at
@@ -849,13 +849,19 @@ fn SharedClauseLine wx, menv, scrut, qk, v, e, args:
     let outTy = OutTyOf lx, (OutOf (TypeAt lx, e.span))
     let res = "{name}_res"
     let keeps = if outTy == OutUnit: [[]] else: [[(DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XMethod (XVar "row"), "result_value", [[]])]]))]]
+    # in a hosted scope the row is given its host, and what tells that a place of the
+    # row's may have moved: this node's own telling (`?HostedRows`), since a shared row
+    # holds no block to tell (`SharedMoved`)
+    let hosted = match ?HostedRows wx:
+        ? m: Push (HostedPassed wx), (XCall (RefRuntime "prism_rtl::moved_by"), [[(XRef (XClone XSelf)), (XPath (RefChild (SiteRef lx, wx.node), m))]])
+        nil: [[]]
     let arms = Each cases, \|((rowNode, pat, conds, passed))|
-        let built = TryOf (XCall (RefChild (SiteRef lx, rowNode), "build"), (Append (Append [[(XClone (XVar "path"))]], passed), [[XUnit, XCx]]))
+        let built = TryOf (XCall (RefChild (SiteRef lx, rowNode), "build"), (Append (Append [[(XClone (XVar "path"))]], passed), (Append (Append [[XUnit]], hosted), [[XCx]])))
         XArm(pat=pat, conds=conds, body=(XBlock (Append (Append [[(DoLet (PaBind "row"), built)]], keeps), (GapSet name, (? gap))), (XCast (XVar "row"), rowObj)))
     let select = WithRowBase wx, "self", pos, (Own (ArmsValue (SharedScrutinee lx, menv, v, args), arms, "'select", rowObj))
     let wx3 = update wx2:
         &_.pos <= Pos(scope=pos.scope, at=pos.at + wideGeneration)
-        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=True, width=wideGeneration, moved="", early=False, gappy=True, rebased=True)
+        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=True, width=wideGeneration, moved=(Or (?HostedRows wx), ""), early=False, gappy=True, rebased=True)
         &_.genHolds <= Push &_.genHolds, ((name, reads))
     if outTy == OutUnit: ((wx3, WrUnit))
     else:
@@ -980,7 +986,19 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
     let rowFields = Append (Push (Each fields, \|((f, t, bn))| ((f, t, "`{bn}`"))), (("parent", parentTy, "the node of the `rebuild`"))), baseField
     let rowInits = Append (Each fields, \|((f, ignore, ignore))| ((f, (XClone (XVar f))))), (if transparent: [[(("base", (XVar "base")))]] else: [[]])
     let rowTaken = Append (Append nodeHooks, (Push (Push (Each fields, \|((f, ignore, ignore))| f), "parent"), "result_value")), [["base", "place", "seat", "inner_gap"]]
-    let r00 = NewWx lxc, rowName, rowFields, rowInits, [[(("parent", (XClone (XVar "parent"))))]], [[]], {}, rowTaken, wx.inlining, (?HostedRows wx)
+    # a shared row in a hosted scope holds no block to tell that a place of its may have
+    # moved: it is built with `moved`, its caller's telling (`sharedMoved`,
+    # `DocumentMoved`)
+    let shared = zeroBased and parentTy == OutUnit
+    let ?hostedBy = match ?HostedRows wx:
+        ? m: if shared: ? sharedMoved else: ? m
+        nil: nil
+    let movedParam = if shared and IsSome ?hostedBy: [[(("moved", movedTy))]] else: [[]]
+    let r000 = NewWx lxc, rowName, rowFields, rowInits, [[(("parent", (XClone (XVar "parent"))))]], [[]], {}, rowTaken, wx.inlining, ?hostedBy
+    let r00 = if (Len movedParam) == 0: r000 else: update r000:
+        &_.taken <= Push &_.taken, "moved"
+        &_.fields <= Push &_.fields, (("moved", movedTy, "what tells the row's host that a place of the row's may have moved"))
+        &_.inits <= Push &_.inits, (("moved", (XClone (XVar "moved"))))
     # standing in its caller, the arm's places are numbered from the caller's position
     # (the row's own scope, 0: in a hosted scope the row's places are its host's through
     # the row's `?hostedBy`, as a `for` row's are)
@@ -1040,7 +1058,7 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
     let r3b = if not zeroBased: r3 else: update r3:
         &_.taken <= Push &_.taken, "built"
         &_.getters <= Push &_.getters, (MethDef(name="built", recv=RecvRef, params=[[]], cx=CxNone, ret=OutCount, body=[[]], tail=(if ownGaps: XBin OpSub, positions, (XMethod XSelf, "inner_gap", [[]]) else: positions), doc="How many places the row built (ruling TC: places are counted as they are built)."))
-    let node = FinishNode r3b, rowName, (Append (Append (Append (Each fields, \|((f, t, ignore))| ((f, t))), liveParams), baseParam), (Append [[(("parent", parentTy))]], (HostedParams wx))), True
+    let node = FinishNode r3b, rowName, (Append (Append (Append (Each fields, \|((f, t, ignore))| ((f, t))), liveParams), baseParam), (Append (Append [[(("parent", parentTy))]], (HostedParams wx)), movedParam)), True
     let p2 = GenMarked p1, genName, r3b
     let passed0 = Each fields, \|((f, t, bn))| match binds[bn]:
         ? (BnLocal rs, mode, bt): Own (VlPlace rs, mode, bt)
@@ -1516,6 +1534,23 @@ fn WideForward gens:
         let handed = Append moved, [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[DoExpr (TryOf (XMethod (XVar "row"), "answer", [[path, (XVar "v"), XCx]]))]], [[]])]]
         [[(DoIf (XCall (HelperRef "within_positions"), [[(XVar "at"), (XIndex gd.pos.at), (XIndex gd.width)]]), handed, rest)]]
     if (Len gens) == 0: [[]] else: [[(((PaSlice [[PaRest ""]]), (XBlock chain, (XUnit))))]]
+
+# The same for a host's typed answers (`TypedDispatch`): `segs` the answer's segments,
+# `none` what an answer among no generation's positions does.
+TypedWideForward: fn [GenDef], Ex, [Do] -> [((Pa, [Do]))]
+fn TypedWideForward gens, segs, none:
+    let chain = Fold gens, none, \|rest, gd|
+        let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
+        let moved = if gd.rebased: [[(DoLet (PaBind "rebased"), (XCall (HelperRef "rebased"), [[segs, (XIndex gd.pos.at)]]))]] else: [[]]
+        let path = if gd.rebased: XCall (HelperRef "segments_of"), [[XRef (XVar "rebased")]] else: segs
+        let handed = Append moved, [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[DoExpr (TryOf (XMethod (XVar "row"), "deliver", [[path, (XVar "v"), XCx]]))]], [[]])]]
+        [[(DoIf (XCall (HelperRef "within_positions"), [[segs, (XIndex gd.pos.at), (XIndex gd.width)]]), handed, rest)]]
+    [[((PaWild, chain))]]
+
+# The marker a shared row in a hosted scope has for `?hostedBy`, and the type of its
+# `moved` (prism_rtl's `Moved`, made by `moved_by` of the node that builds the row).
+let sharedMoved = "#moved"
+let movedTy = OutNamed (RefRuntime "prism_rtl::Moved"), [[]]
 
 ForwardGen: fn GenDef -> Ex
 fn ForwardGen gd:

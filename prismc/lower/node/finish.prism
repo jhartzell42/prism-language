@@ -468,7 +468,7 @@ fn DocumentGetter wx:
 # A hosted row's place may have moved (a hold it reads was written): its parent is told,
 # and tells its host in turn.
 DocumentMoved: fn Text -> MethDef
-fn DocumentMoved m = MethDef(name="document_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=[[(DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "parent"]]), (XUpgrade (XField XSelf, "parent")), [[DoExpr (XMethod (XVar "parent"), m, [[XCx]])]], [[]])]], tail=(XUnit), doc="A place of this row may have moved: its host's document moved, and the host's readers and rows are marked (pick HO).")
+fn DocumentMoved m = if m == sharedMoved: MethDef(name="document_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=[[(DoExpr (XApply (XField XSelf, "moved"), [[XCx]]))]], tail=(XUnit), doc="A place of this row's may have moved: the node that built the row is told, through what it gave the row.") else: MethDef(name="document_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=[[(DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "parent"]]), (XUpgrade (XField XSelf, "parent")), [[DoExpr (XMethod (XVar "parent"), m, [[XCx]])]], [[]])]], tail=(XUnit), doc="A place of this row may have moved: its host's document moved, and the host's readers and rows are marked (pick HO).")
 
 # The entries of a document (`$(Path ==> $Elem c)`): each place's entry, and under each
 # `for` and `rebuild` the rows' own documents, keyed under the place's path. `Add` spells
@@ -805,7 +805,7 @@ fn TypedForwardArm b, segs:
 # A transparent generation answers at each of its positions in the block, its row given the
 # whole path (its places' paths are the block's).
 TypedGenArms: fn GenDef, Ex -> [((Pa, [Do]))]
-fn TypedGenArms gd, segs = if gd.transparent: Each (Range0 gd.width), \|i| TransparentGenArm gd, segs, i else: [[TypedGenArm gd]]
+fn TypedGenArms gd, segs = if IsWideGen gd: [[]] else: if gd.transparent: Each (Range0 gd.width), \|i| TransparentGenArm gd, segs, i else: [[TypedGenArm gd]]
 
 TransparentGenArm: fn GenDef, Ex, Nat -> ((Pa, [Do]))
 fn TransparentGenArm gd, segs, i:
@@ -836,7 +836,12 @@ fn TypedDispatch sk, name, scope:
     let rows = Each (Filter wx.builders, \|b| InScope b.pos), \|b| TypedForwardArm b, segs
     let gens = Fold (Filter wx.gens, \|gd| InScope gd.pos), [[]], \|acc, gd| Append acc, (TypedGenArms gd, segs)
     let none = ((PaWild, [[DoReturn (XCtor (RefRuntime "std::Err"), [[(XCall (RefRuntime "rt::Fault::answer"), [[(XFormatStr [[(XText "no hosted place at "), (XCtor (RefRuntime "rt::Path"), [[(XMethod segs, "to_vec", [[]])]]), (XText " to answer")]])]])]])]]))
-    let arms = Push (Append (Append (Append answers, dyns), rows), gens), none
+    # a generation too wide for an arm per position (a widget that calls itself) is
+    # found by the answer's first segment, in one last arm (`TypedWideForward`)
+    let wide = Filter wx.gens, \|gd| (InScope gd.pos) and IsWideGen gd
+    let ((ignore, noneDos)) = none
+    let last = if (Len wide) == 0: [[none]] else: TypedWideForward wide, segs, noneDos
+    let arms = Append (Append (Append (Append answers, dyns), rows), gens), last
     MethDef(name=name, recv=recv, params=[[param, (("v", (OutRef answerTy)))]], cx=CxMut, ret=(OutNamed (RefRuntime "rt::Done"), [[]]), body=(Push seating, (DoMatch segs, arms)), tail=(XCtor (RefRuntime "std::Ok"), [[XUnit]]), doc=doc)
 
 let dummyHost = HostDef(pos=pos0, name="", scope=0)

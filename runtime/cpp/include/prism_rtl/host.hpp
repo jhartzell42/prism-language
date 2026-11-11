@@ -192,6 +192,20 @@ private:
     std::optional<std::pair<Rc<Port<Unit>>, Handle>> sub_;
 };
 
+/// What a row that holds no block (a row shared by every call of a widget that calls
+/// itself) tells in a hosted scope when a place of its may have moved: the node that
+/// built it, through that node's own telling (`moved_by`).
+using Moved = std::function<void(Cx&)>;
+
+/// `node`'s method `moved` as a `Moved`: the node held weakly, told while it lives.
+template <class N, class R>
+Moved moved_by(const Rc<N>& node, R (N::*moved)(Cx&)) {
+    Weak<N> weak = node;
+    return [weak, moved](Cx& cx) {
+        if (auto n = weak.lock()) ((*n).*moved)(cx);
+    };
+}
+
 /// `!MergeAll` of a list that is not a literal (Semantics Appendix B): the list is a plain
 /// value, so its events are fixed at the build. Each event's port is heard into a stamped
 /// input, and the node is told (`heard`, which asks its wake); the wake takes the values
