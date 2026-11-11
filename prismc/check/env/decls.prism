@@ -483,7 +483,12 @@ fn ConvTag g, st, info, t, span:
     let qs = Fold t.fields, (TypeVarsOfType t.ofType), \|acc, f| UnionTexts acc, (TypeVarsOfType f.ty)
     let ((bs, st4a)) = ConvBounds cx, st3, t.bounds
     # `collision`: a tag is declared once; the first declaration stays the tag
-    let st4 = if HasKey g.tags, name: Err st4a, "collision", span, "a second tag `{name}`" else: st4a
+    let st4b = if HasKey g.tags, name: Err st4a, "collision", span, "a second tag `{name}`" else: st4a
+    # a fault kind is its tag alone (Semantics ch. 10): what failed goes in the `Error`'s
+    # message, and a kind with a field has no value a `match` on kinds could name
+    let st4 = match t.fields[0]:
+        ? f if kind == "Fault" or kind == "Prelude.Fault": ErrFix st4b, "mismatch", span, "the fault kind `{name}` declares a field, `{f.name.name}`; a fault kind is its tag alone", "say what failed in the message of the `Error`"
+        otherwise: st4b
     let tg = TagInfo(name=name, family=family, kind=kind, out=out, qs=qs, rqs=(if info.rowVar == "": [[]] else: [[info.rowVar]]), bounds=bs, fields=fields, home=info.name, file=info.file, span=span)
     let upd = update g:
         if not (HasKey &_.tags, name):
