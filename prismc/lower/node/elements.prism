@@ -295,7 +295,19 @@ fn BundleOutputOf wx, tg, out, pos, parts, level:
         &_.build <= Push &_.build, (DoExpr (XMethod (XCx), "listen", [[(XClone (XField (XVar "node"), "{stem}_element")), (XRef (XCast (XClone (XVar "node")), (OutObj (OutNamed (RefRuntime "rt::Node"), [[]]))))]]))
     let wx5 = update wx4:
         &_.bundles <= Push &_.bundles, BundlePlace(pos=pos, stem=stem, stateTy=stateTy, stateParts=(Len stateIx), holds=holds, events=events, stateAccessor=(if (Len evIx) == 0: AnswerAccessor tg else: "{AnswerAccessor tg}_first"), eventAccessor=(AnswerAccessor tg), firstVariant=(AnswerFirstVariant tg))
-    ((wx5, WrUnit))
+    # a plain part the pattern gives no name of its own (a pattern inside the tuple
+    # pattern, `((((id, owner)), $state))`) is handed back as the build's value, for the
+    # line to match by that pattern (`BindParts`, `BindPatternResult`)
+    let loose = Filter (Range0 (Len stateIx)), \|k| (not late) and ((Or layers[Or stateIx[k], 0], LyPlain) != LyDyn) and IsUnboundPart parts[Or stateIx[k], 0]
+    let PartAt = \|i| Fold loose, WrUnit, \|found, k| if (Or stateIx[k], 0) == i: WrPlain (if one: XVar whole else: XClone (XPart (XVar whole), k)), (ValueTy i) else: found
+    let result = if (Len loose) == 0: WrUnit else: WrParts (Each idx, PartAt)
+    ((wx5, result))
+
+# Whether a bundle's part has no binding of its own: the pattern names nothing there, or
+# takes the part apart.
+IsUnboundPart: fn ??Bn -> Bool
+fn IsUnboundPart (? (? ignore)) = False
+fn IsUnboundPart ??other = True
 
 # A late place's plain part (`LatePlaceParts`): the hold of the name the pattern gives
 # it, empty at the node's making and set from the part of the first value where the
