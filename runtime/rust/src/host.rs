@@ -1117,6 +1117,48 @@ pub trait HostOf<E, A> {
     fn moved(&self, cx: &mut Cx);
 }
 
+/// A host as a row under its child reaches it. A row of a hosted child's `for` or `rebuild`
+/// (or an arm of its building `match`) names its places by paths relative to the row, and
+/// the host knows a child place by its path relative to the child: this is the host with
+/// the row's path put before every place the row names (a first value asked, a request
+/// handed up, an answer delivered). A row under a row puts its own path before the outer
+/// row's, so a place is named whole however deep its row stands.
+struct HostUnder<E, A> {
+    host: Rc<dyn HostOf<E, A>>,
+    row: Path,
+}
+
+impl<E, A> HostOf<E, A> for HostUnder<E, A> {
+    fn deliver(&self, place: &Path, v: &A, cx: &mut Cx) -> Done {
+        self.host.deliver(&self.row.join(place), v, cx)
+    }
+    fn first_value(&self, place: &Path, element: &E, entry: &Rc<Entry<E>>, cx: &mut Cx) -> Result<Option<A>, Fault> {
+        self.host.first_value(&self.row.join(place), element, entry, cx)
+    }
+    fn supplier(&self) -> &Supplier<E, A> {
+        self.host.supplier()
+    }
+    fn scope(&self) -> Scope<E, A> {
+        self.host.scope()
+    }
+    fn request_from(&self, place: &Path, field: Option<&str>, value: Pod, cx: &mut Cx) -> Done {
+        self.host.request_from(&self.row.join(place), field, value, cx)
+    }
+    fn moved(&self, cx: &mut Cx) {
+        self.host.moved(cx)
+    }
+}
+
+/// `host` as the row built at `row` (a path relative to the block that builds the row)
+/// reaches it ([`HostUnder`]). A row's `build` in a hosted scope calls this first, so every
+/// place the row names is named by its whole path under the host's child.
+pub fn host_under<E: 'static, A: 'static>(host: Rc<dyn HostOf<E, A>>, row: &Path) -> Rc<dyn HostOf<E, A>> {
+    if row.is_empty() {
+        return host;
+    }
+    Rc::new(HostUnder { host, row: row.clone() })
+}
+
 /// The rows of a host's `for p, e <- $doc`, which the owner keeps in a field.
 pub type Rows<E, A> = Rc<RefCell<Map<Path, Rc<HostRow<E, A>>>>>;
 

@@ -1,0 +1,84 @@
+# probe 2: the counter document
+emit rest | Ui.* | Count.* | View.*
+use Documents.*
+
+type Presser = choice:
+    Presser Text
+derive ^Eq, ^Ord, ^Show
+
+type Viewer = choice:
+    Viewer Text
+derive ^Eq, ^Ord, ^Show
+
+type Add = choice:
+    Add Nat
+derive ^Eq, ^Show
+
+type Asks = choice:
+    Whole
+derive ^Eq, ^Show
+
+type Nothing = choice:
+    NoChange
+derive ^Eq, ^Show
+
+impl ^Seat Presser:
+    type State = Nat
+    type Request = Add
+    type Query = Asks
+    type Told = Nat
+    fn Step total, seat, (Add n) = if total + n > 5: Denied "the count stops at five" else: Next (total + n)
+    fn Read total, seat, Whole = total
+
+impl ^Seat Viewer:
+    type State = Nat
+    type Request = Nothing
+    type Query = Asks
+    type Told = Bool
+    fn Step total, seat, NoChange = Denied "a viewer asks for no change"
+    fn Read total, seat, Whole = total > 0
+
+tag Count.Request of Element !Response:
+    !requests: Add
+
+tag Count.Query of Element $?Nat:
+    $query: Asks
+
+tag View.Query of Element $Bool:
+    $query: Asks
+
+!Requested: fn Elem (rest | Count.*) -> !Add
+fn !Requested e = match e:
+    Count.Request(!requests=!r): !r
+    otherwise: never
+
+ToldTo: fn Presser, Nat -> Nat
+fn ToldTo seat, state = Read state, seat, Whole
+
+?Mine: fn Presser, (Place ==> Response), Path -> ?Response
+fn ?Mine seat, responses, p = ?ResponseTo seat, p, responses
+
+Sittings: fn (k ==> v) -> (((k, v)) ==> unit)
+fn Sittings seats = Fold (Keys seats), {}, \|all, k| match ?Get seats, k:
+    ? v: Insert all, ((k, v)), unit
+    nil: all
+
+@HostCounter: fn $(Presser ==> v), (fn Presser, v -> @a emit rest | Count.*), $Nat, !(Place ==> Response) -> @((unit, ![Asked Nat])) emit rest where v: ^Ord
+fn @HostCounter $seats, Guest, $state, !responses:
+    let !moved = !Updated $state
+    !heard <- for ((seat, sitting)), $u <- (Sittings $seats):
+        !born <- @started
+        let !mine = !responses
+        $?told <- nil then (? ToldTo seat, !moved) <| (? ((ToldTo seat, $state) on !born))
+        ((ignore, $doc)) <- @HostDocument (Guest seat, sitting), \|p, e| match e:
+            Count.Request(..): @ !Filter (?Mine seat, !mine, p)
+            Count.Query(..): @ $?told
+            otherwise: @Element e
+        !asked <- for p, $e <- $doc:
+            !r <- @Switch (!Requested $e)
+            @ Asking seat, p, !r
+        @ !asked
+    @ ((unit, InOrderPairs !heard))
+
+InOrderPairs: fn (k ==> (Path ==> a)) -> [a]
+fn InOrderPairs asked = Fold (Values asked), [[]], \|all, places| Append all, (Values places)

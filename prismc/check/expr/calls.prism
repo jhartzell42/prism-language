@@ -473,14 +473,16 @@ fn PeelTimeOnly env, st, acc, fname, p, at, a:
 # function does (Type System ch. 4, "A dynamic where a plain field goes": `Mono(left=$q.left
 # + 1)` is a `$Mono`); a sigiled field takes its argument whole. A type parameter's field
 # takes its argument whole too, sigils and all (ch. 2: `Pair $home, $away` is a `Pair $Int
-# $Int`), so a generic type's constructor never lifts.
+# $Int`), so a generic type's constructor with such a field never lifts. A constructor none
+# of whose fields is a bare type parameter (`Removing [k]`) has no field that could take a
+# sigil whole, and lifts as a function does: `Removing !gone` is a `!(Happening k v a)`.
 CtorApp: unbounded fn Env, St, CtorInfo, [Arg], Range, Range -> ((Ty, St))
 fn CtorApp env, st, c, args, span, cspan:
     let ((self, st0, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), span, [[]]
     let fieldTys = Each c.args, \|t| SubstQ inst, t
     let st1 = NamedTwice (NoteTy st0, cspan, (TyFn CBound, fieldTys, self)), args
     let named = Filter args, \|a| a.?name != nil
-    let lifts = (Len c.params) == 0
+    let lifts = (Len c.params) == 0 or not (Fold c.args, False, \|bare, t| bare or IsBareParameter t)
     if (Len named) > 0 and (Len c.fields) > 0:
         let st2 = Fold named, st1, \|s, a| match a.?name:
             ? id: match ?IndexOf c.fields, id.name:
@@ -499,6 +501,12 @@ fn CtorApp env, st, c, args, span, cspan:
     else: if (Len args) != (Len fieldTys):
         ((TyErr, (Err st1, "mismatch", span, "`{BareName c.name}` takes {CountWord (Len fieldTys)} argument{if (Len fieldTys) == 1: "" else: "s"}; here it has {CountWord (Len args)}")))
     else: CtorArgs env, st1, c, args, fieldTys, self, lifts, span
+
+# A field declared as a type parameter alone (`first: a`), which takes its argument whole.
+IsBareParameter: fn Ty -> Bool
+fn IsBareParameter t = match t:
+    TyQ ignore: True
+    otherwise: False
 
 # A constructor's arguments against their fields' types: through the application rule when
 # the constructor lifts, else each whole.

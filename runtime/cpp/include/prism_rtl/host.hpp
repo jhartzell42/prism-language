@@ -1173,6 +1173,39 @@ public:
     virtual void moved(Cx& cx) const = 0;
 };
 
+/// A host as a row under its child reaches it: the host with the row's path put before
+/// every place the row names (a first value asked, a request handed up, an answer
+/// delivered). A row names its places by paths relative to the row; the host knows a child
+/// place by its path relative to the child.
+template <class E, class A>
+class HostUnder : public HostOf<E, A> {
+public:
+    HostUnder(Rc<HostOf<E, A>> host, Path row) : host_(std::move(host)), row_(std::move(row)) {}
+    Done deliver(const Path& place, const A& v, Cx& cx) const override { return host_->deliver(row_.join(place), v, cx); }
+    Result<std::optional<A>> first_value(const Path& place, const E& element, const Rc<Entry<E>>& entry,
+                                         Cx& cx) override {
+        return host_->first_value(row_.join(place), element, entry, cx);
+    }
+    const Supplier<E, A>& supplier() const override { return host_->supplier(); }
+    Scope<E, A> scope() const override { return host_->scope(); }
+    Done request_from(const Path& place, std::optional<std::string> field, Pod value, Cx& cx) const override {
+        return host_->request_from(row_.join(place), std::move(field), std::move(value), cx);
+    }
+    void moved(Cx& cx) const override { host_->moved(cx); }
+
+private:
+    Rc<HostOf<E, A>> host_;
+    Path row_;
+};
+
+/// `host` as the row built at `row` reaches it (`HostUnder`): a row's `build` in a hosted
+/// scope calls this first.
+template <class E, class A>
+Rc<HostOf<E, A>> host_under(Rc<HostOf<E, A>> host, const Path& row) {
+    if (row.segments().empty()) return host;
+    return make_rc<HostUnder<E, A>>(std::move(host), row);
+}
+
 template <class E, class A>
 Moved host_moved(const Rc<HostOf<E, A>>& host) {
     Weak<HostOf<E, A>> weak = host;

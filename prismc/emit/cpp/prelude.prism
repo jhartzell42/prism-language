@@ -691,6 +691,11 @@ public:
         asked_.erase(asked_.begin());
         return h;
     }
+    /// After a wake ran one height: a wake for the lowest height still asked (two heights
+    /// asked from one running height land on one wake of the node, which runs the lower).
+    void again(Cx& cx, NodeRef node) {
+        if (!asked_.empty()) cx.wake(*asked_.begin(), std::move(node));
+    }
 
 private:
     std::set<std::uint32_t> asked_;

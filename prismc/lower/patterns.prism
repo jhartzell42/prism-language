@@ -158,8 +158,10 @@ fn CtorPat lx, n, ps, ty, mode, fresh:
                     BRecord fs: PatOut(pa=(PaRecord tyPath, (Each (Range0 (Len pas)), \|i| (((FieldSpell (OwnerOf c.owner), (Or c.fields[i], ""), (Or c.args[i], TyErr)), (Or pas[i], PaWild)))), ((Len pas) < (Len c.fields))), conds=conds, binds=binds)
                     otherwise:
                         let isUnitType = (Len c.args) == 0 and IsUnitCtor lx, qk
-                        # a newtype is a tuple struct, matched by its own name
-                        let isNewtype = (BareName c.name) == (BareName c.owner) and match owner.body:
+                        # a newtype is a tuple struct, matched by its own name; a choice whose one
+                        # case has the type's name and no fields is an enum of one variant
+                        # (`ShapeChoice`), matched by its variant
+                        let isNewtype = (Len c.args) > 0 and (BareName c.name) == (BareName c.owner) and match owner.body:
                             BChoice cases: (Len cases) == 1
                             otherwise: False
                         let path = if isUnitType or isNewtype: tyPath else: RefChild tyPath, (Camel (BareName c.name))
@@ -212,7 +214,7 @@ fn RecordPat lx, n, fps, rest, ty, mode, fresh:
 
 RestCasePat: fn CtorInfo, [((Text, [Ty]))], Ref -> PatOut
 fn RestCasePat c, cases, tyPath:
-    let isNewtype = (Len cases) == 1 and (BareName c.name) == (BareName c.owner)
+    let isNewtype = (Len cases) == 1 and (BareName c.name) == (BareName c.owner) and (Len c.args) > 0
     let path = if isNewtype: tyPath else: RefChild tyPath, (Camel (BareName c.name))
     if (Len c.args) == 0: PatOut(pa=(PaUnit path), conds=[[]], binds=[[]])
     else: PatOut(pa=(PaCtor path, (Each c.args, \|ignore| PaWild)), conds=[[]], binds=[[]])

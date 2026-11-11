@@ -956,6 +956,15 @@ impl Wakes {
     pub fn next(&self) -> u32 {
         self.0.borrow_mut().pop_first().unwrap_or(u32::MAX)
     }
+    /// After a wake ran one height: a wake for the lowest height still asked. Two heights
+    /// asked from one running height land on one wake of the node (the clamp, and a node
+    /// once per height), which runs the lower; the other is asked for again here.
+    pub fn again(&self, cx: &mut Cx, node: Rc<dyn Node>) {
+        let lowest = self.0.borrow().first().copied();
+        if let Some(h) = lowest {
+            cx.wake(h, node);
+        }
+    }
 }
 
 /// A row of a `for` or a generation of a `rebuild`: a node its builder tears down. A row
