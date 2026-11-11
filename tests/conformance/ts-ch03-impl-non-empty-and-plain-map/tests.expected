@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 2, "Collections" (`(K ==> V)+` is a type beside `K ==> V`; `m as (K ==> V)` drops the promise; `m as (K ==> V)+?` checks it and gives `?(K ==> V)+`) and ch. 3 (the impl is the one of the type the call is at). Never run.
+test each_type_asks_its_own_impl
+
+tick 0
+  added:
+    0: Ui.Label(text="non-empty 1, plain 2, plain 1, non-empty 2, plain 0")

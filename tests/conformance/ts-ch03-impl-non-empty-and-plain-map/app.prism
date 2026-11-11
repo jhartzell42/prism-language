@@ -1,0 +1,29 @@
+# One trait with an impl for `(Nat ==> Text)+` and an impl for `Nat ==> Text`: each call
+# asks the impl of its argument's own type (Type System ch. 2, "Collections": `(K ==> V)+`
+# is non-empty, with no subtyping; ch. 3: an impl is chosen by the type). The checked
+# conversion gives a `?(Nat ==> Text)+`, whose value asks the non-empty map's impl.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Counted a:
+    Count: fn a -> Text
+
+impl ^Counted (Nat ==> Text):
+    fn Count m = "plain {Len m}"
+
+impl ^Counted (Nat ==> Text)+:
+    fn Count m = "non-empty {Len m}"
+
+Checked: fn (Nat ==> Text) -> Text
+fn Checked m = match m as (Nat ==> Text)+?:
+    ? kept: Count kept
+    nil: Count m
+
+@main: @unit
+@main:
+    let some = {1: "a"}+
+    let plain = {1: "a", 2: "b"}
+    let none: (Nat ==> Text) = {}
+    let dropped = some as (Nat ==> Text)
+    Ui.Label($text=$"{Count some}, {Count plain}, {Count dropped}, {Checked plain}, {Checked none}")    # 0
