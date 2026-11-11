@@ -1178,7 +1178,8 @@ pub fn call_then<A: 'static, B: 'static>(callee: Rc<dyn Job<A>>, then: impl FnOn
 
 /// A call through an unbounded function value that is not in tail position: the value's
 /// job runs its first cycle now. A named function's value is `entered`, so entering it
-/// is still a cycle point (D6); a lambda's body is not a named function and runs on.
+/// is still a cycle point (D6), and so is a lambda's whose own type is not bounded; a
+/// bounded function made a `Start` runs on.
 pub fn call_value<A: 'static, B: 'static>(callee: Rc<dyn Job<A>>, then: impl FnOnce(A) -> Turn<B> + 'static) -> Turn<B> {
     Frame { callee, then: ::std::cell::RefCell::new(Some(Box::new(then))) }.cycle()
 }
