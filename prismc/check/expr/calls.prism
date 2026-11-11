@@ -199,7 +199,9 @@ fn NoteMethodUse st, v, span:
     if v.sort != "method": st
     else:
         let ((ignore, cls)) = Or v.scheme.bounds[0], (("", ""))
-        NoteMethod st, span, v.qk, cls
+        let used = update st:
+            &_.methodUses <= Insert &_.methodUses, (UseKey &_.file, span), v.qk
+        NoteMethod used, span, v.qk, cls
 
 # `Fold` over a map takes a step of three parameters, the key and the value (Appendix B):
 # the one place the prelude's signature does not say what a call means.
@@ -698,5 +700,5 @@ InferBodyBlock: unbounded fn Env, St, Block, ?Ty -> ((Ty, St))
 fn InferBodyBlock env, st, b, ?expected:
     let ((t, st2)) = InferExprBlock env, st, b
     match ?expected:
-        ? r: ((r, (Unify st2, r, t, b.span)))
+        ? r: ((r, (Unify st2, r, t, (ResultSpan b))))
         nil: ((t, st2))

@@ -144,8 +144,8 @@ fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
             let st3 = NoteFaultAt st3a, (TailSpan arm.body), want, bt
             let fwd = arm.?pattern == nil or (IsFamilyArm arm)
             match ?refinedOut:
-                ? ((o, out)): ((acc, st3, (? ArmWait(o=o, out=out, ty=bt, span=arm.body.span, ?against=(? want), fwd=fwd))))
-                nil: ((acc, (ArmAgainst st3, want, bt, arm.body.span, fwd), nil))
+                ? ((o, out)): ((acc, st3, (? ArmWait(o=o, out=out, ty=bt, span=(ResultSpan arm.body), ?against=(? want), fwd=fwd))))
+                nil: ((acc, (ArmAgainst st3, want, bt, (ResultSpan arm.body), fwd), nil))
         nil:
             let ((bt, st3b)) = InferExprBlock env2, st2, arm.body
             let st3 = NoteFaultAt st3b, (TailSpan arm.body), res, bt
@@ -154,8 +154,8 @@ fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
             let acc2 = if IsTimeSigil head: Push acc, ((head, arm.body.span)) else: Push acc, (("", arm.body.span))
             let acc3 = if head == "@": Push acc2, (("@", arm.body.span)) else: acc2
             match ?refinedOut:
-                ? ((o, out)): ((acc3, st3, (? ArmWait(o=o, out=out, ty=plainBt, span=arm.body.span, ?against=nil, fwd=False))))
-                nil: ((acc3, (UnifyArm st3, res, plainBt, arm.body.span), nil))
+                ? ((o, out)): ((acc3, st3, (? ArmWait(o=o, out=out, ty=plainBt, span=(ResultSpan arm.body), ?against=nil, fwd=False))))
+                nil: ((acc3, (UnifyArm st3, res, plainBt, (ResultSpan arm.body)), nil))
 
 # An arm's value against the type the match is checked at: a blueprint's row goes in an
 # obligation, which at an arm that may forward is the forwarding check (ch. 5, pass 5).
@@ -272,13 +272,13 @@ fn IfBranches thenEnv, st, elseEnv, thenB, ?elseB, res:
     let ((t1, st1a)) = InferExprBlock thenEnv, st, thenB
     let st1 = NoteFaultAt st1a, (TailSpan thenB), res, t1
     let h1 = HeadSigil st1, t1
-    let st2 = UnifyArm st1, res, (if IsTimeSigil h1: InnerOf st1, t1 else: t1), thenB.span
+    let st2 = UnifyArm st1, res, (if IsTimeSigil h1: InnerOf st1, t1 else: t1), (ResultSpan thenB)
     let l1 = [[(((LayerHead h1), thenB.span))]]
     match ?elseB:
         ? b:
             let ((t2, st3a)) = InferExprBlock elseEnv, st2, b
             let st3 = NoteFaultAt st3a, (TailSpan b), res, t2
             let h2 = HeadSigil st3, t2
-            let st4 = UnifyArm st3, res, (if IsTimeSigil h2: InnerOf st3, t2 else: t2), b.span
+            let st4 = UnifyArm st3, res, (if IsTimeSigil h2: InnerOf st3, t2 else: t2), (ResultSpan b)
             (((Push l1, (((LayerHead h2), b.span))), st4))
-        nil: ((l1, (Unify st2, res, tUnit, thenB.span)))
+        nil: ((l1, (Unify st2, res, tUnit, (ResultSpan thenB))))

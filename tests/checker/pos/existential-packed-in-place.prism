@@ -1,0 +1,31 @@
+# `any e` packs where the type it meets is not known until the line is unified: a
+# constructor's field (the book's own example, Type System ch. 3, "Existentials":
+# `Watch(label="selected", value=any Sq(file=4, rank=3))`), a function's argument, an
+# array's element. The bounds are solved at `e`'s type once the existential it meets is
+# known (ch. 5, "Existentials are dictionaries"). Written by Claude on the claude-bugs
+# branch; subject to change.
+emit Ui.*
+use Ui.*
+
+type Sq = record:
+    file: Nat
+    rank: Nat
+derive ^Eq, ^Show
+
+type Watch = record:
+    label: Text
+    value: any ^Show
+
+Shown: fn (any ^Show) -> Text
+fn Shown v = Show v
+
+Count: fn [any ^Show] -> Nat
+fn Count vs = Len vs
+
+@main: @unit
+@main:
+    let watches = [[
+        Watch(label="selected", value=any Sq(file=4, rank=3)),
+        Watch(label="score", value=any 21)
+    ]]
+    Ui.Label($text=$"{Len watches} {Shown (any "x")} {Count [[(any 3), (any "y")]]}")

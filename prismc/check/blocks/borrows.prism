@@ -88,6 +88,10 @@ fn UpdateStmt env, st, s = match s.kind:
         EIf c, thenB, ?elseB: ((env, (UpdateIf env, st, c, thenB, ?elseB)))
         EMatch scrut, arms: ((env, (UpdateMatch env, st, scrut, arms, e.span)))
         EFor ?binders, source, body: ((env, (UpdateFor env, st, ?binders, source, body, e.span)))
+        # a line `x <= e` is a set, never a comparison (Semantics ch. 5, "Statements": "A
+        # comparison is never a statement"): one the parser did not read as a set has no
+        # reference path on its left
+        EBinary "<=", left, ignore: ((env, (SetWithoutReference env, st, left)))
         otherwise:
             let ((t, st1)) = Infer env, st, e
             ((env, (Discarded st1, t, e.span)))
@@ -100,6 +104,28 @@ fn UpdateStmt env, st, s = match s.kind:
 # The left side of a set is a reference: `&_`, a local, a lens path from either.
 RefTarget: fn Env, St, Expr -> St
 fn RefTarget env, st, e = if IsRef e: st else: ErrFix st, "mismatch", e.span, "the left of `<=` is a reference: `&_`, a local `&x`, or a path from one", "write `&_.{SrcText env, e.span}`, or make a local with `let &x = ...`"
+
+# The left of a line `x <= e` that is no reference path: a path from a reference whose
+# field step shows the field's stack (a reference path writes its steps bare, `&_.note`
+# for a `?note` field), or no reference at all.
+SetWithoutReference: fn Env, St, Expr -> St
+fn SetWithoutReference env, st, left = match ?BarePath env, left:
+    ? bare: ErrFix st, "mismatch", left.span, "a reference path writes its field steps bare; `{SrcText env, left.span}` shows a field's stack", "write `{bare}`"
+    nil: ErrFix st, "mismatch", left.span, "the left of `<=` is a reference: `&_`, a local `&x`, or a path from one", "set a part of `&_`, or make a local with `let &x = ...`"
+
+# A path from a reference with its field steps written bare; none when it starts at no
+# reference.
+?BarePath: fn Env, Expr -> ?Text
+fn ?BarePath env, e = match e.kind:
+    EName n: if HasPrefix n.sigils, "&": ? (SrcText env, e.span) else: nil
+    EField r, ignore, field: match ?BarePath env, r:
+        ? root: ? "{root}.{field.name}"
+        nil: nil
+    EIndex r, index: match ?BarePath env, r:
+        ? root: ? "{root}[{SrcText env, index.span}]"
+        nil: nil
+    EGroup x: ?BarePath env, x
+    otherwise: nil
 
 IsRef: fn Expr -> Bool
 fn IsRef e = match e.kind:
@@ -155,21 +181,22 @@ fn UpdateWhile env, st, c, body:
     st2
 
 # `for &s <- &_.xs:` yields a reference per element; `for x <- xs:` values; the bare form
-# rebinds `&_` to the element.
+# rebinds `&_` to the element. With one binder or none, `key` is the entry's key, as in a
+# widget's `for` (Semantics ch. 4; Jimmy's ruling KY): a map's key, an array's index.
 UpdateFor: unbounded fn Env, St, ?ForBinders, Expr, Block, Range -> St
 fn UpdateFor env, st, ?binders, source, body, span:
     let ((t, st1)) = Infer env, st, source
     let ((k, v, st2)) = CollParts st1, t, source.span
     let env1 = LoopIndices env
     let ((env2, st3)) = match ?binders:
-        nil: (((WithTopic env1, "&_", v), st2))
+        nil: (((WithTopic (WithTopic env1, "&_", v), "key", k), st2))
         ? bs: match bs.?second:
             ? second:
                 let ((e1, s1)) = BindPattern (Unpending env1), st2, bs.first, k, False
                 let ((e2, s2)) = BindPattern e1, (ForBinderMatches env, s1, bs.first, k), second, v, False
                 ((e2, (ForBinderMatches env, s2, second, v)))
             nil:
-                let ((e2, s2)) = BindPattern (Unpending env1), st2, bs.first, v, False
+                let ((e2, s2)) = BindPattern (Unpending (WithTopic env1, "key", k)), st2, bs.first, v, False
                 ((e2, (ForBinderMatches env, s2, bs.first, v)))
     let ((ignore, st4)) = UpdateStmts env2, st3, body.stmts
     st4

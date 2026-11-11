@@ -1,0 +1,7 @@
+tests/checker/neg/use-unknown-module.prism:6: error[unknown-name]: no module `Nowhere` among the program's files
+    use Nowhere
+    ^^^^^^^^^^^
+tests/checker/neg/use-unknown-module.prism:7: error[unknown-name]: no module `Nowhere.Else` among the program's files
+    use Nowhere.Else.*
+    ^^^^^^^^^^^^^^^^^^
+2 errors

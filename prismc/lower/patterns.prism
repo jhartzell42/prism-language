@@ -232,7 +232,7 @@ fn FieldsPat lx, c, fps, rest, ty, mode, fresh, tyPath:
 
 let dummyFieldPat = FieldPat(marks="", ?name=nil, pattern=dummyPat, span=Range(start=0, end=0))
 
-let dummyTagInfo = TagInfo(name="", family="", kind="", out=TyErr, qs=[[]], rqs=[[]], bounds=[[]], fields=[[]], home="", file=0, span=Range(start=0, end=0))
+let dummyTagInfo = TagInfo(name="", family="", kind="", out=TyErr, qs=[[]], rqs=[[]], bounds=[[]], fields=[[]], fieldAt=[[]], home="", file=0, span=Range(start=0, end=0))
 
 # Whether a scrutinee is a live element (`Element r o`), whose patterns bind each field
 # with its stack, against a document's element or another row's value, plain data.

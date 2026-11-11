@@ -1,0 +1,27 @@
+# An `update` block's `for` over a map binds `key`, with one binder and with none, as a
+# widget's `for` does (Semantics ch. 4's binders: "with none, `key` and `_`"; ch. 5,
+# "Statements"; Jimmy's ruling KY: that it did not was a bug). Over an array `key` is the
+# index, as `ix` is. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+
+Named: fn (Text ==> Nat) -> Text
+fn Named m = update "":
+    for v <- m:
+        &_ <= "{&_} {key}={v}"
+
+KeyNames: fn (Text ==> Nat) -> [Text]
+fn KeyNames m = update [[]]:
+    let &names = [[]]
+    for m:
+        &names <= Push &names, key
+    &_ <= &names
+
+Indices: fn [Text] -> Nat
+fn Indices xs = update 0:
+    for x <- xs:
+        &_ += key
+
+@shown: @unit
+@shown:
+    Ui.Label($text=$(Named {"a": 1, "b": 2}))
+    Ui.Label($text=$"{Len (KeyNames {"a": 1})} {Indices [["x", "y"]]}")

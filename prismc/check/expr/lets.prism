@@ -515,14 +515,14 @@ fn CheckBody env, st, body, res = match body:
                     let env2 = update env:
                         &_.scope <= rw
                     let ((t, st2)) = InferWidgetBlockAt env2, st, b, (? inner)
-                    Unify st2, inner, t, b.span
+                    Unify st2, inner, t, (ResultSpan b)
                 other: Err st, "mismatch", b.span, "a widget block builds a blueprint; the signature says `{ShowTy st, other}`"
         else: if env.mark == "?" or env.mark == "~":
             let ((t, st2)) = InferGivenBlock env, st, b, env.mark
-            Unify st2, res, t, b.span
+            Unify st2, res, t, (ResultSpan b)
         else:
             let ((t, st2)) = InferExprBlock env, st, b
-            Unify st2, res, t, b.span
+            Unify st2, res, t, (ResultSpan b)
 
 # ---------------------------------------------------------------------------------------
 # Templates

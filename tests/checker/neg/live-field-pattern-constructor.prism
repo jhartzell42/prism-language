@@ -11,6 +11,7 @@ use Ui.*
 type Mode = choice:
     Quiet
     Loud
+derive ^Eq, ^Show
 
 tag Pad.Dial of Element:
     $lit: Bool

@@ -202,7 +202,9 @@ fn CheckDef g, st, d:
                 TyAt ignore, ignore: s2
                 TyErr: s2
                 other: Err s2, "mismatch", t.blueprint.span, "a test builds a blueprint; this is `{ShowTy s2, other}`"
-    let solved = CheckColors (SolveWants g, s1, env.givens, False)
+    let first = SolveWants g, s1, env.givens, False
+    # an `any e` still waiting at the definition's end met no existential (`ResolvePacks`)
+    let solved = CheckColors (if (Len first.packs) == 0: first else: SolveWants g, (ResolvePacks first, True), env.givens, False)
     let defaulted = LayerQuestions (ResolveFields g, (DefaultDef g, solved), True)
     let discharged = DischargeIncls g, defaulted, inclsBefore
     update discharged:
@@ -235,7 +237,7 @@ fn CheckWidgetDef env, st, d, w = match env.g.vals[d.qk]:
                 &_.scope <= rw
                 &_.mark <= "@"
             let ((t, st2)) = InferWidgetBlock env2, st, w.body
-            NoteFn (Unify st2, inner, t, w.span), w.span, d.name, CBound, st2.color
+            NoteFn (Unify st2, inner, t, (ResultSpan w.body)), w.span, d.name, CBound, st2.color
         other: Err st, "mismatch", w.span, "`{d.name}` is declared `{ShowTy st, other}`; a widget block builds a blueprint"
     nil:
         let ((t, st2)) = InferWidgetBlock env, st, w.body

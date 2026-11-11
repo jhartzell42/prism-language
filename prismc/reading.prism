@@ -429,7 +429,14 @@ fn WalkModule has, texts, acc, main, name, parent, inTest:
     let acc4 = update acc3:
         &_.declared <= Insert &_.declared, main, True
         &_.units <= Push &_.units, ModFiles(name=name, named=True, segs=[[Seg(path=main, text=text, role=(if inTest: "test" else: "main"))]], parent=parent)
-    if leaf: acc4 else: Fold (Filter subs, \|h| not (name == "" and h.arg == "Prelude")), acc4, \|a, h| Child has, texts, a, main, dir, h, name, inTest
+    if leaf: acc4
+    else:
+        # a module is declared once (Semantics ch. 6, "Every name has one owner"): a second
+        # line for one name is `collision` at that line, and the module is read once
+        let ((walked, ignore)) = Fold (Filter subs, \|h| not (name == "" and h.arg == "Prelude")), ((acc4, [[]])), \|((a, seen)), h|
+            if HasText seen, h.arg: (((AddTreeDiag a, main, h.span, "collision", "a second `mod {h.arg}`", "drop one of the two lines"), seen))
+            else: (((Child has, texts, a, main, dir, h, name, inTest), (Push seen, h.arg)))
+        walked
 
 PreludeNamed: fn TreeAcc, Text, Text, HeadLine -> TreeAcc
 fn PreludeNamed a, main, dir, h:

@@ -1,0 +1,18 @@
+# A qualified name needs no `use` (Jimmy's ruling QN, "follow Rust", which overrules
+# Semantics ch. 6's "only through `use`"): `Words.Name`, a function, `Words.Unit`, a type
+# and its constructor `Words.Metres`, and `Ui.Label`, a tag, are each reached by the
+# module's name with no `use` line; `use Shapes.*` brings `Double` in bare. The other
+# direction is neg/bare-name-no-use. Written by Claude on the claude-bugs branch; subject
+# to change.
+emit Ui.*
+mod Words
+mod Shapes
+use Shapes.*
+
+Long: fn Words.Unit -> Bool
+fn Long (Words.Metres) = True
+fn Long (Words.Feet) = False
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Words.Name (Double 2)} {Long Words.Metres}")

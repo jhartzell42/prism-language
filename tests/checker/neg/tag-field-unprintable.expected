@@ -1,0 +1,12 @@
+tests/checker/neg/tag-field-unprintable.prism:20: error[no-impl]: the field `$hidden` of the tag `Pad.Echo` does not print: no impl of `^Show` for `Shut`
+        $hidden: Shut
+        ^^^^^^^^^^^^^
+  fix: derive `^Show` on `Shut`, or write `impl ^Show Shut`
+tests/checker/neg/tag-field-unprintable.prism:21: error[no-impl]: the field `$inside` of the tag `Pad.Echo` does not print: no impl of `^Show` for `Shut`
+        $inside: [Shut]
+        ^^^^^^^^^^^^^^^
+  fix: derive `^Show` on `Shut`, or write `impl ^Show Shut`
+tests/checker/neg/tag-field-unprintable.prism:22: error[no-impl]: the field `made` of the tag `Pad.Echo` does not print: no impl of `^Show` for `fn Nat -> Nat`: functions do not compare or print
+        made: fn Nat -> Nat
+        ^^^^^^^^^^^^^^^^^^^
+3 errors
