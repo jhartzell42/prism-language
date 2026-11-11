@@ -324,7 +324,7 @@ fn FinishNode wx0, qk, params, isRow:
     let subFields = Each wx.subs, \|((ev, m, t))| (("{m}_sub", (OutNamed (RefRuntime "std::Cell"), [[(OutOpt (OutNamed (RefRuntime "rt::Handle"), [[]]))]]), "the subscription to the parent's `!{ev}`"))
     let subInits = Each wx.subs, \|((ev, m, t))| (("{m}_sub", (XCall (RefRuntime "std::Cell::new"), [[XNone]])))
     let fallible = wx.fallible or isRow or (Len wx.builders) > 0 or (Len wx.gens) > 0
-    NodeDef(name=wx.node, prism=(BareName qk), doc=(DefinitionText wx.lx, qk), params=params, fields=(Append (Append (Append (Append wx.fields, wakesField), genFields), portFields), subFields), consts=consts, lets=wx.lets, inits=(Append wx.inits, (Append (Append (Append (Append wx.moves, wakesInit), genInits), portInits), subInits)), build=(Append (Append (Append rowsBuilt, wx.build), subscribed), startedReg), fallible=fallible, methods=(Append (Append (Append (Append (Append (Append (Append (Append evMethods, gatherIns), placeGetters), wx.getters), rowMethods), heard), hostMethods), gatheredMoved), (Append movedMethod, (PlaceMethods wx))), answers=(Append answers, forwards), hooks=hooks, builders=wx.builders, wakes=many, children=wx.rows, gens=wx.gens, subs=wx.subs, top=top, rowKind=(if isRow: (if isGen: GenerationRow else: ForRow) else: NotARow), hosted=hostedMethods)
+    NodeDef(name=wx.node, prism=(BareName qk), doc=(DefinitionText wx.lx, qk), params=params, fields=(Append (Append (Append (Append wx.fields, wakesField), genFields), portFields), subFields), consts=consts, lets=wx.lets, inits=(Append wx.inits, (Append (Append (Append (Append wx.moves, wakesInit), genInits), portInits), subInits)), build=(Append (Append (Append (Append (Filter wx.build, IsOwnerLink), rowsBuilt), (Filter wx.build, \|d| not (IsOwnerLink d))), subscribed), startedReg), fallible=fallible, methods=(Append (Append (Append (Append (Append (Append (Append (Append evMethods, gatherIns), placeGetters), wx.getters), rowMethods), heard), hostMethods), gatheredMoved), (Append movedMethod, (PlaceMethods wx))), answers=(Append answers, forwards), hooks=hooks, builders=wx.builders, wakes=many, children=wx.rows, gens=wx.gens, subs=wx.subs, top=top, rowKind=(if isRow: (if isGen: GenerationRow else: ForRow) else: NotARow), hosted=hostedMethods)
 
 IsGeneration: fn Wx, Text -> Bool
 fn IsGeneration wx, name = (Len (Filter wx.gens, \|gd| gd.name == name)) > 0
@@ -570,6 +570,14 @@ WithHeight: fn Gn, Nat -> Gn
 fn WithHeight g, h = update g:
     &_.height <= h
 
+# A link to the node filled in (`whole_owner.link(&node)`, a host's `host_k_owner`): the
+# first thing done once the node is made, before the builders, whose rows read the node's
+# live dynamics and dynamic answers through it.
+IsOwnerLink: fn Do -> Bool
+fn IsOwnerLink d = match d:
+    DoExpr (XMethod (XVar ignore), "link", [[(XRef (XVar "node"))]]): True
+    otherwise: False
+
 # The block's names a row must hear a write behind (pick RE): what its `!Updated` nodes
 # read through the parent, and what its own rows hear, closed over its dynamic `let`s. The
 # block tells the row through `parent_wrote_{m}`.
@@ -582,7 +590,10 @@ fn RowHears wx:
     let fromBuilds = ReadsClosed wx.dynReads, wx.buildHolds
     # and what the row's `rebuild`s' sources read through the parent
     let fromGens = Fold wx.genHolds, [[]], \|acc, ((ignore, hs))| UnionReads acc, (ReadsClosed wx.dynReads, hs)
-    Fold (UnionReads (UnionReads (UnionReads fromUpdated, fromRows), fromBuilds), fromGens), [[]], \|acc, r| match r:
+    # and what its live dynamics and its hosts' dynamic answers read through the parent:
+    # their ports fire at the block's write (`MovedBy`)
+    let fromAnswers = Fold wx.dynAnswers, [[]], \|acc, ((ignore, rds))| UnionReads acc, (ReadsClosed wx.dynReads, rds)
+    Fold (UnionReads (UnionReads (UnionReads (UnionReads fromUpdated, fromRows), fromBuilds), fromGens), fromAnswers), [[]], \|acc, r| match r:
         ParentRead m: AddText acc, m
         OwnRead ignore: acc
 

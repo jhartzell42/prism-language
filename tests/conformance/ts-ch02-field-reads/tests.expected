@@ -1,0 +1,7 @@
+# Derived by hand from Type System ch. 2 (records; a text in a placeholder is its characters) and Semantics ch. 10 (`Error` is the record of `kind` and `message`): an `Error`'s message reads as the text it was made with.
+test fields_are_read_everywhere
+
+tick 0
+  added:
+    0: Ui.Label(text="missing: gone 1 gone 1! 1 2 1 a 3 one 1 a3")
+    1: Ui.Label(text="4 4 a")

@@ -1,0 +1,23 @@
+# The prelude's `Turn b`, what one cycle of a job gives (Appendix B, Types: `More` or
+# `Done b`), is a choice a program may build, keep in its own record and match. Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Step a = record:
+    turn: Turn a
+    label: Text
+
+Told: fn Turn a -> Text where a: ^Show
+fn Told (Done x) = "done {Show x}"
+fn Told More = "more"
+
+Next: fn Nat -> Turn Nat
+fn Next n = if n < 3: More else: Done n
+
+@main: @unit
+@main:
+    let step = Step(turn=(Done 7), label="last")
+    let turns = Each [[1, 5]], Next
+    Ui.Label($text=$"{step.label}: {Told step.turn} {Told (Next 1)} {Told (Next 5)} {Len turns}")    # 0

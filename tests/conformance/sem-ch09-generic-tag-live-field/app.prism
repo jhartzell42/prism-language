@@ -1,0 +1,27 @@
+# A generic tag with a live field of its variable (Type System ch. 2: a generic tag's
+# output is a scheme, its variables shared with its fields): the guest places it at
+# `Text`. The host answers the place with an event that never fires. Hosting attempt 15
+# of the Bible's evidence (prism-notes, claude/04-domains-and-documents/evidence/hosting/)
+# found the bug with a tag whose variable is missing from its output, a wrong program
+# (tests/checker/neg/hosting-generic-request-field); this is a legal one that meets it.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+tag Pad.Echo of Element !r:
+    $?latest: r
+
+@guest: @unit
+@guest:
+    !press <- Ui.Button($label=$"press")                         # 0
+    $?latest <- nil then ? ("pressed" on !press)
+    !back <- Pad.Echo($?latest=$?latest)                         # 1
+    $heard <- "nothing" then !back
+    Ui.Label($text=$"heard {$heard}")                            # 2
+
+@host: @unit
+@host:
+    ignore <- @HostDocument @guest, \|p, e| match e:            # 0/[p]
+        Pad.Echo(..): @ never
+        otherwise: @Element e

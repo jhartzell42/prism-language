@@ -1,0 +1,38 @@
+# The prelude's types as a record's fields and as the types generic calls are made at
+# (Appendix B, Types; Semantics ch. 10 for `Exception`): `Ordering`, `Span`, `Duration`,
+# an optional `Exception`, a function. Pins the back end's
+# guard for a type the checker did not declare (lower/types.prism, `NamedTy`). Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Zoo a = record:
+    order: Ordering
+    span: Span
+    wait: Duration
+    ?gave: Exception
+    same: fn a, a -> Ordering
+
+?Nothing: fn Nat -> ?a
+fn ?Nothing n = nil
+
+Keep: fn a -> a
+fn Keep x = x
+
+First: fn [a], a -> a
+fn First xs, d = Or xs[0], d
+
+MakeZoo: fn a -> Zoo a
+fn MakeZoo x = Zoo(order=Less, span=Span(file="f", line=1, column=2, binding="b"), wait=250ms, ?gave=nil, same=(\|a, b| Equal))
+
+@main: @unit
+@main:
+    let z = MakeZoo 7
+    let zs = [[z]]
+    let Same = z.same
+    let orders = Each zs, \|k| Keep k.order
+    let spans = Each zs, \|k| k.span.line
+    let ?gone = First (Each zs, \|k| k.?gave), (?Nothing 0)
+    let waits = Each zs, \|k| Keep k.wait
+    Ui.Label($text=$"{Show (Same 1, 2)} {Len orders} {Len spans} {Len waits}")

@@ -1,0 +1,22 @@
+# A widget parameter's argument that reads its caller's event, applied inside a `for`
+# row of the widget (Semantics ch. 8: a blueprint parameter is built where it is applied,
+# with the caller's names): each row's counter hears the caller's button.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Counter: fn !Click -> @unit
+fn @Counter !e:
+    $k <- 0 then $k + 1 on !e
+    Ui.Label($text=$"k {$k}")                                    # 0 of the row
+
+@Frame: fn [Nat], @unit -> @unit
+fn @Frame xs, @inner:
+    for ignore <- $ xs:                                          # 1/[i]
+        @inner                                                   # 1/[i]/0
+
+@page: @unit
+@page:
+    !c <- Ui.Button($label=$"c")                                 # 0
+    @Frame [[1, 2]], (@Counter !c)                               # 1

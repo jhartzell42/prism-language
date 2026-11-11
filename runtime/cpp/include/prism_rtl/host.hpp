@@ -943,8 +943,11 @@ public:
 
     /// The child place's request: out with the forwarded element, or nowhere when the
     /// supplier answered the place.
-    void request(std::optional<std::string> field, Pod value, Cx& cx) const {
+    /// The live element's event field hears it first (`Live::requested`).
+    Done request(std::optional<std::string> field, Pod value, Cx& cx) const {
+        TRY(requests_->fire(std::pair<std::optional<std::string>, Pod>{field, value}, cx));
         if (forwards()) cx.request(path_.at(0), std::move(field), std::move(value));
+        return {};
     }
 
     /// The row's own places, for an enclosing host's document: the forwarded element at
@@ -994,7 +997,8 @@ public:
 private:
     HostRow(Path path, Path key, Rc<Entry<E>> place, const Rc<HostOf<E, A>>& host)
         : path_(std::move(path)), key_(std::move(key)), place_(std::move(place)), host_(host),
-          level_moved_(make_rc<Port<Unit>>()) {}
+          level_moved_(make_rc<Port<Unit>>()),
+          requests_(make_rc<Port<std::pair<std::optional<std::string>, Pod>>>()) {}
 
     Rc<HostOf<E, A>> host() const {
         auto h = host_.lock();
@@ -1012,7 +1016,7 @@ private:
             if (!r) panic("a live element outlives its host's row");
             return r->entry(cx);
         });
-        return Element<E>{Live<E>{std::move(identity), Dynamic<E>{nullptr, read, level_moved_}, place_}};
+        return Element<E>{Live<E>{std::move(identity), Dynamic<E>{nullptr, read, level_moved_}, place_, requests_}};
     }
 
     Path path_;
@@ -1026,6 +1030,8 @@ private:
     /// The entry moved: readers of the live element's level (a forwarded element) read it
     /// again.
     Rc<Port<Unit>> level_moved_;
+    /// The place's requests, which the live element's event fields hear.
+    Rc<Port<std::pair<std::optional<std::string>, Pod>>> requests_;
 };
 
 /// A host of owner `P` (the node its line and its child are inlined into): its place, its
@@ -1069,8 +1075,7 @@ public:
     /// only from an element the host's blueprint emits).
     Done request(const Path& place, std::optional<std::string> field, Pod value, Cx& cx) const {
         if (auto row = rows_->get(place)) {
-            (*row)->request(std::move(field), std::move(value), cx);
-            return {};
+            return (*row)->request(std::move(field), std::move(value), cx);
         }
         return unexpected(Fault::answer("a request from " + place.to_string() + ", which has no row under the host at " +
                                         at_.to_string()));

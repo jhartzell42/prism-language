@@ -265,7 +265,10 @@ fn TagPat lx, tg, fps, rest, ty, mode, fresh:
         let fname = TagFieldName fp, names, i
         let ft = Fold tg.fields, TyErr, \|found, ((f, t))| if f == fname: t else: found
         match LayerOf ft:
-            LyEv: ((nil, (PatOut(pa=PaWild, conds=[[CcIf (Refusal "an event field in an element pattern ({tg.name}.{fname})")]], binds=[[]]))))
+            # an event field binds the event the description was made with, or a live
+            # element's requests through the field (ruling EP), from the element's view
+            LyEv if live: ((nil, (EventFieldPat lx, fp.pattern, fname, (FieldSpell tg.home, fname, ft), ft, "{fresh}_v", (RefIn lx, tg.home, (DescStructOf tg)))))
+            LyEv: ((nil, (PatOut(pa=PaWild, conds=[[CcIf (InternalBug "an event field in a pattern of a row value that is no element ({tg.name}.{fname})")]], binds=[[]]))))
             LyDyn if live: ((nil, (LiveFieldPat lx, fp.pattern, fname, (FieldSpell tg.home, fname, ft), ft, "{fresh}_v", (RefIn lx, tg.home, (DescStructOf tg)))))
             otherwise:
                 let o = RustPat lx, fp.pattern, (Peel ft), subMode, "{fresh}_{i}"
@@ -303,7 +306,9 @@ fn DescViewBy lx, tg, fresh, reader:
         let f = FieldSpell tg.home, fname, ft
         let v = match LayerOf ft:
             LyDyn: LiveProjection "l", variant, structPath, f, (OutTyOf lx, (Peel ft))
-            LyEv: XCall (RefRuntime "rt::Event::never"), [[]]
+            # a live element's event field: the requests its place makes through it,
+            # named when the tag has several event fields (`SkRequest`)
+            LyEv: XMethod (XVar "l"), "requested", [[(if (RequestField tg, fname) == "": XNone else: XCtor (RefRuntime "std::Some"), [[XStr (RequestField tg, fname)]])]]
             otherwise: XClone (XFieldOf (XVar "x"), structPath, f)
         ((f, v))
     let some = XCtor (RefRuntime "std::Some"), [[(XRecord descPath, fields)]]
@@ -321,6 +326,15 @@ fn LiveFieldPat lx, p, fname, rsField, ft, view, descPath = match p.kind:
     PName n: PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal (XClone (XFieldOf (XVar view), descPath, rsField)), Owned, (OutDyn (OutTyOf lx, (Peel ft))))))]])
     PGroup q: LiveFieldPat lx, q, fname, rsField, ft, view, descPath
     otherwise: PatOut(pa=PaWild, conds=[[CcIf (Refusal "a pattern inside an element's `$` field ({fname})")]], binds=[[]])
+
+# An element's event field (ruling EP): a binder takes the field's event from the
+# element's view, as a `$` field's binder its dynamic.
+EventFieldPat: unbounded fn Lx, Pattern, Text, Text, Ty, Text, Ref -> PatOut
+fn EventFieldPat lx, p, fname, rsField, ft, view, descPath = match p.kind:
+    PIgnore: PatOnly PaWild
+    PName n: PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal (XClone (XFieldOf (XVar view), descPath, rsField)), Owned, (OutEvent (OutTyOf lx, (Peel ft))))))]])
+    PGroup q: EventFieldPat lx, q, fname, rsField, ft, view, descPath
+    otherwise: PatOut(pa=PaWild, conds=[[CcIf (InternalBug "a pattern inside an element's event field ({fname})")]], binds=[[]])
 
 LiveProjection: fn Text, Ref, Ref, Text, OutTy -> Ex
 fn LiveProjection fresh, variant, structPath, fname, ft:

@@ -472,10 +472,20 @@ fn BuildInOrder wx, stmts, order, start, ends:
         Take (Drop wx.lets, from), (Or ((Or ends[i], from) -? from), 0)
     let lets = Fold order, (Take wx.lets, start), \|acc, comp| Fold comp, acc, \|acc2, i| Append acc2, (Or runs[i], [[]])
     let cyclic = Filter order, \|comp| (Len comp) > 1 and Fold comp, False, \|seen, i| seen or (Len (Or runs[i], [[]])) > 0
+    # a link to the node reads nothing and is shared by the lines after the one that made
+    # it (`whole_owner`): it stands before every line's run
+    let links = Filter lets, IsLinkLet
     let wx2 = update wx:
-        &_.lets <= Append lets, (Drop wx.lets, last)
+        &_.lets <= Append (Append links, (Filter lets, \|d| not (IsLinkLet d))), (Drop wx.lets, last)
     Fold cyclic, wx2, \|w, comp| update w:
         &_.build <= Push &_.build, (InternalBugDo "lines that read each other at the build ({Join (Fold comp, [[]], \|acc, i| Append acc, (Check.Blocks.GroupDefs (Or stmts[i], dummyStmtL))), ", "}): a cycle among values")
+
+# The `let` of a node's link (`prism_rtl::Link::<Node>::new()`), made before the node and
+# linked once it is.
+IsLinkLet: fn Do -> Bool
+fn IsLinkLet d = match d:
+    DoLet (PaBind ignore), (XCall (RefRuntime made), [[]]): HasPrefix made, "prism_rtl::Link::<"
+    otherwise: False
 
 # A block's lines in strongly connected components of what each reads at the build, each
 # after the ones it reads, ties in page order. An event has no value at the build (its port
@@ -747,7 +757,11 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
     let heldInit = match s.kind:
         SBind p, init, (? ignore): if IsHeldHold wx0.lx, p: InitKey init else: ""
         otherwise: ""
-    let ((wx, benv, menv)) = Fold (LineExprs s), ((wx0, benv0, menv0)), \|((w, be, me)), e| WholeArgs w, be, me, e, (InitKey e) == heldInit
+    # a hold's step is heard after the build: its live dynamics are late (`WholeArgsAt`)
+    let stepKey = match s.kind:
+        SBind ignore, ignore, (? step): InitKey step
+        otherwise: ""
+    let ((wx, benv, menv)) = Fold (LineExprs s), ((wx0, benv0, menv0)), \|((w, be, me)), e| WholeArgsAt w, be, me, e, (InitKey e) == heldInit, (InitKey e) == stepKey
     let lx = wx.lx
     match s.kind:
         SBind p, e, nil:

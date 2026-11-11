@@ -1,0 +1,7 @@
+# The tests of ts-ch05-generic-let-unused.
+emit Ui.*
+use App.*
+
+test unused_generic_lets_build_nothing, @main:
+    build
+        => expect Ui.Label(text="built")

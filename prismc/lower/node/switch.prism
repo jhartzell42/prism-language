@@ -73,7 +73,7 @@ fn ClauseExprs c = match c.body:
 RowEnvNames: unbounded fn Wx, Wx, Env, [Text] -> ((Wx, Wx, Env))
 fn RowEnvNames parent, rowWx, menv, written:
     let names = RowNamesClosed menv, written
-    Fold names, ((parent, rowWx, emptyEnv)), \|((p, r, env)), n| match menv.names[n]:
+    Fold names, ((parent, rowWx, (WholeOfBlock menv, emptyEnv, False))), \|((p, r, env)), n| match menv.names[n]:
         ? (BnLocal rs, mode, t): ((p, r, (Bind env, n, (BnLocal (OverParent rs), Owned, t))))
         ? (BnLocalWidget b): ((p, r, (Bind env, n, (BnLocalWidget b))))
         ? (BnLocalFn cs): ((p, r, (Bind env, n, (BnLocalFn cs))))
@@ -97,6 +97,20 @@ fn RowEnvNames parent, rowWx, menv, written:
         ? (BnDyn ignore, ignore, ignore): RowParamEnv p, r, env, menv, n
         ? (BnHold f, t): ((p, r, (Bind env, n, (BnDyn (XMethod (XField parentRef, f), "get", [[XCx]]), [[ParentRead f]], t))))
         otherwise: ((p, r, env))
+
+# The block's live dynamics (`WholeArgs`, bound under `#whole{span}` for every reader its
+# lines pass whole, the lines of its rows' bodies too) as a row reads them: the block's
+# fields through the row's `parent`, in the row's methods, or through its `parent`
+# argument in its build (`build`).
+WholeOfBlock: fn Env, Env, Bool -> Env
+fn WholeOfBlock menv, env, build = Fold (Keys menv.names), env, \|en, k| if not (HasPrefix k, "#whole"): en else: match menv.names[k]:
+    ? (BnLocal rs, mode, t):
+        let over = OverParent rs
+        if not build: Bind en, k, (BnLocal over, Owned, t)
+        else: match ?ThroughParent over:
+            ? x: Bind en, k, (BnLocal x, Owned, t)
+            nil: en
+    otherwise: en
 
 # A widget parameter's dynamic as a row reads it: through its getter (`BindParam`).
 RowParamEnv: fn Wx, Wx, Env, Env, Text -> ((Wx, Wx, Env))

@@ -1,0 +1,4 @@
+tests/checker/neg/tag-pattern-field-twice.prism:10: error[collision]: `label` is matched twice
+        Ui.Button($label=$a, $label=$b): "button"
+                             ^^^^^^^^^
+1 error

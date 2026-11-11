@@ -365,6 +365,9 @@ fn WholeValueOf lx, env, e:
                     # a local's value, never written again where it is bound (a root
                     # widget's argument): the constant it is
                     other if local: VlOwned (XCall (HelperRef "dyn_constant"), [[Own v]]), (OutDyn other)
+                    # a global dynamic (`let $four = $ 4`): no node writes it, so it is
+                    # the constant its getter gives
+                    other if (Len n.path) > 1 or not (HasKey env.names, (SNameKey n)): VlOwned (XCall (HelperRef "dyn_constant"), [[Own v]]), (OutDyn other)
                     otherwise: VlOwned (Refusal "`{SrcText lx, lx.file, e.span}` passed whole to a function that takes it so, where it has no live dynamic to give: a reader with no value at the build where the line reads it (gap LF)"), (OutDyn (OutTyOf lx, (Peel full)))
         # `$ $q` is lifted over `$q` (a bare type variable lifts, Type System ch. 4): a map
         # to a constant of each value
@@ -576,6 +579,12 @@ fn DirectOperands e = match e.kind:
     EField r, ignore, ignore: [[r]]
     EIndex r, i: [[r, i]]
     EMap kvs: Fold kvs, [[]], \|acc, ((k, v))| Append acc, [[k, v]]
+    # an interpolated text's holes: it is the text builder applied to each
+    ELit l: match l.kind:
+        LText segs: Fold segs, [[]], \|acc, sg| match sg:
+            SegPlaceholder x: Push acc, x
+            otherwise: acc
+        otherwise: [[]]
     otherwise: [[]]
 
 PlainValueByKind: unbounded fn Lx, Env, Expr -> Vl
@@ -691,7 +700,10 @@ IsBundleAnswer: fn Lx, Expr -> Bool
 fn IsBundleAnswer lx, x = match x.kind:
     EGroup y: IsBundleAnswer lx, y
     ETuple es: Fold es, False, \|f, y| f or (LayerOf (TypeAt lx, y.span)) == LyEv
-    otherwise: False
+    # a bundle not written as a tuple (`@ pair`, `pair` a `let`): by its type
+    otherwise: match TypeAt lx, x.span:
+        TyTuple ts: Fold ts, False, \|f, part| f or (LayerOf part) == LyEv
+        otherwise: False
 
 BundleBlueprint: unbounded fn Lx, Env, Expr, Ref, OutTy -> Vl
 fn BundleBlueprint lx, env, x, variant, t = match x.kind:
@@ -708,7 +720,25 @@ fn BundleBlueprint lx, env, x, variant, t = match x.kind:
                 let wrapped = XMethod (Own (ValueOf lx, env, ev)), "map", [[(XClosure False, [[PaBind "v"]], (XCtor variant, [[(XClone (XVar "v"))]]))]]
                 VlOwned (XCall (RefRuntime "prism_rtl::bundle_blueprint::<crate::Elem, _>"), [[(XCtor firstVariant, [[firstVal]]), wrapped]]), t
             otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer with a `$` part or two event parts"), t
-    otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer that is not a tuple of its parts"), t
+    # a bundle that is a value already (`@ pair`): its parts are the tuple's, the plain
+    # ones cloned out for the first value, the event's mapped to the tag's variant
+    otherwise: match TypeAt lx, x.span:
+        TyTuple ts:
+            let places = Range0 (Len ts)
+            let LayerAt = \|i| LayerOf (Or ts[i], TyErr)
+            let plain = Filter places, \|i| (LayerAt i) == LyPlain
+            let evs = Filter places, \|i| (LayerAt i) == LyEv
+            let others = Filter places, \|i| (LayerAt i) == LyDyn
+            let whole = XVar "bundle_answer"
+            match ((env.names["#tagfirst"], evs, others)):
+                ((? (BnLocal (XPath firstVariant), ignore, ignore), [[ev]], [[]])):
+                    let firstVal = match plain:
+                        [[i]]: XClone (XPart whole, i)
+                        otherwise: XTuple (Each plain, \|i| XClone (XPart whole, i))
+                    let wrapped = XMethod (XPart whole, ev), "map", [[(XClosure False, [[PaBind "v"]], (XCtor variant, [[(XClone (XVar "v"))]]))]]
+                    VlOwned (XBlock [[(DoLet (PaBind "bundle_answer"), (Own (ValueOf lx, env, x)))]], (XCall (RefRuntime "prism_rtl::bundle_blueprint::<crate::Elem, _>"), [[(XCtor firstVariant, [[firstVal]]), wrapped]])), t
+                otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a bundle answer with a `$` part or two event parts"), t
+        otherwise: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a bundle answer whose type is no tuple"), t
 
 PlainBlueprint: unbounded fn Lx, Env, Expr, Ref, OutTy -> Vl
 fn PlainBlueprint lx, env, x, variant, t = VlOwned (XCall (RefRuntime "prism_rtl::plain_blueprint::<crate::Elem, _>"), [[(XCtor variant, [[Own (ValueOf lx, env, x)]])]]), t
@@ -775,7 +805,7 @@ fn NameValue lx, env, n, span:
         ? (BnDyn x, ignore, dt): VlOwned x, dt
         ? (BnEv ignore, et): match env.names["{nkey}#port"]:
             ? (BnLocal pf, ignore, ignore): VlOwned (XCall (RefRuntime "prism_rtl::Event::of"), [[XRef pf]]), (OutEvent (OutTyOf lx, (Peel (Peel (TypeAt lx, span)))))
-            otherwise: VlOwned (InternalBug "an event read as a value"), et
+            otherwise: VlOwned (Refusal "an event read as a value"), et
         ? (BnParts ignore): VlOwned (Refusal "a tuple pattern's binding as a value"), t
         ? (BnWidget ignore, ignore, ignore, ignore): VlOwned (InternalBug "a widget parameter read as a plain value"), t
         ? (BnLocalFn cs): LocalFnValue lx, env, cs, t
@@ -786,7 +816,8 @@ fn NameValue lx, env, n, span:
                 ? "True": VlOwned (XBool True), OutBool
                 ? "False": VlOwned (XBool False), OutBool
                 ? "Prelude.never": VlOwned (XCall (RefRuntime "rt::Event::never"), [[]]), t
-                ? qk: match lx.g.tags[qk]:
+                ? qk: if why == "answer": AnswerFn lx, qk, t
+                else: match lx.g.tags[qk]:
                     ? tg if tg.kind != "Prelude.Fault" and why == "tag": TagValue lx, env, tg, [[]]
                     otherwise: GlobalValue lx, qk, span, t
                 nil: VlOwned (InternalBug "the name {nkey}, which nothing declares"), t
@@ -987,9 +1018,9 @@ fn ArgumentByKind lx, env, e = match e.kind:
                 match ?local:
                     ? ignore: ClosureRef (ValueOf lx, env, e)
                     nil:
-                        let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
+                        let ((?qk, why)) = ResolveValue lx.g, lx.home, n
                         match ?qk:
-                            ? qk: if HasKey lx.g.ctors, qk: ClosureRef (ValueOf lx, env, e) else: XRef (XPath (ValueRef lx, qk))
+                            ? qk: if (HasKey lx.g.ctors, qk) or why == "answer": ClosureRef (ValueOf lx, env, e) else: XRef (XPath (ValueRef lx, qk))
                             nil: Ref (ValueOf lx, env, e)
             otherwise: Ref (ValueOf lx, env, e)
     otherwise: Ref (ValueOf lx, env, e)
@@ -1044,6 +1075,22 @@ AnswerValue: unbounded fn Lx, Env, Text, [Arg], OutTy -> Vl
 fn AnswerValue lx, env, constructor, args, t = match ((lx.g.tags[AnswerTag constructor], args[0])):
     ((? tg, ? a)): VlOwned (XCtor (AnswerVariant tg), [[(OwnAs (AnswerTy lx, tg), (ValueOf lx, env, a.value))]]), t
     otherwise: VlOwned (InternalBug "the answer constructor {constructor} of no tag or with no argument"), t
+
+# `Ui.Button.Answer` named, not applied (`Each cs, Ui.Button.Answer`): a closure building
+# the tag's variant from its argument, as a constructor's function value is (`CtorFn`),
+# which a bounded value takes by reference and a `Start` owns.
+AnswerFn: unbounded fn Lx, Text, OutTy -> Vl
+fn AnswerFn lx, constructor, t = match lx.g.tags[AnswerTag constructor]:
+    ? tg:
+        let carried = AnswerTy lx, tg
+        match t:
+            OutJobFn a, ignore:
+                let made = XCtor (AnswerVariant tg), [[(OwnAs carried, (VlPlace (XVar "a0"), Owned, a))]]
+                VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure True, [[(PaTyped (PaBind "a0"), a)]], (XCall (HelperRef "once_job"), [[(XClosure True, [[]], (XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[made]]))]]))]]), t), t
+            otherwise:
+                let made = XCtor (AnswerVariant tg), [[(OwnAs carried, (VlPlace (XVar "a0"), ByRef, carried))]]
+                VlOwned (XCall (RefRuntime "std::Rc::new"), [[(XClosure False, [[(PaTyped (PaBind "a0"), (OutRef carried))]], made)]]), t
+    nil: VlOwned (InternalBug "the answer constructor {constructor} of no tag"), t
 
 # An element applied as a plain value (gap LE; Type System ch. 2, "Names and sigils":
 # `Ui.Button(..)` before anything binds it is a plain value): a description, plain data
@@ -1905,7 +1952,7 @@ fn ClosureParams lx, env, ps, pts, typed = Fold (Range0 (Len ps)), (([[]], env))
     ? p:
         let po = RustPat lx, p, (BinderTyOfPattern lx, p), ByRef, "a{p.span.start}"
         let en2 = BindAll en, po.binds
-        let pa = if typed: PaTyped po.pa, (OutRef (Or pts[i], (InternalBugType "a parameter"))) else: po.pa
+        let pa = if typed: PaTyped po.pa, (OutRef (Or pts[i], (OutRefused "a parameter"))) else: po.pa
         (((Push acc, pa), en2))
     nil: ((acc, en))
 

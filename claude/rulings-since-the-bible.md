@@ -68,3 +68,28 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   `match` arm does: `fn @Supply p, (Pad.Num(..)) = @ 7` checks. The checker refusing it is
   a bug. Claude's first ruling; Jimmy: "your rulings seem right". Where: Type System
   chapter 5, "Refinement at tag matches".
+- **IE** An `if` needs its `else`, a building `if` included: `if loud:` and a block with
+  no `else` is a checker error. Jimmy: "no helll no if needs else". Refused: an else-less
+  building `if` that builds its arm or nothing.
+- **ZD** A second block for a widget that takes no arguments is a name defined twice:
+  `collision`, in both spellings (two bare `@Twice:` blocks, and `fn @Twice:` twice).
+  Jimmy: "yeah this is a name defined twice". Refused: `unreachable`, whose fix line
+  ("put it above the clause that covers it") makes no sense with no arguments to tell
+  clauses apart.
+- **HA** A hold above a building `match` may begin at the `match`'s plain result: a
+  block's bindings are a group and may be cyclic, and line order decides positions only.
+  Jimmy: "why wouldn't this be legal?" and "bindings are cyclic man".
+- **LP** A pattern cannot test a dynamic's value: `Ui.Label($text=$"x")` as a pattern is a
+  checker error. Binding the field, `$text=$t`, stays legal. Jimmy: "this is crazy wrong
+  you can't match on a dynamic like this", and "correct" to the checker-error reading.
+- **BP** A `for` or a `rebuild` as a plain function's value is a checker mismatch, as a
+  building `match` there is; an interpolation lifts over `?` as any application does.
+  Claude's first rulings, shown to Jimmy with their programs and not overruled.
+- **IE2** (overrules IE above) A builder's `if` and a statement's `if` may stand without
+  an `else`: a building `if` in a widget block builds its arm or nothing, and an `update`
+  block's statement `if` changes something or does not. Only an `if` that is an
+  expression needs its `else`. Jimmy: "Fine, builders and statements can have raw ifs.
+  Damn. I didn't know widget blocks could have ifs guarding bindings but I guess they
+  can. I was leaning too heavily on Haskell semantics where you have to do `when check $
+  do`". With ruling TC, the places after an else-less building `if` count from what was
+  built.

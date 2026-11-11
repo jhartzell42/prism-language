@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 3 (a method is called at the impl its result's type picks): `Blank` at `Nat` is its argument and at `Text` is "blank n", `Fill` adds or appends; the run agrees byte for byte.
+test a_method_is_called_at_its_results_type
+
+tick 0
+  added:
+    0: Ui.Label(text="1 blank 21 blank 3 4 blank 41 5 blank 5 7 2")

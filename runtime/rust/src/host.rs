@@ -834,7 +834,7 @@ impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> Host<E, A, P> {
     pub fn request(&self, place: &Path, field: Option<&str>, value: Pod, cx: &mut Cx) -> Done {
         let row = self.rows.borrow().get(place).cloned();
         match row {
-            Some(row) => Ok(row.request(field, value, cx)),
+            Some(row) => row.request(field, value, cx),
             None => Err(Fault::answer(format!("a request from {place}, which has no row under the host at {}", self.at))),
         }
     }
@@ -882,6 +882,8 @@ pub struct HostRow<E, A> {
     /// The entry moved: readers of the live element's level (a forwarded element) read it
     /// again.
     level_moved: Rc<Port<()>>,
+    /// The place's requests, which the live element's event fields hear (`Live::requested`).
+    requests: Rc<Port<(Option<String>, Pod)>>,
 }
 
 impl<E: Clone + Eq + 'static, A: Clone + 'static> HostRow<E, A> {
@@ -906,7 +908,7 @@ impl<E: Clone + Eq + 'static, A: Clone + 'static> HostRow<E, A> {
                 Some(row) if !row.left.get() => row.host().deliver(&row.key, v, cx),
                 _ => Ok(()),
             });
-            HostRow { path, key, place, host: Rc::downgrade(&host), left: Cell::new(false), sink, supplied: RefCell::new(None), level_moved: Rc::new(Port::new()) }
+            HostRow { path, key, place, host: Rc::downgrade(&host), left: Cell::new(false), sink, supplied: RefCell::new(None), level_moved: Rc::new(Port::new()), requests: Rc::new(Port::new()) }
         });
         let weak: Weak<dyn Node> = Rc::downgrade(&(node.clone() as Rc<dyn Node>));
         node.place.watch(weak);
@@ -938,7 +940,7 @@ impl<E: Clone + Eq + 'static, A: Clone + 'static> HostRow<E, A> {
     fn element(self: &Rc<Self>, identity: E) -> Element<E> {
         let me = Rc::downgrade(self);
         let read = Rc::new(move |cx: &Cx| me.upgrade().expect("a live element outlives its host's row").entry(cx));
-        Element::Live(Live { identity, level: Dynamic { owner: None, read, updates: self.level_moved.clone() }, entry: self.place.clone() })
+        Element::Live(Live { identity, level: Dynamic { owner: None, read, updates: self.level_moved.clone() }, entry: self.place.clone(), requests: self.requests.clone() })
     }
 
     /// The row's entry at the read point: the place's level as it stands (its snapshot of
@@ -951,12 +953,15 @@ impl<E: Clone + Eq + 'static, A: Clone + 'static> HostRow<E, A> {
         self.supplied.borrow().as_ref().is_some_and(|s| s.forwards)
     }
 
-    /// The child place's request: out with the forwarded element, or nowhere when the
-    /// supplier answered the place.
-    pub fn request(&self, field: Option<&str>, value: Pod, cx: &mut Cx) {
+    /// The child place's request: heard by the live element's event field (a supplier's
+    /// pattern that bound it), and out with the forwarded element, or nowhere else when
+    /// the supplier answered the place.
+    pub fn request(&self, field: Option<&str>, value: Pod, cx: &mut Cx) -> Done {
+        self.requests.fire((field.map(String::from), value.clone()), cx)?;
         if self.forwards() {
             cx.request(self.path.at(0), field, value);
         }
+        Ok(())
     }
 
     /// The row's own places, for an enclosing host's document: the forwarded element at

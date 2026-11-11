@@ -1,0 +1,17 @@
+# Derived by hand, never run (prismc refuses the program): ruling EP (an event field in an element pattern binds the event the description was made with, a `!T`) and Semantics ch. 9, "A computed answer is the next tick's input": `!r` fires in the click's tick, the arm's answer `"ok {!r}"` fires in that tick and reaches the guest's place as an input of tick 2, which is owed (the first `compute`); the request place is answered and adds nothing, and the rest is forwarded at 0/[p]/0.
+test arm_answers_from_the_request
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="move")
+    0/[2]/0: Ui.Label(text="heard: ")
+
+tick 1
+  in:
+    0/[0]/0: click
+
+tick 2
+  changed:
+    0/[2]/0: Ui.Label(text="heard: ok e2e4")
+
+tick 3

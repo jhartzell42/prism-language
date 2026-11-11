@@ -1,0 +1,83 @@
+# From prism-notes, claude/04-domains-and-documents/evidence/hosting/04-state-and-response/app.prism: attempt 04 of the Bible's document hosting against prismc at 10ca993, committed as written.
+# Attempt 04: a counter document that refuses to pass ten. The host holds the state in one
+# hold, folds each new request into it, answers each request Accepted or Refused by path,
+# and answers the query with the total.
+# Written by Claude (an implementation agent), 10 November 2026; subject to change.
+emit Ui.* | Seat.*
+test mod Tests
+
+type Response = choice:
+    Accepted
+    Refused Text
+derive ^Eq, ^Show
+
+type Query = choice:
+    Whole
+derive ^Eq, ^Show
+
+tag Seat.Request of Element !Response:
+    $?latest: ((Nat, Nat))
+
+tag Seat.Query of Element $Nat:
+    $query: Query
+
+@Ask: fn !Nat -> @!Response emit Seat.*
+fn @Ask !requests:
+    !numbered <- @Numbered !requests
+    $?latest <- nil then ? !numbered
+    !response <- Seat.Request($?latest=$?latest)
+    @ !response
+
+Said: fn Response -> Text
+fn Said Accepted = "accepted"
+fn Said (Refused why) = "refused: {why}"
+
+@guest: @unit
+@guest:
+    !two <- Ui.Button($label=$"add 2")                         # 0
+    !nine <- Ui.Button($label=$"add 9")                        # 1
+    !response <- @Ask ((2 on !two) <| (9 on !nine))            # 2/0
+    $total <- Seat.Query($query=$ Whole)                       # 3
+    $last <- "nothing yet" then Said !response
+    Ui.Label($text=$"guest: total {$total}, {$last}")          # 4
+
+# The document: a counter that refuses to pass ten.
+type State = record:
+    total: Nat
+    seen: (Path ==> Nat)
+    judged: (Path ==> Response)
+
+let fresh = State(total=0, seen={}, judged={})
+
+Asked: fn (Path ==> Elem (Ui.* | Seat.*)) -> [((Path, Nat, Nat))]
+fn Asked doc = Fold doc, [[]], \|acc, p, e| match e:
+    Seat.Request($?latest=$?l): match $?l:
+        ? ((n, r)): Push acc, ((p, n, r))
+        nil: acc
+    Seat.Query(..): acc
+    Ui.*: acc
+
+Step: fn State, ((Path, Nat, Nat)) -> State
+fn Step s, ((p, n, r)) = if (?Get s.seen, p) == (? n): s else:
+    if s.total + r > 10: State(total=s.total, seen=(Insert s.seen, p, n), judged=(Insert s.judged, p, (Refused "{s.total} + {r} passes ten")))
+    else: State(total=s.total + r, seen=(Insert s.seen, p, n), judged=(Insert s.judged, p, Accepted))
+
+StepAll: fn State, [((Path, Nat, Nat))] -> State
+fn StepAll s, asked = Fold asked, State(total=s.total, seen=s.seen, judged={}), Step
+
+?ResponseTo: fn Path, State -> ?Response
+fn ?ResponseTo p, s = ?Get s.judged, p
+
+TotalOf: fn State -> Nat
+fn TotalOf s = s.total
+
+@host: @unit
+@host:
+    ((ignore, $doc)) <- @HostDocument @guest, \|p, e| match e:           # 0/[p]
+        Seat.Request(..): @ !Filter (?ResponseTo p, !outcome)
+        Seat.Query(..): @ TotalOf $state
+        otherwise: @Element e
+    $flat <- for p, $e <- $doc:
+        @ $e
+    let !outcome = StepAll $state, (Asked !Updated $flat)
+    $state <- fresh then !outcome
