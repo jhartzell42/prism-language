@@ -1,0 +1,8 @@
+# The tests of sem-ch08-local-widget-value-reads-dynamic.
+emit Ui.*
+use App.*
+
+test the_place_follows_the_dynamic, @page:
+    build
+    click at 0
+        => expect Ui.Label(text="line 8")
