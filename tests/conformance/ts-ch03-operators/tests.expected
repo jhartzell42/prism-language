@@ -1,0 +1,23 @@
+# Derived by hand from Type System ch. 3 (`^Eq`, `^Ord`, `^Num`; `-?` and `/` give `?` on the integers, comparison of records, tuples and arrays is structural, in order) and Semantics ch. 4 (`<|` merges, the hold steps in the tick of the click); the run agrees byte for byte.
+test every_operator_has_a_case
+
+tick 0
+  added:
+    0: Ui.Button(label="up")
+    1: Ui.Button(label="down")
+    2: Ui.Label(text="9 14 5 3 1 9 14 False True False True")
+    3: Ui.Label(text="9 5 14 3 1 5 -7 False True")
+    4: Ui.Label(text="2.0 1.0 0.75 3.0 False")
+    5: Ui.Label(text="13 7 lt gt lt le 3 0 False True True")
+
+tick 1
+  in:
+    0: click
+  changed:
+    5: Ui.Label(text="13 7 lt gt lt le 3 1 False True True")
+
+tick 2
+  in:
+    1: click
+  changed:
+    5: Ui.Label(text="13 7 lt gt lt le 3 2 False True True")
