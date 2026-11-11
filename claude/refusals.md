@@ -50,7 +50,6 @@ Hosting
   parameter no item declares. No refusal, no test.
 
 Bundles
-- lower/node/def.prism:99 a bundle with two dynamic parts as the root's result. No test.
   A root's bundle of plain parts, event parts and one dynamic part is lowered
   (sem-ch07-root-bundle-result).
 - lower/node/def.prism:1181 a late plain part of a bundle bound whole to a name (`both <-
