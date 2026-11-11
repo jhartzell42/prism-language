@@ -181,32 +181,57 @@ fn BindField env, st, p, ft, snapshot = match Walk st, ft:
     otherwise: BindPattern env, st, p, ft, True
 
 # `live-field-pattern`: a blueprint's element has its `$` and `!` fields as nodes, which a
-# pattern binds; a literal or a constructor there would test a value the field has only in
-# a tick (Semantics ch. 8). A document's element has levels, which a pattern may test.
-LiveFieldTested: unbounded fn Env, St, Text, Pattern, Ty, Bool -> St
-fn LiveFieldTested env, st, fname, p, ft, snapshot = match Walk st, ft:
-    TySig s, ignore if (s == "$" or s == "!") and not snapshot and TestsValue p:
-        ErrFix st, "live-field-pattern", p.span, "an element's `{s}{fname}` binds its {if s == "$": "dynamic" else: "event"}; `{SrcText env, p.span}` would test a value the field has only in a tick", "bind it, `{s}{fname}={s}{Head fname}`, and read `{s}{Head fname}` where a tick reads it"
-    otherwise: st
+# pattern binds; a pattern that can fail there would test a value the field has only in a
+# tick (Semantics ch. 8; Jimmy's ruling LP: a pattern cannot test a dynamic's value). A
+# document's element has levels, which a pattern may test.
+LiveFieldTested: unbounded fn Env, St, Text, Pattern, Ty -> St
+fn LiveFieldTested env, st, fname, p, ft:
+    let stack = StackOf st, ft
+    let binder = "{stack}{Head fname}"
+    ErrFix st, "live-field-pattern", p.span, "an element's `{stack}{fname}` binds its {if (HasPrefix stack, "$"): "dynamic" else: "event"}; `{SrcText env, p.span}` would test a value the field has only in a tick", "bind it, `{stack}{fname}={binder}`, and read `{binder}` where a tick reads it"
 
-# Whether a pattern tests the value it meets: a literal, `nil`, a constructor's or a tag's
-# pattern, an array's, under any group or sigil.
-TestsValue: fn Pattern -> Bool
-fn TestsValue p = match p.kind:
+# Whether a field's pattern tests a live field: a `$` or `!` field of a blueprint's
+# element, under a pattern that can fail.
+TestsLiveField: unbounded fn Env, St, Pattern, Ty, Bool -> Bool
+fn TestsLiveField env, st, p, ft, snapshot = match Walk st, ft:
+    TySig s, ignore: (s == "$" or s == "!") and not snapshot and TestsValue env, p
+    otherwise: False
+
+# Whether a pattern can fail on the value it meets: a literal, `nil`, a constructor's or a
+# tag's pattern (a constructor's bare name too, with or without the field's marks before
+# it: `$True` names `True`, and binds nothing), an array's, `? p` and `~ p`, a family, and a
+# tuple or a group with such a part.
+TestsValue: unbounded fn Env, Pattern -> Bool
+fn TestsValue env, p = match p.kind:
+    PName n: NamesConstructor env, n
     PLit ignore: True
     PNeg ignore: True
     PNil: True
     PCtor ignore, ignore: True
     PRecord ignore, ignore, ignore: True
     PArray ignore: True
-    PSigil ignore, q: TestsValue q
-    PGroup q: TestsValue q
+    PFamily ignore: True
+    PSigil s, q: (Contains s, "?") or (Contains s, "~") or TestsValue env, q
+    PTuple parts: Fold parts, False, \|seen, q| seen or TestsValue env, q
+    PGroup q: TestsValue env, q
     otherwise: False
+
+# Whether a name in a pattern is a constructor's, its marks set aside: a qualified name,
+# or a capitalised one that resolves to a constructor.
+NamesConstructor: fn Env, SName -> Bool
+fn NamesConstructor env, n = (Len n.path) > 1 or ((IsUpperText (Or n.path[0], "")) and IsCtorName env, (Unmarked n))
+
+# A name with its marks set aside: `True` of `$True`.
+Unmarked: fn SName -> SName
+fn Unmarked n = SName(sigils="", path=n.path, span=n.span)
 
 BindLevel: unbounded fn Env, St, Pattern, Ty -> ((Env, St))
 fn BindLevel env, st, p, level = match p.kind:
     PName n:
-        if (HasPrefix n.sigils, "$") and (Len n.path) == 1: BindFreshMarked env, st, n, (AfterFirst n.sigils), level
+        # a constructor written with the field's mark, `$lit=$True`, tests the level as
+        # the bare `True` does, and binds nothing
+        if (HasPrefix n.sigils, "$") and (Len n.path) == 1 and NamesConstructor env, n: BindPattern env, st, Pattern(kind=(PName (Unmarked n)), span=p.span), level, True
+        else: if (HasPrefix n.sigils, "$") and (Len n.path) == 1: BindFreshMarked env, st, n, (AfterFirst n.sigils), level
         else: BindPattern env, st, p, level, True
     PGroup q: BindLevel env, st, q, level
     otherwise: BindPattern env, st, p, level, True
@@ -285,7 +310,14 @@ fn BindTagPattern env, st, p, name, fields, rest, t = match env.g.tags[name]:
             let before = Fold (Range0 i), False, \|seen, k| seen or (FieldPatName (Or fields[k], fp), names, k) == fname
             let s0 = if before: Err s, "collision", fp.span, "`{fname}` is matched twice" else: s
             match ?FieldOfTag tg, fname:
-                ? ft: BindField en, (LiveFieldTested env, (PatMarks s0, name, fname, ft, fp), fname, fp.pattern, ft, snapshot), fp.pattern, (SubstQ inst, ft), snapshot
+                ? ft:
+                    let marked = PatMarks s0, name, fname, ft, fp
+                    if TestsLiveField env, marked, fp.pattern, ft, snapshot:
+                        # refused; its names are bound all the same, against anything, so
+                        # the arm below reads them and nothing more is reported
+                        let ((anything, s1)) = FreshVar (LiveFieldTested env, marked, fname, fp.pattern, ft), False, ""
+                        BindPattern en, s1, fp.pattern, anything, True
+                    else: BindField en, marked, fp.pattern, (SubstQ inst, ft), snapshot
                 nil: ((en, (Err s0, "mismatch", fp.span, "`{name}` has no field `{fname}`")))
 
 # An element seen through a document: `Elem r`, the document's value type (Type System
