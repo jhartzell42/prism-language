@@ -1,4 +1,4 @@
-# The window library's tests (`Window.Tests`, a test module of `Window`): what the window
+# The window library's tests (`BasicWindow.Tests`, a test module of `Window`): what the window
 # draws of a column taller than it, and how the focus moves. Under the Test World a text is 9 wide a character and
 # 14 high, so the button is 30 high and each label 22: in the 200 by 100 window the button
 # and the first four labels show (the fourth starts at 96), and the window draws those
@@ -7,12 +7,12 @@
 #
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.* | Gui.*
-use Window.*
-use Window.Ui.*
-use Window.Hosting.*
-use Window.Widgets.*
-use Window.Layout.*
-use Window.Hits.*
+use BasicWindow.*
+use BasicWindow.Ui.*
+use BasicWindow.Hosting.*
+use BasicWindow.Widgets.*
+use BasicWindow.Layout.*
+use BasicWindow.Hits.*
 
 @$tall: @$Text
 @$tall:

@@ -1,11 +1,11 @@
-# `Window.Hits`, a child module of `Window`.
+# `BasicWindow.Hits`, a child module of `BasicWindow`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit r | Ui.* | Gui.*
-use Window.*
-use Window.Ui.*
-use Window.Hosting.*
-use Window.Widgets.*
-use Window.Layout.*
+use BasicWindow.*
+use BasicWindow.Ui.*
+use BasicWindow.Hosting.*
+use BasicWindow.Widgets.*
+use BasicWindow.Layout.*
 
 # ---- hits: the pointer is taken back through each turn above a region; the topmost wins
 
@@ -34,7 +34,7 @@ fn Cosine angle:
     let s = x * x
     1.0 - s / 2.0 * (1.0 - s / 12.0 * (1.0 - s / 30.0 * (1.0 - s / 56.0 * (1.0 - s / 90.0 * (1.0 - s / 132.0 * (1.0 - s / 182.0))))))
 
-Untransform: fn Point, Window.Turn -> Point
+Untransform: fn Point, BasicWindow.Turn -> Point
 fn Untransform q, t:
     let rad = Ratio (t.angle * pi), 180.0
     let dx = Ratio (q.x - t.x), t.scale

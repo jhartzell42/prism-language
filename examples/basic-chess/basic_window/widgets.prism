@@ -1,11 +1,11 @@
-# `Window.Widgets`, a child module of `Window`.
+# `BasicWindow.Widgets`, a child module of `BasicWindow`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit r | Ui.* | Gui.*
-use Window.*
-use Window.Ui.*
-use Window.Hosting.*
-use Window.Layout.*
-use Window.Hits.*
+use BasicWindow.*
+use BasicWindow.Ui.*
+use BasicWindow.Hosting.*
+use BasicWindow.Layout.*
+use BasicWindow.Hits.*
 
 # ---------------------------------------------------------------------------
 # The widget functions: each composes, keeping a hold or hosting its child (D10)

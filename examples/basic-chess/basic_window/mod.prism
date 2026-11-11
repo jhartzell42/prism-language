@@ -13,11 +13,11 @@ mod Widgets
 mod Layout
 mod Hits
 test mod Tests
-use Window.Ui.*
-use Window.Hosting.*
-use Window.Widgets.*
-use Window.Layout.*
-use Window.Hits.*
+use BasicWindow.Ui.*
+use BasicWindow.Hosting.*
+use BasicWindow.Widgets.*
+use BasicWindow.Layout.*
+use BasicWindow.Hits.*
 
 # ---------------------------------------------------------------------------
 # Geometry and paint
@@ -83,7 +83,7 @@ tag Draw.Clip of Draw:
     draws: [Draw]
 
 tag Draw.Group of Draw:
-    turn: Window.Turn
+    turn: BasicWindow.Turn
     draws: [Draw]
 
 # where the element at `path` of the window's own layout sits, so a test can click it by path

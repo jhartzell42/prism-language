@@ -1,11 +1,11 @@
-# `Window.Layout`, a child module of `Window`.
+# `BasicWindow.Layout`, a child module of `BasicWindow`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit r | Ui.* | Gui.*
-use Window.*
-use Window.Ui.*
-use Window.Hosting.*
-use Window.Widgets.*
-use Window.Hits.*
+use BasicWindow.*
+use BasicWindow.Ui.*
+use BasicWindow.Hosting.*
+use BasicWindow.Widgets.*
+use BasicWindow.Hits.*
 
 # ---------------------------------------------------------------------------
 # Layout as plain functions over plain data (layout.md): room down, size up, placed by the
@@ -30,7 +30,7 @@ type Hit = record:
     rect: Rect
     chain: [Path]
     kind: HitKind
-    turns: [Window.Turn]                      # the turns of the frames above it, outermost first
+    turns: [BasicWindow.Turn]                      # the turns of the frames above it, outermost first
 derive ^Eq, ^Show
 
 type Placed = record:
@@ -492,7 +492,7 @@ fn FrameInner s, room:
     let outer = FrameRoom s, room
     Room (Max (outer.minW - pad2), 0.0), (Max (outer.maxW - pad2), 0.0), (Max (outer.minH - pad2), 0.0), (Max (outer.maxH - pad2), 0.0)
 
-TurnPlaced: fn Window.Turn, Placed -> Placed
+TurnPlaced: fn BasicWindow.Turn, Placed -> Placed
 fn TurnPlaced t, pl = Placed [[Draw.Group(turn=t, draws=pl.draw)]], (Each pl.hits, \|h| Hit h.rect, h.chain, h.kind, (Append [[t]], h.turns))
 
 # a turned or scaled frame culls nothing inside it: its view is everywhere

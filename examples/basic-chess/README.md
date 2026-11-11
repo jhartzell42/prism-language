@@ -1,22 +1,22 @@
-# examples/chess
+# examples/basic-chess
 
 Chess in Prism, a program tree (claude/modules-style-pass.md): `app.prism` (the root:
 sixty-four squares in a grid, the selection and the game as holds, a status label),
-`rules/` (`Rules`, the game as plain functions), `window/` (`Window`, a window library:
+`rules/` (`Rules`, the game as plain functions), `basic_window/` (`BasicWindow`, a window library:
 layout, hit testing and focus as host documents in Prism, over the four `Gui` tags a
-drawing World accepts; its child modules `Window.Ui`, `Window.Hosting`, `Window.Widgets`,
-`Window.Layout`, `Window.Hits`, each a file of `window/`), and
+drawing World accepts; its child modules `BasicWindow.Ui`, `BasicWindow.Hosting`, `BasicWindow.Widgets`,
+`BasicWindow.Layout`, `BasicWindow.Hits`, each a file of `basic_window/`), and
 `pieces/` (the piece images, which no `mod` line declares and the tree does not read).
 
-- **Run it:** `./prism run examples/chess` (or `make chess`) opens a window under the
+- **Run it:** `./prism run examples/basic-chess` (or `make basic-chess`) opens a window under the
   canvas World.
-- **Test it:** `./prism test examples/chess` runs the test modules `tests.prism` (`Tests`,
+- **Test it:** `./prism test examples/basic-chess` runs the test modules `tests.prism` (`Tests`,
   the board's, which reaches the root by `use App.*`) and `rules/tests.prism`
   (`Rules.Tests`, the rules', with the positions and moves its checks
   are written with) under the Test World. The rules' transcript is checked against the
   `tests.expected` beside it; the board's and the window library's are not kept (doubt
   TS), so those runs print their transcripts and pass on the tests' own checks;
-  `./prism test examples/chess/rules` runs the rules' alone.
+  `./prism test examples/basic-chess/rules` runs the rules' alone.
 
 ## The interface
 
@@ -65,7 +65,7 @@ the window library's widgets:
 - **ST The settings start at their defaults every run** and live in the dialog's holds
   (each box's text, the last good colours, the border); nothing is read from or written
   to a file. The dialog keeps them when closed: it is hidden, not torn down
-  (window/README.md, doubt HS).
+  (basic_window/README.md, doubt HS).
 - **TT The window's title follows the title setting** a tick behind it: `@$main` holds it,
   fed by the interface's result, since the window is built around the interface.
 - **CO The default copy is the rule book's** (`Rules.Status`), with "White" and "Black"

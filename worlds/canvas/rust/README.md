@@ -96,5 +96,5 @@ prism_world_canvas_rtl::run_hooked::<MyProgram>(wrap, hooks)   // with Hooks, fo
   first frame, a new size and an unbounded command repaint the whole.
   `tests/damage_smoke.rs` steps a real window through ten scenes and checks every
   presented pixel against a full repaint (macOS, checked; Linux with a display).
-- **Chess** compiled by prismc runs under it (`make chess`, `./prism run examples/chess`),
+- **Chess** compiled by prismc runs under it (`make basic-chess`, `./prism run examples/basic-chess`),
   checked by hand on Linux.

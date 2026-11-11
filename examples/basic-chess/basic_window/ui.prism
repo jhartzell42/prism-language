@@ -1,11 +1,11 @@
-# `Window.Ui`, a child module of `Window`.
+# `BasicWindow.Ui`, a child module of `BasicWindow`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit r | Ui.* | Gui.*
-use Window.*
-use Window.Hosting.*
-use Window.Widgets.*
-use Window.Layout.*
-use Window.Hits.*
+use BasicWindow.*
+use BasicWindow.Hosting.*
+use BasicWindow.Widgets.*
+use BasicWindow.Layout.*
+use BasicWindow.Hits.*
 
 # ---------------------------------------------------------------------------
 # The Ui family: leaves answer the inputs routed to them; containers hold their children in a

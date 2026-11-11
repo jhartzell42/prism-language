@@ -11,15 +11,15 @@
 # run and live in the dialog's holds; nothing is read from or written to a file.
 emit Ui.* | Gui.*
 mod Rules
-mod Window
+mod BasicWindow
 test mod Tests
 use Rules.*
-use Window.*
-use Window.Ui.*
-use Window.Hosting.*
-use Window.Widgets.*
-use Window.Layout.*
-use Window.Hits.*
+use BasicWindow.*
+use BasicWindow.Ui.*
+use BasicWindow.Hosting.*
+use BasicWindow.Widgets.*
+use BasicWindow.Layout.*
+use BasicWindow.Hits.*
 
 # the grid's places, keyed in reading order from a8, since a grid lays its children out in
 # their paths' order; a spot prints as its square, `e2` (README, doubt SP)
@@ -60,8 +60,8 @@ fn Shade White = "l"
 fn Shade Black = "d"
 
 Picture: fn ?Piece -> Text
-fn Picture nil = "examples/chess/pieces/blank.png"
-fn Picture (? pc) = "examples/chess/pieces/{Letter pc.man}{Shade pc.color}.png"
+fn Picture nil = "examples/basic-chess/pieces/blank.png"
+fn Picture (? pc) = "examples/basic-chess/pieces/{Letter pc.man}{Shade pc.color}.png"
 
 # ---------------------------------------------------------------------------
 # The settings: what the dialog edits

@@ -34,7 +34,7 @@ expect() {
     failed+=("$name")
     echo "FAILED $name: wanted $want, got exit $code: $out"
 }
-expect chess canvas examples/chess
+expect chess canvas examples/basic-chess
 expect cli-root cli tests/driver/cli-root.prism
 expect gui-tree canvas tests/driver/gui-tree
 expect birds refused tests/conformance/sem-ch06-birds
@@ -141,7 +141,7 @@ else
     failed+=(fault-variable-defaulted)
     echo "FAILED fault-variable-defaulted: wanted the part as Prelude.Error in the typed output ($out/fault-variable-defaulted.typed)"
 fi
-if ./prism compile --target cpp examples/chess -o "$out/chess-cpp" > /dev/null 2>&1 &&
+if ./prism compile --target cpp examples/basic-chess -o "$out/chess-cpp" > /dev/null 2>&1 &&
     grep -q 'prism_world_canvas::run<' "$out/chess-cpp/src/main.cpp" &&
     make -s -C "$out/chess-cpp" -j"$(getconf _NPROCESSORS_ONLN)" > "$out/chess-cpp.log" 2>&1 &&
     [ -x "$out/chess-cpp/chess" ]; then

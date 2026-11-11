@@ -58,8 +58,8 @@ prism               the command: compile, test, run, check
   templates, writes through `Fs.Output`.
 - The bootstrap: a kept native prismc compiles `prismc/` into gen1, cargo builds it, gen1
   compiles `prismc/` into gen2, and gen1 and gen2 are byte-equal (the fixed point).
-- Chess: `./prism run examples/chess` compiles it, builds it with the canvas World and
-  opens the window; `./prism test examples/chess` runs its transcripts under the compiled
+- Chess: `./prism run examples/basic-chess` compiles it, builds it with the canvas World and
+  opens the window; `./prism test examples/basic-chess` runs its transcripts under the compiled
   Test World.
 
 ## The tick
@@ -76,7 +76,7 @@ armed; a World that sees it ticks again, with no inputs if it has none.
 - `make test`: `cargo test --workspace`, every compiled transcript
   (`tests/compiled/run.sh`), the checker's tests (`tests/checker/run.sh`), and the
   bootstrap's fixed point.
-- `make chess`: build and open chess (`./prism run examples/chess`).
+- `make basic-chess`: build and open chess (`./prism run examples/basic-chess`).
 - `make bootstrap`: the kept prismc to gen1 to gen2, byte-equal; installs
   `target/bootstrap/prismc`.
 

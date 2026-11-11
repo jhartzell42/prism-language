@@ -10,10 +10,10 @@ tree as it stands.*
   the seed `bootstrap/prismc-rust.tar.xz`, cargo, a fixed point installed as
   `target/bootstrap/prismc`), `make bootstrap-cpp` for the C++ one, then `make test`
   (bootstrap/README.md).
-- **Chess in both Worlds:** `./prism run examples/chess` (or `make chess`; Rust, the winit
-  canvas World) and `./prism run --target cpp examples/chess` (C++, the Cocoa loop on a
-  Mac, Xlib on Linux). `./prism test examples/chess` runs its test modules under the Test
-  World (examples/chess/README.md).
+- **Chess in both Worlds:** `./prism run examples/basic-chess` (or `make basic-chess`; Rust, the winit
+  canvas World) and `./prism run --target cpp examples/basic-chess` (C++, the Cocoa loop on a
+  Mac, Xlib on Linux). `./prism test examples/basic-chess` runs its test modules under the Test
+  World (examples/basic-chess/README.md).
 - **The benchmarks:** `bench/building/run.sh` (how long Prism takes to build), then
   `bench/running/run.sh` (how fast it runs, prismc on itself and the GUI table), each
   writing a `RESULTS.md` beside itself; `bench/gui/run.sh` times the table alone
@@ -21,7 +21,7 @@ tree as it stands.*
   drivers and `bench/gui/prism/check.sh` prints what each operation costs by phase. The
   drivers each run one operation; to click through the table yourself, run its root under
   the canvas World the way the Makefile compiles it, `./prism run bench/gui/prism
-  examples/chess/window` (unrun here).
+  examples/basic-chess/basic_window` (unrun here).
 - **Break the compiler on purpose:** edit a module under `prismc/` (`prismc/syntax/lexer/`,
   `prismc/syntax/parser/`, `prismc/check/`, `prismc/lower/`, `prismc/emit/rust/`,
   `prismc/emit/cpp/`), run `make bootstrap`, and watch the fixed point refuse or the suites

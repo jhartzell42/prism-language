@@ -1,11 +1,11 @@
-# `Window.Hosting`, a child module of `Window`.
+# `BasicWindow.Hosting`, a child module of `BasicWindow`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit r | Ui.* | Gui.*
-use Window.*
-use Window.Ui.*
-use Window.Widgets.*
-use Window.Layout.*
-use Window.Hits.*
+use BasicWindow.*
+use BasicWindow.Ui.*
+use BasicWindow.Widgets.*
+use BasicWindow.Layout.*
+use BasicWindow.Hits.*
 
 # ---------------------------------------------------------------------------
 # Hosting: a box answers each of its child's Ui elements with the inputs routed to its path:

@@ -1,5 +1,5 @@
 # Chess, the rule book: plain functions with no time in them (Pitch chapter 11). Ported from
-# prism-reflex's examples/chess.prism, itself the rule engine of jhartzell42/reflex-chess
+# prism-reflex's examples/basic-chess.prism, itself the rule engine of jhartzell42/reflex-chess
 # (Common/Chess.hs), into the books' spelling and the book's design: a board from squares to
 # pieces, castling rights as a list of unspent corners, one record of ranks per color, and a
 # move's manner as a value. Its checks are in tests.prism. Work in progress, subject to

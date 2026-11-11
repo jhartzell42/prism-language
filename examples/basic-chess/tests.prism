@@ -16,12 +16,12 @@
 emit Ui.* | Gui.*
 use App.*
 use Rules.*
-use Window.*
-use Window.Ui.*
-use Window.Hosting.*
-use Window.Widgets.*
-use Window.Layout.*
-use Window.Hits.*
+use BasicWindow.*
+use BasicWindow.Ui.*
+use BasicWindow.Hosting.*
+use BasicWindow.Widgets.*
+use BasicWindow.Layout.*
+use BasicWindow.Hits.*
 
 # the interface without its window, its status as its result
 @$alone: @$Text
@@ -33,9 +33,9 @@ use Window.Hits.*
 test the_interface_alone_shows_the_opening, @$alone:
     build
         => expect_count Ui.Image(..), 64
-        => expect_count Ui.Image(src="examples/chess/pieces/blank.png", ..), 32
+        => expect_count Ui.Image(src="examples/basic-chess/pieces/blank.png", ..), 32
         => expect_count Ui.Image(paint=(Rgb 0.9411764705882353, 0.8509803921568627, 0.7098039215686275), ..), 32
-        => expect Ui.Image(src="examples/chess/pieces/ql.png", paint=(Rgb 0.9411764705882353, 0.8509803921568627, 0.7098039215686275))      # d1, a light square
+        => expect Ui.Image(src="examples/basic-chess/pieces/ql.png", paint=(Rgb 0.9411764705882353, 0.8509803921568627, 0.7098039215686275))      # d1, a light square
         => expect Ui.Label(text="White's turn")
         => expect Ui.Label(text="Move 0 of 0")
         => expect Ui.Button(label="Settings")
@@ -178,30 +178,30 @@ test an_invalid_colour_keeps_the_last_good_one, @$main:
 # and the border stands.
 test the_border_slider_and_its_box_move_together, @$main:
     build
-        => expect Draw.Image(rect=Rect(x=8.0, y=38.0, w=64.0, h=64.0), src="examples/chess/pieces/rd.png")
+        => expect Draw.Image(rect=Rect(x=8.0, y=38.0, w=64.0, h=64.0), src="examples/basic-chess/pieces/rd.png")
     click element 0/[OpenSettings]/0
     compute until idle
     click element 33                                        # the slider's middle
     compute until idle
         => expect Draw.Text(text="16", ..)
-        => expect Draw.Image(rect=Rect(x=16.0, y=46.0, w=64.0, h=64.0), src="examples/chess/pieces/rd.png")
+        => expect Draw.Image(rect=Rect(x=16.0, y=46.0, w=64.0, h=64.0), src="examples/basic-chess/pieces/rd.png")
     click element 35                                        # the box: "16" becomes "1", then ""
     compute until idle
     send Gui.Window(..), Pressed Backspace
     compute until idle
-        => expect Draw.Image(rect=Rect(x=1.0, y=31.0, w=64.0, h=64.0), src="examples/chess/pieces/rd.png")
+        => expect Draw.Image(rect=Rect(x=1.0, y=31.0, w=64.0, h=64.0), src="examples/basic-chess/pieces/rd.png")
     send Gui.Window(..), Pressed Backspace
     compute until idle
         => expect Draw.Text(text="Border, points: not 0 to 32", ..)
-        => expect Draw.Image(rect=Rect(x=1.0, y=31.0, w=64.0, h=64.0), src="examples/chess/pieces/rd.png")
+        => expect Draw.Image(rect=Rect(x=1.0, y=31.0, w=64.0, h=64.0), src="examples/basic-chess/pieces/rd.png")
     send Gui.Window(..), Pressed (Char '9')                 # "9": the border is 9
     compute until idle
         => expect_none Draw.Text(text="Border, points: not 0 to 32", ..)
-        => expect Draw.Image(rect=Rect(x=9.0, y=39.0, w=64.0, h=64.0), src="examples/chess/pieces/rd.png")
+        => expect Draw.Image(rect=Rect(x=9.0, y=39.0, w=64.0, h=64.0), src="examples/basic-chess/pieces/rd.png")
     send Gui.Window(..), Pressed (Char '9')                 # "99": refused, and the border stays 9
     compute until idle
         => expect Draw.Text(text="Border, points: not 0 to 32", ..)
-        => expect Draw.Image(rect=Rect(x=9.0, y=39.0, w=64.0, h=64.0), src="examples/chess/pieces/rd.png")
+        => expect Draw.Image(rect=Rect(x=9.0, y=39.0, w=64.0, h=64.0), src="examples/basic-chess/pieces/rd.png")
 
 # ---------------------------------------------------------------------------
 # The move list, Back, Forward and Reset
@@ -229,8 +229,8 @@ test back_and_forward_step_through_the_moves, @$main:
         => returns "Black's turn"
         => expect Draw.Text(text="Move 1 of 2", ..)
         => expect Draw.Text(text="1. [e2-e4] e7-e5", ..)
-        => expect Draw.Image(rect=Rect(x=264.0, y=230.0, w=64.0, h=64.0), src="examples/chess/pieces/blank.png")     # e5 is empty again
-        => expect Draw.Image(rect=Rect(x=264.0, y=102.0, w=64.0, h=64.0), src="examples/chess/pieces/pd.png")        # and the pawn is back on e7
+        => expect Draw.Image(rect=Rect(x=264.0, y=230.0, w=64.0, h=64.0), src="examples/basic-chess/pieces/blank.png")     # e5 is empty again
+        => expect Draw.Image(rect=Rect(x=264.0, y=102.0, w=64.0, h=64.0), src="examples/basic-chess/pieces/pd.png")        # and the pawn is back on e7
     click element 0/[GoBack]/0
     compute until idle
     click element 0/[GoBack]/0                              # past the opening: it stays
