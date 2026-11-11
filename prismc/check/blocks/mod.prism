@@ -139,7 +139,7 @@ InferWidgetBlock: unbounded fn Env, St, Block -> ((Ty, St))
 fn InferWidgetBlock env, st, b = InferWidgetBlockAt env, st, b, nil
 
 # A widget block whose result is wanted at `expected` (a named widget function's body,
-# `@o`): a last line that is a `match` is checked against it, so its tag arms assume the
+# `@o`): a last line that is a `match` over an element is checked against it, so its tag arms assume the
 # element's output (Type System ch. 5, "Refinement at tag matches"), as the same `match`
 # written as the body's expression is.
 InferWidgetBlockAt: unbounded fn Env, St, Block, ?Ty -> ((Ty, St))
@@ -150,7 +150,7 @@ fn InferWidgetBlockAt env, st, b, ?expected:
     let ((env3, st3, ?res)) = Fold (WidgetGroupOrder b.stmts), ((env2, st2, nil)), \|((en, s, ?r)), i|
         let stmt = Or b.stmts[i], dummyStmt2
         let ((en2, s2, ?r2)) = match ((?expected, stmt.kind)):
-            ((? want, SExpr e)) if i + 1 == n and IsMatchExpr e: ((en, (Check en, s, e, (TyAt want, en.scope)), (? want)))
+            ((? want, SExpr e)) if i + 1 == n and IsElementMatch en, s, e: ((en, (Check en, s, e, (TyAt want, en.scope)), (? want)))
             otherwise: WidgetStmt en, s, stmt, (LocalClauses b.stmts, i), i + 1 == n
         match ?r2:
             ? t: ((en2, s2, ? t))
@@ -159,9 +159,16 @@ fn InferWidgetBlockAt env, st, b, ?expected:
     let st5 = if st4.recording: NoteGroup st4, b.span, "widget", (DepOrder b.stmts) else: st4
     (((Or ?res, tUnit), st5))
 
-IsMatchExpr: fn Expr -> Bool
-fn IsMatchExpr e = match e.kind:
-    EMatch ignore, ignore: True
+# A `match` over an element, whose tag arms refine the element's output: a supplier's. Any
+# other `match` on a widget block's line is a building match, its arms widget blocks
+# (`BuildingMatch`).
+IsElementMatch: unbounded fn Env, St, Expr -> Bool
+fn IsElementMatch env, st, e = match e.kind:
+    EMatch scrutinee, ignore:
+        let ((t, inferred)) = Infer env, st, scrutinee
+        match Walk inferred, t:
+            TyElem ignore, ignore: True
+            otherwise: False
     otherwise: False
 
 let dummyStmt2 = Stmt(kind=(SExpr (Expr(kind=EError, span=Range(start=0, end=0)))), span=Range(start=0, end=0))
