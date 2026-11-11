@@ -1,0 +1,7 @@
+# The tests of ts-ch03-existential-trait-inside-array.
+emit Ui.*
+use App.*
+
+test it_builds, @page:
+    build
+        => expect Ui.Label(text="6 4")
