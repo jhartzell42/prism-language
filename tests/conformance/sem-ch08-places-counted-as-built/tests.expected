@@ -1,0 +1,46 @@
+# Derived by hand from ruling TC (places are counted as they are built) and Semantics ch. 8 ("takes the next number"): the wide arm builds places 1 and 2, so `more` is 3 and the one-place clause of `@Tail` is 4; the narrow arm builds place 1, so `more` is 2 and the two-place clause of `@Tail` is 3 and 4; the last label is 5 in both.
+test the_wide_arm
+
+tick 0
+  added:
+    0: Ui.Label(text="panel")
+    1: Ui.Label(text="loud")
+    2: Ui.Button(label="wide")
+    3: Ui.Button(label="more")
+    4: Ui.Label(text="tail")
+    5: Ui.Label(text="inner 0 more 0")
+
+tick 1
+  in:
+    3: click
+  changed:
+    5: Ui.Label(text="inner 0 more 1")
+
+tick 2
+  in:
+    2: click
+  changed:
+    5: Ui.Label(text="inner 1 more 1")
+
+test the_narrow_arm
+
+tick 0
+  added:
+    0: Ui.Label(text="panel")
+    1: Ui.Button(label="narrow")
+    2: Ui.Button(label="more")
+    3: Ui.Label(text="tail a")
+    4: Ui.Label(text="tail b")
+    5: Ui.Label(text="inner 0 more 0")
+
+tick 1
+  in:
+    2: click
+  changed:
+    5: Ui.Label(text="inner 0 more 1")
+
+tick 2
+  in:
+    1: click
+  changed:
+    5: Ui.Label(text="inner 1 more 1")
