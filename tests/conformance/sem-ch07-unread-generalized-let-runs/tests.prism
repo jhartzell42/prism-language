@@ -1,0 +1,7 @@
+# The tests of sem-ch07-unread-generalized-let-runs.
+emit Ui.*
+use App.*
+
+test it_runs, @page:
+    build
+    compute until idle
