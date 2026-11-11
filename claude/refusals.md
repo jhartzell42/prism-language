@@ -52,13 +52,18 @@ Hosting
 Bundles
   A root's bundle of plain parts, event parts and one dynamic part is lowered
   (sem-ch07-root-bundle-result).
-- lower/node/def.prism:1181 a late plain part of a bundle bound whole to a name (`both <-
-  @Choose mode`, then `both` read). No test. Bound by a tuple pattern it is lowered
-  (sem-ch08-late-result-in-bundle); a bundle inside the bundle whose late part a nested
-  tuple pattern binds is not bound late.
-- lower/node/switch.prism:969 a `rebuild` whose block ends on a bundle that is not
-  written out as a tuple where the block ends (`@ both`). No test. Written out it is
-  lowered (sem-ch04-rebuild-bundle-result).
+- A bundle with a late plain part bound whole to a name (`both <- @Choose mode`) is its
+  parts (`BindWhole`, sem-ch08-late-part-bundle-named), and a late plain part taken
+  apart by a pattern of its own is read by that pattern (sem-ch08-late-part-nested-pattern).
+  Left: a line of the block's node below the split that reads the whole name (`let same =
+  both`) finds no binding ("the name both, which nothing declares"); a bundle inside the
+  bundle whose late part a nested tuple pattern binds is not bound late; a dynamic part of
+  a named bundle read by a row of a row (lower/node/switch.prism, `RowPartBn`). No tests.
+- A `rebuild` whose block ends on a bundle a line named whole (`@ both`) is lowered
+  (`WholeNamedOf`, sem-ch04-rebuild-named-bundle-result); a bundle inside that bundle is
+  refused there. No test.
+- A root's bundle with several dynamic parts is told part by part
+  (sem-ch07-root-bundle-two-dynamics).
 - lower/node/switch.prism:216 a `rebuild` whose generation gives a dynamic it does not
   lower: no program found since the bundle is lowered.
 - Lowered, no refusal left: a `for` whose rows end on a bundle
@@ -66,9 +71,13 @@ Bundles
   (sem-ch08-clause-bundle-result); a bundle given another name (sem-ch04-bundle-rebound).
 
 Building `match`, clause widgets, `rebuild`
-- lower/node/def.prism:561, 622 a late result, or a `let` that reads one, taken as a
-  value at its block's build by a line of the block's node: a widget's plain argument, a
-  plain local of a `for` row built before the arm. No test. A place's field and a plain
+- lower/node/def.prism (`BindLate`, `MarkLateLets`) a late result, or a `let` that reads
+  one, taken as a value at its block's build by a line of the block's node: a widget's
+  plain argument, a plain local of a `for` row built before the arm. A building `match`
+  with no guard whose arms read nothing of the block is built early instead
+  (`EarlyChoiceLine`, sem-ch04-building-match-value-above); left refused: an arm that
+  reads the block or has a guard, a building `if`, a widget's late result, and a `let`
+  of the late name taken as the value. No test of those. A place's field and a plain
   `let` above the split are lowered (sem-ch04-building-match-read-above), as a hold that
   begins at the result is (sem-ch04-building-match-hold-above).
 - lower/node/finish.prism:699 a place read at its block's build before the node exists
@@ -76,11 +85,14 @@ Building `match`, clause widgets, `rebuild`
   widget of several clauses whose rows differ in width and are built after the node. No
   test.
 - gap ID, the part left: a widget that calls itself and has a `$`, event or blueprint
-  parameter, a result, one clause, or stands in a hosted scope is lowered level by level
-  and faults at its build past sixteen levels (`TooDeep`). A program of the result form:
-  sem-ch04-widget-recursion-result. A widget of several clauses with
-  plain parameters and no result is as deep as its data, to 2^20 places a call
-  (sem-ch08-clause-widget-recursion, sem-ch08-widget-recursion-deep).
+  parameter, an event, dynamic or bundle result, a type parameter, or stands in a hosted
+  scope is lowered level by level and faults at its build past sixteen levels
+  (`TooDeep`). Tests: sem-ch08-widget-recursion-deep-dynamic-parameter,
+  -event-parameter, -blueprint-parameter, sem-ch09-widget-recursion-deep-hosted. A
+  widget of one clause or of several, with plain parameters and nothing or a plain value
+  given back, is as deep as its data, to 2^20 places a call
+  (sem-ch08-clause-widget-recursion, sem-ch08-widget-recursion-deep,
+  sem-ch08-widget-recursion-deep-one-clause, sem-ch08-widget-recursion-deep-result).
 - lower/node/static.prism:187 a widget this back end does not lower yet: a blueprint
   taken out of a value by a pattern and applied (`match ?Pick b: ? @t: @t`). No test.
   A blueprint a `let` names is lowered (sem-ch08-blueprint-let), and a blueprint
@@ -117,14 +129,14 @@ Dynamics and events
 
 Functions
 - lower/node/def.prism (`LetLine`) a widget block's `let` of a pattern that is no name
-  and no tuple of names and binds a dynamic or an event inside it (`let
-  Gauge($level=$l, name=nm) = ..`). Test: sem-ch08-let-pattern-dynamic-in-widget. With
-  plain names only it is lowered (sem-ch08-let-pattern-in-widget).
+  and no tuple of names and binds an event inside it. No test. With plain names it is
+  lowered (sem-ch08-let-pattern-in-widget), and with dynamics inside it
+  (`LetPatternDynamics`, sem-ch08-let-pattern-dynamic-in-widget).
 - lower/expr.prism `StartsAsBounded`: a function value of its callee's own color inside
-  the value a call returns, at a call that makes the color bounded, where a named type's
-  argument or another function's parameter holds it. Test:
-  ts-ch05-color-function-in-named-result (the named type; no test for a function's
-  parameter). Through an array, an optional, a `~T`, a tuple, a map's values and a
+  the value a call returns, at a call that makes the color bounded, where a choice's
+  argument, a named type inside another type, or another function's parameter holds it.
+  No test. A record the call returns is made again field by field
+  (`RecordStartsAsBounded`, ts-ch05-color-function-in-named-result). Through an array, an optional, a `~T`, a tuple, a map's values and a
   function's result it is lowered (ts-ch05-color-function-in-result,
   ts-ch05-color-function-in-map-result).
 - lower/expr.prism (`AnyValue`) an existential of a program's trait with a method that
