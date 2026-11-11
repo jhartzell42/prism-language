@@ -58,6 +58,40 @@ fn InferUpdate env, st, target, body, span:
     let st4 = AndBlockChecks env2, st3, body, t
     ((t, st4))
 
+# A set at an index path of a non-empty collection (Type System ch. 2, Collections): `nil`
+# there removes the key (Semantics ch. 5, References and lens paths) and could leave the
+# collection empty, so the value is one written `? v`, which only adds or replaces.
+KeepsNonEmpty: unbounded fn Env, St, Expr, Expr -> St
+fn KeepsNonEmpty env, st, target, value = match target.kind:
+    EGroup x: KeepsNonEmpty env, st, x, value
+    EIndex collection, ignore:
+        # the collection's type, read in a state that is dropped: its notes and errors are
+        # the target's already
+        let ((ct, read)) = Infer env, st, collection
+        match ?NonEmptyColl read, ct:
+            ? ignore:
+                let shown = ShowTy read, ct
+                let plain = "update the plain collection (`as` drops the promise) and check the result with `as {shown}?`"
+                match SetValue value:
+                    SetsPresent: st
+                    SetsAbsent: ErrFix st, "mismatch", value.span, "setting `nil` at an index removes it, and a `{shown}` is non-empty", plain
+                    SetsEither: ErrFix st, "mismatch", value.span, "this may be `nil`, which set at an index removes it, and a `{shown}` is non-empty", "write `? v` to set a value, or {plain}"
+            nil: st
+    otherwise: st
+
+# What a set's value is as written: `? v`, `nil`, or a value that may be either.
+type SetWritten = choice:
+    SetsPresent
+    SetsAbsent
+    SetsEither
+
+SetValue: fn Expr -> SetWritten
+fn SetValue value = match value.kind:
+    EGroup x: SetValue x
+    EFreeSigil "?", ignore: SetsPresent
+    ENil ignore: SetsAbsent
+    otherwise: SetsEither
+
 UpdateStmts: unbounded fn Env, St, [Stmt] -> ((Env, St))
 fn UpdateStmts env, st, stmts = Fold stmts, ((env, st)), \|((en, s)), stmt| UpdateStmt en, s, stmt
 
@@ -66,7 +100,7 @@ fn UpdateStmt env, st, s = match s.kind:
     SSet target, value:
         let ((tt, st1)) = Infer env, st, target
         let st2 = RefTarget env, st1, target
-        ((env, (Check env, st2, value, tt)))
+        ((env, (KeepsNonEmpty env, (Check env, st2, value, tt), target, value)))
     SAccum target, op, value:
         let ((tt, st1)) = Infer env, st, target
         let st2 = RefTarget env, st1, target

@@ -82,7 +82,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
     `[a]` arm, a value checked against an `[a]`, `xs as [a]`, the operand of `as [a]+?`.
     The checker asks at each such place when it sees the non-empty value
     (`NoteFaultAt`, `AskPlainAt`) and answers at the program's end (`PlainNotes`), since
-    an entry or an arm before the plain one is only known to be converted then. Where a
+    an entry or an arm before the plain one is only known to be converted then. The
+    question is asked under one time layer too (an arm that is a `$[a]+` beside a
+    `$[a]` arm of a lifted `if`): the value there is the sample, converted as any other,
+    or, where the dynamic or event is held whole, mapped to its collection's
+    (`PlainMapped`). Where a
     construct reads a collection of either type and no place wants the plain one, the
     lowering reads through the wrapper by the source's type (`Collection`,
     `CollectionOut`, `PlainOwned`): a `for`'s source (widget, job and `update`), an
@@ -139,6 +143,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
 ## Functions and lifting
 
 - **A plain function** → a Rust `fn` taking references, its clauses one `match`.
+- **A trait method's own type parameter with the name of its impl's** (`impl ^Paired [b]`
+  with `Pair: fn a, b -> Text`) is another variable: in that impl's method it has a name
+  apart (`ApartName`, `SchemeApart`: its name followed by every type parameter's of the
+  impl and the method, `bb`), in the checker's types of the body and in the emitted
+  generics alike (`ImplDefOf`, `MethodOwnName`).
+- **A type parameter** of a function, of an impl and of a trait method's own is bounded
+  `'static` in Rust (`StaticGenerics`, in a trait's declaration, its impls and its packed
+  dictionary alike): every Prism type lives as long as the program, and a body may ask a
+  type's key (`type_key`) or build a closure or a job over it.
 - **A guard no checked program reaches** is an internal error: `InternalBug`,
   `InternalBugDo`, `InternalBugType` put "a prismc bug: .." where a refusal's words go, and
   `CompileProgram` reports it as `error[internal]`.
@@ -171,6 +184,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
   one `rt::Stamped` per input a combinator reads, one `rt::Cache` per shared computed
   behavior, merged children's fields, and a `state` enum when the block has more than one
   state.
+- **A node's own methods** are `pub(crate)` in Rust (`RustMethod`): a widget's row is
+  built, and its methods called (`built`), by the block that reads the widget as a value,
+  which may be in another module (`@Parts.header` read in `App`).
 - **The constructor** `fn build(path, args, cx: &mut Cx) -> Rc<Self>` runs after
   propagation: holds take their initial values (`Hold::new(v, cx)`, stamped with the
   build tick), the hosts are linked, the builders run and the structural dynamics'
@@ -389,6 +405,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A constructor's `$` field** takes its argument whole (`CtorArgs`,
   `IsDynamicFieldCtor`): a reader's live `Dynamic`, which the line makes as it does for a
   function that takes time whole (`WholeArgsAt`).
+- **`$ v` over a value that holds time below its top** (`$ (($level, "main"))`, a
+  `$(($Nat, Text))`; `ConstantOfTimeAt`) builds `v` with its dynamics whole: each reader
+  in it is the live `Dynamic` the line makes for it (`WholeArgsAt`), so the tuple holds
+  `$level` itself and never a copy of its value.
 - **`any x` of `^Show` alone** is `Rc::new(x)` cast to `Rc<dyn Show>` where it is made
   (`AnyValue`): an argument behind a reference and an array's element are not coerced.
 - **A module's lowercase declaration written qualified** (`Words.base`) is parsed as a

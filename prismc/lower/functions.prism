@@ -413,10 +413,13 @@ fn ImplDefOf lx, im:
     let methods = Each defs, \|d|
         let mq = Fold tr.methods, "", \|found, q| if (BareName q) == d.name: q else: found
         let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
-        let sc = update v.scheme:
-            &_.ty <= Instantiated &_.ty, [[tr.param]], [[im.head]]
+        # the method's own type parameters are apart from the head's of one name, as the
+        # checker read its body (`SchemeApart`)
+        let own = update v.scheme:
             &_.qs <= Filter &_.qs, \|q| q != tr.param
             &_.bounds <= Filter &_.bounds, \|((q, ignore))| q != tr.param
+        let sc = update (SchemeApart own, im.qs):
+            &_.ty <= Instantiated &_.ty, [[tr.param]], [[im.head]]
         let fd = FnDefIn lx, (InstanceKey d), mq, (MethodClauses d), sc
         if (HasPrefix im.cls, "Prelude."): Renamed fd, "{Snake d.name}_{HeadWord im.head}" else: fd
     # an impl's `where` clauses bound its type parameters, as a function's do
