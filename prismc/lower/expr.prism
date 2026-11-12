@@ -247,7 +247,10 @@ fn WholeFns lx:
     # a function giving its blueprint) with a `$` parameter: its answer is over the
     # dynamic itself (`@ $count`, `?HeldDynamic`), which has no read point in a function,
     # so it takes the caller's live dynamic (`WholeArgs`) and its body lifts by mapping
-    let bySig = Fold fns, {}, \|m, ((d, ignore, v))| if (IsWholeSig v.scheme.ty) or (HasElementParam v.scheme.ty) or ((HasDynamicParam v.scheme.ty) and IsValueWidget lx, d.qk): Insert m, d.qk, True else: m
+    # and a function from dynamics to an event (`fn !Changes $a, $b = !Updated ($a +
+    # $b)`): no firing reaches its body to lift it over, and `!Updated` takes its
+    # dynamic whole, so the function takes the dynamics and gives the `Event`
+    let bySig = Fold fns, {}, \|m, ((d, ignore, v))| if (IsWholeSig v.scheme.ty) or (HasElementParam v.scheme.ty) or (GivesEventOfDynamics v.scheme.ty) or ((HasDynamicParam v.scheme.ty) and IsValueWidget lx, d.qk): Insert m, d.qk, True else: m
     # and those a call takes with time below the top of what it gives (`$Sel (True on
     # !swap), $a, $b`, a `!$Nat`: lifted over a plain parameter, the call gives the dynamic
     # it returns whole, Type System ch. 4)
@@ -339,6 +342,13 @@ fn HasElementParam t = match t:
 HasDynamicParam: fn Ty -> Bool
 fn HasDynamicParam t = match t:
     TyFn ignore, ps, ignore: Fold ps, False, \|seen, p| seen or (LayerOf p) == LyDyn
+    otherwise: False
+
+# Whether a signature gives an event from dynamics alone: an event on top of its result,
+# a dynamic on top of a parameter, no event parameter and no blueprint.
+GivesEventOfDynamics: fn Ty -> Bool
+fn GivesEventOfDynamics t = match t:
+    TyFn ignore, ps, r: (LayerOf r) == LyEv and (not (HasBlueprint r)) and (HasDynamicParam t) and not (HasEventParameter t)
     otherwise: False
 
 IsWholeSig: fn Ty -> Bool
