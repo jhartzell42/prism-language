@@ -1369,7 +1369,12 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
                     OutFn pts, ignore if (Len v.scheme.qs) > 0:
                         let names = Each (Range0 (Len pts)), \|i| "a{i}"
                         let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "a")), (OutRef (Or pts[i], OutUnit))
-                        VlOwned (XCall (RefRuntime "std::Rc::new"), [[(XClosure False, pas, (XCall (ValueRef lx, qk), (Each names, \|nm| XVar nm)))]]), t
+                        let callArgs = Each names, \|nm| XVar nm
+                        # a type parameter in no parameter's type is given by the value's type here
+                        let call = match ?TypeArgsAt lx, qk, v.scheme, span:
+                            ? tys: XCallAt (ValueRef lx, qk), tys, callArgs
+                            nil: XCall (ValueRef lx, qk), callArgs
+                        VlOwned (XCall (RefRuntime "std::Rc::new"), [[(XClosure False, pas, call)]]), t
                     otherwise: VlOwned (XCall (RefRuntime "std::Rc::new"), [[XPath (ValueRef lx, qk)]]), t
             nil: VlOwned (InternalBug "the global {qk}"), t
 
@@ -1840,10 +1845,18 @@ fn ArgumentByKind lx, env, e = match e.kind:
                     nil:
                         let ((?qk, why)) = ResolveValue lx.g, lx.home, n
                         match ?qk:
-                            ? qk: if (HasKey lx.g.ctors, qk) or why == "output" or IsMethodKey lx, qk: ClosureRef (ValueOf lx, env, e) else: XRef (XPath (ValueRef lx, qk))
+                            # a generic function goes as its closure at the types of this use
+                            # (`GlobalValue`): its path alone names no one function
+                            ? qk: if (HasKey lx.g.ctors, qk) or why == "output" or (IsMethodKey lx, qk) or IsGenericGlobal lx, qk: ClosureRef (ValueOf lx, env, e) else: XRef (XPath (ValueRef lx, qk))
                             nil: Ref (ValueOf lx, env, e)
             otherwise: Ref (ValueOf lx, env, e)
     otherwise: Ref (ValueOf lx, env, e)
+
+# Whether a global is a program's function with type parameters.
+IsGenericGlobal: fn Lx, Text -> Bool
+fn IsGenericGlobal lx, qk = match lx.g.vals[qk]:
+    ? v: v.home != "Prelude" and (Len v.scheme.qs) > 0
+    nil: False
 
 # An argument of a function value applied: the value's parameter of a function type
 # takes a function value, held as every function value is (a named function takes a

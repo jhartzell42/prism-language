@@ -512,6 +512,9 @@ type PendingRow = record:
     # the block's gathers of the row's firings: one, or one per event part of a bundle
     gathers: [Nat]
 
+# The parameter by which a row built at a path of its own takes its host (`UnderItsPath`).
+let hostAbove = "host_above"
+
 # The names a node's own methods and the `Node` interface take.
 let nodeHooks = [["path", "build", "wake", "started", "deferred", "answer", "push", "swap", "leave", "patch", "clean_up", "edges", "release", "leave_row", "remove_places"]]
 
@@ -519,12 +522,13 @@ let nodeHooks = [["path", "build", "wake", "started", "deferred", "answer", "pus
 # numbered from 0 where a widget's value is applied) names its places by paths relative to
 # itself, and its host knows them by their paths under the host's child: the row's `build`
 # first takes the host as the row reaches it (`prism_rtl::host_under`: the row's path
-# before every place it names). An arm of a building `match` or `if` is numbered in its
+# before every place it names), from its parameter `host_above` (no let rebinds a name
+# from itself). An arm of a building `match` or `if` is numbered in its
 # block's own places and built at its block's path: it takes its block's host as it is.
 UnderItsPath: fn Wx, ?Text -> Wx
 fn UnderItsPath wx, ?hostedBy = match ?hostedBy:
     ? ignore: update wx:
-        &_.lets <= Append [[(DoLet (PaBind "enclosing"), (XCall (RefRuntime "prism_rtl::host_under"), [[(XVar "enclosing"), (XRef (XVar "path"))]]))]], &_.lets
+        &_.lets <= Append [[(DoLet (PaTyped (PaBind "enclosing"), hostOfTy), (XCall (RefRuntime "prism_rtl::host_under"), [[(XVar hostAbove), (XRef (XVar "path"))]]))]], &_.lets
     nil: wx
 
 # A fresh node state: its fields, initializers, getters, dynamic reads and taken names given,
