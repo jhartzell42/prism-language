@@ -604,7 +604,7 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | site | class | test | state |
 |---|---|---|---|
 | node/elements.prism `ElementLine`, an element of an unknown tag | G | - | internal error: the checker's `unknown-name` (tests/checker/neg/unknown-tag) |
-| node/elements.prism `ElementOutputOf`, a hosted place with a plain answer no plain name binds, under a host placed after its node | R | none | refused; `LateHostedOutput` takes every name, `(a)` and a plain pair's tuple pattern under a host below a building `if` (e1b, e3, e4) |
+| node/elements.prism `ElementOutputOf`, a hosted place with a plain answer no plain name binds, under a host placed after its node | R | sem-ch09-host-late-answer-holding-dynamics | an answer whose type holds dynamics (`[$Nat]`), which `LateHostedOutput` left out; fix written (it takes such a name), unrun. `LateHostedOutput` takes every other name, `(a)`, a plain pair's tuple pattern, a record pattern (eo4) and a place whose field reads a late result (eo5) under a host below a building `if` |
 | node/finish.prism `UpdatedGaps`, `!Updated` of a dynamic no sink of the node writes (UP) | G | sem-ch07-updated-rebuild-dynamic-above reached it | internal error: every dynamic a node binds reads a hold, a getter over its holds, a structural dynamic or a kept result; the program that reached it (a `rebuild`'s dynamic read above its line) was bound to a field the node did not have, lowered by `GivesResult` |
 | node/finish.prism `UpdatedGaps`, the same in a row over a name of its block (SU) | G | the same test's second widget reached it | internal error, by the same argument |
 | node/finish.prism `PlaceNumber`, a place read at its block's build after rows built after the node that differ in width | R | none | refused: a hosted child's place with a `$` or a bundle answer asking its host its first value below a building line of the child; a plain answer bound to a name asks once the node stands (`BelowGappyLine`; sem-ch09-host-place-asks-below-building-if, ok on prismc-c1) |
@@ -622,31 +622,32 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | node/static.prism `HostLine`, a host without its child or its supplier | G | - | internal error: the checker's `mismatch` (tests/checker/neg/ignore-binds-a-function, neg/builtin-widget-without-argument) |
 | node/static.prism `InlineWidget`, a widget of several clauses that takes no arguments | G | - | internal error: the checker's `collision` (ruling ZD; tests/checker/neg/clause-widget-without-arguments) |
 | node/static.prism `InlineWidget`, a generic widget at a call whose types its parameters' do not match | R | ts-ch03-generic-widget-associated-type-parameter | fix written (`?ParamMatch` takes an associated type as deciding nothing), unrun; another program that reached it is the checker's `field-variable` (tests/checker/neg/hosting-generic-implementation) |
-| expr.prism `SampledObject`, a dynamic a function gives whole, read in a plain function (LE) | U | none | refused |
-| expr.prism, a dynamic passed whole where it has no live dynamic (LF) | U | none | refused |
+| expr.prism `SampledObject`, a dynamic a function gives whole, read in a plain function (LE) | R | ts-ch04-plain-function-reads-whole-result-lifted | refused: a plain function (no dynamic in its signature) lifting `+` over what a whole-taking function gives (le3); handed whole to a `$` parameter (le2) or under a lifted `Or` (le1), rustc refuses the output instead (ts-ch04-plain-function-gives-whole-result-to-sigiled-parameter, ts-ch04-plain-function-lifts-over-whole-result) |
+| expr.prism, a dynamic passed whole where it has no live dynamic (LF) | R | ts-ch04-whole-lambda-reads-hold-in-lifted-call | refused: a lambda with a `$` parameter reading a hold, given to a plain function (lf1); fix written (`WholeArgsAt` takes such a lambda's reads), unrun; the lambda's own `$x` read whole is a constant of a `Dynamic` there, which rustc may refuse next |
 | expr.prism `LiftedValue`, a lift whose noted operands are not its own | G | - | internal error: the checker lifts only at applications, operators, fields, indexes and interpolations, each a direct operand |
 | expr.prism `PlainValueByKind`, `{b}` outside a `for` | G | - | internal error: the checker's `unknown-name` (tests/checker/neg/bound-word-outside-for) |
 | expr.prism `PlainValueByKind`, an expression of no value kind | G | - | internal error: `mismatch` for a `for` or a `rebuild` as a plain value (ruling BP; tests/checker/neg/for-in-let), `unsupported` for a suffixed operator, a monadic block and a lens value; a topic, `..` and an absent value are read by an `update` block, a pattern and an element's fields. Not argued: a widget block as a value |
 | expr.prism `PartsBlueprint`, two sites (`PartInternalBug`) | G | - | internal error: `DynamicOutputs` makes a getter for every dynamic answer |
-| expr.prism `NameValueOf`, an event read as a value | U | none | refused |
+| expr.prism `NameValueOf`, an event read as a value | G | - | internal error: every name of an event node is bound beside its port (`PreBindName`, `BindEventParam`; a pattern's part, a host's child's result and a `let` over a bundle bind a prebound name), a row's through the parent (`RowEnvNames`, `EventsOf`, `WholeOfBlock`), a shared row's event parameter is its caller's (`LiveParams`). Probes a3, ev1-ev5 lower |
 | expr.prism `NameValueOf`, a tuple pattern's binding as a value | R | none | refused where a bundle bound to one name is read as one value in no function's argument, no generation's result and no `let` of it (a tuple or an array that holds it); passed to a function it is one value (`BundleArgumentsAt`, ts-ch02-named-bundle-as-argument) |
 | expr.prism `NameValueOf`, a widget defined in a block read as a blueprint value outside a line's value places | R | none | refused; a lambda's body that is the widget is a value place (`BlueprintValuesAt`; sem-ch08-block-widget-given-by-lambda), one whose body chooses it (`\|c| if c: @Inner else: @Other`) is not |
-| expr.prism `WidgetValueWords`, a widget as a value where `ValuedWidgets` does not look (two calls) | R (one call), U (the other) | none | refused; a widget defined as one expression that is another widget (`fn @main = @page`) is an alias and no longer reaches it (sem-ch08-widget-is-another-widget) |
+| expr.prism `WidgetNamed` and `GlobalCall`, a widget, named or applied, as a value where `ValuedWidgets` does not look (two calls, through `OpenWidgetValueWords`) | R | sem-ch08-widget-value-in-map-literal (both) | a map literal's values (wv1, wv3); fix written (`ValueWidgetsIn` takes them), unrun. A widget defined as one expression that is another widget (`fn @main = @page`) is an alias and no longer reaches it (sem-ch08-widget-is-another-widget) |
+| expr.prism `WidgetBlueprintValueFrom`, a reading with no rows | G | - | internal error: `WidgetNamed` and `GlobalCall` ask `Lx.valued` first, `?OpenWidgetBlueprintValue` asks it for every instantiation (`rowed`) |
 | expr.prism `OpenWidgetValueWords`: `EndlessByName`, `EndlessThroughImpl` | G | - | internal errors: the checker's `grows-without-end` |
-| expr.prism `OpenWidgetValueWords`: `UndecidedParameter` | U | none | refused |
-| expr.prism `Recolored`, a function value held by a type that is none of those it maps through | U | none | refused |
-| expr.prism `FunctionRecolored`, a function whose color no use of its `let` decides | U | none | refused |
+| expr.prism `OpenWidgetValueWords`: `UndecidedParameter` | G | - | internal error by its text: `?UseTargets` gives no answer only where a use's types name a type parameter once the user's instantiation's types are put in, and those are closed over every type parameter of the user's signature (`?ClosedTypes`, a method's own beside its impl's); a type left open at a use (`Frame [[]]`, ud3) is a variable, taken as it is; a local generic function's own variable meets `OutQuantified` first (ud1, ud4) |
+| expr.prism `Recolored`, a function value held by a type that is none of those it maps through | R | ts-ch05-color-function-through-associated-type | an associated type in the signature's result at a head an impl knows (`Out (Holder (u fn Nat -> Nat))`, rc1); fix written (`KnownAssoc`), unrun. With `?ParamMatch` matching, every other pair has one shape |
+| expr.prism `FunctionRecolored`, a function whose color no use of its `let` decides | U | none | refused; reached only where one side is `OutQuantified` (`OutTyOf` of a function type is `OutFn`, `OutJobFn` or that), the `OutQuantified` gap: a call making its callee's color bounded inside a generalized `let` or local function whose color no use decides. fr1-fr5 (a `let` of `Held (..)`, used or not, a generalized lambda over it, a widget's local function calling it) lower: such colors default bounded |
 | patterns.prism, a pattern inside an element's `$` field | G | - | internal error: the checker's `live-field-pattern` (ruling LP; tests/checker/neg/live-field-pattern) |
 
-Totals: 31 `Refusal` / `RefusalDo` calls stand in prismc/lower. 10 are R with a red
-test (`AnyValue`, the named bundle, the block widget, one `WidgetValueWords` call, the
-markers of `BindLate`, `MarkLateLets`, `LateFieldPlaces` and `PreBindWhole`, whose fix
-is written and not yet run, `WrLate`, the generic widget); 14 are R with no test (8
-late-name markers, `DeferredLine`'s unnamed result and its counted line,
-`ElementOutputOf`, `ArmRowOf` 2, `PlaceNumber`'s block site); 7 are U (LE, LF of
-expr.prism, an event read as a value, the other `WidgetValueWords` call and
-`UndecidedParameter`, `Recolored`, `FunctionRecolored`). Sixteen guards are internal
-errors and no longer refusals.
+Totals: 29 `Refusal` / `RefusalDo` calls stand in prismc/lower. 15 are R with a red
+test (`AnyValue`, the named bundle, the block widget, the two widget-value calls of
+`WidgetNamed` and `GlobalCall`, the markers of `BindLate`, `MarkLateLets`,
+`LateFieldPlaces` and `PreBindWhole`, `WrLate`, the generic widget, LE, LF,
+`Recolored`, `ElementOutputOf`; the fixes of the four markers, the generic widget, the
+widget values, `Recolored`, LF and `ElementOutputOf` written and not yet run); 13 are R
+with no test (8 late-name markers, `DeferredLine`'s unnamed result and its counted line,
+`ArmRowOf` 2, `PlaceNumber`'s block site); 1 is U (`FunctionRecolored`). Nineteen
+guards are internal errors and no longer refusals.
 
 Refusals outside `Refusal` / `RefusalDo`, which the table above does not hold:
 
@@ -655,7 +656,7 @@ Refusals outside `Refusal` / `RefusalDo`, which the table above does not hold:
 | emit/rust/items.prism `DeepPodOf`: a level field's walk at a type that holds no time | G | - | internal error ("a prismc bug: a level field's walk met .."): arrays, maps, options, `~T`s, tuples, `Rc`s, dynamics and generic program types are walked (sem-ch09-tag-field-array-of-dynamics, -named-type-of-dynamic, -fault-of-dynamic) |
 | emit/cpp/mod.prism `PrinterRefusal`: a constructor, record or pattern of no type the C++ printer's tables know | G | - | internal error ("a prismc bug: the C++ printer met ..") |
 | lower/types.prism, `OutQuantified` (two sites): a quantified type variable no instantiation gives a type | R | sem-ch08-widget-value-generic-through-local-function | refused: a widget's local generic function (`fn ?Made y, label = ?Framed ((y, y)), label`) calling a generic function that reads a generic widget as a value; when the local function reads the widget itself it lowers (sem-ch08-widget-value-generic-in-generalized-let). `Len [[]]`, `Size {}`, an unused `let empty = [[]]`, an unused generalized `let` of a lambda and one handed to a function of its callee's color (oq1-oq3) are lowered |
-| lower/expr.prism, `OutRefused "a parameter"`: a typed parameter pattern with no type | U | none | refused |
+| lower/expr.prism `ClosureParams`, a typed lambda parameter with no type | G | - | internal error: a lambda's type has as many parameters as it has (the checker's arity, check/expr/calls.prism), so its target type gives one per parameter: `OutFn` (`PlainLambda`), a `Start` (`JobLambda`), or `OutQuantified`, now given to each parameter and refused as the type is |
 
 ## Red tests of the depth sweep
 
@@ -718,9 +719,36 @@ refusal. They are the attempts behind the R rows with no test and the U rows.
   a hosted place's plain answer in a widget inlined in the child, in an arm of a building
   `if` of the child, and under a host inside the child, each under a host below a
   building `if` (eo1, eo2, eo3).
+- Under target/fx/s6 of the sixth sweep's worktree, compiled by prismc-s4: an event
+  read as a value through a `let` alias, a bundle's event part taken apart above a `for`
+  and inside it, a late event read above its building `if`, a hosted child's event
+  result (ev3, ev4, ev5); a generic widget read as a value in a generic function used at
+  `[[]]` and through a function's local function (ud3 lowers, ud4 meets `OutQuantified`);
+  a call's function of its callee's color kept by a `let`, used or not, under a
+  generalized lambda and in a widget's local function (fr1-fr5); a hosted place's
+  answer bound by a record pattern, and one whose field reads a late result, under a
+  host below a building `if` (eo4, eo5); a lambda with a `$` parameter given to `Each`
+  over an array of dynamics (lf1's second widget): each lowered.
 
 ## Designs for the red R tests with no fix
 
+- A plain function's body holding a dynamic it makes (LE and the two tests rustc refuses:
+  ts-ch04-plain-function-reads-whole-result-lifted, -gives-whole-result-to-sigiled-
+  parameter, -lifts-over-whole-result). A plain function has no read point, and a whole
+  function it calls gives a `Dynamic`. Every dynamic such a body can make stands on its
+  plain parameters, constants and global dynamics (a function value it is given that
+  gives a dynamic is held by a type `HasTime` does not see: a doubt to settle first), so
+  it has one value: read it with a read context of no node (a `sample` at a detached
+  `Cx`, a prelude helper), at the three places: `SampledObject` under `noCx`, an
+  argument at a `$` parameter of a lifted callee (`ArgumentAt`, where today the
+  `Dynamic` goes in as it is), and a lift's operands in a plain body (`Or` over
+  `(Gen n)[0]`, today applied to the `Dynamic`s). The other way, growing such a body
+  whole (`GrowWhole`), gives a `Dynamic` where the signature promises a plain value.
+- LF's second step (ts-ch04-whole-lambda-reads-hold-in-lifted-call): with the lambda's
+  reads given live dynamics, its own `$x` is bound as a plain local (`ClosureParams`
+  types the binder by the pattern), so `WholeValueOf` wraps the `Dynamic` it holds in
+  `dyn_constant` again; bind a time-taking lambda's sigiled parameter as the `Dynamic`
+  it is (`OutDyn`), so the read is the parameter itself.
 - A widget's local generic function calling a generic function that reads a generic
   widget as a value (sem-ch08-widget-value-generic-through-local-function): the uses
   in the local function are read at its quantified type (`?Made`'s `y`), which no
