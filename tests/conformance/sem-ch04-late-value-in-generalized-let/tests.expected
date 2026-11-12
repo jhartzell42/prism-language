@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 4 ("the order of a group's lines decides positions and nothing else") and Type System ch. 1 (the generalized `let` read at `Nat` and at `Text`): loud gives 10, so the label reads "10 10" and the arm's label is 1; soft gives 20 and builds nothing in its arm. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="10 10")
+    1: Ui.Label(text="loud")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="20 20")
