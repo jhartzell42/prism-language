@@ -1361,6 +1361,10 @@ fn WidgetBlueprintValueFrom lx, lxArguments, recast, env, qk, calleeSpan, args, 
         # under a tag's arm a dynamic result is the place's first value and each move of
         # it a push, as `@ $d` is (prism_rtl's `widget_dynamic_blueprint`)
         else: if live and not untagged: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_dynamic_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, fired]])), t
+        # under a tag's arm an event result is a computed answer, the next tick's input, as
+        # `@ !e` is (Semantics ch. 9, "A computed answer is the next tick's input";
+        # prism_rtl's `widget_event_answer_blueprint`)
+        else: if fires and not untagged: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_event_answer_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, fired]])), t
         else: if fires: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_event_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, fired]])), t
         else: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, answer]])), t
     otherwise: VlOwned (Refusal (WidgetValueWords qk)), t
