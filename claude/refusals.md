@@ -605,7 +605,7 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | node/def.prism, the build-side markers of a late name (`PreBindWhole`, `PreBindWholeParts`, `BindLate`, `MarkLateLets`, `LateTakerResults`, `LateFieldPlaces`, `LatePlaceParts`, `LateHostedAnswer`, `MarkLateBundle`, `LateBundleParts`: twelve sites) | R | none (sem-ch04-late-value-above-in-plain-place-field passes) | refused: a place with a `$` or bundle answer, bound by a pattern or in a hosted scope, whose constant field reads the late name; a `let` of a type with time inside that is no bundle |
 | node/def.prism, a late plain result in a bundle (`WrLate`) | U | none | refused |
 | node/def.prism `DeferredLine`, two sites: a line that takes a late result above the line that gives it, with counted places or a plain result no name binds | R | none | refused |
-| node/static.prism `WidgetCall`, a widget line whose name has no value entry | R | sem-ch08-for-over-blueprints | an internal error by its text, and reached: a `for`'s binder that is a blueprint (`for @each <- [[@One, @Two]]:`), applied as a line of the row |
+| node/static.prism `WidgetCall`, a widget line whose name has no value entry | G | - | internal error: the checker's `unknown-name`; a `for`'s binder that is a blueprint (`for @each <- [[@One, @Two]]:`) applied as a line of the row is a value of the node (`WidgetLine`'s `held`; sem-ch08-for-over-blueprints) |
 | node/static.prism `HostLine`, a host without its child or its supplier | G | - | internal error: the checker's `mismatch` (tests/checker/neg/ignore-binds-a-function, neg/builtin-widget-without-argument) |
 | node/static.prism `InlineWidget`, a widget of several clauses that takes no arguments | G | - | internal error: the checker's `collision` (ruling ZD; tests/checker/neg/clause-widget-without-arguments) |
 | node/static.prism `InlineWidget`, a generic widget at a call whose types its parameters' do not match | U | none | refused; the program that reached it is the checker's `field-variable` (tests/checker/neg/hosting-generic-implementation) |
@@ -672,11 +672,6 @@ Each is red on prismc-r21 by a compile of the one program; the transcripts are b
   widget of a block read as a value is the blueprint value of its block in the
   environment where it stands, as `WidgetBlueprintValueFrom` makes for a top-level
   widget read as a value; the block's captures are the lambda's.
-- **sem-ch08-for-over-blueprints** (`WidgetCall`'s internal error). A `for`'s value
-  binder that is a blueprint is a `BnLocal` of a `Blueprint` value in the row; the line
-  `@each` finds no value entry and none of the lines above takes it. Design: the row
-  applies the blueprint value as `BlueprintLine` applies a blueprint out of a value (a
-  widget parameter `@$bp` applied as a line is the neighbour that works).
 - **sem-ch09-tag-field-array-of-dynamics** (`DeepPod`). Design: a runtime trait for "the
   pod of a value with its dynamics sampled" (`DeepPod::deep_pod(&self, cx)`), given for
   `Dynamic<A>`, arrays, maps, options, tuples and plain data, and derived for a

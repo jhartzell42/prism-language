@@ -77,11 +77,14 @@ fn WidgetLine wx, benv, menv, e, ?bound:
     let ?named = match callee.kind:
         EName n: if (Len n.path) == 1 and (Len args) == 0: menv.names["{SNameKey n}#blueprint"] else: nil
         otherwise: nil
-    # a blueprint that is a value of the node: a pattern's binder, a field of a record
+    # a blueprint that is a value of the node: a pattern's binder, a field of a record,
+    # a `for`'s binder over blueprints (`for @each <- [[@One, @Two]]:` then `@each`: in
+    # the row's methods its entry, a plain blueprint read at the row's build)
     let held = match e.kind:
         EField ignore, ignore, ignore: (IsSome ?qualified) == False
         EName n: match (if (Len n.path) == 1: menv.names[SNameKey n] else: nil):
             ? (BnLocal ignore, ignore, ignore): True
+            ? (BnDyn ignore, ignore, t): t == blueprintTy
             otherwise: False
         otherwise: False
     if held: ValueBlueprintLine wx, menv, e
