@@ -1663,14 +1663,22 @@ fn BindPatternResult wx, menv, p, ex, t, ty:
         &_.inits <= Append &_.inits, (Each bound, \|((f, ignore, ignore))| ((f, (XClone (XVar f)))))
     if (Len bound) == (Len (BinderNames p)): wx2 else: RefusePlainResult wx2, p
 
-# A building `match` with no arm, whose result is unit or a plain value: the line builds
-# nothing, since its scrutinee's type has no value and the block around it is never built
-# with one. A plain result is the empty Rust `match` of the scrutinee as the build has it,
-# an expression of every type; a unit result is no code at all.
+# A building `match` with no arm: the line builds nothing, since its scrutinee's type has
+# no value and the block around it is never built with one. A plain result is the empty
+# Rust `match` of the scrutinee as the build has it, an expression of every type; a unit
+# result is no code at all. A dynamic result never has a value: its reader is
+# unreachable (no node that reads it is ever built); an event result never fires.
 NoArmLine: unbounded fn Wx, Env, Expr, Expr -> ((Wx, Wres))
-fn NoArmLine wx, benv, s, e = match ChoiceOutTy wx.lx, e:
-    OutUnit: ((wx, WrUnit))
-    t: ((wx, (WrPlain (XMatch (Own (ValueOf wx.lx, benv, s)), [[]], False, t), t)))
+fn NoArmLine wx, benv, s, e:
+    let live = OutTyOf wx.lx, (Peel (OutOf (TypeAt wx.lx, e.span)))
+    match ResultLayer (TypeAt wx.lx, e.span):
+        LyDyn: ((wx, (WrDyn XUnreachable, [[]], live)))
+        LyEv:
+            let ((r, wx2)) = NeverEvent wx, live
+            ((wx2, (WrEv r)))
+        otherwise: match ChoiceOutTy wx.lx, e:
+            OutUnit: ((wx, WrUnit))
+            t: ((wx, (WrPlain (XMatch (Own (ValueOf wx.lx, benv, s)), [[]], False, t), t)))
 
 # How a line binds its name: `$x <- init then step` (a hold), `p <- e` (a bind), `let`.
 type HowBound = choice:
@@ -3063,7 +3071,7 @@ fn BuildLineNow wx, benv, menv, e, ?bound:
         # a building `match` with no arm (over a choice with no case): no value reaches
         # the line, so it builds nothing: no row, no generation, no place counted
         # (`NoArmLine`)
-        EMatch s, arms: if (Len arms) == 0 and (ResultLayer (TypeAt wx.lx, e.span)) == LyPlain: NoArmLine wx, benv, s, e else: if HasText wx.earlyChoices, (InitKey e): EarlyChoiceLine wx, benv, menv, s, arms, e else: MatchGenLine wx, menv, s, arms, e
+        EMatch s, arms: if (Len arms) == 0: NoArmLine wx, benv, s, e else: if HasText wx.earlyChoices, (InitKey e): EarlyChoiceLine wx, benv, menv, s, arms, e else: MatchGenLine wx, menv, s, arms, e
         otherwise: match Peel full:
             TyElem ignore, ignore: ElementLine wx, benv, menv, e, ?bound
             TyAt ignore, ignore: WidgetLine wx, benv, menv, e, ?bound

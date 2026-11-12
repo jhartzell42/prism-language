@@ -142,9 +142,10 @@ fn ?CaseOf cp, r = match ?RefKey r:
     nil: nil
 
 # What the printer cannot print: a program's item its tables do not have, which lowering
-# referred to (a prismc bug, refused where the target compiler would see it).
+# referred to. No checked program reaches it: an internal error, marked as a refusal is,
+# so `CompileProgram` reports it (`error[internal]`) and the target compiler never sees it.
 PrinterRefusal: fn Text -> Text
-fn PrinterRefusal what = "compile_error!(\"prismc's C++ printer: {what}\")"
+fn PrinterRefusal what = "compile_error!(\"{loweringRefusal}{internalBug}the C++ printer met {what}\")"
 
 # A choice's case as a C++ name: a class cannot hold a member named as itself, so a case
 # named as its choice (`Card` of `Card`, beside `Joker`) takes a `_` after it.

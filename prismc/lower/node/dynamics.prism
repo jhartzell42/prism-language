@@ -51,10 +51,7 @@ use Lower.Model.*
 DynamicExpr: unbounded fn Wx, Env, Expr -> ((Ex, [Read]))
 fn DynamicExpr wx, menv, e:
     let v = ValueOf wx.lx, menv, e
-    # a constant never fires: what `$ v` holds whole (`ConstantOfTimeAt`, `$ ($Choose
-    # True, $a, $b)`) is read live through its own dynamics, never by the constant's reader
-    let held = Fold (ExprsIn e), [[]], \|acc, x| Append acc, (HeldWholeKeys wx.lx, x)
-    let reads = Fold (Filter (ExprsIn e), \|x| not (HasText held, (DynKey x))), [[]], \|acc, x| match x.kind:
+    let reads = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
         EName n: match menv.names[SNameKey n]:
             ? (BnHold f, ignore): AddRead acc, (OwnRead f)
             ? (BnDyn ignore, rs, ignore): UnionReads acc, rs
@@ -74,13 +71,6 @@ fn PartsReads bs = Fold bs, [[]], \|acc, ?b| match ?b:
     ? (BnDyn ignore, rs, ignore): UnionReads acc, rs
     ? (BnParts inner): UnionReads acc, (PartsReads inner)
     otherwise: acc
-
-# The expressions a constant holds whole, by their keys (`DynKey`): those under `x` when
-# `x` is such a constant (`ConstantOfTimeAt`), none otherwise.
-HeldWholeKeys: unbounded fn Lx, Expr -> [Text]
-fn HeldWholeKeys lx, x = match x.kind:
-    EFreeSigil ignore, inner: if (ConstantOfTimeAt lx, x) and NotLifted lx, x.span: Each (ExprsIn inner), \|y| DynKey y else: [[]]
-    otherwise: [[]]
 
 # A node that never fires (`never`).
 NeverEvent: fn Wx, OutTy -> ((EvRef, Wx))

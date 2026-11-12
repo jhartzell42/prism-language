@@ -338,6 +338,11 @@ type Wx = record:
     # and sends its places when the construction step reaches the line
     # (`{name}_number`, `ScopeSteps`).
     lateNumbered: [Text]
+    # The live dynamics of the node's own holds (`LiveDynamics`), each with a cell
+    # `{name}_last` its closure reads once the node is gone: the node's `leave` writes the
+    # hold's value after the tick it leaves in (Semantics ch. 7, "Holds die with their
+    # widget").
+    holdsLast: [Text]
     # Whether the node is such a row: its `base` is a cell set by `number_places`, which
     # runs everything the build does after the node is made (`LateNumbering`).
     baseLate: Bool
@@ -481,7 +486,7 @@ fn NewWx lx, name, fields, inits, moves, getters, dynReads, taken, inlining, ?ho
     let hostedInits = match ?hostedBy:
         ? ignore: [[(("enclosing", (XVar "enclosing")))]]
         nil: [[]]
-    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, ?valuedAs=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], bundles=[[]], scopes=[[]], ?hostedBy=?hostedBy, rootDyns=[[]], genOf="", rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=[[]], dynAnswers=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]], lateAsks=[[]], lateGens=False, lateRowGens=[[]], genPhase=0, numberedBy=[[]], unplacedHosts=[[]], wholeResultAt="", earlyChoices=[[]], deferredGens=[[]], lateHosts=[[]], lateFirsts=[[]], lateStarts=[[]], latePlaces=[[]], lateElements=[[]], lateNumbered=[[]], baseLate=False)
+    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, ?valuedAs=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], bundles=[[]], scopes=[[]], ?hostedBy=?hostedBy, rootDyns=[[]], genOf="", rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=[[]], dynAnswers=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]], lateAsks=[[]], lateGens=False, lateRowGens=[[]], genPhase=0, numberedBy=[[]], unplacedHosts=[[]], wholeResultAt="", earlyChoices=[[]], deferredGens=[[]], lateHosts=[[]], lateFirsts=[[]], lateStarts=[[]], latePlaces=[[]], lateElements=[[]], lateNumbered=[[]], holdsLast=[[]], baseLate=False)
 
 # A name not yet taken in the node: `base`, else `base_2`, `base_3`.
 FreshName: fn Wx, Text -> ((Text, Wx))

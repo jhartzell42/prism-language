@@ -1891,7 +1891,9 @@ fn HeldFlatten wx, menv, x, ?bound:
     # writes a global: `let $$nested = $ ($ 3)` is the constant of its one inner)
     let ?kept = match menv.names["#whole{DynKey x}"]:
         ? (BnLocal (XField (XSelf), ignore), ignore, ignore): nil
-        ? (BnLocal over, ignore, ignore): ?ThroughParent over
+        ? (BnLocal over, ignore, ignore): match ?ThroughParent over:
+            ? built: ? (XClone built)
+            nil: nil
         otherwise: if IsGlobalName menv, x: ? (XCall (HelperRef "dyn_constant"), [[Own (ValueOf wx.lx, menv, x)]]) else: nil
     let ?own = match menv.names["#whole{DynKey x}"]:
         ? (BnLocal (XField (XSelf), dyn), ignore, ignore): ? dyn
