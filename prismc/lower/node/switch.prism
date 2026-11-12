@@ -566,7 +566,7 @@ fn EarlyChoiceLine wx, benv, menv, s, arms, e:
         &_.rows <= Fold cases, &_.rows, \|acc, gc| Append (Push acc, gc.node), gc.node.children
     ((wx3, (WrPlain (XClone (XVar first)), outTy)))
 
-let dummyArmS = Arm(?pattern=nil, ?guard=nil, body=dummyBlockS, span=Range(start=0, end=0))
+let dummyArmS = Arm(?pattern=nil, ?guard=nil, body=dummyBlockS, span=Range(start=0, end=0, origin=InSource))
 
 # Whether the node's places go to a host's document rather than the World's.
 IsHostedScope: fn Wx -> Bool
@@ -1409,7 +1409,7 @@ fn IfGenLine wx, menv, c, thenB, elseB, e = match c:
     CondExpr x: BuildingChoiceLine wx, menv, (XUnit), [[nil, nil]], (TyCon "unit", [[]]), [[(? x), nil]], [[thenB, elseB]], (ChoiceOutTy wx.lx, e), (ResultLayer (TypeAt wx.lx, e.span)), (LineOutFull wx.lx, e), [[]]
     CondBind p, x, ?g: BuildingChoiceLine wx, menv, (Argument wx.lx, menv, x), [[(? p), nil]], (TypeAt wx.lx, x.span), [[?g, nil]], [[thenB, elseB]], (ChoiceOutTy wx.lx, e), (ResultLayer (TypeAt wx.lx, e.span)), (LineOutFull wx.lx, e), [[]]
 
-let dummyBlockS = Block(stmts=[[]], inline=True, span=Range(start=0, end=0))
+let dummyBlockS = Block(stmts=[[]], inline=True, span=Range(start=0, end=0, origin=InSource))
 
 type GenRow = record:
     node: NodeDef
@@ -1606,7 +1606,7 @@ fn BundleResultKey lx, body = match (Or body.stmts[Dec (Len body.stmts)], dummyS
     otherwise: ""
 
 ResultKey: fn Lx, Expr -> Text
-fn ResultKey lx, x = "{lx.file}:{x.span.start}:{x.span.end}"
+fn ResultKey lx, x = "{lx.file}:{SpanKey x.span}"
 
 # The block's writes behind what a generation's places read mark the generation (gap DY;
 # `RowMarks` of kind `GenerationRow`: the current one is dirtied), and the block's names the

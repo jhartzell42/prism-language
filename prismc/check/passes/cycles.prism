@@ -1079,4 +1079,4 @@ else: match Filter g.defs, \|d| d.qk == qk:
 
 let nothingGiven = Given(prompt={}, flows={})
 
-let dummyArgP = Arg(marks="", ?name=nil, value=(Expr(kind=EError, span=Range(start=0, end=0))), span=Range(start=0, end=0))
+let dummyArgP = Arg(marks="", ?name=nil, value=(Expr(kind=EError, span=Range(start=0, end=0, origin=InSource))), span=Range(start=0, end=0, origin=InSource))

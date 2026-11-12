@@ -171,7 +171,7 @@ fn IsElementMatch env, st, e = match e.kind:
             otherwise: False
     otherwise: False
 
-let dummyStmt2 = Stmt(kind=(SExpr (Expr(kind=EError, span=Range(start=0, end=0)))), span=Range(start=0, end=0))
+let dummyStmt2 = Stmt(kind=(SExpr (Expr(kind=EError, span=Range(start=0, end=0, origin=InSource)))), span=Range(start=0, end=0, origin=InSource))
 
 # A block's own `emit`, first among its statements (`emit-element` when it is not first).
 BlockRow: unbounded fn Env, St, [Stmt] -> ((Env, St))

@@ -220,7 +220,7 @@ fn InlinedFunctionLine wx, benv, menv, cbenv, cmenv, clx, params, ptys, body, e,
 LocalFunctionLine: unbounded fn Wx, Env, Env, Env, Env, Lx, [FnClause], Expr, Expr, [Arg] -> ((Wx, Wres))
 fn LocalFunctionLine wx, benv, menv, cbenv, cmenv, clx, cs, named, e, args:
     let c = Or cs[0], dummyClause
-    let mark = "#applying{c.span.start}"
+    let mark = "#applying{SpanStem c.span}"
     let ptys = match Peel (SubstTy clx, (TypeAt clx, named.span)):
         TyFn ignore, ps, ignore: ps
         otherwise: match Peel (SubstTy clx, (TypeAt clx, c.span)):
@@ -620,7 +620,7 @@ fn LetBlueprintLine wx, benv, menv, x, e, ?bound:
     let lxi = update lx:
         &_.inlined <= match lx.callIds[PlaceKey lx, e.span]:
             ? id: "{lx.inlined}_{Base32 id}"
-            nil: "{lx.inlined}_at{Base32 e.span.start}"
+            nil: "{lx.inlined}_at{SpanStem32 e.span}"
     let inner = update wx:
         &_.lx <= lxi
     let ((done, res)) = BuildLine inner, benv, menv, x, ?bound
@@ -1394,7 +1394,7 @@ fn ?DynamicAnswer lx, x:
 
 # The key a supplier's `@ x` is bound under in the supplier's environment.
 DynKey: fn Expr -> Text
-fn DynKey x = "{x.span.start}:{x.span.end}"
+fn DynKey x = "{SpanKey x.span}"
 
 # The hosted child's places as the owner gathers them, `host_k_doc_now` (pick HO): each
 # place's entry, keyed by its path relative to the child: the places in the child's scope,
@@ -1768,7 +1768,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
             # result: past its first level, rows shared by every call, as a widget of
             # several clauses has (`SharedClauseLine`; its one clause is the one row)
             let sharedOne = (Len clauses) == 1 and (Len args) > 0 and SharesAt wx, menv, qk, v, e, args
-            if sharedOne: SharedClauseLine wx, menv, (Or args[0], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0)))).value, qk, v, e, args
+            if sharedOne: SharedClauseLine wx, menv, (Or args[0], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0, origin=InSource)))).value, qk, v, e, args
             else: if (Recursion wx.inlining, qk) > 16: TooDeep wx, qk, e
             else:
                 let lxc = InModuleAt lx, v.file, v.home, lx.site

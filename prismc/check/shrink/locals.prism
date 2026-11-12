@@ -156,7 +156,7 @@ fn ?ResolveCallee g, m, n = if IsOpText n: ?ResolveOp g, m, n else: match ?Resol
 
 ?ResolveOp: fn G, Text, Text -> ?Text
 fn ?ResolveOp g, m, op:
-    let ((?k, ignore)) = ResolveValue g, m, (SName(sigils="", path=[[op]], span=Range(start=0, end=0)))
+    let ((?k, ignore)) = ResolveValue g, m, (SName(sigils="", path=[[op]], span=Range(start=0, end=0, origin=InSource)))
     ?k
 
 # An operator's spelling: no letter in it.
@@ -167,7 +167,7 @@ fn IsOpText n = (Len n) > 0 and not (FoldChars n, False, \|seen, ch| seen or (Is
 fn ?ResolveName g, m, n:
     let marks = MarksOf n
     let path = SplitOn (DropPrefix n, marks), "."
-    let ((?k, ignore)) = ResolveValue g, m, (SName(sigils=marks, path=path, span=Range(start=0, end=0)))
+    let ((?k, ignore)) = ResolveValue g, m, (SName(sigils=marks, path=path, span=Range(start=0, end=0, origin=InSource)))
     ?k
 
 # Every name a statement mentions, at any depth (`CheckBlocks.DepOrder` reads it too).

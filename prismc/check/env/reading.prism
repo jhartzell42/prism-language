@@ -168,7 +168,7 @@ fn ConvNamedType cx, st1, qk, ti, name, args, span:
         BRowKind: (((TyCon qk, xs), st2))
         otherwise: (((TyCon qk, xs), st2))
 
-let dummyType = Type(kind=TAbsent, span=Range(start=0, end=0))
+let dummyType = Type(kind=TAbsent, span=Range(start=0, end=0, origin=InSource))
 
 ParamInst: fn [Text], [Ty] -> Inst
 fn ParamInst ps, xs = Inst(tys=(Fold (Range0 (Len ps)), {}, \|m, i| Insert m, (Or ps[i], ""), (Or xs[i], TyErr)), rows={}, cols={})

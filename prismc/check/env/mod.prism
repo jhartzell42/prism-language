@@ -249,7 +249,7 @@ fn BuildG srcs, trees:
     # here, so that lowering, which builds the tables again, reads the defaults too
     ImplDefaults g8, st8
 
-let emptyModule = Module(?name=nil, ?emitRow=nil, mods=[[]], uses=[[]], decls=[[]], ?template=nil, span=Range(start=0, end=0))
+let emptyModule = Module(?name=nil, ?emitRow=nil, mods=[[]], uses=[[]], decls=[[]], ?template=nil, span=Range(start=0, end=0, origin=InSource))
 
 ModName: fn Module -> Text
 fn ModName m = match m.?name:
@@ -315,4 +315,4 @@ fn AddBuiltins g:
         &_.vals <= Insert &_.vals, "Table.Empty", (Builtin "Table.Empty", tabEmpty)
 
 Builtin: fn Text, Scheme -> ValInfo
-fn Builtin qk, sc = ValInfo(qk=qk, scheme=sc, sort="builtin", hasSig=True, home="Prelude", file=0, span=Range(start=0, end=0))
+fn Builtin qk, sc = ValInfo(qk=qk, scheme=sc, sort="builtin", hasSig=True, home="Prelude", file=0, span=Range(start=0, end=0, origin=InSource))

@@ -158,7 +158,37 @@ derive ^Eq, ^Show
 
 # A key into the typed tables: the file and the range.
 PlaceKey: fn Lx, Range -> Text
-fn PlaceKey lx, r = "{lx.file}:{r.start}:{r.end}"
+fn PlaceKey lx, r = match r.origin:
+    InSource: "{lx.file}:{SpanKey r}"
+    # (a made span is spelled by what made it, not by a file)
+    MadeBy ignore: "made:{SpanKey r}"
+
+# A span's offsets, as the lowering's own keys and the names it derives from a span spell
+# them: a written span's bare (`12:30`), a made span's after what made it
+# (`root_application_2:2`), so the two never meet (`Origin`).
+SpanKey: fn Range -> Text
+fn SpanKey r = "{SpanStem r}:{r.end}"
+
+# A span's start as a name's stem (an identifier's part): `12`, or `root_application_2`.
+SpanStem: fn Range -> Text
+fn SpanStem r = match r.origin:
+    InSource: "{r.start}"
+    MadeBy m: "{MakingStem m}{r.start}"
+
+# The same, the start in base 32 (`Base32`).
+SpanStem32: unbounded fn Range -> Text
+fn SpanStem32 r = match r.origin:
+    InSource: Base32 r.start
+    MadeBy m: "{MakingStem m}{Base32 r.start}"
+
+MakingStem: fn Making -> Text
+fn MakingStem RootApplication = "root_application_"
+fn MakingStem ConstructorArguments = "constructor_argument_"
+
+# What a made span's text reads as, where the lowering quotes an expression's text.
+MakingText: fn Making -> Text
+fn MakingText RootApplication = "the root widget applied"
+fn MakingText ConstructorArguments = "a constructor's argument"
 
 TypeAt: fn Lx, Range -> Ty
 fn TypeAt lx, r = SubstTy lx, (Or lx.tys[PlaceKey lx, r], TyErr)

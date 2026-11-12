@@ -234,7 +234,7 @@ fn ConvCases g, st, cx, ti, name, params, self, cs:
         &_.types <= Insert &_.types, name, (WithBody ti, (BChoice cases))
     ((upd, st3))
 
-let dummyCase = Case(name=SName(sigils="", path=[[]], span=Range(start=0, end=0)), args=[[]], ?indexed=nil, span=Range(start=0, end=0))
+let dummyCase = Case(name=SName(sigils="", path=[[]], span=Range(start=0, end=0, origin=InSource)), args=[[]], ?indexed=nil, span=Range(start=0, end=0, origin=InSource))
 
 ConvertDecl: unbounded fn G, St, ModInfo, Decl -> ((G, St))
 fn ConvertDecl g, st, info, d = match d.kind:
@@ -308,7 +308,7 @@ fn AddClause g, info, qk, name, f, span, st:
             &_.fnAt <= Insert &_.fnAt, qk, (Len &_.defs)
             &_.defs <= Push &_.defs, Def(qk=qk, name=name, home=info.name, file=info.file, span=span, body=(DbFn [[f]]))
 
-let dummyDef = Def(qk="", name="", home="", file=0, span=Range(start=0, end=0), body=(DbFn [[]]))
+let dummyDef = Def(qk="", name="", home="", file=0, span=Range(start=0, end=0, origin=InSource), body=(DbFn [[]]))
 
 IsFnDef: fn Def -> Bool
 fn IsFnDef d = match d.body:

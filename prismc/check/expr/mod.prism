@@ -468,7 +468,7 @@ fn InferRegex st, r:
         ? d:
             let ((base, text)) = if d.part == "flags": ((r.flagsAt, r.flags)) else: if d.part == "pattern": ((r.patternAt, r.pattern)) else: ((r.replacementAt, (Or r.?replacement, "")))
             let start = base + d.at
-            let span = Range(start=start, end=start + (Max (Len (RxCharAt text, d.at)), 1))
+            let span = Range(start=start, end=start + (Max (Len (RxCharAt text, d.at)), 1), origin=InSource)
             if d.message == rxUnknownFlag: ((t, (ErrFix st, "regex", span, d.message, "a replacement that starts with letters and holds anything but letters is written in the hashed form, `%#/x/#hello world/#`")))
             else: ((t, (Err st, "regex", span, d.message)))
 

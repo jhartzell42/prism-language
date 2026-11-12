@@ -472,7 +472,7 @@ fn TopLets g, st:
             ((gg2, (DischargeIncls gg, (LayerQuestions (ResolveFields gg, (CheckColors s5), True)), 0)))
         otherwise: ((gg, s))
 
-let dummyVal = ValInfo(qk="", scheme=(Mono TyErr), sort="", hasSig=False, home="", file=0, span=Range(start=0, end=0))
+let dummyVal = ValInfo(qk="", scheme=(Mono TyErr), sort="", hasSig=False, home="", file=0, span=Range(start=0, end=0, origin=InSource))
 
 IsLetDef: fn Def -> Bool
 fn IsLetDef d = match d.body:

@@ -93,7 +93,7 @@ fn CollectDecl g, st, info, d, ?lastType = match d.kind:
         ((upd, st2, nil))
     otherwise: ((g, st, nil))
 
-let dummyTyInfo = TyInfo(name="", home="", params=[[]], body=BOpaque, derives=[[]], file=0, span=Range(start=0, end=0))
+let dummyTyInfo = TyInfo(name="", home="", params=[[]], body=BOpaque, derives=[[]], file=0, span=Range(start=0, end=0, origin=InSource))
 
 AddDerives: fn TyInfo, [Text] -> TyInfo
 fn AddDerives ti, trs = update ti:

@@ -167,9 +167,9 @@ fn UndefinedSignature st, stmts, s = match s.kind:
     otherwise: st
 
 StmtsSpan: fn [Stmt] -> Range
-fn StmtsSpan stmts = Range(start=(Or stmts[0], dummyStmt).span.start, end=(Or (?Last stmts), dummyStmt).span.end)
+fn StmtsSpan stmts = Range(start=(Or stmts[0], dummyStmt).span.start, end=(Or (?Last stmts), dummyStmt).span.end, origin=(Or stmts[0], dummyStmt).span.origin)
 
-let dummyStmt = Stmt(kind=(SExpr (Expr(kind=EError, span=Range(start=0, end=0)))), span=Range(start=0, end=0))
+let dummyStmt = Stmt(kind=(SExpr (Expr(kind=EError, span=Range(start=0, end=0, origin=InSource)))), span=Range(start=0, end=0, origin=InSource))
 
 IsLast: fn [Stmt], Nat -> Bool
 fn IsLast stmts, i = i + 1 == (Len stmts)
@@ -229,8 +229,8 @@ fn CheckLet env, st, p, ?ty, e, span = match ?BuilderHead env, e:
 # block's colon.
 ?BuilderHead: fn Env, Expr -> ?((Text, Text, Text))
 fn ?BuilderHead env, e = match e.kind:
-    EFor ignore, ignore, body: ? (("for", "rows", (TrimTrailing (SrcText env, Range(start=e.span.start, end=body.span.start)), " \n\t")))
-    ERebuild ignore, body: ? (("rebuild", "block", (TrimTrailing (SrcText env, Range(start=e.span.start, end=body.span.start)), " \n\t")))
+    EFor ignore, ignore, body: ? (("for", "rows", (TrimTrailing (SrcText env, Range(start=e.span.start, end=body.span.start, origin=e.span.origin)), " \n\t")))
+    ERebuild ignore, body: ? (("rebuild", "block", (TrimTrailing (SrcText env, Range(start=e.span.start, end=body.span.start, origin=e.span.origin)), " \n\t")))
     EGroup x: ?BuilderHead env, x
     otherwise: nil
 

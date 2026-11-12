@@ -1332,7 +1332,7 @@ fn LatePlaceParts wx, benv, menv, s = match s.kind:
                 if (Len names) == 0 or (LayerOf partTy) != LyPlain or (TimeWithin partTy) or IsBundle partTy: ((w, be, me))
                 else:
                     let pt = OutTyOf w.lx, (Peel partTy)
-                    let ((hold, w1)) = FreshName w, "part_{q.span.start}"
+                    let ((hold, w1)) = FreshName w, "part_{SpanStem q.span}"
                     let held = LatePlainBn hold, pt
                     let read = match held:
                         BnLocal ex, ignore, ignore: ex
@@ -1351,7 +1351,7 @@ fn LatePlaceParts wx, benv, menv, s = match s.kind:
 # The key a late place's plain part under a pattern of its own keeps its hold by
 # (`LatePlaceParts`): the pattern's place in the source.
 PartHoldKey: fn Pattern -> Text
-fn PartHoldKey q = "#parthold{q.span.start}:{q.span.end}"
+fn PartHoldKey q = "#parthold{SpanKey q.span}"
 
 # A place with a plain answer bound to a name, in the scope of a host that is placed
 # once the node stands (`Wx.unplacedHosts`: the host has no place in the build, so the
@@ -2726,7 +2726,7 @@ fn IsBundlePlace lx, e = match ?PlacedTag lx, e:
     nil: False
 
 InitKey: fn Expr -> Text
-fn InitKey e = "{e.span.start}:{e.span.end}"
+fn InitKey e = "{SpanKey e.span}"
 
 # `$x <- init then step`: a `Hold` field; the step event writes it. Its initial value stands
 # in the local `{f}_init` first, the hold's value at the build, which a supplier's dynamic

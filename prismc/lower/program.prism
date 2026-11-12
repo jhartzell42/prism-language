@@ -405,7 +405,7 @@ fn DefInstancesAnswer lxAt, wanted:
 # place too.
 InstanceKey: fn Def -> Text
 fn InstanceKey d = match d.body:
-    DbMethod ignore, ignore, ignore: "{d.qk} at {d.file}:{d.span.start}"
+    DbMethod ignore, ignore, ignore: "{d.qk} at {d.file}:{SpanStem d.span}"
     otherwise: d.qk
 
 # The type parameters a definition's body is written over, by name: a function's or a
@@ -1281,14 +1281,15 @@ fn IsAliasWidget clauses = match clauses:
 # the widget applied to them, lowered as that line is anywhere: a body of one expression
 # inlined, a clause chosen at the build from the plain arguments (`ClauseWidgetLine`), each
 # transparent, so the places stand at the root's positions. The line and its names are
-# made here, not parsed, so their types are noted beside the checker's (`Lx.tys`) at
-# spans past the end of any file (`rootApplicationStart`), where no written expression is.
+# made here, not parsed, so their spans are made ones (`MadeBy RootApplication`, counted
+# from 0 in a space no file shares) and their types are noted beside the checker's
+# (`Lx.tys`) at those spans.
 RootApplicationItems: unbounded fn Lx, Def, Scheme -> [Item]
 fn RootApplicationItems lx, d, sc:
     let ((ptys, result)) = match sc.ty:
         TyFn ignore, ps, r: ((ps, r))
         other: (([[]], other))
-    let At = \|i| Range(start=(rootApplicationStart + i), end=(rootApplicationStart + i))
+    let At = \|i| Range(start=i, end=i, origin=MadeBy RootApplication)
     let ParameterSpan = \|i| At (3 + 2 * i)
     let ArgumentSpan = \|i| At (4 + 2 * i)
     let params = Each (Range0 (Len ptys)), \|i| Pattern(kind=(PName (SName(sigils="", path=[["argument{i}"]], span=(ParameterSpan i)))), span=(ParameterSpan i))
@@ -1302,10 +1303,6 @@ fn RootApplicationItems lx, d, sc:
         &_.tys <= typed
     let body = Block(stmts=[[Stmt(kind=(SExpr line), span=(At 2))]], inline=False, span=(At 0))
     NodeItems (NodeDefOf lxr, d.qk, params, body, sc, True)
-
-# Where the spans of a root widget's own application begin (`RootApplicationItems`): past
-# the end of any source file prismc reads.
-let rootApplicationStart = 2000000000
 
 # A node and the rows of its `for`s.
 NodeItems: fn NodeDef -> [Item]

@@ -137,7 +137,7 @@ fn ShownText v = match ValueTy v:
 # guard's source text (D11).
 GivenValue: unbounded fn Lx, Env, Block, OutTy, Range -> Vl
 fn GivenValue lx, env, b, t, span:
-    let label = "'g{span.start}"
+    let label = "'g{SpanStem span}"
     let isTry = match t:
         OutRes ignore: True
         otherwise: False
@@ -148,7 +148,7 @@ fn GivenValue lx, env, b, t, span:
         match s.kind:
             SBind p, x, nil:
                 let v = ValueOf lx, en, x
-                let po = RustPat lx, p, (InnerTy (TypeAt lx, x.span)), Owned, "g{s.span.start}"
+                let po = RustPat lx, p, (InnerTy (TypeAt lx, x.span)), Owned, "g{SpanStem s.span}"
                 (((Push acc, (GivenBind isTry, po.pa, (Own v), label, (OutTyOf lx, (InnerTy (TypeAt lx, x.span))))), (BindAll en, po.binds), ?lv))
             SRequire c: (((Push acc, (DoIf (XUnary OpNot, (AsBool (ValueOf lx, en, c))), [[DoExpr (XBreak label, fail)]], [[]])), en, ?lv))
             SForbid c: (((Push acc, (DoIf (AsBool (ValueOf lx, en, c)), [[DoExpr (XBreak label, fail)]], [[]])), en, ?lv))
@@ -222,7 +222,7 @@ fn UpdStmt lx, env, s = match s.kind:
         match c:
             CondExpr x: (([[(DoWhile (AsBool (ValueOf lx, env, x)), inner)]], env))
             CondBind p, x, ?g:
-                let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "w{s.span.start}"
+                let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "w{SpanStem s.span}"
                 let envB = BindAll env, po.binds
                 let ((inner2, ignore)) = UpdStmts lx, envB, body.stmts
                 # The pattern's conditions and the guard (`while ? left <- &fuel -? 1 if c:`)
@@ -272,16 +272,16 @@ fn IsArrayOrMap t = match t:
 UpdForRefs: unbounded fn Lx, Env, Text, Expr, Block, Range, Ty -> Do
 fn UpdForRefs lx, env, nkey, source, body, span, sty = match sty:
     TyArray v:
-        let keyName = "k{span.start}"
-        let refName = "r{span.start}"
+        let keyName = "k{SpanStem span}"
+        let refName = "r{SpanStem span}"
         let env1 = Bind (Bind (Bind env, "key", (BnLocal (XVar keyName), Owned, OutNat)), "ix", (BnLocal (XVar keyName), Owned, OutNat)), nkey, (BnLocal (XTarget (XVar refName)), Owned, (OutTyOf lx, v))
         let ((dos, ignore)) = UpdStmts lx, env1, body.stmts
-        let head = DoLet (PaBind keyName), (XCall (HelperRef "nat_of"), [[(XVar "i{span.start}")]])
-        DoFor (PaTuple [[(PaBind "i{span.start}"), (PaBind refName)]]), (XMethod (XMethod (PlaceOf lx, env, source), "iter_mut", [[]]), "enumerate", [[]]), (Append [[head]], dos)
+        let head = DoLet (PaBind keyName), (XCall (HelperRef "nat_of"), [[(XVar "i{SpanStem span}")]])
+        DoFor (PaTuple [[(PaBind "i{SpanStem span}"), (PaBind refName)]]), (XMethod (XMethod (PlaceOf lx, env, source), "iter_mut", [[]]), "enumerate", [[]]), (Append [[head]], dos)
     # a map (ruling FM): each value by reference in key order, the entry's place read
     # through its key (`at_mut_map`), the keys taken before the first step; `key` is the key
     TyMap k, v:
-        let keyName = "k{span.start}"
+        let keyName = "k{SpanStem span}"
         let place = PlaceOf lx, env, source
         let entry = XDeref (XCall (HelperRef "at_mut_map"), [[(XRefMut place), (XRef (XVar keyName))]])
         let env1 = Bind (Bind env, "key", (BnLocal (XVar keyName), Owned, (OutTyOf lx, k))), nkey, (BnLocal entry, Owned, (OutTyOf lx, v))
@@ -320,27 +320,27 @@ fn UpdForValues lx, env, ?binders, source, body, span, sty:
         TyArray v: ((v, (TyCon "Nat", [[]])))
         TyMap k, v: ((v, k))
         otherwise: ((TyErr, TyErr))
-    let keyName = "k{span.start}"
-    let valName = "v{span.start}"
+    let keyName = "k{SpanStem span}"
+    let valName = "v{SpanStem span}"
     let env1 = Bind (Bind env, "key", (BnLocal (XVar keyName), Owned, kt)), "_", (BnLocal (XVar valName), Owned, vt)
     let env2 = if isArray: Bind env1, "ix", (BnLocal (XVar keyName), Owned, kt) else: env1
     # the bare form rebinds `&_` to the entry (Semantics ch. 5, "Statements"): over a
     # plain value, the turn's own copy of it
-    let bareName = "b{span.start}"
+    let bareName = "b{SpanStem span}"
     let ((binds, env3)) = match ?binders:
         nil: (([[(DoLet (PaTyped (PaMut bareName), vt), (XClone (XVar valName)))]], (Bind env2, "&_", (BnLocal (XVar bareName), Owned, vt))))
         ? fb: match fb.?second:
             nil:
-                let po = RustPat lx, fb.first, vty, Owned, "e{span.start}"
+                let po = RustPat lx, fb.first, vty, Owned, "e{SpanStem span}"
                 (([[(DoLet po.pa, (XClone (XVar valName)))]], (BindAll env2, po.binds)))
             ? second:
-                let pk = RustPat lx, fb.first, kty, Owned, "k{span.start}_"
-                let pv = RustPat lx, second, vty, Owned, "e{span.start}"
+                let pk = RustPat lx, fb.first, kty, Owned, "k{SpanStem span}_"
+                let pv = RustPat lx, second, vty, Owned, "e{SpanStem span}"
                 ((([[(DoLet pk.pa, (XClone (XVar keyName))), (DoLet pv.pa, (XClone (XVar valName)))]]), (BindAll (BindAll env2, pk.binds), pv.binds)))
     let ((dos, ignore)) = UpdStmts lx, env3, body.stmts
     if isArray:
-        let head = DoLet (PaBind keyName), (XCall (HelperRef "nat_of"), [[(XVar "i{span.start}")]])
-        DoFor (PaTuple [[(PaBind "i{span.start}"), (PaBind valName)]]), (XMethod (XMethod src, "into_iter", [[]]), "enumerate", [[]]), (Append (Push [[]], head), (Append binds, dos))
+        let head = DoLet (PaBind keyName), (XCall (HelperRef "nat_of"), [[(XVar "i{SpanStem span}")]])
+        DoFor (PaTuple [[(PaBind "i{SpanStem span}"), (PaBind valName)]]), (XMethod (XMethod src, "into_iter", [[]]), "enumerate", [[]]), (Append (Push [[]], head), (Append binds, dos))
     else: DoFor (PaTuple [[(PaBind keyName), (PaBind valName)]]), (XMethod src, "into_iter", [[]]), (Append binds, dos)
 
 UpdIf: unbounded fn Lx, Env, Cond, Block, ?Block -> Do
@@ -353,12 +353,12 @@ fn UpdIf lx, env, c, thenB, ?elseB:
             let ((thenDos, ignore)) = UpdStmts lx, env, thenB.stmts
             DoIf (AsBool (ValueOf lx, env, x)), thenDos, elseDos
         CondBind p, x, ignore:
-            let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "u{x.span.start}"
+            let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "u{SpanStem x.span}"
             let ((thenDos, ignore)) = UpdStmts lx, (BindAll env, po.binds), thenB.stmts
             # a pattern with conditions (a literal, a payload behind an `Rc`) is a value
             # `match`'s arm, the `else` its other arm
             if (Len po.conds) == 0: DoIfLet po.pa, (Own (ValueOf lx, env, x)), thenDos, elseDos
-            else: DoExpr (Own (ArmsValue (Own (ValueOf lx, env, x)), [[XArm(pat=po.pa, conds=po.conds, body=(XBlock thenDos, (XUnit))), XArm(pat=PaWild, conds=[[]], body=(XBlock elseDos, (XUnit)))]], "'u{x.span.start}", OutUnit))
+            else: DoExpr (Own (ArmsValue (Own (ValueOf lx, env, x)), [[XArm(pat=po.pa, conds=po.conds, body=(XBlock thenDos, (XUnit))), XArm(pat=PaWild, conds=[[]], body=(XBlock elseDos, (XUnit)))]], "'u{SpanStem x.span}", OutUnit))
 
 UpdMatch: unbounded fn Lx, Env, Expr, [Arm] -> Do
 fn UpdMatch lx, env, scrut, arms:
@@ -366,13 +366,13 @@ fn UpdMatch lx, env, scrut, arms:
     let sty = TypeAt lx, scrut.span
     let arms3 = Each (Range0 (Len arms)), \|i|
         let arm = Or arms[i], dummyArm
-        let po = ArmPat lx, arm.?pattern, sty, ByRef, "u{scrut.span.start}_{i}"
+        let po = ArmPat lx, arm.?pattern, sty, ByRef, "u{SpanStem scrut.span}_{i}"
         let ((dos, ignore)) = UpdStmts lx, (BindAll env, po.binds), arm.body.stmts
         let guarded = Append po.conds, (GuardConds lx, (BindAll env, po.binds), arm.?guard)
         XArm(pat=po.pa, conds=guarded, body=(XBlock dos, (XUnit)))
     # Arms with conditions (a guard, a literal, a payload behind an `Rc`) are the
     # value-`match`'s arms, a `match` with guards or an if-let chain; others a plain one.
-    if Fold arms3, False, \|f, a| f or (Len a.conds) > 0: DoExpr (Own (ArmsValue (Ref sv), arms3, "'u{scrut.span.start}", OutUnit))
+    if Fold arms3, False, \|f, a| f or (Len a.conds) > 0: DoExpr (Own (ArmsValue (Ref sv), arms3, "'u{SpanStem scrut.span}", OutUnit))
     else: DoMatch (Ref sv), (Each arms3, \|a| ((a.pat, (ArmDos a.body))))
 
 ArmDos: fn Ex -> [Do]
@@ -443,7 +443,7 @@ fn Assign lx, env, target, v = match target.kind:
         # a lens that ends at an array's index: the value first (it may read what the lens
         # borrows), then the entry written through the reference (`set_part`)
         ? ((qk, argument)) if LensEndsAtIndex lx, qk, (Len lx.g.defs):
-            let held = "part{target.span.start}"
+            let held = "part{SpanStem target.span}"
             DoExpr (XBlock [[(DoLet (PaBind held), v)]], (XCall (HelperRef "set_part"), [[(LensCallEx lx, env, qk, argument), (XVar held)]]))
         otherwise: DoAssign (PlaceOf lx, env, target), v
 

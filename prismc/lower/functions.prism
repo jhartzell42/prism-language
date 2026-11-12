@@ -87,7 +87,7 @@ fn ParamNames lx, clauses, pts = Each (Range0 (Len pts)), \|i|
     let same = first != "" and Fold names, True, \|ok, n| ok and n == first
     let span = match (Or (Or clauses[0], dummyClause).params[i], dummyPat).kind:
         PName n: n.span
-        otherwise: Range(start=0, end=0)
+        otherwise: Range(start=0, end=0, origin=InSource)
     if same: (((LocalNameAt lx, first, span), False)) else: (((ParamWord (Or pts[i], OutUnit), i), True))
 
 # The binder a parameter pattern is, when it is one: its name with sigils.
@@ -149,7 +149,7 @@ fn ClausesBody lx, env, clauses, names, ptys, Body, label, t:
             XArm(pat=pa, conds=conds, body=(Body lx, (BindAll env1, binds), c.body))
         Own (ArmsValue scrut, arms, "'{label}", t)
 
-let dummyClause = FnClause(name=(DefOp "", Range(start=0, end=0)), params=[[]], body=(BodyExpr (Expr(kind=EError, span=Range(start=0, end=0)))), span=Range(start=0, end=0))
+let dummyClause = FnClause(name=(DefOp "", Range(start=0, end=0, origin=InSource)), params=[[]], body=(BodyExpr (Expr(kind=EError, span=Range(start=0, end=0, origin=InSource)))), span=Range(start=0, end=0, origin=InSource))
 
 FnBodyValue: unbounded fn Lx, Env, FnBody -> Ex
 fn FnBodyValue lx, env, (BodyExpr x) = Own (ValueOf lx, env, x)
@@ -253,9 +253,10 @@ fn DefinitionText lx, qk:
     Join (Each (Append sig, spans), \|((f, r))| SrcText lx, f, r), "\n"
 
 SrcText: fn Lx, Nat, Range -> Text
-fn SrcText lx, f, r = match lx.g.srcs[f]:
-    ? src: DropTrailingComments (SpanText src, r)
-    nil: ""
+fn SrcText lx, f, r = match ((r.origin, lx.g.srcs[f])):
+    (((MadeBy m), ignore)): MakingText m
+    ((InSource, (? src))): DropTrailingComments (SpanText src, r)
+    ((InSource, nil)): ""
 
 # A definition's span runs to the next one, so it takes the comments that introduce the
 # next (or a test file's header): the quote stops at its last line of code.

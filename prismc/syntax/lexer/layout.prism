@@ -19,7 +19,7 @@ use Syntax.Decls.*
 LexFile: unbounded fn Text -> Lexed
 fn LexFile src:
     let start = Lex(src=src, pos=0, diags=[[]], mode=MFile, tokens=[[]], layout=[[]],
-        frames=[[]], lastWs=True, lambdaOpen=False, pendingOpen=False, pendingEmpty=False, pendingSpan=Range(start=0, end=0),
+        frames=[[]], lastWs=True, lambdaOpen=False, pendingOpen=False, pendingEmpty=False, pendingSpan=Range(start=0, end=0, origin=InSource),
         lineFirst=0, markLineStart=False, firstLine=True, testPending="", ?testDepth=nil,
         ?checkDepth=nil, pathNext=False)
     let skipped = SkipBlankAndCommentLines start
@@ -32,7 +32,7 @@ fn LexFile src:
 TemplateHead: unbounded fn Lex -> (([Tok], Lex))
 fn TemplateHead l0:
     let ((kind, l)) = LexTemplate l0, "File", l0.pos
-    let tok = Tok(kind=kind, span=Range(start=l0.pos, end=l.pos), touches=False, lineStart=False)
+    let tok = Tok(kind=kind, span=Range(start=l0.pos, end=l.pos, origin=InSource), touches=False, lineStart=False)
     (([[tok]], l))
 
 SkipBlankAndCommentLines: unbounded fn Lex -> Lex

@@ -421,7 +421,7 @@ fn WholeValueOf lx, env, e:
     if (LayerOf full) != LyDyn: if IsEventValue lx, env, e: EventValueOf lx, env, e else: ValueByKind lx, env, e
     else: match e.kind:
         EGroup x: ValueOf lx, env, x
-        EName n: match env.names["#whole{e.span.start}:{e.span.end}"]:
+        EName n: match env.names["#whole{SpanKey e.span}"]:
             ? (BnLocal x, mode, dt): LocalPlace x, mode, dt
             otherwise: match (if (Len n.path) == 1: env.names["#whole#{SNameKey n}"] else: nil):
               # a shared row's live parameter: the `Dynamic` the row holds (`LiveParams`)
@@ -545,7 +545,7 @@ fn ?UpdatedValue lx, env, e = match e.kind:
     EGroup x: ?UpdatedValue lx, env, x
     ECall c, args, ignore, ignore: if (CalleeKey lx, c) != "Prelude.!Updated": nil else: match args[0]:
         ? a: match a.value.kind:
-            EName n: if HasKey env.names, "#whole{a.value.span.start}:{a.value.span.end}": ? a.value else: match env.names[SNameKey n]:
+            EName n: if HasKey env.names, "#whole{SpanKey a.value.span}": ? a.value else: match env.names[SNameKey n]:
                 ? (BnLocal ignore, ignore, (OutDyn ignore)): ? a.value
                 otherwise: nil
             otherwise: nil
@@ -670,7 +670,7 @@ fn LiftOperands lx, lxIn, env, e, sigil, operands, t = match operands:
             VlOwned ignore, ignore: True
             otherwise: False
         let mode = if owned: Owned else: ByRef
-        let x = "o{r.start}_{r.end}"
+        let x = "o{SpanStem r}_{r.end}"
         let env2 = BindSpan env, (PlaceKey lx, r), (VlPlace (XVar x), mode, it)
         let body = LiftOperands lx, lxIn, env2, e, sigil, (Drop operands, 1), t
         let failArm = if sigil == "~": XArm(pat=(PaCtor (RefRuntime "std::Err"), [[PaBind "{x}_e"]]), conds=[[]], body=(XCtor (RefRuntime "std::Err"), [[Own (VlPlace (XVar "{x}_e"), mode, OutError)]]))
@@ -1062,7 +1062,7 @@ fn DynamicBlueprint lx, env, x, d, variant, t = match ?AnswerDynamic lx, env, x,
 fn ?HeldDynamic lx, env, d:
     let owned = HasKey env.names, "#hostline"
     let held = Fold (ExprsIn d), True, \|ok, y| ok and match y.kind:
-        EName n: if (Len n.path) != 1: True else: if (HasKey env.names, "#whole{y.span.start}:{y.span.end}") or HasKey env.names, "#whole#{SNameKey n}": True else: match env.names[SNameKey n]:
+        EName n: if (Len n.path) != 1: True else: if (HasKey env.names, "#whole{SpanKey y.span}") or HasKey env.names, "#whole#{SNameKey n}": True else: match env.names[SNameKey n]:
             ? (BnLocal ignore, ignore, (OutDyn ignore)): True
             ? (BnLocal ignore, ignore, ignore): (not owned) or (LayerOf (TypeAt lx, y.span)) != LyDyn
             ? (BnLocalFn ignore): True
@@ -1174,7 +1174,7 @@ fn KindWords k = match k:
 NameValue: unbounded fn Lx, Env, SName, Range -> Vl
 # a widget defined in a block, read as a value: the blueprint its line made for it
 # (`BlueprintValuesAt`)
-fn NameValue lx, env, n, span = match env.names["#whole@{span.start}:{span.end}"]:
+fn NameValue lx, env, n, span = match env.names["#whole@{SpanKey span}"]:
     ? (BnLocal rs, mode, lt): LocalPlace rs, mode, lt
     otherwise: NameValueOf lx, env, n, span
 
@@ -1543,7 +1543,7 @@ InlineLocalFn: unbounded fn Lx, Env, [FnClause], [Arg], OutTy -> Vl
 fn InlineLocalFn lx, env0, cs, args, t:
     let c = Or cs[0], dummyClause
     let names = Each c.params, \|p| PlainBinder lx, p
-    let mark = "#inlining{c.span.start}"
+    let mark = "#inlining{SpanStem c.span}"
     let env = Bind env0, mark, (BnLocal XUnit, Owned, OutUnit)
     if LocalFnReachesItself env0, cs: RecursiveLocalFn lx, env0, cs, args, t
     else: if HasKey env0.names, mark: VlOwned (InternalBug "a local function inlined in its own body ({DefNameText c.name})"), t
@@ -1551,7 +1551,7 @@ fn InlineLocalFn lx, env0, cs, args, t:
     else:
         let ((dos, env2)) = Fold (Range0 (Len names)), (([[]], env)), \|((acc, en)), i|
             let nm = Or names[i], ""
-            let rs = "{LocalName lx, nm}_{c.span.start}"
+            let rs = "{LocalName lx, nm}_{SpanStem c.span}"
             let v = match args[i]:
                 ? a: ValueOf lx, env0, a.value
                 nil: VlOwned (XUnit), OutUnit
@@ -1614,13 +1614,13 @@ fn LocalFnNamesClosed env, names:
 RecursiveLocalFn: unbounded fn Lx, Env, [FnClause], [Arg], OutTy -> Vl
 fn RecursiveLocalFn lx, env0, cs, args, t:
     let c = Or cs[0], dummyClause
-    let mark = "#recursing{c.span.start}"
+    let mark = "#recursing{SpanStem c.span}"
     let owned = Each args, \|a| Own (ValueOf lx, env0, a.value)
     let packed = if (Len owned) == 1: Or owned[0], XUnit else: XTuple owned
     match env0.names[mark]:
         ? (BnLocal again, ignore, ignore): VlOwned (XApply again, [[packed]]), t
         otherwise:
-            let again = "{LocalName lx, (DefNameText c.name)}_{c.span.start}"
+            let again = "{LocalName lx, (DefNameText c.name)}_{SpanStem c.span}"
             let atCall = Each args, \|a| SubstTy lx, (TypeAt lx, a.value.span)
             let argTys = match Peel (SubstTy lx, (TypeAt lx, c.span)):
                 TyFn col, ps, r: if HasQuant (TyFn col, ps, r): atCall else: ps
@@ -1668,7 +1668,7 @@ fn LocalFnMatchLive lx, env, cs, vals, argTys, live, t:
             let pt = match p.kind:
                 PName n: BinderTy lx, n.span
                 otherwise: Or argTys[i], (TypeAt lx, p.span)
-            let o = RustPat lx, p, pt, Owned, "l{c.span.start}_{i}"
+            let o = RustPat lx, p, pt, Owned, "l{SpanStem c.span}_{i}"
             if not (HasNat live, i): o else: update o:
                 &_.binds <= Each &_.binds, \|((name, b))| match b:
                     BnLocal rs, mode, (OutDyn held): ((name, b))
@@ -1676,7 +1676,7 @@ fn LocalFnMatchLive lx, env, cs, vals, argTys, live, t:
                     otherwise: ((name, b))
         let env2 = BindAll env, (Fold pos, [[]], \|acc, o| Append acc, o.binds)
         XArm(pat=(PaTuple (Each pos, \|o| o.pa)), conds=(Fold pos, [[]], \|acc, o| Append acc, o.conds), body=(FnBodyValue lx, env2, c.body))
-    ArmsValue (XTuple vals), arms, "l{first.span.start}", t
+    ArmsValue (XTuple vals), arms, "l{SpanStem first.span}", t
 
 # A local function's binding with one more clause (`fn` lines in clauses, Semantics ch. 4):
 # a clause after one of the same name in the block is its next.
@@ -1707,7 +1707,7 @@ fn LocalClausesClosure lx, env, cs, pts, r, ft:
     let c = Or cs[0], dummyClause
     let reads = Fold cs, [[]], \|acc, k| UnionTexts acc, (LambdaReads k.params, (ClauseLambdaBody k))
     let ((dos, env1)) = LambdaCaptures env, (WithInstances env, reads)
-    let names = Each (Range0 (Len pts)), \|i| "a{c.span.start}_{i}"
+    let names = Each (Range0 (Len pts)), \|i| "a{SpanStem c.span}_{i}"
     let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "")), (OutRef (Or pts[i], OutUnit))
     let vals = Each (Range0 (Len pts)), \|i| Own (LocalPlace (XVar (Or names[i], "")), ByRef, (Or pts[i], OutUnit))
     let argTys = match Peel (SubstTy lx, (TypeAt lx, c.span)):
@@ -2234,7 +2234,7 @@ fn ArgsFor lx, env, v, args:
         TyFn ignore, xs, ignore: xs
         otherwise: [[]]
     Each (Range0 (Len args)), \|i|
-        let a = Or args[i], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0)))
+        let a = Or args[i], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0, origin=InSource)))
         let toUnbounded = match Peel (Or ps[i], TyErr):
             TyFn CBound, ignore, ignore: False
             TyFn ignore, ignore, ignore: True
@@ -2259,7 +2259,7 @@ fn ArgsFor lx, env, v, args:
             XRef (Own (ValueOf lxw, env, a.value))
         else: ArgumentAt lx, env, (Or ps[i], TyErr), a.value
 
-let dummyExpr = Expr(kind=EError, span=Range(start=0, end=0))
+let dummyExpr = Expr(kind=EError, span=Range(start=0, end=0, origin=InSource))
 
 # A constructor applied (claude/backend.md: a record is a struct, a choice an enum with
 # recursive payloads behind `Rc`, a newtype a tuple struct, a unit type a unit struct).
@@ -2313,9 +2313,10 @@ fn BuiltTy t = match t:
 CtorFn: unbounded fn Lx, CtorInfo, [OutTy], Range, OutTy, Bool -> Vl
 fn CtorFn lx, c, pts, span, t, job:
     let names = Each (Range0 (Len pts)), \|i| "a{i}"
-    # Each argument stands at a place no source has, bound to its parameter.
-    let fakes = Each (Range0 (Len pts)), \|i| Arg(marks="", ?name=nil, value=(Expr(kind=EAbsent, span=Range(start=(4000000000 + i), end=(4000000000 + i)))), span=Range(start=0, end=0))
-    let env = Fold (Range0 (Len pts)), emptyEnv, \|en, i| BindSpan en, (PlaceKey lx, (Range(start=(4000000000 + i), end=(4000000000 + i)))), (VlPlace (XVar (Or names[i], "a")), (if job: Owned else: ByRef), (Or pts[i], OutUnit))
+    # Each argument stands at a place no source has (a made span, `MadeBy
+    # ConstructorArguments`), bound to its parameter.
+    let fakes = Each (Range0 (Len pts)), \|i| Arg(marks="", ?name=nil, value=(Expr(kind=EAbsent, span=Range(start=i, end=i, origin=MadeBy ConstructorArguments))), span=Range(start=0, end=0, origin=MadeBy ConstructorArguments))
+    let env = Fold (Range0 (Len pts)), emptyEnv, \|en, i| BindSpan en, (PlaceKey lx, (Range(start=i, end=i, origin=MadeBy ConstructorArguments))), (VlPlace (XVar (Or names[i], "a")), (if job: Owned else: ByRef), (Or pts[i], OutUnit))
     let made = Own (CtorApp lx, env, c, fakes, span)
     if job:
         let a = match t:
@@ -2397,8 +2398,8 @@ MethodFn: unbounded fn Lx, ValInfo, Range, OutTy -> Vl
 fn MethodFn lx, v, span, t = match t:
     OutFn pts, rt:
         let names = Each (Range0 (Len pts)), \|i| "a{i}"
-        let fakes = Each (Range0 (Len pts)), \|i| Arg(marks="", ?name=nil, value=(Expr(kind=EAbsent, span=Range(start=(4000000000 + i), end=(4000000000 + i)))), span=Range(start=0, end=0))
-        let env = Fold (Range0 (Len pts)), emptyEnv, \|en, i| BindSpan en, (PlaceKey lx, (Range(start=(4000000000 + i), end=(4000000000 + i)))), (VlPlace (XVar (Or names[i], "a")), ByRef, (Or pts[i], OutUnit))
+        let fakes = Each (Range0 (Len pts)), \|i| Arg(marks="", ?name=nil, value=(Expr(kind=EAbsent, span=Range(start=i, end=i, origin=MadeBy ConstructorArguments))), span=Range(start=0, end=0, origin=MadeBy ConstructorArguments))
+        let env = Fold (Range0 (Len pts)), emptyEnv, \|en, i| BindSpan en, (PlaceKey lx, (Range(start=i, end=i, origin=MadeBy ConstructorArguments))), (VlPlace (XVar (Or names[i], "a")), ByRef, (Or pts[i], OutUnit))
         let made = Own (MethodCall lx, env, v, fakes, span, rt)
         let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "a")), (OutRef (Or pts[i], OutUnit))
         VlOwned (XCall (RefRuntime "std::Rc::new"), [[(XClosure False, pas, made)]]), t
@@ -2413,8 +2414,8 @@ fn MethodFn lx, v, span, t = match t:
             OutTuple ts: if arity == 1: [[a]] else: ts
             otherwise: [[a]]
         let names = Each (Range0 (Len pts)), \|i| "a{i}"
-        let fakes = Each (Range0 (Len pts)), \|i| Arg(marks="", ?name=nil, value=(Expr(kind=EAbsent, span=Range(start=(4000000000 + i), end=(4000000000 + i)))), span=Range(start=0, end=0))
-        let env = Fold (Range0 (Len pts)), emptyEnv, \|en, i| BindSpan en, (PlaceKey lx, (Range(start=(4000000000 + i), end=(4000000000 + i)))), (VlPlace (XVar (Or names[i], "a")), Owned, (Or pts[i], OutUnit))
+        let fakes = Each (Range0 (Len pts)), \|i| Arg(marks="", ?name=nil, value=(Expr(kind=EAbsent, span=Range(start=i, end=i, origin=MadeBy ConstructorArguments))), span=Range(start=0, end=0, origin=MadeBy ConstructorArguments))
+        let env = Fold (Range0 (Len pts)), emptyEnv, \|en, i| BindSpan en, (PlaceKey lx, (Range(start=i, end=i, origin=MadeBy ConstructorArguments))), (VlPlace (XVar (Or names[i], "a")), Owned, (Or pts[i], OutUnit))
         let made = Own (MethodCall lx, env, v, fakes, span, rt)
         let pa = if (Len pts) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
         VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure True, [[pa]], (XCall (HelperRef "once_job"), [[(XClosure True, [[]], (XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[made]]))]]))]]), t), t
@@ -2426,7 +2427,7 @@ fn ?SelfAt lx, span, cls = Fold (Or lx.impls[PlaceKey lx, span], [[]]), nil, \|?
     ? x: ? x
     nil: if n.cls == cls: ? (OutTyOf lx, (SubstTy lx, n.ty)) else: nil
 
-let dummyTraitInfo = TraitInfo(name="", home="", param="a", supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], assocDefaults=[[]], file=0, span=Range(start=0, end=0))
+let dummyTraitInfo = TraitInfo(name="", home="", param="a", supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], assocDefaults=[[]], file=0, span=Range(start=0, end=0, origin=InSource))
 
 PreludeMethod: unbounded fn Lx, Text, Text, [Vl], Range, OutTy -> Vl
 fn PreludeMethod lx, cls, m, vals, span, t:
@@ -2508,7 +2509,7 @@ fn PreludeCall lx, env, qk, args, span, t:
                     TyFn ignore, xs, ignore: xs
                     otherwise: [[]]
                 nil: [[]]
-            VlOwned (XCall (HelperRef variant), (Each (Range0 (Len args)), \|i| ArgumentAt lx, env, (Or ps[i], TyErr), (Or args[i], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0)))).value)), t
+            VlOwned (XCall (HelperRef variant), (Each (Range0 (Len args)), \|i| ArgumentAt lx, env, (Or ps[i], TyErr), (Or args[i], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0, origin=InSource)))).value)), t
 
 # D8 in the back end: `Fold`, `Each` and `Filter` given a closure that is not bounded are
 # the prelude's job versions (`fold_job`), the closure a `Start`: each call it makes is a
@@ -2517,7 +2518,7 @@ fn PreludeCall lx, env, qk, args, span, t:
 ?PreludeJob: unbounded fn Lx, Env, Text, [Arg] -> ?Ex
 fn ?PreludeJob lx, env, variant, args:
     if HasText [["fold", "fold_map", "each", "each_map", "filter", "filter_map"]], variant:
-        let last = Or args[Dec (Len args)], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0)))
+        let last = Or args[Dec (Len args)], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0, origin=InSource)))
         match OutTyOf lx, (Peel (TypeAt lx, last.value.span)):
             OutJobFn ignore, ignore:
                 let front = Each (Take args, (Dec (Len args))), \|a| Own (ValueOf lx, env, a.value)
@@ -2584,7 +2585,7 @@ NamedArgsOwned: unbounded fn Lx, Env, Text, [Arg] -> [Ex]
 fn NamedArgsOwned lx, env, qk, args:
     let ((ps, ignore)) = SchemeParts lx, qk
     Each (Range0 (Len args)), \|i|
-        let a = Or args[i], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0)))
+        let a = Or args[i], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0, origin=InSource)))
         match Peel (Or ps[i], TyErr):
             TyFn CBound, ignore, ignore: Own (ValueOf lx, env, a.value)
             TyFn ignore, ignore, ignore: AsJobValue lx, env, a.value
@@ -2598,7 +2599,7 @@ fn StartArgs lx, env, f, args:
         OutJobFn a, ignore: [[a]]
         otherwise: [[]]
     Each (Range0 (Len args)), \|i|
-        let a = Or args[i], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0)))
+        let a = Or args[i], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0, origin=InSource)))
         match Or pts[i], OutUnit:
             OutJobFn ignore, ignore: AsJobValue lx, env, a.value
             otherwise: Own (ValueOf lx, env, a.value)
@@ -2756,7 +2757,7 @@ fn OptPatternNames nil = [[]]
 # parameters over its clause.
 BlockScopes: unbounded fn Block -> [(([Text], Range))]
 fn BlockScopes b = Fold b.stmts, [[]], \|acc, s|
-    let own = Push acc, ((Check.Blocks.GroupDefs s, Range(start=s.span.start, end=b.span.end)))
+    let own = Push acc, ((Check.Blocks.GroupDefs s, Range(start=s.span.start, end=b.span.end, origin=s.span.origin)))
     match s.kind:
         SFn f: Push own, (((Fold f.params, [[]], \|ps, q| Append ps, (PatternNames q)), f.span))
         otherwise: own
@@ -2955,7 +2956,7 @@ fn JobLocalFn lx, env, cs, ft, a:
     # function's clauses match its parameters
     let borrowed = Each (Range0 count), \|i| DoLet (PaBind "argument{i}"), (XRef (XVar "p{i}"))
     let names = Each (Range0 count), \|i| (("argument{i}", True))
-    let tail = XBlock borrowed, (ClausesBody lx, (OnlyCaptured envAgain, caps), cs, names, argTys, TailBody, "l{first.span.start}_", OutTurn)
+    let tail = XBlock borrowed, (ClausesBody lx, (OnlyCaptured envAgain, caps), cs, names, argTys, TailBody, "l{SpanStem first.span}_", OutTurn)
     let job = XCall (HelperRef "entered"), [[(XCall (HelperRef "once_job"), [[(XClosure True, [[]], tail)]])]]
     let call = if (Len again) == 0: job else: XBlock again, job
     VlOwned (XBlock dos, (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure True, [[pa]], call)]]), ft)), ft
@@ -3019,7 +3020,7 @@ fn LambdaBodyValue lx, env, (LbBlock b) = BlockValue lx, env, b
 ClosureParams: unbounded fn Lx, Env, [Pattern], [OutTy], Bool -> (([Pa], Env))
 fn ClosureParams lx, env, ps, pts, typed = Fold (Range0 (Len ps)), (([[]], env)), \|((acc, en)), i| match ps[i]:
     ? p:
-        let po = RustPat lx, p, (BinderTyOfPattern lx, p), ByRef, "a{p.span.start}"
+        let po = RustPat lx, p, (BinderTyOfPattern lx, p), ByRef, "a{SpanStem p.span}"
         let en2 = BindAll en, (Each po.binds, HeldFunction)
         let pa = if typed: PaTyped po.pa, (OutRef (Or pts[i], (OutRefused "a parameter"))) else: po.pa
         (((Push acc, pa), en2))
@@ -3053,14 +3054,14 @@ fn IfValue lx, env, c, thenB, ?elseB, t:
         CondExpr x: VlOwned (XIf (AsBool (ValueOf lx, env, x)), (OwnAs t, (BlockValue lx, env, thenB)), elseV), t
         CondBind p, x, ?g:
             let sv = ValueOf lx, env, x
-            let po = RustPat lx, p, (TypeAt lx, x.span), ByRef, "c{x.span.start}"
+            let po = RustPat lx, p, (TypeAt lx, x.span), ByRef, "c{SpanStem x.span}"
             let env2 = BindAll env, po.binds
             let guard = match ?g:
                 ? ge: [[CcIf (AsBool (ValueOf lx, env2, ge))]]
                 nil: [[]]
             let arm = XArm(pat=po.pa, conds=(Append po.conds, guard), body=(OwnAs t, (BlockValue lx, env2, thenB)))
             let other = XArm(pat=PaWild, conds=[[]], body=elseV)
-            ArmsValue (Ref sv), [[arm, other]], "c{x.span.start}", t
+            ArmsValue (Ref sv), [[arm, other]], "c{SpanStem x.span}", t
 
 # A `match` or an if-let chain over arms: `match` when every condition is a guard, the
 # chain when one goes through an `Rc` (a Rust pattern cannot).
@@ -3080,7 +3081,7 @@ MatchValue: unbounded fn Lx, Env, Expr, [Arm], OutTy, Range -> Vl
 fn MatchValue lx, env, s, arms, t, span:
     let sv = ValueOf lx, env, s
     let sty = TypeAt lx, s.span
-    let label = "m{span.start}"
+    let label = "m{SpanStem span}"
     let byRef = Each (Range0 (Len arms)), \|i| ArmPat lx, (Or arms[i], dummyArm).?pattern, sty, ByRef, "{label}_{i}"
     let chain = Fold byRef, False, \|f, po| f or Fold po.conds, False, \|f2, c| f2 or IsLetCond c
     let owned = match sv:
@@ -3129,7 +3130,7 @@ fn ?OnlyRead lx, arm, nkey:
 WordCount: fn Text, Text -> Nat
 fn WordCount text, name = Len (Filter (Matches %/[?~$!@&]*[A-Za-z_][A-Za-z0-9_]*/, text), \|m| m.text == name)
 
-let dummyArm = Arm(?pattern=nil, ?guard=nil, body=Block(stmts=[[]], inline=True, span=Range(start=0, end=0)), span=Range(start=0, end=0))
+let dummyArm = Arm(?pattern=nil, ?guard=nil, body=Block(stmts=[[]], inline=True, span=Range(start=0, end=0, origin=InSource)), span=Range(start=0, end=0, origin=InSource))
 
 ArmPat: unbounded fn Lx, ?Pattern, Ty, Holding, Text -> PatOut
 fn ArmPat lx, (? p), ty, mode, fresh = RustPat lx, p, ty, mode, fresh
@@ -3174,7 +3175,7 @@ fn PlainBlockValue lx, env, b:
     if (Len dos) == 0: last
     else: VlOwned (XBlock dos, (Own last)), (ValueTy last)
 
-let dummyStmtL = Stmt(kind=(SExpr (Expr(kind=EError, span=Range(start=0, end=0)))), span=Range(start=0, end=0))
+let dummyStmtL = Stmt(kind=(SExpr (Expr(kind=EError, span=Range(start=0, end=0, origin=InSource)))), span=Range(start=0, end=0, origin=InSource))
 
 # One statement of an expression block.
 BlockStmt: unbounded fn Lx, Env, Stmt -> (([Do], Env))
@@ -3318,5 +3319,5 @@ fn ColName c = ""
 PlainLet: unbounded fn Lx, Env, Stmt, Pattern, Expr -> (([Do], Env))
 fn PlainLet lx, env, s, p, x:
         let v = ValueOf lx, env, x
-        let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "l{s.span.start}"
+        let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "l{SpanStem s.span}"
         (([[(DoLet po.pa, (Own v))]], (BindAll env, po.binds)))

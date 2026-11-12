@@ -355,7 +355,7 @@ fn AccArg m, cn, j, q, args = match m["sum:{cn}:{j}:{q}"]:
     nil: dummyArg
 
 # What a slot not yet narrowed passes (pick CT's fixed point reads it as anything).
-let topExpr = Expr(kind=(EName (SName(sigils="", path=[["⊤"]], span=Range(start=0, end=0)))), span=Range(start=0, end=0))
+let topExpr = Expr(kind=(EName (SName(sigils="", path=[["⊤"]], span=Range(start=0, end=0, origin=InSource)))), span=Range(start=0, end=0, origin=InSource))
 
 # The names a spot mentions: what it calls (an operator, a template call), a local
 # widget's name.

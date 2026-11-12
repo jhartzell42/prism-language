@@ -99,7 +99,7 @@ fn RustPat lx, p, ty, mode, fresh = match p.kind:
     PArray ps: ArrayPat lx, ps, ty, mode, fresh
     PFamily q: FamilyPat lx, q, ty, fresh
 
-let dummyPat = Pattern(kind=PIgnore, span=Range(start=0, end=0))
+let dummyPat = Pattern(kind=PIgnore, span=Range(start=0, end=0, origin=InSource))
 
 InnerTy: fn Ty -> Ty
 fn InnerTy t = match Peel t:
@@ -239,9 +239,9 @@ fn FieldsPat lx, c, fps, rest, ty, mode, fresh, tyPath:
             let binds = Fold subs, [[]], \|acc, ((ignore, o))| Append acc, o.binds
             PatOut(pa=(PaRecord tyPath, (Each subs, \|((f, o))| ((f, o.pa))), (rest or (Len subs) < (Len c.fields))), conds=conds, binds=binds)
 
-let dummyFieldPat = FieldPat(marks="", ?name=nil, pattern=dummyPat, span=Range(start=0, end=0))
+let dummyFieldPat = FieldPat(marks="", ?name=nil, pattern=dummyPat, span=Range(start=0, end=0, origin=InSource))
 
-let dummyTagInfo = TagInfo(name="", family="", kind="", out=TyErr, qs=[[]], rqs=[[]], bounds=[[]], fields=[[]], fieldAt=[[]], home="", file=0, span=Range(start=0, end=0))
+let dummyTagInfo = TagInfo(name="", family="", kind="", out=TyErr, qs=[[]], rqs=[[]], bounds=[[]], fields=[[]], fieldAt=[[]], home="", file=0, span=Range(start=0, end=0, origin=InSource))
 
 # Whether a scrutinee is a live element (`Element r o`), whose patterns bind each field
 # with its stack, against a document's element or another row's value, plain data.
