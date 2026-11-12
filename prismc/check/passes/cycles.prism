@@ -730,6 +730,273 @@ fn SummaryEdges cx, s, defs = match s.kind:
     SLet p, ignore, e: Edges (PatternNames p), (PromptReads cx, e, defs)
     otherwise: [[]]
 
+# ---------------------------------------------------------------------------------------
+# A place whose position reads its own answer (`place-cycle`)
+# ---------------------------------------------------------------------------------------
+
+# Places are counted as they are built, in line order (Semantics ch. 4, "the order of a
+# group's lines decides positions"; ch. 8, "takes the next number"), and a place's supplier
+# is handed the place's path (ch. 9, "How a supplier answers"). So a line above a place
+# that builds a different number of places by a plain part of that place's own answer
+# makes the place's path read its own answer: `place-cycle`, at the place's line.
+# The lines looked at, above the place: one that applies a widget function of several
+# clauses to an argument that reads the plain name (through plain `let`s) at a parameter
+# some clause matches refutably; a building `match` or `if` over it. The error is given
+# only where two arms' numbers of places are known and differ (`Width`): a legal program
+# is never refused.
+BlockPlaceCycles: unbounded fn Env, St, Block -> St
+fn BlockPlaceCycles env, st, b = Fold (Range0 (Len b.stmts)), st, \|s, at| match b.stmts[at]:
+    ? place:
+        let ?taken = Fold (PlaceNames env.g, env.home, place), nil, \|?found, name| match ?found:
+            ? earlier: ? earlier
+            nil: match ?ChoiceAbove env, b, at, name:
+                ? picked: ? ((name, picked))
+                nil: nil
+        match ?taken:
+            ? ((name, picked)): ErrFix s, "place-cycle", place.span, "the place's position reads its own answer: {ChoiceText picked} above it builds a different number of places by `{name}`", "put the line that reads `{name}` below the place, or give its {ChoiceArmsText picked} the same number of places"
+            nil: s
+    nil: s
+
+# The number of places a block, a line or an arm takes when it is built: known when the
+# lines say it, unknown otherwise.
+type Width = choice:
+    WidthKnown Nat
+    WidthUnknown
+derive ^Eq, ^Show
+
+# A building choice on a line: a widget function of several clauses by the name the line
+# writes, a building `match`, a building `if`; each with its arms' widths.
+type PlaceChoice = choice:
+    ClausesChoice Text, [Width]
+    MatchChoice [Width]
+    IfChoice [Width]
+derive ^Eq, ^Show
+
+ChoiceWidths: fn PlaceChoice -> [Width]
+fn ChoiceWidths (ClausesChoice ignore, widths) = widths
+fn ChoiceWidths (MatchChoice widths) = widths
+fn ChoiceWidths (IfChoice widths) = widths
+
+ChoiceText: fn PlaceChoice -> Text
+fn ChoiceText (ClausesChoice name, ignore) = "`{name}`"
+fn ChoiceText (MatchChoice ignore) = "a `match`"
+fn ChoiceText (IfChoice ignore) = "an `if`"
+
+ChoiceArmsText: fn PlaceChoice -> Text
+fn ChoiceArmsText (ClausesChoice ignore, ignore) = "clauses"
+fn ChoiceArmsText (MatchChoice ignore) = "arms"
+fn ChoiceArmsText (IfChoice ignore) = "two sides"
+
+# The plain names a place's line binds: `port` of `((port, !rx, $peers)) <- Pad.Socket(..)`.
+PlaceNames: unbounded fn G, Text, Stmt -> [Text]
+fn PlaceNames g, home, s = match s.kind:
+    SBind p, e, nil: if IsPlaceOf g, home, e: Filter (PatternNames p), \|n| (SigilHead n) == "" else: [[]]
+    otherwise: [[]]
+
+# Whether an expression is the construction of an element tag: a place.
+IsPlaceOf: unbounded fn G, Text, Expr -> Bool
+fn IsPlaceOf g, home, e = match e.kind:
+    EGroup x: IsPlaceOf g, home, x
+    ECall c, ignore, ignore, ignore: match c.kind:
+        EName n: match ResolveValue g, home, n:
+            ((? qk, why)): why == "tag" and IsElementTag g, qk
+            otherwise: False
+        otherwise: False
+    otherwise: False
+
+# The first line above line `at` that is a building choice by `name` whose arms' widths
+# are known and differ.
+?ChoiceAbove: unbounded fn Env, Block, Nat, Text -> ?PlaceChoice
+fn ?ChoiceAbove env, b, at, name:
+    let readers = PlainReaders b.stmts, [[name]]
+    let bound = Keys env.locals
+    Fold (Range0 at), nil, \|?found, i| match ?found:
+        ? earlier: ? earlier
+        nil: match b.stmts[i]:
+            ? line: match ?LineChoice env.g, env.home, bound, readers, line:
+                ? picked: if WidthsDiffer (ChoiceWidths picked): ? picked else: nil
+                nil: nil
+            nil: nil
+
+# The names that read some of `names` through the block's plain `let`s, `names` among them.
+PlainReaders: unbounded fn [Stmt], [Text] -> [Text]
+fn PlainReaders stmts, names:
+    let grown = Fold stmts, names, \|acc, s| match s.kind:
+        SLet p, ignore, e:
+            if Mentions e, acc: Fold (Filter (PatternNames p), \|n| (SigilHead n) == ""), acc, \|more, n| AddText more, n
+            else: acc
+        otherwise: acc
+    if (Len grown) == (Len names): names else: PlainReaders stmts, grown
+
+# Whether an expression mentions one of some names, where nothing inside it binds the
+# name again.
+Mentions: unbounded fn Expr, [Text] -> Bool
+fn Mentions e, names = Fold (ExprSpots e, {}), False, \|found, spot| found or Fold (SpotSites spot), False, \|here, site| here or ((HasText names, site.callee) and not (IsLocal site.rels, site.callee))
+
+# Whether two of some widths are known and differ.
+WidthsDiffer: fn [Width] -> Bool
+fn WidthsDiffer widths:
+    let known = Filter widths, \|w| w != WidthUnknown
+    match known[0]:
+        ? first: Fold known, False, \|differ, w| differ or w != first
+        nil: False
+
+?LineChoice: unbounded fn G, Text, [Text], [Text], Stmt -> ?PlaceChoice
+fn ?LineChoice g, home, bound, names, s = match s.kind:
+    SBind ignore, e, nil: ?ExprChoice g, home, bound, names, e
+    SExpr e: ?ExprChoice g, home, bound, names, e
+    otherwise: nil
+
+# A line's right side as a building choice that picks its arm by one of `names`.
+?ExprChoice: unbounded fn G, Text, [Text], [Text], Expr -> ?PlaceChoice
+fn ?ExprChoice g, home, bound, names, e = match e.kind:
+    EGroup x: ?ExprChoice g, home, bound, names, x
+    EMatch scrutinee, arms:
+        if Mentions scrutinee, names: ? (MatchChoice (Each arms, \|arm| BlockWidth g, home, [[]], (ArmBound bound, arm), arm.body))
+        else: nil
+    EIf cond, taken, ?other:
+        if Mentions (CondRead cond), names: ? (IfChoice [[(BlockWidth g, home, [[]], bound, taken), (OtherWidth g, home, bound, ?other)]])
+        else: nil
+    ECall c, args, ignore, ignore: match c.kind:
+        EName n:
+            if (HasText bound, (SNameKey n)) or Fold args, False, \|named, a| named or a.?name != nil: nil
+            else: match ResolveValue g, home, n:
+                ((? qk, why)):
+                    if why == "tag": nil
+                    else: match Filter g.defs, \|d| d.qk == qk:
+                        [[d]]: match d.body:
+                            DbFn clauses:
+                                if (Len clauses) > 1 and PicksBy g, d.home, clauses, args, names: ? (ClausesChoice (SNameKey n), (ClauseWidths g, [[]], qk))
+                                else: nil
+                            otherwise: nil
+                        otherwise: nil
+                otherwise: nil
+        otherwise: nil
+    otherwise: nil
+
+# The width of an `if`'s other side; unknown when it has none.
+OtherWidth: unbounded fn G, Text, [Text], ?Block -> Width
+fn OtherWidth g, home, bound, ?other = match ?other:
+    ? side: BlockWidth g, home, [[]], bound, side
+    nil: WidthUnknown
+
+ArmBound: unbounded fn [Text], Arm -> [Text]
+fn ArmBound bound, arm = match arm.?pattern:
+    ? p: Append bound, (PatternNames p)
+    nil: bound
+
+# What a condition reads to decide.
+CondRead: fn Cond -> Expr
+fn CondRead (CondExpr x) = x
+fn CondRead (CondBind ignore, x, ignore) = x
+
+# Whether some argument reads one of `names` at a parameter some clause matches refutably.
+PicksBy: unbounded fn G, Text, [FnClause], [Arg], [Text] -> Bool
+fn PicksBy g, home, clauses, args, names = Fold (Range0 (Len args)), False, \|found, i| found or match args[i]:
+    ? a: (Mentions a.value, names) and Fold clauses, False, \|refuted, c| refuted or match c.params[i]:
+        ? p: IsRefutable g, home, p
+        nil: False
+    nil: False
+
+# Whether a pattern can fail to match a value of its type: a literal, `nil`, `? x`, an
+# array pattern, a constructor of a type with several, or one of these inside.
+IsRefutable: unbounded fn G, Text, Pattern -> Bool
+fn IsRefutable g, home, p = match p.kind:
+    PLit ignore: True
+    PNeg ignore: True
+    PNil: True
+    PArray ignore: True
+    PGroup x: IsRefutable g, home, x
+    PSigil sigil, x: sigil == "?" or IsRefutable g, home, x
+    PTuple ps: Fold ps, False, \|found, x| found or IsRefutable g, home, x
+    PCtor n, ps: (HasSiblings g, home, n) or Fold ps, False, \|found, x| found or IsRefutable g, home, x
+    PRecord ignore, fields, ignore: Fold fields, False, \|found, f| found or IsRefutable g, home, f.pattern
+    otherwise: False
+
+# Whether a constructor's type has another constructor.
+HasSiblings: fn G, Text, SName -> Bool
+fn HasSiblings g, home, n = match ResolveValue g, home, n:
+    ((? qk, ignore)): match g.ctors[qk]:
+        ? info: (Len (Filter (Keys g.ctors), \|k| IsOwnedBy g, k, info.owner)) > 1
+        nil: False
+    otherwise: False
+
+IsOwnedBy: fn G, Text, Text -> Bool
+fn IsOwnedBy g, k, owner = match g.ctors[k]:
+    ? other: other.owner == owner
+    nil: False
+
+# A block's width: the sum of its lines', known when each line's is. `path` is the widget
+# functions being read (one that applies itself has no known width); `bound` the names
+# bound where the block stands, none of which means a program's function.
+BlockWidth: unbounded fn G, Text, [Text], [Text], Block -> Width
+fn BlockWidth g, home, path, bound, b:
+    let own = Fold b.stmts, bound, \|acc, s| Append acc, (LineBinds s)
+    Fold b.stmts, (WidthKnown 0), \|total, s| AddWidths total, (LineWidth g, home, path, own, s)
+
+AddWidths: fn Width, Width -> Width
+fn AddWidths (WidthKnown a), (WidthKnown b) = WidthKnown (a + b)
+fn AddWidths ignore, ignore = WidthUnknown
+
+# The names a line binds, a local function's and a local widget's among them.
+LineBinds: unbounded fn Stmt -> [Text]
+fn LineBinds s = match s.kind:
+    SFn c: [[DefNameText c.name]]
+    SWidget w: [[SNameKey w.name]]
+    otherwise: StmtDefs s
+
+# A line's width: a `let`, a hold, a declaration and the result take no place; a tag's
+# element takes one; a call of a program's widget function takes what its clauses take
+# when they all take the same known number. Anything else (a `for`, a `rebuild`, a
+# building choice, a blueprint that arrives as a value or a parameter, a prelude widget
+# function, a function that applies itself) is unknown.
+LineWidth: unbounded fn G, Text, [Text], [Text], Stmt -> Width
+fn LineWidth g, home, path, bound, s = match s.kind:
+    SLet ignore, ignore, ignore: WidthKnown 0
+    SBind ignore, ignore, (? ignore): WidthKnown 0
+    SBind ignore, e, nil: ExprWidth g, home, path, bound, e
+    SExpr e: ExprWidth g, home, path, bound, e
+    SSignature ignore: WidthKnown 0
+    SFn ignore: WidthKnown 0
+    SWidget ignore: WidthKnown 0
+    SEmit ignore: WidthKnown 0
+    otherwise: WidthUnknown
+
+ExprWidth: unbounded fn G, Text, [Text], [Text], Expr -> Width
+fn ExprWidth g, home, path, bound, e = match e.kind:
+    EGroup x: ExprWidth g, home, path, bound, x
+    EFreeSigil "@", ignore: WidthKnown 0
+    ECall c, ignore, ignore, ignore: match c.kind:
+        EName n:
+            if HasText bound, (SNameKey n): WidthUnknown
+            else: match ResolveValue g, home, n:
+                ((? qk, why)):
+                    if why == "tag": (if IsElementTag g, qk: WidthKnown 1 else: WidthUnknown)
+                    else: FunctionWidth g, path, qk
+                otherwise: WidthUnknown
+        otherwise: WidthUnknown
+    otherwise: WidthUnknown
+
+# A widget function's width: its clauses' one known width.
+FunctionWidth: unbounded fn G, [Text], Text -> Width
+fn FunctionWidth g, path, qk:
+    let widths = ClauseWidths g, path, qk
+    match widths[0]:
+        ? first: if Fold widths, True, \|same, w| same and w == first: first else: WidthUnknown
+        nil: WidthUnknown
+
+# The width of each clause of a program's widget function; none for anything else and for
+# a function on the path.
+ClauseWidths: unbounded fn G, [Text], Text -> [Width]
+fn ClauseWidths g, path, qk = if (HasText path, qk) or not (HasPrefix (BareName qk), "@"): [[]]
+else: match Filter g.defs, \|d| d.qk == qk:
+    [[d]]: match d.body:
+        DbFn clauses: Each clauses, \|c| match c.body:
+            BodyBlock b: BlockWidth g, d.home, (Push path, qk), (PatternsNames c.params), b
+            BodyExpr x: ExprWidth g, d.home, (Push path, qk), (PatternsNames c.params), x
+        otherwise: [[]]
+    otherwise: [[]]
+
 let nothingGiven = Given(prompt={}, flows={})
 
 let dummyArgP = Arg(marks="", ?name=nil, value=(Expr(kind=EError, span=Range(start=0, end=0))), span=Range(start=0, end=0))
