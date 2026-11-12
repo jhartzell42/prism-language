@@ -4,7 +4,7 @@
 # under a seat is the compiler's to give. Every test builds, then computes twice, which a
 # seat's first answer no longer needs: it is told the tally in the tick it is built.
 # Written by Claude on the claude-document-chess branch; subject to change.
-emit Ui.* | Seat.* | Tell.* | Keep.* | View.*
+emit Ui.* | Seat.*
 use App.*
 
 # A request fired at tick 3 has its response at tick 4, and both tellers are told the new total
