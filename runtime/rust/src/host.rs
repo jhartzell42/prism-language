@@ -416,8 +416,44 @@ impl<K: Ord + Clone + 'static, V: Clone + Eq + 'static> PerKey<K, V> {
     }
 }
 
-/// The way back into a child's place: a typed answer, delivered now.
-pub type Sink<A> = Rc<dyn Fn(&A, &mut Cx) -> Done>;
+/// The way back into a child's place: a typed answer, delivered now (called as a
+/// function), and the height twin of that delivery: what delivers an answer inside a tick
+/// at a global height (a widget's event result, fired by a combinator of its row) tells
+/// the twin that height, at the wiring and each time it rises, so the combinators the
+/// answer reaches sit above it (Graph ch. 4, "Heights"; [`crate::cells::Port::subscribe_above`]).
+/// An answer delivered as a tick opens (the World's, a host's, a push) tells nothing.
+pub struct Sink<A> {
+    deliver: Rc<dyn Fn(&A, &mut Cx) -> Done>,
+    above: crate::cells::Above,
+}
+
+impl<A> Clone for Sink<A> {
+    fn clone(&self) -> Sink<A> {
+        Sink { deliver: self.deliver.clone(), above: self.above.clone() }
+    }
+}
+
+impl<A> std::ops::Deref for Sink<A> {
+    type Target = dyn Fn(&A, &mut Cx) -> Done;
+    fn deref(&self) -> &Self::Target {
+        &*self.deliver
+    }
+}
+
+impl<A> Sink<A> {
+    /// A sink whose answers reach no combinator inside the tick they come in.
+    pub fn new(deliver: impl Fn(&A, &mut Cx) -> Done + 'static) -> Sink<A> {
+        Sink { deliver: Rc::new(deliver), above: Rc::new(|_| ()) }
+    }
+    /// A sink with its height twin.
+    pub fn heard_above(deliver: impl Fn(&A, &mut Cx) -> Done + 'static, above: crate::cells::Above) -> Sink<A> {
+        Sink { deliver: Rc::new(deliver), above }
+    }
+    /// The sink's height twin, for what delivers its answers inside a tick.
+    pub fn twin(&self) -> crate::cells::Above {
+        self.above.clone()
+    }
+}
 
 /// What a blueprint built for a child place gives back: its node (whose places are under
 /// the row's path), the place's first value when the output has one, and whether the
@@ -516,7 +552,8 @@ pub fn answers_mapped<E: 'static, A: Clone + 'static>(blueprint: Blueprint<E, A>
     let walk = Rc::new(walk);
     Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, base, cx| {
         let walked = walk.clone();
-        let mapped: Sink<A> = Rc::new(move |answer: &A, cx: &mut Cx| sink(&walked(answer), cx));
+        let twin = sink.twin();
+        let mapped: Sink<A> = Sink::heard_above(move |answer: &A, cx: &mut Cx| sink(&walked(answer), cx), twin);
         let mut supplied = blueprint(path, mapped, scope, base, cx)?;
         supplied.first = supplied.first.as_ref().map(|first| walk(first));
         Ok(supplied)
@@ -582,7 +619,8 @@ pub fn widget_event_blueprint<E: 'static, A: 'static, T: Clone + 'static>(
             Scope::Hosted(host) => (build_hosted(path, base, host.clone(), host_moved(host), cx)?, true),
         };
         let answered = answer.clone();
-        let _ = made.result.subscribe(Rc::new(move |v: &T, cx: &mut Cx| sink(&answered(v), cx)));
+        let twin = sink.twin();
+        let _ = made.result.subscribe_above(Rc::new(move |v: &T, cx: &mut Cx| sink(&answered(v), cx)), twin);
         let (document, deliver) = if hosted { (Some(made.document), Some(made.deliver)) } else { (None, None) };
         Ok(Supplied { node: made.node, first: None, forwards: false, entry: None, built: made.built, leave: Some(made.leave), document, deliver })
     })
@@ -1313,7 +1351,7 @@ impl<E: Clone + Eq + 'static, A: AnswerOf<E>> HostRow<E, A> {
     pub fn early(path: Path, key: Path, identity: E, place: Rc<Entry<E>>, host: Rc<dyn HostOf<E, A>>, cx: &mut Cx) -> Result<Rc<HostRow<E, A>>, Fault> {
         let node = Rc::new_cyclic(|me: &Weak<HostRow<E, A>>| {
             let row = me.clone();
-            let sink: Sink<A> = Rc::new(move |v: &A, cx: &mut Cx| match row.upgrade() {
+            let sink: Sink<A> = Sink::new(move |v: &A, cx: &mut Cx| match row.upgrade() {
                 // An answer to a row that left, or one that is gone, is dropped (Semantics
                 // ch. 9, "A late result is dropped"): a computed answer in flight to a
                 // place whose key left.

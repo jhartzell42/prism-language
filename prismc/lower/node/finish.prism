@@ -161,6 +161,62 @@ fn SinkCode sk, target, y = match target:
         let fin = [[(SelfCall (GnOf sk.wx, res).name, [[(XVar "b")]])]]
         [[(DoMatch (XMethod (XMethod (XField XSelf, "{job}"), "get", [[XCx]]), "cycle", [[]]), [[(((PaCtor (RefRuntime "prism_rtl::Turn::More"), [[PaBind "next"]]), more)), (((PaCtor (RefRuntime "prism_rtl::Turn::Finished"), [[PaBind "b"]]), fin))]])]]
 
+# The height twin of a firing's sink (claude/backend.md, "Heights across nodes"): where a
+# firing at global height `h` goes, every combinator it reaches is put above `h`, and a
+# port it fires straight through is raised to `h`. A combinator that moved tells its own
+# twin its new height. A sink whose firing lands in a later tick (`@Defer`, `@Later`), at
+# the World (the root's result) or at a host (a request, answered a tick late) ends the
+# walk.
+SinkAbove: fn Sinks, Sk, Ex -> [Do]
+fn SinkAbove sk, target, h = match target:
+    SkNode m: [[(AboveCall XSelf, (GnOf sk.wx, m).name, h)]]
+    SkIn m, ignore: CombinatorAbove sk, (GnOf sk.wx, m), h
+    SkHold f: HoldAbove sk, f, h
+    SkDistinct f: HoldAbove sk, f, h
+    SkPerKey f: HoldAbove sk, f, h
+    SkRequest ignore, ignore: [[]]
+    SkResult: [[]]
+    SkArm ignore: [[]]
+    SkLater ignore: [[]]
+    SkMachine f, ignore, out: Push (MovedAbove sk, (OwnRead f), h), (AboveCall XSelf, (GnOf sk.wx, out).name, h)
+    SkPort f: [[DoExpr (XMethod (XField XSelf, "{f}_port"), "raise", [[h]])]]
+    SkUp m: [[(DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "parent"]]), (XUpgrade (XField XSelf, "parent")), [[(AboveCall (XVar "parent"), m, h)]], [[]])]]
+    SkCycle ignore, ignore, res: [[(AboveCall XSelf, (GnOf sk.wx, res).name, h)]]
+
+# A method's height twin called: `m_above(h)`.
+AboveCall: fn Ex, Text, Ex -> Do
+fn AboveCall receiver, m, h = DoExpr (XMethod receiver, "{m}_above", [[h]])
+
+# A combinator reached by a firing at global height `h`: put above it (`Heights::above`),
+# and when that moved it, what it fires told its new height.
+CombinatorAbove: fn Sinks, Gn, Ex -> [Do]
+fn CombinatorAbove sk, g, h = [[(DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "moved"]]), (XMethod (XField XSelf, "heights"), "above", [[(XIndex (CombinatorOf sk.combs, g)), h]]), [[(AboveCall XSelf, g.name, (XVar "moved"))]], [[]])]]
+
+# The twin of `HoldWritten`: a hold written at global height `h` puts the `!Updated` nodes
+# over it above `h`, and tells the rows that hear the write.
+HoldAbove: fn Sinks, Text, Ex -> [Do]
+fn HoldAbove sk, f, h = Append (Fold sk.wx.rowMarks, [[]], \|acc, rm| Append acc, (RowAbove sk.wx, rm, (OwnRead f), h)), (MovedAbove sk, (OwnRead f), h)
+
+# The twin of `MovedBy`: the `!Updated` nodes over a read written at global height `h`.
+MovedAbove: fn Sinks, Read, Ex -> [Do]
+fn MovedAbove sk, r, h = Fold (Filter sk.wx.gns, \|g| Moves r, g), [[]], \|acc, g| Append acc, (CombinatorAbove sk, g, h)
+
+# The twin of `RowWritten`: the rows that hear a write of the block at global height `h`
+# are told it; a generation and a blueprint value's rows hear through a port, raised.
+RowAbove: fn Wx, RowMarks, Read, Ex -> [Do]
+fn RowAbove wx, rm, r, h:
+    let hit = Filter (Append rm.wrote, rm.builds), \|m| HasRead (ReadsClosed wx.dynReads, [[OwnRead m]]), r
+    let told = Each hit, \|m| AboveCall (XVar "row"), "parent_wrote_{m}", h
+    let raised = Each hit, \|m| DoExpr (XMethod (XField XSelf, "{rm.builder}_wrote_{m}_port"), "raise", [[h]])
+    match rm.kind:
+        GenerationRow: raised
+        ValueRow: raised
+        otherwise: if (Len told) == 0: [[]] else: [[(DoFor (PaBind "row"), (XMethod (XMethod (XField XSelf, rm.builder), "borrow", [[]]), "values", [[]]), told)]]
+
+# A method's height twin: `{name}_above(h)`, "something at global height `h` fires `name`".
+AboveMethod: fn Text, [Do], Text -> MethDef
+fn AboveMethod name, body, what = MethDef(name="{name}_above", recv=RecvRc, params=[[(("h", OutCount))]], cx=CxNone, ret=OutUnit, body=body, tail=(XUnit), doc="The height twin of `{name}`: {what} at global height `h`; every combinator that reaches sits above `h`.")
+
 # What a write of hold `f` (or of the pseudo-hold behind a host's document, `host_k_doc`,
 # when a node of the hosted child wrote behind it) marks, after the `set` (claude/backend.md,
 # "Marks"): the node is dirtied when a place reads it; a hosted node tells its host that a
@@ -268,6 +324,13 @@ fn FinishNode wx0, qk, params, isRow:
     let sinks = Sinks(wx=wx, dirty=dirtyHolds, builds=buildHolds, combs=combs)
     let evMethods = Each (Filter wx.gns, \|g| g.kind != GnNever), \|g| MethDef(name=g.name, recv=RecvRc, params=[[(("v", g.ty))]], cx=CxMut, ret=OutUnit, body=(FiringCode sinks, g, (XVar "v")), tail=(XUnit), doc=(GnDoc g))
     let gatherIns = Append (Each (Filter wx.gns, \|g| g.kind == GnGather), \|g| GatherIn sinks, g), (Each (Filter wx.gns, \|g| g.kind == GnMergeList), \|g| MergeListIn sinks, g)
+    # each event method's height twin, written from the same sinks as its firing; a
+    # gather's and a `!MergeAll` list's input put the combinator above what fires it
+    let evAbove = Each (Filter wx.gns, \|g| g.kind != GnNever), \|g| AboveMethod g.name, (Fold g.outs, [[]], \|acc, o| Append acc, (SinkAbove sinks, o.sink, (XVar "h"))), "`!{g.name}` fires"
+    let inAbove = Each (Filter wx.gns, \|g| g.kind == GnGather or g.kind == GnMergeList), \|g| AboveMethod "{g.name}_in", (CombinatorAbove sinks, g, (XVar "h")), "an input of `{g.name}` fires"
+    # the end of the build: each combinator tells what it fires its height, so what it
+    # feeds in other nodes sits above it
+    let announced = Each combs, \|g| AboveCall (XVar "node"), g.name, (XMethod (XField (XVar "node"), "heights"), "of", [[(XIndex (CombinatorOf combs, g))]])
     let placeGetters = Each live, \|p| MethDef(name=p.getter, recv=RecvRef, params=[[]], cx=CxRef, ret=elemTy, body=[[]], tail=p.level, doc="Place {PlaceText p.pos}'s level, read at the read point.")
     # the wake decides each combinator asked whose height has come, lowest first, then asks
     # for a wake for the lowest still asked (`Heights::again`)
@@ -290,7 +353,7 @@ fn FinishNode wx0, qk, params, isRow:
     # structural dynamic reads its snapshot at the build), then the places out
     let links = Each wx.hosts, \|h| DoExpr (XMethod (XField (XVar "node"), "{h.name}"), "link", [[(XRef (XVar "node"))]])
     let rowsBuilt = Append links, (BuildSteps sinks, True)
-    let subscribed = Each wx.subs, \|((ev, m, t))| DoExpr (XCall (HelperRef "subscribe_row"), [[(XRef (XVar "node")), (XUpgrade (XField (XVar "node"), "parent")), (XClosure False, [[PaBind "p"]], (XRef (XField (XVar "p"), "{ev}_port"))), (XClosure False, [[PaBind "n", PaBind "v", PaBind "cx"]], (XMethod (XVar "n"), m, [[XClone (XVar "v"), XCx]])), (XRef (XField (XVar "node"), "{m}_sub"))]])
+    let subscribed = Each wx.subs, \|((ev, m, t))| DoExpr (XCall (HelperRef "subscribe_row"), [[(XRef (XVar "node")), (XUpgrade (XField (XVar "node"), "parent")), (XClosure False, [[PaBind "p"]], (XRef (XField (XVar "p"), "{ev}_port"))), (XClosure False, [[PaBind "n", PaBind "v", PaBind "cx"]], (XMethod (XVar "n"), m, [[XClone (XVar "v"), XCx]])), (HeardAbove m), (XRef (XField (XVar "node"), "{m}_sub"))]])
     # the World's answers, by path, to the places that go to it; a hosted place is answered
     # typed by its host, through `host_k_answer` (the places of scope `k`) or `deliver` (a
     # hosted node's own)
@@ -316,6 +379,7 @@ fn FinishNode wx0, qk, params, isRow:
         let builds = (HasRead sinks.builds, (ParentRead m)) or (Len stales) > 0
         if builds and not (ListsBuild sinks, (ParentRead m)): Append stales, [[DoExpr (XMethod (XCx), "build_later", [[(XClone XSelf)]])]] else: stales
     let heard = Each (RowHears wx), \|m| MethDef(name="parent_wrote_{m}", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Append (Append (MovedBy sinks, (ParentRead m)), (HeardBuild m)), (Fold wx.rowMarks, [[]], \|acc, rm| Append acc, (RowWritten wx, rm, (ParentRead m)))), tail=(XUnit), doc="The block wrote behind its `{m}`, which this row reads through the parent: the `!Updated` nodes over it are told and the wake asked at their heights; the row's own builders over it are listed for the build; the rows of this row's own `for`s that read it are marked.")
+    let heardAbove = Each (RowHears wx), \|m| AboveMethod "parent_wrote_{m}", (Append (MovedAbove sinks, (ParentRead m), (XVar "h")), (Fold wx.rowMarks, [[]], \|acc, rm| Append acc, (RowAbove wx, rm, (ParentRead m), (XVar "h")))), "the block writes behind its `{m}`"
     let top = Fold wx.gns, 0, \|hi, g| Max hi, g.height
     let wakesField = if wakes: [[(("heights", (OutNamed (RefRuntime "rt::Heights"), [[]]), "each combinator's global height, and the combinators asked for this tick, lowest first"))]] else: [[]]
     let wakesInit = if wakes: [[(("heights", (XCall (RefRuntime "rt::Heights::new"), [[(XVec (Each combs, \|g| XIndex g.height))]])))]] else: [[]]
@@ -337,10 +401,10 @@ fn FinishNode wx0, qk, params, isRow:
     # block stand outside what waits for the row's number, `LateGenerations`)
     let nowSteps = if wx.lateGens: BuildSteps (PhaseOf sinks, 1), True else: [[]]
     let laterSteps = if wx.lateGens: BuildSteps (PhaseOf sinks, 2), True else: [[]]
-    let lateGenerations = Append (Append (Append (Filter wx.build, IsOwnerLink), links), (LateNumbering (Append (Append (Append laterSteps, (Filter wx.build, \|d| not (IsOwnerLink d))), subscribed), startedReg))), nowSteps
+    let lateGenerations = Append (Append (Append (Filter wx.build, IsOwnerLink), links), (LateNumbering (Append (Append (Append (Append laterSteps, (Filter wx.build, \|d| not (IsOwnerLink d))), subscribed), announced), startedReg))), nowSteps
     # what the build does once the node is made
-    let afterNode = Append (Append (Append (Append (Filter wx.build, IsOwnerLink), rowsBuilt), (Filter wx.build, \|d| not (IsOwnerLink d))), subscribed), startedReg
-    NodeDef(name=wx.node, prism=(BareName qk), doc=(DefinitionText wx.lx, qk), params=params, fields=(Append (Append (Append (Append (Append wx.fields, wakesField), genFields), portFields), subFields), numberFields), consts=[[]], lets=wx.lets, inits=(Append wx.inits, (Append (Append (Append (Append wx.moves, wakesInit), genInits), portInits), (Append subInits, numberInits))), build=(Append (if wx.lateGens: lateGenerations else: if wx.baseLate: LateNumbering afterNode else: afterNode), wx.numberedBy), fallible=fallible, methods=(Append (if wx.baseLate: [[(NumberPlaces wx)]] else: [[]]), (Append (Append (Append (Append (Append (Append (Append (Append evMethods, gatherIns), placeGetters), wx.getters), rowMethods), heard), hostMethods), gatheredMoved), (Append movedMethod, (PlaceMethods wx)))), answers=(Append (Append answers, forwards), (WideForward (Filter wx.gens, \|gd| (IsWideGen gd) and Emits wx, gd.pos))), hooks=hooks, builders=wx.builders, wakes=wakes, children=wx.rows, gens=(Each wx.gens, \|gd| if HasText wx.lateRowGens, gd.name: LateRowSelect gd else: gd), subs=wx.subs, top=top, rowKind=(if isRow: (if isGen: GenerationRow else: ForRow) else: NotARow), hosted=hostedMethods)
+    let afterNode = Append (Append (Append (Append (Append (Filter wx.build, IsOwnerLink), rowsBuilt), (Filter wx.build, \|d| not (IsOwnerLink d))), subscribed), announced), startedReg
+    NodeDef(name=wx.node, prism=(BareName qk), doc=(DefinitionText wx.lx, qk), params=params, fields=(Append (Append (Append (Append (Append wx.fields, wakesField), genFields), portFields), subFields), numberFields), consts=[[]], lets=wx.lets, inits=(Append wx.inits, (Append (Append (Append (Append wx.moves, wakesInit), genInits), portInits), (Append subInits, numberInits))), build=(Append (if wx.lateGens: lateGenerations else: if wx.baseLate: LateNumbering afterNode else: afterNode), wx.numberedBy), fallible=fallible, methods=(Append (if wx.baseLate: [[(NumberPlaces wx)]] else: [[]]), (Append (Append (Append (Append (Append (Append (Append (Append (Append (Append evMethods, evAbove), gatherIns), inAbove), heardAbove), placeGetters), wx.getters), rowMethods), heard), hostMethods), gatheredMoved), (Append movedMethod, (PlaceMethods wx)))), answers=(Append (Append answers, forwards), (WideForward (Filter wx.gens, \|gd| (IsWideGen gd) and Emits wx, gd.pos))), hooks=hooks, builders=wx.builders, wakes=wakes, children=wx.rows, gens=(Each wx.gens, \|gd| if HasText wx.lateRowGens, gd.name: LateRowSelect gd else: gd), subs=wx.subs, top=top, rowKind=(if isRow: (if isGen: GenerationRow else: ForRow) else: NotARow), hosted=hostedMethods)
 
 IsGeneration: fn Wx, Text -> Bool
 fn IsGeneration wx, name = (Len (Filter wx.gens, \|gd| gd.name == name)) > 0
@@ -1060,6 +1124,11 @@ fn SortNats xs = Fold xs, [[]], \|acc, x| Append (Push (Filter acc, \|y| y < x),
 # wake at its global height (`Node::wake` is not told the height, gap WH of the README).
 AskWake: fn Sinks, Gn -> [Do]
 fn AskWake sk, g = [[DoExpr (XMethod (XField XSelf, "heights"), "ask", [[(XIndex (CombinatorOf sk.combs, g)), XCx, (XClone XSelf)]])]]
+
+# A row's subscription's height twin (`subscribe_row`): the row's method `m` fires at the
+# port's height.
+HeardAbove: fn Text -> Ex
+fn HeardAbove m = XClosure False, [[PaBind "n", PaBind "h"]], (XMethod (XVar "n"), "{m}_above", [[(XVar "h")]])
 
 # A combinator's place among the node's combinators: its index in the node's `Heights`.
 CombinatorOf: fn [Gn], Gn -> Nat
