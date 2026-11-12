@@ -1,0 +1,19 @@
+# Derived by hand from Semantics ch. 9 ("A computed answer is the next tick's input", and tick n+1 is owed; the supplier's blueprint is built under the row of the child's place; `@Element e` re-emits at `pos/[p]/0`) and ch. 8 (a widget function's lines take positions from 0 in the scope that builds it). Never run when written.
+test a_widget_functions_event_answer_is_a_tick_late
+
+tick 0
+  added:
+    0: Ui.Button(label="tap")
+    1/[0]/0: Ui.Label(text="relaying")
+    1/[1]/0: Ui.Label(text="0 hits")
+    2: Ui.Label(text="0 taps")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="1 taps")
+
+tick 2
+  changed:
+    1/[1]/0: Ui.Label(text="1 hits")
