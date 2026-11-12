@@ -984,9 +984,15 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
     let constants = Filter (ExprsIn e), \|x| ConstantOfTimeAt lx, x
     # (a hold of dynamics' initial value, taken whole, is a name, `$$cur <- $a then ..`, or
     # holds its readers inside, `$held <- (($a, "s")) then ..`)
-    let roots = Fold (Append (Append calls, updatedCalls), constants), (if whole: ExprsIn e else: [[]]), \|acc, c| match c.kind:
+    # and `v on !e` where the event's values hold time (`(($b, "t")) on !swap`, a hold of
+    # dynamics' step): `v` holds its dynamics whole (`EventRef`)
+    let givenOn = Filter (ExprsIn e), \|x| match x.kind:
+        EBinary "on", ignore, ignore: HasTime (Peel (TypeAt lx, x.span))
+        otherwise: False
+    let roots = Fold (Append (Append (Append calls, updatedCalls), constants), givenOn), (if whole: ExprsIn e else: [[]]), \|acc, c| match c.kind:
         ECall ignore, args, ignore, ignore: Fold args, acc, \|acc2, a| Append acc2, (ExprsIn a.value)
         EFreeSigil ignore, x: Append acc, (ExprsIn x)
+        EBinary "on", value, ignore: Append acc, (ExprsIn value)
         otherwise: acc
     let names0 = Fold roots, [[]], \|acc3, y| match y.kind:
             EName n: if (HasKey menv.names, "#whole{DynKey y}") or HasKey menv.names, "#whole#{SNameKey n}": acc3 else: match menv.names[SNameKey n]:

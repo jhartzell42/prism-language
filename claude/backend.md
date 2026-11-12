@@ -208,6 +208,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **`wake`** runs the node's combinators in distance order, once per height, by direct
   calls. A merge `<|` reads its left stamp first (CXb). The root wakes through the height
   buckets like every node (CXi).
+  A node with several heights keeps the heights asked (`Wakes`); one wake of the node runs
+  the lowest height asked, and ends by asking a wake for the lowest height still asked
+  (`Wakes::again`). So two heights of one node asked from one running height, which both
+  land on the next height (`Cx::wake`: a height at or below the running one is the next
+  one) where the node is listed once, are each served in the tick: a host that writes a
+  hold `!Updated` reads and fires its own result in one method gets both.
 - **Holds.** `$x <- init then !e` → the firing's method calls `x.set(v, cx)`; every read
   is `x.get(cx)`, before the tick during propagation and after it from then on, so the
   tag law needs no commit pass.
@@ -421,6 +427,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
     first, since it may read what the reference borrows. Its read is `xs[i]`, `nil` past
     the end. A lens to a map key is refused by the checker (`lens-map-key`, ruling ME), so
     no reference is ever an entry of a map.
+  - A lens's body, or a lens's argument, that steps through an array's index
+    (`&machines[1].acc`) is read through the entry in place: `SharedPlaceOf` is `PlaceOf`
+    borrowed shared, its index step the prelude's `at_shared`, which gives up on an index
+    the array does not hold as `at_mut` does (`LensReadThrough`). The block's own path
+    through an index, read in expression position (`&_[0].x <= &_[1].acc + 1`), is the
+    same shared place (`at_shared`, `at_shared_map` for a key), copied.
   - The reference borrows all of its argument, as the book's rule has it, so two places
     keep rustc and the borrow rule equal: an accumulation through a lens reads the part
     by the read function (`UpdStmt`), and inside a `for` over a lens applied the checker
@@ -442,7 +454,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   in it is the live `Dynamic` the line makes for it (`WholeArgsAt`), so the tuple holds
   `$level` itself and never a copy of its value. A hold whose value holds time below its
   top takes its initial value whole in the same way, a name (`$$cur <- $a then ..`) or a
-  value written over readers (`$held <- (($a, "s")) then ..`).
+  value written over readers (`$held <- (($a, "s")) then ..`). So does `v on !e` where the
+  event's values hold time (`EventRef`: a hold's step `then (($b, "t")) on !swap`): each
+  reader in `v` is its live `Dynamic`, made late for a step, which nothing reads before
+  the node is made.
 - **`any x` of `^Show` alone** is `Rc::new(x)` cast to `Rc<dyn Show>` where it is made
   (`AnyValue`): an argument behind a reference and an array's element are not coerced.
 - **A module's lowercase declaration written qualified** (`Words.base`) is parsed as a
@@ -697,7 +712,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
     definition being lowered, an impl's method by its place, `InstanceKey`): a use
     with closed types gives them; a use in another generic definition's body gives
     them at each of that one's own, however deep, a definition's uses of itself at
-    other types included (`InstanceUses`, `?GrowInstances`); an impl's method has the
+    other types included (`InstanceUses`, `GrowInstances`); an impl's method has the
     types its impl's head takes wherever a constraint is solved by that impl (the
     checker's `ImplNote`s; `ImplTargets`, which follows the impl's own bounds), and a
     default the impl leaves unwritten has the type. A trait method with type
@@ -707,7 +722,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the types the name's type gives the method's own (`DefinitionRigids` counts both;
     `ImplTargets` leaves such a method out). Only the definitions that can
     reach the one asked for are followed (`RelevantDefinitions`). The fixed point has
-    no count (`GrowsFrom`). Each instantiation keeps the use by name that gave it
+    no count (`?GrowsFrom`), and says why it has no list where it has none
+    (`InstancesAnswer`). Each instantiation keeps the use by name that gave it
     (`Instantiation.?step`: its type parameters as types over its parent's). Where a
     new instantiation's line of parents holds the same definition and every step
     between is a use by name, the steps make one substitution over the definition's
@@ -725,10 +741,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
     (`?OpenWidgetBlueprintValue`: prism_rtl's `type_key` of each against the
     instantiation's types; two instantiations of one target type are one choice); the
     arguments are read at the function's own types and are the row's by the choice
-    made (`recast`). A function the program never uses chooses nothing. Where the
-    program gives the definition no finite set of types (a function that calls itself
-    at `[a]` for `a`), or a use leaves a type parameter undecided, the reading is
-    refused (`OpenWidgetValueWords`).
+    made (`recast`). A function the program never uses chooses nothing. A line of uses
+    by name that grows without end (a function that calls itself at `[a]` for `a`) is
+    the checker's `grows-without-end` (ruling PG; `GrowthCheck` in prismc/check/mod.prism
+    walks the uses by name from each definition with type parameters, composing the
+    same substitutions over the definitions, not over the program's instantiations),
+    so the fixed point's stop at one is an internal error (`EndlessByName`). Where a
+    line through an impl's constraint or an associated type has no finite set of types
+    the lowering can find (`EndlessThroughImpl`), or a use leaves a type parameter
+    undecided (`UndecidedParameter`), the reading is refused (`OpenWidgetValueWords`).
   - A generic widget read inside a generalized `let` or a generalized local function,
     at that one's own type variable, has rows for each instantiation the `let`'s uses
     give the variable (`AtLetInstantiations`); the `let` is lowered at each
@@ -1085,6 +1106,20 @@ it make every program an interpreter run, and every type mistake a runtime fault
   pushes are the child place's. Each firing of an event field is the place's request:
   out to the World, or in a hosted scope a request of the enclosing host's child
   (`HostOf::request_from`).
+- **A row under a hosted child reaches the host with its own path before every place it
+  names** (`prism_rtl::host_under`, `UnderItsPath`). A row of the child's `for`, a
+  generation of its `rebuild`, and a row numbered from 0 where a widget's value is
+  applied each name their places by paths relative to the row, and the host knows a
+  child place by its path relative to the child. The row's `build` begins with `let
+  enclosing = prism_rtl::host_under(enclosing, &path)`: a `HostOf` that joins the row's
+  path before the place in `first_value`, `request_from` and `deliver`, and hands
+  `supplier`, `scope` and `moved` through. A row under a row joins its own path before
+  the outer row's, so a place is named whole however deep it stands, a first value is
+  asked once at the place's whole path, and an element with an event field under a
+  `rebuild`'s generation or a building `match`'s arm asks through `request_from`. An arm
+  of a building `match` or `if` is numbered in its block's places and built at its
+  block's path: it takes its block's host as it is. A row at the empty path gets the host
+  itself.
 - **A request rises host by host.** A hosted place's request goes to its host's row
   (`Host::request`), which the live element's event fields hear; a row that forwards the
   element hands it on as the host's own at `0` under the row, to the World or to the
@@ -1437,7 +1472,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A program's own `impl ^Show`** → `p.raw(&text)`.
 - **`derive ^Pod`** (and every type that crosses to a World) → `impl rt::ToPod`,
   `impl rt::FromPod`; a type with its own `^Show` crosses as `Pod::Shown(text, structure)`,
-  so a key prints `0/[e2]/0` and still matches structurally.
+  so a key prints `0/[e2]/0` and still matches structurally. A type parameter that a
+  map's key holds, in a field or in a type a field names at it (`TyDef.keyed`,
+  `KeyedParameters`: `type Roster k v = choice: Listed (k ==> v)`), is bounded by `Ord`
+  in the type's `Show`, `ToPod` and `FromPod` impls (`BoundedKeyed`), as prism_rtl's
+  impls for `Map` want; C++'s templates take the key's order where they use it.
 - **`Show x`** → `rt::show_text(&x)`.
 - **The transcript** is the Test World printing the `Pod`s it receives with the same
   printer, in Conformance ch. 1's sections.

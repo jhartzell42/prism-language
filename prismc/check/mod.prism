@@ -90,13 +90,180 @@ fn CheckProgram srcs, trees, world, shown, recording, unused, pre:
     # list keys each by where its impl stands (`OwnKey`).
     let good = Filter g1.defs, \|d| not (HasText failed, (OwnKey d).qk)
     let ((st4, refs)) = ShrinkCheck g1, st3, good
-    let ((rootRow, st5)) = RootRow g1, st4, world
+    let ((rootRow, st5)) = RootRow g1, (GrowthCheck g1, st4, good), world
     let warnings = if unused: UnusedDefs good, refs, shown else: [[]]
     let reached = TestOnlyReached srcs, g1.defs, refs
     let diags = SortDiags (Append (Append (Append (Filter st5.diags, \|d| d.file < shown), warnings), pre), reached)
     let text = Concat (Each diags, \|d| RenderCDiag srcs, d)
     let typed = if recording: TypedOf g1, st5, shown else: emptyTyped
     Report(text=text, errors=(Len (Filter diags, \|d| not (IsWarning d))), rootRow=rootRow, typed=typed)
+
+# ---------------------------------------------------------------------------------------
+# The growth check (ruling PG; Type System ch. 2, recursion at another type)
+# ---------------------------------------------------------------------------------------
+
+# One step of a walk of the growth check: the definition reached, each of its type
+# parameters as the use that reached it wrote it (a type over the type parameters of the
+# definition one step above), and the use's place.
+type GrowthStep = record:
+    definition: Text
+    types: [((Text, Ty))]
+    place: Text
+derive ^Eq, ^Show
+
+# What a walk has so far: the checker's state, the endless lines already reported (each
+# by the places of its uses), and the definitions reached from the walk's start, each
+# with its type parameters over the start's.
+type GrowthFound = record:
+    st: St
+    reported: [Text]
+    seen: (Text ==> Bool)
+derive ^Eq, ^Show
+
+# A definition that reaches itself by name at types that grow without end is
+# `grows-without-end` (ruling PG): `fn Depth xs, more: .. Depth [[xs]], less` wants
+# `Depth` at `[a]`, `[[a]]`, and so on, and no finite set of types holds them all.
+# Recursion at another type that reaches finitely many types is legal (Type System ch. 2).
+#
+# From each function, widget or `let` with type parameters, the uses by name in its body
+# are followed, and those in the bodies they name, each step a substitution: the named
+# definition's type parameters as types over the parameters of the one the use stands in.
+# Where a walk reaches a definition it holds already, the steps between the two visits
+# make one substitution over that definition's own parameters, and the same steps follow
+# again from the new visit, since every use in a body is read at every set of types.
+# The line is endless exactly when the substitution gives some parameter a type other
+# than itself that holds it (`a` becomes `[a]`): each round makes that type larger. The
+# error stands at the use that closes the round.
+#
+# A walk ends without a count: it stops at an endless line, and where it reaches a
+# definition at types (over the start's parameters) it reached it at before. A walk
+# that stopped at neither for ever would reach types of unbounded depth, each layer
+# added by one step to a parameter of a definition, so some parameter of some definition
+# would be reached again from itself with a layer added between: an endless line, at
+# which the walk stops. A definition with no type parameter is not walked through: past
+# it every type is closed, and no parameter is held by what it becomes.
+#
+# A trait method's use is answered by an impl the types choose and is no use by name,
+# and a use whose types hold an associated type gives what the impl that answers it
+# says: neither is a step of a walk, and the lowering refuses a line that grows through
+# one (claude/refusals.md).
+GrowthCheck: unbounded fn G, St, [Def] -> St
+fn GrowthCheck g, st, defs:
+    let generic = Fold defs, {}, \|m, d| match g.vals[d.qk]:
+        ? v: if (IsGenericUse v) and IsNamedDef d: Insert m, d.qk, v.scheme.qs else: m
+        nil: m
+    let usesBy = Fold st.genericUses, {}, \|m, noted|
+        # (a use whose types hold an associated type is no step of a walk)
+        if (HasKey generic, noted.user) and (HasKey generic, noted.target) and not (Fold noted.types, False, \|found, ((ignore, t))| found or HoldsAssociatedType (Zonk st, t)):
+            let read = update noted:
+                &_.types <= Each &_.types, \|((q, t))| ((q, (FlexNamed (Zonk st, t))))
+            Insert m, noted.user, (Push (Or m[noted.user], [[]]), read)
+        else: m
+    let found = Fold (Keys generic), GrowthFound(st=st, reported=[[]], seen={}), \|sofar, start|
+        let own = Each (Or generic[start], [[]]), \|q| ((q, (TyRigid q)))
+        let fresh = update sofar:
+            &_.seen <= Insert {}, "{start} {Show own}", True
+        GrowthWalk usesBy, [[GrowthStep(definition=start, types=own, place="")]], start, own, fresh
+    found.st
+
+# A function, a widget or a `let` by its own name, which a use by name reaches.
+IsNamedDef: fn Def -> Bool
+fn IsNamedDef d = match d.body:
+    DbFn ignore: True
+    DbWidget ignore: True
+    DbLet ignore: True
+    otherwise: False
+
+# A type as a definition's body holds it, each variable that stayed open by the name a
+# generalized `let` gives it as a type parameter (`Generalize`: `'N`), so a top-level
+# `let` with no signature is walked through as a signed definition is.
+FlexNamed: unbounded fn Ty -> Ty
+fn FlexNamed t = match t:
+    TyFlex n: TyRigid "'{n}"
+    TyCon n, args: TyCon n, (Each args, \|a| FlexNamed a)
+    TyFn c, ps, r: TyFn c, (Each ps, \|a| FlexNamed a), (FlexNamed r)
+    TyTuple ts: TyTuple (Each ts, \|a| FlexNamed a)
+    TyArray e: TyArray (FlexNamed e)
+    TyMap k, v: TyMap (FlexNamed k), (FlexNamed v)
+    TySig s, i: TySig s, (FlexNamed i)
+    TyAt i, rw: TyAt (FlexNamed i), rw
+    TyElem rw, o: TyElem rw, (FlexNamed o)
+    TyAssoc tr, n, a: TyAssoc tr, n, (FlexNamed a)
+    other: other
+
+# Whether a type holds an associated type, which stands for another type once its
+# argument is known: what a use gives through one grows or not by the impl that
+# answers, and a walk says nothing of it.
+HoldsAssociatedType: unbounded fn Ty -> Bool
+fn HoldsAssociatedType t = match t:
+    TyAssoc ignore, ignore, ignore2: True
+    TyCon ignore, args: Fold args, False, \|found, a| found or HoldsAssociatedType a
+    TyFn ignore, ps, r: Fold ps, (HoldsAssociatedType r), \|found, a| found or HoldsAssociatedType a
+    TyTuple ts: Fold ts, False, \|found, a| found or HoldsAssociatedType a
+    TyArray e: HoldsAssociatedType e
+    TyMap k, v: (HoldsAssociatedType k) or HoldsAssociatedType v
+    TySig ignore, i: HoldsAssociatedType i
+    TyAt i, ignore: HoldsAssociatedType i
+    TyElem ignore, o: HoldsAssociatedType o
+    otherwise: False
+
+# The uses by name in the body of `at`, the walk's last definition, whose type
+# parameters over the start's are `reached`: each use's definition is an endless line's
+# end (`?GrowsBack`), or reached before at the same types, or walked on from.
+GrowthWalk: unbounded fn (Text ==> [GenericUse]), [GrowthStep], Text, [((Text, Ty))], GrowthFound -> GrowthFound
+fn GrowthWalk usesBy, path, at, reached, found = Fold (Or usesBy[at], [[]]), found, \|sofar, noted|
+    let step = GrowthStep(definition=noted.target, types=noted.types, place="{noted.file}:{noted.span.start}")
+    match ?GrowsBack path, noted.types, noted.target, (Len path):
+        ? ((above, q, t)):
+            let round = Push (Drop path, (above + 1)), step
+            let line = Join (SortTexts (Each round, \|s| s.place)), " "
+            if HasText sofar.reported, line: sofar
+            else:
+                let through = Fold round, [[]], \|acc, s| if s.definition == noted.target or HasText acc, "`{BareName s.definition}`": acc else: Push acc, "`{BareName s.definition}`"
+                let way = if (Len through) == 0: "" else: " through {Join through, ", "}"
+                update sofar:
+                    &_.reported <= Push &_.reported, line
+                    &_.st <= AddDiag &_.st, (Diag0 "grows-without-end", noted.file, noted.span, "`{BareName noted.target}` calls itself{way} at `{ShowTy sofar.st, t}` for `{q}`: a type that grows without end")
+        nil:
+            let now = Each noted.types, \|((q, t))| ((q, (SubstRigids reached, t)))
+            let reachedAt = "{noted.target} {Show now}"
+            if HasKey sofar.seen, reachedAt: sofar
+            else:
+                let marked = update sofar:
+                    &_.seen <= Insert &_.seen, reachedAt, True
+                GrowthWalk usesBy, (Push path, step), noted.target, now, marked
+
+# Whether a use that gives `target`'s type parameters the types `composed` (over the
+# parameters of the definition at `path`'s entry below `below`) ends an endless line:
+# the nearest entry above that holds `target` with a parameter grown between the two,
+# with the parameter and what it became.
+?GrowsBack: unbounded fn [GrowthStep], [((Text, Ty))], Text, Nat -> ?((Nat, Text, Ty))
+fn ?GrowsBack path, composed, target, below = match below -? 1:
+    nil: nil
+    ? at: match path[at]:
+        nil: nil
+        ? above:
+            let grown = if above.definition == target: Filter composed, \|((q, t))| t != (TyRigid q) and RigidIn q, t else: [[]]
+            match grown[0]:
+                ? ((q, t)): ? ((at, q, t))
+                nil: ?GrowsBack path, (Each composed, \|((q, t))| ((q, (SubstRigids above.types, t)))), target, at
+
+# A type with each type parameter named in `by` replaced by its type there, all at once.
+SubstRigids: unbounded fn [((Text, Ty))], Ty -> Ty
+fn SubstRigids by, t = match t:
+    TyRigid n: match (Filter by, \|((q, ignore))| q == n)[0]:
+        ? ((ignore, to)): to
+        nil: t
+    TyCon n, args: TyCon n, (Each args, \|a| SubstRigids by, a)
+    TyFn c, ps, r: TyFn c, (Each ps, \|a| SubstRigids by, a), (SubstRigids by, r)
+    TyTuple ts: TyTuple (Each ts, \|a| SubstRigids by, a)
+    TyArray e: TyArray (SubstRigids by, e)
+    TyMap k, v: TyMap (SubstRigids by, k), (SubstRigids by, v)
+    TySig s, i: TySig s, (SubstRigids by, i)
+    TyAt i, rw: TyAt (SubstRigids by, i), rw
+    TyElem rw, o: TyElem rw, (SubstRigids by, o)
+    TyAssoc tr, n, a: TyAssoc tr, n, (SubstRigids by, a)
+    other: other
 
 # The typed output: every recorded type followed to its end, and the scheme of every
 # top-level definition of the program's own files.
@@ -127,6 +294,7 @@ fn TopLets g, st:
             let env = DefEnv gg, d
             let s0 = update s:
                 &_.file <= d.file
+                &_.definition <= d.qk
                 &_.level <= 1
                 &_.localNext <= 0
             let pre = (Or gg.vals[d.qk], dummyVal).scheme.ty
@@ -165,8 +333,10 @@ CheckDef: unbounded fn G, St, Def -> St
 fn CheckDef g, st, d:
     let env = DefEnv g, d
     let inclsBefore = Len st.incls
+    let own = (OwnKey d).qk
     let s0 = update st:
         &_.file <= d.file
+        &_.definition <= own
         &_.level <= 1
         &_.localNext <= 0
         &_.color <= CBound
