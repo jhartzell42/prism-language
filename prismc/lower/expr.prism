@@ -1845,9 +1845,24 @@ fn ElementValue lx, env, tg, args:
     if (Len missing) > 0: VlOwned (InternalBug "an element value ({tg.name}) without its field `{Or (Each missing, \|i| NameAt i)[0], ""}`"), t
     else: VlOwned (XBlock lets, value), t
 
+LetCall: unbounded fn Lx, Env, Text, [Arg], Range, OutTy -> Vl
+fn LetCall lx, env, qk, args, cspan, t:
+    let f = LetValue lx, qk, cspan, (OutTyOf lx, (Peel (TypeAt lx, cspan)))
+    match ValueTy f:
+        OutJobFn ignore, ignore2: VlOwned (XCall (HelperRef "run_to_end"), [[(StartCall f, (StartArgs lx, env, f, args))]]), t
+        otherwise: VlOwned (XApply (Ref f), (Each args, \|a| ValueArgument lx, env, a.value)), t
+
 # A call of a global: a constructor, a trait method, a prelude function, a program's own.
 GlobalCall: unbounded fn Lx, Env, Text, [Arg], Range, Range, OutTy -> Vl
 fn GlobalCall lx, env, qk, args, span, cspan, t:
+    # a program's top-level `let` that is a function, called: its getter's value applied,
+    # as a local function value is
+    let programLet = Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and d.home != "Prelude" and IsLetDef d)
+    if programLet and not (HasKey lx.g.ctors, qk): LetCall lx, env, qk, args, cspan, t
+    else: DeclaredCall lx, env, qk, args, span, cspan, t
+
+DeclaredCall: unbounded fn Lx, Env, Text, [Arg], Range, Range, OutTy -> Vl
+fn DeclaredCall lx, env, qk, args, span, cspan, t:
     match lx.g.ctors[qk]:
         ? c: CtorApp lx, env, c, args, span
         nil: match lx.g.vals[qk]:

@@ -61,9 +61,21 @@ fn InModuleAt lx, file, home, site = update lx:
 # The whole program as a model: one Rust module per Prism module (the prelude's is the
 # template's own), a node per root widget (the ones the tests name and `@main`), every
 # other widget inlined where it is applied.
+# The program's names with each top-level `let` that has no signature at the scheme the
+# checker inferred for it (the typed program's `defs`): a generalized one's type
+# variables are its getter's type parameters (`LetGetter`).
+WithInferredLets: unbounded fn G, TProgram -> G
+fn WithInferredLets g, tp:
+    let schemes = Fold tp.defs, {}, \|m, n| Insert m, n.name, n.scheme
+    Fold g.defs, g, \|sofar, d| match ((d.body, schemes[d.qk])):
+        ((DbLet ignore, ? scheme)): if HasKey sofar.vals, d.qk: sofar else: update sofar:
+            &_.vals <= Insert &_.vals, d.qk, ValInfo(qk=d.qk, scheme=scheme, sort="let", hasSig=False, home=d.home, file=d.file, span=d.span)
+        otherwise: sofar
+
 LowerProgram: unbounded fn [Src], [Module], Nat, TProgram, Text -> Model
 fn LowerProgram srcs, trees, shown, tp, name:
-    let ((g, ignore)) = BuildG srcs, trees
+    let ((declared, ignore)) = BuildG srcs, trees
+    let g = WithInferredLets declared, tp
     let ((tys, apps, bs, ims)) = TypedTables tp
     let gens = Fold tp.gens, {}, \|m, n| Insert m, (AtKey n.at), n
     let insts = Fold tp.insts, {}, \|m, n| Insert m, (InstKey n), (Push (Or m[InstKey n], [[]]), n)
