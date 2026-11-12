@@ -155,7 +155,7 @@ fn InferWidgetBlockAt env, st, b, ?expected:
         match ?r2:
             ? t: ((en2, s2, ? t))
             nil: ((en2, s2, ?r))
-    let st4 = BlockPromptCycles env3, st3, b
+    let st4 = BlockPlaceCycles env3, (BlockPromptCycles env3, st3, b), b
     let st5 = if st4.recording: NoteGroup st4, b.span, "widget", (DepOrder b.stmts) else: st4
     (((Or ?res, tUnit), st5))
 

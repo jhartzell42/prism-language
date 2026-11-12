@@ -148,3 +148,39 @@ This page says how it reads a `for`'s row and a widget function's function param
   the check assume the worst for an undeclared parameter and close it: a change to the
   language and to the hosting library's signatures.
 - The alternative, the worst for every line and every call, refuses `@InMemoryOrdered`.
+
+## A place whose position reads its own answer
+
+- `BlockPlaceCycles` runs beside the prompt-cycle check, on the same block, and reports
+  `place-cycle` at the place's line.
+- What it is for: places are counted as they are built, in line order, and a place's
+  supplier is handed the place's path. A line above a place that builds a different
+  number of places by a plain part of that place's own answer makes the path read the
+  answer the supplier gives at that path
+  (`tests/checker/neg/sem-ch09-host-place-position-reads-own-answer`):
+
+  ```prism
+  w <- @Wide port                          # `fn @Wide 7:` two labels; `fn @Wide k:` one
+  ((port, !rx, $peers)) <- Pad.Socket(address="chat:7000")
+  ```
+
+- A place line: a bind of an element tag's construction; its plain names are the ones
+  read (`port`; `!rx` and `$peers` are wired, not read at the build).
+- The lines above it that count, each a building choice that picks its arm by the plain
+  name, read through the block's plain `let`s:
+  - a call of a program's widget function of several clauses, where the name is read by
+    an argument at a parameter some clause matches refutably (a literal, `nil`, `? x`, an
+    array pattern, a constructor of a type with several);
+  - a building `match` whose scrutinee reads it, a building `if` whose condition does.
+- The error needs two arms whose widths are known and differ (`Width`):
+  - a `let`, a hold, a declaration and the result line `@ value` take no place; an
+    element tag's construction takes one; a call of a program's widget function takes its
+    clauses' one known width;
+  - a `for`, a `rebuild`, a nested building choice, a blueprint that arrives as a value or
+    a parameter, a prelude widget function and a function that applies itself have no
+    known width, and an arm with such a line never gives the error.
+- With clauses that each build one place the program is legal
+  (`tests/conformance/sem-ch09-host-late-plain-part-taken-above`).
+- The alternative, refusing every building choice above a place by the place's plain
+  part, refuses that legal program.
+- The code `place-cycle` and its wording are Claude's: the books name no such error.
