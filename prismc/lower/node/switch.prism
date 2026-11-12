@@ -733,7 +733,7 @@ fn LiveParams r0, lives = Fold lives, ((r0, emptyEnv, emptyEnv, [[]])), \|((r, b
         let getter = "{f}_value"
         let follow = "{f}_follow"
         let init = "{f}_init"
-        let followed = DoExpr (XMethod (XField (XVar "node"), follow), "follow", [[(XRef (XField (XField (XVar "node"), res), "updates")), (XRef (XVar "node")), (XPath (RefChild (SiteRef r.lx, r.node), "{f}_result_moved"))]])
+        let followed = DoExpr (XMethod (XField (XVar "node"), follow), "follow_above", [[(XRef (XField (XField (XVar "node"), res), "updates")), (XRef (XVar "node")), (XPath (RefChild (SiteRef r.lx, r.node), "{f}_result_moved")), (XPath (RefChild (SiteRef r.lx, r.node), "{f}_result_moved_above"))]])
         let r2 = update r1:
             &_.taken <= Append &_.taken, [[res, getter, follow, init, "{f}_result_moved"]]
             &_.fields <= Append &_.fields, [[((res, (OutDyn t), "`{bn}`, a `$` parameter of a widget that calls itself: the caller's dynamic")), ((follow, (OutNamed (RefRuntime "prism_rtl::Follow"), [[]]), "the subscription to `{bn}`'s update event"))]]
@@ -1887,7 +1887,7 @@ fn HeldFlatten wx, menv, x, ?bound:
             let follow = "{name}_follow"
             let ofollow = "{name}_ofollow"
             let innerNow = XMethod (XMethod (XField (XVar "node"), inner), "get", [[XCx]]), "expect", [[(XStr "`@Flatten` adopts its first inner at the build")]]
-            let followed = DoExpr (XMethod (XField (XVar "node"), follow), "follow", [[(XRef (XField innerNow, "updates")), (XRef (XVar "node")), (XPath (RefChild (SiteRef wx.lx, wx.node), "{name}_moved"))]])
+            let followed = DoExpr (XMethod (XField (XVar "node"), follow), "follow_above", [[(XRef (XField innerNow, "updates")), (XRef (XVar "node")), (XPath (RefChild (SiteRef wx.lx, wx.node), "{name}_moved")), (XPath (RefChild (SiteRef wx.lx, wx.node), "{name}_moved_above"))]])
             let ofollowed = DoExpr (XMethod (XField (XVar "node"), ofollow), "follow", [[(XRef (XField (XField (XVar "node"), dyn), "updates")), (XRef (XVar "node")), (XPath (RefChild (SiteRef wx.lx, wx.node), "{name}_outer_moved"))]])
             let sample = XMethod (XMethod (XMethod (XField XSelf, "{inner}"), "get", [[XCx]]), "expect", [[(XStr "`@Flatten` adopts its first inner at the build")]]), "sample", [[XCx]]
             let followTy = OutNamed (RefRuntime "prism_rtl::Follow"), [[]]
@@ -1924,7 +1924,7 @@ fn EntryFlatten wx, t, ?bound:
         otherwise: FreshName wx, "flatten"
     let inner = "{name}_inner"
     let follow = "{name}_follow"
-    let followed = DoExpr (XMethod (XField (XVar "node"), follow), "follow", [[(XRef (XField (XMethod (XVar "node"), "entry", [[XCx]]), "updates")), (XRef (XVar "node")), (XPath (RefChild (SiteRef wx.lx, wx.node), "{name}_moved"))]])
+    let followed = DoExpr (XMethod (XField (XVar "node"), follow), "follow_above", [[(XRef (XField (XMethod (XVar "node"), "entry", [[XCx]]), "updates")), (XRef (XVar "node")), (XPath (RefChild (SiteRef wx.lx, wx.node), "{name}_moved")), (XPath (RefChild (SiteRef wx.lx, wx.node), "{name}_moved_above"))]])
     let sample = XMethod (XMethod (XMethod (XField XSelf, "{inner}"), "get", [[XCx]]), "expect", [[(XStr "`@Flatten` adopts its first inner at the build")]]), "sample", [[XCx]]
     let wx2 = update wx1:
         &_.taken <= Append &_.taken, [[inner, follow, "{name}_adopt", "{name}_moved", "{name}_replaced"]]

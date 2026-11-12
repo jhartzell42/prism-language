@@ -373,7 +373,7 @@ fn AppliedBlueprintLine wx, e, blueprint:
         # the dynamic the blueprint gives is kept as a generation's dynamic result is
         # (`KeptDyn`), and the node follows its update event: each firing marks what
         # reads it (`{name}_result_moved`)
-        let keeps = if dynamic: [[(DoExpr (XMethod (XField XSelf, follow), "follow", [[(XRef (XField (XVar "given"), "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef lx, wx.node), "{name}_result_moved"))]])), (DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XVar "given")]]))]] else: if answered: [[(DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(FirstAnswerTaken lx, outTy, "answered")]]))]] else: [[]]
+        let keeps = if dynamic: [[(DoExpr (XMethod (XField XSelf, follow), "follow_above", [[(XRef (XField (XVar "given"), "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef lx, wx.node), "{name}_result_moved")), (XPath (RefChild (SiteRef lx, wx.node), "{name}_result_moved_above"))]])), (DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XVar "given")]]))]] else: if answered: [[(DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(FirstAnswerTaken lx, outTy, "answered")]]))]] else: [[]]
         let select = WithRowBase wx, "self", pos, (XBlock (Append (Append (Append hearer, [[(DoLet made, applied)]]), keeps), (GapSet name, (? gap))), (XVar "row"))
         let wx3 = update wx2:
             &_.pos <= Pos(scope=pos.scope, at=pos.at + wideGeneration)
@@ -512,7 +512,7 @@ fn AppliedPart wx, name, t, read, whole, place = match t:
                     &_.fields <= Push &_.fields, ((follow, (OutNamed (RefRuntime "prism_rtl::Follow"), [[]]), "the subscription to the update event of a dynamic part of the bundle the blueprint value gives"))
                     &_.moves <= Push &_.moves, ((follow, (XCall (RefRuntime "prism_rtl::Follow::new"), [[]])))
                 let ((w2, res)) = KeptDyn w1, part, dt, [[]]
-                let wiring = [[(DoExpr (XMethod (XField XSelf, follow), "follow", [[(XRef (XField whole, "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef lx, wx.node), "{part}_result_moved"))]])), (DoAssign (XDeref (XMethod (XField XSelf, "{part}_res"), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XClone whole)]]))]]
+                let wiring = [[(DoExpr (XMethod (XField XSelf, follow), "follow_above", [[(XRef (XField whole, "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef lx, wx.node), "{part}_result_moved")), (XPath (RefChild (SiteRef lx, wx.node), "{part}_result_moved_above"))]])), (DoAssign (XDeref (XMethod (XField XSelf, "{part}_res"), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XClone whole)]]))]]
                 ((w2, res, wiring))
             # a plain part: read from the kept value, late
             otherwise: ((wx, (WrLate (XClone read), (OutTyOf lx, t)), [[]]))

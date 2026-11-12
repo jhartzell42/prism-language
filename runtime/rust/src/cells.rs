@@ -429,6 +429,10 @@ pub struct Port<T> {
     liens: Cell<u32>,
     kept: Stamped<T>,
     height: Cell<u32>,
+    /// The node of the runtime's own that fires the port ([`Port::owned_by`]), and that
+    /// node held while the port has a subscriber.
+    owner: RefCell<Option<std::rc::Weak<dyn Node>>>,
+    held: RefCell<Option<Rc<dyn Node>>>,
 }
 
 /// How much an output is wanted (Graph ch. 4, "Demand"). Tags are a behavior's, and the
@@ -442,7 +446,7 @@ pub enum Demand {
 
 impl<T: Clone> Default for Port<T> {
     fn default() -> Port<T> {
-        Port { subs: RefCell::new(Vec::new()), above: RefCell::new(Vec::new()), free: RefCell::new(Vec::new()), liens: Cell::new(0), kept: Stamped::new(), height: Cell::new(0) }
+        Port { subs: RefCell::new(Vec::new()), above: RefCell::new(Vec::new()), free: RefCell::new(Vec::new()), liens: Cell::new(0), kept: Stamped::new(), height: Cell::new(0), owner: RefCell::new(None), held: RefCell::new(None) }
     }
 }
 
@@ -450,7 +454,18 @@ impl<T: Clone> Port<T> {
     pub fn new() -> Port<T> {
         Port::default()
     }
+    /// The port is fired by `node`, a node nothing else need hold (`merge_all`'s, a
+    /// `Dynamic::map2`'s): the port holds it for as long as it has a subscriber, so an
+    /// event or dynamic value let go by a reader that subscribed still fires, and one let
+    /// go with no subscriber is dropped with its own subscriptions.
+    pub fn owned_by(&self, node: std::rc::Weak<dyn Node>) {
+        *self.owner.borrow_mut() = Some(node);
+    }
     pub fn subscribe(&self, f: Subscriber<T>) -> Handle {
+        if self.held.borrow().is_none() {
+            let owner = self.owner.borrow().as_ref().and_then(std::rc::Weak::upgrade);
+            *self.held.borrow_mut() = owner;
+        }
         let mut subs = self.subs.borrow_mut();
         match self.free.borrow_mut().pop() {
             Some(i) => {
@@ -470,6 +485,11 @@ impl<T: Clone> Port<T> {
             }
             self.free.borrow_mut().push(h.0);
         }
+        // the last subscriber left: the node that fires the port is let go, after every
+        // borrow of the port ended (its drop unsubscribes from its own sources)
+        let unheard = self.held.borrow().is_some() && !self.subs.borrow().iter().any(Option::is_some);
+        let released = if unheard { self.held.borrow_mut().take() } else { None };
+        drop(released);
     }
     /// Subscribe with the subscriber's height twin: the twin is told the port's height at
     /// once, and again each time the port is raised, so whatever the subscriber feeds
@@ -729,8 +749,6 @@ struct MergeNode<T: Clone + 'static> {
     out: Rc<Port<crate::collections::Array<T>>>,
     /// The merge, the node's one combinator.
     heights: Heights,
-    /// Itself: nothing else holds the node once the event value is let go ([`merge_all`]).
-    kept: RefCell<Option<Rc<MergeNode<T>>>>,
 }
 
 impl<T: Clone + 'static> Node for MergeNode<T> {
@@ -747,9 +765,16 @@ impl<T: Clone + 'static> Node for MergeNode<T> {
 
 /// The event `!MergeAll events` (Semantics Appendix B): its node woken above the height of
 /// every event of the list, so it fires once in a tick, after each of them had its turn;
-/// its own port fires at that height. Owned by the event.
+/// its own port fires at that height. The event value holds the node, and so does the
+/// node's port while it has a subscriber ([`Port::owned_by`]): a reader that subscribes and
+/// lets the event value go still hears it, and when the last subscriber leaves (a
+/// `MergeList` or a `Listen` dropped, a row that unsubscribes) the node is dropped and its
+/// list unsubscribes from every event of it.
 pub fn merge_all<T: Clone + 'static>(events: &crate::collections::Array<Event<T>>) -> Event<crate::collections::Array<T>> {
-    let node = Rc::new(MergeNode { list: MergeList::new(), out: Rc::new(Port::new()), heights: Heights::new(vec![1]), kept: RefCell::new(None) });
+    let node = Rc::new(MergeNode { list: MergeList::new(), out: Rc::new(Port::new()), heights: Heights::new(vec![1]) });
+    let weak = Rc::downgrade(&node);
+    let fired_by: std::rc::Weak<dyn Node> = weak;
+    node.out.owned_by(fired_by);
     node.out.raise(node.heights.of(0));
     node.list.listen_above(
         events,
@@ -761,10 +786,6 @@ pub fn merge_all<T: Clone + 'static>(events: &crate::collections::Array<Event<T>
             }
         },
     );
-    // the list hears into the node weakly, and a reader subscribes to the event's port and
-    // lets the event value go: the node keeps itself, as a mapped event's subscription
-    // keeps its closure, for as long as its inputs' ports live
-    *node.kept.borrow_mut() = Some(node.clone());
     let port = node.out.clone();
     Event { owner: Some(node), port }
 }
@@ -804,15 +825,68 @@ impl<T: Clone + 'static> Dynamic<T> {
     }
     /// The dynamic `f` of this one and `other` (a lift over two dynamics in a function that
     /// takes them whole, Type System ch. 4): read from both; its update event fires, once a
-    /// tick, when either moves.
+    /// tick, when either moves, from a node of its own woken above both update events
+    /// ([`MovedEither`]), so `!Updated` of it fires after both were written.
     pub fn map2<U: Clone + 'static, V: 'static>(&self, other: &Dynamic<U>, f: impl Fn(&T, &U) -> V + 'static) -> Dynamic<V> {
         let (a, b) = (self.read.clone(), other.read.clone());
-        let merged: Rc<Port<()>> = Rc::new(Port::new());
+        let node = Rc::new(MovedEither { out: Rc::new(Port::new()), heights: Heights::new(vec![1]), sources: RefCell::new(Vec::new()), owners: (self.owner.clone(), other.owner.clone()) });
+        let weak = Rc::downgrade(&node);
+    let fired_by: std::rc::Weak<dyn Node> = weak;
+        node.out.owned_by(fired_by);
+        node.out.raise(node.heights.of(0));
         for src in [&self.updates, &other.updates] {
-            let out = merged.clone();
-            src.subscribe(Rc::new(move |_: &(), cx: &mut Cx| if out.kept(cx).is_some() { Ok(()) } else { out.fire((), cx) }));
+            let (heard, told) = (Rc::downgrade(&node), Rc::downgrade(&node));
+            let h = src.subscribe_above(
+                Rc::new(move |_: &(), cx: &mut Cx| {
+                    if let Some(n) = heard.upgrade() {
+                        n.heights.ask(0, cx, n.clone());
+                    }
+                    Ok(())
+                }),
+                Rc::new(move |h| {
+                    if let Some(n) = told.upgrade() {
+                        if let Some(moved) = n.heights.above(0, h) {
+                            n.out.raise(moved);
+                        }
+                    }
+                }),
+            );
+            node.sources.borrow_mut().push((src.clone(), h));
         }
-        Dynamic { owner: None, read: Rc::new(move |cx| f(&a(cx), &b(cx))), updates: merged }
+        let updates = node.out.clone();
+        Dynamic { owner: Some(node), read: Rc::new(move |cx| f(&a(cx), &b(cx))), updates }
+    }
+}
+
+/// The update event of a lift over two dynamics ([`Dynamic::map2`]): a node that hears both
+/// sources' update events and, woken above both, fires its own once in the tick. It holds
+/// the sources' owners, and is held by the dynamic and by its port while that has a
+/// subscriber ([`Port::owned_by`]); dropped, it unsubscribes from both sources, so a lift
+/// made, sampled and let go (an event value that samples two dynamics at each firing)
+/// leaves nothing behind.
+struct MovedEither {
+    out: Rc<Port<()>>,
+    /// The node's one combinator.
+    heights: Heights,
+    sources: RefCell<Vec<(Rc<Port<()>>, Handle)>>,
+    #[allow(dead_code)]
+    owners: (Option<Rc<dyn Node>>, Option<Rc<dyn Node>>),
+}
+
+impl Node for MovedEither {
+    fn wake(self: Rc<Self>, cx: &mut Cx) -> crate::cx::Done {
+        if self.heights.next(cx).is_none() || self.out.kept(cx).is_some() {
+            return Ok(());
+        }
+        self.out.fire((), cx)
+    }
+}
+
+impl Drop for MovedEither {
+    fn drop(&mut self) {
+        for (port, h) in self.sources.borrow_mut().drain(..) {
+            port.unsubscribe(h);
+        }
     }
 }
 

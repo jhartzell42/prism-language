@@ -1111,14 +1111,18 @@ pub fn apply_blueprint_dynamic<T: Clone + 'static>(blueprint: &::prism_rtl::Blue
     let updates: Rc<::prism_rtl::Port<()>> = Rc::new(::prism_rtl::Port::new());
     let take = Rc::new(take);
     let (held, fired, taken) = (cell.clone(), updates.clone(), take.clone());
-    let sink: ::prism_rtl::Sink<crate::Answer> = ::prism_rtl::Sink::new(move |answer: &crate::Answer, cx: &mut Cx| {
+    // an answer delivered inside a tick at a height (the sink's twin told it) writes the
+    // dynamic at that height: its update port is raised with it; an answer delivered as
+    // a tick opens tells nothing
+    let raised = updates.clone();
+    let sink: ::prism_rtl::Sink<crate::Answer> = ::prism_rtl::Sink::heard_above(move |answer: &crate::Answer, cx: &mut Cx| {
         let v = taken(answer)?;
         match held.borrow().as_ref() {
             Some(hold) => hold.set(v, cx),
             None => return Err(Fault::answer("a blueprint value that gives a dynamic was answered before its build ended".to_string())),
         }
         fired.fire((), cx)
-    });
+    }, Rc::new(move |h| raised.raise(h)));
     let supplied = blueprint(path, sink.clone(), &applied_scope(hosted), base, cx)?;
     let built = supplied.built;
     // a widget's dynamic result, held whole: the line's dynamic is the widget's own
@@ -1645,15 +1649,20 @@ pub fn error_of(kind: &Pod, message: Text) -> Error {
 
 /// `!Updated $d` as an event value (in a supplier's answer, or in a function that takes
 /// the dynamic whole): it fires `d`'s value after the tick, in the tick `d`'s update event
-/// fires (Semantics ch. 7, R3).
+/// fires (Semantics ch. 7, R3). The event fires at the height the update event does: its
+/// port is raised with it, so a combinator that hears it sits above the write.
 pub fn updated<T: Clone + 'static>(d: &Dynamic<T>) -> Event<T> {
     let port = ::std::rc::Rc::new(Port::new());
     let out = port.clone();
+    let raised = port.clone();
     let read = d.clone();
-    d.updates.subscribe(::std::rc::Rc::new(move |_: &(), cx: &mut Cx| {
-        let v = cx.after(|at| read.sample(at));
-        out.fire(v, cx)
-    }));
+    d.updates.subscribe_above(
+        ::std::rc::Rc::new(move |_: &(), cx: &mut Cx| {
+            let v = cx.after(|at| read.sample(at));
+            out.fire(v, cx)
+        }),
+        ::std::rc::Rc::new(move |h| raised.raise(h)),
+    );
     Event { owner: None, port }
 }
 

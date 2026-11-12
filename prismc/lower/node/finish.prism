@@ -202,9 +202,15 @@ fn CombinatorAbove sk, g, h = [[(DoExpr (XMethod (XField XSelf, "heights"), "rai
 HoldAbove: fn Sinks, Text, Ex -> [Do]
 fn HoldAbove sk, f, h = Append (Fold sk.wx.rowMarks, [[]], \|acc, rm| Append acc, (RowAbove sk.wx, rm, (OwnRead f), h)), (MovedAbove sk, (OwnRead f), h)
 
-# The twin of `MovedBy`: the `!Updated` nodes over a read written at global height `h`.
+# The twin of `MovedBy`: the `!Updated` nodes over a read written at global height `h`,
+# and the update port of each dynamic over it that the node hands to another node (a
+# dynamic answer, a dynamic passed whole, a row's dynamic result), raised to `h`: what
+# follows that port elsewhere sits above the write.
 MovedAbove: fn Sinks, Read, Ex -> [Do]
-fn MovedAbove sk, r, h = Fold (Filter sk.wx.gns, \|g| Moves r, g), [[]], \|acc, g| Append acc, (CombinatorAbove sk, g, h)
+fn MovedAbove sk, r, h:
+    let combinators = Fold (Filter sk.wx.gns, \|g| Moves r, g), [[]], \|acc, g| Append acc, (CombinatorAbove sk, g, h)
+    let answers = Each (Filter sk.wx.dynAnswers, \|((ignore, rds))| HasRead (ReadsClosed sk.wx.dynReads, rds), r), \|((name, ignore))| DoExpr (XMethod (XField XSelf, "{name}_port"), "raise", [[h]])
+    Append combinators, answers
 
 # The twin of `RowWritten`: the rows that hear a write of the block at global height `h`
 # are told it through the block's port for that name, raised: a `for`'s row, a
@@ -412,6 +418,13 @@ fn FinishNode wx0, qk, params, isRow:
 IsGeneration: fn Wx, Text -> Bool
 fn IsGeneration wx, name = (Len (Filter wx.gens, \|gd| gd.name == name)) > 0
 
+# The height twin of a method a `Follow` calls when a dynamic the node holds as a value
+# moved (`{name}_result_moved`, a flatten's `{name}_moved`), whose body is `HoldWritten` of
+# the pseudo-hold `held` behind it: the twin is `HoldAbove` of the same, passed to
+# `Follow::follow_above` beside the method.
+MovedTwin: fn Sinks, Text, Text -> MethDef
+fn MovedTwin sk, method, held = AboveMethod method, (HoldAbove sk, held, (XVar "h")), "the dynamic's update event fires"
+
 # The flattens' methods (`FlattenLine`, `EntryFlatten`): each adoption, the current inner
 # written as a hold is; and per `rebuild` handing back a dynamic, what its current
 # generation's result moving marks: the readers of every `@Flatten` over it, as for a write
@@ -426,11 +439,11 @@ fn FlattenMethods sk:
     # the adoption itself
     let entries = Fold (Filter wx.flattens, \|fl| fl.generation == "" and not fl.held), [[]], \|acc, fl|
         let set = DoExpr (XMethod (XField XSelf, "{fl.name}_inner"), "set", [[(XCtor (RefRuntime "std::Some"), [[(XMethod (XSelf), "entry", [[XCx]])]]), XCx]])
-        let followed = DoExpr (XMethod (XField XSelf, "{fl.name}_follow"), "follow", [[(XRef (XField (XMethod (XSelf), "entry", [[XCx]]), "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef wx.lx, wx.node), "{fl.name}_moved"))]])
+        let followed = DoExpr (XMethod (XField XSelf, "{fl.name}_follow"), "follow_above", [[(XRef (XField (XMethod (XSelf), "entry", [[XCx]]), "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef wx.lx, wx.node), "{fl.name}_moved")), (XPath (RefChild (SiteRef wx.lx, wx.node), "{fl.name}_moved_above"))]])
         let moved = MethDef(name="{fl.name}_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(HoldWritten sk, "{fl.name}_inner"), tail=(XUnit), doc="`{fl.name}`'s inner moved: what reads it reads it again.")
         let replaced = MethDef(name="{fl.name}_replaced", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Adoption fl), tail=(XUnit), doc="The `for`'s builder found another dynamic than `{fl.name}`'s inner under this row's key: the adoption is queued for the first firings of the next tick, which is owed (Semantics ch. 4).")
         let adopt = MethDef(name="{fl.name}_adopt", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Append [[set, followed]], (HoldWritten sk, "{fl.name}_inner")), tail=(XUnit), doc="`{fl.name}` adopts the dynamic under its row's key as the tick before left it, among this tick's first firings: from here on it reads that inner (Semantics ch. 4).")
-        Append acc, [[moved, replaced, adopt]]
+        Append acc, [[moved, (MovedTwin sk, "{fl.name}_moved", "{fl.name}_inner"), replaced, adopt]]
     let adopts0 = Each (Filter wx.flattens, \|fl| fl.generation != ""), \|fl|
         let set = DoExpr (XMethod (XField XSelf, "{fl.name}_inner"), "set", [[(XCtor (RefRuntime "std::Some"), [[(XMethod (XSelf), fl.outer, [[XCx]])]]), XCx]])
         MethDef(name="{fl.name}_adopt", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Append [[set]], (HoldWritten sk, "{fl.name}_inner")), tail=(XUnit), doc="`@Flatten` adopts the inner its `rebuild`'s dynamic held after the tick before, among this tick's first firings: from here on it reads that inner (Semantics ch. 7).")
@@ -439,11 +452,11 @@ fn FlattenMethods sk:
     let held = Fold (Filter wx.flattens, \|fl| fl.held), [[]], \|acc, fl|
         let innerNow = XMethod (XMethod (XField XSelf, "{fl.name}_inner"), "get", [[XCx]]), "expect", [[(XStr "`@Flatten` adopts its first inner at the build")]]
         let set = DoExpr (XMethod (XField XSelf, "{fl.name}_inner"), "set", [[(XCtor (RefRuntime "std::Some"), [[(XMethod (XField XSelf, fl.outer), "sample", [[XCx]])]]), XCx]])
-        let followed = DoExpr (XMethod (XField XSelf, "{fl.name}_follow"), "follow", [[(XRef (XField innerNow, "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef wx.lx, wx.node), "{fl.name}_moved"))]])
+        let followed = DoExpr (XMethod (XField XSelf, "{fl.name}_follow"), "follow_above", [[(XRef (XField innerNow, "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef wx.lx, wx.node), "{fl.name}_moved")), (XPath (RefChild (SiteRef wx.lx, wx.node), "{fl.name}_moved_above"))]])
         let moved = MethDef(name="{fl.name}_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(HoldWritten sk, "{fl.name}_inner"), tail=(XUnit), doc="`{fl.name}`'s inner moved: what reads it reads it again.")
         let outerMoved = MethDef(name="{fl.name}_outer_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Adoption fl), tail=(XUnit), doc="`{fl.name}`'s outer fired: the adoption is queued for the first firings of the next tick, which is owed (the Compiler seed, `@Flatten`).")
         let adopt = MethDef(name="{fl.name}_adopt", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Append [[set, followed]], (HoldWritten sk, "{fl.name}_inner")), tail=(XUnit), doc="`{fl.name}` adopts the inner its outer held after the tick before, among this tick's first firings, and fires: no dynamics are compared (ruling FV).")
-        Append acc, [[moved, outerMoved, adopt]]
+        Append acc, [[moved, (MovedTwin sk, "{fl.name}_moved", "{fl.name}_inner"), outerMoved, adopt]]
     let adopts = Append (Append adopts0, entries), held
     # a `rebuild`'s current generation's result moved: the readers of every `@Flatten` over
     # it in this node, and the update event of the dynamic the block keeps for it, which a
@@ -459,7 +472,7 @@ fn FlattenMethods sk:
         let fired = DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "d"]]), live, [[(DoExpr fire)]], [[]]
         MethDef(name="{gd.name}_result_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Push marks, fired), tail=(XUnit), doc="The current generation's result moved: what reads a `@Flatten` over it reads it again, and the dynamic kept for it fires its update event for whoever follows it outside this node.")
     # a static clause widget's dynamic result moved (`DynClauseLine`): its readers here
-    let clauseMoved = Each wx.clauseResults, \|n| MethDef(name="{n}_result_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(HoldWritten sk, "{n}_res"), tail=(XUnit), doc="A write behind the clause's dynamic result: what reads it reads it again.")
+    let clauseMoved = Fold wx.clauseResults, [[]], \|acc, n| Append acc, [[(MethDef(name="{n}_result_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(HoldWritten sk, "{n}_res"), tail=(XUnit), doc="A write behind the clause's dynamic result: what reads it reads it again.")), (MovedTwin sk, "{n}_result_moved", "{n}_res")]]
     Append (Append adopts, moved), clauseMoved
 
 IsDynTy: fn OutTy -> Bool

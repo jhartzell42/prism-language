@@ -292,9 +292,32 @@ it make every program an interpreter run, and every type mistake a runtime fault
   combinator's own twin when it moved and marks the combinator as walking meanwhile: a
   walk that reaches a combinator it is still walking from is a prompt cycle across
   nodes, and the runtime panics there with "a prismc bug", before the stack runs out.
-  No twin reaches these, where the clamp alone orders: a dynamic's update port
-  (`Dynamic::map2`, a `follow`, `updated` as an event value, a blueprint's dynamic
-  answer).
+  A dynamic's update port has its height too. A write's twin raises the update port of
+  each dynamic over the hold that the node hands to another node (`MovedAbove`: a
+  dynamic answer, a dynamic passed whole, a row's dynamic result). A node that follows a
+  dynamic it holds as a value subscribes with the twin of the method the update calls
+  (`Follow::follow_above` with `{name}_result_moved_above` or a flatten's
+  `{name}_moved_above`, which is `HoldAbove` of the pseudo-hold behind it), so the height
+  goes on to the `!Updated` nodes over it and to the update ports it feeds. `!Updated $d`
+  as an event value (`updated`) subscribes with a twin that raises its own port. A lift
+  over two dynamics (`Dynamic::map2`) has a node of its own with one combinator, above
+  both sources' update events: its update event fires once in the tick, after both were
+  written, and its port is raised with the combinator. A blueprint's dynamic answer
+  (`apply_blueprint_dynamic`) is written by its sink, whose twin raises the dynamic's
+  update port; the answers that come as a tick opens (`Cx::answer_later`, the World's)
+  tell it nothing, as they fire before the first height. So a merge of an event with
+  `!Updated` of a mapped dynamic of another node, three combinators on, decides once
+  (`tests/conformance/heights-updated-of-mapped-dynamic-across-nodes`).
+  The runtime's own nodes (`merge_all`'s, `Dynamic::map2`'s) are held by the event or
+  dynamic value and by their port while it has a subscriber (`Port::owned_by`): a reader
+  that subscribes and lets the value go still hears it; when the last subscriber
+  unsubscribes, or a value nothing subscribed to is let go, the node is dropped and
+  unsubscribes from its sources. An event value that samples two dynamics and reads its
+  firing (no `x on !e`) makes its lift at each firing and lets it go after the sample:
+  nothing stays subscribed.
+  No twin reaches these, where the clamp alone orders: a flatten's outer
+  (`{name}_outer_moved`, whose adoption lands in the next tick and needs none), and in
+  C++ `merge_all`, which is not on `Heights` there.
 - **Holds.** `$x <- init then !e` → the firing's method calls `x.set(v, cx)`; every read
   is `x.get(cx)`, before the tick during propagation and after it from then on, so the
   tag law needs no commit pass.
