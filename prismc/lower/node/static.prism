@@ -1807,8 +1807,17 @@ fn BindParam wx, cbenv, cmenv, be, me, nkey, spelled, pty, arg:
                     let rb = BnDyn (XMethod (XSelf), rs, [[XCx]]), [[OwnRead rs]], t
                     ((wx3, (Bind (Bind be0, nkey, b), "{nkey}#row", rb), (Bind (Bind me, nkey, b), "{nkey}#row", rb)))
         otherwise:
-            let ((rs, wx2)) = FreshName wx, spelled
-            let v = Own (ValueOf lx, cbenv, arg)
+            let ((rs, wx2a)) = FreshName wx, spelled
+            # a tuple written in place that holds time (`@Shows ((!counted, $n))`, a
+            # bundle; Type System ch. 2, "Bundles": a plain aggregate with its events and
+            # dynamics inside): one value with each dynamic it names the live `Dynamic`
+            # made for it, read through the node once it is made, and each event its
+            # port's (`WholeWrittenOf`, as a `rebuild`'s bundle result)
+            let ((v, wx2)) = match (Ungrouped arg).kind:
+                ETuple ignore if TimeWithin pty: match WholeWrittenOf wx2a, cbenv, cmenv, arg:
+                    (((WrPlain ex, ignore), w)): ((ex, w))
+                    ((ignore, w)): (((InternalBug "a tuple that holds time, written as a widget's argument, that is no one value"), w))
+                otherwise: (((Own (ValueOf lx, cbenv, arg)), wx2a))
             let wx3 = update wx2:
                 &_.lets <= Push &_.lets, (DoLet (PaBind rs), v)
                 &_.fields <= Push &_.fields, ((rs, t, "`{nkey}`"))
