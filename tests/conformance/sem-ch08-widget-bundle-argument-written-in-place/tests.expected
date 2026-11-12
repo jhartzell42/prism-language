@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 7, R2 (`($n + 1) on !go` fires with the tick's opening `$n` plus one) and ch. 8 (a widget function's parameters are its row's; an inlined widget adds no path segment): the click fires 1, the hold of the widget takes it, and `$n` is 1 in the same tick. Equal to the first run, on prismc-f4.
+test the_bundle_reaches_the_widget
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="0 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1 1")
