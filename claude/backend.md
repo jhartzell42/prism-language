@@ -175,6 +175,18 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `Event`s. A `$` or `!` binder of a pattern in its body names the `Dynamic` or `Event`
   itself (`RustPat`), and an application the checker lifted over one maps it
   (`EventValueOf`, `DynamicLift`).
+  A function whose only time is on top of its types is lowered lifted, over its
+  operands' values, except where its body cannot be: one with an event parameter whose
+  body gives an event whole (`GivesEventWhole`: an application the checker did not
+  lift, of a prelude function with an event parameter or of a function that takes time
+  whole, with an event argument, as in `fn !Together !some, !more = Fold (Values
+  (!Union (One 0, !some), (One 1, !more))), ..`) takes time whole too (`WholeFns`,
+  grown through callers). `!Union` decides over two events, which a body over one
+  firing's values does not have. In the body the unlifted application is the plain call
+  with each argument an event value (`union_ev(&a.map(..), &b.map(..))`), and the lifted
+  ones around it map. A block that calls such a function hears the `Event` it gives
+  through a port node (`EventObjectRef`), its event arguments the ports they fire
+  (`Event::of`).
   An event value whose expression samples a dynamic (`(ToldTo seat, $state) on !born` in
   a list `!MergeWith` takes) is the event mapped with each firing's read point
   (`Event::map_at`): the closure samples the dynamic there, so the event fires the
