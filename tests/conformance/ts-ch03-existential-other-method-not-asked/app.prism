@@ -26,6 +26,9 @@ fn Hide n = any n
 HideText: fn Text -> any ^Weighed
 fn HideText t = any t
 
+Ones: fn unit -> [Nat]
+fn Ones unit = [[1, 2]]
+
 @page: @unit
 @page:
-    Ui.Label($text=$"{Weigh (Hide 3)} {Weigh (HideText "ab")} {Total [[1, 2]]}")      # 0
+    Ui.Label($text=$"{Weigh (Hide 3)} {Weigh (HideText "ab")} {Total (Ones unit)}")   # 0
