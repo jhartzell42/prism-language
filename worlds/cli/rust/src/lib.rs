@@ -19,6 +19,12 @@
 //!   tick is performed, in document order; the first exit of a tick wins.
 //! - **`Time.After(wakes=!Wake)`** answers each wake with the same `Wake`, no sooner than
 //!   its `after`, in a later tick. `@Later` rides on it.
+//! - **`Console.Read(name)`** fires once per line of standard input, without its line end;
+//!   **`Console.Print(name, !lines)`** prints each firing's lines on standard output, each
+//!   flushed as it is written ([`console`]). With more than one terminal in the document a
+//!   line is addressed `NAME: text`, in and out. A line is handed in only when no tick is
+//!   owed and nothing else waits, so a program has answered one line before it hears the
+//!   next. At the end of the input the reads stop firing.
 //! - **`Prelude.Unwrap`, `Prelude.Exceptions`**: [`prism_rtl::world::prelude`].
 //!
 //! The exit codes (Semantics ch. 9 and ch. 10): the code `Process.Exit` asked for; 0 when
@@ -30,21 +36,23 @@
 //! The ready state reads the file system when a place asks: the ready state materialised
 //! lazily, not the "no I/O in a query" of Semantics ch. 9 to the letter.
 
+pub mod console;
 pub mod fs;
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use prism_rtl::{Document, Error, FromPod, Path, Pod, Program, ReadyState, TickIn, TickOut, ToPod, World};
 
+pub use console::Console;
 pub use fs::{FileSystem, MemFs, RealFs};
 pub use prism_rtl::world::prelude::{self, Prelude, UnwrapWorld};
 pub use prism_rtl::world::{EXIT_FAILED, EXIT_UNCHECKED};
 
 /// The families this World answers, for a root's row check.
-pub const FAMILIES: &[&str] = &["Fs", "Process", "Time", "Prelude"];
+pub const FAMILIES: &[&str] = &["Fs", "Process", "Time", "Console", "Prelude"];
 
 /// The CLI World's patience under [`run`]: unlimited unless `PRISM_PATIENCE` sets a budget
 /// (Semantics ch. 9: a budget is the World's and optional).
@@ -54,7 +62,7 @@ pub const RUN_PATIENCE: usize = usize::MAX;
 /// directory, with `args` as `Process.Args`: the exit code.
 pub fn run<P: Program>(args: Vec<String>) -> u8 {
     let root = std::env::current_dir().unwrap_or_default();
-    let mut world = CliWorld::new(RealFs { root }, args);
+    let mut world = CliWorld::new(RealFs { root }, args).with_console(Console::stdio());
     prism_rtl::drive::<P>(&mut world, &[], std::env::var("PRISM_PATIENCE").ok().and_then(|p| p.parse().ok()).unwrap_or(RUN_PATIENCE))
 }
 
@@ -110,6 +118,11 @@ pub struct CliWorld<F: FileSystem> {
     /// Each live `Fs.List` element and the listing it last heard.
     lists: BTreeMap<Pod, Pod>,
     prelude: Prelude,
+    /// The terminal `Console.Read` and `Console.Print` stand on: none answers no line and
+    /// prints nothing.
+    console: Option<Console>,
+    /// The terminals in the document as the last tick left it, and its newborns.
+    terminals: BTreeSet<String>,
     /// The last tick said another is owed: no waiting on a timer while compute is.
     pending: bool,
     exit: Option<u8>,
@@ -126,9 +139,17 @@ impl<F: FileSystem + 'static> CliWorld<F> {
             timers: Vec::new(),
             lists: BTreeMap::new(),
             prelude: Prelude::new(),
+            console: None,
+            terminals: BTreeSet::new(),
             pending: false,
             exit: None,
         }
+    }
+
+    /// Stand `Console.Read` and `Console.Print` on this terminal.
+    pub fn with_console(mut self, console: Console) -> CliWorld<F> {
+        self.console = Some(console);
+        self
     }
 
     /// Write a file, and push its new contents to every `Fs.Contents` of its path.
@@ -158,6 +179,14 @@ impl<F: FileSystem + 'static> CliWorld<F> {
                     _ => Duration::ZERO,
                 };
                 return self.timers.push((Instant::now() + after, path.clone(), value.clone()));
+            }
+            (Some("Console.Print"), _) => {
+                let (Some(name), Some(lines), Some(console)) = (console::terminal_of(element), console::lines_of(value), self.console.as_mut()) else { return };
+                if let Err(e) = console.print(&name, &lines, self.terminals.len() > 1) {
+                    eprintln!("prism: standard output failed: {e}");
+                    self.exit.get_or_insert(EXIT_FAILED);
+                }
+                return;
             }
             (Some("Fs.File"), Pod::Choice(c, _)) if &**c == "Read" => {
                 let Some(file) = text_field(element, "path") else { return };
@@ -196,6 +225,26 @@ impl<F: FileSystem + 'static> CliWorld<F> {
         }
     }
 
+    /// A line typed: an answer to each `Console.Read` of the terminal it is for. A line
+    /// that names no terminal is reported on standard error and goes nowhere.
+    fn heard(&mut self, line: String) {
+        let live = |p: &Path| !self.prelude.is_poisoned(p);
+        let terminals = console::terminals(self.doc.iter(), live);
+        let Some((terminal, text)) = console::address(&line, &terminals) else {
+            let names: Vec<&str> = terminals.iter().map(String::as_str).collect();
+            return eprintln!("prism: the line `{line}` names no terminal; write `NAME: text`, NAME one of {}", names.join(", "));
+        };
+        for reader in console::readers(&self.doc, &terminal, live) {
+            self.answers.push((reader, Pod::text(text.as_str())));
+        }
+    }
+
+    /// A line may still come for a live `Console.Read`.
+    fn console_waits(&self) -> bool {
+        self.console.as_ref().is_some_and(Console::reading)
+            && self.doc.iter().any(|(p, e)| e.tag() == Some("Console.Read") && !self.prelude.is_poisoned(p))
+    }
+
     /// Move every wake that is due into the next tick's answers.
     fn due(&mut self) {
         let now = Instant::now();
@@ -214,6 +263,8 @@ impl<F: FileSystem + 'static> World for CliWorld<F> {
     fn perform(&mut self, out: &TickOut) {
         self.pending = out.pending;
         self.prelude.track(&out.patch);
+        let live = |p: &Path| !self.prelude.is_poisoned(p);
+        self.terminals = console::terminals(self.doc.iter().chain(out.patch.added.iter().map(|(p, e)| (p, e))), live);
         for r in &out.requests {
             if self.prelude.is_poisoned(&r.path) {
                 continue;
@@ -226,6 +277,11 @@ impl<F: FileSystem + 'static> World for CliWorld<F> {
             if e.tag() == Some("Fs.List") && !self.doc.iter().any(|(q, f)| q != p && f == e) {
                 self.lists.remove(e);
             }
+        }
+        if let Some(console) = self.console.as_mut()
+            && out.patch.added.iter().any(|(p, e)| e.tag() == Some("Console.Read") && !self.prelude.is_poisoned(p))
+        {
+            console.start();
         }
         for (p, e) in &out.patch.added {
             if e.tag() == Some("Fs.List") && !self.prelude.is_poisoned(p) {
@@ -248,27 +304,32 @@ impl<F: FileSystem + 'static> World for CliWorld<F> {
         }
     }
 
-    /// Whatever is waiting; with nothing waiting but a wake and no tick owed, sleep until
-    /// the wake is due. Answers to places that left, or that a poisoning silenced, are
-    /// dropped (Semantics ch. 9, "A late result is dropped").
+    /// Whatever is waiting; with nothing waiting and no tick owed, the next line typed for a
+    /// live `Console.Read`, or a sleep until the next wake is due, whichever comes first.
+    /// Answers to places that left, or that a poisoning silenced, are dropped (Semantics
+    /// ch. 9, "A late result is dropped").
     fn next_inputs(&mut self) -> Option<TickIn> {
         loop {
             self.due();
             self.answers.extend(self.prelude.take_answers());
-            if self.answers.is_empty()
-                && self.pushes.is_empty()
-                && !self.pending
-                && let Some(at) = self.timers.iter().map(|(at, _, _)| *at).min()
-            {
-                std::thread::sleep(at.saturating_duration_since(Instant::now()));
-                self.due();
+            if self.answers.is_empty() && self.pushes.is_empty() && !self.pending {
+                let wake = self.timers.iter().map(|(at, _, _)| *at).min();
+                if self.console_waits() {
+                    if let Some(console::Heard::Line(line)) = self.console.as_mut().map(|c| c.next_line(wake)) {
+                        self.heard(line);
+                    }
+                    self.due();
+                } else if let Some(at) = wake {
+                    std::thread::sleep(at.saturating_duration_since(Instant::now()));
+                    self.due();
+                }
             }
             let mut input = TickIn { answers: std::mem::take(&mut self.answers), pushes: std::mem::take(&mut self.pushes) };
             self.prelude.filter(&mut input, &self.doc);
             if !input.answers.is_empty() || !input.pushes.is_empty() {
                 return Some(input);
             }
-            if self.timers.is_empty() || self.pending {
+            if (self.timers.is_empty() && !self.console_waits()) || self.pending {
                 return None;
             }
         }

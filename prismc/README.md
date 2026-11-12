@@ -910,8 +910,8 @@ and `tests/checker/run.sh` use it. `prism test` builds debug, `prism run` releas
 it has neither `Gui.*` nor `Ui.*`, and none, a refusal, when it has `Ui.*` without
 `Gui.*`, since no World answers Ui elements alone; `--world` overrides, and
 `--print-world` prints the choice and stops before the build (`tests/driver/run.sh`). The compiled binary takes `--world` only as its first argument; a later
-one is the program's own (prismc's `--check --world Ui`). `make chess` is
-`./prism run examples/chess`.
+one is the program's own (prismc's `--check --world Ui`). `make basic-chess` is
+`./prism run examples/basic-chess`.
 
 ### Files
 
@@ -1047,7 +1047,7 @@ lexer, parser and regex checks), chess's board included.
   `sem-ch09-hosts` (pick HO), `sem-appB-widgets` (pick MA), `ts-ch03-traits`,
   `ts-ch04-lifting`, chess (`board.prismtest`, byte-equal to `board.expected`, and
   `rules.prismtest`; `chess-rules` alone too), and prismc's own `lexer-checks` and
-  `parser-checks`. `./prism run examples/chess` under `xvfb-run -a` opens the window;
+  `parser-checks`. `./prism run examples/basic-chess` under `xvfb-run -a` opens the window;
   a robot (Xlib and XTest, as `worlds/canvas/rust/tests/xvfb_smoke.rs` clicks) clicks e2
   then e4, the root's result (printed with `PRISM_RESULTS` set) goes from "White's turn"
   to "Black's turn", and closing the window exits 0.
@@ -2150,7 +2150,7 @@ What stays, and why:
 
 Peak memory, wall time and instructions retired (`/usr/bin/time -l`) of each prismc
 compiling itself (`compile prismc --prelude prelude --name prismc`, to its own target)
-and `examples/chess`, with the collections each runtime had before and has now
+and `examples/basic-chess`, with the collections each runtime had before and has now
 (runtime/rust/README.md; runtime/cpp/README.md, "Arrays and maps: the costs"). Apple M2
 Pro, 5 November 2026, cargo release and clang++ -O3, other agents' jobs running (load
 average 3 to 13), so the wall times are rough; "footprint" is macOS's peak memory

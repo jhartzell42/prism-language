@@ -1,0 +1,24 @@
+# Two terminals on one standard input and output: with more than one terminal in the
+# document, a line in is addressed `NAME: text` and a line out is printed the same way.
+# A line that names no terminal is reported on standard error and goes nowhere. Run by
+# tests/driver/run.sh with its standard input from console-terminals.in, its standard
+# output compared to console-terminals.expected.
+# Written by Claude for the real-terminal Console World. Work in progress, subject to change.
+emit Console.*
+
+tag Console.Read of Element !Text:
+    name: Text
+
+tag Console.Print of Element:
+    name: Text
+    !lines: [Text]
+
+Reply: fn Text -> [Text]
+fn Reply line = [["heard {line}"]]
+
+@main: @unit emit Console.*
+@main:
+    !white <- Console.Read(name="White")                  # 0
+    Console.Print(name="White", !lines=(Reply !white))    # 1
+    !black <- Console.Read(name="Black")                  # 2
+    Console.Print(name="Black", !lines=(Reply !black))    # 3

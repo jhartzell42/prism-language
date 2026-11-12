@@ -1,0 +1,13 @@
+# A widget of several clauses built as a root: a test (or a host) applies it to plain
+# arguments and the clause is chosen at the build (Semantics ch. 8: a widget is a function
+# to a blueprint; a function of several clauses takes the first clause that matches).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@Note: fn ?Text -> @unit
+fn @Note nil:
+    Ui.Label($text=$"untitled")                               # 0
+fn @Note (? title):
+    Ui.Label($text=$"titled")                                 # 0
+    Ui.Label($text=$"{title}")                                # 1

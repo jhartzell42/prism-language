@@ -606,7 +606,14 @@ fn EventValueOf lx, env, e:
                                 (((Push acc, (DoLet (PaBind local), (Own (LocalPlace rs, mode, ct)))), (Bind en, n, (BnLocal (XVar local), Owned, ct))))
                             otherwise: ((acc, en))
                         let env2 = BindSpan env1, (PlaceKey lx, one.span), (VlPlace (XVar "y_ev"), ByRef, it)
-                        let bodyValue = ValueByKind lx, env2, e
+                        # the value of `x on !e` is `x`'s: a lift the checker noted at the `on`
+                        # (`($count -? 1) on !press` given for a `!?Nat`) passes `x`'s option on
+                        # as it is, and lowered at the `on` it would match `x`'s dynamic as an
+                        # option
+                        let valueExpr = match ?SampledOn e:
+                            ? x: x
+                            nil: e
+                        let bodyValue = ValueByKind lx, env2, valueExpr
                         # the expression over the firing's value is a dynamic when it samples one
                         # (`(ToldTo seat, $state) on !born`): the event fires its value at the
                         # firing's read point (`Event::map_at`), not the dynamic

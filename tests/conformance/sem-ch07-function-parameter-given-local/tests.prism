@@ -1,0 +1,9 @@
+# The given function's tests: declarations of sem-ch07-function-parameter-given-local.
+emit Ui.*
+use App.*
+
+test a_given_function_is_read_by_its_summary, @host:
+    build
+        => expect Ui.Label(text="0")
+    click at 0
+        => expect Ui.Label(text="2")

@@ -43,5 +43,20 @@ for s in bootstrap cpp; do
     expect "$s old installed: diagnostics kept" "1" "$(grep -c 'expected a declaration' "$log" 2>/dev/null || echo 0)"
     expect "$s old installed: no seed built" "" "$(printf '%s\n' "$out" | grep 'seed: building')"
 done
+# A $PRISMC whose runtime root $PRISMC_RUNTIME is an absolute path: gen1 is built against
+# that root's runtime without writing into it. The "compiler" emits a crate with no
+# dependency whose binary fails at once, so the bootstrap stops at gen2's compile.
+rt=$(pwd)/$work/start-root
+mkdir -p "$rt/runtime/rust/src"
+printf '%s\n' '[package]' 'name = "prism_runtime"' 'version = "0.0.0"' > "$rt/runtime/rust/Cargo.toml"
+emit='#!/bin/sh
+while [ $# -gt 0 ]; do [ "$1" = -o ] && out=$2; shift; done
+mkdir -p "$out/src"
+printf "%s\n" "[package]" "name = \"prismc\"" "version = \"0.0.0\"" "edition = \"2021\"" "" "[workspace]" > "$out/Cargo.toml"
+echo "fn main() { std::process::exit(1) }" > "$out/src/main.rs"'
+printf '%s\n' "$emit" > "$work/emit"; chmod +x "$work/emit"
+out=$(PRISMC=$(pwd)/$work/emit PRISMC_RUNTIME=$rt PRISM_BOOTSTRAP=$work bootstrap/bootstrap.sh 2>&1)
+expect "bootstrap absolute PRISMC_RUNTIME: gen1 built" "gen1: cargo built against the runtime of $rt" "$(printf '%s\n' "$out" | grep '^gen1: cargo built' | sed 's/ in [0-9]*s .*//')"
+expect "bootstrap absolute PRISMC_RUNTIME: the root untouched" "" "$(ls "$rt" | grep -v '^runtime$')"
 [ ${#failed[@]} -eq 0 ] || { echo "failed: ${failed[*]}"; exit 1; }
 echo "each bootstrap starts where it says, and refuses an old installed compiler by name"
