@@ -1,0 +1,31 @@
+# A function value of its callee's own color in the value a call returns, where the
+# signature writes the result as an associated type at a type that holds the function
+# (Type System ch. 3, "Associated types": `Out (Holder f)` is `f` by the impl; ch. 5: a
+# color variable is decided at each call; here the call makes `u` bounded, so the
+# function that comes back is bounded, called at once).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+trait ^Maker r:
+    type Out
+    Make: fn r -> Out r
+
+type Holder a = record:
+    item: a
+
+impl ^Maker (Holder a):
+    type Out = a
+    fn Make h = h.item
+
+Pick: u fn (u fn Nat -> Nat) -> Out (Holder (u fn Nat -> Nat))
+fn Pick F = Make (Holder(item=F))
+
+Through: fn Nat -> Nat
+fn Through k:
+    let F = Pick (\|n| n + 1)
+    F k
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Through 5}")                               # 0
