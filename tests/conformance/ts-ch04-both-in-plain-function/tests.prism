@@ -1,4 +1,4 @@
-# The tests of host-bug-31-both-in-plain-function.
+# The tests of ts-ch04-both-in-plain-function.
 emit Ui.*
 use App.*
 use Ui.*
