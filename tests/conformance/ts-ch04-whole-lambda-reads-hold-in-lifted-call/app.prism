@@ -1,0 +1,14 @@
+# A lambda with a `$` parameter, which takes its time whole, reading a hold of the node,
+# handed to a plain function whose parameter is such a function (Type System ch. 4,
+# Application: a sigiled parameter is not lifted over). `Twice` never applies it.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Twice: fn (fn $Nat -> $Nat) -> Nat
+fn Twice f = 2
+
+@shown:
+    !inc <- Ui.Button($label=$"Inc")                              # 0
+    $count <- 0 then $count + 1 on !inc
+    Ui.Label($text=$"twice {Twice (\|$x| $x + $count)}")          # 1
