@@ -61,7 +61,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   struct.
 - A choice with no case (`type Never = choice:`) → an `enum` with no variant; its derived
   impls match `*self` with no arm, and a `match` with no arm over a value of it is
-  `match *x {}`, which rustc takes over the value and never over a reference. In C++
+  `match *x {}`, which rustc takes over the value and never over a reference. A
+  building `match` with no arm in a widget block, its result unit or plain, builds
+  nothing: no row, no generation, no place counted, and a plain result is the empty
+  `match` of the scrutinee as the build has it (`NoArmLine`;
+  sem-ch04-building-match-no-arm). In C++
   the choice's variant holds the runtime's `NoCase`, which nothing makes, and the
   `match` is its unreachable tail.
 - `?a` → `Option<A>`; `~a` → `Result<A, rt::Error>`; `((a, b))` → `(A, B)`; `[[a]]` →
@@ -128,9 +132,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   (`Packed::dictionary::<Weighed_t_packed>()`). `any x` packs with
   `.with_dictionary(weighed_t_packed_of)` per program trait among its bounds and the
   traits above them, so an impl of any head, generic ones too, is kept: the dictionary is
-  made where the value's type is known. A trait has a dictionary when each method has no
+  made where the value's type is known. A method is an entry of the dictionary when it has no
   type parameter of its own, takes the trait's type as at least one whole parameter and
-  names it nowhere else but as its whole result (`?PackedDefOf`). In C++ the dictionary
+  names it nowhere else but as its whole result (`?PackedDefOf`); any other method
+  (`PackedDef.unasked`) is no entry, and in Rust, where the trait's impl for the packed
+  value needs every item, its body is a panic no program runs (the checker's
+  `existential-method` refuses the call); C++ writes no overload for it. A trait with
+  an associated type has no dictionary. In C++ the dictionary
   holds function pointers, `weighed_t_packed_of` is a function object whose call is a
   template among the generic definitions, and the impl is an overload in the trait's
   namespace.
@@ -187,6 +195,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   ones around it map. A block that calls such a function hears the `Event` it gives
   through a port node (`EventObjectRef`), its event arguments the ports they fire
   (`Event::of`).
+  The prelude's functions with an event parameter each have their event value form in
+  the emitted prelude, under the name the prelude's own definition lowers to
+  (`ValueName`): `union_ev`, `both`, `except`, `gate`, `present`, `merge_all`,
+  `merge_with`, `updated`. `both` and `except` are `merge_all` of their two events with
+  each firing marked by its side, so they decide once in a tick; `gate` reads its
+  dynamic at the firing's read point (`Event::map_at`)
+  (ts-ch04-both-in-plain-function to ts-ch04-present-in-plain-function).
   An event value whose expression samples a dynamic (`(ToldTo seat, $state) on !born` in
   a list `!MergeWith` takes) is the event mapped with each firing's read point
   (`Event::map_at`): the closure samples the dynamic there, so the event fires the
@@ -271,10 +286,42 @@ it make every program an interpreter run, and every type mistake a runtime fault
   The runtime's own event values use the same heights: `merge_all`'s node sits above
   every event of its list and raises its own port, `Event::map` and `filter_some` pass
   their source's height on, `Event::map_at` too.
-  No twin reaches these, where the clamp alone orders: a `for` row built after its block
-  wrote a hold the row hears (`parent_wrote_m` is told to the rows that live), a
-  dynamic's update port (`Dynamic::map2`, a `follow`, `updated` as an event value, a
-  blueprint's dynamic answer).
+  A `for`'s row hears the height of its block's write behind a name as a generation
+  does: the block keeps a port for the name (`{for}_wrote_{m}_port`), which the write's
+  twin raises and nothing fires (the write itself is told to the rows by
+  `parent_wrote_{m}`), and the row subscribes to it with its twin, so a row built after
+  the write took its height is told it at its build
+  (`tests/conformance/heights-row-built-after-hold-write`).
+  A combinator is put above a source by `Heights::raise(k, h, twin)`, which calls the
+  combinator's own twin when it moved and marks the combinator as walking meanwhile: a
+  walk that reaches a combinator it is still walking from is a prompt cycle across
+  nodes, and the runtime panics there with "a prismc bug", before the stack runs out.
+  A dynamic's update port has its height too. A write's twin raises the update port of
+  each dynamic over the hold that the node hands to another node (`MovedAbove`: a
+  dynamic answer, a dynamic passed whole, a row's dynamic result). A node that follows a
+  dynamic it holds as a value subscribes with the twin of the method the update calls
+  (`Follow::follow_above` with `{name}_result_moved_above` or a flatten's
+  `{name}_moved_above`, which is `HoldAbove` of the pseudo-hold behind it), so the height
+  goes on to the `!Updated` nodes over it and to the update ports it feeds. `!Updated $d`
+  as an event value (`updated`) subscribes with a twin that raises its own port. A lift
+  over two dynamics (`Dynamic::map2`) has a node of its own with one combinator, above
+  both sources' update events: its update event fires once in the tick, after both were
+  written, and its port is raised with the combinator. A blueprint's dynamic answer
+  (`apply_blueprint_dynamic`) is written by its sink, whose twin raises the dynamic's
+  update port; the answers that come as a tick opens (`Cx::answer_later`, the World's)
+  tell it nothing, as they fire before the first height. So a merge of an event with
+  `!Updated` of a mapped dynamic of another node, three combinators on, decides once
+  (`tests/conformance/heights-updated-of-mapped-dynamic-across-nodes`).
+  The runtime's own nodes (`merge_all`'s, `Dynamic::map2`'s) are held by the event or
+  dynamic value and by their port while it has a subscriber (`Port::owned_by`): a reader
+  that subscribes and lets the value go still hears it; when the last subscriber
+  unsubscribes, or a value nothing subscribed to is let go, the node is dropped and
+  unsubscribes from its sources. An event value that samples two dynamics and reads its
+  firing (no `x on !e`) makes its lift at each firing and lets it go after the sample:
+  nothing stays subscribed.
+  No twin reaches these, where the clamp alone orders: a flatten's outer
+  (`{name}_outer_moved`, whose adoption lands in the next tick and needs none), and in
+  C++ `merge_all`, which is not on `Heights` there.
 - **Holds.** `$x <- init then !e` → the firing's method calls `x.set(v, cx)`; every read
   is `x.get(cx)`, before the tick during propagation and after it from then on, so the
   tag law needs no commit pass.
@@ -825,11 +872,18 @@ it make every program an interpreter run, and every type mistake a runtime fault
     walk goes through impls: a constraint a written impl with type parameters solves
     is a use of that impl at the types its head is matched at (`NoteImplUse`), its
     methods' bodies its body, so an impl that needs itself at `[a]` for `a` is
-    `grows-without-end` too. A use whose types hold an associated type is no step of
-    the checker's walk; where a line through one holds a definition twice with the
-    earlier types found again inside the later ones the lowering stops
-    (`EndlessThroughImpl`), and where a use leaves a type parameter undecided
-    (`UndecidedParameter`): the reading is refused (`OpenWidgetValueWords`).
+    `grows-without-end` too. A derived impl is a definition of the walk whose uses are
+    read off its type's fields (`DerivedUses`, `ConstraintUses`), and a trait's default
+    method is read again in every impl that does not write the method, the trait's
+    parameter as the impl's head. A use whose types hold an associated type is a step:
+    the round it closes is applied to itself and normalized (an associated type stands
+    at a known head from the second round on) until its types come again, or one that
+    stays open is larger than the round before, which is `grows-without-end`
+    (`GrownThroughAssociated`). So the fixed point's stop at a line through an impl or
+    an associated type is an internal error too (`EndlessThroughImpl`: the line holds
+    one definition three times, each one's types embedded in the next one's; a finite
+    program's first round may embed once). Where a use leaves a type parameter
+    undecided (`UndecidedParameter`) the reading is refused (`OpenWidgetValueWords`).
   - A generic widget read inside a generalized `let` or a generalized local function,
     at that one's own type variable, has rows for each instantiation the `let`'s uses
     give the variable (`AtLetInstantiations`); the `let` is lowered at each
@@ -909,6 +963,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
     its places are the block's next. Handed to a widget as its function parameter
     (`@InMemory empty, @Seats`), it is lowered the same way where the widget applies
     the parameter (`ApplyWidgetParam`), over its own block's environments.
+    A function written by several clauses (`fn @Row 0, $shown = ..` beside `fn @Row n,
+    $shown: ..`) is a building `match` over its plain arguments
+    (`ClausesFunctionLine`, `BuildingChoicesLine`): each clause an arm's row, its
+    patterns the arm's, its block read in the function's file over the function's
+    environment; a clause's dynamic, event and blueprint parameters match nothing and
+    are bound in that clause's own environment to the line's arguments (`BindParam`).
+    A function that applies itself is lowered level by level, sixteen levels deep, as
+    a widget that calls itself is (`TooDeep` past that: the node at that depth faults
+    at its build); the levels are counted in `Wx.inlining`, which every row keeps
+    (sem-ch08-block-function-clauses-applied-as-line,
+    sem-ch08-block-function-applies-itself).
 - **A widget defined in a block read as a value** (`Card(@body=@line)`, `?Pick True,
   @line`; in the body of a function of the block too, `fn ?Made b = ?Pick b, @line`,
   whose expressions a line that calls it reads as its own, `LocalFunctionExprs`) is a `Blueprint` its line makes at the build before the node, kept in a field
@@ -1354,6 +1419,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   sem-ch09-host-above-for-doc-read-between). A builder's `$`
   result is prebound as a getter of the node (`GivesResult`, `ResultGetter`), which a
   line above the builder reads.
+  A `rebuild` that hands back a dynamic is such a builder (`GivesDynamic`): its name is
+  the getter over the `rebuild`'s structural dynamic, so a place above it reads it and
+  `!Updated` of it there hears its publication
+  (sem-ch04-rebuild-dynamic-read-above, sem-ch07-updated-rebuild-dynamic-above). A
+  generation that ends on a host's line gives the host's bundle, the child's result
+  and the child's document as one value of the generation (`GenRowOf`;
+  sem-ch04-rebuild-ends-on-host).
   A bundle tag's plain part beside a `$` part (`((port, !rx, $peers)) <- Pad.Socket(..)`)
   is a late name there (`LatePlaceParts`, `{name}#late`, `{name}#lateplace`): its hold
   is a `Hold<Option<T>>` too, set once where the place asks (`LatePlainPart`) and read

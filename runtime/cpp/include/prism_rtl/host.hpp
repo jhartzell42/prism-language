@@ -181,6 +181,22 @@ public:
         });
         sub_.emplace(updates, h);
     }
+    /// As `follow`, with `moved`'s height twin: `above` is told the height the update
+    /// event fires at, at once and each time it rises.
+    template <class N, class R, class S>
+    void follow_above(const Rc<Port<Unit>>& updates, const Rc<N>& node, R (N::*moved)(Cx&), S (N::*above)(std::uint32_t)) {
+        drop_sub();
+        Weak<N> weak = node;
+        Handle h = updates->subscribe_above(
+            make_rc<const std::function<Done(const Unit&, Cx&)>>([weak, moved](const Unit&, Cx& cx) -> Done {
+                if (auto n = weak.lock()) ((*n).*moved)(cx);
+                return {};
+            }),
+            make_rc<const std::function<void(std::uint32_t)>>([weak, above](std::uint32_t at) {
+                if (auto n = weak.lock()) ((*n).*above)(at);
+            }));
+        sub_.emplace(updates, h);
+    }
 
 private:
     void drop_sub() {

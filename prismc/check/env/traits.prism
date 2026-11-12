@@ -613,18 +613,23 @@ fn ?FindImpl g, st, cls, t = Fold (Or g.impls[cls], [[]]), nil, \|?found, im| ma
         ? m: ? (((Each im.bounds, \|((v, c))| (((Or m[v], TyErr), c))), st, (ImplHow g, im), (ImplChoice im)))
         nil: nil
 
-# A constraint a written impl with type parameters solved, as a use of that impl for the
+# A constraint an impl with type parameters solved, as a use of that impl for the
 # growth check (`GrowthCheck`; ruling PG): the impl's type parameters as the constraint's
 # type gives them, matched against the impl's head as `?FindImpl` matched it, in the
-# definition whose body wanted the constraint. A derived impl has no body the checker
-# reads and is no step of a walk.
+# definition whose body wanted the constraint. A derived impl is one too: what it needs
+# in turn is read off its type's fields (`DerivedUses`).
 NoteImplUse: unbounded fn G, St, Want, Ty -> St
 fn NoteImplUse g, st, w, t = Fold (Or g.impls[w.cls], [[]]), st, \|s, im|
-    if im.derived or (Len im.qs) == 0: s
+    if (Len im.qs) == 0: s
     else: match ?MatchHead im.head, (Zonk st, t), {}:
         ? m: update s:
-            &_.genericUses <= Push &_.genericUses, GenericUse(user=st.definition, target=(ImplChoice im), file=w.file, span=w.span, types=(Each im.qs, \|q| ((q, (Or m[q], TyErr)))))
+            &_.genericUses <= Push &_.genericUses, GenericUse(user=st.definition, target=(GrowthKey im), file=w.file, span=w.span, types=(Each im.qs, \|q| ((q, (Or m[q], TyErr)))))
         nil: s
+
+# An impl as a definition of the growth check's walk: a written one by where it stands,
+# a derived one by its trait and its type.
+GrowthKey: fn ImplInfo -> Text
+fn GrowthKey im = if im.derived: "derived:{im.cls}:{im.file}.{im.span.start}" else: ImplChoice im
 
 # An impl as a choice: a derived one by its type, a written one by where it stands.
 ImplChoice: fn ImplInfo -> Text

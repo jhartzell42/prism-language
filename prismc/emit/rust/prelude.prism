@@ -1111,14 +1111,18 @@ pub fn apply_blueprint_dynamic<T: Clone + 'static>(blueprint: &::prism_rtl::Blue
     let updates: Rc<::prism_rtl::Port<()>> = Rc::new(::prism_rtl::Port::new());
     let take = Rc::new(take);
     let (held, fired, taken) = (cell.clone(), updates.clone(), take.clone());
-    let sink: ::prism_rtl::Sink<crate::Answer> = ::prism_rtl::Sink::new(move |answer: &crate::Answer, cx: &mut Cx| {
+    // an answer delivered inside a tick at a height (the sink's twin told it) writes the
+    // dynamic at that height: its update port is raised with it; an answer delivered as
+    // a tick opens tells nothing
+    let raised = updates.clone();
+    let sink: ::prism_rtl::Sink<crate::Answer> = ::prism_rtl::Sink::heard_above(move |answer: &crate::Answer, cx: &mut Cx| {
         let v = taken(answer)?;
         match held.borrow().as_ref() {
             Some(hold) => hold.set(v, cx),
             None => return Err(Fault::answer("a blueprint value that gives a dynamic was answered before its build ended".to_string())),
         }
         fired.fire((), cx)
-    });
+    }, Rc::new(move |h| raised.raise(h)));
     let supplied = blueprint(path, sink.clone(), &applied_scope(hosted), base, cx)?;
     let built = supplied.built;
     // a widget's dynamic result, held whole: the line's dynamic is the widget's own
@@ -1535,6 +1539,59 @@ pub fn union_ev<K: Ord + Clone + 'static, V: Clone + 'static>(a: &Event<Map<K, V
     })
 }
 
+/// `!Both a, b` as an event value (in a plain function's body, where no node of a block
+/// decides the pair): `!MergeAll` of the two, each firing marked with its side; it fires
+/// in a tick in which both fired, with the pair.
+pub fn both<A: Clone + 'static, B: Clone + 'static>(a: &Event<A>, b: &Event<B>) -> Event<(A, B)> {
+    let left: Event<(Option<A>, Option<B>)> = a.map(|v: &A| (Some(v.clone()), None));
+    let right: Event<(Option<A>, Option<B>)> = b.map(|v: &B| (None, Some(v.clone())));
+    ::prism_rtl::merge_all(&Array::from(vec![left, right])).map(|fired: &Array<(Option<A>, Option<B>)>| {
+        let mut first: Option<A> = None;
+        let mut second: Option<B> = None;
+        for (one, other) in fired.iter() {
+            if let Some(v) = one {
+                first = Some(v.clone());
+            }
+            if let Some(v) = other {
+                second = Some(v.clone());
+            }
+        }
+        match (first, second) {
+            (Some(x), Some(y)) => Some((x, y)),
+            _ => None,
+        }
+    }).filter_some()
+}
+
+/// `!Except a, b` as an event value: `!MergeAll` of the two, each firing marked with its
+/// side; it fires `a`'s value in a tick in which `b` did not fire.
+pub fn except<A: Clone + 'static, B: Clone + 'static>(a: &Event<A>, b: &Event<B>) -> Event<A> {
+    let left: Event<Option<A>> = a.map(|v: &A| Some(v.clone()));
+    let right: Event<Option<A>> = b.map(|_: &B| None);
+    ::prism_rtl::merge_all(&Array::from(vec![left, right])).map(|fired: &Array<Option<A>>| {
+        let mut kept: Option<A> = None;
+        for one in fired.iter() {
+            match one {
+                Some(v) => kept = Some(v.clone()),
+                None => return None,
+            }
+        }
+        kept
+    }).filter_some()
+}
+
+/// `!Gate $open, e` as an event value: `e`'s firings while the dynamic reads true at the
+/// firing's read point (the value as the tick opened, Semantics ch. 7).
+pub fn gate<A: Clone + 'static>(open: &Dynamic<bool>, e: &Event<A>) -> Event<A> {
+    let open = open.clone();
+    e.map_at(move |v: &A, cx: &Cx| if open.sample(cx) { Some(v.clone()) } else { None }).filter_some()
+}
+
+/// `!Present e` as an event value: `unit` for each firing whose value is present.
+pub fn present<A: Clone + 'static>(e: &Event<Option<A>>) -> Event<()> {
+    e.map(|v: &Option<A>| v.as_ref().map(|_| ())).filter_some()
+}
+
 /// `!MergeWith f, events` as an event value: `!MergeAll` of the list, the values that
 /// fired folded by `f` in the list's order.
 pub fn merge_with<T: Clone + 'static, F: Fn(&T, &T) -> T + Clone + 'static>(f: &F, events: &Array<Event<T>>) -> Event<T> {
@@ -1592,15 +1649,20 @@ pub fn error_of(kind: &Pod, message: Text) -> Error {
 
 /// `!Updated $d` as an event value (in a supplier's answer, or in a function that takes
 /// the dynamic whole): it fires `d`'s value after the tick, in the tick `d`'s update event
-/// fires (Semantics ch. 7, R3).
+/// fires (Semantics ch. 7, R3). The event fires at the height the update event does: its
+/// port is raised with it, so a combinator that hears it sits above the write.
 pub fn updated<T: Clone + 'static>(d: &Dynamic<T>) -> Event<T> {
     let port = ::std::rc::Rc::new(Port::new());
     let out = port.clone();
+    let raised = port.clone();
     let read = d.clone();
-    d.updates.subscribe(::std::rc::Rc::new(move |_: &(), cx: &mut Cx| {
-        let v = cx.after(|at| read.sample(at));
-        out.fire(v, cx)
-    }));
+    d.updates.subscribe_above(
+        ::std::rc::Rc::new(move |_: &(), cx: &mut Cx| {
+            let v = cx.after(|at| read.sample(at));
+            out.fire(v, cx)
+        }),
+        ::std::rc::Rc::new(move |h| raised.raise(h)),
+    );
     Event { owner: None, port }
 }
 
