@@ -307,14 +307,18 @@ public:
         asked_.insert({h, combinator});
         cx.wake(h, std::move(node));
     }
-    /// The lowest combinator asked, for the node's wake to decide; none, none.
-    std::optional<std::size_t> next() {
-        if (asked_.empty()) return std::nullopt;
+    /// The lowest combinator asked whose height has come (at or below the running height),
+    /// for the node's wake to decide; none when every one left sits higher. Combinators of
+    /// one height decide in one wake of the node, in the node's order.
+    std::optional<std::size_t> next(const Cx& cx) {
+        auto running = cx.running_height();
+        if (!running || asked_.empty() || asked_.begin()->first > *running) return std::nullopt;
         auto lowest = *asked_.begin();
         asked_.erase(asked_.begin());
         return lowest.second;
     }
-    /// After a wake decided one combinator: a wake for the lowest still asked.
+    /// After a wake decided the combinators whose height had come: a wake for the lowest
+    /// still asked.
     void again(Cx& cx, NodeRef node) {
         if (!asked_.empty()) cx.wake(asked_.begin()->first, std::move(node));
     }

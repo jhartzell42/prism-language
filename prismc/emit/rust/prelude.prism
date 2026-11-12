@@ -954,29 +954,6 @@ pub fn indexed<A: Clone>(xs: &Array<A>) -> Map<Nat, A> {
     xs.iter().enumerate().map(|(i, x)| (nat_of(i), x.clone())).collect()
 }
 
-/// The heights a node with combinators at several heights asked for this tick: its wake
-/// runs the lowest one asked (`Node::wake` is not told its height, prismc/README.md WH).
-#[derive(Default)]
-pub struct Wakes(::std::cell::RefCell<::std::collections::BTreeSet<u32>>);
-
-impl Wakes {
-    pub fn ask(&self, h: u32) {
-        self.0.borrow_mut().insert(h);
-    }
-    pub fn next(&self) -> u32 {
-        self.0.borrow_mut().pop_first().unwrap_or(u32::MAX)
-    }
-    /// After a wake ran one height: a wake for the lowest height still asked. Two heights
-    /// asked from one running height land on one wake of the node (the clamp, and a node
-    /// once per height), which runs the lower; the other is asked for again here.
-    pub fn again(&self, cx: &mut Cx, node: Rc<dyn Node>) {
-        let lowest = self.0.borrow().first().copied();
-        if let Some(h) = lowest {
-            cx.wake(h, node);
-        }
-    }
-}
-
 /// A row of a `for` or a generation of a `rebuild`: a node its builder tears down. A row
 /// of a hosted child's (prismc/README.md, pick HO) is an entry of its host's document: its
 /// own places' entries, by their paths relative to the row, and a host's typed answer to one

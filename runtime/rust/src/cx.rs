@@ -187,6 +187,10 @@ impl Cx<'_> {
         v
     }
 
+    /// The height whose wakes run now; none outside the heights' run.
+    pub fn running_height(&self) -> Option<u32> {
+        self.height
+    }
     /// Ask for a wake at `height`, once per height. A wake asked for at or below the
     /// running height runs at the next one (the clamp, Graph ch. 4).
     pub fn wake(&mut self, height: u32, node: Rc<dyn Node>) {

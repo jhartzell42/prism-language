@@ -339,8 +339,8 @@ pub struct Heights {
 
 impl Heights {
     /// The combinators at their distances inside the node, in the node's order.
-    pub fn new(distances: &[u32]) -> Heights {
-        Heights { at: RefCell::new(distances.to_vec()), asked: RefCell::new(std::collections::BTreeSet::new()) }
+    pub fn new(distances: Vec<u32>) -> Heights {
+        Heights { at: RefCell::new(distances), asked: RefCell::new(std::collections::BTreeSet::new()) }
     }
     /// The global height of the node's `combinator`.
     pub fn of(&self, combinator: usize) -> u32 {
@@ -363,11 +363,19 @@ impl Heights {
         self.asked.borrow_mut().insert((h, combinator));
         cx.wake(h, node);
     }
-    /// The lowest combinator asked, for the node's wake to decide; none, none.
-    pub fn next(&self) -> Option<usize> {
-        self.asked.borrow_mut().pop_first().map(|(_, combinator)| combinator)
+    /// The lowest combinator asked whose height has come (at or below the running height),
+    /// for the node's wake to decide; none when every one left sits higher. Combinators of
+    /// one height decide in one wake of the node, in the node's order.
+    pub fn next(&self, cx: &Cx) -> Option<usize> {
+        let running = cx.running_height()?;
+        let mut asked = self.asked.borrow_mut();
+        match asked.first() {
+            Some(&(h, _)) if h <= running => asked.pop_first().map(|(_, combinator)| combinator),
+            _ => None,
+        }
     }
-    /// After a wake decided one combinator: a wake for the lowest still asked.
+    /// After a wake decided the combinators whose height had come: a wake for the lowest
+    /// still asked.
     pub fn again(&self, cx: &mut Cx, node: Rc<dyn crate::cx::Node>) {
         let lowest = self.asked.borrow().first().copied();
         if let Some((h, _)) = lowest {
@@ -683,7 +691,7 @@ struct MergeNode<T: Clone + 'static> {
 
 impl<T: Clone + 'static> Node for MergeNode<T> {
     fn wake(self: Rc<Self>, cx: &mut Cx) -> crate::cx::Done {
-        if self.heights.next().is_none() {
+        if self.heights.next(cx).is_none() {
             return Ok(());
         }
         match self.list.take(cx) {
@@ -697,7 +705,7 @@ impl<T: Clone + 'static> Node for MergeNode<T> {
 /// every event of the list, so it fires once in a tick, after each of them had its turn;
 /// its own port fires at that height. Owned by the event.
 pub fn merge_all<T: Clone + 'static>(events: &crate::collections::Array<Event<T>>) -> Event<crate::collections::Array<T>> {
-    let node = Rc::new(MergeNode { list: MergeList::new(), out: Rc::new(Port::new()), heights: Heights::new(&[1]) });
+    let node = Rc::new(MergeNode { list: MergeList::new(), out: Rc::new(Port::new()), heights: Heights::new(vec![1]) });
     node.out.raise(node.heights.of(0));
     node.list.listen_above(
         events,
