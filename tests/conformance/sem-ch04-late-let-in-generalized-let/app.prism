@@ -1,0 +1,23 @@
+# A `let` of a lambda that closes over a plain `let` over a building `if`'s late plain
+# result, both written above it, used at two types, so the lambda's `let` is generalized
+# (Semantics ch. 4, "Binding groups and cycles": any line may use any name the block
+# binds; Type System ch. 1: a `let` of a lambda is generalized). Reaches `MarkLateLets`'
+# marker "the late `let` `k` read at its block's build" on prismc-fd1.
+# Written by Claude (sweep-7, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Second: fn ((t, Nat)) -> Nat
+fn Second ((ignore, k)) = k
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    let Wrap = \|x| ((x, k))
+    Ui.Label($text=$"{Second (Wrap 1)} {Second (Wrap "a")}")                     # 0
+    let k = n + 1
+    n <- if loud:
+        Ui.Label($text=$"loud")
+        @ 10
+    else:
+        @ 20
