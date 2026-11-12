@@ -204,7 +204,8 @@ fn TypeParts cp, t0:
     let gens = CppTemplateHead t.params
     let head = HeadOf t.name, t.params
     let doc = CppSourceDoc "`{t.prism}`:", t.doc
-    let members = Members (t.show != NotShown), t.pod, head
+    let deepMembers = if t.pod and (Len t.params) > 0: "\ncrate::prelude::Pod deep_pod(const crate::prelude::Cx& cx) const;\nvoid deep_ports(const crate::prelude::Cx& cx, ::std::vector<::prism_rtl::Rc<::prism_rtl::Port<crate::prelude::Unit>>>& out) const;" else: ""
+    let members = "{Members (t.show != NotShown), t.pod, head}{deepMembers}"
     let generic = (Len t.params) > 0
     let fwd = "{gens}{if t.shape == ShapeChoice: "class" else: "struct"} {t.name};"
     let deps = Concat2 (Each t.cases, \|c| Concat2 (Each c.fields, \|((ignore, ft))| ValueDeps cp, ft))
@@ -286,7 +287,39 @@ fn TypeDefs cp, t, head:
     let gens = CppTemplateHead t.params
     let show = if t.show == ShownDerived: [[(ShowDef cp, t, head, gens)]] else: [[]]
     let pod = if t.pod: [[(ToPodDef cp, t, head, gens), (FromPodDef cp, t, head, gens)]] else: [[]]
-    Join (Append show, pod), "\n"
+    # a level field may hold it with a dynamic as an argument (`Boxed $Nat`): its deep walk
+    let deep = if t.pod and (Len t.params) > 0: CppDeepWalk t, head, gens else: [[]]
+    Join (Append (Append show, pod), deep), "\n"
+
+# A generic program type's deep walk (WD; `prism_rtl::DeepPod` calls it): its plain data
+# with each field walked by its own type, a dynamic sampled, and the update events found.
+CppDeepWalk: unbounded fn TyDef, Text, Text -> [Text]
+fn CppDeepWalk t, head, gens:
+    let structure = match t.shape:
+        ShapeRecord:
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+            "crate::prelude::Pod::record(\"{t.prism}\", \{{Join (Each c.fields, \|((f, ignore))| "\{\"{PrismFieldOf c, f}\", ::prism_rtl::deep_pod({FieldId f}, cx)\}"), ", "}\})"
+        ShapeChoice: CppDeepChoicePod t
+        ShapeNewtype: "crate::prelude::Pod::choice(\"{FirstCase t}\", \{{Join (Each (Range0 (FirstArity t)), \|k| "::prism_rtl::deep_pod(a{k}, cx)"), ", "}\})"
+        ShapeUnit: "crate::prelude::Pod::choice(\"{FirstCase t}\", \{\})"
+    let ports = match t.shape:
+        ShapeRecord:
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+            Join (Each c.fields, \|((f, ignore))| "::prism_rtl::deep_ports({FieldId f}, cx, out);"), "\n"
+        ShapeChoice: Join (Each t.cases, \|c| "if (auto c = ::std::get_if<{c.name}>(&cases())) \{ {Join (Each (Range0 (Len c.fields)), \|k| "::prism_rtl::deep_ports(c->a{k}, cx, out);"), " "} \}"), "\n"
+        ShapeNewtype: Join (Each (Range0 (FirstArity t)), \|k| "::prism_rtl::deep_ports(a{k}, cx, out);"), "\n"
+        ShapeUnit: ""
+    [[(CppFunction "", "{gens}crate::prelude::Pod {head}::deep_pod(const crate::prelude::Cx& cx) const", "return {structure};"), (CppFunction "", "{gens}void {head}::deep_ports(const crate::prelude::Cx& cx, ::std::vector<::prism_rtl::Rc<::prism_rtl::Port<crate::prelude::Unit>>>& out) const", ports)]]
+
+CppDeepChoicePod: fn TyDef -> Text
+fn CppDeepChoicePod t:
+    let arms = Each (Range0 (Len t.cases)), \|i| CppDeepChoiceArm t, i
+    "{Join arms, "\n    : "}\n    : crate::prelude::Pod()"
+
+CppDeepChoiceArm: fn TyDef, Nat -> Text
+fn CppDeepChoiceArm t, i:
+    let c = Or t.cases[i], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+    "::std::holds_alternative<{c.name}>(cases()) ? crate::prelude::Pod::choice_at(\"{c.prism}\", {i}, \{{Join (Each (Range0 (Len c.fields)), \|k| "::prism_rtl::deep_pod(::std::get<{c.name}>(cases()).a{k}, cx)"), ", "}\})"
 
 ShowDef: unbounded fn Cp, TyDef, Text, Text -> Text
 fn ShowDef cp, t, head, gens:

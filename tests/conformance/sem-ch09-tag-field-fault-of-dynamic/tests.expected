@@ -1,0 +1,6 @@
+# Derived by hand from claude/incremental-host-document.md, WD (a foreign World reads a level flattened through) and Semantics ch. 10 (a `~T`'s failure is its `Error` record, a fault kind printed as its tag's value), a field printed without its sigils as a tag's fields are; never run.
+test a_world_reads_the_failure
+
+tick 0
+  added:
+    0: Count.Result(result=Error(kind=Prelude.NotANumber, message="no"))
