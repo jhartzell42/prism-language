@@ -50,7 +50,7 @@ use Lower.Node.Switch.*
 # program has no item behind and a printer matches by its spelling.
 type Ref = choice:
     # A program's item, or a case of one of its choices: the output module that defines it
-    # (`ModDef.name`; `prelude` the emitted prelude; "" the crate's own `Elem` and `Answer`),
+    # (`ModDef.name`; `prelude` the emitted prelude; "" the crate's own `Elem` and `Output`),
     # its path in that module (`Term`, `Term::Var`, `Node::host_1_answer`), and its path as
     # written where the model uses it (the module's own items bare, any other from
     # `crate::`), which the Rust printer writes.
@@ -101,13 +101,13 @@ fn DropLastSegment p:
     let segs = SplitOn p, "::"
     Join (Take segs, (Dec (Len segs))), "::"
 
-# The crate's own row of every element tag and its answers (`crate::Elem`, `crate::Answer`).
+# The crate's own row of every element tag and its answers (`crate::Elem`, `crate::Output`).
 let elemRef = RefItem "", "Elem", "crate::Elem"
-let answerRef = RefItem "", "Answer", "crate::Answer"
-# `Answer`'s case of no tag: an answer made outside a tag's arm, plain data that the place
+let outputRef = RefItem "", "Output", "crate::Output"
+# `Output`'s case of no tag: an answer made outside a tag's arm, plain data that the place
 # taking it reads at its own tag's type. Named as no tag's case is (a tag's is its name in
 # UpperCamelCase).
-let untaggedRef = RefChild answerRef, "Untagged_a"
+let untaggedRef = RefChild outputRef, "Untagged_a"
 
 # A type of the output program (claude/backend.md, "Types"): the value types, and the
 # runtime's cells, ports, references and shared pointers a node is made of.
@@ -756,9 +756,9 @@ type Model = record:
     checks: [CheckDef]
     # `crate::Elem`, emitted in `main.rs`
     elem: RowDef
-    # `crate::Answer`, beside it
-    answer: AnswerDef
-    # What `Elem` and `Answer` need of the modules, as `ModDef.complete` and `declared`
+    # `crate::Output`, beside it
+    answer: OutputDef
+    # What `Elem` and `Output` need of the modules, as `ModDef.complete` and `declared`
     # say.
     elemComplete: [Text]
     elemDeclared: [Text]
@@ -766,14 +766,14 @@ type Model = record:
     notes: [Text]
 derive ^Eq, ^Show
 
-# `crate::Answer` (pick HO): an answer to an element, typed by its tag, what a host's
+# `crate::Output` (pick HO): an answer to an element, typed by its tag, what a host's
 # supplier answers a child place with and what a World's answer to a forwarded element
 # decodes to. A variant per element tag of the program, carrying the tag's output type.
-type AnswerDef = record:
-    cases: [AnswerCase]
+type OutputDef = record:
+    cases: [OutputCase]
 derive ^Eq, ^Show
 
-type AnswerCase = record:
+type OutputCase = record:
     # The variant, the tag's struct name (`UiButton`); the accessor that takes its value
     # out (`ui_button`); the tag's struct path (`ui::UiButton`) and qualified name.
     variant: Text
@@ -788,8 +788,8 @@ type AnswerCase = record:
     ?first: OutTy
     # A bundle's tag with a part that is no plain data (a function): the bundle whole,
     # as a blueprint made outside the tag's arm holds it (`PartsBlueprint`), and the
-    # function from one such value to the tag's parts answer (`PartsAnswerOf`), by which
-    # a host's row answers its place (prism_rtl's `AnswerOf::held_parts`).
+    # function from one such value to the tag's parts answer (`PartsOutputOf`), by which
+    # a host's row answers its place (prism_rtl's `OutputOf::held_parts`).
     ?heldWhole: OutTy
     ?heldParts: Ex
 derive ^Eq, ^Show

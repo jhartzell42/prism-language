@@ -53,12 +53,12 @@ void Prelude::track(const Patch& patch) {
 void Prelude::unwrap(const Path& path, const Pod& value) {
     const Pod& v = value.structure();
     if (auto x = v.if_ok()) {
-        answers_.emplace_back(path, *x);
+        outputs_.emplace_back(path, *x);
         return;
     }
     const Pod* error = v.if_failed();
     if (!error) {
-        answers_.emplace_back(path, v);
+        outputs_.emplace_back(path, v);
         return;
     }
     Path sub = subtree_of(path);
@@ -70,7 +70,7 @@ void Prelude::unwrap(const Path& path, const Pod& value) {
         if (!under(p, sub) && under(sub, parent_of(p)) && (!supervisor || p.len() > supervisor->len())) supervisor = p;
     poisoned_.push_back(sub);
     if (supervisor && !sub.is_empty()) {
-        answers_.emplace_back(*supervisor, exception);
+        outputs_.emplace_back(*supervisor, exception);
         return;
     }
     const Text* m = message.as_text();
@@ -78,10 +78,10 @@ void Prelude::unwrap(const Path& path, const Pod& value) {
     if (!exit_) exit_ = EXIT_FAILED;
 }
 
-std::vector<std::pair<Path, Pod>> Prelude::take_answers() { return std::exchange(answers_, {}); }
+std::vector<std::pair<Path, Pod>> Prelude::take_outputs() { return std::exchange(outputs_, {}); }
 
 void Prelude::give_back(std::vector<std::pair<Path, Pod>> answers) {
-    answers_.insert(answers_.begin(), std::make_move_iterator(answers.begin()), std::make_move_iterator(answers.end()));
+    outputs_.insert(outputs_.begin(), std::make_move_iterator(answers.begin()), std::make_move_iterator(answers.end()));
 }
 
 std::vector<std::string> Prelude::take_gave_up() { return std::exchange(gave_up_, {}); }

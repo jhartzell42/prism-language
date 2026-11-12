@@ -119,15 +119,15 @@ fn ConvNamed cx, st, n, args, span:
                 let ((rw, st2)) = ConvRow cx, st, (Or args[0], dummyType)
                 ((TyElemAny rw, st2))
             otherwise: ((TyErr, (Err st, "kind", span, "`Elem` takes a row; here it has {CountWord (Len args)}")))
-    else: if name == "Answer" or name == "Output":
-        # `Answer c`: an answer to an element of any tag of row `c` (Semantics ch. 9; rulings
-        # round 12, AQ), the union of its tags' answer constructors (`AnswerType`)
+    else: if name == "Output":
+        # `Output c`: an output of an element of any tag of row `c` (Semantics ch. 9; rulings
+        # round 12, AQ), the union of its tags' output constructors (`OutputType`)
         match Len args:
-            0: (((AnswerType cx.scope), st))
+            0: (((OutputType cx.scope), st))
             1:
                 let ((rw, st2)) = ConvRow cx, st, (Or args[0], dummyType)
-                (((AnswerType rw), st2))
-            otherwise: ((TyErr, (Err st, "kind", span, "`Answer` takes a row; here it has {CountWord (Len args)}")))
+                (((OutputType rw), st2))
+            otherwise: ((TyErr, (Err st, "kind", span, "`Output` takes a row; here it has {CountWord (Len args)}")))
     else: if name == "Wired":
         (((TyCon name, [[]]), st))
     else: if name == "Instant":

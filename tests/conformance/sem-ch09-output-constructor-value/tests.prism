@@ -1,4 +1,4 @@
-# The tests of sem-ch09-answer-constructor-value.
+# The tests of sem-ch09-output-constructor-value.
 emit Ui.*
 use App.*
 

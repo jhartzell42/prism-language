@@ -343,7 +343,7 @@ void CliWorld::request(const Pod& element, const Path& path, const Pod& value) {
     if (tagged(element, "Fs.File") && c && c->ctor == "Read") {
         auto file = text_field(element, "path");
         if (!file) return;
-        answers_.emplace_back(path, contents(fs_->read(*file)));
+        outputs_.emplace_back(path, contents(fs_->read(*file)));
         return;
     }
     if (tagged(element, "Fs.File") && c && c->ctor == "Write") {
@@ -353,7 +353,7 @@ void CliWorld::request(const Pod& element, const Path& path, const Pod& value) {
         if (!c->args.empty())
             if (auto t = c->args[0].as_text()) text = t->to_string();
         auto w = write(*file, text);
-        answers_.emplace_back(path, w ? contents(text) : contents(unexpected(w.error())));
+        outputs_.emplace_back(path, w ? contents(text) : contents(unexpected(w.error())));
     }
 }
 
@@ -382,7 +382,7 @@ void CliWorld::due() {
     auto now = Clock::now();
     std::vector<Timer> later;
     for (auto& t : timers_) {
-        if (t.at <= now) answers_.emplace_back(t.path, t.value);
+        if (t.at <= now) outputs_.emplace_back(t.path, t.value);
         else later.push_back(t);
     }
     timers_ = std::move(later);
@@ -411,7 +411,7 @@ void CliWorld::heard(const std::string& line) {
     }
     for (const auto& [p, e] : doc_)
         if (tagged(e, "Console.Read") && !prelude_.is_poisoned(p) && terminal_of(e) == to->first)
-            answers_.emplace_back(p, Pod::text(prism_rtl::Text(to->second)));
+            outputs_.emplace_back(p, Pod::text(prism_rtl::Text(to->second)));
 }
 
 // A line may still come for a live `Console.Read`.
@@ -459,8 +459,8 @@ void CliWorld::perform(const TickOut& out) {
 std::optional<TickIn> CliWorld::next_inputs() {
     while (true) {
         due();
-        for (auto& a : prelude_.take_answers()) answers_.push_back(std::move(a));
-        if (answers_.empty() && pushes_.empty() && !pending_) {
+        for (auto& a : prelude_.take_outputs()) outputs_.push_back(std::move(a));
+        if (outputs_.empty() && pushes_.empty() && !pending_) {
             std::optional<Clock::time_point> wake;
             if (!timers_.empty())
                 wake = std::min_element(timers_.begin(), timers_.end(), [](const Timer& a, const Timer& b) { return a.at < b.at; })->at;
@@ -474,7 +474,7 @@ std::optional<TickIn> CliWorld::next_inputs() {
             }
         }
         TickIn input;
-        input.answers = std::exchange(answers_, {});
+        input.answers = std::exchange(outputs_, {});
         input.pushes = std::exchange(pushes_, {});
         prelude_.filter(input, doc_);
         if (!input.answers.empty() || !input.pushes.empty()) return input;

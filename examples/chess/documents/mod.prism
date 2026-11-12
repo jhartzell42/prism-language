@@ -20,7 +20,7 @@ derive ^Eq, ^Show
 # One role of one document. A value of `r` is one seat of the role: `Player White`,
 # `Spectator "ada"`. The associated types are the role's facts, and `Step` and `Read` are
 # its pure rules, each taking the seat that asks. What a seat is told is `Told`: the
-# prelude owns `Answer`, the type of an element's output in `@HostList`.
+# prelude owns `Output`, the type of an element's output in `@HostList`.
 trait ^Seat r:
     type State                          # the document's state, the same for every role
     type Request                        # what this role may ask to change

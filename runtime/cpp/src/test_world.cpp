@@ -76,7 +76,7 @@ struct Target {
 };
 
 struct Delivery {
-    enum Kind { Send, Click, Element, Answer } kind;
+    enum Kind { Send, Click, Element, Output } kind;
     Target target;
     Pod value;
     /// `click element path`, the path as printed.
@@ -316,7 +316,7 @@ Expected<Step, Err> parse_step(std::size_t n, std::string_view text) {
         } else if (word == "answer") {
             auto p = pattern(n, rest);
             if (!p) return unexpected(p.error());
-            deliveries.push_back(Delivery{Delivery::Answer, {}, {}, {}, *p});
+            deliveries.push_back(Delivery{Delivery::Output, {}, {}, {}, *p});
         } else if (word == "send") {
             std::optional<std::string> v;
             if (i + 1 < parts.size()) {
@@ -554,7 +554,7 @@ struct Run {
             for (const Delivery& d : step.kind.deliveries) {
                 Expected<std::pair<Path, Pod>, Err> pv = unexpected(Err());
                 switch (d.kind) {
-                case Delivery::Answer: pv = deal(d.pattern); break;
+                case Delivery::Output: pv = deal(d.pattern); break;
                 case Delivery::Element: pv = click_element(d.element); break;
                 case Delivery::Send: {
                     auto p = place(d.target);
@@ -666,7 +666,7 @@ struct Run {
     /// a poisoned place; `pushed` is what `in:` shows before them.
     Ticked one_tick(TickIn input, std::span<const std::string> pushed, std::string& out) {
         Document before = doc;
-        std::vector<std::pair<Path, Pod>> owed = prelude.take_answers();
+        std::vector<std::pair<Path, Pod>> owed = prelude.take_outputs();
         input.answers.insert(input.answers.end(), owed.begin(), owed.end());
         std::erase_if(input.answers, [&](const auto& a) { return prelude.is_poisoned(a.first); });
         std::stable_sort(input.answers.begin(), input.answers.end(), [](const auto& a, const auto& b) { return a.first < b.first; });

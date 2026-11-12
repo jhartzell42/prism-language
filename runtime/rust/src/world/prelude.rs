@@ -109,7 +109,7 @@ impl Prelude {
     }
 
     /// The answers this policy owes the next tick.
-    pub fn take_answers(&mut self) -> Vec<(Path, Pod)> {
+    pub fn take_outputs(&mut self) -> Vec<(Path, Pod)> {
         std::mem::take(&mut self.answers)
     }
 
@@ -191,7 +191,7 @@ impl<W: World> World for UnwrapWorld<W> {
     }
 
     fn next_inputs(&mut self) -> Option<TickIn> {
-        let mine = self.prelude.take_answers();
+        let mine = self.prelude.take_outputs();
         let mut input = match (self.inner.next_inputs(), mine.is_empty()) {
             (Some(i), _) => i,
             (None, true) => return None,
@@ -235,7 +235,7 @@ mod tests {
         pre.unwrap(&unwrap, &Pod::Ok(Box::new(Pod::int(5))));
         let failed = Pod::Failed(Box::new(crate::ToPod::to_pod(&crate::Error::new("Fs.NotFound", "gone"))));
         pre.unwrap(&unwrap, &failed);
-        let answers = pre.take_answers();
+        let answers = pre.take_outputs();
         assert_eq!(answers[0], (unwrap.clone(), Pod::int(5)));
         assert_eq!(answers[1].0, sup);
         assert_eq!(answers[1].1.field("message"), Some(&Pod::text("gone")));

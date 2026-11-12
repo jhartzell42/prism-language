@@ -41,20 +41,20 @@ Hosting
   (sem-ch09-host-dynamic-answer-let, sem-ch09-host-event-answer-let).
   lower/expr.prism (`DynamicBlueprint`, `WrittenPart`): a dynamic answer whose line
   made no getter for it and that reads a reader of the node with no live dynamic
-  where it is written. G, an internal error: `DynamicAnswers` makes a getter for every
+  where it is written. G, an internal error: `DynamicOutputs` makes a getter for every
   dynamic answer in the supplier's text, a blueprint `let`, a blueprint parameter's
   argument and a function of the block the supplier calls
   (sem-ch09-host-local-supplier-dynamic-answer,
   sem-ch09-host-local-supplier-bundle-answer), except a held answer (one that reads
   a name the supplier's text binds, or a parameter of that function), and
-  `HeldAnswerReaders` makes the live dynamic of every reader of the node a held
+  `HeldOutputReaders` makes the live dynamic of every reader of the node a held
   answer names (host-bug-01, host-bug-02, host-bug-09,
   sem-ch09-host-local-supplier-dynamic-parameter and -clauses). lower/expr.prism
   (`?LiveArgument`): a `$` argument of a function of the host's block with no live
   dynamic in the supplier's place: G, the same reasoning. A supplier cannot be handed on as a parameter
   of a widget (its type is of every output `o`; the checker has no such parameter),
   and a method or a named function reads no name of the block.
-- `@ x` outside a tag arm is lowered: plain data in `Answer`'s case of no tag, read by
+- `@ x` outside a tag arm is lowered: plain data in `Output`'s case of no tag, read by
   the place that takes it (sem-ch09-host-answer-without-arm); a value that is no plain
   data (a function) held as it is and read at the type of the line that binds it
   (`TaggedOrHeld`: sem-ch08-blueprint-of-function-outside-tag-arm,
@@ -63,10 +63,10 @@ Hosting
   values (`PartsBlueprint`: sem-ch08-blueprint-of-bundle-with-function-outside-tag-arm).
   Given to a host's place by the arm that matched its tag, the held bundle is answered
   part by part, as the bundle written under the arm is (`?HeldPartsOf`, prism_rtl's
-  `AnswerOf::held_parts`: sem-ch09-host-held-bundle-answer).
+  `OutputOf::held_parts`: sem-ch09-host-held-bundle-answer).
 - A tag whose output holds a part that is no plain data (a function) is answered by a
   host, under the tag's arm part by part (sem-ch09-host-bundle-function-part-answer);
-  `crate::Answer` reads such a part from its own case or from the case held whole
+  `crate::Output` reads such a part from its own case or from the case held whole
   (the emitters' `OutsideArm`), and a World's answer for the tag is a fault of the run.
 - Every other bundle answer is lowered, any mix of plain, `$` and event
   parts, written as a tuple or given as a value (`PartsBlueprint`:
@@ -100,7 +100,7 @@ Hosting
   method's own (sem-ch08-widget-value-generic-at-method-type-parameter). Left
   refused (`OpenWidgetValueWords`): a generic one read where a type parameter stays
   open and the program gives the definition it stands in no finite set of types
-  the lowering can find (`DefInstancesAnswer`, `?GrowsFrom`: a line through a
+  the lowering can find (`DefInstancesOutput`, `?GrowsFrom`: a line through a
   constraint an impl solves, or through a use whose types hold an associated type,
   that holds one definition three times, each one's types embedded in the next one's:
   `EndlessThroughImpl`, G, an internal error, since the checker's walk takes both
@@ -281,7 +281,7 @@ Building `match`, clause widgets, `rebuild`
   first-value query spelled before its node in such a row;
   lower/node/elements.prism (`ElementOutputOf`) a hosted place with a plain answer
   that no plain name binds, under a host placed after its node (bound to a name it is
-  lowered: `LateHostedAnswer`,
+  lowered: `LateHostedOutput`,
   sem-ch04-building-match-on-built-late-value-above-host-answers-in-arm);
   lower/node/switch.prism (`ArmRowOf`) the row's
   late plain result beside a `for`, a `rebuild` or a widget that calls itself in the
@@ -367,7 +367,7 @@ Functions
   that no use decides (`OutQuantified`, refused where its type is written). A function under an
   event or a `$` inside the result is mapped (ts-ch05-color-function-in-event-result).
   A function held by a blueprint inside the result is made again through the
-  blueprint's answers (`?Made F = ? @ F`, the prelude's `held_answers_mapped`:
+  blueprint's answers (`?Made F = ? @ F`, the prelude's `held_outputs_mapped`:
   ts-ch05-color-function-in-blueprint-result).
 - lower/node/def.prism (`RefusePlainResult`) a widget's plain result bound by a pattern
   that left a name without its field: an internal error; `BindPatternResult` takes every
@@ -514,7 +514,7 @@ reaches it.
   widgets; a longer one would reach it). `@Element e` of an element value that answers
   plain data is late (sem-ch08-element-parameter-plain-result reached the guard).
 - lower/expr.prism:667 a supplier's dynamic answer of no known form. No program reaches
-  this: `?DynamicAnswer` takes every dynamic but `$ plain`, which the line above takes.
+  this: `?DynamicOutput` takes every dynamic but `$ plain`, which the line above takes.
   The nearest program, `@ $~Shout $motd`, passes: sem-ch09-host-dynamic-answer-call.
 - lower/expr.prism:670 a supplier's answer under a tag the arm does not name. No program
   reaches this: `#tag` is bound only by `TagPat`, always as a path.
@@ -534,7 +534,7 @@ reaches it.
   name: tests/checker/neg/unknown-name.
 - lower/expr.prism:816, 1134 a global or a call with no lowering of its kind. No program
   reaches this: every name the checker resolves has a value entry.
-- lower/expr.prism:1031 an answer constructor of no tag or with no argument. The nearest
+- lower/expr.prism:1031 an output constructor of no tag or with no argument. The nearest
   program, the constructor as a function value, takes another path and rustc refuses the
   crate: see R, Hosting.
 - lower/expr.prism:1290 a constructor of an unknown owner. No program found: a
@@ -607,7 +607,7 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | node/switch.prism `ArmRowOf`, two sites: a late plain result beside a `for`, a `rebuild` or a widget that calls itself, in a row numbered after its node | R | none | refused |
 | node/switch.prism `HeldFlatten`, `@Flatten` with no live dynamic where the line reads it (LF) | G | none | internal error: every widget line goes through `WholeArgsAt` before its `@Flatten` is lowered, and it makes a live dynamic for every outer (a hold or dynamic of the node, a dynamic `let` of a row by its expression, an outer in place); a row's outer of its block is the block's through the parent, a global its constant, a shared row's parameter its `#whole#{name}` |
 | node/def.prism `SplitBlockInto`, a block split at a line whose result is not late | U | none | refused |
-| node/def.prism, the build-side markers of a late name (`PreBindWhole`, `PreBindWholeParts`, `BindLate`, `MarkLateLets`, `LateTakerResults`, `LateFieldPlaces`, `LatePlaceParts`, `LateHostedAnswer`, `MarkLateBundle`, `LateBundleParts`: twelve sites) | R | none (sem-ch04-late-value-above-in-plain-place-field passes) | refused: a place with a `$` or bundle answer, bound by a pattern or in a hosted scope, whose constant field reads the late name; a `let` of a type with time inside that is no bundle |
+| node/def.prism, the build-side markers of a late name (`PreBindWhole`, `PreBindWholeParts`, `BindLate`, `MarkLateLets`, `LateTakerResults`, `LateFieldPlaces`, `LatePlaceParts`, `LateHostedOutput`, `MarkLateBundle`, `LateBundleParts`: twelve sites) | R | none (sem-ch04-late-value-above-in-plain-place-field passes) | refused: a place with a `$` or bundle answer, bound by a pattern or in a hosted scope, whose constant field reads the late name; a `let` of a type with time inside that is no bundle |
 | node/def.prism, a late plain result in a bundle (`WrLate`) | U | none | refused |
 | node/def.prism `DeferredLine`, two sites: a line that takes a late result above the line that gives it, with counted places (where the giver numbers no rows late: a recursing widget, a blueprint value, a bundle, a scope built at its host's line, a late name of another kind; `LateGiving` lowers the rest) or a plain result no name binds | R | sem-ch04-late-value-above-clause-widget-result-from-arm-lines, -late-let-from-arm-lines, -widget-result-from-arm-lines, -in-late-numbered-row, sem-ch09-host-late-value-above-from-arm-lines (the lowered cases) | narrowed |
 | node/static.prism `WidgetCall`, a widget line whose name has no value entry | G | - | internal error: the checker's `unknown-name`; a `for`'s binder that is a blueprint (`for @each <- [[@One, @Two]]:`) applied as a line of the row is a value of the node (`WidgetLine`'s `held`; sem-ch08-for-over-blueprints) |
@@ -619,7 +619,7 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | expr.prism `LiftedValue`, a lift whose noted operands are not its own | G | - | internal error: the checker lifts only at applications, operators, fields, indexes and interpolations, each a direct operand |
 | expr.prism `PlainValueByKind`, `{b}` outside a `for` | G | - | internal error: the checker's `unknown-name` (tests/checker/neg/bound-word-outside-for) |
 | expr.prism `PlainValueByKind`, an expression of no value kind | G | - | internal error: `mismatch` for a `for` or a `rebuild` as a plain value (ruling BP; tests/checker/neg/for-in-let), `unsupported` for a suffixed operator, a monadic block and a lens value; a topic, `..` and an absent value are read by an `update` block, a pattern and an element's fields. Not argued: a widget block as a value |
-| expr.prism `PartsBlueprint`, two sites (`PartRefused`) | G | - | internal error by its text: `DynamicAnswers` makes a getter for every dynamic answer |
+| expr.prism `PartsBlueprint`, two sites (`PartRefused`) | G | - | internal error by its text: `DynamicOutputs` makes a getter for every dynamic answer |
 | expr.prism `NameValueOf`, an event read as a value | U | none | refused |
 | expr.prism `NameValueOf`, a tuple pattern's binding as a value | R | none | refused where a bundle bound to one name is read as one value in no function's argument, no generation's result and no `let` of it (a tuple or an array that holds it); passed to a function it is one value (`BundleArgumentsAt`, ts-ch02-named-bundle-as-argument) |
 | expr.prism `NameValueOf`, a widget defined in a block read as a blueprint value outside a line's value places | R | none | refused; a lambda's body that is the widget is a value place (`BlueprintValuesAt`; sem-ch08-block-widget-given-by-lambda), one whose body chooses it (`\|c| if c: @Inner else: @Other`) is not |

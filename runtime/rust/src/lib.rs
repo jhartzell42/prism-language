@@ -54,7 +54,7 @@ pub fn same_keys<K: Ord + Clone, V: Clone, W: Clone>(a: &Map<K, V>, b: &Map<K, W
 pub use cx::{Cx, Done, Node, Runtime};
 pub use doc::{Document, Edit, Patch, Request};
 pub use existential::{Packed, Packing, recast, type_key};
-pub use host::{AnswerOf, Blueprint, answers_mapped, BuiltWidget, Moved, RowDeliver, RowDocument, WeakRows, PartsAnswer, parts_blueprint, parts_event, parts_state, host_moved, host_under, moved_by, widget_blueprint, widget_event_blueprint, widget_event_answer_blueprint, widget_dynamic_blueprint, widget_parts_blueprint, Entry, Follow, Host, HostDoc, HostOf, HostRow, Level, Link, PerKey, Rows, Scope, Sink, Supplied, Supplier, Watch, dynamic_blueprint, dynamics_pod, dynamics_ports, described_blueprint, element_blueprint, event_blueprint, forward_on_none, never_blueprint, plain_blueprint};
+pub use host::{OutputOf, Blueprint, outputs_mapped, BuiltWidget, Moved, RowDeliver, RowDocument, WeakRows, PartsOutput, parts_blueprint, parts_event, parts_state, host_moved, host_under, moved_by, widget_blueprint, widget_event_blueprint, widget_event_output_blueprint, widget_dynamic_blueprint, widget_parts_blueprint, Entry, Follow, Host, HostDoc, HostOf, HostRow, Level, Link, PerKey, Rows, Scope, Sink, Supplied, Supplier, Watch, dynamic_blueprint, dynamics_pod, dynamics_ports, described_blueprint, element_blueprint, event_blueprint, forward_on_none, never_blueprint, plain_blueprint};
 pub use float::Float;
 pub use num::{Int, Nat};
 pub use pod::{ConstructorName, Error, Fault, FromPod, Path, Pod, Segment, SparsePart, ToPod, sparse_absent, sparse_present};
@@ -67,5 +67,5 @@ pub use world::{Outcome, Program, ReadyMap, ReadyState, TickIn, TickOut, World, 
 /// scope and none of their names, so emitted code that reaches every item by its path has
 /// the methods without a program's type of the same name (`Node`, `Show`) ever hiding one.
 pub mod traits {
-    pub use crate::{AnswerOf as _, FromPod as _, HostOf as _, Job as _, Level as _, Node as _, Program as _, ReadyState as _, Show as _, ToPod as _, World as _};
+    pub use crate::{OutputOf as _, FromPod as _, HostOf as _, Job as _, Level as _, Node as _, Program as _, ReadyState as _, Show as _, ToPod as _, World as _};
 }

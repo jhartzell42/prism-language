@@ -162,7 +162,7 @@ private:
     prism_rtl::Rc<FileSystem> fs_;
     prism_rtl::Rc<const std::vector<std::string>> args_;
     Document doc_;
-    std::vector<std::pair<Path, Pod>> answers_;
+    std::vector<std::pair<Path, Pod>> outputs_;
     std::vector<std::pair<Pod, Pod>> pushes_;
     std::vector<Timer> timers_;
     std::map<Pod, Pod> lists_;

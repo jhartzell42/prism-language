@@ -1,0 +1,14 @@
+# An output of the wrong tag is a type error (Semantics rulings round 12, AQ): `Output c`
+# is the union of the output constructors of row `c`'s tags, each typed by its tag's
+# output. Written by Claude on the claude-bugs branch; subject to change.
+use Ui.*
+use Fs.*
+
+OfUi: fn Click, Contents -> [Output Ui.*]
+fn OfUi c, text = [[Ui.Button.Output c, Fs.Contents.Output (~ text)]]
+
+Carried: fn Nat -> Output Ui.*
+fn Carried n = Ui.Button.Output n
+
+Unknown: fn Click -> Output Ui.*
+fn Unknown c = Ui.Knob.Output c

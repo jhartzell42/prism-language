@@ -497,7 +497,7 @@ fn TagStruct tn = Concat (Each (SplitOn tn, "."), \|p| Camel p)
 # A tag's level struct (`Level`), named apart from every program type: its family and name
 # run together with `_g` after them (`InkRect_g`), which no type's name (UpperCamelCase,
 # with no `_`) can be; the prelude's tags by the names its hand-written code gives them.
-# The variants of a row's enum and of `Answer` keep `TagStruct`, inside their enum.
+# The variants of a row's enum and of `Output` keep `TagStruct`, inside their enum.
 # An element tag's description struct (`DescDefOf`).
 DescStructOf: fn TagInfo -> Text
 fn DescStructOf tg = "{TagStruct tg.name}_desc"

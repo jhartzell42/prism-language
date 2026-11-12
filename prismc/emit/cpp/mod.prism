@@ -4,7 +4,7 @@
 # `Makefile`, three headers per Prism module in its directory (`src/DIR/decl.hpp`,
 # `src/DIR/types.hpp`, `src/DIR/module.hpp`, DIR its path, `check/env` for `Check.Env`) and a
 # fourth when it has generic definitions (`src/DIR/generic.hpp`),
-# two for `Elem` and `Answer` (`src/elem.decl.hpp`, `src/elem.types.hpp`), the program
+# two for `Elem` and `Output` (`src/elem.decl.hpp`, `src/elem.types.hpp`), the program
 # classes (`src/programs.hpp`), `src/main.cpp` and the modules' definitions in units,
 # `src/unit_N.cpp` (prismc/README.md, picks MH and SF). As in emit.prism, nothing here decides (K9).
 #
@@ -180,7 +180,7 @@ fn Context model:
         if (InList names, top) or InList acc, top: acc else: Push acc, top
     let mods = Push (Append names, tops), "prelude"
     let base = Cp(home="", mods=mods, types=preludeTypes, ctors=preludeCtors, members=nodeBase, methods={}, fieldNames={}, fields={}, pointers={}, owned={}, moveCaptures=[[]], localTypes={})
-    let withElem = AddRow (AddAnswer base, model.answer), "", model.elem
+    let withElem = AddRow (AddOutput base, model.answer), "", model.elem
     Fold model.mods, withElem, \|cp, m| Fold m.items, cp, \|c, it| AddModelItem c, m.name, it
 
 # The prelude's own types and constructors (prelude.prism beside this file).
@@ -227,15 +227,15 @@ fn AddRow cp, m, r:
     let path = if m == "": r.name else: "{m}::{r.name}"
     Fold r.cases, (AddTy cp, path, TyInfo(kind="choice", fields=[[]], params=[[]])), \|c, ((v, ignore))| AddCtor c, "{path}::{v}", "choice"
 
-AddAnswer: fn Cp, AnswerDef -> Cp
-fn AddAnswer cp, a = Fold a.cases, (AddCtor (AddCtor (AddTy cp, "Answer", TyInfo(kind="choice", fields=[[]], params=[[]])), "Answer::Untagged_a", "choice"), "Answer::Held_a", "choice"), \|c, k| AddAnswerCase c, k
+AddOutput: fn Cp, OutputDef -> Cp
+fn AddOutput cp, a = Fold a.cases, (AddCtor (AddCtor (AddTy cp, "Output", TyInfo(kind="choice", fields=[[]], params=[[]])), "Output::Untagged_a", "choice"), "Output::Held_a", "choice"), \|c, k| AddOutputCase c, k
 
-# A tag's case, and a bundle tag's first-value case (`AnswerCase.first`).
-AddAnswerCase: fn Cp, AnswerCase -> Cp
-fn AddAnswerCase c, k:
-    let c1 = AddCtor c, "Answer::{k.variant}", "choice"
+# A tag's case, and a bundle tag's first-value case (`OutputCase.first`).
+AddOutputCase: fn Cp, OutputCase -> Cp
+fn AddOutputCase c, k:
+    let c1 = AddCtor c, "Output::{k.variant}", "choice"
     match k.?first:
-        ? ignore: AddCtor c1, "Answer::{k.variant}First", "choice"
+        ? ignore: AddCtor c1, "Output::{k.variant}First", "choice"
         nil: c1
 
 AddNode: fn Cp, Text, NodeDef -> Cp

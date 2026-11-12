@@ -1880,7 +1880,7 @@ fn FlattenLine wx, menv, args, ?bound:
 # owed (`Adoption`), which takes the inner the outer holds after n, follows that inner's
 # update event (`{name}_follow`) and fires as a write of the inner does. No dynamics are
 # compared: an adoption of the same inner fires again. It shares the `rebuild` flatten's
-# mechanism (`Adoption`, `Cx::answer_later`) rather than the swap list: the flatten fires
+# mechanism (`Adoption`, `Cx::output_later`) rather than the swap list: the flatten fires
 # at n+1 with no input of its own, so that tick must be owed, and nothing of the outer's
 # write at n reaches n's own propagation (the Compiler seed, "No prompt binding").
 HeldFlatten: unbounded fn Wx, Env, Expr, ?Bn -> ((Wx, Wres))
@@ -1973,7 +1973,7 @@ fn IsGlobalName menv, x = match x.kind:
 # `for`'s builder, walking the keys after a write of the source, finds another dynamic than
 # the inner under the row's kept key, it tells the row (`{name}_replaced`, `ForBuild`), which
 # queues the adoption for the start of the tick after (`{name}_adopt`, through
-# `Cx::answer_later`, so that tick is owed; rulings VL, TK). No row is woken to ask.
+# `Cx::output_later`, so that tick is owed; rulings VL, TK). No row is woken to ask.
 EntryFlatten: unbounded fn Wx, OutTy, ?Bn -> ((Wx, Wres))
 fn EntryFlatten wx, t, ?bound:
     let ((name, wx1)) = match ?bound:

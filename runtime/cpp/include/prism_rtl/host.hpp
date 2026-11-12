@@ -14,7 +14,7 @@
 // child's places after a tick and torn down at the end of the tick its key leaves (R7, R8,
 // the `for` machinery of the emitted code). Nothing here is plain data: the child's
 // elements are `E`, the program's `Elem` type, and an answer is `A`, the program's
-// `Answer` type (one alternative per tag, carrying that tag's output type).
+// `Output` type (one alternative per tag, carrying that tag's output type).
 //
 // A row calls the supplier with the place's path and its live element (`Live`: the
 // identity, the level over time read through the place's entry, and the entry) and builds the
@@ -28,7 +28,7 @@
 //   scope re-emits into the enclosing host's document instead (`Host`'s `enclosing`).
 // - **A computed answer** is delayed: an event output's firing (`event_blueprint`) or a
 //   dynamic output's later update (`dynamic_blueprint`) is queued with
-//   `Cx::answer_later` and delivered as an input of the next tick, which is owed
+//   `Cx::output_later` and delivered as an input of the next tick, which is owed
 //   (`pending`, like an armed `@Defer`). A dynamic output's first value is read in the
 //   birth tick, synchronously (as a World's first-value query is), and a plain output
 //   (`plain_blueprint`) is the first value once. A computed answer in flight to a place
@@ -445,7 +445,7 @@ public:
         for (auto& r : rows) cx.dirty(r);
         if (snap_.queue(cx)) {
             Rc<Entry> me = rc_static_cast<Entry>(this->rc_from_this());
-            cx.answer_later([me](Cx& cx) { return me->publish(cx); });
+            cx.output_later([me](Cx& cx) { return me->publish(cx); });
         }
     }
     /// The place's level as it stands: the snapshot taken this tick from the construction
@@ -669,13 +669,13 @@ struct Supplied {
 /// The program's answer type, which a World's answer to an element decodes into by the
 /// element's tag (emitted beside `Elem`): `static Result<A> decode(const E&, const Pod&)`,
 /// and `decode_first`, a World's first value for the element: an answer, but for a bundle's
-/// tag, whose first value is its plain parts (`Answer`'s first-value case, pick HO).
+/// tag, whose first value is its plain parts (`Output`'s first-value case, pick HO).
 template <class A, class E>
-concept AnswerOf = std::copyable<A> && requires(const E& e, const Pod& p) {
+concept OutputOf = std::copyable<A> && requires(const E& e, const Pod& p) {
     { A::decode(e, p) } -> std::same_as<Result<A>>;
     { A::decode_first(e, p) } -> std::same_as<Result<A>>;
 };
-// The emitted `Answer` also has `static std::optional<PartsAnswer<A>> held_parts(const E&,
+// The emitted `Output` also has `static std::optional<PartsOutput<A>> held_parts(const E&,
 // const A&)`: an answer held whole (a bundle with a part that is no plain data, made
 // outside a tag's arm) as the parts the element's tag takes, which a host's row answers
 // its place with (`HostRow`); `nullopt` for any other answer.
@@ -743,7 +743,7 @@ struct SubscribedParts : Node {
 /// A computed answer: delivered as an input of the next tick, which is owed.
 template <class A>
 Done later(const Sink<A>& sink, A v, Cx& cx) {
-    cx.answer_later([sink, v](Cx& cx) { return sink(v, cx); });
+    cx.output_later([sink, v](Cx& cx) { return sink(v, cx); });
     return {};
 }
 
@@ -772,8 +772,8 @@ Moved host_moved(const Rc<HostOf<E, A>>& host);
 /// places entries of the host's document, given the host and what tells the host's owner
 /// that a place of the row's came or went (`HostOf::moved`); `answer` makes the widget's
 /// plain result the place's first value (nothing for a widget that gives none).
-template <class E, class A, class Build, class BuildHosted, class AnswerFn>
-Blueprint<E, A> widget_blueprint(Build build, BuildHosted build_hosted, AnswerFn answer) {
+template <class E, class A, class Build, class BuildHosted, class OutputFn>
+Blueprint<E, A> widget_blueprint(Build build, BuildHosted build_hosted, OutputFn answer) {
     return [build, build_hosted, answer](Path path, Sink<A>, const Scope<E, A>& scope, std::uint32_t base, Cx& cx) -> Result<Supplied<E, A>> {
         if (scope.is_world()) {
             auto made = TRY(build(path, base, cx));
@@ -789,8 +789,8 @@ Blueprint<E, A> widget_blueprint(Build build, BuildHosted build_hosted, AnswerFn
 /// blueprint answers, made of the event's value by `answer` and given to the sink of what
 /// applied the blueprint, in the tick of the firing. The subscription lives as long as
 /// the row, whose port it is.
-template <class E, class A, class Build, class BuildHosted, class AnswerFn>
-Blueprint<E, A> widget_event_blueprint(Build build, BuildHosted build_hosted, AnswerFn answer) {
+template <class E, class A, class Build, class BuildHosted, class OutputFn>
+Blueprint<E, A> widget_event_blueprint(Build build, BuildHosted build_hosted, OutputFn answer) {
     return [build, build_hosted, answer](Path path, Sink<A> sink, const Scope<E, A>& scope, std::uint32_t base, Cx& cx) -> Result<Supplied<E, A>> {
         auto hear = [sink, answer](const auto& v, Cx& cx) -> Done { return sink(answer(v), cx); };
         if (scope.is_world()) {
@@ -808,8 +808,8 @@ Blueprint<E, A> widget_event_blueprint(Build build, BuildHosted build_hosted, An
 /// `widget_event_blueprint`, but each firing is a computed answer, an input of the next
 /// tick, which is owed (Semantics ch. 9, "A computed answer is the next tick's input"),
 /// as `event_blueprint`'s is.
-template <class E, class A, class Build, class BuildHosted, class AnswerFn>
-Blueprint<E, A> widget_event_answer_blueprint(Build build, BuildHosted build_hosted, AnswerFn answer) {
+template <class E, class A, class Build, class BuildHosted, class OutputFn>
+Blueprint<E, A> widget_event_output_blueprint(Build build, BuildHosted build_hosted, OutputFn answer) {
     return [build, build_hosted, answer](Path path, Sink<A> sink, const Scope<E, A>& scope, std::uint32_t base, Cx& cx) -> Result<Supplied<E, A>> {
         auto hear = [sink, answer](const auto& v, Cx& cx) -> Done { return later<A>(sink, answer(v), cx); };
         if (scope.is_world()) {
@@ -828,15 +828,15 @@ Blueprint<E, A> widget_event_answer_blueprint(Build build, BuildHosted build_hos
 /// the place's first value, made an answer by `answer`; each later move of it is a push
 /// to the place, an input of the next tick, which is owed, sampled when it is delivered,
 /// as `dynamic_blueprint`'s is (several marks in one tick are one push).
-template <class E, class A, class Build, class BuildHosted, class AnswerFn>
-Blueprint<E, A> widget_dynamic_blueprint(Build build, BuildHosted build_hosted, AnswerFn answer) {
+template <class E, class A, class Build, class BuildHosted, class OutputFn>
+Blueprint<E, A> widget_dynamic_blueprint(Build build, BuildHosted build_hosted, OutputFn answer) {
     return [build, build_hosted, answer](Path path, Sink<A> sink, const Scope<E, A>& scope, std::uint32_t base, Cx& cx) -> Result<Supplied<E, A>> {
         auto follow = [sink, answer](const auto& d, Cx& cx) -> A {
             auto queued = make_rc<Stamped<Unit>>();
             deref(d.updates).subscribe([d, sink, answer, queued](const Unit&, Cx& cx) -> Done {
                 if (queued->fired(cx)) return {};
                 queued->set(Unit{}, cx);
-                cx.answer_later([d, sink, answer](Cx& cx) { return sink(answer(d.sample(cx)), cx); });
+                cx.output_later([d, sink, answer](Cx& cx) { return sink(answer(d.sample(cx)), cx); });
                 return {};
             });
             return answer(d.sample(cx));
@@ -889,7 +889,7 @@ Blueprint<E, A> plain_blueprint(A x) {
 /// sink of what applies it, through `walk` (a function a blueprint holds, made the
 /// function its reader's type names).
 template <class E, class A, class Walk>
-Blueprint<E, A> answers_mapped(Blueprint<E, A> blueprint, Walk walk) {
+Blueprint<E, A> outputs_mapped(Blueprint<E, A> blueprint, Walk walk) {
     return [blueprint, walk](Path path, Sink<A> sink, const Scope<E, A>& scope, std::uint32_t base, Cx& cx) -> Result<Supplied<E, A>> {
         Sink<A> mapped(std::function<Done(const A&, Cx&)>([sink, walk](const A& answer, Cx& cx) -> Done { return sink(walk(answer), cx); }), sink.twin());
         auto supplied = TRY(blueprint(path, mapped, scope, base, cx));
@@ -922,17 +922,17 @@ Blueprint<E, A> event_blueprint(Event<A> e) {
 /// moves), with a port per `$` part that says the part moved; each event part is an event
 /// of the tag's answer case.
 template <class A>
-struct PartsAnswer {
+struct PartsOutput {
     std::optional<Dynamic<A>> state;
     std::vector<Rc<Port<Unit>>> moved;
     std::vector<Event<A>> events;
     /// One more port that says the state moved (a second `$` part's).
-    PartsAnswer moved_by(const Rc<Port<Unit>>& port) && {
+    PartsOutput moved_by(const Rc<Port<Unit>>& port) && {
         moved.push_back(port);
         return std::move(*this);
     }
     /// One more event part.
-    PartsAnswer event(Event<A> e) && {
+    PartsOutput event(Event<A> e) && {
         events.push_back(std::move(e));
         return std::move(*this);
     }
@@ -940,14 +940,14 @@ struct PartsAnswer {
 
 /// A bundle answer with a state: its plain and `$` parts.
 template <class A>
-PartsAnswer<A> parts_state(Dynamic<A> state) {
-    return PartsAnswer<A>{std::optional<Dynamic<A>>(std::move(state)), {}, {}};
+PartsOutput<A> parts_state(Dynamic<A> state) {
+    return PartsOutput<A>{std::optional<Dynamic<A>>(std::move(state)), {}, {}};
 }
 
 /// A bundle answer with no state: its first event part.
 template <class A>
-PartsAnswer<A> parts_event(Event<A> e) {
-    return PartsAnswer<A>{std::nullopt, {}, {std::move(e)}};
+PartsOutput<A> parts_event(Event<A> e) {
+    return PartsOutput<A>{std::nullopt, {}, {std::move(e)}};
 }
 
 namespace detail {
@@ -957,7 +957,7 @@ namespace detail {
 /// later move of the state and answer each firing of an event part, a tick late, kept
 /// in `node`.
 template <class A>
-std::optional<A> answer_parts(const PartsAnswer<A>& parts, const Sink<A>& sink, SubscribedParts<A>& node, Cx& cx) {
+std::optional<A> output_parts(const PartsOutput<A>& parts, const Sink<A>& sink, SubscribedParts<A>& node, Cx& cx) {
     std::optional<A> first;
     if (parts.state) first = parts.state->sample(cx);
     for (const Event<A>& e : parts.events)
@@ -972,7 +972,7 @@ std::optional<A> answer_parts(const PartsAnswer<A>& parts, const Sink<A>& sink, 
             node.updates.emplace_back(port, port->subscribe([d, sink, queued](const Unit&, Cx& cx) -> Done {
                 if (queued->fired(cx)) return {};
                 queued->set(Unit{}, cx);
-                cx.answer_later([d, sink](Cx& cx) { return sink(d.sample(cx), cx); });
+                cx.output_later([d, sink](Cx& cx) { return sink(d.sample(cx), cx); });
                 return {};
             }));
     }
@@ -988,10 +988,10 @@ std::optional<A> answer_parts(const PartsAnswer<A>& parts, const Sink<A>& sink, 
 /// marks of the state in one tick are one push, sampled when it is delivered. Two event
 /// parts that fire in one tick are two answers of that next tick.
 template <class E, class A>
-Blueprint<E, A> parts_blueprint(PartsAnswer<A> parts) {
+Blueprint<E, A> parts_blueprint(PartsOutput<A> parts) {
     return [parts](Path, Sink<A> sink, const Scope<E, A>&, std::uint32_t, Cx& cx) -> Result<Supplied<E, A>> {
         auto node = make_rc<detail::SubscribedParts<A>>();
-        std::optional<A> first = detail::answer_parts(parts, sink, *node, cx);
+        std::optional<A> first = detail::output_parts(parts, sink, *node, cx);
         return Supplied<E, A>{node, std::move(first), false};
     };
 }
@@ -1009,11 +1009,11 @@ Blueprint<E, A> widget_parts_blueprint(Build build, BuildHosted build_hosted, Pa
         detail::SubscribedParts<A> subscribed;
         if (scope.is_world()) {
             auto made = TRY(build(path, base, cx));
-            std::optional<A> first = detail::answer_parts(parts(made.result), sink, subscribed, cx);
+            std::optional<A> first = detail::output_parts(parts(made.result), sink, subscribed, cx);
             return Supplied<E, A>{made.node, std::move(first), false, nullptr, made.built, made.leave};
         }
         auto made = TRY(build_hosted(path, base, scope.hosted, host_moved<E, A>(scope.hosted), cx));
-        std::optional<A> first = detail::answer_parts(parts(made.result), sink, subscribed, cx);
+        std::optional<A> first = detail::output_parts(parts(made.result), sink, subscribed, cx);
         return Supplied<E, A>{made.node, std::move(first), false, nullptr, made.built, made.leave, made.document, made.deliver};
     };
 }
@@ -1033,7 +1033,7 @@ Blueprint<E, A> dynamic_blueprint(Dynamic<A> d) {
         node->handle = d.updates->subscribe([d, sink, queued](const Unit&, Cx& cx) -> Done {
             if (queued->fired(cx)) return {};
             queued->set(Unit{}, cx);
-            cx.answer_later([d, sink](Cx& cx) { return sink(d.sample(cx), cx); });
+            cx.output_later([d, sink](Cx& cx) { return sink(d.sample(cx), cx); });
             return {};
         });
         return Supplied<E, A>{node, std::move(first), false};
@@ -1162,7 +1162,7 @@ struct Placed : Node {
 /// host's document: an entry of its own (`Supplied::entry`), which takes its level at the
 /// build and each time it moves; an enclosing host's answer there is handed to the sink.
 template <class E, class A>
-    requires AnswerOf<A, E>
+    requires OutputOf<A, E>
 Blueprint<E, A> described_blueprint(const Described<E>& d) {
     return [d](Path path, Sink<A> sink, const Scope<E, A>& scope, std::uint32_t base, Cx& cx) -> Result<Supplied<E, A>> {
         Path at = path.at(base);
@@ -1225,7 +1225,7 @@ Blueprint<E, A> described_blueprint(const Described<E>& d) {
 /// value is the World's; in a hosted scope nothing goes out (the enclosing host's document
 /// reads the row), and the first value is the enclosing host's.
 template <class E, class A>
-    requires AnswerOf<A, E>
+    requires OutputOf<A, E>
 Blueprint<E, A> element_blueprint(const Element<E>& value) {
     if (const Described<E>* d = std::get_if<Described<E>>(&value.form)) return described_blueprint<E, A>(*d);
     const Live<E>& e = std::get<Live<E>>(value.form);
@@ -1263,7 +1263,7 @@ Blueprint<E, A> element_blueprint(const Element<E>& value) {
 /// `@HostSome`'s supplier made `@HostDocument`'s (Semantics ch. 9, the derivation): `nil`
 /// means "not mine, forward it".
 template <class E, class A>
-    requires AnswerOf<A, E>
+    requires OutputOf<A, E>
 Supplier<E, A> forward_on_none(std::function<std::optional<Blueprint<E, A>>(const Path&, const Element<E>&)> some) {
     return [some](const Path& p, const Element<E>& e) -> Blueprint<E, A> {
         if (auto b = some(p, e)) return *b;
@@ -1390,12 +1390,12 @@ public:
         Blueprint<E, A> blueprint = host->supplier()(node->key_, element);
         auto supplied = TRY(blueprint(node->path_, node->sink_, host->scope(), 0, cx));
         // a bundle made outside the tag's arm and held whole is answered part by part
-        // (the emitted `Answer::held_parts`): its state the place's first value, each
+        // (the emitted `Output::held_parts`): its state the place's first value, each
         // firing of an event part an answer
         if (supplied.first) {
             if (auto parts = A::held_parts(identity, *supplied.first)) {
                 auto subscribed = make_rc<detail::SubscribedParts<A>>();
-                supplied.first = detail::answer_parts(*parts, node->sink_, *subscribed, cx);
+                supplied.first = detail::output_parts(*parts, node->sink_, *subscribed, cx);
                 node->held_ = subscribed;
             }
         }
@@ -1405,9 +1405,9 @@ public:
 
     /// An answer the host sends down to the row's place (`@HostList`): delivered as the
     /// next tick's input, and dropped if the key left by then.
-    void answer_later(A v, Cx& cx) const {
+    void output_later(A v, Cx& cx) const {
         Sink<A> sink = sink_;
-        cx.answer_later([sink, v](Cx& cx) { return sink(v, cx); });
+        cx.output_later([sink, v](Cx& cx) { return sink(v, cx); });
     }
 
     /// The blueprint's first value: the place's, when its output has one.
@@ -1524,7 +1524,7 @@ private:
     Weak<HostOf<E, A>> host_;
     /// The key left: a computed answer in flight to the place is dropped.
     bool left_ = false;
-    /// The subscriptions of a bundle answered held whole (`Answer::held_parts`): they
+    /// The subscriptions of a bundle answered held whole (`Output::held_parts`): they
     /// leave with the row.
     NodeRef held_ = nullptr;
     Sink<A> sink_;
@@ -1540,7 +1540,7 @@ private:
 /// rows, its supplier, the enclosing host when the line stands in a hosted scope, and the
 /// owner's emitted typed dispatch.
 template <class E, class A, class P>
-    requires AnswerOf<A, E>
+    requires OutputOf<A, E>
 class Host : public HostOf<E, A>, public RcFromThis<Host<E, A, P>> {
 public:
     using DeliverFn = std::function<Done(const Rc<P>&, const Path&, const A&, Cx&)>;
@@ -1624,7 +1624,7 @@ private:
         for (const auto& [p, v] : m) {
             if (auto row = rows_->get(p)) {
                 Rc<HostRow<E, A>> r = *row;
-                r->answer_later(v, cx);
+                r->output_later(v, cx);
             }
         }
         return {};

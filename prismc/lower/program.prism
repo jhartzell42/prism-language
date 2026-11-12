@@ -102,13 +102,13 @@ fn LowerProgram srcs, trees, shown, tp, name:
         otherwise: acc
     let withNeeds = WithGroups (WithNeeds g, srcs, tp, modDefs)
     let elem = ElemRow lx, mods
-    let answer = AnswerEnum (InModuleAt lx, 0, "", "\u{0}main"), mods
+    let answer = OutputEnum (InModuleAt lx, 0, "", "\u{0}main"), mods
     let names = Each withNeeds, \|d| d.name
     let valueTys = ValueTypes withNeeds
     let elemHeld = Fold elem.cases, [[]], \|acc, ((ignore, sp))| UnionTexts acc, (HeldIn names, valueTys, "", (OutNamed sp, [[]]))
-    let answerHeld = Fold answer.cases, elemHeld, \|acc, k| UnionTexts acc, (HeldIn names, valueTys, "", k.ty)
-    let answerNamed = Fold answer.cases, [[]], \|acc, k| UnionTexts acc, (NamedIn names, "", k.ty)
-    Model(name=name, mods=withNeeds, programs=programs, ?root=?root, checks=checks, elem=elem, answer=answer, elemComplete=answerHeld, elemDeclared=(MinusTexts answerNamed, answerHeld), scripts=[[]], notes=[[]])
+    let outputHeld = Fold answer.cases, elemHeld, \|acc, k| UnionTexts acc, (HeldIn names, valueTys, "", k.ty)
+    let outputNamed = Fold answer.cases, [[]], \|acc, k| UnionTexts acc, (NamedIn names, "", k.ty)
+    Model(name=name, mods=withNeeds, programs=programs, ?root=?root, checks=checks, elem=elem, answer=answer, elemComplete=outputHeld, elemDeclared=(MinusTexts outputNamed, outputHeld), scripts=[[]], notes=[[]])
 
 # Each module with what it needs of the others (`ModDef.complete` and `declared`).
 WithNeeds: unbounded fn G, [Src], TProgram, [ModDef] -> [ModDef]
@@ -354,13 +354,13 @@ fn ?ClosedTypes rigids, found:
 # program has no finite set of them (`GrowInstances`), or where a use leaves a type
 # parameter undecided.
 ?DefInstances: unbounded fn Lx, Text -> ?[ [((Text, Ty))] ]
-fn ?DefInstances lx, wanted = match DefInstancesAnswer lx, wanted:
+fn ?DefInstances lx, wanted = match DefInstancesOutput lx, wanted:
     InstancesReached all: ? (Each all, \|instantiation| instantiation.types)
     otherwise: nil
 
 # What the fixed point over the program's instantiations answers: the instantiations,
 # or why there is no finite list of them to read.
-type InstancesAnswer = choice:
+type InstancesOutput = choice:
     InstancesReached [Instantiation]
     # a line of uses by name that gives a type parameter a larger type holding itself:
     # the checker's `grows-without-end` (ruling PG), so no checked program has one
@@ -376,8 +376,8 @@ type InstancesAnswer = choice:
 derive ^Eq, ^Show
 
 # `?DefInstances` with its reason: the instantiations of `wanted` alone.
-DefInstancesAnswer: unbounded fn Lx, Text -> InstancesAnswer
-fn DefInstancesAnswer lxAt, wanted:
+DefInstancesOutput: unbounded fn Lx, Text -> InstancesOutput
+fn DefInstancesOutput lxAt, wanted:
     # the types as the checker wrote them, under no instantiation
     let lx = update lxAt:
         &_.subst <= {}
@@ -545,7 +545,7 @@ fn RelevantDefinitions lx, uses, relevant:
 
 # The fixed point's step: the uses in the body of the instantiation at `next` are read
 # at its types, and what they instantiate is added behind; done when none is left.
-GrowInstances: unbounded fn Lx, [InstanceUse], [Text], [Instantiation], Nat -> InstancesAnswer
+GrowInstances: unbounded fn Lx, [InstanceUse], [Text], [Instantiation], Nat -> InstancesOutput
 fn GrowInstances lx, uses, relevant, all, next = match all[next]:
     nil: InstancesReached all
     ? instantiation: match AddTargets lx, uses, relevant, all, instantiation.definition, instantiation.types, (? next):
@@ -555,7 +555,7 @@ fn GrowInstances lx, uses, relevant, all, next = match all[next]:
 # What the uses in `user`'s body instantiate at the types `types` give `user`'s type
 # parameters, added to `all` where new. No list where a use leaves a type parameter
 # undecided, and where the program has no finite set of instantiations (`?GrowsFrom`).
-AddTargets: unbounded fn Lx, [InstanceUse], [Text], [Instantiation], Text, [((Text, Ty))], ?Nat -> InstancesAnswer
+AddTargets: unbounded fn Lx, [InstanceUse], [Text], [Instantiation], Text, [((Text, Ty))], ?Nat -> InstancesOutput
 fn AddTargets lx, uses, relevant, all, user, types, ?parent = Fold uses, (InstancesReached all), \|answer, site| match answer:
     InstancesReached acc: if (UseUser site) != user: answer else: match ?UseTargets lx, site, types:
         nil: UndecidedParameter
@@ -597,7 +597,7 @@ fn AddTargets lx, uses, relevant, all, user, types, ?parent = Fold uses, (Instan
 # of a definition, so some parameter of some definition is reached again from itself
 # with a layer added between: the substitution between those two holds it inside its
 # own larger type.
-?GrowsFrom: unbounded fn Lx, [Instantiation], ?Nat, Text, [((Text, Ty))], ?[((Text, Ty))] -> ?InstancesAnswer
+?GrowsFrom: unbounded fn Lx, [Instantiation], ?Nat, Text, [((Text, Ty))], ?[((Text, Ty))] -> ?InstancesOutput
 fn ?GrowsFrom lx, all, ?at, definition, types, ?composed = match ?at:
     nil: nil
     ? at: match all[at]:
@@ -780,9 +780,9 @@ fn ImplTargets lx, cls, ty = Fold (Or lx.g.impls[cls], [[]]), [[]], \|acc, im| m
 ?EnclosingInstances: unbounded fn Lx -> ?[ [((Text, Ty))] ]
 fn ?EnclosingInstances lx = if lx.inDefinition == "": nil else: ?DefInstances lx, lx.inDefinition
 
-# The same with its reason (`DefInstancesAnswer`), for a refusal's words.
-EnclosingAnswer: unbounded fn Lx -> InstancesAnswer
-fn EnclosingAnswer lx = if lx.inDefinition == "": NoDefinition else: DefInstancesAnswer lx, lx.inDefinition
+# The same with its reason (`DefInstancesOutput`), for a refusal's words.
+EnclosingOutput: unbounded fn Lx -> InstancesOutput
+fn EnclosingOutput lx = if lx.inDefinition == "": NoDefinition else: DefInstancesOutput lx, lx.inDefinition
 
 # A valued widget's key where it is read (`ValuedKey`), "" where its type parameters stay
 # open.
@@ -1512,11 +1512,11 @@ fn ElemRow lx, mods:
 TagHoldsDyn: unbounded fn Lx, TagInfo -> Bool
 fn TagHoldsDyn lx, tg = Fold (TagDefOf lx, tg).fields, False, \|f, ((ignore, ignore, t))| f or HoldsDyn t
 
-# `crate::Answer`: a variant per element tag, carrying the tag's output type.
-AnswerEnum: unbounded fn Lx, [Text] -> AnswerDef
-fn AnswerEnum lx, mods:
+# `crate::Output`: a variant per element tag, carrying the tag's output type.
+OutputEnum: unbounded fn Lx, [Text] -> OutputDef
+fn OutputEnum lx, mods:
     let tags = KindTags lx, "Element", (Push mods, "Prelude")
-    AnswerDef(cases=(Each tags, \|tg| AnswerCase(variant=(TagStruct tg.name), accessor=(AnswerAccessor tg), structPath=(RootRef tg.home, (TagStructOf tg)), tagName=tg.name, ty=(AnswerTy lx, tg), ?first=(?BundleFirstTy lx, tg), ?heldWhole=(?HeldWholeTy lx, tg), ?heldParts=(?HeldPartsOf lx, tg))))
+    OutputDef(cases=(Each tags, \|tg| OutputCase(variant=(TagStruct tg.name), accessor=(OutputAccessor tg), structPath=(RootRef tg.home, (TagStructOf tg)), tagName=tg.name, ty=(OutputTy lx, tg), ?first=(?BundleFirstTy lx, tg), ?heldWhole=(?HeldWholeTy lx, tg), ?heldParts=(?HeldPartsOf lx, tg))))
 
 # A bundle tag's output as one value, its events and dynamics whole, when a part of it
 # is no plain data (a function): what a blueprint of such a bundle made outside the
@@ -1527,7 +1527,7 @@ fn ?HeldWholeTy lx, tg = match Peel tg.out:
     otherwise: nil
 
 # The function from such a value to the tag's parts answer: each part read out of the
-# value, answered as the bundle written under the tag's arm is (`PartsAnswerOf`).
+# value, answered as the bundle written under the tag's arm is (`PartsOutputOf`).
 ?HeldPartsOf: unbounded fn Lx, TagInfo -> ?Ex
 fn ?HeldPartsOf lx, tg = match (((?HeldWholeTy lx, tg), (Peel tg.out))):
     ((? whole, TyTuple parts)):
@@ -1538,8 +1538,8 @@ fn ?HeldPartsOf lx, tg = match (((?HeldWholeTy lx, tg), (Peel tg.out))):
                 LyEv: PartEvent value, (OutTyOf lx, (Peel part))
                 LyDyn: PartLive value
                 otherwise: PartPlain value
-        let env = Bind (Bind emptyEnv, "#tag", (BnLocal (XPath (AnswerVariant tg)), Owned, OutUnit)), "#tagfirst", (BnLocal (XPath (AnswerFirstVariant tg)), Owned, OutUnit)
-        ? (XClosure False, [[(PaTyped (PaBind "held_whole"), (OutRef whole))]], (PartsAnswerOf lx, env, "a bundle held whole as {tg.name}'s answer", read, (AnswerVariant tg)))
+        let env = Bind (Bind emptyEnv, "#tag", (BnLocal (XPath (OutputVariant tg)), Owned, OutUnit)), "#tagfirst", (BnLocal (XPath (OutputFirstVariant tg)), Owned, OutUnit)
+        ? (XClosure False, [[(PaTyped (PaBind "held_whole"), (OutRef whole))]], (PartsOutputOf lx, env, "a bundle held whole as {tg.name}'s answer", read, (OutputVariant tg)))
     otherwise: nil
 
 # A bundle tag's state (Type System ch. 2, "Bundles"): its plain and `$` parts' values, one
@@ -1553,9 +1553,9 @@ fn ?BundleStateTy lx, tg = match Peel tg.out:
         state: ? (OutTuple (Each state, \|c| TagFieldOut lx, c))
     otherwise: nil
 
-# A bundle tag's state in a variant of its own (`AnswerCase.first`), when the tag has
+# A bundle tag's state in a variant of its own (`OutputCase.first`), when the tag has
 # event parts too: the place's first value and each push after it. A bundle of state
-# parts alone answers with its state in the tag's own variant (`AnswerTy`); `nil` for it,
+# parts alone answers with its state in the tag's own variant (`OutputTy`); `nil` for it,
 # for a tag whose output is no bundle, and for a bundle of events alone.
 ?BundleFirstTy: unbounded fn Lx, TagInfo -> ?OutTy
 fn ?BundleFirstTy lx, tg = match Peel tg.out:
@@ -1572,8 +1572,8 @@ fn SparsePartTy t = OutNamed (RefRuntime "prism_rtl::SparsePart"), [[t]]
 # tuple of them, the parts that fired (Type System ch. 2, "Bundles and sparse tuples");
 # with none, its state (`?BundleStateTy`). A variable of the tag is the answer as it
 # came, a `Pod` (`TagFieldOut`).
-AnswerTy: unbounded fn Lx, TagInfo -> OutTy
-fn AnswerTy lx, tg:
+OutputTy: unbounded fn Lx, TagInfo -> OutTy
+fn OutputTy lx, tg:
     let out = Peel tg.out
     match out:
         TyTuple cs: if not (IsBundle out): TagFieldOut lx, out else: match Filter cs, \|c| (LayerOf c) == LyEv:
@@ -1585,22 +1585,22 @@ fn AnswerTy lx, tg:
 # An answer taken out of its tag's variant (`v.pad_echo()?`), as the place that asked
 # reads it: itself, or of a generic tag (whose variant holds each variable as plain data,
 # `TagFieldOut`) recoded to the type the place was placed at.
-AnswerTaken: unbounded fn Lx, Text, OutTy, Ex -> Ex
-fn AnswerTaken lx, accessor, placed, taken:
-    let ?named = Fold (Values lx.g.tags), nil, \|?found, tg| if tg.kind == "Element" and (AnswerAccessor tg) == accessor: ? tg else: ?found
+OutputTaken: unbounded fn Lx, Text, OutTy, Ex -> Ex
+fn OutputTaken lx, accessor, placed, taken:
+    let ?named = Fold (Values lx.g.tags), nil, \|?found, tg| if tg.kind == "Element" and (OutputAccessor tg) == accessor: ? tg else: ?found
     # a bundle's first-value accessor (`{accessor}_first`)
-    let ?first = Fold (Values lx.g.tags), nil, \|?found, tg| if tg.kind == "Element" and "{AnswerAccessor tg}_first" == accessor: ? tg else: ?found
+    let ?first = Fold (Values lx.g.tags), nil, \|?found, tg| if tg.kind == "Element" and "{OutputAccessor tg}_first" == accessor: ? tg else: ?found
     match ((?named, ?first)):
-        ((? tg, ignore)): RecodedAnswer (AnswerOpen lx, tg), (AnswerTy lx, tg), placed, taken
-        ((nil, ? tg)): RecodedAnswer (AnswerOpen lx, tg), (Or (?BundleFirstTy lx, tg), OutUnit), placed, taken
+        ((? tg, ignore)): RecodedOutput (OutputOpen lx, tg), (OutputTy lx, tg), placed, taken
+        ((nil, ? tg)): RecodedOutput (OutputOpen lx, tg), (Or (?BundleFirstTy lx, tg), OutUnit), placed, taken
         otherwise: InternalBug "an answer taken by `{accessor}`, which is no tag's accessor"
 
 # Whether a tag's output has a variable of the tag.
-AnswerOpen: unbounded fn Lx, TagInfo -> Bool
-fn AnswerOpen lx, tg = TagFieldOpen lx, tg.out
+OutputOpen: unbounded fn Lx, TagInfo -> Bool
+fn OutputOpen lx, tg = TagFieldOpen lx, tg.out
 
-RecodedAnswer: fn Bool, OutTy, OutTy, Ex -> Ex
-fn RecodedAnswer open, carried, placed, taken = if open and carried != placed: XCallAt (HelperRef "recode"), [[placed]], [[XRef taken]] else: taken
+RecodedOutput: fn Bool, OutTy, OutTy, Ex -> Ex
+fn RecodedOutput open, carried, placed, taken = if open and carried != placed: XCallAt (HelperRef "recode"), [[placed]], [[XRef taken]] else: taken
 
 # The Rust path of a tag's enum variant and of its struct, from the current module.
 TagPaths: fn Lx, TagInfo -> ((Ref, Ref))

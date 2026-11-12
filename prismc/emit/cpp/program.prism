@@ -53,9 +53,9 @@ fn NodeParts cp, n:
     let methodDecls = Each (Append n.methods, n.hosted), \|m| "{MethodSig ncp, m, ""};"
     let builderDecls = Append (Each n.builders, \|b| "crate::prelude::Done {b.name}_build(crate::prelude::Cx& cx);"), (Each n.gens, \|g| "crate::prelude::Done {g.name}_build(crate::prelude::Cx& cx);")
     let hookDecls = Each n.hooks, \|((h, ignore))| "{HookSig h, ""} override;"
-    let answerDecl = if (Len n.answers) == 0: [[]] else: [["crate::prelude::Done answer(::std::span<const crate::prelude::Segment> at, const crate::prelude::Pod& v, crate::prelude::Cx& cx) override;"]]
+    let outputDecl = if (Len n.answers) == 0: [[]] else: [["crate::prelude::Done answer(::std::span<const crate::prelude::Segment> at, const crate::prelude::Pod& v, crate::prelude::Cx& cx) override;"]]
     let rowDecl = if n.rowKind == NotARow: [[]] else: [["void leave_row(crate::prelude::Cx& cx) override;"]]
-    let decls = Join (Append (Append (Append (Append (Append [[makeDecl]], methodDecls), builderDecls), hookDecls), answerDecl), rowDecl), "\n"
+    let decls = Join (Append (Append (Append (Append (Append [[makeDecl]], methodDecls), builderDecls), hookDecls), outputDecl), rowDecl), "\n"
     let doc = CppSourceDoc "`{n.prism}`: a node of its own (claude/backend.md, \"A widget block\").", n.doc
     let decl = NodeClass doc, n.name, base, fields, consts, "{n.name}({ctorParams}) : {ctorInits} \{\}", decls
     # the constructor's arguments in the order the fields are declared
@@ -67,7 +67,7 @@ fn NodeParts cp, n:
     let methods = Each (Append n.methods, n.hosted), \|m| MethodDef ncp, n.name, m
     let builders = Append (Each n.builders, \|b| ForBuildCpp ncp, n.name, b), (Each n.gens, \|g| GenBuildCpp ncp, n.name, g)
     let hooks = Each n.hooks, \|((h, body))| CppFunction "", (HookSig h, "{n.name}::"), "{CppStatements ncp, body}\nreturn \{\};"
-    let answer = if (Len n.answers) == 0: [[]] else: [[(AnswerDefCpp ncp, n)]]
+    let answer = if (Len n.answers) == 0: [[]] else: [[(OutputDefCpp ncp, n)]]
     let leaving = if n.rowKind == NotARow: [[]] else: [[(RowLeaving ncp, n)]]
     let defs = Append (Append (Append (Append (Append [[make]], methods), builders), hooks), answer), leaving
     let own = Parts(forward=[["class {n.name};"]], values=[[]], protos=[[]], classes=[[decl]], outer=[[]], generic=[[]], defs=defs)
@@ -93,8 +93,8 @@ HookSig: fn Text, Text -> Text
 fn HookSig "push", owner = "crate::prelude::Done {owner}push(const crate::prelude::Pod& element, const crate::prelude::Pod& v, crate::prelude::Cx& cx)"
 fn HookSig h, owner = "crate::prelude::Done {owner}{h}(crate::prelude::Cx& cx)"
 
-AnswerDefCpp: unbounded fn Cp, NodeDef -> Text
-fn AnswerDefCpp cp, n:
+OutputDefCpp: unbounded fn Cp, NodeDef -> Text
+fn OutputDefCpp cp, n:
     let arms = Each n.answers, \|((pat, call))|
         let tests = PatConds cp, pat, "at"
         let binds = PatBinds cp, pat, "at"
@@ -188,7 +188,7 @@ fn EmitCpp model, runtime, scripts:
     let cp = Context model
     let crate = InHome cp, ""
     let elem = RowParts crate, "", model.elem
-    let answer = AnswerParts crate, model.answer
+    let answer = OutputParts crate, model.answer
     let mods = Each model.mods, \|m| ModuleParts cp, m
     let programs = Join (Each (AllProgramsCpp model), \|p| ProgramCpp crate, p, (NodeFallibleCpp model, p.node)), "\n\n"
     let regs = Concat (Each model.programs, \|p| "\n.program<{p.name}>(\"{p.prism}\")")
@@ -245,11 +245,11 @@ fn Among xs, x = Fold xs, False, \|f, y| f or y == x
 # A types header: the value types of these modules (one, or a group) in an order C++
 # accepts, each after the types it holds by value (a choice with its cases among them), after
 # the headers they need: their own declarations, the declarations of the modules they name,
-# the types of the modules whose types they hold, and `Elem` and `Answer` declared, or
+# the types of the modules whose types they hold, and `Elem` and `Output` declared, or
 # defined when a type holds one by value.
 TypesHeader: unbounded fn Text, [Text], [Text], [Text], Parts -> Text
 fn TypesHeader title, members, declared, complete, p:
-    let holdsElem = Fold p.values, False, \|f, v| f or Fold v.deps, False, \|g, d| g or d == "Elem" or d == "Answer"
+    let holdsElem = Fold p.values, False, \|f, v| f or Fold v.deps, False, \|g, d| g or d == "Elem" or d == "Output"
     let elem = if holdsElem: "#include \"elem.types.hpp\"" else: "#include \"elem.decl.hpp\""
     let includes = Join (Filter [[(Includes "decl", members), elem, (Includes "decl", declared), (Includes "types", complete)]], \|t| t != ""), "\n"
     let values = Join (OrderValues p.values, (Fold p.values, {}, \|acc, v| Insert acc, v.path, False), [[]]), "\n\n"

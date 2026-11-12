@@ -822,7 +822,7 @@ fn BoundsClosed lx, bounds = Fold (Range0 8), bounds, \|acc, ignore| Fold acc, a
     nil: a
 
 # `@ x` as a value (a supplier's arm; pick HO): a blueprint with no places whose output is
-# `x`, typed as the tag's variant of `crate::Answer`, so the arm must stand under a tag
+# `x`, typed as the tag's variant of `crate::Output`, so the arm must stand under a tag
 # pattern on the live element (`Ui.Button(..): @ !tap`), which binds the tag (`#tag`). A
 # plain value, or a constant dynamic (`@ $ (~ Contents(..))`), is the place's first value
 # once; an event's firings are answers, each a tick late; `never` answers nothing. A dynamic
@@ -835,20 +835,20 @@ fn PureBlueprint lx, env, x, t:
             let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
             ?qk == ? "Prelude.never"
         otherwise: False
-    if isNever: VlOwned (XCall (RefRuntime "prism_rtl::never_blueprint::<crate::Elem, crate::Answer>"), [[]]), t
+    if isNever: VlOwned (XCall (RefRuntime "prism_rtl::never_blueprint::<crate::Elem, crate::Output>"), [[]]), t
     else: match env.names["#tag"]:
         # outside a tag's arm (a host's `let @seven = @ 7`, given by the arm that matched the
-        # tag; a plain function's `? @ F`): the answer as plain data, `Answer`'s case of no
+        # tag; a plain function's `? @ F`): the answer as plain data, `Output`'s case of no
         # tag, which the place that takes it reads at its own tag's type (the accessors of
-        # `crate::Answer`); one that is no plain data (a function) is held as it is and
+        # `crate::Output`); one that is no plain data (a function) is held as it is and
         # read at the type of the line that binds it (`TaggedOrHeld`)
         nil: PureBlueprint lx, (Bind (Bind env, "#tag", (BnLocal (XPath untaggedRef), Owned, OutUnit)), "#tagfirst", (BnLocal (XPath untaggedRef), Owned, OutUnit)), x, t
-        ? (BnLocal (XPath variant), ignore, ignore) if IsBundleAnswer lx, x: BundleBlueprint lx, env, x, variant, t
+        ? (BnLocal (XPath variant), ignore, ignore) if IsBundleOutput lx, x: BundleBlueprint lx, env, x, variant, t
         ? (BnLocal (XPath variant), ignore, ignore): match LayerOf (TypeAt lx, x.span):
             LyEv:
-                let wrapped = XMethod (AnswerEvent lx, env, x), "map", [[(XClosure False, [[PaBind "v"]], (TaggedOrHeld variant, (OutTyOf lx, (Peel (TypeAt lx, x.span))), (XClone (XVar "v"))))]]
+                let wrapped = XMethod (OutputEvent lx, env, x), "map", [[(XClosure False, [[PaBind "v"]], (TaggedOrHeld variant, (OutTyOf lx, (Peel (TypeAt lx, x.span))), (XClone (XVar "v"))))]]
                 VlOwned (XCall (RefRuntime "prism_rtl::event_blueprint::<crate::Elem, _>"), [[wrapped]]), t
-            LyDyn: match ?DynamicAnswer lx, x:
+            LyDyn: match ?DynamicOutput lx, x:
                 nil: match x.kind:
                     EFreeSigil "$", inner: PlainBlueprint lx, env, inner, variant, t
                     otherwise: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer of no known form"), t
@@ -859,9 +859,9 @@ fn PureBlueprint lx, env, x, t:
 # `@ ((a, $b, !c))` under a bundle tag's arm (Type System ch. 2, "Bundles"; pick HO): a
 # tuple of any mix of plain, `$` and event parts, answered through prism_rtl's
 # `parts_blueprint` (`PartsBlueprint`).
-IsBundleAnswer: fn Lx, Expr -> Bool
-fn IsBundleAnswer lx, x = match x.kind:
-    EGroup y: IsBundleAnswer lx, y
+IsBundleOutput: fn Lx, Expr -> Bool
+fn IsBundleOutput lx, x = match x.kind:
+    EGroup y: IsBundleOutput lx, y
     ETuple es: Fold es, False, \|f, y| f or (LayerOf (TypeAt lx, y.span)) == LyEv or (LayerOf (TypeAt lx, y.span)) == LyDyn
     # a bundle not written as a tuple (`@ pair`, `pair` a `let`): by its type
     otherwise: match TypeAt lx, x.span:
@@ -871,19 +871,19 @@ fn IsBundleAnswer lx, x = match x.kind:
 # An answer's event. `never` alone names no type its `map` can read (`@ ((never, $
 # "offline"))`), so it is a `let` of the checker's type for it; any other event has its
 # type from what makes it.
-AnswerEvent: unbounded fn Lx, Env, Expr -> Ex
-fn AnswerEvent lx, env, ev = match ev.kind:
-    EGroup y: AnswerEvent lx, env, y
+OutputEvent: unbounded fn Lx, Env, Expr -> Ex
+fn OutputEvent lx, env, ev = match ev.kind:
+    EGroup y: OutputEvent lx, env, y
     EName n:
         let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
-        if ?qk == ? "Prelude.never": XBlock [[(DoLet (PaTyped (PaBind "answer_event"), (OutTyOf lx, (TypeAt lx, ev.span))), (Own (ValueOf lx, env, ev)))]], (XVar "answer_event")
+        if ?qk == ? "Prelude.never": XBlock [[(DoLet (PaTyped (PaBind "output_event"), (OutTyOf lx, (TypeAt lx, ev.span))), (Own (ValueOf lx, env, ev)))]], (XVar "output_event")
         else: Own (ValueOf lx, env, ev)
     otherwise: Own (ValueOf lx, env, ev)
 
 # One part of a bundle answer: a plain value (a constant `$` part among them, `$
 # "offline"`); a live `$` part, a `Dynamic` of its value; an event part, an `Event` of the
 # type given; or a part this back end refuses, in words.
-type AnswerPart = choice:
+type OutputPart = choice:
     PartPlain Ex
     PartLive Ex
     PartEvent Ex, OutTy
@@ -897,21 +897,21 @@ fn BundleBlueprint lx, env, x, variant, t = match x.kind:
     # part its `Event`, a `$` part its `Dynamic`
     otherwise: match TypeAt lx, x.span:
         TyTuple ts:
-            let whole = XVar "bundle_answer"
+            let whole = XVar "bundle_output"
             let parts = Each (Range0 (Len ts)), \|i|
                 let part = Or ts[i], TyErr
                 match LayerOf part:
                     LyEv: PartEvent (XClone (XPart whole, i)), (OutTyOf lx, (Peel part))
                     LyDyn: PartLive (XClone (XPart whole, i))
                     otherwise: PartPlain (XClone (XPart whole, i))
-            VlOwned (XBlock [[(DoLet (PaBind "bundle_answer"), (Own (ValueOf lx, env, x)))]], (PartsBlueprint lx, env, x, parts, variant)), t
+            VlOwned (XBlock [[(DoLet (PaBind "bundle_output"), (Own (ValueOf lx, env, x)))]], (PartsBlueprint lx, env, x, parts, variant)), t
         otherwise: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a bundle answer whose type is no tuple"), t
 
 # A part of a bundle answer written in place.
-WrittenPart: unbounded fn Lx, Env, Expr -> AnswerPart
+WrittenPart: unbounded fn Lx, Env, Expr -> OutputPart
 fn WrittenPart lx, env, y = match LayerOf (TypeAt lx, y.span):
-    LyEv: PartEvent (AnswerEvent lx, env, y), (OutTyOf lx, (Peel (TypeAt lx, y.span)))
-    LyDyn: match ?DynamicAnswer lx, y:
+    LyEv: PartEvent (OutputEvent lx, env, y), (OutTyOf lx, (Peel (TypeAt lx, y.span)))
+    LyDyn: match ?DynamicOutput lx, y:
         # a constant `$` part: its value, once
         nil: PartPlain (Own (ValueOf lx, env, (Or (?ConstantDynamic y), y)))
         ? d: match ?PartDynamic lx, env, y, d:
@@ -922,17 +922,17 @@ fn WrittenPart lx, env, y = match LayerOf (TypeAt lx, y.span):
     otherwise: PartPlain (Own (ValueOf lx, env, y))
 
 # A bundle answer of its parts (round 3 DY). The plain and `$` parts are the state: one
-# `Dynamic` of the tag's state case of `crate::Answer` (the tag's first-value variant when
+# `Dynamic` of the tag's state case of `crate::Output` (the tag's first-value variant when
 # the answer has event parts too, else the tag's own), a constant when no part is live,
 # else read from the live parts' dynamics at the read point and moved when any of them
 # moves. Each event part is mapped to the tag's answer case: of one event part its value,
 # of several a sparse tuple holding that part alone.
 # Outside a tag's arm a bundle with a part that is no plain data (a function, `@ ((F,
-# !go))` in a plain function) has no state `Answer`'s case of no tag can hold: it is
-# answered held whole, once, its events and dynamics as values (`answer_held`), as a
+# !go))` in a plain function) has no state `Output`'s case of no tag can hold: it is
+# answered held whole, once, its events and dynamics as values (`output_held`), as a
 # widget's bundle is (`WidgetBlueprintValue`), and the line that binds it reads it so
 # (`AppliedBundleLine`).
-PartsBlueprint: unbounded fn Lx, Env, Expr, [AnswerPart], Ref -> Ex
+PartsBlueprint: unbounded fn Lx, Env, Expr, [OutputPart], Ref -> Ex
 fn PartsBlueprint lx, env, x, parts, variant:
     let partTys = match TypeAt lx, x.span:
         TyTuple ts: ts
@@ -949,16 +949,16 @@ fn PartsBlueprint lx, env, x, parts, variant:
             ? (PartLive d): d
             ? (PartEvent ev, ignore): ev
             otherwise: XUnit
-        XCall (RefRuntime "prism_rtl::plain_blueprint::<crate::Elem, _>"), [[(XCall (HelperRef "answer_held"), [[(XTuple whole)]])]]
-    else: match PartsAnswerOf lx, env, "`@ {SrcText lx, lx.file, x.span}`", parts, variant:
+        XCall (RefRuntime "prism_rtl::plain_blueprint::<crate::Elem, _>"), [[(XCall (HelperRef "output_held"), [[(XTuple whole)]])]]
+    else: match PartsOutputOf lx, env, "`@ {SrcText lx, lx.file, x.span}`", parts, variant:
         XBlock lets, answer: XBlock lets, (XCall (RefRuntime "prism_rtl::parts_blueprint::<crate::Elem, _>"), [[answer]])
         other: other
 
-# The bundle answer of its parts (prism_rtl's `PartsAnswer`), in a block that names the
+# The bundle answer of its parts (prism_rtl's `PartsOutput`), in a block that names the
 # state's parts; a refusal or an internal error in its place. `what` names the answer in
 # those.
-PartsAnswerOf: unbounded fn Lx, Env, Text, [AnswerPart], Ref -> Ex
-fn PartsAnswerOf lx, env, what, parts, variant:
+PartsOutputOf: unbounded fn Lx, Env, Text, [OutputPart], Ref -> Ex
+fn PartsOutputOf lx, env, what, parts, variant:
     let idx = Range0 (Len parts)
     let IsEvent = \|i| match parts[i]:
         ? (PartEvent ignore, ignore): True
@@ -1003,14 +1003,14 @@ fn PartsAnswerOf lx, env, what, parts, variant:
             XBlock lets, all
 
 # A supplier's dynamic `d` (a `$` part `x` of a bundle answer) as a `Dynamic` of its own
-# value, read through the owner's link (`DynamicAnswers`), and, while the owner's node is
+# value, read through the owner's link (`DynamicOutputs`), and, while the owner's node is
 # being made, its value at the build; `nil` when its line made no getter for it (it reads
 # what has no value at the owner's build).
 ?PartDynamic: unbounded fn Lx, Env, Expr, Expr -> ?Ex
 fn ?PartDynamic lx, env, x, d = match ((env.names["#dyn{DynKey x}"], env.names["#owner"])):
     ((? (BnLocal (XVar getter), ignore, dt), ? (BnLocal (XVar owner), ignore, ignore))):
         let late = HasKey env.names, "#dynlate{DynKey x}"
-        let atBuild = if late: XUnit else: AnswerAtBuild lx, env, x, d
+        let atBuild = if late: XUnit else: OutputAtBuild lx, env, x, d
         let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(XMethod (XVar "owner"), getter, [[XCx]])), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=(if late: XUnreachable else: XClone (XVar "at_build")))]]
         let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, dt)
         ? (XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar "{getter}_portx"))]]))
@@ -1027,13 +1027,13 @@ PlainBlueprint: unbounded fn Lx, Env, Expr, Ref, OutTy -> Vl
 fn PlainBlueprint lx, env, x, variant, t = VlOwned (XCall (RefRuntime "prism_rtl::plain_blueprint::<crate::Elem, _>"), [[(TaggedOrHeld variant, (OutTyOf lx, (Peel (TypeAt lx, x.span))), (Own (ValueOf lx, env, x)))]]), t
 
 # `@ $d` with `$d` a dynamic of the host that is not a constant (round 3 DY): prism_rtl's
-# `dynamic_blueprint` over a `Dynamic` of the tag's `Answer` whose read is the owner's getter
+# `dynamic_blueprint` over a `Dynamic` of the tag's `Output` whose read is the owner's getter
 # for `d` through the owner's link, and, while the owner's node is being made, `d`'s value at
 # the build (`InitEnv`); its update port is the getter's, fired by the writes behind `d`
-# (`DynamicAnswers`). The first value is read at the row's build, each later update is a push
+# (`DynamicOutputs`). The first value is read at the row's build, each later update is a push
 # delivered the next tick.
 DynamicBlueprint: unbounded fn Lx, Env, Expr, Expr, Ref, OutTy -> Vl
-fn DynamicBlueprint lx, env, x, d, variant, t = match ?AnswerDynamic lx, env, x, d, variant:
+fn DynamicBlueprint lx, env, x, d, variant, t = match ?OutputDynamic lx, env, x, d, variant:
     ? dynamic: VlOwned (XCall (RefRuntime "prism_rtl::dynamic_blueprint::<crate::Elem, _>"), [[dynamic]]), t
     nil: match ?HeldDynamic lx, env, d:
         # a dynamic the function holds as a value (a named supplier's `$` parameter):
@@ -1045,15 +1045,15 @@ fn DynamicBlueprint lx, env, x, d, variant, t = match ?AnswerDynamic lx, env, x,
         nil: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer with no getter of the host's line and a reader that is no live dynamic where it is written"), t
 
 # A supplier's dynamic answer `d` where no host's line made a getter for it
-# (`DynamicAnswers` binds none), when everything it reads is a value held where it is
+# (`DynamicOutputs` binds none), when everything it reads is a value held where it is
 # written: the `Dynamic` the expression gives there. `nil` when it reads a name of a
 # node that has no live dynamic there (a hold, a dynamic `let`), which only its owner's
 # getter reads.
 # In a function (a named supplier's body, no `#hostline`) every local is held: its `$`
 # parameter is a `Dynamic`. In a host's own line (`#hostline`; a held answer,
-# `IsHeldAnswer`) a name read as a dynamic is held when it is a `Dynamic` there: the `$`
+# `IsHeldOutput`) a name read as a dynamic is held when it is a `Dynamic` there: the `$`
 # field of the element an arm describes, a reader of the node as the live dynamic the
-# host's line made for it (`HeldAnswerReaders`, `#whole{span}`), the `$` parameter of a
+# host's line made for it (`HeldOutputReaders`, `#whole{span}`), the `$` parameter of a
 # function of the block as its argument's live dynamic (`InlineLocalFn`); a name read
 # as a plain value is the local it is (the place's path,
 # a plain field of the described element, a `let` of the block). The expression is
@@ -1074,38 +1074,38 @@ fn ?HeldDynamic lx, env, d:
     if not held: nil else: if owned: ? (Own (ValueOf lxw, env, d)) else: ? (Own (ValueOf lx, env, d))
 
 # A supplier's dynamic `d` (the `x` of `@ x`, or a `$` part of a bundle answer) as a
-# `Dynamic` of `crate::Answer` under `variant`, read through the owner's link
-# (`DynamicAnswers`); `nil` when its line made no getter for it (it reads what has no
+# `Dynamic` of `crate::Output` under `variant`, read through the owner's link
+# (`DynamicOutputs`); `nil` when its line made no getter for it (it reads what has no
 # value at the owner's build).
-?AnswerDynamic: unbounded fn Lx, Env, Expr, Expr, Ref -> ?Ex
-fn ?AnswerDynamic lx, env, x, d, variant = match ((env.names["#dyn{DynKey x}"], env.names["#owner"])):
+?OutputDynamic: unbounded fn Lx, Env, Expr, Expr, Ref -> ?Ex
+fn ?OutputDynamic lx, env, x, d, variant = match ((env.names["#dyn{DynKey x}"], env.names["#owner"])):
     ((? (BnLocal (XVar getter), ignore, dt), ? (BnLocal (XVar owner), ignore, ignore))):
         let late = HasKey env.names, "#dynlate{DynKey x}"
-        let atBuild = if late: XUnit else: AnswerAtBuild lx, env, x, d
+        let atBuild = if late: XUnit else: OutputAtBuild lx, env, x, d
         let held = OutTyOf lx, (Peel (TypeAt lx, d.span))
         let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(TaggedOrHeld variant, held, (XMethod (XVar "owner"), getter, [[XCx]]))), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=(if late: XUnreachable else: TaggedOrHeld variant, held, (XClone (XVar "at_build"))))]]
-        let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, (OutNamed answerRef, [[]]))
+        let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, (OutNamed outputRef, [[]]))
         ? (XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar "{getter}_portx"))]]))
     otherwise: nil
 
 # An answer of the type `t` made by a widget's blueprint value: in its tag's case, or
 # with no tag as plain data when it is plain data (`Tagged`), else held as it is (the
-# prelude's `answer_held`).
+# prelude's `output_held`).
 TaggedOrHeld: unbounded fn Ref, OutTy, Ex -> Ex
-fn TaggedOrHeld variant, t, value = if variant == untaggedRef and not (Podable t): XCall (HelperRef "answer_held"), [[value]] else: Tagged variant, value
+fn TaggedOrHeld variant, t, value = if variant == untaggedRef and not (Podable t): XCall (HelperRef "output_held"), [[value]] else: Tagged variant, value
 
 # (A dynamic with no value while the owner's node is being made, `#dynlate{span}`, is
 # read through the owner's link alone: the child's places ask their first values once
-# the node stands, `DynamicAnswers`.)
+# the node stands, `DynamicOutputs`.)
 # A supplier's dynamic answer's value at the owner's build: the local the host's line took
-# it into, for a dynamic read through the owner's parent (`DynamicAnswers`,
+# it into, for a dynamic read through the owner's parent (`DynamicOutputs`,
 # `#dynbuild{span}`), or the dynamic over the names' values at the build (`InitEnv`).
-AnswerAtBuild: unbounded fn Lx, Env, Expr, Expr -> Ex
-fn AnswerAtBuild lx, env, x, d = match env.names["#dynbuild{DynKey x}"]:
+OutputAtBuild: unbounded fn Lx, Env, Expr, Expr -> Ex
+fn OutputAtBuild lx, env, x, d = match env.names["#dynbuild{DynKey x}"]:
     ? (BnLocal taken, ignore, ignore): XClone taken
     otherwise: Own (ValueOf lx, (InitEnv env), d)
 
-# An answer in its tag's case of `crate::Answer`; with no tag, as plain data in the case
+# An answer in its tag's case of `crate::Output`; with no tag, as plain data in the case
 # of no tag (`untaggedRef`).
 Tagged: fn Ref, Ex -> Ex
 fn Tagged variant, value = if variant == untaggedRef: XCtor variant, [[(XMethod value, "to_pod", [[]])]] else: XCtor variant, [[value]]
@@ -1115,14 +1115,14 @@ fn Tagged variant, value = if variant == untaggedRef: XCtor variant, [[(XMethod 
 # Under a tag's arm (a supplier's `Tell.Request(..): @Element (Prelude.Unwrap(..))`) an
 # element applied where it stands is the host's own, of a tag of its own: its place is
 # answered as that tag is, and the child's place reads its own tag's answer, so each
-# answer goes on as plain data of no tag (`Answer::untagged`, read by every tag's accessor
+# answer goes on as plain data of no tag (`Output::untagged`, read by every tag's accessor
 # at its own type; the checker has made the two outputs one type).
 ElementBlueprint: unbounded fn Lx, Env, [Arg], OutTy -> Vl
 fn ElementBlueprint lx, env, args, t = match args[0]:
     ? a:
-        let placed = XCall (RefRuntime "prism_rtl::element_blueprint::<crate::Elem, crate::Answer>"), [[Ref (ValueOf lx, env, a.value)]]
-        let untagged = XClosure False, [[(PaTyped (PaBind "answer"), (OutRef (OutNamed answerRef, [[]])))]], (XMethod (XVar "answer"), "untagged", [[]])
-        if (HasKey env.names, "#tag") and IsElementApplied lx, a.value: VlOwned (XCall (RefRuntime "prism_rtl::answers_mapped"), [[placed, untagged]]), t
+        let placed = XCall (RefRuntime "prism_rtl::element_blueprint::<crate::Elem, crate::Output>"), [[Ref (ValueOf lx, env, a.value)]]
+        let untagged = XClosure False, [[(PaTyped (PaBind "answer"), (OutRef (OutNamed outputRef, [[]])))]], (XMethod (XVar "answer"), "untagged", [[]])
+        if (HasKey env.names, "#tag") and IsElementApplied lx, a.value: VlOwned (XCall (RefRuntime "prism_rtl::outputs_mapped"), [[placed, untagged]]), t
         else: VlOwned placed, t
     nil: VlOwned (InternalBug "`@Element` without its element"), t
 
@@ -1230,7 +1230,7 @@ fn NameValueOf lx, env, n, span:
                 ? "True": VlOwned (XBool True), OutBool
                 ? "False": VlOwned (XBool False), OutBool
                 ? "Prelude.never": VlOwned (XCall (RefRuntime "rt::Event::never"), [[]]), t
-                ? qk: if why == "answer": AnswerFn lx, qk, t
+                ? qk: if why == "output": OutputFn lx, qk, t
                 else: match lx.g.tags[qk]:
                     ? tg if tg.kind != "Prelude.Fault" and why == "tag": TagValue lx, env, tg, [[]]
                     otherwise: GlobalValue lx, qk, span, t
@@ -1338,7 +1338,7 @@ fn WidgetNamed lx, qk, span, v, t:
 # result is the port the row fires, each firing an answer to that place
 # (`widget_event_blueprint`). Outside a tag's arm a dynamic result, a bundle and a plain
 # value that is no plain data are the first answer held whole (the prelude's
-# `answer_held`): the row's live `Dynamic`, the bundle with its events and dynamics as
+# `output_held`): the row's live `Dynamic`, the bundle with its events and dynamics as
 # values (`ValueRowWhole`), the value itself. Built in a
 # hosted scope the blueprint builds the widget's hosted row, given the host and what
 # tells it that a place of the row's came or went.
@@ -1414,7 +1414,7 @@ fn WidgetBlueprintValueFrom lx, lxArguments, recast, env, qk, calleeSpan, args, 
         let bundle = match gives:
             TyAt i, ignore: IsBundle (Peel i)
             otherwise: False
-        let builtTy = OutNamed (RefRuntime "prism_rtl::BuiltWidget"), [[elemTy, answerTy, (if fires: OutRc (OutPort resTy) else: if live: OutDyn resTy else: resTy)]]
+        let builtTy = OutNamed (RefRuntime "prism_rtl::BuiltWidget"), [[elemTy, outputTy, (if fires: OutRc (OutPort resTy) else: if live: OutDyn resTy else: resTy)]]
         # the row whose places are the World's, and the one built under a host
         # (`ValuedRows`): the blueprint is built in the scope of what applies it
         let Arms = \|hosted| Each cases, \|((rowNode, pat, conds, passed))|
@@ -1431,15 +1431,15 @@ fn WidgetBlueprintValueFrom lx, lxArguments, recast, env, qk, calleeSpan, args, 
             ? (BnLocal (XPath tagged), ignore, ignore): tagged
             otherwise: untaggedRef
         # outside a tag's arm a dynamic, a bundle, and a plain value that is no plain data
-        # are answered held whole (`answer_held`): the line that applies the blueprint
+        # are answered held whole (`output_held`): the line that applies the blueprint
         # reads the widget's own dynamic, events and value (`AppliedBlueprintLine`)
         let untagged = variant == untaggedRef
         let heldWhole = untagged and resTy != OutUnit and not fires and (live or bundle or not (Podable resTy))
-        let answer = if resTy == OutUnit: XClosure False, [[PaWild]], XNone else: if heldWhole: XClosure False, [[PaBind "widget_result"]], (XCtor (RefRuntime "std::Some"), [[(XCall (HelperRef "answer_held"), [[(XVar "widget_result")]])]]) else: XClosure False, [[PaBind "widget_result"]], (XCtor (RefRuntime "std::Some"), [[(Tagged variant, (XVar "widget_result"))]])
+        let answer = if resTy == OutUnit: XClosure False, [[PaWild]], XNone else: if heldWhole: XClosure False, [[PaBind "widget_result"]], (XCtor (RefRuntime "std::Some"), [[(XCall (HelperRef "output_held"), [[(XVar "widget_result")]])]]) else: XClosure False, [[PaBind "widget_result"]], (XCtor (RefRuntime "std::Some"), [[(Tagged variant, (XVar "widget_result"))]])
         let fired = XClosure False, [[(PaTyped (PaBind "widget_result"), (OutRef resTy))]], (TaggedOrHeld variant, resTy, (XClone (XVar "widget_result")))
         # under a tag's arm the answers are the tag's: a bundle's state and events part by
         # part, made of the row's one value as a bundle that is a value already is
-        # answered (`BundleBlueprint`, `PartsAnswerOf`; prism_rtl's
+        # answered (`BundleBlueprint`, `PartsOutputOf`; prism_rtl's
         # `widget_parts_blueprint`)
         let rowParts = match gives:
             TyAt (TyTuple ts), ignore: Each (Range0 (Len ts)), \|i|
@@ -1450,17 +1450,17 @@ fn WidgetBlueprintValueFrom lx, lxArguments, recast, env, qk, calleeSpan, args, 
                     LyDyn: PartLive read
                     otherwise: PartPlain read
             otherwise: [[]]
-        let partsOf = XClosure False, [[(PaTyped (PaBind "widget_result"), (OutRef resTy))]], (PartsAnswerOf lx, env, "the widget {BareName qk} as a supplier's answer", rowParts, variant)
-        if bundle and not untagged: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_parts_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, partsOf]])), t
+        let partsOf = XClosure False, [[(PaTyped (PaBind "widget_result"), (OutRef resTy))]], (PartsOutputOf lx, env, "the widget {BareName qk} as a supplier's answer", rowParts, variant)
+        if bundle and not untagged: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_parts_blueprint::<crate::Elem, crate::Output, _>"), [[build, buildHosted, partsOf]])), t
         # under a tag's arm a dynamic result is the place's first value and each move of
         # it a push, as `@ $d` is (prism_rtl's `widget_dynamic_blueprint`)
-        else: if live and not untagged: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_dynamic_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, fired]])), t
+        else: if live and not untagged: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_dynamic_blueprint::<crate::Elem, crate::Output, _>"), [[build, buildHosted, fired]])), t
         # under a tag's arm an event result is a computed answer, the next tick's input, as
         # `@ !e` is (Semantics ch. 9, "A computed answer is the next tick's input";
-        # prism_rtl's `widget_event_answer_blueprint`)
-        else: if fires and not untagged: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_event_answer_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, fired]])), t
-        else: if fires: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_event_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, fired]])), t
-        else: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, answer]])), t
+        # prism_rtl's `widget_event_output_blueprint`)
+        else: if fires and not untagged: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_event_output_blueprint::<crate::Elem, crate::Output, _>"), [[build, buildHosted, fired]])), t
+        else: if fires: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_event_blueprint::<crate::Elem, crate::Output, _>"), [[build, buildHosted, fired]])), t
+        else: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_blueprint::<crate::Elem, crate::Output, _>"), [[build, buildHosted, answer]])), t
     otherwise: VlOwned (Refusal (WidgetValueWords qk)), t
 
 # The name of a valued widget's row built under a host, by its row for the World's scope
@@ -1479,7 +1479,7 @@ fn IsWidgetFn v = match v.scheme.ty:
 # generic definition whose instantiations are no finite set or cannot all be read
 # (`?DefInstances`), the words say so; any other widget, `WidgetValueWords`.
 OpenWidgetValueWords: unbounded fn Lx, Text -> Text
-fn OpenWidgetValueWords lx, qk = match EnclosingAnswer lx:
+fn OpenWidgetValueWords lx, qk = match EnclosingOutput lx:
     NoDefinition: WidgetValueWords qk
     InstancesReached ignore: WidgetValueWords qk
     # the checker's `grows-without-end` (ruling PG): no checked program reaches this
@@ -1527,7 +1527,7 @@ fn Application lx, env, callee, args, span:
                         # resolved to the tag only when written with its family.
                         ? qk: match lx.g.tags[qk]:
                             ? tg if why == "tag": TagValue lx, env, tg, args
-                            otherwise: if why == "answer": AnswerValue lx, env, qk, args, t
+                            otherwise: if why == "output": OutputValue lx, env, qk, args, t
                             else: if qk == "Prelude.@Element": ElementBlueprint lx, env, args, t
                             else: GlobalCall lx, env, qk, args, span, callee.span, t
                         nil: VlOwned (InternalBug "a call of {nkey}, which nothing declares"), t
@@ -1560,7 +1560,7 @@ fn InlineLocalFn lx, env0, cs, args, t:
             let bt = ValueTy v
             # in a host's own line (`#hostline`) a `$` argument is its live dynamic
             # (`?HeldDynamic`: a reader of the node as the live dynamic the host's line
-            # made for it, `HeldAnswerReaders`), and the parameter is that `Dynamic`: an
+            # made for it, `HeldOutputReaders`), and the parameter is that `Dynamic`: an
             # answer of the function over its parameter, `@ $d`, answers over it
             match ?LiveArgument lx, env0, args[i]:
                 ? ((dynamic, dt)): (((Push acc, (DoLet (PaBind rs), dynamic)), (Bind en, nm, (BnLocal (XVar rs), Owned, dt))))
@@ -1752,7 +1752,7 @@ fn ArgumentByKind lx, env, e = match e.kind:
                     nil:
                         let ((?qk, why)) = ResolveValue lx.g, lx.home, n
                         match ?qk:
-                            ? qk: if (HasKey lx.g.ctors, qk) or why == "answer" or IsMethodKey lx, qk: ClosureRef (ValueOf lx, env, e) else: XRef (XPath (ValueRef lx, qk))
+                            ? qk: if (HasKey lx.g.ctors, qk) or why == "output" or IsMethodKey lx, qk: ClosureRef (ValueOf lx, env, e) else: XRef (XPath (ValueRef lx, qk))
                             nil: Ref (ValueOf lx, env, e)
             otherwise: Ref (ValueOf lx, env, e)
     otherwise: Ref (ValueOf lx, env, e)
@@ -1824,28 +1824,28 @@ fn TagValue lx, env, tg, args:
                 (((FieldSpell tg.home, fname, fty), v))
             VlOwned (XCtor variant, [[(XRecord structPath, fields)]]), t
 
-# `Ui.Button.Answer click`, a tag's answer constructor applied (rulings round 12, AQ): the
-# tag's variant of `crate::Answer` over what the tag's answer carries (`AnswerTy`).
-AnswerValue: unbounded fn Lx, Env, Text, [Arg], OutTy -> Vl
-fn AnswerValue lx, env, constructor, args, t = match ((lx.g.tags[AnswerTag constructor], args[0])):
-    ((? tg, ? a)): VlOwned (XCtor (AnswerVariant tg), [[(OwnAs (AnswerTy lx, tg), (ValueOf lx, env, a.value))]]), t
-    otherwise: VlOwned (InternalBug "the answer constructor {constructor} of no tag or with no argument"), t
+# `Ui.Button.Output click`, a tag's output constructor applied (rulings round 12, AQ): the
+# tag's variant of `crate::Output` over what the tag's answer carries (`OutputTy`).
+OutputValue: unbounded fn Lx, Env, Text, [Arg], OutTy -> Vl
+fn OutputValue lx, env, constructor, args, t = match ((lx.g.tags[OutputTag constructor], args[0])):
+    ((? tg, ? a)): VlOwned (XCtor (OutputVariant tg), [[(OwnAs (OutputTy lx, tg), (ValueOf lx, env, a.value))]]), t
+    otherwise: VlOwned (InternalBug "the output constructor {constructor} of no tag or with no argument"), t
 
-# `Ui.Button.Answer` named, not applied (`Each cs, Ui.Button.Answer`): a closure building
+# `Ui.Button.Output` named, not applied (`Each cs, Ui.Button.Output`): a closure building
 # the tag's variant from its argument, as a constructor's function value is (`CtorFn`),
 # which a bounded value takes by reference and a `Start` owns.
-AnswerFn: unbounded fn Lx, Text, OutTy -> Vl
-fn AnswerFn lx, constructor, t = match lx.g.tags[AnswerTag constructor]:
+OutputFn: unbounded fn Lx, Text, OutTy -> Vl
+fn OutputFn lx, constructor, t = match lx.g.tags[OutputTag constructor]:
     ? tg:
-        let carried = AnswerTy lx, tg
+        let carried = OutputTy lx, tg
         match t:
             OutJobFn a, ignore:
-                let made = XCtor (AnswerVariant tg), [[(OwnAs carried, (VlPlace (XVar "a0"), Owned, a))]]
+                let made = XCtor (OutputVariant tg), [[(OwnAs carried, (VlPlace (XVar "a0"), Owned, a))]]
                 VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure True, [[(PaTyped (PaBind "a0"), a)]], (XCall (HelperRef "once_job"), [[(XClosure True, [[]], (XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[made]]))]]))]]), t), t
             otherwise:
-                let made = XCtor (AnswerVariant tg), [[(OwnAs carried, (VlPlace (XVar "a0"), ByRef, carried))]]
+                let made = XCtor (OutputVariant tg), [[(OwnAs carried, (VlPlace (XVar "a0"), ByRef, carried))]]
                 VlOwned (XCall (RefRuntime "std::Rc::new"), [[(XClosure False, [[(PaTyped (PaBind "a0"), (OutRef carried))]], made)]]), t
-    nil: VlOwned (InternalBug "the answer constructor {constructor} of no tag"), t
+    nil: VlOwned (InternalBug "the output constructor {constructor} of no tag"), t
 
 # An element applied as a plain value (gap LE; Type System ch. 2, "Names and sigils":
 # `Ui.Button(..)` before anything binds it is a plain value): a description, plain data
@@ -2047,10 +2047,10 @@ fn Recolored lx, x, fromTy, toTy, depth:
     else: match ((fromTy, toTy)):
         # a blueprint: its answers made again, each one that holds the output whole (a
         # plain output, a widget's dynamic or bundle) or one firing's or one move's value
-        # (the prelude's `held_answers_mapped`)
+        # (the prelude's `held_outputs_mapped`)
         (((TyAt d, ignore), (TyAt e, ignore2))):
             let Walk = \|a, b| XClosure True, [[(PaTyped (PaBind inner), (OutRef (OutTyOf lx, a)))]], (Recolored lx, (XClone (XVar inner)), a, b, depth + 1)
-            XCall (HelperRef "held_answers_mapped"), [[x, (Walk d, e), (Walk (Peel d), (Peel e))]]
+            XCall (HelperRef "held_outputs_mapped"), [[x, (Walk d, e), (Walk (Peel d), (Peel e))]]
         ((TyArray d, TyArray e)): XCall (HelperRef "each"), [[(XRef x), (XRef (XClosure False, [[(PaTyped (PaBind inner), (OutRef (OutTyOf lx, d)))]], (Recolored lx, (XClone (XVar inner)), d, e, depth + 1)))]]
         (((TySig "?", d), (TySig "?", e))):
             let some = XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind inner]]), conds=[[]], body=(XCtor (RefRuntime "std::Some"), [[(Recolored lx, (XVar inner), d, e, depth + 1)]]))

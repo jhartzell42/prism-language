@@ -47,7 +47,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
     a written one. Text quoted at a made span (`SrcText`) is what made it.
 - **The tick** (`Runtime::tick`, Graph ch. 4's order): last round's undone clean-ups; the
   started list's `Node::started` and the armed `Node::deferred`; the computed answers a
-  host's supplier queued last tick (`Cx::answer_later`); answers through
+  host's supplier queued last tick (`Cx::output_later`); answers through
   `root.answer(path, v)`; pushes through the push index; wakes by height; the read point
   moves past the tick; the build, swap, leave and patch lists; the patch diffed against
   the document last sent; requests sorted into document order; `pending` (a started node,
@@ -336,7 +336,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   both sources' update events: its update event fires once in the tick, after both were
   written, and its port is raised with the combinator. A blueprint's dynamic answer
   (`apply_blueprint_dynamic`) is written by its sink, whose twin raises the dynamic's
-  update port; the answers that come as a tick opens (`Cx::answer_later`, the World's)
+  update port; the answers that come as a tick opens (`Cx::output_later`, the World's)
   tell it nothing, as they fire before the first height. So a merge of an event with
   `!Updated` of a mapped dynamic of another node, three combinators on, decides once
   (`tests/conformance/heights-updated-of-mapped-dynamic-across-nodes`).
@@ -412,7 +412,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   it), when a write marked it: the snapshot S(n). The getter (`rows_all`, `host_k_doc`) answers the dynamic, whose value
   after m is S(m−1) (after the build, the build's snapshot). When S(n) differs from S(n−1)
   (compared where the type has equality, else whenever taken) the node queues
-  `{name}_publish` with `cx.answer_later`, once a tick, and at n+1, among that owed tick's
+  `{name}_publish` with `cx.output_later`, once a tick, and at n+1, among that owed tick's
   first firings, it marks everything over the dynamic as a write of a hold does: the
   places over it are dirtied, the builders over it listed, and `!Updated` over it, or over
   a dynamic lifted from it, fires in n+1's wake with S(n) while every sample in n+1 reads
@@ -435,7 +435,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   (`FlattenMethods`; `ForDef.replaced` lists them: the rows' entry flattens only, since a
   row's `@Flatten` over a dynamic of dynamics of its own, `held`, follows its outer's
   update event and has no such method), which queues `{v}_adopt` with
-  `cx.answer_later`, so the adoption is among the next tick's first firings, which is owed
+  `cx.output_later`, so the adoption is among the next tick's first firings, which is owed
   (rulings VL, TK). The row is kept, never rebuilt for a replaced dynamic (Semantics ch.
   11). A `$$d` binder with `@Flatten $$d` below it is a `mark-stack` in the checker
   (`tests/checker/neg/for-double-dynamic`); `sem-ch04-for-replaced-inner`.
@@ -445,7 +445,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   unsubscribes the old.
 - **`@Flatten $$a`** over a `rebuild`'s dynamic → a current-inner `Hold<Option<Dynamic<A>>>`
   (`{name}_inner`), adopted at the build; when the outer is published (n), the adoption
-  (`{name}_adopt`) is queued with `cx.answer_later` among the first firings of n+1, which is
+  (`{name}_adopt`) is queued with `cx.output_later` among the first firings of n+1, which is
   owed, and writes the hold, so the `@Flatten` reads the new inner after n+1 (Semantics
   ch. 7: after n, the inner its outer held after n-1). The getter samples the inner at the
   read point; a write behind the current generation's result marks the `@Flatten`'s
@@ -457,7 +457,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   ruling FV) → the outer as the live `Dynamic<Dynamic<A>>` its line made (`WholeArgs`,
   `whole_{x}_dyn`), a current-inner `Hold<Option<Dynamic<A>>>` and two `Follow`s: the
   outer's update port (`{name}_outer_moved`) queues `{name}_adopt` with
-  `cx.answer_later`, owed, as the `rebuild` form does, and the adoption takes the inner
+  `cx.output_later`, owed, as the `rebuild` form does, and the adoption takes the inner
   the outer holds after n, follows the inner's port (`{name}_moved`, a write of the
   inner) and fires. No dynamics are compared; an adoption of the same inner fires again
   (`sem-ch07-flatten-held`, `sem-ch07-flatten-mapped-constants`). A live dynamic's port
@@ -907,7 +907,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
     `ImplTargets` leaves such a method out). Only the definitions that can
     reach the one asked for are followed (`RelevantDefinitions`). The fixed point has
     no count (`?GrowsFrom`), and says why it has no list where it has none
-    (`InstancesAnswer`). Each instantiation keeps the use by name that gave it
+    (`InstancesOutput`). Each instantiation keeps the use by name that gave it
     (`Instantiation.?step`: its type parameters as types over its parent's). Where a
     new instantiation's line of parents holds the same definition and every step
     between is a use by name, the steps make one substitution over the definition's
@@ -960,22 +960,22 @@ it make every program an interpreter run, and every type mistake a runtime fault
     `widget_event_blueprint` subscribes the sink of what applied the blueprint, each
     firing an answer in its tick. Under a supplier's tag arm the firing is a computed
     answer (Semantics ch. 9, "A computed answer is the next tick's input"):
-    `widget_event_answer_blueprint` hands it to the place as the next tick's input,
+    `widget_event_output_blueprint` hands it to the place as the next tick's input,
     which is owed, as `@ !e` does.
   - A dynamic result and a bundle are one value the row's `result_value` gives
     (`ValueRowWhole`): a dynamic is a live `Dynamic` over the row, its update event a
     port the writes behind it fire (`LiveDynamic`); a bundle is the tuple of its parts,
     each event the event of a port of the row's that it fires, each dynamic such a live
     `Dynamic`, each plain part its value. Outside a tag's arm the blueprint answers
-    with that value held as it is, once, at its build (`crate::Answer`'s case
-    `Held_a`, the prelude's `answer_held`), and so it does with a plain value that is
+    with that value held as it is, once, at its build (`crate::Output`'s case
+    `Held_a`, the prelude's `output_held`), and so it does with a plain value that is
     no plain data (a function): the line that applies the blueprint reads the widget's
     own dynamic, events and value, so they move in the tick the widget's do. Under a
     tag's arm a dynamic result is the place's first value and each move of it a push
     of the next tick, as `@ $d` is (prism_rtl's `widget_dynamic_blueprint`), and a
     bundle is answered as a bundle that is a value already is (`@ pair`,
-    `PartsAnswerOf`): prism_rtl's `widget_parts_blueprint` builds the row and makes
-    the `PartsAnswer` of its one value, the plain and `$` parts the tag's state, each
+    `PartsOutputOf`): prism_rtl's `widget_parts_blueprint` builds the row and makes
+    the `PartsOutput` of its one value, the plain and `$` parts the tag's state, each
     event part the tag's answers, all but the first value inputs of the next tick.
   - A widget whose block ends on a host's line gives the host's output: the tuple of
     the child's result and the child's document, the document a live `Dynamic` over the
@@ -1055,7 +1055,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   - What the widget gives back it answers with as a top-level widget read as a value
     does outside a tag's arm: plain data outside any tag; an event through a port of
     the row's (`ValuedEventResult`, `widget_event_blueprint`); a dynamic, a bundle and
-    a value that is no plain data held whole (`ValueRowWhole`, `answer_held`).
+    a value that is no plain data held whole (`ValueRowWhole`, `output_held`).
 - **A blueprint value applied by a block** (`? @t: @t`, `ignore <- card.@body`;
   Semantics ch. 8: at the applying block's next positions) is the node's generation at
   the line (`ValueBlueprintLine`): the prelude's `apply_blueprint` builds the value at
@@ -1070,18 +1070,18 @@ it make every program an interpreter run, and every type mistake a runtime fault
   so the later places are counted as built and an answer under it is handed on with its
   position counted from the generation's first.
   - A line that gives an event back (`!go <- @Element e`) hears the blueprint's sink
-    (the prelude's `apply_blueprint_heard`): each answer, a `crate::Answer` under the
+    (the prelude's `apply_blueprint_heard`): each answer, a `crate::Output` under the
     tag of the element answered, is taken out at the line's type by that tag's accessor
-    (`AnswerSink`: the program's tags whose answers are of that type, and its generic
+    (`OutputSink`: the program's tags whose answers are of that type, and its generic
     ones) and fires the line's event through the node's `{generation}_up`, as a
     generation's row fires its block's.
   - A line that binds a plain result (`n <- @t`) takes the blueprint's first answer
-    (the prelude's `apply_blueprint_answered`), read at the line's type (`FirstAnswerTaken`): by the tag
+    (the prelude's `apply_blueprint_answered`), read at the line's type (`FirstOutputTaken`): by the tag
     it is under where a tag of the program answers with that type (a blueprint made in
     a supplier's arm answers under the arm's tag; that tag's accessor reads an answer
-    made outside any tag too), else as plain data (`answer_plain`, `Answer::plain`); a
+    made outside any tag too), else as plain data (`output_plain`, `Output::plain`); a
     type that is no plain data (a function) is read from the answer held whole
-    (`held_answer`, `Answer::held`). The node keeps it in `{generation}_res`
+    (`held_output`, `Output::held`). The node keeps it in `{generation}_res`
     from the build on: the result is late (`WrLate`, `IsLateExpr`), as a call of a
     widget that calls itself keeps its own.
   - A line that binds a dynamic (`$d <- @$t`, `$level <- @Element e` of an element
@@ -1229,7 +1229,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   its rows (`Wx.unplacedHosts`, `ScopeSteps`, prism_rtl's `Host::place_at`); its
   scope's places ask their first values after that, as a late host's do
   (`Wx.lateHosts`): a place with a plain answer bound to a name there is a late name
-  too, its hold set where the scope's places ask (`LateHostedAnswer`,
+  too, its hold set where the scope's places ask (`LateHostedOutput`,
   `ElementOutputOf`). Refused: such a place whose answer no plain name binds, and
   a hosted node's own first-value query spelled before its node in a row numbered
   late (`PlaceNumber`).
@@ -1322,7 +1322,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   (`host_k_rows_build`, the `for` template) over the getter, whose rows are `rt::HostRow`s,
   one per child place, built at `hostpos/[p]` when the key is in `$doc` after a tick and not
   before (R7), kept while it stays, and torn down at the end of the tick its key leaves
-  (R8). The owner holds the host as `rt::Host<Elem, Answer, Owner>`: the supplier, the rows,
+  (R8). The owner holds the host as `rt::Host<Elem, Output, Owner>`: the supplier, the rows,
   the enclosing host when the line stands in a hosted scope, and the owner's emitted typed
   dispatch, linked to the node once it is made. The
   host holds its owner and each row holds the host weakly (the host outlives its rows), so
@@ -1377,19 +1377,19 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `Event`: the description's own, or, for a live element, the requests its place makes
   through that field (`Live::requested`: the host row's `requests` port, filtered by the
   field's name and decoded), fired in the tick of the request.
-- **A tag's answer constructor named, not applied**, is a closure building the variant.
+- **A tag's output constructor named, not applied**, is a closure building the variant.
 - **`@Element (Tag(..))` in a block** is the element statement at the line's own position
   (`ElementCallLine`; Semantics ch. 4).
-- **The way back is typed.** `crate::Answer` is emitted beside `crate::Elem` in `main.rs`:
+- **The way back is typed.** `crate::Output` is emitted beside `crate::Elem` in `main.rs`:
   one variant per element tag carrying that tag's output type, an accessor per variant
   (`ui_button() -> Result<Click, Fault>`), and the decode of a World's answer by the
-  element's tag (`rt::AnswerOf<Elem>`). The owner's `host_k_answer(place, &Answer, cx)`
+  element's tag (`rt::OutputOf<Elem>`). The owner's `host_k_answer(place, &Output, cx)`
   dispatches from a child place's path into the child's input method (a hold the place's
   element answers is written as a push writes it, with every mark a hold's sink makes), or
   to the row of a `for` or `rebuild` under it, whose `Row::deliver` carries it on. A
   variant of another tag is a fault of the tick.
-- **The blueprint forms decide when an answer arrives** (`rt::Blueprint<Elem, Answer>`,
-  built at the row's path with a `Sink<Answer>`, the typed delivery, in the host's
+- **The blueprint forms decide when an answer arrives** (`rt::Blueprint<Elem, Output>`,
+  built at the row's path with a `Sink<Output>`, the typed delivery, in the host's
   `Scope`):
   - `@Element e` (`rt::element_blueprint`) is re-emission: a `Forward` node whose place
     `hostpos/[p]/0` goes out with `cx.added` (the identity's level), follows `e`'s level
@@ -1401,9 +1401,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
     host's document (`HostRow::entries`), and its first value is the enclosing host's.
     `@Element` of an element applied where it stands, under a tag's arm (`Tell.Request(..):
     @Element (Prelude.Unwrap(!~value=..))`), places a description of a tag of the host's
-    own (`described_blueprint`). Its place is answered as that tag is (`Answer::
+    own (`described_blueprint`). Its place is answered as that tag is (`Output::
     PreludeUnwrap`), and the child's place reads its own tag's answer, so the blueprint
-    is `answers_mapped` with `Answer::untagged`: an answer of plain data goes on as
+    is `outputs_mapped` with `Output::untagged`: an answer of plain data goes on as
     `Untagged_a`, which every tag's accessor reads at its own type (`ElementBlueprint`,
     `IsElementApplied`). The answer reaches the child in the tick the World sends it.
   - **A level that holds dynamics** (a container whose children are its document) goes to
@@ -1427,7 +1427,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   - `@ !e` (`rt::event_blueprint`) and `@ $d` (`rt::dynamic_blueprint`, `$d` any dynamic
     of the owner, its first value read at the row's build, synchronously) are **computed
     answers, delayed**: each firing, and each tick with a change behind `$d`, is queued
-    with `Cx::answer_later` and delivered to the child's place as an input of the next
+    with `Cx::output_later` and delivered to the child's place as an input of the next
     tick, which is owed (`pending`, like an armed `@Defer`); a dynamic's push samples it
     when delivered, so it carries the value after the tick of the change. The owner emits a
     getter per dynamic answer and fires its update port at every write behind it; the
@@ -1435,19 +1435,19 @@ it make every program an interpreter run, and every type mistake a runtime fault
     at the build while the owner is being made. A dynamic read through the owner's parent
     (a host in a row answering with the block's `$n`) has its value at the build taken
     at the host's line, through the parent, into a local the supplier copies
-    (`{getter}_at_build`, `AnswerAtBuild`); the block's write tells the row, which fires
+    (`{getter}_at_build`, `OutputAtBuild`); the block's write tells the row, which fires
     the getter's port (`RowHears`). An answer through a blueprint a `let` names (`let
-    @$live = @ $level`) is its expression in the name's place: `DynamicAnswers` reads
+    @$live = @ $level`) is its expression in the name's place: `DynamicOutputs` reads
     the `let`'s expression, and the supplier's closure captures what it reads
     (`WithBlueprintReads`). An answer through a widget's blueprint parameter (`fn
     @Hosting @answer:` whose supplier's arm gives `@answer`) is the argument in the
     name's place, read in its caller's environment and context under the arm's tag and
-    the supplier's link (`ParameterEnv`): `DynamicAnswers` reads the argument with its
-    caller's environments (`AnswerTexts`, a parameter handed on followed to its own
+    the supplier's link (`ParameterEnv`): `DynamicOutputs` reads the argument with its
+    caller's environments (`OutputTexts`, a parameter handed on followed to its own
     argument), and the supplier's closure captures what the argument reads from the
     caller's environment (`LambdaCaptures`). An answer in a function of the block the
     supplier calls (`fn @Supply e` beside the host's line) is the supplier's text too:
-    the function is inlined where it is called, `AnswerTexts` reads its clauses, and
+    the function is inlined where it is called, `OutputTexts` reads its clauses, and
     the supplier's closure captures what they read (`LambdaCaptures` closes its reads
     over the block's local functions). A widget function that is a value with a `$`
     parameter (a named supplier, `fn @Supply $count, e`) takes the dynamic whole
@@ -1455,9 +1455,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
     captures it, and the function's answer over it is that `Dynamic` mapped into the
     tag's case (`?HeldDynamic`).
     A function of the host's block (`fn @Supply e` beside the host's line) is inlined
-    at its call, so its clauses' text is the supplier's (`AnswerTexts`), read with the
+    at its call, so its clauses' text is the supplier's (`OutputTexts`), read with the
     clause's own parameters marked (`WithFnParameters`).
-    **Held answers** (`IsHeldAnswer`). An answer that reads a name the supplier's own
+    **Held answers** (`IsHeldOutput`). An answer that reads a name the supplier's own
     text binds where the answer stands (a lambda's parameter, `p`; a field of the
     element the arm describes, `Count.Query($query=$q): @ Read $state, seat, $q`; a
     `let` of the arm's block: `SupplierBinders`, each name with the span it is bound
@@ -1468,7 +1468,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
     tag's case. There a described element's `$` field is a `Dynamic` (`LiveFieldPat`),
     a plain field and the place's path are locals, and each reader of the node the
     answer names beside them is the live dynamic the host's line makes for it
-    (`HeldAnswerReaders`, `LiveDynamics`: `whole_{name}` with its port, as a reader a
+    (`HeldOutputReaders`, `LiveDynamics`: `whole_{name}` with its port, as a reader a
     function takes whole, bound under `#whole{span}` and captured by the closure). A
     reader with no value while the node is being made (a widget's result, a name of
     the parent) is read through the node's link alone, so the host's scope is late
@@ -1490,7 +1490,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   structural dynamic of the owner's, a `for`'s gathered result or a `rebuild`'s;
   Semantics ch. 7, "Structural dynamics": a builder in a tick's construction step and
   the tick's outputs read the value after it) is read through the owner's link alone
-  (`#dynlate`, `DynamicAnswers`), and the host's scope is late (`Wx.lateHosts`). The
+  (`#dynlate`, `DynamicOutputs`), and the host's scope is late (`Wx.lateHosts`). The
   child's places with a `$` output have holds that are empty at the node's making
   (`Hold<Option<T>>`, read as the value they hold, `LatePlaceBn`; a push writes the
   present value) and ask their first values in the construction step where it reaches
@@ -1540,11 +1540,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **`@HostSome`** is `@HostDocument` through `rt::forward_on_none` (`nil` forwards).
 - **`@HostList @child, !answers, supplier`** is `@HostDocument` whose owner also hears
   `!answers` (`Host::hear`): each firing's map hands the place at each key its answer as
-  a computed answer, the next tick's input (`HostRow::answer_later`); an answer of a tag
+  a computed answer, the next tick's input (`HostRow::output_later`); an answer of a tag
   the place is not of is a fault of the tick the place reads it in; a key with no place
-  is dropped. `Answer c` is `crate::Answer`, and a tag's answer constructor
-  (`Ui.Button.Answer click`, rulings round 12, AQ) is the tag's variant of it over what
-  the tag's answer carries (`AnswerValue`); `Wired c` is `Elem c` (prismc's first ruling HL).
+  is dropped. `Output c` is `crate::Output`, and a tag's output constructor
+  (`Ui.Button.Output click`, rulings round 12, AQ) is the tag's variant of it over what
+  the tag's answer carries (`OutputValue`); `Wired c` is `Elem c` (prismc's first ruling HL).
 - **An element's level holds the events of its event fields** (`LevelEvents`, ruling EP):
   the tag's struct has a field per event field, the event the element was made with (a
   port the place's event fires, `request_{pos}_{field}_port`, and the `Event` of it made
@@ -1556,19 +1556,19 @@ it make every program an interpreter run, and every type mistake a runtime fault
   The core prelude's own element tags hold none.
 - **A generic tag holds each of its variables as plain data** (`TagFieldOut`): `crate::Elem`
   has one variant per tag whatever it is placed at, so in the tag's level, its description
-  and its `Answer` variant a type variable of the tag is a `Pod`. A place recodes the
+  and its `Output` variant a type variable of the tag is a `Pod`. A place recodes the
   fields it gives (the prelude's `recode`, by `ToPod` and `FromPod`; a `$` or event field
-  mapped by it) and the answer it reads (`RecodedAnswer`), and a host's arm reads a field
+  mapped by it) and the answer it reads (`RecodedOutput`), and a host's arm reads a field
   as the plain data it is.
 - **An answer made outside a tag's arm** (a host's `let @seven = @ 7`) is plain data in
-  `Answer`'s case of no tag, `Untagged_a`; each accessor of `Answer` reads that case at its
+  `Output`'s case of no tag, `Untagged_a`; each accessor of `Output` reads that case at its
   own tag's type, so the place that takes the answer decides what it is.
   A tag's output that is no plain data (a function, alone or as a bundle's plain part)
   is read from the tag's own case or, made outside the arm, from the case that holds
   it as it is (`Held_a`; the emitters' `OutsideArm`). A World answers with plain data,
-  so its answer for such a tag is a fault of the run (`NoWorldAnswer`).
+  so its answer for such a tag is a fault of the run (`NoWorldOutput`).
   A bundle with such a part made outside the arm is held whole (`PartsBlueprint`); the
-  host's row that takes it for a place asks `Answer::held_parts` (emitted per bundle
+  host's row that takes it for a place asks `Output::held_parts` (emitted per bundle
   tag with such a part, `?HeldWholeTy`, `?HeldPartsOf`) for the tag's parts answer of
   it, and answers the place as `parts_blueprint` does: the state its first value, each
   firing of an event part an answer a tick late; the subscriptions leave with the row
@@ -1596,21 +1596,21 @@ it make every program an interpreter run, and every type mistake a runtime fault
     part that is there fires its event (`BundleEventsFire`). As plain data an absent part
     is `Pod::Absent`, written and printed `-` (`(("hello", -))`). A bundle with no event
     part is answered by path with its state.
-  - **In `crate::Answer`** the tag's variant carries the event parts' answer (`AnswerTy`),
+  - **In `crate::Output`** the tag's variant carries the event parts' answer (`OutputTy`),
     and a tag with both event parts and a state has a second variant, `{Tag}First`, the
     state (`?BundleFirstTy`, `{tag}_first()`); a bundle of state parts alone has its
     state in the tag's own variant. A World's first value and its pushes to a forwarded
-    element decode to the state's variant (`AnswerOf::decode_first`), its answers to the
+    element decode to the state's variant (`OutputOf::decode_first`), its answers to the
     tag's own.
   - **The child's typed dispatch has one arm for a bundle's place** (`BundleTypedArm`):
     the state's variant is written to the `$` parts' holds, any other answer fires the
     event parts.
   - **A supplier's bundle answer** (`@ ((a, $b, !c))`, or `@ pair` of a bundle that is a
-    value) is `rt::parts_blueprint` over an `rt::PartsAnswer` (`PartsBlueprint`). The
+    value) is `rt::parts_blueprint` over an `rt::PartsOutput` (`PartsBlueprint`). The
     state is one `Dynamic` of the state's variant: a constant when no `$` part is live
     (a constant `$ v` is its value), else read at the read point from the plain parts,
     cloned, and each live `$` part's own `Dynamic` (read through the owner's link as a
-    dynamic answer's is, `DynamicAnswers` keys the getter by the part, `?PartDynamic`),
+    dynamic answer's is, `DynamicOutputs` keys the getter by the part, `?PartDynamic`),
     and moved when any of them moves (`moved_by`). Its value at the row's build is the
     place's first value; each later move is one push of the whole state, delivered the
     next tick. Each event part is mapped to the tag's answer (of several event parts, a
@@ -1661,9 +1661,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
   parameters, so the two types differ in color alone, and it is made whenever the two
   differ: a function beside it that stays a `Start` is itself. A blueprint that holds
   the function (`?@(u fn Nat -> Nat)`) has its answers made again (prism_rtl's
-  `answers_mapped`, the prelude's `held_answers_mapped`): its first value and each
+  `outputs_mapped`, the prelude's `held_outputs_mapped`): its first value and each
   answer it gives, one that holds the output whole or one firing's or one move's value
-  (`answer_held`). A blueprint's target type names no output, so the walk is found by
+  (`output_held`). A blueprint's target type names no output, so the walk is found by
   the two types themselves (`HeldDiffers`, `BlueprintOutputs`). A call that is a frame
   of an unbounded function's body walks the job's result the same way before the rest
   of the source runs (`FrameTaker`, `?SignatureResult`).
@@ -1845,10 +1845,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `Turn`, `Above`, `Heights` (`of`, `above`, `ask`, `next`, `again`).
 - `cx`: `Node`, `Done`, `Cx` (`tick`, `read_point`, `propagating`, `after`, `before`, `wake`, `build_later`, `swap_later`,
   `leave_later`, `dirty`, `on_started`, `arm`, `clean_up_later`, `added`, `removed`,
-  `changed`, `request`, `answer_later`, `result`, `first_value`, `listen`), `Runtime`
+  `changed`, `request`, `output_later`, `result`, `first_value`, `listen`), `Runtime`
   (`build`, `tick`, `close`, `compact`, `document`).
 - `host`: `Host`, `HostRow`, `HostOf`, `Link`, `Rows`, `Scope`, `Blueprint`, `Supplier`, `Sink`,
-  `Supplied`, `AnswerOf`, the blueprint forms (`plain_blueprint`, `never_blueprint`,
+  `Supplied`, `OutputOf`, the blueprint forms (`plain_blueprint`, `never_blueprint`,
   `event_blueprint`, `dynamic_blueprint`, `element_blueprint`), `forward_on_none`.
 - `doc`: `Document` (`diff`, `apply`), `Edit`, `Patch`, `Request`.
 - `gc`: `Collector`.
@@ -1869,9 +1869,9 @@ what differs is how C++ spells it.
   it holds by value), `module.hpp` (prototypes, nodes and jobs) and, when it has templates,
   `generic.hpp`, each including only the
   layers of the modules it needs (prismc/README.md, pick MH); `src/elem.decl.hpp` and
-  `src/elem.types.hpp` for `crate::Elem` and `crate::Answer` (declared, and defined with
+  `src/elem.types.hpp` for `crate::Elem` and `crate::Output` (declared, and defined with
   their cases); `src/programs.hpp` (the
-  program classes); `src/main.cpp` (`Elem`'s and `Answer`'s definitions, `test_world()`,
+  program classes); `src/main.cpp` (`Elem`'s and `Output`'s definitions, `test_world()`,
   `main`), `src/prelude.hpp` and the modules' definitions in translation units,
   `src/unit_N.cpp`, several small modules to a unit (prismc/README.md, pick SF). The
   modules are the namespaces `crate::check::env`, nested as their names are, and every

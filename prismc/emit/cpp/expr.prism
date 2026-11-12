@@ -377,7 +377,7 @@ fn CppCall cp, f, args:
         "prism_rtl::Event::of": "::prism_rtl::event_of({a})"
         "prism_rtl::Host::new": "crate::prelude::host_new({a})"
         "prism_rtl::Entry::new": "crate::prelude::entry_new({a})"
-        "prism_rtl::forward_on_none": "::prism_rtl::forward_on_none<crate::Elem, crate::Answer>({a})"
+        "prism_rtl::forward_on_none": "::prism_rtl::forward_on_none<crate::Elem, crate::Output>({a})"
         "Event::never": "::prism_rtl::never_event()"
         otherwise: if IsFresh f: "\{\}" else: "{FreeCallPath cp, f}({a})"
 

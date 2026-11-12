@@ -30,9 +30,9 @@ public:
     bool is_poisoned(const Path& p) const;
     void track(const Patch& patch);
     void unwrap(const Path& path, const Pod& value);
-    std::vector<std::pair<Path, Pod>> take_answers();
+    std::vector<std::pair<Path, Pod>> take_outputs();
     /// Whether the next tick is owed an answer of this policy's.
-    bool owes() const { return !answers_.empty(); }
+    bool owes() const { return !outputs_.empty(); }
     /// Hand back answers taken for a tick that did not run.
     void give_back(std::vector<std::pair<Path, Pod>> answers);
     /// One line for each poisoning of the root since the last call: what the CLI World's
@@ -46,7 +46,7 @@ public:
 private:
     std::vector<Path> poisoned_;
     std::set<Path> exceptions_;
-    std::vector<std::pair<Path, Pod>> answers_;
+    std::vector<std::pair<Path, Pod>> outputs_;
     std::vector<std::string> gave_up_;
     std::optional<std::uint8_t> exit_;
 };

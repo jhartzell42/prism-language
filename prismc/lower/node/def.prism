@@ -449,8 +449,8 @@ fn LinesInto wx, benv0, menv0, b, open:
     # reads one is late as it is: `LatePlaceParts`)
     let ((wxq, benvq, menvq)) = Fold stmts, ((wx, benv0, menv0)), \|((w, be, me)), s| LatePlaceParts w, be, me, s
     # (and the plain answer of a place under a host that is placed once the node stands,
-    # `LateHostedAnswer`)
-    let ((wxp, benvp, menvp)) = Fold stmts, ((wxq, benvq, menvq)), \|((w, be, me)), s| LateHostedAnswer w, be, me, s
+    # `LateHostedOutput`)
+    let ((wxp, benvp, menvp)) = Fold stmts, ((wxq, benvq, menvq)), \|((w, be, me)), s| LateHostedOutput w, be, me, s
     let ((wx0, benv, menv)) = MarkLateLets wxp, benvp, menvp, fns, stmts, (Len stmts)
     let ((wx1p, be1, me1)) = Fold stmts, ((wx0, benv, menv)), \|((w, be, me)), s| PreBind w, be, me, s
     let wx1 = LateLetGetters wx1p, me1, stmts
@@ -1359,8 +1359,8 @@ fn PartHoldKey q = "#parthold{SpanKey q.span}"
 # do, once the host is placed (`Wx.lateFirsts`, `ElementOutputOf`), and its name is a
 # late name as a late place's plain part is (`LatePlaceParts`): the value its hold has
 # from then on, `{name}#late`, `{name}#lateplace`.
-LateHostedAnswer: unbounded fn Wx, Env, Env, Stmt -> ((Wx, Env, Env))
-fn LateHostedAnswer wx, benv, menv, s = match s.kind:
+LateHostedOutput: unbounded fn Wx, Env, Env, Stmt -> ((Wx, Env, Env))
+fn LateHostedOutput wx, benv, menv, s = match s.kind:
     SBind p, init, nil: match p.kind:
         PName n:
             let nkey = SNameKey n
@@ -2686,7 +2686,7 @@ fn LiveDynamic wx, stem, ex, reads, t, what:
         &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind port), (OutRc (OutPort OutUnit))), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]])), (DoLet (PaTyped (PaBind dyn), (OutDyn t)), made)]]
         &_.fields <= Append &_.fields, [[((port, (OutRc (OutPort OutUnit)), "`{name}` moved: its dynamic's update event")), ((dyn, (OutDyn t), "{what} as a live dynamic"))]]
         &_.moves <= Append &_.moves, [[((port, (XClone (XVar port)))), ((dyn, (XClone (XVar dyn))))]]
-        &_.dynAnswers <= Push &_.dynAnswers, ((name, reads))
+        &_.dynOutputs <= Push &_.dynOutputs, ((name, reads))
     (((XClone (XVar dyn)), (OnceField w2, name)))
 
 ResultOfTyped: unbounded fn Wx, Env, Env, Expr, Ty, OutTy -> ((Wres, Wx))

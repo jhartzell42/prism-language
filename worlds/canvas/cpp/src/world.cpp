@@ -179,7 +179,7 @@ void UnwrapWorld::perform(const TickOut& out) {
 }
 
 std::optional<TickIn> UnwrapWorld::next_inputs() {
-    auto mine = prelude_.take_answers();
+    auto mine = prelude_.take_outputs();
     std::optional<TickIn> input = inner_->next_inputs();
     if (!input) {
         if (mine.empty()) return std::nullopt;

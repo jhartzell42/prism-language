@@ -14,7 +14,7 @@
 //! the child's places after a tick and torn down at the end of the tick its key leaves (R7,
 //! R8, the `for` machinery of the emitted code). Nothing here is plain data: the
 //! child's elements are `E`, the program's `Elem` enum, and an answer is `A`, the program's
-//! `Answer` enum (one variant per tag, carrying that tag's output type).
+//! `Output` enum (one variant per tag, carrying that tag's output type).
 //!
 //! A row calls the supplier with the place's path and its live element ([`Live`]: the
 //! identity, the level over time read through the place's entry, and the entry) and builds the
@@ -28,7 +28,7 @@
 //!   scope re-emits into the enclosing host's document instead ([`Host::enclosing`]).
 //! - **A computed answer** is delayed: an event output's firing ([`event_blueprint`]) or a
 //!   dynamic output's later update ([`dynamic_blueprint`]) is queued with
-//!   [`Cx::answer_later`] and delivered as an input of the next tick, which is owed
+//!   [`Cx::output_later`] and delivered as an input of the next tick, which is owed
 //!   (`pending`, like an armed `@Defer`). A dynamic output's first value is read in the
 //!   birth tick, synchronously (as a World's first-value query is), and a plain output
 //!   ([`plain_blueprint`]) is the first value once. A computed answer in flight to a place
@@ -243,7 +243,7 @@ impl<E: Clone + Eq + 'static> Entry<E> {
         }
         if self.snap.queue(cx) {
             let me = self.clone();
-            cx.answer_later(Box::new(move |cx| me.publish(cx)));
+            cx.output_later(Box::new(move |cx| me.publish(cx)));
         }
     }
     /// At the start of the tick after a take that moved it: the entry's update event fires.
@@ -515,7 +515,7 @@ pub type Supplier<E, A> = Rc<dyn Fn(&Path, &Element<E>) -> Blueprint<E, A>>;
 
 /// `@HostSome`'s supplier made `@HostDocument`'s (Semantics ch. 9, the derivation): `nil`
 /// means "not mine, forward it".
-pub fn forward_on_none<E: Level + Eq, A: AnswerOf<E>>(some: Rc<dyn Fn(&Path, &Element<E>) -> Option<Blueprint<E, A>>>) -> Supplier<E, A> {
+pub fn forward_on_none<E: Level + Eq, A: OutputOf<E>>(some: Rc<dyn Fn(&Path, &Element<E>) -> Option<Blueprint<E, A>>>) -> Supplier<E, A> {
     Rc::new(move |p: &Path, e: &Element<E>| match some(p, e) {
         Some(b) => b,
         None => element_blueprint(e),
@@ -524,10 +524,10 @@ pub fn forward_on_none<E: Level + Eq, A: AnswerOf<E>>(some: Rc<dyn Fn(&Path, &El
 
 /// The program's answer type, which a World's answer to an element decodes into by the
 /// element's tag (emitted beside `Elem`).
-pub trait AnswerOf<E>: Clone + 'static {
+pub trait OutputOf<E>: Clone + 'static {
     fn decode(element: &E, v: &Pod) -> Result<Self, Fault>;
     /// A World's first value for the element: an answer, but for a bundle's tag, whose first
-    /// value is its plain parts (`Answer`'s first-value variant, pick HO).
+    /// value is its plain parts (`Output`'s first-value variant, pick HO).
     fn decode_first(element: &E, v: &Pod) -> Result<Self, Fault> {
         Self::decode(element, v)
     }
@@ -535,7 +535,7 @@ pub trait AnswerOf<E>: Clone + 'static {
     /// tag's arm), as the parts the element's tag takes: its state and its events, which a
     /// host's place is answered with as [`parts_blueprint`] answers. `None` for any other
     /// answer, and for an element whose tag has no such bundle.
-    fn held_parts(_element: &E, _answer: &Self) -> Option<PartsAnswer<Self>> {
+    fn held_parts(_element: &E, _output: &Self) -> Option<PartsOutput<Self>> {
         None
     }
 }
@@ -563,7 +563,7 @@ pub fn plain_blueprint<E: 'static, A: Clone + 'static>(x: A) -> Blueprint<E, A> 
 /// A blueprint whose answers are made again: its first value and each answer it gives the
 /// sink of what applies it, through `walk` (a function a blueprint holds, made the
 /// function its reader's type names).
-pub fn answers_mapped<E: 'static, A: Clone + 'static>(blueprint: Blueprint<E, A>, walk: impl Fn(&A) -> A + 'static) -> Blueprint<E, A> {
+pub fn outputs_mapped<E: 'static, A: Clone + 'static>(blueprint: Blueprint<E, A>, walk: impl Fn(&A) -> A + 'static) -> Blueprint<E, A> {
     let walk = Rc::new(walk);
     Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, base, cx| {
         let walked = walk.clone();
@@ -646,7 +646,7 @@ pub fn widget_event_blueprint<E: 'static, A: 'static, T: Clone + 'static>(
 /// tick, which is owed (Semantics ch. 9, "A computed answer is the next tick's input"),
 /// as [`event_blueprint`]'s is. The subscription lives as long as the row, whose port it
 /// is.
-pub fn widget_event_answer_blueprint<E: 'static, A: Clone + 'static, T: Clone + 'static>(
+pub fn widget_event_output_blueprint<E: 'static, A: Clone + 'static, T: Clone + 'static>(
     build: impl Fn(Path, u32, &mut Cx) -> Result<BuiltWidget<E, A, Rc<Port<T>>>, Fault> + 'static,
     build_hosted: impl Fn(Path, u32, Rc<dyn HostOf<E, A>>, Moved, &mut Cx) -> Result<BuiltWidget<E, A, Rc<Port<T>>>, Fault> + 'static,
     answer: impl Fn(&T) -> A + 'static,
@@ -690,7 +690,7 @@ pub fn widget_dynamic_blueprint<E: 'static, A: 'static, T: Clone + 'static>(
             }
             queued.set((), cx);
             let (read, sink, answered) = (read.clone(), sink.clone(), answered.clone());
-            cx.answer_later(Box::new(move |cx| sink(&answered(&read.sample(cx)), cx)));
+            cx.output_later(Box::new(move |cx| sink(&answered(&read.sample(cx)), cx)));
             Ok(())
         }));
         let (document, deliver) = if hosted { (Some(made.document), Some(made.deliver)) } else { (None, None) };
@@ -783,7 +783,7 @@ impl<T: Clone + 'static> Node for SubscribedParts<T> {
 /// A computed answer: delivered as an input of the next tick, which is owed.
 fn later<A: Clone + 'static>(sink: &Sink<A>, v: A, cx: &mut Cx) -> Done {
     let sink = sink.clone();
-    cx.answer_later(Box::new(move |cx| sink(&v, cx)));
+    cx.output_later(Box::new(move |cx| sink(&v, cx)));
     Ok(())
 }
 
@@ -802,30 +802,30 @@ pub fn event_blueprint<E: 'static, A: Clone + 'static>(e: Event<A>) -> Blueprint
 /// the place's state, one dynamic of the tag's state case (a constant when no part
 /// moves), with a port per `$` part that says the part moved; each event part is an event
 /// of the tag's answer case.
-pub struct PartsAnswer<A> {
+pub struct PartsOutput<A> {
     state: Option<Dynamic<A>>,
     moved: Vec<Rc<Port<()>>>,
     events: Vec<Event<A>>,
 }
 
 /// A bundle answer with a state: its plain and `$` parts.
-pub fn parts_state<A>(state: Dynamic<A>) -> PartsAnswer<A> {
-    PartsAnswer { state: Some(state), moved: Vec::new(), events: Vec::new() }
+pub fn parts_state<A>(state: Dynamic<A>) -> PartsOutput<A> {
+    PartsOutput { state: Some(state), moved: Vec::new(), events: Vec::new() }
 }
 
 /// A bundle answer with no state: its first event part.
-pub fn parts_event<A>(e: Event<A>) -> PartsAnswer<A> {
-    PartsAnswer { state: None, moved: Vec::new(), events: vec![e] }
+pub fn parts_event<A>(e: Event<A>) -> PartsOutput<A> {
+    PartsOutput { state: None, moved: Vec::new(), events: vec![e] }
 }
 
-impl<A> PartsAnswer<A> {
+impl<A> PartsOutput<A> {
     /// One more port that says the state moved (a second `$` part's).
-    pub fn moved_by(mut self, port: &Rc<Port<()>>) -> PartsAnswer<A> {
+    pub fn moved_by(mut self, port: &Rc<Port<()>>) -> PartsOutput<A> {
         self.moved.push(port.clone());
         self
     }
     /// One more event part.
-    pub fn event(mut self, e: Event<A>) -> PartsAnswer<A> {
+    pub fn event(mut self, e: Event<A>) -> PartsOutput<A> {
         self.events.push(e);
         self
     }
@@ -837,10 +837,10 @@ impl<A> PartsAnswer<A> {
 /// answer, all inputs of the next tick, which is owed. As [`dynamic_blueprint`], several
 /// marks of the state in one tick are one push, sampled when it is delivered. Two event
 /// parts that fire in one tick are two answers of that next tick.
-pub fn parts_blueprint<E: 'static, A: Clone + 'static>(parts: PartsAnswer<A>) -> Blueprint<E, A> {
+pub fn parts_blueprint<E: 'static, A: Clone + 'static>(parts: PartsOutput<A>) -> Blueprint<E, A> {
     let parts = Rc::new(parts);
     Rc::new(move |_path, sink: Sink<A>, _scope, _base, cx| {
-        let (first, node) = answer_parts(&parts, &sink, cx);
+        let (first, node) = output_parts(&parts, &sink, cx);
         Ok(Supplied { node: Rc::new(node), first, forwards: false, entry: None, built: 0, leave: None, document: None, deliver: None })
     })
 }
@@ -848,7 +848,7 @@ pub fn parts_blueprint<E: 'static, A: Clone + 'static>(parts: PartsAnswer<A>) ->
 /// A bundle answer given to a sink ([`parts_blueprint`], [`widget_parts_blueprint`]): the
 /// state's value now, the place's first value, and the subscriptions that push each
 /// later move of the state and answer each firing of an event part, a tick late.
-fn answer_parts<A: Clone + 'static>(parts: &PartsAnswer<A>, sink: &Sink<A>, cx: &mut Cx) -> (Option<A>, SubscribedParts<A>) {
+fn output_parts<A: Clone + 'static>(parts: &PartsOutput<A>, sink: &Sink<A>, cx: &mut Cx) -> (Option<A>, SubscribedParts<A>) {
     let first = parts.state.as_ref().map(|d| d.sample(cx));
     let mut events = Vec::new();
     for e in &parts.events {
@@ -873,7 +873,7 @@ fn answer_parts<A: Clone + 'static>(parts: &PartsAnswer<A>, sink: &Sink<A>, cx: 
                 }
                 queued.set((), cx);
                 let (read, sink) = (read.clone(), sink.clone());
-                cx.answer_later(Box::new(move |cx| sink(&read.sample(cx), cx)));
+                cx.output_later(Box::new(move |cx| sink(&read.sample(cx), cx)));
                 Ok(())
             }));
             updates.push((port, Cell::new(Some(h))));
@@ -892,14 +892,14 @@ fn answer_parts<A: Clone + 'static>(parts: &PartsAnswer<A>, sink: &Sink<A>, cx: 
 pub fn widget_parts_blueprint<E: 'static, A: Clone + 'static, R: 'static>(
     build: impl Fn(Path, u32, &mut Cx) -> Result<BuiltWidget<E, A, R>, Fault> + 'static,
     build_hosted: impl Fn(Path, u32, Rc<dyn HostOf<E, A>>, Moved, &mut Cx) -> Result<BuiltWidget<E, A, R>, Fault> + 'static,
-    parts: impl Fn(&R) -> PartsAnswer<A> + 'static,
+    parts: impl Fn(&R) -> PartsOutput<A> + 'static,
 ) -> Blueprint<E, A> {
     Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, base, cx| {
         let (made, hosted) = match scope {
             Scope::World => (build(path, base, cx)?, false),
             Scope::Hosted(host) => (build_hosted(path, base, host.clone(), host_moved(host), cx)?, true),
         };
-        let (first, _subscribed) = answer_parts(&parts(&made.result), &sink, cx);
+        let (first, _subscribed) = output_parts(&parts(&made.result), &sink, cx);
         let (document, deliver) = if hosted { (Some(made.document), Some(made.deliver)) } else { (None, None) };
         Ok(Supplied { node: made.node, first, forwards: false, entry: None, built: made.built, leave: Some(made.leave), document, deliver })
     })
@@ -923,7 +923,7 @@ pub fn dynamic_blueprint<E: 'static, A: Clone + 'static>(d: Dynamic<A>) -> Bluep
             }
             queued.set((), cx);
             let (read, sink) = (read.clone(), sink.clone());
-            cx.answer_later(Box::new(move |cx| sink(&read.sample(cx), cx)));
+            cx.output_later(Box::new(move |cx| sink(&read.sample(cx), cx)));
             Ok(())
         }));
         node.handle.set(Some(h));
@@ -976,7 +976,7 @@ impl<P> Link<P> {
 /// reads the row), and the first value is the enclosing host's.
 ///
 /// `@Element d` of a description places it ([`described_blueprint`]).
-pub fn element_blueprint<E: Level + Eq, A: AnswerOf<E>>(e: &Element<E>) -> Blueprint<E, A> {
+pub fn element_blueprint<E: Level + Eq, A: OutputOf<E>>(e: &Element<E>) -> Blueprint<E, A> {
     let e = match e {
         Element::Live(l) => l.clone(),
         Element::Described(d) => return described_blueprint(d),
@@ -1025,7 +1025,7 @@ pub fn element_blueprint<E: Level + Eq, A: AnswerOf<E>>(e: &Element<E>) -> Bluep
 /// host's document: an entry of its own (`Supplied::entry`), which takes its level at the
 /// build and each time it moves; an enclosing host's answer there is handed to the sink,
 /// and a request there goes to the enclosing host ([`HostOf::request_from`]).
-pub fn described_blueprint<E: Level + Eq, A: AnswerOf<E>>(d: &Described<E>) -> Blueprint<E, A> {
+pub fn described_blueprint<E: Level + Eq, A: OutputOf<E>>(d: &Described<E>) -> Blueprint<E, A> {
     let d = d.clone();
     Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, base, cx| {
         let at = path.at(base);
@@ -1104,7 +1104,7 @@ struct Placed<E, A> {
     entry: RefCell<Option<Rc<Entry<E>>>>,
 }
 
-impl<E: Level + Eq, A: AnswerOf<E>> Node for Placed<E, A> {
+impl<E: Level + Eq, A: OutputOf<E>> Node for Placed<E, A> {
     fn answer(self: Rc<Self>, at: &[Segment], v: &Pod, cx: &mut Cx) -> Done {
         match at {
             [Segment::Pos(0)] => (self.sink)(&A::decode(&self.element, v)?, cx),
@@ -1149,7 +1149,7 @@ struct Forward<E, A> {
     handle: Cell<Option<Handle>>,
 }
 
-impl<E: Level, A: AnswerOf<E>> Node for Forward<E, A> {
+impl<E: Level, A: OutputOf<E>> Node for Forward<E, A> {
     fn answer(self: Rc<Self>, at: &[Segment], v: &Pod, cx: &mut Cx) -> Done {
         match at {
             [Segment::Pos(0)] => (self.sink)(&A::decode(&self.element, v)?, cx),
@@ -1266,7 +1266,7 @@ pub struct Host<E, A, P> {
     request_height: Cell<u32>,
 }
 
-impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> Host<E, A, P> {
+impl<E: Level + Eq, A: OutputOf<E>, P: 'static> Host<E, A, P> {
     /// Made in the owner's build, before its node: `rows` is the field the `for` keeps,
     /// `enclosing` the host whose scope the line stands in, if any; `deliver` and `moved`
     /// the owner's emitted `host_k_answer` and `host_k_moved`.
@@ -1312,7 +1312,7 @@ impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> Host<E, A, P> {
         for (p, v) in m.iter() {
             let row = self.rows.borrow().get(p).cloned();
             if let Some(row) = row {
-                row.answer_later(v.clone(), cx);
+                row.output_later(v.clone(), cx);
             }
         }
         Ok(())
@@ -1353,7 +1353,7 @@ impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> Host<E, A, P> {
     }
 }
 
-impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> HostOf<E, A> for Host<E, A, P> {
+impl<E: Level + Eq, A: OutputOf<E>, P: 'static> HostOf<E, A> for Host<E, A, P> {
     fn deliver(&self, place: &Path, v: &A, cx: &mut Cx) -> Done {
         (self.deliver)(&self.owner(), place, v, cx)
     }
@@ -1405,7 +1405,7 @@ pub struct HostRow<E, A> {
     host: Weak<dyn HostOf<E, A>>,
     /// The key left: a computed answer in flight to the place is dropped.
     left: Cell<bool>,
-    /// The subscriptions of a bundle answered held whole ([`AnswerOf::held_parts`]): they
+    /// The subscriptions of a bundle answered held whole ([`OutputOf::held_parts`]): they
     /// leave with the row.
     held: RefCell<Option<Rc<dyn Node>>>,
     sink: Sink<A>,
@@ -1417,7 +1417,7 @@ pub struct HostRow<E, A> {
     requests: Rc<Port<(Option<String>, Pod)>>,
 }
 
-impl<E: Clone + Eq + 'static, A: AnswerOf<E>> HostRow<E, A> {
+impl<E: Clone + Eq + 'static, A: OutputOf<E>> HostRow<E, A> {
     /// Built after propagation, from the entry after the tick (R7): the supplier is asked
     /// for the place's blueprint, and the blueprint is built under the row's path, in the
     /// host's scope. The `for` machinery of the emitted code calls this with the host as
@@ -1451,7 +1451,7 @@ impl<E: Clone + Eq + 'static, A: AnswerOf<E>> HostRow<E, A> {
         // a bundle made outside the tag's arm and held whole is answered part by part: its
         // state the place's first value, each firing of an event part an answer
         if let Some(parts) = supplied.first.as_ref().and_then(|first| A::held_parts(&identity, first)) {
-            let (first, subscribed) = answer_parts(&parts, &node.sink, cx);
+            let (first, subscribed) = output_parts(&parts, &node.sink, cx);
             supplied.first = first;
             *node.held.borrow_mut() = Some(Rc::new(subscribed));
         }
@@ -1465,9 +1465,9 @@ impl<E: Clone + Eq + 'static, A: AnswerOf<E>> HostRow<E, A> {
 
     /// An answer the host sends down to the row's place (`@HostList`): delivered as the
     /// next tick's input, and dropped if the key left by then.
-    pub fn answer_later(&self, v: A, cx: &mut Cx) {
+    pub fn output_later(&self, v: A, cx: &mut Cx) {
         let sink = self.sink.clone();
-        cx.answer_later(Box::new(move |cx| sink(&v, cx)));
+        cx.output_later(Box::new(move |cx| sink(&v, cx)));
     }
 
     /// The blueprint's first value: the place's, when its output has one.

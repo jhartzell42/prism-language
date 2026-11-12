@@ -292,8 +292,8 @@ fn TagPat lx, tg, fps, rest, ty, mode, fresh:
     let conds = Fold parts, [[]], \|acc, ((ignore, o))| Append acc, o.conds
     let binds = Fold parts, [[]], \|acc, ((ignore, o))| Append acc, o.binds
     let level = PaCtor variant, [[(PaRecord structPath, fieldPas, True)]]
-    # the arm names the tag: a `@ x` in it answers with the tag's variant of `crate::Answer`
-    let tagged = Push (Push binds, (("#tag", (BnLocal (XPath (AnswerVariant tg)), Owned, OutUnit)))), (("#tagfirst", (BnLocal (XPath (AnswerFirstVariant tg)), Owned, OutUnit)))
+    # the arm names the tag: a `@ x` in it answers with the tag's variant of `crate::Output`
+    let tagged = Push (Push binds, (("#tag", (BnLocal (XPath (OutputVariant tg)), Owned, OutUnit)))), (("#tagfirst", (BnLocal (XPath (OutputFirstVariant tg)), Owned, OutUnit)))
     # an element, live or a description, matched through its view as the tag's description
     # (`DescView`), its plain fields' values and its `$` fields' dynamics
     let view = "{fresh}_v"

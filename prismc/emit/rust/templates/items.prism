@@ -343,19 +343,19 @@ impl crate::prelude::Row for {{name}} {
 }
 </rust>
 
-# `crate::Answer` (pick HO): an answer to an element, typed by its tag; a World's answer to
+# `crate::Output` (pick HO): an answer to an element, typed by its tag; a World's answer to
 # a forwarded element decodes into it by the element's tag.
-AnswerType: fn Text, Text, Text, Text, Text, Text, Text -> Text
-fn AnswerType cases, tags, accessors, decodes, firsts, helds, untagged = inline_text <rust>
-/// `Answer c`: an answer to an element, typed by its tag (Semantics ch. 9): what a host's
+OutputType: fn Text, Text, Text, Text, Text, Text, Text -> Text
+fn OutputType cases, tags, accessors, decodes, firsts, helds, untagged = inline_text <rust>
+/// `Output c`: an answer to an element, typed by its tag (Semantics ch. 9): what a host's
 /// supplier answers a child place with, and what a World's answer to a forwarded element
 /// decodes to, carrying the tag's output.
 #[derive(Clone)]
-pub enum Answer {
+pub enum Output {
     {{cases}}
 }
 
-impl Answer {
+impl Output {
     /// The tag the answer is for.
     pub fn tag(&self) -> &'static str {
         match self {
@@ -366,7 +366,7 @@ impl Answer {
     /// The answer as one made outside a tag's arm, where it is plain data: what a place
     /// of another tag reads at its own type (an element of the host's own making given
     /// under a tag's arm, `@Element (Prelude.Unwrap(..))`). Any other answer is itself.
-    pub fn untagged(&self) -> Answer {
+    pub fn untagged(&self) -> Output {
         match self {
             {{untagged}}
             other => other.clone(),
@@ -376,7 +376,7 @@ impl Answer {
     /// blueprint value's plain result).
     pub fn plain<T: crate::prelude::FromPod>(&self) -> ::std::result::Result<T, crate::prelude::Fault> {
         match self {
-            Answer::Untagged_a(p) => crate::prelude::FromPod::from_pod(p),
+            Output::Untagged_a(p) => crate::prelude::FromPod::from_pod(p),
             other => ::std::result::Result::Err(crate::prelude::Fault::answer(format!("an answer for {}, where a blueprint value's plain result was expected", other.tag()))),
         }
     }
@@ -384,7 +384,7 @@ impl Answer {
     /// bundle with its events and dynamics whole), when it is one and holds a `T`.
     pub fn held_as<T: Clone + 'static>(&self) -> ::std::option::Option<T> {
         match self {
-            Answer::Held_a(v) => v.downcast_ref::<T>().cloned(),
+            Output::Held_a(v) => v.downcast_ref::<T>().cloned(),
             _ => ::std::option::Option::None,
         }
     }
@@ -394,23 +394,23 @@ impl Answer {
     }
 }
 
-impl ::prism_rtl::AnswerOf<Elem> for Answer {
+impl ::prism_rtl::OutputOf<Elem> for Output {
     /// A World's answer to the element `e`, decoded by its tag.
-    fn decode(e: &Elem, v: &crate::prelude::Pod) -> ::std::result::Result<Answer, crate::prelude::Fault> {
+    fn decode(e: &Elem, v: &crate::prelude::Pod) -> ::std::result::Result<Output, crate::prelude::Fault> {
         match e {
             {{decodes}}
         }
     }
     /// A World's first value for the element `e`: a bundle's plain parts, any other tag's
     /// answer.
-    fn decode_first(e: &Elem, v: &crate::prelude::Pod) -> ::std::result::Result<Answer, crate::prelude::Fault> {
+    fn decode_first(e: &Elem, v: &crate::prelude::Pod) -> ::std::result::Result<Output, crate::prelude::Fault> {
         match e {
             {{firsts}}
         }
     }
     /// An answer held whole (a bundle with a part that is no plain data, made outside a
     /// tag's arm) as the parts the tag of `e` takes.
-    fn held_parts(e: &Elem, answer: &Answer) -> ::std::option::Option<::prism_rtl::PartsAnswer<Answer>> {
+    fn held_parts(e: &Elem, answer: &Output) -> ::std::option::Option<::prism_rtl::PartsOutput<Output>> {
         match e {
             {{helds}}
         }
@@ -418,22 +418,22 @@ impl ::prism_rtl::AnswerOf<Elem> for Answer {
 }
 </rust>
 
-# One accessor of `Answer`: the tag's value, or a fault naming the tag the answer was for.
+# One accessor of `Output`: the tag's value, or a fault naming the tag the answer was for.
 # `outside` is the arm for an answer made outside a tag's arm (the emitter's `OutsideArm`).
-AnswerGetter: fn Text, Text, Text, Text, Text -> Text
-fn AnswerGetter accessor, variant, tagName, ty, outside = inline_text <rust>
+OutputGetter: fn Text, Text, Text, Text, Text -> Text
+fn OutputGetter accessor, variant, tagName, ty, outside = inline_text <rust>
 /// A `{{tagName}}`'s answer.
 pub fn {{accessor}}(&self) -> ::std::result::Result<{{ty}}, crate::prelude::Fault> {
     match self {
-        Answer::{{variant}}(v) => ::std::result::Result::Ok(v.clone()),
+        Output::{{variant}}(v) => ::std::result::Result::Ok(v.clone()),
         {{outside}}
         other => ::std::result::Result::Err(crate::prelude::Fault::answer(format!("an answer for {}, where {{tagName}}'s was expected", other.tag()))),
     }
 }
 </rust>
 
-Answer: fn Text, Text -> Text
-fn Answer seating, arms = inline_text <rust>
+Output: fn Text, Text -> Text
+fn Output seating, arms = inline_text <rust>
 fn answer(self: ::std::rc::Rc<Self>, at: &[crate::prelude::Segment], v: &crate::prelude::Pod, cx: &mut crate::prelude::Cx) -> crate::prelude::Done {
     {{seating}}
     match at {

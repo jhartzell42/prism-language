@@ -139,3 +139,15 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   are a change to the language, sent to the Bible; this compiler keeps the `update`
   block's own map index paths as Semantics chapter 5 has them, and a named lens may end at
   an array's index.
+
+## 12 November 2026
+
+- **OU** An element has an output: the prelude's `Answer c` is `Output c`, and the
+  constructor ruling AN generates for each tag ends in `Output`: `Ui.Button.Output click`,
+  `Fs.Contents.Output (~ c)` (AN's form, the last segment renamed). Jimmy: "An element has
+  an output, a request has a response, and a query has an answer. Rename the prelude's
+  `Answer c` and each tag's `Ui.Button.Answer click` to `Output c` and
+  `Ui.Button.Output click`. That frees `Answer` for a document's `type Answer r`, which the
+  hosting code spells `Told` until the rename lands." The emitted crate's enum is
+  `crate::Output`, and prism_rtl's `AnswerOf` is `OutputOf`. Refused: keeping `Answer`
+  for an element, which leaves a document's query without its word.

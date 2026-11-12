@@ -393,7 +393,7 @@ TEST(a_supervisor_hears_the_report_and_the_subtree_goes_quiet) {
     pre.track(patch);
     pre.unwrap(unwrap, Pod::ok(Pod::int64(5)));
     pre.unwrap(unwrap, Pod::failed(to_pod(Error("Fs.NotFound", Text("gone")))));
-    auto answers = pre.take_answers();
+    auto answers = pre.take_outputs();
     CHECK(answers[0] == std::make_pair(unwrap, Pod::int64(5)));
     CHECK(answers[1].first == sup);
     CHECK(answers[1].second.field("message") && *answers[1].second.field("message") == text("gone"));

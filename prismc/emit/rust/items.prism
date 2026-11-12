@@ -464,11 +464,11 @@ fn RustRow r:
     let level = if r.level: "\n{RowLevel r.name, deepPods, deepPorts}" else: ""
     "{Row (SourceDoc "`{r.prism}`, a row kind's values:", r.doc), derives, r.name, cases, pods2}{back}{level}"
 
-# `crate::Answer` (pick HO): a variant per element tag with the tag's output; an accessor
+# `crate::Output` (pick HO): a variant per element tag with the tag's output; an accessor
 # per variant; the decode of a World's answer by the element's tag. With no element tag the
 # enum is empty, and its matches are over the value, which has none.
-RustAnswer: unbounded fn AnswerDef -> Text
-fn RustAnswer a:
+RustOutput: unbounded fn OutputDef -> Text
+fn RustOutput a:
     # a bundle's tag has a second variant, its plain parts, the first value (pick HO)
     let firsts = Fold a.cases, [[]], \|acc, c| match c.?first:
         ? ft: Push acc, ((c, ft))
@@ -477,32 +477,32 @@ fn RustAnswer a:
     # lowering's `untaggedRef`)
     # and one more of no tag for an answer that is no plain data (a function, a dynamic, a
     # bundle with its events and dynamics whole), held as it is and read back at the type
-    # of the line that binds it (the prelude's `answer_held`, `Answer::held`)
+    # of the line that binds it (the prelude's `output_held`, `Output::held`)
     let cases = Join (Push (Push (Append (Each a.cases, \|c| "{c.variant}({Type c.ty}),"), (Each firsts, \|((c, ft))| "{c.variant}First({Type ft}),")), "Untagged_a(crate::prelude::Pod),"), "Held_a(::std::rc::Rc<dyn ::std::any::Any>),"), "\n"
-    let tags = Join (Push (Push (Append (Each a.cases, \|c| "Answer::{c.variant}(_) => {RsRef c.structPath}::TAG,"), (Each firsts, \|((c, ft))| "Answer::{c.variant}First(_) => {RsRef c.structPath}::TAG,")), "Answer::Untagged_a(_) => \"no tag (an answer made outside a tag's arm)\","), "Answer::Held_a(_) => \"no tag (an answer made outside a tag's arm that is no plain data)\","), "\n"
-    let accessors = Join (Append (Each a.cases, \|c| AnswerGetter c.accessor, c.variant, c.tagName, (Type c.ty), (OutsideArm c.ty)), (Each firsts, \|((c, ft))| AnswerGetter "{c.accessor}_first", "{c.variant}First", c.tagName, (Type ft), (OutsideArm ft))), "\n"
+    let tags = Join (Push (Push (Append (Each a.cases, \|c| "Output::{c.variant}(_) => {RsRef c.structPath}::TAG,"), (Each firsts, \|((c, ft))| "Output::{c.variant}First(_) => {RsRef c.structPath}::TAG,")), "Output::Untagged_a(_) => \"no tag (an answer made outside a tag's arm)\","), "Output::Held_a(_) => \"no tag (an answer made outside a tag's arm that is no plain data)\","), "\n"
+    let accessors = Join (Append (Each a.cases, \|c| OutputGetter c.accessor, c.variant, c.tagName, (Type c.ty), (OutsideArm c.ty)), (Each firsts, \|((c, ft))| OutputGetter "{c.accessor}_first", "{c.variant}First", c.tagName, (Type ft), (OutsideArm ft))), "\n"
     # a World answers with plain data: an output that is none (a function) is a host's
     # to answer, and a World's answer for it a fault
-    let decodes = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Each a.cases, \|c| if Podable c.ty: "Elem::{c.variant}(..) => ::std::result::Result::Ok(Answer::{c.variant}({DecodeHead c.ty}::from_pod(v)?))," else: "Elem::{c.variant}(..) => {NoWorldAnswer c.tagName},"), "\n"
-    let decodeFirsts = Join (Push (Each firsts, \|((c, ft))| if Podable ft: "Elem::{c.variant}(..) => ::std::result::Result::Ok(Answer::{c.variant}First({DecodeHead ft}::from_pod(v)?))," else: "Elem::{c.variant}(..) => {NoWorldAnswer c.tagName},"), "_ => Self::decode(e, v),"), "\n"
+    let decodes = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Each a.cases, \|c| if Podable c.ty: "Elem::{c.variant}(..) => ::std::result::Result::Ok(Output::{c.variant}({DecodeHead c.ty}::from_pod(v)?))," else: "Elem::{c.variant}(..) => {NoWorldOutput c.tagName},"), "\n"
+    let decodeFirsts = Join (Push (Each firsts, \|((c, ft))| if Podable ft: "Elem::{c.variant}(..) => ::std::result::Result::Ok(Output::{c.variant}First({DecodeHead ft}::from_pod(v)?))," else: "Elem::{c.variant}(..) => {NoWorldOutput c.tagName},"), "_ => Self::decode(e, v),"), "\n"
     # a bundle held whole, answered to a place of a tag that takes such a bundle
     let heldArms = Fold a.cases, [[]], \|acc, c| match ((c.?heldWhole, c.?heldParts)):
         ((? whole, ? parts)): Push acc, "Elem::{c.variant}(..) => answer.held_as::<{Type whole}>().map(|whole| ({Expression parts})(&whole)),"
         otherwise: acc
     let helds = Join (Push heldArms, "_ => ::std::option::Option::None,"), "\n"
-    # an answer of plain data under any tag, as one of no tag (`Answer::untagged`)
-    let untagged = Join (Fold a.cases, [[]], \|acc, c| if Podable c.ty: Push acc, "Answer::{c.variant}(v) => Answer::Untagged_a(crate::prelude::ToPod::to_pod(v))," else: acc), "\n"
-    AnswerType cases, tags, accessors, decodes, decodeFirsts, helds, untagged
+    # an answer of plain data under any tag, as one of no tag (`Output::untagged`)
+    let untagged = Join (Fold a.cases, [[]], \|acc, c| if Podable c.ty: Push acc, "Output::{c.variant}(v) => Output::Untagged_a(crate::prelude::ToPod::to_pod(v))," else: acc), "\n"
+    OutputType cases, tags, accessors, decodes, decodeFirsts, helds, untagged
 
 # An accessor's arm for an answer made outside a tag's arm, read at the type the tag's
-# place takes: plain data from `Answer`'s case of no tag; a value that is no plain data
-# (a function) from the case that holds it as it is (the prelude's `answer_held`).
+# place takes: plain data from `Output`'s case of no tag; a value that is no plain data
+# (a function) from the case that holds it as it is (the prelude's `output_held`).
 OutsideArm: unbounded fn OutTy -> Text
-fn OutsideArm t = if Podable t: "Answer::Untagged_a(p) => crate::prelude::FromPod::from_pod(p)," else: "Answer::Held_a(_) => self.held(),"
+fn OutsideArm t = if Podable t: "Output::Untagged_a(p) => crate::prelude::FromPod::from_pod(p)," else: "Output::Held_a(_) => self.held(),"
 
 # A World's answer for a tag whose output is no plain data: a fault of the run.
-NoWorldAnswer: fn Text -> Text
-fn NoWorldAnswer tagName = "::std::result::Result::Err(crate::prelude::Fault::answer(::std::string::String::from(\"a World's answer for {tagName}, whose output is no plain data: a host answers it\")))"
+NoWorldOutput: fn Text -> Text
+fn NoWorldOutput tagName = "::std::result::Result::Err(crate::prelude::Fault::answer(::std::string::String::from(\"a World's answer for {tagName}, whose output is no plain data: a host answers it\")))"
 
 # ---------------------------------------------------------------------------------------
 # Nodes and programs
@@ -521,7 +521,7 @@ fn RustNode n:
     let methods = Join (Each n.methods, \|m| RustMethod m, "pub(crate) "), "\n"
     # a node with gaps of its own seats an answer's position first (the lowering's `seat`)
     let seating = if Fold n.methods, False, \|f, m| f or m.name == "seat": "let seated = crate::prelude::seated(at, |a| self.seat(a));\nlet at = crate::prelude::segments_of(&seated);" else: ""
-    let answer = if (Len n.answers) == 0: "" else: Answer seating, (Join (Each n.answers, \|((pat, call))| "{Pattern pat} => {Expression call},"), "\n")
+    let answer = if (Len n.answers) == 0: "" else: Output seating, (Join (Each n.answers, \|((pat, call))| "{Pattern pat} => {Expression call},"), "\n")
     let builders = Concat (Append (Each n.builders, \|b| "\n{ForBuilder b}"), (Each n.gens, \|gd| "\n{GenBuilder gd}"))
     let rowImpl = if n.rowKind == NotARow: "" else: "\n{RustRowImpl n}"
     let hooks = Join (Each n.hooks, \|((h, body))| if h == "push": PushHook (Statements body) else: Hook h, (Statements body)), "\n"
@@ -636,7 +636,7 @@ fn EmitCrate model, runtime, scripts:
     let world = match model.?root:
         ? r: r.world
         nil: "test"
-    let main = Main model.name, "mod prelude;\n{mods}", "{RustRow model.elem}\n{RustAnswer model.answer}\n{programs}", "{regs}{checks}", scriptList, runRoot, world
+    let main = Main model.name, "mod prelude;\n{mods}", "{RustRow model.elem}\n{RustOutput model.answer}\n{programs}", "{regs}{checks}", scriptList, runRoot, world
     let files = Each model.mods, \|m| (((RustModFile m.name), (RustModule m, (KidsOf paths, m.name))))
     let named = Each model.mods, \|m| m.name
     let bare = Each (Filter paths, \|p| not (Fold named, False, \|f, n| f or n == p)), \|p| (((RustModFile p), "//! Emitted by prismc: the modules under `{p}`, which declares nothing of its own.\n\n{KidsOf paths, p}"))

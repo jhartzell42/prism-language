@@ -311,7 +311,7 @@ impl<F: FileSystem + 'static> World for CliWorld<F> {
     fn next_inputs(&mut self) -> Option<TickIn> {
         loop {
             self.due();
-            self.answers.extend(self.prelude.take_answers());
+            self.answers.extend(self.prelude.take_outputs());
             if self.answers.is_empty() && self.pushes.is_empty() && !self.pending {
                 let wake = self.timers.iter().map(|(at, _, _)| *at).min();
                 if self.console_waits() {

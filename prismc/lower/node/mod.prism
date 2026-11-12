@@ -92,7 +92,7 @@ type Gn = record:
 # fires nothing.
 type GnKind = choice:
     GnNamed
-    GnAnswer
+    GnOutput
     GnStarted
     GnDeferred
     GnPort
@@ -111,7 +111,7 @@ derive ^Eq, ^Show
 KindWord: fn GnKind -> Text
 fn KindWord k = match k:
     GnNamed: "named"
-    GnAnswer: "answer"
+    GnOutput: "answer"
     GnStarted: "started"
     GnDeferred: "deferred"
     GnPort: "port"
@@ -247,7 +247,7 @@ type Wx = record:
     build: [Do]
     places: [Place]
     # The places whose element answers an event: position, the graph node the answer fires,
-    # its type, and the tag's `Answer` accessor (a hosted place is answered typed, pick HO).
+    # its type, and the tag's `Output` accessor (a hosted place is answered typed, pick HO).
     answers: [((Pos, Nat, OutTy, Text))]
     started: [Nat]
     defers: [((Text, Nat))]
@@ -277,7 +277,7 @@ type Wx = record:
     # (from 1) is `hosts[k - 1]`, and a position of scope `k` is a place of its child.
     hosts: [HostDef]
     # The places whose element answers a dynamic: position, the hold, its type, and the
-    # tag's `Answer` accessor. An answer or a push there writes the hold.
+    # tag's `Output` accessor. An answer or a push there writes the hold.
     dynPlaces: [((Pos, Text, OutTy, Text))]
     # The places whose element answers a bundle (`BundlePlace`).
     bundles: [BundlePlace]
@@ -316,7 +316,7 @@ type Wx = record:
     resultMoved: [((Text, [Read]))]
     # A host's dynamic answers to its child's places (`@ $d`, round 3 DY): the owner's
     # getter for each, and what it reads, a write behind which fires the getter's port.
-    dynAnswers: [((Text, [Read]))]
+    dynOutputs: [((Text, [Read]))]
     # The holds and dynamic `let`s whose value at the build stands in a local, `{f}_init`,
     # bound in the build environment under `{name}#init`: what a supplier's dynamic answer
     # reads while the owner's node is being made (round 3 DY).
@@ -349,7 +349,7 @@ type Wx = record:
     # line above a split that takes the late result at its build (`DeferredLine`).
     deferredGens: [Text]
     # The hosted scopes whose host's supplier answers with a dynamic that has no value
-    # while the node is being made (a structural dynamic; `DynamicAnswers`): the child's
+    # while the node is being made (a structural dynamic; `DynamicOutputs`): the child's
     # places with a `$` output ask their first values once the node stands and the
     # builders above the host have run (`LateFirstPlace`).
     lateHosts: [Nat]
@@ -460,7 +460,7 @@ type RowMarks = record:
 # answer fires (`events`: the node, its type); an answer to several is a sparse tuple of
 # them. `stem` names the field the World's pushes are keyed by (`{stem}_element`), `""`
 # with no `$` part. The accessors take the state and the events' answer out of
-# `crate::Answer`; `firstVariant` is the tag's state case when it has event parts too.
+# `crate::Output`; `firstVariant` is the tag's state case when it has event parts too.
 type BundlePlace = record:
     pos: Pos
     stem: Text
@@ -536,7 +536,7 @@ fn NewWx lx, name, fields, inits, moves, getters, dynReads, taken, inlining, ?ho
     let hostedInits = match ?hostedBy:
         ? ignore: [[(("enclosing", (XVar "enclosing")))]]
         nil: [[]]
-    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, ?valuedAs=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], bundles=[[]], scopes=[[]], ?hostedBy=?hostedBy, rootDyns=[[]], genOf="", rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=[[]], dynAnswers=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]], lateAsks=[[]], lateGens=False, lateRowGens=[[]], genPhase=0, numberedBy=[[]], unplacedHosts=[[]], wholeResultAt="", earlyChoices=[[]], deferredGens=[[]], lateHosts=[[]], lateFirsts=[[]], lateStarts=[[]], latePlaces=[[]], lateElements=[[]], lateNumbered=[[]], holdsLast=[[]], baseLate=False, splitNames=[[]], splitLets=[[]], giving=GivenInOrder, lateTakings=[[]], valueSubs=[[]])
+    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, ?valuedAs=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], bundles=[[]], scopes=[[]], ?hostedBy=?hostedBy, rootDyns=[[]], genOf="", rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=[[]], dynOutputs=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]], lateAsks=[[]], lateGens=False, lateRowGens=[[]], genPhase=0, numberedBy=[[]], unplacedHosts=[[]], wholeResultAt="", earlyChoices=[[]], deferredGens=[[]], lateHosts=[[]], lateFirsts=[[]], lateStarts=[[]], latePlaces=[[]], lateElements=[[]], lateNumbered=[[]], holdsLast=[[]], baseLate=False, splitNames=[[]], splitLets=[[]], giving=GivenInOrder, lateTakings=[[]], valueSubs=[[]])
 
 # A name not yet taken in the node: `base`, else `base_2`, `base_3`.
 FreshName: fn Wx, Text -> ((Text, Wx))

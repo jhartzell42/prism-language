@@ -61,10 +61,10 @@ fn OutTyOf lx, t = match t:
     TyCon "Regex", [[]]: OutRegex
     TyCon "RegexReplacement", [[]]: OutReplacement
     TyCon "Duration", [[]]: OutDuration
-    # `Answer c`, an answer to an element typed by its tag (rulings round 12, AQ): the
-    # program's `crate::Answer`; `Wired`, the entries of a host's document, the places'
+    # `Output c`, an answer to an element typed by its tag (rulings round 12, AQ): the
+    # program's `crate::Output`; `Wired`, the entries of a host's document, the places'
     # elements (prismc's first ruling HL)
-    TyCon "Answer", ignore: answerTy
+    TyCon "Output", ignore: outputTy
     TyCon "Wired", [[]]: OutNamed elemRef, [[]]
     TyCon "Prelude.Error", [[]]: OutError
     # a non-empty collection has a target type of its own, the prelude's wrapper of the
@@ -115,17 +115,17 @@ fn OutTyOf lx, t = match t:
 
 # A blueprint as a value, `@o` (a supplier's answer): prism_rtl's, over the program's
 # element and answer enums (pick HO).
-let blueprintTy = OutNamed (RefRuntime "prism_rtl::Blueprint"), [[(OutNamed elemRef, [[]]), (OutNamed answerRef, [[]])]]
+let blueprintTy = OutNamed (RefRuntime "prism_rtl::Blueprint"), [[(OutNamed elemRef, [[]]), (OutNamed outputRef, [[]])]]
 
-# The program's element and answer enums, `crate::Elem` and `crate::Answer`, and a host as
+# The program's element and answer enums, `crate::Elem` and `crate::Output`, and a host as
 # its rows reach it.
 let elemTy = OutNamed elemRef, [[]]
-let answerTy = OutNamed answerRef, [[]]
+let outputTy = OutNamed outputRef, [[]]
 # A hosted place's entry in its host's document (`$(Path ==> $Elem c)`), and the host's
 # document, its outer, as the owner keeps it.
 let entryTy = OutRc (OutNamed (RefRuntime "prism_rtl::Entry"), [[(OutNamed elemRef, [[]])]])
 let hostDocTy = OutNamed (RefRuntime "prism_rtl::HostDoc"), [[(OutNamed elemRef, [[]])]]
-let hostOfTy = OutObj (OutNamed (RefRuntime "prism_rtl::HostOf"), [[(OutNamed elemRef, [[]]), (OutNamed answerRef, [[]])]])
+let hostOfTy = OutObj (OutNamed (RefRuntime "prism_rtl::HostOf"), [[(OutNamed elemRef, [[]]), (OutNamed outputRef, [[]])]])
 
 # Whether a type gives a blueprint (`@o`, `?@o`).
 HasBlueprint: fn Ty -> Bool
@@ -320,7 +320,7 @@ fn RcField lx, ctor, i = Or (Or lx.layouts[ctor], [[]])[i], False
 # ch. 2: a generic tag's output is a scheme, its variables shared with its fields). The
 # program's `Elem` has one variant per tag, whatever the tag is placed at, so the tag's
 # structs hold each of its variables as plain data, a `Pod`, as an answer to an open
-# output is (`AnswerTy`): the type of a field there is the field's own with every variable
+# output is (`OutputTy`): the type of a field there is the field's own with every variable
 # a `Pod`. A place that gives the field at `Text` recodes it (`RecodedField`), and a
 # host's arm reads the field as the plain data it is.
 TagFieldOut: unbounded fn Lx, Ty -> OutTy

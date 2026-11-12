@@ -281,7 +281,7 @@ impl Run<'_> {
                 let mut input = TickIn::none();
                 for d in ds {
                     let (path, value) = match d {
-                        Delivery::Answer(p) => self.deal(p)?,
+                        Delivery::Output(p) => self.deal(p)?,
                         Delivery::Element(target) => self.click_element(target)?,
                         Delivery::Send(t, v) => (self.place(t)?, v.clone()),
                         Delivery::Click(t) => (self.place(t)?, Pod::name("click")),
@@ -379,7 +379,7 @@ impl Run<'_> {
     /// a poisoned place; `pushed` is what `in:` shows before them.
     fn one_tick(&mut self, mut input: TickIn, pushed: &[String], out: &mut String) -> Ticked {
         let before = self.doc.clone();
-        let owed = self.prelude.take_answers();
+        let owed = self.prelude.take_outputs();
         input.answers.extend(owed.iter().cloned());
         input.answers.retain(|(p, _)| !self.prelude.is_poisoned(p));
         input.answers.sort_by(|a, b| a.0.cmp(&b.0));
@@ -608,7 +608,7 @@ enum Delivery {
     /// `click element path`, the path as printed.
     Element(String),
     /// `answer p`.
-    Answer(Pattern),
+    Output(Pattern),
 }
 
 enum Target {
@@ -854,7 +854,7 @@ fn parse_step(n: usize, text: &str) -> Result<Step, String> {
                 Some(path) => Delivery::Element(printed_path(n, path)?),
                 None => Delivery::Click(parse_target(n, rest)?),
             }),
-            ("answer", _) => deliveries.push(Delivery::Answer(pattern(n, rest)?)),
+            ("answer", _) => deliveries.push(Delivery::Output(pattern(n, rest)?)),
             ("send", _) => {
                 let v = parts.get(i + 1).filter(|v| !["send", "click", "answer", "with"].contains(&v.split_whitespace().next().unwrap_or("")));
                 let v = v.ok_or(format!("line {n}: send p, v"))?;
