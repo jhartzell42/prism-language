@@ -1,0 +1,20 @@
+# Derived by hand from Jimmy's ruling of 12 November (a hold, `{ !e }`, keeps an event whole at a type variable) and Semantics Appendix B (`!MergeAll` fires the values of the inputs that fired, in the list's order).
+test both_events_are_heard
+
+tick 0
+  added:
+    0: Ui.Button(label="one")
+    1: Ui.Button(label="two")
+    2: Ui.Label(text="none")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="+1")
+
+tick 2
+  in:
+    1: click
+  changed:
+    2: Ui.Label(text="+2")
