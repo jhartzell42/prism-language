@@ -682,9 +682,11 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
     let s = Or b.stmts[k], dummyStmtL
     # a building `match` or `if`, or a widget of one clause that ends on one, of a scope
     # built in the order of its places (no hosted scope built at its host's line) may have
-    # its rows numbered after a line above that takes its late result (`DeferredLine`)
+    # its rows numbered after a line above that takes its late result (`DeferredLine`);
+    # of a bundle taken apart by a tuple pattern, the plain parts' names (`BindLate`
+    # reads each out of the kept parts, `LateParts`), not a bundle bound whole
     let choiceNames = match s.kind:
-        SBind p, e, nil: if (IsGivingLine lx, menv00, e, 16) and (not (HasNat wx00.lateHosts, wx00.pos.scope)) and not (IsBundle (LineOutFull lx, e)): Filter (PatternNames p), \|n| not (IsTimeName n) else: [[]]
+        SBind p, e, nil: if (IsGivingLine lx, menv00, e, 16) and (not (HasNat wx00.lateHosts, wx00.pos.scope)) and ((not (IsBundle (LineOutFull lx, e))) or not (IsSome (?OneName p))): Filter (PatternNames p), \|n| not (IsTimeName n) else: [[]]
         otherwise: [[]]
     let wxa = update wx00:
         &_.lateInits <= [[]]
