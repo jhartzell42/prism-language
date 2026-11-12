@@ -1,0 +1,9 @@
+# The tests of sem-ch04-late-bundle-let-with-bundle-inside-as-argument.
+emit Ui.*
+use App.*
+
+test loud, @Page True:
+    build
+
+test soft, @Page False:
+    build
