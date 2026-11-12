@@ -1,6 +1,9 @@
-# `@Flatten` of an expression that is no name, a constant whose value is a dynamic a
-# function gave whole (Semantics ch. 7 and Appendix B, `@Flatten`; ruling FV): the outer
-# never fires, so the flatten is its one inner and moves as that inner does.
+# `@Flatten` of an expression that is no name, `$` over a dynamic a function gave (Type
+# System ch. 4, "Where the table looks": `$` is `fn a -> $a` and a bare type variable
+# lifts, so `$ ($Choose True, $a, $b)` is a map over `$b` to constants of its value;
+# Semantics ch. 7 and Appendix B, `@Flatten`; ruling FV): the outer moves whenever `$b`
+# does, and the flatten adopts the new constant after that tick and reads it from the
+# next, owed.
 # Written by Claude on the claude-lowering branch; subject to change.
 emit Ui.*
 test mod Tests
