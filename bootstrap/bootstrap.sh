@@ -70,7 +70,7 @@ pack() {
 # worlds/*/rust), with no build output, copied into the root TO
 copy_runtime() {
     local d
-    for d in $(cd "$1" && ls -d runtime/rust worlds/*/rust); do
+    for d in $(cd "$1" && ls -d runtime/rust worlds/*/rust 2> /dev/null); do
         mkdir -p "$2/$d"
         tar -C "$1/$d" --exclude=./target -cf - . | tar -C "$2/$d" -xf -
     done
@@ -128,6 +128,13 @@ case $from in
     installed) start_runtime=$b/prismc-runtime; [ -d "$start_runtime" ] || start_runtime=. ;;
     seed) start_runtime=$b/seed ;;
 esac
+# A root named by $PRISMC_RUNTIME (absolute or not) is copied into $b/start-runtime, as the
+# tree is into $b/src: the crate is built in that copy, never written into the caller's root.
+start_named=$start_runtime
+if [ $from = prismc ] && [ "$start_runtime" != . ]; then
+    rm -rf "$b/start-runtime" && copy_runtime "$start_runtime" "$b/start-runtime"
+    start_runtime=$b/start-runtime
+fi
 if [ $from = seed ]; then
     build_seed "$b/seed"
     start=$b/seed/prismc
@@ -149,15 +156,15 @@ compile() {
     fi
     echo "gen$1: prismc/ compiled by $2 in $(( $(date +%s) - t ))s"
 }
-# build N ROOT: genN built by cargo against the runtime under ROOT
+# build N ROOT [NAME]: genN built by cargo against the runtime under ROOT (a copy of NAME's)
 build() {
-    local t=$(date +%s)
+    local t=$(date +%s) named=${3:-$2}
     build_crate "$b/gen$1" "$2"
-    echo "gen$1: cargo built against the runtime of $( [ "$2" = . ] && echo the working tree || echo "$2") in $(( $(date +%s) - t ))s (warnings in $b/gen$1.log)"
+    echo "gen$1: cargo built against the runtime of $( [ "$named" = . ] && echo the working tree || echo "$named") in $(( $(date +%s) - t ))s (warnings in $b/gen$1.log)"
 }
 same() { diff -r -q "$b/gen$1/src" "$b/gen$2/src" && diff -q "$b/gen$1/Cargo.toml" "$b/gen$2/Cargo.toml"; }
 compile 1 "$start"
-build 1 "$start_runtime"
+build 1 "$start_runtime" "$start_named"
 compile 2 "$b/gen1/prismc"
 fixed=1
 if ! same 1 2; then

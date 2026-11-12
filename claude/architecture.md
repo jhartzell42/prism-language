@@ -66,7 +66,8 @@ prism               the command: compile, test, run, check
   seed archive holds the crate prismc emitted for itself beside `runtime/rust` and
   `worlds/*/rust` as they were at that fixed point; the installed `target/bootstrap/prismc`
   has `target/bootstrap/prismc-runtime` beside it; a `$PRISMC` names its own with
-  `$PRISMC_RUNTIME`. `bootstrap/bootstrap.sh` builds the seed and gen1 against the starting
+  `$PRISMC_RUNTIME` (any path; copied into `target/bootstrap/start-runtime`, so the root
+  named is never written). `bootstrap/bootstrap.sh` builds the seed and gen1 against the starting
   compiler's runtime, and gen2 on against the tree's, by copying a crate into a root laid
   out as the repository is (the emitted `../../../runtime/rust` then finds that root's). A
   runtime change made with the emitter is so crossed in the one run, gen1 still emitting the
