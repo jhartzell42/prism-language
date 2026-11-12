@@ -1173,11 +1173,14 @@ fn LiveDynamics wx, benv, menv, names, late:
                 otherwise: outerValued
             let unlinked0 = if valued: XClone (XVar "at_build") else: XUnreachable
             # a hold of the node, once the node has left: its last value, a constant from
-            # then on (Semantics ch. 7, "Holds die with their widget"); a dynamic that reads
-            # what stands outside the node goes on reading it live
+            # then on (Semantics ch. 7, "Holds die with their widget"); and so a dynamic
+            # `let` of the node whose reads, through the node's getters, reach nothing
+            # through the parent: computed from constants, it is one too. A dynamic that
+            # reads what stands outside the node goes on reading it live
             let ownHold = match y.kind:
                 EName n: match me.names[SNameKey n]:
                     ? (BnHold ignore, ignore): True
+                    ? (BnDyn ignore, rds, ignore): ((Len rds) > 0) and not (Fold (ReadsClosed w1.dynReads, rds), False, \|seen, r| seen or IsParentRead r)
                     otherwise: False
                 otherwise: False
             let last = "{name}_last"
