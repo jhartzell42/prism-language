@@ -70,10 +70,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - A choice with no case (`type Never = choice:`) → an `enum` with no variant; its derived
   impls match `*self` with no arm, and a `match` with no arm over a value of it is
   `match *x {}`, which rustc takes over the value and never over a reference. A
-  building `match` with no arm in a widget block, its result unit or plain, builds
-  nothing: no row, no generation, no place counted, and a plain result is the empty
-  `match` of the scrutinee as the build has it (`NoArmLine`;
-  sem-ch04-building-match-no-arm). In C++
+  building `match` with no arm in a widget block builds nothing: no row, no
+  generation, no place counted. A plain result is the empty `match` of the scrutinee as
+  the build has it; a dynamic result is a getter of `unreachable!()` with no reads, and an
+  event result is `never`, since no node that holds the line is ever built (`NoArmLine`;
+  sem-ch04-building-match-no-arm, sem-ch04-building-match-no-arm-bound-live). In C++
   the choice's variant holds the runtime's `NoCase`, which nothing makes, and the
   `match` is its unreachable tail.
 - `?a` → `Option<A>`; `~a` → `Result<A, rt::Error>`; `((a, b))` → `(A, B)`; `[[a]]` →
@@ -444,7 +445,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
   the outer holds after n, follows the inner's port (`{name}_moved`, a write of the
   inner) and fires. No dynamics are compared; an adoption of the same inner fires again
   (`sem-ch07-flatten-held`, `sem-ch07-flatten-mapped-constants`). A live dynamic's port
-  fires once a tick however many writes lie behind it (`{name}_once`).
+  fires once a tick however many writes lie behind it (`{name}_once`). Where the node has
+  no live dynamic of its own for the outer, the outer is kept in a field `{name}_outer`
+  made at the build and followed the same way: in a `for`'s row or a `rebuild`'s
+  generation, the block's live dynamic read through the `parent` argument
+  (`WholeOfBlock`, `?ThroughParent`); for a global, the constant of its value, which no
+  node writes (sem-ch07-flatten-global-dynamic, sem-ch07-flatten-block-dynamic-in-row).
 - **`!MergeAll` of a plain list that is not a literal** (`MergeListEvent`) → a
   `MergeList<T>` field (prism_rtl, both runtimes) that hears each `Event` of the list,
   read once the node is made (`{nm}_events`), into a stamped input and tells the node
@@ -1093,6 +1099,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the node is made, before the builders.
   - A row reads its block's live dynamics through its `parent` (`WholeOfBlock`), and hears
     the block's writes behind its own (`RowHears`).
+  - Once the node is gone (the link has no owner), a live dynamic of one of the node's
+    own holds reads the cell `{name}_last`, which the node's `leave` hook writes with the
+    hold's value after the tick the node leaves in: the hold is a constant with its last
+    value from then on (Semantics ch. 7, "Holds die with their widget";
+    sem-ch07-hold-dies-with-its-row). A combinator over it and over a dynamic outside the
+    node is a map of live dynamics and goes on reading the outside one.
   - A global dynamic passed whole is the constant its getter gives.
 - **`!Updated $d` as an event value** (in a supplier's closure, in a function taking `$d`
   whole): the prelude's `updated`, which fires `d`'s value after the tick when `d`'s update
@@ -1339,8 +1351,14 @@ it make every program an interpreter run, and every type mistake a runtime fault
   - **A level that holds dynamics** (a container whose children are its document) goes to
     a World deep: `Elem` implements `rt::Level`, each dynamic sampled at the read point
     (`level_pod`), and a World place over one keeps an `rt::Watch` on the dynamics it holds,
-    so a move of a nested entry sends it again (doubt WD). A forward re-emits through the
-    same `level_pod`.
+    so a move of a nested entry sends it again (WD). A forward re-emits through the
+    same `level_pod`. A tag's plain field whose type holds dynamics below its top
+    (`values: [$Nat]`) is written as a walk over its type (`DeepPodOf`, `DeepPortsOf`:
+    a dynamic sampled, an array's, a map's values', an option's, a tuple's and an `Rc`'s
+    parts), the line builds the value whole, each dynamic the live one it made
+    (`ElementPlaced`, `IsTimeFieldElement`), and its dynamics' update events join the `Watch`
+    (sem-ch09-tag-field-array-of-dynamics); C++ has `rt::DeepPod`. A dynamic inside a
+    named type's argument or a `~T` there is a refusal prismc reports.
   - `@ x` and a constant `@ $ v` (`rt::plain_blueprint`) are the first value once; `@ never`
     (`rt::never_blueprint`) answers nothing.
   - `@ !e` (`rt::event_blueprint`) and `@ $d` (`rt::dynamic_blueprint`, `$d` any dynamic

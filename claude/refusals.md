@@ -407,24 +407,26 @@ Catch-alls
   lifts only at applications, operators, fields, indexes and interpolations, each a
   direct operand.
 
-Zombie and dead states: `leave`, `clean_up`, `edges` (no refusal; the README's entry).
+Zombie and dead states: `leave`, `clean_up`, `edges` (no refusal).
 They are the runtime's names (claude/backend.md, "Leaving"); a program writes nothing
 for them (Semantics ch. 4: "no lifecycle events"). What a program can see is Semantics
 ch. 7, "Holds die with their widget": a kept dynamic of a widget that left reads its
 holds' last values. A `for` row whose key leaves and a replaced generation fire in their
 last tick and are silent afterwards (sem-ch04-row-teardown, sem-ch04-generation-teardown
 pass), and a kept hold of a row that left shows its last value while nothing reads it
-again; a kept combinator over that hold, read again, gives the hold's FIRST value:
-wrong output, sem-ch07-hold-dies-with-its-row, red ("Red tests of the depth sweep").
+again; a kept combinator over that hold and a live input outside the row reads the
+hold's last value and the input live: a live dynamic of a node's hold reads `{name}_last`,
+written by the node's `leave` (sem-ch07-hold-dies-with-its-row passes).
 The first value of an element value placed in a hosted scope (DH2) holds through two
 hosts (sem-ch09-host-described-first-value passes).
 
 ## rustc refuses prismc's output
 
-No refusal: prismc writes a crate and rustc refuses it. Each is an R, critical. One has
-no lowering written: a tag's plain field that holds dynamics below its top
-(sem-ch09-tag-field-array-of-dynamics; `DeepPod`'s `compile_error!` is not reported). A
-no-arm building `match` bound as a dynamic or an event is the other (no test).
+No refusal: prismc writes a crate and rustc refuses it. Each is an R, critical. None is
+known: a tag's plain field that holds dynamics below its top is lowered
+(sem-ch09-tag-field-array-of-dynamics), and so is a no-arm building `match` bound as a
+dynamic or an event (sem-ch04-building-match-no-arm-bound-live). Every `compile_error!`
+the emitters write begins "prismc does not lower", so `CompileProgram` reports it.
 
 ## C: wrong programs the checker lets through
 
@@ -603,7 +605,7 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | node/finish.prism `PlaceNumber`, two sites: a place read at its row's or block's build before its node, after rows that differ in width | R | none | refused |
 | node/switch.prism `RebuildDynamic`, a `rebuild` that hands back a dynamic whose generation gives no dynamic, value or bundle | G | sem-ch04-rebuild-ends-on-host reached it | internal error: the one result left out, a host's line last in the generation, is lowered as the host's bundle (`GenRowOf`); `GivesDynamic` keeps events and unit away |
 | node/switch.prism `ArmRowOf`, two sites: a late plain result beside a `for`, a `rebuild` or a widget that calls itself, in a row numbered after its node | R | none | refused |
-| node/switch.prism, `@Flatten` with no live dynamic at the build (LF) | R | sem-ch07-flatten-global-dynamic, sem-ch07-flatten-block-dynamic-in-row | refused; three forms reach it, see "Red tests of the depth sweep" |
+| node/switch.prism, `@Flatten` with no live dynamic at the build (LF) | R | none | refused for an expression over the block's names written in a row or a generation (`@Flatten ($ ($Choose True, $a, $derived))`); a global and a name of the block are lowered (`{name}_outer`; sem-ch07-flatten-global-dynamic, sem-ch07-flatten-block-dynamic-in-row) |
 | node/def.prism `SplitBlockInto`, a block split at a line whose result is not late | U | none | refused |
 | node/def.prism, the build-side markers of a late name (`PreBindWhole`, `PreBindWholeParts`, `BindLate`, `MarkLateLets`, `LateTakerResults`, `LateFieldPlaces`, `LatePlaceParts`, `LateHostedAnswer`, `MarkLateBundle`, `LateBundleParts`: twelve sites) | R | none (sem-ch04-late-value-above-in-plain-place-field passes) | refused: a place with a `$` or bundle answer, bound by a pattern or in a hosted scope, whose constant field reads the late name; a `let` of a type with time inside that is no bundle |
 | node/def.prism, a late plain result in a bundle (`WrLate`) | U | none | refused |
@@ -629,70 +631,34 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | patterns.prism, a pattern inside an element's `$` field | G | - | internal error: the checker's `live-field-pattern` (ruling LP; tests/checker/neg/live-field-pattern) |
 
 Totals: 36 `Refusal` / `RefusalDo` calls stand in prismc/lower. 2 are internal errors
-by their text (`PartsBlueprint`); 5 are R with a red test (`@Flatten` LF, `AnyValue`, the
-named bundle, the block widget, one `WidgetValueWords` call); 19 are R with no test (the
-12 late-name markers, `DeferredLine` 2, `PlaceNumber` 2, `ArmRowOf` 2, `ElementOutputOf`);
+by their text (`PartsBlueprint`); 4 are R with a red test (`AnyValue`, the named
+bundle, the block widget, one `WidgetValueWords` call); 20 are R with no test (`@Flatten`
+LF's last form, the 12 late-name markers, `DeferredLine` 2, `PlaceNumber` 2, `ArmRowOf`
+2, `ElementOutputOf`);
 10 are U (`SplitBlockInto`, `WrLate`, the generic widget, LE, LF of expr.prism, an event
 read as a value, the other `WidgetValueWords` call and `UndecidedParameter`, `Recolored`,
 `FunctionRecolored`). Eleven guards are internal errors and no longer refusals.
-prismc/README.md, "Not lowered yet", names the zombie and dead states alone, which no
-refusal stands for: they are wrong output (sem-ch07-hold-dies-with-its-row).
 
 Refusals outside `Refusal` / `RefusalDo`, which the table above does not hold:
 
 | site | class | test | state |
 |---|---|---|---|
-| emit/rust/items.prism `DeepPod` (and the C++ printer's): a tag's plain field that holds a dynamic other than `$Elem` or a map of them | R | sem-ch09-tag-field-array-of-dynamics | a `compile_error!` whose text does not begin "prismc does not lower", so `CompileProgram` reports nothing, exits 0, and rustc refuses the crate |
+| emit/rust/items.prism `DeepPodOf`: a tag's plain field whose type holds a dynamic inside a named type's argument or a `~T` | R | none | refused ("prismc does not lower a level field whose type holds a dynamic inside .."); arrays, maps, options, tuples, `Rc`s and dynamics are walked (sem-ch09-tag-field-array-of-dynamics) |
+| emit/cpp/mod.prism `PrinterRefusal`: a constructor, record or pattern of no type the C++ printer's tables know | G | - | internal error ("a prismc bug: the C++ printer met ..") |
 | lower/types.prism, `OutQuantified` (two sites): a quantified type variable no instantiation gives a type | U | none | refused; `Len [[]]`, `Size {}` and an unused `let empty = [[]]` are lowered |
 | lower/expr.prism, `OutRefused "a parameter"`: a typed parameter pattern with no type | U | none | refused |
 
 ## Red tests of the depth sweep
 
-Each is red on prismc-r21 by a compile of the one program; the transcripts are by hand.
-
-- **sem-ch07-flatten-global-dynamic**, **sem-ch07-flatten-block-dynamic-in-row** (`@Flatten`
-  LF, `HeldFlatten`). The line wants `#whole{span}` of its argument, a live `Dynamic` of
-  the node. Two forms have none: a global (`let $$nested = $ ($ 3)`), and a name or an
-  expression over names of the block read in a row or a generation (`$$current` of the
-  parent; `@Flatten ($ ($Choose True, $a, $derived))` in a row). Design: where
-  `#whole` is missing, take the argument as `WholeValueOf` gives it (a global is its
-  getter's constant; a parent's name is the parent's live dynamic handed to the row as a
-  shared row's live parameter is, `LiveParams`; an expression is built whole at the
-  build), keep it in a field `{name}_outer`, and follow that field as `HeldFlatten`
-  follows `dyn`. The row case needs the parent's `Dynamic` passed to `build`, which is
-  the larger part.
-- **sem-ch07-flatten-constant-of-dynamic** (wrong output, no refusal). `@Flatten ($
-  ($Choose True, $a, $b))` in a root block compiles, and its label never changes when
-  `$b` is written: the flatten of a constant outer does not follow its inner. Not
-  diagnosed; the place to look is `HeldFlatten`'s `{name}_follow` when the outer is the
-  build's own value and no `#whole` dynamic of the node.
-- **sem-ch09-tag-field-array-of-dynamics** (`DeepPod`). Design: a runtime trait for "the
-  pod of a value with its dynamics sampled" (`DeepPod::deep_pod(&self, cx)`), given for
-  `Dynamic<A>`, arrays, maps, options, tuples and plain data, and derived for a
-  program's records and choices that hold time; `DeepPod` of the emitter calls it for
-  every field that holds a dynamic, and the place is sent again when one of them moves
-  (the level's `Follow` of each nested dynamic, as the map of `$Elem` has). Until then
-  the emitter's text should begin "prismc does not lower" so that the compile fails
-  with a report.
-- **sem-ch07-hold-dies-with-its-row** (wrong output, no refusal; the README's zombie
-  entry). A live `Dynamic` of a node reads through a weak link (`LiveDynamic`,
-  `LiveDynamics`: `match link.owner()`); once the row is dropped it gives the value AT
-  THE BUILD (`at_build`), so a kept combinator over a dead row's hold reads the hold's
-  first value: `kept 10` where the book gives `kept 11` (Semantics ch. 7, "Holds die
-  with their widget"). A kept hold alone looks right only because nothing reads it
-  again. Design, smallest step: a cell `{name}_last` shared by the node and the
-  closure, written in `leave_row` (and a generation's leaving) with the getter's value
-  as the leaving tick ends, read where the link has no owner. That freezes a dynamic
-  that reads the parent too, where the book keeps a stateless combinator working; the
-  whole of it is the zombie state of claude/backend.md, "Leaving" (the node kept while
-  something subscribes, `edges` and `release` for the collector).
+Each is lowered (the transcripts by hand, one corrected by Type System ch. 4,
+sem-ch07-flatten-constant-of-dynamic). sem-ch07-flatten-block-dynamic-in-row and
+sem-ch09-tag-field-array-of-dynamics have their last fix written and type-checked, unrun.
 
 Lowered in the sweep, unrun: sem-ch04-rebuild-ends-on-host (`GenRowOf`),
 sem-ch07-updated-rebuild-dynamic-above and sem-ch04-rebuild-dynamic-read-above
 (`GivesResult` takes a `rebuild`; before it rustc refused a plain read above the line),
-sem-ch04-building-match-no-arm (`NoArmLine`, unit and plain results; a no-arm building
-`match` bound as a dynamic or an event still goes to `BuildingChoiceLine`, whose empty
-Rust `match` over a tuple of references rustc refuses: no test).
+sem-ch04-building-match-no-arm (`NoArmLine`; a dynamic or an event result too,
+sem-ch04-building-match-no-arm-bound-live).
 
 ## Programs tried that reach no refusal
 
