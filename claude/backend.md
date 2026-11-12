@@ -826,6 +826,14 @@ it make every program an interpreter run, and every type mistake a runtime fault
     "shows"`) applied by a line of the block (`Shows 1`) is applied the same way
     (`WidgetLine`, `AppliedFunctionLine`); an unbounded function's value, a `Start`,
     is run to its end there as a call of one in an expression is.
+  - A function of a block that gives a blueprint (`fn @Row $shown = @Labelled "row",
+    $shown` beside `$more <- @Row $count`) applied by a line of the block is lowered at
+    the line (`LocalFunctionLine`): its one clause's body as a lambda's given for a
+    widget function parameter is (`InlinedFunctionLine`), the parameters bound to the
+    line's arguments by layer, over the environments of the block it is written in, so
+    its places are the block's next. Handed to a widget as its function parameter
+    (`@InMemory empty, @Seats`), it is lowered the same way where the widget applies
+    the parameter (`ApplyWidgetParam`), over its own block's environments.
 - **A widget defined in a block read as a value** (`Card(@body=@line)`, `?Pick True,
   @line`; in the body of a function of the block too, `fn ?Made b = ?Pick b, @line`,
   whose expressions a line that calls it reads as its own, `LocalFunctionExprs`) is a `Blueprint` its line makes at the build before the node, kept in a field
@@ -1202,10 +1210,28 @@ it make every program an interpreter run, and every type mistake a runtime fault
     tag's case (`?HeldDynamic`).
     A function of the host's block (`fn @Supply e` beside the host's line) is inlined
     at its call, so its clauses' text is the supplier's (`AnswerTexts`), read with the
-    clause's own parameters marked (`WithFnParameters`): the host's line makes no
-    getter for an answer that reads one (`ReadsFnParameter`). Refused: such an answer
-    (`fn @Supply $d, e` answering `@ $d`, called `@Supply $count, e`): the inlined
-    parameter is the argument's value, and no live dynamic is made for it.
+    clause's own parameters marked (`WithFnParameters`).
+    **Held answers** (`IsHeldAnswer`). An answer that reads a name the supplier's own
+    text binds where the answer stands (a lambda's parameter, `p`; a field of the
+    element the arm describes, `Count.Query($query=$q): @ Read $state, seat, $q`; a
+    `let` of the arm's block: `SupplierBinders`, each name with the span it is bound
+    in), or a parameter of the block's function it is written in (`ReadsFnParameter`),
+    has no getter: a getter of the node reads no value of one call of the supplier. It
+    is the `Dynamic` its expression gives in the supplier's closure (`?HeldDynamic`,
+    the lift over the `Dynamic`s it reads mapped, `WholeValueOf`), mapped into the
+    tag's case. There a described element's `$` field is a `Dynamic` (`LiveFieldPat`),
+    a plain field and the place's path are locals, and each reader of the node the
+    answer names beside them is the live dynamic the host's line makes for it
+    (`HeldAnswerReaders`, `LiveDynamics`: `whole_{name}` with its port, as a reader a
+    function takes whole, bound under `#whole{span}` and captured by the closure). A
+    reader with no value while the node is being made (a widget's result, a name of
+    the parent) is read through the node's link alone, so the host's scope is late
+    then (`Wx.lateHosts`). A `$` argument the supplier hands to a function of the
+    block (`@Supply $count, e`) is its live dynamic too, and the inlined parameter is
+    bound to that `Dynamic` (`?LiveArgument`, `InlineLocalFn`; a function of several
+    clauses matches it as a value, `InlineLocalFnMatched`), so `@ $d` in the function
+    answers over it. The supplier's environment in a host's own line is marked
+    `#hostline`; in a named supplier's body (no mark) every local is held.
     A computed answer in flight to a place whose key left is
     dropped. Nested hosts add one tick per computing layer and none per
     forwarding layer.
