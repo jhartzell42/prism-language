@@ -1,0 +1,33 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": the order of a group's lines decides positions and nothing else), ch. 7 (`$k` steps on the click, in the click's tick), ch. 8 (`<-` binds the plain result), ch. 9 (a host re-emits each forwarded place of its child under its own place, keyed by the child's path) and ruling TC (places counted as built): the `if` above the host builds its label at 1, so the host is 2 (1 when it builds nothing); the child's places are numbered from 0 as in sem-ch09-host-late-value-above-from-arm-lines. Never run before this commit.
+test loud
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Ui.Label(text="before")
+    2/[0]/0: Ui.Label(text="ten")
+    2/[1]/0: Ui.Label(text="wide 1")
+    2/[2]/0: Ui.Label(text="loud 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2/[2]/0: Ui.Label(text="loud 1")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Ui.Label(text="before")
+    2/[0]/0: Ui.Label(text="wide 2")
+
+test loud_nothing_before
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/[0]/0: Ui.Label(text="ten")
+    1/[1]/0: Ui.Label(text="wide 1")
+    1/[2]/0: Ui.Label(text="loud 0")
