@@ -67,3 +67,9 @@ check regexes:
     Dump "let r = %/_/-/" => "(module\n  (let r (regex-replacement \"_\" \"-\" \"\")))\n"
     Dump "let r = $%/a/" => "(module\n  (let r ($regex \"a\" \"\")))\n"
     Dump "let n = Len [[%/a/,%/b/]]" => "(module\n  (let n (call Len (array (regex \"a\" \"\") (regex \"b\" \"\")))))\n"
+
+# `<:` is one token (Jimmy's ruling on map entries, 12 November): it puts a map entry. In a
+# trait's member position the same token is the method `<` and its signature's colon.
+check entries:
+    Dump "trait ^Ord a:\n    <: fn a, a -> Bool" => "(module\n  (trait ^Ord a\n    (sig (op <) (fn a a -> Bool))))\n"
+    Dump "F: fn Int -> Int\nfn F m = update m:\n    &_[1] <: nil" => "(module\n  (sig F (fn Int -> Int))\n  (fn F (params m)\n    (update m\n      (put (index &_ 1) nil))))\n"

@@ -1,0 +1,9 @@
+tests/checker/neg/set-entry.prism:13: error[set-entry]: `<=` sets a location, and `&_.board[2]` is a map entry
+        &_.board[2] <= nil
+        ^^^^^^^^^^^
+  fix: write `&_.board[2] <: nil`
+tests/checker/neg/set-entry.prism:14: error[set-entry]: `<=` sets a location, and `&Home &_` is a map entry
+        &Home &_ <= ? "K"
+        ^^^^^^^^
+  fix: write `&Home &_ <: ? "K"`
+2 errors

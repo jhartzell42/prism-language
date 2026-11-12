@@ -1,0 +1,13 @@
+tests/checker/neg/put-location.prism:14: error[put-location]: `<:` puts a map entry, and `&_.turn` is a location
+        &_.turn <: 1
+        ^^^^^^^
+  fix: write `&_.turn <= 1`
+tests/checker/neg/put-location.prism:15: error[put-location]: `<:` puts a map entry, and `&_.cells[0]` is a location
+        &_.cells[0] <: ? "K"
+        ^^^^^^^^^^^
+  fix: write `&_.cells[0] <= ? "K"`
+tests/checker/neg/put-location.prism:16: error[put-location]: `<:` puts a map entry, and `&Turn &_` is a location
+        &Turn &_ <: 2
+        ^^^^^^^^
+  fix: write `&Turn &_ <= 2`
+3 errors

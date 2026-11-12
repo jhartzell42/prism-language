@@ -1,0 +1,14 @@
+# Written by hand from Jimmy's ruling on map entries (12 November).
+check put
+1: ok
+2: ok
+
+check remove
+1: ok
+2: ok
+
+check read
+1: ok
+2: ok
+3: ok
+4: ok
