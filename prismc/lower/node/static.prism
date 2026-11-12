@@ -1218,9 +1218,15 @@ fn BlueprintValuesAt wx, benv, menv, e, named:
     # a value's place: an argument of any other call (a function, a constructor), a part
     # of a tuple or an array, the operand of `?`; and the value of a `let` (`named`:
     # `let @w = @line`, read where `@w` is, `NameValueOf`)
-    # (and what a function of the block gives, `fn @Made b = @line`)
+    # (and what a function of the block gives, `fn @Made b = @line`, and what a lambda
+    # gives, `let Make = \|count| @line`: the lambda's body is lowered where it is
+    # applied, under this line, so the value made here is the one it reads)
     let spots = Fold reached, (if named: Push results, (DynKey (Ungrouped e)) else: results), \|acc, x| match x.kind:
         ECall ignore, args, ignore, ignore: if HasText applied, (DynKey x): acc else: Fold args, acc, \|acc2, a| Push acc2, (DynKey (Ungrouped a.value))
+        ELambda ignore, (LbExpr body): Push acc, (DynKey (Ungrouped body))
+        ELambda ignore, (LbBlock b): match (Or b.stmts[Dec (Len b.stmts)], dummyStmtL).kind:
+            SExpr body: Push acc, (DynKey (Ungrouped body))
+            otherwise: acc
         ETuple xs: Fold xs, acc, \|acc2, part| Push acc2, (DynKey (Ungrouped part))
         EArray xs: Fold xs, acc, \|acc2, part| Push acc2, (DynKey (Ungrouped part))
         EFreeSigil "?", operand: Push acc, (DynKey (Ungrouped operand))
