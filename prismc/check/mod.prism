@@ -469,10 +469,16 @@ fn TopLets g, st:
             let s5 = if used: s5a else: Unify s5a, ahead, t, d.span
             let gg2 = update gg:
                 &_.vals <= Insert &_.vals, d.qk, ValInfo(qk=d.qk, scheme=sc, sort="let", hasSig=False, home=d.home, file=d.file, span=d.span)
-            ((gg2, (DischargeIncls gg, (LayerQuestions (ResolveFields gg, (CheckColors s5), True)), 0)))
+            ((gg2, (DischargeIncls gg, (CaseQuestions (LayerQuestions (ResolveFields gg, (CheckColors s5), True))), 0)))
         otherwise: ((gg, s))
 
 let dummyVal = ValInfo(qk="", scheme=(Mono TyErr), sort="", hasSig=False, home="", file=0, span=Range(start=0, end=0, origin=InSource))
+
+# A top-level `let`'s name is asked as a pattern's is (`CaseQuestions`).
+AskLetCase: fn St, Pattern, Ty -> St
+fn AskLetCase st, p, t = match p.kind:
+    PName n: AskCase st, n, (TypeMarks n.sigils), t
+    otherwise: st
 
 IsLetDef: fn Def -> Bool
 fn IsLetDef d = match d.body:
@@ -511,9 +517,7 @@ fn CheckDef g, st, d:
             nil: s0
         DbWidget w: CheckWidgetDef env, s0, d, w
         DbLet l: match g.vals[d.qk]:
-            ? v:
-                if v.hasSig: Check env, s0, l.value, (Skolemize v.scheme)
-                else: s0
+            ? v: AskLetCase (if v.hasSig: Check env, s0, l.value, (Skolemize v.scheme) else: s0), l.pattern, v.scheme.ty
             nil: s0
         DbMethod clauses, cls, im: CheckMethod env, s0, d, clauses, cls, im
         DbDefault clauses, cls: match ?MethodKey g, cls, d.name:
@@ -537,7 +541,7 @@ fn CheckDef g, st, d:
     let first = SolveWants g, s1, env.givens, False
     # an `any e` still waiting at the definition's end met no existential (`ResolvePacks`)
     let solved = CheckColors (if (Len first.packs) == 0: first else: SolveWants g, (ResolvePacks first, True), env.givens, False)
-    let defaulted = LayerQuestions (ResolveFields g, (DefaultDef g, solved), True)
+    let defaulted = CaseQuestions (LayerQuestions (ResolveFields g, (DefaultDef g, solved), True))
     let discharged = DischargeIncls g, defaulted, inclsBefore
     update discharged:
         &_.level <= 0
