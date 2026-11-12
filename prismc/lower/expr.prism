@@ -1530,14 +1530,21 @@ fn InlineLocalFnMatched lx, callEnv, env, cs, args, t:
             ? ((dynamic, ignore)): dynamic
             nil: Own (ValueOf lx, callEnv, a.value)
         nil: XUnit
-    LocalFnMatch lx, env, cs, vals, (Each args, \|a| TypeAt lx, a.value.span), t
+    let live = Filter (Range0 (Len first.params)), \|i| (?LiveArgument lx, callEnv, args[i]) != nil
+    LocalFnMatchLive lx, env, cs, vals, (Each args, \|a| TypeAt lx, a.value.span), live, t
 
 # A local function's clauses over its arguments' values, each owned: one `match` of them
 # as a tuple, an arm per clause. `argTys` are the arguments' types, where a pattern that
 # is no name is read (a literal pattern has no type of its own: `fn Medal 0` of a Nat is
 # a Nat's 0).
 LocalFnMatch: unbounded fn Lx, Env, [FnClause], [Ex], [Ty], OutTy -> Vl
-fn LocalFnMatch lx, env, cs, vals, argTys, t:
+fn LocalFnMatch lx, env, cs, vals, argTys, t = LocalFnMatchLive lx, env, cs, vals, argTys, [[]], t
+
+# `LocalFnMatch` where the arguments at the indexes `live` are live `Dynamic`s (a `$`
+# argument in a host's own line, `?LiveArgument`): a name a clause binds to one is a
+# local of that `Dynamic`.
+LocalFnMatchLive: unbounded fn Lx, Env, [FnClause], [Ex], [Ty], [Nat], OutTy -> Vl
+fn LocalFnMatchLive lx, env, cs, vals, argTys, live, t:
     let first = Or cs[0], dummyClause
     let arms = Each cs, \|c|
         let pos = Each (Range0 (Len c.params)), \|i|
@@ -1545,7 +1552,12 @@ fn LocalFnMatch lx, env, cs, vals, argTys, t:
             let pt = match p.kind:
                 PName n: BinderTy lx, n.span
                 otherwise: Or argTys[i], (TypeAt lx, p.span)
-            RustPat lx, p, pt, Owned, "l{c.span.start}_{i}"
+            let o = RustPat lx, p, pt, Owned, "l{c.span.start}_{i}"
+            if not (HasNat live, i): o else: update o:
+                &_.binds <= Each &_.binds, \|((name, b))| match b:
+                    BnLocal rs, mode, (OutDyn held): ((name, b))
+                    BnLocal rs, mode, held: ((name, (BnLocal rs, mode, (OutDyn held))))
+                    otherwise: ((name, b))
         let env2 = BindAll env, (Fold pos, [[]], \|acc, o| Append acc, o.binds)
         XArm(pat=(PaTuple (Each pos, \|o| o.pa)), conds=(Fold pos, [[]], \|acc, o| Append acc, o.conds), body=(FnBodyValue lx, env2, c.body))
     ArmsValue (XTuple vals), arms, "l{first.span.start}", t
