@@ -1,0 +1,48 @@
+# Derived by hand from Semantics Appendix B (`@Flatten: fn $$a -> @$a` takes any dynamic of dynamics, an expression as well as a name), ch. 4 (a row reads its block's names) and ruling FV, as sem-ch07-flatten-call's transcript is for the same outer in the block: the row adopts the outer's inner at its build (the constant 0); the inc moves the outer at 1, so the flatten reads the constant 1 at 2; the swap moves it at 3 to the constant of `$b` (101) or of the row's `$v` (7), read at 4; never run.
+test over_the_blocks_names
+
+tick 0
+  added:
+    0: Ui.Button(label="inc")
+    1: Ui.Button(label="swap")
+    2/["x"]/0: Ui.Label(text="x: 0")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    2/["x"]/0: Ui.Label(text="x: 1")
+
+tick 3
+  in:
+    1: click
+
+tick 4
+  changed:
+    2/["x"]/0: Ui.Label(text="x: 101")
+
+test over_the_rows_own_name
+
+tick 0
+  added:
+    0: Ui.Button(label="inc")
+    1: Ui.Button(label="swap")
+    2/["x"]/0: Ui.Label(text="x: 0")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    2/["x"]/0: Ui.Label(text="x: 1")
+
+tick 3
+  in:
+    1: click
+
+tick 4
+  changed:
+    2/["x"]/0: Ui.Label(text="x: 7")
