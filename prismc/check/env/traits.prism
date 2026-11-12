@@ -616,24 +616,6 @@ GivenChoice: fn Ty -> Text
 fn GivenChoice (TyRigid v) = "given:{v}"
 fn GivenChoice ignore = "any"
 
-# One-way matching of an impl head (with `TyQ` variables) against a type.
-?MatchHead: unbounded fn Ty, Ty, (Text ==> Ty) -> ?(Text ==> Ty)
-fn ?MatchHead pat, t, m = match ((pat, t)):
-    ((TyQ v, x)): match m[v]:
-        ? y: if y == x: ? m else: nil
-        nil: ? (Insert m, v, x)
-    (((TyCon a, xs), (TyCon b, ys))): if a == b and (Len xs) == (Len ys): ?MatchAll xs, ys, m else: nil
-    ((TyTuple xs, TyTuple ys)): if (Len xs) == (Len ys): ?MatchAll xs, ys, m else: nil
-    ((TyArray x, TyArray y)): ?MatchHead x, y, m
-    (((TyMap k1, v1), (TyMap k2, v2))): ?MatchAll [[k1, v1]], [[k2, v2]], m
-    (((TySig s1, i1), (TySig s2, i2))): if s1 == s2: ?MatchHead i1, i2, m else: nil
-    otherwise: nil
-
-?MatchAll: unbounded fn [Ty], [Ty], (Text ==> Ty) -> ?(Text ==> Ty)
-fn ?MatchAll xs, ys, m = Fold (Range0 (Len xs)), (? m), \|?acc, i| match ?acc:
-    ? mm: ?MatchHead (Or xs[i], TyErr), (Or ys[i], TyErr), mm
-    nil: nil
-
 # The end of a definition (doubt LD): a variable whose constraints include `^Num` and lie
 # among `^Num`, `^Eq`, `^Ord`, `^Show` becomes `Int`; anything else left is `ambiguous`.
 DefaultWants: unbounded fn G, St, [((Text, Text))] -> St

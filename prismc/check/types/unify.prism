@@ -92,19 +92,38 @@ fn NormAssocOnce st, t = match t:
     TyAssoc tr, n, a: ImplAssoc st, tr, n, (Walk st, a), t
     other: other
 
-# An associated type at a known head: the type the one impl of its trait at that head
-# chooses, its variables the head's arguments (ch. 5: "the impl's `?Int` before
-# comparing"); at a variable, or with no impl choosing it, the application as it is.
+# An associated type at a known head: the type the one impl of its trait whose head
+# matches chooses (one-way matching, `?MatchHead`: a named type's head, a collection's or
+# a tuple's, as the impl itself is found), its variables what the match gives them (ch.
+# 5: "the impl's `?Int` before comparing"); at a variable, at a type no head matches yet,
+# or with no impl choosing it, the application as it is.
 ImplAssoc: unbounded fn St, Text, Text, Ty, Ty -> Ty
 fn ImplAssoc st, tr, n, a, t = match a:
-    TyCon c, args: Fold st.assocImpls, t, \|found, ai| if found != t or ai.cls != tr or ai.name != n: found else: match ai.head:
-        TyCon hc, hargs if hc == c and (Len hargs) == (Len args):
-            let tys = Fold (Range0 (Len hargs)), {}, \|m, i| match Or hargs[i], TyErr:
-                TyQ q: Insert m, q, (Or args[i], TyErr)
-                otherwise: m
-            SubstQ Inst(tys=tys, rows={}, cols={}), ai.value
-        otherwise: found
-    otherwise: t
+    TyFlex ignore: t
+    TyRigid ignore: t
+    otherwise:
+        let whole = Zonk st, a
+        Fold st.assocImpls, t, \|found, ai| if found != t or ai.cls != tr or ai.name != n: found else: match ?MatchHead ai.head, whole, {}:
+            ? tys: SubstQ Inst(tys=tys, rows={}, cols={}), ai.value
+            nil: found
+
+# One-way matching of an impl head (with `TyQ` variables) against a type.
+?MatchHead: unbounded fn Ty, Ty, (Text ==> Ty) -> ?(Text ==> Ty)
+fn ?MatchHead pat, t, m = match ((pat, t)):
+    ((TyQ v, x)): match m[v]:
+        ? y: if y == x: ? m else: nil
+        nil: ? (Insert m, v, x)
+    (((TyCon a, xs), (TyCon b, ys))): if a == b and (Len xs) == (Len ys): ?MatchAll xs, ys, m else: nil
+    ((TyTuple xs, TyTuple ys)): if (Len xs) == (Len ys): ?MatchAll xs, ys, m else: nil
+    ((TyArray x, TyArray y)): ?MatchHead x, y, m
+    (((TyMap k1, v1), (TyMap k2, v2))): ?MatchAll [[k1, v1]], [[k2, v2]], m
+    (((TySig s1, i1), (TySig s2, i2))): if s1 == s2: ?MatchHead i1, i2, m else: nil
+    otherwise: nil
+
+?MatchAll: unbounded fn [Ty], [Ty], (Text ==> Ty) -> ?(Text ==> Ty)
+fn ?MatchAll xs, ys, m = Fold (Range0 (Len xs)), (? m), \|?acc, i| match ?acc:
+    ? mm: ?MatchHead (Or xs[i], TyErr), (Or ys[i], TyErr), mm
+    nil: nil
 
 IsWaitingAssoc: unbounded fn St, Ty -> Bool
 fn IsWaitingAssoc st, t = match t:
