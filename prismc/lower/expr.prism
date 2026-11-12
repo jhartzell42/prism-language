@@ -1160,6 +1160,24 @@ fn NameValueOf lx, env, n, span:
                     otherwise: GlobalValue lx, qk, span, t
                 nil: VlOwned (InternalBug "the name {nkey}, which nothing declares"), t
 
+# A top-level `let` read: its getter called. A generalized one (`LetGetter`) is called
+# at the types this use reads it at: the scheme's type matched against the use's own
+# (`?ParamMatch`), each quantified variable given what the match found. A use that
+# decides none of them is a prismc bug: the checker settles every variable of a use.
+LetValue: unbounded fn Lx, Text, Range, OutTy -> Vl
+fn LetValue lx, qk, span, t:
+    let parameters = GeneralizedParameters lx, qk
+    if (Len parameters) == 0: VlOwned (XCall (ValueRef lx, qk), [[]]), t
+    else: match lx.g.vals[qk]:
+        ? v: match ?ParamMatch v.scheme.ty, (Peel (TypeAt lx, span)), {}:
+            ? found: VlOwned (XCallAt (ValueRef lx, qk), (Each parameters, \|((q, ignore))| GeneralizedArgument lx, qk, found[q]), [[]]), t
+            nil: VlOwned (InternalBug "the generalized `let` {BareName qk} read at a type its scheme does not match"), t
+        nil: VlOwned (InternalBug "the `let` {BareName qk}, which nothing declares"), t
+
+GeneralizedArgument: unbounded fn Lx, Text, ?Ty -> OutTy
+fn GeneralizedArgument lx, qk, (? decided) = OutTyOf lx, decided
+fn GeneralizedArgument lx, qk, nil = InternalBugType "the generalized `let` {BareName qk} read where a type variable of it is undecided"
+
 # A global named, not called: a constructor with no fields, a top-level `let` (its
 # getter), a fault kind, or a function as a value.
 GlobalValue: unbounded fn Lx, Text, Range, OutTy -> Vl
@@ -1178,13 +1196,13 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
         # a fault kind named: a `Fault` value, its name (`fault_kind`); `Error(kind=..)`
         # and `==` against an `Error`'s `kind` take it so
         ? tg: VlOwned (XCall (HelperRef "fault_kind"), [[XStr tg.name]]), OutPod
-        nil: if Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsLetDef d): VlOwned (XCall (ValueRef lx, qk), [[]]), t
+        nil: if Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsLetDef d): LetValue lx, qk, span, t
         else: match lx.g.vals[qk]:
             ? v if HasKey lx.valued, (ValuedKeyAt lx, qk, span, [[]]): WidgetNamed lx, qk, span, v, t
             ? v if ((IsWidgetFn v) or IsWidgetTy v.scheme.ty) and not (IsValueWidget lx, qk): WidgetNamed lx, qk, span, v, t
             ? v:
                 let isLet = Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsLetDef d)
-                if isLet: VlOwned (XCall (ValueRef lx, qk), [[]]), t
+                if isLet: LetValue lx, qk, span, t
                 else: if v.sort == "method": MethodFn lx, v, span, t
                 else: match t:
                     OutJobFn a, ignore:

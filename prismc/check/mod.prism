@@ -297,14 +297,32 @@ fn TopLets g, st:
                 &_.definition <= d.qk
                 &_.level <= 1
                 &_.localNext <= 0
-            let pre = (Or gg.vals[d.qk], dummyVal).scheme.ty
-            let s1 = Check env, s0, l.value, pre
-            let s2 = SolveWants gg, s1, [[]], False
+            # The variable bound ahead, at the program's level, is what a use checked
+            # before this `let` is generalized reads: the `let`'s own value and the
+            # `let`s written above it. The value is checked against a variable of the
+            # `let`'s own level, so that binding it does not pull the type's variables
+            # out of reach of the generalization (as a local `let`'s, `CheckLetBinding`).
+            let ahead = (Or gg.vals[d.qk], dummyVal).scheme.ty
+            let ((pre, s0v)) = FreshVar s0, False, d.name
+            let s1 = Check env, s0v, l.value, pre
+            let s2a = SolveWants gg, s1, [[]], False
+            # A use ahead that gave the name a type (the `let` calls itself, or a `let`
+            # above applied it) reads the one type the `let` then has: no variable that
+            # use reaches is generalized (monomorphic recursion). A name nothing has
+            # given a type yet is generalized first, and what read it ahead takes one
+            # instance of it.
+            let used = not (IsFlexVar s2a, ahead)
+            let s2 = if used: Unify s2a, ahead, pre, d.span else: s2a
             let s3 = update s2:
                 &_.level <= 0
             let t = Zonk s3, pre
-            let ((keep, bounds, s4)) = WantsAbove s3, t, (IsLambda l.value)
-            let ((sc, s5)) = if HoldsNode s4, t: ((Mono t, s4)) else: Generalize s4, t, keep, bounds
+            # its color variables stay the program's: a top-level `let` that is a function
+            # is one function of one color, which its uses and the program's end decide
+            # (doubt TL0), where a local `let` is read at each use's color
+            let s3c = LowerLevels s3, (FreeColVars s3, t), 0
+            let ((keep, bounds, s4)) = WantsAbove s3c, t, (IsLambda l.value)
+            let ((sc, s5a)) = if HoldsNode s4, t: ((Mono t, s4)) else: Generalize s4, t, keep, bounds
+            let s5 = if used: s5a else: Unify s5a, ahead, t, d.span
             let gg2 = update gg:
                 &_.vals <= Insert &_.vals, d.qk, ValInfo(qk=d.qk, scheme=sc, sort="let", hasSig=False, home=d.home, file=d.file, span=d.span)
             ((gg2, (DischargeIncls gg, (LayerQuestions (ResolveFields gg, (CheckColors s5), True)), 0)))
