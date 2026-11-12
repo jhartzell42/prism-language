@@ -1089,12 +1089,16 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
                 otherwise: acc3
             otherwise: acc3
     # `@Flatten`'s outer written in place (`@Flatten ($Pick $useB, $a, $b)`): the expression
-    # itself as a live dynamic of dynamics, after the names it passes whole (`HeldFlatten`)
+    # itself as a live dynamic of dynamics, after the names it passes whole (`HeldFlatten`).
+    # An outer written in a row or a generation of the line (`for`, `rebuild`) that reads a
+    # name that row binds is the row's own, made by the row's line: this node has no such
+    # name (sem-ch07-flatten-expression-in-row)
+    let nested = NestedBlockNames e
     let outers = Fold calls, [[]], \|acc, c| match c.kind:
         ECall callee, args, ignore, ignore: if (CalleeKey lx, callee) != "Prelude.@Flatten": acc else: match args[0]:
             ? a: match a.value.kind:
                 EName ignore: acc
-                otherwise: if (LayerOf (TypeAt lx, a.value.span)) == LyDyn and not (HasKey menv.names, "#whole{DynKey a.value}"): Push acc, a.value else: acc
+                otherwise: if (LayerOf (TypeAt lx, a.value.span)) == LyDyn and not ((HasKey menv.names, "#whole{DynKey a.value}") or ReadsAnyOf a.value, nested): Push acc, a.value else: acc
             nil: acc
         otherwise: acc
     LiveDynamics wx, benv, menv, (Append names0, outers), late
@@ -1104,6 +1108,39 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
 # (`ElementPlaced`), so its readers are live dynamics of the node.
 IsTimeFieldElement: unbounded fn Lx, Expr, [Arg] -> Bool
 fn IsTimeFieldElement lx, c, args = (HasKey lx.g.tags, (TagNameOf lx, c)) and Fold args, False, \|seen, a| seen or ((LayerOf (TypeAt lx, a.value.span)) == LyPlain and HoldsTimeWhole lx, a.value)
+
+# Whether every read, through the node's getters, has its value at the build: the node's
+# own inited, or through the parent, which is built.
+InitedOrParent: fn Wx, [Read] -> Bool
+fn InitedOrParent wx, reads = Fold (ReadsClosed wx.dynReads, reads), True, \|ok, r| ok and match r:
+    OwnRead f: HasText wx.inited, f
+    ParentRead ignore: True
+
+# The names bound by the rows and generations written inside `e` (a `for`'s binders, and
+# the lines of a `for`'s or a `rebuild`'s block): names the node whose line `e` is does
+# not have.
+NestedBlockNames: unbounded fn Expr -> [Text]
+fn NestedBlockNames e = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
+    EFor ?binders, ignore, body:
+        let bound = match ?binders:
+            ? b: match b.?second:
+                ? p: Append (BinderNames b.first), (BinderNames p)
+                nil: BinderNames b.first
+            nil: [[]]
+        Append (Append acc, (Each bound, \|n| SNameKey n)), (BlockBoundNames body)
+    ERebuild ignore, body: Append acc, (BlockBoundNames body)
+    otherwise: acc
+
+# The names a block's lines bind (a bind's and a `let`'s patterns).
+BlockBoundNames: unbounded fn Block -> [Text]
+fn BlockBoundNames body = Fold body.stmts, [[]], \|acc, s| match s.kind:
+    SBind p, ignore, ignore: Append acc, (Each (BinderNames p), \|n| SNameKey n)
+    SLet p, ignore, ignore: Append acc, (Each (BinderNames p), \|n| SNameKey n)
+    otherwise: acc
+
+# Whether an expression reads one of `names`.
+ReadsAnyOf: unbounded fn Expr, [Text] -> Bool
+fn ReadsAnyOf x, names = Fold (ReadNames (ExprsIn x)), False, \|seen, n| seen or HasText names, n
 
 # A live `Dynamic` of the node for each of `names` (a reader's name, or an expression that
 # is a dynamic of dynamics), bound under `#whole{span}` in both environments
@@ -1127,7 +1164,13 @@ fn LiveDynamics wx, benv, menv, names, late:
             let dyn = "{name}_dyn"
             let ((ex, reads)) = DynamicExpr w1, me, y
             let t = OutTyOf lx, (Peel (TypeAt lx, y.span))
-            let valued = (AllInited w1, reads) and (NamesInited be, y) and not late
+            # (an outer written in place in a row or a generation, `@Flatten ($Pick $useB,
+            # $a, $v)`: what it reads through the parent has its value at this node's build,
+            # read there through the parent, which is built, as a host's dynamic answer's)
+            let outerValued = (InitedOrParent w1, reads) and NamesInitedOrParent w1, be, y
+            let valued = (not late) and match y.kind:
+                EName ignore: (AllInited w1, reads) and NamesInited be, y
+                otherwise: outerValued
             let unlinked0 = if valued: XClone (XVar "at_build") else: XUnreachable
             # a hold of the node, once the node has left: its last value, a constant from
             # then on (Semantics ch. 7, "Holds die with their widget"); a dynamic that reads
