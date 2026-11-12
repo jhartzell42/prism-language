@@ -3,7 +3,7 @@
 # the hot seat is two inputs: the move typed into the box, then the button.
 # Written by Claude (an implementation agent), 11 November 2026; evidence for Part IV;
 # subject to change.
-emit Ui.* | Play.* | Watch.*
+emit Ui.* | Console.* | Play.* | Watch.*
 use App.*
 use Documents.*
 use Rules.*
@@ -25,7 +25,13 @@ fn Playing from, to = Play (Moving from, to)
 
 # a position from pieces, with no castling right spent
 Setup: fn [((Square, Piece))], Color -> ChessGame
-fn Setup pieces, turn = ChessGame(position=Position(board=(Map pieces), turn=turn, corners=allCorners, ?passed=nil), moves=[[]], ?offered=nil, ?result=nil)
+fn Setup pieces, turn = SetupAt pieces, turn, 0
+
+# the same with the count of moves since a capture or a pawn's move already at `quiet`
+SetupAt: fn [((Square, Piece))], Color, Nat -> ChessGame
+fn SetupAt pieces, turn, quiet:
+    let position = Position(board=(Map pieces), turn=turn, corners=allCorners, ?passed=nil)
+    ChessGame(position=position, moves=[[]], quiet=quiet, earlier=[[]], ?offered=nil, ?result=nil)
 
 ?On: fn ChessGame, Square -> ?Piece
 fn ?On game, square = ?At game.position, square
@@ -62,7 +68,7 @@ check moves_and_turns:
 
 # a line with a move the document declines is a fault, never a shorter line
 check declined_line:
-    ?ResultOf (~Line [[(Moving e2, e4), (Moving e2, e4)]]) => Error(kind=Line.Declined, message="Play Move(from=e2, to=e4, promotion=nil) by Black is declined: NoPieceThere e2")
+    ?ResultOf (~Line [[(Moving e2, e4), (Moving e2, e4)]]) => Error(kind=Line.Declined, message="Play (Moving e2, e4) by Black is declined: NoPieceThere e2")
 
 check check_and_mate:
     ?ResultOf (~Line foolsMate) => ~ (? (Checkmated White))
@@ -105,6 +111,33 @@ check resigning_and_draws:
     Reply (~After fresh, White, OfferDraw), White, AcceptDraw => ~ (Declined NoDrawOffered)
     ?ResultOf (~Then (~After fresh, White, OfferDraw), Black, AcceptDraw) => ~ (? DrawAgreed)
     Reply (~Then (~After fresh, White, OfferDraw), White, (Playing e2, e4)), Black, AcceptDraw => ~ (Declined NoDrawOffered)
+
+# The draws nobody claims: each is the game's result at the move that brings it about.
+let knightsOut = [[(Moving g1, f3), (Moving g8, f6), (Moving f3, g1), (Moving f6, g8)]]
+let rookEnding = [[((e1, whiteKing)), ((a1, whiteRook)), ((e8, blackKing))]]
+let blackBishop = Piece Black, Bishop
+let whiteKnight = Piece White, Knight
+let bareKings = [[((e1, whiteKing)), ((e8, blackKing))]]
+
+Standing: fn [((Square, Piece))], Color -> Position
+fn Standing pieces, turn = (Setup pieces, turn).position
+
+check draws:
+    ?ResultOf (~Line knightsOut) => ~ nil
+    ?ResultOf (~Line (Append knightsOut, knightsOut)) => ~ (? DrawnByRepetition)
+    Reply (~Line (Append knightsOut, knightsOut)), White, (Playing e2, e4) => ~ (Declined (GameOver DrawnByRepetition))
+    ?ResultOf (~After (SetupAt rookEnding, White, 98), White, (Playing a1, a2)) => ~ nil
+    ?ResultOf (~After (SetupAt rookEnding, White, 99), White, (Playing a1, a2)) => ~ (? DrawnByFiftyMoves)
+    ?ResultOf (~After (SetupAt (Push rookEnding, ((h2, whitePawn))), White, 99), White, (Playing h2, h3)) => ~ nil
+    ?ResultOf (~After (Setup (Push bareKings, ((e2, blackRook))), White), White, (Playing e1, e2)) => ~ (? DrawnByInsufficientMaterial)
+    Insufficient (Standing bareKings, White) => True
+    Insufficient (Standing (Push bareKings, ((c1, whiteBishop))), White) => True
+    Insufficient (Standing (Push bareKings, ((b1, whiteKnight))), White) => True
+    Insufficient (Standing (Append bareKings, [[((c1, whiteBishop)), ((f8, blackBishop))]]), White) => True
+    Insufficient (Standing (Append bareKings, [[((c1, whiteBishop)), ((c8, blackBishop))]]), White) => False
+    Insufficient (Standing (Append bareKings, [[((c1, whiteBishop)), ((b1, whiteKnight))]]), White) => False
+    Insufficient (Standing rookEnding, White) => False
+    Insufficient (Standing (Push bareKings, ((h2, whitePawn))), White) => False
 
 # the notation is a participant's: text read as a move or as none, and a move as text
 check notation:
@@ -315,4 +348,134 @@ test both_players_ask_in_one_tick, @bothOpen:
     compute
         => expect Ui.Label(text="Black (opening): accepted")
         => expect Ui.Label(text="moves: e2e4 e7e5")
+    compute
+
+# Threefold repetition: the starting position comes a third time with Black's fourth move,
+# and the game is drawn with nobody claiming it.
+test draw_by_repetition, @repetition:
+    build
+    compute until idle
+        => expect Ui.Label(text="ada watches: a draw: one position three times")
+        => expect Ui.Label(text="moves: g1f3 g8f6 f3g1 f6g8 g1f3 g8f6 f3g1 f6g8")
+
+# ---- the command line: two players and a spectator, each at a terminal
+
+# The fool's mate, a line at a time. A move accepted prints `ok` at the terminal that typed
+# it and the move at the two others, a tick after the line; `legal` and `moves` are
+# answered in the tick they are typed.
+test fools_mate_at_terminals, @terminals:
+    build
+    compute
+    compute
+    send Console.Read(name="White", ..), "f2f3"
+    send Console.Read(name="Black", ..), "e7e5"
+        => requested Console.Print(name="Black", ..), [["f2f3"]]
+        => requested Console.Print(name="White", ..), [["ok"]]
+        => requested Console.Print(name="ada", ..), [["f2f3"]]
+    send Console.Read(name="White", ..), "g2g4"
+        => requested Console.Print(name="Black", ..), [["ok"]]
+        => requested Console.Print(name="White", ..), [["e7e5"]]
+        => requested Console.Print(name="ada", ..), [["e7e5"]]
+    compute
+        => requested Console.Print(name="Black", ..), [["g2g4"]]
+        => requested Console.Print(name="White", ..), [["ok"]]
+        => requested Console.Print(name="ada", ..), [["g2g4"]]
+    send Console.Read(name="Black", ..), "legal"
+        => requested Console.Print(name="Black", ..), [["a7a5 a7a6 b7b5 b7b6 b8a6 b8c6 c7c5 c7c6 d7d5 d7d6 d8e7 d8f6 d8g5 d8h4 e5e4 e8e7 f7f5 f7f6 f8a3 f8b4 f8c5 f8d6 f8e7 g7g5 g7g6 g8e7 g8f6 g8h6 h7h5 h7h6"]]
+    send Console.Read(name="Black", ..), "d8h4"
+    send Console.Read(name="ada", ..), "moves"
+        => requested Console.Print(name="Black", ..), [["ok", "over: White has been checkmated"]]
+        => requested Console.Print(name="White", ..), [["d8h4", "over: White has been checkmated"]]
+        => requested Console.Print(name="ada", ..), [["d8h4", "over: White has been checkmated", "f2f3 e7e5 g2g4"]]
+    send Console.Read(name="White", ..), "a2a3"
+    compute
+        => requested Console.Print(name="White", ..), [["declined: the game is over: White has been checkmated"]]
+
+# What a terminal says to a line it does not take: a move the rules refuse, a line that is
+# no move, a move out of turn, a request at a spectator's terminal.
+test declined_at_terminals, @terminals:
+    build
+    compute
+    compute
+    send Console.Read(name="White", ..), "e2e5"
+    send Console.Read(name="White", ..), "castle"
+        => requested Console.Print(name="White", ..), [["declined: a Pawn does not move so", "cannot read `castle`"]]
+    send Console.Read(name="Black", ..), "e7e5"
+    send Console.Read(name="ada", ..), "e2e4"
+        => requested Console.Print(name="Black", ..), [["declined: it is not your move"]]
+        => requested Console.Print(name="ada", ..), [["a spectator asks for nothing"]]
+    send Console.Read(name="White", ..), "moves"
+        => requested Console.Print(name="White", ..), [[""]]
+    compute
+
+# A draw offered and accepted; then a draw by repetition, and what the terminals print.
+test draw_agreed_at_terminals, @terminals:
+    build
+    compute
+    compute
+    send Console.Read(name="Black", ..), "accept"
+    send Console.Read(name="White", ..), "draw"
+        => requested Console.Print(name="Black", ..), [["declined: no draw has been offered to you"]]
+    send Console.Read(name="Black", ..), "accept"
+        => requested Console.Print(name="Black", ..), [["draw offered"]]
+        => requested Console.Print(name="White", ..), [["ok"]]
+        => requested Console.Print(name="ada", ..), [["draw offered"]]
+    compute
+        => requested Console.Print(name="Black", ..), [["ok", "over: a draw by agreement"]]
+        => requested Console.Print(name="White", ..), [["over: a draw by agreement"]]
+        => requested Console.Print(name="ada", ..), [["over: a draw by agreement"]]
+
+test repetition_at_terminals, @terminals:
+    build
+    compute
+    compute
+    send Console.Read(name="White", ..), "g1f3"
+    send Console.Read(name="Black", ..), "g8f6"
+        => requested Console.Print(name="Black", ..), [["g1f3"]]
+        => requested Console.Print(name="White", ..), [["ok"]]
+        => requested Console.Print(name="ada", ..), [["g1f3"]]
+    send Console.Read(name="White", ..), "f3g1"
+        => requested Console.Print(name="Black", ..), [["ok"]]
+        => requested Console.Print(name="White", ..), [["g8f6"]]
+        => requested Console.Print(name="ada", ..), [["g8f6"]]
+    send Console.Read(name="Black", ..), "f6g8"
+        => requested Console.Print(name="Black", ..), [["f3g1"]]
+        => requested Console.Print(name="White", ..), [["ok"]]
+        => requested Console.Print(name="ada", ..), [["f3g1"]]
+    send Console.Read(name="White", ..), "g1f3"
+        => requested Console.Print(name="Black", ..), [["ok"]]
+        => requested Console.Print(name="White", ..), [["f6g8"]]
+        => requested Console.Print(name="ada", ..), [["f6g8"]]
+    send Console.Read(name="Black", ..), "g8f6"
+        => requested Console.Print(name="Black", ..), [["g1f3"]]
+        => requested Console.Print(name="White", ..), [["ok"]]
+        => requested Console.Print(name="ada", ..), [["g1f3"]]
+    send Console.Read(name="White", ..), "f3g1"
+        => requested Console.Print(name="Black", ..), [["ok"]]
+        => requested Console.Print(name="White", ..), [["g8f6"]]
+        => requested Console.Print(name="ada", ..), [["g8f6"]]
+    send Console.Read(name="Black", ..), "f6g8"
+        => requested Console.Print(name="Black", ..), [["f3g1"]]
+        => requested Console.Print(name="White", ..), [["ok"]]
+        => requested Console.Print(name="ada", ..), [["f3g1"]]
+    compute
+        => requested Console.Print(name="Black", ..), [["ok", "over: a draw: one position three times"]]
+        => requested Console.Print(name="White", ..), [["f6g8", "over: a draw: one position three times"]]
+        => requested Console.Print(name="ada", ..), [["f6g8", "over: a draw: one position three times"]]
+
+# Black resigns; ada leaves; White leaves without resigning.
+test resigning_and_leaving_at_terminals, @terminals:
+    build
+    compute
+    compute
+    send Console.Read(name="White", ..), "e2e4"
+    send Console.Read(name="Black", ..), "resign"
+        => requested Console.Print(name="Black", ..), [["e2e4"]]
+        => requested Console.Print(name="White", ..), [["ok"]]
+        => requested Console.Print(name="ada", ..), [["e2e4"]]
+    send Console.Read(name="ada", ..), "leave"
+        => requested Console.Print(name="Black", ..), [["ok", "over: Black has resigned"]]
+        => requested Console.Print(name="White", ..), [["over: Black has resigned"]]
+        => requested Console.Print(name="ada", ..), [["over: Black has resigned"]]
+    send Console.Read(name="White", ..), "leave"
     compute

@@ -1,0 +1,9 @@
+# A choice with no case: the type with no value, `Never`, for a role that requests nothing.
+type Never = choice:
+
+Absurd: fn Never -> Nat
+fn Absurd never = match never:
+
+@main: @unit
+@main:
+    @ unit

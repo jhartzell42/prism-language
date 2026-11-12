@@ -10,46 +10,8 @@ use Documents.*
 use Rules.*
 use Notation.*
 use Game.*
+use Words.*
 use Ui.*
-
-# ---- the words
-
-ResultText: fn Result -> Text
-fn ResultText (Checkmated color) = "{color} has been checkmated"
-fn ResultText Stalemate = "stalemate"
-fn ResultText (Resigned color) = "{color} has resigned"
-fn ResultText DrawAgreed = "a draw by agreement"
-
-StatusText: fn ChessGame -> Text
-fn StatusText game = match game.?result:
-    ? result: ResultText result
-    nil: if InCheck game.position, game.position.turn: "{game.position.turn} to move, in check" else: "{game.position.turn} to move"
-
-FaultText: fn MoveFault -> Text
-fn FaultText OwnPieceThere = "your own piece stands there"
-fn FaultText (PromotionTo man) = "a pawn never becomes a {man}"
-fn FaultText PromotionNotNamed = "name what the pawn becomes"
-fn FaultText (NothingPromotes man) = "no pawn becomes a {man} by that move"
-fn FaultText (NotHowThatPieceMoves man) = "a {man} does not move so"
-fn FaultText PathBlocked = "a piece stands in the way"
-fn FaultText NothingToCapture = "there is nothing to capture"
-fn FaultText CastlingRightSpent = "the right to castle there is spent"
-fn FaultText CastlingOutOfCheck = "no castling out of check"
-fn FaultText CastlingThroughCheck = "no castling through check"
-fn FaultText LeavesKingInCheck = "it would leave your king in check"
-
-ReasonText: fn ChessReason -> Text
-fn ReasonText NotYourTurn = "it is not your move"
-fn ReasonText (GameOver result) = "the game is over: {ResultText result}"
-fn ReasonText (NoPieceThere square) = "no piece on {square}"
-fn ReasonText (NotYourPiece square) = "the piece on {square} is not yours"
-fn ReasonText (IllegalMove fault) = FaultText fault
-fn ReasonText NoDrawOffered = "no draw has been offered to you"
-fn ReasonText DrawAlreadyOffered = "you have already offered a draw"
-
-Said: fn Response ChessReason -> Text
-fn Said Accepted = "accepted"
-fn Said (Declined why) = "declined: {ReasonText why}"
 
 # ---- the board
 
@@ -176,16 +138,13 @@ WatchedMoves: fn ?ChessGame -> Text
 fn WatchedMoves nil = "(loading)"
 fn WatchedMoves (? game) = Joined (Each game.moves, Spelled), " "
 
-WatcherName: fn Spectator -> Text
-fn WatcherName (Spectator name) = name
-
 # A spectator's view: the board, the status and the moves so far, and a button to leave.
 # Its language has `Watch.Query` and `Watch.Leave`, and no request.
 @SpectatorView: fn Spectator, unit -> @unit emit Ui.* | Watch.*
 fn @SpectatorView seat, sitting:
     $?game <- Watch.Query($query=$ Whole)                            # 0
     @BoardText (?WatchedBoard $?game)                                # 1, 2
-    Ui.Label($text=$"{WatcherName seat} watches: {WatchedStatus $?game}")   # 3
+    Ui.Label($text=$"{NameOf seat} watches: {WatchedStatus $?game}")   # 3
     Ui.Label($text=$"moves: {WatchedMoves $?game}")                  # 4
-    !leave <- Ui.Button($label=$"{WatcherName seat}: leave")         # 5
+    !leave <- Ui.Button($label=$"{NameOf seat}: leave")         # 5
     Watch.Leave(!leaves=(leaves on !leave))                          # 6
