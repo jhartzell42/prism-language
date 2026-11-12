@@ -1057,7 +1057,7 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
     # row's own live parameter is such a value already (`#whole#{name}`)
     let sharedCalls = SharedLiveCalls wx, menv, e
     let calls = Filter (ExprsIn e), \|x| match x.kind:
-        ECall c, ignore, ignore, ignore: (IsWholeObject lx, x) or (IsWholeFn lx, (CalleeKey lx, c)) or (CalleeKey lx, c) == "Prelude.@Flatten" or (CalleeKey lx, c) == "Prelude.@Switch" or (HasText elementValues, (DynKey x)) or (HasText sharedCalls, (DynKey x)) or IsDynamicFieldCtor lx, (CalleeKey lx, c)
+        ECall c, args, ignore, ignore: (IsWholeObject lx, x) or (IsWholeFn lx, (CalleeKey lx, c)) or (IsTimeFieldElement lx, c, args) or (CalleeKey lx, c) == "Prelude.@Flatten" or (CalleeKey lx, c) == "Prelude.@Switch" or (HasText elementValues, (DynKey x)) or (HasText sharedCalls, (DynKey x)) or IsDynamicFieldCtor lx, (CalleeKey lx, c)
         otherwise: False
     # and `!Updated $d` inside a lambda of the line (a supplier's `@ !Filter (?Pick p,
     # !Updated $state)`): an event value there, over `$d`'s live dynamic (`?UpdatedValue`)
@@ -1098,6 +1098,12 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
             nil: acc
         otherwise: acc
     LiveDynamics wx, benv, menv, (Append names0, outers), late
+
+# Whether a call applies a tag with a plain field given a value that holds dynamics below
+# its top (`Count.Many(values=[[$asks, $ 5]])`): that value is built whole
+# (`ElementPlaced`), so its readers are live dynamics of the node.
+IsTimeFieldElement: unbounded fn Lx, Expr, [Arg] -> Bool
+fn IsTimeFieldElement lx, c, args = (HasKey lx.g.tags, (TagNameOf lx, c)) and Fold args, False, \|seen, a| seen or ((LayerOf (TypeAt lx, a.value.span)) == LyPlain and HoldsTimeWhole lx, a.value)
 
 # A live `Dynamic` of the node for each of `names` (a reader's name, or an expression that
 # is a dynamic of dynamics), bound under `#whole{span}` in both environments

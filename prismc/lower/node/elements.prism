@@ -114,6 +114,17 @@ fn ElementPlaced wx, benv, menv, tg, args, fed, out, ?bound:
                     LyEv:
                         let ((r, w2)) = EventRef w, menv, arg
                         RequestFieldInto w2, tg, pos, fname, fty, r, (OutTyOf lx, (Peel (TypeAt lx, arg.span))), lf, cf, mf, rd
+                    # a plain field whose type holds dynamics below its top (`values:
+                    # [$Nat]`): built whole, each dynamic the live one its line made
+                    # (`WholeArgs`), the same value at the build and in the methods; the
+                    # level's `Watch` sends the place again when one moves (WD)
+                    LyPlain if HoldsTimeWhole lx, arg:
+                        let lxw = update lx:
+                            &_.whole <= True
+                        let cv = RecodedField lx, fty, (Own (ValueOf lxw, (InitEnv benv), arg))
+                        let mv = RecodedField lx, fty, (Own (ValueOf lxw, menv, arg))
+                        let spelled = FieldSpell tg.home, fname, fty
+                        (((Push lf, ((spelled, mv))), (Push cf, ((spelled, cv))), (Push mf, ((spelled, mv))), rd, w))
                     otherwise:
                         let ((ex0, rds)) = DynamicExpr w, menv, arg
                         # at the build every name with a value then reads it (`InitEnv`):
