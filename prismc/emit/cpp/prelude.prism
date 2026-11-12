@@ -165,6 +165,23 @@ struct PreludeUnwrap {
     }
 };
 
+/// The description of `Prelude.Unwrap`: the element applied as a plain value (`@Element
+/// (Prelude.Unwrap(!~value=..))`), its field as given, the event of `~a`s (a type
+/// parameter's values are plain data here).
+struct PreludeUnwrap_desc {
+    using prism_value = void;
+    Event<Fallible<Pod>> value_e;
+    const PreludeUnwrap_desc* operator->() const { return this; }
+    PreludeUnwrap_desc* operator->() { return this; }
+};
+
+/// The description of `Prelude.Exceptions`: the element applied as a plain value.
+struct PreludeExceptions_desc {
+    using prism_value = void;
+    const PreludeExceptions_desc* operator->() const { return this; }
+    PreludeExceptions_desc* operator->() { return this; }
+};
+
 /// `tag Prelude.Exceptions of Element !Exception`.
 struct PreludeExceptions {
     using prism_value = void;
