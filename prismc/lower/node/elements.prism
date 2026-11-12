@@ -603,7 +603,16 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
                     let first = if Emits wx, pos: XDecode out, (XRef (XVar "first_{PlaceText pos}")) else: (XVar "first_{PlaceText pos}")
                     # (under a host placed once the node stands, `Wx.unplacedHosts`, the
                     # host has no place yet where the build asks)
-                    let asks = if pos.scope != 0 and HasText wx.unplacedHosts, (HostLocal wx, pos): [[(RefusalDo "a hosted place with a plain answer (place {PlaceText pos}) under a host whose own place takes its number after its block's node (a host in an arm or a clause numbered late, or below a building `match`, `if` or widget of several clauses built after the node)")]] else: [[]]
+                    # (no checked program reaches it: such a place's line binds one name,
+                    # `?BindingOf`, and `LateHostedOutput`, run over every line of the
+                    # block in `LinesInto` before `PreBind`, makes that name a late hold,
+                    # `LatePlainBn`, under the same host (`unplacedHosts` holds the
+                    # scope's host before its child is lowered, `HostLine`) unless the
+                    # answer is a `$`, an event or a bundle, whose binding is no
+                    # `BnLocal`, or the name is late already (`LatePlaceParts`, a
+                    # `LatePlainBn` too); a `$` name over a plain answer is the checker's
+                    # `mark-stack`)
+                    let asks = if pos.scope != 0 and HasText wx.unplacedHosts, (HostLocal wx, pos): [[(InternalBugDo "a hosted place with a plain answer (place {PlaceText pos}) under a host whose own place takes its number after its block's node, its name not made late by `LateHostedOutput`")]] else: [[]]
                     let wx2 = update wx:
                         &_.lets <= Append (Append &_.lets, asks), [[(FirstValueLet wx, pos, tg, level, out), (DoLet (PaBind f), first)]]
                         &_.fields <= Push &_.fields, ((f, out, "place {PlaceText pos}'s answer, its first value"))

@@ -18,6 +18,21 @@ spell".
 
 ## R: legal programs not lowered
 
+Late names read at the build
+- A late name (`{name}#late`) has a marker at the build where a build-side reader would
+  read it. Three readers reach the markers, each with a red test per marker it reaches
+  (the table, "Every refusal site"): a `let` of a lambda used at two types, which
+  `LateLetNames` leaves out (`?ManyInstances`) and `LetLine` builds at the build; a
+  World's place whose constant field reads the late name in a hosted scope, or with its
+  bundle's state parts all `ignore`, which `LateFieldPlaces` does not take; a late bundle
+  with a bundle inside passed whole to a function, which has no `{name}#value`
+  (`LateBundleValue`), so `BundleArgumentsAt` reads its parts. Designs: the last section.
+- A line that takes a late result above its giver, over a split line that is no pure
+  choice: a taker counted as built that reads a taker's result, and a taker whose plain
+  result a tuple pattern or `ignore` binds (`DeferredLine`'s two refusals); an arm
+  numbered late that builds a `for` beside its own late result (`ArmRowOf`); a hosted
+  `$` answer below a building line of its child (`PlaceNumber`). Each has a red test.
+
 Hosting
 - Lowered: a place of a tag whose answer has a plain part beside a `$` part, in a
   hosted scope whose host answers with a dynamic that has no value while its node is
@@ -606,20 +621,22 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | site | class | test | state |
 |---|---|---|---|
 | node/elements.prism `ElementLine`, an element of an unknown tag | G | - | internal error: the checker's `unknown-name` (tests/checker/neg/unknown-tag) |
-| node/elements.prism `ElementOutputOf`, a hosted place with a plain answer no plain name binds, under a host placed after its node | R | none; lowered: sem-ch09-host-late-answer-holding-dynamics (`LateHostedOutput` takes an answer whose type holds dynamics, and the supplier builds such an answer with them whole, `PlainBlueprint`; ok on prismc-fd1, as is sem-ch09-host-answer-holding-dynamics without the host) | `LateHostedOutput` takes every other name, `(a)`, a plain pair's tuple pattern, a record pattern (eo4) and a place whose field reads a late result (eo5) under a host below a building `if`; no program found that reaches it |
+| node/elements.prism `ElementOutputOf`, a hosted place with a plain answer no plain name binds, under a host placed after its node | G | - | internal error: such a place's line binds one name (`?BindingOf`), and `LateHostedOutput`, run over every line of the block in `LinesInto` before `PreBind`, makes it a late hold (`LatePlainBn`) under the same host (`HostLine` puts the host in `unplacedHosts` before it lowers the child), unless the answer is a `$`, an event or a bundle (no `BnLocal` binding) or the name is late already (`LatePlaceParts`, a `LatePlainBn` too); a `$` name over a plain answer is the checker's `mark-stack`. Probes eo1-eo5, m4 (the child's result is the answer) lower; sem-ch09-host-late-answer-holding-dynamics is ok on prismc-fd1 |
 | node/finish.prism `UpdatedGaps`, `!Updated` of a dynamic no sink of the node writes (UP) | G | sem-ch07-updated-rebuild-dynamic-above reached it | internal error: every dynamic a node binds reads a hold, a getter over its holds, a structural dynamic or a kept result; the program that reached it (a `rebuild`'s dynamic read above its line) was bound to a field the node did not have, lowered by `GivesResult` |
 | node/finish.prism `UpdatedGaps`, the same in a row over a name of its block (SU) | G | the same test's second widget reached it | internal error, by the same argument |
-| node/finish.prism `PlaceNumber`, a place read at its block's build after rows built after the node that differ in width | R | none | refused: a hosted child's place with a `$` or a bundle answer asking its host its first value below a building line of the child; a plain answer bound to a name asks once the node stands (`BelowGappyLine`; sem-ch09-host-place-asks-below-building-if, ok on prismc-c1) |
+| node/finish.prism `PlaceNumber`, a place read at its block's build after rows built after the node that differ in width | R | sem-ch09-host-dynamic-answer-below-building-if | refused: a hosted child's place with a `$` answer (or a bundle answer, m8b) asking its host its first value below a building line of the child, under a host placed at the build; a plain answer bound to a name asks once the node stands (`BelowGappyLine`; sem-ch09-host-place-asks-below-building-if) |
 | node/finish.prism `PlaceNumber`, the same at its row's build in a row numbered late | G | - | internal error: the callers with no receiver are `HostLine` under `PlaceUnknownAtBuild`, the early clause rows under `NumberedLate` (both true for such a row's scope-0 places) and `FirstValueLet` in a hosted scope, whose positions have no `?base` |
 | node/switch.prism `RebuildDynamic`, a `rebuild` that hands back a dynamic whose generation gives no dynamic, value or bundle | G | sem-ch04-rebuild-ends-on-host reached it | internal error: the one result left out, a host's line last in the generation, is lowered as the host's bundle (`GenRowOf`); `GivesDynamic` keeps events and unit away |
-| node/switch.prism `ArmRowOf`, two sites: a late plain result beside a `for` or a `rebuild`, and a blueprint value applied, in a row numbered after its node | R | none | refused; a widget that calls itself there builds shared rows numbered late (`GivesLate`, `SharedNumbered`; sem-ch04-late-value-above-recursing-widget-result, ok on prismc-c1) |
+| node/switch.prism `ArmRowOf`, a late plain result beside a `for` or a `rebuild` in a row numbered after its node | R | sem-ch04-late-value-above-arm-with-for-beside-inner-if | refused: a widget of several clauses above a building `if` whose arm builds a `for` beside an inner building `if` it gives; a widget that calls itself there builds shared rows numbered late (`GivesLate`, `SharedNumbered`; sem-ch04-late-value-above-recursing-widget-result) |
+| node/switch.prism `ArmRowOf`, a blueprint value applied in a row numbered after its node | R | none | refused where a gappy generation of the arm is neither early nor numbered by the parent (`UnnumberedSteps`): of the gappy ones only `AppliedBlueprintLine`'s qualifies. Probes a2, a2b-a2f (a `let` blueprint, a blueprint chosen by `if`, an inner gappy `if` beside the arm's split, an impure inner split) lower; a blueprint value out of `Or` (a2d) meets `BuildLineNow`'s internal error first (sem-ch08-blueprint-value-from-or) |
 | node/switch.prism `HeldFlatten`, `@Flatten` with no live dynamic where the line reads it (LF) | G | none | internal error: every widget line goes through `WholeArgsAt` before its `@Flatten` is lowered, and it makes a live dynamic for every outer (a hold or dynamic of the node, a dynamic `let` of a row by its expression, an outer in place); a row's outer of its block is the block's through the parent, a global its constant, a shared row's parameter its `#whole#{name}` |
 | node/def.prism `SplitBlockInto`, a block split at a line whose result is not late | G | - | internal error: a block is split at a line with a plain result or a bundle with a plain part (`IsPlainResult`, asked by `IsLateExpr` and `?LatePlaceTakerAt`); `BuildingChoicesLine` (a building `match` or `if`, a `DeferredLine`) gives such a result late (`WrLate`) or as parts, `AppliedBlueprintLine` (a blueprint or element value applied) late or as parts, a widget that calls itself plain, and an inlined block or widget gives its last line's; a host's line is never split at. Probes sp1, sp3, sp5, sp6 (a block, an `if`, a widget ending on a host's line, a late place's taker that is a host's line) lower |
-| node/def.prism, the build-side markers of a late name in `BindLate`, `MarkLateLets`, `LateFieldPlaces`, `PreBindWhole` (four sites) | R | none; lowered: sem-ch04-late-value-above-in-bundle-place-field, sem-ch04-late-let-above-in-bundle-place-field, sem-ch04-late-place-answer-above-in-bundle-place-field, sem-ch08-late-bundle-whole-above-in-bundle-place-field (all ok on prismc-s6) | a World's place with a bundle answer taken apart by a tuple pattern whose constant field reads the late name asks its first value where the late result is built (`LateFieldPlaces`, `BundleOutputOf`'s `asked`); refused still for such a place whose state parts are all `ignore` |
-| node/def.prism, the other markers (`PreBindWholeParts`, `LateTakerResults`, `LatePlaceParts` two, `LateHostedOutput`, `MarkLateBundle` two, `LateBundleParts`: eight sites) | R | none | refused where read at the build; the same bundle place reading a taker's result lowers (v1248); reading a bundle `let` over a late result, or another name of one, as one value meets `NameValueOf`'s tuple-pattern refusal first (v1446, v1450), and a name a `let` takes apart from it meets `MarkLateLets`' (v1486); in a hosted scope under a late host a bundle place reading a late plain part or plain answer lowers (v1321, v1376) ; on prismc-s6 all of v1248, v1446, v1450, v1486, v1321, v1376, v1292, v1207, v839 lower: every reader known to reach a marker (the bundle place, `NameValueOf`'s bundle, `MarkLateLets`) is lowered, and no program reaches these eight |
+| node/def.prism, the build-side markers of a late name in `BindLate`, `MarkLateLets`, `LateFieldPlaces` (`AnswerUnbuilt`), `PreBindWhole` (four sites) | R | `BindLate`: sem-ch09-host-place-field-reads-late-result, sem-ch04-late-value-above-in-ignored-bundle-place-field, sem-ch04-late-value-in-generalized-let; `MarkLateLets`: sem-ch04-late-let-in-generalized-let; `AnswerUnbuilt`: sem-ch04-late-place-answer-in-generalized-let; `PreBindWhole`: sem-ch04-late-bundle-whole-in-generalized-let | refused: three readers reach them. A `let` of a lambda used at two types (`?ManyInstances`) is no late `let` (`LateLetNames`), so `LetLine` builds the closure at the build over the marker; a World's place in a hosted scope, and one whose state parts are all `ignore`, whose constant field reads the late name (`LateFieldPlaces` takes neither). Lowered: the bundle place with named parts (sem-ch04-late-value-above-in-bundle-place-field and its three kin) |
+| node/def.prism, the markers of `PreBindWholeParts`, `LateTakerResults`, `LatePlaceParts` (`LatePlainPartOf`, two), `LateHostedOutput`, `LateBundleParts` (six sites) | R | sem-ch04-late-bundle-whole-with-bundle-inside-as-argument, sem-ch04-late-taker-result-in-generalized-let, sem-ch09-host-late-plain-part-in-generalized-let, sem-ch09-host-late-plain-part-pattern-in-generalized-let, sem-ch09-host-late-plain-answer-in-generalized-let, sem-ch04-late-bundle-let-with-bundle-inside-as-argument | refused: the generalized `let` of a lambda reaches each late name of a node; a late bundle with a bundle inside has no `{name}#value` (`LateBundleValue` makes one only of simple parts), so a function that takes it whole reads its parts at the build (`BundleArgumentsAt`, `WholeNamedOf`) |
+| node/def.prism `MarkLateBundle`, two markers (a late bundle `let`, another name of one) | G | - | internal error: each stands under `{name}#late` (and `{name}#latebundle`) alone, keys asked with `HasKey` and never read for a value; the walks that copy a block's names into a row's (`WholeOfBlock`, `BuildSpelling`, `RowReads`, `OverEnv`) keep each under its key; a read of the bundle as a value goes to the name (its parts, `LateBundleLet`; `NameValueOf`'s tuple-pattern refusal, gl4) or to `{name}#value` |
 | node/def.prism, a late plain result in a bundle (`WrLate`) | R | sem-ch09-host-late-plain-part-taken-above-bundle-result | refused: a widget giving a bundle with a plain part, bound by a tuple pattern, above the place line whose late plain part it takes, in a hosted child under a late host (`BindParts` binds the part by `BundleBn`); without the host the same lines lower (sp8) |
-| node/def.prism `DeferredLine`, a line that takes a late result above the line that gives it, with counted places, where the giver numbers no rows late | R | none; lowered: sem-ch08-late-value-above-blueprint-parameter-result (a widget parameter applied, `IsGivingParam`, ok on prismc-c1), sem-ch04-late-value-above-bundle-plain-part (a bundle taken apart, ok on prismc-s4), sem-ch04-late-value-above-clause-widget-result-from-arm-lines, -late-let-from-arm-lines, -widget-result-from-arm-lines, -in-late-numbered-row, sem-ch09-host-late-value-above-from-arm-lines | refused for a blueprint value the node holds and a late name of another kind (a late place's answer, m1's `@Wide (Len a)`); a recursing widget gives late and is lowered (shared rows numbered late); a hosted giver under a host below a building `if` lowers (g4b) |
-| node/def.prism `DeferredLine`, a taker's plain result no name binds | R | none | refused; a tuple pattern (sem-ch04-late-value-above-taker-result-tuple, green), a record pattern (dl2) and `ignore <-` (g7) lower, a bare line is the checker's `discarded` |
+| node/def.prism `DeferredLine`, a line that takes a late result above the line that gives it, with counted places, where the giver numbers no rows late | R | sem-ch04-late-taker-result-taken-by-clause-widget-above | refused for a late name no split line gives (a taker's result, `@Wide w` over `w <- @Twice n`; a `let` calling a local function, d2), a blueprint value the node holds, a late place's answer. Lowered: sem-ch08-late-value-above-blueprint-parameter-result, sem-ch04-late-value-above-bundle-plain-part, the `-from-arm-lines` tests, -in-late-numbered-row, sem-ch09-host-late-value-above-from-arm-lines; a hosted giver under a host below a building `if` (g4b) |
+| node/def.prism `DeferredLine`, a taker's plain result no name binds | R | sem-ch04-late-value-above-impure-taker-result-tuple | refused over a split line that is no pure choice (its arm gives what its own widget gives): a tuple pattern (d4) and `ignore <-` (d6). Over a pure choice the taker is no late taker and lowers (sem-ch04-late-value-above-taker-result-tuple, dl2, g7) |
 | node/static.prism `WidgetCall`, a widget line whose name has no value entry | G | - | internal error: the checker's `unknown-name`; a `for`'s binder that is a blueprint (`for @each <- [[@One, @Two]]:`) applied as a line of the row is a value of the node (`WidgetLine`'s `held`; sem-ch08-for-over-blueprints) |
 | node/static.prism `HostLine`, a host without its child or its supplier | G | - | internal error: the checker's `mismatch` (tests/checker/neg/ignore-binds-a-function, neg/builtin-widget-without-argument) |
 | node/static.prism `InlineWidget`, a widget of several clauses that takes no arguments | G | - | internal error: the checker's `collision` (ruling ZD; tests/checker/neg/clause-widget-without-arguments) |
@@ -640,14 +657,17 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | expr.prism `FunctionRecolored`, a function whose color no use of its `let` decides | U | none | refused; reached only where one side is `OutQuantified` (`OutTyOf` of a function type is `OutFn`, `OutJobFn` or that), the `OutQuantified` gap: a call making its callee's color bounded inside a generalized `let` or local function whose color no use decides. fr1-fr5 (a `let` of `Held (..)`, used or not, a generalized lambda over it, a widget's local function calling it) lower: such colors default bounded |
 | patterns.prism, a pattern inside an element's `$` field | G | - | internal error: the checker's `live-field-pattern` (ruling LP; tests/checker/neg/live-field-pattern) |
 
-Totals: 28 `Refusal` / `RefusalDo` calls stand in prismc/lower. 5 are R with a red
-test (`AnyValue`, the named bundle, the block widget, `WrLate`, the generic widget); 22
-are R with no test (12 late-name markers, the four of the bundle place lowered on
-prismc-s6, `DeferredLine`'s unnamed result and its counted line, `ArmRowOf` 2,
-`PlaceNumber`'s block site, the two widget-value calls and `Recolored`, whose tests are
-ok on prismc-s6, LF and `ElementOutputOf`, whose tests are ok on prismc-fd1); 1 is U
-(`FunctionRecolored`). Nineteen guards are internal errors
-and no longer refusals.
+Totals: 25 `Refusal` / `RefusalDo` calls stand in prismc/lower. 19 are R with a red
+test (`AnyValue`, the named bundle, the block widget, `WrLate`, the generic widget, the
+ten late-name markers of `BindLate`, `MarkLateLets`, `AnswerUnbuilt`, `PreBindWhole`,
+`PreBindWholeParts`, `LateTakerResults`, `LatePlainPartOf` two, `LateHostedOutput` and
+`LateBundleParts`, `ArmRowOf`'s `for` site, `PlaceNumber`'s block site and
+`DeferredLine`'s two); 5 are R with no test (`ArmRowOf`'s blueprint-value site, the two
+widget-value calls and `Recolored`, whose tests are ok on prismc-s6, and LF, whose test is
+ok on prismc-fd1); 1 is U (`FunctionRecolored`). Twenty-two guards are internal errors
+and no longer refusals. One internal error is reached by a checked program and is an R
+with a red test: `BuildLineNow`'s "a building line that is no element, blueprint or
+builder" (sem-ch08-blueprint-value-from-or).
 
 Refusals outside `Refusal` / `RefusalDo`, which the table above does not hold:
 
@@ -731,6 +751,14 @@ refusal. They are the attempts behind the R rows with no test and the U rows.
   over an array of dynamics (lf1's second widget): each lowered.
 - Compiled by prismc-s6 (the sixth sweep's bootstrap of 6805634c): sweep-4's marker
   probes v839, v1207, v1248, v1292, v1321, v1376, v1446, v1450, v1486: each lowered.
+- Under target/fx/s7 of the seventh sweep's worktree, compiled by prismc-fd1: a late
+  taker's result read by a generalized `let` over a pure choice (gl2), a late bundle
+  `let` read as one value by one (gl4, `NameValueOf`'s tuple-pattern refusal first), the
+  child's own result that is a plain answer under a late host (m4), a `let` blueprint
+  applied beside an arm's late result (a2), a blueprint chosen by `if` there (a2b, a2c),
+  a gappy inner `if` and an impure inner split in a late-numbered arm (a2e, a2f), a
+  widget as a value chosen by `if` in an argument (w3), a function of its callee's color
+  through a type alias (rc1): each lowered.
 
 ## Designs for the red R tests with no fix
 
@@ -753,3 +781,58 @@ refusal. They are the attempts behind the R rows with no test and the U rows.
   part's read, defined in `WidgetStmt`'s `WrParts` arm by `LateGetters` with the part's
   read, the part then handed to `BindParts` as `WrUnit`. Not for a taker above a split
   line (sp8): there the part comes back as a field of the node (`WrPlain`), bound as one.
+- A `let` of a lambda used at two types that reads a late name (the seven
+  `-in-generalized-let` tests: `BindLate`'s, `MarkLateLets`', `AnswerUnbuilt`'s,
+  `PreBindWhole`'s, `LateTakerResults`', `LatePlainPartOf`'s two and `LateHostedOutput`'s
+  markers): `LateLetNames` leaves out a `let` with several instances
+  (`?ManyInstances`), so `LetLine` builds the closure at the build, over the marker. A
+  lambda's value reads nothing until it is called, so make such a `let` late with the
+  others: a getter of the node per instance (`late_{name}_{instance}`, the instances
+  `WithInstances` lists), each building the closure over the node's getters, bound under
+  `{name}#late` as a late `let` is (`LateLetGetters`).
+- A World's place whose constant field reads a late name, in a hosted scope
+  (sem-ch09-host-place-field-reads-late-result): `LateFieldPlaces` takes scope 0 alone,
+  where the World answers. In a hosted scope the host answers: mark the place's plain
+  answer as `LateHostedOutput` marks one under a host placed late (a late hold,
+  `LatePlainBn`), and ask its first value in the scope's `lateFirsts` slot of
+  `ScopeSteps`, which runs after the scope's deferred generations, the giver's row among
+  them.
+- A World's bundle place whose state parts are all `ignore`
+  (sem-ch04-late-value-above-in-ignored-bundle-place-field): `IsAskedBundle` finds the
+  place by a named part's `{name}#asked`. Give `LateFieldPlaces` a marker per place
+  (`{place}#asked`, by the line's span) so the place asks its whole first value where the
+  late result is built with no part bound.
+- A late bundle with a bundle inside, passed whole to a function
+  (sem-ch04-late-bundle-whole-with-bundle-inside-as-argument, -let-with-bundle-inside-as-
+  argument): `LateBundleValue` makes `{name}#value` only of simple parts, so
+  `BundleArgumentsAt` reads the parts at the build (`WholeNamedOf`). Let it build a
+  bundle inside as the tuple of its own parts' values, recursively, so every late bundle
+  has its `{name}#value`.
+- A `for` or a `rebuild` beside a late result in an arm numbered after its node
+  (sem-ch04-late-value-above-arm-with-for-beside-inner-if, `ArmRowOf`): the row builds
+  its generations at its build (`Wx.lateGens`), but a builder's rows are numbered as they
+  are built (`UnnumberedSteps`). Number them in the row's `number_places` step as the
+  late-numbered generations are (`NumberedByParent`): a builder's width is known once
+  built, so phase 2 can place it.
+- A hosted place's `$` or bundle answer below a building line of its child, under a host
+  placed at the build (sem-ch09-host-dynamic-answer-below-building-if, `PlaceNumber`):
+  the place asks at the build, before its number is known. Mark it as `LateFirstPlace`
+  marks a `$` place under a late host (`PreBind`'s `latePlace`, extended by
+  `BelowGappyLine`), and ask in the same `ScopeSteps` slot as the plain answer's.
+- A widget of several clauses above, taking a late taker's result
+  (sem-ch04-late-taker-result-taken-by-clause-widget-above, `DeferredLine`): `FromSplit`
+  follows `let`s to the split names, not takers. Let it follow a taker's result to the
+  split names its line reads: the taker is built in phase 1 after the split line's rows
+  (`LateTaking`), so the counted line above can ask the split line's rows numbered late
+  as for a direct read.
+- A taker's plain result bound by a tuple pattern or `ignore`, over a split line that is
+  no pure choice (sem-ch04-late-value-above-impure-taker-result-tuple, `DeferredLine`):
+  `LateTakerResults` marks a name alone. Mark a pattern's names too, each a getter over
+  the row's kept result matched by the pattern (as `LateName.within` does for a late
+  plain part), and let `ignore <-` keep no result (`WrUnit`).
+- A blueprint value taken out of an optional by `Or` and applied
+  (sem-ch08-blueprint-value-from-or, `BuildLineNow`'s internal error): the line's type is
+  none of `TyElem`, `TyAt` or a builder's where `BuildLineNow` matches it, though the
+  checker gives `Or` the type `@unit` there. Find the type `TypeAt` has for the line
+  (likely `Or`'s type variable, bound at the call but not resolved by `Peel`) and
+  resolve it before the match; the line is then `AppliedBlueprintLine`'s.

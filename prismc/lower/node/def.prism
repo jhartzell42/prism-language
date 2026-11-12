@@ -1547,11 +1547,20 @@ fn MarkLateBundle wx, be, me, s = match s.kind:
     SLet p, ignore, e: match ?BundleWritten wx.lx, p, e:
         ? ((n, ignore)):
             let nkey = SNameKey n
-            let marker = BnLocal (Refusal "the bundle `{nkey}`, whose plain part reads a late result, read as one value at its block's build"), Owned, OutUnit
+            # (the marker stands under `{name}#late` and `{name}#latebundle` alone: those
+            # keys are asked with `HasKey` and never read for a value; the walks that copy
+            # a block's names into a row's, `WholeOfBlock`, `BuildSpelling`, `RowReads`,
+            # `OverEnv`, keep each under its key. A read of the bundle as a value goes to
+            # the name itself, which `LateBundleLet` binds to its parts, or to
+            # `{name}#value`, `LateBundleValue`'s. So no checked program reads it.)
+            let marker = BnLocal (InternalBug "the flag `{nkey}#late` of a late bundle `let` read as a value"), Owned, OutUnit
             ((wx, (Bind (Bind be, "{nkey}#late", marker), "{nkey}#latebundle", marker), (Bind (Bind me, "{nkey}#late", marker), "{nkey}#latebundle", marker), True))
         nil: match ?LateBundleAlias me, p, e:
             ? n:
-                let marker = BnLocal (Refusal "the bundle `{SNameKey n}`, another name of a late bundle, read as one value at its block's build"), Owned, OutUnit
+                # (under `{name}#late` alone, asked with `HasKey` and never read for a
+                # value, as above; the name's own binding and `{name}#value` are
+                # `WidgetStmt`'s, `ValueRenamed`)
+                let marker = BnLocal (InternalBug "the flag `{SNameKey n}#late` of another name of a late bundle read as a value"), Owned, OutUnit
                 ((wx, (Bind be, "{SNameKey n}#late", marker), (Bind me, "{SNameKey n}#late", marker), True))
             nil: ((wx, be, me, False))
     otherwise: ((wx, be, me, False))
