@@ -63,3 +63,30 @@ This page says how it reads a `for`'s row and a widget function's function param
   type, is a change to the language.
 - The block check of a widget function now reads the program's other definitions, so a
   library's body is judged by the uses in the program it is compiled with.
+
+## A loop through `!Updated` of a hold
+
+- A hold's value is delayed; its update event is not: it fires in the tick of the hold's
+  step (R3). So `$seen <- 0 then $seen + 1 on !step`, `let !step = (1 on !press) <|
+  !Updated $total`, `let $total = $seen * 2` is a prompt cycle: a press steps `$seen`,
+  which updates `$total`, which fires `!step`, which steps `$seen` again in the same tick
+  (`tests/checker/neg/sem-ch07-block-hold-updated-cycle`; in a `for`'s row the same loop
+  is `sem-ch07-row-hold-cycle`).
+- The block's names keep the edges they had: a hold's name has none, and an event `let`
+  samples the dynamics it reads. That walk runs first.
+- `UpdateEdges` is a second walk, over update events. Each dynamic has an update node
+  beside its name. `!Updated X` in a right side is an edge to the update of each dynamic
+  `X` reads; a hold's update reads the events of its step and the updates under an
+  `!Updated` there; the update of a `let`'s dynamic reads the updates of the dynamics it
+  is lifted over (the change law). A cycle there is reported with the block's names in
+  the order the block binds them.
+- The second walk has edges for `let`s and holds alone. A widget's, a `for`'s or a
+  place's line gives it none, so it refuses no loop that crosses such a line. The
+  example that needs the cut: the hosting library's `@InMemoryOrdered` binds `!arrived
+  <- HostSeats $state, !responses` and `let !responses = !Updated $responded`, where
+  `$responded` steps on what `!arrived` gives. The loop is delayed by the host's
+  computed answer (ch. 9), which the check cannot see through the function parameter
+  `HostSeats`; with the worst assumed for that line, the library would be refused.
+- The alternative, an update edge for every line with the worst assumed, is right only
+  with a summary for every function parameter and every prelude widget function, which
+  a declared summary on a parameter's type would give: a change to the language.
