@@ -381,7 +381,7 @@ fn DeepPodOf x, t, params = if not (HoldsTimeOrParameter t, params): "({x}).to_p
     OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore): "::prism_rtl::Level::level_pod(&({x}).sample(cx), cx)"
     OutDyn i: DeepPodOf "({x}).sample(cx)", i, params
     OutArray i: "crate::prelude::Pod::Array(({x}).iter().map(|v| {DeepPodOf "v", i, params}).collect())"
-    OutMap ignore, v: "crate::prelude::Pod::Map(({x}).iter().map(|(k, v)| (k.to_pod(), {DeepPodOf "v", v, params})).collect())"
+    OutMap kt, v: "crate::prelude::Pod::Map(({x}).iter().map(|(k, v)| ({DeepPodOf "k", kt, params}, {DeepPodOf "v", v, params})).collect())"
     OutOpt i: "({x}).as_ref().map_or(crate::prelude::Pod::Nil, |v| crate::prelude::Pod::Some(::std::boxed::Box::new({DeepPodOf "v", i, params})))"
     OutRes i: "match ({x}).as_ref() \{ ::std::result::Result::Ok(v) => crate::prelude::Pod::Ok(::std::boxed::Box::new({DeepPodOf "v", i, params})), ::std::result::Result::Err(e) => crate::prelude::Pod::Failed(::std::boxed::Box::new(e.to_pod())) \}"
     OutRc i: DeepPodOf "*({x})", i, params
