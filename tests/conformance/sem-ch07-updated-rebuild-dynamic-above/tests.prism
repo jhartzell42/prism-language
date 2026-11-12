@@ -1,0 +1,13 @@
+# The tests of sem-ch07-updated-rebuild-dynamic-above.
+emit Ui.*
+use App.*
+
+test the_block_hears_the_rebuild_below, @above:
+    build
+    click at 0
+    compute
+
+test a_row_hears_the_rebuild_below, @inRow:
+    build
+    click at 0
+    compute
