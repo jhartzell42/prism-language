@@ -1424,7 +1424,8 @@ fn PartHoldKey q = "#parthold{SpanKey q.span}"
 # place cannot ask it there): the place asks its first value where the scope's places
 # do, once the host is placed (`Wx.lateFirsts`, `ElementOutputOf`), and its name is a
 # late name as a late place's plain part is (`LatePlaceParts`): the value its hold has
-# from then on, `{name}#late`, `{name}#lateplace`.
+# from then on, `{name}#late`, `{name}#lateplace`. An answer whose type holds dynamics
+# (`[$Nat]`) is such a name too: its hold keeps the dynamics whole, as a plain value.
 LateHostedOutput: unbounded fn Wx, Env, Env, [Stmt], Stmt -> ((Wx, Env, Env))
 fn LateHostedOutput wx, benv, menv, stmts, s = match s.kind:
     SBind p, init, nil: match p.kind:
@@ -1440,7 +1441,7 @@ fn LateHostedOutput wx, benv, menv, stmts, s = match s.kind:
             # `BelowGappyLine`, so it asks its host there too, after the scope's steps; a
             # late host's scope asks before its steps, `LateChild`, and is not this case)
             let unplaced = (HasText wx.unplacedHosts, (Or wx.scopes[Dec wx.pos.scope], "")) or ((not (HasNat wx.lateHosts, wx.pos.scope)) and BelowGappyLine wx.lx, menv, stmts, s)
-            if (not placed) or wx.pos.scope == 0 or (not unplaced) or (IsTimeName nkey) or (HasKey menv.names, "{nkey}#late") or (LayerOf full) != LyPlain or (TimeWithin full) or IsBundle full: ((wx, benv, menv))
+            if (not placed) or wx.pos.scope == 0 or (not unplaced) or (IsTimeName nkey) or (HasKey menv.names, "{nkey}#late") or (LayerOf full) != LyPlain or IsBundle full: ((wx, benv, menv))
             else:
                 let t = OutTyOf lx, (Peel full)
                 let ((rs, w2)) = FreshName wx, (LocalNameAt lx, nkey, n.span)
