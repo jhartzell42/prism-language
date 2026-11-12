@@ -1,0 +1,56 @@
+# `Window.Hosting`, a child module of `Window`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r | Pane.* | Gui.*
+use Window.*
+use Window.Panes.*
+use Window.Widgets.*
+use Window.Layout.*
+use Window.Hits.*
+
+# ---------------------------------------------------------------------------
+# Hosting: a box answers each of its child's Pane elements with the inputs routed to its path:
+# recognised, so swallowed, and nothing above the box sees it. Anything else it declines
+# with `nil`, and the host forwards it: re-emitted in the enclosing scope, where the next
+# host answers it or the checker refuses it at the arm (Semantics ch. 9, the sandbox law;
+# RULINGS round 9 HD). An element is passed up or refused, never dropped. The box's
+# children are its whole document (`children=$elems`), a forwarded place among them, and
+# layout skips only that entry (`KNone`, `unplanned`: no room, no paint, no hit).
+
+?ClickTo: fn Path, Routed -> ?Click
+fn ?ClickTo p, r = match r.input:
+    Clicked if r.path == p: ? click
+    otherwise: nil
+
+?KeyTo: fn Path, Routed -> ?Key
+fn ?KeyTo p, r = match r.input:
+    Typed k if r.path == p: ? k
+    otherwise: nil
+
+?SlideTo: fn Path, Routed -> ?Nat
+fn ?SlideTo p, r = match r.input:
+    Slid step if r.path == p: ? step
+    otherwise: nil
+
+?InnerTo: fn Path, Routed -> ?Routed
+fn ?InnerTo p, r = match r.input:
+    Inner inner if r.path == p: ? inner
+    otherwise: nil
+
+# what a box answers one claimed element with: the inputs routed to its path, as that tag's own
+# answer; `nil`, not mine, for anything that is not the library's
+?Boxed: fn Path, Element o, !Routed -> ?@o
+fn ?Boxed p, e, !in = match e:
+    Pane.Label(..): ? @ unit
+    Pane.Button(..): ? @ !Filter (?ClickTo p, !in)
+    Pane.Image(..): ? @ !Filter (?ClickTo p, !in)
+    Pane.TextInput(..): ? @ !Filter (?KeyTo p, !in)
+    Pane.Slider(..): ? @ !Filter (?SlideTo p, !in)
+    Pane.VBox(..): ? @ !Filter (?InnerTo p, !in)
+    Pane.HBox(..): ? @ !Filter (?InnerTo p, !in)
+    Pane.Row(..): ? @ !Filter (?InnerTo p, !in)
+    Pane.Column(..): ? @ !Filter (?InnerTo p, !in)
+    Pane.Layers(..): ? @ !Filter (?InnerTo p, !in)
+    Pane.Shown(..): ? @ !Filter (?InnerTo p, !in)
+    Pane.Frame(..): ? @ !Filter (?InnerTo p, !in)
+    Pane.Grid(..): ? @ !Filter (?InnerTo p, !in)
+    otherwise: nil

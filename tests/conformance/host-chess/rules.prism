@@ -294,20 +294,28 @@ fn HasMove position = AnyOf (Keys position.board), \|from| (Owns position, from,
 # ---------------------------------------------------------------------------
 # A move as a request names it, and every legal move
 
-type Move = record:
-    from: Square
-    to: Square
-    ?promotion: Man                # what a pawn becomes: named on a move that promotes, and on no other
+# A move as a request names it: an ordinary move of a piece from one square to another, or
+# a pawn's move to its last rank, which names what the pawn becomes. A promotion is a case
+# of its own, so no move holds a piece it does not need and none lacks one it does.
+type Move = choice:
+    Moving Square, Square              # from, to
+    Promoting Square, Square, Man      # from, to, what the pawn becomes
 derive ^Eq, ^Ord, ^Show
 
-Moving: fn Square, Square -> Move
-fn Moving from, to = Move(from=from, to=to, ?promotion=nil)
+Origin: fn Move -> Square
+fn Origin (Moving from, to) = from
+fn Origin (Promoting from, to, man) = from
 
-Promoting: fn Square, Square, Man -> Move
-fn Promoting from, to, man = Move(from=from, to=to, ?promotion=(? man))
+Destination: fn Move -> Square
+fn Destination (Moving from, to) = to
+fn Destination (Promoting from, to, man) = to
+
+?Becoming: fn Move -> ?Man
+fn ?Becoming (Moving from, to) = nil
+fn ?Becoming (Promoting from, to, man) = ? man
 
 ?Played: fn Position, Move -> ?Position
-fn ?Played position, move = ?Moved position, move.from, move.to, move.?promotion
+fn ?Played position, move = ?Moved position, (Origin move), (Destination move), (?Becoming move)
 
 MovesTo: fn Position, Square, Square -> [Move]
 fn MovesTo position, from, to = if not (CanMove position, from, to): [[]] else:
@@ -381,7 +389,38 @@ fn AfterReaching promotes, (? man) = if not promotes: NothingPromotes man else:
 
 # why `?Played` gives nil for a move of the mover's own piece
 FaultOf: fn Position, Piece, Move -> MoveFault
-fn FaultOf position, piece, move = if Owns position, move.to, position.turn: OwnPieceThere else:
-    match ?Legal position, piece, move.from, move.to:
-        nil: Unreachable position, piece, move.from, move.to
-        ? manner: AfterReaching (Promotes position, move.from, move.to), move.?promotion
+fn FaultOf position, piece, move = if Owns position, (Destination move), position.turn: OwnPieceThere else:
+    match ?Legal position, piece, (Origin move), (Destination move):
+        nil: Unreachable position, piece, (Origin move), (Destination move)
+        ? manner: AfterReaching (Promotes position, (Origin move), (Destination move)), (?Becoming move)
+
+# ---------------------------------------------------------------------------
+# What the draws ask of a position and a move
+
+# whether a move can never be taken back: a pawn's move, or a capture. A pawn's capture in
+# passing is a pawn's move, so the square it lands on being empty changes nothing.
+Lasting: fn Position, Move -> Bool
+fn Lasting position, move = (?At position, (Destination move)) != nil or match ?At position, (Origin move):
+    ? piece: piece.man == Pawn
+    nil: False
+
+IsDark: fn Square -> Bool
+fn IsDark square = (square.file + square.rank) mod 2 == 0
+
+IsMan: fn Position, Man, Square -> Bool
+fn IsMan position, man, square = match ?At position, square:
+    ? piece: piece.man == man
+    nil: False
+
+# Whether neither side can ever mate, whatever is played: king against king; king and a
+# bishop or a knight against king; king and bishop against king and bishop with both
+# bishops on squares of one shade.
+Insufficient: fn Position -> Bool
+fn Insufficient position:
+    let others = Kept (Keys position.board), \|square| not (IsMan position, King, square)
+    let bishops = Kept others, \|square| IsMan position, Bishop, square
+    let knights = Kept others, \|square| IsMan position, Knight, square
+    let count = Len others
+    if count == 0: True else:
+        if count == 1: (Len bishops) + (Len knights) == 1 else:
+            count == 2 and (Len bishops) == 2 and (Len (Kept bishops, IsDark)) != 1 and (Len (Kept bishops, \|square| Owns position, square, White)) == 1
