@@ -24,6 +24,13 @@ check() { # name, binary
         failed+=("$1"); echo "FAILED $1"
     fi
 }
+# The Rust seed carries the runtime its crate was emitted against, so a change to the
+# working tree's runtime/rust never breaks it.
+if tar -tJf bootstrap/prismc-rust.tar.xz | grep -qx 'runtime/rust/Cargo.toml'; then
+    echo "ok rust-runtime: the seed carries its own runtime/rust"
+else
+    failed+=(rust-runtime); echo "FAILED rust-runtime: the seed has no runtime/rust of its own"
+fi
 bootstrap/bootstrap.sh --seed-at "$link/rust" > "$away/rust.log" 2>&1 || tail -20 "$away/rust.log"
 check rust "$link/rust/prismc"
 bootstrap/bootstrap-cpp.sh --seed-at "$link/cpp" > "$away/cpp.log" 2>&1 || tail -20 "$away/cpp.log"
