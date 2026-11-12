@@ -1392,6 +1392,9 @@ Rows<E, A> new_rows() {
 template <class E, class A>
 class HostRow : public Node {
 public:
+    /// The place's requests fire at global height `h` (`Host::request_above`).
+    void raise_requests(std::uint32_t h) const { requests_->raise(h); }
+
     /// Built after propagation, from the entry after the tick (R7): the supplier is asked
     /// for the place's blueprint, and the blueprint is built under the row's path, in the
     /// host's scope. The `for` machinery of the emitted code calls this with the host as
@@ -1534,9 +1537,6 @@ private:
         : path_(std::move(path)), key_(std::move(key)), place_(std::move(place)), host_(host),
           level_moved_(make_rc<Port<Unit>>()),
           requests_(make_rc<Port<std::pair<std::optional<std::string>, Pod>>>()) {}
-
-    /// The place's requests fire at global height `h` (`Host::request_above`).
-    void raise_requests(std::uint32_t h) const { requests_->raise(h); }
 
     Rc<HostOf<E, A>> host() const {
         auto h = host_.lock();
