@@ -433,12 +433,17 @@ fn ForEnvs benv, menv, ?binders, keyB, keyM, valB, valM, vt:
         nil: ((be0, me0))
         ? fb: match fb.?second:
             ? second:
-                let be1 = BindPat be0, fb.first, keyB, (XVar "key"), kt0
-                let me1 = BindPat me0, fb.first, keyM, (XField XSelf, "key"), kt0
+                # the key's binder: a name, or a tuple pattern over a tuple key (`for ((seat,
+                # sitting)), $u <- ..`), each part typed as the key's part (hosting bug 13)
+                let be1 = BindPat be0, fb.first, keyB, (XVar "key"), (LocalTy keyB)
+                let me1 = BindPat me0, fb.first, keyM, (XField XSelf, "key"), (LocalTy keyM)
                 (((BindPat be1, second, valB, (XVar "value"), vt), (BindPat me1, second, valM, XUnit, vt)))
             nil: (((BindPat be0, fb.first, valB, (XVar "value"), vt), (BindPat me0, fb.first, valM, XUnit, vt)))
 
-let kt0 = OutUnit
+# A local binder's type; `unit` for a binder that is no local.
+LocalTy: fn Bn -> OutTy
+fn LocalTy (BnLocal ignore, ignore, t) = t
+fn LocalTy other = OutUnit
 
 # A `for` binder: a name binds the key or the entry; a tuple binds its parts, each the
 # part of the entry (`for ((path, text)) <- files:`).

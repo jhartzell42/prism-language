@@ -1064,13 +1064,27 @@ U recode(const T& v) {
 inline Pod fault_kind(const std::string& name) { return Pod::name(name); }
 
 /// `e.kind`.
-inline Pod kind_of(const Error& e) { return Pod::name(e.kind_p); }
+inline Pod kind_of(const Error& e) { return e.kind(); }
+
+/// A fault kind made with fields (`Count.TooMany(limit=5, asked=n)`): the tag's value,
+/// its fields as plain data in declaration order.
+inline Pod fault_kind_of(const std::string& name, Pod::Fields fields) { return Pod::element(name, std::move(fields)); }
+
+/// A field of an `Error`'s kind, read back at the field's type (a pattern's binder).
+template <class T>
+T fault_field(const Error& e, const std::string& name) {
+    const Pod* v = e.kind_field(name);
+    if (!v) panic("a prismc bug: a fault kind read for a field it was not made with");
+    auto read = ::prism_rtl::from_pod<T>(*v);
+    if (!read) panic("a prismc bug: a fault kind's field that is not of its type");
+    return std::move(*read);
+}
 
 /// `Error(kind=k, message=m)` with `k` a value.
 inline Error error_of(const Pod& kind, Text message) {
-    const Pod::Choice* c = kind.structure().if_choice();
-    if (!c) panic("an `Error` of a kind that is no fault kind");
-    return Error(c->ctor, std::move(message));
+    auto made = Error::of_kind(kind, std::move(message));
+    if (!made) panic("an `Error` of a kind that is no fault kind");
+    return std::move(*made);
 }
 
 /// `!Updated $d` as an event value (in a supplier's answer, or in a function that takes

@@ -313,16 +313,40 @@ impl fmt::Display for Fault {
 
 impl std::error::Error for Fault {}
 
-/// Prism's `Error`, a `~T`'s failure: a fault kind (`Fs.NotFound`) and a message.
+/// Prism's `Error`, a `~T`'s failure: a fault kind and a message. The kind is a value
+/// (ruling TF, "faults hold typed values"): its tag's name, `Fs.NotFound`, and the fields
+/// it was made with, `Count.TooMany(limit=5, asked=6)`, as plain data in declaration
+/// order; a kind that is its tag alone has none.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Error {
     pub kind_p: Rc<str>,
+    pub kind_fields: Vec<(Rc<str>, Pod)>,
     pub message_p: Text,
 }
 
 impl Error {
     pub fn new(kind: &str, message: impl Into<Text>) -> Error {
-        Error { kind_p: kind.into(), message_p: message.into() }
+        Error { kind_p: kind.into(), kind_fields: Vec::new(), message_p: message.into() }
+    }
+
+    /// An error of a kind given as a value: a choice with no arguments (a kind that is
+    /// its tag alone), or a tag's value with its fields. `None` for any other data.
+    pub fn of_kind(kind: &Pod, message: impl Into<Text>) -> Option<Error> {
+        match kind.structure() {
+            Pod::Choice(name, a) if a.is_empty() => Some(Error::new(name.name(), message)),
+            Pod::Element(name, fields) => Some(Error { kind_p: name.clone(), kind_fields: fields.clone(), message_p: message.into() }),
+            _ => None,
+        }
+    }
+
+    /// The kind as a value: what `e.kind` reads, and what a World and a transcript see.
+    pub fn kind(&self) -> Pod {
+        if self.kind_fields.is_empty() { Pod::name(&self.kind_p) } else { Pod::Element(self.kind_p.clone(), self.kind_fields.clone()) }
+    }
+
+    /// A field of the kind, by its name.
+    pub fn kind_field(&self, name: &str) -> Option<&Pod> {
+        self.kind_fields.iter().find(|(n, _)| &**n == name).map(|(_, v)| v)
     }
 }
 
@@ -465,13 +489,16 @@ impl<T: FromPod> FromPod for Result<T, Error> {
 
 impl ToPod for Error {
     fn to_pod(&self) -> Pod {
-        Pod::record("Error", vec![("kind", Pod::name(&self.kind_p)), ("message", Pod::Text(self.message_p.clone()))])
+        Pod::record("Error", vec![("kind", self.kind()), ("message", Pod::Text(self.message_p.clone()))])
     }
 }
 impl FromPod for Error {
     fn from_pod(p: &Pod) -> Result<Error, Fault> {
         match (p.field("kind").map(Pod::structure), p.field("message").and_then(Pod::as_text)) {
-            (Some(Pod::Choice(kind, a)), Some(m)) if a.is_empty() => Ok(Error { kind_p: kind.name().clone(), message_p: m.clone() }),
+            (Some(kind), Some(m)) => match Error::of_kind(kind, m.clone()) {
+                Some(e) => Ok(e),
+                None => mismatch("an Error", p),
+            },
             _ => mismatch("an Error", p),
         }
     }

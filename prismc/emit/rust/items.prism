@@ -216,7 +216,7 @@ fn EqImpls t, head:
 OrdImpls: unbounded fn TyDef, Text -> Text
 fn OrdImpls t, head:
     let arms = Concat (Each (Range0 (Len t.cases)), \|i| RankArm t, i)
-    let rank = "let rank = |x: &Self| match x \{ {arms}\};"
+    let rank = if (Len t.cases) == 0: "let rank = |x: &Self| -> usize \{ match *x \{\} \};" else: "let rank = |x: &Self| match x \{ {arms}\};"
     let body = match t.shape:
         ShapeRecord: FieldsCmp t, (Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]])))
         otherwise: "{rank}\nmatch (self, other) \{\n{Concat (Each t.cases, \|c| "    ({CasePatternAs t, c, "a"}, {CasePatternAs t, c, "b"}) => {FieldsCmp t, c},\n")}    #[allow(unreachable_patterns)]\n    _ => rank(self).cmp(&rank(other)),\n\}"
@@ -257,6 +257,12 @@ fn CasePattern t, c = match t.shape:
     ShapeUnit: t.name
     otherwise: if (Len c.fields) == 0: "{t.name}::{c.name}" else: "{t.name}::{c.name}({Join (Binders (Len c.fields)), ", "})"
 
+# A `match self` of one arm per case. A choice with no case (`type Never = choice:`) has
+# no value, and rustc takes a `match` with no arm only over the value itself, never over
+# a reference to it: `match *self {}`.
+MatchSelfOf: fn TyDef, Text -> Text
+fn MatchSelfOf t, arms = if (Len t.cases) == 0: "match *self \{\}" else: MatchSelf arms
+
 # `derive ^Show`: one printer call per constructor; the printer decides the parentheses.
 ShowImpl: unbounded fn TyDef, Text -> Text
 fn ShowImpl t, head:
@@ -264,7 +270,7 @@ fn ShowImpl t, head:
         ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
             "p.record(\"{t.prism}\", &[{Join (Each c.fields, \|((f, ignore))| "(\"{PrismFieldOf c, f}\", &self.{f})"), ", "}]);"
-        otherwise: MatchSelf (Join (Each t.cases, \|c| "{CasePattern t, c} => p.choice(\"{c.prism}\", &[{Join (Binders (Len c.fields)), ", "}]),"), "\n")
+        otherwise: MatchSelfOf t, (Join (Each t.cases, \|c| "{CasePattern t, c} => p.choice(\"{c.prism}\", &[{Join (Binders (Len c.fields)), ", "}]),"), "\n")
     # `Clone` beside `Show`: an array of the parameter prints only `Clone` elements
     Impl (BoundedKeyed t, "crate::prelude::Show + ::std::clone::Clone"), "crate::prelude::Show", head, "fn show(&self, p: &mut crate::prelude::Printer)", body
 
@@ -293,7 +299,7 @@ fn ToPodImpl t, head:
         ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
             "crate::prelude::Pod::record(\"{t.prism}\", vec![{Join (Each c.fields, \|((f, ignore))| "(\"{PrismFieldOf c, f}\", self.{f}.to_pod())"), ", "}])"
-        otherwise: MatchSelf (Join (Each (Range0 (Len t.cases)), \|i| ChoicePodArm t, i), "\n")
+        otherwise: MatchSelfOf t, (Join (Each (Range0 (Len t.cases)), \|i| ChoicePodArm t, i), "\n")
     let shown = if t.show == ShownOwn: ShownPod body else: body
     # its own `^Show` may hold under its `where` bounds alone, which the crossing needs
     let bound = if t.show == ShownOwn and (Len t.params) > 0: " where {head}: crate::prelude::Show" else: ""

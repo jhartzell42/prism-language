@@ -626,6 +626,29 @@ pub fn widget_event_blueprint<E: 'static, A: 'static, T: Clone + 'static>(
     })
 }
 
+/// A widget that gives an event back as a supplier's answer under a tag's arm: as
+/// [`widget_event_blueprint`], but each firing is a computed answer, an input of the next
+/// tick, which is owed (Semantics ch. 9, "A computed answer is the next tick's input"),
+/// as [`event_blueprint`]'s is. The subscription lives as long as the row, whose port it
+/// is.
+pub fn widget_event_answer_blueprint<E: 'static, A: Clone + 'static, T: Clone + 'static>(
+    build: impl Fn(Path, u32, &mut Cx) -> Result<BuiltWidget<E, A, Rc<Port<T>>>, Fault> + 'static,
+    build_hosted: impl Fn(Path, u32, Rc<dyn HostOf<E, A>>, Moved, &mut Cx) -> Result<BuiltWidget<E, A, Rc<Port<T>>>, Fault> + 'static,
+    answer: impl Fn(&T) -> A + 'static,
+) -> Blueprint<E, A> {
+    let answer = Rc::new(answer);
+    Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, base, cx| {
+        let (made, hosted) = match scope {
+            Scope::World => (build(path, base, cx)?, false),
+            Scope::Hosted(host) => (build_hosted(path, base, host.clone(), host_moved(host), cx)?, true),
+        };
+        let answered = answer.clone();
+        let _ = made.result.subscribe(Rc::new(move |v: &T, cx: &mut Cx| later(&sink, answered(v), cx)));
+        let (document, deliver) = if hosted { (Some(made.document), Some(made.deliver)) } else { (None, None) };
+        Ok(Supplied { node: made.node, first: None, forwards: false, entry: None, built: made.built, leave: Some(made.leave), document, deliver })
+    })
+}
+
 /// A widget that gives a dynamic back as a blueprint value under a tag's arm: as
 /// [`widget_blueprint`], the row's result its live dynamic. Its value at the row's build
 /// is the place's first value, made an answer by `answer`; each later move of it is a

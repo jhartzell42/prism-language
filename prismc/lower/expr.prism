@@ -227,7 +227,11 @@ fn IsWholeFn lx, qk = HasKey lx.wholeFns, qk
 # The functions that take time whole: by their signature, and those whose dynamics are only
 # on top of their types but whose bodies pass one whole (`$First $a = Or (Wrap $a)[0], ($
 # 0)`): lifting such a body over its parameters would leave a dynamic it builds nothing to
-# be read at, so it takes and gives the dynamics too. Grown until no body adds one.
+# be read at, so it takes and gives the dynamics too. Grown until no body adds one. The
+# same for one with an event parameter whose body gives an event whole (`GivesEventWhole`:
+# `fn !Together !some, !more = .. (!Union (One 0, !some), (One 1, !more))`): `!Union`
+# decides over two events, which a body lifted over one firing's values does not have, so
+# the function takes its events as `Event`s and its body maps them.
 WholeFns: unbounded fn Lx -> (Text ==> Bool)
 fn WholeFns lx:
     let fns = Fold lx.g.defs, [[]], \|acc, d| match d.body:
@@ -262,6 +266,31 @@ fn WholeFns lx:
             otherwise: m2
     GrowWhole lx, fns, start, (Len fns)
 
+# Whether a signature has an event on top of a parameter, in a function that gives no
+# blueprint (one that gives a blueprint takes its events as event values already).
+HasEventParameter: fn Ty -> Bool
+fn HasEventParameter t = match t:
+    TyFn ignore, ps, r: (not (HasBlueprint r)) and Fold ps, False, \|seen, p| seen or (LayerOf p) == LyEv
+    otherwise: False
+
+# Whether a named function takes an event as an event value: one that takes time whole, or
+# a prelude function with an event parameter (it has no Prism body to lift: the target's
+# own combinator, `union_ev` for `!Union`).
+TakesEventWhole: fn Lx, Text -> Bool
+fn TakesEventWhole lx, qk = match lx.g.vals[qk]:
+    ? v: (HasEventParameter v.scheme.ty) and (not (HasKey lx.g.ctors, qk)) and ((IsWholeFn lx, qk) or v.home == "Prelude")
+    nil: False
+
+# Whether an expression gives an event whole to such a function: an application the
+# checker did not lift (Type System ch. 4, "A sigiled parameter is not lifted over") with
+# an argument that is an event (`!Union (One 0, !some), (One 1, !more)`).
+GivesEventWhole: unbounded fn Lx, Expr -> Bool
+fn GivesEventWhole lx, x = match x.kind:
+    ECall c, args, ignore, ignore:
+        let qk = CalleeKey lx, c
+        (qk != "") and (NotLifted lx, x.span) and (TakesEventWhole lx, qk) and Fold args, False, \|seen, a| seen or (LayerOf (TypeAt lx, a.value.span)) == LyEv
+    otherwise: False
+
 # Every expression of a definition's body.
 DefExprs: unbounded fn Def -> [Expr]
 fn DefExprs d = match d.body:
@@ -277,14 +306,16 @@ fn GrowWhole lx, fns, set, fuel:
     let lxs = update lx:
         &_.wholeFns <= set
     let next = Fold fns, set, \|m, ((d, clauses, v))|
-        if (HasKey m, d.qk) or not (DynOnlyOnTop v.scheme.ty): m
+        let dynamics = DynOnlyOnTop v.scheme.ty
+        let events = HasEventParameter v.scheme.ty
+        if (HasKey m, d.qk) or not (dynamics or events): m
         else:
             let lxf = update lxs:
                 &_.file <= d.file
                 &_.home <= d.home
                 &_.site <= d.home
             let exprs = Fold clauses, [[]], \|acc, c| Append acc, (BodyExprs c.body)
-            if Fold exprs, False, \|seen, x| seen or IsWholeObject lxf, x: Insert m, d.qk, True else: m
+            if Fold exprs, False, \|seen, x| seen or (dynamics and IsWholeObject lxf, x) or (events and GivesEventWhole lxf, x): Insert m, d.qk, True else: m
     if fuel == 0 or (Len (Keys next)) == (Len (Keys set)): next else: GrowWhole lx, fns, next, (Dec fuel)
 
 # Whether a signature's only time is `$` on top of parameters or the result.
@@ -546,37 +577,41 @@ fn EventValueOf lx, env, e:
         ? a: VlOwned (XMethod (Own (ValueOf lx, env, a.value)), "filter_some", [[]]), et
         nil: match ?UpdatedValue lx, env, e:
           ? d: VlOwned (XCall (HelperRef "updated"), [[Ref (WholeValueOf lx, env, d)]]), et
+          # an application that gives its events whole (`!Union !a, !b`, a call of a
+          # function that takes time whole): the plain call, each argument an event value
           nil:
-            let evs = Filter (Operands e), \|x| (LayerOf (TypeAt lx, x.span)) == LyEv
-            match evs:
-                [[one]]:
-                    let src = Own (ValueOf lx, env, one)
-                    let it = OutTyOf lx, (Peel (TypeAt lx, one.span))
-                    let caps = Filter (WithInstances env, (ReadNames (ExprsIn e))), \|n| match env.names[n]:
-                        ? (BnLocal ignore, ignore, ignore): True
-                        otherwise: False
-                    let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
-                        ? (BnLocal rs, mode, ct):
-                            let local = "{PlaceStem rs}_c"
-                            (((Push acc, (DoLet (PaBind local), (Own (LocalPlace rs, mode, ct)))), (Bind en, n, (BnLocal (XVar local), Owned, ct))))
-                        otherwise: ((acc, en))
-                    let env2 = BindSpan env1, (PlaceKey lx, one.span), (VlPlace (XVar "y_ev"), ByRef, it)
-                    let bodyValue = ValueByKind lx, env2, e
-                    # the expression over the firing's value is a dynamic when it samples one
-                    # (`(ToldTo seat, $state) on !born`): the event fires its value at the
-                    # firing's read point (`Event::map_at`), not the dynamic
-                    let samples = match ValueTy bodyValue:
-                        OutDyn ignore: True
-                        otherwise: False
-                    # `x on !e` reads nothing of the firing: its dynamic is made once, where
-                    # the event value is made, and the closure samples it
-                    let hoisted = samples and (?SampledOn e) != nil
-                    let sampledDynamic = if hoisted: XVar "sampled_dyn" else: Own bodyValue
-                    let closure = if samples: XClosure True, [[(PaTyped (PaBind "y_ev"), (OutRef it)), (PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMethod sampledDynamic, "sample", [[(XVar "cx")]]) else: XClosure True, [[(PaTyped (PaBind "y_ev"), (OutRef it))]], (Own bodyValue)
-                    let made = Push dos, (DoLet (PaBind "src_ev"), src)
-                    let lets = if hoisted: Push made, (DoLet (PaBind "sampled_dyn"), (Own bodyValue)) else: made
-                    VlOwned (XBlock lets, (XMethod (XVar "src_ev"), (if samples: "map_at" else: "map"), [[closure]])), et
-                otherwise: VlOwned (InternalBug "an event value of several events"), et
+            if GivesEventWhole lx, e: VlOwned (Own (ValueByKind lx, env, e)), et
+            else:
+                let evs = Filter (Operands e), \|x| (LayerOf (TypeAt lx, x.span)) == LyEv
+                match evs:
+                    [[one]]:
+                        let src = Own (ValueOf lx, env, one)
+                        let it = OutTyOf lx, (Peel (TypeAt lx, one.span))
+                        let caps = Filter (WithInstances env, (ReadNames (ExprsIn e))), \|n| match env.names[n]:
+                            ? (BnLocal ignore, ignore, ignore): True
+                            otherwise: False
+                        let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
+                            ? (BnLocal rs, mode, ct):
+                                let local = "{PlaceStem rs}_c"
+                                (((Push acc, (DoLet (PaBind local), (Own (LocalPlace rs, mode, ct)))), (Bind en, n, (BnLocal (XVar local), Owned, ct))))
+                            otherwise: ((acc, en))
+                        let env2 = BindSpan env1, (PlaceKey lx, one.span), (VlPlace (XVar "y_ev"), ByRef, it)
+                        let bodyValue = ValueByKind lx, env2, e
+                        # the expression over the firing's value is a dynamic when it samples one
+                        # (`(ToldTo seat, $state) on !born`): the event fires its value at the
+                        # firing's read point (`Event::map_at`), not the dynamic
+                        let samples = match ValueTy bodyValue:
+                            OutDyn ignore: True
+                            otherwise: False
+                        # `x on !e` reads nothing of the firing: its dynamic is made once, where
+                        # the event value is made, and the closure samples it
+                        let hoisted = samples and (?SampledOn e) != nil
+                        let sampledDynamic = if hoisted: XVar "sampled_dyn" else: Own bodyValue
+                        let closure = if samples: XClosure True, [[(PaTyped (PaBind "y_ev"), (OutRef it)), (PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMethod sampledDynamic, "sample", [[(XVar "cx")]]) else: XClosure True, [[(PaTyped (PaBind "y_ev"), (OutRef it))]], (Own bodyValue)
+                        let made = Push dos, (DoLet (PaBind "src_ev"), src)
+                        let lets = if hoisted: Push made, (DoLet (PaBind "sampled_dyn"), (Own bodyValue)) else: made
+                        VlOwned (XBlock lets, (XMethod (XVar "src_ev"), (if samples: "map_at" else: "map"), [[closure]])), et
+                    otherwise: VlOwned (InternalBug "an event value of several events"), et
 
 # An expression the checker lifted over a `?` or `~` at the plain layer is its plain value
 # under a `match` of each operand it peeled; any other is lowered by its kind.
@@ -1379,6 +1414,10 @@ fn WidgetBlueprintValueFrom lx, lxArguments, recast, env, qk, calleeSpan, args, 
         # under a tag's arm a dynamic result is the place's first value and each move of
         # it a push, as `@ $d` is (prism_rtl's `widget_dynamic_blueprint`)
         else: if live and not untagged: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_dynamic_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, fired]])), t
+        # under a tag's arm an event result is a computed answer, the next tick's input, as
+        # `@ !e` is (Semantics ch. 9, "A computed answer is the next tick's input";
+        # prism_rtl's `widget_event_answer_blueprint`)
+        else: if fires and not untagged: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_event_answer_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, fired]])), t
         else: if fires: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_event_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, fired]])), t
         else: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, answer]])), t
     otherwise: VlOwned (Refusal (WidgetValueWords qk)), t
@@ -1721,7 +1760,15 @@ fn TagValue lx, env, tg, args:
     let t = OutNamed (KindRef lx, tg.kind), [[]]
     match tg.kind:
         "Element": ElementValue lx, env, tg, args
-        "Prelude.Fault": VlOwned (Refusal "a fault kind applied ({tg.name})"), t
+        # a fault kind made with its fields (ruling TF, "faults hold typed values"): the
+        # tag's value, its fields as plain data in declaration order (the prelude's
+        # `fault_kind_of`); an `Error` keeps them (`error_of`), a pattern reads them back
+        # at their types (`ErrorPat`)
+        "Prelude.Fault":
+            let fields = Each tg.fields, \|((fname, ignore))| match ?TagArg args, fname:
+                ? x: XTuple [[(XStr fname), (XMethod (Own (ValueOf lx, env, x)), "to_pod", [[]])]]
+                nil: InternalBug "the fault kind {tg.name} made without its field {fname}"
+            VlOwned (XCall (HelperRef "fault_kind_of"), [[(XStr tg.name), (XVec fields)]]), OutPod
         otherwise:
             let named = Fold args, False, \|f, a| f or IsNamedArg a
             let fields = Each (Range0 (Len tg.fields)), \|i|
@@ -2155,7 +2202,9 @@ fn ArgsFor lx, env, v, args:
         # a function that takes time whole, applied lifted outside such a body (`$Sel
         # (True on !swap), $a, $b`): its sigiled dynamics go in whole, the live dynamics
         # their line made (`WholeArgs`); the lifted arguments are values
-        let wholeAt = (not lx.whole) and (IsWholeFn lx, v.qk) and (LayerOf (Or ps[i], TyErr)) == LyDyn
+        # (and its events: `!Together (x on !a), !b`, each an event value, a name's the
+        # port it fires, `NameValueOf`)
+        let wholeAt = (not lx.whole) and (IsWholeFn lx, v.qk) and ((LayerOf (Or ps[i], TyErr)) == LyDyn or (LayerOf (Or ps[i], TyErr)) == LyEv)
         # a parameter of a bounded function type is a function value, held as every
         # function value is (the signature's `&Rc<dyn Fn>`): a lambda and a named function
         # are made one (`ValueArgument`)
@@ -3008,7 +3057,10 @@ fn MatchValue lx, env, s, arms, t, span:
         let env3 = if owned: MovedOnce lx, env2, arm, po.binds else: env2
         XArm(pat=po.pa, conds=(Append po.conds, guard), body=(Own (BlockValue lx, env3, arm.body)))
     let scrut = if owned: Own sv else: Ref sv
-    ArmsValue scrut, xarms, label, t
+    # a `match` with no arm, over a value of a choice with no case: the target's empty
+    # `match` over the value itself (rustc takes none over a reference to it)
+    if (Len arms) == 0: VlOwned (XMatch (XDeref (Ref sv)), [[]], False, t), t
+    else: ArmsValue scrut, xarms, label, t
 
 # Gap OC: a binder of an owned scrutinee that its arm's body reads once is moved there, not
 # cloned: its one read is bound by its place to the binder as a value. Only where that is

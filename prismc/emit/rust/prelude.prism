@@ -1565,14 +1565,28 @@ pub fn fault_kind(name: &str) -> Pod {
 
 /// `e.kind`.
 pub fn kind_of(e: &Error) -> Pod {
-    Pod::name(&e.kind_p)
+    e.kind()
+}
+
+/// A fault kind made with fields (`Count.TooMany(limit=5, asked=n)`): the tag's value,
+/// its fields as plain data in declaration order (ruling TF).
+pub fn fault_kind_of(name: &str, fields: Vec<(&str, Pod)>) -> Pod {
+    Pod::element(name, fields)
+}
+
+/// A field of an `Error`'s kind, read back at the field's type (a pattern's binder).
+pub fn fault_field<T: FromPod>(e: &Error, name: &str) -> T {
+    match e.kind_field(name).map(T::from_pod) {
+        Some(Ok(v)) => v,
+        _ => panic!("a prismc bug: a fault kind read for a field it was not made with, {name}"),
+    }
 }
 
 /// `Error(kind=k, message=m)` with `k` a value.
 pub fn error_of(kind: &Pod, message: Text) -> Error {
-    match kind.structure() {
-        Pod::Choice(name, _) => Error::new(name, message),
-        other => panic!("an `Error` of a kind that is no fault kind: {other:?}"),
+    match Error::of_kind(kind, message) {
+        Some(e) => e,
+        None => panic!("an `Error` of a kind that is no fault kind: {kind:?}"),
     }
 }
 

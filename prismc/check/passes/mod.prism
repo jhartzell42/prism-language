@@ -269,6 +269,9 @@ fn ?Witness env, st, rows, tys = match tys[0]:
         let rest = Drop tys, 1
         let heads = HeadNames rows
         match ?CtorsOf env, st, t1:
+            # a type with no constructor has no value (`type Never = choice:`): nothing
+            # is missed at it, whatever the rows
+            ? [[]]: nil
             ? cs:
                 if Complete cs, heads, rows:
                     Fold cs, nil, \|?found, c| match ?found:

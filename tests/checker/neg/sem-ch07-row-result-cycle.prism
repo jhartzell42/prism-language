@@ -1,0 +1,18 @@
+# Written by Claude (host-4, the prismc run), 11 November 2026; subject to change.
+# `prompt-cycle`: a `for`'s gathered event is prompt in what its rows' results read
+# (Semantics ch. 7, "There are no cycles": a `for`'s consolidation is a prompt edge). The
+# row's result is `!both`, a line of the row that merges the block's `!echo`, and `!echo`
+# is lifted over the gathered `!pressed`: a press would fire `!pressed`, `!echo`, `!both`
+# and `!pressed` again in one tick.
+emit Ui.*
+
+@host: @unit
+@host:
+    let $names = $ {"a": unit, "b": unit}
+    !pressed <- for k, ignore <- $names:                          # 0/[k]
+        !press <- Ui.Button($label=$"{k}")                         # 0/[k]/0
+        let !both = (1 on !press) <| !echo
+        @ !both
+    let !echo = Size !pressed
+    $last <- 0 then !echo
+    Ui.Label($text=$"{$last}")                                     # 1
