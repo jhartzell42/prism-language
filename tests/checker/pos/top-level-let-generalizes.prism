@@ -1,0 +1,13 @@
+# A top-level `let` with no signature generalizes as a local `let` does (Type System ch. 5,
+# "The plain layer": a `let` generalizes over the variables not free in its environment;
+# ruling SH: a binding that mentions only top-level names is generalized): `Same` is used
+# at `Bool` and at `Nat`, and `Pair` at two types.
+let Same = \|x| x
+
+let Pair = \|x| ((x, x))
+
+Use: fn Nat -> Nat
+fn Use n = if (Same True): Same n else: 0
+
+Both: fn Nat -> ((((Nat, Nat)), ((Text, Text))))
+fn Both n = (((Pair n), (Pair "n")))

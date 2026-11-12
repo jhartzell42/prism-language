@@ -4,4 +4,4 @@ use App.*
 
 test it_runs, @page:
     build
-    compute
+    compute until idle

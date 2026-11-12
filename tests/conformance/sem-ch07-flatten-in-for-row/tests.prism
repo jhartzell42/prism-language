@@ -6,8 +6,8 @@ use App.*
 
 test each_row_flattens_its_own, @page:
     build
-        => expect Ui.Label(text="2: 5")
+        => expect Ui.Label(text="1: 5")
     click Ui.Button(label="go")
-        => expect Ui.Label(text="2: 6")
+        => expect Ui.Label(text="1: 6")
     compute
-        => expect Ui.Label(text="2: 2")
+        => expect Ui.Label(text="1: 2")

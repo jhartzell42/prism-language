@@ -1,0 +1,47 @@
+# A function bound out of a tuple or a record by a pattern and handed on to another function as it
+# is (Type System ch. 5: a function is a value, and so is its argument): `ByLet` takes
+# `Read` out of a pair with a `let`, `ByMatch` with a `match`'s arm, `ByParameter` with a
+# clause's pattern, `OfRecord` and `OfRecordMatch` out of a record's field, and each passes
+# it to `Each`, never calling it itself. Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Double: fn Nat -> Nat
+fn Double n = n * 2
+
+ByLet: fn ((fn Nat -> Nat, Nat)) -> Nat
+fn ByLet pair:
+    let ((Read, more)) = pair
+    (Sum (Each [[1, 2, 3]], Read)) + more
+
+ByMatch: fn ?((fn Nat -> Nat, Nat)) -> Nat
+fn ByMatch ?pair = match ?pair:
+    ? ((Read, more)): (Sum (Each [[1, 2, 3]], Read)) + more
+    nil: 0
+
+ByParameter: fn ((fn Nat -> Nat, Nat)) -> Nat
+fn ByParameter ((Read, more)) = (Sum (Each [[1, 2, 3]], Read)) + more
+
+type Step = record:
+    apply: fn Nat -> Nat
+    more: Nat
+
+OfRecord: fn Step -> Nat
+fn OfRecord step:
+    let Step(apply=Read, more=more) = step
+    (Sum (Each [[1, 2, 3]], Read)) + more
+
+OfRecordMatch: fn ?Step -> Nat
+fn OfRecordMatch ?step = match ?step:
+    ? Step(apply=Read, ..): Sum (Each [[1, 2, 3]], Read)
+    nil: 0
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{ByLet ((Double, 1))}")                        # 0
+    Ui.Label($text=$"{ByMatch (? ((\|n| n + 1, 2)))}")              # 1
+    Ui.Label($text=$"{ByParameter ((Double, 3))}")                  # 2
+    Ui.Label($text=$"{OfRecord Step(apply=Double, more=4)}")        # 3
+    Ui.Label($text=$"{OfRecordMatch (? Step(apply=\|n| n + 2, more=0))}")   # 4

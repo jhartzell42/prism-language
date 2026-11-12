@@ -1,0 +1,20 @@
+# The first run, on prismc-f4, read by hand against Semantics ch. 9 (a host answers its child's places; a request's response reaches the place that asked, a query's answer every place that reads it) and ch. 8 (a blueprint builds where it is applied): each seat's places stand under its own `for` entry and generation, `ada`'s press is accepted for `ada` alone, and both read the new total.
+test presses
+
+tick 0
+  added:
+    0/[Presser "ada"]/0/[0/#0/0]/0: Ui.Button(label="ada +1")
+    0/[Presser "ada"]/0/[0/#0/3]/0: Ui.Label(text="ada sees 0; nothing yet")
+    0/[Presser "bob"]/0/[0/#0/0]/0: Ui.Button(label="bob +1")
+    0/[Presser "bob"]/0/[0/#0/3]/0: Ui.Label(text="bob sees 0; nothing yet")
+
+tick 1
+  in:
+    0/[Presser "ada"]/0/[0/#0/0]/0: click
+
+tick 2
+  changed:
+    0/[Presser "ada"]/0/[0/#0/3]/0: Ui.Label(text="ada sees 1; Accepted")
+    0/[Presser "bob"]/0/[0/#0/3]/0: Ui.Label(text="bob sees 1; nothing yet")
+
+tick 3
