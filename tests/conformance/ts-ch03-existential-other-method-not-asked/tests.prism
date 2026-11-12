@@ -1,0 +1,7 @@
+# The tests of ts-ch03-existential-other-method-not-asked.
+emit Ui.*
+use App.*
+
+test it_builds, @page:
+    build
+        => expect Ui.Label(text="3 2 3")
