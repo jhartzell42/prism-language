@@ -463,6 +463,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   generation, the block's live dynamic read through the `parent` argument
   (`WholeOfBlock`, `?ThroughParent`); for a global, the constant of its value, which no
   node writes (sem-ch07-flatten-global-dynamic, sem-ch07-flatten-block-dynamic-in-row).
+  An outer written in place in a row (`@Flatten ($Pick $useB, $a, $v)`) is the block's
+  live dynamic, read through the parent, when it reads the block's names alone; one that
+  reads a name the row binds (`NestedBlockNames`) is the row's own, made by the row's
+  line, with its value at the row's build when what it reads through the parent has one
+  (`InitedOrParent`; sem-ch07-flatten-expression-in-row).
 - **`!MergeAll` of a plain list that is not a literal** (`MergeListEvent`) → a
   `MergeList<T>` field (prism_rtl, both runtimes) that hears each `Event` of the list,
   read once the node is made (`{nm}_events`), into a stamped input and tells the node
@@ -1131,8 +1136,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
     own holds reads the cell `{name}_last`, which the node's `leave` hook writes with the
     hold's value after the tick the node leaves in: the hold is a constant with its last
     value from then on (Semantics ch. 7, "Holds die with their widget";
-    sem-ch07-hold-dies-with-its-row). A combinator over it and over a dynamic outside the
-    node is a map of live dynamics and goes on reading the outside one.
+    sem-ch07-hold-dies-with-its-row). A dynamic `let` of the node whose reads, through
+    the node's getters, reach nothing through the parent is kept the same way: computed
+    from constants, it is one (sem-ch07-getter-dies-with-its-row). A combinator written
+    in the line over a hold and a dynamic outside the node is a map of live dynamics and
+    goes on reading the outside one. A dynamic `let` over both reads its value at the
+    build once the node is gone, and its port no longer fires: a bug, red in
+    sem-ch07-getter-dies-with-its-row's second test.
   - A global dynamic passed whole is the constant its getter gives.
 - **`!Updated $d` as an event value** (in a supplier's closure, in a function taking `$d`
   whole): the prelude's `updated`, which fires `d`'s value after the tick when `d`'s update
@@ -1385,8 +1395,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
     a dynamic sampled, an array's, a map's values', an option's, a tuple's and an `Rc`'s
     parts), the line builds the value whole, each dynamic the live one it made
     (`ElementPlaced`, `IsTimeFieldElement`), and its dynamics' update events join the `Watch`
-    (sem-ch09-tag-field-array-of-dynamics); C++ has `rt::DeepPod`. A dynamic inside a
-    named type's argument or a `~T` there is a refusal prismc reports.
+    (sem-ch09-tag-field-array-of-dynamics); C++ has `rt::DeepPod`. A `~T` is walked as
+    its value, its failure plain data. A generic program type that is plain data has a
+    walk of its own (`DeepWalkImpl`: `deep_pod_with` and `deep_ports_with`, each part of
+    a type parameter through the walk its caller gives for it), which the field's walk
+    calls with the walks of its type arguments, so `Boxed $Nat` and `Boxed [$Nat]` share
+    one impl (sem-ch09-tag-field-named-type-of-dynamic, -fault-of-dynamic); in C++ the
+    members `deep_pod` and `deep_ports`, which `rt::DeepPod` calls.
   - `@ x` and a constant `@ $ v` (`rt::plain_blueprint`) are the first value once; `@ never`
     (`rt::never_blueprint`) answers nothing.
   - `@ !e` (`rt::event_blueprint`) and `@ $d` (`rt::dynamic_blueprint`, `$d` any dynamic

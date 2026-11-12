@@ -331,8 +331,9 @@ Dynamics and events
   program found: a row over its block's parameter passes
   (sem-ch07-updated-row-parameter).
 - lower/node/switch.prism:1328 `@Flatten` of a dynamic of dynamics with no live dynamic
-  at the build (LF). No program found: an outer written in place and an outer bound
-  below are lowered (sem-ch07-flatten-call, sem-ch07-flatten-held-above).
+  at the build (LF). No program found: an outer written in place, in the block or in a
+  row, and an outer bound below are lowered (sem-ch07-flatten-call,
+  sem-ch07-flatten-expression-in-row, sem-ch07-flatten-held-above).
 - lower/expr.prism:371 a dynamic passed whole to a function where it has no live dynamic
   (LF). No program found: a clause widget's result, a place's dynamic, a global, a row's
   parent's hold and a hosted child's result are read through the node's link
@@ -605,7 +606,7 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | node/finish.prism `PlaceNumber`, two sites: a place read at its row's or block's build before its node, after rows that differ in width | R | none | refused |
 | node/switch.prism `RebuildDynamic`, a `rebuild` that hands back a dynamic whose generation gives no dynamic, value or bundle | G | sem-ch04-rebuild-ends-on-host reached it | internal error: the one result left out, a host's line last in the generation, is lowered as the host's bundle (`GenRowOf`); `GivesDynamic` keeps events and unit away |
 | node/switch.prism `ArmRowOf`, two sites: a late plain result beside a `for`, a `rebuild` or a widget that calls itself, in a row numbered after its node | R | none | refused |
-| node/switch.prism, `@Flatten` with no live dynamic at the build (LF) | R | none | refused for an expression over the block's names written in a row or a generation (`@Flatten ($ ($Choose True, $a, $derived))`); a global and a name of the block are lowered (`{name}_outer`; sem-ch07-flatten-global-dynamic, sem-ch07-flatten-block-dynamic-in-row) |
+| node/switch.prism, `@Flatten` with no live dynamic at the build (LF) | R | none | no program found: a global and a name of the block are lowered (`{name}_outer`; sem-ch07-flatten-global-dynamic, sem-ch07-flatten-block-dynamic-in-row); an outer written in place in a row is the block's live dynamic when it reads the block's names alone, else the row's own (sem-ch07-flatten-expression-in-row) |
 | node/def.prism `SplitBlockInto`, a block split at a line whose result is not late | U | none | refused |
 | node/def.prism, the build-side markers of a late name (`PreBindWhole`, `PreBindWholeParts`, `BindLate`, `MarkLateLets`, `LateTakerResults`, `LateFieldPlaces`, `LatePlaceParts`, `LateHostedAnswer`, `MarkLateBundle`, `LateBundleParts`: twelve sites) | R | none (sem-ch04-late-value-above-in-plain-place-field passes) | refused: a place with a `$` or bundle answer, bound by a pattern or in a hosted scope, whose constant field reads the late name; a `let` of a type with time inside that is no bundle |
 | node/def.prism, a late plain result in a bundle (`WrLate`) | U | none | refused |
@@ -633,7 +634,7 @@ is found. "Test" is the test that reaches the site today, red, or none.
 Totals: 36 `Refusal` / `RefusalDo` calls stand in prismc/lower. 2 are internal errors
 by their text (`PartsBlueprint`); 4 are R with a red test (`AnyValue`, the named
 bundle, the block widget, one `WidgetValueWords` call); 20 are R with no test (`@Flatten`
-LF's last form, the 12 late-name markers, `DeferredLine` 2, `PlaceNumber` 2, `ArmRowOf`
+LF, which no program found reaches, the 12 late-name markers, `DeferredLine` 2, `PlaceNumber` 2, `ArmRowOf`
 2, `ElementOutputOf`);
 10 are U (`SplitBlockInto`, `WrLate`, the generic widget, LE, LF of expr.prism, an event
 read as a value, the other `WidgetValueWords` call and `UndecidedParameter`, `Recolored`,
@@ -643,7 +644,7 @@ Refusals outside `Refusal` / `RefusalDo`, which the table above does not hold:
 
 | site | class | test | state |
 |---|---|---|---|
-| emit/rust/items.prism `DeepPodOf`: a tag's plain field whose type holds a dynamic inside a named type's argument or a `~T` | R | none | refused ("prismc does not lower a level field whose type holds a dynamic inside .."); arrays, maps, options, tuples, `Rc`s and dynamics are walked (sem-ch09-tag-field-array-of-dynamics) |
+| emit/rust/items.prism `DeepPodOf`: a level field's walk at a type that holds no time | G | - | internal error ("a prismc bug: a level field's walk met .."): arrays, maps, options, `~T`s, tuples, `Rc`s, dynamics and generic program types are walked (sem-ch09-tag-field-array-of-dynamics, -named-type-of-dynamic, -fault-of-dynamic) |
 | emit/cpp/mod.prism `PrinterRefusal`: a constructor, record or pattern of no type the C++ printer's tables know | G | - | internal error ("a prismc bug: the C++ printer met ..") |
 | lower/types.prism, `OutQuantified` (two sites): a quantified type variable no instantiation gives a type | U | none | refused; `Len [[]]`, `Size {}` and an unused `let empty = [[]]` are lowered |
 | lower/expr.prism, `OutRefused "a parameter"`: a typed parameter pattern with no type | U | none | refused |
