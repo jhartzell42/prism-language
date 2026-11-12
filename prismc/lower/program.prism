@@ -290,7 +290,7 @@ fn RootWidgets lx:
 # a blueprint is an opaque handle and still a value; Semantics ch. 8: it builds nothing
 # until a block applies it): an argument of a function that is no widget or of a
 # constructor, a host's supplier, what a lambda gives, the operand of `?`, a part of a
-# tuple or an array, the value of a `let`, what a `<=` writes. Each is lowered once more as rows of its own (`ValuedRows`), which the
+# tuple or an array, a value of a map literal, the value of a `let`, what a `<=` writes. Each is lowered once more as rows of its own (`ValuedRows`), which the
 # blueprint made at the value site builds (`WidgetBlueprintValue`). A generic widget is
 # lowered so once for each set of types its readings give its type parameters
 # (`?ValuedTypes`). A widget function parameter is a function value of the row, and the
@@ -862,6 +862,8 @@ fn ValueWidgetsIn lx, e = match e.kind:
     EFreeSigil "?", x: ValueWidgetsAt lx, x
     ETuple xs: Fold xs, [[]], \|acc, x| Append acc, (ValueWidgetsAt lx, x)
     EArray xs: Fold xs, [[]], \|acc, x| Append acc, (ValueWidgetsAt lx, x)
+    # (a map literal's values: a key is no blueprint, which has no order)
+    EMap entries: Fold entries, [[]], \|acc, ((ignore, x))| Append acc, (ValueWidgetsAt lx, x)
     otherwise: [[]]
 
 # Whether a widget's own clauses apply it.
