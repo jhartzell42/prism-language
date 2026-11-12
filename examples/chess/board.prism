@@ -305,7 +305,7 @@ fn Open ?waiting = ?waiting != nil
 
 # A player at a board. Its seat's answer and its requests' responses are everything it
 # knows of the game.
-@BoardPlayer: fn Player -> @unit emit Pane.* | Gui.* | Seat.* | Play.*
+@BoardPlayer: fn Player -> @unit emit r | Pane.* | Gui.* | Seat.* | Play.*
 fn @BoardPlayer (Player color):
     $told <- Play.Query($query=$ Game.Whole)                                          # 0
     !command <- @Layers @widget:                                                     # 1 hosts; 2 is the layers

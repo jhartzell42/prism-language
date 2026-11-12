@@ -105,7 +105,7 @@ fn Replied (Declined why) = [[(Refused why)]]
 # A player at a terminal named for its color. What it prints comes from its seat's answer
 # and its requests' responses alone: in one tick, the response's line first, then the
 # news, then the answer to a list asked for.
-@LinePlayer: fn Player -> @unit emit Console.* | Seat.* | Play.*
+@LinePlayer: fn Player -> @unit emit r | Console.* | Seat.* | Play.*
 fn @LinePlayer (Player color):
     $told <- Play.Query($query=$ Whole)                              # 0
     !line <- Console.Read(name=(Show color))                         # 1
