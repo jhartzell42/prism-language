@@ -1743,13 +1743,22 @@ fn UngroupedPattern p = match p.kind:
 LateLetNames: unbounded fn Lx, Env, Env, Stmt -> [SName]
 fn LateLetNames lx, fns, me, s = match s.kind:
     SLet p, ignore, e:
-        let names = BinderNames p
+        let names = LetNames p
         let plain = Fold names, True, \|ok, n|
             let nkey = SNameKey n
             let full = BinderTy lx, n.span
             ok and not ((IsTimeName nkey) or (HasKey me.names, "{nkey}#late") or (HasKey me.names, "{nkey}#placed") or (LayerOf full) != LyPlain or (TimeWithin full) or (IsBundle full) or ((IsSome (?ManyInstances lx, n.span)) and not (IsNamePattern p)))
         if (Len names) > 0 and plain and ReadsLateVia fns, me, e: names else: [[]]
     otherwise: [[]]
+
+# The names a `let` binds: a name the whole pattern is is one, upper case too (`let Wrap
+# = \|x| ..`, a function's name; inside a pattern an upper-case name is a constructor,
+# `BinderNames`).
+LetNames: unbounded fn Pattern -> [SName]
+fn LetNames p = match p.kind:
+    PName n: [[n]]
+    PGroup q: LetNames q
+    otherwise: BinderNames p
 
 # Whether a pattern is one name (a generalized `let`'s, whose instantiations each have a
 # late getter of their own, `MarkLateLets`).
@@ -1768,7 +1777,7 @@ fn IsLateBundleLet menv, p = match p.kind:
 # Whether a `let` binds late names (`MarkLateLets`).
 IsLateLet: unbounded fn Env, Pattern -> Bool
 fn IsLateLet menv, p:
-    let names = BinderNames p
+    let names = LetNames p
     (Len names) > 0 and Fold names, True, \|ok, n| ok and HasKey menv.names, "{SNameKey n}#late"
 
 # The late `let`s' getters, the value computed from the node in its methods. A pattern's
