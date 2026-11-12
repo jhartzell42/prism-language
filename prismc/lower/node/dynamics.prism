@@ -58,9 +58,22 @@ fn DynamicExpr wx, menv, e:
         EName n: match menv.names[SNameKey n]:
             ? (BnHold f, ignore): AddRead acc, (OwnRead f)
             ? (BnDyn ignore, rs, ignore): UnionReads acc, rs
+            # a named bundle read as one value (`{name}#value`, `BundleArgumentsAt`): its
+            # `$` parts are live dynamics over the parts' readers, so the expression reads
+            # what they read, as a reader passed whole (`WholeArgsAt`) is read by name
+            ? (BnParts bs): if HasKey menv.names, "{SNameKey n}#value": UnionReads acc, (PartsReads bs) else: acc
             otherwise: acc
         otherwise: acc
     ((Own v, reads))
+
+# What a named bundle's parts read (`DynamicExpr`): each `$` part's reader, a bundle
+# inside it by its own parts; an event part and a plain part read nothing.
+PartsReads: unbounded fn [?Bn] -> [Read]
+fn PartsReads bs = Fold bs, [[]], \|acc, ?b| match ?b:
+    ? (BnHold f, ignore): AddRead acc, (OwnRead f)
+    ? (BnDyn ignore, rs, ignore): UnionReads acc, rs
+    ? (BnParts inner): UnionReads acc, (PartsReads inner)
+    otherwise: acc
 
 # The expressions a constant holds whole, by their keys (`DynKey`): those under `x` when
 # `x` is such a constant (`ConstantOfTimeAt`), none otherwise.
