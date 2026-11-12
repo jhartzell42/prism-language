@@ -90,6 +90,9 @@ fn WidgetLine wx, benv, menv, e, ?bound:
         otherwise: match ?param:
             ? (BnWidget x, cbenv, cmenv, clx): ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound
             ? (BnLocalWidget b): LocalWidgetLine wx, benv, menv, b, e
+            # a function of the block applied (`$more <- @Row $count`): its body lowered
+            # here (`LocalFunctionLine`)
+            ? (BnLocalFn cs) if (Len args) > 0: LocalFunctionLine wx, benv, menv, benv, menv, (LocalFnLx lx, callee.span), cs, callee, e, args
             # a function value the node holds, applied (`Inner 1` in a row a blueprint
             # value builds, whose widget function parameter is a value of the row; a
             # `let` of the block that names a function giving a blueprint): the blueprint
@@ -134,9 +137,13 @@ fn ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound:
                 let ?target = match ?bound:
                     ? (BnEv er, ignore): ? er.node
                     otherwise: nil
-                match ?q:
-                    ? qk: WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target
-                    nil:
+                match ((?q, (if (Len n.path) == 1: cmenv.names[SNameKey n] else: nil))):
+                    # a function of the caller's block (`fn @Seats $state, !responses =
+                    # ..` beside the line that hands `@Seats` on): its body lowered
+                    # here over its block's environments (`LocalFunctionLine`)
+                    ((ignore, ? (BnLocalFn cs))): LocalFunctionLine wx, benv, menv, cbenv, cmenv, (LocalFnLx clx, (Ungrouped x).span), cs, (Ungrouped x), e, args
+                    ((? qk, ignore)): WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target
+                    otherwise:
                         let wx2 = update wx:
                             &_.build <= Push &_.build, (InternalBugDo "a widget function parameter whose argument names nothing")
                         ((wx2, WrUnit))
@@ -146,36 +153,14 @@ fn ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound:
         # its body lowered here in the lambda's own file, its names apart for each
         # application (`inlined`, by the line's call)
         ELambda ?params, lambdaBody:
-            let lx = wx.lx
             let lambda = Ungrouped x
-            let params = Or ?params, [[]]
             let ptys = match TypeAt clx, lambda.span:
                 TyFn ignore, ps, ignore: ps
                 otherwise: [[]]
-            let ((wx1, be1, me1)) = Fold (Range0 (Len params)), ((wx, cbenv, cmenv)), \|((w, be, me)), i|
-                let p = Or params[i], dummyPat
-                let nkey = PlainBinder clx, p
-                match args[i]:
-                    nil: ((w, be, me))
-                    ? a: if nkey != "": BindParam w, benv, menv, be, me, nkey, (LocalNameAt clx, nkey, p.span), (Or ptys[i], TyErr), a.value else: BindParamPattern w, benv, menv, be, me, clx, p, (Or ptys[i], TyErr), a.value
-            let callSpan = match e.kind:
-                ECall c, ignore, ignore, ignore: c.span
-                otherwise: e.span
-            let lxi = update clx:
-                &_.inlined <= match lx.callIds[PlaceKey lx, callSpan]:
-                    ? id: "{lx.inlined}_{Base32 id}"
-                    nil: lx.inlined
-            let inner = update wx1:
-                &_.lx <= lxi
-                &_.result <= WrUnit
             let body = match lambdaBody:
                 LbBlock b: b
                 LbExpr y: Block(stmts=[[Stmt(kind=(SExpr y), span=y.span)]], inline=True, span=y.span)
-            let done = BlockInto inner, be1, me1, body
-            let back = update done:
-                &_.lx <= lx
-                &_.result <= wx.result
-            ((back, done.result))
+            InlinedFunctionLine wx, benv, menv, cbenv, cmenv, clx, (Or ?params, [[]]), ptys, body, e, args
         # any other function value (`@Use (Chosen "shows")`, a call's result; a field): the
         # value, read where the argument stands, applied to the line's arguments gives
         # a blueprint, which the line applies as any blueprint value
@@ -189,6 +174,65 @@ fn ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound:
         let back = update done:
             &_.lx <= lx
         ((back, res))
+
+# A function's body lowered at the line `e` that applies it (a lambda given as a widget
+# function parameter; a function of a block, `LocalFunctionLine`): its parameters bound
+# to the line's arguments by layer as an inlined widget's are (`BindParam`: the arguments
+# read in the line's environments, `benv` and `menv`), over the environments the
+# function closes over (`cbenv`, `cmenv`); its body lowered here in the function's own
+# file (`clx`), its names apart for each application (`inlined`, by the line's call), so
+# its places take this node's next positions (transparent, Semantics ch. 8).
+InlinedFunctionLine: unbounded fn Wx, Env, Env, Env, Env, Lx, [Pattern], [Ty], Block, Expr, [Arg] -> ((Wx, Wres))
+fn InlinedFunctionLine wx, benv, menv, cbenv, cmenv, clx, params, ptys, body, e, args:
+    let lx = wx.lx
+    let ((wx1, be1, me1)) = Fold (Range0 (Len params)), ((wx, cbenv, cmenv)), \|((w, be, me)), i|
+        let p = Or params[i], dummyPat
+        let nkey = PlainBinder clx, p
+        match args[i]:
+            nil: ((w, be, me))
+            ? a: if nkey != "": BindParam w, benv, menv, be, me, nkey, (LocalNameAt clx, nkey, p.span), (Or ptys[i], TyErr), a.value else: BindParamPattern w, benv, menv, be, me, clx, p, (Or ptys[i], TyErr), a.value
+    let callSpan = match e.kind:
+        ECall c, ignore, ignore, ignore: c.span
+        otherwise: e.span
+    let lxi = update clx:
+        &_.inlined <= match lx.callIds[PlaceKey lx, callSpan]:
+            ? id: "{lx.inlined}_{Base32 id}"
+            nil: lx.inlined
+    let inner = update wx1:
+        &_.lx <= lxi
+        &_.result <= WrUnit
+    let done = BlockInto inner, be1, me1, body
+    let back = update done:
+        &_.lx <= lx
+        &_.result <= wx.result
+    ((back, done.result))
+
+# A function of a block that gives a blueprint, applied as a line (`$more <- @Row
+# $count` beside `fn @Row $shown = @Labelled "row", $shown`; the same function handed to
+# a widget as its function parameter and applied there, `ApplyWidgetParam`): a `fn` line
+# is a function of its block (Semantics ch. 4), reading the block's names and its own
+# parameters, so its body is lowered at the line as a lambda's is
+# (`InlinedFunctionLine`), over the environments of the block it is written in. `named`
+# is the function's name where it is read, whose type is the function's there.
+LocalFunctionLine: unbounded fn Wx, Env, Env, Env, Env, Lx, [FnClause], Expr, Expr, [Arg] -> ((Wx, Wres))
+fn LocalFunctionLine wx, benv, menv, cbenv, cmenv, clx, cs, named, e, args:
+    let c = Or cs[0], dummyClause
+    let mark = "#applying{c.span.start}"
+    let ptys = match Peel (SubstTy clx, (TypeAt clx, named.span)):
+        TyFn ignore, ps, ignore: ps
+        otherwise: match Peel (SubstTy clx, (TypeAt clx, c.span)):
+            TyFn ignore, ps, ignore: ps
+            otherwise: [[]]
+    let body = match c.body:
+        BodyBlock b: b
+        BodyExpr y: Block(stmts=[[Stmt(kind=(SExpr y), span=y.span)]], inline=True, span=y.span)
+    let Refused = \|why|
+        let wx2 = update wx:
+            &_.build <= Push &_.build, (RefusalDo why)
+        ((wx2, WrUnit))
+    if (Len cs) != 1: Refused "a function of a block with several clauses, applied as a widget (`{DefNameText c.name}`)"
+    else: if HasKey cmenv.names, mark: Refused "a function of a block that applies itself as a widget (`{DefNameText c.name}`)"
+    else: InlinedFunctionLine wx, benv, menv, (Bind cbenv, mark, (BnLocal XUnit, Owned, OutUnit)), (Bind cmenv, mark, (BnLocal XUnit, Owned, OutUnit)), clx, c.params, ptys, body, e, args
 
 # A blueprint value applied (`? @t: @t`, `ignore <- card.@body`; Semantics ch. 8: "a
 # blueprint builds nothing until a block applies it", at the applying block's next
