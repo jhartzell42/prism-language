@@ -868,7 +868,7 @@ fn WrittenPart lx, env, y = match LayerOf (TypeAt lx, y.span):
             ? dynamic: PartLive dynamic
             nil: match ?HeldDynamic lx, env, d:
                 ? held: PartLive held
-                nil: PartRefused "`{SrcText lx, lx.file, y.span}`, a bundle answer's `$` part in a function of the host's block that reads the function's own parameter (the host's line makes no live dynamic for the argument)"
+                nil: PartRefused "{internalBug}`{SrcText lx, lx.file, y.span}`, a bundle answer's `$` part with no getter of the host's line and a reader that is no live dynamic where it is written"
     otherwise: PartPlain (Own (ValueOf lx, env, y))
 
 # A bundle answer of its parts (round 3 DY). The plain and `$` parts are the state: one
@@ -992,21 +992,36 @@ fn DynamicBlueprint lx, env, x, d, variant, t = match ?AnswerDynamic lx, env, x,
             let heldTy = OutTyOf lx, (Peel (TypeAt lx, d.span))
             let tagged = XClosure True, [[(PaTyped (PaBind "v"), (OutRef heldTy))]], (TaggedOrHeld variant, heldTy, (XClone (XVar "v")))
             VlOwned (XCall (RefRuntime "prism_rtl::dynamic_blueprint::<crate::Elem, _>"), [[(XMethod held, "map", [[tagged]])]]), t
-        nil: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer in a function of the host's block that reads the function's own parameter (the host's line makes no live dynamic for the argument)"), t
+        nil: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer with no getter of the host's line and a reader that is no live dynamic where it is written"), t
 
 # A supplier's dynamic answer `d` where no host's line made a getter for it
-# (`DynamicAnswers` binds none: the answer is written in a function, a named supplier's
-# body), when everything it reads is a value the function holds (its `$` parameter, a
-# `Dynamic`): the `Dynamic` the expression gives there. `nil` when it reads a name of a
-# node (a hold, a dynamic `let`), which only its owner's getter reads.
+# (`DynamicAnswers` binds none), when everything it reads is a value held where it is
+# written: the `Dynamic` the expression gives there. `nil` when it reads a name of a
+# node that has no live dynamic there (a hold, a dynamic `let`), which only its owner's
+# getter reads.
+# In a function (a named supplier's body, no `#hostline`) every local is held: its `$`
+# parameter is a `Dynamic`. In a host's own line (`#hostline`; a held answer,
+# `IsHeldAnswer`) a name read as a dynamic is held when it is a `Dynamic` there: the `$`
+# field of the element an arm describes, a reader of the node as the live dynamic the
+# host's line made for it (`HeldAnswerReaders`, `#whole{span}`), the `$` parameter of a
+# function of the block as its argument's live dynamic (`InlineLocalFn`); a name read
+# as a plain value is the local it is (the place's path,
+# a plain field of the described element, a `let` of the block). The expression is
+# lifted over the `Dynamic`s by mapping them (`WholeValueOf`).
 ?HeldDynamic: unbounded fn Lx, Env, Expr -> ?Ex
 fn ?HeldDynamic lx, env, d:
-    let held = Fold (ReadNames (ExprsIn d)), True, \|ok, n| ok and match env.names[n]:
-        ? (BnLocal ignore, ignore, ignore): True
-        ? (BnLocalFn ignore): True
-        nil: True
-        otherwise: False
-    if held and not (HasKey env.names, "#owner"): ? (Own (ValueOf lx, env, d)) else: nil
+    let owned = HasKey env.names, "#hostline"
+    let held = Fold (ExprsIn d), True, \|ok, y| ok and match y.kind:
+        EName n: if (Len n.path) != 1: True else: if (HasKey env.names, "#whole{y.span.start}:{y.span.end}") or HasKey env.names, "#whole#{SNameKey n}": True else: match env.names[SNameKey n]:
+            ? (BnLocal ignore, ignore, (OutDyn ignore)): True
+            ? (BnLocal ignore, ignore, ignore): (not owned) or (LayerOf (TypeAt lx, y.span)) != LyDyn
+            ? (BnLocalFn ignore): True
+            nil: True
+            otherwise: False
+        otherwise: True
+    let lxw = update lx:
+        &_.whole <= True
+    if not held: nil else: if owned: ? (Own (ValueOf lxw, env, d)) else: ? (Own (ValueOf lx, env, d))
 
 # A supplier's dynamic `d` (the `x` of `@ x`, or a `$` part of a bundle answer) as a
 # `Dynamic` of `crate::Answer` under `variant`, read through the owner's link
@@ -1444,8 +1459,25 @@ fn InlineLocalFn lx, env0, cs, args, t:
                 ? a: ValueOf lx, env0, a.value
                 nil: VlOwned (XUnit), OutUnit
             let bt = ValueTy v
-            (((Push acc, (DoLet (PaBind rs), (Own v))), (Bind en, nm, (BnLocal (XVar rs), Owned, bt))))
+            # in a host's own line (`#hostline`) a `$` argument is its live dynamic
+            # (`?HeldDynamic`: a reader of the node as the live dynamic the host's line
+            # made for it, `HeldAnswerReaders`), and the parameter is that `Dynamic`: an
+            # answer of the function over its parameter, `@ $d`, answers over it
+            match ?LiveArgument lx, env0, args[i]:
+                ? ((dynamic, dt)): (((Push acc, (DoLet (PaBind rs), dynamic)), (Bind en, nm, (BnLocal (XVar rs), Owned, dt))))
+                nil: (((Push acc, (DoLet (PaBind rs), (Own v))), (Bind en, nm, (BnLocal (XVar rs), Owned, bt))))
         VlOwned (XBlock dos, (FnBodyValue lx, env2, c.body)), t
+
+# A `$` argument of a function of the block called in a host's own line (`#hostline`, the
+# supplier's closure): the live `Dynamic` it is there and its type; `nil` for any other
+# argument. A getter of the node has no read point in the supplier's closure, so the
+# argument is never the node's reader itself.
+?LiveArgument: unbounded fn Lx, Env, ?Arg -> ?((Ex, OutTy))
+fn ?LiveArgument lx, env, ?argument = match ?argument:
+    ? a: if not ((HasKey env.names, "#hostline") and (LayerOf (TypeAt lx, a.value.span)) == LyDyn): nil else: match ?HeldDynamic lx, env, a.value:
+        ? dynamic: ? ((dynamic, (OutDyn (OutTyOf lx, (Peel (TypeAt lx, a.value.span))))))
+        nil: ? (((InternalBug "`{SrcText lx, lx.file, a.value.span}`, a `$` argument of a function of the host's block, with no live dynamic in the supplier's place"), (OutDyn (OutTyOf lx, (Peel (TypeAt lx, a.value.span))))))
+    nil: nil
 
 # The lowering at a use of a local function: one the checker generalized (Type System
 # ch. 5, "A local `let` generalizes") is lowered where it is used, at that use's
@@ -1511,17 +1543,27 @@ fn RecursiveLocalFn lx, env0, cs, args, t:
 InlineLocalFnMatched: unbounded fn Lx, Env, Env, [FnClause], [Arg], OutTy -> Vl
 fn InlineLocalFnMatched lx, callEnv, env, cs, args, t:
     let first = Or cs[0], dummyClause
+    # (a `$` argument in a host's own line is its live dynamic, `?LiveArgument`)
     let vals = Each (Range0 (Len first.params)), \|i| match args[i]:
-        ? a: Own (ValueOf lx, callEnv, a.value)
+        ? a: match ?LiveArgument lx, callEnv, args[i]:
+            ? ((dynamic, ignore)): dynamic
+            nil: Own (ValueOf lx, callEnv, a.value)
         nil: XUnit
-    LocalFnMatch lx, env, cs, vals, (Each args, \|a| TypeAt lx, a.value.span), t
+    let live = Filter (Range0 (Len first.params)), \|i| (?LiveArgument lx, callEnv, args[i]) != nil
+    LocalFnMatchLive lx, env, cs, vals, (Each args, \|a| TypeAt lx, a.value.span), live, t
 
 # A local function's clauses over its arguments' values, each owned: one `match` of them
 # as a tuple, an arm per clause. `argTys` are the arguments' types, where a pattern that
 # is no name is read (a literal pattern has no type of its own: `fn Medal 0` of a Nat is
 # a Nat's 0).
 LocalFnMatch: unbounded fn Lx, Env, [FnClause], [Ex], [Ty], OutTy -> Vl
-fn LocalFnMatch lx, env, cs, vals, argTys, t:
+fn LocalFnMatch lx, env, cs, vals, argTys, t = LocalFnMatchLive lx, env, cs, vals, argTys, [[]], t
+
+# `LocalFnMatch` where the arguments at the indexes `live` are live `Dynamic`s (a `$`
+# argument in a host's own line, `?LiveArgument`): a name a clause binds to one is a
+# local of that `Dynamic`.
+LocalFnMatchLive: unbounded fn Lx, Env, [FnClause], [Ex], [Ty], [Nat], OutTy -> Vl
+fn LocalFnMatchLive lx, env, cs, vals, argTys, live, t:
     let first = Or cs[0], dummyClause
     let arms = Each cs, \|c|
         let pos = Each (Range0 (Len c.params)), \|i|
@@ -1529,7 +1571,12 @@ fn LocalFnMatch lx, env, cs, vals, argTys, t:
             let pt = match p.kind:
                 PName n: BinderTy lx, n.span
                 otherwise: Or argTys[i], (TypeAt lx, p.span)
-            RustPat lx, p, pt, Owned, "l{c.span.start}_{i}"
+            let o = RustPat lx, p, pt, Owned, "l{c.span.start}_{i}"
+            if not (HasNat live, i): o else: update o:
+                &_.binds <= Each &_.binds, \|((name, b))| match b:
+                    BnLocal rs, mode, (OutDyn held): ((name, b))
+                    BnLocal rs, mode, held: ((name, (BnLocal rs, mode, (OutDyn held))))
+                    otherwise: ((name, b))
         let env2 = BindAll env, (Fold pos, [[]], \|acc, o| Append acc, o.binds)
         XArm(pat=(PaTuple (Each pos, \|o| o.pa)), conds=(Fold pos, [[]], \|acc, o| Append acc, o.conds), body=(FnBodyValue lx, env2, c.body))
     ArmsValue (XTuple vals), arms, "l{first.span.start}", t
