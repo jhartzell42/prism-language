@@ -170,6 +170,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `Event`s. A `$` or `!` binder of a pattern in its body names the `Dynamic` or `Event`
   itself (`RustPat`), and an application the checker lifted over one maps it
   (`EventValueOf`, `DynamicLift`).
+  An event value whose expression samples a dynamic (`(ToldTo seat, $state) on !born` in
+  a list `!MergeWith` takes) is the event mapped with each firing's read point
+  (`Event::map_at`): the closure samples the dynamic there, so the event fires the
+  value as the tick opened. The dynamic of `x on !e` reads nothing of the firing and is
+  made once beside the event (`sampled_dyn`, `?SampledOn`); any other is made in the
+  closure, which with two dynamics subscribes at each firing (`Dynamic::map2`; a cost
+  that grows with the firings).
 - **`&` blocks** → native mutation of a fresh or unique value: `Rc::make_mut`, and the
   persistent collections' in-place updates (Compiler ch. 3, "Unique values").
 - **Fault `~`**: a fallible expression is a `Result<_, rt::Error>` and `?` propagates;
