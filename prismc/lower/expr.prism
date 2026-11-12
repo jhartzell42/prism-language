@@ -882,12 +882,13 @@ fn OutputEvent lx, env, ev = match ev.kind:
 
 # One part of a bundle answer: a plain value (a constant `$` part among them, `$
 # "offline"`); a live `$` part, a `Dynamic` of its value; an event part, an `Event` of the
-# type given; or a part this back end refuses, in words.
+# type given; or a part no checked program has (an internal error, `DynamicOutputs` makes a
+# getter for every dynamic answer), its words.
 type OutputPart = choice:
     PartPlain Ex
     PartLive Ex
     PartEvent Ex, OutTy
-    PartRefused Text
+    PartInternalBug Text
 
 BundleBlueprint: unbounded fn Lx, Env, Expr, Ref, OutTy -> Vl
 fn BundleBlueprint lx, env, x, variant, t = match x.kind:
@@ -918,7 +919,7 @@ fn WrittenPart lx, env, y = match LayerOf (TypeAt lx, y.span):
             ? dynamic: PartLive dynamic
             nil: match ?HeldDynamic lx, env, d:
                 ? held: PartLive held
-                nil: PartRefused "{internalBug}`{SrcText lx, lx.file, y.span}`, a bundle answer's `$` part with no getter of the host's line and a reader that is no live dynamic where it is written"
+                nil: PartInternalBug "`{SrcText lx, lx.file, y.span}`, a bundle answer's `$` part with no getter of the host's line and a reader that is no live dynamic where it is written"
     otherwise: PartPlain (Own (ValueOf lx, env, y))
 
 # A bundle answer of its parts (round 3 DY). The plain and `$` parts are the state: one
@@ -939,9 +940,9 @@ fn PartsBlueprint lx, env, x, parts, variant:
         otherwise: [[]]
     let heldWhole = variant == untaggedRef and Fold partTys, False, \|found, part| found or not (Podable (OutTyOf lx, (Peel part)))
     let refused = Fold parts, "", \|found, part| if found != "": found else: match part:
-        PartRefused why: why
+        PartInternalBug why: why
         otherwise: ""
-    if heldWhole and refused != "": Refusal refused
+    if heldWhole and refused != "": InternalBug refused
     else: if heldWhole:
         let whole = Each (Range0 (Len parts)), \|i| match parts[i]:
             # a constant `$` part is its value: the dynamic that never moves
@@ -970,14 +971,14 @@ fn PartsOutputOf lx, env, what, parts, variant:
     let stIx = Filter idx, \|i| not (IsEvent i)
     let liveIx = Filter idx, IsLive
     let refused = Fold parts, "", \|found, part| if found != "": found else: match part:
-        PartRefused why: why
+        PartInternalBug why: why
         otherwise: ""
     let ?stateVariant = if (Len evIx) == 0: ? variant else: match env.names["#tagfirst"]:
         ? (BnLocal (XPath firstVariant), ignore, ignore): ? firstVariant
         otherwise: nil
     match ?stateVariant:
         nil: InternalBug "{what}, a bundle answer under a tag the arm does not name"
-        ? stateVariant: if refused != "": Refusal refused else:
+        ? stateVariant: if refused != "": InternalBug refused else:
             let lets = Fold stIx, [[]], \|acc, i| match parts[i]:
                 ? (PartPlain v): Push acc, (DoLet (PaBind "part{i}"), v)
                 ? (PartLive d): Append acc, [[(DoLet (PaBind "part{i}"), d), (DoLet (PaBind "moved{i}"), (XClone (XField (XVar "part{i}"), "updates")))]]
