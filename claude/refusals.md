@@ -234,7 +234,8 @@ Building `match`, clause widgets, `rebuild`
   Left refused: a `let` of a type with time inside that is no bundle and reads the late
   name (the `unbuilt` refusals of `BindLate`, `MarkLateLets`); a place whose constant
   field reads the late name and whose answer is a `$` or a bundle, is bound by a
-  pattern, or stands in a hosted scope (`BindLate`'s `unbuilt`: R, no test); the late
+  pattern, or stands in a hosted scope (`BindLate`'s `unbuilt`: R; the `$` answer's
+  test is sem-ch04-late-value-above-in-dynamic-place-field, red; the others have none); the late
   names of `LateFieldPlaces` and `LateTakerResults` read at the build by a line that
   takes a value there and is not deferred (their `unbuilt`: unsure G, as
   `MarkLateLets`'); and in `DeferredLine`, a line that takes the late name and whose
@@ -242,7 +243,8 @@ Building `match`, clause widgets, `rebuild`
   reads the block and gives its result from what its own lines build, a late widget
   result: the places of the row that gives the result take their numbers from a count
   that reads the result; it needs that row built with no `base` and numbered after the
-  line, as `Wx.lateGens` does inside a row. R, no test), and one whose plain result no
+  line, as `Wx.lateGens` does inside a row. R; the test is
+  sem-ch04-late-value-above-clause-widget-result-from-arm-lines, red), and one whose plain result no
   name binds (a pattern's, or the block's own result. R, no test).
   A line whose late names are all plain parts of a late place's bundle
   (`{name}#lateplace`) is neither deferred nor refused: it is built in its place's
