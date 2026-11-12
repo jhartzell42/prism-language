@@ -12,14 +12,17 @@
 //!   the exception on standard error and exit 1 (Semantics ch. 9, "The CLI World's
 //!   policy"; doubt UH). The canvas World follows the same policy.
 //!
-//! [`Prelude`] is the policy alone, which the CLI World runs inline; [`UnwrapWorld`] puts
-//! it around a World that answers no prelude tag itself, as the canvas World does.
+//! [`Prelude`] is the policy alone, which the CLI World and the Test World run inline;
+//! [`UnwrapWorld`] puts it around a World that answers no prelude tag itself, as the
+//! canvas World does. The policy prints nothing: a World that ends on a poisoned root
+//! asks [`Prelude::take_gave_up`] for what to say.
 
 use std::collections::BTreeSet;
 use std::rc::Rc;
 
-use prism_rtl::world::EXIT_FAILED;
-use prism_rtl::{Document, Fault, Patch, Path, Pod, ReadyState, Request, Segment, TickIn, TickOut, World};
+use crate::doc::Document;
+use crate::pod::{Fault, Path, Pod, Segment};
+use crate::world::{Patch, ReadyState, Request, TickIn, TickOut, World, EXIT_FAILED};
 
 /// The `Prelude.Unwrap` policy's state.
 #[derive(Default)]
@@ -28,6 +31,8 @@ pub struct Prelude {
     /// The live `Prelude.Exceptions` places.
     exceptions: BTreeSet<Path>,
     answers: Vec<(Path, Pod)>,
+    /// What each poisoning of the root has to say, until a World takes it.
+    gave_up: Vec<String>,
     exit: Option<u8>,
 }
 
@@ -97,7 +102,7 @@ impl Prelude {
             Some(s) if !sub.is_empty() => self.answers.push((s, exception)),
             _ => {
                 let message = message.as_text().map(|t| t.to_string()).unwrap_or_default();
-                eprintln!("prism: the program gave up: {kind}: {message}");
+                self.gave_up.push(format!("prism: the program gave up: {kind}: {message}"));
                 self.exit.get_or_insert(EXIT_FAILED);
             }
         }
@@ -106,6 +111,29 @@ impl Prelude {
     /// The answers this policy owes the next tick.
     pub fn take_answers(&mut self) -> Vec<(Path, Pod)> {
         std::mem::take(&mut self.answers)
+    }
+
+    /// Whether the next tick is owed an answer of this policy's.
+    pub fn owes(&self) -> bool {
+        !self.answers.is_empty()
+    }
+
+    /// Hand back answers taken for a tick that did not run.
+    pub fn give_back(&mut self, answers: Vec<(Path, Pod)>) {
+        self.answers.splice(0..0, answers);
+    }
+
+    /// One line for each poisoning of the root since the last call: what the CLI World's
+    /// policy prints on standard error (Semantics ch. 9).
+    pub fn take_gave_up(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.gave_up)
+    }
+
+    /// Print [`Prelude::take_gave_up`] on standard error.
+    pub fn report_gave_up(&mut self) {
+        for line in self.take_gave_up() {
+            eprintln!("{line}");
+        }
     }
 
     /// Drop from a tick's inputs the answers to poisoned places, and to places no longer
@@ -153,6 +181,7 @@ impl<W: World> World for UnwrapWorld<W> {
                 _ => theirs.push(r.clone()),
             }
         }
+        self.prelude.report_gave_up();
         self.doc.apply(&out.patch);
         if theirs.len() == out.requests.len() {
             self.inner.perform(out);
@@ -204,7 +233,7 @@ mod tests {
         let unwrap = path(vec![Segment::Pos(3), Segment::Gen(0), Segment::Pos(2)]);
         pre.track(&Patch { added: vec![(sup.clone(), Pod::element("Prelude.Exceptions", vec![]))], ..Patch::default() });
         pre.unwrap(&unwrap, &Pod::Ok(Box::new(Pod::int(5))));
-        let failed = Pod::Failed(Box::new(prism_rtl::ToPod::to_pod(&prism_rtl::Error::new("Fs.NotFound", "gone"))));
+        let failed = Pod::Failed(Box::new(crate::ToPod::to_pod(&crate::Error::new("Fs.NotFound", "gone"))));
         pre.unwrap(&unwrap, &failed);
         let answers = pre.take_answers();
         assert_eq!(answers[0], (unwrap.clone(), Pod::int(5)));

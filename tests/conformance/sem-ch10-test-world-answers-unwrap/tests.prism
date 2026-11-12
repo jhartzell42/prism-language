@@ -1,0 +1,14 @@
+# The tests of sem-ch10-test-world-answers-unwrap.
+emit Ui.* | Prelude.*
+use App.*
+use Ui.*
+
+test an_unwrap_is_answered_a_tick_later, @main:
+    build
+    click at 0
+        => expect Ui.Label(text="heard 0")
+    compute
+        => expect Ui.Label(text="heard 1")
+    click at 0
+    compute until idle
+        => expect Ui.Label(text="heard 2")

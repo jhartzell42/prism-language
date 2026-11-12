@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include "prism_rtl/prelude.hpp"
 #include "prism_rtl/prism_rtl.hpp"
 
 namespace prism_world_cli {
@@ -74,30 +75,10 @@ public:
     std::vector<std::string> list(const std::string& dir) const override;
 };
 
-/// The prelude's part of a World: `Prelude.Unwrap` and `Prelude.Exceptions` (Semantics
-/// ch. 10). An unwrap of a value answers it; of an `Error` poisons the unwrap's subtree
-/// and reports the exception to the nearest supervisor outside it, or gives up the
-/// program.
-class Prelude {
-public:
-    bool is_poisoned(const Path& p) const;
-    void track(const prism_rtl::Patch& patch);
-    void unwrap(const Path& path, const Pod& value);
-    std::vector<std::pair<Path, Pod>> take_answers();
-    void filter(prism_rtl::TickIn& input, const Document& doc) const;
-    std::optional<std::uint8_t> exit() const { return exit_; }
-
-private:
-    std::vector<Path> poisoned_;
-    std::set<Path> exceptions_;
-    std::vector<std::pair<Path, Pod>> answers_;
-    std::optional<std::uint8_t> exit_;
-};
-
-/// The subtree an unwrap stands in: up to its last generation or key segment.
-Path subtree_of(const Path& p);
-/// The element at a path in the document, or added by this tick's patch.
-const Pod* element_of(const Document& doc, const prism_rtl::TickOut& out, const Path& path);
+/// The prelude's part of a World (`prism_rtl/prelude.hpp`), which this World runs inline.
+using prism_rtl::Prelude;
+using prism_rtl::element_of;
+using prism_rtl::subtree_of;
 
 /// The CLI World.
 class CliWorld : public prism_rtl::World {

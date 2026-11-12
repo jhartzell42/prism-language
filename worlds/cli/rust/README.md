@@ -49,9 +49,6 @@ prism_rtl::drive::<MyProgram>(&mut CliWorld::new(MemFs::default(), args), &[], p
     again, and no request from there is performed.
   - The report, an `Exception`, goes a tick later to the nearest `Prelude.Exceptions`
     place outside the subtree (Semantics ch. 10, "Exceptions: a widget giving up").
-  - `prelude.rs` holds the policy alone (`Prelude`), and a wrapper (`UnwrapWorld`) that
-    puts it around a World answering no prelude tag. The canvas World over `prism_rtl`
-    (`worlds/canvas/rust`) runs inside that wrapper.
 
 An answer to a place that has left goes nowhere (Semantics ch. 9, "A late result is
 dropped"), and so does one to a poisoned place.

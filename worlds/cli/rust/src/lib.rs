@@ -19,7 +19,7 @@
 //!   tick is performed, in document order; the first exit of a tick wins.
 //! - **`Time.After(wakes=!Wake)`** answers each wake with the same `Wake`, no sooner than
 //!   its `after`, in a later tick. `@Later` rides on it.
-//! - **`Prelude.Unwrap`, `Prelude.Exceptions`**: [`prelude`].
+//! - **`Prelude.Unwrap`, `Prelude.Exceptions`**: [`prism_rtl::world::prelude`].
 //!
 //! The exit codes (Semantics ch. 9 and ch. 10): the code `Process.Exit` asked for; 0 when
 //! nothing can cause another tick; 1 for a poisoned root, a failed tick, or a run that
@@ -31,7 +31,6 @@
 //! lazily, not the "no I/O in a query" of Semantics ch. 9 to the letter.
 
 pub mod fs;
-pub mod prelude;
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -41,7 +40,7 @@ use std::time::{Duration, Instant};
 use prism_rtl::{Document, Error, FromPod, Path, Pod, Program, ReadyState, TickIn, TickOut, ToPod, World};
 
 pub use fs::{FileSystem, MemFs, RealFs};
-pub use prelude::{Prelude, UnwrapWorld};
+pub use prism_rtl::world::prelude::{self, Prelude, UnwrapWorld};
 pub use prism_rtl::world::{EXIT_FAILED, EXIT_UNCHECKED};
 
 /// The families this World answers, for a root's row check.
@@ -143,7 +142,10 @@ impl<F: FileSystem + 'static> CliWorld<F> {
     /// One request, in document order.
     fn request(&mut self, element: &Pod, path: &Path, value: &Pod) {
         let answer = match (element.tag(), value.structure()) {
-            (Some("Prelude.Unwrap"), _) => return self.prelude.unwrap(path, value),
+            (Some("Prelude.Unwrap"), _) => {
+                self.prelude.unwrap(path, value);
+                return self.prelude.report_gave_up();
+            }
             (Some("Process.Exit"), _) => {
                 if self.exit.is_none() {
                     self.exit = Some(u8::from_pod(value).unwrap_or(EXIT_FAILED));
