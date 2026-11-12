@@ -242,13 +242,13 @@ Building `match`, clause widgets, `rebuild`
   names of `LateFieldPlaces` and `LateTakerResults` read at the build by a line that
   takes a value there and is not deferred (their `unbuilt`: unsure G, as
   `MarkLateLets`'); and in `DeferredLine`, a line that takes the late name and whose
-  places are counted as built, where the late result is no pure choice's (an arm that
-  reads the block and gives its result from what its own lines build, a late widget
-  result: the places of the row that gives the result take their numbers from a count
-  that reads the result; it needs that row built with no `base` and numbered after the
-  line, as `Wx.lateGens` does inside a row. R; the test is
-  sem-ch04-late-value-above-clause-widget-result-from-arm-lines, red), and one whose plain result no
-  name binds (a pattern's, or the block's own result. R, no test).
+  places are counted as built, where the late result is no pure choice's and is not
+  given by a building `match` or `if` of the block's own scope the block is split at
+  (that one is lowered: its rows built first with no `base`, numbered at their place,
+  `LateGiving`; sem-ch04-late-value-above-clause-widget-result-from-arm-lines): a late
+  `let`, a clause widget's late result, a hosted scope, a row that builds its
+  generations at its build (R, no test), and one whose plain result no name binds (a
+  pattern's, or the block's own result. R, no test).
   A line whose late names are all plain parts of a late place's bundle
   (`{name}#lateplace`) is neither deferred nor refused: it is built in its place's
   order, and one with a plain result splits the block (`?LatePlaceTakerAt`:
@@ -609,7 +609,7 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | node/def.prism `SplitBlockInto`, a block split at a line whose result is not late | U | none | refused |
 | node/def.prism, the build-side markers of a late name (`PreBindWhole`, `PreBindWholeParts`, `BindLate`, `MarkLateLets`, `LateTakerResults`, `LateFieldPlaces`, `LatePlaceParts`, `LateHostedAnswer`, `MarkLateBundle`, `LateBundleParts`: twelve sites) | R | none (sem-ch04-late-value-above-in-plain-place-field passes) | refused: a place with a `$` or bundle answer, bound by a pattern or in a hosted scope, whose constant field reads the late name; a `let` of a type with time inside that is no bundle |
 | node/def.prism, a late plain result in a bundle (`WrLate`) | U | none | refused |
-| node/def.prism `DeferredLine`, two sites: a line that takes a late result above the line that gives it, with counted places or a plain result no name binds | R | none | refused |
+| node/def.prism `DeferredLine`, two sites: a line that takes a late result above the line that gives it, with counted places (where the giver is no building `match` or `if` of the block's own scope, `LateGiving`) or a plain result no name binds | R | sem-ch04-late-value-above-clause-widget-result-from-arm-lines (the lowered case) | narrowed |
 | node/static.prism `WidgetCall`, a widget line whose name has no value entry | G | - | internal error: the checker's `unknown-name`; a `for`'s binder that is a blueprint (`for @each <- [[@One, @Two]]:`) applied as a line of the row is a value of the node (`WidgetLine`'s `held`; sem-ch08-for-over-blueprints) |
 | node/static.prism `HostLine`, a host without its child or its supplier | G | - | internal error: the checker's `mismatch` (tests/checker/neg/ignore-binds-a-function, neg/builtin-widget-without-argument) |
 | node/static.prism `InlineWidget`, a widget of several clauses that takes no arguments | G | - | internal error: the checker's `collision` (ruling ZD; tests/checker/neg/clause-widget-without-arguments) |

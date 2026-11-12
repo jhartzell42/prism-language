@@ -635,10 +635,20 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
     # the late first values of an enclosing split wait for their own line
     let outerLate = wx00.lateInits
     let outerAsks = wx00.lateAsks
+    # (and so do an enclosing split's names and how its rows are numbered, `LateGiving`)
+    let outerSplit = wx00.splitNames
+    let outerGiving = wx00.giving
+    let s = Or b.stmts[k], dummyStmtL
+    # a building `match` or `if` of the block's own scope may have its rows numbered after
+    # a line above that takes its late result (`DeferredLine`)
+    let choiceNames = match s.kind:
+        SBind p, e, nil: if (IsChoiceLine s) and wx00.pos.scope == 0 and not (IsBundle (LineOutFull lx, e)): Filter (PatternNames p), \|n| not (IsTimeName n) else: [[]]
+        otherwise: [[]]
     let wxa = update wx00:
         &_.lateInits <= [[]]
         &_.lateAsks <= [[]]
-    let s = Or b.stmts[k], dummyStmtL
+        &_.splitNames <= choiceNames
+        &_.giving <= GivenInOrder
     # a split line that binds a bundle: its events and dynamics are names of the node,
     # prebound as any line's are, and only its plain parts are late
     let bundled = match s.kind:
@@ -679,7 +689,18 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
     let ((wx1, be1, me1)) = Fold (LineExprs s), ((wx1b, be1b, me1b)), \|((w, be, me)), e| BundleArgumentsAt w, be, me, e
     match s.kind:
         SBind p, e, nil:
-            let ((wx2a, late)) = BuildLine wx1, be1, me1, e, nil
+            # (a line above took the result and asked for the rows numbered late,
+            # `LateGiving`: they are lowered so, and the block builds them first)
+            let asked = wx1.giving == TakenAbove
+            let wx1g = update wx1:
+                &_.giving <= if asked: GivenUnnumbered else: GivenInOrder
+                &_.splitNames <= [[]]
+            let gensBefore = Len wx1g.lateRowGens
+            let ((wx2u, late)) = BuildLine wx1g, be1, me1, e, nil
+            let wx2a = update wx2u:
+                &_.giving <= outerGiving
+                &_.splitNames <= outerSplit
+                &_.build <= if asked and (Len wx2u.lateRowGens) == gensBefore: Push &_.build, (InternalBugDo "a split line whose late result a line above takes, lowered with no rows numbered late") else: &_.build
             # a bundle's plain parts, each read from the node once its row is built
             let ((wx2, partReads)) = LateParts wx2a, late
             let ((wx2k, kept)) = match late:
@@ -722,6 +743,8 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
                 SetResult wx3, res
         otherwise: update wx1:
             &_.build <= Push &_.build, (InternalBugDo "a block split at a line that binds nothing")
+            &_.giving <= outerGiving
+            &_.splitNames <= outerSplit
 
 # The one name a pattern is (`both`, `(both)`).
 ?OneName: fn Pattern -> ?SName
@@ -3042,11 +3065,22 @@ fn DeferredLine wx, menv, e, named:
     let ((outTy, layer)) = LineResult lx, e
     let body = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
     let ((wx2, res)) = BuildingChoiceLine wx, menv, (XUnit), [[nil]], (TyCon "unit", [[]]), [[nil]], [[body]], outTy, layer, (LineOutFull lx, e), [[]]
+    # the late names the line reads, when every one is bound by the line the block is
+    # split at and that line is a building `match` or `if` of the block's own scope
+    # (`Wx.splitNames`)
+    let lateRead = Filter (FreeReads (ExprsIn e), [[]]), \|n| HasKey menv.names, "{n}#late"
+    let fromSplit = (Len lateRead) > 0 and Fold lateRead, True, \|ok, n| ok and HasText wx.splitNames, n
     match wx2.gens[Dec (Len wx2.gens)]:
         ? gd: if ReadsLateOfPlaces menv, menv, e: ((wx2, res)) else:
-            let wx3 = update wx2:
+            # a line whose places are counted as built, under the split line's choice:
+            # built in the order of its place, after the split line's rows, which are
+            # built before the block's other generations and numbered where their own
+            # place comes (`LateGiving`); otherwise built after every other generation
+            let numbersGiver = gd.gappy and fromSplit and gd.pos.scope == 0 and not wx2.lateGens
+            let wx3 = if numbersGiver: (update wx2:
+                &_.giving <= TakenAbove) else: update wx2:
                 &_.deferredGens <= Push &_.deferredGens, gd.name
-            let wx4 = if not gd.gappy: wx3 else: update wx3:
+            let wx4 = if numbersGiver or not gd.gappy: wx3 else: update wx3:
                 &_.build <= Push &_.build, (RefusalDo "`{SrcText lx, lx.file, e.span}`, a line that takes a late result at its build, above the line that gives it, and whose places are counted as they are built (a building `match` or `if` inside it)")
             match res:
                 WrLate ignore, ignore if not named: (((update wx4:
