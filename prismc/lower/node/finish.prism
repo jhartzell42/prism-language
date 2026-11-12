@@ -353,7 +353,10 @@ fn FinishNode wx0, qk, params, isRow:
     # a generation builds only while it stays current (`GenCurrent`)
     let buildSteps = BuildSteps sinks, False
     let buildBody = if wx.genOf == "" or (Len buildSteps) == 0: buildSteps else: [[(DoIf (XMethod (XSelf), "current", [[]]), buildSteps, [[]])]]
-    let pushBody0 = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, f, t, ignore))| DoIf (XBin OpEq, (XVar "element"), (XRef (XField XSelf, "{f}_element"))), (DynPlaceWrite sinks, f, (XDecode t, (XVar "v"))), [[]]
+    # (a place that asks its first value late keeps its element in a cell, empty until
+    # then: `LateAskedPlace`)
+    let PlaceElementIs = \|f| if HasText wx.lateElements, f: XBin OpEq, (XCtor (RefRuntime "std::Some"), [[(XVar "element")]]), (XMethod (XMethod (XField XSelf, "{f}_element"), "borrow", [[]]), "as_ref", [[]]) else: XBin OpEq, (XVar "element"), (XRef (XField XSelf, "{f}_element"))
+    let pushBody0 = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, f, t, ignore))| DoIf (PlaceElementIs f), (DynPlaceWrite sinks, f, (XDecode t, (XVar "v"))), [[]]
     # and a bundle's place with `$` parts: the push is its whole state (`BundleStateWrite`)
     let pushBody = Append pushBody0, (Each (Filter wx.bundles, \|bp| bp.stem != "" and Emits wx, bp.pos), \|bp| DoIf (XBin OpEq, (XVar "element"), (XRef (XField XSelf, "{bp.stem}_element"))), (BundleStateWrite sinks, bp, (XDecode bp.stateTy, (XVar "v"))), [[]])
     # the node leaves: each live dynamic of its own holds keeps the hold's value after this

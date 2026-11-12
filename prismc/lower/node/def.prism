@@ -1177,8 +1177,11 @@ fn ?TakerGetter menv, p = match p.kind:
 # result is built (`Wx.lateAsks`, `ElementOutputOf`), with the element its getter reads
 # then. The name is late (`{name}#late`): in the methods the value its hold has from
 # then on (`LatePlainBn`, a `Hold<Option<T>>` written once), at the build nothing. What
-# reads it reads it as any late name. `grew`: whether a name was marked before; True
-# when this marks one.
+# reads it reads it as any late name. A `$` answer (`$c <- Pad.Count(name="{n}")`) is
+# the same: its hold is empty at the node's making and set where the place asks, the
+# element its pushes are keyed by kept then too (`LateAskedPlace`); in the methods the
+# dynamic it holds from then on (`LatePlaceBn`). `grew`: whether a name was marked
+# before; True when this marks one.
 LateFieldPlaces: unbounded fn Wx, Env, Env, Env, Stmt, Bool -> ((Wx, Env, Env, Bool))
 fn LateFieldPlaces wx, benv, menv, fns, s, grew = match s.kind:
     SBind p, init, nil: match p.kind:
@@ -1189,12 +1192,15 @@ fn LateFieldPlaces wx, benv, menv, fns, s, grew = match s.kind:
             let placed = match Peel (TypeAt wx.lx, init.span):
                 TyElem ignore, ignore: True
                 otherwise: False
-            if (not placed) or (not (Emits wx, wx.pos)) or (IsTimeName nkey) or (HasKey menv.names, "{nkey}#late") or (LayerOf full) != LyPlain or (TimeWithin full) or (IsBundle full) or (not (ReadsLateVia fns, menv, init)) or (ReadsLateOfPlaces fns, menv, init): ((wx, benv, menv, grew))
+            let plain = (not (IsTimeName nkey)) and (LayerOf full) == LyPlain and not (TimeWithin full)
+            let dynamic = (LayerOf full) == LyDyn and not (TimeWithin (Peel full))
+            if (not placed) or (not (Emits wx, wx.pos)) or (HasKey menv.names, "{nkey}#late") or (not (plain or dynamic)) or (IsBundle full) or (not (ReadsLateVia fns, menv, init)) or (ReadsLateOfPlaces fns, menv, init): ((wx, benv, menv, grew))
             else:
                 let t = OutTyOf lx, (Peel full)
                 let ((rs, w2)) = FreshName wx, (LocalNameAt lx, nkey, n.span)
                 let unbuilt = BnLocal (Refusal "the answer `{nkey}` of a place whose constant field reads a late result, read at its block's build by a line of the block's node that takes a value there"), Owned, t
-                ((w2, (Bind (Bind benv, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind menv, nkey, (LatePlainBn rs, t)), "{nkey}#late", unbuilt), True))
+                let inMethods = if dynamic: LatePlaceBn rs, t else: LatePlainBn rs, t
+                ((w2, (Bind (Bind benv, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind menv, nkey, inMethods), "{nkey}#late", unbuilt), True))
         otherwise: ((wx, benv, menv, grew))
     otherwise: ((wx, benv, menv, grew))
 
@@ -1583,7 +1589,8 @@ fn PreBind wx, benv, menv, s = match s.kind:
             # (the answer of a place whose field reads a late result is a late name
             # already, `LateFieldPlaces`)
             # (and the plain result of a line that takes a late name, `LateTakerResults`)
-            PName n: if ?step == nil and ((IsSome (?LatePlainHold menv.names[SNameKey n])) or HasKey menv.names, "{SNameKey n}#taker"): ((wx, benv, menv)) else: PreBindName wx, benv, menv, n, how
+            # (and the `$` answer of such a place, `LateFieldPlaces`)
+            PName n: if ?step == nil and ((IsSome (?LatePlainHold menv.names[SNameKey n])) or (IsSome (?LatePlaceHold menv.names[SNameKey n])) or HasKey menv.names, "{SNameKey n}#taker"): ((wx, benv, menv)) else: PreBindName wx, benv, menv, n, how
             PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
                 # (a late place's plain part is a late name already, `LatePlaceParts`)
                 PName n: if latePlace and IsSome (?LatePlainHold me.names[SNameKey n]): ((w, be, me)) else: PreBindName w, be, me, n, how
