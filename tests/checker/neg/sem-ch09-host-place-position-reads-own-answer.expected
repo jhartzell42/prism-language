@@ -1,0 +1,5 @@
+tests/checker/neg/sem-ch09-host-place-position-reads-own-answer.prism:29: error[place-cycle]: the place's position reads its own answer: `@Wide` above it builds a different number of places by `port`
+        ((port, !rx, $peers)) <- Pad.Socket(address="chat:7000")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: put the line that reads `port` below the place, or give its clauses the same number of places
+1 error

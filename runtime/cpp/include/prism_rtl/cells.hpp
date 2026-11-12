@@ -353,7 +353,11 @@ template <class T>
 class Port {
 public:
     using Value = T;
+    /// The port is fired by `node`, a node nothing else need hold (a `Dynamic::map2`'s):
+    /// the port holds it for as long as it has a subscriber.
+    void owned_by(Weak<Node> node) { owner_ = std::move(node); }
     Handle subscribe(Subscriber<T> f) {
+        if (!held_) held_ = owner_.lock();
         if (!free_.empty()) {
             std::size_t i = free_.back();
             free_.pop_back();
@@ -374,6 +378,12 @@ public:
             subs_[h.index].reset();
             if (h.index < above_.size()) above_[h.index].reset();
             free_.push_back(h.index);
+        }
+        // the last subscriber left: the node that fires the port is let go, after the
+        // port's own lists are done with (its destructor unsubscribes from its sources)
+        if (held_ && std::none_of(subs_.begin(), subs_.end(), [](const Subscriber<T>& sub) { return bool(sub); })) {
+            NodeRef released = std::move(held_);
+            held_ = nullptr;
         }
     }
     /// Subscribe with the subscriber's height twin: the twin is told the port's height at
@@ -427,6 +437,8 @@ private:
     std::uint32_t liens_ = 0;
     Stamped<T> kept_;
     std::uint32_t height_ = 0;
+    Weak<Node> owner_;
+    NodeRef held_;
 };
 
 /// An `!a` value: an output port and the node that owns it, held strongly, since a
@@ -473,6 +485,49 @@ Event<U> filter_some(const Event<std::optional<U>>& e) {
     return Event<U>{e.owner, out};
 }
 
+/// The update event of a lift over two dynamics (`Dynamic::map2`): a node that hears both
+/// sources' update events and, woken above both, fires its own once in the tick. It holds
+/// the sources' owners, and is held by the dynamic and by its port while that has a
+/// subscriber (`Port::owned_by`); destroyed, it unsubscribes from both sources.
+class MovedEither : public Node {
+public:
+    Rc<Port<Unit>> out = make_rc<Port<Unit>>();
+    static Rc<MovedEither> over(const Rc<Port<Unit>>& left, NodeRef left_owner, const Rc<Port<Unit>>& right, NodeRef right_owner) {
+        auto node = make_rc<MovedEither>();
+        node->self_ = node;
+        node->owners_ = {std::move(left_owner), std::move(right_owner)};
+        node->out->owned_by(Weak<Node>(node));
+        node->out->raise(node->heights_.of(0));
+        Weak<MovedEither> weak = node;
+        for (const auto& src : {left, right}) {
+            Handle h = src->subscribe_above(
+                make_rc<const std::function<Done(const Unit&, Cx&)>>([weak](const Unit&, Cx& cx) -> Done {
+                    if (auto n = weak.lock()) n->heights_.ask(0, cx, n);
+                    return {};
+                }),
+                make_rc<const std::function<void(std::uint32_t)>>([weak](std::uint32_t h) {
+                    if (auto n = weak.lock())
+                        if (auto moved = n->heights_.above(0, h)) n->out->raise(*moved);
+                }));
+            node->sources_.emplace_back(src, h);
+        }
+        return node;
+    }
+    Done wake(Cx& cx) override {
+        if (!heights_.next(cx) || out->kept(cx)) return {};
+        return out->fire(Unit{}, cx);
+    }
+    ~MovedEither() override {
+        for (auto& [port, h] : sources_) port->unsubscribe(h);
+    }
+
+private:
+    Heights heights_{std::vector<std::uint32_t>{1}};
+    std::vector<std::pair<Rc<Port<Unit>>, Handle>> sources_;
+    std::pair<NodeRef, NodeRef> owners_;
+    Weak<MovedEither> self_;
+};
+
 /// A `$a` value: a read at the context's read point, its update event, and its owner.
 /// The update event says only that the value moved; a reader reads it again, so a
 /// projection of a dynamic shares its source's port.
@@ -511,18 +566,16 @@ struct Dynamic {
     }
     /// The dynamic `f` of this one and `other` (a lift over two dynamics in a function that
     /// takes them whole, Type System ch. 4): read from both; its update event fires, once a
-    /// tick, when either moves.
+    /// tick, when either moves, from a node of its own woken above both update events
+    /// (`MovedEither`), so `!Updated` of it fires after both were written.
     template <class U, class F>
     auto map2(const Dynamic<U>& other, F f) const -> Dynamic<std::invoke_result_t<F, const T&, const U&>> {
         using V = std::invoke_result_t<F, const T&, const U&>;
         auto a = read;
         auto b = other.read;
-        auto merged = make_rc<Port<Unit>>();
-        for (const auto& src : {updates, other.updates}) {
-            src->subscribe([merged](const Unit&, Cx& cx) -> Done { return merged->kept(cx) ? Done{} : merged->fire(Unit{}, cx); });
-        }
-        return Dynamic<V>{nullptr, make_rc<const std::function<V(const Cx&)>>([a, b, f](const Cx& cx) { return f((*a)(cx), (*b)(cx)); }),
-                          merged};
+        auto node = MovedEither::over(updates, owner, other.updates, other.owner);
+        return Dynamic<V>{node, make_rc<const std::function<V(const Cx&)>>([a, b, f](const Cx& cx) { return f((*a)(cx), (*b)(cx)); }),
+                          node->out};
     }
 };
 

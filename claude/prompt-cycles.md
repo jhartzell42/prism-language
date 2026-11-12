@@ -90,3 +90,61 @@ This page says how it reads a `for`'s row and a widget function's function param
 - The alternative, an update edge for every line with the worst assumed, is right only
   with a summary for every function parameter and every prelude widget function, which
   a declared summary on a parameter's type would give: a change to the language.
+
+## Two loops through `!Updated` of a hold that the check takes
+
+- Both are real prompt cycles, both check clean, and both abort when run (Rust target, at
+  the build: "a prismc bug: a combinator's height does not settle (a prompt cycle across
+  nodes)"). Each has a failing test whose `.expected` is the error the program should get.
+- Through a widget's line (`tests/checker/neg/sem-ch07-hold-updated-cycle-through-widget-line`):
+
+  ```prism
+  let !fed = (1 on !press) <| !Updated $total
+  !step <- @Pass !fed                      # `fn @Pass !passed: @ !passed`
+  $seen <- 0 then $seen + 1 on !step
+  let $total = $seen * 2
+  ```
+
+  The walk over update events has no edge for the line `!step <- @Pass !fed`, so the
+  loop `$seen` → `$total` → `!fed` → `!step` → `$seen` is never closed.
+- Through a widget function's summary
+  (`tests/checker/neg/sem-ch07-hold-updated-cycle-through-widget-summary`):
+
+  ```prism
+  fn @Echo !step:
+      $seen <- 0 then $seen + 1 on !step
+      @ (!Updated $seen)
+  ...
+  !back <- @Echo !step
+  let !step = (1 on !press) <| !back
+  ```
+
+  `@Echo`'s summary says its result reads nothing promptly: a hold is a cut there, and
+  `!Updated $seen` stops at the hold as `$seen` does.
+- The question (checker, Semantics ch. 7): how does the check see a hold's update event
+  across a line that is not a `let` or a hold, and across a call?
+- The constraint: the hosting library's `@InMemoryOrdered` must stay legal. It binds
+  `!arrived <- HostSeats $state, !responses` beside `let !responses = !Updated
+  $responded`; `HostSeats` is a function parameter, and the loop is delayed by the
+  host's computed answer, which nothing in the parameter's type says.
+- Option A, summaries with update edges for the functions the program names: a widget
+  function's summary gains "the result is prompt in the update event of this argument"
+  and "the result's update event is prompt in this argument" (so `@ (!Updated $hold)`
+  reaches the hold's step), and the walk over update events takes a widget's line
+  through that summary. A function parameter is read by what each use gives (`GivenAt`),
+  as the first walk reads it; a use that gives nothing known gives no update edge.
+  - It refuses both programs above and keeps `@InMemoryOrdered` (its `HostSeats` is given
+    by name at every use in the library and the tests).
+  - It still takes a loop through a parameter given a lambda or passed on as a value.
+- Option B, a summary declared on a parameter's type (`HostSeats: fn $State, !Response ->
+  @!Arrived delayed in 2`, spelling aside): the worst is assumed for an undeclared
+  parameter, and the library declares its `HostSeats`. Nothing wrong is taken; it is a
+  change to the language and to the hosting library's signatures.
+- Option C, the worst for every line and every call: refuses `@InMemoryOrdered`.
+- Claude's recommendation: A now, since it needs no new syntax and closes both tests,
+  with B as the rule that closes the lambda case when the language takes it. C is out by
+  the constraint.
+- A `for`'s row and a place: a row's result is read through `RowReach`, which reaches a
+  hold's step already (`sem-ch07-row-hold-cycle`); a place's answer comes as a tick opens
+  (a World's) or a tick late (a host's computed answer), so a place's line closes no
+  prompt loop and needs no update edge.

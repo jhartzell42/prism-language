@@ -1137,13 +1137,16 @@ inline Error error_of(const Pod& kind, Text message) {
 
 /// `!Updated $d` as an event value (in a supplier's answer, or in a function that takes
 /// the dynamic whole): it fires `d`'s value after the tick, in the tick `d`'s update event
-/// fires (Semantics ch. 7, R3).
+/// fires (Semantics ch. 7, R3). The event fires at the height the update event does: its
+/// port is raised with it, so a combinator that hears it sits above the write.
 template <class T>
 Event<T> updated(const Dynamic<T>& d) {
     auto port = ::prism_rtl::make_rc<Port<T>>();
-    d.updates->subscribe([port, d](const Unit&, Cx& cx) -> Done {
-        return port->fire(cx.after([&](const Cx& at) { return d.sample(at); }), cx);
-    });
+    d.updates->subscribe_above(
+        [port, d](const Unit&, Cx& cx) -> Done {
+            return port->fire(cx.after([&](const Cx& at) { return d.sample(at); }), cx);
+        },
+        ::prism_rtl::make_rc<const std::function<void(std::uint32_t)>>([port](std::uint32_t h) { port->raise(h); }));
     return Event<T>{nullptr, port};
 }
 
@@ -1269,12 +1272,14 @@ auto apply_blueprint_dynamic(const ::prism_rtl::Blueprint<Elem, Answer>& bluepri
     using Made = std::tuple<::prism_rtl::Rc<Row>, std::uint32_t, ::prism_rtl::Dynamic<T>>;
     auto cell = ::prism_rtl::make_rc<std::optional<::prism_rtl::Hold<T>>>();
     auto updates = ::prism_rtl::make_rc<::prism_rtl::Port<Unit>>();
-    ::prism_rtl::Sink<Answer> sink = [cell, updates, take](const Answer& answer, Cx& cx) -> Done {
+    // an answer delivered inside a tick at a height (the sink's twin told it) writes the
+    // dynamic at that height: its update port is raised with it
+    ::prism_rtl::Sink<Answer> sink{std::function<Done(const Answer&, Cx&)>([cell, updates, take](const Answer& answer, Cx& cx) -> Done {
         auto v = TRY(take(answer));
         if (!*cell) return unexpected(Fault::answer("a blueprint value that gives a dynamic was answered before its build ended"));
         (*cell)->set(std::move(v), cx);
         return updates->fire(Unit{}, cx);
-    };
+    }), ::prism_rtl::make_rc<const std::function<void(std::uint32_t)>>([updates](std::uint32_t h) { updates->raise(h); })};
     auto run = [&]() -> Result<Made> {
         auto supplied = TRY(blueprint(std::move(path), sink, applied_scope(std::move(hosted)), base, cx));
         std::uint32_t built = supplied.built;

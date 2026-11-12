@@ -1,0 +1,5 @@
+tests/checker/neg/sem-ch07-hold-updated-cycle-through-widget-line.prism:23: error[prompt-cycle]: a prompt cycle: `!fed`, `!step`, `$seen`, `$total`
+        let !fed = (1 on !press) <| !Updated $total
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: break it with a hold: `$last <- start then ...` reads the value as the tick opened
+1 error

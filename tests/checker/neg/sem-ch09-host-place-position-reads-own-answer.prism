@@ -1,0 +1,42 @@
+# `place-cycle`: a widget of several clauses that build different numbers of places,
+# applied above a place to the plain part of that place's own answer. Places are counted
+# as they are built (ruling TC), so the place's position, and with it the path its
+# supplier is handed, depends on which clause `@Wide port` took, which reads `port`,
+# which the supplier answers at that path: the place's path reads its own answer
+# (Semantics ch. 4, "Binding groups and cycles": "the order of a group's lines decides
+# positions"; ch. 8, "takes the next number"; ch. 9, "How a supplier answers"). With
+# clauses that each build one place the program is legal
+# (conformance/sem-ch09-host-late-plain-part-taken-above). fix-21's doubt 1. This
+# `.expected` is written by hand. Written by Claude (left-a2, the prismc run),
+# 11 November 2026; subject to change.
+emit Ui.* | Pad.*
+
+tag Pad.Socket of Element ((Nat, !Text, $Nat)):
+    address: Text
+
+@Wide: fn Nat -> @Nat
+fn @Wide 7:
+    Ui.Label($text=$"seven")
+    Ui.Label($text=$"wide")
+    @ 1
+fn @Wide k:
+    Ui.Label($text=$"other")
+    @ 2
+
+@chat: @unit
+@chat:
+    w <- @Wide port
+    ((port, !rx, $peers)) <- Pad.Socket(address="chat:7000")
+    $last <- "none" then !rx
+    Ui.Label($text=$"{port} wide {w} {$peers}: {$last}")
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")
+    $names <- {1: "one"} then Insert $names, 2, "two" on !add
+    $lens <- for k, $name <- $names:
+        Ui.Label($text=$name)
+        @ Len $name
+    ignore <- @HostDocument @chat, \|p, e| match e:
+        Pad.Socket(..): @ ((7, "hello" on !add, Size $lens))
+        otherwise: @Element e
