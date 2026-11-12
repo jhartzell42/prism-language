@@ -28,7 +28,8 @@
 - **`documents/mod.prism`, `Documents`:** the hosting library, for every document.
   - `Response a`, `Stepped s d`; the trait `^Seat r`, a role as a seat type, with `State`,
     `Request`, `Reason`, `Query`, `Told`, `Step`, `Read`.
-  - `Never`, the type with no value; `Seat.Leave`, the library's tag for leaving a seat.
+  - `Seat.Leave`, the library's tag for leaving a seat. `Never`, the type with no value,
+    is Prelude's.
   - `Place`, `Responded`, `Asked`, `Asking`, `AskingAs`; `Notice`, a request brought or a
     seat kicked.
   - `OneATick`, `ByPlace`, `StepTick`: the order of one tick's requests.
@@ -58,11 +59,15 @@
   `Window.Panes`. A program holds one family of a name, and the text participants use the
   prelude's `Ui`.
 - **`tables.prism`, `Tables`:** the seatings.
-- **`tests/documents/tally/`:** the hosting library's second document, a count that
-  tellers add to, keepers clear and viewers watch, with its fifteen tests. It is a program
-  of its own under `tests/`, since it declares tags and impls, which a test module may
-  not, and it exists to be tested; it reads the library as a second source, the way the
-  GUI benchmark reads the basic chess's window library.
+- **`tests/documents/library/`:** the standard library's `Documents` in the design's form
+  of Part IV, chapters 3 to 6: `^Document` with its facts indexed by role, the `Seat d r`
+  family, `^StateDocument` and its default `@InMemory`, `@HostDocument` and `@HostRole`.
+  It joins the standard library in the commit where it checks, and chess then uses it in
+  place of `documents/`.
+- **`tests/documents/tally/`:** that library's test, a count that tellers add to, keepers
+  clear and viewers watch, with its fifteen tests, in the same design form. It is a
+  program of its own under `tests/`, since it declares impls, which a test module may not;
+  it reads the library as a second source.
 
 ## How to run each participant
 
@@ -89,7 +94,7 @@
 - **The text interfaces and the scripts:** `Tables.@hotSeat`, `@foolsMate`, `@castling`,
   `@enPassant`, `@promotion`, `@repetition`, `@bothOpen`, under the Test World
   (`tests.prism`).
-- **The tally:** `./prism test tests/documents/tally examples/chess/documents`.
+- **The tally:** `./prism test tests/documents/tally tests/documents/library`.
 
 ## What today's compiler does with each test
 
@@ -104,16 +109,17 @@
   blueprints (05), the typed fault (30), the constructors over events whose fields are not
   a bare type parameter (25) and the prompt cycle through `@InMemory`'s seats function
   (08, 07) are fixed.
-- **The whole tree:** `./prism check examples/chess` gives four errors, two forms the Type
-  System book refuses as written. Each is a doubt for the owner (below); the tree keeps
-  the design's form. `./prism test examples/chess` stops there, so every test module but
-  the rule book's is not reached, and the back end has not seen the tree.
-  - `game/mod.prism:192`, `Requested (Asking seat, place, !requests)`:
-    ``error[mismatch]: expected `[!t]`, found `[Heard !(Asked ChessGame Player (Responded Player ChessReason))]` ``.
-  - `tables.prism:49`, `{white: (@BoardPlayer white), black: (@LinePlayer black)}`:
-    ``error[mismatch]: expected `@unit emit (Gui.* | Pane.* | Play.* | Seat.*)`, found `@unit emit (Console.* | Play.* | Seat.*)` ``.
-- **The tally:** `./prism check tests/documents/tally examples/chess/documents` gives the
-  first of the two, at `tally.prism:165` and `:188`.
+- **The whole tree:** `./prism check examples/chess` gives two errors, both at
+  `game/mod.prism:192`, `Requested (Asking seat, place, !requests)` (D1, below):
+  ``error[mismatch]: expected `[!t]`, found `[Heard !(Asked ChessGame Player (Responded Player ChessReason))]` ``.
+  `./prism test examples/chess` stops there, so every test module but the rule book's is
+  not reached.
+- **The tally:** `./prism check tests/documents/tally tests/documents/library` stops at
+  the parse: the design's form needs role-indexed associated types (Part VII's C3),
+  families and rows indexed by document and role (C4), an existential over a role
+  (`any r: ...`), the plain host named `@Host` (R1), a widget function applied to its
+  settings only (C5), the prelude taking a path apart (`SeatOf`, `SeatIdOf`,
+  `SeatPathOf`, `Merge`), and maps of blueprints (05).
 - **Doubt D1, a constructor over an event whose field is a bare type parameter.**
   `Requested a` is `Heard`'s case. Type System ch. 4 ("Where the table looks"): "The
   parameter is a type parameter of a constructor: the argument goes in whole, sigils and
@@ -127,22 +133,22 @@
   ch. 5, RM, names row narrowing "subtyping on rows" and refuses it. First ruling
   (Claude's): the book holds; its form is an open row in each participant's signature,
   `emit r | Pane.* | Gui.* | Seat.* | Play.*` (ch. 2's `@Offline`), with which the tree
-  checks clean past D1.
+  checks clean past D1. Chess now declares those open rows (ruling OR).
 
 | Test module | Tests | Today | What it is held to | Waits on |
 |---|---|---|---|---|
 | `rules/tests.prism` | `the_opening`, `a_promotion_is_its_own_move`, `insufficient_material`, `lasting_moves` | passes | `tests.expected`, from a run | nothing |
-| `checks.prism` | `moves_and_turns`, `check_and_mate`, `stalemate`, `castling`, `en_passant`, `promotion`, `resigning_and_draws`, `draws`, `notation` | not reached: four checker errors | `checks.expected`, from a run | D1, D2; the back end has not seen the tree |
-| `checks.prism` | `declined_line` | not reached: four checker errors | expected by the design, not from a run: the fault holds its request, side and reason | D1, D2; the back end has not seen the tree |
-| `terminal_tests.prism` | `fools_mate_at_terminals`, `declined_at_terminals`, `draw_agreed_at_terminals`, `repetition_at_terminals`, `resigning_and_leaving_at_terminals` | not reached: four checker errors | each step's `requested` lines, from a run | D1, D2; the back end has not seen the tree |
-| `tests.prism` | `scholars_mate`, `illegal_move_declined`, `out_of_turn_declined`, `resignation`, `draw_by_agreement`, `spectator_joins_and_leaves`, `resign_and_leave` | not reached: four checker errors | its `expect` lines, from a run | D1, D2; the back end has not seen the tree |
-| `tests.prism` | `castling`, `en_passant`, `promotion`, `draw_by_repetition` | not reached: four checker errors | its `expect` lines, from a run | D1, D2; the back end has not seen the tree |
-| `tests.prism` | `spectator_sees_each_move`, `both_players_ask_in_one_tick` | not reached: four checker errors | expected by the design, not from a run: a scripted player asks a tick after the build, one tick sooner than under today's forms | D1, D2; the back end has not seen the tree |
-| `board_tests.prism` | `boards_show_the_opening`, `fools_mate_on_two_boards`, `declined_on_a_board`, `back_and_forward`, `promotion_dialog`, `draw_by_buttons`, `board_against_a_terminal` | not reached: four checker errors | its `expect` lines, from a run | D1, D2; the back end has not seen the tree |
-| `board_tests.prism` | `boards_with_a_terminal_watching` | not reached: four checker errors | its steps, from a run with the terminal's seat beside the window | D1, D2; the back end has not seen the tree |
-| `tests/documents/tally/tests.prism` | `accepted`, `declined`, `wrong_turn`, `viewer_sees`, `join_and_leave`, `keeper_clears`, `two_requests_in_one_tick`, `three_requests_in_one_tick`, `two_roles_in_one_tick`, `own_order`, `request_and_leave`, `unremoved_seat_request_lands`, `removed_seat_request_dropped`, `removed_seat_waiting_request`, `sitting_changes` | not reached: two checker errors | its `expect` lines, from a run | D1 |
+| `checks.prism` | `moves_and_turns`, `check_and_mate`, `stalemate`, `castling`, `en_passant`, `promotion`, `resigning_and_draws`, `draws`, `notation` | not reached: two checker errors | `checks.expected`, from a run | D1 |
+| `checks.prism` | `declined_line` | not reached: two checker errors | expected by the design, not from a run: the fault holds its request, side and reason | D1 |
+| `terminal_tests.prism` | `fools_mate_at_terminals`, `declined_at_terminals`, `draw_agreed_at_terminals`, `repetition_at_terminals`, `resigning_and_leaving_at_terminals` | not reached: two checker errors | each step's `requested` lines, from a run | D1 |
+| `tests.prism` | `scholars_mate`, `illegal_move_declined`, `out_of_turn_declined`, `resignation`, `draw_by_agreement`, `spectator_joins_and_leaves`, `resign_and_leave` | not reached: two checker errors | its `expect` lines, from a run | D1 |
+| `tests.prism` | `castling`, `en_passant`, `promotion`, `draw_by_repetition` | not reached: two checker errors | its `expect` lines, from a run | D1 |
+| `tests.prism` | `spectator_sees_each_move`, `both_players_ask_in_one_tick` | not reached: two checker errors | expected by the design, not from a run: a scripted player asks a tick after the build, one tick sooner than under today's forms | D1 |
+| `board_tests.prism` | `boards_show_the_opening`, `fools_mate_on_two_boards`, `declined_on_a_board`, `back_and_forward`, `promotion_dialog`, `draw_by_buttons`, `board_against_a_terminal` | not reached: two checker errors | its `expect` lines, from a run | D1 |
+| `board_tests.prism` | `boards_with_a_terminal_watching` | not reached: two checker errors | its steps, from a run with the terminal's seat beside the window | D1 |
+| `tests/documents/tally/tests.prism` | `accepted`, `declined`, `wrong_turn`, `viewer_sees`, `join_and_leave`, `keeper_clears`, `two_requests_in_one_tick`, `three_requests_in_one_tick`, `two_roles_in_one_tick`, `own_order`, `request_and_leave`, `unremoved_seat_request_lands`, `removed_seat_request_dropped`, `removed_seat_waiting_request`, `sitting_changes` | not reached: parse errors in the design's form | its `expect` lines, from a run of today's form | C3, C4, `any r`, R1, C5, `SeatOf` and `Merge`, 05 |
 
-- **Counts:** 4 `check` blocks pass today; 10 `check` blocks and 41 tests wait on D1 and D2.
+- **Counts:** 4 `check` blocks pass today; 10 `check` blocks and 26 tests wait on D1; the tally's 15 tests wait on the design form's compiler steps.
 - **Kept transcripts:** `rules/tests.expected` and `checks.expected`. A test with ticks
   has none: the transcripts of the version that runs are 111,600 bytes for the text and
   terminal tests and 4.2 MB for the boards, over the 10 KB a kept transcript may be
@@ -156,7 +162,7 @@
 ## Using it as a target
 
 - **Green is:** `./prism test examples/chess` and
-  `./prism test tests/documents/tally examples/chess/documents` both `ok`, with no line of
+  `./prism test tests/documents/tally tests/documents/library` both `ok`, with no line of
   either tree changed.
 - **A smaller step first:** each bug's own program is in the evidence's `bugs/` directory;
   the forms below say where this example uses each.
@@ -165,7 +171,7 @@
 
 ## Each form and what it waits on
 
-- **29 A choice with no case cannot be written.** `type Never = choice:` in `Documents`; a
+- **29 A choice with no case cannot be written.** Prelude's `type Never = choice:`; a
   spectator's and a viewer's `Request` and `Reason` are `Never`, and their `Step` is
   `match request:` with no arm.
 - **30 A fault tag with fields is refused.** `Line.Declined(request, by, reason)` in
