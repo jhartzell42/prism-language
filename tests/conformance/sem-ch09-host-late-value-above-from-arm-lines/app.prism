@@ -1,0 +1,43 @@
+# conformance/sem-ch04-late-value-above-clause-widget-result-from-arm-lines in a hosted
+# scope: a widget of several clauses with a plain result applied, above the line that
+# gives it, to a building `match`'s late plain result, where the arm gives that result
+# from what its own lines build; the hosted child's places are the host's document's
+# entries at the child's own paths (Semantics ch. 4, "Binding groups and cycles": "the
+# order of a group's lines decides positions and nothing else"; ch. 8: `<-` builds the
+# child and binds its plain result; ch. 9: a host re-emits each forwarded place of its
+# child under its own place, keyed by the child's path; ruling TC). Nothing here is a
+# cycle.
+# Written by Claude (fin-b4, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Wide: fn Nat -> @Nat
+fn @Wide 10:
+    Ui.Label($text=$"ten")
+    @ 1
+fn @Wide k:
+    @ 2
+
+@Inner: fn Mode, $Nat -> @unit
+fn @Inner mode, $k:
+    w <- @Wide n                                                       # 0 when n is 10
+    Ui.Label($text=$"wide {w}")                                        # 1, or 0
+    n <- match mode:
+        Loud t:
+            Ui.Label($text=$"{t} {$k}")                                # 2
+            v <- @Wide 10                                              # 3
+            @ v + 9
+        Soft:
+            @ 20
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    !add <- Ui.Button($label=$"add")                                   # 0
+    $k <- 0 then $k + 1 on !add
+    ignore <- @HostDocument (@Inner mode, $k), \|p, e| @Element e      # 1/[p]/0
