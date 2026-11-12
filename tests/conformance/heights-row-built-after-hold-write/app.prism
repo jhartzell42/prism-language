@@ -1,0 +1,35 @@
+# A `for` row built after its block wrote a hold the row hears: the row's merge of a
+# block's event with `!Updated` of that hold decides once in a tick, after both
+# (Semantics ch. 7: "double firings never"; a merge fires once in a tick). The hold is
+# written by an event of a blueprint value's node, two combinators on from the click, so
+# its height is known at the wiring only; the row "b" comes at the second click, after
+# the hold's write took that height. Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Counter: fn !Click -> @!Nat
+fn @Counter !bump:
+    $count <- 0 then $count + 1 on !bump
+    $shown <- 0 then !Updated $count
+    @ (!Updated $shown)
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@page: @unit
+@page:
+    !bump <- Ui.Button($label=$"bump")                           # 0
+    !grow <- Ui.Button($label=$"grow")                           # 1
+    $names <- {"a": unit} then (Insert $names, "b", unit) on !grow
+    match ?Pick True, (@Counter !bump):                          # 2
+        ? @!t:
+            !counted <- @!t
+            $total <- 0 then !counted
+            for k, ignore <- $names:                             # 2/[k]
+                let !both = (100 on !bump) <| !Updated $total
+                $firings <- 0 then $firings + 1 on !both
+                $last <- 0 then !both
+                Ui.Label($text=$"{k} {$firings}: {$last}")       # 2/[k]/0
+        nil: Ui.Label($text=$"none")

@@ -1,0 +1,31 @@
+# An existential of a program's trait one of whose methods cannot be asked of a packed
+# value (ruling EX: "Each packed value keeps its own dictionary"; a method that needs one
+# dictionary for a collection of the trait's type cannot be called on `any ^Trait`, and
+# only that call is the error: packing is legal, and the trait's other methods are asked).
+# `Total` takes `[a]`; nothing asks it of a hidden value, `Weigh` is asked of two.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+trait ^Weighed a:
+    Weigh: fn a -> Nat
+    Total: fn [a] -> Nat
+
+impl ^Weighed Nat:
+    fn Weigh n = n
+    fn Total ns = Fold ns, 0, \|sum, n| sum + n
+
+impl ^Weighed Text:
+    fn Weigh t = Len t
+    fn Total ts = Fold ts, 0, \|sum, t| sum + Len t
+
+Hide: fn Nat -> any ^Weighed
+fn Hide n = any n
+
+HideText: fn Text -> any ^Weighed
+fn HideText t = any t
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Weigh (Hide 3)} {Weigh (HideText "ab")} {Total [[1, 2]]}")      # 0

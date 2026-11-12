@@ -1,0 +1,5 @@
+tests/checker/neg/borrow-overlap-read-in-for.prism:13: error[borrow-overlap]: `&_.stoppage` is lent to the `for`
+        &s += Len &_.stoppage
+                  ^^^^^^^^^^^
+  fix: read it before the loop with a `let`, or loop over a copy
+1 error

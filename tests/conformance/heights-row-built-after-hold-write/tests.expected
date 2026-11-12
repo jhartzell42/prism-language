@@ -1,0 +1,27 @@
+# Derived by hand from Semantics ch. 7 ("double firings never"; a merge fires once in a tick, the left's value when both fire) and R3 (`!Updated` of a hold fires in the tick of its step, with the value after the tick): each click of "bump" reaches the hold `$total` in the click's own tick, so each row's merge hears both of its inputs and fires once, 100. Never run green.
+test late_row_one_firing
+
+tick 0
+  added:
+    0: Ui.Button(label="bump")
+    1: Ui.Button(label="grow")
+    2/["a"]/0: Ui.Label(text="a 0: 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2/["a"]/0: Ui.Label(text="a 1: 100")
+
+tick 2
+  in:
+    1: click
+  added:
+    2/["b"]/0: Ui.Label(text="b 0: 0")
+
+tick 3
+  in:
+    0: click
+  changed:
+    2/["a"]/0: Ui.Label(text="a 2: 100")
+    2/["b"]/0: Ui.Label(text="b 1: 100")
