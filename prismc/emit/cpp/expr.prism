@@ -293,10 +293,13 @@ fn AsValue cp, r = match ?Pointer cp, r:
     otherwise: "::prism_rtl::deref({CppPlace cp, r})"
 
 # The model's type of an expression, where the printer knows it: a local the scope typed
-# (`localTypes`), a field of the node or job being printed, and a `*` or `&` of one.
+# (`localTypes`), a field of the node or job being printed, a `*` or `&` of one, and a
+# `match` (which carries its type).
 ?ExTy: fn Cp, Ex -> ?OutTy
 fn ?ExTy cp, x = match x:
     XVar n: cp.localTypes[n]
+    XMatch ignore, ignore, ignore, t: ? t
+    XChain ignore, ignore, ignore, t: ? t
     XField XSelf, f: cp.fields[f]
     XField (XVar "node"), f: cp.fields[f]
     XRef y: match ?ExTy cp, y:
@@ -344,8 +347,8 @@ CppRecordAs: unbounded fn Cp, Ref, [((Text, Ex))], Text -> Text
 fn CppRecordAs cp, p, fs, head = match ?TypeOf cp, p:
     ? info:
         # every field the type declares is given: one the model leaves out is a prismc bug
-        let given = Each fs, \|((g, ignore))| g
-        let missing = Filter info.fields, \|f| not (InList given, f)
+        let fieldsGiven = Each fs, \|((g, ignore))| g
+        let missing = Filter info.fields, \|f| not (InList fieldsGiven, f)
         if (Len missing) > 0: PrinterRefusal "a record of {RefSpelled p} without its field {Join missing, ", "}"
         else:
             let ordered = Each info.fields, \|f| Or (Fold fs, nil, \|?found, ((g, v))| if g == f: ? v else: ?found), XUnit
@@ -724,6 +727,13 @@ IsCtor: fn Ex, Text -> Bool
 fn IsCtor (XCtor (RefRuntime p), ignore), c = (Bare p) == c
 fn IsCtor x, c = False
 
+# The value a body gives as its success: `Ok(v)`, or a block that ends in one.
+?OkOf: fn Ex -> ?Ex
+fn ?OkOf x = match x:
+    XCtor (RefRuntime "std::Ok"), [[v]]: ? v
+    XBlock ignore, tail: ?OkOf tail
+    otherwise: nil
+
 # The failure a branch gives: `Err(y)`, or a block that ends in one.
 ?ErrOf: fn Ex -> ?Ex
 fn ?ErrOf x = match x:
@@ -758,10 +768,17 @@ fn CppClosure cp0, mv, ps, body:
     let b = CppExpr cp, body
     let moved = if mv: Filter cp0.moveCaptures, \|n| (Or cp0.owned[n], False) and (not (InList names, n)) and ExReads body, n else: [[]]
     let capture = Join (Append [[(if mv: "=" else: "&")]], (Each moved, \|n| "{VarName cp0, n} = ::std::move({VarName cp0, n})")), ", "
+    # a closure giving `Ok(v)` of a type the printer knows says its `Result` type: a `?`
+    # inside returns the failure, which C++ would otherwise deduce as another type
     let ((ret, value)) = match body:
         XRef ignore: ((" -> decltype(auto)", "({b})"))
         XRefMut ignore: ((" -> decltype(auto)", "({b})"))
-        otherwise: (("", b))
+        otherwise: match ?OkOf body:
+            ? XUnit: ((" -> ::prism_rtl::Done", b))
+            ? v: match ?ExTy cp, v:
+                ? t: ((" -> crate::prelude::Result<{CppType cp, t}>", b))
+                nil: (("", b))
+            nil: (("", b))
     if binds == "" and not (Contains b, "\n"): "[{capture}]({params}){ret} \{ return {value}; \}"
     else: Lambda capture, "{params}){ret}", "{binds}return {value};"
 

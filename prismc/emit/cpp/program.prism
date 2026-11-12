@@ -358,9 +358,10 @@ fn Declared done, d = match done[d]:
     ? b: b
     nil: True
 
-# A node's `Cell` field is `mutable`: the model sets one through a shared reference (a
-# generation's `left`, set as its places are torn down, `remove_places`), as Rust's `Cell`
-# allows.
+# A node's `Cell` or `RefCell` field is `mutable`: the model sets one through a shared
+# reference (a generation's `left`, set as its places are torn down, `remove_places`; the
+# port of an event value a row subscribed to, taken as it leaves), as Rust's cells allow.
 MutableOf: fn OutTy -> Text
 fn MutableOf (OutNamed (RefRuntime "std::Cell"), ignore) = "mutable "
+fn MutableOf (OutCell ignore) = "mutable "
 fn MutableOf other = ""

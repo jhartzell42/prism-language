@@ -388,6 +388,12 @@ public:
     }
     /// Subscribe with the subscriber's height twin: the twin is told the port's height at
     /// once, and again each time the port is raised.
+    /// Any callable `Done(const T&, Cx&)`, with its height twin.
+    template <class F>
+        requires std::is_invocable_r_v<Done, F, const T&, Cx&>
+    Handle subscribe_above(F&& f, Above above) {
+        return subscribe_above(make_rc<const std::function<Done(const T&, Cx&)>>(std::forward<F>(f)), std::move(above));
+    }
     Handle subscribe_above(Subscriber<T> f, Above above) {
         Handle h = subscribe(std::move(f));
         if (above_.size() <= h.index) above_.resize(h.index + 1);

@@ -410,8 +410,9 @@ fn AppliedBlueprintLine wx, e, blueprint:
 # the blueprint's answer comes at. Written before the sink, which takes `heard_by`.
 OutputAbove: fn Text -> Ex
 fn OutputAbove name:
-    let up = DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "block"]]), (XUpgrade (XVar "heard_by")), [[(AboveCall (XVar "block"), "{name}_up", (XVar "h"))]], [[]]
-    XBlock [[(DoLet (PaBind "heard_by"), (XClone (XVar "heard_by")))]], (XClosure True, [[(PaBind "h")]], (XBlock [[up]], XUnit))
+    # (the closure's copy of `heard_by` is `heard_byx`: no let rebinds a name from itself)
+    let up = DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "block"]]), (XUpgrade (XVar "heard_byx")), [[(AboveCall (XVar "block"), "{name}_up", (XVar "h"))]], [[]]
+    XBlock [[(DoLet (PaBind "heard_byx"), (XClone (XVar "heard_by")))]], (XClosure True, [[(PaBind "h")]], (XBlock [[up]], XUnit))
 
 OutputSink: unbounded fn Lx, Text, OutTy -> Ex
 fn OutputSink lx, name, t:
@@ -502,9 +503,9 @@ fn AppliedPart wx, name, t, read, whole, place = match t:
                 let ((upId, w1)) = AddGn wx, "{part}_fired", et, GnNamed, 0
                 let w2 = update w1:
                     &_.getters <= Push (Push &_.getters, (GenUp part, (GnOf w1, upId).name, (GnOf w1, upId).ty)), (GenUpAbove part, (GnOf w1, upId).name)
-                let up = DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "block"]]), (XUpgrade (XVar "heard_by")), [[(DoExpr (XMethod (XVar "block"), "{part}_up", [[(XClone (XVar "fired")), XCx]]))]], [[]]
+                let up = DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "block"]]), (XUpgrade (XVar "heard_byy")), [[(DoExpr (XMethod (XVar "block"), "{part}_up", [[(XClone (XVar "fired")), XCx]]))]], [[]]
                 let hear = XClosure True, [[(PaBind "fired"), (PaBind "cx")]], (XBlock [[up]], (XCtor (RefRuntime "std::Ok"), [[XUnit]]))
-                let heard = DoExpr (XBlock [[(DoLet (PaBind "heard_by"), (XClone (XVar "heard_by")))]], (XCall (HelperRef "hear_part"), [[(XRef whole), (OutputAbove part), hear]]))
+                let heard = DoExpr (XBlock [[(DoLet (PaBind "heard_byy"), (XClone (XVar "heard_by")))]], (XCall (HelperRef "hear_part"), [[(XRef whole), (OutputAbove part), hear]]))
                 ((w2, (WrEv (EvRefOf w2, upId)), [[heard]]))
             # a dynamic part: kept, and its update event followed
             LyDyn:
