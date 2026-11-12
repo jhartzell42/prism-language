@@ -1,0 +1,20 @@
+# Written by Claude (host-4, the prismc run), 11 November 2026; subject to change.
+# `prompt-cycle`: a row's result is its hold `$seen`; the hold steps on `!step`, a line of
+# the row the result does not name, and `!step` merges `!Updated $total`, the update event
+# of a dynamic lifted over the `for`'s own gathered `$rows`. A hold's update fires in the
+# tick of its step (Semantics R3: a dynamic's update event fires at n with the value after
+# n), so a press would step `$seen`, update `$rows` and `$total`, fire `!step` and step
+# `$seen` again in one tick (Semantics ch. 7, "There are no cycles": a `for`'s
+# consolidation and lifting over dynamics are prompt edges).
+emit Ui.*
+
+@host: @unit
+@host:
+    let $names = $ {"a": unit, "b": unit}
+    $rows <- for k, ignore <- $names:                             # 0/[k]
+        !press <- Ui.Button($label=$"{k}")                         # 0/[k]/0
+        let !step = (1 on !press) <| !Updated $total
+        $seen <- 0 then $seen + 1 on !step
+        @ $seen
+    let $total = Fold (Values $rows), 0, \|sum, n| sum + n
+    Ui.Label($text=$"{$total}")                                    # 1
