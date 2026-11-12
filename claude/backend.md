@@ -61,7 +61,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   struct.
 - A choice with no case (`type Never = choice:`) → an `enum` with no variant; its derived
   impls match `*self` with no arm, and a `match` with no arm over a value of it is
-  `match *x {}`, which rustc takes over the value and never over a reference. In C++
+  `match *x {}`, which rustc takes over the value and never over a reference. A
+  building `match` with no arm in a widget block, its result unit or plain, builds
+  nothing: no row, no generation, no place counted, and a plain result is the empty
+  `match` of the scrutinee as the build has it (`NoArmLine`;
+  sem-ch04-building-match-no-arm). In C++
   the choice's variant holds the runtime's `NoCase`, which nothing makes, and the
   `match` is its unreachable tail.
 - `?a` → `Option<A>`; `~a` → `Result<A, rt::Error>`; `((a, b))` → `(A, B)`; `[[a]]` →
@@ -1415,6 +1419,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   sem-ch09-host-above-for-doc-read-between). A builder's `$`
   result is prebound as a getter of the node (`GivesResult`, `ResultGetter`), which a
   line above the builder reads.
+  A `rebuild` that hands back a dynamic is such a builder (`GivesDynamic`): its name is
+  the getter over the `rebuild`'s structural dynamic, so a place above it reads it and
+  `!Updated` of it there hears its publication
+  (sem-ch04-rebuild-dynamic-read-above, sem-ch07-updated-rebuild-dynamic-above). A
+  generation that ends on a host's line gives the host's bundle, the child's result
+  and the child's document as one value of the generation (`GenRowOf`;
+  sem-ch04-rebuild-ends-on-host).
   A bundle tag's plain part beside a `$` part (`((port, !rx, $peers)) <- Pad.Socket(..)`)
   is a late name there (`LatePlaceParts`, `{name}#late`, `{name}#lateplace`): its hold
   is a `Hold<Option<T>>` too, set once where the place asks (`LatePlainPart`) and read
