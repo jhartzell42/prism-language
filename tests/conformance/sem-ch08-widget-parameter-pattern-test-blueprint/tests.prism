@@ -1,0 +1,9 @@
+# The tests of sem-ch08-widget-parameter-pattern-test-blueprint.
+emit Ui.*
+use App.*
+
+test many, @Page (("ada", 3)):
+    build
+
+test few, @Page (("bo", 1)):
+    build
