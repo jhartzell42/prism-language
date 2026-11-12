@@ -1,0 +1,6 @@
+# The tests of ts-ch03-existential-associated-type.
+emit Ui.*
+use App.*
+
+test a_trait_with_an_associated_type_is_packed, @page:
+    build
