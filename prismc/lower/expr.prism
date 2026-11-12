@@ -2941,7 +2941,7 @@ fn PlainLambda lx, env, ps, body, ft:
         OutQuantified b: Each ps, \|ignore| OutQuantified b
         otherwise: [[]]
     let ((dos, env1)) = LambdaCaptures env, (WithInstances env, (LambdaReads ps, body))
-    let ((pas, env2)) = ClosureParams lx, env1, ps, pts, True
+    let ((pas, env2)) = ClosureParams (WholeLambda lx, pts), env1, ps, pts, True
     let v = LambdaBodyValue (WholeLambda lx, pts), env2, body
     # Cast to its function type, so that two lambdas meet where one type is wanted (an
     # array's elements, an `if`'s or a `match`'s arms), each a closure type of its own.
@@ -3091,7 +3091,7 @@ fn CondAsLet (CcIf x) = DoExpr (XUnit)
 # A lambda passed to a parameter: a borrowed closure, its types from the parameter.
 LambdaArg: unbounded fn Lx, Env, [Pattern], LambdaBody, [OutTy] -> Ex
 fn LambdaArg lx, env, ps, body, pts:
-    let ((pas, env2)) = ClosureParams lx, env, ps, pts, (Len pts) > 0
+    let ((pas, env2)) = ClosureParams (WholeLambda lx, pts), env, ps, pts, (Len pts) > 0
     let v = LambdaBodyValue (WholeLambda lx, pts), env2, body
     XClosure False, pas, (Own v)
 
