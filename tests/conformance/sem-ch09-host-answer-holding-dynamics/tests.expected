@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 9 (the supplier answers the asking place, building nothing for it; a forwarding host's place for its child's place p is pos/[p]/0): the answer holds one dynamic, so the child's label says 1. Never run: rustc refuses prismc's output.
+test answered
+
+tick 0
+  added:
+    0/[1]/0: Ui.Label(text="asked 1")

@@ -1,0 +1,6 @@
+# The tests of sem-ch09-host-answer-holding-dynamics.
+emit Ui.*
+use App.*
+
+test answered, @Page:
+    build
