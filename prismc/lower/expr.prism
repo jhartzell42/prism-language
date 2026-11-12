@@ -1497,7 +1497,16 @@ fn OpenWidgetValueWords lx, qk = match EnclosingOutput lx:
     EndlessByName: "{internalBug}the generic widget function {BareName qk} as a value in {lx.inDefinition}, which reaches itself by name at types that grow without end: the checker refuses such a definition (`grows-without-end`)"
     # the checker's `grows-without-end` through an impl or an associated type
     EndlessThroughImpl: "{internalBug}the generic widget function {BareName qk} as a value in {lx.inDefinition}, which reaches itself through a constraint an impl solves or an associated type, three times at types that each hold the earlier ones: the checker refuses a definition that grows so (`grows-without-end`)"
-    UndecidedParameter: "the generic widget function {BareName qk} as a value in {lx.inDefinition}, given a type parameter of that definition: its rows are made for each set of types the program gives the definition, and a use of it leaves a type parameter undecided"
+    # (class G: `?UseTargets` gives no answer only where a use's types still name a type
+    # parameter once the types of the user's instantiation are put in. `AddTargets` is
+    # given an instantiation's types, which `?ClosedTypes` made for every type parameter
+    # of the user's signature (`RigidsIn`), a method's own ones beside its impl's
+    # (`MethodOwnRigids`); a type the checker left open at a use (`Frame [[]]`) is a
+    # variable, no type parameter, and is taken as it is; a local generic function's or
+    # a generalized `let`'s own variable is not one either (its uses meet `OutQuantified`
+    # first, sem-ch08-widget-value-generic-through-local-function). Probes ud1-ud4 of
+    # the sweeps, claude/refusals.md)
+    UndecidedParameter: "{internalBug}the generic widget function {BareName qk} as a value in {lx.inDefinition}, given a type parameter of that definition, where a use of that definition leaves one of its type parameters undecided: every instantiation's types are closed (`?ClosedTypes`), so no use's types name a type parameter once they are put in"
 
 WidgetValueWords: fn Text -> Text
 fn WidgetValueWords qk = "the widget function {BareName qk} as a value: a blueprint value is a supplier's answer that builds no place (`@ x`, `@Element e`, a `match` of them); one with places is a widget-function blueprint as an answer (pick HO)"
