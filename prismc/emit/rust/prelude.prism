@@ -1267,7 +1267,7 @@ pub fn subscribe_row<N: Node, P, T: Clone + 'static>(node: &Rc<N>, parent: Optio
 /// A row's subscription to an event value's own port, undone when the row leaves
 /// (claude/backend.md, `SubscribedValue`): the port kept beside the handle, both taken, so
 /// a second leaving does nothing.
-pub fn unsubscribe_value<T>(port: &::std::cell::RefCell<Option<Rc<Port<T>>>>, slot: &::std::cell::Cell<Option<Handle>>) {
+pub fn unsubscribe_value<T: Clone + 'static>(port: &::std::cell::RefCell<Option<Rc<Port<T>>>>, slot: &::std::cell::Cell<Option<Handle>>) {
     let held = port.borrow_mut().take();
     if let (Some(p), Some(h)) = (held, slot.take()) {
         p.unsubscribe(h);
