@@ -1,4 +1,4 @@
-# The tests of host-bug-33-gate-in-plain-function.
+# The tests of ts-ch04-gate-in-plain-function.
 emit Ui.*
 use App.*
 use Ui.*

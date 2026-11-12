@@ -1,4 +1,4 @@
-# The tests of host-bug-32-except-in-plain-function.
+# The tests of ts-ch04-except-in-plain-function.
 emit Ui.*
 use App.*
 use Ui.*

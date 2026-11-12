@@ -290,7 +290,7 @@ using Above = Rc<const std::function<void(std::uint32_t)>>;
 /// (Graph ch. 4, "Heights"; Semantics ch. 7: double firings never).
 class Heights {
 public:
-    explicit Heights(std::vector<std::uint32_t> distances) : at_(std::move(distances)) {}
+    explicit Heights(std::vector<std::uint32_t> distances) : at_(std::move(distances)), walking_(at_.size(), false) {}
     std::uint32_t of(std::size_t combinator) const { return at_[combinator]; }
     /// A source at global height `h` reaches `combinator`: it sits above it. Gives the
     /// combinator's new height when it moved.
@@ -300,6 +300,19 @@ public:
         if (h >= (1u << 20)) throw std::logic_error("a prismc bug: a combinator's height does not settle (a prompt cycle across nodes)");
         at_[combinator] = h + 1;
         return h + 1;
+    }
+    /// `above`, and when the combinator moved, `tell` its new height on (the combinator's
+    /// own twin). The combinator is walking until `tell` returns: a source that reaches it
+    /// and moves it meanwhile was reached from the combinator itself, a prompt cycle
+    /// across nodes, which the checker refuses.
+    template <class Tell>
+    void raise(std::size_t combinator, std::uint32_t h, Tell tell) {
+        auto moved = above(combinator, h);
+        if (!moved) return;
+        if (walking_[combinator]) throw std::logic_error("a prismc bug: a combinator sits above itself (a prompt cycle across nodes)");
+        walking_[combinator] = true;
+        tell(*moved);
+        walking_[combinator] = false;
     }
     /// An input of `combinator` fired: its wake is asked at its height.
     void ask(std::size_t combinator, Cx& cx, NodeRef node) {
@@ -326,6 +339,7 @@ public:
 private:
     std::vector<std::uint32_t> at_;
     std::set<std::pair<std::uint32_t, std::size_t>> asked_;
+    std::vector<bool> walking_;
 };
 
 /// How much an output is wanted (Graph ch. 4, "Demand"). Tags are a behavior's, and the

@@ -1,0 +1,19 @@
+# Derived by hand from Semantics ch. 7 ("double firings never"; a merge fires once in a tick, the left's value when both fire; R3: each `!Updated` fires in the tick of the write behind it, with the value after the tick; the change law for the mapped dynamic): each click reaches the widget's result in the click's own tick, the function's event fires there with the result plus one, and the merge fires once, 100. Never run green.
+test both_inputs_one_firing
+
+tick 0
+  added:
+    0: Ui.Button(label="bump")
+    1: Ui.Label(text="0: 0 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1: 100 2")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="2: 100 3")

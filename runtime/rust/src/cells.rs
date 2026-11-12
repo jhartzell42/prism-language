@@ -335,12 +335,15 @@ const HEIGHT_LIMIT: u32 = 1 << 20;
 pub struct Heights {
     at: RefCell<Vec<u32>>,
     asked: RefCell<std::collections::BTreeSet<(u32, usize)>>,
+    /// The combinators whose own twin is telling their new height on (`raise`).
+    walking: RefCell<Vec<bool>>,
 }
 
 impl Heights {
     /// The combinators at their distances inside the node, in the node's order.
     pub fn new(distances: Vec<u32>) -> Heights {
-        Heights { at: RefCell::new(distances), asked: RefCell::new(std::collections::BTreeSet::new()) }
+        let walking = vec![false; distances.len()];
+        Heights { at: RefCell::new(distances), asked: RefCell::new(std::collections::BTreeSet::new()), walking: RefCell::new(walking) }
     }
     /// The global height of the node's `combinator`.
     pub fn of(&self, combinator: usize) -> u32 {
@@ -356,6 +359,19 @@ impl Heights {
         assert!(h < HEIGHT_LIMIT, "a prismc bug: a combinator's height does not settle (a prompt cycle across nodes)");
         at[combinator] = h + 1;
         Some(h + 1)
+    }
+    /// `above`, and when the combinator moved, `tell` its new height on (the combinator's
+    /// own twin). The combinator is walking until `tell` returns: a source that reaches it
+    /// and moves it meanwhile was reached from the combinator itself, a prompt cycle
+    /// across nodes, which the checker refuses. The panic comes at the first turn of the
+    /// cycle, before the stack runs out.
+    pub fn raise(&self, combinator: usize, h: u32, tell: impl FnOnce(u32)) {
+        if let Some(moved) = self.above(combinator, h) {
+            let was_walking = std::mem::replace(&mut self.walking.borrow_mut()[combinator], true);
+            assert!(!was_walking, "a prismc bug: a combinator sits above itself (a prompt cycle across nodes)");
+            tell(moved);
+            self.walking.borrow_mut()[combinator] = false;
+        }
     }
     /// An input of `combinator` fired: its wake is asked at its height.
     pub fn ask(&self, combinator: usize, cx: &mut Cx, node: Rc<dyn crate::cx::Node>) {

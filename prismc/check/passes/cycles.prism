@@ -57,7 +57,9 @@ fn IsDelayedWidget n = HasText [["@Defer", "@Later", "@Run", "@Machine", "@start
 
 # A cycle of prompt edges among a widget block's bindings is `prompt-cycle`, naming its
 # bindings in order. A hold's value is delayed; a sample is delayed; a `rebuild`'s
-# generation is built at the end of the tick.
+# generation is built at the end of the tick. A hold's update event is not delayed: a loop
+# of `let`s and holds through `!Updated` of a hold back to the hold's step is a cycle
+# (`UpdateEdges`).
 BlockPromptCycles: unbounded fn Env, St, Block -> St
 fn BlockPromptCycles env, st, b:
     let defs = Fold b.stmts, [[]], \|acc, s| Append acc, (StmtDefs s)
@@ -70,7 +72,13 @@ fn BlockPromptCycles env, st, b:
         else:
             let cxu = update cx:
                 &_.supplied <= supplied
-            FindCycle defs, (Fold b.stmts, [[]], \|acc, s| Append acc, (PromptEdges env, st, cxu, s, defs))
+            let found = FindCycle defs, (Fold b.stmts, [[]], \|acc, s| Append acc, (PromptEdges env, st, cxu, s, defs))
+            if (Len found) > 0: found
+            else:
+                # a loop through `!Updated` made of `let`s and holds alone
+                # (`UpdateEdges`): it names the dynamics, in the order the block binds them
+                let through = FindCycle (Append defs, (Each defs, \|n| UpdateNode n)), (Fold b.stmts, [[]], \|acc, s| Append acc, (UpdateEdges env, st, cxu, s, defs))
+                Filter defs, \|n| (HasText through, n) or HasText through, (UpdateNode n)
     if (Len cyc) == 0: st
     else:
         let span = Fold b.stmts, b.span, \|sp, s| if HasText (StmtDefs s), (Or cyc[0], ""): s.span else: sp
@@ -95,6 +103,79 @@ fn PromptEdges env, st, cx, s, defs = match s.kind:
             nil: acc
         Edges names, (Filter (PromptReads cx, e, defs), \|n| ReadIsPrompt env, st, n, layer)
     otherwise: [[]]
+
+# A dynamic's update event as a node of its own beside the dynamic's name (Semantics ch.
+# 7, "A dynamic is a sample and an update event"): the name is the value, which a hold
+# delays; the update event of a hold fires in the tick of its step (R3), so it is prompt
+# in what the step reads as an event.
+UpdateNode: fn Text -> Text
+fn UpdateNode n = "^{n}"
+
+# The sigil on top of a block's name's type; none for a name that is not the block's.
+LocalHead: unbounded fn Env, St, Text -> Text
+fn LocalHead env, st, n = match env.locals[n]:
+    ? sc: HeadSigil st, sc.ty
+    nil: ""
+
+# The edges of the second walk, which finds a loop through `!Updated` made of `let`s and
+# holds alone: a `let`'s own prompt edges (`PromptEdges`); from a name whose right side
+# reads `!Updated` of a dynamic to that dynamic's update; from a hold's update to the
+# events its step reads and to the updates its step reads under `!Updated`; from the
+# update of a `let`'s dynamic to the updates of the dynamics it is lifted over (the change
+# law) and to the events it reads. A hold's own name keeps no edge: its value is delayed.
+# A widget's, a `for`'s or a place's line gives this walk no edge: what such a line gives
+# is prompt in what it reads only by the worst the checker assumes, and a loop through
+# `!Updated` and a host is delayed by the host's computed answer (Semantics ch. 9), which
+# the check does not see through a function parameter (the hosting library's
+# `let !responses = !Updated $responded` beside `!arrived <- HostSeats $state,
+# !responses`). So this walk refuses no loop that crosses such a line.
+UpdateEdges: unbounded fn Env, St, PCx, Stmt, [Text] -> [((Text, Text))]
+fn UpdateEdges env, st, cx, s, defs = match s.kind:
+    SBind p, ignore, (? step):
+        let ups = Each (PatternNames p), \|n| UpdateNode n
+        let events = Filter (PromptReads cx, step, defs), \|n| ReadIsPrompt env, st, n, "!"
+        Edges ups, (Append events, (Each (UpdatedReads cx, step, defs), \|n| UpdateNode n))
+    SLet p, ignore, e:
+        let names = PatternNames p
+        let entered = Edges names, (Each (UpdatedReads cx, e, defs), \|n| UpdateNode n)
+        let ups = Each (Filter names, \|n| (LocalHead env, st, n) == "$"), \|n| UpdateNode n
+        Append (Append (PromptEdges env, st, cx, s, defs), entered), (Edges ups, (UpdateTargets env, st, (PromptReads cx, e, defs)))
+    otherwise: [[]]
+
+# What a dynamic's update is prompt in, of the names its right side reads: the update of
+# each dynamic, and each event and blueprint as it is.
+UpdateTargets: unbounded fn Env, St, [Text] -> [Text]
+fn UpdateTargets env, st, reads = Fold reads, [[]], \|acc, n|
+    let h = LocalHead env, st, n
+    if h == "$": Push acc, (UpdateNode n)
+    else: if h == "!" or h == "@": Push acc, n
+    else: acc
+
+# The block's names read under the prelude's `!Updated` in a right side, at any depth the
+# prompt walk reaches: `!Updated $total`, `!Updated ($a + $b)`.
+UpdatedReads: unbounded fn PCx, Expr, [Text] -> [Text]
+fn UpdatedReads cx, e, defs = Fold (PromptSpots cx, e, cx.base), [[]], \|acc, sp| match sp:
+    SpotExpr x, m: match x.kind:
+        ECall c, args, ignore, ignore:
+            let updated = match ?CalleeName c:
+                ? n: (not (IsLocal m, n)) and IsPreludeUpdated cx, n
+                nil: False
+            match args[0]:
+                ? a:
+                    if updated:
+                        let cxm = update cx:
+                            &_.base <= m
+                        Fold (PromptReads cxm, a.value, defs), acc, \|found, r| AddText found, r
+                    else: acc
+                nil: acc
+        otherwise: acc
+    otherwise: acc
+
+# Whether a callee's name resolves to the prelude's own `!Updated`.
+IsPreludeUpdated: unbounded fn PCx, Text -> Bool
+fn IsPreludeUpdated cx, n = match ?ResolveCallee cx.g, cx.home, n:
+    ? k: k == "Prelude.!Updated"
+    nil: False
 
 Edges: fn [Text], [Text] -> [((Text, Text))]
 fn Edges froms, tos = Fold froms, [[]], \|acc, f| Append acc, (Each tos, \|t| ((f, t)))
