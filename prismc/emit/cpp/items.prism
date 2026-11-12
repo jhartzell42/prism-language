@@ -334,7 +334,7 @@ ChoicePod: fn TyDef -> Text
 fn ChoicePod t:
     let arms = Each (Range0 (Len t.cases)), \|i|
         let c = Or t.cases[i], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
-        "::std::holds_alternative<{c.name}>(cases()) ? crate::prelude::Pod::choice(\"{c.prism}\", \{{Join (Each (Range0 (Len c.fields)), \|k| "::prism_rtl::to_pod(::std::get<{c.name}>(cases()).a{k})"), ", "}\})"
+        "::std::holds_alternative<{c.name}>(cases()) ? crate::prelude::Pod::choice_at(\"{c.prism}\", {i}, \{{Join (Each (Range0 (Len c.fields)), \|k| "::prism_rtl::to_pod(::std::get<{c.name}>(cases()).a{k})"), ", "}\})"
     "{Join arms, "\n    : "}\n    : crate::prelude::Pod()"
 
 FromPodDef: unbounded fn Cp, TyDef, Text, Text -> Text
