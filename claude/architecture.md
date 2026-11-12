@@ -71,7 +71,12 @@ prism               the command: compile, test, run, check
   compiler's runtime, and gen2 on against the tree's, by copying a crate into a root laid
   out as the repository is (the emitted `../../../runtime/rust` then finds that root's). A
   runtime change made with the emitter is so crossed in the one run, gen1 still emitting the
-  old interface and gen2 the new; it needs no seed of its own. A change to the source's
+  old interface and gen2 the new; it needs no seed of its own. The C++ bootstrap
+  (`bootstrap/bootstrap-cpp.sh`) is laid out the same way for `runtime/cpp` and
+  `worlds/*/cpp`: the C++ seed carries them beside its `src/` and `Makefile`, the installed
+  Rust compiler's `prismc-runtime` holds the C++ runtime of its tree too, and each make is
+  given `PRISM_ROOT`, the root of the runtime it builds against (the starting compiler's
+  for gen1, the copy of the tree in `target/bootstrap/cpp-src` from gen2 on). A change to the source's
   syntax is not: the old compiler cannot read the new source. The compiler first learns the
   new syntax with its own source still in the old, the seed is rewritten from that fixed
   point (`--update`), and only then is the source moved to the new syntax.

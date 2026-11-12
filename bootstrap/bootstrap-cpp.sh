@@ -12,9 +12,17 @@
 # compiler. The binary is installed as target/bootstrap/prismc-cpp. Every compile reads one
 # copy of prismc/ and prelude/ taken at the start (target/bootstrap/cpp-src).
 #
-# The starting prismc is, in order: $PRISMC; target/bootstrap/prismc (the Rust bootstrap's);
-# or, on a fresh clone, the seed bootstrap/prismc-cpp.tar.xz, the C++ prismc emitted for
-# itself at its last fixed point, unpacked and built with make. An installed compiler older
+# A compiler emits code for the runtime of its own source (claude/architecture.md): the
+# starting compiler's gen1 is built against the C++ runtime (runtime/cpp, worlds/*/cpp) that
+# compiler was emitted for, and every later generation against the tree's, copied into
+# target/bootstrap/cpp-src at the start. The emitted Makefile finds the runtime at
+# PRISM_ROOT, which each build is given: the root holding the runtime it builds against.
+#
+# The starting prismc is, in order: $PRISMC, its runtime the root $PRISMC_RUNTIME (else the
+# working tree's); target/bootstrap/prismc (the Rust bootstrap's), its runtime
+# target/bootstrap/prismc-runtime; or, on a fresh clone, the seed bootstrap/prismc-cpp.tar.xz,
+# the C++ prismc emitted for itself at its last fixed point with the C++ runtime it was
+# emitted against, unpacked and built with make. An installed compiler older
 # than the source's syntax cannot compile prismc/: the bootstrap then stops with one line
 # saying so and naming --from-seed, the diagnostics in target/bootstrap/cpp-gen1-compile.log.
 #
@@ -59,20 +67,36 @@ pack() {
     if tar --no-xattrs -cf /dev/null -T /dev/null 2> /dev/null; then flags=(--no-xattrs); fi
     COPYFILE_DISABLE=1 tar ${flags[@]+"${flags[@]}"} -C "$dir" -cJf "$out" "$@"
 }
-# build_cpp DIR: make builds the program in DIR, its binary at DIR/prismc (one job: the
-# largest file needs most of the memory a small machine has)
-build_cpp() {
-    make -s -C "$1" -j"${JOBS:-1}" CXX="$CXX" OPT="$OPT" > "$1.log" 2>&1 || { tail -30 "$1.log" >&2; exit 1; }
+# copy_runtime FROM TO: the C++ runtime of the root FROM (runtime/cpp, worlds/*/cpp), with
+# no build output, copied into the root TO, stamped with the time of the copy (make would
+# otherwise take a library built from another runtime for fresh).
+copy_runtime() {
+    local d
+    for d in $(cd "$1" && ls -d runtime/cpp worlds/*/cpp 2> /dev/null); do
+        mkdir -p "$2/$d"
+        tar -C "$1/$d" --exclude=./build -cf - . | tar -C "$2/$d" -xmf -
+    done
 }
-# build_seed DIR: the seed unpacked into DIR and built, its binary at DIR/prismc. The
-# Makefile finds the runtime at PRISM_ROOT, exported above, never by `..` from DIR's
+# build_cpp DIR ROOT: make builds the program in DIR against the runtime under the root ROOT,
+# its binary at DIR/prismc (one job: the largest file needs most of the memory a small
+# machine has). The Makefile finds the runtime at PRISM_ROOT, never by `..` from DIR's
 # physical place, which under a symlinked target/ is not in the repository.
+build_cpp() {
+    [ -f "$2/runtime/cpp/Makefile" ] || { echo "$2 holds no runtime/cpp to build $1 against" >&2; exit 2; }
+    PRISM_ROOT=$(cd "$2" && pwd) make -s -C "$1" -j"${JOBS:-1}" CXX="$CXX" OPT="$OPT" > "$1.log" 2>&1 || { tail -30 "$1.log" >&2; exit 1; }
+}
+# build_seed DIR: the seed unpacked into DIR, a root holding the C++ runtime it carries, its
+# program moved to DIR/target/bootstrap/cpp-seed and built against that root, its binary at
+# DIR/prismc.
 build_seed() {
     [ -f "$seed" ] || { echo "no starting prismc: set PRISMC, or keep $seed" >&2; exit 2; }
     echo "seed: building prismc from $seed in $1"
-    rm -rf "$1" && mkdir -p "$1"
+    rm -rf "$1" && mkdir -p "$1/target/bootstrap/cpp-seed"
     tar -C "$1" -xJf "$seed"
-    build_cpp "$1"
+    [ -f "$1/runtime/cpp/Makefile" ] || { echo "$seed carries no runtime/cpp: it cannot be built against the runtime it was emitted for" >&2; exit 2; }
+    mv "$1/src" "$1/Makefile" "$1/target/bootstrap/cpp-seed/"
+    build_cpp "$1/target/bootstrap/cpp-seed" "$1"
+    cp "$1/target/bootstrap/cpp-seed/prismc" "$1/prismc"
 }
 if [ -n "$seed_at" ]; then build_seed "$seed_at"; echo "seed: built $seed_at/prismc"; exit 0; fi
 # The starting compiler: $PRISMC, else the installed $b/prismc, else the seed; with
@@ -89,6 +113,20 @@ if [ $show_start = 1 ]; then
     esac
     exit 0
 fi
+# The root holding the C++ runtime the starting compiler emits for. A root named by
+# $PRISMC_RUNTIME is copied into $b/cpp-start-runtime, so the library is built in that copy,
+# never in the caller's root.
+case $from in
+    prismc) start_runtime=${PRISMC_RUNTIME:-.} ;;
+    installed) start_runtime=$b/prismc-runtime
+        [ -f "$start_runtime/runtime/cpp/Makefile" ] || { echo "$start_runtime holds no runtime/cpp (installed by an older bootstrap.sh): re-run bootstrap/bootstrap.sh, or set PRISMC and PRISMC_RUNTIME" >&2; exit 2; } ;;
+    seed) start_runtime=$b/cpp-seed ;;
+esac
+start_named=$start_runtime
+if [ $from != seed ] && [ "$start_runtime" != . ]; then
+    rm -rf "$b/cpp-start-runtime" && copy_runtime "$start_runtime" "$b/cpp-start-runtime"
+    start_runtime=$b/cpp-start-runtime
+fi
 if [ $from = seed ]; then
     build_seed "$b/cpp-seed"
     start=$b/cpp-seed/prismc
@@ -96,6 +134,7 @@ fi
 rm -rf "$b/cpp-gen1" "$b/cpp-gen2" "$b/cpp-gen3" "$b/cpp-src" "$b/cpp-rust"
 mkdir -p "$b/cpp-src"
 cp -r prismc prelude "$b/cpp-src/"
+copy_runtime . "$b/cpp-src"
 src=("$b/cpp-src/prismc" --prelude "$b/cpp-src/prelude")
 # compile N BINARY: prismc/ compiled to C++ by BINARY into cpp-genN
 compile() {
@@ -109,20 +148,20 @@ compile() {
     fi
     echo "cpp-gen$1: prismc/ compiled to C++ by $2 in $(( $(date +%s) - t ))s"
 }
-# build N: cpp-genN built by make
+# build N ROOT [NAME]: cpp-genN built by make against the runtime under ROOT (a copy of NAME's)
 build() {
-    local t=$(date +%s)
-    build_cpp "$b/cpp-gen$1"
-    echo "cpp-gen$1: built with $CXX $OPT in $(( $(date +%s) - t ))s"
+    local t=$(date +%s) named=${3:-$2}
+    build_cpp "$b/cpp-gen$1" "$2"
+    echo "cpp-gen$1: built with $CXX $OPT against the runtime of $( [ "$named" = . ] && echo the working tree || echo "$named") in $(( $(date +%s) - t ))s"
 }
 same() { diff -r -q "$b/cpp-gen$1/src" "$b/cpp-gen$2/src" && diff -q "$b/cpp-gen$1/Makefile" "$b/cpp-gen$2/Makefile"; }
 compile 1 "$start"
-build 1
+build 1 "$start_runtime" "$start_named"
 compile 2 "$b/cpp-gen1/prismc"
 fixed=1
 if ! same 1 2; then
     echo "cpp-gen1 and cpp-gen2 differ: prismc/ emits other C++ than $start; one more generation"
-    build 2
+    build 2 "$b/cpp-src"
     compile 3 "$b/cpp-gen2/prismc"
     if ! same 2 3; then
         echo "cpp-gen2 and cpp-gen3 differ: no fixed point" >&2
@@ -150,6 +189,9 @@ fi
 cp "$b/cpp-gen$fixed/prismc" "$b/prismc-cpp.new" && mv "$b/prismc-cpp.new" "$b/prismc-cpp"
 echo "installed $b/prismc-cpp (cpp-gen$fixed)"
 if [ $update = 1 ]; then
-    pack "$seed.new" "$b/cpp-gen$fixed" src Makefile && mv "$seed.new" "$seed"
-    echo "seed: wrote $seed from cpp-gen$fixed ($(du -h "$seed" | cut -f1))"
+    rm -rf "$b/cpp-pack" && mkdir -p "$b/cpp-pack"
+    cp -r "$b/cpp-gen$fixed/src" "$b/cpp-gen$fixed/Makefile" "$b/cpp-pack/"
+    copy_runtime "$b/cpp-src" "$b/cpp-pack"
+    pack "$seed.new" "$b/cpp-pack" src Makefile runtime worlds && mv "$seed.new" "$seed"
+    echo "seed: wrote $seed from cpp-gen$fixed and its C++ runtime ($(du -h "$seed" | cut -f1))"
 fi

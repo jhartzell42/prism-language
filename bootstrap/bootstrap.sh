@@ -66,17 +66,19 @@ pack() {
     if tar --no-xattrs -cf /dev/null -T /dev/null 2> /dev/null; then flags=(--no-xattrs); fi
     COPYFILE_DISABLE=1 tar ${flags[@]+"${flags[@]}"} -C "$dir" -cJf "$out" "$@"
 }
-# copy_runtime FROM TO: the Rust target's runtime crates of the root FROM (runtime/rust,
-# worlds/*/rust), with no build output, copied into the root TO. The copies are stamped
+# copy_runtime FROM TO [TARGET]: a target's runtime of the root FROM (runtime/TARGET and
+# worlds/*/TARGET, TARGET rust when not given), with no build output, copied into the root
+# TO. The installed compiler's runtime holds the C++ one too, for bootstrap-cpp.sh, which
+# starts from this compiler and builds its C++ against the runtime it was emitted for. The copies are stamped
 # with the time of the copy, not their sources' times: target/bootstrap/src is built in the
 # one build directory every run shares, so a runtime changed since the last run, whose
 # files are older than that run's build, would otherwise pass for fresh and cargo would
 # link the last run's prism_rtl.
 copy_runtime() {
-    local d
-    for d in $(cd "$1" && ls -d runtime/rust worlds/*/rust 2> /dev/null); do
+    local d t=${3:-rust}
+    for d in $(cd "$1" && ls -d runtime/$t worlds/*/$t 2> /dev/null); do
         mkdir -p "$2/$d"
-        tar -C "$1/$d" --exclude=./target -cf - . | tar -C "$2/$d" -xmf -
+        tar -C "$1/$d" --exclude=./target --exclude=./build -cf - . | tar -C "$2/$d" -xmf -
     done
 }
 # fetch=1 on a fresh clone: every build is offline, so each runtime's crates are fetched
@@ -151,6 +153,7 @@ rm -rf "$b/gen1" "$b/gen2" "$b/gen3" "$b/src"
 mkdir -p "$b/src"
 cp -r prismc prelude "$b/src/"
 copy_runtime . "$b/src"
+copy_runtime . "$b/src" cpp
 src=("$b/src/prismc" --prelude "$b/src/prelude")
 # compile N BINARY: prismc/ compiled by BINARY into genN
 compile() {
@@ -187,7 +190,7 @@ if ! same 1 2; then
 fi
 echo "fixed point: gen$fixed and gen$((fixed + 1)) are byte-equal ($(find "$b/gen$fixed/src" -name '*.rs' -exec cat {} + | wc -l) lines of Rust)"
 cp "$b/gen$fixed/prismc" "$b/prismc.new" && mv "$b/prismc.new" "$b/prismc"
-rm -rf "$b/prismc-runtime" && copy_runtime "$b/src" "$b/prismc-runtime"
+rm -rf "$b/prismc-runtime" && copy_runtime "$b/src" "$b/prismc-runtime" && copy_runtime "$b/src" "$b/prismc-runtime" cpp
 echo "installed $b/prismc (gen$fixed), its runtime in $b/prismc-runtime"
 if [ $update = 1 ]; then
     grep -q '"../../../runtime/rust"' "$b/gen$fixed/Cargo.toml" || { echo "gen$fixed was not emitted three levels under the root (PRISM_BOOTSTRAP): no seed written" >&2; exit 1; }
