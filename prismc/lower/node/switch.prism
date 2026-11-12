@@ -1178,7 +1178,7 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
         # (a row numbered late reads it at its build: its generations are built there,
         # `Wx.lateGens`, where each one's rows can be numbered after they are built)
         WrLate ex, rt: (((update r2:
-            &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=(if numberedLate and not (r2.lateGens and (Len (UnnumberedSteps r2)) == 0): Refusal "the plain result of an arm or a clause that is built before its block's node and numbered after it, read from a generation the arm builds after its own node whose rows take their numbers as they are built (a `for`, a `rebuild` or a widget that calls itself beside the building `match` whose result the arm gives)" else: ex), doc="The clause's plain result, which the block that built the generation reads."))), ? rt))
+            &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=(if numberedLate and not (r2.lateGens and (Len (UnnumberedSteps r2)) == 0): Refusal "the plain result of an arm or a clause that is built before its block's node and numbered after it, read from a generation the arm builds after its own node whose rows take their numbers as they are built (a `for` or a `rebuild` beside the building `match` whose result the arm gives)" else: ex), doc="The clause's plain result, which the block that built the generation reads."))), ? rt))
         # a dynamic result: the row's getter `result` and `result_dynamic`, a write behind it
         # telling the block (`GenResult`, `DynClauseLine`)
         WrDyn ex, rds, rt: (((GenResult r2, genName, ex, rds, rt), nil))
@@ -1188,7 +1188,7 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
     # left unbuilt at once: a generation of its own that is built once it is numbered
     # would be counted too late
     let r3n = if r3.lateGens and (Len (Filter (UnnumberedSteps r3), \|counted| counted)) > 0: (update r3:
-        &_.build <= Push &_.build, (RefusalDo "a widget that calls itself in an arm or a clause that is built before its block's node and numbered after it, beside a line whose plain result the arm gives or below a building `match` or `if` of that arm")) else: r3
+        &_.build <= Push &_.build, (RefusalDo "a generation whose rows take their numbers as they are built (a blueprint value applied) in an arm or a clause that is built before its block's node and numbered after it, beside a line whose plain result the arm gives or below a building `match` or `if` of that arm")) else: r3
     # a shared row tells how many places it built: its positions less what its own
     # generations left unbuilt
     let ownGaps = (Len (Filter r3.gens, \|gd| gd.gappy and gd.pos.scope == 0)) > 0

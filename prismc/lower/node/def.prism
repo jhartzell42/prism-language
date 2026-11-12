@@ -1301,7 +1301,7 @@ fn LateFieldPlaces wx, benv, menv, fns, s, grew = match s.kind:
             else:
                 let t = OutTyOf lx, (Peel full)
                 let ((rs, w2)) = FreshName wx, (LocalNameAt lx, nkey, n.span)
-                let unbuilt = BnLocal (Refusal "the answer `{nkey}` of a place whose constant field reads a late result, read at its block's build by a line of the block's node that takes a value there"), Owned, t
+                let unbuilt = AnswerUnbuilt nkey, t
                 let inMethods = if dynamic: LatePlaceBn rs, t else: LatePlainBn rs, t
                 ((w2, (Bind (Bind benv, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind menv, nkey, inMethods), "{nkey}#late", unbuilt), True))
         # a bundle answer taken apart by a tuple pattern (`((p, $s)) <- Pad.Port(..)`):
@@ -1318,6 +1318,11 @@ fn LateFieldPlaces wx, benv, menv, fns, s, grew = match s.kind:
         otherwise: ((wx, benv, menv, grew))
     otherwise: ((wx, benv, menv, grew))
 
+# The answer of a place whose constant field reads a late result (a plain or `$` answer,
+# a bundle's `$` part), as the block's build reads it: it has none there.
+AnswerUnbuilt: fn Text, OutTy -> Bn
+fn AnswerUnbuilt nkey, t = BnLocal (Refusal "the answer `{nkey}` of a place whose constant field reads a late result, read at its block's build by a line of the block's node that takes a value there"), Owned, t
+
 # One part of a World's bundle place whose constant field reads a late result
 # (`LateFieldPlaces`): a `$` part's hold is empty until the place asks (`LatePlaceBn`), a
 # plain part is a late name (`LatePlainPartOf`), an event part is left as it is.
@@ -1327,11 +1332,11 @@ fn LateAskedPartOf w, be, me, init, ps, q = match q.kind:
         let nkey = SNameKey n
         let lx = WidgetLetLx w.lx, n.span
         let full = BinderTy lx, n.span
-        if (IsTimeName nkey) or TimeWithin (Peel full): ((w, be, me))
+        if TimeWithin (Peel full): ((w, be, me))
         else:
             let t = OutTyOf lx, (Peel full)
             let ((rs, w2)) = FreshName w, (LocalNameAt lx, nkey, n.span)
-            let unbuilt = BnLocal (Refusal "the `$` part `{nkey}` of a place's answer whose constant field reads a late result, read at its block's build by a line of the block's node that takes a value there"), Owned, t
+            let unbuilt = AnswerUnbuilt nkey, t
             ((w2, (Bind (Bind be, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind (Bind me, nkey, (LatePlaceBn rs, t)), "{nkey}#late", unbuilt), "{nkey}#asked", unbuilt)))
     otherwise: LatePlainPartOf w, be, me, init, ps, q, False
 
