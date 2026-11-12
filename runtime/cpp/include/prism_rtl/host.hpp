@@ -129,8 +129,16 @@ void dynamics_ports(const Map<K, Dynamic<E>>& m, const Cx& cx, std::vector<Rc<Po
 /// its plain data (`level_pod`).
 template <class T>
 struct DeepPod {
-    static Pod pod(const T& x, const Cx& cx) { return level_pod(x, cx); }
-    static void ports(const T& x, const Cx& cx, std::vector<Rc<Port<Unit>>>& out) { level_ports(x, cx, out); }
+    // a generic program type whose arguments may hold time walks itself (`deep_pod`, the
+    // emitter's `CppDeepWalk`); anything else is its level
+    static Pod pod(const T& x, const Cx& cx) {
+        if constexpr (requires { x.deep_pod(cx); }) return x.deep_pod(cx);
+        else return level_pod(x, cx);
+    }
+    static void ports(const T& x, const Cx& cx, std::vector<Rc<Port<Unit>>>& out) {
+        if constexpr (requires { x.deep_ports(cx, out); }) x.deep_ports(cx, out);
+        else level_ports(x, cx, out);
+    }
 };
 template <class T>
 Pod deep_pod(const T& x, const Cx& cx) { return DeepPod<T>::pod(x, cx); }
@@ -170,6 +178,13 @@ template <class A>
 struct DeepPod<std::optional<A>> {
     static Pod pod(const std::optional<A>& x, const Cx& cx) { return x ? Pod::some(deep_pod(*x, cx)) : Pod::nil(); }
     static void ports(const std::optional<A>& x, const Cx& cx, std::vector<Rc<Port<Unit>>>& out) {
+        if (x) deep_ports(*x, cx, out);
+    }
+};
+template <class A>
+struct DeepPod<Fallible<A>> {
+    static Pod pod(const Fallible<A>& x, const Cx& cx) { return x ? Pod::ok(deep_pod(*x, cx)) : Pod::failed(to_pod(x.error())); }
+    static void ports(const Fallible<A>& x, const Cx& cx, std::vector<Rc<Port<Unit>>>& out) {
         if (x) deep_ports(*x, cx, out);
     }
 };
