@@ -1,0 +1,21 @@
+# Derived by hand from Semantics ch. 4 ("the order of a group's lines decides positions and nothing else"), ch. 8 ("A new place's first value": the query answers at the build, by the element as built, its field reading the `let` over the late result), Type System ch. 2 ("Bundles and sparse tuples": the plain part is read once, the push moves the `$` part) and ruling TC: loud gives 10 and `m` is 11, so the port is "port 11", answered ((7, "up")), its label 1 and the arm's label 2; soft gives 20, `m` is 21, and builds nothing in its arm. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Pad.Port(name="port 11")
+    1: Ui.Label(text="7 up of 11")
+    2: Ui.Label(text="x")
+
+tick 1
+  in:
+    Pad.Port(name="port 11") = ((7, "down"))
+  changed:
+    1: Ui.Label(text="7 down of 11")
+
+test soft
+
+tick 0
+  added:
+    0: Pad.Port(name="port 21")
+    1: Ui.Label(text="8 up of 21")
