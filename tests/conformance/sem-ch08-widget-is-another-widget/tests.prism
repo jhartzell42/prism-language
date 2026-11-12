@@ -1,0 +1,6 @@
+# The tests of sem-ch08-widget-is-another-widget.
+emit Ui.*
+use App.*
+
+test the_other_widget_is_built, @main:
+    build
