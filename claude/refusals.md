@@ -292,11 +292,13 @@ Building `match`, clause widgets, `rebuild`
   given back, is as deep as its data, to 2^20 places a call
   (sem-ch08-clause-widget-recursion, sem-ch08-widget-recursion-deep,
   sem-ch08-widget-recursion-deep-one-clause, sem-ch08-widget-recursion-deep-result).
-- lower/node/static.prism (`LocalFunctionLine`) a function of a block with several
-  clauses, applied as a widget; a function of a block that applies itself as a widget:
-  R, no test. A function of a block with one clause that gives a blueprint is applied
-  as a line, and where a widget it is handed to applies it
-  (sem-ch08-block-function-applied-as-line, host-bug-15).
+- lower/node/static.prism (`LocalFunctionLine`): no refusal. A function of a block that
+  gives a blueprint is applied as a line, and where a widget it is handed to applies it
+  (sem-ch08-block-function-applied-as-line, host-bug-15); one of several clauses as a
+  building `match` over its plain arguments
+  (sem-ch08-block-function-clauses-applied-as-line); one that applies itself level by
+  level, sixteen deep, a build fault past that as for a widget that calls itself
+  (sem-ch08-block-function-applies-itself).
 - lower/node/static.prism (`WidgetCall`) a widget this back end does not lower yet: no
   program found since a blueprint taken out of a value by a pattern is applied
   (`ValueBlueprintLine`, sem-ch08-blueprint-out-of-value) and a function value a `let`

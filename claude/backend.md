@@ -187,6 +187,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   ones around it map. A block that calls such a function hears the `Event` it gives
   through a port node (`EventObjectRef`), its event arguments the ports they fire
   (`Event::of`).
+  The prelude's functions with an event parameter each have their event value form in
+  the emitted prelude, under the name the prelude's own definition lowers to
+  (`ValueName`): `union_ev`, `both`, `except`, `gate`, `present`, `merge_all`,
+  `merge_with`, `updated`. `both` and `except` are `merge_all` of their two events with
+  each firing marked by its side, so they decide once in a tick; `gate` reads its
+  dynamic at the firing's read point (`Event::map_at`)
+  (host-bug-31-both-in-plain-function to host-bug-34-present-in-plain-function).
   An event value whose expression samples a dynamic (`(ToldTo seat, $state) on !born` in
   a list `!MergeWith` takes) is the event mapped with each firing's read point
   (`Event::map_at`): the closure samples the dynamic there, so the event fires the
@@ -271,10 +278,19 @@ it make every program an interpreter run, and every type mistake a runtime fault
   The runtime's own event values use the same heights: `merge_all`'s node sits above
   every event of its list and raises its own port, `Event::map` and `filter_some` pass
   their source's height on, `Event::map_at` too.
-  No twin reaches these, where the clamp alone orders: a `for` row built after its block
-  wrote a hold the row hears (`parent_wrote_m` is told to the rows that live), a
-  dynamic's update port (`Dynamic::map2`, a `follow`, `updated` as an event value, a
-  blueprint's dynamic answer).
+  A `for`'s row hears the height of its block's write behind a name as a generation
+  does: the block keeps a port for the name (`{for}_wrote_{m}_port`), which the write's
+  twin raises and nothing fires (the write itself is told to the rows by
+  `parent_wrote_{m}`), and the row subscribes to it with its twin, so a row built after
+  the write took its height is told it at its build
+  (`tests/conformance/heights-row-built-after-hold-write`).
+  A combinator is put above a source by `Heights::raise(k, h, twin)`, which calls the
+  combinator's own twin when it moved and marks the combinator as walking meanwhile: a
+  walk that reaches a combinator it is still walking from is a prompt cycle across
+  nodes, and the runtime panics there with "a prismc bug", before the stack runs out.
+  No twin reaches these, where the clamp alone orders: a dynamic's update port
+  (`Dynamic::map2`, a `follow`, `updated` as an event value, a blueprint's dynamic
+  answer).
 - **Holds.** `$x <- init then !e` → the firing's method calls `x.set(v, cx)`; every read
   is `x.get(cx)`, before the tick during propagation and after it from then on, so the
   tag law needs no commit pass.
@@ -909,6 +925,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
     its places are the block's next. Handed to a widget as its function parameter
     (`@InMemory empty, @Seats`), it is lowered the same way where the widget applies
     the parameter (`ApplyWidgetParam`), over its own block's environments.
+    A function written by several clauses (`fn @Row 0, $shown = ..` beside `fn @Row n,
+    $shown: ..`) is a building `match` over its plain arguments
+    (`ClausesFunctionLine`, `BuildingChoicesLine`): each clause an arm's row, its
+    patterns the arm's, its block read in the function's file over the function's
+    environment; a clause's dynamic, event and blueprint parameters match nothing and
+    are bound in that clause's own environment to the line's arguments (`BindParam`).
+    A function that applies itself is lowered level by level, sixteen levels deep, as
+    a widget that calls itself is (`TooDeep` past that: the node at that depth faults
+    at its build); the levels are counted in `Wx.inlining`, which every row keeps
+    (sem-ch08-block-function-clauses-applied-as-line,
+    sem-ch08-block-function-applies-itself).
 - **A widget defined in a block read as a value** (`Card(@body=@line)`, `?Pick True,
   @line`; in the body of a function of the block too, `fn ?Made b = ?Pick b, @line`,
   whose expressions a line that calls it reads as its own, `LocalFunctionExprs`) is a `Blueprint` its line makes at the build before the node, kept in a field
