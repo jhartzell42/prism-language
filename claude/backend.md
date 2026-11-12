@@ -587,14 +587,21 @@ it make every program an interpreter run, and every type mistake a runtime fault
     `part_mut`. A set goes through `set_part` (`? x` writes the entry; `nil`, or an index
     past the end, gives up as the block's own `&xs[i] <= v` does), with the value held
     first, since it may read what the reference borrows. Its read is `xs[i]`, `nil` past
-    the end. A lens to a map key is refused by the checker (`lens-map-key`, ruling ME), so
-    no reference is ever an entry of a map.
+    the end.
+  - A lens that takes or gives back a map's entry (`&Acc: fn &(Text ==> Int) ->
+    Entry Text Int`, ruling EN) takes and gives the prelude's `EntryMut<K, V>` by value,
+    the map borrowed and the key (`LensTakesEntry`, `LensGivesEntry`, by the lens's
+    signature). Its body is the entry (`EntryRef`): `entry_mut(&mut place, &key)` for a
+    map's key, the lens it applies, or its own entry parameter, moved. A put through it
+    is `put_entry`, the value held first; its read is `m[k]`, a `?V`, since an `Entry`
+    as a value is its read (`OutTyOf`).
   - A lens's body, or a lens's argument, that steps through an array's index
     (`&machines[1].acc`) is read through the entry in place: `SharedPlaceOf` is `PlaceOf`
     borrowed shared, its index step the prelude's `at_shared`, which gives up on an index
     the array does not hold as `at_mut` does (`LensReadThrough`). The block's own path
     through an index, read in expression position (`&_[0].x <= &_[1].acc + 1`), is the
-    same shared place (`at_shared`, `at_shared_map` for a key), copied.
+    same shared place (`at_shared`), copied. The checker refuses a step through a map's
+    key (an `Entry` has no fields), so `at_shared_map` is reached by no checked program.
   - The reference borrows all of its argument, as the book's rule has it, so two places
     keep rustc and the borrow rule equal: an accumulation through a lens reads the part
     by the read function (`UpdStmt`), and inside a `for` over a lens applied the checker
@@ -1759,6 +1766,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   holds (read out by the pattern, `{heard}_event`) and feeds the name's own node.
 - **`for &v <- &m:` over a map** (ruling FM) takes the keys before the first step and
   reads each entry's place through its key (`keys`, `at_mut_map`), in key order.
+- **A write at an index** (`&_.board[sq] <: v`, ruling EN, and an array's
+  `&_.xs[i] <= v`) evaluates the key and the value first, then calls the prelude's
+  `set_key` or `set_index` (`IndexWrite`): either may read the collection the write
+  borrows, as `&_.board[to] <: &_.board[from]` does.
 - **A `while` or an `if` bind in an `update` block whose pattern has conditions** (a
   literal, a payload behind an `Rc`): the `while` leaves the loop at the first that fails
   (`let .. else` for a payload), the `if` is a value `match`'s arm with its `else` the

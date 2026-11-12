@@ -169,8 +169,8 @@ Out for this compiler, each rejected with a diagnostic naming the feature, never
 silently: `T monad:` blocks and `^Monad`; higher-kinded traits; sized ints other than
 `U8`; `Instant`, `Duration` arithmetic; sparse tuples, `!Align`, non-empty arrays,
 suffixed operators; `Over`, `Get`, `Set`, the `^Lens` trait and lens values `&.score.home`
-(named lenses `&Home` and the `update` block's lens paths are in; a named lens to a map
-key is a checker error, ruling ME); POD hosting (`@Collect`, `@View`, `@Edit`, `@Translate`); the Prism World; live
+(named lenses `&Home` and the `update` block's lens paths are in; a map's entry is an
+`Entry K V`, put with `<:`, which a lens may take or give back, ruling EN); POD hosting (`@Collect`, `@View`, `@Edit`, `@Translate`); the Prism World; live
 update; checkpoints; the template notation as a second syntax for element languages (code
 templates only); indexed choices/GADTs for user types. The back end's own open gaps are
 the `error[not-lowered]` refusals of `prismc/lower/`.

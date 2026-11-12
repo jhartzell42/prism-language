@@ -157,3 +157,27 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   held in one map of seats, say `emit r | Pane.* | Gui.* | Seat.* | Play.*` and
   `emit r | Console.* | Seat.* | Play.*`. Jimmy: "I'm sold on your recommendation".
   Refused: row subtyping where a value meets an expected type; signatures open by default.
+- **EN** (replaces ME above) A map's entry is a type of its own, `Entry K V`, with an
+  operator of its own. Jimmy, 11 November: "A & can be a real location or a map entry.
+  That's a runtime distinction, isn't it? I think that that's redonkulous actually, and
+  that entries should be Entry<K,V> and have a separate operator to set them"; 12
+  November: the operator is `<:` (`<-` binds), and `<: nil` removes the key.
+  - On a map, `&m[k]` is an `Entry K V`, a prelude type; on an array, `&xs[i]` stays an
+    ordinary reference.
+  - `e <: v` takes a `?V`: `&_.board[sq] <: ? piece` puts the value,
+    `&_.board[from] <: nil` removes the key. A read of an entry is the `?V` that `m[k]`
+    is.
+  - `<=` on an entry is the checker's `set-entry`, whose fix writes the statement with
+    `<:`; `<:` on anything else a reference names is `put-location`, whose fix writes it
+    with `<=`.
+  - An entry has no fields and no index: `&_.board[sq].color` is an ordinary type error
+    ("an `Entry` has no field `color`") in a named lens, a function and an `update`
+    alike. A field of a stored value is changed by reading the value, changing it, and
+    putting it back.
+  - Named lenses are not special: a lens may take or give back an `Entry`
+    (`&Acc: fn &(Text ==> Int) -> Entry Text Int`). ME's `lens-map-key` and its test are
+    gone.
+  - The coordinator's ruling on the lexer, 12 November: `<:` is one token by longest
+    match, and in a trait's member position the parser reads it as the method `<` and its
+    signature's colon (`<: fn a, a -> Bool` in `^Ord`). Refused: a lexer that splits `<:`
+    by context, which no other operator needs.
