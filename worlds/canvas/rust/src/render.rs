@@ -1,7 +1,7 @@
 //! Painting a scene: a `Gui.Scene`'s `draw` list, in the program's coordinates (origin at
 //! the top left, y down, logical pixels), onto a tiny-skia pixmap of physical pixels.
 //!
-//! The draw commands are the window library's (`examples/chess/window/`):
+//! The draw commands are the window library's (`examples/basic-chess/basic_window/`):
 //!
 //! - **`Draw.Rect(rect, paint)`**: a filled rectangle.
 //! - **`Draw.Text(at, text)`**: one line in ink, the top of the line at `at`.
@@ -443,7 +443,7 @@ mod tests {
 
     #[test]
     fn an_image_is_scaled_to_its_rect_and_a_missing_one_draws_nothing() {
-        let src = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../examples/chess/pieces/kl.png");
+        let src = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../examples/basic-chess/pieces/kl.png");
         let king = el("Draw.Image", vec![("rect", gui::rect(0.0, 0.0, 100.0, 100.0)), ("src", Pod::text(src))]);
         let p = paint(1.0, vec![king]);
         assert!((0..100).any(|x| (0..100).any(|y| rgb(&p, x, y) != BACKGROUND)), "the king shows");

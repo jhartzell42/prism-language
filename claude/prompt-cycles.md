@@ -51,8 +51,17 @@ This page says how it reads a `for`'s row and a widget function's function param
   - In the function's own block check: `ParameterUses` finds every application of the
     function in the program's definitions and tests, and the block is checked once for
     each. The first cycle found is reported at the body's line, as before.
-- A use that gives a lambda, a local, a parameter of its own, or passes the function on
-  as a value gives nothing: the worst is assumed for it. So is a function with no use.
+- A widget function whose body is one expression (`fn @BoardSeats $state, !responses =
+  @HostPlayers ...`) has the summary of the block of its result alone (`BodyAsBlock`).
+- A use that gives a widget function its own block defines (`@Seats` in `@hotSeat`,
+  given to `@InMemory`) goes by that local's summary, read as a named function's is
+  (`LocalGiven`); a local of more than one clause gives nothing.
+- A use inside a function that hands on a parameter of its own (`fn @InMemory initial,
+  HostSeats = @InMemoryOrdered initial, OneATick, HostSeats`) is read once for each use of
+  that function, by what that use gives for the parameter handed on (`UsesOf`,
+  `Forwarded`). A function that hands a parameter back to itself gives nothing for it.
+- A use that gives a lambda, or passes the function on as a value, gives nothing: the
+  worst is assumed for it. So is a function with no use.
 - The example that needs it: `fn @InMemory initial, HostSeats` binds
   `((results, !asked)) <- HostSeats $state, !responses` and computes `!responses` from
   `!asked`. With `@Seats`, whose requests are not prompt in `!responses`, there is no

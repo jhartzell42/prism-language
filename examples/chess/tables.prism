@@ -1,0 +1,128 @@
+# The tables: programs that seat participants at one game of chess in memory. Each lists
+# its seats, every seat with the blueprint of the participant that sits there, and hands
+# them to the role hosts; `@InMemory` holds the game. No participant is given the state.
+# Written by Claude on the claude-document-chess branch; subject to change.
+emit Ui.* | Pane.* | Gui.* | Console.*
+use Documents.*
+use Rules.*
+use Squares.*
+use Game.*
+use TextPlayers.*
+use CommandLine.*
+use Board.*
+use Window.*
+use Window.Panes.*
+use Window.Widgets.*
+
+let white = Player White
+let black = Player Black
+let ada = Spectator "ada"
+let bea = Spectator "bea"
+
+# ---- the hot seat in a window: two boards side by side
+
+@BoardSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.*
+fn @BoardSeats $state, !responses = @HostPlayers {white: (@BoardPlayer white), black: (@BoardPlayer black)}, never, never, $state, !responses
+
+@boards: @unit emit Pane.* | Gui.*
+@boards:
+    @Row 16.0, @widget:
+        @InMemory fresh, @BoardSeats
+
+# The same with a spectator at a terminal: its lines pass up through the row and the
+# window to the root.
+@WatchedSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.* | Console.*
+fn @WatchedSeats $state, !responses:
+    !asked <- @HostPlayers {white: (@BoardPlayer white), black: (@BoardPlayer black)}, never, never, $state, !responses
+    @HostSpectators {ada: (@LineSpectator ada)}, never, never, $state
+    @ !asked
+
+@watched: @unit emit Pane.* | Gui.* | Console.*
+@watched:
+    @Window ($ "Chess"), (Extent 1400.0, 760.0), @widget:
+        @Row 16.0, @widget:
+            @InMemory fresh, @WatchedSeats
+
+# White at a board in a window, Black at a terminal: one role, two ways of sitting, in
+# one map of seats.
+@AgainstTerminalSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.* | Console.*
+fn @AgainstTerminalSeats $state, !responses = @HostPlayers {white: (@BoardPlayer white), black: (@LinePlayer black)}, never, never, $state, !responses
+
+@againstTerminal: @unit emit Pane.* | Gui.* | Console.*
+@againstTerminal:
+    @Window ($ "Chess"), (Extent 700.0, 760.0), @widget:
+        @InMemory fresh, @AgainstTerminalSeats
+
+# ---- terminals: two players and a spectator, nothing but lines
+
+@TerminalSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Console.*
+fn @TerminalSeats $state, !responses:
+    !asked <- @HostPlayers {white: (@LinePlayer white), black: (@LinePlayer black)}, never, never, $state, !responses   # 0, 1
+    @HostSpectators {ada: (@LineSpectator ada)}, never, never, $state                                                  # 2, 3
+    @ !asked
+
+@terminals: @unit emit Console.*
+@terminals:
+    @InMemory fresh, @TerminalSeats
+
+# ---- the hot seat at text interfaces: two players and a spectator, and a button that
+# seats a second spectator
+
+@TextSeats: fn !(Spectator ==> (@unit emit Ui.* | Seat.* | Watch.*)), $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Ui.*
+fn @TextSeats !joins, $state, !responses:
+    !asked <- @HostPlayers {white: (@TextPlayer white), black: (@TextPlayer black)}, never, never, $state, !responses   # 1, 2
+    @HostSpectators {ada: (@SpectatorView ada)}, !joins, never, $state                                                 # 3, 4
+    @ !asked
+
+# The table's button is the program's own; the seats function is the block's, and reads
+# the button's event.
+@hotSeat: @unit emit Ui.*
+@hotSeat:
+    !beaJoins <- Ui.Button($label=$"bea joins")                                                  # 0
+    @Seats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Ui.*
+    fn @Seats $state, !responses = @TextSeats ({bea: (@SpectatorView bea)}) on !beaJoins, $state, !responses
+    @InMemory fresh, @Seats
+
+# ---- scripted players and a spectator
+
+# A script as a program writes it: moves as values, each a request to play it.
+Plays: fn [Move] -> Script
+fn Plays moves = InTurn (Each moves, \|move| Play move)
+
+@ScriptedSeats: fn Script, Script, $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Ui.*
+fn @ScriptedSeats whiteScript, blackScript, $state, !responses:
+    !asked <- @HostPlayers {white: (@ScriptedPlayer white, whiteScript), black: (@ScriptedPlayer black, blackScript)}, never, never, $state, !responses   # 0, 1
+    @HostSpectators {ada: (@SpectatorView ada)}, never, never, $state                                                                                   # 2, 3
+    @ !asked
+
+@Scripted: fn Script, Script -> @unit emit Ui.*
+fn @Scripted whiteScript, blackScript:
+    @Seats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Ui.*
+    fn @Seats $state, !responses = @ScriptedSeats whiteScript, blackScript, $state, !responses
+    @InMemory fresh, @Seats
+
+@foolsMate: @unit emit Ui.*
+@foolsMate:
+    @Scripted (Plays [[(Moving f2, f3), (Moving g2, g4)]]), (Plays [[(Moving e7, e5), (Moving d8, h4)]])
+
+@castling: @unit emit Ui.*
+@castling:
+    @Scripted (Plays [[(Moving e2, e4), (Moving g1, f3), (Moving f1, c4), (Moving e1, g1)]]), (Plays [[(Moving e7, e5), (Moving b8, c6), (Moving f8, c5)]])
+
+@enPassant: @unit emit Ui.*
+@enPassant:
+    @Scripted (Plays [[(Moving e2, e4), (Moving e4, e5), (Moving e5, d6)]]), (Plays [[(Moving a7, a6), (Moving d7, d5)]])
+
+@promotion: @unit emit Ui.*
+@promotion:
+    @Scripted (Plays [[(Moving a2, a4), (Moving a4, b5), (Moving b5, a6), (Moving a6, b7), (Promoting b7, a8, Knight)]]), (Plays [[(Moving b7, b5), (Moving a7, a6), (Moving c8, b7), (Moving b8, c6)]])
+
+# Threefold repetition: the knights go out and back twice.
+@repetition: @unit emit Ui.*
+@repetition:
+    @Scripted (Plays [[(Moving g1, f3), (Moving f3, g1), (Moving g1, f3), (Moving f3, g1)]]), (Plays [[(Moving g8, f6), (Moving f6, g8), (Moving g8, f6), (Moving f6, g8)]])
+
+# Two players that each ask once, in one tick: White for e2e4, Black for e7e5.
+@bothOpen: @unit emit Ui.*
+@bothOpen:
+    @Scripted (AtTheStart (Play (Moving e2, e4))), (AtTheStart (Play (Moving e7, e5)))

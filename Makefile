@@ -1,7 +1,7 @@
 # The single commands (claude/architecture.md, "Single commands"). Written by Claude,
 # 2 November 2026, on the claude-self-hosting branch. Subject to change.
 
-.PHONY: test test-sanitize bootstrap bootstrap-update bootstrap-cpp bootstrap-cpp-update chess
+.PHONY: test test-sanitize bootstrap bootstrap-update bootstrap-cpp bootstrap-cpp-update chess basic-chess
 
 # Every Rust test, every compiled transcript, the checker's tests, the C++ runtime's and
 # Worlds' tests, the bootstrap's fixed point, and no definition in prismc/ nothing uses.
@@ -39,6 +39,11 @@ bootstrap-cpp:
 bootstrap-cpp-update:
 	bootstrap/bootstrap-cpp.sh --update
 
-# Chess compiled by the newest prismc, built with the canvas World, opened in a window.
+# Chess the document way, compiled by the newest prismc, built with the canvas World: the
+# hot seat, two boards in one window (claude/document-chess.md).
 chess:
 	./prism run examples/chess
+
+# The basic chess, one board with its settings dialog, in a window.
+basic-chess:
+	./prism run examples/basic-chess

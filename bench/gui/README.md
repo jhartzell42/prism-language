@@ -49,7 +49,7 @@ js-framework-benchmark sets them up:
 
 From the input to the frame that shows its result, handed to the window system.
 
-- **Prism** (`prism/`): `app.prism`, with examples/chess's window library, compiled by
+- **Prism** (`prism/`): `app.prism`, with examples/basic-chess's window library, compiled by
   prismc. The driver (`driver.cpp` for C++, `driver.rs` for Rust) runs the root under the
   canvas World with `Hooks`; it finds a button by its `Draw.Text` in the scene and queues
   a press just inside it, as a click would. The clock stops at the next

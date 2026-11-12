@@ -75,8 +75,8 @@ prism               the command: compile, test, run, check
   syntax is not: the old compiler cannot read the new source. The compiler first learns the
   new syntax with its own source still in the old, the seed is rewritten from that fixed
   point (`--update`), and only then is the source moved to the new syntax.
-- Chess: `./prism run examples/chess` compiles it, builds it with the canvas World and
-  opens the window; `./prism test examples/chess` runs its transcripts under the compiled
+- Chess: `./prism run examples/basic-chess` compiles it, builds it with the canvas World and
+  opens the window; `./prism test examples/basic-chess` runs its transcripts under the compiled
   Test World.
 
 ## The tick
@@ -93,7 +93,7 @@ armed; a World that sees it ticks again, with no inputs if it has none.
 - `make test`: `cargo test --workspace`, every compiled transcript
   (`tests/compiled/run.sh`), the checker's tests (`tests/checker/run.sh`), and the
   bootstrap's fixed point.
-- `make chess`: build and open chess (`./prism run examples/chess`).
+- `make basic-chess`: build and open chess (`./prism run examples/basic-chess`).
 - `make bootstrap`: the kept prismc to gen1 to gen2, byte-equal; installs
   `target/bootstrap/prismc`.
 
