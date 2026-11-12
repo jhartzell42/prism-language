@@ -1,0 +1,10 @@
+# Expected by hand from ruling PG (a definition that needs itself at a type that grows
+# without end is an error); never run when written.
+# `grows-without-end` through a derived impl: `derive ^Show` on a type that holds itself
+# at a larger type. `^Show` at `Nest a` needs `^Show` at its field's `Nest [a]`, the same
+# derived impl at `[a]` for `a`, so a `Show` of a `Nest Nat` needs the impl at `[Nat]`,
+# `[[Nat]]`, and so on.
+type Nest a = choice:
+    Flat a
+    Deep (Nest [a])
+derive ^Show

@@ -274,7 +274,7 @@ TEST(spellings_round_trip) {
         "0.30000000000000004", "nan", "-inf", "Press Point(x=280.0, y=400.0)",
         "Gui.Scene(window=WindowId \"Chess\", at=nil)", "Box(paint=(Rgb 1.0, 0.5, 0.0), inner=Node (Leaf 1))",
         "? (Node (Leaf 1), (Leaf 2))", "Name()", "\"h\xC3\xA9\"", "'\xC3\xA9'", "123456789012345678901234567890",
-        "2h", "90m", "-3ms",
+        "2h", "90min", "-3ms",
     };
     for (const char* s : values) {
         auto v = read::value(s);
@@ -354,25 +354,26 @@ struct Elem {
     bool operator==(const Elem&) const = default;
 };
 
-/// The program's `Answer`: a click.
-struct Answer {
-    static Result<Answer> decode(const Elem&, const Pod& v) {
-        if (auto c = v.if_choice(); c && c->ctor == "click") return Answer{};
-        return mismatch<Answer>("click", v);
+/// The program's `Output`: a click.
+struct Output {
+    static Result<Output> decode(const Elem&, const Pod& v) {
+        if (auto c = v.if_choice(); c && c->ctor == "click") return Output{};
+        return mismatch<Output>("click", v);
     }
+    static Result<Output> decode_first(const Elem& e, const Pod& v) { return decode(e, v); }
 };
 
 /// An owner hosting one child button at child path `0`, every place forwarded: the child's
 /// label is a hold, and a click on the forwarded element reaches the child in the tick. The
 /// child's place is an entry of the host's document, taken in the owner's patch pass.
 struct Owner : Node {
-    Rows<Elem, Answer> rows = new_rows<Elem, Answer>();
-    prism_rtl::Rc<Host<Elem, Answer, Owner>> host;
+    Rows<Elem, Output> rows = new_rows<Elem, Output>();
+    prism_rtl::Rc<Host<Elem, Output, Owner>> host;
     std::optional<Hold<Text>> label;
     prism_rtl::Rc<Entry<Elem>> place = Entry<Elem>::make("the child's place 0");
     int clicks = 0;
 
-    Done deliver(const Path& place, const Answer&, Cx& cx) {
+    Done deliver(const Path& place, const Output&, Cx& cx) {
         if (!place.segments()[0].is_pos(0)) return unexpected(Fault::answer("no such child place"));
         ++clicks;
         label->set(Text("clicked"), cx);
@@ -387,7 +388,7 @@ struct Owner : Node {
         // `9`: the child's place leaves `$doc`, and its row leaves with it (R8).
         if (at.size() == 1 && at[0].is_pos(9)) {
             for (const auto& [_, row] : *rows) row->leave_row(cx);
-            *rows = Map<Path, prism_rtl::Rc<HostRow<Elem, Answer>>>();
+            *rows = Map<Path, prism_rtl::Rc<HostRow<Elem, Output>>>();
             return {};
         }
         // `hostpos/[p]/...`: the row at key `p`.
@@ -408,18 +409,18 @@ struct OwnerProgram : Program {
         Cx cx = p->rt.build(ready);
         auto owner = prism_rtl::make_rc<Owner>();
         owner->label.emplace(Text("press"), cx);
-        Supplier<Elem, Answer> supplier = [](const Path&, const Live<Elem>& e) { return element_blueprint<Elem, Answer>(e); };
-        owner->host = Host<Elem, Answer, Owner>::make(
+        Supplier<Elem, Output> supplier = [](const Path&, const Element<Elem>& e) { return element_blueprint<Elem, Output>(e); };
+        owner->host = Host<Elem, Output, Owner>::make(
             Path::root().at(5), owner->rows, supplier, nullptr,
-            [](const prism_rtl::Rc<Owner>& o, const Path& place, const Answer& a, Cx& cx) {
+            [](const prism_rtl::Rc<Owner>& o, const Path& place, const Output& a, Cx& cx) {
                 return o->deliver(place, a, cx);
             });
         owner->host->link(owner);
         owner->place->take(Elem{owner->label->get(cx)}, cx);
         // The host's `for` over `$doc`, as the emitted builder makes its rows.
         Path key = Path::root().at(0);
-        prism_rtl::Rc<HostOf<Elem, Answer>> h = owner->host;
-        auto row = TRY((HostRow<Elem, Answer>::make(Path::root().at(5).child(Segment::key(to_pod(key))), key, owner->place, h, cx)));
+        prism_rtl::Rc<HostOf<Elem, Output>> h = owner->host;
+        auto row = TRY((HostRow<Elem, Output>::make(Path::root().at(5).child(Segment::key(to_pod(key))), key, owner->place, h, cx)));
         owner->rows->insert(key, row);
         p->root = owner;
         auto out = TRY(p->rt.close(std::move(cx)));
@@ -455,8 +456,8 @@ TEST(a_host_torn_down_with_its_rows_frees_everything) {
     // reports zero leaks for this test).
     ReadyMap ready;
     prism_rtl::Weak<Owner> owner;
-    prism_rtl::Weak<HostOf<Elem, Answer>> host;
-    prism_rtl::Weak<HostRow<Elem, Answer>> row;
+    prism_rtl::Weak<HostOf<Elem, Output>> host;
+    prism_rtl::Weak<HostRow<Elem, Output>> row;
     {
         auto built = OwnerProgram::build({}, ready);
         CHECK(built.has_value());

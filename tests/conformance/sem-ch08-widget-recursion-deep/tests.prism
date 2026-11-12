@@ -1,0 +1,7 @@
+# The tests of sem-ch08-widget-recursion-deep.
+emit Ui.*
+use App.*
+
+test twenty_levels, @main:
+    build
+        => expect Ui.Label(text="after")

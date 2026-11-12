@@ -66,7 +66,7 @@ pass, and the paint is the damaged boxes.
 - **MT** A new word's extent reaches its leaf's layout a tick after the word (each leaf
   measures its own texts, in a gathered `for`), so a layout with a new word runs twice and
   an input shows its new text at the old width (`h=8`) for one owed tick
-  (Window.Tests' `a_key_types_its_character` pins it).
+  (BasicWindow.Tests' `a_key_types_its_character` pins it).
 
 ## Doubts
 
@@ -75,7 +75,7 @@ pass, and the paint is the damaged boxes.
 
 ## Tests and measurement
 
-- **`Window.Tests`** (`examples/chess/window/tests.prism`): culling, focus, typing.
+- **`BasicWindow.Tests`** (`examples/basic-chess/basic_window/tests.prism`): culling, focus, typing.
 - **`bench/gui/prism/check.sh`**: no text drawn outside the window and the screen showing
   the table (both pass); then the table of each step's instructions by phase, with the
   ratios, reported.

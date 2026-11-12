@@ -1,0 +1,51 @@
+# A trait whose method has its type only in the result (`?Read: fn Text -> ?a`, read by
+# what the caller wants), two impls of it, a default over it, and generic functions whose
+# type parameter is only in their result: each call is decided by the type it must give.
+# Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Parse a:
+    ?Read: fn Text -> ?a
+    ~Need: fn Text -> ~a
+    fn ~Need t = match ?Read t:
+        ? v: ~ v
+        nil: Error(kind=Prelude.NotANumber, message="cannot read {t}")
+
+type Digit = record:
+    d: Nat
+derive ^Eq, ^Show
+
+type Word = record:
+    w: Text
+derive ^Eq, ^Show
+
+impl ^Parse Digit:
+    fn ?Read t = match ?ParseNat t:
+        ? n: if n < 10: ? Digit(d=n) else: nil
+        nil: nil
+
+impl ^Parse Word:
+    fn ?Read t = if (Len t) > 0: ? Word(w=t) else: nil
+
+~Two: fn Text, Text -> ~((a, a)) where a: ^Parse
+fn ~Two x, y:
+    a <- ~Need x
+    b <- ~Need y
+    ~ ((a, b))
+
+?Nothing: fn Nat -> ?a
+fn ?Nothing n = nil
+
+Digits: fn ~((Digit, Digit)) -> Text
+fn Digits (~ ((a, b))) = "{a.d}{b.d}"
+fn Digits (Error(message=m, ..)) = m
+
+Words: fn ~((Word, Word)) -> Text
+fn Words (~ ((a, b))) = "{a.w}-{b.w}"
+fn Words (Error(message=m, ..)) = m
+
+@main: @unit
+@main:
+    let ?none: ?Nat = ?Nothing 1
+    Ui.Label($text=$"{Digits (~Two "4", "2")} / {Digits (~Two "4", "12")} / {Words (~Two "ab", "cd")} / {Or ?none, 7}")    # 0

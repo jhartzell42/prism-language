@@ -1,0 +1,16 @@
+# A file's own dynamic `let` passed whole to a function that takes it so (Type System ch.
+# 4, Application; Semantics ch. 4: the top of a file is a binding group, and `$ 4` is a
+# constant dynamic). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+let $four = $ 4
+
+Wrap: fn $Nat -> [$Nat]
+fn Wrap $a = [[$a]]
+
+@rows: @unit
+@rows:
+    for $d <- Wrap $four:                                        # 0/[0]
+        Ui.Label($text=$"row {$d}")                              # 0/[0]/0

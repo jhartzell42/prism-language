@@ -1,0 +1,7 @@
+# Derived by hand from Type System ch. 2: the busy jobs are 3 + 4 = 7, more than 5, so the
+# node is `Line 7`; a case without a payload shows as `Idle`, one with one as `Line 7`.
+test program_types_named_as_the_runtimes_bases
+
+tick 0
+  added:
+    0: Ui.Label(text="line 7 Idle Line 7")

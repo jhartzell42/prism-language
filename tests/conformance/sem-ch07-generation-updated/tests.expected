@@ -1,0 +1,20 @@
+# Derived by hand from Semantics R3 (`!Updated $a` fires in the tick of each write of `$a`) and pick RE (a row hears its block's writes through the parent): each inc fires the generation's `!Updated $a` in its tick.
+test the_generation_hears_its_block
+
+tick 0
+  added:
+    0: Ui.Button(label="inc")
+    1: Ui.Button(label="next")
+    2/#0/0: Ui.Label(text="page 1: 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2/#0/0: Ui.Label(text="page 1: 1")
+
+tick 2
+  in:
+    0: click
+  changed:
+    2/#0/0: Ui.Label(text="page 1: 2")

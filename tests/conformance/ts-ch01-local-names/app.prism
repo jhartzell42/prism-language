@@ -19,4 +19,4 @@ fn Describe n:
 
 @shown: @unit
 @shown:
-    Ui.Label(text=$"{Describe 4} / {Describe 20}")             # 0
+    Ui.Label($text=$"{Describe 4} / {Describe 20}")             # 0

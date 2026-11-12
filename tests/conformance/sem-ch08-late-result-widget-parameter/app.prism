@@ -1,0 +1,30 @@
+# A widget parameter whose block ends on a building `match`'s plain result, called and
+# bound in the widget that takes it (Semantics ch. 8: `<-` builds the child and binds its
+# result). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Choose: fn Mode -> @Int
+fn @Choose mode:
+    match mode:
+        Loud t:
+            Ui.Label($text=$"{t}")
+            @ 10
+        Soft:
+            Ui.Label($text=$"soft")
+            @ 20
+
+@Use: fn @Int -> @unit
+fn @Use @w:
+    n <- @w                                                            # 0
+    Ui.Label($text=$"got {n}")                                         # 1
+
+@main: @unit
+@main:
+    @Use (@Choose (Loud "x"))

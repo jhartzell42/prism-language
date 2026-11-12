@@ -99,7 +99,7 @@ fn TyNamesIn t = match t:
     TySig ignore, i: TyNamesIn i
     TyAt i, ignore: TyNamesIn i
     TyElem ignore, i: TyNamesIn i
-    TyAssoc ignore, i: TyNamesIn i
+    TyAssoc ignore, ignore, i: TyNamesIn i
     otherwise: [[]]
 
 HasArrow: unbounded fn Ty -> Bool
@@ -112,7 +112,7 @@ fn HasArrow t = match t:
     TySig ignore, i: HasArrow i
     TyAt i, ignore: HasArrow i
     TyElem ignore, i: HasArrow i
-    TyAssoc ignore, i: HasArrow i
+    TyAssoc ignore, ignore, i: HasArrow i
     otherwise: False
 
 # The types a definition is made of: a record's fields, a choice's cases' arguments, an
@@ -148,7 +148,7 @@ fn NegWalk g, target, t, b, seen = match t:
     TySig ignore, i: NegWalk g, target, i, b, seen
     TyAt i, ignore: NegWalk g, target, i, b, seen
     TyElem ignore, i: NegWalk g, target, i, b, seen
-    TyAssoc ignore, i: NegWalk g, target, i, b, seen
+    TyAssoc ignore, ignore, i: NegWalk g, target, i, b, seen
     otherwise: ((False, seen))
 
 NegWalks: unbounded fn G, Text, [Ty], Bool, (Text ==> Bool) -> ((Bool, (Text ==> Bool)))

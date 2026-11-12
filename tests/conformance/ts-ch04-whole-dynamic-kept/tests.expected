@@ -1,0 +1,20 @@
+# Derived by hand from Type System ch. 4 and Semantics ch. 4: the one row's `$d` is the
+# count dynamic itself, so the row's label changes in the tick of each click.
+test a_kept_dynamic_follows
+
+tick 0
+  added:
+    0: Ui.Button(label="Inc")
+    1/[0]/0: Ui.Label(text="row 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1/[0]/0: Ui.Label(text="row 1")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1/[0]/0: Ui.Label(text="row 2")

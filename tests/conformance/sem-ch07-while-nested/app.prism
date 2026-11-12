@@ -37,16 +37,16 @@ fn Nested n = update 0:
 fn @TopShown n:
     !done <- @Run Top, n                                    # 0
     $shown <- "working" then Show !done
-    Ui.Label(text=$shown)                                   # 1
+    Ui.Label($text=$shown)                                   # 1
 
 @InIfShown: fn Int -> @unit
 fn @InIfShown n:
     !done <- @Run InIf, n                                   # 0
     $shown <- "working" then Show !done
-    Ui.Label(text=$shown)                                   # 1
+    Ui.Label($text=$shown)                                   # 1
 
 @NestedShown: fn Int -> @unit
 fn @NestedShown n:
     !done <- @Run Nested, n                                 # 0
     $shown <- "working" then Show !done
-    Ui.Label(text=$shown)                                   # 1
+    Ui.Label($text=$shown)                                   # 1

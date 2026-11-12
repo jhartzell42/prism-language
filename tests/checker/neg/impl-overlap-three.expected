@@ -1,0 +1,13 @@
+tests/checker/neg/impl-overlap-three.prism:14: error[impl-overlap]: a second impl of `^Loud` for `Pair a Text`
+    impl ^Loud (Pair a Text):
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: the first is at tests/checker/neg/impl-overlap-three.prism:11; keep one
+tests/checker/neg/impl-overlap-three.prism:17: error[impl-overlap]: a second impl of `^Loud` for `Pair Int Text`
+    impl ^Loud (Pair Int Text):
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: the first is at tests/checker/neg/impl-overlap-three.prism:11; keep one
+tests/checker/neg/impl-overlap-three.prism:17: error[impl-overlap]: a second impl of `^Loud` for `Pair Int Text`
+    impl ^Loud (Pair Int Text):
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: the first is at tests/checker/neg/impl-overlap-three.prism:14; keep one
+3 errors

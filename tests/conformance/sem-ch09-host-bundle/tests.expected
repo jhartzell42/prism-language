@@ -1,0 +1,28 @@
+# Derived by hand from Semantics ch. 9 (a supplier's plain answer is the place's first value, at its build; an event answer is the next tick's input, owed; a forwarded element is re-emitted at host/[p]/0 and the World's answers reach the child in their tick) and Type System ch. 2 (a bundle's plain part is its first value, its event part its answers).
+test a_supplier_answers_a_bundle
+
+tick 0
+  added:
+    0: Ui.Button(label="knock")
+    1/[1]/0: Ui.Label(text="mock: 0")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1/[1]/0: Ui.Label(text="mock: 2")
+
+test a_forwarded_bundle
+
+tick 0
+  added:
+    0/[0]/0: Pad.Door(name="front")
+    0/[1]/0: Ui.Label(text="door 1: 0")
+
+tick 1
+  in:
+    0/[0]/0: 3
+  changed:
+    0/[1]/0: Ui.Label(text="door 1: 3")

@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 2, "Collections": `xs as [a]+?` is `nil` for an empty collection and the non-empty collection otherwise, and a `match` reads it without parentheses.
+test checked_cast_match
+
+tick 0
+  added:
+    0: Ui.Label(text="4 9 some 2 none")

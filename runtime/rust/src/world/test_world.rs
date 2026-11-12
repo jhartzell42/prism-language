@@ -5,11 +5,18 @@
 //!   ticks while the program says `pending` and prints `compute until idle: k ticks, n to
 //!   m`, then each of its ticks that has a section (decisions.md D6). With none to run it
 //!   prints `0 ticks`, and with one, `1 tick, n to n`.
-//! - **Nothing arrives that the test did not write.** It never opens a tick on its own,
-//!   never answers a request unless the test writes `answer`, and answers first-value
-//!   queries from the `with` and `push` entries, then by Pitch ch. 6's policy for
-//!   pictures: `Gui.Window` with `WindowId title`, `Gui.Metrics` from a font nine units a
-//!   character and fourteen high.
+//! - **Nothing arrives that the test did not write,** but the prelude's own answers. It
+//!   never opens a tick on its own, never answers a request unless the test writes
+//!   `answer`, and answers first-value queries from the `with` and `push` entries, then by
+//!   Pitch ch. 6's policy for pictures: `Gui.Window` with `WindowId title`, `Gui.Metrics`
+//!   from a font nine units a character and fourteen high.
+//! - **`Prelude.Unwrap` and `Prelude.Exceptions` are answered as every World answers
+//!   them** ([`crate::world::prelude`]; Semantics ch. 10): an unwrap's `~ x` at tick n is
+//!   answered with `x` as an input of the next tick the test opens, shown under that
+//!   tick's `in:` as a delivery is, and the test is owed that tick (`compute until idle`
+//!   runs it). A poisoned subtree is served nothing again, a test's own delivery
+//!   included; with no supervisor the root is poisoned and the transcript goes on with
+//!   nothing arriving.
 //! - **Sections**, each omitted when empty: `in:`, `added:`, `changed:`, `torn down:`,
 //!   `requested:`, `result:`; `aborted` in place of everything after `in:` for a failed
 //!   tick, with `| ...` lines of this implementation's own wording.
@@ -32,6 +39,7 @@ use crate::doc::Document;
 use crate::float::Float;
 use crate::pod::{Fault, Path, Pod};
 use crate::read::{self, Pattern};
+use crate::world::prelude::{element_of, Prelude};
 use crate::world::scene::find_clickables;
 use crate::world::{Outcome, Program, ReadyState, TickIn, TickOut};
 
@@ -158,6 +166,8 @@ impl TestWorld {
             windows: BTreeMap::new(),
             rng: t.seed.map(XorShift::new),
             decks: BTreeMap::new(),
+            prelude: Prelude::new(),
+            log: Vec::new(),
         };
         for step in &t.steps {
             if let Err(e) = run.step(step, out, failures, &t.name) {
@@ -184,6 +194,12 @@ struct Run<'a> {
     rng: Option<XorShift>,
     /// Each `Cards.Deck` place's shuffle, the next card, and its unanswered requests.
     decks: BTreeMap<Path, (Vec<Pod>, usize, usize)>,
+    /// The prelude's policy: the answers `Prelude.Unwrap` and `Prelude.Exceptions` are
+    /// owed, and what is poisoned.
+    prelude: Prelude,
+    /// Every tick that closed, its input and the ready state it ran under, the build's
+    /// first: replayed onto a new build after a tick that aborts (Conformance AB).
+    log: Vec<(TickIn, BTreeMap<Pod, Pod>)>,
 }
 
 /// xorshift64*, the generator every implementation shares (Conformance ch. 1, "The
@@ -265,7 +281,7 @@ impl Run<'_> {
                 let mut input = TickIn::none();
                 for d in ds {
                     let (path, value) = match d {
-                        Delivery::Answer(p) => self.deal(p)?,
+                        Delivery::Output(p) => self.deal(p)?,
                         Delivery::Element(target) => self.click_element(target)?,
                         Delivery::Send(t, v) => (self.place(t)?, v.clone()),
                         Delivery::Click(t) => (self.place(t)?, Pod::name("click")),
@@ -275,9 +291,7 @@ impl Run<'_> {
                     }
                     input.answers.push((path, value));
                 }
-                input.answers.sort_by(|a, b| a.0.cmp(&b.0));
-                let shown: Vec<String> = input.answers.iter().map(|(p, v)| format!("{p}: {v}")).collect();
-                self.one_tick(input, &shown, out)
+                self.one_tick(input, &[], out)
             }
         };
         self.check(step, &ticked, failures, test);
@@ -360,10 +374,19 @@ impl Run<'_> {
         Ok(((*w).clone(), Pod::Choice("Press".into(), vec![point])))
     }
 
-    /// Run one tick, print it, and lend the program its compact round.
-    fn one_tick(&mut self, input: TickIn, shown: &[String], out: &mut String) -> Ticked {
+    /// Run one tick, print it, and lend the program its compact round. The tick's answers
+    /// are `input`'s and the ones the prelude's policy owes, in path order, less those to
+    /// a poisoned place; `pushed` is what `in:` shows before them.
+    fn one_tick(&mut self, mut input: TickIn, pushed: &[String], out: &mut String) -> Ticked {
         let before = self.doc.clone();
+        let owed = self.prelude.take_outputs();
+        input.answers.extend(owed.iter().cloned());
+        input.answers.retain(|(p, _)| !self.prelude.is_poisoned(p));
+        input.answers.sort_by(|a, b| a.0.cmp(&b.0));
+        let shown: Vec<String> = pushed.iter().cloned().chain(input.answers.iter().map(|(p, v)| format!("{p}: {v}"))).collect();
+        let shown = &shown[..];
         let ready = TestReady(&self.ready);
+        let logged = (input.clone(), self.ready.clone());
         let result = match self.program.as_mut() {
             Some(p) => p.tick(&input, &ready),
             None => (self.builder)(&self.args, &ready).map(|(p, o)| {
@@ -375,19 +398,47 @@ impl Run<'_> {
         self.next_tick += 1;
         match &result {
             Ok(o) => {
+                // The prelude's tags, as a World performs them: the requests against the
+                // document as the tick opened and the tick's newborns.
+                self.prelude.track(&o.patch);
+                for r in &o.requests {
+                    if !self.prelude.is_poisoned(&r.path) && element_of(&before, o, &r.path).and_then(Pod::tag) == Some("Prelude.Unwrap") {
+                        self.prelude.unwrap(&r.path, &r.value);
+                    }
+                }
                 self.doc.apply(&o.patch);
-                self.pending = o.pending;
-                if let Some(Outcome::Value(v)) = &o.result {
-                    self.last_result = Some(v.clone());
+                self.pending = o.pending || self.prelude.owes();
+                for outcome in &o.results {
+                    if let Outcome::Value(v) = outcome {
+                        self.last_result = Some(v.clone());
+                    }
                 }
                 self.observe(o);
                 if let Some(p) = self.program.as_mut() {
                     p.compact();
                 }
+                self.log.push(logged);
             }
-            Err(_) => self.program = None,
+            // A tick that aborts leaves the state before it (Conformance AB): the program
+            // built again and the ticks that closed run again, their output already had.
+            Err(_) => {
+                self.prelude.give_back(owed);
+                self.program = self.replay();
+            }
         }
         Ticked { out: result, before }
+    }
+
+    /// The program as the last tick that closed left it: built, then every logged tick
+    /// run again under the ready state it ran under; `None` when there is none.
+    fn replay(&self) -> Option<Box<dyn Program>> {
+        let ((_, built_under), rest) = self.log.split_first()?;
+        let (mut p, _) = (self.builder)(&self.args, &TestReady(built_under)).ok()?;
+        for (input, under) in rest {
+            p.tick(input, &TestReady(under)).ok()?;
+            p.compact();
+        }
+        Some(p)
     }
 
     /// What the policies learn from a tick: windows' ids, decks' shuffles and requests.
@@ -430,7 +481,7 @@ impl Run<'_> {
                 }
                 continue;
             };
-            let fired = |p: &Pattern| matches!(&o.result, Some(Outcome::Fired(v)) if p.matches(v));
+            let fired = |p: &Pattern| o.results.iter().any(|r| matches!(r, Outcome::Fired(v) if p.matches(v)));
             let requested = |p: &Pattern, v: &Pattern| {
                 o.requests.iter().any(|r| {
                     let place = self.doc.get(&r.path).or_else(|| t.before.get(&r.path));
@@ -489,10 +540,11 @@ pub fn print_tick(out: &mut String, n: usize, inputs: &[String], result: &Result
     section(out, "changed", places(&o.patch.changed));
     section(out, "torn down", places(&o.patch.removed));
     section(out, "requested", o.requests.iter().map(|r| r.to_string()).collect());
-    match &o.result {
-        Some(Outcome::Value(v)) => _ = writeln!(out, "  result: {v}"),
-        Some(Outcome::Fired(v)) => _ = writeln!(out, "  result: fired: {v}"),
-        None => {}
+    for outcome in &o.results {
+        match outcome {
+            Outcome::Value(v) => _ = writeln!(out, "  result: {v}"),
+            Outcome::Fired(v) => _ = writeln!(out, "  result: fired: {v}"),
+        }
     }
 }
 
@@ -556,7 +608,7 @@ enum Delivery {
     /// `click element path`, the path as printed.
     Element(String),
     /// `answer p`.
-    Answer(Pattern),
+    Output(Pattern),
 }
 
 enum Target {
@@ -802,7 +854,7 @@ fn parse_step(n: usize, text: &str) -> Result<Step, String> {
                 Some(path) => Delivery::Element(printed_path(n, path)?),
                 None => Delivery::Click(parse_target(n, rest)?),
             }),
-            ("answer", _) => deliveries.push(Delivery::Answer(pattern(n, rest)?)),
+            ("answer", _) => deliveries.push(Delivery::Output(pattern(n, rest)?)),
             ("send", _) => {
                 let v = parts.get(i + 1).filter(|v| !["send", "click", "answer", "with"].contains(&v.split_whitespace().next().unwrap_or("")));
                 let v = v.ok_or(format!("line {n}: send p, v"))?;

@@ -58,12 +58,11 @@ impl<T: Clone> Hold<T> {
     }
     /// The tick's one write (G1, Semantics R3): the older slot takes the value, stamped
     /// now. A second write in a tick is a node woken twice for the same inputs: a fault of
-    /// the tick (and an assertion in a debug build).
+    /// the tick, worded as the C++ runtime words it (prismc/README.md, TW).
     pub fn set(&self, v: T, cx: &Cx) {
         let mut s = self.slots.borrow_mut();
         if s.1 == cx.tick() && s.2.is_some() {
-            debug_assert!(false, "a hold of {} written twice in tick {}", std::any::type_name::<T>(), cx.tick());
-            cx.fail_later(crate::pod::Fault::new("Runtime.TwoWrites", format!("a hold of {} written twice in tick {}", std::any::type_name::<T>(), cx.tick())));
+            cx.fail_later(crate::pod::Fault::new("Runtime.TwoWrites", format!("a hold written twice in tick {}", cx.tick())));
             return;
         }
         let (old, stamp) = (std::mem::replace(&mut s.0, v), s.1);
@@ -318,6 +317,90 @@ impl<T: Clone + Eq> Snapshot<T> {
 }
 
 // ---------------------------------------------------------------------------------------
+// Heights
+// ---------------------------------------------------------------------------------------
+
+/// A global height no program reaches: a combinator raised past it is raised by a prompt
+/// cycle across nodes, which the checker refuses, so it is a bug of the compiler.
+const HEIGHT_LIMIT: u32 = 1 << 20;
+
+/// A node's combinators' global heights, and the ones asked to wake this tick. A
+/// combinator starts at its distance inside the node (the emitted constant) and is put
+/// above every source that reaches it from another node, as the source's height is told
+/// at the wiring ([`Port::subscribe_above`], a height twin called by a parent, a row or a
+/// sink). The wake runs the lowest combinator asked ([`Heights::next`]) and asks again for
+/// the next ([`Heights::again`]), so each combinator decides once, after every input that
+/// can make it fire has had its turn (Graph ch. 4, "Heights"; Semantics ch. 7: double
+/// firings never).
+pub struct Heights {
+    at: RefCell<Vec<u32>>,
+    asked: RefCell<std::collections::BTreeSet<(u32, usize)>>,
+    /// The combinators whose own twin is telling their new height on (`raise`).
+    walking: RefCell<Vec<bool>>,
+}
+
+impl Heights {
+    /// The combinators at their distances inside the node, in the node's order.
+    pub fn new(distances: Vec<u32>) -> Heights {
+        let walking = vec![false; distances.len()];
+        Heights { at: RefCell::new(distances), asked: RefCell::new(std::collections::BTreeSet::new()), walking: RefCell::new(walking) }
+    }
+    /// The global height of the node's `combinator`.
+    pub fn of(&self, combinator: usize) -> u32 {
+        self.at.borrow()[combinator]
+    }
+    /// A source at global height `h` reaches `combinator`: it sits above it. Gives the
+    /// combinator's new height when it moved, which its own twin then tells what it feeds.
+    pub fn above(&self, combinator: usize, h: u32) -> Option<u32> {
+        let mut at = self.at.borrow_mut();
+        if at[combinator] > h {
+            return None;
+        }
+        assert!(h < HEIGHT_LIMIT, "a prismc bug: a combinator's height does not settle (a prompt cycle across nodes)");
+        at[combinator] = h + 1;
+        Some(h + 1)
+    }
+    /// `above`, and when the combinator moved, `tell` its new height on (the combinator's
+    /// own twin). The combinator is walking until `tell` returns: a source that reaches it
+    /// and moves it meanwhile was reached from the combinator itself, a prompt cycle
+    /// across nodes, which the checker refuses. The panic comes at the first turn of the
+    /// cycle, before the stack runs out.
+    pub fn raise(&self, combinator: usize, h: u32, tell: impl FnOnce(u32)) {
+        if let Some(moved) = self.above(combinator, h) {
+            let was_walking = std::mem::replace(&mut self.walking.borrow_mut()[combinator], true);
+            assert!(!was_walking, "a prismc bug: a combinator sits above itself (a prompt cycle across nodes)");
+            tell(moved);
+            self.walking.borrow_mut()[combinator] = false;
+        }
+    }
+    /// An input of `combinator` fired: its wake is asked at its height.
+    pub fn ask(&self, combinator: usize, cx: &mut Cx, node: Rc<dyn crate::cx::Node>) {
+        let h = self.of(combinator);
+        self.asked.borrow_mut().insert((h, combinator));
+        cx.wake(h, node);
+    }
+    /// The lowest combinator asked whose height has come (at or below the running height),
+    /// for the node's wake to decide; none when every one left sits higher. Combinators of
+    /// one height decide in one wake of the node, in the node's order.
+    pub fn next(&self, cx: &Cx) -> Option<usize> {
+        let running = cx.running_height()?;
+        let mut asked = self.asked.borrow_mut();
+        match asked.first() {
+            Some(&(h, _)) if h <= running => asked.pop_first().map(|(_, combinator)| combinator),
+            _ => None,
+        }
+    }
+    /// After a wake decided the combinators whose height had come: a wake for the lowest
+    /// still asked.
+    pub fn again(&self, cx: &mut Cx, node: Rc<dyn crate::cx::Node>) {
+        let lowest = self.asked.borrow().first().copied();
+        if let Some((h, _)) = lowest {
+            cx.wake(h, node);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------
 // Ports and the values that cross the node interface
 // ---------------------------------------------------------------------------------------
 
@@ -329,12 +412,27 @@ pub struct Handle(usize);
 /// downstream are weak (Graph ch. 4).
 pub type Subscriber<T> = Rc<dyn Fn(&T, &mut Cx) -> crate::cx::Done>;
 
-/// An output event port across nodes.
+/// A subscriber's height twin: told the global height its source fires at, when it
+/// subscribes and each time that height rises. It walks where the subscriber's firing
+/// would go and puts every combinator it reaches above that height ([`Heights::above`]),
+/// a port it would fire straight through at that height ([`Port::raise`]).
+pub type Above = Rc<dyn Fn(u32)>;
+
+/// An output event port across nodes. `height` is the global height the port fires at:
+/// the height of the combinator whose wake fires it, or of whatever fires it straight
+/// through an input; it is only ever raised (Graph ch. 4, "Heights": one too high is
+/// harmless), and only while nothing propagates.
 pub struct Port<T> {
     subs: RefCell<Vec<Option<Subscriber<T>>>>,
+    above: RefCell<Vec<Option<Above>>>,
     free: RefCell<Vec<usize>>,
     liens: Cell<u32>,
     kept: Stamped<T>,
+    height: Cell<u32>,
+    /// The node of the runtime's own that fires the port ([`Port::owned_by`]), and that
+    /// node held while the port has a subscriber.
+    owner: RefCell<Option<std::rc::Weak<dyn Node>>>,
+    held: RefCell<Option<Rc<dyn Node>>>,
 }
 
 /// How much an output is wanted (Graph ch. 4, "Demand"). Tags are a behavior's, and the
@@ -348,7 +446,7 @@ pub enum Demand {
 
 impl<T: Clone> Default for Port<T> {
     fn default() -> Port<T> {
-        Port { subs: RefCell::new(Vec::new()), free: RefCell::new(Vec::new()), liens: Cell::new(0), kept: Stamped::new() }
+        Port { subs: RefCell::new(Vec::new()), above: RefCell::new(Vec::new()), free: RefCell::new(Vec::new()), liens: Cell::new(0), kept: Stamped::new(), height: Cell::new(0), owner: RefCell::new(None), held: RefCell::new(None) }
     }
 }
 
@@ -356,7 +454,18 @@ impl<T: Clone> Port<T> {
     pub fn new() -> Port<T> {
         Port::default()
     }
+    /// The port is fired by `node`, a node nothing else need hold (`merge_all`'s, a
+    /// `Dynamic::map2`'s): the port holds it for as long as it has a subscriber, so an
+    /// event or dynamic value let go by a reader that subscribed still fires, and one let
+    /// go with no subscriber is dropped with its own subscriptions.
+    pub fn owned_by(&self, node: std::rc::Weak<dyn Node>) {
+        *self.owner.borrow_mut() = Some(node);
+    }
     pub fn subscribe(&self, f: Subscriber<T>) -> Handle {
+        if self.held.borrow().is_none() {
+            let owner = self.owner.borrow().as_ref().and_then(std::rc::Weak::upgrade);
+            *self.held.borrow_mut() = owner;
+        }
         let mut subs = self.subs.borrow_mut();
         match self.free.borrow_mut().pop() {
             Some(i) => {
@@ -371,7 +480,46 @@ impl<T: Clone> Port<T> {
     }
     pub fn unsubscribe(&self, h: Handle) {
         if self.subs.borrow_mut().get_mut(h.0).and_then(Option::take).is_some() {
+            if let Some(twin) = self.above.borrow_mut().get_mut(h.0) {
+                *twin = None;
+            }
             self.free.borrow_mut().push(h.0);
+        }
+        // the last subscriber left: the node that fires the port is let go, after every
+        // borrow of the port ended (its drop unsubscribes from its own sources)
+        let unheard = self.held.borrow().is_some() && !self.subs.borrow().iter().any(Option::is_some);
+        let released = if unheard { self.held.borrow_mut().take() } else { None };
+        drop(released);
+    }
+    /// Subscribe with the subscriber's height twin: the twin is told the port's height at
+    /// once, and again each time the port is raised, so whatever the subscriber feeds
+    /// sits above the port however late it subscribes.
+    pub fn subscribe_above(&self, f: Subscriber<T>, above: Above) -> Handle {
+        let h = self.subscribe(f);
+        {
+            let mut twins = self.above.borrow_mut();
+            if twins.len() <= h.0 {
+                twins.resize_with(h.0 + 1, || None);
+            }
+            twins[h.0] = Some(above.clone());
+        }
+        above(self.height.get());
+        h
+    }
+    /// The global height the port fires at.
+    pub fn height(&self) -> u32 {
+        self.height.get()
+    }
+    /// The port fires at global height `h`: when that is above what it was, every
+    /// subscriber's twin is told. The list is copied first, so a twin may subscribe.
+    pub fn raise(&self, h: u32) {
+        if h <= self.height.get() {
+            return;
+        }
+        self.height.set(h);
+        let twins: Vec<Above> = self.above.borrow().iter().flatten().cloned().collect();
+        for twin in twins {
+            twin(h);
         }
     }
     pub fn lien(&self) {
@@ -416,6 +564,17 @@ impl<T> Clone for Event<T> {
     }
 }
 
+/// Events compare by identity, the port they fire, as dynamics do (`Dynamic`'s `PartialEq`):
+/// an element's level holds the events of its event fields (ruling EP), and a place whose
+/// level holds the same events has not moved.
+impl<T> PartialEq for Event<T> {
+    fn eq(&self, other: &Event<T>) -> bool {
+        Rc::ptr_eq(&self.port, &other.port)
+    }
+}
+
+impl<T> Eq for Event<T> {}
+
 impl<T: Clone + 'static> Event<T> {
     /// `never`: a port nothing fires.
     pub fn never() -> Event<T> {
@@ -429,7 +588,24 @@ impl<T: Clone + 'static> Event<T> {
     pub fn map<U: Clone + 'static>(&self, f: impl Fn(&T) -> U + 'static) -> Event<U> {
         let port = Rc::new(Port::new());
         let out = port.clone();
-        self.port.subscribe(Rc::new(move |v: &T, cx: &mut Cx| out.fire(f(v), cx)));
+        let raised = port.clone();
+        self.port.subscribe_above(Rc::new(move |v: &T, cx: &mut Cx| out.fire(f(v), cx)), Rc::new(move |h| raised.raise(h)));
+        Event { owner: self.owner.clone(), port }
+    }
+    /// The event `f` of this one, `f` given each firing's read point: a lifted call that
+    /// samples a dynamic at the firing (`(F $d) on !e` as an event value reads `$d` as the
+    /// tick opened, Semantics ch. 7).
+    pub fn map_at<U: Clone + 'static>(&self, f: impl Fn(&T, &Cx) -> U + 'static) -> Event<U> {
+        let port = Rc::new(Port::new());
+        let out = port.clone();
+        let raised = port.clone();
+        self.port.subscribe_above(
+            Rc::new(move |v: &T, cx: &mut Cx| {
+                let at_firing = f(v, cx);
+                out.fire(at_firing, cx)
+            }),
+            Rc::new(move |h| raised.raise(h)),
+        );
         Event { owner: self.owner.clone(), port }
     }
 }
@@ -439,12 +615,179 @@ impl<U: Clone + 'static> Event<Option<U>> {
     pub fn filter_some(&self) -> Event<U> {
         let port = Rc::new(Port::new());
         let out = port.clone();
-        self.port.subscribe(Rc::new(move |v: &Option<U>, cx: &mut Cx| match v {
+        let raised = port.clone();
+        self.port.subscribe_above(Rc::new(move |v: &Option<U>, cx: &mut Cx| match v {
             Some(u) => out.fire(u.clone(), cx),
             None => Ok(()),
-        }));
+        }), Rc::new(move |h| raised.raise(h)));
         Event { owner: self.owner.clone(), port }
     }
+}
+
+/// `!MergeAll` of a list that is not a literal (Semantics Appendix B): the list is a plain
+/// value, so its events are fixed at the build. Each event's port is heard into a stamped
+/// input, and the node is told (`heard`, which asks its wake); the wake takes the values
+/// fired this tick, in the list's order, as one firing.
+pub struct MergeList<T: Clone> {
+    inputs: RefCell<Rc<Vec<Stamped<T>>>>,
+    subs: RefCell<Vec<(Rc<Port<T>>, Handle)>>,
+}
+
+impl<T: Clone + 'static> MergeList<T> {
+    pub fn new() -> MergeList<T> {
+        MergeList { inputs: RefCell::new(Rc::new(Vec::new())), subs: RefCell::new(Vec::new()) }
+    }
+    /// Hears every event of `events`, telling `node` through `heard` when one fires.
+    pub fn listen<N: 'static>(&self, events: &crate::collections::Array<Event<T>>, node: &Rc<N>, heard: fn(&Rc<N>, &mut Cx)) {
+        self.listen_above(events, node, heard, |_, _| ())
+    }
+    /// As [`MergeList::listen`], with the node's height twin: `above` is told each
+    /// event's height, at once and when it rises, and puts the node's merge above it.
+    pub fn listen_above<N: 'static>(&self, events: &crate::collections::Array<Event<T>>, node: &Rc<N>, heard: fn(&Rc<N>, &mut Cx), above: fn(&Rc<N>, u32)) {
+        let inputs: Rc<Vec<Stamped<T>>> = Rc::new(events.iter().map(|_| Stamped::new()).collect());
+        *self.inputs.borrow_mut() = inputs.clone();
+        let mut subs = self.subs.borrow_mut();
+        for (i, ev) in events.iter().enumerate() {
+            let weak = Rc::downgrade(node);
+            let ins = inputs.clone();
+            let told = weak.clone();
+            let h = ev.port.subscribe_above(Rc::new(move |v: &T, cx: &mut Cx| {
+                ins[i].set(v.clone(), cx);
+                if let Some(n) = weak.upgrade() {
+                    heard(&n, cx);
+                }
+                Ok(())
+            }), Rc::new(move |h| {
+                if let Some(n) = told.upgrade() {
+                    above(&n, h);
+                }
+            }));
+            subs.push((ev.port.clone(), h));
+        }
+    }
+    /// The values the list's events fired this tick, in the list's order; none fired, none.
+    pub fn take(&self, cx: &Cx) -> Option<crate::collections::Array<T>> {
+        let mut all = crate::collections::Array::new();
+        for s in self.inputs.borrow().iter() {
+            if let Some(x) = s.take(cx) {
+                all.push_back(x);
+            }
+        }
+        if all.len() == 0 { None } else { Some(all) }
+    }
+}
+
+impl<T: Clone + 'static> Default for MergeList<T> {
+    fn default() -> MergeList<T> {
+        MergeList::new()
+    }
+}
+
+impl<T: Clone> Drop for MergeList<T> {
+    fn drop(&mut self) {
+        for (p, h) in self.subs.borrow_mut().drain(..) {
+            p.unsubscribe(h);
+        }
+    }
+}
+
+/// A held `@Switch`'s subscription to its current inner event (prismc's `HeldSwitch`):
+/// listening to another event lets go of the one before. The event is kept whole: its
+/// owner (a `merge_all`'s node) lives while the switch listens.
+pub struct Listen<T: Clone> {
+    sub: RefCell<Option<(Event<T>, Handle)>>,
+}
+
+impl<T: Clone + 'static> Default for Listen<T> {
+    fn default() -> Listen<T> {
+        Listen { sub: RefCell::new(None) }
+    }
+}
+
+impl<T: Clone + 'static> Listen<T> {
+    /// From now on `ev` tells `node` through `heard`, and the event before tells nothing.
+    pub fn listen<N: 'static>(&self, ev: &Event<T>, node: &Rc<N>, heard: fn(&Rc<N>, T, &mut Cx)) {
+        self.listen_above(ev, node, heard, |_, _| ())
+    }
+    /// As [`Listen::listen`], with `heard`'s height twin: `above` is told the event's
+    /// height, at once and each time it rises.
+    pub fn listen_above<N: 'static>(&self, ev: &Event<T>, node: &Rc<N>, heard: fn(&Rc<N>, T, &mut Cx), above: fn(&Rc<N>, u32)) {
+        self.drop_sub();
+        let weak = Rc::downgrade(node);
+        let told = weak.clone();
+        let h = ev.port.subscribe_above(Rc::new(move |v: &T, cx: &mut Cx| {
+            if let Some(n) = weak.upgrade() {
+                heard(&n, v.clone(), cx);
+            }
+            Ok(())
+        }), Rc::new(move |h| {
+            if let Some(n) = told.upgrade() {
+                above(&n, h);
+            }
+        }));
+        *self.sub.borrow_mut() = Some((ev.clone(), h));
+    }
+    fn drop_sub(&self) {
+        if let Some((ev, h)) = self.sub.borrow_mut().take() {
+            ev.port.unsubscribe(h);
+        }
+    }
+}
+
+impl<T: Clone> Drop for Listen<T> {
+    fn drop(&mut self) {
+        if let Some((ev, h)) = self.sub.borrow_mut().take() {
+            ev.port.unsubscribe(h);
+        }
+    }
+}
+
+/// `!MergeAll` of a list as an event value: a node of its own that hears the list's events
+/// (`MergeList`) and, woken, fires the values of the tick in the list's order.
+struct MergeNode<T: Clone + 'static> {
+    list: MergeList<T>,
+    out: Rc<Port<crate::collections::Array<T>>>,
+    /// The merge, the node's one combinator.
+    heights: Heights,
+}
+
+impl<T: Clone + 'static> Node for MergeNode<T> {
+    fn wake(self: Rc<Self>, cx: &mut Cx) -> crate::cx::Done {
+        if self.heights.next(cx).is_none() {
+            return Ok(());
+        }
+        match self.list.take(cx) {
+            Some(all) => self.out.fire(all, cx),
+            None => Ok(()),
+        }
+    }
+}
+
+/// The event `!MergeAll events` (Semantics Appendix B): its node woken above the height of
+/// every event of the list, so it fires once in a tick, after each of them had its turn;
+/// its own port fires at that height. The event value holds the node, and so does the
+/// node's port while it has a subscriber ([`Port::owned_by`]): a reader that subscribes and
+/// lets the event value go still hears it, and when the last subscriber leaves (a
+/// `MergeList` or a `Listen` dropped, a row that unsubscribes) the node is dropped and its
+/// list unsubscribes from every event of it.
+pub fn merge_all<T: Clone + 'static>(events: &crate::collections::Array<Event<T>>) -> Event<crate::collections::Array<T>> {
+    let node = Rc::new(MergeNode { list: MergeList::new(), out: Rc::new(Port::new()), heights: Heights::new(vec![1]) });
+    let weak = Rc::downgrade(&node);
+    let fired_by: std::rc::Weak<dyn Node> = weak;
+    node.out.owned_by(fired_by);
+    node.out.raise(node.heights.of(0));
+    node.list.listen_above(
+        events,
+        &node,
+        |n: &Rc<MergeNode<T>>, cx: &mut Cx| n.heights.ask(0, cx, n.clone()),
+        |n: &Rc<MergeNode<T>>, h: u32| {
+            if let Some(moved) = n.heights.above(0, h) {
+                n.out.raise(moved);
+            }
+        },
+    );
+    let port = node.out.clone();
+    Event { owner: Some(node), port }
 }
 
 /// A `$a` value: a read at the context's read point, its update event, and its owner.
@@ -479,6 +822,71 @@ impl<T: Clone + 'static> Dynamic<T> {
     pub fn map<U: 'static>(&self, f: impl Fn(&T) -> U + 'static) -> Dynamic<U> {
         let read = self.read.clone();
         Dynamic { owner: self.owner.clone(), read: Rc::new(move |cx| f(&read(cx))), updates: self.updates.clone() }
+    }
+    /// The dynamic `f` of this one and `other` (a lift over two dynamics in a function that
+    /// takes them whole, Type System ch. 4): read from both; its update event fires, once a
+    /// tick, when either moves, from a node of its own woken above both update events
+    /// ([`MovedEither`]), so `!Updated` of it fires after both were written.
+    pub fn map2<U: Clone + 'static, V: 'static>(&self, other: &Dynamic<U>, f: impl Fn(&T, &U) -> V + 'static) -> Dynamic<V> {
+        let (a, b) = (self.read.clone(), other.read.clone());
+        let node = Rc::new(MovedEither { out: Rc::new(Port::new()), heights: Heights::new(vec![1]), sources: RefCell::new(Vec::new()), owners: (self.owner.clone(), other.owner.clone()) });
+        let weak = Rc::downgrade(&node);
+    let fired_by: std::rc::Weak<dyn Node> = weak;
+        node.out.owned_by(fired_by);
+        node.out.raise(node.heights.of(0));
+        for src in [&self.updates, &other.updates] {
+            let (heard, told) = (Rc::downgrade(&node), Rc::downgrade(&node));
+            let h = src.subscribe_above(
+                Rc::new(move |_: &(), cx: &mut Cx| {
+                    if let Some(n) = heard.upgrade() {
+                        n.heights.ask(0, cx, n.clone());
+                    }
+                    Ok(())
+                }),
+                Rc::new(move |h| {
+                    if let Some(n) = told.upgrade() {
+                        if let Some(moved) = n.heights.above(0, h) {
+                            n.out.raise(moved);
+                        }
+                    }
+                }),
+            );
+            node.sources.borrow_mut().push((src.clone(), h));
+        }
+        let updates = node.out.clone();
+        Dynamic { owner: Some(node), read: Rc::new(move |cx| f(&a(cx), &b(cx))), updates }
+    }
+}
+
+/// The update event of a lift over two dynamics ([`Dynamic::map2`]): a node that hears both
+/// sources' update events and, woken above both, fires its own once in the tick. It holds
+/// the sources' owners, and is held by the dynamic and by its port while that has a
+/// subscriber ([`Port::owned_by`]); dropped, it unsubscribes from both sources, so a lift
+/// made, sampled and let go (an event value that samples two dynamics at each firing)
+/// leaves nothing behind.
+struct MovedEither {
+    out: Rc<Port<()>>,
+    /// The node's one combinator.
+    heights: Heights,
+    sources: RefCell<Vec<(Rc<Port<()>>, Handle)>>,
+    #[allow(dead_code)]
+    owners: (Option<Rc<dyn Node>>, Option<Rc<dyn Node>>),
+}
+
+impl Node for MovedEither {
+    fn wake(self: Rc<Self>, cx: &mut Cx) -> crate::cx::Done {
+        if self.heights.next(cx).is_none() || self.out.kept(cx).is_some() {
+            return Ok(());
+        }
+        self.out.fire((), cx)
+    }
+}
+
+impl Drop for MovedEither {
+    fn drop(&mut self) {
+        for (port, h) in self.sources.borrow_mut().drain(..) {
+            port.unsubscribe(h);
+        }
     }
 }
 
@@ -529,12 +937,103 @@ pub struct Live<E> {
     pub identity: E,
     pub level: Dynamic<E>,
     pub entry: Rc<crate::host::Entry<E>>,
+    /// The place's requests as its host's row hears them: the event field's name when the
+    /// tag has several, and the value fired.
+    pub requests: Rc<Port<(Option<String>, crate::pod::Pod)>>,
 }
 
 impl<E: Clone> Clone for Live<E> {
     fn clone(&self) -> Live<E> {
-        Live { identity: self.identity.clone(), level: self.level.clone(), entry: self.entry.clone() }
+        Live { identity: self.identity.clone(), level: self.level.clone(), entry: self.entry.clone(), requests: self.requests.clone() }
     }
+}
+
+impl<E> Live<E> {
+    /// One event field of the live element as an `!T` (an element pattern's `!field=!r`,
+    /// ruling EP): each request the place makes through `field` (`None`: the tag's only
+    /// event field), decoded, in the tick the place fires it. A value that does not decode
+    /// is a fault of that tick.
+    pub fn requested<T: crate::pod::FromPod + Clone + 'static>(&self, field: Option<&'static str>) -> Event<T> {
+        let port = Rc::new(Port::new());
+        let out = port.clone();
+        let raised = port.clone();
+        self.requests.subscribe_above(Rc::new(move |(f, v): &(Option<String>, crate::pod::Pod), cx: &mut Cx| {
+            if f.as_deref() == field {
+                out.fire(T::from_pod(v)?, cx)
+            } else {
+                Ok(())
+            }
+        }), Rc::new(move |h| raised.raise(h)));
+        Event { owner: None, port }
+    }
+}
+
+/// An element applied as a plain value, before a statement or a host places it (Type System
+/// ch. 2, "Names and sigils"): its tag's description record as the program's own emitted
+/// type (`desc`, which a pattern takes back by its type, [`element_view`]), its level over
+/// time, mapped from its `$` fields, and each event field's firings, the requests of the
+/// place once it is placed. It reads nothing until it is placed.
+pub struct Described<E> {
+    pub desc: Rc<dyn std::any::Any>,
+    pub level: Dynamic<E>,
+    pub requests: Vec<(Option<String>, Event<crate::pod::Pod>)>,
+}
+
+impl<E> Clone for Described<E> {
+    fn clone(&self) -> Described<E> {
+        Described { desc: self.desc.clone(), level: self.level.clone(), requests: self.requests.clone() }
+    }
+}
+
+impl<E> Described<E> {
+    /// An event field of the description: its firings are the placed element's requests,
+    /// `field` naming it when the tag has several.
+    pub fn request(mut self, field: Option<&str>, firings: Event<crate::pod::Pod>) -> Described<E> {
+        self.requests.push((field.map(Into::into), firings));
+        self
+    }
+}
+
+/// A description of a tag: `desc` its description record, `level` its level over time.
+pub fn described<E, D: 'static>(desc: D, level: Dynamic<E>) -> Described<E> {
+    Described { desc: Rc::new(desc), level, requests: Vec::new() }
+}
+
+/// An element value, `Element r o` (Semantics RULINGS round 12, EV: elements are ordinary
+/// values): a live element, which a host's supplier receives, or a description, a tag
+/// applied.
+pub enum Element<E> {
+    Live(Live<E>),
+    Described(Described<E>),
+}
+
+impl<E: Clone> Clone for Element<E> {
+    fn clone(&self) -> Element<E> {
+        match self {
+            Element::Live(l) => Element::Live(l.clone()),
+            Element::Described(d) => Element::Described(d.clone()),
+        }
+    }
+}
+
+/// A description as an element value.
+pub fn described_element<E>(d: Described<E>) -> Element<E> {
+    Element::Described(d)
+}
+
+/// An element seen as the description `D` of one tag: a description of that tag as it is, a
+/// live element as `of_live` gives it (the description of its level, when it is of the
+/// tag), else `None`.
+pub fn element_view<E, D: Clone + 'static>(e: &Element<E>, of_live: impl Fn(&Live<E>) -> Option<D>) -> Option<D> {
+    match e {
+        Element::Live(l) => of_live(l),
+        Element::Described(d) => d.desc.downcast_ref::<D>().cloned(),
+    }
+}
+
+/// Whether an element is of the tag whose description is `D` ([`element_view`]).
+pub fn element_is<E, D: Clone + 'static>(e: &Element<E>, of_live: impl Fn(&Live<E>) -> Option<D>) -> bool {
+    element_view(e, of_live).is_some()
 }
 
 // ---------------------------------------------------------------------------------------
@@ -569,6 +1068,38 @@ impl<T: Clone> Defer<T> {
     /// `@Defer`'s firing this tick: what was armed in the tick before.
     pub fn fired(&self, cx: &Cx) -> Option<T> {
         self.armed.borrow().as_ref().filter(|(_, t)| t + 1 == cx.tick()).map(|(v, _)| v.clone())
+    }
+}
+
+/// `@Later: fn !a -> @!a` (Semantics Appendix B): each firing answered one tick later,
+/// through a zero-delay `Time.After`. The firings whose wake the World has not answered
+/// yet, oldest first: [`LaterQueue::queue`] at each firing, as the wake is asked;
+/// [`LaterQueue::answered`] at each answer of the place, which gives the oldest back.
+pub struct LaterQueue<T> {
+    pending: RefCell<std::collections::VecDeque<T>>,
+}
+
+impl<T> Default for LaterQueue<T> {
+    fn default() -> LaterQueue<T> {
+        LaterQueue { pending: RefCell::new(std::collections::VecDeque::new()) }
+    }
+}
+
+impl<T> LaterQueue<T> {
+    pub fn new() -> LaterQueue<T> {
+        LaterQueue::default()
+    }
+    /// The argument fired: kept until its wake is answered.
+    pub fn queue(&self, v: T) {
+        self.pending.borrow_mut().push_back(v);
+    }
+    /// The place was answered: the oldest firing still kept. An answer with none kept is
+    /// a World answering a wake nobody asked for.
+    pub fn answered(&self) -> T {
+        match self.pending.borrow_mut().pop_front() {
+            Some(v) => v,
+            None => panic!("an answer at the place of an `@Later` that asked for no wake"),
+        }
     }
 }
 

@@ -96,7 +96,7 @@ type TplRead = record:
     l: Lex
     lines: [RawLine]
     cur: RawLine
-    closingCol: ?Nat
+    ?closingCol: Nat
     closed: Bool
     atLineStart: Bool
     going: Bool
@@ -117,7 +117,7 @@ TemplateBody: unbounded fn Lex, Text, Text, Bool, Bool, Nat -> (([TPartTok], Lex
 fn TemplateBody l0, close, delims, isRaw, firstContinues, openStart:
     let open = if delims == "double": "\{\{" else: "\{"
     let how = TplHow(close=close, delims=delims, open=open, isRaw=isRaw, firstContinues=firstContinues)
-    let start = TplRead(l=l0, lines=[[]], cur=emptyLine, closingCol=nil, closed=False, atLineStart=(not firstContinues), going=True)
+    let start = TplRead(l=l0, lines=[[]], cur=emptyLine, ?closingCol=nil, closed=False, atLineStart=(not firstContinues), going=True)
     let r = update start:
         while &_.going:
             &_ <= TemplateStep &_, how
@@ -154,7 +154,7 @@ fn BraceBlockLine s, rest, how:
     let past = Forward s.l, (Len rest)
     let at = if (Peek past) == "\n": Bump past else: past
     let ((toks, l2)) = Nested at, (MBrace how.delims)
-    let line = RawLine(items=[[(RiBlock toks, Range(start=bs, end=l2.pos))]], newline=False, block=True)
+    let line = RawLine(items=[[(RiBlock toks, Range(start=bs, end=l2.pos, origin=InSource))]], newline=False, block=True)
     update s:
         &_.lines <= Push &_.lines, line
         &_.l <= l2
@@ -180,7 +180,7 @@ fn TemplateItem l, how:
     else: if live and (StartsWith l, how.open):
         let ps = l.pos
         let ((toks, l2)) = Nested (Forward l, (Len how.open)), (MPlaceholder how.delims)
-        let item = RiPlaceholder toks, Range(start=ps, end=l2.pos)
+        let item = RiPlaceholder toks, Range(start=ps, end=l2.pos, origin=InSource)
         ((item, l2))
     else: if live and (StartsWith l, "<@") and (IsUpper (PeekAt l, 2)): TemplateCall l, how.delims, how.open
     # A run of characters none of which begins an item, a line's end or the closing tag.
@@ -195,7 +195,7 @@ fn TemplateItem l, how:
 type CallRead = record:
     l: Lex
     attrs: [AttrTok]
-    body: ?[TPartTok]
+    ?body: [TPartTok]
     going: Bool
 derive ^Eq, ^Show
 
@@ -208,10 +208,10 @@ fn TemplateCall l0, delims, open:
     let ((path, l2)) = LexQualifiedPath l1
     let name = NameTok(sigils=sigils, path=path, case=CaseUpper)
     let close = "</{sigils}{Join path, "."}>"
-    let r = update CallRead(l=l2, attrs=[[]], body=nil, going=True):
+    let r = update CallRead(l=l2, attrs=[[]], ?body=nil, going=True):
         while &_.going:
             &_ <= CallStep &_, start, close, delims, open
-    let item = RiCall name, r.attrs, r.?body, Range(start=start, end=r.l.pos)
+    let item = RiCall name, r.attrs, r.?body, Range(start=start, end=r.l.pos, origin=InSource)
     ((item, r.l))
 
 CallStep: unbounded fn CallRead, Nat, Text, Text, Text -> CallRead
@@ -246,7 +246,7 @@ fn CallStep s0, start, close, delims, open:
         else:
             let ((tokens, l4)) = AttrValue (Bump l3), delims, open
             update s:
-                &_.attrs <= Push &_.attrs, AttrTok(name=aname, tokens=tokens, span=Range(start=at, end=l4.pos))
+                &_.attrs <= Push &_.attrs, AttrTok(name=aname, tokens=tokens, span=Range(start=at, end=l4.pos, origin=InSource))
                 &_.l <= l4
 
 AttrValue: unbounded fn Lex, Text, Text -> (([Tok], Lex))
@@ -254,7 +254,7 @@ fn AttrValue l, delims, open:
     if StartsWith l, open: Nested (Forward l, (Len open)), (MPlaceholder delims)
     else: if (Peek l) == "\"":
         let ((text, l2)) = LexText l
-        let tok = Tok(kind=(KText "", text), span=Range(start=l.pos, end=l2.pos), touches=False, lineStart=False)
+        let tok = Tok(kind=(KText "", text), span=Range(start=l.pos, end=l2.pos, origin=InSource), touches=False, lineStart=False)
         (([[tok]], l2))
     else: (([[]], (LexErr l, l.pos, l.pos, "an attribute's value is a placeholder `{open}...` or a text literal")))
 
@@ -317,7 +317,7 @@ fn IsPlaceholderItem ignore = False
 
 # The span of a line's first item that is not text, for its error.
 FirstItemSpan: fn [RawItem] -> Range
-fn FirstItemSpan items = Or (Fold items, nil, \|?found, it| if ?found != nil: ?found else: ?ItemSpan it), Range(start=0, end=0)
+fn FirstItemSpan items = Or (Fold items, nil, \|?found, it| if ?found != nil: ?found else: ?ItemSpan it), Range(start=0, end=0, origin=InSource)
 
 ?ItemSpan: fn RawItem -> ?Range
 fn ?ItemSpan (RiPlaceholder ignore, span) = ? span

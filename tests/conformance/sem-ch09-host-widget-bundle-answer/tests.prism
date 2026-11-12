@@ -1,0 +1,10 @@
+# The tests of sem-ch09-host-widget-bundle-answer.
+emit Ui.* | Pad.*
+use App.*
+
+test a_widget_answers_a_bundle, @host:
+    build
+        => expect Ui.Label(text="mock: 0")
+    click at 0/[0]/0
+    compute
+        => expect Ui.Label(text="mock: 2")

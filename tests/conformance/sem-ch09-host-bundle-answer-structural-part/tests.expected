@@ -1,0 +1,22 @@
+# Derived by hand from Semantics ch. 7 as ruled (round 3 ST: a gathered dynamic moves at n+1, an owed tick; at the build it reads the rows built above it) and ch. 9 (an event answer is the next tick's input, owed; round 3 DY: a dynamic answer's change is a push delivered the next tick, owed): the click's event part is heard in tick 2; the row born in tick 1 moves the gathered dynamic in tick 2, heard in tick 3.
+test a_structural_part_answers
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/[1]/0: Ui.Label(text="one")
+    2/[1]/0: Ui.Label(text="1: none")
+
+tick 1
+  in:
+    0: click
+  added:
+    1/[2]/0: Ui.Label(text="two")
+
+tick 2
+  changed:
+    2/[1]/0: Ui.Label(text="1: hello")
+
+tick 3
+  changed:
+    2/[1]/0: Ui.Label(text="2: hello")

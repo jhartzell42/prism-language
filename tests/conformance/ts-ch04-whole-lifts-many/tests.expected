@@ -1,0 +1,22 @@
+# Derived by hand from Type System ch. 4: three is the ones, the tens and 100; four is
+# those and 1000. A tick of two clicks moves both sums once.
+test lifts_over_three_and_four
+
+tick 0
+  added:
+    0: Ui.Button(label="One")
+    1: Ui.Button(label="Ten")
+    2: Ui.Label(text="three 100 four 1100")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="three 101 four 1101")
+
+tick 2
+  in:
+    0: click
+    1: click
+  changed:
+    2: Ui.Label(text="three 112 four 1112")

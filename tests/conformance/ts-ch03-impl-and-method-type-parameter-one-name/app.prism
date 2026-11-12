@@ -1,0 +1,26 @@
+# An impl whose type parameter has the name of its trait method's own type parameter
+# (Type System ch. 3: a method's signature may have type variables of its own beside
+# the trait's; an impl's head names its own type variables, `impl ^Paired [b]`). The two
+# `b`s are two variables: the method is used at an array of `Nat` with a `Text`, and at
+# an array of `Text` with a `Bool`. Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+trait ^Paired a:
+    Pair: fn a, b -> Text where b: ^Show
+
+impl ^Paired Nat:
+    fn Pair n, y = "{n} with {Show y}"
+
+impl ^Paired [b] where b: ^Show:
+    fn Pair xs, y = "{Show xs} with {Show y}"
+
+@Page: @unit
+@Page:
+    let seven: Nat = 7
+    let nats: [Nat] = [[1, 2]]
+    Ui.Label($text=$"{Pair seven, True}")                    # 0
+    Ui.Label($text=$"{Pair nats, "t"}")                      # 1
+    Ui.Label($text=$"{Pair [["a"]], True}")                  # 2

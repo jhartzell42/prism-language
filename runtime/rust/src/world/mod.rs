@@ -10,12 +10,15 @@
 //!
 //! - [`test_world`]: the Test World, which runs scripts in the test language and prints
 //!   transcripts to the byte.
+//! - [`prelude`]: the prelude's two tags, `Prelude.Unwrap` and `Prelude.Exceptions`, as
+//!   every World answers them, the Test World included.
 //! - [`scene`]: `Draw.Clickable` in a `Gui.Scene`, which the Test World clicks by path
 //!   (decisions.md D9) and the canvas World ignores.
 //! - [`probe`]: phase marks a driver can count work by.
 //!
 //! The CLI and canvas Worlds are crates of their own over this protocol (`worlds/`).
 
+pub mod prelude;
 pub mod scene;
 pub mod test_world;
 
@@ -112,7 +115,9 @@ pub struct TickOut {
     pub patch: Patch,
     /// In document order, torn-down places included.
     pub requests: Vec<Request>,
-    pub result: Option<Outcome>,
+    /// The root's results told this tick, in the order told: one, or one a part of a
+    /// bundle.
+    pub results: Vec<Outcome>,
     /// Set while a newborn owes a tick or a `@Defer` is armed: a World that sees it ticks
     /// again, with no inputs if it has none (decisions.md D6).
     pub pending: bool,

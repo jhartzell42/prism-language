@@ -22,7 +22,7 @@ if [ -z "${DISPLAY:-}" ]; then
     command -v xvfb-run > /dev/null || { echo "chess_smoke: skipped, no display and no xvfb-run"; exit 0; }
     cd "$repo"
     export PRISM_ROOT=$repo
-    ./prism compile --target cpp examples/chess -o target/canvas-cpp/chess
+    ./prism compile --target cpp examples/basic-chess -o target/canvas-cpp/chess
     [ -f "$prog/src/main.cpp" ] || { echo "chess_smoke: prismc (${PRISMC:-the newest}) emitted no C++; set PRISMC to one with --target cpp" >&2; exit 1; }
     make -s -C "$prog" CXX=g++ -j"$(getconf _NPROCESSORS_ONLN)"
     exec timeout 120 xvfb-run -a -s "-screen 0 1024x768x24" "$here/chess_smoke.sh" "$robot"

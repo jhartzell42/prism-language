@@ -1,0 +1,32 @@
+# A widget with places read as a blueprint value on the right of `<=` in an `update`
+# block, which writes it into a record's blueprint field; the page applies the field
+# (Type System ch. 2: a blueprint is an opaque handle and still a value, and a record
+# holds one in a field; Semantics ch. 5: `update` gives the record with the path
+# written; ch. 8: "a blueprint builds nothing until a block applies it").
+# sem-ch08-local-widget-in-record with the field written by an `update`. Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Row: fn Nat -> @unit
+fn @Row n:
+    Ui.Label($text=$"row {n}")
+
+@Other: @unit
+@Other:
+    Ui.Label($text=$"other")
+
+type Card = record:
+    @body: unit
+    title: Text
+
+Swapped: fn Card -> Card
+fn Swapped card = update card:
+    &_.body <= @Row 2
+
+@Page: @unit
+@Page:
+    let card = Swapped Card(@body=@Other, title="t")
+    card.@body
+    Ui.Label($text=$"{card.title}")

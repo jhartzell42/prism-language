@@ -1,0 +1,7 @@
+# The tests of sem-ch09-host-answer-without-arm.
+emit Ui.* | Pad.*
+use App.*
+
+test an_answer_bound_outside_its_arm, @page:
+    build
+        => expect Ui.Label(text="w7")

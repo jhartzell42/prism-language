@@ -29,4 +29,4 @@ fn Go n:
 fn @Piped n:
     !done <- @Run Go, n                                     # 0
     $shown <- "working" then Show !done
-    Ui.Label(text=$shown)                                   # 1
+    Ui.Label($text=$shown)                                   # 1

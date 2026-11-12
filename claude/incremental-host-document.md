@@ -49,7 +49,7 @@ with the alternative refused, and Jimmy overrules by editing. Book citations are
 ```prism
 @HostDocument: fn @a emit c, (fn Path, Element c o -> @o) -> @((a, $(Path ==> $Elem c)))
 @HostSome: fn @a emit c, (fn Path, Element c o -> ?@o) -> @((a, $(Path ==> $Elem c)))
-@HostList: fn @a emit c, !(Path ==> Answer c), (fn Path, Element c o -> @o)
+@HostList: fn @a emit c, !(Path ==> Output c), (fn Path, Element c o -> @o)
     -> @((a, $(Path ==> $Wired c)))
 ```
 

@@ -1,0 +1,22 @@
+# Generic types holding their parameter in an array, with derived `^Eq`, `^Ord` and
+# `^Show`: a record and a choice compare, order and print at `Nat` and at `Text`. Written by
+# Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Many a = record:
+    all: [a]
+derive ^Eq, ^Ord, ^Show
+
+type Heap a = choice:
+    Leaf
+    Node [a], Heap a
+derive ^Eq, ^Ord, ^Show
+
+@main: @unit
+@main:
+    let m = Many(all=[[1, 2]])
+    let n = Many(all=[[1, 3]])
+    let h = Node [["x"]], Leaf
+    let k = Node [["x"]], (Node [["y"]], Leaf)
+    Ui.Label($text=$"{m == n} {m < n} {Show m} {h == k} {h < k} {Leaf < h} {Show k}")    # 0

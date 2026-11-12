@@ -185,7 +185,7 @@ OptNames: unbounded fn ?Pattern -> [Text]
 fn OptNames (? p) = PatternNames p
 fn OptNames nil = [[]]
 
-let dummyArg = Arg(name=nil, value=Expr(kind=EError, span=Range(start=0, end=0)), span=Range(start=0, end=0))
+let dummyArg = Arg(marks="", ?name=nil, value=Expr(kind=EError, span=Range(start=0, end=0, origin=InSource)), span=Range(start=0, end=0, origin=InSource))
 
 # `n -? k` with `k` a positive literal: the `? m` of a match on it is strictly smaller
 # than `n` (Semantics ch. 7, a smaller natural number); `?Step c` likewise for a cursor.

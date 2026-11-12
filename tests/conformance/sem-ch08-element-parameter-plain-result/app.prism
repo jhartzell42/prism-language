@@ -1,0 +1,23 @@
+# A widget generic in its element parameter's output, applied to an element with a plain
+# output and to one with an event output, each call binding what the element gives
+# (Semantics ch. 8: `@Element e` places a passed element and gives its output; `<-` binds
+# the child's result; Type System ch. 2: an element's output index, `Element c o`).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Num of Element Nat:
+    name: Text
+
+@Asked: fn Element (Ui.* | Pad.*) o, Text -> @o
+fn @Asked e, label:
+    got <- @Element e                                            # 0
+    Ui.Label($text=$"{label}")                                   # 1
+    @ got
+
+@main: @unit
+@main:
+    n <- @Asked Pad.Num(name="n"), "num"                         # 0 and 1
+    !go <- @Asked Ui.Button($label=$"go"), "button"              # 2 and 3
+    $clicks <- 0 then $clicks + 1 on !go
+    Ui.Label($text=$"{n}, {$clicks} clicks")                     # 4

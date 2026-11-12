@@ -1,0 +1,21 @@
+# `ambiguous`: an optional argument at a parameter of an associated type no argument has
+# decided (`Item a`, with `a` known only from the result): whether the call takes it whole
+# (at a `?` item) or lifts over it (at a plain one) depends on that type, so it is refused,
+# never guessed.
+trait ^Box a:
+    type Item
+    Make: fn Item a -> a
+
+type Jar = choice:
+    Full Text
+    Empty
+derive ^Eq, ^Show
+
+impl ^Box Jar:
+    type Item = ?Text
+    fn Make ?t = match ?t:
+        ? t: Full t
+        nil: Empty
+
+Filled: fn Text -> Jar
+fn Filled t = Make (? t)

@@ -1,0 +1,4 @@
+tests/checker/neg/bare-name-no-use/app.prism:10: error[unknown-name]: nothing declares `Name` here
+        Ui.Label($text=$"{Words.Name 2} {Name 3}")
+                                         ^^^^
+1 error

@@ -1,0 +1,37 @@
+# A named widget function as a host's supplier (Semantics ch. 9: "the supplier maps a
+# place's path and element to a blueprint of that element's output", rank-2 in `o`; Type
+# System ch. 5, "Refinement at tag matches"): the inline supplier of ts-ch05-supplier-rank2
+# written as `@Supply`, and `@Forward`, which forwards every place. A named supplier is the
+# lambda `\|p, e| @Supply p, e`. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Fs.*
+test mod Tests
+use Fs.*
+
+Shown: fn ~Contents -> Text
+fn Shown (~ c) = c.text
+fn Shown (Error(..)) = "(none)"
+
+@child: @unit
+@child:
+    !read <- Ui.Button($label=$"read")                             # 0
+    $~text <- Fs.Contents(path="a")                               # 1
+    !~got <- Fs.File(path="b", !requests=Read on !read)            # 2
+    $last <- "nothing" then Shown !~got
+    Ui.Label($text=$"{Shown $~text}, {$last}")                     # 3
+
+@Supply: fn Path, Element (Ui.* | Fs.*) o -> @o
+fn @Supply p, e = match e:
+    Fs.Contents(..): @ $ (~ Contents(text="A"))
+    Fs.File(..): @ never
+    otherwise: @Element e
+
+@named: @unit
+@named:
+    ignore <- @HostDocument @child, @Supply                       # 0/[p]
+
+@Forward: fn Path, Element (Ui.* | Fs.*) o -> @o
+fn @Forward p, e = @Element e
+
+@forwarded: @unit
+@forwarded:
+    ignore <- @HostDocument @child, @Forward                      # 0/[p]

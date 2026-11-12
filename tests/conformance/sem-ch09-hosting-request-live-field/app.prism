@@ -1,0 +1,54 @@
+# From prism-notes, claude/04-domains-and-documents/evidence/hosting/03-request-as-live-field/app.prism: attempt 03 of the Bible's document hosting against prismc at 10ca993, committed as written.
+# Attempt 03: the request tag holds the latest numbered request in a `$?` field. A guest-side
+# widget, @Ask, turns an event of requests into that field; the host's body reads the field
+# out of its document. Here the host only counts what it hears, two ways: a
+# hold stepped on the document's update, and a label computed from the document.
+# Written by Claude (an implementation agent), 10 November 2026; subject to change.
+emit Ui.* | Seat.*
+test mod Tests
+
+type Response = choice:
+    Accepted
+    Declined Text
+derive ^Eq, ^Show
+
+tag Seat.Request of Element !Response:
+    $?latest: ((Nat, Nat))
+
+@Ask: fn !Nat -> @!Response emit Seat.*
+fn @Ask !requests:
+    !numbered <- @Numbered !requests
+    $?latest <- nil then ? !numbered
+    !response <- Seat.Request($?latest=$?latest)
+    @ !response
+
+Said: fn Response -> Text
+fn Said Accepted = "accepted"
+fn Said (Declined why) = "refused: {why}"
+
+@guest: @unit
+@guest:
+    !two <- Ui.Button($label=$"add 2")                         # 0
+    !nine <- Ui.Button($label=$"add 9")                        # 1
+    !response <- @Ask ((2 on !two) <| (9 on !nine))            # 2/0
+    $last <- "nothing yet" then Said !response
+    Ui.Label($text=$"guest: {$last}")                          # 3
+
+Asked: fn (Path ==> Elem (Ui.* | Seat.*)) -> [((Path, Nat, Nat))]
+fn Asked doc = Fold doc, [[]], \|acc, p, e| match e:
+    Seat.Request($?latest=$?l): match $?l:
+        ? ((n, r)): Push acc, ((p, n, r))
+        nil: acc
+    Ui.*: acc
+
+@host: @unit
+@host:
+    ((ignore, $doc)) <- @HostDocument @guest, \|p, e| match e:           # 0/[p]
+        Seat.Request(..): @ never
+        otherwise: @Element e
+    $flat <- for p, $e <- $doc:
+        @ $e
+    let !asked = Asked !Updated $flat
+    $total <- 0 then $total + (Len !asked)
+    Ui.Label($text=$"host: {$total} counted on the document's update")
+    Ui.Label($text=$"host: {Len (Asked $flat)} in the document now")

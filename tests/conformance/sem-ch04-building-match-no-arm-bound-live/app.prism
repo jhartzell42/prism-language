@@ -1,0 +1,28 @@
+# A building `match` with no arm bound as a dynamic and as an event (Semantics ch. 4, "The
+# widget block": a building `match` over a plain scrutinee; hosting attempt 29 and its
+# ruling: a `match` with no arm over an empty choice is legal). No value of `Never`
+# exists, so the lines build nothing, `$shown` and `!said` never have a value, and the
+# block that holds them is never built; the program around it builds as if it were not
+# there. sem-ch04-building-match-no-arm with the match's result live.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Never = choice:
+
+@Absurd: fn Never -> @unit
+fn @Absurd never:
+    $shown <- match never:
+    !said <- match never:
+    $last <- "none" then !said
+    Ui.Label($text=$shown)
+    Ui.Label($text=$last)
+
+@Slot: fn ?Never -> @unit
+fn @Slot ?never:
+    Ui.Label($text=$"before")                                    # 0
+    match ?never:
+        ? never: @Absurd never
+        nil: Ui.Label($text=$"nothing asked")                    # 1
+    Ui.Label($text=$"after")                                     # 2

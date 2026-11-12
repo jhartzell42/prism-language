@@ -1,0 +1,35 @@
+# A generic widget taken as a blueprint value in a generalized local function and in a
+# generalized `let` of a widget block, each used at `Nat` and at `Text` (Type System
+# ch. 5, "A local `let` generalizes": each use decides the type variable for itself;
+# ch. 2: a blueprint is an opaque handle and still a value; Semantics ch. 8: "a
+# blueprint builds nothing until a block applies it").
+# sem-ch08-widget-value-generic-in-function with the function local to the block.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Shown: fn a, Text -> @unit where a: ^Show
+fn @Shown x, label:
+    Ui.Label($text=$"{label}={Show x}")
+
+@Page: @unit
+@Page:
+    fn ?Made x = ?Pick True, (@Shown x, "local")
+    let Make = \|x| ?Pick True, (@Shown x, "let")
+    let five: Nat = 5
+    match ?Made five:                                            # 0
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    match ?Made "t":                                             # 1
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    match Make five:                                             # 2
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    match Make "t":                                              # 3
+        ? @t: @t
+        nil: Ui.Label($text=$"none")

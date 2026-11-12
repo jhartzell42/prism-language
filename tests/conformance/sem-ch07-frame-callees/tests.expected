@@ -1,0 +1,12 @@
+# The value is derived by hand (3 + 5 + 6 + 3 + 3 = 20). The seventeen cycles are the run's and are not audited: Semantics ch. 7, D6 counts one per call entered, and a count by hand gives fifteen or sixteen.
+test a_frame_enters_every_callee
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 17 ticks, 1 to 17
+
+tick 17
+  changed:
+    1: Ui.Label(text="20")

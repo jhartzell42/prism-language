@@ -127,9 +127,25 @@ fn ?LocalTarget sk, d, site = match site.rels["lfn:{site.callee}"]:
 
 # The relations a clause's walk starts from: its module's seeds, its parameters'.
 ClauseBase: unbounded fn Shrink, Def, FnClause -> (Text ==> Rel)
-fn ClauseBase sk, d, c = match sk.localBase[d.qk]:
-    ? b: ParamRelsOn b, c.params
-    nil: ParamRelsOn (Insert (Or sk.seeds[d.home], {}), "file:", Rel(param=d.file, strict=False)), c.params
+fn ClauseBase sk, d, c:
+    let base = match sk.localBase[d.qk]:
+        ? b: ParamRelsOn b, c.params
+        nil: ParamRelsOn (Insert (Or sk.seeds[d.home], {}), "file:", Rel(param=d.file, strict=False)), c.params
+    NonEmptyParams sk, d, c, base
+
+# A parameter the signature types `[a]+` or `(K ==> V)+` is known non-empty from the
+# clause's first line (`ne:`, as a pattern that took an element shows; Type System ch. 2,
+# "Collections").
+NonEmptyParams: fn Shrink, Def, FnClause, (Text ==> Rel) -> (Text ==> Rel)
+fn NonEmptyParams sk, d, c, base = match sk.g.vals[d.qk]:
+    ? v: match v.scheme.ty:
+        TyFn ignore, declared, ignore: Fold (Range0 (Len c.params)), base, \|m, i| match ((c.params[i], declared[i])):
+            ((? p, ? (TyCon "Prelude.NonEmpty", ignore))): match p.kind:
+                PName n: Insert m, "ne:{SNameKey n}", noRel
+                otherwise: m
+            otherwise: m
+        otherwise: base
+    nil: base
 
 # The key a site's name calls: an operator by its spelling, as inference reads it; a
 # template call's `<@Name` as `@Name`, else `Name`, as lowering reads it.
@@ -140,7 +156,7 @@ fn ?ResolveCallee g, m, n = if IsOpText n: ?ResolveOp g, m, n else: match ?Resol
 
 ?ResolveOp: fn G, Text, Text -> ?Text
 fn ?ResolveOp g, m, op:
-    let ((?k, ignore)) = ResolveValue g, m, (SName(sigils="", path=[[op]], span=Range(start=0, end=0)))
+    let ((?k, ignore)) = ResolveValue g, m, (SName(sigils="", path=[[op]], span=Range(start=0, end=0, origin=InSource)))
     ?k
 
 # An operator's spelling: no letter in it.
@@ -151,7 +167,7 @@ fn IsOpText n = (Len n) > 0 and not (FoldChars n, False, \|seen, ch| seen or (Is
 fn ?ResolveName g, m, n:
     let marks = MarksOf n
     let path = SplitOn (DropPrefix n, marks), "."
-    let ((?k, ignore)) = ResolveValue g, m, (SName(sigils=marks, path=path, span=Range(start=0, end=0)))
+    let ((?k, ignore)) = ResolveValue g, m, (SName(sigils=marks, path=path, span=Range(start=0, end=0, origin=InSource)))
     ?k
 
 # Every name a statement mentions, at any depth (`CheckBlocks.DepOrder` reads it too).
@@ -186,12 +202,32 @@ fn Collect rev, seen, comp, k:
     if HasKey seen, k: ((seen, comp))
     else: Fold (Or rev[k], [[]]), (((Insert seen, k, True), (Push comp, k))), \|((s, c)), n| Collect rev, s, c, n
 
+# `no-signature`: a block's `fn` that calls itself, directly or through a ring of calls,
+# needs a signature line, as a top-level function does (Jimmy's ruling LS: "Self calling
+# local function needs a signature why not?"). One that does not call itself has none
+# and generalizes (Type System ch. 5). Reported for each such function of the cycle, and
+# the cycle is then not read for shrinking.
+UnsignedOnCycle: unbounded fn Shrink, St, [Text] -> St
+fn UnsignedOnCycle sk, st, comp = Fold comp, st, \|s, k| match ((sk.byKey[k], (?Last (SplitOn k, " ")))):
+    ((? d, ? place)) if (Contains k, " #local ") and HasText st.unsignedFns, place: match d.body:
+        DbFn clauses: match clauses[0]:
+            ? first:
+                let others = Filter comp, \|other| other != k
+                let how = if (Len others) == 0: "calls itself" else: "calls itself through {Join (Each others, \|other| "`{ShownKey other}`"), ", "}"
+                let s2 = ErrFix (WithFile s, d.file), "no-signature", first.span, "`{ShownKey k}` {how} and has no signature line: a block's function that calls itself needs one, as a top-level function does", "write `{ShownKey k}: fn ... -> ...` above it, in its block"
+                WithFile s2, s.file
+            nil: s
+        otherwise: s
+    otherwise: s
+
 # One cycle of the reference graph: cleared when every function on it is unbounded,
 # else every idempotent size-change graph of the composition closure needs a strictly
 # smaller edge from a parameter to itself.
 ShrinkComponent: unbounded fn Shrink, St, [Text] -> St
-fn ShrinkComponent sk, st, comp:
-    if Fold comp, True, \|ok, k| ok and IsUnboundedKey sk.g, (SigKeyOf sk, (Or sk.localOf[k], k)): st
+fn ShrinkComponent sk, st0, comp:
+    let st = UnsignedOnCycle sk, st0, comp
+    if (Len st.diags) > (Len st0.diags): st
+    else: if Fold comp, True, \|ok, k| ok and IsUnboundedKey sk.g, (SigKeyOf sk, (Or sk.localOf[k], k)): st
     else:
         let graphs = Fold sk.fns, [[]], \|acc, d| if HasText comp, d.qk: Append acc, (CallGraphs sk, d, comp) else: acc
         let closure = Closure graphs
@@ -233,7 +269,31 @@ fn SiteGraph sk, d, site, k:
     let argText = match site.args[0]:
         ? a: ExprName a.value
         nil: ""
-    Sc(caller=d.qk, callee=k, edges=edges, span=site.span, file=d.file, arg=argText)
+    Sc(caller=d.qk, callee=k, edges=(Append edges, (SelfTypeEdges sk, d, site, k)), span=site.span, file=d.file, arg=argText)
+
+# An impl's method calling its trait's method at a variable of its own head (`Name (Left p)`
+# in the impl at `Pair a` is a call at `a`): the instance it reaches is at a strictly
+# smaller type, which no chain of calls can do forever. An edge of the self type's slot,
+# strictly smaller. A call at the head itself or at a bigger type (`Pair (Pair a)`,
+# polymorphic recursion) has none, and its arguments must shrink.
+SelfTypeEdges: unbounded fn Shrink, Def, Site, Text -> [((Nat, Nat, Bool))]
+fn SelfTypeEdges sk, d, site, k = match d.body:
+    DbMethod ignore, cls, im: match ?SiteClass sk, d, site:
+        ? kc if kc == cls: match sk.choices[ChoiceKey d.file, site.span, cls]:
+            ? chs: if (Len chs) > 0 and Fold chs, True, \|all, ch| all and (HasPrefix ch, "given:") and HasText im.qs, (DropPrefix ch, "given:"): [[((selfTypeSlot, selfTypeSlot, True))]] else: [[]]
+            nil: [[]]
+        otherwise: [[]]
+    otherwise: [[]]
+
+# The trait whose method a call names, if it names one (the call's targets are the impls'
+# definitions, not the method).
+?SiteClass: unbounded fn Shrink, Def, Site -> ?Text
+fn ?SiteClass sk, d, site = match ?ResolveCallee sk.g, d.home, site.callee:
+    ? mk: ?MethodClass sk.g, mk
+    nil: nil
+
+# The slot of the self type's size beside the parameters' (`SelfTypeEdges`).
+let selfTypeSlot = 4096
 
 # Each argument with the callee's parameter it fills: a positional one by its place among
 # the positional ones; a named one (a template call's attribute, `<@Item depth={{d}}/>`)

@@ -38,7 +38,7 @@ fn TySexp t = match t:
     TyAt i, rw: "(@ {TySexp i} {RowSexp rw})"
     TyElem rw, o: "(element {RowSexp rw} {TySexp o})"
     TyElemAny rw: "(elem {RowSexp rw})"
-    TyAssoc n, a: "(assoc {n} {TySexp a})"
+    TyAssoc ignore, n, a: "(assoc {n} {TySexp a})"
     TyAny trs: "(any{Concat (Each trs, \|x| " ^{x}")})"
     TyErr: "unknown"
 
@@ -105,7 +105,7 @@ fn TypedSexp srcs, trees, shown, tp:
 Shown: fn SrcAt, Nat -> Bool
 fn Shown a, shown = a.file < shown
 
-let emptyMod = Module(name=nil, emitRow=nil, mods=[[]], uses=[[]], decls=[[]], template=nil, span=Range(start=0, end=0))
+let emptyMod = Module(?name=nil, ?emitRow=nil, mods=[[]], uses=[[]], decls=[[]], ?template=nil, span=Range(start=0, end=0, origin=InSource))
 
 Quote: fn Text -> Text
 fn Quote t = "\"{t}\""

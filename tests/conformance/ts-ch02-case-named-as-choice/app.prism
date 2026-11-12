@@ -1,0 +1,18 @@
+# A choice with a case named as the choice itself beside another case (`Card` of `Card`):
+# built, matched, compared and shown in both targets, where a C++ class cannot hold a member
+# of its own name. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Card = choice:
+    Card Nat
+    Joker
+derive ^Eq, ^Ord, ^Show
+
+Rank: fn Card -> Nat
+fn Rank (Card n) = n
+fn Rank Joker = 0
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Show (Card 3)} {Rank (Card 4)} {Rank Joker} {(Card 9) < Joker}")    # 0

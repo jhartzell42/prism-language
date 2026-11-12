@@ -1,0 +1,14 @@
+# Derived by hand from Semantics ch. 4 (a building `match`'s arm adds no path segment), ch. 8 (a blueprint is built at the applying block's next positions) and ruling TC (places counted as built).
+test picked
+
+tick 0
+  added:
+    0: Ui.Label(text="line 7")
+    1: Ui.Label(text="end")
+
+test not_picked
+
+tick 0
+  added:
+    0: Ui.Label(text="none")
+    1: Ui.Label(text="end")

@@ -1,0 +1,7 @@
+# The tests of ts-ch02-types-named-as-nodes (Type System chapter 2).
+emit Ui.*
+use App.*
+use Ui.*
+
+test types_named_as_nodes, @main:
+    build

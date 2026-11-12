@@ -141,10 +141,11 @@ derive ^Eq, ^Show
 
 # A local's binder or a use of it, with the binder's id (pick UN): the checker numbers a
 # definition's local binders in the order it binds them, from 0, and a use names the
-# binder the checker resolved it to.
+# binder the checker resolved it to, and the name it is (a call's is "").
 type LocalNote = record:
     at: SrcAt
     id: Nat
+    name: Text
 derive ^Eq, ^Show
 
 type GlobalNote = record:
@@ -175,9 +176,18 @@ type TProgram = record:
     # Every `while` in an unbounded function that the shrink check does not clear: each
     # turn of one is a cycle point (D6); a loop it clears is one unit of work.
     unshrunk: [SrcAt]
+    # Every expression whose `Error` value stands where a `~T` is wanted, with that type
+    # (Semantics ch. 10: a bare `Error(..)` is the failure of the `~T` it meets): lowering
+    # makes it the `~T`'s failure there.
+    faults: [TyNote]
+    # Every expression whose value, a non-empty collection, stands where its plain
+    # collection is wanted (Type System ch. 2, "Collections": a `[a]+` fills a place already
+    # known to want an `[a]`, the one implicit conversion; ruling NS): lowering converts it
+    # there, since a non-empty collection has a target type of its own.
+    plains: [SrcAt]
 derive ^Eq, ^Show
 
-let emptyTyped = TProgram(exprs=[[]], apps=[[]], lifts=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], locals=[[]], uses=[[]], calls=[[]], globals=[[]], gens=[[]], insts=[[]], defs=[[]], unshrunk=[[]])
+let emptyTyped = TProgram(exprs=[[]], apps=[[]], lifts=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], locals=[[]], uses=[[]], calls=[[]], globals=[[]], gens=[[]], insts=[[]], defs=[[]], unshrunk=[[]], faults=[[]], plains=[[]])
 
 AtKey: fn SrcAt -> Text
 fn AtKey a = "{a.file}:{a.span.start}:{a.span.end}"

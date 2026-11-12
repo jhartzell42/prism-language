@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <compare>
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
@@ -19,6 +20,14 @@ namespace prism_rtl {
 
 /// A tick number. Tick 0 is the build.
 using Tick = std::uint64_t;
+
+/// The one alternative of a choice with no case (`type Never = choice:`): nothing makes
+/// it, so the choice has no value, as Rust's empty enum has none.
+struct NoCase {
+    NoCase() = delete;
+    friend bool operator==(const NoCase&, const NoCase&) { return true; }
+    friend auto operator<=>(const NoCase&, const NoCase&) { return std::strong_ordering::equal; }
+};
 
 /// Prism's `unit`, Rust's `()`.
 struct Unit {
@@ -141,7 +150,7 @@ using Done = Result<void>;
     ({                                                                                   \
         auto&& prism_try_ = (__VA_ARGS__);                                               \
         if (!prism_try_.has_value()) return ::prism_rtl::unexpected(prism_try_.error()); \
-        std::move(prism_try_).value();                                                   \
+        ::std::move(prism_try_).value();                                                 \
     })
 
 }  // namespace prism_rtl

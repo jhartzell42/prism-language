@@ -1,0 +1,17 @@
+# A generic type's own `impl ^Show` under a `where` bound: its method is a function over the
+# impl's type parameter, and the type crosses as its text where its parameter shows, in
+# both targets. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Bag a = record:
+    items: [a]
+    owner: Text
+
+impl ^Show (Bag a) where a: ^Show:
+    fn Show b = "{b.owner}: {Fold b.items, "", \|acc, x| "{acc}{Show x}."}"
+
+@main: @unit
+@main:
+    let bag = Bag(items=[[1, 2]], owner="ann")
+    Ui.Label($text=$"{Show bag} {Show [[(Bag(items=[["x"]], owner="bo"))]]}")    # 0

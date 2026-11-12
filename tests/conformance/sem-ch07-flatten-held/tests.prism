@@ -1,0 +1,13 @@
+# The held flatten's tests: declarations of sem-ch07-flatten-held.
+emit Ui.*
+use App.*
+
+test the_flatten_follows_and_adopts, @page:
+    build
+        => expect Ui.Label(text="0")
+    click at 0
+        => expect Ui.Label(text="1")
+    click at 1
+        => expect Ui.Label(text="1")
+    compute
+        => expect Ui.Label(text="101")

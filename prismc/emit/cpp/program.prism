@@ -42,20 +42,20 @@ use Emit.Cpp.Prelude.*
 NodeParts: unbounded fn Cp, NodeDef -> Parts
 fn NodeParts cp, n:
     let ncp = WithFields cp, (Each n.fields, \|((f, t, ignore))| ((f, t)))
-    let base = if n.rowKind == NotARow and (Len n.hosted) == 0: "Node" else: "Row"
-    let fields = Join (Each n.fields, \|((f, t, doc))| "{CppDoc doc}{CppType cp, t} {FieldId f};"), "\n"
-    let consts = Join (Each n.consts, \|((c, h, doc))| "{CppDoc "The {doc}."}static constexpr std::uint32_t {c} = {h};"), "\n"
-    let ctorParams = Join (Append [["Path path"]], (Each n.fields, \|((f, t, ignore))| "{CppType cp, t} {FieldId f}")), ", "
-    let ctorInits = Join (Append [["path(std::move(path))"]], (Each n.fields, \|((f, ignore, ignore))| "{FieldId f}(std::move({FieldId f}))")), ", "
+    let base = if n.rowKind == NotARow and (Len n.hosted) == 0: "crate::prelude::Node" else: "crate::prelude::Row"
+    let fields = Join (Each n.fields, \|((f, t, doc))| "{CppDoc doc}{MutableOf t}{CppType cp, t} {FieldId f};"), "\n"
+    let consts = Join (Each n.consts, \|((c, h, doc))| "{CppDoc "The {doc}."}static constexpr ::std::uint32_t {c} = {h};"), "\n"
+    let ctorParams = Join (Append [["crate::prelude::Path path"]], (Each n.fields, \|((f, t, ignore))| "{CppType cp, t} {FieldId f}")), ", "
+    let ctorInits = Join (Append [["path(::std::move(path))"]], (Each n.fields, \|((f, ignore, ignore))| "{FieldId f}(::std::move({FieldId f}))")), ", "
     let params = Concat (Each n.params, \|((p, t))| "{ParamType cp, t} {p}, ")
-    let ret = if n.fallible: "Result<prism_rtl::Rc<{n.name}>>" else: "prism_rtl::Rc<{n.name}>"
-    let makeDecl = "static {ret} make(Path path, {params}Cx& cx);"
+    let ret = if n.fallible: "crate::prelude::Result<::prism_rtl::Rc<{n.name}>>" else: "::prism_rtl::Rc<{n.name}>"
+    let makeDecl = "static {ret} make(crate::prelude::Path path, {params}crate::prelude::Cx& cx);"
     let methodDecls = Each (Append n.methods, n.hosted), \|m| "{MethodSig ncp, m, ""};"
-    let builderDecls = Append (Each n.builders, \|b| "Done {b.name}_build(Cx& cx);"), (Each n.gens, \|g| "Done {g.name}_build(Cx& cx);")
+    let builderDecls = Append (Each n.builders, \|b| "crate::prelude::Done {b.name}_build(crate::prelude::Cx& cx);"), (Each n.gens, \|g| "crate::prelude::Done {g.name}_build(crate::prelude::Cx& cx);")
     let hookDecls = Each n.hooks, \|((h, ignore))| "{HookSig h, ""} override;"
-    let answerDecl = if (Len n.answers) == 0: [[]] else: [["Done answer(std::span<const Segment> at, const Pod& v, Cx& cx) override;"]]
-    let rowDecl = if n.rowKind == NotARow: [[]] else: [["void leave_row(Cx& cx) override;"]]
-    let decls = Join (Append (Append (Append (Append (Append [[makeDecl]], methodDecls), builderDecls), hookDecls), answerDecl), rowDecl), "\n"
+    let outputDecl = if (Len n.answers) == 0: [[]] else: [["crate::prelude::Done answer(::std::span<const crate::prelude::Segment> at, const crate::prelude::Pod& v, crate::prelude::Cx& cx) override;"]]
+    let rowDecl = if n.rowKind == NotARow: [[]] else: [["void leave_row(crate::prelude::Cx& cx) override;"]]
+    let decls = Join (Append (Append (Append (Append (Append [[makeDecl]], methodDecls), builderDecls), hookDecls), outputDecl), rowDecl), "\n"
     let doc = CppSourceDoc "`{n.prism}`: a node of its own (claude/backend.md, \"A widget block\").", n.doc
     let decl = NodeClass doc, n.name, base, fields, consts, "{n.name}({ctorParams}) : {ctorInits} \{\}", decls
     # the constructor's arguments in the order the fields are declared
@@ -63,11 +63,11 @@ fn NodeParts cp, n:
     let ((letsText, lcp)) = CppStatementsCp ncp, n.lets
     let args = Join (Append [["path"]], (Each byField, \|v| CppExpr lcp, v)), ", "
     let tail = if n.fallible: "return node;" else: "return node;"
-    let make = NodeMake n.name, "{ret} {n.name}::make(Path path, {params}Cx& cx)", letsText, args, (Join (Filter [[(CppStatements (Pointing lcp, "node"), n.build), tail]], \|s| s != ""), "\n")
+    let make = NodeMake n.name, "{ret} {n.name}::make(crate::prelude::Path path, {params}crate::prelude::Cx& cx)", letsText, args, (Join (Filter [[(CppStatements (Pointing lcp, "node"), n.build), tail]], \|s| s != ""), "\n")
     let methods = Each (Append n.methods, n.hosted), \|m| MethodDef ncp, n.name, m
     let builders = Append (Each n.builders, \|b| ForBuildCpp ncp, n.name, b), (Each n.gens, \|g| GenBuildCpp ncp, n.name, g)
     let hooks = Each n.hooks, \|((h, body))| CppFunction "", (HookSig h, "{n.name}::"), "{CppStatements ncp, body}\nreturn \{\};"
-    let answer = if (Len n.answers) == 0: [[]] else: [[(AnswerDefCpp ncp, n)]]
+    let answer = if (Len n.answers) == 0: [[]] else: [[(OutputDefCpp ncp, n)]]
     let leaving = if n.rowKind == NotARow: [[]] else: [[(RowLeaving ncp, n)]]
     let defs = Append (Append (Append (Append (Append [[make]], methods), builders), hooks), answer), leaving
     let own = Parts(forward=[["class {n.name};"]], values=[[]], protos=[[]], classes=[[decl]], outer=[[]], generic=[[]], defs=defs)
@@ -76,8 +76,8 @@ fn NodeParts cp, n:
 MethodSig: unbounded fn Cp, MethDef, Text -> Text
 fn MethodSig cp, m, owner:
     let cx = match m.cx:
-        CxMut: [["Cx& cx"]]
-        CxRef: [["const Cx& cx"]]
+        CxMut: [["crate::prelude::Cx& cx"]]
+        CxRef: [["const crate::prelude::Cx& cx"]]
         CxNone: [[]]
     let params = Join (Append (Each m.params, \|((p, t))| "{ParamType cp, t} {p}"), cx), ", "
     let constness = if m.recv == RecvRef: " const" else: ""
@@ -86,15 +86,15 @@ fn MethodSig cp, m, owner:
 MethodDef: unbounded fn Cp, Text, MethDef -> Text
 fn MethodDef cp, owner, m:
     let ((st, cp2)) = CppStatementsCp cp, m.body
-    let body = if m.ret == OutUnit: "{st}\nreturn Unit\{\};" else: if (Len m.body) == 0: CppBody cp, m.tail else: "{st}\n{CppBody cp2, m.tail}"
+    let body = if m.ret == OutUnit: "{st}\nreturn crate::prelude::Unit\{\};" else: if (Len m.body) == 0: CppBody cp, m.tail else: "{st}\n{CppBody cp2, m.tail}"
     CppFunction (CppDoc m.doc), (MethodSig cp, m, "{owner}::"), body
 
 HookSig: fn Text, Text -> Text
-fn HookSig "push", owner = "Done {owner}push(const Pod& element, const Pod& v, Cx& cx)"
-fn HookSig h, owner = "Done {owner}{h}(Cx& cx)"
+fn HookSig "push", owner = "crate::prelude::Done {owner}push(const crate::prelude::Pod& element, const crate::prelude::Pod& v, crate::prelude::Cx& cx)"
+fn HookSig h, owner = "crate::prelude::Done {owner}{h}(crate::prelude::Cx& cx)"
 
-AnswerDefCpp: unbounded fn Cp, NodeDef -> Text
-fn AnswerDefCpp cp, n:
+OutputDefCpp: unbounded fn Cp, NodeDef -> Text
+fn OutputDefCpp cp, n:
     let arms = Each n.answers, \|((pat, call))|
         let tests = PatConds cp, pat, "at"
         let binds = PatBinds cp, pat, "at"
@@ -102,23 +102,25 @@ fn AnswerDefCpp cp, n:
     let blocks = Each (Range0 (Len arms)), \|i|
         let ((tests, inner)) = Or arms[i], (([[]], ""))
         Block "{if i == 0: "if" else: "else if"} ({Conds tests})", inner
-    CppFunction "", "Done {n.name}::answer(std::span<const Segment> at, const Pod& v, Cx& cx)", "{Join blocks, " "} else \{\n    return unexpected(Fault::answer(str(\"no answering place at \", path_of(at))));\n\}\nreturn \{\};"
+    # a node with gaps of its own seats an answer's position first (the lowering's `seat`)
+    let seating = if Fold n.methods, False, \|f, m| f or m.name == "seat": "auto seated = crate::prelude::seated(at, [this](::std::uint32_t a) \{ return this->seat(a); \});\nat = crate::prelude::segments_of(seated);\n" else: ""
+    CppFunction "", "crate::prelude::Done {n.name}::answer(::std::span<const crate::prelude::Segment> at, const crate::prelude::Pod& v, crate::prelude::Cx& cx)", "{seating}{Join blocks, " "} else \{\n    return crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"no answering place at \", crate::prelude::path_of(at))));\n\}\nreturn \{\};"
 
 # A row's leaving (prelude `Row`): a `for` row keeps its entry as the tick opened, its places
 # are torn down, its subscriptions let go.
 RowLeaving: unbounded fn Cp, NodeDef -> Text
 fn RowLeaving cp, n:
     let kept = if n.rowKind == ForRow: [["this->left_entry = entry(cx);"]] else: [[]]
-    let unsubscribe = Each n.subs, \|((ev, m, ignore))| "if (auto p = parent.lock(); p && {m}_sub) deref(p->{ev}_port).unsubscribe(*std::exchange({m}_sub, std::nullopt));"
-    CppFunction "", "void {n.name}::leave_row(Cx& cx)", (Join (Append (Push kept, "remove_places(cx);"), unsubscribe), "\n")
+    let unsubscribe = Each n.subs, \|((ev, m, ignore))| "if (auto p = parent.lock(); p && {m}_sub) crate::prelude::deref(p->{ev}_port).unsubscribe(*::std::exchange({m}_sub, ::std::nullopt));"
+    CppFunction "", "void {n.name}::leave_row(crate::prelude::Cx& cx)", (Join (Append (Push kept, "remove_places(cx);"), unsubscribe), "\n")
 
 ForBuildCpp: unbounded fn Cp, Text, ForDef -> Text
-fn ForBuildCpp cp, owner, b = ForBuildTemplate owner, b.name, (CppExpr cp, b.at), (CppType cp, b.keyTy), (CppType cp, b.valueTy), (CallPath "{b.rowNode}::build"), b.source, (CppExpr cp, b.parent), (Concat (Each b.passed, \|x| ", {CppExpr cp, x}")), (MovedCallCpp b.moved), (FromKeptCpp b.name, b.replaced), (ReplacedCallCpp b.replaced)
+fn ForBuildCpp cp, owner, b = ForBuildTemplate owner, b.name, (CppExpr cp, b.at), (CppType cp, b.keyTy), (CppType cp, b.valueTy), "{TypePath (RuntimePath b.rowNode)}::make", b.source, (CppExpr cp, b.parent), (Concat (Each b.passed, \|x| ", {CppExpr cp, x}")), (MovedCallCpp b.moved), (FromKeptCpp b.name, b.replaced), (ReplacedCallCpp b.replaced)
 
 # The source the rows were last built from, kept: over a map of dynamics the walk reads the
 # one it replaces, to compare each kept key's dynamic with the one its row was built from.
 FromKeptCpp: fn Text, [Text] -> Text
-fn FromKeptCpp name, replaced = if (Len replaced) == 0: "this->{name}_from = items;" else: "auto from = std::exchange(this->{name}_from, items);"
+fn FromKeptCpp name, replaced = if (Len replaced) == 0: "this->{name}_from = items;" else: "auto from = ::std::exchange(this->{name}_from, items);"
 
 # A kept key whose dynamic is another than the one its row was built from (ruling FV): the
 # row is told, and adopts it among the next tick's first firings. `Map::get` is a pointer,
@@ -129,7 +131,7 @@ fn ReplacedCallCpp replaced = if (Len replaced) == 0: "" else: " else if (auto w
 # A builder whose rows' places are a host's document tells the host its child's places came
 # or went (`$(Path ==> $Elem c)`'s outer moves).
 MovedCallCpp: fn Text -> Text
-fn MovedCallCpp m = if m == "": "" else: "\n    // the places of the host's child came or went: its document's outer moves\n    if (!prism_rtl::same_keys(next, old)) this->{m}(cx);"
+fn MovedCallCpp m = if m == "": "" else: "\n    // the places of the host's child came or went: its document's outer moves\n    if (!::prism_rtl::same_keys(next, old)) this->{m}(cx);"
 
 # A generation's builder: a new generation's places always came.
 GenMovedCallCpp: fn Text -> Text
@@ -137,7 +139,7 @@ fn GenMovedCallCpp m = if m == "": "" else: "\n    // the places of the host's c
 
 GenBuildCpp: unbounded fn Cp, Text, GenDef -> Text
 fn GenBuildCpp cp, owner, gd:
-    let path = if gd.transparent: "this->path" else: "{CppExpr cp, gd.at}.child(Segment::gen(g))"
+    let path = if gd.transparent: "this->path" else: "{CppExpr cp, gd.at}.child(crate::prelude::Segment::gen(g))"
     GenBuildTemplate owner, gd.name, (CppExpr cp, gd.at), path, (CppExpr cp, gd.source), (CppType cp, gd.valueTy), (CppExpr cp, gd.select), (GenMovedCallCpp gd.moved)
 
 ProgramCpp: unbounded fn Cp, ProgDef, Bool -> Text
@@ -145,14 +147,14 @@ fn ProgramCpp cp, p, fallible:
     let n = Len p.params
     let names = Each p.params, \|((a, ignore))| a
     let plural = if n == 1: "" else: "s"
-    let decode = if n == 0: "static_cast<void>(args);" else: Join (Append [["if (args.size() != {n}) return unexpected(Fault::answer(\"@{p.prism} takes {n} argument{plural}\"));"]], (Each (Range0 n), \|i| DecodeArg cp, p.params, i)), "\n"
-    let call = "{CallPath "{p.node}::build"}(Path::root(), {Concat (Each names, \|a| "{a}, ")}cx)"
+    let decode = if n == 0: "static_cast<void>(args);" else: Join (Append [["if (args.size() != {n}) return crate::prelude::unexpected(crate::prelude::Fault::answer(\"@{p.prism} takes {n} argument{plural}\"));"]], (Each (Range0 n), \|i| DecodeArg cp, p.params, i)), "\n"
+    let call = "{TypePath p.node}::make(crate::prelude::Path::root(), {Concat (Each names, \|a| "{a}, ")}cx)"
     let root = if fallible: "TRY({call})" else: call
     ProgramClass p.name, p.prism, (TypePath p.node), decode, root
 
 DecodeArg: unbounded fn Cp, [((Text, OutTy))], Nat -> Text
 fn DecodeArg cp, ps, i = match ps[i]:
-    ? ((a, t)): "auto {a} = TRY(prism_rtl::from_pod<{CppType cp, t}>(args[{i}]));"
+    ? ((a, t)): "auto {a} = TRY(::prism_rtl::from_pod<{CppType cp, t}>(args[{i}]));"
     nil: ""
 
 # ---------------------------------------------------------------------------------------
@@ -186,11 +188,11 @@ fn EmitCpp model, runtime, scripts:
     let cp = Context model
     let crate = InHome cp, ""
     let elem = RowParts crate, "", model.elem
-    let answer = AnswerParts crate, model.answer
+    let answer = OutputParts crate, model.answer
     let mods = Each model.mods, \|m| ModuleParts cp, m
     let programs = Join (Each (AllProgramsCpp model), \|p| ProgramCpp crate, p, (NodeFallibleCpp model, p.node)), "\n\n"
     let regs = Concat (Each model.programs, \|p| "\n.program<{p.name}>(\"{p.prism}\")")
-    let checks = Concat (Each model.checks, \|c| "\n.check(\"{c.name}\", [] \{ return std::vector<Result<Pod>>\{{Join (Each c.lines, \|l| CppExpr crate, l), ", "}\}; \})")
+    let checks = Concat (Each model.checks, \|c| "\n.check(\"{c.name}\", [] \{ return ::std::vector<crate::prelude::Result<crate::prelude::Pod>>\{{Join (Each c.lines, \|l| CppExpr crate, l), ", "}\}; \})")
     let scriptList = Join (Each scripts, \|s| "\"{Escape s}\","), "\n"
     let world = match model.?root:
         ? r: r.world
@@ -243,11 +245,11 @@ fn Among xs, x = Fold xs, False, \|f, y| f or y == x
 # A types header: the value types of these modules (one, or a group) in an order C++
 # accepts, each after the types it holds by value (a choice with its cases among them), after
 # the headers they need: their own declarations, the declarations of the modules they name,
-# the types of the modules whose types they hold, and `Elem` and `Answer` declared, or
+# the types of the modules whose types they hold, and `Elem` and `Output` declared, or
 # defined when a type holds one by value.
 TypesHeader: unbounded fn Text, [Text], [Text], [Text], Parts -> Text
 fn TypesHeader title, members, declared, complete, p:
-    let holdsElem = Fold p.values, False, \|f, v| f or Fold v.deps, False, \|g, d| g or d == "Elem" or d == "Answer"
+    let holdsElem = Fold p.values, False, \|f, v| f or Fold v.deps, False, \|g, d| g or d == "Elem" or d == "Output"
     let elem = if holdsElem: "#include \"elem.types.hpp\"" else: "#include \"elem.decl.hpp\""
     let includes = Join (Filter [[(Includes "decl", members), elem, (Includes "decl", declared), (Includes "types", complete)]], \|t| t != ""), "\n"
     let values = Join (OrderValues p.values, (Fold p.values, {}, \|acc, v| Insert acc, v.path, False), [[]]), "\n\n"
@@ -352,3 +354,10 @@ Declared: fn (Text ==> Bool), Text -> Bool
 fn Declared done, d = match done[d]:
     ? b: b
     nil: True
+
+# A node's `Cell` field is `mutable`: the model sets one through a shared reference (a
+# generation's `left`, set as its places are torn down, `remove_places`), as Rust's `Cell`
+# allows.
+MutableOf: fn OutTy -> Text
+fn MutableOf (OutNamed (RefRuntime "std::Cell"), ignore) = "mutable "
+fn MutableOf other = ""

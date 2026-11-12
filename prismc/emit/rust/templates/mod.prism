@@ -54,15 +54,12 @@ fn Joined xs, sep = match xs[0]:
 Module: fn Text, Text, Text, Text -> Text
 fn Module prism, path, uses, items = inline_text <rust>
 //! {{prism}}, from `{{path}}`, emitted by prismc: one Rust type per Prism type, a node
-//! per root widget (claude/backend.md). Edit the Prism source, not this file.
+//! per root widget (claude/backend.md). Edit the Prism source, not this file. The runtime
+//! side is reached from the crate, `crate::prelude` (and through it `::prism_rtl`), the
+//! standard library from `::std`, and nothing is imported by name: a program's own type
+//! (`Row`, `Option`) hides none of theirs. The traits are in scope unnamed, for their methods.
 
-use std::cell::{Cell, RefCell};
-use std::rc::{Rc, Weak};
-
-use prism_rtl::*;
-use prism_rtl::pod::mismatch;
-
-use crate::prelude::*;
+use crate::prelude::traits::*;
 {{uses}}
 
 {{items}}
@@ -111,17 +108,17 @@ fn Main name, mods, programs, registrations, scripts, runRoot, world = inline_te
 
 {{mods}}
 
-use std::rc::Rc;
+use ::std::rc::Rc;
 
-use prism_rtl::*;
+use ::prism_rtl::*;
 
 use crate::prelude::*;
 
 {{programs}}
 
 /// The Test World with every root a test names, and the compiled `check` blocks.
-fn test_world() -> TestWorld {
-    TestWorld::new()
+fn test_world() -> crate::prelude::TestWorld {
+    crate::prelude::TestWorld::new()
         {{registrations}}
 }
 
@@ -135,19 +132,19 @@ const SCRIPTS: &[&str] = &[
 const WORLD: &str = "{{world}}";
 
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let args: ::std::vec::Vec<::std::string::String> = ::std::env::args().skip(1).collect();
     let (world, rest) = prelude::world_option(&args, WORLD);
-    let code = if args.first().map(String::as_str) == Some("test") || world == "test" {
-        let scripts: Vec<String> = rest.into_iter().filter(|a| a != "test").collect();
+    let code = if args.first().map(::std::string::String::as_str) == ::std::option::Option::Some("test") || world == "test" {
+        let scripts: ::std::vec::Vec<::std::string::String> = rest.into_iter().filter(|a| a != "test").collect();
         prelude::on_big_stack(move || prelude::run_scripts(&test_world(), &scripts, SCRIPTS))
     } else {
         run_root(&world, rest)
     };
-    std::process::exit(code as i32);
+    ::std::process::exit(code as i32);
 }
 
 /// The root under the World `world`.
-fn run_root(world: &str, args: Vec<String>) -> u8 {
+fn run_root(world: &str, args: ::std::vec::Vec<::std::string::String>) -> u8 {
     {{runRoot}}
 }
 </rust>
@@ -165,7 +162,7 @@ RunRoot: fn Text -> Text
 fn RunRoot program = inline_text <rust>
 match world {
     "canvas" => prelude::run_canvas::<{{program}}>(),
-    "cli" => prelude::on_big_stack(move || prism_world_cli::run::<{{program}}>(args)),
+    "cli" => prelude::on_big_stack(move || ::prism_world_cli::run::<{{program}}>(args)),
     "none" => {
         eprintln!("the root's row has Ui.* without Gui.*: no World answers Ui elements alone; emit Gui.* for the canvas World, or pass --world");
         2

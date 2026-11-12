@@ -19,3 +19,16 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Chess piece images
+
+The MIT License above does not cover the chess piece images under `examples/`
+(`examples/basic-chess/pieces/*.png`, and any copy of them under `examples/chess/`).
+
+They are 64-pixel renderings of the SVG chess pieces from Wikimedia Commons
+(https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces), the set by
+Colin M.L. Burnett (User:Cburnett), taken by way of `static/chess/` in
+https://github.com/jhartzell42/reflex-chess. They are shared under the Creative Commons
+Attribution-ShareAlike 3.0 Unported license
+(https://creativecommons.org/licenses/by-sa/3.0/). The renderings changed the format
+and the size only, and are shared under the same license.

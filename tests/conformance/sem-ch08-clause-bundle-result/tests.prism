@@ -1,0 +1,13 @@
+# The tests of sem-ch08-clause-bundle-result.
+emit Ui.*
+use App.*
+
+test by_ones, @Page True:
+    build
+    click at 0
+        => expect Ui.Label(text="1 hits, count 1")
+
+test by_tens, @Page False:
+    build
+    click at 1
+        => expect Ui.Label(text="1 hits, count 20")

@@ -1,0 +1,6 @@
+# The tests of sem-ch04-local-widget.
+emit Ui.*
+use App.*
+
+test a_local_widget_is_built_twice, @page:
+    build

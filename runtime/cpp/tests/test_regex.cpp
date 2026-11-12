@@ -216,3 +216,16 @@ TEST(regex_searches_are_linear_in_the_text) {
     double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     CHECK(took < 10.0);
 }
+
+TEST(regex_reads_back_from_its_plain_form) {
+    // An emitted record holding a regex derives `from_pod` (prismc/README.md, PD): the
+    // spelling `to_pod` writes reads back to a regex equal by spelling.
+    for (auto [pattern, flags] : std::vector<std::pair<std::string, std::string>>{{"a/b", ""}, {"\\d+\\.\\d", "i"}, {"x\ny", "m"}, {"", ""}}) {
+        Regex r = Regex::lit(pattern, flags);
+        auto back = from_pod<Regex>(to_pod(r));
+        CHECK(back && *back == r);
+    }
+    RegexReplacement s = RegexReplacement::lit("(\\w+)/(\\w+)", "", "$2/$1");
+    auto back = from_pod<RegexReplacement>(to_pod(s));
+    CHECK(back && *back == s);
+}

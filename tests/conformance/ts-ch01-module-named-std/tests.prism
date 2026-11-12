@@ -1,0 +1,8 @@
+# Audited: `Pick (Some 4)` is 4, `Pick Nope` is 0.
+# The tests of ts-ch01-module-named-std (Type System chapter 1).
+emit Ui.*
+use App.*
+
+test a_module_named_std, @main:
+    build
+        => expect Ui.Label(text="4 0")

@@ -1,0 +1,19 @@
+# A program type named as a tag of its module would be named in Rust and C++ (`InkRect`
+# beside `tag Ink.Rect`): each tag's level is named apart from every program type, in both
+# targets. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Ink = row
+derive ^Eq, ^Show
+
+tag Ink.Rect of Ink:
+    w: Nat
+
+type InkRect = record:
+    w: Nat
+derive ^Eq, ^Show
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Show (InkRect(w=2))} {Show [[(Ink.Rect(w=3))]]}")    # 0

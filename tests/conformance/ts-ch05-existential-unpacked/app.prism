@@ -22,4 +22,4 @@ fn Yes False = "F"
 
 @page: @unit
 @page:
-    Ui.Label(text=$"{Yes (Twice (Hide 3))} {Yes (Twice (HideText "a"))}")      # 0
+    Ui.Label($text=$"{Yes (Twice (Hide 3))} {Yes (Twice (HideText "a"))}")      # 0

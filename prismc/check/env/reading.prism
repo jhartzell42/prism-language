@@ -76,10 +76,15 @@ fn ConvType cx, st, t = match t.kind:
         ConvType inner, st2, ty
     TUnit sigils: (((WithMarks sigils, tUnit, cx.scope), st))
     TAny tr: match ?ResolveTrait cx.g, cx.home, tr.path:
-        ? k: ((TyAny [[k]], st))
+        ? k: ((TyAny [[k]], (TraitCollisionAt cx.g, st, cx.home, tr.path, tr.span)))
         nil: ((TyErr, (Err st, "unknown-name", tr.span, "no trait `^{Dotted tr.path}`")))
     TAbsent: ((TyErr, (Err st, "unsupported", t.span, "this checker does not implement sparse tuples")))
-    TNonEmpty ignore: ((TyErr, (Err st, "unsupported", t.span, "this checker does not implement non-empty arrays")))
+    TNonEmpty inner:
+        let ((c, st2)) = ConvType cx, st, inner
+        match c:
+            TyArray ignore: (((NonEmptyOf c), st2))
+            TyMap ignore, ignore: (((NonEmptyOf c), st2))
+            otherwise: ((TyErr, (Err st2, "kind", t.span, "only an array or a map is non-empty; this is `{ShowTy st2, c}`")))
     THole ignore: ((TyErr, (Err st, "unsupported", t.span, "this checker does not implement higher-kinded traits")))
     TFamily q: ((TyErr, (Err st, "kind", t.span, "`{Dotted q.path}.*` is a row, not a type")))
     TRowUnion ignore: ((TyErr, (Err st, "kind", t.span, "a row is not a type")))
@@ -114,7 +119,16 @@ fn ConvNamed cx, st, n, args, span:
                 let ((rw, st2)) = ConvRow cx, st, (Or args[0], dummyType)
                 ((TyElemAny rw, st2))
             otherwise: ((TyErr, (Err st, "kind", span, "`Elem` takes a row; here it has {CountWord (Len args)}")))
-    else: if name == "Answer" or name == "Wired":
+    else: if name == "Output":
+        # `Output c`: an output of an element of any tag of row `c` (Semantics ch. 9; rulings
+        # round 12, AQ), the union of its tags' output constructors (`OutputType`)
+        match Len args:
+            0: (((OutputType cx.scope), st))
+            1:
+                let ((rw, st2)) = ConvRow cx, st, (Or args[0], dummyType)
+                (((OutputType rw), st2))
+            otherwise: ((TyErr, (Err st, "kind", span, "`Output` takes a row; here it has {CountWord (Len args)}")))
+    else: if name == "Wired":
         (((TyCon name, [[]]), st))
     else: if name == "Instant":
         ((TyErr, (Err st, "unsupported", span, "this checker does not implement `Instant`")))
@@ -135,15 +149,26 @@ fn ConvNamed cx, st, n, args, span:
             ? qk:
                 let ti = Or cx.g.types[qk], dummyTyInfo
                 let st1 = if why == "collision": ErrFix st, "collision", span, "`{name}` is declared by two modules this file reaches by a bare name", "write it qualified, `{qk}`, or rename this file's own" else: st
-                let ((xs, st2)) = ConvTypes cx, st1, args
-                if (Len xs) != (Len ti.params):
-                    ((TyErr, (Err st2, "kind", span, "`{name}` takes {CountWord (Len ti.params)} type{if (Len ti.params) == 1: "" else: "s"}; here it has {CountWord (Len xs)}")))
-                else: match ti.body:
-                    BAlias body: (((SubstQ (ParamInst ti.params, xs), body), st2))
-                    BRowKind: (((TyCon qk, xs), st2))
-                    otherwise: (((TyCon qk, xs), st2))
+                match cx.g.assocNames[qk]:
+                    # an associated type applied (Type System ch. 3, ch. 5's Traits), a name
+                    # of its trait's module: normalized when unified, at an impl's head
+                    ? tr: if (Len args) == 1:
+                        let ((a, st2)) = ConvType cx, st1, (Or args[0], dummyType)
+                        (((TyAssoc tr, (BareName qk), a), st2))
+                    else: ((TyErr, (Err st1, "kind", span, "the associated type `{name}` takes one type; here it has {CountWord (Len args)}")))
+                    nil: ConvNamedType cx, st1, qk, ti, name, args, span
 
-let dummyType = Type(kind=TAbsent, span=Range(start=0, end=0))
+ConvNamedType: unbounded fn Cx, St, Text, TyInfo, Text, [Type], Range -> ((Ty, St))
+fn ConvNamedType cx, st1, qk, ti, name, args, span:
+    let ((xs, st2)) = ConvTypes cx, st1, args
+    if (Len xs) != (Len ti.params):
+        ((TyErr, (Err st2, "kind", span, "`{name}` takes {CountWord (Len ti.params)} type{if (Len ti.params) == 1: "" else: "s"}; here it has {CountWord (Len xs)}")))
+    else: match ti.body:
+        BAlias body: (((SubstQ (ParamInst ti.params, xs), body), st2))
+        BRowKind: (((TyCon qk, xs), st2))
+        otherwise: (((TyCon qk, xs), st2))
+
+let dummyType = Type(kind=TAbsent, span=Range(start=0, end=0, origin=InSource))
 
 ParamInst: fn [Text], [Ty] -> Inst
 fn ParamInst ps, xs = Inst(tys=(Fold (Range0 (Len ps)), {}, \|m, i| Insert m, (Or ps[i], ""), (Or xs[i], TyErr)), rows={}, cols={})
@@ -186,12 +211,12 @@ fn SigScheme cx, st, t, bounds:
         &_.rowVars <= rowVars
         &_.unwritten <= CBound
     let written = ColorVarsOfType t
-    let ((ty, defaults, joins, st2)) = SigType cx2, st, t, written
+    let ((bs, st1)) = ConvBounds cx, st, bounds
+    let ((ty, defaults, joins, st3)) = SigType cx2, st1, t, written
     let tvs = Filter (TypeVarsOfType t), \|v| not (HasText rowVars, v)
     let cqs = Fold defaults, written, \|acc, v| AddText acc, v
-    let ((bs, st3)) = ConvBounds cx, st2, bounds
     let rowsUsed = Filter rowVars, \|v| (HasText (RowVarsOfType t), v) or (UsesScope t)
-    ((Scheme(qs=tvs, plainQs=[[]], rqs=rowsUsed, cqs=cqs, cjoins=joins, bounds=bs, ty=ty), st3))
+    ((Scheme(eqs=[[]], qs=tvs, plainQs=[[]], rqs=rowsUsed, cqs=cqs, cjoins=joins, bounds=bs, ty=ty), st3))
 
 # A signature's unwritten colors (ch. 5, The color; round 3 CD). One mentioning `$`, `!`
 # or `@`, or taking no function, has them bounded. Otherwise every function parameter
@@ -294,7 +319,7 @@ fn SigColName k = "u{k}"
 
 ConvBounds: fn Cx, St, [Bound] -> (([((Text, Text))], St))
 fn ConvBounds cx, st, bounds = Fold bounds, (([[]], st)), \|((acc, s)), b| Fold b.traits, ((acc, s)), \|((a2, s2)), tr| match ?ResolveTrait cx.g, cx.home, tr.path:
-    ? k: (((Push a2, ((b.var.name, k))), s2))
+    ? k: (((Push a2, ((b.var.name, k))), (TraitCollisionAt cx.g, s2, cx.home, tr.path, tr.span)))
     nil: ((a2, (Err s2, "unknown-name", tr.span, "no trait `^{Dotted tr.path}`")))
 
 # Whether a signature's type writes `$`, `!` or `@` anywhere (ch. 5, The color).
@@ -378,6 +403,26 @@ fn TypeVarsInto acc, t = match t.kind:
     TMap k, v: TypeVarsInto (TypeVarsInto acc, k), v
     TFn ignore, ps, res: TypeVarsInto (Fold ps, acc, \|a, x| TypeVarsInto a, x), res
     TEmit ty, ignore: TypeVarsInto acc, ty
+    TNonEmpty x: TypeVarsInto acc, x
+    otherwise: acc
+
+# Where each lowercase type variable of a type is first written.
+TypeVarPlaces: unbounded fn [((Text, Range))], Type -> [((Text, Range))]
+fn TypeVarPlaces acc, t = match t.kind:
+    TName n, args:
+        let name = Dotted n.path
+        let known = Fold acc, False, \|seen, ((v, ignore))| seen or v == name
+        let here = if (Len n.path) == 1 and (IsLowerText name) and (Len args) == 0 and not known: Push acc, ((name, t.span)) else: acc
+        let rest = if name == "Element" and (Len args) == 2: Drop args, 1 else: if name == "Elem": [[]] else: args
+        Fold rest, here, \|a, x| TypeVarPlaces a, x
+    TSigiled ignore, i: TypeVarPlaces acc, i
+    TArray e, ignore: TypeVarPlaces acc, e
+    TTuple ts: Fold ts, acc, \|a, x| TypeVarPlaces a, x
+    TGroup x: TypeVarPlaces acc, x
+    TMap k, v: TypeVarPlaces (TypeVarPlaces acc, k), v
+    TFn ignore, ps, res: TypeVarPlaces (Fold ps, acc, \|a, x| TypeVarPlaces a, x), res
+    TEmit ty, ignore: TypeVarPlaces acc, ty
+    TNonEmpty x: TypeVarPlaces acc, x
     otherwise: acc
 
 ColorVarsOfType: unbounded fn Type -> [Text]
@@ -394,3 +439,4 @@ fn ColorVarsOfType t = match t.kind:
     TMap k, v: UnionTexts (ColorVarsOfType k), (ColorVarsOfType v)
     TEmit ty, ignore: ColorVarsOfType ty
     otherwise: [[]]
+

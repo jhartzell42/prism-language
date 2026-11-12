@@ -1,0 +1,42 @@
+# A supplier that answers with a late result, the plain result of a widget whose block
+# ends below a building `match`, bound below the host's line: `@ n` above
+# `n <- @Pick mode`, the place's tag one whose output is a plain value (Semantics ch. 4, "Binding groups and cycles": any line may use
+# any name the block binds, and the order of a group's lines decides positions and
+# nothing else; ch. 9, "How a supplier answers": the supplier's blueprint "can read
+# anything the host's block binds"). Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+tag Pad.Size of Element Nat:
+    name: Text
+
+@sized: @unit
+@sized:
+    size <- Pad.Size(name="rows")                                      # 0
+    Ui.Label($text=$"size {size}")                                     # 1
+
+@Pick: fn Mode -> @Nat
+fn @Pick mode:
+    n <- match mode:
+        Loud t:
+            Ui.Label($text=$"{t}")                                     # 1
+            @ Len t
+        Soft:
+            @ 20
+    Ui.Label($text=$"picked {n}")                                      # 2, or 1
+    @ n + 1
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    ignore <- @HostDocument @sized, \|p, e| match e:                   # 0/[p]
+        Pad.Size(..): @ n
+        otherwise: @Element e
+    n <- @Pick mode
+    Ui.Label($text=$"below {n}")                                       # 3, or 2

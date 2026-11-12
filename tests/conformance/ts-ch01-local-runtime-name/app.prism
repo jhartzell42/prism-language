@@ -27,4 +27,4 @@ fn Count n:
 
 @shown: @unit
 @shown:
-    Ui.Label(text=$"{Count 0}")             # 0
+    Ui.Label($text=$"{Count 0}")             # 0

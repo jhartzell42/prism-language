@@ -44,7 +44,7 @@ type Exception = record:
     kind: Fault
     message: Text
     spans: [Span]
-    path: ?Path
+    ?path: Path
 derive ^Eq, ^Show
 
 # A source range: file, line, column, binding (Appendix B, Types).
@@ -63,7 +63,7 @@ derive ^Eq, ^Show
 
 # The prelude's tags (Appendix B, Prelude tags; Semantics ch. 10).
 tag Prelude.Unwrap of Element !a where a: ^Show:
-    value: !~a
+    !~value: a
 
 tag Prelude.Exceptions of Element !Exception
 
@@ -152,15 +152,17 @@ Concat: fn [Text] -> Text
 # Maps (Appendix B, Maps; names by round 47 PM)
 # ---------------------------------------------------------------------------------------
 
-Insert: fn (k ==> v), k, v -> (k ==> v)
-Remove: fn (k ==> v), k -> (k ==> v)
-?Get: fn (k ==> v), k -> ?v
+# A map's key is `^Ord` (Type System ch. 3: "Map keys must be `^Ord`, so a map iterates in
+# one order everywhere"): what puts a key in, or finds one, asks for it.
+Insert: fn (k ==> v), k, v -> (k ==> v) where k: ^Ord
+Remove: fn (k ==> v), k -> (k ==> v) where k: ^Ord
+?Get: fn (k ==> v), k -> ?v where k: ^Ord
 ?First: fn (k ==> v) -> ?((k, v))
 Keys: fn (k ==> v) -> [k]
 Values: fn (k ==> v) -> [v]
 Size: fn (k ==> v) -> Nat
-Map: fn [((k, v))] -> (k ==> v)
-Union: fn (k ==> v), (k ==> v) -> (k ==> v)
+Map: fn [((k, v))] -> (k ==> v) where k: ^Ord
+Union: fn (k ==> v), (k ==> v) -> (k ==> v) where k: ^Ord
 
 # ---------------------------------------------------------------------------------------
 # Text (Appendix B, Text; round 4 TX)
@@ -185,7 +187,8 @@ Text: fn Char -> Text
 ?CharOf: fn Nat -> ?Char
 Lower: fn Text -> Text
 # Not in Appendix B, whose `Split` is a regular expression's (below): the pieces between
-# the separators; an empty separator is refused.
+# the separators, what `Split` gives for the expression that matches the separator, so an
+# empty one cuts at every character boundary (`SplitOn "ab", ""` is `[["", "a", "b", ""]]`).
 SplitOn: fn Text, Text -> [Text]
 ?ParseNat: fn Text -> ?Nat
 
@@ -261,7 +264,7 @@ fn Or (? x), ignore = x
 
 !Filter: fn !?a -> !a
 !Present: fn !?a -> !unit
-!Union: fn !(k ==> v), !(k ==> v) -> !(k ==> v)
+!Union: fn !(k ==> v), !(k ==> v) -> !(k ==> v) where k: ^Ord
 !MergeAll: fn [!a] -> ![a]
 !MergeWith: fn (fn a, a -> a), [!a] -> !a
 !Both: fn !a, !b -> !((a, b))
@@ -277,7 +280,7 @@ fn Or (? x), ignore = x
 @Element: fn Element r o -> @o emit r
 @HostDocument: fn @a emit c, (fn Path, Element c o -> @o) -> @((a, $(Path ==> $Elem c)))
 @HostSome: fn @a emit c, (fn Path, Element c o -> ?@o) -> @((a, $(Path ==> $Elem c)))
-@HostList: fn @a emit c, !(Path ==> Answer c), (fn Path, Element c o -> @o) -> @((a, $(Path ==> $Wired c)))
+@HostList: fn @a emit c, !(Path ==> Output c), (fn Path, Element c o -> @o) -> @((a, $(Path ==> $Wired c)))
 @Switch: fn $!a -> @!a
 @Flatten: fn $$a -> @$a
 # `$y <- @Distinct $x`: `$x`'s value, whose update event fires only when the value changed

@@ -1,0 +1,11 @@
+# One binding group around an arm's plain result: declarations of
+# sem-ch04-building-match-plain-group.
+emit Ui.*
+use App.*
+
+test a_line_above_reads_a_hold_bound_below, @main:
+    build
+        => expect Ui.Label(text="gone 0")
+        => expect Ui.Button(label="go 10")
+    click Ui.Button(label="go 10")
+        => expect Ui.Label(text="gone 1")

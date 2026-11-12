@@ -109,14 +109,9 @@ fn ValueDeps cp, t = match t:
     otherwise: [[]]
 
 # A value type's path as `ValueDecl.path` writes it: in its module, or the crate's own
-# (`Elem`, `Answer`).
-DepPath: fn Cp, Text -> Text
-fn DepPath cp, n:
-    let abs = Absolute cp, n
-    let q = DropPrefix n, "crate::"
-    match cp.types[abs]:
-        ? ignore: abs
-        nil: q
+# (`Elem`, `Output`).
+DepPath: fn Cp, Ref -> Text
+fn DepPath cp, n = Or (?RefKey n), (RefSpelled n)
 
 # Whether a field's type names a type that may be incomplete where the struct is defined,
 # and whose comparison a defaulted one would instantiate at once (clang defines a defaulted
@@ -176,6 +171,7 @@ fn ItemParts cp, it = match it:
     ItNode n: NodeParts cp, n
     ItTrait t: TraitParts cp, t
     ItImpl i: ImplParts cp, i
+    ItPacked d: PackedParts cp, d
     ItNote t: ProtosDefs [[]], [["// {t}"]]
     ItRefused t: ProtosDefs [[]], [["compile_error!(\"{loweringRefusal}{Escape t}\");"]]
 
@@ -201,13 +197,18 @@ fn CppSourceDoc lead, source:
 # struct; its comparisons, printer and plain data. Each is a value type defined after the
 # types it holds by value (`ValueDecl`).
 TypeParts: unbounded fn Cp, TyDef -> Parts
-fn TypeParts cp, t:
-    let eq = t.eq
+fn TypeParts cp, t0:
+    let t = CppCases t0
+    # (a generic plain-data type compares even without `^Eq`, which no Prism code can then
+    # call: an element whose level field holds it, `value: Boxed $Nat`, is compared as the
+    # runtime compares every element; the Rust printer's `EqImpls` likewise)
+    let eq = t.eq or (t.pod and (Len t.params) > 0)
     let ord = t.ord
     let gens = CppTemplateHead t.params
     let head = HeadOf t.name, t.params
     let doc = CppSourceDoc "`{t.prism}`:", t.doc
-    let members = Members (t.show != NotShown), t.pod, head
+    let deepMembers = if t.pod and (Len t.params) > 0: "\ncrate::prelude::Pod deep_pod(const crate::prelude::Cx& cx) const;\nvoid deep_ports(const crate::prelude::Cx& cx, ::std::vector<::prism_rtl::Rc<::prism_rtl::Port<crate::prelude::Unit>>>& out) const;" else: ""
+    let members = "{Members (t.show != NotShown), t.pod, head}{deepMembers}"
     let generic = (Len t.params) > 0
     let fwd = "{gens}{if t.shape == ShapeChoice: "class" else: "struct"} {t.name};"
     let deps = Concat2 (Each t.cases, \|c| Concat2 (Each c.fields, \|((ignore, ft))| ValueDeps cp, ft))
@@ -215,10 +216,12 @@ fn TypeParts cp, t:
         ShapeChoice:
             let names = Each t.cases, \|c| c.name
             let cases = Join (Each t.cases, \|c| CaseStruct cp, c, eq, ord), "\n"
-            let cls = ChoiceClass doc, gens, t.name, cases, (Join names, ", "), members
+            # a choice with no case holds the runtime's `NoCase`, which nothing makes: a
+            # variant of no alternatives is no C++ type
+            let cls = ChoiceClass doc, gens, t.name, cases, (if (Len names) == 0: "::prism_rtl::NoCase" else: Join names, ", "), members
             # the choice's comparisons over the variant, after its cases; the cases' own, where
             # declared (`Behind`), among the module's definitions
-            let cmp = Join (Filter [[(if eq: "{gens}inline bool operator==(const {head}& a, const {head}& b) \{ return a.cases() == b.cases(); \}" else: ""), (if ord: "{gens}inline std::strong_ordering operator<=>(const {head}& a, const {head}& b) \{ return a.cases() <=> b.cases(); \}" else: "")]], \|s| s != ""), "\n"
+            let cmp = Join (Filter [[(if eq: "{gens}inline bool operator==(const {head}& a, const {head}& b) \{ return a.cases() == b.cases(); \}" else: ""), (if ord: "{gens}inline ::std::strong_ordering operator<=>(const {head}& a, const {head}& b) \{ return a.cases() <=> b.cases(); \}" else: "")]], \|s| s != ""), "\n"
             let caseDefs = Filter (Each t.cases, \|c| CaseCmpDefs cp, gens, head, c, eq, ord), \|s| s != ""
             (((Join (Filter [[cls, cmp]], \|s| s != ""), "\n"), caseDefs))
         otherwise:
@@ -249,17 +252,17 @@ Comparisons: fn Text, Text, Text, [Text], Bool, Bool, Bool -> ((Text, Text))
 fn Comparisons gens, owner, self, names, eq, ord, behind:
     if not behind: (((Join (Filter [[(if eq: "bool operator==(const {self}&) const = default;" else: ""), (if ord: "auto operator<=>(const {self}&) const = default;" else: "")]], \|s| s != ""), "\n"), ""))
     else:
-        let decls = Join (Filter [[(if eq: "bool operator==(const {self}&) const;" else: ""), (if ord: "std::strong_ordering operator<=>(const {self}&) const;" else: "")]], \|s| s != ""), "\n"
+        let decls = Join (Filter [[(if eq: "bool operator==(const {self}&) const;" else: ""), (if ord: "::std::strong_ordering operator<=>(const {self}&) const;" else: "")]], \|s| s != ""), "\n"
         let eqBody = if (Len names) == 0: "true" else: Join (Each names, \|n| "{n} == o.{n}"), " && "
-        let ordBody = if (Len names) == 0: "std::strong_ordering::equal" else: "std::tie({Join names, ", "}) <=> std::tie({Join (Each names, \|n| "o.{n}"), ", "})"
-        let defs = Join (Filter [[(if eq: "{gens}bool {owner}::operator==(const {self}& o) const \{ return {eqBody}; \}" else: ""), (if ord: "{gens}std::strong_ordering {owner}::operator<=>(const {self}& o) const \{ return {ordBody}; \}" else: "")]], \|s| s != ""), "\n"
+        let ordBody = if (Len names) == 0: "::std::strong_ordering::equal" else: "::std::tie({Join names, ", "}) <=> ::std::tie({Join (Each names, \|n| "o.{n}"), ", "})"
+        let defs = Join (Filter [[(if eq: "{gens}bool {owner}::operator==(const {self}& o) const \{ return {eqBody}; \}" else: ""), (if ord: "{gens}::std::strong_ordering {owner}::operator<=>(const {self}& o) const \{ return {ordBody}; \}" else: "")]], \|s| s != ""), "\n"
         ((decls, defs))
 
 # The members a value type declares for the runtime: its printer and its plain data.
 Members: fn Bool, Bool, Text -> Text
 fn Members shown, pod, head:
-    let s = if shown: [["void show(Printer& p) const;"]] else: [[]]
-    let d = if pod: [["Pod to_pod() const;", "static Result<{head}> from_pod(const Pod& whole);"]] else: [[]]
+    let s = if shown: [["void show(crate::prelude::Printer& p) const;"]] else: [[]]
+    let d = if pod: [["crate::prelude::Pod to_pod() const;", "static crate::prelude::Result<{head}> from_pod(const crate::prelude::Pod& whole);"]] else: [[]]
     Join (Append s, d), "\n"
 
 # A case's struct, nested in its choice.
@@ -287,7 +290,39 @@ fn TypeDefs cp, t, head:
     let gens = CppTemplateHead t.params
     let show = if t.show == ShownDerived: [[(ShowDef cp, t, head, gens)]] else: [[]]
     let pod = if t.pod: [[(ToPodDef cp, t, head, gens), (FromPodDef cp, t, head, gens)]] else: [[]]
-    Join (Append show, pod), "\n"
+    # a level field may hold it with a dynamic as an argument (`Boxed $Nat`): its deep walk
+    let deep = if t.pod and (Len t.params) > 0: CppDeepWalk t, head, gens else: [[]]
+    Join (Append (Append show, pod), deep), "\n"
+
+# A generic program type's deep walk (WD; `prism_rtl::DeepPod` calls it): its plain data
+# with each field walked by its own type, a dynamic sampled, and the update events found.
+CppDeepWalk: unbounded fn TyDef, Text, Text -> [Text]
+fn CppDeepWalk t, head, gens:
+    let structure = match t.shape:
+        ShapeRecord:
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+            "crate::prelude::Pod::record(\"{t.prism}\", \{{Join (Each c.fields, \|((f, ignore))| "\{\"{PrismFieldOf c, f}\", ::prism_rtl::deep_pod({FieldId f}, cx)\}"), ", "}\})"
+        ShapeChoice: CppDeepChoicePod t
+        ShapeNewtype: "crate::prelude::Pod::choice(\"{FirstCase t}\", \{{Join (Each (Range0 (FirstArity t)), \|k| "::prism_rtl::deep_pod(a{k}, cx)"), ", "}\})"
+        ShapeUnit: "crate::prelude::Pod::choice(\"{FirstCase t}\", \{\})"
+    let ports = match t.shape:
+        ShapeRecord:
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+            Join (Each c.fields, \|((f, ignore))| "::prism_rtl::deep_ports({FieldId f}, cx, out);"), "\n"
+        ShapeChoice: Join (Each t.cases, \|c| "if (auto c = ::std::get_if<{c.name}>(&cases())) \{ {Join (Each (Range0 (Len c.fields)), \|k| "::prism_rtl::deep_ports(c->a{k}, cx, out);"), " "} \}"), "\n"
+        ShapeNewtype: Join (Each (Range0 (FirstArity t)), \|k| "::prism_rtl::deep_ports(a{k}, cx, out);"), "\n"
+        ShapeUnit: ""
+    [[(CppFunction "", "{gens}crate::prelude::Pod {head}::deep_pod(const crate::prelude::Cx& cx) const", "return {structure};"), (CppFunction "", "{gens}void {head}::deep_ports(const crate::prelude::Cx& cx, ::std::vector<::prism_rtl::Rc<::prism_rtl::Port<crate::prelude::Unit>>>& out) const", ports)]]
+
+CppDeepChoicePod: fn TyDef -> Text
+fn CppDeepChoicePod t:
+    let arms = Each (Range0 (Len t.cases)), \|i| CppDeepChoiceArm t, i
+    "{Join arms, "\n    : "}\n    : crate::prelude::Pod()"
+
+CppDeepChoiceArm: fn TyDef, Nat -> Text
+fn CppDeepChoiceArm t, i:
+    let c = Or t.cases[i], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+    "::std::holds_alternative<{c.name}>(cases()) ? crate::prelude::Pod::choice_at(\"{c.prism}\", {i}, \{{Join (Each (Range0 (Len c.fields)), \|k| "::prism_rtl::deep_pod(::std::get<{c.name}>(cases()).a{k}, cx)"), ", "}\})"
 
 ShowDef: unbounded fn Cp, TyDef, Text, Text -> Text
 fn ShowDef cp, t, head, gens:
@@ -298,12 +333,12 @@ fn ShowDef cp, t, head, gens:
         ShapeChoice: Join (Each (Range0 (Len t.cases)), \|i| ShowCase t, i), "\n"
         ShapeNewtype: "p.choice(\"{FirstCase t}\", \{{Join (Each (Range0 (FirstArity t)), \|k| "a{k}"), ", "}\});"
         ShapeUnit: "p.choice(\"{FirstCase t}\", \{\});"
-    CppFunction "", "{gens}void {head}::show(Printer& p) const", body
+    CppFunction "", "{gens}void {head}::show(crate::prelude::Printer& p) const", body
 
 ShowCase: fn TyDef, Nat -> Text
 fn ShowCase t, i:
     let c = Or t.cases[i], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
-    let head = "{if i == 0: "if" else: "else if"} (auto c = std::get_if<{c.name}>(&cases()))"
+    let head = "{if i == 0: "if" else: "else if"} (auto c = ::std::get_if<{c.name}>(&cases()))"
     "{head} p.choice(\"{c.prism}\", \{{Join (Each (Range0 (Len c.fields)), \|k| "c->a{k}"), ", "}\});"
 
 # The Prism name of a newtype's or unit type's one case (`click` of `Click`).
@@ -326,38 +361,38 @@ fn ToPodDef cp, t, head, gens:
     let structure = match t.shape:
         ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
-            "Pod::record(\"{t.prism}\", \{{Join (Each c.fields, \|((f, ignore))| "\{\"{PrismFieldOf c, f}\", prism_rtl::to_pod({FieldId f})\}"), ", "}\})"
+            "crate::prelude::Pod::record(\"{t.prism}\", \{{Join (Each c.fields, \|((f, ignore))| "\{\"{PrismFieldOf c, f}\", ::prism_rtl::to_pod({FieldId f})\}"), ", "}\})"
         ShapeChoice: ChoicePod t
-        ShapeNewtype: "Pod::choice(\"{FirstCase t}\", \{{Join (Each (Range0 (FirstArity t)), \|k| "prism_rtl::to_pod(a{k})"), ", "}\})"
-        ShapeUnit: "Pod::choice(\"{FirstCase t}\", \{\})"
-    let body = if t.show == ShownOwn: "Pod structure = {structure};\nreturn Pod::shown(prism_rtl::show(*this), structure);" else: "return {structure};"
-    CppFunction "", "{gens}Pod {head}::to_pod() const", body
+        ShapeNewtype: "crate::prelude::Pod::choice(\"{FirstCase t}\", \{{Join (Each (Range0 (FirstArity t)), \|k| "::prism_rtl::to_pod(a{k})"), ", "}\})"
+        ShapeUnit: "crate::prelude::Pod::choice(\"{FirstCase t}\", \{\})"
+    let body = if t.show == ShownOwn: "crate::prelude::Pod structure = {structure};\nreturn crate::prelude::Pod::shown(::prism_rtl::show(*this), structure);" else: "return {structure};"
+    CppFunction "", "{gens}crate::prelude::Pod {head}::to_pod() const", body
 
 ChoicePod: fn TyDef -> Text
 fn ChoicePod t:
     let arms = Each (Range0 (Len t.cases)), \|i|
         let c = Or t.cases[i], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
-        "std::holds_alternative<{c.name}>(cases()) ? Pod::choice(\"{c.prism}\", \{{Join (Each (Range0 (Len c.fields)), \|k| "prism_rtl::to_pod(std::get<{c.name}>(cases()).a{k})"), ", "}\})"
-    "{Join arms, "\n    : "}\n    : Pod()"
+        "::std::holds_alternative<{c.name}>(cases()) ? crate::prelude::Pod::choice_at(\"{c.prism}\", {i}, \{{Join (Each (Range0 (Len c.fields)), \|k| "::prism_rtl::to_pod(::std::get<{c.name}>(cases()).a{k})"), ", "}\})"
+    "{Join arms, "\n    : "}\n    : crate::prelude::Pod()"
 
 FromPodDef: unbounded fn Cp, TyDef, Text, Text -> Text
 fn FromPodDef cp, t, head, gens:
     let body = match t.shape:
         ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
-            let reads = Join (Each c.fields, \|((f, ft))| ".{FieldId f} = TRY(prism_rtl::from_pod<{CppType cp, ft}>(TRY(crate::prelude::field(whole, \"{PrismFieldOf c, f}\"))))"), ", "
+            let reads = Join (Each c.fields, \|((f, ft))| ".{FieldId f} = TRY(::prism_rtl::from_pod<{CppType cp, ft}>(TRY(crate::prelude::field(whole, \"{PrismFieldOf c, f}\"))))"), ", "
             "return {head}\{{reads}\};"
         otherwise:
             let arms = Each t.cases, \|c|
                 let n = Len c.fields
                 let tys = FieldTypes c.fields
-                let args = Join (Each (Range0 n), \|i| "TRY(prism_rtl::from_pod<{CppType cp, (Or tys[i], OutUnit)}>(c->args[{i}]))"), ", "
+                let args = Join (Each (Range0 n), \|i| "TRY(::prism_rtl::from_pod<{CppType cp, (Or tys[i], OutUnit)}>(c->args[{i}]))"), ", "
                 let made = match t.shape:
                     ShapeChoice: "{head}({c.name}\{{args}\})"
                     otherwise: "{head}\{{args}\}"
                 "if (c->ctor == \"{c.prism}\" && c->args.size() == {n}) return {made};"
-            "const Pod& p = whole.structure();\nif (auto c = p.if_choice()) \{\n{IndentCpp (Join arms, "\n")}\n\}\nreturn mismatch<{head}>(\"a {t.prism}\", p);"
-    CppFunction "", "{gens}Result<{head}> {head}::from_pod(const Pod& whole)", body
+            "const crate::prelude::Pod& p = whole.structure();\nif (auto c = p.if_choice()) \{\n{IndentCpp (Join arms, "\n")}\n\}\nreturn crate::prelude::mismatch<{head}>(\"a {t.prism}\", p);"
+    CppFunction "", "{gens}crate::prelude::Result<{head}> {head}::from_pod(const crate::prelude::Pod& whole)", body
 
 # A field's Prism spelling: the C++ one without the `_` a keyword took.
 PrismField: fn Text -> Text
@@ -375,79 +410,118 @@ fn IndentCpp t = Join (Each (SplitOn t, "\n"), \|l| if l == "": "" else: "    {l
 # An element tag's `Level`: a struct of its fields, its tag, its plain data.
 TagParts: unbounded fn Cp, TagDef -> Parts
 fn TagParts cp, t:
-    let fields = Join (Each t.fields, \|((ignore, f, ft))| "{CppType cp, ft} {FieldId f};"), "\n"
-    let pods = Join (Each t.fields, \|((p, f, ignore))| "\{\"{p}\", prism_rtl::to_pod({FieldId f})\}"), ", "
-    let reads = Join (Each t.fields, \|((p, f, ft))| ".{FieldId f} = TRY(prism_rtl::from_pod<{CppType cp, ft}>(TRY(crate::prelude::field(p, \"{p}\"))))"), ", "
+    let fields = Join (Append (Each t.fields, \|((ignore, f, ft))| "{CppType cp, ft} {FieldId f};"), (Each t.events, \|((f, et))| "{CppType cp, (OutEvent et)} {FieldId f};")), "\n"
+    let pods = Join (Each t.fields, \|((p, f, ignore))| "\{\"{p}\", ::prism_rtl::to_pod({FieldId f})\}"), ", "
+    # an element read back from plain data was made with no event: each never fires
+    let reads = Join (Append (Each t.fields, \|((p, f, ft))| ".{FieldId f} = TRY(::prism_rtl::from_pod<{CppType cp, ft}>(TRY(crate::prelude::field(p, \"{p}\"))))"), (Each t.events, \|((f, et))| ".{FieldId f} = {CppType cp, (OutEvent et)}::never()")), ", "
     let eq = if t.eq: "bool operator==(const {t.name}&) const = default;" else: ""
-    let back = if t.pod: "static Result<{t.name}> from_pod(const Pod& p);" else: ""
+    let back = if t.pod: "static crate::prelude::Result<{t.name}> from_pod(const crate::prelude::Pod& p);" else: ""
     # a level that holds dynamics as a World reads it, deep (doubt WD)
     let deep = Fold t.fields, False, \|d, ((ignore, ignore, ft))| d or HoldsDyn ft
-    let levelDecl = if deep: "/// The level as a World reads it: each dynamic it holds sampled at the read point.\nPod level_pod(const Cx& cx) const;\n/// The update events of the dynamics it holds, and of theirs.\nvoid level_ports(const Cx& cx, std::vector<prism_rtl::Rc<prism_rtl::Port<Unit>>>& out) const;" else: ""
+    let levelDecl = if deep: "/// The level as a World reads it: each dynamic it holds sampled at the read point.\ncrate::prelude::Pod level_pod(const crate::prelude::Cx& cx) const;\n/// The update events of the dynamics it holds, and of theirs.\nvoid level_ports(const crate::prelude::Cx& cx, ::std::vector<::prism_rtl::Rc<::prism_rtl::Port<crate::prelude::Unit>>>& out) const;" else: ""
     let decl = CppTagStruct (CppSourceDoc "The `Level` of `{t.tagName}`:", t.doc), t.name, fields, t.tagName, (Join (Filter [[eq, back, levelDecl]], \|s| s != ""), "\n")
     let deepPods = Join (Each t.fields, \|((p, f, ft))| CppDeepField p, f, ft), ", "
     let deepPorts = Join (Filter (Each t.fields, \|((ignore, f, ft))| CppDeepPorts f, ft), \|s| s != ""), "\n"
-    let levelDefs = if deep: [[(CppFunction "", "Pod {t.name}::level_pod(const Cx& cx) const", "static_cast<void>(cx);\nreturn Pod::element(TAG, \{{deepPods}\});"), (CppFunction "", "void {t.name}::level_ports(const Cx& cx, std::vector<prism_rtl::Rc<prism_rtl::Port<Unit>>>& out) const", "static_cast<void>(cx);\nstatic_cast<void>(out);{if deepPorts == "": "" else: "\n{deepPorts}"}")]] else: [[]]
-    let toPod = CppFunction "", "Pod {t.name}::to_pod() const", "return Pod::element(TAG, \{{pods}\});"
-    let show = CppFunction "", "void {t.name}::show(Printer& p) const", "prism_rtl::to_pod(*this).structure();\nShow<Pod>::show(prism_rtl::to_pod(*this), p);"
-    let fromPod = if t.pod: [[(CppFunction "", "Result<{t.name}> {t.name}::from_pod(const Pod& p)", "if (auto t = p.tag(); t && *t == TAG) return {t.name}\{{reads}\};\nreturn mismatch<{t.name}>(\"a {t.tagName}\", p);")]] else: [[]]
-    let deps = Concat2 (Each t.fields, \|((ignore, ignore, ft))| ValueDeps cp, ft)
+    let levelDefs = if deep: [[(CppFunction "", "crate::prelude::Pod {t.name}::level_pod(const crate::prelude::Cx& cx) const", "static_cast<void>(cx);\nreturn crate::prelude::Pod::element(TAG, \{{deepPods}\});"), (CppFunction "", "void {t.name}::level_ports(const crate::prelude::Cx& cx, ::std::vector<::prism_rtl::Rc<::prism_rtl::Port<crate::prelude::Unit>>>& out) const", "static_cast<void>(cx);\nstatic_cast<void>(out);{if deepPorts == "": "" else: "\n{deepPorts}"}")]] else: [[]]
+    let toPod = CppFunction "", "crate::prelude::Pod {t.name}::to_pod() const", "return crate::prelude::Pod::element(TAG, \{{pods}\});"
+    let show = CppFunction "", "void {t.name}::show(crate::prelude::Printer& p) const", "::prism_rtl::to_pod(*this).structure();\ncrate::prelude::Show<crate::prelude::Pod>::show(::prism_rtl::to_pod(*this), p);"
+    let fromPod = if t.pod: [[(CppFunction "", "crate::prelude::Result<{t.name}> {t.name}::from_pod(const crate::prelude::Pod& p)", "if (auto t = p.tag(); t && *t == TAG) return {t.name}\{{reads}\};\nreturn crate::prelude::mismatch<{t.name}>(\"a {t.tagName}\", p);")]] else: [[]]
+    let deps = Concat2 (Append (Each t.fields, \|((ignore, ignore, ft))| ValueDeps cp, ft), (Each t.events, \|((ignore, et))| ValueDeps cp, et))
     Parts(forward=[["struct {t.name};"]], values=[[ValueDecl(path=(DeclPath cp, t.name), deps=deps, text=decl)]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append (Append [[toPod, show]], fromPod), levelDefs))
 
-# A level field as a World reads it (doubt WD): plain data as it is; a map of dynamics or a
-# dynamic sampled deep. Any other shape holding a dynamic stops the build, loudly.
+# A level field as a World reads it (WD): plain data as it is; every dynamic it holds
+# sampled, deep.
 CppDeepField: unbounded fn Text, Text, OutTy -> Text
 fn CppDeepField p, f, ft = "\{\"{p}\", {CppDeepPod f, ft}\}"
 
 CppDeepPod: unbounded fn Text, OutTy -> Text
 fn CppDeepPod f, ft = match ft:
-    OutMap ignore, (OutDyn (OutNamed "crate::Elem", ignore)): "prism_rtl::dynamics_pod({FieldId f}, cx)"
-    OutDyn (OutNamed "crate::Elem", ignore): "prism_rtl::level_pod({FieldId f}.sample(cx), cx)"
-    other: if HoldsDyn other: "[] \{ static_assert(false, \"prismc: a tag field holding a dynamic other than `$Elem` or a map of them is not read deep (claude/incremental-host-document.md, doubt WD)\"); return Pod(); \}()" else: "prism_rtl::to_pod({FieldId f})"
+    OutMap ignore, (OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore)): "::prism_rtl::dynamics_pod({FieldId f}, cx)"
+    OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore): "::prism_rtl::level_pod({FieldId f}.sample(cx), cx)"
+    # any other value that holds dynamics, flattened through (WD; `prism_rtl::DeepPod`)
+    other: if HoldsDyn other: "::prism_rtl::deep_pod({FieldId f}, cx)" else: "::prism_rtl::to_pod({FieldId f})"
 
 CppDeepPorts: unbounded fn Text, OutTy -> Text
 fn CppDeepPorts f, ft = match ft:
-    OutMap ignore, (OutDyn (OutNamed "crate::Elem", ignore)): "prism_rtl::dynamics_ports({FieldId f}, cx, out);"
-    OutDyn (OutNamed "crate::Elem", ignore): "out.push_back({FieldId f}.updates);\nprism_rtl::level_ports({FieldId f}.sample(cx), cx, out);"
-    otherwise: ""
+    OutMap ignore, (OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore)): "::prism_rtl::dynamics_ports({FieldId f}, cx, out);"
+    OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore): "out.push_back({FieldId f}.updates);\n::prism_rtl::level_ports({FieldId f}.sample(cx), cx, out);"
+    other: if HoldsDyn other: "::prism_rtl::deep_ports({FieldId f}, cx, out);" else: ""
 
 # A row kind's values (pick RV): a choice of the kind's tags, each holding its tag's struct.
 RowParts: unbounded fn Cp, Text, RowDef -> Parts
 fn RowParts cp, m, r:
     let names = Each r.cases, \|((v, ignore))| v
-    let levels = if r.level: "\nPod level_pod(const Cx& cx) const;\nvoid level_ports(const Cx& cx, std::vector<prism_rtl::Rc<prism_rtl::Port<Unit>>>& out) const;" else: ""
-    let pod = "Pod to_pod() const;\nvoid show(Printer& p) const;{if r.pod: "\nstatic Result<{r.name}> from_pod(const Pod& p);" else: ""}{levels}"
+    let levels = if r.level: "\ncrate::prelude::Pod level_pod(const crate::prelude::Cx& cx) const;\nvoid level_ports(const crate::prelude::Cx& cx, ::std::vector<::prism_rtl::Rc<::prism_rtl::Port<crate::prelude::Unit>>>& out) const;" else: ""
+    let pod = "crate::prelude::Pod to_pod() const;\nvoid show(crate::prelude::Printer& p) const;{if r.pod: "\nstatic crate::prelude::Result<{r.name}> from_pod(const crate::prelude::Pod& p);" else: ""}{levels}"
     let cases = Join (Each r.cases, \|((v, st))| CaseDecl v, "{RowStruct m, st} a0;{if r.eq: "\nbool operator==(const {v}&) const = default;" else: ""}"), "\n"
     let cls = ChoiceClass (CppSourceDoc "`{r.prism}`, a row kind's values:", r.doc), "", r.name, cases, (Join names, ", "), pod
     let eq = if r.eq: "\ninline bool operator==(const {r.name}& a, const {r.name}& b) \{ return a.cases() == b.cases(); \}" else: ""
     # `crate::Elem`'s levels as a World reads them (doubt WD): a tag that holds dynamics
     # deep, any other as its plain data
-    let levelDefs = if r.level: [[(CppFunction "", "Pod {r.name}::level_pod(const Cx& cx) const", "return std::visit([&](const auto& c) \{ return prism_rtl::level_pod(c.a0, cx); \}, cases());"), (CppFunction "", "void {r.name}::level_ports(const Cx& cx, std::vector<prism_rtl::Rc<prism_rtl::Port<Unit>>>& out) const", "std::visit([&](const auto& c) \{ prism_rtl::level_ports(c.a0, cx, out); \}, cases());")]] else: [[]]
-    let toPod = CppFunction "", "Pod {r.name}::to_pod() const", "return std::visit([](const auto& c) \{ return prism_rtl::to_pod(c.a0); \}, cases());"
-    let show = CppFunction "", "void {r.name}::show(Printer& p) const", "Show<Pod>::show(to_pod(), p);"
-    let reads = Join (Each r.cases, \|((v, st))| "if (*t == {RowStruct m, st}::TAG) return {r.name}({v}\{TRY(prism_rtl::from_pod<{RowStruct m, st}>(p))\});"), "\n"
-    let fromPod = if r.pod: [[(CppFunction "", "Result<{r.name}> {r.name}::from_pod(const Pod& p)", "if (auto t = p.tag()) \{\n{IndentCpp reads}\n\}\nreturn mismatch<{r.name}>(\"a {r.name}\", p);")]] else: [[]]
+    let levelDefs = if r.level: [[(CppFunction "", "crate::prelude::Pod {r.name}::level_pod(const crate::prelude::Cx& cx) const", "return ::std::visit([&](const auto& c) \{ return ::prism_rtl::level_pod(c.a0, cx); \}, cases());"), (CppFunction "", "void {r.name}::level_ports(const crate::prelude::Cx& cx, ::std::vector<::prism_rtl::Rc<::prism_rtl::Port<crate::prelude::Unit>>>& out) const", "::std::visit([&](const auto& c) \{ ::prism_rtl::level_ports(c.a0, cx, out); \}, cases());")]] else: [[]]
+    let toPod = CppFunction "", "crate::prelude::Pod {r.name}::to_pod() const", "return ::std::visit([](const auto& c) \{ return ::prism_rtl::to_pod(c.a0); \}, cases());"
+    let show = CppFunction "", "void {r.name}::show(crate::prelude::Printer& p) const", "crate::prelude::Show<crate::prelude::Pod>::show(to_pod(), p);"
+    let reads = Join (Each r.cases, \|((v, st))| "if (*t == {RowStruct m, st}::TAG) return {r.name}({v}\{TRY(::prism_rtl::from_pod<{RowStruct m, st}>(p))\});"), "\n"
+    let fromPod = if r.pod: [[(CppFunction "", "crate::prelude::Result<{r.name}> {r.name}::from_pod(const crate::prelude::Pod& p)", "if (auto t = p.tag()) \{\n{IndentCpp reads}\n\}\nreturn crate::prelude::mismatch<{r.name}>(\"a {r.name}\", p);")]] else: [[]]
     let deps = Concat2 (Each r.cases, \|((ignore, st))| ValueDeps cp, (OutNamed st, [[]]))
     Parts(forward=[["class {r.name};"]], values=[[ValueDecl(path=(DeclPath cp, r.name), deps=deps, text="{cls}{eq}")]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append (Append [[toPod, show]], fromPod), levelDefs))
 
 # A row case's struct, by its path from the crate (the case's own name would name the case).
-RowStruct: fn Text, Text -> Text
-fn RowStruct m, st = if (Contains st, ":") or m == "": TypePath st else: "crate::{m}::{st}"
+RowStruct: fn Text, Ref -> Text
+fn RowStruct m, st = match st:
+    RefItem sm, p, s: if m == "": TypePath s else: "crate::{sm}::{p}"
+    RefRuntime t: TypePath t
 
-# `crate::Answer` (pick HO): a choice of a case per element tag with the tag's output; the
+# An accessor's line for an answer made outside a tag's arm, read at the type the tag's
+# place takes: plain data from `Output`'s case of no tag; a value that is no plain data
+# (a function) from the case that holds it as it is (`held_as`).
+CppOutsideArm: unbounded fn Cp, OutTy -> Text
+fn CppOutsideArm cp, t = if Podable t: "if (auto u = ::std::get_if<Untagged_a>(&cases())) return ::prism_rtl::from_pod<{CppType cp, t}>(u->a0);" else: "if (auto h = held_as<{CppType cp, t}>()) return *h;"
+
+# A World's answer for a tag whose output is no plain data: a fault of the run.
+CppNoWorldOutput: fn Text -> Text
+fn CppNoWorldOutput tagName = "return crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"a World's answer for {tagName}, whose output is no plain data: a host answers it\")));"
+
+# `crate::Output` (pick HO): a choice of a case per element tag with the tag's output; the
 # tag an answer is for; an accessor per case; the decode of a World's answer.
-AnswerParts: unbounded fn Cp, AnswerDef -> Parts
-fn AnswerParts cp, a:
-    let names = Each a.cases, \|c| c.variant
-    let accessors = Join (Each a.cases, \|c| "Result<{CppType cp, c.ty}> {c.accessor}() const;"), "\n"
-    let members = "const char* tag() const;\n{accessors}\nstatic Result<Answer> decode(const Elem& e, const Pod& v);"
-    let cases = Join (Each a.cases, \|c| CaseDecl c.variant, "{CppType cp, c.ty} a0;"), "\n"
-    let cls = ChoiceClass (CppDoc "`Answer c`: an answer to an element, typed by its tag (Semantics ch. 9): what a host's\nsupplier answers a child place with, and what a World's answer to a forwarded element\ndecodes to, carrying the tag's output."), "", "Answer", cases, (Join names, ", "), members
-    let tags = Join (Each a.cases, \|c| "if (std::holds_alternative<{c.variant}>(cases())) return {TypePath c.structPath}::TAG;"), "\n"
-    let tagFn = CppFunction "", "const char* Answer::tag() const", "{tags}\nprism_rtl::unreachable();"
-    let getters = Each a.cases, \|c| CppFunction (CppDoc "A `{c.tagName}`'s answer."), "Result<{CppType cp, c.ty}> Answer::{c.accessor}() const", "if (auto c = std::get_if<{c.variant}>(&cases())) return c->a0;\nreturn unexpected(Fault::answer(str(\"an answer for \", tag(), \", where {c.tagName}'s was expected\")));"
-    let decodes = Join (Each a.cases, \|c| "if (is<Elem::{c.variant}>(e)) return Answer({c.variant}\{TRY(prism_rtl::from_pod<{CppType cp, c.ty}>(v))\});"), "\n"
-    let decode = CppFunction (CppDoc "A World's answer to the element `e`, decoded by its tag."), "Result<Answer> Answer::decode(const Elem& e, const Pod& v)", "{decodes}\nprism_rtl::unreachable();"
-    Parts(forward=[["class Answer;"]], values=[[ValueDecl(path="Answer", deps=[[]], text=cls)]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append [[tagFn]], (Push getters, decode)))
+OutputParts: unbounded fn Cp, OutputDef -> Parts
+fn OutputParts cp, a:
+    # a bundle's tag has a second case, its plain parts, the first value (pick HO)
+    let firsts = Fold a.cases, [[]], \|acc, c| match c.?first:
+        ? ft: Push acc, ((c, ft))
+        nil: acc
+    # and one case of no tag, an answer made outside a tag's arm, as plain data (the
+    # lowering's `untaggedRef`)
+    let names0 = Push (Append (Each a.cases, \|c| c.variant), (Each firsts, \|((c, ft))| "{c.variant}First")), "Untagged_a"
+    # and one more of no tag for an answer that is no plain data (a function, a dynamic, a
+    # bundle with its events and dynamics whole), held as it is (`std::any`) and read back
+    # at the type of the line that binds it (the prelude's `output_held`, `Output::held`)
+    let names = Push names0, "Held_a"
+    let held = "template <class T> ::std::optional<T> held_as() const \{ if (auto h = ::std::get_if<Held_a>(&cases())) if (auto v = ::std::any_cast<T>(&h->a0)) return *v; return ::std::nullopt; \}\ntemplate <class T> crate::prelude::Result<T> held() const \{ if (auto v = held_as<T>()) return *v; return crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where a blueprint value's result that is no plain data was expected\"))); \}"
+    let accessors = Join (Append (Each a.cases, \|c| "crate::prelude::Result<{CppType cp, c.ty}> {c.accessor}() const;"), (Each firsts, \|((c, ft))| "crate::prelude::Result<{CppType cp, ft}> {c.accessor}_first() const;")), "\n"
+    let plain = "template <class T> crate::prelude::Result<T> plain() const \{ if (auto u = ::std::get_if<Untagged_a>(&cases())) return ::prism_rtl::from_pod<T>(u->a0); return crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where a blueprint value's plain result was expected\"))); \}"
+    let members = "const char* tag() const;\nOutput untagged() const;\n{accessors}\n{plain}\n{held}\nstatic crate::prelude::Result<Output> decode(const Elem& e, const crate::prelude::Pod& v);\nstatic crate::prelude::Result<Output> decode_first(const Elem& e, const crate::prelude::Pod& v);\nstatic ::std::optional<::prism_rtl::PartsOutput<Output>> held_parts(const Elem& e, const Output& answer);"
+    let cases0 = Join (Append (Each a.cases, \|c| CaseDecl c.variant, "{CppType cp, c.ty} a0;"), (Each firsts, \|((c, ft))| CaseDecl "{c.variant}First", "{CppType cp, ft} a0;")), "\n"
+    let cases = "{cases0}\n{CaseDecl "Untagged_a", "crate::prelude::Pod a0;"}\n{CaseDecl "Held_a", "::std::any a0;"}"
+    let cls = ChoiceClass (CppDoc "`Output c`: an answer to an element, typed by its tag (Semantics ch. 9): what a host's\nsupplier answers a child place with, and what a World's answer to a forwarded element\ndecodes to, carrying the tag's output."), "", "Output", cases, (Join names, ", "), members
+    let tags = Join (Append (Each a.cases, \|c| "if (::std::holds_alternative<{c.variant}>(cases())) return {TypePath (RefSpelled c.structPath)}::TAG;"), (Each firsts, \|((c, ft))| "if (::std::holds_alternative<{c.variant}First>(cases())) return {TypePath (RefSpelled c.structPath)}::TAG;")), "\n"
+    let tagFn = CppFunction "", "const char* Output::tag() const", "{tags}\nif (::std::holds_alternative<Held_a>(cases())) return \"no tag (an answer made outside a tag's arm that is no plain data)\";\nreturn \"no tag (an answer made outside a tag's arm)\";"
+    let firstGetters = Each firsts, \|((c, ft))| CppFunction (CppDoc "A `{c.tagName}`'s first value."), "crate::prelude::Result<{CppType cp, ft}> Output::{c.accessor}_first() const", "if (auto c = ::std::get_if<{c.variant}First>(&cases())) return c->a0;\n{CppOutsideArm cp, ft}\nreturn crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where {c.tagName}'s first value was expected\")));"
+    let decodeFirsts = Join (Each firsts, \|((c, ft))| if Podable ft: "if (is<Elem::{c.variant}>(e)) return Output({c.variant}First\{TRY(::prism_rtl::from_pod<{CppType cp, ft}>(v))\});" else: "if (is<Elem::{c.variant}>(e)) {CppNoWorldOutput c.tagName}"), "\n"
+    let decodeFirst = CppFunction (CppDoc "A World's first value for the element `e`: a bundle's plain parts, any other tag's answer."), "crate::prelude::Result<Output> Output::decode_first(const Elem& e, const crate::prelude::Pod& v)", "{decodeFirsts}\nreturn decode(e, v);"
+    let getters = Each a.cases, \|c| CppFunction (CppDoc "A `{c.tagName}`'s answer."), "crate::prelude::Result<{CppType cp, c.ty}> Output::{c.accessor}() const", "if (auto c = ::std::get_if<{c.variant}>(&cases())) return c->a0;\n{CppOutsideArm cp, c.ty}\nreturn crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where {c.tagName}'s was expected\")));"
+    let decodes = Join (Each a.cases, \|c| if Podable c.ty: "if (is<Elem::{c.variant}>(e)) return Output({c.variant}\{TRY(::prism_rtl::from_pod<{CppType cp, c.ty}>(v))\});" else: "if (is<Elem::{c.variant}>(e)) {CppNoWorldOutput c.tagName}"), "\n"
+    let decode = CppFunction (CppDoc "A World's answer to the element `e`, decoded by its tag."), "crate::prelude::Result<Output> Output::decode(const Elem& e, const crate::prelude::Pod& v)", "{decodes}\n::prism_rtl::unreachable();"
+    # a bundle held whole, answered to a place of a tag that takes such a bundle
+    let heldArms = Fold a.cases, [[]], \|acc, c| match ((c.?heldWhole, c.?heldParts)):
+        ((? whole, ? parts)): Push acc, "if (is<Elem::{c.variant}>(e)) \{ if (auto whole = answer.held_as<{CppType cp, whole}>()) return ({CppExpr cp, parts})(*whole); return ::std::nullopt; \}"
+        otherwise: acc
+    let helds = Join heldArms, "\n"
+    let heldParts = CppFunction (CppDoc "An answer held whole (a bundle with a part that is no plain data, made outside a tag's\narm) as the parts the tag of `e` takes."), "::std::optional<::prism_rtl::PartsOutput<Output>> Output::held_parts(const Elem& e, const Output& answer)", "{helds}\nreturn ::std::nullopt;"
+    # an answer of plain data under any tag, as one of no tag (the Rust `Output::untagged`)
+    let untaggedArms = Join (Fold a.cases, [[]], \|acc, c| if Podable c.ty: Push acc, "if (auto c = ::std::get_if<{c.variant}>(&cases())) return Output(Untagged_a\{::prism_rtl::to_pod(c->a0)\});" else: acc), "\n"
+    let untaggedFn = CppFunction (CppDoc "The answer as one made outside a tag's arm, where it is plain data: what a place of\nanother tag reads at its own type. Any other answer is itself."), "Output Output::untagged() const", "{untaggedArms}\nreturn *this;"
+    Parts(forward=[["class Output;"]], values=[[ValueDecl(path="Output", deps=[[]], text=cls)]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append [[tagFn, untaggedFn]], (Append (Append getters, firstGetters), [[decode, decodeFirst, heldParts]])))
 
 # A step machine (D6): a job struct, its `cycle`, its `Start`.
 JobParts: unbounded fn Cp, JobDef -> Parts
@@ -457,28 +531,45 @@ fn JobParts cp, j:
     let jcp = WithFields cp, j.fields
     let fields = Join (Each j.fields, \|((n, t))| "{CppType cp, t} {FieldId n};"), "\n"
     let params = Join (Each j.fields, \|((n, t))| "{CppType cp, t} {FieldId n}"), ", "
-    let inits = Join (Each j.fields, \|((n, ignore))| "{FieldId n}(std::move({FieldId n}))"), ", "
+    let inits = Join (Each j.fields, \|((n, ignore))| "{FieldId n}(::std::move({FieldId n}))"), ", "
     let ctor = if (Len j.fields) == 0: "" else: "{j.name}({params}) : {inits} \{\}"
     let ret = CppType cp, j.ret
     let decl = JobStruct (CppDoc j.doc), gens, j.name, ret, fields, ctor
-    let cycle = CppFunction "", "{gens}prism_rtl::Turn<{ret}> {head}::cycle() const", (CppBody jcp, j.body)
-    let start = CppFunction (CppDoc "`Start {j.name}, x`: what the function value is when passed to `@Run`."), "{gens}prism_rtl::JobRef<{ret}> {j.start}({params})", "return prism_rtl::make_rc<{head}>({Join (Each j.fields, \|((n, ignore))| FieldId n), ", "});"
+    let cycle = CppFunction "", "{gens}::prism_rtl::Turn<{ret}> {head}::cycle() const", (CppBody jcp, j.body)
+    let start = CppFunction (CppDoc "`Start {j.name}, x`: what the function value is when passed to `@Run`."), "{gens}::prism_rtl::JobRef<{ret}> {j.start}({params})", "return ::prism_rtl::make_rc<{head}>({Join (Each j.fields, \|((n, ignore))| FieldId n), ", "});"
     let generic = (Len j.generics) > 0
-    Parts(forward=[["{gens}struct {j.name};"]], values=[[]], protos=[["{gens}prism_rtl::JobRef<{ret}> {j.start}({params});"]], classes=[[decl]], outer=[[]], generic=(if generic: [[cycle, start]] else: [[]]), defs=(if generic: [[]] else: [[cycle, start]]))
+    Parts(forward=[["{gens}struct {j.name};"]], values=[[]], protos=[["{gens}::prism_rtl::JobRef<{ret}> {j.start}({params});"]], classes=[[decl]], outer=[[]], generic=(if generic: [[cycle, start]] else: [[]]), defs=(if generic: [[]] else: [[cycle, start]]))
 
 # A program's own trait: its methods are functions of a namespace named after it, each impl
 # an overload (a default's body a template over `Self`). A method with no default is
 # declared a deleted template over `Self`, so that a generic function's call of it names
 # something wherever it is defined, and the overloads its file declares before it are the
 # ones a call picks (`NAME.generic.hpp`, `ModuleFiles`).
+#
+# Each associated type is a class template of the namespace over `Self`, declared with the
+# module's forward declarations and never defined: an impl's choice is a specialization at
+# its head, `typename Box_t::Item<A>::type` reads it (`CppType`'s `OutAssoc`).
+#
+# A method whose type is only in its result (`?Read: fn Text -> ?a`) is no overload, which
+# C++ would tell apart by its arguments: it is a class template over `Self`, `read_o_at`,
+# declared with the forward declarations, its static `call` the default's body if the trait
+# has one, each impl's a specialization at its head (`ImplParts`), each call
+# `Parse_t::read_o_at<T>::call(..)` (`XCallSelf`).
 TraitParts: unbounded fn Cp, TraitDef -> Parts
 fn TraitParts cp, t:
-    let defaults = Filter t.methods, \|f| f.public
+    let overloads = Filter t.methods, \|f| not (InList t.resultOnly, f.name)
+    let atTypes = Filter t.methods, \|f| InList t.resultOnly, f.name
+    let defaults = Filter overloads, \|f| f.public
     let defs = Each defaults, \|f| FnDefinition cp, (WithGenerics f, [[(("Self", [[]]))]])
-    let protos = Each t.methods, \|f| "{FnSignature cp, (WithGenerics f, [[(("Self", [[]]))]])}{if f.public: "" else: " = delete"};"
-    let generic = if (Len defaults) == 0: [[]] else: [[(TraitNamespace t.name, (Join defs, "\n"))]]
+    let atDefs = Each (Filter atTypes, \|f| f.public), \|f| CppFunction (CppDoc f.doc), "template <class Self>\n{CppType cp, f.ret} {CppId f.name}_at<Self>::call({CppParams cp, f.params})", (CppBody (WithParams cp, f.params), f.body)
+    let protos = Each overloads, \|f| "{FnSignature cp, (WithGenerics f, [[(("Self", [[]]))]])}{if f.public: "" else: " = delete"};"
+    let atProtos = Each (Filter atTypes, \|f| f.public), \|f| "template <class Self>\nstruct {CppId f.name}_at \{\n    static {CppType cp, f.ret} call({CppParams cp, f.params});\n\};"
+    let allDefs = Append defs, atDefs
+    let generic = if (Len allDefs) == 0: [[]] else: [[(TraitNamespace t.name, (Join allDefs, "\n"))]]
+    let declared = Append (Each t.assocs, \|n| "template <class Self>\nstruct {n};"), (Each atTypes, \|f| "template <class Self>\nstruct {CppId f.name}_at;")
     update (GenericOnly generic):
-        &_.protos <= [[(TraitNamespace t.name, (Join protos, "\n"))]]
+        &_.protos <= [[(TraitNamespace t.name, (Join (Append protos, atProtos), "\n"))]]
+        &_.forward <= if (Len declared) == 0: [[]] else: [[(TraitNamespace t.name, (Join declared, "\n"))]]
 
 # An impl: of a program's trait, overloads in the trait's namespace (of another module's
 # trait, in a namespace of the impl's module, `impl_aloud_Loud`, which a using-declaration
@@ -494,7 +585,7 @@ fn ImplParts cp, i:
     match i.cls:
         "Prelude.Show":
             let shown = Or (Each i.methods, \|f| f.name)[0], "show"
-            JoinParts own, (ProtosDefs [[]], [[(CppFunction "", "{gens}void {head}::show(Printer& p) const", "p.raw({shown}(*this).to_string());")]])
+            JoinParts own, (ProtosDefs [[]], [[(CppFunction "", "{gens}void {head}::show(crate::prelude::Printer& p) const", "p.raw({shown}(*this).to_string());")]])
         "Prelude.Eq":
             let eq = Fold i.methods, "", \|acc, f| if (not (HasPrefix f.name, "ne")) and acc == "": f.name else: acc
             JoinParts own, (ProtosDefs [["{gens}bool operator==(const {head}& a, const {head}& b);"]], [[(CppFunction "", "{gens}bool operator==(const {head}& a, const {head}& b)", "return {eq}(a, b);")]])
@@ -502,11 +593,58 @@ fn ImplParts cp, i:
             let tr = DropPrefix (TypePath i.tr), "crate::"
             let own = not (Contains tr, "::")
             let ns = if own: tr else: "impl_{Join (SplitOn tr, "::"), "_"}"
-            let inTrait = Each i.methods, \|f| TraitNamespace ns, (FnDefinition cp, (WithGenerics f, i.generics))
-            let protos = Each i.methods, \|f| TraitNamespace ns, "{FnSignature cp, (WithGenerics f, i.generics)};"
-            let outer = if own: [[]] else: [[(TraitNamespace tr, (Join (Each i.methods, \|f| "using ::crate::{cp.home}::{ns}::{CppId f.name};"), "\n"))]]
-            update (ProtosDefs protos, inTrait):
-                &_.outer <= outer
+            let overloads = Filter i.methods, \|f| not (InList i.resultOnly, f.name)
+            let atTypes = Filter i.methods, \|f| InList i.resultOnly, f.name
+            let inTrait = Each overloads, \|f| TraitNamespace ns, (FnDefinition cp, (WithGenerics f, i.generics))
+            let protos = Each overloads, \|f| TraitNamespace ns, "{FnSignature cp, (WithGenerics f, i.generics)};"
+            # each associated type it chooses, and each method whose type is only in its
+            # result, a specialization in the trait's own namespace (a class template is
+            # specialized where it is declared, so another module's trait's at the crate's
+            # scope, its `call` defined there too)
+            let spec = if gens == "": "template <>\n" else: gens
+            let chosen = Each i.assocs, \|((n, at))| "{spec}struct {n}<{head}> \{ using type = {CppType cp, at}; \};"
+            let atSpecs = Each atTypes, \|f|
+                let call = "static {CppType cp, f.ret} call({CppParams cp, f.params})"
+                if own: "{spec}struct {CppId f.name}_at<{head}> \{\n    {call};\n\};"
+                else: "{spec}struct {CppId f.name}_at<{head}> \{\n    {CppFunction "", call, (CppBody (WithParams cp, f.params), f.body)}\n\};"
+            let atDefs = if own: Each atTypes, \|f| TraitNamespace ns, (CppFunction (CppDoc f.doc), "{gens}{CppType cp, f.ret} {CppId f.name}_at<{head}>::call({CppParams cp, f.params})", (CppBody (WithParams cp, f.params), f.body)) else: [[]]
+            let specLines = Append chosen, atSpecs
+            let specs = if (Len specLines) == 0: [[]] else: [[(TraitNamespace tr, (Join specLines, "\n"))]]
+            let outer = if own or (Len overloads) == 0: [[]] else: [[(TraitNamespace tr, (Join (Each overloads, \|f| "using ::crate::{cp.home}::{ns}::{CppId f.name};"), "\n"))]]
+            let parts = ProtosDefs (if own: Append specs, protos else: protos), (if gens == "": Append inTrait, atDefs else: inTrait)
+            update parts:
+                &_.outer <= if own: outer else: Append specs, outer
+                &_.generic <= if gens == "": [[]] else: atDefs
+
+# A program's trait as an existential keeps it (`PackedDef`), as the Rust printer's
+# `RustPacked`: the dictionary a struct of function pointers over packed values; what makes
+# it at a type a function object (`NAME_packed_of`, which the packing's `with_dictionary`
+# calls with the value), its call a template defined with the generic definitions, so the
+# impls' overloads are declared before it; the trait's impl for the packed value an
+# overload in the trait's namespace, each asking the dictionary found in its first hidden
+# argument.
+PackedParts: unbounded fn Cp, PackedDef -> Parts
+fn PackedParts cp, d:
+    let dictionary = "{d.name}_packed"
+    let maker = "{dictionary}_of_t"
+    let fields = Each d.methods, \|m| "    {CppType cp, m.method.ret} (*{CppId m.method.name})({Join (Each m.method.params, \|((ignore, t))| ParamType cp, t), ", "});"
+    let entries = Each d.methods, \|m|
+        let names = Each m.method.params, \|((n, ignore))| CppId n
+        let args = Each (Range0 (Len names)), \|i| if Or m.hidden[i], False: "{Or names[i], ""}.template held<T>()" else: Or names[i], ""
+        let call = "{d.name}::{CppId m.method.name}({Join args, ", "})"
+        "        +[]({CppParams cp, m.method.params}) -> {CppType cp, m.method.ret} \{ return {if m.hiddenResult: "{CppId (PackedFirstHiddenCpp m)}.repacked({call})" else: call}; \},"
+    let declared = "/// The dictionary of `{d.name}` an existential keeps: each method over packed values.\nstruct {dictionary} \{\n{Join fields, "\n"}\n\};\n/// The dictionary of `{d.name}` at the type of a value.\nstruct {maker} \{\n    template <class T>\n    {dictionary} operator()(const T&) const;\n\};\ninline constexpr {maker} {Lower d.name}_packed_of\{\};"
+    let made = "template <class T>\n{dictionary} {maker}::operator()(const T&) const \{\n    return {dictionary}\{\n{Join entries, "\n"}\n    \};\n\}"
+    # each associated type the unit type, as the Rust printer's: only an unasked method
+    # names one, and none is printed here
+    let chosen = Each d.assocs, \|n| TraitNamespace d.name, "template <>\nstruct {n}<{CppType cp, (OutNamed (RefRuntime "prism_rtl::Packed"), [[]])}> \{ using type = std::monostate; \};"
+    let protos = Append chosen, (Each d.methods, \|m| TraitNamespace d.name, "{FnSignature cp, m.method};")
+    let defs = Each d.methods, \|m| TraitNamespace d.name, (CppFunction "", (FnSignature cp, m.method), "return {CppId (PackedFirstHiddenCpp m)}.template dictionary<{dictionary}>().{CppId m.method.name}({Join (Each m.method.params, \|((n, ignore))| CppId n), ", "});")
+    update (ProtosDefs (Append [[declared]], protos), defs):
+        &_.generic <= [[made]]
+
+PackedFirstHiddenCpp: fn PackedMethod -> Text
+fn PackedFirstHiddenCpp m = Fold (Range0 (Len m.hidden)), "", \|found, i| if found == "" and Or m.hidden[i], False: (Or (Each m.method.params, \|((n, ignore))| n)[i], "") else: found
 
 # A function with type parameters before its own.
 WithGenerics: fn FnDef, [((Text, [Text]))] -> FnDef

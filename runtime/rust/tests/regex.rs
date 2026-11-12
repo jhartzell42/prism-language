@@ -212,3 +212,16 @@ fn searches_are_linear_in_the_text() {
     let took = start.elapsed();
     assert!(took.as_secs_f64() < 10.0, "(x+x+)+y over 100,000 bytes took {took:?}");
 }
+
+#[test]
+fn a_regex_reads_back_from_its_plain_form() {
+    // An emitted record holding a regex derives `FromPod` (prismc/README.md, PD): the
+    // spelling `ToPod` writes reads back to a regex equal by spelling.
+    use prism_rtl::{FromPod, ToPod};
+    for (pattern, flags) in [("a/b", ""), (r"\d+\.\d", "i"), ("x\ny", "m"), ("", "")] {
+        let r = Regex::lit(pattern, flags);
+        assert_eq!(Regex::from_pod(&r.to_pod()).unwrap(), r, "{pattern:?}");
+    }
+    let s = RegexReplacement::lit(r"(\w+)/(\w+)", "", "$2/$1");
+    assert_eq!(RegexReplacement::from_pod(&s.to_pod()).unwrap(), s);
+}

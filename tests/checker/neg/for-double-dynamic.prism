@@ -10,4 +10,4 @@ emit Ui.*
     $each <- @PerKey $m
     for k, $$d <- $each:
         $v <- @Flatten $$d
-        Ui.Label(text=$v)
+        Ui.Label($text=$v)

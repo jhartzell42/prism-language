@@ -23,4 +23,4 @@ fn Total (Node l, r):
 fn @Summed tree:
     !done <- @Run Total, tree                                 # 0
     $shown <- "working" then Show !done
-    Ui.Label(text=$shown)                                   # 1
+    Ui.Label($text=$shown)                                   # 1

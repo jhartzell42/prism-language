@@ -1,0 +1,7 @@
+# `mismatch`: an impl's type parameter and its trait method's own type parameter of the
+# same name are two variables (Type System ch. 3): `y` is no element of `xs`.
+trait ^Paired a:
+    Pair: fn a, b -> Text where b: ^Show
+
+impl ^Paired [b] where b: ^Show:
+    fn Pair xs, y = Show (Push xs, y)

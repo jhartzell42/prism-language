@@ -1,0 +1,7 @@
+tests/checker/neg/sum-of-option.prism:6: error[mismatch]: expected `Nat`, found `?Nat`
+    fn Sum a, ?b = a + ?b
+                   ^^^^^^
+tests/checker/neg/sum-of-option.prism:9: error[mismatch]: expected `Nat`, found `?Nat`
+    fn Marked xs, ?b = (Or xs[0], 0)+ ?b
+                       ^^^^^^^^^^^^^^^^^
+2 errors

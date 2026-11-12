@@ -1,0 +1,13 @@
+# Derived by hand from Type System ch. 2 (an element value is placed by `@Element`), Semantics ch. 8 (the statement's place is the block's next position) and ch. 9 (the World's first value at the build, each push in the tick it comes): the gauge is 0, the label 1. Never run: prismc refuses the program.
+test a_placed_dynamic_element
+
+tick 0
+  added:
+    0: Pad.Gauge(name="a")
+    1: Ui.Label(text="level 3")
+
+tick 1
+  in:
+    Pad.Gauge(name="a") = 4
+  changed:
+    1: Ui.Label(text="level 4")

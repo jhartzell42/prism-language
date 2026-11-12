@@ -419,10 +419,7 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   resolution, pick RN). A right side's reads are pick GH's walk, less what is not read
   where it is written: a lambda, a local `fn` or widget, a nested widget block, a
   `rebuild`'s or a `for`'s source and holds (building a row is never an edge, R7), and a
-  delayed binding's arguments. A `for`'s or a `rebuild`'s result is prompt in its rows'
-  other lines (Semantics ch. 7, a `for`'s consolidation), the checker not knowing which
-  dynamics are structural: a row reading its own `for`'s gathered result is a cycle, as a
-  host's child reading `$doc` is (`neg/sem-ch07-for-own-gather`). A lambda passed to a call is
+  delayed binding's arguments. A lambda passed to a call is
   read, since the callee may call it now: a traversal's step, and a lambda given to any
   function but a prelude widget function (a supplier builds a blueprint, which is
   construction). `neg/prompt-lambda`'s `let a = Apply 1, \|x| x + b` reads `b`. A name a
@@ -454,9 +451,7 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   `? x` of `xs[i]`, an array pattern of one element or more on `xs`), until something
   binds `xs` again. `Drop` of `[[]]` is `[[]]`, so `fn Loop xs = Loop (Drop xs, 1)` never
   ends (`neg/drop-unknown`, clean before); `(Len xs) > 0` shows nothing, since Semantics
-  ch. 7's smaller array is a tail "taken apart by `match`". The `+` non-empty type would
-  show it too, and the checker refuses non-empty arrays (`unsupported`), so no program
-  reaches that case yet. `neg/local-shadow`'s `Shrink` and `neg/fuel-call`'s `Drain` now
+  ch. 7's smaller array is a tail "taken apart by `match`". `neg/local-shadow`'s `Shrink` and `neg/fuel-call`'s `Drain` now
   take an element first. A call of the function is no larger than its
   argument `i`, and strictly smaller when that argument is. A summary is read without
   other summaries, so none depends on itself or on a chain, and a name the calling clause
@@ -915,8 +910,8 @@ and `tests/checker/run.sh` use it. `prism test` builds debug, `prism run` releas
 it has neither `Gui.*` nor `Ui.*`, and none, a refusal, when it has `Ui.*` without
 `Gui.*`, since no World answers Ui elements alone; `--world` overrides, and
 `--print-world` prints the choice and stops before the build (`tests/driver/run.sh`). The compiled binary takes `--world` only as its first argument; a later
-one is the program's own (prismc's `--check --world Ui`). `make chess` is
-`./prism run examples/chess`.
+one is the program's own (prismc's `--check --world Ui`). `make basic-chess` is
+`./prism run examples/basic-chess`.
 
 ### Files
 
@@ -1052,7 +1047,7 @@ lexer, parser and regex checks), chess's board included.
   `sem-ch09-hosts` (pick HO), `sem-appB-widgets` (pick MA), `ts-ch03-traits`,
   `ts-ch04-lifting`, chess (`board.prismtest`, byte-equal to `board.expected`, and
   `rules.prismtest`; `chess-rules` alone too), and prismc's own `lexer-checks` and
-  `parser-checks`. `./prism run examples/chess` under `xvfb-run -a` opens the window;
+  `parser-checks`. `./prism run examples/basic-chess` under `xvfb-run -a` opens the window;
   a robot (Xlib and XTest, as `worlds/canvas/rust/tests/xvfb_smoke.rs` clicks) clicks e2
   then e4, the root's result (printed with `PRISM_RESULTS` set) goes from "White's turn"
   to "Black's turn", and closing the window exits 0.
@@ -1634,14 +1629,7 @@ Each is Claude's, for Jimmy to overturn.
   its caller's path and its places take the caller's positions from the call's on, as an
   inlined widget's do (`sem-ch08-clause-widget`: `@Note`'s label is `@Notes`'s place 1), the
   caller forwarding the World's answers at those positions to it (`GenForwards`).
-  Clauses with different numbers of places take the widest clause's positions, so the
-  caller's later places have one position whichever clause is chosen; where a narrower
-  clause is chosen, a later place of the caller stands one or more positions past where
-  compiler zero, which numbers places as they are built, puts it (prismc's own
-  `@FinishCheck`: `@WriteOut nil, ..` has no place and `(? path), ..` one, and the
-  `Prelude.Unwrap` after it is place 1 either way). One in a hosted scope is refused.
-  *If otherwise:* the caller's later positions offset at the build by the chosen clause's
-  width.
+  One in a hosted scope is refused.
 - **PO Ports.** An event of a block that a row or generation names reaches it through a
   `Port` in the block (`Port::fire` when the event fires) and a subscription the row makes
   when built and drops when it leaves (prelude `subscribe_row`, `Row::leave_row`).
@@ -1725,12 +1713,7 @@ Each is Claude's, for Jimmy to overturn.
   its `Pod`, `Draw.Rect(rect=Rect(..), paint=Grey)`), and `PartialEq`, `Eq` and `FromPod` when
   all its fields are plain data. A document's element, `Elem r` (the checker's WL), is
   `crate::Elem`, emitted in `main.rs`: a variant per element tag's `Level`, so a pattern
-  binds each field plain (`Ui.Label(text=$t)` binds the text in that tick). A live
-  element, `Element r o`, is `prism_rtl::Live<crate::Elem>`: its level at the build
-  (`identity`: the tag and plain fields, which never change while it lives) and its
-  level over time (`level`, a `Dynamic<Elem>`); a pattern matches the tag and plain
-  fields on the identity and binds a `$` field to `level.map(..)`, the field's dynamic
-  (gap LE). A tag and a record that share a key (`Fs.Contents`) are told apart as the
+  binds each field plain (`Ui.Label(text=$t)` binds the text in that tick). A tag and a record that share a key (`Fs.Contents`) are told apart as the
   checker does: the tag only when written with its family. `Dynamic`'s update port
   carries `()` (the value moved; readers read again), so a projection shares its
   source's port and `Dynamic::map` subscribes to nothing (`ts-ch02-row-values`).
@@ -1738,8 +1721,7 @@ Each is Claude's, for Jimmy to overturn.
 - **BA Bundles.** A tag whose output is a tuple of plain parts and one event part
   (`Gui.Window`'s `((WindowId, !WindowInput))`), bound by a tuple pattern: the plain
   parts are the place's first value (one part itself, several a tuple), each bound part
-  a field; the event part fires on each answer at the place (`sem-ch09-bundle`). A `$` part,
-  or a second event part, is refused loudly.
+  a field; the event part fires on each answer at the place (`sem-ch09-bundle`).
 - **WB Widget arguments.** A widget parameter (`@child`) binds its argument, a widget
   block (`@widget: ..`) or a widget expression (`@counter`), with the caller's
   environments; applying the parameter lowers the argument there, so its places take
@@ -1830,9 +1812,7 @@ Each is Claude's, for Jimmy to overturn.
   such values in `{rs}_init` too (`LetLine`), bound in the build environment under
   `{name}#init`, captured by the supplier's closure, and `InitEnv` reads the dynamic's
   expression over them. A dynamic answer reading what has no value at the build (a pushed
-  place's hold, a structural dynamic, a `let` after the host's line) is refused loudly. A
-  widget-function blueprint as an answer, and a bundle in a hosted scope, are refused
-  too.
+  place's hold, a structural dynamic, a `let` after the host's line) is refused loudly.
 
   A row of a hosted child's `for` or `rebuild` (`Wx.hostedBy`) emits nothing of its own
   either: it takes the enclosing host (`enclosing: Rc<dyn HostOf>`) as a parameter of its
@@ -1943,8 +1923,7 @@ ruling taken (Claude's).
   makes the `for` a loop over its entries whose test is taking the next one, each turn a
   job (`ForJob`, the preludes' `for_turns_keyed` and `for_turns_indexed`), so
   `sem-ch07-while-match-for` costs 5 ticks in a `match` and 9 for a `for` of two entries
-  of 2 and 1 turns. A loop job in a `for &s <- &_:` is refused (its references cannot
-  outlive a cycle).
+  of 2 and 1 turns.
 - **FA A field's `.` or `->`** is chosen by the receiver's type where `?Pointer` knows it,
   and only otherwise by its name, `->` when any node has a member of that name
   (`cp.members`). Where the type is not known, a value's field named as some node's
@@ -2034,12 +2013,6 @@ ruling taken (Claude's).
   indexes (`EvRef.owner`); one read or wired in any other node crossed without a port,
   a lowering bug, and is refused naming it (`Crossed`). *Next:* the contract's `Dynamic` with its update
   port.
-- **LE A live element's `$` field in a plain function.** A plain function is lifted:
-  its `$` values are read at the caller's read point, and it has no `cx` to read a live
-  element's dynamic at. *First ruling:* refused loudly there (a supplier is lowered in
-  the build, as a value, so it is refused there too; `Lx.inNode` is never set). An element
-  applied as a plain value (not a place, not a supplier's argument) is refused too: only a
-  host makes a live element. *If otherwise:* lifted functions take `&Cx`.
 - **ID A widget recursing deeper than it is inlined.** A widget function that recurses as
   deep as its data (Semantics ch. 4) is inlined into each row it builds, a node type per
   level, sixteen levels of that widget deep (`InlineWidget`, counting the widget's own
@@ -2177,7 +2150,7 @@ What stays, and why:
 
 Peak memory, wall time and instructions retired (`/usr/bin/time -l`) of each prismc
 compiling itself (`compile prismc --prelude prelude --name prismc`, to its own target)
-and `examples/chess`, with the collections each runtime had before and has now
+and `examples/basic-chess`, with the collections each runtime had before and has now
 (runtime/rust/README.md; runtime/cpp/README.md, "Arrays and maps: the costs"). Apple M2
 Pro, 5 November 2026, cargo release and clang++ -O3, other agents' jobs running (load
 average 3 to 13), so the wall times are rough; "footprint" is macOS's peak memory
@@ -2210,29 +2183,6 @@ chess and of two on the self-compile.
 - **Emitted code** is unchanged by the runtimes' collections (the methods emitted code
   calls kept their names); the C++ prelude's `union_` changed (`Map::united`, the smaller
   map into the larger), and both seeds with it.
-
-### Not lowered yet
-
-Each is refused loudly: lowering emits a `compile_error!("prismc does not lower ..")`
-naming the construct, and `CompileProgram` reports every distinct one as
-`error[not-lowered]` and fails, the crate still written for reading:
-`@HostList`; a named widget function as a host's supplier (gap NS: a widget function is
-a node, not a value; a lambda supplier is lowered); a supplier's answer `@ x` outside a tag arm, a dynamic answer over what has
-no value at the owner's build, a widget-function blueprint as an answer, and a bundle in
-a hosted scope (pick HO); a bundle as a root's result, and a `for` row, a `rebuild`'s
-generation or a widget clause ending on a bundle (a widget block's bundle result is
-lowered, each part its own result, `WrParts`: `sem-ch04-bundle-result`); a widget's plain
-result bound by a pattern other than a name, `ignore` or a tuple of those; an element applied as a plain value and a live element's `$` field read in a plain
-function (gap LE), `@Flatten` of a dynamic that is not a `rebuild`'s (a `for` over a map of dynamics binds the value under the key, pick FV),
-`!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
-structural dynamic of its block (gap SU), an `@Machine` whose step is
-not a named function, a local function whose
-parameters are not names or used as a value, an unbounded call lifted over a `?` or `~`, `!MergeAll` of a list that is not a
-literal, lifted functions with time parameters (`fn !Bump $n, !go`), building `match`
-and `if`, a widget of several clauses in a static position of a hosted scope (pick CS),
-`Time.After`, lines of a block that read each
-other at the build (pick BO), and the zombie and
-dead states (`leave`, `clean_up`, `edges`).
 
 ## Regular expressions
 

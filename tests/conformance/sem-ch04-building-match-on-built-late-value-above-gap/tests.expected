@@ -1,0 +1,8 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": the order of a group's lines decides positions and nothing else; a building `match`'s arm adds no path segment), ch. 8 (a widget application is transparent, its plain result a value of the build) and ruling TC (places counted as built): long gives 7 + 9, so the upper `match` takes `? 1` and builds 0, the lower arm's label is 1 and the last label 2.
+test long
+
+tick 0
+  added:
+    0: Ui.Label(text="over by 1")
+    1: Ui.Label(text="xxxxxxx")
+    2: Ui.Label(text="below 16")

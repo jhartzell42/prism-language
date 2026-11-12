@@ -1,0 +1,14 @@
+# Derived by hand from Semantics ch. 8 (`<-` builds the child and binds its plain result, read at the build) and ch. 4 (a pattern that cannot fail binds each of its names): the record's fields and the inner tuple's parts are the names the label and the hold read.
+test a_pattern_binds_the_result
+
+tick 0
+  added:
+    0: Ui.Label(text="measured")
+    1: Ui.Button(label="go")
+    2: Ui.Label(text="3 4 5 deep 0")
+
+tick 1
+  in:
+    1: click
+  changed:
+    2: Ui.Label(text="3 4 5 deep 3")

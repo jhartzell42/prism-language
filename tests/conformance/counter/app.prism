@@ -7,7 +7,7 @@ test mod Tests
 
 @counter: @unit
 @counter:
-    !inc <- Ui.Button(label=$"Increment")                 # 0
-    !dec <- Ui.Button(label=$"Decrement")                 # 1
+    !inc <- Ui.Button($label=$"Increment")                 # 0
+    !dec <- Ui.Button($label=$"Decrement")                 # 1
     $count <- 0 then $count + (-1 on !dec <| +1 on !inc)
-    Ui.Label(text=$"Count: {$count}")                     # 2
+    Ui.Label($text=$"Count: {$count}")                     # 2

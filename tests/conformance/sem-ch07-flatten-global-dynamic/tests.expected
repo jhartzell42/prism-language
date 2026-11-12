@@ -1,0 +1,6 @@
+# Derived by hand from Semantics Appendix B (`@Flatten`: the dynamic reads its outer's current inner) and ruling FV; never run.
+test a_global_is_flattened
+
+tick 0
+  added:
+    0: Ui.Label(text="3")

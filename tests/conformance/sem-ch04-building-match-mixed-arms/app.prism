@@ -1,0 +1,40 @@
+# A building `match` one of whose arms ends on a plain value and another on an inner
+# building `match`'s result (Semantics ch. 4: a building `match`'s arm "is fixed for the
+# life of the block and adds no path segment"; ch. 8: `<-` builds the child and binds its
+# result). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Panel: fn Mode, Bool -> @unit
+fn @Panel mode, deep:
+    n <- match mode:
+        Loud t:
+            Ui.Label($text=$"{t}")                                     # 0
+            @ 10
+        Soft:
+            match deep:
+                True:
+                    Ui.Label($text=$"deep")                            # 0
+                    Ui.Label($text=$"deeper")                          # 1
+                    @ 20
+                False:
+                    @ 30
+    Ui.Label($text=$"n {n}")                                           # 1, 2 or 0
+
+@loud: @unit
+@loud:
+    @Panel (Loud "x"), False
+
+@deep: @unit
+@deep:
+    @Panel Soft, True
+
+@shallow: @unit
+@shallow:
+    @Panel Soft, False

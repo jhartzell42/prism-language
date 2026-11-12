@@ -40,7 +40,7 @@ fn ParseModule p0, fragment:
             let ((tpl, q)) = ParseTemplate (Adv p0), t, (Here p0)
             ((? tpl, q))
         otherwise: ((nil, p0))
-    let m0 = Module(name=nil, emitRow=nil, mods=[[]], uses=[[]], decls=[[]], template=?template, span=start)
+    let m0 = Module(?name=nil, ?emitRow=nil, mods=[[]], uses=[[]], decls=[[]], ?template=?template, span=start)
     let r = update ModRead(p=p1, m=m0, stage=0):
         while not (AtEof &_.p):
             &_ <= ModuleItem &_, fragment
@@ -167,7 +167,7 @@ fn DeclKindOf p, fragment, start = match Kind p:
         let ((pattern, p1)) = ParsePattern (Adv p), False
         let ((?ty, p2)) = OptionalAnnotation p1
         let ((value, p3)) = ParseRhsExpr (ExpectOp p2, "=")
-        ((DLet LetDecl(pattern=pattern, ty=?ty, value=value, span=(To start, (Prev p3))), p3))
+        ((DLet LetDecl(pattern=pattern, ?ty=?ty, value=value, span=(To start, (Prev p3))), p3))
     KName ignore if (KindAt p, 1) == KColon:
         if (KindAt p, 2) == KLayOpen:
             let ((name, p1)) = ParseSName p
@@ -214,9 +214,7 @@ ParseDefName: fn Ps -> ((DefName, Ps))
 fn ParseDefName p = match Kind p:
     KName n:
         let ((name, q)) = ParseSName p
-        let lens = (HasPrefix n.sigils, "&") and (IsUpperName name)
-        let q2 = if lens: OutOfScope q, name.span, "named lenses `&Home` and `Over`", "the named lens `{NameText name}` is out of this compiler" else: q
-        ((DefSName name, q2))
+        ((DefSName name, q))
     KOp op, ignore if p.inTrait:
         let name = DefOp op, (Here p)
         ((name, (Adv p)))
@@ -265,7 +263,7 @@ fn ParseTypeDecl p0:
     let ((name, p1)) = ParseQualName (Adv p0)
     let ((params, p2)) = LowerParams p1
     let ((?body, p3)) = if AtOp p2, "=": ParseTypeBody (Adv p2), name, params else: ((nil, p2))
-    ((TypeDecl(name=name, params=params, body=?body, span=(To start, (Prev p3))), p3))
+    ((TypeDecl(name=name, params=params, ?body=?body, span=(To start, (Prev p3))), p3))
 
 ParseTypeBody: unbounded fn Ps, QualName, [Ident] -> ((?TypeBody, Ps))
 fn ParseTypeBody p, name, params = match Kind p:
@@ -274,7 +272,10 @@ fn ParseTypeBody p, name, params = match Kind p:
         ((? (TbRecord fields), q))
     KKw "choice", "":
         let p1 = ExpectColon (Adv p)
-        if AtOpenL p1:
+        # a choice with no case, `type Never = choice:`, is a type with no value: the lexer
+        # gives its `:` an empty block
+        if (AtOpenL p1) and AtCloseL (Adv p1): ((? (TbChoice [[]]), (Adv (Adv p1))))
+        else: if AtOpenL p1:
             let ((cases, q)) = LayoutItems (Adv p1), ParseCase
             ((? (TbChoice cases), q))
         else: ((nil, (ErrorHere p1, "a choice's cases stand in an indented block after `choice:`")))
@@ -313,9 +314,13 @@ fn ParseFieldBlock p0:
 ParseField: unbounded fn Ps -> ((Field, Ps))
 fn ParseField p:
     let start = Here p
-    let ((name, p1)) = ParseIdent p
+    let ((sigils, name, p1)) = match Kind p:
+        KName n if n.sigils != "" and (Len n.path) == 1 and n.case == CaseLower: ((n.sigils, Ident(name=(Or n.path[0], ""), span=(Here p)), (Adv p)))
+        otherwise:
+            let ((id, q)) = ParseIdent p
+            (("", id, q))
     let ((ty, p2)) = ParseType (ExpectColon p1)
-    ((Field(name=name, ty=ty, span=(To start, (Prev p2))), p2))
+    ((Field(sigils=sigils, name=name, ty=ty, span=(To start, (Prev p2))), p2))
 
 # A choice's alternative: `Name`, `Name T, U`, or the indexed `Name: T -> R`.
 ParseCase: unbounded fn Ps -> ((Case, Ps))
@@ -329,10 +334,10 @@ fn ParseCase p0:
         let ((args, p4)) = if AtOp p3, "->": (([[]], p3)) else: Commas p3, ParseEmitType
         let ((result, p5)) = ParseType (ExpectOp p4, "->")
         let p6 = OutOfScope p5, start, "indexed choices/GADTs for user types", "`{NameText name}` is an indexed alternative: indexed choices for user types are out of this compiler"
-        ((Case(name=name, args=args, indexed=(? result), span=(To start, (Prev p6))), p6))
+        ((Case(name=name, args=args, ?indexed=(? result), span=(To start, (Prev p6))), p6))
     else:
         let ((args, p3)) = if AtStmtBoundary p2: (([[]], p2)) else: Commas p2, ParseType
-        ((Case(name=name, args=args, indexed=nil, span=(To start, (Prev p3))), p3))
+        ((Case(name=name, args=args, ?indexed=nil, span=(To start, (Prev p3))), p3))
 
 # `tag F.Name of K out (where bounds)? (: fields)?`.
 ParseTagDecl: unbounded fn Ps -> ((TagDecl, Ps))

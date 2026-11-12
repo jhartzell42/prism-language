@@ -1,5 +1,9 @@
+tests/checker/neg/layer-unknown.prism:4: error[no-definition]: `Anything` has a signature line and no definition
+    Anything: fn unit -> a
+    ^^^^^^^^^^^^^^^^^^^^^^
+  fix: define it under its signature, `fn Anything ... = ...`, or delete the line
 tests/checker/neg/layer-unknown.prism:11: error[layer-unknown]: the layer of this argument to `Twice` is not known here
         let both = Twice (Anything unit)
                          ^^^^^^^^^^^^^^^
   fix: say it where the value is made: a name whose marks declare the layer (`let $x = ...`), `<<T>>` at the application that made it, or a signature on the enclosing `let`
-1 error
+2 errors

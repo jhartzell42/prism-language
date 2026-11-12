@@ -1,0 +1,17 @@
+# The dynamic clause results' tests: declarations of sem-ch08-clause-dynamic-result.
+emit Ui.*
+use App.*
+
+test some_clause, @Page (? 3):
+    build
+        => expect Ui.Label(text="n3")
+    click at 1
+        => expect Ui.Label(text="n3!")
+    click at 0
+        => expect Ui.Label(text="n3!+")
+
+test none_clause, @Page nil:
+    build
+        => expect Ui.Label(text="zero")
+    click at 1
+        => expect Ui.Label(text="zero!")

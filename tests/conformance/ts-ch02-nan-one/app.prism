@@ -24,7 +24,7 @@ fn Ord Greater = "G"
 
 @nans: @unit
 @nans:
-    Ui.Label(text=$"{Yes nan == negNan} {Yes nan == carried} {Yes negNan != carried} {Ord (Compare nan, negNan)} {Ord (Compare negNan, carried)}")  # 0
-    Ui.Label(text=$"{Ord (Compare nan, inf)} {Ord (Compare negNan, inf)} {Ord (Compare negNan, -inf)} {Yes negNan < 0.0}")  # 1
-    Ui.Label(text=$"{Size m} {Or (?Get m, negNan), "missing"} {Or (?Get m, carried), "missing"} {Or (?Get m, -0.0), "missing"}")  # 2
-    Ui.Label(text=$"{Yes [[nan]] == [[negNan]]} {Yes (0.0 == -0.0)}")  # 3
+    Ui.Label($text=$"{Yes nan == negNan} {Yes nan == carried} {Yes negNan != carried} {Ord (Compare nan, negNan)} {Ord (Compare negNan, carried)}")  # 0
+    Ui.Label($text=$"{Ord (Compare nan, inf)} {Ord (Compare negNan, inf)} {Ord (Compare negNan, -inf)} {Yes negNan < 0.0}")  # 1
+    Ui.Label($text=$"{Size m} {Or (?Get m, negNan), "missing"} {Or (?Get m, carried), "missing"} {Or (?Get m, -0.0), "missing"}")  # 2
+    Ui.Label($text=$"{Yes [[nan]] == [[negNan]]} {Yes (0.0 == -0.0)}")  # 3

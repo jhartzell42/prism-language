@@ -1,8 +1,9 @@
 // The CLI World in C++: the C++ form of worlds/cli/rust (the Rust crate `prism_world_cli`), the
 // World compiled programs run under at the command line, over `prism_rtl`'s protocol. It
 // answers `Fs`, `Process` and `Time`, the prelude's `Prelude.Unwrap` and
-// `Prelude.Exceptions`, and `Fs.List`; worlds/cli/rust/README.md says what each answers, and
-// holds here word for word.
+// `Prelude.Exceptions`, `Fs.List`, and a program's `Console.Read` and `Console.Print` on
+// standard input and output; worlds/cli/rust/README.md says what each answers, and holds
+// here word for word.
 //
 //   prism_world_cli::run<MyProgram>(args)       // the real file system, at the working directory
 //   CliWorld world(std::make_unique<MemFs>(), args); prism_rtl::drive<MyProgram>(world, {}, patience);
@@ -12,14 +13,20 @@
 #pragma once
 
 #include <chrono>
+#include <condition_variable>
+#include <deque>
+#include <iosfwd>
 #include <cstdint>
 #include <cstdlib>
 #include <map>
 #include <memory>
+#include <mutex>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
 
+#include "prism_rtl/prelude.hpp"
 #include "prism_rtl/prism_rtl.hpp"
 
 namespace prism_world_cli {
@@ -31,7 +38,7 @@ using prism_rtl::Path;
 using prism_rtl::Pod;
 
 /// The families this World answers.
-inline const std::vector<std::string> FAMILIES = {"Fs", "Process", "Time", "Prelude"};
+inline const std::vector<std::string> FAMILIES = {"Fs", "Process", "Time", "Console", "Prelude"};
 
 /// `Process.Env`'s answer: `? value`, or `nil` when the variable is unset or not UTF-8.
 Pod env_value(const std::string& name);
@@ -74,30 +81,52 @@ public:
     std::vector<std::string> list(const std::string& dir) const override;
 };
 
-/// The prelude's part of a World: `Prelude.Unwrap` and `Prelude.Exceptions` (Semantics
-/// ch. 10). An unwrap of a value answers it; of an `Error` poisons the unwrap's subtree
-/// and reports the exception to the nearest supervisor outside it, or gives up the
-/// program.
-class Prelude {
+/// The terminal `Console.Read` and `Console.Print` stand on (worlds/cli/rust/src/console.rs):
+/// an input read on a thread of its own, line by line, from the first `Console.Read` on, and
+/// an output written and flushed line by line. No terminal modes, no cursor, no colour.
+class Console {
 public:
-    bool is_poisoned(const Path& p) const;
-    void track(const prism_rtl::Patch& patch);
-    void unwrap(const Path& path, const Pod& value);
-    std::vector<std::pair<Path, Pod>> take_answers();
-    void filter(prism_rtl::TickIn& input, const Document& doc) const;
-    std::optional<std::uint8_t> exit() const { return exit_; }
+    using Clock = std::chrono::steady_clock;
+    /// What `next_line` heard: a line, the wake first, or the end of the input.
+    enum class Heard { Line, Timeout, Ended };
+
+    /// The process's own standard input and output.
+    static std::unique_ptr<Console> stdio();
+    Console(std::shared_ptr<std::istream> input, std::shared_ptr<std::ostream> output);
+
+    /// Start reading, once: a program with no `Console.Read` never touches the input.
+    void start();
+    /// Whether a line may still come.
+    bool reading() const;
+    /// The next line into `line`, waiting for it until `wake` (for ever with no wake).
+    Heard next_line(std::optional<Clock::time_point> wake, std::string& line);
+    /// Print a firing's lines, each flushed as it is written; `addressed` puts the
+    /// terminal's name before each. False when a write failed.
+    bool print(const std::string& name, const std::vector<std::string>& lines, bool addressed);
 
 private:
-    std::vector<Path> poisoned_;
-    std::set<Path> exceptions_;
-    std::vector<std::pair<Path, Pod>> answers_;
-    std::optional<std::uint8_t> exit_;
+    struct Lines {
+        std::mutex mutex;
+        std::condition_variable heard;
+        std::deque<std::string> lines;
+        bool ended = false;
+    };
+    std::shared_ptr<std::istream> input_;
+    std::shared_ptr<std::ostream> output_;
+    std::shared_ptr<Lines> lines_;
+    bool ended_ = false;
 };
 
-/// The subtree an unwrap stands in: up to its last generation or key segment.
-Path subtree_of(const Path& p);
-/// The element at a path in the document, or added by this tick's patch.
-const Pod* element_of(const Document& doc, const prism_rtl::TickOut& out, const Path& path);
+/// A `Console.Read` or `Console.Print` element's terminal.
+std::optional<std::string> terminal_of(const Pod& element);
+/// Where a line typed goes: the terminal and the text it hears. With one terminal the line
+/// is plain; with several it is addressed `NAME: text`, the longest name that fits winning.
+std::optional<std::pair<std::string, std::string>> address(const std::string& line, const std::set<std::string>& terminals);
+
+/// The prelude's part of a World (`prism_rtl/prelude.hpp`), which this World runs inline.
+using prism_rtl::Prelude;
+using prism_rtl::element_of;
+using prism_rtl::subtree_of;
 
 /// The CLI World.
 class CliWorld : public prism_rtl::World {
@@ -108,6 +137,11 @@ public:
     std::optional<prism_rtl::TickIn> next_inputs() override;
     std::optional<std::uint8_t> exit_code() const override;
     FileSystem& fs() { return *fs_; }
+    /// Stand `Console.Read` and `Console.Print` on this terminal.
+    CliWorld& with_console(std::unique_ptr<Console> console) {
+        console_ = std::move(console);
+        return *this;
+    }
 
 private:
     using Clock = std::chrono::steady_clock;
@@ -121,15 +155,22 @@ private:
     void output(const Pod& element);
     void relist();
     void due();
+    void heard(const std::string& line);
+    bool console_waits() const;
+    std::set<std::string> live_terminals(const prism_rtl::TickOut* out) const;
 
     prism_rtl::Rc<FileSystem> fs_;
     prism_rtl::Rc<const std::vector<std::string>> args_;
     Document doc_;
-    std::vector<std::pair<Path, Pod>> answers_;
+    std::vector<std::pair<Path, Pod>> outputs_;
     std::vector<std::pair<Pod, Pod>> pushes_;
     std::vector<Timer> timers_;
     std::map<Pod, Pod> lists_;
     Prelude prelude_;
+    /// None answers no line and prints nothing.
+    std::unique_ptr<Console> console_;
+    /// The terminals in the document as the last tick left it, and its newborns.
+    std::set<std::string> terminals_;
     bool pending_ = false;
     std::optional<std::uint8_t> exit_;
 };
@@ -142,6 +183,7 @@ inline constexpr std::size_t RUN_PATIENCE = std::size_t(-1);
 template <class P>
 int run(const std::vector<std::string>& args) {
     CliWorld world(std::make_unique<RealFs>("."), args);
+    world.with_console(Console::stdio());
     std::size_t patience = RUN_PATIENCE;
     if (const char* p = std::getenv("PRISM_PATIENCE")) patience = std::strtoull(p, nullptr, 10);
     return prism_rtl::drive<P>(world, {}, patience);

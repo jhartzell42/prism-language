@@ -1,0 +1,24 @@
+# One terminal on the CLI World's standard input and output: each line typed is answered
+# by the lines `Reply` gives, printed as they fire. Run by tests/driver/run.sh with its
+# standard input from console-echo.in, its standard output compared to
+# console-echo.expected. The Console family is the program's own, declared as
+# examples/chess/console.prism declares it.
+# Written by Claude for the real-terminal Console World. Work in progress, subject to change.
+emit Console.*
+
+# Each firing is one line typed at the terminal, without its line end.
+tag Console.Read of Element !Text:
+    name: Text
+
+# Each firing of `!lines` is the lines to print at the terminal, in order.
+tag Console.Print of Element:
+    name: Text
+    !lines: [Text]
+
+Reply: fn Text -> [Text]
+fn Reply line = if line == "twice": [["twice", "twice"]] else: [["heard {line}"]]
+
+@main: @unit emit Console.*
+@main:
+    !line <- Console.Read(name="tty")                     # 0
+    Console.Print(name="tty", !lines=(Reply !line))       # 1

@@ -1,0 +1,22 @@
+# A `for` whose rows end on a bundle (Semantics ch. 4, "`for`": "a bundle | the bundle,
+# gathered field by field"): each row gives its button's clicks and its count, and the
+# `for` gives the rows' clicks by key and the rows' counts by key. Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Total: fn (Nat ==> Nat) -> Nat
+fn Total m = Fold (Values m), 0, \|acc, n| acc + n
+
+@shop: @unit
+@shop:
+    !drop <- Ui.Button($label=$"drop")                           # 0
+    $names <- {1: "ale", 2: "bun"} then Remove $names, 2 on !drop
+    ((!sold, $counts)) <- for k, $name <- $names:               # 1/[k]
+        !sell <- Ui.Button($label=$name)                          # 1/[k]/0
+        $n <- 0 then $n + 1 on !sell
+        @ ((!sell, $n))
+    $sales <- 0 then $sales + (Len (Values !sold))
+    Ui.Label($text=$"sales {$sales}")                             # 2
+    Ui.Label($text=$"total {Total $counts}")                      # 3

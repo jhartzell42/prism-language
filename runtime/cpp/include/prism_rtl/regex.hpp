@@ -147,17 +147,34 @@ private:
 // ---- Plain data, on the way out only ----------------------------------------------------
 // A regular expression has no `^Pod` (Type System ch. 2, RX-EQ), and neither has a match,
 // whose cursors are opaque; but an emitted record derives the runtime's `ToPod` and
-// `FromPod` whatever its fields, and a `check` line's value is plain data. So, as a
-// `Cursor` is: out as it shows (a regex as its spelling, which is how it compares), and
-// never read back.
+// `FromPod` whatever its fields, and a `check` line's value is plain data. A regex goes
+// out as it shows, its spelling (which is how it compares), over its parts as written,
+// and reads back from those (prismc/README.md, PD); a match, as a `Cursor`, is never read
+// back.
+
+namespace detail {
+/// A regex's part as written, from the plain form `to_pod` gives.
+inline std::optional<std::string> regex_part(const Pod& p, std::string_view name) {
+    const Pod* f = p.structure().field(name);
+    const Text* t = f ? f->as_text() : nullptr;
+    if (!t) return std::nullopt;
+    return std::string(t->view());
+}
+}  // namespace detail
 
 template <>
 struct ToPod<Regex> {
-    static Pod to_pod(const Regex& r) { return Pod::shown(show(r), Pod::text(show_text(r))); }
+    static Pod to_pod(const Regex& r) {
+        return Pod::shown(show(r), Pod::record("Regex", {{"pattern", Pod::text(Text(std::string(r.pattern())))}, {"flags", Pod::text(Text(std::string(r.flags())))}}));
+    }
 };
 template <>
 struct ToPod<RegexReplacement> {
-    static Pod to_pod(const RegexReplacement& r) { return Pod::shown(show(r), Pod::text(show_text(r))); }
+    static Pod to_pod(const RegexReplacement& r) {
+        return Pod::shown(show(r), Pod::record("Regex", {{"pattern", Pod::text(Text(std::string(r.regex().pattern())))},
+                                                         {"replacement", Pod::text(Text(std::string(r.replacement())))},
+                                                         {"flags", Pod::text(Text(std::string(r.regex().flags())))}}));
+    }
 };
 template <>
 struct ToPod<Group> {
@@ -174,12 +191,23 @@ struct ToPod<Match> {
 };
 template <>
 struct FromPod<Regex> {
-    static Result<Regex> from_pod(const Pod& p) { return mismatch<Regex>("a Regex, which has no plain form to read back", p); }
+    static Result<Regex> from_pod(const Pod& p) {
+        auto pattern = detail::regex_part(p, "pattern");
+        auto flags = detail::regex_part(p, "flags");
+        if (!pattern || !flags) return mismatch<Regex>("a Regex", p);
+        if (auto r = Regex::compile(*pattern, *flags)) return *r;
+        return mismatch<Regex>("a Regex in the dialect", p);
+    }
 };
 template <>
 struct FromPod<RegexReplacement> {
     static Result<RegexReplacement> from_pod(const Pod& p) {
-        return mismatch<RegexReplacement>("a RegexReplacement, which has no plain form to read back", p);
+        auto pattern = detail::regex_part(p, "pattern");
+        auto replacement = detail::regex_part(p, "replacement");
+        auto flags = detail::regex_part(p, "flags");
+        if (!pattern || !replacement || !flags) return mismatch<RegexReplacement>("a RegexReplacement", p);
+        if (auto r = RegexReplacement::compile(*pattern, *flags, *replacement)) return *r;
+        return mismatch<RegexReplacement>("a RegexReplacement in the dialect", p);
     }
 };
 template <>

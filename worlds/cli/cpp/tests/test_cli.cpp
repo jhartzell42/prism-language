@@ -8,6 +8,8 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
+#include <streambuf>
 #include <unistd.h>
 
 #include "check.hpp"
@@ -316,6 +318,64 @@ TEST(a_program_with_nothing_left_to_do_exits_0) {
     CHECK_EQ(int(drive<Prog<Quiet>>(world, {}, 5)), 0);
 }
 
+// ---- Console (worlds/cli/rust/tests/cli.rs) ---------------------------------------------------
+
+namespace {
+
+struct Echo : Node {
+    Path path;
+    explicit Echo(Path path) : path(std::move(path)) {}
+    static Result<prism_rtl::Rc<Echo>> construct(Path path, Cx& cx) {
+        auto node = prism_rtl::make_rc<Echo>(std::move(path));
+        cx.added(node->path.at(0), Pod::element("Console.Read", {{"name", text("tty")}}));
+        cx.added(node->path.at(1), Pod::element("Console.Print", {{"name", text("tty")}}));
+        return node;
+    }
+    Done answer(std::span<const Segment> at, const Pod& v, Cx& cx) override {
+        const Text* line = v.as_text();
+        if (at.size() == 1 && at[0].is_pos(0) && line) {
+            std::vector<Pod> lines{text("heard " + line->to_string()), text("at tick " + std::to_string(cx.tick()))};
+            cx.request(path.at(1), std::string("lines"), Pod::array(std::move(lines)));
+            return {};
+        }
+        return no_place(at);
+    }
+};
+
+struct Silent : Node {
+    static Result<prism_rtl::Rc<Silent>> construct(Path path, Cx& cx) {
+        cx.added(path.at(0), Pod::element("Console.Print", {{"name", text("tty")}}));
+        return prism_rtl::make_rc<Silent>();
+    }
+};
+
+/// An input that fails the test if it is ever read.
+struct Untouched : std::streambuf {
+    int_type underflow() override {
+        CHECK(!"the World read an input no Console.Read asked for");
+        return traits_type::eof();
+    }
+};
+
+}  // namespace
+
+TEST(each_line_typed_is_answered_in_a_tick_of_its_own_and_the_end_of_input_exits_0) {
+    auto written = std::make_shared<std::ostringstream>();
+    auto input = std::make_shared<std::istringstream>(std::string("e2e4\r\n\nlast, no line end"));
+    CliWorld world(mem({}), {});
+    world.with_console(std::make_unique<Console>(input, written));
+    CHECK_EQ(int(drive<Prog<Echo>>(world, {}, 100)), 0);
+    CHECK(written->str() == "heard e2e4\nat tick 1\nheard \nat tick 2\nheard last, no line end\nat tick 3\n");
+}
+
+TEST(a_program_with_no_console_read_never_reads) {
+    auto buffer = std::make_shared<Untouched>();
+    auto input = std::shared_ptr<std::istream>(new std::istream(buffer.get()), [buffer](std::istream* s) { delete s; });
+    CliWorld world(mem({}), {});
+    world.with_console(std::make_unique<Console>(input, std::make_shared<std::ostringstream>()));
+    CHECK_EQ(int(drive<Prog<Silent>>(world, {}, 100)), 0);
+}
+
 // ---- The prelude's tags (worlds/cli/rust/src/prelude.rs) ---------------------------------------------
 
 TEST(the_subtree_is_the_last_generation_or_key) {
@@ -333,7 +393,7 @@ TEST(a_supervisor_hears_the_report_and_the_subtree_goes_quiet) {
     pre.track(patch);
     pre.unwrap(unwrap, Pod::ok(Pod::int64(5)));
     pre.unwrap(unwrap, Pod::failed(to_pod(Error("Fs.NotFound", Text("gone")))));
-    auto answers = pre.take_answers();
+    auto answers = pre.take_outputs();
     CHECK(answers[0] == std::make_pair(unwrap, Pod::int64(5)));
     CHECK(answers[1].first == sup);
     CHECK(answers[1].second.field("message") && *answers[1].second.field("message") == text("gone"));

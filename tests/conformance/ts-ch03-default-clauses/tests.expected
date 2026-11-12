@@ -1,0 +1,6 @@
+# Derived by hand: a card of rank 7 scores its base at 0, base plus 10 at 1 and base times n otherwise, by the default's three clauses; the joker's own `Score` is 50.
+test default_clauses
+
+tick 0
+  added:
+    0: Ui.Label(text="7 17 21 50")

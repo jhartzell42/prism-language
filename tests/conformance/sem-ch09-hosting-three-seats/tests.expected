@@ -1,0 +1,56 @@
+# The transcript prismc at 10ca993 gave for attempt 05 (the evidence's transcript.txt), kept byte for byte: it pins the behaviour the Bible's Part IV relies on, with the live-field workaround's three ticks from request to response.
+test three_seats_one_document
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="White +1")
+    0/[3]/0: Ui.Label(text="White sees 0, White to move; nothing yet")
+    1/[0]/0: Ui.Button(label="Black +1")
+    1/[3]/0: Ui.Label(text="Black sees 0, White to move; nothing yet")
+    2/[1]/0: Ui.Label(text="spectator sees 0, White to move")
+
+tick 1
+  in:
+    0/[0]/0: click
+
+tick 2
+
+tick 3
+
+tick 4
+  changed:
+    0/[3]/0: Ui.Label(text="White sees 1, Black to move; accepted")
+    1/[3]/0: Ui.Label(text="Black sees 1, Black to move; nothing yet")
+    2/[1]/0: Ui.Label(text="spectator sees 1, Black to move")
+
+tick 5
+
+tick 6
+  in:
+    1/[0]/0: click
+
+tick 7
+
+tick 8
+
+tick 9
+  changed:
+    0/[3]/0: Ui.Label(text="White sees 2, White to move; accepted")
+    1/[3]/0: Ui.Label(text="Black sees 2, White to move; accepted")
+    2/[1]/0: Ui.Label(text="spectator sees 2, White to move")
+
+tick 10
+
+tick 11
+  in:
+    1/[0]/0: click
+
+tick 12
+
+tick 13
+
+tick 14
+  changed:
+    1/[3]/0: Ui.Label(text="Black sees 2, White to move; refused: not your move")
+
+tick 15

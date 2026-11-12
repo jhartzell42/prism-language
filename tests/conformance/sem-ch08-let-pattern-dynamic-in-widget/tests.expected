@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 4 (a `let` names what its pattern binds; a dynamic named is that dynamic) and ch. 7 (a hold's write and its readers' change land in the tick of the firing): the label reads `$l`, which is `$n`.
+test the_bound_dynamic_follows
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="tank at 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="tank at 1")

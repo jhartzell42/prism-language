@@ -1,0 +1,48 @@
+# The words: a result, a status, a reason and a response as text, for a person or a script
+# to read. Every participant that shows words calls these at the last moment; the document
+# and the rules build no sentence.
+# Written by Claude on the claude-document-chess branch; subject to change.
+emit rest
+use Documents.*
+use Rules.*
+use Game.*
+
+ResultText: fn Result -> Text
+fn ResultText (Checkmated color) = "{color} has been checkmated"
+fn ResultText Stalemate = "stalemate"
+fn ResultText (Resigned color) = "{color} has resigned"
+fn ResultText DrawAgreed = "a draw by agreement"
+fn ResultText DrawnByFiftyMoves = "a draw: fifty moves with no capture and no pawn's move"
+fn ResultText DrawnByRepetition = "a draw: one position three times"
+fn ResultText DrawnByInsufficientMaterial = "a draw: neither side can mate"
+
+StatusText: fn ChessGame -> Text
+fn StatusText game = match game.?result:
+    ? result: ResultText result
+    nil: if InCheck game.position, game.position.turn: "{game.position.turn} to move, in check" else: "{game.position.turn} to move"
+
+FaultText: fn MoveFault -> Text
+fn FaultText OwnPieceThere = "your own piece stands there"
+fn FaultText (PromotionTo man) = "a pawn never becomes a {man}"
+fn FaultText PromotionNotNamed = "name what the pawn becomes"
+fn FaultText (NothingPromotes man) = "no pawn becomes a {man} by that move"
+fn FaultText (NotHowThatPieceMoves man) = "a {man} does not move so"
+fn FaultText PathBlocked = "a piece stands in the way"
+fn FaultText NothingToCapture = "there is nothing to capture"
+fn FaultText CastlingRightSpent = "the right to castle there is spent"
+fn FaultText CastlingOutOfCheck = "no castling out of check"
+fn FaultText CastlingThroughCheck = "no castling through check"
+fn FaultText LeavesKingInCheck = "it would leave your king in check"
+
+ReasonText: fn ChessReason -> Text
+fn ReasonText NotYourTurn = "it is not your move"
+fn ReasonText (GameOver result) = "the game is over: {ResultText result}"
+fn ReasonText (NoPieceThere square) = "no piece on {square}"
+fn ReasonText (NotYourPiece square) = "the piece on {square} is not yours"
+fn ReasonText (IllegalMove fault) = FaultText fault
+fn ReasonText NoDrawOffered = "no draw has been offered to you"
+fn ReasonText DrawAlreadyOffered = "you have already offered a draw"
+
+Said: fn Response ChessReason -> Text
+fn Said Accepted = "accepted"
+fn Said (Declined why) = "declined: {ReasonText why}"

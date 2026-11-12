@@ -5,18 +5,18 @@ emit Ui.*
 
 @broken: @unit
 @broken:
-    !go <- Ui.Button(label=$"Go")
+    !go <- Ui.Button($label=$"Go")
     let !a = match 0:
         k if (Len [[!b <| 0 on !go]]) > k: !go
         otherwise: !go
     let !b = 2 + (0 on !a)
-    Ui.Label(text=$"x")
+    Ui.Label($text=$"x")
 
 @fine: @unit
 @fine:
-    !go <- Ui.Button(label=$"Go")
+    !go <- Ui.Button($label=$"Go")
     let !a = match 0:
         k if (Len [[!b <| 0 on !go]]) > k: !go
         otherwise: !go
     let !b = 2 + (0 on !go)
-    Ui.Label(text=$"x")
+    Ui.Label($text=$"x")

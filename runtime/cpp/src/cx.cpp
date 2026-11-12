@@ -119,7 +119,7 @@ Result<TickOut> Runtime::close(Cx&& cx) {
     out.tick = cx.tick_;
     out.patch = document_.diff(std::move(g.edits));
     out.requests = std::move(g.requests);
-    out.result = std::move(g.result);
+    out.results = std::move(g.results);
     out.pending = !started_.empty() || !armed_.empty() || !later_.empty();
     return out;
 }

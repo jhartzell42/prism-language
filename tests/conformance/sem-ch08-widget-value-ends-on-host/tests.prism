@@ -1,0 +1,12 @@
+# The tests of sem-ch08-widget-value-ends-on-host.
+emit Ui.*
+use App.*
+use Ui.*
+
+test picked, @Page True:
+    build
+    click at 0/[0]/0
+    compute
+
+test not_picked, @Page False:
+    build

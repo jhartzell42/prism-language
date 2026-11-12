@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 9 (a supplier's plain answer is the place's first value, at its build; an event answer is the next tick's input, owed) and Type System ch. 2 (a bundle's plain part is its first value, its event part its answers): sem-ch09-host-bundle's first transcript, the bundle named.
+test a_named_bundle_answers
+
+tick 0
+  added:
+    0: Ui.Button(label="knock")
+    1/[1]/0: Ui.Label(text="mock: 0")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1/[1]/0: Ui.Label(text="mock: 2")

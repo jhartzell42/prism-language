@@ -281,8 +281,9 @@ fn an_answer_to_no_place_aborts_the_tick() {
     let script = "test nowhere, @counter:\n    build\n    click at 2\n        => aborted\n    tick\n";
     let report = world().run(script);
     assert!(report.transcript.contains("tick 1\n  in:\n    2: click\n  aborted\n  | Runtime.Answer"), "{}", report.transcript);
-    assert_eq!(report.failures.len(), 1, "{:?}", report.failures);
-    assert!(report.failures[0].contains("an earlier tick aborted"));
+    // The state before the aborted tick goes on (Conformance AB): the next tick runs.
+    assert!(report.failures.is_empty(), "{:?}", report.failures);
+    assert!(report.transcript.contains("tick 2\n"), "{}", report.transcript);
 }
 
 #[test]

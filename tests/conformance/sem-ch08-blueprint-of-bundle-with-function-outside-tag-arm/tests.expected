@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 4 (a building `match`'s arm adds no path segment) and ch. 8 (`@ x` builds no place and gives `x` to the line that applies it; no host stands between, so the event part fires in the tick of the click, as fix-11's ruling for a blueprint value's dynamic outside a tag's arm has it). Never run.
+test it_fires
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="6 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="6 1")

@@ -62,10 +62,21 @@ fn InferMatch env, st, scrut, arms, span, ?expected:
     let ((res, st3)) = FreshVar st2, False, ""
     let checking = ?expected != nil and not (IsTimeSigil sh)
     let scrutName = ExprName scrut
-    let ((layers, st4, ignore)) = Fold arms, (([[]], st3, [[]])), \|((acc, s, taken)), arm|
+    let ((layers, st4a, ignore, waits)) = Fold arms, (([[]], st3, [[]], [[]])), \|((acc, s, taken, ws)), arm|
         let envArm = Narrowed env, s, arm, scrutName, plainScrut, taken
-        let ((acc2, s2)) = InferArm envArm, s, arm, plainScrut, res, (if checking: ?expected else: nil), ?rigidOut, acc
-        ((acc2, s2, (TakenBy env, arm, taken)))
+        let ((acc2, s2, ?wait)) = InferArm envArm, s, arm, plainScrut, res, (if checking: ?expected else: nil), ?rigidOut, acc
+        let ws2 = match ?wait:
+            ? w: Push ws, w
+            nil: ws
+        ((acc2, s2, (TakenBy env, arm, taken), ws2))
+    # A tag arm's value waits for the arms that assume nothing (ch. 5, Refinement at tag
+    # matches: a variable from outside is untouchable in the arm), then meets the match's
+    # type under the arm's equality.
+    let st4 = Fold waits, st4a, \|s, w| match w.?against:
+        ? want: ArmAgainst s, (SubstRigid w.o, w.out, (Zonk s, want)), w.ty, w.span, w.fwd
+        nil: match Walk s, res:
+            TyFlex ignore: UnifyArm s, res, w.ty, w.span
+            otherwise: UnifyArm s, (SubstRigid w.o, w.out, (Zonk s, res)), w.ty, w.span
     let st5 = MatchCoverage env, st4, plainScrut, arms, span
     match ?expected:
         ? want: if checking: ((want, st5)) else: MatchResult env, st5, sh, layers, res, span
@@ -100,7 +111,19 @@ fn Narrowed env, st, arm, name, t, taken:
 
 # One arm: its pattern bound, its guard a `Bool`, its body's plain layer unified with the
 # others'. The arm's time layer goes into `acc`.
-InferArm: unbounded fn Env, St, Arm, Ty, Ty, ?Ty, ?Text, [((Text, Range))] -> (([((Text, Range))], St))
+# A tag arm's value waiting for the match's type: the arm's rigid output and what it
+# equals there, and the type the match is checked at, if it is (with whether the arm may
+# forward).
+type ArmWait = record:
+    o: Text
+    out: Ty
+    ty: Ty
+    span: Range
+    ?against: Ty
+    fwd: Bool
+derive ^Eq, ^Show
+
+InferArm: unbounded fn Env, St, Arm, Ty, Ty, ?Ty, ?Text, [((Text, Range))] -> (([((Text, Range))], St, ?ArmWait))
 fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
     let ((env2, st1)) = match arm.?pattern:
         ? p: BindPattern env, st, p, scrutTy, True
@@ -117,19 +140,22 @@ fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
         nil: st1
     match ?expected:
         ? want:
-            let refined = match ?refinedOut:
-                ? ((o, out)): SubstRigid o, out, (Zonk st2, want)
-                nil: want
-            let ((bt, st3)) = InferExprBlock env2, st2, arm.body
-            ((acc, (ArmAgainst st3, refined, bt, arm.body.span, (arm.?pattern == nil or (IsFamilyArm arm)))))
+            let ((bt, st3a)) = InferExprBlock env2, st2, arm.body
+            let st3 = NoteFaultAt st3a, (TailSpan arm.body), want, bt
+            let fwd = arm.?pattern == nil or (IsFamilyArm arm)
+            match ?refinedOut:
+                ? ((o, out)): ((acc, st3, (? ArmWait(o=o, out=out, ty=bt, span=(ResultSpan arm.body), ?against=(? want), fwd=fwd))))
+                nil: ((acc, (ArmAgainst st3, want, bt, (ResultSpan arm.body), fwd), nil))
         nil:
-            let ((bt, st3)) = InferExprBlock env2, st2, arm.body
+            let ((bt, st3b)) = InferExprBlock env2, st2, arm.body
+            let st3 = NoteFaultAt st3b, (TailSpan arm.body), res, bt
             let head = HeadSigil st3, bt
             let plainBt = if IsTimeSigil head: InnerOf st3, bt else: bt
-            let st4 = UnifyArm st3, res, plainBt, arm.body.span
             let acc2 = if IsTimeSigil head: Push acc, ((head, arm.body.span)) else: Push acc, (("", arm.body.span))
             let acc3 = if head == "@": Push acc2, (("@", arm.body.span)) else: acc2
-            ((acc3, st4))
+            match ?refinedOut:
+                ? ((o, out)): ((acc3, st3, (? ArmWait(o=o, out=out, ty=plainBt, span=(ResultSpan arm.body), ?against=nil, fwd=False))))
+                nil: ((acc3, (UnifyArm st3, res, plainBt, (ResultSpan arm.body)), nil))
 
 # An arm's value against the type the match is checked at: a blueprint's row goes in an
 # obligation, which at an arm that may forward is the forwarding check (ch. 5, pass 5).
@@ -139,7 +165,7 @@ fn ArmAgainst st, want, bt, span, forwards = match (((Walk st, want), (Walk st, 
         let st2 = Unify st, w1, b1, span
         update st2:
             &_.incls <= Push &_.incls, Incl(sub=r2, sup=r1, file=&_.file, span=span, what="arm", forward=forwards)
-    otherwise: Unify st, want, bt, span
+    otherwise: UnifyNoted st, want, bt, span
 
 IsFamilyArm: fn Arm -> Bool
 fn IsFamilyArm arm = match arm.?pattern:
@@ -178,7 +204,8 @@ fn SubstRigid name, by, t = match t:
     other: other
 
 MatchResult: unbounded fn Env, St, Text, [((Text, Range))], Ty, Range -> ((Ty, St))
-fn MatchResult env, st, sh, layers, res, span:
+fn MatchResult env, st, sh, layers, joined, span:
+    let res = ArmResult st, joined
     let events = Filter layers, \|((h, ignore))| h == "!"
     let dyns = Filter layers, \|((h, ignore))| h == "$"
     let blue = Filter layers, \|((h, ignore))| h == "@"
@@ -199,7 +226,7 @@ fn InferIf env, st, c, thenB, ?elseB, span, ?expected = match c:
         let st2 = Unify st1, tBool, inner, e.span
         let ((res, st3)) = FreshVar st2, False, ""
         let ((layers, st4)) = IfBranches env, st3, env, thenB, ?elseB, res
-        MatchResult env, st4, sh, layers, res, span
+        MatchResult env, (NoElse st4, ?elseB, span), sh, layers, res, span
     CondBind p, e, ?gd:
         let ((et, st1)) = Infer env, st, e
         let ((env2, st2)) = BindPattern env, st1, p, et, True
@@ -208,26 +235,50 @@ fn InferIf env, st, c, thenB, ?elseB, span, ?expected = match c:
             nil: st2
         let ((res, st4)) = FreshVar st3, False, ""
         let ((layers, st5)) = IfBranches env2, st4, env, thenB, ?elseB, res
-        MatchResult env, st5, "", layers, res, span
+        MatchResult env, (NoElse st5, ?elseB, span), "", layers, res, span
 
-# An arm's plain layer against the match's: an arm that is a bare `Error` waits for the
-# others, so `if c: Error(..) else: ~ unit` is a `~unit` (pick ER).
+# `no-else`: an `if` that is a value chooses between two branches, so it has both (Jimmy's
+# rulings IE, IE2). A building `if` on a line of a widget block and an `update` block's
+# statement `if` may stand alone: they build, or do, their arm or nothing.
+NoElse: fn St, ?Block, Range -> St
+fn NoElse st, ?elseB, span = match ?elseB:
+    ? ignore: st
+    nil: ErrFix st, "no-else", span, "this `if` has no `else`: an `if` that is a value chooses between two branches", "add `else:` with the other branch's value"
+
+# An arm's plain layer against the match's: an arm that is a bare `Error` takes a fault
+# variable the other arms decide, so `if c: Error(..) else: ~ unit` is a `~unit` (pick ER);
+# its place was asked about at its tail (`NoteFaultAt`).
+# The conversion from a `[a]+` to the `[a]` is symmetric between arms (Jimmy's ruling NS):
+# an `[a]` arm after `[a]+` arms meets the collection they promise, and the construct's own
+# value is then the `[a]` (`ArmResult`); the arms before it stay the `[a]+` they are.
 UnifyArm: unbounded fn St, Ty, Ty, Range -> St
-fn UnifyArm st, res, t, span = if (IsFlexVar st, res) and (Walk st, t) == (TyCon "Prelude.Error", [[]]): Defer st, res, t, span else: Unify st, res, t, span
+fn UnifyArm st, res, t, span = match ((res, (?NonEmptyColl st, res), (IsPlainCollection st, t))):
+    (((TyFlex n), (? c), True)): update (Unify st, c, t, span):
+        &_.plainArms <= Push &_.plainArms, n
+    otherwise: UnifyNoted st, res, t, span
+
+# The value of a match or an `if` whose arms met at the variable `joined`: the collection,
+# when a `[a]+` arm stood beside an `[a]` arm.
+ArmResult: unbounded fn St, Ty -> Ty
+fn ArmResult st, joined = match joined:
+    TyFlex n if HasNat st.plainArms, n: Or (?NonEmptyColl st, joined), joined
+    otherwise: joined
 
 LayerHead: fn Text -> Text
 fn LayerHead h = if IsTimeSigil h: h else: if h == "@": "@" else: ""
 
 IfBranches: unbounded fn Env, St, Env, Block, ?Block, Ty -> (([((Text, Range))], St))
 fn IfBranches thenEnv, st, elseEnv, thenB, ?elseB, res:
-    let ((t1, st1)) = InferExprBlock thenEnv, st, thenB
+    let ((t1, st1a)) = InferExprBlock thenEnv, st, thenB
+    let st1 = NoteFaultAt st1a, (TailSpan thenB), res, t1
     let h1 = HeadSigil st1, t1
-    let st2 = UnifyArm st1, res, (if IsTimeSigil h1: InnerOf st1, t1 else: t1), thenB.span
+    let st2 = UnifyArm st1, res, (if IsTimeSigil h1: InnerOf st1, t1 else: t1), (ResultSpan thenB)
     let l1 = [[(((LayerHead h1), thenB.span))]]
     match ?elseB:
         ? b:
-            let ((t2, st3)) = InferExprBlock elseEnv, st2, b
+            let ((t2, st3a)) = InferExprBlock elseEnv, st2, b
+            let st3 = NoteFaultAt st3a, (TailSpan b), res, t2
             let h2 = HeadSigil st3, t2
-            let st4 = UnifyArm st3, res, (if IsTimeSigil h2: InnerOf st3, t2 else: t2), b.span
+            let st4 = UnifyArm st3, res, (if IsTimeSigil h2: InnerOf st3, t2 else: t2), (ResultSpan b)
             (((Push l1, (((LayerHead h2), b.span))), st4))
-        nil: ((l1, (Unify st2, res, tUnit, thenB.span)))
+        nil: ((l1, (Unify st2, res, tUnit, (ResultSpan thenB))))

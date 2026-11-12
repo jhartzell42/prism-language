@@ -18,5 +18,5 @@ let flock = [[Robin, Wren, Heron]]
 
 @Spotter: fn Species -> @!Species
 fn @Spotter s:
-    !saw <- Ui.Button(label=$"{Show s}: {Call s}")
+    !saw <- Ui.Button($label=$"{Show s}: {Call s}")
     @ s on !saw

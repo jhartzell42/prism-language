@@ -1,0 +1,7 @@
+# The tests of sem-ch09-widget-recursion-deep-hosted.
+emit Ui.*
+use App.*
+
+test twenty_levels_under_a_host, @main:
+    build
+        => expect Ui.Label(text="after")

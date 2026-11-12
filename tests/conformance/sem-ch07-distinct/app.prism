@@ -10,10 +10,10 @@ use Ui.*
 
 @distinct: @unit
 @distinct:
-    !same <- Ui.Button(label=$"same")                           # 0
-    !next <- Ui.Button(label=$"next")                           # 1
+    !same <- Ui.Button($label=$"same")                           # 0
+    !next <- Ui.Button($label=$"next")                           # 1
     $n <- 5 then ($n on !same) <| ($n + 1 on !next)
     $d <- @Distinct $n
     $changes <- 0 then $changes + 1 on !Updated $d
     $updates <- 0 then $updates + 1 on !Updated $n
-    Ui.Label(text=$"{$d}: {$changes} changes, {$updates} updates")  # 2
+    Ui.Label($text=$"{$d}: {$changes} changes, {$updates} updates")  # 2

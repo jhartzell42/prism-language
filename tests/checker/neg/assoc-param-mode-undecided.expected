@@ -1,0 +1,5 @@
+tests/checker/neg/assoc-param-mode-undecided.prism:21: error[ambiguous]: whether `Make` takes this `?` whole or lifts over it depends on an associated type nothing has decided here
+    fn Filled t = Make (? t)
+                       ^^^^^
+  fix: decide the type before the call, by an argument of it or an annotation on one
+1 error

@@ -1,0 +1,33 @@
+# The lines below a building `match` that binds a plain result read the block's names as
+# any line does (Semantics ch. 4, binding groups; ch. 8): a local function of the block
+# and a widget parameter of the block, both read below the `match`.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Panel: fn Mode, @unit -> @unit
+fn @Panel mode, @extra:
+    n <- match mode:                                                   # 0
+        Loud t:
+            Ui.Label($text=$"{t}")
+            @ 10
+        Soft:
+            Ui.Label($text=$"soft")
+            @ 20
+    fn Twice k = k * 2
+    Ui.Label($text=$"twice {Twice n}")                                 # 1
+    @extra                                                             # 2
+
+@Note: @unit
+@Note:
+    Ui.Label($text=$"note")
+
+@main: @unit
+@main:
+    @Panel (Loud "x"), @Note

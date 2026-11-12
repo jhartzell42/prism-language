@@ -15,4 +15,4 @@ fn Pipe n, K:
 
 @shown: @unit
 @shown:
-    Ui.Label(text=$"{Twice 3, \|m| m + m} {Pipe 4, \|j| j * 10}")     # 0
+    Ui.Label($text=$"{Twice 3, \|m| m + m} {Pipe 4, \|j| j * 10}")     # 0

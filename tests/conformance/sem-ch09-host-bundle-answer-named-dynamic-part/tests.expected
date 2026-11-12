@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 9 as ruled (round 3 DY: a dynamic answer's change is a push delivered the next tick, owed; an event answer is the next tick's input, owed) and Type System ch. 2 ("Bundles"): sem-ch09-host-bundle-live-dynamic-answer's transcript, the bundle named.
+test a_named_bundle_with_a_dynamic_part
+
+tick 0
+  added:
+    0: Ui.Button(label="flip")
+    1/[1]/0: Ui.Label(text="down: none")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1/[1]/0: Ui.Label(text="up: hello")

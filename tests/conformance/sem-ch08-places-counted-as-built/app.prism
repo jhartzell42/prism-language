@@ -1,0 +1,42 @@
+# Places are counted as they are built (rulings since the Bible, TC; Semantics ch. 8, a
+# child "takes the next number"): after a building `match`, and after a widget of several
+# clauses, the block's later places take the next numbers after the places the chosen arm
+# or clause built. Two instances of `@Panel` take arms of different widths, so the same
+# later button stands at a different position in each, and no position is left unborn.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Wide Text
+    Narrow
+derive ^Eq, ^Show
+
+@Tail: fn Bool -> @unit
+fn @Tail True:
+    Ui.Label($text=$"tail a")                                          # 0
+    Ui.Label($text=$"tail b")                                          # 1
+fn @Tail False:
+    Ui.Label($text=$"tail")                                            # 0
+
+@Choose: fn Mode -> @!Click
+fn @Choose mode:
+    match mode:
+        Wide t:
+            Ui.Label($text=$"{t}")                                     # 1
+            !w <- Ui.Button($label=$"wide")                            # 2
+            @ !w
+        Narrow:
+            !n <- Ui.Button($label=$"narrow")                          # 1
+            @ !n
+
+@Panel: fn Mode -> @unit
+fn @Panel mode:
+    Ui.Label($text=$"panel")                                           # 0
+    !inner <- @Choose mode                                             # 1 and 2, or 1
+    !more <- Ui.Button($label=$"more")                                 # 3, or 2
+    $inners <- 0 then $inners + 1 on !inner
+    $mores <- 0 then $mores + 1 on !more
+    ignore <- @Tail (mode == Narrow)                                   # 4, or 3 and 4
+    Ui.Label($text=$"inner {$inners} more {$mores}")                   # 5 either way

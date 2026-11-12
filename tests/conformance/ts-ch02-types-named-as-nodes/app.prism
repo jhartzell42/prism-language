@@ -1,0 +1,32 @@
+# Program types named as a root widget's node and the nodes of its rows and generations
+# would be (`Main`, `MainRow`, `MainGen`): each widget's node is named apart from every
+# program type, in both targets. Written by Claude on the claude-bugs branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Main = record:
+    n: Nat
+derive ^Eq, ^Show
+
+type MainRow = choice:
+    MainRow Nat
+    Other
+derive ^Eq, ^Show
+
+type MainGen = record:
+    g: Nat
+derive ^Eq, ^Show
+
+ShowMain: fn Nat -> Text
+fn ShowMain n = Show (Main(n=n))
+
+@main: @unit
+@main:
+    !go <- Ui.Button($label=$"go")                                # 0
+    $xs <- [[1]] then Push $xs, 2 on !go
+    for i, $x <- $xs:                                            # 1/[k]
+        Ui.Label($text=$"{ShowMain $x}")
+    ignore <- rebuild $xs:                                       # 2/#g
+        Ui.Label($text=$"{Show (MainRow (Len _))} {Show (MainGen(g=1))}")

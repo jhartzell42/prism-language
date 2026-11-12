@@ -1,0 +1,43 @@
+# Holds die with their widget (Semantics ch. 7, "Holds die with their widget"): when a row
+# leaves the tree, at the end of the tick it leaves in, each of its holds becomes a
+# constant with its last value. A sibling that kept the row's dynamic reads that last
+# value from then on, never a newer one, while a kept dynamic of a row that stands goes on.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Wrap: fn $Nat -> [$Nat]
+fn Wrap $a = [[$a]]
+
+@rows: @unit
+@rows:
+    !drop <- Ui.Button($label=$"drop")                            # 0
+    !ring <- Ui.Button($label=$"ring")                            # 1
+    !keep <- Ui.Button($label=$"keep")                            # 2
+    $names <- {1: "one", 2: "two"} then Remove $names, 2 on !drop
+    $all <- for k, $name <- $names:                              # 3/[k]
+        $rings <- 0 then $rings + 1 on !ring
+        Ui.Label($text=$"{$name} {$rings}")                       # 3/[k]/0
+        @ Wrap $rings
+    $kept <- {} then $all on !keep
+    for k, $part <- $kept:                                       # 4/[k]
+        for j, $each <- $part:                                   # 4/[k]/0/[j]
+            Ui.Label($text=$"kept {$each}")                       # 4/[k]/0/[j]/0
+
+@derived: @unit
+@derived:
+    !drop <- Ui.Button($label=$"drop")                            # 0
+    !ring <- Ui.Button($label=$"ring")                            # 1
+    !keep <- Ui.Button($label=$"keep")                            # 2
+    !more <- Ui.Button($label=$"more")                            # 3
+    $bonus <- 0 then $bonus + 10 on !more
+    $names <- {1: "one", 2: "two"} then Remove $names, 2 on !drop
+    $all <- for k, $name <- $names:                              # 4/[k]
+        $rings <- 0 then $rings + 1 on !ring
+        Ui.Label($text=$"{$name} {$rings}")                       # 4/[k]/0
+        @ Wrap ($rings + $bonus)
+    $kept <- {} then $all on !keep
+    for k, $part <- $kept:                                       # 5/[k]
+        for j, $each <- $part:                                   # 5/[k]/0/[j]
+            Ui.Label($text=$"kept {$each}")                       # 5/[k]/0/[j]/0

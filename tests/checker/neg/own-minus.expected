@@ -1,5 +1,29 @@
+tests/checker/neg/own-minus.prism:8: error[impl-lacks]: this impl of `^Num` lacks `+`, which has no default body
+    impl ^Num Money:
+    ^^^^^^^^^^^^^^^^
+  fix: define it under the impl, `fn + ...`
+tests/checker/neg/own-minus.prism:8: error[impl-lacks]: this impl of `^Num` lacks `-`, which has no default body
+    impl ^Num Money:
+    ^^^^^^^^^^^^^^^^
+  fix: define it under the impl, `fn - ...`
+tests/checker/neg/own-minus.prism:8: error[impl-lacks]: this impl of `^Num` lacks `*`, which has no default body
+    impl ^Num Money:
+    ^^^^^^^^^^^^^^^^
+  fix: define it under the impl, `fn * ...`
+tests/checker/neg/own-minus.prism:8: error[impl-lacks]: this impl of `^Num` lacks `/`, which has no default body
+    impl ^Num Money:
+    ^^^^^^^^^^^^^^^^
+  fix: define it under the impl, `fn / ...`
+tests/checker/neg/own-minus.prism:8: error[impl-lacks]: this impl of `^Num` lacks `+?`, which has no default body
+    impl ^Num Money:
+    ^^^^^^^^^^^^^^^^
+  fix: define it under the impl, `fn +? ...`
+tests/checker/neg/own-minus.prism:8: error[impl-lacks]: this impl of `^Num` lacks `*?`, which has no default body
+    impl ^Num Money:
+    ^^^^^^^^^^^^^^^^
+  fix: define it under the impl, `fn *? ...`
 tests/checker/neg/own-minus.prism:14: error[may-not-end]: `Spend` calls itself on `left`, not smaller than what it was given
         ? left: Spend left
                 ^^^^^^^^^^
   fix: make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`
-1 error
+7 errors

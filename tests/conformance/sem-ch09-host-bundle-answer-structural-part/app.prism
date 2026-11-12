@@ -1,0 +1,26 @@
+# A supplier's bundle answer whose `$` part reads a structural dynamic of the host, a
+# `for`'s gathered result (Semantics ch. 9, "How a supplier answers"; ch. 7, "Structural
+# dynamics", round 3 ST; round 3 DY; Type System ch. 2, "Bundles": a supplier answers the
+# bundle part by part). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Socket of Element ((!Text, $Nat)):
+    address: Text
+
+@chat: @unit
+@chat:
+    ((!rx, $peers)) <- Pad.Socket(address="chat:7000")
+    $last <- "none" then !rx
+    Ui.Label($text=$"{$peers}: {$last}")
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")
+    $names <- {1: "one"} then Insert $names, 2, "two" on !add
+    $lens <- for k, $name <- $names:
+        Ui.Label($text=$name)
+        @ Len $name
+    ignore <- @HostDocument @chat, \|p, e| match e:
+        Pad.Socket(..): @ (("hello" on !add, Size $lens))
+        otherwise: @Element e

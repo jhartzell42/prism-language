@@ -91,6 +91,7 @@ fn CollParts st, t, span = match Walk st, t:
     TyMap k, v: ((k, v, st))
     TyArray v: ((tNat, v, st))
     TyCon "Buffer", [[v]]: ((tNat, v, st))
+    TyCon "Prelude.NonEmpty", [[c]]: CollParts st, c, span
     TyErr: ((TyErr, TyErr, st))
     TyFlex ignore:
         let ((v, st2)) = FreshVar st, False, ""
@@ -125,12 +126,17 @@ fn BindForBinders env, st, ?binders, k, v, live:
         ? bs: match bs.?second:
             ? second:
                 let ((e1, st1)) = BindPattern (Unpending env), st, bs.first, k, False
-                let ((st2, vt2)) = ForInnerMark st1, inner, second, v, vt
-                BindPattern e1, st2, second, vt2, False
+                let ((st2, vt2)) = ForInnerMark (ForBinderMatches env, st1, bs.first, k), inner, second, v, vt
+                let ((e2, st3)) = BindPattern e1, st2, second, vt2, False
+                ((e2, (ForBinderMatches env, st3, second, vt2)))
             nil:
                 let e1 = WithTopic env, "key", k
                 let ((st2, vt2)) = ForInnerMark st, inner, bs.first, v, vt
-                BindPattern (Unpending e1), st2, bs.first, vt2, False
+                let ((e2, st3)) = BindPattern (Unpending e1), st2, bs.first, vt2, False
+                ((e2, (ForBinderMatches env, st3, bs.first, vt2)))
+
+ForBinderMatches: unbounded fn Env, St, Pattern, Ty -> St
+fn ForBinderMatches env, st, p, t = AlwaysMatches env, st, p, t, "a `for` binder"
 
 # A `for` over a map of dynamics whose value binder shows `$$`: the binder is the value
 # under the key, one layer, so it is `$v` (ruling FV; the old form flattened `$$d` on the
@@ -190,15 +196,15 @@ fn InferGivenBlock env, st, b, mark:
     let n = Len b.stmts
     let ((env2, st2, ?res)) = Fold (Range0 n), ((env, st, nil)), \|((en, s, ?r)), i|
         let stmt = Or b.stmts[i], dummyStmt2
-        GivenStmt en, s, stmt, mark, i + 1 == n, ?r
+        GivenStmt en, s, stmt, (LocalClauses b.stmts, i), mark, i + 1 == n, ?r
     match ?res:
         ? t: ((t, st2))
         nil:
             let ((v, st3)) = FreshVar st2, False, ""
             (((TySig mark, v), st3))
 
-GivenStmt: unbounded fn Env, St, Stmt, Text, Bool, ?Ty -> ((Env, St, ?Ty))
-fn GivenStmt env, st, s, mark, last, ?res = match s.kind:
+GivenStmt: unbounded fn Env, St, Stmt, [FnClause], Text, Bool, ?Ty -> ((Env, St, ?Ty))
+fn GivenStmt env, st, s, clauses, mark, last, ?res = match s.kind:
     SBind p, e, nil:
         let ((t, st1)) = Infer env, st, e
         let ((v, st2)) = FreshVar st1, False, ""
@@ -212,7 +218,7 @@ fn GivenStmt env, st, s, mark, last, ?res = match s.kind:
         ((env2, st2, ?res))
     SFn f:
         let ((env1, st1)) = PreBind env, st, s
-        let ((env2, st2)) = CheckLocalFn env1, st1, f, s.span
+        let ((env2, st2)) = CheckLocalFn env1, st1, clauses, s.span
         ((env2, st2, ?res))
     SSignature ignore:
         let ((env2, st2)) = PreBind env, st, s

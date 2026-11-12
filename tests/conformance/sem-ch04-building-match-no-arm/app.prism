@@ -1,0 +1,24 @@
+# A building `match` with no arm, over a choice with no case (Semantics ch. 4, "The
+# widget block": a building `match` over a plain scrutinee; hosting attempt 29 and its
+# ruling: a `match` with no arm over an empty choice is legal). No value of `Never`
+# exists, so the line builds nothing and the block that holds it is never built; the
+# program around it builds as if the line were not there.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Never = choice:
+
+@Absurd: fn Never -> @unit
+fn @Absurd never:
+    Ui.Label($text=$"no value reaches this")
+    match never:
+
+@Slot: fn ?Never -> @unit
+fn @Slot ?never:
+    Ui.Label($text=$"before")                                    # 0
+    match ?never:
+        ? never: @Absurd never
+        nil: Ui.Label($text=$"nothing asked")                    # 1
+    Ui.Label($text=$"after")                                     # 2

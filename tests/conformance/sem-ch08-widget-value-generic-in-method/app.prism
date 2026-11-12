@@ -1,0 +1,33 @@
+# A generic widget taken as a blueprint value in a method's body, given a value of the
+# impl's own type parameter (Type System ch. 3: an impl of a collection's head has the
+# element's type as its parameter; ch. 5: a type variable is decided at each call;
+# ch. 2: a blueprint is an opaque handle and still a value; Semantics ch. 8: "a blueprint
+# builds nothing until a block applies it"). The page asks at `[Nat]` and at `[Text]`.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Shown: fn a, Text -> @unit where a: ^Show
+fn @Shown x, label:
+    Ui.Label($text=$"{label}={Show x}")
+
+trait ^Framed a:
+    ?Frame: fn a -> ?@unit
+
+impl ^Framed [a] where a: ^Show:
+    fn ?Frame xs = match xs[0]:
+        ? x: ?Pick True, (@Shown x, "first")
+        nil: nil
+
+@Page: @unit
+@Page:
+    match ?Frame [[7, 8]]:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    match ?Frame [["a"]]:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")

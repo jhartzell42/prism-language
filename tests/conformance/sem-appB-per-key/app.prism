@@ -16,16 +16,16 @@ use Ui.*
 
 @perkey: @unit
 @perkey:
-    !edit <- Ui.Button(label=$"edit 0")                         # 0
-    !same <- Ui.Button(label=$"same")                           # 1
-    !drop <- Ui.Button(label=$"drop 1")                         # 2
-    !back <- Ui.Button(label=$"back 1")                         # 3
-    !both <- Ui.Button(label=$"both")                           # 4
+    !edit <- Ui.Button($label=$"edit 0")                         # 0
+    !same <- Ui.Button($label=$"same")                           # 1
+    !drop <- Ui.Button($label=$"drop 1")                         # 2
+    !back <- Ui.Button($label=$"back 1")                         # 3
+    !both <- Ui.Button($label=$"both")                           # 4
     $edits <- 0 then $edits + 1 on !edit
     $m <- {0: "a", 1: "b"} then (Insert $m, 0, "e{$edits}") on !edit <| (Remove (Insert $m, 7, "z"), 7) on !same <| (Remove $m, 1) on !drop <| (Insert $m, 1, "B") on !back <| (Insert (Insert $m, 2, "c"), 0, "x") on !both
     $each <- @PerKey $m
     $outer <- 0 then $outer + 1 on !Updated $each
-    Ui.Label(text=$"outer {$outer}")                            # 5
+    Ui.Label($text=$"outer {$outer}")                            # 5
     for k, $v <- $each:                                         # 6/[k]
         $n <- 0 then $n + 1 on !Updated $v
-        Ui.Label(text=$"{k}: {$v} changed {$n}")                # 6/[k]/0
+        Ui.Label($text=$"{k}: {$v} changed {$n}")                # 6/[k]/0

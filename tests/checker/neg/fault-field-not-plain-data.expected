@@ -1,0 +1,21 @@
+tests/checker/neg/fault-field-not-plain-data.prism:10: error[fault-field]: the field `@make` of the fault kind `Count.Built` is no plain data: it holds a blueprint
+        @make: unit
+        ^^^^^^^^^^^
+  fix: give the field the value as the fault is made, a type with no `$`, `!`, `@` or `any` in it
+tests/checker/neg/fault-field-not-plain-data.prism:13: error[fault-field]: the field `!when` of the fault kind `Count.Fired` is no plain data: it holds an event
+        !when: Nat
+        ^^^^^^^^^^
+  fix: give the field the value as the fault is made, a type with no `$`, `!`, `@` or `any` in it
+tests/checker/neg/fault-field-not-plain-data.prism:16: error[fault-field]: the field `seen` of the fault kind `Count.Inside` is no plain data: it holds a dynamic
+        seen: [$Nat]
+        ^^^^^^^^^^^^
+  fix: give the field the value as the fault is made, a type with no `$`, `!`, `@` or `any` in it
+tests/checker/neg/fault-field-not-plain-data.prism:19: error[fault-field]: the field `$limit` of the fault kind `Count.Moving` is no plain data: it holds a dynamic
+        $limit: Nat
+        ^^^^^^^^^^^
+  fix: give the field the value as the fault is made, a type with no `$`, `!`, `@` or `any` in it
+tests/checker/neg/fault-field-not-plain-data.prism:22: error[fault-field]: the field `what` of the fault kind `Count.Packed` is no plain data: it holds a packed value (`any`)
+        what: any ^Show
+        ^^^^^^^^^^^^^^^
+  fix: give the field the value as the fault is made, a type with no `$`, `!`, `@` or `any` in it
+5 errors

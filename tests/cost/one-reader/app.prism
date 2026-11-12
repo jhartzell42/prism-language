@@ -21,7 +21,7 @@ fn Upto n = update [[]]:
 
 @shared: @unit
 @shared:
-    !go <- Ui.Button(label=$"go")                            # 0
+    !go <- Ui.Button($label=$"go")                            # 0
     $n <- 0 then $n + 1 on !go
     let $heavy = Heavy $n
-    Ui.Label(text=$"{$heavy}")                         # 1
+    Ui.Label($text=$"{$heavy}")                         # 1

@@ -1,0 +1,6 @@
+# The tests of sem-ch09-local-widget-value-hosted.
+emit Ui.*
+use App.*
+
+test a_local_widget_value_under_a_host, @main:
+    build

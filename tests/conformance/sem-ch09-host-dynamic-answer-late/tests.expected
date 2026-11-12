@@ -1,0 +1,30 @@
+# Derived by hand from Semantics ch. 9 as ruled (round 3 DY): a supplier's dynamic answer gives the place its first value in the birth tick (the host's own place has its first value from the World's first-value query by then, ch. 8), and each later change of the host's dynamic is a push delivered the next tick, which is owed; a forwarded element is re-emitted at host/[p]/0.
+test a_pushed_place_answers
+
+tick 0
+  added:
+    0: Fs.Contents(path="/etc/real")
+    1/[1]/0: Ui.Label(text="first")
+
+tick 1
+  in:
+    Fs.Contents(path="/etc/real") = ~ Contents(text="second")
+
+tick 2
+  changed:
+    1/[1]/0: Ui.Label(text="second")
+
+test a_let_below_answers
+
+tick 0
+  added:
+    0: Ui.Button(label="change")
+    1/[1]/0: Ui.Label(text="first")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1/[1]/0: Ui.Label(text="second")

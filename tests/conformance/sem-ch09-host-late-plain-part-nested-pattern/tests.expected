@@ -1,0 +1,22 @@
+# Derived by hand from Semantics ch. 7 as ruled (round 3 ST: a gathered dynamic moves at n+1, an owed tick; at the build it reads the rows built above it), ch. 9 (a place's first value is read in its birth tick; an event answer is the next tick's input, owed; round 3 DY: a dynamic answer's change is a push delivered the next tick, owed) and ch. 8 (`<-` binds the result by a pattern): the plain part, the pair, is read once from the first value and its halves bound; as sem-ch09-host-bundle-answer-structural-part from there.
+test a_late_plain_part_is_taken_apart
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/[1]/0: Ui.Label(text="one")
+    2/[1]/0: Ui.Label(text="7 of ann, 1: none")
+
+tick 1
+  in:
+    0: click
+  added:
+    1/[2]/0: Ui.Label(text="two")
+
+tick 2
+  changed:
+    2/[1]/0: Ui.Label(text="7 of ann, 1: hello")
+
+tick 3
+  changed:
+    2/[1]/0: Ui.Label(text="7 of ann, 2: hello")

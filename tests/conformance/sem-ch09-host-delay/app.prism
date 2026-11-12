@@ -10,17 +10,17 @@ use Ui.*
 
 @child: @unit
 @child:
-    !hit <- Ui.Button(label=$"hit")                              # 0, answered by the host's !tap
-    !key <- Ui.TextInput(name="in", text=$"")                    # 1, forwarded
+    !hit <- Ui.Button($label=$"hit")                              # 0, answered by the host's !tap
+    !key <- Ui.TextInput(name="in", $text=$"")                    # 1, forwarded
     $hits <- 0 then $hits + 1 on !hit
     $keys <- 0 then $keys + 1 on !key
-    Ui.Label(text=$"{$hits} hits, {$keys} keys")                 # 2, forwarded
+    Ui.Label($text=$"{$hits} hits, {$keys} keys")                 # 2, forwarded
 
 @host: @unit
 @host:
-    !tap <- Ui.Button(label=$"tap")                              # 0
+    !tap <- Ui.Button($label=$"tap")                              # 0
     ignore <- @HostDocument @child, \|p, e| match e:            # 1/[p]
         Ui.Button(..): @ !tap
         otherwise: @Element e
     $taps <- 0 then $taps + 1 on !tap
-    Ui.Label(text=$"{$taps} taps")                               # 2
+    Ui.Label($text=$"{$taps} taps")                               # 2

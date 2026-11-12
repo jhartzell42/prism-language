@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 3 (an impl is chosen by the type the call must give) and ch. 5 (a generic function's type parameter instantiated from the result): "4" and "2" read as digits, "12" is no digit, "ab" and "cd" read as words; nothing gives nil, so 7.
+test read_by_the_wanted_type
+
+tick 0
+  added:
+    0: Ui.Label(text="42 / cannot read 12 / ab-cd / 7")

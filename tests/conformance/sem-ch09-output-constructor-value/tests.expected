@@ -1,0 +1,6 @@
+# Derived by hand from ruling AN (a tag's output constructor) and Type System ch. 2 (a constructor is a function): two clicks give two answers.
+test a_constructor_mapped
+
+tick 0
+  added:
+    0: Ui.Label(text="2 answers")

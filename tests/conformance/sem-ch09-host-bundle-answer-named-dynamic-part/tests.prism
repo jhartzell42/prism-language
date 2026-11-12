@@ -1,0 +1,11 @@
+# The tests of sem-ch09-host-bundle-answer-named-dynamic-part.
+emit Ui.* | Pad.*
+use App.*
+
+test a_named_bundle_with_a_dynamic_part, @mocked:
+    build
+        => expect Ui.Label(text="down: none")
+    click at 0
+        => expect Ui.Label(text="down: none")
+    compute
+        => expect Ui.Label(text="up: hello")

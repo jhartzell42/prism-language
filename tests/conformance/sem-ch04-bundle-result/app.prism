@@ -7,7 +7,7 @@ test mod Tests
 
 @counter: @((!Nat, $Nat))
 @counter:
-    !go <- Ui.Button(label=$"go")                           # 0
+    !go <- Ui.Button($label=$"go")                           # 0
     $n <- 0 then $n + 1 on !go
     @ ((($n + 1) on !go, $n))
 
@@ -15,5 +15,5 @@ test mod Tests
 @page:
     ((!counted, $count)) <- @counter
     $last <- 0 then !counted
-    Ui.Label(text=$"{$count} after {$last}")                # 1
+    Ui.Label($text=$"{$count} after {$last}")                # 1
     @ "{$count}"

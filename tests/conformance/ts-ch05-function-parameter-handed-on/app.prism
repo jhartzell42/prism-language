@@ -1,0 +1,19 @@
+# A function value's own function parameter handed on to another function as it is
+# (Type System ch. 5: a function is a value, and so is its argument): `Over` takes `Read`
+# and passes it to `Each`, never calling it itself. Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Double: fn Nat -> Nat
+fn Double n = n * 2
+
+Through: fn Nat -> Nat
+fn Through k:
+    let Over = \|Read| Fold (Each [[1, 2, 3]], Read), 0, \|sum, n| sum + n
+    (Over (\|n| n * k)) + (Over Double)
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Through 5}")                               # 0

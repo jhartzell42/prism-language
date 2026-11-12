@@ -57,9 +57,26 @@ prism               the command: compile, test, run, check
   lexes, parses, type checks, lowers, emits a Rust crate over `prism_rtl` through code
   templates, writes through `Fs.Output`.
 - The bootstrap: a kept native prismc compiles `prismc/` into gen1, cargo builds it, gen1
-  compiles `prismc/` into gen2, and gen1 and gen2 are byte-equal (the fixed point).
-- Chess: `./prism run examples/chess` compiles it, builds it with the canvas World and
-  opens the window; `./prism test examples/chess` runs its transcripts under the compiled
+  compiles `prismc/` into gen2, and gen1 and gen2 are byte-equal (the fixed point), or,
+  when `prismc/` emits other code than the starting compiler, gen2 and gen3 are.
+- The runtime a compiler emits for: `runtime/rust` (prism_rtl) and the Worlds' crates change
+  their interface together with the emitter (a field renamed, a function given the `Cx`, a
+  struct in place of a closure type), so the code a compiler emits fits the runtime of its
+  own source and no other. Every starting compiler therefore comes with its runtime: the
+  seed archive holds the crate prismc emitted for itself beside `runtime/rust` and
+  `worlds/*/rust` as they were at that fixed point; the installed `target/bootstrap/prismc`
+  has `target/bootstrap/prismc-runtime` beside it; a `$PRISMC` names its own with
+  `$PRISMC_RUNTIME` (any path; copied into `target/bootstrap/start-runtime`, so the root
+  named is never written). `bootstrap/bootstrap.sh` builds the seed and gen1 against the starting
+  compiler's runtime, and gen2 on against the tree's, by copying a crate into a root laid
+  out as the repository is (the emitted `../../../runtime/rust` then finds that root's). A
+  runtime change made with the emitter is so crossed in the one run, gen1 still emitting the
+  old interface and gen2 the new; it needs no seed of its own. A change to the source's
+  syntax is not: the old compiler cannot read the new source. The compiler first learns the
+  new syntax with its own source still in the old, the seed is rewritten from that fixed
+  point (`--update`), and only then is the source moved to the new syntax.
+- Chess: `./prism run examples/basic-chess` compiles it, builds it with the canvas World and
+  opens the window; `./prism test examples/basic-chess` runs its transcripts under the compiled
   Test World.
 
 ## The tick
@@ -76,7 +93,7 @@ armed; a World that sees it ticks again, with no inputs if it has none.
 - `make test`: `cargo test --workspace`, every compiled transcript
   (`tests/compiled/run.sh`), the checker's tests (`tests/checker/run.sh`), and the
   bootstrap's fixed point.
-- `make chess`: build and open chess (`./prism run examples/chess`).
+- `make basic-chess`: build and open chess (`./prism run examples/basic-chess`).
 - `make bootstrap`: the kept prismc to gen1 to gen2, byte-equal; installs
   `target/bootstrap/prismc`.
 

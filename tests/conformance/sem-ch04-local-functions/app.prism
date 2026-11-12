@@ -1,0 +1,22 @@
+# Local functions in a plain function's block (Semantics ch. 4: a block's statements include
+# `fn`): one passed as a value (`Fold xs, 0, Add`), one whose parameter is a tuple pattern,
+# one reading a `let` of its block, and a widget block's local function whose parameter is a
+# pattern. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Total: fn [Nat] -> Nat
+fn Total xs:
+    let weight = 2
+    fn Add a, x = a + x * weight
+    Fold xs, 0, Add
+
+Digits: fn ((Nat, Nat)) -> Nat
+fn Digits p:
+    fn Pair ((a, b)) = a * 10 + b
+    Pair p
+
+@page: @unit
+@page:
+    fn Joined ((a, b)) = "{a}-{b}"
+    Ui.Label($text=$"{Total [[1, 2, 3]]} {Digits ((4, 5))} {Joined ((6, 7))}")   # 0

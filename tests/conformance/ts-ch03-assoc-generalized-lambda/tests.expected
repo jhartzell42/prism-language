@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 5 (a local `let` generalizes; an associated type at a known head normalizes to the impl's choice): `F` at a number pair gives its first number, 1, plus 1 is 2; at a text pair its first text, "a", with "!".
+test lambda_keeps_its_item
+
+tick 0
+  added:
+    0: Ui.Label(text="2 a!")

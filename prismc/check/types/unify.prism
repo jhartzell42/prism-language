@@ -61,45 +61,110 @@ UnifyIn: unbounded fn St, Ty, Ty, Range -> ((Text, St))
 fn UnifyIn st, expected, found, span:
     let e = NormAssoc st, (Walk st, expected)
     let f = NormAssoc st, (Walk st, found)
+    # A variable meeting a waiting associated type is bound to it, so the projection stays
+    # in the variable's type (a local `let`'s scheme keeps `Item a`); only two types that
+    # are not variables wait as an equation.
     if (IsWaitingAssoc st, e) or (IsWaitingAssoc st, f):
-        if e == f: (("", st)) else: (("", (Defer st, e, f, span)))
+        # equal once their variables are followed (two calls' `Item t4` and `Item t7`,
+        # both variables bound to `t2`): an associated type is not injective, so its
+        # arguments are never unified for it
+        if (Zonk st, e) == (Zonk st, f): (("", st))
+        else: if (IsFlexVar st, e) or (IsFlexVar st, f): UnifyHeads st, e, f, span
+        else: (("", (Defer st, e, f, span)))
     else: UnifyHeads st, e, f, span
 
 # An associated type normalizes before comparing (ch. 5, Traits): `Quotient Float` is
 # `Float`, `Quotient Int` is `?Int` (Type System ch. 3); at a flexible variable it waits
-# for the variable to be bound.
+# for the variable to be bound. What an impl chooses is walked and normalized again: at
+# `Pair a`, `type Item = a` chooses the head's argument, which at `Pair(one="a", ...)` is
+# a variable already bound to `Text` (and a choice may itself be an associated type).
 NormAssoc: unbounded fn St, Ty -> Ty
-fn NormAssoc st, t = match t:
-    TyAssoc "Quotient", a: match Walk st, a:
+fn NormAssoc st, t:
+    let n = NormAssocOnce st, t
+    if n == t: t else: NormAssoc st, (Walk st, n)
+
+NormAssocOnce: unbounded fn St, Ty -> Ty
+fn NormAssocOnce st, t = match t:
+    TyAssoc tr, "Quotient", a if tr == quotientTrait: match Walk st, a:
         TyCon "Float", [[]]: tFloat
-        TyCon n, [[]]: if n == "Nat" or n == "Int" or n == "U8": TySig "?", (TyCon n, [[]]) else: t
-        otherwise: t
+        TyCon n, [[]]: if n == "Nat" or n == "Int" or n == "U8": TySig "?", (TyCon n, [[]]) else: ImplAssoc st, tr, "Quotient", (Walk st, a), t
+        otherwise: ImplAssoc st, tr, "Quotient", (Walk st, a), t
+    TyAssoc tr, n, a: ImplAssoc st, tr, n, (Walk st, a), t
     other: other
+
+# An associated type at a known head: the type the one impl of its trait whose head
+# matches chooses (one-way matching, `?MatchHead`: a named type's head, a collection's or
+# a tuple's, as the impl itself is found), its variables what the match gives them (ch.
+# 5: "the impl's `?Int` before comparing"); at a variable, at a type no head matches yet,
+# or with no impl choosing it, the application as it is.
+ImplAssoc: unbounded fn St, Text, Text, Ty, Ty -> Ty
+fn ImplAssoc st, tr, n, a, t = match a:
+    TyFlex ignore: t
+    TyRigid ignore: t
+    otherwise:
+        let whole = Zonk st, a
+        Fold st.assocImpls, t, \|found, ai| if found != t or ai.cls != tr or ai.name != n: found else: match ?MatchHead ai.head, whole, {}:
+            ? tys: SubstQ Inst(tys=tys, rows={}, cols={}), ai.value
+            nil: found
+
+# One-way matching of an impl head (with `TyQ` variables) against a type.
+?MatchHead: unbounded fn Ty, Ty, (Text ==> Ty) -> ?(Text ==> Ty)
+fn ?MatchHead pat, t, m = match ((pat, t)):
+    ((TyQ v, x)): match m[v]:
+        ? y: if y == x: ? m else: nil
+        nil: ? (Insert m, v, x)
+    (((TyCon a, xs), (TyCon b, ys))): if a == b and (Len xs) == (Len ys): ?MatchAll xs, ys, m else: nil
+    ((TyTuple xs, TyTuple ys)): if (Len xs) == (Len ys): ?MatchAll xs, ys, m else: nil
+    ((TyArray x, TyArray y)): ?MatchHead x, y, m
+    (((TyMap k1, v1), (TyMap k2, v2))): ?MatchAll [[k1, v1]], [[k2, v2]], m
+    (((TySig s1, i1), (TySig s2, i2))): if s1 == s2: ?MatchHead i1, i2, m else: nil
+    otherwise: nil
+
+?MatchAll: unbounded fn [Ty], [Ty], (Text ==> Ty) -> ?(Text ==> Ty)
+fn ?MatchAll xs, ys, m = Fold (Range0 (Len xs)), (? m), \|?acc, i| match ?acc:
+    ? mm: ?MatchHead (Or xs[i], TyErr), (Or ys[i], TyErr), mm
+    nil: nil
 
 IsWaitingAssoc: unbounded fn St, Ty -> Bool
 fn IsWaitingAssoc st, t = match t:
-    TyAssoc ignore, a: IsFlexVar st, a
+    TyAssoc ignore, ignore, a: IsFlexVar st, a
     otherwise: False
 
 Defer: fn St, Ty, Ty, Range -> St
 fn Defer st, e, f, span = update st:
-    &_.deferred <= Push &_.deferred, ((e, f, span))
+    &_.deferred <= Push &_.deferred, Waiting(expected=e, found=f, span=span, file=st.file)
 
-# The waiting equations, retried once their variables are bound.
+# The waiting equations, retried once their variables are bound, each in its own file.
 RetryDeferred: unbounded fn St -> St
 fn RetryDeferred st:
     let waiting = st.deferred
     let cleared = update st:
         &_.deferred <= [[]]
-    Fold waiting, cleared, \|s, ((e, f, span))| Unify s, e, f, span
+    let done = Fold waiting, cleared, \|s, w|
+        let there = update s:
+            &_.file <= w.file
+        Unify there, w.expected, w.found, w.span
+    update done:
+        &_.file <= st.file
+
+# The program's end: an equation still waiting has a variable nothing decided, and an
+# equation never checked would let any type through (`ambiguous`, never dropped).
+Undecided: unbounded fn St -> St
+fn Undecided st0:
+    let st = RetryDeferred st0
+    let left = Fold st.deferred, st, \|s, w|
+        let there = update s:
+            &_.file <= w.file
+        ErrFix there, "ambiguous", w.span, "nothing decides the associated type in `{ShowTy s, w.expected}` = `{ShowTy s, w.found}`", "annotate the value's type"
+    update left:
+        &_.deferred <= [[]]
+        &_.file <= st.file
 
 UnifyHeads: unbounded fn St, Ty, Ty, Range -> ((Text, St))
 fn UnifyHeads st, e, f, span:
     match ((e, f)):
         ((TyErr, ignore)): (("", st))
         ((ignore, TyErr)): (("", st))
-        (((TySig "~", ignore), (TyCon "Prelude.Error", [[]]))): (("", st))
-        (((TyCon "Prelude.Error", [[]]), (TySig "~", ignore))): (("", st))
         ((TyFlex a, TyFlex b)): if a == b: (("", st)) else: (("", (MergeVars st, a, b)))
         ((TyFlex a, t)): BindVar st, a, t, span
         ((t, TyFlex b)): BindVar st, b, t, span
@@ -124,7 +189,7 @@ fn UnifyHeads st, e, f, span:
             let ((v, st2)) = UnifyRow st, r1, r2, span
             if v != "": ((v, st2)) else: UnifyIn st2, o1, o2, span
         ((TyElemAny r1, TyElemAny r2)): UnifyRow st, r1, r2, span
-        (((TyAssoc n1, a1), (TyAssoc n2, a2))): if n1 == n2: UnifyIn st, a1, a2, span else: (("mismatch", st))
+        (((TyAssoc t1, n1, a1), (TyAssoc t2, n2, a2))): if t1 == t2 and n1 == n2: UnifyIn st, a1, a2, span else: (("mismatch", st))
         ((TyAny xs, TyAny ys)): if (SortTexts xs) == (SortTexts ys): (("", st)) else: (("mismatch", st))
         otherwise: (("mismatch", st))
 
@@ -220,12 +285,12 @@ type FieldQ = record:
     owners: [Text]
     # The marks the access shows and where the field's name stands, checked against the
     # field's stack once the record is known (gap FM); none for a reference path's step.
-    marks: ?((Text, Range))
+    ?marks: ((Text, Range))
 derive ^Eq, ^Show
 
 AskField: fn St, Ty, Text, Ty, Range, [Text] -> St
 fn AskField st, recv, field, result, span, owners = update st:
-    &_.fieldQs <= Push &_.fieldQs, FieldQ(recv=recv, field=field, result=result, span=span, file=&_.file, owners=owners, marks=nil)
+    &_.fieldQs <= Push &_.fieldQs, FieldQ(recv=recv, field=field, result=result, span=span, file=&_.file, owners=owners, ?marks=nil)
 
 # The waiting field read whose type is `result` checks its marks when it is read (gap FM).
 MarkLastField: fn St, Ty, Text, Range -> St

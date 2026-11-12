@@ -65,4 +65,4 @@ fn Twice n = (Step n) + (Step (OnceJob n)) + (CallThen 0) + (RunToEnd 0)
 fn @Counted n:
     !done <- @Run Twice, n
     $shown <- "working" then Show !done
-    Ui.Label(text=$shown)
+    Ui.Label($text=$shown)

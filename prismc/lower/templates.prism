@@ -49,9 +49,9 @@ use Lower.Node.Switch.*
 # column (`place`, the prelude's).
 TemplateValue: unbounded fn Lx, Env, Template -> Vl
 fn TemplateValue lx, env, tp:
-    let start = [[(DoLet (PaMut "out"), (XCall "String::new", [[]]))]]
+    let start = [[(DoLet (PaMut "out"), (XCall (RefRuntime "std::String::new"), [[]]))]]
     let dos = Fold tp.parts, start, \|acc, part| Append acc, (TemplatePartDos lx, env, part)
-    VlOwned (XBlock dos, (XCall "Text::from", [[(XVar "out")]])), OutText
+    VlOwned (XBlock dos, (XCall (RefRuntime "rt::Text::from"), [[(XVar "out")]])), OutText
 
 TemplatePartDos: unbounded fn Lx, Env, TemplatePart -> [Do]
 fn TemplatePartDos lx, env, part = match part:
@@ -59,34 +59,36 @@ fn TemplatePartDos lx, env, part = match part:
     TpPlaceholder x, ?col:
         let v = ValueOf lx, env, x
         let column = match ?col:
-            ? c: XCtor "Some", [[XIndex c]]
+            ? c: XCtor (RefRuntime "std::Some"), [[XIndex c]]
             nil: XNone
-        [[DoExpr (XCall (Helper "place"), [[(XRefMut (XVar "out")), ShownText v, column]])]]
+        [[DoExpr (XCall (HelperRef "place"), [[(XRefMut (XVar "out")), ShownText v, column]])]]
     TpBlock b:
         let v = BlockValue lx, env, b
         if (ValueTy v) == OutUnit: [[DoExpr (Own v)]]
-        else: [[DoExpr (XCall (Helper "place"), [[(XRefMut (XVar "out")), ShownText v, XNone]])]]
+        else: [[DoExpr (XCall (HelperRef "place"), [[(XRefMut (XVar "out")), ShownText v, XNone]])]]
     TpCall n, args, ?parts, ignore:
         let plain = SName(sigils=(AfterFirst n.sigils), path=n.path, span=n.span)
         let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
         let ((?qk2, ignore)) = ResolveValue lx.g, lx.home, plain
-        let callee = match ?qk:
-            ? q: ValuePath lx, q
+        let ?callee = match ?qk:
+            ? q: ? (ValueRef lx, q)
             nil: match ?qk2:
-                ? q: ValuePath lx, q
-                nil: Snake (SNameKey n)
+                ? q: ? (ValueRef lx, q)
+                nil: nil
         let body = match ?parts:
             ? ps:
-                let inner = Fold ps, [[(DoLet (PaMut "out"), (XCall "String::new", [[]]))]], \|acc, p| Append acc, (TemplatePartDos lx, env, p)
-                [[(XRef (XBlock inner, (XCall "Text::from", [[(XVar "out")]])))]]
+                let inner = Fold ps, [[(DoLet (PaMut "out"), (XCall (RefRuntime "std::String::new"), [[]]))]], \|acc, p| Append acc, (TemplatePartDos lx, env, p)
+                [[(XRef (XBlock inner, (XCall (RefRuntime "rt::Text::from"), [[(XVar "out")]])))]]
             nil: [[]]
         let passed = match ?qk:
             ? q: TemplateArgs lx, env, q, args, body
             nil: match ?qk2:
                 ? q: TemplateArgs lx, env, q, args, body
                 nil: Append (Each args, \|a| Argument lx, env, a.value), body
-        let call = XCall callee, passed
-        [[DoExpr (XCall (Helper "place"), [[(XRefMut (XVar "out")), (XRef call), XNone]])]]
+        let call = match ?callee:
+            ? c: XCall c, passed
+            nil: InternalBug "a template call of `{SNameKey n}`, which names no function"
+        [[DoExpr (XCall (HelperRef "place"), [[(XRefMut (XVar "out")), (XRef call), XNone]])]]
 
 # A template call's arguments in place order (pick TK, as the checker reads them): the
 # body, when there is one, fills the last place; each attribute fills the one place any
@@ -100,7 +102,7 @@ fn TemplateArgs lx, env, qk, args, body:
         if (Len body) > 0 and j + 1 == arity: Or body[0], (XUnit)
         else: match ?AttrAt clauses, j, args:
             ? a: Argument lx, env, a.value
-            nil: Refusal "a template call that fills no argument at place {j}"
+            nil: InternalBug "a template call that fills no argument at place {j}"
 
 ?AttrAt: fn [FnClause], Nat, [Arg] -> ?Arg
 fn ?AttrAt clauses, j, args:
@@ -128,25 +130,25 @@ ShownText: fn Vl -> Ex
 fn ShownText v = match ValueTy v:
     OutText: Ref v
     OutChar: XRef (XFormat [[Ref v]])
-    otherwise: XRef (XCall (Helper "show_text"), [[Ref v]])
+    otherwise: XRef (XCall (HelperRef "show_text"), [[Ref v]])
 
 # `given:` (Semantics ch. 4): `let`s, binds that fail on `nil` (or on an `Error`), the
 # guards, and the answer last; a failed guard under `~` is `Prelude.Unmet` with the
 # guard's source text (D11).
 GivenValue: unbounded fn Lx, Env, Block, OutTy, Range -> Vl
 fn GivenValue lx, env, b, t, span:
-    let label = "'g{span.start}"
+    let label = "'g{SpanStem span}"
     let isTry = match t:
         OutRes ignore: True
         otherwise: False
     let n = Len b.stmts
     let ((dos, env2, ?last)) = Fold (Range0 n), (([[]], env, nil)), \|((acc, en, ?lv)), i|
         let s = Or b.stmts[i], dummyStmtL
-        let fail = if isTry: XCtor "Err", [[(XCall "Error::new", [[(XStr "Prelude.Unmet"), (XStr (SourceText lx, s.span))]])]] else: XNone
+        let fail = if isTry: XCtor (RefRuntime "std::Err"), [[(XCall (RefRuntime "rt::Error::new"), [[(XStr "Prelude.Unmet"), (XStr (SourceText lx, s.span))]])]] else: XNone
         match s.kind:
             SBind p, x, nil:
                 let v = ValueOf lx, en, x
-                let po = RustPat lx, p, (InnerTy (TypeAt lx, x.span)), Owned, "g{s.span.start}"
+                let po = RustPat lx, p, (InnerTy (TypeAt lx, x.span)), Owned, "g{SpanStem s.span}"
                 (((Push acc, (GivenBind isTry, po.pa, (Own v), label, (OutTyOf lx, (InnerTy (TypeAt lx, x.span))))), (BindAll en, po.binds), ?lv))
             SRequire c: (((Push acc, (DoIf (XUnary OpNot, (AsBool (ValueOf lx, en, c))), [[DoExpr (XBreak label, fail)]], [[]])), en, ?lv))
             SForbid c: (((Push acc, (DoIf (AsBool (ValueOf lx, en, c)), [[DoExpr (XBreak label, fail)]], [[]])), en, ?lv))
@@ -163,8 +165,8 @@ fn GivenValue lx, env, b, t, span:
 # passed on.
 GivenBind: fn Bool, Pa, Ex, Text, OutTy -> Do
 fn GivenBind isTry, pa, x, label, t:
-    if isTry: DoLet pa, (XMatch x, [[XArm(pat=(PaCtor "Ok", [[PaBind "v"]]), conds=[[]], body=(XVar "v")), XArm(pat=(PaCtor "Err", [[PaBind "e"]]), conds=[[]], body=(XBreak label, (XCtor "Err", [[XVar "e"]])))]], False, t)
-    else: DoLetElse (PaCtor "Some", [[pa]]), x, (XBreak label, XNone)
+    if isTry: DoLet pa, (XMatch x, [[XArm(pat=(PaCtor (RefRuntime "std::Ok"), [[PaBind "v"]]), conds=[[]], body=(XVar "v")), XArm(pat=(PaCtor (RefRuntime "std::Err"), [[PaBind "e"]]), conds=[[]], body=(XBreak label, (XCtor (RefRuntime "std::Err"), [[XVar "e"]])))]], False, t)
+    else: DoLetElse (PaCtor (RefRuntime "std::Some"), [[pa]]), x, (XBreak label, XNone)
 
 # The source a range covers, in the file being lowered.
 SourceText: fn Lx, Range -> Text
@@ -197,7 +199,12 @@ fn UpdStmt lx, env, s = match s.kind:
         let tt = OutTyOf lx, (Peel (TypeAt lx, target.span))
         let rv = ValueOf lx, env, value
         let bin = Head op
-        let next = OpValue lx, bin, (VlPlace cur, Owned, tt), rv, s.span, tt
+        # through a named lens the part's value is the lens's read, so the operator's
+        # operands borrow nothing mutably
+        let now = match ?LensCall lx, target:
+            ? ignore: ValueOf lx, env, target
+            nil: VlPlace cur, Owned, tt
+        let next = OpValue lx, bin, now, rv, s.span, tt
         (([[(Assign lx, env, target, (Own next))]], env))
     SLet p, ignore, x:
         let v = Own (ValueOf lx, env, x)
@@ -215,18 +222,19 @@ fn UpdStmt lx, env, s = match s.kind:
         match c:
             CondExpr x: (([[(DoWhile (AsBool (ValueOf lx, env, x)), inner)]], env))
             CondBind p, x, ?g:
-                let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "w{s.span.start}"
+                let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "w{SpanStem s.span}"
                 let envB = BindAll env, po.binds
                 let ((inner2, ignore)) = UpdStmts lx, envB, body.stmts
                 # The pattern's conditions and the guard (`while ? left <- &fuel -? 1 if c:`)
                 # end the loop as a failed match does: a `break` when they do not hold.
+                # Each in order, since a later one reads what an earlier one bound: a test
+                # that fails leaves the loop, and so does a payload behind an `Rc` that does
+                # not match (`let .. else`).
                 let conds = Append po.conds, (GuardConds lx, envB, ?g)
-                let tests = Fold conds, [[]], \|acc, c| match c:
-                    CcIf t: Push acc, t
-                    otherwise: acc
-                let lets = Fold conds, False, \|f, c| f or IsLetCond c
-                let stop = if (Len tests) == 0: [[]] else: [[(DoIf (XUnary OpNot, (AllOf tests)), [[DoExpr (XVar "break")]], [[]])]]
-                let body2 = if lets: [[RefusalDo "a `while` whose pattern matches through an `Rc`"]] else: Append stop, inner2
+                let stop = Each conds, \|c| match c:
+                    CcIf t: DoIf (XUnary OpNot, t), [[DoExpr XBreakLoop]], [[]]
+                    CcLet pa, y: DoLetElse pa, y, XBreakLoop
+                let body2 = Append stop, inner2
                 (([[(DoWhileLet po.pa, (Own (ValueOf lx, env, x)), body2)]], env))
     SExpr x: match x.kind:
         EIf c, thenB, ?elseB: (([[(UpdIf lx, env, c, thenB, ?elseB)]], env))
@@ -241,23 +249,45 @@ fn UpdStmt lx, env, s = match s.kind:
 # entry, none bind `key` and `_`.
 UpdFor: unbounded fn Lx, Env, ?ForBinders, Expr, Block, Range -> Do
 fn UpdFor lx, env, ?binders, source, body, span:
-    let sty = Peel (TypeAt lx, source.span)
+    # (a non-empty collection is run over as the collection it is)
+    let sty = Collection (Peel (TypeAt lx, source.span))
     match ?RefBinder ?binders:
-        ? n: if IsRefPath source: UpdForRefs lx, env, n, source, body, span, sty else: UpdForValues lx, env, ?binders, source, body, span, sty
-        nil: UpdForValues lx, env, ?binders, source, body, span, sty
+        ? n: if IsRefPath source: UpdForRefs lx, env, (SNameKey n), source, body, span, sty else: UpdForValues lx, env, ?binders, source, body, span, sty
+        # the bare form over a reference path (`for &_.xs:`) rebinds `&_` to the
+        # element, in place (Semantics ch. 5, "Statements")
+        nil: if (IsBareFor ?binders) and (IsRefPath source) and IsArrayOrMap sty: UpdForRefs lx, env, "&_", source, body, span, sty else: UpdForValues lx, env, ?binders, source, body, span, sty
+
+IsBareFor: fn ?ForBinders -> Bool
+fn IsBareFor (? ignore) = False
+fn IsBareFor nil = True
+
+IsArrayOrMap: fn Ty -> Bool
+fn IsArrayOrMap t = match t:
+    TyArray ignore: True
+    TyMap ignore, ignore: True
+    otherwise: False
 
 # `for &s <- &_:` (Semantics ch. 5): a reference per entry of the array the path names, in
-# place; `ix` is its index. A map's entries are not handed by reference here.
-UpdForRefs: unbounded fn Lx, Env, SName, Expr, Block, Range, Ty -> Do
-fn UpdForRefs lx, env, n, source, body, span, sty = match sty:
+# place; `ix` is its index.
+UpdForRefs: unbounded fn Lx, Env, Text, Expr, Block, Range, Ty -> Do
+fn UpdForRefs lx, env, nkey, source, body, span, sty = match sty:
     TyArray v:
-        let keyName = "k{span.start}"
-        let refName = "r{span.start}"
-        let env1 = Bind (Bind (Bind env, "key", (BnLocal (XVar keyName), Owned, OutNat)), "ix", (BnLocal (XVar keyName), Owned, OutNat)), (SNameKey n), (BnLocal (XTarget (XVar refName)), Owned, (OutTyOf lx, v))
+        let keyName = "k{SpanStem span}"
+        let refName = "r{SpanStem span}"
+        let env1 = Bind (Bind (Bind env, "key", (BnLocal (XVar keyName), Owned, OutNat)), "ix", (BnLocal (XVar keyName), Owned, OutNat)), nkey, (BnLocal (XTarget (XVar refName)), Owned, (OutTyOf lx, v))
         let ((dos, ignore)) = UpdStmts lx, env1, body.stmts
-        let head = DoLet (PaBind keyName), (XCall (Helper "nat_of"), [[(XVar "i{span.start}")]])
-        DoFor (PaTuple [[(PaBind "i{span.start}"), (PaBind refName)]]), (XMethod (XMethod (PlaceOf lx, env, source), "iter_mut", [[]]), "enumerate", [[]]), (Append [[head]], dos)
-    otherwise: RefusalDo "a `for` by reference over what is not an array"
+        let head = DoLet (PaBind keyName), (XCall (HelperRef "nat_of"), [[(XVar "i{SpanStem span}")]])
+        DoFor (PaTuple [[(PaBind "i{SpanStem span}"), (PaBind refName)]]), (XMethod (XMethod (PlaceOf lx, env, source), "iter_mut", [[]]), "enumerate", [[]]), (Append [[head]], dos)
+    # a map (ruling FM): each value by reference in key order, the entry's place read
+    # through its key (`at_mut_map`), the keys taken before the first step; `key` is the key
+    TyMap k, v:
+        let keyName = "k{SpanStem span}"
+        let place = PlaceOf lx, env, source
+        let entry = XDeref (XCall (HelperRef "at_mut_map"), [[(XRefMut place), (XRef (XVar keyName))]])
+        let env1 = Bind (Bind env, "key", (BnLocal (XVar keyName), Owned, (OutTyOf lx, k))), nkey, (BnLocal entry, Owned, (OutTyOf lx, v))
+        let ((dos, ignore)) = UpdStmts lx, env1, body.stmts
+        DoFor (PaBind keyName), (XMethod (XCall (HelperRef "keys"), [[(XRef place)]]), "into_iter", [[]]), dos
+    otherwise: InternalBugDo "a `for` by reference over what is no array and no map"
 
 # The one binder of a `for` when it is a reference, `&s`.
 ?RefBinder: fn ?ForBinders -> ?SName
@@ -269,17 +299,19 @@ fn ?RefBinder (? fb) = match fb.?second:
 fn ?RefBinder nil = nil
 
 # A reference path: `&_`, a local `&x`, or a path from one.
-IsRefPath: fn Expr -> Bool
+IsRefPath: unbounded fn Expr -> Bool
 fn IsRefPath e = match e.kind:
     EName n: (HasPrefix n.sigils, "&")
     EField r, ignore, ignore: IsRefPath r
     EIndex r, ignore: IsRefPath r
     EGroup x: IsRefPath x
-    otherwise: False
+    otherwise: match ?LensApplied e:
+        ? ((ignore, argument)): IsRefPath argument
+        nil: False
 
 UpdForValues: unbounded fn Lx, Env, ?ForBinders, Expr, Block, Range, Ty -> Do
 fn UpdForValues lx, env, ?binders, source, body, span, sty:
-    let src = Own (ValueOf lx, env, source)
+    let src = Own (PlainValue (ValueOf lx, env, source))
     let ((kt, vt, isArray)) = match sty:
         TyArray v: ((OutNat, (OutTyOf lx, v), True))
         TyMap k, v: (((OutTyOf lx, k), (OutTyOf lx, v), False))
@@ -288,24 +320,27 @@ fn UpdForValues lx, env, ?binders, source, body, span, sty:
         TyArray v: ((v, (TyCon "Nat", [[]])))
         TyMap k, v: ((v, k))
         otherwise: ((TyErr, TyErr))
-    let keyName = "k{span.start}"
-    let valName = "v{span.start}"
+    let keyName = "k{SpanStem span}"
+    let valName = "v{SpanStem span}"
     let env1 = Bind (Bind env, "key", (BnLocal (XVar keyName), Owned, kt)), "_", (BnLocal (XVar valName), Owned, vt)
     let env2 = if isArray: Bind env1, "ix", (BnLocal (XVar keyName), Owned, kt) else: env1
+    # the bare form rebinds `&_` to the entry (Semantics ch. 5, "Statements"): over a
+    # plain value, the turn's own copy of it
+    let bareName = "b{SpanStem span}"
     let ((binds, env3)) = match ?binders:
-        nil: (([[]], env2))
+        nil: (([[(DoLet (PaTyped (PaMut bareName), vt), (XClone (XVar valName)))]], (Bind env2, "&_", (BnLocal (XVar bareName), Owned, vt))))
         ? fb: match fb.?second:
             nil:
-                let po = RustPat lx, fb.first, vty, Owned, "e{span.start}"
+                let po = RustPat lx, fb.first, vty, Owned, "e{SpanStem span}"
                 (([[(DoLet po.pa, (XClone (XVar valName)))]], (BindAll env2, po.binds)))
             ? second:
-                let pk = RustPat lx, fb.first, kty, Owned, "k{span.start}_"
-                let pv = RustPat lx, second, vty, Owned, "e{span.start}"
+                let pk = RustPat lx, fb.first, kty, Owned, "k{SpanStem span}_"
+                let pv = RustPat lx, second, vty, Owned, "e{SpanStem span}"
                 ((([[(DoLet pk.pa, (XClone (XVar keyName))), (DoLet pv.pa, (XClone (XVar valName)))]]), (BindAll (BindAll env2, pk.binds), pv.binds)))
     let ((dos, ignore)) = UpdStmts lx, env3, body.stmts
     if isArray:
-        let head = DoLet (PaBind keyName), (XCall (Helper "nat_of"), [[(XVar "i{span.start}")]])
-        DoFor (PaTuple [[(PaBind "i{span.start}"), (PaBind valName)]]), (XMethod (XMethod src, "into_iter", [[]]), "enumerate", [[]]), (Append (Push [[]], head), (Append binds, dos))
+        let head = DoLet (PaBind keyName), (XCall (HelperRef "nat_of"), [[(XVar "i{SpanStem span}")]])
+        DoFor (PaTuple [[(PaBind "i{SpanStem span}"), (PaBind valName)]]), (XMethod (XMethod src, "into_iter", [[]]), "enumerate", [[]]), (Append (Push [[]], head), (Append binds, dos))
     else: DoFor (PaTuple [[(PaBind keyName), (PaBind valName)]]), (XMethod src, "into_iter", [[]]), (Append binds, dos)
 
 UpdIf: unbounded fn Lx, Env, Cond, Block, ?Block -> Do
@@ -318,9 +353,12 @@ fn UpdIf lx, env, c, thenB, ?elseB:
             let ((thenDos, ignore)) = UpdStmts lx, env, thenB.stmts
             DoIf (AsBool (ValueOf lx, env, x)), thenDos, elseDos
         CondBind p, x, ignore:
-            let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "u{x.span.start}"
+            let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "u{SpanStem x.span}"
             let ((thenDos, ignore)) = UpdStmts lx, (BindAll env, po.binds), thenB.stmts
-            DoIfLet po.pa, (Own (ValueOf lx, env, x)), thenDos, elseDos
+            # a pattern with conditions (a literal, a payload behind an `Rc`) is a value
+            # `match`'s arm, the `else` its other arm
+            if (Len po.conds) == 0: DoIfLet po.pa, (Own (ValueOf lx, env, x)), thenDos, elseDos
+            else: DoExpr (Own (ArmsValue (Own (ValueOf lx, env, x)), [[XArm(pat=po.pa, conds=po.conds, body=(XBlock thenDos, (XUnit))), XArm(pat=PaWild, conds=[[]], body=(XBlock elseDos, (XUnit)))]], "'u{SpanStem x.span}", OutUnit))
 
 UpdMatch: unbounded fn Lx, Env, Expr, [Arm] -> Do
 fn UpdMatch lx, env, scrut, arms:
@@ -328,19 +366,14 @@ fn UpdMatch lx, env, scrut, arms:
     let sty = TypeAt lx, scrut.span
     let arms3 = Each (Range0 (Len arms)), \|i|
         let arm = Or arms[i], dummyArm
-        let po = ArmPat lx, arm.?pattern, sty, ByRef, "u{scrut.span.start}_{i}"
+        let po = ArmPat lx, arm.?pattern, sty, ByRef, "u{SpanStem scrut.span}_{i}"
         let ((dos, ignore)) = UpdStmts lx, (BindAll env, po.binds), arm.body.stmts
         let guarded = Append po.conds, (GuardConds lx, (BindAll env, po.binds), arm.?guard)
         XArm(pat=po.pa, conds=guarded, body=(XBlock dos, (XUnit)))
     # Arms with conditions (a guard, a literal, a payload behind an `Rc`) are the
     # value-`match`'s arms, a `match` with guards or an if-let chain; others a plain one.
-    if Fold arms3, False, \|f, a| f or (Len a.conds) > 0: DoExpr (Own (ArmsValue (Ref sv), arms3, "'u{scrut.span.start}", OutUnit))
+    if Fold arms3, False, \|f, a| f or (Len a.conds) > 0: DoExpr (Own (ArmsValue (Ref sv), arms3, "'u{SpanStem scrut.span}", OutUnit))
     else: DoMatch (Ref sv), (Each arms3, \|a| ((a.pat, (ArmDos a.body))))
-
-# Conditions joined by `&&`.
-AllOf: fn [Ex] -> Ex
-fn AllOf [[one]] = one
-fn AllOf xs = Fold (Drop xs, 1), (Or xs[0], (XBool True)), \|acc, x| XBin OpAnd, acc, x
 
 ArmDos: fn Ex -> [Do]
 fn ArmDos (XBlock dos, ignore) = dos
@@ -357,23 +390,29 @@ fn PlaceOf lx, env, e = match e.kind:
         ? (BnLocal rs, ignore, ignore): rs
         otherwise: XVar (Snake (SNameKey n))
     EField r, ignore, name:
-        let ((ignore, ignore, f)) = FieldInfo lx, (Peel (PlaceTy lx, r)), name.name
-        XField (PlaceOf lx, env, r), f
+        let rty = Peel (PlaceTy lx, r)
+        let ((ignore, ignore, f)) = FieldInfo lx, rty, name.name
+        FieldOfEx lx, (PlaceOf lx, env, r), rty, f
     EIndex r, k:
-        let rt = OutTyOf lx, (Peel (PlaceTy lx, r))
+        let rt = CollectionOut (OutTyOf lx, (Peel (PlaceTy lx, r)))
         let f = match rt:
-            OutMap ignore, ignore: "at_mut_map"
-            otherwise: "at_mut"
+            OutMap ignore, ignore: HelperRef "at_mut_map"
+            otherwise: HelperRef "at_mut"
         XDeref (XCall f, [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k)]])
     EGroup x: PlaceOf lx, env, x
-    otherwise: Refusal "a reference path this back end does not lower"
+    # a named lens applied: what its reference names (`*acc(&mut this)`)
+    otherwise: match ?LensCall lx, e:
+        ? ((qk, argument)):
+            if LensEndsAtIndex lx, qk, (Len lx.g.defs): InternalBug "the place of a lens that ends at an index, which is set and read whole"
+            else: XTarget (LensCallEx lx, env, qk, argument)
+        nil: InternalBug "a reference path this back end does not lower"
 
 # A reference path's type: the checker's where it recorded one, else from the path's own
 # parts (an index place's element, a field place's declared type).
 PlaceTy: unbounded fn Lx, Expr -> Ty
 fn PlaceTy lx, e = match TypeAt lx, e.span:
     TyErr: match e.kind:
-        EIndex r, ignore: match Peel (PlaceTy lx, r):
+        EIndex r, ignore: match Collection (Peel (PlaceTy lx, r)):
             TyArray el: el
             TyMap ignore, v: v
             otherwise: TyErr
@@ -394,10 +433,179 @@ fn FieldTy lx, rty, name = match rty:
 Assign: unbounded fn Lx, Env, Expr, Ex -> Do
 fn Assign lx, env, target, v = match target.kind:
     EIndex r, k:
-        let rt = OutTyOf lx, (Peel (PlaceTy lx, r))
+        let rt = CollectionOut (OutTyOf lx, (Peel (PlaceTy lx, r)))
         let f = match rt:
-            OutMap ignore, ignore: "set_key"
-            otherwise: "set_index"
+            OutMap ignore, ignore: HelperRef "set_key"
+            otherwise: HelperRef "set_index"
         DoExpr (XCall f, [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k), v]])
     EGroup x: Assign lx, env, x, v
-    otherwise: DoAssign (PlaceOf lx, env, target), v
+    otherwise: match ?LensCall lx, target:
+        # a lens that ends at an array's index: the value first (it may read what the lens
+        # borrows), then the entry written through the reference (`set_part`)
+        ? ((qk, argument)) if LensEndsAtIndex lx, qk, (Len lx.g.defs):
+            let held = "part{SpanStem target.span}"
+            DoExpr (XBlock [[(DoLet (PaBind held), v)]], (XCall (HelperRef "set_part"), [[(LensCallEx lx, env, qk, argument), (XVar held)]]))
+        otherwise: DoAssign (PlaceOf lx, env, target), v
+
+# ---------------------------------------------------------------------------------------
+# Named lenses (Semantics ch. 5, "References and lens paths"; claude/backend.md)
+# ---------------------------------------------------------------------------------------
+
+# A named lens applied, `&Acc r`: the lens's key and its argument.
+?LensCall: unbounded fn Lx, Expr -> ?((Text, Expr))
+fn ?LensCall lx, e = match ?LensApplied e:
+    ? ((n, argument)):
+        let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
+        match ?qk:
+            ? qk: ? ((qk, argument))
+            nil: nil
+    nil: nil
+
+# The reference a lens gives back for an argument: its function over the argument's place
+# (`acc_l(&mut this.regs)`; C++ passes the place itself).
+LensCallEx: unbounded fn Lx, Env, Text, Expr -> Ex
+fn LensCallEx lx, env, qk, argument = XCall (ValueRef lx, qk), [[(XRefMut (PlaceOf lx, env, argument))]]
+
+# A lens's body, in the module that defines it.
+?LensBody: fn Lx, Text -> ?((Text, Expr))
+fn ?LensBody lx, qk = Fold lx.g.defs, nil, \|?found, d| match ?found:
+    ? ignore: ?found
+    nil: if d.qk != qk: nil else: match d.body:
+        DbFn clauses: match clauses[0]:
+            ? c: match c.body:
+                BodyExpr e: ? ((d.home, e))
+                BodyBlock ignore: nil
+            nil: nil
+        otherwise: nil
+
+# Whether a lens's path ends at an array's index, its own or that of the lens its body
+# applies: its part is the entry that may be absent, and its reference an optional one
+# (`part_mut`). `fuel` bounds the walk from lens to lens by the program's definitions.
+LensEndsAtIndex: unbounded fn Lx, Text, Nat -> Bool
+fn LensEndsAtIndex lx, qk, fuel = match fuel -? 1:
+    nil: False
+    ? left: match ?LensBody lx, qk:
+        ? ((home, body)):
+            let there = update lx:
+                &_.home <= home
+            PathEndsAtIndex there, body, left
+        nil: False
+
+PathEndsAtIndex: unbounded fn Lx, Expr, Nat -> Bool
+fn PathEndsAtIndex lx, e, fuel = match e.kind:
+    EGroup x: PathEndsAtIndex lx, x, fuel
+    EIndex ignore, ignore: True
+    otherwise: match ?LensCall lx, e:
+        ? ((qk, ignore)): LensEndsAtIndex lx, qk, fuel
+        nil: False
+
+# A lens's body as the reference it gives back: a path's place borrowed, an array's entry
+# that may be absent (`part_mut`), or the reference of the lens it applies.
+LensReference: unbounded fn Lx, Env, Expr -> Ex
+fn LensReference lx, env, e = match e.kind:
+    EGroup x: LensReference lx, env, x
+    EIndex r, k: XCall (HelperRef "part_mut"), [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k)]]
+    otherwise: match ?LensCall lx, e:
+        ? ((qk, argument)): LensCallEx lx, env, qk, argument
+        nil: XRefMut (PlaceOf lx, env, e)
+
+# A named lens as the target has it, two functions (claude/backend.md, "Named lenses"):
+# the reference, `fn acc_l(vm: &mut Vm) -> &mut Int` (one reference parameter: Rust's
+# lifetime elision is the book's rule; C++ `Int& acc_l(Vm& vm)`), which a set, an
+# accumulation, a `for` by reference and another lens go through; and the read,
+# `fn acc_l_get(vm: &Vm) -> Int`, the lens's body as the expression it also is, which a
+# reference in expression position calls (the translation's `Get`), so that a read
+# borrows nothing mutably.
+LensDefs: unbounded fn Lx, Text, [FnClause], Scheme -> [FnDef]
+fn LensDefs lx, qk, clauses, sc:
+    let lxb = update lx:
+        &_.noCx <= True
+        &_.inDefinition <= qk
+    let ((pts, part)) = SignatureOut lx, qk, sc
+    let whole = Or pts[0], OutUnit
+    let ((parameter, ignore)) = Or (ParamNames lx, clauses, pts)[0], (("whole", True))
+    let binder = match clauses[0]:
+        ? c: match c.params[0]:
+            ? p: PlainBinder lx, p
+            nil: ""
+        nil: ""
+    let env = Bind emptyEnv, binder, (BnLocal (XTarget (XVar parameter)), Owned, whole)
+    let body = match clauses[0]:
+        ? c: match c.body:
+            BodyExpr e: LensReference lxb, env, e
+            BodyBlock ignore: InternalBug "a lens whose body is a block"
+        nil: InternalBug "a lens without a clause"
+    let entry = match part:
+        OutOpt inside: inside
+        other: other
+    let ret = if LensEndsAtIndex lx, qk, (Len lx.g.defs): OutOpt (OutRefMut entry) else: OutRefMut part
+    let read = FnDefOf lx, qk, clauses, sc
+    let reference = FnDef(name=read.name, generics=read.generics, params=[[((parameter, (OutRefMut whole)))]], ret=ret, body=body, doc=read.doc, public=True)
+    # a body that steps through an index is read through the entry in place (`at_shared`)
+    let shared = Bind emptyEnv, binder, (BnLocal (XVar parameter), ByRef, whole)
+    let ?throughIndex = match clauses[0]:
+        ? c: match c.body:
+            BodyExpr e: if StepsThroughIndex e, True: ? (LensReadThrough lxb, shared, e) else: nil
+            BodyBlock ignore: nil
+        nil: nil
+    let value = update read:
+        &_.name <= "{read.name}_get"
+        &_.doc <= ""
+        &_.body <= Or ?throughIndex, read.body
+    [[reference, value]]
+
+# Whether a reference steps through an index below its last step (`&xs[1].acc`,
+# `&Acc &xs[1].cpu`): the entry is a place the path goes on from, which gives up when the
+# array does not hold it, as the block's own path does.
+StepsThroughIndex: unbounded fn Expr, Bool -> Bool
+fn StepsThroughIndex e, last = match e.kind:
+    EGroup x: StepsThroughIndex x, last
+    EField r, ignore, ignore: StepsThroughIndex r, False
+    EIndex r, ignore: if last: StepsThroughIndex r, False else: True
+    otherwise: match ?LensApplied e:
+        ? ((ignore, argument)): StepsThroughIndex argument, False
+        nil: False
+
+# The place a reference path names, borrowed shared, for a read: `PlaceOf` with the entry
+# of an index step read in place (`at_shared`).
+SharedPlaceOf: unbounded fn Lx, Env, Expr -> Ex
+fn SharedPlaceOf lx, env, e = match e.kind:
+    EName n: match env.names[SNameKey n]:
+        ? (BnLocal rs, ignore, ignore): rs
+        otherwise: XVar (Snake (SNameKey n))
+    EField r, ignore, name:
+        let rty = Peel (PlaceTy lx, r)
+        let ((ignore, ignore, f)) = FieldInfo lx, rty, name.name
+        FieldOfEx lx, (SharedPlaceOf lx, env, r), rty, f
+    EIndex r, k:
+        let helper = match CollectionOut (OutTyOf lx, (Peel (PlaceTy lx, r))):
+            OutMap ignore, ignore: HelperRef "at_shared_map"
+            otherwise: HelperRef "at_shared"
+        XDeref (XCall helper, [[(XRef (SharedPlaceOf lx, env, r)), (Argument lx, env, k)]])
+    EGroup x: SharedPlaceOf lx, env, x
+    otherwise: InternalBug "a reference path read through an index that this back end does not lower"
+
+# A reference that steps through an index, read: the part's value by the shared place, an
+# index at its end as `xs[i]`, a lens applied by its read function.
+LensReadThrough: unbounded fn Lx, Env, Expr -> Ex
+fn LensReadThrough lx, env, e = match e.kind:
+    EGroup x: LensReadThrough lx, env, x
+    EIndex r, k: XCall (HelperRef "index"), [[(XRef (SharedPlaceOf lx, env, r)), (Argument lx, env, k)]]
+    otherwise: match ?LensCall lx, e:
+        ? ((qk, argument)): XCall (LensReadRef lx, qk), [[(XRef (SharedPlaceOf lx, env, argument))]]
+        nil: XClone (SharedPlaceOf lx, env, e)
+
+# A lens's read function.
+LensReadRef: fn Lx, Text -> Ref
+fn LensReadRef lx, qk:
+    let owner = match lx.g.vals[qk]:
+        ? v: v.home
+        nil: OwnerOf qk
+    RefIn lx, owner, "{Or lx.rsNames[qk], (Snake (BareName qk))}_get"
+
+# A lens applied in expression position is read: its read function over the argument's
+# value (`acc_l_get(&this)`).
+LensRead: unbounded fn Lx, Env, Text, Expr, OutTy -> Vl
+fn LensRead lx, env, qk, argument, t:
+    let whole = if StepsThroughIndex argument, False: XRef (SharedPlaceOf lx, env, argument) else: Ref (ValueOf lx, env, argument)
+    VlOwned (XCall (LensReadRef lx, qk), [[whole]]), t

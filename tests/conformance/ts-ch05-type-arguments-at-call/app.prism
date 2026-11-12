@@ -1,0 +1,49 @@
+# A generic function whose type parameter is in no parameter's type (`?Nothing: fn Nat ->
+# ?a`, `Empty: fn Nat -> [a]`) is called at the type its call gives (Type System ch. 5):
+# from an annotation, from the caller's own type parameter, inside a lambda, as a function
+# value, and in a let read at one type. Pins the back end's guards for a type argument the
+# call does not give (lower/expr.prism, `TypeArgOf`) and for a type variable left undecided
+# (lower/types.prism). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Nothing: fn Nat -> ?a
+fn ?Nothing n = nil
+
+Empty: fn Nat -> [a]
+fn Empty n = [[]]
+
+type Pair a b = record:
+    left: a
+    right: b
+derive ^Eq, ^Show
+
+Blank: fn Nat -> Pair [a] ?b
+fn Blank n = Pair(left=[[]], right=nil)
+
+Pick: fn ?a, a -> a
+fn Pick ?x, d = match ?x:
+    ? v: v
+    nil: d
+
+# the result-only type is the caller's own type parameter
+Twice: fn a -> [a]
+fn Twice x = Append (Empty 0), [[x, x]]
+
+OrElse: fn a -> a
+fn OrElse d = Pick (?Nothing 0), d
+
+Counted: fn Nat -> Nat
+fn Counted n = Len (Empty n)
+
+@main: @unit
+@main:
+    let ?none = ?Nothing 1
+    let size = Len (Empty 2)
+    let b = Blank 3
+    let ys = Each [[1, 2]], \|n| Len (Empty n)
+    let zs = Each [[1, 2]], ?Nothing
+    let p = Pick (?Nothing 4), "d"
+    let q = Pick (?Nothing 4), 7
+    Ui.Label($text=$"{size} {Len (Twice "a")} {OrElse 3} {Counted 1} {Len ys} {p} {q} {Len b.left} {Len zs}")

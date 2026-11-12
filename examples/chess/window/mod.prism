@@ -1,19 +1,18 @@
-# The window library: the Ui family's elements, the host documents that lay them out, and the
-# window that draws them, over the four tags a drawing World accepts (`Gui.Window`,
-# `Gui.Scene`, `Gui.Metrics`, `Gui.Focus`; Pitch chapters 5 and 6). Layout, hit testing and
-# focus are Prism, in the program's own document (Semantics chapter 9, a thin World; D9).
-# Ported from prism-reflex's examples/gui/window.prism into the books' spelling; the layout
-# is prism-reflex's seed layout.md, unchanged. General on purpose: chess uses the grid, the
-# card games will use rows, layers and turned frames. Chess runs on it under both canvas
-# Worlds, and the GUI benchmark (bench/gui) drives it. Subject to change.
-emit r | Ui.* | Gui.*
-mod Ui
+# The window library of chess the document way: elements of the `Pane` family, the host
+# documents that lay them out, and the window that draws them, over the four tags a drawing
+# World accepts (`Gui.Window`, `Gui.Scene`, `Gui.Metrics`, `Gui.Focus`). Layout, hit testing
+# and focus are Prism, in the program's own document. Copied from the basic chess's window
+# library (`examples/basic-chess/basic_window`, module `BasicWindow`), with its element
+# family named `Pane` and its child module `Window.Panes`: the text participants of this
+# program draw with the prelude's `Ui` family, and a program holds one family of a name.
+# Written by Claude on the claude-document-chess branch; subject to change.
+emit r | Pane.* | Gui.*
+mod Panes
 mod Hosting
 mod Widgets
 mod Layout
 mod Hits
-test mod Tests
-use Window.Ui.*
+use Window.Panes.*
 use Window.Hosting.*
 use Window.Widgets.*
 use Window.Layout.*
@@ -114,16 +113,16 @@ type WindowId = WindowId Text          # the World's handle for a window, answer
 derive ^Eq, ^Show
 
 tag Gui.Window of Element ((WindowId, !WindowInput)):
-    title: $Text                       # live: retitling keeps the window
+    $title: Text                       # live: retitling keeps the window
     size: Extent                       # the first size
 
 tag Gui.Scene of Element unit:
     window: WindowId
-    draw: $[Draw]                      # live: one place, a new picture per change
+    $draw: [Draw]                      # live: one place, a new picture per change
 
 tag Gui.Metrics of Element $Extent:    # the size of a text, a fact about fonts
     text: Text
 
 tag Gui.Focus of Element unit:         # where the platform's focus and input method go
     window: WindowId
-    at: $?Rect
+    $?at: Rect

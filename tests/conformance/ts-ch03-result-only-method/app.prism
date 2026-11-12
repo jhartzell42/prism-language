@@ -1,0 +1,68 @@
+# A trait method whose type is only in its result (`Blank: fn Nat -> a`) is called at the
+# type the call gives (Type System ch. 3): from an argument's type, through a generic
+# function's own bound, in a returned lambda, at a generic record's
+# impl. Pins the back end's guard "a call at a type the checker did not record"
+# (lower/expr.prism, `MethodCall`). Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+trait ^Blank a:
+    Blank: fn Nat -> a
+    Fill: fn a, Nat -> a
+
+impl ^Blank Nat:
+    fn Blank n = n
+    fn Fill x, n = x + n
+
+impl ^Blank Text:
+    fn Blank n = "blank {n}"
+    fn Fill x, n = "{x}{n}"
+
+type Pair a b = record:
+    left: a
+    right: b
+derive ^Eq, ^Show
+
+impl ^Blank (Pair a b) where a: ^Blank, b: ^Blank:
+    fn Blank n = Pair(left=(Blank n), right=(Blank n))
+    fn Fill p, n = Pair(left=(Fill p.left, n), right=p.right)
+
+Fresh: fn Nat -> a where a: ^Blank
+fn Fresh n = Fill (Blank n), 1
+
+Both: fn Nat -> ((a, b)) where a: ^Blank, b: ^Blank
+fn Both n = (((Blank n), (Fresh n)))
+
+Later: fn Nat -> (fn Nat -> a) where a: ^Blank
+fn Later n = \|k| Fill (Blank n), k
+
+AsNat: fn Nat -> Nat
+fn AsNat n = n
+
+AsText: fn Text -> Text
+fn AsText t = t
+
+AsMaybe: fn ?Nat -> Nat
+fn AsMaybe ?o = match ?o:
+    ? v: v + 1
+    nil: 0
+
+AsPair: fn ((Nat, Text)) -> Text
+fn AsPair ((a, b)) = "{a} {b}"
+
+AsPair2: fn Pair Nat Text -> Text
+fn AsPair2 p = "{p.left} {p.right}"
+
+@main: @unit
+@main:
+    let n = AsNat (Blank 1)
+    let t = AsText (Fresh 2)
+    let xs = AsText (Blank 3)
+    let both = AsPair (Both 4)
+    let p = AsPair2 (Blank 5)
+    let Make = Later 6
+    let made = AsNat (Make 1)
+    let ys = Each [[1, 2]], \|k| AsNat (Blank k)
+    Ui.Label($text=$"{n} {t} {xs} {both} {p} {made} {Len ys}")

@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 4 (a `let` names a value; a hold steps in the tick its event fires).
+test an_event_named_again
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1")

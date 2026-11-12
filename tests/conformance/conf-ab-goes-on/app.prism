@@ -1,0 +1,31 @@
+# A tick that aborts (Conformance AB): the World goes on from the state before it, as if
+# the aborted tick's input never came. Here the input is an answer of the wrong type to a
+# button, which no program can take. Written by Claude on the claude-bugs branch; subject
+# to change.
+emit Ui.*
+test mod Tests
+
+@count: @unit
+@count:
+    !inc <- Ui.Button($label=$"Increment")                 # 0
+    $count <- 0 then $count + 1 on !inc
+    Ui.Label($text=$"Count: {$count}")                     # 1
+
+# A job over several ticks (D6: each call a cycle point): an aborted tick between its
+# cycles leaves it where it was, so its cycles and its result come as if the tick had
+# not been. `Run` tail-calls `Twice`, which calls `Inc` twice: four cycles.
+Inc: unbounded fn Nat -> Nat
+fn Inc n = n + 1
+
+Twice: unbounded fn Nat -> Nat
+fn Twice n = Inc (Inc n)
+
+Run: unbounded fn Nat -> Nat
+fn Run n = Twice n
+
+@Working: fn Nat -> @unit
+fn @Working n:
+    !poke <- Ui.Button($label=$"poke")                       # 0
+    !done <- @Run Run, n                                    # 1
+    $shown <- "working" then Show !done
+    Ui.Label($text=$shown)                                   # 2

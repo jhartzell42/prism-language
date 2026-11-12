@@ -1,0 +1,26 @@
+# Derived by hand from Semantics ch. 8 (a request goes out in the tick it fires) and ch. 9 (a forwarded element is the host's own at pos/[p]/0; a forwarding layer adds no tick and nests the path): the log stands at the child's label's key, 1/[0]/0 under the inner host and 0/[1/[0]/0]/0 under both, and its request is in the click's tick.
+test one_host
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1/[0]/0: Test.Log
+
+tick 1
+  in:
+    0: click
+  requested:
+    1/[0]/0: "went"
+
+test two_hosts
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="go")
+    0/[1/[0]/0]/0: Test.Log
+
+tick 1
+  in:
+    0/[0]/0: click
+  requested:
+    0/[1/[0]/0]/0: "went"

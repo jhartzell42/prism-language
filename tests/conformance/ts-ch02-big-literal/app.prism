@@ -16,5 +16,5 @@ fn Minute n = "other"
     let d: Nat = 18446744073709551616
     let e: Int = -9223372036854775809
     let f: Int = 123456789012345678901234567890
-    Ui.Label(text=$"{a} {b} {c} {c + 1} {d} {d * 2} {e} {f}")     # 0
-    Ui.Label(text=$"{Minute 60000000000} {Minute 4165425152}")     # 1
+    Ui.Label($text=$"{a} {b} {c} {c + 1} {d} {d * 2} {e} {f}")     # 0
+    Ui.Label($text=$"{Minute 60000000000} {Minute 4165425152}")     # 1

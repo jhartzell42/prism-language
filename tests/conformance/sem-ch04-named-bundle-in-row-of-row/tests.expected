@@ -1,0 +1,17 @@
+# Derived by hand from Semantics ch. 4 (a `for`'s row is at `[key]`, its lines numbered from 0; a row reads the names of the blocks around it) and ch. 7 (a dynamic's readers move in the tick it moves): every inner row's label reads the one hold, and the click moves all three.
+test inner_rows_follow_the_part
+
+tick 0
+  added:
+    0: Ui.Button(label="more on 1")
+    1/[1]/0/[1]/0: Ui.Label(text="a: 1")
+    1/[1]/0/[2]/0: Ui.Label(text="b: 1")
+    1/[2]/0/[1]/0: Ui.Label(text="c: 1")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1/[1]/0/[1]/0: Ui.Label(text="a: 2")
+    1/[1]/0/[2]/0: Ui.Label(text="b: 2")
+    1/[2]/0/[1]/0: Ui.Label(text="c: 2")

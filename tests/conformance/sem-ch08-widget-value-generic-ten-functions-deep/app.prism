@@ -1,0 +1,52 @@
+# A generic widget taken as a blueprint value in a generic function that the page reaches
+# through nine more generic functions, each handing its own type parameter on (Type System
+# ch. 5: a type variable is decided at each call; ch. 2: a blueprint is an opaque handle
+# and still a value; Semantics ch. 8: "a blueprint builds nothing until a block applies
+# it"). sem-ch08-widget-value-generic-in-function with the call ten definitions deep.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Shown: fn a, Text -> @unit where a: ^Show
+fn @Shown x, label:
+    Ui.Label($text=$"{label}={Show x}")
+
+?Wrapped1: fn a -> ?@unit where a: ^Show
+fn ?Wrapped1 x = ?Pick True, (@Shown x, "n")
+
+?Wrapped2: fn a -> ?@unit where a: ^Show
+fn ?Wrapped2 x = ?Wrapped1 x
+
+?Wrapped3: fn a -> ?@unit where a: ^Show
+fn ?Wrapped3 x = ?Wrapped2 x
+
+?Wrapped4: fn a -> ?@unit where a: ^Show
+fn ?Wrapped4 x = ?Wrapped3 x
+
+?Wrapped5: fn a -> ?@unit where a: ^Show
+fn ?Wrapped5 x = ?Wrapped4 x
+
+?Wrapped6: fn a -> ?@unit where a: ^Show
+fn ?Wrapped6 x = ?Wrapped5 x
+
+?Wrapped7: fn a -> ?@unit where a: ^Show
+fn ?Wrapped7 x = ?Wrapped6 x
+
+?Wrapped8: fn a -> ?@unit where a: ^Show
+fn ?Wrapped8 x = ?Wrapped7 x
+
+?Wrapped9: fn a -> ?@unit where a: ^Show
+fn ?Wrapped9 x = ?Wrapped8 x
+
+?Wrapped10: fn a -> ?@unit where a: ^Show
+fn ?Wrapped10 x = ?Wrapped9 x
+
+@Page: @unit
+@Page:
+    match ?Wrapped10 7:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")

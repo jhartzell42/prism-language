@@ -13,8 +13,8 @@ use Ui.*
 
 @replaced: @unit
 @replaced:
-    !swap <- Ui.Button(label=$"swap")                            # 0
-    !bump <- Ui.Button(label=$"bump")                            # 1
+    !swap <- Ui.Button($label=$"swap")                            # 0
+    !bump <- Ui.Button($label=$"bump")                            # 1
     $gen <- 0 then $gen + 1 on !swap
     let keys = {0: "a", 1: "b"}
     $each <- for k, v <- keys:                                   # 2/[k]
@@ -25,4 +25,4 @@ use Ui.*
         @ $$r
     for k, $v <- $each:                                          # 3/[k]
         $n <- 0 then $n + 1 on !Updated $v
-        Ui.Label(text=$"{k}: {$v} changed {$n}")                 # 3/[k]/0
+        Ui.Label($text=$"{k}: {$v} changed {$n}")                 # 3/[k]/0

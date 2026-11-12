@@ -20,7 +20,7 @@ prism_rtl::drive<MyProgram>(world, {}, patience)
   A program compiled to C++ builds `src/cli.cpp` beside its own sources (its `Makefile`)
   and runs under it when its root is a `@main` (prelude `run_cli`).
 - **`tests/test_cli.cpp`**: the Rust crate's `tests/cli.rs` and the unit tests of its
-  `fs.rs` and `prelude.rs`, test for test (13), over programs written by hand in the
+  `fs.rs` and `prelude.rs`, test for test, over programs written by hand in the
   shape the templates give.
 
 ```

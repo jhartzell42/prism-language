@@ -9,7 +9,7 @@ emit Ui.*
 @host:
     let $names = $ {"a": unit, "b": unit}
     $rows <- for k, ignore <- $names:                             # 0/[k]
-        Ui.Label(text=$"{$count} rows")                           # 0/[k]/0
+        Ui.Label($text=$"{$count} rows")                           # 0/[k]/0
         @ $count
     let $count = Size $rows
-    Ui.Label(text=$"{$count}")                                    # 1
+    Ui.Label($text=$"{$count}")                                    # 1

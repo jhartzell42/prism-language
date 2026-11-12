@@ -1,0 +1,23 @@
+# Derived by hand from Semantics ch. 2 (each literal a whole number of nanoseconds), Type System ch. 2 (printed in its largest whole unit: 1.3ms is 1300us, 0.5us is 500ns, 90s stays 90s) and ch. 7 and 9 (a request goes out in the tick its event fires; the World's answer is that tick's input).
+test a_wake_comes_back
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Time.After
+    2: Ui.Label(text="woke 0")
+    3: Ui.Label(text="250ms 1300us 2min -2s 1h 7ns 500ns 90s")
+  result: 0
+
+tick 1
+  in:
+    0: click
+  requested:
+    1: Wake(after=1500ms, context="nap")
+
+tick 2
+  in:
+    1: Wake(after=1500ms, context="nap")
+  changed:
+    2: Ui.Label(text="woke 1")
+  result: 1

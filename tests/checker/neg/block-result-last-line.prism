@@ -1,0 +1,35 @@
+# A block's result that does not fit is reported at the block's last line, whose value is
+# the result (Semantics ch. 4: a block's value is its last line's), not at its first: a
+# function's body, an `if`'s arm, a widget block's `@` line, and a widget block whose
+# last line leaves a value where the signature says `unit`. The expected text is derived
+# by hand. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+use Ui.*
+
+Count: fn Nat -> Nat
+fn Count n:
+    let twice = n * 2
+    let more = twice + 1
+    "{more}"
+
+Pick: fn Nat -> Text
+fn Pick n:
+    let chosen = if n > 2:
+        let big = n
+        "{big}"
+    else:
+        let small = n
+        small
+    chosen
+
+@Wid: fn Nat -> @Text
+fn @Wid n:
+    Ui.Label($text=$"x")
+    Ui.Label($text=$"y")
+    @ n
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Count 1} {Pick 2}")
+    ignore <- @Wid 3
+    Ui.Button($label=$"z")

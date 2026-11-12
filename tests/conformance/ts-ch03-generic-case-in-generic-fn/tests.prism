@@ -1,0 +1,7 @@
+# The tests of ts-ch03-generic-case-in-generic-fn (Type System chapter 3).
+emit Ui.*
+use App.*
+
+test generic_case_in_generic_fn, @main:
+    build
+        => expect Ui.Label(text="2 True")

@@ -1,0 +1,7 @@
+# The local functions' tests: declarations of sem-ch04-local-functions.
+emit Ui.*
+use App.*
+
+test local_functions, @page:
+    build
+        => expect Ui.Label(text="12 45 6-7")

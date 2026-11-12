@@ -1,8 +1,8 @@
 # `Window.Widgets`, a child module of `Window`.
-# Written by Claude on the claude-self-hosting branch; subject to change.
-emit r | Ui.* | Gui.*
+# Written by Claude on the claude-document-chess branch; subject to change.
+emit r | Pane.* | Gui.*
 use Window.*
-use Window.Ui.*
+use Window.Panes.*
 use Window.Hosting.*
 use Window.Layout.*
 use Window.Hits.*
@@ -45,7 +45,7 @@ fn TextBefore t, n = match ?CursorAt t, n:
 
 @TextInput: fn Text, Text -> @$Text
 fn @TextInput name, initial:
-    !key <- Ui.TextInput(name=name, text=$edit.text, cursor=$edit.cursor)
+    !key <- Pane.TextInput(name=name, $text=$edit.text, $cursor=$edit.cursor)
     $edit <- Edit initial, (Len initial) then Apply $edit, !key
     @ $edit.text
 
@@ -53,7 +53,7 @@ fn @TextInput name, initial:
 # caret at its end; a text box kept in step with a slider.
 @TextField: fn Text, Text, !Text -> @$Text
 fn @TextField name, initial, !set:
-    !key <- Ui.TextInput(name=name, text=$edit.text, cursor=$edit.cursor)
+    !key <- Pane.TextInput(name=name, $text=$edit.text, $cursor=$edit.cursor)
     $edit <- Edit initial, (Len initial) then (AtEnd !set) <| (Apply $edit, !key)
     @ $edit.text
 
@@ -63,37 +63,37 @@ fn AtEnd t = Edit t, (Len t)
 @Grid: fn Nat, @a -> @a
 fn @Grid columns, @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
-    !in <- Ui.Grid(columns=columns, children=$elems)
+    !in <- Pane.Grid(columns=columns, $children=$elems)
     @ r
 
 @VBox: fn @a -> @a
 fn @VBox @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
-    !in <- Ui.VBox(children=$elems)
+    !in <- Pane.VBox($children=$elems)
     @ r
 
 @HBox: fn @a -> @a
 fn @HBox @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
-    !in <- Ui.HBox(children=$elems)
+    !in <- Pane.HBox($children=$elems)
     @ r
 
 @Row: fn Float, @a -> @a
 fn @Row spacing, @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
-    !in <- Ui.Row(spacing=spacing, align=Start, children=$elems)
+    !in <- Pane.Row(spacing=spacing, align=Start, $children=$elems)
     @ r
 
 @Column: fn Float, @a -> @a
 fn @Column spacing, @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
-    !in <- Ui.Column(spacing=spacing, align=Start, children=$elems)
+    !in <- Pane.Column(spacing=spacing, align=Start, $children=$elems)
     @ r
 
 @Layers: fn @a -> @a
 fn @Layers @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
-    !in <- Ui.Layers(children=$elems)
+    !in <- Pane.Layers($children=$elems)
     @ r
 
 @Framed: fn FrameSpec, @a -> @a
@@ -103,14 +103,14 @@ fn @Framed spec, @child = @FramedBy ($ spec), @child
 @FramedBy: fn $FrameSpec, @a -> @a
 fn @FramedBy $spec, @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
-    !in <- Ui.Frame(spec=$spec, children=$elems)
+    !in <- Pane.Frame($spec=$spec, $children=$elems)
     @ r
 
 # its children in a column drawn only while `$shown`; hidden, they keep their state
 @ShowIf: fn $Bool, @a -> @a
 fn @ShowIf $shown, @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
-    !in <- Ui.Shown(shown=$shown, children=$elems)
+    !in <- Pane.Shown($shown=$shown, $children=$elems)
     @ r
 
 # the modifiers: each is one frame around its child
@@ -182,7 +182,7 @@ fn @Laid $e, $outer, chain:
 @Window: fn $Text, Extent, @a -> @a
 fn @Window $title, start, @app:
     ((result, $elems)) <- @HostSome @app, \|p, e| ?Boxed p, e, !route    # 0/[p]
-    ((id, !incoming)) <- Gui.Window(title=$title, size=start)                 # 1
+    ((id, !incoming)) <- Gui.Window($title=$title, size=start)                 # 1
     $size <- start then !Filter (?ResizeOf !incoming)
     $topRoom <- @Distinct (TopRoom (Size $elems), $size)
     $tops <- for p, $e <- $elems:                                        # 2/[p]
@@ -190,11 +190,11 @@ fn @Window $title, start, @app:
         @ $r
     $?focus <- nil then (?Focused !Filter (?FocusChain !hit)) <| ((?NextFocus $placed.hits, $?focus) on !Filter (?TabOf !incoming))
     let $placed = PlaceAt (LayTop $tops, $size), (Point 0.0, 0.0), (Whole $size), $?focus
-    Gui.Scene(window=id, draw=$placed.draw)                              # 3
+    Gui.Scene(window=id, $draw=$placed.draw)                              # 3
     let $?ring = match $?focus:                                          # laid out only when focused
         ? chain: ?FocusRect $placed.hits, (? chain)
         nil: nil
-    Gui.Focus(window=id, at=$?ring)                                      # 4
+    Gui.Focus(window=id, $?at=$?ring)                                      # 4
     let !press = !Filter (?PressOf !incoming)
     let !hit = !Filter (?HitAt $placed.hits, !press)
     let !clicks = !Filter (?ClickAt $placed.hits, !press)

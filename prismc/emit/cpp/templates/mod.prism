@@ -107,8 +107,6 @@ fn CppDeclHeader title, includes, forward = inline_text <cpp>
 
 namespace crate {
 
-using namespace prelude;
-
 {{forward}}
 
 }  // namespace crate
@@ -124,8 +122,6 @@ fn CppTypesHeader title, includes, values = inline_text <cpp>
 {{includes}}
 
 namespace crate {
-
-using namespace prelude;
 
 {{values}}
 
@@ -154,8 +150,6 @@ fn CppModHeader title, includes, protos, outer, classes = inline_text <cpp>
 
 namespace crate {
 
-using namespace prelude;
-
 {{protos}}
 
 {{outer}}
@@ -178,18 +172,16 @@ fn CppGenericHeader title, includes, generic = inline_text <cpp>
 
 namespace crate {
 
-using namespace prelude;
-
 {{generic}}
 
 }  // namespace crate
 </cpp>
 
-# `elem.decl.hpp`: `Elem` and `Answer` declared, and what the prelude says of the program's
+# `elem.decl.hpp`: `Elem` and `Output` declared, and what the prelude says of the program's
 # rows; `elem.types.hpp`: the two classes with their cases.
 CppElemDecl: fn Text, Text, Text -> Text
 fn CppElemDecl includes, forward, rows = inline_text <cpp>
-// The program's `Elem` and `Answer` declared, and the prelude's rows, emitted by prismc
+// The program's `Elem` and `Output` declared, and the prelude's rows, emitted by prismc
 // (claude/backend.md). Edit the Prism sources, not this file.
 #pragma once
 
@@ -197,8 +189,6 @@ fn CppElemDecl includes, forward, rows = inline_text <cpp>
 {{includes}}
 
 namespace crate {
-
-using namespace prelude;
 
 {{forward}}
 
@@ -213,7 +203,7 @@ namespace prelude {
 
 CppElemTypes: fn Text, Text -> Text
 fn CppElemTypes includes, values = inline_text <cpp>
-// The program's `Elem` and `Answer` with their cases, emitted by prismc (claude/backend.md).
+// The program's `Elem` and `Output` with their cases, emitted by prismc (claude/backend.md).
 // Edit the Prism sources, not this file.
 #pragma once
 
@@ -221,8 +211,6 @@ fn CppElemTypes includes, values = inline_text <cpp>
 {{includes}}
 
 namespace crate {
-
-using namespace prelude;
 
 {{values}}
 
@@ -286,30 +274,30 @@ using namespace prelude;
 {{crateDefs}}
 
 /// The Test World with every root a test names, and the compiled `check` blocks.
-TestWorld test_world() {
-    TestWorld world;
+crate::prelude::TestWorld test_world() {
+    crate::prelude::TestWorld world;
     world{{registrations}}{{checks}};
     return world;
 }
 
 /// The test scripts compiled with the program: `test` runs these when given none.
-const std::vector<std::string> SCRIPTS = {
+const ::std::vector<::std::string> SCRIPTS = {
     {{scripts}}
 };
 
 /// The World the root's row asks for: `canvas`, `cli`, or `none` (a row with `Ui` and no
 /// `Gui`, which no World answers).
-const std::string WORLD = "{{world}}";
+const ::std::string WORLD = "{{world}}";
 
 /// The root under the World `world`.
-int run_root(const std::string& world, const std::vector<std::string>& args) {
+int run_root(const ::std::string& world, const ::std::vector<::std::string>& args) {
     {{runRoot}}
 }
 
 }  // namespace crate
 
 int main(int argc, char** argv) {
-    std::vector<std::string> args(argv + 1, argv + argc);
+    ::std::vector<::std::string> args(argv + 1, argv + argc);
     // The canvas World keeps the main thread for its windows (AppKit's rule on macOS) and
     // ticks on a big stack of its own.
     if (auto [world, rest] = crate::prelude::world_option(args, crate::WORLD); world == "canvas" && (args.empty() || args[0] != "test"))
@@ -317,7 +305,7 @@ int main(int argc, char** argv) {
     return crate::prelude::on_big_stack([&] {
         auto [world, rest] = crate::prelude::world_option(args, crate::WORLD);
         if ((!args.empty() && args[0] == "test") || world == "test") {
-            std::vector<std::string> scripts;
+            ::std::vector<::std::string> scripts;
             for (const auto& a : rest)
                 if (a != "test") scripts.push_back(a);
             return crate::prelude::run_scripts(crate::test_world(), scripts, crate::SCRIPTS);
@@ -332,7 +320,7 @@ CppNoRoot: fn Text -> Text
 fn CppNoRoot name = inline_text <cpp>
 static_cast<void>(world);
 static_cast<void>(args);
-std::fprintf(stderr, "{{name}}: the program has no `@main`; `{{name}} test` runs its tests\n");
+::std::fprintf(stderr, "{{name}}: the program has no `@main`; `{{name}} test` runs its tests\n");
 return 2;
 </cpp>
 
@@ -344,10 +332,10 @@ if (world == "canvas") {
     {{canvas}}
 }
 if (world == "none") {
-    std::fprintf(stderr, "the root's row has Ui.* without Gui.*: no World answers Ui elements alone; emit Gui.* for the canvas World, or pass --world\n");
+    ::std::fprintf(stderr, "the root's row has Ui.* without Gui.*: no World answers Ui elements alone; emit Gui.* for the canvas World, or pass --world\n");
     return 2;
 }
-std::fprintf(stderr, "no World %s (cli, canvas, test)\n", world.c_str());
+::std::fprintf(stderr, "no World %s (cli, canvas, test)\n", world.c_str());
 return 2;
 </cpp>
 
@@ -356,14 +344,14 @@ return 2;
 CppCanvasRun: fn Text -> Text
 fn CppCanvasRun program = inline_text <cpp>
 static_cast<void>(args);
-return prism_world_canvas::run<{{program}}>();
+return ::prism_world_canvas::run<{{program}}>();
 </cpp>
 
 # The canvas branch of a root whose row does not ask for it: the program is built without
 # the World.
 CppNoCanvas: fn Text -> Text
 fn CppNoCanvas program = inline_text <cpp>
-std::fprintf(stderr, "the root's row emits no Gui.*, so this program is built without the canvas World\n");
+::std::fprintf(stderr, "the root's row emits no Gui.*, so this program is built without the canvas World\n");
 return 2;
 </cpp>
 

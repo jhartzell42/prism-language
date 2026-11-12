@@ -1,0 +1,22 @@
+# Derived by hand from Semantics ch. 4 ("The label that lags") as moved by rulings ST and VL (round 3): the `rebuild`'s result is structural and changes the tick after its generation is built, and `@Flatten` adopts at the end of that tick, so the label follows two owed ticks after the click (as sem-ch08-viewer).
+test the_label_lags
+
+tick 0
+  added:
+    0: Ui.Button(label="next")
+    1/#0/0: Ui.Label(text="page 1")
+    2: Ui.Label(text="showing 1")
+
+tick 1
+  in:
+    0: click
+  added:
+    1/#1/0: Ui.Label(text="page 2")
+  torn down:
+    1/#0/0: Ui.Label(text="page 1")
+
+tick 2
+
+tick 3
+  changed:
+    2: Ui.Label(text="showing 2")

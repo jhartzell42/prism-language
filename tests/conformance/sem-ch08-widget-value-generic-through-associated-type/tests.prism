@@ -1,0 +1,7 @@
+# The tests of sem-ch08-widget-value-generic-through-associated-type.
+emit Ui.*
+use App.*
+
+test it_builds, @Page:
+    build
+        => expect Ui.Label(text="framed")

@@ -18,9 +18,9 @@ fn ShowResponse (Error(kind=Fs.NotFound, ..)) = "(no such file)"
 fn ShowResponse (Error(..)) = "(cannot read)"
 
 @viewer:
-    !key <- Ui.TextInput(name="path", text=$path)           # 0
+    !key <- Ui.TextInput(name="path", $text=$path)           # 0
     $path <- "/etc/hostname" then Edit $path, !key
     $$~contents <- rebuild $path:                           # 1/#g
         Fs.Contents(path=_)                                 # 1/#g/0
     $~current <- @Flatten $$~contents
-    Ui.Label(text=ShowResponse $~current)                   # 2
+    Ui.Label($text=ShowResponse $~current)                   # 2

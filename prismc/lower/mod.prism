@@ -95,6 +95,14 @@ type Lx = record:
     globals: (Text ==> Bool)
     # Lowering inside a node, which has a read point (`cx`): a host's supplier.
     inNode: Bool
+    # Lowering the body of a function that takes a dynamic or an event whole (a `$` or `!`
+    # below the top of a parameter or its result, Type System ch. 4, Application): its
+    # time values are `Dynamic`s and `Event`s, never samples, and a lift in it maps them.
+    whole: Bool
+    # The functions that take a dynamic or an event whole (`WholeFns`).
+    wholeFns: (Text ==> Bool)
+    # Lowering a plain function's or a job's body, which has no read point (`cx`).
+    noCx: Bool
     # The `while` loops of unbounded functions the shrink check did not clear, by place:
     # each turn of one is a cycle point (D6).
     unshrunk: (Text ==> Bool)
@@ -110,17 +118,77 @@ type Lx = record:
     # Every local binder's id and every use's binder's id, by place (pick UN).
     localIds: (Text ==> Nat)
     useIds: (Text ==> Nat)
+    # each file's uses of locals: where each starts, and the name it was written as (a
+    # frame's or a continuation's captures are the locals the rest reads)
+    useNames: (Nat ==> [((Nat, Text))])
     # Every use of a top-level widget's id, by place, and the ids of the uses a widget
     # being lowered was inlined at, outermost first, as its locals' suffix (`_7_3`).
     callIds: (Text ==> Nat)
     inlined: Text
     subst: (Text ==> Ty)
     csubst: (Text ==> Col)
+    # The expressions whose `Error` value is the failure of the `~T` it meets, with that
+    # type, by place (the typed output's `faults`).
+    faults: (Text ==> Ty)
+    # The expressions whose value, a non-empty collection, stands where its plain
+    # collection is wanted, by place (the typed output's `plains`): each is converted
+    # there (`AsPlain`).
+    plains: (Text ==> Bool)
+    # The widgets that call themselves whose rows are being lowered around this place
+    # (`SharedClauseLine`): by widget, each clause's row, the pattern and conditions that
+    # choose it, and what its `build` is passed.
+    shared: (Text ==> [((Text, Pa, [Cc], [Ex]))])
+    # The widgets being lowered inside their own bodies (`InlineWidget`): a call of one
+    # there, when it is sharable, is a generation of shared rows, its plain result late
+    # (`IsRecursingCall`).
+    recursing: [Text]
+    # The widgets with places the program reads as blueprint values (`ValuedWidgets`): by
+    # widget (and for a generic one the types a reading gives it, `ValuedKey`), each clause's row, the pattern and conditions that choose it, and what its
+    # `build` is passed. The rows are items of the widget's module (`ValuedRows`), built
+    # by the blueprint a value site makes (`WidgetBlueprintValue`).
+    valued: (Text ==> [((Text, Pa, [Cc], [Ex]))])
+    # Every valued widget's readings: each one's key in `valued` (`ValuedKey`) with the
+    # types it gives the widget's type parameters, in the order its rows are numbered
+    # (`ValuedStemAt`). A widget with no type parameter has the one, its own name.
+    valuedAt: (Text ==> [((Text, [((Text, Ty))]))])
+    # The definition whose body is being lowered, "" outside one: a generic function's
+    # instantiations over the program are read by it (`?DefInstances`).
+    inDefinition: Text
 derive ^Eq, ^Show
 
 # A key into the typed tables: the file and the range.
 PlaceKey: fn Lx, Range -> Text
-fn PlaceKey lx, r = "{lx.file}:{r.start}:{r.end}"
+fn PlaceKey lx, r = match r.origin:
+    InSource: "{lx.file}:{SpanKey r}"
+    # (a made span is spelled by what made it, not by a file)
+    MadeBy ignore: "made:{SpanKey r}"
+
+# A span's offsets, as the lowering's own keys and the names it derives from a span spell
+# them: a written span's bare (`12:30`), a made span's after what made it
+# (`root_application_2:2`), so the two never meet (`Origin`).
+SpanKey: fn Range -> Text
+fn SpanKey r = "{SpanStem r}:{r.end}"
+
+# A span's start as a name's stem (an identifier's part): `12`, or `root_application_2`.
+SpanStem: fn Range -> Text
+fn SpanStem r = match r.origin:
+    InSource: "{r.start}"
+    MadeBy m: "{MakingStem m}{r.start}"
+
+# The same, the start in base 32 (`Base32`).
+SpanStem32: unbounded fn Range -> Text
+fn SpanStem32 r = match r.origin:
+    InSource: Base32 r.start
+    MadeBy m: "{MakingStem m}{Base32 r.start}"
+
+MakingStem: fn Making -> Text
+fn MakingStem RootApplication = "root_application_"
+fn MakingStem ConstructorArguments = "constructor_argument_"
+
+# What a made span's text reads as, where the lowering quotes an expression's text.
+MakingText: fn Making -> Text
+fn MakingText RootApplication = "the root widget applied"
+fn MakingText ConstructorArguments = "a constructor's argument"
 
 TypeAt: fn Lx, Range -> Ty
 fn TypeAt lx, r = SubstTy lx, (Or lx.tys[PlaceKey lx, r], TyErr)
@@ -138,6 +206,9 @@ fn SubstTy lx, t = if (Len (Keys lx.subst)) == 0 and (Len (Keys lx.csubst)) == 0
 SubstTyIn: fn Lx, Ty -> Ty
 fn SubstTyIn lx, t = match t:
     TyFlex n: Or lx.subst["'{n}"], t
+    # an inlined generic widget's own parameters (`?InstanceOf`)
+    TyQ n: Or lx.subst[n], t
+    TyRigid n: Or lx.subst[n], t
     TyCon n, args: TyCon n, (Each args, \|a| SubstTyIn lx, a)
     TyFn c, ps, res: TyFn (InstCol lx, c), (Each ps, \|p| SubstTyIn lx, p), (SubstTyIn lx, res)
     TyTuple ts: TyTuple (Each ts, \|a| SubstTyIn lx, a)
@@ -146,7 +217,7 @@ fn SubstTyIn lx, t = match t:
     TySig s, i: TySig s, (SubstTyIn lx, i)
     TyAt i, rw: TyAt (SubstTyIn lx, i), rw
     TyElem rw, o: TyElem rw, (SubstTyIn lx, o)
-    TyAssoc n, a: TyAssoc n, (SubstTyIn lx, a)
+    TyAssoc tr, n, a: TyAssoc tr, n, (SubstTyIn lx, a)
     other: other
 
 InstCol: fn Lx, Col -> Col
@@ -158,7 +229,7 @@ fn IsQuantCol lx, (CQ q) = HasKey lx.quants, q
 fn IsQuantCol lx, c = False
 
 # The tables of the typed program by place.
-TypedTables: fn TProgram -> (((Text ==> Ty), (Text ==> AppNote), (Text ==> Ty), (Text ==> [ImplNote])))
+TypedTables: unbounded fn TProgram -> (((Text ==> Ty), (Text ==> AppNote), (Text ==> Ty), (Text ==> [ImplNote])))
 fn TypedTables tp:
     let tys = Fold tp.exprs, {}, \|m, n| Insert m, (AtKey n.at), n.ty
     let apps = Fold tp.apps, {}, \|m, n| Insert m, (AtKey n.at), n
@@ -190,22 +261,16 @@ fn Snake name:
 LowerChar: fn Text -> Text
 fn LowerChar c = if IsUpper c: Lower c else: c
 
-# A type or constructor name as Rust and C++ write one: the first letter upper, and a `_`
-# after a name the emitted code also reaches bare from the runtimes or the standard
-# library (`runtimeNames`), so a program's `Row` or `Node` is never the runtime's.
+# A type or constructor name as Rust and C++ write one: the first letter upper, and `Self`
+# (Rust's keyword) with a `_`. The emitted code reaches the runtime side's types by path
+# (`rt::Row`) and the standard library's from the root (`::std::rc::Rc`), so a program's
+# `Row` or `Option` is its own (`ts-ch02-runtime-type-names`).
 Camel: fn Text -> Text
 fn Camel name:
     let b = Base name
     let first = Head b
     let fixed = if IsLower first: "{Upper first}{AfterFirst b}" else: b
-    if fixed == "Self" or HasText runtimeNames, fixed: "{fixed}_" else: fixed
-
-# The type, trait and class names the emitted code reaches bare: `prism_rtl`'s, in Rust
-# (`use prism_rtl::*`) and in C++ (`using namespace prism_rtl`), and the Rust names it
-# writes unqualified (`Rc`, `Cell`, `Vec`...). The prelude's own names (`Fault`, `Error`,
-# `Turn`, `Show`, `Text`, `Nat`, `Int`, `Map`, `Array`) are left out: the emitted code
-# names the runtime's by path, or they are the runtime's own.
-let runtimeNames = [["AnswerOf", "BigInt", "Blueprint", "Box", "Built", "Cache", "Case", "Cell", "Clickable", "Collector", "Cursor", "Cx", "Defer", "Demand", "Document", "Done", "DynShow", "Dynamic", "Edit", "Err", "Event", "F64", "Fallible", "Fields", "Finishing", "Fn", "Forward", "FromPod", "Gathered", "Gen", "Handle", "Hold", "Host", "HostOf", "HostRow", "Inert", "IsShared", "IsValue", "Job", "JobRef", "Later", "Link", "List", "Live", "MakeNew", "MutElements", "Nanos", "NeverEvent", "NewSnapshot", "Node", "NodeRef", "None", "Ok", "OkUnit", "Option", "Outcome", "Panic", "Patch", "Path", "Pattern", "Pod", "Port", "Pos", "Printer", "Program", "Rc", "ReadyMap", "ReadyState", "RefCell", "Report", "Request", "Result", "Row", "Rows", "Runtime", "Scope", "Segment", "ShowRef", "ShownText", "Sink", "Slot", "Snapshot", "Some", "Stamped", "String", "Subscribed", "Subscriber", "Supplied", "Supplier", "TestWorld", "Tick", "TickIn", "TickOut", "ToPod", "Unexpected", "Unit", "Vec", "Weak", "World", "XorShift"]]
+    if fixed == "Self": "{fixed}_" else: fixed
 
 # A Prism module's Rust module, by its path from the crate: `Check.Env` is `check::env`
 # (claude/modules-style-pass.md), the root `program`. The C++ target's namespaces and
@@ -240,6 +305,38 @@ fn PreludePath ignore, name = Helper name
 
 Helper: fn Text -> Text
 fn Helper n = "crate::prelude::{n}"
+
+# A widget's node (a Rust struct, a C++ class): the widget's name with `_w` after it, which
+# no program type has (a type's name is UpperCamelCase, with no `_`); its rows' and
+# generations' nodes extend it (`Main_wRow`, `Main_wGen1`).
+NodeName: fn Text -> Text
+fn NodeName qk = "{Camel (BareName qk)}_w"
+
+# A trait as a target names it (a Rust trait, a C++ namespace): a program trait's name with
+# `_t` after it, apart from a type of the same name (`^Loud` and `Loud`), which no type's
+# name (UpperCamelCase, with no `_`) can be; the prelude's by the names its hand-written
+# code gives them (`Num`), beside no program type.
+TraitName: fn Text -> Text
+fn TraitName cls = if HasPrefix cls, "Prelude.": Camel (BareName cls) else: "{Camel (BareName cls)}_t"
+
+# A module's item `name` as the model refers to it from the site (pick UN): resolved to its
+# output module, with its path as `PathIn` writes it.
+RefIn: fn Lx, Text, Text -> Ref
+fn RefIn lx, owner, name = RefItem (Or lx.rsMods[owner], (RustModName owner)), name, (PathIn lx, owner, name)
+
+# A type's name as the emitted code spells it: its own in CamelCase. The prelude's `Turn`
+# (Appendix B: what one cycle of a job gives, `More | Done b`) is `PreludeTurn`: the
+# runtime's `Turn` is the job's own, and the emitted prelude brings both into one module.
+TypeItemName: fn Text -> Text
+fn TypeItemName n = if n == "Prelude.Turn": "PreludeTurn" else: Camel (BareName n)
+
+# An item lowering makes in the module it lowers (a node, a job): bare at the site.
+SiteRef: fn Lx, Text -> Ref
+fn SiteRef lx, name = RefIn lx, lx.site, name
+
+# A function or type of the emitted prelude's hand-written code, from the crate.
+HelperRef: fn Text -> Ref
+fn HelperRef n = RefItem "prelude", n, (Helper n)
 
 # The Rust and C++ name of a top-level value of a module (pick UN): its name in snake
 # case, `_` and the letter of its kind, by its sigil (`?` `o`, `~` `r`, `!` `e`, `$` `d`,
@@ -277,7 +374,9 @@ fn FieldSpell ignore, fname, ft = "{GlobalBase fname}_{SigilOrKind fname, ft}"
 SigilOrKind: fn Text, Ty -> Text
 fn SigilOrKind name, t:
     let marks = MarksOf name
-    if Contains marks, "?": "o"
+    # a named lens (`&Acc` beside a function `Acc`)
+    if Contains marks, "&": "l"
+    else: if Contains marks, "?": "o"
     else: if Contains marks, "~": "r"
     else: if Contains marks, "!": "e"
     else: if Contains marks, "$": "d"
@@ -377,13 +476,13 @@ fn SigilWord "@" = "widget"
 fn SigilWord "&" = "ref"
 fn SigilWord other = "x"
 
-# A top-level value's Rust path from the current module.
-ValuePath: fn Lx, Text -> Text
-fn ValuePath lx, qk:
+# A top-level value as the model refers to it.
+ValueRef: fn Lx, Text -> Ref
+fn ValueRef lx, qk:
     let owner = match lx.g.vals[qk]:
         ? v: v.home
         nil: OwnerOf qk
-    PathIn lx, owner, (Or lx.rsNames[qk], (Snake (BareName qk)))
+    RefIn lx, owner, (Or lx.rsNames[qk], (Snake (BareName qk)))
 
 # The module a qualified key belongs to: everything before its last segment.
 OwnerOf: fn Text -> Text
@@ -394,3 +493,14 @@ fn OwnerOf qk:
 # A tag's Rust struct: its family and name run together (`Ui.Button` is `UiButton`).
 TagStruct: fn Text -> Text
 fn TagStruct tn = Concat (Each (SplitOn tn, "."), \|p| Camel p)
+
+# A tag's level struct (`Level`), named apart from every program type: its family and name
+# run together with `_g` after them (`InkRect_g`), which no type's name (UpperCamelCase,
+# with no `_`) can be; the prelude's tags by the names its hand-written code gives them.
+# The variants of a row's enum and of `Output` keep `TagStruct`, inside their enum.
+# An element tag's description struct (`DescDefOf`).
+DescStructOf: fn TagInfo -> Text
+fn DescStructOf tg = "{TagStruct tg.name}_desc"
+
+TagStructOf: fn TagInfo -> Text
+fn TagStructOf tg = if tg.home == "Prelude": TagStruct tg.name else: "{TagStruct tg.name}_g"

@@ -8,6 +8,7 @@
 #include <variant>
 
 #include "prism_rtl/doc.hpp"
+#include "prism_rtl/prelude.hpp"
 #include "prism_rtl/print.hpp"
 #include "prism_rtl/read.hpp"
 #include "prism_rtl/scene.hpp"
@@ -75,7 +76,7 @@ struct Target {
 };
 
 struct Delivery {
-    enum Kind { Send, Click, Element, Answer } kind;
+    enum Kind { Send, Click, Element, Output } kind;
     Target target;
     Pod value;
     /// `click element path`, the path as printed.
@@ -315,7 +316,7 @@ Expected<Step, Err> parse_step(std::size_t n, std::string_view text) {
         } else if (word == "answer") {
             auto p = pattern(n, rest);
             if (!p) return unexpected(p.error());
-            deliveries.push_back(Delivery{Delivery::Answer, {}, {}, {}, *p});
+            deliveries.push_back(Delivery{Delivery::Output, {}, {}, {}, *p});
         } else if (word == "send") {
             std::optional<std::string> v;
             if (i + 1 < parts.size()) {
@@ -509,12 +510,18 @@ struct Run {
     std::map<Pod, Pod> ready;
     std::size_t next_tick = 0;
     bool pending = false;
+    /// The prelude's policy: the answers `Prelude.Unwrap` and `Prelude.Exceptions` are
+    /// owed, and what is poisoned.
+    Prelude prelude;
     std::optional<Pod> last_result;
     /// Each `Gui.Window` place's id, as its first value answered it.
     std::map<Path, Pod> windows;
     std::optional<XorShift> rng;
     /// Each `Cards.Deck` place's shuffle, the next card, and its unanswered requests.
     std::map<Path, Deck> decks;
+    /// Every tick that closed, its input and the ready state it ran under, the build's
+    /// first: replayed onto a new build after a tick that aborts (Conformance AB).
+    std::vector<std::pair<TickIn, std::map<Pod, Pod>>> log;
 
     Expected<Unit, Err> step(const Step& step, std::string& out, std::vector<std::string>& failures, const std::string& test) {
         for (const auto& [e, v] : step.withs) ready.insert_or_assign(e, v);
@@ -547,7 +554,7 @@ struct Run {
             for (const Delivery& d : step.kind.deliveries) {
                 Expected<std::pair<Path, Pod>, Err> pv = unexpected(Err());
                 switch (d.kind) {
-                case Delivery::Answer: pv = deal(d.pattern); break;
+                case Delivery::Output: pv = deal(d.pattern); break;
                 case Delivery::Element: pv = click_element(d.element); break;
                 case Delivery::Send: {
                     auto p = place(d.target);
@@ -569,9 +576,7 @@ struct Run {
                 input.answers.emplace_back(path, value);
             }
             std::stable_sort(input.answers.begin(), input.answers.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-            std::vector<std::string> shown;
-            for (const auto& [p, v] : input.answers) shown.push_back(p.to_string() + ": " + v.to_string());
-            ticked = one_tick(std::move(input), shown, out);
+            ticked = one_tick(std::move(input), {}, out);
             break;
         }
         }
@@ -656,10 +661,19 @@ struct Run {
         return std::pair{matching[0], Pod::choice("Press", {point})};
     }
 
-    /// Run one tick, print it, and lend the program its compact round.
-    Ticked one_tick(TickIn input, std::span<const std::string> shown, std::string& out) {
+    /// Run one tick, print it, and lend the program its compact round. The tick's answers
+    /// are `input`'s and the ones the prelude's policy owes, in path order, less those to
+    /// a poisoned place; `pushed` is what `in:` shows before them.
+    Ticked one_tick(TickIn input, std::span<const std::string> pushed, std::string& out) {
         Document before = doc;
+        std::vector<std::pair<Path, Pod>> owed = prelude.take_outputs();
+        input.answers.insert(input.answers.end(), owed.begin(), owed.end());
+        std::erase_if(input.answers, [&](const auto& a) { return prelude.is_poisoned(a.first); });
+        std::stable_sort(input.answers.begin(), input.answers.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        std::vector<std::string> shown(pushed.begin(), pushed.end());
+        for (const auto& [p, v] : input.answers) shown.push_back(p.to_string() + ": " + v.to_string());
         TestReady r(ready);
+        std::pair<TickIn, std::map<Pod, Pod>> logged{input, ready};
         Result<TickOut> result = unexpected(Fault("", ""));
         if (program) {
             result = program->tick(input, r);
@@ -674,15 +688,43 @@ struct Run {
         ++next_tick;
         if (result) {
             const TickOut& o = *result;
+            // The prelude's tags, as a World performs them: the requests against the
+            // document as the tick opened and the tick's newborns.
+            prelude.track(o.patch);
+            for (const auto& r : o.requests) {
+                if (prelude.is_poisoned(r.path)) continue;
+                const Pod* element = element_of(before, o, r.path);
+                const std::string* tag = element ? element->tag() : nullptr;
+                if (tag && *tag == "Prelude.Unwrap") prelude.unwrap(r.path, r.value);
+            }
             doc.apply(o.patch);
-            pending = o.pending;
-            if (o.result && o.result->kind == Outcome::Kind::Value) last_result = o.result->pod;
+            pending = o.pending || prelude.owes();
+            for (const auto& outcome : o.results)
+                if (outcome.kind == Outcome::Kind::Value) last_result = outcome.pod;
             observe(o);
             if (program) program->compact();
+            log.push_back(std::move(logged));
         } else {
-            program.reset();
+            // A tick that aborts leaves the state before it (Conformance AB): the program
+            // built again and the ticks that closed run again, their output already had.
+            prelude.give_back(std::move(owed));
+            program = replay();
         }
         return Ticked{std::move(result), std::move(before)};
+    }
+
+    /// The program as the last tick that closed left it: built, then every logged tick
+    /// run again under the ready state it ran under; null when there is none.
+    std::unique_ptr<Program> replay() const {
+        if (log.empty()) return nullptr;
+        auto built = (*builder)(args, TestReady(log.front().second));
+        if (!built) return nullptr;
+        std::unique_ptr<Program> p = std::move(built.value().first);
+        for (std::size_t i = 1; i < log.size(); ++i) {
+            if (!p->tick(log[i].first, TestReady(log[i].second))) return nullptr;
+            p->compact();
+        }
+        return p;
     }
 
     /// What the policies learn from a tick: windows' ids, decks' shuffles and requests.
@@ -720,7 +762,11 @@ struct Run {
                 continue;
             }
             const TickOut& o = *t.out;
-            auto fired = [&](const Pattern& p) { return o.result && o.result->kind == Outcome::Kind::Fired && p.matches(o.result->pod); };
+            auto fired = [&](const Pattern& p) {
+                for (const auto& outcome : o.results)
+                    if (outcome.kind == Outcome::Kind::Fired && p.matches(outcome.pod)) return true;
+                return false;
+            };
             auto requested = [&](const Pattern& p, const Pattern& v) {
                 for (const auto& r : o.requests) {
                     const Pod* place = doc.get(r.path);
@@ -819,9 +865,9 @@ void print_tick(std::string& out, std::size_t n, std::span<const std::string> in
     std::vector<std::string> rs;
     for (const auto& r : o.requests) rs.push_back(r.to_string());
     section("requested", rs);
-    if (o.result) {
-        if (o.result->kind == Outcome::Kind::Value) out += "  result: " + o.result->pod.to_string() + "\n";
-        else out += "  result: fired: " + o.result->pod.to_string() + "\n";
+    for (const auto& outcome : o.results) {
+        if (outcome.kind == Outcome::Kind::Value) out += "  result: " + outcome.pod.to_string() + "\n";
+        else out += "  result: fired: " + outcome.pod.to_string() + "\n";
     }
 }
 
@@ -855,7 +901,7 @@ Report TestWorld::run(std::string_view script) const {
                 failures.push_back("test " + t->name + ": no program named @" + t->program);
                 continue;
             }
-            Run run{&b->second, t->args, nullptr, Document(), {}, 0, false, std::nullopt, {}, std::nullopt, {}};
+            Run run{&b->second, t->args, nullptr, Document(), {}, 0, false, std::nullopt, {}, std::nullopt, {}, {}};
             if (t->seed) run.rng.emplace(*t->seed);
             for (const Step& step : t->steps) {
                 auto r = run.step(step, out, failures, t->name);

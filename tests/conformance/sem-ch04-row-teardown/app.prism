@@ -1,0 +1,21 @@
+# A `for` row whose key leaves (Semantics ch. 4, "`for`": a built block is kept "as long
+# as its key is present"; ch. 9: a row "ends at the end of the tick its key leaves, having
+# fired in that tick (R8)", and "a request fired by a place torn down in the same tick is
+# still performed"; ch. 4, "`rebuild`": "its holds die with it ... each event of its own
+# becomes `never`"). Each row asks the World on the block's `!ring` and gives its key on
+# it; after the tick row 2 leaves, only row 1 asks and only row 1 is in the gathered
+# event. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Test.*
+test mod Tests
+
+@rows: @unit
+@rows:
+    !drop <- Ui.Button($label=$"drop")                           # 0
+    !ring <- Ui.Button($label=$"ring")                           # 1
+    $names <- {1: "one", 2: "two"} then Remove $names, 2 on !drop
+    !rang <- for k, $name <- $names:                            # 2/[k]
+        Ui.Label($text=$name)                                     # 2/[k]/0
+        Test.Log(!requests="ring {k}" on !ring)                  # 2/[k]/1
+        @ k on !ring
+    $heard <- 0 then $heard + (Len (Values !rang))
+    Ui.Label($text=$"heard {$heard}")                             # 3

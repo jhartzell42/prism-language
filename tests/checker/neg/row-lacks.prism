@@ -9,7 +9,7 @@ fn @Both @x, @y:
 
 @one: @unit
 @one:
-    Ui.Label(text=$"one")
+    Ui.Label($text=$"one")
 
 @main: @unit
 @main:

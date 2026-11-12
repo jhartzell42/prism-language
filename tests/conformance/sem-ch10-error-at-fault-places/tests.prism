@@ -1,0 +1,7 @@
+# The tests of sem-ch10-error-at-fault-places (Semantics chapter 10).
+emit Ui.*
+use App.*
+
+test error_is_the_failure, @main:
+    build
+        => expect Ui.Label(text="!c !a 1!el !field")

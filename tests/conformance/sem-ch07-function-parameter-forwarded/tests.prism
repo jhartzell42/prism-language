@@ -1,0 +1,9 @@
+# The forwarded function parameter's tests: declarations of sem-ch07-function-parameter-forwarded.
+emit Ui.*
+use App.*
+
+test a_parameter_handed_on_is_read_by_its_use, @host:
+    build
+        => expect Ui.Label(text="0")
+    click at 0
+        => expect Ui.Label(text="2")

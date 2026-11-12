@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 5, "Statements" (the bare form, `for &_.xs:`, rebinds `&_` to the element): each count is bumped in place, `&_` is the shelf again after the loop, and over a plain array `&_` is the entry of the turn.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="11 12 7 7")

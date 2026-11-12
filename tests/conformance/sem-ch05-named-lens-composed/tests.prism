@@ -1,0 +1,8 @@
+# The tests of sem-ch05-named-lens-composed.
+emit r
+use App.*
+
+check lens_over_a_lens:
+    Composed boot => Vm(pc=4, regs=Regs(acc=11, x=11), steps=2)
+    ByName boot => Vm(pc=4, regs=Regs(acc=51, x=25), steps=2)
+    boot => Vm(pc=4, regs=Regs(acc=7, x=5), steps=2)

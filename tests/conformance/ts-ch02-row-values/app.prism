@@ -26,7 +26,7 @@ tag Ink.Fill of Ink:
 # a sheet the World is shown, its marks live
 tag Pad.Sheet of Element unit:
     title: Text
-    marks: $[Ink]
+    $marks: [Ink]
 
 Width: fn Ink -> Nat
 fn Width i = match i:
@@ -45,8 +45,8 @@ fn Lines i = match i:
 # a document's element: each `$` field its value in the tick (the checker's WL)
 TextOf: fn Elem Ui.* -> Text
 fn TextOf e = match e:
-    Ui.Label(text=$t): $t
-    Ui.Button(label=l): l
+    Ui.Label($text=$t): $t
+    Ui.Button($label=l): l
     Ui.*: ""
 
 # a live element: its tag and plain fields are its identity (a `$` field binds its
@@ -69,9 +69,9 @@ fn LineFrom n = Ink.Line(from=n, to=9)
 
 @sketch: @unit
 @sketch:
-    !add <- Ui.Button(label=$"Add")                                    # 0
+    !add <- Ui.Button($label=$"Add")                                    # 0
     $n <- 1 then $n + 1 on !add
     let $marks = MarksFor $n
-    Pad.Sheet(title="sketch", marks=$marks)                            # 1
-    Ui.Label(text=$"{Total $marks} {Lines (Around $marks)} {$marks == [[]]}")    # 2
-    Ui.Label(text=Show (LineFrom $n))                                  # 3
+    Pad.Sheet(title="sketch", $marks=$marks)                            # 1
+    Ui.Label($text=$"{Total $marks} {Lines (Around $marks)} {$marks == [[]]}")    # 2
+    Ui.Label($text=Show (LineFrom $n))                                  # 3

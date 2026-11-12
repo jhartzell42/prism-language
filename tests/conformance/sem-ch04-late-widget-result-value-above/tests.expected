@@ -1,0 +1,17 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": any line may use any name the block binds; the order of a group's lines decides positions and nothing else), ch. 8 (`<-` builds the child and binds its result; a widget application is transparent) and ruling TC (places counted as built: the loud arm builds place 1, so the widget's own label is 2 and the last label 3; the soft arm builds none, so they are 1 and 2). Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="tile 10")
+    1: Ui.Label(text="x")
+    2: Ui.Label(text="measured")
+    3: Ui.Label(text="below 10")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="tile 20")
+    1: Ui.Label(text="measured")
+    2: Ui.Label(text="below 20")

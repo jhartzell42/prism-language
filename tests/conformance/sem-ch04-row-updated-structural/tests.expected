@@ -1,0 +1,18 @@
+# Derived by hand from Semantics ch. 4 (a row reads its block's names, its block's dynamics among them) and the dynamic law as ruled for structural dynamics (round 3 ST): the gathered `$lens` after m is the rows' results as m-1's construction left them, published at the first firing of the owed tick n+1 when they changed at n, so `!Updated $lens` fires at tick 2 with both rows, in the row of the other `for` as in the block.
+test a_row_hears_the_blocks_gathered_dynamic
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/[1]/0: Ui.Label(text="one")
+    2/["x"]/0: Ui.Label(text="x heard 0, 0 rows")
+
+tick 1
+  in:
+    0: click
+  added:
+    1/[2]/0: Ui.Label(text="three")
+
+tick 2
+  changed:
+    2/["x"]/0: Ui.Label(text="x heard 1, 2 rows")

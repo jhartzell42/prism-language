@@ -1,0 +1,19 @@
+# A row's `!Updated` over its block's structural dynamic (prismc/README.md, SU): a `for`'s
+# gathered `$(K ==> T)` is published in the tick after the rows behind it changed (round 3
+# ST), and a row of another `for` of the block hears it there as the block itself does.
+# Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@gathered: @unit
+@gathered:
+    !add <- Ui.Button($label=$"add")                                          # 0
+    $names <- {1: "one"} then Insert $names, 2, "three" on !add
+    $lens <- for k, $name <- $names:                                         # 1/[k]
+        Ui.Label($text=$name)                                                 # 1/[k]/0
+        @ Len $name
+    for j, ignore <- $ {"x": unit}:                                          # 2/[j]
+        $heard <- 0 then $heard + 1 on (!Updated $lens)
+        $rows <- 0 then Size (!Updated $lens)
+        Ui.Label($text=$"{j} heard {$heard}, {$rows} rows")                   # 2/[j]/0

@@ -1,0 +1,42 @@
+# Derived by hand from Semantics ch. 4 ("`for`": the gathered event fires with exactly the rows that fired; a row lives while its key is present), ch. 9 (R8: a row ends at the end of the tick its key leaves, having fired in that tick; a request fired by a place torn down in the same tick is still performed) and ch. 4 ("`rebuild`": the events of what left become `never`): in the tick the key leaves both rows ring, afterwards only row 1.
+test a_departed_row_is_silent
+
+tick 0
+  added:
+    0: Ui.Button(label="drop")
+    1: Ui.Button(label="ring")
+    2/[1]/0: Ui.Label(text="one")
+    2/[1]/1: Test.Log
+    2/[2]/0: Ui.Label(text="two")
+    2/[2]/1: Test.Log
+    3: Ui.Label(text="heard 0")
+
+tick 1
+  in:
+    1: click
+  changed:
+    3: Ui.Label(text="heard 2")
+  requested:
+    2/[1]/1: "ring 1"
+    2/[2]/1: "ring 2"
+
+tick 2
+  in:
+    0: click
+    1: click
+  changed:
+    3: Ui.Label(text="heard 4")
+  torn down:
+    2/[2]/0: Ui.Label(text="two")
+    2/[2]/1: Test.Log
+  requested:
+    2/[1]/1: "ring 1"
+    2/[2]/1: "ring 2"
+
+tick 3
+  in:
+    1: click
+  changed:
+    3: Ui.Label(text="heard 5")
+  requested:
+    2/[1]/1: "ring 1"

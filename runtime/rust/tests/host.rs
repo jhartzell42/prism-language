@@ -8,25 +8,25 @@ use std::rc::{Rc, Weak};
 use prism_rtl::*;
 
 #[derive(Clone)]
-struct Answer;
+struct Output;
 
-impl AnswerOf<Pod> for Answer {
-    fn decode(_: &Pod, _: &Pod) -> Result<Answer, Fault> {
-        Ok(Answer)
+impl OutputOf<Pod> for Output {
+    fn decode(_: &Pod, _: &Pod) -> Result<Output, Fault> {
+        Ok(Output)
     }
 }
 
 /// One generation: the host at place 0, its rows, and its child's one place's entry.
 struct Generation {
-    host: Rc<Host<Pod, Answer, Generation>>,
-    rows: Rows<Pod, Answer>,
+    host: Rc<Host<Pod, Output, Generation>>,
+    rows: Rows<Pod, Output>,
     place: Rc<Entry<Pod>>,
 }
 
 impl Generation {
     fn build(path: Path, cx: &mut Cx) -> Result<Rc<Generation>, Fault> {
-        let rows: Rows<Pod, Answer> = Rc::new(std::cell::RefCell::new(Map::new()));
-        let supplier: Supplier<Pod, Answer> = Rc::new(|_: &Path, _: &Live<Pod>| plain_blueprint(Answer));
+        let rows: Rows<Pod, Output> = Rc::new(std::cell::RefCell::new(Map::new()));
+        let supplier: Supplier<Pod, Output> = Rc::new(|_: &Path, _: &Element<Pod>| plain_blueprint(Output));
         let host = Host::new(path.at(0), rows.clone(), supplier, None, Generation::deliver);
         // The child's one place asks its first value at its build: the host builds its row.
         let place = Entry::new("the child's place 0");
@@ -37,7 +37,7 @@ impl Generation {
         Ok(node)
     }
 
-    fn deliver(_: &Rc<Generation>, _: &Path, _: &Answer, _: &mut Cx) -> Done {
+    fn deliver(_: &Rc<Generation>, _: &Path, _: &Output, _: &mut Cx) -> Done {
         Ok(())
     }
 }
@@ -60,8 +60,8 @@ fn a_host_torn_down_with_its_generation_is_freed_with_its_rows() {
     let mut cx = rt.build(&ready);
     let generation = Generation::build(Path::root().at(0).child(Segment::Gen(0)), &mut cx).unwrap();
     rt.close(cx).unwrap();
-    let host: Weak<Host<Pod, Answer, Generation>> = Rc::downgrade(&generation.host);
-    let row: Weak<HostRow<Pod, Answer>> = Rc::downgrade(generation.rows.borrow().values().next().unwrap());
+    let host: Weak<Host<Pod, Output, Generation>> = Rc::downgrade(&generation.host);
+    let row: Weak<HostRow<Pod, Output>> = Rc::downgrade(generation.rows.borrow().values().next().unwrap());
     let gen_weak = Rc::downgrade(&generation);
 
     // The `rebuild` swaps in its next generation: the old one leaves and is dropped.

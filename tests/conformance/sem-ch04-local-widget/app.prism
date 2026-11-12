@@ -1,0 +1,17 @@
+# A widget defined inside a widget block, `@line:` and its block, in the same form as at
+# the top of a file (Semantics ch. 3: `fn` "defines a function in the block, in the same
+# form as at the top of a file", and a widget definition is the `@` form of one; ch. 4: a
+# widget block's names are one binding group). It reads the block's `n` and is built by
+# each bare `@line`. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@page: @unit
+@page:
+    let n = 7
+    @line:
+        Ui.Label($text=$"line {n}")
+    @line                                                        # 0
+    @line                                                        # 1
+    Ui.Label($text=$"end")                                       # 2

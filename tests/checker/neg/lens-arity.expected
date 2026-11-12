@@ -2,4 +2,8 @@ tests/checker/neg/lens-arity.prism:6: error[lens-arity]: a lens takes one refere
     &Pick: fn &Regs, &Regs -> &Int
     ^^^^^
   fix: take the second part as a plain value
-1 error
+tests/checker/neg/lens-arity.prism:6: error[no-definition]: `&Pick` has a signature line and no definition
+    &Pick: fn &Regs, &Regs -> &Int
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: define it under its signature, `fn &Pick ... = ...`, or delete the line
+2 errors

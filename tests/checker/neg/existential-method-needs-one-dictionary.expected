@@ -1,0 +1,5 @@
+tests/checker/neg/existential-method-needs-one-dictionary.prism:27: error[existential-method]: `^Counted` is asked of the value packed in `any ^Counted` here, and its method `Total` cannot be asked of one: it takes the trait's type inside `[a]`, and a collection of packed values has no one dictionary
+        Ui.Label($text=$"{Doubled (Hide 3)}")
+                          ^^^^^^^^^^^^^^^^
+  fix: ask it of a value whose type is known, before `any` packs it
+1 error

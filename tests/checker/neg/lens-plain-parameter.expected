@@ -1,0 +1,5 @@
+tests/checker/neg/lens-plain-parameter.prism:13: error[lens-arity]: a lens takes one reference and nothing else, and `&Register` takes 2 parameters
+    &Register: fn &Vm, Bool -> &Int
+    ^^^^^^^^^
+  fix: write a lens for each part, or the path in the `update` block
+1 error

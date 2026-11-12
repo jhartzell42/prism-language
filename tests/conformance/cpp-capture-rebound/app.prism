@@ -22,4 +22,4 @@ fn Count ((n, label)):
 fn @Counted n:
     !done <- @Run Count, ((n, "up"))
     $shown <- "counting" then !done
-    Ui.Label(text=$shown)                                   # 0
+    Ui.Label($text=$shown)                                   # 0

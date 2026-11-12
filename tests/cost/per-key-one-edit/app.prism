@@ -27,11 +27,11 @@ fn Costly v = update v:
 
 @rows: @unit
 @rows:
-    !edit <- Ui.Button(label=$"edit")                        # 0
+    !edit <- Ui.Button($label=$"edit")                        # 0
     $i <- 0 then $i + 1 on !edit
     $m <- (Big 2000) then (Insert $m, $i, $i + 5000) on !edit
     $each <- @PerKey $m
     for k, $v <- $each:                                      # 1/[k]
         $c <- 0 then (Costly $v) on !Updated $v
         @ unit
-    Ui.Label(text=$"{Size $m}")                              # 2
+    Ui.Label($text=$"{Size $m}")                              # 2

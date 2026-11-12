@@ -1,0 +1,7 @@
+# Derived by hand: the impl shows the owner and each item followed by a dot, a text item
+# quoted as `Show` quotes text; an array shows its elements in `[[..]]`.
+test own_show_generic
+
+tick 0
+  added:
+    0: Ui.Label(text="ann: 1.2. [[bo: \"x\".]]")

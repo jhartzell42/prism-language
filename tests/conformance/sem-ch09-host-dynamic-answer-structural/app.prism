@@ -1,0 +1,27 @@
+# A supplier's dynamic answer that reads a structural dynamic of the host, a `for`'s
+# gathered result (Semantics ch. 9, "How a supplier answers": the supplier's blueprint
+# "can read anything the host's block binds"; ch. 7, "Structural dynamics", round 3 ST:
+# the gathered dynamic moves in the tick after a row is born; round 3 DY: a dynamic
+# answer's change is a push delivered the next tick). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Gauge of Element $Nat:
+    name: Text
+
+@child: @unit
+@child:
+    $n <- Pad.Gauge(name="rows")
+    Ui.Label($text=$"{$n} rows")
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")
+    $names <- {1: "one"} then Insert $names, 2, "two" on !add
+    $lens <- for k, $name <- $names:
+        Ui.Label($text=$name)
+        @ Len $name
+    ignore <- @HostDocument @child, \|p, e| match e:
+        Pad.Gauge(..): @ Size $lens
+        otherwise: @Element e

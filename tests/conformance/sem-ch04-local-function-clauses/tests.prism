@@ -1,0 +1,7 @@
+# The clauses' tests: declarations of sem-ch04-local-function-clauses.
+emit Ui.*
+use App.*
+
+test clauses_in_order, @page:
+    build
+        => expect Ui.Label(text="gold silver place 5 none 3")

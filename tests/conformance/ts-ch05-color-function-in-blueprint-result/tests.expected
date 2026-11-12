@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 4 (a building `match`'s arm adds no path segment) and ch. 8 (`@ x` builds no place and gives `x` to the line that applies it), and Type System ch. 5 (the function the blueprint holds is the one passed): 5 + 1. Never run.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="6")

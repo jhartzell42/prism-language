@@ -1,0 +1,21 @@
+# Derived by hand from Semantics ch. 4 (a building `match`'s arm adds no path segment), ch. 8 (a blueprint builds nothing until a block applies it; it is built at the applying block's next positions) and ruling TC (places counted as built); ch. 8 (`<-` builds the child and binds its result by a tuple pattern); Type System ch. 2 ("Bundles").
+test picked
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="total 0")
+    2: Ui.Label(text="end")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="total 5")
+
+test not_picked
+
+tick 0
+  added:
+    0: Ui.Label(text="none")
+    1: Ui.Label(text="end")

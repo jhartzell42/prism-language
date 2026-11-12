@@ -6,7 +6,7 @@ emit Ui.*
 
 @looped: @unit
 @looped:
-    Ui.Label(text=$"x")
+    Ui.Label($text=$"x")
     @again
 
 @again: @unit
@@ -16,8 +16,8 @@ emit Ui.*
 @fine: @unit
 @fine:
     @leaf
-    Ui.Label(text=$"y")
+    Ui.Label($text=$"y")
 
 @leaf: @unit
 @leaf:
-    Ui.Label(text=$"z")
+    Ui.Label($text=$"z")

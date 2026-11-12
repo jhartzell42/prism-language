@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 4: the clauses are tried in order for each element.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="silver gold none ")

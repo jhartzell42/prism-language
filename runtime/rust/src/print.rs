@@ -192,7 +192,7 @@ impl Printer {
     /// A duration in its largest whole unit.
     pub fn duration(&mut self, ns: i128) {
         const UNITS: [(&str, i128); 6] =
-            [("h", 3_600_000_000_000), ("m", 60_000_000_000), ("s", 1_000_000_000), ("ms", 1_000_000), ("us", 1_000), ("ns", 1)];
+            [("h", 3_600_000_000_000), ("min", 60_000_000_000), ("s", 1_000_000_000), ("ms", 1_000_000), ("us", 1_000), ("ns", 1)];
         let (name, size) = if ns == 0 { ("s", 1) } else { *UNITS.iter().find(|(_, s)| ns % s == 0).unwrap() };
         let _ = write!(self.out, "{}{name}", ns / size);
     }
@@ -222,7 +222,7 @@ show_with! {
     char => |s, p| p.quoted(std::iter::once(*s), '\'');
     Text => |s, p| p.quoted(s.chars(), '"');
     Cursor => |s, p| p.record("Cursor", &[("at", &Nat::from(u32::try_from(s.at()).expect("a text over 4 GB")))]);
-    Error => |s, p| p.record("Error", &[("kind", &Pod::name(&s.kind_p)), ("message", &s.message_p)]);
+    Error => |s, p| p.record("Error", &[("kind", &s.kind()), ("message", &s.message_p)]);
     Path => |s, p| for (i, seg) in s.0.iter().enumerate() {
         p.raw(if i > 0 { "/" } else { "" });
         match seg {
@@ -316,6 +316,7 @@ impl Show for Pod {
             Pod::Map(es) => p.map(es.iter().map(|(k, v)| (k as &dyn Show, v as &dyn Show))),
             Pod::Nil => p.option(None),
             Pod::Some(x) => p.option(Some(&**x)),
+            Pod::Absent => p.raw("-"),
             Pod::Ok(x) => p.prefixed("~ ", &**x),
             Pod::Failed(e) => e.show(p),
             Pod::Path(path) => path.show(p),

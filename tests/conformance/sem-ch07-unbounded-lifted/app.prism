@@ -1,0 +1,26 @@
+# An unbounded call lifted over `?` (Type System ch. 4: an application over a `?` operand
+# is lifted, `nil` when the operand is): inside an unbounded function the call is a cycle
+# point (D6) entered only when its argument is present; an absent one gives `nil` at once.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Inc: unbounded fn Nat -> Nat
+fn Inc n = n + 1
+
+Shown: fn ?Nat -> Text
+fn Shown (? n) = "{n}"
+fn Shown nil = "none"
+
+Work: unbounded fn Nat -> Text
+fn Work n:
+    let ?some = if n > 0: ? n else: nil
+    let ?more = Inc ?some
+    let ?again = Inc ?more
+    Shown ?again
+
+@Counted: fn Nat -> @unit
+fn @Counted n:
+    !done <- @Run Work, n                                   # 0
+    $shown <- "working" then !done
+    Ui.Label($text=$shown)                                   # 1

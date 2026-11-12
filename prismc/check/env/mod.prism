@@ -87,6 +87,8 @@ type TagInfo = record:
     rqs: [Text]
     bounds: [((Text, Text))]
     fields: [((Text, Ty))]
+    # Each field as its line writes it, marks and name (`$text`), and the line's place.
+    fieldAt: [((Text, Range))]
     home: Text
     file: Nat
     span: Range
@@ -110,6 +112,9 @@ type TraitInfo = record:
     methods: [Text]
     defaults: [Text]
     assocs: [Text]
+    # The associated types the trait gives a default, each with the default over the
+    # trait's parameter (`type Item = a`).
+    assocDefaults: [((Text, Ty))]
     file: Nat
     span: Range
 derive ^Eq, ^Show
@@ -160,11 +165,14 @@ type G = record:
     bare: (Text ==> (Text ==> [Text]))
     bareTypes: (Text ==> (Text ==> [Text]))
     bareTraits: (Text ==> (Text ==> [Text]))
+    # Each associated type, a type-level name of its trait's module (`Box.Item`), and its
+    # trait's key (Jimmy's ruling AK, as in Haskell).
+    assocNames: (Text ==> Text)
     srcs: [Src]
     defs: [Def]
     programRow: Rw
     elemFams: [Text]
-    rootModule: ?Text
+    ?rootModule: Text
     appRoot: Bool
     fnAt: (Text ==> Nat)
     preludeFrom: Nat
@@ -195,6 +203,22 @@ DefNameSpan: fn DefName -> Range
 fn DefNameSpan (DefSName n) = n.span
 fn DefNameSpan (DefOp ignore, r) = r
 
+# A named lens's name where it is used (Semantics ch. 5; ruling LN): `&`, then an uppercase
+# name under whatever marks its part shows (`&Acc`, `&?Second`, `&Board.Acc`).
+IsLensName: fn SName -> Bool
+fn IsLensName n = (HasPrefix n.sigils, "&") and IsUpperText (Or (?Last n.path), "")
+
+# A named lens applied, `&Acc r` (appendix A.6: `ref ::= .. | "&" uname ref`): the lens's
+# name and its one argument.
+?LensApplied: fn Expr -> ?((SName, Expr))
+fn ?LensApplied e = match e.kind:
+    ECall callee, args, ignore, ignore: match callee.kind:
+        EName n: match args[0]:
+            ? a: if (IsLensName n) and (Len args) == 1: ? ((n, a.value)) else: nil
+            nil: nil
+        otherwise: nil
+    otherwise: nil
+
 IsLowerText: fn Text -> Bool
 fn IsLowerText t = IsLower (Head t)
 
@@ -208,7 +232,7 @@ fn IsUpperText t = IsUpper (Head t)
 # The program's files, parsed: the environment, and the diagnostics of every declaration.
 BuildG: unbounded fn [Src], [Module] -> ((G, St))
 fn BuildG srcs, trees:
-    let g0 = G(mods={}, types={}, ctors={}, tags={}, families={}, famOwner={}, vals={}, traits={}, impls={}, bare={}, bareTypes={}, bareTraits={}, srcs=srcs, defs=[[]], programRow=emptyRow, elemFams=[[]], rootModule=nil, appRoot=(AppRoot srcs, trees), fnAt={}, preludeFrom=(Len trees))
+    let g0 = G(mods={}, types={}, ctors={}, tags={}, families={}, famOwner={}, vals={}, traits={}, impls={}, bare={}, bareTypes={}, bareTraits={}, assocNames={}, srcs=srcs, defs=[[]], programRow=emptyRow, elemFams=[[]], ?rootModule=nil, appRoot=(AppRoot srcs, trees), fnAt={}, preludeFrom=(Len trees))
     let st0 = NewSt 0
     let ((g1, st1)) = Fold (Range0 (Len trees)), ((g0, st0)), \|((g, st)), i| AddModule g, st, i, (Or trees[i], emptyModule)
     let g2 = AddBuiltins g1
@@ -216,13 +240,16 @@ fn BuildG srcs, trees:
     let g4 = update g3:
         &_.programRow <= ProgramRow &_
     let ((g6, st6)) = Fold (Keys g4.mods), ((g4, st3)), \|((g, st)), m| BuildTables g, st, m
-    let ((g6b, st6b)) = Fold (Keys g6.mods), ((g6, st6)), \|((g, st)), m| ConvertTypes g, st, m
+    let ((g6a, st6a)) = ConvertAliases g6, st6
+    let ((g6b, st6b)) = Fold (Keys g6a.mods), ((g6a, st6a)), \|((g, st)), m| ConvertTypes g, st, m
     let ((g7, st7)) = Fold (Keys g6b.mods), ((g6b, st6b)), \|((g, st)), m| ConvertDecls g, st, m
+    let st7a = TagVariablesPrint g7, (TraitCycles g7, st7)
     let g8 = DerivedImpls g7
-    let st8 = Coherence g8, (DerivedDynamics g8, st7)
-    ((g8, st8))
+    let st8 = FaultFieldsPlain g8, (TagFieldsPrint g8, (Coherence g8, (DerivedFields g8, (DerivedDynamics g8, st7a))))
+    # here, so that lowering, which builds the tables again, reads the defaults too
+    ImplDefaults g8, st8
 
-let emptyModule = Module(name=nil, emitRow=nil, mods=[[]], uses=[[]], decls=[[]], template=nil, span=Range(start=0, end=0))
+let emptyModule = Module(?name=nil, ?emitRow=nil, mods=[[]], uses=[[]], decls=[[]], ?template=nil, span=Range(start=0, end=0, origin=InSource))
 
 ModName: fn Module -> Text
 fn ModName m = match m.?name:
@@ -276,10 +303,10 @@ fn HasKey m, k = match m[k]:
 AddBuiltins: fn G -> G
 fn AddBuiltins g:
     let BoolCtor = \|n, i| CtorInfo(name=n, owner="Bool", params=[[]], args=[[]], fields=[[]], ty=tBool, index=i)
-    let pre = Scheme(qs=[["a"]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(TySig "!", (TyQ "a")))
+    let pre = Scheme(eqs=[[]], qs=[["a"]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(TySig "!", (TyQ "a")))
     let numbered = Mono (TyFn CBound, [[tNat]], (TyCon "Buffer", [[tNat]]))
-    let bufEmpty = Scheme(qs=[["a"]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(TyCon "Buffer", [[TyQ "a"]]))
-    let tabEmpty = Scheme(qs=[["k", "v"]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(TyCon "Table", [[TyQ "k", TyQ "v"]]))
+    let bufEmpty = Scheme(eqs=[[]], qs=[["a"]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(TyCon "Buffer", [[TyQ "a"]]))
+    let tabEmpty = Scheme(eqs=[[]], qs=[["k", "v"]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(TyCon "Table", [[TyQ "k", TyQ "v"]]))
     update g:
         &_.ctors <= Insert (Insert &_.ctors, "True", (BoolCtor "True", 0)), "False", (BoolCtor "False", 1)
         &_.vals <= Insert &_.vals, "Prelude.never", (Builtin "Prelude.never", pre)
@@ -288,4 +315,4 @@ fn AddBuiltins g:
         &_.vals <= Insert &_.vals, "Table.Empty", (Builtin "Table.Empty", tabEmpty)
 
 Builtin: fn Text, Scheme -> ValInfo
-fn Builtin qk, sc = ValInfo(qk=qk, scheme=sc, sort="builtin", hasSig=True, home="Prelude", file=0, span=Range(start=0, end=0))
+fn Builtin qk, sc = ValInfo(qk=qk, scheme=sc, sort="builtin", hasSig=True, home="Prelude", file=0, span=Range(start=0, end=0, origin=InSource))

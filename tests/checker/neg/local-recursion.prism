@@ -7,11 +7,13 @@ type Tree = choice:
 
 Grow: fn Nat -> Nat
 fn Grow n:
+    Spin: fn Nat -> Nat
     fn Spin k = Spin k
     Spin n
 
 Sum: fn Tree -> Nat
 fn Sum t:
+    Go: fn Tree -> Nat
     fn Go x = match x:
         Leaf n: n
         Node l, r: (Go l) + (Go r)

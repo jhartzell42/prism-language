@@ -1,0 +1,13 @@
+# `@Run` of a function value that is not a name (Semantics Appendix B: `@Run: fn
+# (unbounded fn a -> b), a -> @!b`; a lambda is a function value wherever a named function
+# is). The lambda has no call inside, so its entry is its one cycle (D6).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@page: @unit
+@page:
+    !done <- @Run (\|n| n + 1), 3                              # 0
+    $shown <- "working" then Show !done
+    Ui.Label($text=$shown)                                       # 1

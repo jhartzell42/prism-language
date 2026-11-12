@@ -1,0 +1,12 @@
+# The tests of sem-ch08-element-parameter-statement.
+emit Ui.*
+use App.*
+
+test a_passed_element_is_placed, @main:
+    build
+    click at 0
+        => expect Ui.Button(label="go 1")
+    click at 2
+        => expect Ui.Label(text="went 1, shouts 0")
+    click at 3
+        => expect Ui.Label(text="went 1, shouts 1")

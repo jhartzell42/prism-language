@@ -244,12 +244,12 @@ fn TemplateKids parts, m = Fold parts, [[]], \|acc, p| match p:
 TemplateCallExpr: fn SName, [Arg], ?[TemplatePart], Range -> Expr
 fn TemplateCallExpr n, args, ?ps, span:
     let body = match ?ps:
-        ? ps: [[Arg(name=(? Ident(name="#body", span=span)), value=(Expr(kind=(ETemplate (Template(keyword="InlineText", lang="", delims="double", parts=ps, span=span))), span=span)), span=span)]]
+        ? ps: [[Arg(marks="", ?name=(? Ident(name="#body", span=span)), value=(Expr(kind=(ETemplate (Template(keyword="InlineText", lang="", delims="double", parts=ps, span=span))), span=span)), span=span)]]
         nil: [[]]
     Expr(kind=(ECall (Expr(kind=(EName n), span=n.span)), (Append args, body), False, False), span=span)
 
 ArgOf: fn Expr -> Arg
-fn ArgOf x = Arg(name=nil, value=x, span=x.span)
+fn ArgOf x = Arg(marks="", ?name=nil, value=x, span=x.span)
 
 ExprsKids: fn [Expr], (Text ==> Rel) -> [Kid]
 fn ExprsKids xs, m = Each xs, \|x| KidExpr x, m
@@ -283,7 +283,7 @@ MethodCallee: fn SName -> Expr
 fn MethodCallee n = Expr(kind=(EName n), span=n.span)
 
 MethodArgs: fn Expr, [Arg] -> [Arg]
-fn MethodArgs r, args = Append [[Arg(name=nil, value=r, span=r.span)]], args
+fn MethodArgs r, args = Append [[Arg(marks="", ?name=nil, value=r, span=r.span)]], args
 
 # A call in a clause's body with the relations in scope where it stands; a name mentioned
 # without being called is a call with no arguments.
@@ -355,7 +355,7 @@ fn AccArg m, cn, j, q, args = match m["sum:{cn}:{j}:{q}"]:
     nil: dummyArg
 
 # What a slot not yet narrowed passes (pick CT's fixed point reads it as anything).
-let topExpr = Expr(kind=(EName (SName(sigils="", path=[["⊤"]], span=Range(start=0, end=0)))), span=Range(start=0, end=0))
+let topExpr = Expr(kind=(EName (SName(sigils="", path=[["⊤"]], span=Range(start=0, end=0, origin=InSource)))), span=Range(start=0, end=0, origin=InSource))
 
 # The names a spot mentions: what it calls (an operator, a template call), a local
 # widget's name.
@@ -412,6 +412,8 @@ fn ?RelOf m, e = match e.kind:
         nil: nil
     EIndex r, ignore: ?RelOf m, r
     EGroup x: ?RelOf m, x
+    # a cast is the value it casts, checked or not
+    ECast x, ignore, ignore: ?RelOf m, x
     otherwise: match ?CallOf e:
         ? ((c, args)): if IsNonNatMin m, e, c: nil else: ?RelOfCall m, c, args
         nil: nil

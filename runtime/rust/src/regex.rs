@@ -332,26 +332,52 @@ impl Show for Match {
     }
 }
 
-// ---- Plain data, on the way out only ----------------------------------------------------
+// ---- Plain data -----------------------------------------------------------------------
 // A regular expression has no `^Pod` (Type System ch. 2, RX-EQ), and neither has a match,
 // whose cursors are opaque; but an emitted record derives the runtime's `ToPod` and
-// `FromPod` whatever its fields, and a `check` line's value is plain data. So, as a
-// `Cursor` is: out as it shows (a regex as its spelling, which is how it compares), and
-// never read back.
+// `FromPod` whatever its fields, and a `check` line's value is plain data. A regex goes
+// out as it shows, its spelling (which is how it compares), over its parts as written,
+// and reads back from those (prismc/README.md, PD); a match, as a `Cursor`, is never read
+// back.
 
-fn spelled(s: String) -> Pod {
-    Pod::Shown(ShownText(s.as_str().into()), Box::new(Pod::text(s.as_str())))
+fn spelled(s: String, parts: Vec<(&str, &str)>) -> Pod {
+    let fields = parts.into_iter().map(|(k, v)| (k, Pod::text(v))).collect();
+    Pod::Shown(ShownText(s.as_str().into()), Box::new(Pod::record("Regex", fields)))
+}
+
+/// A regex's part as written, from the plain form `ToPod` gives.
+fn part(p: &Pod, name: &str) -> Option<String> {
+    p.structure().field(name).and_then(Pod::as_text).map(|t| t.as_str().to_string())
 }
 
 impl ToPod for Regex {
     fn to_pod(&self) -> Pod {
-        spelled(spelling(self.pattern(), None, self.flags()))
+        spelled(spelling(self.pattern(), None, self.flags()), vec![("pattern", self.pattern()), ("flags", self.flags())])
     }
 }
 
 impl ToPod for RegexReplacement {
     fn to_pod(&self) -> Pod {
-        spelled(spelling(self.regex.pattern(), Some(&self.replacement), self.regex.flags()))
+        let r = &self.regex;
+        spelled(spelling(r.pattern(), Some(&self.replacement), r.flags()), vec![("pattern", r.pattern()), ("replacement", &self.replacement), ("flags", r.flags())])
+    }
+}
+
+impl FromPod for Regex {
+    fn from_pod(p: &Pod) -> Result<Self, Fault> {
+        match (part(p, "pattern"), part(p, "flags")) {
+            (Some(pattern), Some(flags)) => Regex::new(&pattern, &flags).or_else(|_| mismatch("a Regex in the dialect", p)),
+            _ => mismatch("a Regex", p),
+        }
+    }
+}
+
+impl FromPod for RegexReplacement {
+    fn from_pod(p: &Pod) -> Result<Self, Fault> {
+        match (part(p, "pattern"), part(p, "replacement"), part(p, "flags")) {
+            (Some(pattern), Some(replacement), Some(flags)) => RegexReplacement::new(&pattern, &flags, &replacement).or_else(|_| mismatch("a RegexReplacement in the dialect", p)),
+            _ => mismatch("a RegexReplacement", p),
+        }
     }
 }
 
@@ -377,4 +403,5 @@ macro_rules! never_read_back {
     )*};
 }
 
-never_read_back!(Regex, "a Regex"; RegexReplacement, "a RegexReplacement"; Group, "a Group"; Match, "a Match");
+never_read_back!(Group, "a Group"; Match, "a Match");
+

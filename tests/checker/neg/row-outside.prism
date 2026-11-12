@@ -5,4 +5,4 @@ use Fs.*
 @reader: @unit
 @reader:
     $~contents <- Fs.Contents(path="/etc/motd")
-    Ui.Label(text=$"read")
+    Ui.Label($text=$"read")

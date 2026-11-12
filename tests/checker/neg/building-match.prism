@@ -3,7 +3,7 @@ emit Ui.*
 
 @modes: @unit
 @modes:
-    !go <- Ui.Button(label=$"Go")
+    !go <- Ui.Button($label=$"Go")
     $lit <- False then True on !go
-    if $lit: Ui.Label(text=$"on")
-    else: Ui.Label(text=$"off")
+    if $lit: Ui.Label($text=$"on")
+    else: Ui.Label($text=$"off")

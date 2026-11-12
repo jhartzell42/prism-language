@@ -34,7 +34,7 @@ expect() {
     failed+=("$name")
     echo "FAILED $name: wanted $want, got exit $code: $out"
 }
-expect chess canvas examples/chess
+expect chess canvas examples/basic-chess
 expect cli-root cli tests/driver/cli-root.prism
 expect gui-tree canvas tests/driver/gui-tree
 expect birds refused tests/conformance/sem-ch06-birds
@@ -104,13 +104,64 @@ else
 fi
 # Gap OC: a binder of an owned scrutinee its arm reads once is moved, not cloned.
 if ./prism compile tests/conformance/sem-ch07-normalize -o "$out/normalize" > /dev/null 2>&1 &&
-    grep -Eq 'Some\((b2_[0-9a-v]+)\) => Some\(Term::Lam\(Rc::new\(\1\)\)\),' "$out/normalize/src/program.rs"; then
+    grep -Eq 'Option::Some\((b2_[0-9a-v]+)\) => ::std::option::Option::Some\(Term::Lam\(::std::rc::Rc::new\(\1\)\)\),' "$out/normalize/src/program.rs"; then
     echo "ok owned-binder-moved: a binder read once is moved"
 else
     failed+=(owned-binder-moved)
     echo "FAILED owned-binder-moved: ?Reduce's b2 is not moved at its one read ($out/normalize/src/program.rs)"
 fi
-if ./prism compile --target cpp examples/chess -o "$out/chess-cpp" > /dev/null 2>&1 &&
+# Gap LF: a function whose result holds its `$` parameter takes the dynamic whole (Type
+# System ch. 4, Application): lowered, a `Dynamic` in and out, never refused.
+said=$("$prismc" compile tests/driver/lifted-holds-dynamic.prism -o "$out/lifted-holds-dynamic" 2>&1)
+if [ $? -eq 0 ] && grep -Eq 'fn wrap_f\(a_[a-z0-9]+: &crate::prelude::Dynamic<crate::prelude::Nat>\) -> crate::prelude::Array<crate::prelude::Dynamic<crate::prelude::Nat>>' "$out/lifted-holds-dynamic/src/program.rs"; then
+    echo "ok lifted-holds-dynamic: Wrap takes its dynamic whole"
+else
+    failed+=(lifted-holds-dynamic)
+    echo "FAILED lifted-holds-dynamic: wanted Wrap lowered over a Dynamic, got: $said"
+fi
+# A type variable no constraint reaches is settled by the checker (the unit type, in the
+# typed output), never left for lowering to guess; only the variable `xs` quantified stays
+# one, given at its use.
+"$prismc" --typed tests/driver/free-variable-defaulted.prism --out "$out/free-variable-defaulted.typed" > /dev/null 2>&1
+if [ -f "$out/free-variable-defaulted.typed" ] && [ "$(grep -c '(var ' "$out/free-variable-defaulted.typed")" = 2 ] &&
+    grep -q "^  (binder \"xs\" .*(array (var t[0-9]*)))" "$out/free-variable-defaulted.typed" &&
+    grep -q "^  (expr .*:10:36-10:40 (array unit))" "$out/free-variable-defaulted.typed" &&
+    grep -q "('[0-9]* unit)" "$out/free-variable-defaulted.typed"; then
+    echo "ok free-variable-defaulted: the checker settles it"
+else
+    failed+=(free-variable-defaulted)
+    echo "FAILED free-variable-defaulted: wanted no undecided variable in the typed output ($out/free-variable-defaulted.typed)"
+fi
+# A bare `Error` as a tuple's part nothing decides stays an `Error` (ruling NE): the typed
+# output shows the tuple as `((Error, Int))`.
+"$prismc" --typed tests/driver/fault-variable-defaulted.prism --out "$out/fault-variable-defaulted.typed" > /dev/null 2>&1
+if [ -f "$out/fault-variable-defaulted.typed" ] && grep -q "(tuple Prelude.Error Int)" "$out/fault-variable-defaulted.typed"; then
+    echo "ok fault-variable-defaulted: the part is an Error"
+else
+    failed+=(fault-variable-defaulted)
+    echo "FAILED fault-variable-defaulted: wanted the part as Prelude.Error in the typed output ($out/fault-variable-defaulted.typed)"
+fi
+# The CLI World's terminal: `Console.Read` and `Console.Print` on the process's own standard
+# input and output, one line in, one line out, each answer line printed as it fires; at the
+# end of the input the reads stop firing and the program, with nothing left to cause a
+# tick, exits 0. With two terminals, lines are addressed `NAME: text` both ways.
+for console in console-echo console-terminals; do
+    if ./prism run "tests/driver/$console.prism" < "tests/driver/$console.in" > "$out/$console.out" 2> "$out/$console.err" &&
+        cmp -s "$out/$console.out" "tests/driver/$console.expected"; then
+        echo "ok $console: the lines printed are $console.expected"
+    else
+        failed+=("$console")
+        echo "FAILED $console: wanted tests/driver/$console.expected on standard output, exit 0; got ($out/$console.out, $out/$console.err):"
+        diff "tests/driver/$console.expected" "$out/$console.out" | head -20
+    fi
+done
+if [ -f "$out/console-terminals.err" ] && grep -q "nobody home" "$out/console-terminals.err"; then
+    echo "ok console-unaddressed: a line naming no terminal is reported on standard error"
+else
+    failed+=(console-unaddressed)
+    echo "FAILED console-unaddressed: wanted \`nobody home\` reported on standard error ($out/console-terminals.err)"
+fi
+if ./prism compile --target cpp examples/basic-chess -o "$out/chess-cpp" > /dev/null 2>&1 &&
     grep -q 'prism_world_canvas::run<' "$out/chess-cpp/src/main.cpp" &&
     make -s -C "$out/chess-cpp" -j"$(getconf _NPROCESSORS_ONLN)" > "$out/chess-cpp.log" 2>&1 &&
     [ -x "$out/chess-cpp/chess" ]; then

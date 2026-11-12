@@ -1,0 +1,6 @@
+# The module `Parts` of sem-ch06-qualified-lowercase-widget.
+emit Ui.*
+
+@header: @unit
+@header:
+    Ui.Label($text=$"header")

@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 8 (a blueprint builds nothing until a block applies it, at the applying block's next position; a building `match`'s arm adds no path segment): `?Frame ((7, 8)), 1` asks itself once and gives `@Named`'s blueprint, applied at place 0. Equal to the first run, on prismc-f4.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="framed")

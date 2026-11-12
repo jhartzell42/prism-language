@@ -1,0 +1,14 @@
+# The tests of fault-with-fields-caught.
+emit Ui.*
+use App.*
+use Ui.*
+
+test a_fault_holds_typed_values, @main:
+    build
+        => expect Ui.Label(text="counted 4")
+    click at 0
+        => expect Ui.Label(text="too many: asked 6, limit 5, together 11")
+
+check a_fault_kind_prints_as_its_tags_value:
+    ~Counted 3 => ~ 3
+    ~Counted 9 => Error(kind=Count.TooMany(limit=5, asked=9), message="too many")

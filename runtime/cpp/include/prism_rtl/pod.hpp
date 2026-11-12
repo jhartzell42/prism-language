@@ -110,6 +110,9 @@ using Fields = std::vector<std::pair<std::string, Pod>>;
 /// - `Tuple`, `Array`, `Map` (entries in ascending key order);
 /// - `Nil`, `Some`, `Ok` (`~ x`), `Failed` (a failed `~T`: its `Error` record);
 /// - `Path`;
+/// - `Absent`: `-`, a part of a sparse tuple that is not there (Type System ch. 2,
+///   "Bundles and sparse tuples"): an answer to a bundle of several events holds the
+///   parts that fired;
 /// - `Shown`: a value whose type has its own `impl ^Show`: it prints as the impl's text
 ///   and matches as its structure (transcripts print by `^Show`, Type System ch. 2). The
 ///   text takes no part in equality or order, which go by the structure (a chess `Spot`
@@ -118,15 +121,20 @@ class Pod {
 public:
     enum class Kind : std::uint8_t {
         Unit, Bool, Int, Float, Char, Text, Duration, Record, Choice, Element,
-        Tuple, Array, Map, Nil, Some, Ok, Failed, Path, Shown,
+        Tuple, Array, Map, Nil, Some, Ok, Failed, Path, Shown, Absent,
     };
     struct Named {
         std::string name;
         Fields fields;
     };
+    /// `position` is the case's place in its type's declaration when the value came from
+    /// a typed value (`choice_at`, which a derived `to_pod` calls): two choices that both
+    /// know theirs order by it, as the type's derived `^Ord` does; one read from text
+    /// knows none and orders by its constructor's name. Equality goes by the name.
     struct Choice {
         std::string ctor;
         std::vector<Pod> args;
+        std::optional<std::uint32_t> position = std::nullopt;
     };
     struct Shown {
         std::string text;
@@ -151,6 +159,9 @@ public:
     static Pod choice(std::string ctor, std::vector<Pod> args) {
         return Pod(std::in_place_index<8>, Choice{std::move(ctor), std::move(args)});
     }
+    static Pod choice_at(std::string ctor, std::uint32_t position, std::vector<Pod> args) {
+        return Pod(std::in_place_index<8>, Choice{std::move(ctor), std::move(args), position});
+    }
     /// A choice with no arguments: `click`, `Read`, `Fs.NotFound`.
     static Pod name(std::string ctor) { return choice(std::move(ctor), {}); }
     static Pod element(std::string tag, Fields fields) {
@@ -167,6 +178,8 @@ public:
     static Pod shown(std::string text, Pod structure) {
         return Pod(std::in_place_index<18>, Shown{std::move(text), make_rc<const Pod>(std::move(structure))});
     }
+
+    static Pod absent() { return Pod(std::in_place_index<19>, Unit{}); }
 
     Kind kind() const { return Kind(v_.index()); }
     bool is(Kind k) const { return kind() == k; }
@@ -211,7 +224,7 @@ public:
 private:
     using V = std::variant<Unit, bool, Int, Float, char32_t, Text, Nanos, Named, Choice, Named, std::vector<Pod>,
                            std::vector<Pod>, Entries, Unit, Rc<const Pod>, Rc<const Pod>,
-                           Rc<const Pod>, prism_rtl::Path, Shown>;
+                           Rc<const Pod>, prism_rtl::Path, Shown, Unit>;
     template <std::size_t I, class... A>
     Pod(std::in_place_index_t<I> i, A&&... a) : v_(i, std::forward<A>(a)...) {}
     template <std::size_t I>
@@ -230,11 +243,32 @@ inline Fields named(std::initializer_list<std::pair<std::string, Pod>> fs) { ret
 
 // ---- Error ---------------------------------------------------------------------------------
 
-/// Prism's `Error`, a `~T`'s failure: a fault kind (`Fs.NotFound`) and a message.
+/// Prism's `Error`, a `~T`'s failure: a fault kind and a message. The kind is a value
+/// (ruling TF, "faults hold typed values"): its tag's name, `Fs.NotFound`, and the fields
+/// it was made with, `Count.TooMany(limit=5, asked=6)`, as plain data in declaration
+/// order; a kind that is its tag alone has none.
 struct Error {
     std::string kind_p;
+    Pod::Fields kind_fields;
     Text message_p;
     Error(std::string kind, Text message) : kind_p(std::move(kind)), message_p(std::move(message)) {}
+    Error(std::string kind, Pod::Fields fields, Text message) : kind_p(std::move(kind)), kind_fields(std::move(fields)), message_p(std::move(message)) {}
+    /// An error of a kind given as a value: a choice with no arguments, or a tag's value
+    /// with its fields; nothing for any other data.
+    static std::optional<Error> of_kind(const Pod& kind, Text message) {
+        const Pod& k = kind.structure();
+        if (const Pod::Choice* c = k.if_choice(); c && c->args.empty()) return Error(c->ctor, std::move(message));
+        if (const Pod::Named* e = k.if_element()) return Error(e->name, e->fields, std::move(message));
+        return std::nullopt;
+    }
+    /// The kind as a value: what `e.kind` reads, and what a World and a transcript see.
+    Pod kind() const { return kind_fields.empty() ? Pod::name(kind_p) : Pod::element(kind_p, kind_fields); }
+    /// A field of the kind, by its name; null when it has none of that name.
+    const Pod* kind_field(const std::string& name) const {
+        for (const auto& [n, v] : kind_fields)
+            if (n == name) return &v;
+        return nullptr;
+    }
     bool operator==(const Error&) const = default;
     auto operator<=>(const Error&) const = default;
 };
@@ -324,7 +358,7 @@ struct FromPod<Pod> {
 template <>
 struct ToPod<Error> {
     static Pod to_pod(const Error& e) {
-        return Pod::record("Error", {{"kind", Pod::name(e.kind_p)}, {"message", Pod::text(e.message_p)}});
+        return Pod::record("Error", {{"kind", e.kind()}, {"message", Pod::text(e.message_p)}});
     }
 };
 template <>
@@ -332,9 +366,9 @@ struct FromPod<Error> {
     static Result<Error> from_pod(const Pod& p) {
         const Pod* kind = p.field("kind");
         const Pod* message = p.field("message");
-        const Pod::Choice* c = kind ? kind->structure().if_choice() : nullptr;
         const Text* m = message ? message->as_text() : nullptr;
-        if (c && c->args.empty() && m) return Error(c->ctor, *m);
+        if (kind && m)
+            if (auto e = Error::of_kind(*kind, *m)) return *e;
         return mismatch<Error>("an Error", p);
     }
 };
@@ -355,6 +389,39 @@ struct FromPod<std::optional<T>> {
             return std::optional<T>(std::move(v).value());
         }
         return mismatch<std::optional<T>>("an option", p);
+    }
+};
+
+/// One part of a sparse tuple (Type System ch. 2, "Bundles and sparse tuples"): the part's
+/// value, or absent, `-`. An answer to a bundle of several events is a tuple of them, one
+/// per event part, holding the parts that fired.
+template <class T>
+struct SparsePart {
+    std::optional<T> part;
+    /// The part's value when it is there.
+    const std::optional<T>& present() const { return part; }
+    friend bool operator==(const SparsePart&, const SparsePart&) = default;
+};
+
+/// A part of a sparse tuple that is there.
+template <class T>
+SparsePart<T> sparse_present(T v) { return SparsePart<T>{std::optional<T>(std::move(v))}; }
+
+/// A part of a sparse tuple that is not there.
+template <class T>
+SparsePart<T> sparse_absent() { return SparsePart<T>{std::nullopt}; }
+
+template <class T>
+struct ToPod<SparsePart<T>> {
+    static Pod to_pod(const SparsePart<T>& x) { return x.part ? prism_rtl::to_pod(*x.part) : Pod::absent(); }
+};
+template <class T>
+struct FromPod<SparsePart<T>> {
+    static Result<SparsePart<T>> from_pod(const Pod& p) {
+        if (p.is(Pod::Kind::Absent)) return SparsePart<T>{std::nullopt};
+        auto v = prism_rtl::from_pod<T>(p);
+        if (!v) return unexpected(v.error());
+        return SparsePart<T>{std::optional<T>(std::move(v).value())};
     }
 };
 

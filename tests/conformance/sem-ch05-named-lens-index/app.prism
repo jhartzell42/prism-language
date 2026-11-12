@@ -1,0 +1,52 @@
+# Semantics ch. 5, "References and lens paths": "An index path, `&_.board[sq]`, has the
+# part type Type System chapter 3 gives it"; over an array that is `?a` ("Block-local
+# types": "its index path has an array's part type, `?a`"). A named lens whose path ends
+# at an array's index gives a reference to that part: read, it is `? x` or `nil` as
+# `xs[i]` is; set to `? x`, the entry is written. A lens whose path steps through an
+# array's index to a field names the field of the entry, as the block's own path
+# `&_[1].acc` does.
+# Written by Claude on the claude-lowering branch; subject to change.
+test mod Tests
+type Regs = record:
+    acc: Int
+    x: Int
+derive ^Eq, ^Show
+
+&?Second: fn &[Int] -> &?Int
+fn &?Second &xs = &xs[1]
+
+SetSecond: fn [Int], Int -> [Int]
+fn SetSecond xs, n = update xs:
+    &?Second &_ <= ? n
+
+?ReadSecond: fn [Int] -> ?Int
+fn ?ReadSecond xs = update nil:
+    let &copy = xs
+    &_ <= &?Second &copy
+
+# The part read, then written from what was read.
+BumpSecond: fn [Int] -> [Int]
+fn BumpSecond xs = update xs:
+    if ? n <- &?Second &_:
+        &?Second &_ <= ? n + 1
+
+# Through an index to a field of the entry.
+&SecondAcc: fn &[Regs] -> &Int
+fn &SecondAcc &machines = &machines[1].acc
+
+Charge: fn [Regs], Int -> [Regs]
+fn Charge machines, n = update machines:
+    &SecondAcc &_ += n
+
+# A lens over a lens that ends at an index.
+type Deck = record:
+    name: Text
+    cards: [Int]
+derive ^Eq, ^Show
+
+&?SecondCard: fn &Deck -> &?Int
+fn &?SecondCard &deck = &?Second &deck.cards
+
+Swap: fn Deck, Int -> Deck
+fn Swap deck, n = update deck:
+    &?SecondCard &_ <= ? n

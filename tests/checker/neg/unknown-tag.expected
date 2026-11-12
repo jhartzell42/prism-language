@@ -1,0 +1,10 @@
+tests/checker/neg/unknown-tag.prism:9: error[unknown-name]: nothing declares `Ui.Knob` here
+        Ui.Knob($label=$"turn")
+        ^^^^^^^
+tests/checker/neg/unknown-tag.prism:10: error[unknown-name]: nothing declares `Ui.Dial` here
+        !go <- Ui.Dial(name="d")
+               ^^^^^^^
+tests/checker/neg/unknown-tag.prism:11: error[unknown-name]: nothing declares `Ui.Slider` here
+        let made = Ui.Slider($text=$"x")
+                   ^^^^^^^^^
+3 errors

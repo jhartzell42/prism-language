@@ -15,9 +15,9 @@ use Ui.*
 
 @entries: @unit
 @entries:
-    !add <- Ui.Button(label=$"add")                                        # 0
-    !edit <- Ui.Button(label=$"edit")                                      # 1
-    !drop <- Ui.Button(label=$"drop")                                      # 2
+    !add <- Ui.Button($label=$"add")                                        # 0
+    !edit <- Ui.Button($label=$"edit")                                      # 1
+    !drop <- Ui.Button($label=$"drop")                                      # 2
     $next <- 1 then $next + 1 on !add
     $edits <- 0 then $edits + 1 on !edit
     $items <- {0: "a"} then (Insert $items, $next, "b{$next}") on !add <| (Insert $items, 0, "e{$edits}") on !edit <| (Remove $items, 0) on !drop
@@ -25,4 +25,4 @@ use Ui.*
         $n <- 0 then $n + 1 on (!Updated $v)
         let $twice = $edits * 2
         $m <- 0 then $m + 1 on (!Updated $twice)
-        Ui.Label(text=$"{k}: {$v} changed {$n}, edits {$m}")               # 3/[k]/0
+        Ui.Label($text=$"{k}: {$v} changed {$n}, edits {$m}")               # 3/[k]/0

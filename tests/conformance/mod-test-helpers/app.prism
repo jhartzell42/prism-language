@@ -13,4 +13,4 @@ fn Add a, b = a + b
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{Add 1, 2}")
+    Ui.Label($text=$"{Add 1, 2}")

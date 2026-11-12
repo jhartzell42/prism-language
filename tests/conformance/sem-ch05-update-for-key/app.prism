@@ -1,0 +1,15 @@
+# An `update` block's `for` over a map binds `key`, as a widget's `for` does (Semantics
+# ch. 4, "Every loop body has `ix`" and the binders' table: one binder is the entry, and
+# `key` is the row's key; Jimmy's ruling KY). `Named` reads `key` beside its one binder.
+# Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Named: fn (Text ==> Nat) -> Text
+fn Named m = update "":
+    for v <- m:
+        &_ <= "{&_} {key}={v}"
+
+@shown: @unit
+@shown:
+    Ui.Label($text=$(Named {"a": 1, "b": 2}))   # 0

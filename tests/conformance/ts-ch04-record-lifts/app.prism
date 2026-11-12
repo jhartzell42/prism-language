@@ -1,0 +1,22 @@
+# A record constructor lifts over a dynamic at a plain field, as a function call does (Type
+# System ch. 4, "A dynamic where a plain field goes"): `Mono(left=$n + 1)` is a `$Mono`, and
+# `Pair(left=$n, right=$m)` lifts over both. Written by Claude on the claude-bugs branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+
+type Mono = record:
+    left: Nat
+
+type Pair = record:
+    left: Nat
+    right: Nat
+
+@main: @unit
+@main:
+    !add <- Ui.Button($label=$"add")                          # 0
+    $n <- 1 then $n + 1 on !add
+    let $m = $n * 10
+    let $mono = Mono(left=$n + 1)
+    let $pair = Pair(left=$n, right=$m)
+    Ui.Label($text=$"{$mono.left} {$pair.left}/{$pair.right}")    # 1

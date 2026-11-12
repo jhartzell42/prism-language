@@ -1,0 +1,10 @@
+# The live element's field read in a plain function: declarations of
+# sem-ch09-live-element-field.
+emit Ui.*
+use App.*
+
+test a_plain_function_reads_a_live_field, @page:
+    build
+        => expect Ui.Label(text="<0>")
+    click Ui.Button(label="inc")
+        => expect Ui.Label(text="<1>")

@@ -1,0 +1,8 @@
+# Derived by hand from Semantics ch. 4 (a block's lines are one binding group) and ch. 8 (`<-` binds the arm's plain result; places are born in source order): the arm's label is 0, the label reading the local function over the result is 1, the widget parameter's label is 2.
+test below_the_match
+
+tick 0
+  added:
+    0: Ui.Label(text="x")
+    1: Ui.Label(text="twice 20")
+    2: Ui.Label(text="note")

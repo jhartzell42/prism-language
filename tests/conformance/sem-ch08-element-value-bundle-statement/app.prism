@@ -1,0 +1,21 @@
+# `@Element e` of an element value whose output is a bundle, as a statement that binds
+# its parts: a blueprint value that gives a bundle back, applied by a block (Type System
+# ch. 2, "Bundles and sparse tuples": the left side of `<-` is a pattern for the output;
+# an element applied is a plain value until a statement or a host places it; Semantics
+# ch. 9: the `$` part's first value is the World's at the build, each push moves it, and
+# each answer fires the event part). Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Socket of Element ((!Text, $Text)):
+    address: Text
+
+Wire: fn Text -> Element Pad.* ((!Text, $Text))
+fn Wire address = Pad.Socket(address=address)
+
+@chat: @unit
+@chat:
+    ((!rx, $link)) <- @Element (Wire "chat:7000")               # 0
+    $last <- "none" then !rx
+    Ui.Label($text=$"{$link}: {$last}")                          # 1

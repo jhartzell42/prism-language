@@ -1,0 +1,34 @@
+# A supplier that answers a place with a widget, in a hosted scope: the host stands in
+# the child of a host that forwards everything, so the answering widget's place is the
+# inner row's own and the outer host's document holds it (Semantics ch. 9, "How a
+# supplier answers": the supplier's blueprint is built when the child's place is built,
+# in the host's scope; a forwarding host places each of its child's elements under its
+# own row, at `pos/[p]/0`; ch. 8: a widget function's lines take positions from 0 in the
+# scope that builds it). Written by Claude on the claude-lowering branch; subject to
+# change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+tag Pad.Ask of Element Text:
+    name: Text
+
+@guest: @unit emit Ui.* | Pad.*
+@guest:
+    heard <- Pad.Ask(name="a")                                  # 0
+    Ui.Label($text=$"guest heard {heard}")                      # 1
+
+@Answerer: fn Text -> @Text
+fn @Answerer name:
+    Ui.Label($text=$"answering {name}")                         # 0
+    @ "yes {name}"
+
+@host: @unit
+@host:
+    ignore <- @HostDocument @guest, \|p, e| match e:            # 0/[p]
+        Pad.Ask(name=n): @Answerer n
+        otherwise: @Element e
+
+@outer: @unit
+@outer:
+    ignore <- @HostDocument @host, \|p, e| @Element e           # 0/[p]/0

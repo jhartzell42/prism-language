@@ -60,7 +60,7 @@ derive ^Eq, ^Show
 
 type LetDecl = record:
     pattern: Pattern
-    ty: ?Type
+    ?ty: Type
     value: Expr
     span: Range
 derive ^Eq, ^Show
@@ -74,7 +74,7 @@ derive ^Eq, ^Show
 type TypeDecl = record:
     name: QualName
     params: [Ident]
-    body: ?TypeBody
+    ?body: TypeBody
     span: Range
 derive ^Eq, ^Show
 
@@ -87,7 +87,9 @@ type TypeBody = choice:
     TbAlias Type
 derive ^Eq, ^Show
 
+# A field's sigils stand on its name, as a binder's do (`$label: Text` holds a dynamic).
 type Field = record:
+    sigils: Text
     name: Ident
     ty: Type
     span: Range
@@ -96,7 +98,7 @@ derive ^Eq, ^Show
 type Case = record:
     name: SName
     args: [Type]
-    indexed: ?Type
+    ?indexed: Type
     span: Range
 derive ^Eq, ^Show
 
@@ -143,14 +145,14 @@ derive ^Eq, ^Show
 
 type CheckLine = record:
     expr: Expr
-    pattern: ?Pattern
+    ?pattern: Pattern
     span: Range
 derive ^Eq, ^Show
 
 type TestDecl = record:
     name: Ident
     blueprint: Expr
-    seed: ?Nat
+    ?seed: Nat
     steps: [TestStep]
     span: Range
 derive ^Eq, ^Show

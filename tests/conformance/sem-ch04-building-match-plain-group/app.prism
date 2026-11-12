@@ -1,0 +1,31 @@
+# A block's lines are one binding group around a building `match`'s plain result
+# (Semantics ch. 4, binding groups: a line reads an event or a hold bound on a later line;
+# ch. 8: `<-` binds the arm's plain result, and places are born in source order). The
+# first label reads `$gone`, a hold bound below the `match`, stepped by a button that
+# stands below it too and reads the arm's result.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Panel: fn Mode -> @unit
+fn @Panel mode:
+    Ui.Label($text=$"gone {$gone}")                                    # 0
+    n <- match mode:                                                   # 1
+        Loud t:
+            Ui.Label($text=$"{t}")                                     # 1
+            @ 10
+        Soft:
+            Ui.Label($text=$"soft")                                    # 1
+            @ 20
+    !go <- Ui.Button($label=$"go {n}")                                 # 2
+    $gone <- 0 then $gone + 1 on !go
+
+@main: @unit
+@main:
+    @Panel (Loud "x")                                                  # 0, 1, 2

@@ -1,0 +1,24 @@
+# A supplier's event answer made by a `let` of the host's block, outside the arm that
+# gives it (Semantics ch. 9, "How a supplier answers": an event answer is the next tick's
+# input; Type System ch. 2: a blueprint is a value, so a `let` binds one).
+# sem-ch09-host-answer-without-arm's `let @seven = @ 7` with an event. Written by Claude
+# on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Tap of Element !Nat:
+    name: Text
+
+@child: @unit
+@child:
+    !taps <- Pad.Tap(name="t")
+    $sum <- 0 then $sum + !taps
+    Ui.Label($text=$"sum {$sum}")
+
+@host: @unit
+@host:
+    !go <- Ui.Button($label=$"go")
+    let @!later = @ (3 on !go)
+    ignore <- @HostDocument @child, \|p, e| match e:
+        Pad.Tap(..): @!later
+        otherwise: @Element e

@@ -1,0 +1,7 @@
+# The tests of ts-ch03-method-function-value.
+emit Ui.*
+use App.*
+
+test a_method_is_passed_as_a_value, @main:
+    build
+        => expect Ui.Label(text="[blank 1][blank 2] 3 [aa][bb] 6")

@@ -1,0 +1,25 @@
+# A request from an element value placed by a host that is itself hosted (Semantics ch. 8:
+# "An `!` field is a request. Each firing asks the World for something; the request goes
+# out in the tick it fires"; ch. 9: `@Element e` re-emits at `pos/[p]/0`, and "nested
+# hosts add one tick per computing layer and none per forwarding layer"). The inner host
+# answers the child's label with a `Test.Log` whose requests are the inner's own clicks;
+# the outer host forwards everything, so the request reaches the World under the doubled
+# path, in the tick of the click. Written by Claude on the claude-lowering branch; subject
+# to change.
+emit Ui.* | Test.*
+test mod Tests
+
+@child: @unit
+@child:
+    Ui.Label($text=$"child")                                     # 0
+
+@inner: @unit
+@inner:
+    !go <- Ui.Button($label=$"go")                               # 0
+    ignore <- @HostDocument @child, \|p, e| match e:            # 1/[p]
+        Ui.Label(..): @Element (Test.Log(!requests="went" on !go))
+        otherwise: @Element e
+
+@page: @unit
+@page:
+    ignore <- @HostDocument @inner, \|q, e| @Element e          # 0/[q]

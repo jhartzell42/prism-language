@@ -1,4 +1,5 @@
-// The CLI World (cli.hpp): the file systems, the prelude's unwraps, the World itself.
+// The CLI World (cli.hpp): the file systems, the terminal, the prelude's unwraps, the World
+// itself.
 //
 // Written by Claude, 4 November 2026, on the claude-self-hosting branch. Subject to change.
 
@@ -11,6 +12,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <thread>
 
@@ -134,82 +136,83 @@ std::vector<std::string> MemFs::list(const std::string& dir) const {
     return out;
 }
 
-// ---- The prelude's tags -------------------------------------------------------------------
+// ---- The terminal -----------------------------------------------------------------------
 
-Path subtree_of(const Path& p) {
-    auto segs = p.segments();
-    std::size_t end = 0;
-    for (std::size_t i = 0; i < segs.size(); ++i)
-        if (segs[i].kind() != Segment::Kind::Pos) end = i + 1;
-    return prism_rtl::path_of(segs.subspan(0, end));
+std::unique_ptr<Console> Console::stdio() {
+    auto none = [](auto*) {};
+    return std::make_unique<Console>(std::shared_ptr<std::istream>(&std::cin, none), std::shared_ptr<std::ostream>(&std::cout, none));
 }
 
-namespace {
+Console::Console(std::shared_ptr<std::istream> input, std::shared_ptr<std::ostream> output)
+    : input_(std::move(input)), output_(std::move(output)) {}
 
-bool under(const Path& p, const Path& q) {
-    auto a = p.segments();
-    auto b = q.segments();
-    return b.size() <= a.size() && std::equal(b.begin(), b.end(), a.begin());
+void Console::start() {
+    if (lines_ || !input_) return;
+    lines_ = std::make_shared<Lines>();
+    // The thread keeps the input and the queue alive; it ends at the end of the input, and a
+    // program that exits while it waits for a line ends it with the process.
+    std::thread([input = input_, lines = lines_] {
+        std::string line;
+        while (std::getline(*input, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            std::lock_guard lock(lines->mutex);
+            lines->lines.push_back(std::move(line));
+            lines->heard.notify_one();
+        }
+        if (input->bad()) std::fprintf(stderr, "prism: standard input failed\n");
+        std::lock_guard lock(lines->mutex);
+        lines->ended = true;
+        lines->heard.notify_one();
+    }).detach();
 }
 
-Path parent_of(const Path& p) {
-    auto segs = p.segments();
-    return prism_rtl::path_of(segs.subspan(0, segs.empty() ? 0 : segs.size() - 1));
-}
+bool Console::reading() const { return lines_ && !ended_; }
 
-}  // namespace
-
-const Pod* element_of(const Document& doc, const TickOut& out, const Path& path) {
-    if (auto e = doc.get(path)) return e;
-    for (const auto& [p, e] : out.patch.added)
-        if (p == path) return &e;
-    return nullptr;
-}
-
-bool Prelude::is_poisoned(const Path& p) const {
-    return std::any_of(poisoned_.begin(), poisoned_.end(), [&](const Path& q) { return under(p, q); });
-}
-
-void Prelude::track(const prism_rtl::Patch& patch) {
-    for (const auto& [p, e] : patch.removed) exceptions_.erase(p);
-    for (const auto& [p, e] : patch.added) {
-        auto tag = e.tag();
-        if (tag && *tag == "Prelude.Exceptions") exceptions_.insert(p);
+Console::Heard Console::next_line(std::optional<Clock::time_point> wake, std::string& line) {
+    if (!lines_) return Heard::Ended;
+    std::unique_lock lock(lines_->mutex);
+    auto ready = [&] { return !lines_->lines.empty() || lines_->ended; };
+    if (wake) {
+        if (!lines_->heard.wait_until(lock, *wake, ready)) return Heard::Timeout;
+    } else {
+        lines_->heard.wait(lock, ready);
     }
+    if (lines_->lines.empty()) {
+        ended_ = true;
+        return Heard::Ended;
+    }
+    line = std::move(lines_->lines.front());
+    lines_->lines.pop_front();
+    return Heard::Line;
 }
 
-void Prelude::unwrap(const Path& path, const Pod& value) {
-    const Pod& v = value.structure();
-    if (auto x = v.if_ok()) {
-        answers_.emplace_back(path, *x);
-        return;
+bool Console::print(const std::string& name, const std::vector<std::string>& lines, bool addressed) {
+    for (const auto& line : lines) {
+        if (addressed) *output_ << name << ": ";
+        *output_ << line << '\n';
+        output_->flush();
+        if (!*output_) return false;
     }
-    const Pod* error = v.if_failed();
-    if (!error) {
-        answers_.emplace_back(path, v);
-        return;
-    }
-    Path sub = subtree_of(path);
-    Pod kind = error->field("kind") ? *error->field("kind") : Pod::name("Prelude.Unknown");
-    Pod message = error->field("message") ? *error->field("message") : Pod::text(prism_rtl::Text(""));
-    Pod exception = Pod::record("Exception", {{"kind", kind}, {"message", message}, {"spans", Pod::array({})}, {"path", Pod::some(Pod::path(sub))}});
-    std::optional<Path> supervisor;
-    for (const Path& p : exceptions_)
-        if (!under(p, sub) && under(sub, parent_of(p)) && (!supervisor || p.len() > supervisor->len())) supervisor = p;
-    poisoned_.push_back(sub);
-    if (supervisor && !sub.is_empty()) {
-        answers_.emplace_back(*supervisor, exception);
-        return;
-    }
-    const prism_rtl::Text* m = message.as_text();
-    std::fprintf(stderr, "prism: the program gave up: %s: %s\n", kind.to_string().c_str(), m ? m->to_string().c_str() : "");
-    if (!exit_) exit_ = prism_rtl::EXIT_FAILED;
+    return true;
 }
 
-std::vector<std::pair<Path, Pod>> Prelude::take_answers() { return std::exchange(answers_, {}); }
+std::optional<std::string> terminal_of(const Pod& element) {
+    auto tag = element.tag();
+    if (!tag || (*tag != "Console.Read" && *tag != "Console.Print")) return std::nullopt;
+    if (auto f = element.field("name"))
+        if (auto t = f->as_text()) return t->to_string();
+    return std::nullopt;
+}
 
-void Prelude::filter(TickIn& input, const Document& doc) const {
-    std::erase_if(input.answers, [&](const auto& a) { return is_poisoned(a.first) || !doc.get(a.first); });
+std::optional<std::pair<std::string, std::string>> address(const std::string& line, const std::set<std::string>& terminals) {
+    if (terminals.size() == 1) return std::pair{*terminals.begin(), line};
+    std::optional<std::pair<std::string, std::string>> best;
+    for (const auto& t : terminals) {
+        std::string prefix = t + ": ";
+        if (line.compare(0, prefix.size(), prefix) == 0 && (!best || t.size() > best->first.size()))
+            best = std::pair{t, line.substr(prefix.size())};
+    }
+    return best;
 }
 
 // ---- The World --------------------------------------------------------------------------
@@ -301,7 +304,10 @@ Expected<void, Error> CliWorld::write(const std::string& path, const std::string
 }
 
 void CliWorld::request(const Pod& element, const Path& path, const Pod& value) {
-    if (tagged(element, "Prelude.Unwrap")) return prelude_.unwrap(path, value);
+    if (tagged(element, "Prelude.Unwrap")) {
+        prelude_.unwrap(path, value);
+        return prelude_.report_gave_up();
+    }
     if (tagged(element, "Process.Exit")) {
         if (!exit_) {
             auto code = prism_rtl::from_pod<std::uint8_t>(value);
@@ -317,11 +323,27 @@ void CliWorld::request(const Pod& element, const Path& path, const Pod& value) {
         timers_.push_back(Timer{Clock::now() + after, path, value});
         return;
     }
+    if (tagged(element, "Console.Print")) {
+        auto name = terminal_of(element);
+        auto items = value.structure().if_array();
+        if (!name || !items || !console_) return;
+        std::vector<std::string> lines;
+        for (const auto& item : *items) {
+            auto t = item.as_text();
+            if (!t) return;
+            lines.push_back(t->to_string());
+        }
+        if (!console_->print(*name, lines, terminals_.size() > 1)) {
+            std::fprintf(stderr, "prism: standard output failed\n");
+            if (!exit_) exit_ = prism_rtl::EXIT_FAILED;
+        }
+        return;
+    }
     const Pod::Choice* c = value.structure().if_choice();
     if (tagged(element, "Fs.File") && c && c->ctor == "Read") {
         auto file = text_field(element, "path");
         if (!file) return;
-        answers_.emplace_back(path, contents(fs_->read(*file)));
+        outputs_.emplace_back(path, contents(fs_->read(*file)));
         return;
     }
     if (tagged(element, "Fs.File") && c && c->ctor == "Write") {
@@ -331,7 +353,7 @@ void CliWorld::request(const Pod& element, const Path& path, const Pod& value) {
         if (!c->args.empty())
             if (auto t = c->args[0].as_text()) text = t->to_string();
         auto w = write(*file, text);
-        answers_.emplace_back(path, w ? contents(text) : contents(unexpected(w.error())));
+        outputs_.emplace_back(path, w ? contents(text) : contents(unexpected(w.error())));
     }
 }
 
@@ -360,15 +382,48 @@ void CliWorld::due() {
     auto now = Clock::now();
     std::vector<Timer> later;
     for (auto& t : timers_) {
-        if (t.at <= now) answers_.emplace_back(t.path, t.value);
+        if (t.at <= now) outputs_.emplace_back(t.path, t.value);
         else later.push_back(t);
     }
     timers_ = std::move(later);
 }
 
+std::set<std::string> CliWorld::live_terminals(const TickOut* out) const {
+    std::set<std::string> found;
+    for (const auto& [p, e] : doc_)
+        if (auto t = terminal_of(e); t && !prelude_.is_poisoned(p)) found.insert(*t);
+    if (out)
+        for (const auto& [p, e] : out->patch.added)
+            if (auto t = terminal_of(e); t && !prelude_.is_poisoned(p)) found.insert(*t);
+    return found;
+}
+
+// A line typed: an answer to each `Console.Read` of the terminal it is for. A line that
+// names no terminal is reported on standard error and goes nowhere.
+void CliWorld::heard(const std::string& line) {
+    auto terminals = live_terminals(nullptr);
+    auto to = address(line, terminals);
+    if (!to) {
+        std::string names;
+        for (const auto& t : terminals) names += (names.empty() ? "" : ", ") + t;
+        std::fprintf(stderr, "prism: the line `%s` names no terminal; write `NAME: text`, NAME one of %s\n", line.c_str(), names.c_str());
+        return;
+    }
+    for (const auto& [p, e] : doc_)
+        if (tagged(e, "Console.Read") && !prelude_.is_poisoned(p) && terminal_of(e) == to->first)
+            outputs_.emplace_back(p, Pod::text(prism_rtl::Text(to->second)));
+}
+
+// A line may still come for a live `Console.Read`.
+bool CliWorld::console_waits() const {
+    if (!console_ || !console_->reading()) return false;
+    return std::any_of(doc_.begin(), doc_.end(), [&](const auto& pe) { return tagged(pe.second, "Console.Read") && !prelude_.is_poisoned(pe.first); });
+}
+
 void CliWorld::perform(const TickOut& out) {
     pending_ = out.pending;
     prelude_.track(out.patch);
+    terminals_ = live_terminals(&out);
     for (const auto& r : out.requests) {
         if (prelude_.is_poisoned(r.path)) continue;
         const Pod* element = element_of(doc_, out, r.path);
@@ -382,6 +437,10 @@ void CliWorld::perform(const TickOut& out) {
         bool still = std::any_of(doc_.begin(), doc_.end(), [&](const auto& qf) { return !(qf.first == p) && qf.second == e; });
         if (!still) lists_.erase(e);
     }
+    if (console_ && std::any_of(out.patch.added.begin(), out.patch.added.end(), [&](const auto& pe) {
+            return tagged(pe.second, "Console.Read") && !prelude_.is_poisoned(pe.first);
+        }))
+        console_->start();
     for (const auto& [p, e] : out.patch.added) {
         if (tagged(e, "Fs.List") && !prelude_.is_poisoned(p)) {
             auto first = ready()->first_value(e);
@@ -400,18 +459,26 @@ void CliWorld::perform(const TickOut& out) {
 std::optional<TickIn> CliWorld::next_inputs() {
     while (true) {
         due();
-        for (auto& a : prelude_.take_answers()) answers_.push_back(std::move(a));
-        if (answers_.empty() && pushes_.empty() && !pending_ && !timers_.empty()) {
-            auto at = std::min_element(timers_.begin(), timers_.end(), [](const Timer& a, const Timer& b) { return a.at < b.at; })->at;
-            std::this_thread::sleep_until(at);
-            due();
+        for (auto& a : prelude_.take_outputs()) outputs_.push_back(std::move(a));
+        if (outputs_.empty() && pushes_.empty() && !pending_) {
+            std::optional<Clock::time_point> wake;
+            if (!timers_.empty())
+                wake = std::min_element(timers_.begin(), timers_.end(), [](const Timer& a, const Timer& b) { return a.at < b.at; })->at;
+            if (console_waits()) {
+                std::string line;
+                if (console_->next_line(wake, line) == Console::Heard::Line) heard(line);
+                due();
+            } else if (wake) {
+                std::this_thread::sleep_until(*wake);
+                due();
+            }
         }
         TickIn input;
-        input.answers = std::exchange(answers_, {});
+        input.answers = std::exchange(outputs_, {});
         input.pushes = std::exchange(pushes_, {});
         prelude_.filter(input, doc_);
         if (!input.answers.empty() || !input.pushes.empty()) return input;
-        if (timers_.empty() || pending_) return std::nullopt;
+        if ((timers_.empty() && !console_waits()) || pending_) return std::nullopt;
     }
 }
 

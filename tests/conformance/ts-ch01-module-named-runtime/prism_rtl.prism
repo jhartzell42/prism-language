@@ -1,0 +1,10 @@
+# A module named as the runtime library, for ts-ch01-module-named-runtime.
+emit r
+
+type Dynamic = choice:
+    Dynamic Nat
+    Event
+derive ^Eq, ^Show
+
+Twice: fn Nat -> Nat
+fn Twice n = n * 2

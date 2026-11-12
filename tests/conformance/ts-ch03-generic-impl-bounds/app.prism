@@ -13,4 +13,4 @@ use Ui.*
 
 @page: @unit
 @page:
-    Ui.Label(text=$"{Relay.Pass (Make.Boxed 3)}")
+    Ui.Label($text=$"{Relay.Pass (Make.Boxed 3)}")

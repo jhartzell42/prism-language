@@ -1,0 +1,9 @@
+# An element value placed in a hosted scope: declarations of sem-ch09-element-value-hosted.
+emit Ui.*
+use App.*
+
+test a_hosted_element_value_is_forwarded, @page:
+    build
+        => expect Ui.Label(text="<0>")
+    click Ui.Button(label="inc")
+        => expect Ui.Label(text="<1>")

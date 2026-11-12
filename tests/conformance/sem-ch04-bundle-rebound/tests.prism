@@ -1,0 +1,9 @@
+# The tests of sem-ch04-bundle-rebound.
+emit Ui.*
+use App.*
+
+test a_bundle_named_twice, @page:
+    build
+        => expect Ui.Label(text="0 after 0")
+    click at 0
+        => expect Ui.Label(text="1 after 1")

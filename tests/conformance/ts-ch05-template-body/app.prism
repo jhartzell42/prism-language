@@ -15,4 +15,4 @@ fn Page n = inline_text <t><@Card note={{? " (see below)"}} depth={{n}}>body tex
 
 @shown: @unit
 @shown:
-    Ui.Label(text=$"{Page 0} / {Page 2}")                  # 0
+    Ui.Label($text=$"{Page 0} / {Page 2}")                  # 0

@@ -153,11 +153,20 @@ fn ParseTypeAtom p:
         KFree ignore: ParseSigiledType p
         otherwise:
             let ((t, p1)) = TypeAtomBody p, start
-            if (Kind p1) == KNonEmpty:
+            if (Kind p1) == KNonEmpty or (PlusTouchesParenthesis p1, "+"):
                 let m = Here p1
-                let q = OutOfScope (Adv p1), m, "non-empty arrays", "the non-empty array type `[a]+` is out of this compiler"
-                ((Type(kind=(TNonEmpty t), span=(To start, m)), q))
+                ((Type(kind=(TNonEmpty t), span=(To start, m)), (Adv p1)))
             else: ((t, p1))
+
+# `(K ==> V)+`, a non-empty map's type (Type System ch. 2, "Collections"): in a type, a
+# `+` touching a closing parenthesis is the non-empty mark, since a type has no addition.
+# The lexer's mark is a `+` touching a closing double bracket or brace (Semantics ch. 2),
+# so an expression's `(a)+ b` stays an addition. `op` is `+`, or `+?` for the checked
+# cast's `(K ==> V)+?`.
+PlusTouchesParenthesis: fn Ps, Text -> Bool
+fn PlusTouchesParenthesis p, op = match Kind p:
+    KOp found, ignore: found == op and (Tk p).touches and p.pos > 0 and (Or p.toks[Dec p.pos], eofTok).kind == (KClose "(")
+    otherwise: False
 
 TypeAtomBody: unbounded fn Ps, Range -> ((Type, Ps))
 fn TypeAtomBody p, start = match Kind p:
@@ -380,9 +389,9 @@ fn ParseRecordPattern p0, name:
                 &_.rest <= True
             else:
                 let fstart = Here &_.p
-                let ((?fname, p1)) = ParseArgName &_.p
+                let ((?fname, marks, p1)) = ParseArgName &_.p
                 let ((pattern, p2)) = ParsePattern p1, False
-                &_.fields <= Push &_.fields, FieldPat(name=?fname, pattern=pattern, span=(To fstart, pattern.span))
+                &_.fields <= Push &_.fields, FieldPat(marks=marks, ?name=?fname, pattern=pattern, span=(To fstart, pattern.span))
                 &_.p <= p2
             if AtComma &_.p:
                 &_.p <= Adv &_.p

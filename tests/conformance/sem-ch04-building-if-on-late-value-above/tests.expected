@@ -1,0 +1,14 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": the order of a group's lines decides positions and nothing else), ruling IE2 (an else-less building `if` builds its arm or nothing) and ruling TC (places counted as built): loud gives 10, so the `if` builds nothing and the arm's label is 0; soft gives 20, so the `if`'s label is 0 and the arm builds nothing; the last label is 1 both times.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="x")
+    1: Ui.Label(text="below 10")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="big 20")
+    1: Ui.Label(text="below 20")

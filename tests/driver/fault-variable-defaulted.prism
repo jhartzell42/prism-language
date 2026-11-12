@@ -1,0 +1,9 @@
+# A bare `Error` as a tuple's part that nothing else decides stays an `Error`: a plain
+# prelude record, which fills a place wanting a `~T` as it is (ruling NE). Written by Claude
+# on the claude-bugs branch; subject to change.
+emit Ui.*
+
+@main: @unit
+@main:
+    let ts = [[((Error(kind=Prelude.NotANumber, message="e"), 2))]]
+    Ui.Label($text=$"{Len ts}")

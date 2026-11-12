@@ -1,0 +1,32 @@
+# A non-empty collection beside the collection (Type System ch. 2, "Collections"): `==`
+# with the `[a]+` on either side, two arguments at one type variable, an `if`'s arms, a
+# `match`'s arms and an array's entries each read the `[a]+` as the `[a]`, whichever comes
+# first. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Choose: fn Bool, a, a -> a
+fn Choose first, x, y = if first: x else: y
+
+Either: fn Bool, [Nat]+, [Nat] -> [Nat]
+fn Either first, xs, ys = if first: xs else: ys
+
+Pick: fn Nat, [Nat]+, [Nat] -> [Nat]
+fn Pick n, xs, ys = match n:
+    0: xs
+    1: ys
+    otherwise: xs
+
+@main: @unit
+@main:
+    let xs = [[1, 2]]+
+    let ys = [[1, 2]]
+    let short = [[7]]
+    let m = {1: "a"}+
+    let n = {1: "a"}
+    let left = if xs == ys: "same" else: "differs"
+    let right = if ys == xs: "same" else: "differs"
+    let other = if xs != short: "differs" else: "same"
+    let maps = if m == n: "same" else: "differs"
+    let both = [[xs, short]]
+    Ui.Label($text=$"{left} {right} {other} {maps} {Len (Choose False, xs, short)} {Len (Either True, xs, short)} {Len (Pick 1, xs, short)} {Len both}")    # 0

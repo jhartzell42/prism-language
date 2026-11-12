@@ -1,0 +1,24 @@
+# Derived by hand from Semantics Appendix B (`@Flatten: fn $$a -> @$a` takes any dynamic of dynamics, an expression as well as a name) and the transcript sem-ch07-flatten-mapped-constants derives for the same outer bound by a `let` (ruling FV: the outer's update event at n puts the flatten on the swap list; it adopts after n and fires from n+1, owed): the inc moves the outer at 1, so the flatten reads the constant 1 at 2; the swap moves it at 3, and it reads 101 at 4.
+test the_flatten_adopts_each_constant
+
+tick 0
+  added:
+    0: Ui.Button(label="inc")
+    1: Ui.Button(label="swap")
+    2: Ui.Label(text="0")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    2: Ui.Label(text="1")
+
+tick 3
+  in:
+    1: click
+
+tick 4
+  changed:
+    2: Ui.Label(text="101")

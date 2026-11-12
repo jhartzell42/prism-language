@@ -17,11 +17,11 @@ fn ?Remote p, e, !go = match e:
 
 @pad: @unit
 @pad:
-    !b <- Ui.Button(label=$"pad")
+    !b <- Ui.Button($label=$"pad")
     $hits <- 0 then $hits + 1 on !b
-    Ui.Label(text=$"{$hits} hits")
+    Ui.Label($text=$"{$hits} hits")
 
 @remote: @unit
 @remote:
-    !go <- Ui.Button(label=$"go")                               # 0
+    !go <- Ui.Button($label=$"go")                               # 0
     ignore <- @HostSome @pad, \|p, e| ?Remote p, e, !go         # 1/[p]

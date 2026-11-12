@@ -13,17 +13,17 @@ fn ShowResponse (Error(..)) = "(cannot read)"
 
 @child: @unit
 @child:
-    !inc <- Ui.Button(label=$"Increment")                   # 0
+    !inc <- Ui.Button($label=$"Increment")                   # 0
     $count <- 0 then $count + 1 on !inc
     $~motd <- Fs.Contents(path="/etc/motd")                 # 1
-    Ui.Label(text=$"{$count} {ShowResponse $~motd}")        # 2
+    Ui.Label($text=$"{$count} {ShowResponse $~motd}")        # 2
 
 @mocked: @unit
 @mocked:
     ((ignore, $doc)) <- @HostDocument @child, \|p, e| match e:   # 0/[p]
         Fs.Contents(..): @ $ (~ Contents(text="mock"))
         otherwise: @Element e
-    Ui.Label(text=$"{Size $doc} places")                    # 1
+    Ui.Label($text=$"{Size $doc} places")                    # 1
 
 ?Give: fn Path, Element o -> ?@o
 fn ?Give p, e = match e:
@@ -33,7 +33,7 @@ fn ?Give p, e = match e:
 @some: @unit
 @some:
     ((ignore, $doc)) <- @HostSome @child, ?Give
-    Ui.Label(text=$"{Size $doc} places")
+    Ui.Label($text=$"{Size $doc} places")
 
 @forwarded: @unit
 @forwarded:
@@ -43,4 +43,4 @@ fn ?Give p, e = match e:
 @watcher: @unit
 @watcher:
     ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e
-    Ui.Label(text=$"{Len (Keys $doc)} child places")
+    Ui.Label($text=$"{Len (Keys $doc)} child places")

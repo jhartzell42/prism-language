@@ -1,0 +1,24 @@
+# A named supplier whose body is a block (a `let`, then the `match` on the element): its
+# tag arms refine the element's output as the expression body's do (Type System ch. 5,
+# "Refinement at tag matches"; checker pos supplier-named). Written by Claude on the
+# claude-bugs branch; subject to change.
+emit Ui.* | Fs.*
+use Fs.*
+
+@child: @unit
+@child:
+    $~text <- Fs.Contents(path="a")                               # 0
+    !~got <- Fs.File(path="b", !requests=never)                    # 1
+    Ui.Label($text=$"child")                                       # 2
+
+@Supply: fn Path, Element (Ui.* | Fs.*) o -> @o
+fn @Supply p, e:
+    let fallback = Contents(text="A")
+    match e:
+        Fs.Contents(..): @ $ (~ fallback)
+        Fs.File(..): @ never
+        otherwise: @Element e
+
+@named: @unit
+@named:
+    ignore <- @HostDocument @child, @Supply                       # 0/[p]

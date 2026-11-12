@@ -1,0 +1,41 @@
+# A record's blueprint field written without `emit` takes the row of the scope it is
+# written in, as a signature's does (Type System ch. 2, "Rows in `emit` and in
+# signatures": a blueprint type with no `emit` of its own "emits the row of the scope it
+# is written in"; ch. 1, "Sigils on fields": given as `@body=`, read as `.@body`). Here
+# the module's row is `Ui.*`: the field holds a blueprint of that row, a top-level one or
+# a block's, and a bind applies it. A field that writes its `emit` keeps it. Written by
+# Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+use Ui.*
+
+type Card = record:
+    title: Text
+    @body: unit
+    @count: Nat
+    @side: unit emit Ui.*
+
+@line: @unit
+@line:
+    Ui.Label($text=$"line")
+
+@seven: @Nat
+@seven:
+    Ui.Label($text=$"seven")
+    @ 7
+
+@Show: fn Card -> @Nat
+fn @Show card:
+    Ui.Label($text=$"{card.title}")
+    ignore <- card.@body
+    ignore <- card.@side
+    n <- card.@count
+    @ n
+
+@page: @unit
+@page:
+    @local:
+        Ui.Label($text=$"local")
+    let card = Card(title="a card", @body=@line, @count=@seven, @side=@local)
+    n <- @Show card
+    ignore <- card.@body
+    Ui.Label($text=$"{n}")

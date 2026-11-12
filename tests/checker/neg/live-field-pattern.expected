@@ -1,0 +1,5 @@
+tests/checker/neg/live-field-pattern.prism:12: error[live-field-pattern]: an element's `$text` binds its dynamic; `$"x"` would test a value the field has only in a tick
+        Ui.Label($text=$"x"): True
+                       ^^^^
+  fix: bind it, `$text=$t`, and read `$t` where a tick reads it
+1 error

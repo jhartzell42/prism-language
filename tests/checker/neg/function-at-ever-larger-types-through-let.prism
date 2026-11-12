@@ -1,0 +1,9 @@
+# `grows-without-end` through a top-level `let` with no signature: the `let` generalizes
+# (Type System ch. 5; ruling SH), so `Deep` reaches itself through `Wrapped` at `[a]` for
+# `a` (ruling PG). The error stands at the use that closes the round.
+let Wrapped = \|xs, less| Deep [[xs]], less
+
+Deep: unbounded fn [a], Nat -> Nat
+fn Deep xs, more = match more -? 1:
+    ? less: Wrapped xs, less
+    nil: Len xs

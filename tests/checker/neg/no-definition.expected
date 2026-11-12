@@ -1,0 +1,9 @@
+tests/checker/neg/no-definition.prism:3: error[no-definition]: `Lone` has a signature line and no definition
+    Lone: fn Nat -> Nat
+    ^^^^^^^^^^^^^^^^^^^
+  fix: define it under its signature, `fn Lone ... = ...`, or delete the line
+tests/checker/neg/no-definition.prism:7: error[no-definition]: `ys` has a signature line and no definition
+        ys: [Nat]
+        ^^^^^^^^^
+  fix: define it under its signature, `let ys = ...`, or delete the line
+2 errors

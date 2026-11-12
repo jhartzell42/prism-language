@@ -1,0 +1,11 @@
+# A fault that holds typed values: why a count is refused, as a number and not as text.
+tag Count.TooMany of Fault:
+    limit: Nat
+    asked: Nat
+
+~Counted: fn Nat -> ~Nat
+fn ~Counted n = if n > 5: Error(kind=Count.TooMany(limit=5, asked=n), message="") else: ~ n
+
+@main: @unit
+@main:
+    @ unit

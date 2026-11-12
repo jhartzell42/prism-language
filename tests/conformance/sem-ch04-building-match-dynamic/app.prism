@@ -1,0 +1,29 @@
+# A building `match` whose arms end on a dynamic (Semantics ch. 4: the arm is fixed at the
+# build and its block's result is the block's), as the last line of a widget: the caller
+# follows the arm's dynamic, which reads the arm's own hold and the caller's. Arms of
+# different widths leave the caller's later place at the widest arm's next position (pick
+# CS). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Choose: fn Mode, $Nat -> @$Text
+fn @Choose mode, $resets:
+    match mode:                                                        # 0
+        Loud t:
+            !up <- Ui.Button($label=$"{t}!")                            # 0
+            $c <- 0 then $c + 1 on !up
+            @ $"{t} {$c} {$resets}"
+        Soft: @ $"soft {$resets}"
+
+@Panel: fn Mode -> @unit
+fn @Panel mode:
+    !reset <- Ui.Button($label=$"reset")                                # 0
+    $resets <- 0 then $resets + 1 on !reset
+    $shown <- @Choose mode, $resets                                    # 1
+    Ui.Label($text=$"{$shown}")                                         # 2

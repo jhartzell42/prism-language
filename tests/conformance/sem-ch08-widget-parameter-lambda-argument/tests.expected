@@ -1,0 +1,7 @@
+# Derived by hand from Semantics ch. 8 (a widget application is transparent; a widget function parameter applied builds at the block's next positions): each application builds one label, with the function it was given.
+test a_lambda_is_applied_twice
+
+tick 0
+  added:
+    0: Ui.Label(text="shows 2")
+    1: Ui.Label(text="shows 5")

@@ -88,10 +88,11 @@ type Gn = record:
 
 # What a node of the graph is: a source (a place's answer, `@started`, an `@Defer`, a row's
 # port), a named event, or a combinator decided in the wake (a merge, `!Union`, `!Both`,
-# `!Except`, `!MergeAll`, a `for`'s gather, `!Updated`); `never` fires nothing.
+# `!Except`, `!MergeAll` of a literal or of a list, a `for`'s gather, `!Updated`); `never`
+# fires nothing.
 type GnKind = choice:
     GnNamed
-    GnAnswer
+    GnOutput
     GnStarted
     GnDeferred
     GnPort
@@ -101,6 +102,7 @@ type GnKind = choice:
     GnExcept
     GnMergeAll
     GnGather
+    GnMergeList
     GnUpdated
     GnNever
 derive ^Eq, ^Show
@@ -109,7 +111,7 @@ derive ^Eq, ^Show
 KindWord: fn GnKind -> Text
 fn KindWord k = match k:
     GnNamed: "named"
-    GnAnswer: "answer"
+    GnOutput: "answer"
     GnStarted: "started"
     GnDeferred: "deferred"
     GnPort: "port"
@@ -119,6 +121,7 @@ fn KindWord k = match k:
     GnExcept: "except"
     GnMergeAll: "mergeall"
     GnGather: "gather"
+    GnMergeList: "mergelist"
     GnUpdated: "updated"
     GnNever: "never"
 
@@ -135,11 +138,13 @@ type Sk = choice:
     SkRequest Pos, Text
     SkResult
     SkArm Text
+    # `@Later`: its queue, which keeps each firing until its wake is answered.
+    SkLater Text
     SkCycle Text, Text, Nat
     SkUp Text
     SkPort Text
     # `@Machine`: the state hold, the step function's path, the output node.
-    SkMachine Text, Text, Nat
+    SkMachine Text, Ex, Nat
     # `@Distinct`: its hold, written only by a value unequal to the one it holds.
     SkDistinct Text
     # `@PerKey`: its `prism_rtl::PerKey`, whose outer is written only when a key came or went.
@@ -163,6 +168,39 @@ type Place = record:
 # What a dynamic reads, for the marks (claude/backend.md, "Marks"): a hold or a dynamic
 # `let`'s getter of this node by its field or method name, or, in a row, one of its block's
 # read through the parent (gap DY), whose writes in the block mark the rows.
+# How the rows of the line a block is split at are numbered (Semantics ch. 4: the order of
+# a group's lines decides positions and nothing else; ruling TC: places are counted as
+# they are built). `GivenInOrder`: built after the node, numbered where they are built.
+# `TakenAbove`: a line above takes the late result and its places are counted as built
+# (`DeferredLine`), so the split line's rows are to be built before it and numbered
+# after it. `GivenUnnumbered`: the split line is being lowered so, its rows built with no
+# `base`, each leaving the block the step that numbers it (`ArmRowOf`'s `weakLate`,
+# `NumberedByParent`); the block builds them before its other generations
+# (`Wx.lateRowGens`, `FinishNode`).
+type LateGiving = choice:
+    GivenInOrder
+    TakenAbove
+    GivenUnnumbered
+derive ^Eq, ^Show
+
+# A plain `let` among the lines above a split line or hoisted to them (`SplitBlockInto`):
+# a name it binds and the names it reads. A line above that takes the name takes the
+# split line's result through the `let` when every late name it reads does
+# (`?FromSplit`).
+type SplitLet = record:
+    name: Text
+    reads: [Text]
+    # it reads a local function of the block, whose body's reads are not listed
+    callsLocal: Bool
+
+# A line above a split line that takes its late result and whose places are counted as
+# built (`DeferredLine`, `LateGiving`): its generation, and the generations of the split
+# line's rows. In a row that builds its generations before it is numbered
+# (`Wx.lateGens`) both are built at once, the taker's after the givers' (`ScopeSteps`).
+type LateTaking = record:
+    taker: Text
+    givers: [Text]
+
 type Read = choice:
     OwnRead Text
     ParentRead Text
@@ -182,6 +220,9 @@ type Wres = choice:
     WrEv EvRef
     WrDyn Ex, [Read], OutTy
     WrPlain Ex, OutTy
+    # A plain result the node reads from itself once its rows are built (`SplitBlockInto`):
+    # an expression of the node's methods, never of its build's locals.
+    WrLate Ex, OutTy
     WrUnit
     # A host's output: its child's result, the first part of the line's tuple pattern, and
     # the child's document, the second part (pick HO).
@@ -206,7 +247,7 @@ type Wx = record:
     build: [Do]
     places: [Place]
     # The places whose element answers an event: position, the graph node the answer fires,
-    # its type, and the tag's `Answer` accessor (a hosted place is answered typed, pick HO).
+    # its type, and the tag's `Output` accessor (a hosted place is answered typed, pick HO).
     answers: [((Pos, Nat, OutTy, Text))]
     started: [Nat]
     defers: [((Text, Nat))]
@@ -214,6 +255,10 @@ type Wx = record:
     dynReads: (Text ==> [Read])
     taken: [Text]
     fallible: Bool
+    # A transparent row (an arm's or a clause's, standing at its block's path): the
+    # block's position its places are numbered from; the row is built with `base`, where
+    # that position stands as built (ruling TC).
+    ?based: Nat
     inlining: [Text]           # the widgets being inlined here, outermost first: one recurses at most sixteen levels (gap ID)
     result: Wres
     rows: [NodeDef]
@@ -232,8 +277,10 @@ type Wx = record:
     # (from 1) is `hosts[k - 1]`, and a position of scope `k` is a place of its child.
     hosts: [HostDef]
     # The places whose element answers a dynamic: position, the hold, its type, and the
-    # tag's `Answer` accessor. An answer or a push there writes the hold.
+    # tag's `Output` accessor. An answer or a push there writes the hold.
     dynPlaces: [((Pos, Text, OutTy, Text))]
+    # The places whose element answers a bundle (`BundlePlace`).
+    bundles: [BundlePlace]
     # The hosts' fields, `hosts[k - 1].name` (`host_k`): kept apart for the positions'
     # spelling.
     scopes: [Text]
@@ -241,10 +288,18 @@ type Wx = record:
     # when set, an enclosing host's document, and the parent's method that this node calls
     # when a place of its own may have moved (`host_k_moved` of the owner for a row of a
     # hosted child's `for`, `document_moved` of a row of such a row).
-    hostedBy: ?Text
+    ?hostedBy: Text
+    # Set while a block's own widget is lowered as the rows of its blueprint value
+    # (`BlueprintValuesAt`, read by `ArmRowOf`): whether the row's places are a host's
+    # (`True`: it is built with its host and what tells it, as a shared row is) or the
+    # World's (`False`), whatever scope the block stands in. A blueprint value is built in
+    # the scope of the block that applies it.
+    ?valuedAs: Bool
     # The root's dynamic result: what it reads and its type (the World hears it at the
     # build and whenever it moves).
-    rootDyn: ?((Ex, [Read], OutTy))
+    rootDyns: [((Ex, [Read], OutTy))]
+    # A generation's row: the `rebuild`'s field in its block (`GenRowOf`), else "".
+    genOf: Text
     # The `for`s whose rows read the block: what the rows read of it, by builder (gap DY).
     rowMarks: [RowMarks]
     # The `for`s' rows, lowered and waiting for the block's heights (pick RE).
@@ -257,10 +312,11 @@ type Wx = record:
     snaps: [SnapDef]
     # A row whose result its block gathers (pick ST): the block's method that marks the
     # gathered snapshot, and the row's reads behind the result, a write of which calls it.
-    resultMoved: ?((Text, [Read]))
+    # One per dynamic the row hands its block: a bundle's dynamic parts each have theirs.
+    resultMoved: [((Text, [Read]))]
     # A host's dynamic answers to its child's places (`@ $d`, round 3 DY): the owner's
     # getter for each, and what it reads, a write behind which fires the getter's port.
-    dynAnswers: [((Text, [Read]))]
+    dynOutputs: [((Text, [Read]))]
     # The holds and dynamic `let`s whose value at the build stands in a local, `{f}_init`,
     # bound in the build environment under `{name}#init`: what a supplier's dynamic answer
     # reads while the owner's node is being made (round 3 DY).
@@ -268,6 +324,101 @@ type Wx = record:
     # The node's flattens: `@Flatten` over a `rebuild`'s dynamic, and a `for` row's `$v`
     # over a map of dynamics (Semantics ch. 4, ch. 7).
     flattens: [FlatDef]
+    # A static widget of several clauses whose result is a dynamic (`DynClauseLine`): the
+    # generation names whose result the node keeps in `{name}_res`, a write behind which
+    # (`{name}_result_moved`, called by the row) marks the node's readers of it.
+    clauseResults: [Text]
+    # The node's held switches (`HeldSwitch`): each one's name, whose `swap` takes the
+    # inner its outer holds after the tick.
+    switches: [Text]
+    # The first values of the holds that start from a late result (`HoldLine`), each set
+    # where the generation that gives the result is built (`SplitBlockInto`).
+    lateInits: [Do]
+    # The first values of the World's places whose constant field reads a late result
+    # (`LateFieldPlaces`), each asked where the generation that gives the result is
+    # built, before the holds' first values: the element is read by the place's getter.
+    lateAsks: [Do]
+    # A `rebuild`'s generation whose block ends on a bundle: the place of the result
+    # expression (`ResultKey`), which is lowered as one value, its events and dynamics
+    # whole (`WholeResultOf`); "" otherwise.
+    wholeResultAt: Text
+    # The building `match` lines of the node's blocks that are built early, before the
+    # node (`EarlyChoiceLine`), by their expressions' places (`InitKey`).
+    earlyChoices: [Text]
+    # The generations built after every other builder and generation of their scope: a
+    # line above a split that takes the late result at its build (`DeferredLine`).
+    deferredGens: [Text]
+    # The hosted scopes whose host's supplier answers with a dynamic that has no value
+    # while the node is being made (a structural dynamic; `DynamicOutputs`): the child's
+    # places with a `$` output ask their first values once the node stands and the
+    # builders above the host have run (`LateFirstPlace`).
+    lateHosts: [Nat]
+    # What those places do then, by scope, in the order of the places: the first value
+    # asked of the host and each hold set (`BuildSteps`).
+    lateFirsts: [((Nat, [Do]))]
+    # What a hold that starts from such a place's plain part does then, by scope, after
+    # every place of the scope has asked: the hold set from its first value (`HoldLine`).
+    lateStarts: [((Nat, [Do]))]
+    # The holds of those places, empty until then (`Hold<Option<T>>`): a push writes the
+    # present value (`DynPlaceWrite`).
+    latePlaces: [Text]
+    # the late places of them whose element is kept in a cell, empty until the place asks
+    # its first value (`LateAskedPlace`)
+    lateElements: [Text]
+    # The early generations whose row is numbered after the node (`NumberedLate`): a
+    # line built in the block's build, before the node, below a generation that is built
+    # after the node and may leave positions unbuilt. Its row is built with no `base`
+    # and sends its places when the construction step reaches the line
+    # (`{name}_number`, `ScopeSteps`).
+    lateNumbered: [Text]
+    # The live dynamics of the node's own holds (`LiveDynamics`), each with a cell
+    # `{name}_last` its closure reads once the node is gone: the node's `leave` writes the
+    # hold's value after the tick it leaves in (Semantics ch. 7, "Holds die with their
+    # widget").
+    holdsLast: [Text]
+    # Whether the node is such a row: its `base` is a cell set by `number_places`, which
+    # runs everything the build does after the node is made (`LateNumbering`).
+    baseLate: Bool
+    # Whether such a row builds its own generations in its build, before it is numbered
+    # (`LateGenerations`): its block ends on a late plain result, which the block that
+    # built the row reads at once, or the block that built it does the same and counts
+    # what this row's generations leave unbuilt. Their rows are numbered late in turn.
+    lateGens: Bool
+    # The generations of such a row whose rows are built with no `base`, after the
+    # row's node, and numbered when the row is: each row leaves the step that numbers
+    # it in the row's field `{name}_number` (`NumberedByParent`).
+    lateRowGens: [Text]
+    # The plain names the line a block is split at binds, while the lines above it are
+    # lowered (`SplitBlockInto`), where that line is a building `match` or `if` of the
+    # block's own scope: a line above that takes one of them and whose places are counted
+    # as built (`DeferredLine`) asks for that line's rows to be numbered late.
+    splitNames: [Text]
+    # The plain `let`s of those lines, through which a line above takes the split line's
+    # result as well (`SplitLet`).
+    splitLets: [SplitLet]
+    # How the split line's rows are numbered (`LateGiving`).
+    giving: LateGiving
+    # The lines that take a split line's result above it and are counted as built, with
+    # the generations that give it (`LateTaking`).
+    lateTakings: [LateTaking]
+    # The event values the node hears through a subscription to the value's own port
+    # (`SubscribedValue`): each name's `{name}_sub` and `{name}_value_port`, undone when
+    # the row leaves (`RowMethods`).
+    valueSubs: [Text]
+    # Which part of the construction step `ScopeSteps` writes for such a row: 0 all of
+    # it, 1 what the build does at once (the generations of `lateRowGens` built), 2
+    # what waits for the row's number (those generations' rows numbered, and the rest).
+    genPhase: Nat
+    # What a row numbered late does in its build once its `number_later` is kept: a row
+    # built after its block's node leaves the block the step that numbers it
+    # (`NumberedByParent`).
+    numberedBy: [Do]
+    # The hosts made in the build at no place of their own (`PlaceUnknownAtBuild`: the
+    # position's number is known only once the node stands), by their fields: each is
+    # placed where the construction step reaches its line (`ScopeSteps`, prism_rtl's
+    # `Host::place_at`), and its scope's places ask their first values after that
+    # (`Wx.lateHosts`).
+    unplacedHosts: [Text]
 
 # A flatten: `$a <- @Flatten $$x` over a `rebuild`'s dynamic `$$x` (Semantics ch. 7,
 # "`rebuild`, `@Switch` and `@Flatten` across ticks"), or a `for` row's `$v` over
@@ -276,23 +427,50 @@ type Wx = record:
 # whose publication queues the adoption (`{name}_adopt`) for the first firings of the next
 # tick, and `generation` the `rebuild`, whose current generation tells the block when its
 # result moved (`{generation}_result_moved`). For a row's, `outer` is `entry` and
-# `generation` empty: the `for`'s builder queues the adoption (`{name}_replaced`).
+# `generation` empty: the `for`'s builder queues the adoption (`{name}_replaced`). For any
+# other `$$a` (`held`), `outer` is the live dynamic of dynamics its line made (`WholeArgs`),
+# whose update event (`{name}_outer_moved`) queues the adoption, and `generation` is empty.
 type FlatDef = record:
     name: Text
     outer: Text
     generation: Text
+    held: Bool
     ty: OutTy
 
 # A `for`'s rows' (or a `rebuild`'s generation's) reads of their block, as the block's own
 # names (gap DY): the builder's field; what the rows' places read, whose writes in the block
 # mark every row; and the names the rows' `!Updated` nodes read, a write behind one of
-# which tells every row through its `parent_wrote_{m}` (pick RE; a generation hears none,
-# `UpdatedGaps`).
+# which tells every row through its `parent_wrote_{m}` (pick RE; a generation's current
+# row, through a port of the block: `GenHears`).
 type RowMarks = record:
     builder: Text
     reads: [Read]
     wrote: [Text]
+    # a generation's other names of the block, which only its own builders read (gap DY): a
+    # write behind one tells the current generation as `wrote` does, and its builders build
+    # only while the generation stays current (`current`)
+    builds: [Text]
     kind: RowKind
+
+# A place whose element answers a bundle (Type System ch. 2, "Bundles"; `BundleOutputOf`):
+# any mix of plain, `$` and event parts. Its state is its plain and `$` parts' values
+# (`stateTy`: one part itself, several a tuple of `stateParts`), the place's first value
+# and each push after it; each `$` part is a hold (`holds`: the part's place in the state,
+# the hold's field, its type), written by a push. Each event part is a graph node an
+# answer fires (`events`: the node, its type); an answer to several is a sparse tuple of
+# them. `stem` names the field the World's pushes are keyed by (`{stem}_element`), `""`
+# with no `$` part. The accessors take the state and the events' answer out of
+# `crate::Output`; `firstVariant` is the tag's state case when it has event parts too.
+type BundlePlace = record:
+    pos: Pos
+    stem: Text
+    stateTy: OutTy
+    stateParts: Nat
+    holds: [((Nat, Text, OutTy))]
+    events: [((Nat, OutTy))]
+    stateAccessor: Text
+    eventAccessor: Text
+    firstVariant: Ref
 
 # A host of the block (`@HostDocument`, `@HostSome`; pick HO): its line's position, its
 # field (`host_k`, `k` the scope of its child's places), and that scope.
@@ -328,10 +506,23 @@ type PendingRow = record:
     wx: Wx
     qk: Text
     params: [((Text, OutTy))]
-    gather: ?Nat
+    # the block's gathers of the row's firings: one, or one per event part of a bundle
+    gathers: [Nat]
 
 # The names a node's own methods and the `Node` interface take.
 let nodeHooks = [["path", "build", "wake", "started", "deferred", "answer", "push", "swap", "leave", "patch", "clean_up", "edges", "release", "leave_row", "remove_places"]]
+
+# A hosted row built at a path of its own (a `for`'s row, a `rebuild`'s generation, a row
+# numbered from 0 where a widget's value is applied) names its places by paths relative to
+# itself, and its host knows them by their paths under the host's child: the row's `build`
+# first takes the host as the row reaches it (`prism_rtl::host_under`: the row's path
+# before every place it names). An arm of a building `match` or `if` is numbered in its
+# block's own places and built at its block's path: it takes its block's host as it is.
+UnderItsPath: fn Wx, ?Text -> Wx
+fn UnderItsPath wx, ?hostedBy = match ?hostedBy:
+    ? ignore: update wx:
+        &_.lets <= Append [[(DoLet (PaBind "enclosing"), (XCall (RefRuntime "prism_rtl::host_under"), [[(XVar "enclosing"), (XRef (XVar "path"))]]))]], &_.lets
+    nil: wx
 
 # A fresh node state: its fields, initializers, getters, dynamic reads and taken names given,
 # no graph and no places yet. `?hostedBy` is set for a row of a hosted child's `for` or
@@ -345,7 +536,7 @@ fn NewWx lx, name, fields, inits, moves, getters, dynReads, taken, inlining, ?ho
     let hostedInits = match ?hostedBy:
         ? ignore: [[(("enclosing", (XVar "enclosing")))]]
         nil: [[]]
-    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], hostedBy=?hostedBy, rootDyn=nil, rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=nil, dynAnswers=[[]], inited=[[]], flattens=[[]])
+    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, ?valuedAs=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], bundles=[[]], scopes=[[]], ?hostedBy=?hostedBy, rootDyns=[[]], genOf="", rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=[[]], dynOutputs=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]], lateAsks=[[]], lateGens=False, lateRowGens=[[]], genPhase=0, numberedBy=[[]], unplacedHosts=[[]], wholeResultAt="", earlyChoices=[[]], deferredGens=[[]], lateHosts=[[]], lateFirsts=[[]], lateStarts=[[]], latePlaces=[[]], lateElements=[[]], lateNumbered=[[]], holdsLast=[[]], baseLate=False, splitNames=[[]], splitLets=[[]], giving=GivenInOrder, lateTakings=[[]], valueSubs=[[]])
 
 # A name not yet taken in the node: `base`, else `base_2`, `base_3`.
 FreshName: fn Wx, Text -> ((Text, Wx))
@@ -378,7 +569,7 @@ fn Connect wx, r, sink:
 # none). Refused at the node's build, naming what crossed.
 Crossed: fn Wx, Text -> Wx
 fn Crossed wx, what = update wx:
-    &_.build <= Push &_.build, (DoExpr (Refusal "{what} read in node `{wx.node}` without a port (a lowering bug)"))
+    &_.build <= Push &_.build, (InternalBugDo "{what} read in node `{wx.node}` without a port")
 
 AddOut: fn Gn, Out -> Gn
 fn AddOut n, o = update n:

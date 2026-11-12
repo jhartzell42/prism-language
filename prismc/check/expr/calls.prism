@@ -51,7 +51,10 @@ fn InferCall env, st, callee, args, span = match callee.kind:
         let local = SNameKey n
         match env.locals[local]:
             ? sc:
-                let ((t, st2)) = InstantiateLocal st, sc, callee.span, local
+                let st1 = match env.ids[local]:
+                    ? id: NoteUse st, callee.span, id, local
+                    nil: st
+                let ((t, st2)) = InstantiateLocal st1, sc, callee.span, local
                 ApplyFn env, (NoteTy st2, callee.span, t), local, t, (Positional args), span
             nil: CallGlobal env, st, n, args, span, [[]], callee.span
     ETypeArgs target, tys: match target.kind:
@@ -74,18 +77,22 @@ fn CallGlobal env, st0, n, args, span, explicit, cspan:
     let name = SNameKey n
     let st1 = CollisionAt env, st0, why, name, n.span
     let st = match ?qk:
-        ? qk: NoteGlobal st1, n.span, qk
+        ? qk: NoteGlobal st1, n.span, (if why == "output": OutputTag qk else: qk)
         nil: st1
     match ?qk:
         nil: ((TyErr, (Err st, "unknown-name", n.span, "nothing declares `{name}` here")))
         ? qk:
             if why == "tag": TagApp env, st, qk, args, span, cspan
+            else: if why == "output":
+                let ((t, st2)) = OutputConstructor env, st, (OutputTag qk), n.span
+                ApplyFn env, (NoteCallee st2, n.span, cspan, t), name, t, args, span
             else: if (IsLocalMaker qk) and not env.inUpdate: ((TyErr, (LocalOutside st, qk, span)))
             else: match env.g.vals[qk]:
                 ? v:
                     let ((t, st2i, inst)) = InstantiateWith st, v.scheme, span, explicit
                     let ((rigids, st2)) = RankTwo st2i, v.scheme, inst, (Len explicit), span
-                    let st3a = NoteCallee (NoteMethodUse st2, v, span), n.span, cspan, t
+                    let st2u = if IsGenericUse v: NoteGenericUse st2, qk, v.scheme.qs, n.span, inst else: st2
+                    let st3a = NoteCallee (NoteMethodUse st2u, v, span), n.span, cspan, t
                     let st3 = if (BareName qk) == "Min": NoteSizeTy st3a, span, (Walk st3a, t) else: st3a
                     if (BareName qk) == "Fold" and v.home == "Prelude": FoldApp env, st3, t, args, span
                     else:
@@ -132,7 +139,7 @@ fn QOccurs q, t = match t:
     TySig ignore, i: QOccurs q, i
     TyAt i, ignore: QOccurs q, i
     TyElem ignore, o: QOccurs q, o
-    TyAssoc ignore, i: QOccurs q, i
+    TyAssoc ignore, ignore, i: QOccurs q, i
     otherwise: False
 
 # Whether `q` is an element's output somewhere in a type (`Element R q`).
@@ -173,7 +180,7 @@ fn RigidIn r, t = match t:
     TySig ignore, i: RigidIn r, i
     TyAt i, ignore: RigidIn r, i
     TyElem ignore, o: RigidIn r, o
-    TyAssoc ignore, i: RigidIn r, i
+    TyAssoc ignore, ignore, i: RigidIn r, i
     otherwise: False
 
 # A block-local type made outside every `&` block (ch. 5, pass 3; Semantics ch. 5).
@@ -193,7 +200,9 @@ fn NoteMethodUse st, v, span:
     if v.sort != "method": st
     else:
         let ((ignore, cls)) = Or v.scheme.bounds[0], (("", ""))
-        NoteMethod st, span, v.qk, cls
+        let used = update st:
+            &_.methodUses <= Insert &_.methodUses, (UseKey &_.file, span), v.qk
+        NoteMethod used, span, v.qk, cls
 
 # `Fold` over a map takes a step of three parameters, the key and the value (Appendix B):
 # the one place the prelude's signature does not say what a call means.
@@ -255,6 +264,10 @@ Broken: fn Peeled, Bool -> Peeled
 fn Broken p, b = if not b: p else: update p:
     &_.broken <= True
 
+# What the application rule is told a map literal's name is (`InferMap`): the one
+# application that lifts over time among its entries and holds a blueprint whole.
+let mapLiteral = "a map literal"
+
 # The application rule (ch. 5): first the plain arguments, unified whole; then the
 # lambdas, against their parameters as far as known; then the layered arguments, peeled
 # at a plain or variable parameter. One row for the application; the result under the
@@ -265,25 +278,34 @@ ApplyRule: unbounded fn Env, St, Text, Col, [Ty], Ty, [Arg], Range -> ((Ty, St))
 fn ApplyRule env, st, fname, col, params, res, args, span:
     let n = Len args
     let cmp = IsComparison fname
-    let ((argTys, st1)) = Fold (Range0 n), (([[]], st)), \|((acc, s)), i|
-        let a = Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)
+    let holds = fname == mapLiteral
+    let ((inferred, st1)) = Fold (Range0 n), (([[]], st)), \|((acc, s)), i|
+        let a = Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)
         if IsLambda a.value: (((Push acc, TyErr), s))
         else:
             let ((t, s2)) = Infer env, s, a.value
             match (((Walk s2, (Or params[i], TyErr)), (Walk s2, t))):
                 (((TyFn pc, ignore, ignore), (TyFn ac, aps, ar))): (((Push acc, (TyFn pc, aps, ar)), (AddLeq s2, ac, pc, a.value.span, "arg", fname, "")))
                 otherwise: (((Push acc, t), s2))
-    let ((st2, whole)) = Fold (Range0 n), ((st1, [[]])), \|((s, done)), i|
-        let a = Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)
+    let argTys = PlainBeside st1, params, inferred
+    # each `[a]+` argument read as the `[a]` beside an `[a]` one stands where the `[a]` is
+    # wanted (`PlainNotes`)
+    let st1b = Fold (Range0 n), st1, \|s, i| match (((?NonEmptyColl s, (Or inferred[i], TyErr)), (?NonEmptyColl s, (Or argTys[i], TyErr)))):
+        ((? c, nil)): AskPlainAt s, (Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)).value.span, c
+        otherwise: s
+    let ((st2, whole)) = Fold (Range0 n), ((st1b, [[]])), \|((s, done)), i|
+        let a = Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)
         let at = Or argTys[i], TyErr
-        let pnow = Walk s, (Or params[i], TyErr)
-        let wholeNow = (IsTimeSigil (HeadSigil s, pnow)) or (HeadSigil s, pnow) == "@"
+        let pnow = NormAssoc s, (Walk s, (Or params[i], TyErr))
+        # (a map literal is a container: a blueprint among its entries goes in whole, as an
+        # array's does, ch. 4, "Where the table looks"; there is no lift over a blueprint)
+        let wholeNow = (IsTimeSigil (HeadSigil s, pnow)) or (HeadSigil s, pnow) == "@" or (holds and (HeadSigil s, at) == "@")
         if IsLambda a.value: ((s, done))
         else: if wholeNow and (StackOf s, at) != "": (((Unify s, pnow, at, a.value.span), (Push done, i)))
         else: if (StackOf s, at) != "" or (IsFreeHeaded s, at): ((s, done))
         else: (((ArgOrUnpack env, s, fname, (Or params[i], TyErr), pnow, at, a, res, span), done))
     let ((ignore, st3)) = Fold (Range0 n), (({}, st2)), \|((m, s)), i|
-        let a = Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)
+        let a = Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)
         if IsLambda a.value:
             let p = Walk s, (Or params[i], TyErr)
             let ((lt, s2)) = InferLambda env, s, a.value, (? p)
@@ -293,7 +315,7 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
             ((m, s3))
         else: ((m, s))
     let ((pl, st4)) = Fold (Range0 n), ((Peeled(events=[[]], dyns=[[]], opts=[[]], optArgs=[[]], lifted="", broken=False), st3)), \|((acc, s)), i|
-        let a = Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)
+        let a = Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)
         let at = Or argTys[i], TyErr
         if (IsLambda a.value) or (HasNat whole, i) or ((StackOf s, at) == "" and not (IsFreeHeaded s, at)): ((acc, s))
         else:
@@ -317,9 +339,27 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
     let st9 = UseColor st8, callCol, fname, span
     let kind = if layer == "!" and (Len pl.dyns) > 0: "sample" else: if layer != "": "map" else: if fname == "$": "const" else: "plain"
     let peeled = Append pl.events, pl.dyns
-    let lifted = Filter (Range0 n), \|i| HasRange peeled, (Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)).value.span
+    let lifted = Filter (Range0 n), \|i| HasRange peeled, (Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)).value.span
     let st10 = if pl.broken or (Len pl.opts) != 1: st9 else: NoteLift st9, span, (Or pl.opts[0], ""), pl.optArgs
     ((result, (NoteApp st10, span, fname, kind, layer, lifted, (Or pl.opts[0], ""), callCol)))
+
+# Two arguments at one type variable, one a `[a]+` and one the `[a]` (an operator's two
+# sides, `Choose xs, ys`, a map literal's values): the conversion from a non-empty
+# collection is symmetric (Jimmy's ruling NS), so the `[a]+` is read as the `[a]` whichever
+# argument comes first. The arguments' types, each `[a]+` at such a variable its `[a]`.
+PlainBeside: unbounded fn St, [Ty], [Ty] -> [Ty]
+fn PlainBeside st, params, argTys:
+    let n = Len argTys
+    # the variables a plain collection stands at
+    let plainAt = Fold (Range0 n), [[]], \|acc, i| match Walk st, (Or params[i], TyErr):
+        TyFlex v if IsPlainCollection st, (Or argTys[i], TyErr): Push acc, v
+        otherwise: acc
+    if (Len plainAt) == 0: argTys
+    else: Each (Range0 n), \|i|
+        let at = Or argTys[i], TyErr
+        match (((Walk st, (Or params[i], TyErr)), (?NonEmptyColl st, at))):
+            (((TyFlex v), (? c))) if HasNat plainAt, v: c
+            otherwise: at
 
 # An existential at a parameter that is not one is unpacked there (Type System ch. 5,
 # "Existentials are dictionaries"; doubt EP): the parameter's bare variable becomes a fresh
@@ -359,15 +399,21 @@ fn PlainArg env, st, fname, param, at, a:
     else: if (IsTimeSigil ph) or ph == "@":
         let shown = if IsFlexVar st, at: SrcText env, a.value.span else: ShowTy st, at
         ErrFix st, "plain-for-sigiled", a.value.span, "a plain `{shown}` where `{fname}` takes a `{ShowTy st, p}`", "write `{ph} {SrcText env, a.value.span}`"
-    else: Unify st, p, at, a.value.span
+    else: UnifyAt st, p, at, a.value.span
 
 # A layered argument against its parameter as it now stands.
 LayeredArg: unbounded fn Env, St, Peeled, Text, Bool, Ty, Ty, Arg -> ((Peeled, St))
 fn LayeredArg env, st, acc, fname, cmp, param, at, a:
-    let p = Walk st, param
+    # an associated type is the impl's choice before its head says how the argument is
+    # taken (`Item Jar` is `?Text`: a `?` there is whole)
+    let p = NormAssoc st, (Walk st, param)
     let span = a.value.span
     let ph = HeadSigil st, p
-    if IsFreeHeaded st, at:
+    # one nothing has decided yet may turn out sigiled or plain, which decides between
+    # taking the argument whole and lifting over it: refused, never guessed
+    if (IsWaitingAssoc st, p) and not (IsFreeHeaded st, at):
+        ((acc, (ErrFix (Unify st, p, at, span), "ambiguous", span, "whether `{fname}` takes this `{HeadSigil st, at}` whole or lifts over it depends on an associated type nothing has decided here", "decide the type before the call, by an argument of it or an annotation on one")))
+    else: if IsFreeHeaded st, at:
         let st2 = if (IsTimeSigil ph) or ph == "@" or ph == "&" or cmp: st else: AskLayer st, at, span, fname
         ((acc, (Unify st2, p, at, span)))
     else: if (IsTimeSigil ph) or ph == "@" or ph == "&": ((acc, (Unify st, p, at, span)))
@@ -431,50 +477,115 @@ fn PeelTimeOnly env, st, acc, fname, p, at, a:
     else: ((acc, (Unify st, p, at, span)))
 
 # A constructor takes every argument whole (ch. 5): positionally, or a record's by name.
+# One whose type has no parameters lifts over a dynamic or an event at a plain field as a
+# function does (Type System ch. 4, "A dynamic where a plain field goes": `Mono(left=$q.left
+# + 1)` is a `$Mono`); a sigiled field takes its argument whole. A type parameter's field
+# takes its argument whole too, sigils and all (ch. 2: `Pair $home, $away` is a `Pair $Int
+# $Int`), so a generic type's constructor with such a field never lifts. A constructor none
+# of whose fields is a bare type parameter (`Removing [k]`) has no field that could take a
+# sigil whole, and lifts as a function does: `Removing !gone` is a `!(Happening k v a)`.
 CtorApp: unbounded fn Env, St, CtorInfo, [Arg], Range, Range -> ((Ty, St))
 fn CtorApp env, st, c, args, span, cspan:
-    let ((self, st0, inst)) = InstantiateWith st, (Scheme(qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), span, [[]]
+    let ((self, st0, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), span, [[]]
     let fieldTys = Each c.args, \|t| SubstQ inst, t
-    let st1 = NoteTy st0, cspan, (TyFn CBound, fieldTys, self)
+    let st1 = NamedTwice (NoteTy st0, cspan, (TyFn CBound, fieldTys, self)), args
     let named = Filter args, \|a| a.?name != nil
+    let lifts = (Len c.params) == 0 or not (Fold c.args, False, \|bare, t| bare or IsBareParameter t)
     if (Len named) > 0 and (Len c.fields) > 0:
         let st2 = Fold named, st1, \|s, a| match a.?name:
             ? id: match ?IndexOf c.fields, id.name:
-                ? i: Check env, s, a.value, (Or fieldTys[i], TyErr)
+                ? i: ArgMarks s, (BareName c.owner), id.name, (Or c.args[i], TyErr), a.marks, a.span
                 nil: Err s, "mismatch", a.span, "`{BareName c.owner}` has no field `{id.name}`"
             nil: s
         let missing = Filter c.fields, \|f| not (Fold named, False, \|seen, a| seen or (ArgNamed a, f))
         let st3 = if (Len missing) > 0: Err st2, "mismatch", span, "`{BareName c.owner}` needs {Join (Each missing, \|f| "`{f}`"), ", "}" else: st2
-        ((self, st3))
+        let known = Filter named, \|a| match a.?name:
+            ? id: (?IndexOf c.fields, id.name) != nil
+            nil: False
+        let ptys = Each known, \|a| match a.?name:
+            ? id: Or fieldTys[Or (?IndexOf c.fields, id.name), 0], TyErr
+            nil: TyErr
+        CtorArgs env, st3, c, known, ptys, self, lifts, span
     else: if (Len args) != (Len fieldTys):
         ((TyErr, (Err st1, "mismatch", span, "`{BareName c.name}` takes {CountWord (Len fieldTys)} argument{if (Len fieldTys) == 1: "" else: "s"}; here it has {CountWord (Len args)}")))
+    else: CtorArgs env, st1, c, args, fieldTys, self, lifts, span
+
+# A field declared as a type parameter alone (`first: a`), which takes its argument whole.
+IsBareParameter: fn Ty -> Bool
+fn IsBareParameter t = match t:
+    TyQ ignore: True
+    otherwise: False
+
+# A constructor's arguments against their fields' types: through the application rule when
+# the constructor lifts, else each whole.
+CtorArgs: unbounded fn Env, St, CtorInfo, [Arg], [Ty], Ty, Bool, Range -> ((Ty, St))
+fn CtorArgs env, st, c, args, ptys, self, lifts, span:
+    if lifts: ApplyRule env, st, (BareName c.name), CBound, ptys, self, args, span
     else:
-        let st2 = Fold (Range0 (Len args)), st1, \|s, i| match args[i]:
-            ? a: Check env, s, a.value, (Or fieldTys[i], TyErr)
+        let st2 = Fold (Range0 (Len args)), st, \|s, i| match args[i]:
+            ? a: Check env, s, a.value, (Or ptys[i], TyErr)
             nil: s
         ((self, st2))
 
 # A tag's construction (Semantics ch. 8): each argument against its field by the lifting
-# table; a dynamic where a plain field goes is `identity-dynamic`. An element of family
-# `F` is `Element ({F} | ρ) o`, `ρ` fresh and lacking `F` (ch. 5, Rows).
+# table. A dynamic at a plain field lifts the construction, as a record's does (Type System
+# ch. 4); an element's construction is a place, which a lifted one would rebuild, so there
+# it is `identity-dynamic` at the field, with the `rebuild` fix. A sigiled field takes its
+# argument whole. An element of family `F` is `Element ({F} | ρ) o`, `ρ` fresh and lacking
+# `F` (ch. 5, Rows).
 TagApp: unbounded fn Env, St, Text, [Arg], Range, Range -> ((Ty, St))
 fn TagApp env, st, name, args, span, cspan = match env.g.tags[name]:
     nil: ((TyErr, (Err st, "unknown-name", span, "no tag `{name}`")))
+    # a fault kind is its tag alone (Semantics ch. 10): `Fs.NotFound()` applies a value
+    ? tg if (tg.kind == "Fault" or tg.kind == "Prelude.Fault") and (Len tg.fields) == 0:
+        (((TyCon tg.kind, [[]]), (ErrFix st, "mismatch", span, "`{name}` is a fault kind and takes no arguments: its value is the tag", "write `{name}`")))
     ? tg:
-        let ((out, st1, inst)) = InstantiateWith st, (Scheme(qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span, [[]]
-        let st2 = Fold args, st1, \|s, a| match a.?name:
+        let ((out, st1a, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span, [[]]
+        let st1 = NamedTwice st1a, args
+        let element = tg.kind == "Element"
+        let ((layer, st2)) = Fold args, (("", st1)), \|((lay, s)), a| match a.?name:
             ? id: match ?FieldOfTag tg, id.name:
-                ? ft: TagField env, s, name, id.name, (SubstQ inst, ft), a
-                nil: Err s, "mismatch", a.span, "`{name}` has no field `{id.name}`"
-            nil: Err s, "mismatch", a.span, "a tag's fields are named: `{name}(field=...)`"
+                ? ft:
+                    let marked = ArgMarks s, name, id.name, ft, a.marks, a.span
+                    if element:
+                        let ((l, s2)) = TagField env, marked, name, id.name, (SubstQ inst, ft), a
+                        (((if lay == "!" or l == "": lay else: l), s2))
+                    else: ((lay, marked))
+                nil: ((lay, (Err s, "mismatch", a.span, "`{name}` has no field `{id.name}`")))
+            nil: ((lay, (Err s, "mismatch", a.span, "a tag's fields are named: `{name}(field=...)`")))
         let missing = Filter tg.fields, \|((f, ignore))| not (Fold args, False, \|seen, a| seen or (ArgNamed a, f))
         let st3 = if (Len missing) > 0 and not (Fold args, False, \|seen, a| seen or a.value.kind == ERest): Err st2, "mismatch", span, "`{name}` needs {Join (Each missing, \|((f, ignore))| "`{f}`"), ", "}" else: st2
         let fieldTys = Each tg.fields, \|((ignore, ft))| SubstQ inst, ft
-        if tg.kind == "Element":
+        if element:
             let ((rw, st4)) = FreshRow st3, [[tg.family]]
             let et = TyElem (Rw(fams=[[tg.family]], minus=[[]], tail=rw.tail)), out
-            ((et, (NoteTy st4, cspan, (TyFn CBound, fieldTys, et))))
-        else: (((TyCon tg.kind, [[]]), (NoteTy st3, cspan, (TyFn CBound, fieldTys, (TyCon tg.kind, [[]])))))
+            let lifted = if layer == "": et else: TySig layer, et
+            ((lifted, (NoteTy st4, cspan, (TyFn CBound, fieldTys, et))))
+        else:
+            let self = TyCon tg.kind, [[]]
+            let known = Filter args, \|a| match a.?name:
+                ? id: (?FieldOfTag tg, id.name) != nil
+                nil: False
+            let ptys = Each known, \|a| match a.?name:
+                ? id: SubstQ inst, (Or (?FieldOfTag tg, id.name), TyErr)
+                nil: TyErr
+            ApplyRule env, (NoteTy st3, cspan, (TyFn CBound, fieldTys, self)), name, CBound, ptys, self, known, span
+
+# A named argument's sigils against its field's: a field's sigils stand on its name
+# (`$label: Text`), and an argument names the field as declared (`$label=`), so a plain
+# name never stands for a sigiled field nor a sigiled one for a plain field.
+ArgMarks: unbounded fn St, Text, Text, Ty, Text, Range -> St
+fn ArgMarks st, owner, field, declared, marks, span:
+    let want = NameSigils declared
+    if marks == want: st
+    else: if want == "": ErrFix st, "unknown-field", span, "`{owner}` has no field `{marks}{field}`; its `{field}` is plain", "write `{field}=`"
+    else: ErrFix st, "unknown-field", span, "`{owner}` has no plain field `{field}`; its field is `{want}{field}`", "write `{want}{field}=`"
+
+# The sigils a field's name carries: its declared type's outer layers.
+NameSigils: fn Ty -> Text
+fn NameSigils (TySig s, inner) = "{s}{NameSigils inner}"
+fn NameSigils (TyAt inner, ignore) = "@{NameSigils inner}"
+fn NameSigils other = ""
 
 ?FieldOfTag: fn TagInfo, Text -> ?Ty
 fn ?FieldOfTag tg, f = Fold tg.fields, nil, \|?found, ((n, t))| match ?found:
@@ -483,16 +594,23 @@ fn ?FieldOfTag tg, f = Fold tg.fields, nil, \|?found, ((n, t))| match ?found:
 
 # One field of a construction: a sigiled field takes the argument whole; a plain field
 # lifts, and a dynamic there is `identity-dynamic`.
-TagField: unbounded fn Env, St, Text, Text, Ty, Arg -> St
+# An element's field: a sigiled field takes the argument whole; a dynamic or an event at a
+# plain (identity) field lifts the construction to a `$Element o` or `!Element o` (Type
+# System ch. 2-05: "A dynamic in an identity field lifts the construction to `$Element o`,
+# and the statement refuses it"), the field's refusal kept for the statement that would
+# build it (`ElemLift`, read by `LiftedElement`). The layer it lifts to, or "".
+TagField: unbounded fn Env, St, Text, Text, Ty, Arg -> ((Text, St))
 fn TagField env, st, tagName, field, ft, a:
-    if (HeadSigil st, ft) != "": Check env, st, a.value, ft
+    if (HeadSigil st, ft) != "": (("", (Check env, st, a.value, ft)))
     else:
         let ((at, st2)) = Infer env, st, a.value
         let head = HeadSigil st2, at
-        if head == "$":
-            ErrFix st2, "identity-dynamic", a.value.span, "a dynamic in the identity field `{field}`", "for a new element per value, write `rebuild {SrcText env, a.value.span}:` with `{tagName}({field}=_, ...)` inside"
-        else: if head == "!": Err st2, "two-events", a.value.span, "an event in the plain field `{field}`"
-        else: Unify st2, ft, at, a.value.span
+        if head == "$" or head == "!":
+            let lift = ElemLift(field=field, owner=tagName, arg=a.value.span, file=st2.file, layer=head, src=(SrcText env, a.value.span))
+            let st3 = update (Unify st2, ft, (InnerOf st2, at), a.value.span):
+                &_.elemLifts <= Push &_.elemLifts, lift
+            ((head, st3))
+        else: (("", (Unify st2, ft, at, a.value.span)))
 
 # ---------------------------------------------------------------------------------------
 # Lambdas
@@ -532,13 +650,13 @@ fn InferBareLambda env, st, e, ?expected:
                 else: (([[]], nil, (Err st, "mismatch", e.span, "this lambda takes {CountWord (Len params)} parameter{if (Len params) == 1: "" else: "s"}; here {CountWord (Len ps)} {if (Len ps) == 1: "is" else: "are"} wanted")))
             otherwise: (([[]], nil, st))
         nil: (([[]], nil, st))
-    let ((env2, ptys, st1)) = Fold (Range0 (Len params)), ((env, [[]], st0)), \|((en, acc, s)), i|
+    let ((env2, ptys, st1)) = Fold (Range0 (Len params)), ((env, [[]], (BoundTwice env, st0, params))), \|((en, acc, s)), i|
         let p = Or params[i], Pattern(kind=PIgnore, span=e.span)
         let ((pt, s2)) = match expParams[i]:
             ? t: ((t, s))
             nil: FreshVar s, True, ""
         let ((en2, s3)) = BindPattern (Unpend en), s2, p, pt, False
-        ((en2, (Push acc, pt), s3))
+        ((en2, (Push acc, pt), (AlwaysMatches en, s3, p, pt, "a lambda parameter")))
     let outerColor = st1.color
     let outerWhy = st1.colorWhy
     let outerFlex = st1.colorFlex
@@ -552,8 +670,14 @@ fn InferBareLambda env, st, e, ?expected:
             ? r:
                 let s4 = Check env2, st2, x, r
                 ((r, s4))
-            nil: Infer env2, st2, x
-        LbBlock b: InferBodyBlock env2, st2, b, ?expRes
+            nil:
+                let ((t, s4)) = Infer env2, st2, x
+                FaultOf s4, t, x.span
+        LbBlock b: match ?expRes:
+            ? ignore: InferBodyBlock env2, st2, b, ?expRes
+            nil:
+                let ((t, s4)) = InferBodyBlock env2, st2, b, nil
+                FaultOf s4, t, (TailSpan b)
     let st3b = SettleBody st3, lcol, ""
     let st3c = AddLeq st3b, st3b.color, lcol, e.span, "lambda", "", st3b.colorWhy
     let st4 = update st3c:
@@ -578,6 +702,14 @@ fn TopicFieldExpr span, f = Expr(kind=(EField (TopicExpr span), "", f), span=spa
 TopicIndexExpr: fn Range, Expr -> Expr
 fn TopicIndexExpr span, x = Expr(kind=(EIndex (TopicExpr span), x), span=span)
 
+# `collision`: a construction names a field once.
+NamedTwice: fn St, [Arg] -> St
+fn NamedTwice st, args:
+    let ((ignore, checked)) = Fold args, (([[]], st)), \|((seen, s)), a| match a.?name:
+        ? id: if HasText seen, id.name: ((seen, (Err s, "collision", a.span, "`{id.name}` is given twice"))) else: (((Push seen, id.name), s))
+        nil: ((seen, s))
+    checked
+
 ArgNamed: fn Arg, Text -> Bool
 fn ArgNamed a, f = match a.?name:
     ? id: id.name == f
@@ -589,5 +721,5 @@ InferBodyBlock: unbounded fn Env, St, Block, ?Ty -> ((Ty, St))
 fn InferBodyBlock env, st, b, ?expected:
     let ((t, st2)) = InferExprBlock env, st, b
     match ?expected:
-        ? r: ((r, (Unify st2, r, t, b.span)))
+        ? r: ((r, (Unify st2, r, t, (ResultSpan b))))
         nil: ((t, st2))

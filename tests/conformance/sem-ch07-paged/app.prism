@@ -4,12 +4,12 @@ emit Ui.* | Test.*
 test mod Tests
 
 @loggedPages:
-    !next <- Ui.Button(label=$"Next")                       # 0
+    !next <- Ui.Button($label=$"Next")                       # 0
     $page <- 0 then $page + 1 on !next
     let $src = $"page{$page}.png"
     ignore <- rebuild $page:                                # 1/#g
-        Ui.Label(text=$"Page {_}")                          # 1/#g/0
+        Ui.Label($text=$"Page {_}")                          # 1/#g/0
         ignore <- rebuild $src:                             # 1/#g/1/#h
             !started <- @started                            # 1/#g/1/#h/0
-            Test.Log(requests=(_ on !started))              # 1/#g/1/#h/1
+            Test.Log(!requests=(_ on !started))              # 1/#g/1/#h/1
             Ui.Image(src=_)                                 # 1/#g/1/#h/2

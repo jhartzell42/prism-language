@@ -1,0 +1,26 @@
+# A fault holds typed values (the Bible's ruling TF, "Faults hold typed values"): a fault
+# kind declares fields, an `Error` is made with the kind's value, and a pattern over the
+# `Error` reads a field back at its type. The limit is a `Nat` the label adds to, not text
+# in the message. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+tag Count.TooMany of Fault:
+    limit: Nat
+    asked: Nat
+
+~Counted: fn Nat -> ~Nat
+fn ~Counted n = if n > 5: Error(kind=Count.TooMany(limit=5, asked=n), message="too many") else: ~ n
+
+Told: fn ~Nat -> Text
+fn Told ~counted = match ~counted:
+    ~ n: "counted {n}"
+    Error(kind=Count.TooMany(limit=l, asked=a), message=m): "{m}: asked {a}, limit {l}, together {a + l}"
+    Error(..): "another fault"
+
+@main: @unit
+@main:
+    !more <- Ui.Button($label=$"more")                            # 0
+    $n <- 4 then $n + 2 on !more
+    Ui.Label($text=(Told (~Counted $n)))                          # 1

@@ -331,7 +331,7 @@ mod tests {
                 el("Draw.Group", vec![("turn", turn), ("draws", Pod::Array(vec![rect(140.0, 100.0, 60.0, 8.0, "Green"), text(150.0, 110.0, "turned")]))])
             }
             3 => {
-                let src = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../examples/chess/pieces/kl.png");
+                let src = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../examples/basic-chess/pieces/kl.png");
                 el("Draw.Image", vec![("rect", gui::rect(rng.below(250) as f64 + 0.25, rng.below(180) as f64, 37.5, 37.5)), ("src", Pod::text(src))])
             }
             _ => text(rng.below(250) as f64 + 0.5, rng.below(220) as f64 + 0.25, "over"),

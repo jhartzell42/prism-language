@@ -49,4 +49,4 @@ fn Describe t = Show t
 fn @Normal term:
     !done <- @Run Normalize, term                           # 0
     $shown <- "working" then Describe !done
-    Ui.Label(text=$shown)                                   # 1
+    Ui.Label($text=$shown)                                   # 1

@@ -1,0 +1,25 @@
+# A live element's `$` field read in a plain function (Type System ch. 4: a supplier's
+# element is live, and a `$` field of it binds a `$T`): `$Shown` takes the element whole
+# and gives its label's text, decorated, as a dynamic the supplier's new element follows.
+# A click on the forwarded "inc" moves the child's label, and so the new element's text.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+$Shown: fn Element Ui.* o -> $Text
+fn $Shown e = match e:
+    Ui.Label($text=$t): $"<{$t}>"
+    otherwise: $ "?"
+
+@child: @unit
+@child:
+    !inc <- Ui.Button($label=$"inc")                             # 0
+    $n <- 0 then $n + 1 on !inc
+    Ui.Label($text=$"{$n}")                                      # 1
+
+@page: @unit
+@page:
+    ignore <- @HostDocument @child, \|p, e| match e:            # 0/[p]
+        Ui.Label(..): @Element (Ui.Label($text=$Shown e))
+        otherwise: @Element e

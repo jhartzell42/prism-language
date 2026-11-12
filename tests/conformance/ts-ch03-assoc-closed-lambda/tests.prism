@@ -1,0 +1,7 @@
+# The tests of ts-ch03-assoc-closed-lambda.
+emit Ui.*
+use App.*
+
+test two_types, @main:
+    build
+        => expect Ui.Label(text="2 3")

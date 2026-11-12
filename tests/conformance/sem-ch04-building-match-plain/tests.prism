@@ -1,0 +1,10 @@
+# The plain arm result: declarations of sem-ch04-building-match-plain.
+emit Ui.*
+use App.*
+
+test the_arm_result_is_read_below, @main:
+    build
+        => expect Ui.Label(text="x 0")
+        => expect Ui.Label(text="n 10")
+    click Ui.Button(label="go")
+        => expect Ui.Label(text="x 1")

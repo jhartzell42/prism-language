@@ -1,0 +1,4 @@
+tests/checker/neg/generic-tag-at-function.prism:16: error[no-impl]: no impl of `^Show` for `fn Nat -> Nat`: functions do not compare or print
+        !back <- Pad.Echo($?latest=$(? Twice))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1 error

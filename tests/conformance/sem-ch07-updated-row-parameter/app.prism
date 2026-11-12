@@ -1,0 +1,18 @@
+# A row's `!Updated` of a dynamic its block takes as a parameter (Semantics ch. 4: a row
+# reads its block's names; ch. 7: `!Updated $d` is the event half of any dynamic).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Rows: fn $Nat -> @unit
+fn @Rows $c:
+    for k, ignore <- $ {"x": unit}:                              # 1/[k]
+        $n <- 0 then $n + 1 on !Updated $c
+        Ui.Label($text=$"{k} heard {$n}")                        # 1/[k]/0
+
+@page: @unit
+@page:
+    !bump <- Ui.Button($label=$"bump")                           # 0
+    $a <- 0 then $a + 1 on !bump
+    @Rows $a                                                     # 1

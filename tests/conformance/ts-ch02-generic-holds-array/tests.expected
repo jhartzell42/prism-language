@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 2 (derived equality and order go field by field, a choice's cases in their order) and ch. 3 (each derive at the parameter's type): [[1, 2]] is before [[1, 3]]; one node before two; a leaf before a node.
+test compare_order_print
+
+tick 0
+  added:
+    0: Ui.Label(text="False True Many(all=[[1, 2]]) False True True Node [[\"x\"]], (Node [[\"y\"]], Leaf)")

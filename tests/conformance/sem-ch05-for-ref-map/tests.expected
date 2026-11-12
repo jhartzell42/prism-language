@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 5 (`for &s <- &p: B` is a fold over the indices of `&p`, with `&s` as `&p[ix]`): each entry's value is bumped in place, and no key is added or removed.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="2 6 2")

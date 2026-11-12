@@ -1,0 +1,7 @@
+# Derived by hand: `Adder` of a 2 adds 2, applied twice to 2 gives 6; of a wrapped 3 adds
+# 3, twice to 3 gives 9.
+test trait_default_self
+
+tick 0
+  added:
+    0: Ui.Label(text="6 9")

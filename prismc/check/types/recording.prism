@@ -29,14 +29,161 @@ NoteTy: fn St, Range, Ty -> St
 fn NoteTy st, span, t = if not st.recording: st else: update st:
     &_.typed.exprs <= Push &_.typed.exprs, TyNote(at=(AtHere st, span), ty=t)
 
+# An expression of type `found` standing where `expected` is wanted: when `found` is an
+# `Error`, a question for the program's end, whether `expected` is a `~T` (`FaultNotes`);
+# when it is a non-empty collection, whether `expected` is its plain collection
+# (`PlainNotes`).
+NoteFaultAt: unbounded fn St, Range, Ty, Ty -> St
+fn NoteFaultAt st, span, expected, found = match Walk st, found:
+    TyCon "Prelude.Error", [[]]: update st:
+        &_.faultQs <= Push &_.faultQs, Waiting(expected=expected, found=found, span=span, file=st.file)
+    TyCon "Prelude.NonEmpty", ignore: AskPlainAt st, span, expected
+    # a dynamic or an event of a non-empty collection, where the dynamic or event of its
+    # plain collection may be wanted (an arm of a lifted `if` beside a plain one's)
+    TySig "$", inner: NotePlainUnder st, span, expected, inner
+    TySig "!", inner: NotePlainUnder st, span, expected, inner
+    otherwise: st
+
+NotePlainUnder: unbounded fn St, Range, Ty, Ty -> St
+fn NotePlainUnder st, span, expected, inner = match Walk st, inner:
+    TyCon "Prelude.NonEmpty", ignore: AskPlainAt st, span, expected
+    otherwise: st
+
+# The question whether the expression at `span` stands where a plain collection is wanted,
+# `expected` (`PlainNotes` answers it at the program's end; lowering converts only a value
+# that is a non-empty collection there).
+AskPlainAt: fn St, Range, Ty -> St
+fn AskPlainAt st, span, expected = update st:
+    &_.plainQs <= Push &_.plainQs, Waiting(expected=expected, found=expected, span=span, file=st.file)
+
+# The plain questions answered: each place whose wanted type is an array or a map, or is
+# the value of a match or an `if` with a `[a]` arm beside its `[a]+` arms (`UnifyArm`,
+# `St.plainArms`: the construct's own value is then the `[a]`, ruling NS), or a dynamic or
+# an event of one.
+PlainNotes: unbounded fn St -> [SrcAt]
+fn PlainNotes st = Fold st.plainQs, [[]], \|acc, q|
+    let joinedPlain = match q.expected:
+        TyFlex n: HasNat st.plainArms, n
+        otherwise: False
+    let wanted = match Walk st, q.expected:
+        TySig "$", inner: inner
+        TySig "!", inner: inner
+        other: other
+    if joinedPlain or IsPlainCollection st, wanted: Push acc, SrcAt(file=q.file, span=q.span) else: acc
+
+# A value of type `found` at a place wanting `expected` (an argument, a value checked
+# against its type): an `Error` there is the place's `~T`'s failure when the place is one
+# (`NoteFaultAt` asks at the program's end). Only at the place itself: below a type's top an
+# `Error` meets a `~T` as any two types do, so a function taking an `Error` is no function
+# taking a `~T`, and an `[Error]` made elsewhere is no `[~T]`.
+UnifyAt: unbounded fn St, Ty, Ty, Range -> St
+fn UnifyAt st, expected, found, span = UnifyNoted (NoteFaultAt st, span, expected, found), expected, found, span
+
+# `UnifyAt` for a place already asked about: a `~T` takes the `Error` as is; a place
+# nothing has decided yet takes a fault variable (`FaultVar`), which the places it meets
+# later decide (`[[Error(..)]]` meeting a `[~Nat]`); a plain-headed one (a `let`'s binder,
+# a plain parameter) is never a `~T`, so the value stays an `Error` there, and each use of
+# the name is a place of its own. An event of `Error`s where a `!~T` is wanted fires the
+# `~T`'s failures (the widget `let` pipes them, `ErrPipe`).
+UnifyNoted: unbounded fn St, Ty, Ty, Range -> St
+fn UnifyNoted st, expected, found, span = match Walk st, found:
+    TyCon "Prelude.Error", [[]]: match Walk st, expected:
+        TySig "~", ignore: st
+        TyFlex n if not (InfoOf st, n).plain:
+            let ((v, st2)) = FaultVar st, span
+            Unify st2, expected, v, span
+        otherwise: Unify st, expected, found, span
+    TySig "!", i: match (((Walk st, i), (Walk st, expected))):
+        (((TyCon "Prelude.Error", [[]]), (TySig "!", (TySig "~", ignore)))): st
+        otherwise: Unify st, expected, found, span
+    # the one implicit conversion: a `[a]+` fills a place already known to want an `[a]`
+    # (Type System ch. 2, "Collections"; there is no subtyping)
+    TyCon "Prelude.NonEmpty", [[c]]: match Walk st, expected:
+        TyArray ignore: Unify st, expected, c, span
+        TyMap ignore, ignore: Unify st, expected, c, span
+        otherwise: Unify st, expected, found, span
+    otherwise: Unify st, expected, found, span
+
+# The variable of an `Error` value at `span` (`St.faultVars`).
+FaultVar: fn St, Range -> ((Ty, St))
+fn FaultVar st, span:
+    let ((v, st2)) = FreshVar st, False, ""
+    ((v, update st2:
+        &_.faultVars <= Push &_.faultVars, Waiting(expected=v, found=(TyCon "Prelude.Error", [[]]), span=span, file=st.file)))
+
+# An `Error(..)` pattern against a `~T`: the pattern takes its failure.
+IsFailurePattern: unbounded fn St, Ty, Ty -> Bool
+fn IsFailurePattern st, scrut, pat = match (((Walk st, scrut), (Walk st, pat))):
+    (((TySig "~", ignore), (TyCon "Prelude.Error", [[]]))): True
+    otherwise: False
+
+# The definition's end: an `Error` value's variable nothing decided is `Error` (an
+# `Error` is a plain record, and fills a place wanting a `~T` as it is). One of a top-level
+# `let` waits for the uses in the definitions after it, to the program's end.
+FaultsDefaulted: unbounded fn St, Bool -> St
+fn FaultsDefaulted st, all = Fold st.faultVars, st, \|s, w| match Walk s, w.expected:
+    TyFlex n if all or (InfoOf s, n).level >= 1: update s:
+        &_.tys <= Insert &_.tys, n, (TyCon "Prelude.Error", [[]])
+    otherwise: s
+
+# The program's end: every `Error` value's variable is `Error` or a `~T` (the value its
+# failure); a place that decided anything else (`[[Error(..), 3]]`) wants an `Error` there.
+FaultsSettled: unbounded fn St -> St
+fn FaultsSettled st0:
+    let st = FaultsDefaulted st0, True
+    let checked = Fold st.faultVars, st, \|s, w| match Walk s, w.expected:
+        TyCon "Prelude.Error", [[]]: s
+        TySig "~", ignore: s
+        TyErr: s
+        other:
+            let there = update s:
+                &_.file <= w.file
+            Err there, "mismatch", w.span, "expected `{ShowTy there, other}`, found `Error`"
+    update checked:
+        &_.file <= st.file
+
+# Where a block's result is reported: its last line, whose value is the result (Semantics
+# ch. 4), not the block from its first line.
+ResultSpan: fn Block -> Range
+fn ResultSpan b = match ?Last b.stmts:
+    ? s: s.span
+    nil: b.span
+
+# The span a block's value comes from: its last statement's expression, else the block.
+TailSpan: fn Block -> Range
+fn TailSpan b = match ?Last b.stmts:
+    ? s: match s.kind:
+        SExpr e: e.span
+        otherwise: b.span
+    nil: b.span
+
+# The fault questions answered: each place whose wanted type is, under its time layers, a
+# `~T`.
+FaultNotes: unbounded fn St -> [TyNote]
+fn FaultNotes st = Fold st.faultQs, [[]], \|acc, q|
+    let z = ResolveTy st, q.expected
+    if IsFaultHead z: Push acc, TyNote(at=SrcAt(file=q.file, span=q.span), ty=z) else: acc
+
+IsFaultHead: fn Ty -> Bool
+fn IsFaultHead t = match t:
+    TySig "~", ignore: True
+    TySig "$", i: IsFaultHead i
+    TySig "!", i: IsFaultHead i
+    otherwise: False
+
 NoteBinder: fn St, Range, Text, Ty -> St
 fn NoteBinder st, span, name, t = if not st.recording: st else: update st:
     &_.typed.binders <= Push &_.typed.binders, BinderNote(at=(AtHere st, span), name=name, ty=t)
 
 # A local's binder and a use of it, by the binder's id (pick UN).
-NoteLocal: fn St, Range, Nat -> St
-fn NoteLocal st, span, id = if not st.recording: st else: update st:
-    &_.typed.locals <= Push &_.typed.locals, LocalNote(at=(AtHere st, span), id=id)
+# Every binder's and use's id is kept whether or not the typed output is recorded: a local
+# `let` is closed when its right side uses only binders it makes itself (`IsClosed`).
+NoteLocal: fn St, Range, Nat, Text -> St
+fn NoteLocal st0, span, id, name:
+    let st = update st0:
+        &_.binderIds <= Push &_.binderIds, id
+    if not st.recording: st else: update st:
+        &_.typed.locals <= Push &_.typed.locals, LocalNote(at=(AtHere st, span), id=id, name=name)
 
 NoteGlobal: fn St, Range, Text -> St
 fn NoteGlobal st, span, qk = if not st.recording: st else: update st:
@@ -44,11 +191,21 @@ fn NoteGlobal st, span, qk = if not st.recording: st else: update st:
 
 NoteCall: fn St, Range, Nat -> St
 fn NoteCall st, span, id = if not st.recording: st else: update st:
-    &_.typed.calls <= Push &_.typed.calls, LocalNote(at=(AtHere st, span), id=id)
+    &_.typed.calls <= Push &_.typed.calls, LocalNote(at=(AtHere st, span), id=id, name="")
 
-NoteUse: fn St, Range, Nat -> St
-fn NoteUse st, span, id = if not st.recording: st else: update st:
-    &_.typed.uses <= Push &_.typed.uses, LocalNote(at=(AtHere st, span), id=id)
+NoteUse: fn St, Range, Nat, Text -> St
+fn NoteUse st0, span, id, name:
+    let st = update st0:
+        &_.useIds <= Push &_.useIds, id
+    if not st.recording: st else: update st:
+        &_.typed.uses <= Push &_.typed.uses, LocalNote(at=(AtHere st, span), id=id, name=name)
+
+# Whether the code checked since `before` (an `St` of then) used only binders it made: a
+# closed `let`'s right side (GHC's MonoLocalBinds, ruling SH).
+IsClosed: unbounded fn St, St -> Bool
+fn IsClosed before, st:
+    let made = Drop st.binderIds, (Len before.binderIds)
+    Fold (Drop st.useIds, (Len before.useIds)), True, \|ok, u| ok and HasNat made, u
 
 # A generalized local `let`: its binder and the variables its scheme quantified.
 NoteGen: fn St, Range, Text, Scheme -> St
@@ -77,6 +234,14 @@ fn NoteFn st, span, name, declared, body = if not st.recording: st else: update 
 NoteImpl: fn St, Nat, Range, Text, Ty, Text -> St
 fn NoteImpl st, file, span, cls, t, how = if not st.recording or (HasPrefix cls, "Range ") or cls == "Prelude.Sub" or cls == "Prelude.Signed": st else: update st:
     &_.typed.impls <= Push &_.typed.impls, ImplNote(at=SrcAt(file=file, span=span), cls=cls, ty=t, how=how)
+
+# A use by name of a definition with type parameters (`qs`, each as `inst` has it
+# here), for the growth check (`GrowthCheck`; ruling PG).
+NoteGenericUse: fn St, Text, [Text], Range, Inst -> St
+fn NoteGenericUse st, target, qs, span, inst:
+    let noted = GenericUse(user=st.definition, target=target, file=st.file, span=span, types=(Each qs, \|q| ((q, (Or inst.tys[q], TyErr)))))
+    update st:
+        &_.genericUses <= Push &_.genericUses, noted
 
 # How the solver answered a constraint at a place, kept whether or not the typed program is
 # recorded, for the shrink check's operator and method calls (pick OP): `impl:FILE.START`
@@ -117,15 +282,38 @@ fn NoteGroup st, span, kind, order = if not st.recording: st else: update st:
 # The typed output with every recorded type followed to its end, once the program's last
 # defaults are in.
 ZonkTyped: unbounded fn St -> TProgram
-fn ZonkTyped st:
+fn ZonkTyped st0:
+    let st = DefaultFree st0
     let t = st.typed
     update t:
+        &_.faults <= FaultNotes st
+        &_.plains <= PlainNotes st
         &_.exprs <= Each &_.exprs, \|n| TyNote(at=n.at, ty=(ResolveTy st, n.ty))
         &_.binders <= Each &_.binders, \|n| BinderNote(at=n.at, name=n.name, ty=(ResolveTy st, n.ty))
         &_.insts <= Each &_.insts, \|n| InstNote(at=n.at, name=n.name, tys=(Each n.tys, \|((q, x))| ((q, (ResolveTy st, x)))), cols=(Each n.cols, \|((q, c))| ((q, (ResolveCol st, c)))))
         &_.impls <= Each &_.impls, \|n| ImplNote(at=n.at, cls=n.cls, ty=(ResolveTy st, n.ty), how=n.how)
         &_.apps <= Each &_.apps, \|n| AppNote(at=n.at, callee=n.callee, kind=n.kind, layer=n.layer, lifted=n.lifted, inner=n.inner, color=(ResolveCol st, n.color))
         &_.fns <= Each &_.fns, \|n| FnNote(at=n.at, name=n.name, declared=(ResolveCol st, n.declared), body=(ResolveCol st, n.body))
+
+# A type variable at the program's end that no constraint reached (`Len [[]]`'s element):
+# every wanted constraint was solved, defaulted (doubt LD) or reported `ambiguous`, and every
+# waiting associated-type equation checked or reported (`Undecided`), so nothing the program
+# does depends on it, and the unit type stands for it. A variable a `let` quantified stays:
+# lowering gives it at each instance (a local `let`) or as the getter's type parameter (a
+# top-level one). The same rule as a color's, below.
+DefaultFree: unbounded fn St -> St
+fn DefaultFree st:
+    let t = st.typed
+    let local = Fold t.gens, [[]], \|acc, g| Append acc, g.tys
+    # a top-level `let`'s too: its getter takes each as a type parameter, and each use
+    # names what it reads the `let` at (`NoteGenericUse` keeps the scheme's variables)
+    let quantified = Fold st.genericUses, local, \|acc, noted| Fold noted.types, acc, \|a2, ((q, ignore))| if HasPrefix q, "'": Push a2, q else: a2
+    let inExprs = Fold t.exprs, [[]], \|acc, n| FreeVarsInto st, acc, n.ty
+    let inBinders = Fold t.binders, inExprs, \|acc, n| FreeVarsInto st, acc, n.ty
+    let inInsts = Fold t.insts, inBinders, \|acc, n| Fold n.tys, acc, \|a2, ((ignore, x))| FreeVarsInto st, a2, x
+    let vars = Fold t.impls, inInsts, \|acc, n| FreeVarsInto st, acc, n.ty
+    Fold vars, st, \|s, v| if HasText quantified, "'{v}": s else: update s:
+        &_.tys <= Insert &_.tys, v, tUnit
 
 # A color at the program's end: a flexible variable a local `let` quantified is that
 # scheme's variable, any other left defaults to bounded.
@@ -150,7 +338,7 @@ fn ResolveIn st, t = match t:
     TySig s, i: TySig s, (ResolveIn st, i)
     TyAt i, rw: TyAt (ResolveIn st, i), rw
     TyElem rw, o: TyElem rw, (ResolveIn st, o)
-    TyAssoc n, a: TyAssoc n, (ResolveIn st, a)
+    TyAssoc tr, n, a: TyAssoc tr, n, (ResolveIn st, a)
     other: other
 
 # A binder's variable remembers where the binder stands, for `mark-stack`.
@@ -209,7 +397,7 @@ fn Zonk st, t = match NormAssoc st, (Walk st, t):
     TyAt i, rw: TyAt (Zonk st, i), (WalkRow st, rw)
     TyElem rw, o: TyElem (WalkRow st, rw), (Zonk st, o)
     TyElemAny rw: TyElemAny (WalkRow st, rw)
-    TyAssoc n, a: TyAssoc n, (Zonk st, a)
+    TyAssoc tr, n, a: TyAssoc tr, n, (Zonk st, a)
     w: w
 
 # The flexible type variables of a type.
@@ -227,5 +415,5 @@ fn FreeVarsInto st, acc, t = match Walk st, t:
     TySig ignore, i: FreeVarsInto st, acc, i
     TyAt i, ignore: FreeVarsInto st, acc, i
     TyElem ignore, o: FreeVarsInto st, acc, o
-    TyAssoc ignore, a: FreeVarsInto st, acc, a
+    TyAssoc ignore, ignore, a: FreeVarsInto st, acc, a
     otherwise: acc

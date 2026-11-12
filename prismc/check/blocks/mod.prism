@@ -136,21 +136,42 @@ fn IsLetLike s = match s.kind:
 # any line is read (one binding group), each line checked, the last line the result.
 # Gives the type of what the block returns (the blueprint's inside).
 InferWidgetBlock: unbounded fn Env, St, Block -> ((Ty, St))
-fn InferWidgetBlock env, st, b:
-    let ((env1, st1)) = BlockRow env, st, b.stmts
+fn InferWidgetBlock env, st, b = InferWidgetBlockAt env, st, b, nil
+
+# A widget block whose result is wanted at `expected` (a named widget function's body,
+# `@o`): a last line that is a `match` over an element is checked against it, so its tag arms assume the
+# element's output (Type System ch. 5, "Refinement at tag matches"), as the same `match`
+# written as the body's expression is.
+InferWidgetBlockAt: unbounded fn Env, St, Block, ?Ty -> ((Ty, St))
+fn InferWidgetBlockAt env, st, b, ?expected:
+    let ((env1, st1)) = BlockRow env, (BlockBoundOnce env, st, b.stmts), b.stmts
     let ((env2, st2)) = Fold b.stmts, ((env1, st1)), \|((en, s)), stmt| PreBindStmt en, s, stmt
     let n = Len b.stmts
     let ((env3, st3, ?res)) = Fold (WidgetGroupOrder b.stmts), ((env2, st2, nil)), \|((en, s, ?r)), i|
         let stmt = Or b.stmts[i], dummyStmt2
-        let ((en2, s2, ?r2)) = WidgetStmt en, s, stmt, i + 1 == n
+        let ((en2, s2, ?r2)) = match ((?expected, stmt.kind)):
+            ((? want, SExpr e)) if i + 1 == n and IsElementMatch en, s, e: ((en, (Check en, s, e, (TyAt want, en.scope)), (? want)))
+            otherwise: WidgetStmt en, s, stmt, (LocalClauses b.stmts, i), i + 1 == n
         match ?r2:
             ? t: ((en2, s2, ? t))
             nil: ((en2, s2, ?r))
-    let st4 = BlockPromptCycles env3, st3, b
+    let st4 = BlockPlaceCycles env3, (BlockPromptCycles env3, st3, b), b
     let st5 = if st4.recording: NoteGroup st4, b.span, "widget", (DepOrder b.stmts) else: st4
     (((Or ?res, tUnit), st5))
 
-let dummyStmt2 = Stmt(kind=(SExpr (Expr(kind=EError, span=Range(start=0, end=0)))), span=Range(start=0, end=0))
+# A `match` over an element, whose tag arms refine the element's output: a supplier's. Any
+# other `match` on a widget block's line is a building match, its arms widget blocks
+# (`BuildingMatch`).
+IsElementMatch: unbounded fn Env, St, Expr -> Bool
+fn IsElementMatch env, st, e = match e.kind:
+    EMatch scrutinee, ignore:
+        let ((t, inferred)) = Infer env, st, scrutinee
+        match Walk inferred, t:
+            TyElem ignore, ignore: True
+            otherwise: False
+    otherwise: False
+
+let dummyStmt2 = Stmt(kind=(SExpr (Expr(kind=EError, span=Range(start=0, end=0, origin=InSource)))), span=Range(start=0, end=0, origin=InSource))
 
 # A block's own `emit`, first among its statements (`emit-element` when it is not first).
 BlockRow: unbounded fn Env, St, [Stmt] -> ((Env, St))
@@ -204,8 +225,8 @@ fn PreBindPattern env, st, p = Fold (PatternBinders p), ((env, st)), \|((en, s))
     BindLocalId en2, s3, name, at
 
 # One statement of a widget block; the last gives the block's result.
-WidgetStmt: unbounded fn Env, St, Stmt, Bool -> ((Env, St, ?Ty))
-fn WidgetStmt env, st, s, last = match s.kind:
+WidgetStmt: unbounded fn Env, St, Stmt, [FnClause], Bool -> ((Env, St, ?Ty))
+fn WidgetStmt env, st, s, clauses, last = match s.kind:
     SEmit ignore: ((env, st, if last: ? tUnit else: nil))
     SBind p, e, nil:
         let st2 = BindStmt env, st, p, e, s.span
@@ -220,7 +241,7 @@ fn WidgetStmt env, st, s, last = match s.kind:
         let ((env2, st2)) = CheckLet env, st, p, ?ty, e, s.span
         ((env2, st2, if last: ? tUnit else: nil))
     SFn f:
-        let ((env2, st2)) = CheckLocalFn env, st, f, s.span
+        let ((env2, st2)) = CheckLocalFn env, st, clauses, s.span
         ((env2, st2, if last: ? tUnit else: nil))
     SSignature ignore: ((env, st, if last: ? tUnit else: nil))
     SWidget w:
@@ -240,10 +261,45 @@ fn WidgetStmt env, st, s, last = match s.kind:
 # `$` or `!` of elements, or a `$@a`, is `bind-dynamic`. The row goes in an obligation.
 BindStmt: unbounded fn Env, St, Pattern, Expr, Range -> St
 fn BindStmt env, st, p, e, span:
-    let ((t, st1)) = Infer env, st, e
-    let ((out, st2)) = if IsBuilder e: ((t, st1)) else: BindOutput env, st1, t, e.span
+    let ((out, st2)) = BoundValue env, st, e
     let ((ignore, st3)) = BindPattern env, st2, p, out, False
-    st3
+    AlwaysMatches env, st3, p, out, "`<-`"
+
+# What the right side of a `<-` gives its pattern, built: a building `match` or `if` what
+# its chosen arm ends on, a `rebuild` or `for` what it hands back, anything else a
+# blueprint's result or an element's output (`BindOutput`).
+BoundValue: unbounded fn Env, St, Expr -> ((Ty, St))
+fn BoundValue env, st, e:
+    if IsBuildingChoice env, st, e: BareLine env, st, e, True
+    else:
+        let ((t, st1)) = InferBuilt env, st, e
+        if IsBuilder e: ((t, st1)) else: BindOutput env, st1, t, e.span
+
+# A `match` or `if` to the right of `<-` is a building one, as on a line of its own
+# (Semantics ch. 4, "The widget block"): its arms are widget blocks, each built once, and
+# the bind takes what the chosen arm ends on (`@ 3`, `@ !w`). A `match` over an element is
+# a supplier's (`IsElementMatch`), read as an expression.
+IsBuildingChoice: unbounded fn Env, St, Expr -> Bool
+fn IsBuildingChoice env, st, e = match e.kind:
+    EMatch ignore, ignore: not (IsElementMatch env, st, e)
+    EIf ignore, ignore, ignore: True
+    EGroup x: IsBuildingChoice env, st, x
+    otherwise: False
+
+# A `rebuild` or a `for` where it is built, right of `<-` or on a line of a widget block:
+# what it hands back, where the same words as a value are its blueprint (`InferKind`).
+InferBuilt: unbounded fn Env, St, Expr -> ((Ty, St))
+fn InferBuilt env, st, e = match e.kind:
+    ERebuild scrut, body:
+        let ((t, st2)) = InferRebuild env, st, scrut, body, e.span
+        ((t, (NoteTy st2, e.span, t)))
+    EFor ?binders, source, body:
+        let ((t, st2)) = InferFor env, st, ?binders, source, body, e.span
+        ((t, (NoteTy st2, e.span, t)))
+    EGroup x:
+        let ((t, st2)) = InferBuilt env, st, x
+        ((t, (NoteTy st2, e.span, t)))
+    otherwise: Infer env, st, e
 
 IsBuilder: fn Expr -> Bool
 fn IsBuilder e = match e.kind:
@@ -260,13 +316,30 @@ fn BindOutput env, st, t, span = match Walk st, t:
     TySig s, inner:
         match Walk st, inner:
             TyAt ignore, ignore: ((TyErr, (ErrFix st, "bind-dynamic", span, "binding a `{ShowTy st, t}`; say what happens to the old widgets with `rebuild`", "write `rebuild` over the dynamic, with the blueprint inside")))
-            TyElem ignore, ignore: ((TyErr, (ErrFix st, "bind-dynamic", span, "binding a `{ShowTy st, t}`, a {if s == "$": "dynamic" else: "event"} of elements; say what happens to the old element with `rebuild`", "write `rebuild` over the dynamic field's value, with the element inside")))
+            TyElem ignore, ignore: match ?LiftedElement st, span:
+                ? lift: ((TyErr, (RefuseLifted st, lift)))
+                nil: ((TyErr, (ErrFix st, "bind-dynamic", span, "binding a `{ShowTy st, t}`, a {if s == "$": "dynamic" else: "event"} of elements; say what happens to the old element with `rebuild`", "write `rebuild` over the dynamic field's value, with the element inside")))
             otherwise: ((TyErr, (Err st, "mismatch", span, "`<-` binds a blueprint or an element; this is `{ShowTy st, t}`")))
     TyFlex ignore:
         let ((v, st2)) = FreshVar st, False, ""
         ((v, (Unify st2, t, (TyAt v, env.scope), span)))
     TyErr: ((TyErr, st))
     other: ((TyErr, (Err st, "mismatch", span, "`<-` binds a blueprint or an element; this is `{ShowTy st, other}`")))
+
+# The identity field a statement's element was lifted at: a dynamic or an event given to an
+# element's plain field inside `span` (Type System ch. 2-05: the construction lifts, and the
+# statement that would build it refuses, at the field).
+?LiftedElement: fn St, Range -> ?ElemLift
+fn ?LiftedElement st, span = Fold st.elemLifts, nil, \|?found, l| match ?found:
+    ? x: ? x
+    nil: if l.file == st.file and l.arg.start >= span.start and l.arg.end <= span.end: ? l else: nil
+
+# The refusal at the field: a dynamic there means a new element per value (`rebuild`), an
+# event a value per firing (a hold).
+RefuseLifted: fn St, ElemLift -> St
+fn RefuseLifted st, l:
+    if l.layer == "$": ErrFix st, "identity-dynamic", l.arg, "a dynamic in the identity field `{l.field}`", "for a new element per value, write `rebuild {l.src}:` with `{l.owner}({l.field}=_, ...)` inside"
+    else: ErrFix st, "identity-dynamic", l.arg, "an event in the identity field `{l.field}`", "hold it first, `$x <- ... then {l.src}`, and give the field the `$x`"
 
 AddIncl: fn St, Rw, Rw, Range, Text -> St
 fn AddIncl st, sub, sup, span, what = update st:
@@ -284,26 +357,13 @@ fn HoldStmt env, st, p, init, step, span:
     if (HeadSigil st4, stepTy) == "!" or stepTy == TyErr: Unify st4, (TySig "!", v), stepTy, step.span
     else: ErrFix st4, "mismatch", step.span, "a hold's step is an event; this is `{ShowTy st4, stepTy}`", "fire it with an event: `... on !e`"
 
-# `ignore <- e` drops a build's or an element's result on purpose.
+# `ignore <- e` drops a build's or an element's result on purpose: `e` is what `<-` binds
+# (a blueprint, an element, a `rebuild` or `for`, a building `match` or `if`), and anything
+# else is refused as a bind of it is (Semantics ch. 8, "`<-` has three readings").
 IgnoreStmt: unbounded fn Env, St, Expr, Range -> St
 fn IgnoreStmt env, st, e, span:
-    let ((t, st1)) = Infer env, st, e
-    match Walk st1, t:
-        TyAt ignore, ignore:
-            let ((ignore, st2)) = BindOutput env, st1, t, e.span
-            st2
-        TyElem ignore, ignore:
-            let ((ignore, st2)) = BindOutput env, st1, t, e.span
-            st2
-        TySig ignore, inner: match Walk st1, inner:
-            TyAt ignore, ignore:
-                let ((ignore, st2)) = BindOutput env, st1, t, e.span
-                st2
-            TyElem ignore, ignore:
-                let ((ignore, st2)) = BindOutput env, st1, t, e.span
-                st2
-            otherwise: st1
-        otherwise: st1
+    let ((ignore, st2)) = BoundValue env, st, e
+    st2
 
 # A bare line: an element emits, a blueprint builds, a building `match` or `if` picks its
 # arm once, `@ v` ends the block on `v`. Before the last line its result is `unit` or the
@@ -338,16 +398,22 @@ fn BareLineKind env, st, e, last = match e.kind:
         if last: ((t, st2)) else: ((t, (Discarded st2, t, e.span)))
     EGroup x: BareLine env, st, x, last
     otherwise:
-        let ((t, st1)) = Infer env, st, e
+        let ((t, st1)) = InferBuilt env, st, e
         let ((res, st2)) = match Walk st1, t:
             TyAt ignore, ignore: BindOutput env, st1, t, e.span
             TyElem ignore, ignore: BindOutput env, st1, t, e.span
+            TySig ignore, inner if IsElemType st1, inner: BindOutput env, st1, t, e.span
             TyErr: ((tUnit, st1))
             other:
                 if IsBuilder e: ((other, st1))
                 else: if (Walk st1, other) == tUnit: ((tUnit, st1))
                 else: ((other, (ErrFix st1, "mismatch", e.span, "a bare line emits an element or builds a blueprint; this is `{ShowTy st1, other}`", "end the block on a value with `@ {SrcText env, e.span}`")))
         if last: ((res, st2)) else: ((res, (Discarded st2, res, e.span)))
+
+IsElemType: unbounded fn St, Ty -> Bool
+fn IsElemType st, t = match Walk st, t:
+    TyElem ignore, ignore: True
+    otherwise: False
 
 # `unit` before the last line (`discarded`, Semantics ch. 8).
 Discarded: unbounded fn St, Ty, Range -> St
@@ -374,7 +440,7 @@ fn BuildingMatch env, st, scrut, arms, span, last:
             ? gd: CheckCond env2, s1, gd
             nil: s1
         let ((bt, s3)) = ArmWidgetBlock env2, s2, arm.body
-        Unify s3, res, bt, arm.body.span
+        Unify s3, res, bt, (ResultSpan arm.body)
     let st5 = MatchCoverage env, st4, plainScrut, arms, span
     if last: ((res, st5)) else: ((res, (Discarded st5, res, span)))
 
@@ -396,10 +462,10 @@ fn BuildingIf env, st, c, thenB, ?elseB, span, last:
     match ?elseB:
         ? b:
             let ((t2, st3)) = ArmWidgetBlock env, st2, b
-            let st4 = Unify st3, t1, t2, b.span
+            let st4 = Unify st3, t1, t2, (ResultSpan b)
             if last: ((t1, st4)) else: ((t1, (Discarded st4, t1, span)))
         nil:
-            let st3 = Unify st2, tUnit, t1, thenB.span
+            let st3 = Unify st2, tUnit, t1, (ResultSpan thenB)
             ((tUnit, st3))
 
 # An arm of a building `match`: a widget block, or a single line read as a bare line.

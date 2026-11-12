@@ -1,0 +1,37 @@
+# An existential of a program's trait that has an associated type (Type System ch. 3,
+# "Existentials": `any ^Trait` is a value of some type that implements the trait, the
+# type hidden; "Associated types"): the packed value answers the trait's methods that
+# take the hidden type as a parameter; a method that gives the associated type is asked
+# of a value whose type is known. No function's bound is asked of a packed value here: a
+# bound may call every method of the trait, `Zero` among them, so that is
+# `existential-method` (ruling EX; tests/checker/neg/ts-ch03-existential-method-gives-
+# associated-type).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+trait ^Weighed a:
+    type Unit
+    Weigh: fn a -> Nat
+    Zero: fn a -> Unit a
+
+impl ^Weighed Nat:
+    type Unit = Text
+    fn Weigh n = n
+    fn Zero n = ""
+
+impl ^Weighed Text:
+    type Unit = Nat
+    fn Weigh t = Len t
+    fn Zero t = 0
+
+Hide: fn Nat -> any ^Weighed
+fn Hide n = any n
+
+HideText: fn Text -> any ^Weighed
+fn HideText t = any t
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Weigh (Hide 3)} {Weigh (HideText "ab")} {Zero "x"}")      # 0

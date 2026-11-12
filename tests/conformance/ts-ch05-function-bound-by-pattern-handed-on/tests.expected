@@ -1,0 +1,10 @@
+# Derived by hand from Type System ch. 5 (a function is a value, and so is its argument): 1, 2, 3 doubled sum to 12, and 1 more is 13; each one more sum to 9, and 2 more is 11; doubled and 3 more is 15; doubled and 4 more is 16; each two more sum to 12.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="13")
+    1: Ui.Label(text="11")
+    2: Ui.Label(text="15")
+    3: Ui.Label(text="16")
+    4: Ui.Label(text="12")

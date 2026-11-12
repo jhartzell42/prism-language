@@ -53,7 +53,7 @@ fn PatConds cp, p, v = match p:
         let inner = Concat2 (Each (Range0 (Len ps)), \|i| PatConds cp, (Or ps[i], PaWild), (Payload cp, c, v, i))
         Filter (Append [[own]], inner), \|t| t != "true"
     PaRecord c, fs, ignore: Concat2 (Each fs, \|((f, q))| PatConds cp, q, "{v}.{FieldId f}")
-    PaTuple ps: Concat2 (Each (Range0 (Len ps)), \|i| PatConds cp, (Or ps[i], PaWild), "std::get<{i}>({v})")
+    PaTuple ps: Concat2 (Each (Range0 (Len ps)), \|i| PatConds cp, (Or ps[i], PaWild), "::std::get<{i}>({v})")
     PaChar c: [["{v} == U'{CppCharEscape c}'"]]
     PaBool b: [[if b: v else: "!{v}"]]
     PaIndex n: [["{v} == {n}u"]]
@@ -75,7 +75,7 @@ fn PatBinds cp, p, v = match p:
     PaUnit ignore: [[]]
     PaCtor c, ps: Concat2 (Each (Range0 (Len ps)), \|i| PatBinds cp, (Or ps[i], PaWild), (Payload cp, c, v, i))
     PaRecord c, fs, ignore: Concat2 (Each fs, \|((f, q))| PatBinds cp, q, "{v}.{FieldId f}")
-    PaTuple ps: Concat2 (Each (Range0 (Len ps)), \|i| PatBinds cp, (Or ps[i], PaWild), "std::get<{i}>({v})")
+    PaTuple ps: Concat2 (Each (Range0 (Len ps)), \|i| PatBinds cp, (Or ps[i], PaWild), "::std::get<{i}>({v})")
     PaSlice ps: Concat2 (Each (Range0 (Len ps)), \|i| SliceBinds cp, (Or ps[i], PaWild), v, i)
     otherwise: [[]]
 
@@ -153,7 +153,7 @@ fn MatchTail arms:
     let ends = match ?Last arms:
         ? a: (IsCatchAll a.pat) and (Len a.conds) == 0
         nil: False
-    if ends: "" else: "prism_rtl::unreachable(\"no arm matched\");\n"
+    if ends: "" else: "::prism_rtl::unreachable(\"no arm matched\");\n"
 
 # A `match` whose type the model does not give (a job's turn, gap TT of the README): a
 # chain of conditional expressions, whose type C++ works out; a guard's test binds the
@@ -172,7 +172,7 @@ fn TernaryMatch cp, s, arms:
     let reached = Fold arms, (([[]], False)), \|((acc, done)), a| if done: ((acc, done)) else: (((Push acc, a), (Len (PatConds cp, a.pat, subject)) == 0 and (Len a.conds) == 0))
     let ((kept, ends)) = reached
     let parts = Each kept, \|a| TernaryArm cp, subject, a
-    let lastText = if ends: "" else: "\n    : throw prism_rtl::Panic(\"no arm matched\")"
+    let lastText = if ends: "" else: "\n    : throw ::prism_rtl::Panic(\"no arm matched\")"
     StmtExpr "{bind}", "{Join parts, "\n    : "}{lastText}"
 
 TernaryArm: unbounded fn Cp, Text, XArm -> Text
@@ -203,6 +203,7 @@ IsPlaceEx: fn Ex -> Bool
 fn IsPlaceEx x = match x:
     XVar ignore: True
     XField y, ignore: IsPlaceEx y
+    XFieldOf y, ignore, ignore: IsPlaceEx y
     XPart y, ignore: IsPlaceEx y
     XTarget ignore: True
     XSelf: True

@@ -45,7 +45,7 @@ fn matches(p: &Pod, v: &Pod) -> bool {
         (Pod::Element(t, _), Pod::Element(u, _)) if t.ends_with(".*") => u.rsplit_once('.').is_some_and(|(f, _)| *f == t[..t.len() - 2]),
         (Pod::Record(n, ps), Pod::Record(m, fs)) | (Pod::Element(n, ps), Pod::Element(m, fs)) => n == m && fields(ps, fs),
         // A bare qualified name is a fault kind, or an element with no fields.
-        (Pod::Choice(c, a), Pod::Element(t, fs)) => a.is_empty() && fs.is_empty() && c == t,
+        (Pod::Choice(c, a), Pod::Element(t, fs)) => a.is_empty() && fs.is_empty() && **c == **t,
         (Pod::Choice(c, ps), Pod::Choice(d, vs)) => (c == d || names_case(c, d)) && all(ps, vs),
         (Pod::Tuple(ps), Pod::Tuple(vs)) | (Pod::Array(ps), Pod::Array(vs)) => all(ps, vs),
         (Pod::Map(ps), Pod::Map(es)) => ps.len() == es.len() && ps.iter().zip(es).all(|((pk, pv), (k, v))| matches(pk, k) && matches(pv, v)),
@@ -99,7 +99,7 @@ enum Tok {
 }
 
 const UNITS: [(&str, i128); 6] =
-    [("h", 3_600_000_000_000), ("m", 60_000_000_000), ("s", 1_000_000_000), ("ms", 1_000_000), ("us", 1_000), ("ns", 1)];
+    [("h", 3_600_000_000_000), ("min", 60_000_000_000), ("s", 1_000_000_000), ("ms", 1_000_000), ("us", 1_000), ("ns", 1)];
 
 fn lex(src: &str) -> Result<Vec<Tok>, String> {
     let cs: Vec<char> = src.chars().collect();
@@ -198,7 +198,9 @@ fn lex(src: &str) -> Result<Vec<Tok>, String> {
                 i += 2;
                 continue;
             }
-            let p = ["(", ")", "[", "]", "{", "}", ",", ":", "=", "?", "~", "/", "#"]
+            // `-` alone is a sparse tuple's absent part (`(("hello", -))`); a number's
+            // sign and `-inf` were read above
+            let p = ["(", ")", "[", "]", "{", "}", ",", ":", "=", "?", "~", "/", "#", "-"]
                 .into_iter()
                 .find(|p| p.starts_with(c))
                 .ok_or(format!("unexpected character {c:?}"))?;
@@ -336,6 +338,7 @@ impl Parser {
                 v
             }
             Some(Tok::P("((")) => Pod::Tuple(self.items("))")?),
+            Some(Tok::P("-")) => Pod::Absent,
             Some(Tok::P("[[")) => Pod::Array(self.items("]]")?),
             Some(Tok::P("{")) => {
                 let mut es = Vec::new();

@@ -1,0 +1,322 @@
+# The graphical board as a participant: it holds one player's seat. A press on a square or
+# a button becomes a request on its seat; what it draws comes from its seat's answer (the
+# game and this seat's legal moves) and from the reason in its last response, and from
+# nothing else. Back and Forward show earlier positions out of the game it is told. A pawn
+# moved to its last rank opens a dialog that asks what it becomes. The board and its panel
+# follow the basic chess's (`examples/basic-chess/app.prism`, `@Board` and `@Panel`), on
+# this program's copy of the window library (`window/`), with no settings dialog.
+# Written by Claude on the claude-document-chess branch; subject to change.
+emit rest | Pane.* | Gui.* | Seat.* | Play.*
+use Documents.*
+use Rules.*
+use Notation.*
+use Game.*
+use Words.*
+use Window.*
+use Window.Panes.*
+use Window.Hosting.*
+use Window.Widgets.*
+use Window.Layout.*
+use Window.Hits.*
+
+# ---- the places: each names its seat (`whiteE2`, `blackBack`), so two boards in one
+# window share no place's name
+
+# a square of one seat's board, in reading order as that seat looks at the board: its own
+# back rank at the bottom
+type Cell = record:
+    order: Nat
+    side: Color
+    square: Square
+derive ^Eq, ^Ord
+
+impl ^Show Cell:
+    fn Show cell = "{Lower (Show cell.side)}{Upper (Show cell.square)}"
+
+let mirror = [[((0, 7)), ((1, 6)), ((2, 5)), ((3, 4)), ((4, 3)), ((5, 2)), ((6, 1)), ((7, 0))]]
+
+Cells: fn Color -> (Cell ==> unit)
+fn Cells White = Fold mirror, {}, \|all, ((down, rank))| Fold eight, all, \|some, file| Insert some, Cell(order=(down * 8 + file), side=White, square=(Square file, rank)), unit
+fn Cells Black = Fold mirror, {}, \|all, ((across, file))| Fold eight, all, \|some, rank| Insert some, Cell(order=(rank * 8 + across), side=Black, square=(Square file, rank)), unit
+
+type Button = choice:
+    GoBack                             # show the position before the one shown
+    GoForward                          # and the one after it
+    GiveUp                             # resign
+    ProposeDraw                        # offer a draw
+    TakeDraw                           # accept the draw offered
+derive ^Eq, ^Ord, ^Show
+
+type Knob = record:
+    side: Color
+    button: Button
+derive ^Eq, ^Ord
+
+# a button's name in its place's path
+ButtonName: fn Button -> Text
+fn ButtonName GoBack = "Back"
+fn ButtonName GoForward = "Forward"
+fn ButtonName GiveUp = "Resign"
+fn ButtonName ProposeDraw = "Offer"
+fn ButtonName TakeDraw = "Accept"
+
+impl ^Show Knob:
+    fn Show knob = "{Lower (Show knob.side)}{ButtonName knob.button}"
+
+Knobs: fn Color -> (Knob ==> unit)
+fn Knobs color = Fold [[GoBack, GoForward, GiveUp, ProposeDraw, TakeDraw]], {}, \|all, button| Insert all, Knob(side=color, button=button), unit
+
+ButtonLabel: fn Button -> Text
+fn ButtonLabel GoBack = "Back"
+fn ButtonLabel GoForward = "Forward"
+fn ButtonLabel GiveUp = "Resign"
+fn ButtonLabel ProposeDraw = "Offer a draw"
+fn ButtonLabel TakeDraw = "Accept the draw"
+
+# what the promotion dialog offers
+type Offer = choice:
+    Become Man
+    Withdraw                           # close the dialog; nothing is sent
+derive ^Eq, ^Ord, ^Show
+
+type Choice = record:
+    side: Color
+    offer: Offer
+derive ^Eq, ^Ord
+
+OfferLabel: fn Offer -> Text
+fn OfferLabel (Become man) = Show man
+fn OfferLabel Withdraw = "Cancel"
+
+impl ^Show Choice:
+    fn Show option = "{Lower (Show option.side)}{OfferLabel option.offer}"
+
+Choices: fn Color -> (Choice ==> unit)
+fn Choices color = Fold [[(Become Queen), (Become Rook), (Become Bishop), (Become Knight), Withdraw]], {}, \|all, offer| Insert all, Choice(side=color, offer=offer), unit
+
+# ---- what a press asks for
+
+type Command = choice:
+    Pick Square                        # a square pressed
+    Act Button                         # a button pressed
+    Choose Offer                       # a button of the promotion dialog pressed
+derive ^Eq, ^Show
+
+# an earlier position on the board: how many moves led to it, and the position
+type Viewing = record:
+    index: Nat
+    position: Position
+derive ^Eq, ^Show
+
+# a pawn's move to its last rank, waiting for the dialog to say what the pawn becomes
+type Pending = record:
+    from: Square
+    to: Square
+derive ^Eq, ^Show
+
+# the command pressed first, in the keys' order, when two land in one tick
+?Earliest: fn (k ==> Command) -> ?Command
+fn ?Earliest picks:
+    ((ignore, command)) <- ?First picks
+    ? command
+
+# the position on the board: the earlier one picked out by Back, or the latest told
+Showing: fn ?Viewing, PlayerTold -> Position
+fn Showing (? viewing), told = viewing.position
+fn Showing nil, told = told.game.position
+
+# A first press on one's own piece selects it; a second press, anywhere, clears the
+# selection. A press while an earlier position shows selects nothing; so does any button.
+?Selecting: fn Color, ?Square, ?Viewing, PlayerTold, Command -> ?Square
+fn ?Selecting color, ?selected, ?pinned, told, command = match command:
+    Pick square: if ?selected == nil and ?pinned == nil and Owns told.game.position, square, color: ? square else: nil
+    Act button: nil
+    Choose offer: nil
+
+# the two squares of a second press on the latest position, away from the selected square
+?Stepping: fn ?Square, ?Viewing, Command -> ?Pending
+fn ?Stepping ?selected, ?pinned, command = match command:
+    Pick to: match ?selected:
+        ? from: if ?pinned == nil and from != to: ? Pending(from=from, to=to) else: nil
+        nil: nil
+    Act button: nil
+    Choose offer: nil
+
+Promoted: fn PlayerTold, Pending -> Bool
+fn Promoted told, step = Promotes told.game.position, step.from, step.to
+
+# a pawn stepping to its last rank waits for the dialog; any other press closes the dialog
+?Waiting: fn ?Square, ?Viewing, PlayerTold, Command -> ?Pending
+fn ?Waiting ?selected, ?pinned, told, command = match ?Stepping ?selected, ?pinned, command:
+    ? step: if Promoted told, step: ? step else: nil
+    nil: nil
+
+# Back and Forward walk the positions before the latest; a press on a square returns to
+# the latest; any other press leaves the board where it is.
+?Browsing: fn ?Viewing, PlayerTold, Command -> ?Viewing
+fn ?Browsing ?pinned, told, command = match command:
+    Pick square: nil
+    Act GoBack: ?Before ?pinned, told.game
+    Act GoForward: ?After ?pinned, told.game
+    Act other: ?pinned
+    Choose offer: ?pinned
+
+IndexOf: fn ?Viewing, ChessGame -> Nat
+fn IndexOf nil, game = Len game.earlier
+fn IndexOf (? viewing), game = viewing.index
+
+?ViewingAt: fn ChessGame, Nat -> ?Viewing
+fn ?ViewingAt game, index:
+    position <- game.earlier[index]
+    ? Viewing(index=index, position=position)
+
+# the position before the one shown; at the opening, the opening
+?Before: fn ?Viewing, ChessGame -> ?Viewing
+fn ?Before ?pinned, game = match (IndexOf ?pinned, game) -? 1:
+    ? index: ?ViewingAt game, index
+    nil: ?pinned
+
+# the position after the one shown; past the last earlier one, the latest
+?After: fn ?Viewing, ChessGame -> ?Viewing
+fn ?After nil, game = nil
+fn ?After (? viewing), game = ?ViewingAt game, (viewing.index + 1)
+
+# What a press asks the document for. The board decides nothing about legality: a second
+# press is sent as a move, whatever it is; a pawn's step to its last rank is sent when the
+# dialog says what the pawn becomes.
+?Asked: fn ?Square, ?Viewing, ?Pending, PlayerTold, Command -> ?PlayerRequest
+fn ?Asked ?selected, ?pinned, ?waiting, told, command = match command:
+    Pick to: match ?Stepping ?selected, ?pinned, command:
+        ? step: if Promoted told, step: nil else: ? (Play (Moving step.from, step.to))
+        nil: nil
+    Act GiveUp: ? Resign
+    Act ProposeDraw: ? OfferDraw
+    Act TakeDraw: ? AcceptDraw
+    Act other: nil
+    Choose (Become man): match ?waiting:
+        ? step: ? (Play (Promoting step.from, step.to, man))
+        nil: nil
+    Choose Withdraw: nil
+
+# the reason in the last response, if it was declined
+?Declined: fn Response ChessReason -> ?ChessReason
+fn ?Declined Accepted = nil
+fn ?Declined (Declined why) = ? why
+
+# ---- what the board shows, in words and paint at the last moment
+
+LetterOf: fn Man -> Text
+fn LetterOf King = "k"
+fn LetterOf Queen = "q"
+fn LetterOf Rook = "r"
+fn LetterOf Bishop = "b"
+fn LetterOf Knight = "n"
+fn LetterOf Pawn = "p"
+
+ShadeOf: fn Color -> Text
+fn ShadeOf White = "l"
+fn ShadeOf Black = "d"
+
+# the piece images are the basic chess's, read where they are
+Picture: fn ?Piece -> Text
+fn Picture nil = "examples/basic-chess/pieces/blank.png"
+fn Picture (? piece) = "examples/basic-chess/pieces/{LetterOf piece.man}{ShadeOf piece.color}.png"
+
+let darkPaint = Rgb 0.7098039215686275, 0.5333333333333333, 0.38823529411764707
+let lightPaint = Rgb 0.9411764705882353, 0.8509803921568627, 0.7098039215686275
+let reachPaint = Rgb 0.6, 0.8, 0.5
+
+# whether the selected piece has a legal move to this square, by what the seat is told
+Reaches: fn ?Square, PlayerTold, Square -> Bool
+fn Reaches nil, told, square = False
+fn Reaches (? from), told, square = AnyOf told.legal, \|move| (Origin move) == from and (Destination move) == square
+
+# the selected square is yellow, and the squares its piece may move to are green
+PaintOf: fn ?Square, PlayerTold, Square -> Paint
+fn PaintOf ?selected, told, square = if ?selected == (? square): Yellow else:
+    if Reaches ?selected, told, square: reachPaint else:
+        if IsDark square: darkPaint else: lightPaint
+
+StatusLine: fn Color, PlayerTold -> Text
+fn StatusLine color, told = if told.game.?offered == (? (Opponent color)): "{color}: {StatusText told.game}; a draw is offered" else: "{color}: {StatusText told.game}"
+
+DeclinedLine: fn ?ChessReason -> Text
+fn DeclinedLine nil = ""
+fn DeclinedLine (? why) = "declined: {ReasonText why}"
+
+# the moves as the panel lists them: a line per full move, `2. g1f3 b8c6`, the move that
+# led to the position shown in brackets
+MoveAt: fn [Move], Nat, Nat -> Text
+fn MoveAt moves, shown, index = match moves[index]:
+    ? move: if index + 1 == shown: "[{Spelled move}]" else: Spelled move
+    nil: ""
+
+MoveLine: fn [Move], Nat, Nat -> Text
+fn MoveLine moves, shown, line:
+    let second = MoveAt moves, shown, (2 * line + 1)
+    if second == "": "{line + 1}. {MoveAt moves, shown, (2 * line)}" else: "{line + 1}. {MoveAt moves, shown, (2 * line)} {second}"
+
+MoveLines: fn PlayerTold, ?Viewing -> (Nat ==> Text)
+fn MoveLines told, ?pinned:
+    let shown = IndexOf ?pinned, told.game
+    let ((ignore, lines)) = Fold told.game.moves, ((0, {})), \|((index, all)), move| ((index + 1, (if index mod 2 == 0: Insert all, (Size all), (MoveLine told.game.moves, shown, (Size all)) else: all)))
+    lines
+
+# ---- the widgets
+
+# the board on its border: a press on a square is a `Pick`
+@Squares: fn Color, $PlayerTold, $?Viewing, $?Square -> @!Command
+fn @Squares color, $told, $?pinned, $?selected = @Bordered ($ 8.0), Ink, @widget:
+    !picks <- @Grid 8, @widget:
+        !squares <- for cell, $present <- $ (Cells color):
+            !pressed <- Pane.Image($src=(Picture (?At (Showing $?pinned, $told), cell.square)), $paint=(PaintOf $?selected, $told, cell.square))
+            @ (Pick cell.square) on !pressed
+        @ !Filter (?Earliest !squares)
+    @ !picks
+
+# beside the board: where the game stands, why the last request was declined, the buttons,
+# and the moves
+@Panel: fn Color, $PlayerTold, $?Viewing, $?ChessReason -> @!Command
+fn @Panel color, $told, $?pinned, $?declined = @Column 6.0, @widget:
+    Pane.Label($text=(StatusLine color, $told))
+    Pane.Label($text=(DeclinedLine $?declined))
+    !pressed <- @Row 4.0, @widget:
+        !buttons <- for knob, $present <- $ (Knobs color):
+            !click <- Pane.Button($label=$ (ButtonLabel knob.button))
+            @ (Act knob.button) on !click
+        @ !Filter (?Earliest !buttons)
+    for slot, $line <- MoveLines $told, $?pinned:
+        Pane.Label($text=$line)
+    @ !pressed
+
+# the promotion dialog's form: what the pawn becomes, or nothing
+@PromotionForm: fn Color -> @!Command
+fn @PromotionForm color = @Column 8.0, @widget:
+    Pane.Label($text=$"{color}'s pawn becomes")
+    !chosen <- @Row 4.0, @widget:
+        !buttons <- for option, $present <- $ (Choices color):
+            !click <- Pane.Button($label=$ (OfferLabel option.offer))
+            @ (Choose option.offer) on !click
+        @ !Filter (?Earliest !buttons)
+    @ !chosen
+
+Open: fn ?Pending -> Bool
+fn Open ?waiting = ?waiting != nil
+
+# A player at a board. Its seat's answer and its requests' responses are everything it
+# knows of the game.
+@BoardPlayer: fn Player -> @unit emit Pane.* | Gui.* | Seat.* | Play.*
+fn @BoardPlayer (Player color):
+    $told <- Play.Query($query=$ Game.Whole)                                          # 0
+    !command <- @Layers @widget:                                                     # 1 hosts; 2 is the layers
+        !played <- @Column 8.0, @widget:
+            !onBoard <- @Squares color, $told, $?pinned, $?selected
+            !onPanel <- @Panel color, $told, $?pinned, $?declined
+            @ !onBoard <| !onPanel
+        !chosen <- @Overlay (Open $?waiting), (Point 0.5, 0.5), (@PromotionForm color)
+        @ !played <| !chosen
+    !response <- Play.Request(!requests=(!Filter (?Asked $?selected, $?pinned, $?waiting, $told, !command)))   # 3
+    $?selected <- nil then ?Selecting color, $?selected, $?pinned, $told, !command
+    $?waiting <- nil then ?Waiting $?selected, $?pinned, $told, !command
+    $?pinned <- nil then ?Browsing $?pinned, $told, !command
+    $?declined <- nil then ?Declined !response

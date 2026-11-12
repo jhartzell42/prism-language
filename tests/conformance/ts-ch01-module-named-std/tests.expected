@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 1: the program's own `Some 4` picks 4 and `Nope` 0.
+test a_module_named_std
+
+tick 0
+  added:
+    0: Ui.Label(text="4 0")

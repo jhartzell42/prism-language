@@ -1,0 +1,22 @@
+# From prism-notes, claude/04-domains-and-documents/evidence/hosting/06-spectator-cannot-request/tests.prism: attempt 06 of the Bible's document hosting against prismc at 10ca993, committed as written. The refusal is the wanted one: a spectator's row has no `Play.*`.
+# Attempt 06's test: never reached.
+emit Ui.* | Play.* | Watch.*
+use App.*
+
+test three_seats_one_document, @host:
+    build
+    click Ui.Button(label="White +1")
+    compute
+    compute
+    compute
+    compute
+    click Ui.Button(label="Black +1")
+    compute
+    compute
+    compute
+    compute
+    click Ui.Button(label="Black +1")
+    compute
+    compute
+    compute
+    compute

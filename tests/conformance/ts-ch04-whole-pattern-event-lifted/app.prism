@@ -1,0 +1,22 @@
+# A plain function over an event that a tuple pattern binds, an application lifted over it
+# inside an operator's operand (Type System ch. 4, Application: a sigiled parameter is not
+# lifted over, an application over a `!` value is). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Kept: fn Nat, !Click -> ((!Nat, Nat))
+fn Kept n, !go = ((n on !go, 2))
+
+Twice: fn Nat -> Nat
+fn Twice n = n * 2
+
+!Fired: fn ((!Nat, Nat)) -> !Nat
+fn !Fired ((!made, more)) = (Twice !made) + more
+
+@page: @unit
+@page:
+    !go <- Ui.Button($label=$"go")                               # 0
+    $shown <- 0 then !Fired (Kept 4, !go)
+    Ui.Label($text=$"{$shown}")                                  # 1

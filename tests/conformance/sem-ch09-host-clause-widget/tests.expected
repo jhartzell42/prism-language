@@ -1,0 +1,14 @@
+# Derived by hand from Semantics ch. 8 and 9: the clause `? 3` chooses stands at the child's 0 and 1, the `match`'s arm at 2; each is forwarded at 0/[p]/0, and a click on the forwarded button reaches the child in its tick.
+test hosted_clauses
+
+tick 0
+  added:
+    0/[0]/0: Ui.Label(text="some 3")
+    0/[1]/0: Ui.Button(label="pick 3")
+    0/[2]/0: Ui.Label(text="total 0")
+
+tick 1
+  in:
+    0/[1]/0: click
+  changed:
+    0/[2]/0: Ui.Label(text="total 3")

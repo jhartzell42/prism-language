@@ -1,0 +1,8 @@
+# Audited: the crate opens to 4, plus 1 is 5; the jar opens to "figs", with "!".
+# The tests of ts-ch03-associated-types (Type System chapter 3).
+emit Ui.*
+use App.*
+
+test each_impl_chooses_its_item, @shown:
+    build
+        => expect Ui.Label(text="5 figs!")

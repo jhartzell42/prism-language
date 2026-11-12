@@ -1,0 +1,8 @@
+# Derived by hand: the first generation is built from page 1, its result 2.
+test rebuild_plain_result
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1/#0/0: Ui.Label(text="page 1")
+    2: Ui.Label(text="2")

@@ -1,0 +1,26 @@
+# Setting `nil` at an index path removes the key (Semantics ch. 5, "References and lens
+# paths"), and a `(K ==> V)+` is non-empty (Type System ch. 2, "Collections"): removing
+# from one could leave it empty, so the update breaks the type's promise, and so does
+# setting a value that may be `nil`. Setting `? v` only adds or replaces (`Put`), the plain
+# map takes every one of these lines (`Forget`), and an array has no entry to remove (the
+# line is a fault of the run for any array), so a `[a]+` stays non-empty (`Shorter`). The expected text is
+# derived by hand. Written by Claude on the claude-lowering branch; subject to change.
+Without: fn (Nat ==> Text)+, Nat -> (Nat ==> Text)+
+fn Without m, k = update m:
+    &_[k] <= nil
+
+Shorter: fn [Nat]+ -> [Nat]+
+fn Shorter xs = update xs:
+    &_[0] <= nil
+
+Moved: fn (Nat ==> Text)+, Nat, Nat -> (Nat ==> Text)+
+fn Moved m, from, to = update m:
+    &_[to] <= m[from]
+
+Put: fn (Nat ==> Text)+, Nat -> (Nat ==> Text)+
+fn Put m, k = update m:
+    &_[k] <= ? "x"
+
+Forget: fn (Nat ==> Text), Nat -> (Nat ==> Text)
+fn Forget m, k = update m:
+    &_[k] <= nil

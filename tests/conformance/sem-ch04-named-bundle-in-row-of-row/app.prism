@@ -1,0 +1,25 @@
+# A bundle bound whole to one name, with a `$` part, passed to a widget by a row of a row
+# (Semantics ch. 4: a row reads the names of the blocks around it, at any depth; Type
+# System ch. 2, "Bundles": a bundle is a plain aggregate, so a name binds it and a
+# parameter's tuple pattern takes it apart). Written by Claude on the claude-lowering
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Counter: fn Nat -> @((!Click, $Nat))
+fn @Counter page:
+    !more <- Ui.Button($label=$"more on {page}")
+    $guests <- 1 then $guests + 1 on !more
+    @ ((!more, $guests))
+
+@Shown: fn Text, ((!Click, $Nat)) -> @unit
+fn @Shown name, ((!more, $guests)):
+    Ui.Label($text=$"{name}: {$guests}")
+
+@main: @unit
+@main:
+    both <- @Counter 1                                            # 0
+    for i, inner <- {1: {1: "a", 2: "b"}, 2: {1: "c"}}:             # 1/[i]
+        for j, name <- inner:                                       # 1/[i]/0/[j]
+            @Shown name, both                                     # 1/[i]/0/[j]/0

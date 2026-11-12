@@ -1,0 +1,9 @@
+# Derived by hand from ruling TC and Semantics ch. 8: `@Count 2` builds its label at 0 and `@Count 1`, whose label is 1 and whose `@Count 0` is 2; the caller's label takes the next number, 3.
+test each_level_is_counted
+
+tick 0
+  added:
+    0: Ui.Label(text="at 2")
+    1: Ui.Label(text="at 1")
+    2: Ui.Label(text="zero")
+    3: Ui.Label(text="after")

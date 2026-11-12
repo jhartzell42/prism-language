@@ -1,0 +1,11 @@
+# The tests of sem-ch04-late-event-let-above.
+emit Ui.*
+use App.*
+
+test loud, @Page (Loud "x"):
+    build
+    click at 0
+
+test soft, @Page Soft:
+    build
+    click at 0

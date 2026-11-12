@@ -16,5 +16,5 @@ fn Only (Many ignore) = "some"
 
 @shown: @unit
 @shown:
-    Ui.Label(text=$"{Only (Many [["a"]])}, {Only (Many [["b", "c"]])}, {Only (Many [[]])}")     # 0
+    Ui.Label($text=$"{Only (Many [["a"]])}, {Only (Many [["b", "c"]])}, {Only (Many [[]])}")     # 0
 # Audited: one element, then two, then none (the last clause).

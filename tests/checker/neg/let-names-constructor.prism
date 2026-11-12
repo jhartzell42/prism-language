@@ -1,0 +1,31 @@
+# A pattern's bare capitalised name that resolves to a constructor is that constructor
+# (the rule every `match` arm and clause pattern goes by), so `let Bound = \|a, b| ..`
+# with the record `Bound` in scope gives no function a name: a lambda is no `Bound`. The
+# checker took the `let` for a binder and the back end for a constructor pattern, and
+# rustc refused the emitted crate. The same for a choice's constructor (`Heads`). A local
+# `fn Bound` is a declaration, not a pattern, and the block's own name (`Local`). The
+# expected text is derived by hand. Written by Claude on the claude-lowering branch;
+# subject to change.
+type Bound = record:
+    low: Nat
+    high: Nat
+
+type Coin = choice:
+    Heads
+    Tails
+
+Twice: fn Nat -> Nat
+fn Twice n:
+    let Bound = \|a, b| a + b
+    Bound n, n
+
+Flip: fn Nat -> Nat
+fn Flip n:
+    let Heads = \|a| a + 1
+    Heads n
+
+# a `let` whose value is no lambda is the constructor's pattern too, and tests its value
+Side: fn Coin -> Nat
+fn Side coin:
+    let Heads = coin
+    1

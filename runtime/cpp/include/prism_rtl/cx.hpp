@@ -5,7 +5,7 @@
 //
 // 1. last round's undone clean-ups; the started list and the armed `@Defer`s fire; the
 //    answers a host's supplier computed last tick and the update events of structural
-//    dynamics that moved last tick (`Cx::answer_later`), then the World's answers by
+//    dynamics that moved last tick (`Cx::output_later`), then the World's answers by
 //    path and its pushes by element;
 // 2. the wakes by height, a bucket per height, each node once per height;
 // 3. propagation ends, and every read from here on is after the tick;
@@ -107,7 +107,7 @@ struct Gathered {
     List builds, swaps, leaves, patches, started, armed;
     std::vector<Edit> edits;
     std::vector<Request> requests;
-    std::optional<Outcome> result;
+    std::vector<Outcome> results;
     std::vector<std::pair<Pod, Weak<Node>>> listens;
     std::vector<Weak<Node>> zombies;
     std::vector<NodeRef> cleanups;
@@ -161,6 +161,8 @@ public:
         return std::forward<F>(f)(*this);
     }
 
+    /// The height whose wakes run now; none outside the heights' run.
+    std::optional<std::uint32_t> running_height() const { return height_; }
     /// Ask for a wake at `height`, once per height. A wake asked for at or below the
     /// running height runs at the next one (the clamp, Graph ch. 4).
     void wake(std::uint32_t height, NodeRef node);
@@ -197,7 +199,7 @@ public:
     /// as ruled: a computed answer is a tick late); the update event of a structural
     /// dynamic that moved this tick, fired at n+1 with the value after n (ch. 7, round 3
     /// ST).
-    void answer_later(Later deliver) { g_.later.push_back(std::move(deliver)); }
+    void output_later(Later deliver) { g_.later.push_back(std::move(deliver)); }
     /// A fault a cell raises where it holds only a `const Cx&`: the tick fails at its
     /// close.
     void fail_later(Fault f) const {
@@ -209,7 +211,7 @@ public:
     }
     /// The root's result: a plain one at the build, a dynamic one when it changes, an
     /// event one when it fires.
-    void result(Outcome outcome) { g_.result = std::move(outcome); }
+    void result(Outcome outcome) { g_.results.push_back(std::move(outcome)); }
 
     /// A new place's first value: the ready state as the tick opened, with the tick's
     /// pushes on top (Semantics ch. 9, "Queries are sync, from a ready state").

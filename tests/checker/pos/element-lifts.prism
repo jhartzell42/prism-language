@@ -1,0 +1,14 @@
+# A dynamic at an element's plain (identity) field lifts the construction to a
+# `$Element o`, which a `let` may hold; only a statement that would build it refuses, at the
+# field, with the `rebuild` fix (Type System ch. 2-05, "A dynamic in an identity field lifts
+# the construction to `$Element o`, and the statement refuses it"; neg identity-dynamic).
+# Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+
+@pictures: @unit
+@pictures:
+    !go <- Ui.Button($label=$"Next")
+    $src <- "a.png" then "b.png" on !go
+    let $image = Ui.Image(src=$src)
+    rebuild $src:
+        Ui.Image(src=_)

@@ -1,0 +1,17 @@
+# A building `match` bound by `<-` whose arms end on an event: each arm builds its widgets
+# and gives its event with `@ !w`, as an arm that gives a plain value does (`n <- match`).
+# Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+
+@Picked: fn Bool -> @Nat
+fn @Picked wide:
+    !inner <- match wide:
+        True:
+            !w <- Ui.Button($label=$"wide")
+            @ !w
+        False:
+            !n <- Ui.Button($label=$"narrow")
+            @ !n
+    $count <- 0 then $count + 1 on !inner
+    Ui.Label($text=$"{$count}")
+    @ 0

@@ -8,7 +8,7 @@ PageFile: fn Nat -> Text
 fn PageFile n = "page{n}.txt"
 
 @journal:
-    !turn <- Ui.Button(label=$"Next page")                              # 0
+    !turn <- Ui.Button($label=$"Next page")                              # 0
     $page <- 1 then $page + 1 on !turn
     ignore <- rebuild $page:                                            # 1/#g
-        ignore <- Fs.File(path=PageFile _, requests=((Write "end of page {_}\n") on !turn))
+        ignore <- Fs.File(path=PageFile _, !requests=((Write "end of page {_}\n") on !turn))

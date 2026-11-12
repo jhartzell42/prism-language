@@ -55,9 +55,22 @@ fn DynamicExpr wx, menv, e:
         EName n: match menv.names[SNameKey n]:
             ? (BnHold f, ignore): AddRead acc, (OwnRead f)
             ? (BnDyn ignore, rs, ignore): UnionReads acc, rs
+            # a named bundle read as one value (`{name}#value`, `BundleArgumentsAt`): its
+            # `$` parts are live dynamics over the parts' readers, so the expression reads
+            # what they read, as a reader passed whole (`WholeArgsAt`) is read by name
+            ? (BnParts bs): if HasKey menv.names, "{SNameKey n}#value": UnionReads acc, (PartsReads bs) else: acc
             otherwise: acc
         otherwise: acc
     ((Own v, reads))
+
+# What a named bundle's parts read (`DynamicExpr`): each `$` part's reader, a bundle
+# inside it by its own parts; an event part and a plain part read nothing.
+PartsReads: unbounded fn [?Bn] -> [Read]
+fn PartsReads bs = Fold bs, [[]], \|acc, ?b| match ?b:
+    ? (BnHold f, ignore): AddRead acc, (OwnRead f)
+    ? (BnDyn ignore, rs, ignore): UnionReads acc, rs
+    ? (BnParts inner): UnionReads acc, (PartsReads inner)
+    otherwise: acc
 
 # A node that never fires (`never`).
 NeverEvent: fn Wx, OutTy -> ((EvRef, Wx))
@@ -87,7 +100,15 @@ fn EventRef wx, menv, e:
             (((EvRefOf w4, id), w4))
         EBinary "on", l, r:
             let ((rr, w1)) = EventRef wx, menv, r
-            let value = Own (ValueOf lx, menv, l)
+            # an event of values that hold time, its value written over readers (`(($b,
+            # "t")) on !swap`, a hold's step): the value holds its dynamics whole, each the
+            # live dynamic its line made (`WholeArgsAt`), never a copy of its value. A
+            # value that is a dynamic itself is what `on` lifts over (`$other on !swap`,
+            # `$other` a dynamic of such tuples): read at the firing, as any operand
+            let lxValue = if (HasTime (Peel (TypeAt lx, e.span))) and (LayerOf (TypeAt lx, l.span)) != LyDyn: update lx:
+                &_.whole <= True
+            else: lx
+            let value = Own (ValueOf lxValue, menv, l)
             ((EvRef(node=rr.node, owner=rr.owner, pipe=(\|x, K| rr.pipe x, \|ignore| K value)), w1))
         ECall c, args, ignore, ignore: match CalleeKey lx, c:
             "Prelude.!Filter": FilterEvent wx, menv, args, False
@@ -98,11 +119,45 @@ fn EventRef wx, menv, e:
             "Prelude.!Except": PairEvent wx, menv, args, GnExcept, t
             "Prelude.!MergeAll": MergeAllEvent wx, menv, args, t
             "Prelude.!Updated": UpdatedEvent wx, menv, args, t
-            otherwise: EventMap wx, menv, e
+            otherwise: if IsWholeObject lx, e: EventObjectRef wx, menv, e, t else: EventMap wx, menv, e
         EIf (CondExpr c), thenB, (? elseB): match ((?BlockExpr thenB, ?BlockExpr elseB)):
             ((? a, ? b)): EventIf wx, menv, c, a, b, t
             otherwise: EventMap wx, menv, e
         otherwise: EventMap wx, menv, e
+
+# An event value a function gave whole (`Or es[0], never` over `es = Evs !inc`, gap LF),
+# heard in the node: a port node of the graph, fed by a subscription the build makes to the
+# value's port, the value read through a getter once the node is made.
+EventObjectRef: unbounded fn Wx, Env, Expr, OutTy -> ((EvRef, Wx))
+fn EventObjectRef wx, menv, e, t:
+    let lx = wx.lx
+    let ((rs, w1)) = FreshName wx, "heard"
+    let ((id, w2)) = AddGn w1, rs, t, GnPort, 0
+    let shown = SrcText lx, lx.file, e.span
+    let getter = MethDef(name="{rs}_event", recv=RecvRef, params=[[]], cx=CxRef, ret=(OutEvent t), body=[[]], tail=(Own (ValueOf lx, menv, e)), doc="`{shown}`, an event a function gave whole, as its value.")
+    let w3 = update (SubscribedValue w2, rs, (XMethod (XVar "node"), "{rs}_event", [[XCx]]), t, "`{shown}`"):
+        &_.getters <= Push &_.getters, getter
+    (((EvRefOf w3, id), w3))
+
+# An event value the node hears (Semantics ch. 6: an event is a value; Graph ch. 3: a
+# port node fed by the value's own port): the build subscribes the node's method `name`
+# to the value's port, keeping the handle in `{name}_sub` and the port in
+# `{name}_value_port`, so a row that leaves undoes the subscription (`RowMethods`) and
+# the value's port stops calling a node that is gone (prism_rtl's `Port::unsubscribe`
+# lets the firing node go with its last subscriber). `event`: the value, read in the
+# build from `node`; `t`: what it fires; `shown`: what the fields' docs call it.
+SubscribedValue: fn Wx, Text, Ex, OutTy, Text -> Wx
+fn SubscribedValue wx, name, event, t, shown:
+    let port = XClosure False, [[PaBind "ev"]], (XRef (XField (XVar "ev"), "port"))
+    let call = XClosure False, [[PaBind "n", PaBind "v", PaBind "cx"]], (XMethod (XVar "n"), name, [[XClone (XVar "v"), XCx]])
+    let kept = DoAssign (XDeref (XMethod (XField (XVar "node"), "{name}_value_port"), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XClone (XField (XVar "event_value"), "port"))]])
+    let subscribed = DoExpr (XCall (HelperRef "subscribe_row"), [[(XRef (XVar "node")), (XCtor (RefRuntime "std::Some"), [[(XCall (RefRuntime "std::Rc::new"), [[(XVar "event_value")]])]]), port, call, (HeardAbove name), (XRef (XField (XVar "node"), "{name}_sub"))]])
+    let w1 = AddField wx, "{name}_sub", (OutNamed (RefRuntime "std::Cell"), [[(OutOpt (OutNamed (RefRuntime "rt::Handle"), [[]]))]]), "the subscription to {shown}", (XCall (RefRuntime "std::Cell::new"), [[XNone]])
+    let w2 = AddField w1, "{name}_value_port", (OutCell (OutOpt (OutRc (OutPort t)))), "the port of {shown} the subscription is made to, kept to undo it", (XCall (RefRuntime "std::RefCell::new"), [[XNone]])
+    update w2:
+        &_.taken <= Append &_.taken, [["{name}_sub", "{name}_value_port"]]
+        &_.build <= Push &_.build, (DoScope [[(DoLet (PaBind "event_value"), event), kept, subscribed]])
+        &_.valueSubs <= Push &_.valueSubs, name
 
 # `if $c: !a else: !b`, an `if` lifted to events (Type System ch. 4): each branch gated by
 # the condition at its firing, the two merged.
@@ -147,7 +202,7 @@ fn PairEvent wx, menv, args, kind, t = match ((args[0], args[1])):
 
 # `!MergeAll [[!a, ..]]`: every input that fired this tick, in the list's order, one
 # firing of the list (a combinator of as many inputs as the literal has). A list that is
-# not a literal is not lowered yet.
+# not a literal is a plain value, so its events are fixed at the build (`MergeListEvent`).
 MergeAllEvent: unbounded fn Wx, Env, [Arg], OutTy -> ((EvRef, Wx))
 fn MergeAllEvent wx, menv, args, t = match args[0]:
     ? a: match a.value.kind:
@@ -158,19 +213,45 @@ fn MergeAllEvent wx, menv, args, t = match args[0]:
             let ((nm, w1)) = FreshName wx, "merged"
             let ((id, w2)) = AddGn w1, nm, t, GnMergeAll, 1
             let ins = Each (Range0 (Len es)), \|i| "{nm}_{i}"
-            let w3 = Fold ins, w2, \|w, f| AddFieldLast w, f, (OutStamped et), "an input of `!MergeAll`", (XCall "Stamped::new", [[]])
+            let w3 = Fold ins, w2, \|w, f| AddFieldLast w, f, (OutStamped et), "an input of `!MergeAll`", (XCall (RefRuntime "rt::Stamped::new"), [[]])
             let w4 = update w3:
                 &_.gns <= Each &_.gns, \|n| if n.id == id: WithInputs n, ins else: n
             let w5 = Fold (Range0 (Len es)), w4, \|w, i|
                 let ((r, w6)) = EventRef w, menv, (Or es[i], a.value)
                 Connect w6, r, (SkIn id, i)
             (((EvRefOf w5, id), w5))
-        otherwise:
+        # a list's events are fixed at the build only when the list is plain; over a
+        # dynamic list `!MergeAll` is lifted, a `$![a]` only `@Switch` takes (`SwitchLine`)
+        otherwise: if (LayerOf (TypeAt wx.lx, a.value.span)) == LyPlain: MergeListEvent wx, menv, a.value, t
+        else:
             let ((r, w1)) = NeverEvent wx, t
             let w2 = update w1:
-                &_.build <= Push &_.build, (RefusalDo "`!MergeAll` of a list that is not a literal")
+                &_.build <= Push &_.build, (InternalBugDo "`!MergeAll` of `{SrcText wx.lx, wx.lx.file, a.value.span}`, a list that is not plain, read as an event")
             ((r, w2))
     nil: NeverEvent wx, t
+
+# `!MergeAll evs` over a list that is not a literal (Semantics Appendix B): the list's
+# `Event`s, read once the node is made (`{nm}_events`), each heard by the runtime's
+# `MergeList` (`{nm}_list`), which stamps the input and tells the node (`{nm}_in`, the wake
+# asked); the wake takes the values fired this tick, in the list's order, as one firing.
+MergeListEvent: unbounded fn Wx, Env, Expr, OutTy -> ((EvRef, Wx))
+fn MergeListEvent wx, menv, x, t:
+    let lx = wx.lx
+    let et = match t:
+        OutArray y: y
+        otherwise: OutUnit
+    let ((nm, w1)) = FreshName wx, "merged"
+    let ((id, w2)) = AddGn w1, nm, t, GnMergeList, 1
+    let list = "{nm}_list"
+    let shown = SrcText lx, lx.file, x.span
+    let getter = MethDef(name="{nm}_events", recv=RecvRef, params=[[]], cx=CxRef, ret=(OutArray (OutEvent et)), body=[[]], tail=(Own (ValueOf lx, menv, x)), doc="`{shown}`, the list `!MergeAll` merges, as its value.")
+    let listened = DoExpr (XMethod (XField (XVar "node"), list), "listen_above", [[(XRef (XMethod (XVar "node"), "{nm}_events", [[XCx]])), (XRef (XVar "node")), (XPath (RefChild (SiteRef lx, wx.node), "{nm}_in")), (XPath (RefChild (SiteRef lx, wx.node), "{nm}_in_above"))]])
+    let w3 = update (AddFieldLast w2, list, (OutNamed (RefRuntime "prism_rtl::MergeList"), [[et]]), "`!MergeAll`'s list, heard", (XCall (RefRuntime "std::Default::default"), [[]])):
+        &_.gns <= Each &_.gns, \|n| if n.id == id: WithInputs n, [[list]] else: n
+        &_.getters <= Push &_.getters, getter
+        &_.build <= Push &_.build, listened
+        &_.taken <= Append &_.taken, [["{nm}_events", "{nm}_in"]]
+    (((EvRefOf w3, id), w3))
 
 # `!Updated $d`: the event half of a dynamic (Semantics R3; README pick UP). A graph node
 # of kind "updated", decided in the wake like a merge, one above every node whose sink
@@ -186,7 +267,7 @@ fn UpdatedEvent wx, menv, args, t = match args[0]:
         let ((ex, reads)) = DynamicExpr wx, menv, a.value
         let ((nm, w1)) = FreshName wx, "updated"
         let ((id, w2)) = AddGn w1, nm, t, GnUpdated, 1
-        let w3 = AddFieldLast w2, "{nm}_moved", (OutNamed "Cell", [[OutBool]]), "a hold `!{nm}`'s dynamic reads was written this tick", (XCall "Cell::new", [[XBool False]])
+        let w3 = AddFieldLast w2, "{nm}_moved", (OutNamed (RefRuntime "std::Cell"), [[OutBool]]), "a hold `!{nm}`'s dynamic reads was written this tick", (XCall (RefRuntime "std::Cell::new"), [[XBool False]])
         let w4 = update w3:
             &_.gns <= Each &_.gns, \|n| if n.id == id: WithReads n, reads else: n
             &_.getters <= Push &_.getters, (MethDef(name="{nm}_value", recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="The dynamic `!{nm}` is the event half of, which the wake reads after the tick."))
@@ -201,7 +282,7 @@ fn FilterEvent wx, menv, args, isUnit:
         ? a:
             let ((r, w1)) = EventRef wx, menv, a.value
             let bound = if isUnit: PaWild else: PaBind "w"
-            let pipe = \|x, K| r.pipe x, \|y| [[(DoIfLet (PaCtor "Some", [[bound]]), y, (K (if isUnit: XUnit else: XVar "w")), [[]])]]
+            let pipe = \|x, K| r.pipe x, \|y| [[(DoIfLet (PaCtor (RefRuntime "std::Some"), [[bound]]), y, (K (if isUnit: XUnit else: XVar "w")), [[]])]]
             ((EvRef(node=r.node, owner=r.owner, pipe=pipe), w1))
 
 # `!Gate $b, !e` fires `!e` while `$b` reads true.
@@ -268,8 +349,8 @@ fn Merge wx, name, t, l, r = Combinator wx, name, t, GnMerge, l, r, t, t
 Combinator: fn Wx, Text, OutTy, GnKind, EvRef, EvRef, OutTy, OutTy -> ((Nat, Wx))
 fn Combinator wx, name, t, kind, l, r, lt, rt:
     let ((id, wx1)) = AddGn wx, name, t, kind, 1
-    let wx2 = AddFieldLast wx1, "{name}_left", (OutStamped lt), "`{name}`'s left input", (XCall "Stamped::new", [[]])
-    let wx3 = AddFieldLast wx2, "{name}_right", (OutStamped rt), "its right input", (XCall "Stamped::new", [[]])
+    let wx2 = AddFieldLast wx1, "{name}_left", (OutStamped lt), "`{name}`'s left input", (XCall (RefRuntime "rt::Stamped::new"), [[]])
+    let wx3 = AddFieldLast wx2, "{name}_right", (OutStamped rt), "its right input", (XCall (RefRuntime "rt::Stamped::new"), [[]])
     let wx4 = update wx3:
         &_.gns <= Each &_.gns, \|n| if n.id == id: WithInputs n, [["{name}_left", "{name}_right"]] else: n
     ((id, (Connect (Connect wx4, l, (SkIn id, 0)), r, (SkIn id, 1))))

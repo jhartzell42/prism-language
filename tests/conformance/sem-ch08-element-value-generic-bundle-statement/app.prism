@@ -1,0 +1,20 @@
+# An element value of a generic tag whose output is a bundle, placed by `@Element` in a
+# line that binds the bundle (Type System ch. 2, "Bundles and sparse tuples": the left
+# side of `<-` is a pattern for the output; `@Element` of an element value places it as
+# its statement would; Semantics ch. 9: a tag's variable is decided where the element is
+# made). sem-ch08-element-value-bundle-statement with the event's type a variable of the
+# tag. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Socket of Element ((!r, $Text)) where r: ^Show:
+    address: Text
+
+Wire: fn Text -> Element Pad.* ((!Text, $Text))
+fn Wire address = Pad.Socket(address=address)
+
+@chat: @unit
+@chat:
+    ((!rx, $link)) <- @Element (Wire "chat:7000")               # 0
+    $last <- "none" then !rx
+    Ui.Label($text=$"{$link}: {$last}")                          # 1

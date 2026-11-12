@@ -1,0 +1,19 @@
+# Derived by hand from Semantics ch. 9 (a forwarded element is re-emitted at host/[p]/0; the World's first value, answers and pushes reach the child's place in their own tick) and ch. 8 ("A new place's first value"; "The patch": a response is addressed by path, a push keyed by the element's value): sem-ch09-bundle-dynamic-part's first test under a forwarding host.
+test a_forwarded_socket
+
+tick 0
+  added:
+    0/[0]/0: Pad.Socket(address="chat:7000")
+    0/[1]/0: Ui.Label(text="up: none")
+
+tick 1
+  in:
+    0/[0]/0: "hello"
+  changed:
+    0/[1]/0: Ui.Label(text="up: hello")
+
+tick 2
+  in:
+    Pad.Socket(address="chat:7000") = "down"
+  changed:
+    0/[1]/0: Ui.Label(text="down: hello")

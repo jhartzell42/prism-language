@@ -118,7 +118,7 @@ fn SexpFn f, depth:
     "(fn {SexpDefName f.name} (params{Concat (Each f.params, \|p| " {SexpPattern p, depth}")}){body})"
 
 SexpFields: fn [Field], Nat -> Text
-fn SexpFields fs, depth = Concat (Each fs, \|f| "{Nl depth + 1}(field {f.name.name} {SexpType f.ty})")
+fn SexpFields fs, depth = Concat (Each fs, \|f| "{Nl depth + 1}(field {f.sigils}{f.name.name} {SexpType f.ty})")
 
 SexpCase: fn Case -> Text
 fn SexpCase c:
@@ -270,7 +270,7 @@ fn SexpSeg (SegPlain p), ignore = DebugText p
 fn SexpSeg (SegPlaceholder e), d = "\{{SexpExpr e, d}\}"
 
 SexpArgs: fn [Arg], Nat -> Text
-fn SexpArgs args, d = Concat (Each args, \|a| " {ArgName a.?name}{SexpExpr a.value, d}")
+fn SexpArgs args, d = Concat (Each args, \|a| " {a.marks}{ArgName a.?name}{SexpExpr a.value, d}")
 
 ArgName: fn ?Ident -> Text
 fn ArgName nil = ""
@@ -383,7 +383,7 @@ fn SexpPattern p, d = match p.kind:
     PUnit: "unit"
     PNil: "nil"
     PCtor name, args: "(ctor {SNameText name}{Concat (Each args, \|a| " {SexpPattern a, d}")})"
-    PRecord name, fields, rest: "(record {SNameText name}{Concat (Each fields, \|f| " {ArgName f.?name}{SexpPattern f.pattern, d}")}{if rest: " .." else: ""})"
+    PRecord name, fields, rest: "(record {SNameText name}{Concat (Each fields, \|f| " {f.marks}{ArgName f.?name}{SexpPattern f.pattern, d}")}{if rest: " .." else: ""})"
     PSigil s, inner: "(free{s} {SexpPattern inner, d})"
     PTuple ps: "(tuple{Concat (Each ps, \|x| " {SexpPattern x, d}")})"
     PArray ps: "(array{Concat (Each ps, \|x| " {SexpPattern x, d}")})"

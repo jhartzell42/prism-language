@@ -16,4 +16,4 @@ fn Parity n = match Or (?Mod n, 2), 0:
 
 @shown: @unit
 @shown:
-    Ui.Label(text=$"{Name 0} {Name 1} {Name 5} {Parity 4} {Parity 7}")     # 0
+    Ui.Label($text=$"{Name 0} {Name 1} {Name 5} {Parity 4} {Parity 7}")     # 0

@@ -18,7 +18,7 @@ derive ^Eq, ^Ord, ^Show
 
 type Chain = record:
     head: Nat
-    rest: ?Chain
+    ?rest: Chain
 derive ^Eq, ^Ord, ^Show
 
 type Boxed = record:
@@ -62,8 +62,8 @@ fn Same a, b = if a == b: "same" else: "different"
 let e1 = Pair (Neg (Num 3)), (Maybe (? (Num 4)))
 let e2 = Both (((Pair (Num 2), (Num 5)), 3))
 let e3 = Pair (Neg (Num 3)), (Maybe (? (Num 4)))
-let c1 = Chain(head=1, rest=(? (Chain(head=2, rest=(? (Chain(head=3, rest=nil)))))))
-let c2 = Chain(head=1, rest=(? (Chain(head=2, rest=nil))))
+let c1 = Chain(head=1, ?rest=(? (Chain(head=2, ?rest=(? (Chain(head=3, ?rest=nil)))))))
+let c2 = Chain(head=1, ?rest=(? (Chain(head=2, ?rest=nil))))
 
 # A payload behind `Rc` bound by a pattern, copied into an unbounded function's
 # continuation (Rust: `let sub = (**sub).clone()`, a shadowing `let`) and matched there:
@@ -92,11 +92,11 @@ fn Nodes (Node ?sub, n) = match ?sub:
 @tally:
     !done <- @Run Count, (Node (? (Node nil, 2)), 3)                                       # 0
     $shown <- "working" then Show !done
-    Ui.Label(text=$shown)                                                                  # 1
+    Ui.Label($text=$shown)                                                                  # 1
 
 @demo: @unit
 @demo:
-    Ui.Label(text=$"{Eval e1} {Eval e2} {Depth e1} {Depth e2} {Total c1}")                # 0
-    Ui.Label(text=$"{Order e1, e1} {Order e1, e2} {Order (Neg e1), (Neg e1)} {ChainOrder c1, c2} {ChainOrder c2, c2}")  # 1
-    Ui.Label(text=$(Same (Boxed(label="a", expr=e1)), (Boxed(label="a", expr=e3))))        # 2
-    Ui.Label(text=$(Show (Neg (Maybe nil))))                                               # 3
+    Ui.Label($text=$"{Eval e1} {Eval e2} {Depth e1} {Depth e2} {Total c1}")                # 0
+    Ui.Label($text=$"{Order e1, e1} {Order e1, e2} {Order (Neg e1), (Neg e1)} {ChainOrder c1, c2} {ChainOrder c2, c2}")  # 1
+    Ui.Label($text=$(Same (Boxed(label="a", expr=e1)), (Boxed(label="a", expr=e3))))        # 2
+    Ui.Label($text=$(Show (Neg (Maybe nil))))                                               # 3

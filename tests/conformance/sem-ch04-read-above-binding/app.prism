@@ -11,7 +11,7 @@ emit Ui.* | Pad.*
 test mod Tests
 
 tag Pad.Door of Element ((Text, !Nat)):
-    name: $Text
+    $name: Text
 
 @Word: fn Text -> @Text
 fn @Word w:
@@ -19,14 +19,14 @@ fn @Word w:
 
 @page: @Text
 @page:
-    ((door, !knocks)) <- Pad.Door(name=$called)             # 0
+    ((door, !knocks)) <- Pad.Door($name=$called)             # 0
     let excited = "{greeting}!"
-    Ui.Label(text=$"{door}, {excited}")                     # 1
+    Ui.Label($text=$"{door}, {excited}")                     # 1
     let greeting = "hello {word}"
     $called <- "front" then "back" on !never
     word <- @Word "x"
-    !never <- Ui.Button(label=$"never")                     # 2
-    Ui.Label(text=$"{$count}")                              # 3
-    !bump <- Ui.Button(label=$"bump")                       # 4
+    !never <- Ui.Button($label=$"never")                     # 2
+    Ui.Label($text=$"{$count}")                              # 3
+    !bump <- Ui.Button($label=$"bump")                       # 4
     $count <- 10 then $count + 1 on !bump
     @ door

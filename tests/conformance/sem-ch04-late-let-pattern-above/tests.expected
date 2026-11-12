@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": the order of a group's lines decides positions and nothing else; a `let` takes no position) and ruling TC (places counted as built: the loud arm builds place 1, so the last label is 2; the soft arm builds none, so it is 1).
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="low 11")
+    1: Ui.Label(text="x")
+    2: Ui.Label(text="high 20")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="low 21")
+    1: Ui.Label(text="high 40")

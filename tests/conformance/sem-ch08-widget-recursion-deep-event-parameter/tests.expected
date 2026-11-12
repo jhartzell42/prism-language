@@ -1,0 +1,54 @@
+# Derived by hand from ruling TC and Semantics ch. 8 (a widget application is transparent; a `$` field is live, so the place changes in place): the button is 0, levels 20 down to 1 take places 1 to 20, the last clause's label 21, and the caller's label the next number, 22; the click feeds every level's own hold in its tick.
+test twenty_levels_hear_an_event
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="level 20: 0")
+    2: Ui.Label(text="level 19: 0")
+    3: Ui.Label(text="level 18: 0")
+    4: Ui.Label(text="level 17: 0")
+    5: Ui.Label(text="level 16: 0")
+    6: Ui.Label(text="level 15: 0")
+    7: Ui.Label(text="level 14: 0")
+    8: Ui.Label(text="level 13: 0")
+    9: Ui.Label(text="level 12: 0")
+    10: Ui.Label(text="level 11: 0")
+    11: Ui.Label(text="level 10: 0")
+    12: Ui.Label(text="level 9: 0")
+    13: Ui.Label(text="level 8: 0")
+    14: Ui.Label(text="level 7: 0")
+    15: Ui.Label(text="level 6: 0")
+    16: Ui.Label(text="level 5: 0")
+    17: Ui.Label(text="level 4: 0")
+    18: Ui.Label(text="level 3: 0")
+    19: Ui.Label(text="level 2: 0")
+    20: Ui.Label(text="level 1: 0")
+    21: Ui.Label(text="end: 0")
+    22: Ui.Label(text="after")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="level 20: 20")
+    2: Ui.Label(text="level 19: 19")
+    3: Ui.Label(text="level 18: 18")
+    4: Ui.Label(text="level 17: 17")
+    5: Ui.Label(text="level 16: 16")
+    6: Ui.Label(text="level 15: 15")
+    7: Ui.Label(text="level 14: 14")
+    8: Ui.Label(text="level 13: 13")
+    9: Ui.Label(text="level 12: 12")
+    10: Ui.Label(text="level 11: 11")
+    11: Ui.Label(text="level 10: 10")
+    12: Ui.Label(text="level 9: 9")
+    13: Ui.Label(text="level 8: 8")
+    14: Ui.Label(text="level 7: 7")
+    15: Ui.Label(text="level 6: 6")
+    16: Ui.Label(text="level 5: 5")
+    17: Ui.Label(text="level 4: 4")
+    18: Ui.Label(text="level 3: 3")
+    19: Ui.Label(text="level 2: 2")
+    20: Ui.Label(text="level 1: 1")
+    21: Ui.Label(text="end: 1")
