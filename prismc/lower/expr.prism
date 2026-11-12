@@ -2873,6 +2873,9 @@ PlainLambda: unbounded fn Lx, Env, [Pattern], LambdaBody, OutTy -> Vl
 fn PlainLambda lx, env, ps, body, ft:
     let pts = match ft:
         OutFn xs, ignore: xs
+        # a lambda whose color no use decides: its parameters are refused as its type is
+        # (`OutQuantified`, where the closure is cast to it)
+        OutQuantified b: Each ps, \|ignore| OutQuantified b
         otherwise: [[]]
     let ((dos, env1)) = LambdaCaptures env, (WithInstances env, (LambdaReads ps, body))
     let ((pas, env2)) = ClosureParams lx, env1, ps, pts, True
@@ -3060,7 +3063,12 @@ fn ClosureParams lx, env, ps, pts, typed = Fold (Range0 (Len ps)), (([[]], env))
     ? p:
         let po = RustPat lx, p, (BinderTyOfPattern lx, p), ByRef, "a{SpanStem p.span}"
         let en2 = BindAll en, (Each po.binds, HeldFunction)
-        let pa = if typed: PaTyped po.pa, (OutRef (Or pts[i], (OutRefused "a parameter"))) else: po.pa
+        # (class G: a lambda's type is a function of as many parameters as it has, the
+        # checker's (check/expr/calls.prism, "this lambda takes .."), so its target type
+        # is a bounded function of as many (`PlainLambda`), a `Start` (`JobLambda`), or
+        # quantified (`OutQuantified`, given to each parameter); `LambdaArg` types its
+        # parameters only when `LambdaParamTys` found one per parameter)
+        let pa = if typed: PaTyped po.pa, (OutRef (Or pts[i], (InternalBugType "a lambda's parameter {i} with no type: a lambda's type is a function of as many parameters as the lambda has (the checker's arity), and each target function type gives each one"))) else: po.pa
         (((Push acc, pa), en2))
     nil: ((acc, en))
 
