@@ -1,0 +1,9 @@
+# The tests of host-bug-32-except-in-plain-function.
+emit Ui.*
+use App.*
+use Ui.*
+
+test t, @page:
+    build
+    click at 0, click at 1
+    click at 0
