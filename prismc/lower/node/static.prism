@@ -244,6 +244,17 @@ fn LocalFunctionLine wx, benv, menv, cbenv, cmenv, clx, cs, named, e, args:
 # blueprint did not build of them, so the later places are counted as built (ruling TC),
 # and an answer under it is handed on with its position counted from the generation's
 # first.
+# The path a blueprint value is built at where a line applies it: the node's own, when its
+# places go out to the World's document. In a hosted scope a place is named by its path
+# relative to the hosted child, or to the row that names it, and the host the blueprint is
+# given is the host as this node reaches it (`UnderItsPath`: the row's path before every
+# place it names): there the blueprint builds at the root of those paths, as the node's
+# own places are spelled (`PlaceAt`). Given the node's path there, a blueprint built in a
+# row would put the row's path before its places a second time (`let @ada = @Presser
+# "ada"` held in a map and built by a `rebuild` under a host: hosting bug 05).
+AppliedPath: fn Wx, Pos -> Ex
+fn AppliedPath wx, pos = if Emits wx, pos: XClone (XVar "path") else: XCall (RefRuntime "rt::Path::root"), [[]]
+
 ValueBlueprintLine: unbounded fn Wx, Env, Expr -> ((Wx, Wres))
 fn ValueBlueprintLine wx, menv, e = AppliedBlueprintLine wx, e, (Ref (ValueOf wx.lx, menv, e))
 
@@ -283,7 +294,7 @@ fn AppliedBlueprintLine wx, e, blueprint:
         # the scope the blueprint is built in: the World's, or the host's whose document
         # this node's places at the line are entries of
         let hostedIn = if IsHostedScope wx: XCtor (RefRuntime "std::Some"), [[(XCast (XClone (HostFieldEx wx, pos)), hostOfTy)]] else: XNone
-        let at = [[blueprint, (XClone (XVar "path")), (XVar "row_base"), hostedIn]]
+        let at = [[blueprint, (AppliedPath wx, pos), (XVar "row_base"), hostedIn]]
         # a line that binds a dynamic: each answer read at the line's type
         let taker = XClosure False, [[(PaBind "answer")]], (XCtor (RefRuntime "std::Ok"), [[(FirstAnswerTaken lx, outTy, "answer")]])
         let applied = if heard: TryOf (XCall (HelperRef "apply_blueprint_heard"), (Append at, [[(AnswerSink lx, name, outTy), XCx]])) else: if dynamic: TryOf (XCall (HelperRef "apply_blueprint_dynamic"), (Append at, [[taker, XCx]])) else: if answered: TryOf (XCall (HelperRef "apply_blueprint_answered"), (Push at, XCx)) else: TryOf (XCall (HelperRef "apply_blueprint"), (Push at, XCx))
@@ -378,7 +389,7 @@ fn AppliedBundleLine wx, e, blueprint:
     let hostedIn = if IsHostedScope wx: XCtor (RefRuntime "std::Some"), [[(XCast (XClone (HostFieldEx wx, pos)), hostOfTy)]] else: XNone
     let tags = BundleTagsOf lx, full
     let ((stateTy, eventsTy)) = BundleCarried lx, full
-    let applied = TryOf (XCallAt (HelperRef "apply_blueprint_whole"), [[wholeTy, stateTy, eventsTy]], [[blueprint, (XClone (XVar "path")), (XVar "row_base"), hostedIn, (BundleStateTaker lx, tags, stateTy), (BundleEventTaker lx, tags, eventsTy), (BundleAssembled full, tags), XCx]])
+    let applied = TryOf (XCallAt (HelperRef "apply_blueprint_whole"), [[wholeTy, stateTy, eventsTy]], [[blueprint, (AppliedPath wx, pos), (XVar "row_base"), hostedIn, (BundleStateTaker lx, tags, stateTy), (BundleEventTaker lx, tags, eventsTy), (BundleAssembled full, tags), XCx]])
     let gap = XBin OpSub, (XIndex wideGeneration), (XVar "built")
     let keeps = DoAssign (XDeref (XMethod (XField XSelf, kept), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XVar "whole")]])
     let made = PaTuple [[(PaBind "row"), (PaBind "built"), (PaBind "whole")]]
