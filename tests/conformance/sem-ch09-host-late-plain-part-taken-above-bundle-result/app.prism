@@ -1,0 +1,43 @@
+# A widget of one clause whose result is a bundle with a plain part (Type System ch. 2,
+# "Bundles"), applied above the place line that binds it to the plain part of a late
+# place's bundle: the place stands in a hosted child whose host answers the `$` part with
+# a structural dynamic, so its first value is asked once the node stands, and the line
+# that takes the plain part is built after it at its own place, above the place's
+# (Semantics ch. 4, "Binding groups and cycles": any line may use any name the block
+# binds, and "the order of a group's lines decides positions and nothing else"; ch. 9,
+# "How a supplier answers"; ch. 7, "Structural dynamics", round 3 ST; ch. 8: `<-` builds
+# the child and binds its result, a tuple pattern taking the bundle apart; ruling TC).
+# sem-ch09-host-late-plain-part-taken-above with the taker giving a bundle. Nothing here
+# is a cycle. Reaches `BundleBn`'s refusal "a late plain result in a bundle" (the `WrLate`
+# site) on prismc-s4; without the host (the taker above a building `if`) the same lines
+# lower.
+# Written by Claude (sweep-5, the prismc run), 12 November 2026; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Socket of Element ((Nat, !Text, $Nat)):
+    address: Text
+
+@Pair: fn Nat -> @((Nat, !Ui.Click))
+fn @Pair n:
+    !b <- Ui.Button($label=$"b {n}")
+    @ ((n + 1, !b))
+
+@chat: @unit
+@chat:
+    ((w, !b)) <- @Pair port                                            # h0
+    ((port, !rx, $peers)) <- Pad.Socket(address="chat:7000")           # h1
+    $last <- "none" then !rx
+    $presses <- 0 then $presses + 1 on !b
+    Ui.Label($text=$"{port} wide {w} {$peers}: {$last} {$presses}")    # h2
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")                                   # 0
+    $names <- {1: "one"} then Insert $names, 2, "two" on !add
+    $lens <- for k, $name <- $names:                                   # 1/[k]
+        Ui.Label($text=$name)
+        @ Len $name
+    ignore <- @HostDocument @chat, \|p, e| match e:                    # 2/[p]
+        Pad.Socket(..): @ ((7, "hello" on !add, Size $lens))
+        otherwise: @Element e

@@ -1250,8 +1250,11 @@ fn DefItems lx, d, roots:
                         if IsValueWidget lx, d.qk: [[ItFn (FnDefOf lx, d.qk, clauses, v.scheme)]]
                         else: Push (ValuedRows lx, d.qk, nil), (ItNote "`{d.name}` is inlined where it is applied.")
                     else: Append (ValuedRows lx, d.qk, nil), match clauses:
+                        # (a parameter that is a pattern other than a name or `ignore`,
+                        # `fn @Page ((name, count))`, binds where the widget is applied,
+                        # as any line binds it: the root applies it to its arguments)
                         [[c]]: match c.body:
-                            BodyBlock b: NodeItems (NodeDefOf lx, d.qk, c.params, b, v.scheme, True)
+                            BodyBlock b if Fold c.params, True, \|ok, p| ok and ((PlainBinder lx, p) != "" or IsIgnoreParameter p): NodeItems (NodeDefOf lx, d.qk, c.params, b, v.scheme, True)
                             otherwise: RootApplicationItems lx, d, v.scheme
                         otherwise: RootApplicationItems lx, d, v.scheme
                 # a widget of no arguments written as one expression (`fn @main =
@@ -1265,6 +1268,13 @@ fn DefItems lx, d, roots:
         DbLet l: [[ItFn (LetGetter lx, d.qk, l)]]
         otherwise: [[]]
 
+# Whether a parameter is `ignore` (in parentheses or not): it binds nothing.
+IsIgnoreParameter: fn Pattern -> Bool
+fn IsIgnoreParameter p = match p.kind:
+    PIgnore: True
+    PGroup q: IsIgnoreParameter q
+    otherwise: False
+
 # A widget of no arguments defined as one expression (`fn @main = @page`, Semantics ch. 8:
 # a widget's name is its blueprint).
 IsAliasWidget: fn [FnClause] -> Bool
@@ -1275,7 +1285,8 @@ fn IsAliasWidget clauses = match clauses:
     otherwise: False
 
 # A root widget whose body is not one block: one expression (`fn @Show text = @Inner
-# text`), several clauses, or an alias (`fn @main = @page`). Semantics ch. 8: a widget is
+# text`), several clauses, or an alias (`fn @main = @page`); or one block whose parameter
+# is a pattern other than a name (`fn @Page ((name, count))`). Semantics ch. 8: a widget is
 # a function to a blueprint, and a blueprint applied builds its places where it stands.
 # Its node takes its parameters by name (`argument0`, `argument1`, ..), and its block is one line,
 # the widget applied to them, lowered as that line is anywhere: a body of one expression
