@@ -1,0 +1,19 @@
+# Derived by hand from Semantics ch. 7 (R3: a dynamic's update event fires in the tick in which it was recomputed, with the value after the tick; the change law: `$a + $b` updates in the tick an operand does) and Type System ch. 4 (`!Updated` is not lifted over its dynamic): each click steps `$count`, the sum's update fires in the click's own tick with the new sum, and the hold shows it in that tick. Never run.
+test t
+
+tick 0
+  added:
+    0: Ui.Button(label="bump")
+    1: Ui.Label(text="0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="2")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="4")
