@@ -208,6 +208,19 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **`wake`** runs the node's combinators in distance order, once per height, by direct
   calls. A merge `<|` reads its left stamp first (CXb). The root wakes through the height
   buckets like every node (CXi).
+- **Heights across nodes.** An emitted node's heights are its combinators' distances
+  inside the node; between nodes `Cx::wake`'s clamp orders (a wake asked at or below the
+  running height runs at the next one), which lets a combinator with inputs from two
+  nodes fire once per input (`tests/conformance/heights-merge-all-across-nodes`,
+  `heights-gathered-event-across-nodes`). The runtime's side of global heights is in
+  place: a `Port` has a height (the global height it fires at, only ever raised, and only
+  while nothing propagates) and tells it to each subscriber's height twin
+  (`Port::subscribe_above`, `Port::raise`); `Heights` keeps one global height per
+  combinator of a node, put above each source told to it (`Heights::above`), and the
+  combinators asked this tick, lowest first. The runtime's own event values use both:
+  `merge_all`'s node sits above every event of its list and raises its own port,
+  `Event::map` and `filter_some` pass their source's height on. No emitted node raises a
+  port or keeps `Heights` yet.
   A node with several heights keeps the heights asked (`Wakes`); one wake of the node runs
   the lowest height asked, and ends by asking a wake for the lowest height still asked
   (`Wakes::again`). So two heights of one node asked from one running height, which both
@@ -1497,8 +1510,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `new` (runtime/cpp/README.md, "Regular expressions").
 - `cells`: `Tick`, `Hold`, `Stamped`, `Cache`, `Snapshot` (`mark`, `marked`, `take`,
   `take_compared`, `queue`, `published`, `get`, `current`), `Port` (`subscribe`, `unsubscribe`, `lien`, `release`,
-  `demand`, `fire`, `kept`), `Handle`, `Demand`, `Event`, `Dynamic`, `Defer`, `Job`,
-  `Turn`.
+  `demand`, `fire`, `kept`, `subscribe_above`, `raise`, `height`), `Handle`, `Demand`, `Event`, `Dynamic`, `Defer`, `Job`,
+  `Turn`, `Above`, `Heights` (`of`, `above`, `ask`, `next`, `again`).
 - `cx`: `Node`, `Done`, `Cx` (`tick`, `read_point`, `propagating`, `after`, `before`, `wake`, `build_later`, `swap_later`,
   `leave_later`, `dirty`, `on_started`, `arm`, `clean_up_later`, `added`, `removed`,
   `changed`, `request`, `answer_later`, `result`, `first_value`, `listen`), `Runtime`

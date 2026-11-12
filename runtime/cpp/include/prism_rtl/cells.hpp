@@ -32,6 +32,8 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <set>
+#include <stdexcept>
 #include <string>
 #include <typeinfo>
 #include <utility>
@@ -274,11 +276,61 @@ struct Handle {
 template <class T>
 using Subscriber = Rc<const std::function<Done(const T&, Cx&)>>;
 
+/// A subscriber's height twin: told the global height its source fires at, when it
+/// subscribes and each time that height rises. It walks where the subscriber's firing
+/// would go and puts every combinator it reaches above that height (`Heights::above`), a
+/// port it would fire straight through at that height (`Port::raise`).
+using Above = Rc<const std::function<void(std::uint32_t)>>;
+
+/// A node's combinators' global heights, and the ones asked to wake this tick. A
+/// combinator starts at its distance inside the node and is put above every source that
+/// reaches it from another node, as the source's height is told at the wiring. The wake
+/// decides the lowest combinator asked (`next`) and asks again for the next (`again`), so
+/// each combinator decides once, after every input that can make it fire has had its turn
+/// (Graph ch. 4, "Heights"; Semantics ch. 7: double firings never).
+class Heights {
+public:
+    explicit Heights(std::vector<std::uint32_t> distances) : at_(std::move(distances)) {}
+    std::uint32_t of(std::size_t combinator) const { return at_[combinator]; }
+    /// A source at global height `h` reaches `combinator`: it sits above it. Gives the
+    /// combinator's new height when it moved.
+    std::optional<std::uint32_t> above(std::size_t combinator, std::uint32_t h) {
+        if (at_[combinator] > h) return std::nullopt;
+        // a prompt cycle across nodes, which the checker refuses
+        if (h >= (1u << 20)) throw std::logic_error("a prismc bug: a combinator's height does not settle (a prompt cycle across nodes)");
+        at_[combinator] = h + 1;
+        return h + 1;
+    }
+    /// An input of `combinator` fired: its wake is asked at its height.
+    void ask(std::size_t combinator, Cx& cx, NodeRef node) {
+        std::uint32_t h = at_[combinator];
+        asked_.insert({h, combinator});
+        cx.wake(h, std::move(node));
+    }
+    /// The lowest combinator asked, for the node's wake to decide; none, none.
+    std::optional<std::size_t> next() {
+        if (asked_.empty()) return std::nullopt;
+        auto lowest = *asked_.begin();
+        asked_.erase(asked_.begin());
+        return lowest.second;
+    }
+    /// After a wake decided one combinator: a wake for the lowest still asked.
+    void again(Cx& cx, NodeRef node) {
+        if (!asked_.empty()) cx.wake(asked_.begin()->first, std::move(node));
+    }
+
+private:
+    std::vector<std::uint32_t> at_;
+    std::set<std::pair<std::uint32_t, std::size_t>> asked_;
+};
+
 /// How much an output is wanted (Graph ch. 4, "Demand"). Tags are a behavior's, and the
 /// node that owns the behavior counts them.
 enum class Demand { Idle, Liened, Subscribed };
 
-/// An output event port across nodes.
+/// An output event port across nodes. Its height is the global height it fires at: the
+/// height of the combinator whose wake fires it, or of whatever fires it straight through
+/// an input; only ever raised, and only while nothing propagates.
 template <class T>
 class Port {
 public:
@@ -302,8 +354,30 @@ public:
     void unsubscribe(Handle h) {
         if (h.index < subs_.size() && subs_[h.index]) {
             subs_[h.index].reset();
+            if (h.index < above_.size()) above_[h.index].reset();
             free_.push_back(h.index);
         }
+    }
+    /// Subscribe with the subscriber's height twin: the twin is told the port's height at
+    /// once, and again each time the port is raised.
+    Handle subscribe_above(Subscriber<T> f, Above above) {
+        Handle h = subscribe(std::move(f));
+        if (above_.size() <= h.index) above_.resize(h.index + 1);
+        above_[h.index] = above;
+        (*above)(height_);
+        return h;
+    }
+    /// The global height the port fires at.
+    std::uint32_t height() const { return height_; }
+    /// The port fires at global height `h`: when that is above what it was, every
+    /// subscriber's twin is told. The list is copied first, so a twin may subscribe.
+    void raise(std::uint32_t h) {
+        if (h <= height_) return;
+        height_ = h;
+        std::vector<Above> twins;
+        for (const auto& a : above_)
+            if (a) twins.push_back(a);
+        for (const auto& twin : twins) (*twin)(h);
     }
     void lien() { ++liens_; }
     void release() {
@@ -330,9 +404,11 @@ public:
 
 private:
     std::vector<Subscriber<T>> subs_;
+    std::vector<Above> above_;
     std::vector<std::size_t> free_;
     std::uint32_t liens_ = 0;
     Stamped<T> kept_;
+    std::uint32_t height_ = 0;
 };
 
 /// An `!a` value: an output port and the node that owns it, held strongly, since a
