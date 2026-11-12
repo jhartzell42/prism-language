@@ -1,0 +1,90 @@
+# Derived by hand from Semantics ch. 7 ("Holds die with their widget": a hold of a row that left is a constant with its last value, and a stateless combinator of that row that reads a live input from outside it keeps working; R8: the row leaves at the end of the tick), as sem-ch07-hold-dies-with-its-row's transcript is: the row that left keeps `$twice` at 2 and reads `$total` as its frozen 1 plus the live `$bonus`; never run.
+test a_let_over_the_holds_of_a_row_that_left_is_its_last_value
+
+tick 0
+  added:
+    0: Ui.Button(label="drop")
+    1: Ui.Button(label="ring")
+    2: Ui.Button(label="keep")
+    3: Ui.Button(label="more")
+    4/[1]/0: Ui.Label(text="one 0")
+    4/[2]/0: Ui.Label(text="two 0")
+
+tick 1
+  in:
+    1: click
+  changed:
+    4/[1]/0: Ui.Label(text="one 1")
+    4/[2]/0: Ui.Label(text="two 1")
+
+tick 2
+  in:
+    2: click
+  added:
+    5/[1]/0/[0]/0: Ui.Label(text="kept 2 0")
+    5/[2]/0/[0]/0: Ui.Label(text="kept 2 0")
+
+tick 3
+  in:
+    0: click
+  torn down:
+    4/[2]/0: Ui.Label(text="two 1")
+
+tick 4
+  in:
+    3: click
+  changed:
+    5/[1]/0/[0]/0: Ui.Label(text="kept 2 10")
+    5/[2]/0/[0]/0: Ui.Label(text="kept 2 10")
+
+tick 5
+  in:
+    1: click
+  changed:
+    4/[1]/0: Ui.Label(text="one 2")
+    5/[1]/0/[0]/0: Ui.Label(text="kept 4 10")
+
+test a_let_over_a_hold_and_an_outside_dynamic_reads_the_outside_live
+
+tick 0
+  added:
+    0: Ui.Button(label="drop")
+    1: Ui.Button(label="ring")
+    2: Ui.Button(label="keep")
+    3: Ui.Button(label="more")
+    4/[1]/0: Ui.Label(text="one 0")
+    4/[2]/0: Ui.Label(text="two 0")
+
+tick 1
+  in:
+    1: click
+  changed:
+    4/[1]/0: Ui.Label(text="one 1")
+    4/[2]/0: Ui.Label(text="two 1")
+
+tick 2
+  in:
+    2: click
+  added:
+    5/[1]/0/[0]/0: Ui.Label(text="kept 1")
+    5/[2]/0/[0]/0: Ui.Label(text="kept 1")
+
+tick 3
+  in:
+    0: click
+  torn down:
+    4/[2]/0: Ui.Label(text="two 1")
+
+tick 4
+  in:
+    3: click
+  changed:
+    5/[1]/0/[0]/0: Ui.Label(text="kept 11")
+    5/[2]/0/[0]/0: Ui.Label(text="kept 11")
+
+tick 5
+  in:
+    1: click
+  changed:
+    4/[1]/0: Ui.Label(text="one 2")
+    5/[1]/0/[0]/0: Ui.Label(text="kept 12")
