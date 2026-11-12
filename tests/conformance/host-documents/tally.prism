@@ -182,7 +182,7 @@ fn !?TellerLeaves e = match e:
 # The tellers. The host seats them with `first` and `!seat` and removes them with
 # `!remove`; a teller leaves with `Tell.Leave`, which may hold a last request. Each seat is one entry of the `for`, with
 # its own host: the seat is the entry's key, so no element names it.
-@HostTellers: fn (Teller ==> v), !(Teller ==> v), ![Teller], (fn Teller, v -> @a emit rest | Tell.*), $Tally, ![TallyResponse] -> @![Asked Tally Requester TallyResponse] emit rest where v: ^Ord
+@HostTellers: fn (Teller ==> v), !(Teller ==> v), ![Teller], (fn Teller, v -> @a emit rest | Tell.*), $Tally, ![TallyResponse] -> @![Notice Tally Requester TallyResponse] emit rest where v: ^Ord
 fn @HostTellers first, !seat, !remove, Guest, $state, !responses:
     $seats <- first then Reseated $seats, !tick
     !news <- @News $state, (!Filter (?Reseating !tick))
@@ -202,7 +202,7 @@ fn @HostTellers first, !seat, !remove, Guest, $state, !responses:
             @ (Requests (AskingTeller seat, p, !r)) <| (PartingTeller seat, p, !?l)
         @ !said
     let !tick = Happened (!Union (!Union (One 0, (Seats !seat)), (One 1, (Removes !remove))), (One 2, (Hears !heard)))
-    @ !Filter (?Requests !tick)
+    @ !Filter (?Notices TellerSeat, !tick)
 
 !ClearsOf: fn Elem (rest | Keep.*) -> !KeeperRequest
 fn !ClearsOf e = match e:
@@ -215,7 +215,7 @@ fn !?KeeperLeaves e = match e:
     otherwise: never
 
 # The keepers: the same lines with the keepers' tags, seat type and reason type.
-@HostKeepers: fn (Keeper ==> v), !(Keeper ==> v), ![Keeper], (fn Keeper, v -> @a emit rest | Keep.*), $Tally, ![TallyResponse] -> @![Asked Tally Requester TallyResponse] emit rest where v: ^Ord
+@HostKeepers: fn (Keeper ==> v), !(Keeper ==> v), ![Keeper], (fn Keeper, v -> @a emit rest | Keep.*), $Tally, ![TallyResponse] -> @![Notice Tally Requester TallyResponse] emit rest where v: ^Ord
 fn @HostKeepers first, !seat, !remove, Guest, $state, !responses:
     $seats <- first then Reseated $seats, !tick
     !news <- @News $state, (!Filter (?Reseating !tick))
@@ -235,7 +235,7 @@ fn @HostKeepers first, !seat, !remove, Guest, $state, !responses:
             @ (Requests (AskingKeeper seat, p, !r)) <| (PartingKeeper seat, p, !?l)
         @ !said
     let !tick = Happened (!Union (!Union (One 0, (Seats !seat)), (One 1, (Removes !remove))), (One 2, (Hears !heard)))
-    @ !Filter (?Requests !tick)
+    @ !Filter (?Notices KeeperSeat, !tick)
 
 !ViewerLeaves: fn Elem (rest | View.*) -> !Leaves
 fn !ViewerLeaves e = match e:

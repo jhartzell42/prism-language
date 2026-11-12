@@ -199,11 +199,11 @@ test removed_seat_request_dropped, @table:
     compute
         => expect Ui.Label(text="bob: total 2, may not add; accepted")
 
-# The host removes a seat whose request waits from the tick before (doubt KW): dee and eve
-# both ask when told the total is 3, dee's is applied in that tick and eve's waits; the
-# table removes eve in the next tick, the tick eve's request is due. Measured: eve's
-# places are torn down in that tick and her request is applied in it all the same; the
-# total is 5 a tick later, and no place is sent the response.
+# The host removes a seat whose request waits from the tick before: dee and eve both ask
+# when told the total is 3, dee's is applied in that tick and eve's waits; the table
+# removes eve in the next tick, the tick eve's request is due. A removed seat's requests
+# go with it, the ones that wait too: eve's places are torn down in that tick, her request
+# is never applied, and the total stays 4.
 test removed_seat_waiting_request, @table:
     build
     click Ui.Button(label="dee and eve join, eager at 3")
@@ -213,8 +213,8 @@ test removed_seat_waiting_request, @table:
     click Ui.Button(label="bob +1")
     compute
     click Ui.Button(label="eve is removed")
+        => expect Ui.Label(text="dee (eager at 3): total 4, may not add; accepted")
     compute
-        => expect Ui.Label(text="dee (eager at 3): total 5, may not add; accepted")
     compute
 
 # A seat whose sitting changes is built again, alone: bob becomes eager, and adds one by
