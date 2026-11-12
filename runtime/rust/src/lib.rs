@@ -57,7 +57,7 @@ pub use existential::{Packed, Packing, recast, type_key};
 pub use host::{AnswerOf, Blueprint, answers_mapped, BuiltWidget, Moved, RowDeliver, RowDocument, WeakRows, PartsAnswer, parts_blueprint, parts_event, parts_state, host_moved, host_under, moved_by, widget_blueprint, widget_event_blueprint, widget_dynamic_blueprint, widget_parts_blueprint, Entry, Follow, Host, HostDoc, HostOf, HostRow, Level, Link, PerKey, Rows, Scope, Sink, Supplied, Supplier, Watch, dynamic_blueprint, dynamics_pod, dynamics_ports, described_blueprint, element_blueprint, event_blueprint, forward_on_none, never_blueprint, plain_blueprint};
 pub use float::Float;
 pub use num::{Int, Nat};
-pub use pod::{Error, Fault, FromPod, Path, Pod, Segment, SparsePart, ToPod, sparse_absent, sparse_present};
+pub use pod::{ConstructorName, Error, Fault, FromPod, Path, Pod, Segment, SparsePart, ToPod, sparse_absent, sparse_present};
 pub use print::{Printer, Show, show, show_text};
 pub use regex::{Group, Match, Regex, RegexError, RegexPart, RegexReplacement};
 pub use world::test_world::TestWorld;

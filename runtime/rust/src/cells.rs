@@ -442,6 +442,18 @@ impl<T: Clone + 'static> Event<T> {
         self.port.subscribe(Rc::new(move |v: &T, cx: &mut Cx| out.fire(f(v), cx)));
         Event { owner: self.owner.clone(), port }
     }
+    /// The event `f` of this one, `f` given each firing's read point: a lifted call that
+    /// samples a dynamic at the firing (`(F $d) on !e` as an event value reads `$d` as the
+    /// tick opened, Semantics ch. 7).
+    pub fn map_at<U: Clone + 'static>(&self, f: impl Fn(&T, &Cx) -> U + 'static) -> Event<U> {
+        let port = Rc::new(Port::new());
+        let out = port.clone();
+        self.port.subscribe(Rc::new(move |v: &T, cx: &mut Cx| {
+            let at_firing = f(v, cx);
+            out.fire(at_firing, cx)
+        }));
+        Event { owner: self.owner.clone(), port }
+    }
 }
 
 impl<U: Clone + 'static> Event<Option<U>> {

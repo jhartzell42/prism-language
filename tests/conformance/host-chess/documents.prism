@@ -31,7 +31,8 @@ trait ^Seat r:
     Read: fn State r, r, Query r -> Told r
 
 # The request type and the reason type of a role that requests nothing: its language has
-# no request tag, so no participant can send the one or be sent the other.
+# no request tag, so no participant can send the one or be sent the other. The design's
+# type is `Never`, a choice with no case, which the parser refuses (bug 29).
 type NoRequest = choice:
     NotARequest
 derive ^Eq, ^Show
@@ -90,6 +91,23 @@ Parting: fn r, Path, ?(Request r) -> Heard (Asked (State r) r (Responded r (Reas
 fn Parting seat, at, nil = Leaving
 fn Parting seat, at, (? request) = LeavingWith (Asking seat, at, request)
 
+# What a role's host tells the implementation in a tick: a request a seat's guest makes,
+# or that the program removes a seat. A removed seat's requests go with it, those of this
+# tick and those that wait from earlier ticks.
+type Notice s k d = choice:
+    Brought (Asked s k d)
+    Kicked k
+
+Brings: fn [Notice s k d] -> [Asked s k d]
+fn Brings notices = Fold notices, [[]], \|all, one| match one:
+    Brought asked: Push all, asked
+    Kicked seat: all
+
+Kicks: fn [Notice s k d] -> [k]
+fn Kicks notices = Fold notices, [[]], \|all, one| match one:
+    Brought asked: all
+    Kicked seat: Push all, seat
+
 # ---- the order of one tick's requests
 
 # What a document does with the requests that are due in a tick: which it applies in this
@@ -109,6 +127,9 @@ fn OneATick due = Ordered(apply=(Take due, 1), wait=(Drop due, 1))
 ByPlace: fn [Asked s k d] -> [Asked s k d] where k: ^Ord
 fn ByPlace asked = Values (Fold asked, {}, \|all, one| Insert all, one.place, one)
 
+Has: fn [k], k -> Bool where k: ^Eq
+fn Has seats, seat = Fold seats, False, \|found, one| found or one == seat
+
 # The state after some requests of one tick, the responses in the order the requests were
 # applied, whether any was accepted, and the requests that wait.
 type Kept s k d = record:
@@ -124,11 +145,14 @@ fn StepOne kept, asked:
         Moved state, response: Kept(state=state, responses=(Push kept.responses, response), moved=True, waiting=kept.waiting)
         Stayed response: Kept(state=kept.state, responses=(Push kept.responses, response), moved=kept.moved, waiting=kept.waiting)
 
-# One tick: the requests that waited and those that arrived are due; the document's order
-# says which are applied, each against the state the one before left, and which wait.
-StepTick: fn (fn [Asked s k d] -> Ordered s k d), s, [Asked s k d], [Asked s k d] -> Kept s k d where k: ^Ord
-fn StepTick Order, state, waiting, arrived:
-    let turn = Order (Append waiting, (ByPlace arrived))
+# One tick: the requests that waited and those that arrived are due, but for those of a
+# seat the program removes in this tick; the document's order says which are applied, each
+# against the state the one before left, and which wait.
+StepTick: fn (fn [Asked s k d] -> Ordered s k d), s, [Asked s k d], [Notice s k d] -> Kept s k d where k: ^Ord
+fn StepTick Order, state, waiting, notices:
+    let kicked = Kicks notices
+    let staying = Filter waiting, \|asked| not (Has kicked, asked.place.seat)
+    let turn = Order (Append staying, (ByPlace (Brings notices)))
     Fold turn.apply, Kept(state=state, responses=[[]], moved=False, waiting=turn.wait), StepOne
 
 ?StateOf: fn Kept s k d -> ?s
@@ -149,7 +173,7 @@ fn ?StillWaiting kept = if (Len kept.waiting) == 0: nil else: ? unit
 # own function that hosts its seats (chapter 5: "each document writes `@HostSeats`"); it
 # is given the state and each tick's responses, and gives back each tick's requests.
 # `Order` is the document's order of one tick's requests.
-@InMemoryOrdered: fn s, (fn [Asked s k d] -> Ordered s k d), (fn $s, ![d] -> @![Asked s k d] emit rest) -> @unit emit rest where k: ^Ord
+@InMemoryOrdered: fn s, (fn [Asked s k d] -> Ordered s k d), (fn $s, ![d] -> @![Notice s k d] emit rest) -> @unit emit rest where k: ^Ord
 fn @InMemoryOrdered initial, Order, HostSeats:
     !arrived <- HostSeats $state, !responses
     !again <- @Defer (!Filter (?StillWaiting !outcome))     # a tick after a request waits
@@ -161,7 +185,7 @@ fn @InMemoryOrdered initial, Order, HostSeats:
     let !responses = !Updated $responded
 
 # The same with the default order.
-@InMemory: fn s, (fn $s, ![d] -> @![Asked s k d] emit rest) -> @unit emit rest where k: ^Ord
+@InMemory: fn s, (fn $s, ![d] -> @![Notice s k d] emit rest) -> @unit emit rest where k: ^Ord
 fn @InMemory initial, HostSeats = @InMemoryOrdered initial, OneATick, HostSeats
 
 # ---- what a role's host is written with
@@ -239,9 +263,6 @@ fn Hears heard = Hearing (Each (Entries heard), \|((both, fired))| (((SeatOf bot
 Requests: fn a -> Heard a
 fn Requests request = Requested request
 
-Has: fn [k], k -> Bool where k: ^Eq
-fn Has seats, seat = Fold seats, False, \|found, one| found or one == seat
-
 # the seats the host removes in a tick
 Removed: fn [Happening k v a] -> [k]
 fn Removed happenings = Fold happenings, [[]], \|all, one| match one:
@@ -272,8 +293,13 @@ fn RequestsOf happenings:
         Seating more: all
         Removing gone: all
 
-?Requests: fn [Happening k v a] -> ?[a] where k: ^Eq
-fn ?Requests happenings = if (Len (RequestsOf happenings)) == 0: nil else: ? (RequestsOf happenings)
+# What a role's host gives the implementation for a tick: the seats the program removes,
+# each as a seat of the document's type by `Raise`, and the requests passed on.
+?Notices: fn (fn r -> k), [Happening r v (Asked s k d)] -> ?[Notice s k d] where r: ^Eq
+fn ?Notices Raise, happenings:
+    let kicks = Each (Removed happenings), \|seat| Kicked (Raise seat)
+    let all = Fold (RequestsOf happenings), kicks, \|some, asked| Push some, (Brought asked)
+    if (Len all) == 0: nil else: ? all
 
 # Whether a tick changes who sits where: a role's host tells its seats the state again a
 # tick after one does.

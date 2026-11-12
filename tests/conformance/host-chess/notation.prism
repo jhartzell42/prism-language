@@ -52,9 +52,8 @@ fn ?ParseMove text:
 
 # a move in coordinates
 Spelled: fn Move -> Text
-fn Spelled move = match move.?promotion:
-    ? man: "{move.from}{move.to}{Lower (ManLetter man)}"
-    nil: "{move.from}{move.to}"
+fn Spelled (Moving from, to) = "{from}{to}"
+fn Spelled (Promoting from, to, man) = "{from}{to}{Lower (ManLetter man)}"
 
 PieceLetter: fn ?Piece -> Text
 fn PieceLetter nil = "."

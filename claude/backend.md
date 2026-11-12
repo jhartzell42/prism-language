@@ -170,6 +170,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `Event`s. A `$` or `!` binder of a pattern in its body names the `Dynamic` or `Event`
   itself (`RustPat`), and an application the checker lifted over one maps it
   (`EventValueOf`, `DynamicLift`).
+  An event value whose expression samples a dynamic (`(ToldTo seat, $state) on !born` in
+  a list `!MergeWith` takes) is the event mapped with each firing's read point
+  (`Event::map_at`): the closure samples the dynamic there, so the event fires the
+  value as the tick opened. The dynamic of `x on !e` reads nothing of the firing and is
+  made once beside the event (`sampled_dyn`, `?SampledOn`); any other is made in the
+  closure, which with two dynamics subscribes at each firing (`Dynamic::map2`; a cost
+  that grows with the firings).
 - **`&` blocks** → native mutation of a fresh or unique value: `Rc::make_mut`, and the
   persistent collections' in-place updates (Compiler ch. 3, "Unique values").
 - **Fault `~`**: a fallible expression is a `Result<_, rt::Error>` and `?` propagates;
@@ -455,7 +462,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `$level` itself and never a copy of its value. A hold whose value holds time below its
   top takes its initial value whole in the same way, a name (`$$cur <- $a then ..`) or a
   value written over readers (`$held <- (($a, "s")) then ..`). So does `v on !e` where the
-  event's values hold time (`EventRef`: a hold's step `then (($b, "t")) on !swap`): each
+  event's values hold time and `v` is no dynamic itself, which `on` would lift over
+  (`EventRef`: a hold's step `then (($b, "t")) on !swap`): each
   reader in `v` is its live `Dynamic`, made late for a step, which nothing reads before
   the node is made.
 - **`any x` of `^Show` alone** is `Rc::new(x)` cast to `Rc<dyn Show>` where it is made
@@ -1503,6 +1511,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `KeyedParameters`: `type Roster k v = choice: Listed (k ==> v)`), is bounded by `Ord`
   in the type's `Show`, `ToPod` and `FromPod` impls (`BoundedKeyed`), as prism_rtl's
   impls for `Map` want; C++'s templates take the key's order where they use it.
+- **A choice as plain data holds its case's position** (`rt::ConstructorName`,
+  `ChoicePodArm`): the derived `to_pod` writes each constructor with the place of its
+  case in the type's declaration, and `Pod`'s order takes two constructors by their
+  positions, as the type's derived `^Ord` orders them. So a path whose key is a choice
+  (`for color, _ <- {White: unit, Black: unit}` with `choice: White, Black`), a patch's
+  lists and a printed map stand in the key type's order. A constructor read from text
+  (a test's pattern, a World's own value) holds no position and orders by its name;
+  equality goes by the name alone. A key type with an `impl ^Ord` written by hand still
+  orders by its cases' positions in a path (the path's order does not call the impl).
 - **`Show x`** → `rt::show_text(&x)`.
 - **The transcript** is the Test World printing the `Pod`s it receives with the same
   printer, in Conformance ch. 1's sections.

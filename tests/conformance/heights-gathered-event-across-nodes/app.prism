@@ -1,0 +1,34 @@
+# A `for`'s gathered event fires once in a tick two of its rows fire (Semantics ch. 7:
+# "Spurious firings are allowed; double firings never"; ch. 4, "`for`": the rows' results
+# gathered by key). The two rows' results reach the gather at different heights: row "a"
+# fires from its own button, row "b" from the result of a widget applied as a blueprint
+# value, a node of its own: its `!Updated` of a hold written by the `!Updated` of the hold
+# the click writes, two combinators further on. Written by Claude on the claude-lowering
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Counter: fn !Click -> @!Nat
+fn @Counter !bump:
+    $count <- 0 then $count + 1 on !bump
+    $shown <- 0 then !Updated $count
+    @ (!Updated $shown)
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@page: @unit
+@page:
+    let $names = $ {"a": unit, "b": unit}
+    !heard <- for k, ignore <- $names:                          # 0/[k]
+        !now <- Ui.Button($label=$"{k} now")                      # 0/[k]/0
+        !later <- Ui.Button($label=$"{k} later")                  # 0/[k]/1
+        match ?Pick True, (@Counter !later):
+            ? @!t:
+                !counted <- @!t
+                @ ((100 on !now) <| !counted)
+            nil: @ (100 on !now)
+    $firings <- 0 then $firings + 1 on !heard
+    $rows <- 0 then Len (Values !heard)
+    Ui.Label($text=$"{$firings}: {$rows}")                       # 1

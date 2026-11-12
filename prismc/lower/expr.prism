@@ -528,6 +528,13 @@ fn IsEventSource lx, env, c:
         EGroup x: IsEventSource lx, env, x
         otherwise: (HasEventSource lx, env, c) or (?UpdatedValue lx, env, c) != nil
 
+# The value of `x on !e`, parentheses aside: `x`, which reads nothing of the firing.
+?SampledOn: fn Expr -> ?Expr
+fn ?SampledOn e = match e.kind:
+    EGroup x: ?SampledOn x
+    EBinary "on", value, ignore: ? value
+    otherwise: nil
+
 EventValueOf: unbounded fn Lx, Env, Expr -> Vl
 fn EventValueOf lx, env, e:
     let t = OutTyOf lx, (Peel (TypeAt lx, e.span))
@@ -554,9 +561,21 @@ fn EventValueOf lx, env, e:
                             (((Push acc, (DoLet (PaBind local), (Own (LocalPlace rs, mode, ct)))), (Bind en, n, (BnLocal (XVar local), Owned, ct))))
                         otherwise: ((acc, en))
                     let env2 = BindSpan env1, (PlaceKey lx, one.span), (VlPlace (XVar "y_ev"), ByRef, it)
-                    let body = Own (ValueByKind lx, env2, e)
-                    let mapped = XMethod src, "map", [[(XClosure True, [[(PaTyped (PaBind "y_ev"), (OutRef it))]], body)]]
-                    VlOwned (XBlock (Push dos, (DoLet (PaBind "src_ev"), src)), (XMethod (XVar "src_ev"), "map", [[(XClosure True, [[(PaTyped (PaBind "y_ev"), (OutRef it))]], body)]])), et
+                    let bodyValue = ValueByKind lx, env2, e
+                    # the expression over the firing's value is a dynamic when it samples one
+                    # (`(ToldTo seat, $state) on !born`): the event fires its value at the
+                    # firing's read point (`Event::map_at`), not the dynamic
+                    let samples = match ValueTy bodyValue:
+                        OutDyn ignore: True
+                        otherwise: False
+                    # `x on !e` reads nothing of the firing: its dynamic is made once, where
+                    # the event value is made, and the closure samples it
+                    let hoisted = samples and (?SampledOn e) != nil
+                    let sampledDynamic = if hoisted: XVar "sampled_dyn" else: Own bodyValue
+                    let closure = if samples: XClosure True, [[(PaTyped (PaBind "y_ev"), (OutRef it)), (PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMethod sampledDynamic, "sample", [[(XVar "cx")]]) else: XClosure True, [[(PaTyped (PaBind "y_ev"), (OutRef it))]], (Own bodyValue)
+                    let made = Push dos, (DoLet (PaBind "src_ev"), src)
+                    let lets = if hoisted: Push made, (DoLet (PaBind "sampled_dyn"), (Own bodyValue)) else: made
+                    VlOwned (XBlock lets, (XMethod (XVar "src_ev"), (if samples: "map_at" else: "map"), [[closure]])), et
                 otherwise: VlOwned (InternalBug "an event value of several events"), et
 
 # An expression the checker lifted over a `?` or `~` at the plain layer is its plain value

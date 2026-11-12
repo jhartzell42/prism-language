@@ -127,9 +127,14 @@ public:
         std::string name;
         Fields fields;
     };
+    /// `position` is the case's place in its type's declaration when the value came from
+    /// a typed value (`choice_at`, which a derived `to_pod` calls): two choices that both
+    /// know theirs order by it, as the type's derived `^Ord` does; one read from text
+    /// knows none and orders by its constructor's name. Equality goes by the name.
     struct Choice {
         std::string ctor;
         std::vector<Pod> args;
+        std::optional<std::uint32_t> position = std::nullopt;
     };
     struct Shown {
         std::string text;
@@ -153,6 +158,9 @@ public:
     }
     static Pod choice(std::string ctor, std::vector<Pod> args) {
         return Pod(std::in_place_index<8>, Choice{std::move(ctor), std::move(args)});
+    }
+    static Pod choice_at(std::string ctor, std::uint32_t position, std::vector<Pod> args) {
+        return Pod(std::in_place_index<8>, Choice{std::move(ctor), std::move(args), position});
     }
     /// A choice with no arguments: `click`, `Read`, `Fs.NotFound`.
     static Pod name(std::string ctor) { return choice(std::move(ctor), {}); }
