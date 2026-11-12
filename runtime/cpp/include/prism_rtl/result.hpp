@@ -82,6 +82,8 @@ class [[nodiscard]] Expected {
     std::variant<T, Unexpected<E>> v_;
 
 public:
+    /// The value's type, as `std::expected` names it.
+    using value_type = T;
     template <class U = T>
         requires(std::is_constructible_v<T, U &&> && !std::is_same_v<std::remove_cvref_t<U>, Expected> &&
                  !is_unexpected_v<std::remove_cvref_t<U>>)

@@ -525,7 +525,7 @@ let nodeHooks = [["path", "build", "wake", "started", "deferred", "answer", "pus
 UnderItsPath: fn Wx, ?Text -> Wx
 fn UnderItsPath wx, ?hostedBy = match ?hostedBy:
     ? ignore: update wx:
-        &_.lets <= Append [[(DoLet (PaBind "enclosing"), (XCall (RefRuntime "prism_rtl::host_under"), [[(XVar hostAbove), (XRef (XVar "path"))]]))]], &_.lets
+        &_.lets <= Append [[(DoLet (PaTyped (PaBind "enclosing"), hostOfTy), (XCall (RefRuntime "prism_rtl::host_under"), [[(XVar hostAbove), (XRef (XVar "path"))]]))]], &_.lets
     nil: wx
 
 # A fresh node state: its fields, initializers, getters, dynamic reads and taken names given,
