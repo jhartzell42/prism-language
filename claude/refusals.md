@@ -2,7 +2,8 @@
 
 Written by Claude; subject to change. Every `Refusal` / `RefusalDo` message in
 prismc/lower and prismc/emit, by file and line, with its class. Classified by reading; an
-entry marked "unsure" was not tested.
+entry marked "unsure" was not tested. The last section, "Every refusal site", is the
+whole list as a table; the sections before it say what each construct is.
 
 - **G**: a guard no checked program reaches. It becomes an internal error, "a prismc
   bug: ..".
@@ -101,12 +102,13 @@ Hosting
   open and the program gives the definition it stands in no finite set of types
   the lowering can find (`DefInstancesAnswer`, `?GrowsFrom`: a line through a
   constraint an impl solves, or through a use whose types hold an associated type,
-  that holds one definition twice, the earlier types embedded in the later, which may
-  be a finite program's, `EndlessThroughImpl`: R,
-  sem-ch08-widget-value-generic-through-associated-type; a line through an impl's
-  constraint alone is a substitution, followed when it settles,
-  sem-ch08-widget-value-generic-in-method-at-settling-types, and the checker's
-  `grows-without-end` when it grows, tests/checker/neg/impl-at-ever-larger-types), or a use of the
+  that holds one definition three times, each one's types embedded in the next one's:
+  `EndlessThroughImpl`, G, an internal error, since the checker's walk takes both
+  kinds of step and gives `grows-without-end` for a line that grows
+  (tests/checker/neg/impl-at-ever-larger-types, neg/associated-type-at-ever-larger-types,
+  neg/derived-impl-at-ever-larger-types, neg/default-method-at-ever-larger-types); a
+  line that settles is followed, sem-ch08-widget-value-generic-in-method-at-settling-types
+  and sem-ch08-widget-value-generic-through-associated-type), or a use of the
   definition leaves a type parameter undecided (`UndecidedParameter`). A line of
   uses by name that gives a type parameter a larger type holding itself is the
   checker's `grows-without-end` (ruling PG: tests/checker/neg/function-at-ever-larger-types,
@@ -442,17 +444,17 @@ known that has no lowering written; none of the lowerings written has been run.
 - A supplier written by clauses (`fn @Supply p, (Pad.Num(..)) = @ 7`) is a legal program
   the checker refuses: a clause's tag pattern does not refine the output. Test:
   tests/checker/pos/supplier-clauses.prism.
-- lower/expr.prism (`AnyValue`) an existential of a program's trait with a method that
-  needs one dictionary for a whole collection or for no value at all (`?PackedDefOf`):
-  the trait's type inside another type (`fn [a] -> Nat`) or in no parameter (`Empty:
-  a`), a type parameter of its own, an associated type. The dictionary belongs to the
-  packing, one a packed value, so such a method cannot be asked of `any ^Trait` (the
-  coordinator's first ruling): the checker says nothing and the back end refuses it.
-  Tests: tests/checker/neg/existential-method-needs-one-dictionary;
-  tests/conformance/ts-ch03-existential-trait-inside-array is that wrong program with a
-  transcript. Every trait of the prelude is packed (ts-ch03-existential-num-packed,
-  ts-ch03-existential-pod-packed; ruling EX: packing is legal, and only the call of a
-  method that cannot dispatch is the error).
+- A method that needs one dictionary for a whole collection or for no value at all, asked
+  of `any ^Trait` (the trait's type inside another type, `fn [a] -> Nat`, or in no
+  parameter, `Empty: a`; a type parameter of its own): the checker's
+  `existential-method` at the call (ruling EX; tests/checker/neg/
+  existential-method-needs-one-dictionary). Packing the trait is legal and is lowered:
+  such a method is no entry of the dictionary and has a body no program runs in the
+  trait's impl for the packed value (`PackedDef.unasked`;
+  ts-ch03-existential-other-method-not-asked). Left refused in lower/expr.prism
+  (`AnyValue`): an existential of a program's trait with an associated type, whose impl
+  for the packed value has no type to choose. R, no test. Every trait of the prelude is
+  packed (ts-ch03-existential-num-packed, ts-ch03-existential-pod-packed).
 - A tag field's type variable that the tag's output does not have (`tag Seat.Request of
   Element !Response:` with `$?latest: ((Nat, r))`): the checker says nothing, a guest
   places the tag with a `Text` and the host's function reads the field as a `Nat`. Type
@@ -567,3 +569,56 @@ Types the lowering does not spell (`OutRefused`)
 - lower/expr.prism:1764, lower/types.prism:272 and lower/model.prism:169 are the type's
   own matches and definition.
 
+
+## Every refusal site
+
+Every `Refusal` / `RefusalDo` call in prismc/lower, by the function it stands in. Class
+R: a legal program reaches it or is thought to. G: an internal error ("a prismc bug:
+.."), with the reason no checked program reaches it. U: no program is known that reaches
+it and no argument is written that none does; it stays a refusal until one or the other
+is found. "Test" is the test that reaches the site today, red, or none.
+
+| site | class | test | state |
+|---|---|---|---|
+| node/elements.prism `ElementLine`, an element of an unknown tag | G | - | internal error: the checker's `unknown-name` (tests/checker/neg/unknown-tag) |
+| node/elements.prism `ElementOutputOf`, a hosted place with a plain answer no plain name binds, under a host placed after its node | R | none | refused |
+| node/finish.prism `UpdatedGaps`, `!Updated` of a dynamic no sink of the node writes (UP) | U | none | refused; prismc/README.md names it |
+| node/finish.prism `UpdatedGaps`, the same in a row over a name of its block (SU) | U | none | refused; prismc/README.md names it |
+| node/finish.prism `PlaceNumber`, two sites: a place read at its row's or block's build before its node, after rows that differ in width | R | none | refused |
+| node/switch.prism, a `rebuild` whose generation gives a dynamic it does not lower | U | none | refused |
+| node/switch.prism `ArmRowOf`, two sites: a late plain result beside a `for`, a `rebuild` or a widget that calls itself, in a row numbered after its node | R | none | refused |
+| node/switch.prism, `@Flatten` with no live dynamic at the build (LF) | U | none | refused |
+| node/def.prism `SplitBlockInto`, a block split at a line whose result is not late | U | none | refused |
+| node/def.prism, the build-side markers of a late name (`PreBindWhole`, `PreBindWholeParts`, `BindLate`, `MarkLateLets`, `LateTakerResults`, `LateFieldPlaces`, `LatePlaceParts`, `LateHostedAnswer`, `MarkLateBundle`, `LateBundleParts`: twelve sites) | R | none (sem-ch04-late-value-above-in-plain-place-field passes) | refused: a place with a `$` or bundle answer, bound by a pattern or in a hosted scope, whose constant field reads the late name; a `let` of a type with time inside that is no bundle |
+| node/def.prism, a late plain result in a bundle (`WrLate`) | U | none | refused |
+| node/def.prism `DeferredLine`, two sites: a line that takes a late result above the line that gives it, with counted places or a plain result no name binds | R | none | refused |
+| node/static.prism `LocalFunctionLine` (`RefusalDo why`): a function of a block with several clauses applied as a widget; one that applies itself as a widget | R | the test of 6fe175f5 (another seat's: a function of a block that applies itself as a widget) | refused |
+| node/static.prism `WidgetCall`, a widget line whose name has no value entry | G | - | internal error: every name the checker resolves has a value entry (`unknown-name`); a blueprint out of a value, a function value and a blueprint `let` are taken by the lines above it |
+| node/static.prism `HostLine`, a host without its child or its supplier | G | - | internal error: the checker's `mismatch` (tests/checker/neg/ignore-binds-a-function, neg/builtin-widget-without-argument) |
+| node/static.prism `InlineWidget`, a widget of several clauses that takes no arguments | G | - | internal error: the checker's `collision` (ruling ZD; tests/checker/neg/clause-widget-without-arguments) |
+| node/static.prism `InlineWidget`, a generic widget at a call whose types its parameters' do not match | U | none | refused; the program that reached it is the checker's `field-variable` (tests/checker/neg/hosting-generic-implementation) |
+| expr.prism `SampledObject`, a dynamic a function gives whole, read in a plain function (LE) | U | none | refused |
+| expr.prism, a dynamic passed whole where it has no live dynamic (LF) | U | none | refused |
+| expr.prism `LiftedValue`, a lift whose noted operands are not its own | G | - | internal error: the checker lifts only at applications, operators, fields, indexes and interpolations, each a direct operand |
+| expr.prism `PlainValueByKind`, `{b}` outside a `for` | G | - | internal error: the checker's `unknown-name` (tests/checker/neg/bound-word-outside-for) |
+| expr.prism `PlainValueByKind`, an expression of no value kind | G | - | internal error: `mismatch` for a `for` or a `rebuild` as a plain value (ruling BP; tests/checker/neg/for-in-let), `unsupported` for a suffixed operator, a monadic block and a lens value; a topic, `..` and an absent value are read by an `update` block, a pattern and an element's fields. Not argued: a widget block as a value |
+| expr.prism `AnyValue`, an existential of a trait with an associated type | R | none | refused; a trait with a method that cannot be asked is lowered (ts-ch03-existential-other-method-not-asked) |
+| expr.prism `PartsBlueprint`, two sites (`PartRefused`) | G | - | internal error by its text: `DynamicAnswers` makes a getter for every dynamic answer |
+| expr.prism `NameValueOf`, an event read as a value | U | none | refused |
+| expr.prism `NameValueOf`, a tuple pattern's binding as a value | R | none (sem-ch08-let-pattern-event-in-tuple passes) | refused |
+| expr.prism `NameValueOf`, a widget defined in a block read as a blueprint value outside a line's value places | U | none | refused |
+| expr.prism `WidgetValueWords`, a widget as a value where `ValuedWidgets` does not look | U | none | refused |
+| expr.prism `OpenWidgetValueWords`: `EndlessByName`, `EndlessThroughImpl` | G | - | internal errors: the checker's `grows-without-end` |
+| expr.prism `OpenWidgetValueWords`: `UndecidedParameter` | U | none | refused |
+| expr.prism `Recolored`, a function value held by a type that is none of those it maps through | U | none | refused |
+| expr.prism `FunctionRecolored`, a function whose color no use of its `let` decides | U | none | refused |
+| patterns.prism, a pattern inside an element's `$` field | G | - | internal error: the checker's `live-field-pattern` (ruling LP; tests/checker/neg/live-field-pattern) |
+
+Totals: 40 `Refusal` / `RefusalDo` calls stand in prismc/lower. 2 are internal errors
+by their text (`PartsBlueprint`), 22 are R (none with a red test that reaches it but
+`LocalFunctionLine`'s), 16 are U (three of them the widget-value sites of
+`OpenWidgetValueWords` and `WidgetValueWords`, whose `EndlessByName` and
+`EndlessThroughImpl` reasons are internal errors). Eight more guards are internal errors
+and no longer refusals (the G rows above without "by its text").
+prismc/README.md, "Not lowered yet", names the two `UpdatedGaps` sites and the zombie and
+dead states, which no refusal stands for.

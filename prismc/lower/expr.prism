@@ -632,7 +632,7 @@ fn LiftedValue lx, env, e, ln:
     let inner = InnerTy (TypeAt lx, e.span)
     let selfOperand = Fold ln.operands, False, \|f, r| f or r == e.span
     let missing = Fold ln.operands, False, \|f, r| f or (?OperandAt e, r) == nil
-    if inner == TyErr or selfOperand or missing: VlOwned (Refusal "a lift over `{ln.sigil}` at `{SrcText lx, lx.file, e.span}` of {KindWords e.kind}"), t
+    if inner == TyErr or selfOperand or missing: VlOwned (InternalBug "a lift over `{ln.sigil}` at `{SrcText lx, lx.file, e.span}` of {KindWords e.kind}, whose operands the checker noted are not its own direct operands"), t
     else:
         let lx1 = update lx:
             &_.tys <= Insert &_.tys, at, inner
@@ -694,7 +694,7 @@ fn PlainValueByKind lx, env, e:
         EUnit ignore: VlOwned (XUnit), OutUnit
         EBound b: match env.names[b]:
             ? (BnLocal rs, mode, bt): LocalPlace rs, mode, bt
-            otherwise: VlOwned (Refusal "`{b}` outside a `for`"), t
+            otherwise: VlOwned (InternalBug "`{b}` outside a `for` (the checker's `unknown-name`)"), t
         ENil ignore: VlOwned (XTyped (XNone), t), t
         ETuple es: VlOwned (XTuple (Each es, \|x| Own (ValueOf lx, env, x))), t
         EArray [[]]: VlOwned (XTyped (XCall (RefRuntime "rt::Array::new"), [[]]), t), t
@@ -753,7 +753,7 @@ fn PlainValueByKind lx, env, e:
         EGiven b: GivenValue lx, env, b, t, e.span
         EUpdate target, b: UpdateValue lx, env, target, b, t, e.span
         EAny x: AnyValue lx, env, x, (TypeAt lx, e.span)
-        otherwise: VlOwned (Refusal "{KindWords e.kind} as a value"), t
+        otherwise: VlOwned (InternalBug "{KindWords e.kind} as a value (the checker gives `mismatch` for a `for` or a `rebuild` as a plain value and `unsupported` for a suffixed operator, a monadic block and a lens value; a topic, `..` and an absent value stand only where an `update` block, a pattern or an element's fields read them)"), t
 
 # `any x` (Type System ch. 5, "Existentials are dictionaries"): the value with the impls of
 # the existential's bounds at its type, taken while its type is known; an `any ^Show` is
