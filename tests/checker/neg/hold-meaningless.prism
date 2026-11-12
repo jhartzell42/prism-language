@@ -1,0 +1,23 @@
+# `hold-meaningless`: braces that hold nothing whole. A hold, `{ e }`, keeps a dynamic or
+# an event whole at a type variable; around a plain value, around a `?` (which goes in
+# whole at a type variable already), at a parameter that is no type variable, or outside
+# an argument, the braces mean nothing (Jimmy's ruling of 12 November).
+type Box a = record:
+    item: a
+
+Five: fn Nat -> [Nat]
+fn Five n = Push [[n]], {5}
+
+Kept: fn ?Nat -> Box ?Nat
+fn Kept ?x = Box {?x}
+
+Double: fn Nat -> Nat
+fn Double n = n * 2
+
+$Twice: fn $Nat -> $Nat
+fn $Twice $n = Double {$n}
+
+$Same: fn $Nat -> $Nat
+fn $Same $n:
+    let $m = {$n}
+    $m
