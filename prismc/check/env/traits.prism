@@ -468,7 +468,7 @@ fn SolveClass g, st, s0, Restore, givens, w, t:
             else: match ?FindImpl g, st, w.cls, t:
                 ? ((im, s2, how, ch)):
                     let wants = Each im, \|((ty, cls))| Want(cls=cls, ty=ty, file=w.file, span=w.span, level=w.level)
-                    ((wants, (NoteChoice (Solved s2, w, t, how), w.file, w.span, w.cls, ch)))
+                    ((wants, (NoteImplUse g, (NoteChoice (Solved s2, w, t, how), w.file, w.span, w.cls, ch), w, t)))
                 nil: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
         nil: match t:
             TySig ignore, ignore: (([[]], st))
@@ -483,7 +483,7 @@ fn SolveClass g, st, s0, Restore, givens, w, t:
                 else: match ?FindImpl g, st, w.cls, t:
                     ? ((im, s2, how, ch)):
                         let wants = Each im, \|((ty, cls))| Want(cls=cls, ty=ty, file=w.file, span=w.span, level=w.level)
-                        ((wants, (NoteChoice (Solved s2, w, t, how), w.file, w.span, w.cls, ch)))
+                        ((wants, (NoteImplUse g, (NoteChoice (Solved s2, w, t, how), w.file, w.span, w.cls, ch), w, t)))
                     nil:
                         let fix = if (bare == "Num" and con == "Text") or (IsRegexType con): ""
                         else: if con == "Prelude.NonEmpty": "write `impl ^{bare} {ShowTy st, t}`, or pass the collection it is, with `as {ShowTy st, (Or args[0], TyErr)}`"
@@ -573,6 +573,19 @@ fn ?FindImpl g, st, cls, t = Fold (Or g.impls[cls], [[]]), nil, \|?found, im| ma
         ? m: ? (((Each im.bounds, \|((v, c))| (((Or m[v], TyErr), c))), st, (ImplHow g, im), (ImplChoice im)))
         nil: nil
 
+# A constraint a written impl with type parameters solved, as a use of that impl for the
+# growth check (`GrowthCheck`; ruling PG): the impl's type parameters as the constraint's
+# type gives them, matched against the impl's head as `?FindImpl` matched it, in the
+# definition whose body wanted the constraint. A derived impl has no body the checker
+# reads and is no step of a walk.
+NoteImplUse: unbounded fn G, St, Want, Ty -> St
+fn NoteImplUse g, st, w, t = Fold (Or g.impls[w.cls], [[]]), st, \|s, im|
+    if im.derived or (Len im.qs) == 0: s
+    else: match ?MatchHead im.head, (Zonk st, t), {}:
+        ? m: update s:
+            &_.genericUses <= Push &_.genericUses, GenericUse(user=st.definition, target=(ImplChoice im), file=w.file, span=w.span, types=(Each im.qs, \|q| ((q, (Or m[q], TyErr)))))
+        nil: s
+
 # An impl as a choice: a derived one by its type, a written one by where it stands.
 ImplChoice: fn ImplInfo -> Text
 fn ImplChoice im = match im.head:
@@ -602,24 +615,6 @@ fn Solved st, w, t, how:
 GivenChoice: fn Ty -> Text
 fn GivenChoice (TyRigid v) = "given:{v}"
 fn GivenChoice ignore = "any"
-
-# One-way matching of an impl head (with `TyQ` variables) against a type.
-?MatchHead: unbounded fn Ty, Ty, (Text ==> Ty) -> ?(Text ==> Ty)
-fn ?MatchHead pat, t, m = match ((pat, t)):
-    ((TyQ v, x)): match m[v]:
-        ? y: if y == x: ? m else: nil
-        nil: ? (Insert m, v, x)
-    (((TyCon a, xs), (TyCon b, ys))): if a == b and (Len xs) == (Len ys): ?MatchAll xs, ys, m else: nil
-    ((TyTuple xs, TyTuple ys)): if (Len xs) == (Len ys): ?MatchAll xs, ys, m else: nil
-    ((TyArray x, TyArray y)): ?MatchHead x, y, m
-    (((TyMap k1, v1), (TyMap k2, v2))): ?MatchAll [[k1, v1]], [[k2, v2]], m
-    (((TySig s1, i1), (TySig s2, i2))): if s1 == s2: ?MatchHead i1, i2, m else: nil
-    otherwise: nil
-
-?MatchAll: unbounded fn [Ty], [Ty], (Text ==> Ty) -> ?(Text ==> Ty)
-fn ?MatchAll xs, ys, m = Fold (Range0 (Len xs)), (? m), \|?acc, i| match ?acc:
-    ? mm: ?MatchHead (Or xs[i], TyErr), (Or ys[i], TyErr), mm
-    nil: nil
 
 # The end of a definition (doubt LD): a variable whose constraints include `^Num` and lie
 # among `^Num`, `^Eq`, `^Ord`, `^Show` becomes `Int`; anything else left is `ambiguous`.

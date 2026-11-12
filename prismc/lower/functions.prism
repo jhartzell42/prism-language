@@ -270,12 +270,45 @@ fn IsCodeLine l:
     let s = Trim l
     s != "" and (not (HasPrefix s, "#"))
 
-# A top-level `let`: a getter computing its value (pick TL of the README).
+# A top-level `let`: a getter computing its value (pick TL of the README). One the
+# checker generalized (Type System ch. 5: a `let` generalizes; `let Same = \|x| x`, used
+# at `Bool` and at `Nat`) is a generic getter: each variable its scheme quantifies is a
+# type parameter of the getter with the scheme's bounds, named in the value's own types
+# (`GeneralizedLx`), and a use names the types it reads the `let` at (`LetValue`).
 LetGetter: unbounded fn Lx, Text, LetDecl -> FnDef
 fn LetGetter lx, qk, l:
-    let t = OutTyOf lx, (Peel (TypeAt lx, l.value.span))
-    let v = ValueOf lx, emptyEnv, l.value
-    FnDef(name=(Or lx.rsNames[qk], (Snake (BareName qk))), generics=[[]], params=[[]], ret=t, body=(Own v), doc="let {BareName qk}", public=True)
+    let lxg = GeneralizedLx lx, qk
+    let t = OutTyOf lxg, (Peel (TypeAt lxg, l.value.span))
+    let v = ValueOf lxg, emptyEnv, l.value
+    FnDef(name=(Or lx.rsNames[qk], (Snake (BareName qk))), generics=(LetGenerics lx, qk), params=[[]], ret=t, body=(Own v), doc="let {BareName qk}", public=True)
+
+# The variables a generalized top-level `let`'s scheme quantifies (`'N`, the checker's
+# name for the variable `N` it left open), each with the type parameter that stands for
+# it in the getter.
+GeneralizedParameters: fn Lx, Text -> [((Text, Text))]
+fn GeneralizedParameters lx, qk = match lx.g.vals[qk]:
+    ? v: if v.hasSig: [[]] else: Each v.scheme.qs, \|q| ((q, "generalized{Or (?AfterPrefix q, "'"), q}"))
+    nil: [[]]
+
+# The lowering inside a generalized top-level `let`'s value: each variable its scheme
+# quantifies read as its type parameter.
+GeneralizedLx: fn Lx, Text -> Lx
+fn GeneralizedLx lx, qk = update lx:
+    &_.subst <= Fold (GeneralizedParameters lx, qk), &_.subst, \|m, ((q, parameter))| Insert m, q, (TyRigid parameter)
+
+# A generalized top-level `let`'s type parameters with their bounds, as a function's are
+# (`SchemeGenerics`).
+LetGenerics: unbounded fn Lx, Text -> [((Text, [Text]))]
+fn LetGenerics lx, qk = match lx.g.vals[qk]:
+    ? v:
+        let parameters = GeneralizedParameters lx, qk
+        let Named = \|q| Fold parameters, q, \|found, ((from, to))| if from == q: to else: found
+        let renamed = update v.scheme:
+            &_.qs <= Each parameters, \|((ignore, to))| to
+            &_.bounds <= Each &_.bounds, \|((q, cls))| (((Named q), cls))
+            &_.ty <= Instantiated &_.ty, (Each parameters, \|((from, ignore))| from), (Each parameters, \|((ignore, to))| TyQ to)
+        if (Len parameters) == 0: [[]] else: SchemeGenerics lx, renamed
+    nil: [[]]
 
 # ---------------------------------------------------------------------------------------
 # Traits and impls (claude/backend.md: a trait is a Rust trait, `derive` impls; a program's

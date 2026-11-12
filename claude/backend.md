@@ -308,7 +308,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `for`'s builder (`ForBuild`, both printers) walks the kept keys and compares each one's
   dynamic in the new source with the one in the map the rows were last built from
   (`{name}_from`; a `Dynamic` equals only itself) and calls that row's `{v}_replaced`
-  (`FlattenMethods`; `ForDef.replaced` lists them), which queues `{v}_adopt` with
+  (`FlattenMethods`; `ForDef.replaced` lists them: the rows' entry flattens only, since a
+  row's `@Flatten` over a dynamic of dynamics of its own, `held`, follows its outer's
+  update event and has no such method), which queues `{v}_adopt` with
   `cx.answer_later`, so the adoption is among the next tick's first firings, which is owed
   (rulings VL, TK). The row is kept, never rebuilt for a replaced dynamic (Semantics ch.
   11). A `$$d` binder with `@Flatten $$d` below it is a `mark-stack` in the checker
@@ -628,6 +630,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
   structural dynamic `{name}_p{i}_all`, a plain part as a dynamic no write moves. The
   row has one `result_p{i}` per dynamic part and tells the block of a write behind each
   (`Wx.resultMoved`, a list); the block's gathers of one row are `PendingRow.gathers`.
+- **A tuple that holds time, written in place as an inlined widget's argument** to a
+  parameter bound whole (`@Shows ((!counted, $n))`, `fn @Shows pair:`) is one value made
+  as a `rebuild`'s bundle result is (`BindParam`, `WholeWrittenOf`): each event its
+  port's `Event`, each dynamic it names the live `Dynamic` made for it, read through
+  the node's link once the node is made.
+- **A top-level `let` the checker generalized** (Type System ch. 5; `let Same = \|x| x`
+  read at `Bool` and at `Nat`) is a generic getter (`LetGetter`): each variable its
+  scheme quantifies is a type parameter with the scheme's bounds (`LetGenerics`), named
+  in the value's own types (`GeneralizedLx`), and a use calls the getter at the types
+  the scheme's type matched against the use's gives them (`LetValue`). Its color is
+  one color, the program's.
 - **A `rebuild` whose block ends on a bundle** gives a dynamic of the bundle as one
   value (`WholeResultOf`, `Wx.wholeResultAt`): the generation's plain result is the
   tuple with each event as its port's `Event` and each dynamic it names as the live
@@ -759,10 +772,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the checker's `grows-without-end` (ruling PG; `GrowthCheck` in prismc/check/mod.prism
     walks the uses by name from each definition with type parameters, composing the
     same substitutions over the definitions, not over the program's instantiations),
-    so the fixed point's stop at one is an internal error (`EndlessByName`). Where a
-    line through an impl's constraint or an associated type has no finite set of types
-    the lowering can find (`EndlessThroughImpl`), or a use leaves a type parameter
-    undecided (`UndecidedParameter`), the reading is refused (`OpenWidgetValueWords`).
+    so the fixed point's stop at one is an internal error (`EndlessByName`). The same
+    walk goes through impls: a constraint a written impl with type parameters solves
+    is a use of that impl at the types its head is matched at (`NoteImplUse`), its
+    methods' bodies its body, so an impl that needs itself at `[a]` for `a` is
+    `grows-without-end` too. A use whose types hold an associated type is no step of
+    the checker's walk; where a line through one holds a definition twice with the
+    earlier types found again inside the later ones the lowering stops
+    (`EndlessThroughImpl`), and where a use leaves a type parameter undecided
+    (`UndecidedParameter`): the reading is refused (`OpenWidgetValueWords`).
   - A generic widget read inside a generalized `let` or a generalized local function,
     at that one's own type variable, has rows for each instantiation the `let`'s uses
     give the variable (`AtLetInstantiations`); the `let` is lowered at each
@@ -1144,6 +1162,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   of a building `match` or `if` is numbered in its block's places and built at its
   block's path: it takes its block's host as it is. A row at the empty path gets the host
   itself.
+- **A blueprint value applied in a hosted scope builds at the root of the applying
+  row's paths** (`AppliedPath`): the host the applying node holds already joins the
+  node's row path before every place, and the blueprint's own row joins the path it is
+  built at, so the node's own path there would name each place with the row's path
+  twice. In the World's scope the blueprint builds at the node's own path. (A blueprint
+  held in a map and built by a `rebuild` in a `for` entry under a host:
+  host-bug-05-map-of-blueprints.)
 - **A request rises host by host.** A hosted place's request goes to its host's row
   (`Host::request`), which the live element's event fields hear; a row that forwards the
   element hands it on as the host's own at `0` under the row, to the World or to the
