@@ -13,11 +13,10 @@ mod common;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use common::{CENTRE, HEARD, SmokeProgram};
+use common::{HEARD, SmokeProgram};
 
 /// Set when the scene's red showed on the screen.
 static PAINTED: AtomicBool = AtomicBool::new(false);
-
 
 /// The robot: look for red at the centre, then click there.
 #[cfg(target_os = "linux")]
@@ -36,7 +35,16 @@ fn robot() {
         let root = (x.XDefaultRootWindow)(d);
         let deadline = Instant::now() + Duration::from_secs(20);
         while Instant::now() < deadline {
-            let image = (x.XGetImage)(d, root, CENTRE.0, CENTRE.1, 1, 1, (x.XAllPlanes)(), xlib::ZPixmap);
+            let image = (x.XGetImage)(
+                d,
+                root,
+                CENTRE.0,
+                CENTRE.1,
+                1,
+                1,
+                (x.XAllPlanes)(),
+                xlib::ZPixmap,
+            );
             if !image.is_null() {
                 let px = (x.XGetPixel)(image, 0, 0);
                 (x.XDestroyImage)(image);
@@ -64,8 +72,14 @@ fn main() {
         std::thread::spawn(robot);
         let code = prism_world_canvas_rtl::run::<SmokeProgram>();
         assert_eq!(code, 0, "the run's exit code");
-        assert!(PAINTED.load(Ordering::SeqCst), "the scene's red reached the screen");
-        assert!(HEARD.load(Ordering::SeqCst), "the window's input reached the program");
+        assert!(
+            PAINTED.load(Ordering::SeqCst),
+            "the scene's red reached the screen"
+        );
+        assert!(
+            HEARD.load(Ordering::SeqCst),
+            "the window's input reached the program"
+        );
         println!("xvfb_smoke: a window opened, painted, heard a click, closed; exit 0");
         return;
     }
@@ -73,7 +87,11 @@ fn main() {
         panic!("xvfb-run gave the child no DISPLAY");
     }
     let me = std::env::current_exe().unwrap();
-    let child = std::process::Command::new("xvfb-run").arg("-a").arg(&me).env("PRISM_SMOKE_CHILD", "1").spawn();
+    let child = std::process::Command::new("xvfb-run")
+        .arg("-a")
+        .arg(&me)
+        .env("PRISM_SMOKE_CHILD", "1")
+        .spawn();
     let mut child = match child {
         Ok(c) => c,
         Err(e) => {
@@ -84,7 +102,10 @@ fn main() {
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         if let Some(status) = child.try_wait().unwrap() {
-            assert!(status.success(), "the child under xvfb-run failed: {status}");
+            assert!(
+                status.success(),
+                "the child under xvfb-run failed: {status}"
+            );
             println!("xvfb_smoke: passed under xvfb-run");
             return;
         }

@@ -1,41 +1,48 @@
-# examples/chess
+# Chess: A Proof-of-Concept Example
 
-*Written by Claude on the claude-document-chess branch; subject to change.*
+This is a simple chess app in Prism as a proof of concept and first demo app. It's intended
+simply for verifying the programming language is working and as a test case for working on
+the compiler.
 
-Chess the document way: one game of chess is a document in memory, and every board,
-terminal and script is a participant that holds a seat of it. A program tree
-(claude/modules-style-pass.md); claude/document-chess.md has what runs today and what each
-form waits on.
+By reading the code, you can also get a basic idea of Prism's basic syntax and
+semantics.  By looking at it, you can see that Prism works as a programming
+language for writing bone-simple user interfaces. By reading the code and
+running it, you can figure out a lot about the language's semantics.
 
-- **`app.prism`**, the root: `@main`, the hot seat in a window, two boards side by side.
-- **`documents/`**, `Documents`: the hosting library. `Response`, `Stepped`, the trait
-  `^Seat` a role's seat type implements, `Never`, the library tag `Seat.Leave`, the order
-  of one tick's requests (`OneATick`), `@InMemory`, and what a role's host is written with.
-- **`rules/`**, `Rules`: this program's rule book as plain functions: positions, moves
-  (`Moving`, `Promoting`), why a move is not played (`MoveFault`), what the draws ask
-  (`Lasting`, `Insufficient`). `rules/tests.prism` is its checks.
-- **`game/`**, `Game`: chess as a document: `ChessGame`, the roles `Player` and
-  `Spectator`, `PlayerRequest`, `ChessReason`, `Result`, `StepBy`, the languages `Play.*`
-  and `Watch.*`, the hosts `@HostPlayers` and `@HostSpectators`.
-- **`notation.prism`**, `words.prism`, `squares.prism`, `lines.prism`: moves as text and
-  text as moves; results, statuses and reasons as words; the squares by name; lines of
-  play as values, for checks.
-- **Participants:**
-  - `board.prism`, `Board`: `@BoardPlayer`, the graphical board, on `window/`.
-  - `console.prism`, `Console`, and `command_line.prism`, `CommandLine`: `@LinePlayer` and
-    `@LineSpectator`, a line in and a line out.
-  - `text_players.prism`, `TextPlayers`: `@TextPlayer`, `@ScriptedPlayer`,
-    `@SpectatorView`, over the prelude's `Ui` family.
-- **`window/`**, `Window`: the window library, copied from the basic chess's
-  (`examples/basic-chess/basic_window`), its element family named `Pane`.
-- **`tables.prism`**, `Tables`: the programs that seat participants: `@boards`,
-  `@watched`, `@againstTerminal`, `@terminals`, `@hotSeat`, the scripted ones.
-- **Test modules:** `checks.prism` (`Checks`, with `checks.expected`), `tests.prism`
-  (`Tests`), `terminal_tests.prism` (`TerminalTests`), `board_tests.prism`
-  (`BoardTests`), and `rules/tests.prism` (`Rules.Tests`, with `tests.expected`).
-- **The piece images** are the basic chess's, read where they are
-  (`examples/basic-chess/pieces/`); none is copied here.
+Generally, though, this is not here to sell Prism, but to simply allow you to
+understand it a little bit if you're already interested in the project
+for other reasons. This is a very early example for a very early prototype.
+Everything is still janky, even in this programming language intended to eliminate
+jankiness.
 
-- **Run it:** `./prism run examples/chess` (or `make chess`, or `bin/chess`).
-- **Test it:** `./prism test examples/chess`; the rule book alone,
-  `./prism test examples/chess/rules`.
+It's not an amazing UX for a chess app. The GUI toolkit is bespoke and mediocre.
+White and black share a window, and have to hover over the same computer or pass
+a laptop back and forth. Play is by clicking on squares.  It doesn't support
+computer players, network play, or any other feature beyond implementing
+two-player chess in a single window on-screen. I'm not even sure the rules for
+chess are correct.
+
+It's also not a polished technical demo for Prism, just the first one. It doesn't support any of my planned
+features for how you would structure a two-player board game in an actual ecosystem, like
+the `^Document` trait or other such ideas (mostly unpublished as of this writing).
+
+The code is an LLM-generated port of
+[`reflex-chess`](https://github.com/jhartzell42/reflex-chess/) to Prism, which I
+wrote as a personal exercise and as an example app while I was working at
+[Obsidian](https://obsidian.systems/).
+
+Better things are yet to come! This is just an initial taste.
+
+## Trying it out
+
+To run, from the root of the repo after following [basic set-up instructions](../../README.md):
+
+```sh
+./prism run examples/chess
+```
+
+To run unit tests:
+
+```sh
+./prism test examples/chess
+```
