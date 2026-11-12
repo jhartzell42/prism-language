@@ -315,18 +315,27 @@ public:
         for (auto& [p, h] : subs_) p->unsubscribe(h);
     }
     /// Hears every event of `events`, telling `node` through `heard` when one fires.
-    template <class N, class R>
-    void listen(const Array<Event<T>>& events, const Rc<N>& node, R (N::*heard)(Cx&)) {
+    template <class N, class Heard>
+    void listen(const Array<Event<T>>& events, const Rc<N>& node, Heard heard) {
+        listen_above(events, node, heard, [](N&, std::uint32_t) {});
+    }
+    /// As `listen`, with the node's height twin: `above` is told each event's height, at
+    /// once and when it rises, and puts the node's merge above it. `heard` and `above` are
+    /// the node's methods or callables taking the node first.
+    template <class N, class Heard, class AboveFn>
+    void listen_above(const Array<Event<T>>& events, const Rc<N>& node, Heard heard, AboveFn above) {
         auto inputs = std::make_shared<std::vector<Stamped<T>>>(events.size());
         inputs_ = inputs;
         for (std::size_t i = 0; i < events.size(); ++i) {
             const Event<T>& ev = events[i];
             Weak<N> weak = node;
-            Handle h = ev.port->subscribe([inputs, i, weak, heard](const T& v, Cx& cx) -> Done {
+            Handle h = ev.port->subscribe_above([inputs, i, weak, heard](const T& v, Cx& cx) -> Done {
                 (*inputs)[i].set(v, cx);
-                if (auto n = weak.lock()) ((*n).*heard)(cx);
+                if (auto n = weak.lock()) std::invoke(heard, *n, cx);
                 return {};
-            });
+            }, make_rc<const std::function<void(std::uint32_t)>>([weak, above](std::uint32_t h) {
+                if (auto n = weak.lock()) std::invoke(above, *n, h);
+            }));
             subs_.emplace_back(ev.port, h);
         }
     }
@@ -358,14 +367,22 @@ public:
     Listen& operator=(Listen&&) = default;
     ~Listen() { drop_sub(); }
     /// From now on `ev` tells `node` through `heard`, and the event before tells nothing.
-    template <class N, class R, class V>
-    void listen(const Event<T>& ev, const Rc<N>& node, R (N::*heard)(V, Cx&)) {
+    template <class N, class Heard>
+    void listen(const Event<T>& ev, const Rc<N>& node, Heard heard) {
+        listen_above(ev, node, heard, [](N&, std::uint32_t) {});
+    }
+    /// As `listen`, with `heard`'s height twin: `above` is told the event's height, at
+    /// once and each time it rises.
+    template <class N, class Heard, class AboveFn>
+    void listen_above(const Event<T>& ev, const Rc<N>& node, Heard heard, AboveFn above) {
         drop_sub();
         Weak<N> weak = node;
-        Handle h = ev.port->subscribe([weak, heard](const T& v, Cx& cx) -> Done {
-            if (auto n = weak.lock()) ((*n).*heard)(v, cx);
+        Handle h = ev.port->subscribe_above([weak, heard](const T& v, Cx& cx) -> Done {
+            if (auto n = weak.lock()) std::invoke(heard, *n, v, cx);
             return {};
-        });
+        }, make_rc<const std::function<void(std::uint32_t)>>([weak, above](std::uint32_t h) {
+            if (auto n = weak.lock()) std::invoke(above, *n, h);
+        }));
         sub_.emplace(ev, h);
     }
 
@@ -386,21 +403,31 @@ class MergeNode : public Node {
 public:
     MergeList<T> list;
     Rc<Port<Array<T>>> out = make_rc<Port<Array<T>>>();
+    /// The merge, the node's one combinator.
+    Heights heights{std::vector<std::uint32_t>{1}};
     Done wake(Cx& cx) override {
+        if (!heights.next(cx)) return {};
         if (auto all = list.take(cx)) return out->fire(std::move(*all), cx);
         return {};
     }
-    void heard(Cx& cx) { cx.wake(0, self_.lock()); }
     Weak<MergeNode> self_;
 };
 
-/// The event `!MergeAll events` (Semantics Appendix B): its node woken at the height after
-/// the one an input fired at (the runtime's clamp), owned by the event.
+/// The event `!MergeAll events` (Semantics Appendix B): its node woken above the height of
+/// every event of the list, so it fires once in a tick, after each of them had its turn;
+/// its own port fires at that height. The event value holds the node, and so does the
+/// node's port while it has a subscriber (`Port::owned_by`).
 template <class T>
 Event<Array<T>> merge_all(const Array<Event<T>>& events) {
     auto node = make_rc<MergeNode<T>>();
     node->self_ = node;
-    node->list.listen(events, node, &MergeNode<T>::heard);
+    node->out->owned_by(Weak<Node>(NodeRef(node)));
+    node->out->raise(node->heights.of(0));
+    node->list.listen_above(
+        events, node, [](MergeNode<T>& n, Cx& cx) { n.heights.ask(0, cx, NodeRef(n.self_.lock())); },
+        [](MergeNode<T>& n, std::uint32_t h) {
+            if (auto moved = n.heights.above(0, h)) n.out->raise(*moved);
+        });
     return Event<Array<T>>{node, node->out};
 }
 
@@ -1291,6 +1318,11 @@ public:
     /// A request from the place `place` of this host's child, which a host under this one
     /// hands up (a forwarded element's, or a placed description's): `Host::request`.
     virtual Done request_from(const Path& place, std::optional<std::string> field, Pod value, Cx& cx) const = 0;
+    /// The height twin of a request: a place of this host's child fires a request at
+    /// global height `h` (`Host::request_above`).
+    virtual void request_above(std::uint32_t h) const = 0;
+    /// The global height this host's child's requests fire at, for a row made now.
+    virtual std::uint32_t request_height() const = 0;
     /// A place of this host's child came or went behind its document (a row a blueprint
     /// built there built or tore down a place of its own): the owner's `host_k_moved`.
     /// Nothing before the owner's node is made: its document's first snapshot is taken
@@ -1316,6 +1348,8 @@ public:
     Done request_from(const Path& place, std::optional<std::string> field, Pod value, Cx& cx) const override {
         return host_->request_from(row_.join(place), std::move(field), std::move(value), cx);
     }
+    void request_above(std::uint32_t h) const override { host_->request_above(h); }
+    std::uint32_t request_height() const override { return host_->request_height(); }
     void moved(Cx& cx) const override { host_->moved(cx); }
 
 private:
@@ -1375,6 +1409,8 @@ public:
                                      Cx& cx) {
         auto node = rc_placed<HostRow>(
             [&](void* place) { return new (place) HostRow(std::move(path), std::move(key), std::move(entry), host); });
+        // the row's requests fire at the height the host's child's requests do
+        node->requests_->raise(host->request_height());
         node->place_->watch(Weak<Node>(NodeRef(node)));
         Weak<HostRow> row = node;
         node->sink_ = [row](const A& v, Cx& cx) -> Done {
@@ -1499,6 +1535,9 @@ private:
           level_moved_(make_rc<Port<Unit>>()),
           requests_(make_rc<Port<std::pair<std::optional<std::string>, Pod>>>()) {}
 
+    /// The place's requests fire at global height `h` (`Host::request_above`).
+    void raise_requests(std::uint32_t h) const { requests_->raise(h); }
+
     Rc<HostOf<E, A>> host() const {
         auto h = host_.lock();
         if (!h) panic("a host outlives its rows");
@@ -1608,6 +1647,21 @@ public:
     Done request_from(const Path& place, std::optional<std::string> field, Pod value, Cx& cx) const override {
         return request(place, std::move(field), std::move(value), cx);
     }
+    /// The height twin of `request`: a place of the child fires a request at global height
+    /// `h`. Every row's request port is raised to it, so what hears a live element's event
+    /// field sits above the request; a row made later takes the height at its making
+    /// (`request_height`); a forwarded element's request goes on to the enclosing host at
+    /// the same height. One height for all the child's places.
+    void request_above(std::uint32_t h) const override {
+        if (h <= request_height_) return;
+        request_height_ = h;
+        std::vector<Rc<HostRow<E, A>>> rows;
+        for (const auto& [place, row] : *rows_) rows.push_back(row);
+        for (const auto& row : rows) row->raise_requests(h);
+        if (enclosing_) enclosing_->request_above(h);
+    }
+    /// The global height the child's requests fire at.
+    std::uint32_t request_height() const override { return request_height_; }
 
     void moved(Cx& cx) const override {
         if (auto owner = owner_.lock()) moved_(owner, cx);
@@ -1643,6 +1697,7 @@ private:
     Rc<HostOf<E, A>> enclosing_;
     DeliverFn deliver_;
     MovedFn moved_;
+    mutable std::uint32_t request_height_ = 0;
 };
 
 }  // namespace prism_rtl

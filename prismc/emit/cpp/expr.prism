@@ -368,7 +368,8 @@ fn CppCall cp, f, args:
         RefItem "prelude", p, ignore: p
         otherwise: ""
     match runtimeName:
-        "Rc::new": if a == "\{\}": "::prism_rtl::make_new()" else: "::prism_rtl::rc({a})"
+        # (an empty value or `None`, of the type the context asks for)
+        "Rc::new": if a == "\{\}" or a == "::std::nullopt": "::prism_rtl::make_new()" else: "::prism_rtl::rc({a})"
         "is_some": "::prism_rtl::is_some({a})"
         "is_none": "::prism_rtl::is_none({a})"
         "RefCell::new": a
@@ -734,6 +735,16 @@ fn ?OkOf x = match x:
     XBlock ignore, tail: ?OkOf tail
     otherwise: nil
 
+# The type of the value a body gives as its success, where the printer knows it: the
+# value's own (`?ExTy`), in the context the block's statements leave (a typed `let`).
+?OkTy: unbounded fn Cp, Ex -> ?OutTy
+fn ?OkTy cp, x = match x:
+    XCtor (RefRuntime "std::Ok"), [[v]]: ?ExTy cp, v
+    XBlock dos, tail:
+        let ((ignore, after)) = CppStatementsCp cp, dos
+        ?OkTy after, tail
+    otherwise: nil
+
 # The failure a branch gives: `Err(y)`, or a block that ends in one.
 ?ErrOf: fn Ex -> ?Ex
 fn ?ErrOf x = match x:
@@ -775,7 +786,7 @@ fn CppClosure cp0, mv, ps, body:
         XRefMut ignore: ((" -> decltype(auto)", "({b})"))
         otherwise: match ?OkOf body:
             ? XUnit: ((" -> ::prism_rtl::Done", b))
-            ? v: match ?ExTy cp, v:
+            ? ignore: match ?OkTy cp, body:
                 ? t: ((" -> crate::prelude::Result<{CppType cp, t}>", b))
                 nil: (("", b))
             nil: (("", b))

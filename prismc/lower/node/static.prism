@@ -366,7 +366,8 @@ fn AppliedBlueprintLine wx, e, blueprint:
         let hostedIn = if IsHostedScope wx: XCtor (RefRuntime "std::Some"), [[(XCast (XClone (HostFieldEx wx, pos)), hostOfTy)]] else: XNone
         let at = [[blueprint, (AppliedPath wx, pos), (XVar "row_base"), hostedIn]]
         # a line that binds a dynamic: each answer read at the line's type
-        let taker = XClosure False, [[(PaBind "answer")]], (XCtor (RefRuntime "std::Ok"), [[(FirstOutputTaken lx, outTy, "answer")]])
+        # (the value in a typed `let`, which tells a C++ lambda its result type)
+        let taker = XClosure False, [[(PaBind "answer")]], (XBlock [[(DoLet (PaTyped (PaBind "taken"), outTy), (FirstOutputTaken lx, outTy, "answer"))]], (XCtor (RefRuntime "std::Ok"), [[(XVar "taken")]]))
         let applied = if heard: TryOf (XCall (HelperRef "apply_blueprint_heard"), (Append at, [[(OutputAbove name), (OutputSink lx, name, outTy), XCx]])) else: if dynamic: TryOf (XCall (HelperRef "apply_blueprint_dynamic"), (Append at, [[taker, XCx]])) else: if answered: TryOf (XCall (HelperRef "apply_blueprint_answered"), (Push at, XCx)) else: TryOf (XCall (HelperRef "apply_blueprint"), (Push at, XCx))
         let gap = XBin OpSub, (XIndex wideGeneration), (XVar "built")
         let hearer = if heard: [[(DoLet (PaBind "heard_by"), (XWeak XSelf))]] else: [[]]
@@ -1279,12 +1280,13 @@ fn LiveDynamics wx, benv, menv, names, late:
                 otherwise: False
             let last = "{name}_last"
             let lastArms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "kept"]]), conds=[[]], body=(XClone (XVar "kept"))), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=unlinked0)]]
-            let unlinked = if ownHold: XMatch (XMethod (XMethod (XVar last), "borrow", [[]]), "as_ref", [[]]), lastArms, False, t else: unlinked0
+            # (the read's copy of the cell is `{last}x`: no let rebinds a name from itself)
+            let unlinked = if ownHold: XMatch (XMethod (XMethod (XVar "{last}x"), "borrow", [[]]), "as_ref", [[]]), lastArms, False, t else: unlinked0
             let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(XMethod (XVar "owner"), name, [[XCx]])), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=unlinked)]]
             let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, t)
             let lastTy = OutRc (OutCell (OutOpt t))
             let linked0 = [[(DoLet (PaBind "link"), (XClone (XVar owner)))]]
-            let linked = if ownHold: Push linked0, (DoLet (PaBind last), (XClone (XVar last))) else: linked0
+            let linked = if ownHold: Push linked0, (DoLet (PaBind "{last}x"), (XClone (XVar last))) else: linked0
             let captured = if valued: Push linked, (DoLet (PaBind "at_build"), (Own (ValueOf lx, (InitEnv be), y))) else: linked
             let made = XBlock captured, (XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar port))]])
             let w1b = if not ownHold: w1 else: update w1:

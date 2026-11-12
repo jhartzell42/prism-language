@@ -447,6 +447,13 @@ private:
     NodeRef held_;
 };
 
+/// The height twin of a subscription that fires `port`: told the source's height, it
+/// raises the port to it (Rust's `move |h| raised.raise(h)`).
+template <class U>
+Above raising(const Rc<Port<U>>& port) {
+    return make_rc<const std::function<void(std::uint32_t)>>([port](std::uint32_t h) { port->raise(h); });
+}
+
 /// An `!a` value: an output port and the node that owns it, held strongly, since a
 /// value's `!` part liens its producer.
 template <class T>
@@ -466,7 +473,7 @@ struct Event {
     auto map(F f) const -> Event<std::invoke_result_t<F, const T&>> {
         using U = std::invoke_result_t<F, const T&>;
         auto out = make_rc<Port<U>>();
-        port->subscribe([out, f](const T& v, Cx& cx) -> Done { return out->fire(f(v), cx); });
+        port->subscribe_above([out, f](const T& v, Cx& cx) -> Done { return out->fire(f(v), cx); }, raising(out));
         return Event<U>{owner, out};
     }
     /// The event `f` of this one, `f` given each firing's read point: a lifted call that
@@ -475,7 +482,7 @@ struct Event {
     auto map_at(F f) const -> Event<std::invoke_result_t<F, const T&, const Cx&>> {
         using U = std::invoke_result_t<F, const T&, const Cx&>;
         auto out = make_rc<Port<U>>();
-        port->subscribe([out, f](const T& v, Cx& cx) -> Done { return out->fire(f(v, cx), cx); });
+        port->subscribe_above([out, f](const T& v, Cx& cx) -> Done { return out->fire(f(v, cx), cx); }, raising(out));
         return Event<U>{owner, out};
     }
 };
@@ -484,10 +491,10 @@ struct Event {
 template <class U>
 Event<U> filter_some(const Event<std::optional<U>>& e) {
     auto out = make_rc<Port<U>>();
-    e.port->subscribe([out](const std::optional<U>& v, Cx& cx) -> Done {
+    e.port->subscribe_above([out](const std::optional<U>& v, Cx& cx) -> Done {
         if (v) return out->fire(*v, cx);
         return {};
-    });
+    }, raising(out));
     return Event<U>{e.owner, out};
 }
 
@@ -614,12 +621,12 @@ struct Live {
         template <class T>
         operator Event<T>() const {
             auto port = make_rc<Port<T>>();
-            requests->subscribe([port, field = field](const std::pair<std::optional<std::string>, Pod>& request, Cx& cx) -> Done {
+            requests->subscribe_above([port, field = field](const std::pair<std::optional<std::string>, Pod>& request, Cx& cx) -> Done {
                 if (request.first != field) return {};
                 auto decoded = from_pod<T>(request.second);
                 if (!decoded) return unexpected(decoded.error());
                 return port->fire(*decoded, cx);
-            });
+            }, raising(port));
             return Event<T>{nullptr, port};
         }
     };

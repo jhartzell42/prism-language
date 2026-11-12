@@ -1327,7 +1327,7 @@ auto apply_blueprint_dynamic(const ::prism_rtl::Blueprint<Elem, Output>& bluepri
         if (!supplied.first) return unexpected(Fault::answer("a blueprint value that gives a dynamic answered nothing at its build"));
         auto first = TRY(take(*supplied.first));
         cell->emplace(std::move(first), cx);
-        auto read = [cell](const Cx& cx) { return (*cell)->get(cx); };
+        auto read = ::prism_rtl::make_rc<const std::function<T(const Cx&)>>([cell](const Cx& cx) { return (*cell)->get(cx); });
         return Made{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied), base, sink), built, ::prism_rtl::Dynamic<T>{nullptr, read, updates}};
     };
     return run();
@@ -1401,7 +1401,7 @@ Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t, W>> apply_blueprint_whole
         std::optional<S> s = TRY(state(*supplied.first, true));
         if (!s) return unexpected(Fault::answer(str("a blueprint value that gives a bundle answered for ", supplied.first->tag(), " at its build, which is no state of the bundle")));
         cell->emplace(std::move(*s), cx);
-        auto read = [cell](const Cx& cx) { return (*cell)->get(cx); };
+        auto read = ::prism_rtl::make_rc<const std::function<S(const Cx&)>>([cell](const Cx& cx) { return (*cell)->get(cx); });
         W made = TRY(whole(std::optional<::prism_rtl::Dynamic<S>>(::prism_rtl::Dynamic<S>{nullptr, read, updates}), ::prism_rtl::Event<V>::of(events), cx));
         return Made{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied), base, sink), built, std::move(made)};
     }
