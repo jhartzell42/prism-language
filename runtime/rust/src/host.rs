@@ -1148,6 +1148,11 @@ pub trait HostOf<E, A> {
     /// A request from the place `place` of this host's child, which a host under this one
     /// hands up (a forwarded element's, or a placed description's): [`Host::request`].
     fn request_from(&self, place: &Path, field: Option<&str>, value: Pod, cx: &mut Cx) -> Done;
+    /// The height twin of a request: a place of this host's child fires a request at
+    /// global height `h` ([`Host::request_above`]).
+    fn request_above(&self, h: u32);
+    /// The global height this host's child's requests fire at, for a row made now.
+    fn request_height(&self) -> u32;
     /// A place of this host's child came or went behind its document (a row a blueprint
     /// built there built or tore down a place of its own): the owner's `host_k_moved`.
     /// Nothing before the owner's node is made: its document's first snapshot is taken
@@ -1182,6 +1187,12 @@ impl<E, A> HostOf<E, A> for HostUnder<E, A> {
     fn request_from(&self, place: &Path, field: Option<&str>, value: Pod, cx: &mut Cx) -> Done {
         self.host.request_from(&self.row.join(place), field, value, cx)
     }
+    fn request_above(&self, h: u32) {
+        self.host.request_above(h)
+    }
+    fn request_height(&self) -> u32 {
+        self.host.request_height()
+    }
     fn moved(&self, cx: &mut Cx) {
         self.host.moved(cx)
     }
@@ -1212,6 +1223,9 @@ pub struct Host<E, A, P> {
     enclosing: Option<Rc<dyn HostOf<E, A>>>,
     deliver: fn(&Rc<P>, &Path, &A, &mut Cx) -> Done,
     moved: fn(&Rc<P>, &mut Cx),
+    /// The global height the child's requests fire at: one for all its places, only ever
+    /// raised ([`Host::request_above`]).
+    request_height: Cell<u32>,
 }
 
 impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> Host<E, A, P> {
@@ -1219,7 +1233,7 @@ impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> Host<E, A, P> {
     /// `enclosing` the host whose scope the line stands in, if any; `deliver` and `moved`
     /// the owner's emitted `host_k_answer` and `host_k_moved`.
     pub fn new(at: Path, rows: Rows<E, A>, supplier: Supplier<E, A>, enclosing: Option<Rc<dyn HostOf<E, A>>>, deliver: fn(&Rc<P>, &Path, &A, &mut Cx) -> Done, moved: fn(&Rc<P>, &mut Cx)) -> Rc<Host<E, A, P>> {
-        Rc::new_cyclic(|me| Host { me: me.clone(), at: RefCell::new(at), owner: RefCell::new(Weak::new()), rows, supplier, enclosing, deliver, moved })
+        Rc::new_cyclic(|me| Host { me: me.clone(), at: RefCell::new(at), owner: RefCell::new(Weak::new()), rows, supplier, enclosing, deliver, moved, request_height: Cell::new(0) })
     }
 
     /// The host's place, told once the owner's node stands: a host made in the build of
@@ -1269,6 +1283,29 @@ impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> Host<E, A, P> {
     /// A child place's request: out with its forwarded element, or nowhere when the
     /// supplier answered the place (a host answers its child; a request reaches a World
     /// only from an element the host's blueprint emits).
+    /// The height twin of [`Host::request`]: a place of the child fires a request at
+    /// global height `h`. Every row's request port is raised to it, so what hears a live
+    /// element's event field sits above the request; a row made later takes the height
+    /// at its making ([`Host::request_height`]); a forwarded element's request goes on
+    /// to the enclosing host at the same height. One height for all the child's places:
+    /// the emitted twin of a request does not know its place's row.
+    pub fn request_above(&self, h: u32) {
+        if h <= self.request_height.get() {
+            return;
+        }
+        self.request_height.set(h);
+        let rows: Vec<Rc<HostRow<E, A>>> = self.rows.borrow().values().cloned().collect();
+        for row in rows {
+            row.requests.raise(h);
+        }
+        if let Some(enclosing) = &self.enclosing {
+            enclosing.request_above(h);
+        }
+    }
+    /// The global height the child's requests fire at.
+    pub fn request_height(&self) -> u32 {
+        self.request_height.get()
+    }
     pub fn request(&self, place: &Path, field: Option<&str>, value: Pod, cx: &mut Cx) -> Done {
         let row = self.rows.borrow().get(place).cloned();
         match row {
@@ -1302,6 +1339,12 @@ impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> HostOf<E, A> for Host<E, A, P> {
     }
     fn request_from(&self, place: &Path, field: Option<&str>, value: Pod, cx: &mut Cx) -> Done {
         self.request(place, field, value, cx)
+    }
+    fn request_above(&self, h: u32) {
+        Host::request_above(self, h)
+    }
+    fn request_height(&self) -> u32 {
+        Host::request_height(self)
     }
     fn moved(&self, cx: &mut Cx) {
         let owner = self.owner.borrow().upgrade();
@@ -1360,6 +1403,8 @@ impl<E: Clone + Eq + 'static, A: AnswerOf<E>> HostRow<E, A> {
             });
             HostRow { path, key, place, host: Rc::downgrade(&host), left: Cell::new(false), held: RefCell::new(None), sink, supplied: RefCell::new(None), level_moved: Rc::new(Port::new()), requests: Rc::new(Port::new()) }
         });
+        // the row's requests fire at the height the host's child's requests do
+        node.requests.raise(host.request_height());
         let weak: Weak<dyn Node> = Rc::downgrade(&(node.clone() as Rc<dyn Node>));
         node.place.watch(weak);
         let element = node.element(identity.clone());

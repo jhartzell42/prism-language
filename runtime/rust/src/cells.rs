@@ -655,13 +655,23 @@ impl<T: Clone + 'static> Default for Listen<T> {
 impl<T: Clone + 'static> Listen<T> {
     /// From now on `ev` tells `node` through `heard`, and the event before tells nothing.
     pub fn listen<N: 'static>(&self, ev: &Event<T>, node: &Rc<N>, heard: fn(&Rc<N>, T, &mut Cx)) {
+        self.listen_above(ev, node, heard, |_, _| ())
+    }
+    /// As [`Listen::listen`], with `heard`'s height twin: `above` is told the event's
+    /// height, at once and each time it rises.
+    pub fn listen_above<N: 'static>(&self, ev: &Event<T>, node: &Rc<N>, heard: fn(&Rc<N>, T, &mut Cx), above: fn(&Rc<N>, u32)) {
         self.drop_sub();
         let weak = Rc::downgrade(node);
-        let h = ev.port.subscribe(Rc::new(move |v: &T, cx: &mut Cx| {
+        let told = weak.clone();
+        let h = ev.port.subscribe_above(Rc::new(move |v: &T, cx: &mut Cx| {
             if let Some(n) = weak.upgrade() {
                 heard(&n, v.clone(), cx);
             }
             Ok(())
+        }), Rc::new(move |h| {
+            if let Some(n) = told.upgrade() {
+                above(&n, h);
+            }
         }));
         *self.sub.borrow_mut() = Some((ev.clone(), h));
     }
@@ -834,13 +844,14 @@ impl<E> Live<E> {
     pub fn requested<T: crate::pod::FromPod + Clone + 'static>(&self, field: Option<&'static str>) -> Event<T> {
         let port = Rc::new(Port::new());
         let out = port.clone();
-        self.requests.subscribe(Rc::new(move |(f, v): &(Option<String>, crate::pod::Pod), cx: &mut Cx| {
+        let raised = port.clone();
+        self.requests.subscribe_above(Rc::new(move |(f, v): &(Option<String>, crate::pod::Pod), cx: &mut Cx| {
             if f.as_deref() == field {
                 out.fire(T::from_pod(v)?, cx)
             } else {
                 Ok(())
             }
-        }));
+        }), Rc::new(move |h| raised.raise(h)));
         Event { owner: None, port }
     }
 }

@@ -164,9 +164,9 @@ fn SinkCode sk, target, y = match target:
 # The height twin of a firing's sink (claude/backend.md, "Heights across nodes"): where a
 # firing at global height `h` goes, every combinator it reaches is put above `h`, and a
 # port it fires straight through is raised to `h`. A combinator that moved tells its own
-# twin its new height. A sink whose firing lands in a later tick (`@Defer`, `@Later`), at
-# the World (the root's result) or at a host (a request, answered a tick late) ends the
-# walk.
+# twin its new height. A hosted place's request tells its host (`Host::request_above`). A
+# sink whose firing lands in a later tick (`@Defer`, `@Later`) or at the World (the root's
+# result, a request that goes out) ends the walk.
 SinkAbove: fn Sinks, Sk, Ex -> [Do]
 fn SinkAbove sk, target, h = match target:
     SkNode m: [[(AboveCall XSelf, (GnOf sk.wx, m).name, h)]]
@@ -174,7 +174,8 @@ fn SinkAbove sk, target, h = match target:
     SkHold f: HoldAbove sk, f, h
     SkDistinct f: HoldAbove sk, f, h
     SkPerKey f: HoldAbove sk, f, h
-    SkRequest ignore, ignore: [[]]
+    # a hosted place's request: its host's twin, which raises its rows' request ports
+    SkRequest pos, ignore: if Emits sk.wx, pos: [[]] else: [[DoExpr (XMethod (HostFieldEx sk.wx, pos), "request_above", [[h]])]]
     SkResult: [[]]
     SkArm ignore: [[]]
     SkLater ignore: [[]]

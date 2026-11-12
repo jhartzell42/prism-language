@@ -1966,7 +1966,7 @@ fn HeldSwitch wx, menv, x:
     let made = MethDef(name="{outer}_made", recv=RecvRef, params=[[]], cx=CxRef, ret=outerTy, body=[[]], tail=(Own (ValueOf lxw, menv, x)), doc="`{SrcText lx, lx.file, x.span}`, the switch's outer, as a live dynamic.")
     let outerNow = XMethod (XMethod (XField (XVar "node"), outer), "get", [[XCx]]), "expect", [[(XStr "`@Switch`'s outer is made at the build")]]
     let setOuter = DoExpr (XMethod (XField (XVar "node"), outer), "set", [[(XCtor (RefRuntime "std::Some"), [[(XMethod (XVar "node"), "{outer}_made", [[XCx]])]]), XCx]])
-    let listened = DoExpr (XMethod (XField (XVar "node"), listen), "listen", [[(XRef (XMethod outerNow, "sample", [[XCx]])), (XRef (XVar "node")), (XPath (RefChild (SiteRef lx, wx.node), name))]])
+    let listened = DoExpr (XMethod (XField (XVar "node"), listen), "listen_above", [[(XRef (XMethod outerNow, "sample", [[XCx]])), (XRef (XVar "node")), (XPath (RefChild (SiteRef lx, wx.node), name)), (XPath (RefChild (SiteRef lx, wx.node), "{name}_above"))]])
     let followed = DoExpr (XMethod (XField (XVar "node"), ofollow), "follow", [[(XRef (XField outerNow, "updates")), (XRef (XVar "node")), (XPath (RefChild (SiteRef lx, wx.node), "{name}_outer_moved"))]])
     let moved = MethDef(name="{name}_outer_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=[[DoExpr (XMethod (XCx), "swap_later", [[(XClone XSelf)]])]], tail=(XUnit), doc="The switch's outer fired: after the tick's propagation the switch takes the inner it then holds.")
     let w3 = update w2:
@@ -1982,4 +1982,4 @@ fn HeldSwitch wx, menv, x:
 SwapBody: fn Wx -> [Do]
 fn SwapBody wx = Each wx.switches, \|name|
     let outerNow = XMethod (XMethod (XField XSelf, "{name}_outer"), "get", [[XCx]]), "expect", [[(XStr "`@Switch`'s outer is made at the build")]]
-    DoExpr (XMethod (XField XSelf, "{name}_listen"), "listen", [[(XRef (XMethod outerNow, "sample", [[XCx]])), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef wx.lx, wx.node), name))]])
+    DoExpr (XMethod (XField XSelf, "{name}_listen"), "listen_above", [[(XRef (XMethod outerNow, "sample", [[XCx]])), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef wx.lx, wx.node), name)), (XPath (RefChild (SiteRef wx.lx, wx.node), "{name}_above"))]])
