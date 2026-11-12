@@ -171,7 +171,7 @@ fn PairBrackets toks = update (Each toks, \|t| noPair):
     for t <- toks:
         let i = ix
         if ? kind <- ?OpenKindOf t.kind:
-            if kind != "\{" and not (Or &_[i], noPair).inner:
+            if not (Or &_[i], noPair).inner:
                 if ? j <- (Or &_[i], noPair).?partner:
                     if DoubleAt &_, toks, i, j, kind:
                         &_[i].outer <= True

@@ -445,13 +445,16 @@ fn SquarePrimary p:
         let p2 = ExpectClose p1, "["
         ((Expr(kind=(ETopicIndex index), span=(To start, (Prev p2))), False, p2))
 
-# A map: `{"ada": 3}`, `{}`.
+# A map: `{{"ada": 3}}`, `{{}}`, a double brace as an array is a double square bracket
+# (Jimmy's ruling, 12 November: every literal gets a doubled bracket). A single brace
+# whose top level has a colon, or an empty `{}`, is a map in single braces.
 MapPrimary: unbounded fn Ps -> ((Expr, Bool, Ps))
 fn MapPrimary p:
     let start = Here p
-    let p1 = Adv p
+    let doubled = AtDoubleOpen p, "\{"
+    let p1 = if doubled: OpenDouble p else: Adv p
     let ((entries, p2)) = if AtClose p1, "\{": (([[]], p1)) else: Commas p1, ParseMapEntry
-    let p3 = ExpectClose p2, "\{"
+    let p3 = if doubled: CloseDouble p2, "\{" else: ExpectClose p2, "\{"
     ((Expr(kind=(EMap entries), span=(To start, (Prev p3))), False, p3))
 
 ParseMapEntry: unbounded fn Ps -> ((((Expr, Expr)), Ps))

@@ -128,7 +128,8 @@ fn UnclosedStream l = match l.mode:
     MFile: l
     MBrace ignore: LexErr l, l.pos, l.pos, "a brace block never closes: expected its closing delimiter alone on a line"
     MPlaceholder "single": LexErr l, l.pos, l.pos, "a placeholder never closes: expected `\}`"
-    MPlaceholder ignore: LexErr l, l.pos, l.pos, "a placeholder never closes: expected `\}\}`"
+    MPlaceholder "brace": LexErr l, l.pos, l.pos, "a placeholder never closes: expected `\}\}`"
+    MPlaceholder ignore: LexErr l, l.pos, l.pos, "a placeholder never closes: expected `>>`"
     MPathKey: LexErr l, l.pos, l.pos, "a path key never closes: expected `]`"
 
 # Whether the character at the cursor ends a nested stream; consumes the closer if so.
@@ -137,10 +138,13 @@ fn StreamEndsHere l:
     let c = Peek l
     let closes = match l.mode:
         MPlaceholder "single": c == "\}"
-        MPlaceholder "double": StartsWith l, "\}\}"
+        # "A `>>` closes a placeholder only while one is open" (Jimmy's ruling, 12 November),
+        # and only at the top of its brackets: `<<Show<<Nat>> x>>`.
+        MPlaceholder "double": StartsWith l, ">>"
+        MPlaceholder "brace": StartsWith l, "\}\}"
         MPathKey: c == "]"
         otherwise: False
-    let width = if l.mode == MPlaceholder "double": 2 else: 1
+    let width = if l.mode == MPlaceholder "double" or l.mode == MPlaceholder "brace": 2 else: 1
     if (Len l.frames) == 0 and closes: ((True, (Forward l, width))) else: ((False, l))
 
 # Rule 2 and rule 3 look at the last token of the line that just ended: a `:` or a closing
@@ -227,7 +231,8 @@ fn Indentation l0 = update ((l0, 0)):
 # A brace block ends "at the closing delimiter alone on a line".
 ClosesBraceBlock: unbounded fn Lex -> Bool
 fn ClosesBraceBlock l = match l.mode:
-    MBrace "double": (TrimEnd (RestOfLine l)) == "\}\}"
+    MBrace "double": (TrimEnd (RestOfLine l)) == ">>"
+    MBrace "brace": (TrimEnd (RestOfLine l)) == "\}\}"
     MBrace ignore: (TrimEnd (RestOfLine l)) == "\}"
     otherwise: False
 
