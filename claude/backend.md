@@ -38,6 +38,18 @@ it make every program an interpreter run, and every type mistake a runtime fault
   at the root's positions. The line is made, not parsed: its types are noted in
   `Lx.tys` at spans past the end of any file (`rootApplicationStart`). A widget of no
   arguments defined as one expression is an alias: inlined where it is applied.
+  - The spans are a hidden assumption: every table of the lowering is keyed by
+    `PlaceKey` (file and span), so a made expression needs a span no written one has,
+    and a reader of the code meets numbers from 2,000,000,000 with nothing in their type
+    saying the expression was made. Text read at such a span (`SrcText`, the stems of
+    live dynamics' names) is empty. The typed form, not built: `Range` gains `origin:
+    Origin`, `choice: Written | Made Text` (the text names what made it, `"the root
+    application of @Show"`); `PlaceKey` spells a made span with its origin instead of
+    the file (`"made:{origin}:{start}"`), so made spans count from 0 and never meet a
+    file's; `SrcText` of a made span is the origin's text. It touches every `Range(..)`
+    built (69 sites in 28 files, the parser's included) and the checker's tables, which
+    compare ranges whole, so it waits for a run that can build and check the whole
+    compiler.
 - **The tick** (`Runtime::tick`, Graph ch. 4's order): last round's undone clean-ups; the
   started list's `Node::started` and the armed `Node::deferred`; the computed answers a
   host's supplier queued last tick (`Cx::answer_later`); answers through
