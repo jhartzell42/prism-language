@@ -1,0 +1,13 @@
+# Derived by hand from Type System ch. 2, "Collections", ruling NS and ch. 4 (lifting): `$pick` and `$third` follow `$a`, `$other` follows `$b`; the click writes both holds. Never run.
+test the_arms_meet_at_the_plain_array
+
+tick 0
+  added:
+    0: Ui.Button(label="more")
+    1: Ui.Label(text="[[1]] [[5]] [[1]]")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="[[1, 2]] [[6]] [[1, 2]]")

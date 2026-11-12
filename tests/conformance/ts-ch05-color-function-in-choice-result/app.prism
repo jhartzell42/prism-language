@@ -1,0 +1,23 @@
+# A function value of its callee's own color inside a choice, in the value a call returns
+# (Type System ch. 5: a color variable is decided at each call; here the call makes `u`
+# bounded, so the case that comes back holds a bounded function, called at once).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Kept a = choice:
+    Kept a
+    Empty
+
+Keep: u fn (u fn Nat -> Nat) -> Kept (u fn Nat -> Nat)
+fn Keep F = Kept F
+
+Through: fn Nat -> Nat
+fn Through k = match Keep (\|n| n + 1):
+    Kept F: F k
+    Empty: k
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Through 5}")                               # 0

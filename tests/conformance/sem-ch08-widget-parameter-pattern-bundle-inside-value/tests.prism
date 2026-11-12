@@ -1,0 +1,7 @@
+# The tests of sem-ch08-widget-parameter-pattern-bundle-inside-value.
+emit Ui.*
+use App.*
+
+test the_bundle_inside_binds, @main:
+    build
+    click at 0

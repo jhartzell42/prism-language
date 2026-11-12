@@ -157,6 +157,8 @@ type Lex = record:
     lastWs: Bool
     lambdaOpen: Bool
     pendingOpen: Bool
+    # the pending `:` may stand over no block (`MayStandEmpty`)
+    pendingEmpty: Bool
     pendingSpan: Range
     lineFirst: Nat
     markLineStart: Bool
@@ -169,7 +171,7 @@ derive ^Eq, ^Show
 
 Fresh: fn Lex, Mode -> Lex
 fn Fresh l, mode = Lex(src=l.src, pos=l.pos, diags=l.diags, mode=mode, tokens=[[]], layout=[[]],
-    frames=[[]], lastWs=True, lambdaOpen=False, pendingOpen=False, pendingSpan=Range(start=0, end=0),
+    frames=[[]], lastWs=True, lambdaOpen=False, pendingOpen=False, pendingEmpty=False, pendingSpan=Range(start=0, end=0, origin=InSource),
     lineFirst=0, markLineStart=False, firstLine=True, testPending="", ?testDepth=nil,
     ?checkDepth=nil, pathNext=False)
 
@@ -280,7 +282,7 @@ fn PushTok l, kind, start, end = update l:
     let word = TestWordOf kind
     if word != "" and &_.mode == MFile and (Len &_.layout) == 1 and (AllLayout (Drop &_.tokens, &_.lineFirst)):
         &_.testPending <= word
-    &_.tokens <= Push &_.tokens, Tok(kind=kind, span=Range(start=start, end=end), touches=touches, lineStart=lineStart)
+    &_.tokens <= Push &_.tokens, Tok(kind=kind, span=Range(start=start, end=end, origin=InSource), touches=touches, lineStart=lineStart)
     &_.lastWs <= False
 
 LayoutOn: fn Mode -> Bool

@@ -26,7 +26,7 @@ pub use ::prism_rtl::*;
 /// their methods into scope and none of their names (the emitted modules' one import).
 pub mod traits {
     pub use ::prism_rtl::traits::*;
-    pub use super::{Modulo as _, Num as _, Row as _};
+    pub use super::{Modulo as _, Num as _, PreludePacking as _, Row as _};
 }
 
 // ---- Types ------------------------------------------------------------------------------
@@ -118,6 +118,26 @@ impl<B: ToPod> ToPod for PreludeTurn<B> {
     }
 }
 
+/// `Turn` as a World reads it in a level, `b` as its walk gives it: the deep walk every
+/// generic type of a program has (`DeepWalkImpl`), which a program type holding a `Turn a`
+/// calls for that field.
+impl<B> PreludeTurn<B> {
+    pub fn deep_pod_with(&self, cx: &Cx, walk_B: &dyn Fn(&B) -> Pod) -> Pod {
+        let _ = cx;
+        match self {
+            PreludeTurn::More => Pod::name("More"),
+            PreludeTurn::Done(b) => Pod::Choice("Done".into(), vec![walk_B(b)]),
+        }
+    }
+    /// The update events of the dynamics `b` holds, as its walk finds them.
+    pub fn deep_ports_with(&self, cx: &Cx, out: &mut Vec<Rc<Port<()>>>, walk_B: &dyn Fn(&B, &mut Vec<Rc<Port<()>>>)) {
+        let _ = cx;
+        if let PreludeTurn::Done(b) = self {
+            walk_B(b, out);
+        }
+    }
+}
+
 impl<B: FromPod> FromPod for PreludeTurn<B> {
     fn from_pod(p: &Pod) -> ::std::result::Result<Self, Fault> {
         match p.structure() {
@@ -129,7 +149,7 @@ impl<B: FromPod> FromPod for PreludeTurn<B> {
 }
 
 /// `tag Prelude.Unwrap of Element !a: value: !~a`. The prelude's element tags are variants
-/// of `crate::Elem` and `crate::Answer` like any program's (a hosted child may emit them).
+/// of `crate::Elem` and `crate::Output` like any program's (a hosted child may emit them).
 #[derive(Clone, PartialEq, Eq)]
 pub struct PreludeUnwrap {}
 
@@ -152,9 +172,23 @@ impl FromPod for PreludeUnwrap {
     }
 }
 
+/// The description of `Prelude.Unwrap`: the element applied as a plain value (`@Element
+/// (Prelude.Unwrap(!~value=..))`), its field as given, the event of `~a`s (a type
+/// parameter's values are plain data here).
+#[derive(Clone)]
+#[allow(non_camel_case_types)]
+pub struct PreludeUnwrap_desc {
+    pub value_e: ::prism_rtl::Event<::std::result::Result<Pod, Error>>,
+}
+
 /// `tag Prelude.Exceptions of Element !Exception`.
 #[derive(Clone, PartialEq, Eq)]
 pub struct PreludeExceptions {}
+
+/// The description of `Prelude.Exceptions`: the element applied as a plain value.
+#[derive(Clone)]
+#[allow(non_camel_case_types)]
+pub struct PreludeExceptions_desc {}
 
 impl PreludeExceptions {
     pub const TAG: &'static str = "Prelude.Exceptions";
@@ -217,6 +251,91 @@ pub trait Num: Clone {
     }
     fn mul_opt(a: &Self, b: &Self) -> Option<Self> {
         Some(Self::mul(a, b))
+    }
+}
+
+// ---- Existentials of the prelude's traits ---------------------------------------------
+
+/// `^Num`'s impl at the type an existential hides (Type System ch. 5, "Existentials are
+/// dictionaries"): each operator over two values of that one type, the result hidden
+/// again with the first one's impls.
+pub struct NumPacked {
+    add: fn(&::prism_rtl::Packed, &::prism_rtl::Packed) -> ::prism_rtl::Packed,
+    sub: fn(&::prism_rtl::Packed, &::prism_rtl::Packed) -> ::prism_rtl::Packed,
+    mul: fn(&::prism_rtl::Packed, &::prism_rtl::Packed) -> ::prism_rtl::Packed,
+    div_opt: fn(&::prism_rtl::Packed, &::prism_rtl::Packed) -> Option<::prism_rtl::Packed>,
+    add_opt: fn(&::prism_rtl::Packed, &::prism_rtl::Packed) -> Option<::prism_rtl::Packed>,
+    sub_opt: fn(&::prism_rtl::Packed, &::prism_rtl::Packed) -> Option<::prism_rtl::Packed>,
+    mul_opt: fn(&::prism_rtl::Packed, &::prism_rtl::Packed) -> Option<::prism_rtl::Packed>,
+}
+
+fn num_packed_of<T: Num + 'static>(_: &T) -> NumPacked {
+    NumPacked {
+        add: |a, b| a.repacked(T::add(a.held::<T>(), b.held::<T>())),
+        sub: |a, b| a.repacked(T::sub(a.held::<T>(), b.held::<T>())),
+        mul: |a, b| a.repacked(T::mul(a.held::<T>(), b.held::<T>())),
+        div_opt: |a, b| T::div_opt(a.held::<T>(), b.held::<T>()).map(|v| a.repacked(v)),
+        add_opt: |a, b| T::add_opt(a.held::<T>(), b.held::<T>()).map(|v| a.repacked(v)),
+        sub_opt: |a, b| T::sub_opt(a.held::<T>(), b.held::<T>()).map(|v| a.repacked(v)),
+        mul_opt: |a, b| T::mul_opt(a.held::<T>(), b.held::<T>()).map(|v| a.repacked(v)),
+    }
+}
+
+/// `^Num` of an existential packed with it: the hidden type's impl, found in the first
+/// operand's dictionary. `zero` has no operand to find it in, and no program asks it of
+/// an existential (ruling EX: the checker refuses a method that cannot dispatch).
+impl Num for ::prism_rtl::Packed {
+    fn zero() -> ::prism_rtl::Packed {
+        panic!("a prismc bug: `^Num`'s zero asked of an existential, which has no value to find its impl in")
+    }
+    fn add(a: &::prism_rtl::Packed, b: &::prism_rtl::Packed) -> ::prism_rtl::Packed {
+        (a.dictionary::<NumPacked>().add)(a, b)
+    }
+    fn sub(a: &::prism_rtl::Packed, b: &::prism_rtl::Packed) -> ::prism_rtl::Packed {
+        (a.dictionary::<NumPacked>().sub)(a, b)
+    }
+    fn mul(a: &::prism_rtl::Packed, b: &::prism_rtl::Packed) -> ::prism_rtl::Packed {
+        (a.dictionary::<NumPacked>().mul)(a, b)
+    }
+    fn div_opt(a: &::prism_rtl::Packed, b: &::prism_rtl::Packed) -> Option<::prism_rtl::Packed> {
+        (a.dictionary::<NumPacked>().div_opt)(a, b)
+    }
+    fn add_opt(a: &::prism_rtl::Packed, b: &::prism_rtl::Packed) -> Option<::prism_rtl::Packed> {
+        (a.dictionary::<NumPacked>().add_opt)(a, b)
+    }
+    fn sub_opt(a: &::prism_rtl::Packed, b: &::prism_rtl::Packed) -> Option<::prism_rtl::Packed> {
+        (a.dictionary::<NumPacked>().sub_opt)(a, b)
+    }
+    fn mul_opt(a: &::prism_rtl::Packed, b: &::prism_rtl::Packed) -> Option<::prism_rtl::Packed> {
+        (a.dictionary::<NumPacked>().mul_opt)(a, b)
+    }
+}
+
+/// The packing of an existential with a trait of the prelude that prism_rtl's packing
+/// does not take by itself, each named `with_` and the trait's name as `with_show` is
+/// (the lowering spells every prelude trait's so): `^Num` keeps its impl at the hidden
+/// type (`NumPacked`); `^Pod` keeps how the hidden value is told as plain data.
+pub trait PreludePacking<T> {
+    fn with_num(self) -> Self
+    where
+        T: Num;
+    fn with_pod(self) -> Self
+    where
+        T: ::prism_rtl::ToPod;
+}
+
+impl<T: 'static> PreludePacking<T> for ::prism_rtl::Packing<T> {
+    fn with_num(self) -> Self
+    where
+        T: Num,
+    {
+        self.with_dictionary(num_packed_of::<T>)
+    }
+    fn with_pod(self) -> Self
+    where
+        T: ::prism_rtl::ToPod,
+    {
+        self.with_pod_of()
     }
 }
 
@@ -427,13 +546,89 @@ pub fn len_map<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Nat {
     nat_of(m.len())
 }
 
-// `xs as [a]+?`: the collection when it has an element (Type System ch. 2, "Collections").
-pub fn non_empty<A: Clone>(xs: &Array<A>) -> Option<Array<A>> {
-    if xs.len() > 0 { Some(xs.clone()) } else { None }
+/// `[a]+` and `(K ==> V)+` (Type System ch. 2, "Collections"): a collection with at least
+/// one entry, a type of its own beside its collection's, so an impl for `[a]+` and one for
+/// `[a]` are impls for two types and a generic function has an instantiation at each. It
+/// is read as the collection it holds (`Deref`, `plain_collection`), and compares, prints
+/// and travels as plain data as that collection does. Only a non-empty literal
+/// (`non_empty_of`) and the checked conversion (`non_empty`, `non_empty_map`) make one.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub struct NonEmpty<C>(C);
+
+impl<C> ::std::ops::Deref for NonEmpty<C> {
+    type Target = C;
+    fn deref(&self) -> &C {
+        &self.0
+    }
 }
 
-pub fn non_empty_map<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Option<Map<K, V>> {
-    if m.len() > 0 { Some(m.clone()) } else { None }
+// An entry written in place through an `update` path: the checker lets no path remove a
+// non-empty collection's last entry.
+impl<C> ::std::ops::DerefMut for NonEmpty<C> {
+    fn deref_mut(&mut self) -> &mut C {
+        &mut self.0
+    }
+}
+
+impl<C: Show> Show for NonEmpty<C> {
+    fn show(&self, p: &mut Printer) {
+        self.0.show(p);
+    }
+}
+
+impl<C: ToPod> ToPod for NonEmpty<C> {
+    fn to_pod(&self) -> Pod {
+        self.0.to_pod()
+    }
+}
+
+/// Whether a collection has an entry: what a `NonEmpty` promises of the one it holds.
+pub trait HasEntry {
+    fn has_entry(&self) -> bool;
+}
+
+impl<A> HasEntry for Array<A> {
+    fn has_entry(&self) -> bool {
+        !self.is_empty()
+    }
+}
+
+impl<K, V> HasEntry for Map<K, V> {
+    fn has_entry(&self) -> bool {
+        !self.is_empty()
+    }
+}
+
+// Only a World hands a program data, and an empty collection is not a non-empty one's.
+impl<C: FromPod + HasEntry> FromPod for NonEmpty<C> {
+    fn from_pod(p: &Pod) -> Result<NonEmpty<C>, Fault> {
+        let collection = C::from_pod(p)?;
+        if collection.has_entry() {
+            Ok(NonEmpty(collection))
+        } else {
+            ::prism_rtl::pod::mismatch("a non-empty collection", p)
+        }
+    }
+}
+
+// `[[x, y]]+`, `{k: v}+`: a non-empty literal's collection, which the checker saw an entry in.
+pub fn non_empty_of<C>(collection: C) -> NonEmpty<C> {
+    NonEmpty(collection)
+}
+
+// A non-empty collection where its collection is wanted (the one implicit conversion).
+pub fn plain_collection<C>(xs: &NonEmpty<C>) -> &C {
+    &xs.0
+}
+
+// `xs as [a]+?`: the non-empty collection when the collection has an element (Type System
+// ch. 2, "Collections").
+pub fn non_empty<A: Clone>(xs: &Array<A>) -> Option<NonEmpty<Array<A>>> {
+    if xs.len() > 0 { Some(NonEmpty(xs.clone())) } else { None }
+}
+
+pub fn non_empty_map<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Option<NonEmpty<Map<K, V>>> {
+    if m.len() > 0 { Some(NonEmpty(m.clone())) } else { None }
 }
 
 pub fn append<A: Clone>(a: &Array<A>, b: &Array<A>) -> Array<A> {
@@ -490,6 +685,32 @@ pub fn set_index<A: Clone>(xs: &mut Array<A>, i: &Nat, v: Option<A>) {
     match v {
         Some(x) => xs[ix(i)] = x,
         None => panic!("`&xs[{i}] <= nil`: an array's entry cannot be removed"),
+    }
+}
+
+/// The entry a reference path steps through, read in place: it gives up on an index the
+/// array does not hold, as the path's place does (`at_mut`).
+pub fn at_shared<'a, A>(xs: &'a Array<A>, i: &Nat) -> &'a A {
+    xs.get(ix(i)).expect("an `&` path through an index the array does not hold")
+}
+
+pub fn at_shared_map<'a, K: Ord + Clone, V: Clone>(m: &'a Map<K, V>, k: &K) -> &'a V {
+    m.get(k).expect("an `&` path to a key the map does not hold")
+}
+
+/// The part a named lens names at an array's index (Semantics ch. 5): the entry in place,
+/// or none past the array's end.
+pub fn part_mut<'a, A: Clone>(xs: &'a mut Array<A>, i: &Nat) -> Option<&'a mut A> {
+    xs.get_mut(ix(i))
+}
+
+/// `&Lens r <= v` where the lens ends at an array's index: `? x` writes the entry, as
+/// `set_index` does; an array has no entry to remove, and none to write past its end.
+pub fn set_part<A>(part: Option<&mut A>, v: Option<A>) {
+    match (part, v) {
+        (Some(place), Some(x)) => *place = x,
+        (None, Some(_)) => panic!("a lens to an index the array does not hold"),
+        (_, None) => panic!("a lens to an array's index set to `nil`: an array's entry cannot be removed"),
     }
 }
 
@@ -767,20 +988,6 @@ pub fn indexed<A: Clone>(xs: &Array<A>) -> Map<Nat, A> {
     xs.iter().enumerate().map(|(i, x)| (nat_of(i), x.clone())).collect()
 }
 
-/// The heights a node with combinators at several heights asked for this tick: its wake
-/// runs the lowest one asked (`Node::wake` is not told its height, prismc/README.md WH).
-#[derive(Default)]
-pub struct Wakes(::std::cell::RefCell<::std::collections::BTreeSet<u32>>);
-
-impl Wakes {
-    pub fn ask(&self, h: u32) {
-        self.0.borrow_mut().insert(h);
-    }
-    pub fn next(&self) -> u32 {
-        self.0.borrow_mut().pop_first().unwrap_or(u32::MAX)
-    }
-}
-
 /// A row of a `for` or a generation of a `rebuild`: a node its builder tears down. A row
 /// of a hosted child's (prismc/README.md, pick HO) is an entry of its host's document: its
 /// own places' entries, by their paths relative to the row, and a host's typed answer to one
@@ -791,38 +998,300 @@ pub trait Row: Node {
         let _ = cx;
         Vec::new()
     }
-    fn deliver(self: Rc<Self>, at: &[Segment], v: &crate::Answer, cx: &mut Cx) -> Done {
+    fn deliver(self: Rc<Self>, at: &[Segment], v: &crate::Output, cx: &mut Cx) -> Done {
         let _ = (v, cx);
         Err(Fault::answer(format!("no hosted place at {} to answer: the row is not hosted", Path(at.to_vec()))))
     }
 }
 
 /// A host's own rows (prism_rtl's), which its `for` builds and tears down like any row.
-impl Row for ::prism_rtl::HostRow<crate::Elem, crate::Answer> {
+impl Row for ::prism_rtl::HostRow<crate::Elem, crate::Output> {
     fn leave_row(&self, cx: &mut Cx) {
         ::prism_rtl::HostRow::leave_row(self, cx)
     }
     fn document(&self, cx: &Cx) -> Vec<(Path, Rc<::prism_rtl::Entry<crate::Elem>>)> {
-        let _ = cx;
-        ::prism_rtl::HostRow::entries(self)
+        ::prism_rtl::HostRow::entries(self, cx)
     }
-    fn deliver(self: Rc<Self>, at: &[Segment], v: &crate::Answer, cx: &mut Cx) -> Done {
+    fn deliver(self: Rc<Self>, at: &[Segment], v: &crate::Output, cx: &mut Cx) -> Done {
         ::prism_rtl::HostRow::deliver(&self, at, v, cx)
     }
 }
 
+/// A widget's row as its blueprint built it (prism_rtl's `widget_blueprint`): the row as a
+/// node, its leaving, how many places it built, the widget's plain result, and, for a
+/// row built in a hosted scope, its places' entries and a host's typed answer to one.
+pub fn built_widget<N: Row + 'static, R>(built: u32, result: R, row: Rc<N>) -> ::prism_rtl::BuiltWidget<crate::Elem, crate::Output, R> {
+    let (leaving, read, answered) = (row.clone(), row.clone(), row.clone());
+    ::prism_rtl::BuiltWidget {
+        node: row,
+        leave: Rc::new(move |cx: &mut Cx| leaving.leave_row(cx)),
+        built,
+        result,
+        document: Rc::new(move |cx: &Cx| read.document(cx)),
+        deliver: Rc::new(move |at: &[Segment], v: &crate::Output, cx: &mut Cx| answered.clone().deliver(at, v, cx)),
+    }
+}
+
+/// A blueprint value a block applied: what it built, as the block's generation at the
+/// line. A World's answer under it goes to the blueprint's node, the position counted
+/// from the blueprint's first. In a hosted scope its places are entries of the host's
+/// document: a widget's row's own, or the one place of an element forwarded or placed,
+/// at the base the blueprint was built from, whose answer from the host goes to the
+/// blueprint's sink.
+pub struct AppliedBlueprint {
+    supplied: ::prism_rtl::Supplied<crate::Elem, crate::Output>,
+    base: u32,
+    sink: ::prism_rtl::Sink<crate::Output>,
+}
+
+impl Node for AppliedBlueprint {
+    fn answer(self: Rc<Self>, at: &[Segment], v: &Pod, cx: &mut Cx) -> Done {
+        self.supplied.node.clone().answer(at, v, cx)
+    }
+}
+
+impl Row for AppliedBlueprint {
+    fn leave_row(&self, cx: &mut Cx) {
+        match &self.supplied.leave {
+            Some(leave) => leave(cx),
+            None => {
+                let done = self.supplied.node.clone().leave(cx);
+                cx.keep(done);
+            }
+        }
+    }
+    fn document(&self, cx: &Cx) -> Vec<(Path, Rc<::prism_rtl::Entry<crate::Elem>>)> {
+        if let Some(document) = &self.supplied.document {
+            return document(cx);
+        }
+        match &self.supplied.entry {
+            Some(entry) => vec![(Path::root().at(self.base), entry.clone())],
+            None => Vec::new(),
+        }
+    }
+    fn deliver(self: Rc<Self>, at: &[Segment], v: &crate::Output, cx: &mut Cx) -> Done {
+        if let Some(deliver) = &self.supplied.deliver {
+            return deliver(at, v, cx);
+        }
+        match at {
+            [Segment::Pos(0)] if self.supplied.entry.is_some() => (self.sink)(v, cx),
+            _ => Err(Fault::answer(format!("no hosted place at {} under a blueprint value applied", Path(at.to_vec())))),
+        }
+    }
+}
+
+/// The scope a blueprint value is applied in: the World's, or the host's whose document
+/// the applying block's places are entries of.
+fn applied_scope(hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Output>>>) -> ::prism_rtl::Scope<crate::Elem, crate::Output> {
+    match hosted {
+        Some(host) => ::prism_rtl::Scope::Hosted(host),
+        None => ::prism_rtl::Scope::World,
+    }
+}
+
+/// A blueprint value applied by a block at one of its lines (Semantics ch. 8: "a blueprint
+/// builds nothing until a block applies it", at the applying block's next positions): built
+/// at the block's path, its places numbered from `base`, in the block's scope (`hosted`
+/// the host of a block in a hosted scope). Gives the generation and how many places it
+/// built. A blueprint that answers (`@ x`, an event's, a dynamic's) builds no place here,
+/// and what it answers is the line's result, which a line of unit drops.
+pub fn apply_blueprint(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Output>, path: Path, base: u32, hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Output>>>, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32), Fault> {
+    apply_blueprint_heard(blueprint, path, base, hosted, |_: u32| (), |_: &crate::Output, _: &mut Cx| Ok(()), cx)
+}
+
+/// A blueprint value applied by a line that hears it (`!go <- @Element e`): as
+/// `apply_blueprint`, with `hear` the blueprint's sink, called with each answer to the
+/// place the blueprint answers, in the tick the answer comes; `above` is the sink's
+/// height twin, told the global height such an answer comes at (a widget's event result,
+/// fired by a combinator of its row), so what `hear` fires sits above it.
+pub fn apply_blueprint_heard(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Output>, path: Path, base: u32, hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Output>>>, above: impl Fn(u32) + 'static, hear: impl Fn(&crate::Output, &mut Cx) -> Done + 'static, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32), Fault> {
+    let sink: ::prism_rtl::Sink<crate::Output> = ::prism_rtl::Sink::heard_above(hear, Rc::new(above));
+    let supplied = blueprint(path, sink.clone(), &applied_scope(hosted), base, cx)?;
+    let built = supplied.built;
+    Ok((Rc::new(AppliedBlueprint { supplied, base, sink }), built))
+}
+
+/// A blueprint value applied by a line that binds its plain result (`n <- @t`): as
+/// `apply_blueprint`, with the first answer of the place the blueprint answers, which a
+/// blueprint that gives a plain value has at its build.
+pub fn apply_blueprint_answered(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Output>, path: Path, base: u32, hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Output>>>, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32, crate::Output), Fault> {
+    let sink: ::prism_rtl::Sink<crate::Output> = ::prism_rtl::Sink::new(|_: &crate::Output, _: &mut Cx| Ok(()));
+    let supplied = blueprint(path, sink.clone(), &applied_scope(hosted), base, cx)?;
+    let built = supplied.built;
+    let first = supplied.first.clone().ok_or_else(|| Fault::answer("a blueprint value that gives a plain value answered nothing at its build".to_string()))?;
+    Ok((Rc::new(AppliedBlueprint { supplied, base, sink }), built, first))
+}
+
+/// A blueprint value applied by a line that binds a dynamic (`$d <- @$t`): as
+/// `apply_blueprint`, with the dynamic the blueprint gives: its value at the build the
+/// first answer of the place the blueprint answers, and each later answer a new value,
+/// in the tick the answer comes. `take` reads an answer at the line's type.
+pub fn apply_blueprint_dynamic<T: Clone + 'static>(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Output>, path: Path, base: u32, hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Output>>>, take: impl Fn(&crate::Output) -> Result<T, Fault> + 'static, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32, ::prism_rtl::Dynamic<T>), Fault> {
+    let cell: Rc<::std::cell::RefCell<Option<::prism_rtl::Hold<T>>>> = Rc::new(::std::cell::RefCell::new(None));
+    let updates: Rc<::prism_rtl::Port<()>> = Rc::new(::prism_rtl::Port::new());
+    let take = Rc::new(take);
+    let (held, fired, taken) = (cell.clone(), updates.clone(), take.clone());
+    // an answer delivered inside a tick at a height (the sink's twin told it) writes the
+    // dynamic at that height: its update port is raised with it; an answer delivered as
+    // a tick opens tells nothing
+    let raised = updates.clone();
+    let sink: ::prism_rtl::Sink<crate::Output> = ::prism_rtl::Sink::heard_above(move |answer: &crate::Output, cx: &mut Cx| {
+        let v = taken(answer)?;
+        match held.borrow().as_ref() {
+            Some(hold) => hold.set(v, cx),
+            None => return Err(Fault::answer("a blueprint value that gives a dynamic was answered before its build ended".to_string())),
+        }
+        fired.fire((), cx)
+    }, Rc::new(move |h| raised.raise(h)));
+    let supplied = blueprint(path, sink.clone(), &applied_scope(hosted), base, cx)?;
+    let built = supplied.built;
+    // a widget's dynamic result, held whole: the line's dynamic is the widget's own
+    if let Some(live) = supplied.first.as_ref().and_then(|first| first.held_as::<::prism_rtl::Dynamic<T>>()) {
+        return Ok((Rc::new(AppliedBlueprint { supplied, base, sink }), built, live));
+    }
+    let first = supplied.first.as_ref().ok_or_else(|| Fault::answer("a blueprint value that gives a dynamic answered nothing at its build".to_string()))?;
+    *cell.borrow_mut() = Some(::prism_rtl::Hold::new(take(first)?, cx));
+    let read = cell.clone();
+    let dynamic = ::prism_rtl::Dynamic { owner: None, read: Rc::new(move |cx: &Cx| read.borrow().as_ref().expect("the hold is made at the build").get(cx)), updates };
+    Ok((Rc::new(AppliedBlueprint { supplied, base, sink }), built, dynamic))
+}
+
+/// An answer made outside a tag's arm (a widget's plain result as a blueprint value
+/// gives it), read at the type of the line that binds it.
+pub fn output_plain<T: FromPod>(answer: &crate::Output) -> Result<T, Fault> {
+    answer.plain()
+}
+
+/// An answer made outside a tag's arm that is no plain data: a widget's result as a
+/// blueprint value gives it when it is a function, a dynamic, or a bundle with its events
+/// and dynamics whole. Held as it is, and read back at the type of the line that binds it.
+pub fn output_held<T: 'static>(v: T) -> crate::Output {
+    crate::Output::Held_a(Rc::new(v))
+}
+
+/// A blueprint whose held answers are made again (`output_held`): one that holds the
+/// output whole, a `W`, through `whole`; one that holds one firing's or one move's value,
+/// a `P`, through `part`. Any other answer holds no such value and is itself.
+pub fn held_outputs_mapped<W: Clone + 'static, V: 'static, P: Clone + 'static, Q: 'static>(
+    blueprint: ::prism_rtl::Blueprint<crate::Elem, crate::Output>,
+    whole: impl Fn(&W) -> V + 'static,
+    part: impl Fn(&P) -> Q + 'static,
+) -> ::prism_rtl::Blueprint<crate::Elem, crate::Output> {
+    ::prism_rtl::outputs_mapped(blueprint, move |answer: &crate::Output| match answer.held_as::<W>() {
+        Some(held) => output_held(whole(&held)),
+        None => match answer.held_as::<P>() {
+            Some(held) => output_held(part(&held)),
+            None => answer.clone(),
+        },
+    })
+}
+
+/// An answer held whole (`output_held`), read at the type of the line that binds it.
+pub fn held_output<T: Clone + 'static>(answer: &crate::Output) -> Result<T, Fault> {
+    answer.held()
+}
+
+/// A blueprint value applied by a line that binds a bundle (`((step, !go)) <- @t`): as
+/// `apply_blueprint`, with the bundle as one value `W`, its events and dynamics whole.
+/// A widget's blueprint answers with that value held whole (`output_held`), once, at its
+/// build. Any other blueprint answers as a bundle's tag does (an element value forwarded
+/// or placed, a supplier's `@ ((a, $b, !c))`): `state` reads an answer that is the state
+/// (the plain and `$` parts; `first` for the answer at the build), `event` one that is
+/// the event parts', and `whole` makes the bundle of the state as a dynamic (the first
+/// answer its value at the build, each later one a new value in the tick it comes) and
+/// of the event the later answers fire.
+#[allow(clippy::too_many_arguments)]
+pub fn apply_blueprint_whole<W: Clone + 'static, S: Clone + 'static, V: Clone + 'static>(
+    blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Output>,
+    path: Path,
+    base: u32,
+    hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Output>>>,
+    state: impl Fn(&crate::Output, bool) -> Result<Option<S>, Fault> + 'static,
+    event: impl Fn(&crate::Output) -> Result<V, Fault> + 'static,
+    whole: impl FnOnce(Option<::prism_rtl::Dynamic<S>>, ::prism_rtl::Event<V>, &Cx) -> Result<W, Fault>,
+    cx: &mut Cx,
+) -> Result<(Rc<dyn Row>, u32, W), Fault> {
+    let cell: Rc<::std::cell::RefCell<Option<::prism_rtl::Hold<S>>>> = Rc::new(::std::cell::RefCell::new(None));
+    let updates: Rc<::prism_rtl::Port<()>> = Rc::new(::prism_rtl::Port::new());
+    let events: Rc<::prism_rtl::Port<V>> = Rc::new(::prism_rtl::Port::new());
+    let state = Rc::new(state);
+    let (held, moved, fired, stated) = (cell.clone(), updates.clone(), events.clone(), state.clone());
+    let sink: ::prism_rtl::Sink<crate::Output> = ::prism_rtl::Sink::new(move |answer: &crate::Output, cx: &mut Cx| {
+        if let Some(s) = stated(answer, false)? {
+            match held.borrow().as_ref() {
+                Some(hold) => hold.set(s, cx),
+                None => return Err(Fault::answer("a blueprint value that gives a bundle was answered before its build ended".to_string())),
+            }
+            return moved.fire((), cx);
+        }
+        fired.fire(event(answer)?, cx)
+    });
+    let supplied = blueprint(path, sink.clone(), &applied_scope(hosted), base, cx)?;
+    let built = supplied.built;
+    let made = match supplied.first.as_ref() {
+        Some(first) => match first.held_as::<W>() {
+            Some(live) => live,
+            None => {
+                let s = state(first, true)?.ok_or_else(|| Fault::answer(format!("a blueprint value that gives a bundle answered for {} at its build, which is no state of the bundle", first.tag())))?;
+                *cell.borrow_mut() = Some(::prism_rtl::Hold::new(s, cx));
+                let read = cell.clone();
+                let dynamic = ::prism_rtl::Dynamic { owner: None, read: Rc::new(move |cx: &Cx| read.borrow().as_ref().expect("the hold is made at the build").get(cx)), updates };
+                whole(Some(dynamic), ::prism_rtl::Event::of(&events), cx)?
+            }
+        },
+        None => whole(None, ::prism_rtl::Event::of(&events), cx)?,
+    };
+    Ok((Rc::new(AppliedBlueprint { supplied, base, sink }), built, made))
+}
+
+/// A `$` part of a bundle a blueprint value gives (`apply_blueprint_whole`): the state's
+/// part as a dynamic.
+pub fn state_part<S: Clone + 'static, T: 'static>(state: &::prism_rtl::Dynamic<S>, part: impl Fn(&S) -> T + 'static) -> ::prism_rtl::Dynamic<T> {
+    state.map(part)
+}
+
+/// One of several event parts of a bundle a blueprint value gives
+/// (`apply_blueprint_whole`): the firings of the sparse tuple that hold the part.
+pub fn event_part<V: Clone + 'static, T: Clone + 'static>(events: &::prism_rtl::Event<V>, part: impl Fn(&V) -> ::prism_rtl::SparsePart<T> + 'static) -> ::prism_rtl::Event<T> {
+    events.map(move |v| part(v).0).filter_some()
+}
+
+/// An event part of a bundle a blueprint value gives, heard by the block that applied
+/// it: each firing is `hear`'s, in its tick, and `above` its height twin, told the
+/// port's height. The subscription lives as long as the port.
+pub fn hear_part<T: Clone + 'static>(event: &::prism_rtl::Event<T>, above: impl Fn(u32) + 'static, hear: impl Fn(&T, &mut Cx) -> Done + 'static) {
+    let _ = event.port.subscribe_above(Rc::new(hear), Rc::new(above));
+}
+
 /// A row subscribing to its block's port for one event: the row heard weakly, the handle
-/// kept for its leaving (claude/backend.md: `Port::subscribe`).
-pub fn subscribe_row<N: Node, P, T: Clone + 'static>(node: &Rc<N>, parent: Option<Rc<P>>, port: impl Fn(&P) -> &Port<T>, call: impl Fn(&Rc<N>, &T, &mut Cx) + 'static, slot: &::std::cell::Cell<Option<Handle>>) {
+/// kept for its leaving (claude/backend.md: `Port::subscribe_above`). `above` is the
+/// call's height twin: told the port's height at once and each time it rises, it puts
+/// what the row's method reaches above it.
+pub fn subscribe_row<N: Node, P, T: Clone + 'static>(node: &Rc<N>, parent: Option<Rc<P>>, port: impl Fn(&P) -> &Port<T>, call: impl Fn(&Rc<N>, &T, &mut Cx) + 'static, above: impl Fn(&Rc<N>, u32) + 'static, slot: &::std::cell::Cell<Option<Handle>>) {
     let Some(parent) = parent else { return };
     let me = Rc::downgrade(node);
-    let h = port(&parent).subscribe(Rc::new(move |v: &T, cx: &mut Cx| {
+    let told = me.clone();
+    let h = port(&parent).subscribe_above(Rc::new(move |v: &T, cx: &mut Cx| {
         if let Some(n) = me.upgrade() {
             call(&n, v, cx);
         }
         Ok(())
+    }), Rc::new(move |h| {
+        if let Some(n) = told.upgrade() {
+            above(&n, h);
+        }
     }));
     slot.set(Some(h));
+}
+
+/// A row's subscription to an event value's own port, undone when the row leaves
+/// (claude/backend.md, `SubscribedValue`): the port kept beside the handle, both taken, so
+/// a second leaving does nothing.
+pub fn unsubscribe_value<T: Clone + 'static>(port: &::std::cell::RefCell<Option<Rc<Port<T>>>>, slot: &::std::cell::Cell<Option<Handle>>) {
+    let held = port.borrow_mut().take();
+    if let (Some(p), Some(h)) = (held, slot.take()) {
+        p.unsubscribe(h);
+    }
 }
 
 // ---- Jobs -------------------------------------------------------------------------------
@@ -855,7 +1324,8 @@ pub fn call_then<A: 'static, B: 'static>(callee: Rc<dyn Job<A>>, then: impl FnOn
 
 /// A call through an unbounded function value that is not in tail position: the value's
 /// job runs its first cycle now. A named function's value is `entered`, so entering it
-/// is still a cycle point (D6); a lambda's body is not a named function and runs on.
+/// is still a cycle point (D6), and so is a lambda's whose own type is not bounded; a
+/// bounded function made a `Start` runs on.
 pub fn call_value<A: 'static, B: 'static>(callee: Rc<dyn Job<A>>, then: impl FnOnce(A) -> Turn<B> + 'static) -> Turn<B> {
     Frame { callee, then: ::std::cell::RefCell::new(Some(Box::new(then))) }.cycle()
 }
@@ -1089,6 +1559,80 @@ pub fn merge_all<T: Clone + 'static>(events: &Array<Event<T>>) -> Event<Array<T>
     ::prism_rtl::merge_all(events)
 }
 
+/// `!Union a, b` as an event value (in a plain function's body, where no node of a block
+/// decides the merge): `!MergeAll` of the two, the maps that fired joined as `Union` joins.
+pub fn union_ev<K: Ord + Clone + 'static, V: Clone + 'static>(a: &Event<Map<K, V>>, b: &Event<Map<K, V>>) -> Event<Map<K, V>> {
+    ::prism_rtl::merge_all(&Array::from(vec![a.clone(), b.clone()])).map(|fired: &Array<Map<K, V>>| {
+        let mut maps = fired.iter();
+        let first = maps.next().cloned().unwrap_or_else(Map::new);
+        maps.fold(first, |all, one| union(&all, one))
+    })
+}
+
+/// `!Both a, b` as an event value (in a plain function's body, where no node of a block
+/// decides the pair): `!MergeAll` of the two, each firing marked with its side; it fires
+/// in a tick in which both fired, with the pair.
+pub fn both<A: Clone + 'static, B: Clone + 'static>(a: &Event<A>, b: &Event<B>) -> Event<(A, B)> {
+    let left: Event<(Option<A>, Option<B>)> = a.map(|v: &A| (Some(v.clone()), None));
+    let right: Event<(Option<A>, Option<B>)> = b.map(|v: &B| (None, Some(v.clone())));
+    ::prism_rtl::merge_all(&Array::from(vec![left, right])).map(|fired: &Array<(Option<A>, Option<B>)>| {
+        let mut first: Option<A> = None;
+        let mut second: Option<B> = None;
+        for (one, other) in fired.iter() {
+            if let Some(v) = one {
+                first = Some(v.clone());
+            }
+            if let Some(v) = other {
+                second = Some(v.clone());
+            }
+        }
+        match (first, second) {
+            (Some(x), Some(y)) => Some((x, y)),
+            _ => None,
+        }
+    }).filter_some()
+}
+
+/// `!Except a, b` as an event value: `!MergeAll` of the two, each firing marked with its
+/// side; it fires `a`'s value in a tick in which `b` did not fire.
+pub fn except<A: Clone + 'static, B: Clone + 'static>(a: &Event<A>, b: &Event<B>) -> Event<A> {
+    let left: Event<Option<A>> = a.map(|v: &A| Some(v.clone()));
+    let right: Event<Option<A>> = b.map(|_: &B| None);
+    ::prism_rtl::merge_all(&Array::from(vec![left, right])).map(|fired: &Array<Option<A>>| {
+        let mut kept: Option<A> = None;
+        for one in fired.iter() {
+            match one {
+                Some(v) => kept = Some(v.clone()),
+                None => return None,
+            }
+        }
+        kept
+    }).filter_some()
+}
+
+/// `!Gate $open, e` as an event value: `e`'s firings while the dynamic reads true at the
+/// firing's read point (the value as the tick opened, Semantics ch. 7).
+pub fn gate<A: Clone + 'static>(open: &Dynamic<bool>, e: &Event<A>) -> Event<A> {
+    let open = open.clone();
+    e.map_at(move |v: &A, cx: &Cx| if open.sample(cx) { Some(v.clone()) } else { None }).filter_some()
+}
+
+/// `!Present e` as an event value: `unit` for each firing whose value is present.
+pub fn present<A: Clone + 'static>(e: &Event<Option<A>>) -> Event<()> {
+    e.map(|v: &Option<A>| v.as_ref().map(|_| ())).filter_some()
+}
+
+/// `!MergeWith f, events` as an event value: `!MergeAll` of the list, the values that
+/// fired folded by `f` in the list's order.
+pub fn merge_with<T: Clone + 'static, F: Fn(&T, &T) -> T + Clone + 'static>(f: &F, events: &Array<Event<T>>) -> Event<T> {
+    let f = f.clone();
+    ::prism_rtl::merge_all(events).map(move |fired: &Array<T>| {
+        let mut values = fired.iter();
+        let first = values.next().cloned().expect("a `!MergeAll` firing holds a value");
+        values.fold(first, |all, one| f(&all, one))
+    })
+}
+
 /// A value given for a generic tag's field or answer, as the tag's own types hold it: the
 /// same plain data at the type with each of the tag's variables a `Pod` (and back, where
 /// a place reads its answer at the type it was placed at). The two types differ only
@@ -1108,28 +1652,47 @@ pub fn fault_kind(name: &str) -> Pod {
 
 /// `e.kind`.
 pub fn kind_of(e: &Error) -> Pod {
-    Pod::name(&e.kind_p)
+    e.kind()
+}
+
+/// A fault kind made with fields (`Count.TooMany(limit=5, asked=n)`): the tag's value,
+/// its fields as plain data in declaration order (ruling TF).
+pub fn fault_kind_of(name: &str, fields: Vec<(&str, Pod)>) -> Pod {
+    Pod::element(name, fields)
+}
+
+/// A field of an `Error`'s kind, read back at the field's type (a pattern's binder).
+pub fn fault_field<T: FromPod>(e: &Error, name: &str) -> T {
+    match e.kind_field(name).map(T::from_pod) {
+        Some(Ok(v)) => v,
+        _ => panic!("a prismc bug: a fault kind read for a field it was not made with, {name}"),
+    }
 }
 
 /// `Error(kind=k, message=m)` with `k` a value.
 pub fn error_of(kind: &Pod, message: Text) -> Error {
-    match kind.structure() {
-        Pod::Choice(name, _) => Error::new(name, message),
-        other => panic!("an `Error` of a kind that is no fault kind: {other:?}"),
+    match Error::of_kind(kind, message) {
+        Some(e) => e,
+        None => panic!("an `Error` of a kind that is no fault kind: {kind:?}"),
     }
 }
 
 /// `!Updated $d` as an event value (in a supplier's answer, or in a function that takes
 /// the dynamic whole): it fires `d`'s value after the tick, in the tick `d`'s update event
-/// fires (Semantics ch. 7, R3).
+/// fires (Semantics ch. 7, R3). The event fires at the height the update event does: its
+/// port is raised with it, so a combinator that hears it sits above the write.
 pub fn updated<T: Clone + 'static>(d: &Dynamic<T>) -> Event<T> {
     let port = ::std::rc::Rc::new(Port::new());
     let out = port.clone();
+    let raised = port.clone();
     let read = d.clone();
-    d.updates.subscribe(::std::rc::Rc::new(move |_: &(), cx: &mut Cx| {
-        let v = cx.after(|at| read.sample(at));
-        out.fire(v, cx)
-    }));
+    d.updates.subscribe_above(
+        ::std::rc::Rc::new(move |_: &(), cx: &mut Cx| {
+            let v = cx.after(|at| read.sample(at));
+            out.fire(v, cx)
+        }),
+        ::std::rc::Rc::new(move |h| raised.raise(h)),
+    );
     Event { owner: None, port }
 }
 

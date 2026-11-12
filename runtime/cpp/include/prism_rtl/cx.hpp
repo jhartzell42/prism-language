@@ -5,7 +5,7 @@
 //
 // 1. last round's undone clean-ups; the started list and the armed `@Defer`s fire; the
 //    answers a host's supplier computed last tick and the update events of structural
-//    dynamics that moved last tick (`Cx::answer_later`), then the World's answers by
+//    dynamics that moved last tick (`Cx::output_later`), then the World's answers by
 //    path and its pushes by element;
 // 2. the wakes by height, a bucket per height, each node once per height;
 // 3. propagation ends, and every read from here on is after the tick;
@@ -161,6 +161,8 @@ public:
         return std::forward<F>(f)(*this);
     }
 
+    /// The height whose wakes run now; none outside the heights' run.
+    std::optional<std::uint32_t> running_height() const { return height_; }
     /// Ask for a wake at `height`, once per height. A wake asked for at or below the
     /// running height runs at the next one (the clamp, Graph ch. 4).
     void wake(std::uint32_t height, NodeRef node);
@@ -197,7 +199,7 @@ public:
     /// as ruled: a computed answer is a tick late); the update event of a structural
     /// dynamic that moved this tick, fired at n+1 with the value after n (ch. 7, round 3
     /// ST).
-    void answer_later(Later deliver) { g_.later.push_back(std::move(deliver)); }
+    void output_later(Later deliver) { g_.later.push_back(std::move(deliver)); }
     /// A fault a cell raises where it holds only a `const Cx&`: the tick fails at its
     /// close.
     void fail_later(Fault f) const {

@@ -214,9 +214,7 @@ ParseDefName: fn Ps -> ((DefName, Ps))
 fn ParseDefName p = match Kind p:
     KName n:
         let ((name, q)) = ParseSName p
-        let lens = (HasPrefix n.sigils, "&") and (IsUpperName name)
-        let q2 = if lens: OutOfScope q, name.span, "named lenses `&Home` and `Over`", "the named lens `{NameText name}` is out of this compiler" else: q
-        ((DefSName name, q2))
+        ((DefSName name, q))
     KOp op, ignore if p.inTrait:
         let name = DefOp op, (Here p)
         ((name, (Adv p)))
@@ -274,7 +272,10 @@ fn ParseTypeBody p, name, params = match Kind p:
         ((? (TbRecord fields), q))
     KKw "choice", "":
         let p1 = ExpectColon (Adv p)
-        if AtOpenL p1:
+        # a choice with no case, `type Never = choice:`, is a type with no value: the lexer
+        # gives its `:` an empty block
+        if (AtOpenL p1) and AtCloseL (Adv p1): ((? (TbChoice [[]]), (Adv (Adv p1))))
+        else: if AtOpenL p1:
             let ((cases, q)) = LayoutItems (Adv p1), ParseCase
             ((? (TbChoice cases), q))
         else: ((nil, (ErrorHere p1, "a choice's cases stand in an indented block after `choice:`")))

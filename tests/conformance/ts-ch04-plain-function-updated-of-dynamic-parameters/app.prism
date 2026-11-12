@@ -1,0 +1,19 @@
+# A plain function from dynamics to an event: `fn !Changes $a, $b = !Updated ($a + $b)`
+# (Type System ch. 4: `!Updated` takes its dynamic whole; Semantics ch. 7: a dynamic's
+# update event fires in a tick in which the dynamic was recomputed, with the value after
+# the tick). No firing reaches the body to lift it over, so the function takes its
+# dynamics whole. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+!Changes: fn $Nat, $Nat -> !Nat
+fn !Changes $a, $b = !Updated ($a + $b)
+
+@page: @unit
+@page:
+    !bump <- Ui.Button($label=$"bump")                           # 0
+    $count <- 0 then $count + 1 on !bump
+    let !changed = !Changes $count, $count
+    $seen <- 0 then !changed
+    Ui.Label($text=$"{$seen}")                                   # 1

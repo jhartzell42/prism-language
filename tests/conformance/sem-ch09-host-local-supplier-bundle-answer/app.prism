@@ -1,0 +1,29 @@
+# A supplier that calls a function defined in the host's block, whose arm answers with a
+# bundle written out over the block's event and dynamic: `fn @Supply e` beside the host's
+# line, `@ (("hello" on !add, $count))` in it (Semantics ch. 9, "How a supplier answers":
+# the supplier's blueprint "can read anything the host's block binds"; ch. 4: a function
+# defined in a block reads the block's names; Type System ch. 2, "Bundles": a supplier
+# answers the bundle part by part). sem-ch09-host-named-supplier-bundle-answer with the
+# supplier's function local to the block. Written by Claude on the claude-lowering
+# branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Socket of Element ((!Text, $Nat)):
+    address: Text
+
+@chat: @unit
+@chat:
+    ((!rx, $peers)) <- Pad.Socket(address="chat:7000")
+    $last <- "none" then !rx
+    Ui.Label($text=$"{$peers}: {$last}")
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")                              # 0
+    $count <- 0 then $count + 1 on !add
+    @Supply: fn Element (Ui.* | Pad.*) o -> @o
+    fn @Supply e = match e:
+        Pad.Socket(..): @ (("hello" on !add, $count))
+        otherwise: @Element e
+    ignore <- @HostDocument @chat, \|p, e| @Supply e              # 1/[p]

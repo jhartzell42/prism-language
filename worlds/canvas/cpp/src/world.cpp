@@ -167,6 +167,7 @@ void UnwrapWorld::perform(const TickOut& out) {
         else
             theirs.push_back(r);
     }
+    prelude_.report_gave_up();
     doc_.apply(out.patch);
     if (theirs.size() == out.requests.size()) {
         inner_->perform(out);
@@ -178,7 +179,7 @@ void UnwrapWorld::perform(const TickOut& out) {
 }
 
 std::optional<TickIn> UnwrapWorld::next_inputs() {
-    auto mine = prelude_.take_answers();
+    auto mine = prelude_.take_outputs();
     std::optional<TickIn> input = inner_->next_inputs();
     if (!input) {
         if (mine.empty()) return std::nullopt;

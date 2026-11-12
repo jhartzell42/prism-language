@@ -5,7 +5,7 @@
 //!
 //! 1. last round's undone clean-ups; the started list and the armed `@Defer`s fire; the
 //!    answers a host's supplier computed last tick and the publications of the structural
-//!    dynamics whose snapshot moved last tick ([`Cx::answer_later`]), then the World's
+//!    dynamics whose snapshot moved last tick ([`Cx::output_later`]), then the World's
 //!    answers by path and its pushes by element;
 //! 2. the wakes by height, a bucket per height, each node once per height;
 //! 3. propagation ends, and every read from here on is after the tick;
@@ -187,6 +187,10 @@ impl Cx<'_> {
         v
     }
 
+    /// The height whose wakes run now; none outside the heights' run.
+    pub fn running_height(&self) -> Option<u32> {
+        self.height
+    }
     /// Ask for a wake at `height`, once per height. A wake asked for at or below the
     /// running height runs at the next one (the clamp, Graph ch. 4).
     pub fn wake(&mut self, height: u32, node: Rc<dyn Node>) {
@@ -252,7 +256,7 @@ impl Cx<'_> {
     /// computed answer is a tick late); the publication of a structural dynamic whose
     /// snapshot moved this tick, written at n+1 as a hold is, so its update event fires at
     /// n+1 with the snapshot of n (ch. 7, round 3 ST).
-    pub fn answer_later(&mut self, deliver: Later) {
+    pub fn output_later(&mut self, deliver: Later) {
         self.g.later.push(deliver)
     }
     /// A fault a cell raises where it holds only `&Cx`: the tick fails at its close.

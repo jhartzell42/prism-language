@@ -1,0 +1,14 @@
+# Derived by hand from Semantics ch. 8 (a blueprint value is built at the applying block's next positions; a `$` field is live, so the place changes in place) and ruling TC: the button is 0, the local widget's label 1, the last label 2; the click moves `$n` and the label with it. Never run: prismc refuses the program.
+test the_place_follows_the_dynamic
+
+tick 0
+  added:
+    0: Ui.Button(label="inc")
+    1: Ui.Label(text="line 7")
+    2: Ui.Label(text="end")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="line 8")

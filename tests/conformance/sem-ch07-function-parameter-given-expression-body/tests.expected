@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 7 ("There are no cycles") and ch. 8 (a widget is transparent): the button is place 0, the label place 1; the click asks 1, the response 2 is the hold's step in the same tick, and the label shows it.
+test a_given_function_is_read_by_its_summary
+
+tick 0
+  added:
+    0: Ui.Button(label="ask")
+    1: Ui.Label(text="0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="2")

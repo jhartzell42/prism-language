@@ -1,0 +1,16 @@
+# Derived by hand from Semantics ch. 8 (a widget application is transparent; `@Element e` is a place of the block; "A new place's first value": a plain output is the place's first value, at its build) and ch. 4 (lines numbered in order): the first call builds 0 and 1, the second 2 and 3.
+test both_outputs_come_back
+
+tick 0
+  added:
+    0: Pad.Num(name="n")
+    1: Ui.Label(text="num")
+    2: Ui.Button(label="go")
+    3: Ui.Label(text="button")
+    4: Ui.Label(text="7, 0 clicks")
+
+tick 1
+  in:
+    2: click
+  changed:
+    4: Ui.Label(text="7, 1 clicks")

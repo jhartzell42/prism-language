@@ -1,0 +1,21 @@
+# A function of a block that gives a blueprint, applied as a line of the block: `fn @Row
+# $shown = @Labelled "row", $count + $shown` beside `$more <- @Row $count` (Semantics ch.
+# 4: a function defined in a block reads the block's names and its own parameters; ch.
+# 8: a widget applied is transparent, its places the block's next). Written by Claude on
+# the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@Labelled: fn Text, $Nat -> @$Nat emit Ui.*
+fn @Labelled name, $n:
+    Ui.Label($text=$"{name} {$n}")
+    @ $n + 1
+
+@table: @unit
+@table:
+    !add <- Ui.Button($label=$"add")
+    $count <- 0 then $count + 1 on !add
+    @Row: fn $Nat -> @$Nat emit Ui.*
+    fn @Row $shown = @Labelled "row", $count + $shown
+    $more <- @Row $count
+    Ui.Label($text=$"more {$more}")

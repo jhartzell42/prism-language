@@ -1,0 +1,38 @@
+# A widget of several clauses with a plain result applied to the plain part of a late
+# place's bundle: the place stands in a hosted child whose host answers the `$` part
+# with a structural dynamic, so its first value is asked once the node stands, and the
+# line that takes the plain part is built after it (Semantics ch. 9, "How a supplier
+# answers"; ch. 7, "Structural dynamics", round 3 ST; ch. 8: `<-` builds the child and
+# binds its plain result; ruling TC). sem-ch09-host-late-bundle-plain-part with the
+# plain part a clause widget's argument. Written by Claude on the claude-lowering
+# branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Socket of Element ((Nat, !Text, $Nat)):
+    address: Text
+
+@Wide: fn Nat -> @Nat
+fn @Wide 7:
+    Ui.Label($text=$"seven")
+    @ 1
+fn @Wide k:
+    @ 2
+
+@chat: @unit
+@chat:
+    ((port, !rx, $peers)) <- Pad.Socket(address="chat:7000")           # h0
+    w <- @Wide port                                                    # h1 when port is 7
+    $last <- "none" then !rx
+    Ui.Label($text=$"{port} wide {w} {$peers}: {$last}")               # h2
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")                                   # 0
+    $names <- {1: "one"} then Insert $names, 2, "two" on !add
+    $lens <- for k, $name <- $names:                                   # 1/[k]
+        Ui.Label($text=$name)
+        @ Len $name
+    ignore <- @HostDocument @chat, \|p, e| match e:                    # 2/[p]
+        Pad.Socket(..): @ ((7, "hello" on !add, Size $lens))
+        otherwise: @Element e

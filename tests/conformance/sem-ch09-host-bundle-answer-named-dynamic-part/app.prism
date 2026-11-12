@@ -1,0 +1,24 @@
+# A supplier answers a bundle with a `$` part with a bundle that is a name (Semantics
+# ch. 9, "How a supplier answers"; round 3 DY; Type System ch. 2, "Bundles": a `let`
+# binds a bundle). sem-ch09-host-bundle-live-dynamic-answer with the tuple named first.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Socket of Element ((!Text, $Text)):
+    address: Text
+
+@chat: @unit
+@chat:
+    ((!rx, $link)) <- Pad.Socket(address="chat:7000")
+    $last <- "none" then !rx
+    Ui.Label($text=$"{$link}: {$last}")
+
+@mocked: @unit
+@mocked:
+    !flip <- Ui.Button($label=$"flip")
+    $state <- "down" then "up" on !flip
+    let pair = (("hello" on !flip, $state))
+    ignore <- @HostDocument @chat, \|p, e| match e:
+        Pad.Socket(..): @ pair
+        otherwise: @Element e

@@ -1,0 +1,19 @@
+# `any e` where `e`'s type has no impl of the existential's trait, in a place whose type
+# is known only once the line is unified (a constructor's field): `no-impl` at the `any`
+# (Type System ch. 5, "Existentials are dictionaries": `any e` solves the bounds at `e`'s
+# type). The expected text is derived by hand. Written by Claude on the claude-bugs
+# branch; subject to change.
+emit Ui.*
+use Ui.*
+
+type Shut = record:
+    n: Nat
+
+type Watch = record:
+    label: Text
+    value: any ^Show
+
+@main: @unit
+@main:
+    let w = Watch(label="shut", value=any Shut(n=1))
+    Ui.Label($text=$"{w.label}")

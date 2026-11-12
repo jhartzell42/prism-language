@@ -49,9 +49,9 @@ PR's description (#20) says the same at more length; the numbers are in
     both on jemalloc, on a later boot, from 76.9 s to 61.3 s and from 49.9 s to 39.6 s; the
     moves and the one `Rc` were flat. Under the same allocator C++ takes about 1.5 times
     Rust's time (doubt CH1); `bench/running/RESULTS.md` has the tip's numbers as built.
-- **Programs:** `examples/chess` (the rules, the board, and a window with a move list,
+- **Programs:** `examples/basic-chess` (the rules, the board, and a window with a move list,
   Back, Forward, Reset and a settings dialog, on the window library
-  `examples/chess/window`), the GUI table `bench/gui/prism` (js-framework-benchmark's
+  `examples/basic-chess/basic_window`), the GUI table `bench/gui/prism` (js-framework-benchmark's
   operations), `bench/gui/gtk` (the same in C with GTK 3), the conformance corpus
   `tests/conformance/` (130 programs), the checker's corpus (`tests/checker/`, 162
   negative programs), the cost pairs (`tests/cost/`, four).
@@ -109,9 +109,9 @@ Each has Claude's pick where it stands; his word overrules by editing.
 - **The default back end:** Rust (claude/backend.md). What would flip it is listed there.
 - **EP** (claude/incremental-host-document.md): each host-document entry published per
   place, structural, one tick per host level for a value change.
-- **The window library's doubts** (examples/chess/window/README.md): DG (a slider drags
+- **The window library's doubts** (examples/basic-chess/basic_window/README.md): DG (a slider drags
   only once the canvas Worlds send pointer motion), OP, HS, FS; the chess doubts
-  (examples/chess/README.md): PC, DT, NT (moves written in coordinates), TS (the board's
+  (examples/basic-chess/README.md): PC, DT, NT (moves written in coordinates), TS (the board's
   and window's transcripts are not in the repository, over 10 KB), HT (13 ticks per press
   to idle).
 - **The design note's doubts** (claude/incremental-host-document.md): ET, PB, SE, RF

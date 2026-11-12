@@ -173,9 +173,8 @@ fn ParseReference p = match Kind p:
         let start = Here p
         let ((name, p1)) = ParseSName p
         if IsUpperName name:
-            # A named lens applied, `&Acc &_` (out of this compiler).
-            let p2 = OutOfScope p1, name.span, "named lenses `&Home` and `Over`", "the named lens `{NameText name}` is out of this compiler; write its path, `&_.score.home`"
-            let ((inner, q)) = ParseReference p2
+            # A named lens applied, `&Acc &_`: a reference, as its argument is.
+            let ((inner, q)) = ParseReference p1
             let callee = Expr(kind=(EName name), span=start)
             ((Expr(kind=(ECall callee, [[Arg(marks="", ?name=nil, value=inner, span=inner.span)]], False, False), span=(To start, inner.span)), q))
         else: LensSteps (Expr(kind=(EName name), span=name.span)), p1

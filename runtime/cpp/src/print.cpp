@@ -241,6 +241,8 @@ void Show<Pod>::show(const Pod& s, Printer& p) {
         return p.map_of(*s.if_map());
     case K::Nil:
         return p.option(nullptr);
+    case K::Absent:
+        return p.raw("-");
     case K::Some: {
         ShowRef r(*s.if_some());
         return p.option(&r);

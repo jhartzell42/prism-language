@@ -76,8 +76,8 @@ fn TailHere lx, env, e = match e.kind:
             let ((ptys, ignore)) = SchemeParts lx, qk
             let fields = JobFieldNames lx, qk
             let vals = NamedArgsOwned lx, env, qk, args
-            if EntersAtOnce lx, qk, args: XMethod (XCall (RefIn lx, (OwnerOf qk), "start_{job}"), vals), "cycle", [[]]
-            else: if IsColorPoly lx, qk: XCtor (RefRuntime "prism_rtl::Turn::More"), [[(XCall (RefIn lx, (OwnerOf qk), "start_{job}"), vals)]]
+            if EntersAtOnce lx, qk, args: XMethod (StartOf lx, qk, callee, vals), "cycle", [[]]
+            else: if (IsColorPoly lx, qk) or JobByStart lx, qk: XCtor (RefRuntime "prism_rtl::Turn::More"), [[(StartOf lx, qk, callee, vals)]]
             else: XCtor (RefRuntime "prism_rtl::Turn::More"), [[(XCall (RefRuntime "std::Rc::new"), [[(XRecord jobName, (Each (Range0 (Len vals)), \|i| (((Or fields[i], "arg"), (Or vals[i], (XUnit))))))]])]]
         nil: match ?LocalJobFn lx, env, callee:
             ? f: XMethod (StartCall f, (StartArgs lx, env, f, args)), "cycle", [[]]
@@ -116,6 +116,13 @@ fn TailFromK lx, env, b, i, Last:
                 EUpdate target, ub: if HasTopWhile lx, ub: ? ((p, target, ub, x)) else: nil
                 otherwise: nil
             otherwise: nil
+        let ?generic = match s.kind:
+            SLet p, ignore, x: match p.kind:
+                PName n: match lx.gens[PlaceKey lx, n.span]:
+                    ? gn: ? ((n, gn, x))
+                    nil: nil
+                otherwise: nil
+            otherwise: nil
         let ?branched = match s.kind:
             SLet p, ignore, x: if BranchJobs lx, env, x: ? (((? p), x)) else: nil
             SExpr x: if BranchJobs lx, env, x: ? ((nil, x)) else: nil
@@ -123,10 +130,13 @@ fn TailFromK lx, env, b, i, Last:
         match ?looping:
             ? ((p, target, ub, x)):
                 UpdTail lx, env, target, ub, b.span, \|en, v|
-                    let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "l{s.span.start}"
+                    let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "l{SpanStem s.span}"
                     let rest = TailFromK lx, (BindAll en, po.binds), b, i + 1, Last
                     Prepend [[(DoLet po.pa, v)]], rest
-            nil: match ?found:
+            nil: match ?generic:
+              # a generalized `let`: its value at each instantiation, calls and all
+              ? ((n, gn, x)): GenericLetTail lx, env, b, s, n, gn, x, 0, \|env2| TailFromK lx, env2, b, i + 1, Last
+              nil: match ?found:
                 ? c: Frame lx, env, c, (RestReads lx, s.span, c.span, b.span), \|env2| TailFromK lx, env2, b, i, Last
                 nil: match ?branched:
                     ? ((?p, x)): KStmt lx, env, b, i, s, ?p, x, Last
@@ -136,6 +146,36 @@ fn TailFromK lx, env, b, i, Last:
                             XBlock more, last: XBlock (Append dos, more), last
                             last: if (Len dos) == 0: last else: XBlock dos, last
 
+# A generalized local `let` in an unbounded function's body (pick LG, `GenericLet`), from
+# its instantiation `k` on: each instantiation's value is lowered at that instantiation,
+# so a call it makes is a frame whose result has the type the instantiation gives it (a
+# color no use decides is bounded there), and a call in a branch ends its branch in a
+# continuation over that instantiation's value (`KValue`). The places the frames of one
+# instantiation bound are unbound again before the next lowers the same expression. With
+# no use the `let` runs once all the same, its calls frames of their own, unless it is a
+# lambda (`LetInstantiations`).
+GenericLetTail: unbounded fn Lx, Env, Block, Stmt, SName, GenNote, Expr, Nat, (unbounded fn Env -> Ex) -> Ex
+fn GenericLetTail lx, env, b, s, n, gn, x, k, Rest:
+    let distinct = LetInstantiations lx, gn, x
+    match distinct[k]:
+        nil: Rest env
+        ? inst:
+            let lxk = AtInstance lx, inst
+            let last = k + 1 >= (Len distinct)
+            let WithBound = \|en, value|
+                let ((dos, en2)) = GenericLetBound lx, en, n, gn, x, k, value
+                let en3 = if last: en2 else: Fold (ExprsIn x), en2, \|e2, inner| update e2:
+                    &_.spans <= Remove &_.spans, (PlaceKey lx, inner.span)
+                Prepend dos, (GenericLetTail lx, en3, b, s, n, gn, x, k + 1, Rest)
+            match ?FrameCall lxk, env, x, False:
+                ? c: Frame lxk, env, c, (RestReads lx, s.span, c.span, b.span), \|env2| GenericLetTail lx, env2, b, s, n, gn, x, k, Rest
+                nil:
+                    if BranchJobs lxk, env, x:
+                        # what follows reads the statement again for the next instantiation
+                        let from = if last: Range(start=s.span.end, end=s.span.end, origin=s.span.origin) else: s.span
+                        KValue lxk, env, from, b, x, "{SpanStem s.span}w{k}", WithBound
+                    else: WithBound env, (Own (ValueOf lxk, env, x))
+
 # D6 for a call a statement's value needs from a branch: an arm of a `match`, a branch of
 # an `if`, the right of `and` or `or` (DS). What follows the statement is bound once, a
 # continuation `k` over its value that each branch ends in, so a call in a branch is a
@@ -143,7 +183,20 @@ fn TailFromK lx, env, b, i, Last:
 # are cloned into it first, as a frame's are.
 KStmt: unbounded fn Lx, Env, Block, Nat, Stmt, ?Pattern, Expr, (unbounded fn Env, ?Expr -> Ex) -> Ex
 fn KStmt lx, env, b, i, s, ?p, x, Last:
-    let rest = RestReads lx, (Range(start=s.span.end, end=s.span.end)), (Range(start=s.span.end, end=s.span.end)), b.span
+    let after = Range(start=s.span.end, end=s.span.end, origin=s.span.origin)
+    KValue lx, env, after, b, x, "{SpanStem s.span}", \|envK, value| match ?p:
+        ? p:
+            let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "l{SpanStem s.span}"
+            Prepend [[(DoLet po.pa, value)]], (TailFromK lx, (BindAll envK, po.binds), b, i + 1, Last)
+        nil: TailFromK lx, envK, b, i + 1, Last
+
+# A value with a call in a branch (`KStmt`), given to what follows it: `Body` is bound
+# once as a continuation `k` over the value, which each branch ends in. The locals the
+# source reads from `from` to the end of the block are cloned into it first, as a
+# frame's are.
+KValue: unbounded fn Lx, Env, Range, Block, Expr, Text, (unbounded fn Env, Ex -> Ex) -> Ex
+fn KValue lx, env, from, b, x, label, Body:
+    let rest = RestReads lx, from, from, b.span
     # every local the rest reads, owned or borrowed: the branches run before `k` and read
     # their own, so `k` takes copies
     let caps = Fold (Keys env.names), [[]], \|acc, k| match env.names[k]:
@@ -152,14 +205,9 @@ fn KStmt lx, env, b, i, s, ?p, x, Last:
     let dos = Each caps, \|((ignore, rs, mode, bt))| DoLet (PaBind (OuterName rs)), (Own (VlPlace rs, mode, bt))
     let envK = Fold caps, env, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
     let t = OutTyOf lx, (Peel (TypeAt lx, x.span))
-    let v = "v{s.span.start}"
-    let kName = "k_let{s.span.start}"
-    let body = match ?p:
-        ? p:
-            let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "l{s.span.start}"
-            Prepend [[(DoLet po.pa, (XVar v))]], (TailFromK lx, (BindAll envK, po.binds), b, i + 1, Last)
-        nil: TailFromK lx, envK, b, i + 1, Last
-    let kDo = DoLet (PaBind kName), (XClosure True, [[(PaTyped (PaBind v), t)]], body)
+    let v = "v{label}"
+    let kName = "k_let{label}"
+    let kDo = DoLet (PaBind kName), (XClosure True, [[(PaTyped (PaBind v), t)]], (Body envK, (XVar v)))
     Prepend (Push dos, kDo), (TailK lx, env, x, \|en, val| XApply (XVar kName), [[val]])
 
 # An expression whose value goes to a continuation `K` (`KStmt`): a call it makes whatever
@@ -176,7 +224,7 @@ fn TailK lx, env, e, K = match ?FrameCall lx, env, e, False:
             EGroup y: TailK lx, env, y, K
             EMatch sc, arms if BranchJobs lx, env, e:
                 let sty = TypeAt lx, sc.span
-                let label = "m{e.span.start}"
+                let label = "m{SpanStem e.span}"
                 let xarms = Each (Range0 (Len arms)), \|j|
                     let arm = Or arms[j], dummyArm
                     let po = ArmPat lx, arm.?pattern, sty, Owned, "{label}_{j}"
@@ -271,7 +319,7 @@ fn UpdTailFrom lx, outer, env, b, i, to, Cont:
     if i >= (Len b.stmts): Cont outer, (XVar "this")
     else:
         let s = Or b.stmts[i], dummyStmtL
-        let rest = RestReads lx, (Range(start=s.span.end, end=s.span.end)), (Range(start=s.span.end, end=s.span.end)), to
+        let rest = RestReads lx, (Range(start=s.span.end, end=s.span.end, origin=s.span.origin)), (Range(start=s.span.end, end=s.span.end, origin=s.span.origin)), to
         let Next = \|o2, e2| UpdTailFrom lx, o2, e2, b, i + 1, to, Cont
         if (IsCycleWhile lx, s) or (HoldsCycleWhile lx, s): StmtJob lx, outer, env, s, rest, Next
         else:
@@ -324,10 +372,10 @@ fn WhileJob lx, outer, env, c, wb, span, restReads, Cont:
     let turn = match c:
         CondExpr x: XIf (AsBool (ValueOf lx, envC, x)), (Body envC), stop
         CondBind p, x, ?g:
-            let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "w{span.start}"
+            let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "w{SpanStem span}"
             let envB = BindAll envC, po.binds
             let conds = Append po.conds, (GuardConds lx, envB, ?g)
-            Own (ArmsValue (Own (ValueOf lx, envC, x)), [[XArm(pat=po.pa, conds=conds, body=(Body envB)), XArm(pat=PaWild, conds=[[]], body=stop)]], "'w{span.start}", resTy)
+            Own (ArmsValue (Own (ValueOf lx, envC, x)), [[XArm(pat=po.pa, conds=conds, body=(Body envB)), XArm(pat=PaWild, conds=[[]], body=stop)]], "'w{SpanStem span}", resTy)
     # The continuation: the state by its names again, and the outer locals the rest reads.
     let outCaps = CapsIn outer, restReads, names
     let outDos = Each outCaps, \|((ignore, rs, mode, bt))| DoLet (PaBind (OuterName rs)), (Own (VlPlace rs, mode, bt))
@@ -363,7 +411,7 @@ fn IfJob lx, outer, env, c, thenB, ?elseB, span, restReads, Cont:
     let outDos = Each outCaps, \|((ignore, rs, mode, bt))| DoLet (PaBind (OuterName rs)), (Own (VlPlace rs, mode, bt))
     let outer2 = Fold outCaps, outer, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
     let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
-    let kName = "k_if{span.start}"
+    let kName = "k_if{SpanStem span}"
     let kDo = DoLet (PaBind kName), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))
     let ToK = \|o2, e2| XApply (XVar kName), [[pack]]
     let Branch = \|b| UpdTailFrom lx, env, env, b, 0, b.span, ToK
@@ -373,9 +421,9 @@ fn IfJob lx, outer, env, c, thenB, ?elseB, span, restReads, Cont:
     let choose = match c:
         CondExpr x: XIf (AsBool (ValueOf lx, env, x)), (Branch thenB), elseX
         CondBind p, x, ignore:
-            let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "u{x.span.start}"
+            let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "u{SpanStem x.span}"
             let thenX = UpdTailFrom lx, (BindAll env, po.binds), (BindAll env, po.binds), thenB, 0, thenB.span, ToK
-            Own (ArmsValue (Own (ValueOf lx, env, x)), [[XArm(pat=po.pa, conds=po.conds, body=thenX), XArm(pat=PaWild, conds=[[]], body=elseX)]], "'u{x.span.start}", OutTurn)
+            Own (ArmsValue (Own (ValueOf lx, env, x)), [[XArm(pat=po.pa, conds=po.conds, body=thenX), XArm(pat=PaWild, conds=[[]], body=elseX)]], "'u{SpanStem x.span}", OutTurn)
     Prepend (Push outDos, kDo), choose
 
 # A `match` of an `update` block in a job whose arms hold a cycle-point `while`, as `IfJob`
@@ -396,17 +444,17 @@ fn MatchJob lx, outer, env, scrut, arms, span, restReads, Cont:
     let outDos = Each outCaps, \|((ignore, rs, mode, bt))| DoLet (PaBind (OuterName rs)), (Own (VlPlace rs, mode, bt))
     let outer2 = Fold outCaps, outer, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
     let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
-    let kName = "k_match{span.start}"
+    let kName = "k_match{SpanStem span}"
     let kDo = DoLet (PaBind kName), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))
     let ToK = \|o2, e2| XApply (XVar kName), [[pack]]
     let sty = TypeAt lx, scrut.span
     let xarms = Each (Range0 (Len arms)), \|i|
         let arm = Or arms[i], dummyArm
-        let po = ArmPat lx, arm.?pattern, sty, Owned, "u{scrut.span.start}_{i}"
+        let po = ArmPat lx, arm.?pattern, sty, Owned, "u{SpanStem scrut.span}_{i}"
         let envA = BindAll env, po.binds
         let guarded = Append po.conds, (GuardConds lx, envA, arm.?guard)
         XArm(pat=po.pa, conds=guarded, body=(UpdTailFrom lx, envA, envA, arm.body, 0, arm.body.span, ToK))
-    Prepend (Push outDos, kDo), (Own (ArmsValue (Own (ValueOf lx, env, scrut)), xarms, "'u{scrut.span.start}", OutTurn))
+    Prepend (Push outDos, kDo), (Own (ArmsValue (Own (ValueOf lx, env, scrut)), xarms, "'u{SpanStem scrut.span}", OutTurn))
 
 # A `for` of an `update` block in a job whose body holds a cycle-point `while`: a loop over
 # its entries, as `WhileJob`'s `loop_turns` is over a condition, taking the next entry its
@@ -423,8 +471,9 @@ fn ForJob lx, outer, env, ?binders, source, body, span, restReads, Cont:
     let pat = PaTuple (Each names, \|n| PaMut "{n}")
     let pack = XTuple (Each names, \|n| XVar n)
     let envS = Fold state, env, \|en, ((k, rs, bt))| Bind en, k, (BnLocal (XVar rs), Owned, bt)
-    let src = Own (ValueOf lx, env, source)
-    let sty = Peel (TypeAt lx, source.span)
+    # (a non-empty collection is run over as the collection it is)
+    let src = Own (PlainValue (ValueOf lx, env, source))
+    let sty = Collection (Peel (TypeAt lx, source.span))
     let ((kt, vt, isArray)) = match sty:
         TyArray v: ((OutNat, (OutTyOf lx, v), True))
         TyMap k, v: (((OutTyOf lx, k), (OutTyOf lx, v), False))
@@ -433,8 +482,8 @@ fn ForJob lx, outer, env, ?binders, source, body, span, restReads, Cont:
         TyArray v: ((v, (TyCon "Nat", [[]])))
         TyMap k, v: ((v, k))
         otherwise: ((TyErr, TyErr))
-    let keyName = "k{span.start}"
-    let valName = "v{span.start}"
+    let keyName = "k{SpanStem span}"
+    let valName = "v{SpanStem span}"
     let loopReads = ReadsIn lx, span
     # The body's other locals, cloned into the step closure.
     let caps = CapsIn envS, loopReads, names
@@ -446,27 +495,39 @@ fn ForJob lx, outer, env, ?binders, source, body, span, restReads, Cont:
     # state across a cycle, so the entry is a state of the turn's own (`&s`, which an inner
     # loop's job takes with the rest), written back to its place by its key as the turn
     # ends.
+    # The bare form rebinds `&_` to the entry (Semantics ch. 5, "Statements"): over a
+    # reference path a state of the turn's own written back as `&s` is, over a plain
+    # value the turn's copy. The block's own `&_` stays a state of the turn under
+    # `blockKey`, so a job inside the turn takes it with the rest, and the entry is
+    # written back through it.
+    let bare = IsBareFor ?binders
+    let blockKey = "&_#block{SpanStem span}"
     let ?ref = match ?RefBinder ?binders:
-        ? n: if IsRefPath source: ? n else: nil
-        nil: nil
-    let refName = "r{span.start}"
+        ? n: if IsRefPath source: ? (SNameKey n) else: nil
+        nil: if bare and IsRefPath source: ? "&_" else: nil
+    let envT = if not bare: envK else: match envK.names["&_"]:
+        ? b: Bind envK, blockKey, b
+        nil: envK
+    let refName = "r{SpanStem span}"
     let ((binds, envB)) = match ((?ref, ?binders)):
-        ((? n, ignore)): (([[(DoLet (PaTyped (PaMut refName), vt), (XVar valName))]], (Bind envK, (SNameKey n), (BnLocal (XVar refName), Owned, vt))))
-        ((nil, nil)): (([[]], envK))
+        ((? nkey, ignore)): (([[(DoLet (PaTyped (PaMut refName), vt), (XVar valName))]], (Bind envT, nkey, (BnLocal (XVar refName), Owned, vt))))
+        ((nil, nil)): (([[(DoLet (PaTyped (PaMut refName), vt), (XClone (XVar valName)))]], (Bind envT, "&_", (BnLocal (XVar refName), Owned, vt))))
         ((nil, ? fb)): match fb.?second:
             nil:
-                let po = RustPat lx, fb.first, vty, Owned, "e{span.start}"
+                let po = RustPat lx, fb.first, vty, Owned, "e{SpanStem span}"
                 (([[(DoLet po.pa, (XClone (XVar valName)))]], (BindAll envK, po.binds)))
             ? second:
-                let pk = RustPat lx, fb.first, kty, Owned, "k{span.start}_"
-                let pv = RustPat lx, second, vty, Owned, "e{span.start}"
+                let pk = RustPat lx, fb.first, kty, Owned, "k{SpanStem span}_"
+                let pv = RustPat lx, second, vty, Owned, "e{SpanStem span}"
                 ((([[(DoLet pk.pa, (XClone (XVar keyName))), (DoLet pv.pa, (XClone (XVar valName)))]]), (BindAll (BindAll envK, pk.binds), pv.binds)))
     let done = XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[pack]]
     let Ended = \|o2, ignore|
         match ?ref:
-            ? n:
-                let entry = XDeref (XCall (HelperRef (if isArray: "at_mut" else: "at_mut_map")), [[(XRefMut (PlaceOf lx, o2, source)), (XRef (XVar keyName))]])
-                let kept = match o2.names[SNameKey n]:
+            ? nkey:
+                # (the path is the block's: its `&_`, not the turn's)
+                let o2b = WithBlockTopic o2, blockKey
+                let entry = XDeref (XCall (HelperRef (if isArray: "at_mut" else: "at_mut_map")), [[(XRefMut (PlaceOf lx, o2b, source)), (XRef (XVar keyName))]])
+                let kept = match o2.names[nkey]:
                     ? (BnLocal rs, ignore, ignore): rs
                     otherwise: InternalBug "a `for &` entry's state lost in its turn"
                 XBlock [[(DoAssign entry, kept)]], done
@@ -480,6 +541,13 @@ fn ForJob lx, outer, env, ?binders, source, body, span, restReads, Cont:
     let looping = HelperRef (if isArray: "for_turns_indexed" else: "for_turns_keyed")
     let enter = XCall (HelperRef "call_then"), [[(XCall looping, [[src, pack, stepFn]]), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))]]
     Prepend outDos, enter
+
+# An environment whose `&_` is the block's own again, kept under `blockKey` through a
+# bare `for`'s turn (`ForJob`).
+WithBlockTopic: fn Env, Text -> Env
+fn WithBlockTopic env, blockKey = match env.names[blockKey]:
+    ? b: Bind env, "&_", b
+    nil: env
 
 # The name an instantiation's key is of (`Twin#inst1`, pick LG); any other key itself.
 InstanceOf: fn Text -> Text
@@ -550,7 +618,7 @@ fn Frame lx, env, call, restReads, Cont = match call.kind:
         let base = match ?qk:
             ? q: Or lx.rsNames[q], (Snake (BareName q))
             nil: Snake (CalleeText c)
-        let v = "{base}_{call.span.start}"
+        let v = "{base}_{SpanStem call.span}"
         let t = OutTyOf lx, (Peel (TypeAt lx, call.span))
         let caps = Fold (Keys env.names), [[]], \|acc, k| match env.names[k]:
             ? (BnLocal rs, mode, bt): if (mode == ByRef or mode == RcRef) and Reads restReads, k: Push acc, ((k, rs, mode, bt)) else: acc
@@ -566,9 +634,28 @@ fn Frame lx, env, call, restReads, Cont = match call.kind:
             ? ln if (Len ln.operands) > 0: LiftedFrame lx, env2, env3, c, ?qk, base, args, call, v, t, ln, ln.operands, Cont
             otherwise:
                 let ((job, how)) = FrameJob lx, env2, c, ?qk, base, args, call
-                XCall how, [[job, (XClosure True, [[(PaTyped (PaBind v), t)]], (Cont env3))]]
+                XCall how, [[job, (FrameTaker lx, ?qk, c, call, v, t, (Cont env3))]]
         if (Len dos) == 0: enter else: XBlock dos, enter
     otherwise: Cont env
+
+# The closure a frame's job resumes: it takes the job's result as `name`, of the call's
+# type `t`, and runs `rest`. Where the callee's signature gives a function of the callee's
+# own color and the call makes the color bounded, the job gives the signature's value (a
+# `Start`), made again as the call's first (`Recolored`), as a plain call's is
+# (`GlobalCall`, `?SignatureResult`).
+FrameTaker: unbounded fn Lx, ?Text, Expr, Expr, Text, OutTy, Ex -> Ex
+fn FrameTaker lx, ?qk, c, call, name, t, rest:
+    let ?signature = match ?qk:
+        ? q: match lx.g.vals[q]:
+            ? callee: ?SignatureResult lx, callee, c.span, call.span, t
+            nil: nil
+        nil: nil
+    match ?signature:
+        ? signatureTy:
+            let job = "{name}_job"
+            let walked = Recolored lx, (XVar job), signatureTy, (Peel (SubstTy lx, (TypeAt lx, call.span))), 0
+            XClosure True, [[(PaTyped (PaBind job), (OutTyOf lx, signatureTy))]], (Prepend [[(DoLet (PaTyped (PaBind name), t), walked)]], rest)
+        nil: XClosure True, [[(PaTyped (PaBind name), t)]], rest
 
 # The job a frame enters, and the helper that enters it.
 FrameJob: unbounded fn Lx, Env, Expr, ?Text, Text, [Arg], Expr -> ((Ex, Ref))
@@ -579,7 +666,7 @@ fn FrameJob lx, env2, c, ?qk, base, args, call:
             ? f: StartArgs lx, env2, f, args
             nil: Each args, \|a| Own (ValueOf lx, env2, a.value)
     match ?qk:
-        ? q: (((XCall (RefIn lx, (OwnerOf q), "start_{base}"), vals), (HelperRef (if EntersAtOnce lx, q, args: "call_value" else: "call_then"))))
+        ? q: (((StartOf lx, q, c, vals), (HelperRef (if EntersAtOnce lx, q, args: "call_value" else: "call_then"))))
         nil: match ?LocalJobFn lx, env2, c:
             ? f: (((StartCall f, vals), (HelperRef "call_value")))
             nil: match ?PreludeJobCall lx, env2, call:
@@ -601,7 +688,7 @@ fn LiftedFrame lx, env, env3, c, ?qk, base, args, call, v, t, ln, operands, Cont
             &_.tys <= Insert &_.tys, (PlaceKey lx, r), (InnerTy (TypeAt lx, r))
         let ((job, how)) = FrameJob lxOps, env, c, ?qk, base, args, call
         let wrapped = XCtor (RefRuntime (if ln.sigil == "~": "std::Ok" else: "std::Some")), [[(XVar "{v}_in")]]
-        XCall how, [[job, (XClosure True, [[(PaTyped (PaBind "{v}_in"), inner)]], (XBlock [[(DoLet (PaTyped (PaBind v), t), wrapped)]], (Cont env3)))]]
+        XCall how, [[job, (FrameTaker lxIn, ?qk, c, call, "{v}_in", inner, (Prepend [[(DoLet (PaTyped (PaBind v), t), wrapped)]], (Cont env3)))]]
     otherwise:
         let r = Or operands[0], call.span
         let sv = ValueOf lx, env, (Or (?OperandAt call, r), dummyExpr)
@@ -610,7 +697,7 @@ fn LiftedFrame lx, env, env3, c, ?qk, base, args, call, v, t, ln, operands, Cont
             VlOwned ignore, ignore: True
             otherwise: False
         let mode = if owned: Owned else: ByRef
-        let x = "o{r.start}_{r.end}"
+        let x = "o{SpanStem r}_{r.end}"
         let env2 = BindSpan env, (PlaceKey lx, r), (VlPlace (XVar x), mode, it)
         let present = LiftedFrame lx, env2, env3, c, ?qk, base, args, call, v, t, ln, (Drop operands, 1), Cont
         let absent = if ln.sigil == "~": XCtor (RefRuntime "std::Err"), [[Own (VlPlace (XVar "{x}_e"), mode, OutError)]] else: XTyped (XNone), t
@@ -651,7 +738,7 @@ fn CalleeText c = match c.kind:
 # included: a local its arguments name is cloned before the frame, so that no inner
 # frame finds it still borrowed.
 RestReads: fn Lx, Range, Range, Range -> [Text]
-fn RestReads lx, from, call, to = ReadsIn lx, (Range(start=from.start, end=to.end))
+fn RestReads lx, from, call, to = ReadsIn lx, (Range(start=from.start, end=to.end, origin=from.origin))
 
 # The names of the locals read in a range of the file being lowered, as the checker
 # resolved each use (pick UN): a name in a comment or a text is no read.
@@ -672,7 +759,7 @@ TailMatch: unbounded fn Lx, Env, Expr, [Arm], Range -> Ex
 fn TailMatch lx, env, s, arms, span:
     let sv = ValueOf lx, env, s
     let sty = TypeAt lx, s.span
-    let label = "m{span.start}"
+    let label = "m{SpanStem span}"
     let byRef = Each (Range0 (Len arms)), \|i| ArmPat lx, (Or arms[i], dummyArm).?pattern, sty, ByRef, "{label}_{i}"
     let chain = Fold byRef, False, \|f, po| f or Fold po.conds, False, \|f2, c| f2 or IsLetCond c
     let owned = match sv:
@@ -698,6 +785,29 @@ fn ?TailCallee lx, env, callee = match callee.kind:
                 ? qk: if (HasText lx.unbs, qk) and not (InPrelude lx, qk): ? qk else: nil
                 nil: nil
     otherwise: nil
+
+# Whether an unbounded function's job is made by its `Start` alone, never by its fields:
+# one with a type parameter that no parameter's type names (`unbounded fn Nat -> [a]`),
+# whose struct has a marker field for it that the `Start` fills (the emitters' job).
+JobByStart: unbounded fn Lx, Text -> Bool
+fn JobByStart lx, qk = match lx.g.vals[qk]:
+    ? v:
+        let ((ptys, ignore)) = SchemeParts lx, qk
+        let named = Fold ptys, [[]], \|acc, p| UnionTexts acc, (TyParamsIn (OutTyOf lx, (Peel p)))
+        Fold (SchemeGenerics lx, v.scheme), False, \|found, ((g, ignore2))| found or not (HasText named, g)
+    nil: False
+
+# The call of an unbounded function's `Start` at the callee `callee`. Where the job is
+# made by its `Start` alone (`JobByStart`: a type parameter no argument decides), the
+# type parameters are written out, as the callee's type there gives them.
+StartOf: unbounded fn Lx, Text, Expr, [Ex] -> Ex
+fn StartOf lx, qk, callee, vals:
+    let start = RefIn lx, (OwnerOf qk), "start_{Or lx.rsNames[qk], (Snake (BareName qk))}"
+    match lx.g.vals[qk]:
+        ? v if JobByStart lx, qk: match ?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, callee.span), {}:
+            ? found: if Fold v.scheme.qs, True, \|all, q| all and HasKey found, q: XCallAt start, (Each v.scheme.qs, \|q| OutTyOf lx, (Or found[q], TyErr)), vals else: XCall start, vals
+            nil: XCall start, vals
+        otherwise: XCall start, vals
 
 SchemeParts: fn Lx, Text -> (([Ty], Ty))
 fn SchemeParts lx, qk = match lx.g.vals[qk]:
@@ -733,7 +843,9 @@ fn JobDefOf lx, qk, clauses, sc:
         other: (([[]], other))
     let pts = Each ptys, \|p| OutTyOf lx, (Peel p)
     let names = ParamNames lx, clauses, pts
-    let body = JobClauses lx, clauses, names, ptys, pts
+    let lxb = update lx:
+        &_.inDefinition <= qk
+    let body = JobClauses lxb, clauses, names, ptys, pts
     let base = Or lx.rsNames[qk], (Snake (BareName qk))
     JobDef(name=(Camel (BareName qk)), start="start_{base}", generics=(SchemeGenerics lx, sc), fields=(Each (Range0 (Len pts)), \|i| (((Or (Each names, \|((n, ignore))| n)[i], "arg"), (Or pts[i], OutUnit)))), ret=(OutTyOf lx, (Peel res)), body=body, doc=(SignatureText lx, qk))
 

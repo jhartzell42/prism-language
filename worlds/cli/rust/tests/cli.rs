@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use prism_rtl::*;
-use prism_world_cli::{CliWorld, MemFs, RealFs};
+use prism_world_cli::{CliWorld, Console, MemFs, RealFs};
 
 // ---- A program around one root node -----------------------------------------------------
 
@@ -307,6 +307,93 @@ fn a_wake_with_a_delay_waits_for_it() {
     let t = Instant::now();
     assert_eq!(drive::<Prog<Later<30>>>(&mut world, &[], 100), 2);
     assert!(t.elapsed() >= Duration::from_millis(30), "{:?}", t.elapsed());
+}
+
+// ---- Console ----------------------------------------------------------------------------
+//
+// tag Console.Read of Element !Text:
+//     name: Text
+// tag Console.Print of Element:
+//     name: Text
+//     !lines: [Text]
+//
+// @main:
+//     !line <- Console.Read(name="tty")                                    # 0
+//     Console.Print(name="tty", !lines=(Reply !line))                      # 1
+//
+// `Reply` gives "heard {line}" and the tick the line arrived in, so the test sees one line
+// handed in per tick.
+
+struct Echo {
+    path: Path,
+}
+
+impl Root for Echo {
+    fn construct(path: Path, cx: &mut Cx) -> Result<Rc<Self>, Fault> {
+        let node = Rc::new(Echo { path });
+        cx.added(node.path.at(0), Pod::element("Console.Read", vec![("name", Pod::text("tty"))]));
+        cx.added(node.path.at(1), Pod::element("Console.Print", vec![("name", Pod::text("tty"))]));
+        Ok(node)
+    }
+}
+
+impl Node for Echo {
+    fn answer(self: Rc<Self>, at: &[Segment], v: &Pod, cx: &mut Cx) -> Done {
+        match at {
+            [Segment::Pos(0)] => {
+                let line = v.as_text().ok_or(Fault::answer("expected a line"))?.to_string();
+                let lines = vec![Pod::text(format!("heard {line}").as_str()), Pod::text(format!("at tick {}", cx.tick()).as_str())];
+                cx.request(self.path.at(1), Some("lines"), Pod::Array(lines));
+                Ok(())
+            }
+            _ => no_place(at),
+        }
+    }
+}
+
+/// What the World wrote, kept where the test can read it.
+#[derive(Clone, Default)]
+struct Written(Rc<std::cell::RefCell<Vec<u8>>>);
+
+impl std::io::Write for Written {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.borrow_mut().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn each_line_typed_is_answered_in_a_tick_of_its_own_and_the_end_of_input_exits_0() {
+    let written = Written::default();
+    let input = std::io::Cursor::new(b"e2e4\r\n\nlast, no line end".to_vec());
+    let mut world = CliWorld::new(MemFs::default(), vec![]).with_console(Console::new(input, written.clone()));
+    assert_eq!(drive::<Prog<Echo>>(&mut world, &[], 100), 0);
+    let out = String::from_utf8(written.0.borrow().clone()).unwrap();
+    assert_eq!(out, "heard e2e4\nat tick 1\nheard \nat tick 2\nheard last, no line end\nat tick 3\n");
+}
+
+#[test]
+fn a_program_with_no_console_read_never_reads() {
+    struct Silent;
+    impl Node for Silent {}
+    impl Root for Silent {
+        fn construct(path: Path, cx: &mut Cx) -> Result<Rc<Self>, Fault> {
+            cx.added(path.at(0), Pod::element("Console.Print", vec![("name", Pod::text("tty"))]));
+            Ok(Rc::new(Silent))
+        }
+    }
+    /// An input that fails the test if it is ever read.
+    struct Untouched;
+    impl std::io::Read for Untouched {
+        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+            panic!("the World read an input no Console.Read asked for")
+        }
+    }
+    let mut world = CliWorld::new(MemFs::default(), vec![]).with_console(Console::new(Untouched, Written::default()));
+    assert_eq!(drive::<Prog<Silent>>(&mut world, &[], 100), 0);
 }
 
 // ---- Patience ---------------------------------------------------------------------------

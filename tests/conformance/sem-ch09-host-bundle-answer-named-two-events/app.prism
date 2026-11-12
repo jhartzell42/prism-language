@@ -1,0 +1,26 @@
+# A supplier answers a bundle of two event parts with a bundle that is a name (Semantics
+# ch. 9, "How a supplier answers"; Type System ch. 2, "Bundles": a bundle is a plain
+# aggregate with functor values inside, so a `let` binds one).
+# sem-ch09-host-bundle-two-events-answer with the tuple named first. Written by Claude on
+# the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Line of Element ((!Text, !Nat)):
+    address: Text
+
+@chat: @unit
+@chat:
+    ((!rx, !lost)) <- Pad.Line(address="chat:7000")
+    $last <- "none" then !rx
+    $drops <- 0 then $drops + !lost
+    Ui.Label($text=$"{$last}, {$drops} lost")
+
+@mocked: @unit
+@mocked:
+    !say <- Ui.Button($label=$"say")
+    !drop <- Ui.Button($label=$"drop")
+    let pair = (("hello" on !say, 3 on !drop))
+    ignore <- @HostDocument @chat, \|p, e| match e:
+        Pad.Line(..): @ pair
+        otherwise: @Element e

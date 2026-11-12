@@ -419,10 +419,7 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   resolution, pick RN). A right side's reads are pick GH's walk, less what is not read
   where it is written: a lambda, a local `fn` or widget, a nested widget block, a
   `rebuild`'s or a `for`'s source and holds (building a row is never an edge, R7), and a
-  delayed binding's arguments. A `for`'s or a `rebuild`'s result is prompt in its rows'
-  other lines (Semantics ch. 7, a `for`'s consolidation), the checker not knowing which
-  dynamics are structural: a row reading its own `for`'s gathered result is a cycle, as a
-  host's child reading `$doc` is (`neg/sem-ch07-for-own-gather`). A lambda passed to a call is
+  delayed binding's arguments. A lambda passed to a call is
   read, since the callee may call it now: a traversal's step, and a lambda given to any
   function but a prelude widget function (a supplier builds a blueprint, which is
   construction). `neg/prompt-lambda`'s `let a = Apply 1, \|x| x + b` reads `b`. A name a
@@ -913,8 +910,8 @@ and `tests/checker/run.sh` use it. `prism test` builds debug, `prism run` releas
 it has neither `Gui.*` nor `Ui.*`, and none, a refusal, when it has `Ui.*` without
 `Gui.*`, since no World answers Ui elements alone; `--world` overrides, and
 `--print-world` prints the choice and stops before the build (`tests/driver/run.sh`). The compiled binary takes `--world` only as its first argument; a later
-one is the program's own (prismc's `--check --world Ui`). `make chess` is
-`./prism run examples/chess`.
+one is the program's own (prismc's `--check --world Ui`). `make basic-chess` is
+`./prism run examples/basic-chess`.
 
 ### Files
 
@@ -1050,7 +1047,7 @@ lexer, parser and regex checks), chess's board included.
   `sem-ch09-hosts` (pick HO), `sem-appB-widgets` (pick MA), `ts-ch03-traits`,
   `ts-ch04-lifting`, chess (`board.prismtest`, byte-equal to `board.expected`, and
   `rules.prismtest`; `chess-rules` alone too), and prismc's own `lexer-checks` and
-  `parser-checks`. `./prism run examples/chess` under `xvfb-run -a` opens the window;
+  `parser-checks`. `./prism run examples/basic-chess` under `xvfb-run -a` opens the window;
   a robot (Xlib and XTest, as `worlds/canvas/rust/tests/xvfb_smoke.rs` clicks) clicks e2
   then e4, the root's result (printed with `PRISM_RESULTS` set) goes from "White's turn"
   to "Black's turn", and closing the window exits 0.
@@ -1724,8 +1721,7 @@ Each is Claude's, for Jimmy to overturn.
 - **BA Bundles.** A tag whose output is a tuple of plain parts and one event part
   (`Gui.Window`'s `((WindowId, !WindowInput))`), bound by a tuple pattern: the plain
   parts are the place's first value (one part itself, several a tuple), each bound part
-  a field; the event part fires on each answer at the place (`sem-ch09-bundle`). A `$` part,
-  or a second event part, is refused loudly.
+  a field; the event part fires on each answer at the place (`sem-ch09-bundle`).
 - **WB Widget arguments.** A widget parameter (`@child`) binds its argument, a widget
   block (`@widget: ..`) or a widget expression (`@counter`), with the caller's
   environments; applying the parameter lowers the argument there, so its places take
@@ -1816,9 +1812,7 @@ Each is Claude's, for Jimmy to overturn.
   such values in `{rs}_init` too (`LetLine`), bound in the build environment under
   `{name}#init`, captured by the supplier's closure, and `InitEnv` reads the dynamic's
   expression over them. A dynamic answer reading what has no value at the build (a pushed
-  place's hold, a structural dynamic, a `let` after the host's line) is refused loudly. A
-  widget-function blueprint as an answer, and a bundle in a hosted scope, are refused
-  too.
+  place's hold, a structural dynamic, a `let` after the host's line) is refused loudly.
 
   A row of a hosted child's `for` or `rebuild` (`Wx.hostedBy`) emits nothing of its own
   either: it takes the enclosing host (`enclosing: Rc<dyn HostOf>`) as a parameter of its
@@ -2156,7 +2150,7 @@ What stays, and why:
 
 Peak memory, wall time and instructions retired (`/usr/bin/time -l`) of each prismc
 compiling itself (`compile prismc --prelude prelude --name prismc`, to its own target)
-and `examples/chess`, with the collections each runtime had before and has now
+and `examples/basic-chess`, with the collections each runtime had before and has now
 (runtime/rust/README.md; runtime/cpp/README.md, "Arrays and maps: the costs"). Apple M2
 Pro, 5 November 2026, cargo release and clang++ -O3, other agents' jobs running (load
 average 3 to 13), so the wall times are rough; "footprint" is macOS's peak memory
@@ -2189,19 +2183,6 @@ chess and of two on the self-compile.
 - **Emitted code** is unchanged by the runtimes' collections (the methods emitted code
   calls kept their names); the C++ prelude's `union_` changed (`Map::united`, the smaller
   map into the larger), and both seeds with it.
-
-### Not lowered yet
-
-Each is refused loudly: lowering emits a `compile_error!("prismc does not lower ..")`
-naming the construct, and `CompileProgram` reports every distinct one as
-`error[not-lowered]` and fails, the crate still written for reading:
-a dynamic answer over what has
-no value at the owner's build, a widget-function blueprint as an answer, and a bundle in
-a hosted scope (pick HO); `@Flatten` of a dynamic that is not a `rebuild`'s (a `for` over a map of dynamics binds the value under the key, pick FV),
-`!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
-structural dynamic of its block (gap SU), lines of a block that read each
-other at the build (pick BO), and the zombie and
-dead states (`leave`, `clean_up`, `edges`).
 
 ## Regular expressions
 

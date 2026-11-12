@@ -1,0 +1,20 @@
+# The transcript prismc of host-1's gen1 h1 (the fixes b2d7dab2 and 4ab4df5a; its rows are a for's and a rebuild's, the same in h2) gives, read by hand against the hosting library's own test of the same name (prism-notes, evidence/documents/tests.expected): a request at tick n is answered at n+1 (Semantics ch. 9).
+test presses
+
+tick 0
+  added:
+    0/[Presser "ada"]/0/[0/#0/0]/0: Ui.Button(label="ada +1")
+    0/[Presser "ada"]/0/[0/#0/3]/0: Ui.Label(text="ada sees 0; nothing yet")
+    0/[Presser "bob"]/0/[0/#0/0]/0: Ui.Button(label="bob +1")
+    0/[Presser "bob"]/0/[0/#0/3]/0: Ui.Label(text="bob sees 0; nothing yet")
+
+tick 1
+  in:
+    0/[Presser "ada"]/0/[0/#0/0]/0: click
+
+tick 2
+  changed:
+    0/[Presser "ada"]/0/[0/#0/3]/0: Ui.Label(text="ada sees 1; Accepted")
+    0/[Presser "bob"]/0/[0/#0/3]/0: Ui.Label(text="bob sees 1; nothing yet")
+
+tick 3

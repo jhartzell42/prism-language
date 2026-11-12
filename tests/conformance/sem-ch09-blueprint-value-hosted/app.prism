@@ -1,0 +1,28 @@
+# A blueprint value applied in a hosted scope: the child of a host that forwards
+# everything takes a blueprint out of an option and applies it (Semantics ch. 8: "a
+# blueprint builds nothing until a block applies it", at the applying block's next
+# positions; ch. 9: a forwarding host places each of the child's elements under its own
+# row, at `pos/[p]/0`; Type System ch. 2: a blueprint is still a value). Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Pair: @unit
+@Pair:
+    Ui.Label($text=$"left")
+    Ui.Label($text=$"right")
+
+@child: @unit
+@child:
+    match ?Pick True, @Pair:                                     # 0 and 1
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    Ui.Label($text=$"end")                                       # 2
+
+@main: @unit
+@main:
+    ignore <- @HostDocument @child, \|p, e| @Element e          # 0/[p]

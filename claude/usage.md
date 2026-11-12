@@ -7,7 +7,7 @@ How the `prism` command works as the tree stands; `bin/prism` is the source of t
 
 - **With direnv** ([direnv.net](https://direnv.net), `brew install direnv`, then its
   hook in your shell's rc file): `cd` into the repository and run `direnv allow` once.
-  The `.envrc` puts `bin/` on `PATH`, so `prism` and `chess` work from anywhere inside
+  The `.envrc` puts `bin/` on `PATH`, so `prism`, `chess` and `basic-chess` work from anywhere inside
   the repository.
 - **Without it:** `bin/prism` from the root, or `./prism` (a symlink to it).
 - **A compiler first.** `prism` runs an installed prismc. On a fresh clone, or after
@@ -69,18 +69,19 @@ Each takes one or more sources. A source is a directory, a tree whose root is it
 | `PRISM_JOBS` | make's job count (default: every core) |
 | `PRISM_SANITIZE=1` | C++ under AddressSanitizer and UBSan, without jemalloc; on macOS with Homebrew's clang (`brew install llvm`) |
 
-## `chess`
+## `chess` and `basic-chess`
 
-`chess` is `prism run examples/chess`: the chess game in a window. Options go to
-`prism run`, so `chess --target cpp` runs the C++ build and `chess --print-world` says
-`canvas`.
+`chess` is `prism run examples/chess`: chess the document way, the hot seat in a window
+(claude/document-chess.md). `basic-chess` is `prism run examples/basic-chess`: the basic
+chess game in a window. Options go to `prism run`, so `basic-chess --target cpp` runs the
+C++ build and `basic-chess --print-world` says `canvas`.
 
 ## Examples
 
 ```
-prism check examples/chess                # the checker's report on the chess tree
-prism test examples/chess                 # chess's rules and board tests, Rust
+prism check examples/basic-chess          # the checker's report on the basic chess tree
+prism test examples/basic-chess           # basic chess's rules and board tests, Rust
 prism test --target cpp tests/conformance/sem-ch04-birth   # one conformance program in C++
 prism run bench/gui/prism                 # the GUI benchmark table in a window
-prism compile examples/chess -o /tmp/chess-crate   # the Rust crate, to read
+prism compile examples/basic-chess -o /tmp/chess-crate   # the Rust crate, to read
 ```

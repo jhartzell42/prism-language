@@ -228,7 +228,7 @@ fn ?HeadLineOf line, at:
     let words = Filter (SplitOn code, " "), \|w| w != ""
     let first = Or words[0], ""
     let second = Or words[1], ""
-    let span = Range(start=at, end=at + (Len code))
+    let span = Range(start=at, end=at + (Len code), origin=InSource)
     if first == "test" and second == "mod": ? HeadLine(word="test mod", arg=(Or words[2], ""), span=span)
     else: if HasText [["module", "emit", "mod", "use"]], first: ? HeadLine(word=first, arg=(Or (?BeforeSuffix second, ".*"), second), span=span)
     else: nil
@@ -239,7 +239,7 @@ fn ?FirstDeclLine text:
     let ((?found, ignore)) = Fold (SplitOn text, "\n"), ((nil, 0)), \|((?f, at)), line|
         let next = at + (Len line) + 1
         if ?f != nil or (Trim line) == "" or (HasPrefix line, "#") or (HasPrefix line, " ") or (?HeadLineOf line, at) != nil: ((?f, next))
-        else: ((? Range(start=at, end=at + (Len (TrimEnd line))), next))
+        else: ((? Range(start=at, end=at + (Len (TrimEnd line)), origin=InSource), next))
     ?found
 
 # ---- Trees
@@ -282,7 +282,7 @@ type Assembled = record:
 derive ^Eq, ^Show
 
 let noAssembly = Assembled(units=[[]], prelude=[[]], scripts=[[]], errors=[[]])
-let noSpan = Range(start=0, end=0)
+let noSpan = Range(start=0, end=0, origin=InSource)
 
 # A tree being walked: its modules so far, every file a root or a `mod` line declares, and
 # its diagnostics.
@@ -429,7 +429,14 @@ fn WalkModule has, texts, acc, main, name, parent, inTest:
     let acc4 = update acc3:
         &_.declared <= Insert &_.declared, main, True
         &_.units <= Push &_.units, ModFiles(name=name, named=True, segs=[[Seg(path=main, text=text, role=(if inTest: "test" else: "main"))]], parent=parent)
-    if leaf: acc4 else: Fold (Filter subs, \|h| not (name == "" and h.arg == "Prelude")), acc4, \|a, h| Child has, texts, a, main, dir, h, name, inTest
+    if leaf: acc4
+    else:
+        # a module is declared once (Semantics ch. 6, "Every name has one owner"): a second
+        # line for one name is `collision` at that line, and the module is read once
+        let ((walked, ignore)) = Fold (Filter subs, \|h| not (name == "" and h.arg == "Prelude")), ((acc4, [[]])), \|((a, seen)), h|
+            if HasText seen, h.arg: (((AddTreeDiag a, main, h.span, "collision", "a second `mod {h.arg}`", "drop one of the two lines"), seen))
+            else: (((Child has, texts, a, main, dir, h, name, inTest), (Push seen, h.arg)))
+        walked
 
 PreludeNamed: fn TreeAcc, Text, Text, HeadLine -> TreeAcc
 fn PreludeNamed a, main, dir, h:

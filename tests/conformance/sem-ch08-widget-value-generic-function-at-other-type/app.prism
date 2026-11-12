@@ -1,0 +1,30 @@
+# A generic widget taken as a blueprint value in a generic function that calls itself at
+# another type than its own (Type System ch. 2: "Recursion at other indices needs the
+# signature", so a signed function may call itself at other types; ch. 5: a type variable
+# is decided at each call; Semantics ch. 8: "a blueprint builds nothing until a block
+# applies it"). The function has two type parameters and calls itself with them swapped,
+# so the page's call at `Nat`, `Text` runs it at `Text`, `Nat` too. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Shown: fn a, Text -> @unit where a: ^Show
+fn @Shown x, label:
+    Ui.Label($text=$"{label}={Show x}")
+
+?Wrapped: fn a, b, Nat -> ?@unit where a: ^Show, b: ^Show
+fn ?Wrapped x, y, more = match more -? 1:
+    ? less: ?Wrapped y, x, less
+    nil: ?Pick True, (@Shown x, (Show y))
+
+@Page: @unit
+@Page:
+    match ?Wrapped 7, "s", 1:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    match ?Wrapped 7, "s", 0:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")

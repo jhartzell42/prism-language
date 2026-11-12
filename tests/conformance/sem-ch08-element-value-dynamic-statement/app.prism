@@ -1,0 +1,19 @@
+# `@Element e` of an element value whose output is a dynamic, as a statement that binds
+# it: a blueprint value that gives a dynamic back, applied by a block (Type System ch. 2:
+# an element applied is a plain value until a statement or a host places it; Semantics
+# ch. 8: `<-` builds the child and binds its result; ch. 9: the World's first value is
+# the dynamic's value at the build, and each push moves it in the tick it comes).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Gauge of Element $Nat:
+    name: Text
+
+Dial: fn Text -> Element Pad.* $Nat
+fn Dial name = Pad.Gauge(name=name)
+
+@page: @unit
+@page:
+    $level <- @Element (Dial "a")                               # 0
+    Ui.Label($text=$"level {$level}")                           # 1

@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 4 (application): 5 + 1, 5 + 1, 5 * 2, (5 + 1) + 1, and (1 + 1) + (2 + 1). Never run.
+test it_runs
+
+tick 0
+  added:
+    0: Ui.Label(text="6 6 10 7 5")

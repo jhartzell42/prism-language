@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 6 (a declaration is reachable by its qualified name) and ruling QN: `Words.base` is 21, `Words.Twice Words.base` 42, and `Words.pair.left` the field `left` of the module's `pair`.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="21 42 5")

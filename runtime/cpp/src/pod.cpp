@@ -53,6 +53,7 @@ std::strong_ordering operator<=>(const Pod& a, const Pod& b) {
     switch (a.kind()) {
     case K::Unit:
     case K::Nil:
+    case K::Absent:
         return std::strong_ordering::equal;
     case K::Bool:
         return *a.if_bool() <=> *b.if_bool();
@@ -75,7 +76,10 @@ std::strong_ordering operator<=>(const Pod& a, const Pod& b) {
     }
     case K::Choice: {
         const Pod::Choice &x = *a.if_choice(), &y = *b.if_choice();
-        if (auto c = x.ctor <=> y.ctor; c != 0) return c;
+        if (x.ctor != y.ctor) {
+            if (x.position && y.position && *x.position != *y.position) return *x.position <=> *y.position;
+            return x.ctor <=> y.ctor;
+        }
         return seq(x.args, y.args);
     }
     case K::Tuple:

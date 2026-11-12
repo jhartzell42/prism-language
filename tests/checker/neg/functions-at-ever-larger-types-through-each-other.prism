@@ -1,0 +1,11 @@
+# `grows-without-end` through two definitions: `Even` reaches itself through `Odd` at
+# `[a]` for `a` (ruling PG). The error stands at the use that closes the round.
+Even: fn [a], Nat -> Nat
+fn Even xs, more = match more -? 1:
+    ? less: Odd xs, less
+    nil: Len xs
+
+Odd: fn [a], Nat -> Nat
+fn Odd xs, more = match more -? 1:
+    ? less: Even [[xs]], less
+    nil: Len xs

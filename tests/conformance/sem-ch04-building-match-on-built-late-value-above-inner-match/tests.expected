@@ -1,0 +1,26 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": the order of a group's lines decides positions and nothing else; a building `match`'s arm adds no path segment), ch. 8 (`<-` binds the arm's plain result) and ruling TC (places counted as built): small gives 1 + 9, so the upper `match` takes `nil` and builds 0 and 1, the inner arm's label is 2, the arm's own label 3 and the last label 4; big gives 2 + 9, the inner arm builds nothing; soft gives 20, so the upper `match` builds 0 and the last label is 1.
+test small
+
+tick 0
+  added:
+    0: Ui.Label(text="under")
+    1: Ui.Label(text="at 10")
+    2: Ui.Label(text="small")
+    3: Ui.Label(text="loud 1")
+    4: Ui.Label(text="below 10")
+
+test big
+
+tick 0
+  added:
+    0: Ui.Label(text="under")
+    1: Ui.Label(text="at 11")
+    2: Ui.Label(text="loud 2")
+    3: Ui.Label(text="below 11")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="over by 5")
+    1: Ui.Label(text="below 20")

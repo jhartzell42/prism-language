@@ -1,8 +1,8 @@
 # `Window.Hits`, a child module of `Window`.
-# Written by Claude on the claude-self-hosting branch; subject to change.
-emit r | Ui.* | Gui.*
+# Written by Claude on the claude-document-chess branch; subject to change.
+emit r | Pane.* | Gui.*
 use Window.*
-use Window.Ui.*
+use Window.Panes.*
 use Window.Hosting.*
 use Window.Widgets.*
 use Window.Layout.*

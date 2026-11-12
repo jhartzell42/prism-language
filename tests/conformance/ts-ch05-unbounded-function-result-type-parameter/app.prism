@@ -1,0 +1,22 @@
+# An unbounded function whose type parameter is in its result alone, `unbounded fn Nat
+# -> [a]` (Type System ch. 5: a type variable is decided at each call, here by the type
+# the call's result is used at; Semantics ch. 7: a cycle point sits "at every call of an
+# unbounded function from an unbounded function"). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Empty: unbounded fn Nat -> [a]
+fn Empty n = [[]]
+
+Through: unbounded fn Nat -> Nat
+fn Through k:
+    let none: [Nat] = Empty k
+    (Len none) + k
+
+@page: @unit
+@page:
+    !done <- @Run Through, 5                              # 0
+    $shown <- "working" then "{!done}"
+    Ui.Label($text=$shown)                                       # 1

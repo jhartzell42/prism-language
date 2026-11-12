@@ -1,0 +1,23 @@
+# A function of its callee's own color beside a function that stays unbounded, in the value
+# a call returns, at a call that makes the color bounded (Type System ch. 5: a color
+# variable is decided at each call; an `unbounded fn` is unbounded at every call).
+# ts-ch05-color-function-in-named-in-tuple-result with an unbounded function for the
+# number. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Both: u fn (u fn Nat -> Nat), (unbounded fn Nat -> Nat) -> (((u fn Nat -> Nat), (unbounded fn Nat -> Nat)))
+fn Both F, G = ((F, G))
+
+Count: unbounded fn Nat -> Nat
+fn Count n = if n == 0: 0 else: 1 + Count (Or (n -? 1), 0)
+
+Through: fn Nat -> Nat
+fn Through k:
+    let ((F, ignore)) = Both (\|n| n + 1), Count
+    F k
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Through 5}")                               # 0

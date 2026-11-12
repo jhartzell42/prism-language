@@ -30,12 +30,46 @@ fn NoteTy st, span, t = if not st.recording: st else: update st:
     &_.typed.exprs <= Push &_.typed.exprs, TyNote(at=(AtHere st, span), ty=t)
 
 # An expression of type `found` standing where `expected` is wanted: when `found` is an
-# `Error`, a question for the program's end, whether `expected` is a `~T` (`FaultNotes`).
+# `Error`, a question for the program's end, whether `expected` is a `~T` (`FaultNotes`);
+# when it is a non-empty collection, whether `expected` is its plain collection
+# (`PlainNotes`).
 NoteFaultAt: unbounded fn St, Range, Ty, Ty -> St
 fn NoteFaultAt st, span, expected, found = match Walk st, found:
     TyCon "Prelude.Error", [[]]: update st:
         &_.faultQs <= Push &_.faultQs, Waiting(expected=expected, found=found, span=span, file=st.file)
+    TyCon "Prelude.NonEmpty", ignore: AskPlainAt st, span, expected
+    # a dynamic or an event of a non-empty collection, where the dynamic or event of its
+    # plain collection may be wanted (an arm of a lifted `if` beside a plain one's)
+    TySig "$", inner: NotePlainUnder st, span, expected, inner
+    TySig "!", inner: NotePlainUnder st, span, expected, inner
     otherwise: st
+
+NotePlainUnder: unbounded fn St, Range, Ty, Ty -> St
+fn NotePlainUnder st, span, expected, inner = match Walk st, inner:
+    TyCon "Prelude.NonEmpty", ignore: AskPlainAt st, span, expected
+    otherwise: st
+
+# The question whether the expression at `span` stands where a plain collection is wanted,
+# `expected` (`PlainNotes` answers it at the program's end; lowering converts only a value
+# that is a non-empty collection there).
+AskPlainAt: fn St, Range, Ty -> St
+fn AskPlainAt st, span, expected = update st:
+    &_.plainQs <= Push &_.plainQs, Waiting(expected=expected, found=expected, span=span, file=st.file)
+
+# The plain questions answered: each place whose wanted type is an array or a map, or is
+# the value of a match or an `if` with a `[a]` arm beside its `[a]+` arms (`UnifyArm`,
+# `St.plainArms`: the construct's own value is then the `[a]`, ruling NS), or a dynamic or
+# an event of one.
+PlainNotes: unbounded fn St -> [SrcAt]
+fn PlainNotes st = Fold st.plainQs, [[]], \|acc, q|
+    let joinedPlain = match q.expected:
+        TyFlex n: HasNat st.plainArms, n
+        otherwise: False
+    let wanted = match Walk st, q.expected:
+        TySig "$", inner: inner
+        TySig "!", inner: inner
+        other: other
+    if joinedPlain or IsPlainCollection st, wanted: Push acc, SrcAt(file=q.file, span=q.span) else: acc
 
 # A value of type `found` at a place wanting `expected` (an argument, a value checked
 # against its type): an `Error` there is the place's `~T`'s failure when the place is one
@@ -107,6 +141,13 @@ fn FaultsSettled st0:
             Err there, "mismatch", w.span, "expected `{ShowTy there, other}`, found `Error`"
     update checked:
         &_.file <= st.file
+
+# Where a block's result is reported: its last line, whose value is the result (Semantics
+# ch. 4), not the block from its first line.
+ResultSpan: fn Block -> Range
+fn ResultSpan b = match ?Last b.stmts:
+    ? s: s.span
+    nil: b.span
 
 # The span a block's value comes from: its last statement's expression, else the block.
 TailSpan: fn Block -> Range
@@ -194,6 +235,14 @@ NoteImpl: fn St, Nat, Range, Text, Ty, Text -> St
 fn NoteImpl st, file, span, cls, t, how = if not st.recording or (HasPrefix cls, "Range ") or cls == "Prelude.Sub" or cls == "Prelude.Signed": st else: update st:
     &_.typed.impls <= Push &_.typed.impls, ImplNote(at=SrcAt(file=file, span=span), cls=cls, ty=t, how=how)
 
+# A use by name of a definition with type parameters (`qs`, each as `inst` has it
+# here), for the growth check (`GrowthCheck`; ruling PG).
+NoteGenericUse: fn St, Text, [Text], Range, Inst -> St
+fn NoteGenericUse st, target, qs, span, inst:
+    let noted = GenericUse(user=st.definition, target=target, file=st.file, span=span, types=(Each qs, \|q| ((q, (Or inst.tys[q], TyErr)))))
+    update st:
+        &_.genericUses <= Push &_.genericUses, noted
+
 # How the solver answered a constraint at a place, kept whether or not the typed program is
 # recorded, for the shrink check's operator and method calls (pick OP): `impl:FILE.START`
 # (a written impl, by where it stands), `derived:TYPE`, `any` (a variable under a bound, a
@@ -238,6 +287,7 @@ fn ZonkTyped st0:
     let t = st.typed
     update t:
         &_.faults <= FaultNotes st
+        &_.plains <= PlainNotes st
         &_.exprs <= Each &_.exprs, \|n| TyNote(at=n.at, ty=(ResolveTy st, n.ty))
         &_.binders <= Each &_.binders, \|n| BinderNote(at=n.at, name=n.name, ty=(ResolveTy st, n.ty))
         &_.insts <= Each &_.insts, \|n| InstNote(at=n.at, name=n.name, tys=(Each n.tys, \|((q, x))| ((q, (ResolveTy st, x)))), cols=(Each n.cols, \|((q, c))| ((q, (ResolveCol st, c)))))
@@ -248,12 +298,16 @@ fn ZonkTyped st0:
 # A type variable at the program's end that no constraint reached (`Len [[]]`'s element):
 # every wanted constraint was solved, defaulted (doubt LD) or reported `ambiguous`, and every
 # waiting associated-type equation checked or reported (`Undecided`), so nothing the program
-# does depends on it, and the unit type stands for it. A variable a local `let` quantified
-# stays: lowering gives it at each instance. The same rule as a color's, below.
+# does depends on it, and the unit type stands for it. A variable a `let` quantified stays:
+# lowering gives it at each instance (a local `let`) or as the getter's type parameter (a
+# top-level one). The same rule as a color's, below.
 DefaultFree: unbounded fn St -> St
 fn DefaultFree st:
     let t = st.typed
-    let quantified = Fold t.gens, [[]], \|acc, g| Append acc, g.tys
+    let local = Fold t.gens, [[]], \|acc, g| Append acc, g.tys
+    # a top-level `let`'s too: its getter takes each as a type parameter, and each use
+    # names what it reads the `let` at (`NoteGenericUse` keeps the scheme's variables)
+    let quantified = Fold st.genericUses, local, \|acc, noted| Fold noted.types, acc, \|a2, ((q, ignore))| if HasPrefix q, "'": Push a2, q else: a2
     let inExprs = Fold t.exprs, [[]], \|acc, n| FreeVarsInto st, acc, n.ty
     let inBinders = Fold t.binders, inExprs, \|acc, n| FreeVarsInto st, acc, n.ty
     let inInsts = Fold t.insts, inBinders, \|acc, n| Fold n.tys, acc, \|a2, ((ignore, x))| FreeVarsInto st, a2, x

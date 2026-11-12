@@ -1,7 +1,7 @@
 # The Prism table under the canvas World, C++ and Rust, built for the benchmark (bench/gui/README.md).
 #
 #   make            both drivers
-#   make cpp        target/bench/prism/driver: app.prism, with examples/chess's window
+#   make cpp        target/bench/prism/driver: app.prism, with examples/basic-chess's window
 #                   library, compiled to C++ by the prism script's prismc, at -O3
 #   make rust       target/bench/prism-rs/driver: the same compiled to Rust, cargo
 #                   release (opt-level 3)
@@ -44,8 +44,8 @@ cpp: $(OUT)/driver
 # The program, emitted afresh whenever the sources or the installed prismc are newer than
 # its main.cpp.
 INSTALLED_PRISMC := $(wildcard $(REPO)/target/bootstrap/prismc)
-$(SRC)/main.cpp: app.prism $(wildcard $(REPO)/examples/chess/window/*.prism) $(INSTALLED_PRISMC)
-	cd $(REPO) && ./prism compile --target cpp bench/gui/prism examples/chess/window -o target/bench/prism
+$(SRC)/main.cpp: app.prism $(wildcard $(REPO)/examples/basic-chess/basic_window/*.prism) $(INSTALLED_PRISMC)
+	cd $(REPO) && ./prism compile --target cpp bench/gui/prism examples/basic-chess/basic_window -o target/bench/prism
 
 $(RTLIB): FORCE
 	@$(MAKE) -s -C $(RT) lib CXX=$(CXX) CONFIG=$(CONFIG) OPT="$(OPT)"
@@ -91,8 +91,8 @@ RSBUILD := $(REPO)/target/bench/prism-rs-build
 
 rust: $(RS)/driver
 
-$(RS)/src/main.rs: app.prism $(wildcard $(REPO)/examples/chess/window/*.prism) driver.rs $(INSTALLED_PRISMC)
-	cd $(REPO) && ./prism compile bench/gui/prism examples/chess/window -o target/bench/prism-rs
+$(RS)/src/main.rs: app.prism $(wildcard $(REPO)/examples/basic-chess/basic_window/*.prism) driver.rs $(INSTALLED_PRISMC)
+	cd $(REPO) && ./prism compile bench/gui/prism examples/basic-chess/basic_window -o target/bench/prism-rs
 	sed -i.emitted 's/^fn main() {$$/fn prism_emitted_main() {/' $@
 	echo 'include!("$(abspath driver.rs)");' >> $@
 

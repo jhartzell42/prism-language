@@ -1,0 +1,7 @@
+# The tests of ts-ch05-unbounded-function-result-type-parameter.
+emit Ui.*
+use App.*
+
+test it_runs, @page:
+    build
+    compute until idle

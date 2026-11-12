@@ -1,0 +1,9 @@
+# The tests of sem-ch05-named-lens-read.
+emit r
+use App.*
+
+check reads_through_the_lens:
+    Mirror boot => Vm(pc=4, regs=Regs(acc=100, x=8), steps=2)
+    Copy boot => Vm(pc=4, regs=Regs(acc=7, x=7), steps=2)
+    Reads boot => Vm(pc=5, regs=Regs(acc=7, x=22), steps=2)
+    Reads low => Vm(pc=0, regs=Regs(acc=-2, x=-5), steps=2)

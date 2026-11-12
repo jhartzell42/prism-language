@@ -1,0 +1,25 @@
+# A generic widget, applied at two types, taken as a blueprint value each time and applied out of an option
+# (Semantics ch. 8: "a blueprint builds nothing until a block applies it", at the applying
+# block's next positions; Type System ch. 2: a blueprint is an opaque handle and still a
+# value; ch. 4: a building `match`'s arm adds no path segment). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Shown: fn a, Text -> @unit where a: ^Show
+fn @Shown x, label:
+    Ui.Label($text=$"{label}={Show x}")
+
+@Page: fn Bool -> @unit
+fn @Page b:
+    match ?Pick b, (@Shown 7, "n"):                              # 0
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    match ?Pick b, (@Shown "seven", "t"):                        # 1
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    Ui.Label($text=$"end")                                       # 2

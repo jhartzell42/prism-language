@@ -1,0 +1,33 @@
+# A generic widget taken as a blueprint value in a method's body, given a value of the
+# impl's own type parameter, where the method asks for its own trait at other types that
+# its own impl answers: `impl ^Framed ((a, b))` asks `^Framed (([b], Nat))`, so `a`
+# becomes `[b]` and `b` becomes `Nat`. The page asks at `((Nat, Nat))`, which reaches the
+# impl at `(([Nat], Nat))` and no further: a finite set of types (ruling PG; Type System
+# ch. 2: recursion at another type that reaches finitely many types is legal; ch. 3: an
+# impl's type parameters are decided where its head is matched; Semantics ch. 8: "a
+# blueprint builds nothing until a block applies it").
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Named: fn a, Text -> @unit
+fn @Named x, label:
+    Ui.Label($text=$"{label}")
+
+trait ^Framed a:
+    ?Frame: fn a, Nat -> ?@unit
+
+impl ^Framed ((a, b)):
+    fn ?Frame ((x, y)), more = match more -? 1:
+        ? less: ?Frame (([[y]], less)), less
+        nil: ?Pick True, (@Named x, "framed")
+
+@Page: @unit
+@Page:
+    match ?Frame ((7, 8)), 1:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")

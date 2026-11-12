@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 9 as ruled (an event answer is the next tick's input, owed; round 3 DY: a dynamic answer's change is a push delivered the next tick, owed) and ch. 8 (a host in a row re-emits its child's places under the row's path): both parts are heard in tick 2.
+test parent_parts_answer
+
+tick 0
+  added:
+    0: Ui.Button(label="more")
+    1/[1]/0/[1]/0: Ui.Label(text="0: none")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1/[1]/0/[1]/0: Ui.Label(text="1: hello")

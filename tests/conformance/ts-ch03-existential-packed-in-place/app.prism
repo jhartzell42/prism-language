@@ -1,0 +1,36 @@
+# `any e` packed where the type it meets is known once the line is unified (Type System
+# ch. 3, "Existentials", the book's own `Watch(label="selected", value=any Sq(file=4,
+# rank=3))`; ch. 5, "Existentials are dictionaries"): in a constructor's field, in a
+# function's argument, in an array's element. Each packed value prints by its own type's
+# `^Show`. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Sq = record:
+    file: Nat
+    rank: Nat
+derive ^Eq, ^Show
+
+type Watch = record:
+    label: Text
+    value: any ^Show
+
+Shown: fn (any ^Show) -> Text
+fn Shown v = Show v
+
+Joined: fn [any ^Show] -> Text
+fn Joined vs = Fold vs, "", \|acc, v| "{acc}<{Show v}>"
+
+Line: fn Watch -> Text
+fn Line w = "{w.label}={Show w.value}"
+
+@page: @unit
+@page:
+    let watches = [[
+        Watch(label="selected", value=any Sq(file=4, rank=3)),
+        Watch(label="score", value=any 21)
+    ]]
+    Ui.Label($text=$"{Line (Or watches[0], Watch(label="none", value=any 0))}")   # 0
+    Ui.Label($text=$"{Line (Or watches[1], Watch(label="none", value=any 0))}")   # 1
+    Ui.Label($text=$"{Shown (any "x")} {Joined [[(any 3), (any "y")]]}")          # 2

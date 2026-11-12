@@ -17,6 +17,8 @@
 #include <optional>
 #include <string>
 #include <type_traits>
+#include <typeindex>
+#include <typeinfo>
 #include <utility>
 #include <variant>
 
@@ -49,6 +51,19 @@ private:
 /// throw expression is `void`, so the declaration takes a call that has the type.
 template <class T>
 [[noreturn]] T unreachable_as(const char* what = "entered unreachable code") { panic(what); }
+
+/// A type as a key (a generic function chooses by its type parameters what was made for
+/// each set of types the program gives them: a widget's rows read as a value).
+template <class T>
+std::type_index type_key() { return std::type_index(typeid(T)); }
+
+/// A value at the type `To`, which is its own type (a generic function's value where the
+/// function's type parameters are known, `type_key`): the value itself.
+template <class To, class From>
+To recast(From value) {
+    if constexpr (std::is_same_v<To, From>) return value;
+    else panic("a prismc bug: a value read at a type that is not its own");
+}
 
 /// Every type `C` is one of `Cs`: a choice's constructor takes one of its cases.
 template <class C, class... Cs>

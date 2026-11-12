@@ -30,6 +30,7 @@
 //   machine implements.
 // - host.hpp: hosting: the rows of a host's `for` over its child's document, the
 //   blueprint forms a supplier answers with, and the typed way back into the child.
+// - prelude.hpp: `Prelude.Unwrap` and `Prelude.Exceptions` as every World answers them.
 // - scene.hpp, test_world.hpp: the scene's clickables and the Test World.
 
 #pragma once
@@ -42,6 +43,7 @@
 #include "prism_rtl/gc.hpp"
 #include "prism_rtl/num.hpp"
 #include "prism_rtl/pod.hpp"
+#include "prism_rtl/prelude.hpp"
 #include "prism_rtl/print.hpp"
 #include "prism_rtl/read.hpp"
 #include "prism_rtl/regex.hpp"

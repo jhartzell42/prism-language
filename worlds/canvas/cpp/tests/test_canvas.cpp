@@ -150,7 +150,7 @@ TEST(text_is_inked_below_its_point_and_clickables_draw_nothing) {
 }
 
 TEST(an_image_is_scaled_to_its_rect_and_a_missing_one_draws_nothing) {
-    std::string src = std::string(PRISM_REPO) + "/examples/chess/pieces/kl.png";
+    std::string src = std::string(PRISM_REPO) + "/examples/basic-chess/pieces/kl.png";
     Pod king = el("Draw.Image", {{"rect", gui::rect(0, 0, 100, 100)}, {"src", text(src)}});
     auto p = paint(1.0f, {king});
     bool shows = false;
@@ -261,7 +261,7 @@ Pod extra(Rng& rng) {
             return el("Draw.Group", {{"turn", turn}, {"draws", Pod::array({d_rect(140, 100, 60, 8, "Green"), d_text(150, 110, "turned")})}});
         }
         case 3: {
-            std::string src = std::string(PRISM_REPO) + "/examples/chess/pieces/kl.png";
+            std::string src = std::string(PRISM_REPO) + "/examples/basic-chess/pieces/kl.png";
             Pod r = gui::rect(double(rng.below(250)) + 0.25, double(rng.below(180)), 37.5, 37.5);
             return el("Draw.Image", {{"rect", r}, {"src", text(src)}});
         }

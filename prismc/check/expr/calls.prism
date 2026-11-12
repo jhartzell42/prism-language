@@ -77,21 +77,22 @@ fn CallGlobal env, st0, n, args, span, explicit, cspan:
     let name = SNameKey n
     let st1 = CollisionAt env, st0, why, name, n.span
     let st = match ?qk:
-        ? qk: NoteGlobal st1, n.span, (if why == "answer": AnswerTag qk else: qk)
+        ? qk: NoteGlobal st1, n.span, (if why == "output": OutputTag qk else: qk)
         nil: st1
     match ?qk:
         nil: ((TyErr, (Err st, "unknown-name", n.span, "nothing declares `{name}` here")))
         ? qk:
             if why == "tag": TagApp env, st, qk, args, span, cspan
-            else: if why == "answer":
-                let ((t, st2)) = AnswerConstructor env, st, (AnswerTag qk), n.span
+            else: if why == "output":
+                let ((t, st2)) = OutputConstructor env, st, (OutputTag qk), n.span
                 ApplyFn env, (NoteCallee st2, n.span, cspan, t), name, t, args, span
             else: if (IsLocalMaker qk) and not env.inUpdate: ((TyErr, (LocalOutside st, qk, span)))
             else: match env.g.vals[qk]:
                 ? v:
                     let ((t, st2i, inst)) = InstantiateWith st, v.scheme, span, explicit
                     let ((rigids, st2)) = RankTwo st2i, v.scheme, inst, (Len explicit), span
-                    let st3a = NoteCallee (NoteMethodUse st2, v, span), n.span, cspan, t
+                    let st2u = if IsGenericUse v: NoteGenericUse st2, qk, v.scheme.qs, n.span, inst else: st2
+                    let st3a = NoteCallee (NoteMethodUse st2u, v, span), n.span, cspan, t
                     let st3 = if (BareName qk) == "Min": NoteSizeTy st3a, span, (Walk st3a, t) else: st3a
                     if (BareName qk) == "Fold" and v.home == "Prelude": FoldApp env, st3, t, args, span
                     else:
@@ -199,7 +200,9 @@ fn NoteMethodUse st, v, span:
     if v.sort != "method": st
     else:
         let ((ignore, cls)) = Or v.scheme.bounds[0], (("", ""))
-        NoteMethod st, span, v.qk, cls
+        let used = update st:
+            &_.methodUses <= Insert &_.methodUses, (UseKey &_.file, span), v.qk
+        NoteMethod used, span, v.qk, cls
 
 # `Fold` over a map takes a step of three parameters, the key and the value (Appendix B):
 # the one place the prelude's signature does not say what a call means.
@@ -261,6 +264,10 @@ Broken: fn Peeled, Bool -> Peeled
 fn Broken p, b = if not b: p else: update p:
     &_.broken <= True
 
+# What the application rule is told a map literal's name is (`InferMap`): the one
+# application that lifts over time among its entries and holds a blueprint whole.
+let mapLiteral = "a map literal"
+
 # The application rule (ch. 5): first the plain arguments, unified whole; then the
 # lambdas, against their parameters as far as known; then the layered arguments, peeled
 # at a plain or variable parameter. One row for the application; the result under the
@@ -271,6 +278,7 @@ ApplyRule: unbounded fn Env, St, Text, Col, [Ty], Ty, [Arg], Range -> ((Ty, St))
 fn ApplyRule env, st, fname, col, params, res, args, span:
     let n = Len args
     let cmp = IsComparison fname
+    let holds = fname == mapLiteral
     let ((inferred, st1)) = Fold (Range0 n), (([[]], st)), \|((acc, s)), i|
         let a = Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)
         if IsLambda a.value: (((Push acc, TyErr), s))
@@ -280,11 +288,18 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
                 (((TyFn pc, ignore, ignore), (TyFn ac, aps, ar))): (((Push acc, (TyFn pc, aps, ar)), (AddLeq s2, ac, pc, a.value.span, "arg", fname, "")))
                 otherwise: (((Push acc, t), s2))
     let argTys = PlainBeside st1, params, inferred
-    let ((st2, whole)) = Fold (Range0 n), ((st1, [[]])), \|((s, done)), i|
+    # each `[a]+` argument read as the `[a]` beside an `[a]` one stands where the `[a]` is
+    # wanted (`PlainNotes`)
+    let st1b = Fold (Range0 n), st1, \|s, i| match (((?NonEmptyColl s, (Or inferred[i], TyErr)), (?NonEmptyColl s, (Or argTys[i], TyErr)))):
+        ((? c, nil)): AskPlainAt s, (Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)).value.span, c
+        otherwise: s
+    let ((st2, whole)) = Fold (Range0 n), ((st1b, [[]])), \|((s, done)), i|
         let a = Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)
         let at = Or argTys[i], TyErr
         let pnow = NormAssoc s, (Walk s, (Or params[i], TyErr))
-        let wholeNow = (IsTimeSigil (HeadSigil s, pnow)) or (HeadSigil s, pnow) == "@"
+        # (a map literal is a container: a blueprint among its entries goes in whole, as an
+        # array's does, ch. 4, "Where the table looks"; there is no lift over a blueprint)
+        let wholeNow = (IsTimeSigil (HeadSigil s, pnow)) or (HeadSigil s, pnow) == "@" or (holds and (HeadSigil s, at) == "@")
         if IsLambda a.value: ((s, done))
         else: if wholeNow and (StackOf s, at) != "": (((Unify s, pnow, at, a.value.span), (Push done, i)))
         else: if (StackOf s, at) != "" or (IsFreeHeaded s, at): ((s, done))
@@ -466,14 +481,16 @@ fn PeelTimeOnly env, st, acc, fname, p, at, a:
 # function does (Type System ch. 4, "A dynamic where a plain field goes": `Mono(left=$q.left
 # + 1)` is a `$Mono`); a sigiled field takes its argument whole. A type parameter's field
 # takes its argument whole too, sigils and all (ch. 2: `Pair $home, $away` is a `Pair $Int
-# $Int`), so a generic type's constructor never lifts.
+# $Int`), so a generic type's constructor with such a field never lifts. A constructor none
+# of whose fields is a bare type parameter (`Removing [k]`) has no field that could take a
+# sigil whole, and lifts as a function does: `Removing !gone` is a `!(Happening k v a)`.
 CtorApp: unbounded fn Env, St, CtorInfo, [Arg], Range, Range -> ((Ty, St))
 fn CtorApp env, st, c, args, span, cspan:
     let ((self, st0, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), span, [[]]
     let fieldTys = Each c.args, \|t| SubstQ inst, t
     let st1 = NamedTwice (NoteTy st0, cspan, (TyFn CBound, fieldTys, self)), args
     let named = Filter args, \|a| a.?name != nil
-    let lifts = (Len c.params) == 0
+    let lifts = (Len c.params) == 0 or not (Fold c.args, False, \|bare, t| bare or IsBareParameter t)
     if (Len named) > 0 and (Len c.fields) > 0:
         let st2 = Fold named, st1, \|s, a| match a.?name:
             ? id: match ?IndexOf c.fields, id.name:
@@ -492,6 +509,12 @@ fn CtorApp env, st, c, args, span, cspan:
     else: if (Len args) != (Len fieldTys):
         ((TyErr, (Err st1, "mismatch", span, "`{BareName c.name}` takes {CountWord (Len fieldTys)} argument{if (Len fieldTys) == 1: "" else: "s"}; here it has {CountWord (Len args)}")))
     else: CtorArgs env, st1, c, args, fieldTys, self, lifts, span
+
+# A field declared as a type parameter alone (`first: a`), which takes its argument whole.
+IsBareParameter: fn Ty -> Bool
+fn IsBareParameter t = match t:
+    TyQ ignore: True
+    otherwise: False
 
 # A constructor's arguments against their fields' types: through the application rule when
 # the constructor lifts, else each whole.
@@ -698,5 +721,5 @@ InferBodyBlock: unbounded fn Env, St, Block, ?Ty -> ((Ty, St))
 fn InferBodyBlock env, st, b, ?expected:
     let ((t, st2)) = InferExprBlock env, st, b
     match ?expected:
-        ? r: ((r, (Unify st2, r, t, b.span)))
+        ? r: ((r, (Unify st2, r, t, (ResultSpan b))))
         nil: ((t, st2))

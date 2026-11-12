@@ -61,14 +61,15 @@ fn OutTyOf lx, t = match t:
     TyCon "Regex", [[]]: OutRegex
     TyCon "RegexReplacement", [[]]: OutReplacement
     TyCon "Duration", [[]]: OutDuration
-    # `Answer c`, an answer to an element typed by its tag (rulings round 12, AQ): the
-    # program's `crate::Answer`; `Wired`, the entries of a host's document, the places'
+    # `Output c`, an answer to an element typed by its tag (rulings round 12, AQ): the
+    # program's `crate::Output`; `Wired`, the entries of a host's document, the places'
     # elements (prismc's first ruling HL)
-    TyCon "Answer", ignore: answerTy
+    TyCon "Output", ignore: outputTy
     TyCon "Wired", [[]]: OutNamed elemRef, [[]]
     TyCon "Prelude.Error", [[]]: OutError
-    # a non-empty collection is the collection: its promise is the checker's
-    TyCon "Prelude.NonEmpty", [[c]]: OutTyOf lx, c
+    # a non-empty collection has a target type of its own, the prelude's wrapper of the
+    # collection (`NonEmptyOut`)
+    TyCon "Prelude.NonEmpty", [[c]]: NonEmptyOut (OutTyOf lx, c)
     TyCon "\u{0}Self", [[]]: OutNamed (RefRuntime "Self"), [[]]
     TyCon "Buffer", [[a]]: OutArray (OutTyOf lx, a)
     TyCon "Table", [[k, v]]: OutArray (OutTuple [[(OutTyOf lx, k), (OutTyOf lx, v)]])
@@ -114,17 +115,17 @@ fn OutTyOf lx, t = match t:
 
 # A blueprint as a value, `@o` (a supplier's answer): prism_rtl's, over the program's
 # element and answer enums (pick HO).
-let blueprintTy = OutNamed (RefRuntime "prism_rtl::Blueprint"), [[(OutNamed elemRef, [[]]), (OutNamed answerRef, [[]])]]
+let blueprintTy = OutNamed (RefRuntime "prism_rtl::Blueprint"), [[(OutNamed elemRef, [[]]), (OutNamed outputRef, [[]])]]
 
-# The program's element and answer enums, `crate::Elem` and `crate::Answer`, and a host as
+# The program's element and answer enums, `crate::Elem` and `crate::Output`, and a host as
 # its rows reach it.
 let elemTy = OutNamed elemRef, [[]]
-let answerTy = OutNamed answerRef, [[]]
+let outputTy = OutNamed outputRef, [[]]
 # A hosted place's entry in its host's document (`$(Path ==> $Elem c)`), and the host's
 # document, its outer, as the owner keeps it.
 let entryTy = OutRc (OutNamed (RefRuntime "prism_rtl::Entry"), [[(OutNamed elemRef, [[]])]])
 let hostDocTy = OutNamed (RefRuntime "prism_rtl::HostDoc"), [[(OutNamed elemRef, [[]])]]
-let hostOfTy = OutObj (OutNamed (RefRuntime "prism_rtl::HostOf"), [[(OutNamed elemRef, [[]]), (OutNamed answerRef, [[]])]])
+let hostOfTy = OutObj (OutNamed (RefRuntime "prism_rtl::HostOf"), [[(OutNamed elemRef, [[]]), (OutNamed outputRef, [[]])]])
 
 # Whether a type gives a blueprint (`@o`, `?@o`).
 HasBlueprint: fn Ty -> Bool
@@ -180,6 +181,62 @@ fn NamedTy lx, n, args = match lx.g.types[n]:
         BRowKind: if n == "Prelude.Fault": OutPod else: OutNamed (RefIn lx, ti.home, (TypeItemName n)), [[]]
         otherwise: OutNamed (RefIn lx, ti.home, (TypeItemName n)), args
     nil: if HasKey lx.g.families, n: OutPod else: InternalBugType "the type `{n}`, which the checker did not declare"
+
+# A non-empty collection's target type (Type System ch. 2, "Collections": `[a]+` and
+# `(K ==> V)+`): the emitted prelude's `NonEmpty` over the collection's, a type of its own,
+# so an impl for `[a]+` and one for `[a]` are impls for two types, and a generic function
+# has an instantiation at each. A value of it is made by a non-empty literal
+# (`non_empty_of`) and by the checked conversion (`non_empty`, `non_empty_map`), and is
+# read as its collection where the checker found the collection wanted (`AsPlain`) and
+# where a construct reads a collection of either type (`Collection`, `PlainValue`).
+NonEmptyOut: fn OutTy -> OutTy
+fn NonEmptyOut c = OutNamed nonEmptyRef, [[c]]
+
+let nonEmptyRef = HelperRef "NonEmpty"
+
+# The collection's target type of a non-empty collection's, or nothing.
+?PlainOut: fn OutTy -> ?OutTy
+fn ?PlainOut t = match t:
+    OutNamed n, [[c]] if n == nonEmptyRef: ? c
+    otherwise: nil
+
+# A target type read as a collection's: a non-empty collection's is its collection's.
+CollectionOut: fn OutTy -> OutTy
+fn CollectionOut t = Or (?PlainOut t), t
+
+# A type read as a collection's (a `for`'s source, an indexed value, an array pattern's
+# scrutinee): a non-empty collection's is the collection's it promises.
+Collection: fn Ty -> Ty
+fn Collection t = match t:
+    TyCon "Prelude.NonEmpty", [[c]]: c
+    otherwise: t
+
+# A value read as the collection it is: a non-empty collection's value is its collection,
+# by reference through the wrapper (the prelude's `plain_collection`); a dynamic or an
+# event of one, held whole, is mapped to the dynamic or event of its collection; any
+# other value is itself.
+PlainValue: fn Vl -> Vl
+fn PlainValue v = match ?PlainOut (ValueTy v):
+    ? c: VlPlace (XCall (HelperRef "plain_collection"), [[(Ref v)]]), ByRef, c
+    nil: match ValueTy v:
+        OutDyn inner: match ?PlainOut inner:
+            ? c: VlOwned (PlainMapped v, inner), (OutDyn c)
+            nil: v
+        OutEvent inner: match ?PlainOut inner:
+            ? c: VlOwned (PlainMapped v, inner), (OutEvent c)
+            nil: v
+        otherwise: v
+
+# A dynamic or an event of a non-empty collection mapped to its collection's.
+PlainMapped: fn Vl, OutTy -> Ex
+fn PlainMapped v, inner = XMethod (Own v), "map", [[(XClosure True, [[(PaTyped (PaBind "non_empty"), (OutRef inner))]], (XClone (XCall (HelperRef "plain_collection"), [[(XVar "non_empty")]])))]]
+
+# An owned collection read out of an owned value that may be a non-empty collection's, by
+# the value's type.
+PlainOwned: fn Ty, Ex -> Ex
+fn PlainOwned t, x = match t:
+    TyCon "Prelude.NonEmpty", ignore: XClone (XCall (HelperRef "plain_collection"), [[(XRef x)]])
+    otherwise: x
 
 # A type with its outermost time layer peeled: what a value of it holds at one moment. A
 # `$$a` holds a `$a` (a dynamic of dynamics, Type System ch. 4: lifting is a map, never a
@@ -263,7 +320,7 @@ fn RcField lx, ctor, i = Or (Or lx.layouts[ctor], [[]])[i], False
 # ch. 2: a generic tag's output is a scheme, its variables shared with its fields). The
 # program's `Elem` has one variant per tag, whatever the tag is placed at, so the tag's
 # structs hold each of its variables as plain data, a `Pod`, as an answer to an open
-# output is (`AnswerTy`): the type of a field there is the field's own with every variable
+# output is (`OutputTy`): the type of a field there is the field's own with every variable
 # a `Pod`. A place that gives the field at `Text` recodes it (`RecodedField`), and a
 # host's arm reads the field as the plain data it is.
 TagFieldOut: unbounded fn Lx, Ty -> OutTy
@@ -400,6 +457,11 @@ type Bn = choice:
     # A widget defined in a block (`@line:` and its block): its block, lowered where the
     # name is applied, in the environments of that line.
     BnLocalWidget Block
+    # A dynamic `let`'s expression (`let $total = $rings + $bonus`), bound under
+    # `{name}#source` beside the `let`'s own binding: where a line passes a `let` that reads
+    # through the parent whole, its live dynamic is this expression over the live dynamics
+    # of what it reads (`LetSourcesIn`).
+    BnSource Expr
 
 type Env = record:
     names: (Text ==> Bn)

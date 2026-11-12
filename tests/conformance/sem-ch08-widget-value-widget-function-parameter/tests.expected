@@ -1,0 +1,9 @@
+# Derived by hand from Semantics ch. 4 (a building `match`'s arm adds no path segment) and ch. 8 (a blueprint is built at the applying block's next positions; a widget applied inline adds no path segment), as sem-ch08-widget-parameter-applied has the four places. Never run.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="top")
+    1: Ui.Label(text="row 1")
+    2: Ui.Label(text="row 2")
+    3: Ui.Label(text="bottom")

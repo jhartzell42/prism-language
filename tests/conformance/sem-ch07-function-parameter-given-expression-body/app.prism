@@ -1,0 +1,29 @@
+# A widget function given for a function parameter whose body is one expression:
+# `fn @Seats $state, !responses = @Asking $state, !responses`. Its summary is that of the
+# block of its result alone, and `@Asking`'s requests are not prompt in its `!responses`
+# (the button's alone), so `!asked`, `!responses` and the hold `$state` in `@Loop` make no
+# cycle (Semantics ch. 7, "There are no cycles": every function and widget function has a
+# summary). From examples/chess's `@BoardSeats`, given to `@InMemory`.
+# Written by Claude (chess-1, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+@Asking: fn $Nat, !Nat -> @((unit, !Nat)) emit Ui.*
+fn @Asking $state, !responses:
+    !press <- Ui.Button($label=$"ask")                       # 0
+    Ui.Label($text=$"{$state}")                              # 1
+    @ ((unit, 1 on !press))
+
+@Seats: fn $Nat, !Nat -> @((unit, !Nat)) emit Ui.*
+fn @Seats $state, !responses = @Asking $state, !responses
+
+@Loop: fn Nat, (fn $Nat, !Nat -> @((a, !Nat)) emit rest) -> @a emit rest
+fn @Loop initial, Seats:
+    ((results, !asked)) <- Seats $state, !responses
+    let !responses = !asked + 1
+    $state <- initial then !responses
+    @ results
+
+@host: @unit
+@host:
+    @Loop 0, @Seats

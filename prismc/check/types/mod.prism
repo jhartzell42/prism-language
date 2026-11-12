@@ -191,6 +191,10 @@ type St = record:
     # arm against the match's, a field, an element): at the program's end those where it
     # is one are the typed output's `faults` (`FaultNotes`).
     faultQs: [Waiting]
+    # The places a non-empty collection's value meets a type that may be its plain
+    # collection's (an argument, an arm against the match's, an entry): at the program's end
+    # those where it is one are the typed output's `plains` (`PlainNotes`).
+    plainQs: [Waiting]
     # Element constructions lifted at an identity field, each refused by the statement that
     # would build it (`LiftedElement`).
     elemLifts: [ElemLift]
@@ -204,6 +208,31 @@ type St = record:
     # Every local binder's id and every use's, in the order checked (`IsClosed`).
     binderIds: [Nat]
     useIds: [Nat]
+    # Each use of a trait's method, by its file and place (`UseKey`), with the method's
+    # key: a want made there is the method's own, and not a function's bound, when it is
+    # asked of a packed value (Jimmy's ruling EX; `AskOfPacked`).
+    methodUses: (Text ==> Text)
+    # Each `any e` whose existential was not known where it stood (a constructor's field,
+    # an argument, an array's element): its bounds are wanted at `e`'s type once the
+    # variable it gave is an existential (Type System ch. 5, "Existentials are
+    # dictionaries"; `ResolvePacks`).
+    packs: [Pack]
+    # The definition being checked, by its own key (`OwnKey`), and every use by name of a
+    # definition with type parameters, kept whether or not the typed program is
+    # recorded, for the growth check (`GrowthCheck`; ruling PG).
+    definition: Text
+    genericUses: [GenericUse]
+derive ^Eq, ^Show
+
+# One use by name of a definition with type parameters: the definition the use
+# stands in, the one it names, where, and the type the use gives each of the named
+# definition's type parameters (over the type parameters of the one it stands in).
+type GenericUse = record:
+    user: Text
+    target: Text
+    file: Nat
+    span: Range
+    types: [((Text, Ty))]
 derive ^Eq, ^Show
 
 type AssocImpl = record:
@@ -234,8 +263,21 @@ type Waiting = record:
     file: Nat
 derive ^Eq, ^Show
 
+# An `any e` waiting for the existential it meets: the variable it gave, `e`'s type, and
+# where it stands.
+type Pack = record:
+    result: Ty
+    inner: Ty
+    file: Nat
+    span: Range
+derive ^Eq, ^Show
+
+# A place's key in `methodUses`.
+UseKey: fn Nat, Range -> Text
+fn UseKey file, span = "{file}:{span.start}:{span.end}"
+
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, unsignedFns=[[]], localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], plainArms=[[]], faultQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]])
+fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, unsignedFns=[[]], localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], plainArms=[[]], faultQs=[[]], plainQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={}, packs=[[]], definition="", genericUses=[[]])
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed)
@@ -343,16 +385,16 @@ fn IsFreeHeaded st, t = match Walk st, t:
 NonEmptyOf: fn Ty -> Ty
 fn NonEmptyOf c = TyCon "Prelude.NonEmpty", [[c]]
 
-# `Answer c`, an answer to an element of any tag of row `c` (Semantics ch. 9): the row is
+# `Output c`, an answer to an element of any tag of row `c` (Semantics ch. 9): the row is
 # held as the row of an `Elem c`, so two answers unify as their rows do.
-AnswerType: fn Rw -> Ty
-fn AnswerType rw = TyCon "Answer", [[TyElemAny rw]]
+OutputType: fn Rw -> Ty
+fn OutputType rw = TyCon "Output", [[TyElemAny rw]]
 
 # What an answer to an element carries, from the tag's output: the output's value, its time
 # layers off; of a bundle (a tuple with an event part, `Gui.Window`'s `((WindowId,
 # !WindowInput))`) the event part's, which is what a World answers with.
-AnswerOfOutput: fn Ty -> Ty
-fn AnswerOfOutput out = match WithoutTime out:
+CarriedOutput: fn Ty -> Ty
+fn CarriedOutput out = match WithoutTime out:
     TyTuple parts: Fold parts, (TyTuple parts), \|found, part| match part:
         TySig "!", inner: WithoutTime inner
         otherwise: found
@@ -400,7 +442,7 @@ fn ShowTyIn st, t, nested = match t:
     TyQ n: n
     TyCon n, [[]]: BareName n
     TyCon "Prelude.NonEmpty", [[c]]: "{ShowTyIn st, c, True}+"
-    TyCon "Answer", [[TyElemAny rw]]: if nested: "(Answer {ShowRowIn rw, True})" else: "Answer {ShowRowIn rw, True}"
+    TyCon "Output", [[TyElemAny rw]]: if nested: "(Output {ShowRowIn rw, True})" else: "Output {ShowRowIn rw, True}"
     TyCon n, args:
         let inner = "{BareName n}{Concat (Each args, \|a| " {ShowTyIn st, a, True}")}"
         if nested: "({inner})" else: inner

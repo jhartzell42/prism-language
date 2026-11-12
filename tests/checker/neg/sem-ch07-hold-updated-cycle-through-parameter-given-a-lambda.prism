@@ -1,0 +1,28 @@
+# needs a ruling: a summary declared on a parameter's type
+# `prompt-cycle`, through a function parameter given a lambda: `@Loop` binds `!step` to
+# what its parameter `Pass` gives for `!fed`, `$seen` steps on `!step`, and `!fed` merges
+# `!Updated $total`, the update event of a dynamic lifted over the hold. The one use gives
+# `Pass` a lambda that hands its argument straight back, so a press would step `$seen`,
+# update `$total`, fire `!fed` and `!step`, and step `$seen` again in one tick (a hold's
+# update event fires in the tick of its step, Semantics ch. 7, R3). The same loop through a
+# widget function given by name is neg/sem-ch07-hold-updated-cycle-through-widget-line.
+# The checker takes this program: the walk over update events reads a function parameter
+# by what each use gives by name, and a lambda gives nothing known
+# (claude/prompt-cycles.md, "A loop through `!Updated` of a hold"); the worst for such a
+# parameter would refuse the hosting library's `@InMemory`, which passes its `HostSeats`
+# on. This `.expected` is written by hand. Written by Claude (left-a3, the prismc run),
+# 11 November 2026; subject to change.
+emit Ui.*
+
+@Loop: fn (fn !Nat -> @!Nat) -> @unit emit Ui.*
+fn @Loop Pass:
+    !press <- Ui.Button($label=$"press")
+    let !fed = (1 on !press) <| !Updated $total
+    !step <- Pass !fed
+    $seen <- 0 then $seen + 1 on !step
+    let $total = $seen * 2
+    Ui.Label($text=$"{$total}")
+
+@host: @unit
+@host:
+    @Loop \|!passed| @ !passed

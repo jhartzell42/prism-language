@@ -1,0 +1,31 @@
+# A building `if`'s plain result taken as a value at the build by a line above it
+# (Semantics ch. 4, "Binding groups and cycles": a widget block is one binding group, any
+# line may use any name the block binds, and "the order of a group's lines decides
+# positions and nothing else"; ch. 8: `<-` binds the branch's plain result). Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Tile: fn Nat -> @unit
+fn @Tile k:
+    Ui.Label($text=$"tile {k}")
+
+@Panel: fn Mode -> @unit
+fn @Panel mode:
+    @Tile n                                                            # 0
+    n <- if mode == Soft:
+        @ 20
+    else:
+        Ui.Label($text=$"loud")                                        # 1
+        @ 10
+    Ui.Label($text=$"below {n}")                                       # 2, or 1
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    @Panel mode

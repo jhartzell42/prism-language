@@ -1,0 +1,7 @@
+# Derived by hand from Semantics ch. 8 (a blueprint is built at the applying block's next positions), ch. 9 (a forwarded element is re-emitted at `host/[p]/0`, `p` the child's path) and ruling TC.
+test a_local_widget_value_under_a_host
+
+tick 0
+  added:
+    0/[0]/0: Ui.Label(text="line 7")
+    0/[1]/0: Ui.Label(text="end")

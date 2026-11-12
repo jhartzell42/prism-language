@@ -1,0 +1,28 @@
+# A non-empty collection passed where a generic function's parameter wants the plain one
+# (Type System ch. 2, "Collections": a `[a]+` fills a place already known to want an
+# `[a]`, the one implicit conversion; ruling NS: beside an `[a]` at one type variable the
+# `[a]+` is read as the `[a]`, whichever comes first; ch. 5: a type variable is decided at
+# each call). `Same some, some` decides `a` as `[Nat]+` itself.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Count: fn [a] -> Nat
+fn Count xs = Len xs
+
+Entries: fn (Nat ==> v) -> Nat
+fn Entries m = Len m
+
+# its own non-empty parameter handed on where an `[a]` is wanted
+Both: fn [a]+, a -> Nat
+fn Both xs, x = (Count xs) + (Count (Push xs, x))
+
+Same: fn a, a -> Bool where a: ^Eq
+fn Same x, y = x == y
+
+@main: @unit
+@main:
+    let some = [[1, 2]]+
+    let plain = [[1, 2]]
+    let m = {1: "a"}+
+    Ui.Label($text=$"{Count some} {Entries m} {Both some, 9} {Same some, plain} {Same plain, some} {Same some, some} {Same some, [[4]]+}")    # 0

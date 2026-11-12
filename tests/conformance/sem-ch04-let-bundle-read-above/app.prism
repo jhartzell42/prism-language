@@ -1,0 +1,18 @@
+# A `let` of a bundle written out, read by a line above it (Semantics ch. 4, "Binding
+# groups and cycles": any line may use any name the block binds, and "the order of a
+# group's lines decides positions and nothing else"; Type System ch. 2, "Bundles": a
+# `let` binds a bundle). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Counter: fn ((Nat, !Click)) -> @unit
+fn @Counter ((step, !go)):
+    $total <- 0 then $total + step on !go
+    Ui.Label($text=$"total {$total}")
+
+@main: @unit
+@main:
+    !go <- Ui.Button($label=$"go")                                # 0
+    @Counter pair                                                 # 1
+    let pair = ((3, !go))

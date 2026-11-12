@@ -1,0 +1,5 @@
+emit Ui.*
+use App.*
+
+test entries_in_key_order, @main:
+    build

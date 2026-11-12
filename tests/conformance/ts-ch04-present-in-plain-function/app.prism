@@ -1,0 +1,22 @@
+# `!Present` called with an event in a plain function that gives an event (Type System ch. 4, "A sigiled parameter is not lifted over": the call is not lifted,
+# its event arguments are event values; Appendix B:
+# `!Present` fires `unit` for a value that is present). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Seven: fn unit -> Nat
+fn Seven unit = 7
+
+!Came: fn !?Nat -> !Nat
+fn !Came !?maybe = Seven (!Present !?maybe)
+
+@page: @unit
+@page:
+    !press <- Ui.Button($label=$"press")                         # 0
+    $count <- 0 then $count + 1 on !press
+    let !came = !Came (($count -? 1) on !press)
+    $firings <- 0 then $firings + 1 on !came
+    $last <- 0 then !came
+    Ui.Label($text=$"{$firings}: {$last}")                       # 1

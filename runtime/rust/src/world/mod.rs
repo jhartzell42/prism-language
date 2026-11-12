@@ -10,12 +10,15 @@
 //!
 //! - [`test_world`]: the Test World, which runs scripts in the test language and prints
 //!   transcripts to the byte.
+//! - [`prelude`]: the prelude's two tags, `Prelude.Unwrap` and `Prelude.Exceptions`, as
+//!   every World answers them, the Test World included.
 //! - [`scene`]: `Draw.Clickable` in a `Gui.Scene`, which the Test World clicks by path
 //!   (decisions.md D9) and the canvas World ignores.
 //! - [`probe`]: phase marks a driver can count work by.
 //!
 //! The CLI and canvas Worlds are crates of their own over this protocol (`worlds/`).
 
+pub mod prelude;
 pub mod scene;
 pub mod test_world;
 

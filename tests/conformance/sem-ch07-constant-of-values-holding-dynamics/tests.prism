@@ -1,0 +1,9 @@
+# The tests of sem-ch07-constant-of-values-holding-dynamics.
+emit Ui.*
+use App.*
+
+test the_tuple_holds_the_dynamic, @page:
+    build
+        => expect Ui.Label(text="0 main 2 3")
+    click at 0
+        => expect Ui.Label(text="1 main 2 3")

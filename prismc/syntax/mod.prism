@@ -23,10 +23,29 @@ use Syntax.Decls.*
 # ---------------------------------------------------------------------------------------
 
 # A half-open range `[start, end)` of character offsets into one source text (ast.rs counts
-# bytes; lines and columns, which are all a diagnostic shows, come out the same).
+# bytes; lines and columns, which are all a diagnostic shows, come out the same), or into
+# the space of what made it, where prismc makes an expression no source has (`Origin`).
 type Range = record:
     start: Nat
     end: Nat
+    origin: Origin
+derive ^Eq, ^Show
+
+# Where a span's offsets count: in its file's source text, or in a space of their own,
+# from 0, for what prismc made where nothing is written (so a made span never meets a
+# written one, and its type says it was made).
+type Origin = choice:
+    InSource
+    MadeBy Making
+derive ^Eq, ^Show
+
+# What made an expression no source has.
+type Making = choice:
+    # the line that applies a root widget whose body is not one block, and its names
+    # (`RootApplicationItems`)
+    RootApplication
+    # the arguments of a constructor used as a function value (`CtorFn`)
+    ConstructorArguments
 derive ^Eq, ^Show
 
 # A lexical error, a parse error, or an out-of-scope feature:

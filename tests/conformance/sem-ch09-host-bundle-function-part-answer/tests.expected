@@ -1,0 +1,23 @@
+# Derived by hand from Semantics ch. 9 as ruled (an event answer is the next tick's input, owed; a computed answer's place is not re-emitted) and Type System ch. 2 ("Bundles": the bundle is answered part by part), as sem-ch09-host-bundle-two-events-answer has it: the host's event reaches the child's place one tick after its click, and the function part is the place's from its build. Never run.
+test a_bundle_with_a_function_answered
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1/[1]/0: Ui.Label(text="0")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1/[1]/0: Ui.Label(text="5")
+
+tick 3
+  in:
+    0: click
+
+tick 4
+  changed:
+    1/[1]/0: Ui.Label(text="10")

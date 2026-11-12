@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 9 ("How a supplier answers": the supplier's blueprint is built when the child's place is built, in the host's scope; a plain answer is the place's first value, at its build; an event answer is the next tick's input, owed), ch. 8 (a widget function's lines take positions from 0 in the scope that builds it) and Type System ch. 2 (a bundle's plain part is its first value, its event part its answers), as sem-ch09-host-widget-answer and sem-ch09-host-bundle have them: the answering widget's button stands under the row of the child's place 0. Never run.
+test a_widget_answers_a_bundle
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="knock front")
+    0/[1]/0: Ui.Label(text="mock: 0")
+
+tick 1
+  in:
+    0/[0]/0: click
+
+tick 2
+  changed:
+    0/[1]/0: Ui.Label(text="mock: 2")

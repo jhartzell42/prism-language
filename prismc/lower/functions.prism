@@ -87,7 +87,7 @@ fn ParamNames lx, clauses, pts = Each (Range0 (Len pts)), \|i|
     let same = first != "" and Fold names, True, \|ok, n| ok and n == first
     let span = match (Or (Or clauses[0], dummyClause).params[i], dummyPat).kind:
         PName n: n.span
-        otherwise: Range(start=0, end=0)
+        otherwise: Range(start=0, end=0, origin=InSource)
     if same: (((LocalNameAt lx, first, span), False)) else: (((ParamWord (Or pts[i], OutUnit), i), True))
 
 # The binder a parameter pattern is, when it is one: its name with sigils.
@@ -149,7 +149,7 @@ fn ClausesBody lx, env, clauses, names, ptys, Body, label, t:
             XArm(pat=pa, conds=conds, body=(Body lx, (BindAll env1, binds), c.body))
         Own (ArmsValue scrut, arms, "'{label}", t)
 
-let dummyClause = FnClause(name=(DefOp "", Range(start=0, end=0)), params=[[]], body=(BodyExpr (Expr(kind=EError, span=Range(start=0, end=0)))), span=Range(start=0, end=0))
+let dummyClause = FnClause(name=(DefOp "", Range(start=0, end=0, origin=InSource)), params=[[]], body=(BodyExpr (Expr(kind=EError, span=Range(start=0, end=0, origin=InSource)))), span=Range(start=0, end=0, origin=InSource))
 
 FnBodyValue: unbounded fn Lx, Env, FnBody -> Ex
 fn FnBodyValue lx, env, (BodyExpr x) = Own (ValueOf lx, env, x)
@@ -187,7 +187,14 @@ fn FnGenerics lx, qk, sc:
 
 # A plain function: its scheme's types, its clauses as a `match`.
 FnDefOf: unbounded fn Lx, Text, [FnClause], Scheme -> FnDef
-fn FnDefOf lx, qk, clauses, sc:
+fn FnDefOf lx, qk, clauses, sc = FnDefIn lx, qk, qk, clauses, sc
+
+# `FnDefOf` for a body that is not the definition of the function's own name: an impl's
+# method and a trait's default are lowered under their trait's method's name, and are
+# definitions of their own among the program's instantiations (`definition`, their
+# `InstanceKey`).
+FnDefIn: unbounded fn Lx, Text, Text, [FnClause], Scheme -> FnDef
+fn FnDefIn lx, definition, qk, clauses, sc:
     let ((ptys, res)) = SignatureTys sc
     # A plain function is lifted: its `$` and `!` values are read at the caller's read point
     # (gap LE), so its body has their values. One whose parameters or result hold a dynamic
@@ -197,6 +204,7 @@ fn FnDefOf lx, qk, clauses, sc:
     let lxb = update lx:
         &_.whole <= whole
         &_.noCx <= True
+        &_.inDefinition <= definition
     let ((pts, ret)) = SignatureOut lx, qk, sc
     let names = ParamNames lx, clauses, pts
     let body = ClausesBody lxb, emptyEnv, clauses, names, ptys, FnBodyValue, "c", ret
@@ -221,6 +229,7 @@ fn TyParamsIn t = match t:
     OutDyn x: TyParamsIn x
     OutRc x: TyParamsIn x
     OutRef x: TyParamsIn x
+    OutRefMut x: TyParamsIn x
     OutHold x: TyParamsIn x
     OutCell x: TyParamsIn x
     OutLive x: TyParamsIn x
@@ -244,9 +253,10 @@ fn DefinitionText lx, qk:
     Join (Each (Append sig, spans), \|((f, r))| SrcText lx, f, r), "\n"
 
 SrcText: fn Lx, Nat, Range -> Text
-fn SrcText lx, f, r = match lx.g.srcs[f]:
-    ? src: DropTrailingComments (SpanText src, r)
-    nil: ""
+fn SrcText lx, f, r = match ((r.origin, lx.g.srcs[f])):
+    (((MadeBy m), ignore)): MakingText m
+    ((InSource, (? src))): DropTrailingComments (SpanText src, r)
+    ((InSource, nil)): ""
 
 # A definition's span runs to the next one, so it takes the comments that introduce the
 # next (or a test file's header): the quote stops at its last line of code.
@@ -261,12 +271,45 @@ fn IsCodeLine l:
     let s = Trim l
     s != "" and (not (HasPrefix s, "#"))
 
-# A top-level `let`: a getter computing its value (pick TL of the README).
+# A top-level `let`: a getter computing its value (pick TL of the README). One the
+# checker generalized (Type System ch. 5: a `let` generalizes; `let Same = \|x| x`, used
+# at `Bool` and at `Nat`) is a generic getter: each variable its scheme quantifies is a
+# type parameter of the getter with the scheme's bounds, named in the value's own types
+# (`GeneralizedLx`), and a use names the types it reads the `let` at (`LetValue`).
 LetGetter: unbounded fn Lx, Text, LetDecl -> FnDef
 fn LetGetter lx, qk, l:
-    let t = OutTyOf lx, (Peel (TypeAt lx, l.value.span))
-    let v = ValueOf lx, emptyEnv, l.value
-    FnDef(name=(Or lx.rsNames[qk], (Snake (BareName qk))), generics=[[]], params=[[]], ret=t, body=(Own v), doc="let {BareName qk}", public=True)
+    let lxg = GeneralizedLx lx, qk
+    let t = OutTyOf lxg, (Peel (TypeAt lxg, l.value.span))
+    let v = ValueOf lxg, emptyEnv, l.value
+    FnDef(name=(Or lx.rsNames[qk], (Snake (BareName qk))), generics=(LetGenerics lx, qk), params=[[]], ret=t, body=(Own v), doc="let {BareName qk}", public=True)
+
+# The variables a generalized top-level `let`'s scheme quantifies (`'N`, the checker's
+# name for the variable `N` it left open), each with the type parameter that stands for
+# it in the getter.
+GeneralizedParameters: fn Lx, Text -> [((Text, Text))]
+fn GeneralizedParameters lx, qk = match lx.g.vals[qk]:
+    ? v: if v.hasSig: [[]] else: Each v.scheme.qs, \|q| ((q, "generalized{Or (?AfterPrefix q, "'"), q}"))
+    nil: [[]]
+
+# The lowering inside a generalized top-level `let`'s value: each variable its scheme
+# quantifies read as its type parameter.
+GeneralizedLx: fn Lx, Text -> Lx
+fn GeneralizedLx lx, qk = update lx:
+    &_.subst <= Fold (GeneralizedParameters lx, qk), &_.subst, \|m, ((q, parameter))| Insert m, q, (TyRigid parameter)
+
+# A generalized top-level `let`'s type parameters with their bounds, as a function's are
+# (`SchemeGenerics`).
+LetGenerics: unbounded fn Lx, Text -> [((Text, [Text]))]
+fn LetGenerics lx, qk = match lx.g.vals[qk]:
+    ? v:
+        let parameters = GeneralizedParameters lx, qk
+        let Named = \|q| Fold parameters, q, \|found, ((from, to))| if from == q: to else: found
+        let renamed = update v.scheme:
+            &_.qs <= Each parameters, \|((ignore, to))| to
+            &_.bounds <= Each &_.bounds, \|((q, cls))| (((Named q), cls))
+            &_.ty <= Instantiated &_.ty, (Each parameters, \|((from, ignore))| from), (Each parameters, \|((ignore, to))| TyQ to)
+        if (Len parameters) == 0: [[]] else: SchemeGenerics lx, renamed
+    nil: [[]]
 
 # ---------------------------------------------------------------------------------------
 # Traits and impls (claude/backend.md: a trait is a Rust trait, `derive` impls; a program's
@@ -285,6 +328,7 @@ fn HeadName other = ""
 # one collection of two types) are two functions.
 HeadWord: unbounded fn Ty -> Text
 fn HeadWord t = match t:
+    TyCon "Prelude.NonEmpty", [[c]]: "non_empty_{HeadWord c}"
     TyCon n, ignore: Snake (BareName n)
     TyArray x: "array_of_{HeadWord x}"
     TyMap k, v: "map_of_{HeadWord k}_to_{HeadWord v}"
@@ -343,7 +387,7 @@ fn TraitDefOf lx0, tr:
             &_.bounds <= Filter &_.bounds, \|((q, ignore))| q != tr.param
         let defaultQk = Fold tr.defaults, "", \|f, dq| if (BareName dq) == (BareName mq): dq else: f
         let clauses = if defaultQk == "": [[]] else: DefaultClauses lx.g, defaultQk
-        let fd = FnDefOf lx, mq, (if (Len clauses) == 0: [[dummyClause]] else: clauses), sc
+        let fd = FnDefIn lx, (if defaultQk == "": mq else: defaultQk), mq, (if (Len clauses) == 0: [[dummyClause]] else: clauses), sc
         update fd:
             &_.public <= (Len clauses) > 0
     TraitDef(name=(TraitName tr.name), resultOnly=(ResultOnlyNames lx, tr), assocs=(Each tr.assocs, \|a| Camel a), methods=methods, defaults=tr.defaults, doc=(TypeDoc lx, (TyInfo(name=tr.name, home=tr.home, params=[[]], body=BOpaque, derives=[[]], file=tr.file, span=tr.span))))
@@ -356,39 +400,41 @@ fn DefaultOf d, other = match d.body:
     DbDefault cs, ignore: cs
     otherwise: other
 
-# A program's trait as an existential keeps it (`PackedDef`), when every method can be
-# asked of a packed value: the trait has no associated type; each method has no type
-# parameter of its own, takes the trait's parameter as at least one whole parameter (the
-# dictionary is found in a packed argument), and names it nowhere else but as its whole
-# result. `nil` for any other trait: an `any` of it is refused where it is packed
-# (`AnyValue`).
+# A program's trait as an existential keeps it (`PackedDef`). A method can be asked of a
+# packed value when it has no type parameter of its own, takes the trait's parameter as
+# at least one whole parameter (the dictionary is found in a packed argument), and names
+# it nowhere else but as its whole result. Any other method is no entry of the
+# dictionary (`unasked`): the checker refuses a call of it on a packed value
+# (`existential-method`, ruling EX), and the packing and the trait's other methods stand.
+# A method that names an associated type names the trait's type inside it (`Unit a`), so
+# it is unasked, and the impl for the packed value chooses the unit type for every
+# associated type: no value of one is made through a packed value. `nil` for a trait of
+# the prelude, which is packed by name.
 ?PackedDefOf: unbounded fn Lx, TraitInfo -> ?PackedDef
 fn ?PackedDefOf lx0, tr:
     let lx = InModule lx0, tr.file, tr.home
     let hiddenTy = TyCon "\u{0}Self", [[]]
-    let ?methods = Fold tr.methods, (? [[]]), \|?acc, mq| match ?acc:
-        nil: nil
-        ? acc:
-            let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
-            let ((ps, r)) = match v.scheme.ty:
-                TyFn ignore, ps, r: ((ps, r))
-                other: (([[]], other))
-            let marked = Each ps, \|p| Instantiated p, [[tr.param]], [[hiddenTy]]
-            let hidden = Each marked, \|m| m == hiddenTy
-            let markedResult = Instantiated r, [[tr.param]], [[hiddenTy]]
-            let whole = Fold (Range0 (Len ps)), True, \|ok, i| ok and ((Or hidden[i], False) or (Or marked[i], TyErr) == (Or ps[i], TyErr))
-            let ownQs = Filter v.scheme.qs, \|q| q != tr.param
-            if (Len ownQs) > 0 or not whole or not (Fold hidden, False, \|f, h| f or h) or not (markedResult == hiddenTy or markedResult == r): nil
-            else:
-                let sc = update v.scheme:
-                    &_.ty <= Instantiated &_.ty, [[tr.param]], [[(TyAny [[tr.name]])]]
-                    &_.qs <= ownQs
-                    &_.bounds <= Filter &_.bounds, \|((q, ignore))| q != tr.param
-                ? (Push acc, PackedMethod(method=(FnDefOf lx, mq, [[dummyClause]], sc), hidden=hidden, hiddenResult=(markedResult == hiddenTy)))
-    if (HasPrefix tr.name, "Prelude.") or (Len tr.assocs) > 0: nil
-    else: match ?methods:
-        ? methods: ? PackedDef(name=(TraitName tr.name), tr=(PathIn lx, tr.home, (TraitName tr.name)), methods=methods)
-        nil: nil
+    let start = PackedDef(name=(TraitName tr.name), tr=(PathIn lx, tr.home, (TraitName tr.name)), methods=[[]], unasked=[[]], assocs=(Each tr.assocs, \|a| Camel a))
+    let packed = Fold tr.methods, start, \|acc, mq|
+        let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
+        let ((ps, r)) = match v.scheme.ty:
+            TyFn ignore, ps, r: ((ps, r))
+            other: (([[]], other))
+        let marked = Each ps, \|p| Instantiated p, [[tr.param]], [[hiddenTy]]
+        let hidden = Each marked, \|m| m == hiddenTy
+        let markedResult = Instantiated r, [[tr.param]], [[hiddenTy]]
+        let whole = Fold (Range0 (Len ps)), True, \|ok, i| ok and ((Or hidden[i], False) or (Or marked[i], TyErr) == (Or ps[i], TyErr))
+        let ownQs = Filter v.scheme.qs, \|q| q != tr.param
+        let sc = update v.scheme:
+            &_.ty <= Instantiated &_.ty, [[tr.param]], [[(TyAny [[tr.name]])]]
+            &_.qs <= ownQs
+            &_.bounds <= Filter &_.bounds, \|((q, ignore))| q != tr.param
+        let method = FnDefOf lx, mq, [[dummyClause]], sc
+        if (Len ownQs) > 0 or not whole or not (Fold hidden, False, \|f, h| f or h) or not (markedResult == hiddenTy or markedResult == r): update acc:
+            &_.unasked <= Push &_.unasked, method
+        else: update acc:
+            &_.methods <= Push &_.methods, PackedMethod(method=method, hidden=hidden, hiddenResult=(markedResult == hiddenTy))
+    if HasPrefix tr.name, "Prelude.": nil else: ? packed
 
 # The function that makes a trait's dictionary at a type, given a value of it
 # (`PackedDef`; the packing's `with_dictionary` takes it).
@@ -404,11 +450,14 @@ fn ImplDefOf lx, im:
     let methods = Each defs, \|d|
         let mq = Fold tr.methods, "", \|found, q| if (BareName q) == d.name: q else: found
         let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
-        let sc = update v.scheme:
-            &_.ty <= Instantiated &_.ty, [[tr.param]], [[im.head]]
+        # the method's own type parameters are apart from the head's of one name, as the
+        # checker read its body (`SchemeApart`)
+        let own = update v.scheme:
             &_.qs <= Filter &_.qs, \|q| q != tr.param
             &_.bounds <= Filter &_.bounds, \|((q, ignore))| q != tr.param
-        let fd = FnDefOf lx, mq, (MethodClauses d), sc
+        let sc = update (SchemeApart own, im.qs):
+            &_.ty <= Instantiated &_.ty, [[tr.param]], [[im.head]]
+        let fd = FnDefIn lx, (InstanceKey d), mq, (MethodClauses d), sc
         if (HasPrefix im.cls, "Prelude."): Renamed fd, "{Snake d.name}_{HeadWord im.head}" else: fd
     # an impl's `where` clauses bound its type parameters, as a function's do
     let generics = Each im.qs, \|q| ((Camel q, (ImplBounds lx, im, q)))

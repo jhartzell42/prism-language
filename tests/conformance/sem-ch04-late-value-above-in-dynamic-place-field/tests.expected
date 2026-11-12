@@ -1,0 +1,9 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": the order of a group's lines decides positions and nothing else) and ch. 8 ("A new place's first value": the first-value query answers at the build; a state is keyed by the element's value): the arm gives 10, so the place is `Pad.Count(name="count 10")`, whose state is 4.
+test loud
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Pad.Count(name="count 10")
+    2: Ui.Label(text="4 of 10")
+    3: Ui.Label(text="x 0")

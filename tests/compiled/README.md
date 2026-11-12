@@ -1,6 +1,6 @@
 # tests/compiled/
 
-`run.sh`: every conformance program, chess (`examples/chess` and `examples/chess/rules`)
+`run.sh`: every conformance program, chess (`examples/basic-chess` and `examples/basic-chess/rules`)
 and prismc's lexer and parser test modules (`prismc/syntax/lexer`,
 `prismc/syntax/parser`), compiled by prismc, built, and each test module run under the
 compiled Test World, its transcript byte-equal to its `.expected`; `--target cpp` the

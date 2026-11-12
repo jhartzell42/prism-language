@@ -1,0 +1,5 @@
+# `Words`, which the root declares twice.
+emit r
+
+Name: fn Nat -> Text
+fn Name n = "{n} units"

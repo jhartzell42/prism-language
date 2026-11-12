@@ -1,0 +1,20 @@
+# Derived by hand from Semantics ch. 7 as ruled (round 3 ST: a gathered dynamic is one tick behind the structure and moves at n+1, an owed tick; at the build it reads the rows built above it, as sem-ch07-structural's label over `Size $doc` does) and ch. 9 (round 3 DY: the answer's first value is read in the birth tick, each later change is a push delivered the next tick, owed): the row is born in tick 1, the gathered dynamic moves in tick 2, the child's place hears it in tick 3.
+test a_structural_dynamic_answers
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/[1]/0: Ui.Label(text="one")
+    2/[1]/0: Ui.Label(text="1 rows")
+
+tick 1
+  in:
+    0: click
+  added:
+    1/[2]/0: Ui.Label(text="two")
+
+tick 2
+
+tick 3
+  changed:
+    2/[1]/0: Ui.Label(text="2 rows")

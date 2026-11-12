@@ -1,0 +1,6 @@
+# The tests of ts-ch03-existential-packed-in-place.
+emit Ui.*
+use App.*
+
+test it_builds, @page:
+    build

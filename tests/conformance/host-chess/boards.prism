@@ -1,0 +1,66 @@
+# Chess in a window: the hot seat. One window, two boards side by side, each a participant
+# that holds one player's seat of one game in memory.
+# Written by Claude (an implementation agent), 11 November 2026; evidence for Part IV;
+# subject to change.
+emit Pane.* | Gui.* | Console.* | Play.* | Watch.*
+use Documents.*
+use Rules.*
+use Game.*
+use Board.*
+use CommandLine.*
+use Window.*
+use Window.Panes.*
+use Window.Hosting.*
+use Window.Widgets.*
+use Window.Layout.*
+use Window.Hits.*
+
+let white = Player White
+let black = Player Black
+
+# both players at boards
+@BoardSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.*
+fn @BoardSeats $state, !responses:
+    !asked <- @HostPlayers {white: unit, black: unit}, never, never, @BoardPlayer, $state, !responses
+    @ !asked
+
+@boards: @unit
+@boards:
+    @Row 16.0, @widget:
+        @InMemory fresh, @BoardSeats
+
+# the hot seat in a window
+@window: @unit
+@window:
+    @Window ($ "Chess"), (Extent 1400.0, 760.0), @boards
+
+# Both players at boards in a window and a spectator at a terminal. The terminal's seat is
+# hosted beside the window, not inside it: a `Console` element passed up through the
+# window's boxes aborts the tick (bug 31).
+@WatchedSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.* | Console.*
+fn @WatchedSeats $state, !responses:
+    !asked <- @Window ($ "Chess"), (Extent 1400.0, 760.0), @widget:
+        !fromBoards <- @Row 16.0, @widget:
+            !fromSeats <- @HostPlayers {white: unit, black: unit}, never, never, @BoardPlayer, $state, !responses
+            @ !fromSeats
+        @ !fromBoards
+    @HostSpectators {(Spectator "ada"): unit}, never, never, @LineSpectator, $state
+    @ !asked
+
+@watchedWindow: @unit
+@watchedWindow:
+    @InMemory fresh, @WatchedSeats
+
+# White at a board in a window, Black at a terminal: the players' host is called once for
+# each way of sitting, and the two calls' notices go to the implementation together.
+@AgainstTerminalSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.* | Console.*
+fn @AgainstTerminalSeats $state, !responses:
+    !fromBoard <- @Window ($ "Chess"), (Extent 700.0, 760.0), @widget:
+        !fromSeat <- @HostPlayers {white: unit}, never, never, @BoardPlayer, $state, !responses
+        @ !fromSeat
+    !fromTerminal <- @HostPlayers {black: unit}, never, never, @LinePlayer, $state, !responses
+    @ Together (!Union (One 0, !fromBoard), (One 1, !fromTerminal))
+
+@againstTerminal: @unit
+@againstTerminal:
+    @InMemory fresh, @AgainstTerminalSeats

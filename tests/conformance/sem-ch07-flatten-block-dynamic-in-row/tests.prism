@@ -1,0 +1,14 @@
+# The tests of sem-ch07-flatten-block-dynamic-in-row.
+emit Ui.*
+use App.*
+
+test a_row_flattens_its_blocks_dynamic, @inRow:
+    build
+    click at 0
+    compute
+
+test a_generation_flattens_its_blocks_dynamic, @inGeneration:
+    build
+    click at 0
+    compute
+    click at 1

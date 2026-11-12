@@ -167,9 +167,9 @@ fn UndefinedSignature st, stmts, s = match s.kind:
     otherwise: st
 
 StmtsSpan: fn [Stmt] -> Range
-fn StmtsSpan stmts = Range(start=(Or stmts[0], dummyStmt).span.start, end=(Or (?Last stmts), dummyStmt).span.end)
+fn StmtsSpan stmts = Range(start=(Or stmts[0], dummyStmt).span.start, end=(Or (?Last stmts), dummyStmt).span.end, origin=(Or stmts[0], dummyStmt).span.origin)
 
-let dummyStmt = Stmt(kind=(SExpr (Expr(kind=EError, span=Range(start=0, end=0)))), span=Range(start=0, end=0))
+let dummyStmt = Stmt(kind=(SExpr (Expr(kind=EError, span=Range(start=0, end=0, origin=InSource)))), span=Range(start=0, end=0, origin=InSource))
 
 IsLast: fn [Stmt], Nat -> Bool
 fn IsLast stmts, i = i + 1 == (Len stmts)
@@ -188,7 +188,10 @@ fn PreBind env, st, s = match s.kind:
             nil:
                 let ((v, st2)) = FreshVar st, False, ""
                 BindLocalId (WithLocal env, name, (Mono v)), st2, name, (DefNameSpan f.name)
-    SLet p, ignore, ignore: match p.kind:
+    SLet p, ignore, e: match p.kind:
+        # a constructor's name is its pattern and binds nothing (`CheckLetValue`); under a
+        # lambda the name is bound all the same, so its uses say nothing more
+        PName ignore if (LetNamesConstructor env, p) and not (IsLambda e): ((env, st))
         PName n:
             let ((v, st1)) = FreshVar st, True, (SNameKey n)
             let st2 = AtBinder st1, v, n.span
@@ -226,13 +229,25 @@ fn CheckLet env, st, p, ?ty, e, span = match ?BuilderHead env, e:
 # block's colon.
 ?BuilderHead: fn Env, Expr -> ?((Text, Text, Text))
 fn ?BuilderHead env, e = match e.kind:
-    EFor ignore, ignore, body: ? (("for", "rows", (TrimTrailing (SrcText env, Range(start=e.span.start, end=body.span.start)), " \n\t")))
-    ERebuild ignore, body: ? (("rebuild", "block", (TrimTrailing (SrcText env, Range(start=e.span.start, end=body.span.start)), " \n\t")))
+    EFor ignore, ignore, body: ? (("for", "rows", (TrimTrailing (SrcText env, Range(start=e.span.start, end=body.span.start, origin=e.span.origin)), " \n\t")))
+    ERebuild ignore, body: ? (("rebuild", "block", (TrimTrailing (SrcText env, Range(start=e.span.start, end=body.span.start, origin=e.span.origin)), " \n\t")))
     EGroup x: ?BuilderHead env, x
     otherwise: nil
 
 CheckLetValue: unbounded fn Env, St, Pattern, ?Type, Expr, Range -> ((Env, St))
 fn CheckLetValue env, st, p, ?ty, e, span:
+    # A name that is a constructor's: a pattern's capitalised name that resolves to a
+    # constructor is the constructor, and the value is matched against it. A lambda is no
+    # constructor's value, and the line was meant to name a function: say so, and bind
+    # the name all the same, so that its uses say nothing more.
+    let named = LetNamesConstructor env, p
+    let name = SrcText env, p.span
+    let st1 = if named and IsLambda e: ErrFix st, "collision", p.span, "`{name}` is a constructor here, and a pattern's `{name}` is the constructor: this `let` names no function", "give the function another name" else: st
+    let q = if named and not (IsLambda e): Pattern(kind=(PGroup p), span=p.span) else: p
+    CheckLetBinding env, st1, q, ?ty, e, span
+
+CheckLetBinding: unbounded fn Env, St, Pattern, ?Type, Expr, Range -> ((Env, St))
+fn CheckLetBinding env, st, p, ?ty, e, span:
     let st0 = EnterLevel st
     let ((?annot, st1)) = match ?ty:
         ? t:
@@ -515,14 +530,14 @@ fn CheckBody env, st, body, res = match body:
                     let env2 = update env:
                         &_.scope <= rw
                     let ((t, st2)) = InferWidgetBlockAt env2, st, b, (? inner)
-                    Unify st2, inner, t, b.span
+                    Unify st2, inner, t, (ResultSpan b)
                 other: Err st, "mismatch", b.span, "a widget block builds a blueprint; the signature says `{ShowTy st, other}`"
         else: if env.mark == "?" or env.mark == "~":
             let ((t, st2)) = InferGivenBlock env, st, b, env.mark
-            Unify st2, res, t, b.span
+            Unify st2, res, t, (ResultSpan b)
         else:
             let ((t, st2)) = InferExprBlock env, st, b
-            Unify st2, res, t, b.span
+            Unify st2, res, t, (ResultSpan b)
 
 # ---------------------------------------------------------------------------------------
 # Templates

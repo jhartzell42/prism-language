@@ -1,0 +1,17 @@
+# `prompt-cycle`: a block's hold `$seen` steps on `!step`, and `!step` merges `!Updated
+# $total`, the update event of a dynamic lifted over the hold. A hold's VALUE is delayed
+# (Semantics ch. 7: "The delayed edges are a sample, a hold's own value, and an
+# adoption"), but its update event fires in the tick of its step (R3: "Its update event
+# fires in a tick in which the dynamic was recomputed"), and lifting over dynamics and a
+# merge are prompt: a press would step `$seen`, update `$total`, fire `!step` and step
+# `$seen` again in one tick. The same loop in a `for`'s row is
+# neg/sem-ch07-row-hold-cycle.
+emit Ui.*
+
+@host: @unit
+@host:
+    !press <- Ui.Button($label=$"press")
+    let !step = (1 on !press) <| !Updated $total
+    $seen <- 0 then $seen + 1 on !step
+    let $total = $seen * 2
+    Ui.Label($text=$"{$total}")

@@ -180,9 +180,14 @@ type TProgram = record:
     # (Semantics ch. 10: a bare `Error(..)` is the failure of the `~T` it meets): lowering
     # makes it the `~T`'s failure there.
     faults: [TyNote]
+    # Every expression whose value, a non-empty collection, stands where its plain
+    # collection is wanted (Type System ch. 2, "Collections": a `[a]+` fills a place already
+    # known to want an `[a]`, the one implicit conversion; ruling NS): lowering converts it
+    # there, since a non-empty collection has a target type of its own.
+    plains: [SrcAt]
 derive ^Eq, ^Show
 
-let emptyTyped = TProgram(exprs=[[]], apps=[[]], lifts=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], locals=[[]], uses=[[]], calls=[[]], globals=[[]], gens=[[]], insts=[[]], defs=[[]], unshrunk=[[]], faults=[[]])
+let emptyTyped = TProgram(exprs=[[]], apps=[[]], lifts=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], locals=[[]], uses=[[]], calls=[[]], globals=[[]], gens=[[]], insts=[[]], defs=[[]], unshrunk=[[]], faults=[[]], plains=[[]])
 
 AtKey: fn SrcAt -> Text
 fn AtKey a = "{a.file}:{a.span.start}:{a.span.end}"

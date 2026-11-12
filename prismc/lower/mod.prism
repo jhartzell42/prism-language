@@ -130,6 +130,10 @@ type Lx = record:
     # The expressions whose `Error` value is the failure of the `~T` it meets, with that
     # type, by place (the typed output's `faults`).
     faults: (Text ==> Ty)
+    # The expressions whose value, a non-empty collection, stands where its plain
+    # collection is wanted, by place (the typed output's `plains`): each is converted
+    # there (`AsPlain`).
+    plains: (Text ==> Bool)
     # The widgets that call themselves whose rows are being lowered around this place
     # (`SharedClauseLine`): by widget, each clause's row, the pattern and conditions that
     # choose it, and what its `build` is passed.
@@ -138,11 +142,53 @@ type Lx = record:
     # there, when it is sharable, is a generation of shared rows, its plain result late
     # (`IsRecursingCall`).
     recursing: [Text]
+    # The widgets with places the program reads as blueprint values (`ValuedWidgets`): by
+    # widget (and for a generic one the types a reading gives it, `ValuedKey`), each clause's row, the pattern and conditions that choose it, and what its
+    # `build` is passed. The rows are items of the widget's module (`ValuedRows`), built
+    # by the blueprint a value site makes (`WidgetBlueprintValue`).
+    valued: (Text ==> [((Text, Pa, [Cc], [Ex]))])
+    # Every valued widget's readings: each one's key in `valued` (`ValuedKey`) with the
+    # types it gives the widget's type parameters, in the order its rows are numbered
+    # (`ValuedStemAt`). A widget with no type parameter has the one, its own name.
+    valuedAt: (Text ==> [((Text, [((Text, Ty))]))])
+    # The definition whose body is being lowered, "" outside one: a generic function's
+    # instantiations over the program are read by it (`?DefInstances`).
+    inDefinition: Text
 derive ^Eq, ^Show
 
 # A key into the typed tables: the file and the range.
 PlaceKey: fn Lx, Range -> Text
-fn PlaceKey lx, r = "{lx.file}:{r.start}:{r.end}"
+fn PlaceKey lx, r = match r.origin:
+    InSource: "{lx.file}:{SpanKey r}"
+    # (a made span is spelled by what made it, not by a file)
+    MadeBy ignore: "made:{SpanKey r}"
+
+# A span's offsets, as the lowering's own keys and the names it derives from a span spell
+# them: a written span's bare (`12:30`), a made span's after what made it
+# (`root_application_2:2`), so the two never meet (`Origin`).
+SpanKey: fn Range -> Text
+fn SpanKey r = "{SpanStem r}:{r.end}"
+
+# A span's start as a name's stem (an identifier's part): `12`, or `root_application_2`.
+SpanStem: fn Range -> Text
+fn SpanStem r = match r.origin:
+    InSource: "{r.start}"
+    MadeBy m: "{MakingStem m}{r.start}"
+
+# The same, the start in base 32 (`Base32`).
+SpanStem32: unbounded fn Range -> Text
+fn SpanStem32 r = match r.origin:
+    InSource: Base32 r.start
+    MadeBy m: "{MakingStem m}{Base32 r.start}"
+
+MakingStem: fn Making -> Text
+fn MakingStem RootApplication = "root_application_"
+fn MakingStem ConstructorArguments = "constructor_argument_"
+
+# What a made span's text reads as, where the lowering quotes an expression's text.
+MakingText: fn Making -> Text
+fn MakingText RootApplication = "the root widget applied"
+fn MakingText ConstructorArguments = "a constructor's argument"
 
 TypeAt: fn Lx, Range -> Ty
 fn TypeAt lx, r = SubstTy lx, (Or lx.tys[PlaceKey lx, r], TyErr)
@@ -185,29 +231,11 @@ fn IsQuantCol lx, c = False
 # The tables of the typed program by place.
 TypedTables: unbounded fn TProgram -> (((Text ==> Ty), (Text ==> AppNote), (Text ==> Ty), (Text ==> [ImplNote])))
 fn TypedTables tp:
-    # an expression's or a binder's type with every non-empty promise dropped: to the back
-    # end a `[a]+` is the `[a]` it is (`PlainCollections`)
-    let tys = Fold tp.exprs, {}, \|m, n| Insert m, (AtKey n.at), (PlainCollections n.ty)
+    let tys = Fold tp.exprs, {}, \|m, n| Insert m, (AtKey n.at), n.ty
     let apps = Fold tp.apps, {}, \|m, n| Insert m, (AtKey n.at), n
-    let bs = Fold tp.binders, {}, \|m, n| Insert m, (AtKey n.at), (PlainCollections n.ty)
+    let bs = Fold tp.binders, {}, \|m, n| Insert m, (AtKey n.at), n.ty
     let ims = Fold tp.impls, {}, \|m, n| Insert m, (AtKey n.at), (Push (Or m[AtKey n.at], [[]]), n)
     ((tys, apps, bs, ims))
-
-# A type with every non-empty collection inside it as the collection (Type System ch. 2,
-# "Collections"): the promise is the checker's, and a value of a `[a]+` is an `[a]`'s.
-PlainCollections: unbounded fn Ty -> Ty
-fn PlainCollections t = match t:
-    TyCon "Prelude.NonEmpty", [[c]]: PlainCollections c
-    TyCon n, args: TyCon n, (Each args, \|a| PlainCollections a)
-    TyFn c, ps, res: TyFn c, (Each ps, \|p| PlainCollections p), (PlainCollections res)
-    TyTuple ts: TyTuple (Each ts, \|a| PlainCollections a)
-    TyArray e: TyArray (PlainCollections e)
-    TyMap k, v: TyMap (PlainCollections k), (PlainCollections v)
-    TySig s, i: TySig s, (PlainCollections i)
-    TyAt i, rw: TyAt (PlainCollections i), rw
-    TyElem rw, o: TyElem rw, (PlainCollections o)
-    TyAssoc tr, n, a: TyAssoc tr, n, (PlainCollections a)
-    other: other
 
 # ---------------------------------------------------------------------------------------
 # Names (Compiler ch. 4: a block's class is named after its function, a binding after its
@@ -346,7 +374,9 @@ fn FieldSpell ignore, fname, ft = "{GlobalBase fname}_{SigilOrKind fname, ft}"
 SigilOrKind: fn Text, Ty -> Text
 fn SigilOrKind name, t:
     let marks = MarksOf name
-    if Contains marks, "?": "o"
+    # a named lens (`&Acc` beside a function `Acc`)
+    if Contains marks, "&": "l"
+    else: if Contains marks, "?": "o"
     else: if Contains marks, "~": "r"
     else: if Contains marks, "!": "e"
     else: if Contains marks, "$": "d"
@@ -467,7 +497,7 @@ fn TagStruct tn = Concat (Each (SplitOn tn, "."), \|p| Camel p)
 # A tag's level struct (`Level`), named apart from every program type: its family and name
 # run together with `_g` after them (`InkRect_g`), which no type's name (UpperCamelCase,
 # with no `_`) can be; the prelude's tags by the names its hand-written code gives them.
-# The variants of a row's enum and of `Answer` keep `TagStruct`, inside their enum.
+# The variants of a row's enum and of `Output` keep `TagStruct`, inside their enum.
 # An element tag's description struct (`DescDefOf`).
 DescStructOf: fn TagInfo -> Text
 fn DescStructOf tg = "{TagStruct tg.name}_desc"

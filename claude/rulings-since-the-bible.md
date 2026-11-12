@@ -111,3 +111,43 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   error. Each packed value keeps its own dictionary. Claude's ruling (the fixer proposed
   the dictionary of an array's first element, an empty array a fault); told to Jimmy and
   not overruled.
+- **NI** A trait asked at `[a]+` is solved by an impl for `[a]+`, never by the impl for
+  `[a]`. With only `impl ^Sized [a]`, `Count ([[1, 2]] as [Nat]+)` is a `no-impl` error
+  whose fix line says to write `impl ^Sized [a]+` or to pass the collection with
+  `as [a]`. `^Eq`, `^Ord` and `^Show` at `[a]+` go by the collection's parts. A non-empty
+  value still converts where a plain `[a]` is wanted. Jimmy: "I agree." Refused: falling
+  back to the `[a]` impl for traits whose type is never a result. `[a]+` and
+  `(K ==> V)+` have a target type of their own on both targets.
+- **PG** A function that calls itself at a type that grows without end
+  (`fn Depth value, n: 1 + Depth [value], (n -? 1)`) is a checker error. Jimmy: "error
+  yes". Recursion at another type that reaches a finite set of types stays legal with a
+  signature (Type System chapter 2). Refused: a second lowering with the types passed at
+  run time.
+- **NL** Named lenses (`&Acc: fn &Vm -> &Int`, Semantics chapter 5) are in scope: a named
+  lens is a function from one reference to a reference. Jimmy: "It's just a function from
+  references to references". `Over`, `Get`, `Set`, the `^Lens` trait and a lens as a
+  value (`&.score.home` outside an `update` block, Type System chapter 3) are out of this
+  compiler's scope: the checker's `unsupported` error stands for them. Jimmy: "yes that's
+  out of scope".
+- **ME** A named lens may not end at a map key, nor step through one: a checker error
+  (`lens-map-key`). Inside one `update`
+  statement the checker knows by the container's type that a path ends at a key (its
+  part is `?V`, and setting `nil` removes the key); behind a named lens's signature
+  `&?V` would be either a real location or an entry. Jimmy: "A & can be a real location
+  or a map entry ... I think that that's redonkulous actually, and that entries should be
+  Entry<K,V> and have a separate operator to set them". The entry type and its operator
+  are a change to the language, sent to the Bible; this compiler keeps the `update`
+  block's own map index paths as Semantics chapter 5 has them, and a named lens may end at
+  an array's index.
+
+## 12 November 2026
+
+- **OU** An element has an output: the prelude's `Answer c` is `Output c`, and the
+  constructor ruling AN generates for each tag ends in `Output`: `Ui.Button.Output click`,
+  `Fs.Contents.Output (~ c)` (AN's form, the last segment renamed). Jimmy: "An element has
+  an output, a request has a response, and a query has an answer. Rename the prelude's
+  `Answer c` and each tag's `Ui.Button.Answer click` to `Output c` and
+  `Ui.Button.Output click`. That frees `Answer` for a document's `type Answer r`, which the
+  hosting code spells `Told` until the rename lands." The emitted crate's enum is
+  `crate::Output`, and prism_rtl's `AnswerOf` is `OutputOf`. Refused: keeping `Answer`
+  for an element, which leaves a document's query without its word.

@@ -1,0 +1,26 @@
+# A function of a block written by clauses and applied as a line of the block: `fn @Row
+# 0, $shown` and `fn @Row n, $shown` beside `$less <- @Row 0, $count` (Semantics ch. 4: a
+# function defined in a block reads the block's names and its own parameters; ch. 8: a
+# widget of several clauses takes the first clause its arguments match, at the build, and
+# is transparent: its places are the block's next, counted as built, ruling TC). Written
+# by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@Labelled: fn Text, $Nat -> @$Nat emit Ui.*
+fn @Labelled name, $n:
+    Ui.Label($text=$"{name} {$n}")
+    @ $n + 1
+
+@table: @unit
+@table:
+    !add <- Ui.Button($label=$"add")
+    $count <- 0 then $count + 1 on !add
+    @Row: fn Nat, $Nat -> @$Nat emit Ui.*
+    fn @Row 0, $shown = @Labelled "none", $shown
+    fn @Row n, $shown:
+        Ui.Label($text=$"row {n}")
+        @Labelled "some", $count + $shown
+    $less <- @Row 0, $count
+    $more <- @Row 2, $count
+    Ui.Label($text=$"less {$less} more {$more}")

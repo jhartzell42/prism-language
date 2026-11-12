@@ -1,0 +1,85 @@
+# The rules' test module (claude/modules-style-pass.md): the checks, and the positions and
+# moves they are written with, which only `prism test` and `prism check` read.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Rules.*
+
+# ---------------------------------------------------------------------------
+# For the checks: positions from pieces, and moves in sequence
+
+# a position from pieces, with every castling right unspent
+Setup: fn [((Sq, Piece))], Color -> Game
+fn Setup pieces, turn = Game(board=(Map pieces), turn=turn, corners=allCorners, ?passed=nil)
+
+let wk = Piece White, King
+let wr = Piece White, Rook
+let wn = Piece White, Knight
+let wp = Piece White, Pawn
+let bk = Piece Black, King
+let br = Piece Black, Rook
+
+let kingsAndRooks = [[(((Sq 4, 0), wk)), (((Sq 7, 0), wr)), (((Sq 0, 0), wr)), (((Sq 4, 7), bk))]]
+
+# whether the white king may castle to `to` with `extra` pieces on the board
+CastleOk: fn [((Sq, Piece))], Sq -> Bool
+fn CastleOk extra, to = (?Move (Setup (Append kingsAndRooks, extra), White), (Sq 4, 0), to, Queen) != nil
+
+# a move after a sequence of moves, promoting to a queen
+?Then: fn ?Game, Sq, Sq -> ?Game
+fn ?Then ?g, from, to:
+    g <- ?g
+    ?Move g, from, to, Queen
+
+# the white king steps up and back, and so does the black one: the right is gone
+let ?kingWalk = ?Then (?Then (?Then (?Then (? (Setup kingsAndRooks, White)), (Sq 4, 0), (Sq 4, 1)), (Sq 4, 7), (Sq 4, 6)), (Sq 4, 1), (Sq 4, 0)), (Sq 4, 6), (Sq 4, 7)
+
+# the fool's mate: f3, e5, g4, Qh4
+let ?foolsMate = ?Then (?Then (?Then (?Move initial, (Sq 5, 1), (Sq 5, 2), Queen), (Sq 4, 6), (Sq 4, 4)), (Sq 6, 1), (Sq 6, 3)), (Sq 3, 7), (Sq 7, 3)
+
+# e4, a6, e5, d5: the white pawn on e5 may take d5 in passing
+let ?passing = ?Then (?Then (?Then (?Move initial, (Sq 4, 1), (Sq 4, 3), Queen), (Sq 0, 6), (Sq 0, 5)), (Sq 4, 3), (Sq 4, 4)), (Sq 3, 6), (Sq 3, 4)
+
+# The rules module's own checks: a test module of `Rules`, as tests are
+# declarations of their module (Semantics chapter 6); squares are written `Sq file, rank`
+# from 0, so `Sq 4, 1` is e2. Not yet run.
+
+check moves:
+    ?Move initial, (Sq 4, 1), (Sq 4, 3), Queen => ? ignore             # e4
+    ?Move initial, (Sq 4, 1), (Sq 4, 4), Queen => nil                  # e5 is three squares
+    ?Move initial, (Sq 6, 0), (Sq 5, 2), Queen => ? ignore             # Nf3
+    ?Move initial, (Sq 5, 0), (Sq 2, 3), Queen => nil                  # Bc4, through the e2 pawn
+    ?Move initial, (Sq 4, 6), (Sq 4, 4), Queen => nil                  # e5 for Black, out of turn
+    Size initial.board => 32
+
+check status:
+    Status initial => "White's turn"
+    ?foolsMate => ? ignore
+    Status (Or ?foolsMate, initial) => "White has been checkmated"
+
+check castling:
+    CastleOk [[]], (Sq 6, 0) => True
+    CastleOk [[]], (Sq 2, 0) => True
+    CastleOk [[(((Sq 5, 7), br))]], (Sq 6, 0) => False                 # through check on f1
+    CastleOk [[(((Sq 4, 5), br))]], (Sq 6, 0) => False                 # out of check
+    CastleOk [[(((Sq 6, 7), br))]], (Sq 6, 0) => False                 # into check on g1
+    CastleOk [[(((Sq 1, 0), wn))]], (Sq 2, 0) => False                 # a knight between
+    CastleOk [[(((Sq 1, 7), br))]], (Sq 2, 0) => True                  # b1 attacked, and never crossed
+    ?Move (Setup [[(((Sq 4, 0), wk)), (((Sq 4, 7), bk))]], White), (Sq 4, 0), (Sq 6, 0), Queen => nil
+
+check castling_moves_the_rook:
+    (Or (?Move (Setup kingsAndRooks, White), (Sq 4, 0), (Sq 6, 0), Queen), initial).board[(Sq 5, 0)] => ? Piece(color=White, man=Rook)
+    (Or (?Move (Setup kingsAndRooks, White), (Sq 4, 0), (Sq 6, 0), Queen), initial).board[(Sq 7, 0)] => nil
+
+check no_castling_after_the_king_moved:
+    ?kingWalk => ? ignore
+    ?Move (Or ?kingWalk, initial), (Sq 4, 0), (Sq 6, 0), Queen => nil
+
+check en_passant:
+    ?passing => ? ignore
+    (Or (?Then ?passing, (Sq 4, 4), (Sq 3, 5)), initial).board[(Sq 3, 4)] => nil                   # the d5 pawn is taken
+    (Or (?Then ?passing, (Sq 4, 4), (Sq 3, 5)), initial).board[(Sq 3, 5)] => ? Piece(color=White, man=Pawn)
+    ?Then (?Then (?Then ?passing, (Sq 7, 1), (Sq 7, 2)), (Sq 7, 6), (Sq 7, 5)), (Sq 4, 4), (Sq 3, 5) => nil   # only at once
+
+check promotion:
+    (Or (?Move (Setup [[(((Sq 0, 6), wp)), (((Sq 4, 0), wk)), (((Sq 7, 5), bk))]], White), (Sq 0, 6), (Sq 0, 7), Knight), initial).board[(Sq 0, 7)] => ? Piece(color=White, man=Knight)
+    ?Move (Setup [[(((Sq 0, 6), wp)), (((Sq 4, 0), wk)), (((Sq 7, 5), bk))]], White), (Sq 0, 6), (Sq 0, 7), King => nil

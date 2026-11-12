@@ -1,0 +1,24 @@
+# A supplier's dynamic answer that reads a dynamic of the block around the host's own: the
+# host stands in a row and answers with the outer block's hold (Semantics ch. 9, "How a
+# supplier answers": the supplier's blueprint "can read anything the host's block binds",
+# and a row reads the names of the blocks around it, ch. 4; round 3 DY). Written by Claude
+# on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Gauge of Element $Nat:
+    name: Text
+
+@child: @unit
+@child:
+    $n <- Pad.Gauge(name="rows")
+    Ui.Label($text=$"{$n} rows")
+
+@host: @unit
+@host:
+    !more <- Ui.Button($label=$"more")
+    $n <- 0 then $n + 1 on !more
+    for k, name <- {1: "one"}:
+        ignore <- @HostDocument @child, \|p, e| match e:
+            Pad.Gauge(..): @ $n
+            otherwise: @Element e

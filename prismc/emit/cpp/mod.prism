@@ -4,7 +4,7 @@
 # `Makefile`, three headers per Prism module in its directory (`src/DIR/decl.hpp`,
 # `src/DIR/types.hpp`, `src/DIR/module.hpp`, DIR its path, `check/env` for `Check.Env`) and a
 # fourth when it has generic definitions (`src/DIR/generic.hpp`),
-# two for `Elem` and `Answer` (`src/elem.decl.hpp`, `src/elem.types.hpp`), the program
+# two for `Elem` and `Output` (`src/elem.decl.hpp`, `src/elem.types.hpp`), the program
 # classes (`src/programs.hpp`), `src/main.cpp` and the modules' definitions in units,
 # `src/unit_N.cpp` (prismc/README.md, picks MH and SF). As in emit.prism, nothing here decides (K9).
 #
@@ -142,9 +142,10 @@ fn ?CaseOf cp, r = match ?RefKey r:
     nil: nil
 
 # What the printer cannot print: a program's item its tables do not have, which lowering
-# referred to (a prismc bug, refused where the target compiler would see it).
+# referred to. No checked program reaches it: an internal error, marked as a refusal is,
+# so `CompileProgram` reports it (`error[internal]`) and the target compiler never sees it.
 PrinterRefusal: fn Text -> Text
-fn PrinterRefusal what = "compile_error!(\"prismc's C++ printer: {what}\")"
+fn PrinterRefusal what = "compile_error!(\"{loweringRefusal}{internalBug}the C++ printer met {what}\")"
 
 # A choice's case as a C++ name: a class cannot hold a member named as itself, so a case
 # named as its choice (`Card` of `Card`, beside `Joker`) takes a `_` after it.
@@ -179,7 +180,7 @@ fn Context model:
         if (InList names, top) or InList acc, top: acc else: Push acc, top
     let mods = Push (Append names, tops), "prelude"
     let base = Cp(home="", mods=mods, types=preludeTypes, ctors=preludeCtors, members=nodeBase, methods={}, fieldNames={}, fields={}, pointers={}, owned={}, moveCaptures=[[]], localTypes={})
-    let withElem = AddRow (AddAnswer base, model.answer), "", model.elem
+    let withElem = AddRow (AddOutput base, model.answer), "", model.elem
     Fold model.mods, withElem, \|cp, m| Fold m.items, cp, \|c, it| AddModelItem c, m.name, it
 
 # The prelude's own types and constructors (prelude.prism beside this file).
@@ -226,15 +227,15 @@ fn AddRow cp, m, r:
     let path = if m == "": r.name else: "{m}::{r.name}"
     Fold r.cases, (AddTy cp, path, TyInfo(kind="choice", fields=[[]], params=[[]])), \|c, ((v, ignore))| AddCtor c, "{path}::{v}", "choice"
 
-AddAnswer: fn Cp, AnswerDef -> Cp
-fn AddAnswer cp, a = Fold a.cases, (AddCtor (AddTy cp, "Answer", TyInfo(kind="choice", fields=[[]], params=[[]])), "Answer::Untagged_a", "choice"), \|c, k| AddAnswerCase c, k
+AddOutput: fn Cp, OutputDef -> Cp
+fn AddOutput cp, a = Fold a.cases, (AddCtor (AddCtor (AddTy cp, "Output", TyInfo(kind="choice", fields=[[]], params=[[]])), "Output::Untagged_a", "choice"), "Output::Held_a", "choice"), \|c, k| AddOutputCase c, k
 
-# A tag's case, and a bundle tag's first-value case (`AnswerCase.first`).
-AddAnswerCase: fn Cp, AnswerCase -> Cp
-fn AddAnswerCase c, k:
-    let c1 = AddCtor c, "Answer::{k.variant}", "choice"
+# A tag's case, and a bundle tag's first-value case (`OutputCase.first`).
+AddOutputCase: fn Cp, OutputCase -> Cp
+fn AddOutputCase c, k:
+    let c1 = AddCtor c, "Output::{k.variant}", "choice"
     match k.?first:
-        ? ignore: AddCtor c1, "Answer::{k.variant}First", "choice"
+        ? ignore: AddCtor c1, "Output::{k.variant}First", "choice"
         nil: c1
 
 AddNode: fn Cp, Text, NodeDef -> Cp
@@ -281,6 +282,7 @@ fn CppType cp, t = match t:
     OutNamed (RefRuntime "std::Result"), [[a, b]]: "crate::prelude::Expected<{CppType cp, a}, {CppType cp, b}>"
     OutNamed n, [[]]: OwnTypePath cp, n
     OutNamed n, args: "{OwnTypePath cp, n}<{CppTypes cp, args}>"
+    OutOpt (OutRefMut i): "{CppType cp, i}*"
     OutOpt i: "::std::optional<{CppType cp, i}>"
     OutRes i: "crate::prelude::Fallible<{CppType cp, i}>"
     OutTuple ts: "::std::tuple<{CppTypes cp, ts}>"
@@ -290,6 +292,9 @@ fn CppType cp, t = match t:
     OutRef (OutFn ps, r): "const ::std::function<{CppType cp, r}({ParamTypes cp, ps})>&"
     OutRef (OutSlice i): "::std::span<const {CppType cp, i}>"
     OutRef i: "const {CppType cp, i}&"
+    # a named lens's result: the part itself, or a pointer to an array's entry that may be
+    # absent (`part_mut`)
+    OutRefMut i: "{CppType cp, i}&"
     OutJobFn a, b: "::prism_rtl::Fn<::prism_rtl::JobRef<{CppType cp, b}>({CppType cp, a})>"
     OutJob b: "::prism_rtl::JobRef<{CppType cp, b}>"
     OutEvent i: "crate::prelude::Event<{CppType cp, i}>"

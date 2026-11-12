@@ -155,7 +155,7 @@ fn InferWidgetBlockAt env, st, b, ?expected:
         match ?r2:
             ? t: ((en2, s2, ? t))
             nil: ((en2, s2, ?r))
-    let st4 = BlockPromptCycles env3, st3, b
+    let st4 = BlockPlaceCycles env3, (BlockPromptCycles env3, st3, b), b
     let st5 = if st4.recording: NoteGroup st4, b.span, "widget", (DepOrder b.stmts) else: st4
     (((Or ?res, tUnit), st5))
 
@@ -171,7 +171,7 @@ fn IsElementMatch env, st, e = match e.kind:
             otherwise: False
     otherwise: False
 
-let dummyStmt2 = Stmt(kind=(SExpr (Expr(kind=EError, span=Range(start=0, end=0)))), span=Range(start=0, end=0))
+let dummyStmt2 = Stmt(kind=(SExpr (Expr(kind=EError, span=Range(start=0, end=0, origin=InSource)))), span=Range(start=0, end=0, origin=InSource))
 
 # A block's own `emit`, first among its statements (`emit-element` when it is not first).
 BlockRow: unbounded fn Env, St, [Stmt] -> ((Env, St))
@@ -440,7 +440,7 @@ fn BuildingMatch env, st, scrut, arms, span, last:
             ? gd: CheckCond env2, s1, gd
             nil: s1
         let ((bt, s3)) = ArmWidgetBlock env2, s2, arm.body
-        Unify s3, res, bt, arm.body.span
+        Unify s3, res, bt, (ResultSpan arm.body)
     let st5 = MatchCoverage env, st4, plainScrut, arms, span
     if last: ((res, st5)) else: ((res, (Discarded st5, res, span)))
 
@@ -462,10 +462,10 @@ fn BuildingIf env, st, c, thenB, ?elseB, span, last:
     match ?elseB:
         ? b:
             let ((t2, st3)) = ArmWidgetBlock env, st2, b
-            let st4 = Unify st3, t1, t2, b.span
+            let st4 = Unify st3, t1, t2, (ResultSpan b)
             if last: ((t1, st4)) else: ((t1, (Discarded st4, t1, span)))
         nil:
-            let st3 = Unify st2, tUnit, t1, thenB.span
+            let st3 = Unify st2, tUnit, t1, (ResultSpan thenB)
             ((tUnit, st3))
 
 # An arm of a building `match`: a widget block, or a single line read as a bare line.

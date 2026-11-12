@@ -1,0 +1,21 @@
+emit Ui.* | Count.* | View.*
+mod Documents
+mod Counter
+test mod Tests
+use Documents.*
+use Counter.*
+
+@Presser: fn Text -> @unit emit Ui.* | Count.*
+fn @Presser name:
+    !one <- Ui.Button($label=$"{name} +1")
+    !response <- Count.Request(!requests=((Add 1) on !one))
+    $total <- Count.Query($query=$ Whole)
+    $last <- "nothing yet" then Show !response
+    Ui.Label($text=$"{name} sees {$total}; {$last}")
+
+@host: @unit
+@host:
+    let @ada = @Presser "ada"
+    let @bob = @Presser "bob"
+    (($state, !responses)) <- @InMemory 0, (InOrder !heard)
+    !heard <- @HostPressers ($ {(Presser "ada"): @ada, (Presser "bob"): @bob}), $state, !responses

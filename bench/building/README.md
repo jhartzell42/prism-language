@@ -19,7 +19,7 @@ pipeline all one language:
    the dependencies the clean build left: what an edit to a Prism program costs after its
    first build, since prismc emits every file afresh.
 
-Subjects: `prismc/` itself (the compiler), `examples/chess`, and the GUI table
+Subjects: `prismc/` itself (the compiler), `examples/basic-chess`, and the GUI table
 (`bench/gui/prism/bench.prism` with the window library). `RESULTS.md` has, for each: the
 emit seconds and the emitted lines a second (every file under the emitted `src/`, the
 nested modules' `mod.rs` and `mod.cpp` included), the build seconds, their total, the

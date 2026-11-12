@@ -18,6 +18,7 @@ use std::any::Any;
 use std::cmp::Ordering;
 use std::rc::Rc;
 
+use crate::pod::{Fault, FromPod, Pod, ToPod};
 use crate::print::{Printer, Show};
 
 type ShowFn = fn(&dyn Any, &mut Printer);
@@ -77,6 +78,13 @@ impl<T: 'static> Packing<T> {
         self.cmp = Some(|x, y| same::<T>(x).cmp(same::<T>(y)));
         self
     }
+    /// `^Pod`: how the hidden value is told as plain data, kept as a dictionary.
+    pub fn with_pod_of(self) -> Self
+    where
+        T: ToPod,
+    {
+        self.with_dictionary(|_: &T| PodPacked { to_pod: |x| same::<T>(x).to_pod() })
+    }
     pub fn packed(self) -> Packed {
         Packed { value: Rc::new(self.value), show: self.show, eq: self.eq, cmp: self.cmp, dictionaries: self.dictionaries }
     }
@@ -105,6 +113,26 @@ impl Packed {
     }
 }
 
+/// `^Pod`'s dictionary of an existential: the hidden value as plain data.
+struct PodPacked {
+    to_pod: fn(&dyn Any) -> Pod,
+}
+
+/// An existential packed with `^Pod` is told as the plain data of the value it hides.
+impl ToPod for Packed {
+    fn to_pod(&self) -> Pod {
+        (self.dictionary::<PodPacked>().to_pod)(&*self.value)
+    }
+}
+
+/// Plain data names no type to hide (Type System ch. 5: an existential is made by `any`
+/// alone), so reading one as an existential is a fault of what handed it over.
+impl FromPod for Packed {
+    fn from_pod(p: &Pod) -> Result<Packed, Fault> {
+        crate::pod::mismatch("a value of a known type (an existential is made by `any`, never read from plain data)", p)
+    }
+}
+
 impl Show for Packed {
     fn show(&self, p: &mut Printer) {
         (self.show.expect("an existential without ^Show shown"))(&*self.value, p)
@@ -128,5 +156,21 @@ impl PartialOrd for Packed {
 impl Ord for Packed {
     fn cmp(&self, other: &Packed) -> Ordering {
         (self.cmp.expect("an existential without ^Ord ordered"))(&*self.value, &*other.value)
+    }
+}
+
+/// A type as a key (a generic function chooses by its type parameters what was made for
+/// each set of types the program gives them: a widget's rows read as a value).
+pub fn type_key<T: 'static>() -> std::any::TypeId {
+    std::any::TypeId::of::<T>()
+}
+
+/// A value at the type `To`, which is its own type (a generic function's value where the
+/// function's type parameters are known, [`type_key`]): the value itself.
+pub fn recast<To: 'static>(value: impl std::any::Any) -> To {
+    let mut held = Some(value);
+    match (&mut held as &mut dyn std::any::Any).downcast_mut::<Option<To>>() {
+        Some(same) => same.take().unwrap_or_else(|| unreachable!()),
+        None => panic!("a prismc bug: a value read at a type that is not its own"),
     }
 }

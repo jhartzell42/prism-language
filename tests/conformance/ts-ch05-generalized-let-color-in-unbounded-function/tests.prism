@@ -1,0 +1,7 @@
+# The tests of ts-ch05-generalized-let-color-in-unbounded-function.
+emit Ui.*
+use App.*
+
+test it_runs, @page:
+    build
+    compute

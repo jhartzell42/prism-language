@@ -1,0 +1,33 @@
+# A trait with a method that cannot be asked of a packed value can still be packed, and
+# its other methods asked (Jimmy's ruling EX; the error is at the use, as Rust's `where
+# Self: Sized` leaves a `dyn` trait its other methods): `Empty` has no parameter of the
+# trait's type, `Extent` reads the dictionary of the value it is given. Written by Claude on
+# the claude-bugs branch; subject to change.
+emit Ui.*
+use Ui.*
+
+trait ^Blank a:
+    Extent: fn a -> Nat
+    Empty: a
+
+impl ^Blank Nat:
+    fn Extent n = n
+    fn Empty = 0
+
+impl ^Blank Text:
+    fn Extent t = Len t
+    fn Empty = ""
+
+Hide: fn Nat -> any ^Blank
+fn Hide n = any n
+
+HideText: fn Text -> any ^Blank
+fn HideText t = any t
+
+Sizes: fn [any ^Blank] -> [Nat]
+fn Sizes hs = Each hs, \|h| Extent h
+
+@page: @unit
+@page:
+    let zero: Nat = Empty
+    Ui.Label($text=$"{Sizes [[(Hide 3), (HideText "ab")]]} {zero}")

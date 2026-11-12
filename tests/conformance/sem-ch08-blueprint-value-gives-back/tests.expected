@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 8 (a blueprint builds nothing until a block applies it, at the applying block's next positions; `<-` builds the child and binds its plain result) and ruling TC (places counted as built: the picked blueprint builds 0, the arm's own label is 1 and the last label 2; the `nil` arm builds 0, so the last label is 1). Never run: prismc refuses the program.
+test picked
+
+tick 0
+  added:
+    0: Ui.Label(text="counted")
+    1: Ui.Label(text="got 7")
+    2: Ui.Label(text="end")
+
+test not_picked
+
+tick 0
+  added:
+    0: Ui.Label(text="none")
+    1: Ui.Label(text="end")

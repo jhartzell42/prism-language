@@ -1,0 +1,63 @@
+# Notation: squares, moves and the board as text, for participants; the document itself
+# reads and writes none. Moves are written in coordinates, `e2e4`, with a promotion's
+# piece as a fifth letter, `e7e8n`.
+# Written by Claude on the claude-document-chess branch; subject to change.
+emit rest
+use Rules.*
+
+let fileOf = {"a": 0, "b": 1, "c": 2, "d": 3, "e": 4, "f": 5, "g": 6, "h": 7}
+let rankOf = {"1": 0, "2": 1, "3": 2, "4": 3, "5": 4, "6": 5, "7": 6, "8": 7}
+let promotions = {"q": Queen, "r": Rook, "b": Bishop, "n": Knight}
+
+ManLetter: fn Man -> Text
+fn ManLetter King = "K"
+fn ManLetter Queen = "Q"
+fn ManLetter Rook = "R"
+fn ManLetter Bishop = "B"
+fn ManLetter Knight = "N"
+fn ManLetter Pawn = "P"
+
+Joined: fn [Text], Text -> Text
+fn Joined texts, between = Fold texts, "", \|all, text| if all == "": text else: "{all}{between}{text}"
+
+?SquareAt: fn Cursor -> ?((Square, Cursor))
+fn ?SquareAt cursor:
+    ((f, afterFile)) <- ?Step cursor
+    file <- fileOf[Text f]
+    ((r, afterRank)) <- ?Step afterFile
+    rank <- rankOf[Text r]
+    ? (((Square file, rank), afterRank))
+
+AtEnd: fn Cursor -> Bool
+fn AtEnd cursor = match ?Step cursor:
+    ? ((letter, rest)): False
+    nil: True
+
+# a move's end: nothing more, or one letter that names what a pawn becomes and nothing
+# after it; any other letter, and anything after, is no move
+?Ending: fn Square, Square, ?((Char, Cursor)) -> ?Move
+fn ?Ending from, to, nil = ? (Moving from, to)
+fn ?Ending from, to, (? ((letter, rest))):
+    man <- promotions[Text letter]
+    require AtEnd rest
+    ? (Promoting from, to, man)
+
+# what a person types: e2e4, e7e8n. Text that is no move in coordinates reads as nil.
+?ParseMove: fn Text -> ?Move
+fn ?ParseMove text:
+    ((from, afterFrom)) <- ?SquareAt (Front (Lower text))
+    ((to, afterTo)) <- ?SquareAt afterFrom
+    ?Ending from, to, (?Step afterTo)
+
+# a move in coordinates
+Spelled: fn Move -> Text
+fn Spelled (Moving from, to) = "{from}{to}"
+fn Spelled (Promoting from, to, man) = "{from}{to}{Lower (ManLetter man)}"
+
+PieceLetter: fn ?Piece -> Text
+fn PieceLetter nil = "."
+fn PieceLetter (? piece) = if piece.color == White: ManLetter piece.man else: Lower (ManLetter piece.man)
+
+# one rank of the board as text, White's pieces capital: `2  P P P P . P P P`
+RankLine: fn (Square ==> Piece), Nat -> Text
+fn RankLine board, rank = "{rank + 1}  {Joined (Each eight, \|file| PieceLetter board[(Square file, rank)]), " "}"

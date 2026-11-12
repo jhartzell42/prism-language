@@ -1,0 +1,17 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": the order of a group's lines decides positions and nothing else; a block's build is one tick's), ch. 8 (a widget application is transparent, its plain result a value of the build), ch. 9 (a supplier's plain answer is the place's first value, read in its birth tick) and ruling TC (places counted as built): the host is place 0 and its child's label reads the widget's result; the loud arm gives 1 and builds 1, so the widget's label is 2 and the last label 3; the soft arm gives 20 and builds none, so they are 1 and 2.
+test loud
+
+tick 0
+  added:
+    0/[1]/0: Ui.Label(text="size 2")
+    1: Ui.Label(text="x")
+    2: Ui.Label(text="picked 1")
+    3: Ui.Label(text="below 2")
+
+test soft
+
+tick 0
+  added:
+    0/[1]/0: Ui.Label(text="size 21")
+    1: Ui.Label(text="picked 20")
+    2: Ui.Label(text="below 21")

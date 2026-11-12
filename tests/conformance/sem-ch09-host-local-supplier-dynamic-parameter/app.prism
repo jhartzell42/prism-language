@@ -1,0 +1,28 @@
+# A supplier that calls a function defined in the host's block and hands it a dynamic of
+# the block as a `$` parameter, which the function's arm answers with: `fn @Supply $d, e`
+# beside the host's line, `@ $d` in it, called `@Supply $count, e` (Semantics ch. 9, "How
+# a supplier answers": the supplier's blueprint "can read anything the host's block
+# binds"; ch. 4: a function defined in a block reads the block's names and its own
+# parameters; round 3 DY). sem-ch09-host-local-supplier-dynamic-answer with the dynamic
+# handed to the function. Written by Claude on the claude-lowering branch; subject to
+# change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Gauge of Element $Nat:
+    name: Text
+
+@meter: @unit
+@meter:
+    $level <- Pad.Gauge(name="tank")
+    Ui.Label($text=$"level {$level}")
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")                              # 0
+    $count <- 0 then $count + 1 on !add
+    @Supply: fn $Nat, Element (Ui.* | Pad.*) o -> @o
+    fn @Supply $d, e = match e:
+        Pad.Gauge(..): @ $d
+        otherwise: @Element e
+    ignore <- @HostDocument @meter, \|p, e| @Supply $count, e     # 1/[p]

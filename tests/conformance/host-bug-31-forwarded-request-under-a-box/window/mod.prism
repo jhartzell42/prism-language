@@ -1,0 +1,128 @@
+# The window library: the Pane family's elements, the host documents that lay them out, and the
+# window that draws them, over the four tags a drawing World accepts (`Gui.Window`,
+# `Gui.Scene`, `Gui.Metrics`, `Gui.Focus`; Pitch chapters 5 and 6). Layout, hit testing and
+# focus are Prism, in the program's own document (Semantics chapter 9, a thin World; D9).
+# Ported from prism-reflex's examples/gui/window.prism into the books' spelling; the layout
+# is prism-reflex's seed layout.md, unchanged. General on purpose: chess uses the grid, the
+# card games will use rows, layers and turned frames. Chess runs on it under both canvas
+# Worlds, and the GUI benchmark (bench/gui) drives it. Subject to change.
+emit r | Pane.* | Gui.*
+mod Panes
+mod Hosting
+mod Widgets
+mod Layout
+mod Hits
+use Window.Panes.*
+use Window.Hosting.*
+use Window.Widgets.*
+use Window.Layout.*
+use Window.Hits.*
+
+# ---------------------------------------------------------------------------
+# Geometry and paint
+
+type Point = record:
+    x: Float
+    y: Float
+derive ^Eq, ^Show
+
+type Extent = record:
+    w: Float
+    h: Float
+derive ^Eq, ^Show
+
+type Rect = record:
+    x: Float
+    y: Float
+    w: Float
+    h: Float
+derive ^Eq, ^Show
+
+# `Paper` and `Ink`, not White and Black, which are chess's colors (README, doubt CO)
+type Paint = choice:
+    Paper
+    Grey
+    Blue
+    Ink
+    Yellow
+    Red
+    Green
+    Felt                       # a card table's green
+    Rgb Float, Float, Float
+derive ^Eq, ^Show
+
+# a turn about a pivot, then a scale: what a frame does to its child's drawing and hits
+type Turn = record:
+    x: Float
+    y: Float
+    angle: Float               # degrees, clockwise on the screen
+    scale: Float
+derive ^Eq, ^Show
+
+# ---------------------------------------------------------------------------
+# What a scene draws: a row kind with no output, as `Fault` is, so each command is a tag with
+# named fields and prints with its family (README, doubt DR)
+
+type Draw = row
+
+tag Draw.Rect of Draw:
+    rect: Rect
+    paint: Paint
+
+tag Draw.Text of Draw:
+    at: Point
+    text: Text
+
+tag Draw.Image of Draw:
+    rect: Rect
+    src: Text
+
+tag Draw.Clip of Draw:
+    rect: Rect
+    draws: [Draw]
+
+tag Draw.Group of Draw:
+    turn: Window.Turn
+    draws: [Draw]
+
+# where the element at `path` of the window's own layout sits, so a test can click it by path
+# (D9); a World that paints ignores it
+tag Draw.Clickable of Draw:
+    rect: Rect
+    path: Path
+
+# ---------------------------------------------------------------------------
+# The drawing World's four tags: it needs to know nothing about buttons
+
+type Key = choice:
+    Char Char
+    Left
+    Right
+    Backspace
+    Tab
+    Enter
+derive ^Eq, ^Show
+
+type WindowInput = choice:
+    Press Point
+    Pressed Key
+    Resized Extent
+derive ^Eq, ^Show
+
+type WindowId = WindowId Text          # the World's handle for a window, answered once
+derive ^Eq, ^Show
+
+tag Gui.Window of Element ((WindowId, !WindowInput)):
+    $title: Text                       # live: retitling keeps the window
+    size: Extent                       # the first size
+
+tag Gui.Scene of Element unit:
+    window: WindowId
+    $draw: [Draw]                      # live: one place, a new picture per change
+
+tag Gui.Metrics of Element $Extent:    # the size of a text, a fact about fonts
+    text: Text
+
+tag Gui.Focus of Element unit:         # where the platform's focus and input method go
+    window: WindowId
+    $?at: Rect

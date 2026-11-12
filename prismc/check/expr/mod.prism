@@ -146,7 +146,10 @@ fn Infer env, st, e:
 
 InferKind: unbounded fn Env, St, Expr -> ((Ty, St))
 fn InferKind env, st, e = match e.kind:
-    EName n: InferName env, st, n, e.span
+    # a named lens is no value: it is applied to a reference
+    EName n:
+        if (IsLensName n) and not (HasKey env.locals, (SNameKey n)): ((TyErr, (ErrFix st, "lens-argument", e.span, "the lens `{SNameKey n}` is no value: it is applied to a reference", "apply it in an `update` block, `{SNameKey n} &_`")))
+        else: InferName env, st, n, e.span
     ELit l: InferLit env, st, l, False, e.span
     EUnit marks: (((WithMarks marks, tUnit, env.scope), st))
     ENil marks:
@@ -160,12 +163,15 @@ fn InferKind env, st, e = match e.kind:
     EArray es: InferArray env, st, es, e.span
     EMap entries: InferMap env, st, entries, e.span
     EGroup x: Infer env, st, x
-    ECall callee, args, ignore, ignore: InferCall env, st, callee, args, e.span
+    ECall callee, args, ignore, ignore: InferCall env, (LensArgument env, st, e), callee, args, e.span
     EBinary op, lhs, rhs: InferBinary env, st, op, lhs, rhs, e.span
     EUnary op, x: InferUnary env, st, op, x, e.span
     ESuffixed ignore, ignore, ignore, ignore: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement suffixed operators")))
     EFreeSigil s, x: InferFreeSigil env, st, s, x, e.span
-    EField recv, sigils, name: InferField env, st, recv, sigils, name, e.span
+    # (a module's lowercase declaration written qualified, `Words.base`, is a name)
+    EField recv, sigils, name: match ?QualifiedFieldAt env, recv, sigils, name:
+        ? n: InferName env, st, n, e.span
+        nil: InferField env, st, recv, sigils, name, e.span
     EIndex recv, idx: InferIndex env, st, recv, idx, e.span
     ETopicField ignore: InferLambda env, st, e, nil
     ETopicIndex ignore: InferLambda env, st, e, nil
@@ -200,10 +206,14 @@ fn InferKind env, st, e = match e.kind:
         (((TyAt t, env.scope), st2))
     EMonad ignore, ignore: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement `T monad:` blocks")))
     ETemplate t: InferTemplate env, st, t
+    # `any e` where no existential is expected yet (a constructor's field, an argument,
+    # an array's element): a variable, and the bounds are wanted at `e`'s type once it is
+    # an existential (`ResolvePacks`)
     EAny x:
         let ((t, st2)) = Infer env, st, x
-        ((TyAny [[]], st2))
-    ELens ignore: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement named lenses and `Over`")))
+        let ((v, st3)) = FreshVar st2, True, ""
+        ((v, (WaitingPack st3, v, t, e.span)))
+    ELens ignore: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement lens values and `Over`")))
     EError: ((TyErr, st))
 
 # `[[x, y]]+` and `{k: v}+`: a literal is non-empty only when it says so, and an empty one
@@ -231,7 +241,8 @@ fn CheckedCast env, st, x, ty, span:
         ? c:
             let ((xt, st3)) = Infer env, st2, x
             let coll = Or (?NonEmptyColl st3, xt), xt
-            (((TySig "?", t), (Unify st3, c, coll, x.span)))
+            # a non-empty collection checked again is read as the collection it is
+            (((TySig "?", t), (Unify (NoteFaultAt st3, x.span, c, xt), c, coll, x.span)))
 
 InferAll: unbounded fn Env, St, [Expr] -> (([Ty], St))
 fn InferAll env, st, es = Fold es, (([[]], st)), \|((acc, s)), x|
@@ -280,9 +291,16 @@ fn CheckAny env, st, x, expected, span = match Walk st, expected:
     TyAny trs:
         let ((t, st2)) = Infer env, st, x
         Fold trs, st2, \|s, tr| AddWant s, tr, t, span
+    TyFlex ignore:
+        let ((t, st2)) = Infer env, st, x
+        WaitingPack st2, expected, t, span
     other:
         let ((t, st2)) = Infer env, st, x
         Unify st2, other, (TyAny [[]]), span
+
+WaitingPack: fn St, Ty, Ty, Range -> St
+fn WaitingPack st, result, inner, span = update st:
+    &_.packs <= Push &_.packs, Pack(result=result, inner=inner, file=&_.file, span=span)
 
 AddWant: fn St, Text, Ty, Range -> St
 fn AddWant st, cls, t, span = update st:
@@ -297,6 +315,12 @@ fn EnvCx env:
 # ---------------------------------------------------------------------------------------
 # Names
 # ---------------------------------------------------------------------------------------
+
+# `?QualifiedField` where no local hides the receiver's name.
+?QualifiedFieldAt: fn Env, Expr, Text, Ident -> ?SName
+fn ?QualifiedFieldAt env, recv, sigils, name = match recv.kind:
+    EName r: if HasKey env.locals, (SNameKey r): nil else: ?QualifiedField env.g, env.home, recv, sigils, name
+    otherwise: nil
 
 InferName: unbounded fn Env, St, SName, Range -> ((Ty, St))
 fn InferName env, st, n, span:
@@ -328,21 +352,29 @@ InferGlobal: unbounded fn Env, St, SName, Range -> ((Ty, St))
 fn InferGlobal env, st0, n, span:
     let ((?qk, why)) = ResolveValue env.g, env.home, n
     let st1 = CollisionAt env, st0, why, (SNameKey n), span
-    # an answer constructor is its tag's module's
+    # an output constructor is its tag's module's
     let st = match ?qk:
-        ? qk: NoteGlobal st1, span, (if why == "answer": AnswerTag qk else: qk)
+        ? qk: NoteGlobal st1, span, (if why == "output": OutputTag qk else: qk)
         nil: st1
     match ?qk:
         nil: ((TyErr, (Err st, "unknown-name", span, "nothing declares `{SNameKey n}` here")))
         ? qk:
             if why == "tag": TagValue env, st, qk, span
-            else: if why == "answer": AnswerConstructor env, st, (AnswerTag qk), span
+            else: if why == "output": OutputConstructor env, st, (OutputTag qk), span
             else: if (IsLocalMaker qk) and not env.inUpdate: ((TyErr, (LocalOutside st, qk, span)))
             else: match env.g.vals[qk]:
-                ? v: Instantiate (NoteMethodUse (CallId st, qk, span), v, span), v.scheme, span
+                ? v:
+                    let ((t, st2, inst)) = InstantiateWith (NoteMethodUse (CallId st, qk, span), v, span), v.scheme, span, [[]]
+                    ((t, (if IsGenericUse v: NoteGenericUse st2, qk, v.scheme.qs, span, inst else: st2)))
                 nil: match env.g.ctors[qk]:
                     ? c: CtorValue env, st, c, span
                     nil: ((TyErr, (Err st, "unknown-name", span, "`{SNameKey n}` has no signature line or type")))
+
+# Whether a use of this value by its name is one the growth check follows (`GrowthCheck`;
+# ruling PG): a definition with type parameters, other than a trait's method, which an
+# impl answers.
+IsGenericUse: fn ValInfo -> Bool
+fn IsGenericUse v = (Len v.scheme.qs) > 0 and v.sort != "method"
 
 # Two bare candidates (Semantics ch. 6) are an error at the use; checking goes on with the
 # file's own declaration, else the first, so the rest of the line still checks.
@@ -374,18 +406,18 @@ fn TagValue env, st, name, span = match env.g.tags[name]:
             (((TyElem erow, out), st3))
         else: (((TyCon tg.kind, [[]]), st))
 
-# `Ui.Button.Answer`, the answer constructor of an element tag (Semantics rulings round 12,
-# AQ; ch. 9, `@HostList`): a function from what the tag's answer carries (`AnswerOfOutput`)
-# to an `Answer c`, for every row `c` that holds the tag's family, as the tag's element is
+# `Ui.Button.Output`, the output constructor of an element tag (Semantics rulings round 12,
+# AQ; ch. 9, `@HostList`): a function from what the tag's answer carries (`CarriedOutput`)
+# to an `Output c`, for every row `c` that holds the tag's family, as the tag's element is
 # an `Element c o` of every such row. An answer of a family the row lacks is `row-lacks`.
-AnswerConstructor: unbounded fn Env, St, Text, Range -> ((Ty, St))
-fn AnswerConstructor env, st, name, span = match env.g.tags[name]:
+OutputConstructor: unbounded fn Env, St, Text, Range -> ((Ty, St))
+fn OutputConstructor env, st, name, span = match env.g.tags[name]:
     nil: ((TyErr, (Err st, "unknown-name", span, "no tag `{name}`")))
     ? tg:
         let ((rw, st2)) = FreshRow st, [[tg.family]]
         let answered = Rw(fams=[[tg.family]], minus=[[]], tail=rw.tail)
         let ((out, st3)) = Instantiate st2, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span
-        (((TyFn CBound, [[AnswerOfOutput out]], (AnswerType answered)), st3))
+        (((TyFn CBound, [[CarriedOutput out]], (OutputType answered)), st3))
 
 InferBound: fn Env, St, Text, Range -> ((Ty, St))
 fn InferBound env, st, b, span = match env.locals[b]:
@@ -436,7 +468,7 @@ fn InferRegex st, r:
         ? d:
             let ((base, text)) = if d.part == "flags": ((r.flagsAt, r.flags)) else: if d.part == "pattern": ((r.patternAt, r.pattern)) else: ((r.replacementAt, (Or r.?replacement, "")))
             let start = base + d.at
-            let span = Range(start=start, end=start + (Max (Len (RxCharAt text, d.at)), 1))
+            let span = Range(start=start, end=start + (Max (Len (RxCharAt text, d.at)), 1), origin=InSource)
             if d.message == rxUnknownFlag: ((t, (ErrFix st, "regex", span, d.message, "a replacement that starts with letters and holds anything but letters is written in the hashed form, `%#/x/#hello world/#`")))
             else: ((t, (Err st, "regex", span, d.message)))
 

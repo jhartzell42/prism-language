@@ -1,0 +1,24 @@
+# Derived by hand from Semantics ch. 4 (a `rebuild` builds a new generation at `#g` when its dynamic moves, R7: at the end of the click's tick, the old generation torn down) and ch. 8 (a widget application is transparent): sem-ch04-rebuild-named-bundle-result's transcript.
+test generations
+
+tick 0
+  added:
+    0: Ui.Button(label="next")
+    1/#0/0: Ui.Button(label="more on 1")
+    1/#0/1: Ui.Label(text="page 1: 1")
+
+tick 1
+  in:
+    1/#0/0: click
+  changed:
+    1/#0/1: Ui.Label(text="page 1: 2")
+
+tick 2
+  in:
+    0: click
+  added:
+    1/#1/0: Ui.Button(label="more on 2")
+    1/#1/1: Ui.Label(text="page 2: 1")
+  torn down:
+    1/#0/0: Ui.Button(label="more on 1")
+    1/#0/1: Ui.Label(text="page 1: 2")

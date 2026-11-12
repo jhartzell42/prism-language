@@ -1,0 +1,35 @@
+# The plain part of a late place's bundle read by a constant field of a place below it
+# that has a `$` output of its own: both places stand in a hosted child whose host
+# answers late, so each asks its first value once the node stands, in the order of the
+# places, and the second asks with the element its field then has (Semantics ch. 9,
+# "How a supplier answers"; ch. 8, "A new place's first value"; ch. 7, "Structural
+# dynamics", round 3 ST; Type System ch. 2, "Bundles").
+# sem-ch09-host-late-bundle-plain-part with the plain part in a place's field. Written
+# by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Socket of Element ((Nat, !Text, $Nat)):
+    address: Text
+
+tag Pad.Gauge of Element $Nat:
+    name: Text
+
+@chat: @unit
+@chat:
+    ((port, !rx, $peers)) <- Pad.Socket(address="chat:7000")           # h0
+    $level <- Pad.Gauge(name="tank {port}")                            # h1
+    $last <- "none" then !rx
+    Ui.Label($text=$"{$peers} at {$level}: {$last}")                   # h2
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")                                   # 0
+    $names <- {1: "one"} then Insert $names, 2, "two" on !add
+    $lens <- for k, $name <- $names:                                   # 1/[k]
+        Ui.Label($text=$name)
+        @ Len $name
+    ignore <- @HostDocument @chat, \|p, e| match e:                    # 2/[p]
+        Pad.Socket(..): @ ((7, "hello" on !add, Size $lens))
+        Pad.Gauge(name=n): @ $ (Len n)
+        otherwise: @Element e

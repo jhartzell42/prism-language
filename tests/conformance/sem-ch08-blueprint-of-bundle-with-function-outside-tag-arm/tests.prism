@@ -1,0 +1,7 @@
+# The tests of sem-ch08-blueprint-of-bundle-with-function-outside-tag-arm.
+emit Ui.*
+use App.*
+
+test it_fires, @page:
+    build
+    click at 0

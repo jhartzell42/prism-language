@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 9 as ruled (a plain answer is the place's first value, at its build; round 3 DY: a dynamic answer's later change is a push delivered the next tick, owed) and Type System ch. 2 ("Bundles": the bundle is answered part by part).
+test plain_and_dynamic_parts_answered
+
+tick 0
+  added:
+    0: Ui.Button(label="flip")
+    1/[1]/0: Ui.Label(text="port 7: idle")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1/[1]/0: Ui.Label(text="port 7: busy")
