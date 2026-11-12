@@ -91,49 +91,56 @@
 
 ## What today's compiler does with each test
 
-- **The compiler:** `741b87ec`, bootstrapped to its fixed point. The branch's base,
-  `cc4b6fb`, did not bootstrap on the machine this was written on: from the `741b87ec`
-  binary rustc refuses the first generation (`error[E0061]: this function takes 2
-  arguments but 1 argument was supplied`, at `::prism_rtl::HostRow::entries(self)`), and
-  from the repository's seed rustc refuses the seed's crate with the same message. Every
-  result below is `741b87ec`'s.
+- **The compiler:** claude-lowering-wip at `cdccd3c5` with this example merged,
+  bootstrapped to its fixed point from the runner's r22 (176,990 lines of Rust).
 - **What passes today:**
-  - `./prism test examples/chess/rules`: `ok`, four `check` blocks, 21 lines, against the
-    kept `rules/tests.expected`.
+  - `./prism test examples/chess/rules`: `ok`, four `check` blocks, against the kept
+    `rules/tests.expected`.
   - `./prism check examples/chess/window`: `no errors`.
-  - `./prism test examples/basic-chess`: `ok`, as before its move.
-- **The whole tree:** `./prism test examples/chess` stops at the parser, and so every test
-  module but the rule book's is not reached. First message, verbatim:
-  `examples/chess/documents/mod.prism:35:20: expected an indented block after ` `` `:` `` `
-  (bug 29). The tally stops the same way:
-  `tests/documents/tally/tally.prism:112:49: expected an indented block after ` `` `:` `` `.
-- **With today's form put in place of one refused form at a time** (in a copy; the tree
-  itself keeps the design's):
-  - in place of `Never` (29): 29 checker errors, among them
-    `error[prompt-cycle]: a prompt cycle: `` `!arrived`, `!due`, `!outcome` `` ` (08),
-    ``error[mismatch]: the fault kind `Line.Declined` declares a field, `request`; a fault kind is its tag alone`` (30),
-    ``error[mismatch]: expected `[!t2241]`, found `[Heard !(Asked ChessGame Player (Responded Player ChessReason))]` `` (25);
-  - and of the typed fault (30), the direct responses (08) and the constructors over
-    events (25): 17 errors, all
-    ``error[blueprint-operand]: `a map literal` over a blueprint; bind it first`` (05), one
-    at each seat of `tables.prism`;
-  - past 05 the checker takes the forms, and the back end's refusals are those recorded
-    for the same compiler in the evidence: 01, 02, 06, 10, 12, 14, 15, 16, 18, 20, 21, 24.
+  - `./prism test examples/basic-chess`: `ok`, under its new path.
+- **The parser and most of the checker take the tree.** `Never` (29), the map of
+  blueprints (05), the typed fault (30), the constructors over events whose fields are not
+  a bare type parameter (25) and the prompt cycle through `@InMemory`'s seats function
+  (08, 07) are fixed.
+- **The whole tree:** `./prism check examples/chess` gives four errors, two forms the Type
+  System book refuses as written. Each is a doubt for the owner (below); the tree keeps
+  the design's form. `./prism test examples/chess` stops there, so every test module but
+  the rule book's is not reached, and the back end has not seen the tree.
+  - `game/mod.prism:192`, `Requested (Asking seat, place, !requests)`:
+    ``error[mismatch]: expected `[!t]`, found `[Heard !(Asked ChessGame Player (Responded Player ChessReason))]` ``.
+  - `tables.prism:49`, `{white: (@BoardPlayer white), black: (@LinePlayer black)}`:
+    ``error[mismatch]: expected `@unit emit (Gui.* | Pane.* | Play.* | Seat.*)`, found `@unit emit (Console.* | Play.* | Seat.*)` ``.
+- **The tally:** `./prism check tests/documents/tally examples/chess/documents` gives the
+  first of the two, at `tally.prism:165` and `:188`.
+- **Doubt D1, a constructor over an event whose field is a bare type parameter.**
+  `Requested a` is `Heard`'s case. Type System ch. 4 ("Where the table looks"): "The
+  parameter is a type parameter of a constructor: the argument goes in whole, sigils and
+  all. `Pair $x, $y` is a bundle", so `Requested !x` is a `Heard !X`, not a `!Heard`.
+  Part IV counts the unlifted constructor as bug 25. The checker lifts every constructor
+  with no bare type-parameter field and takes this one whole. First ruling (Claude's):
+  the Type System book holds; the book's form is a function, `Requests: fn a -> Heard a`.
+- **Doubt D2, two closed rows in one map.** `@BoardPlayer` emits `Pane.* | Gui.* |
+  Seat.* | Play.*` and `@LinePlayer` `Console.* | Seat.* | Play.*`, each row closed by
+  its signature, and a map's values have one type. Type System ch. 2: "No subtyping";
+  ch. 5, RM, names row narrowing "subtyping on rows" and refuses it. First ruling
+  (Claude's): the book holds; its form is an open row in each participant's signature,
+  `emit r | Pane.* | Gui.* | Seat.* | Play.*` (ch. 2's `@Offline`), with which the tree
+  checks clean past D1.
 
 | Test module | Tests | Today | What it is held to | Waits on |
 |---|---|---|---|---|
 | `rules/tests.prism` | `the_opening`, `a_promotion_is_its_own_move`, `insufficient_material`, `lasting_moves` | passes | `tests.expected`, from a run | nothing |
-| `checks.prism` | `moves_and_turns`, `check_and_mate`, `stalemate`, `castling`, `en_passant`, `promotion`, `resigning_and_draws`, `draws`, `notation` | not reached: parse errors | `checks.expected`, from a run | 29 |
-| `checks.prism` | `declined_line` | not reached | expected by the design, not from a run: the fault holds its request, side and reason | 29, 30 |
-| `terminal_tests.prism` | `fools_mate_at_terminals`, `declined_at_terminals`, `draw_agreed_at_terminals`, `repetition_at_terminals`, `resigning_and_leaving_at_terminals` | not reached | each step's `requested` lines, from a run | 29, 08, 25, 05, 01, 02, 06, 10, 12, 14, 18, 20, 21, 24 |
-| `tests.prism` | `scholars_mate`, `illegal_move_declined`, `out_of_turn_declined`, `resignation`, `draw_by_agreement`, `spectator_joins_and_leaves`, `resign_and_leave` | not reached | its `expect` lines, from a run | the same, and 15 |
-| `tests.prism` | `castling`, `en_passant`, `promotion`, `draw_by_repetition` | not reached | its `expect` lines, from a run | the same, and 15, 16 |
-| `tests.prism` | `spectator_sees_each_move`, `both_players_ask_in_one_tick` | not reached | expected by the design, not from a run: a scripted player asks a tick after the build, one tick sooner than under today's forms | the same, and 15, 16; the tick is 01 and 06 |
-| `board_tests.prism` | `boards_show_the_opening`, `fools_mate_on_two_boards`, `declined_on_a_board`, `back_and_forward`, `promotion_dialog`, `draw_by_buttons`, `board_against_a_terminal` | not reached | its `expect` lines, from a run | as the terminals' |
-| `board_tests.prism` | `boards_with_a_terminal_watching` | not reached | its steps, from a run with the terminal's seat beside the window | as the terminals', and 31 |
-| `tests/documents/tally/tests.prism` | `accepted`, `declined`, `wrong_turn`, `viewer_sees`, `join_and_leave`, `keeper_clears`, `two_requests_in_one_tick`, `three_requests_in_one_tick`, `two_roles_in_one_tick`, `own_order`, `request_and_leave`, `unremoved_seat_request_lands`, `removed_seat_request_dropped`, `removed_seat_waiting_request`, `sitting_changes` | not reached: parse errors | its `expect` lines, from a run | as the terminals', and 17 |
+| `checks.prism` | `moves_and_turns`, `check_and_mate`, `stalemate`, `castling`, `en_passant`, `promotion`, `resigning_and_draws`, `draws`, `notation` | not reached: four checker errors | `checks.expected`, from a run | D1, D2; the back end has not seen the tree |
+| `checks.prism` | `declined_line` | not reached: four checker errors | expected by the design, not from a run: the fault holds its request, side and reason | D1, D2; the back end has not seen the tree |
+| `terminal_tests.prism` | `fools_mate_at_terminals`, `declined_at_terminals`, `draw_agreed_at_terminals`, `repetition_at_terminals`, `resigning_and_leaving_at_terminals` | not reached: four checker errors | each step's `requested` lines, from a run | D1, D2; the back end has not seen the tree |
+| `tests.prism` | `scholars_mate`, `illegal_move_declined`, `out_of_turn_declined`, `resignation`, `draw_by_agreement`, `spectator_joins_and_leaves`, `resign_and_leave` | not reached: four checker errors | its `expect` lines, from a run | D1, D2; the back end has not seen the tree |
+| `tests.prism` | `castling`, `en_passant`, `promotion`, `draw_by_repetition` | not reached: four checker errors | its `expect` lines, from a run | D1, D2; the back end has not seen the tree |
+| `tests.prism` | `spectator_sees_each_move`, `both_players_ask_in_one_tick` | not reached: four checker errors | expected by the design, not from a run: a scripted player asks a tick after the build, one tick sooner than under today's forms | D1, D2; the back end has not seen the tree |
+| `board_tests.prism` | `boards_show_the_opening`, `fools_mate_on_two_boards`, `declined_on_a_board`, `back_and_forward`, `promotion_dialog`, `draw_by_buttons`, `board_against_a_terminal` | not reached: four checker errors | its `expect` lines, from a run | D1, D2; the back end has not seen the tree |
+| `board_tests.prism` | `boards_with_a_terminal_watching` | not reached: four checker errors | its steps, from a run with the terminal's seat beside the window | D1, D2; the back end has not seen the tree |
+| `tests/documents/tally/tests.prism` | `accepted`, `declined`, `wrong_turn`, `viewer_sees`, `join_and_leave`, `keeper_clears`, `two_requests_in_one_tick`, `three_requests_in_one_tick`, `two_roles_in_one_tick`, `own_order`, `request_and_leave`, `unremoved_seat_request_lands`, `removed_seat_request_dropped`, `removed_seat_waiting_request`, `sitting_changes` | not reached: two checker errors | its `expect` lines, from a run | D1 |
 
-- **Counts:** 4 `check` blocks pass today; 10 `check` blocks and 41 tests wait.
+- **Counts:** 4 `check` blocks pass today; 10 `check` blocks and 41 tests wait on D1 and D2.
 - **Kept transcripts:** `rules/tests.expected` and `checks.expected`. A test with ticks
   has none: the transcripts of the version that runs are 111,600 bytes for the text and
   terminal tests and 4.2 MB for the boards, over the 10 KB a kept transcript may be
