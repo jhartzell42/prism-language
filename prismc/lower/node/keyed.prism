@@ -318,12 +318,12 @@ RowPlaceReads: fn Wx -> [Read]
 fn RowPlaceReads rowWx = Fold rowWx.places, [[]], \|acc, pl| UnionReads acc, (BlockReads (ReadsClosed rowWx.dynReads, pl.reads))
 
 # A row of a hosted child's `for` or `rebuild` (or of a hosted row) takes the host whose
-# document its places are entries of, `enclosing`, as a parameter of its `build` and keeps
-# it (pick HO): its places ask their first values of it, and a host of its own builds in
-# its scope.
+# document its places are entries of as a parameter of its `build` (`host_above`, put under
+# the row's path as `enclosing` by `UnderItsPath`) and keeps it (pick HO): its places ask
+# their first values of it, and a host of its own builds in its scope.
 HostedParams: fn Wx -> [((Text, OutTy))]
 fn HostedParams wx = match ?HostedRows wx:
-    ? ignore: [[(("enclosing", hostOfTy))]]
+    ? ignore: [[((hostAbove, hostOfTy))]]
     nil: [[]]
 
 HostedPassed: fn Wx -> [Ex]

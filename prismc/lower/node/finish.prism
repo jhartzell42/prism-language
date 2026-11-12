@@ -834,8 +834,8 @@ fn Emits wx, pos = pos.scope == 0 and wx.?hostedBy == nil
 # The root's result at the build: computed, kept as the last one told, and told the World.
 ResultTold: fn Ex, Nat -> [Do]
 fn ResultTold node, k:
-    let r = DoLet (PaBind "r"), (XMethod node, (RootResultStem "result_value", k), [[XCx]])
-    [[r, (ResultKept node, k), resultTell]]
+    let r = DoLet (PaBind (RootResultStem "r", k)), (XMethod node, (RootResultStem "result_value", k), [[XCx]])
+    [[r, (ResultKept node, k), (ResultTell k)]]
 
 # The names of the root's dynamic results: the first `result_value` and `result_last`, each
 # later part of a bundle its own (`result_value_1`, `result_last_1`).
@@ -845,15 +845,17 @@ fn RootResultStem stem, k = if k == 0: stem else: "{stem}_{k}"
 # The root's result after a tick: told when it differs from the last one told.
 ResultMoved: fn Ex, Nat -> [Do]
 fn ResultMoved node, k:
-    let r = DoLet (PaBind "r"), (XMethod node, (RootResultStem "result_value", k), [[XCx]])
+    let r = DoLet (PaBind (RootResultStem "r", k)), (XMethod node, (RootResultStem "result_value", k), [[XCx]])
     let last = XMethod (XMethod (XField node, (RootResultStem "result_last", k)), "borrow", [[]]), "as_ref", [[]]
-    let differs = XBin OpNe, last, (XCtor (RefRuntime "std::Some"), [[XRef (XVar "r")]])
-    [[r, (DoIf differs, [[(ResultKept node, k), resultTell]], [[]])]]
+    let differs = XBin OpNe, last, (XCtor (RefRuntime "std::Some"), [[XRef (XVar (RootResultStem "r", k))]])
+    [[r, (DoIf differs, [[(ResultKept node, k), (ResultTell k)]], [[]])]]
 
 ResultKept: fn Ex, Nat -> Do
-fn ResultKept node, k = DoAssign (XDeref (XMethod (XField node, (RootResultStem "result_last", k)), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[XClone (XVar "r")]])
+fn ResultKept node, k = DoAssign (XDeref (XMethod (XField node, (RootResultStem "result_last", k)), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[XClone (XVar (RootResultStem "r", k))]])
 
-let resultTell = DoExpr (XMethod XCx, "result", [[(XCtor (RefRuntime "rt::Outcome::Value"), [[XVar "r"]])]])
+# Each part's value has a local of its own (`r`, `r_1`): one block holds every part's lines.
+ResultTell: fn Nat -> Do
+fn ResultTell k = DoExpr (XMethod XCx, "result", [[(XCtor (RefRuntime "rt::Outcome::Value"), [[XVar (RootResultStem "r", k)]])]])
 
 # A flatten's adoption queued for the first firings of the next tick.
 Adoption: fn FlatDef -> [Do]

@@ -1106,7 +1106,7 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
         ? m: if shared: ? sharedMoved else: ? m
         nil: nil
     let hostedParams = match ?hostedRows:
-        ? ignore: [[(("enclosing", hostOfTy))]]
+        ? ignore: [[(((if zeroBased: hostAbove else: "enclosing"), hostOfTy))]]
         nil: [[]]
     let movedParam = if shared and IsSome ?hostedBy: [[(("moved", movedTy))]] else: [[]]
     let rowFresh = NewWx lxc, rowName, rowFields, rowInits, [[(("parent", (XClone (XVar "parent"))))]], [[]], {}, rowTaken, wx.inlining, ?hostedBy
