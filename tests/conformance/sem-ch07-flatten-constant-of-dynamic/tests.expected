@@ -1,0 +1,13 @@
+# Derived by hand from Semantics Appendix B (`@Flatten`: the dynamic reads its outer's current inner; a write of the inner fires it in that tick) and ruling FV; run once on prismc-r21, which changes nothing at tick 1.
+test the_flatten_is_its_one_inner
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="20")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="22")

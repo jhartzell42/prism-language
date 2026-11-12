@@ -649,15 +649,20 @@ Each is red on prismc-r21 by a compile of the one program; the transcripts are b
 
 - **sem-ch07-flatten-global-dynamic**, **sem-ch07-flatten-block-dynamic-in-row** (`@Flatten`
   LF, `HeldFlatten`). The line wants `#whole{span}` of its argument, a live `Dynamic` of
-  the node. Three forms have none: a global (`let $$nested = $ ($ 3)`), a name of the
-  block read in a row or a generation (`$$current` of the parent), and an expression
-  that is no name (`@Flatten ($ ($Choose True, $a, $b))`, no test). Design: where
+  the node. Two forms have none: a global (`let $$nested = $ ($ 3)`), and a name or an
+  expression over names of the block read in a row or a generation (`$$current` of the
+  parent; `@Flatten ($ ($Choose True, $a, $derived))` in a row). Design: where
   `#whole` is missing, take the argument as `WholeValueOf` gives it (a global is its
   getter's constant; a parent's name is the parent's live dynamic handed to the row as a
   shared row's live parameter is, `LiveParams`; an expression is built whole at the
   build), keep it in a field `{name}_outer`, and follow that field as `HeldFlatten`
   follows `dyn`. The row case needs the parent's `Dynamic` passed to `build`, which is
   the larger part.
+- **sem-ch07-flatten-constant-of-dynamic** (wrong output, no refusal). `@Flatten ($
+  ($Choose True, $a, $b))` in a root block compiles, and its label never changes when
+  `$b` is written: the flatten of a constant outer does not follow its inner. Not
+  diagnosed; the place to look is `HeldFlatten`'s `{name}_follow` when the outer is the
+  build's own value and no `#whole` dynamic of the node.
 - **ts-ch03-existential-associated-type** (`AnyValue`, `?PackedDefOf`). The impl of the
   trait for the packed value has to state each associated type. No method that names an
   associated type is an entry of the dictionary (it names the trait's type inside

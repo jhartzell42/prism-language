@@ -1,0 +1,7 @@
+# The tests of sem-ch07-flatten-constant-of-dynamic.
+emit Ui.*
+use App.*
+
+test the_flatten_is_its_one_inner, @main:
+    build
+    click at 0

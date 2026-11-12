@@ -1,0 +1,18 @@
+# `@Flatten` of an expression that is no name, a constant whose value is a dynamic a
+# function gave whole (Semantics ch. 7 and Appendix B, `@Flatten`; ruling FV): the outer
+# never fires, so the flatten is its one inner and moves as that inner does.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+$Choose: fn Bool, $Nat, $Nat -> $Nat
+fn $Choose second, $p, $q = if second: $q else: $p
+
+@main: @unit
+@main:
+    !go <- Ui.Button($label=$"go")                                # 0
+    $a <- 5 then $a + 1 on !go
+    $b <- 20 then $b + 2 on !go
+    $shown <- @Flatten ($ ($Choose True, $a, $b))
+    Ui.Label($text=$"{$shown}")                                   # 1
