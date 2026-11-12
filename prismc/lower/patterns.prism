@@ -338,7 +338,7 @@ fn LiveFieldPat lx, p, fname, rsField, ft, view, descPath = match p.kind:
     PIgnore: PatOnly PaWild
     PName n: PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal (XClone (XFieldOf (XVar view), descPath, rsField)), Owned, (OutDyn (TagFieldOut lx, ft)))))]])
     PGroup q: LiveFieldPat lx, q, fname, rsField, ft, view, descPath
-    otherwise: PatOut(pa=PaWild, conds=[[CcIf (Refusal "a pattern inside an element's `$` field ({fname})")]], binds=[[]])
+    otherwise: PatOut(pa=PaWild, conds=[[CcIf (InternalBug "a pattern inside an element's `$` field ({fname}) (the checker's `live-field-pattern`)")]], binds=[[]])
 
 # An element's event field (ruling EP): a binder takes the field's event from the
 # element's view, as a `$` field's binder its dynamic.

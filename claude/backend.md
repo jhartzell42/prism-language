@@ -128,9 +128,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   (`Packed::dictionary::<Weighed_t_packed>()`). `any x` packs with
   `.with_dictionary(weighed_t_packed_of)` per program trait among its bounds and the
   traits above them, so an impl of any head, generic ones too, is kept: the dictionary is
-  made where the value's type is known. A trait has a dictionary when each method has no
+  made where the value's type is known. A method is an entry of the dictionary when it has no
   type parameter of its own, takes the trait's type as at least one whole parameter and
-  names it nowhere else but as its whole result (`?PackedDefOf`). In C++ the dictionary
+  names it nowhere else but as its whole result (`?PackedDefOf`); any other method
+  (`PackedDef.unasked`) is no entry, and in Rust, where the trait's impl for the packed
+  value needs every item, its body is a panic no program runs (the checker's
+  `existential-method` refuses the call); C++ writes no overload for it. A trait with
+  an associated type has no dictionary. In C++ the dictionary
   holds function pointers, `weighed_t_packed_of` is a function object whose call is a
   template among the generic definitions, and the impl is an overload in the trait's
   namespace.
@@ -841,11 +845,18 @@ it make every program an interpreter run, and every type mistake a runtime fault
     walk goes through impls: a constraint a written impl with type parameters solves
     is a use of that impl at the types its head is matched at (`NoteImplUse`), its
     methods' bodies its body, so an impl that needs itself at `[a]` for `a` is
-    `grows-without-end` too. A use whose types hold an associated type is no step of
-    the checker's walk; where a line through one holds a definition twice with the
-    earlier types found again inside the later ones the lowering stops
-    (`EndlessThroughImpl`), and where a use leaves a type parameter undecided
-    (`UndecidedParameter`): the reading is refused (`OpenWidgetValueWords`).
+    `grows-without-end` too. A derived impl is a definition of the walk whose uses are
+    read off its type's fields (`DerivedUses`, `ConstraintUses`), and a trait's default
+    method is read again in every impl that does not write the method, the trait's
+    parameter as the impl's head. A use whose types hold an associated type is a step:
+    the round it closes is applied to itself and normalized (an associated type stands
+    at a known head from the second round on) until its types come again, or one that
+    stays open is larger than the round before, which is `grows-without-end`
+    (`GrownThroughAssociated`). So the fixed point's stop at a line through an impl or
+    an associated type is an internal error too (`EndlessThroughImpl`: the line holds
+    one definition three times, each one's types embedded in the next one's; a finite
+    program's first round may embed once). Where a use leaves a type parameter
+    undecided (`UndecidedParameter`) the reading is refused (`OpenWidgetValueWords`).
   - A generic widget read inside a generalized `let` or a generalized local function,
     at that one's own type variable, has rows for each instantiation the `let`'s uses
     give the variable (`AtLetInstantiations`); the `let` is lowered at each

@@ -642,7 +642,7 @@ fn LiftedValue lx, env, e, ln:
     let inner = InnerTy (TypeAt lx, e.span)
     let selfOperand = Fold ln.operands, False, \|f, r| f or r == e.span
     let missing = Fold ln.operands, False, \|f, r| f or (?OperandAt e, r) == nil
-    if inner == TyErr or selfOperand or missing: VlOwned (Refusal "a lift over `{ln.sigil}` at `{SrcText lx, lx.file, e.span}` of {KindWords e.kind}"), t
+    if inner == TyErr or selfOperand or missing: VlOwned (InternalBug "a lift over `{ln.sigil}` at `{SrcText lx, lx.file, e.span}` of {KindWords e.kind}, whose operands the checker noted are not its own direct operands"), t
     else:
         let lx1 = update lx:
             &_.tys <= Insert &_.tys, at, inner
@@ -704,7 +704,7 @@ fn PlainValueByKind lx, env, e:
         EUnit ignore: VlOwned (XUnit), OutUnit
         EBound b: match env.names[b]:
             ? (BnLocal rs, mode, bt): LocalPlace rs, mode, bt
-            otherwise: VlOwned (Refusal "`{b}` outside a `for`"), t
+            otherwise: VlOwned (InternalBug "`{b}` outside a `for` (the checker's `unknown-name`)"), t
         ENil ignore: VlOwned (XTyped (XNone), t), t
         ETuple es: VlOwned (XTuple (Each es, \|x| Own (ValueOf lx, env, x))), t
         EArray [[]]: VlOwned (XTyped (XCall (RefRuntime "rt::Array::new"), [[]]), t), t
@@ -763,15 +763,15 @@ fn PlainValueByKind lx, env, e:
         EGiven b: GivenValue lx, env, b, t, e.span
         EUpdate target, b: UpdateValue lx, env, target, b, t, e.span
         EAny x: AnyValue lx, env, x, (TypeAt lx, e.span)
-        otherwise: VlOwned (Refusal "{KindWords e.kind} as a value"), t
+        otherwise: VlOwned (InternalBug "{KindWords e.kind} as a value (the checker gives `mismatch` for a `for` or a `rebuild` as a plain value and `unsupported` for a suffixed operator, a monadic block and a lens value; a topic, `..` and an absent value stand only where an `update` block, a pattern or an element's fields read them)"), t
 
 # `any x` (Type System ch. 5, "Existentials are dictionaries"): the value with the impls of
 # the existential's bounds at its type, taken while its type is known; an `any ^Show` is
 # a `dyn Show`. A trait of the prelude is the runtime's packing's own, spelled from its
 # name (`?PreludeTrait`: `with_show`, `with_eq`, `with_ord`, `with_num`, `with_pod`); a
 # program's trait gives its dictionary at the value's type (`PackedDef`), and so does
-# each trait above it. A program's trait with a method that cannot be asked of a packed
-# value (`?PackedDefOf`) is refused.
+# each trait above it. A program's trait with an associated type (`?PackedDefOf`) is
+# refused.
 AnyValue: unbounded fn Lx, Env, Expr, Ty -> Vl
 fn AnyValue lx, env, x, t:
     let v = Own (ValueOf lx, env, x)
@@ -786,7 +786,7 @@ fn AnyValue lx, env, x, t:
                 let refused = Fold all, "", \|found, b| if found != "": found else: match ?PreludeTrait lx, b:
                     ? ignore: ""
                     nil: match lx.g.traits[b]:
-                        ? tr: if (?PackedDefOf lx, tr) == nil: "an existential of `^{BareName b}`: a method with a type parameter of its own, or one that takes the trait's type inside another type or in no parameter, cannot be asked of a hidden value (one dictionary a packed value), and a trait with an associated type has none"
+                        ? tr: if (?PackedDefOf lx, tr) == nil: "an existential of `^{BareName b}`, a trait with an associated type: its impl for a packed value has no type to choose"
                         else: ""
                         nil: "a prismc bug: an existential of `^{BareName b}`, a trait nothing declares"
                 if refused != "": VlOwned (Refusal refused), packedTy
@@ -1477,7 +1477,8 @@ fn OpenWidgetValueWords lx, qk = match EnclosingAnswer lx:
     InstancesReached ignore: WidgetValueWords qk
     # the checker's `grows-without-end` (ruling PG): no checked program reaches this
     EndlessByName: "{internalBug}the generic widget function {BareName qk} as a value in {lx.inDefinition}, which reaches itself by name at types that grow without end: the checker refuses such a definition (`grows-without-end`)"
-    EndlessThroughImpl: "the generic widget function {BareName qk} as a value in {lx.inDefinition}, given a type parameter of that definition: its rows are made for each set of types the program gives the definition, and the program gives it no finite set (it reaches itself through a constraint an impl solves or an associated type, at types that hold its earlier ones)"
+    # the checker's `grows-without-end` through an impl or an associated type
+    EndlessThroughImpl: "{internalBug}the generic widget function {BareName qk} as a value in {lx.inDefinition}, which reaches itself through a constraint an impl solves or an associated type, three times at types that each hold the earlier ones: the checker refuses a definition that grows so (`grows-without-end`)"
     UndecidedParameter: "the generic widget function {BareName qk} as a value in {lx.inDefinition}, given a type parameter of that definition: its rows are made for each set of types the program gives the definition, and a use of it leaves a type parameter undecided"
 
 WidgetValueWords: fn Text -> Text

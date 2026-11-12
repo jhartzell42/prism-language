@@ -56,7 +56,7 @@ fn ElementLine wx, benv, menv, e, ?bound:
     match lx.g.tags[tagName]:
         nil:
             let wx2 = update wx:
-                &_.build <= Push &_.build, (RefusalDo "an element of an unknown tag")
+                &_.build <= Push &_.build, (InternalBugDo "an element of an unknown tag (the checker's `unknown-name`)")
             ((wx2, WrUnit))
         ? tg: ElementPlaced wx, benv, menv, tg, args, [[]], (ElementOut lx, tg, full), ?bound
 

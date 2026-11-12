@@ -680,7 +680,7 @@ fn WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target:
             ? v: InlineWidget wx, benv, menv, qk, v, args, e
             nil:
                 let wx2 = update wx:
-                    &_.build <= Push &_.build, (RefusalDo "a widget this back end does not lower yet")
+                    &_.build <= Push &_.build, (InternalBugDo "a widget line whose name has no value entry (the checker's `unknown-name`)")
                 ((wx2, WrUnit))
 
 # A host (claude/backend.md, "Hosting"; prism_rtl's `host`; pick HO): the child, a named
@@ -785,7 +785,7 @@ fn HostLine wx, benv, menv, form, args, ?bound:
         otherwise:
             let wx2 = update wx1:
                 &_.pos <= NextPos &_.pos
-                &_.build <= Push &_.build, (RefusalDo "a host without its child or its supplier")
+                &_.build <= Push &_.build, (InternalBugDo "a host without its child or its supplier (the checker's `mismatch` for a host that is not applied)")
             ((wx2, (WrHosted WrUnit, (BnLocal XUnit, Owned, OutUnit))))
 
 # A supplier's dynamic answers (`@ $d`, `$d` a hold or a derived dynamic of this node; round
@@ -1681,7 +1681,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                             ((outside, res))
                     nil:
                         let wx2 = update wx:
-                            &_.build <= Push &_.build, (RefusalDo "a widget of several clauses that takes no arguments")
+                            &_.build <= Push &_.build, (InternalBugDo "a widget of several clauses that takes no arguments (the checker's `collision`, ruling ZD)")
                         ((wx2, WrUnit))
         ? body:
             # a widget of one clause that calls itself, with plain parameters and no
