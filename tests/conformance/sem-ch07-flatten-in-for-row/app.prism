@@ -1,0 +1,21 @@
+# `@Flatten` in a `for`'s row, over a hold of dynamics of the row: each row follows `$a`,
+# then, once its hold takes it, the row's own `$v` (Semantics ch. 4: a `for`'s row is a
+# block of its own; ch. 7 and ruling FV: `@Flatten` adopts, after the tick its outer
+# fires, the inner the outer then holds). sem-ch07-flatten-held in a row. fix-22's probe
+# b2, never run before. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+$Choose: fn Bool, $Nat, $Nat -> $Nat
+fn $Choose second, $p, $q = if second: $q else: $p
+
+@page: @unit
+@page:
+    !go <- Ui.Button($label=$"go")
+    $a <- 5 then $a + 1 on !go
+    let $items = $ [[1, 2]]
+    for k, $v <- $items:
+        $$current <- $a then $Choose (True on !go), $a, $v
+        $shown <- @Flatten $$current
+        Ui.Label($text=$"{k}: {$shown}")
