@@ -1,0 +1,17 @@
+tests/checker/neg/hold-meaningless.prism:9: error[hold-meaningless]: braces around `5` mean nothing: they keep a dynamic or an event whole at a type variable, and `5` is a `Nat`
+    fn Five n = Push [[n]], {5}
+                            ^^^
+  fix: drop the braces: `5`
+tests/checker/neg/hold-meaningless.prism:12: error[hold-meaningless]: braces around `?x` mean nothing: they keep a dynamic or an event whole at a type variable, and `?x` is a `?Nat`
+    fn Kept ?x = Box {?x}
+                     ^^^^
+  fix: drop the braces: `?x`
+tests/checker/neg/hold-meaningless.prism:18: error[hold-meaningless]: braces around `$n` mean nothing: `Double` takes a `Nat` here, not a type variable
+    fn $Twice $n = Double {$n}
+                          ^^^^
+  fix: drop the braces: `$n`
+tests/checker/neg/hold-meaningless.prism:22: error[hold-meaningless]: braces around `$n` mean nothing outside an argument
+        let $m = {$n}
+                 ^^^^
+  fix: drop the braces: `$n`
+4 errors
