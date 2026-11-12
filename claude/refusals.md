@@ -39,17 +39,18 @@ Hosting
   sem-ch09-host-bundle-answer-parent-part); an answer through a blueprint a `let` names
   (sem-ch09-host-dynamic-answer-let, sem-ch09-host-event-answer-let).
   lower/expr.prism (`DynamicBlueprint`, `WrittenPart`): a dynamic answer whose line
-  made no getter for it. `DynamicAnswers` makes one for every dynamic answer in the
-  supplier's text, a blueprint `let`, a blueprint parameter's argument and a function
-  of the block the supplier calls (sem-ch09-host-local-supplier-dynamic-answer,
-  sem-ch09-host-local-supplier-bundle-answer), but none for an answer that reads a
-  parameter of that function: `fn @Supply $d, e` answering `@ $d`, called `@Supply
-  $count, e`, is the program the two refusals stand for
-  (sem-ch09-host-local-supplier-dynamic-parameter, red). R: it needs the host's line
-  to make the argument's live dynamic (`WholeArgs`, as for a named supplier with a `$`
-  parameter, `WholeFns`) and the inlined parameter to be a local of it
-  (`InlineLocalFn` binds the argument's value, spelled for the node's methods), so
-  that `?HeldDynamic` answers over it. A supplier cannot be handed on as a parameter
+  made no getter for it and that reads a reader of the node with no live dynamic
+  where it is written. G, an internal error: `DynamicAnswers` makes a getter for every
+  dynamic answer in the supplier's text, a blueprint `let`, a blueprint parameter's
+  argument and a function of the block the supplier calls
+  (sem-ch09-host-local-supplier-dynamic-answer,
+  sem-ch09-host-local-supplier-bundle-answer), except a held answer (one that reads
+  a name the supplier's text binds, or a parameter of that function), and
+  `HeldAnswerReaders` makes the live dynamic of every reader of the node a held
+  answer names (host-bug-01, host-bug-02, host-bug-09,
+  sem-ch09-host-local-supplier-dynamic-parameter and -clauses). lower/expr.prism
+  (`?LiveArgument`): a `$` argument of a function of the host's block with no live
+  dynamic in the supplier's place: G, the same reasoning. A supplier cannot be handed on as a parameter
   of a widget (its type is of every output `o`; the checker has no such parameter),
   and a method or a named function reads no name of the block.
 - `@ x` outside a tag arm is lowered: plain data in `Answer`'s case of no tag, read by
@@ -287,6 +288,11 @@ Building `match`, clause widgets, `rebuild`
   given back, is as deep as its data, to 2^20 places a call
   (sem-ch08-clause-widget-recursion, sem-ch08-widget-recursion-deep,
   sem-ch08-widget-recursion-deep-one-clause, sem-ch08-widget-recursion-deep-result).
+- lower/node/static.prism (`LocalFunctionLine`) a function of a block with several
+  clauses, applied as a widget; a function of a block that applies itself as a widget:
+  R, no test. A function of a block with one clause that gives a blueprint is applied
+  as a line, and where a widget it is handed to applies it
+  (sem-ch08-block-function-applied-as-line, host-bug-15).
 - lower/node/static.prism (`WidgetCall`) a widget this back end does not lower yet: no
   program found since a blueprint taken out of a value by a pattern is applied
   (`ValueBlueprintLine`, sem-ch08-blueprint-out-of-value) and a function value a `let`
