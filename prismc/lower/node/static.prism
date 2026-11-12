@@ -1077,7 +1077,15 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
     let givenOn = Filter (ExprsIn e), \|x| match x.kind:
         EBinary "on", value, ignore: (HasTime (Peel (TypeAt lx, x.span))) and (LayerOf (TypeAt lx, value.span)) != LyDyn
         otherwise: False
-    let roots = Fold (Append (Append (Append calls, updatedCalls), constants), givenOn), (if whole: ExprsIn e else: [[]]), \|acc, c| match c.kind:
+    # and a lambda whose parameters hold time (`\|$x| $x + $count` given to a plain
+    # function): its body takes time whole (`WholeLambda`), so every reader it reads is
+    # passed whole (gap LF)
+    let wholeLambdaReads = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
+        ELambda ignore, ignore: match Peel (TypeAt lx, x.span):
+            TyFn ignore2, ps, ignore3: if Fold ps, False, \|seen, p| seen or HasTime p: Append acc, (ExprsIn x) else: acc
+            otherwise: acc
+        otherwise: acc
+    let roots = Fold (Append (Append (Append calls, updatedCalls), constants), givenOn), (Append (if whole: ExprsIn e else: [[]]), wholeLambdaReads), \|acc, c| match c.kind:
         ECall ignore, args, ignore, ignore: Fold args, acc, \|acc2, a| Append acc2, (ExprsIn a.value)
         EFreeSigil ignore, x: Append acc, (ExprsIn x)
         EBinary "on", value, ignore: Append acc, (ExprsIn value)
