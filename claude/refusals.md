@@ -173,6 +173,9 @@ Bundles
   sem-ch08-late-part-bundle-let-nested-pattern-above).
   A pattern there that binds no name (`let ((((ignore, ignore)), !go)) = both`) reads
   nothing (sem-ch08-late-part-bundle-let-nested-pattern-above-nameless).
+  A bundle bound to one name and passed whole to a function (`pair <- @Two`, then
+  `$First pair`) is one value made at the line that passes it, a field of the node
+  (`BundleArgumentsAt`, ts-ch02-named-bundle-as-argument).
   Left, no test: a late bundle with a bundle inside read as one value.
   Left, R: the build-side markers of a late name (lower/node/def.prism `BindLate`,
   `MarkLateLets`: "the late result .. read at its block's build"; `PreBindWhole`,
@@ -616,7 +619,7 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | expr.prism `PlainValueByKind`, an expression of no value kind | G | - | internal error: `mismatch` for a `for` or a `rebuild` as a plain value (ruling BP; tests/checker/neg/for-in-let), `unsupported` for a suffixed operator, a monadic block and a lens value; a topic, `..` and an absent value are read by an `update` block, a pattern and an element's fields. Not argued: a widget block as a value |
 | expr.prism `PartsBlueprint`, two sites (`PartRefused`) | G | - | internal error by its text: `DynamicAnswers` makes a getter for every dynamic answer |
 | expr.prism `NameValueOf`, an event read as a value | U | none | refused |
-| expr.prism `NameValueOf`, a tuple pattern's binding as a value | R | ts-ch02-named-bundle-as-argument | refused: a bundle bound to one name and passed whole to a function |
+| expr.prism `NameValueOf`, a tuple pattern's binding as a value | R | none | refused where a bundle bound to one name is read as one value in no function's argument, no generation's result and no `let` of it (a tuple or an array that holds it); passed to a function it is one value (`BundleArgumentsAt`, ts-ch02-named-bundle-as-argument) |
 | expr.prism `NameValueOf`, a widget defined in a block read as a blueprint value outside a line's value places | R | none | refused; a lambda's body that is the widget is a value place (`BlueprintValuesAt`; sem-ch08-block-widget-given-by-lambda), one whose body chooses it (`\|c| if c: @Inner else: @Other`) is not |
 | expr.prism `WidgetValueWords`, a widget as a value where `ValuedWidgets` does not look (two calls) | R (one call), U (the other) | none | refused; a widget defined as one expression that is another widget (`fn @main = @page`) is an alias and no longer reaches it (sem-ch08-widget-is-another-widget) |
 | expr.prism `OpenWidgetValueWords`: `EndlessByName`, `EndlessThroughImpl` | G | - | internal errors: the checker's `grows-without-end` |
@@ -663,11 +666,6 @@ Each is red on prismc-r21 by a compile of the one program; the transcripts are b
   `$b` is written: the flatten of a constant outer does not follow its inner. Not
   diagnosed; the place to look is `HeldFlatten`'s `{name}_follow` when the outer is the
   build's own value and no `#whole` dynamic of the node.
-- **ts-ch02-named-bundle-as-argument** (`NameValueOf`, `BnParts` with no `#value`). A
-  named bundle is one value where it is a `rebuild`'s result or a `let`'s
-  (`BundleValue`); passed to a function it is not. Design: make `{nkey}#value` for every
-  named bundle a function's argument reads, by `WholeNamedOf` at the line that binds
-  it (`WholeArgsAt` already finds the readers an argument names).
 - **sem-ch09-tag-field-array-of-dynamics** (`DeepPod`). Design: a runtime trait for "the
   pod of a value with its dynamics sampled" (`DeepPod::deep_pod(&self, cx)`), given for
   `Dynamic<A>`, arrays, maps, options, tuples and plain data, and derived for a

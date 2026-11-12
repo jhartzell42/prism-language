@@ -675,7 +675,8 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
         otherwise: BindLate wxu, beu, meu, s
     let ((wx0, be0, me0)) = LinesInto wxl, bel, mel, head, True
     let ((wx1w, be1w, me1w)) = Fold (LineExprs s), ((wx0, be0, me0)), \|((w, be, me)), e| WholeArgs w, be, me, e, False
-    let ((wx1, be1, me1)) = Fold (LineExprs s), ((wx1w, be1w, me1w)), \|((w, be, me)), e| BlueprintValuesAt w, be, me, e, (IsLetOfBlueprint s)
+    let ((wx1b, be1b, me1b)) = Fold (LineExprs s), ((wx1w, be1w, me1w)), \|((w, be, me)), e| BlueprintValuesAt w, be, me, e, (IsLetOfBlueprint s)
+    let ((wx1, be1, me1)) = Fold (LineExprs s), ((wx1b, be1b, me1b)), \|((w, be, me)), e| BundleArgumentsAt w, be, me, e
     match s.kind:
         SBind p, e, nil:
             let ((wx2a, late)) = BuildLine wx1, be1, me1, e, nil
@@ -1877,7 +1878,9 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
         otherwise: ""
     let ((wxw, benvw, menvw)) = Fold (LineExprs s), ((wx0, benv0, menv0)), \|((w, be, me)), e| WholeArgsAt w, be, me, e, (InitKey e) == heldInit, (InitKey e) == stepKey
     # and every widget of the block the line reads as a blueprint value
-    let ((wx, benv, menv)) = Fold (LineExprs s), ((wxw, benvw, menvw)), \|((w, be, me)), e| BlueprintValuesAt w, be, me, e, (IsLetOfBlueprint s)
+    let ((wxb, benvb, menvb)) = Fold (LineExprs s), ((wxw, benvw, menvw)), \|((w, be, me)), e| BlueprintValuesAt w, be, me, e, (IsLetOfBlueprint s)
+    # and every bundle of the block a function takes whole
+    let ((wx, benv, menv)) = Fold (LineExprs s), ((wxb, benvb, menvb)), \|((w, be, me)), e| BundleArgumentsAt w, be, me, e
     let lx = wx.lx
     match s.kind:
         SBind p, e, nil:
@@ -2405,6 +2408,44 @@ fn WholeWrittenOf wx, benv, menv, x:
     let lxw = update lx:
         &_.whole <= True
     (((WrPlain (Own (ValueOf lxw, be1, x)), (OutTyOf lx, full)), wx1))
+
+# A bundle bound to one name (`both <- @Two`) passed whole to a function (Type System ch.
+# 2, "Bundles": a plain aggregate, a value a function takes): its value made at the line
+# that passes it, as a generation's result names one (`WholeNamedOf`), and kept in a field
+# of the node, bound under `{name}#value` for the build and the node's methods, where
+# `NameValue` reads it. A widget's argument is no such place: an inlined widget binds the
+# bundle's parts (`BindParam`).
+BundleArgumentsAt: unbounded fn Wx, Env, Env, Expr -> ((Wx, Env, Env))
+fn BundleArgumentsAt wx, benv, menv, e:
+    let lx = wx.lx
+    let arguments = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
+        ECall c, args, ignore, ignore:
+            let appliesWidget = match lx.g.vals[CalleeKey lx, c]:
+                ? v: IsWidgetTy (WidgetResultOf v.scheme.ty)
+                nil: match c.kind:
+                    EName n: match (if (Len n.path) == 1: menv.names[SNameKey n] else: nil):
+                        ? (BnWidget ignore, ignore, ignore, ignore): True
+                        ? (BnLocalWidget ignore): True
+                        otherwise: False
+                    otherwise: False
+            if appliesWidget: acc else: Append acc, (Each args, \|a| Ungrouped a.value)
+        otherwise: acc
+    Fold arguments, ((wx, benv, menv)), \|((w, be, me)), y| match y.kind:
+        EName n: match (((if (Len n.path) == 1: me.names[SNameKey n] else: nil), (HasKey me.names, "{SNameKey n}#value"))):
+            (((? (BnParts bs)), False)):
+                let nkey = SNameKey n
+                let ((res, w2)) = WholeNamedOf w, be, y, bs
+                match res:
+                    WrPlain ex, t:
+                        let ((vf, w3)) = FreshName w2, "{Snake nkey}_bundle"
+                        let w4 = update w3:
+                            &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind vf), t), ex)
+                            &_.fields <= Push &_.fields, ((vf, t, "`{nkey}`, a bundle, as one value"))
+                            &_.inits <= Push &_.inits, ((vf, (XClone (XVar vf))))
+                        ((w4, (Bind be, "{nkey}#value", (BnLocal (XVar vf), Owned, t)), (Bind me, "{nkey}#value", (BnLocal (XField XSelf, vf), Owned, t))))
+                    otherwise: ((w2, be, me))
+            otherwise: ((w, be, me))
+        otherwise: ((w, be, me))
 
 # A named bundle as one value (`WholeResultOf`): each part by its binding. An event part
 # is the event of a port it fires, made before the node (as a named event's value form
