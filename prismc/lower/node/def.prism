@@ -785,7 +785,16 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
                         &_.fields <= Push &_.fields, ((f, t, "the plain result of the line a block is split at"))
                         &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
                     ((w2, (XClone (XField XSelf, f))))
-                otherwise: ((wx2, (Refusal "a block split at a line whose result is not late")))
+                # (no other: a block is split at a line whose result is plain, or a bundle
+                # with a plain part, `IsPlainResult` (`?LateLineAt` through `IsLateExpr`,
+                # `?LatePlaceTakerAt`); such a line is a building `match` or `if`, a line
+                # that takes a late name (`DeferredLine`), both through
+                # `BuildingChoicesLine`, which gives a plain result late and a bundle as
+                # its parts; a blueprint value or an element value applied
+                # (`AppliedBlueprintLine`: late, or parts); a widget that calls itself
+                # (plain); or a block or widget inlined whose result is one of these. A
+                # host's line, which gives a hosted result, is none of them)
+                otherwise: ((wx2, (InternalBug "a block split at a line whose result is not late, plain or a bundle's parts: every split line gives a plain result, which `BuildingChoicesLine` and `AppliedBlueprintLine` give late or as parts, a widget that calls itself plain")))
             let wx2g = LateGetters wx2k, lates, kept, partReads
             # a bundle's events and dynamics, bound in the node as its line binds them
             let ((wx2b, ignore, me2)) = match ((late, p.kind, ?whole)):
