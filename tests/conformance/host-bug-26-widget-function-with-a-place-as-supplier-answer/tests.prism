@@ -1,3 +1,9 @@
+# The hosting library's tests, on the tally table, as the Bible wrote them but for one more
+# `compute` before the checks of each request's response: a role's response reaches its
+# seat through `@Unwrapped`, a widget function's event result under the supplier's arm,
+# which is a computed answer (Semantics ch. 9, "A computed answer is the next tick's
+# input"): the request leaves in the tick of the step, the World's answer to the
+# `Prelude.Unwrap` comes in the next, and the seat hears it in the one after.
 # The hosting library's tests, on the tally table. Every test builds, then computes twice:
 # a seat's first answer reaches it two ticks after it is built (NOTES, "Tick lag").
 # Written by Claude (an implementation agent), 11 November 2026; evidence for Part IV;
@@ -14,6 +20,7 @@ test accepted, @table:
         => expect Ui.Label(text="ada: total 0, may add; nothing yet")
     click Ui.Button(label="ada +1")
     compute
+    compute
         => expect Ui.Label(text="ada: total 1, may not add; accepted")
         => expect Ui.Label(text="bob: total 1, may add; nothing yet")
 
@@ -27,6 +34,7 @@ test declined, @table:
     click Ui.Button(label="bob +2")
     click Ui.Button(label="ada +2")
     compute
+    compute
         => expect Ui.Label(text="ada: total 4, may add; declined: the count stops at 5")
         => expect Ui.Label(text="bob: total 4, may not add; accepted")
 
@@ -38,6 +46,7 @@ test wrong_turn, @table:
     click Ui.Button(label="ada +1")
     click Ui.Button(label="ada +1")
     compute
+    compute
         => expect Ui.Label(text="ada: total 1, may not add; declined: you added last")
 
 # A viewer is told the total and nothing else, in the tick the tellers are told.
@@ -48,6 +57,7 @@ test viewer_sees, @table:
     compute
         => expect Ui.Label(text="cy watches: total 0")
     click Ui.Button(label="bob +2")
+    compute
     compute
         => expect Ui.Label(text="cy watches: total 2")
         => expect Ui.Label(text="bob: total 2, may not add; accepted")
@@ -84,11 +94,13 @@ test keeper_clears, @table:
         => expect Ui.Label(text="kay keeps: total 0, nobody added last; nothing yet")
     click Ui.Button(label="kay clears")
     compute
+    compute
         => expect Ui.Label(text="kay keeps: total 0, nobody added last; declined: nothing to clear")
     click Ui.Button(label="ada +2")
     compute
         => expect Ui.Label(text="kay keeps: total 2, ada added last; declined: nothing to clear")
     click Ui.Button(label="kay clears")
+    compute
     compute
         => expect Ui.Label(text="kay keeps: total 0, nobody added last; accepted")
         => expect Ui.Label(text="ada: total 0, may add; accepted")
@@ -106,7 +118,8 @@ test two_requests_in_one_tick, @table:
     click Ui.Button(label="bob +1")
     compute
     compute
-        => expect Ui.Label(text="dee (eager at 3): total 4, may not add; accepted")
+    compute
+        => expect Ui.Label(text="dee (eager at 3): total 5, may not add; accepted")
     compute
         => expect Ui.Label(text="eve (eager at 3): total 5, may not add; accepted")
 
@@ -119,9 +132,10 @@ test three_requests_in_one_tick, @table:
     click Ui.Button(label="ada +2")
     compute
     compute
-        => expect Ui.Label(text="dee (eager at 2): total 3, may not add; accepted")
     compute
-        => expect Ui.Label(text="eve (eager at 2): total 4, may not add; accepted")
+        => expect Ui.Label(text="dee (eager at 2): total 4, may add; accepted")
+    compute
+        => expect Ui.Label(text="eve (eager at 2): total 5, may not add; accepted")
     compute
         => expect Ui.Label(text="gus (eager at 2): total 5, may not add; accepted")
 
@@ -137,8 +151,9 @@ test two_roles_in_one_tick, @table:
     click Ui.Button(label="bob +2")
     compute
     compute
-        => expect Ui.Label(text="dee (eager at 4): total 5, may not add; accepted")
-        => expect Ui.Label(text="kay (eager at 4) keeps: total 5, dee added last; nothing yet")
+    compute
+        => expect Ui.Label(text="dee (eager at 4): total 0, may add; accepted")
+        => expect Ui.Label(text="kay (eager at 4) keeps: total 0, nobody added last; nothing yet")
     compute
         => expect Ui.Label(text="kay (eager at 4) keeps: total 0, nobody added last; accepted")
 
@@ -151,6 +166,7 @@ test own_order, @keepersFirst:
     compute
     click Ui.Button(label="ada +2")
     click Ui.Button(label="bob +2")
+    compute
     compute
     compute
         => expect Ui.Label(text="dee (eager at 4): total 1, may not add; accepted")
@@ -179,6 +195,7 @@ test removed_seat_request_dropped, @table:
     compute
     click Ui.Button(label="bob +1")
     compute
+    compute
         => expect Ui.Label(text="bob: total 2, may not add; accepted")
 
 # A seat whose sitting changes is built again, alone: bob becomes eager, and adds one by
@@ -192,6 +209,7 @@ test sitting_changes, @table:
     compute
         => expect Ui.Label(text="bob (eager at 2): total 0, may add; nothing yet")
     click Ui.Button(label="ada +2")
+    compute
     compute
     compute
         => expect Ui.Label(text="bob (eager at 2): total 3, may not add; accepted")
