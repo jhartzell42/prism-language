@@ -1,0 +1,8 @@
+# The tests of sem-ch02-map-literal-doubled.
+emit Ui.*
+use App.*
+
+test it_builds, @page:
+    build
+        => expect Ui.Label(text="3 5 2 0 1 2")
+# Derived by hand from Language ch. 7 (a map's literal, `scores[name]` a `?Nat`) and Jimmy's ruling of 12 November (the literal doubled): `Scores 3` holds ada 3 and bo 5, the empty map has no key, `Picked 4` one, and the inner map of `Nested 1` two.
