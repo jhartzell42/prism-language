@@ -1,5 +1,5 @@
 tests/checker/neg/prompt-let-lambda.prism:13: error[prompt-cycle]: a prompt cycle: `a`, `b`
-        let a = Apply 1, f
+        let a = Apply 1, F
         ^^^^^^^^^^^^^^^^^^
   fix: break it with a hold: `$last <- start then ...` reads the value as the tick opened
 1 error
