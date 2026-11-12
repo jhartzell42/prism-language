@@ -568,6 +568,16 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
         LyDyn if (IsSome (?LatePlaceHold ?bound)) and (Emits wx, pos):
             let f = Or (?LatePlaceHold ?bound), ""
             (((LateAskedPlace wx, tg, out, pos, f, level, (OutputAccessor tg)), WrUnit))
+        # a hosted place below a building line of its block built after the node
+        # (`BelowGappyLine`, `PreBind`'s `latePlace`): it asks its first value once the
+        # node stands, after its scope's steps, its number read from the node there, as
+        # a plain answer there does (`Wx.lateFirsts`)
+        LyDyn if (IsSome (?LatePlaceHold ?bound)) and not (Emits wx, pos):
+            let f = Or (?LatePlaceHold ?bound), ""
+            let asked = [[(FirstValueLetAt wx, (if PlaceUnknownAtBuild wx, pos: "node" else: ""), pos, tg, level, out), (LateFirstSet f, (XVar "first_{PlaceText pos}"))]]
+            let wx3 = update (LateFirstPlace wx, pos, f, out, asked):
+                &_.dynPlaces <= Push &_.dynPlaces, ((pos, f, out, (OutputAccessor tg)))
+            ((wx3, (BnRes (LatePlaceBn f, out))))
         LyDyn:
             let ((f, wx1)) = match ?bound:
                 ? (BnHold hf, ignore): ((hf, wx))
