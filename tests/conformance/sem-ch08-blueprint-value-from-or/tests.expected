@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 8 (applying a blueprint value builds it) and ruling TC (places counted as built): loud picks `@One`, one label, then "end" at 1; soft picks `@Two`, two labels, then "end" at 2. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="one")
+    1: Ui.Label(text="end")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="two")
+    1: Ui.Label(text="three")
+    2: Ui.Label(text="end")
