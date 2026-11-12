@@ -1037,6 +1037,54 @@ Event<Map<K, V>> union_ev(const Event<Map<K, V>>& a, const Event<Map<K, V>>& b) 
     });
 }
 
+/// `!Both a, b` as an event value (in a plain function's body): `!MergeAll` of the two,
+/// each firing marked with its side; it fires in a tick in which both fired, with the pair.
+template <class A, class B>
+Event<std::tuple<A, B>> both(const Event<A>& a, const Event<B>& b) {
+    using Side = std::tuple<std::optional<A>, std::optional<B>>;
+    Event<Side> left = a.map([](const A& v) { return Side{std::optional<A>(v), std::nullopt}; });
+    Event<Side> right = b.map([](const B& v) { return Side{std::nullopt, std::optional<B>(v)}; });
+    return ::prism_rtl::filter_some(::prism_rtl::merge_all(Array<Event<Side>>{left, right}).map([](const Array<Side>& fired) {
+        std::optional<A> first;
+        std::optional<B> second;
+        for (const auto& one : fired) {
+            if (std::get<0>(one)) first = std::get<0>(one);
+            if (std::get<1>(one)) second = std::get<1>(one);
+        }
+        if (first && second) return std::optional<std::tuple<A, B>>(std::tuple<A, B>{*first, *second});
+        return std::optional<std::tuple<A, B>>();
+    }));
+}
+
+/// `!Except a, b` as an event value: `!MergeAll` of the two, each firing marked with its
+/// side; it fires `a`'s value in a tick in which `b` did not fire.
+template <class A, class B>
+Event<A> except(const Event<A>& a, const Event<B>& b) {
+    Event<std::optional<A>> left = a.map([](const A& v) { return std::optional<A>(v); });
+    Event<std::optional<A>> right = b.map([](const B&) { return std::optional<A>(); });
+    return ::prism_rtl::filter_some(::prism_rtl::merge_all(Array<Event<std::optional<A>>>{left, right}).map([](const Array<std::optional<A>>& fired) {
+        std::optional<A> kept;
+        for (const auto& one : fired) {
+            if (!one) return std::optional<A>();
+            kept = one;
+        }
+        return kept;
+    }));
+}
+
+/// `!Gate $open, e` as an event value: `e`'s firings while the dynamic reads true at the
+/// firing's read point.
+template <class A>
+Event<A> gate(const Dynamic<bool>& open, const Event<A>& e) {
+    return ::prism_rtl::filter_some(e.map_at([open](const A& v, const Cx& cx) { return open.sample(cx) ? std::optional<A>(v) : std::optional<A>(); }));
+}
+
+/// `!Present e` as an event value: `unit` for each firing whose value is present.
+template <class A>
+Event<Unit> present(const Event<std::optional<A>>& e) {
+    return ::prism_rtl::filter_some(e.map([](const std::optional<A>& v) { return v ? std::optional<Unit>(Unit{}) : std::optional<Unit>(); }));
+}
+
 /// `!MergeWith f, events` as an event value: `!MergeAll` of the list, the values that
 /// fired folded by `f` in the list's order.
 template <class F, class T>
