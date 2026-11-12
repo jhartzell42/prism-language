@@ -1,0 +1,31 @@
+# A widget function's blueprint as a supplier's answer, its result an event: a computed
+# answer, a tick late (Semantics ch. 9, "How a supplier answers": "A computed answer is the
+# next tick's input. An event output's firing at n [..] is delivered to the child's place
+# as an input of tick n+1, and tick n+1 is owed"; its negative space, "No prompt computed
+# answer"). `@Relayed !tap` builds a place of its own under the supplier's row and gives
+# the host's own event back: the child counts the host's click in the next tick, as it
+# does under `@ !tap` (sem-ch09-host-delay). Written by Claude on the claude-lowering
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@child: @unit
+@child:
+    !hit <- Ui.Button($label=$"hit")                              # 0, answered by the host's !tap
+    $hits <- 0 then $hits + 1 on !hit
+    Ui.Label($text=$"{$hits} hits")                               # 1, forwarded
+
+@Relayed: fn !a -> @!a
+fn @Relayed !taps:
+    Ui.Label($text=$"relaying")                                   # 0
+    @ !taps
+
+@host: @unit
+@host:
+    !tap <- Ui.Button($label=$"tap")                              # 0
+    ignore <- @HostDocument @child, \|p, e| match e:              # 1/[p]
+        Ui.Button(..): @Relayed !tap
+        otherwise: @Element e
+    $taps <- 0 then $taps + 1 on !tap
+    Ui.Label($text=$"{$taps} taps")                               # 2
