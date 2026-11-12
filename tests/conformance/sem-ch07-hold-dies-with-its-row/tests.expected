@@ -1,0 +1,82 @@
+# Derived by hand from Semantics ch. 7 ("Holds die with their widget": a hold of a row that left is a constant with its last value, and a stateless combinator of that row that reads a live input from outside it keeps working; R8: the row leaves at the end of the tick) and ch. 4 (R7: a newborn row is built at the end of its tick); run on prismc-r21: the first test equal, the second differs at tick 4, where the row that left gives `kept 10`.
+test a_kept_dynamic_of_a_row_that_left_is_its_last_value
+
+tick 0
+  added:
+    0: Ui.Button(label="drop")
+    1: Ui.Button(label="ring")
+    2: Ui.Button(label="keep")
+    3/[1]/0: Ui.Label(text="one 0")
+    3/[2]/0: Ui.Label(text="two 0")
+
+tick 1
+  in:
+    1: click
+  changed:
+    3/[1]/0: Ui.Label(text="one 1")
+    3/[2]/0: Ui.Label(text="two 1")
+
+tick 2
+  in:
+    2: click
+  added:
+    4/[1]/0/[0]/0: Ui.Label(text="kept 1")
+    4/[2]/0/[0]/0: Ui.Label(text="kept 1")
+
+tick 3
+  in:
+    0: click
+  torn down:
+    3/[2]/0: Ui.Label(text="two 1")
+
+tick 4
+  in:
+    1: click
+  changed:
+    3/[1]/0: Ui.Label(text="one 2")
+    4/[1]/0/[0]/0: Ui.Label(text="kept 2")
+
+test a_stateless_combinator_of_a_row_that_left_reads_its_live_input
+
+tick 0
+  added:
+    0: Ui.Button(label="drop")
+    1: Ui.Button(label="ring")
+    2: Ui.Button(label="keep")
+    3: Ui.Button(label="more")
+    4/[1]/0: Ui.Label(text="one 0")
+    4/[2]/0: Ui.Label(text="two 0")
+
+tick 1
+  in:
+    1: click
+  changed:
+    4/[1]/0: Ui.Label(text="one 1")
+    4/[2]/0: Ui.Label(text="two 1")
+
+tick 2
+  in:
+    2: click
+  added:
+    5/[1]/0/[0]/0: Ui.Label(text="kept 1")
+    5/[2]/0/[0]/0: Ui.Label(text="kept 1")
+
+tick 3
+  in:
+    0: click
+  torn down:
+    4/[2]/0: Ui.Label(text="two 1")
+
+tick 4
+  in:
+    3: click
+  changed:
+    5/[1]/0/[0]/0: Ui.Label(text="kept 11")
+    5/[2]/0/[0]/0: Ui.Label(text="kept 11")
+
+tick 5
+  in:
+    1: click
+  changed:
+    4/[1]/0: Ui.Label(text="one 2")
+    5/[1]/0/[0]/0: Ui.Label(text="kept 12")
