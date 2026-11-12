@@ -1,0 +1,8 @@
+# Derived by hand from Semantics ch. 4 (a building `match` over a plain scrutinee: the arm is fixed for the life of the block and adds no path segment) and the ruling on hosting attempt 29 (a `match` with no arm over a choice with no case is legal), as sem-ch04-building-match-no-arm's transcript is; never run when written.
+test nothing_asked
+
+tick 0
+  added:
+    0: Ui.Label(text="before")
+    1: Ui.Label(text="nothing asked")
+    2: Ui.Label(text="after")
