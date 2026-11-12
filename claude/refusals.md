@@ -652,7 +652,7 @@ Refusals outside `Refusal` / `RefusalDo`, which the table above does not hold:
 |---|---|---|---|
 | emit/rust/items.prism `DeepPodOf`: a level field's walk at a type that holds no time | G | - | internal error ("a prismc bug: a level field's walk met .."): arrays, maps, options, `~T`s, tuples, `Rc`s, dynamics and generic program types are walked (sem-ch09-tag-field-array-of-dynamics, -named-type-of-dynamic, -fault-of-dynamic) |
 | emit/cpp/mod.prism `PrinterRefusal`: a constructor, record or pattern of no type the C++ printer's tables know | G | - | internal error ("a prismc bug: the C++ printer met ..") |
-| lower/types.prism, `OutQuantified` (two sites): a quantified type variable no instantiation gives a type | U | none | refused; `Len [[]]`, `Size {}` and an unused `let empty = [[]]` are lowered |
+| lower/types.prism, `OutQuantified` (two sites): a quantified type variable no instantiation gives a type | R | sem-ch08-widget-value-generic-through-local-function | refused: a widget's local generic function (`fn ?Made y, label = ?Framed ((y, y)), label`) calling a generic function that reads a generic widget as a value; when the local function reads the widget itself it lowers (sem-ch08-widget-value-generic-in-generalized-let). `Len [[]]`, `Size {}`, an unused `let empty = [[]]`, an unused generalized `let` of a lambda and one handed to a function of its callee's color (oq1-oq3) are lowered |
 | lower/expr.prism, `OutRefused "a parameter"`: a typed parameter pattern with no type | U | none | refused |
 
 ## Red tests of the depth sweep
@@ -705,7 +705,16 @@ refusal. They are the attempts behind the R rows with no test and the U rows.
   place's taker above its place that is a host's line (sp6); a bundle giver above a
   building `if` it takes (sp8): each lowered. A bundle giver over a late place's part
   (sp7) reached `WrLate`; a generic widget with an associated type parameter (gw5) the
-  generic widget's refusal.
+  generic widget's refusal; a widget's local generic function calling a generic
+  function that reads a generic widget as a value (ud1) `OutQuantified`. Lowered: a
+  method with a type parameter of its own calling that generic function (ud2); an event
+  part of a bundle taken apart by a `let` from a bundle bound whole, and from another
+  name of it, read by `!MergeAll` (ev1, ev2); an unused generalized `let` of a lambda,
+  one handed to `Applied: u fn (u fn Nat -> Nat), Nat -> Nat`, one kept in an array by a
+  function of that color (oq1, oq2, oq3); a taker above its giver bound by `(w)` (dl1);
+  a hosted place's plain answer in a widget inlined in the child, in an arm of a building
+  `if` of the child, and under a host inside the child, each under a host below a
+  building `if` (eo1, eo2, eo3).
 
 ## Designs for the red R tests with no fix
 
@@ -735,6 +744,14 @@ refusal. They are the attempts behind the R rows with no test and the U rows.
   (`SharedClauseLine`) that numbers its places as built. Give the shared rows of a row
   numbered late the same `weakLate` numbering (built unnumbered, numbered by the parent's
   `number_places` in place order), so `ArmRowOf` no longer meets an unnumbered step.
+- A widget's local generic function calling a generic function that reads a generic
+  widget as a value (sem-ch08-widget-value-generic-through-local-function): the uses
+  in the local function are read at its quantified type (`?Made`'s `y`), which no
+  instantiation of the enclosing widget gives. Read the local function's uses at each of
+  its instances (the instances `WithInstances` already lists for a local function that
+  reads the widget itself), so `?Framed` has the instances `((Nat, Nat))` and
+  `((Text, Text))`, and lower the local function once per instance as a generalized
+  `let` is.
 - A bundle giver above a late place's plain part it takes, in a hosted child under a late
   host (sem-ch09-host-late-plain-part-taken-above-bundle-result, the `WrLate` site): the
   line `((w, !b)) <- @Pair port` is built after the node (`DeferredLine`, its late names
