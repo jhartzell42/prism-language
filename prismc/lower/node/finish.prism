@@ -513,7 +513,9 @@ fn BuildSteps sk, atBuild:
         let k = Or ((Len wx.scopes) -? i), 0
         # (what a row that builds its generations before it is numbered does at once is
         # of its own scope, `Wx.genPhase`)
-        if (HasNat wx.lateHosts, k) or (wx.genPhase == 1 and k != 0): acc else: Append acc, (ScopeSteps sk, atBuild, k, ((Len wx.scopes) + 1))
+        # (a block whose split line's rows are numbered late, `LateGiving`, builds them
+        # at once in every scope)
+        if (HasNat wx.lateHosts, k) or (wx.genPhase == 1 and k != 0 and wx.lateGens): acc else: Append acc, (ScopeSteps sk, atBuild, k, ((Len wx.scopes) + 1))
 
 # One scope's part of the construction step: its builders and generations in the order
 # of their places, then (at the build) its live hosted places' entries. A host of the
@@ -546,7 +548,7 @@ fn ScopeSteps sk, atBuild, k, fuel = match fuel -? 1:
             # (a row that builds its generations before it is numbered, `Wx.lateGens`:
             # at once the generations whose rows are numbered late, `Wx.lateRowGens`;
             # once it is numbered those rows' numbers, and every other step whole)
-            let lateRow = k == 0 and HasText wx.lateRowGens, gd.name
+            let lateRow = (k == 0 or not wx.lateGens) and HasText wx.lateRowGens, gd.name
             if wx.genPhase == 1 and not lateRow: [[]]
             else: if wx.genPhase == 2 and lateRow: [[(NumberTaken recv, gd.name)]]
             else: Append [[built]], (Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == gd.name), Take)
@@ -578,7 +580,10 @@ fn ScopeSteps sk, atBuild, k, fuel = match fuel -? 1:
         # deferred too, in the order of the lines)
         let NumberedAfter = \|gd| if atBuild and HasText wx.lateNumbered, gd.name: Each (Filter (GapsBefore wx, gd.pos), \|other| (not other.early) or HasText wx.lateNumbered, other.name), \|other| other.name else: [[]]
         let Deferred = \|gd| (HasText wx.deferredGens, gd.name) or ((HasText wx.lateNumbered, gd.name) and (Len (Filter (GapsBefore wx, gd.pos), \|other| HasText wx.deferredGens, other.name)) > 0)
-        let steps0 = Append (Each (Filter wx.builders, \|b| b.pos.scope == k), \|b| ((b.name, b.pos.at, 0, (BuildersRead (UnionReads (HostReads b), (SourceReads b.name))), (Builder b)))), (Each (Filter wx.gens, \|gd| gd.pos.scope == k and not (Deferred gd)), \|gd| ((gd.name, gd.pos.at, 0, (Fold (NumberedAfter gd), (BuildersRead (GenReads gd.name)), AddText), (Gen gd))))
+        # (and where the rows are built before they are numbered, `Wx.genPhase` 1, a line
+        # that takes a split line's late result waits for that line's rows, `LateTaking`)
+        let GiversOf = \|gd| if wx.genPhase != 1: [[]] else: Fold wx.lateTakings, [[]], \|acc, taking| if taking.taker == gd.name: Append acc, taking.givers else: acc
+        let steps0 = Append (Each (Filter wx.builders, \|b| b.pos.scope == k), \|b| ((b.name, b.pos.at, 0, (BuildersRead (UnionReads (HostReads b), (SourceReads b.name))), (Builder b)))), (Each (Filter wx.gens, \|gd| gd.pos.scope == k and not (Deferred gd)), \|gd| ((gd.name, gd.pos.at, 0, (Fold (Append (NumberedAfter gd), (GiversOf gd)), (BuildersRead (GenReads gd.name)), AddText), (Gen gd))))
         # a step that reads the structure of another stands after it: at the other's
         # place, one rank on (so a chain keeps its order: the `for`, the late host that
         # answers with its result, the builder that reads the host's document)
