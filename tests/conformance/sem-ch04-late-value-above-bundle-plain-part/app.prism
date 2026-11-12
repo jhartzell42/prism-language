@@ -1,0 +1,30 @@
+# A widget of several clauses applied, above the line that gives it, to the late plain
+# part of a bundle a building `if` gives, whose arm gives that part from what its own
+# lines build; the bundle's dynamic part is read above it too (Semantics ch. 4, "Binding
+# groups and cycles": any line may use any name the block binds, and "the order of a
+# group's lines decides positions and nothing else"; ch. 7: a bundle's parts bound by a
+# pattern; ch. 8: `<-` binds the plain result; ruling TC). Nothing here is a cycle.
+# Reaches `DeferredLine`'s refusal "whose places are counted as they are built" on keep-B.
+# Written by Claude (sweep-4, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Wide: fn Nat -> @Nat
+fn @Wide 10:
+    Ui.Label($text=$"ten")
+    @ 1
+fn @Wide k:
+    @ 2
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    !add <- Ui.Button($label=$"add")                                   # 0
+    $k <- 0 then $k + 1 on !add
+    w <- @Wide n                                                       # 1 when n is 10
+    Ui.Label($text=$"wide {w} {$m}")                                   # 2, or 1
+    ((n, $m)) <- if loud:
+        Ui.Label($text=$"loud")                                        # 3
+        @ ((10, $k + 1))
+    else:
+        @ ((20, $k))

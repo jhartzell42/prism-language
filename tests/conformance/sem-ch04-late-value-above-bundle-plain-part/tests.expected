@@ -1,0 +1,28 @@
+# Derived by hand from Semantics ch. 4 ("the order of a group's lines decides positions and nothing else"), ch. 7 (the pattern binds the bundle's parts; `$m` follows `$k`), ch. 8 (`<-` binds the plain result) and ruling TC (places counted as built): loud gives 10 and `$k + 1`, so `@Wide 10` builds its label at 1 and gives 1, the next label is 2, the arm's label 3; soft gives 20 and `$k`, `@Wide 20` builds nothing and gives 2. A click moves `$k` and so `$m`. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Ui.Label(text="ten")
+    2: Ui.Label(text="wide 1 1")
+    3: Ui.Label(text="loud")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="wide 1 2")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Ui.Label(text="wide 2 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="wide 2 1")
