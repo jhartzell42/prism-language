@@ -632,6 +632,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
   blueprint (`BlueprintQk`, `ValueWidgetsAt`).
 - **A generic widget's type variable in an element parameter's output** (`Element Ui.*
   o`) is matched at the call as any parameter's is (`?ParamMatch`, `Unrigid`, `RigidsIn`).
+- **A generic function of several clauses applied as a line** (the prelude's `Or` at a
+  blueprint type: `let @w = Or (?Chosen loud), @One` then `@w`) has its type parameters
+  at the call as a widget of one clause has (`?CallInstance`, each parameter's type
+  matched to its argument's): its clauses' rows are lowered with them in `Lx.subst` and
+  the callee's scheme over them, so `Or`'s `d` is a blueprint parameter and its `x` a
+  blueprint value of the row.
 - **A bundle with a late plain part bound whole to one name** is the name's parts,
   bound before any line of the block is lowered (`PreBindWhole`): an event part a node
   of the block that the line's event feeds once the line is built (`BindWhole`), a
@@ -723,7 +729,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the split that such a line reads is the node's late `let` (`HoistedLines`). Such
     a line's plain result bound to a name (`w <- @Wide n`) is late itself: the name is
     marked before any line is lowered (`LateTakerResults`, `{name}#taker`), its getter
-    over the row's kept result made at the line (`LateGetters`). Such a line whose
+    over the row's kept result made at the line (`LateGetters`); bound by a pattern
+    (`((a, b)) <- @Pair n`), each name the pattern binds is marked so, its getter the kept
+    result matched by the pattern (`?TakerPatternGetters`, `LateName.within`); under
+    `ignore <-` the row's result is kept and never read. Such a line whose
     places are counted as built (a widget of several clauses, a building `match` or
     `if` inside it), under a split line that is a building `match` or `if` of the
     block's own scope (`Wx.splitNames`), is no deferred one: it asks for the split
@@ -745,7 +754,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
     bundle taken apart by a tuple pattern (the plain parts' names are the split names,
     each read out of the kept parts, `LateParts`; a bundle bound whole to one name is
     not); and the taker may read the
-    result through plain `let`s over it (`Wx.splitLets`, `FromSplit`). In a row that
+    result through plain `let`s over it (`Wx.splitLets`, `FromSplit`), or through the
+    plain result of a line that takes it (`w <- @Twice n` under `@Wide w`; `SplitLet.taker`,
+    the name marked `{name}#taker`). That line's rows are then built with the split line's,
+    after them (`DeferredLine`'s `withGivers`: lowered under `GivenUnnumbered`, a
+    `LateTaking` waiting for the split line's rows), and numbered at their place, so the
+    line above finds the result built and the places after it count its own. In a row that
     builds its generations at its build (`Wx.lateGens`) the taker's rows are numbered
     late as well: both built at once, the taker's after the split line's
     (`LateTaking`, a wait in `ScopeSteps`' phase 1), both numbered at their places.
@@ -1262,8 +1276,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `number_later`, the calls inside them numbered late in turn; the row holds no block,
   so the node that builds it keeps the step that numbers it in `{name}_number`
   (`SharedNumbered`, a weak `self`), run in the order of the places as an arm row's is.
-  Refused there: the result beside a `for` or a `rebuild` in the arm (their rows take
-  their numbers as they are built).
+  A builder of such a row (a `for` beside the building `match` whose result the arm
+  gives) gives no plain result: it is built in the row's `number_places` with the rest,
+  its rows numbered as built there (`UnnumberedGenerations` leaves it out). Refused
+  there: the result beside a `rebuild` in the arm (its rows take their numbers as they
+  are built).
 - **A host whose position has no number at the build** (`PlaceUnknownAtBuild`: in a row
   numbered late, or below a gappy generation built after the node) is made at
   `Path::root()` and placed once the node stands, where the construction step reaches
@@ -1277,8 +1294,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
   in a scope with no late host is the same late name: it asks its host in its
   scope's turn of the construction step, after the scope's generations and before
   its deferred ones (`ScopeSteps`' `asked`, `Wx.lateFirsts`), its path read from the
-  node (`FirstValueLetAt` with `node`). Refused: such a place whose answer no plain
-  name binds (a `$` or a bundle answer below such a line too), and
+  node (`FirstValueLetAt` with `node`). A `$` answer there asks the same way, its hold
+  empty until then (`PreBind`'s `latePlace`, `LateFirstPlace`). Refused: such a place
+  whose answer no name binds, a bundle answer below such a line, and
   a hosted node's own first-value query spelled before its node in a row numbered
   late (`PlaceNumber`).
 - **A widget that calls itself**, of one clause or of several (plain parameters, no type
