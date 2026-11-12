@@ -2186,11 +2186,7 @@ chess and of two on the self-compile.
 
 ### Not lowered yet
 
-Each is refused loudly: lowering emits a `compile_error!("prismc does not lower ..")`
-naming the construct, and `CompileProgram` reports every distinct one as
-`error[not-lowered]` and fails, the crate still written for reading:
-`!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
-structural dynamic of its block (gap SU), and the zombie and
+the zombie and
 dead states (`leave`, `clean_up`, `edges`).
 
 ## Regular expressions

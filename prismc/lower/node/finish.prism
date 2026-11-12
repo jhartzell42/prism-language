@@ -668,8 +668,9 @@ fn DynPlaceWrite sk, f, value = Append [[DoExpr (XMethod (XField XSelf, "{f}"), 
 # pick ST). A row's or a generation's reads through the
 # parent are checked where the block is finished, as the block's own: a name the row hears a write behind must stand over a hold
 # of the block, a structural dynamic of the block (published as a hold is written:
-# `sem-ch04-row-updated-structural`) or a name the block hears itself. Refused loudly rather
-# than lowered to an event that never fires.
+# `sem-ch04-row-updated-structural`) or a name the block hears itself. Anything else is a
+# name the lowering bound to a reader the node does not have: an internal error rather
+# than an event that never fires.
 UpdatedGaps: fn Wx, [Gn] -> [Do]
 fn UpdatedGaps wx, gns:
     let holds = Fold wx.fields, [[]], \|acc, ((f, t, ignore))| if IsHold t: Push acc, f else: acc
@@ -686,7 +687,7 @@ fn UpdatedGaps wx, gns:
         ParentRead ignore: a
         OwnRead f:
             if (HasText holds, f) or (HasText derived, f) or (HasText roots, f) or (HasText kept, f): a
-            else: Push a, (RefusalDo "`!Updated` of a dynamic that reads `{f}`, which no sink of this node writes (no height for its event)")
+            else: Push a, (InternalBugDo "`!Updated` of a dynamic that reads `{f}`, which is no hold of this node, no getter over its holds, no structural dynamic and no kept result: a name bound to a reader the node does not have (every dynamic a node binds is one of those; a `rebuild`'s dynamic read above its line was not, `GivesResult`)")
     let hears = Append (Each wx.pending, \|p| UpdatedHears p.wx), (Each (Filter wx.rowMarks, \|rm| rm.kind == GenerationRow or rm.kind == ValueRow), \|rm| rm.wrote)
     Fold hears, own, \|acc, ms| Fold ms, acc, \|a, m|
         let behind = ReadsClosed wx.dynReads, [[OwnRead m]]
@@ -696,7 +697,7 @@ fn UpdatedGaps wx, gns:
         # a structural dynamic the block publishes at the start of a tick is written as a
         # hold is (`HoldWritten` of its name), so the row's marks are in the publication
         if (HasText roots, m) or (ReachesSnap roots, behind) or written or (HasText derived, m): a
-        else: Push a, (RefusalDo "`!Updated` of a dynamic in a row that reads its block's `{m}`, which no sink of the block writes (no height for its event)")
+        else: Push a, (InternalBugDo "`!Updated` of a dynamic in a row that reads its block's `{m}`, which is no hold of the block, no getter over its holds, no structural dynamic and no name the block hears itself: a name bound to a reader the block does not have")
 
 # The block's `for` rows finished with the block's heights (pick RE): each `!Updated` node
 # of a row sits at least one above the block's writers of the holds behind what it reads
