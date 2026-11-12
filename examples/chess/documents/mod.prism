@@ -30,10 +30,6 @@ trait ^Seat r:
     Step: fn State r, r, Request r -> Stepped (State r) (Reason r)
     Read: fn State r, r, Query r -> Told r
 
-# The type with no value: the request type and the reason type of a role that requests
-# nothing. No participant can make one, and a `match` on one has no arm.
-type Never = choice:
-
 # A participant leaves its seat: every role's language has this tag.
 tag Seat.Leave of Element:
     !leaves: unit
