@@ -1477,6 +1477,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `KeyedParameters`: `type Roster k v = choice: Listed (k ==> v)`), is bounded by `Ord`
   in the type's `Show`, `ToPod` and `FromPod` impls (`BoundedKeyed`), as prism_rtl's
   impls for `Map` want; C++'s templates take the key's order where they use it.
+- **A choice as plain data holds its case's position** (`rt::ConstructorName`,
+  `ChoicePodArm`): the derived `to_pod` writes each constructor with the place of its
+  case in the type's declaration, and `Pod`'s order takes two constructors by their
+  positions, as the type's derived `^Ord` orders them. So a path whose key is a choice
+  (`for color, _ <- {White: unit, Black: unit}` with `choice: White, Black`), a patch's
+  lists and a printed map stand in the key type's order. A constructor read from text
+  (a test's pattern, a World's own value) holds no position and orders by its name;
+  equality goes by the name alone. A key type with an `impl ^Ord` written by hand still
+  orders by its cases' positions in a path (the path's order does not call the impl).
 - **`Show x`** → `rt::show_text(&x)`.
 - **The transcript** is the Test World printing the `Pod`s it receives with the same
   printer, in Conformance ch. 1's sections.
