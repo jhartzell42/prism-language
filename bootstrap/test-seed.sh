@@ -31,6 +31,12 @@ if tar -tJf bootstrap/prismc-rust.tar.xz | grep -qx 'runtime/rust/Cargo.toml'; t
 else
     failed+=(rust-runtime); echo "FAILED rust-runtime: the seed has no runtime/rust of its own"
 fi
+# So does the C++ seed its runtime/cpp.
+if tar -tJf bootstrap/prismc-cpp.tar.xz | grep -qx 'runtime/cpp/Makefile'; then
+    echo "ok cpp-runtime: the C++ seed carries its own runtime/cpp"
+else
+    failed+=(cpp-runtime); echo "FAILED cpp-runtime: the C++ seed has no runtime/cpp of its own"
+fi
 bootstrap/bootstrap.sh --seed-at "$link/rust" > "$away/rust.log" 2>&1 || tail -20 "$away/rust.log"
 check rust "$link/rust/prismc"
 bootstrap/bootstrap-cpp.sh --seed-at "$link/cpp" > "$away/cpp.log" 2>&1 || tail -20 "$away/cpp.log"
