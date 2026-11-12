@@ -1,0 +1,24 @@
+# A top-level `let` with no signature generalizes (Type System ch. 5, "The plain layer":
+# a `let` generalizes over the variables not free in its environment; ruling SH: a
+# binding that mentions only top-level names is generalized): `Same` and `Twin` are each
+# read at two types, and `Described` asks `^Show` of whatever it is read at.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+let Same = \|x| x
+
+let Twin = \|x| ((x, x))
+
+let Described = \|x| "<{Show x}>"
+
+Label: fn Nat, Text -> Text
+fn Label n, word:
+    let ((a, b)) = Twin (Same n)
+    let ((c, d)) = Twin (Same word)
+    "{a + b} {c}{d} {Described n} {Described True}"
+
+@Page: @unit
+@Page:
+    Ui.Label($text=$ (Label 4, "ab"))
