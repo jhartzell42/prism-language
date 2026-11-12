@@ -203,16 +203,14 @@ MovedAbove: fn Sinks, Read, Ex -> [Do]
 fn MovedAbove sk, r, h = Fold (Filter sk.wx.gns, \|g| Moves r, g), [[]], \|acc, g| Append acc, (CombinatorAbove sk, g, h)
 
 # The twin of `RowWritten`: the rows that hear a write of the block at global height `h`
-# are told it; a generation and a blueprint value's rows hear through a port, raised.
+# are told it through the block's port for that name, raised: a `for`'s row, a
+# generation and a blueprint value's row each subscribe to it with their twin
+# (`GenHears`), so a row built after the write took its height is told it as it
+# subscribes (`Port::subscribe_above`), as the rows that live are told at the raise.
 RowAbove: fn Wx, RowMarks, Read, Ex -> [Do]
 fn RowAbove wx, rm, r, h:
     let hit = Filter (Append rm.wrote, rm.builds), \|m| HasRead (ReadsClosed wx.dynReads, [[OwnRead m]]), r
-    let told = Each hit, \|m| AboveCall (XVar "row"), "parent_wrote_{m}", h
-    let raised = Each hit, \|m| DoExpr (XMethod (XField XSelf, "{rm.builder}_wrote_{m}_port"), "raise", [[h]])
-    match rm.kind:
-        GenerationRow: raised
-        ValueRow: raised
-        otherwise: if (Len told) == 0: [[]] else: [[(DoFor (PaBind "row"), (XMethod (XMethod (XField XSelf, rm.builder), "borrow", [[]]), "values", [[]]), told)]]
+    Each hit, \|m| DoExpr (XMethod (XField XSelf, "{rm.builder}_wrote_{m}_port"), "raise", [[h]])
 
 # A method's height twin: `{name}_above(h)`, "something at global height `h` fires `name`".
 AboveMethod: fn Text, [Do], Text -> MethDef
