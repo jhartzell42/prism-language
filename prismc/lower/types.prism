@@ -457,6 +457,11 @@ type Bn = choice:
     # A widget defined in a block (`@line:` and its block): its block, lowered where the
     # name is applied, in the environments of that line.
     BnLocalWidget Block
+    # A dynamic `let`'s expression (`let $total = $rings + $bonus`), bound under
+    # `{name}#source` beside the `let`'s own binding: where a line passes a `let` that reads
+    # through the parent whole, its live dynamic is this expression over the live dynamics
+    # of what it reads (`LetSourcesIn`).
+    BnSource Expr
 
 type Env = record:
     names: (Text ==> Bn)

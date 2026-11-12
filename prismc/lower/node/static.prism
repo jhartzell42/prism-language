@@ -1082,7 +1082,10 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
         EFreeSigil ignore, x: Append acc, (ExprsIn x)
         EBinary "on", value, ignore: Append acc, (ExprsIn value)
         otherwise: acc
-    let names0 = Fold roots, [[]], \|acc3, y| match y.kind:
+    # (a dynamic `let` of the node that reads through the parent is its expression over
+    # the live dynamics of what that reads, `LetSourcesIn`)
+    let ((leaves, sources)) = LetSourcesIn menv, roots
+    let names0 = Fold leaves, [[]], \|acc3, y| match y.kind:
             EName n: if (HasKey menv.names, "#whole{DynKey y}") or HasKey menv.names, "#whole#{SNameKey n}": acc3 else: match menv.names[SNameKey n]:
                 ? (BnHold ignore, ignore): if (LayerOf (TypeAt lx, y.span)) == LyDyn and not (HasText (Each acc3, \|z| DynKey z), (DynKey y)): Push acc3, y else: acc3
                 ? (BnDyn ignore, ignore, ignore): if (LayerOf (TypeAt lx, y.span)) == LyDyn and not (HasText (Each acc3, \|z| DynKey z), (DynKey y)): Push acc3, y else: acc3
@@ -1101,7 +1104,62 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
                 otherwise: if (LayerOf (TypeAt lx, a.value.span)) == LyDyn and not ((HasKey menv.names, "#whole{DynKey a.value}") or ReadsAnyOf a.value, nested): Push acc, a.value else: acc
             nil: acc
         otherwise: acc
-    LiveDynamics wx, benv, menv, (Append names0, outers), late
+    let ((wx1, benv1, menv1)) = LiveDynamics wx, benv, menv, (Append names0, outers), late
+    LetLiveDynamics wx1, benv1, menv1, sources
+
+# A line's readers passed whole (`roots`), with each dynamic `let` of the node that reads
+# through the parent (`LetReadsParent`) put as the names its expression reads, and those
+# `let`s with their expressions, inner ones first (`LetLiveDynamics`). A `let` a line
+# passes whole already (`#whole{span}`) stays as it is.
+LetSourcesIn: unbounded fn Env, [Expr] -> (([Expr], [((Expr, Expr))]))
+fn LetSourcesIn menv, roots = Fold roots, (([[]], [[]])), \|((acc, lets)), y| match ?LetSourceOf menv, y:
+    ? src:
+        let ((inner, innerLets)) = LetSourcesIn menv, (ExprsIn src)
+        (((Append acc, inner), (Push (Append lets, innerLets), ((y, src)))))
+    nil: (((Push acc, y), lets))
+
+# A name's `let` expression (`#source`), when the name is a dynamic `let` of the node that
+# reads through the parent and the line has no live dynamic for it yet.
+?LetSourceOf: unbounded fn Env, Expr -> ?Expr
+fn ?LetSourceOf menv, y = match y.kind:
+    EName n: if (Len n.path) != 1 or HasKey menv.names, "#whole{DynKey y}": nil else: match ((menv.names[SNameKey n], menv.names["{SNameKey n}#source"])):
+        ((? (BnDyn ignore, ignore, ignore), ? (BnSource src))): if LetReadsParent menv, src: ? src else: nil
+        otherwise: nil
+    otherwise: nil
+
+# Whether a `let`'s expression reads through the parent: a name of the parent, or a
+# dynamic `let` of the node whose expression does.
+LetReadsParent: unbounded fn Env, Expr -> Bool
+fn LetReadsParent menv, src = Fold (ExprsIn src), False, \|seen, y| seen or match y.kind:
+    EName n: if (Len n.path) != 1: False else: match menv.names[SNameKey n]:
+        ? (BnDyn ignore, rds, ignore): (Fold rds, False, \|found, r| found or IsParentRead r) or match menv.names["{SNameKey n}#source"]:
+            ? (BnSource inner): LetReadsParent menv, inner
+            otherwise: False
+        otherwise: False
+    otherwise: False
+
+# Each dynamic `let` of the node that reads through the parent, where a line passes it
+# whole (`LetSourcesIn`): its live dynamic is its expression over the live dynamics of
+# what that reads, as a combinator written in the line is. Once the node has left, a
+# hold of its own is its last value (`{name}_last`) and what it reads through the parent
+# goes on moving (Semantics ch. 7, "Holds die with their widget";
+# sem-ch07-getter-dies-with-its-row). Made at the build after those live dynamics, kept
+# in a field, and bound under `#whole{span}` where the line names the `let`.
+LetLiveDynamics: unbounded fn Wx, Env, Env, [((Expr, Expr))] -> ((Wx, Env, Env))
+fn LetLiveDynamics wx, benv, menv, lets = Fold lets, ((wx, benv, menv)), \|((w, be, me)), ((y, src))|
+    let lx = w.lx
+    let lxw = update lx:
+        &_.whole <= True
+    let t = OutTyOf lx, (Peel (TypeAt lx, y.span))
+    let ((name, w1)) = FreshName w, "whole_{(Snake (SrcText lx, lx.file, y.span))}"
+    let dyn = "{name}_dyn"
+    let w2 = update w1:
+        &_.taken <= Push &_.taken, dyn
+        &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind dyn), (OutDyn t)), (Own (ValueOf lxw, be, src)))
+        &_.fields <= Push &_.fields, ((dyn, (OutDyn t), "`{SrcText lx, lx.file, y.span}` as the live dynamic a function takes whole: its `let`'s expression over live dynamics"))
+        &_.moves <= Push &_.moves, ((dyn, (XClone (XVar dyn))))
+    let wkey = "#whole{DynKey y}"
+    ((w2, (Bind be, wkey, (BnLocal (XVar dyn), Owned, (OutDyn t))), (Bind me, wkey, (BnLocal (XField XSelf, dyn), Owned, (OutDyn t)))))
 
 # Whether a call applies a tag with a plain field given a value that holds dynamics below
 # its top (`Count.Many(values=[[$asks, $ 5]])`): that value is built whole
