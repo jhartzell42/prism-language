@@ -1,0 +1,13 @@
+# `@Flatten` of a global dynamic of dynamics (Semantics ch. 7 and Appendix B, `@Flatten`;
+# ruling FV): a constant outer never fires, so the flatten is its one inner from the build.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+let $$nested = $ ($ 3)
+
+@main: @unit
+@main:
+    $flat <- @Flatten $$nested
+    Ui.Label($text=$"{$flat}")                                    # 0
