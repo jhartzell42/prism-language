@@ -450,7 +450,7 @@ fn LinesInto wx, benv0, menv0, b, open:
     let ((wxq, benvq, menvq)) = Fold stmts, ((wx, benv0, menv0)), \|((w, be, me)), s| LatePlaceParts w, be, me, s
     # (and the plain answer of a place under a host that is placed once the node stands,
     # `LateHostedOutput`)
-    let ((wxp, benvp, menvp)) = Fold stmts, ((wxq, benvq, menvq)), \|((w, be, me)), s| LateHostedOutput w, be, me, s
+    let ((wxp, benvp, menvp)) = Fold stmts, ((wxq, benvq, menvq)), \|((w, be, me)), s| LateHostedOutput w, be, me, stmts, s
     let ((wx0, benv, menv)) = MarkLateLets wxp, benvp, menvp, fns, stmts, (Len stmts)
     let ((wx1p, be1, me1)) = Fold stmts, ((wx0, benv, menv)), \|((w, be, me)), s| PreBind w, be, me, s
     let wx1 = LateLetGetters wx1p, me1, stmts
@@ -1401,8 +1401,8 @@ fn PartHoldKey q = "#parthold{SpanKey q.span}"
 # do, once the host is placed (`Wx.lateFirsts`, `ElementOutputOf`), and its name is a
 # late name as a late place's plain part is (`LatePlaceParts`): the value its hold has
 # from then on, `{name}#late`, `{name}#lateplace`.
-LateHostedOutput: unbounded fn Wx, Env, Env, Stmt -> ((Wx, Env, Env))
-fn LateHostedOutput wx, benv, menv, s = match s.kind:
+LateHostedOutput: unbounded fn Wx, Env, Env, [Stmt], Stmt -> ((Wx, Env, Env))
+fn LateHostedOutput wx, benv, menv, stmts, s = match s.kind:
     SBind p, init, nil: match p.kind:
         PName n:
             let nkey = SNameKey n
@@ -1411,7 +1411,12 @@ fn LateHostedOutput wx, benv, menv, s = match s.kind:
             let placed = match Peel (TypeAt wx.lx, init.span):
                 TyElem ignore, ignore: True
                 otherwise: False
-            if (not placed) or wx.pos.scope == 0 or (not (HasText wx.unplacedHosts, (Or wx.scopes[Dec wx.pos.scope], ""))) or (IsTimeName nkey) or (HasKey menv.names, "{nkey}#late") or (LayerOf full) != LyPlain or (TimeWithin full) or IsBundle full: ((wx, benv, menv))
+            # (or below a building line of the same block whose rows may differ in width,
+            # built after the node: the place's number is known once the node stands,
+            # `BelowGappyLine`, so it asks its host there too, after the scope's steps; a
+            # late host's scope asks before its steps, `LateChild`, and is not this case)
+            let unplaced = (HasText wx.unplacedHosts, (Or wx.scopes[Dec wx.pos.scope], "")) or ((not (HasNat wx.lateHosts, wx.pos.scope)) and BelowGappyLine wx.lx, menv, stmts, s)
+            if (not placed) or wx.pos.scope == 0 or (not unplaced) or (IsTimeName nkey) or (HasKey menv.names, "{nkey}#late") or (LayerOf full) != LyPlain or (TimeWithin full) or IsBundle full: ((wx, benv, menv))
             else:
                 let t = OutTyOf lx, (Peel full)
                 let ((rs, w2)) = FreshName wx, (LocalNameAt lx, nkey, n.span)
@@ -1419,6 +1424,38 @@ fn LateHostedOutput wx, benv, menv, s = match s.kind:
                 ((w2, (Bind (Bind benv, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind (Bind menv, nkey, (LatePlainBn rs, t)), "{nkey}#late", unbuilt), "{nkey}#lateplace", unbuilt)))
         otherwise: ((wx, benv, menv))
     otherwise: ((wx, benv, menv))
+
+# Whether a line of a block stands below a building line of the block whose rows may
+# differ in width (Semantics ch. 4; ruling TC: places are counted as they are built): a
+# building `match` or `if`, a widget of one clause that gives as one does
+# (`IsGivingLine`), or a widget of several clauses applied. Such a line may be built
+# after the block's node, so what stands below it has its number only once the node
+# stands.
+BelowGappyLine: unbounded fn Lx, Env, [Stmt], Stmt -> Bool
+fn BelowGappyLine lx, menv, stmts, s = Fold stmts, False, \|f, t| f or ((t.span.start < s.span.start) and IsGappyLine lx, menv, t)
+
+IsGappyLine: unbounded fn Lx, Env, Stmt -> Bool
+fn IsGappyLine lx, menv, t:
+    let ?line = match t.kind:
+        SBind ignore, e, nil: ? e
+        SIgnore e: ? e
+        SExpr e: ? e
+        otherwise: nil
+    (IsChoiceLine t) or match ?line:
+        ? e: (IsGivingLine lx, menv, e, 16) or IsClausesCall lx, menv, e
+        nil: False
+
+# Whether a line applies a widget of several clauses declared in a module.
+IsClausesCall: unbounded fn Lx, Env, Expr -> Bool
+fn IsClausesCall lx, menv, e:
+    let callee = match (Ungrouped e).kind:
+        ECall c, ignore, ignore, ignore: c
+        otherwise: Ungrouped e
+    match callee.kind:
+        EName n: if (Len n.path) == 1 and HasKey menv.names, (SNameKey n): False else: match ResolveValue lx.g, lx.home, n:
+            ((? q, ignore)): (Len (ClausesOf lx.g, q)) > 1
+            otherwise: False
+        otherwise: False
 
 # A late place's plain part as its readers read it: the value its hold `f` has once the
 # place has asked its first value (read with no read point: it is written once).

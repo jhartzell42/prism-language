@@ -596,8 +596,12 @@ fn ScopeSteps sk, atBuild, k, fuel = match fuel -? 1:
         # generation of the scope is, the one that gives the result among them
         # (`DeferredLine`)
         let deferred = Fold (Filter wx.gens, \|gd| gd.pos.scope == k and Deferred gd), [[]], \|a, gd| Append a, (Gen gd)
+        # a hosted place below a building line of its block built after the node asks its
+        # first value here, its number known (`Wx.lateFirsts`, `BelowGappyLine`); a scope
+        # of a late host asks at the host's line instead (`LateChild`)
+        let asked = if atBuild and wx.genPhase != 1 and not (HasNat wx.lateHosts, k): Fold (Append wx.lateFirsts, wx.lateStarts), [[]], \|firsts, ((scope, dos))| if scope == k: Append firsts, dos else: firsts else: [[]]
         let ordered = Fold (SortNats (Fold steps, [[]], \|seen, ((ignore, at, ignore, ignore, ignore))| if (Len (Filter seen, \|y| y == at)) == 0: Push seen, at else: seen)), [[]], \|a, at| Fold (Range0 ((2 * (Len steps)) + 2)), a, \|a1, rank| Fold steps, a1, \|a2, ((ignore, at2, rank2, ignore, dos))| if at2 == at and rank2 == rank: Append a2, dos else: a2
-        Append (Append ordered, deferred), entries
+        Append (Append (Append ordered, asked), deferred), entries
 
 # A hosted live place's entry taken, its level read from `recv` (the node in its build,
 # `self` in the patch pass): compared with the one that stood, published the tick after if

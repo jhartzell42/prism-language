@@ -423,7 +423,12 @@ fn BundleEvent wx, pos, t, ?b = match ?b:
 # accessor. Either way the local `first_{pos}` holds the value, decoded from a `Pod` only
 # from the World.
 FirstValueLet: unbounded fn Wx, Pos, TagInfo, Ex, OutTy -> Do
-fn FirstValueLet wx, pos, tg, level, placed:
+fn FirstValueLet wx, pos, tg, level, placed = FirstValueLetAt wx, "", pos, tg, level, placed
+
+# The same, the place's path read from `recv` (`PlaceAt`): `node` where the place asks
+# once the node stands, its number known only then.
+FirstValueLetAt: unbounded fn Wx, Text, Pos, TagInfo, Ex, OutTy -> Do
+fn FirstValueLetAt wx, recv, pos, tg, level, placed:
     let missing = XCall (RefRuntime "rt::Fault::answer"), [[(XStr "no first value for {tg.name}")]]
     if Emits wx, pos:
         let asked = XMethod (XCx), "first_value", [[(XRef (XMethod level, "to_pod", [[]]))]]
@@ -431,7 +436,7 @@ fn FirstValueLet wx, pos, tg, level, placed:
     else:
         let host = HostLocal wx, pos
         let entry = Or (Fold wx.places, nil, \|?e, pl| if pl.pos == pos: ? pl.entry else: ?e), ""
-        let asked = TryOf (XMethod (XVar host), "first_value", [[(XRef (PlaceAt wx, "", pos)), (XRef level), (XRef (XVar entry)), XCx]])
+        let asked = TryOf (XMethod (XVar host), "first_value", [[(XRef (PlaceAt wx, recv, pos)), (XRef level), (XRef (XVar entry)), XCx]])
         let accessor = if (IsBundleTag tg): "{OutputAccessor tg}_first" else: OutputAccessor tg
         let carried = if IsBundleTag tg: Or (?BundleFirstTy wx.lx, tg), OutUnit else: OutputTy wx.lx, tg
         DoLet (PaBind "first_{PlaceText pos}"), (RecodedOutput (OutputOpen wx.lx, tg), carried, placed, (TryOf (XMethod (TryOf (XMethod asked, "ok_or", [[missing]])), accessor, [[]])))
@@ -580,7 +585,9 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
                 let wx2 = update wx:
                     &_.fields <= Push &_.fields, ((f, (OutHold (OutOpt out)), "place {PlaceText pos}'s answer, its first value: empty until that is asked, once its host is placed"))
                     &_.moves <= Push &_.moves, ((f, (XCall (RefRuntime "rt::Hold::new"), [[XNone, XCx]])))
-                    &_.lateFirsts <= Push &_.lateFirsts, ((pos.scope, [[(FirstValueLet wx, pos, tg, level, out), (LateFirstSet f, (XVar "first_{PlaceText pos}"))]]))
+                    # (below a building line built after the node, `BelowGappyLine`, the
+                    # place's number is the node's: read from it)
+                    &_.lateFirsts <= Push &_.lateFirsts, ((pos.scope, [[(FirstValueLetAt wx, (if PlaceUnknownAtBuild wx, pos: "node" else: ""), pos, tg, level, out), (LateFirstSet f, (XVar "first_{PlaceText pos}"))]]))
                     &_.fallible <= True
                 ((wx2, WrUnit))
             ? f:
