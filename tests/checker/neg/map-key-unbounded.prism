@@ -1,0 +1,15 @@
+# A map's key with no `^Ord` bound (Type System ch. 3, the prelude's traits: "Map keys
+# must be `^Ord`, so a map iterates in one order everywhere"; ch. 7, "Traits during
+# inference": "Wanted constraints come from methods, bounded signatures, integer
+# literals, interpolation placeholders (`^Show`) and map keys (`^Ord`)", and "At a rigid
+# variable, the givens must entail it"). `Pairs` puts `((k, v))` in a map as its key and
+# its signature bounds neither `k` nor `v` (hosting bug 13, the Bible's `Sittings`).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+
+Pairs: fn [k], v -> (((k, v)) ==> unit)
+fn Pairs keys, v = Fold keys, {}, \|all, k| Insert all, ((k, v)), unit
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Size (Pairs [[1, 2]], "x")}")
