@@ -1,0 +1,23 @@
+# Derived by hand from Semantics ch. 4 ("the order of a group's lines decides positions and nothing else"), ch. 8 ("A new place's first value": the query answers at the build, by the element as built, each field reading what it names once it has a value) and Type System ch. 2 ("Bundles and sparse tuples": the plain part is read once, the push moves the `$` part) and ruling TC: loud gives 10, so the ask is "ask 10", answered "hi", the port "port hi", answered ((7, "up")), its label 2 and the arm's label 3; soft gives 20, "ask 20" is answered "ho", and its arm builds nothing. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Pad.Ask(name="ask 10")
+    1: Pad.Port(name="port hi")
+    2: Ui.Label(text="7 up of hi")
+    3: Ui.Label(text="x")
+
+tick 1
+  in:
+    Pad.Port(name="port hi") = ((7, "down"))
+  changed:
+    2: Ui.Label(text="7 down of hi")
+
+test soft
+
+tick 0
+  added:
+    0: Pad.Ask(name="ask 20")
+    1: Pad.Port(name="port ho")
+    2: Ui.Label(text="8 up of ho")
