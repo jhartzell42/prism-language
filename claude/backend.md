@@ -232,12 +232,49 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **`wake`** runs the node's combinators in distance order, once per height, by direct
   calls. A merge `<|` reads its left stamp first (CXb). The root wakes through the height
   buckets like every node (CXi).
-  A node with several heights keeps the heights asked (`Wakes`); one wake of the node runs
-  the lowest height asked, and ends by asking a wake for the lowest height still asked
-  (`Wakes::again`). So two heights of one node asked from one running height, which both
-  land on the next height (`Cx::wake`: a height at or below the running one is the next
-  one) where the node is listed once, are each served in the tick: a host that writes a
-  hold `!Updated` reads and fires its own result in one method gets both.
+- **Heights across nodes.** Every combinator has a global height, told at the wiring
+  (Compiler ch. 3 (c): "an internal combinator wakes at its node's input height plus its
+  distance"; Graph ch. 4, "Heights"; Semantics ch. 7: double firings never). A node with a
+  combinator keeps `heights: Heights`: one global height per combinator in the node's
+  order, starting at the combinator's distance inside the node and only ever raised, and
+  the combinators asked this tick. An input of a combinator asks
+  `self.heights.ask(k, cx, self.clone())`; the node's wake decides each combinator asked
+  whose height has come, lowest first (`while let Some(k) = self.heights.next(cx)`), and
+  ends by asking a wake for the lowest still asked (`Heights::again`). So a merge with one
+  input from its own node and one from a blueprint value's node two combinators further
+  on decides once, after both (`tests/conformance/heights-merge-all-across-nodes`), and a
+  `for`'s gather once, after every row (`heights-gathered-event-across-nodes`).
+  Each event method `m` has a height twin `m_above(h)`: "something at global height `h`
+  fires `m`". It is written from the same sinks as the firing (`SinkAbove` beside
+  `SinkCode`): a method of the node, that method's twin; an input of a combinator,
+  `heights.above(k, h)` and, when that moved the combinator, the combinator's own twin at
+  its new height; a port, `port.raise(h)`; the parent's method, the parent's twin; a hold,
+  the `!Updated` nodes over it and the rows that hear the write (`parent_wrote_m_above`, or
+  the generation's port raised); a hosted place's request, its host's
+  `request_above(h)`, which raises every row's request port (one height for all the
+  child's places; a row made later takes it at its making, `HostOf::request_height`; a
+  forwarded element's request goes on to the enclosing host), so what hears a live
+  element's event field (`Live::requested`, which passes the height on) sits above the
+  guest's request. A sink whose firing lands in a later tick or at the World ends the
+  walk. A `Port` keeps the height it fires at and a twin per
+  subscription (`Port::subscribe_above`): the twin is told the height at once and each
+  time the port is raised, so a row that subscribes late sits above its block's port all
+  the same (`subscribe_row`, `hear_part`, `MergeList::listen_above`, and `Listen::listen_above`
+  for the inner a switch holds now). A blueprint's `Sink`
+  has its twin too: a widget's event result subscribes the sink with it
+  (`widget_event_blueprint`), and the block that applied the blueprint passes its
+  `{name}_up_above` (`apply_blueprint_heard`). At the end of a node's build each
+  combinator's twin is called with its height. Heights move in builds only, after
+  propagation. A height past 2^20 is a prompt cycle across nodes, which the checker
+  refuses: the runtime panics with "a prismc bug". `Cx::wake`'s clamp (a wake asked at or
+  below the running height runs at the next one) stays for what no twin reaches.
+  The runtime's own event values use the same heights: `merge_all`'s node sits above
+  every event of its list and raises its own port, `Event::map` and `filter_some` pass
+  their source's height on, `Event::map_at` too.
+  No twin reaches these, where the clamp alone orders: a `for` row built after its block
+  wrote a hold the row hears (`parent_wrote_m` is told to the rows that live), a
+  dynamic's update port (`Dynamic::map2`, a `follow`, `updated` as an event value, a
+  blueprint's dynamic answer).
 - **Holds.** `$x <- init then !e` → the firing's method calls `x.set(v, cx)`; every read
   is `x.get(cx)`, before the tick during propagation and after it from then on, so the
   tag law needs no commit pass.
@@ -1604,8 +1641,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `new` (runtime/cpp/README.md, "Regular expressions").
 - `cells`: `Tick`, `Hold`, `Stamped`, `Cache`, `Snapshot` (`mark`, `marked`, `take`,
   `take_compared`, `queue`, `published`, `get`, `current`), `Port` (`subscribe`, `unsubscribe`, `lien`, `release`,
-  `demand`, `fire`, `kept`), `Handle`, `Demand`, `Event`, `Dynamic`, `Defer`, `Job`,
-  `Turn`.
+  `demand`, `fire`, `kept`, `subscribe_above`, `raise`, `height`), `Handle`, `Demand`, `Event`, `Dynamic`, `Defer`, `Job`,
+  `Turn`, `Above`, `Heights` (`of`, `above`, `ask`, `next`, `again`).
 - `cx`: `Node`, `Done`, `Cx` (`tick`, `read_point`, `propagating`, `after`, `before`, `wake`, `build_later`, `swap_later`,
   `leave_later`, `dirty`, `on_started`, `arm`, `clean_up_later`, `added`, `removed`,
   `changed`, `request`, `answer_later`, `result`, `first_value`, `listen`), `Runtime`

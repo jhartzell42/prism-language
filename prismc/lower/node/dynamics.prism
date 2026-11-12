@@ -124,7 +124,7 @@ fn EventObjectRef wx, menv, e, t:
     let getter = MethDef(name="{rs}_event", recv=RecvRef, params=[[]], cx=CxRef, ret=(OutEvent t), body=[[]], tail=(Own (ValueOf lx, menv, e)), doc="`{shown}`, an event a function gave whole, as its value.")
     let port = XClosure False, [[PaBind "ev"]], (XRef (XField (XVar "ev"), "port"))
     let call = XClosure False, [[PaBind "n", PaBind "v", PaBind "cx"]], (XMethod (XVar "n"), rs, [[XClone (XVar "v"), XCx]])
-    let sub = DoExpr (XCall (HelperRef "subscribe_row"), [[(XRef (XVar "node")), (XCtor (RefRuntime "std::Some"), [[(XCall (RefRuntime "std::Rc::new"), [[(XMethod (XVar "node"), "{rs}_event", [[XCx]])]])]]), port, call, (XRef (XField (XVar "node"), "{rs}_sub"))]])
+    let sub = DoExpr (XCall (HelperRef "subscribe_row"), [[(XRef (XVar "node")), (XCtor (RefRuntime "std::Some"), [[(XCall (RefRuntime "std::Rc::new"), [[(XMethod (XVar "node"), "{rs}_event", [[XCx]])]])]]), port, call, (HeardAbove rs), (XRef (XField (XVar "node"), "{rs}_sub"))]])
     let w3 = update (AddField w2, "{rs}_sub", (OutNamed (RefRuntime "std::Cell"), [[(OutOpt (OutNamed (RefRuntime "rt::Handle"), [[]]))]]), "the subscription to `{shown}`", (XCall (RefRuntime "std::Cell::new"), [[XNone]])):
         &_.getters <= Push &_.getters, getter
         &_.build <= Push &_.build, sub
@@ -216,7 +216,7 @@ fn MergeListEvent wx, menv, x, t:
     let list = "{nm}_list"
     let shown = SrcText lx, lx.file, x.span
     let getter = MethDef(name="{nm}_events", recv=RecvRef, params=[[]], cx=CxRef, ret=(OutArray (OutEvent et)), body=[[]], tail=(Own (ValueOf lx, menv, x)), doc="`{shown}`, the list `!MergeAll` merges, as its value.")
-    let listened = DoExpr (XMethod (XField (XVar "node"), list), "listen", [[(XRef (XMethod (XVar "node"), "{nm}_events", [[XCx]])), (XRef (XVar "node")), (XPath (RefChild (SiteRef lx, wx.node), "{nm}_in"))]])
+    let listened = DoExpr (XMethod (XField (XVar "node"), list), "listen_above", [[(XRef (XMethod (XVar "node"), "{nm}_events", [[XCx]])), (XRef (XVar "node")), (XPath (RefChild (SiteRef lx, wx.node), "{nm}_in")), (XPath (RefChild (SiteRef lx, wx.node), "{nm}_in_above"))]])
     let w3 = update (AddFieldLast w2, list, (OutNamed (RefRuntime "prism_rtl::MergeList"), [[et]]), "`!MergeAll`'s list, heard", (XCall (RefRuntime "std::Default::default"), [[]])):
         &_.gns <= Each &_.gns, \|n| if n.id == id: WithInputs n, [[list]] else: n
         &_.getters <= Push &_.getters, getter

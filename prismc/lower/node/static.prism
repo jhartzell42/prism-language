@@ -297,7 +297,7 @@ fn AppliedBlueprintLine wx, e, blueprint:
         let at = [[blueprint, (AppliedPath wx, pos), (XVar "row_base"), hostedIn]]
         # a line that binds a dynamic: each answer read at the line's type
         let taker = XClosure False, [[(PaBind "answer")]], (XCtor (RefRuntime "std::Ok"), [[(FirstAnswerTaken lx, outTy, "answer")]])
-        let applied = if heard: TryOf (XCall (HelperRef "apply_blueprint_heard"), (Append at, [[(AnswerSink lx, name, outTy), XCx]])) else: if dynamic: TryOf (XCall (HelperRef "apply_blueprint_dynamic"), (Append at, [[taker, XCx]])) else: if answered: TryOf (XCall (HelperRef "apply_blueprint_answered"), (Push at, XCx)) else: TryOf (XCall (HelperRef "apply_blueprint"), (Push at, XCx))
+        let applied = if heard: TryOf (XCall (HelperRef "apply_blueprint_heard"), (Append at, [[(AnswerAbove name), (AnswerSink lx, name, outTy), XCx]])) else: if dynamic: TryOf (XCall (HelperRef "apply_blueprint_dynamic"), (Append at, [[taker, XCx]])) else: if answered: TryOf (XCall (HelperRef "apply_blueprint_answered"), (Push at, XCx)) else: TryOf (XCall (HelperRef "apply_blueprint"), (Push at, XCx))
         let gap = XBin OpSub, (XIndex wideGeneration), (XVar "built")
         let hearer = if heard: [[(DoLet (PaBind "heard_by"), (XWeak XSelf))]] else: [[]]
         let res = "{name}_res"
@@ -313,7 +313,7 @@ fn AppliedBlueprintLine wx, e, blueprint:
             &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=True, width=wideGeneration, moved=(Or (?HostedRows wx), ""), early=False, gappy=True, rebased=True)
             &_.genHolds <= Push &_.genHolds, ((name, [[]]))
             &_.fallible <= True
-            &_.getters <= if heard: Push &_.getters, (GenUp name, (GnOf wx2, upId).name, (GnOf wx2, upId).ty) else: &_.getters
+            &_.getters <= if heard: Push (Push &_.getters, (GenUp name, (GnOf wx2, upId).name, (GnOf wx2, upId).ty)), (GenUpAbove name, (GnOf wx2, upId).name) else: &_.getters
         if heard: ((wx3, (WrEv (EvRefOf wx3, upId))))
         else: if dynamic:
             let wx4 = update wx3:
@@ -336,6 +336,13 @@ fn AppliedBlueprintLine wx, e, blueprint:
 # whose answers are of the line's type, and its generic ones, whose answers are recoded
 # to it; an answer made outside a tag's arm is read at the first one's type, and any
 # other answer is a fault (the accessor's).
+# The height twin of the sink (`AnswerSink`): the block's `{name}_up` fires at the height
+# the blueprint's answer comes at. Written before the sink, which takes `heard_by`.
+AnswerAbove: fn Text -> Ex
+fn AnswerAbove name:
+    let up = DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "block"]]), (XUpgrade (XVar "heard_by")), [[(AboveCall (XVar "block"), "{name}_up", (XVar "h"))]], [[]]
+    XBlock [[(DoLet (PaBind "heard_by"), (XClone (XVar "heard_by")))]], (XClosure True, [[(PaBind "h")]], (XBlock [[up]], XUnit))
+
 AnswerSink: unbounded fn Lx, Text, OutTy -> Ex
 fn AnswerSink lx, name, t:
     let fired = FirstAnswerTaken lx, t, "answer"
@@ -424,10 +431,10 @@ fn AppliedPart wx, name, t, read, whole, place = match t:
                 let et = OutTyOf lx, (Peel t)
                 let ((upId, w1)) = AddGn wx, "{part}_fired", et, GnNamed, 0
                 let w2 = update w1:
-                    &_.getters <= Push &_.getters, (GenUp part, (GnOf w1, upId).name, (GnOf w1, upId).ty)
+                    &_.getters <= Push (Push &_.getters, (GenUp part, (GnOf w1, upId).name, (GnOf w1, upId).ty)), (GenUpAbove part, (GnOf w1, upId).name)
                 let up = DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "block"]]), (XUpgrade (XVar "heard_by")), [[(DoExpr (XMethod (XVar "block"), "{part}_up", [[(XClone (XVar "fired")), XCx]]))]], [[]]
                 let hear = XClosure True, [[(PaBind "fired"), (PaBind "cx")]], (XBlock [[up]], (XCtor (RefRuntime "std::Ok"), [[XUnit]]))
-                let heard = DoExpr (XBlock [[(DoLet (PaBind "heard_by"), (XClone (XVar "heard_by")))]], (XCall (HelperRef "hear_part"), [[(XRef whole), hear]]))
+                let heard = DoExpr (XBlock [[(DoLet (PaBind "heard_by"), (XClone (XVar "heard_by")))]], (XCall (HelperRef "hear_part"), [[(XRef whole), (AnswerAbove part), hear]]))
                 ((w2, (WrEv (EvRefOf w2, upId)), [[heard]]))
             # a dynamic part: kept, and its update event followed
             LyDyn:

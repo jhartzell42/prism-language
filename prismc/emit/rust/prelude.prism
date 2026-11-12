@@ -968,29 +968,6 @@ pub fn indexed<A: Clone>(xs: &Array<A>) -> Map<Nat, A> {
     xs.iter().enumerate().map(|(i, x)| (nat_of(i), x.clone())).collect()
 }
 
-/// The heights a node with combinators at several heights asked for this tick: its wake
-/// runs the lowest one asked (`Node::wake` is not told its height, prismc/README.md WH).
-#[derive(Default)]
-pub struct Wakes(::std::cell::RefCell<::std::collections::BTreeSet<u32>>);
-
-impl Wakes {
-    pub fn ask(&self, h: u32) {
-        self.0.borrow_mut().insert(h);
-    }
-    pub fn next(&self) -> u32 {
-        self.0.borrow_mut().pop_first().unwrap_or(u32::MAX)
-    }
-    /// After a wake ran one height: a wake for the lowest height still asked. Two heights
-    /// asked from one running height land on one wake of the node (the clamp, and a node
-    /// once per height), which runs the lower; the other is asked for again here.
-    pub fn again(&self, cx: &mut Cx, node: Rc<dyn Node>) {
-        let lowest = self.0.borrow().first().copied();
-        if let Some(h) = lowest {
-            cx.wake(h, node);
-        }
-    }
-}
-
 /// A row of a `for` or a generation of a `rebuild`: a node its builder tears down. A row
 /// of a hosted child's (prismc/README.md, pick HO) is an entry of its host's document: its
 /// own places' entries, by their paths relative to the row, and a host's typed answer to one
@@ -1099,14 +1076,16 @@ fn applied_scope(hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::A
 /// built. A blueprint that answers (`@ x`, an event's, a dynamic's) builds no place here,
 /// and what it answers is the line's result, which a line of unit drops.
 pub fn apply_blueprint(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: u32, hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Answer>>>, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32), Fault> {
-    apply_blueprint_heard(blueprint, path, base, hosted, |_: &crate::Answer, _: &mut Cx| Ok(()), cx)
+    apply_blueprint_heard(blueprint, path, base, hosted, |_: u32| (), |_: &crate::Answer, _: &mut Cx| Ok(()), cx)
 }
 
 /// A blueprint value applied by a line that hears it (`!go <- @Element e`): as
 /// `apply_blueprint`, with `hear` the blueprint's sink, called with each answer to the
-/// place the blueprint answers, in the tick the answer comes.
-pub fn apply_blueprint_heard(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: u32, hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Answer>>>, hear: impl Fn(&crate::Answer, &mut Cx) -> Done + 'static, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32), Fault> {
-    let sink: ::prism_rtl::Sink<crate::Answer> = Rc::new(hear);
+/// place the blueprint answers, in the tick the answer comes; `above` is the sink's
+/// height twin, told the global height such an answer comes at (a widget's event result,
+/// fired by a combinator of its row), so what `hear` fires sits above it.
+pub fn apply_blueprint_heard(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: u32, hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Answer>>>, above: impl Fn(u32) + 'static, hear: impl Fn(&crate::Answer, &mut Cx) -> Done + 'static, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32), Fault> {
+    let sink: ::prism_rtl::Sink<crate::Answer> = ::prism_rtl::Sink::heard_above(hear, Rc::new(above));
     let supplied = blueprint(path, sink.clone(), &applied_scope(hosted), base, cx)?;
     let built = supplied.built;
     Ok((Rc::new(AppliedBlueprint { supplied, base, sink }), built))
@@ -1116,7 +1095,7 @@ pub fn apply_blueprint_heard(blueprint: &::prism_rtl::Blueprint<crate::Elem, cra
 /// `apply_blueprint`, with the first answer of the place the blueprint answers, which a
 /// blueprint that gives a plain value has at its build.
 pub fn apply_blueprint_answered(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: u32, hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Answer>>>, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32, crate::Answer), Fault> {
-    let sink: ::prism_rtl::Sink<crate::Answer> = Rc::new(|_: &crate::Answer, _: &mut Cx| Ok(()));
+    let sink: ::prism_rtl::Sink<crate::Answer> = ::prism_rtl::Sink::new(|_: &crate::Answer, _: &mut Cx| Ok(()));
     let supplied = blueprint(path, sink.clone(), &applied_scope(hosted), base, cx)?;
     let built = supplied.built;
     let first = supplied.first.clone().ok_or_else(|| Fault::answer("a blueprint value that gives a plain value answered nothing at its build".to_string()))?;
@@ -1132,7 +1111,7 @@ pub fn apply_blueprint_dynamic<T: Clone + 'static>(blueprint: &::prism_rtl::Blue
     let updates: Rc<::prism_rtl::Port<()>> = Rc::new(::prism_rtl::Port::new());
     let take = Rc::new(take);
     let (held, fired, taken) = (cell.clone(), updates.clone(), take.clone());
-    let sink: ::prism_rtl::Sink<crate::Answer> = Rc::new(move |answer: &crate::Answer, cx: &mut Cx| {
+    let sink: ::prism_rtl::Sink<crate::Answer> = ::prism_rtl::Sink::new(move |answer: &crate::Answer, cx: &mut Cx| {
         let v = taken(answer)?;
         match held.borrow().as_ref() {
             Some(hold) => hold.set(v, cx),
@@ -1213,7 +1192,7 @@ pub fn apply_blueprint_whole<W: Clone + 'static, S: Clone + 'static, V: Clone + 
     let events: Rc<::prism_rtl::Port<V>> = Rc::new(::prism_rtl::Port::new());
     let state = Rc::new(state);
     let (held, moved, fired, stated) = (cell.clone(), updates.clone(), events.clone(), state.clone());
-    let sink: ::prism_rtl::Sink<crate::Answer> = Rc::new(move |answer: &crate::Answer, cx: &mut Cx| {
+    let sink: ::prism_rtl::Sink<crate::Answer> = ::prism_rtl::Sink::new(move |answer: &crate::Answer, cx: &mut Cx| {
         if let Some(s) = stated(answer, false)? {
             match held.borrow().as_ref() {
                 Some(hold) => hold.set(s, cx),
@@ -1254,21 +1233,29 @@ pub fn event_part<V: Clone + 'static, T: Clone + 'static>(events: &::prism_rtl::
 }
 
 /// An event part of a bundle a blueprint value gives, heard by the block that applied
-/// it: each firing is `hear`'s, in its tick. The subscription lives as long as the port.
-pub fn hear_part<T: Clone + 'static>(event: &::prism_rtl::Event<T>, hear: impl Fn(&T, &mut Cx) -> Done + 'static) {
-    let _ = event.port.subscribe(Rc::new(hear));
+/// it: each firing is `hear`'s, in its tick, and `above` its height twin, told the
+/// port's height. The subscription lives as long as the port.
+pub fn hear_part<T: Clone + 'static>(event: &::prism_rtl::Event<T>, above: impl Fn(u32) + 'static, hear: impl Fn(&T, &mut Cx) -> Done + 'static) {
+    let _ = event.port.subscribe_above(Rc::new(hear), Rc::new(above));
 }
 
 /// A row subscribing to its block's port for one event: the row heard weakly, the handle
-/// kept for its leaving (claude/backend.md: `Port::subscribe`).
-pub fn subscribe_row<N: Node, P, T: Clone + 'static>(node: &Rc<N>, parent: Option<Rc<P>>, port: impl Fn(&P) -> &Port<T>, call: impl Fn(&Rc<N>, &T, &mut Cx) + 'static, slot: &::std::cell::Cell<Option<Handle>>) {
+/// kept for its leaving (claude/backend.md: `Port::subscribe_above`). `above` is the
+/// call's height twin: told the port's height at once and each time it rises, it puts
+/// what the row's method reaches above it.
+pub fn subscribe_row<N: Node, P, T: Clone + 'static>(node: &Rc<N>, parent: Option<Rc<P>>, port: impl Fn(&P) -> &Port<T>, call: impl Fn(&Rc<N>, &T, &mut Cx) + 'static, above: impl Fn(&Rc<N>, u32) + 'static, slot: &::std::cell::Cell<Option<Handle>>) {
     let Some(parent) = parent else { return };
     let me = Rc::downgrade(node);
-    let h = port(&parent).subscribe(Rc::new(move |v: &T, cx: &mut Cx| {
+    let told = me.clone();
+    let h = port(&parent).subscribe_above(Rc::new(move |v: &T, cx: &mut Cx| {
         if let Some(n) = me.upgrade() {
             call(&n, v, cx);
         }
         Ok(())
+    }), Rc::new(move |h| {
+        if let Some(n) = told.upgrade() {
+            above(&n, h);
+        }
     }));
     slot.set(Some(h));
 }

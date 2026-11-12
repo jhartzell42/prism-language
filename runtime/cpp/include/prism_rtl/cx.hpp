@@ -161,6 +161,8 @@ public:
         return std::forward<F>(f)(*this);
     }
 
+    /// The height whose wakes run now; none outside the heights' run.
+    std::optional<std::uint32_t> running_height() const { return height_; }
     /// Ask for a wake at `height`, once per height. A wake asked for at or below the
     /// running height runs at the next one (the clamp, Graph ch. 4).
     void wake(std::uint32_t height, NodeRef node);
