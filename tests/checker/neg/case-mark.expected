@@ -20,6 +20,6 @@ tests/checker/neg/case-mark.prism:35: error[case-mark]: `N` holds a `Nat`, not a
   fix: rename to `n`
 tests/checker/neg/case-mark.prism:39: error[case-mark]: `Y` holds a `Nat`, not a function: an uppercase name is a function, a constructor, a type or a trait
     fn Up xs = Each xs, \|Y| Y + 1
-                            ^
+                          ^
   fix: rename to `y`
 6 errors

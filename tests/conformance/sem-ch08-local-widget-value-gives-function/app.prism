@@ -17,8 +17,8 @@ fn @Page b:
         Ui.Label($text=$"maker")
         @ \|x| x + k
     match ?Pick b, @maker:
-        ? @t:
-            Next <- @t
+        ? @T:
+            Next <- @T
             let made = Next 1
             Ui.Label($text=$"made {made}")
         nil: Ui.Label($text=$"none")

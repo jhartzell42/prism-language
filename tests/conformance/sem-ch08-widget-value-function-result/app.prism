@@ -18,8 +18,8 @@ fn ?Pick b, @w = if b: ? @w else: nil
 @Page: fn Bool -> @unit
 fn @Page b:
     match ?Pick b, @Maker:                                       # 0 and 1, or 0
-        ? @t:
-            Next <- @t
+        ? @T:
+            Next <- @T
             let made = Next 7
             Ui.Label($text=$"made {made}")
         nil: Ui.Label($text=$"none")

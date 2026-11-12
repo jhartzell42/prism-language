@@ -13,7 +13,7 @@ fn ?Made F = ? @ F
 @page: @unit
 @page:
     match ?Made (\|n| n + 1):
-        ? @t:
-            F <- @t
+        ? @T:
+            F <- @T
             Ui.Label($text=$"{F 5}")
         nil: Ui.Label($text=$"none")

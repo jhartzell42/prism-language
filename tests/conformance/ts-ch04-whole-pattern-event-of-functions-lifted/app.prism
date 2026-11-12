@@ -14,7 +14,7 @@ Call: fn (fn Nat -> Nat), Nat -> Nat
 fn Call F, n = F n
 
 !Fired: fn ((!(fn Nat -> Nat), Nat)) -> !Nat
-fn !Fired ((!made, more)) = (Call !made, 5) + more
+fn !Fired ((!Made, more)) = (Call !Made, 5) + more
 
 @page: @unit
 @page:

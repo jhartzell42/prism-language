@@ -6,7 +6,7 @@ emit Ui.*
 test mod Tests
 
 Twice: fn (fn $Nat -> $Nat) -> Nat
-fn Twice f = 2
+fn Twice F = 2
 
 @shown:
     !inc <- Ui.Button($label=$"Inc")                              # 0

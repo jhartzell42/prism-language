@@ -1,6 +1,7 @@
 # The qualified case patterns, beside the bare ones.
 emit Ui.*
 use App.*
+use Sizes.*
 
 check qualified_cases:
     Sizes.Of 3 => Small

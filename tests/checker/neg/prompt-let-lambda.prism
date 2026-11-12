@@ -9,14 +9,14 @@ fn Apply x, F = F x
 
 @broken: @unit
 @broken:
-    let f = \|x| x + b
-    let a = Apply 1, f
+    let F = \|x| x + b
+    let a = Apply 1, F
     let b = a + 1
     Ui.Label($text=$"{a}")
 
 @fine: @unit
 @fine:
-    let f = \|x| x + 1
-    let a = Apply 1, f
+    let F = \|x| x + 1
+    let a = Apply 1, F
     let b = a + 1
     Ui.Label($text=$"{b}")
