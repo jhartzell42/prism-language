@@ -857,6 +857,9 @@ fn ValueWidgetsIn lx, e = match e.kind:
         # first level (`IsSharable`)
         else: if applies: (if CallsItself lx, qk: Fold args, [[]], \|acc, a| if (LayerOf (TypeAt lx, a.value.span)) == LyBlueprint: Append acc, (ValueWidgetsAt lx, a.value) else: acc else: [[]])
         else: Fold args, [[]], \|acc, a| Append acc, (ValueWidgetsAt lx, a.value)
+    # a method call is the call of its function with the receiver first, as the checker
+    # and the lowering read it (`Application`)
+    EMethod r, m, args: ValueWidgetsIn lx, (Expr(kind=(ECall (Expr(kind=(EName m), span=m.span)), (Append [[Arg(marks="", ?name=nil, value=r, span=r.span)]], args), False, False), span=e.span))
     ELambda ignore, (LbExpr x): ValueWidgetsAt lx, x
     ELambda ignore, (LbBlock b): ValueWidgetsOfBlock lx, b
     EFreeSigil "?", x: ValueWidgetsAt lx, x
