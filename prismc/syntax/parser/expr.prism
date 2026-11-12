@@ -662,7 +662,10 @@ fn ParseMatch p0:
     let start = Here p0
     let ((scrutinee, p1)) = ParseExpr (Adv p0)
     let p2 = ExpectColon p1
-    if AtOpenL p2:
+    # a `match` with no arm, over a value of a choice with no case: the lexer gives its `:`
+    # an empty block
+    if (AtOpenL p2) and AtCloseL (Adv p2): ((Expr(kind=(EMatch scrutinee, [[]]), span=(To start, (Prev p2))), (Adv (Adv p2))))
+    else: if AtOpenL p2:
         let ((arms, q)) = MatchArms (Adv p2)
         ((Expr(kind=(EMatch scrutinee, arms), span=(To start, (Prev q))), q))
     else: ((noExpr, (ErrorHere p2, "a `match`'s arms stand in an indented block after its `:`")))

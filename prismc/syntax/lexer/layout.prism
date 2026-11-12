@@ -19,7 +19,7 @@ use Syntax.Decls.*
 LexFile: unbounded fn Text -> Lexed
 fn LexFile src:
     let start = Lex(src=src, pos=0, diags=[[]], mode=MFile, tokens=[[]], layout=[[]],
-        frames=[[]], lastWs=True, lambdaOpen=False, pendingOpen=False, pendingSpan=Range(start=0, end=0),
+        frames=[[]], lastWs=True, lambdaOpen=False, pendingOpen=False, pendingEmpty=False, pendingSpan=Range(start=0, end=0),
         lineFirst=0, markLineStart=False, firstLine=True, testPending="", ?testDepth=nil,
         ?checkDepth=nil, pathNext=False)
     let skipped = SkipBlankAndCommentLines start
@@ -112,6 +112,11 @@ fn LexStream l0 = update l0:
                         &_ <= LexToken &_
     # Rule 10: "End of file closes every block."
     if LayoutOn &_.mode:
+        # the file's last line ends in a `:` whose block may stand empty
+        if &_.pendingOpen and &_.pendingEmpty:
+            &_.pendingOpen <= False
+            &_ <= PushTok &_, KLayOpen, &_.pendingSpan.end, &_.pendingSpan.end
+            &_ <= PushTok &_, KLayClose, &_.pendingSpan.end, &_.pendingSpan.end
         while (Len &_.layout) > 1:
             &_.layout <= Pop &_.layout
             &_ <= PushTok &_, KLayClose, &_.pos, &_.pos
@@ -146,7 +151,31 @@ fn EndLine l = match ?Last l.tokens:
         update l:
             &_.pendingOpen <= True
             &_.pendingSpan <= t.span
+            &_.pendingEmpty <= t.kind == KColon and MayStandEmpty (Drop l.tokens, l.lineFirst)
     otherwise: l
+
+# Whether the `:` that ends a line may stand over no block at all: a choice with no case
+# (`type Never = choice:`), and a `match` with no arm, which is exhaustive over such a
+# type (`fn Absurd never = match never:`). The `:` is a choice's when `choice` stands
+# before it, and a `match`'s when it is the one `:` outside brackets after the line's
+# last `match`.
+MayStandEmpty: fn [Tok] -> Bool
+fn MayStandEmpty line:
+    let ((inMatch, depth, colons)) = Fold line, ((False, 0, 0)), \|((m, d, c)), t| match t.kind:
+        KKw "match", ignore: ((True, 0, 0))
+        KOpen ignore, ignore: ((m, d + 1, c))
+        KClose ignore: ((m, (Or (d -? 1), 0), c))
+        KColon: ((m, d, (if d == 0: c + 1 else: c)))
+        otherwise: ((m, d, c))
+    let lastTwo = Drop line, (Or ((Len line) -? 2), 0)
+    let choiceColon = match lastTwo:
+        [[a, b]]: b.kind == KColon and (IsChoiceWord a.kind)
+        otherwise: False
+    choiceColon or (inMatch and depth == 0 and colons == 1)
+
+IsChoiceWord: fn TokKind -> Bool
+fn IsChoiceWord (KKw "choice", ignore) = True
+fn IsChoiceWord ignore = False
 
 OpensBlock: fn TokKind -> Bool
 fn OpensBlock KColon = True
@@ -253,7 +282,12 @@ fn LayoutLine l0, col, lineBegin, here = update l0:
             &_.testPending <= ""
             &opened <= True
         else:
-            &_.diags <= Push &_.diags, (LexDiag &_.pendingSpan, "expected an indented block after `:`")
+            # a block with nothing in it, where one may stand empty (`MayStandEmpty`)
+            if &_.pendingEmpty:
+                &_ <= PushTok &_, KLayOpen, &_.pendingSpan.end, &_.pendingSpan.end
+                &_ <= PushTok &_, KLayClose, &_.pendingSpan.end, &_.pendingSpan.end
+            else:
+                &_.diags <= Push &_.diags, (LexDiag &_.pendingSpan, "expected an indented block after `:`")
     if not &opened:
         # Conformance A.1 rule 1: "A more-indented line that begins with `=>` opens the
         # step's checks", with no `:` written.

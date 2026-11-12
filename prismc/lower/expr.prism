@@ -2975,7 +2975,10 @@ fn MatchValue lx, env, s, arms, t, span:
         let env3 = if owned: MovedOnce lx, env2, arm, po.binds else: env2
         XArm(pat=po.pa, conds=(Append po.conds, guard), body=(Own (BlockValue lx, env3, arm.body)))
     let scrut = if owned: Own sv else: Ref sv
-    ArmsValue scrut, xarms, label, t
+    # a `match` with no arm, over a value of a choice with no case: the target's empty
+    # `match` over the value itself (rustc takes none over a reference to it)
+    if (Len arms) == 0: VlOwned (XMatch (XDeref (Ref sv)), [[]], False, t), t
+    else: ArmsValue scrut, xarms, label, t
 
 # Gap OC: a binder of an owned scrutinee that its arm's body reads once is moved there, not
 # cloned: its one read is bound by its place to the binder as a value. Only where that is
