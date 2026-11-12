@@ -141,6 +141,26 @@ else
     failed+=(fault-variable-defaulted)
     echo "FAILED fault-variable-defaulted: wanted the part as Prelude.Error in the typed output ($out/fault-variable-defaulted.typed)"
 fi
+# The CLI World's terminal: `Console.Read` and `Console.Print` on the process's own standard
+# input and output, one line in, one line out, each answer line printed as it fires; at the
+# end of the input the reads stop firing and the program, with nothing left to cause a
+# tick, exits 0. With two terminals, lines are addressed `NAME: text` both ways.
+for console in console-echo console-terminals; do
+    if ./prism run "tests/driver/$console.prism" < "tests/driver/$console.in" > "$out/$console.out" 2> "$out/$console.err" &&
+        cmp -s "$out/$console.out" "tests/driver/$console.expected"; then
+        echo "ok $console: the lines printed are $console.expected"
+    else
+        failed+=("$console")
+        echo "FAILED $console: wanted tests/driver/$console.expected on standard output, exit 0; got ($out/$console.out, $out/$console.err):"
+        diff "tests/driver/$console.expected" "$out/$console.out" | head -20
+    fi
+done
+if [ -f "$out/console-terminals.err" ] && grep -q "nobody home" "$out/console-terminals.err"; then
+    echo "ok console-unaddressed: a line naming no terminal is reported on standard error"
+else
+    failed+=(console-unaddressed)
+    echo "FAILED console-unaddressed: wanted \`nobody home\` reported on standard error ($out/console-terminals.err)"
+fi
 if ./prism compile --target cpp examples/basic-chess -o "$out/chess-cpp" > /dev/null 2>&1 &&
     grep -q 'prism_world_canvas::run<' "$out/chess-cpp/src/main.cpp" &&
     make -s -C "$out/chess-cpp" -j"$(getconf _NPROCESSORS_ONLN)" > "$out/chess-cpp.log" 2>&1 &&
