@@ -1891,19 +1891,38 @@ fn HeldFlatten wx, menv, x, ?bound:
     # of its own made at the build (`{name}_outer`), the block's live dynamic read through
     # a row's or a generation's `parent` (`WholeOfBlock`), or a global's constant (no node
     # writes a global: `let $$nested = $ ($ 3)` is the constant of its one inner)
-    let ?kept = match menv.names["#whole{DynKey x}"]:
+    # (a shared row's live parameter is its own live dynamic, `#whole#{name}`, as
+    # `WholeValueOf` reads it)
+    let ?whole = match menv.names["#whole{DynKey x}"]:
+        ? b: ? b
+        nil: match x.kind:
+            EName n: if (Len n.path) == 1: menv.names["#whole#{SNameKey n}"] else: nil
+            otherwise: nil
+    let ?kept = match ?whole:
         ? (BnLocal (XField (XSelf), ignore), ignore, ignore): nil
         ? (BnLocal over, ignore, ignore): match ?ThroughParent over:
             ? built: ? (XClone built)
             nil: nil
         otherwise: if IsGlobalName menv, x: ? (XCall (HelperRef "dyn_constant"), [[Own (ValueOf wx.lx, menv, x)]]) else: nil
-    let ?own = match menv.names["#whole{DynKey x}"]:
+    let ?own = match ?whole:
         ? (BnLocal (XField (XSelf), dyn), ignore, ignore): ? dyn
         otherwise: nil
     match ((?own, ?kept)):
+        # No checked program reaches this (ruling RA, class G). Every line of a widget
+        # block goes through `WholeArgsAt` (`WidgetStmt`, `SplitBlockInto`) before its
+        # `@Flatten` is lowered (`WidgetCall`), and `WholeArgsAt` makes a live dynamic for
+        # every outer that has none yet: a name bound as a hold or a dynamic of the node
+        # (`LiveDynamics`, a dynamic `let` of a row that reads through the parent by its
+        # expression, `LetLiveDynamics`), an outer written in place (`outers`); one written
+        # in a row that reads the row's names is lowered in the row, by the row's line. A
+        # row's or a generation's outer of its block is the block's live dynamic through
+        # the parent (`WholeOfBlock`), which the block made when the row's line was its
+        # own; a global is its constant; a shared row's parameter is its `#whole#{name}`.
+        # A `$$` name bound otherwise (an event, a plain local) does not check as `@Flatten`'s
+        # outer in a widget block.
         ((nil, nil)):
             let wx2 = update wx:
-                &_.build <= Push &_.build, (RefusalDo "`@Flatten` of `{SrcText wx.lx, wx.lx.file, x.span}`, a dynamic of dynamics with no live dynamic at the build where the line reads it (gap LF)")
+                &_.build <= Push &_.build, (InternalBugDo "`@Flatten` of `{SrcText wx.lx, wx.lx.file, x.span}`, a dynamic of dynamics with no live dynamic where the line reads it: `WholeArgsAt` makes one for every outer")
             ((wx2, WrUnit))
         otherwise:
             let ((name, wx0)) = match ?bound:
