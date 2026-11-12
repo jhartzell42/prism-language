@@ -54,6 +54,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -121,6 +122,66 @@ void dynamics_ports(const Map<K, Dynamic<E>>& m, const Cx& cx, std::vector<Rc<Po
         level_ports(d.sample(cx), cx, out);
     }
 }
+
+/// A level field that holds dynamics below its top (`values: [$Nat]`), as a foreign World
+/// reads it (WD): flattened through, every dynamic sampled at the read point, deep; plain
+/// data as it is. Arrays, maps, options, tuples and dynamics are walked; anything else is
+/// its plain data (`level_pod`).
+template <class T>
+struct DeepPod {
+    static Pod pod(const T& x, const Cx& cx) { return level_pod(x, cx); }
+    static void ports(const T& x, const Cx& cx, std::vector<Rc<Port<Unit>>>& out) { level_ports(x, cx, out); }
+};
+template <class T>
+Pod deep_pod(const T& x, const Cx& cx) { return DeepPod<T>::pod(x, cx); }
+template <class T>
+void deep_ports(const T& x, const Cx& cx, std::vector<Rc<Port<Unit>>>& out) { DeepPod<T>::ports(x, cx, out); }
+template <class A>
+struct DeepPod<Dynamic<A>> {
+    static Pod pod(const Dynamic<A>& d, const Cx& cx) { return deep_pod(d.sample(cx), cx); }
+    static void ports(const Dynamic<A>& d, const Cx& cx, std::vector<Rc<Port<Unit>>>& out) {
+        out.push_back(d.updates);
+        deep_ports(d.sample(cx), cx, out);
+    }
+};
+template <class A>
+struct DeepPod<Array<A>> {
+    static Pod pod(const Array<A>& xs, const Cx& cx) {
+        std::vector<Pod> out;
+        for (const A& x : xs) out.push_back(deep_pod(x, cx));
+        return Pod::array(std::move(out));
+    }
+    static void ports(const Array<A>& xs, const Cx& cx, std::vector<Rc<Port<Unit>>>& out) {
+        for (const A& x : xs) deep_ports(x, cx, out);
+    }
+};
+template <class K, class V>
+struct DeepPod<Map<K, V>> {
+    static Pod pod(const Map<K, V>& m, const Cx& cx) {
+        std::vector<std::pair<Pod, Pod>> out;
+        for (const auto& [k, v] : m) out.emplace_back(to_pod(k), deep_pod(v, cx));
+        return Pod::map(std::move(out));
+    }
+    static void ports(const Map<K, V>& m, const Cx& cx, std::vector<Rc<Port<Unit>>>& out) {
+        for (const auto& [k, v] : m) deep_ports(v, cx, out);
+    }
+};
+template <class A>
+struct DeepPod<std::optional<A>> {
+    static Pod pod(const std::optional<A>& x, const Cx& cx) { return x ? Pod::some(deep_pod(*x, cx)) : Pod::nil(); }
+    static void ports(const std::optional<A>& x, const Cx& cx, std::vector<Rc<Port<Unit>>>& out) {
+        if (x) deep_ports(*x, cx, out);
+    }
+};
+template <class... Ts>
+struct DeepPod<std::tuple<Ts...>> {
+    static Pod pod(const std::tuple<Ts...>& t, const Cx& cx) {
+        return std::apply([&](const Ts&... x) { return Pod::tuple({deep_pod(x, cx)...}); }, t);
+    }
+    static void ports(const std::tuple<Ts...>& t, const Cx& cx, std::vector<Rc<Port<Unit>>>& out) {
+        std::apply([&](const Ts&... x) { (deep_ports(x, cx, out), ...); }, t);
+    }
+};
 
 /// A World place whose level holds dynamics: subscribed to every one of them as it was last
 /// sent, so a move of any nested entry patches the place again in the tick it moves (doubt

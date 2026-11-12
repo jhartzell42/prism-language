@@ -392,9 +392,13 @@ fn NotLifted lx, span = match lx.apps[PlaceKey lx, span]:
 # Whether an expression is `$ v` over a value that holds time below its top (Type System
 # ch. 1: a dynamic of a tuple that holds a dynamic is a type as any other): `v`'s dynamics
 # are in it whole.
+# So is `$ d` over a dynamic `d` where no lift made it (`$ ($Choose True, $a, $b)`, a
+# `$$Nat`): the constant's one value is `d` itself, the live dynamic, never a constant of
+# `d`'s value at the read point (Semantics ch. 7, "Sample at every level"). Under a lift
+# (`$ $q` in a map's body) `$q` is the mapped value, and the constant is of that value.
 ConstantOfTimeAt: fn Lx, Expr -> Bool
 fn ConstantOfTimeAt lx, e = match e.kind:
-    EFreeSigil "$", x: TimeWithin (TypeAt lx, x.span)
+    EFreeSigil "$", x: (TimeWithin (TypeAt lx, x.span)) or ((LayerOf (TypeAt lx, x.span)) == LyDyn and NotLifted lx, e.span)
     otherwise: False
 
 # Such a value where a reader is wanted: built with its time values whole, and sampled at
@@ -446,9 +450,27 @@ fn WholeValueOf lx, env, e:
         # (a constant of a value that holds time below its top keeps that value's dynamics
         # whole, `ConstantOfTimeAt`: `$ (($ (($a, "in")), 3))`)
         else: if (LayerOf (TypeAt lx, x.span)) == LyDyn: ValueOf lx, env, x else: VlOwned (XCall (HelperRef "dyn_constant"), [[Own (ValueOf (if ConstantOfTimeAt lx, e: lx else: lxp), env, x)]]), (OutDyn (OutTyOf lx, (Peel full)))
+        # a call of a function whose dynamics are only on top (`$Choose True, $a, $b`):
+        # its body is lowered over values, so taken whole it is a map over its dynamic
+        # arguments, as a lift is
         otherwise:
             if not (NotLifted lx, e.span): DynamicLift lx, env, e
+            else: if IsPointwiseDynamicCall lx, e: DynamicLift lx, env, e
             else: ValueByKind lx, env, e
+
+# Whether an expression calls a declared function that takes a dynamic and does not take
+# time whole (`fn $Choose second, $p, $q`): its emitted body takes and gives values.
+IsPointwiseDynamicCall: fn Lx, Expr -> Bool
+fn IsPointwiseDynamicCall lx, e = match e.kind:
+    ECall c, ignore, ignore, ignore:
+        let qk = CalleeKey lx, c
+        if (qk == "") or (IsWholeFn lx, qk) or HasKey lx.g.ctors, qk: False
+        else: match lx.g.vals[qk]:
+            ? v: match v.scheme.ty:
+                TyFn ignore, ps, ignore: Fold ps, False, \|seen, p| seen or (LayerOf p) == LyDyn
+                otherwise: False
+            nil: False
+    otherwise: False
 
 # An expression's operands as a lift maps them: a lifted `if` or `match` maps its
 # condition or scrutinee and its arms' results (`if $useB: $ $q else: $ $p`, a `$$Nat`
