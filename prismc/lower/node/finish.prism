@@ -367,7 +367,12 @@ fn FinishNode wx0, qk, params, isRow:
     # the hosts linked to the node, then the builders and the snapshots (a place over a
     # structural dynamic reads its snapshot at the build), then the places out
     let links = Each wx.hosts, \|h| DoExpr (XMethod (XField (XVar "node"), "{h.name}"), "link", [[(XRef (XVar "node"))]])
-    let rowsBuilt = Append links, (BuildSteps sinks, True)
+    # (a block whose split line's rows are built before its other generations and
+    # numbered where their place comes, `LateGiving`: those rows built at once, then
+    # every step in the order of the places, those rows numbered at theirs; the block
+    # is numbered from then on, `LateRowSelect`)
+    let givesUnnumbered = (not wx.lateGens) and (Len (Filter wx.gens, \|gd| HasText wx.lateRowGens, gd.name)) > 0
+    let rowsBuilt = Append links, (if givesUnnumbered: Append (Append (BuildSteps (PhaseOf sinks, 1), True), (BuildSteps (PhaseOf sinks, 2), True)), [[(DoExpr (XMethod (XField (XVar "node"), "numbered"), "set", [[(XBool True)]]))]] else: BuildSteps sinks, True)
     let subscribed = Each wx.subs, \|((ev, m, t))| DoExpr (XCall (HelperRef "subscribe_row"), [[(XRef (XVar "node")), (XUpgrade (XField (XVar "node"), "parent")), (XClosure False, [[PaBind "p"]], (XRef (XField (XVar "p"), "{ev}_port"))), (XClosure False, [[PaBind "n", PaBind "v", PaBind "cx"]], (XMethod (XVar "n"), m, [[XClone (XVar "v"), XCx]])), (HeardAbove m), (XRef (XField (XVar "node"), "{m}_sub"))]])
     # the World's answers, by path, to the places that go to it; a hosted place is answered
     # typed by its host, through `host_k_answer` (the places of scope `k`) or `deliver` (a
@@ -410,8 +415,8 @@ fn FinishNode wx0, qk, params, isRow:
     # that numbers each generation's row, left by the row (`NumberedByParent`), and
     # whether the row itself is numbered yet
     let lateRows = Filter wx.gens, \|gd| HasText wx.lateRowGens, gd.name
-    let numberFields = Append (Each lateRows, \|gd| (("{gd.name}_number", (OutCell (OutOpt laterTy)), "what numbers the current row of `{gd.name}`, until this row is numbered itself"))), (if wx.lateGens: [[(("numbered", (OutNamed (RefRuntime "std::Cell"), [[OutBool]]), "whether the row is numbered yet"))]] else: [[]])
-    let numberInits = Append (Each lateRows, \|gd| (("{gd.name}_number", (XCall (RefRuntime "std::RefCell::new"), [[XNone]])))), (if wx.lateGens: [[(("numbered", (XCall (RefRuntime "std::Cell::new"), [[XBool False]])))]] else: [[]])
+    let numberFields = Append (Each lateRows, \|gd| (("{gd.name}_number", (OutCell (OutOpt laterTy)), "what numbers the current row of `{gd.name}`, until this row is numbered itself"))), (if wx.lateGens or givesUnnumbered: [[(("numbered", (OutNamed (RefRuntime "std::Cell"), [[OutBool]]), "whether the row is numbered yet"))]] else: [[]])
+    let numberInits = Append (Each lateRows, \|gd| (("{gd.name}_number", (XCall (RefRuntime "std::RefCell::new"), [[XNone]])))), (if wx.lateGens or givesUnnumbered: [[(("numbered", (XCall (RefRuntime "std::Cell::new"), [[XBool False]])))]] else: [[]])
     # (the links, the generations built at once and the row's own step left with its
     # block stand outside what waits for the row's number, `LateGenerations`)
     let nowSteps = if wx.lateGens: BuildSteps (PhaseOf sinks, 1), True else: [[]]

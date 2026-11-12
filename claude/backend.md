@@ -671,10 +671,22 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the split that such a line reads is the node's late `let` (`HoistedLines`). Such
     a line's plain result bound to a name (`w <- @Wide n`) is late itself: the name is
     marked before any line is lowered (`LateTakerResults`, `{name}#taker`), its getter
-    over the row's kept result made at the line (`LateGetters`). Two such lines are
-    refused: one whose places are counted as built (a building `match` or `if` inside
-    it: the rows after it were numbered before it was built), and one whose plain
-    result no name binds (a pattern's, or the block's own result);
+    over the row's kept result made at the line (`LateGetters`). Such a line whose
+    places are counted as built (a widget of several clauses, a building `match` or
+    `if` inside it), under a split line that is a building `match` or `if` of the
+    block's own scope (`Wx.splitNames`), is no deferred one: it asks for the split
+    line's rows to be numbered late (`LateGiving`, `TakenAbove`). The split line is
+    then lowered with `GivenUnnumbered`: each arm's row is built with no `base` and
+    leaves the block the step that numbers it (`ArmRowOf`'s `weakLate`,
+    `NumberedByParent`, `Wx.lateRowGens`), as inside a row that builds its
+    generations at its build. The block's construction step builds those rows first
+    (phase 1), then every step in the order of the places (phase 2: the line above
+    built with the late result standing, the split line's rows numbered at their
+    place, its count known), and marks itself `numbered`, so a row built again later
+    is numbered at once (`LateRowSelect`). Refused: such a line under any other split
+    (a late `let`, a clause widget's late result, a hosted scope, a row that builds
+    its generations at its build), and one whose plain result no name binds (a
+    pattern's, or the block's own result);
   - a building line above that takes the plain result of a building `match` or `if`
     at its build (`if n > 15:` above `n <- match mode:`, a widget's plain argument, a
     builder's rows) needs the result before either row
