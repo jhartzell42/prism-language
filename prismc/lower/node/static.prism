@@ -1933,6 +1933,10 @@ fn ?ParamMatch pat, t, m = match ((pat, t)):
     (((TySig s1, i1), (TySig s2, i2))): if s1 == s2: ?ParamMatch i1, i2, m else: nil
     # an element parameter (`Element Ui.* o` against `Element Ui.* !Click`): its output
     (((TyElem ignore, o1), (TyElem ignore, o2))): ?ParamMatch o1, o2, m
+    # an associated type at a variable (`Move r` against `Step`) decides nothing about it:
+    # the argument's type is already the impl's (`?InstanceMatch`); another parameter
+    # decides the variable, or it stays unmatched
+    (((TyAssoc ignore, ignore, ignore), ignore)): ? m
     otherwise: if pat == t: ? m else: nil
 
 ?ParamMatchAll: unbounded fn [Ty], [Ty], (Text ==> Ty) -> ?(Text ==> Ty)

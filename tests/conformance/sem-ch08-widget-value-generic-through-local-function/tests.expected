@@ -1,0 +1,7 @@
+# Derived by hand from Semantics ch. 8 (a blueprint value applied builds its places where it stands; a building `match` over a plain scrutinee adds no path segment) and Type System ch. 5 (each use of the local function its own instance): each `match` builds its label. Never run: prismc-s4 refuses the program.
+test each_instance_is_built
+
+tick 0
+  added:
+    0: Ui.Label(text="five")
+    1: Ui.Label(text="text")
