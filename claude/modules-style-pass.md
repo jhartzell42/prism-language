@@ -272,17 +272,17 @@ prelude/lib.prism            the root (10)
   test.prism               Test (5)
   time.prism               Time (10)
   ui.prism                 Ui (28)
-examples/chess/app.prism     the root (93)
+examples/basic-chess/app.prism     the root (93)
   rules/                   Rules (263)
     tests.prism            Rules.Tests (85)
   tests.prism              Tests (87)
-  window/                  Window (128)
-    hits.prism             Window.Hits (124)
-    hosting.prism          Window.Hosting (55)
-    layout.prism           Window.Layout (435)
-    ui.prism               Window.Ui (89)
-    widgets.prism          Window.Widgets (135)
-bench/gui/prism/app.prism    the root (140), compiled with examples/chess/window
+  basic_window/            BasicWindow (128)
+    hits.prism             BasicWindow.Hits (124)
+    hosting.prism          BasicWindow.Hosting (55)
+    layout.prism           BasicWindow.Layout (435)
+    ui.prism               BasicWindow.Ui (89)
+    widgets.prism          BasicWindow.Widgets (135)
+bench/gui/prism/app.prism    the root (140), compiled with examples/basic-chess/basic_window
 tests/conformance/NAME/      app.prism, tests.prism (Tests), tests.expected; child modules
                              (birds/, mod-nested/shapes/, ...) as files or directories
 ```
@@ -313,8 +313,8 @@ tests/conformance/NAME/      app.prism, tests.prism (Tests), tests.expected; chi
   escaped (`ModSegment`); the Rust and C++ files follow it.
 - **The Test Worlds** (runtime/rust, runtime/cpp): a script's header lines and helper
   declarations are passed over.
-- **Runners:** `tests/compiled/run.sh` runs `tests/conformance/*/`, `examples/chess`,
-  `examples/chess/rules`, `prismc/syntax/lexer`, `prismc/syntax/parser`;
+- **Runners:** `tests/compiled/run.sh` runs `tests/conformance/*/`, `examples/basic-chess`,
+  `examples/basic-chess/rules`, `prismc/syntax/lexer`, `prismc/syntax/parser`;
   `tests/checker/run.sh` takes a directory under `pos/` or `neg/` as one program, its
   `.expected` beside it.
 

@@ -1,0 +1,126 @@
+# Participants at a text interface: guest domains that only hold seats. Each one's `emit`
+# line is everything it can reach: the prelude's `Ui` family and its own seat's language.
+# None can name the game's state, another seat, or the implementation. A participant is
+# sent the game and, when a request is declined, a reason; drawing the board and putting
+# the status and the reason into words are its own work.
+# Written by Claude on the claude-document-chess branch; subject to change.
+emit rest | Ui.* | Seat.* | Play.* | Watch.*
+use Documents.*
+use Rules.*
+use Notation.*
+use Game.*
+use Words.*
+use Ui.*
+
+# ---- the board
+
+# the board's ranks as a `for` reads them: the eighth rank first
+let ranksDown = {0: 7, 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1, 7: 0}
+
+# The board as eight lines of text, and the files under them.
+@BoardText: fn $(Square ==> Piece) -> @unit emit Ui.*
+fn @BoardText $board:
+    for down, rank <- ranksDown:                                    # [down]
+        Ui.Label($text=(RankLine $board, rank))
+    Ui.Label($text=$"   a b c d e f g h")
+
+# ---- a player
+
+StatusOf: fn Color, PlayerTold -> Text
+fn StatusOf color, told = if told.game.?offered == (? (Opponent color)): "{StatusText told.game}; a draw is offered" else: StatusText told.game
+
+LegalOf: fn PlayerTold -> Text
+fn LegalOf told = if told.legal == [[]]: "" else: "legal: {Joined (Each told.legal, Spelled), " "}"
+
+# a key typed into the move box: a letter is added at the end, a backspace takes one off
+Typed: fn Text, Key -> Text
+fn Typed text, (Letter letters) = "{text}{letters}"
+fn Typed text, Backspace = match ?StepBack (Back text):
+    ? ((last, before)): Before before
+    nil: text
+
+# What a text player shows of its last request: nothing asked yet, what was typed and
+# is no move, or the document's response. Text that is no move never leaves the player.
+type Last = choice:
+    NothingAsked
+    CouldNotRead Text
+    Answered (Response ChessReason)
+derive ^Eq, ^Show
+
+LastText: fn Last -> Text
+fn LastText NothingAsked = "none yet"
+fn LastText (CouldNotRead typed) = "cannot read `{typed}` as a move"
+fn LastText (Answered response) = Said response
+
+?Unread: fn Text -> ?Last
+fn ?Unread typed = if (?ParseMove typed) == nil: ? (CouldNotRead typed) else: nil
+
+# A player at a text interface: the board as text, a status line, the legal moves while
+# it is this seat's move, a box for a move in coordinates (`e2e4`, `e7e8n`), and buttons
+# to send the move, resign, offer a draw, accept one, and resign and leave at once. It
+# sends whatever is typed: the document decides what is legal and whose move it is.
+# Resigning and leaving at once is two elements that fire in one tick: the request, and
+# the seat's leaving.
+@TextPlayer: fn Player -> @unit emit Ui.* | Seat.* | Play.*
+fn @TextPlayer (Player color):
+    let name = Show color
+    $told <- Play.Query($query=$ Whole)                              # 0
+    @BoardText $told.game.position.board                             # 1, 2
+    Ui.Label($text=$"{name}'s view: {StatusOf color, $told}")        # 3
+    Ui.Label($text=(LegalOf $told))                                  # 4
+    !key <- Ui.TextInput(name="{name}'s move", $text=$typed)         # 5
+    !enter <- Ui.Button($label=$"{name}: move")                      # 6
+    !resign <- Ui.Button($label=$"{name}: resign")                   # 7
+    !offer <- Ui.Button($label=$"{name}: offer a draw")              # 8
+    !accept <- Ui.Button($label=$"{name}: accept the draw")          # 9
+    !quit <- Ui.Button($label=$"{name}: resign and leave")           # 10
+    $typed <- "" then (Typed $typed, !key) <| ("" on !enter)
+    let !entered = $typed on !enter
+    let !move = !Filter (?ParseMove !entered)
+    !response <- Play.Request(!requests=((Play !move) <| (Resign on !resign) <| (Resign on !quit) <| (OfferDraw on !offer) <| (AcceptDraw on !accept)))   # 11
+    Seat.Leave(!leaves=(unit on !quit))                              # 12
+    $last <- NothingAsked then (!Filter (?Unread !entered)) <| (Answered !response)
+    Ui.Label($text=$"{name}'s last request: {LastText $last}")       # 13
+
+# ---- a scripted player, for tests
+
+# What a scripted player does by itself: its requests in turn, each when its seat's answer
+# says it is its move; or one request, when it is told a game with no move played.
+type Script = choice:
+    InTurn [PlayerRequest]
+    AtTheStart PlayerRequest
+derive ^Eq, ^Show
+
+# a script's entry for this move number, when the game is on and it is this seat's move
+?NextOf: fn Color, [PlayerRequest], PlayerTold -> ?PlayerRequest
+fn ?NextOf color, requests, told:
+    require told.game.?result == nil and told.game.position.turn == color
+    turn <- ?Div (Len told.game.moves), 2
+    requests[turn]
+
+?Opening: fn PlayerRequest, PlayerTold -> ?PlayerRequest
+fn ?Opening request, told = if told.game.?result == nil and (Len told.game.moves) == 0: ? request else: nil
+
+# It asks whenever it is told the game, the first time included (`Documents.@Told`).
+@ScriptedPlayer: fn Player, Script -> @unit emit Ui.* | Seat.* | Play.*
+fn @ScriptedPlayer (Player color), script:
+    $told <- Play.Query($query=$ Whole)                              # 0
+    !told <- @Told $told
+    !response <- match script:                                       # 1
+        InTurn requests: Play.Request(!requests=(!Filter (?NextOf color, requests, !told)))
+        AtTheStart request: Play.Request(!requests=(!Filter (?Opening request, !told)))
+    $said <- "nothing yet" then Said !response
+    Ui.Label($text=$"{Show color} (scripted): {$said}")              # 2
+
+# ---- a spectator
+
+# A spectator's view: the board, the status and the moves so far, and a button to leave.
+# Its language has `Watch.Query` and `Seat.Leave`, and no request.
+@SpectatorView: fn Spectator -> @unit emit Ui.* | Seat.* | Watch.*
+fn @SpectatorView (Spectator name):
+    $game <- Watch.Query($query=$ Whole)                             # 0
+    @BoardText $game.position.board                                  # 1, 2
+    Ui.Label($text=$"{name} watches: {StatusText $game}")            # 3
+    Ui.Label($text=$"moves: {Joined (Each $game.moves, Spelled), " "}")   # 4
+    !leave <- Ui.Button($label=$"{name}: leave")                     # 5
+    Seat.Leave(!leaves=(unit on !leave))                             # 6

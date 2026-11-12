@@ -1,4 +1,4 @@
-# examples/chess/rules/
+# examples/basic-chess/rules/
 
 The module `Rules` (claude/modules-style-pass.md): the rule book as plain functions.
 

@@ -1,18 +1,18 @@
 # The GUI benchmark's table in Prism (bench/README.md): js-framework-benchmark's
 # operations over a table of rows, each an id, a label and a remove button, under the
-# window library of examples/chess. Each row is a place keyed by its slot; a new row takes
+# window library of examples/basic-chess. Each row is a place keyed by its slot; a new row takes
 # a new slot, so "create" replaces every row's place and "swap" moves two rows' values
 # between their places. The selected row's label is marked with a leading `▶`, a change
 # of one label's text, as js-framework-benchmark's select is a change of one row's class.
 #
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.* | Gui.*
-use Window.*
-use Window.Ui.*
-use Window.Hosting.*
-use Window.Widgets.*
-use Window.Layout.*
-use Window.Hits.*
+use BasicWindow.*
+use BasicWindow.Ui.*
+use BasicWindow.Hosting.*
+use BasicWindow.Widgets.*
+use BasicWindow.Layout.*
+use BasicWindow.Hits.*
 
 type Row = record:
     id: Nat

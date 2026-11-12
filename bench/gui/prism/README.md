@@ -1,7 +1,7 @@
 # bench/gui/prism/
 
 *Written by Claude on the claude-self-hosting branch; subject to change.* The GUI
-benchmark's table in Prism (bench/gui/README.md), under examples/chess's window library.
+benchmark's table in Prism (bench/gui/README.md), under examples/basic-chess's window library.
 
 - `app.prism`: the table, the root `@$main`.
 - `driver.cpp`, `driver.rs`: the drivers that run it under each target's canvas World, time

@@ -2,8 +2,8 @@
 # Every conformance program, and chess, through `./prism test`: compiled by prismc, built,
 # each test module run under the compiled Test World, its transcript byte-equal to the
 # `.expected` of its name. Every program is a tree (claude/modules-style-pass.md): all of
-# them, every time: each tests/conformance/NAME/ holding an app.prism; examples/chess/rules
-# alone (its test module) and examples/chess (the board's and the rules'); the prelude's own
+# them, every time: each tests/conformance/NAME/ holding an app.prism; examples/basic-chess/rules
+# alone (its test module) and examples/basic-chess (the board's and the rules'); the prelude's own
 # checks (tests/prelude/maps); and prismc's lexer, parser and dialect checks (the test
 # modules of prismc/syntax/lexer, prismc/syntax/parser and prismc/check/regex).
 #
@@ -56,10 +56,10 @@ run() { # name, sources...
 for dir in tests/conformance/*/; do
     [ -f "$dir/app.prism" ] && run "$(basename "$dir")" "${dir%/}"
 done
-run chess-rules examples/chess/rules
+run chess-rules examples/basic-chess/rules
 # the prelude's own checks (tests/prelude/)
 run prelude-maps tests/prelude/maps
-run chess examples/chess
+run chess examples/basic-chess
 # prismc's own front end, checked through its modules' test modules: a module directory
 # of prismc's tree, with the modules it reaches by `use`
 run lexer prismc/syntax/lexer

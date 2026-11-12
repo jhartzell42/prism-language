@@ -14,6 +14,9 @@ Claude-written prose lives here, under this name, and nowhere else.
   cloud machine, each labelled; the scripts' own `RESULTS.md` sit beside the scripts.
 - **`bugs/`**: bugs in prismc, investigated: the cause, the books' rule, the fix.
 - **`decisions.md`**: the choices the books leave to this implementation, with reasons.
+- **`document-chess.md`**: `examples/chess`, chess the document way: the module map, how to
+  run each participant, what today's compiler does with each test, and each form beside
+  the bug it waits on.
 - **`handoff.md`**: the branch as it stands: what exists, how to build and test it from a
   fresh clone, what is Jimmy's to decide, what to rerun on the Mac.
 - **`incremental-host-document.md`**: what one select in the GUI table recomputes, tick by

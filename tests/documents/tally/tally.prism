@@ -1,0 +1,211 @@
+# Tally: a tiny document. Tellers add to a shared count that stops at five, and nobody
+# adds twice in a row; keepers clear the count; viewers watch. A teller is told the total
+# and whether it may add; a keeper is told the tally whole; a viewer is told the total
+# and nothing else.
+# Written by Claude on the claude-document-chess branch; subject to change.
+emit rest | Seat.* | Tell.* | Keep.* | View.*
+use Documents.*
+
+# ---- the roles: each a seat type
+
+type Teller = choice:
+    Teller Text
+derive ^Eq, ^Ord, ^Show
+
+type Keeper = choice:
+    Keeper Text
+derive ^Eq, ^Ord, ^Show
+
+type Viewer = choice:
+    Viewer Text
+derive ^Eq, ^Ord, ^Show
+
+# A seat that may request, of either requesting role. Its order is the default order of
+# one tick's requests: a teller's before a keeper's, then by name.
+type Requester = choice:
+    TellerSeat Teller
+    KeeperSeat Keeper
+derive ^Eq, ^Ord, ^Show
+
+# ---- the state and its rules: plain functions
+
+let limit = 5
+
+type Tally = record:
+    total: Nat
+    ?last: Teller                        # who added last
+derive ^Eq, ^Show
+
+let empty = Tally(total=0, ?last=nil)
+
+type Add = choice:
+    Add Nat
+derive ^Eq, ^Show
+
+type KeeperRequest = choice:
+    Clear
+derive ^Eq, ^Show
+
+type Asks = choice:
+    Whole
+derive ^Eq, ^Show
+
+# why a teller's request is declined
+type TellerReason = choice:
+    AddedLast                            # this teller added last
+    StopsAt Nat                          # the sum would pass the limit, which is this
+derive ^Eq, ^Show
+
+# why a keeper's request is declined
+type KeeperReason = choice:
+    NothingToClear
+derive ^Eq, ^Show
+
+# a response to either requesting role: a teller's seat with a teller's reason, or a
+# keeper's seat with a keeper's
+type TallyResponse = choice:
+    ToTeller (Responded Teller TellerReason)
+    ToKeeper (Responded Keeper KeeperReason)
+derive ^Eq, ^Show
+
+?OfTeller: fn TallyResponse -> ?(Responded Teller TellerReason)
+fn ?OfTeller (ToTeller responded) = ? responded
+fn ?OfTeller (ToKeeper responded) = nil
+
+?OfKeeper: fn TallyResponse -> ?(Responded Keeper KeeperReason)
+fn ?OfKeeper (ToKeeper responded) = ? responded
+fn ?OfKeeper (ToTeller responded) = nil
+
+type TellerView = record:
+    total: Nat
+    mayAdd: Bool
+derive ^Eq, ^Show
+
+AddTo: fn Tally, Teller, Nat -> Stepped Tally TellerReason
+fn AddTo tally, seat, n = if tally.?last == ? seat: Denied AddedLast else:
+    if tally.total + n > limit: Denied (StopsAt limit) else: Next Tally(total=tally.total + n, ?last=(? seat))
+
+impl ^Seat Teller:
+    type State = Tally
+    type Request = Add
+    type Reason = TellerReason
+    type Query = Asks
+    type Told = TellerView
+    fn Step tally, seat, (Add n) = AddTo tally, seat, n
+    fn Read tally, seat, asks = TellerView(total=tally.total, mayAdd=(tally.?last != (? seat) and tally.total < limit))
+
+impl ^Seat Keeper:
+    type State = Tally
+    type Request = KeeperRequest
+    type Reason = KeeperReason
+    type Query = Asks
+    type Told = Tally
+    fn Step tally, seat, request = if tally.total == 0: Denied NothingToClear else: Next empty
+    fn Read tally, seat, asks = tally
+
+impl ^Seat Viewer:
+    type State = Tally
+    type Request = Never
+    type Reason = Never
+    type Query = Asks
+    type Told = Nat
+    fn Step tally, seat, request = match request:
+    fn Read tally, seat, asks = tally.total
+
+# ---- an order of the tally's own: every request in the tick it is made, in the reverse
+# of place order, so a keeper's before a teller's
+
+Reversed: fn [a] -> [a]
+fn Reversed xs = Fold xs, [[]], \|all, x| Append [[x]], all
+
+KeepersFirst: fn [Asked Tally Requester TallyResponse] -> Ordered Tally Requester TallyResponse
+fn KeepersFirst due = Ordered(apply=(Reversed (ByPlace due)), wait=[[]])
+
+# ---- the three languages, one per role; each also has the library's `Seat.Leave`
+
+tag Tell.Request of Element !(Response TellerReason):
+    !requests: Add
+
+tag Tell.Query of Element $TellerView:
+    $query: Asks
+
+tag Keep.Request of Element !(Response KeeperReason):
+    !requests: KeeperRequest
+
+tag Keep.Query of Element $Tally:
+    $query: Asks
+
+tag View.Query of Element $Nat:
+    $query: Asks
+
+# ---- hosting: one function per role; a program lists its seats by calling them
+
+!AddsIn: fn Elem (rest | Seat.* | Tell.*) -> !Add
+fn !AddsIn element = match element:
+    Tell.Request(!requests=!requests): !requests
+    otherwise: never
+
+# The tellers. The program seats them with `first` and `!seat`, each seat with the
+# blueprint of the participant that sits there, and removes them with `!remove`; a teller
+# leaves with `Seat.Leave`. Each seat is one entry of the `for`, with its own host: the
+# seat is the entry's key, so no element names it. A request becomes one of the tally's
+# by `AskingAs`: the seat a `Requester`, the response a `TallyResponse`.
+@HostTellers: fn (Teller ==> (@a emit rest | Seat.* | Tell.*)), !(Teller ==> (@a emit rest | Seat.* | Tell.*)), ![Teller], $Tally, ![TallyResponse] -> @![Notice Tally Requester TallyResponse] emit rest
+fn @HostTellers first, !seat, !remove, $state, !responses:
+    $seats <- first then Reseated $seats, !tick
+    !heard <- for seat, $@guest <- $seats:                                     # [seat]
+        ((ignore, $places)) <- @HostDocument (@Sitting $@guest), \|place, element| match element:
+            Tell.Request(..): @ !Filter (?ResponseTo seat, place, (Among ?OfTeller, !responses))
+            Tell.Query($query=$asks): @ Read $state, seat, $asks
+            Seat.Leave(..): @ unit
+            otherwise: @Element element
+        !fired <- for place, $element <- $places:                              # each place of the guest
+            !requests <- @Switch (!AddsIn $element)
+            !leaves <- @Switch (!LeavesOf $element)
+            @ !MergeAll [[(Requested (AskingAs TellerSeat, ToTeller, seat, place, !requests)), (Leaving on !leaves)]]
+        @ !fired
+    let !tick = !MergeAll [[(Seating !seat), (Removing !remove), (Hearing !heard)]]
+    @ !Filter (?Notices TellerSeat, !tick)
+
+!ClearsIn: fn Elem (rest | Seat.* | Keep.*) -> !KeeperRequest
+fn !ClearsIn element = match element:
+    Keep.Request(!requests=!requests): !requests
+    otherwise: never
+
+# The keepers: the same lines with the keepers' tags, seat type and reason type.
+@HostKeepers: fn (Keeper ==> (@a emit rest | Seat.* | Keep.*)), !(Keeper ==> (@a emit rest | Seat.* | Keep.*)), ![Keeper], $Tally, ![TallyResponse] -> @![Notice Tally Requester TallyResponse] emit rest
+fn @HostKeepers first, !seat, !remove, $state, !responses:
+    $seats <- first then Reseated $seats, !tick
+    !heard <- for seat, $@guest <- $seats:
+        ((ignore, $places)) <- @HostDocument (@Sitting $@guest), \|place, element| match element:
+            Keep.Request(..): @ !Filter (?ResponseTo seat, place, (Among ?OfKeeper, !responses))
+            Keep.Query($query=$asks): @ Read $state, seat, $asks
+            Seat.Leave(..): @ unit
+            otherwise: @Element element
+        !fired <- for place, $element <- $places:
+            !requests <- @Switch (!ClearsIn $element)
+            !leaves <- @Switch (!LeavesOf $element)
+            @ !MergeAll [[(Requested (AskingAs KeeperSeat, ToKeeper, seat, place, !requests)), (Leaving on !leaves)]]
+        @ !fired
+    let !tick = !MergeAll [[(Seating !seat), (Removing !remove), (Hearing !heard)]]
+    @ !Filter (?Notices KeeperSeat, !tick)
+
+# what a viewer's host hears of a place: nothing but leaving
+Left: fn unit -> [Heard Never]
+fn Left gone = [[Leaving]]
+
+# The viewers: no request arm, since `View.*` has no request tag, and a viewer's request
+# and reason types are `Never`; a viewer still leaves.
+@HostViewers: fn (Viewer ==> (@a emit rest | Seat.* | View.*)), !(Viewer ==> (@a emit rest | Seat.* | View.*)), ![Viewer], $Tally -> @unit emit rest
+fn @HostViewers first, !seat, !remove, $state:
+    $seats <- first then Reseated $seats, !tick
+    !heard <- for seat, $@guest <- $seats:
+        ((ignore, $places)) <- @HostDocument (@Sitting $@guest), \|place, element| match element:
+            View.Query($query=$asks): @ Read $state, seat, $asks
+            Seat.Leave(..): @ unit
+            otherwise: @Element element
+        !fired <- for place, $element <- $places:
+            !leaves <- @Switch (!LeavesOf $element)
+            @ Left !leaves
+        @ !fired
+    let !tick = !MergeAll [[(Seating !seat), (Removing !remove), (Hearing !heard)]]

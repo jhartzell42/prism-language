@@ -72,7 +72,7 @@ declare -A programs
 for d in tests/conformance/*/; do
     [ -f "$d/app.prism" ] && programs[$(basename "$d")]="${d%/}"
 done
-programs[chess]=examples/chess
+programs[chess]=examples/basic-chess
 programs[prelude]=prelude
 programs[prismc]=prismc
 for f in "$here"/pos/*.prism; do [ -e "$f" ] && programs[$(basename "$f" .prism)]="$f"; done
@@ -113,7 +113,7 @@ done
 
 # The typed output: complete (no expression without a known type) for these programs.
 declare -A typed
-typed[typed-chess]=examples/chess
+typed[typed-chess]=examples/basic-chess
 typed[typed-counter]=tests/conformance/conf-ch01-counter
 for name in $(printf '%s\n' "${!typed[@]}" | sort); do
     wanted "$name" || continue
