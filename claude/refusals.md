@@ -457,15 +457,17 @@ no-arm building `match` bound as a dynamic or an event is the other (no test).
   tests/checker/pos/supplier-clauses.prism.
 - A method that needs one dictionary for a whole collection or for no value at all, asked
   of `any ^Trait` (the trait's type inside another type, `fn [a] -> Nat`, or in no
-  parameter, `Empty: a`; a type parameter of its own): the checker's
+  parameter, `Empty: a`; the trait's type inside its result, `Zero: fn a -> Unit a`
+  under an associated type, tests/checker/neg/ts-ch03-existential-method-gives-
+  associated-type; a type parameter of its own): the checker's
   `existential-method` at the call (ruling EX; tests/checker/neg/
   existential-method-needs-one-dictionary). Packing the trait is legal and is lowered:
   such a method is no entry of the dictionary and has a body no program runs in the
   trait's impl for the packed value (`PackedDef.unasked`;
-  ts-ch03-existential-other-method-not-asked). Left refused in lower/expr.prism
-  (`AnyValue`): an existential of a program's trait with an associated type, whose impl
-  for the packed value has no type to choose. R, no test. Every trait of the prelude is
-  packed (ts-ch03-existential-num-packed, ts-ch03-existential-pod-packed).
+  ts-ch03-existential-other-method-not-asked). A trait with an associated type is packed
+  too: only an unasked method names one, so the impl for the packed value chooses the
+  unit type for each (`PackedDef.assocs`; ts-ch03-existential-associated-type). Every
+  trait of the prelude is packed (ts-ch03-existential-num-packed, ts-ch03-existential-pod-packed).
 - A tag field's type variable that the tag's output does not have (`tag Seat.Request of
   Element !Response:` with `$?latest: ((Nat, r))`): the checker says nothing, a guest
   places the tag with a `Text` and the host's function reads the field as a `Nat`. Type
@@ -612,7 +614,6 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | expr.prism `LiftedValue`, a lift whose noted operands are not its own | G | - | internal error: the checker lifts only at applications, operators, fields, indexes and interpolations, each a direct operand |
 | expr.prism `PlainValueByKind`, `{b}` outside a `for` | G | - | internal error: the checker's `unknown-name` (tests/checker/neg/bound-word-outside-for) |
 | expr.prism `PlainValueByKind`, an expression of no value kind | G | - | internal error: `mismatch` for a `for` or a `rebuild` as a plain value (ruling BP; tests/checker/neg/for-in-let), `unsupported` for a suffixed operator, a monadic block and a lens value; a topic, `..` and an absent value are read by an `update` block, a pattern and an element's fields. Not argued: a widget block as a value |
-| expr.prism `AnyValue`, an existential of a trait with an associated type | R | ts-ch03-existential-associated-type | refused; a trait with a method that cannot be asked is lowered (ts-ch03-existential-other-method-not-asked) |
 | expr.prism `PartsBlueprint`, two sites (`PartRefused`) | G | - | internal error by its text: `DynamicAnswers` makes a getter for every dynamic answer |
 | expr.prism `NameValueOf`, an event read as a value | U | none | refused |
 | expr.prism `NameValueOf`, a tuple pattern's binding as a value | R | ts-ch02-named-bundle-as-argument | refused: a bundle bound to one name and passed whole to a function |
@@ -663,14 +664,6 @@ Each is red on prismc-r21 by a compile of the one program; the transcripts are b
   `$b` is written: the flatten of a constant outer does not follow its inner. Not
   diagnosed; the place to look is `HeldFlatten`'s `{name}_follow` when the outer is the
   build's own value and no `#whole` dynamic of the node.
-- **ts-ch03-existential-associated-type** (`AnyValue`, `?PackedDefOf`). The impl of the
-  trait for the packed value has to state each associated type. No method that names an
-  associated type is an entry of the dictionary (it names the trait's type inside
-  another type, `unasked`, and the checker refuses the call: `existential-method`), so
-  no value of the associated type is ever made through a packed value. Design: `type X
-  = ()` in the impl for `Packed` (C++: a `using X = std::monostate`), and `?PackedDefOf`
-  gives the dictionary for such a trait; the unasked methods' signatures in that impl
-  then name `()`, and their bodies are the `unreachable!()` they are today.
 - **ts-ch02-named-bundle-as-argument** (`NameValueOf`, `BnParts` with no `#value`). A
   named bundle is one value where it is a `rebuild`'s result or a `let`'s
   (`BundleValue`); passed to a function it is not. Design: make `{nkey}#value` for every

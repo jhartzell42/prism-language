@@ -574,8 +574,9 @@ fn ?TraitRefusal g, st, cls = Fold (SuperClosure g, cls), nil, \|?found, tr| mat
         nil: nil
 
 # Why a packed value cannot be asked a method, if it cannot: the method takes the trait's
-# type inside another type, has a type parameter of its own, or has no parameter of the
-# trait's bare type.
+# type inside another type, gives it inside another type (an associated type `Unit a`
+# among them: the impl for a packed value has no type to give, `?PackedDefOf`), has a
+# type parameter of its own, or has no parameter of the trait's bare type.
 ?PackedRefusal: unbounded fn G, St, Text -> ?Text
 fn ?PackedRefusal g, st, method = match g.vals[method]:
     nil: nil
@@ -585,15 +586,18 @@ fn ?PackedRefusal g, st, method = match g.vals[method]:
         let erased = Inst(tys=(Insert {}, param, TyErr), rows={}, cols={})
         let noValue = "it has no parameter of the trait's type `{param}`, so there is no packed value to read a dictionary from"
         match v.scheme.ty:
-            TyFn ignore, params, ignore:
+            TyFn ignore, params, result:
                 let ?inside = Fold params, nil, \|?found, p| match ?found:
                     ? f: ? f
                     nil: if p != (TyQ param) and (SubstQ erased, p) != p: ? p else: nil
+                let givesInside = result != (TyQ param) and (SubstQ erased, result) != result
                 match ?inside:
                     ? p: ? "it takes the trait's type inside `{ShowTy st, p}`, and a collection of packed values has no one dictionary"
-                    nil: match own[0]:
-                        ? q: ? "it has a type parameter of its own, `{q}`, and a packed value's dictionary holds one function for a method"
-                        nil: if Fold params, False, \|seen, p| seen or p == (TyQ param): nil else: ? noValue
+                    nil:
+                        if givesInside: ? "it gives the trait's type inside `{ShowTy st, result}`, which a packed value's dictionary cannot hide again"
+                        else: match own[0]:
+                            ? q: ? "it has a type parameter of its own, `{q}`, and a packed value's dictionary holds one function for a method"
+                            nil: if Fold params, False, \|seen, p| seen or p == (TyQ param): nil else: ? noValue
             otherwise: ? noValue
 
 # An element's `^Eq` and `^Show` are built in, unless its row's tags hold dynamics (doubt EQ).

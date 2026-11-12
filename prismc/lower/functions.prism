@@ -405,13 +405,15 @@ fn DefaultOf d, other = match d.body:
 # it nowhere else but as its whole result. Any other method is no entry of the
 # dictionary (`unasked`): the checker refuses a call of it on a packed value
 # (`existential-method`, ruling EX), and the packing and the trait's other methods stand.
-# `nil` for a trait of the prelude, which is packed by name, and for a trait with an
-# associated type: an `any` of that is refused where it is packed (`AnyValue`).
+# A method that names an associated type names the trait's type inside it (`Unit a`), so
+# it is unasked, and the impl for the packed value chooses the unit type for every
+# associated type: no value of one is made through a packed value. `nil` for a trait of
+# the prelude, which is packed by name.
 ?PackedDefOf: unbounded fn Lx, TraitInfo -> ?PackedDef
 fn ?PackedDefOf lx0, tr:
     let lx = InModule lx0, tr.file, tr.home
     let hiddenTy = TyCon "\u{0}Self", [[]]
-    let start = PackedDef(name=(TraitName tr.name), tr=(PathIn lx, tr.home, (TraitName tr.name)), methods=[[]], unasked=[[]])
+    let start = PackedDef(name=(TraitName tr.name), tr=(PathIn lx, tr.home, (TraitName tr.name)), methods=[[]], unasked=[[]], assocs=(Each tr.assocs, \|a| Camel a))
     let packed = Fold tr.methods, start, \|acc, mq|
         let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
         let ((ps, r)) = match v.scheme.ty:
@@ -431,7 +433,7 @@ fn ?PackedDefOf lx0, tr:
             &_.unasked <= Push &_.unasked, method
         else: update acc:
             &_.methods <= Push &_.methods, PackedMethod(method=method, hidden=hidden, hiddenResult=(markedResult == hiddenTy))
-    if (HasPrefix tr.name, "Prelude.") or (Len tr.assocs) > 0: nil else: ? packed
+    if HasPrefix tr.name, "Prelude.": nil else: ? packed
 
 # The function that makes a trait's dictionary at a type, given a value of it
 # (`PackedDef`; the packing's `with_dictionary` takes it).

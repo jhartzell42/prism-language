@@ -126,8 +126,10 @@ fn RustPacked d:
     # a method that cannot be asked of a packed value: the trait's impl needs every
     # item, and the checker refuses every call that would run this one
     let methods = Append asked, (Each d.unasked, \|f| Fn "", (Signature f, ""), "panic!(\"a prismc bug: `{f.name}` of `{d.name}` asked of a packed value, which the checker refuses (`existential-method`)\")")
+    # each associated type the unit type: only an unasked method names one
+    let types = Each d.assocs, \|a| "type {a} = ();"
     let made = Fn "/// The dictionary of `{d.name}` at the type of a value.", "pub fn {Lower d.name}_packed_of<T: {d.tr}>(_: &T) -> {dictionary}", "{dictionary} \{\n{Indent (Indent (Join entries, "\n"))}\n    \}"
-    "/// The dictionary of `{d.name}` an existential keeps: each method over packed values.\npub struct {dictionary} \{\n{Indent (Join fields, "\n")}\n\}\n{made}\nimpl {d.tr} for ::prism_rtl::Packed \{\n{Indent (Join methods, "\n")}\n\}\n"
+    "/// The dictionary of `{d.name}` an existential keeps: each method over packed values.\npub struct {dictionary} \{\n{Indent (Join fields, "\n")}\n\}\n{made}\nimpl {d.tr} for ::prism_rtl::Packed \{\n{Indent (Join (Append types, methods), "\n")}\n\}\n"
 
 # The first parameter of a packed method that is the hidden value: its dictionaries.
 PackedFirstHidden: fn PackedMethod -> Text

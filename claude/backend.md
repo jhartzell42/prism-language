@@ -137,8 +137,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   names it nowhere else but as its whole result (`?PackedDefOf`); any other method
   (`PackedDef.unasked`) is no entry, and in Rust, where the trait's impl for the packed
   value needs every item, its body is a panic no program runs (the checker's
-  `existential-method` refuses the call); C++ writes no overload for it. A trait with
-  an associated type has no dictionary. In C++ the dictionary
+  `existential-method` refuses the call); C++ writes no overload for it. A method that
+  names an associated type names the trait's type inside it (`Unit a`), so it is unasked,
+  and the impl for the packed value chooses the unit type for each associated type
+  (`PackedDef.assocs`: `type Unit = ();`, in C++ a specialization `Unit<Packed>` whose
+  `type` is `std::monostate`). In C++ the dictionary
   holds function pointers, `weighed_t_packed_of` is a function object whose call is a
   template among the generic definitions, and the impl is an overload in the trait's
   namespace.
