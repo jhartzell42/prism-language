@@ -873,42 +873,55 @@ fn PreBindWhole wx, benv, menv, n, tys:
 # part its read (a late part's getter), an event part the event of a port the part's
 # node fires (as a named event's value form, `PreBindName`), a `$` part a live `Dynamic`
 # of the node (`LiveDynamic`). At the build the bundle has no value (its plain part is
-# late). A bundle with a bundle inside has no such value here, as a bundle that is not
-# late has none (`BundleValue`).
+# late). A bundle inside is the tuple of its own parts' values, made the same way
+# (`?LateBundleValues`).
 LateBundleValue: unbounded fn Wx, Env, Text, Text, [?Bn], OutTy -> ((Wx, Env))
-fn LateBundleValue wx, menv, nkey, stem, methods, t:
+fn LateBundleValue wx, menv, nkey, stem, methods, t = match ?LateBundleValues wx, nkey, stem, methods:
+    nil: ((wx, menv))
+    ? ((values, wx1)):
+        let ((getter, wx2)) = FreshName wx1, "late_{stem}_bundle"
+        let wx3 = update wx2:
+            &_.getters <= Push &_.getters, (MethDef(name=getter, recv=RecvRef, params=[[]], cx=CxNone, ret=t, body=[[]], tail=(XTuple values), doc="The late bundle `{nkey}` as one value, read once the row that gives its late part is built."))
+        ((wx3, (Bind menv, "{nkey}#value", (BnLocal (XMethod XSelf, getter, [[]]), Owned, t))))
+
+# The values of a late bundle's parts as the node's methods have them (`LateBundleValue`):
+# none where a part is bound as no value of the node.
+?LateBundleValues: unbounded fn Wx, Text, Text, [?Bn] -> ?(([Ex], Wx))
+fn ?LateBundleValues wx, nkey, stem, methods:
     let simple = (Len methods) > 0 and Fold methods, True, \|ok, ?part| ok and match ?part:
         ? (BnEv ignore, ignore): True
         ? (BnDyn ignore, ignore, ignore): True
         ? (BnHold ignore, ignore): True
         ? (BnLocal ignore, ignore, ignore): True
+        ? (BnParts ignore): True
         otherwise: False
-    if not simple: ((wx, menv))
-    else:
-        let ((values, wx1)) = Fold (Range0 (Len methods)), (([[]], wx)), \|((acc, w)), i| match ?PartOf methods, i:
-            ? (BnEv r, ignore):
-                let et = (GnOf w, r.node).ty
-                let ((rs, w1)) = FreshName w, "{stem}_value{i}"
-                let pf = "{rs}_v_port"
-                let pt = OutRc (OutPort et)
-                let w2 = update (Connect w1, r, (SkPort "{rs}_v")):
-                    &_.taken <= Push &_.taken, pf
-                    &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind pf), pt), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]]))
-                    &_.fields <= Push &_.fields, ((pf, pt, "part {i} of the late bundle `{nkey}` as a value: the port it fires"))
-                    &_.moves <= Push &_.moves, ((pf, (XClone (XVar pf))))
-                (((Push acc, (XCall (RefRuntime "prism_rtl::Event::of"), [[(XRef (XField XSelf, pf))]])), w2))
-            ? (BnDyn ex, reads, dt):
-                let ((made, w1)) = LiveDynamic w, "{stem}_value{i}", ex, reads, dt, "part {i} of the late bundle `{nkey}`"
-                (((Push acc, (InNode made)), w1))
-            ? (BnHold f, dt):
-                let ((made, w1)) = LiveDynamic w, "{stem}_value{i}", (XMethod (XField XSelf, f), "get", [[XCx]]), [[OwnRead f]], dt, "part {i} of the late bundle `{nkey}`"
-                (((Push acc, (InNode made)), w1))
-            ? (BnLocal ex, mode, pt): (((Push acc, (Own (VlPlace ex, mode, pt))), w))
-            otherwise: ((acc, w))
-        let ((getter, wx2)) = FreshName wx1, "late_{stem}_bundle"
-        let wx3 = update wx2:
-            &_.getters <= Push &_.getters, (MethDef(name=getter, recv=RecvRef, params=[[]], cx=CxNone, ret=t, body=[[]], tail=(XTuple values), doc="The late bundle `{nkey}` as one value, read once the row that gives its late part is built."))
-        ((wx3, (Bind menv, "{nkey}#value", (BnLocal (XMethod XSelf, getter, [[]]), Owned, t))))
+    if not simple: nil
+    else: Fold (Range0 (Len methods)), (? (([[]], wx))), \|?acc, i| match ?acc:
+        nil: nil
+        ? ((acc, w)): match ?PartOf methods, i:
+                ? (BnEv r, ignore):
+                    let et = (GnOf w, r.node).ty
+                    let ((rs, w1)) = FreshName w, "{stem}_value{i}"
+                    let pf = "{rs}_v_port"
+                    let pt = OutRc (OutPort et)
+                    let w2 = update (Connect w1, r, (SkPort "{rs}_v")):
+                        &_.taken <= Push &_.taken, pf
+                        &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind pf), pt), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]]))
+                        &_.fields <= Push &_.fields, ((pf, pt, "part {i} of the late bundle `{nkey}` as a value: the port it fires"))
+                        &_.moves <= Push &_.moves, ((pf, (XClone (XVar pf))))
+                    ? (((Push acc, (XCall (RefRuntime "prism_rtl::Event::of"), [[(XRef (XField XSelf, pf))]])), w2))
+                ? (BnDyn ex, reads, dt):
+                    let ((made, w1)) = LiveDynamic w, "{stem}_value{i}", ex, reads, dt, "part {i} of the late bundle `{nkey}`"
+                    ? (((Push acc, (InNode made)), w1))
+                ? (BnHold f, dt):
+                    let ((made, w1)) = LiveDynamic w, "{stem}_value{i}", (XMethod (XField XSelf, f), "get", [[XCx]]), [[OwnRead f]], dt, "part {i} of the late bundle `{nkey}`"
+                    ? (((Push acc, (InNode made)), w1))
+                ? (BnLocal ex, mode, pt): ? (((Push acc, (Own (VlPlace ex, mode, pt))), w))
+                # a bundle inside: the tuple of its own parts' values
+                ? (BnParts inner): match ?LateBundleValues w, nkey, "{stem}_{i}", inner:
+                    ? ((inside, w1)): ? (((Push acc, (XTuple inside)), w1))
+                    nil: nil
+                otherwise: nil
 
 # A build's local that is moved into a field of its own name, as the node's methods read
 # it (`LiveDynamic` gives the local).
@@ -1228,16 +1241,31 @@ fn MarkLateLets wx, benv, menv, fns, stmts, fuel:
     # tuple names is late, its getter made at the `let`'s line, `LatePartNames`)
     let ((wx2, be2, me2, grew)) = Fold stmts, ((wx, benv, menv, False)), \|((w, be, me, ch)), s| if IsLateBundleStmt w.lx, fns, me, s: (MarkLateBundle w, be, me, s) else: Fold (Append (LateLetNames w.lx, fns, me, s), (LatePartNames me, s)), ((w, be, me, ch)), \|((w1, be1, me1, ignore)), n|
         let nkey = SNameKey n
-        let t = OutTyOf w1.lx, (Peel (BinderTy w1.lx, n.span))
-        let ((getter, w2)) = FreshName w1, "late_{LocalNameAt w1.lx, nkey, n.span}"
+        # a generalized `let` used at several instantiations (a lambda used at two types,
+        # `?ManyInstances`): a getter per instantiation, each use bound to its own, as
+        # `PreBindName` binds a field per instantiation (`LateLetGetters`)
+        let insts = Or (?ManyInstances w1.lx, n.span), [[(([[]], [[]]))]]
+        let generalized = (Len insts) > 1
+        let t = OutTyOf (AtInstance w1.lx, (Or insts[0], (([[]], [[]])))), (Peel (BinderTy (AtInstance w1.lx, (Or insts[0], (([[]], [[]])))), n.span))
         let unbuilt = BnLocal (Refusal "the late `let` `{nkey}` read at its block's build by a line of the block's node that takes a value there (a widget's plain argument, a builder's plain local)"), Owned, t
-        let me3 = Bind (Bind me1, nkey, (BnLocal (XMethod XSelf, getter, [[]]), Owned, t)), "{nkey}#late", unbuilt
+        let ((w2, be2, me3)) = Fold (Range0 (Len insts)), ((w1, be1, me1)), \|((w, be, me)), k|
+            let inst = Or insts[k], (([[]], [[]]))
+            let lxk = AtInstance w.lx, inst
+            let tk = OutTyOf lxk, (Peel (BinderTy lxk, n.span))
+            let ((getter, w3)) = FreshName w, (if generalized: "late_{LocalNameAt w.lx, nkey, n.span}_{k}" else: "late_{LocalNameAt w.lx, nkey, n.span}")
+            let bkey = if k == 0: nkey else: "{nkey}#inst{k}"
+            let me4 = Bind me, bkey, (BnLocal (XMethod XSelf, getter, [[]]), Owned, tk)
+            let be4 = Bind be, bkey, unbuilt
+            if not generalized: ((w3, be4, me4)) else:
+                let ukey = "{nkey}#{Show inst}"
+                ((w3, (WithUse be4, ukey, bkey), (WithUse me4, ukey, bkey)))
+        let me5 = Bind me3, "{nkey}#late", unbuilt
         # late only as a late place's plain parts are (`LatePlaceParts`): the name has its
         # value once the scope's places have asked their first values
         let ofPlaces = match s.kind:
             SLet ignore, ignore, e: ReadsLateOfPlaces fns, me, e
             otherwise: False
-        ((w2, (Bind (Bind be1, nkey, unbuilt), "{nkey}#late", unbuilt), (if ofPlaces: Bind me3, "{nkey}#lateplace", unbuilt else: me3), True))
+        ((w2, (Bind be2, "{nkey}#late", unbuilt), (if ofPlaces: Bind me5, "{nkey}#lateplace", unbuilt else: me5), True))
     # (and a World's place with a plain answer whose constant field reads a late name: the
     # name it binds is late, `LateFieldPlaces`)
     let ((wx3p, be3p, me3p, grew3p)) = Fold stmts, ((wx2, be2, me2, grew)), \|((w, be, me, ch)), s| LateFieldPlaces w, be, me, fns, s, ch
@@ -1346,24 +1374,33 @@ fn LateFieldPlaces wx, benv, menv, fns, s, grew = match s.kind:
                 otherwise: False
             let plain = (not (IsTimeName nkey)) and (LayerOf full) == LyPlain and not (TimeWithin full)
             let dynamic = (LayerOf full) == LyDyn and not (TimeWithin (Peel full))
-            if (not placed) or (not (Emits wx, wx.pos)) or (HasKey menv.names, "{nkey}#late") or (not (plain or dynamic)) or (IsBundle full) or (not (ReadsLateVia fns, menv, init)) or (ReadsLateOfPlaces fns, menv, init): ((wx, benv, menv, grew))
+            # (in a hosted scope the host answers: a plain answer is marked as
+            # `LateHostedOutput` marks one under a host placed late, a late hold asked
+            # where the scope's places ask, `Wx.lateFirsts`, after the scope's deferred
+            # generations, the giver's row among them; `{name}#lateplace`)
+            let hosted = not (Emits wx, wx.pos)
+            if (not placed) or (hosted and not plain) or (HasKey menv.names, "{nkey}#late") or (not (plain or dynamic)) or (IsBundle full) or (not (ReadsLateVia fns, menv, init)) or (ReadsLateOfPlaces fns, menv, init): ((wx, benv, menv, grew))
             else:
                 let t = OutTyOf lx, (Peel full)
                 let ((rs, w2)) = FreshName wx, (LocalNameAt lx, nkey, n.span)
                 let unbuilt = AnswerUnbuilt nkey, t
                 let inMethods = if dynamic: LatePlaceBn rs, t else: LatePlainBn rs, t
-                ((w2, (Bind (Bind benv, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind menv, nkey, inMethods), "{nkey}#late", unbuilt), True))
+                let me2 = Bind (Bind menv, nkey, inMethods), "{nkey}#late", unbuilt
+                ((w2, (Bind (Bind benv, nkey, unbuilt), "{nkey}#late", unbuilt), (if hosted: Bind me2, "{nkey}#lateplace", unbuilt else: me2), True))
         # a bundle answer taken apart by a tuple pattern (`((p, $s)) <- Pad.Port(..)`):
         # the place asks its whole first value there (`BundleOutputOf`), so each plain
         # part is a late name as a late place's is (`LatePlainPartOf`), and each `$`
         # part's hold is empty until then (`LatePlaceBn`); an event part is a node as
         # ever. `{name}#asked` tells these names from the prebound ones (`PreBind`).
+        # (A state part the pattern takes with `ignore` has a hold of its own when no
+        # state part is named, `IgnoredStateHolds`, so the place asks with nothing bound.)
         PTuple ps:
-            let marked = Fold (BinderNames p), False, \|f, n| f or HasKey menv.names, "{SNameKey n}#late"
-            if (not (IsBundlePlace wx.lx, init)) or (not (Emits wx, wx.pos)) or marked or (not (ReadsLateVia fns, menv, init)) or (ReadsLateOfPlaces fns, menv, init): ((wx, benv, menv, grew))
+            let Marked = \|env| (Fold (BinderNames p), False, \|f, n| f or HasKey env.names, "{SNameKey n}#late") or Fold ps, False, \|f, q| f or HasKey env.names, (PartHoldKey q)
+            if (not (IsBundlePlace wx.lx, init)) or (not (Emits wx, wx.pos)) or (Marked menv) or (not (ReadsLateVia fns, menv, init)) or (ReadsLateOfPlaces fns, menv, init): ((wx, benv, menv, grew))
             else:
                 let ((wxs, bes, mes)) = Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| LateAskedPartOf w, be, me, init, ps, q
-                ((wxs, bes, mes, grew or (Fold (BinderNames p), False, \|f, n| f or HasKey mes.names, "{SNameKey n}#late")))
+                let ((wxi, mei)) = IgnoredStateHolds wxs, mes, init, ps
+                ((wxi, bes, mei, grew or (Marked mei)))
         otherwise: ((wx, benv, menv, grew))
     otherwise: ((wx, benv, menv, grew))
 
@@ -1388,6 +1425,36 @@ fn LateAskedPartOf w, be, me, init, ps, q = match q.kind:
             let unbuilt = AnswerUnbuilt nkey, t
             ((w2, (Bind (Bind be, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind (Bind me, nkey, (LatePlaceBn rs, t)), "{nkey}#late", unbuilt), "{nkey}#asked", unbuilt)))
     otherwise: LatePlainPartOf w, be, me, init, ps, q, False
+
+# The state parts of a World's bundle place whose constant field reads a late result
+# (`LateFieldPlaces`), taken with `ignore` (`((ignore, ignore)) <- Pad.Port(name="{n}")`;
+# Type System ch. 2: `ignore` takes a part and binds nothing): when the pattern names no
+# state part, each such part has a hold bound under the pattern's key (`PartHoldKey`, as
+# a part under a pattern of its own has), a `$` part's empty until the place asks
+# (`LatePlaceBn`), a plain part's the same (`LatePlainBn`), so the place asks its whole
+# first value where the late result is built (`IsAskedBundle`) with no name bound.
+IgnoredStateHolds: unbounded fn Wx, Env, Expr, [Pattern] -> ((Wx, Env))
+fn IgnoredStateHolds wx, menv, init, ps:
+    let partTys = BundlePartTys (LineOutFull wx.lx, init)
+    let IsState = \|k| (LayerOf (Or partTys[k], TyErr)) != LyEv
+    let ((named, ignore)) = Fold ps, ((False, 0)), \|((f, k)), q|
+        let found = f or ((IsState k) and not (IsIgnorePattern q))
+        ((found, (k + 1)))
+    if named: ((wx, menv))
+    else:
+        let ((w2, me2, ignore)) = Fold ps, ((wx, menv, 0)), \|((w, me, k)), q|
+            let partTy = Or partTys[k], TyErr
+            if (IsIgnorePattern q) and IsState k:
+                let t = OutTyOf w.lx, (Peel partTy)
+                let ((hold, w1)) = FreshName w, "part_{SpanStem q.span}"
+                ((w1, (Bind me, (PartHoldKey q), (if (LayerOf partTy) == LyDyn: LatePlaceBn hold, t else: LatePlainBn hold, t)), (k + 1)))
+            else: ((w, me, (k + 1)))
+        ((w2, me2))
+
+IsIgnorePattern: fn Pattern -> Bool
+fn IsIgnorePattern q = match q.kind:
+    PIgnore: True
+    otherwise: False
 
 # The plain parts of a bundle a place answers (`((port, !rx, $peers)) <- Pad.Socket(..)`)
 # in a hosted scope whose host answers late (`Wx.lateHosts`): the place asks its first
@@ -1680,9 +1747,16 @@ fn LateLetNames lx, fns, me, s = match s.kind:
         let plain = Fold names, True, \|ok, n|
             let nkey = SNameKey n
             let full = BinderTy lx, n.span
-            ok and not ((IsTimeName nkey) or (HasKey me.names, "{nkey}#late") or (HasKey me.names, "{nkey}#placed") or (LayerOf full) != LyPlain or (TimeWithin full) or (IsBundle full) or (IsSome (?ManyInstances lx, n.span)))
+            ok and not ((IsTimeName nkey) or (HasKey me.names, "{nkey}#late") or (HasKey me.names, "{nkey}#placed") or (LayerOf full) != LyPlain or (TimeWithin full) or (IsBundle full) or ((IsSome (?ManyInstances lx, n.span)) and not (IsNamePattern p)))
         if (Len names) > 0 and plain and ReadsLateVia fns, me, e: names else: [[]]
     otherwise: [[]]
+
+# Whether a pattern is one name (a generalized `let`'s, whose instantiations each have a
+# late getter of their own, `MarkLateLets`).
+IsNamePattern: fn Pattern -> Bool
+fn IsNamePattern p = match p.kind:
+    PName ignore: True
+    otherwise: False
 
 # Whether a `let` names a late bundle (`MarkLateBundle`).
 IsLateBundleLet: fn Env, Pattern -> Bool
@@ -1702,10 +1776,20 @@ fn IsLateLet menv, p:
 LateLetGetters: unbounded fn Wx, Env, [Stmt] -> Wx
 fn LateLetGetters wx, menv, stmts = Fold stmts, wx, \|w, s| match s.kind:
     SLet p, ignore, e: if (not (IsLateLet menv, p)) or TakesLateBundle menv, p, e: w else: match p.kind:
-        PName n: match menv.names[SNameKey n]:
-            ? (BnLocal (XMethod XSelf, getter, ignore), ignore, t): update w:
-                &_.getters <= Push &_.getters, (MethDef(name=getter, recv=RecvRef, params=[[]], cx=CxNone, ret=t, body=[[]], tail=(Own (ValueOf w.lx, menv, e)), doc="`{SNameKey n}`, a `let` that reads a late result: computed from the node once the row that gives the result is built."))
-            otherwise: w
+        # (a generalized `let` used at several instantiations: a getter per instantiation,
+        # the value lowered at it, bound by `MarkLateLets` under `{name}#inst{k}`)
+        PName n: match ?ManyInstances w.lx, n.span:
+            ? insts: Fold (Range0 (Len insts)), w, \|w1, k|
+                let bkey = if k == 0: SNameKey n else: "{SNameKey n}#inst{k}"
+                match menv.names[bkey]:
+                    ? (BnLocal (XMethod XSelf, getter, ignore), ignore, t): update w1:
+                        &_.getters <= Push &_.getters, (MethDef(name=getter, recv=RecvRef, params=[[]], cx=CxNone, ret=t, body=[[]], tail=(Own (ValueOf (AtInstance w1.lx, (Or insts[k], (([[]], [[]])))), menv, e)), doc="`{SNameKey n}` at its instantiation {k}, a generalized `let` that reads a late result: computed from the node once the row that gives the result is built."))
+                    otherwise: update w1:
+                        &_.build <= Push &_.build, (InternalBugDo "the late generalized `let` `{SNameKey n}` at its instantiation {k}, which has no getter")
+            nil: match menv.names[SNameKey n]:
+                ? (BnLocal (XMethod XSelf, getter, ignore), ignore, t): update w:
+                    &_.getters <= Push &_.getters, (MethDef(name=getter, recv=RecvRef, params=[[]], cx=CxNone, ret=t, body=[[]], tail=(Own (ValueOf w.lx, menv, e)), doc="`{SNameKey n}`, a `let` that reads a late result: computed from the node once the row that gives the result is built."))
+                otherwise: w
         otherwise:
             let ty = Peel (TypeAt w.lx, e.span)
             let t = OutTyOf w.lx, ty
