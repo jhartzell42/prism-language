@@ -151,3 +151,9 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   hosting code spells `Told` until the rename lands." The emitted crate's enum is
   `crate::Output`, and prism_rtl's `AnswerOf` is `OutputOf`. Refused: keeping `Answer`
   for an element, which leaves a document's query without its word.
+- **OR** A map's values have one type, and no closed `emit` row widens to another: a
+  widget meant to stand beside others of other rows declares an open row, `emit r | ...`,
+  as Type System chapter 2's `@Offline` does. Chess's `@BoardPlayer` and `@LinePlayer`,
+  held in one map of seats, say `emit r | Pane.* | Gui.* | Seat.* | Play.*` and
+  `emit r | Console.* | Seat.* | Play.*`. Jimmy: "I'm sold on your recommendation".
+  Refused: row subtyping where a value meets an expected type; signatures open by default.
