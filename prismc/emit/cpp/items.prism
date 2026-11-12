@@ -199,7 +199,10 @@ fn CppSourceDoc lead, source:
 TypeParts: unbounded fn Cp, TyDef -> Parts
 fn TypeParts cp, t0:
     let t = CppCases t0
-    let eq = t.eq
+    # (a generic plain-data type compares even without `^Eq`, which no Prism code can then
+    # call: an element whose level field holds it, `value: Boxed $Nat`, is compared as the
+    # runtime compares every element; the Rust printer's `EqImpls` likewise)
+    let eq = t.eq or (t.pod and (Len t.params) > 0)
     let ord = t.ord
     let gens = CppTemplateHead t.params
     let head = HeadOf t.name, t.params

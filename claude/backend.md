@@ -135,7 +135,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - A trait → a Rust trait; `derive` → impls (`^Eq` → `PartialEq, Eq`, `^Ord` →
   `PartialOrd, Ord`, whatever the fields: every `^Eq` is reflexive and every `^Ord`
   total); generics → Rust generics bounded by `Eq` and `Ord` for `^Eq` and `^Ord`,
-  monomorphized by rustc (doubt MO).
+  monomorphized by rustc (doubt MO). A generic type that is plain data compares even
+  without `^Eq` (Rust `EqImpls`, C++ a defaulted `operator==`), which no Prism code can
+  call: an element whose level field holds it (`value: Boxed $Nat`) is compared as the
+  runtime compares every element (sem-ch09-tag-field-named-type-of-dynamic).
 - An existential `any ^Show` → `Rc<dyn Show>`.
 - Any other existential → `prism_rtl::Packed`: the value behind `Rc<dyn Any>` and the
   impls its packing found. A trait of the prelude is the packing's own, spelled from
