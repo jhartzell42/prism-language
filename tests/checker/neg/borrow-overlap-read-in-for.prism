@@ -1,0 +1,14 @@
+# Expected by hand from Semantics ch. 5, "The borrow rule" ("One `&` is alive to a part
+# at a time inside the block"; a `for` reference "is alive for the loop's body, and its
+# path is lent to the loop"); never run when written.
+# `borrow-overlap`: a path lent to a `for` is not read inside it: the read is a second
+# reference to a part the loop's own reference is alive to.
+type Fixture = record:
+    stoppage: [Nat]
+    home: Nat
+
+Spread: fn Fixture -> Fixture
+fn Spread f = update f:
+    for &s <- &_.stoppage:
+        &s += Len &_.stoppage
+        &_.home += 1

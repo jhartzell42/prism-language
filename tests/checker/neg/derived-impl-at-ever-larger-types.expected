@@ -1,0 +1,4 @@
+tests/checker/neg/derived-impl-at-ever-larger-types.prism:7: error[grows-without-end]: `impl ^Show Nest a` needs itself at `[a]` for `a`: a type that grows without end
+type Nest a = choice:
+^^^^^^^^^^^^^^^^^^^^^
+1 error

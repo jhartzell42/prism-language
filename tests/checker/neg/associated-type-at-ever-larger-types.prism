@@ -1,0 +1,24 @@
+# Expected by hand from ruling PG and Type System ch. 3 (an associated type is normalized
+# where its impl is known); never run when written.
+# `grows-without-end` through an associated type: `Frame` at `a` calls `Onward` at
+# `Inner a`, which calls `Frame` at `Box b`, and `impl ^Boxed (Box a)` says
+# `Inner (Box a) = Box (Box a)`, so `Frame` at `Box Nat` wants itself at
+# `Box (Box (Box Nat))`, and so on: no finite set of types holds them all.
+trait ^Boxed a:
+    type Inner
+    Open: fn a -> Inner a
+
+type Box a = record:
+    held: a
+
+impl ^Boxed (Box a):
+    type Inner = Box (Box a)
+    fn Open box = Box(held=box)
+
+Frame: unbounded fn a, Nat -> Nat where a: ^Boxed
+fn Frame x, more = match more -? 1:
+    ? less: Onward (Open x), less
+    nil: 0
+
+Onward: unbounded fn b, Nat -> Nat
+fn Onward y, more = Frame Box(held=y), more
