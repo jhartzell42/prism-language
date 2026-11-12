@@ -118,6 +118,26 @@ impl<B: ToPod> ToPod for PreludeTurn<B> {
     }
 }
 
+/// `Turn` as a World reads it in a level, `b` as its walk gives it: the deep walk every
+/// generic type of a program has (`DeepWalkImpl`), which a program type holding a `Turn a`
+/// calls for that field.
+impl<B> PreludeTurn<B> {
+    pub fn deep_pod_with(&self, cx: &Cx, walk_B: &dyn Fn(&B) -> Pod) -> Pod {
+        let _ = cx;
+        match self {
+            PreludeTurn::More => Pod::name("More"),
+            PreludeTurn::Done(b) => Pod::Choice("Done".into(), vec![walk_B(b)]),
+        }
+    }
+    /// The update events of the dynamics `b` holds, as its walk finds them.
+    pub fn deep_ports_with(&self, cx: &Cx, out: &mut Vec<Rc<Port<()>>>, walk_B: &dyn Fn(&B, &mut Vec<Rc<Port<()>>>)) {
+        let _ = cx;
+        if let PreludeTurn::Done(b) = self {
+            walk_B(b, out);
+        }
+    }
+}
+
 impl<B: FromPod> FromPod for PreludeTurn<B> {
     fn from_pod(p: &Pod) -> ::std::result::Result<Self, Fault> {
         match p.structure() {
