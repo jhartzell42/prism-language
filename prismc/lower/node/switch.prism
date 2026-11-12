@@ -242,7 +242,7 @@ fn RebuildLine wx, benv, menv, scrut, body, e, ?bound:
             &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=False, width=0, moved=(Or (?HostedRows wx), ""), early=False, gappy=False, rebased=False)
             &_.genHolds <= Push &_.genHolds, ((name, reads))
             &_.rows <= Fold rowDefs, &_.rows, \|acc, rd| Append (Push acc, rd), rd.children
-            &_.getters <= Push &_.getters, (GenUp name, (GnOf wx4, upId).name, (GnOf wx4, upId).ty)
+            &_.getters <= Push (Push &_.getters, (GenUp name, (GnOf wx4, upId).name, (GnOf wx4, upId).ty)), (GenUpAbove name, (GnOf wx4, upId).name)
         ((wx5, (WrEv (EvRefOf wx5, upId))))
 
 # Whether a `rebuild` hands back a dynamic: `$$a` (its generations give `$a`), or `$a` over
@@ -439,7 +439,7 @@ fn StaticClauseLine wx, menv, scrut, call, qk, v, e:
         &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=True, width=width, moved=(Or (?HostedRows wx), ""), early=False, gappy=(IsGappy gaps), rebased=False)
         &_.genHolds <= Push &_.genHolds, ((name, reads))
         &_.rows <= Fold cases, &_.rows, \|acc, gc| Append (Push acc, gc.node), gc.node.children
-        &_.getters <= Push &_.getters, (GenUp name, (GnOf wx3, upId).name, (GnOf wx3, upId).ty)
+        &_.getters <= Push (Push &_.getters, (GenUp name, (GnOf wx3, upId).name, (GnOf wx3, upId).ty)), (GenUpAbove name, (GnOf wx3, upId).name)
     # a widget of `@unit` gives nothing back (a `for` whose rows end on it gathers nothing)
     if (OutTyOf lx, (OutOf (TypeAt lx, e.span))) == OutUnit: ((wx4, WrUnit)) else: ((wx4, (WrEv (EvRefOf wx4, upId))))
 
@@ -754,7 +754,7 @@ fn LiveParams r0, lives = Fold lives, ((r0, emptyEnv, emptyEnv, [[]])), \|((r, b
         let ((id, r2)) = AddGn r1, f, t, GnPort, 0
         let port = XClosure False, [[PaBind "ev"]], (XRef (XField (XVar "ev"), "port"))
         let call = XClosure False, [[PaBind "n", PaBind "v", PaBind "cx"]], (XMethod (XVar "n"), f, [[XClone (XVar "v"), XCx]])
-        let sub = DoExpr (XCall (HelperRef "subscribe_row"), [[(XRef (XVar "node")), (XCtor (RefRuntime "std::Some"), [[(XCall (RefRuntime "std::Rc::new"), [[(XClone (XField (XVar "node"), ev))]])]]), port, call, (XRef (XField (XVar "node"), "{f}_sub"))]])
+        let sub = DoExpr (XCall (HelperRef "subscribe_row"), [[(XRef (XVar "node")), (XCtor (RefRuntime "std::Some"), [[(XCall (RefRuntime "std::Rc::new"), [[(XClone (XField (XVar "node"), ev))]])]]), port, call, (HeardAbove f), (XRef (XField (XVar "node"), "{f}_sub"))]])
         let r3 = update (AddField r2, "{f}_sub", (OutNamed (RefRuntime "std::Cell"), [[(OutOpt (OutNamed (RefRuntime "rt::Handle"), [[]]))]]), "the subscription to `{bn}`", (XCall (RefRuntime "std::Cell::new"), [[XNone]])):
             &_.taken <= Append &_.taken, [[ev, "{f}_sub"]]
             &_.fields <= Push &_.fields, ((ev, (OutEvent t), "`{bn}`, an event parameter of a widget that calls itself: the caller's event"))
@@ -1333,7 +1333,7 @@ fn BuildingChoiceLine wx, menv, scrut, pats, sty, guards, bodies, outTy, layer, 
         &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=True, width=width, moved=(Or (?HostedRows wx), ""), early=False, gappy=(IsGappy gaps), rebased=False)
         &_.genHolds <= Push &_.genHolds, ((name, [[]]))
         &_.rows <= Fold cases, &_.rows, \|acc, gc| Append (Push acc, gc.node), gc.node.children
-        &_.getters <= Push &_.getters, (GenUp name, (GnOf wx3, upId).name, (GnOf wx3, upId).ty)
+        &_.getters <= Push (Push &_.getters, (GenUp name, (GnOf wx3, upId).name, (GnOf wx3, upId).ty)), (GenUpAbove name, (GnOf wx3, upId).name)
     if bundled: ((wx4, (WrParts bundle.results)))
     else: if isDyn: KeptDynResult wx4, name, rows
     else: if (Len plainRows) > 0:
@@ -1556,7 +1556,7 @@ fn KeepPart wx, name, part, ty = match part:
         let ((id, w1)) = AddGn wx, fired, et, GnNamed, 0
         let w2 = update w1:
             &_.taken <= Append &_.taken, [[fired, "{name}_{place}_up"]]
-            &_.getters <= Push &_.getters, (MethDef(name="{name}_{place}_up", recv=RecvRc, params=[[(("v", et))]], cx=CxMut, ret=OutUnit, body=[[(SelfCall fired, [[(XVar "v")]])]], tail=(XUnit), doc="An event part of the generation's bundle fires the line's event."))
+            &_.getters <= Push (Push &_.getters, (GenUpAbove "{name}_{place}", fired)), (MethDef(name="{name}_{place}_up", recv=RecvRc, params=[[(("v", et))]], cx=CxMut, ret=OutUnit, body=[[(SelfCall fired, [[(XVar "v")]])]], tail=(XUnit), doc="An event part of the generation's bundle fires the line's event."))
         ((w2, [[]], (WrEv (EvRefOf w2, id))))
     RowPartDynamic place, t, reads:
         let ((w1, res)) = KeptDyn wx, "{name}_{place}", t, reads
@@ -1613,6 +1613,7 @@ fn GenHears r, genName = Fold (RowHears r), r, \|w, m| update w:
     &_.subs <= Push &_.subs, (("{genName}_wrote_{m}", "wrote_{m}", OutUnit))
     &_.taken <= Push &_.taken, "wrote_{m}"
     &_.getters <= Push &_.getters, (MethDef(name="wrote_{m}", recv=RecvRc, params=[[(("v", OutUnit))]], cx=CxMut, ret=OutUnit, body=[[DoExpr (XMethod (XSelf), "parent_wrote_{m}", [[XCx]])]], tail=(XUnit), doc="The block wrote behind its `{m}`: as `parent_wrote_{m}`."))
+    &_.getters <= Push &_.getters, (AboveMethod "wrote_{m}", [[(AboveCall XSelf, "parent_wrote_{m}", (XVar "h"))]], "the block writes behind its `{m}`")
 
 # Whether a generation is still its block's current one after the tick: it has not left
 # (`left`, set as its places are torn down), the block will not replace it at the build
@@ -1747,6 +1748,11 @@ fn IsLinkTy t = match t:
 # stands as built, `row_base` (`ArmRowOf`): `recv` as `PlaceNumber` takes it.
 WithRowBase: fn Wx, Text, Pos, Ex -> Ex
 fn WithRowBase wx, recv, pos, select = XBlock [[(DoLet (PaBind "row_base"), (PlaceNumber wx, recv, pos))]], select
+
+# The height twin of the up-forwarding (`GenUp`): the block's event fires at the height
+# the generation's result does.
+GenUpAbove: fn Text, Text -> MethDef
+fn GenUpAbove name, upName = AboveMethod "{name}_up", [[(AboveCall XSelf, upName, (XVar "h"))]], "the current generation's result fires"
 
 # The `rebuild`'s up-forwarding: a generation's result fires the block's event.
 GenUp: fn Text, Text, OutTy -> MethDef
@@ -1961,7 +1967,7 @@ fn HeldSwitch wx, menv, x:
     let made = MethDef(name="{outer}_made", recv=RecvRef, params=[[]], cx=CxRef, ret=outerTy, body=[[]], tail=(Own (ValueOf lxw, menv, x)), doc="`{SrcText lx, lx.file, x.span}`, the switch's outer, as a live dynamic.")
     let outerNow = XMethod (XMethod (XField (XVar "node"), outer), "get", [[XCx]]), "expect", [[(XStr "`@Switch`'s outer is made at the build")]]
     let setOuter = DoExpr (XMethod (XField (XVar "node"), outer), "set", [[(XCtor (RefRuntime "std::Some"), [[(XMethod (XVar "node"), "{outer}_made", [[XCx]])]]), XCx]])
-    let listened = DoExpr (XMethod (XField (XVar "node"), listen), "listen", [[(XRef (XMethod outerNow, "sample", [[XCx]])), (XRef (XVar "node")), (XPath (RefChild (SiteRef lx, wx.node), name))]])
+    let listened = DoExpr (XMethod (XField (XVar "node"), listen), "listen_above", [[(XRef (XMethod outerNow, "sample", [[XCx]])), (XRef (XVar "node")), (XPath (RefChild (SiteRef lx, wx.node), name)), (XPath (RefChild (SiteRef lx, wx.node), "{name}_above"))]])
     let followed = DoExpr (XMethod (XField (XVar "node"), ofollow), "follow", [[(XRef (XField outerNow, "updates")), (XRef (XVar "node")), (XPath (RefChild (SiteRef lx, wx.node), "{name}_outer_moved"))]])
     let moved = MethDef(name="{name}_outer_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=[[DoExpr (XMethod (XCx), "swap_later", [[(XClone XSelf)]])]], tail=(XUnit), doc="The switch's outer fired: after the tick's propagation the switch takes the inner it then holds.")
     let w3 = update w2:
@@ -1977,4 +1983,4 @@ fn HeldSwitch wx, menv, x:
 SwapBody: fn Wx -> [Do]
 fn SwapBody wx = Each wx.switches, \|name|
     let outerNow = XMethod (XMethod (XField XSelf, "{name}_outer"), "get", [[XCx]]), "expect", [[(XStr "`@Switch`'s outer is made at the build")]]
-    DoExpr (XMethod (XField XSelf, "{name}_listen"), "listen", [[(XRef (XMethod outerNow, "sample", [[XCx]])), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef wx.lx, wx.node), name))]])
+    DoExpr (XMethod (XField XSelf, "{name}_listen"), "listen_above", [[(XRef (XMethod outerNow, "sample", [[XCx]])), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef wx.lx, wx.node), name)), (XPath (RefChild (SiteRef wx.lx, wx.node), "{name}_above"))]])

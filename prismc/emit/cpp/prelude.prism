@@ -711,27 +711,6 @@ Map<Nat, A> indexed(const Array<A>& xs) {
     return m;
 }
 
-/// The heights a node with combinators at several heights asked for this tick: its wake
-/// runs the lowest one asked (`Node::wake` is not told its height, prismc/README.md WH).
-class Wakes {
-public:
-    void ask(std::uint32_t h) { asked_.insert(h); }
-    std::uint32_t next() {
-        if (asked_.empty()) return std::uint32_t(-1);
-        std::uint32_t h = *asked_.begin();
-        asked_.erase(asked_.begin());
-        return h;
-    }
-    /// After a wake ran one height: a wake for the lowest height still asked (two heights
-    /// asked from one running height land on one wake of the node, which runs the lower).
-    void again(Cx& cx, NodeRef node) {
-        if (!asked_.empty()) cx.wake(*asked_.begin(), std::move(node));
-    }
-
-private:
-    std::set<std::uint32_t> asked_;
-};
-
 // ---- Jobs -------------------------------------------------------------------------------
 
 /// A frame of a job's stack (D6; claude/backend.md, "Unbounded functions and `@Run`"): the
@@ -1197,9 +1176,10 @@ inline ::prism_rtl::Scope<Elem, Answer> applied_scope(std::optional<::prism_rtl:
 /// of a block in a hosted scope), with `hear` the blueprint's sink, called with each
 /// answer to the place the blueprint answers, in the tick the answer comes. Gives the
 /// generation and how many places it built.
-template <class Hear>
-Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint_heard(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, std::optional<::prism_rtl::Rc<::prism_rtl::HostOf<Elem, Answer>>> hosted, Hear hear, Cx& cx) {
-    ::prism_rtl::Sink<Answer> sink = [hear = std::move(hear)](const Answer& answer, Cx& cx) -> Done { return hear(answer, cx); };
+/// (`above` is the sink's height twin, told the global height such an answer comes at.)
+template <class AboveFn, class Hear>
+Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint_heard(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, std::optional<::prism_rtl::Rc<::prism_rtl::HostOf<Elem, Answer>>> hosted, AboveFn above, Hear hear, Cx& cx) {
+    ::prism_rtl::Sink<Answer> sink(std::function<Done(const Answer&, Cx&)>([hear = std::move(hear)](const Answer& answer, Cx& cx) -> Done { return hear(answer, cx); }), std::make_shared<const std::function<void(std::uint32_t)>>(std::move(above)));
     auto supplied = TRY(blueprint(std::move(path), sink, applied_scope(std::move(hosted)), base, cx));
     std::uint32_t built = supplied.built;
     return std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied), base, sink), built};
@@ -1339,9 +1319,10 @@ auto event_part(const ::prism_rtl::Event<V>& events, Part part) {
 
 /// An event part of a bundle a blueprint value gives, heard by the block that applied
 /// it: each firing is `hear`'s, in its tick. The subscription lives as long as the port.
-template <class T, class Hear>
-void hear_part(const ::prism_rtl::Event<T>& event, Hear hear) {
-    deref(event.port).subscribe([hear](const T& v, Cx& cx) -> Done { return hear(v, cx); });
+/// (`above` is `hear`'s height twin, told the port's height.)
+template <class T, class AboveFn, class Hear>
+void hear_part(const ::prism_rtl::Event<T>& event, AboveFn above, Hear hear) {
+    deref(event.port).subscribe_above([hear](const T& v, Cx& cx) -> Done { return hear(v, cx); }, std::make_shared<const std::function<void(std::uint32_t)>>(std::move(above)));
 }
 
 /// A blueprint value applied by a block at one of its lines (Semantics ch. 8: "a blueprint
@@ -1350,21 +1331,24 @@ void hear_part(const ::prism_rtl::Event<T>& event, Hear hear) {
 /// a dynamic's) builds no place here, and what it answers is the line's result, which a
 /// line of unit drops.
 inline Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, std::optional<::prism_rtl::Rc<::prism_rtl::HostOf<Elem, Answer>>> hosted, Cx& cx) {
-    return apply_blueprint_heard(blueprint, std::move(path), base, std::move(hosted), [](const Answer&, Cx&) -> Done { return {}; }, cx);
+    return apply_blueprint_heard(blueprint, std::move(path), base, std::move(hosted), [](std::uint32_t) {}, [](const Answer&, Cx&) -> Done { return {}; }, cx);
 }
 }
 
 /// A row subscribing to its block's port for one event: the row heard weakly, the handle
-/// kept for its leaving (claude/backend.md: `Port::subscribe`).
-template <class N, class P, class Port, class Call>
-void subscribe_row(const ::prism_rtl::Rc<N>& node, std::optional<::prism_rtl::Rc<P>> parent, Port port, Call call, std::optional<Handle>& slot) {
+/// kept for its leaving (claude/backend.md: `Port::subscribe_above`). `above` is the call's
+/// height twin: told the port's height at once and each time it rises.
+template <class N, class P, class Port, class Call, class AboveFn>
+void subscribe_row(const ::prism_rtl::Rc<N>& node, std::optional<::prism_rtl::Rc<P>> parent, Port port, Call call, AboveFn above, std::optional<Handle>& slot) {
     if (!parent) return;
     ::prism_rtl::Weak<N> me = node;
     using T = typename std::remove_cvref_t<decltype(deref(port(*parent)))>::Value;
-    Handle h = deref(port(*parent)).subscribe([me, call](const T& v, Cx& cx) -> Done {
+    Handle h = deref(port(*parent)).subscribe_above([me, call](const T& v, Cx& cx) -> Done {
         if (auto n = me.lock()) call(n, v, cx);
         return {};
-    });
+    }, std::make_shared<const std::function<void(std::uint32_t)>>([me, above](std::uint32_t h) {
+        if (auto n = me.lock()) above(n, h);
+    }));
     slot = h;
 }
 </cpp>

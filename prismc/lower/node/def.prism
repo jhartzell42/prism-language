@@ -2801,7 +2801,7 @@ fn PatternDynamics wx, benv, menv, penv, lxp, p, e:
             let getter = MethDef(name="{heard}_event", recv=RecvRef, params=[[]], cx=CxRef, ret=(OutEvent et), body=[[]], tail=tail, doc="`{SNameKey n}`, an event a `let`'s pattern binds, as the value holds it.")
             let port = XClosure False, [[PaBind "ev"]], (XRef (XField (XVar "ev"), "port"))
             let call = XClosure False, [[PaBind "n", PaBind "v", PaBind "cx"]], (XMethod (XVar "n"), heard, [[XClone (XVar "v"), XCx]])
-            let sub = DoExpr (XCall (HelperRef "subscribe_row"), [[(XRef (XVar "node")), (XCtor (RefRuntime "std::Some"), [[(XCall (RefRuntime "std::Rc::new"), [[(XMethod (XVar "node"), "{heard}_event", [[XCx]])]])]]), port, call, (XRef (XField (XVar "node"), "{heard}_sub"))]])
+            let sub = DoExpr (XCall (HelperRef "subscribe_row"), [[(XRef (XVar "node")), (XCtor (RefRuntime "std::Some"), [[(XCall (RefRuntime "std::Rc::new"), [[(XMethod (XVar "node"), "{heard}_event", [[XCx]])]])]]), port, call, (HeardAbove heard), (XRef (XField (XVar "node"), "{heard}_sub"))]])
             let w3 = update (AddField w2, "{heard}_sub", (OutNamed (RefRuntime "std::Cell"), [[(OutOpt (OutNamed (RefRuntime "rt::Handle"), [[]]))]]), "the subscription to `{SNameKey n}` as the `let`'s value holds it", (XCall (RefRuntime "std::Cell::new"), [[XNone]])):
                 &_.getters <= Push &_.getters, getter
                 &_.build <= Push &_.build, sub
@@ -2885,7 +2885,7 @@ fn BundleBinderParts wx, o, whole, t, nkey, parts, held = Fold (Range0 (Len part
         let getter = MethDef(name="{heard}_event", recv=RecvRef, params=[[]], cx=CxRef, ret=(OutEvent et), body=[[]], tail=tail, doc="part {i} of the bundle `{nkey}`, an event, as the value a pattern names it in holds it.")
         let port = XClosure False, [[PaBind "ev"]], (XRef (XField (XVar "ev"), "port"))
         let call = XClosure False, [[PaBind "n", PaBind "v", PaBind "cx"]], (XMethod (XVar "n"), heard, [[XClone (XVar "v"), XCx]])
-        let sub = DoExpr (XCall (HelperRef "subscribe_row"), [[(XRef (XVar "node")), (XCtor (RefRuntime "std::Some"), [[(XCall (RefRuntime "std::Rc::new"), [[(XMethod (XVar "node"), "{heard}_event", [[XCx]])]])]]), port, call, (XRef (XField (XVar "node"), "{heard}_sub"))]])
+        let sub = DoExpr (XCall (HelperRef "subscribe_row"), [[(XRef (XVar "node")), (XCtor (RefRuntime "std::Some"), [[(XCall (RefRuntime "std::Rc::new"), [[(XMethod (XVar "node"), "{heard}_event", [[XCx]])]])]]), port, call, (HeardAbove heard), (XRef (XField (XVar "node"), "{heard}_sub"))]])
         let w3 = update (AddField w2, "{heard}_sub", (OutNamed (RefRuntime "std::Cell"), [[(OutOpt (OutNamed (RefRuntime "rt::Handle"), [[]]))]]), "the subscription to part {i} of the bundle `{nkey}` as the value holds it", (XCall (RefRuntime "std::Cell::new"), [[XNone]])):
             &_.getters <= Push &_.getters, getter
             &_.build <= Push &_.build, sub
