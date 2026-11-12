@@ -38,18 +38,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   at the root's positions. The line is made, not parsed: its types are noted in
   `Lx.tys` at spans past the end of any file (`rootApplicationStart`). A widget of no
   arguments defined as one expression is an alias: inlined where it is applied.
-  - The spans are a hidden assumption: every table of the lowering is keyed by
-    `PlaceKey` (file and span), so a made expression needs a span no written one has,
-    and a reader of the code meets numbers from 2,000,000,000 with nothing in their type
-    saying the expression was made. Text read at such a span (`SrcText`, the stems of
-    live dynamics' names) is empty. The typed form, not built: `Range` gains `origin:
-    Origin`, `choice: Written | Made Text` (the text names what made it, `"the root
-    application of @Show"`); `PlaceKey` spells a made span with its origin instead of
-    the file (`"made:{origin}:{start}"`), so made spans count from 0 and never meet a
-    file's; `SrcText` of a made span is the origin's text. It touches every `Range(..)`
-    built (69 sites in 28 files, the parser's included) and the checker's tables, which
-    compare ranges whole, so it waits for a run that can build and check the whole
-    compiler.
+  - The made line's spans are typed as made: `Range.origin` is `InSource` for a span of
+    a file and `MadeBy Making` for one prismc made (`RootApplication` here,
+    `ConstructorArguments` for a constructor used as a function value, `CtorFn`), its
+    offsets counted from 0 in a space no file shares. `PlaceKey` spells a made span by
+    what made it (`made:root_application_2:2`), and the lowering's own keys and the names
+    it derives from a span go through `SpanKey` and `SpanStem`, so a made span never meets
+    a written one. Text quoted at a made span (`SrcText`) is what made it.
 - **The tick** (`Runtime::tick`, Graph ch. 4's order): last round's undone clean-ups; the
   started list's `Node::started` and the armed `Node::deferred`; the computed answers a
   host's supplier queued last tick (`Cx::answer_later`); answers through
@@ -219,6 +214,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
   ones around it map. A block that calls such a function hears the `Event` it gives
   through a port node (`EventObjectRef`), its event arguments the ports they fire
   (`Event::of`).
+  The node subscribes to the value's own port in its build (`SubscribedValue`, the same
+  for an event a `let`'s pattern or a bundle part names inside a value, and for a
+  recursing widget's event parameter): the handle in `{name}_sub`, the port beside it in
+  `{name}_value_port`. A row that leaves undoes the subscription in `remove_places`
+  (the prelude's `unsubscribe_value`), so the port stops calling a node that is gone and,
+  its last subscriber gone, lets its firing node go.
   The prelude's functions with an event parameter each have their event value form in
   the emitted prelude, under the name the prelude's own definition lowers to
   (`ValueName`): `union_ev`, `both`, `except`, `gate`, `present`, `merge_all`,
@@ -700,10 +701,18 @@ it make every program an interpreter run, and every type mistake a runtime fault
     (phase 1), then every step in the order of the places (phase 2: the line above
     built with the late result standing, the split line's rows numbered at their
     place, its count known), and marks itself `numbered`, so a row built again later
-    is numbered at once (`LateRowSelect`). Refused: such a line under any other split
-    (a late `let`, a clause widget's late result, a hosted scope, a row that builds
-    its generations at its build), and one whose plain result no name binds (a
-    pattern's, or the block's own result);
+    is numbered at once (`LateRowSelect`). The split line gives so where it is a
+    building `match` or `if`, or a widget of one clause whose block ends on one and is
+    split at no line of its own (`IsGivingLine`: inlined, its arms' rows are lowered
+    at the line), in any scope built in the order of its places (a hosted one too;
+    not one built at its host's line, `Wx.lateHosts`); and the taker may read the
+    result through plain `let`s over it (`Wx.splitLets`, `FromSplit`). In a row that
+    builds its generations at its build (`Wx.lateGens`) the taker's rows are numbered
+    late as well: both built at once, the taker's after the split line's
+    (`LateTaking`, a wait in `ScopeSteps`' phase 1), both numbered at their places.
+    Refused: such a line under any other split (a recursing widget, a blueprint value,
+    a bundle, a late name of another kind), and one whose plain result no name binds
+    (a pattern's, or the block's own result);
   - a building line above that takes the plain result of a building `match` or `if`
     at its build (`if n > 15:` above `n <- match mode:`, a widget's plain argument, a
     builder's rows) needs the result before either row
