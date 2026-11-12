@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": any line may use any name the block binds, and the order of a group's lines decides positions and nothing else), ch. 8 (the query answers at the build, by the element as built) and Type System ch. 1: loud gives 10, so the count is "count 10", answered 5, the label "5 5" and the arm's label 2; soft gives 20, answered 6, and builds nothing in its arm. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="5 5")
+    1: Pad.Count(name="count 10")
+    2: Ui.Label(text="loud")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="6 6")
+    1: Pad.Count(name="count 20")
