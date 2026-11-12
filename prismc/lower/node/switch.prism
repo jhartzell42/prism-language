@@ -1044,7 +1044,9 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
     # (and a row of a generation of a row that builds its generations before it is
     # numbered, `Wx.lateGens`: built after that row's node, with no `base` either, it
     # leaves that row the step that numbers it, `NumberedByParent`)
-    let weakLate = transparent and (not zeroBased) and (IsWeakTy parentTy) and wx.lateGens and wx.pos.scope == 0
+    # (and a row of the line a block is split at, built before a line above it that takes
+    # its late result and whose places are counted as built, `LateGiving`)
+    let weakLate = transparent and (not zeroBased) and (IsWeakTy parentTy) and (wx.lateGens or wx.giving == GivenUnnumbered) and wx.pos.scope == 0
     let numberedLate = weakLate or (transparent and (not zeroBased) and (IsLinkTy parentTy) and NumberedLate wx, wx.pos)
     let baseField = if numberedLate: [[(("base", (OutNamed (RefRuntime "std::Cell"), [[OutCount]]), "where the row's first position stands as built, set when the row is numbered")), (("number_later", (OutCell (OutOpt laterTy)), "what the row's build does once it is numbered"))]] else: if transparent: [[(("base", OutCount, "where the row's first position stands as built"))]] else: [[]]
     let rowFields = Append (Push (Each fields, \|((f, t, bn))| ((f, t, "`{bn}`"))), (("parent", parentTy, "the node of the `rebuild`"))), baseField
@@ -1157,7 +1159,10 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
     let r3b = if not zeroBased: r3n else: update r3n:
         &_.taken <= Push &_.taken, "built"
         &_.getters <= Push &_.getters, (MethDef(name="built", recv=RecvRef, params=[[]], cx=CxNone, ret=OutCount, body=[[]], tail=(if ownGaps: XBin OpSub, positions, (XMethod XSelf, "inner_gap", [[]]) else: positions), doc="How many places the row built (ruling TC: places are counted as they are built)."))
-    let node = FinishNode r3b, rowName, (Append (Append (Append (Each fields, \|((f, t, ignore))| ((f, t))), liveParams), baseParam), (Append (Append [[(("parent", parentTy))]], hostedParams), movedParam)), True
+    # the row hears each write of its block it reads through the port `GenMarked` gives the
+    # block (as a generation does), so its own rows and `!Updated` nodes are told
+    let r3h = GenHears r3b, genName
+    let node = FinishNode r3h, rowName, (Append (Append (Append (Each fields, \|((f, t, ignore))| ((f, t))), liveParams), baseParam), (Append (Append [[(("parent", parentTy))]], hostedParams), movedParam)), True
     let p2m = GenMarked p1, genName, r3b
     let p2 = if not weakLate: p2m else: update p2m:
         &_.lateRowGens <= AddText &_.lateRowGens, genName
@@ -1882,13 +1887,40 @@ fn FlattenLine wx, menv, args, ?bound:
 HeldFlatten: unbounded fn Wx, Env, Expr, ?Bn -> ((Wx, Wres))
 fn HeldFlatten wx, menv, x, ?bound:
     let t = OutTyOf wx.lx, (Peel (Peel (TypeAt wx.lx, x.span)))
-    match menv.names["#whole{DynKey x}"]:
-        ? (BnLocal (XField (XSelf), dyn), ignore, ignore):
-            let ((name, wx1)) = match ?bound:
+    # the outer as a field of the node: the live dynamic its line made, or, kept in a field
+    # of its own made at the build (`{name}_outer`), the block's live dynamic read through
+    # a row's or a generation's `parent` (`WholeOfBlock`), or a global's constant (no node
+    # writes a global: `let $$nested = $ ($ 3)` is the constant of its one inner)
+    let ?kept = match menv.names["#whole{DynKey x}"]:
+        ? (BnLocal (XField (XSelf), ignore), ignore, ignore): nil
+        ? (BnLocal over, ignore, ignore): match ?ThroughParent over:
+            ? built: ? (XClone built)
+            nil: nil
+        otherwise: if IsGlobalName menv, x: ? (XCall (HelperRef "dyn_constant"), [[Own (ValueOf wx.lx, menv, x)]]) else: nil
+    let ?own = match menv.names["#whole{DynKey x}"]:
+        ? (BnLocal (XField (XSelf), dyn), ignore, ignore): ? dyn
+        otherwise: nil
+    match ((?own, ?kept)):
+        ((nil, nil)):
+            let wx2 = update wx:
+                &_.build <= Push &_.build, (RefusalDo "`@Flatten` of `{SrcText wx.lx, wx.lx.file, x.span}`, a dynamic of dynamics with no live dynamic at the build where the line reads it (gap LF)")
+            ((wx2, WrUnit))
+        otherwise:
+            let ((name, wx0)) = match ?bound:
                 ? (BnHold f, ignore): ((f, wx))
                 # bound as a widget's result (`IsGetterBuiltin`): the getter the name was pre-bound to
                 ? (BnDyn (XMethod (XSelf), f, ignore), ignore, ignore): ((f, wx))
                 otherwise: FreshName wx, "flatten"
+            let dyn = match ?own:
+                ? d: d
+                nil: "{name}_outer"
+            let wx1 = match ?kept:
+                ? built: update wx0:
+                    &_.taken <= Push &_.taken, dyn
+                    &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind dyn), (OutDyn (OutDyn t))), built)
+                    &_.fields <= Push &_.fields, ((dyn, (OutDyn (OutDyn t)), "`@Flatten`'s outer `{SrcText wx.lx, wx.lx.file, x.span}`, the dynamic of dynamics it follows, taken at the build"))
+                    &_.moves <= Push &_.moves, ((dyn, (XClone (XVar dyn))))
+                nil: wx0
             let inner = "{name}_inner"
             let follow = "{name}_follow"
             let ofollow = "{name}_ofollow"
@@ -1906,10 +1938,13 @@ fn HeldFlatten wx, menv, x, ?bound:
                 &_.dynReads <= Insert &_.dynReads, name, [[OwnRead inner]]
                 &_.flattens <= Push &_.flattens, FlatDef(name=name, outer=dyn, generation="", held=True, ty=t)
             ((wx2, (WrDyn (XMethod (XSelf), name, [[XCx]]), [[OwnRead inner]], t)))
-        otherwise:
-            let wx2 = update wx:
-                &_.build <= Push &_.build, (RefusalDo "`@Flatten` of `{SrcText wx.lx, wx.lx.file, x.span}`, a dynamic of dynamics with no live dynamic at the build where the line reads it (gap LF)")
-            ((wx2, WrUnit))
+
+# Whether an expression is a global's name (one no block binds): no node writes it.
+IsGlobalName: fn Env, Expr -> Bool
+fn IsGlobalName menv, x = match x.kind:
+    EGroup y: IsGlobalName menv, y
+    EName n: (Len n.path) > 1 or not (HasKey menv.names, (SNameKey n))
+    otherwise: False
 
 # `for k, $v <- $each:` over `$(k ==> $v)` (Semantics ch. 4, ruling FV; a host document's
 # entries, `$(Path ==> $Elem c)`, and `@PerKey`'s inners): `$v` is the row's entry flattened.

@@ -1,0 +1,23 @@
+# A tag's plain field whose type holds a dynamic inside a named type's argument (Type
+# System ch. 1: a value that holds a dynamic is a type as any other; ch. 4: a
+# constructor's type parameter takes its argument whole; claude/incremental-host-document.md,
+# WD: a foreign World reads a level flattened through, every nested dynamic sampled, and
+# the place is sent again when one moves).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Count.*
+test mod Tests
+use Ui.*
+
+type Boxed a = record:
+    item: a
+    label: Text
+derive ^Show
+
+tag Count.Boxed of Element unit:
+    value: Boxed $Nat
+
+@main: @unit emit Ui.* | Count.*
+@main:
+    !one <- Ui.Button($label=$"+1")                               # 0
+    $asks <- 0 then $asks + 1 on !one
+    Count.Boxed(value=Boxed(item=$asks, label="asks"))            # 1

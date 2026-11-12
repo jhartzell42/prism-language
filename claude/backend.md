@@ -30,6 +30,26 @@ it make every program an interpreter run, and every type mistake a runtime fault
     root's constructor, `rt.close(cx)`; the arguments arrive as data (`FromPod`);
   - `tick(&mut self, input, ready)`: `rt.tick(&root, input, ready)`;
   - `compact(&mut self)`: `rt.compact()`.
+- **A root widget whose body is not one block** (one expression, `fn @Show text = @Inner
+  text`; several clauses; an alias, `fn @main = @page`): its node takes its parameters by
+  name (`argument0`, ..) and its block is one line, the widget applied to them
+  (`RootApplicationItems`), lowered as that line is anywhere: the expression inlined, or
+  the clause chosen at the build (`ClauseWidgetLine`), transparent, so the places stand
+  at the root's positions. The line is made, not parsed: its types are noted in
+  `Lx.tys` at spans past the end of any file (`rootApplicationStart`). A widget of no
+  arguments defined as one expression is an alias: inlined where it is applied.
+  - The spans are a hidden assumption: every table of the lowering is keyed by
+    `PlaceKey` (file and span), so a made expression needs a span no written one has,
+    and a reader of the code meets numbers from 2,000,000,000 with nothing in their type
+    saying the expression was made. Text read at such a span (`SrcText`, the stems of
+    live dynamics' names) is empty. The typed form, not built: `Range` gains `origin:
+    Origin`, `choice: Written | Made Text` (the text names what made it, `"the root
+    application of @Show"`); `PlaceKey` spells a made span with its origin instead of
+    the file (`"made:{origin}:{start}"`), so made spans count from 0 and never meet a
+    file's; `SrcText` of a made span is the origin's text. It touches every `Range(..)`
+    built (69 sites in 28 files, the parser's included) and the checker's tables, which
+    compare ranges whole, so it waits for a run that can build and check the whole
+    compiler.
 - **The tick** (`Runtime::tick`, Graph ch. 4's order): last round's undone clean-ups; the
   started list's `Node::started` and the armed `Node::deferred`; the computed answers a
   host's supplier queued last tick (`Cx::answer_later`); answers through
@@ -62,10 +82,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - A choice with no case (`type Never = choice:`) → an `enum` with no variant; its derived
   impls match `*self` with no arm, and a `match` with no arm over a value of it is
   `match *x {}`, which rustc takes over the value and never over a reference. A
-  building `match` with no arm in a widget block, its result unit or plain, builds
-  nothing: no row, no generation, no place counted, and a plain result is the empty
-  `match` of the scrutinee as the build has it (`NoArmLine`;
-  sem-ch04-building-match-no-arm). In C++
+  building `match` with no arm in a widget block builds nothing: no row, no
+  generation, no place counted. A plain result is the empty `match` of the scrutinee as
+  the build has it; a dynamic result is a getter of `unreachable!()` with no reads, and an
+  event result is `never`, since no node that holds the line is ever built (`NoArmLine`;
+  sem-ch04-building-match-no-arm, sem-ch04-building-match-no-arm-bound-live). In C++
   the choice's variant holds the runtime's `NoCase`, which nothing makes, and the
   `match` is its unreachable tail.
 - `?a` → `Option<A>`; `~a` → `Result<A, rt::Error>`; `((a, b))` → `(A, B)`; `[[a]]` →
@@ -137,8 +158,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   names it nowhere else but as its whole result (`?PackedDefOf`); any other method
   (`PackedDef.unasked`) is no entry, and in Rust, where the trait's impl for the packed
   value needs every item, its body is a panic no program runs (the checker's
-  `existential-method` refuses the call); C++ writes no overload for it. A trait with
-  an associated type has no dictionary. In C++ the dictionary
+  `existential-method` refuses the call); C++ writes no overload for it. A method that
+  names an associated type names the trait's type inside it (`Unit a`), so it is unasked,
+  and the impl for the packed value chooses the unit type for each associated type
+  (`PackedDef.assocs`: `type Unit = ();`, in C++ a specialization `Unit<Packed>` whose
+  `type` is `std::monostate`). In C++ the dictionary
   holds function pointers, `weighed_t_packed_of` is a function object whose call is a
   template among the generic definitions, and the impl is an overload in the trait's
   namespace.
@@ -433,7 +457,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
   the outer holds after n, follows the inner's port (`{name}_moved`, a write of the
   inner) and fires. No dynamics are compared; an adoption of the same inner fires again
   (`sem-ch07-flatten-held`, `sem-ch07-flatten-mapped-constants`). A live dynamic's port
-  fires once a tick however many writes lie behind it (`{name}_once`).
+  fires once a tick however many writes lie behind it (`{name}_once`). Where the node has
+  no live dynamic of its own for the outer, the outer is kept in a field `{name}_outer`
+  made at the build and followed the same way: in a `for`'s row or a `rebuild`'s
+  generation, the block's live dynamic read through the `parent` argument
+  (`WholeOfBlock`, `?ThroughParent`); for a global, the constant of its value, which no
+  node writes (sem-ch07-flatten-global-dynamic, sem-ch07-flatten-block-dynamic-in-row).
+  An outer written in place in a row (`@Flatten ($Pick $useB, $a, $v)`) is the block's
+  live dynamic, read through the parent, when it reads the block's names alone; one that
+  reads a name the row binds (`NestedBlockNames`) is the row's own, made by the row's
+  line, with its value at the row's build when what it reads through the parent has one
+  (`InitedOrParent`; sem-ch07-flatten-expression-in-row).
 - **`!MergeAll` of a plain list that is not a literal** (`MergeListEvent`) → a
   `MergeList<T>` field (prism_rtl, both runtimes) that hears each `Event` of the list,
   read once the node is made (`{nm}_events`), into a stamped input and tells the node
@@ -633,8 +667,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
     gives the late result is built, right after the row and before the holds' late
     first values (`LateFieldPlaces`, `Wx.lateAsks`, `WithLateInits`), with the element
     its getter reads then; the name is late, the value of a `Hold<Option<T>>` written
-    once (`LatePlainBn`). Refused: the same with a `$` or a bundle answer, with a
-    pattern for the answer, or in a hosted scope (the `unbuilt` marker of `BindLate`);
+    once (`LatePlainBn`). With a `$` answer (`$c <- Pad.Count(..)`) the same: its
+    `Hold<Option<T>>` is set there (`LateAskedPlace`, read as `LatePlaceBn`), and the
+    element its pushes are keyed by is kept then, in `{f}_element`, a
+    `RefCell<Option<Pod>>` the push compares (`Wx.lateElements`), the place listening
+    from then on. Refused: the same with a bundle answer, with a pattern for the
+    answer, or in a hosted scope (the `unbuilt` marker of `BindLate`);
   - a plain `let` of the node that reads a late name is late too (`MarkLateLets`): a
     getter of the node that computes it (`late_{name}`, `LateLetGetters`), bound under
     `{name}#late` as the split line's names are, so what reads it reads it late in turn;
@@ -650,10 +688,22 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the split that such a line reads is the node's late `let` (`HoistedLines`). Such
     a line's plain result bound to a name (`w <- @Wide n`) is late itself: the name is
     marked before any line is lowered (`LateTakerResults`, `{name}#taker`), its getter
-    over the row's kept result made at the line (`LateGetters`). Two such lines are
-    refused: one whose places are counted as built (a building `match` or `if` inside
-    it: the rows after it were numbered before it was built), and one whose plain
-    result no name binds (a pattern's, or the block's own result);
+    over the row's kept result made at the line (`LateGetters`). Such a line whose
+    places are counted as built (a widget of several clauses, a building `match` or
+    `if` inside it), under a split line that is a building `match` or `if` of the
+    block's own scope (`Wx.splitNames`), is no deferred one: it asks for the split
+    line's rows to be numbered late (`LateGiving`, `TakenAbove`). The split line is
+    then lowered with `GivenUnnumbered`: each arm's row is built with no `base` and
+    leaves the block the step that numbers it (`ArmRowOf`'s `weakLate`,
+    `NumberedByParent`, `Wx.lateRowGens`), as inside a row that builds its
+    generations at its build. The block's construction step builds those rows first
+    (phase 1), then every step in the order of the places (phase 2: the line above
+    built with the late result standing, the split line's rows numbered at their
+    place, its count known), and marks itself `numbered`, so a row built again later
+    is numbered at once (`LateRowSelect`). Refused: such a line under any other split
+    (a late `let`, a clause widget's late result, a hosted scope, a row that builds
+    its generations at its build), and one whose plain result no name binds (a
+    pattern's, or the block's own result);
   - a building line above that takes the plain result of a building `match` or `if`
     at its build (`if n > 15:` above `n <- match mode:`, a widget's plain argument, a
     builder's rows) needs the result before either row
@@ -1082,6 +1132,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the node is made, before the builders.
   - A row reads its block's live dynamics through its `parent` (`WholeOfBlock`), and hears
     the block's writes behind its own (`RowHears`).
+  - Once the node is gone (the link has no owner), a live dynamic of one of the node's
+    own holds reads the cell `{name}_last`, which the node's `leave` hook writes with the
+    hold's value after the tick the node leaves in: the hold is a constant with its last
+    value from then on (Semantics ch. 7, "Holds die with their widget";
+    sem-ch07-hold-dies-with-its-row). A dynamic `let` of the node whose reads, through
+    the node's getters, reach nothing through the parent is kept the same way: computed
+    from constants, it is one (sem-ch07-getter-dies-with-its-row). A combinator written
+    in the line over a hold and a dynamic outside the node is a map of live dynamics and
+    goes on reading the outside one. A dynamic `let` over both reads its value at the
+    build once the node is gone, and its port no longer fires: a bug, red in
+    sem-ch07-getter-dies-with-its-row's second test.
   - A global dynamic passed whole is the constant its getter gives.
 - **`!Updated $d` as an event value** (in a supplier's closure, in a function taking `$d`
   whole): the prelude's `updated`, which fires `d`'s value after the tick when `d`'s update
@@ -1328,8 +1389,19 @@ it make every program an interpreter run, and every type mistake a runtime fault
   - **A level that holds dynamics** (a container whose children are its document) goes to
     a World deep: `Elem` implements `rt::Level`, each dynamic sampled at the read point
     (`level_pod`), and a World place over one keeps an `rt::Watch` on the dynamics it holds,
-    so a move of a nested entry sends it again (doubt WD). A forward re-emits through the
-    same `level_pod`.
+    so a move of a nested entry sends it again (WD). A forward re-emits through the
+    same `level_pod`. A tag's plain field whose type holds dynamics below its top
+    (`values: [$Nat]`) is written as a walk over its type (`DeepPodOf`, `DeepPortsOf`:
+    a dynamic sampled, an array's, a map's values', an option's, a tuple's and an `Rc`'s
+    parts), the line builds the value whole, each dynamic the live one it made
+    (`ElementPlaced`, `IsTimeFieldElement`), and its dynamics' update events join the `Watch`
+    (sem-ch09-tag-field-array-of-dynamics); C++ has `rt::DeepPod`. A `~T` is walked as
+    its value, its failure plain data. A generic program type that is plain data has a
+    walk of its own (`DeepWalkImpl`: `deep_pod_with` and `deep_ports_with`, each part of
+    a type parameter through the walk its caller gives for it), which the field's walk
+    calls with the walks of its type arguments, so `Boxed $Nat` and `Boxed [$Nat]` share
+    one impl (sem-ch09-tag-field-named-type-of-dynamic, -fault-of-dynamic); in C++ the
+    members `deep_pod` and `deep_ports`, which `rt::DeepPod` calls.
   - `@ x` and a constant `@ $ v` (`rt::plain_blueprint`) are the first value once; `@ never`
     (`rt::never_blueprint`) answers nothing.
   - `@ !e` (`rt::event_blueprint`) and `@ $d` (`rt::dynamic_blueprint`, `$d` any dynamic
@@ -1703,6 +1775,35 @@ it make every program an interpreter run, and every type mistake a runtime fault
   opens, printed under that tick's `in:` as a delivery is, and that tick is owed; a
   poisoned subtree is served nothing again, a test's own delivery included. The policy
   prints nothing; the CLI and canvas Worlds print what a poisoned root has to say.
+- **A terminal of lines is the CLI World's** (worlds/cli/rust/src/console.rs, its C++
+  twin in worlds/cli/cpp/src/cli.cpp). A program declares the family itself, as
+  examples/chess/console.prism does: `Console.Read(name)`, `!Text`, each firing one line
+  typed; `Console.Print(name, !lines)`, each firing the lines to print. One line in, one
+  line out, for shell scripts, agents, people with a physical board, and teletypes:
+  - The input is the process's standard input, read on a thread of its own from the
+    first `Console.Read` place on; a program with none never reads it. A line goes in
+    without its line end (`\n`, or `\r\n`), the last line with none included, as an
+    answer to every live `Console.Read` of its terminal.
+  - A line goes in only when no tick is owed and nothing else waits, one line per tick,
+    so a program has answered one line before it hears the next, piped or typed alike.
+    While a `Console.Read` waits, a `Time.After` wake still comes when due.
+  - Each line printed is written to standard output and flushed at once: a pipe or a
+    teletype sees each answer as it fires. No terminal modes, no cursor, no colour.
+  - With more than one terminal in the document (the names of the live `Console.Read`
+    and `Console.Print` places), a line in is addressed `NAME: text` and goes to that
+    terminal, and a line out is printed `NAME: text`. With one terminal, lines are plain
+    both ways. A line that names no terminal is reported on standard error and goes
+    nowhere.
+  - At the end of the input the reads stop firing. `!Text` has no end case, so the end
+    is no value: a `Console.Read` after it is no live stream (Semantics ch. 9, "a
+    `Cli.Stdin` before `End`"), and a program with nothing else to wait for exits 0. A
+    failed write to standard output is the World's failure: reported, exit 1.
+  - The Test World needs none of this: a test sends a line to a `Console.Read` and reads
+    a `Console.Print`'s firings off the transcript like any other tag's.
+  - Tests: worlds/cli/rust/tests/cli.rs (and test_cli.cpp's twins), and
+    tests/driver/run.sh's `console-echo` and `console-terminals`, real programs under
+    `prism run` with standard input from a file and standard output compared to an
+    expected file.
 
 ## The library's API
 
@@ -1837,6 +1938,16 @@ tick 0 and again by each runtime).
 
 ## Doubts
 
+- **CT Several terminals on one standard input.** A process has one input and one
+  output; chess's `Tables.@terminals` names three terminals. *First ruling (Claude's):*
+  lines addressed `NAME: text` both ways when more than one terminal is in the document,
+  plain with one. *If otherwise:* a terminal per name on a file or a FIFO the command
+  line names (`--console White=/dev/pts/3`), or every line to every terminal.
+- **CE The end of the input.** `Console.Read` is `!Text`, with no end case. *First ruling
+  (Claude's):* the reads stop firing, and the program exits 0 once nothing can cause a
+  tick, as the book's live-stream rule has it. *If otherwise:* the family gains a typed
+  end (`!Line`, `choice: Typed Text | Ended`), which changes examples/chess's
+  `console.prism`.
 - **MO Monomorphization against one class per block** (Q-B9). The book keeps one node
   class per block so a checkpoint names blocks; with no checkpoints rustc monomorphizes.
   *First ruling (Claude's):* rustc's generics. *If otherwise:* trait objects per block.

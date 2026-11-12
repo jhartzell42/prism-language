@@ -698,6 +698,9 @@ type PackedDef = record:
     # `existential-method`), at the packed value as the others are: no entry of the
     # dictionary, and in the trait's impl for the packed value a body no program runs
     unasked: [FnDef]
+    # the trait's associated types, as the target spells them: the impl for the packed
+    # value chooses the unit type for each, since only an unasked method names one
+    assocs: [Text]
 derive ^Eq, ^Show
 
 # A trait's method at a packed value: its name, parameters and result with the packed

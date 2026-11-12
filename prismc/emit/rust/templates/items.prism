@@ -551,3 +551,21 @@ fn ChainArm head, label, body = inline_text <rust>
 if {{head}} {
     break {{label}} {{body}};
 }</rust>
+
+# A generic program type's deep walk (`DeepWalkImpl`): its plain data with each part of a
+# type parameter through the walk its caller gives, and the update events those walks find.
+DeepWalk: fn Text, Text, Text, Text, Text, Text, Text -> Text
+fn DeepWalk generics, head, prism, podWalks, portWalks, pods, ports = inline_text <rust>
+impl{{generics}} {{head}} {
+    /// `{{prism}}` as a World reads it in a level: each part of a type parameter as its walk gives it.
+    pub fn deep_pod_with(&self, cx: &crate::prelude::Cx{{podWalks}}) -> crate::prelude::Pod {
+        let _ = cx;
+        {{pods}}
+    }
+    /// The update events of the dynamics its parts hold, as their walks find them.
+    pub fn deep_ports_with(&self, cx: &crate::prelude::Cx, out: &mut ::std::vec::Vec<::std::rc::Rc<crate::prelude::Port<()>>>{{portWalks}}) {
+        let _ = (cx, &out);
+        {{ports}}
+    }
+}
+</rust>

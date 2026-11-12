@@ -1,0 +1,17 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": the order of a group's lines decides positions and nothing else), ch. 8 (`<-` binds the plain result) and ruling TC (places counted as built): loud's arm applies `@Wide 10`, which gives 1, so the arm gives 9 and `m` is 10; the taker's first clause builds its label at 1 and gives 1, the next label is 2, the arm's label 3 and the arm's own `@Wide 10` builds its label at 4; soft gives 19, so `m` is 20, the second clause builds nothing and gives 2, and the arm builds nothing. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Ui.Label(text="ten")
+    2: Ui.Label(text="wide 1")
+    3: Ui.Label(text="x 0")
+    4: Ui.Label(text="ten")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Ui.Label(text="wide 2")

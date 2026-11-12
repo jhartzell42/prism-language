@@ -2184,11 +2184,6 @@ chess and of two on the self-compile.
   calls kept their names); the C++ prelude's `union_` changed (`Map::united`, the smaller
   map into the larger), and both seeds with it.
 
-### Not lowered yet
-
-the zombie and
-dead states (`leave`, `clean_up`, `edges`).
-
 ## Regular expressions
 
 Semantics ch. 2 and Appendix B, Regular expressions; the dialect is

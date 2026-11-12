@@ -1,0 +1,60 @@
+# A widget of several clauses with a plain result applied, above the line that gives it,
+# to a building `match`'s late plain result, inside the arm of a building `match` whose
+# rows are built before they are numbered (its result taken above it by a building
+# `match` whose places are counted as built), where the inner arm gives its result from
+# what its own lines build (Semantics ch. 4, "Binding groups and cycles": any line may
+# use any name the block binds, and "the order of a group's lines decides positions and
+# nothing else"; ch. 8: `<-` builds the child and binds its plain result; ruling TC).
+# Nothing here is a cycle. In a block of its own the inner lines are
+# conformance/sem-ch04-late-value-above-clause-widget-result-from-arm-lines.
+# Written by Claude (fin-b4, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Size = choice:
+    Big
+    Small
+derive ^Eq, ^Show
+
+type Mode = choice:
+    Loud Size
+    Soft
+derive ^Eq, ^Show
+
+@Wide: fn Nat -> @Nat
+fn @Wide 10:
+    Ui.Label($text=$"ten")
+    @ 1
+fn @Wide k:
+    @ 2
+
+@Panel: fn Mode, $Nat -> @unit
+fn @Panel mode, $k:
+    match n -? 15:                                                     # 1 and 2, or 1
+        ? over:
+            Ui.Label($text=$"over by {over}")
+        nil:
+            Ui.Label($text=$"under")
+            Ui.Label($text=$"at {n}")
+    n <- match mode:
+        Loud size:
+            w <- @Wide m                                               # 3 when m is 10
+            Ui.Label($text=$"wide {w}")                                # 4, or 2
+            m <- match size:
+                Small:
+                    Ui.Label($text=$"small {$k}")                      # 5
+                    v <- @Wide 10                                      # 6
+                    @ v + 9
+                Big:
+                    @ 20
+            @ m + w
+        Soft:
+            @ 20
+    Ui.Label($text=$"below {n}")                                       # 7, 3 or 2
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    !add <- Ui.Button($label=$"add")                                   # 0
+    $k <- 0 then $k + 1 on !add
+    @Panel mode, $k

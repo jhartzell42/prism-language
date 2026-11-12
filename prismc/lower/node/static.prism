@@ -77,11 +77,14 @@ fn WidgetLine wx, benv, menv, e, ?bound:
     let ?named = match callee.kind:
         EName n: if (Len n.path) == 1 and (Len args) == 0: menv.names["{SNameKey n}#blueprint"] else: nil
         otherwise: nil
-    # a blueprint that is a value of the node: a pattern's binder, a field of a record
+    # a blueprint that is a value of the node: a pattern's binder, a field of a record,
+    # a `for`'s binder over blueprints (`for @each <- [[@One, @Two]]:` then `@each`: in
+    # the row's methods its entry, a plain blueprint read at the row's build)
     let held = match e.kind:
         EField ignore, ignore, ignore: (IsSome ?qualified) == False
         EName n: match (if (Len n.path) == 1: menv.names[SNameKey n] else: nil):
             ? (BnLocal ignore, ignore, ignore): True
+            ? (BnDyn ignore, ignore, t): t == blueprintTy
             otherwise: False
         otherwise: False
     if held: ValueBlueprintLine wx, menv, e
@@ -1054,7 +1057,7 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
     # row's own live parameter is such a value already (`#whole#{name}`)
     let sharedCalls = SharedLiveCalls wx, menv, e
     let calls = Filter (ExprsIn e), \|x| match x.kind:
-        ECall c, ignore, ignore, ignore: (IsWholeObject lx, x) or (IsWholeFn lx, (CalleeKey lx, c)) or (CalleeKey lx, c) == "Prelude.@Flatten" or (CalleeKey lx, c) == "Prelude.@Switch" or (HasText elementValues, (DynKey x)) or (HasText sharedCalls, (DynKey x)) or IsDynamicFieldCtor lx, (CalleeKey lx, c)
+        ECall c, args, ignore, ignore: (IsWholeObject lx, x) or (IsWholeFn lx, (CalleeKey lx, c)) or (IsTimeFieldElement lx, c, args) or (CalleeKey lx, c) == "Prelude.@Flatten" or (CalleeKey lx, c) == "Prelude.@Switch" or (HasText elementValues, (DynKey x)) or (HasText sharedCalls, (DynKey x)) or IsDynamicFieldCtor lx, (CalleeKey lx, c)
         otherwise: False
     # and `!Updated $d` inside a lambda of the line (a supplier's `@ !Filter (?Pick p,
     # !Updated $state)`): an event value there, over `$d`'s live dynamic (`?UpdatedValue`)
@@ -1086,15 +1089,58 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
                 otherwise: acc3
             otherwise: acc3
     # `@Flatten`'s outer written in place (`@Flatten ($Pick $useB, $a, $b)`): the expression
-    # itself as a live dynamic of dynamics, after the names it passes whole (`HeldFlatten`)
+    # itself as a live dynamic of dynamics, after the names it passes whole (`HeldFlatten`).
+    # An outer written in a row or a generation of the line (`for`, `rebuild`) that reads a
+    # name that row binds is the row's own, made by the row's line: this node has no such
+    # name (sem-ch07-flatten-expression-in-row)
+    let nested = NestedBlockNames e
     let outers = Fold calls, [[]], \|acc, c| match c.kind:
         ECall callee, args, ignore, ignore: if (CalleeKey lx, callee) != "Prelude.@Flatten": acc else: match args[0]:
             ? a: match a.value.kind:
                 EName ignore: acc
-                otherwise: if (LayerOf (TypeAt lx, a.value.span)) == LyDyn and not (HasKey menv.names, "#whole{DynKey a.value}"): Push acc, a.value else: acc
+                otherwise: if (LayerOf (TypeAt lx, a.value.span)) == LyDyn and not ((HasKey menv.names, "#whole{DynKey a.value}") or ReadsAnyOf a.value, nested): Push acc, a.value else: acc
             nil: acc
         otherwise: acc
     LiveDynamics wx, benv, menv, (Append names0, outers), late
+
+# Whether a call applies a tag with a plain field given a value that holds dynamics below
+# its top (`Count.Many(values=[[$asks, $ 5]])`): that value is built whole
+# (`ElementPlaced`), so its readers are live dynamics of the node.
+IsTimeFieldElement: unbounded fn Lx, Expr, [Arg] -> Bool
+fn IsTimeFieldElement lx, c, args = (HasKey lx.g.tags, (TagNameOf lx, c)) and Fold args, False, \|seen, a| seen or ((LayerOf (TypeAt lx, a.value.span)) == LyPlain and HoldsTimeWhole lx, a.value)
+
+# Whether every read, through the node's getters, has its value at the build: the node's
+# own inited, or through the parent, which is built.
+InitedOrParent: fn Wx, [Read] -> Bool
+fn InitedOrParent wx, reads = Fold (ReadsClosed wx.dynReads, reads), True, \|ok, r| ok and match r:
+    OwnRead f: HasText wx.inited, f
+    ParentRead ignore: True
+
+# The names bound by the rows and generations written inside `e` (a `for`'s binders, and
+# the lines of a `for`'s or a `rebuild`'s block): names the node whose line `e` is does
+# not have.
+NestedBlockNames: unbounded fn Expr -> [Text]
+fn NestedBlockNames e = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
+    EFor ?binders, ignore, body:
+        let bound = match ?binders:
+            ? b: match b.?second:
+                ? p: Append (BinderNames b.first), (BinderNames p)
+                nil: BinderNames b.first
+            nil: [[]]
+        Append (Append acc, (Each bound, \|n| SNameKey n)), (BlockBoundNames body)
+    ERebuild ignore, body: Append acc, (BlockBoundNames body)
+    otherwise: acc
+
+# The names a block's lines bind (a bind's and a `let`'s patterns).
+BlockBoundNames: unbounded fn Block -> [Text]
+fn BlockBoundNames body = Fold body.stmts, [[]], \|acc, s| match s.kind:
+    SBind p, ignore, ignore: Append acc, (Each (BinderNames p), \|n| SNameKey n)
+    SLet p, ignore, ignore: Append acc, (Each (BinderNames p), \|n| SNameKey n)
+    otherwise: acc
+
+# Whether an expression reads one of `names`.
+ReadsAnyOf: unbounded fn Expr, [Text] -> Bool
+fn ReadsAnyOf x, names = Fold (ReadNames (ExprsIn x)), False, \|seen, n| seen or HasText names, n
 
 # A live `Dynamic` of the node for each of `names` (a reader's name, or an expression that
 # is a dynamic of dynamics), bound under `#whole{span}` in both environments
@@ -1118,14 +1164,42 @@ fn LiveDynamics wx, benv, menv, names, late:
             let dyn = "{name}_dyn"
             let ((ex, reads)) = DynamicExpr w1, me, y
             let t = OutTyOf lx, (Peel (TypeAt lx, y.span))
-            let valued = (AllInited w1, reads) and (NamesInited be, y) and not late
-            let unlinked = if valued: XClone (XVar "at_build") else: XUnreachable
+            # (an outer written in place in a row or a generation, `@Flatten ($Pick $useB,
+            # $a, $v)`: what it reads through the parent has its value at this node's build,
+            # read there through the parent, which is built, as a host's dynamic answer's)
+            let outerValued = (InitedOrParent w1, reads) and NamesInitedOrParent w1, be, y
+            let valued = (not late) and match y.kind:
+                EName ignore: (AllInited w1, reads) and NamesInited be, y
+                otherwise: outerValued
+            let unlinked0 = if valued: XClone (XVar "at_build") else: XUnreachable
+            # a hold of the node, once the node has left: its last value, a constant from
+            # then on (Semantics ch. 7, "Holds die with their widget"); and so a dynamic
+            # `let` of the node whose reads, through the node's getters, reach nothing
+            # through the parent: computed from constants, it is one too. A dynamic that
+            # reads what stands outside the node goes on reading it live
+            let ownHold = match y.kind:
+                EName n: match me.names[SNameKey n]:
+                    ? (BnHold ignore, ignore): True
+                    ? (BnDyn ignore, rds, ignore): ((Len rds) > 0) and not (Fold (ReadsClosed w1.dynReads, rds), False, \|seen, r| seen or IsParentRead r)
+                    otherwise: False
+                otherwise: False
+            let last = "{name}_last"
+            let lastArms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "kept"]]), conds=[[]], body=(XClone (XVar "kept"))), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=unlinked0)]]
+            let unlinked = if ownHold: XMatch (XMethod (XMethod (XVar last), "borrow", [[]]), "as_ref", [[]]), lastArms, False, t else: unlinked0
             let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(XMethod (XVar "owner"), name, [[XCx]])), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=unlinked)]]
             let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, t)
-            let linked = [[(DoLet (PaBind "link"), (XClone (XVar owner)))]]
+            let lastTy = OutRc (OutCell (OutOpt t))
+            let linked0 = [[(DoLet (PaBind "link"), (XClone (XVar owner)))]]
+            let linked = if ownHold: Push linked0, (DoLet (PaBind last), (XClone (XVar last))) else: linked0
             let captured = if valued: Push linked, (DoLet (PaBind "at_build"), (Own (ValueOf lx, (InitEnv be), y))) else: linked
             let made = XBlock captured, (XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar port))]])
-            let w2 = update w1:
+            let w1b = if not ownHold: w1 else: update w1:
+                &_.taken <= Push &_.taken, last
+                &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind last), lastTy), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "std::RefCell::new"), [[XNone]])]]))
+                &_.fields <= Push &_.fields, ((last, lastTy, "`{name}`'s hold after the tick the node left in, which its dynamic reads from then on"))
+                &_.moves <= Push &_.moves, ((last, (XClone (XVar last))))
+                &_.holdsLast <= Push &_.holdsLast, name
+            let w2 = update w1b:
                 &_.taken <= Append &_.taken, [[port, dyn]]
                 &_.getters <= Push &_.getters, (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="`{SrcText lx, lx.file, y.span}` passed whole to a function, read at the read point (gap LF)."))
                 &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind port), (OutRc (OutPort OutUnit))), (XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), [[]])]])), (DoLet (PaTyped (PaBind dyn), (OutDyn t)), made)]]
@@ -1215,9 +1289,15 @@ fn BlueprintValuesAt wx, benv, menv, e, named:
     # a value's place: an argument of any other call (a function, a constructor), a part
     # of a tuple or an array, the operand of `?`; and the value of a `let` (`named`:
     # `let @w = @line`, read where `@w` is, `NameValueOf`)
-    # (and what a function of the block gives, `fn @Made b = @line`)
+    # (and what a function of the block gives, `fn @Made b = @line`, and what a lambda
+    # gives, `let Make = \|count| @line`: the lambda's body is lowered where it is
+    # applied, under this line, so the value made here is the one it reads)
     let spots = Fold reached, (if named: Push results, (DynKey (Ungrouped e)) else: results), \|acc, x| match x.kind:
         ECall ignore, args, ignore, ignore: if HasText applied, (DynKey x): acc else: Fold args, acc, \|acc2, a| Push acc2, (DynKey (Ungrouped a.value))
+        ELambda ignore, (LbExpr body): Push acc, (DynKey (Ungrouped body))
+        ELambda ignore, (LbBlock b): match (Or b.stmts[Dec (Len b.stmts)], dummyStmtL).kind:
+            SExpr body: Push acc, (DynKey (Ungrouped body))
+            otherwise: acc
         ETuple xs: Fold xs, acc, \|acc2, part| Push acc2, (DynKey (Ungrouped part))
         EArray xs: Fold xs, acc, \|acc2, part| Push acc2, (DynKey (Ungrouped part))
         EFreeSigil "?", operand: Push acc, (DynKey (Ungrouped operand))

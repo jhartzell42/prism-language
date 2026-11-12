@@ -1,4 +1,4 @@
 tests/checker/neg/default-method-at-ever-larger-types.prism:9: error[grows-without-end]: `impl ^Deep [a]` needs itself at `[a]` for `a`: a type that grows without end
-        ? less: Dig [[x]], less
-                ^^^^^^^^^^^^^^^
+            ? less: Dig [[x]], less
+                    ^^^^^^^^^^^^^^^
 1 error

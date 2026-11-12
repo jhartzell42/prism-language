@@ -606,7 +606,14 @@ fn EventValueOf lx, env, e:
                                 (((Push acc, (DoLet (PaBind local), (Own (LocalPlace rs, mode, ct)))), (Bind en, n, (BnLocal (XVar local), Owned, ct))))
                             otherwise: ((acc, en))
                         let env2 = BindSpan env1, (PlaceKey lx, one.span), (VlPlace (XVar "y_ev"), ByRef, it)
-                        let bodyValue = ValueByKind lx, env2, e
+                        # the value of `x on !e` is `x`'s: a lift the checker noted at the `on`
+                        # (`($count -? 1) on !press` given for a `!?Nat`) passes `x`'s option on
+                        # as it is, and lowered at the `on` it would match `x`'s dynamic as an
+                        # option
+                        let valueExpr = match ?SampledOn e:
+                            ? x: x
+                            nil: e
+                        let bodyValue = ValueByKind lx, env2, valueExpr
                         # the expression over the firing's value is a dynamic when it samples one
                         # (`(ToldTo seat, $state) on !born`): the event fires its value at the
                         # firing's read point (`Event::map_at`), not the dynamic
@@ -770,8 +777,7 @@ fn PlainValueByKind lx, env, e:
 # a `dyn Show`. A trait of the prelude is the runtime's packing's own, spelled from its
 # name (`?PreludeTrait`: `with_show`, `with_eq`, `with_ord`, `with_num`, `with_pod`); a
 # program's trait gives its dictionary at the value's type (`PackedDef`), and so does
-# each trait above it. A program's trait with an associated type (`?PackedDefOf`) is
-# refused.
+# each trait above it, one with associated types too (`?PackedDefOf`).
 AnyValue: unbounded fn Lx, Env, Expr, Ty -> Vl
 fn AnyValue lx, env, x, t:
     let v = Own (ValueOf lx, env, x)
@@ -786,8 +792,7 @@ fn AnyValue lx, env, x, t:
                 let refused = Fold all, "", \|found, b| if found != "": found else: match ?PreludeTrait lx, b:
                     ? ignore: ""
                     nil: match lx.g.traits[b]:
-                        ? tr: if (?PackedDefOf lx, tr) == nil: "an existential of `^{BareName b}`, a trait with an associated type: its impl for a packed value has no type to choose"
-                        else: ""
+                        ? ignore: ""
                         nil: "a prismc bug: an existential of `^{BareName b}`, a trait nothing declares"
                 if refused != "": VlOwned (Refusal refused), packedTy
                 else:
