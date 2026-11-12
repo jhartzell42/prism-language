@@ -818,6 +818,11 @@ impl<T: Clone + 'static> Dynamic<T> {
     pub fn sample(&self, cx: &Cx) -> T {
         (self.read)(cx)
     }
+    /// Its value read with a context of no node ([`crate::cx::detached`]): where a plain
+    /// function's body reads a dynamic it made, which has one value (gap LE).
+    pub fn sample_detached(&self) -> T {
+        crate::cx::detached(|cx| self.sample(cx))
+    }
     /// The dynamic `f` of this one: the same owner and update event, the read mapped.
     pub fn map<U: 'static>(&self, f: impl Fn(&T) -> U + 'static) -> Dynamic<U> {
         let read = self.read.clone();

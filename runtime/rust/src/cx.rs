@@ -148,6 +148,16 @@ pub struct Cx<'w> {
     late: std::cell::RefCell<Option<Fault>>,
 }
 
+/// A read context of no node and no tick (gap LE): a plain function's body has no read
+/// point, and every dynamic it makes stands on its plain parameters and constants, so it
+/// has one value, read here as a build reads (tick 0, the read point after it). No World
+/// answers a first-value query here.
+pub fn detached<T>(f: impl FnOnce(&Cx) -> T) -> T {
+    let ready = crate::world::ReadyMap::default();
+    let cx = Cx { tick: 0, read_at: Cell::new(1), phase: Cell::new(Phase::Constructing), height: None, ready: &ready, pushes: Vec::new(), g: Gathered::default(), late: Default::default() };
+    f(&cx)
+}
+
 impl Cx<'_> {
     /// The tick being run: what writes are stamped with.
     pub fn tick(&self) -> Tick {

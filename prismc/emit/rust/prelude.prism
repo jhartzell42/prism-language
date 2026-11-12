@@ -1553,6 +1553,12 @@ pub fn dyn_constant<T: Clone + 'static>(v: T) -> Dynamic<T> {
     Dynamic::constant(v)
 }
 
+/// A dynamic's value where a plain function's body reads one it made (gap LE): a read
+/// context of no node (`prism_rtl::cx::detached`), since such a dynamic has one value.
+pub fn sample_detached<T: Clone + 'static>(d: &Dynamic<T>) -> T {
+    d.sample_detached()
+}
+
 /// `!MergeAll` of a list as an event value (a merge made where `!MergeAll` is lifted over a
 /// dynamic list, Type System ch. 4): prism_rtl's own node decides each tick's firing.
 pub fn merge_all<T: Clone + 'static>(events: &Array<Event<T>>) -> Event<Array<T>> {

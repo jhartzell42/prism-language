@@ -1021,6 +1021,15 @@ inline void no_fault(const Done& d) {
 template <class T>
 Dynamic<T> dyn_constant(T v) { return Dynamic<T>::constant(std::move(v)); }
 
+/// A dynamic's value where a plain function's body reads one it made (gap LE): a read
+/// context of no node (`Cx::detached`), since such a dynamic has one value.
+template <class T>
+T sample_detached(const Dynamic<T>& d) {
+    static const ReadyMap none;
+    Cx cx = Cx::detached(none);
+    return d.sample(cx);
+}
+
 /// `!MergeAll` of a list as an event value (a merge made where `!MergeAll` is lifted over a
 /// dynamic list, Type System ch. 4): prism_rtl's own node decides each tick's firing.
 template <class T>

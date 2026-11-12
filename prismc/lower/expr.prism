@@ -374,8 +374,33 @@ fn IsWholeObject lx, e = match e.kind:
         if not (NotLifted lx, e.span): False
         else: if (qk != "") and IsWholeFn lx, qk: True
         else: if HasKey lx.g.ctors, qk: False
-        else: (NotLifted lx, e.span) and Fold args, False, \|seen, a| seen or (IsWholeObject lx, a.value) or HoldsTimeWhole lx, a.value
+        else: (NotLifted lx, e.span) and Fold (Range0 (Len args)), False, \|seen, i| seen or WholeArgumentAt lx, qk, args, i
     otherwise: False
+
+# Whether argument `i` of a call of `qk` makes the call a `Dynamic` value: one that is or
+# holds a dynamic whole, at a parameter that does not read it (`ReadAtParameter`).
+WholeArgumentAt: unbounded fn Lx, Text, [Arg], Nat -> Bool
+fn WholeArgumentAt lx, qk, args, i = match args[i]:
+    ? a: (not (ReadAtParameter lx, qk, i)) and ((IsWholeObject lx, a.value) or HoldsTimeWhole lx, a.value)
+    nil: False
+
+# A program function lowered lifted: its time only `$` on top of its types, so it takes
+# its dynamics' values and gives its result's (claude/backend.md, "A function that takes
+# time whole"); a constructor, a method, a prelude function and a widget function aside.
+IsLiftedProgramFn: fn Lx, Text -> Bool
+fn IsLiftedProgramFn lx, qk = if (qk == "") or (IsWholeFn lx, qk) or HasKey lx.g.ctors, qk: False else: match lx.g.vals[qk]:
+    ? v: v.home != "Prelude" and v.sort != "method" and (not (IsWidgetFn v)) and (not (HasEventParameter v.scheme.ty)) and DynOnlyOnTop v.scheme.ty
+    nil: False
+
+# Whether argument `i` of a call of `qk` is read where the call is: a `$` parameter of a
+# program function lowered lifted takes the dynamic's value (gap LE), sampled at the read
+# point, or with a read context of no node in a function's body (`SampledAt`).
+ReadAtParameter: fn Lx, Text, Nat -> Bool
+fn ReadAtParameter lx, qk, i = if not (IsLiftedProgramFn lx, qk): False else: match lx.g.vals[qk]:
+    ? v: match v.scheme.ty:
+        TyFn ignore, ps, ignore: (LayerOf (Or ps[i], TyErr)) == LyDyn
+        otherwise: False
+    nil: False
 
 # An argument that can only be taken whole: its type holds a dynamic or an event below the
 # top (`[[(($a, 1))]]` to a generic function), a bundle aside.
@@ -406,8 +431,25 @@ fn SampledObject lx, env, e:
         &_.whole <= True
     let obj = Own (ValueByKind lxw, env, e)
     if (LayerOf (TypeAt lx, e.span)) != LyDyn: VlOwned obj, (OutTyOf lx, (TypeAt lx, e.span))
-    else: if lx.noCx: VlOwned (Refusal "`{SrcText lx, lx.file, e.span}`, a dynamic a function gives whole, read in a plain function, which has no read point (gap LE)"), t
-    else: VlOwned (XMethod obj, "sample", [[XCx]]), t
+    else: VlOwned (SampledAt lx, obj), t
+
+# A dynamic's value where a reader is wanted: sampled at the read point; in a function's
+# body, which has none, with a read context of no node (`sample_detached`, gap LE). No
+# plain value can depend on a dynamic's value (Type System ch. 4: no function turns a
+# dynamic into its current value), so such a read reaches only a `$` parameter of a
+# function lowered lifted, whose plain result does not show it, or a lifted body's own
+# values, which its caller reads again at its read point.
+SampledAt: fn Lx, Ex -> Ex
+fn SampledAt lx, obj = if lx.noCx: XCall (HelperRef "sample_detached"), [[(XRef obj)]] else: XMethod obj, "sample", [[XCx]]
+
+# An argument at a `$` parameter a lifted function reads (`ReadAtParameter`), in a body that
+# holds its dynamics whole: the `Dynamic`'s value.
+SampledArgument: unbounded fn Lx, Env, Expr -> Ex
+fn SampledArgument lx, env, e:
+    let v = ValueOf lx, env, e
+    match ValueTy v:
+        OutDyn ignore: XRef (SampledAt lx, (Own v))
+        otherwise: Ref v
 
 # A value in a function that takes time whole, or in a call of one: a dynamic is a
 # `Dynamic`. A node's reader is the live dynamic its line made for it (`WholeArgs`), never a
@@ -448,7 +490,20 @@ fn WholeValueOf lx, env, e:
         else: if (LayerOf (TypeAt lx, x.span)) == LyDyn: ValueOf lx, env, x else: VlOwned (XCall (HelperRef "dyn_constant"), [[Own (ValueOf (if ConstantOfTimeAt lx, e: lx else: lxp), env, x)]]), (OutDyn (OutTyOf lx, (Peel full)))
         otherwise:
             if not (NotLifted lx, e.span): DynamicLift lx, env, e
-            else: ValueByKind lx, env, e
+            else: match ?LiftedCallSources lx, e:
+                ? srcs: DynamicLiftOver lx, env, e, srcs
+                nil: ValueByKind lx, env, e
+
+# A call of a program function lowered lifted, in a body that holds its dynamics whole (`$Inc
+# (Or xs[0], ($ 0))` in a function over `[$Nat]`): the call over the values of its `$`
+# arguments, mapped (`DynamicLiftOver`); with none, the constant of its value (gap LE).
+?LiftedCallSources: unbounded fn Lx, Expr -> ?[Expr]
+fn ?LiftedCallSources lx, e = match e.kind:
+    ECall c, args, ignore, ignore:
+        let qk = CalleeKey lx, c
+        if not (IsLiftedProgramFn lx, qk): nil
+        else: ? (Each (Filter (Range0 (Len args)), \|i| (ReadAtParameter lx, qk, i) and (LayerOf (TypeAt lx, (Or args[i], dummyArg).value.span)) == LyDyn), \|i| (Or args[i], dummyArg).value)
+    otherwise: nil
 
 # An expression's operands as a lift maps them: a lifted `if` or `match` maps its
 # condition or scrutinee and its arms' results (`if $useB: $ $q else: $ $p`, a `$$Nat`
@@ -476,10 +531,13 @@ fn BlockResult b = Fold b.stmts, [[]], \|ignore, st| match st.kind:
 # expression over their values, mapped; two are read together, one update event firing
 # when either moves.
 DynamicLift: unbounded fn Lx, Env, Expr -> Vl
-fn DynamicLift lx, env, e:
+fn DynamicLift lx, env, e = DynamicLiftOver lx, env, e, (Filter (MappedOperands e), \|x| (LayerOf (TypeAt lx, x.span)) == LyDyn)
+
+# The same over the operands `srcs`.
+DynamicLiftOver: unbounded fn Lx, Env, Expr, [Expr] -> Vl
+fn DynamicLiftOver lx, env, e, srcs:
     let full = TypeAt lx, e.span
     let t = OutTyOf lx, (Peel full)
-    let srcs = Filter (MappedOperands e), \|x| (LayerOf (TypeAt lx, x.span)) == LyDyn
     let lxp = update lx:
         &_.whole <= False
     let caps = Filter (WithInstances env, (ReadNames (ExprsIn e))), \|n| match env.names[n]:
@@ -2296,9 +2354,13 @@ fn ArgsFor lx, env, v, args:
             let lxw = update lx:
                 &_.whole <= True
             XRef (Own (ValueOf lxw, env, a.value))
+        # a lifted function's `$` parameter in a body that holds its dynamics whole: the
+        # value of the `Dynamic` given (gap LE)
+        else: if lx.whole and ReadAtParameter lx, v.qk, i: SampledArgument lx, env, a.value
         else: ArgumentAt lx, env, (Or ps[i], TyErr), a.value
 
 let dummyExpr = Expr(kind=EError, span=Range(start=0, end=0, origin=InSource))
+let dummyArg = Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0, origin=InSource))
 
 # A constructor applied (claude/backend.md: a record is a struct, a choice an enum with
 # recursive payloads behind `Rc`, a newtype a tuple struct, a unit type a unit struct).

@@ -131,6 +131,12 @@ public:
     Cx(Cx&&) = default;
     Cx& operator=(Cx&&) = default;
 
+    /// A read context of no node and no tick (gap LE): a plain function's body has no read
+    /// point, and every dynamic it makes stands on its plain parameters and constants, so
+    /// it has one value, read here as a build reads (tick 0, the read point after it).
+    /// `ready` answers no first-value query a read here could make.
+    static Cx detached(const ReadyState& ready) { return Cx(0, 1, Phase::Constructing, ready, {}); }
+
     /// The tick being run: what writes are stamped with.
     Tick tick() const { return tick_; }
     /// The read point: the tick during propagation (a read before it), the tick plus one
