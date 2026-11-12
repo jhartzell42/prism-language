@@ -340,7 +340,7 @@ fn InferNameIn env, st, n, span:
         nil: InferGlobal env, st, n, span
 
 # A local's scheme instantiated at a use; a generalized `let`'s use is noted with its
-# instantiation, for lowering (pick LG of the README).
+# instantiation, for lowering.
 InstantiateLocal: unbounded fn St, Scheme, Range, Text -> ((Ty, St))
 fn InstantiateLocal st, sc, span, name:
     if (Len sc.qs) == 0 and (Len sc.cqs) == 0: Instantiate st, sc, span

@@ -1,5 +1,5 @@
 # A `for` over `@PerKey` of a large map, each row's work costly, its hold written with one
-# key changed per click (tests/cost/README.md): only the changed key's inner fires, so a
+# key changed per click: only the changed key's inner fires, so a
 # click costs one row's work and a walk of the keys, not every row's work (Semantics
 # Appendix B, `@PerKey`; round 9 PK). Written by Claude on the claude-self-hosting branch;
 # subject to change.

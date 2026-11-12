@@ -1,6 +1,6 @@
 //! The CLI World's terminal: a program's `Console.Read` and `Console.Print` places on the
-//! process's own standard input and output, one line in, one line out (README.md,
-//! "`Console`: a terminal of lines"). No terminal modes, no cursor, no colour: a shell
+//! process's own standard input and output, one line in, one line out, a terminal
+//! of lines. No terminal modes, no cursor, no colour: a shell
 //! script, an agent, a person with a wooden board or a teletype can stand at the other end.
 //!
 //! ```prism

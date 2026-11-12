@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The GUI benchmark (bench/gui/README.md): js-framework-benchmark's operations on the same
+# The GUI benchmark: js-framework-benchmark's operations on the same
 # table in Prism compiled to C++ and to Rust, and in C with GTK 3 (the Cuis Smalltalk
 # table is run only when named: Jimmy took it out of the scripted runs). Builds each, runs every operation RUNS times after WARMUP untimed runs, one
 # process per operation and implementation, and writes bench/gui/RESULTS.md: the machine, the
@@ -121,7 +121,7 @@ rss_mb() { # impl op: the process's peak resident memory, MB (`time -l`'s bytes 
     echo "## Time, ms: median (fastest–slowest)"
     echo
     echo "From the input (a press queued, a button clicked, an action performed) to the frame"
-    echo "that shows its result handed to the window system (bench/README.md, \"What is timed\")."
+    echo "that shows its result handed to the window system."
     echo
     printf "| Operation |"; for i in "${impls[@]}"; do printf " %s |" "$i"; done; echo
     printf "|---|"; for i in "${impls[@]}"; do printf "%s" "---|"; done; echo

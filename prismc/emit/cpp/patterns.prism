@@ -130,7 +130,7 @@ fn CppMatch cp, s, arms, t:
     let lines = Each arms, \|a| MatchArm cp, subject, a, False
     MatchExpr (CppType cp, t), "{bind}{Join lines, "\n"}\n{MatchTail arms}"
 
-# A `match` or an if-let chain that is a function's value (pick CB of the README): the same
+# A `match` or an if-let chain that is a function's value: the same
 # tests, each arm returning its value (an arm's own `match` returning in turn), with no
 # statement expression, `Slot` or jump.
 ReturnMatch: unbounded fn Cp, Ex, [XArm], OutTy -> Text
@@ -155,7 +155,7 @@ fn MatchTail arms:
         nil: False
     if ends: "" else: "::prism_rtl::unreachable(\"no arm matched\");\n"
 
-# A `match` whose type the model does not give (a job's turn, gap TT of the README): a
+# A `match` whose type the model does not give (a job's turn): a
 # chain of conditional expressions, whose type C++ works out; a guard's test binds the
 # pattern's names once for the test and once for the value.
 TernaryMatch: unbounded fn Cp, Ex, [XArm] -> Text

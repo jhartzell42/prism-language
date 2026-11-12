@@ -56,7 +56,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `build`, `swap`, `leave`, `patch`, `clean_up`, `edges`, `release`, each defaulting to
   nothing; the tick's methods take `self: Rc<Self>` and `&mut Cx`, so a node can put
   itself on a list.
-- **A local is its binder's name and id** (prismc/README.md, pick UN): the model's
+- **A local is its binder's name and id** (prismc/lower/mod.prism, "Names"): the model's
   `XVar` of a program's local is `name_<kind><id>`, the id the checker gave the binder and
   recorded at its every use, so no two locals of a declaration share a spelling and none
   hides a function, a runtime name or a keyword.
@@ -68,7 +68,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
 
 - `Nat`, `Int` → `rt::Nat`, `rt::Int` (bignums with an `i64` fast path); `U8` → `u8`;
   `Float` → `rt::Float` (an `f64` whose `==` is bit identity and whose `Ord` is
-  `total_cmp`, so it is `Eq`, `Ord` and `Hash`: prismc/README.md, pick BF); `Bool` → `bool`; `Char` → `char`; `Text` → `rt::Text` (UTF-8: a
+  `total_cmp`, so it is `Eq`, `Ord` and `Hash`: runtime/rust/src/float.rs); `Bool` → `bool`; `Char` → `char`; `Text` → `rt::Text` (UTF-8: a
   byte range of a shared `Rc<str>`); `Cursor` → `rt::Cursor` (the text and a byte
   index); `unit` → `()`.
 - A record → a `struct`, fields in declaration order; a choice → an `enum`, recursive
@@ -170,7 +170,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   the kind, each holding its tag's struct; `Elem r`, a document's element → `crate::Elem`,
   a variant per element tag's `Level`; `Element r o` → `rt::Element<Elem>`, either a live
   element, `Live` (its level at the build, tag and plain fields, and its level over time, a
-  `Dynamic<Elem>`), or a description, `Described` (prismc/README.md, pick RV; gap LE).
+  `Dynamic<Elem>`), or a description, `Described` (prismc/lower/).
 - An element tag also → a description record, `{Tag}_desc`: each field as an application
   gives it, a `$` field its `Dynamic`, an event field its `Event`, a plain field its value
   (`DescDefOf`, from the tag's declaration).
@@ -361,7 +361,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   of the holds `$d` reads: when its flag was set this tick it fires `$d`'s value after the
   tick, read under `Cx::after` (the read point moved to n+1 for the read), so the event
   half fires at n with the value after n while a sample in n reads the opening value
-  (prismc/README.md, pick UP). A structural dynamic is written the same way, published at
+  (prismc/lower/node/dynamics.prism, `!Updated $d`). A structural dynamic is written the same way, published at
   the start of the tick after its structure moved (Structural dynamics, below).
 - **The patch pass.** `Node::patch` calls `cx.changed(path, level)` for each dirty place;
   `rt::Document::diff` drops a `Changed` whose `Level` did not move.
@@ -397,7 +397,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   block (`parent_wrote_{m}`), firing the entry after the tick in the tick of the change.
   A `for` returning an event consolidates its rows' firings into `!(K ==> T)`, one a
   tick; one returning a dynamic gathers the rows' results into `$(K ==> T)`, a structural
-  dynamic (below). (prismc/README.md, pick RE.)
+  dynamic (below).
 - **`rebuild $x:`** → the same with one generation at `path/#g`; a `rebuild` returning an
   event is a builder and a switch in one path (round 46 RD). One returning a dynamic,
   `$$a`, gives the current generation's result as an `rt::Dynamic` (the generation's
@@ -419,10 +419,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   S(n−1). The patch pass and the builders of n+1 read S(n). The host's own rows read the
   structure itself, `host_k_doc_direct` (S(n) from n's construction step on; a read of a
   marked snapshot there before it is taken is a panic, not a value), so a newborn child
-  place gets its row in its birth tick (prismc/README.md, pick ST).
+  place gets its row in its birth tick.
 - **`for k, $v <- $each:` over a map of dynamics** (`$(k ==> $v)`: a host document's
   entries `$(Path ==> $Elem c)`, `@PerKey`'s output, a `for` gathering `rebuild`s'
-  dynamics; ruling FV, prismc/README.md pick FV) → the row's binder is its entry
+  dynamics; ruling FV) → the row's binder is its entry
   flattened (`ForLine` makes it an `EntryFlatten` when the source's value type is a
   dynamic): the current inner `Hold<Option<Dynamic<V>>>` (`{v}_inner`), set at the row's
   construction from the `value` its builder hands it, and an `rt::Follow` (`{v}_follow`),
@@ -675,8 +675,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
     `Hold<Option<T>>` is set there (`LateAskedPlace`, read as `LatePlaceBn`), and the
     element its pushes are keyed by is kept then, in `{f}_element`, a
     `RefCell<Option<Pod>>` the push compares (`Wx.lateElements`), the place listening
-    from then on. Refused: the same with a bundle answer, with a pattern for the
-    answer, or in a hosted scope (the `unbuilt` marker of `BindLate`);
+    from then on. With a bundle answer taken apart by a tuple pattern
+    (`((p, $s)) <- Pad.Port(name="port {n}")`) the place asks its whole first value
+    there (`BundleOutputOf`'s `asked`, `IsAskedBundle`): each plain part is a late name
+    over a hold written once (`LatePlainPartOf`, a part under a pattern of its own one
+    hold under `PartHoldKey`), each `$` part's hold is empty until then (`AskedPart`,
+    read as `LatePlaceBn`), the element its pushes are keyed by kept in a cell
+    (`AskedElement`, `Wx.lateElements`), an event part a node as ever; `{name}#asked`
+    keeps `PreBind` off those names. Refused: an answer with no name of its own (every
+    state part `ignore`), or in a hosted scope (the `unbuilt` marker of `BindLate`);
   - a plain `let` of the node that reads a late name is late too (`MarkLateLets`): a
     getter of the node that computes it (`late_{name}`, `LateLetGetters`), bound under
     `{name}#late` as the split line's names are, so what reads it reads it late in turn;
@@ -707,7 +714,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
     is numbered at once (`LateRowSelect`). The split line gives so where it is a
     building `match` or `if`, or a widget of one clause whose block ends on one and is
     split at no line of its own (`IsGivingLine`: inlined, its arms' rows are lowered
-    at the line), in any scope built in the order of its places (a hosted one too;
+    at the line), or a widget parameter applied with no arguments whose argument gives
+    so (`IsGivingParam`: the argument is lowered at the line in its caller's
+    environments, `ApplyWidgetParam`), in any scope built in the order of its places (a hosted one too;
     not one built at its host's line, `Wx.lateHosts`), its result a plain value or a
     bundle taken apart by a tuple pattern (the plain parts' names are the split names,
     each read out of the kept parts, `LateParts`; a bundle bound whole to one name is
@@ -716,10 +725,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
     builds its generations at its build (`Wx.lateGens`) the taker's rows are numbered
     late as well: both built at once, the taker's after the split line's
     (`LateTaking`, a wait in `ScopeSteps`' phase 1), both numbered at their places.
-    Refused: such a line under any other split (a blueprint value, a bundle bound
-    whole, a late name of another kind; a widget that calls itself in the split line's
-    arm is `ArmRowOf`'s refusal), and one whose plain result no name binds where it is
-    late (a tuple pattern's and `ignore <-` lower);
+    Refused: such a line under any other split (a blueprint value the node holds, a
+    bundle bound whole, a late name of another kind), and one whose plain result no
+    name binds where it is late (a tuple pattern's and `ignore <-` lower);
   - a building line above that takes the plain result of a building `match` or `if`
     at its build (`if n > 15:` above `n <- match mode:`, a widget's plain argument, a
     builder's rows) needs the result before either row
@@ -1223,10 +1231,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `Wx.genPhase`), the builders, the places sent, the subscriptions. A generation built
   again after the row is numbered (`numbered`) numbers its new row at once
   (`LateRowSelect`). Every row inside such a row does the same, so each tells its
-  block what its generations left unbuilt when it is built. Refused there: the result
-  beside a `for`, a `rebuild` or a widget that calls itself in the arm (their rows
-  take their numbers as they are built), and a widget that calls itself in any row
-  inside.
+  block what its generations left unbuilt when it is built. A widget that calls itself
+  there (`GivesLate`: such a row, or the split line under `GivenUnnumbered`) gets
+  shared rows of their own, numbered late (`lx.shared` under `{qk}#late`; `ArmRowOf`'s
+  `sharedLate`): built with no `base`, their build after the node kept in
+  `number_later`, the calls inside them numbered late in turn; the row holds no block,
+  so the node that builds it keeps the step that numbers it in `{name}_number`
+  (`SharedNumbered`, a weak `self`), run in the order of the places as an arm row's is.
+  Refused there: the result beside a `for` or a `rebuild` in the arm (their rows take
+  their numbers as they are built).
 - **A host whose position has no number at the build** (`PlaceUnknownAtBuild`: in a row
   numbered late, or below a gappy generation built after the node) is made at
   `Path::root()` and placed once the node stands, where the construction step reaches
@@ -1234,7 +1247,14 @@ it make every program an interpreter run, and every type mistake a runtime fault
   scope's places ask their first values after that, as a late host's do
   (`Wx.lateHosts`): a place with a plain answer bound to a name there is a late name
   too, its hold set where the scope's places ask (`LateHostedOutput`,
-  `ElementOutputOf`). Refused: such a place whose answer no plain name binds, and
+  `ElementOutputOf`). A hosted place with a plain answer bound to a name below a
+  building line of its own block whose rows may differ in width (`BelowGappyLine`: a
+  building `match` or `if`, a widget that gives as one, a widget of several clauses)
+  in a scope with no late host is the same late name: it asks its host in its
+  scope's turn of the construction step, after the scope's generations and before
+  its deferred ones (`ScopeSteps`' `asked`, `Wx.lateFirsts`), its path read from the
+  node (`FirstValueLetAt` with `node`). Refused: such a place whose answer no plain
+  name binds (a `$` or a bundle answer below such a line too), and
   a hosted node's own first-value query spelled before its node in a row numbered
   late (`PlaceNumber`).
 - **A widget that calls itself**, of one clause or of several (plain parameters, no type
@@ -1842,7 +1862,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `RegexReplacement::lit(p, f, r)`, `p` and `r` as written between the delimiters, each
   built once in a `thread_local!` and cloned at each use; the C++ runtime's spelling is
   `Regex::lit`, `RegexReplacement::lit` in a function-local `static`, and `compile` for
-  `new` (runtime/cpp/README.md, "Regular expressions").
+  `new` (runtime/cpp/include/prism_rtl/regex.hpp).
 - `cells`: `Tick`, `Hold`, `Stamped`, `Cache`, `Snapshot` (`mark`, `marked`, `take`,
   `take_compared`, `queue`, `published`, `get`, `current`), `Port` (`subscribe`, `unsubscribe`, `lien`, `release`,
   `demand`, `fire`, `kept`, `subscribe_above`, `raise`, `height`), `Handle`, `Demand`, `Event`, `Dynamic`, `Defer`, `Job`,
@@ -1863,7 +1883,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
 ## The C++ side
 
 `prismc compile --target cpp` prints the same model as C++20 over `runtime/cpp` (the C++
-`prism_rtl`, whose README maps each Rust type of the library to its C++ form), through
+`prism_rtl`, which gives each Rust type of the library its C++ form), through
 prismc/emit/cpp/ and its templates (`Emit.Cpp.Templates`). Everything above holds construct for construct;
 what differs is how C++ spells it.
 
@@ -1872,12 +1892,12 @@ what differs is how C++ spells it.
   `types.hpp` (its value types, choices with their cases among them, each after the types
   it holds by value), `module.hpp` (prototypes, nodes and jobs) and, when it has templates,
   `generic.hpp`, each including only the
-  layers of the modules it needs (prismc/README.md, pick MH); `src/elem.decl.hpp` and
+  layers of the modules it needs (prismc/emit/cpp/templates/mod.prism); `src/elem.decl.hpp` and
   `src/elem.types.hpp` for `crate::Elem` and `crate::Output` (declared, and defined with
   their cases); `src/programs.hpp` (the
   program classes); `src/main.cpp` (`Elem`'s and `Output`'s definitions, `test_world()`,
   `main`), `src/prelude.hpp` and the modules' definitions in translation units,
-  `src/unit_N.cpp`, several small modules to a unit (prismc/README.md, pick SF). The
+  `src/unit_N.cpp`, several small modules to a unit (prismc/emit/cpp/mod.prism). The
   modules are the namespaces `crate::check::env`, nested as their names are, and every
   reference to another module's item is from `crate::`. A program class has the static `build(args, ready)`
   and the virtual `tick` and `compact`; `main` runs `test` under the C++ Test World and a
@@ -1889,8 +1909,8 @@ what differs is how C++ spells it.
   whose `==` and `<=>` are its value's exactly when the value has them, the pointers
   compared first as Rust's `Rc<T: Eq>` does, so that a payload
   compares, orders, prints and goes out as plain data by its value, as Rust's `Rc<T>` of a
-  value does, and a node's `Rc` compares not at all (identity is `ptr_eq`; prismc/README.md,
-  pick CH). The model's `*x` is `*x` where the printer knows `x` is an `Rc`, `x` where it
+  value does, and a node's `Rc` compares not at all (identity is `ptr_eq`;
+  runtime/cpp/include/prism_rtl/rc.hpp). The model's `*x` is `*x` where the printer knows `x` is an `Rc`, `x` where it
   knows `x` is a reference, and `prism_rtl::deref(x)` where it knows neither (pick PT). `?a` is
   `std::optional`, `~a` `Fallible`, a tuple `std::tuple`, `Rc<dyn Fn>` `prism_rtl::Fn`, a
   job `JobRef`; `Float` is `prism_rtl::Float`, a `double` whose `==` is bit identity and
@@ -1903,7 +1923,7 @@ what differs is how C++ spells it.
   statement expressions (g++ and clang++ both take them); a `match`'s value is a
   `prism_rtl::Slot` of the type the model gives it, set by the arm that holds, which then
   leaves by `goto`, except that a function's body ending in a `match` returns from each
-  arm instead (pick CB of prismc/README.md); `break 'l v` sets the label's slot and jumps. `?` is `TRY(..)`, a GNU
+  arm instead (prismc/emit/cpp/patterns.prism); `break 'l v` sets the label's slot and jumps. `?` is `TRY(..)`, a GNU
   statement expression too, which moves out of its operand: lowering tries only
   temporaries, and refuses `?` of a place. A
   pattern tests with `prism_rtl::is<Case>` and binds `prism_rtl::as<Case>(v).aN`.
@@ -1944,7 +1964,7 @@ tick 0 and again by each runtime).
   `ToPod` and `FromPod` whatever its fields: a regex, a replacement, a group and a match
   go out as plain data (a regex as its spelling, `Pod::Shown`), as a `Cursor` does, and
   `FromPod` is a mismatch.
-- **The C++ link.** RE2 is a prerequisite of every C++ build (`runtime/cpp/README.md`);
+- **The C++ link.** RE2 is a prerequisite of every C++ build (`runtime/cpp/Makefile`);
   the emitted Makefile links `$(shell pkg-config --libs re2)` after `libprism_rtl.a`,
   in the CLI and the canvas variant alike.
 
@@ -2042,7 +2062,7 @@ table's rows went over `@PerKey`; GTK 3 is the toolkit written in C beside it.
   M of it painting and a C++ select at 20.6 M with 1.4 M painting: the program's own ticks
   are 18.4 M in Rust against 19.2 M in C++, equal within 5%. About 11 M of every Rust
   frame is softbuffer presenting the whole frame on macOS, a new zeroed buffer per frame
-  copied whole and made a `CGImage` (worlds/canvas/rust/README.md, "Painting"); the C++
+  copied whole and made a `CGImage` (worlds/canvas/rust/src/app.rs); the C++
   World sets its layer's image from its own buffer, and on X11 presents only the damaged
   boxes. That is a change to `worlds/canvas/rust`, which touches no template; if the Rust
   World presented as the C++ one does, the select column would read, by the instruction
@@ -2053,8 +2073,8 @@ table's rows went over `@PerKey`; GTK 3 is the toolkit written in C beside it.
   which stands either way; the C++ `Map` changing its own nodes in place, as Rust's does,
   took about a seventh off remove's build on the Linux machine, and the rest is unprofiled.
 - **prismc as the workload: Rust does less work.** Each compiler compiling itself (Mac M2
-  Pro, 5 November, other jobs at load 3 to 13, prismc/README.md "Arrays and maps: what
-  they hold"): the Rust prismc 586 G instructions, 45 to 46 s, 275 MB peak footprint; the
+  Pro, 5 November, other jobs at load 3 to 13, prismc/emit/rust/ and
+  prismc/emit/cpp/): the Rust prismc 586 G instructions, 45 to 46 s, 275 MB peak footprint; the
   C++ prismc 738 G, 65 to 68 s, 310 to 324 MB. Rust retires 21% fewer instructions and
   holds about 10% less memory on a compiler-shaped program.
 - **Memory on the GUI table goes to C++.** On the table's small operations (Mac M2 Pro, 5
@@ -2076,11 +2096,11 @@ on (`bench/building/run.sh`):
   binary is 2.5 times the size.
 - **The emit itself favours Rust:** 65.9 s against 86.2 s. The Rust printer writes about
   115,000 lines for prismc; the C++ printer writes 185,385 lines across 63 translation
-  units and 280 headers (prismc/README.md, "The C++ bootstrap"): per-module headers, each
+  units and 280 headers (bootstrap/bootstrap-cpp.sh): per-module headers, each
   type declared, defined and its cases laid out in separate files, where Rust's `mod` needs
   one file.
 - **The build's CPU, not its wall time, is the large gap.** On 12 cores (Mac M2 Pro, 4
-  November, other jobs running, prismc/README.md "Building prismc, C++ against Rust")
+  November, other jobs running, bootstrap/bootstrap-cpp.sh)
   cargo spends 255 s of CPU on the emitted crate with its dependencies, 2.8 cores busy on
   average; `make -j12 CXX=clang++ OPT=-O3` spends 1,003 s, about 10 cores busy throughout,
   and with the module tree's 62 units 1,306 to 1,314 s (5 November, pick SF's table).
@@ -2104,13 +2124,13 @@ on (`bench/building/run.sh`):
   into anything (Jimmy's rule: reason about undefined behaviour in C++). The sanitizer runs
   (ASan and UBSan under Homebrew clang on macOS, g++ on Linux; `runtime/cpp` and
   `worlds/canvas/cpp` `make test`) are the check the C++ side has, and a sanitizer finds
-  only what a test exercises. The Rust runtime has no `unsafe` (runtime/rust/README.md);
+  only what a test exercises. The Rust runtime has no `unsafe` (runtime/rust/src/);
   the Rust canvas World has one `unsafe` block, the macOS colour-space call. So a wrong
   template fails loudly on the Rust side and may run quietly on the C++ side; with Rust as
   the default, every compiled program is checked by rustc before it runs, and the C++
   target is checked against it (the C++ prismc emits the Rust prismc's Rust byte for byte).
 - **C++'s emitted code leans on GNU extensions.** Every block, `match` and `TRY` is a GNU
-  statement expression (claude/handoff.md; prismc/README.md picks SE and TR): g++ and
+  statement expression (claude/handoff.md; runtime/cpp/include/prism_rtl/lang.hpp): g++ and
   clang++ take them, and a compiler without the extension cannot build the output. Rust's
   emitted code is Rust.
 - **Portability goes two ways.** The C++ canvas World has a Cocoa path and an X11 path

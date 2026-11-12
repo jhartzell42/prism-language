@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The C++ bootstrap and its fixed point (bootstrap/README.md, "The C++ target").
+# The C++ bootstrap and its fixed point.
 #
 # A starting prismc compiles prismc/ to C++ (`--target cpp`) into target/bootstrap/cpp-gen1,
 # make builds it with $CXX (g++ by default), and gen1's binary compiles prismc/ to C++ again

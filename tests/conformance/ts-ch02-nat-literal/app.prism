@@ -1,5 +1,5 @@
 # A number literal in a pattern is of the scrutinee's type: `0` against a `Nat` is a
-# `Nat` (prismc/README.md, pick CH), in a clause and in a `match`. Written for prismc's
+# `Nat`, in a clause and in a `match`. Written for prismc's
 # back end. Work in progress, subject to change.
 emit Ui.*
 test mod Tests

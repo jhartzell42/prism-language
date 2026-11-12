@@ -450,7 +450,7 @@ fn LinesInto wx, benv0, menv0, b, open:
     let ((wxq, benvq, menvq)) = Fold stmts, ((wx, benv0, menv0)), \|((w, be, me)), s| LatePlaceParts w, be, me, s
     # (and the plain answer of a place under a host that is placed once the node stands,
     # `LateHostedOutput`)
-    let ((wxp, benvp, menvp)) = Fold stmts, ((wxq, benvq, menvq)), \|((w, be, me)), s| LateHostedOutput w, be, me, s
+    let ((wxp, benvp, menvp)) = Fold stmts, ((wxq, benvq, menvq)), \|((w, be, me)), s| LateHostedOutput w, be, me, stmts, s
     let ((wx0, benv, menv)) = MarkLateLets wxp, benvp, menvp, fns, stmts, (Len stmts)
     let ((wx1p, be1, me1)) = Fold stmts, ((wx0, benv, menv)), \|((w, be, me)), s| PreBind w, be, me, s
     let wx1 = LateLetGetters wx1p, me1, stmts
@@ -503,8 +503,10 @@ fn IsGivingLine lx, menv, e, depth = match e.kind:
         match ((callee.kind, (depth -? 1))):
             (((EName n), (? less))):
                 # (a widget of the block, a parameter or a value the node holds: not
-                # inlined from a declaration)
-                if (Len n.path) == 1 and ((HasKey menv.names, (SNameKey n)) or HasKey menv.names, "{SNameKey n}#blueprint"): False else:
+                # inlined from a declaration; but a widget parameter applied with no
+                # arguments is its argument lowered here, in its caller's environments,
+                # `ApplyWidgetParam`, so it gives as its argument does)
+                if (Len n.path) == 1 and ((HasKey menv.names, (SNameKey n)) or HasKey menv.names, "{SNameKey n}#blueprint"): IsGivingParam menv, n, args, less else:
                     let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
                     match ?q:
                         ? "Prelude.@Element": False
@@ -523,6 +525,14 @@ fn IsGivingLine lx, menv, e, depth = match e.kind:
                             nil: False
                         nil: False
             otherwise: False
+
+# Whether a name of the block applied as a line gives as `IsGivingLine` asks: a widget
+# parameter applied with no arguments, whose argument does (`ApplyWidgetParam` lowers
+# the argument at the line, in its caller's environments).
+IsGivingParam: unbounded fn Env, SName, [Arg], Nat -> Bool
+fn IsGivingParam menv, n, args, depth = if (Len args) > 0 or HasKey menv.names, "{SNameKey n}#blueprint": False else: match menv.names[SNameKey n]:
+    ? (BnWidget x, ignore, cmenv, clx): IsGivingLine clx, cmenv, x, depth
+    otherwise: False
 
 # Whether a building line's result is late: a building `match` or `if` whose arms end on a
 # plain result, a widget block that ends late, a widget of one clause applied whose block
@@ -1300,11 +1310,44 @@ fn LateFieldPlaces wx, benv, menv, fns, s, grew = match s.kind:
             else:
                 let t = OutTyOf lx, (Peel full)
                 let ((rs, w2)) = FreshName wx, (LocalNameAt lx, nkey, n.span)
-                let unbuilt = BnLocal (Refusal "the answer `{nkey}` of a place whose constant field reads a late result, read at its block's build by a line of the block's node that takes a value there"), Owned, t
+                let unbuilt = AnswerUnbuilt nkey, t
                 let inMethods = if dynamic: LatePlaceBn rs, t else: LatePlainBn rs, t
                 ((w2, (Bind (Bind benv, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind menv, nkey, inMethods), "{nkey}#late", unbuilt), True))
+        # a bundle answer taken apart by a tuple pattern (`((p, $s)) <- Pad.Port(..)`):
+        # the place asks its whole first value there (`BundleOutputOf`), so each plain
+        # part is a late name as a late place's is (`LatePlainPartOf`), and each `$`
+        # part's hold is empty until then (`LatePlaceBn`); an event part is a node as
+        # ever. `{name}#asked` tells these names from the prebound ones (`PreBind`).
+        PTuple ps:
+            let marked = Fold (BinderNames p), False, \|f, n| f or HasKey menv.names, "{SNameKey n}#late"
+            if (not (IsBundlePlace wx.lx, init)) or (not (Emits wx, wx.pos)) or marked or (not (ReadsLateVia fns, menv, init)) or (ReadsLateOfPlaces fns, menv, init): ((wx, benv, menv, grew))
+            else:
+                let ((wxs, bes, mes)) = Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| LateAskedPartOf w, be, me, init, ps, q
+                ((wxs, bes, mes, grew or (Fold (BinderNames p), False, \|f, n| f or HasKey mes.names, "{SNameKey n}#late")))
         otherwise: ((wx, benv, menv, grew))
     otherwise: ((wx, benv, menv, grew))
+
+# The answer of a place whose constant field reads a late result (a plain or `$` answer,
+# a bundle's `$` part), as the block's build reads it: it has none there.
+AnswerUnbuilt: fn Text, OutTy -> Bn
+fn AnswerUnbuilt nkey, t = BnLocal (Refusal "the answer `{nkey}` of a place whose constant field reads a late result, read at its block's build by a line of the block's node that takes a value there"), Owned, t
+
+# One part of a World's bundle place whose constant field reads a late result
+# (`LateFieldPlaces`): a `$` part's hold is empty until the place asks (`LatePlaceBn`), a
+# plain part is a late name (`LatePlainPartOf`), an event part is left as it is.
+LateAskedPartOf: unbounded fn Wx, Env, Env, Expr, [Pattern], Pattern -> ((Wx, Env, Env))
+fn LateAskedPartOf w, be, me, init, ps, q = match q.kind:
+    PName n if (LayerOf (BinderTy (WidgetLetLx w.lx, n.span), n.span)) == LyDyn:
+        let nkey = SNameKey n
+        let lx = WidgetLetLx w.lx, n.span
+        let full = BinderTy lx, n.span
+        if TimeWithin (Peel full): ((w, be, me))
+        else:
+            let t = OutTyOf lx, (Peel full)
+            let ((rs, w2)) = FreshName w, (LocalNameAt lx, nkey, n.span)
+            let unbuilt = AnswerUnbuilt nkey, t
+            ((w2, (Bind (Bind be, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind (Bind me, nkey, (LatePlaceBn rs, t)), "{nkey}#late", unbuilt), "{nkey}#asked", unbuilt)))
+    otherwise: LatePlainPartOf w, be, me, init, ps, q, False
 
 # The plain parts of a bundle a place answers (`((port, !rx, $peers)) <- Pad.Socket(..)`)
 # in a hosted scope whose host answers late (`Wx.lateHosts`): the place asks its first
@@ -1320,44 +1363,56 @@ fn LateFieldPlaces wx, benv, menv, fns, s, grew = match s.kind:
 LatePlaceParts: unbounded fn Wx, Env, Env, Stmt -> ((Wx, Env, Env))
 fn LatePlaceParts wx, benv, menv, s = match s.kind:
     SBind p, init, nil: if not ((HasNat wx.lateHosts, wx.pos.scope) and IsBundlePlace wx.lx, init): ((wx, benv, menv)) else: match p.kind:
-        PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
-            PName n:
-                let nkey = SNameKey n
-                let lx = WidgetLetLx w.lx, n.span
-                let full = BinderTy lx, n.span
-                if (IsTimeName nkey) or (LayerOf full) != LyPlain or (TimeWithin full) or IsBundle full: ((w, be, me))
-                else:
-                    let t = OutTyOf lx, (Peel full)
-                    let ((rs, w2)) = FreshName w, (LocalNameAt lx, nkey, n.span)
-                    let unbuilt = BnLocal (Refusal "the plain part `{nkey}` of a late place's answer read at its block's build by a line of the block's node that takes a value there (a place's constant field)"), Owned, t
-                    ((w2, (Bind (Bind be, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind (Bind me, nkey, (LatePlainBn rs, t)), "{nkey}#late", unbuilt), "{nkey}#lateplace", unbuilt)))
-            # a plain part taken apart by a pattern of its own (`((((id, owner)), $state))`):
-            # the part has one hold, bound under the pattern's own key (`PartHoldKey`,
-            # which `?BindingOfName` hands `BundleOutputOf`), and each name the pattern
-            # binds is a late name, a getter that matches the part by the pattern
-            otherwise:
-                let partTys = BundlePartTys (LineOutFull w.lx, init)
-                let at = Len (Filter ps, \|other| other.span.start < q.span.start)
-                let partTy = Or partTys[at], TyErr
-                let names = Filter (BinderNames q), \|n| not (IsTimeName (SNameKey n))
-                if (Len names) == 0 or (LayerOf partTy) != LyPlain or (TimeWithin partTy) or IsBundle partTy: ((w, be, me))
-                else:
-                    let pt = OutTyOf w.lx, (Peel partTy)
-                    let ((hold, w1)) = FreshName w, "part_{SpanStem q.span}"
-                    let held = LatePlainBn hold, pt
-                    let read = match held:
-                        BnLocal ex, ignore, ignore: ex
-                        otherwise: InternalBug "a late place's plain part with no hold"
-                    Fold names, ((w1, be, (Bind me, (PartHoldKey q), held))), \|((w2, be2, me2)), n|
-                        let nkey = SNameKey n
-                        let lx = WidgetLetLx w2.lx, n.span
-                        let t = OutTyOf lx, (Peel (BinderTy lx, n.span))
-                        let ((getter, w3)) = FreshName w2, "late_{LocalNameAt lx, nkey, n.span}"
-                        let unbuilt = BnLocal (Refusal "the name `{nkey}` inside the plain part of a late place's answer read at its block's build by a line of the block's node that takes a value there (a place's constant field)"), Owned, t
-                        let w4 = LateGetters w3, [[(LateName(getter=getter, ?part=nil, ty=t, name=nkey, ?within=(? ((q, partTy)))))]], read, [[]]
-                        ((w4, (Bind (Bind be2, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind (Bind me2, nkey, (BnLocal (XMethod XSelf, getter, [[]]), Owned, t)), "{nkey}#late", unbuilt), "{nkey}#lateplace", unbuilt)))
+        PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| LatePlainPartOf w, be, me, init, ps, q, True
         otherwise: ((wx, benv, menv))
     otherwise: ((wx, benv, menv))
+
+# One plain part of a late place's answer, `q` of the tuple pattern `ps` (`LatePlaceParts`,
+# `LateFieldPlaces`): a name is a late name, the value of its hold once the place has
+# asked its first value (`LatePlainBn`); a pattern of its own has one hold for the part,
+# under `PartHoldKey`, and each name it binds is a late name, a getter that matches the
+# part by the pattern. `ofPlaces`: the place asks where the scope's places do
+# (`{name}#lateplace`), not where a late result is built. Event and `$` parts are no
+# plain part: left as they are.
+LatePlainPartOf: unbounded fn Wx, Env, Env, Expr, [Pattern], Pattern, Bool -> ((Wx, Env, Env))
+fn LatePlainPartOf w, be, me, init, ps, q, ofPlaces:
+    let PlacesMark = \|env, nkey, unbuilt| if ofPlaces: Bind env, "{nkey}#lateplace", unbuilt else: Bind env, "{nkey}#asked", unbuilt
+    match q.kind:
+        PName n:
+            let nkey = SNameKey n
+            let lx = WidgetLetLx w.lx, n.span
+            let full = BinderTy lx, n.span
+            if (IsTimeName nkey) or (LayerOf full) != LyPlain or (TimeWithin full) or IsBundle full: ((w, be, me))
+            else:
+                let t = OutTyOf lx, (Peel full)
+                let ((rs, w2)) = FreshName w, (LocalNameAt lx, nkey, n.span)
+                let unbuilt = BnLocal (Refusal "the plain part `{nkey}` of a late place's answer read at its block's build by a line of the block's node that takes a value there (a place's constant field)"), Owned, t
+                ((w2, (Bind (Bind be, nkey, unbuilt), "{nkey}#late", unbuilt), (PlacesMark (Bind (Bind me, nkey, (LatePlainBn rs, t)), "{nkey}#late", unbuilt), nkey, unbuilt)))
+        # a plain part taken apart by a pattern of its own (`((((id, owner)), $state))`):
+        # the part has one hold, bound under the pattern's own key (`PartHoldKey`,
+        # which `?BindingOfName` hands `BundleOutputOf`), and each name the pattern
+        # binds is a late name, a getter that matches the part by the pattern
+        otherwise:
+            let partTys = BundlePartTys (LineOutFull w.lx, init)
+            let at = Len (Filter ps, \|other| other.span.start < q.span.start)
+            let partTy = Or partTys[at], TyErr
+            let names = Filter (BinderNames q), \|n| not (IsTimeName (SNameKey n))
+            if (Len names) == 0 or (LayerOf partTy) != LyPlain or (TimeWithin partTy) or IsBundle partTy: ((w, be, me))
+            else:
+                let pt = OutTyOf w.lx, (Peel partTy)
+                let ((hold, w1)) = FreshName w, "part_{SpanStem q.span}"
+                let held = LatePlainBn hold, pt
+                let read = match held:
+                    BnLocal ex, ignore, ignore: ex
+                    otherwise: InternalBug "a late place's plain part with no hold"
+                Fold names, ((w1, be, (Bind me, (PartHoldKey q), held))), \|((w2, be2, me2)), n|
+                    let nkey = SNameKey n
+                    let lx = WidgetLetLx w2.lx, n.span
+                    let t = OutTyOf lx, (Peel (BinderTy lx, n.span))
+                    let ((getter, w3)) = FreshName w2, "late_{LocalNameAt lx, nkey, n.span}"
+                    let unbuilt = BnLocal (Refusal "the name `{nkey}` inside the plain part of a late place's answer read at its block's build by a line of the block's node that takes a value there (a place's constant field)"), Owned, t
+                    let w4 = LateGetters w3, [[(LateName(getter=getter, ?part=nil, ty=t, name=nkey, ?within=(? ((q, partTy)))))]], read, [[]]
+                    ((w4, (Bind (Bind be2, nkey, unbuilt), "{nkey}#late", unbuilt), (PlacesMark (Bind (Bind me2, nkey, (BnLocal (XMethod XSelf, getter, [[]]), Owned, t)), "{nkey}#late", unbuilt), nkey, unbuilt)))
 
 # The key a late place's plain part under a pattern of its own keeps its hold by
 # (`LatePlaceParts`): the pattern's place in the source.
@@ -1370,8 +1425,8 @@ fn PartHoldKey q = "#parthold{SpanKey q.span}"
 # do, once the host is placed (`Wx.lateFirsts`, `ElementOutputOf`), and its name is a
 # late name as a late place's plain part is (`LatePlaceParts`): the value its hold has
 # from then on, `{name}#late`, `{name}#lateplace`.
-LateHostedOutput: unbounded fn Wx, Env, Env, Stmt -> ((Wx, Env, Env))
-fn LateHostedOutput wx, benv, menv, s = match s.kind:
+LateHostedOutput: unbounded fn Wx, Env, Env, [Stmt], Stmt -> ((Wx, Env, Env))
+fn LateHostedOutput wx, benv, menv, stmts, s = match s.kind:
     SBind p, init, nil: match p.kind:
         PName n:
             let nkey = SNameKey n
@@ -1380,7 +1435,12 @@ fn LateHostedOutput wx, benv, menv, s = match s.kind:
             let placed = match Peel (TypeAt wx.lx, init.span):
                 TyElem ignore, ignore: True
                 otherwise: False
-            if (not placed) or wx.pos.scope == 0 or (not (HasText wx.unplacedHosts, (Or wx.scopes[Dec wx.pos.scope], ""))) or (IsTimeName nkey) or (HasKey menv.names, "{nkey}#late") or (LayerOf full) != LyPlain or (TimeWithin full) or IsBundle full: ((wx, benv, menv))
+            # (or below a building line of the same block whose rows may differ in width,
+            # built after the node: the place's number is known once the node stands,
+            # `BelowGappyLine`, so it asks its host there too, after the scope's steps; a
+            # late host's scope asks before its steps, `LateChild`, and is not this case)
+            let unplaced = (HasText wx.unplacedHosts, (Or wx.scopes[Dec wx.pos.scope], "")) or ((not (HasNat wx.lateHosts, wx.pos.scope)) and BelowGappyLine wx.lx, menv, stmts, s)
+            if (not placed) or wx.pos.scope == 0 or (not unplaced) or (IsTimeName nkey) or (HasKey menv.names, "{nkey}#late") or (LayerOf full) != LyPlain or (TimeWithin full) or IsBundle full: ((wx, benv, menv))
             else:
                 let t = OutTyOf lx, (Peel full)
                 let ((rs, w2)) = FreshName wx, (LocalNameAt lx, nkey, n.span)
@@ -1388,6 +1448,38 @@ fn LateHostedOutput wx, benv, menv, s = match s.kind:
                 ((w2, (Bind (Bind benv, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind (Bind menv, nkey, (LatePlainBn rs, t)), "{nkey}#late", unbuilt), "{nkey}#lateplace", unbuilt)))
         otherwise: ((wx, benv, menv))
     otherwise: ((wx, benv, menv))
+
+# Whether a line of a block stands below a building line of the block whose rows may
+# differ in width (Semantics ch. 4; ruling TC: places are counted as they are built): a
+# building `match` or `if`, a widget of one clause that gives as one does
+# (`IsGivingLine`), or a widget of several clauses applied. Such a line may be built
+# after the block's node, so what stands below it has its number only once the node
+# stands.
+BelowGappyLine: unbounded fn Lx, Env, [Stmt], Stmt -> Bool
+fn BelowGappyLine lx, menv, stmts, s = Fold stmts, False, \|f, t| f or ((t.span.start < s.span.start) and IsGappyLine lx, menv, t)
+
+IsGappyLine: unbounded fn Lx, Env, Stmt -> Bool
+fn IsGappyLine lx, menv, t:
+    let ?line = match t.kind:
+        SBind ignore, e, nil: ? e
+        SIgnore e: ? e
+        SExpr e: ? e
+        otherwise: nil
+    (IsChoiceLine t) or match ?line:
+        ? e: (IsGivingLine lx, menv, e, 16) or IsClausesCall lx, menv, e
+        nil: False
+
+# Whether a line applies a widget of several clauses declared in a module.
+IsClausesCall: unbounded fn Lx, Env, Expr -> Bool
+fn IsClausesCall lx, menv, e:
+    let callee = match (Ungrouped e).kind:
+        ECall c, ignore, ignore, ignore: c
+        otherwise: Ungrouped e
+    match callee.kind:
+        EName n: if (Len n.path) == 1 and HasKey menv.names, (SNameKey n): False else: match ResolveValue lx.g, lx.home, n:
+            ((? q, ignore)): (Len (ClausesOf lx.g, q)) > 1
+            otherwise: False
+        otherwise: False
 
 # A late place's plain part as its readers read it: the value its hold `f` has once the
 # place has asked its first value (read with no read point: it is written once).
@@ -1695,10 +1787,11 @@ fn PreBind wx, benv, menv, s = match s.kind:
             PName n: if ?step == nil and ((IsSome (?LatePlainHold menv.names[SNameKey n])) or (IsSome (?LatePlaceHold menv.names[SNameKey n])) or HasKey menv.names, "{SNameKey n}#taker"): ((wx, benv, menv)) else: PreBindName wx, benv, menv, n, how
             PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
                 # (a late place's plain part is a late name already, `LatePlaceParts`)
-                PName n: if latePlace and IsSome (?LatePlainHold me.names[SNameKey n]): ((w, be, me)) else: PreBindName w, be, me, n, how
+                # (and a part of a World's place whose field reads a late result, `LateFieldPlaces`)
+                PName n: if (latePlace and IsSome (?LatePlainHold me.names[SNameKey n])) or HasKey me.names, "{SNameKey n}#asked": ((w, be, me)) else: PreBindName w, be, me, n, how
                 # a pattern inside the tuple: each name it binds (`BindPatternResult`)
                 # (a name inside a late place's plain part is late already, `LatePlaceParts`)
-                otherwise: if ?step == nil: (Fold (BinderNames q), ((w, be, me)), \|((w2, be2, me2)), n| if latePlace and HasKey me2.names, "{SNameKey n}#lateplace": ((w2, be2, me2)) else: PreBindName w2, be2, me2, n, how) else: ((w, be, me))
+                otherwise: if ?step == nil: (Fold (BinderNames q), ((w, be, me)), \|((w2, be2, me2)), n| if (latePlace and HasKey me2.names, "{SNameKey n}#lateplace") or HasKey me2.names, "{SNameKey n}#asked": ((w2, be2, me2)) else: PreBindName w2, be2, me2, n, how) else: ((w, be, me))
             otherwise: if ?step == nil: (Fold (BinderNames p), ((wx, benv, menv)), \|((w2, be2, me2)), n| PreBindName w2, be2, me2, n, how) else: ((wx, benv, menv))
     # a `let` of any other pattern (a record's, a constructor's, a tuple inside a tuple):
     # each name it binds (`BindPatternResult`)

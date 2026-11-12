@@ -1,4 +1,4 @@
-# A `for` over a large map whose hold is written with the value it has (tests/cost/README.md):
+# A `for` over a large map whose hold is written with the value it has:
 # the source is the very map the rows were built from, so the builder does nothing; a write
 # costs a constant, not a walk of the keys. Written by Claude on the claude-self-hosting
 # branch; subject to change.

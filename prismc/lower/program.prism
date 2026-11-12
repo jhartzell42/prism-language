@@ -179,7 +179,7 @@ fn ImplPath how:
 # The program's types held by value where they are held (records, newtypes, unit types
 # and tags; a choice and a row are handles), by path (`ast::Span`).
 # The program's value types by path: records, newtypes, unit types, tags and choices (a C++
-# choice holds its variant by value, prismc/README.md pick CH), which a type holding one by
+# choice holds its variant by value), which a type holding one by
 # value needs complete.
 ValueTypes: fn [ModDef] -> (Text ==> Bool)
 fn ValueTypes defs = Fold defs, {}, \|acc, d| Fold d.items, acc, \|a, it| match it:
@@ -982,7 +982,7 @@ fn ?ValuedCases lx, qk, types, stem = match lx.g.vals[qk]:
         else:
             let clauses = ClausesOf lx.g, qk
             if (Len clauses) == 0: ? [[(("{stem}0", (PaTuple [[]]), [[]], [[(XVar "row_base")]]))]]
-            else: ? (Each (Range0 (Len clauses)), \|i| SharedCaseOf lxv, v, (Or clauses[i], dummyClause), "{stem}{i}")
+            else: ? (Each (Range0 (Len clauses)), \|i| SharedCaseOf lxv, v, (Or clauses[i], dummyClause), "{stem}{i}", True)
 
 # A valued widget's rows, items of its module: each clause lowered as a row of its own,
 # its places numbered from 0 and built from a base, holding no block, telling how many

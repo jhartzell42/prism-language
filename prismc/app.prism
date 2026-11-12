@@ -12,7 +12,7 @@
 # With `--check FILE|DIR...` it reads the program (a directory as a tree, claude/
 # modules-style-pass.md; test modules with `--tests`), parses it, adds the prelude's
 # modules from `--prelude DIR` (`prelude` when not given) that it does not replace, and runs
-# the checker (README, Checker): the diagnostics, then a count, go to `--out OUT` when
+# the checker: the diagnostics, then a count, go to `--out OUT` when
 # given, and the program gives up with them when there is an error. `--world FAM,FAM`
 # names the families a World answers, for the root row check. `--typed FILE...` does the
 # same and writes the typed program (typed.prism) as S-expressions before the

@@ -5,8 +5,8 @@
 // "Unique values"); `inserted`, `removed`, `pushed` and `updated` leave it alone and
 // answer the new one. Neither ever changes another value that shares the contents.
 //
-// The costs are Semantics Appendix B's promises, each kept (runtime/cpp/README.md, "Arrays
-// and maps: the costs"): a `Map` is a persistent AVL tree (an update copies the path to its
+// The costs are Semantics Appendix B's promises, each kept:
+// a `Map` is a persistent AVL tree (an update copies the path to its
 // key, logarithmic); an `Array` a persistent balanced tree of chunks with a tail (indexing
 // and `concat` logarithmic, `push_back` amortised constant, any update copying one path
 // and one chunk at most). A `Text` is a view of a shared UTF-8 buffer (a cursor's
@@ -484,7 +484,7 @@ private:
 /// - **Copies** share every node; an update copies the nodes on the path to what it
 ///   changes that another array shares (`own`), so no array sharing them sees it.
 ///
-/// Costs (runtime/cpp/README.md, "Arrays and maps: the costs"): `size` constant; indexing
+/// Costs: `size` constant; indexing
 /// log (constant in the tail); `push_back` amortised constant; `concat` log; `take`,
 /// `drop_front`, `set`, `mut_at` log, copying one path and one chunk at most; iteration
 /// linear. A reference from `mut_at` or `[]` holds until the array is next pushed onto or

@@ -186,8 +186,25 @@ fn ElementPlaced wx, benv, menv, tg, args, fed, out, ?bound:
     # a World's place with a plain or `$` answer whose field reads a late result
     # (`LateFieldPlaces`) asks where the generation that gives the result is built, in
     # a method of the node: the element is its getter's (`LateAskedPlace` for a `$` one)
-    let asksAtRow = late and (not partsBound) and (Emits wx4, pos) and ((IsSome (?LatePlainHold ?bound)) or IsSome (?LatePlaceHold ?bound))
+    # (and so does one with a bundle answer taken apart by a tuple pattern, its parts
+    # bound so, `IsAskedBundle`)
+    let asksAtRow = late and (Emits wx4, pos) and match ?bound:
+        ? (BnParts parts): (not (HasNat wx4.lateHosts, pos.scope)) and IsAskedBundle parts
+        otherwise: (IsSome (?LatePlainHold ?bound)) or IsSome (?LatePlaceHold ?bound)
     ElementOutput wx4, menv, tg, out, pos, ?bound, (if asksAtRow: XMethod XSelf, getter, [[XCx]] else: if late and asksLate: added else: atBuild)
+
+# Whether a bundle place's parts are bound as a World's place whose constant field reads
+# a late result binds them (`LateFieldPlaces`): a plain part a late name over a hold, a
+# `$` part a hold empty until the place asks, at least one of them, and no part bound any
+# other way but an event part.
+IsAskedBundle: fn [?Bn] -> Bool
+fn IsAskedBundle parts = (Fold parts, False, \|f, ?b| f or (IsSome (?LatePlainHold ?b)) or IsSome (?LatePlaceHold ?b)) and Fold parts, True, \|ok, ?b| ok and IsAskedPart ?b
+
+IsAskedPart: fn ?Bn -> Bool
+fn IsAskedPart ?b = match ?b:
+    nil: True
+    ? (BnEv ignore, ignore): True
+    otherwise: (IsSome (?LatePlainHold ?b)) or IsSome (?LatePlaceHold ?b)
 
 # Whether a tag's plain field is given a value that holds dynamics below its top, built
 # whole (`ElementPlaced`).
@@ -274,17 +291,26 @@ fn BundleOutputOf wx, tg, out, pos, parts, level:
     # (`LateFirstPlace`): each `$` part's hold is empty until then, and so is the hold of
     # a plain part the pattern names, a late name (`LatePlaceParts`)
     let late = (Len stateIx) > 0 and HasNat wx.lateHosts, pos.scope
+    # a World's place whose constant field reads a late result asks its state where the
+    # generation that gives the result is built (`Wx.lateAsks`, in a method of the node,
+    # `level` its getter then): each `$` part's hold and each named plain part's is empty
+    # until then (`LateFieldPlaces`), the element its pushes are keyed by kept then
+    let asked = (Len stateIx) > 0 and (not late) and (Emits wx, pos) and IsAskedBundle parts
     let wholeLets = [[(FirstValueLet wx1, pos, tg, level, stateTy), (DoLet (PaBind whole), (if Emits wx1, pos: XDecode stateTy, (XRef (XVar "first_{PlaceText pos}")) else: XVar "first_{PlaceText pos}"))]]
     let asksLate = update wx1:
         &_.lateFirsts <= Push &_.lateFirsts, ((pos.scope, wholeLets))
         &_.fallible <= True
-    let wx2 = if (Len stateIx) == 0: wx1 else: if late: asksLate else: update wx1:
+    let asksAtRow = update wx1:
+        &_.lateAsks <= Append &_.lateAsks, wholeLets
+        &_.fallible <= True
+    let wx2 = if (Len stateIx) == 0: wx1 else: if late: asksLate else: if asked: asksAtRow else: update wx1:
         &_.lets <= Append &_.lets, wholeLets
         &_.fallible <= True
     let ((wx3, holds)) = Fold (Range0 (Len stateIx)), ((wx2, [[]])), \|((w, acc)), k|
         let i = Or stateIx[k], 0
         let part = if one: XVar whole else: XClone (XPart (XVar whole), k)
-        if late and (Or layers[i], LyPlain) == LyDyn:
+        if asked: AskedPart w, pos, (Or parts[i], nil), i, k, (ValueTy i), (Or layers[i], LyPlain) == LyDyn, part, acc
+        else: if late and (Or layers[i], LyPlain) == LyDyn:
             let ((f, w1)) = match ?LatePlaceHold (Or parts[i], nil):
                 ? hf: ((hf, w))
                 nil: FreshName w, "place_{PlaceText pos}"
@@ -314,7 +340,7 @@ fn BundleOutputOf wx, tg, out, pos, parts, level:
     let stem = match holds[0]:
         ? ((ignore, f, ignore)): f
         nil: ""
-    let wx4 = if stem == "" or not (Emits wx3, pos): wx3 else: update wx3:
+    let wx4 = if stem == "" or not (Emits wx3, pos): wx3 else: if asked: AskedElement wx3, stem, level else: update wx3:
         &_.lets <= Push &_.lets, (DoLet (PaBind "{stem}_element"), (XMethod level, "to_pod", [[]]))
         &_.fields <= Push &_.fields, (("{stem}_element", OutPod, "place {PlaceText pos}'s element, which pushes are keyed by"))
         &_.moves <= Push &_.moves, (("{stem}_element", (XClone (XVar "{stem}_element"))))
@@ -324,10 +350,44 @@ fn BundleOutputOf wx, tg, out, pos, parts, level:
     # a plain part the pattern gives no name of its own (a pattern inside the tuple
     # pattern, `((((id, owner)), $state))`) is handed back as the build's value, for the
     # line to match by that pattern (`BindParts`, `BindPatternResult`)
-    let loose = Filter (Range0 (Len stateIx)), \|k| (not late) and ((Or layers[Or stateIx[k], 0], LyPlain) != LyDyn) and IsUnboundPart parts[Or stateIx[k], 0]
+    let loose = Filter (Range0 (Len stateIx)), \|k| (not late) and (not asked) and ((Or layers[Or stateIx[k], 0], LyPlain) != LyDyn) and IsUnboundPart parts[Or stateIx[k], 0]
     let PartAt = \|i| Fold loose, WrUnit, \|found, k| if (Or stateIx[k], 0) == i: WrPlain (if one: XVar whole else: XClone (XPart (XVar whole), k)), (ValueTy i) else: found
     let result = if (Len loose) == 0: WrUnit else: WrParts (Each idx, PartAt)
     ((wx5, result))
+
+# A state part of a World's bundle place that asks where a late result is built
+# (`BundleOutputOf`, `LateFieldPlaces`): a `$` part's hold (its name's, or one of the
+# place's own) empty at the node's making and set there; a named plain part's hold the
+# same (`LatePlainBn`); a plain part the pattern does not name is read by nothing.
+AskedPart: fn Wx, Pos, ?Bn, Nat, Nat, OutTy, Bool, Ex, [((Nat, Text, OutTy))] -> ((Wx, [((Nat, Text, OutTy))]))
+fn AskedPart wx, pos, ?bound, i, k, t, dynamic, part, acc:
+    let ?held = if dynamic: ?LatePlaceHold ?bound else: ?LatePlainHold ?bound
+    let ((f, w1)) = match ?held:
+        ? hf: ((hf, wx))
+        nil: if dynamic: FreshName wx, "place_{PlaceText pos}" else: (("", wx))
+    if f == "": ((w1, acc))
+    else:
+        let set = DoExpr (XMethod (XField XSelf, f), "set", [[(XCtor (RefRuntime "std::Some"), [[part]]), XCx]])
+        let w2 = update w1:
+            &_.fields <= Push &_.fields, ((f, (OutHold (OutOpt t)), "place {PlaceText pos}'s answer, part {i}: empty until its first value is asked, where the late result its element reads is built"))
+            &_.moves <= Push &_.moves, ((f, (XCall (RefRuntime "rt::Hold::new"), [[XNone, XCx]])))
+            &_.latePlaces <= (if dynamic: Push &_.latePlaces, f else: &_.latePlaces)
+            &_.lateAsks <= Push &_.lateAsks, set
+        ((w2, (if dynamic: Push acc, ((k, f, t)) else: acc)))
+
+# The element a World's bundle place that asks where a late result is built keys its
+# pushes by (`BundleOutputOf`): a cell empty until the place asks, set then from its
+# getter's element, and the place listening from then on (as `LateAskedPlace`).
+AskedElement: fn Wx, Text, Ex -> Wx
+fn AskedElement wx, stem, level:
+    let element = "{stem}_element"
+    let pod = XMethod level, "to_pod", [[]]
+    let node = XRef (XCast (XClone XSelf), (OutObj (OutNamed (RefRuntime "rt::Node"), [[]])))
+    update wx:
+        &_.fields <= Push &_.fields, ((element, (OutCell (OutOpt OutPod)), "{stem}'s place's element, which pushes are keyed by: empty until the place asks its first value"))
+        &_.moves <= Push &_.moves, ((element, (XCall (RefRuntime "std::RefCell::new"), [[XNone]])))
+        &_.lateElements <= Push &_.lateElements, stem
+        &_.lateAsks <= Append &_.lateAsks, [[(DoExpr (XMethod (XField XSelf, element), "replace", [[(XCtor (RefRuntime "std::Some"), [[pod]])]])), (DoExpr (XMethod (XCx), "listen", [[pod, node]]))]]
 
 # Whether a bundle's part has no binding of its own: the pattern names nothing there, or
 # takes the part apart.
@@ -363,7 +423,12 @@ fn BundleEvent wx, pos, t, ?b = match ?b:
 # accessor. Either way the local `first_{pos}` holds the value, decoded from a `Pod` only
 # from the World.
 FirstValueLet: unbounded fn Wx, Pos, TagInfo, Ex, OutTy -> Do
-fn FirstValueLet wx, pos, tg, level, placed:
+fn FirstValueLet wx, pos, tg, level, placed = FirstValueLetAt wx, "", pos, tg, level, placed
+
+# The same, the place's path read from `recv` (`PlaceAt`): `node` where the place asks
+# once the node stands, its number known only then.
+FirstValueLetAt: unbounded fn Wx, Text, Pos, TagInfo, Ex, OutTy -> Do
+fn FirstValueLetAt wx, recv, pos, tg, level, placed:
     let missing = XCall (RefRuntime "rt::Fault::answer"), [[(XStr "no first value for {tg.name}")]]
     if Emits wx, pos:
         let asked = XMethod (XCx), "first_value", [[(XRef (XMethod level, "to_pod", [[]]))]]
@@ -371,7 +436,7 @@ fn FirstValueLet wx, pos, tg, level, placed:
     else:
         let host = HostLocal wx, pos
         let entry = Or (Fold wx.places, nil, \|?e, pl| if pl.pos == pos: ? pl.entry else: ?e), ""
-        let asked = TryOf (XMethod (XVar host), "first_value", [[(XRef (PlaceAt wx, "", pos)), (XRef level), (XRef (XVar entry)), XCx]])
+        let asked = TryOf (XMethod (XVar host), "first_value", [[(XRef (PlaceAt wx, recv, pos)), (XRef level), (XRef (XVar entry)), XCx]])
         let accessor = if (IsBundleTag tg): "{OutputAccessor tg}_first" else: OutputAccessor tg
         let carried = if IsBundleTag tg: Or (?BundleFirstTy wx.lx, tg), OutUnit else: OutputTy wx.lx, tg
         DoLet (PaBind "first_{PlaceText pos}"), (RecodedOutput (OutputOpen wx.lx, tg), carried, placed, (TryOf (XMethod (TryOf (XMethod asked, "ok_or", [[missing]])), accessor, [[]])))
@@ -520,7 +585,9 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
                 let wx2 = update wx:
                     &_.fields <= Push &_.fields, ((f, (OutHold (OutOpt out)), "place {PlaceText pos}'s answer, its first value: empty until that is asked, once its host is placed"))
                     &_.moves <= Push &_.moves, ((f, (XCall (RefRuntime "rt::Hold::new"), [[XNone, XCx]])))
-                    &_.lateFirsts <= Push &_.lateFirsts, ((pos.scope, [[(FirstValueLet wx, pos, tg, level, out), (LateFirstSet f, (XVar "first_{PlaceText pos}"))]]))
+                    # (below a building line built after the node, `BelowGappyLine`, the
+                    # place's number is the node's: read from it)
+                    &_.lateFirsts <= Push &_.lateFirsts, ((pos.scope, [[(FirstValueLetAt wx, (if PlaceUnknownAtBuild wx, pos: "node" else: ""), pos, tg, level, out), (LateFirstSet f, (XVar "first_{PlaceText pos}"))]]))
                     &_.fallible <= True
                 ((wx2, WrUnit))
             ? f:

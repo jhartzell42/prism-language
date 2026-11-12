@@ -39,7 +39,7 @@ Expected<Path, std::string> path(std::string_view src);
 
 /// Rust's `char` classes the reader and the Test World use. ASCII exactly; above it, the
 /// Unicode spaces are whitespace, every other character is alphabetic, and none is
-/// uppercase (doubt UC in README.md).
+/// uppercase.
 bool char_is_whitespace(char32_t c);
 bool char_is_alphabetic(char32_t c);
 bool char_is_alphanumeric(char32_t c);

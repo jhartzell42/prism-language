@@ -82,8 +82,8 @@ let compileValued = [["-o", "--prelude", "--name", "--runtime", "--target"]]
 # Where the crate finds the runtime: `--runtime PATH`; else, for a relative OUT, `..` per
 # directory of OUT, which is relative to the repository root (as `./prism` and the
 # bootstraps call prismc, so an emitted crate, and the seed, name no machine's paths); else,
-# for an absolute OUT, `PRISM_ROOT`; else nothing, and the compile is refused
-# (prismc/README.md, pick AR).
+# for an absolute OUT, `PRISM_ROOT`; else nothing, and the compile is refused.
+#
 ?RuntimeOf: fn ?Text, ?Text, Text -> ?Text
 fn ?RuntimeOf ?named, ?root, out = match ?named:
     ? r: ? r

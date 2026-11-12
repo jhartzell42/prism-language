@@ -14,7 +14,7 @@
 ## Time, ms: median (fastest–slowest)
 
 From the input (a press queued, a button clicked, an action performed) to the frame
-that shows its result handed to the window system (bench/README.md, "What is timed").
+that shows its result handed to the window system.
 
 | Operation | prism-cpp | prism-rust | gtk |
 |---|---|---|---|

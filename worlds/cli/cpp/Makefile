@@ -15,7 +15,7 @@ BUILD := build/$(CONFIG)
 FLAGS := -std=c++20 -Wall -Wextra -Werror $(OPT) $(SANITIZE) -Iinclude -I$(RT)/include -I$(RT)/tests
 LIB := $(RT)/build/$(CONFIG)/libprism_rtl.a
 
-# The allocator of every binary linked here is jemalloc (runtime/cpp/README.md, pick AL), found with
+# The allocator of every binary linked here is jemalloc, found with
 # pkg-config, except under a sanitizer (SANITIZE set: AddressSanitizer replaces malloc
 # with its own, which jemalloc would take the allocations from). The library itself links
 # nothing; a binary's link stops and names the package when pkg-config does not find it.

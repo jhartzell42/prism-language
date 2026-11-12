@@ -44,7 +44,7 @@ tag Pane.Image of Element !Click:        # a picture on a painted cell, clickabl
 
 # A track with a knob, from `low` to `high` in whole steps: a press on the track answers the
 # step nearest it. The canvas Worlds send presses but no pointer motion, so there is no
-# dragging (README, doubt DG).
+# dragging.
 tag Pane.Slider of Element !Nat:
     $value: Nat
     low: Nat

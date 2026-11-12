@@ -69,7 +69,7 @@ type Manner = choice:
 derive ^Eq, ^Show
 
 # ---------------------------------------------------------------------------
-# Small helpers over arrays, the names kept apart from the prelude's (README, doubt PN)
+# Small helpers over arrays, the names kept apart from the prelude's
 
 AnyOf: fn [a], (fn a -> Bool) -> Bool
 fn AnyOf xs, P = Fold xs, False, \|seen, x| seen or P x

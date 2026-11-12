@@ -7,7 +7,8 @@ set of design prompts, not a specification, and their RULINGS files record the l
 (Semantics rounds 1 to 3, Type System rounds 1 to 3: cycle points, the two halves of a
 dynamic, construction not prompt, hosting in one graph and one tick, row entries as
 projections). This file records only the choices the books leave to an
-implementation. The back end's finer picks and its known gaps are in `prismc/README.md`.*
+implementation. The back end's finer picks and its known gaps are in the comments of `prismc/lower/` and
+`prismc/emit/`.*
 
 ## D1. Rust is the only target for now (Jimmy's)
 
@@ -68,7 +69,7 @@ formats. A measure-based shrink proof for the parser was the alternative.
 
 Bounded in, bounded out; unbounded in, unbounded out. Every function parameter has a
 color variable of its own and the function's color is their join, as if it called each,
-resolved at each call; nothing is written (round 3 CD, Jimmy's; prismc/README.md pick CD).
+resolved at each call; nothing is written (round 3 CD, Jimmy's).
 
 ## D9. Hosting is the general feature; the canvas World is the one foreign World (Jimmy's)
 
@@ -172,4 +173,4 @@ suffixed operators; `Over`, `Get`, `Set`, the `^Lens` trait and lens values `&.s
 key is a checker error, ruling ME); POD hosting (`@Collect`, `@View`, `@Edit`, `@Translate`); the Prism World; live
 update; checkpoints; the template notation as a second syntax for element languages (code
 templates only); indexed choices/GADTs for user types. The back end's own open gaps are
-listed in `prismc/README.md`.
+the `error[not-lowered]` refusals of `prismc/lower/`.

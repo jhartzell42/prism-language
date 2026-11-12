@@ -1,7 +1,7 @@
 # A record's field named as a node's member: the widget `@Shown` takes a parameter named
 # `message`, so its node has a member `message`, and the record `Note`'s field `message`
 # is read in the same program. The emitted C++ reads the record's field with `.`, the
-# node's with `->` (gap FA of prismc/README.md). Written for prismc's back end; subject to
+# node's with `->`. Written for prismc's back end; subject to
 # change.
 emit Ui.*
 test mod Tests

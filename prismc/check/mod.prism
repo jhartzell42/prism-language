@@ -1,4 +1,4 @@
-# `Check`, the checker (prismc/README.md, Checker): `CheckProgram` runs every pass over a
+# `Check`, the checker: `CheckProgram` runs every pass over a
 # program's modules, in order; its submodules are the passes and what they share.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit r

@@ -239,7 +239,7 @@ fn TypedTables tp:
 
 # ---------------------------------------------------------------------------------------
 # Names (Compiler ch. 4: a block's class is named after its function, a binding after its
-# variable; pick NM of the README: Rust's conventions)
+# variable; Rust's conventions)
 # ---------------------------------------------------------------------------------------
 
 let rustKeywords = [["as", "async", "await", "box", "break", "const", "continue", "crate", "do", "dyn", "else", "enum", "extern", "false", "final", "fn", "for", "gen", "if", "impl", "in", "let", "loop", "macro", "match", "mod", "move", "mut", "override", "priv", "pub", "ref", "return", "self", "static", "struct", "super", "trait", "true", "try", "type", "typeof", "unsafe", "unsized", "use", "virtual", "where", "while", "yield", "u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "f32", "f64", "bool", "char", "str", "usize", "isize", "cx", "node", "path", "v", "p"]]

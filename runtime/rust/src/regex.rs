@@ -337,7 +337,7 @@ impl Show for Match {
 // whose cursors are opaque; but an emitted record derives the runtime's `ToPod` and
 // `FromPod` whatever its fields, and a `check` line's value is plain data. A regex goes
 // out as it shows, its spelling (which is how it compares), over its parts as written,
-// and reads back from those (prismc/README.md, PD); a match, as a `Cursor`, is never read
+// and reads back from those; a match, as a `Cursor`, is never read
 // back.
 
 fn spelled(s: String, parts: Vec<(&str, &str)>) -> Pod {

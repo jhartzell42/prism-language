@@ -23,7 +23,7 @@ test-sanitize:
 	PRISM_SANITIZE=1 tests/compiled/run.sh --target cpp
 
 # prismc compiles itself to a fixed point and is installed as target/bootstrap/prismc,
-# starting from the seed archive on a fresh clone (bootstrap/README.md).
+# starting from the seed archive on a fresh clone.
 bootstrap:
 	bootstrap/bootstrap.sh
 
@@ -32,7 +32,7 @@ bootstrap-update:
 	bootstrap/bootstrap.sh --update
 
 # prismc compiled to C++ compiles itself to a fixed point, and to the Rust the Rust prismc
-# emits; installs `target/bootstrap/prismc-cpp` (bootstrap/README.md, "The C++ target").
+# emits; installs `target/bootstrap/prismc-cpp`.
 bootstrap-cpp:
 	bootstrap/bootstrap-cpp.sh
 

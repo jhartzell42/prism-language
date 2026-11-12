@@ -1,97 +1,48 @@
-# examples/basic-chess
+# Chess: A Proof-of-Concept Example
 
-Chess in Prism, a program tree (claude/modules-style-pass.md): `app.prism` (the root:
-sixty-four squares in a grid, the selection and the game as holds, a status label),
-`rules/` (`Rules`, the game as plain functions), `basic_window/` (`BasicWindow`, a window library:
-layout, hit testing and focus as host documents in Prism, over the four `Gui` tags a
-drawing World accepts; its child modules `BasicWindow.Ui`, `BasicWindow.Hosting`, `BasicWindow.Widgets`,
-`BasicWindow.Layout`, `BasicWindow.Hits`, each a file of `basic_window/`), and
-`pieces/` (the piece images, which no `mod` line declares and the tree does not read).
+This is a simple chess app in Prism as a proof of concept and first demo app. It's intended
+simply for verifying the programming language is working and as a test case for working on
+the compiler.
 
-- **Run it:** `./prism run examples/basic-chess` (or `make basic-chess`) opens a window under the
-  canvas World.
-- **Test it:** `./prism test examples/basic-chess` runs the test modules `tests.prism` (`Tests`,
-  the board's, which reaches the root by `use App.*`) and `rules/tests.prism`
-  (`Rules.Tests`, the rules', with the positions and moves its checks
-  are written with) under the Test World. The rules' transcript is checked against the
-  `tests.expected` beside it; the board's and the window library's are not kept (doubt
-  TS), so those runs print their transcripts and pass on the tests' own checks;
-  `./prism test examples/basic-chess/rules` runs the rules' alone.
+By reading the code, you can also get a basic idea of Prism's basic syntax and
+semantics.  By looking at it, you can see that Prism works as a programming
+language for writing bone-simple user interfaces. By reading the code and
+running it, you can figure out a lot about the language's semantics.
 
-## The interface
+Generally, though, this is not here to sell Prism, but to simply allow you to
+understand it a little bit if you're already interested in the project
+for other reasons. This is a very early example for a very early prototype.
+Everything is still janky, even in this programming language intended to eliminate
+jankiness.
 
-*Written by Claude on the claude-self-hosting branch; subject to change.* What the window
-shows, in `app.prism`'s widgets (`@Board`, `@Panel`, `@settingsForm`, `@$chess`), all on
-the window library's widgets:
+It's not an amazing UX for a chess app. The GUI toolkit is bespoke and mediocre.
+White and black share a window, and have to hover over the same computer or pass
+a laptop back and forth. Play is by clicking on squares.  It doesn't support
+computer players, network play, or any other feature beyond implementing
+two-player chess in a single window on-screen. I'm not even sure the rules for
+chess are correct.
 
-- **The title,** a label over the board.
-- **The board,** on a dark border whose width is a setting; a first click on one's own
-  piece selects it (yellow), a second click moves it if the move is legal and clears the
-  selection either way. A promotion is always to a queen.
-- **The panel** beside it:
-  - the status (whose turn, in check, checkmate, stalemate), naming the player;
-  - the move counter, "Move 2 of 5": the position shown and the moves played;
-  - **Back** and **Forward**: the position before or after the one shown; each stops at
-    its end;
-  - **Reset**: the game starts over and every move is forgotten; the settings stay;
-  - **Settings**: opens the settings dialog, and closes it if it is open;
-  - **the move list**: a line per full move, `2. Ng1-f3 Nb8-c6`, the move that led to the
-    position shown in brackets. It shows at most sixteen lines (`listRows`), scrolled so
-    that move stays in view.
-- **The settings dialog,** in the window's bottom right corner, over the move list and
-  the board's right edge, below the status and the buttons, which stay usable: a box per
-  setting, each applied as it is typed:
-  - the copy: the title, every button's label (Settings, Close, Reset, Back, Forward), the
-    move list's heading, the move counter (`{move}` and `{moves}`), and the four status
-    lines (`{name}` for the player);
-  - the players' names;
-  - the dark and light squares' colours, as `#rrggbb` in either case;
-  - the border: a slider from 0 to 32 points and a box, which move together;
-  - a line saying the settings apply as typed and start at their defaults each run;
-  - **Close**.
+It's also not a polished technical demo for Prism, just the first one. It doesn't support any of my planned
+features for how you would structure a two-player board game in an actual ecosystem, like
+the `^Document` trait or other such ideas (mostly unpublished as of this writing).
 
-### Choices (Claude's)
+The code is an LLM-generated port of
+[`reflex-chess`](https://github.com/jhartzell42/reflex-chess/) to Prism, which I
+wrote as a personal exercise and as an example app while I was working at
+[Obsidian](https://obsidian.systems/).
 
-- **MF A move made on an earlier position** discards the moves after it, and the game
-  goes on from there, as most chess programs do; Forward then has nowhere to go.
-- **RS Reset** forgets the whole game, history included; the settings, the dialog's
-  state and the dialog's open or closed state stay.
-- **BB Back, Forward and Reset clear the selection.** So does any button.
-- **IV A colour that is not `#rrggbb`,** and a border that is not a whole number from 0 to
-  32 (an empty box included), leaves the setting at its last good value; the field's
-  caption says what is wrong ("Dark squares: not #rrggbb"). The box keeps what was typed.
-- **DM The dialog is modeless:** the board can still be played where the dialog does not
-  cover it; the dialog's background takes the presses that land on it.
-- **ST The settings start at their defaults every run** and live in the dialog's holds
-  (each box's text, the last good colours, the border); nothing is read from or written
-  to a file. The dialog keeps them when closed: it is hidden, not torn down
-  (basic_window/README.md, doubt HS).
-- **TT The window's title follows the title setting** a tick behind it: `@$main` holds it,
-  fed by the interface's result, since the window is built around the interface.
-- **CO The default copy is the rule book's** (`Rules.Status`), with "White" and "Black"
-  as the names, so the status reads as it did; the squares are brown and cream
-  (`#b58863`, `#f0d9b5`), no longer the window library's `Grey` and `Paper`.
+Better things are yet to come! This is just an initial taste.
 
-### Doubts
+## Trying it out
 
-- **PC** (Claude's) The tests click the dialog's boxes by their places in its grid
-  (`click element 29`; Close is 4), since a `Draw.Clickable` names the innermost path of its chain,
-  and a caption and box per row in a column of rows would give every box the same one.
-  Recommendation: let `Draw.Clickable` carry the whole chain and `click element` take it,
-  so a form can be built of rows; that changes every transcript's scene.
-- **DT** (Claude's) Text boxes size to their text (at least 200 wide), so the dialog is as
-  wide as its longest status line. Recommendation, when it matters: a fixed-width box that
-  scrolls its text, which needs the caret's scroll offset in the library.
-- **NT** (Claude's) Moves are written in coordinates (`Ng1-f3`, `e4xd5`), not standard
-  algebraic notation, which needs disambiguation and check marks from the rule book.
-- **TS** The board's and the window library's transcripts are not in the repository
-  (Jimmy: no transcript over 10 KB is kept; tests/compiled/run.sh refuses one). Under the
-  window the Test World prints the whole scene (some 25 KB with the board) at every
-  change, so the board's transcript is about 2.5 MB. Their tests still run on both
-  targets and fail on their own checks; what is no longer pinned is the scene byte for
-  byte. Recommendation (Claude's): a transcript that prints a scene's changed draw
-  commands rather than the whole list, small enough to keep.
-- **HT** (Claude's) A press on a square runs 13 ticks to idle, where the bare board's ran 5:
-  a square now sits under six hosts (the window, the layers, the column, the row, the
-  border's frame, the grid), each a tick in and a gathered `for` out (Jimmy: one tick per
-  level). The real window shows no lag; recommendation: none until it is felt.
+To run, from the root of the repo after following [basic set-up instructions](../../README.md):
+
+```sh
+./prism run examples/basic-chess
+```
+
+To run unit tests:
+
+```sh
+./prism test examples/basic-chess
+```

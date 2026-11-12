@@ -215,7 +215,7 @@ fn searches_are_linear_in_the_text() {
 
 #[test]
 fn a_regex_reads_back_from_its_plain_form() {
-    // An emitted record holding a regex derives `FromPod` (prismc/README.md, PD): the
+    // An emitted record holding a regex derives `FromPod`: the
     // spelling `ToPod` writes reads back to a regex equal by spelling.
     use prism_rtl::{FromPod, ToPod};
     for (pattern, flags) in [("a/b", ""), (r"\d+\.\d", "i"), ("x\ny", "m"), ("", "")] {
