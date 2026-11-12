@@ -1,8 +1,0 @@
-# A generic choice's cases: declarations of cpp-generic-choice-cases. Written by Claude on
-# the claude-bugs branch; subject to change.
-emit Ui.*
-use App.*
-use Ui.*
-
-test generic_cases_build_and_match, @page:
-    build

@@ -4,8 +4,8 @@
 //! a turned group and a clip over the rows, a clear, a new table). Each time the loop
 //! settles, the hook reads every pixel of the presented frame and checks it against a full
 //! repaint of the World's current scene by a fresh `Renderer`, then presses. After the last
-//! step both places leave and the run ends with 0. worlds/canvas/cpp's damage_smoke in Rust;
-//! it needs a window system, and on Linux with no `DISPLAY` it says so and passes.
+//! step both places leave and the run ends with 0.
+//! It needs a window system, and on Linux with no `DISPLAY` it says so and passes.
 //!
 //! Written by Claude on the claude-self-hosting branch; subject to change.
 

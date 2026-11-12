@@ -1,8 +1,7 @@
 //! The dialect check (claude/regex-dialect.md): one left-to-right parse of a pattern, its
 //! flags and a replacement, giving either the first diagnostic, at its byte offset, or
 //! the pattern spelled for `regex-automata` with the meaning the books give it, the
-//! number of capture groups and the names. The C++ runtime's `src/regex.cpp` is the same
-//! procedure, line for line, spelling for RE2; prismc's checker will be a third.
+//! number of capture groups and the names. prismc's checker is the same procedure.
 //!
 //! Written by Claude on the claude-self-hosting branch; subject to change.
 

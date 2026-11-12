@@ -1,6 +1,6 @@
 # `Check.Regex`: a literal's pattern, flags and replacement read against the dialect
-# (claude/regex-dialect.md), the first diagnostic or none, as both runtimes read them
-# (runtime/rust/src/regex_dialect.rs, runtime/cpp/src/regex.cpp): one left-to-right
+# (claude/regex-dialect.md), the first diagnostic or none, as the runtime reads them
+# (runtime/rust/src/regex_dialect.rs): one left-to-right
 # parse, the same decisions in the same order, the same positions and messages. The
 # shared corpus, tests/regex/corpus.txt, is its test module (`Tests`). Nothing here
 # spells a pattern for a library; the runtimes do that from the same text.

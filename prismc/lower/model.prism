@@ -1,5 +1,5 @@
-# `Lower.Model`: the core form lowering decides (claude/backend.md), which the printers
-# (`Emit.Rust`, `Emit.Cpp`) spell and nothing after it changes (K9).
+# `Lower.Model`: the core form lowering decides (claude/backend.md), which the printer
+# (`Emit.Rust`) spells and nothing after it changes (K9).
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit r
 use Syntax.*
@@ -60,21 +60,10 @@ type Ref = choice:
     RefRuntime Text
 derive ^Eq, ^Show
 
-# A program item's key in a printer's tables: `module::path`, or the crate's own by its path.
-?RefKey: fn Ref -> ?Text
-fn ?RefKey (RefItem "", p, ignore) = ? p
-fn ?RefKey (RefItem m, p, ignore) = ? "{m}::{p}"
-fn ?RefKey other = nil
-
-# A reference as written where the model uses it.
-RefSpelled: fn Ref -> Text
-fn RefSpelled (RefItem ignore, ignore, s) = s
-fn RefSpelled (RefRuntime t) = t
-
-# A runtime name as both targets write it: the model's mark of the runtime side, `rt::`, is
+# A runtime name as the target writes it: the model's mark of the runtime side, `rt::`, is
 # the emitted prelude's path from the crate (`crate::prelude::`), and the runtime library is
 # reached from the root (`::prism_rtl::`), so a program module of either name hides
-# neither. The standard library's `std::` mark is each printer's.
+# neither. The standard library's `std::` mark is the printer's.
 RuntimePath: fn Text -> Text
 fn RuntimePath t = if HasPrefix t, "rt::": "crate::prelude::{DropPrefix t, "rt::"}"
 else: if HasPrefix t, "prism_rtl::": "::{t}"
@@ -90,16 +79,6 @@ fn RefLast (RefRuntime t) = Or (?Last (SplitOn t, "::")), t
 RefChild: fn Ref, Text -> Ref
 fn RefChild (RefItem m, p, s), n = RefItem m, "{p}::{n}", "{s}::{n}"
 fn RefChild (RefRuntime t), n = RefRuntime "{t}::{n}"
-
-# The item a member belongs to (a case's choice, a method's node).
-RefParent: fn Ref -> Ref
-fn RefParent (RefItem m, p, s) = RefItem m, (DropLastSegment p), (DropLastSegment s)
-fn RefParent (RefRuntime t) = RefRuntime (DropLastSegment t)
-
-DropLastSegment: fn Text -> Text
-fn DropLastSegment p:
-    let segs = SplitOn p, "::"
-    Join (Take segs, (Dec (Len segs))), "::"
 
 # The crate's own row of every element tag and its answers (`crate::Elem`, `crate::Output`).
 let elemRef = RefItem "", "Elem", "crate::Elem"
@@ -142,7 +121,7 @@ type OutTy = choice:
     OutGen Text
     OutRc OutTy
     OutRef OutTy
-    # What a named lens takes and gives back (Semantics ch. 5): Rust's `&mut T`, C++'s `T&`.
+    # What a named lens takes and gives back (Semantics ch. 5): Rust's `&mut T`.
     OutRefMut OutTy
     OutPod
     OutShowAny
@@ -165,7 +144,7 @@ type OutTy = choice:
     # A quantified type variable of a generalized local `let` that no instantiation gave a
     # type (pick LG): the printer refuses it, naming the binding.
     OutQuantified Text
-    # A job's turn, whose C++ type the printer reads off the job (`decltype(this->cycle())`).
+    # A job's turn.
     OutTurn
     # An associated type no impl decides here (Type System ch. 3): the trait's path, the
     # type's name and its argument, `Self` in the trait's own methods.
@@ -196,7 +175,7 @@ type UnOp = choice:
     OpNeg
 derive ^Eq, ^Show
 
-# An operator's spelling, the same in Rust and C++.
+# An operator's spelling.
 BinOpText: fn BinOp -> Text
 fn BinOpText OpAdd = "+"
 fn BinOpText OpSub = "-"
@@ -287,13 +266,10 @@ type Ex = choice:
     XUnreachable
     XCall Ref, [Ex]
     # A call with its type arguments said, in the callee's order: a generic function some
-    # of whose type parameters no parameter's type holds: C++ deduces none from a result,
-    # and Rust none the checker settled alone (`Len (Empty 2)`'s element).
+    # of whose type parameters no parameter's type holds: Rust deduces none the checker settled alone (`Len (Empty 2)`'s element).
     XCallAt Ref, [OutTy], [Ex]
     # A call of a trait's method whose type parameter is only in its result, at the type
-    # the call gives: the trait, the method, that type. Rust `<T as Trait>::m(..)`, C++
-    # `Trait::m_at<T>::call(..)` (a class template per such method, each impl's choice a
-    # specialization).
+    # the call gives: the trait, the method, that type. Rust `<T as Trait>::m(..)`.
     XCallSelf Ref, Text, OutTy, [Ex]
     XApply Ex, [Ex]
     XMethod Ex, Text, [Ex]
@@ -313,8 +289,7 @@ type Ex = choice:
     XBlock [Do], Ex
     XLabeled Text, [Do], Ex, OutTy
     XClosure Bool, [Pa], Ex
-    # `?`: the failure passed on, else the value; whether the operand is a temporary,
-    # which a target that copies a named one moves (C++'s `TRY`; Rust's `?` moves either).
+    # `?`: the failure passed on, else the value.
     XTry Ex
     # A member lowering or the runtime defines (a node's field, a port's `updates`), and a
     # field of a program's value type (a record's, a tag's level's) with the type it is of.
@@ -733,18 +708,6 @@ type ModDef = record:
     prism: Text
     path: Text
     uses: [Text]
-    # What a target that declares a module before it defines it needs of the others (the
-    # C++ printer's per-module headers; the Rust printer ignores it): `complete`, the
-    # modules whose records, newtypes, unit types or tags this module's own types hold by
-    # value, defined first; `declared`, the others it may name (every module its `use`s
-    # and emitted families reach), whose declarations are enough.
-    # `typesWith`, the modules whose value types are defined together with this one's,
-    # itself among them: a cycle of `complete` (each module holding the next one's types
-    # by value, with no cycle among the types themselves) is one group, in which the types
-    # are put in order across the modules.
-    complete: [Text]
-    declared: [Text]
-    typesWith: [Text]
     items: [Item]
 derive ^Eq, ^Show
 
@@ -758,10 +721,6 @@ type Model = record:
     elem: RowDef
     # `crate::Output`, beside it
     answer: OutputDef
-    # What `Elem` and `Output` need of the modules, as `ModDef.complete` and `declared`
-    # say.
-    elemComplete: [Text]
-    elemDeclared: [Text]
     scripts: [Text]
     notes: [Text]
 derive ^Eq, ^Show

@@ -524,7 +524,7 @@ fn ?LensCall lx, e = match ?LensApplied e:
     nil: nil
 
 # The reference a lens gives back for an argument: its function over the argument's place
-# (`acc_l(&mut this.regs)`; C++ passes the place itself).
+# (`acc_l(&mut this.regs)`).
 LensCallEx: unbounded fn Lx, Env, Text, Expr -> Ex
 fn LensCallEx lx, env, qk, argument:
     let handed = if LensTakesEntry lx, qk: EntryRef lx, env, argument else: XRefMut (PlaceOf lx, env, argument)
@@ -577,7 +577,7 @@ fn LensReference lx, env, e = match e.kind:
 
 # A named lens as the target has it, two functions (claude/backend.md, "Named lenses"):
 # the reference, `fn acc_l(vm: &mut Vm) -> &mut Int` (one reference parameter: Rust's
-# lifetime elision is the book's rule; C++ `Int& acc_l(Vm& vm)`), which a set, an
+# lifetime elision is the book's rule), which a set, an
 # accumulation, a `for` by reference and another lens go through; and the read,
 # `fn acc_l_get(vm: &Vm) -> Int`, the lens's body as the expression it also is, which a
 # reference in expression position calls (the translation's `Get`), so that a read

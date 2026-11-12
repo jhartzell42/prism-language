@@ -3,12 +3,9 @@
 # the root module's `emit` row, `Gui.*` the canvas World, a row without Ui or Gui the CLI
 # World, a row with `Ui.*` and no `Gui.*` refused (no World answers Ui elements alone), and
 # `--world` over all of it; a program with no `@main` has no root to run. Then prismc's
-# own options: an option it does not know, an unknown target, or an option missing its
+# own options: an option it does not know, or an option missing its
 # value is refused, never ignored; an absolute `-o` finds the runtime at PRISM_ROOT or is
-# refused, naming `--runtime`; and `prism compile --target cpp` writes C++. Last, chess
-# compiled to C++ runs under the C++ canvas World: its `main` calls the World and its
-# Makefile links it. Between them, a binder an arm reads once is moved (gap OC), and a program's small
-# modules share one C++ translation unit (pick SF).
+# refused, naming `--runtime`. Between them, a binder an arm reads once is moved (gap OC).
 #
 #   tests/driver/run.sh
 #
@@ -56,8 +53,7 @@ refuse() {
     echo "FAILED $name: wanted a refusal saying '$words', got exit $code: $said"
 }
 refuse unknown-option "unknown option --bogus" compile --bogus tests/driver/cli-root.prism -o "$out/unknown-option"
-refuse unknown-target "unknown target wasm" compile --target wasm tests/driver/cli-root.prism -o "$out/unknown-target"
-refuse missing-value "--target takes a value" compile tests/driver/cli-root.prism -o "$out/missing-value" --target
+refuse missing-value "--name takes a value" compile tests/driver/cli-root.prism -o "$out/missing-value" --name
 refuse check-unknown-option "unknown option --bogus" --check --bogus tests/driver/cli-root.prism
 # An absolute -o: the Rust crate finds the runtime at PRISM_ROOT, and builds; with neither
 # PRISM_ROOT nor --runtime it is refused, naming --runtime, since `..` per segment of an
@@ -85,22 +81,6 @@ if env -u PRISM_ROOT "$prismc" compile tests/driver/cli-root.prism -o "$out/rela
 else
     failed+=(relative-out)
     echo "FAILED relative-out: a relative -o with no PRISM_ROOT does not find the runtime by .. per segment"
-fi
-if ./prism compile --target cpp tests/driver/cli-root.prism -o "$out/cpp" > /dev/null 2>&1 && [ -f "$out/cpp/src/main.cpp" ] && [ ! -e "$out/cpp/Cargo.toml" ]; then
-    echo "ok compile-cpp: C++ written"
-else
-    failed+=(compile-cpp)
-    echo "FAILED compile-cpp: prism compile --target cpp wrote no C++ program (or a Cargo.toml)"
-fi
-# Pick SF: small modules' definitions share a translation unit; headers stay per module.
-if ./prism compile --target cpp tests/conformance/mod-nested-names -o "$out/units" > /dev/null 2>&1 &&
-    [ -f "$out/units/src/unit_1.cpp" ] && [ ! -e "$out/units/src/unit_2.cpp" ] &&
-    [ -z "$(find "$out/units/src" -name 'mod*.cpp')" ] && [ -f "$out/units/src/a/types/module.hpp" ] &&
-    [ "$(grep -c '^namespace crate::' "$out/units/src/unit_1.cpp")" -ge 3 ]; then
-    echo "ok cpp-units: a program's small modules in one unit, their headers per module"
-else
-    failed+=(cpp-units)
-    echo "FAILED cpp-units: mod-nested-names' C++ is not one unit over per-module headers ($out/units/src)"
 fi
 # Gap OC: a binder of an owned scrutinee its arm reads once is moved, not cloned.
 if ./prism compile tests/conformance/sem-ch07-normalize -o "$out/normalize" > /dev/null 2>&1 &&
@@ -161,24 +141,6 @@ else
     failed+=(console-unaddressed)
     echo "FAILED console-unaddressed: wanted \`nobody home\` reported on standard error ($out/console-terminals.err)"
 fi
-if ./prism compile --target cpp examples/basic-chess -o "$out/chess-cpp" > /dev/null 2>&1 &&
-    grep -q 'prism_world_canvas::run<' "$out/chess-cpp/src/main.cpp" &&
-    make -s -C "$out/chess-cpp" -j"$(getconf _NPROCESSORS_ONLN)" > "$out/chess-cpp.log" 2>&1 &&
-    [ -x "$out/chess-cpp/chess" ]; then
-    echo "ok chess-cpp-canvas: built under the canvas World"
-else
-    failed+=(chess-cpp-canvas)
-    echo "FAILED chess-cpp-canvas: chess compiled to C++ does not call or link the canvas World ($out/chess-cpp.log)"
-fi
-# a hosted row's `document` overrides the base `Row`'s (both const): a call through the base
-# would otherwise get the base's empty document, silently
-if [ -f "$out/chess-cpp.log" ] && ! grep -q 'hides overloaded virtual' "$out/chess-cpp.log"; then
-    echo "ok cpp-row-document: a row's document overrides Row::document"
-else
-    failed+=(cpp-row-document)
-    echo "FAILED cpp-row-document: an emitted row's document hides Row::document ($out/chess-cpp.log)"
-fi
-
 if [ ${#failed[@]} -gt 0 ]; then
     echo "failed: ${failed[*]}"
     exit 1

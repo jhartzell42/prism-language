@@ -52,7 +52,7 @@ pub fn run_with<P: Program>(wrap: impl FnOnce(CanvasWorld) -> Box<dyn World>) ->
 
 /// What a hook may do to a running World: queue window input as the window system would,
 /// end the run, and read back what reached the screen. A benchmark or a test drives the
-/// program through it (worlds/canvas/cpp's `Session`, the same five calls).
+/// program through it.
 pub trait Session {
     /// The document's windows and scenes, as the World last read them.
     fn shared(&self) -> std::cell::Ref<'_, Shared>;

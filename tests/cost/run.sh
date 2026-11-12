@@ -11,23 +11,21 @@
 # edits of one key each of a large map under `@PerKey` must cost under twice one edit's (only
 # the changed key's row does its work).
 #
-#   tests/cost/run.sh [--target cpp]       # Rust by default (its test build), or C++ at -O3
+#   tests/cost/run.sh
 #
 # Written by Claude on the claude-self-hosting branch; subject to change.
 set -u
 cd "$(dirname "$0")/../.." || exit 2
 . bench/lib.sh
 instr_setup
-target=rust
-[ "${1:-}" = --target ] && target=${2:-rust}
 echo "cost: instructions counted by $(instr_tool)"
 instructions() { # binary: instructions its `test` run retires
     instructions_of "$1" test
 }
 count() { # NAME: build and check tests/cost/NAME, then count its run
     local name=$1 bin
-    ./prism test --target "$target" "tests/cost/$name" > /dev/null 2>&1 || { echo "cost: tests/cost/$name fails its transcript" >&2; echo 0; return; }
-    if [ "$target" = cpp ]; then bin=target/prism-cpp/${name//-/_}/${name//-/_}; else bin=target/prism-build/release/${name//-/_}; fi
+    ./prism test "tests/cost/$name" > /dev/null 2>&1 || { echo "cost: tests/cost/$name fails its transcript" >&2; echo 0; return; }
+    bin=target/prism-build/release/${name//-/_}
     instructions "$bin"
 }
 failed=0
@@ -36,7 +34,7 @@ pair() {
     local few many
     few=$(count "$2")
     many=$(count "$3")
-    echo "cost ($target): $1: $2 $few instructions, $3 $many"
+    echo "cost: $1: $2 $few instructions, $3 $many"
     if [ "$few" -gt 0 ] && [ "$many" -gt 0 ] && [ "$many" -lt $(( 2 * few )) ]; then
         echo "cost: $1: ok"
     else
@@ -54,7 +52,7 @@ marginal() {
     local few many
     few=$(count "$2")
     many=$(count "$3")
-    echo "cost ($target): $1: $2 $few instructions, $3 $many ($(( (many - few) / 39 )) per extra edit)"
+    echo "cost: $1: $2 $few instructions, $3 $many ($(( (many - few) / 39 )) per extra edit)"
     if [ "$few" -gt 0 ] && [ "$many" -gt 0 ] && [ $(( (many - few) / 39 )) -lt $(( few / 20 )) ]; then
         echo "cost: $1: ok"
     else

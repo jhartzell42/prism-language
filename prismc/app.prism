@@ -1,4 +1,4 @@
-# prismc's driver. `prismc compile SRC... -o OUT [--target rust|cpp] [--tests] [--name N]
+# prismc's driver. `prismc compile SRC... -o OUT [--tests] [--name N]
 # [--prelude DIR] [--runtime DIR]` compiles a program (compile.prism); `--check` and
 # `--typed` run the checker (below; checking.prism); anything else is the front end alone:
 # `prismc FILE [OUT]` reads FILE through `Fs.Contents`, lexes and parses it, and writes its

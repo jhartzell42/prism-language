@@ -7,9 +7,9 @@
 #
 # How to read this file: a signature line with `fn` clauses under it is a prelude
 # function written in Prism. A signature line with no clauses is a builtin: prismc checks
-# and lifts it by this signature (Type System ch. 4, "Where the table looks") and each back
-# end supplies its body (prismc/emit/rust/prelude.prism and prismc/emit/cpp/prelude.prism,
-# emitted with every program, over runtime/rust and runtime/cpp). Each builtin's cost
+# and lifts it by this signature (Type System ch. 4, "Where the table looks") and the back
+# end supplies its body (prismc/emit/rust/prelude.prism, emitted with every program, over
+# runtime/rust). Each builtin's cost
 # promise is Appendix B's.
 
 emit r

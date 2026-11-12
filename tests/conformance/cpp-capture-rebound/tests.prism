@@ -1,9 +1,0 @@
-# The count of cpp-capture-rebound: declarations of cpp-capture-rebound.prism.
-emit Ui.*
-use App.*
-
-test a_captured_let_moves_once, @Counted 3:
-    build
-        => expect Ui.Label(text="counting")
-    compute until idle
-        => expect Ui.Label(text="up!3")

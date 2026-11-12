@@ -1,0 +1,8 @@
+# A record's equality through a choice it holds: declarations of choice-in-record.prism.
+emit Ui.*
+use App.*
+use Ui.*
+
+test records_compare_through_their_choice, @specs:
+    build
+    click at 0

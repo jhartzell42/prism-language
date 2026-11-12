@@ -58,7 +58,7 @@ impl<T: Clone> Hold<T> {
     }
     /// The tick's one write (G1, Semantics R3): the older slot takes the value, stamped
     /// now. A second write in a tick is a node woken twice for the same inputs: a fault of
-    /// the tick, worded as the C++ runtime words it.
+    /// the tick.
     pub fn set(&self, v: T, cx: &Cx) {
         let mut s = self.slots.borrow_mut();
         if s.1 == cx.tick() && s.2.is_some() {

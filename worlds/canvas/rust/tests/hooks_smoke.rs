@@ -2,7 +2,7 @@
 //! rectangle in it. When the loop settles, the hook checks that the rectangle's pixel in
 //! the presented frame is red, then presses there through `Session::input`, as a click
 //! would. The program hears the `Press` and tears both places down; the World ends the
-//! run with 0. worlds/canvas/cpp's macos_smoke in Rust. It needs a window system: on
+//! run with 0. It needs a window system: on
 //! Linux with no `DISPLAY` it says so and passes (xvfb_smoke covers Linux).
 //!
 //! Written by Claude on the claude-self-hosting branch; subject to change.

@@ -74,7 +74,6 @@ type CompileSettings = record:
     prelude: Text
     name: Text
     runtime: Text
-    target: Text
 derive ^Eq, ^Show
 
 # Everything a run read: its arguments (files and directories), the prelude's directory,
@@ -144,7 +143,7 @@ fn @CheckRun o, input:
 
 @CompileRun: fn CompileSettings, ReadInput -> @unit
 fn @CompileRun s, input:
-    !done <- @Run CompileProgram, CompileJob(read=input, name=s.name, runtime=s.runtime, target=s.target)
+    !done <- @Run CompileProgram, CompileJob(read=input, name=s.name, runtime=s.runtime)
     $?outcome <- nil then ? !done
     ignore <- rebuild $?outcome:
         @FinishCompile s.out, _

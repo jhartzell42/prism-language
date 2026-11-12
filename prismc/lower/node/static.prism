@@ -366,9 +366,9 @@ fn AppliedBlueprintLine wx, e, blueprint:
         let hostedIn = if IsHostedScope wx: XCtor (RefRuntime "std::Some"), [[(XCast (XClone (HostFieldEx wx, pos)), hostOfTy)]] else: XNone
         let at = [[blueprint, (AppliedPath wx, pos), (XVar "row_base"), hostedIn]]
         # a line that binds a dynamic: each answer read at the line's type
-        # (the value in a typed `let`, which tells a C++ lambda its result type)
+        # (the value in a typed `let`)
         let taker = XClosure False, [[(PaBind "answer")]], (XBlock [[(DoLet (PaTyped (PaBind "taken"), outTy), (FirstOutputTaken lx, outTy, "answer"))]], (XCtor (RefRuntime "std::Ok"), [[(XVar "taken")]]))
-        let applied = if heard: TryOf (XCall (HelperRef "apply_blueprint_heard"), (Append at, [[(OutputAbove name), (OutputSink lx, name, outTy), XCx]])) else: if dynamic: TryOf (XCall (HelperRef "apply_blueprint_dynamic"), (Append at, [[taker, XCx]])) else: if answered: TryOf (XCall (HelperRef "apply_blueprint_answered"), (Push at, XCx)) else: TryOf (XCall (HelperRef "apply_blueprint"), (Push at, XCx))
+        let applied = if heard: XTry (XCall (HelperRef "apply_blueprint_heard"), (Append at, [[(OutputAbove name), (OutputSink lx, name, outTy), XCx]])) else: if dynamic: XTry (XCall (HelperRef "apply_blueprint_dynamic"), (Append at, [[taker, XCx]])) else: if answered: XTry (XCall (HelperRef "apply_blueprint_answered"), (Push at, XCx)) else: XTry (XCall (HelperRef "apply_blueprint"), (Push at, XCx))
         let gap = XBin OpSub, (XIndex wideGeneration), (XVar "built")
         let hearer = if heard: [[(DoLet (PaBind "heard_by"), (XWeak XSelf))]] else: [[]]
         let res = "{name}_res"
@@ -429,7 +429,7 @@ fn OutputSink lx, name, t:
 ?OutputByTag: unbounded fn Lx, OutTy, Text -> ?Ex
 fn ?OutputByTag lx, t, answer:
     let tags = Filter (Values lx.g.tags), \|tg| tg.kind == "Element" and ((OutputOpen lx, tg) or (OutputTy lx, tg) == t)
-    let Taken = \|tg| RecodedOutput (OutputOpen lx, tg), (OutputTy lx, tg), t, (TryOf (XMethod (XVar answer), (OutputAccessor tg), [[]]))
+    let Taken = \|tg| RecodedOutput (OutputOpen lx, tg), (OutputTy lx, tg), t, (XTry (XMethod (XVar answer), (OutputAccessor tg), [[]]))
     match tags[0]:
         ? first: ? (Fold (Drop tags, 1), (Taken first), \|rest, tg| XIf (XIsCase (XVar answer), [[OutputVariant tg]]), (Taken tg), rest)
         nil: nil
@@ -439,9 +439,9 @@ fn ?OutputByTag lx, t, answer:
 # answers under that arm's tag), or outside any (a widget read as a value elsewhere
 # answers plain data, `output_plain`).
 FirstOutputTaken: unbounded fn Lx, OutTy, Text -> Ex
-fn FirstOutputTaken lx, t, answer = if not (Podable t): TryOf (XCallAt (HelperRef "held_output"), [[t]], [[(XRef (XVar answer))]]) else: match ?OutputByTag lx, t, answer:
+fn FirstOutputTaken lx, t, answer = if not (Podable t): XTry (XCallAt (HelperRef "held_output"), [[t]], [[(XRef (XVar answer))]]) else: match ?OutputByTag lx, t, answer:
     ? taken: taken
-    nil: TryOf (XCallAt (HelperRef "output_plain"), [[t]], [[(XRef (XVar answer))]])
+    nil: XTry (XCallAt (HelperRef "output_plain"), [[t]], [[(XRef (XVar answer))]])
 
 # A blueprint value applied by a line that binds a bundle (`((step, !go)) <- @t`,
 # `((!rx, $link)) <- @Element e`; Type System ch. 2, "Bundles and sparse tuples": the
@@ -468,7 +468,7 @@ fn AppliedBundleLine wx, e, blueprint:
     let hostedIn = if IsHostedScope wx: XCtor (RefRuntime "std::Some"), [[(XCast (XClone (HostFieldEx wx, pos)), hostOfTy)]] else: XNone
     let tags = BundleTagsOf lx, full
     let ((stateTy, eventsTy)) = BundleCarried lx, full
-    let applied = TryOf (XCallAt (HelperRef "apply_blueprint_whole"), [[wholeTy, stateTy, eventsTy]], [[blueprint, (AppliedPath wx, pos), (XVar "row_base"), hostedIn, (BundleStateTaker lx, tags, stateTy), (BundleEventTaker lx, tags, eventsTy), (BundleAssembled full, tags), XCx]])
+    let applied = XTry (XCallAt (HelperRef "apply_blueprint_whole"), [[wholeTy, stateTy, eventsTy]], [[blueprint, (AppliedPath wx, pos), (XVar "row_base"), hostedIn, (BundleStateTaker lx, tags, stateTy), (BundleEventTaker lx, tags, eventsTy), (BundleAssembled full, tags), XCx]])
     let gap = XBin OpSub, (XIndex wideGeneration), (XVar "built")
     let keeps = DoAssign (XDeref (XMethod (XField XSelf, kept), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XVar "whole")]])
     let made = PaTuple [[(PaBind "row"), (PaBind "built"), (PaBind "whole")]]
@@ -571,7 +571,7 @@ fn BundleStateTaker lx, tags, stateTy:
     let Variant = \|tg| if IsBundleTag tg: OutputFirstVariant tg else: OutputVariant tg
     let Accessor = \|tg| if IsBundleTag tg: "{OutputAccessor tg}_first" else: OutputAccessor tg
     # (a generic tag's state is recoded to the line's types, `OutputTaken`)
-    let Taken = \|tg| XCtor (RefRuntime "std::Some"), [[(OutputTaken lx, (Accessor tg), stateTy, (TryOf (XMethod (XVar "answer"), (Accessor tg), [[]])))]]
+    let Taken = \|tg| XCtor (RefRuntime "std::Some"), [[(OutputTaken lx, (Accessor tg), stateTy, (XTry (XMethod (XVar "answer"), (Accessor tg), [[]])))]]
     let body = if not hasState: XNone else: match tags[0]:
         ? first: Fold tags, (XIf (XVar "first"), (Taken first), XNone), \|rest, tg| XIf (XIsCase (XVar "answer"), [[Variant tg]]), (Taken tg), rest
         nil: XNone
@@ -583,7 +583,7 @@ BundleEventTaker: unbounded fn Lx, [TagInfo], OutTy -> Ex
 fn BundleEventTaker lx, tags, eventsTy:
     let hasEvents = eventsTy != OutUnit
     # (a generic tag's answer is recoded to the line's types, `OutputTaken`)
-    let Taken = \|tg| OutputTaken lx, (OutputAccessor tg), eventsTy, (TryOf (XMethod (XVar "answer"), (OutputAccessor tg), [[]]))
+    let Taken = \|tg| OutputTaken lx, (OutputAccessor tg), eventsTy, (XTry (XMethod (XVar "answer"), (OutputAccessor tg), [[]]))
     let body = match (if hasEvents: tags[0] else: nil):
         ? first: XCtor (RefRuntime "std::Ok"), [[(Fold (Drop tags, 1), (Taken first), \|rest, tg| XIf (XIsCase (XVar "answer"), [[OutputVariant tg]]), (Taken tg), rest)]]
         nil: XCtor (RefRuntime "std::Err"), [[(XCall (RefRuntime "rt::Fault::answer"), [[(XStr "an answer to a blueprint value that gives a bundle, which no event part of the bundle is answered with")]])]]
@@ -609,7 +609,7 @@ fn BundleAssembled full, tags:
     let missing = XCall (RefRuntime "rt::Fault::answer"), [[(XStr "a blueprint value that gives a bundle answered no state at its build")]]
     let body = if (Len tags) == 0: XCtor (RefRuntime "std::Err"), [[(XCall (RefRuntime "rt::Fault::answer"), [[(XStr "a blueprint value that gives a bundle answered with no bundle held whole, and no element tag of the program answers with one")]])]]
         else: if (Len stateIx) == 0: made
-        else: XBlock [[(DoLet (PaBind "state"), (TryOf (XMethod (XVar "state"), "ok_or", [[missing]])))]], made
+        else: XBlock [[(DoLet (PaBind "state"), (XTry (XMethod (XVar "state"), "ok_or", [[missing]])))]], made
     XClosure False, [[(PaBind "state"), (PaBind "events"), (PaBind "cx")]], body
 
 # A blueprint a `let` of the block names, applied (`let @w = @Tile k`, then `@w`): its
@@ -1472,7 +1472,7 @@ fn ValueRowOf w, me, b, f, hosted, taken:
     let link = if hosted: "hosted_link" else: "link"
     let kept = if hosted: "hosted_rows" else: "rows"
     let tail = if hosted: [[(XClone (XVar link)), (XClone (XVar "enclosing")), (XClone (XVar "moved")), XCx]] else: [[(XClone (XVar link)), XCx]]
-    let made = TryOf (XCall (RefChild (SiteRef lx, cr.case.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], cr.case.passed), tail))
+    let made = XTry (XCall (RefChild (SiteRef lx, cr.case.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], cr.case.passed), tail))
     let result = if taken == "": XUnit else: XMethod (XVar "row"), taken, [[]]
     let built = XBlock [[(DoLet (PaBind "row"), made), (DoExpr (XMethod (XVar kept), "add", [[(XRef (XVar "row"))]]))]], (XCall (HelperRef "built_widget"), [[(XMethod (XVar "row"), "built", [[]]), result, (XVar "row")]])
     let params = if hosted: [[(PaBind "path"), (PaBind "row_base"), (PaBind "enclosing"), (PaBind "moved"), (PaBind "cx")]] else: [[(PaBind "path"), (PaBind "row_base"), (PaBind "cx")]]

@@ -508,9 +508,9 @@ fn an_equal_snapshot_keeps_the_value_it_had_so_its_sharing_survives() {
 }
 
 #[test]
-fn a_hold_written_twice_in_a_tick_fails_it_as_the_cpp_runtime_does() {
+fn a_hold_written_twice_in_a_tick_fails_it() {
     // The tick fails, with no assertion in a debug build, and the
-    // fault names no Rust type, so both targets' transcripts say the same.
+    // fault names no Rust type.
     let mut rt = Runtime::new();
     let r = ready();
     let cx = rt.build(&r);

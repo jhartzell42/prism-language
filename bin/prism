@@ -2,19 +2,11 @@
 # The `prism` command (claude/architecture.md, "Single commands"), a thin shell over a
 # native prismc:
 #
-#   prism compile [--target T] SRC... -o OUT   the program in OUT: a Rust crate, or C++
-#   prism test [--target T] SRC...     compile, build, run the test modules
+#   prism compile SRC... -o OUT        the program in OUT: a Rust crate
+#   prism test SRC...                  compile, build, run the test modules
 #   prism run [--world W] [--print-world] SRC... [-- ARGS...]   compile, build, run the root
 #   prism check [--world FAMS] [--unused] SRC...  the checker's report; --unused also
 #                                        warns at each definition nothing uses
-#
-# `--target rust` (the default) or `--target cpp`: the C++ program (runtime/cpp) is built
-# with make and `$CXX` (g++ by default) into target/prism-cpp/NAME at -O3 (`PRISM_OPT`
-# overrides, e.g. `-O0 -g` to debug a failing test), and runs its tests
-# under the C++ Test World; `run` under the C++ target runs the root under the World its
-# row asks for (worlds/cli/cpp, or worlds/canvas/cpp for a `Gui.*` row, linked at the
-# build), and `--world` is handed to the binary, which refuses a World it was not built
-# with.
 #
 # SRC is a directory, which goes to prismc as it is, a tree (claude/modules-style-pass.md):
 # its app.prism, lib.prism or mod.prism; or a loose `.prism` file. `test` and `check` read
@@ -40,7 +32,7 @@ while [ -L "$self" ]; do
     case "$link" in /*) self=$link ;; *) self=$(dirname "$self")/$link ;; esac
 done
 root=$(cd "$(dirname "$self")/.." && pwd)
-# The emitted Makefiles read it; the logical path, so a target/ reached through a symlink
+# The logical path, so a target/ reached through a symlink
 # still finds the runtime. cargo gets the crate by --manifest-path for the same reason.
 export PRISM_ROOT=$root
 usage() { sed -n '5,9p' "$self" | sed 's/^# //' >&2; exit 2; }
@@ -53,7 +45,6 @@ shift
 srcs=()
 out=""
 world=""
-target=rust
 print_world=0
 unused=0
 progargs=()
@@ -61,8 +52,6 @@ while [ $# -gt 0 ]; do
     case "$1" in
         -o) out=$2; shift 2 ;;
         --world) world=$2; shift 2 ;;
-        --target) target=$2; shift 2 ;;
-        --target=*) target=${1#--target=}; shift ;;
         --world=*) world=${1#--world=}; shift ;;
         --print-world) print_world=1; shift ;;
         --unused) unused=1; shift ;;
@@ -137,50 +126,18 @@ case "$cmd" in
         case "$out" in /*) ;; *) out=$here/$out ;; esac
         r=$(relative "$out")
         case "$r" in ../*) ;; *) out=$r ;; esac ;;
-    test|run) if [ "$target" = cpp ]; then out=target/prism-cpp/$name; else out=target/prism/$name; fi ;;
+    test|run) out=target/prism/$name ;;
     *) echo "prism: unknown command $cmd (compile, test, run, check)" >&2; exit 2 ;;
 esac
 # The crate finds prism_rtl and the Worlds at the repository root: by `..`s when OUT is
 # under it (prismc's default), else by the absolute path.
 runtime=()
 case "$out" in /*) runtime=(--runtime "$root") ;; esac
-case "$target" in rust|cpp) ;; *) echo "prism: unknown target $target (rust, cpp)" >&2; exit 2 ;; esac
 rm -rf "$out"
-targetopt=()
-[ "$target" = cpp ] && targetopt=(--target cpp)
-[ "$cmd" = test ] && targetopt+=(--tests)
-"$prismc" compile "${sources[@]}" -o "$out" --name "$name" "${runtime[@]}" "${targetopt[@]}"
-# The program is the target asked for: a prismc that took `--target` without knowing it
-# would have written a Rust crate.
-if [ "$target" = cpp ]; then marker=$out/src/main.cpp; else marker=$out/Cargo.toml; fi
-[ -f "$marker" ] || { echo "prism: $prismc wrote no $target program to $out (no $marker)" >&2; exit 2; }
+tests=()
+[ "$cmd" = test ] && tests=(--tests)
+"$prismc" compile "${sources[@]}" -o "$out" --name "$name" "${runtime[@]}" "${tests[@]}"
 [ "$cmd" = compile ] && exit 0
-
-if [ "$target" = cpp ]; then
-    # The C++ program: make builds runtime/cpp's library and the program with $CXX.
-    # -O3, the shipping level, for test and run alike (Jimmy); PRISM_OPT="-O0 -g" to debug a
-    # failing test with a build that keeps its variables
-    opt=${PRISM_OPT:--O3}
-    # PRISM_SANITIZE=1: the program and the runtime under AddressSanitizer and UBSan, with
-    # Homebrew's clang on macOS (Apple clang's sanitizer hangs at startup on macOS 26), so
-    # a test suite run finds undefined behavior the optimizer would otherwise hide.
-    cxx=${CXX:-g++}
-    if [ "${PRISM_SANITIZE:-0}" = 1 ]; then
-        opt="$opt -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=undefined"
-        if [ "$(uname -s)" = Darwin ]; then
-            cxx=/opt/homebrew/opt/llvm/bin/clang++
-            [ -x "$cxx" ] || { echo "prism: PRISM_SANITIZE needs Homebrew's clang (brew install llvm)" >&2; exit 2; }
-            opt="$opt -L/opt/homebrew/opt/llvm/lib/c++ -Wl,-rpath,/opt/homebrew/opt/llvm/lib/c++ -Wno-unused-command-line-argument"
-        fi
-        export ASAN_OPTIONS=${ASAN_OPTIONS:-detect_leaks=0}
-    fi
-    make -s -C "$out" -j"${PRISM_JOBS:-$(getconf _NPROCESSORS_ONLN)}" CXX="$cxx" OPT="$opt" >&2
-    if [ "$cmd" = test ]; then exec "$out/$name" test; fi
-    asked=$(sed -n 's/^const std::string WORLD = "\(.*\)";$/\1/p' "$out/src/main.cpp")
-    [ -n "$world" ] || world=$asked
-    if [ "$print_world" = 1 ]; then echo "$world"; exit 0; fi
-    exec "$out/$name" --world "$world" "${progargs[@]}"
-fi
 
 build() { # profile flags...
     CARGO_TARGET_DIR="$root/target/prism-build" cargo build --offline -q --manifest-path "$root/$out/Cargo.toml" "$@"
