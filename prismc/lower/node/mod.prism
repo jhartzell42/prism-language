@@ -192,6 +192,9 @@ type SplitLet = record:
     reads: [Text]
     # it reads a local function of the block, whose body's reads are not listed
     callsLocal: Bool
+    # a building line's plain result, not a `let`: the name follows the split only where
+    # it is a late taker's result (`{name}#taker`, `LateTakerResults`)
+    taker: Bool
 
 # A line above a split line that takes its late result and whose places are counted as
 # built (`DeferredLine`, `LateGiving`): its generation, and the generations of the split

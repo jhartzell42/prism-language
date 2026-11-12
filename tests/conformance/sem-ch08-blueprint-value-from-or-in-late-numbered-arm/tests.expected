@@ -1,0 +1,16 @@
+# Derived by hand from Semantics ch. 8 (applying a blueprint value builds it), ch. 4 and ruling TC (places counted as built): loud gives the inner `if`'s 3, so `@Wide 3` builds "one 3" and "two 3" at 0 and 1, the arm's `Or` picks `@One` ("one" at 2), the inner arm its label at 3; soft gives 20 and builds nothing in its arm. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="one 3")
+    1: Ui.Label(text="two 3")
+    2: Ui.Label(text="one")
+    3: Ui.Label(text="inner")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="one 20")
+    1: Ui.Label(text="two 20")

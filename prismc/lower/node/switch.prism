@@ -1176,9 +1176,11 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
             ((r2p, ? rt))
         # a late plain result: the row reads it from itself, its own rows built by then
         # (a row numbered late reads it at its build: its generations are built there,
-        # `Wx.lateGens`, where each one's rows can be numbered after they are built)
+        # `Wx.lateGens`, where each one's rows can be numbered after they are built; a
+        # builder of the row, a `for`, gives no plain result and is built in the row's
+        # `number_places`, its rows numbered as built there, `UnnumberedGenerations`)
         WrLate ex, rt: (((update r2:
-            &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=(if numberedLate and not (r2.lateGens and (Len (UnnumberedSteps r2)) == 0): Refusal "the plain result of an arm or a clause that is built before its block's node and numbered after it, read from a generation the arm builds after its own node whose rows take their numbers as they are built (a `for` or a `rebuild` beside the building `match` whose result the arm gives)" else: ex), doc="The clause's plain result, which the block that built the generation reads."))), ? rt))
+            &_.getters <= Push &_.getters, (MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxNone, ret=rt, body=[[]], tail=(if numberedLate and not (r2.lateGens and (Len (UnnumberedGenerations r2)) == 0): Refusal "the plain result of an arm or a clause that is built before its block's node and numbered after it, read from a generation the arm builds after its own node whose rows take their numbers as they are built (a `rebuild` beside the building `match` whose result the arm gives)" else: ex), doc="The clause's plain result, which the block that built the generation reads."))), ? rt))
         # a dynamic result: the row's getter `result` and `result_dynamic`, a write behind it
         # telling the block (`GenResult`, `DynClauseLine`)
         WrDyn ex, rds, rt: (((GenResult r2, genName, ex, rds, rt), nil))
@@ -1782,7 +1784,14 @@ fn IsWeakTy t = match t:
 # whose rows are not numbered late (`Wx.lateRowGens`), with whether its places are
 # counted as built (a gappy generation's; a builder's are not).
 UnnumberedSteps: fn Wx -> [Bool]
-fn UnnumberedSteps wx = Append (Each (Filter wx.builders, \|b| b.pos.scope == 0), \|b| False), (Each (Filter wx.gens, \|gd| gd.pos.scope == 0 and (not gd.early) and not (HasText wx.lateRowGens, gd.name)), \|gd| gd.gappy)
+fn UnnumberedSteps wx = Append (Each (Filter wx.builders, \|b| b.pos.scope == 0), \|b| False), (UnnumberedGenerations wx)
+
+# The generations among them, with whether each one's places are counted as built. A
+# late plain result of the row can read one of them (a `rebuild`'s), never a builder:
+# the builders wait for the row's `number_places` (`ScopeSteps`' second phase), where
+# the row's base is known and their rows are numbered as built.
+UnnumberedGenerations: fn Wx -> [Bool]
+fn UnnumberedGenerations wx = (Each (Filter wx.gens, \|gd| gd.pos.scope == 0 and (not gd.early) and not (HasText wx.lateRowGens, gd.name)), \|gd| gd.gappy)
 
 # What a row built after its block's node and numbered late (`ArmRowOf`, `weakLate`)
 # does at the end of its build: it leaves the block, itself a row numbered late that

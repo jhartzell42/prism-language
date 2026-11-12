@@ -1852,10 +1852,20 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                         else: if (Recursion wx.inlining, qk) > 16: TooDeep wx, qk, e
                         else:
                             let call = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
+                            # a generic function of several clauses (the prelude's `Or` at
+                            # `@unit`, Type System ch. 1): its type parameters at this call,
+                            # read off its arguments' types as for a widget of one clause, so
+                            # its rows' parameters and lines have this call's types
+                            let instance = Or (?CallInstance lx, v, args), {}
+                            let lxs = update lx:
+                                &_.subst <= Fold (Keys instance), &_.subst, \|m, q| Insert m, q, (Or instance[q], TyErr)
+                            let vs = update v:
+                                &_.scheme <= update v.scheme:
+                                    &_.ty <= SubstTy lxs, v.scheme.ty
                             let inside = update wx:
                                 &_.inlining <= Push &_.inlining, qk
-                                &_.lx <= WithRecursing lx, qk
-                            let ((done, res)) = ClauseWidgetLine inside, benv, menv, a.value, call, qk, v, e, args
+                                &_.lx <= WithRecursing lxs, qk
+                            let ((done, res)) = ClauseWidgetLine inside, benv, menv, a.value, call, qk, vs, e, args
                             let outside = update done:
                                 &_.inlining <= wx.inlining
                                 &_.lx <= lx
@@ -1878,9 +1888,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                     otherwise: [[]]
                 # a generic widget's type parameters, over which its body was checked: their
                 # types at this call, read off its arguments' types
-                let ?params = Fold (Range0 (Len params)), (? {}), \|?acc, i| match ((?acc, args[i])):
-                    ((? m, ? a)): ?ParamInstance (Or ptys[i], TyErr), (TypeAt lx, a.value.span), m
-                    otherwise: ?acc
+                let ?params = ?CallInstance lx, v, args
                 let unmatched = Filter (Fold ptys, [[]], \|acc, t| UnionTexts acc, (RigidsIn t)), \|q| not (HasKey (Or ?params, {}), q)
                 let lxp = update lx:
                     &_.subst <= Fold (Keys (Or ?params, {})), &_.subst, \|m, q| Insert m, q, (Or (Or ?params, {})[q], TyErr)
@@ -1915,6 +1923,18 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                         &_.inlining <= wx.inlining
                         &_.result <= wx.result
                     ((back, done.result))
+
+# A widget's or a function's type parameters at a call (`v` the callee): each parameter's
+# type matched to its argument's (`?ParamInstance`), keyed by name; nothing when two
+# arguments disagree.
+?CallInstance: unbounded fn Lx, ValInfo, [Arg] -> ?(Text ==> Ty)
+fn ?CallInstance lx, v, args:
+    let ptys = match v.scheme.ty:
+        TyFn ignore, ps, ignore: ps
+        otherwise: [[]]
+    Fold (Range0 (Len ptys)), (? {}), \|?acc, i| match ((?acc, args[i])):
+        ((? m, ? a)): ?ParamInstance (Or ptys[i], TyErr), (TypeAt lx, a.value.span), m
+        otherwise: ?acc
 
 # A widget's type parameters at one of its arguments: its parameter's type matched to the
 # argument's (a plain parameter lifted over a dynamic argument, to the value under it),
