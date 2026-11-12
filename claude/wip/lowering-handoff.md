@@ -40,8 +40,8 @@ uncommitted work. Move it onto claude-lowering only once it is green.
 
 # Handoff: claude-lowering (worktree /home/claude/prism-lowering)
 
-For a fresh lowering agent. The task is to lower every item of prismc/README.md "### Not
-lowered yet" on both targets.
+For a fresh lowering agent. The task is to lower every `error[not-lowered]`
+refusal of prismc/lower/ on both targets.
 - Commit each failing test alone first, then the fix.
 - No silent fallbacks, no hand-written name lists.
 - Never edit README.md, notes/, TODO.md or LANGUAGE.md.
@@ -117,7 +117,7 @@ lowered yet" on both targets.
    - So the fix must tell the builder only while its generation stays current after the
      tick: skip the build when the block replaced the generation, or order the block's
      build before the generation's and check staleness.
-2. **LE** (README pick LE), in two parts:
+2. **LE**, in two parts:
    - A live element's `$` field read in a plain function. A draft probe is in
      target/scratch/le1, in the pre-rename syntax, and it needs `$Shown`.
    - An element applied as a plain value (`TagValue`, "a live element comes from its
@@ -140,22 +140,3 @@ BO and the checker gaps pinned by f7a90e3 and c6df448 belong to the bug agent.
 - DD: the FV tests are also the failing tests for the `$$` collapse (accepted).
 - UP: DY in a generation was taken as UP/SU's remaining case (accepted).
 - The generation and MergeAll fixes share one commit (4447b7e). Their tests came first.
-
-## README entries now stale
-For Jimmy, through the coordinator; the README itself was not edited.
-- From the previous handoff: "lifted functions with time parameters" was already
-  lowered, and all of these are lowered on this branch:
-  - @HostList, NS, HO, CS, `Time.After`;
-  - building match/if except an arm ending on a plain result;
-  - an `@Machine` whose step is not a named function;
-  - local functions as values or with pattern parameters;
-  - an unbounded call lifted over `?`/`~`;
-  - the driver's clause-plain-result case.
-- "`@Flatten` of a dynamic that is not a `rebuild`'s (pick FV)" is lowered (2757990).
-- "`!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
-  structural dynamic of its block (gap SU)". Every form found is lowered. The README
-  pick UP text about refusing in a generation is stale since 4447b7e.
-- "`!MergeAll` of a list that is not a literal" is lowered (4447b7e, b015a3d).
-- New and not in the README:
-  - `@Switch` of a non-`rebuild` dynamic of events is lowered (b015a3d).
-  - A generation's builder over an unheard block name is refused (DR).

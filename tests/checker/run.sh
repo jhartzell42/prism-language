@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# The checker's tests (prismc/README.md, Checker), through a native prismc's `--check`:
+# The checker's tests, through a native prismc's `--check`:
 # every corpus program checks clean, or gives exactly the diagnostics its
-# `pos/NAME.expected` records (the programs the README lists as wrong by the books), and so
+# `pos/NAME.expected` records (the programs wrong by the books), and so
 # does every program of its own under `pos/`; every
 # negative program under `neg/` gives exactly its `.expected` diagnostic. A directory under
 # `pos/` or `neg/` is one program, a tree (claude/modules-style-pass.md), its `.expected`

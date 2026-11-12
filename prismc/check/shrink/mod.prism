@@ -1,5 +1,5 @@
-# `Check.Shrink`: the shrink check (Semantics ch. 7, "Every tick ends"; prismc/README.md,
-# Checker): every cycle of calls shrinks, or is `unbounded`.
+# `Check.Shrink`: the shrink check (Semantics ch. 7, "Every tick ends"):
+# every cycle of calls shrinks, or is `unbounded`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit r
 mod Types

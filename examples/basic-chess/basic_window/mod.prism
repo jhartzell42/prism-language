@@ -39,7 +39,7 @@ type Rect = record:
     h: Float
 derive ^Eq, ^Show
 
-# `Paper` and `Ink`, not White and Black, which are chess's colors (README, doubt CO)
+# `Paper` and `Ink`, not White and Black, which are chess's colors
 type Paint = choice:
     Paper
     Grey
@@ -62,7 +62,7 @@ derive ^Eq, ^Show
 
 # ---------------------------------------------------------------------------
 # What a scene draws: a row kind with no output, as `Fault` is, so each command is a tag with
-# named fields and prints with its family (README, doubt DR)
+# named fields and prints with its family
 
 type Draw = row
 

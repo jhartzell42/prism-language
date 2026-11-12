@@ -1,11 +1,11 @@
-# The Prism table under the canvas World, C++ and Rust, built for the benchmark (bench/gui/README.md).
+# The Prism table under the canvas World, C++ and Rust, built for the benchmark.
 #
 #   make            both drivers
 #   make cpp        target/bench/prism/driver: app.prism, with examples/basic-chess's window
 #                   library, compiled to C++ by the prism script's prismc, at -O3
 #   make rust       target/bench/prism-rs/driver: the same compiled to Rust, cargo
 #                   release (opt-level 3)
-#   ./check.sh      both built, and each run once with `check` (bench/gui/README.md)
+#   ./check.sh      both built, and each run once with `check`
 #
 # The emitted main.cpp holds the crate's own definitions, so it is compiled here with its
 # `main` renamed and linked beside driver.cpp, whose `main` runs the root under Hooks. The
@@ -29,8 +29,8 @@ SYS_LIBS := $(shell pkg-config --libs cairo freetype2) -framework Cocoa -framewo
 else
 SYS_LIBS := $(shell pkg-config --libs cairo freetype2 x11 xext)
 endif
-# The C++ driver's allocator is jemalloc, as every emitted program's (runtime/cpp/README.md,
-# pick AL): without it the C++ driver's link stops and says so (the Rust driver's does not
+# The C++ driver's allocator is jemalloc, as every emitted program's:
+# without it the C++ driver's link stops and says so (the Rust driver's does not
 # need it).
 ALLOC_LIBS := $(shell pkg-config --libs jemalloc 2>/dev/null)
 ALLOC_READY = @pkg-config --exists jemalloc || { echo "the C++ driver links jemalloc, found with pkg-config, and pkg-config does not find it: apt install libjemalloc-dev pkg-config (Debian, Ubuntu), brew install jemalloc (macOS)"; false; }

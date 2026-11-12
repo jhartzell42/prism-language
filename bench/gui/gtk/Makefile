@@ -1,4 +1,4 @@
-# The GTK 3 table (table.c), for the benchmark (bench/gui/README.md).
+# The GTK 3 table (table.c), for the benchmark.
 #
 #   make        target/bench/gtk/table, at -O2 with $(CC) (cc by default)
 #

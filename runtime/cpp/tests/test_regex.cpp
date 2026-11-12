@@ -218,7 +218,7 @@ TEST(regex_searches_are_linear_in_the_text) {
 }
 
 TEST(regex_reads_back_from_its_plain_form) {
-    // An emitted record holding a regex derives `from_pod` (prismc/README.md, PD): the
+    // An emitted record holding a regex derives `from_pod`: the
     // spelling `to_pod` writes reads back to a regex equal by spelling.
     for (auto [pattern, flags] : std::vector<std::pair<std::string, std::string>>{{"a/b", ""}, {"\\d+\\.\\d", "i"}, {"x\ny", "m"}, {"", ""}}) {
         Regex r = Regex::lit(pattern, flags);

@@ -2,7 +2,7 @@
 // of Rust's `std::rc::Rc` and `std::rc::Weak`, in place of `std::shared_ptr` and
 // `std::weak_ptr`, whose counts are atomic. A program is single-threaded (claude/decisions.md,
 // D4), and no World hands a counted value from one thread to another while both run
-// (README.md, "Threads"), so nothing here is synchronized.
+//, so nothing here is synchronized.
 //
 // - `make_rc<T>(args...)` makes the value and its counts in one allocation; `RcPlace<T>`
 //   (and `rc_placed<T>` over it) does the same with a constructor the caller writes

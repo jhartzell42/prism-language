@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 4 (Application: a sigiled parameter is not lifted over; a plain function's dynamics are read at its caller's read point): `Five` ignores the dynamic it is given, so `Pick 3` is 5. Never run: rustc refuses prismc-s4's output (`or` over two `Dynamic<Nat>`s handed to `five_f`, which takes a `Nat`).
+test lifts_over_a_whole_result
+
+tick 0
+  added:
+    0: Ui.Label(text="pick 5")

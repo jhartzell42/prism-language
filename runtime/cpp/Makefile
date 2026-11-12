@@ -36,7 +36,7 @@ RE2_CFLAGS := $(patsubst -I%,-isystem %,$(shell pkg-config --cflags re2 2>/dev/n
 RE2_LIBS := $(shell pkg-config --libs re2 2>/dev/null)
 RE2_READY = @pkg-config --exists re2 || { echo "runtime/cpp needs RE2 for regular expressions, found with pkg-config: brew install re2 (macOS), apt install libre2-dev pkg-config (Debian, Ubuntu)"; false; }
 
-# The allocator of every binary linked here is jemalloc (README.md, pick AL), found with
+# The allocator of every binary linked here is jemalloc, found with
 # pkg-config, except under a sanitizer (SANITIZE set: AddressSanitizer replaces malloc
 # with its own, which jemalloc would take the allocations from). The library itself links
 # nothing; a binary's link stops and names the package when pkg-config does not find it.

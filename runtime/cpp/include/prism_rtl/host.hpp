@@ -43,7 +43,7 @@
 //
 // **Ownership.** The owner holds its `Host` strongly and the host holds its rows; a row
 // holds its host weakly (the host outlives its rows), so no count cycle runs through a
-// host (doubt HW in README.md).
+// host.
 
 #pragma once
 

@@ -29,10 +29,10 @@ PR's description (#20) says the same at more length; the numbers are in
   for by Jimmy, each green on every suite and measured in claude/benchmarks-preliminary.md's
   Linux section):
   - the C++ `Map` changes its nodes in place when nothing else shares them, as the Rust
-    `Map` does through `Rc::make_mut` (runtime/cpp/README.md, "Arrays and maps: the costs");
+    `Map` does through `Rc::make_mut` (runtime/cpp/include/prism_rtl/collections.hpp);
   - a choice is a `std::variant` held by value, as the Rust enum is, and a recursive payload
     a `prism_rtl::Rc<const T>`, whose `==` and `<=>` go by the value where `T` has them, as
-    Rust's `Rc<T>` does; identity is `ptr_eq` (prismc/README.md, picks CH and PT);
+    Rust's `Rc<T>` does; identity is `ptr_eq` (runtime/cpp/include/prism_rtl/rc.hpp);
   - the C++ printer moves where Rust moves: a bare read of an owned local, and a move
     closure's capture `let`s as moving init-captures (pick MV);
   - the C++ programs allocate with jemalloc, linked through `pkg-config`, sanitizer builds
@@ -55,7 +55,7 @@ PR's description (#20) says the same at more length; the numbers are in
   operations), `bench/gui/gtk` (the same in C with GTK 3), the conformance corpus
   `tests/conformance/` (130 programs), the checker's corpus (`tests/checker/`, 162
   negative programs), the cost pairs (`tests/cost/`, four).
-- **Claude's prose** lives under `claude/` and in the READMEs: `architecture.md`,
+- **Claude's prose** lives under `claude/`: `architecture.md`,
   `backend.md` (the contract, and "Rust or C++ as the default back end"),
   `benchmarks-preliminary.md`, `decisions.md`, `incremental-host-document.md`,
   `modules-style-pass.md`, `regex-dialect.md`, `test-world-in-prism.md`, `todo-for-jimmy.md`,
@@ -109,36 +109,36 @@ Each has Claude's pick where it stands; his word overrules by editing.
 - **The default back end:** Rust (claude/backend.md). What would flip it is listed there.
 - **EP** (claude/incremental-host-document.md): each host-document entry published per
   place, structural, one tick per host level for a value change.
-- **The window library's doubts** (examples/basic-chess/basic_window/README.md): DG (a slider drags
+- **The window library's doubts** (examples/basic-chess/basic_window/): DG (a slider drags
   only once the canvas Worlds send pointer motion), OP, HS, FS; the chess doubts
-  (examples/basic-chess/README.md): PC, DT, NT (moves written in coordinates), TS (the board's
+  (examples/basic-chess/): PC, DT, NT (moves written in coordinates), TS (the board's
   and window's transcripts are not in the repository, over 10 KB), HT (13 ticks per press
   to idle).
 - **The design note's doubts** (claude/incremental-host-document.md): ET, PB, SE, RF
   (routing through every child's filter, linear), MT (claude/bugs/window-relayout-every-
   change.md: a new word's extent reaches its layout a tick late).
 - **The regex dialect's doubts** (claude/regex-dialect.md): CT, SH among them.
-- **The checker's** (prismc/README.md, "Checker doubts" and "Gaps against ch. 5"): TR,
+- **The checker's** (prismc/check/): TR,
   RP, CF, VW, UI, WL; gaps LR, RE, R2, DG (expression blocks, mutual `let`s), SU, AT;
   pick EE (`existential-escape` by its effect, the unpacking itself not done).
-- **The back end's** (prismc/README.md, "Back-end picks" and "Contract gaps"): the picks
-  from NM to FV, gaps UV to DI, doubts MH1 to MH4, and "Not lowered yet".
+- **The back end's** (prismc/lower/, prismc/emit/): the picks
+  from NM to FV, gaps UV to DI, doubts MH1 to MH4, and the `error[not-lowered]` refusals.
 - **The modules pass's doubts** (claude/modules-style-pass.md) and the Test World in Prism
   (claude/test-world-in-prism.md: Claude recommends (a), programs as values).
-- **CH1, the C++ self-compile's cost** (prismc/README.md, C++ doubts): under glibc the
+- **CH1, the C++ self-compile's cost** (prismc/emit/cpp/): under glibc the
   inline variants cost about 9% against the handles (not measured under jemalloc); what
   the jemalloc profile shows left is the records of maps (`G`, `Lx`, `St`, `TProgram`)
   moved, copied and destroyed, about 30% of samples, and the unbounded folds' job per
   element. The handle comes back from `7dc334d^`; `Rc`'s `==` could compare pointers
   first where the type has no `Float`, as Rust's `Rc<T: Eq>` does (untried).
-- **`Sign` under the total order** (prismc/README.md, pick BF): `Sign`, `Max` and `Min`
+- **`Sign` under the total order** (runtime/rust/src/float.rs): `Sign`, `Max` and `Min`
   use `<`, so `Sign -0.0` is -1.0 and every NaN's `Sign` is 1 (Claude: keep; else IEEE
   `copysign` for `Sign`).
 - **Performance left:** remove still re-stacks the row list, in C++ 7.5 ms of CPU against
   Rust's 5.0 here after the Map change (claude/bugs/window-relayout-every-change.md: the
   path copies were a part of the gap, not its body; what remains is to profile); prismc's emit time grows faster than
   its input (about 2,100 lines a second on itself here against 12,000 to 14,000 on chess
-  and the table, cause unknown); gap OC and the string copies SC1 to SC7 (prismc/README.md).
+  and the table, cause unknown); gap OC and the string copies SC1 to SC7 (prismc/emit/).
 - **The bugs filed, not fixed:** `claude/bugs/bench-cuis-latin1-and-software-paint.md`
   (Cuis is out of the scripted runs).
 - **Remote branches to delete** (merged into `claude-self-hosting`; Claude deletes none):

@@ -1,5 +1,5 @@
 # A generalized local `let` (Type System ch. 5, a local `let` generalizes; D8): lowering
-# instantiates it at each use (prismc/README.md, pick LG). `Twin` is used at Nat and at
+# instantiates it at each use. `Twin` is used at Nat and at
 # Text; `Second`, whose first parameter is unused, at (Text, Nat) and at (Nat, Text).
 # Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*

@@ -1,4 +1,4 @@
-"The GUI benchmark's table in Cuis Smalltalk with Morphic, on the Cog VM (bench/gui/README.md):
+"The GUI benchmark's table in Cuis Smalltalk with Morphic, on the Cog VM:
 the same rows, labels, buttons and operations as bench/prism/bench.prism, and its own
 driver. The rows are in a scroll pane in a 900 by 800 window, as GTK's are in a scrolled
 window and the Prism window clips them. A step performs its button's action, as a click would, then forces a World cycle

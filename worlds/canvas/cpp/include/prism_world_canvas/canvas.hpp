@@ -1,6 +1,6 @@
 // The canvas World over `prism_rtl`'s protocol, in C++: a window for each `Gui.Window`
 // place, painted in software, speaking the compiled programs' `Program` and `World`. The
-// C++ form of worlds/canvas/rust (README.md beside this library says what differs).
+// C++ form of worlds/canvas/rust.
 //
 //   prism_world_canvas::run<MyProgram>()           // inside the prelude's Prelude.Unwrap
 //   prism_world_canvas::run_with<MyProgram>(wrap, hooks)

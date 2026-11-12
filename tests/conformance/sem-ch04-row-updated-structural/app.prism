@@ -1,4 +1,4 @@
-# A row's `!Updated` over its block's structural dynamic (prismc/README.md, SU): a `for`'s
+# A row's `!Updated` over its block's structural dynamic: a `for`'s
 # gathered `$(K ==> T)` is published in the tick after the rows behind it changed (round 3
 # ST), and a row of another `for` of the block hears it there as the block itself does.
 # Written by Claude on the claude-bugs branch; subject to change.

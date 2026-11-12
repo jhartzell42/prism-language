@@ -989,7 +989,7 @@ pub fn indexed<A: Clone>(xs: &Array<A>) -> Map<Nat, A> {
 }
 
 /// A row of a `for` or a generation of a `rebuild`: a node its builder tears down. A row
-/// of a hosted child's (prismc/README.md, pick HO) is an entry of its host's document: its
+/// of a hosted child's is an entry of its host's document: its
 /// own places' entries, by their paths relative to the row, and a host's typed answer to one
 /// of them.
 pub trait Row: Node {
@@ -1418,7 +1418,7 @@ pub fn for_turns_indexed<V: Clone + 'static, S: 'static>(entries: impl IntoItera
 }
 
 /// The job of a lambda of unbounded type: its body, run as a job body from its first
-/// cycle (prismc/README.md, pick JB).
+/// cycle.
 pub struct Once<B>(::std::cell::RefCell<Option<Box<dyn FnOnce() -> Turn<B>>>>);
 
 impl<B> Job<B> for Once<B> {
@@ -1506,7 +1506,7 @@ pub fn recursive<A, R>(step: &dyn for<'a> Fn(&'a dyn Fn(A) -> R, A) -> R, first:
 }
 
 /// A job run to its result inside the cycle: a call of an unbounded function value from
-/// direct-style code (gap DS of prismc/README.md).
+/// direct-style code.
 pub fn run_to_end<B>(job: Rc<dyn Job<B>>) -> B {
     let mut job = job;
     loop {
@@ -1530,14 +1530,14 @@ pub fn world_option(args: &[String], default: &str) -> (String, Vec<String>) {
     }
 }
 
-/// Run on a thread with a large stack: unbounded code runs direct-style within a cycle
-/// (doubt DS of prismc/README.md), and Rust's default stack is 8 MB.
+/// Run on a thread with a large stack: unbounded code runs direct-style within a cycle,
+/// and Rust's default stack is 8 MB.
 pub fn on_big_stack(f: impl FnOnce() -> u8 + Send + 'static) -> u8 {
     ::std::thread::Builder::new().stack_size(1 << 30).spawn(f).map_or(1, |h| h.join().unwrap_or(1))
 }
 
-/// A port's firing from an event method, which returns nothing to pass a fault on through
-/// (prismc/README.md, PF). No fault reaches here today: a port's subscribers (a row's
+/// A port's firing from an event method, which returns nothing to pass a fault on through.
+/// No fault reaches here today: a port's subscribers (a row's
 /// event method, a host's blueprint) return `Ok`, and every fault a firing can raise goes
 /// by `Cx::fail_later` or the tick's own result. A fault that ever does is a bug, so it
 /// stops the program naming it rather than being lost.

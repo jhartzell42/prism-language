@@ -1,4 +1,4 @@
-// The Prism table's driver (bench/gui/README.md): bench.prism compiled to C++ runs under the
+// The Prism table's driver: bench.prism compiled to C++ runs under the
 // canvas World with `Hooks`, and each step of an operation's script is a press at a
 // button's text, found in the scene the World last read. A timed step's clock starts when
 // the press is queued and stops at the next `Hooks::settled`: every tick it caused has
@@ -7,8 +7,8 @@
 //   driver OP RUNS WARMUP     prints `OP RUN MS` per timed run, then `peak_rss_bytes N`
 //   driver OP RUNS WARMUP check
 //                             also counts each step's work by phase, and fails the run
-//                             when a scene draws outside the window (bench/gui/README.md,
-//                             "The checks")
+//                             when a scene draws outside the window
+//
 //
 // The work is instructions retired where the system counts them: macOS's `proc_pid_rusage`
 // and `thread_selfcounts`, or on Linux a perf_event counter (PERF_COUNT_HW_INSTRUCTIONS)

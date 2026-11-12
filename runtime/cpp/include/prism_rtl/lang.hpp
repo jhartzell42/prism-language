@@ -1,5 +1,5 @@
-// What the emitted C++ uses besides the library's types (prismc/README.md, "The C++
-// target"): the spellings of the model's operations that C++ has no syntax for. A Rust
+// What the emitted C++ uses besides the library's types:
+// the spellings of the model's operations that C++ has no syntax for. A Rust
 // `match` or labelled block is a GNU statement expression whose value is a `Slot`; a
 // pattern tests with `is<C>` and takes a payload with `as<C>`; `?` is `TRY` (result.hpp); a shared
 // function value is `Fn`; the model's names for the Rust runtime's constructors and

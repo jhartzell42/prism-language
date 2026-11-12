@@ -1,5 +1,5 @@
-# A call of an unbounded function is a cycle point wherever it stands (D6; prismc/README.md,
-# DS): in an arm of a `match` that is not the function's tail, in a branch of an `if`, and
+# A call of an unbounded function is a cycle point wherever it stands (D6):
+# in an arm of a `match` that is not the function's tail, in a branch of an `if`, and
 # right of `and`. Each function here makes one such call, so two cycles: its entry and the
 # call. Written by Claude on the claude-bugs branch; subject to change.
 emit Ui.*

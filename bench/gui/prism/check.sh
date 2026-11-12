@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The window library's cost checks (bench/gui/README.md, "The checks"): both drivers built,
+# The window library's cost checks: both drivers built,
 # then each operation run once with `check`, which fails a run whose scene draws texts
 # outside the window or whose screen does not show the table the operation should leave.
 # Opens a window for each run, so the display must be awake; on Linux with no DISPLAY the

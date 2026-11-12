@@ -16,7 +16,7 @@ use Syntax.Lexer.Templates.*
 use Syntax.Lexer.Corpus.*
 
 # One diagnostic. `code` is ch. 5's name for the error (`mismatch`, `row-lacks`, ...), or
-# one of the checker's own names its README lists (`unknown-name`, `collision`); `file`
+# one of the checker's own names (`unknown-name`, `collision`); `file`
 # is the file's index in the program; `fix` is empty when the message is the fix.
 type CDiag = record:
     code: Text

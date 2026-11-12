@@ -30,9 +30,14 @@ struct Smoke {
 impl Node for Smoke {
     fn answer(self: Rc<Self>, at: &[Segment], v: &Pod, cx: &mut Cx) -> Done {
         if at != [Segment::Pos(0)] || !self.open.get() {
-            return Err(Fault::answer(format!("no answering place at {}", Path(at.to_vec()))));
+            return Err(Fault::answer(format!(
+                "no answering place at {}",
+                Path(at.to_vec())
+            )));
         }
-        let Pod::Choice(c, _) = v.structure() else { return Err(Fault::answer(format!("expected WindowInput, got {v}"))) };
+        let Pod::Choice(c, _) = v.structure() else {
+            return Err(Fault::answer(format!("expected WindowInput, got {v}")));
+        };
         eprintln!("smoke: the window sent {v}");
         if &**c != "Press" {
             return Ok(()); // a `Resized` before the click
@@ -54,12 +59,35 @@ impl Program for SmokeProgram {
     fn build(_: &[Pod], ready: &dyn ReadyState) -> Result<(Self, TickOut), Fault> {
         let mut rt = Runtime::new();
         let mut cx = rt.build(ready);
-        let root = Rc::new(Smoke { path: Path::root(), open: true.into() });
-        let window = Pod::element("Gui.Window", vec![("title", Pod::text("Smoke")), ("size", gui::extent(200.0, 100.0))]);
-        let id = cx.first_value(&window).ok_or(Fault::answer("Gui.Window unanswered"))?;
+        let root = Rc::new(Smoke {
+            path: Path::root(),
+            open: true.into(),
+        });
+        let window = Pod::element(
+            "Gui.Window",
+            vec![
+                ("title", Pod::text("Smoke")),
+                ("size", gui::extent(200.0, 100.0)),
+            ],
+        );
+        let id = cx
+            .first_value(&window)
+            .ok_or(Fault::answer("Gui.Window unanswered"))?;
         cx.added(root.path.at(0), window);
-        let rect = Pod::element("Draw.Rect", vec![("rect", gui::rect(10.0, 10.0, 100.0, 50.0)), ("paint", Pod::name("Red"))]);
-        cx.added(root.path.at(1), Pod::element("Gui.Scene", vec![("window", id), ("draw", Pod::Array(vec![rect]))]));
+        let rect = Pod::element(
+            "Draw.Rect",
+            vec![
+                ("rect", gui::rect(10.0, 10.0, 100.0, 50.0)),
+                ("paint", Pod::name("Red")),
+            ],
+        );
+        cx.added(
+            root.path.at(1),
+            Pod::element(
+                "Gui.Scene",
+                vec![("window", id), ("draw", Pod::Array(vec![rect]))],
+            ),
+        );
         let out = rt.close(cx)?;
         Ok((SmokeProgram { rt, root }, out))
     }
@@ -71,4 +99,3 @@ impl Program for SmokeProgram {
         self.rt.compact();
     }
 }
-

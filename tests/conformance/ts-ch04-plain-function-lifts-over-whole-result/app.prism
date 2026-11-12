@@ -1,0 +1,18 @@
+# A plain function (no dynamic in its signature) applying `Or`, lifted, over an element of
+# the array of dynamics a function that takes time whole gives, and handing the result to a
+# function with a `$` parameter (Type System ch. 4, Application).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Gen: fn Nat -> [$Nat]
+fn Gen n = [[$ n]]
+
+Five: fn $Nat -> Nat
+fn Five $a = 5
+
+Pick: fn Nat -> Nat
+fn Pick n = Five (Or (Gen n)[0], ($ 0))
+
+@shown:
+    Ui.Label($text=$"pick {Pick 3}")      # 0
