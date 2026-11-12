@@ -455,7 +455,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `$level` itself and never a copy of its value. A hold whose value holds time below its
   top takes its initial value whole in the same way, a name (`$$cur <- $a then ..`) or a
   value written over readers (`$held <- (($a, "s")) then ..`). So does `v on !e` where the
-  event's values hold time (`EventRef`: a hold's step `then (($b, "t")) on !swap`): each
+  event's values hold time and `v` is no dynamic itself, which `on` would lift over
+  (`EventRef`: a hold's step `then (($b, "t")) on !swap`): each
   reader in `v` is its live `Dynamic`, made late for a step, which nothing reads before
   the node is made.
 - **`any x` of `^Show` alone** is `Rc::new(x)` cast to `Rc<dyn Show>` where it is made
