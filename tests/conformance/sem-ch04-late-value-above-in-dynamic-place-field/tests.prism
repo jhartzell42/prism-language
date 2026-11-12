@@ -1,0 +1,6 @@
+# The tests of sem-ch04-late-value-above-in-dynamic-place-field.
+emit Ui.* | Pad.*
+use App.*
+
+test loud, @Page (Loud "x"):
+    with Pad.Count(name="count 10") = 4, build
