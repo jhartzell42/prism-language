@@ -1,0 +1,18 @@
+# Part VII ch. 7, step C1's checker case: an event of moves wired into a `!Never` field is
+# a mismatch (Part III ch. 6: no move is a `Never`; Jimmy, 12 November: "Never is an empty
+# choice and goes in the prelude").
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Watch.*
+
+tag Watch.Request of Element unit:
+    !requests: Never
+
+type Move = choice:
+    Move Nat
+derive ^Eq, ^Show
+
+@page: @unit
+@page:
+    !press <- Ui.Button($label=$"move")
+    let asked = Watch.Request(!requests=((Move 1) on !press))
+    Ui.Label($text=$"moved")
