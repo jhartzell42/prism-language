@@ -257,7 +257,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   No twin reaches these, where the clamp alone orders: a `for` row built after its block
   wrote a hold the row hears (`parent_wrote_m` is told to the rows that live), a
   dynamic's update port (`Dynamic::map2`, a `follow`, `updated` as an event value, a
-  blueprint's dynamic answer), `@Machine`'s and a cycle's later firings.
+  blueprint's dynamic answer).
 - **Holds.** `$x <- init then !e` → the firing's method calls `x.set(v, cx)`; every read
   is `x.get(cx)`, before the tick during propagation and after it from then on, so the
   tag law needs no commit pass.

@@ -1613,6 +1613,7 @@ fn GenHears r, genName = Fold (RowHears r), r, \|w, m| update w:
     &_.subs <= Push &_.subs, (("{genName}_wrote_{m}", "wrote_{m}", OutUnit))
     &_.taken <= Push &_.taken, "wrote_{m}"
     &_.getters <= Push &_.getters, (MethDef(name="wrote_{m}", recv=RecvRc, params=[[(("v", OutUnit))]], cx=CxMut, ret=OutUnit, body=[[DoExpr (XMethod (XSelf), "parent_wrote_{m}", [[XCx]])]], tail=(XUnit), doc="The block wrote behind its `{m}`: as `parent_wrote_{m}`."))
+    &_.getters <= Push &_.getters, (AboveMethod "wrote_{m}", [[(AboveCall XSelf, "parent_wrote_{m}", (XVar "h"))]], "the block writes behind its `{m}`")
 
 # Whether a generation is still its block's current one after the tick: it has not left
 # (`left`, set as its places are torn down), the block will not replace it at the build
