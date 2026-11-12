@@ -1,0 +1,22 @@
+# A `rebuild` whose generation ends on a host line with no name between (Semantics ch. 4,
+# "What a `rebuild` hands back"; ch. 9, a host's output is its child's result and the
+# child's document): the bundle the host gives is the generation's result, as a widget's
+# bundle is (sem-ch04-rebuild-ends-on-widget-bundle).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@child: @unit
+@child:
+    !inc <- Ui.Button($label=$"inc")                              # 0
+    $n <- 0 then $n + 1 on !inc
+    Ui.Label($text=$"{$n}")                                       # 1
+
+@main: @unit
+@main:
+    !next <- Ui.Button($label=$"next")                            # 0
+    $page <- 1 then $page + 1 on !next
+    $both <- rebuild $page:                                      # 1/#g
+        @HostDocument @child, \|p, e| @Element e                  # 1/#g/0/[p]/0
+    Ui.Label($text=$"page {$page}")                               # 2

@@ -1,0 +1,33 @@
+# Derived by hand from Semantics ch. 4 ("`rebuild`": holds start over, places are new under `#g`, the old generation leaves at the end of the tick its dynamic changes) and ch. 9 (a host re-emits its child's place p at host/[p]/0); never run.
+test generations_end_on_a_host
+
+tick 0
+  added:
+    0: Ui.Button(label="next")
+    1/#0/0/[0]/0: Ui.Button(label="inc")
+    1/#0/0/[1]/0: Ui.Label(text="0")
+    2: Ui.Label(text="page 1")
+
+tick 1
+  in:
+    1/#0/0/[0]/0: click
+  changed:
+    1/#0/0/[1]/0: Ui.Label(text="1")
+
+tick 2
+  in:
+    0: click
+  added:
+    1/#1/0/[0]/0: Ui.Button(label="inc")
+    1/#1/0/[1]/0: Ui.Label(text="0")
+  changed:
+    2: Ui.Label(text="page 2")
+  torn down:
+    1/#0/0/[0]/0: Ui.Button(label="inc")
+    1/#0/0/[1]/0: Ui.Label(text="1")
+
+tick 3
+  in:
+    1/#1/0/[0]/0: click
+  changed:
+    1/#1/0/[1]/0: Ui.Label(text="1")
