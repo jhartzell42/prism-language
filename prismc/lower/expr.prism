@@ -1472,7 +1472,10 @@ fn WidgetBlueprintValueFrom lx, lxArguments, recast, env, qk, calleeSpan, args, 
         else: if fires and not untagged: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_event_output_blueprint::<crate::Elem, crate::Output, _>"), [[build, buildHosted, fired]])), t
         else: if fires: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_event_blueprint::<crate::Elem, crate::Output, _>"), [[build, buildHosted, fired]])), t
         else: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_blueprint::<crate::Elem, crate::Output, _>"), [[build, buildHosted, answer]])), t
-    otherwise: VlOwned (Refusal (WidgetValueWords qk)), t
+    # (class G: every caller asks for the reading's entry first, `WidgetNamed` and
+    # `GlobalCall` by `HasKey lx.valued`, `?OpenWidgetBlueprintValue` by `rowed` for
+    # each instantiation, and each has the widget's value from `lx.g.vals`)
+    otherwise: VlOwned (InternalBug "the widget function {BareName qk} as a value with no rows made for this reading: every caller asks `Lx.valued` for the reading first"), t
 
 # The name of a valued widget's row built under a host, by its row for the World's scope
 # (`ValuedRows`).
