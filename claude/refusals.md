@@ -649,7 +649,7 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | expr.prism `NameValueOf`, an event read as a value | G | - | internal error: every name of an event node is bound beside its port (`PreBindName`, `BindEventParam`; a pattern's part, a host's child's result and a `let` over a bundle bind a prebound name), a row's through the parent (`RowEnvNames`, `EventsOf`, `WholeOfBlock`), a shared row's event parameter is its caller's (`LiveParams`). Probes a3, ev1-ev5 lower |
 | expr.prism `NameValueOf`, a tuple pattern's binding as a value | R | none | refused where a bundle bound to one name is read as one value in no function's argument, no generation's result and no `let` of it (a tuple or an array that holds it); passed to a function it is one value (`BundleArgumentsAt`, ts-ch02-named-bundle-as-argument) |
 | expr.prism `NameValueOf`, a widget defined in a block read as a blueprint value outside a line's value places | R | none | refused; a lambda's body that is the widget is a value place (`BlueprintValuesAt`; sem-ch08-block-widget-given-by-lambda), one whose body chooses it (`\|c| if c: @Inner else: @Other`) is not |
-| expr.prism `WidgetNamed` and `GlobalCall` (`DeclaredCall`), a widget, named or applied, as a value where `ValuedWidgets` does not look (two calls, through `OpenWidgetValueWords`) | R | sem-ch08-widget-value-as-method-argument (`WidgetNamed`), sem-ch08-applied-widget-value-as-method-argument (`GlobalCall`) | a method call's argument (`loud.?Pick(@One)`); fix written, unrun: `ValueWidgetsIn` reads a method call as its function's call with the receiver first. Lowered: sem-ch08-widget-value-in-map-literal; a widget chosen by `if` in an argument (w3) and one in a record's `update` block (w5) lower. A widget defined as one expression that is another widget (`fn @main = @page`) is an alias (sem-ch08-widget-is-another-widget) |
+| expr.prism `WidgetNamed` and `GlobalCall` (`DeclaredCall`), a widget, named or applied, as a value where `ValuedWidgets` does not look (two calls, through `OpenWidgetValueWords`) | R | none; lowered: sem-ch08-widget-value-as-method-argument (`WidgetNamed`), sem-ch08-applied-widget-value-as-method-argument (`GlobalCall`), a method call's argument (`loud.?Pick(@One)`): `ValueWidgetsIn` reads a method call as its function's call with the receiver first (both ok on prismc-s7) | no other reading known. Lowered: sem-ch08-widget-value-in-map-literal; a widget chosen by `if` in an argument (w3) and one in a record's `update` block (w5) lower. A widget defined as one expression that is another widget (`fn @main = @page`) is an alias (sem-ch08-widget-is-another-widget) |
 | expr.prism `WidgetBlueprintValueFrom`, a reading with no rows | G | - | internal error: `WidgetNamed` and `GlobalCall` ask `Lx.valued` first, `?OpenWidgetBlueprintValue` asks it for every instantiation (`rowed`) |
 | expr.prism `OpenWidgetValueWords`: `EndlessByName`, `EndlessThroughImpl` | G | - | internal errors: the checker's `grows-without-end` |
 | expr.prism `OpenWidgetValueWords`: `UndecidedParameter` | G | - | internal error by its text: `?UseTargets` gives no answer only where a use's types name a type parameter once the user's instantiation's types are put in, and those are closed over every type parameter of the user's signature (`?ClosedTypes`, a method's own beside its impl's); a type left open at a use (`Frame [[]]`, ud3) is a variable, taken as it is; a local generic function's own variable meets `OutQuantified` first (ud1, ud4) |
@@ -657,14 +657,14 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | expr.prism `FunctionRecolored`, a function whose color no use of its `let` decides | U | none | refused; reached only where one side is `OutQuantified` (`OutTyOf` of a function type is `OutFn`, `OutJobFn` or that), the `OutQuantified` gap: a call making its callee's color bounded inside a generalized `let` or local function whose color no use decides. fr1-fr5 (a `let` of `Held (..)`, used or not, a generalized lambda over it, a widget's local function calling it) lower: such colors default bounded |
 | patterns.prism, a pattern inside an element's `$` field | G | - | internal error: the checker's `live-field-pattern` (ruling LP; tests/checker/neg/live-field-pattern) |
 
-Totals: 25 `Refusal` / `RefusalDo` calls stand in prismc/lower. 21 are R with a red
+Totals: 25 `Refusal` / `RefusalDo` calls stand in prismc/lower. 19 are R with a red
 test (`AnyValue`, the named bundle, the block widget, `WrLate`, the generic widget, the
 ten late-name markers of `BindLate`, `MarkLateLets`, `AnswerUnbuilt`, `PreBindWhole`,
 `PreBindWholeParts`, `LateTakerResults`, `LatePlainPartOf` two, `LateHostedOutput` and
 `LateBundleParts`, `ArmRowOf`'s `for` site, `PlaceNumber`'s block site and
-`DeferredLine`'s two, the two widget-value calls); 3 are R with no test (`ArmRowOf`'s
-blueprint-value site, `Recolored`, whose test is ok on prismc-s6, and LF, whose test is ok
-on prismc-fd1); 1 is U (`FunctionRecolored`). Twenty-two guards are internal errors
+`DeferredLine`'s two); 5 are R with no test (`ArmRowOf`'s blueprint-value site, the two
+widget-value calls, whose tests are ok on prismc-s7, `Recolored`, whose test is ok on
+prismc-s6, and LF, whose test is ok on prismc-fd1); 1 is U (`FunctionRecolored`). Twenty-two guards are internal errors
 and no longer refusals. One internal error is reached by a checked program and is an R
 with a red test: `BuildLineNow`'s "a building line that is no element, blueprint or
 builder" (sem-ch08-blueprint-value-from-or).
@@ -760,6 +760,11 @@ refusal. They are the attempts behind the R rows with no test and the U rows.
   widget as a value chosen by `if` in an argument (w3), a function of its callee's color
   through a type alias (rc1), a widget value in a record's `update` block (w5): each
   lowered.
+- Run on prismc-s7 (the seventh sweep's bootstrap of 169cdf58, gen1 == gen2): the 60
+  programs `sem-ch04-late-*`, `sem-ch08-late-*`, `sem-ch09-host-late-*` and the two
+  method-argument tests: 47 ok; the 15 red are this sweep's 14 red tests and
+  sem-ch09-host-late-plain-part-taken-above-bundle-result, each at its own refusal; no
+  internal error.
 
 ## Designs for the red R tests with no fix
 
