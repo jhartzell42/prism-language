@@ -276,7 +276,7 @@ fn RebuildDynamic wx, menv, body, srcEx, reads, vt, name, pos:
     match ?shape:
         nil:
             let wx2 = update whole.parent:
-                &_.build <= Push &_.build, (RefusalDo "a `rebuild` whose generation gives a dynamic it does not lower")
+                &_.build <= Push &_.build, (InternalBugDo "a `rebuild` that hands back a dynamic whose generation gives no dynamic, value or bundle (the checker types the `rebuild` by its block's last line; a host's line there is its bundle, `GenRowOf`)")
             ((wx2, WrUnit))
         ? ((dynTy, taken)):
             let result = "{name}_result"
@@ -1429,7 +1429,13 @@ fn GenRowOf wx, menv, body, vt, rowName, genName:
     let be = Bind (BuildSpelling ports), "_", (BnLocal (XVar "value"), Owned, vt)
     let me = Bind ports, "_", (BnLocal (XField XSelf, "value"), Owned, vt)
     let r2 = BlockInto r1, be, me, body
-    let ((r3, ?dynResult, ?plainResult)) = match r2.result:
+    # a block that ends on a host's line (`@HostDocument child, supplier` last, no name
+    # between) gives the host's bundle: its child's result and the child's document, a
+    # dynamic of the generation
+    let handedBack = match r2.result:
+        WrHosted inner, (BnDyn documentEx, documentReads, documentTy): WrParts [[inner, (WrDyn documentEx, documentReads, documentTy)]]
+        otherwise: r2.result
+    let ((r3, ?dynResult, ?plainResult)) = match handedBack:
         WrEv r: (((Connect r2, r, (SkUp upName)), nil, nil))
         WrDyn ex, resultReads, rt: (((GenResult r2, genName, ex, resultReads, rt), ? rt, nil))
         # a plain result: computed at the generation's build, kept in a field of the row
