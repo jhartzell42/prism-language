@@ -675,8 +675,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
     `Hold<Option<T>>` is set there (`LateAskedPlace`, read as `LatePlaceBn`), and the
     element its pushes are keyed by is kept then, in `{f}_element`, a
     `RefCell<Option<Pod>>` the push compares (`Wx.lateElements`), the place listening
-    from then on. Refused: the same with a bundle answer, with a pattern for the
-    answer, or in a hosted scope (the `unbuilt` marker of `BindLate`);
+    from then on. With a bundle answer taken apart by a tuple pattern
+    (`((p, $s)) <- Pad.Port(name="port {n}")`) the place asks its whole first value
+    there (`BundleOutputOf`'s `asked`, `IsAskedBundle`): each plain part is a late name
+    over a hold written once (`LatePlainPartOf`, a part under a pattern of its own one
+    hold under `PartHoldKey`), each `$` part's hold is empty until then (`AskedPart`,
+    read as `LatePlaceBn`), the element its pushes are keyed by kept in a cell
+    (`AskedElement`, `Wx.lateElements`), an event part a node as ever; `{name}#asked`
+    keeps `PreBind` off those names. Refused: an answer with no name of its own (every
+    state part `ignore`), or in a hosted scope (the `unbuilt` marker of `BindLate`);
   - a plain `let` of the node that reads a late name is late too (`MarkLateLets`): a
     getter of the node that computes it (`late_{name}`, `LateLetGetters`), bound under
     `{name}#late` as the split line's names are, so what reads it reads it late in turn;
@@ -707,7 +714,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
     is numbered at once (`LateRowSelect`). The split line gives so where it is a
     building `match` or `if`, or a widget of one clause whose block ends on one and is
     split at no line of its own (`IsGivingLine`: inlined, its arms' rows are lowered
-    at the line), in any scope built in the order of its places (a hosted one too;
+    at the line), or a widget parameter applied with no arguments whose argument gives
+    so (`IsGivingParam`: the argument is lowered at the line in its caller's
+    environments, `ApplyWidgetParam`), in any scope built in the order of its places (a hosted one too;
     not one built at its host's line, `Wx.lateHosts`), its result a plain value or a
     bundle taken apart by a tuple pattern (the plain parts' names are the split names,
     each read out of the kept parts, `LateParts`; a bundle bound whole to one name is
@@ -716,10 +725,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
     builds its generations at its build (`Wx.lateGens`) the taker's rows are numbered
     late as well: both built at once, the taker's after the split line's
     (`LateTaking`, a wait in `ScopeSteps`' phase 1), both numbered at their places.
-    Refused: such a line under any other split (a blueprint value, a bundle bound
-    whole, a late name of another kind; a widget that calls itself in the split line's
-    arm is `ArmRowOf`'s refusal), and one whose plain result no name binds where it is
-    late (a tuple pattern's and `ignore <-` lower);
+    Refused: such a line under any other split (a blueprint value the node holds, a
+    bundle bound whole, a late name of another kind), and one whose plain result no
+    name binds where it is late (a tuple pattern's and `ignore <-` lower);
   - a building line above that takes the plain result of a building `match` or `if`
     at its build (`if n > 15:` above `n <- match mode:`, a widget's plain argument, a
     builder's rows) needs the result before either row
@@ -1223,10 +1231,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `Wx.genPhase`), the builders, the places sent, the subscriptions. A generation built
   again after the row is numbered (`numbered`) numbers its new row at once
   (`LateRowSelect`). Every row inside such a row does the same, so each tells its
-  block what its generations left unbuilt when it is built. Refused there: the result
-  beside a `for`, a `rebuild` or a widget that calls itself in the arm (their rows
-  take their numbers as they are built), and a widget that calls itself in any row
-  inside.
+  block what its generations left unbuilt when it is built. A widget that calls itself
+  there (`GivesLate`: such a row, or the split line under `GivenUnnumbered`) gets
+  shared rows of their own, numbered late (`lx.shared` under `{qk}#late`; `ArmRowOf`'s
+  `sharedLate`): built with no `base`, their build after the node kept in
+  `number_later`, the calls inside them numbered late in turn; the row holds no block,
+  so the node that builds it keeps the step that numbers it in `{name}_number`
+  (`SharedNumbered`, a weak `self`), run in the order of the places as an arm row's is.
+  Refused there: the result beside a `for` or a `rebuild` in the arm (their rows take
+  their numbers as they are built).
 - **A host whose position has no number at the build** (`PlaceUnknownAtBuild`: in a row
   numbered late, or below a gappy generation built after the node) is made at
   `Path::root()` and placed once the node stands, where the construction step reaches
@@ -1234,7 +1247,14 @@ it make every program an interpreter run, and every type mistake a runtime fault
   scope's places ask their first values after that, as a late host's do
   (`Wx.lateHosts`): a place with a plain answer bound to a name there is a late name
   too, its hold set where the scope's places ask (`LateHostedOutput`,
-  `ElementOutputOf`). Refused: such a place whose answer no plain name binds, and
+  `ElementOutputOf`). A hosted place with a plain answer bound to a name below a
+  building line of its own block whose rows may differ in width (`BelowGappyLine`: a
+  building `match` or `if`, a widget that gives as one, a widget of several clauses)
+  in a scope with no late host is the same late name: it asks its host in its
+  scope's turn of the construction step, after the scope's generations and before
+  its deferred ones (`ScopeSteps`' `asked`, `Wx.lateFirsts`), its path read from the
+  node (`FirstValueLetAt` with `node`). Refused: such a place whose answer no plain
+  name binds (a `$` or a bundle answer below such a line too), and
   a hosted node's own first-value query spelled before its node in a row numbered
   late (`PlaceNumber`).
 - **A widget that calls itself**, of one clause or of several (plain parameters, no type
