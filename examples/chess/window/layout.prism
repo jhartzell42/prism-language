@@ -1,8 +1,8 @@
 # `Window.Layout`, a child module of `Window`.
-# Written by Claude on the claude-self-hosting branch; subject to change.
-emit r | Ui.* | Gui.*
+# Written by Claude on the claude-document-chess branch; subject to change.
+emit r | Pane.* | Gui.*
 use Window.*
-use Window.Ui.*
+use Window.Panes.*
 use Window.Hosting.*
 use Window.Widgets.*
 use Window.Hits.*
@@ -166,32 +166,32 @@ fn ClickableAt r, chain = match ?Innermost chain:
 
 KindOf: fn Elem -> Kind
 fn KindOf e = match e:
-    Ui.Label($text=$t): KLabel $t
-    Ui.Button($label=$l): KButton $l
-    Ui.TextInput($text=$t, $cursor=$c, ..): KInput $t, $c
-    Ui.Image($src=$s, $paint=$b): KImage $s, $b
-    Ui.Slider($value=$v, low=lo, high=hi): KSlider $v, lo, hi
-    Ui.VBox(..): KStack True, 0.0, Start
-    Ui.HBox(..): KStack False, 0.0, Start
-    Ui.Column(spacing=g, align=a, ..): KStack True, g, a
-    Ui.Row(spacing=g, align=a, ..): KStack False, g, a
-    Ui.Layers(..): KLayers
-    Ui.Shown($shown=$s, ..): KShown $s
-    Ui.Frame($spec=$s, ..): KFrame $s
-    Ui.Grid(columns=n, ..): KGrid n
+    Pane.Label($text=$t): KLabel $t
+    Pane.Button($label=$l): KButton $l
+    Pane.TextInput($text=$t, $cursor=$c, ..): KInput $t, $c
+    Pane.Image($src=$s, $paint=$b): KImage $s, $b
+    Pane.Slider($value=$v, low=lo, high=hi): KSlider $v, lo, hi
+    Pane.VBox(..): KStack True, 0.0, Start
+    Pane.HBox(..): KStack False, 0.0, Start
+    Pane.Column(spacing=g, align=a, ..): KStack True, g, a
+    Pane.Row(spacing=g, align=a, ..): KStack False, g, a
+    Pane.Layers(..): KLayers
+    Pane.Shown($shown=$s, ..): KShown $s
+    Pane.Frame($spec=$s, ..): KFrame $s
+    Pane.Grid(columns=n, ..): KGrid n
     otherwise: KNone
 
 # a container's children: its host's document, each child's dynamic by its path
 KidsOf: fn Elem -> (Path ==> $Elem)
 fn KidsOf e = match e:
-    Ui.VBox($children=$cs): $cs
-    Ui.HBox($children=$cs): $cs
-    Ui.Row($children=$cs, ..): $cs
-    Ui.Column($children=$cs, ..): $cs
-    Ui.Layers($children=$cs): $cs
-    Ui.Shown($children=$cs, ..): $cs
-    Ui.Frame($children=$cs, ..): $cs
-    Ui.Grid($children=$cs, ..): $cs
+    Pane.VBox($children=$cs): $cs
+    Pane.HBox($children=$cs): $cs
+    Pane.Row($children=$cs, ..): $cs
+    Pane.Column($children=$cs, ..): $cs
+    Pane.Layers($children=$cs): $cs
+    Pane.Shown($children=$cs, ..): $cs
+    Pane.Frame($children=$cs, ..): $cs
+    Pane.Grid($children=$cs, ..): $cs
     otherwise: {}
 
 # a text split at its spaces, a character at a time, walked with a cursor
@@ -222,9 +222,9 @@ fn Joined ws, sep = Fold ws, "", \|acc, w| if acc == "": w else: "{acc}{sep}{w}"
 # a label's words and the space; a button's label; an input's text and its text to the cursor
 TextsOf: fn Elem -> (Text ==> unit)
 fn TextsOf e = match e:
-    Ui.Label($text=$t): Fold (Words $t), {" ": unit}, \|a, w| Insert a, w, unit
-    Ui.Button($label=$l): {$l: unit}
-    Ui.TextInput($text=$t, $cursor=$c, ..): Insert {$t: unit}, (TextBefore $t, $c), unit
+    Pane.Label($text=$t): Fold (Words $t), {" ": unit}, \|a, w| Insert a, w, unit
+    Pane.Button($label=$l): {$l: unit}
+    Pane.TextInput($text=$t, $cursor=$c, ..): Insert {$t: unit}, (TextBefore $t, $c), unit
     otherwise: {}
 
 # ---- labels, wrapped by words at the room's width

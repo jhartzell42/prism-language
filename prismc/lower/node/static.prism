@@ -77,11 +77,14 @@ fn WidgetLine wx, benv, menv, e, ?bound:
     let ?named = match callee.kind:
         EName n: if (Len n.path) == 1 and (Len args) == 0: menv.names["{SNameKey n}#blueprint"] else: nil
         otherwise: nil
-    # a blueprint that is a value of the node: a pattern's binder, a field of a record
+    # a blueprint that is a value of the node: a pattern's binder, a field of a record,
+    # a `for`'s binder over blueprints (`for @each <- [[@One, @Two]]:` then `@each`: in
+    # the row's methods its entry, a plain blueprint read at the row's build)
     let held = match e.kind:
         EField ignore, ignore, ignore: (IsSome ?qualified) == False
         EName n: match (if (Len n.path) == 1: menv.names[SNameKey n] else: nil):
             ? (BnLocal ignore, ignore, ignore): True
+            ? (BnDyn ignore, ignore, t): t == blueprintTy
             otherwise: False
         otherwise: False
     if held: ValueBlueprintLine wx, menv, e
@@ -1215,9 +1218,15 @@ fn BlueprintValuesAt wx, benv, menv, e, named:
     # a value's place: an argument of any other call (a function, a constructor), a part
     # of a tuple or an array, the operand of `?`; and the value of a `let` (`named`:
     # `let @w = @line`, read where `@w` is, `NameValueOf`)
-    # (and what a function of the block gives, `fn @Made b = @line`)
+    # (and what a function of the block gives, `fn @Made b = @line`, and what a lambda
+    # gives, `let Make = \|count| @line`: the lambda's body is lowered where it is
+    # applied, under this line, so the value made here is the one it reads)
     let spots = Fold reached, (if named: Push results, (DynKey (Ungrouped e)) else: results), \|acc, x| match x.kind:
         ECall ignore, args, ignore, ignore: if HasText applied, (DynKey x): acc else: Fold args, acc, \|acc2, a| Push acc2, (DynKey (Ungrouped a.value))
+        ELambda ignore, (LbExpr body): Push acc, (DynKey (Ungrouped body))
+        ELambda ignore, (LbBlock b): match (Or b.stmts[Dec (Len b.stmts)], dummyStmtL).kind:
+            SExpr body: Push acc, (DynKey (Ungrouped body))
+            otherwise: acc
         ETuple xs: Fold xs, acc, \|acc2, part| Push acc2, (DynKey (Ungrouped part))
         EArray xs: Fold xs, acc, \|acc2, part| Push acc2, (DynKey (Ungrouped part))
         EFreeSigil "?", operand: Push acc, (DynKey (Ungrouped operand))

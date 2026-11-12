@@ -599,7 +599,10 @@ fn PackedParts cp, d:
         "        +[]({CppParams cp, m.method.params}) -> {CppType cp, m.method.ret} \{ return {if m.hiddenResult: "{CppId (PackedFirstHiddenCpp m)}.repacked({call})" else: call}; \},"
     let declared = "/// The dictionary of `{d.name}` an existential keeps: each method over packed values.\nstruct {dictionary} \{\n{Join fields, "\n"}\n\};\n/// The dictionary of `{d.name}` at the type of a value.\nstruct {maker} \{\n    template <class T>\n    {dictionary} operator()(const T&) const;\n\};\ninline constexpr {maker} {Lower d.name}_packed_of\{\};"
     let made = "template <class T>\n{dictionary} {maker}::operator()(const T&) const \{\n    return {dictionary}\{\n{Join entries, "\n"}\n    \};\n\}"
-    let protos = Each d.methods, \|m| TraitNamespace d.name, "{FnSignature cp, m.method};"
+    # each associated type the unit type, as the Rust printer's: only an unasked method
+    # names one, and none is printed here
+    let chosen = Each d.assocs, \|n| TraitNamespace d.name, "template <>\nstruct {n}<{CppType cp, (OutNamed (RefRuntime "prism_rtl::Packed"), [[]])}> \{ using type = std::monostate; \};"
+    let protos = Append chosen, (Each d.methods, \|m| TraitNamespace d.name, "{FnSignature cp, m.method};")
     let defs = Each d.methods, \|m| TraitNamespace d.name, (CppFunction "", (FnSignature cp, m.method), "return {CppId (PackedFirstHiddenCpp m)}.template dictionary<{dictionary}>().{CppId m.method.name}({Join (Each m.method.params, \|((n, ignore))| CppId n), ", "});")
     update (ProtosDefs (Append [[declared]], protos), defs):
         &_.generic <= [[made]]

@@ -1,0 +1,29 @@
+# A widget function given on through another's parameter: `@Forward` hands its own
+# parameter `Seats` to `@Loop`, and the program's one use gives `@Seats` by name. `@Seats`'s
+# requests are not prompt in its `!responses` (the button's alone), so `!asked`,
+# `!responses` and the hold `$state` make no cycle (Semantics ch. 7, "There are no cycles":
+# a function parameter is read by what each use gives, through every function it is handed
+# on by). From examples/chess's `@InMemory`, which hands `HostSeats` to `@InMemoryOrdered`.
+# Written by Claude (chess-1, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+@Seats: fn $Nat, !Nat -> @((unit, !Nat)) emit Ui.*
+fn @Seats $state, !responses:
+    !press <- Ui.Button($label=$"ask")                       # 0
+    Ui.Label($text=$"{$state}")                              # 1
+    @ ((unit, 1 on !press))
+
+@Loop: fn Nat, (fn $Nat, !Nat -> @((a, !Nat)) emit rest) -> @a emit rest
+fn @Loop initial, Seats:
+    ((results, !asked)) <- Seats $state, !responses
+    let !responses = !asked + 1
+    $state <- initial then !responses
+    @ results
+
+@Forward: fn Nat, (fn $Nat, !Nat -> @((a, !Nat)) emit rest) -> @a emit rest
+fn @Forward initial, Seats = @Loop initial, Seats
+
+@host: @unit
+@host:
+    @Forward 0, @Seats

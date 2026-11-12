@@ -2,7 +2,10 @@
 # "Existentials": `any ^Trait` is a value of some type that implements the trait, the
 # type hidden; "Associated types"): the packed value answers the trait's methods that
 # take the hidden type as a parameter; a method that gives the associated type is asked
-# of a value whose type is known.
+# of a value whose type is known. No function's bound is asked of a packed value here: a
+# bound may call every method of the trait, `Zero` among them, so that is
+# `existential-method` (ruling EX; tests/checker/neg/ts-ch03-existential-method-gives-
+# associated-type).
 # Written by Claude on the claude-lowering branch; subject to change.
 emit Ui.*
 test mod Tests
@@ -29,9 +32,6 @@ fn Hide n = any n
 HideText: fn Text -> any ^Weighed
 fn HideText t = any t
 
-Measure: fn a -> Nat where a: ^Weighed
-fn Measure x = Weigh x
-
 @page: @unit
 @page:
-    Ui.Label($text=$"{Measure (Hide 3)} {Measure (HideText "ab")} {Zero "x"}")      # 0
+    Ui.Label($text=$"{Weigh (Hide 3)} {Weigh (HideText "ab")} {Zero "x"}")      # 0

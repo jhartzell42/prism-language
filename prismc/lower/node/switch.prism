@@ -1157,7 +1157,10 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
     let r3b = if not zeroBased: r3n else: update r3n:
         &_.taken <= Push &_.taken, "built"
         &_.getters <= Push &_.getters, (MethDef(name="built", recv=RecvRef, params=[[]], cx=CxNone, ret=OutCount, body=[[]], tail=(if ownGaps: XBin OpSub, positions, (XMethod XSelf, "inner_gap", [[]]) else: positions), doc="How many places the row built (ruling TC: places are counted as they are built)."))
-    let node = FinishNode r3b, rowName, (Append (Append (Append (Each fields, \|((f, t, ignore))| ((f, t))), liveParams), baseParam), (Append (Append [[(("parent", parentTy))]], hostedParams), movedParam)), True
+    # the row hears each write of its block it reads through the port `GenMarked` gives the
+    # block (as a generation does), so its own rows and `!Updated` nodes are told
+    let r3h = GenHears r3b, genName
+    let node = FinishNode r3h, rowName, (Append (Append (Append (Each fields, \|((f, t, ignore))| ((f, t))), liveParams), baseParam), (Append (Append [[(("parent", parentTy))]], hostedParams), movedParam)), True
     let p2m = GenMarked p1, genName, r3b
     let p2 = if not weakLate: p2m else: update p2m:
         &_.lateRowGens <= AddText &_.lateRowGens, genName

@@ -563,9 +563,7 @@ fn ?PromptSummary cx, k = ?PromptSummaryAt cx, k, [[]], {}
 fn ?PromptSummaryAt cx, k, args, m = if (HasText cx.path, k) or not (HasPrefix (BareName k), "@"): nil
 else: match Filter cx.g.defs, \|d| d.qk == k:
     [[d]]: match d.body:
-        DbFn [[c]]: match c.body:
-            BodyBlock b: ?BlockSummary cx, k, d.home, c.params, b, (GivenAt cx, cx.home, c.params, args, m, cx.names)
-            otherwise: nil
+        DbFn [[c]]: ?BlockSummary cx, k, d.home, c.params, (BodyAsBlock c.body), (GivenAt cx, cx.home, c.params, args, m, cx.names)
         otherwise: nil
     otherwise: nil
 
@@ -604,13 +602,97 @@ fn ParameterUses cx, env, b = match Filter env.g.defs, \|d| d.file == env.file a
     [[d]]: match d.body:
         DbFn [[c]]:
             if not (CallsParameter c.params, b): [[nothingGiven]]
-            else:
-                let uses = Fold cx.g.defs, [[]], \|acc, user| Fold (DefSites user), acc, \|found, site|
-                    if (IsLocal site.rels, site.callee) or (?ResolveCallee cx.g, user.home, site.callee) != ? d.qk: found
-                    else: Push found, Given(prompt=(GivenAt cx, user.home, c.params, site.args, site.rels, [[]]), flows=(FlowsGivenAt cx, user.home, c.params, site.args, site.rels, [[]]))
-                if (Len uses) == 0: [[nothingGiven]] else: uses
+            else: UsesOf cx, d, c.params, [[]]
         otherwise: [[nothingGiven]]
     otherwise: [[nothingGiven]]
+
+# The uses of the function `d`, whose parameters are `params`, each as what it gives for
+# them: every application of `d`'s name in the program. A use inside a function `user` that
+# hands on a parameter of its own (`fn @InMemory initial, HostSeats = @InMemoryOrdered
+# initial, OneATick, HostSeats`) gives, for each use of `user`, what that use gives for the
+# parameter handed on (`Forwarded`). `seen` holds the functions whose uses are being read,
+# so a function that hands a parameter to itself gives nothing for it. No use at all is one
+# use that gives nothing.
+UsesOf: unbounded fn PCx, Def, [Pattern], [Text] -> [Given]
+fn UsesOf cx, d, params, seen:
+    let uses = Fold cx.g.defs, [[]], \|acc, user| Fold (DefSites user), acc, \|found, site|
+        if (IsLocal site.rels, site.callee) or (?ResolveCallee cx.g, user.home, site.callee) != ? d.qk: found
+        else:
+            let named = Given(prompt=(GivenAt cx, user.home, params, site.args, site.rels, [[]]), flows=(FlowsGivenAt cx, user.home, params, site.args, site.rels, [[]]))
+            let atUse = LocalGiven cx, user, params, site.args, named
+            Append found, (Forwarded cx, user, params, site.args, atUse, (Push seen, d.qk))
+    if (Len uses) == 0: [[nothingGiven]] else: uses
+
+# What one use gives for a function's parameters: `atUse`, read at the use itself, and for
+# each parameter the use's own function `user` hands on, what each use of `user` gives for
+# it. A parameter a use of `user` gives nothing for stays as `atUse` has it.
+Forwarded: unbounded fn PCx, Def, [Pattern], [Arg], Given, [Text] -> [Given]
+fn Forwarded cx, user, params, args, atUse, seen = match user.body:
+    DbFn [[outer]]:
+        let handed = HandedOn params, args, (PatternsNames outer.params)
+        if (Len handed) == 0 or HasText seen, user.qk: [[atUse]]
+        else: Each (UsesOf cx, user, outer.params, seen), \|outerGiven| Fold handed, atUse, \|supplied, pair| HandOn supplied, outerGiven, pair
+    otherwise: [[atUse]]
+
+# What a use gives for a function's parameters where it gives a widget function its own
+# block defines (`@Seats` in `@hotSeat`, given to `@InMemory`): that function's summary,
+# read as a named function's is. A local of more than one clause gives nothing.
+LocalGiven: unbounded fn PCx, Def, [Pattern], [Arg], Given -> Given
+fn LocalGiven cx, user, params, args, atUse:
+    let locals = OwnBlockClauses user
+    if (Len (Keys locals)) == 0 or Fold args, False, \|named, a| named or a.?name != nil: atUse
+    else: Fold (Range0 (Len params)), atUse, \|supplied, i| match ((params[i], args[i])):
+        ((? parameter, ? a)): match ((PatternNames parameter, ?GivenName a.value)):
+            (([[name]], ? n)): match locals[n]:
+                ? [[c]]: match ?BlockSummary cx, n, user.home, c.params, (BodyAsBlock c.body), {}:
+                    ? flags: Given(prompt=(Insert supplied.prompt, name, flags), flows=supplied.flows)
+                    nil: supplied
+                otherwise: supplied
+            otherwise: supplied
+        otherwise: supplied
+
+# The functions a definition's own block defines, each name with its clauses.
+OwnBlockClauses: unbounded fn Def -> (Text ==> [FnClause])
+fn OwnBlockClauses d:
+    let stmts = match d.body:
+        DbFn [[c]]: match c.body:
+            BodyBlock b: b.stmts
+            otherwise: [[]]
+        DbWidget w: w.body.stmts
+        otherwise: [[]]
+    Fold stmts, {}, \|found, s| match s.kind:
+        SFn c: Insert found, (DefNameText c.name), (Push (Or found[DefNameText c.name], [[]]), c)
+        otherwise: found
+
+# A function's body as a block: an expression body is a block of its result alone.
+BodyAsBlock: fn FnBody -> Block
+fn BodyAsBlock body = match body:
+    BodyBlock b: b
+    BodyExpr e: Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
+
+# What a use gives for a parameter `name`, taken from what an outer use gives for the
+# parameter `own` the use hands on; nothing given there leaves `supplied` as it is.
+HandOn: fn Given, Given, ((Text, Text)) -> Given
+fn HandOn supplied, outerGiven, ((name, own)):
+    let prompt = match outerGiven.prompt[own]:
+        ? flags: Insert supplied.prompt, name, flags
+        nil: supplied.prompt
+    let flows = match outerGiven.flows[own]:
+        ? handed: Insert supplied.flows, name, handed
+        nil: supplied.flows
+    Given(prompt=prompt, flows=flows)
+
+# The parameters a use hands one of its own function's parameters (`outer`) to, each as
+# `(name, own)`: the parameter's name and the name of the own parameter given for it. A
+# use with a named argument hands on nothing, as `GivenAt` reads nothing of it.
+HandedOn: unbounded fn [Pattern], [Arg], [Text] -> [((Text, Text))]
+fn HandedOn params, args, outer:
+    if Fold args, False, \|named, a| named or a.?name != nil: [[]]
+    else: Fold (Range0 (Len params)), [[]], \|pairs, i| match ((params[i], args[i])):
+        ((? parameter, ? a)): match ((PatternNames parameter, ?GivenName a.value)):
+            (([[name]], ? n)): if HasText outer, n: Push pairs, ((name, n)) else: pairs
+            otherwise: pairs
+        otherwise: pairs
 
 # Whether a definition is a widget function of one clause whose body is this block.
 IsBodyOf: fn Def, Block -> Bool
@@ -664,9 +746,7 @@ fn ?BlockSummary cx, k, home, params, b, supplied = match ?Last b.stmts:
 fn ?FlowSummaryAt cx, k, args, m = if (HasText cx.path, k) or not (HasPrefix (BareName k), "@"): nil
 else: match Filter cx.g.defs, \|d| d.qk == k:
     [[d]]: match d.body:
-        DbFn [[c]]: match c.body:
-            BodyBlock b: ?BlockFlows cx, k, d.home, c.params, b, (GivenAt cx, cx.home, c.params, args, m, cx.names), (FlowsGivenAt cx, cx.home, c.params, args, m, cx.names)
-            otherwise: nil
+        DbFn [[c]]: ?BlockFlows cx, k, d.home, c.params, (BodyAsBlock c.body), (GivenAt cx, cx.home, c.params, args, m, cx.names), (FlowsGivenAt cx, cx.home, c.params, args, m, cx.names)
         otherwise: nil
     otherwise: nil
 

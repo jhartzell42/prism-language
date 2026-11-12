@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# `chess`: the chess example in a window, `prism run examples/chess`. Options go to
-# `prism run` (`chess --target cpp` for the C++ build).
+# `chess`: chess the document way in a window, `prism run examples/chess`: the hot seat,
+# two boards (claude/document-chess.md). Options go to `prism run`.
 #
 # Written by Claude on the claude-self-hosting branch; subject to change.
 set -eu

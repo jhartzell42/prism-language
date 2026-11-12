@@ -1,0 +1,12 @@
+# The tests of sem-ch08-root-widget-is-one-expression.
+emit Ui.*
+use App.*
+
+test the_applied_widget_is_built, @Show "first":
+    build
+
+test the_blueprint_of_the_true_arm_is_built, @Pick True:
+    build
+
+test the_blueprint_of_the_false_arm_is_built, @Pick False:
+    build

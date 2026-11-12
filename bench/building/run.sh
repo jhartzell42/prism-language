@@ -38,16 +38,16 @@ mkdir -p "$out"
 sources_of() { # subject: prismc's arguments naming its sources and its name
     case "$1" in
         prismc) echo "prismc --prelude prelude --name prismc" ;;
-        chess) echo "examples/chess --name chess" ;;
-        table) echo "bench/gui/prism examples/chess/window --name bench" ;;
+        chess) echo "examples/basic-chess --name chess" ;;
+        table) echo "bench/gui/prism examples/basic-chess/basic_window --name bench" ;;
         *) echo "bench: unknown subject $1 (prismc chess table)" >&2; exit 2 ;;
     esac
 }
 lines_of() { # subject: Prism lines, every file of its trees
     case "$1" in
         prismc) find prismc prelude -name '*.prism' -exec cat {} + | wc -l | tr -d ' ' ;;
-        chess) find examples/chess prelude -name '*.prism' -exec cat {} + | wc -l | tr -d ' ' ;;
-        table) find bench/gui/prism examples/chess/window prelude -name '*.prism' -exec cat {} + | wc -l | tr -d ' ' ;;
+        chess) find examples/basic-chess prelude -name '*.prism' -exec cat {} + | wc -l | tr -d ' ' ;;
+        table) find bench/gui/prism examples/basic-chess/basic_window prelude -name '*.prism' -exec cat {} + | wc -l | tr -d ' ' ;;
     esac
 }
 now() { python3 -c 'import time; print(time.time())'; }
