@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Building Prism (bench/building/README.md): from Prism source to a runnable binary, each
+# Building Prism: from Prism source to a runnable binary, each
 # pipeline all one language. The installed Rust prismc emits Rust and cargo builds it; the
 # installed C++ prismc emits C++ and make builds it, the runtime library and the Worlds
 # included, from clean, with every core. For each subject and each configuration: the emit

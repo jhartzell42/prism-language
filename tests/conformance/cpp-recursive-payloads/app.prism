@@ -1,7 +1,7 @@
 # Recursive payloads behind `Rc` (claude/backend.md, "Types"): a choice whose cases hold
 # itself directly, in an optional and in a tuple; a record recursive through an optional; a
 # record holding the choice by value; each compared, ordered and shown. Written for prismc's
-# C++ back end (prismc/README.md, pick CH: a choice holds its variant by value and a
+# C++ back end (a choice holds its variant by value and a
 # recursive payload is a `prism_rtl::Val`, so a struct holding one defines its comparisons
 # after the choice is complete); subject to change.
 emit Ui.*

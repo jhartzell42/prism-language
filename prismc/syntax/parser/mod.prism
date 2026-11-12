@@ -8,7 +8,7 @@
 #
 # D7: ordinary recursive descent over a token cursor, `unbounded`, its cycle points
 # generated. The cursor is a value, `Ps`, that each step takes and hands back with what it
-# parsed, `((tree, ps))`. A step that fails marks the cursor `bad` (pick PF in README): a bad
+# parsed, `((tree, ps))`. A step that fails marks the cursor `bad`: a bad
 # cursor sees the end of the input and moves no more, so every step after a failure falls
 # through at once to the nearest place that recovers (a statement boundary) or rolls back (a
 # speculation), which is where the Rust parser's `?` lands. Diagnostics live in the cursor,

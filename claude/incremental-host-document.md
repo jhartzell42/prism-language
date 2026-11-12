@@ -118,8 +118,8 @@ with the alternative refused, and Jimmy overrules by editing. Book citations are
   row whose dynamic was replaced; that row adopts the new one the tick after, owed
   (Semantics ch. 7; rulings VL, TK), and is not rebuilt (ch. 11: a program cannot tell two
   dynamics apart).
-- prismc/README.md, picks HO and ST and gaps DM, ID and SU, and `claude/backend.md`,
-  "Hosting", say how each is lowered.
+- prismc/lower/node/ and `claude/backend.md`, "Hosting", say how each is lowered
+  (picks HO and ST, gaps DM, ID and SU).
 
 ### How the window lays out a map of dynamics
 
@@ -227,7 +227,7 @@ row's), each a computed answer a tick late.
 - **Both runtimes:** `Snapshot::take_compared` keeps the snapshot that stood when the new
   one is equal to it; `==` on maps and arrays answers at once for a node both sides share
   at the same place, every `^Eq` being reflexive (a `Float` compares by its bits,
-  prismc/README.md pick BF). Safe by Semantics ch. 11: "sharing is invisible".
+  runtime/rust/src/float.rs). Safe by Semantics ch. 11: "sharing is invisible".
 - **Both printers:** a `for`'s builder does nothing when its source is the very map it last
   built from (`Map::same`); a host's rows do the same over the places.
 - **Both runtimes:** a map collected from entries in ascending key order (a `for`'s

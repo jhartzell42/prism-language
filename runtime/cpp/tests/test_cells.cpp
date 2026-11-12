@@ -186,7 +186,7 @@ TEST(a_hold_written_twice_in_a_tick_fails_it) {
     h.set(Int(2), cx);
     auto out = rt.close(std::move(cx));
     CHECK(!out.has_value() && out.error().kind == "Runtime.TwoWrites");
-    // (prismc/README.md, TW) naming no C++ type, as the Rust runtime says it
+    // naming no C++ type, as the Rust runtime says it
     CHECK(!out.has_value() && out.error().message == "a hold written twice in tick 0");
 }
 

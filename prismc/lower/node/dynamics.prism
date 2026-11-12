@@ -253,7 +253,7 @@ fn MergeListEvent wx, menv, x, t:
         &_.taken <= Append &_.taken, [["{nm}_events", "{nm}_in"]]
     (((EvRefOf w3, id), w3))
 
-# `!Updated $d`: the event half of a dynamic (Semantics R3; README pick UP). A graph node
+# `!Updated $d`: the event half of a dynamic (Semantics R3). A graph node
 # of kind "updated", decided in the wake like a merge, one above every node whose sink
 # writes a hold the dynamic reads: a write to one of them sets the node's `_moved` flag and
 # asks the wake; the decision takes the flag (once a tick, so a double firing cannot

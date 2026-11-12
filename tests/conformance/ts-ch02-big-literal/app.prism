@@ -1,4 +1,4 @@
-# A number literal keeps every digit on both targets (prismc/README.md, gap NL): a `Nat`
+# A number literal keeps every digit on both targets: a `Nat`
 # past 32 bits, past 64, and an `Int` past 64 bits, in an expression and in a pattern.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.*

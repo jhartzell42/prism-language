@@ -9,7 +9,7 @@ tree as it stands.*
 - **Bootstrap from nothing:** `make bootstrap` on a fresh clone (`bootstrap/bootstrap.sh`:
   the seed `bootstrap/prismc-rust.tar.xz`, cargo, a fixed point installed as
   `target/bootstrap/prismc`), `make bootstrap-cpp` for the C++ one, then `make test`
-  (bootstrap/README.md).
+  (bootstrap/bootstrap.sh's header).
 - **Chess in both Worlds:** `./prism run examples/basic-chess` (or `make basic-chess`; Rust, the winit
   canvas World) and `./prism run --target cpp examples/basic-chess` (C++, the Cocoa loop on a
   Mac, Xlib on Linux). `./prism test examples/basic-chess` runs its test modules under the Test
@@ -17,7 +17,7 @@ tree as it stands.*
 - **The benchmarks:** `bench/building/run.sh` (how long Prism takes to build), then
   `bench/running/run.sh` (how fast it runs, prismc on itself and the GUI table), each
   writing a `RESULTS.md` beside itself; `bench/gui/run.sh` times the table alone
-  (bench/README.md, bench/gui/README.md). `make -C bench/gui/prism` builds the table's two
+  (each script's header). `make -C bench/gui/prism` builds the table's two
   drivers and `bench/gui/prism/check.sh` prints what each operation costs by phase. The
   drivers each run one operation; to click through the table yourself, run its root under
   the canvas World the way the Makefile compiles it, `./prism run bench/gui/prism
@@ -32,13 +32,13 @@ tree as it stands.*
   its transcript `tests.expected`, as `tests/conformance/counter/` is laid out; run it with
   `./prism test examples/NAME` on both targets, and add it to `tests/compiled/run.sh` to
   pin it.
-- **Handles against inline variants under jemalloc** (doubt CH1, prismc/README.md): under
+- **Handles against inline variants under jemalloc** (doubt CH1, prismc/emit/cpp/): under
   glibc the C++ choice as a handle (one shared block per value, `7dc334d^`) compiled prismc
   about 9% faster than the inline `std::variant`; jemalloc makes allocation cheaper, so the
   gap may have moved. To measure: bootstrap the C++ prismc from `7dc334d^` with the
   jemalloc link, then six interleaved self-compiles against the tip's
   (claude/benchmarks-preliminary.md, "Choices as inline variants (C++)", for the method).
-- **TODO: jemalloc for the Rust target** (runtime/rust/README.md, pick AL). The Rust programs
+- **TODO: jemalloc for the Rust target** (the C++ side's link is runtime/cpp/Makefile's). The Rust programs
   run on the system allocator. jemalloc took the Rust prismc's self-compile from 69.9 s to
   51.6 s on the Linux VM (claude/benchmarks-preliminary.md, "jemalloc (Rust)"), but
   through `tikv-jemallocator`, which compiles jemalloc's C sources on every clean build

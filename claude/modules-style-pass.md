@@ -92,7 +92,7 @@ just nest indefinitely a la Rust." Everything below follows from it.
   named `App` elsewhere (a loose file's `module App`, a library's top-level `App`) is that
   module. A loose root file stays out of reach (Semantics ch. 6: "nothing can `use` it").
 - **A module is a module like any other:** its parent and siblings only through `use`,
-  mutual `use` allowed, as the graph allows cycles (prismc/README.md, MH3). Two bare names
+  mutual `use` allowed, as the graph allows cycles (prismc/emit/cpp/templates/mod.prism). Two bare names
   that collide are an error at the use, and a module's own declarations do not shadow what
   a `use M.*` brought in (Semantics ch. 6), so a namespace split into a parent and children
   whose files `use` each other keeps every bare name it had.
@@ -165,7 +165,7 @@ just nest indefinitely a la Rust." Everything below follows from it.
 - **One module is one C++ namespace and one header directory:** namespace
   `check::env::traits`, headers `src/check/env/traits/{decl,types,module,generic}.hpp`;
   its definitions go into a translation unit `src/unit_N.cpp` with other modules' up to
-  SF's 125,000 characters (prismc/README.md, pick SF). Every reference is qualified from the global namespace (`::check::env::BuildG`).
+  SF's 125,000 characters (prismc/emit/cpp/mod.prism). Every reference is qualified from the global namespace (`::check::env::BuildG`).
 - **A module's name segment that is a Rust or a C++ keyword takes a `_` in both
   targets** (`Shapes.Static` is `shapes::static_`, `Shapes.Switch` is `shapes::switch_`),
   so the two printers name every module alike.

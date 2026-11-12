@@ -271,7 +271,7 @@ fn IsCodeLine l:
     let s = Trim l
     s != "" and (not (HasPrefix s, "#"))
 
-# A top-level `let`: a getter computing its value (pick TL of the README). One the
+# A top-level `let`: a getter computing its value. One the
 # checker generalized (Type System ch. 5: a `let` generalizes; `let Same = \|x| x`, used
 # at `Bool` and at `Nat`) is a generic getter: each variable its scheme quantifies is a
 # type parameter of the getter with the scheme's bounds, named in the value's own types

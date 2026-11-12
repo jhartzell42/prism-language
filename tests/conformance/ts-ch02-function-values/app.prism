@@ -1,4 +1,4 @@
-# Function values at the boundary of the representations (prismc/README.md, pick JB): a
+# Function values at the boundary of the representations: a
 # constructor passed as a function, a `let`-bound lambda passed to a bounded parameter,
 # and a color-polymorphic function (`u fn`, D8) called with a bounded closure and with an
 # unbounded one. Written for prismc's back end. Work in progress, subject to change.

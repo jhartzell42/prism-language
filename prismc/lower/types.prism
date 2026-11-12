@@ -424,7 +424,7 @@ fn HoldsDyn t = match t:
 # ch. 4, "The ownership layer": a function takes references and returns a value)
 # ---------------------------------------------------------------------------------------
 
-# How a Rust place holds its value (pick OW of the README): `ByRef` a `&T`, `Owned` a `T`
+# How a Rust place holds its value: `ByRef` a `&T`, `Owned` a `T`
 # (a local, a field), `RcRef` a `&Rc<T>` (a payload behind an `Rc`, matched through a
 # reference), `RcOwned` an `Rc<T>`.
 type Holding = choice:

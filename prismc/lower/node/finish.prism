@@ -1159,7 +1159,7 @@ SortNats: fn [Nat] -> [Nat]
 fn SortNats xs = Fold xs, [[]], \|acc, x| Append (Push (Filter acc, \|y| y < x), x), (Filter acc, \|y| not (y < x))
 
 # Asking for a combinator's wake: the node's `Heights` records the combinator and asks the
-# wake at its global height (`Node::wake` is not told the height, gap WH of the README).
+# wake at its global height (`Node::wake` is not told the height).
 AskWake: fn Sinks, Gn -> [Do]
 fn AskWake sk, g = [[DoExpr (XMethod (XField XSelf, "heights"), "ask", [[(XIndex (CombinatorOf sk.combs, g)), XCx, (XClone XSelf)]])]]
 

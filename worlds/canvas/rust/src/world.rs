@@ -7,7 +7,7 @@
 //! What it answers (the four tags of Pitch ch. 6, as `prelude/gui.prism` declares them):
 //!
 //! - **`Gui.Window(title, size)`**: the first value is `WindowId title`, the Test World's
-//!   policy (examples/README.md, doubt WI), so a program sees the same id under both. One
+//!   policy, so a program sees the same id under both. One
 //!   operating-system window per place, `size` logical pixels inside; a new `title`
 //!   retitles it. Its `!WindowInput` stream is answered by path: `Press Point` for the left
 //!   button, `Pressed Key` for the keys `Key` names, `Resized Extent` when the window's

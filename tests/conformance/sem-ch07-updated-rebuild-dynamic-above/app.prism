@@ -1,7 +1,7 @@
 # `!Updated` of a `rebuild`'s dynamic written above the `rebuild` (Semantics ch. 4: a
 # block's bindings are a group, ruling HA; ch. 7: a `rebuild`'s dynamic is structural,
 # published in the tick after the generation behind it is built, round 3 ST), in the
-# block itself and in a row of the block (prismc/README.md: picks UP and SU).
+# block itself and in a row of the block.
 # Written by Claude on the claude-lowering branch; subject to change.
 emit Ui.*
 test mod Tests

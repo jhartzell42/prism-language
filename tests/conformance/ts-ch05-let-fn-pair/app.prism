@@ -1,4 +1,4 @@
-# The back end's names (prismc/README.md, pick NM): a top-level `let` and a function whose
+# The back end's names: a top-level `let` and a function whose
 # Rust names would be the same, `digits` and `Digits`. Written for prismc's back end. Work in
 # progress, subject to change.
 emit Ui.*

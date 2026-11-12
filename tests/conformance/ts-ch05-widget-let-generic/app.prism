@@ -1,7 +1,7 @@
 # Written by Claude on the claude-self-hosting branch; subject to change.
 # A generalized `let` of a widget block (Type System ch. 5, a local `let` generalizes)
-# used at two instantiations: a node field per instantiation (prismc/README.md, gap LW's
-# first ruling), as an expression block's is a local per instantiation (pick LG). `Twin`
+# used at two instantiations: a node field per instantiation,
+# as an expression block's is a local per instantiation. `Twin`
 # is used at Nat, in a plain label and over a hold, and at Bool.
 emit Ui.*
 test mod Tests

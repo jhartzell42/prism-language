@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The cost tests (tests/cost/README.md): work counted, not time. Each pair of programs
+# The cost tests: work counted, not time. Each pair of programs
 # differs only in how often the costly thing is asked for; both are built and their
 # transcripts checked by `./prism test`, then each test binary is run again for the
 # instructions it retires (bench/lib.sh's `instructions_of`: macOS's `time -l`, `perf

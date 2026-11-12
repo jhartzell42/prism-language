@@ -1,7 +1,7 @@
 # A `let` of an unbounded function bound twice before a loop's continuation: the function's
 # own `let name`, and lowering's `let name = name.clone()` that captures it for the
 # continuation after the `while` (a job's cycle point). The C++ printer takes both for the
-# one local they name (pick MV of prismc/README.md: a moving init-capture, once); a
+# one local they name (a moving init-capture, once); a
 # capture list that named it twice did not compile. Written for prismc's back end. Work in
 # progress, subject to change.
 emit Ui.*

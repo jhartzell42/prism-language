@@ -3139,7 +3139,7 @@ ArmPat: unbounded fn Lx, ?Pattern, Ty, Holding, Text -> PatOut
 fn ArmPat lx, (? p), ty, mode, fresh = RustPat lx, p, ty, mode, fresh
 fn ArmPat lx, nil, ty, mode, fresh = PatOut(pa=PaWild, conds=[[]], binds=[[]])
 
-# A block of `let`s and a last expression, in page order (gap DG of the README: the
+# A block of `let`s and a last expression, in page order (the
 # group's dependency order is the checker's to give).
 BlockValue: unbounded fn Lx, Env, Block -> Vl
 fn BlockValue lx, env, b = if IsGivenBlock b.stmts: GivenValue lx, env, b, (BlockTy lx, b), b.span else: PlainBlockValue lx, env, b

@@ -72,8 +72,8 @@ Instructions retired by one operation, millions, with the table's rows over `@Pe
 | remove a row | 128 | 80 |
 
 - **The select gap is the Rust World's frame, not the emitted code:** about 11 M of every
-  Rust frame is softbuffer presenting the whole frame on macOS (worlds/canvas/rust/README.md,
-  "Painting"); the program's own ticks are equal within 5% (the phase table under "Painting
+  Rust frame is softbuffer presenting the whole frame on macOS (worlds/canvas/rust/src/app.rs);
+  the program's own ticks are equal within 5% (the phase table under "Painting
   only the damage" below).
 - **Remove runs the other way, C++ 1.6 times Rust:** the column's document is gathered an
   insert at a time, and C++'s persistent `Map` copies a path per insert where Rust's
@@ -191,8 +191,8 @@ nine ticks, as on the Mac and as before the `for` change.
 
 The C++ target's choices changed from a handle (a class holding `Rc<const std::variant>`,
 with `Rc<T>` of a value printed as `T` itself) to a `std::variant` held by value, with each
-recursive payload a `prism_rtl::Val<T>` (prismc/README.md, pick CH; runtime/cpp/README.md,
-"Sharing"). Measured on the same cloud VM as above (Intel Xeon, 2 cores, 8 GB, Ubuntu 24.04,
+recursive payload a `prism_rtl::Val<T>` (prismc/emit/cpp/;
+runtime/cpp/include/prism_rtl/rc.hpp). Measured on the same cloud VM as above (Intel Xeon, 2 cores, 8 GB, Ubuntu 24.04,
 clang++ 18 `-O3`, no counters, nothing else running), the same day, before and after at the
 same base commit (`fb6e462`, the Map's in-place nodes in): the before is a C++ prismc
 bootstrapped from the branch point in a scratch worktree, the after the branch's
@@ -248,7 +248,7 @@ the Map change.
 
 ### Moves where Rust moves (C++), 8 November 2026
 
-The C++ printer moves where Rust moves (prismc/README.md, pick MV): a bare read of a local
+The C++ printer moves where Rust moves (prismc/emit/cpp/mod.prism, `moveCaptures`): a bare read of a local
 the scope holds by value is `std::move(x)`, and a move closure takes its capture `let`s by
 moving init-captures (`[=, g_1 = std::move(g_1)]`) where it copied them a second time.
 Measured on the same cloud VM (Intel Xeon, 2 cores, 8 GB, Ubuntu 24.04, clang++ 18 `-O3`,
@@ -332,8 +332,8 @@ a row of another.
 ### One `Rc` (C++), 8 November 2026
 
 The C++ runtime's `Val<T>` folded into its `Rc<T>`, whose `==` and `<=>` are now its
-value's where the value has them (prismc/README.md, pick CH; runtime/cpp/README.md,
-"Sharing"): a recursive payload is an `Rc<const T>` and compares as the `Val` did, so
+value's where the value has them (prismc/emit/cpp/;
+runtime/cpp/include/prism_rtl/rc.hpp): a recursive payload is an `Rc<const T>` and compares as the `Val` did, so
 nothing the program does changes. A sanity check, not a measurement of a cost: the same VM,
 the same night as "Moves where Rust moves (C++)" above, three interleaved self-compiles
 (`prismc compile prismc --target cpp`, `/usr/bin/time -v`), load 0.26 at the start; the
@@ -351,7 +351,7 @@ it knows the type is an `Rc`).
 
 ### jemalloc (C++), 8 November 2026
 
-Every C++ program, test and driver links jemalloc 5.3 (runtime/cpp/README.md, pick AL),
+Every C++ program, test and driver links jemalloc 5.3 (runtime/cpp/Makefile),
 where the C library's `malloc` (glibc 2.39) served them. The same VM, the same night as the
 two sections above (the drift note of "Moves where Rust moves (C++)" holds: compare only
 within this section), load 0.27 at the start; the before is "One `Rc` (C++)"'s after
@@ -426,7 +426,7 @@ the same emitted program and runtime; only the link differs.
 ### jemalloc (Rust), 8 November 2026
 
 Every Rust program prismc emits declares jemalloc its global allocator (`tikv-jemallocator`
-0.7.0, jemalloc 5.3.1; runtime/rust/README.md, pick AL), where the system's `malloc`
+0.7.0, jemalloc 5.3.1), where the system's `malloc`
 (glibc 2.39) served it. The same VM and night as the sections above (compare only within
 this section), load 0.25 at the start; the before is the Rust prismc at `e8b0aa2` (glibc),
 the after the branch's fixed point at `10211d6`: the same program but for the three lines
@@ -475,8 +475,8 @@ of the allocator in its `main.rs`.
 
 ### Float equality as bits, 8 November 2026
 
-`Float`'s `==` is bit identity and its ordering IEEE's totalOrder (prismc/README.md, pick
-BF; Type System round 6, ruling FB): `prism_rtl::Float` in both runtimes, `Floaty` and
+`Float`'s `==` is bit identity and its ordering IEEE's totalOrder (runtime/rust/src/float.rs,
+runtime/cpp/include/prism_rtl/float.hpp; Type System round 6, ruling FB): `prism_rtl::Float` in both runtimes, `Floaty` and
 `TyDef.floaty` deleted, the maps' and arrays' self-equality caches gone, an `Rc`'s `==`
 comparing pointers first. A fresh boot of a VM of the same kind (Intel Xeon, 2 cores,
 8 GB, clang++ 18 `-O3`, rustc 1.97, jemalloc on both targets), nothing else running, load
@@ -833,7 +833,7 @@ with the fastest and slowest, before → after:
 - **A select now paints 1.3 M (C++) and 8.8 M (Rust):** two labels' boxes. In Rust about
   11 M of each frame is presenting it through softbuffer, whatever the damage: its macOS
   buffer is a new zeroed allocation per frame, the whole frame is copied in, and it
-  becomes a new `CGImage` (worlds/canvas/rust/README.md, "Painting"). Rust's update10th
+  becomes a new `CGImage` (worlds/canvas/rust/src/app.rs). Rust's update10th
   and select vary by a few M from run to run in "loop" for the same reason as before, the
   commit's timing.
 - **A remove, a create and a clear damage most of the frame** (every row below the removed
