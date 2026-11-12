@@ -1,0 +1,17 @@
+# Derived by hand from Semantics ch. 7 ("double firings never") and ch. 4 (a `for`'s result gathers its rows' results by key: one firing in the tick, holding both rows).
+test two_rows_one_firing
+
+tick 0
+  added:
+    0/["a"]/0: Ui.Button(label="a now")
+    0/["a"]/1: Ui.Button(label="a later")
+    0/["b"]/0: Ui.Button(label="b now")
+    0/["b"]/1: Ui.Button(label="b later")
+    1: Ui.Label(text="0: 0")
+
+tick 1
+  in:
+    0/["a"]/0: click
+    0/["b"]/1: click
+  changed:
+    1: Ui.Label(text="1: 2")
