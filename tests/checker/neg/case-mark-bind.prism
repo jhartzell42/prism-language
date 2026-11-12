@@ -1,0 +1,13 @@
+# Expected text derived by hand from Language ch. 10 ("a lowercase letter or `_` begins a
+# value, an uppercase letter a function, constructor, type or trait").
+# `case-mark` at `<-`: a hold's name is a value, so `$Count` is refused as `let W = 3` is;
+# `!inc` and `$total` are legal. Written by Claude on the claude-lowering branch; subject to
+# change.
+emit Ui.*
+
+@counter: @unit
+@counter:
+    !inc <- Ui.Button($label=$"+")
+    $Count <- 0 then $Count + 1 on !inc
+    $total <- 0 then $total + 2 on !inc
+    Ui.Label($text=$"{$Count} {$total}")

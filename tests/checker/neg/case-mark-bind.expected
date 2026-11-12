@@ -1,0 +1,5 @@
+tests/checker/neg/case-mark-bind.prism:11: error[case-mark]: `$Count` holds a `Nat`, not a function: an uppercase name is a function, a constructor, a type or a trait
+        $Count <- 0 then $Count + 1 on !inc
+        ^^^^^^
+  fix: rename to `$count`
+1 error
