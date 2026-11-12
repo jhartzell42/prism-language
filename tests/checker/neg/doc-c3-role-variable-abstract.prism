@@ -1,0 +1,32 @@
+# Part VII ch. 7, step C3: under a signature's role variable an indexed associated type
+# stays abstract (Part III ch. 6, "Associated types indexed by a role": a widget function
+# generic in `r` can pass a `Request d r` along and cannot build one). `Passed` checks;
+# `Built` makes a `Raise` where it gives a `Request d r`, a mismatch.
+# Written by Claude on the claude-lowering branch; subject to change.
+trait ^Document d:
+    type Role
+    type Request r
+
+type CountRole = choice:
+    Raiser
+    Watcher
+derive ^Eq, ^Ord, ^Show
+
+type Raise = choice:
+    Raise Nat
+derive ^Eq, ^Show
+
+type Count = record:
+    total: Nat
+derive ^Eq, ^Show
+
+impl ^Document Count:
+    type Role = CountRole
+    type Request Raiser = Raise
+    type Request Watcher = Never
+
+Passed: fn d, Request d r -> Request d r where d: ^Document
+fn Passed document, request = request
+
+Built: fn d, Request d r -> Request d r where d: ^Document
+fn Built document, request = Raise 1
