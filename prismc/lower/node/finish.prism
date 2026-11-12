@@ -188,10 +188,14 @@ fn SinkAbove sk, target, h = match target:
 AboveCall: fn Ex, Text, Ex -> Do
 fn AboveCall receiver, m, h = DoExpr (XMethod receiver, "{m}_above", [[h]])
 
-# A combinator reached by a firing at global height `h`: put above it (`Heights::above`),
-# and when that moved it, what it fires told its new height.
+# A combinator reached by a firing at global height `h`: put above it, and when that
+# moved it, what it fires told its new height (`Heights::raise`, which calls the
+# combinator's own twin with the new height and knows the walk is under way: a walk that
+# comes back to a combinator it is still walking from is a prompt cycle across nodes,
+# which the checker refuses, so the runtime panics with "a prismc bug" there and the
+# stack does not overflow).
 CombinatorAbove: fn Sinks, Gn, Ex -> [Do]
-fn CombinatorAbove sk, g, h = [[(DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "moved"]]), (XMethod (XField XSelf, "heights"), "above", [[(XIndex (CombinatorOf sk.combs, g)), h]]), [[(AboveCall XSelf, g.name, (XVar "moved"))]], [[]])]]
+fn CombinatorAbove sk, g, h = [[(DoExpr (XMethod (XField XSelf, "heights"), "raise", [[(XIndex (CombinatorOf sk.combs, g)), h, (XClosure False, [[(PaTyped (PaBind "moved"), OutCount)]], (XMethod XSelf, "{g.name}_above", [[(XVar "moved")]]))]]))]]
 
 # The twin of `HoldWritten`: a hold written at global height `h` puts the `!Updated` nodes
 # over it above `h`, and tells the rows that hear the write.
