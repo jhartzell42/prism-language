@@ -206,7 +206,21 @@ it make every program an interpreter run, and every type mistake a runtime fault
   itself (`RustPat`), and an application the checker lifted over one maps it
   (`EventValueOf`, `DynamicLift`).
   A function whose only time is on top of its types is lowered lifted, over its
-  operands' values, except where its body cannot be: one with an event parameter whose
+  operands' values (`IsLiftedProgramFn`): each `$` parameter takes its argument's value,
+  read where the call is (`ReadAtParameter`), so a call of one is never a `Dynamic` by its
+  `$` arguments (`IsWholeObject`). A `Dynamic` given there (what a whole function gives,
+  `Five ($Head (Gen n))`) is sampled at the read point, or, in a function's body, which has
+  none, with a read context of no node (`SampledAt`: the prelude's `sample_detached` over
+  `prism_rtl::cx::detached`, C++ `Cx::detached`); no plain value can depend on a dynamic's
+  value, so that read shows only in a lifted callee's own values, which its caller reads
+  again (ts-ch04-plain-function-gives-whole-result-to-sigiled-parameter,
+  -lifts-over-whole-result, -reads-whole-result-lifted). In a body that holds its
+  dynamics whole, the argument is the `Dynamic`'s value (`SampledArgument`), and a call
+  whose result is a dynamic is mapped over its `$` arguments (`?LiftedCallSources`,
+  `DynamicLiftOver`; with none, the constant of its value). A lambda whose parameters
+  hold time is whole the same way: its sigiled binder is the `Dynamic` it is given
+  (`ClosureParams` under `WholeLambda`, ts-ch04-whole-lambda-reads-hold-in-lifted-call). It is lowered so
+  except where its body cannot be: one with an event parameter whose
   body gives an event whole (`GivesEventWhole`: an application the checker did not
   lift, of a prelude function with an event parameter or of a function that takes time
   whole, with an event argument, as in `fn !Together !some, !more = Fold (Values
@@ -1447,7 +1461,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
     one impl (sem-ch09-tag-field-named-type-of-dynamic, -fault-of-dynamic); in C++ the
     members `deep_pod` and `deep_ports`, which `rt::DeepPod` calls.
   - `@ x` and a constant `@ $ v` (`rt::plain_blueprint`) are the first value once; `@ never`
-    (`rt::never_blueprint`) answers nothing.
+    (`rt::never_blueprint`) answers nothing. An `x` whose type holds dynamics below its top
+    (`@ [[$ 1]]` for a `[$Nat]` output) is built with them whole (`PlainBlueprint`), each a
+    `Dynamic`, as the tag's `Output` variant holds them (sem-ch09-host-answer-holding-dynamics).
   - `@ !e` (`rt::event_blueprint`) and `@ $d` (`rt::dynamic_blueprint`, `$d` any dynamic
     of the owner, its first value read at the row's build, synchronously) are **computed
     answers, delayed**: each firing, and each tick with a change behind `$d`, is queued
