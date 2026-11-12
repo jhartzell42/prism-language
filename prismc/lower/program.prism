@@ -366,7 +366,8 @@ type InstancesAnswer = choice:
     # the checker's `grows-without-end` (ruling PG), so no checked program has one
     EndlessByName
     # a line through a constraint an impl solves, or through an associated type, that
-    # holds one definition twice, the earlier types embedded in the later
+    # holds one definition three times, each one's types embedded in the next one's: the
+    # checker's `grows-without-end`, so no checked program has one
     EndlessThroughImpl
     # a use leaves a type parameter undecided
     UndecidedParameter
@@ -581,12 +582,17 @@ fn AddTargets lx, uses, relevant, all, user, types, ?parent = Fold uses, (Instan
 # (`a` becomes `[b]`, `b` becomes `Nat`) is no reason to stop.
 # Where a step between the two is a constraint an impl solves, or its types hold an
 # associated type, which impl answers the next round depends on the types, and no
-# substitution says what follows: the line is taken for endless when the earlier types
-# are embedded in the new ones, each found again inside (`Embeds`).
+# substitution says what follows. The checker refuses the lines that grow through one
+# (`grows-without-end`: its walk takes an impl's constraint as a substitution and an
+# associated type by the round applied to itself), so a stop here is an internal error:
+# the line holds the definition three times, each one's types embedded in the next one's,
+# each found again inside (`Embeds`, `EmbeddedAbove`). One embedding is no stop: a
+# finite program's first round may give `Box (Box Nat)` from `Box Nat` and its second
+# the same again.
 # The fixed point ends without a count. An endless line of instantiations has endlessly
-# many steps by an impl, and then two instantiations of one definition with such a
-# step between them and the earlier embedded in the later (the types are finite trees
-# over the program's finitely many type formers); or from some point on only uses by
+# many steps by an impl, and then, among the instantiations of one definition with such
+# steps between them, endlessly many each embedded in the next (the types are finite
+# trees over the program's finitely many type formers), so three; or from some point on only uses by
 # name, and then types of unbounded depth, each layer added by one step to a parameter
 # of a definition, so some parameter of some definition is reached again from itself
 # with a layer added between: the substitution between those two holds it inside its
@@ -603,7 +609,7 @@ fn ?GrowsFrom lx, all, ?at, definition, types, ?composed = match ?at:
                     let embedded = (Len above.types) == (Len types) and Fold (Range0 (Len types)), True, \|every, i| every and match ((above.types[i], types[i])):
                         ((? ((ignore, small)), ? ((ignore2, large)))): Embeds small, large
                         otherwise: False
-                    if embedded: ? EndlessThroughImpl else: nil
+                    if embedded and EmbeddedAbove all, above.?parent, definition, above.types: ? EndlessThroughImpl else: nil
             let ?further = match ((?composed, above.?step)):
                 ((? composed, ? step)):
                     let lxStep = update lx:
@@ -614,6 +620,19 @@ fn ?GrowsFrom lx, all, ?at, definition, types, ?composed = match ?at:
             match ?grows:
                 ? endless: ? endless
                 nil: ?GrowsFrom lx, all, above.?parent, definition, types, ?further
+
+# Whether the line of parents from `?at` holds `definition` at types embedded in
+# `types`, each found again inside.
+EmbeddedAbove: unbounded fn [Instantiation], ?Nat, Text, [((Text, Ty))] -> Bool
+fn EmbeddedAbove all, ?at, definition, types = match ?at:
+    nil: False
+    ? at: match all[at]:
+        nil: False
+        ? above:
+            let embedded = above.definition == definition and (Len above.types) == (Len types) and Fold (Range0 (Len types)), True, \|every, i| every and match ((above.types[i], types[i])):
+                ((? ((ignore, small)), ? ((ignore2, large)))): Embeds small, large
+                otherwise: False
+            embedded or EmbeddedAbove all, above.?parent, definition, types
 
 # Whether a type holds an associated type, which stands for another type once its
 # argument is known.

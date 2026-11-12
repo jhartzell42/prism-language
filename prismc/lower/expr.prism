@@ -1467,7 +1467,8 @@ fn OpenWidgetValueWords lx, qk = match EnclosingAnswer lx:
     InstancesReached ignore: WidgetValueWords qk
     # the checker's `grows-without-end` (ruling PG): no checked program reaches this
     EndlessByName: "{internalBug}the generic widget function {BareName qk} as a value in {lx.inDefinition}, which reaches itself by name at types that grow without end: the checker refuses such a definition (`grows-without-end`)"
-    EndlessThroughImpl: "the generic widget function {BareName qk} as a value in {lx.inDefinition}, given a type parameter of that definition: its rows are made for each set of types the program gives the definition, and the program gives it no finite set (it reaches itself through a constraint an impl solves or an associated type, at types that hold its earlier ones)"
+    # the checker's `grows-without-end` through an impl or an associated type
+    EndlessThroughImpl: "{internalBug}the generic widget function {BareName qk} as a value in {lx.inDefinition}, which reaches itself through a constraint an impl solves or an associated type, three times at types that each hold the earlier ones: the checker refuses a definition that grows so (`grows-without-end`)"
     UndecidedParameter: "the generic widget function {BareName qk} as a value in {lx.inDefinition}, given a type parameter of that definition: its rows are made for each set of types the program gives the definition, and a use of it leaves a type parameter undecided"
 
 WidgetValueWords: fn Text -> Text
