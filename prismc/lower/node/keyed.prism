@@ -281,8 +281,10 @@ fn AddBuilder wx, name, pos, kt, vt, rowName, keyed, reads, waiting, passed:
     let wx0 = AddFieldLast wx, name, (OutCell (OutMap kt, (OutRc (OutNamed (SiteRef wx.lx, rowName), [[]])))), "the rows of the `for` at place {PlaceText pos}", (XCall (RefRuntime "std::RefCell::new"), [[(XCall (RefRuntime "rt::Map::new"), [[]])]])
     let wx1 = AddFieldLast wx0, "{name}_from", (OutCell (OutMap kt, vt)), "the source the rows of the `for` at place {PlaceText pos} were last built from", (XCall (RefRuntime "std::RefCell::new"), [[(XCall (RefRuntime "rt::Map::new"), [[]])]])
     # over a map of dynamics, the rows' flattens of their entries, each told when the
-    # dynamic under its kept key was replaced (`{name}_replaced`, ruling FV)
-    let replaced = Each (Filter waiting.wx.flattens, \|fl| fl.generation == ""), \|fl| "{fl.name}_replaced"
+    # dynamic under its kept key was replaced (`{name}_replaced`, ruling FV); a row's
+    # `@Flatten` over a dynamic of dynamics of its own (`held`, `HeldFlatten`) follows its
+    # outer's update event and is told nothing by the builder
+    let replaced = Each (Filter waiting.wx.flattens, \|fl| fl.generation == "" and not fl.held), \|fl| "{fl.name}_replaced"
     update wx1:
         &_.builders <= Push &_.builders, ForDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), keyTy=kt, valueTy=vt, rowNode=rowName, keyed=keyed, source="{name}_source", parent=(XWeak XSelf), passed=passed, moved=(Or (?HostedRows wx), ""), replaced=replaced)
         &_.buildHolds <= UnionReads &_.buildHolds, reads
