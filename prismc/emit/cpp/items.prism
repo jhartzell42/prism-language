@@ -393,8 +393,8 @@ fn TagParts cp, t:
     let deps = Concat2 (Append (Each t.fields, \|((ignore, ignore, ft))| ValueDeps cp, ft), (Each t.events, \|((ignore, et))| ValueDeps cp, et))
     Parts(forward=[["struct {t.name};"]], values=[[ValueDecl(path=(DeclPath cp, t.name), deps=deps, text=decl)]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append (Append [[toPod, show]], fromPod), levelDefs))
 
-# A level field as a World reads it (doubt WD): plain data as it is; a map of dynamics or a
-# dynamic sampled deep. Any other shape holding a dynamic stops the build, loudly.
+# A level field as a World reads it (WD): plain data as it is; every dynamic it holds
+# sampled, deep.
 CppDeepField: unbounded fn Text, Text, OutTy -> Text
 fn CppDeepField p, f, ft = "\{\"{p}\", {CppDeepPod f, ft}\}"
 
@@ -402,13 +402,14 @@ CppDeepPod: unbounded fn Text, OutTy -> Text
 fn CppDeepPod f, ft = match ft:
     OutMap ignore, (OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore)): "::prism_rtl::dynamics_pod({FieldId f}, cx)"
     OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore): "::prism_rtl::level_pod({FieldId f}.sample(cx), cx)"
-    other: if HoldsDyn other: "[] \{ static_assert(false, \"prismc: a tag field holding a dynamic other than `$Elem` or a map of them is not read deep (claude/incremental-host-document.md, doubt WD)\"); return crate::prelude::Pod(); \}()" else: "::prism_rtl::to_pod({FieldId f})"
+    # any other value that holds dynamics, flattened through (WD; `prism_rtl::DeepPod`)
+    other: if HoldsDyn other: "::prism_rtl::deep_pod({FieldId f}, cx)" else: "::prism_rtl::to_pod({FieldId f})"
 
 CppDeepPorts: unbounded fn Text, OutTy -> Text
 fn CppDeepPorts f, ft = match ft:
     OutMap ignore, (OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore)): "::prism_rtl::dynamics_ports({FieldId f}, cx, out);"
     OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore): "out.push_back({FieldId f}.updates);\n::prism_rtl::level_ports({FieldId f}.sample(cx), cx, out);"
-    otherwise: ""
+    other: if HoldsDyn other: "::prism_rtl::deep_ports({FieldId f}, cx, out);" else: ""
 
 # A row kind's values (pick RV): a choice of the kind's tags, each holding its tag's struct.
 RowParts: unbounded fn Cp, Text, RowDef -> Parts
