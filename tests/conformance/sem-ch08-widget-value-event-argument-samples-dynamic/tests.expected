@@ -1,0 +1,22 @@
+# Derived by hand from Semantics ch. 4 (a building `match`'s arm adds no path segment), ch. 8 (a blueprint is built at the applying block's next positions) and ch. 7, R2 (a sample reads the tick's opening): the first click fires `$n on !go` with 5, the value `$n` had as tick 1 opened, while `$n` becomes 6; the second fires it with 6 while `$n` becomes 7. Never run.
+test the_argument_samples_the_dynamic
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="shown 0")
+    2: Ui.Label(text="n 5")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="shown 5")
+    2: Ui.Label(text="n 6")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="shown 6")
+    2: Ui.Label(text="n 7")
