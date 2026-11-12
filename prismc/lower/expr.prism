@@ -1209,7 +1209,17 @@ fn NameValueOf lx, env, n, span:
                 # an event parameter of a widget that calls itself: the caller's event
                 # the shared row holds (`LiveParams`)
                 ? (BnLocal held, mode, (OutEvent heldTy)): LocalPlace held, mode, (OutEvent heldTy)
-                otherwise: VlOwned (Refusal "an event read as a value"), et
+                # (class G: every name bound to an event node is bound beside the port it
+                # fires, `{name}#port`: a line's or a `let`'s name where it is prebound
+                # (`PreBindName`; a pattern's part, a host's child's result and a `let`
+                # over a bundle bind the name prebound so, `BindNamedPart`, `BindPart`), an
+                # inlined widget's event parameter (`BindEventParam`); a row's names of its
+                # block's events are the block's, their ports read through the parent
+                # (`RowEnvNames`, `EventsOf`, with `WholeOfBlock`); a shared row's event
+                # parameter is its caller's event (`#whole#{name}`, `LiveParams`). A
+                # bundle's event part (`PreBindWholeParts`, `RowPartBn`) is a name only
+                # through such a pattern. claude/refusals.md lists the probes)
+                otherwise: VlOwned (InternalBug "the event `{nkey}` read as a value with no port it fires: every name of an event node is bound beside its port (`PreBindName`, `BindEventParam`, `WholeOfBlock`) or is a caller's event (`LiveParams`)"), et
         # a named bundle that is one value of the build (`BundleValue`)
         ? (BnParts ignore): match env.names["{nkey}#value"]:
             ? (BnLocal rs, mode, lt): LocalPlace rs, mode, lt
