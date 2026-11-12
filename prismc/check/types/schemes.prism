@@ -109,6 +109,26 @@ fn LacksIn t, q = match t:
 RowLacks: fn Rw, Text -> [Text]
 fn RowLacks rw, q = if rw.tail == (TlQ q): rw.fams else: [[]]
 
+# A trait method's own type variable inside an impl whose head has a variable of the same
+# name (`impl ^Paired [b]` with `Pair: fn a, b -> Text`): they are two variables, so the
+# method's own takes there a name neither the impl nor the method has, its name followed
+# by every one of theirs (longer than each of them, so none of them).
+ApartName: fn Text, [Text], [Text] -> Text
+fn ApartName q, implQs, ownQs = if HasText implQs, q: "{q}{Join (Append implQs, ownQs), ""}" else: q
+
+# A trait method's scheme, the trait's parameter left out of its variables, with its own
+# variables apart from an impl's (`ApartName`). The trait's parameter stays in the type,
+# for the impl's head to take its place.
+SchemeApart: unbounded fn Scheme, [Text] -> Scheme
+fn SchemeApart sc, implQs:
+    let own = sc.qs
+    let tys = Fold own, {}, \|m, q| Insert m, q, (TyQ (ApartName q, implQs, own))
+    update sc:
+        &_.qs <= Each own, \|q| ApartName q, implQs, own
+        &_.plainQs <= Each &_.plainQs, \|q| ApartName q, implQs, own
+        &_.bounds <= Each &_.bounds, \|((q, cls))| (((ApartName q, implQs, own), cls))
+        &_.ty <= SubstQ Inst(tys=tys, rows={}, cols={}), &_.ty
+
 # A scheme whose quantified variables are rigid: a signature as its body sees it.
 Skolemize: unbounded fn Scheme -> Ty
 fn Skolemize sc:

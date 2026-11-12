@@ -127,9 +127,14 @@ public:
         std::string name;
         Fields fields;
     };
+    /// `position` is the case's place in its type's declaration when the value came from
+    /// a typed value (`choice_at`, which a derived `to_pod` calls): two choices that both
+    /// know theirs order by it, as the type's derived `^Ord` does; one read from text
+    /// knows none and orders by its constructor's name. Equality goes by the name.
     struct Choice {
         std::string ctor;
         std::vector<Pod> args;
+        std::optional<std::uint32_t> position = std::nullopt;
     };
     struct Shown {
         std::string text;
@@ -153,6 +158,9 @@ public:
     }
     static Pod choice(std::string ctor, std::vector<Pod> args) {
         return Pod(std::in_place_index<8>, Choice{std::move(ctor), std::move(args)});
+    }
+    static Pod choice_at(std::string ctor, std::uint32_t position, std::vector<Pod> args) {
+        return Pod(std::in_place_index<8>, Choice{std::move(ctor), std::move(args), position});
     }
     /// A choice with no arguments: `click`, `Read`, `Fs.NotFound`.
     static Pod name(std::string ctor) { return choice(std::move(ctor), {}); }
@@ -235,11 +243,32 @@ inline Fields named(std::initializer_list<std::pair<std::string, Pod>> fs) { ret
 
 // ---- Error ---------------------------------------------------------------------------------
 
-/// Prism's `Error`, a `~T`'s failure: a fault kind (`Fs.NotFound`) and a message.
+/// Prism's `Error`, a `~T`'s failure: a fault kind and a message. The kind is a value
+/// (ruling TF, "faults hold typed values"): its tag's name, `Fs.NotFound`, and the fields
+/// it was made with, `Count.TooMany(limit=5, asked=6)`, as plain data in declaration
+/// order; a kind that is its tag alone has none.
 struct Error {
     std::string kind_p;
+    Pod::Fields kind_fields;
     Text message_p;
     Error(std::string kind, Text message) : kind_p(std::move(kind)), message_p(std::move(message)) {}
+    Error(std::string kind, Pod::Fields fields, Text message) : kind_p(std::move(kind)), kind_fields(std::move(fields)), message_p(std::move(message)) {}
+    /// An error of a kind given as a value: a choice with no arguments, or a tag's value
+    /// with its fields; nothing for any other data.
+    static std::optional<Error> of_kind(const Pod& kind, Text message) {
+        const Pod& k = kind.structure();
+        if (const Pod::Choice* c = k.if_choice(); c && c->args.empty()) return Error(c->ctor, std::move(message));
+        if (const Pod::Named* e = k.if_element()) return Error(e->name, e->fields, std::move(message));
+        return std::nullopt;
+    }
+    /// The kind as a value: what `e.kind` reads, and what a World and a transcript see.
+    Pod kind() const { return kind_fields.empty() ? Pod::name(kind_p) : Pod::element(kind_p, kind_fields); }
+    /// A field of the kind, by its name; null when it has none of that name.
+    const Pod* kind_field(const std::string& name) const {
+        for (const auto& [n, v] : kind_fields)
+            if (n == name) return &v;
+        return nullptr;
+    }
     bool operator==(const Error&) const = default;
     auto operator<=>(const Error&) const = default;
 };
@@ -329,7 +358,7 @@ struct FromPod<Pod> {
 template <>
 struct ToPod<Error> {
     static Pod to_pod(const Error& e) {
-        return Pod::record("Error", {{"kind", Pod::name(e.kind_p)}, {"message", Pod::text(e.message_p)}});
+        return Pod::record("Error", {{"kind", e.kind()}, {"message", Pod::text(e.message_p)}});
     }
 };
 template <>
@@ -337,9 +366,9 @@ struct FromPod<Error> {
     static Result<Error> from_pod(const Pod& p) {
         const Pod* kind = p.field("kind");
         const Pod* message = p.field("message");
-        const Pod::Choice* c = kind ? kind->structure().if_choice() : nullptr;
         const Text* m = message ? message->as_text() : nullptr;
-        if (c && c->args.empty() && m) return Error(c->ctor, *m);
+        if (kind && m)
+            if (auto e = Error::of_kind(*kind, *m)) return *e;
         return mismatch<Error>("an Error", p);
     }
 };

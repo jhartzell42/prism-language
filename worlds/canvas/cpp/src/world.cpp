@@ -167,6 +167,7 @@ void UnwrapWorld::perform(const TickOut& out) {
         else
             theirs.push_back(r);
     }
+    prelude_.report_gave_up();
     doc_.apply(out.patch);
     if (theirs.size() == out.requests.size()) {
         inner_->perform(out);

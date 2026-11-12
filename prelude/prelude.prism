@@ -152,15 +152,17 @@ Concat: fn [Text] -> Text
 # Maps (Appendix B, Maps; names by round 47 PM)
 # ---------------------------------------------------------------------------------------
 
-Insert: fn (k ==> v), k, v -> (k ==> v)
-Remove: fn (k ==> v), k -> (k ==> v)
-?Get: fn (k ==> v), k -> ?v
+# A map's key is `^Ord` (Type System ch. 3: "Map keys must be `^Ord`, so a map iterates in
+# one order everywhere"): what puts a key in, or finds one, asks for it.
+Insert: fn (k ==> v), k, v -> (k ==> v) where k: ^Ord
+Remove: fn (k ==> v), k -> (k ==> v) where k: ^Ord
+?Get: fn (k ==> v), k -> ?v where k: ^Ord
 ?First: fn (k ==> v) -> ?((k, v))
 Keys: fn (k ==> v) -> [k]
 Values: fn (k ==> v) -> [v]
 Size: fn (k ==> v) -> Nat
-Map: fn [((k, v))] -> (k ==> v)
-Union: fn (k ==> v), (k ==> v) -> (k ==> v)
+Map: fn [((k, v))] -> (k ==> v) where k: ^Ord
+Union: fn (k ==> v), (k ==> v) -> (k ==> v) where k: ^Ord
 
 # ---------------------------------------------------------------------------------------
 # Text (Appendix B, Text; round 4 TX)
@@ -262,7 +264,7 @@ fn Or (? x), ignore = x
 
 !Filter: fn !?a -> !a
 !Present: fn !?a -> !unit
-!Union: fn !(k ==> v), !(k ==> v) -> !(k ==> v)
+!Union: fn !(k ==> v), !(k ==> v) -> !(k ==> v) where k: ^Ord
 !MergeAll: fn [!a] -> ![a]
 !MergeWith: fn (fn a, a -> a), [!a] -> !a
 !Both: fn !a, !b -> !((a, b))

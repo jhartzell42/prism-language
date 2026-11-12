@@ -31,7 +31,7 @@ pub enum Pod {
     Record(Rc<str>, Vec<(Rc<str>, Pod)>),
     /// `Ctor a, b`; a unit type's value (`click`) and a fault kind (`Fs.NotFound`) are
     /// choices with no arguments.
-    Choice(Rc<str>, Vec<Pod>),
+    Choice(ConstructorName, Vec<Pod>),
     /// `Fam.Tag(f=v, ..)`: an element's `Level`, or an `Edge`'s value.
     Element(Rc<str>, Vec<(Rc<str>, Pod)>),
     Tuple(Vec<Pod>),
@@ -145,6 +145,91 @@ impl Pod {
     }
 }
 
+/// A choice's constructor as plain data holds it: its name, and its case's position in its
+/// type when the value came from a typed value (a derived `to_pod` writes it). A type's
+/// derived `^Ord` orders its cases as they are declared (`White` before `Black` in `choice:
+/// White, Black`), and plain data of the type orders the same way: by position where both
+/// sides know theirs, so a path's key, a document's lists and a printed map are in the
+/// key type's own order. A constructor read from text (a test's pattern, a World's own
+/// value) knows no position and orders by its name; no ordered collection holds both
+/// (the Test World finds a place a script names by its printed path). Equality and the
+/// hash go by the name alone.
+#[derive(Clone, Debug)]
+pub struct ConstructorName {
+    name: Rc<str>,
+    position: Option<u32>,
+}
+
+impl ConstructorName {
+    /// The constructor `name`, the case at `position` in its type's declaration.
+    pub fn at(name: &str, position: u32) -> ConstructorName {
+        ConstructorName { name: name.into(), position: Some(position) }
+    }
+    pub fn name(&self) -> &Rc<str> {
+        &self.name
+    }
+    pub fn position(&self) -> Option<u32> {
+        self.position
+    }
+}
+
+impl From<&str> for ConstructorName {
+    fn from(name: &str) -> ConstructorName {
+        ConstructorName { name: name.into(), position: None }
+    }
+}
+
+impl From<String> for ConstructorName {
+    fn from(name: String) -> ConstructorName {
+        ConstructorName { name: name.into(), position: None }
+    }
+}
+
+impl From<Rc<str>> for ConstructorName {
+    fn from(name: Rc<str>) -> ConstructorName {
+        ConstructorName { name, position: None }
+    }
+}
+
+impl std::ops::Deref for ConstructorName {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.name
+    }
+}
+
+impl PartialEq for ConstructorName {
+    fn eq(&self, other: &ConstructorName) -> bool {
+        self.name == other.name
+    }
+}
+
+impl Eq for ConstructorName {}
+
+impl std::hash::Hash for ConstructorName {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state)
+    }
+}
+
+impl Ord for ConstructorName {
+    fn cmp(&self, other: &ConstructorName) -> std::cmp::Ordering {
+        if self.name == other.name {
+            return std::cmp::Ordering::Equal;
+        }
+        match (self.position, other.position) {
+            (Some(a), Some(b)) if a != b => a.cmp(&b),
+            _ => self.name.cmp(&other.name),
+        }
+    }
+}
+
+impl PartialOrd for ConstructorName {
+    fn partial_cmp(&self, other: &ConstructorName) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 /// One step of a path: an element statement's position, a `rebuild`'s generation `#g`,
 /// or a `for`'s or host document's key `[k]` (Semantics ch. 8).
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -228,16 +313,40 @@ impl fmt::Display for Fault {
 
 impl std::error::Error for Fault {}
 
-/// Prism's `Error`, a `~T`'s failure: a fault kind (`Fs.NotFound`) and a message.
+/// Prism's `Error`, a `~T`'s failure: a fault kind and a message. The kind is a value
+/// (ruling TF, "faults hold typed values"): its tag's name, `Fs.NotFound`, and the fields
+/// it was made with, `Count.TooMany(limit=5, asked=6)`, as plain data in declaration
+/// order; a kind that is its tag alone has none.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Error {
     pub kind_p: Rc<str>,
+    pub kind_fields: Vec<(Rc<str>, Pod)>,
     pub message_p: Text,
 }
 
 impl Error {
     pub fn new(kind: &str, message: impl Into<Text>) -> Error {
-        Error { kind_p: kind.into(), message_p: message.into() }
+        Error { kind_p: kind.into(), kind_fields: Vec::new(), message_p: message.into() }
+    }
+
+    /// An error of a kind given as a value: a choice with no arguments (a kind that is
+    /// its tag alone), or a tag's value with its fields. `None` for any other data.
+    pub fn of_kind(kind: &Pod, message: impl Into<Text>) -> Option<Error> {
+        match kind.structure() {
+            Pod::Choice(name, a) if a.is_empty() => Some(Error::new(name.name(), message)),
+            Pod::Element(name, fields) => Some(Error { kind_p: name.clone(), kind_fields: fields.clone(), message_p: message.into() }),
+            _ => None,
+        }
+    }
+
+    /// The kind as a value: what `e.kind` reads, and what a World and a transcript see.
+    pub fn kind(&self) -> Pod {
+        if self.kind_fields.is_empty() { Pod::name(&self.kind_p) } else { Pod::Element(self.kind_p.clone(), self.kind_fields.clone()) }
+    }
+
+    /// A field of the kind, by its name.
+    pub fn kind_field(&self, name: &str) -> Option<&Pod> {
+        self.kind_fields.iter().find(|(n, _)| &**n == name).map(|(_, v)| v)
     }
 }
 
@@ -380,13 +489,16 @@ impl<T: FromPod> FromPod for Result<T, Error> {
 
 impl ToPod for Error {
     fn to_pod(&self) -> Pod {
-        Pod::record("Error", vec![("kind", Pod::name(&self.kind_p)), ("message", Pod::Text(self.message_p.clone()))])
+        Pod::record("Error", vec![("kind", self.kind()), ("message", Pod::Text(self.message_p.clone()))])
     }
 }
 impl FromPod for Error {
     fn from_pod(p: &Pod) -> Result<Error, Fault> {
         match (p.field("kind").map(Pod::structure), p.field("message").and_then(Pod::as_text)) {
-            (Some(Pod::Choice(kind, a)), Some(m)) if a.is_empty() => Ok(Error { kind_p: kind.clone(), message_p: m.clone() }),
+            (Some(kind), Some(m)) => match Error::of_kind(kind, m.clone()) {
+                Some(e) => Ok(e),
+                None => mismatch("an Error", p),
+            },
             _ => mismatch("an Error", p),
         }
     }

@@ -113,9 +113,6 @@ fn ReachesSnap roots, reads = Fold reads, False, \|f, r| f or match r:
 SnapNames: fn Wx -> [Text]
 fn SnapNames wx = Each wx.snaps, \|sn| sn.name
 
-WakeConst: fn [Nat], Nat -> Text
-fn WakeConst heights, h = if (Len heights) <= 1: "WAKE" else: "WAKE_{h}"
-
 SelfCall: fn Text, [Ex] -> Do
 fn SelfCall m, args = DoExpr (XMethod (XSelf), m, (Push args, (XCx)))
 
@@ -126,7 +123,9 @@ fn RequestCode sk, pos, field, y:
     # a hosted place's request goes to its host: out with a forwarded element, else nowhere
     if Emits sk.wx, pos: [[DoExpr (XMethod (XCx), "request", [[(PlaceAt sk.wx, "self", pos), fieldEx, (XMethod y, "to_pod", [[]])]])]]
     # the host's answer first, then kept: `cx` is borrowed once at a time
-    else: [[(DoLet (PaBind "requested"), (XMethod (HostFieldEx sk.wx, pos), "request", [[(XRef (PlaceAt sk.wx, "self", pos)), fieldEx, (XMethod y, "to_pod", [[]]), XCx]])), (DoExpr (XMethod (XCx), "keep", [[(XVar "requested")]]))]]
+    # (the host of the block's own scope is a `Host`, whose method is `request`; a row's
+    # enclosing host is a `HostOf`, whose method is `request_from`)
+    else: [[(DoLet (PaBind "requested"), (XMethod (HostFieldEx sk.wx, pos), (if pos.scope == 0: "request_from" else: "request"), [[(XRef (PlaceAt sk.wx, "self", pos)), fieldEx, (XMethod y, "to_pod", [[]]), XCx]])), (DoExpr (XMethod (XCx), "keep", [[(XVar "requested")]]))]]
 
 # What a firing does at its sink.
 SinkCode: fn Sinks, Sk, Ex -> [Do]
@@ -134,7 +133,7 @@ fn SinkCode sk, target, y = match target:
     SkNode m: [[(SelfCall (GnOf sk.wx, m).name, [[y]])]]
     SkIn m, i:
         let g = GnOf sk.wx, m
-        Append [[DoExpr (XMethod (XField XSelf, "{Or g.inputs[i], ""}"), "set", [[y, XCx]])]], (AskWake sk, g.height)
+        Append [[DoExpr (XMethod (XField XSelf, "{Or g.inputs[i], ""}"), "set", [[y, XCx]])]], (AskWake sk, g)
     SkHold f: Append [[(DoExpr (XMethod (XField XSelf, "{f}"), "set", [[y, XCx]]))]], (HoldWritten sk, f)
     # the value it holds as the tick opened, against the source's after it: equal, nothing
     # is written and nothing marked
@@ -161,6 +160,63 @@ fn SinkCode sk, target, y = match target:
         let more = [[DoExpr (XMethod (XField XSelf, "{job}"), "set", [[(XVar "next"), XCx]]), DoExpr (XMethod (XField XSelf, "{again}"), "arm", [[XUnit, (XClone XSelf), XCx]])]]
         let fin = [[(SelfCall (GnOf sk.wx, res).name, [[(XVar "b")]])]]
         [[(DoMatch (XMethod (XMethod (XField XSelf, "{job}"), "get", [[XCx]]), "cycle", [[]]), [[(((PaCtor (RefRuntime "prism_rtl::Turn::More"), [[PaBind "next"]]), more)), (((PaCtor (RefRuntime "prism_rtl::Turn::Finished"), [[PaBind "b"]]), fin))]])]]
+
+# The height twin of a firing's sink (claude/backend.md, "Heights across nodes"): where a
+# firing at global height `h` goes, every combinator it reaches is put above `h`, and a
+# port it fires straight through is raised to `h`. A combinator that moved tells its own
+# twin its new height. A hosted place's request tells its host (`Host::request_above`). A
+# sink whose firing lands in a later tick (`@Defer`, `@Later`) or at the World (the root's
+# result, a request that goes out) ends the walk.
+SinkAbove: fn Sinks, Sk, Ex -> [Do]
+fn SinkAbove sk, target, h = match target:
+    SkNode m: [[(AboveCall XSelf, (GnOf sk.wx, m).name, h)]]
+    SkIn m, ignore: CombinatorAbove sk, (GnOf sk.wx, m), h
+    SkHold f: HoldAbove sk, f, h
+    SkDistinct f: HoldAbove sk, f, h
+    SkPerKey f: HoldAbove sk, f, h
+    # a hosted place's request: its host's twin, which raises its rows' request ports
+    SkRequest pos, ignore: if Emits sk.wx, pos: [[]] else: [[DoExpr (XMethod (HostFieldEx sk.wx, pos), "request_above", [[h]])]]
+    SkResult: [[]]
+    SkArm ignore: [[]]
+    SkLater ignore: [[]]
+    SkMachine f, ignore, out: Push (MovedAbove sk, (OwnRead f), h), (AboveCall XSelf, (GnOf sk.wx, out).name, h)
+    SkPort f: [[DoExpr (XMethod (XField XSelf, "{f}_port"), "raise", [[h]])]]
+    SkUp m: [[(DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "parent"]]), (XUpgrade (XField XSelf, "parent")), [[(AboveCall (XVar "parent"), m, h)]], [[]])]]
+    SkCycle ignore, ignore, res: [[(AboveCall XSelf, (GnOf sk.wx, res).name, h)]]
+
+# A method's height twin called: `m_above(h)`.
+AboveCall: fn Ex, Text, Ex -> Do
+fn AboveCall receiver, m, h = DoExpr (XMethod receiver, "{m}_above", [[h]])
+
+# A combinator reached by a firing at global height `h`: put above it (`Heights::above`),
+# and when that moved it, what it fires told its new height.
+CombinatorAbove: fn Sinks, Gn, Ex -> [Do]
+fn CombinatorAbove sk, g, h = [[(DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "moved"]]), (XMethod (XField XSelf, "heights"), "above", [[(XIndex (CombinatorOf sk.combs, g)), h]]), [[(AboveCall XSelf, g.name, (XVar "moved"))]], [[]])]]
+
+# The twin of `HoldWritten`: a hold written at global height `h` puts the `!Updated` nodes
+# over it above `h`, and tells the rows that hear the write.
+HoldAbove: fn Sinks, Text, Ex -> [Do]
+fn HoldAbove sk, f, h = Append (Fold sk.wx.rowMarks, [[]], \|acc, rm| Append acc, (RowAbove sk.wx, rm, (OwnRead f), h)), (MovedAbove sk, (OwnRead f), h)
+
+# The twin of `MovedBy`: the `!Updated` nodes over a read written at global height `h`.
+MovedAbove: fn Sinks, Read, Ex -> [Do]
+fn MovedAbove sk, r, h = Fold (Filter sk.wx.gns, \|g| Moves r, g), [[]], \|acc, g| Append acc, (CombinatorAbove sk, g, h)
+
+# The twin of `RowWritten`: the rows that hear a write of the block at global height `h`
+# are told it; a generation and a blueprint value's rows hear through a port, raised.
+RowAbove: fn Wx, RowMarks, Read, Ex -> [Do]
+fn RowAbove wx, rm, r, h:
+    let hit = Filter (Append rm.wrote, rm.builds), \|m| HasRead (ReadsClosed wx.dynReads, [[OwnRead m]]), r
+    let told = Each hit, \|m| AboveCall (XVar "row"), "parent_wrote_{m}", h
+    let raised = Each hit, \|m| DoExpr (XMethod (XField XSelf, "{rm.builder}_wrote_{m}_port"), "raise", [[h]])
+    match rm.kind:
+        GenerationRow: raised
+        ValueRow: raised
+        otherwise: if (Len told) == 0: [[]] else: [[(DoFor (PaBind "row"), (XMethod (XMethod (XField XSelf, rm.builder), "borrow", [[]]), "values", [[]]), told)]]
+
+# A method's height twin: `{name}_above(h)`, "something at global height `h` fires `name`".
+AboveMethod: fn Text, [Do], Text -> MethDef
+fn AboveMethod name, body, what = MethDef(name="{name}_above", recv=RecvRc, params=[[(("h", OutCount))]], cx=CxNone, ret=OutUnit, body=body, tail=(XUnit), doc="The height twin of `{name}`: {what} at global height `h`; every combinator that reaches sits above `h`.")
 
 # What a write of hold `f` (or of the pseudo-hold behind a host's document, `host_k_doc`,
 # when a node of the hosted child wrote behind it) marks, after the `set` (claude/backend.md,
@@ -202,7 +258,6 @@ MovedBy: fn Sinks, Read -> [Do]
 fn MovedBy sk, r:
     let moved = Filter sk.wx.gns, \|g| Moves r, g
     let flags = Each moved, \|g| DoExpr (XMethod (XField XSelf, "{g.name}_moved"), "set", [[(XBool True)]])
-    let heights = SortNats (Fold moved, [[]], \|acc, g| AddNat acc, g.height)
     let marks = Each (SnapsBehind sk.wx, r), \|sn| DoExpr (XMethod (XField XSelf, "{sn.name}_snap"), "mark", [[XCx]])
     let listed = if ListsBuild sk, r: [[DoExpr (XMethod (XCx), "build_later", [[(XClone XSelf)]])]] else: [[]]
     # a host's dynamic answer over it: its port fired, so its blueprints push next tick
@@ -213,7 +268,7 @@ fn MovedBy sk, r:
     # a `@Flatten` over a `rebuild`'s dynamic that moved: the adoption among the next tick's
     # first firings, which is owed (Semantics ch. 7)
     let adoptions = Each (Filter sk.wx.flattens, \|fl| fl.generation != "" and r == (OwnRead fl.outer)), \|fl| DoScope (Adoption fl)
-    Append (Append (Append (Append (Append (Fold heights, flags, \|acc, h| Append acc, (AskWake sk, h)), marks), listed), answers), adoptions), (SourceMarks sk.wx, r)
+    Append (Append (Append (Append (Append (Fold moved, flags, \|acc, g| Append acc, (AskWake sk, g)), marks), listed), answers), adoptions), (SourceMarks sk.wx, r)
 
 # A write behind a `for`'s source marks the source's cache (gap SR): every write path, a
 # hold's sink, an answer or push at a place, a snapshot's publication, the block's write
@@ -262,18 +317,25 @@ fn FinishNode wx0, qk, params, isRow:
         &_.build <= Append &_.build, (UpdatedGaps wx0, closedGns)
         &_.rows <= Fold rowDefs, &_.rows, \|acc, rd| Append (Push acc, rd), rd.children
     let combs = Filter wx.gns, \|g| (IsComb g.kind) or g.kind == GnGather or g.kind == GnMergeList
-    let heights = SortNats (Fold combs, [[]], \|acc, g| AddNat acc, g.height)
-    let many = (Len heights) > 1
-    let consts = Each heights, \|h| (((WakeConst heights, h), h, "merges' height above the node's inputs"))
+    let wakes = (Len combs) > 0
     let live = Filter wx.places, \|p| p.getter != ""
     let rootReads = Fold wx.rootDyns, [[]], \|acc, ((ignore, rds, ignore))| UnionReads acc, (ReadsClosed wx.dynReads, rds)
     let dirtyHolds = Fold live, rootReads, \|acc, p| UnionReads acc, (ReadsClosed wx.dynReads, p.reads)
     let buildHolds = ReadsClosed wx.dynReads, wx.buildHolds
-    let sinks = Sinks(wx=wx, dirty=dirtyHolds, builds=buildHolds, heights=heights, many=many)
+    let sinks = Sinks(wx=wx, dirty=dirtyHolds, builds=buildHolds, combs=combs)
     let evMethods = Each (Filter wx.gns, \|g| g.kind != GnNever), \|g| MethDef(name=g.name, recv=RecvRc, params=[[(("v", g.ty))]], cx=CxMut, ret=OutUnit, body=(FiringCode sinks, g, (XVar "v")), tail=(XUnit), doc=(GnDoc g))
     let gatherIns = Append (Each (Filter wx.gns, \|g| g.kind == GnGather), \|g| GatherIn sinks, g), (Each (Filter wx.gns, \|g| g.kind == GnMergeList), \|g| MergeListIn sinks, g)
+    # each event method's height twin, written from the same sinks as its firing; a
+    # gather's and a `!MergeAll` list's input put the combinator above what fires it
+    let evAbove = Each (Filter wx.gns, \|g| g.kind != GnNever), \|g| AboveMethod g.name, (Fold g.outs, [[]], \|acc, o| Append acc, (SinkAbove sinks, o.sink, (XVar "h"))), "`!{g.name}` fires"
+    let inAbove = Each (Filter wx.gns, \|g| g.kind == GnGather or g.kind == GnMergeList), \|g| AboveMethod "{g.name}_in", (CombinatorAbove sinks, g, (XVar "h")), "an input of `{g.name}` fires"
+    # the end of the build: each combinator tells what it fires its height, so what it
+    # feeds in other nodes sits above it
+    let announced = Each combs, \|g| AboveCall (XVar "node"), g.name, (XMethod (XField (XVar "node"), "heights"), "of", [[(XIndex (CombinatorOf combs, g))]])
     let placeGetters = Each live, \|p| MethDef(name=p.getter, recv=RecvRef, params=[[]], cx=CxRef, ret=elemTy, body=[[]], tail=p.level, doc="Place {PlaceText p.pos}'s level, read at the read point.")
-    let wakeBody = if many: [[(WakeByHeight combs, heights)]] else: Each combs, \|g| Decide g
+    # the wake decides each combinator asked whose height has come, lowest first, then asks
+    # for a wake for the lowest still asked (`Heights::again`)
+    let wakeBody = if wakes: [[(WakeByHeight combs), (DoExpr (XMethod (XField XSelf, "heights"), "again", [[XCx, (XClone XSelf)]]))]] else: [[]]
     let startedBody = Each wx.started, \|st| SelfCall (GnOf wx, st).name, [[XUnit]]
     let deferredBody = Each wx.defers, \|((f, id))| DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "v"]]), (XMethod (XField XSelf, "{f}"), "fired", [[XCx]]), [[(SelfCall (GnOf wx, id).name, [[(XVar "v")]])]], [[]]
     # the patch pass sends the World the places that go to it, and takes the entry of each
@@ -292,7 +354,7 @@ fn FinishNode wx0, qk, params, isRow:
     # structural dynamic reads its snapshot at the build), then the places out
     let links = Each wx.hosts, \|h| DoExpr (XMethod (XField (XVar "node"), "{h.name}"), "link", [[(XRef (XVar "node"))]])
     let rowsBuilt = Append links, (BuildSteps sinks, True)
-    let subscribed = Each wx.subs, \|((ev, m, t))| DoExpr (XCall (HelperRef "subscribe_row"), [[(XRef (XVar "node")), (XUpgrade (XField (XVar "node"), "parent")), (XClosure False, [[PaBind "p"]], (XRef (XField (XVar "p"), "{ev}_port"))), (XClosure False, [[PaBind "n", PaBind "v", PaBind "cx"]], (XMethod (XVar "n"), m, [[XClone (XVar "v"), XCx]])), (XRef (XField (XVar "node"), "{m}_sub"))]])
+    let subscribed = Each wx.subs, \|((ev, m, t))| DoExpr (XCall (HelperRef "subscribe_row"), [[(XRef (XVar "node")), (XUpgrade (XField (XVar "node"), "parent")), (XClosure False, [[PaBind "p"]], (XRef (XField (XVar "p"), "{ev}_port"))), (XClosure False, [[PaBind "n", PaBind "v", PaBind "cx"]], (XMethod (XVar "n"), m, [[XClone (XVar "v"), XCx]])), (HeardAbove m), (XRef (XField (XVar "node"), "{m}_sub"))]])
     # the World's answers, by path, to the places that go to it; a hosted place is answered
     # typed by its host, through `host_k_answer` (the places of scope `k`) or `deliver` (a
     # hosted node's own)
@@ -318,9 +380,10 @@ fn FinishNode wx0, qk, params, isRow:
         let builds = (HasRead sinks.builds, (ParentRead m)) or (Len stales) > 0
         if builds and not (ListsBuild sinks, (ParentRead m)): Append stales, [[DoExpr (XMethod (XCx), "build_later", [[(XClone XSelf)]])]] else: stales
     let heard = Each (RowHears wx), \|m| MethDef(name="parent_wrote_{m}", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Append (Append (MovedBy sinks, (ParentRead m)), (HeardBuild m)), (Fold wx.rowMarks, [[]], \|acc, rm| Append acc, (RowWritten wx, rm, (ParentRead m)))), tail=(XUnit), doc="The block wrote behind its `{m}`, which this row reads through the parent: the `!Updated` nodes over it are told and the wake asked at their heights; the row's own builders over it are listed for the build; the rows of this row's own `for`s that read it are marked.")
+    let heardAbove = Each (RowHears wx), \|m| AboveMethod "parent_wrote_{m}", (Append (MovedAbove sinks, (ParentRead m), (XVar "h")), (Fold wx.rowMarks, [[]], \|acc, rm| Append acc, (RowAbove wx, rm, (ParentRead m), (XVar "h")))), "the block writes behind its `{m}`"
     let top = Fold wx.gns, 0, \|hi, g| Max hi, g.height
-    let wakesField = if many: [[(("wakes", OutWakes, "the heights asked for this tick, lowest first"))]] else: [[]]
-    let wakesInit = if many: [[(("wakes", (XCall (RefRuntime "rt::Wakes::default"), [[]])))]] else: [[]]
+    let wakesField = if wakes: [[(("heights", (OutNamed (RefRuntime "rt::Heights"), [[]]), "each combinator's global height, and the combinators asked for this tick, lowest first"))]] else: [[]]
+    let wakesInit = if wakes: [[(("heights", (XCall (RefRuntime "rt::Heights::new"), [[(XVec (Each combs, \|g| XIndex g.height))]])))]] else: [[]]
     let genFields = Fold wx.gens, [[]], \|acc, gd| Append acc, (Append [[((gd.name, (OutCell (OutOpt (OutObj (OutNamed (RefRuntime "rt::Row"), [[]])))), "the current generation of the `rebuild` at place {PlaceText gd.pos}")), (("{gd.name}_count", (OutNamed (RefRuntime "std::Cell"), [[OutCount]]), "how many generations it has built")), (("{gd.name}_stale", (OutNamed (RefRuntime "std::Cell"), [[OutBool]]), "its source changed since it was built"))]], (if gd.gappy: [[(("{gd.name}_gap", (OutNamed (RefRuntime "std::Cell"), [[OutCount]]), "how many of its positions the chosen row left unbuilt"))]] else: [[]]))
     # an early generation (`GenDef.early`) is the row the build made
     let genInits = Fold wx.gens, [[]], \|acc, gd| Append acc, (Append [[((gd.name, (XCall (RefRuntime "std::RefCell::new"), [[(if gd.early: XCtor (RefRuntime "std::Some"), [[(XVar "{gd.name}_row")]] else: XNone)]]))), (("{gd.name}_count", (XCall (RefRuntime "std::Cell::new"), [[XIndex (if gd.early: 1 else: 0)]]))), (("{gd.name}_stale", (XCall (RefRuntime "std::Cell::new"), [[XBool False]])))]], (if gd.gappy: [[(("{gd.name}_gap", (XCall (RefRuntime "std::Cell::new"), [[(if gd.early: XVar "{gd.name}_gap_now" else: XIndex 0)]])))]] else: [[]]))
@@ -329,7 +392,20 @@ fn FinishNode wx0, qk, params, isRow:
     let subFields = Each wx.subs, \|((ev, m, t))| (("{m}_sub", (OutNamed (RefRuntime "std::Cell"), [[(OutOpt (OutNamed (RefRuntime "rt::Handle"), [[]]))]]), "the subscription to the parent's `!{ev}`"))
     let subInits = Each wx.subs, \|((ev, m, t))| (("{m}_sub", (XCall (RefRuntime "std::Cell::new"), [[XNone]])))
     let fallible = wx.fallible or isRow or (Len wx.builders) > 0 or (Len wx.gens) > 0
-    NodeDef(name=wx.node, prism=(BareName qk), doc=(DefinitionText wx.lx, qk), params=params, fields=(Append (Append (Append (Append wx.fields, wakesField), genFields), portFields), subFields), consts=consts, lets=wx.lets, inits=(Append wx.inits, (Append (Append (Append (Append wx.moves, wakesInit), genInits), portInits), subInits)), build=(Append (Append (Append (Append (Filter wx.build, IsOwnerLink), rowsBuilt), (Filter wx.build, \|d| not (IsOwnerLink d))), subscribed), startedReg), fallible=fallible, methods=(Append (Append (Append (Append (Append (Append (Append (Append evMethods, gatherIns), placeGetters), wx.getters), rowMethods), heard), hostMethods), gatheredMoved), (Append movedMethod, (PlaceMethods wx))), answers=(Append (Append answers, forwards), (WideForward (Filter wx.gens, \|gd| (IsWideGen gd) and Emits wx, gd.pos))), hooks=hooks, builders=wx.builders, wakes=many, children=wx.rows, gens=wx.gens, subs=wx.subs, top=top, rowKind=(if isRow: (if isGen: GenerationRow else: ForRow) else: NotARow), hosted=hostedMethods)
+    # a row that builds its generations before it is numbered (`Wx.lateGens`): the step
+    # that numbers each generation's row, left by the row (`NumberedByParent`), and
+    # whether the row itself is numbered yet
+    let lateRows = Filter wx.gens, \|gd| HasText wx.lateRowGens, gd.name
+    let numberFields = Append (Each lateRows, \|gd| (("{gd.name}_number", (OutCell (OutOpt laterTy)), "what numbers the current row of `{gd.name}`, until this row is numbered itself"))), (if wx.lateGens: [[(("numbered", (OutNamed (RefRuntime "std::Cell"), [[OutBool]]), "whether the row is numbered yet"))]] else: [[]])
+    let numberInits = Append (Each lateRows, \|gd| (("{gd.name}_number", (XCall (RefRuntime "std::RefCell::new"), [[XNone]])))), (if wx.lateGens: [[(("numbered", (XCall (RefRuntime "std::Cell::new"), [[XBool False]])))]] else: [[]])
+    # (the links, the generations built at once and the row's own step left with its
+    # block stand outside what waits for the row's number, `LateGenerations`)
+    let nowSteps = if wx.lateGens: BuildSteps (PhaseOf sinks, 1), True else: [[]]
+    let laterSteps = if wx.lateGens: BuildSteps (PhaseOf sinks, 2), True else: [[]]
+    let lateGenerations = Append (Append (Append (Filter wx.build, IsOwnerLink), links), (LateNumbering (Append (Append (Append (Append laterSteps, (Filter wx.build, \|d| not (IsOwnerLink d))), subscribed), announced), startedReg))), nowSteps
+    # what the build does once the node is made
+    let afterNode = Append (Append (Append (Append (Append (Filter wx.build, IsOwnerLink), rowsBuilt), (Filter wx.build, \|d| not (IsOwnerLink d))), subscribed), announced), startedReg
+    NodeDef(name=wx.node, prism=(BareName qk), doc=(DefinitionText wx.lx, qk), params=params, fields=(Append (Append (Append (Append (Append wx.fields, wakesField), genFields), portFields), subFields), numberFields), consts=[[]], lets=wx.lets, inits=(Append wx.inits, (Append (Append (Append (Append wx.moves, wakesInit), genInits), portInits), (Append subInits, numberInits))), build=(Append (if wx.lateGens: lateGenerations else: if wx.baseLate: LateNumbering afterNode else: afterNode), wx.numberedBy), fallible=fallible, methods=(Append (if wx.baseLate: [[(NumberPlaces wx)]] else: [[]]), (Append (Append (Append (Append (Append (Append (Append (Append (Append (Append (Append evMethods, evAbove), gatherIns), inAbove), heardAbove), placeGetters), wx.getters), rowMethods), heard), hostMethods), gatheredMoved), (Append movedMethod, (PlaceMethods wx)))), answers=(Append (Append answers, forwards), (WideForward (Filter wx.gens, \|gd| (IsWideGen gd) and Emits wx, gd.pos))), hooks=hooks, builders=wx.builders, wakes=wakes, children=wx.rows, gens=(Each wx.gens, \|gd| if HasText wx.lateRowGens, gd.name: LateRowSelect gd else: gd), subs=wx.subs, top=top, rowKind=(if isRow: (if isGen: GenerationRow else: ForRow) else: NotARow), hosted=hostedMethods)
 
 IsGeneration: fn Wx, Text -> Bool
 fn IsGeneration wx, name = (Len (Filter wx.gens, \|gd| gd.name == name)) > 0
@@ -409,7 +485,9 @@ fn BuildSteps sk, atBuild:
     # line (`ScopeSteps`)
     Fold (Range0 ((Len wx.scopes) + 1)), [[]], \|acc, i|
         let k = Or ((Len wx.scopes) -? i), 0
-        if HasNat wx.lateHosts, k: acc else: Append acc, (ScopeSteps sk, atBuild, k, ((Len wx.scopes) + 1))
+        # (what a row that builds its generations before it is numbered does at once is
+        # of its own scope, `Wx.genPhase`)
+        if (HasNat wx.lateHosts, k) or (wx.genPhase == 1 and k != 0): acc else: Append acc, (ScopeSteps sk, atBuild, k, ((Len wx.scopes) + 1))
 
 # One scope's part of the construction step: its builders and generations in the order
 # of their places, then (at the build) its live hosted places' entries. A host of the
@@ -427,28 +505,66 @@ fn ScopeSteps sk, atBuild, k, fuel = match fuel -? 1:
         let wx = sk.wx
         let recv = if atBuild: XVar "node" else: XSelf
         let Take = \|sn| if atBuild: SnapTakeAtBuild sn else: SnapTake sk, sn
-        let LateChild = \|b| Fold wx.hosts, [[]], \|a, h| if "{h.name}_rows" == b.name and HasNat wx.lateHosts, h.scope: Append (Append a, (if atBuild: (Fold wx.lateFirsts, [[]], \|firsts, ((scope, dos))| if scope == h.scope: Append firsts, dos else: firsts) else: [[]])), (ScopeSteps sk, atBuild, h.scope, less) else: a
+        let LateChild = \|b| Fold wx.hosts, [[]], \|a, h| if "{h.name}_rows" == b.name and HasNat wx.lateHosts, h.scope: Append (Append a, (if atBuild: (Fold (Append wx.lateFirsts, wx.lateStarts), [[]], \|firsts, ((scope, dos))| if scope == h.scope: Append firsts, dos else: firsts) else: [[]])), (ScopeSteps sk, atBuild, h.scope, less) else: a
         let Builder = \|b|
             let before = Each (Filter wx.snaps, \|sn| sn.before and sn.builder == b.name), Take
             let after = Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == b.name), Take
-            Append (LateChild b), (Append (Push before, (DoExpr (TryOf (XMethod recv, "{b.name}_build", [[XCx]])))), after)
+            # (a host made at no place of its own is placed first, `Wx.unplacedHosts`)
+            let placed = if not atBuild: [[]] else: Fold wx.hosts, [[]], \|a, h| if "{h.name}_rows" == b.name and HasText wx.unplacedHosts, h.name: Push a, (DoExpr (XMethod (XField recv, h.name), "place_at", [[(PlaceAt wx, "node", h.pos)]])) else: a
+            if wx.genPhase == 1: [[]] else: Append placed, (Append (LateChild b), (Append (Push before, (DoExpr (TryOf (XMethod recv, "{b.name}_build", [[XCx]])))), after))
         # a `rebuild` handing back a dynamic: its snapshot taken after the generation is built
         let Gen = \|gd|
-            let built = if atBuild and gd.early: DoExpr (XUnit) else: if atBuild: DoExpr (TryOf (XMethod recv, "{gd.name}_build", [[XCx]])) else: DoIf (XMethod (XField XSelf, "{gd.name}_stale"), "replace", [[(XBool False)]]), [[DoExpr (TryOf (XMethod (XSelf), "{gd.name}_build", [[XCx]]))]], [[]]
-            Append [[built]], (Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == gd.name), Take)
+            # (an early generation is built already; one numbered late, `Wx.lateNumbered`,
+            # sends its places here, the generations above it built)
+            let built = if atBuild and gd.early: (if HasText wx.lateNumbered, gd.name: DoExpr (TryOf (XApply (XVar "{gd.name}_number"), [[XCx]])) else: DoExpr (XUnit)) else: if atBuild: DoExpr (TryOf (XMethod recv, "{gd.name}_build", [[XCx]])) else: DoIf (XMethod (XField XSelf, "{gd.name}_stale"), "replace", [[(XBool False)]]), [[DoExpr (TryOf (XMethod (XSelf), "{gd.name}_build", [[XCx]]))]], [[]]
+            # (a row that builds its generations before it is numbered, `Wx.lateGens`:
+            # at once the generations whose rows are numbered late, `Wx.lateRowGens`;
+            # once it is numbered those rows' numbers, and every other step whole)
+            let lateRow = k == 0 and HasText wx.lateRowGens, gd.name
+            if wx.genPhase == 1 and not lateRow: [[]]
+            else: if wx.genPhase == 2 and lateRow: [[(NumberTaken recv, gd.name)]]
+            else: Append [[built]], (Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == gd.name), Take)
         # at the build, a scope's live hosted places take their entries once its builders and
         # generations have run (the structure they read has settled), before the host whose
         # child they are builds its rows over them
-        let entries = if atBuild: Each (Filter wx.places, \|pl| pl.pos.scope == k and pl.entry != "" and pl.getter != ""), \|pl| EntryTake recv, pl else: [[]]
+        let entries = if atBuild and wx.genPhase != 1: Each (Filter wx.places, \|pl| pl.pos.scope == k and pl.entry != "" and pl.getter != ""), \|pl| EntryTake recv, pl else: [[]]
         # a scope's builders and generations in the order of their places (ruling TC: places
         # are counted as they are built), so a `for` whose source reads the result of a
         # clause widget above it finds that generation built
-        let steps = Append (Each (Filter wx.builders, \|b| b.pos.scope == k), \|b| ((b.pos.at, (Builder b)))), (Each (Filter wx.gens, \|gd| gd.pos.scope == k and not (HasText wx.deferredGens, gd.name)), \|gd| ((gd.pos.at, (Gen gd))))
+        # a step whose build reads a structural dynamic of a builder or a generation
+        # written below it (Semantics ch. 7, "Structural dynamics": a builder in a tick's
+        # construction step reads the value after it; ch. 4: the order of a group's lines
+        # decides positions and nothing else) is built once that one is: a late host whose
+        # supplier answers with a `for`'s gathered result, so its child's first values
+        # read every row of the build; a `for` or a generation whose source reads a
+        # host's document or a gathered result, the host itself moved or not
+        # (each step with its name, its place and what it waits for: the builders and
+        # generations whose structural dynamics its build reads. A late host's rows read
+        # what its answers read; a `for` reads its source; a generation its scrutinee)
+        let HostReads = \|b| Fold wx.hosts, [[]], \|acc, h| if "{h.name}_rows" != b.name or not (HasNat wx.lateHosts, h.scope): acc else: Fold wx.dynAnswers, acc, \|acc2, ((name, reads))| if HasPrefix name, "{h.name}_dyn_": UnionReads acc2, reads else: acc2
+        let SourceReads = \|name| Or wx.dynReads["{name}_source"], [[]]
+        let GenReads = \|name| Fold wx.genHolds, [[]], \|acc, ((held, reads))| if held == name: UnionReads acc, reads else: acc
+        let BuildersRead = \|reads| Fold (ReadsClosed wx.dynReads, reads), [[]], \|acc, r| match r:
+            OwnRead f: Fold wx.snaps, acc, \|acc2, sn| if sn.name != f and sn.live != f: acc2 else: AddText acc2, sn.builder
+            ParentRead ignore: acc
+        # (a generation numbered late waits for the generations before it that are built
+        # after the node, whose gaps its number counts; behind a deferred one it is
+        # deferred too, in the order of the lines)
+        let NumberedAfter = \|gd| if atBuild and HasText wx.lateNumbered, gd.name: Each (Filter (GapsBefore wx, gd.pos), \|other| (not other.early) or HasText wx.lateNumbered, other.name), \|other| other.name else: [[]]
+        let Deferred = \|gd| (HasText wx.deferredGens, gd.name) or ((HasText wx.lateNumbered, gd.name) and (Len (Filter (GapsBefore wx, gd.pos), \|other| HasText wx.deferredGens, other.name)) > 0)
+        let steps0 = Append (Each (Filter wx.builders, \|b| b.pos.scope == k), \|b| ((b.name, b.pos.at, 0, (BuildersRead (UnionReads (HostReads b), (SourceReads b.name))), (Builder b)))), (Each (Filter wx.gens, \|gd| gd.pos.scope == k and not (Deferred gd)), \|gd| ((gd.name, gd.pos.at, 0, (Fold (NumberedAfter gd), (BuildersRead (GenReads gd.name)), AddText), (Gen gd))))
+        # a step that reads the structure of another stands after it: at the other's
+        # place, one rank on (so a chain keeps its order: the `for`, the late host that
+        # answers with its result, the builder that reads the host's document)
+        let Settle = \|steps| Each steps, \|((name, at, rank, waits, dos))|
+            let ((at2, rank2)) = Fold steps, ((at, rank)), \|((a, r)), ((other, otherAt, otherRank, ignore, ignore))| if other == name or not (HasText waits, other): ((a, r)) else: if otherAt > a or (otherAt == a and otherRank >= r): ((otherAt, otherRank + 1)) else: ((a, r))
+            ((name, at2, rank2, waits, dos))
+        let steps = Fold (Range0 (Len steps0)), steps0, \|acc, ignore| Settle acc
         # a line that takes a late result at its build is built once every other
         # generation of the scope is, the one that gives the result among them
         # (`DeferredLine`)
-        let deferred = Fold (Filter wx.gens, \|gd| gd.pos.scope == k and HasText wx.deferredGens, gd.name), [[]], \|a, gd| Append a, (Gen gd)
-        let ordered = Fold (SortNats (Fold steps, [[]], \|seen, ((at, ignore))| if (Len (Filter seen, \|y| y == at)) == 0: Push seen, at else: seen)), [[]], \|a, at| Fold steps, a, \|a2, ((at2, dos))| if at2 == at: Append a2, dos else: a2
+        let deferred = Fold (Filter wx.gens, \|gd| gd.pos.scope == k and Deferred gd), [[]], \|a, gd| Append a, (Gen gd)
+        let ordered = Fold (SortNats (Fold steps, [[]], \|seen, ((ignore, at, ignore, ignore, ignore))| if (Len (Filter seen, \|y| y == at)) == 0: Push seen, at else: seen)), [[]], \|a, at| Fold (Range0 ((2 * (Len steps)) + 2)), a, \|a1, rank| Fold steps, a1, \|a2, ((ignore, at2, rank2, ignore, dos))| if at2 == at and rank2 == rank: Append a2, dos else: a2
         Append (Append ordered, deferred), entries
 
 # A hosted live place's entry taken, its level read from `recv` (the node in its build,
@@ -718,9 +834,78 @@ fn PlaceAt wx, recv, pos:
     if Emits wx, pos: XMethod (if recv == "": XVar "path" else: (if recv == "self": XField XSelf, "path" else: XField (XVar recv), "path")), "at", at
     else: XMethod (XCall (RefRuntime "rt::Path::root"), [[]]), "at", at
 
+# Whether a position has no number in the block's build, before the node exists
+# (`PlaceNumber` with no receiver): the block is a row numbered late, whose `base` is
+# set after its node, or a gappy generation before the position is built after the
+# node or numbered late, so what it leaves unbuilt is not known yet.
+PlaceUnknownAtBuild: fn Wx, Pos -> Bool
+fn PlaceUnknownAtBuild wx, pos = (pos.scope == 0 and wx.baseLate and IsSomeNat wx.?based) or (Len (Filter (GapsBefore wx, pos), \|gd| (not gd.early) or HasText wx.lateNumbered, gd.name)) > 0
+
 # The gappy generations of a position's scope that end at or before it (`GenDef.gappy`).
 GapsBefore: fn Wx, Pos -> [GenDef]
 fn GapsBefore wx, pos = Filter wx.gens, \|gd| gd.gappy and gd.pos.scope == pos.scope and gd.pos.at + gd.width <= pos.at
+
+# Whether a generation built early at a position, before the block's node, is numbered
+# after it (`Wx.lateNumbered`; ruling TC: places are counted as they are built): a
+# generation before it is built after the node (a building `match` over the early row's
+# own plain result, written above it), or is numbered late itself, so what it leaves
+# unbuilt is known only once the node stands; or the block is itself a row numbered
+# late, whose `base` is. The row is built in two steps: its build computes its result
+# and makes its node, and `number_places` sends its places (`LateNumbering`).
+NumberedLate: fn Wx, Pos -> Bool
+fn NumberedLate wx, pos = (wx.baseLate and pos.scope == 0) or (Len (Filter (GapsBefore wx, pos), \|gd| (not gd.early) or HasText wx.lateNumbered, gd.name)) > 0
+
+# What a row numbered after its block's node (`Wx.baseLate`) does in its build once its
+# node is made: everything the build of another row does there (the links, the
+# construction step, the places sent, the subscriptions) is kept in `number_later`,
+# with the build's values it reads, and runs when the block numbers the row
+# (`number_places`, from the block's `{name}_number`).
+LateNumbering: fn [Do] -> [Do]
+fn LateNumbering build:
+    let kept = XBlock [[(DoLet (PaBind "node"), (XClone (XVar "node"))), (DoLet (PaTyped (PaBind "number"), laterTy), (XLater (XBlock build, (XUnit))))]], (XVar "number")
+    [[(DoAssign (XDeref (XMethod (XField (XVar "node"), "number_later"), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[kept]]))]]
+
+# A row numbered late that builds its generations in its build (`Wx.lateGens`,
+# `LateGenerations`): its block ends on a late plain result, which the block that built
+# the row reads right after the row's build (`result_value`), from a generation the row
+# builds after its own node. So the row builds each such generation at once, its rows
+# with no `base` and numbered late in turn (`ArmRowOf`, `weakLate`), and what waits for
+# the row's number is the rest: each of those rows numbered, in the order of their
+# places (`{name}_number`, `NumberTaken`), the builders, the places sent, the
+# subscriptions. Every row inside such a row does the same, so each tells its block what
+# its generations left unbuilt when it is built.
+
+# The step that numbers the current row of a generation, taken and run.
+NumberTaken: fn Ex, Text -> Do
+fn NumberTaken recv, name = DoScope [[(DoLet (PaBind "number"), (XMethod (XMethod (XField recv, "{name}_number"), "borrow_mut", [[]]), "take", [[]])), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "number"]]), (XVar "number"), [[(DoExpr (TryOf (XApply (XVar "number"), [[XCx]])))]], [[]])]]
+
+# A generation of such a row whose rows are numbered late: built again once the row is
+# numbered (its source moved in a later tick), its new row is numbered at once.
+LateRowSelect: fn GenDef -> GenDef
+fn LateRowSelect gd = update gd:
+    &_.select <= XBlock [[(DoLet (PaBind "row"), gd.select), (DoIf (XMethod (XField XSelf, "numbered"), "get", [[]]), [[(NumberTaken XSelf, gd.name)]], [[]])]], (XVar "row")
+
+# The sinks with the part of the construction step to write (`Wx.genPhase`).
+PhaseOf: fn Sinks, Nat -> Sinks
+fn PhaseOf sk, phase = update sk:
+    &_.wx <= WithGenPhase &_.wx, phase
+
+WithGenPhase: fn Wx, Nat -> Wx
+fn WithGenPhase wx, phase = update wx:
+    &_.genPhase <= phase
+
+# (`prism_rtl::cx::Later`: the crate's root does not export the name)
+let laterTy = OutNamed (RefRuntime "prism_rtl::cx::Later"), [[]]
+
+# A row numbered late: `base` set, then what its build kept for now.
+NumberPlaces: fn Wx -> MethDef
+fn NumberPlaces wx:
+    let set = DoExpr (XMethod (XField XSelf, "base"), "set", [[(XVar "base")]])
+    let taken = DoLet (PaBind "number"), (XMethod (XMethod (XField XSelf, "number_later"), "borrow_mut", [[]]), "take", [[]])
+    let run = DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "number"]]), (XVar "number"), [[(DoExpr (TryOf (XApply (XVar "number"), [[XCx]])))]], [[]]
+    # (a row that builds its generations at its build tells them it is numbered now, `LateRowSelect`)
+    let told = if wx.lateGens: [[(DoExpr (XMethod (XField XSelf, "numbered"), "set", [[(XBool True)]]))]] else: [[]]
+    MethDef(name="number_places", recv=RecvRc, params=[[(("base", OutCount))]], cx=CxMut, ret=(OutNamed (RefRuntime "rt::Done"), [[]]), body=(Append (Append [[set]], told), [[taken, run]]), tail=(XCtor (RefRuntime "std::Ok"), [[XUnit]]), doc="The row's places numbered from `base`, where its first position stands as built, and sent: the row was built before its block's node, below a generation built after it (ruling TC: places are counted as they are built).")
 
 # The node's method that gives a position of scope `k` as built, and the one that gives
 # back the position an answer's names (`PlaceMethods`).
@@ -736,7 +921,10 @@ fn SeatMethod scope = if scope == 0: "seat" else: "seat_{scope}"
 # the generations before it left unbuilt, and for a transparent row's place counted from
 # the row's `base`. A node with neither spells the position itself. Before the node
 # exists (`recv` empty) the row's `base` is the build's parameter and a gap is known only
-# of a generation built early (`{name}_gap_now`).
+# of a generation built early (`{name}_gap_now`). A row numbered after its block's node
+# (`Wx.baseLate`) has no `base` before its own node, and a generation numbered late
+# (`Wx.lateNumbered`) no gap: a line that is built early below one is numbered late
+# itself (`NumberedLate`), and what else spells a place before the node is refused.
 PlaceNumber: fn Wx, Text, Pos -> Ex
 fn PlaceNumber wx, recv, pos:
     let gaps = GapsBefore wx, pos
@@ -744,9 +932,9 @@ fn PlaceNumber wx, recv, pos:
     if (Len gaps) == 0 and not (IsSomeNat ?base): XIndex pos.at
     else: if recv == "":
         let start = match ?base:
-            ? s: XBin OpAdd, (XVar "base"), (XIndex (Or (pos.at -? s), 0))
+            ? s: if wx.baseLate: Refusal "a place that is read at its row's build (place {PlaceText pos}: a host's, or a hosted place's first value) in an arm or a clause that is built before its block's node and numbered after it" else: XBin OpAdd, (XVar "base"), (XIndex (Or (pos.at -? s), 0))
             nil: XIndex pos.at
-        Fold gaps, start, \|acc, gd| if gd.early: XBin OpSub, acc, (XVar "{gd.name}_gap_now") else: Refusal "a place that is read at its block's build (place {PlaceText pos}) after a building `match`, `if` or widget of several clauses whose rows differ in width and are built after the block's node"
+        Fold gaps, start, \|acc, gd| if gd.early and not (HasText wx.lateNumbered, gd.name): XBin OpSub, acc, (XVar "{gd.name}_gap_now") else: Refusal "a place that is read at its block's build (place {PlaceText pos}) after a building `match`, `if` or widget of several clauses whose rows differ in width and are built after the block's node"
     else: XMethod (if recv == "self": XSelf else: XVar recv), (PlaceMethod pos.scope), [[XIndex pos.at]]
 
 IsSomeNat: fn ?Nat -> Bool
@@ -770,7 +958,7 @@ fn PlaceMethods wx:
     Fold scopes, [[]], \|acc, k|
         let gaps = Filter gappy, \|gd| gd.pos.scope == k
         let start = match (if k == 0: wx.?based else: nil):
-            ? s: XBin OpSub, (XBin OpAdd, (XField XSelf, "base"), (XVar "v")), (XIndex s)
+            ? s: XBin OpSub, (XBin OpAdd, (if wx.baseLate: XMethod (XField XSelf, "base"), "get", [[]] else: XField XSelf, "base"), (XVar "v")), (XIndex s)
             nil: XVar "v"
         let placed = Fold gaps, start, \|x, gd| XBin OpSub, x, (XIf (XBin OpGe, (XVar "v"), (XIndex (gd.pos.at + gd.width))), (GapGet gd), (XIndex 0))
         let place = MethDef(name=(PlaceMethod k), recv=RecvRef, params=[[(("v", OutCount))]], cx=CxNone, ret=OutCount, body=[[]], tail=placed, doc="The position `v` as built: places are counted as they are built (ruling TC).")
@@ -923,31 +1111,36 @@ fn TypedDispatch sk, name, scope:
 let dummyHost = HostDef(pos=pos0, name="", scope=0)
 
 # What the sinks' code needs of the node: the holds whose writes mark a place or a
-# builder, the heights, and whether the wake dispatches by height.
+# builder, and the combinators its wake decides, in the order of `Heights`.
 type Sinks = record:
     wx: Wx
     dirty: [Read]
     builds: [Read]
-    heights: [Nat]
-    many: Bool
+    combs: [Gn]
 
 SortNats: fn [Nat] -> [Nat]
 fn SortNats xs = Fold xs, [[]], \|acc, x| Append (Push (Filter acc, \|y| y < x), x), (Filter acc, \|y| not (y < x))
 
-# Asking for a wake at a combinator's height: once per height (and, when the node has
-# combinators at several heights, the height recorded, so the wake knows which ones run:
-# `Node::wake` is not told the height, gap WH of the README).
-AskWake: fn Sinks, Nat -> [Do]
-fn AskWake sk, h:
-    let c = XConst (WakeConst sk.heights, h)
-    let ask = DoExpr (XMethod (XField XSelf, "wakes"), "ask", [[c]])
-    let wake = DoExpr (XMethod (XCx), "wake", [[c, (XClone XSelf)]])
-    if sk.many: [[ask, wake]] else: [[wake]]
+# Asking for a combinator's wake: the node's `Heights` records the combinator and asks the
+# wake at its global height (`Node::wake` is not told the height, gap WH of the README).
+AskWake: fn Sinks, Gn -> [Do]
+fn AskWake sk, g = [[DoExpr (XMethod (XField XSelf, "heights"), "ask", [[(XIndex (CombinatorOf sk.combs, g)), XCx, (XClone XSelf)]])]]
+
+# A row's subscription's height twin (`subscribe_row`): the row's method `m` fires at the
+# port's height.
+HeardAbove: fn Text -> Ex
+fn HeardAbove m = XClosure False, [[PaBind "n", PaBind "h"]], (XMethod (XVar "n"), "{m}_above", [[(XVar "h")]])
+
+# A combinator's place among the node's combinators: its index in the node's `Heights`.
+CombinatorOf: fn [Gn], Gn -> Nat
+fn CombinatorOf combs, g:
+    let ((before, ignore)) = Fold combs, ((0, False)), \|((n, found)), c| if found or c.id == g.id: ((n, True)) else: ((n + 1, False))
+    before
 
 # A `!MergeAll` list's input heard (`MergeListEvent`): an event of the list fired, which
 # the runtime's `MergeList` stamped; the wake is asked at the node's height.
 MergeListIn: fn Sinks, Gn -> MethDef
-fn MergeListIn sk, g = MethDef(name="{g.name}_in", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(AskWake sk, g.height), tail=(XUnit), doc="An event of the `!MergeAll` list fired: the wake decides the tick's one firing.")
+fn MergeListIn sk, g = MethDef(name="{g.name}_in", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(AskWake sk, g), tail=(XUnit), doc="An event of the `!MergeAll` list fired: the wake decides the tick's one firing.")
 
 # A gather's input: a row's firing, collected by key into the tick's one firing.
 GatherIn: fn Sinks, Gn -> MethDef
@@ -961,7 +1154,7 @@ fn GatherIn sk, g:
         otherwise: OutUnit
     let current = XMethod (XMethod (XField XSelf, "{field}"), "get", [[XCx]]), "unwrap_or_default", [[]]
     let collect = [[(DoLet (PaMut "all"), current), (DoExpr (XMethod (XVar "all"), "insert", [[(XVar "k"), (XVar "v")]])), (DoExpr (XMethod (XField XSelf, "{field}"), "set", [[(XVar "all"), XCx]]))]]
-    let body = Append collect, (AskWake sk, g.height)
+    let body = Append collect, (AskWake sk, g)
     MethDef(name="{g.name}_in", recv=RecvRc, params=[[(("k", kt)), (("v", vt))]], cx=CxMut, ret=OutUnit, body=body, tail=(XUnit), doc="A row's firing, gathered by its key.")
 
 Decide: fn Gn -> Do
@@ -1003,10 +1196,9 @@ fn PairDecide g, kind:
         otherwise: [[((left, (Fire (XVar "a")))), ((PaWild, [[]]))]]
     DoMatch both, cases
 
-# The wake of a node with combinators at several heights: the lowest height asked runs
-# its combinators.
-WakeByHeight: fn [Gn], [Nat] -> Do
-fn WakeByHeight combs, heights = DoMatch (XMethod (XField XSelf, "wakes"), "next", [[]]), (Push (Each heights, \|h| ((PaConst (WakeConst heights, h), (Each (Filter combs, \|g| g.height == h), \|g| Decide g)))), ((PaWild, [[]])))
+# The node's wake: each combinator asked whose height has come decides, the lowest first.
+WakeByHeight: fn [Gn] -> Do
+fn WakeByHeight combs = DoWhileLet (PaCtor (RefRuntime "std::Some"), [[PaBind "combinator"]]), (XMethod (XField XSelf, "heights"), "next", [[XCx]]), [[(DoMatch (XVar "combinator"), (Push (Each combs, \|g| ((PaIndex (CombinatorOf combs, g), [[(Decide g)]]))), ((PaWild, [[]]))))]]
 
 # An answer under a `for`'s place goes to the row its key names.
 ForwardAnswer: fn ForDef -> Ex

@@ -129,11 +129,13 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   value (`&.score.home` outside an `update` block, Type System chapter 3) are out of this
   compiler's scope: the checker's `unsupported` error stands for them. Jimmy: "yes that's
   out of scope".
-- **ME** A named lens may not end at a map key: a checker error. Inside one `update`
+- **ME** A named lens may not end at a map key, nor step through one: a checker error
+  (`lens-map-key`). Inside one `update`
   statement the checker knows by the container's type that a path ends at a key (its
   part is `?V`, and setting `nil` removes the key); behind a named lens's signature
   `&?V` would be either a real location or an entry. Jimmy: "A & can be a real location
   or a map entry ... I think that that's redonkulous actually, and that entries should be
   Entry<K,V> and have a separate operator to set them". The entry type and its operator
   are a change to the language, sent to the Bible; this compiler keeps the `update`
-  block's own map index paths as Semantics chapter 5 has them.
+  block's own map index paths as Semantics chapter 5 has them, and a named lens may end at
+  an array's index.

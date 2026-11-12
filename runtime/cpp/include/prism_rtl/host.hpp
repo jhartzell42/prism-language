@@ -521,8 +521,22 @@ private:
 };
 
 /// The way back into a child's place: a typed answer, delivered now.
+/// (A sink is called as a function. `above` is the height twin of that delivery: what
+/// delivers an answer inside a tick at a global height tells it that height, at the wiring
+/// and each time it rises, so the combinators the answer reaches sit above it; an answer
+/// delivered as a tick opens tells nothing. Rust's `Sink`.)
 template <class A>
-using Sink = std::function<Done(const A&, Cx&)>;
+struct Sink {
+    std::function<Done(const A&, Cx&)> deliver;
+    Above above;
+    Sink() = default;
+    template <class F, class = std::enable_if_t<std::is_invocable_r_v<Done, F&, const A&, Cx&>>>
+    Sink(F f) : deliver(std::move(f)), above(std::make_shared<const std::function<void(std::uint32_t)>>([](std::uint32_t) {})) {}
+    Sink(std::function<Done(const A&, Cx&)> f, Above twin) : deliver(std::move(f)), above(std::move(twin)) {}
+    Done operator()(const A& a, Cx& cx) const { return deliver(a, cx); }
+    /// The sink's height twin, for what delivers its answers inside a tick.
+    Above twin() const { return above; }
+};
 
 /// A row's own places in a hosted scope: each place's entry by its path relative to the
 /// path the row was built at.
@@ -569,6 +583,10 @@ concept AnswerOf = std::copyable<A> && requires(const E& e, const Pod& p) {
     { A::decode(e, p) } -> std::same_as<Result<A>>;
     { A::decode_first(e, p) } -> std::same_as<Result<A>>;
 };
+// The emitted `Answer` also has `static std::optional<PartsAnswer<A>> held_parts(const E&,
+// const A&)`: an answer held whole (a bundle with a part that is no plain data, made
+// outside a tag's arm) as the parts the element's tag takes, which a host's row answers
+// its place with (`HostRow`); `nullopt` for any other answer.
 
 template <class E, class A>
 class HostOf;
@@ -685,6 +703,25 @@ Blueprint<E, A> widget_event_blueprint(Build build, BuildHosted build_hosted, An
         auto hear = [sink, answer](const auto& v, Cx& cx) -> Done { return sink(answer(v), cx); };
         if (scope.is_world()) {
             auto made = TRY(build(path, base, cx));
+            made.result->subscribe_above(hear, sink.twin());
+            return Supplied<E, A>{made.node, std::nullopt, false, nullptr, made.built, made.leave};
+        }
+        auto made = TRY(build_hosted(path, base, scope.hosted, host_moved<E, A>(scope.hosted), cx));
+        made.result->subscribe_above(hear, sink.twin());
+        return Supplied<E, A>{made.node, std::nullopt, false, nullptr, made.built, made.leave, made.document, made.deliver};
+    };
+}
+
+/// A widget that gives an event back as a supplier's answer under a tag's arm: as
+/// `widget_event_blueprint`, but each firing is a computed answer, an input of the next
+/// tick, which is owed (Semantics ch. 9, "A computed answer is the next tick's input"),
+/// as `event_blueprint`'s is.
+template <class E, class A, class Build, class BuildHosted, class AnswerFn>
+Blueprint<E, A> widget_event_answer_blueprint(Build build, BuildHosted build_hosted, AnswerFn answer) {
+    return [build, build_hosted, answer](Path path, Sink<A> sink, const Scope<E, A>& scope, std::uint32_t base, Cx& cx) -> Result<Supplied<E, A>> {
+        auto hear = [sink, answer](const auto& v, Cx& cx) -> Done { return later<A>(sink, answer(v), cx); };
+        if (scope.is_world()) {
+            auto made = TRY(build(path, base, cx));
             made.result->subscribe(hear);
             return Supplied<E, A>{made.node, std::nullopt, false, nullptr, made.built, made.leave};
         }
@@ -762,7 +799,7 @@ Blueprint<E, A> plain_blueprint(A x) {
 template <class E, class A, class Walk>
 Blueprint<E, A> answers_mapped(Blueprint<E, A> blueprint, Walk walk) {
     return [blueprint, walk](Path path, Sink<A> sink, const Scope<E, A>& scope, std::uint32_t base, Cx& cx) -> Result<Supplied<E, A>> {
-        Sink<A> mapped = [sink, walk](const A& answer, Cx& cx) -> Done { return sink(walk(answer), cx); };
+        Sink<A> mapped(std::function<Done(const A&, Cx&)>([sink, walk](const A& answer, Cx& cx) -> Done { return sink(walk(answer), cx); }), sink.twin());
         auto supplied = TRY(blueprint(path, mapped, scope, base, cx));
         if (supplied.first) supplied.first = walk(*supplied.first);
         return supplied;
@@ -1169,6 +1206,39 @@ public:
     virtual void moved(Cx& cx) const = 0;
 };
 
+/// A host as a row under its child reaches it: the host with the row's path put before
+/// every place the row names (a first value asked, a request handed up, an answer
+/// delivered). A row names its places by paths relative to the row; the host knows a child
+/// place by its path relative to the child.
+template <class E, class A>
+class HostUnder : public HostOf<E, A> {
+public:
+    HostUnder(Rc<HostOf<E, A>> host, Path row) : host_(std::move(host)), row_(std::move(row)) {}
+    Done deliver(const Path& place, const A& v, Cx& cx) const override { return host_->deliver(row_.join(place), v, cx); }
+    Result<std::optional<A>> first_value(const Path& place, const E& element, const Rc<Entry<E>>& entry,
+                                         Cx& cx) override {
+        return host_->first_value(row_.join(place), element, entry, cx);
+    }
+    const Supplier<E, A>& supplier() const override { return host_->supplier(); }
+    Scope<E, A> scope() const override { return host_->scope(); }
+    Done request_from(const Path& place, std::optional<std::string> field, Pod value, Cx& cx) const override {
+        return host_->request_from(row_.join(place), std::move(field), std::move(value), cx);
+    }
+    void moved(Cx& cx) const override { host_->moved(cx); }
+
+private:
+    Rc<HostOf<E, A>> host_;
+    Path row_;
+};
+
+/// `host` as the row built at `row` reaches it (`HostUnder`): a row's `build` in a hosted
+/// scope calls this first.
+template <class E, class A>
+Rc<HostOf<E, A>> host_under(Rc<HostOf<E, A>> host, const Path& row) {
+    if (row.segments().empty()) return host;
+    return make_rc<HostUnder<E, A>>(std::move(host), row);
+}
+
 template <class E, class A>
 Moved host_moved(const Rc<HostOf<E, A>>& host) {
     Weak<HostOf<E, A>> weak = host;
@@ -1223,9 +1293,20 @@ public:
             if (r && !r->left_) return r->host()->deliver(r->key_, v, cx);
             return {};
         };
+        E identity = value;
         Element<E> element = node->element(std::move(value));
         Blueprint<E, A> blueprint = host->supplier()(node->key_, element);
         auto supplied = TRY(blueprint(node->path_, node->sink_, host->scope(), 0, cx));
+        // a bundle made outside the tag's arm and held whole is answered part by part
+        // (the emitted `Answer::held_parts`): its state the place's first value, each
+        // firing of an event part an answer
+        if (supplied.first) {
+            if (auto parts = A::held_parts(identity, *supplied.first)) {
+                auto subscribed = make_rc<detail::SubscribedParts<A>>();
+                supplied.first = detail::answer_parts(*parts, node->sink_, *subscribed, cx);
+                node->held_ = subscribed;
+            }
+        }
         node->supplied_ = std::move(supplied);
         return node;
     }
@@ -1290,6 +1371,11 @@ public:
     /// answer in flight is dropped. The emitted prelude's `Row` calls this.
     void leave_row(Cx& cx) {
         left_ = true;
+        if (held_) {
+            NodeRef held = std::move(held_);
+            held_ = nullptr;
+            cx.keep(held->leave(cx));
+        }
         if (supplied_) {
             NodeRef node = std::move(supplied_->node);
             std::function<void(Cx&)> leave = std::move(supplied_->leave);
@@ -1346,6 +1432,9 @@ private:
     Weak<HostOf<E, A>> host_;
     /// The key left: a computed answer in flight to the place is dropped.
     bool left_ = false;
+    /// The subscriptions of a bundle answered held whole (`Answer::held_parts`): they
+    /// leave with the row.
+    NodeRef held_ = nullptr;
     Sink<A> sink_;
     std::optional<Supplied<E, A>> supplied_;
     /// The entry moved: readers of the live element's level (a forwarded element) read it
@@ -1378,6 +1467,12 @@ public:
 
     /// The owner's node, once made: the rows read the document and answer through it.
     void link(const Rc<P>& owner) { owner_ = owner; }
+
+    /// The host's place, told once the owner's node stands: a host made in the build of
+    /// a node whose places take their numbers after it (places are counted as they are
+    /// built) is made at the root and placed here, before its rows are built and before
+    /// any child place asks its first value.
+    void place_at(Path at) { at_ = std::move(at); }
 
     /// `@HostList`'s answers sent down by path (Semantics ch. 9, the list form; rulings
     /// round 12, AQ): each firing of `answers` hands the place at each of its keys that

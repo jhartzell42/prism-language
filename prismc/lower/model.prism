@@ -142,6 +142,8 @@ type OutTy = choice:
     OutGen Text
     OutRc OutTy
     OutRef OutTy
+    # What a named lens takes and gives back (Semantics ch. 5): Rust's `&mut T`, C++'s `T&`.
+    OutRefMut OutTy
     OutPod
     OutShowAny
     OutHold OutTy
@@ -388,6 +390,9 @@ type TyDef = record:
     name: Text
     prism: Text
     params: [Text]
+    # The type parameters a map's key holds, in a field of the type or in a type a field
+    # names: an impl that reads the map (the printer's, the plain-data ones) orders them.
+    keyed: [Text]
     shape: TyShape
     cases: [CaseDef]
     eq: Bool
@@ -774,6 +779,12 @@ type AnswerCase = record:
     # a World's first value decodes to (`decode_first`); the variant above carries the
     # event part, the answers (pick HO).
     ?first: OutTy
+    # A bundle's tag with a part that is no plain data (a function): the bundle whole,
+    # as a blueprint made outside the tag's arm holds it (`PartsBlueprint`), and the
+    # function from one such value to the tag's parts answer (`PartsAnswerOf`), by which
+    # a host's row answers its place (prism_rtl's `AnswerOf::held_parts`).
+    ?heldWhole: OutTy
+    ?heldParts: Ex
 derive ^Eq, ^Show
 
 # Whether an expression reads the local `n` anywhere in it (its `XVar`s), as a printer

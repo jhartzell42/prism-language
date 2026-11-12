@@ -8,6 +8,7 @@
 #include <variant>
 
 #include "prism_rtl/doc.hpp"
+#include "prism_rtl/prelude.hpp"
 #include "prism_rtl/print.hpp"
 #include "prism_rtl/read.hpp"
 #include "prism_rtl/scene.hpp"
@@ -509,6 +510,9 @@ struct Run {
     std::map<Pod, Pod> ready;
     std::size_t next_tick = 0;
     bool pending = false;
+    /// The prelude's policy: the answers `Prelude.Unwrap` and `Prelude.Exceptions` are
+    /// owed, and what is poisoned.
+    Prelude prelude;
     std::optional<Pod> last_result;
     /// Each `Gui.Window` place's id, as its first value answered it.
     std::map<Path, Pod> windows;
@@ -572,9 +576,7 @@ struct Run {
                 input.answers.emplace_back(path, value);
             }
             std::stable_sort(input.answers.begin(), input.answers.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-            std::vector<std::string> shown;
-            for (const auto& [p, v] : input.answers) shown.push_back(p.to_string() + ": " + v.to_string());
-            ticked = one_tick(std::move(input), shown, out);
+            ticked = one_tick(std::move(input), {}, out);
             break;
         }
         }
@@ -659,9 +661,17 @@ struct Run {
         return std::pair{matching[0], Pod::choice("Press", {point})};
     }
 
-    /// Run one tick, print it, and lend the program its compact round.
-    Ticked one_tick(TickIn input, std::span<const std::string> shown, std::string& out) {
+    /// Run one tick, print it, and lend the program its compact round. The tick's answers
+    /// are `input`'s and the ones the prelude's policy owes, in path order, less those to
+    /// a poisoned place; `pushed` is what `in:` shows before them.
+    Ticked one_tick(TickIn input, std::span<const std::string> pushed, std::string& out) {
         Document before = doc;
+        std::vector<std::pair<Path, Pod>> owed = prelude.take_answers();
+        input.answers.insert(input.answers.end(), owed.begin(), owed.end());
+        std::erase_if(input.answers, [&](const auto& a) { return prelude.is_poisoned(a.first); });
+        std::stable_sort(input.answers.begin(), input.answers.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        std::vector<std::string> shown(pushed.begin(), pushed.end());
+        for (const auto& [p, v] : input.answers) shown.push_back(p.to_string() + ": " + v.to_string());
         TestReady r(ready);
         std::pair<TickIn, std::map<Pod, Pod>> logged{input, ready};
         Result<TickOut> result = unexpected(Fault("", ""));
@@ -678,8 +688,17 @@ struct Run {
         ++next_tick;
         if (result) {
             const TickOut& o = *result;
+            // The prelude's tags, as a World performs them: the requests against the
+            // document as the tick opened and the tick's newborns.
+            prelude.track(o.patch);
+            for (const auto& r : o.requests) {
+                if (prelude.is_poisoned(r.path)) continue;
+                const Pod* element = element_of(before, o, r.path);
+                const std::string* tag = element ? element->tag() : nullptr;
+                if (tag && *tag == "Prelude.Unwrap") prelude.unwrap(r.path, r.value);
+            }
             doc.apply(o.patch);
-            pending = o.pending;
+            pending = o.pending || prelude.owes();
             for (const auto& outcome : o.results)
                 if (outcome.kind == Outcome::Kind::Value) last_result = outcome.pod;
             observe(o);
@@ -688,6 +707,7 @@ struct Run {
         } else {
             // A tick that aborts leaves the state before it (Conformance AB): the program
             // built again and the ticks that closed run again, their output already had.
+            prelude.give_back(std::move(owed));
             program = replay();
         }
         return Ticked{std::move(result), std::move(before)};

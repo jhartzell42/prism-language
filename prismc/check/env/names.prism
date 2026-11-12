@@ -264,6 +264,10 @@ fn ResolveValue g, m, n:
         # `"answer"` takes it (`AnswerTag` gives its tag's key)
         else: if (Len marks) == 0 and last == answerConstructor and (DeclaresElementTag g, (Dotted (Take n.path, (Dec (Len n.path))))): ((? (Dotted n.path), "answer"))
         else: if (HasKey g.vals, qk) or (HasKey g.ctors, qk): ((? qk, ""))
+        # a top-level `let` with no signature has its value entry once its type is
+        # inferred; the tables alone (which lowering builds again) know it by its
+        # declaration, as a bare name's table does
+        else: if Fold g.defs, False, \|found, d| found or d.qk == qk: ((? qk, ""))
         else: ((nil, "unknown"))
 
 # A field read whose receiver is a module's name and no value's (`Words.base`; Semantics
@@ -271,14 +275,16 @@ fn ResolveValue g, m, n:
 # qualified name needs no `use`): the qualified name it is, when the module declares
 # that value. The parser reads a lowercase word after a dot as a field (Semantics ch. 2),
 # so the name is found here, by what is declared. A local of the receiver's name is the
-# caller's to rule out.
+# caller's to rule out. A qualified name's sigils stand before the module's name
+# (`@Parts.header`, as `@Birds.Spotter`), where the parser reads them as the
+# receiver's.
 ?QualifiedField: fn G, Text, Expr, Text, Ident -> ?SName
 fn ?QualifiedField g, m, recv, sigils, name = match recv.kind:
     EName r:
-        if r.sigils != "": nil
+        if r.sigils != "" and sigils != "": nil
         else:
             let ((?value, ignore)) = ResolveValue g, m, r
-            let n = SName(sigils=sigils, path=(Push r.path, name.name), span=r.span)
+            let n = SName(sigils=(if r.sigils != "": r.sigils else: sigils), path=(Push r.path, name.name), span=r.span)
             let ((?qk, why)) = ResolveValue g, m, n
             match ((?value, ?qk)):
                 ((nil, ? ignore)): if why == "": ? n else: nil

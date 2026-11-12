@@ -54,8 +54,10 @@ fn ForLine wx, benv0, menv0, ?binders, source, body, e, ?bound:
     let pos = wx.pos
     let wx1 = update wx:
         &_.pos <= NextPos &_.pos
-    let ((srcEx, reads)) = DynamicExpr wx1, menv0, source
-    let srcTy = Peel (TypeAt lx, source.span)
+    let ((srcEx0, reads)) = DynamicExpr wx1, menv0, source
+    # (a non-empty collection is run over as the collection it is)
+    let srcEx = PlainOwned (Peel (TypeAt lx, source.span)), srcEx0
+    let srcTy = Collection (Peel (TypeAt lx, source.span))
     let ((kt, vt, keyed)) = match srcTy:
         TyMap k, v: (((OutTyOf lx, k), (OutTyOf lx, v), True))
         TyArray v: ((OutNat, (OutTyOf lx, v), False))
@@ -77,7 +79,7 @@ fn ForLine wx, benv0, menv0, ?binders, source, body, e, ?bound:
     let rowFields = Append [[(("key", kt, "the row's key")), (("left_entry", (OutCell (OutOpt vt)), "the entry as the tick its key left opened, kept from the row's leaving on (R8)")), (("parent", (OutWeak wx.node), "the node of the `for`"))]], (Each locals, \|l| ((l.field, l.ty, "`{l.name}`, the block's")))
     let rowMoves = Append [[(("key", (XClone (XVar "key")))), (("left_entry", (XCall (RefRuntime "std::RefCell::new"), [[XNone]]))), (("parent", (XClone (XVar "parent"))))]], (Each locals, \|l| ((l.field, (XVar l.field))))
     let rowTaken = Append (Append nodeHooks, [["key", "value", "parent", "entry", "left_entry"]]), (Each locals, \|l| l.field)
-    let rowWx0 = NewWx lx, rowName, rowFields, [[]], rowMoves, [[(EntryGetter srcGetter, vt)]], {"entry": [[ParentRead srcGetter]]}, rowTaken, wx.inlining, (?HostedRows wx)
+    let rowWx0 = UnderItsPath (NewWx lx, rowName, rowFields, [[]], rowMoves, [[(EntryGetter srcGetter, vt)]], {"entry": [[ParentRead srcGetter]]}, rowTaken, wx.inlining, (?HostedRows wx)), (?HostedRows wx)
     # The block's events the body names reach the row through ports, as a generation's do
     # (`RowEnv`): a port node in the row, subscribed to the block's port, which the block's
     # event fires. The row's own graph indexes none of the block's events.
@@ -91,7 +93,7 @@ fn ForLine wx, benv0, menv0, ?binders, source, body, e, ?bound:
         &_.dynReads <= Insert &_.dynReads, srcGetter, reads
     let keyB = BnLocal (XVar "key"), Owned, kt
     let keyM = BnLocal (XField XSelf, "key"), Owned, kt
-    let benvL = WholeOfBlock menv, (BundlesOf ports, (EventsOf ports, (Fold locals, (RowReads benv, parentArg), \|en, l| Bind en, l.name, (BnLocal (XVar l.field), Owned, l.ty))), True), True
+    let benvL = WholeOfBlock menv, (BundlesOf ports, (EventsOf ports, (Fold locals, (WithoutBuildValues (RowReads benv, parentArg)), \|en, l| Bind en, l.name, (BnLocal (XVar l.field), Owned, l.ty))), True), True
     let menvL = WholeOfBlock menv, (BundlesOf ports, (EventsOf ports, (Fold locals, (RowReads menv, parentRef), \|en, l| Bind en, l.name, (BnLocal (XField XSelf, l.field), Owned, l.ty))), False), False
     let passed = Append (HostedPassed wx), (Each locals, \|l| l.passed)
     let rowParams = Append (Append [[(("key", kt)), (("value", vt)), (("parent", (OutWeak wx.node)))]], (HostedParams wx)), (Each locals, \|l| ((l.field, l.ty)))
@@ -279,8 +281,10 @@ fn AddBuilder wx, name, pos, kt, vt, rowName, keyed, reads, waiting, passed:
     let wx0 = AddFieldLast wx, name, (OutCell (OutMap kt, (OutRc (OutNamed (SiteRef wx.lx, rowName), [[]])))), "the rows of the `for` at place {PlaceText pos}", (XCall (RefRuntime "std::RefCell::new"), [[(XCall (RefRuntime "rt::Map::new"), [[]])]])
     let wx1 = AddFieldLast wx0, "{name}_from", (OutCell (OutMap kt, vt)), "the source the rows of the `for` at place {PlaceText pos} were last built from", (XCall (RefRuntime "std::RefCell::new"), [[(XCall (RefRuntime "rt::Map::new"), [[]])]])
     # over a map of dynamics, the rows' flattens of their entries, each told when the
-    # dynamic under its kept key was replaced (`{name}_replaced`, ruling FV)
-    let replaced = Each (Filter waiting.wx.flattens, \|fl| fl.generation == ""), \|fl| "{fl.name}_replaced"
+    # dynamic under its kept key was replaced (`{name}_replaced`, ruling FV); a row's
+    # `@Flatten` over a dynamic of dynamics of its own (`held`, `HeldFlatten`) follows its
+    # outer's update event and is told nothing by the builder
+    let replaced = Each (Filter waiting.wx.flattens, \|fl| fl.generation == "" and not fl.held), \|fl| "{fl.name}_replaced"
     update wx1:
         &_.builders <= Push &_.builders, ForDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), keyTy=kt, valueTy=vt, rowNode=rowName, keyed=keyed, source="{name}_source", parent=(XWeak XSelf), passed=passed, moved=(Or (?HostedRows wx), ""), replaced=replaced)
         &_.buildHolds <= UnionReads &_.buildHolds, reads
@@ -336,6 +340,14 @@ fn RowReads env, pref = Fold (Keys env.names), env, \|en, k| match env.names[k]:
         ? (BnDyn (XMethod ignore, m, xs), ignore, t): Bind en, k, (BnDyn (XMethod pref, m, xs), [[ParentRead m]], t)
         otherwise: if (OnSelfRooted ex) and Fold rds, True, \|f, rd| f and IsOwnRead rd: Bind en, k, (BnDyn (OverBlock ex, pref), (Each rds, \|rd| AsParentRead rd), bt) else: en
     otherwise: en
+
+# A row's build environment without its block's values at the block's build
+# (`{name}#init`, locals of the block's constructor, which the row's constructor has
+# not): in the row a hold or a dynamic of the block is read through the parent, which is
+# built, at the build as at any read (`RowReads`), so a supplier's dynamic answer in the
+# row takes its value at the row's build there (`DynamicAnswers`).
+WithoutBuildValues: fn Env -> Env
+fn WithoutBuildValues env = WithoutNames env, (Filter (Keys env.names), \|k| (?BeforeSuffix k, "#init") != nil)
 
 # A node's expression of itself read through `pref`, the block as a row reaches it.
 OverBlock: fn Ex, Ex -> Ex
@@ -421,12 +433,17 @@ fn ForEnvs benv, menv, ?binders, keyB, keyM, valB, valM, vt:
         nil: ((be0, me0))
         ? fb: match fb.?second:
             ? second:
-                let be1 = BindPat be0, fb.first, keyB, (XVar "key"), kt0
-                let me1 = BindPat me0, fb.first, keyM, (XField XSelf, "key"), kt0
+                # the key's binder: a name, or a tuple pattern over a tuple key (`for ((seat,
+                # sitting)), $u <- ..`), each part typed as the key's part (hosting bug 13)
+                let be1 = BindPat be0, fb.first, keyB, (XVar "key"), (LocalTy keyB)
+                let me1 = BindPat me0, fb.first, keyM, (XField XSelf, "key"), (LocalTy keyM)
                 (((BindPat be1, second, valB, (XVar "value"), vt), (BindPat me1, second, valM, XUnit, vt)))
             nil: (((BindPat be0, fb.first, valB, (XVar "value"), vt), (BindPat me0, fb.first, valM, XUnit, vt)))
 
-let kt0 = OutUnit
+# A local binder's type; `unit` for a binder that is no local.
+LocalTy: fn Bn -> OutTy
+fn LocalTy (BnLocal ignore, ignore, t) = t
+fn LocalTy other = OutUnit
 
 # A `for` binder: a name binds the key or the entry; a tuple binds its parts, each the
 # part of the entry (`for ((path, text)) <- files:`).

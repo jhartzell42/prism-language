@@ -152,9 +152,23 @@ impl FromPod for PreludeUnwrap {
     }
 }
 
+/// The description of `Prelude.Unwrap`: the element applied as a plain value (`@Element
+/// (Prelude.Unwrap(!~value=..))`), its field as given, the event of `~a`s (a type
+/// parameter's values are plain data here).
+#[derive(Clone)]
+#[allow(non_camel_case_types)]
+pub struct PreludeUnwrap_desc {
+    pub value_e: ::prism_rtl::Event<::std::result::Result<Pod, Error>>,
+}
+
 /// `tag Prelude.Exceptions of Element !Exception`.
 #[derive(Clone, PartialEq, Eq)]
 pub struct PreludeExceptions {}
+
+/// The description of `Prelude.Exceptions`: the element applied as a plain value.
+#[derive(Clone)]
+#[allow(non_camel_case_types)]
+pub struct PreludeExceptions_desc {}
 
 impl PreludeExceptions {
     pub const TAG: &'static str = "Prelude.Exceptions";
@@ -512,13 +526,89 @@ pub fn len_map<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Nat {
     nat_of(m.len())
 }
 
-// `xs as [a]+?`: the collection when it has an element (Type System ch. 2, "Collections").
-pub fn non_empty<A: Clone>(xs: &Array<A>) -> Option<Array<A>> {
-    if xs.len() > 0 { Some(xs.clone()) } else { None }
+/// `[a]+` and `(K ==> V)+` (Type System ch. 2, "Collections"): a collection with at least
+/// one entry, a type of its own beside its collection's, so an impl for `[a]+` and one for
+/// `[a]` are impls for two types and a generic function has an instantiation at each. It
+/// is read as the collection it holds (`Deref`, `plain_collection`), and compares, prints
+/// and travels as plain data as that collection does. Only a non-empty literal
+/// (`non_empty_of`) and the checked conversion (`non_empty`, `non_empty_map`) make one.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub struct NonEmpty<C>(C);
+
+impl<C> ::std::ops::Deref for NonEmpty<C> {
+    type Target = C;
+    fn deref(&self) -> &C {
+        &self.0
+    }
 }
 
-pub fn non_empty_map<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Option<Map<K, V>> {
-    if m.len() > 0 { Some(m.clone()) } else { None }
+// An entry written in place through an `update` path: the checker lets no path remove a
+// non-empty collection's last entry.
+impl<C> ::std::ops::DerefMut for NonEmpty<C> {
+    fn deref_mut(&mut self) -> &mut C {
+        &mut self.0
+    }
+}
+
+impl<C: Show> Show for NonEmpty<C> {
+    fn show(&self, p: &mut Printer) {
+        self.0.show(p);
+    }
+}
+
+impl<C: ToPod> ToPod for NonEmpty<C> {
+    fn to_pod(&self) -> Pod {
+        self.0.to_pod()
+    }
+}
+
+/// Whether a collection has an entry: what a `NonEmpty` promises of the one it holds.
+pub trait HasEntry {
+    fn has_entry(&self) -> bool;
+}
+
+impl<A> HasEntry for Array<A> {
+    fn has_entry(&self) -> bool {
+        !self.is_empty()
+    }
+}
+
+impl<K, V> HasEntry for Map<K, V> {
+    fn has_entry(&self) -> bool {
+        !self.is_empty()
+    }
+}
+
+// Only a World hands a program data, and an empty collection is not a non-empty one's.
+impl<C: FromPod + HasEntry> FromPod for NonEmpty<C> {
+    fn from_pod(p: &Pod) -> Result<NonEmpty<C>, Fault> {
+        let collection = C::from_pod(p)?;
+        if collection.has_entry() {
+            Ok(NonEmpty(collection))
+        } else {
+            ::prism_rtl::pod::mismatch("a non-empty collection", p)
+        }
+    }
+}
+
+// `[[x, y]]+`, `{k: v}+`: a non-empty literal's collection, which the checker saw an entry in.
+pub fn non_empty_of<C>(collection: C) -> NonEmpty<C> {
+    NonEmpty(collection)
+}
+
+// A non-empty collection where its collection is wanted (the one implicit conversion).
+pub fn plain_collection<C>(xs: &NonEmpty<C>) -> &C {
+    &xs.0
+}
+
+// `xs as [a]+?`: the non-empty collection when the collection has an element (Type System
+// ch. 2, "Collections").
+pub fn non_empty<A: Clone>(xs: &Array<A>) -> Option<NonEmpty<Array<A>>> {
+    if xs.len() > 0 { Some(NonEmpty(xs.clone())) } else { None }
+}
+
+pub fn non_empty_map<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Option<NonEmpty<Map<K, V>>> {
+    if m.len() > 0 { Some(NonEmpty(m.clone())) } else { None }
 }
 
 pub fn append<A: Clone>(a: &Array<A>, b: &Array<A>) -> Array<A> {
@@ -575,6 +665,32 @@ pub fn set_index<A: Clone>(xs: &mut Array<A>, i: &Nat, v: Option<A>) {
     match v {
         Some(x) => xs[ix(i)] = x,
         None => panic!("`&xs[{i}] <= nil`: an array's entry cannot be removed"),
+    }
+}
+
+/// The entry a reference path steps through, read in place: it gives up on an index the
+/// array does not hold, as the path's place does (`at_mut`).
+pub fn at_shared<'a, A>(xs: &'a Array<A>, i: &Nat) -> &'a A {
+    xs.get(ix(i)).expect("an `&` path through an index the array does not hold")
+}
+
+pub fn at_shared_map<'a, K: Ord + Clone, V: Clone>(m: &'a Map<K, V>, k: &K) -> &'a V {
+    m.get(k).expect("an `&` path to a key the map does not hold")
+}
+
+/// The part a named lens names at an array's index (Semantics ch. 5): the entry in place,
+/// or none past the array's end.
+pub fn part_mut<'a, A: Clone>(xs: &'a mut Array<A>, i: &Nat) -> Option<&'a mut A> {
+    xs.get_mut(ix(i))
+}
+
+/// `&Lens r <= v` where the lens ends at an array's index: `? x` writes the entry, as
+/// `set_index` does; an array has no entry to remove, and none to write past its end.
+pub fn set_part<A>(part: Option<&mut A>, v: Option<A>) {
+    match (part, v) {
+        (Some(place), Some(x)) => *place = x,
+        (None, Some(_)) => panic!("a lens to an index the array does not hold"),
+        (_, None) => panic!("a lens to an array's index set to `nil`: an array's entry cannot be removed"),
     }
 }
 
@@ -852,20 +968,6 @@ pub fn indexed<A: Clone>(xs: &Array<A>) -> Map<Nat, A> {
     xs.iter().enumerate().map(|(i, x)| (nat_of(i), x.clone())).collect()
 }
 
-/// The heights a node with combinators at several heights asked for this tick: its wake
-/// runs the lowest one asked (`Node::wake` is not told its height, prismc/README.md WH).
-#[derive(Default)]
-pub struct Wakes(::std::cell::RefCell<::std::collections::BTreeSet<u32>>);
-
-impl Wakes {
-    pub fn ask(&self, h: u32) {
-        self.0.borrow_mut().insert(h);
-    }
-    pub fn next(&self) -> u32 {
-        self.0.borrow_mut().pop_first().unwrap_or(u32::MAX)
-    }
-}
-
 /// A row of a `for` or a generation of a `rebuild`: a node its builder tears down. A row
 /// of a hosted child's (prismc/README.md, pick HO) is an entry of its host's document: its
 /// own places' entries, by their paths relative to the row, and a host's typed answer to one
@@ -974,14 +1076,16 @@ fn applied_scope(hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::A
 /// built. A blueprint that answers (`@ x`, an event's, a dynamic's) builds no place here,
 /// and what it answers is the line's result, which a line of unit drops.
 pub fn apply_blueprint(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: u32, hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Answer>>>, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32), Fault> {
-    apply_blueprint_heard(blueprint, path, base, hosted, |_: &crate::Answer, _: &mut Cx| Ok(()), cx)
+    apply_blueprint_heard(blueprint, path, base, hosted, |_: u32| (), |_: &crate::Answer, _: &mut Cx| Ok(()), cx)
 }
 
 /// A blueprint value applied by a line that hears it (`!go <- @Element e`): as
 /// `apply_blueprint`, with `hear` the blueprint's sink, called with each answer to the
-/// place the blueprint answers, in the tick the answer comes.
-pub fn apply_blueprint_heard(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: u32, hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Answer>>>, hear: impl Fn(&crate::Answer, &mut Cx) -> Done + 'static, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32), Fault> {
-    let sink: ::prism_rtl::Sink<crate::Answer> = Rc::new(hear);
+/// place the blueprint answers, in the tick the answer comes; `above` is the sink's
+/// height twin, told the global height such an answer comes at (a widget's event result,
+/// fired by a combinator of its row), so what `hear` fires sits above it.
+pub fn apply_blueprint_heard(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: u32, hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Answer>>>, above: impl Fn(u32) + 'static, hear: impl Fn(&crate::Answer, &mut Cx) -> Done + 'static, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32), Fault> {
+    let sink: ::prism_rtl::Sink<crate::Answer> = ::prism_rtl::Sink::heard_above(hear, Rc::new(above));
     let supplied = blueprint(path, sink.clone(), &applied_scope(hosted), base, cx)?;
     let built = supplied.built;
     Ok((Rc::new(AppliedBlueprint { supplied, base, sink }), built))
@@ -991,7 +1095,7 @@ pub fn apply_blueprint_heard(blueprint: &::prism_rtl::Blueprint<crate::Elem, cra
 /// `apply_blueprint`, with the first answer of the place the blueprint answers, which a
 /// blueprint that gives a plain value has at its build.
 pub fn apply_blueprint_answered(blueprint: &::prism_rtl::Blueprint<crate::Elem, crate::Answer>, path: Path, base: u32, hosted: Option<Rc<dyn ::prism_rtl::HostOf<crate::Elem, crate::Answer>>>, cx: &mut Cx) -> Result<(Rc<dyn Row>, u32, crate::Answer), Fault> {
-    let sink: ::prism_rtl::Sink<crate::Answer> = Rc::new(|_: &crate::Answer, _: &mut Cx| Ok(()));
+    let sink: ::prism_rtl::Sink<crate::Answer> = ::prism_rtl::Sink::new(|_: &crate::Answer, _: &mut Cx| Ok(()));
     let supplied = blueprint(path, sink.clone(), &applied_scope(hosted), base, cx)?;
     let built = supplied.built;
     let first = supplied.first.clone().ok_or_else(|| Fault::answer("a blueprint value that gives a plain value answered nothing at its build".to_string()))?;
@@ -1007,7 +1111,7 @@ pub fn apply_blueprint_dynamic<T: Clone + 'static>(blueprint: &::prism_rtl::Blue
     let updates: Rc<::prism_rtl::Port<()>> = Rc::new(::prism_rtl::Port::new());
     let take = Rc::new(take);
     let (held, fired, taken) = (cell.clone(), updates.clone(), take.clone());
-    let sink: ::prism_rtl::Sink<crate::Answer> = Rc::new(move |answer: &crate::Answer, cx: &mut Cx| {
+    let sink: ::prism_rtl::Sink<crate::Answer> = ::prism_rtl::Sink::new(move |answer: &crate::Answer, cx: &mut Cx| {
         let v = taken(answer)?;
         match held.borrow().as_ref() {
             Some(hold) => hold.set(v, cx),
@@ -1088,7 +1192,7 @@ pub fn apply_blueprint_whole<W: Clone + 'static, S: Clone + 'static, V: Clone + 
     let events: Rc<::prism_rtl::Port<V>> = Rc::new(::prism_rtl::Port::new());
     let state = Rc::new(state);
     let (held, moved, fired, stated) = (cell.clone(), updates.clone(), events.clone(), state.clone());
-    let sink: ::prism_rtl::Sink<crate::Answer> = Rc::new(move |answer: &crate::Answer, cx: &mut Cx| {
+    let sink: ::prism_rtl::Sink<crate::Answer> = ::prism_rtl::Sink::new(move |answer: &crate::Answer, cx: &mut Cx| {
         if let Some(s) = stated(answer, false)? {
             match held.borrow().as_ref() {
                 Some(hold) => hold.set(s, cx),
@@ -1129,21 +1233,29 @@ pub fn event_part<V: Clone + 'static, T: Clone + 'static>(events: &::prism_rtl::
 }
 
 /// An event part of a bundle a blueprint value gives, heard by the block that applied
-/// it: each firing is `hear`'s, in its tick. The subscription lives as long as the port.
-pub fn hear_part<T: Clone + 'static>(event: &::prism_rtl::Event<T>, hear: impl Fn(&T, &mut Cx) -> Done + 'static) {
-    let _ = event.port.subscribe(Rc::new(hear));
+/// it: each firing is `hear`'s, in its tick, and `above` its height twin, told the
+/// port's height. The subscription lives as long as the port.
+pub fn hear_part<T: Clone + 'static>(event: &::prism_rtl::Event<T>, above: impl Fn(u32) + 'static, hear: impl Fn(&T, &mut Cx) -> Done + 'static) {
+    let _ = event.port.subscribe_above(Rc::new(hear), Rc::new(above));
 }
 
 /// A row subscribing to its block's port for one event: the row heard weakly, the handle
-/// kept for its leaving (claude/backend.md: `Port::subscribe`).
-pub fn subscribe_row<N: Node, P, T: Clone + 'static>(node: &Rc<N>, parent: Option<Rc<P>>, port: impl Fn(&P) -> &Port<T>, call: impl Fn(&Rc<N>, &T, &mut Cx) + 'static, slot: &::std::cell::Cell<Option<Handle>>) {
+/// kept for its leaving (claude/backend.md: `Port::subscribe_above`). `above` is the
+/// call's height twin: told the port's height at once and each time it rises, it puts
+/// what the row's method reaches above it.
+pub fn subscribe_row<N: Node, P, T: Clone + 'static>(node: &Rc<N>, parent: Option<Rc<P>>, port: impl Fn(&P) -> &Port<T>, call: impl Fn(&Rc<N>, &T, &mut Cx) + 'static, above: impl Fn(&Rc<N>, u32) + 'static, slot: &::std::cell::Cell<Option<Handle>>) {
     let Some(parent) = parent else { return };
     let me = Rc::downgrade(node);
-    let h = port(&parent).subscribe(Rc::new(move |v: &T, cx: &mut Cx| {
+    let told = me.clone();
+    let h = port(&parent).subscribe_above(Rc::new(move |v: &T, cx: &mut Cx| {
         if let Some(n) = me.upgrade() {
             call(&n, v, cx);
         }
         Ok(())
+    }), Rc::new(move |h| {
+        if let Some(n) = told.upgrade() {
+            above(&n, h);
+        }
     }));
     slot.set(Some(h));
 }
@@ -1178,7 +1290,8 @@ pub fn call_then<A: 'static, B: 'static>(callee: Rc<dyn Job<A>>, then: impl FnOn
 
 /// A call through an unbounded function value that is not in tail position: the value's
 /// job runs its first cycle now. A named function's value is `entered`, so entering it
-/// is still a cycle point (D6); a lambda's body is not a named function and runs on.
+/// is still a cycle point (D6), and so is a lambda's whose own type is not bounded; a
+/// bounded function made a `Start` runs on.
 pub fn call_value<A: 'static, B: 'static>(callee: Rc<dyn Job<A>>, then: impl FnOnce(A) -> Turn<B> + 'static) -> Turn<B> {
     Frame { callee, then: ::std::cell::RefCell::new(Some(Box::new(then))) }.cycle()
 }
@@ -1412,6 +1525,27 @@ pub fn merge_all<T: Clone + 'static>(events: &Array<Event<T>>) -> Event<Array<T>
     ::prism_rtl::merge_all(events)
 }
 
+/// `!Union a, b` as an event value (in a plain function's body, where no node of a block
+/// decides the merge): `!MergeAll` of the two, the maps that fired joined as `Union` joins.
+pub fn union_ev<K: Ord + Clone + 'static, V: Clone + 'static>(a: &Event<Map<K, V>>, b: &Event<Map<K, V>>) -> Event<Map<K, V>> {
+    ::prism_rtl::merge_all(&Array::from(vec![a.clone(), b.clone()])).map(|fired: &Array<Map<K, V>>| {
+        let mut maps = fired.iter();
+        let first = maps.next().cloned().unwrap_or_else(Map::new);
+        maps.fold(first, |all, one| union(&all, one))
+    })
+}
+
+/// `!MergeWith f, events` as an event value: `!MergeAll` of the list, the values that
+/// fired folded by `f` in the list's order.
+pub fn merge_with<T: Clone + 'static, F: Fn(&T, &T) -> T + Clone + 'static>(f: &F, events: &Array<Event<T>>) -> Event<T> {
+    let f = f.clone();
+    ::prism_rtl::merge_all(events).map(move |fired: &Array<T>| {
+        let mut values = fired.iter();
+        let first = values.next().cloned().expect("a `!MergeAll` firing holds a value");
+        values.fold(first, |all, one| f(&all, one))
+    })
+}
+
 /// A value given for a generic tag's field or answer, as the tag's own types hold it: the
 /// same plain data at the type with each of the tag's variables a `Pod` (and back, where
 /// a place reads its answer at the type it was placed at). The two types differ only
@@ -1431,14 +1565,28 @@ pub fn fault_kind(name: &str) -> Pod {
 
 /// `e.kind`.
 pub fn kind_of(e: &Error) -> Pod {
-    Pod::name(&e.kind_p)
+    e.kind()
+}
+
+/// A fault kind made with fields (`Count.TooMany(limit=5, asked=n)`): the tag's value,
+/// its fields as plain data in declaration order (ruling TF).
+pub fn fault_kind_of(name: &str, fields: Vec<(&str, Pod)>) -> Pod {
+    Pod::element(name, fields)
+}
+
+/// A field of an `Error`'s kind, read back at the field's type (a pattern's binder).
+pub fn fault_field<T: FromPod>(e: &Error, name: &str) -> T {
+    match e.kind_field(name).map(T::from_pod) {
+        Some(Ok(v)) => v,
+        _ => panic!("a prismc bug: a fault kind read for a field it was not made with, {name}"),
+    }
 }
 
 /// `Error(kind=k, message=m)` with `k` a value.
 pub fn error_of(kind: &Pod, message: Text) -> Error {
-    match kind.structure() {
-        Pod::Choice(name, _) => Error::new(name, message),
-        other => panic!("an `Error` of a kind that is no fault kind: {other:?}"),
+    match Error::of_kind(kind, message) {
+        Some(e) => e,
+        None => panic!("an `Error` of a kind that is no fault kind: {kind:?}"),
     }
 }
 

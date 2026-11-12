@@ -159,7 +159,7 @@ lifting, `@` never lifting, lifted `match`/`if`; holds with `then`/`on`/`<|`, `!
 `use`; rows, families, row variables, `otherwise:`; hosting (`@HostDocument`, `@HostSome`,
 `@HostList`) as a `for` over the child's document, paths, patches, first-value query;
 `Nat`/`Int` as bignums, `U8`; `~`, `Error`, `Fault`, `Prelude.Unwrap`/`Exceptions`, exit
-codes; `&` blocks with the borrow rule; code templates; `Pod`; `test`/`check`/`compute`;
+codes; `&` blocks with the borrow rule, named lenses; code templates; `Pod`; `test`/`check`/`compute`;
 the shrink check, the `unbounded` color, `@Defer`, `@Run`; `Float` (D14); the
 prompt-cycle check; zombies; existentials (`any ^Show`, `Elem`); `<<T>>` explicit
 instantiation; `@Later` via `Time.After`.
@@ -167,8 +167,9 @@ instantiation; `@Later` via `Time.After`.
 Out for this compiler, each rejected with a diagnostic naming the feature, never
 silently: `T monad:` blocks and `^Monad`; higher-kinded traits; sized ints other than
 `U8`; `Instant`, `Duration` arithmetic; sparse tuples, `!Align`, non-empty arrays,
-suffixed operators; named lenses `&Home` and `Over` (the `update` block's lens paths stay
-in); POD hosting (`@Collect`, `@View`, `@Edit`, `@Translate`); the Prism World; live
+suffixed operators; `Over`, `Get`, `Set`, the `^Lens` trait and lens values `&.score.home`
+(named lenses `&Home` and the `update` block's lens paths are in; a named lens to a map
+key is a checker error, ruling ME); POD hosting (`@Collect`, `@View`, `@Edit`, `@Translate`); the Prism World; live
 update; checkpoints; the template notation as a second syntax for element languages (code
 templates only); indexed choices/GADTs for user types. The back end's own open gaps are
 listed in `prismc/README.md`.

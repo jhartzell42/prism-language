@@ -60,8 +60,11 @@ fn RustPat lx, p, ty, mode, fresh = match p.kind:
     PName n:
         let nkey = SNameKey n
         let ((?qk, why)) = ResolveValue lx.g, lx.home, n
+        # (a lower-case name that is also a unit type's value, `leaves` beside `type Leaves =
+        # leaves`: the checker decides; where it bound the name, a lambda's parameter, the
+        # pattern is the binder it recorded, and where it matched the value it recorded none)
         let isCtor = match ?qk:
-            ? qk: (HasKey lx.g.ctors, qk) and ((IsUpperText (Base nkey)) or (Len n.path) > 1 or IsUnitCtor lx, qk)
+            ? qk: (HasKey lx.g.ctors, qk) and ((IsUpperText (Base nkey)) or (Len n.path) > 1 or ((IsUnitCtor lx, qk) and not (HasKey lx.binders, (PlaceKey lx, n.span))))
             nil: False
         let ?tagged = match ?qk:
             ? qk: lx.g.tags[qk]
@@ -158,8 +161,10 @@ fn CtorPat lx, n, ps, ty, mode, fresh:
                     BRecord fs: PatOut(pa=(PaRecord tyPath, (Each (Range0 (Len pas)), \|i| (((FieldSpell (OwnerOf c.owner), (Or c.fields[i], ""), (Or c.args[i], TyErr)), (Or pas[i], PaWild)))), ((Len pas) < (Len c.fields))), conds=conds, binds=binds)
                     otherwise:
                         let isUnitType = (Len c.args) == 0 and IsUnitCtor lx, qk
-                        # a newtype is a tuple struct, matched by its own name
-                        let isNewtype = (BareName c.name) == (BareName c.owner) and match owner.body:
+                        # a newtype is a tuple struct, matched by its own name; a choice whose one
+                        # case has the type's name and no fields is an enum of one variant
+                        # (`ShapeChoice`), matched by its variant
+                        let isNewtype = (Len c.args) > 0 and (BareName c.name) == (BareName c.owner) and match owner.body:
                             BChoice cases: (Len cases) == 1
                             otherwise: False
                         let path = if isUnitType or isNewtype: tyPath else: RefChild tyPath, (Camel (BareName c.name))
@@ -212,7 +217,7 @@ fn RecordPat lx, n, fps, rest, ty, mode, fresh:
 
 RestCasePat: fn CtorInfo, [((Text, [Ty]))], Ref -> PatOut
 fn RestCasePat c, cases, tyPath:
-    let isNewtype = (Len cases) == 1 and (BareName c.name) == (BareName c.owner)
+    let isNewtype = (Len cases) == 1 and (BareName c.name) == (BareName c.owner) and (Len c.args) > 0
     let path = if isNewtype: tyPath else: RefChild tyPath, (Camel (BareName c.name))
     if (Len c.args) == 0: PatOut(pa=(PaUnit path), conds=[[]], binds=[[]])
     else: PatOut(pa=(PaCtor path, (Each c.args, \|ignore| PaWild)), conds=[[]], binds=[[]])
@@ -380,6 +385,27 @@ fn ErrorPat lx, fps, ty, mode, fresh:
                     match ?kq:
                         ? kq: if HasKey lx.g.tags, kq: ((([[CcIf (XBin OpEq, (XRef (XDeref (XField (XVar fresh), "kind_p"))), (XStr kq))]]), [[]])) else: (([[]], [[((SNameKey k, (BnLocal (XCall (HelperRef "kind_of"), [[(XRef (XVar fresh))]]), Owned, OutPod)))]]))
                         nil: (([[]], [[((SNameKey k, (BnLocal (XCall (HelperRef "kind_of"), [[(XRef (XVar fresh))]]), Owned, OutPod)))]]))
+                # a kind with fields, `Count.TooMany(limit=l, asked=a)`: the kind's name
+                # compared, then each field read back at its type (the prelude's
+                # `fault_field`) and matched by its own pattern
+                PRecord k, kfps, ignore:
+                    let ((?kq, ignore)) = ResolveValue lx.g, lx.home, k
+                    let ?kindTag = match ?kq:
+                        ? kq: lx.g.tags[kq]
+                        nil: nil
+                    match ?kindTag:
+                        ? tg:
+                            let named = CcIf (XBin OpEq, (XRef (XDeref (XField (XVar fresh), "kind_p"))), (XStr tg.name))
+                            let names = Each tg.fields, \|((f, ignore))| f
+                            Fold (Range0 (Len kfps)), (([[named]], [[]])), \|((cs, bs)), i|
+                                let kfp = Or kfps[i], dummyFieldPat
+                                let fname = TagFieldName kfp, names, i
+                                let ft = Fold tg.fields, TyErr, \|found, ((f, t))| if f == fname: t else: found
+                                let local = "{fresh}_k{i}"
+                                let read = XCallAt (HelperRef "fault_field"), [[(OutTyOf lx, (Peel ft))]], [[(XRef (XVar fresh)), (XStr fname)]]
+                                let o = RustPat lx, kfp.pattern, (Peel ft), ByRef, "{local}_p"
+                                (((Append (Push cs, (CcLet o.pa, (XRef read))), o.conds), (Append bs, o.binds)))
+                        nil: (([[CcIf (InternalBug "an `Error`'s kind matched against what is no fault kind")]], [[]]))
                 otherwise: (([[]], [[]]))
             "message": match fp.pattern.kind:
                 PName m: (([[]], [[((SNameKey m, (BnLocal (XField (XVar fresh), "message_p"), Owned, OutText)))]]))
@@ -393,10 +419,11 @@ fn ErrorPat lx, fps, ty, mode, fresh:
 # `[[a, b]]`: the length, then each element by index.
 ArrayPat: unbounded fn Lx, [Pattern], Ty, Holding, Text -> PatOut
 fn ArrayPat lx, ps, ty, mode, fresh:
-    let et = match PlainCollections (Peel ty):
+    # (a non-empty array is matched as the array it is)
+    let et = match Collection (Peel ty):
         TyArray x: x
         otherwise: TyErr
-    let arr = LocalPlace (XVar fresh), mode, (OutTyOf lx, (Peel ty))
+    let arr = PlainValue (LocalPlace (XVar fresh), mode, (OutTyOf lx, (Peel ty)))
     let lenCond = CcIf (XBin OpEq, (XMethod (Ref arr), "len", [[]]), (XIndex (Len ps)))
     let subs = Each (Range0 (Len ps)), \|i| ((i, (RustPat lx, (Or ps[i], dummyPat), et, Owned, "{fresh}_{i}")))
     let conds = Fold subs, [[lenCond]], \|acc, ((i, o))| Append (Push acc, (CcLet (PaCtor (RefRuntime "std::Some"), [[o.pa]]), (XCall (HelperRef "index"), [[Ref arr, (XRef (XNat "{i}"))]]))), o.conds

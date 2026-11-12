@@ -212,7 +212,9 @@ fn TypeParts cp, t0:
         ShapeChoice:
             let names = Each t.cases, \|c| c.name
             let cases = Join (Each t.cases, \|c| CaseStruct cp, c, eq, ord), "\n"
-            let cls = ChoiceClass doc, gens, t.name, cases, (Join names, ", "), members
+            # a choice with no case holds the runtime's `NoCase`, which nothing makes: a
+            # variant of no alternatives is no C++ type
+            let cls = ChoiceClass doc, gens, t.name, cases, (if (Len names) == 0: "::prism_rtl::NoCase" else: Join names, ", "), members
             # the choice's comparisons over the variant, after its cases; the cases' own, where
             # declared (`Behind`), among the module's definitions
             let cmp = Join (Filter [[(if eq: "{gens}inline bool operator==(const {head}& a, const {head}& b) \{ return a.cases() == b.cases(); \}" else: ""), (if ord: "{gens}inline ::std::strong_ordering operator<=>(const {head}& a, const {head}& b) \{ return a.cases() <=> b.cases(); \}" else: "")]], \|s| s != ""), "\n"
@@ -334,7 +336,7 @@ ChoicePod: fn TyDef -> Text
 fn ChoicePod t:
     let arms = Each (Range0 (Len t.cases)), \|i|
         let c = Or t.cases[i], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
-        "::std::holds_alternative<{c.name}>(cases()) ? crate::prelude::Pod::choice(\"{c.prism}\", \{{Join (Each (Range0 (Len c.fields)), \|k| "::prism_rtl::to_pod(::std::get<{c.name}>(cases()).a{k})"), ", "}\})"
+        "::std::holds_alternative<{c.name}>(cases()) ? crate::prelude::Pod::choice_at(\"{c.prism}\", {i}, \{{Join (Each (Range0 (Len c.fields)), \|k| "::prism_rtl::to_pod(::std::get<{c.name}>(cases()).a{k})"), ", "}\})"
     "{Join arms, "\n    : "}\n    : crate::prelude::Pod()"
 
 FromPodDef: unbounded fn Cp, TyDef, Text, Text -> Text
@@ -433,6 +435,16 @@ fn RowStruct m, st = match st:
     RefItem sm, p, s: if m == "": TypePath s else: "crate::{sm}::{p}"
     RefRuntime t: TypePath t
 
+# An accessor's line for an answer made outside a tag's arm, read at the type the tag's
+# place takes: plain data from `Answer`'s case of no tag; a value that is no plain data
+# (a function) from the case that holds it as it is (`held_as`).
+CppOutsideArm: unbounded fn Cp, OutTy -> Text
+fn CppOutsideArm cp, t = if Podable t: "if (auto u = ::std::get_if<Untagged_a>(&cases())) return ::prism_rtl::from_pod<{CppType cp, t}>(u->a0);" else: "if (auto h = held_as<{CppType cp, t}>()) return *h;"
+
+# A World's answer for a tag whose output is no plain data: a fault of the run.
+CppNoWorldAnswer: fn Text -> Text
+fn CppNoWorldAnswer tagName = "return crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"a World's answer for {tagName}, whose output is no plain data: a host answers it\")));"
+
 # `crate::Answer` (pick HO): a choice of a case per element tag with the tag's output; the
 # tag an answer is for; an accessor per case; the decode of a World's answer.
 AnswerParts: unbounded fn Cp, AnswerDef -> Parts
@@ -451,19 +463,28 @@ fn AnswerParts cp, a:
     let held = "template <class T> ::std::optional<T> held_as() const \{ if (auto h = ::std::get_if<Held_a>(&cases())) if (auto v = ::std::any_cast<T>(&h->a0)) return *v; return ::std::nullopt; \}\ntemplate <class T> crate::prelude::Result<T> held() const \{ if (auto v = held_as<T>()) return *v; return crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where a blueprint value's result that is no plain data was expected\"))); \}"
     let accessors = Join (Append (Each a.cases, \|c| "crate::prelude::Result<{CppType cp, c.ty}> {c.accessor}() const;"), (Each firsts, \|((c, ft))| "crate::prelude::Result<{CppType cp, ft}> {c.accessor}_first() const;")), "\n"
     let plain = "template <class T> crate::prelude::Result<T> plain() const \{ if (auto u = ::std::get_if<Untagged_a>(&cases())) return ::prism_rtl::from_pod<T>(u->a0); return crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where a blueprint value's plain result was expected\"))); \}"
-    let members = "const char* tag() const;\n{accessors}\n{plain}\n{held}\nstatic crate::prelude::Result<Answer> decode(const Elem& e, const crate::prelude::Pod& v);\nstatic crate::prelude::Result<Answer> decode_first(const Elem& e, const crate::prelude::Pod& v);"
+    let members = "const char* tag() const;\nAnswer untagged() const;\n{accessors}\n{plain}\n{held}\nstatic crate::prelude::Result<Answer> decode(const Elem& e, const crate::prelude::Pod& v);\nstatic crate::prelude::Result<Answer> decode_first(const Elem& e, const crate::prelude::Pod& v);\nstatic ::std::optional<::prism_rtl::PartsAnswer<Answer>> held_parts(const Elem& e, const Answer& answer);"
     let cases0 = Join (Append (Each a.cases, \|c| CaseDecl c.variant, "{CppType cp, c.ty} a0;"), (Each firsts, \|((c, ft))| CaseDecl "{c.variant}First", "{CppType cp, ft} a0;")), "\n"
     let cases = "{cases0}\n{CaseDecl "Untagged_a", "crate::prelude::Pod a0;"}\n{CaseDecl "Held_a", "::std::any a0;"}"
     let cls = ChoiceClass (CppDoc "`Answer c`: an answer to an element, typed by its tag (Semantics ch. 9): what a host's\nsupplier answers a child place with, and what a World's answer to a forwarded element\ndecodes to, carrying the tag's output."), "", "Answer", cases, (Join names, ", "), members
     let tags = Join (Append (Each a.cases, \|c| "if (::std::holds_alternative<{c.variant}>(cases())) return {TypePath (RefSpelled c.structPath)}::TAG;"), (Each firsts, \|((c, ft))| "if (::std::holds_alternative<{c.variant}First>(cases())) return {TypePath (RefSpelled c.structPath)}::TAG;")), "\n"
     let tagFn = CppFunction "", "const char* Answer::tag() const", "{tags}\nif (::std::holds_alternative<Held_a>(cases())) return \"no tag (an answer made outside a tag's arm that is no plain data)\";\nreturn \"no tag (an answer made outside a tag's arm)\";"
-    let firstGetters = Each firsts, \|((c, ft))| CppFunction (CppDoc "A `{c.tagName}`'s first value."), "crate::prelude::Result<{CppType cp, ft}> Answer::{c.accessor}_first() const", "if (auto c = ::std::get_if<{c.variant}First>(&cases())) return c->a0;\nif (auto u = ::std::get_if<Untagged_a>(&cases())) return ::prism_rtl::from_pod<{CppType cp, ft}>(u->a0);\nreturn crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where {c.tagName}'s first value was expected\")));"
-    let decodeFirsts = Join (Each firsts, \|((c, ft))| "if (is<Elem::{c.variant}>(e)) return Answer({c.variant}First\{TRY(::prism_rtl::from_pod<{CppType cp, ft}>(v))\});"), "\n"
+    let firstGetters = Each firsts, \|((c, ft))| CppFunction (CppDoc "A `{c.tagName}`'s first value."), "crate::prelude::Result<{CppType cp, ft}> Answer::{c.accessor}_first() const", "if (auto c = ::std::get_if<{c.variant}First>(&cases())) return c->a0;\n{CppOutsideArm cp, ft}\nreturn crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where {c.tagName}'s first value was expected\")));"
+    let decodeFirsts = Join (Each firsts, \|((c, ft))| if Podable ft: "if (is<Elem::{c.variant}>(e)) return Answer({c.variant}First\{TRY(::prism_rtl::from_pod<{CppType cp, ft}>(v))\});" else: "if (is<Elem::{c.variant}>(e)) {CppNoWorldAnswer c.tagName}"), "\n"
     let decodeFirst = CppFunction (CppDoc "A World's first value for the element `e`: a bundle's plain parts, any other tag's answer."), "crate::prelude::Result<Answer> Answer::decode_first(const Elem& e, const crate::prelude::Pod& v)", "{decodeFirsts}\nreturn decode(e, v);"
-    let getters = Each a.cases, \|c| CppFunction (CppDoc "A `{c.tagName}`'s answer."), "crate::prelude::Result<{CppType cp, c.ty}> Answer::{c.accessor}() const", "if (auto c = ::std::get_if<{c.variant}>(&cases())) return c->a0;\nif (auto u = ::std::get_if<Untagged_a>(&cases())) return ::prism_rtl::from_pod<{CppType cp, c.ty}>(u->a0);\nreturn crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where {c.tagName}'s was expected\")));"
-    let decodes = Join (Each a.cases, \|c| "if (is<Elem::{c.variant}>(e)) return Answer({c.variant}\{TRY(::prism_rtl::from_pod<{CppType cp, c.ty}>(v))\});"), "\n"
+    let getters = Each a.cases, \|c| CppFunction (CppDoc "A `{c.tagName}`'s answer."), "crate::prelude::Result<{CppType cp, c.ty}> Answer::{c.accessor}() const", "if (auto c = ::std::get_if<{c.variant}>(&cases())) return c->a0;\n{CppOutsideArm cp, c.ty}\nreturn crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where {c.tagName}'s was expected\")));"
+    let decodes = Join (Each a.cases, \|c| if Podable c.ty: "if (is<Elem::{c.variant}>(e)) return Answer({c.variant}\{TRY(::prism_rtl::from_pod<{CppType cp, c.ty}>(v))\});" else: "if (is<Elem::{c.variant}>(e)) {CppNoWorldAnswer c.tagName}"), "\n"
     let decode = CppFunction (CppDoc "A World's answer to the element `e`, decoded by its tag."), "crate::prelude::Result<Answer> Answer::decode(const Elem& e, const crate::prelude::Pod& v)", "{decodes}\n::prism_rtl::unreachable();"
-    Parts(forward=[["class Answer;"]], values=[[ValueDecl(path="Answer", deps=[[]], text=cls)]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append [[tagFn]], (Append (Append getters, firstGetters), [[decode, decodeFirst]])))
+    # a bundle held whole, answered to a place of a tag that takes such a bundle
+    let heldArms = Fold a.cases, [[]], \|acc, c| match ((c.?heldWhole, c.?heldParts)):
+        ((? whole, ? parts)): Push acc, "if (is<Elem::{c.variant}>(e)) \{ if (auto whole = answer.held_as<{CppType cp, whole}>()) return ({CppExpr cp, parts})(*whole); return ::std::nullopt; \}"
+        otherwise: acc
+    let helds = Join heldArms, "\n"
+    let heldParts = CppFunction (CppDoc "An answer held whole (a bundle with a part that is no plain data, made outside a tag's\narm) as the parts the tag of `e` takes."), "::std::optional<::prism_rtl::PartsAnswer<Answer>> Answer::held_parts(const Elem& e, const Answer& answer)", "{helds}\nreturn ::std::nullopt;"
+    # an answer of plain data under any tag, as one of no tag (the Rust `Answer::untagged`)
+    let untaggedArms = Join (Fold a.cases, [[]], \|acc, c| if Podable c.ty: Push acc, "if (auto c = ::std::get_if<{c.variant}>(&cases())) return Answer(Untagged_a\{::prism_rtl::to_pod(c->a0)\});" else: acc), "\n"
+    let untaggedFn = CppFunction (CppDoc "The answer as one made outside a tag's arm, where it is plain data: what a place of\nanother tag reads at its own type. Any other answer is itself."), "Answer Answer::untagged() const", "{untaggedArms}\nreturn *this;"
+    Parts(forward=[["class Answer;"]], values=[[ValueDecl(path="Answer", deps=[[]], text=cls)]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append [[tagFn, untaggedFn]], (Append (Append getters, firstGetters), [[decode, decodeFirst, heldParts]])))
 
 # A step machine (D6): a job struct, its `cycle`, its `Start`.
 JobParts: unbounded fn Cp, JobDef -> Parts

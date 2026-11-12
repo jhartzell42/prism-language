@@ -59,8 +59,47 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - A record → a `struct`, fields in declaration order; a choice → an `enum`, recursive
   payloads behind `Rc`; a newtype → a tuple struct; a unit type (`click`) → a unit
   struct.
+- A choice with no case (`type Never = choice:`) → an `enum` with no variant; its derived
+  impls match `*self` with no arm, and a `match` with no arm over a value of it is
+  `match *x {}`, which rustc takes over the value and never over a reference. In C++
+  the choice's variant holds the runtime's `NoCase`, which nothing makes, and the
+  `match` is its unreachable tail.
 - `?a` → `Option<A>`; `~a` → `Result<A, rt::Error>`; `((a, b))` → `(A, B)`; `[[a]]` →
   `rt::Array<A>`; `k ==> v` → `rt::Map<K, V>`.
+- `[a]+`, `(k ==> v)+` → `prelude::NonEmpty<rt::Array<A>>`, `prelude::NonEmpty<rt::Map<K,
+  V>>`: a type of its own in the emitted prelude of each target (`NonEmptyOut`), so
+  `impl ^Named [a]+` beside `impl ^Named [a]` are impls for two target types, and a
+  generic function has an instantiation at each (their words in a name differ too,
+  `non_empty_array_of_nat`, `HeadWord`).
+  - Rust: a tuple struct over the collection with `Deref` and `DerefMut` to it, the
+    derived `Clone`, `Eq`, `Ord`, `Hash`, and `Show`, `ToPod`, `FromPod` through the
+    collection's (`FromPod` refuses an empty one: only a World hands a program data).
+    C++: `template <class C> struct NonEmpty : C`, the collection its base class, with
+    `show`, `to_pod`, `from_pod` and the comparisons as a prelude value has them.
+  - Made in two places: a non-empty literal, `[[x, y]]+` → `prelude::non_empty_of(..)`
+    over the literal's collection; the checked conversion, `xs as [a]+?` →
+    `prelude::non_empty(&xs)` or `non_empty_map`, an `Option` of the wrapper.
+  - Read as its collection in two ways. Where the checker found the collection wanted
+    (the one implicit conversion, and ruling NS's symmetric cases), the place is in the
+    typed output's `plains`, and `ValueOf` gives the collection there, by reference
+    through `prelude::plain_collection` (`AsPlain`, `PlainValue`): an argument at an
+    `[a]` parameter, an `[a]+` argument or entry beside an `[a]` one, an arm beside an
+    `[a]` arm, a value checked against an `[a]`, `xs as [a]`, the operand of `as [a]+?`.
+    The checker asks at each such place when it sees the non-empty value
+    (`NoteFaultAt`, `AskPlainAt`) and answers at the program's end (`PlainNotes`), since
+    an entry or an arm before the plain one is only known to be converted then. The
+    question is asked under one time layer too (an arm that is a `$[a]+` beside a
+    `$[a]` arm of a lifted `if`): the value there is the sample, converted as any other,
+    or, where the dynamic or event is held whole, mapped to its collection's
+    (`PlainMapped`). Where a
+    construct reads a collection of either type and no place wants the plain one, the
+    lowering reads through the wrapper by the source's type (`Collection`,
+    `CollectionOut`, `PlainOwned`): a `for`'s source (widget, job and `update`), an
+    array pattern's scrutinee, an index path of an `update`, and the prelude's
+    variants chosen by the first argument's collection (`Len` of a `(k ==> v)+` is
+    `len_map`, which takes the wrapper as the map it holds).
+  - The checker solves a trait at `[a]+` by an impl for `[a]+`; `^Eq`, `^Ord` and `^Show`
+    go by the collection's parts, as they do for `[a]`.
 - `fn a -> b` as a value → `Rc<dyn Fn(A) -> B>`, captures cloned in (values are cheap to
   clone); a named function → a Rust `fn`.
 - `unbounded fn a -> b` as a value → `fn(A) -> Rc<dyn rt::Job<B>>`, its `Start`.
@@ -109,6 +148,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
 ## Functions and lifting
 
 - **A plain function** → a Rust `fn` taking references, its clauses one `match`.
+- **A trait method's own type parameter with the name of its impl's** (`impl ^Paired [b]`
+  with `Pair: fn a, b -> Text`) is another variable: in that impl's method it has a name
+  apart (`ApartName`, `SchemeApart`: its name followed by every type parameter's of the
+  impl and the method, `bbb`), in the checker's types of the body and in the emitted
+  generics alike (`ImplDefOf`, `MethodOwnName`).
+- **A type parameter** of a function, of an impl and of a trait method's own is bounded
+  `'static` in Rust (`StaticGenerics`, in a trait's declaration, its impls and its packed
+  dictionary alike): every Prism type lives as long as the program, and a body may ask a
+  type's key (`type_key`) or build a closure or a job over it.
 - **A guard no checked program reaches** is an internal error: `InternalBug`,
   `InternalBugDo`, `InternalBugType` put "a prismc bug: .." where a refusal's words go, and
   `CompileProgram` reports it as `error[internal]`.
@@ -127,6 +175,25 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `Event`s. A `$` or `!` binder of a pattern in its body names the `Dynamic` or `Event`
   itself (`RustPat`), and an application the checker lifted over one maps it
   (`EventValueOf`, `DynamicLift`).
+  A function whose only time is on top of its types is lowered lifted, over its
+  operands' values, except where its body cannot be: one with an event parameter whose
+  body gives an event whole (`GivesEventWhole`: an application the checker did not
+  lift, of a prelude function with an event parameter or of a function that takes time
+  whole, with an event argument, as in `fn !Together !some, !more = Fold (Values
+  (!Union (One 0, !some), (One 1, !more))), ..`) takes time whole too (`WholeFns`,
+  grown through callers). `!Union` decides over two events, which a body over one
+  firing's values does not have. In the body the unlifted application is the plain call
+  with each argument an event value (`union_ev(&a.map(..), &b.map(..))`), and the lifted
+  ones around it map. A block that calls such a function hears the `Event` it gives
+  through a port node (`EventObjectRef`), its event arguments the ports they fire
+  (`Event::of`).
+  An event value whose expression samples a dynamic (`(ToldTo seat, $state) on !born` in
+  a list `!MergeWith` takes) is the event mapped with each firing's read point
+  (`Event::map_at`): the closure samples the dynamic there, so the event fires the
+  value as the tick opened. The dynamic of `x on !e` reads nothing of the firing and is
+  made once beside the event (`sampled_dyn`, `?SampledOn`); any other is made in the
+  closure, which with two dynamics subscribes at each firing (`Dynamic::map2`; a cost
+  that grows with the firings).
 - **`&` blocks** → native mutation of a fresh or unique value: `Rc::make_mut`, and the
   persistent collections' in-place updates (Compiler ch. 3, "Unique values").
 - **Fault `~`**: a fallible expression is a `Result<_, rt::Error>` and `?` propagates;
@@ -141,6 +208,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
   one `rt::Stamped` per input a combinator reads, one `rt::Cache` per shared computed
   behavior, merged children's fields, and a `state` enum when the block has more than one
   state.
+- **A node's own methods** are `pub(crate)` in Rust (`RustMethod`): a widget's row is
+  built, and its methods called (`built`), by the block that reads the widget as a value,
+  which may be in another module (`@Parts.header` read in `App`).
 - **The constructor** `fn build(path, args, cx: &mut Cx) -> Rc<Self>` runs after
   propagation: holds take their initial values (`Hold::new(v, cx)`, stamped with the
   build tick), the hosts are linked, the builders run and the structural dynamics'
@@ -162,6 +232,49 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **`wake`** runs the node's combinators in distance order, once per height, by direct
   calls. A merge `<|` reads its left stamp first (CXb). The root wakes through the height
   buckets like every node (CXi).
+- **Heights across nodes.** Every combinator has a global height, told at the wiring
+  (Compiler ch. 3 (c): "an internal combinator wakes at its node's input height plus its
+  distance"; Graph ch. 4, "Heights"; Semantics ch. 7: double firings never). A node with a
+  combinator keeps `heights: Heights`: one global height per combinator in the node's
+  order, starting at the combinator's distance inside the node and only ever raised, and
+  the combinators asked this tick. An input of a combinator asks
+  `self.heights.ask(k, cx, self.clone())`; the node's wake decides each combinator asked
+  whose height has come, lowest first (`while let Some(k) = self.heights.next(cx)`), and
+  ends by asking a wake for the lowest still asked (`Heights::again`). So a merge with one
+  input from its own node and one from a blueprint value's node two combinators further
+  on decides once, after both (`tests/conformance/heights-merge-all-across-nodes`), and a
+  `for`'s gather once, after every row (`heights-gathered-event-across-nodes`).
+  Each event method `m` has a height twin `m_above(h)`: "something at global height `h`
+  fires `m`". It is written from the same sinks as the firing (`SinkAbove` beside
+  `SinkCode`): a method of the node, that method's twin; an input of a combinator,
+  `heights.above(k, h)` and, when that moved the combinator, the combinator's own twin at
+  its new height; a port, `port.raise(h)`; the parent's method, the parent's twin; a hold,
+  the `!Updated` nodes over it and the rows that hear the write (`parent_wrote_m_above`, or
+  the generation's port raised); a hosted place's request, its host's
+  `request_above(h)`, which raises every row's request port (one height for all the
+  child's places; a row made later takes it at its making, `HostOf::request_height`; a
+  forwarded element's request goes on to the enclosing host), so what hears a live
+  element's event field (`Live::requested`, which passes the height on) sits above the
+  guest's request. A sink whose firing lands in a later tick or at the World ends the
+  walk. A `Port` keeps the height it fires at and a twin per
+  subscription (`Port::subscribe_above`): the twin is told the height at once and each
+  time the port is raised, so a row that subscribes late sits above its block's port all
+  the same (`subscribe_row`, `hear_part`, `MergeList::listen_above`, and `Listen::listen_above`
+  for the inner a switch holds now). A blueprint's `Sink`
+  has its twin too: a widget's event result subscribes the sink with it
+  (`widget_event_blueprint`), and the block that applied the blueprint passes its
+  `{name}_up_above` (`apply_blueprint_heard`). At the end of a node's build each
+  combinator's twin is called with its height. Heights move in builds only, after
+  propagation. A height past 2^20 is a prompt cycle across nodes, which the checker
+  refuses: the runtime panics with "a prismc bug". `Cx::wake`'s clamp (a wake asked at or
+  below the running height runs at the next one) stays for what no twin reaches.
+  The runtime's own event values use the same heights: `merge_all`'s node sits above
+  every event of its list and raises its own port, `Event::map` and `filter_some` pass
+  their source's height on, `Event::map_at` too.
+  No twin reaches these, where the clamp alone orders: a `for` row built after its block
+  wrote a hold the row hears (`parent_wrote_m` is told to the rows that live), a
+  dynamic's update port (`Dynamic::map2`, a `follow`, `updated` as an event value, a
+  blueprint's dynamic answer).
 - **Holds.** `$x <- init then !e` → the firing's method calls `x.set(v, cx)`; every read
   is `x.get(cx)`, before the tick during propagation and after it from then on, so the
   tag law needs no commit pass.
@@ -244,7 +357,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `for`'s builder (`ForBuild`, both printers) walks the kept keys and compares each one's
   dynamic in the new source with the one in the map the rows were last built from
   (`{name}_from`; a `Dynamic` equals only itself) and calls that row's `{v}_replaced`
-  (`FlattenMethods`; `ForDef.replaced` lists them), which queues `{v}_adopt` with
+  (`FlattenMethods`; `ForDef.replaced` lists them: the rows' entry flattens only, since a
+  row's `@Flatten` over a dynamic of dynamics of its own, `held`, follows its outer's
+  update event and has no such method), which queues `{v}_adopt` with
   `cx.answer_later`, so the adoption is among the next tick's first firings, which is owed
   (rulings VL, TK). The row is kept, never rebuilt for a replaced dynamic (Semantics ch.
   11). A `$$d` binder with `@Flatten $$d` below it is a `mark-stack` in the checker
@@ -350,6 +465,44 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `IsEarlyChoiceAt`): where no arm has a guard or reads a name of the block, since the
   node does not exist yet when the arm is built. The result is then a value of the
   build and the block is not split at the line.
+- **A named lens** (`&Acc: fn &Vm -> &Int`, `fn &Acc &vm = &vm.regs.acc`; Semantics ch. 5,
+  "References and lens paths") is two functions of the target (`LensDefs`), named by the
+  lens's name with the letter `l`:
+  - the reference, `fn acc_l(vm: &mut Vm) -> &mut Int` in Rust and `Int& acc_l(Vm& vm)`
+    in C++ (`OutRefMut`). One reference parameter, so Rust's lifetime elision is the
+    book's rule ("A lens's result is alive while its argument is") and no lifetime is
+    written. Its body is the path's place borrowed (`LensReference` over `PlaceOf`), or
+    the reference of the lens the body applies. A set, an accumulation, a `for` by
+    reference and a lens over it go through it: `PlaceOf` of `&Acc &_` is
+    `(*acc_l(&mut this))`, so `Assign`, `UpdForRefs` and the accumulating operators take
+    a lens applied as they take a path.
+  - the read, `fn acc_l_get(vm: &Vm) -> Int`: the lens's body lowered as the expression
+    it also is (`FnDefOf`), the translation's `Get`. A lens applied in expression
+    position calls it over its argument's value (`LensRead`), so a read borrows nothing
+    mutably: `(&Acc &_) + (&Acc &_)` and a read inside a closure are plain calls. This is
+    cool because rustc never sees two `&mut` of one value in one expression; the cost is
+    a copy of the argument where the argument is itself a lens applied.
+  - A lens whose path ends at an array's index (`&?Second: fn &[Int] -> &?Int`), its own
+    or that of the lens its body applies (`LensEndsAtIndex`), names an entry that may be
+    absent: its reference is `Option<&mut A>` (`A*` in C++), made by the prelude's
+    `part_mut`. A set goes through `set_part` (`? x` writes the entry; `nil`, or an index
+    past the end, gives up as the block's own `&xs[i] <= v` does), with the value held
+    first, since it may read what the reference borrows. Its read is `xs[i]`, `nil` past
+    the end. A lens to a map key is refused by the checker (`lens-map-key`, ruling ME), so
+    no reference is ever an entry of a map.
+  - A lens's body, or a lens's argument, that steps through an array's index
+    (`&machines[1].acc`) is read through the entry in place: `SharedPlaceOf` is `PlaceOf`
+    borrowed shared, its index step the prelude's `at_shared`, which gives up on an index
+    the array does not hold as `at_mut` does (`LensReadThrough`). The block's own path
+    through an index, read in expression position (`&_[0].x <= &_[1].acc + 1`), is the
+    same shared place (`at_shared`, `at_shared_map` for a key), copied.
+  - The reference borrows all of its argument, as the book's rule has it, so two places
+    keep rustc and the borrow rule equal: an accumulation through a lens reads the part
+    by the read function (`UpdStmt`), and inside a `for` over a lens applied the checker
+    refuses a read that overlaps the lens's argument (`HeldReads`, `borrow-overlap`), as
+    it refuses a set there.
+  - Negative space: no lens value (`&.score.home`), no `Over`; a lens takes its one
+    reference and nothing else, so there is no lens with a key or an index handed in.
 - **An `update` block's bare `for`** (`for &_.xs:`, `for xs:`; Semantics ch. 5,
   "Statements") rebinds `&_` to the entry: over a reference path the element in place
   (`UpdForRefs` under the key `&_`), over a plain value a `mut` copy of the turn's
@@ -359,11 +512,25 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A constructor's `$` field** takes its argument whole (`CtorArgs`,
   `IsDynamicFieldCtor`): a reader's live `Dynamic`, which the line makes as it does for a
   function that takes time whole (`WholeArgsAt`).
+- **`$ v` over a value that holds time below its top** (`$ (($level, "main"))`, a
+  `$(($Nat, Text))`; `ConstantOfTimeAt`) builds `v` with its dynamics whole: each reader
+  in it is the live `Dynamic` the line makes for it (`WholeArgsAt`), so the tuple holds
+  `$level` itself and never a copy of its value. A hold whose value holds time below its
+  top takes its initial value whole in the same way, a name (`$$cur <- $a then ..`) or a
+  value written over readers (`$held <- (($a, "s")) then ..`). So does `v on !e` where the
+  event's values hold time and `v` is no dynamic itself, which `on` would lift over
+  (`EventRef`: a hold's step `then (($b, "t")) on !swap`): each
+  reader in `v` is its live `Dynamic`, made late for a step, which nothing reads before
+  the node is made.
 - **`any x` of `^Show` alone** is `Rc::new(x)` cast to `Rc<dyn Show>` where it is made
   (`AnyValue`): an argument behind a reference and an array's element are not coerced.
 - **A module's lowercase declaration written qualified** (`Words.base`) is parsed as a
   field read; the checker and the lowering read it as the qualified name where no value
   `Words` is in scope and the module declares the value (`?QualifiedField`).
+  A lowercase widget written so (`@Parts.header`, the sigil before the module's name,
+  which the parser reads as the receiver's) is the widget: a line of it is inlined as
+  a call of the widget is (`WidgetLine`), and read as a value it is the widget's
+  blueprint (`BlueprintQk`, `ValueWidgetsAt`).
 - **A generic widget's type variable in an element parameter's output** (`Element Ui.*
   o`) is matched at the call as any parameter's is (`?ParamMatch`, `Unrigid`, `RigidsIn`).
 - **A bundle with a late plain part bound whole to one name** is the name's parts,
@@ -380,9 +547,24 @@ it make every program an interpreter run, and every type mistake a runtime fault
   ((n + 1, !go))` above `n <- match ..`) is late too (`MarkLateLets`, `MarkLateBundle`):
   the plain part is a getter computed from the node, with no value at the build
   (`LateBundleLet`); the other parts are bound as any bundle's; a building line that
-  reads the name waits for the late result (`DeferredLine`). Refused: a `let` in the
-  block's node whose tuple pattern takes a late bundle apart and names its plain part
-  (the part has no value at the build), and a late bundle read as one value.
+  reads the name waits for the late result (`DeferredLine`). A `let` whose tuple
+  pattern takes a late bundle apart (`let ((step, !go)) = both`) names each plain part
+  as a late name (`LatePartNames`): a getter of the node that the `let`'s line gives
+  the part's read to (`BindNamedPart`), with no value at the build; a pattern of its
+  own over a late plain part (`let ((((step, noun)), !go)) = both`) names each plain
+  name it binds late the same way, its getter the part's read matched by the pattern. A late bundle read
+  as one value from the node's methods (a place's field over `StepOf both`, a late
+  `let`, a hold's step) is a getter of the node bound under `{name}#value`
+  (`LateBundleValue`): the tuple of a plain part's read, an event part's event over a
+  port its node fires, a `$` part's live `Dynamic`. A building line that takes the
+  bundle as one value (a host whose supplier gives `@ both`) is a deferred row
+  (`DeferredLine`), and a row reads its block's `{name}#value` through its parent
+  (`WholeOfBlock`), as it reads the block's event ports (`{name}#port`).
+- **A `let` that names a bundle stands above the first line that reads the name**
+  (`BundleLetsEarly`, in `LinesInto`): a bundle's name is its parts, bound where its
+  `let` is lowered, and a `let` builds no place, so a line written above it (`@Counter
+  pair` above `let pair = ((3, !go))`) is lowered after it and keeps its position. The
+  block's result is still its last line as written (`IsLastLine`).
 - **The split block's lines read each other across the split** (Semantics ch. 4: line
   order decides positions and nothing else):
   - the lines below that build no place (a hold, a `let`, a local function, a local
@@ -399,6 +581,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   - a place of the node whose field reads a late name is live over the node's getters
     (`ElementLine`): it goes out where every place does, after the node's rows are
     built, its level read from the node;
+  - such a place of the World's with a plain answer bound to a name
+    (`c <- Pad.Count(name="count {n}")`) asks its first value where the generation that
+    gives the late result is built, right after the row and before the holds' late
+    first values (`LateFieldPlaces`, `Wx.lateAsks`, `WithLateInits`), with the element
+    its getter reads then; the name is late, the value of a `Hold<Option<T>>` written
+    once (`LatePlainBn`). Refused: the same with a `$` or a bundle answer, with a
+    pattern for the answer, or in a hosted scope (the `unbuilt` marker of `BindLate`);
   - a plain `let` of the node that reads a late name is late too (`MarkLateLets`): a
     getter of the node that computes it (`late_{name}`, `LateLetGetters`), bound under
     `{name}#late` as the split line's names are, so what reads it reads it late in turn;
@@ -411,19 +600,26 @@ it make every program an interpreter run, and every type mistake a runtime fault
     reads the block through the node, the late name through its getter, and is built
     after every other builder and generation of its scope (`Wx.deferredGens`,
     `BuildSteps`), the row that gives the late result among them. A plain `let` below
-    the split that such a line reads is the node's late `let` (`HoistedLines`). Two
-    such lines are refused: one whose places are counted as built (a building `match`
-    or `if` inside it: the rows after it were numbered before it was built), and one
-    that gives a plain result of its own;
-  - a building `match` or `if` above that reads the plain result of a building `match`
-    or `if` (`if n > 15:` above `n <- match mode:`) needs the result before either row
+    the split that such a line reads is the node's late `let` (`HoistedLines`). Such
+    a line's plain result bound to a name (`w <- @Wide n`) is late itself: the name is
+    marked before any line is lowered (`LateTakerResults`, `{name}#taker`), its getter
+    over the row's kept result made at the line (`LateGetters`). Two such lines are
+    refused: one whose places are counted as built (a building `match` or `if` inside
+    it: the rows after it were numbered before it was built), and one whose plain
+    result no name binds (a pattern's, or the block's own result);
+  - a building line above that takes the plain result of a building `match` or `if`
+    at its build (`if n > 15:` above `n <- match mode:`, a widget's plain argument, a
+    builder's rows) needs the result before either row
     is numbered. Where every arm gives its result from what it reads of the block, its
     own pattern and its own plain `let`s, and from nothing its own lines build
     (`IsPureChoiceAt`), the result is computed in the block's build as a plain `match`
     or `if` over the arms' plain `let`s and results (`PureChoiceValue`): the line is
     not late, the block is not split at it, and both generations are built in place
-    order (ruling TC), the row's own copy of the result unread. An arm whose result
-    reads what its own lines build is the refused case above.
+    order (ruling TC), the row's own copy of the result unread, and the line above may
+    count its places as built and give a plain result of its own. A `match` with no
+    guard whose arms read nothing of the block is built early instead where no
+    building `match` or `if` takes it (`IsEarlyChoiceAt`, `IsPureChoiceTakenBy`). An
+    arm whose result reads what its own lines build is the refused case above.
 - **A line is late** (`IsLateExpr`) when it is a building `match` or `if` with a plain
   result, a widget block or a widget of one clause whose block ends late, a widget
   parameter applied whose argument is late (read in the caller's environment), or a
@@ -458,7 +654,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
   the build, each firing of an event part after, one dynamic part as a root's dynamic
   result is.
 - **A `let` of a name bound to a bundle** (`let same = both`) binds the same parts
-  (`?BundleNamed`).
+  (`?BundleNamed`), and the bundle as one value where the name it renames has one
+  (`ValueRenamed`: `{name}#value`, a supplier's `@ same`, a function's argument).
 - **A row that ends on a bundle hands it to its block part by part** (`RowPartsOut`,
   `KeepParts`; a clause of a widget of several clauses, an arm of a building `match` or
   `if`, the lower generation of a split block). Part `i` is `p{i}`, a part of a bundle
@@ -482,6 +679,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
   structural dynamic `{name}_p{i}_all`, a plain part as a dynamic no write moves. The
   row has one `result_p{i}` per dynamic part and tells the block of a write behind each
   (`Wx.resultMoved`, a list); the block's gathers of one row are `PendingRow.gathers`.
+- **A tuple that holds time, written in place as an inlined widget's argument** to a
+  parameter bound whole (`@Shows ((!counted, $n))`, `fn @Shows pair:`) is one value made
+  as a `rebuild`'s bundle result is (`BindParam`, `WholeWrittenOf`): each event its
+  port's `Event`, each dynamic it names the live `Dynamic` made for it, read through
+  the node's link once the node is made.
+- **A top-level `let` the checker generalized** (Type System ch. 5; `let Same = \|x| x`
+  read at `Bool` and at `Nat`) is a generic getter (`LetGetter`): each variable its
+  scheme quantifies is a type parameter with the scheme's bounds (`LetGenerics`), named
+  in the value's own types (`GeneralizedLx`), and a use calls the getter at the types
+  the scheme's type matched against the use's gives them (`LetValue`). Its color is
+  one color, the program's.
 - **A `rebuild` whose block ends on a bundle** gives a dynamic of the bundle as one
   value (`WholeResultOf`, `Wx.wholeResultAt`): the generation's plain result is the
   tuple with each event as its port's `Event` and each dynamic it names as the live
@@ -521,9 +729,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
   gives each pattern the part's binding (`BindPartsParam`), an event with its value
   form (`BindEventParam`), a plain part as a field. Any other pattern is over a plain
   value: the argument is a local of the build, matched once there, each name a field
-  (`BindPlainPatternValue`). Refused: a bundle argument that is neither written out nor
-  a name (a function's result), and a pattern that takes an event or a dynamic out of
-  a value that is no bundle (a record's `$` field).
+  (`BindPlainPatternValue`). A pattern that binds an event or a dynamic out of a value
+  (a record's `$` field, `fn @Shown Gauge($level=$l, name=nm):`; a tuple over a bundle
+  that is a function's result) binds its names as a `let`'s are and takes the argument
+  apart as a `let`'s value is (`BindTimePatternParam`, `PatternDynamics`): a getter of
+  the node reads the argument in its caller's environment, each dynamic's getter
+  matches it and samples what the binder holds, each event's node hears the event the
+  value holds. A name that is a bundle of its own inside such a value (`fn @Labelled
+  ((id, both)):` given a function's result) is its parts, bound first
+  (`PreBindBundleBinder`: an event part a node, a dynamic part a getter, a plain part a
+  field) and read out of what the name holds in the matched value by their places in
+  the bundle (`BundleBinderParts`, `BundleBinderPlains`).
 - **`@Element made` as a line, `made` a `let` of the block bound to a tag applied**
   (Semantics ch. 8, "Elements and the element statement") is that element's line at
   the placing line's position, lowered in the placing line's environments
@@ -551,9 +767,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   (`ValuedWidgets`, `Lx.valued`): an argument of a function that is no widget or of a
   constructor, a host's supplier, what a lambda gives, the operand of `?`, a part of a
   tuple or an array, the value of a `let` (`LetValues`: `let @w = @Pair`, read where
-  `@w` is), and a blueprint argument of a widget that stands in one (`@Frame @Pair`).
-  A widget can be one when it has no widget function parameter and its `$` and event
-  parameters have no time below their top, whatever it gives back (`?ValuedCases`).
+  `@w` is), what a `<=` writes (`&_.body <= @Row 2` in an `update`), and a blueprint argument of a widget that stands in one (`@Frame @Pair`).
+  A widget can be one whatever its parameters are and whatever it gives back
+  (`?ValuedCases`); a `$` or an event parameter is the caller's live value, a dynamic
+  below its top included (`IsLiveParam`; the shared rows of a widget that calls itself
+  take only one with no time below its top, `IsShallowLiveParam`).
   - A generic widget is one for each set of types the program's readings give its type
     parameters (`?ValuedTypes`: read off the arguments' types as an inlined call reads
     them, and off the widget's own type where it is read). `Lx.valued` is keyed by the
@@ -563,18 +781,59 @@ it make every program an interpreter run, and every type mistake a runtime fault
     (`ValuedStemAt`). A reading that leaves a type parameter open stands in a generic
     function, whose own parameter it is given (`fn ?Wrapped x = ?Pick True, (@Shown x,
     "n")`): it has rows for the types each of that function's instantiations gives it
-    (`PlacedWidget`). A definition's instantiations are the types its uses give its
-    type parameters over the whole program, a use in another generic definition's body
-    at each of that one's own (`?DefInstances`; `Lx.inDefinition` names the definition
-    being lowered). The function is a target generic, lowered once, so where it runs
-    it chooses among those rows by its type parameters (`?OpenWidgetBlueprintValue`:
-    prism_rtl's `type_key` of each against the instantiation's types; two
-    instantiations of one target type are one choice); the arguments are read at the
-    function's own types and are the row's by the choice made (`recast`). A function
-    the program never uses chooses nothing. Where the instantiations cannot all be
-    read (a use in a method's body at the impl's type parameters, a definition that
-    uses itself at other types than its own, more than eight definitions deep) the
-    reading is refused.
+    (`PlacedWidget`). The same in an impl's method, over the impl's type parameters,
+    and in a trait's default, over `Self`. A definition's instantiations are a fixed
+    point over the whole program (`?DefInstances`; `Lx.inDefinition` names the
+    definition being lowered, an impl's method by its place, `InstanceKey`): a use
+    with closed types gives them; a use in another generic definition's body gives
+    them at each of that one's own, however deep, a definition's uses of itself at
+    other types included (`InstanceUses`, `GrowInstances`); an impl's method has the
+    types its impl's head takes wherever a constraint is solved by that impl (the
+    checker's `ImplNote`s; `ImplTargets`, which follows the impl's own bounds), and a
+    default the impl leaves unwritten has the type. A trait method with type
+    parameters of its own (`?FrameWith: fn a, b -> ?@unit`) is instantiated where it is
+    named (`UseOfMethod`, `MethodTargets`): the method of the impl whose head the
+    trait's parameter has there, or the trait's default, at the head's types and at
+    the types the name's type gives the method's own (`DefinitionRigids` counts both;
+    `ImplTargets` leaves such a method out). Only the definitions that can
+    reach the one asked for are followed (`RelevantDefinitions`). The fixed point has
+    no count (`?GrowsFrom`), and says why it has no list where it has none
+    (`InstancesAnswer`). Each instantiation keeps the use by name that gave it
+    (`Instantiation.?step`: its type parameters as types over its parent's). Where a
+    new instantiation's line of parents holds the same definition and every step
+    between is a use by name, the steps make one substitution over the definition's
+    type parameters, and the fixed point stops with no answer exactly when that
+    substitution gives a parameter a larger type that holds the parameter itself
+    (`a` becomes `[a]`): the same steps are taken again from the new instantiation,
+    for ever. Types that grow and then stay (`?Wrapped x, y` calling `?Wrapped [[y]],
+    less`: `a` becomes `[b]`, `b` becomes `Nat`) are followed to their end. Where a
+    step between the two is a constraint an impl solves, or holds an associated
+    type, no substitution says what follows, and the fixed point stops where the
+    earlier types are embedded in the new one's (`Embeds`: each type found again
+    inside the larger). Every endless line of instantiations meets one of the two
+    stops. The function is a target generic, lowered once,
+    so where it runs it chooses among those rows by its type parameters
+    (`?OpenWidgetBlueprintValue`: prism_rtl's `type_key` of each against the
+    instantiation's types; two instantiations of one target type are one choice); the
+    arguments are read at the function's own types and are the row's by the choice
+    made (`recast`). A function the program never uses chooses nothing. A line of uses
+    by name that grows without end (a function that calls itself at `[a]` for `a`) is
+    the checker's `grows-without-end` (ruling PG; `GrowthCheck` in prismc/check/mod.prism
+    walks the uses by name from each definition with type parameters, composing the
+    same substitutions over the definitions, not over the program's instantiations),
+    so the fixed point's stop at one is an internal error (`EndlessByName`). The same
+    walk goes through impls: a constraint a written impl with type parameters solves
+    is a use of that impl at the types its head is matched at (`NoteImplUse`), its
+    methods' bodies its body, so an impl that needs itself at `[a]` for `a` is
+    `grows-without-end` too. A use whose types hold an associated type is no step of
+    the checker's walk; where a line through one holds a definition twice with the
+    earlier types found again inside the later ones the lowering stops
+    (`EndlessThroughImpl`), and where a use leaves a type parameter undecided
+    (`UndecidedParameter`): the reading is refused (`OpenWidgetValueWords`).
+  - A generic widget read inside a generalized `let` or a generalized local function,
+    at that one's own type variable, has rows for each instantiation the `let`'s uses
+    give the variable (`AtLetInstantiations`); the `let` is lowered at each
+    instantiation, where the reading's types are closed.
   - A `$` or an event parameter is the caller's live `Dynamic` or `Event`, which the
     blueprint keeps and each row it builds holds (`LiveParams`, as the shared rows of a
     widget that calls itself do); the line that reads the widget makes the dynamic
@@ -583,7 +842,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   - An event result is a port of the row's that the event fires
     (`ValuedEventResult`, the row's `result_event`); prism_rtl's
     `widget_event_blueprint` subscribes the sink of what applied the blueprint, each
-    firing an answer under the arm's tag or outside any, as a plain result is.
+    firing an answer in its tick. Under a supplier's tag arm the firing is a computed
+    answer (Semantics ch. 9, "A computed answer is the next tick's input"):
+    `widget_event_answer_blueprint` hands it to the place as the next tick's input,
+    which is owed, as `@ !e` does.
   - A dynamic result and a bundle are one value the row's `result_value` gives
     (`ValueRowWhole`): a dynamic is a live `Dynamic` over the row, its update event a
     port the writes behind it fire (`LiveDynamic`); a bundle is the tuple of its parts,
@@ -624,10 +886,32 @@ it make every program an interpreter run, and every type mistake a runtime fault
     methods). A host's row gives them to the enclosing host (`HostRow::entries`,
     `HostRow::deliver`); a block that applied the value gives them as its generation's
     (`AppliedBlueprint`).
-  - A widget with a widget function parameter is not among them, and is refused where
-    it is read as a value.
+  - A widget function parameter of such a widget (`@Frame @Row` as a value) is a
+    function value of the row, a field as a plain parameter's binder is. A line of the
+    row that applies it (`Inner 1`) applies the function and then the blueprint it
+    gives, as any blueprint value is applied (`AppliedFunctionLine`,
+    `AppliedBlueprintLine`); the row handing it on to a widget it inlines does the
+    same there (`ApplyWidgetParam`). The argument is read as a value where the widget
+    is: a lambda is its closure, and a widget with places named and not applied
+    (`@Row`) is a function value that gives the widget's blueprint at its arguments
+    (`WidgetNamed`), so that widget has rows of its own too (`ValueWidgetsAt`).
+    Named where its type is an unbounded function's (a widget signed `unbounded fn`)
+    it is a `Start` whose job answers in its first cycle with that blueprint.
+  - A function value a widget block holds (a `let` of the block, `let Shows = Chosen
+    "shows"`) applied by a line of the block (`Shows 1`) is applied the same way
+    (`WidgetLine`, `AppliedFunctionLine`); an unbounded function's value, a `Start`,
+    is run to its end there as a call of one in an expression is.
+  - A function of a block that gives a blueprint (`fn @Row $shown = @Labelled "row",
+    $shown` beside `$more <- @Row $count`) applied by a line of the block is lowered at
+    the line (`LocalFunctionLine`): its one clause's body as a lambda's given for a
+    widget function parameter is (`InlinedFunctionLine`), the parameters bound to the
+    line's arguments by layer, over the environments of the block it is written in, so
+    its places are the block's next. Handed to a widget as its function parameter
+    (`@InMemory empty, @Seats`), it is lowered the same way where the widget applies
+    the parameter (`ApplyWidgetParam`), over its own block's environments.
 - **A widget defined in a block read as a value** (`Card(@body=@line)`, `?Pick True,
-  @line`) is a `Blueprint` its line makes at the build before the node, kept in a field
+  @line`; in the body of a function of the block too, `fn ?Made b = ?Pick b, @line`,
+  whose expressions a line that calls it reads as its own, `LocalFunctionExprs`) is a `Blueprint` its line makes at the build before the node, kept in a field
   (`BlueprintValuesAt`, `blueprint_{name}`): it builds the widget's block as a row of its
   own (`{Node}Value`), numbered from 0, which holds the node through its link and reads
   the block's names through it as an arm's row does. Bound under `#whole@{span}`, so a
@@ -759,10 +1043,50 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `deliver`. A transparent row is handed the path with its block's gaps already put
   back, so each node undoes only its own.
 - A hosted scope has its own sequence, so its methods are `place_k` and `seat_k`.
-- A place read at the block's build before the node exists (a first-value query, a host
-  made in the build) after a gappy generation built after the node has no number yet;
-  that is refused loudly. A generation built early gives its gap as a local
-  (`{name}_gap_now`).
+- A first-value query at the block's build, before the node exists, after a gappy
+  generation built after the node has no number yet; that is refused loudly (a host
+  there is placed after the node, below). A generation built early gives its gap as a
+  local (`{name}_gap_now`).
+- A generation built early (`EarlyChoiceLine`, `EarlyClauseLine`) below a gappy
+  generation built after the node cannot be handed its `base` in the build: the line
+  above reads the early row's plain result to choose its own row. Its row is built in
+  two steps (`NumberedLate`, `Wx.lateNumbered`, `Wx.baseLate`). The row's build takes no
+  `base`: it computes its lets and its result and makes its node, and keeps everything
+  a build does after the node (links, the construction step, the places sent with
+  `cx.added`, subscriptions) as one `Later` in its field `number_later`, with the
+  build's values it reads (`LateNumbering`). Its `base` is a cell, read by `place`.
+  The block's early arm hands back a fourth value, `{name}_number`, a `Later` over the
+  typed row and the arm's link: it calls the row's `number_places(base, cx)` with the
+  line's position as built (`node.place(v)`), then sets `{name}_gap` again, the row's
+  own generations built by then (`NumberOf`). The block's construction step calls it at
+  the line's place, after the generations above it (`ScopeSteps`: the step waits for
+  the gappy generations before it, and is deferred behind a deferred one). An early
+  line inside such a row is numbered late in turn, in the row's kept step.
+- **Such a row whose block ends on a late plain result** (a building `match` inside the
+  arm whose result the arm gives) is read by its block right after its build, so it
+  builds its own generations there (`Wx.lateGens`, `LateGenerations`): each
+  generation's rows are built after the row's node with no `base`, numbered late in
+  turn (`ArmRowOf`'s `weakLate`), and leave the row the step that numbers them in its
+  field `{name}_number` (`NumberedByParent`: the row's `number_places` at
+  `parent.place(v)`). What the row keeps in `number_later` is then the rest: those
+  steps taken and run in the order of the places (`NumberTaken`, `ScopeSteps` by
+  `Wx.genPhase`), the builders, the places sent, the subscriptions. A generation built
+  again after the row is numbered (`numbered`) numbers its new row at once
+  (`LateRowSelect`). Every row inside such a row does the same, so each tells its
+  block what its generations left unbuilt when it is built. Refused there: the result
+  beside a `for`, a `rebuild` or a widget that calls itself in the arm (their rows
+  take their numbers as they are built), and a widget that calls itself in any row
+  inside.
+- **A host whose position has no number at the build** (`PlaceUnknownAtBuild`: in a row
+  numbered late, or below a gappy generation built after the node) is made at
+  `Path::root()` and placed once the node stands, where the construction step reaches
+  its rows (`Wx.unplacedHosts`, `ScopeSteps`, prism_rtl's `Host::place_at`); its
+  scope's places ask their first values after that, as a late host's do
+  (`Wx.lateHosts`): a place with a plain answer bound to a name there is a late name
+  too, its hold set where the scope's places ask (`LateHostedAnswer`,
+  `ElementOutputOf`). Refused: such a place whose answer no plain name binds, and
+  a hosted node's own first-value query spelled before its node in a row numbered
+  late (`PlaceNumber`).
 - **A widget that calls itself**, of one clause or of several (plain parameters, no type
   parameter, nothing or a plain value given back), is as deep as
   its data (`SharedClauseLine`). A plain result is kept by each row (`result_value`) and
@@ -802,7 +1126,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
     build makes to the event's port (`subscribe_row`).
   - The value is bound under `#whole#{name}`: a call inside hands it on as it is
     (`SharedScrutinee`), and an arm's row of the row's reads it through its parent
-    (`WholeOfBlock`).
+    (`WholeOfBlock`). An event parameter read as a value in the block (`!Fired ((!go,
+    n))`, handed whole to a function) is that `Event` (`NameValueOf`).
 - In a hosted scope a shared row is given its host (`enclosing`, as any hosted row) and
   `moved`, a `prism_rtl::Moved` made of the node that builds it (`moved_by`: that node's
   `{host}_moved` or `document_moved`): the row holds no block, so its `document_moved`
@@ -872,6 +1197,27 @@ it make every program an interpreter run, and every type mistake a runtime fault
   pushes are the child place's. Each firing of an event field is the place's request:
   out to the World, or in a hosted scope a request of the enclosing host's child
   (`HostOf::request_from`).
+- **A row under a hosted child reaches the host with its own path before every place it
+  names** (`prism_rtl::host_under`, `UnderItsPath`). A row of the child's `for`, a
+  generation of its `rebuild`, and a row numbered from 0 where a widget's value is
+  applied each name their places by paths relative to the row, and the host knows a
+  child place by its path relative to the child. The row's `build` begins with `let
+  enclosing = prism_rtl::host_under(enclosing, &path)`: a `HostOf` that joins the row's
+  path before the place in `first_value`, `request_from` and `deliver`, and hands
+  `supplier`, `scope` and `moved` through. A row under a row joins its own path before
+  the outer row's, so a place is named whole however deep it stands, a first value is
+  asked once at the place's whole path, and an element with an event field under a
+  `rebuild`'s generation or a building `match`'s arm asks through `request_from`. An arm
+  of a building `match` or `if` is numbered in its block's places and built at its
+  block's path: it takes its block's host as it is. A row at the empty path gets the host
+  itself.
+- **A blueprint value applied in a hosted scope builds at the root of the applying
+  row's paths** (`AppliedPath`): the host the applying node holds already joins the
+  node's row path before every place, and the blueprint's own row joins the path it is
+  built at, so the node's own path there would name each place with the row's path
+  twice. In the World's scope the blueprint builds at the node's own path. (A blueprint
+  held in a map and built by a `rebuild` in a `for` entry under a host:
+  host-bug-05-map-of-blueprints.)
 - **A request rises host by host.** A hosted place's request goes to its host's row
   (`Host::request`), which the live element's event fields hear; a row that forwards the
   element hands it on as the host's own at `0` under the row, to the World or to the
@@ -907,6 +1253,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
     World's. A host that forwards everything is observably not there. A forward in a hosted
     scope (nested hosts) emits nothing: its place is the child's own entry in the enclosing
     host's document (`HostRow::entries`), and its first value is the enclosing host's.
+    `@Element` of an element applied where it stands, under a tag's arm (`Tell.Request(..):
+    @Element (Prelude.Unwrap(!~value=..))`), places a description of a tag of the host's
+    own (`described_blueprint`). Its place is answered as that tag is (`Answer::
+    PreludeUnwrap`), and the child's place reads its own tag's answer, so the blueprint
+    is `answers_mapped` with `Answer::untagged`: an answer of plain data goes on as
+    `Untagged_a`, which every tag's accessor reads at its own type (`ElementBlueprint`,
+    `IsElementApplied`). The answer reaches the child in the tick the World sends it.
   - **A level that holds dynamics** (a container whose children are its document) goes to
     a World deep: `Elem` implements `rt::Level`, each dynamic sampled at the read point
     (`level_pod`), and a World place over one keeps an `rt::Watch` on the dynamics it holds,
@@ -935,7 +1288,40 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the supplier's link (`ParameterEnv`): `DynamicAnswers` reads the argument with its
     caller's environments (`AnswerTexts`, a parameter handed on followed to its own
     argument), and the supplier's closure captures what the argument reads from the
-    caller's environment (`LambdaCaptures`). A computed answer in flight to a place whose key left is
+    caller's environment (`LambdaCaptures`). An answer in a function of the block the
+    supplier calls (`fn @Supply e` beside the host's line) is the supplier's text too:
+    the function is inlined where it is called, `AnswerTexts` reads its clauses, and
+    the supplier's closure captures what they read (`LambdaCaptures` closes its reads
+    over the block's local functions). A widget function that is a value with a `$`
+    parameter (a named supplier, `fn @Supply $count, e`) takes the dynamic whole
+    (`WholeFns`): the host's line makes the live dynamic (`WholeArgs`), the closure
+    captures it, and the function's answer over it is that `Dynamic` mapped into the
+    tag's case (`?HeldDynamic`).
+    A function of the host's block (`fn @Supply e` beside the host's line) is inlined
+    at its call, so its clauses' text is the supplier's (`AnswerTexts`), read with the
+    clause's own parameters marked (`WithFnParameters`).
+    **Held answers** (`IsHeldAnswer`). An answer that reads a name the supplier's own
+    text binds where the answer stands (a lambda's parameter, `p`; a field of the
+    element the arm describes, `Count.Query($query=$q): @ Read $state, seat, $q`; a
+    `let` of the arm's block: `SupplierBinders`, each name with the span it is bound
+    in), or a parameter of the block's function it is written in (`ReadsFnParameter`),
+    has no getter: a getter of the node reads no value of one call of the supplier. It
+    is the `Dynamic` its expression gives in the supplier's closure (`?HeldDynamic`,
+    the lift over the `Dynamic`s it reads mapped, `WholeValueOf`), mapped into the
+    tag's case. There a described element's `$` field is a `Dynamic` (`LiveFieldPat`),
+    a plain field and the place's path are locals, and each reader of the node the
+    answer names beside them is the live dynamic the host's line makes for it
+    (`HeldAnswerReaders`, `LiveDynamics`: `whole_{name}` with its port, as a reader a
+    function takes whole, bound under `#whole{span}` and captured by the closure). A
+    reader with no value while the node is being made (a widget's result, a name of
+    the parent) is read through the node's link alone, so the host's scope is late
+    then (`Wx.lateHosts`). A `$` argument the supplier hands to a function of the
+    block (`@Supply $count, e`) is its live dynamic too, and the inlined parameter is
+    bound to that `Dynamic` (`?LiveArgument`, `InlineLocalFn`; a function of several
+    clauses matches it as a value, `InlineLocalFnMatched`), so `@ $d` in the function
+    answers over it. The supplier's environment in a host's own line is marked
+    `#hostline`; in a named supplier's body (no mark) every local is held.
+    A computed answer in flight to a place whose key left is
     dropped. Nested hosts add one tick per computing layer and none per
     forwarding layer.
 - **First values.** A child place with a first value asks the host at its build
@@ -956,8 +1342,35 @@ it make every program an interpreter run, and every type mistake a runtime fault
   builds for the place reads the gathered dynamic over the rows built above it. A late
   scope's own builders, generations and entries follow its first values, just before
   its host's rows; any other hosted scope is built before the owner's own, as before.
-  Refused there: a bundle tag's plain part beside a `$` part (the build reads a plain
-  part once, before the node).
+  A scope's steps wait for the structure they read (`ScopeSteps`): each builder and
+  generation stands at its place, and one whose build reads a structural dynamic of
+  another (by its reads closed over the node's getters, and the snapshots' builders)
+  stands after that one, at its place and one rank on. So a late host written above the
+  builder whose structural dynamic its supplier answers with (`$lens <- for ..` below
+  the host) is built once that builder is, and its child's first values read every row
+  of the build wherever the `for` stands; and a `for` or a generation whose source
+  reads a host's `$doc` or a gathered result is built after that host or `for`, moved
+  or not (a `rebuild Size $doc` between the late host and the `for`:
+  sem-ch09-host-above-for-doc-read-between). A builder's `$`
+  result is prebound as a getter of the node (`GivesResult`, `ResultGetter`), which a
+  line above the builder reads.
+  A bundle tag's plain part beside a `$` part (`((port, !rx, $peers)) <- Pad.Socket(..)`)
+  is a late name there (`LatePlaceParts`, `{name}#late`, `{name}#lateplace`): its hold
+  is a `Hold<Option<T>>` too, set once where the place asks (`LatePlainPart`) and read
+  with no read point (`newest`, `LatePlainBn`). Its readers are a late name's: a place's
+  field is live over it, a plain `let` that reads it is late in turn, a building line
+  that takes it is a generation of one arm (`DeferredLine`), built after the node in
+  the order of its place (the first values are asked before any generation of the
+  scope is built), so its places are counted as built; one that gives a plain result
+  (`w <- @Wide port`, `w <- match port: ..`) is where the block is split, as at any
+  late line (`?LatePlaceTakerAt`, `SplitBlockInto`); written above the place line
+  whose part it takes, the line binds its result to a late name instead and the block
+  is not split (`LateTakerResults`); and a hold that starts from it is
+  set by a method of the node the construction step calls after the scope's places
+  have asked (`Wx.lateStarts`). A plain part taken apart by a pattern of its own
+  (`((((id, owner)), !rx, $peers))`) has one hold, kept under the pattern's own key
+  (`PartHoldKey`, `?BindingOfName`), and each name the pattern binds is a late name
+  whose getter matches the part by the pattern (`LateGetters`).
 - **Requests** of a hosted place go to the host (`host_k.request`): out with the forwarded
   element, or nowhere when the supplier answered the place.
 - **`@HostSome`** is `@HostDocument` through `rt::forward_on_none` (`nil` forwards).
@@ -986,6 +1399,16 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **An answer made outside a tag's arm** (a host's `let @seven = @ 7`) is plain data in
   `Answer`'s case of no tag, `Untagged_a`; each accessor of `Answer` reads that case at its
   own tag's type, so the place that takes the answer decides what it is.
+  A tag's output that is no plain data (a function, alone or as a bundle's plain part)
+  is read from the tag's own case or, made outside the arm, from the case that holds
+  it as it is (`Held_a`; the emitters' `OutsideArm`). A World answers with plain data,
+  so its answer for such a tag is a fault of the run (`NoWorldAnswer`).
+  A bundle with such a part made outside the arm is held whole (`PartsBlueprint`); the
+  host's row that takes it for a place asks `Answer::held_parts` (emitted per bundle
+  tag with such a part, `?HeldWholeTy`, `?HeldPartsOf`) for the tag's parts answer of
+  it, and answers the place as `parts_blueprint` does: the state its first value, each
+  firing of an event part an answer a tick late; the subscriptions leave with the row
+  (`HostRow::held`).
 - **A place whose element answers a dynamic has its value at the build**: its first
   value stands in the local `{f}_init` (`DynamicPlace`), bound as the name's value at the
   build (`PreInit`), so a supplier's dynamic answer over the host's own pushed place
@@ -993,7 +1416,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A tag whose output is a bundle** (Type System ch. 2, "Bundles and sparse tuples":
   `((WindowId, !WindowInput))`, `((!Text, $Text))`, `((Nat, $Text))`, `(($Text, $Nat))`,
   `((!Text, !Nat))`) is one mechanism for any mix of plain, `$` and event parts
-  (`BundleOutputOf`, the node's `BundlePlace`s).
+  (`BundleOutputOf`, the node's `BundlePlace`s). A plain part the line's pattern takes
+  apart (`((((id, owner)), $state)) <- Pad.Port(..)`) is handed back as the build's
+  value and matched once by that pattern, each name moved into its field (`BindParts`,
+  `BindPatternResult`).
   - **The state** is the plain and `$` parts' values, one part itself, several a tuple in
     the tag's order. It is the place's first value (the World's first-value query, or the
     enclosing host's) and what each push after it holds, keyed by the element. A plain
@@ -1034,13 +1460,25 @@ it make every program an interpreter run, and every type mistake a runtime fault
 
 ## Local functions, `@Machine`, durations
 
-- **A fault kind as a value** (`Fs.NotFound` named, an `Error`'s `kind` read) is its name
-  as plain data, a `Pod` choice with no arguments (the prelude's `fault_kind`, `kind_of`);
-  `Error(kind=k, ..)` takes the name back (`error_of`). An `Error`'s `message` is a `Text`.
+- **A fault kind as a value** (`Fs.NotFound` named, an `Error`'s `kind` read) is plain
+  data: a kind that is its tag alone is a `Pod` choice with no arguments (the prelude's
+  `fault_kind`, `kind_of`), and a kind made with fields
+  (`Count.TooMany(limit=5, asked=n)`; the Bible's ruling TF, "faults hold typed values")
+  is the tag's value, `Pod::Element` with its fields in declaration order
+  (`fault_kind_of`). `Error(kind=k, ..)` takes the name and the fields (`error_of`,
+  `rt::Error::of_kind`): `rt::Error` keeps the name in `kind_p` and the fields in
+  `kind_fields`, and `Error::kind` is the value again, which `e.kind`, a World and a
+  transcript see. A pattern `Error(kind=Count.TooMany(limit=l, ..), ..)` compares the
+  name, then reads each field back at its type (`fault_field`, the field type's
+  `FromPod`) and matches it by its own pattern (`ErrorPat`). Two kinds are equal when
+  their names and fields are; a kind prints as a tag's value does. An `Error`'s
+  `message` is a `Text`.
 - **The prelude's `Turn`** is `PreludeTurn` in both emitted preludes (`TypeItemName`): the
   runtime's `Turn` is the job's. In C++ it has the form of a program's own choice (a case
   struct each, positional fields `a0`).
-- **A trait method named as a value** is a closure calling it (`MethodFn`).
+- **A trait method named as a value** is a closure calling it (`MethodFn`); one signed
+  `unbounded fn` is a `Start` whose job answers in its first cycle with the call
+  (ts-ch03-unbounded-method-as-value).
 - **A function value of its callee's own color in a call's result** (`[u fn Nat -> Nat]`
   at a call that makes `u` bounded) is a `Start` in the callee's signature; the call's
   value is made again by one walk over its two types, the signature's and the call's
@@ -1067,7 +1505,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   of the source runs (`FrameTaker`, `?SignatureResult`).
 - **A function value applied** (`Take (\|n| n * k)`, `Take Double`, `Take` a `let` or a
   parameter) takes each argument of a function type as a function value
-  (`ValueArgument`); a named function takes a borrowed closure or a path there.
+  (`ValueArgument`). So does a named function of the program at a parameter of a bounded
+  function type (`ArgsFor`): its parameter is a `&Rc<dyn Fn>`, a function value it may
+  keep. A prelude function takes a borrowed closure or a path there, and a function
+  value handed on to one is borrowed through its `Rc` (`ClosureRef`).
 - **`@Run` of a function value that is no function the program defines by clauses** (a
   lambda, a local, a call's result, a constructor, a trait's method, a function of the
   prelude) takes the `Start` it is or is made (`AsJobValue`); a function the program
@@ -1131,7 +1572,16 @@ it make every program an interpreter run, and every type mistake a runtime fault
   that instantiation, where a color no use decides is bounded, and a call in a branch
   ends the branch in a continuation over that instantiation's value (`KValue`, which a
   statement's own branches use too, `KStmt`). The places one instantiation's frames
-  bound are unbound before the next lowers the same expression.
+  bound are unbound before the next lowers the same expression. One no use reads runs
+  where it is written all the same (Semantics ch. 7, "the language is eager"): it is
+  lowered once, each type variable at `unit` and each color bounded, its binding's type
+  named (`LetInstantiations`; in a bounded body too, `GenericLet`); an unread lambda is
+  not lowered.
+- **An unbounded function with a type parameter no parameter's type names**
+  (`unbounded fn Nat -> [a]`): its job's struct has a marker field for it
+  (`type_parameters`, Rust; C++ needs none), so the job is made by its `Start` alone
+  (`JobByStart`), and a call of the `Start` writes the type parameters out as the
+  callee's type there gives them (`StartOf`).
 - **`@Run`** is Appendix B's Prism definition over `@Machine` and `@Defer`, compiled like
   any widget and inlined into its caller's node: the job is a `Hold`, each cycle fires
   `!turns`, a `More` arms the `@Defer`, a `Finished` fires the result.
@@ -1155,10 +1605,32 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A program's own `impl ^Show`** → `p.raw(&text)`.
 - **`derive ^Pod`** (and every type that crosses to a World) → `impl rt::ToPod`,
   `impl rt::FromPod`; a type with its own `^Show` crosses as `Pod::Shown(text, structure)`,
-  so a key prints `0/[e2]/0` and still matches structurally.
+  so a key prints `0/[e2]/0` and still matches structurally. A type parameter that a
+  map's key holds, in a field or in a type a field names at it (`TyDef.keyed`,
+  `KeyedParameters`: `type Roster k v = choice: Listed (k ==> v)`), is bounded by `Ord`
+  in the type's `Show`, `ToPod` and `FromPod` impls (`BoundedKeyed`), as prism_rtl's
+  impls for `Map` want; C++'s templates take the key's order where they use it.
+- **A choice as plain data holds its case's position** (`rt::ConstructorName`,
+  `ChoicePodArm`): the derived `to_pod` writes each constructor with the place of its
+  case in the type's declaration, and `Pod`'s order takes two constructors by their
+  positions, as the type's derived `^Ord` orders them. So a path whose key is a choice
+  (`for color, _ <- {White: unit, Black: unit}` with `choice: White, Black`), a patch's
+  lists and a printed map stand in the key type's order. A constructor read from text
+  (a test's pattern, a World's own value) holds no position and orders by its name;
+  equality goes by the name alone. A key type with an `impl ^Ord` written by hand still
+  orders by its cases' positions in a path (the path's order does not call the impl).
 - **`Show x`** → `rt::show_text(&x)`.
 - **The transcript** is the Test World printing the `Pod`s it receives with the same
   printer, in Conformance ch. 1's sections.
+- **The prelude's tags are answered by every World, the Test World included**
+  (Semantics ch. 10). The policy is prism_rtl's (`world::prelude`: `Prelude`, and
+  `UnwrapWorld` around a World that answers no prelude tag): an unwrap's `~ x` is
+  answered with `x` in the next tick, the first `Error` poisons the innermost subtree
+  with a path of its own, and the report goes to the nearest `Prelude.Exceptions` place
+  outside it. Under the Test World the answer is an input of the next tick the test
+  opens, printed under that tick's `in:` as a delivery is, and that tick is owed; a
+  poisoned subtree is served nothing again, a test's own delivery included. The policy
+  prints nothing; the CLI and canvas Worlds print what a poisoned root has to say.
 
 ## The library's API
 
@@ -1176,8 +1648,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `new` (runtime/cpp/README.md, "Regular expressions").
 - `cells`: `Tick`, `Hold`, `Stamped`, `Cache`, `Snapshot` (`mark`, `marked`, `take`,
   `take_compared`, `queue`, `published`, `get`, `current`), `Port` (`subscribe`, `unsubscribe`, `lien`, `release`,
-  `demand`, `fire`, `kept`), `Handle`, `Demand`, `Event`, `Dynamic`, `Defer`, `Job`,
-  `Turn`.
+  `demand`, `fire`, `kept`, `subscribe_above`, `raise`, `height`), `Handle`, `Demand`, `Event`, `Dynamic`, `Defer`, `Job`,
+  `Turn`, `Above`, `Heights` (`of`, `above`, `ask`, `next`, `again`).
 - `cx`: `Node`, `Done`, `Cx` (`tick`, `read_point`, `propagating`, `after`, `before`, `wake`, `build_later`, `swap_later`,
   `leave_later`, `dirty`, `on_started`, `arm`, `clean_up_later`, `added`, `removed`,
   `changed`, `request`, `answer_later`, `result`, `first_value`, `listen`), `Runtime`

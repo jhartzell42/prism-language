@@ -165,6 +165,23 @@ struct PreludeUnwrap {
     }
 };
 
+/// The description of `Prelude.Unwrap`: the element applied as a plain value (`@Element
+/// (Prelude.Unwrap(!~value=..))`), its field as given, the event of `~a`s (a type
+/// parameter's values are plain data here).
+struct PreludeUnwrap_desc {
+    using prism_value = void;
+    Event<Fallible<Pod>> value_e;
+    const PreludeUnwrap_desc* operator->() const { return this; }
+    PreludeUnwrap_desc* operator->() { return this; }
+};
+
+/// The description of `Prelude.Exceptions`: the element applied as a plain value.
+struct PreludeExceptions_desc {
+    using prism_value = void;
+    const PreludeExceptions_desc* operator->() const { return this; }
+    PreludeExceptions_desc* operator->() { return this; }
+};
+
 /// `tag Prelude.Exceptions of Element !Exception`.
 struct PreludeExceptions {
     using prism_value = void;
@@ -323,11 +340,44 @@ inline Nat len_text(const Text& t) { return nat_of(t.len()); }
 template <class K, class V>
 Nat len_map(const Map<K, V>& m) { return nat_of(m.size()); }
 
-// `xs as [a]+?`: the collection when it has an element (Type System ch. 2, "Collections").
+/// `[a]+` and `(K ==> V)+` (Type System ch. 2, "Collections"): a collection with at least
+/// one entry, a type of its own beside its collection's, so an impl for `[a]+` and one for
+/// `[a]` are impls for two types and a generic function has an instantiation at each. It
+/// is read as the collection it is (its base class, `plain_collection`), and compares,
+/// prints and travels as plain data as that collection does. Only a non-empty literal
+/// (`non_empty_of`) and the checked conversion (`non_empty`, `non_empty_map`) make one.
+template <class C>
+struct NonEmpty : C {
+    using prism_value = void;
+    NonEmpty() = default;
+    explicit NonEmpty(C collection) : C(::std::move(collection)) {}
+    bool operator==(const NonEmpty& other) const { return static_cast<const C&>(*this) == static_cast<const C&>(other); }
+    auto operator<=>(const NonEmpty& other) const { return static_cast<const C&>(*this) <=> static_cast<const C&>(other); }
+    void show(Printer& p) const { Show<C>::show(static_cast<const C&>(*this), p); }
+    Pod to_pod() const { return ToPod<C>::to_pod(static_cast<const C&>(*this)); }
+    // Only a World hands a program data, and an empty collection is not a non-empty one's.
+    static Result<NonEmpty> from_pod(const Pod& whole) {
+        auto collection = prism_rtl::from_pod<C>(whole);
+        if (!collection) return unexpected(collection.error());
+        if (collection.value().size() == 0) return mismatch<NonEmpty>("a non-empty collection", whole);
+        return NonEmpty(::std::move(collection).value());
+    }
+};
+
+// `[[x, y]]+`, `{k: v}+`: a non-empty literal's collection, which the checker saw an entry in.
+template <class C>
+NonEmpty<C> non_empty_of(C collection) { return NonEmpty<C>(::std::move(collection)); }
+
+// A non-empty collection where its collection is wanted (the one implicit conversion).
+template <class C>
+const C& plain_collection(const NonEmpty<C>& xs) { return xs; }
+
+// `xs as [a]+?`: the non-empty collection when the collection has an element (Type System
+// ch. 2, "Collections").
 template <class A>
-::std::optional<Array<A>> non_empty(const Array<A>& xs) { if (xs.size() > 0) return xs; return ::std::nullopt; }
+::std::optional<NonEmpty<Array<A>>> non_empty(const Array<A>& xs) { if (xs.size() > 0) return NonEmpty<Array<A>>(xs); return ::std::nullopt; }
 template <class K, class V>
-::std::optional<Map<K, V>> non_empty_map(const Map<K, V>& m) { if (m.size() > 0) return m; return ::std::nullopt; }
+::std::optional<NonEmpty<Map<K, V>>> non_empty_map(const Map<K, V>& m) { if (m.size() > 0) return NonEmpty<Map<K, V>>(m); return ::std::nullopt; }
 
 template <class A>
 Array<A> append(const Array<A>& a, const Array<A>& b) { return a.concat(b); }
@@ -392,6 +442,35 @@ template <class A>
 void set_index(Array<A>& xs, const Nat& i, std::optional<A> v) {
     if (!v) panic(str("`&xs[", i, "] <= nil`: an array's entry cannot be removed"));
     xs.set(ix(i), std::move(*v));
+}
+/// The entry a reference path steps through, read in place: it gives up on an index the
+/// array does not hold, as the path's place does (`at_mut`).
+template <class A>
+const A& at_shared(const Array<A>& xs, const Nat& i) {
+    auto x = xs.get(ix(i));
+    if (!x) panic("an `&` path through an index the array does not hold");
+    return *x;
+}
+template <class K, class V>
+const V& at_shared_map(const Map<K, V>& m, const K& k) {
+    auto v = m.get(k);
+    if (!v) panic("an `&` path to a key the map does not hold");
+    return *v;
+}
+/// The part a named lens names at an array's index (Semantics ch. 5): the entry in place,
+/// or none past the array's end.
+template <class A>
+A* part_mut(Array<A>& xs, const Nat& i) {
+    if (!xs.get(ix(i))) return nullptr;
+    return &xs.mut_at(ix(i));
+}
+/// `&Lens r <= v` where the lens ends at an array's index: `? x` writes the entry, as
+/// `set_index` does; an array has no entry to remove, and none to write past its end.
+template <class A>
+void set_part(A* part, std::optional<A> v) {
+    if (!v) panic("a lens to an array's index set to `nil`: an array's entry cannot be removed");
+    if (!part) panic("a lens to an index the array does not hold");
+    *part = std::move(*v);
 }
 /// `&m[k] <= v` in an `&` block: `? x` writes the key, `nil` removes it.
 template <class K, class V>
@@ -631,22 +710,6 @@ Map<Nat, A> indexed(const Array<A>& xs) {
     for (const A& x : xs) m.insert(nat_of(i++), x);
     return m;
 }
-
-/// The heights a node with combinators at several heights asked for this tick: its wake
-/// runs the lowest one asked (`Node::wake` is not told its height, prismc/README.md WH).
-class Wakes {
-public:
-    void ask(std::uint32_t h) { asked_.insert(h); }
-    std::uint32_t next() {
-        if (asked_.empty()) return std::uint32_t(-1);
-        std::uint32_t h = *asked_.begin();
-        asked_.erase(asked_.begin());
-        return h;
-    }
-
-private:
-    std::set<std::uint32_t> asked_;
-};
 
 // ---- Jobs -------------------------------------------------------------------------------
 
@@ -963,6 +1026,29 @@ Dynamic<T> dyn_constant(T v) { return Dynamic<T>::constant(std::move(v)); }
 template <class T>
 Event<Array<T>> merge_all(const Array<Event<T>>& events) { return ::prism_rtl::merge_all(events); }
 
+/// `!Union a, b` as an event value (in a plain function's body): `!MergeAll` of the two,
+/// the maps that fired joined as `Union` joins.
+template <class K, class V>
+Event<Map<K, V>> union_ev(const Event<Map<K, V>>& a, const Event<Map<K, V>>& b) {
+    return ::prism_rtl::merge_all(Array<Event<Map<K, V>>>{a, b}).map([](const Array<Map<K, V>>& fired) {
+        Map<K, V> all;
+        for (const auto& one : fired) all = union_(all, one);
+        return all;
+    });
+}
+
+/// `!MergeWith f, events` as an event value: `!MergeAll` of the list, the values that
+/// fired folded by `f` in the list's order.
+template <class F, class T>
+Event<T> merge_with(F f, const Array<Event<T>>& events) {
+    return ::prism_rtl::merge_all(events).map([f](const Array<T>& fired) {
+        auto it = fired.begin();
+        T all = *it;
+        for (++it; it != fired.end(); ++it) all = f(all, *it);
+        return all;
+    });
+}
+
 /// A value given for a generic tag's field or answer, as the tag's own types hold it: the
 /// same plain data at the type with each of the tag's variables a `Pod` (and back). The
 /// two types differ only there, so the decoding cannot fail.
@@ -978,13 +1064,27 @@ U recode(const T& v) {
 inline Pod fault_kind(const std::string& name) { return Pod::name(name); }
 
 /// `e.kind`.
-inline Pod kind_of(const Error& e) { return Pod::name(e.kind_p); }
+inline Pod kind_of(const Error& e) { return e.kind(); }
+
+/// A fault kind made with fields (`Count.TooMany(limit=5, asked=n)`): the tag's value,
+/// its fields as plain data in declaration order.
+inline Pod fault_kind_of(const std::string& name, Pod::Fields fields) { return Pod::element(name, std::move(fields)); }
+
+/// A field of an `Error`'s kind, read back at the field's type (a pattern's binder).
+template <class T>
+T fault_field(const Error& e, const std::string& name) {
+    const Pod* v = e.kind_field(name);
+    if (!v) panic("a prismc bug: a fault kind read for a field it was not made with");
+    auto read = ::prism_rtl::from_pod<T>(*v);
+    if (!read) panic("a prismc bug: a fault kind's field that is not of its type");
+    return std::move(*read);
+}
 
 /// `Error(kind=k, message=m)` with `k` a value.
 inline Error error_of(const Pod& kind, Text message) {
-    const Pod::Choice* c = kind.structure().if_choice();
-    if (!c) panic("an `Error` of a kind that is no fault kind");
-    return Error(c->ctor, std::move(message));
+    auto made = Error::of_kind(kind, std::move(message));
+    if (!made) panic("an `Error` of a kind that is no fault kind");
+    return std::move(*made);
 }
 
 /// `!Updated $d` as an event value (in a supplier's answer, or in a function that takes
@@ -1090,9 +1190,10 @@ inline ::prism_rtl::Scope<Elem, Answer> applied_scope(std::optional<::prism_rtl:
 /// of a block in a hosted scope), with `hear` the blueprint's sink, called with each
 /// answer to the place the blueprint answers, in the tick the answer comes. Gives the
 /// generation and how many places it built.
-template <class Hear>
-Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint_heard(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, std::optional<::prism_rtl::Rc<::prism_rtl::HostOf<Elem, Answer>>> hosted, Hear hear, Cx& cx) {
-    ::prism_rtl::Sink<Answer> sink = [hear = std::move(hear)](const Answer& answer, Cx& cx) -> Done { return hear(answer, cx); };
+/// (`above` is the sink's height twin, told the global height such an answer comes at.)
+template <class AboveFn, class Hear>
+Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint_heard(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, std::optional<::prism_rtl::Rc<::prism_rtl::HostOf<Elem, Answer>>> hosted, AboveFn above, Hear hear, Cx& cx) {
+    ::prism_rtl::Sink<Answer> sink(std::function<Done(const Answer&, Cx&)>([hear = std::move(hear)](const Answer& answer, Cx& cx) -> Done { return hear(answer, cx); }), std::make_shared<const std::function<void(std::uint32_t)>>(std::move(above)));
     auto supplied = TRY(blueprint(std::move(path), sink, applied_scope(std::move(hosted)), base, cx));
     std::uint32_t built = supplied.built;
     return std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied), base, sink), built};
@@ -1232,9 +1333,10 @@ auto event_part(const ::prism_rtl::Event<V>& events, Part part) {
 
 /// An event part of a bundle a blueprint value gives, heard by the block that applied
 /// it: each firing is `hear`'s, in its tick. The subscription lives as long as the port.
-template <class T, class Hear>
-void hear_part(const ::prism_rtl::Event<T>& event, Hear hear) {
-    deref(event.port).subscribe([hear](const T& v, Cx& cx) -> Done { return hear(v, cx); });
+/// (`above` is `hear`'s height twin, told the port's height.)
+template <class T, class AboveFn, class Hear>
+void hear_part(const ::prism_rtl::Event<T>& event, AboveFn above, Hear hear) {
+    deref(event.port).subscribe_above([hear](const T& v, Cx& cx) -> Done { return hear(v, cx); }, std::make_shared<const std::function<void(std::uint32_t)>>(std::move(above)));
 }
 
 /// A blueprint value applied by a block at one of its lines (Semantics ch. 8: "a blueprint
@@ -1243,21 +1345,24 @@ void hear_part(const ::prism_rtl::Event<T>& event, Hear hear) {
 /// a dynamic's) builds no place here, and what it answers is the line's result, which a
 /// line of unit drops.
 inline Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint(const ::prism_rtl::Blueprint<Elem, Answer>& blueprint, Path path, std::uint32_t base, std::optional<::prism_rtl::Rc<::prism_rtl::HostOf<Elem, Answer>>> hosted, Cx& cx) {
-    return apply_blueprint_heard(blueprint, std::move(path), base, std::move(hosted), [](const Answer&, Cx&) -> Done { return {}; }, cx);
+    return apply_blueprint_heard(blueprint, std::move(path), base, std::move(hosted), [](std::uint32_t) {}, [](const Answer&, Cx&) -> Done { return {}; }, cx);
 }
 }
 
 /// A row subscribing to its block's port for one event: the row heard weakly, the handle
-/// kept for its leaving (claude/backend.md: `Port::subscribe`).
-template <class N, class P, class Port, class Call>
-void subscribe_row(const ::prism_rtl::Rc<N>& node, std::optional<::prism_rtl::Rc<P>> parent, Port port, Call call, std::optional<Handle>& slot) {
+/// kept for its leaving (claude/backend.md: `Port::subscribe_above`). `above` is the call's
+/// height twin: told the port's height at once and each time it rises.
+template <class N, class P, class Port, class Call, class AboveFn>
+void subscribe_row(const ::prism_rtl::Rc<N>& node, std::optional<::prism_rtl::Rc<P>> parent, Port port, Call call, AboveFn above, std::optional<Handle>& slot) {
     if (!parent) return;
     ::prism_rtl::Weak<N> me = node;
     using T = typename std::remove_cvref_t<decltype(deref(port(*parent)))>::Value;
-    Handle h = deref(port(*parent)).subscribe([me, call](const T& v, Cx& cx) -> Done {
+    Handle h = deref(port(*parent)).subscribe_above([me, call](const T& v, Cx& cx) -> Done {
         if (auto n = me.lock()) call(n, v, cx);
         return {};
-    });
+    }, std::make_shared<const std::function<void(std::uint32_t)>>([me, above](std::uint32_t h) {
+        if (auto n = me.lock()) above(n, h);
+    }));
     slot = h;
 }
 </cpp>

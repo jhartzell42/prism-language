@@ -163,7 +163,7 @@ fn ConvertTypeDecl g, st0, info, d = match d.kind:
                 ? body: match body:
                     TbRecord fs:
                         let ((fields, st2a)) = Fold fs, (([[]], st)), \|((acc, s)), f|
-                            let ((ft, s2)) = ConvType cx, (SigilsOnName (SecondField s, acc, f), f), f.ty
+                            let ((ft, s2)) = ConvType cx, (SigilsOnName (SecondField s, acc, f), (Or g.srcs[info.file], (MkSrc "?", "")), f), f.ty
                             let ((fieldRow, s3)) = if Contains f.sigils, "@": FieldRow cx, s2, f.ty else: ((cx.scope, s2))
                             (((Push acc, ((f.name.name, (FieldSigils f.sigils, ft, fieldRow)))), (FieldRowBound s3, info, (Dotted t.name.path), f)))
                         let st2 = SecondConstructor g, st2a, name, name, d.span
@@ -241,10 +241,17 @@ fn ConvertDecl g, st, info, d = match d.kind:
     DSignature s:
         let qk = QualKey info.name, (DefNameText s.name)
         let cx = CxOf g, info.name
-        let ((sc, st1a)) = SigScheme cx, st, s.ty, s.bounds
+        # a named lens is typed as a function from the whole to the part its result names
+        # ("a reference is typed as the part it names"); one whose signature is refused
+        # has no type, and its body is not read (`CheckLens`)
+        let lens = IsLensText (DefNameText s.name)
+        let ((sc0, st1a)) = SigScheme cx, st, (if lens: LensPlain s.ty else: s.ty), s.bounds
         let st1 = BoundsNamed st1a, s.bounds, (TypeVarsOfType s.ty), "the signature", "the signature"
-        let st2 = LensCheck st1, (DefNameText s.name), s.ty, (DefNameSpan s.name)
-        let st3 = CheckMarkFunction st2, (DefNameText s.name), sc.ty, (DefNameSpan s.name)
+        let st2 = if lens: LensCheck st1, (Or g.srcs[info.file], (MkSrc "?", "")), (DefNameText s.name), s.ty, (DefNameSpan s.name) else: st1
+        let sc = if (Len st2.diags) == (Len st1.diags): sc0
+            else: update sc0:
+                &_.ty <= TyErr
+        let st3 = CheckMarkFunction st2, (if lens: DropPrefix (DefNameText s.name), "&" else: DefNameText s.name), sc.ty, (DefNameSpan s.name)
         if HasKey g.vals, qk: ((g, (Err st3, "collision", d.span, "a second signature for `{DefNameText s.name}`")))
         # a constructor's name is a value-level name of its module
         else: match g.ctors[qk]:
@@ -318,23 +325,57 @@ fn AddToFn d, f = match d.body:
 Insert2: fn [a], Nat, a -> [a]
 fn Insert2 xs, i, x = Append (Push (Take xs, i), x), (Drop xs, i + 1)
 
-# A named lens, `&Home: fn &Fixture -> &Nat`, takes one reference (`lens-arity`); named
-# lenses are out of this compiler (decisions.md), so one that passes is `unsupported`.
-LensCheck: fn St, Text, Type, Range -> St
-fn LensCheck st, name, t, span:
-    if (not (HasPrefix name, "&")): st
-    else: match t.kind:
-        TFn ignore, ps, ignore:
-            let refs = Filter ps, \|p| IsRefType p
-            if (Len refs) > 1: ErrFix st, "lens-arity", span, "a lens takes one reference", "take the second part as a plain value"
-            else: Err st, "unsupported", span, "this checker does not implement named lenses and `Over`"
-        otherwise: st
+# A named lens, `&Home: fn &Fixture -> &Nat` (Semantics ch. 5, "References and lens
+# paths"; Type System ch. 3, "Lenses"): "a function from one reference to a reference,
+# named with `&`". It takes exactly one `&` parameter (`lens-arity`: "Rust's lifetime
+# elision rule for a function with one reference parameter") and nothing else (appendix
+# A.6: `"&" uname ref` has no place for a second argument), and its result is a reference
+# (`lens-result`).
+LensCheck: fn St, Src, Text, Type, Range -> St
+fn LensCheck st, src, name, t, span = match t.kind:
+    TFn ignore, ps, res:
+        let refs = Filter ps, \|p| IsRefType p
+        if (Len refs) > 1: ErrFix st, "lens-arity", span, "a lens takes one reference", "take the second part as a plain value"
+        else: if (Len refs) == 0:
+            let fix = match ps[0]:
+                ? p: "write its parameter as a reference, `&{SpanText src, p.span}`"
+                nil: "give it one parameter, a reference"
+            ErrFix st, "lens-arity", span, "a lens takes one reference, and `{name}` takes none", fix
+        else: if (Len ps) > 1: ErrFix st, "lens-arity", span, "a lens takes one reference and nothing else, and `{name}` takes {Len ps} parameters", "write a lens for each part, or the path in the `update` block"
+        else: if not (IsRefType res): ErrFix st, "lens-result", span, "a lens gives back a reference, and `{name}` gives back `{SpanText src, res.span}`", "write the result as `&{SpanText src, res.span}`"
+        else: st
+    otherwise: ErrFix st, "lens-result", span, "a name with `&` is a lens, a function from one reference to a reference", "write `{name}: fn &Whole -> &Part`, or name it without `&`"
 
 IsRefType: fn Type -> Bool
 fn IsRefType t = match t.kind:
     TName n, ignore: (HasPrefix n.sigils, "&")
     TSigiled s, ignore: (HasPrefix s, "&")
     otherwise: False
+
+# A named lens's name: `&`, then an uppercase name under whatever marks its part shows
+# (`&Acc`, `&?Second`; `Board.&Acc` as a definition's key).
+IsLensText: fn Text -> Bool
+fn IsLensText name:
+    let bare = BareName name
+    (HasPrefix bare, "&") and IsUpperText (DropPrefix bare, (MarksOf bare))
+
+# A lens's signature as the function from the whole to the part it is typed as: the `&`
+# off its parameters and its result.
+LensPlain: fn Type -> Type
+fn LensPlain t = match t.kind:
+    TFn color, ps, res: Type(kind=(TFn color, (Each ps, WithoutRef), (WithoutRef res)), span=t.span)
+    otherwise: t
+
+WithoutRef: fn Type -> Type
+fn WithoutRef t = match t.kind:
+    TName n, args:
+        if (HasPrefix n.sigils, "&"): Type(kind=(TName SName(sigils=(DropPrefix n.sigils, "&"), path=n.path, span=n.span), args), span=t.span)
+        else: t
+    TSigiled s, inner:
+        if s == "&": inner
+        else: if (HasPrefix s, "&"): Type(kind=(TSigiled (DropPrefix s, "&"), inner), span=t.span)
+        else: t
+    otherwise: t
 
 # `mark-function` (ch. 5, the full-stack name check): a function's name shows the
 # outermost mark of what it returns.
@@ -351,10 +392,13 @@ fn CheckMarkFunction st, name, t, span = match t:
 
 # `field-sigils`: a field's sigils stand on its name, its type written without them
 # (`$label: Text`, never `label: $Text`), as a binder's do.
-SigilsOnName: fn St, Field -> St
-fn SigilsOnName st, f:
+SigilsOnName: fn St, Src, Field -> St
+fn SigilsOnName st, src, f:
     let sigils = TypeSigils f.ty
-    if sigils == "": st
+    # `reference-stored`: "No reference is stored, returned or captured" (Semantics ch. 5,
+    # "The borrow rule"), so no field is one
+    if (HasPrefix f.sigils, "&") or (HasPrefix sigils, "&"): ErrFix st, "reference-stored", f.span, "the field `{f.sigils}{f.name.name}` would store a reference, and no reference outlives its `update` block", "store the value, `{DropPrefix f.sigils, "&"}{f.name.name}: {DropPrefix (SpanText src, f.ty.span), "&"}`"
+    else: if sigils == "": st
     else: ErrFix st, "field-sigils", f.span, "the field `{f.sigils}{f.name.name}` writes `{sigils}` on its type; a field's sigils stand on its name", "write `{f.sigils}{sigils}{f.name.name}: ` and the type without them"
 
 # The sigils written outermost on a type (`$` of `$Text`, `$?` of `$?Rect`).
@@ -512,18 +556,15 @@ fn ConvTag g, st, info, t, span:
     let cx = CxOf g, info.name
     let ((kind, out, st2)) = TagKind g, cx, st, t.ofType
     let ((fields, st3)) = Fold t.fields, (([[]], st2)), \|((acc, s)), f|
-        let ((ft, s2)) = ConvType cx, (SigilsOnName (SecondField s, acc, f), f), f.ty
+        let ((ft, s2)) = ConvType cx, (SigilsOnName (SecondField s, acc, f), (Or g.srcs[info.file], (MkSrc "?", "")), f), f.ty
         let ((fieldRow, s3)) = if Contains f.sigils, "@": FieldRow cx, s2, f.ty else: ((cx.scope, s2))
         (((Push acc, ((f.name.name, (FieldSigils f.sigils, ft, fieldRow)))), s3))
     let qs = Fold t.fields, (TypeVarsOfType t.ofType), \|acc, f| UnionTexts acc, (TypeVarsOfType f.ty)
     let ((bs, st4a)) = ConvBounds cx, st3, t.bounds
     # `collision`: a tag is declared once; the first declaration stays the tag
     let st4b = if HasKey g.tags, name: Err st4a, "collision", span, "a second tag `{name}`" else: st4a
-    # a fault kind is its tag alone (Semantics ch. 10): what failed goes in the `Error`'s
-    # message, and a kind with a field has no value a `match` on kinds could name
-    let st4 = match t.fields[0]:
-        ? f if kind == "Fault" or kind == "Prelude.Fault": ErrFix st4b, "mismatch", span, "the fault kind `{name}` declares a field, `{f.name.name}`; a fault kind is its tag alone", "say what failed in the message of the `Error`"
-        otherwise: st4b
+    # (a fault kind may declare fields: a fault holds typed values, ruling TF)
+    let st4 = st4b
     # `field-variable`: a variable in a field appears in the tag's output (Type System
     # ch. 2, "A variable in a field must appear in the index"), which is what decides it
     # where the tag is matched

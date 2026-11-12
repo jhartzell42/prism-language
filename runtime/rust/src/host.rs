@@ -416,8 +416,44 @@ impl<K: Ord + Clone + 'static, V: Clone + Eq + 'static> PerKey<K, V> {
     }
 }
 
-/// The way back into a child's place: a typed answer, delivered now.
-pub type Sink<A> = Rc<dyn Fn(&A, &mut Cx) -> Done>;
+/// The way back into a child's place: a typed answer, delivered now (called as a
+/// function), and the height twin of that delivery: what delivers an answer inside a tick
+/// at a global height (a widget's event result, fired by a combinator of its row) tells
+/// the twin that height, at the wiring and each time it rises, so the combinators the
+/// answer reaches sit above it (Graph ch. 4, "Heights"; [`crate::cells::Port::subscribe_above`]).
+/// An answer delivered as a tick opens (the World's, a host's, a push) tells nothing.
+pub struct Sink<A> {
+    deliver: Rc<dyn Fn(&A, &mut Cx) -> Done>,
+    above: crate::cells::Above,
+}
+
+impl<A> Clone for Sink<A> {
+    fn clone(&self) -> Sink<A> {
+        Sink { deliver: self.deliver.clone(), above: self.above.clone() }
+    }
+}
+
+impl<A> std::ops::Deref for Sink<A> {
+    type Target = dyn Fn(&A, &mut Cx) -> Done;
+    fn deref(&self) -> &Self::Target {
+        &*self.deliver
+    }
+}
+
+impl<A> Sink<A> {
+    /// A sink whose answers reach no combinator inside the tick they come in.
+    pub fn new(deliver: impl Fn(&A, &mut Cx) -> Done + 'static) -> Sink<A> {
+        Sink { deliver: Rc::new(deliver), above: Rc::new(|_| ()) }
+    }
+    /// A sink with its height twin.
+    pub fn heard_above(deliver: impl Fn(&A, &mut Cx) -> Done + 'static, above: crate::cells::Above) -> Sink<A> {
+        Sink { deliver: Rc::new(deliver), above }
+    }
+    /// The sink's height twin, for what delivers its answers inside a tick.
+    pub fn twin(&self) -> crate::cells::Above {
+        self.above.clone()
+    }
+}
 
 /// What a blueprint built for a child place gives back: its node (whose places are under
 /// the row's path), the place's first value when the output has one, and whether the
@@ -480,6 +516,13 @@ pub trait AnswerOf<E>: Clone + 'static {
     fn decode_first(element: &E, v: &Pod) -> Result<Self, Fault> {
         Self::decode(element, v)
     }
+    /// An answer held whole (a bundle with a part that is no plain data, made outside a
+    /// tag's arm), as the parts the element's tag takes: its state and its events, which a
+    /// host's place is answered with as [`parts_blueprint`] answers. `None` for any other
+    /// answer, and for an element whose tag has no such bundle.
+    fn held_parts(_element: &E, _answer: &Self) -> Option<PartsAnswer<Self>> {
+        None
+    }
 }
 
 /// Where a node's places go (claude/backend.md, "Hosting"): the document, or an enclosing
@@ -509,7 +552,8 @@ pub fn answers_mapped<E: 'static, A: Clone + 'static>(blueprint: Blueprint<E, A>
     let walk = Rc::new(walk);
     Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, base, cx| {
         let walked = walk.clone();
-        let mapped: Sink<A> = Rc::new(move |answer: &A, cx: &mut Cx| sink(&walked(answer), cx));
+        let twin = sink.twin();
+        let mapped: Sink<A> = Sink::heard_above(move |answer: &A, cx: &mut Cx| sink(&walked(answer), cx), twin);
         let mut supplied = blueprint(path, mapped, scope, base, cx)?;
         supplied.first = supplied.first.as_ref().map(|first| walk(first));
         Ok(supplied)
@@ -575,7 +619,31 @@ pub fn widget_event_blueprint<E: 'static, A: 'static, T: Clone + 'static>(
             Scope::Hosted(host) => (build_hosted(path, base, host.clone(), host_moved(host), cx)?, true),
         };
         let answered = answer.clone();
-        let _ = made.result.subscribe(Rc::new(move |v: &T, cx: &mut Cx| sink(&answered(v), cx)));
+        let twin = sink.twin();
+        let _ = made.result.subscribe_above(Rc::new(move |v: &T, cx: &mut Cx| sink(&answered(v), cx)), twin);
+        let (document, deliver) = if hosted { (Some(made.document), Some(made.deliver)) } else { (None, None) };
+        Ok(Supplied { node: made.node, first: None, forwards: false, entry: None, built: made.built, leave: Some(made.leave), document, deliver })
+    })
+}
+
+/// A widget that gives an event back as a supplier's answer under a tag's arm: as
+/// [`widget_event_blueprint`], but each firing is a computed answer, an input of the next
+/// tick, which is owed (Semantics ch. 9, "A computed answer is the next tick's input"),
+/// as [`event_blueprint`]'s is. The subscription lives as long as the row, whose port it
+/// is.
+pub fn widget_event_answer_blueprint<E: 'static, A: Clone + 'static, T: Clone + 'static>(
+    build: impl Fn(Path, u32, &mut Cx) -> Result<BuiltWidget<E, A, Rc<Port<T>>>, Fault> + 'static,
+    build_hosted: impl Fn(Path, u32, Rc<dyn HostOf<E, A>>, Moved, &mut Cx) -> Result<BuiltWidget<E, A, Rc<Port<T>>>, Fault> + 'static,
+    answer: impl Fn(&T) -> A + 'static,
+) -> Blueprint<E, A> {
+    let answer = Rc::new(answer);
+    Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, base, cx| {
+        let (made, hosted) = match scope {
+            Scope::World => (build(path, base, cx)?, false),
+            Scope::Hosted(host) => (build_hosted(path, base, host.clone(), host_moved(host), cx)?, true),
+        };
+        let answered = answer.clone();
+        let _ = made.result.subscribe(Rc::new(move |v: &T, cx: &mut Cx| later(&sink, answered(v), cx)));
         let (document, deliver) = if hosted { (Some(made.document), Some(made.deliver)) } else { (None, None) };
         Ok(Supplied { node: made.node, first: None, forwards: false, entry: None, built: made.built, leave: Some(made.leave), document, deliver })
     })
@@ -1103,11 +1171,64 @@ pub trait HostOf<E, A> {
     /// A request from the place `place` of this host's child, which a host under this one
     /// hands up (a forwarded element's, or a placed description's): [`Host::request`].
     fn request_from(&self, place: &Path, field: Option<&str>, value: Pod, cx: &mut Cx) -> Done;
+    /// The height twin of a request: a place of this host's child fires a request at
+    /// global height `h` ([`Host::request_above`]).
+    fn request_above(&self, h: u32);
+    /// The global height this host's child's requests fire at, for a row made now.
+    fn request_height(&self) -> u32;
     /// A place of this host's child came or went behind its document (a row a blueprint
     /// built there built or tore down a place of its own): the owner's `host_k_moved`.
     /// Nothing before the owner's node is made: its document's first snapshot is taken
     /// after.
     fn moved(&self, cx: &mut Cx);
+}
+
+/// A host as a row under its child reaches it. A row of a hosted child's `for` or `rebuild`
+/// (or an arm of its building `match`) names its places by paths relative to the row, and
+/// the host knows a child place by its path relative to the child: this is the host with
+/// the row's path put before every place the row names (a first value asked, a request
+/// handed up, an answer delivered). A row under a row puts its own path before the outer
+/// row's, so a place is named whole however deep its row stands.
+struct HostUnder<E, A> {
+    host: Rc<dyn HostOf<E, A>>,
+    row: Path,
+}
+
+impl<E, A> HostOf<E, A> for HostUnder<E, A> {
+    fn deliver(&self, place: &Path, v: &A, cx: &mut Cx) -> Done {
+        self.host.deliver(&self.row.join(place), v, cx)
+    }
+    fn first_value(&self, place: &Path, element: &E, entry: &Rc<Entry<E>>, cx: &mut Cx) -> Result<Option<A>, Fault> {
+        self.host.first_value(&self.row.join(place), element, entry, cx)
+    }
+    fn supplier(&self) -> &Supplier<E, A> {
+        self.host.supplier()
+    }
+    fn scope(&self) -> Scope<E, A> {
+        self.host.scope()
+    }
+    fn request_from(&self, place: &Path, field: Option<&str>, value: Pod, cx: &mut Cx) -> Done {
+        self.host.request_from(&self.row.join(place), field, value, cx)
+    }
+    fn request_above(&self, h: u32) {
+        self.host.request_above(h)
+    }
+    fn request_height(&self) -> u32 {
+        self.host.request_height()
+    }
+    fn moved(&self, cx: &mut Cx) {
+        self.host.moved(cx)
+    }
+}
+
+/// `host` as the row built at `row` (a path relative to the block that builds the row)
+/// reaches it ([`HostUnder`]). A row's `build` in a hosted scope calls this first, so every
+/// place the row names is named by its whole path under the host's child.
+pub fn host_under<E: 'static, A: 'static>(host: Rc<dyn HostOf<E, A>>, row: &Path) -> Rc<dyn HostOf<E, A>> {
+    if row.is_empty() {
+        return host;
+    }
+    Rc::new(HostUnder { host, row: row.clone() })
 }
 
 /// The rows of a host's `for p, e <- $doc`, which the owner keeps in a field.
@@ -1118,13 +1239,16 @@ pub type Rows<E, A> = Rc<RefCell<Map<Path, Rc<HostRow<E, A>>>>>;
 /// owner's emitted typed dispatch.
 pub struct Host<E, A, P> {
     me: Weak<Host<E, A, P>>,
-    at: Path,
+    at: RefCell<Path>,
     owner: RefCell<Weak<P>>,
     rows: Rows<E, A>,
     supplier: Supplier<E, A>,
     enclosing: Option<Rc<dyn HostOf<E, A>>>,
     deliver: fn(&Rc<P>, &Path, &A, &mut Cx) -> Done,
     moved: fn(&Rc<P>, &mut Cx),
+    /// The global height the child's requests fire at: one for all its places, only ever
+    /// raised ([`Host::request_above`]).
+    request_height: Cell<u32>,
 }
 
 impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> Host<E, A, P> {
@@ -1132,7 +1256,15 @@ impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> Host<E, A, P> {
     /// `enclosing` the host whose scope the line stands in, if any; `deliver` and `moved`
     /// the owner's emitted `host_k_answer` and `host_k_moved`.
     pub fn new(at: Path, rows: Rows<E, A>, supplier: Supplier<E, A>, enclosing: Option<Rc<dyn HostOf<E, A>>>, deliver: fn(&Rc<P>, &Path, &A, &mut Cx) -> Done, moved: fn(&Rc<P>, &mut Cx)) -> Rc<Host<E, A, P>> {
-        Rc::new_cyclic(|me| Host { me: me.clone(), at, owner: RefCell::new(Weak::new()), rows, supplier, enclosing, deliver, moved })
+        Rc::new_cyclic(|me| Host { me: me.clone(), at: RefCell::new(at), owner: RefCell::new(Weak::new()), rows, supplier, enclosing, deliver, moved, request_height: Cell::new(0) })
+    }
+
+    /// The host's place, told once the owner's node stands: a host made in the build of
+    /// a node whose places take their numbers after it (places are counted as they are
+    /// built) is made at the root and placed here, before its rows are built and before
+    /// any child place asks its first value.
+    pub fn place_at(&self, at: Path) {
+        *self.at.borrow_mut() = at;
     }
 
     /// The owner's node, once made: the rows read the document and answer through it.
@@ -1174,11 +1306,34 @@ impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> Host<E, A, P> {
     /// A child place's request: out with its forwarded element, or nowhere when the
     /// supplier answered the place (a host answers its child; a request reaches a World
     /// only from an element the host's blueprint emits).
+    /// The height twin of [`Host::request`]: a place of the child fires a request at
+    /// global height `h`. Every row's request port is raised to it, so what hears a live
+    /// element's event field sits above the request; a row made later takes the height
+    /// at its making ([`Host::request_height`]); a forwarded element's request goes on
+    /// to the enclosing host at the same height. One height for all the child's places:
+    /// the emitted twin of a request does not know its place's row.
+    pub fn request_above(&self, h: u32) {
+        if h <= self.request_height.get() {
+            return;
+        }
+        self.request_height.set(h);
+        let rows: Vec<Rc<HostRow<E, A>>> = self.rows.borrow().values().cloned().collect();
+        for row in rows {
+            row.requests.raise(h);
+        }
+        if let Some(enclosing) = &self.enclosing {
+            enclosing.request_above(h);
+        }
+    }
+    /// The global height the child's requests fire at.
+    pub fn request_height(&self) -> u32 {
+        self.request_height.get()
+    }
     pub fn request(&self, place: &Path, field: Option<&str>, value: Pod, cx: &mut Cx) -> Done {
         let row = self.rows.borrow().get(place).cloned();
         match row {
             Some(row) => row.request(field, value, cx),
-            None => Err(Fault::answer(format!("a request from {place}, which has no row under the host at {}", self.at))),
+            None => Err(Fault::answer(format!("a request from {place}, which has no row under the host at {}", self.at.borrow()))),
         }
     }
 }
@@ -1191,7 +1346,7 @@ impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> HostOf<E, A> for Host<E, A, P> {
     /// sync"): the supplier row for the place is built now, before the owner's node, and
     /// kept where the builder finds it. The one early construction.
     fn first_value(&self, place: &Path, element: &E, entry: &Rc<Entry<E>>, cx: &mut Cx) -> Result<Option<A>, Fault> {
-        let row = HostRow::early(self.at.child(Segment::Key(place.to_pod())), place.clone(), element.clone(), entry.clone(), self.me(), cx)?;
+        let row = HostRow::early(self.at.borrow().child(Segment::Key(place.to_pod())), place.clone(), element.clone(), entry.clone(), self.me(), cx)?;
         let first = row.first();
         self.rows.borrow_mut().insert(place.clone(), row);
         Ok(first)
@@ -1207,6 +1362,12 @@ impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> HostOf<E, A> for Host<E, A, P> {
     }
     fn request_from(&self, place: &Path, field: Option<&str>, value: Pod, cx: &mut Cx) -> Done {
         self.request(place, field, value, cx)
+    }
+    fn request_above(&self, h: u32) {
+        Host::request_above(self, h)
+    }
+    fn request_height(&self) -> u32 {
+        Host::request_height(self)
     }
     fn moved(&self, cx: &mut Cx) {
         let owner = self.owner.borrow().upgrade();
@@ -1229,6 +1390,9 @@ pub struct HostRow<E, A> {
     host: Weak<dyn HostOf<E, A>>,
     /// The key left: a computed answer in flight to the place is dropped.
     left: Cell<bool>,
+    /// The subscriptions of a bundle answered held whole ([`AnswerOf::held_parts`]): they
+    /// leave with the row.
+    held: RefCell<Option<Rc<dyn Node>>>,
     sink: Sink<A>,
     supplied: RefCell<Option<Supplied<E, A>>>,
     /// The entry moved: readers of the live element's level (a forwarded element) read it
@@ -1238,7 +1402,7 @@ pub struct HostRow<E, A> {
     requests: Rc<Port<(Option<String>, Pod)>>,
 }
 
-impl<E: Clone + Eq + 'static, A: Clone + 'static> HostRow<E, A> {
+impl<E: Clone + Eq + 'static, A: AnswerOf<E>> HostRow<E, A> {
     /// Built after propagation, from the entry after the tick (R7): the supplier is asked
     /// for the place's blueprint, and the blueprint is built under the row's path, in the
     /// host's scope. The `for` machinery of the emitted code calls this with the host as
@@ -1253,20 +1417,29 @@ impl<E: Clone + Eq + 'static, A: Clone + 'static> HostRow<E, A> {
     pub fn early(path: Path, key: Path, identity: E, place: Rc<Entry<E>>, host: Rc<dyn HostOf<E, A>>, cx: &mut Cx) -> Result<Rc<HostRow<E, A>>, Fault> {
         let node = Rc::new_cyclic(|me: &Weak<HostRow<E, A>>| {
             let row = me.clone();
-            let sink: Sink<A> = Rc::new(move |v: &A, cx: &mut Cx| match row.upgrade() {
+            let sink: Sink<A> = Sink::new(move |v: &A, cx: &mut Cx| match row.upgrade() {
                 // An answer to a row that left, or one that is gone, is dropped (Semantics
                 // ch. 9, "A late result is dropped"): a computed answer in flight to a
                 // place whose key left.
                 Some(row) if !row.left.get() => row.host().deliver(&row.key, v, cx),
                 _ => Ok(()),
             });
-            HostRow { path, key, place, host: Rc::downgrade(&host), left: Cell::new(false), sink, supplied: RefCell::new(None), level_moved: Rc::new(Port::new()), requests: Rc::new(Port::new()) }
+            HostRow { path, key, place, host: Rc::downgrade(&host), left: Cell::new(false), held: RefCell::new(None), sink, supplied: RefCell::new(None), level_moved: Rc::new(Port::new()), requests: Rc::new(Port::new()) }
         });
+        // the row's requests fire at the height the host's child's requests do
+        node.requests.raise(host.request_height());
         let weak: Weak<dyn Node> = Rc::downgrade(&(node.clone() as Rc<dyn Node>));
         node.place.watch(weak);
-        let element = node.element(identity);
+        let element = node.element(identity.clone());
         let blueprint = (host.supplier())(&node.key, &element);
-        let supplied = blueprint(node.path.clone(), node.sink.clone(), &host.scope(), 0, cx)?;
+        let mut supplied = blueprint(node.path.clone(), node.sink.clone(), &host.scope(), 0, cx)?;
+        // a bundle made outside the tag's arm and held whole is answered part by part: its
+        // state the place's first value, each firing of an event part an answer
+        if let Some(parts) = supplied.first.as_ref().and_then(|first| A::held_parts(&identity, first)) {
+            let (first, subscribed) = answer_parts(&parts, &node.sink, cx);
+            supplied.first = first;
+            *node.held.borrow_mut() = Some(Rc::new(subscribed));
+        }
         *node.supplied.borrow_mut() = Some(supplied);
         Ok(node)
     }
@@ -1359,6 +1532,10 @@ impl<E: Clone + Eq + 'static, A: Clone + 'static> HostRow<E, A> {
     /// answer in flight is dropped. The emitted prelude's `Row` calls this.
     pub fn leave_row(&self, cx: &mut Cx) {
         self.left.set(true);
+        if let Some(held) = self.held.borrow_mut().take() {
+            let done = held.leave(cx);
+            cx.keep(done);
+        }
         if let Some(s) = self.supplied.borrow_mut().take() {
             match &s.leave {
                 Some(leave) => leave(cx),

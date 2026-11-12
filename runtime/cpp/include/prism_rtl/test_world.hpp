@@ -6,11 +6,16 @@
 //   ticks while the program says `pending` and prints `compute until idle: k ticks, n to
 //   m`, then each of its ticks that has a section (decisions.md D6). With none to run it
 //   prints `0 ticks`, and with one, `1 tick, n to n`.
-// - **Nothing arrives that the test did not write.** It never opens a tick on its own,
-//   never answers a request unless the test writes `answer`, and answers first-value
-//   queries from the `with` and `push` entries, then by Pitch ch. 6's policy for
-//   pictures: `Gui.Window` with `WindowId title`, `Gui.Metrics` from a font nine units a
-//   character and fourteen high.
+// - **Nothing arrives that the test did not write,** but the prelude's own answers. It
+//   never opens a tick on its own, never answers a request unless the test writes
+//   `answer`, and answers first-value queries from the `with` and `push` entries, then by
+//   Pitch ch. 6's policy for pictures: `Gui.Window` with `WindowId title`, `Gui.Metrics`
+//   from a font nine units a character and fourteen high.
+// - **`Prelude.Unwrap` and `Prelude.Exceptions` are answered as every World answers
+//   them** (prelude.hpp; Semantics ch. 10): an unwrap's `~ x` at tick n is answered with
+//   `x` as an input of the next tick the test opens, shown under that tick's `in:` as a
+//   delivery is, and the test is owed that tick. A poisoned subtree is served nothing
+//   again, a test's own delivery included.
 // - **Sections**, each omitted when empty: `in:`, `added:`, `changed:`, `torn down:`,
 //   `requested:`, `result:`; `aborted` in place of everything after `in:` for a failed
 //   tick, with `| ...` lines of this implementation's own wording.
