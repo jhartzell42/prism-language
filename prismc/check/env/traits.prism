@@ -254,6 +254,46 @@ fn TagFieldsPrint g, st = Fold (Keys g.tags), st, \|s, name| match g.tags[name]:
                 let there = WithFile s1, tg.file
                 WithFile (if fix == "": Err there, "no-impl", at, message else: ErrFix there, "no-impl", at, message, fix), s1.file
 
+# `fault-field`: a fault kind's fields are plain data (ruling TF: a fault holds typed
+# values). A fault leaves the tick it was made in, handed to a World and printed in a
+# transcript (Semantics ch. 10), and its fields are kept as plain data and read back at
+# their types, so a field that holds a dynamic, an event, a reference, a blueprint, an
+# element or a packed value has nothing to keep. A function is `no-impl` already: the
+# field does not print (`TagFieldsPrint`).
+FaultFieldsPlain: unbounded fn G, St -> St
+fn FaultFieldsPlain g, st = Fold (Keys g.tags), st, \|s, name| match g.tags[name]:
+    nil: s
+    ? tg:
+        if not (tg.kind == "Fault" or tg.kind == "Prelude.Fault"): s
+        else: Fold (Range0 (Len tg.fields)), s, \|s1, i|
+            let ((ignore, fieldType)) = Or tg.fields[i], (("", TyErr))
+            let ((label, at)) = Or tg.fieldAt[i], (("", tg.span))
+            match ?NotPlainData fieldType:
+                nil: s1
+                ? what: WithFile (ErrFix (WithFile s1, tg.file), "fault-field", at, "the field `{label}` of the fault kind `{name}` is no plain data: it holds {what}", "give the field the value as the fault is made, a type with no `$`, `!`, `@` or `any` in it"), s1.file
+
+# What a type holds that is no plain data, the first found; none for plain data.
+?NotPlainData: unbounded fn Ty -> ?Text
+fn ?NotPlainData t = match t:
+    TySig "$", ignore: ? "a dynamic"
+    TySig "!", ignore: ? "an event"
+    TySig "&", ignore: ? "a reference"
+    TySig ignore, inner: ?NotPlainData inner
+    TyAt ignore, ignore: ? "a blueprint"
+    TyElem ignore, ignore: ? "an element"
+    TyElemAny ignore: ? "an element"
+    TyAny ignore: ? "a packed value (`any`)"
+    TyTuple parts: ?FirstNotPlainData parts
+    TyArray element: ?NotPlainData element
+    TyMap k, v: ?FirstNotPlainData [[k, v]]
+    TyCon ignore, args: ?FirstNotPlainData args
+    otherwise: nil
+
+?FirstNotPlainData: unbounded fn [Ty] -> ?Text
+fn ?FirstNotPlainData parts = Fold parts, nil, \|?found, part| match ?found:
+    ? what: ? what
+    nil: ?NotPlainData part
+
 # The first part of a tag's field type that does not print, with what the message adds and
 # its fix; none when the type prints.
 ?Unprintable: unbounded fn G, St, Ty -> ?((Ty, Text, Text))
