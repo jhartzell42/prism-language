@@ -1251,7 +1251,9 @@ fn RowMethods wx:
     let removes = Fold (Filter wx.places, \|p| Emits wx, p.pos), [[]], \|acc, p| Append acc, (Append [[DoExpr (XMethod (XCx), "removed", [[(PlaceAt wx, "self", p.pos)]])]], (if p.watch == "": [[]] else: [[DoExpr (XMethod (XField XSelf, p.watch), "drop_all", [[]])]]))
     let nested = Append (Each wx.builders, \|b| DoExpr (XMethod (XMethod (XMethod (XField XSelf, b.name), "borrow", [[]]), "values", [[]]), "for_each", [[(XClosure False, [[PaBind "row"]], (XMethod (XVar "row"), "leave_row", [[XCx]]))]])), (Each wx.gens, \|gd| DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XMethod (XMethod (XField XSelf, gd.name), "borrow", [[]]), "as_ref", [[]]), [[DoExpr (XMethod (XVar "row"), "leave_row", [[XCx]])]], [[]])
     let left = if wx.genOf == "": [[]] else: [[DoExpr (XMethod (XField XSelf, "left"), "set", [[XBool True]])]]
-    [[MethDef(name="remove_places", recv=RecvRef, params=[[]], cx=CxMut, ret=OutUnit, body=(Append (Append left, removes), nested), tail=(XUnit), doc="The row left: its places are torn down.")]]
+    # (and its subscriptions to the event values it hears undone, `SubscribedValue`)
+    let unsubscribed = Each wx.valueSubs, \|name| DoExpr (XCall (HelperRef "unsubscribe_value"), [[(XRef (XField XSelf, "{name}_value_port")), (XRef (XField XSelf, "{name}_sub"))]])
+    [[MethDef(name="remove_places", recv=RecvRef, params=[[]], cx=CxMut, ret=OutUnit, body=(Append (Append (Append left, removes), nested), unsubscribed), tail=(XUnit), doc="The row left: its places are torn down, its subscriptions to event values undone.")]]
 
 GnDoc: fn Gn -> Text
 fn GnDoc g = match g.kind:

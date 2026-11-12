@@ -1418,4 +1418,14 @@ void subscribe_row(const ::prism_rtl::Rc<N>& node, std::optional<::prism_rtl::Rc
     }));
     slot = h;
 }
+
+/// A row's subscription to an event value's own port, undone when the row leaves
+/// (claude/backend.md, `SubscribedValue`): the port kept beside the handle, both taken, so
+/// a second leaving does nothing.
+template <class PortSlot>
+void unsubscribe_value(PortSlot& port, std::optional<Handle>& slot) {
+    if (port && slot) deref(*port).unsubscribe(*slot);
+    port.reset();
+    slot.reset();
+}
 </cpp>
