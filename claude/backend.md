@@ -655,7 +655,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
   as one value from the node's methods (a place's field over `StepOf both`, a late
   `let`, a hold's step) is a getter of the node bound under `{name}#value`
   (`LateBundleValue`): the tuple of a plain part's read, an event part's event over a
-  port its node fires, a `$` part's live `Dynamic`. A building line that takes the
+  port its node fires, a `$` part's live `Dynamic`, a bundle inside the tuple of its own
+  parts' values, made the same way (`?LateBundleValues`). A building line that takes the
   bundle as one value (a host whose supplier gives `@ both`) is a deferred row
   (`DeferredLine`), and a row reads its block's `{name}#value` through its parent
   (`WholeOfBlock`), as it reads the block's event ports (`{name}#port`).
@@ -696,14 +697,23 @@ it make every program an interpreter run, and every type mistake a runtime fault
     hold under `PartHoldKey`), each `$` part's hold is empty until then (`AskedPart`,
     read as `LatePlaceBn`), the element its pushes are keyed by kept in a cell
     (`AskedElement`, `Wx.lateElements`), an event part a node as ever; `{name}#asked`
-    keeps `PreBind` off those names. Refused: an answer with no name of its own (every
-    state part `ignore`), or in a hosted scope (the `unbuilt` marker of `BindLate`);
+    keeps `PreBind` off those names. When the pattern names no state part (every state
+    part `ignore`), each ignored state part has a hold of its own under `PartHoldKey`
+    (`IgnoredStateHolds`), so the place asks there with no name bound. In a hosted scope
+    the host answers: a plain answer bound to a name is marked as `LateHostedOutput`
+    marks one under a host placed late (`LatePlainBn`, `{name}#lateplace`), and the
+    place asks its host where the scope's places ask (`Wx.lateFirsts`), with the
+    element its getter reads then (`ElementLine`'s `asksLater`);
   - a plain `let` of the node that reads a late name is late too (`MarkLateLets`): a
     getter of the node that computes it (`late_{name}`, `LateLetGetters`), bound under
     `{name}#late` as the split line's names are, so what reads it reads it late in turn;
     a `let` of a pattern whose names are plain (`let ((low, high)) = Sides n`) is late
     with every name it binds: one getter computes the whole value (`late_whole`), and
-    each name's getter matches it by the pattern;
+    each name's getter matches it by the pattern; a generalized `let` used at several
+    instantiations (a lambda used at two types, `?ManyInstances`) has a getter per
+    instantiation (`late_{name}_{k}`), each the value lowered at it, bound under
+    `{name}#inst{k}` with each use bound to its own (`Env.uses`), as `PreBindName`
+    binds a field per instantiation;
   - a building line of the node that reads a late name and is no element's (a widget's
     plain argument, a `for` above the split, a building `match` over the name) is a
     generation of one arm at its own positions (`DeferredLine`, `IsLateTaker`): its row

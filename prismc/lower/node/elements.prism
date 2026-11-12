@@ -183,6 +183,10 @@ fn ElementPlaced wx, benv, menv, tg, args, fed, out, ?bound:
         TyTuple cs: partsBound and Fold cs, False, \|found, c| found or (LayerOf c) != LyEv
         # (and a plain answer bound to a late name there, `LateHostedOutput`)
         other: (not partsBound) and ((LayerOf other) == LyDyn or IsSome (?LatePlainHold ?bound))
+    # (and in any hosted scope a plain answer bound to a late name, which asks where the
+    # scope's places ask, `Wx.lateFirsts`: `LateHostedOutput`'s under a host placed
+    # late, `LateFieldPlaces`' where a constant field reads a late result)
+    let asksLater = asksLate or ((not (Emits wx4, pos)) and (not partsBound) and IsSome (?LatePlainHold ?bound))
     # a World's place with a plain or `$` answer whose field reads a late result
     # (`LateFieldPlaces`) asks where the generation that gives the result is built, in
     # a method of the node: the element is its getter's (`LateAskedPlace` for a `$` one)
@@ -191,7 +195,7 @@ fn ElementPlaced wx, benv, menv, tg, args, fed, out, ?bound:
     let asksAtRow = late and (Emits wx4, pos) and match ?bound:
         ? (BnParts parts): (not (HasNat wx4.lateHosts, pos.scope)) and IsAskedBundle parts
         otherwise: (IsSome (?LatePlainHold ?bound)) or IsSome (?LatePlaceHold ?bound)
-    ElementOutput wx4, menv, tg, out, pos, ?bound, (if asksAtRow: XMethod XSelf, getter, [[XCx]] else: if late and asksLate: added else: atBuild)
+    ElementOutput wx4, menv, tg, out, pos, ?bound, (if asksAtRow: XMethod XSelf, getter, [[XCx]] else: if late and asksLater: added else: atBuild)
 
 # Whether a bundle place's parts are bound as a World's place whose constant field reads
 # a late result binds them (`LateFieldPlaces`): a plain part a late name over a hold, a
