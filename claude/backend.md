@@ -233,11 +233,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `heights.above(k, h)` and, when that moved the combinator, the combinator's own twin at
   its new height; a port, `port.raise(h)`; the parent's method, the parent's twin; a hold,
   the `!Updated` nodes over it and the rows that hear the write (`parent_wrote_m_above`, or
-  the generation's port raised). A sink whose firing lands in a later tick, at the World
-  or at a host ends the walk. A `Port` keeps the height it fires at and a twin per
+  the generation's port raised); a hosted place's request, its host's
+  `request_above(h)`, which raises every row's request port (one height for all the
+  child's places; a row made later takes it at its making, `HostOf::request_height`; a
+  forwarded element's request goes on to the enclosing host), so what hears a live
+  element's event field (`Live::requested`, which passes the height on) sits above the
+  guest's request. A sink whose firing lands in a later tick or at the World ends the
+  walk. A `Port` keeps the height it fires at and a twin per
   subscription (`Port::subscribe_above`): the twin is told the height at once and each
   time the port is raised, so a row that subscribes late sits above its block's port all
-  the same (`subscribe_row`, `hear_part`, `MergeList::listen_above`). A blueprint's `Sink`
+  the same (`subscribe_row`, `hear_part`, `MergeList::listen_above`, and `Listen::listen_above`
+  for the inner a switch holds now). A blueprint's `Sink`
   has its twin too: a widget's event result subscribes the sink with it
   (`widget_event_blueprint`), and the block that applied the blueprint passes its
   `{name}_up_above` (`apply_blueprint_heard`). At the end of a node's build each
@@ -247,7 +253,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   below the running height runs at the next one) stays for what no twin reaches.
   The runtime's own event values use the same heights: `merge_all`'s node sits above
   every event of its list and raises its own port, `Event::map` and `filter_some` pass
-  their source's height on.
+  their source's height on, `Event::map_at` too.
+  No twin reaches these, where the clamp alone orders: a `for` row built after its block
+  wrote a hold the row hears (`parent_wrote_m` is told to the rows that live), a
+  dynamic's update port (`Dynamic::map2`, a `follow`, `updated` as an event value, a
+  blueprint's dynamic answer), `@Machine`'s and a cycle's later firings.
 - **Holds.** `$x <- init then !e` → the firing's method calls `x.set(v, cx)`; every read
   is `x.get(cx)`, before the tick during propagation and after it from then on, so the
   tag law needs no commit pass.
