@@ -18,6 +18,3 @@ tick 2
   changed:
     1/[0]/0: Ui.Label(text="0: 1")
     1/[1]/0: Ui.Label(text="1: 2")
-tests/conformance/sem-ch07-flatten-in-for-row/tests.prism: test each_row_flattens_its_own line 9: Expect(Pattern(Element("Ui.Label", [("text", Text("2: 5"))]))) did not hold
-tests/conformance/sem-ch07-flatten-in-for-row/tests.prism: test each_row_flattens_its_own line 11: Expect(Pattern(Element("Ui.Label", [("text", Text("2: 6"))]))) did not hold
-tests/conformance/sem-ch07-flatten-in-for-row/tests.prism: test each_row_flattens_its_own line 13: Expect(Pattern(Element("Ui.Label", [("text", Text("2: 2"))]))) did not hold
