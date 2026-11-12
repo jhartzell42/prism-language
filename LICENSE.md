@@ -22,5 +22,5 @@ SOFTWARE.
 
 ## Chess piece images
 
-Chess pieces are from [Wikimedia](https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces)
-and are shared under a [CC BY SA license](https://creativecommons.org/licenses/by-sa/3.0/).
+Chess pieces are by Colin M.L. Burnett, from
+[Wikimedia](https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces), and are shared under a [CC BY SA license](https://creativecommons.org/licenses/by-sa/3.0/).
