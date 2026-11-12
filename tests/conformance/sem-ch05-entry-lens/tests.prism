@@ -1,0 +1,16 @@
+# The tests of sem-ch05-entry-lens.
+emit r
+use App.*
+
+check lens_to_an_entry:
+    (Store boot, 9) == Vm(regs={"acc": 9, "x": 5}, steps=2) => True
+    (Forget boot) == Vm(regs={"x": 5}, steps=2) => True
+    (Store (Forget boot), 3) == Vm(regs={"acc": 3, "x": 5}, steps=2) => True
+    ?Read boot => ? 7
+    ?Read (Forget boot) => nil
+    (Bump boot) == Vm(regs={"acc": 8, "x": 5}, steps=2) => True
+    (Bump (Forget boot)) == Vm(regs={"x": 5}, steps=2) => True
+
+check lens_taking_an_entry:
+    (Mark boot, "y") == Vm(regs={"acc": 7, "x": 5, "y": 1}, steps=2) => True
+    (Mark boot, "x") == Vm(regs={"acc": 7, "x": 1}, steps=2) => True
