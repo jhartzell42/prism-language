@@ -2,12 +2,12 @@
 emit Ui.*
 use App.*
 
-test loud, @Page True, True:
+test loud, @Page LoudAfterLabel:
     build
     click Ui.Button(label="add")
 
-test soft, @Page True, False:
+test soft, @Page SoftAfterLabel:
     build
 
-test loud_nothing_before, @Page False, True:
+test loud_nothing_before, @Page LoudAlone:
     build
