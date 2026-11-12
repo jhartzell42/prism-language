@@ -138,7 +138,10 @@ fn ElementPlaced wx, benv, menv, tg, args, fed, out, ?bound:
     # `MarkLateLets`): the place is live over the node's getters, read where the
     # place goes out, after the node's rows are built
     let late = Fold args, False, \|f, a| f or ReadsLate menv, a.value
-    let live = (Len reads) > 0 or late
+    # (and a field built whole, whose dynamics the place's `Watch` hears: the node's patch
+    # pass sends the place again when one moves, so it is live; WD)
+    let wholeField = Fold tg.fields, False, \|f, ((fname, fty))| f or BuiltWholeField lx, args, fname, fty
+    let live = (Len reads) > 0 or late or wholeField
     let ((getter, wx3)) = if live: FreshName wx2, (Snake (BareName tg.name)) else: (("", wx2))
     let variant = VariantOf lx, tg
     # the place's level as the program's `Elem`: read by its getter in the methods when
@@ -185,6 +188,13 @@ fn ElementPlaced wx, benv, menv, tg, args, fed, out, ?bound:
     # a method of the node: the element is its getter's (`LateAskedPlace` for a `$` one)
     let asksAtRow = late and (not partsBound) and (Emits wx4, pos) and ((IsSome (?LatePlainHold ?bound)) or IsSome (?LatePlaceHold ?bound))
     ElementOutput wx4, menv, tg, out, pos, ?bound, (if asksAtRow: XMethod XSelf, getter, [[XCx]] else: if late and asksLate: added else: atBuild)
+
+# Whether a tag's plain field is given a value that holds dynamics below its top, built
+# whole (`ElementPlaced`).
+BuiltWholeField: unbounded fn Lx, [Arg], Text, Ty -> Bool
+fn BuiltWholeField lx, args, fname, fty = match ?TagArg args, fname:
+    ? arg: ((LayerOf fty) == LyPlain) and HoldsTimeWhole lx, arg
+    nil: False
 
 # An element's output type at this application: the tag's, instantiated by the checker
 # (`Prelude.Unwrap`'s `!a` is `!unit` where its value is `!~unit`). A type variable the

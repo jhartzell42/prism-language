@@ -1692,7 +1692,14 @@ fn PreBind wx, benv, menv, s = match s.kind:
     # a `let` of any other pattern (a record's, a constructor's, a tuple inside a tuple):
     # each name it binds (`BindPatternResult`)
     SLet p, ignore, e: if (IsLateLet menv, p) and not (TakesLateBundle menv, p, e): ((wx, benv, menv)) else: match p.kind:
-        PName n: if IsPlacedLet menv, p: ((wx, benv, menv)) else: PreBindName wx, benv, menv, n, AsLet
+        PName n:
+            if IsPlacedLet menv, p: ((wx, benv, menv))
+            else:
+                # (its expression kept beside it, for where a line passes it whole:
+                # `LetSourcesIn`)
+                let ((w1, be1, me1)) = PreBindName wx, benv, menv, n, AsLet
+                let skey = "{SNameKey n}#source"
+                ((w1, (Bind be1, skey, (BnSource e)), (Bind me1, skey, (BnSource e))))
         PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
             # (a plain name of a late bundle's part is late already, `LatePartNames`)
             PName n: if HasKey me.names, "{SNameKey n}#late": ((w, be, me)) else: PreBindName w, be, me, n, AsLet

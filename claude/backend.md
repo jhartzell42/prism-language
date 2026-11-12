@@ -130,7 +130,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - A trait → a Rust trait; `derive` → impls (`^Eq` → `PartialEq, Eq`, `^Ord` →
   `PartialOrd, Ord`, whatever the fields: every `^Eq` is reflexive and every `^Ord`
   total); generics → Rust generics bounded by `Eq` and `Ord` for `^Eq` and `^Ord`,
-  monomorphized by rustc (doubt MO).
+  monomorphized by rustc (doubt MO). A generic type that is plain data compares even
+  without `^Eq` (Rust `EqImpls`, C++ a defaulted `operator==`), which no Prism code can
+  call: an element whose level field holds it (`value: Boxed $Nat`) is compared as the
+  runtime compares every element (sem-ch09-tag-field-named-type-of-dynamic).
 - An existential `any ^Show` → `Rc<dyn Show>`.
 - Any other existential → `prism_rtl::Packed`: the value behind `Rc<dyn Any>` and the
   impls its packing found. A trait of the prelude is the packing's own, spelled from
@@ -1149,9 +1152,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
     the node's getters, reach nothing through the parent is kept the same way: computed
     from constants, it is one (sem-ch07-getter-dies-with-its-row). A combinator written
     in the line over a hold and a dynamic outside the node is a map of live dynamics and
-    goes on reading the outside one. A dynamic `let` over both reads its value at the
-    build once the node is gone, and its port no longer fires: a bug, red in
-    sem-ch07-getter-dies-with-its-row's second test.
+    goes on reading the outside one. A dynamic `let` that reads through the parent, by
+    its expression or a `let` of the node it reads (`LetReadsParent`), is that
+    combinator: its expression is kept beside its binding (`{name}#source`, `BnSource`),
+    and where a line passes the `let` whole, the line makes live dynamics for what the
+    expression reads (`LetSourcesIn`) and the `let`'s live dynamic is the expression over
+    them, made at the build and kept in a field (`LetLiveDynamics`). The block whose line
+    writes the row makes the live dynamics of its own names the `let` reads, at the
+    `let`'s spans (`NestedLetSources`), as it does for a combinator written in the row,
+    and the row reads them through the parent (`WholeOfBlock`), so they outlive the row.
+    Once the node is gone, its holds' parts are their last values and the parent's part goes on moving
+    (sem-ch07-getter-dies-with-its-row's second test).
   - A global dynamic passed whole is the constant its getter gives.
 - **`!Updated $d` as an event value** (in a supplier's closure, in a function taking `$d`
   whole): the prelude's `updated`, which fires `d`'s value after the tick when `d`'s update

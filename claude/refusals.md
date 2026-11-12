@@ -333,10 +333,6 @@ Dynamics and events
 - lower/node/finish.prism:533 the same in a row over a name of its block (SU). No
   program found: a row over its block's parameter passes
   (sem-ch07-updated-row-parameter).
-- lower/node/switch.prism:1328 `@Flatten` of a dynamic of dynamics with no live dynamic
-  at the build (LF). No program found: an outer written in place, in the block or in a
-  row, and an outer bound below are lowered (sem-ch07-flatten-call,
-  sem-ch07-flatten-expression-in-row, sem-ch07-flatten-held-above).
 - lower/expr.prism:371 a dynamic passed whole to a function where it has no live dynamic
   (LF). No program found: a clause widget's result, a place's dynamic, a global, a row's
   parent's hold and a hosted child's result are read through the node's link
@@ -609,7 +605,7 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | node/finish.prism `PlaceNumber`, two sites: a place read at its row's or block's build before its node, after rows that differ in width | R | none | refused |
 | node/switch.prism `RebuildDynamic`, a `rebuild` that hands back a dynamic whose generation gives no dynamic, value or bundle | G | sem-ch04-rebuild-ends-on-host reached it | internal error: the one result left out, a host's line last in the generation, is lowered as the host's bundle (`GenRowOf`); `GivesDynamic` keeps events and unit away |
 | node/switch.prism `ArmRowOf`, two sites: a late plain result beside a `for`, a `rebuild` or a widget that calls itself, in a row numbered after its node | R | none | refused |
-| node/switch.prism, `@Flatten` with no live dynamic at the build (LF) | R | none | no program found: a global and a name of the block are lowered (`{name}_outer`; sem-ch07-flatten-global-dynamic, sem-ch07-flatten-block-dynamic-in-row); an outer written in place in a row is the block's live dynamic when it reads the block's names alone, else the row's own (sem-ch07-flatten-expression-in-row) |
+| node/switch.prism `HeldFlatten`, `@Flatten` with no live dynamic where the line reads it (LF) | G | none | internal error: every widget line goes through `WholeArgsAt` before its `@Flatten` is lowered, and it makes a live dynamic for every outer (a hold or dynamic of the node, a dynamic `let` of a row by its expression, an outer in place); a row's outer of its block is the block's through the parent, a global its constant, a shared row's parameter its `#whole#{name}` |
 | node/def.prism `SplitBlockInto`, a block split at a line whose result is not late | U | none | refused |
 | node/def.prism, the build-side markers of a late name (`PreBindWhole`, `PreBindWholeParts`, `BindLate`, `MarkLateLets`, `LateTakerResults`, `LateFieldPlaces`, `LatePlaceParts`, `LateHostedAnswer`, `MarkLateBundle`, `LateBundleParts`: twelve sites) | R | none (sem-ch04-late-value-above-in-plain-place-field passes) | refused: a place with a `$` or bundle answer, bound by a pattern or in a hosted scope, whose constant field reads the late name; a `let` of a type with time inside that is no bundle |
 | node/def.prism, a late plain result in a bundle (`WrLate`) | U | none | refused |
@@ -634,14 +630,13 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | expr.prism `FunctionRecolored`, a function whose color no use of its `let` decides | U | none | refused |
 | patterns.prism, a pattern inside an element's `$` field | G | - | internal error: the checker's `live-field-pattern` (ruling LP; tests/checker/neg/live-field-pattern) |
 
-Totals: 36 `Refusal` / `RefusalDo` calls stand in prismc/lower. 2 are internal errors
+Totals: 35 `Refusal` / `RefusalDo` calls stand in prismc/lower. 2 are internal errors
 by their text (`PartsBlueprint`); 4 are R with a red test (`AnyValue`, the named
-bundle, the block widget, one `WidgetValueWords` call); 20 are R with no test (`@Flatten`
-LF, which no program found reaches, the 12 late-name markers, `DeferredLine` 2, `PlaceNumber` 2, `ArmRowOf`
-2, `ElementOutputOf`);
+bundle, the block widget, one `WidgetValueWords` call); 19 are R with no test (the 12
+late-name markers, `DeferredLine` 2, `PlaceNumber` 2, `ArmRowOf` 2, `ElementOutputOf`);
 10 are U (`SplitBlockInto`, `WrLate`, the generic widget, LE, LF of expr.prism, an event
 read as a value, the other `WidgetValueWords` call and `UndecidedParameter`, `Recolored`,
-`FunctionRecolored`). Eleven guards are internal errors and no longer refusals.
+`FunctionRecolored`). Twelve guards are internal errors and no longer refusals.
 
 Refusals outside `Refusal` / `RefusalDo`, which the table above does not hold:
 
