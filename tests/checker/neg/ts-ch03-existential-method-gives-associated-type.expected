@@ -1,0 +1,5 @@
+tests/checker/neg/ts-ch03-existential-method-gives-associated-type.prism:29: error[existential-method]: `^Weighed` is asked of the value packed in `any ^Weighed` here, and its method `Zero` cannot be asked of one: it gives the trait's type inside `Unit a`, which a packed value's dictionary cannot hide again
+        Ui.Label($text=$"{Weigh (Hide 3)} {Measure (Hide 3)}")
+                                           ^^^^^^^^^^^^^^^^
+  fix: ask it of a value whose type is known, before `any` packs it
+1 error

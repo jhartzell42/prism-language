@@ -1,0 +1,30 @@
+# `existential-method` where a function's bound asks a trait of a packed value and one of
+# the trait's methods gives the trait's type inside another type, here under an
+# associated type (Jimmy's ruling EX, by Rust's rule for a `dyn` trait's methods; Type
+# System ch. 3, "Existentials", "Associated types"): the packed value's dictionary has no
+# entry for `Zero`, and no type to give for `Unit` of the hidden type, so `Measure`,
+# which may call any method of `^Weighed`, is not applied to a packed value. `Weigh` is
+# asked of the packed value itself and is fine. Expected text derived by hand from the
+# ruling. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+use Ui.*
+
+trait ^Weighed a:
+    type Unit
+    Weigh: fn a -> Nat
+    Zero: fn a -> Unit a
+
+impl ^Weighed Nat:
+    type Unit = Text
+    fn Weigh n = n
+    fn Zero n = ""
+
+Hide: fn Nat -> any ^Weighed
+fn Hide n = any n
+
+Measure: fn a -> Nat where a: ^Weighed
+fn Measure x = Weigh x
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Weigh (Hide 3)} {Measure (Hide 3)}")
