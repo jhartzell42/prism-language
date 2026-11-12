@@ -1,0 +1,8 @@
+# The tests of sem-ch04-rebuild-dynamic-read-above.
+emit Ui.*
+use App.*
+
+test a_place_above_reads_the_rebuild, @main:
+    build
+    click at 0
+    compute
