@@ -1128,7 +1128,7 @@ fn PairDecide g, kind:
 
 # The node's wake: each combinator asked whose height has come decides, the lowest first.
 WakeByHeight: fn [Gn] -> Do
-fn WakeByHeight combs = DoWhileLet (PaCtor (RefRuntime "std::Some"), [[PaBind "combinator"]]), (XMethod (XField XSelf, "heights"), "next", [[XCx]]), [[(DoMatch (XVar "combinator"), (Push (Each combs, \|g| ((PaIndex (CombinatorOf combs, g)), [[(Decide g)]])), ((PaWild, [[]]))))]]
+fn WakeByHeight combs = DoWhileLet (PaCtor (RefRuntime "std::Some"), [[PaBind "combinator"]]), (XMethod (XField XSelf, "heights"), "next", [[XCx]]), [[(DoMatch (XVar "combinator"), (Push (Each combs, \|g| ((PaIndex (CombinatorOf combs, g), [[(Decide g)]]))), ((PaWild, [[]]))))]]
 
 # An answer under a `for`'s place goes to the row its key names.
 ForwardAnswer: fn ForDef -> Ex
