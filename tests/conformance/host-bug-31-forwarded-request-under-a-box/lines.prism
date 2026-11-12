@@ -1,0 +1,31 @@
+# Lines of play as values, for checks: the game after requests made one after another,
+# with no host and no tick. A request the document declines is a fault with the reason in
+# its message, so a line with a move that is not played is never read as a shorter line.
+# Written by Claude (an implementation agent), 11 November 2026; evidence for Part IV;
+# subject to change.
+emit rest
+use Documents.*
+use Rules.*
+use Game.*
+
+# a request of a line that the document declines
+tag Line.Declined of Fault
+
+# the game after a request by the side given
+~After: fn ChessGame, Color, PlayerRequest -> ~ChessGame
+fn ~After game, color, request = match StepBy game, color, request:
+    Next next: ~ next
+    Denied why: Error(kind=Line.Declined, message="{request} by {color} is declined: {why}")
+
+# the same after a game that is itself the end of a line
+~Then: fn ~ChessGame, Color, PlayerRequest -> ~ChessGame
+fn ~Then (~ game), color, request = ~After game, color, request
+fn ~Then (Error(kind=kind, message=message)), color, request = Error(kind=kind, message=message)
+
+~Further: fn ~ChessGame, Move -> ~ChessGame
+fn ~Further (~ game), move = ~After game, game.position.turn, (Play move)
+fn ~Further (Error(kind=kind, message=message)), move = Error(kind=kind, message=message)
+
+# the game after moves played in turn from the start
+~Line: fn [Move] -> ~ChessGame
+fn ~Line moves = Fold moves, (~ fresh), ~Further
