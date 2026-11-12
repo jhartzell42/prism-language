@@ -1,0 +1,13 @@
+# The tests of sem-ch07-flatten-in-for-row. No transcript yet: red at cargo; the checks
+# below are from ruling FV: the click moves `$a` in its tick and gives each row's hold
+# the row's `$v`; the flatten adopts it after that tick and reads it at the next.
+emit Ui.*
+use App.*
+
+test each_row_flattens_its_own, @page:
+    build
+        => expect Ui.Label(text="2: 5")
+    click Ui.Button(label="go")
+        => expect Ui.Label(text="2: 6")
+    compute
+        => expect Ui.Label(text="2: 2")
