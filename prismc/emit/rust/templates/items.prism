@@ -345,8 +345,8 @@ impl crate::prelude::Row for {{name}} {
 
 # `crate::Answer` (pick HO): an answer to an element, typed by its tag; a World's answer to
 # a forwarded element decodes into it by the element's tag.
-AnswerType: fn Text, Text, Text, Text, Text, Text -> Text
-fn AnswerType cases, tags, accessors, decodes, firsts, helds = inline_text <rust>
+AnswerType: fn Text, Text, Text, Text, Text, Text, Text -> Text
+fn AnswerType cases, tags, accessors, decodes, firsts, helds, untagged = inline_text <rust>
 /// `Answer c`: an answer to an element, typed by its tag (Semantics ch. 9): what a host's
 /// supplier answers a child place with, and what a World's answer to a forwarded element
 /// decodes to, carrying the tag's output.
@@ -363,6 +363,15 @@ impl Answer {
         }
     }
     {{accessors}}
+    /// The answer as one made outside a tag's arm, where it is plain data: what a place
+    /// of another tag reads at its own type (an element of the host's own making given
+    /// under a tag's arm, `@Element (Prelude.Unwrap(..))`). Any other answer is itself.
+    pub fn untagged(&self) -> Answer {
+        match self {
+            {{untagged}}
+            other => other.clone(),
+        }
+    }
     /// An answer made outside a tag's arm, read at the type of the line that binds it (a
     /// blueprint value's plain result).
     pub fn plain<T: crate::prelude::FromPod>(&self) -> ::std::result::Result<T, crate::prelude::Fault> {

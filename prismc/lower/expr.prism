@@ -1097,10 +1097,34 @@ fn Tagged variant, value = if variant == untaggedRef: XCtor variant, [[(XMethod 
 
 # `@Element e` as a value: the forwarding blueprint, the child's element re-emitted in the
 # host's scope.
+# Under a tag's arm (a supplier's `Tell.Request(..): @Element (Prelude.Unwrap(..))`) an
+# element applied where it stands is the host's own, of a tag of its own: its place is
+# answered as that tag is, and the child's place reads its own tag's answer, so each
+# answer goes on as plain data of no tag (`Answer::untagged`, read by every tag's accessor
+# at its own type; the checker has made the two outputs one type).
 ElementBlueprint: unbounded fn Lx, Env, [Arg], OutTy -> Vl
 fn ElementBlueprint lx, env, args, t = match args[0]:
-    ? a: VlOwned (XCall (RefRuntime "prism_rtl::element_blueprint::<crate::Elem, crate::Answer>"), [[Ref (ValueOf lx, env, a.value)]]), t
+    ? a:
+        let placed = XCall (RefRuntime "prism_rtl::element_blueprint::<crate::Elem, crate::Answer>"), [[Ref (ValueOf lx, env, a.value)]]
+        let untagged = XClosure False, [[(PaTyped (PaBind "answer"), (OutRef (OutNamed answerRef, [[]])))]], (XMethod (XVar "answer"), "untagged", [[]])
+        if (HasKey env.names, "#tag") and IsElementApplied lx, a.value: VlOwned (XCall (RefRuntime "prism_rtl::answers_mapped"), [[placed, untagged]]), t
+        else: VlOwned placed, t
     nil: VlOwned (InternalBug "`@Element` without its element"), t
+
+# Whether an expression is an element tag applied where it stands, parentheses aside.
+IsElementApplied: unbounded fn Lx, Expr -> Bool
+fn IsElementApplied lx, e = match e.kind:
+    EGroup x: IsElementApplied lx, x
+    ECall callee, ignore, ignore, ignore: match callee.kind:
+        EName n:
+            let ((?qk, why)) = ResolveValue lx.g, lx.home, n
+            match ?qk:
+                ? qk: why == "tag" and match lx.g.tags[qk]:
+                    ? tg: tg.kind == "Element"
+                    nil: False
+                nil: False
+        otherwise: False
+    otherwise: False
 
 # `xs as [a]+?`: the non-empty collection (the prelude's wrapper, `NonEmptyOut`) when the
 # collection has an element, else `nil`.

@@ -1253,6 +1253,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
     World's. A host that forwards everything is observably not there. A forward in a hosted
     scope (nested hosts) emits nothing: its place is the child's own entry in the enclosing
     host's document (`HostRow::entries`), and its first value is the enclosing host's.
+    `@Element` of an element applied where it stands, under a tag's arm (`Tell.Request(..):
+    @Element (Prelude.Unwrap(!~value=..))`), places a description of a tag of the host's
+    own (`described_blueprint`). Its place is answered as that tag is (`Answer::
+    PreludeUnwrap`), and the child's place reads its own tag's answer, so the blueprint
+    is `answers_mapped` with `Answer::untagged`: an answer of plain data goes on as
+    `Untagged_a`, which every tag's accessor reads at its own type (`ElementBlueprint`,
+    `IsElementApplied`). The answer reaches the child in the tick the World sends it.
   - **A level that holds dynamics** (a container whose children are its document) goes to
     a World deep: `Elem` implements `rt::Level`, each dynamic sampled at the read point
     (`level_pod`), and a World place over one keeps an `rt::Watch` on the dynamics it holds,

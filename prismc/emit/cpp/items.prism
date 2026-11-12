@@ -463,7 +463,7 @@ fn AnswerParts cp, a:
     let held = "template <class T> ::std::optional<T> held_as() const \{ if (auto h = ::std::get_if<Held_a>(&cases())) if (auto v = ::std::any_cast<T>(&h->a0)) return *v; return ::std::nullopt; \}\ntemplate <class T> crate::prelude::Result<T> held() const \{ if (auto v = held_as<T>()) return *v; return crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where a blueprint value's result that is no plain data was expected\"))); \}"
     let accessors = Join (Append (Each a.cases, \|c| "crate::prelude::Result<{CppType cp, c.ty}> {c.accessor}() const;"), (Each firsts, \|((c, ft))| "crate::prelude::Result<{CppType cp, ft}> {c.accessor}_first() const;")), "\n"
     let plain = "template <class T> crate::prelude::Result<T> plain() const \{ if (auto u = ::std::get_if<Untagged_a>(&cases())) return ::prism_rtl::from_pod<T>(u->a0); return crate::prelude::unexpected(crate::prelude::Fault::answer(crate::prelude::str(\"an answer for \", tag(), \", where a blueprint value's plain result was expected\"))); \}"
-    let members = "const char* tag() const;\n{accessors}\n{plain}\n{held}\nstatic crate::prelude::Result<Answer> decode(const Elem& e, const crate::prelude::Pod& v);\nstatic crate::prelude::Result<Answer> decode_first(const Elem& e, const crate::prelude::Pod& v);\nstatic ::std::optional<::prism_rtl::PartsAnswer<Answer>> held_parts(const Elem& e, const Answer& answer);"
+    let members = "const char* tag() const;\nAnswer untagged() const;\n{accessors}\n{plain}\n{held}\nstatic crate::prelude::Result<Answer> decode(const Elem& e, const crate::prelude::Pod& v);\nstatic crate::prelude::Result<Answer> decode_first(const Elem& e, const crate::prelude::Pod& v);\nstatic ::std::optional<::prism_rtl::PartsAnswer<Answer>> held_parts(const Elem& e, const Answer& answer);"
     let cases0 = Join (Append (Each a.cases, \|c| CaseDecl c.variant, "{CppType cp, c.ty} a0;"), (Each firsts, \|((c, ft))| CaseDecl "{c.variant}First", "{CppType cp, ft} a0;")), "\n"
     let cases = "{cases0}\n{CaseDecl "Untagged_a", "crate::prelude::Pod a0;"}\n{CaseDecl "Held_a", "::std::any a0;"}"
     let cls = ChoiceClass (CppDoc "`Answer c`: an answer to an element, typed by its tag (Semantics ch. 9): what a host's\nsupplier answers a child place with, and what a World's answer to a forwarded element\ndecodes to, carrying the tag's output."), "", "Answer", cases, (Join names, ", "), members
@@ -481,7 +481,10 @@ fn AnswerParts cp, a:
         otherwise: acc
     let helds = Join heldArms, "\n"
     let heldParts = CppFunction (CppDoc "An answer held whole (a bundle with a part that is no plain data, made outside a tag's\narm) as the parts the tag of `e` takes."), "::std::optional<::prism_rtl::PartsAnswer<Answer>> Answer::held_parts(const Elem& e, const Answer& answer)", "{helds}\nreturn ::std::nullopt;"
-    Parts(forward=[["class Answer;"]], values=[[ValueDecl(path="Answer", deps=[[]], text=cls)]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append [[tagFn]], (Append (Append getters, firstGetters), [[decode, decodeFirst, heldParts]])))
+    # an answer of plain data under any tag, as one of no tag (the Rust `Answer::untagged`)
+    let untaggedArms = Join (Fold a.cases, [[]], \|acc, c| if Podable c.ty: Push acc, "if (auto c = ::std::get_if<{c.variant}>(&cases())) return Answer(Untagged_a\{::prism_rtl::to_pod(c->a0)\});" else: acc), "\n"
+    let untaggedFn = CppFunction (CppDoc "The answer as one made outside a tag's arm, where it is plain data: what a place of\nanother tag reads at its own type. Any other answer is itself."), "Answer Answer::untagged() const", "{untaggedArms}\nreturn *this;"
+    Parts(forward=[["class Answer;"]], values=[[ValueDecl(path="Answer", deps=[[]], text=cls)]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append [[tagFn, untaggedFn]], (Append (Append getters, firstGetters), [[decode, decodeFirst, heldParts]])))
 
 # A step machine (D6): a job struct, its `cycle`, its `Start`.
 JobParts: unbounded fn Cp, JobDef -> Parts

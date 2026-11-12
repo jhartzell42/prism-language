@@ -391,7 +391,9 @@ fn RustAnswer a:
         ((? whole, ? parts)): Push acc, "Elem::{c.variant}(..) => answer.held_as::<{Type whole}>().map(|whole| ({Expression parts})(&whole)),"
         otherwise: acc
     let helds = Join (Push heldArms, "_ => ::std::option::Option::None,"), "\n"
-    AnswerType cases, tags, accessors, decodes, decodeFirsts, helds
+    # an answer of plain data under any tag, as one of no tag (`Answer::untagged`)
+    let untagged = Join (Fold a.cases, [[]], \|acc, c| if Podable c.ty: Push acc, "Answer::{c.variant}(v) => Answer::Untagged_a(crate::prelude::ToPod::to_pod(v))," else: acc), "\n"
+    AnswerType cases, tags, accessors, decodes, decodeFirsts, helds, untagged
 
 # An accessor's arm for an answer made outside a tag's arm, read at the type the tag's
 # place takes: plain data from `Answer`'s case of no tag; a value that is no plain data
