@@ -80,22 +80,21 @@ This page says how it reads a `for`'s row and a widget function's function param
   `!Updated` there; the update of a `let`'s dynamic reads the updates of the dynamics it
   is lifted over (the change law). A cycle there is reported with the block's names in
   the order the block binds them.
-- The second walk has edges for `let`s and holds alone. A widget's, a `for`'s or a
-  place's line gives it none, so it refuses no loop that crosses such a line. The
-  example that needs the cut: the hosting library's `@InMemoryOrdered` binds `!arrived
-  <- HostSeats $state, !responses` and `let !responses = !Updated $responded`, where
-  `$responded` steps on what `!arrived` gives. The loop is delayed by the host's
-  computed answer (ch. 9), which the check cannot see through the function parameter
-  `HostSeats`; with the worst assumed for that line, the library would be refused.
-- The alternative, an update edge for every line with the worst assumed, is right only
-  with a summary for every function parameter and every prelude widget function, which
-  a declared summary on a parameter's type would give: a change to the language.
 
-## Two loops through `!Updated` of a hold that the check takes
+## A widget function's flows
 
-- Both are real prompt cycles, both check clean, and both abort when run (Rust target, at
-  the build: "a prismc bug: a combinator's height does not settle (a prompt cycle across
-  nodes)"). Each has a failing test whose `.expected` is the error the program should get.
+- The second walk crosses a line that applies a widget function by that function's
+  flows (`ParameterFlow`, one for each parameter, `?FlowSummaryAt`). A flow says four
+  things of the result and one argument:
+  - the result is prompt in the argument as it is (`fn @Pass !passed: @ !passed`);
+  - the result is prompt in the argument's update event (`@ (!Updated $given)`);
+  - the result's update event is prompt in the argument (`@ $seen` beside
+    `$seen <- 0 then $seen + 1 on !given`: a hold's update fires in the tick of its step);
+  - the result's update event is prompt in the argument's update event (`@ ($given * 2)`).
+- The flows are read off the body (`?BlockFlows`): the body's names and their update
+  nodes, a summary's edges (a hold none, any other binding to all it reads) and each
+  line's edges over update events (`UpdateLineEdges`, the same function the block's
+  second walk uses). A name's sigil stands for its type there.
 - Through a widget's line (`tests/checker/neg/sem-ch07-hold-updated-cycle-through-widget-line`):
 
   ```prism
@@ -105,9 +104,9 @@ This page says how it reads a `for`'s row and a widget function's function param
   let $total = $seen * 2
   ```
 
-  The walk over update events has no edge for the line `!step <- @Pass !fed`, so the
-  loop `$seen` → `$total` → `!fed` → `!step` → `$seen` is never closed.
-- Through a widget function's summary
+  `@Pass`'s flow gives the line the edge `!step` → `!fed`, which closes
+  `$seen` → `$total` → `!fed` → `!step` → `$seen`.
+- Through a hold inside the function
   (`tests/checker/neg/sem-ch07-hold-updated-cycle-through-widget-summary`):
 
   ```prism
@@ -119,32 +118,33 @@ This page says how it reads a `for`'s row and a widget function's function param
   let !step = (1 on !press) <| !back
   ```
 
-  `@Echo`'s summary says its result reads nothing promptly: a hold is a cut there, and
-  `!Updated $seen` stops at the hold as `$seen` does.
-- The question (checker, Semantics ch. 7): how does the check see a hold's update event
-  across a line that is not a `let` or a hold, and across a call?
-- The constraint: the hosting library's `@InMemoryOrdered` must stay legal. It binds
-  `!arrived <- HostSeats $state, !responses` beside `let !responses = !Updated
-  $responded`; `HostSeats` is a function parameter, and the loop is delayed by the
-  host's computed answer, which nothing in the parameter's type says.
-- Option A, summaries with update edges for the functions the program names: a widget
-  function's summary gains "the result is prompt in the update event of this argument"
-  and "the result's update event is prompt in this argument" (so `@ (!Updated $hold)`
-  reaches the hold's step), and the walk over update events takes a widget's line
-  through that summary. A function parameter is read by what each use gives (`GivenAt`),
-  as the first walk reads it; a use that gives nothing known gives no update edge.
-  - It refuses both programs above and keeps `@InMemoryOrdered` (its `HostSeats` is given
-    by name at every use in the library and the tests).
-  - It still takes a loop through a parameter given a lambda or passed on as a value.
-- Option B, a summary declared on a parameter's type (`HostSeats: fn $State, !Response ->
-  @!Arrived delayed in 2`, spelling aside): the worst is assumed for an undeclared
-  parameter, and the library declares its `HostSeats`. Nothing wrong is taken; it is a
-  change to the language and to the hosting library's signatures.
-- Option C, the worst for every line and every call: refuses `@InMemoryOrdered`.
-- Claude's recommendation: A now, since it needs no new syntax and closes both tests,
-  with B as the rule that closes the lambda case when the language takes it. C is out by
-  the constraint.
-- A `for`'s row and a place: a row's result is read through `RowReach`, which reaches a
-  hold's step already (`sem-ch07-row-hold-cycle`); a place's answer comes as a tick opens
-  (a World's) or a tick late (a host's computed answer), so a place's line closes no
-  prompt loop and needs no update edge.
+  `@Echo`'s result reads the update of `$seen`, which reads `!step`: the line gets
+  `!back` → `!step`.
+- Which lines get edges, and which get none:
+  - a line whose right side is one call of a program's widget function by name (one
+    clause, a block that ends in its result, not on the path of functions being read):
+    by its flows;
+  - a call of a function parameter: by the flows of the function each use gives by name
+    (`FlowsGivenAt`, beside `GivenAt`); the block is checked once for each use;
+  - none for a parameter a use gives a lambda, a local or a parameter of its own, for a
+    function the program never uses, for a prelude widget function, for a call with a
+    named argument, and for a right side that is not one call;
+  - none for a `for`'s, a `rebuild`'s or a place's line: a row's result is read by the
+    first walk (`RowReach`, which reaches a hold's step), and a place's answer comes as a
+    tick opens (a World's) or a tick late (a host's computed answer).
+- The first walk keeps the summaries it had (`?PromptSummaryAt`): a hold is a cut there.
+  A loop that needs a flow is found by the second walk.
+- The example that needs the cut for unknown functions: the hosting library's
+  `@InMemoryOrdered` binds `!arrived <- HostSeats $state, !responses` beside
+  `let !responses = !Updated $responded`, where `$responded` steps on what `!arrived`
+  gives. `@InMemory` passes its own `HostSeats` on, which gives nothing; the programs'
+  uses give `@Table` and its like by name, whose requests come from the hosted
+  documents' places and read neither `!responses` nor `$state`'s update. With the worst
+  assumed for an unknown `HostSeats`, the library would be refused.
+- A loop the check takes: the same loop through a parameter given a lambda
+  (`tests/checker/neg/sem-ch07-hold-updated-cycle-through-parameter-given-a-lambda`,
+  red). It aborts at the build when run. A summary declared on a parameter's type
+  (`HostSeats: fn $State, !Response -> @!Arrived delayed in 2`, spelling aside) would let
+  the check assume the worst for an undeclared parameter and close it: a change to the
+  language and to the hosting library's signatures.
+- The alternative, the worst for every line and every call, refuses `@InMemoryOrdered`.
