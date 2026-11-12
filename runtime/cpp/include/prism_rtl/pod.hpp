@@ -249,10 +249,10 @@ inline Fields named(std::initializer_list<std::pair<std::string, Pod>> fs) { ret
 /// order; a kind that is its tag alone has none.
 struct Error {
     std::string kind_p;
-    Pod::Fields kind_fields;
+    Fields kind_fields;
     Text message_p;
     Error(std::string kind, Text message) : kind_p(std::move(kind)), message_p(std::move(message)) {}
-    Error(std::string kind, Pod::Fields fields, Text message) : kind_p(std::move(kind)), kind_fields(std::move(fields)), message_p(std::move(message)) {}
+    Error(std::string kind, Fields fields, Text message) : kind_p(std::move(kind)), kind_fields(std::move(fields)), message_p(std::move(message)) {}
     /// An error of a kind given as a value: a choice with no arguments, or a tag's value
     /// with its fields; nothing for any other data.
     static std::optional<Error> of_kind(const Pod& kind, Text message) {

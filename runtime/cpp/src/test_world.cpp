@@ -901,7 +901,7 @@ Report TestWorld::run(std::string_view script) const {
                 failures.push_back("test " + t->name + ": no program named @" + t->program);
                 continue;
             }
-            Run run{&b->second, t->args, nullptr, Document(), {}, 0, false, std::nullopt, {}, std::nullopt, {}, {}};
+            Run run{&b->second, t->args, nullptr, Document(), {}, 0, false, {}, std::nullopt, {}, std::nullopt, {}, {}};
             if (t->seed) run.rng.emplace(*t->seed);
             for (const Step& step : t->steps) {
                 auto r = run.step(step, out, failures, t->name);

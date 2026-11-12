@@ -361,6 +361,7 @@ struct Output {
         return mismatch<Output>("click", v);
     }
     static Result<Output> decode_first(const Elem& e, const Pod& v) { return decode(e, v); }
+    static std::optional<prism_rtl::PartsOutput<Output>> held_parts(const Elem&, const Output&) { return std::nullopt; }
 };
 
 /// An owner hosting one child button at child path `0`, every place forwarded: the child's
@@ -414,7 +415,8 @@ struct OwnerProgram : Program {
             Path::root().at(5), owner->rows, supplier, nullptr,
             [](const prism_rtl::Rc<Owner>& o, const Path& place, const Output& a, Cx& cx) {
                 return o->deliver(place, a, cx);
-            });
+            },
+            [](const prism_rtl::Rc<Owner>&, Cx&) {});
         owner->host->link(owner);
         owner->place->take(Elem{owner->label->get(cx)}, cx);
         // The host's `for` over `$doc`, as the emitted builder makes its rows.

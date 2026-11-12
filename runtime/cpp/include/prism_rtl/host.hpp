@@ -623,7 +623,7 @@ struct Sink {
     Above above;
     Sink() = default;
     template <class F, class = std::enable_if_t<std::is_invocable_r_v<Done, F&, const A&, Cx&>>>
-    Sink(F f) : deliver(std::move(f)), above(std::make_shared<const std::function<void(std::uint32_t)>>([](std::uint32_t) {})) {}
+    Sink(F f) : deliver(std::move(f)), above(make_rc<const std::function<void(std::uint32_t)>>([](std::uint32_t) {})) {}
     Sink(std::function<Done(const A&, Cx&)> f, Above twin) : deliver(std::move(f)), above(std::move(twin)) {}
     Done operator()(const A& a, Cx& cx) const { return deliver(a, cx); }
     /// The sink's height twin, for what delivers its answers inside a tick.
@@ -676,7 +676,7 @@ concept OutputOf = std::copyable<A> && requires(const E& e, const Pod& p) {
     { A::decode_first(e, p) } -> std::same_as<Result<A>>;
 };
 // The emitted `Output` also has `static std::optional<PartsOutput<A>> held_parts(const E&,
-// const A&)`: an answer held whole (a bundle with a part that is no plain data, made
+// const A&)` (not in the concept: `PartsOutput` is declared below): an answer held whole (a bundle with a part that is no plain data, made
 // outside a tag's arm) as the parts the element's tag takes, which a host's row answers
 // its place with (`HostRow`); `nullopt` for any other answer.
 
@@ -967,7 +967,7 @@ std::optional<A> output_parts(const PartsOutput<A>& parts, const Sink<A>& sink, 
         auto queued = make_rc<Stamped<Unit>>();
         std::vector<Rc<Port<Unit>>> ports{d.updates};
         for (const auto& port : parts.moved)
-            if (std::find(ports.begin(), ports.end(), port) == ports.end()) ports.push_back(port);
+            if (std::none_of(ports.begin(), ports.end(), [&](const Rc<Port<Unit>>& p) { return ptr_eq(p, port); })) ports.push_back(port);
         for (const auto& port : ports)
             node.updates.emplace_back(port, port->subscribe([d, sink, queued](const Unit&, Cx& cx) -> Done {
                 if (queued->fired(cx)) return {};
