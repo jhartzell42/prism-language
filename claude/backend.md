@@ -197,7 +197,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `merge_with`, `updated`. `both` and `except` are `merge_all` of their two events with
   each firing marked by its side, so they decide once in a tick; `gate` reads its
   dynamic at the firing's read point (`Event::map_at`)
-  (host-bug-31-both-in-plain-function to host-bug-34-present-in-plain-function).
+  (ts-ch04-both-in-plain-function to ts-ch04-present-in-plain-function).
   An event value whose expression samples a dynamic (`(ToldTo seat, $state) on !born` in
   a list `!MergeWith` takes) is the event mapped with each firing's read point
   (`Event::map_at`): the closure samples the dynamic there, so the event fires the
