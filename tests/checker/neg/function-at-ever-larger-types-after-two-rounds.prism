@@ -1,0 +1,7 @@
+# `grows-without-end` after two rounds: `Swapped` calls itself with its two type
+# parameters exchanged and one in an array, so the second round gives `a` the type `[a]`
+# (ruling PG).
+Swapped: fn [a], [b], Nat -> Nat
+fn Swapped xs, ys, more = match more -? 1:
+    ? less: Swapped ys, [[xs]], less
+    nil: (Len xs) + Len ys

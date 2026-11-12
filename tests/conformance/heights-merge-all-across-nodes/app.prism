@@ -1,0 +1,35 @@
+# `!MergeAll` of two events that fire in one tick fires once (Semantics ch. 7: "Spurious
+# firings are allowed; double firings never"; Appendix B: `!MergeAll` fires, in a tick any
+# of its events fires, the values of those that fired, in the list's order). The two
+# events reach the merge at different heights: `!bump` is the button's own click, and
+# `!counted` is the result of a widget applied as a blueprint value, a node of its own:
+# its `!Updated` of a hold written by the `!Updated` of the hold the same click writes, two
+# combinators further on. Written by Claude on the claude-lowering branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Counter: fn !Click -> @!Nat
+fn @Counter !bump:
+    $count <- 0 then $count + 1 on !bump
+    $shown <- 0 then !Updated $count
+    @ (!Updated $shown)
+
+Joined: fn [Nat] -> Text
+fn Joined xs = Fold xs, "", \|acc, x| if acc == "": "{x}" else: "{acc},{x}"
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@page: @unit
+@page:
+    !bump <- Ui.Button($label=$"bump")                           # 0
+    match ?Pick True, (@Counter !bump):                          # 1
+        ? @!t:
+            !counted <- @!t
+            let !both = !MergeAll [[(100 on !bump), !counted]]
+            $firings <- 0 then $firings + 1 on !both
+            $last <- "none" then Joined !both
+            Ui.Label($text=$"{$firings}: {$last}")               # 1
+        nil: Ui.Label($text=$"none")
