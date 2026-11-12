@@ -272,7 +272,10 @@ fn ParseTypeBody p, name, params = match Kind p:
         ((? (TbRecord fields), q))
     KKw "choice", "":
         let p1 = ExpectColon (Adv p)
-        if AtOpenL p1:
+        # a choice with no case, `type Never = choice:`, is a type with no value: the lexer
+        # gives its `:` an empty block
+        if (AtOpenL p1) and AtCloseL (Adv p1): ((? (TbChoice [[]]), (Adv (Adv p1))))
+        else: if AtOpenL p1:
             let ((cases, q)) = LayoutItems (Adv p1), ParseCase
             ((? (TbChoice cases), q))
         else: ((nil, (ErrorHere p1, "a choice's cases stand in an indented block after `choice:`")))

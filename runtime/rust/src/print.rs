@@ -222,7 +222,7 @@ show_with! {
     char => |s, p| p.quoted(std::iter::once(*s), '\'');
     Text => |s, p| p.quoted(s.chars(), '"');
     Cursor => |s, p| p.record("Cursor", &[("at", &Nat::from(u32::try_from(s.at()).expect("a text over 4 GB")))]);
-    Error => |s, p| p.record("Error", &[("kind", &Pod::name(&s.kind_p)), ("message", &s.message_p)]);
+    Error => |s, p| p.record("Error", &[("kind", &s.kind()), ("message", &s.message_p)]);
     Path => |s, p| for (i, seg) in s.0.iter().enumerate() {
         p.raw(if i > 0 { "/" } else { "" });
         match seg {

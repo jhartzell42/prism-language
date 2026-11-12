@@ -1379,6 +1379,10 @@ fn WidgetBlueprintValueFrom lx, lxArguments, recast, env, qk, calleeSpan, args, 
         # under a tag's arm a dynamic result is the place's first value and each move of
         # it a push, as `@ $d` is (prism_rtl's `widget_dynamic_blueprint`)
         else: if live and not untagged: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_dynamic_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, fired]])), t
+        # under a tag's arm an event result is a computed answer, the next tick's input, as
+        # `@ !e` is (Semantics ch. 9, "A computed answer is the next tick's input";
+        # prism_rtl's `widget_event_answer_blueprint`)
+        else: if fires and not untagged: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_event_answer_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, fired]])), t
         else: if fires: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_event_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, fired]])), t
         else: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_blueprint::<crate::Elem, crate::Answer, _>"), [[build, buildHosted, answer]])), t
     otherwise: VlOwned (Refusal (WidgetValueWords qk)), t
@@ -1721,7 +1725,15 @@ fn TagValue lx, env, tg, args:
     let t = OutNamed (KindRef lx, tg.kind), [[]]
     match tg.kind:
         "Element": ElementValue lx, env, tg, args
-        "Prelude.Fault": VlOwned (Refusal "a fault kind applied ({tg.name})"), t
+        # a fault kind made with its fields (ruling TF, "faults hold typed values"): the
+        # tag's value, its fields as plain data in declaration order (the prelude's
+        # `fault_kind_of`); an `Error` keeps them (`error_of`), a pattern reads them back
+        # at their types (`ErrorPat`)
+        "Prelude.Fault":
+            let fields = Each tg.fields, \|((fname, ignore))| match ?TagArg args, fname:
+                ? x: XTuple [[(XStr fname), (XMethod (Own (ValueOf lx, env, x)), "to_pod", [[]])]]
+                nil: InternalBug "the fault kind {tg.name} made without its field {fname}"
+            VlOwned (XCall (HelperRef "fault_kind_of"), [[(XStr tg.name), (XVec fields)]]), OutPod
         otherwise:
             let named = Fold args, False, \|f, a| f or IsNamedArg a
             let fields = Each (Range0 (Len tg.fields)), \|i|
@@ -3008,7 +3020,10 @@ fn MatchValue lx, env, s, arms, t, span:
         let env3 = if owned: MovedOnce lx, env2, arm, po.binds else: env2
         XArm(pat=po.pa, conds=(Append po.conds, guard), body=(Own (BlockValue lx, env3, arm.body)))
     let scrut = if owned: Own sv else: Ref sv
-    ArmsValue scrut, xarms, label, t
+    # a `match` with no arm, over a value of a choice with no case: the target's empty
+    # `match` over the value itself (rustc takes none over a reference to it)
+    if (Len arms) == 0: VlOwned (XMatch (XDeref (Ref sv)), [[]], False, t), t
+    else: ArmsValue scrut, xarms, label, t
 
 # Gap OC: a binder of an owned scrutinee that its arm's body reads once is moved there, not
 # cloned: its one read is bound by its place to the binder as a value. Only where that is

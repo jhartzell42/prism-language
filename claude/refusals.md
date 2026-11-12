@@ -416,11 +416,10 @@ known that has no lowering written; none of the lowerings written has been run.
   internal error; the checker gives `prompt-cycle` (tests/checker/neg/build-cycle).
 - lower/expr.prism:576 `{b}` outside a `for`. Test:
   tests/checker/neg/bound-word-outside-for.
-- lower/expr.prism:1012 a fault kind applied. A fault kind is its tag alone (Semantics
-  ch. 10: every kind is declared bare, and a row kind with no output has values that are
-  its tags), so `Fs.NotFound()` is wrong, and so is a tag `of Fault` that declares a
-  field, whose use `Disk.Full(left=n)` reaches the same refusal. Tests:
-  tests/checker/neg/fault-kind-applied and tests/checker/neg/fault-kind-fields.
+- A fault kind with no field applied, `Fs.NotFound()`: a checker error (its value is the
+  tag). Test: tests/checker/neg/fault-kind-applied. The back end has no refusal here: a
+  kind with fields is lowered (`fault_kind_of`, claude/backend.md, "A fault kind as a
+  value").
 - A refutable pattern in a `let`, a lambda parameter, a `for` binder or a `<-` of a
   widget block (Type System ch. 2, "Patterns and exhaustiveness": these take irrefutable
   ones): the checker says nothing, and the back end refuses the names the pattern binds

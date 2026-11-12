@@ -212,7 +212,9 @@ fn TypeParts cp, t0:
         ShapeChoice:
             let names = Each t.cases, \|c| c.name
             let cases = Join (Each t.cases, \|c| CaseStruct cp, c, eq, ord), "\n"
-            let cls = ChoiceClass doc, gens, t.name, cases, (Join names, ", "), members
+            # a choice with no case holds the runtime's `NoCase`, which nothing makes: a
+            # variant of no alternatives is no C++ type
+            let cls = ChoiceClass doc, gens, t.name, cases, (if (Len names) == 0: "::prism_rtl::NoCase" else: Join names, ", "), members
             # the choice's comparisons over the variant, after its cases; the cases' own, where
             # declared (`Behind`), among the module's definitions
             let cmp = Join (Filter [[(if eq: "{gens}inline bool operator==(const {head}& a, const {head}& b) \{ return a.cases() == b.cases(); \}" else: ""), (if ord: "{gens}inline ::std::strong_ordering operator<=>(const {head}& a, const {head}& b) \{ return a.cases() <=> b.cases(); \}" else: "")]], \|s| s != ""), "\n"

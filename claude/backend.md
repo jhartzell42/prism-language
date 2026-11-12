@@ -59,6 +59,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - A record → a `struct`, fields in declaration order; a choice → an `enum`, recursive
   payloads behind `Rc`; a newtype → a tuple struct; a unit type (`click`) → a unit
   struct.
+- A choice with no case (`type Never = choice:`) → an `enum` with no variant; its derived
+  impls match `*self` with no arm, and a `match` with no arm over a value of it is
+  `match *x {}`, which rustc takes over the value and never over a reference. In C++
+  the choice's variant holds the runtime's `NoCase`, which nothing makes, and the
+  `match` is its unreachable tail.
 - `?a` → `Option<A>`; `~a` → `Result<A, rt::Error>`; `((a, b))` → `(A, B)`; `[[a]]` →
   `rt::Array<A>`; `k ==> v` → `rt::Map<K, V>`.
 - `[a]+`, `(k ==> v)+` → `prelude::NonEmpty<rt::Array<A>>`, `prelude::NonEmpty<rt::Map<K,
@@ -788,7 +793,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   - An event result is a port of the row's that the event fires
     (`ValuedEventResult`, the row's `result_event`); prism_rtl's
     `widget_event_blueprint` subscribes the sink of what applied the blueprint, each
-    firing an answer under the arm's tag or outside any, as a plain result is.
+    firing an answer in its tick. Under a supplier's tag arm the firing is a computed
+    answer (Semantics ch. 9, "A computed answer is the next tick's input"):
+    `widget_event_answer_blueprint` hands it to the place as the next tick's input,
+    which is owed, as `@ !e` does.
   - A dynamic result and a bundle are one value the row's `result_value` gives
     (`ValueRowWhole`): a dynamic is a live `Dynamic` over the row, its update event a
     port the writes behind it fire (`LiveDynamic`); a bundle is the tuple of its parts,
@@ -1396,9 +1404,19 @@ it make every program an interpreter run, and every type mistake a runtime fault
 
 ## Local functions, `@Machine`, durations
 
-- **A fault kind as a value** (`Fs.NotFound` named, an `Error`'s `kind` read) is its name
-  as plain data, a `Pod` choice with no arguments (the prelude's `fault_kind`, `kind_of`);
-  `Error(kind=k, ..)` takes the name back (`error_of`). An `Error`'s `message` is a `Text`.
+- **A fault kind as a value** (`Fs.NotFound` named, an `Error`'s `kind` read) is plain
+  data: a kind that is its tag alone is a `Pod` choice with no arguments (the prelude's
+  `fault_kind`, `kind_of`), and a kind made with fields
+  (`Count.TooMany(limit=5, asked=n)`; the Bible's ruling TF, "faults hold typed values")
+  is the tag's value, `Pod::Element` with its fields in declaration order
+  (`fault_kind_of`). `Error(kind=k, ..)` takes the name and the fields (`error_of`,
+  `rt::Error::of_kind`): `rt::Error` keeps the name in `kind_p` and the fields in
+  `kind_fields`, and `Error::kind` is the value again, which `e.kind`, a World and a
+  transcript see. A pattern `Error(kind=Count.TooMany(limit=l, ..), ..)` compares the
+  name, then reads each field back at its type (`fault_field`, the field type's
+  `FromPod`) and matches it by its own pattern (`ErrorPat`). Two kinds are equal when
+  their names and fields are; a kind prints as a tag's value does. An `Error`'s
+  `message` is a `Text`.
 - **The prelude's `Turn`** is `PreludeTurn` in both emitted preludes (`TypeItemName`): the
   runtime's `Turn` is the job's. In C++ it has the form of a program's own choice (a case
   struct each, positional fields `a0`).
@@ -1548,6 +1566,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **`Show x`** → `rt::show_text(&x)`.
 - **The transcript** is the Test World printing the `Pod`s it receives with the same
   printer, in Conformance ch. 1's sections.
+- **The prelude's tags are answered by every World, the Test World included**
+  (Semantics ch. 10). The policy is prism_rtl's (`world::prelude`: `Prelude`, and
+  `UnwrapWorld` around a World that answers no prelude tag): an unwrap's `~ x` is
+  answered with `x` in the next tick, the first `Error` poisons the innermost subtree
+  with a path of its own, and the report goes to the nearest `Prelude.Exceptions` place
+  outside it. Under the Test World the answer is an input of the next tick the test
+  opens, printed under that tick's `in:` as a delivery is, and that tick is owed; a
+  poisoned subtree is served nothing again, a test's own delivery included. The policy
+  prints nothing; the CLI and canvas Worlds print what a poisoned root has to say.
 
 ## The library's API
 

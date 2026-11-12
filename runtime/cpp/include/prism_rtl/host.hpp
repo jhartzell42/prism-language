@@ -698,6 +698,25 @@ Blueprint<E, A> widget_event_blueprint(Build build, BuildHosted build_hosted, An
     };
 }
 
+/// A widget that gives an event back as a supplier's answer under a tag's arm: as
+/// `widget_event_blueprint`, but each firing is a computed answer, an input of the next
+/// tick, which is owed (Semantics ch. 9, "A computed answer is the next tick's input"),
+/// as `event_blueprint`'s is.
+template <class E, class A, class Build, class BuildHosted, class AnswerFn>
+Blueprint<E, A> widget_event_answer_blueprint(Build build, BuildHosted build_hosted, AnswerFn answer) {
+    return [build, build_hosted, answer](Path path, Sink<A> sink, const Scope<E, A>& scope, std::uint32_t base, Cx& cx) -> Result<Supplied<E, A>> {
+        auto hear = [sink, answer](const auto& v, Cx& cx) -> Done { return later<A>(sink, answer(v), cx); };
+        if (scope.is_world()) {
+            auto made = TRY(build(path, base, cx));
+            made.result->subscribe(hear);
+            return Supplied<E, A>{made.node, std::nullopt, false, nullptr, made.built, made.leave};
+        }
+        auto made = TRY(build_hosted(path, base, scope.hosted, host_moved<E, A>(scope.hosted), cx));
+        made.result->subscribe(hear);
+        return Supplied<E, A>{made.node, std::nullopt, false, nullptr, made.built, made.leave, made.document, made.deliver};
+    };
+}
+
 /// A widget that gives a dynamic back as a blueprint value under a tag's arm: as
 /// `widget_blueprint`, the row's result its live dynamic. Its value at the row's build is
 /// the place's first value, made an answer by `answer`; each later move of it is a push
