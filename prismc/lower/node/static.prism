@@ -1084,7 +1084,9 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
         otherwise: acc
     # (a dynamic `let` of the node that reads through the parent is its expression over
     # the live dynamics of what that reads, `LetSourcesIn`)
-    let ((leaves, sources)) = LetSourcesIn menv, roots
+    # (and a `let` of a row the line writes, by its expression, so that the row reads this
+    # node's live dynamics of what it reads here through the parent, `WholeOfBlock`)
+    let ((leaves, sources)) = LetSourcesIn menv, (NestedLetSources e), roots
     let names0 = Fold leaves, [[]], \|acc3, y| match y.kind:
             EName n: if (HasKey menv.names, "#whole{DynKey y}") or HasKey menv.names, "#whole#{SNameKey n}": acc3 else: match menv.names[SNameKey n]:
                 ? (BnHold ignore, ignore): if (LayerOf (TypeAt lx, y.span)) == LyDyn and not (HasText (Each acc3, \|z| DynKey z), (DynKey y)): Push acc3, y else: acc3
@@ -1110,13 +1112,44 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
 # A line's readers passed whole (`roots`), with each dynamic `let` of the node that reads
 # through the parent (`LetReadsParent`) put as the names its expression reads, and those
 # `let`s with their expressions, inner ones first (`LetLiveDynamics`). A `let` a line
-# passes whole already (`#whole{span}`) stays as it is.
-LetSourcesIn: unbounded fn Env, [Expr] -> (([Expr], [((Expr, Expr))]))
-fn LetSourcesIn menv, roots = Fold roots, (([[]], [[]])), \|((acc, lets)), y| match ?LetSourceOf menv, y:
+# passes whole already (`#whole{span}`) stays as it is. A name a row or a generation the
+# line writes binds by a `let` (`nested`), which this node does not bind, is put as the
+# names its expression reads alone: this node makes the live dynamics of its own names
+# there, which the row reads through the parent, and the row makes the `let`'s.
+LetSourcesIn: unbounded fn Env, [((Text, Expr))], [Expr] -> (([Expr], [((Expr, Expr))]))
+fn LetSourcesIn menv, nested, roots = Fold roots, (([[]], [[]])), \|((acc, lets)), y| match ?LetSourceOf menv, y:
     ? src:
-        let ((inner, innerLets)) = LetSourcesIn menv, (ExprsIn src)
+        let ((inner, innerLets)) = LetSourcesIn menv, nested, (ExprsIn src)
         (((Append acc, inner), (Push (Append lets, innerLets), ((y, src)))))
-    nil: (((Push acc, y), lets))
+    nil: match ?NestedLetSourceOf menv, nested, y:
+        ? src:
+            let ((inner, ignore)) = LetSourcesIn menv, nested, (ExprsIn src)
+            (((Append acc, inner), lets))
+        nil: (((Push acc, y), lets))
+
+# The expression of a `let` that a row or a generation written in `e` binds (a `for`'s or
+# a `rebuild`'s block, at any depth), by the name it binds.
+NestedLetSources: unbounded fn Expr -> [((Text, Expr))]
+fn NestedLetSources e = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
+    EFor ignore, ignore, body: Append acc, (BlockLetSources body)
+    ERebuild ignore, body: Append acc, (BlockLetSources body)
+    otherwise: acc
+
+BlockLetSources: fn Block -> [((Text, Expr))]
+fn BlockLetSources body = Fold body.stmts, [[]], \|acc, s| match s.kind:
+    SLet p, ignore, src: match p.kind:
+        PName n: Push acc, ((SNameKey n, src))
+        otherwise: acc
+    otherwise: acc
+
+# A name's nested `let` expression (`NestedLetSources`), where this node binds no such name
+# and has no live dynamic for it yet.
+?NestedLetSourceOf: fn Env, [((Text, Expr))], Expr -> ?Expr
+fn ?NestedLetSourceOf menv, nested, y = match y.kind:
+    EName n: if (Len n.path) != 1 or (HasKey menv.names, (SNameKey n)) or HasKey menv.names, "#whole{DynKey y}": nil else: Fold nested, nil, \|?found, ((k, src))| match ?found:
+        ? f: ? f
+        nil: if k == (SNameKey n): ? src else: nil
+    otherwise: nil
 
 # A name's `let` expression (`#source`), when the name is a dynamic `let` of the node that
 # reads through the parent and the line has no live dynamic for it yet.

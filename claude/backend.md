@@ -1148,8 +1148,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
     combinator: its expression is kept beside its binding (`{name}#source`, `BnSource`),
     and where a line passes the `let` whole, the line makes live dynamics for what the
     expression reads (`LetSourcesIn`) and the `let`'s live dynamic is the expression over
-    them, made at the build and kept in a field (`LetLiveDynamics`). Once the node is
-    gone, its holds' parts are their last values and the parent's part goes on moving
+    them, made at the build and kept in a field (`LetLiveDynamics`). The block whose line
+    writes the row makes the live dynamics of its own names the `let` reads, at the
+    `let`'s spans (`NestedLetSources`), as it does for a combinator written in the row,
+    and the row reads them through the parent (`WholeOfBlock`), so they outlive the row.
+    Once the node is gone, its holds' parts are their last values and the parent's part goes on moving
     (sem-ch07-getter-dies-with-its-row's second test).
   - A global dynamic passed whole is the constant its getter gives.
 - **`!Updated $d` as an event value** (in a supplier's closure, in a function taking `$d`
