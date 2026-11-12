@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 4 (a function of a block reads the block's names and its own parameters) and ch. 8 (a widget applied is transparent: its places are the block's next): the row shows $count + $shown = 0 and gives 1; after the click both are 1, the row shows 2 and gives 3, in the click's own tick. The run on the gen1 f24a (fix ce1b0a05) gives these bytes.
+test t
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Ui.Label(text="row 0")
+    2: Ui.Label(text="more 1")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="row 2")
+    2: Ui.Label(text="more 3")
