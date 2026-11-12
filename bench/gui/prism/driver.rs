@@ -1,4 +1,4 @@
-// The Prism table's driver for the Rust target, driver.cpp in Rust:
+// The Prism table's driver for the Rust target:
 // bench.prism compiled to Rust runs under the Rust canvas World with `Hooks`, and each
 // step of an operation's script is a press at a button's text, found in the scene the
 // World last read. A timed step's clock starts when the press is queued and stops at the
@@ -10,7 +10,7 @@
 //                             when a scene draws outside the window
 //
 //
-// The work is counted as driver.cpp counts it: instructions retired on macOS
+// The work is counted as instructions retired on macOS
 // (`proc_pid_rusage`, `thread_selfcounts`) and on Linux through a perf_event counter per
 // process and per thread; when the Linux kernel refuses one (ENOENT, EOPNOTSUPP, EACCES),
 // each thread's CPU nanoseconds instead, and every `check` and `phases` line names its
@@ -49,7 +49,7 @@ mod bench_driver {
     const CLEAR: &str = "Clear";
     const SWAP: &str = "Swap rows";
 
-    /// Each operation's script for one run, as driver.cpp has them.
+    /// Each operation's script for one run.
     fn script(op: &str) -> Option<Vec<Press>> {
         Some(match op {
             "create1k" => vec![button(CREATE_1K, true), button(CLEAR, false)],
@@ -116,7 +116,7 @@ mod bench_driver {
         None
     }
 
-    /// The table the program should have, as driver.cpp's `Model` follows it: the ids its
+    /// The table the program should have: the ids its
     /// rows were made with, in slot order, the rows Update every 10th row marked, and the
     /// selected row's position counting from 1 (0 for none).
     #[derive(Default)]
@@ -189,8 +189,7 @@ mod bench_driver {
         rows
     }
 
-    /// Whether the screen shows the table the model says, as driver.cpp's `shows` checks
-    /// it; says what it saw when not.
+    /// Whether the screen shows the table the model says; says what it saw when not.
     fn shows(s: &dyn Session, m: &Model) -> bool {
         let rows = rows_shown(s);
         let h = s.shared().windows.values().next().map_or(0.0, |w| w.size.1);
@@ -224,7 +223,7 @@ mod bench_driver {
     }
 
     /// The whole process's work so far, every thread's: instructions retired (macOS's
-    /// `proc_pid_rusage`, as driver.cpp's `process_work`).
+    /// `proc_pid_rusage`).
     #[cfg(target_os = "macos")]
     fn process_work() -> u64 {
         // `struct rusage_info_v4` (sys/resource.h) is 296 bytes, its `ri_instructions` the
@@ -546,7 +545,7 @@ mod bench_driver {
         }
     }
 
-    /// `check`'s first check, as driver.cpp's `drawn_inside`.
+    /// `check`'s first check.
     fn drawn_inside(s: &dyn Session) -> bool {
         let Some((ww, wh)) = s.shared().windows.values().next().map(|w| w.size) else { return true };
         let mut all = Vec::new();

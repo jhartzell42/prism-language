@@ -71,8 +71,8 @@ fn Number t, digits, neg:
         otherwise: XInt signed
 
 # A literal's digits in plain decimal, every digit kept: a radix literal (`0x`, `0o`,
-# `0b`) converted and a decimal one without its leading zeros, so each printer writes
-# them in its own language unchanged (C++ reads `010` as octal and has no `0o`). A
+# `0b`) converted and a decimal one without its leading zeros, so the printer writes
+# them unchanged. A
 # decimal fraction, and digits that are plain decimal already, stay as they are.
 DecimalDigits: fn Text -> Text
 fn DecimalDigits d:
@@ -139,22 +139,6 @@ fn ShownPart v = match ValueTy v:
 Refusal: fn Text -> Ex
 fn Refusal what = XRefusal what
 
-# `?` of a value, which must be a temporary: the C++ printer's TRY moves out of its operand,
-# so `?` of a place (a local, a field, a part of one) is refused, naming the place.
-TryOf: fn Ex -> Ex
-fn TryOf x = if IsNamedPlace x: InternalBug "`?` of the place `{PlaceStem x}`, which C++'s TRY would move out of (only a temporary may be tried)" else: XTry x
-
-IsNamedPlace: fn Ex -> Bool
-fn IsNamedPlace x = match x:
-    XVar ignore: True
-    XField ignore, ignore: True
-    XFieldOf ignore, ignore, ignore: True
-    XPart ignore, ignore: True
-    XTarget ignore: True
-    XRef y: IsNamedPlace y
-    XDeref y: IsNamedPlace y
-    otherwise: False
-
 let loweringRefusal = "prismc does not lower "
 
 RefusalDo: fn Text -> Do
@@ -200,8 +184,7 @@ fn UnboundValueOf lx, env, e:
     AsFailure lx, e, v
 
 # An `Error` value where the checker found it to be a `~T`'s failure (its `faults`): the
-# `~T` failing with it, at its type (C++ deduces nothing from a failure: `auto`, an
-# optional's or a map's element). One already made the failure (a constructor whose own
+# `~T` failing with it, at its type. One already made the failure (a constructor whose own
 # place is the `~T`) is kept.
 AsFailure: unbounded fn Lx, Expr, Vl -> Vl
 fn AsFailure lx, e, v = match lx.faults[PlaceKey lx, e.span]:
@@ -774,8 +757,7 @@ fn PlainValueByKind lx, env, e:
         ENil ignore: VlOwned (XTyped (XNone), t), t
         ETuple es: VlOwned (XTuple (Each es, \|x| Own (ValueOf lx, env, x))), t
         EArray [[]]: VlOwned (XTyped (XCall (RefRuntime "rt::Array::new"), [[]]), t), t
-        # an optional's or a fault's elements at their type: C++ deduces no vector from a
-        # value and a failure (`[[~ 1, Error(..)]]`)
+        # an optional's or a fault's elements at their type (`[[~ 1, Error(..)]]`)
         EArray es: VlOwned (XCall (RefRuntime "rt::Array::from"), [[XVec (Each es, \|x| ElementAt t, (Own (ValueOf lx, env, x)))]]), t
         EMap [[]]: VlOwned (XTyped (XCall (RefRuntime "rt::Map::new"), [[]]), t), t
         EMap kvs: VlOwned (XCall (HelperRef "map_of"), [[XVec (Each kvs, \|((k, v))| XTuple [[Own (ValueOf lx, env, k), Own (ValueOf lx, env, v)]])]]), t
@@ -792,7 +774,7 @@ fn PlainValueByKind lx, env, e:
                 let v = ValueOf lx, env, x
                 if IsCopy t: VlOwned (XUnary OpNeg, (Copy v)), t else: VlOwned (XUnary OpNeg, (Ref v)), t
         EUnary ignore, x: ValueOf lx, env, x
-        # at its type: C++ deduces a bare value from `auto x = ~ 3`
+        # at its type
         EFreeSigil "?", x: VlOwned (XTyped (XCtor (RefRuntime "std::Some"), [[Own (ValueOf lx, env, x)]]), t), t
         EFreeSigil "~", x: VlOwned (XTyped (XCtor (RefRuntime "std::Ok"), [[Own (ValueOf lx, env, x)]]), t), t
         EFreeSigil "@", x: PureBlueprint lx, env, x, t
@@ -1501,7 +1483,7 @@ fn WidgetBlueprintValueFrom lx, lxArguments, recast, env, qk, calleeSpan, args, 
         let Arms = \|hosted| Each cases, \|((rowNode, pat, conds, passed))|
             let node = if hosted: HostedValuedRow rowNode else: rowNode
             let tail = if hosted: [[XUnit, (XClone (XVar "enclosing")), (XClone (XVar "moved")), XCx]] else: [[XUnit, XCx]]
-            let made = TryOf (XCall (RefChild (RefIn lx, v.home, node), "build"), (Append (Append [[(XClone (XVar "path"))]], passed), tail))
+            let made = XTry (XCall (RefChild (RefIn lx, v.home, node), "build"), (Append (Append [[(XClone (XVar "path"))]], passed), tail))
             let result = if resTy == OutUnit: XUnit else: if fires: XMethod (XVar "row"), "result_event", [[]] else: XMethod (XVar "row"), "result_value", [[]]
             XArm(pat=pat, conds=conds, body=(XBlock [[(DoLet (PaBind "row"), made)]], (XCall (HelperRef "built_widget"), [[(XMethod (XVar "row"), "built", [[]]), result, (XVar "row")]])))
         let select = Own (ArmsValue (XTuple (Each names, \|n| XRef (XVar n))), (Arms False), "'select", builtTy)
@@ -2405,18 +2387,16 @@ fn CtorApp lx, env, c, args, span:
                 if (Len c.fields) == 0: VlOwned (XPath tyPath), t
                 else:
                     let made = XRecord tyPath, (Each (Range0 (Len c.fields)), \|i| (((FieldSpell (OwnerOf c.owner), (Or c.fields[i], ""), (Or c.args[i], TyErr)), (Or vals[i], (XCall (RefRuntime "std::Default::default"), [[]])))))
-                    # a generic record with its type said, which a printer whose target
-                    # deduces it from the fields (C++, by copy from a nested one) spells
+                    # a generic record with its type said
                     if (Len owner.params) > 0: VlOwned (XTyped made, (BuiltTy t)), t
                     else: VlOwned made, t
             BChoice cases:
                 let isUnitType = (Len cases) == 1 and (Len c.args) == 0 and IsLowerText (BareName c.name)
-                # a newtype is a tuple struct (a struct in C++), built by its own name
+                # a newtype is a tuple struct, built by its own name
                 let isNewtype = (Len cases) == 1 and (BareName c.name) == (BareName c.owner) and (Len c.args) > 0
                 let path = if isUnitType or isNewtype: tyPath else: RefChild tyPath, (Camel (BareName c.name))
                 let made = if (Len c.args) == 0: XPath path else: XCtor path, vals
-                # a generic choice's case with the choice's type said, which a printer
-                # whose target cannot infer the type arguments spells (C++)
+                # a generic choice's case with the choice's type said
                 if (Len owner.params) > 0 and not isUnitType and not isNewtype: VlOwned (XTyped made, (BuiltTy t)), t
                 else: VlOwned made, t
             otherwise: VlOwned (InternalBug "a constructor of {c.owner}"), t

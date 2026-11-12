@@ -283,7 +283,7 @@ fn RebuildDynamic wx, menv, body, srcEx, reads, vt, name, pos:
             let live = "{result}_live"
             let what = "the dynamic of the `rebuild` at place {PlaceText pos}"
             let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
-            let built = TryOf (XCall (RefChild (SiteRef wx.lx, whole.node.name), "build"), (Append [[(XVar "path"), (XVar "value")]], tail))
+            let built = XTry (XCall (RefChild (SiteRef wx.lx, whole.node.name), "build"), (Append [[(XVar "path"), (XVar "value")]], tail))
             let kept = DoAssign (XDeref (XMethod (XField XSelf, live), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XMethod (XVar "row"), taken, [[]])]])
             let marked = DoExpr (XMethod (XField XSelf, "{result}_snap"), "mark", [[XCx]])
             let select = XBlock [[(DoLet (PaBind "row"), built), kept, marked]], (XVar "row")
@@ -358,7 +358,7 @@ fn DynClauseLine wx, menv, scrut, call, qk, v, e:
     let gaps = RowGaps rows, width
     let arms = Fold cases, [[]], \|built, c|
         let i = Len built
-        let made = TryOf (XCall (RefChild (SiteRef lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), tail))
+        let made = XTry (XCall (RefChild (SiteRef lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), tail))
         let kept = DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XMethod (XVar "row"), "result_dynamic", [[]])]])
         Push built, (XArm(pat=c.pat, conds=c.conds, body=(XBlock (Append [[(DoLet (PaBind "row"), made), kept]], (GapSet name, (Or gaps[i], nil))), (XCast (XVar "row"), rowObj))))
     let select = WithRowBase wx, "self", pos, (Own (ArmsValue scrutEx, arms, "'select", rowObj))
@@ -400,7 +400,7 @@ fn BundleClauseLine wx, menv, scrut, call, qk, v, e:
     let gaps = RowGaps rows, width
     let arms = Fold cases, [[]], \|built, c|
         let i = Len built
-        let made = TryOf (XCall (RefChild (SiteRef lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), tail))
+        let made = XTry (XCall (RefChild (SiteRef lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), tail))
         Push built, (XArm(pat=c.pat, conds=c.conds, body=(XBlock (Append (Append [[(DoLet (PaBind "row"), made)]], kept.keeps), (GapSet name, (Or gaps[i], nil))), (XCast (XVar "row"), rowObj))))
     let select = WithRowBase wx, "self", pos, (Own (ArmsValue scrutEx, arms, "'select", rowObj))
     let wx3 = update kept.wx:
@@ -476,7 +476,7 @@ fn EarlyClauseLine wx, benv, menv, scrut, qk, v, e, args, outTy:
     let hostAtBuild = match ?HostedRows wx:
         ? ignore: [[(XClone (XVar (HostLocal wx, pos)))]]
         nil: [[]]
-    let Made = \|c, parent, host| TryOf (XCall (RefChild (SiteRef lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), (Append (Append [[parent]], host), [[XCx]])))
+    let Made = \|c, parent, host| XTry (XCall (RefChild (SiteRef lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), (Append (Append [[parent]], host), [[XCx]])))
     let gaps = RowGaps rows, width
     let gapNow = "{name}_gap_now"
     # below a generation built after the node the row is numbered after it too
@@ -487,7 +487,7 @@ fn EarlyClauseLine wx, benv, menv, scrut, qk, v, e, args, outTy:
     let earlyArms = Fold cases, [[]], \|built, c|
         let i = Len built
         Push built, (XArm(pat=c.pat, conds=c.conds, body=(XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XVar link)), hostAtBuild))]], (XTuple (Append [[(XMethod (XVar "row"), "result_value", [[]]), (XCast (XClone (XVar "row")), rowObj), (Or (Or gaps[i], nil), (XIndex 0))]], (if late: [[(NumberOf wx, pos, name, link, (Or gaps[i], nil))]] else: [[]]))))))
-    let methodArms = Each cases, \|c| XArm(pat=c.pat, conds=c.conds, body=(if late: XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XField XSelf, link)), (HostedPassed wx))), (DoExpr (TryOf (XMethod (XVar "row"), "number_places", [[(XVar "row_base"), XCx]])))]], (XCast (XVar "row"), rowObj) else: XCast (Made c, (XClone (XField XSelf, link)), (HostedPassed wx)), rowObj))
+    let methodArms = Each cases, \|c| XArm(pat=c.pat, conds=c.conds, body=(if late: XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XField XSelf, link)), (HostedPassed wx))), (DoExpr (XTry (XMethod (XVar "row"), "number_places", [[(XVar "row_base"), XCx]])))]], (XCast (XVar "row"), rowObj) else: XCast (Made c, (XClone (XField XSelf, link)), (HostedPassed wx)), rowObj))
     let atBuild = ClauseScrutinee lx, benv, v, args
     # the arguments as the node's methods read them (in a generation's row `_` is the
     # row's own value, never the builder's `value`, which here is unit)
@@ -536,7 +536,7 @@ fn EarlyChoiceLine wx, benv, menv, s, arms, e:
     let hostAtBuild = match ?HostedRows wx:
         ? ignore: [[(XClone (XVar (HostLocal wx, pos)))]]
         nil: [[]]
-    let Made = \|c, parent, host| TryOf (XCall (RefChild (SiteRef lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), (Append (Append [[parent]], host), [[XCx]])))
+    let Made = \|c, parent, host| XTry (XCall (RefChild (SiteRef lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), (Append (Append [[parent]], host), [[XCx]])))
     let gaps = RowGaps rows, width
     let gapNow = "{name}_gap_now"
     # below a generation built after the node the row is numbered after it too
@@ -547,7 +547,7 @@ fn EarlyChoiceLine wx, benv, menv, s, arms, e:
     let earlyArms = Fold cases, [[]], \|built, c|
         let i = Len built
         Push built, (XArm(pat=c.pat, conds=c.conds, body=(XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XVar link)), hostAtBuild))]], (XTuple (Append [[(XMethod (XVar "row"), "result_value", [[]]), (XCast (XClone (XVar "row")), rowObj), (Or (Or gaps[i], nil), (XIndex 0))]], (if late: [[(NumberOf wx, pos, name, link, (Or gaps[i], nil))]] else: [[]]))))))
-    let methodArms = Each cases, \|c| XArm(pat=c.pat, conds=c.conds, body=(if late: XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XField XSelf, link)), (HostedPassed wx))), (DoExpr (TryOf (XMethod (XVar "row"), "number_places", [[(XVar "row_base"), XCx]])))]], (XCast (XVar "row"), rowObj) else: XCast (Made c, (XClone (XField XSelf, link)), (HostedPassed wx)), rowObj))
+    let methodArms = Each cases, \|c| XArm(pat=c.pat, conds=c.conds, body=(if late: XBlock [[(DoLet (PaBind "row"), (Made c, (XClone (XField XSelf, link)), (HostedPassed wx))), (DoExpr (XTry (XMethod (XVar "row"), "number_places", [[(XVar "row_base"), XCx]])))]], (XCast (XVar "row"), rowObj) else: XCast (Made c, (XClone (XField XSelf, link)), (HostedPassed wx)), rowObj))
     let atBuild = XTuple [[(Argument lx, benv, s)]]
     let inMethod = XTuple [[(Argument lx, menv, s)]]
     let built = if late: Own (ArmsValue atBuild, earlyArms, "'select", (OutTuple [[outTy, rowObj, OutCount, laterTy]])) else: WithRowBase wx, "", pos, (Own (ArmsValue atBuild, earlyArms, "'select", (OutTuple [[outTy, rowObj, OutCount]])))
@@ -918,7 +918,7 @@ fn SharedClauseLine wx, menv, scrut, qk, v, e, args:
     # (a row numbered late leaves this node the step that numbers it, `SharedNumbered`)
     let numbered = if late: [[(SharedNumbered pos, name)]] else: [[]]
     let arms = Each cases, \|((rowNode, pat, conds, passed))|
-        let built = TryOf (XCall (RefChild (SiteRef lx, rowNode), "build"), (Append (Append [[(XClone (XVar "path"))]], passed), (Append (Append [[XUnit]], hosted), [[XCx]])))
+        let built = XTry (XCall (RefChild (SiteRef lx, rowNode), "build"), (Append (Append [[(XClone (XVar "path"))]], passed), (Append (Append [[XUnit]], hosted), [[XCx]])))
         XArm(pat=pat, conds=conds, body=(XBlock (Append (Append (Append [[(DoLet (PaBind "row"), built)]], keeps), (GapSet name, (? gap))), numbered), (XCast (XVar "row"), rowObj)))
     let chosen = Own (ArmsValue (SharedScrutinee lx, menv, v, args), arms, "'select", rowObj)
     let select = if late: chosen else: WithRowBase wx, "self", pos, chosen
@@ -953,7 +953,7 @@ fn GivesLate wx = (wx.lateGens and wx.pos.scope == 0) or (wx.giving == GivenUnnu
 # step holds the node weakly.
 SharedNumbered: fn Pos, Text -> Do
 fn SharedNumbered pos, name:
-    let numbered = DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "parent"]]), (XUpgrade (XVar "parent")), [[(DoExpr (TryOf (XMethod (XVar "row"), "number_places", [[(XMethod (XVar "parent"), (PlaceMethod pos.scope), [[XIndex pos.at]]), XCx]])))]], [[]]
+    let numbered = DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "parent"]]), (XUpgrade (XVar "parent")), [[(DoExpr (XTry (XMethod (XVar "row"), "number_places", [[(XMethod (XVar "parent"), (PlaceMethod pos.scope), [[XIndex pos.at]]), XCx]])))]], [[]]
     let step = XBlock [[(DoLet (PaBind "row"), (XClone (XVar "row"))), (DoLet (PaBind "parent"), (XWeak XSelf)), (DoLet (PaTyped (PaBind "number"), laterTy), (XLater (XBlock [[numbered]], (XUnit))))]], (XVar "number")
     DoAssign (XDeref (XMethod (XField XSelf, "{name}_number"), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[step]])
 
@@ -1376,7 +1376,7 @@ fn BuildingChoicesLine wx, menvs, lxc, scruts, patss, stys, guards, bodies, outT
     let bundle = if bundled: KeepParts wx3, name, (RowsBundle rows), (BundlePartTys outFull) else: KeptParts(wx=wx3, keeps=[[]], results=[[]])
     let arms = Fold cases, [[]], \|built, c|
         let i = Len built
-        let made = TryOf (XCall (RefChild (SiteRef lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), tail))
+        let made = XTry (XCall (RefChild (SiteRef lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), tail))
         let set = GapSet name, (Or gaps[i], nil)
         let keeps = Append (Append (if isDyn: [[kept]] else: if allPlain: [[keptPlain]] else: [[]]), bundle.keeps), set
         let body = if (Len keeps) == 0: XCast made, rowObj else: XBlock (Append [[(DoLet (PaBind "row"), made)]], keeps), (XCast (XVar "row"), rowObj)
@@ -1729,7 +1729,7 @@ fn GenSelect wx, menv, body, cases, pos, sets, ofRebuild:
     let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
     match ?ClauseCall wx.lx, body:
         nil: match cases[0]:
-            ? c: TryOf (XCall (RefChild (SiteRef wx.lx, c.node.name), "build"), (Append [[(XVar "path"), (XVar "value")]], tail))
+            ? c: XTry (XCall (RefChild (SiteRef wx.lx, c.node.name), "build"), (Append [[(XVar "path"), (XVar "value")]], tail))
             nil: InternalBug "a `rebuild` with no generation"
         ? ((qk, args)):
             let env = if ofRebuild: Bind menv, "_", (BnLocal (XVar "value"), Owned, OutUnit) else: menv
@@ -1737,7 +1737,7 @@ fn GenSelect wx, menv, body, cases, pos, sets, ofRebuild:
             let rowObj = OutObj (OutNamed (RefRuntime "rt::Row"), [[]])
             let arms = Fold cases, [[]], \|built, c|
                 let i = Len built
-                let made = TryOf (XCall (RefChild (SiteRef wx.lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), tail))
+                let made = XTry (XCall (RefChild (SiteRef wx.lx, c.node.name), "build"), (Append (Append [[(XClone (XVar "path"))]], c.passed), tail))
                 # what the row left unbuilt, kept by the block (`GapSet`)
                 let set = Or sets[i], [[]]
                 Push built, (XArm(pat=c.pat, conds=c.conds, body=(if (Len set) == 0: XCast made, rowObj else: XBlock (Append [[(DoLet (PaBind "row"), made)]], set), (XCast (XVar "row"), rowObj))))
@@ -1768,7 +1768,7 @@ fn GapSet name, nil = [[]]
 NumberOf: fn Wx, Pos, Text, Text, ?Ex -> Ex
 fn NumberOf wx, pos, name, link, ?gap:
     let owner = DoLet (PaBind "node"), (XMethod (XMethod (XVar "numbered_link"), "owner", [[]]), "expect", [[(XStr "a row is numbered once its block's node stands")]])
-    let numbered = DoExpr (TryOf (XMethod (XVar "row"), "number_places", [[(PlaceNumber wx, "node", pos), XCx]]))
+    let numbered = DoExpr (XTry (XMethod (XVar "row"), "number_places", [[(PlaceNumber wx, "node", pos), XCx]]))
     let gapSet = match ?gap:
         ? g: [[(DoExpr (XMethod (XField (XVar "node"), "{name}_gap"), "set", [[g]]))]]
         nil: [[]]
@@ -1802,7 +1802,7 @@ fn UnnumberedGenerations wx = (Each (Filter wx.gens, \|gd| gd.pos.scope == 0 and
 # that (`LateRowSelect`). `wx`: the block, `pos`: the generation's position in it.
 NumberedByParent: fn Wx, Pos, Text -> Do
 fn NumberedByParent wx, pos, genName:
-    let numbered = DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "parent"]]), (XUpgrade (XField (XVar "row"), "parent")), [[(DoExpr (TryOf (XMethod (XVar "row"), "number_places", [[(XMethod (XVar "parent"), (PlaceMethod pos.scope), [[XIndex pos.at]]), XCx]])))]], [[]]
+    let numbered = DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "parent"]]), (XUpgrade (XField (XVar "row"), "parent")), [[(DoExpr (XTry (XMethod (XVar "row"), "number_places", [[(XMethod (XVar "parent"), (PlaceMethod pos.scope), [[XIndex pos.at]]), XCx]])))]], [[]]
     let step = XBlock [[(DoLet (PaBind "row"), (XClone (XVar "node"))), (DoLet (PaTyped (PaBind "number"), laterTy), (XLater (XBlock [[numbered]], (XUnit))))]], (XVar "number")
     DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "parent"]]), (XUpgrade (XField (XVar "node"), "parent")), [[(DoAssign (XDeref (XMethod (XField (XVar "parent"), "{genName}_number"), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[step]]))]], [[]]
 
@@ -1832,7 +1832,7 @@ fn GenForwards gd:
     if IsWideGen gd: [[]]
     else: if gd.transparent: Each (Range0 gd.width), \|i|
         let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
-        let body = XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[DoExpr (TryOf (XMethod (XVar "row"), "answer", [[(XVar "at"), (XVar "v"), XCx]]))]], [[]])]], (XUnit)
+        let body = XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[DoExpr (XTry (XMethod (XVar "row"), "answer", [[(XVar "at"), (XVar "v"), XCx]]))]], [[]])]], (XUnit)
         (((PosPat (Pos(scope=gd.pos.scope, at=gd.pos.at + i)), [[PaRest ""]]), body))
     else: [[(((PosPat gd.pos, genTail), (ForwardGen gd)))]]
 
@@ -1852,7 +1852,7 @@ fn WideForward gens:
         let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
         let moved = if gd.rebased: [[(DoLet (PaBind "rebased"), (XCall (HelperRef "rebased"), [[(XVar "at"), (XIndex gd.pos.at)]]))]] else: [[]]
         let path = if gd.rebased: XCall (HelperRef "segments_of"), [[XRef (XVar "rebased")]] else: XVar "at"
-        let handed = Append moved, [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[DoExpr (TryOf (XMethod (XVar "row"), "answer", [[path, (XVar "v"), XCx]]))]], [[]])]]
+        let handed = Append moved, [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[DoExpr (XTry (XMethod (XVar "row"), "answer", [[path, (XVar "v"), XCx]]))]], [[]])]]
         [[(DoIf (XCall (HelperRef "within_positions"), [[(XVar "at"), (XIndex gd.pos.at), (XIndex gd.width)]]), handed, rest)]]
     if (Len gens) == 0: [[]] else: [[(((PaSlice [[PaRest ""]]), (XBlock chain, (XUnit))))]]
 
@@ -1864,7 +1864,7 @@ fn TypedWideForward gens, segs, none:
         let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
         let moved = if gd.rebased: [[(DoLet (PaBind "rebased"), (XCall (HelperRef "rebased"), [[segs, (XIndex gd.pos.at)]]))]] else: [[]]
         let path = if gd.rebased: XCall (HelperRef "segments_of"), [[XRef (XVar "rebased")]] else: segs
-        let handed = Append moved, [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[DoExpr (TryOf (XMethod (XVar "row"), "deliver", [[path, (XVar "v"), XCx]]))]], [[]])]]
+        let handed = Append moved, [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[DoExpr (XTry (XMethod (XVar "row"), "deliver", [[path, (XVar "v"), XCx]]))]], [[]])]]
         [[(DoIf (XCall (HelperRef "within_positions"), [[segs, (XIndex gd.pos.at), (XIndex gd.width)]]), handed, rest)]]
     [[((PaWild, chain))]]
 
@@ -1877,7 +1877,7 @@ ForwardGen: fn GenDef -> Ex
 fn ForwardGen gd:
     let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
     let isCurrent = XBin OpEq, (XBin OpAdd, (XDeref (XVar "g")), (XIndex 1)), (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]])
-    XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[(DoIf isCurrent, [[DoExpr (TryOf (XMethod (XVar "row"), "answer", [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]], [[]])]], (XUnit)
+    XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[(DoIf isCurrent, [[DoExpr (XTry (XMethod (XVar "row"), "answer", [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]], [[]])]], (XUnit)
 
 # `@Flatten $$x` over a `rebuild`'s dynamic `$$x` (claude/backend.md, "Dynamic structure";
 # Semantics ch. 7): a field with the current inner, a hold of the generation's `Dynamic`,

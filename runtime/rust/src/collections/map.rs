@@ -1,7 +1,6 @@
 //! Written by Claude on the claude-self-hosting branch; subject to change.
 //!
-//! `k ==> v`: a persistent ordered map, an AVL tree of counted nodes, one node per entry,
-//! as the C++ runtime's `Map` is (runtime/cpp/include/prism_rtl/collections.hpp). A clone
+//! `k ==> v`: a persistent ordered map, an AVL tree of counted nodes, one node per entry. A clone
 //! is a count. An update goes through `Rc::make_mut` on the path to its key: a node this
 //! map alone holds changes in place, and a node another map shares is copied first, so
 //! no map sharing it sees the update. Each node holds its height and the number of entries

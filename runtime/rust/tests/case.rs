@@ -2,8 +2,7 @@
 //! `tests/text/README.md`) against the Rust target. The prelude emitted beside every Rust
 //! program (prismc/emit/rust/prelude.prism) defines them as `Text::from(t.as_str()
 //! .to_uppercase())` and `.to_lowercase()`; this test runs those bodies over the runtime's
-//! `Text`, and checks that `std`'s tables are the Unicode version the C++ tables are
-//! generated from (runtime/cpp/tools/README.md).
+//! `Text`.
 //!
 //! Written by Claude on the claude-self-hosting branch; subject to change.
 
@@ -62,11 +61,4 @@ fn case_file() {
     }
     assert!(cases > 0, "case.txt has no cases");
     assert!(failures.is_empty(), "{} of {cases} cases fail:\n{}", failures.len(), failures.join("\n"));
-}
-
-/// The C++ tables are generated from this version's data files; a toolchain with other
-/// tables needs them regenerated (runtime/cpp/tools/README.md) and this line moved.
-#[test]
-fn unicode_version() {
-    assert_eq!(char::UNICODE_VERSION, (17, 0, 0));
 }

@@ -1,6 +1,4 @@
-# `Emit`: the printers of lowering's model, one per target; it declares nothing
-# of its own.
+# `Emit`: the printer of lowering's model; it declares nothing of its own.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit r
 mod Rust
-mod Cpp

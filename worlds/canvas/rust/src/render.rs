@@ -315,8 +315,7 @@ impl Extent {
         }
     }
 
-    /// Within a clip. Anything not finite is unbounded, inside a clip or not, as the C++
-    /// World's cairo stops drawing at a non-finite transform.
+    /// Within a clip. Anything not finite is unbounded, inside a clip or not.
     fn intersect(self, clip: Extent) -> Extent {
         match (self, clip) {
             (Extent::Whole, _) | (_, Extent::Whole) => Extent::Whole,

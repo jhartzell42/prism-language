@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Both seeds built where a fresh checkout builds them, under a target/ that is a symlink out
-# of the repository (as every worktree here keeps it, out of iCloud): each seed unpacked
+# The seed built where a fresh checkout builds it, under a target/ that is a symlink out
+# of the repository (as every worktree here keeps it, out of iCloud): the seed unpacked
 # three levels under the root, in a directory whose physical place is elsewhere, built by
-# the bootstrap scripts' own `--seed-at`, and its binary run on a loose file.
+# the bootstrap script's own `--seed-at`, and its binary run on a loose file.
 #
 #   bootstrap/test-seed.sh
 #
@@ -33,7 +33,5 @@ else
 fi
 bootstrap/bootstrap.sh --seed-at "$link/rust" > "$away/rust.log" 2>&1 || tail -20 "$away/rust.log"
 check rust "$link/rust/prismc"
-bootstrap/bootstrap-cpp.sh --seed-at "$link/cpp" > "$away/cpp.log" 2>&1 || tail -20 "$away/cpp.log"
-check cpp "$link/cpp/prismc"
 [ ${#failed[@]} -eq 0 ] || { echo "failed: ${failed[*]}"; exit 1; }
-echo "both seeds build through a symlinked target"
+echo "the seed builds through a symlinked target"

@@ -12,7 +12,7 @@
 # the drivers count each thread's CPU nanoseconds instead (`CLOCK_THREAD_CPUTIME_ID`),
 # and the table says ns, never instructions.
 #
-#   bench/gui/prism/check.sh [IMPL...]     # prism-cpp prism-rust, or those named
+#   bench/gui/prism/check.sh [IMPL...]     # prism-rust, or those named
 #
 # Written by Claude on the claude-self-hosting branch; subject to change.
 set -eu
@@ -25,16 +25,15 @@ if [ "$bench_os" != Darwin ] && [ -z "${DISPLAY:-}" ]; then
     exec xvfb-run -a "$self" "$@"
 fi
 impls=("$@")
-[ ${#impls[@]} -gt 0 ] || impls=(prism-cpp prism-rust)
+[ ${#impls[@]} -gt 0 ] || impls=(prism-rust)
 ops=(create1k update10th select swap remove clear)
 failed=0
 logs=$(mktemp -d "${TMPDIR:-/tmp}/prism-check.XXXXXX")
 trap 'rm -rf "$logs"' EXIT
 for impl in "${impls[@]}"; do
     case "$impl" in
-        prism-cpp) make -s -C bench/gui/prism cpp; cmd=target/bench/prism/driver ;;
         prism-rust) make -s -C bench/gui/prism rust; cmd=target/bench/prism-rs/driver ;;
-        *) echo "check: unknown implementation $impl (prism-cpp prism-rust)" >&2; exit 2 ;;
+        *) echo "check: unknown implementation $impl (prism-rust)" >&2; exit 2 ;;
     esac
     for op in "${ops[@]}"; do
         if $cmd "$op" 1 0 check > "$logs/$impl-$op"; then

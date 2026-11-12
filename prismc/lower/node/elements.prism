@@ -436,14 +436,14 @@ fn FirstValueLetAt wx, recv, pos, tg, level, placed:
     let missing = XCall (RefRuntime "rt::Fault::answer"), [[(XStr "no first value for {tg.name}")]]
     if Emits wx, pos:
         let asked = XMethod (XCx), "first_value", [[(XRef (XMethod level, "to_pod", [[]]))]]
-        DoLet (PaBind "first_{PlaceText pos}"), (TryOf (XMethod asked, "ok_or", [[missing]]))
+        DoLet (PaBind "first_{PlaceText pos}"), (XTry (XMethod asked, "ok_or", [[missing]]))
     else:
         let host = HostLocal wx, pos
         let entry = Or (Fold wx.places, nil, \|?e, pl| if pl.pos == pos: ? pl.entry else: ?e), ""
-        let asked = TryOf (XMethod (XVar host), "first_value", [[(XRef (PlaceAt wx, recv, pos)), (XRef level), (XRef (XVar entry)), XCx]])
+        let asked = XTry (XMethod (XVar host), "first_value", [[(XRef (PlaceAt wx, recv, pos)), (XRef level), (XRef (XVar entry)), XCx]])
         let accessor = if (IsBundleTag tg): "{OutputAccessor tg}_first" else: OutputAccessor tg
         let carried = if IsBundleTag tg: Or (?BundleFirstTy wx.lx, tg), OutUnit else: OutputTy wx.lx, tg
-        DoLet (PaBind "first_{PlaceText pos}"), (RecodedOutput (OutputOpen wx.lx, tg), carried, placed, (TryOf (XMethod (TryOf (XMethod asked, "ok_or", [[missing]])), accessor, [[]])))
+        DoLet (PaBind "first_{PlaceText pos}"), (RecodedOutput (OutputOpen wx.lx, tg), carried, placed, (XTry (XMethod (XTry (XMethod asked, "ok_or", [[missing]])), accessor, [[]])))
 
 # The host whose document a position's place is an entry of, as the build spells it (a
 # local before the node exists): the host of its scope, or for a node's own places in a

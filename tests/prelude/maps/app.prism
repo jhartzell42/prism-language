@@ -1,6 +1,5 @@
 # Semantics Appendix B, Maps: `Union` keeps the left map's value on a shared key, whichever
-# map is the larger (the C++ prelude once inserted the left map into a copy of the right,
-# and im_rc's union kept the larger map's value). Written by Claude on the
+# map is the larger (im_rc's union kept the larger map's value). Written by Claude on the
 # claude-self-hosting branch; subject to change.
 test mod Tests
 

@@ -51,33 +51,30 @@ use Emit.Rust
 # `compile FILES|DIR... -o OUT`: the back end (lower/, emit/)
 # ---------------------------------------------------------------------------------------
 
-# `compile FILES|DIR... -o OUT [--name NAME] [--prelude DIR] [--runtime PATH] [--target
-# rust|cpp] [--tests]`: every argument read (a `.prism` file loose, a directory as a tree,
+# `compile FILES|DIR... -o OUT [--name NAME] [--prelude DIR] [--runtime PATH]
+# [--tests]`: every argument read (a `.prism` file loose, a directory as a tree,
 # claude/modules-style-pass.md), with the
 # prelude's modules the program does not replace; test modules only with `--tests`. The
 # program is parsed, checked (and refused on an error), lowered and emitted through `@Run`
 # as a Rust crate in OUT whose dependencies on `prism_rtl` and the Worlds are found at
-# `--runtime PATH` (`RuntimeOf` gives the default); with `--target cpp`, as a C++ program
-# over `runtime/cpp` (emit/cpp/). An
-# option it does not know, a target but `rust` or `cpp`, or an option with no value after
+# `--runtime PATH` (`RuntimeOf` gives the default). An
+# option it does not know, or an option with no value after
 # it is refused.
 @CompileMain: fn [Text] -> @unit
 fn @CompileMain opts:
     ?root <- Process.Env(name="PRISM_ROOT")
     let bad = BadOptions opts, [["--tests"]], compileValued
-    let target = Or (?OptionValue opts, "--target"), "rust"
     let out = Or (?OptionValue opts, "-o"), "prismc-out"
     let ?runtime = ?RuntimeOf (?OptionValue opts, "--runtime"), ?root, out
-    if (Len bad) > 0: @Refuse "{Join bad, "; "} (compile takes -o OUT, --name NAME, --prelude DIR, --runtime PATH, --target rust|cpp, --tests)"
-    else: if target != "rust" and target != "cpp": @Refuse "unknown target {target} (rust, cpp)"
+    if (Len bad) > 0: @Refuse "{Join bad, "; "} (compile takes -o OUT, --name NAME, --prelude DIR, --runtime PATH, --tests)"
     else: if ?runtime == nil: @Refuse "an absolute -o needs --runtime PATH or PRISM_ROOT: the runtime's path from {out} cannot be told from its segments"
     else:
         let prelude = NoSlash (Or (?OptionValue opts, "--prelude"), "prelude")
-        let settings = CompileSettings(out=out, prelude=prelude, name=(Or (?OptionValue opts, "--name"), "program"), runtime=(Or ?runtime, ""), target=target)
+        let settings = CompileSettings(out=out, prelude=prelude, name=(Or (?OptionValue opts, "--name"), "program"), runtime=(Or ?runtime, ""))
         @ReadSources (Compiling settings), (PlainArgs opts, compileValued), prelude, (HasText opts, "--tests")
 
 # The options of `compile` that take a value.
-let compileValued = [["-o", "--prelude", "--name", "--runtime", "--target"]]
+let compileValued = [["-o", "--prelude", "--name", "--runtime"]]
 
 # Where the crate finds the runtime: `--runtime PATH`; else, for a relative OUT, `..` per
 # directory of OUT, which is relative to the repository root (as `./prism` and the
@@ -100,7 +97,6 @@ type CompileJob = record:
     read: ReadInput
     name: Text
     runtime: Text
-    target: Text
 derive ^Eq, ^Show
 
 type Compiled = record:
@@ -124,7 +120,7 @@ fn CompileProgram job:
             if report.errors > 0: Compiled(files=[[]], failed=True, report="{report.text}{report.errors} error{if report.errors == 1: "" else: "s"}")
             else:
                 let model = Lower.Program.LowerProgram pp.srcs, pp.trees, pp.shown, report.typed, job.name
-                let files = if job.target == "cpp": Emit.Cpp.Program.EmitCpp model, job.runtime, read.scripts else: Emit.Rust.Items.EmitCrate model, job.runtime, read.scripts
+                let files = Emit.Rust.Items.EmitCrate model, job.runtime, read.scripts
                 let refused = Fold files, [[]], \|acc, ((path, text))| Fold (Refusals text), acc, \|a, r| AddText a, "{path}: {r}"
                 if (Len refused) == 0: Compiled(files=files, failed=False, report="")
                 else: Compiled(files=files, failed=True, report="{Concat (Each refused, \|r| "error[{RefusalClass r}]: {r}\n")}{Len refused} construct{if (Len refused) == 1: "" else: "s"} the back end does not lower (the crate is written, with a `compile_error!` at each)")

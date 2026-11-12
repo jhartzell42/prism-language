@@ -82,10 +82,6 @@ type Lx = record:
     home: Text
     site: Text
     rsMods: (Text ==> Text)
-    # Every segment of every module's path as the printers name it: a C++ namespace that
-    # a bare prelude call of the same name would find instead (`regex`, `?Regex`, beside
-    # a module `Regex`).
-    modSegments: (Text ==> Bool)
     rsNames: (Text ==> Text)
     layouts: (Text ==> [Bool])
     unbs: [Text]
@@ -261,7 +257,7 @@ fn Snake name:
 LowerChar: fn Text -> Text
 fn LowerChar c = if IsUpper c: Lower c else: c
 
-# A type or constructor name as Rust and C++ write one: the first letter upper, and `Self`
+# A type or constructor name as Rust writes one: the first letter upper, and `Self`
 # (Rust's keyword) with a `_`. The emitted code reaches the runtime side's types by path
 # (`rt::Row`) and the standard library's from the root (`::std::rc::Rc`), so a program's
 # `Row` or `Option` is its own (`ts-ch02-runtime-type-names`).
@@ -273,19 +269,16 @@ fn Camel name:
     if fixed == "Self": "{fixed}_" else: fixed
 
 # A Prism module's Rust module, by its path from the crate: `Check.Env` is `check::env`
-# (claude/modules-style-pass.md), the root `program`. The C++ target's namespaces and
-# directories are the same path, so a segment that is a C++ keyword takes a `_` too
-# (`Shapes.Switch` is `shapes::switch_` in both).
+# (claude/modules-style-pass.md), the root `program`; a segment that is a Rust keyword
+# takes a `_`.
 RustModName: fn Text -> Text
 fn RustModName m = if m == "": "program" else: Join (Each (SplitOn m, "."), \|s| ModSegment s), "::"
 
 ModSegment: fn Text -> Text
 fn ModSegment s:
     let n = Snake s
-    if HasText cppKeywords, n: "{n}_" else: n
+    if HasText rustKeywords, n: "{n}_" else: n
 
-# The C++ keywords and the names the C++ standard library reaches bare (`errno`, `assert`).
-let cppKeywords = [["explicit", "and", "and_eq", "asm", "auto", "bitand", "bitor", "bool", "case", "catch", "char", "char8_t", "char16_t", "char32_t", "class", "compl", "concept", "const_cast", "consteval", "constexpr", "constinit", "co_await", "co_return", "co_yield", "decltype", "default", "delete", "double", "dynamic_cast", "explicit", "export", "extern", "float", "friend", "goto", "inline", "int", "long", "mutable", "namespace", "new", "noexcept", "not", "not_eq", "nullptr", "operator", "or", "or_eq", "private", "protected", "public", "register", "reinterpret_cast", "requires", "short", "signed", "sizeof", "static_assert", "static_cast", "switch", "template", "this", "thread_local", "throw", "try", "typedef", "typeid", "typename", "union", "unsigned", "using", "virtual", "void", "volatile", "wchar_t", "xor", "xor_eq", "errno", "assert", "NULL", "EOF", "stdin", "stdout", "stderr", "major", "minor"]]
 
 
 # The Rust path of a module's item `name` as written in module `here`: another module's
@@ -306,13 +299,13 @@ fn PreludePath ignore, name = Helper name
 Helper: fn Text -> Text
 fn Helper n = "crate::prelude::{n}"
 
-# A widget's node (a Rust struct, a C++ class): the widget's name with `_w` after it, which
+# A widget's node (a Rust struct): the widget's name with `_w` after it, which
 # no program type has (a type's name is UpperCamelCase, with no `_`); its rows' and
 # generations' nodes extend it (`Main_wRow`, `Main_wGen1`).
 NodeName: fn Text -> Text
 fn NodeName qk = "{Camel (BareName qk)}_w"
 
-# A trait as a target names it (a Rust trait, a C++ namespace): a program trait's name with
+# A trait as a target names it (a Rust trait): a program trait's name with
 # `_t` after it, apart from a type of the same name (`^Loud` and `Loud`), which no type's
 # name (UpperCamelCase, with no `_`) can be; the prelude's by the names its hand-written
 # code gives them (`Num`), beside no program type.
@@ -338,7 +331,7 @@ fn SiteRef lx, name = RefIn lx, lx.site, name
 HelperRef: fn Text -> Ref
 fn HelperRef n = RefItem "prelude", n, (Helper n)
 
-# The Rust and C++ name of a top-level value of a module (pick UN): its name in snake
+# The Rust name of a top-level value of a module (pick UN): its name in snake
 # case, `_` and the letter of its kind, by its sigil (`?` `o`, `~` `r`, `!` `e`, `$` `d`,
 # `@` `b`) or else its type's outer layer (`f` a function, `p` anything plain):
 # `parse_nat_f`, `parse_nat_o`, `limit_p`. So a value never hides a runtime's helper,
@@ -363,7 +356,7 @@ fn GlobalBase k:
     let base = TrimUnderscores (Snake (BareName k))
     if base == "": "topic" else: base
 
-# A field's Rust and C++ name (pick UN): its name in snake case, `_` and the letter of its
+# A field's Rust name (pick UN): its name in snake case, `_` and the letter of its
 # kind, by its sigil or else its declared type's outer layer (`count_p`, `text_d`,
 # `parent_o`), so a field is never a member every value type has (`show`, `to_pod`) or a
 # keyword. The core prelude's records the runtimes write by hand are spelled so too
@@ -408,7 +401,7 @@ fn LocalName lx, nkey:
     let s1 = if IsUpperText (Head bare): "{s0}_fn" else: s0
     if (HasKey lx.globals, "{lx.site}.{s1}") or HasKey lx.globals, "Prelude.{s1}": "{s1}_" else: s1
 
-# A local binder's Rust and C++ name (pick UN): its name, `_`, the letter of its type's
+# A local binder's Rust name (pick UN): its name, `_`, the letter of its type's
 # outer layer and its id in base 32 (`door_p3`, `go_e1`, `x_d4`, `k_o2`), the id the
 # checker gave it, and in a widget inlined at a use, that use's id (`w_p0_7`); a binder
 # the checker gave none (lowering's own) keeps `LocalName`'s.

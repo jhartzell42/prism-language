@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
-# Running Prism once compiled: how fast compiled Prism code runs,
-# all-Rust against all-C++. Two workloads: prismc itself, built at each configuration by
+# Running Prism once compiled: how fast compiled Prism code runs.
+# Two workloads: prismc itself, built at each configuration by
 # bench/building/run.sh, compiling prismc/ to its own language and compiling
 # tests/conformance/sem-ch07-normalize (wall time, peak memory, instructions
 # retired: macOS's `time -l`, or `perf stat` on Linux; a Linux machine with no hardware
-# counters gets "n/a" in those columns and a sentence saying so); and the GUI table under each target's canvas World (bench/gui/run.sh, which
+# counters gets "n/a" in those columns and a sentence saying so); and the GUI table under the canvas World (bench/gui/run.sh, which
 # also runs GTK beside it).
 #
-#   bench/running/run.sh                       # both configurations, the GUI table too
+#   bench/running/run.sh                       # the GUI table too
 #   CONFIGS="rust-release" GUI=0 NORM=5 bench/running/run.sh
 #
-# The configurations are bench/building/run.sh's: rust-release and cpp-O3 (Jimmy: the
-# shipping ones only). Writes bench/running/RESULTS.md. Run it with nothing else running,
+# The configuration is bench/building/run.sh's: rust-release. Writes bench/running/RESULTS.md. Run it with nothing else running,
 # after bench/building/run.sh.
 #
 # Written by Claude on the claude-self-hosting branch; subject to change.
@@ -25,7 +24,7 @@ norm=${NORM:-5}
 gui=${GUI:-1}
 built=target/bench/building/prismc
 if [ -n "${CONFIGS:-}" ]; then read -r -a configs <<< "$CONFIGS"
-else configs=(); for d in rust-release cpp-O3; do [ -x "$built/$d/prismc.bin" ] && configs+=("$d"); done; fi
+else configs=(); for d in rust-release; do [ -x "$built/$d/prismc.bin" ] && configs+=("$d"); done; fi
 [ ${#configs[@]} -gt 0 ] || { echo "bench: no prismc built under $built (run bench/building/run.sh prismc)" >&2; exit 2; }
 out=target/bench/running
 mkdir -p "$out"
@@ -55,17 +54,17 @@ declare -A self_s self_mb self_gi norm_s norm_mb norm_gi
 for c in "${configs[@]}"; do
     bin=$built/$c/prismc.bin
     [ -x "$bin" ] || { echo "bench: no $bin (bench/building/run.sh prismc)" >&2; exit 2; }
-    case "$c" in rust-*) target=rust ;; *) target=cpp ;; esac
+    target=rust
     dir=$out/$c
     rm -rf "$dir" && mkdir -p "$dir"
     echo "bench: $c: prismc/ compiled to $target by it" >&2
-    self_s[$c]=$(timed "$dir/self.log" "$bin" compile prismc --prelude prelude -o "$dir/self" --name prismc --target "$target")
+    self_s[$c]=$(timed "$dir/self.log" "$bin" compile prismc --prelude prelude -o "$dir/self" --name prismc)
     self_mb[$c]=$(peak_mb "$dir/self.log.time")
     self_gi[$c]=$(instr_g "$dir/self.log")
     echo "bench: $c: normalize compiled to $target by it, $norm times" >&2
     : > "$dir/norm.txt"
     for i in $(seq "$norm"); do
-        s=$(timed "$dir/norm.log" "$bin" compile "$normal" --prelude prelude -o "$dir/norm" --name norm --target "$target")
+        s=$(timed "$dir/norm.log" "$bin" compile "$normal" --prelude prelude -o "$dir/norm" --name norm)
         echo "$s $(peak_mb "$dir/norm.log.time") $(instr_g "$dir/norm.log")" >> "$dir/norm.txt"
     done
     norm_s[$c]=$(awk '{print $1}' "$dir/norm.txt" | median)
@@ -108,8 +107,8 @@ fi
     if [ "$gui" != 0 ] && [ -f bench/gui/RESULTS.md ]; then
         echo "## The GUI table as the workload"
         echo
-        echo "bench/gui/RESULTS.md's timings (prism-cpp is the table compiled to C++ at -O3, prism-rust"
-        echo "compiled to Rust as a release build; GTK beside them for scale):"
+        echo "bench/gui/RESULTS.md's timings (prism-rust is the table compiled to Rust as a release"
+        echo "build; GTK beside it for scale):"
         echo
         sed -n '/^| Operation |/,/^$/p' bench/gui/RESULTS.md | head -12
     fi

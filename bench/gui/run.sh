@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # The GUI benchmark: js-framework-benchmark's operations on the same
-# table in Prism compiled to C++ and to Rust, and in C with GTK 3 (the Cuis Smalltalk
+# table in Prism compiled to Rust, and in C with GTK 3 (the Cuis Smalltalk
 # table is run only when named: Jimmy took it out of the scripted runs). Builds each, runs every operation RUNS times after WARMUP untimed runs, one
 # process per operation and implementation, and writes bench/gui/RESULTS.md: the machine, the
 # versions, the median time of each operation with its spread, and each process's peak
 # memory. The raw numbers go to target/bench/results/.
 #
-#   bench/gui/run.sh [IMPL...]          # prism-cpp prism-rust gtk, or those named (cuis too)
+#   bench/gui/run.sh [IMPL...]          # prism-rust gtk, or those named (cuis too)
 #   RUNS=10 WARMUP=2 bench/gui/run.sh   # the defaults
 #
 # Run it with nothing else running: no builds, no other apps busy. The load average at the
@@ -37,24 +37,22 @@ runs=${RUNS:-10}
 warmup=${WARMUP:-2}
 ops=(create1k replace1k update10th select swap remove create10k append1k clear)
 impls=("$@")
-[ ${#impls[@]} -gt 0 ] || impls=(prism-cpp prism-rust gtk)
+[ ${#impls[@]} -gt 0 ] || impls=(prism-rust gtk)
 raw=target/bench/results
 mkdir -p "$raw"
 
 # The builds, before any timing.
 for impl in "${impls[@]}"; do
     case "$impl" in
-        prism-cpp) make -s -C bench/gui/prism cpp ;;
         prism-rust) make -s -C bench/gui/prism rust ;;
         gtk) make -s -C bench/gui/gtk ;;
         cuis) bench/gui/cuis/setup.sh ;;
-        *) echo "bench: unknown implementation $impl (prism-cpp prism-rust gtk cuis)" >&2; exit 2 ;;
+        *) echo "bench: unknown implementation $impl (prism-rust gtk cuis)" >&2; exit 2 ;;
     esac
 done
 
 command_of() { # impl
     case "$1" in
-        prism-cpp) echo target/bench/prism/driver ;;
         prism-rust) echo target/bench/prism-rs/driver ;;
         gtk) echo target/bench/gtk/table ;;
         cuis) echo bench/gui/cuis/run.sh ;;
@@ -111,7 +109,7 @@ rss_mb() { # impl op: the process's peak resident memory, MB (`time -l`'s bytes 
     esac
     echo "- **Load average:** $load_start at the start, $load_end at the end"
     echo "- **prism-language:** $(git rev-parse --short HEAD)$(git diff --quiet || echo ' (with uncommitted changes)'); prismc installed $(installed_at target/bootstrap/prismc)"
-    echo "- **C++:** $(clang++ --version | head -1), -O3; **Rust:** $(rustc --version), cargo release (opt-level 3)"
+    echo "- **Rust:** $(rustc --version), cargo release (opt-level 3)"
     echo "- **GTK:** $(pkg-config --modversion gtk+-3.0), cc -O2"
     case " ${impls[*]} " in *" cuis "*)
         echo "- **Cuis:** $( [ -f target/bench/deps/cuis.commit ] && echo "Cuis-Smalltalk-Dev $(cut -c1-10 target/bench/deps/cuis.commit), $(basename "$(ls target/bench/deps/cuis/CuisImage/Cuis*.image | head -1)")"); VM $(strings target/bench/deps/cuis/CuisVM.app/Contents/MacOS/Squeak 2>/dev/null | grep -m1 -o 'VMMaker[^ ]*' | tr -d ']' || true)" ;;
