@@ -503,8 +503,10 @@ fn IsGivingLine lx, menv, e, depth = match e.kind:
         match ((callee.kind, (depth -? 1))):
             (((EName n), (? less))):
                 # (a widget of the block, a parameter or a value the node holds: not
-                # inlined from a declaration)
-                if (Len n.path) == 1 and ((HasKey menv.names, (SNameKey n)) or HasKey menv.names, "{SNameKey n}#blueprint"): False else:
+                # inlined from a declaration; but a widget parameter applied with no
+                # arguments is its argument lowered here, in its caller's environments,
+                # `ApplyWidgetParam`, so it gives as its argument does)
+                if (Len n.path) == 1 and ((HasKey menv.names, (SNameKey n)) or HasKey menv.names, "{SNameKey n}#blueprint"): IsGivingParam menv, n, args, less else:
                     let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
                     match ?q:
                         ? "Prelude.@Element": False
@@ -523,6 +525,14 @@ fn IsGivingLine lx, menv, e, depth = match e.kind:
                             nil: False
                         nil: False
             otherwise: False
+
+# Whether a name of the block applied as a line gives as `IsGivingLine` asks: a widget
+# parameter applied with no arguments, whose argument does (`ApplyWidgetParam` lowers
+# the argument at the line, in its caller's environments).
+IsGivingParam: unbounded fn Env, SName, [Arg], Nat -> Bool
+fn IsGivingParam menv, n, args, depth = if (Len args) > 0 or HasKey menv.names, "{SNameKey n}#blueprint": False else: match menv.names[SNameKey n]:
+    ? (BnWidget x, ignore, cmenv, clx): IsGivingLine clx, cmenv, x, depth
+    otherwise: False
 
 # Whether a building line's result is late: a building `match` or `if` whose arms end on a
 # plain result, a widget block that ends late, a widget of one clause applied whose block
