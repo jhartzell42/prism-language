@@ -356,7 +356,10 @@ fn FinishNode wx0, qk, params, isRow:
     let pushBody0 = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, f, t, ignore))| DoIf (XBin OpEq, (XVar "element"), (XRef (XField XSelf, "{f}_element"))), (DynPlaceWrite sinks, f, (XDecode t, (XVar "v"))), [[]]
     # and a bundle's place with `$` parts: the push is its whole state (`BundleStateWrite`)
     let pushBody = Append pushBody0, (Each (Filter wx.bundles, \|bp| bp.stem != "" and Emits wx, bp.pos), \|bp| DoIf (XBin OpEq, (XVar "element"), (XRef (XField XSelf, "{bp.stem}_element"))), (BundleStateWrite sinks, bp, (XDecode bp.stateTy, (XVar "v"))), [[]])
-    let hooks = Filter [[(("wake", wakeBody)), (("started", startedBody)), (("deferred", deferredBody)), (("build", buildBody)), (("swap", (SwapBody wx))), (("push", pushBody)), (("patch", patchBody))]], \|((ignore, b))| (Len b) > 0
+    # the node leaves: each live dynamic of its own holds keeps the hold's value after this
+    # tick (`holdsLast`), what it reads once the node is gone
+    let leaveBody = Each wx.holdsLast, \|name| DoAssign (XDeref (XMethod (XField XSelf, "{name}_last"), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XMethod XSelf, name, [[XCx]])]])
+    let hooks = Filter [[(("wake", wakeBody)), (("started", startedBody)), (("deferred", deferredBody)), (("build", buildBody)), (("swap", (SwapBody wx))), (("leave", leaveBody)), (("push", pushBody)), (("patch", patchBody))]], \|((ignore, b))| (Len b) > 0
     let startedReg = if (Len wx.started) > 0: [[DoExpr (XMethod (XCx), "on_started", [[(XClone (XVar "node"))]])]] else: [[]]
     # the hosts linked to the node, then the builders and the snapshots (a place over a
     # structural dynamic reads its snapshot at the build), then the places out
