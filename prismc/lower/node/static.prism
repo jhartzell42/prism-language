@@ -1169,7 +1169,9 @@ fn LiveDynamics wx, benv, menv, names, late:
             # read there through the parent, which is built, as a host's dynamic answer's)
             let outerValued = (InitedOrParent w1, reads) and NamesInitedOrParent w1, be, y
             let valued = (not late) and match y.kind:
-                EName ignore: (AllInited w1, reads) and NamesInited be, y
+                # (a row's `$v` reads its entry through the parent: at the build, the
+                # row's `value`)
+                EName ignore: (InitedOrParent w1, reads) and NamesInited be, y
                 otherwise: outerValued
             let unlinked0 = if valued: XClone (XVar "at_build") else: XUnreachable
             # a hold of the node, once the node has left: its last value, a constant from
