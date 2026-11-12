@@ -13,6 +13,6 @@ fn Twice n = n * 2
 
 @guest: @unit
 @guest:
-    !back <- Pad.Echo($?latest=$(? Twice))
-    $heard <- 0 then $heard + 1 on !back
+    !Back <- Pad.Echo($?latest=$(? Twice))
+    $heard <- 0 then $heard + 1 on !Back
     Ui.Label($text=$"heard {$heard}")

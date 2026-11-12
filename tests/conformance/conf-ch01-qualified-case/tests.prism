@@ -3,7 +3,7 @@ emit Ui.*
 use App.*
 
 check qualified_cases:
-    Sizes.Of 3 => Small
+    Sizes.Of 3 => Sizes.Small
     Sizes.Of 3 => Sizes.Small
     Sizes.Of 20 => Sizes.Large 20
     Sizes.Of 20 => Sizes.Large ignore
