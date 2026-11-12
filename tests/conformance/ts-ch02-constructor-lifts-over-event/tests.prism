@@ -1,0 +1,11 @@
+# The constructor lifted over an event: declarations of ts-ch02-constructor-lifts-over-event.
+emit Ui.*
+use App.*
+
+test a_request_and_a_leave_are_heard, @page:
+    build
+        => expect Ui.Label(text="none")
+    click at 0
+        => expect Ui.Label(text="+1/a/7")
+    click at 1
+        => expect Ui.Label(text="-")

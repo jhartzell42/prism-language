@@ -1,0 +1,31 @@
+# A constructor lifts over an event at a type-parameter field, as a function does: with
+# `type Heard a`, `Requested (Asking 1, "a", !requests)` is an event of `Heard Text`, and
+# merges with `Leaving on !leaves` in one `!MergeAll` (Jimmy's ruling of 12 November, "every
+# application lifts"; the line is document chess's `@HostPlayers`, PR #21). Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Heard a = choice:
+    Requested a
+    Leaving
+
+Asking: fn Nat, Text, Nat -> Text
+fn Asking seat, place, n = "{seat}/{place}/{n}"
+
+Told: fn [Heard Text] -> Text
+fn Told heard = Fold heard, "", \|acc, one| match one:
+    Requested request: "{acc}+{request}"
+    Leaving: "{acc}-"
+
+@Hearing: fn !Nat, !unit -> @![Heard Text]
+fn @Hearing !requests, !leaves:
+    @ !MergeAll [[(Requested (Asking 1, "a", !requests)), (Leaving on !leaves)]]
+
+@page: @unit
+@page:
+    !ask <- Ui.Button($label=$"ask")                             # 0
+    !leave <- Ui.Button($label=$"leave")                         # 1
+    !heard <- @Hearing (7 on !ask), (unit on !leave)
+    $last <- "none" then Told !heard
+    Ui.Label($text=$last)                                        # 2
