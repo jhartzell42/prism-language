@@ -1,0 +1,27 @@
+# A hosted child's place whose plain answer is an array of dynamics, under a host placed
+# below a building `if` of its block (Semantics ch. 9: the supplier answers the asking
+# place, building nothing for it; a forwarding host's place for its child's place p is
+# pos/[p]/0; ch. 4 and ruling TC: places are counted as built, so the host is 1 when
+# loud and 0 when not; Type System ch. 1: a type that holds a dynamic is a type as any
+# other). Reaches `ElementOutputOf`'s refusal "a hosted place with a plain answer ..
+# under a host whose own place takes its number after its block's node" on prismc-s4.
+# Written by Claude (sweep-6, the prismc run), 12 November 2026; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+tag Pad.Ask of Element [$Nat]:
+    name: Text
+
+@Inner: @unit emit Ui.* | Pad.*
+@Inner:
+    a <- Pad.Ask(name="q")                                             # 0
+    Ui.Label($text=$"asked {Len a}")                                   # 1
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    if loud:
+        Ui.Label($text=$"before")                                      # 0
+    ignore <- @HostDocument @Inner, \|p, e| match e:                   # 1/[p], or 0/[p]
+        Pad.Ask(..): @ [[$ 1]]
+        otherwise: @Element e
