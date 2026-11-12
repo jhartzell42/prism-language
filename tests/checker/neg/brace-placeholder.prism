@@ -1,0 +1,16 @@
+# A code template's placeholder is `<<expr>>`, and its brace block runs from `<<` alone on
+# a line to `>>` alone on a line (Jimmy's ruling, 12 November): `{{expr}}` is a
+# placeholder in braces, and its fix writes it in angle brackets. `\{{` is no escape in a
+# code template, where braces are text; its fix writes the braces alone.
+# Written by Claude on the claude-lowering branch; subject to change.
+Struct: fn Text, Text -> Text
+fn Struct head, fields = inline_text <rust>
+pub struct {{head}} {
+    {{fields}}
+}
+{{
+let n = Len fields
+"// {n}"
+}}
+let s = "\{{";
+</rust>
