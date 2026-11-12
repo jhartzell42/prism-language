@@ -708,14 +708,18 @@ it make every program an interpreter run, and every type mistake a runtime fault
     building `match` or `if`, or a widget of one clause whose block ends on one and is
     split at no line of its own (`IsGivingLine`: inlined, its arms' rows are lowered
     at the line), in any scope built in the order of its places (a hosted one too;
-    not one built at its host's line, `Wx.lateHosts`); and the taker may read the
+    not one built at its host's line, `Wx.lateHosts`), its result a plain value or a
+    bundle taken apart by a tuple pattern (the plain parts' names are the split names,
+    each read out of the kept parts, `LateParts`; a bundle bound whole to one name is
+    not); and the taker may read the
     result through plain `let`s over it (`Wx.splitLets`, `FromSplit`). In a row that
     builds its generations at its build (`Wx.lateGens`) the taker's rows are numbered
     late as well: both built at once, the taker's after the split line's
     (`LateTaking`, a wait in `ScopeSteps`' phase 1), both numbered at their places.
-    Refused: such a line under any other split (a recursing widget, a blueprint value,
-    a bundle, a late name of another kind), and one whose plain result no name binds
-    (a pattern's, or the block's own result);
+    Refused: such a line under any other split (a blueprint value, a bundle bound
+    whole, a late name of another kind; a widget that calls itself in the split line's
+    arm is `ArmRowOf`'s refusal), and one whose plain result no name binds where it is
+    late (a tuple pattern's and `ignore <-` lower);
   - a building line above that takes the plain result of a building `match` or `if`
     at its build (`if n > 15:` above `n <- match mode:`, a widget's plain argument, a
     builder's rows) needs the result before either row
