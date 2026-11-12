@@ -1,0 +1,30 @@
+# Written by Claude (host-4, the prismc run), 11 November 2026; subject to change.
+# `fault-field`: a fault kind's fields are plain data. A fault leaves the tick it was made
+# in: a World is handed it and a transcript prints it (Semantics ch. 10), so a field that
+# moves with time (a dynamic, an event), a blueprint or a packed value has no value to
+# keep there. One error at each such field; `Count.TooMany`'s fields are plain data and
+# check clean (ruling TF: a fault holds typed values).
+emit Ui.*
+
+tag Count.Built of Fault:
+    @make: unit
+
+tag Count.Fired of Fault:
+    !when: Nat
+
+tag Count.Inside of Fault:
+    seen: [$Nat]
+
+tag Count.Moving of Fault:
+    $limit: Nat
+
+tag Count.Packed of Fault:
+    what: any ^Show
+
+tag Count.TooMany of Fault:
+    limit: Nat
+    asked: [((Text, ?Nat))]
+
+@main: @unit
+@main:
+    Ui.Label($text=$"x")                                           # 0
