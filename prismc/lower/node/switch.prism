@@ -1296,7 +1296,17 @@ fn OverEnv outer, inner = Fold (Keys inner.names), outer, \|en, k| match inner.n
 # `outFull`: what the arms give back as the checker has it; arms that end on a bundle hand
 # it to the block part by part (`KeepParts`), a plain part late.
 BuildingChoiceLine: unbounded fn Wx, Env, Ex, [?Pattern], Ty, [?Expr], [Block], OutTy, Layer, Ty, [((Text, Text))] -> ((Wx, Wres))
-fn BuildingChoiceLine wx, menv, scrut, pats, sty, guards, bodies, outTy, layer, outFull, ups:
+fn BuildingChoiceLine wx, menv, scrut, pats, sty, guards, bodies, outTy, layer, outFull, ups = BuildingChoicesLine wx, (Each bodies, \|ignore| menv), wx.lx, (XTuple [[scrut]]), (Each (Range0 (Len bodies)), \|i| [[(Or pats[i], nil)]]), [[sty]], guards, bodies, outTy, layer, outFull, ups
+
+# `BuildingChoiceLine` over several scrutinees (`scruts`, a tuple of them; `stys` their
+# types), each arm with a pattern for each (`patss`) and its own environment (`menvs`),
+# its patterns and its block read in `lxc`: the arms of a building `match` (one
+# scrutinee, the block's environment and file for every arm), and the clauses of a
+# function of a block applied as a line (`ClausesFunctionLine`: its plain parameters the
+# scrutinees, each clause's environment the function's with that clause's other
+# parameters bound, the function's file).
+BuildingChoicesLine: unbounded fn Wx, [Env], Lx, Ex, [ [?Pattern] ], [Ty], [?Expr], [Block], OutTy, Layer, Ty, [((Text, Text))] -> ((Wx, Wres))
+fn BuildingChoicesLine wx, menvs, lxc, scruts, patss, stys, guards, bodies, outTy, layer, outFull, ups:
     let lx = wx.lx
     let pos = wx.pos
     let bundled = IsBundle outFull
@@ -1304,7 +1314,7 @@ fn BuildingChoiceLine wx, menv, scrut, pats, sty, guards, bodies, outTy, layer, 
     let ((upId, wx2)) = AddGn wx1, "{name}_fired", (if bundled: OutUnit else: outTy), GnNamed, 0
     let rowName = "{wx.node}Arm{RowSuffix wx}"
     let ((rows, wx3)) = Fold (Range0 (Len bodies)), (([[]], wx2)), \|((acc, w)), i|
-        let cr = ArmRowOf w, menv, lx, [[(Or pats[i], nil)]], [[sty]], (Or guards[i], nil), (Or bodies[i], dummyBlockS), "{rowName}{i}", name, True, True, (OutWeak wx.node), [[]], ups, [[]], False
+        let cr = ArmRowOf w, (Or menvs[i], emptyEnv), lxc, (Or patss[i], [[]]), stys, (Or guards[i], nil), (Or bodies[i], dummyBlockS), "{rowName}{i}", name, True, True, (OutWeak wx.node), [[]], ups, [[]], False
         (((Push acc, cr), cr.parent))
     let width = Fold rows, 0, \|acc, cr| Max acc, cr.width
     let cases = Each rows, \|cr| cr.case
@@ -1327,7 +1337,7 @@ fn BuildingChoiceLine wx, menv, scrut, pats, sty, guards, bodies, outTy, layer, 
         let keeps = Append (Append (if isDyn: [[kept]] else: if allPlain: [[keptPlain]] else: [[]]), bundle.keeps), set
         let body = if (Len keeps) == 0: XCast made, rowObj else: XBlock (Append [[(DoLet (PaBind "row"), made)]], keeps), (XCast (XVar "row"), rowObj)
         Push built, (XArm(pat=c.pat, conds=c.conds, body=body))
-    let select = WithRowBase wx, "self", pos, (Own (ArmsValue (XTuple [[scrut]]), arms, "'select", (OutObj (OutNamed (RefRuntime "rt::Row"), [[]]))))
+    let select = WithRowBase wx, "self", pos, (Own (ArmsValue scruts, arms, "'select", (OutObj (OutNamed (RefRuntime "rt::Row"), [[]]))))
     let wx4 = update bundle.wx:
         &_.pos <= Pos(scope=pos.scope, at=pos.at + width)
         &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=True, width=width, moved=(Or (?HostedRows wx), ""), early=False, gappy=(IsGappy gaps), rebased=False)
