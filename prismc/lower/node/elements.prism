@@ -180,10 +180,10 @@ fn ElementPlaced wx, benv, menv, tg, args, fed, out, ?bound:
         TyTuple cs: partsBound and Fold cs, False, \|found, c| found or (LayerOf c) != LyEv
         # (and a plain answer bound to a late name there, `LateHostedAnswer`)
         other: (not partsBound) and ((LayerOf other) == LyDyn or IsSome (?LatePlainHold ?bound))
-    # a World's place with a plain answer whose field reads a late result
+    # a World's place with a plain or `$` answer whose field reads a late result
     # (`LateFieldPlaces`) asks where the generation that gives the result is built, in
-    # a method of the node: the element is its getter's
-    let asksAtRow = late and (not partsBound) and (Emits wx4, pos) and IsSome (?LatePlainHold ?bound)
+    # a method of the node: the element is its getter's (`LateAskedPlace` for a `$` one)
+    let asksAtRow = late and (not partsBound) and (Emits wx4, pos) and ((IsSome (?LatePlainHold ?bound)) or IsSome (?LatePlaceHold ?bound))
     ElementOutput wx4, menv, tg, out, pos, ?bound, (if asksAtRow: XMethod XSelf, getter, [[XCx]] else: if late and asksLate: added else: atBuild)
 
 # An element's output type at this application: the tag's, instantiated by the checker
