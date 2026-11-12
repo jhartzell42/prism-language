@@ -188,31 +188,39 @@ fn SinkAbove sk, target, h = match target:
 AboveCall: fn Ex, Text, Ex -> Do
 fn AboveCall receiver, m, h = DoExpr (XMethod receiver, "{m}_above", [[h]])
 
-# A combinator reached by a firing at global height `h`: put above it (`Heights::above`),
-# and when that moved it, what it fires told its new height.
+# A combinator reached by a firing at global height `h`: put above it, and when that
+# moved it, what it fires told its new height (`Heights::raise`, which calls the
+# combinator's own twin with the new height and knows the walk is under way: a walk that
+# comes back to a combinator it is still walking from is a prompt cycle across nodes,
+# which the checker refuses, so the runtime panics with "a prismc bug" there and the
+# stack does not overflow).
 CombinatorAbove: fn Sinks, Gn, Ex -> [Do]
-fn CombinatorAbove sk, g, h = [[(DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "moved"]]), (XMethod (XField XSelf, "heights"), "above", [[(XIndex (CombinatorOf sk.combs, g)), h]]), [[(AboveCall XSelf, g.name, (XVar "moved"))]], [[]])]]
+fn CombinatorAbove sk, g, h = [[(DoExpr (XMethod (XField XSelf, "heights"), "raise", [[(XIndex (CombinatorOf sk.combs, g)), h, (XClosure False, [[(PaTyped (PaBind "moved"), OutCount)]], (XMethod XSelf, "{g.name}_above", [[(XVar "moved")]]))]]))]]
 
 # The twin of `HoldWritten`: a hold written at global height `h` puts the `!Updated` nodes
 # over it above `h`, and tells the rows that hear the write.
 HoldAbove: fn Sinks, Text, Ex -> [Do]
 fn HoldAbove sk, f, h = Append (Fold sk.wx.rowMarks, [[]], \|acc, rm| Append acc, (RowAbove sk.wx, rm, (OwnRead f), h)), (MovedAbove sk, (OwnRead f), h)
 
-# The twin of `MovedBy`: the `!Updated` nodes over a read written at global height `h`.
+# The twin of `MovedBy`: the `!Updated` nodes over a read written at global height `h`,
+# and the update port of each dynamic over it that the node hands to another node (a
+# dynamic answer, a dynamic passed whole, a row's dynamic result), raised to `h`: what
+# follows that port elsewhere sits above the write.
 MovedAbove: fn Sinks, Read, Ex -> [Do]
-fn MovedAbove sk, r, h = Fold (Filter sk.wx.gns, \|g| Moves r, g), [[]], \|acc, g| Append acc, (CombinatorAbove sk, g, h)
+fn MovedAbove sk, r, h:
+    let combinators = Fold (Filter sk.wx.gns, \|g| Moves r, g), [[]], \|acc, g| Append acc, (CombinatorAbove sk, g, h)
+    let answers = Each (Filter sk.wx.dynAnswers, \|((ignore, rds))| HasRead (ReadsClosed sk.wx.dynReads, rds), r), \|((name, ignore))| DoExpr (XMethod (XField XSelf, "{name}_port"), "raise", [[h]])
+    Append combinators, answers
 
 # The twin of `RowWritten`: the rows that hear a write of the block at global height `h`
-# are told it; a generation and a blueprint value's rows hear through a port, raised.
+# are told it through the block's port for that name, raised: a `for`'s row, a
+# generation and a blueprint value's row each subscribe to it with their twin
+# (`GenHears`), so a row built after the write took its height is told it as it
+# subscribes (`Port::subscribe_above`), as the rows that live are told at the raise.
 RowAbove: fn Wx, RowMarks, Read, Ex -> [Do]
 fn RowAbove wx, rm, r, h:
     let hit = Filter (Append rm.wrote, rm.builds), \|m| HasRead (ReadsClosed wx.dynReads, [[OwnRead m]]), r
-    let told = Each hit, \|m| AboveCall (XVar "row"), "parent_wrote_{m}", h
-    let raised = Each hit, \|m| DoExpr (XMethod (XField XSelf, "{rm.builder}_wrote_{m}_port"), "raise", [[h]])
-    match rm.kind:
-        GenerationRow: raised
-        ValueRow: raised
-        otherwise: if (Len told) == 0: [[]] else: [[(DoFor (PaBind "row"), (XMethod (XMethod (XField XSelf, rm.builder), "borrow", [[]]), "values", [[]]), told)]]
+    Each hit, \|m| DoExpr (XMethod (XField XSelf, "{rm.builder}_wrote_{m}_port"), "raise", [[h]])
 
 # A method's height twin: `{name}_above(h)`, "something at global height `h` fires `name`".
 AboveMethod: fn Text, [Do], Text -> MethDef
@@ -410,6 +418,13 @@ fn FinishNode wx0, qk, params, isRow:
 IsGeneration: fn Wx, Text -> Bool
 fn IsGeneration wx, name = (Len (Filter wx.gens, \|gd| gd.name == name)) > 0
 
+# The height twin of a method a `Follow` calls when a dynamic the node holds as a value
+# moved (`{name}_result_moved`, a flatten's `{name}_moved`), whose body is `HoldWritten` of
+# the pseudo-hold `held` behind it: the twin is `HoldAbove` of the same, passed to
+# `Follow::follow_above` beside the method.
+MovedTwin: fn Sinks, Text, Text -> MethDef
+fn MovedTwin sk, method, held = AboveMethod method, (HoldAbove sk, held, (XVar "h")), "the dynamic's update event fires"
+
 # The flattens' methods (`FlattenLine`, `EntryFlatten`): each adoption, the current inner
 # written as a hold is; and per `rebuild` handing back a dynamic, what its current
 # generation's result moving marks: the readers of every `@Flatten` over it, as for a write
@@ -424,11 +439,11 @@ fn FlattenMethods sk:
     # the adoption itself
     let entries = Fold (Filter wx.flattens, \|fl| fl.generation == "" and not fl.held), [[]], \|acc, fl|
         let set = DoExpr (XMethod (XField XSelf, "{fl.name}_inner"), "set", [[(XCtor (RefRuntime "std::Some"), [[(XMethod (XSelf), "entry", [[XCx]])]]), XCx]])
-        let followed = DoExpr (XMethod (XField XSelf, "{fl.name}_follow"), "follow", [[(XRef (XField (XMethod (XSelf), "entry", [[XCx]]), "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef wx.lx, wx.node), "{fl.name}_moved"))]])
+        let followed = DoExpr (XMethod (XField XSelf, "{fl.name}_follow"), "follow_above", [[(XRef (XField (XMethod (XSelf), "entry", [[XCx]]), "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef wx.lx, wx.node), "{fl.name}_moved")), (XPath (RefChild (SiteRef wx.lx, wx.node), "{fl.name}_moved_above"))]])
         let moved = MethDef(name="{fl.name}_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(HoldWritten sk, "{fl.name}_inner"), tail=(XUnit), doc="`{fl.name}`'s inner moved: what reads it reads it again.")
         let replaced = MethDef(name="{fl.name}_replaced", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Adoption fl), tail=(XUnit), doc="The `for`'s builder found another dynamic than `{fl.name}`'s inner under this row's key: the adoption is queued for the first firings of the next tick, which is owed (Semantics ch. 4).")
         let adopt = MethDef(name="{fl.name}_adopt", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Append [[set, followed]], (HoldWritten sk, "{fl.name}_inner")), tail=(XUnit), doc="`{fl.name}` adopts the dynamic under its row's key as the tick before left it, among this tick's first firings: from here on it reads that inner (Semantics ch. 4).")
-        Append acc, [[moved, replaced, adopt]]
+        Append acc, [[moved, (MovedTwin sk, "{fl.name}_moved", "{fl.name}_inner"), replaced, adopt]]
     let adopts0 = Each (Filter wx.flattens, \|fl| fl.generation != ""), \|fl|
         let set = DoExpr (XMethod (XField XSelf, "{fl.name}_inner"), "set", [[(XCtor (RefRuntime "std::Some"), [[(XMethod (XSelf), fl.outer, [[XCx]])]]), XCx]])
         MethDef(name="{fl.name}_adopt", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Append [[set]], (HoldWritten sk, "{fl.name}_inner")), tail=(XUnit), doc="`@Flatten` adopts the inner its `rebuild`'s dynamic held after the tick before, among this tick's first firings: from here on it reads that inner (Semantics ch. 7).")
@@ -437,11 +452,11 @@ fn FlattenMethods sk:
     let held = Fold (Filter wx.flattens, \|fl| fl.held), [[]], \|acc, fl|
         let innerNow = XMethod (XMethod (XField XSelf, "{fl.name}_inner"), "get", [[XCx]]), "expect", [[(XStr "`@Flatten` adopts its first inner at the build")]]
         let set = DoExpr (XMethod (XField XSelf, "{fl.name}_inner"), "set", [[(XCtor (RefRuntime "std::Some"), [[(XMethod (XField XSelf, fl.outer), "sample", [[XCx]])]]), XCx]])
-        let followed = DoExpr (XMethod (XField XSelf, "{fl.name}_follow"), "follow", [[(XRef (XField innerNow, "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef wx.lx, wx.node), "{fl.name}_moved"))]])
+        let followed = DoExpr (XMethod (XField XSelf, "{fl.name}_follow"), "follow_above", [[(XRef (XField innerNow, "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef wx.lx, wx.node), "{fl.name}_moved")), (XPath (RefChild (SiteRef wx.lx, wx.node), "{fl.name}_moved_above"))]])
         let moved = MethDef(name="{fl.name}_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(HoldWritten sk, "{fl.name}_inner"), tail=(XUnit), doc="`{fl.name}`'s inner moved: what reads it reads it again.")
         let outerMoved = MethDef(name="{fl.name}_outer_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Adoption fl), tail=(XUnit), doc="`{fl.name}`'s outer fired: the adoption is queued for the first firings of the next tick, which is owed (the Compiler seed, `@Flatten`).")
         let adopt = MethDef(name="{fl.name}_adopt", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Append [[set, followed]], (HoldWritten sk, "{fl.name}_inner")), tail=(XUnit), doc="`{fl.name}` adopts the inner its outer held after the tick before, among this tick's first firings, and fires: no dynamics are compared (ruling FV).")
-        Append acc, [[moved, outerMoved, adopt]]
+        Append acc, [[moved, (MovedTwin sk, "{fl.name}_moved", "{fl.name}_inner"), outerMoved, adopt]]
     let adopts = Append (Append adopts0, entries), held
     # a `rebuild`'s current generation's result moved: the readers of every `@Flatten` over
     # it in this node, and the update event of the dynamic the block keeps for it, which a
@@ -457,7 +472,7 @@ fn FlattenMethods sk:
         let fired = DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "d"]]), live, [[(DoExpr fire)]], [[]]
         MethDef(name="{gd.name}_result_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Push marks, fired), tail=(XUnit), doc="The current generation's result moved: what reads a `@Flatten` over it reads it again, and the dynamic kept for it fires its update event for whoever follows it outside this node.")
     # a static clause widget's dynamic result moved (`DynClauseLine`): its readers here
-    let clauseMoved = Each wx.clauseResults, \|n| MethDef(name="{n}_result_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(HoldWritten sk, "{n}_res"), tail=(XUnit), doc="A write behind the clause's dynamic result: what reads it reads it again.")
+    let clauseMoved = Fold wx.clauseResults, [[]], \|acc, n| Append acc, [[(MethDef(name="{n}_result_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(HoldWritten sk, "{n}_res"), tail=(XUnit), doc="A write behind the clause's dynamic result: what reads it reads it again.")), (MovedTwin sk, "{n}_result_moved", "{n}_res")]]
     Append (Append adopts, moved), clauseMoved
 
 IsDynTy: fn OutTy -> Bool
@@ -653,8 +668,9 @@ fn DynPlaceWrite sk, f, value = Append [[DoExpr (XMethod (XField XSelf, "{f}"), 
 # pick ST). A row's or a generation's reads through the
 # parent are checked where the block is finished, as the block's own: a name the row hears a write behind must stand over a hold
 # of the block, a structural dynamic of the block (published as a hold is written:
-# `sem-ch04-row-updated-structural`) or a name the block hears itself. Refused loudly rather
-# than lowered to an event that never fires.
+# `sem-ch04-row-updated-structural`) or a name the block hears itself. Anything else is a
+# name the lowering bound to a reader the node does not have: an internal error rather
+# than an event that never fires.
 UpdatedGaps: fn Wx, [Gn] -> [Do]
 fn UpdatedGaps wx, gns:
     let holds = Fold wx.fields, [[]], \|acc, ((f, t, ignore))| if IsHold t: Push acc, f else: acc
@@ -671,7 +687,7 @@ fn UpdatedGaps wx, gns:
         ParentRead ignore: a
         OwnRead f:
             if (HasText holds, f) or (HasText derived, f) or (HasText roots, f) or (HasText kept, f): a
-            else: Push a, (RefusalDo "`!Updated` of a dynamic that reads `{f}`, which no sink of this node writes (no height for its event)")
+            else: Push a, (InternalBugDo "`!Updated` of a dynamic that reads `{f}`, which is no hold of this node, no getter over its holds, no structural dynamic and no kept result: a name bound to a reader the node does not have (every dynamic a node binds is one of those; a `rebuild`'s dynamic read above its line was not, `GivesResult`)")
     let hears = Append (Each wx.pending, \|p| UpdatedHears p.wx), (Each (Filter wx.rowMarks, \|rm| rm.kind == GenerationRow or rm.kind == ValueRow), \|rm| rm.wrote)
     Fold hears, own, \|acc, ms| Fold ms, acc, \|a, m|
         let behind = ReadsClosed wx.dynReads, [[OwnRead m]]
@@ -681,7 +697,7 @@ fn UpdatedGaps wx, gns:
         # a structural dynamic the block publishes at the start of a tick is written as a
         # hold is (`HoldWritten` of its name), so the row's marks are in the publication
         if (HasText roots, m) or (ReachesSnap roots, behind) or written or (HasText derived, m): a
-        else: Push a, (RefusalDo "`!Updated` of a dynamic in a row that reads its block's `{m}`, which no sink of the block writes (no height for its event)")
+        else: Push a, (InternalBugDo "`!Updated` of a dynamic in a row that reads its block's `{m}`, which is no hold of the block, no getter over its holds, no structural dynamic and no name the block hears itself: a name bound to a reader the block does not have")
 
 # The block's `for` rows finished with the block's heights (pick RE): each `!Updated` node
 # of a row sits at least one above the block's writers of the holds behind what it reads

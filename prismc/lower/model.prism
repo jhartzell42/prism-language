@@ -694,6 +694,10 @@ type PackedDef = record:
     name: Text
     tr: Text
     methods: [PackedMethod]
+    # the methods that cannot be asked of a packed value (the checker's
+    # `existential-method`), at the packed value as the others are: no entry of the
+    # dictionary, and in the trait's impl for the packed value a body no program runs
+    unasked: [FnDef]
 derive ^Eq, ^Show
 
 # A trait's method at a packed value: its name, parameters and result with the packed

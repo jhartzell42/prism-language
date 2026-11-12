@@ -298,12 +298,16 @@ fn ZonkTyped st0:
 # A type variable at the program's end that no constraint reached (`Len [[]]`'s element):
 # every wanted constraint was solved, defaulted (doubt LD) or reported `ambiguous`, and every
 # waiting associated-type equation checked or reported (`Undecided`), so nothing the program
-# does depends on it, and the unit type stands for it. A variable a local `let` quantified
-# stays: lowering gives it at each instance. The same rule as a color's, below.
+# does depends on it, and the unit type stands for it. A variable a `let` quantified stays:
+# lowering gives it at each instance (a local `let`) or as the getter's type parameter (a
+# top-level one). The same rule as a color's, below.
 DefaultFree: unbounded fn St -> St
 fn DefaultFree st:
     let t = st.typed
-    let quantified = Fold t.gens, [[]], \|acc, g| Append acc, g.tys
+    let local = Fold t.gens, [[]], \|acc, g| Append acc, g.tys
+    # a top-level `let`'s too: its getter takes each as a type parameter, and each use
+    # names what it reads the `let` at (`NoteGenericUse` keeps the scheme's variables)
+    let quantified = Fold st.genericUses, local, \|acc, noted| Fold noted.types, acc, \|a2, ((q, ignore))| if HasPrefix q, "'": Push a2, q else: a2
     let inExprs = Fold t.exprs, [[]], \|acc, n| FreeVarsInto st, acc, n.ty
     let inBinders = Fold t.binders, inExprs, \|acc, n| FreeVarsInto st, acc, n.ty
     let inInsts = Fold t.insts, inBinders, \|acc, n| Fold n.tys, acc, \|a2, ((ignore, x))| FreeVarsInto st, a2, x

@@ -122,7 +122,10 @@ fn RustPacked d:
         let args = Each (Range0 (Len names)), \|i| if Or m.hidden[i], False: "{Or names[i], ""}.held::<T>()" else: Or names[i], ""
         let call = "<T as {d.tr}>::{m.method.name}({Join args, ", "})"
         "{m.method.name}: |{Join names, ", "}| {if m.hiddenResult: "{PackedFirstHidden m}.repacked({call})" else: call},"
-    let methods = Each d.methods, \|m| Fn "", (Signature m.method, ""), "({PackedFirstHidden m}.dictionary::<{dictionary}>().{m.method.name})({Join (Each m.method.params, \|((n, ignore))| n), ", "})"
+    let asked = Each d.methods, \|m| Fn "", (Signature m.method, ""), "({PackedFirstHidden m}.dictionary::<{dictionary}>().{m.method.name})({Join (Each m.method.params, \|((n, ignore))| n), ", "})"
+    # a method that cannot be asked of a packed value: the trait's impl needs every
+    # item, and the checker refuses every call that would run this one
+    let methods = Append asked, (Each d.unasked, \|f| Fn "", (Signature f, ""), "panic!(\"a prismc bug: `{f.name}` of `{d.name}` asked of a packed value, which the checker refuses (`existential-method`)\")")
     let made = Fn "/// The dictionary of `{d.name}` at the type of a value.", "pub fn {Lower d.name}_packed_of<T: {d.tr}>(_: &T) -> {dictionary}", "{dictionary} \{\n{Indent (Indent (Join entries, "\n"))}\n    \}"
     "/// The dictionary of `{d.name}` an existential keeps: each method over packed values.\npub struct {dictionary} \{\n{Indent (Join fields, "\n")}\n\}\n{made}\nimpl {d.tr} for ::prism_rtl::Packed \{\n{Indent (Join methods, "\n")}\n\}\n"
 

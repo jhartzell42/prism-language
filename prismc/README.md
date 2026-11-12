@@ -2186,14 +2186,7 @@ chess and of two on the self-compile.
 
 ### Not lowered yet
 
-Each is refused loudly: lowering emits a `compile_error!("prismc does not lower ..")`
-naming the construct, and `CompileProgram` reports every distinct one as
-`error[not-lowered]` and fails, the crate still written for reading:
-a bundle in
-a hosted scope (pick HO); `@Flatten` of a dynamic that is not a `rebuild`'s (a `for` over a map of dynamics binds the value under the key, pick FV),
-`!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
-structural dynamic of its block (gap SU), lines of a block that read each
-other at the build (pick BO), and the zombie and
+the zombie and
 dead states (`leave`, `clean_up`, `edges`).
 
 ## Regular expressions

@@ -111,9 +111,14 @@ fn ForLine wx, benv0, menv0, ?binders, source, body, e, ?bound:
             let entryM = BnDyn (XMethod (XSelf), "entry", [[XCx]]), [[ParentRead srcGetter]], vt
             ((rowWx0p, (BnLocal (XVar "value"), Owned, vt), entryM, vt))
     let ((rbe, rme)) = ForEnvs benvL, menvL, ?binders, keyB, keyM, valB, valM, inner
-    let rowWx = BlockInto rowWx0f, rbe, rme, body
-    let wx3 = update wx2:
-        &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=name, reads=(RowPlaceReads rowWx), wrote=(RowHears rowWx), builds=[[]], kind=ForRow)
+    let rowBuilt = BlockInto rowWx0f, rbe, rme, body
+    # the height of each write of the block the row hears: a port of the block for the
+    # name, never fired (the block tells its rows of the write itself, `RowWritten`) and
+    # raised by the write's height twin (`RowAbove`); the row subscribes with its twin
+    # (`GenHears`), so a row built later is told the height at its build
+    let rowWx = GenHears rowBuilt, name
+    let wx3 = update (Fold (RowHears rowBuilt), wx2, \|w, m| AddField w, "{name}_wrote_{m}_port", (OutPort OutUnit), "the rows of `{name}` hear the height of a write behind `{m}`", (XCall (RefRuntime "rt::Port::new"), [[]])):
+        &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=name, reads=(RowPlaceReads rowBuilt), wrote=(RowHears rowBuilt), builds=[[]], kind=ForRow)
     let full = TypeAt lx, e.span
     let outTy = OutTyOf lx, (Peel full)
     # a plain result is the row's from its build on: kept in a field of the row, read as a

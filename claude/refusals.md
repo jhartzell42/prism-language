@@ -2,7 +2,8 @@
 
 Written by Claude; subject to change. Every `Refusal` / `RefusalDo` message in
 prismc/lower and prismc/emit, by file and line, with its class. Classified by reading; an
-entry marked "unsure" was not tested.
+entry marked "unsure" was not tested. The last section, "Every refusal site", is the
+whole list as a table; the sections before it say what each construct is.
 
 - **G**: a guard no checked program reaches. It becomes an internal error, "a prismc
   bug: ..".
@@ -101,12 +102,13 @@ Hosting
   open and the program gives the definition it stands in no finite set of types
   the lowering can find (`DefInstancesAnswer`, `?GrowsFrom`: a line through a
   constraint an impl solves, or through a use whose types hold an associated type,
-  that holds one definition twice, the earlier types embedded in the later, which may
-  be a finite program's, `EndlessThroughImpl`: R,
-  sem-ch08-widget-value-generic-through-associated-type; a line through an impl's
-  constraint alone is a substitution, followed when it settles,
-  sem-ch08-widget-value-generic-in-method-at-settling-types, and the checker's
-  `grows-without-end` when it grows, tests/checker/neg/impl-at-ever-larger-types), or a use of the
+  that holds one definition three times, each one's types embedded in the next one's:
+  `EndlessThroughImpl`, G, an internal error, since the checker's walk takes both
+  kinds of step and gives `grows-without-end` for a line that grows
+  (tests/checker/neg/impl-at-ever-larger-types, neg/associated-type-at-ever-larger-types,
+  neg/derived-impl-at-ever-larger-types, neg/default-method-at-ever-larger-types); a
+  line that settles is followed, sem-ch08-widget-value-generic-in-method-at-settling-types
+  and sem-ch08-widget-value-generic-through-associated-type), or a use of the
   definition leaves a type parameter undecided (`UndecidedParameter`). A line of
   uses by name that gives a type parameter a larger type holding itself is the
   checker's `grows-without-end` (ruling PG: tests/checker/neg/function-at-ever-larger-types,
@@ -232,7 +234,8 @@ Building `match`, clause widgets, `rebuild`
   Left refused: a `let` of a type with time inside that is no bundle and reads the late
   name (the `unbuilt` refusals of `BindLate`, `MarkLateLets`); a place whose constant
   field reads the late name and whose answer is a `$` or a bundle, is bound by a
-  pattern, or stands in a hosted scope (`BindLate`'s `unbuilt`: R, no test); the late
+  pattern, or stands in a hosted scope (`BindLate`'s `unbuilt`: R; the `$` answer's
+  test is sem-ch04-late-value-above-in-dynamic-place-field, red; the others have none); the late
   names of `LateFieldPlaces` and `LateTakerResults` read at the build by a line that
   takes a value there and is not deferred (their `unbuilt`: unsure G, as
   `MarkLateLets`'); and in `DeferredLine`, a line that takes the late name and whose
@@ -240,7 +243,8 @@ Building `match`, clause widgets, `rebuild`
   reads the block and gives its result from what its own lines build, a late widget
   result: the places of the row that gives the result take their numbers from a count
   that reads the result; it needs that row built with no `base` and numbered after the
-  line, as `Wx.lateGens` does inside a row. R, no test), and one whose plain result no
+  line, as `Wx.lateGens` does inside a row. R; the test is
+  sem-ch04-late-value-above-clause-widget-result-from-arm-lines, red), and one whose plain result no
   name binds (a pattern's, or the block's own result. R, no test).
   A line whose late names are all plain parts of a late place's bundle
   (`{name}#lateplace`) is neither deferred nor refused: it is built in its place's
@@ -292,11 +296,13 @@ Building `match`, clause widgets, `rebuild`
   given back, is as deep as its data, to 2^20 places a call
   (sem-ch08-clause-widget-recursion, sem-ch08-widget-recursion-deep,
   sem-ch08-widget-recursion-deep-one-clause, sem-ch08-widget-recursion-deep-result).
-- lower/node/static.prism (`LocalFunctionLine`) a function of a block with several
-  clauses, applied as a widget; a function of a block that applies itself as a widget:
-  R, no test. A function of a block with one clause that gives a blueprint is applied
-  as a line, and where a widget it is handed to applies it
-  (sem-ch08-block-function-applied-as-line, host-bug-15).
+- lower/node/static.prism (`LocalFunctionLine`): no refusal. A function of a block that
+  gives a blueprint is applied as a line, and where a widget it is handed to applies it
+  (sem-ch08-block-function-applied-as-line, host-bug-15); one of several clauses as a
+  building `match` over its plain arguments
+  (sem-ch08-block-function-clauses-applied-as-line); one that applies itself level by
+  level, sixteen deep, a build fault past that as for a widget that calls itself
+  (sem-ch08-block-function-applies-itself).
 - lower/node/static.prism (`WidgetCall`) a widget this back end does not lower yet: no
   program found since a blueprint taken out of a value by a pattern is applied
   (`ValueBlueprintLine`, sem-ch08-blueprint-out-of-value) and a function value a `let`
@@ -399,16 +405,23 @@ Catch-alls
   direct operand.
 
 Zombie and dead states: `leave`, `clean_up`, `edges` (no refusal; the README's entry).
-What a program can see of teardown holds: a `for` row whose key leaves and a replaced
-generation fire in their last tick and are silent afterwards, the new generation's holds
-fresh at fresh paths (sem-ch04-row-teardown and sem-ch04-generation-teardown pass). The
-first value of an element value placed in a hosted scope (DH2) holds through two hosts
-(sem-ch09-host-described-first-value passes).
+They are the runtime's names (claude/backend.md, "Leaving"); a program writes nothing
+for them (Semantics ch. 4: "no lifecycle events"). What a program can see is Semantics
+ch. 7, "Holds die with their widget": a kept dynamic of a widget that left reads its
+holds' last values. A `for` row whose key leaves and a replaced generation fire in their
+last tick and are silent afterwards (sem-ch04-row-teardown, sem-ch04-generation-teardown
+pass), and a kept hold of a row that left shows its last value while nothing reads it
+again; a kept combinator over that hold, read again, gives the hold's FIRST value:
+wrong output, sem-ch07-hold-dies-with-its-row, red ("Red tests of the depth sweep").
+The first value of an element value placed in a hosted scope (DH2) holds through two
+hosts (sem-ch09-host-described-first-value passes).
 
 ## rustc refuses prismc's output
 
-No refusal: prismc writes a crate and rustc refuses it. Each is an R, critical. None is
-known that has no lowering written; none of the lowerings written has been run.
+No refusal: prismc writes a crate and rustc refuses it. Each is an R, critical. One has
+no lowering written: a tag's plain field that holds dynamics below its top
+(sem-ch09-tag-field-array-of-dynamics; `DeepPod`'s `compile_error!` is not reported). A
+no-arm building `match` bound as a dynamic or an event is the other (no test).
 
 ## C: wrong programs the checker lets through
 
@@ -442,17 +455,17 @@ known that has no lowering written; none of the lowerings written has been run.
 - A supplier written by clauses (`fn @Supply p, (Pad.Num(..)) = @ 7`) is a legal program
   the checker refuses: a clause's tag pattern does not refine the output. Test:
   tests/checker/pos/supplier-clauses.prism.
-- lower/expr.prism (`AnyValue`) an existential of a program's trait with a method that
-  needs one dictionary for a whole collection or for no value at all (`?PackedDefOf`):
-  the trait's type inside another type (`fn [a] -> Nat`) or in no parameter (`Empty:
-  a`), a type parameter of its own, an associated type. The dictionary belongs to the
-  packing, one a packed value, so such a method cannot be asked of `any ^Trait` (the
-  coordinator's first ruling): the checker says nothing and the back end refuses it.
-  Tests: tests/checker/neg/existential-method-needs-one-dictionary;
-  tests/conformance/ts-ch03-existential-trait-inside-array is that wrong program with a
-  transcript. Every trait of the prelude is packed (ts-ch03-existential-num-packed,
-  ts-ch03-existential-pod-packed; ruling EX: packing is legal, and only the call of a
-  method that cannot dispatch is the error).
+- A method that needs one dictionary for a whole collection or for no value at all, asked
+  of `any ^Trait` (the trait's type inside another type, `fn [a] -> Nat`, or in no
+  parameter, `Empty: a`; a type parameter of its own): the checker's
+  `existential-method` at the call (ruling EX; tests/checker/neg/
+  existential-method-needs-one-dictionary). Packing the trait is legal and is lowered:
+  such a method is no entry of the dictionary and has a body no program runs in the
+  trait's impl for the packed value (`PackedDef.unasked`;
+  ts-ch03-existential-other-method-not-asked). Left refused in lower/expr.prism
+  (`AnyValue`): an existential of a program's trait with an associated type, whose impl
+  for the packed value has no type to choose. R, no test. Every trait of the prelude is
+  packed (ts-ch03-existential-num-packed, ts-ch03-existential-pod-packed).
 - A tag field's type variable that the tag's output does not have (`tag Seat.Request of
   Element !Response:` with `$?latest: ((Nat, r))`): the checker says nothing, a guest
   places the tag with a `Text` and the host's function reads the field as a `Nat`. Type
@@ -567,3 +580,167 @@ Types the lowering does not spell (`OutRefused`)
 - lower/expr.prism:1764, lower/types.prism:272 and lower/model.prism:169 are the type's
   own matches and definition.
 
+
+## Every refusal site
+
+Every `Refusal` / `RefusalDo` call in prismc/lower, by the function it stands in. Class
+R: a legal program reaches it or is thought to. G: an internal error ("a prismc bug:
+.."), with the reason no checked program reaches it. U: no program is known that reaches
+it and no argument is written that none does; it stays a refusal until one or the other
+is found. "Test" is the test that reaches the site today, red, or none.
+
+| site | class | test | state |
+|---|---|---|---|
+| node/elements.prism `ElementLine`, an element of an unknown tag | G | - | internal error: the checker's `unknown-name` (tests/checker/neg/unknown-tag) |
+| node/elements.prism `ElementOutputOf`, a hosted place with a plain answer no plain name binds, under a host placed after its node | R | none | refused |
+| node/finish.prism `UpdatedGaps`, `!Updated` of a dynamic no sink of the node writes (UP) | G | sem-ch07-updated-rebuild-dynamic-above reached it | internal error: every dynamic a node binds reads a hold, a getter over its holds, a structural dynamic or a kept result; the program that reached it (a `rebuild`'s dynamic read above its line) was bound to a field the node did not have, lowered by `GivesResult` |
+| node/finish.prism `UpdatedGaps`, the same in a row over a name of its block (SU) | G | the same test's second widget reached it | internal error, by the same argument |
+| node/finish.prism `PlaceNumber`, two sites: a place read at its row's or block's build before its node, after rows that differ in width | R | none | refused |
+| node/switch.prism `RebuildDynamic`, a `rebuild` that hands back a dynamic whose generation gives no dynamic, value or bundle | G | sem-ch04-rebuild-ends-on-host reached it | internal error: the one result left out, a host's line last in the generation, is lowered as the host's bundle (`GenRowOf`); `GivesDynamic` keeps events and unit away |
+| node/switch.prism `ArmRowOf`, two sites: a late plain result beside a `for`, a `rebuild` or a widget that calls itself, in a row numbered after its node | R | none | refused |
+| node/switch.prism, `@Flatten` with no live dynamic at the build (LF) | R | sem-ch07-flatten-global-dynamic, sem-ch07-flatten-block-dynamic-in-row | refused; three forms reach it, see "Red tests of the depth sweep" |
+| node/def.prism `SplitBlockInto`, a block split at a line whose result is not late | U | none | refused |
+| node/def.prism, the build-side markers of a late name (`PreBindWhole`, `PreBindWholeParts`, `BindLate`, `MarkLateLets`, `LateTakerResults`, `LateFieldPlaces`, `LatePlaceParts`, `LateHostedAnswer`, `MarkLateBundle`, `LateBundleParts`: twelve sites) | R | none (sem-ch04-late-value-above-in-plain-place-field passes) | refused: a place with a `$` or bundle answer, bound by a pattern or in a hosted scope, whose constant field reads the late name; a `let` of a type with time inside that is no bundle |
+| node/def.prism, a late plain result in a bundle (`WrLate`) | U | none | refused |
+| node/def.prism `DeferredLine`, two sites: a line that takes a late result above the line that gives it, with counted places or a plain result no name binds | R | none | refused |
+| node/static.prism `WidgetCall`, a widget line whose name has no value entry | R | sem-ch08-for-over-blueprints | an internal error by its text, and reached: a `for`'s binder that is a blueprint (`for @each <- [[@One, @Two]]:`), applied as a line of the row |
+| node/static.prism `HostLine`, a host without its child or its supplier | G | - | internal error: the checker's `mismatch` (tests/checker/neg/ignore-binds-a-function, neg/builtin-widget-without-argument) |
+| node/static.prism `InlineWidget`, a widget of several clauses that takes no arguments | G | - | internal error: the checker's `collision` (ruling ZD; tests/checker/neg/clause-widget-without-arguments) |
+| node/static.prism `InlineWidget`, a generic widget at a call whose types its parameters' do not match | U | none | refused; the program that reached it is the checker's `field-variable` (tests/checker/neg/hosting-generic-implementation) |
+| expr.prism `SampledObject`, a dynamic a function gives whole, read in a plain function (LE) | U | none | refused |
+| expr.prism, a dynamic passed whole where it has no live dynamic (LF) | U | none | refused |
+| expr.prism `LiftedValue`, a lift whose noted operands are not its own | G | - | internal error: the checker lifts only at applications, operators, fields, indexes and interpolations, each a direct operand |
+| expr.prism `PlainValueByKind`, `{b}` outside a `for` | G | - | internal error: the checker's `unknown-name` (tests/checker/neg/bound-word-outside-for) |
+| expr.prism `PlainValueByKind`, an expression of no value kind | G | - | internal error: `mismatch` for a `for` or a `rebuild` as a plain value (ruling BP; tests/checker/neg/for-in-let), `unsupported` for a suffixed operator, a monadic block and a lens value; a topic, `..` and an absent value are read by an `update` block, a pattern and an element's fields. Not argued: a widget block as a value |
+| expr.prism `AnyValue`, an existential of a trait with an associated type | R | ts-ch03-existential-associated-type | refused; a trait with a method that cannot be asked is lowered (ts-ch03-existential-other-method-not-asked) |
+| expr.prism `PartsBlueprint`, two sites (`PartRefused`) | G | - | internal error by its text: `DynamicAnswers` makes a getter for every dynamic answer |
+| expr.prism `NameValueOf`, an event read as a value | U | none | refused |
+| expr.prism `NameValueOf`, a tuple pattern's binding as a value | R | ts-ch02-named-bundle-as-argument | refused: a bundle bound to one name and passed whole to a function |
+| expr.prism `NameValueOf`, a widget defined in a block read as a blueprint value outside a line's value places | R | sem-ch08-block-widget-given-by-lambda | refused: a lambda of the block that gives the widget |
+| expr.prism `WidgetValueWords`, a widget as a value where `ValuedWidgets` does not look (two calls) | R (one call), U (the other) | sem-ch08-widget-is-another-widget | refused: a widget defined as one expression that is another widget (`fn @main = @page`) |
+| expr.prism `OpenWidgetValueWords`: `EndlessByName`, `EndlessThroughImpl` | G | - | internal errors: the checker's `grows-without-end` |
+| expr.prism `OpenWidgetValueWords`: `UndecidedParameter` | U | none | refused |
+| expr.prism `Recolored`, a function value held by a type that is none of those it maps through | U | none | refused |
+| expr.prism `FunctionRecolored`, a function whose color no use of its `let` decides | U | none | refused |
+| patterns.prism, a pattern inside an element's `$` field | G | - | internal error: the checker's `live-field-pattern` (ruling LP; tests/checker/neg/live-field-pattern) |
+
+Totals: 36 `Refusal` / `RefusalDo` calls stand in prismc/lower. 2 are internal errors
+by their text (`PartsBlueprint`); 5 are R with a red test (`@Flatten` LF, `AnyValue`, the
+named bundle, the block widget, one `WidgetValueWords` call); 19 are R with no test (the
+12 late-name markers, `DeferredLine` 2, `PlaceNumber` 2, `ArmRowOf` 2, `ElementOutputOf`);
+10 are U (`SplitBlockInto`, `WrLate`, the generic widget, LE, LF of expr.prism, an event
+read as a value, the other `WidgetValueWords` call and `UndecidedParameter`, `Recolored`,
+`FunctionRecolored`). Eleven guards are internal errors and no longer refusals.
+prismc/README.md, "Not lowered yet", names the zombie and dead states alone, which no
+refusal stands for: they are wrong output (sem-ch07-hold-dies-with-its-row).
+
+Refusals outside `Refusal` / `RefusalDo`, which the table above does not hold:
+
+| site | class | test | state |
+|---|---|---|---|
+| emit/rust/items.prism `DeepPod` (and the C++ printer's): a tag's plain field that holds a dynamic other than `$Elem` or a map of them | R | sem-ch09-tag-field-array-of-dynamics | a `compile_error!` whose text does not begin "prismc does not lower", so `CompileProgram` reports nothing, exits 0, and rustc refuses the crate |
+| lower/program.prism `DefItems`, `ItRefused`: a root widget whose body is one expression; a root widget of several clauses | U | none | refused; `fn @main = @page` as a root reaches `WidgetValueWords` first |
+| lower/types.prism, `OutQuantified` (two sites): a quantified type variable no instantiation gives a type | U | none | refused; `Len [[]]`, `Size {}` and an unused `let empty = [[]]` are lowered |
+| lower/expr.prism, `OutRefused "a parameter"`: a typed parameter pattern with no type | U | none | refused |
+
+## Red tests of the depth sweep
+
+Each is red on prismc-r21 by a compile of the one program; the transcripts are by hand.
+
+- **sem-ch07-flatten-global-dynamic**, **sem-ch07-flatten-block-dynamic-in-row** (`@Flatten`
+  LF, `HeldFlatten`). The line wants `#whole{span}` of its argument, a live `Dynamic` of
+  the node. Two forms have none: a global (`let $$nested = $ ($ 3)`), and a name or an
+  expression over names of the block read in a row or a generation (`$$current` of the
+  parent; `@Flatten ($ ($Choose True, $a, $derived))` in a row). Design: where
+  `#whole` is missing, take the argument as `WholeValueOf` gives it (a global is its
+  getter's constant; a parent's name is the parent's live dynamic handed to the row as a
+  shared row's live parameter is, `LiveParams`; an expression is built whole at the
+  build), keep it in a field `{name}_outer`, and follow that field as `HeldFlatten`
+  follows `dyn`. The row case needs the parent's `Dynamic` passed to `build`, which is
+  the larger part.
+- **sem-ch07-flatten-constant-of-dynamic** (wrong output, no refusal). `@Flatten ($
+  ($Choose True, $a, $b))` in a root block compiles, and its label never changes when
+  `$b` is written: the flatten of a constant outer does not follow its inner. Not
+  diagnosed; the place to look is `HeldFlatten`'s `{name}_follow` when the outer is the
+  build's own value and no `#whole` dynamic of the node.
+- **ts-ch03-existential-associated-type** (`AnyValue`, `?PackedDefOf`). The impl of the
+  trait for the packed value has to state each associated type. No method that names an
+  associated type is an entry of the dictionary (it names the trait's type inside
+  another type, `unasked`, and the checker refuses the call: `existential-method`), so
+  no value of the associated type is ever made through a packed value. Design: `type X
+  = ()` in the impl for `Packed` (C++: a `using X = std::monostate`), and `?PackedDefOf`
+  gives the dictionary for such a trait; the unasked methods' signatures in that impl
+  then name `()`, and their bodies are the `unreachable!()` they are today.
+- **ts-ch02-named-bundle-as-argument** (`NameValueOf`, `BnParts` with no `#value`). A
+  named bundle is one value where it is a `rebuild`'s result or a `let`'s
+  (`BundleValue`); passed to a function it is not. Design: make `{nkey}#value` for every
+  named bundle a function's argument reads, by `WholeNamedOf` at the line that binds
+  it (`WholeArgsAt` already finds the readers an argument names).
+- **sem-ch08-block-widget-given-by-lambda** (`NameValueOf`, `BnLocalWidget`). Design: a
+  widget of a block read as a value is the blueprint value of its block in the
+  environment where it stands, as `WidgetBlueprintValueFrom` makes for a top-level
+  widget read as a value; the block's captures are the lambda's.
+- **sem-ch08-widget-is-another-widget** (`WidgetValueWords`). `ValuedWidgets` looks at
+  suppliers' answers and blueprint arguments; a widget whose body is one expression
+  that names another widget is neither. Design: such a widget is an alias: inline the
+  named widget where the alias is applied (`InlineWidget` on the body's callee), and as
+  a root build the named widget's node.
+- **sem-ch08-for-over-blueprints** (`WidgetCall`'s internal error). A `for`'s value
+  binder that is a blueprint is a `BnLocal` of a `Blueprint` value in the row; the line
+  `@each` finds no value entry and none of the lines above takes it. Design: the row
+  applies the blueprint value as `BlueprintLine` applies a blueprint out of a value (a
+  widget parameter `@$bp` applied as a line is the neighbour that works).
+- **sem-ch09-tag-field-array-of-dynamics** (`DeepPod`). Design: a runtime trait for "the
+  pod of a value with its dynamics sampled" (`DeepPod::deep_pod(&self, cx)`), given for
+  `Dynamic<A>`, arrays, maps, options, tuples and plain data, and derived for a
+  program's records and choices that hold time; `DeepPod` of the emitter calls it for
+  every field that holds a dynamic, and the place is sent again when one of them moves
+  (the level's `Follow` of each nested dynamic, as the map of `$Elem` has). Until then
+  the emitter's text should begin "prismc does not lower" so that the compile fails
+  with a report.
+- **sem-ch07-hold-dies-with-its-row** (wrong output, no refusal; the README's zombie
+  entry). A live `Dynamic` of a node reads through a weak link (`LiveDynamic`,
+  `LiveDynamics`: `match link.owner()`); once the row is dropped it gives the value AT
+  THE BUILD (`at_build`), so a kept combinator over a dead row's hold reads the hold's
+  first value: `kept 10` where the book gives `kept 11` (Semantics ch. 7, "Holds die
+  with their widget"). A kept hold alone looks right only because nothing reads it
+  again. Design, smallest step: a cell `{name}_last` shared by the node and the
+  closure, written in `leave_row` (and a generation's leaving) with the getter's value
+  as the leaving tick ends, read where the link has no owner. That freezes a dynamic
+  that reads the parent too, where the book keeps a stateless combinator working; the
+  whole of it is the zombie state of claude/backend.md, "Leaving" (the node kept while
+  something subscribes, `edges` and `release` for the collector).
+
+Lowered in the sweep, unrun: sem-ch04-rebuild-ends-on-host (`GenRowOf`),
+sem-ch07-updated-rebuild-dynamic-above and sem-ch04-rebuild-dynamic-read-above
+(`GivesResult` takes a `rebuild`; before it rustc refused a plain read above the line),
+sem-ch04-building-match-no-arm (`NoArmLine`, unit and plain results; a no-arm building
+`match` bound as a dynamic or an event still goes to `BuildingChoiceLine`, whose empty
+Rust `match` over a tuple of references rustc refuses: no test).
+
+## Programs tried that reach no refusal
+
+Under target/fx/q of the sweep's worktree, compiled by prismc-r21, each lowered with no
+refusal. They are the attempts behind the R rows with no test and the U rows.
+
+- The late-name markers, `DeferredLine`: a late plain result `n <- match mode:` read
+  above its line by a place's constant field, a `for`'s source, a hold's first value, a
+  `rebuild` over `$ n`, a `let`, a widget's plain argument, a clause widget's argument,
+  that widget's plain result handed on, a tagged place's answer and its use, a mixed
+  `((plain, $live))` answer, a `let` of a type with time inside, a local function and a
+  lambda that close over it, a blueprint argument and a hosted child that read it, a
+  widget of the block, `$ n` and `@Distinct ($ n)`, `n on !x`, a row's and a
+  generation's hold starting from it (l1, l2, l3); a widget with a building `if` given
+  it, and a widget whose plain pair a pattern binds (d1).
+- `ElementOutputOf`, `PlaceNumber`, `ArmRowOf`: a hosted child with a plain answer under
+  a host below a building `match`, in each arm of one that gives a late result read
+  above, in a `for` row, and in a clause of a widget applied twice (h1).
+- LE, LF of expr.prism: a whole-taking function given a hold, a dynamic `let`, a hosted
+  answer, a clause widget's result, a bundle's parts, a `rebuild`'s and a `for`'s
+  dynamic, `@Distinct`'s, a parameter and a global, in a block, in a row and in a
+  supplier's arm (g1); the same inside a lambda and a local function (g2).
+- An event read as a value: `!MergeAll` over a block's events, a widget's event
+  parameter, a generation's and a row's own events and a switched one, in a block, a
+  generation and a row (a3).
+- Not tried: `SplitBlockInto`, `WrLate`, the generic widget, `UndecidedParameter`,
+  `Recolored`, `FunctionRecolored`, and the four sites of the second table.

@@ -1037,6 +1037,54 @@ Event<Map<K, V>> union_ev(const Event<Map<K, V>>& a, const Event<Map<K, V>>& b) 
     });
 }
 
+/// `!Both a, b` as an event value (in a plain function's body): `!MergeAll` of the two,
+/// each firing marked with its side; it fires in a tick in which both fired, with the pair.
+template <class A, class B>
+Event<std::tuple<A, B>> both(const Event<A>& a, const Event<B>& b) {
+    using Side = std::tuple<std::optional<A>, std::optional<B>>;
+    Event<Side> left = a.map([](const A& v) { return Side{std::optional<A>(v), std::nullopt}; });
+    Event<Side> right = b.map([](const B& v) { return Side{std::nullopt, std::optional<B>(v)}; });
+    return ::prism_rtl::filter_some(::prism_rtl::merge_all(Array<Event<Side>>{left, right}).map([](const Array<Side>& fired) {
+        std::optional<A> first;
+        std::optional<B> second;
+        for (const auto& one : fired) {
+            if (std::get<0>(one)) first = std::get<0>(one);
+            if (std::get<1>(one)) second = std::get<1>(one);
+        }
+        if (first && second) return std::optional<std::tuple<A, B>>(std::tuple<A, B>{*first, *second});
+        return std::optional<std::tuple<A, B>>();
+    }));
+}
+
+/// `!Except a, b` as an event value: `!MergeAll` of the two, each firing marked with its
+/// side; it fires `a`'s value in a tick in which `b` did not fire.
+template <class A, class B>
+Event<A> except(const Event<A>& a, const Event<B>& b) {
+    Event<std::optional<A>> left = a.map([](const A& v) { return std::optional<A>(v); });
+    Event<std::optional<A>> right = b.map([](const B&) { return std::optional<A>(); });
+    return ::prism_rtl::filter_some(::prism_rtl::merge_all(Array<Event<std::optional<A>>>{left, right}).map([](const Array<std::optional<A>>& fired) {
+        std::optional<A> kept;
+        for (const auto& one : fired) {
+            if (!one) return std::optional<A>();
+            kept = one;
+        }
+        return kept;
+    }));
+}
+
+/// `!Gate $open, e` as an event value: `e`'s firings while the dynamic reads true at the
+/// firing's read point.
+template <class A>
+Event<A> gate(const Dynamic<bool>& open, const Event<A>& e) {
+    return ::prism_rtl::filter_some(e.map_at([open](const A& v, const Cx& cx) { return open.sample(cx) ? std::optional<A>(v) : std::optional<A>(); }));
+}
+
+/// `!Present e` as an event value: `unit` for each firing whose value is present.
+template <class A>
+Event<Unit> present(const Event<std::optional<A>>& e) {
+    return ::prism_rtl::filter_some(e.map([](const std::optional<A>& v) { return v ? std::optional<Unit>(Unit{}) : std::optional<Unit>(); }));
+}
+
 /// `!MergeWith f, events` as an event value: `!MergeAll` of the list, the values that
 /// fired folded by `f` in the list's order.
 template <class F, class T>
@@ -1089,13 +1137,16 @@ inline Error error_of(const Pod& kind, Text message) {
 
 /// `!Updated $d` as an event value (in a supplier's answer, or in a function that takes
 /// the dynamic whole): it fires `d`'s value after the tick, in the tick `d`'s update event
-/// fires (Semantics ch. 7, R3).
+/// fires (Semantics ch. 7, R3). The event fires at the height the update event does: its
+/// port is raised with it, so a combinator that hears it sits above the write.
 template <class T>
 Event<T> updated(const Dynamic<T>& d) {
     auto port = ::prism_rtl::make_rc<Port<T>>();
-    d.updates->subscribe([port, d](const Unit&, Cx& cx) -> Done {
-        return port->fire(cx.after([&](const Cx& at) { return d.sample(at); }), cx);
-    });
+    d.updates->subscribe_above(
+        [port, d](const Unit&, Cx& cx) -> Done {
+            return port->fire(cx.after([&](const Cx& at) { return d.sample(at); }), cx);
+        },
+        ::prism_rtl::make_rc<const std::function<void(std::uint32_t)>>([port](std::uint32_t h) { port->raise(h); }));
     return Event<T>{nullptr, port};
 }
 
@@ -1221,12 +1272,14 @@ auto apply_blueprint_dynamic(const ::prism_rtl::Blueprint<Elem, Answer>& bluepri
     using Made = std::tuple<::prism_rtl::Rc<Row>, std::uint32_t, ::prism_rtl::Dynamic<T>>;
     auto cell = ::prism_rtl::make_rc<std::optional<::prism_rtl::Hold<T>>>();
     auto updates = ::prism_rtl::make_rc<::prism_rtl::Port<Unit>>();
-    ::prism_rtl::Sink<Answer> sink = [cell, updates, take](const Answer& answer, Cx& cx) -> Done {
+    // an answer delivered inside a tick at a height (the sink's twin told it) writes the
+    // dynamic at that height: its update port is raised with it
+    ::prism_rtl::Sink<Answer> sink{std::function<Done(const Answer&, Cx&)>([cell, updates, take](const Answer& answer, Cx& cx) -> Done {
         auto v = TRY(take(answer));
         if (!*cell) return unexpected(Fault::answer("a blueprint value that gives a dynamic was answered before its build ended"));
         (*cell)->set(std::move(v), cx);
         return updates->fire(Unit{}, cx);
-    };
+    }), ::prism_rtl::make_rc<const std::function<void(std::uint32_t)>>([updates](std::uint32_t h) { updates->raise(h); })};
     auto run = [&]() -> Result<Made> {
         auto supplied = TRY(blueprint(std::move(path), sink, applied_scope(std::move(hosted)), base, cx));
         std::uint32_t built = supplied.built;

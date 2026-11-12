@@ -175,9 +175,11 @@ fn BorrowStmts env, st, stmts, lent = Fold stmts, st, \|s, stmt| match stmt.kind
         EFor ?binders, source, body:
             let path = LentPath source
             let lent2 = if (Len path) > 0 and ?binders != nil: Push lent, path else: lent
-            # over a named lens applied, the lens's result is alive for the body, and so
-            # is its argument: a read of an overlapping part there is a second reference
-            let s1 = if (Len path) > 0 and ?binders != nil and (IsLensSource source): HeldReads env, s, body.stmts, path else: s
+            # the loop's reference is alive for the body (over a named lens applied, the
+            # lens's result, and so its argument): a read of an overlapping part there is
+            # a second reference
+            let fix = if IsLensSource source: "read it before the loop with a `let`, or loop over the path the lens names" else: "read it before the loop with a `let`, or loop over a copy"
+            let s1 = if (Len path) > 0 and ?binders != nil: HeldReads env, s, body.stmts, path, fix else: s
             BorrowStmts env, s1, body.stmts, lent2
         EIf ignore, tb, ?eb:
             let s2 = BorrowStmts env, s, tb.stmts, lent
@@ -200,11 +202,12 @@ fn IsLensSource e = match e.kind:
         ? ignore: True
         nil: False
 
-# The reads, inside a loop's body, of references that overlap the path `held` (the
-# argument of the lens the loop runs over): each is `borrow-overlap`. A set's left side is
-# `CheckLent`'s, and a path's own receivers are not reads of their own.
-HeldReads: unbounded fn Env, St, [Stmt], [Text] -> St
-fn HeldReads env, st, stmts, held:
+# The reads, inside a loop's body, of references that overlap the path `held` (the path
+# the loop runs over, or the argument of the lens it runs over): each is
+# `borrow-overlap`, with the fix line `fix`. A set's left side is `CheckLent`'s, and a
+# path's own receivers are not reads of their own.
+HeldReads: unbounded fn Env, St, [Stmt], [Text], Text -> St
+fn HeldReads env, st, stmts, held, fix:
     let targets = SetTargetSpans stmts
     let references = Filter (StmtsExprs stmts), \|x| (Len (LentPath x)) > 0
     let receivers = Fold references, targets, \|acc, x| Append acc, (PathReceivers x)
@@ -212,7 +215,7 @@ fn HeldReads env, st, stmts, held:
         let path = LentPath x
         let inner = Fold receivers, False, \|seen, r| seen or r == x.span
         if inner or not ((IsPrefix held, path) or (IsPrefix path, held)): s
-        else: ErrFix s, "borrow-overlap", x.span, "`{Join held, "."}` is lent to the `for`", "read it before the loop with a `let`, or loop over the path the lens names"
+        else: ErrFix s, "borrow-overlap", x.span, "`{Join held, "."}` is lent to the `for`", fix
 
 # The spans of the expressions a reference is built from: a path's receivers, a lens's
 # argument.

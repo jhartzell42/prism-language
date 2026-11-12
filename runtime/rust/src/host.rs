@@ -143,14 +143,29 @@ impl Follow {
     }
     /// From now on the inner `updates` tells `node` through `moved`.
     pub fn follow<N: 'static>(&self, updates: &Rc<Port<()>>, node: &Rc<N>, moved: fn(&Rc<N>, &mut Cx)) {
+        self.follow_above(updates, node, moved, |_, _| ())
+    }
+    /// As [`Follow::follow`], with `moved`'s height twin: `above` is told the height the
+    /// update event fires at, at once and each time it rises, and puts what `moved`
+    /// reaches above it (an `!Updated` over the dynamic, the update port of a dynamic the
+    /// node hands on).
+    pub fn follow_above<N: 'static>(&self, updates: &Rc<Port<()>>, node: &Rc<N>, moved: fn(&Rc<N>, &mut Cx), above: fn(&Rc<N>, u32)) {
         self.drop_sub();
         let weak = Rc::downgrade(node);
-        let h = updates.subscribe(Rc::new(move |_: &(), cx: &mut Cx| {
-            if let Some(n) = weak.upgrade() {
-                moved(&n, cx);
-            }
-            Ok(())
-        }));
+        let told = weak.clone();
+        let h = updates.subscribe_above(
+            Rc::new(move |_: &(), cx: &mut Cx| {
+                if let Some(n) = weak.upgrade() {
+                    moved(&n, cx);
+                }
+                Ok(())
+            }),
+            Rc::new(move |h| {
+                if let Some(n) = told.upgrade() {
+                    above(&n, h);
+                }
+            }),
+        );
         *self.sub.borrow_mut() = Some((updates.clone(), h));
     }
     fn drop_sub(&self) {

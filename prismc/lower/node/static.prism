@@ -226,13 +226,80 @@ fn LocalFunctionLine wx, benv, menv, cbenv, cmenv, clx, cs, named, e, args:
     let body = match c.body:
         BodyBlock b: b
         BodyExpr y: Block(stmts=[[Stmt(kind=(SExpr y), span=y.span)]], inline=True, span=y.span)
-    let Refused = \|why|
-        let wx2 = update wx:
-            &_.build <= Push &_.build, (RefusalDo why)
-        ((wx2, WrUnit))
-    if (Len cs) != 1: Refused "a function of a block with several clauses, applied as a widget (`{DefNameText c.name}`)"
-    else: if HasKey cmenv.names, mark: Refused "a function of a block that applies itself as a widget (`{DefNameText c.name}`)"
-    else: InlinedFunctionLine wx, benv, menv, (Bind cbenv, mark, (BnLocal XUnit, Owned, OutUnit)), (Bind cmenv, mark, (BnLocal XUnit, Owned, OutUnit)), clx, c.params, ptys, body, e, args
+    # a function that applies itself is lowered level by level, as an inlined widget
+    # is, to the same depth (`TooDeep`): the levels are counted in `wx.inlining`, which
+    # every row built inside the body keeps
+    if (Recursion wx.inlining, mark) > 16: TooDeep wx, (DefNameText c.name), e
+    else:
+        let inside = update wx:
+            &_.inlining <= Push &_.inlining, mark
+        let ((done, res)) = if (Len cs) == 1: InlinedFunctionLine inside, benv, menv, cbenv, cmenv, clx, c.params, ptys, body, e, args else: ClausesFunctionLine inside, benv, menv, cbenv, cmenv, clx, cs, ptys, e, args
+        let back = update done:
+            &_.inlining <= wx.inlining
+        ((back, res))
+
+# A function of a block written by several clauses, applied as a line (`$less <- @Row 0,
+# $count` beside `fn @Row 0, $shown = ..` and `fn @Row n, $shown: ..`; Semantics ch. 8:
+# the first clause the arguments match is built, at the build, transparent): the clauses
+# are the arms of a building `match` over the plain arguments (`BuildingChoicesLine`),
+# each clause's block read in the function's file with its names apart for this
+# application (`inlined`), over the environment the function closes over. A clause's
+# dynamic, event and blueprint parameters match nothing: each is bound in that clause's
+# own environment to the line's argument, as an inlined function's is (`BindParam`), and
+# the clause's row reads it as it reads any name of the block.
+ClausesFunctionLine: unbounded fn Wx, Env, Env, Env, Env, Lx, [FnClause], [Ty], Expr, [Arg] -> ((Wx, Wres))
+fn ClausesFunctionLine wx, benv, menv, cbenv, cmenv, clx, cs, ptys, e, args:
+    let lx = wx.lx
+    let callSpan = match e.kind:
+        ECall called, ignore, ignore, ignore: called.span
+        otherwise: e.span
+    let lxi = update clx:
+        &_.inlined <= match lx.callIds[PlaceKey lx, callSpan]:
+            ? id: "{lx.inlined}_{Base32 id}"
+            nil: lx.inlined
+    let ((wx1, envs)) = Fold cs, ((wx, [[]])), \|((w0, acc)), c|
+        let ((w1, ignore, me1)) = Fold (Range0 (Len c.params)), ((w0, cbenv, cmenv)), \|((w, be, me)), i|
+            let p = Or c.params[i], dummyPat
+            let nkey = PlainBinder clx, p
+            match args[i]:
+                nil: ((w, be, me))
+                ? a:
+                    if IsMatchedParameter ptys[i]: ((w, be, me))
+                    else: if nkey != "": BindParam w, benv, menv, be, me, nkey, (LocalNameAt clx, nkey, p.span), (Or ptys[i], TyErr), a.value
+                    else: BindParamPattern w, benv, menv, be, me, clx, p, (Or ptys[i], TyErr), a.value
+        ((w1, (Push acc, me1)))
+    let scruts = XTuple (Each (Range0 (Len ptys)), \|i| MatchedArgument lx, menv, ptys[i], args[i])
+    let patss = Each cs, \|c| ClausePatterns c, ptys
+    let bodies = Each cs, \|c| ClauseBlock c
+    let guards = Each cs, \|c| ?ClauseGuard c
+    BuildingChoicesLine wx1, envs, lxi, scruts, patss, ptys, guards, bodies, (ChoiceOutTy lx, e), (ResultLayer (TypeAt lx, e.span)), (LineOutFull lx, e), [[]]
+
+# Whether a clause's pattern matches a parameter's argument: a plain parameter's. A
+# dynamic, an event and a blueprint are no values a pattern tests.
+IsMatchedParameter: fn ?Ty -> Bool
+fn IsMatchedParameter (? pt) = not ((IsBlueprintParam pt) or IsLiveParam pt)
+fn IsMatchedParameter nil = True
+
+# A plain parameter's argument as the clauses' patterns match it; nothing for another.
+MatchedArgument: unbounded fn Lx, Env, ?Ty, ?Arg -> Ex
+fn MatchedArgument lx, env, ?pt, ?a = match ?a:
+    ? a: if IsMatchedParameter ?pt: Argument lx, env, a.value else: XUnit
+    nil: XUnit
+
+# A clause's patterns, one for each parameter: its own for a plain parameter, none
+# (which matches anything) for another.
+ClausePatterns: fn FnClause, [Ty] -> [?Pattern]
+fn ClausePatterns c, ptys = Each (Range0 (Len ptys)), \|i| if IsMatchedParameter ptys[i]: c.params[i] else: nil
+
+# A clause's body as a block.
+ClauseBlock: fn FnClause -> Block
+fn ClauseBlock c = match c.body:
+    BodyBlock b: b
+    BodyExpr y: Block(stmts=[[Stmt(kind=(SExpr y), span=y.span)]], inline=True, span=y.span)
+
+# A clause has no guard of its own (its patterns alone choose it).
+?ClauseGuard: fn FnClause -> ?Expr
+fn ?ClauseGuard c = nil
 
 # A blueprint value applied (`? @t: @t`, `ignore <- card.@body`; Semantics ch. 8: "a
 # blueprint builds nothing until a block applies it", at the applying block's next
@@ -306,7 +373,7 @@ fn AppliedBlueprintLine wx, e, blueprint:
         # the dynamic the blueprint gives is kept as a generation's dynamic result is
         # (`KeptDyn`), and the node follows its update event: each firing marks what
         # reads it (`{name}_result_moved`)
-        let keeps = if dynamic: [[(DoExpr (XMethod (XField XSelf, follow), "follow", [[(XRef (XField (XVar "given"), "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef lx, wx.node), "{name}_result_moved"))]])), (DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XVar "given")]]))]] else: if answered: [[(DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(FirstAnswerTaken lx, outTy, "answered")]]))]] else: [[]]
+        let keeps = if dynamic: [[(DoExpr (XMethod (XField XSelf, follow), "follow_above", [[(XRef (XField (XVar "given"), "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef lx, wx.node), "{name}_result_moved")), (XPath (RefChild (SiteRef lx, wx.node), "{name}_result_moved_above"))]])), (DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XVar "given")]]))]] else: if answered: [[(DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(FirstAnswerTaken lx, outTy, "answered")]]))]] else: [[]]
         let select = WithRowBase wx, "self", pos, (XBlock (Append (Append (Append hearer, [[(DoLet made, applied)]]), keeps), (GapSet name, (? gap))), (XVar "row"))
         let wx3 = update wx2:
             &_.pos <= Pos(scope=pos.scope, at=pos.at + wideGeneration)
@@ -445,7 +512,7 @@ fn AppliedPart wx, name, t, read, whole, place = match t:
                     &_.fields <= Push &_.fields, ((follow, (OutNamed (RefRuntime "prism_rtl::Follow"), [[]]), "the subscription to the update event of a dynamic part of the bundle the blueprint value gives"))
                     &_.moves <= Push &_.moves, ((follow, (XCall (RefRuntime "prism_rtl::Follow::new"), [[]])))
                 let ((w2, res)) = KeptDyn w1, part, dt, [[]]
-                let wiring = [[(DoExpr (XMethod (XField XSelf, follow), "follow", [[(XRef (XField whole, "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef lx, wx.node), "{part}_result_moved"))]])), (DoAssign (XDeref (XMethod (XField XSelf, "{part}_res"), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XClone whole)]]))]]
+                let wiring = [[(DoExpr (XMethod (XField XSelf, follow), "follow_above", [[(XRef (XField whole, "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef lx, wx.node), "{part}_result_moved")), (XPath (RefChild (SiteRef lx, wx.node), "{part}_result_moved_above"))]])), (DoAssign (XDeref (XMethod (XField XSelf, "{part}_res"), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XClone whole)]]))]]
                 ((w2, res, wiring))
             # a plain part: read from the kept value, late
             otherwise: ((wx, (WrLate (XClone read), (OutTyOf lx, t)), [[]]))
@@ -613,7 +680,7 @@ fn WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target:
             ? v: InlineWidget wx, benv, menv, qk, v, args, e
             nil:
                 let wx2 = update wx:
-                    &_.build <= Push &_.build, (RefusalDo "a widget this back end does not lower yet")
+                    &_.build <= Push &_.build, (InternalBugDo "a widget line whose name has no value entry (the checker's `unknown-name`)")
                 ((wx2, WrUnit))
 
 # A host (claude/backend.md, "Hosting"; prism_rtl's `host`; pick HO): the child, a named
@@ -718,7 +785,7 @@ fn HostLine wx, benv, menv, form, args, ?bound:
         otherwise:
             let wx2 = update wx1:
                 &_.pos <= NextPos &_.pos
-                &_.build <= Push &_.build, (RefusalDo "a host without its child or its supplier")
+                &_.build <= Push &_.build, (InternalBugDo "a host without its child or its supplier (the checker's `mismatch` for a host that is not applied)")
             ((wx2, (WrHosted WrUnit, (BnLocal XUnit, Owned, OutUnit))))
 
 # A supplier's dynamic answers (`@ $d`, `$d` a hold or a derived dynamic of this node; round
@@ -1614,7 +1681,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                             ((outside, res))
                     nil:
                         let wx2 = update wx:
-                            &_.build <= Push &_.build, (RefusalDo "a widget of several clauses that takes no arguments")
+                            &_.build <= Push &_.build, (InternalBugDo "a widget of several clauses that takes no arguments (the checker's `collision`, ruling ZD)")
                         ((wx2, WrUnit))
         ? body:
             # a widget of one clause that calls itself, with plain parameters and no
