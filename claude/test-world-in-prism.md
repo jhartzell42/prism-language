@@ -8,7 +8,7 @@ it be.*
 
 - **The Test World is a World like any other** (Semantics ch. 9: "no privileged World"),
   so it should be writable in the language, the way `prismc` is.
-- **What that buys:** one Test World for every implementation (Rust, C++, prism-reflex),
+- **What that buys:** one Test World for every implementation (Rust, prism-reflex),
   with no per-backend transcript printer to keep byte-identical; the test language's
   meaning stated as a Prism program instead of prose in Conformance ch. 1; and a check
   that the World rules are expressible at all, since a World the language cannot write is

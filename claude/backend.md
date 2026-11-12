@@ -81,9 +81,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   generation, no place counted. A plain result is the empty `match` of the scrutinee as
   the build has it; a dynamic result is a getter of `unreachable!()` with no reads, and an
   event result is `never`, since no node that holds the line is ever built (`NoArmLine`;
-  sem-ch04-building-match-no-arm, sem-ch04-building-match-no-arm-bound-live). In C++
-  the choice's variant holds the runtime's `NoCase`, which nothing makes, and the
-  `match` is its unreachable tail.
+  sem-ch04-building-match-no-arm, sem-ch04-building-match-no-arm-bound-live).
 - `?a` → `Option<A>`; `~a` → `Result<A, rt::Error>`; `((a, b))` → `(A, B)`; `[[a]]` →
   `rt::Array<A>`; `k ==> v` → `rt::Map<K, V>`.
 - `[a]+`, `(k ==> v)+` → `prelude::NonEmpty<rt::Array<A>>`, `prelude::NonEmpty<rt::Map<K,
@@ -94,8 +92,6 @@ it make every program an interpreter run, and every type mistake a runtime fault
   - Rust: a tuple struct over the collection with `Deref` and `DerefMut` to it, the
     derived `Clone`, `Eq`, `Ord`, `Hash`, and `Show`, `ToPod`, `FromPod` through the
     collection's (`FromPod` refuses an empty one: only a World hands a program data).
-    C++: `template <class C> struct NonEmpty : C`, the collection its base class, with
-    `show`, `to_pod`, `from_pod` and the comparisons as a prelude value has them.
   - Made in two places: a non-empty literal, `[[x, y]]+` → `prelude::non_empty_of(..)`
     over the literal's collection; the checked conversion, `xs as [a]+?` →
     `prelude::non_empty(&xs)` or `non_empty_map`, an `Option` of the wrapper.
@@ -131,7 +127,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `PartialOrd, Ord`, whatever the fields: every `^Eq` is reflexive and every `^Ord`
   total); generics → Rust generics bounded by `Eq` and `Ord` for `^Eq` and `^Ord`,
   monomorphized by rustc (doubt MO). A generic type that is plain data compares even
-  without `^Eq` (Rust `EqImpls`, C++ a defaulted `operator==`), which no Prism code can
+  without `^Eq` (Rust `EqImpls`), which no Prism code can
   call: an element whose level field holds it (`value: Boxed $Nat`) is compared as the
   runtime compares every element (sem-ch09-tag-field-named-type-of-dynamic).
 - An existential `any ^Show` → `Rc<dyn Show>`.
@@ -141,8 +137,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `with_num` and `with_pod` are the emitted Rust prelude's (`PreludePacking`), `^Num`
   keeping its operators at the hidden type as a dictionary (`NumPacked`, with `Num` for
   `Packed` over it) and `^Pod` how the hidden value is told as plain data (`ToPod` for
-  `Packed`). In C++ `with_num` and `with_pod` keep nothing: such an existential is
-  held, passed and counted, and has no arithmetic there. A program's trait is a dictionary the compiler emits beside the trait (`ItPacked`,
+  `Packed`). A program's trait is a dictionary the compiler emits beside the trait (`ItPacked`,
   `PackedDef`): `Weighed_t_packed`, a struct of one function per method over packed
   values; `weighed_t_packed_of`, which makes it at a type from a value of it (each entry
   reads the hidden values with `Packed::held::<T>()`, calls the impl at `T`, and hides a
@@ -156,14 +151,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   names it nowhere else but as its whole result (`?PackedDefOf`); any other method
   (`PackedDef.unasked`) is no entry, and in Rust, where the trait's impl for the packed
   value needs every item, its body is a panic no program runs (the checker's
-  `existential-method` refuses the call); C++ writes no overload for it. A method that
+  `existential-method` refuses the call). A method that
   names an associated type names the trait's type inside it (`Unit a`), so it is unasked,
   and the impl for the packed value chooses the unit type for each associated type
-  (`PackedDef.assocs`: `type Unit = ();`, in C++ a specialization `Unit<Packed>` whose
-  `type` is `std::monostate`). In C++ the dictionary
-  holds function pointers, `weighed_t_packed_of` is a function object whose call is a
-  template among the generic definitions, and the impl is an overload in the trait's
-  namespace.
+  (`PackedDef.assocs`: `type Unit = ();`).
 - An element tag → a struct per tag holding its `Level` fields, with `ToPod`, and the Rust
   type of its output.
 - A row kind other than `Fault` (`type Draw = row`) → an `enum` with a variant per tag of
@@ -211,7 +202,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `$` arguments (`IsWholeObject`). A `Dynamic` given there (what a whole function gives,
   `Five ($Head (Gen n))`) is sampled at the read point, or, in a function's body, which has
   none, with a read context of no node (`SampledAt`: the prelude's `sample_detached` over
-  `prism_rtl::cx::detached`, C++ `Cx::detached`); no plain value can depend on a dynamic's
+  `prism_rtl::cx::detached`); no plain value can depend on a dynamic's
   value, so that read shows only in a lifted callee's own values, which its caller reads
   again (ts-ch04-plain-function-gives-whole-result-to-sigiled-parameter,
   -lifts-over-whole-result, -reads-whole-result-lifted). In a body that holds its
@@ -362,8 +353,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   firing (no `x on !e`) makes its lift at each firing and lets it go after the sample:
   nothing stays subscribed.
   No twin reaches these, where the clamp alone orders: a flatten's outer
-  (`{name}_outer_moved`, whose adoption lands in the next tick and needs none), and in
-  C++ `merge_all`, which is not on `Heights` there.
+  (`{name}_outer_moved`, whose adoption lands in the next tick and needs none).
 - **Holds.** `$x <- init then !e` → the firing's method calls `x.set(v, cx)`; every read
   is `x.get(cx)`, before the tick during propagation and after it from then on, so the
   tag law needs no commit pass.
@@ -443,7 +433,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   the subscription to the inner's update port, which calls `{v}_moved`: what reads `$v` is
   marked as for a write of the inner, in the tick the inner moved. The row's entry is not
   among its place reads (`RowPlaceReads`), so a write of the outer wakes no kept row; the
-  `for`'s builder (`ForBuild`, both printers) walks the kept keys and compares each one's
+  `for`'s builder (`ForBuild`) walks the kept keys and compares each one's
   dynamic in the new source with the one in the map the rows were last built from
   (`{name}_from`; a `Dynamic` equals only itself) and calls that row's `{v}_replaced`
   (`FlattenMethods`; `ForDef.replaced` lists them: the rows' entry flattens only, since a
@@ -487,7 +477,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   line, with its value at the row's build when what it reads through the parent has one
   (`InitedOrParent`; sem-ch07-flatten-expression-in-row).
 - **`!MergeAll` of a plain list that is not a literal** (`MergeListEvent`) → a
-  `MergeList<T>` field (prism_rtl, both runtimes) that hears each `Event` of the list,
+  `MergeList<T>` field (prism_rtl) that hears each `Event` of the list,
   read once the node is made (`{nm}_events`), into a stamped input and tells the node
   (`{nm}_in`, the wake asked); the wake takes the values fired this tick in the list's
   order (`GnMergeList`). Over a dynamic list `!MergeAll` is lifted, a `$![a]` (Type
@@ -567,8 +557,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **A named lens** (`&Acc: fn &Vm -> &Int`, `fn &Acc &vm = &vm.regs.acc`; Semantics ch. 5,
   "References and lens paths") is two functions of the target (`LensDefs`), named by the
   lens's name with the letter `l`:
-  - the reference, `fn acc_l(vm: &mut Vm) -> &mut Int` in Rust and `Int& acc_l(Vm& vm)`
-    in C++ (`OutRefMut`). One reference parameter, so Rust's lifetime elision is the
+  - the reference, `fn acc_l(vm: &mut Vm) -> &mut Int` in Rust
+    (`OutRefMut`). One reference parameter, so Rust's lifetime elision is the
     book's rule ("A lens's result is alive while its argument is") and no lifetime is
     written. Its body is the path's place borrowed (`LensReference` over `PlaceOf`), or
     the reference of the lens the body applies. A set, an accumulation, a `for` by
@@ -583,7 +573,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
     a copy of the argument where the argument is itself a lens applied.
   - A lens whose path ends at an array's index (`&?Second: fn &[Int] -> &?Int`), its own
     or that of the lens its body applies (`LensEndsAtIndex`), names an entry that may be
-    absent: its reference is `Option<&mut A>` (`A*` in C++), made by the prelude's
+    absent: its reference is `Option<&mut A>`, made by the prelude's
     `part_mut`. A set goes through `set_part` (`? x` writes the entry; `nil`, or an index
     past the end, gives up as the block's own `&xs[i] <= v` does), with the value held
     first, since it may read what the reference borrows. Its read is `xs[i]`, `nil` past
@@ -1488,13 +1478,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
     a dynamic sampled, an array's, a map's values', an option's, a tuple's and an `Rc`'s
     parts), the line builds the value whole, each dynamic the live one it made
     (`ElementPlaced`, `IsTimeFieldElement`), and its dynamics' update events join the `Watch`
-    (sem-ch09-tag-field-array-of-dynamics); C++ has `rt::DeepPod`. A `~T` is walked as
+    (sem-ch09-tag-field-array-of-dynamics). A `~T` is walked as
     its value, its failure plain data. A generic program type that is plain data has a
     walk of its own (`DeepWalkImpl`: `deep_pod_with` and `deep_ports_with`, each part of
     a type parameter through the walk its caller gives for it), which the field's walk
     calls with the walks of its type arguments, so `Boxed $Nat` and `Boxed [$Nat]` share
-    one impl (sem-ch09-tag-field-named-type-of-dynamic, -fault-of-dynamic); in C++ the
-    members `deep_pod` and `deep_ports`, which `rt::DeepPod` calls.
+    one impl (sem-ch09-tag-field-named-type-of-dynamic, -fault-of-dynamic).
   - `@ x` and a constant `@ $ v` (`rt::plain_blueprint`) are the first value once; `@ never`
     (`rt::never_blueprint`) answers nothing. An `x` whose type holds dynamics below its top
     (`@ [[$ 1]]` for a `[$Nat]` output) is built with them whole (`PlainBlueprint`), each a
@@ -1712,9 +1701,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `FromPod`) and matches it by its own pattern (`ErrorPat`). Two kinds are equal when
   their names and fields are; a kind prints as a tag's value does. An `Error`'s
   `message` is a `Text`.
-- **The prelude's `Turn`** is `PreludeTurn` in both emitted preludes (`TypeItemName`): the
-  runtime's `Turn` is the job's. In C++ it has the form of a program's own choice (a case
-  struct each, positional fields `a0`).
+- **The prelude's `Turn`** is `PreludeTurn` in the emitted prelude (`TypeItemName`): the
+  runtime's `Turn` is the job's.
 - **A trait method named as a value** is a closure calling it (`MethodFn`); one signed
   `unbounded fn` is a `Start` whose job answers in its first cycle with the call
   (ts-ch03-unbounded-method-as-value).
@@ -1795,9 +1783,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
   read neither the block's locals nor the enclosing function's type parameters.
 - **`@Machine step, s, !e`** calls a named step by its path; any other step is a function
   value made at the build and kept in a field (`{m}_step`).
-- **A duration literal** is `Duration(ns)`, its signed nanoseconds (`DurationNanos`); in C++
-  `prism_rtl::Nanos`, an `__int128`, built from `long long` parts (`CppNanos`). Both
-  runtimes print and read minutes as `min`, the literal's unit.
+- **A duration literal** is `Duration(ns)`, its signed nanoseconds (`DurationNanos`). The
+  runtime prints and reads minutes as `min`, the literal's unit.
 
 ## Unbounded functions and `@Run`
 
@@ -1822,7 +1809,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   not lowered.
 - **An unbounded function with a type parameter no parameter's type names**
   (`unbounded fn Nat -> [a]`): its job's struct has a marker field for it
-  (`type_parameters`, Rust; C++ needs none), so the job is made by its `Start` alone
+  (`type_parameters`), so the job is made by its `Start` alone
   (`JobByStart`), and a call of the `Start` writes the type parameters out as the
   callee's type there gives them (`StartOf`).
 - **`@Run`** is Appendix B's Prism definition over `@Machine` and `@Defer`, compiled like
@@ -1852,7 +1839,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   map's key holds, in a field or in a type a field names at it (`TyDef.keyed`,
   `KeyedParameters`: `type Roster k v = choice: Listed (k ==> v)`), is bounded by `Ord`
   in the type's `Show`, `ToPod` and `FromPod` impls (`BoundedKeyed`), as prism_rtl's
-  impls for `Map` want; C++'s templates take the key's order where they use it.
+  impls for `Map` want.
 - **A choice as plain data holds its case's position** (`rt::ConstructorName`,
   `ChoicePodArm`): the derived `to_pod` writes each constructor with the place of its
   case in the type's declaration, and `Pod`'s order takes two constructors by their
@@ -1874,8 +1861,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   opens, printed under that tick's `in:` as a delivery is, and that tick is owed; a
   poisoned subtree is served nothing again, a test's own delivery included. The policy
   prints nothing; the CLI and canvas Worlds print what a poisoned root has to say.
-- **A terminal of lines is the CLI World's** (worlds/cli/rust/src/console.rs, its C++
-  twin in worlds/cli/cpp/src/cli.cpp). A program declares the family itself, as
+- **A terminal of lines is the CLI World's** (worlds/cli/rust/src/console.rs). A program declares the family itself, as
   examples/chess/console.prism does: `Console.Read(name)`, `!Text`, each firing one line
   typed; `Console.Print(name, !lines)`, each firing the lines to print. One line in, one
   line out, for shell scripts, agents, people with a physical board, and teletypes:
@@ -1899,7 +1885,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
     failed write to standard output is the World's failure: reported, exit 1.
   - The Test World needs none of this: a test sends a line to a `Console.Read` and reads
     a `Console.Print`'s firings off the transcript like any other tag's.
-  - Tests: worlds/cli/rust/tests/cli.rs (and test_cli.cpp's twins), and
+  - Tests: worlds/cli/rust/tests/cli.rs, and
     tests/driver/run.sh's `console-echo` and `console-terminals`, real programs under
     `prism run` with standard input from a file and standard output compared to an
     expected file.
@@ -1915,9 +1901,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `RegexReplacement` (`new`, `lit`, `replace`), `Group`, `Match`, `RegexError`,
   `RegexPart`. A literal `%/p/f` is `Regex::lit(p, f)` and `%/p/r/f`
   `RegexReplacement::lit(p, f, r)`, `p` and `r` as written between the delimiters, each
-  built once in a `thread_local!` and cloned at each use; the C++ runtime's spelling is
-  `Regex::lit`, `RegexReplacement::lit` in a function-local `static`, and `compile` for
-  `new` (runtime/cpp/include/prism_rtl/regex.hpp).
+  built once in a `thread_local!` and cloned at each use.
 - `cells`: `Tick`, `Hold`, `Stamped`, `Cache`, `Snapshot` (`mark`, `marked`, `take`,
   `take_compared`, `queue`, `published`, `get`, `current`), `Port` (`subscribe`, `unsubscribe`, `lien`, `release`,
   `demand`, `fire`, `kept`, `subscribe_above`, `raise`, `height`), `Handle`, `Demand`, `Event`, `Dynamic`, `Defer`, `Job`,
@@ -1935,60 +1919,6 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `drive`; `test_world::TestWorld` (`program::<P>(name)`, `check`, `run`, `verify`);
   `scene::find_clickables`.
 
-## The C++ side
-
-`prismc compile --target cpp` prints the same model as C++20 over `runtime/cpp` (the C++
-`prism_rtl`, which gives each Rust type of the library its C++ form), through
-prismc/emit/cpp/ and its templates (`Emit.Cpp.Templates`). Everything above holds construct for construct;
-what differs is how C++ spells it.
-
-- **The program** is `Makefile`; per module, in its directory (`src/DIR/`, `check/env`
-  for `Check.Env`), the headers `decl.hpp` (its types declared),
-  `types.hpp` (its value types, choices with their cases among them, each after the types
-  it holds by value), `module.hpp` (prototypes, nodes and jobs) and, when it has templates,
-  `generic.hpp`, each including only the
-  layers of the modules it needs (prismc/emit/cpp/templates/mod.prism); `src/elem.decl.hpp` and
-  `src/elem.types.hpp` for `crate::Elem` and `crate::Output` (declared, and defined with
-  their cases); `src/programs.hpp` (the
-  program classes); `src/main.cpp` (`Elem`'s and `Output`'s definitions, `test_world()`,
-  `main`), `src/prelude.hpp` and the modules' definitions in translation units,
-  `src/unit_N.cpp`, several small modules to a unit (prismc/emit/cpp/mod.prism). The
-  modules are the namespaces `crate::check::env`, nested as their names are, and every
-  reference to another module's item is from `crate::`. A program class has the static `build(args, ready)`
-  and the virtual `tick` and `compact`; `main` runs `test` under the C++ Test World and a
-  `@main` root under the C++ CLI World (worlds/cli/cpp).
-- **Types.** A record, a tag's `Level`, a newtype and a unit type are structs (fields in
-  order, designated initializers); a choice and a row kind's values are a class holding a
-  `std::variant` of nested case structs (`Term::Var`) by value, as the Rust enum is; a
-  recursive payload (`Rc<T>` above) is a `prism_rtl::Rc<const T>`, the runtime's one `Rc`,
-  whose `==` and `<=>` are its value's exactly when the value has them, the pointers
-  compared first as Rust's `Rc<T: Eq>` does, so that a payload
-  compares, orders, prints and goes out as plain data by its value, as Rust's `Rc<T>` of a
-  value does, and a node's `Rc` compares not at all (identity is `ptr_eq`;
-  runtime/cpp/include/prism_rtl/rc.hpp). The model's `*x` is `*x` where the printer knows `x` is an `Rc`, `x` where it
-  knows `x` is a reference, and `prism_rtl::deref(x)` where it knows neither (pick PT). `?a` is
-  `std::optional`, `~a` `Fallible`, a tuple `std::tuple`, `Rc<dyn Fn>` `prism_rtl::Fn`, a
-  job `JobRef`; `Float` is `prism_rtl::Float`, a `double` whose `==` is bit identity and
-  whose `<=>` the `std::strong_ordering` of IEEE's totalOrder, so the defaulted comparisons
-  of a struct, a variant or a tuple holding one are bit identity and total too (pick BF).
-  A node is a class deriving from `Node` (or the prelude's `Row`), held by
-  `prism_rtl::Rc` (plain counts, one thread); its constructor is `make` and its methods
-  are members.
-- **Expressions.** A block, a `match`, an if-let chain and a labelled block are GNU
-  statement expressions (g++ and clang++ both take them); a `match`'s value is a
-  `prism_rtl::Slot` of the type the model gives it, set by the arm that holds, which then
-  leaves by `goto`, except that a function's body ending in a `match` returns from each
-  arm instead (prismc/emit/cpp/patterns.prism); `break 'l v` sets the label's slot and jumps. `?` is `TRY(..)`, a GNU
-  statement expression too, which moves out of its operand: lowering tries only
-  temporaries, and refuses `?` of a place. A
-  pattern tests with `prism_rtl::is<Case>` and binds `prism_rtl::as<Case>(v).aN`.
-- **What the library adds for the emitter** is `prism_rtl/lang.hpp`: `Slot`, `TRY`, the
-  pattern helpers, `rc` (`Rc::new`: a value as an `Rc<const T>`, a node or a cell as an
-  `Rc<T>`), `ptr_eq` (rc.hpp: `Rc::ptr_eq`),
-  `share`/`weaken`/`upgrade`, `Fn`, `str`/`cat` (`format!`), `deref` (the model's `*x` of
-  unknown type, and Rust's auto-deref of a cell), `host_new`, and the constructors whose type the context gives (`make_new`,
-  `snapshot`, `finished`).
-
 ## Regular expressions
 
 The types, the literal and the prelude's functions (Semantics ch. 2 and Appendix B,
@@ -1997,31 +1927,26 @@ tick 0 and again by each runtime).
 
 - **Types.** `Regex` → `prism_rtl::Regex` and `RegexReplacement` →
   `prism_rtl::RegexReplacement` (`OutRegex`, `OutReplacement`), opaque, an `Rc` of the
-  compiled form in both runtimes; `Group` and `Match`, records the prelude declares, are
-  the runtime's own structs (Rust: `pub use prism_rtl::{Group, Match}` in the emitted
-  prelude; C++: seen through `using namespace prism_rtl`), fields as Appendix B names them.
+  compiled form; `Group` and `Match`, records the prelude declares, are
+  the runtime's own structs (`pub use prism_rtl::{Group, Match}` in the emitted
+  prelude), fields as Appendix B names them.
 - **A literal is built once and shared.** `%/p/f` → Rust
-  `{ thread_local!(static R: Regex = Regex::lit("p", "f")); R.with(Regex::clone) }`,
-  C++ `([]() -> const Regex& { static const Regex r = Regex::lit("p", "f"); return r; }())`;
+  `{ thread_local!(static R: Regex = Regex::lit("p", "f")); R.with(Regex::clone) }`;
   `%/p/r/f` the same with `RegexReplacement::lit("p", "f", "r")`. The pattern and the
   replacement are the texts as written between the delimiters (`\/` stays `\/`), which
   the runtime reads by the dialect. Each literal site is its own static: a Rust block's
-  item, a C++ lambda's function-local static (initialized on first call, thread-safe,
-  alive to exit; a copy holds its own count, so no destruction order matters). The
+  item. The
   arguments are string literals of static storage. `lit` treats a refusal as a fatal
   error, which prismc's check makes unreachable.
 - **The prelude.** `?Regex` → `regex` (`Regex::parse`), `?Match` → `match_`
   (`match_at`), `?Find` → `find`, `Matches` → `matches`, `Replace` → `replace`, `Split` →
   `split`, each the runtime's method; `SplitOn`, a text's separator split, is `split_on`.
   A prelude call whose name is a segment of a module's path is written
-  `crate::prelude::name`, since in C++ that module's namespace would hide it.
+  `crate::prelude::name`.
 - **Plain data.** Neither type has `^Pod`, but an emitted record derives the runtime's
   `ToPod` and `FromPod` whatever its fields: a regex, a replacement, a group and a match
   go out as plain data (a regex as its spelling, `Pod::Shown`), as a `Cursor` does, and
   `FromPod` is a mismatch.
-- **The C++ link.** RE2 is a prerequisite of every C++ build (`runtime/cpp/Makefile`);
-  the emitted Makefile links `$(shell pkg-config --libs re2)` after `libprism_rtl.a`,
-  in the CLI and the canvas variant alike.
 
 ## Negative space
 
@@ -2053,7 +1978,7 @@ tick 0 and again by each runtime).
 - **AB A tick that aborts.** Conformance's AB goes on from the state before the tick;
   with no checkpoint there is none. *Ruled (coordinator, 9 November):* the Test World
   logs each tick that closes, its input and the ready state it ran under, and after a
-  tick that aborts builds the program again and replays the log, both runtimes
+  tick that aborts builds the program again and replays the log
   (`conf-ab-goes-on`, a job pending across the abort). *If otherwise:* `Program` gains a
   snapshot.
 - **GC The collector's watch list.** Trial deletion runs over zombies whose count
@@ -2073,170 +1998,3 @@ tick 0 and again by each runtime).
   the scene) is about 2,000 lines; the Test World adds about 1,300. *First ruling
   (Claude's):* both stay in this crate, as the brief asks. *If otherwise:* the Test World
   moves to `worlds/test`, and `prism_rtl` is the library alone.
-
-## Rust or C++ as the default back end
-
-prismc emits either, and both reach a fixed point; `./prism compile` takes `--target rust`
-when none is named, and the question is whether it should. This is Claude's recommendation,
-Jimmy's to overrule: **Rust as the default**, C++ kept as the second target. The numbers are from Jimmy's Mac M2 Pro (12
-cores, 16 GB); the building figures and the GUI table were measured with Low Power Mode on,
-so every absolute time is pessimistic and the ratios between the two targets are the
-evidence. Nothing in this section was measured on Linux. Where another figure comes from a
-run on the same Mac under load, it says so.
-
-### Running
-
-The GUI table (bench/gui): js-framework-benchmark's operations on one table, median wall
-time in ms over 10 runs, Mac M2 Pro with Low Power Mode on, the Prism rows before the
-table's rows went over `@PerKey`; GTK 3 is the toolkit written in C beside it.
-
-| Operation | Prism C++ | Prism Rust | GTK 3 |
-|---|---|---|---|
-| create 1,000 rows | 50 | 44 | 279 |
-| replace 1,000 rows | 67 | 60 | 320 |
-| update every 10th | 5.4 | 7.1 | 34.5 |
-| select a row | 3.1 | 4.8 | 1.0 |
-| swap two rows | 3.4 | 4.8 | 61 |
-| remove a row | 12.2 | 10.2 | 5.9 |
-| create 10,000 rows | 585 | 514 | 11,659 |
-| append 1,000 rows | 59 | 48 | 390 |
-| clear | 20 | 17 | 42 |
-
-- **Rust wins the bulk operations by a tenth to a fifth**: create 1,000 rows 44 ms against
-  50, replace 60 against 67, create 10,000 rows 514 against 585, append 48 against 59, clear
-  17 against 20, remove 10.2 against 12.2. Both beat GTK 3 by five to twenty times on the
-  creates, the replace and the append (create 1,000 rows: 279 ms in GTK) and by two times
-  on clear; GTK removes a row faster (5.9 ms against 10.2 and 12.2).
-- **C++ wins the three smallest operations by a quarter to a third**: update every 10th 5.4
-  ms against 7.1, select 3.1 against 4.8, swap 3.4 against 4.8. GTK 3 selects in 1.0 ms,
-  three to five times faster than either.
-- **The small-operation gap is the Rust World's frame, not the emitted code.** A select
-  after `@PerKey` retires 20.5 million instructions in C++ and 30.5 million in Rust (Mac M2
-  Pro, Low Power Mode). The phase table (`bench/gui/prism/check.sh`, same Mac, one run
-  each, claude/bugs/window-relayout-every-change.md) puts a Rust select at 31.1 M with 12.7
-  M of it painting and a C++ select at 20.6 M with 1.4 M painting: the program's own ticks
-  are 18.4 M in Rust against 19.2 M in C++, equal within 5%. About 11 M of every Rust
-  frame is softbuffer presenting the whole frame on macOS, a new zeroed buffer per frame
-  copied whole and made a `CGImage` (worlds/canvas/rust/src/app.rs); the C++
-  World sets its layer's image from its own buffer, and on X11 presents only the damaged
-  boxes. That is a change to `worlds/canvas/rust`, which touches no template; if the Rust
-  World presented as the C++ one does, the select column would read, by the instruction
-  counts, about 3 ms on both.
-- **Remove runs the other way: C++ 128 million instructions against Rust 80 million** (Mac
-  M2 Pro, Low Power Mode), 1.6 times. The column's document is gathered an insert at a
-  time (claude/bugs/window-relayout-every-change.md). A runtime matter, in `runtime/cpp`,
-  which stands either way; the C++ `Map` changing its own nodes in place, as Rust's does,
-  took about a seventh off remove's build on the Linux machine, and the rest is unprofiled.
-- **prismc as the workload: Rust does less work.** Each compiler compiling itself (Mac M2
-  Pro, 5 November, other jobs at load 3 to 13, prismc/emit/rust/ and
-  prismc/emit/cpp/): the Rust prismc 586 G instructions, 45 to 46 s, 275 MB peak footprint; the
-  C++ prismc 738 G, 65 to 68 s, 310 to 324 MB. Rust retires 21% fewer instructions and
-  holds about 10% less memory on a compiler-shaped program.
-- **Memory on the GUI table goes to C++.** On the table's small operations (Mac M2 Pro, 5
-  November, other agents building, claude/benchmarks-preliminary.md "After the window
-  fix") C++ peaks at about 172 MB and Rust at about 208 MB: C++ holds about a sixth less.
-  The two memory results point opposite ways and neither gap is large.
-- **Taken together:** one of the two models is ahead by a tenth to a fifth on everything
-  but three operations, and those three come down to the frame present of one World. On
-  running alone the two are close enough that running does not decide; it only rules out
-  C++ being the faster target by nature.
-
-### Building
-
-Building prismc from clean, each pipeline all one language, Mac M2 Pro with Low Power Mode
-on (`bench/building/run.sh`):
-
-- **Rust: emit 65.9 s + build 100.1 s = 166.0 s, a 25.9 MB binary. C++: emit 86.2 s +
-  build 134.6 s = 220.8 s, a 63.8 MB binary.** C++ takes a third longer on the wall and the
-  binary is 2.5 times the size.
-- **The emit itself favours Rust:** 65.9 s against 86.2 s. The Rust printer writes about
-  115,000 lines for prismc; the C++ printer writes 185,385 lines across 63 translation
-  units and 280 headers (bootstrap/bootstrap-cpp.sh): per-module headers, each
-  type declared, defined and its cases laid out in separate files, where Rust's `mod` needs
-  one file.
-- **The build's CPU, not its wall time, is the large gap.** On 12 cores (Mac M2 Pro, 4
-  November, other jobs running, bootstrap/bootstrap-cpp.sh)
-  cargo spends 255 s of CPU on the emitted crate with its dependencies, 2.8 cores busy on
-  average; `make -j12 CXX=clang++ OPT=-O3` spends 1,003 s, about 10 cores busy throughout,
-  and with the module tree's 62 units 1,306 to 1,314 s (5 November, pick SF's table).
-  Four to five times the CPU for the same program: every unit re-parses the standard
-  library and `prism_rtl`'s headers (about 114,000 preprocessed lines for a module with
-  no definitions) and re-optimizes every inline function and template it instantiates.
-  On a machine with fewer cores, or a laptop on battery, this is the number that shows:
-  the C++ build's wall time rises toward its CPU time where Rust's does not.
-- **Small programs are close, Rust slightly ahead:** chess 19.5 s against 23.2 s, the GUI
-  table 19.7 s against 23.5 s (Mac M2 Pro, Low Power Mode), most of either being the
-  runtime library and the World built from clean. A second build that reuses the runtime
-  library is not measured.
-- **Taken together:** building favours Rust on every axis measured, by a third on the wall,
-  four to five times on CPU, and 2.5 times on binary size.
-
-### What the numbers do not say
-
-- **rustc checks the emitted code; clang does not.** A template that reads a moved value,
-  misses a `match` arm, or holds a borrow across a firing is a compile error in Rust. In
-  C++ at `-O3` the same slip is undefined behaviour, which the compiler may silently turn
-  into anything (Jimmy's rule: reason about undefined behaviour in C++). The sanitizer runs
-  (ASan and UBSan under Homebrew clang on macOS, g++ on Linux; `runtime/cpp` and
-  `worlds/canvas/cpp` `make test`) are the check the C++ side has, and a sanitizer finds
-  only what a test exercises. The Rust runtime has no `unsafe` (runtime/rust/src/);
-  the Rust canvas World has one `unsafe` block, the macOS colour-space call. So a wrong
-  template fails loudly on the Rust side and may run quietly on the C++ side; with Rust as
-  the default, every compiled program is checked by rustc before it runs, and the C++
-  target is checked against it (the C++ prismc emits the Rust prismc's Rust byte for byte).
-- **C++'s emitted code leans on GNU extensions.** Every block, `match` and `TRY` is a GNU
-  statement expression (claude/handoff.md; runtime/cpp/include/prism_rtl/lang.hpp): g++ and
-  clang++ take them, and a compiler without the extension cannot build the output. Rust's
-  emitted code is Rust.
-- **Portability goes two ways.** The C++ canvas World has a Cocoa path and an X11 path
-  written here (`app_macos.mm`, `app.cpp`), each a window system done by hand, and its
-  X11 path is the only one that presents just the damage; a third window system would be a
-  third file. The Rust canvas World sits on winit, softbuffer, tiny-skia and fontdue, which
-  cargo fetches and builds, so another window system is the crates' to support, not a
-  file of ours. The C++ build needs RE2, cairo, FreeType and the X11 or Cocoa headers from
-  the system (Homebrew or apt); the Rust build needs cargo and a network, or a vendored
-  registry. A target with a C++ compiler and no Rust toolchain would turn this around, and
-  the C++ target exists for it.
-- **Binary size and stack.** The C++ prismc is 63.8 MB against Rust's 25.9 MB (Mac M2 Pro,
-  Low Power Mode). The emitted C++ runs its program on a 4 GB stack, the Rust program on a
-  1 GB one (pick BS): a C++ frame of the emitted code is larger.
-- **Two targets are worth more than one.** Whichever is the default, the other is the
-  check that the model is the model and not one language's habits; the byte-equal Rust out
-  of the C++ prismc is that check, and the sanitizer run is the C++ side's. Dropping
-  the C++ target would save the 220.8 s build in the bootstrap and nothing in the design.
-
-### The recommendation, and what would change it
-
-- **Rust as the default back end** (Claude's pick, Jimmy's to overrule). Reasons, in
-  order of weight: the build costs a third less wall time and a quarter of the CPU and
-  gives a binary two fifths the size (Mac M2 Pro, Low Power Mode; the CPU from the 4
-  November run); rustc checks every emitted program where C++ at `-O3` runs it; running is
-  a tie or a Rust win everywhere but three small GUI operations, and those are the Rust
-  World's frame present (11 M instructions a frame), not the emitted code.
-- **C++ as the default would be the pick if latency on small interactive steps were the
-  one thing that mattered** and the Rust World kept presenting whole frames: 3.1 ms
-  against 4.8 ms on a select is a difference a user cannot see, but a design that counted
-  every millisecond under a pointer would take it. It would pay four to five times the CPU
-  on every build for it.
-- **What would change the recommendation**, each a measurement on the same machine under
-  the same conditions for both targets:
-  - **A Rust select still a third slower than C++ once the Rust World presents only the
-    damage.** As measured, the program's own ticks are 18.4 M instructions in Rust against
-    19.2 M in C++ (the phase table above); if, with painting taken out, Rust's select read 1.33
-    times C++'s or more, the emitted Rust would be the slow half, and that is the back
-    end's.
-  - **The C++ prismc build from clean at or under Rust's 166.0 s wall and under twice
-    Rust's CPU** (so under about 510 s against 255 s, or the same ratio against a fresh
-    Rust figure): a C++ build that cheap, by precompiled headers, C++ modules or far fewer
-    units, would take the building argument away, and the sanitizer run and rustc's
-    checking would be weighed alone.
-  - **The Rust prismc compiling itself in more instructions than the C++ one** (as
-    measured, 586 G against 738 G): if the Rust model fell behind on a compiler-shaped workload by any
-    margin, running would stop being a tie and start arguing for C++.
-  - **Rust peaking above C++ by half or more on the compiler workload** (as measured,
-    275 MB against 310 to 324 MB): memory is close both ways, and a Rust footprint of 1.5 times
-    C++'s would matter on a 16 GB machine building beside other jobs.
-  - **A requirement, not a measurement:** a platform Prism must run on that has a C++
-    compiler and no Rust toolchain, or a host program that links Prism as C++ (an existing
-    C++ application embedding a Prism widget). Either makes C++ the default for that
-    platform and leaves Rust the default elsewhere.

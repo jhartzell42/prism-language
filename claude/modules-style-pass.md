@@ -33,8 +33,7 @@ just nest indefinitely a la Rust." Everything below follows from it.
   `Parent.Tests`), read only by `prism test` and `prism check`, as Rust's
   `#[cfg(test)] mod tests`; it names its parent's declarations through `use Parent.*`.
   The rules on what it may declare and on nothing outside naming it stand.
-- **Output follows:** one module is one Rust file and one C++ unit (cut by size only past
-  SF's limit).
+- **Output follows:** one module is one Rust file.
 
 ## The layout
 
@@ -92,7 +91,7 @@ just nest indefinitely a la Rust." Everything below follows from it.
   named `App` elsewhere (a loose file's `module App`, a library's top-level `App`) is that
   module. A loose root file stays out of reach (Semantics ch. 6: "nothing can `use` it").
 - **A module is a module like any other:** its parent and siblings only through `use`,
-  mutual `use` allowed, as the graph allows cycles (prismc/emit/cpp/templates/mod.prism). Two bare names
+  mutual `use` allowed, as the graph allows cycles. Two bare names
   that collide are an error at the use, and a module's own declarations do not shadow what
   a `use M.*` brought in (Semantics ch. 6), so a namespace split into a parent and children
   whose files `use` each other keeps every bare name it had.
@@ -162,13 +161,7 @@ just nest indefinitely a la Rust." Everything below follows from it.
   the root is `src/program.rs` (doubt RF). A reference to another module is from the crate
   (`crate::check::env::BuildG`), so a child named as a top-level module (`a::types` beside
   `types`) never stands in for it.
-- **One module is one C++ namespace and one header directory:** namespace
-  `check::env::traits`, headers `src/check/env/traits/{decl,types,module,generic}.hpp`;
-  its definitions go into a translation unit `src/unit_N.cpp` with other modules' up to
-  SF's 125,000 characters (prismc/emit/cpp/mod.prism). Every reference is qualified from the global namespace (`::check::env::BuildG`).
-- **A module's name segment that is a Rust or a C++ keyword takes a `_` in both
-  targets** (`Shapes.Static` is `shapes::static_`, `Shapes.Switch` is `shapes::switch_`),
-  so the two printers name every module alike.
+- **A module's name segment that is a Rust keyword takes a `_`** (`Shapes.Static` is `shapes::static_`, `Shapes.Switch` is `shapes::switch_`).
 
 ## The tree for this repository
 
@@ -213,15 +206,6 @@ prismc/app.prism             the root (217)
   checking.prism           Checking (115)
   compile.prism            Compile (177)
   emit/                    Emit (6)
-    cpp/                   Emit.Cpp (329)
-      expr.prism           Emit.Cpp.Expr (529)
-      items.prism          Emit.Cpp.Items (393)
-      patterns.prism       Emit.Cpp.Patterns (265)
-      prelude.prism        Emit.Cpp.Prelude (877)
-      program.prism        Emit.Cpp.Program (295)
-      stmts.prism          Emit.Cpp.Stmts (290)
-      templates/           Emit.Cpp.Templates (356)
-        items.prism        Emit.Cpp.Templates.Items (268)
     rust/                  Emit.Rust (393)
       items.prism          Emit.Rust.Items (356)
       prelude.prism        Emit.Rust.Prelude (987)
@@ -287,7 +271,7 @@ tests/conformance/NAME/      app.prism, tests.prism (Tests), tests.expected; chi
                              (birds/, mod-nested/shapes/, ...) as files or directories
 ```
 
-- *Refused:* keeping the old top-level names (`CheckEnv`, `Ast`, `EmitCpp`); Jimmy asked
+- *Refused:* keeping the old top-level names (`CheckEnv`, `Ast`); Jimmy asked
   for hierarchy, and the renames are mechanical. `Chess` is `Rules` so the module is not
   `chess/chess/`.
 - A child module that is one part of its parent's work (`Lower.Expr`, `Check.Env.Names`)
@@ -309,9 +293,9 @@ tests/conformance/NAME/      app.prism, tests.prism (Tests), tests.expected; chi
   name (`AppRoot`, `UseName`, `QualModule`); `test-outside` and `test-declares` over the
   parsed trees (`Reading.TreeDeclDiags`), `test-only-reached` over the references
   (`Check.Shrink.TestOnlyReached`).
-- **Lowering and both printers:** `RustModName` is the module's path, a keyword segment
-  escaped (`ModSegment`); the Rust and C++ files follow it.
-- **The Test Worlds** (runtime/rust, runtime/cpp): a script's header lines and helper
+- **Lowering and the printer:** `RustModName` is the module's path, a keyword segment
+  escaped (`ModSegment`); the Rust files follow it.
+- **The Test World** (runtime/rust): a script's header lines and helper
   declarations are passed over.
 - **Runners:** `tests/compiled/run.sh` runs `tests/conformance/*/`, `examples/basic-chess`,
   `examples/basic-chess/rules`, `prismc/syntax/lexer`, `prismc/syntax/parser`;
@@ -348,12 +332,12 @@ tests/conformance/NAME/      app.prism, tests.prism (Tests), tests.expected; chi
 
 ## Tests
 
-- Conformance (`tests/conformance/`, both targets): `mod-nested` (files and directories to
-  depth 4, mutual `use` both ways, modules named by a Rust and a C++ keyword);
+- Conformance (`tests/conformance/`): `mod-nested` (files and directories to
+  depth 4, mutual `use` both ways, modules named by a Rust keyword);
   `mod-test-module` (`test mod Tests` of the root and of `Counter`, each reaching its
   parent by `use`, the root's naming `Counter.Tests`' helper); `mod-test-helpers` (two
   test modules of the root, the second using the first's helpers); `mod-submodules`,
-  `mod-nested-names` (`A.Types` beside a top-level `Types`, for C++ qualification and
+  `mod-nested-names` (`A.Types` beside a top-level `Types`, for
   Rust paths); every program's `tests.prism` is its root's test module.
 - Checker, `neg/`: `mod-lowercase`, `mod-both`, `mod-leaf`, `mod-missing`, `mod-stray`,
   `module-line`, `test-outside`, `test-declares`, `test-only-reached`, `two-roots`,
@@ -369,8 +353,7 @@ tests/conformance/NAME/      app.prism, tests.prism (Tests), tests.expected; chi
   "no shared namespace" refuses? Taken: `App`.
 - **RF** (Claude's) Every Rust module is `src/PATH/mod.rs`, a module of one file too
   (`src/lower/expr/mod.rs`); or `src/lower/expr.rs` for a module with no children,
-  mirroring the Prism file? Taken: `mod.rs` throughout, one rule for every module, the C++
-  headers' directories the same.
+  mirroring the Prism file? Taken: `mod.rs` throughout, one rule for every module.
 - **ML** (Claude's) A module with children must be `name/mod.prism` (`mod-leaf`); or Rust
   2018's `name.prism` beside `name/child.prism`? Taken: the ruling's directory.
 - **TC** (Claude's) A test module's children are test modules; or a test module declares
@@ -385,8 +368,7 @@ tests/conformance/NAME/      app.prism, tests.prism (Tests), tests.expected; chi
   (`Lower.Program.LowerProgram`); or the parent re-exports its children's names (Rust's
   `pub use`)? Taken: the full path; Prism has no re-export.
 - **LO** Loose files kept beside trees for the books and the checker's tests; or trees only?
-- **RN** The renames (`Ast` to `Syntax`, `CheckEnv` to `Check.Env`, `Chess` to `Rules`,
-  `EmitCpp` to `Emit.Cpp`): worth the churn?
+- **RN** The renames (`Ast` to `Syntax`, `CheckEnv` to `Check.Env`, `Chess` to `Rules`): worth the churn?
 - **TO** `test` and `check` only in test modules within a tree; or anywhere? And the
   spelling `test mod Name` (Jimmy ruled that test modules are declared, and that they are
   child modules; the spelling is Claude's).

@@ -6,9 +6,7 @@ Claude-written prose lives here, under this name, and nowhere else.
 
 - **`architecture.md`**: the pieces of this repository and how a program flows through
   them.
-- **`backend.md`**: the contract between `prismc`'s emitted code and the runtimes, and
-  Claude's recommendation of Rust over C++ as the default back end, from the recorded
-  numbers, with what would change it.
+- **`backend.md`**: the contract between `prismc`'s emitted code and the runtimes.
 - **`benchmarks-preliminary.md`**: the benchmark numbers by machine and run: Jimmy's Mac (the
   Low Power Mode run, the busy runs of 5 November, the GUI phase tables) and the Linux
   cloud machine, each labelled; the scripts' own `RESULTS.md` sit beside the scripts.

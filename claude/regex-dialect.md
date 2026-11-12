@@ -6,9 +6,9 @@ The books fix the dialect (Semantics Appendix B, "Regular expressions" and "The 
 chapter 2, "Regular expressions"; rulings round 5, RX to RX-DOC; Type System chapter 2).
 This file is the procedure that turns those pages into one accept/refuse decision, one
 error position and one message, so that the Rust runtime (`runtime/rust/src/regex.rs`,
-`regex_dialect.rs`), the C++ runtime (`runtime/cpp/src/regex.cpp`) and prismc's
+`regex_dialect.rs`) and prismc's
 checker (`prismc/check/regex/`, in Prism) refuse the same patterns the same way. The
-shared corpus `tests/regex/corpus.txt` pins every row below; both runtimes' tests read
+shared corpus `tests/regex/corpus.txt` pins every row below; the runtime's tests read
 it, and prismc's test module is written from it.
 
 Where the books are silent or the two libraries could not be made to agree, the
@@ -253,24 +253,24 @@ means) never reach a match. Every literal code point and every range end is writ
 `\x{...}` unless it is an ASCII letter or digit; `(?i:...)` wraps each atom read under
 `i`; the flags `m` and `s` are never passed, the anchors and `.` being spelled for them.
 
-| Construct | Rust (`regex-automata`) | C++ (RE2) |
-| --- | --- | --- |
-| `.` / under `s` | `[^\x{a}]` / `(?s:.)` | the same |
-| `^` / under `m` | `\A` / `(?m:^)` | the same |
-| `$` / under `m` | `\z` / `(?m:$)` | the same |
-| `\b`, `\B` | `(?-u:\b)`, `(?-u:\B)` | `\b`, `\B` |
-| `\d \w \s` | `[0-9]`, `[0-9A-Za-z_]`, `[\x{9}-\x{d}\x{20}]` | the same |
-| `\D \W \S` alone | `[^...]` of the above | the same |
-| `\D \W \S`, `[:^name:]` in a class | the complement as explicit ranges | the same |
-| `[:name:]` | its ASCII ranges | the same |
-| `\p{...}`, `\P{...}` | as written, in braces | the same |
-| `(re)`, `(?<n>re)` | `(re)`: names are the runtime's own table | the same |
-| `(?:re)`, `(?flags:re)` | `(?:re)` | the same |
-| `(?flags)` | nothing (the parse's flag state) | the same |
-| repetitions | as written | the same |
+| Construct | Rust (`regex-automata`) |
+| --- | --- |
+| `.` / under `s` | `[^\x{a}]` / `(?s:.)` |
+| `^` / under `m` | `\A` / `(?m:^)` |
+| `$` / under `m` | `\z` / `(?m:$)` |
+| `\b`, `\B` | `(?-u:\b)`, `(?-u:\B)` |
+| `\d \w \s` | `[0-9]`, `[0-9A-Za-z_]`, `[\x{9}-\x{d}\x{20}]` |
+| `\D \W \S` alone | `[^...]` of the above |
+| `\D \W \S`, `[:^name:]` in a class | the complement as explicit ranges |
+| `[:name:]` | its ASCII ranges |
+| `\p{...}`, `\P{...}` | as written, in braces |
+| `(re)`, `(?<n>re)` | `(re)`: names are the runtime's own table |
+| `(?:re)`, `(?flags:re)` | `(?:re)` |
+| `(?flags)` | nothing (the parse's flag state) |
+| repetitions | as written |
 
 The libraries' limits are raised to fit the bounds above: Rust's syntax nesting limit
-to 1000 and its NFA size limit removed; RE2's `max_mem` to 1 GiB.
+to 1000 and its NFA size limit removed.
 
 ## Replacements (chapter 2, "The replacement"; RX-E)
 
@@ -298,8 +298,8 @@ by these pieces, never by their libraries' rewrite syntax.
 
 ## Doubts
 
-- **CT** The runtimes needed one accessor each in a collections file, which another
-  branch is rewriting: `Cursor::text()` (Rust `&Text`, C++ `const Text&`), the whole text
+- **CT** The runtime needed one accessor in a collections file, which another
+  branch is rewriting: `Cursor::text()` (Rust `&Text`), the whole text
   a cursor is in, which `?Match` searches with its context. Nothing else in Text or
   Cursor changed; views are cut with the public `Cursor::at_byte`, `before` and
   `after`. *If otherwise:* the accessor moves wherever the rewrite puts Cursor.

@@ -35,14 +35,14 @@ prismc/             the compiler, in Prism, a tree of nested modules, each a fil
   check/            Check, the checker; errors.prism, types/ env/ expr/ blocks/
                     passes/ shrink/ typed/
   lower/            Lower, lowering; model.prism (the core form), node/ (widget blocks)
-  emit/             the printers: rust/ and cpp/, each with templates/ and prelude.prism
+  emit/             the printer: rust/, with templates/ and prelude.prism
 prelude/            the Prism prelude the checker reads, a library tree of one file per
                     module; its Rust is prismc's emit/rust/prelude.prism, emitted
                     beside every program
 examples/           chess (rules, board, window library)
-runtime/{rust,cpp}/ the runtimes the emitted code runs on, one per target
-worlds/cli/{rust,cpp}/   the CLI World: Fs, Process, Time, Prelude.Unwrap
-worlds/canvas/{rust,cpp}/  the canvas World (winit + softbuffer + tiny-skia + fontdue;
+runtime/rust/       the runtime the emitted code runs on
+worlds/cli/rust/    the CLI World: Fs, Process, Time, Prelude.Unwrap
+worlds/canvas/rust/ the canvas World (winit + softbuffer + tiny-skia + fontdue;
                     Xlib or Cocoa + cairo + FreeType): Gui.Window, Gui.Scene,
                     Gui.Metrics, Gui.Focus
 bench/              running Prism once compiled, building Prism, and the GUI table
