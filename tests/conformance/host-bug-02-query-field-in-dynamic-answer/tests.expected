@@ -1,0 +1,17 @@
+# Derived by hand from Semantics ch. 9, "How a supplier answers" (a dynamic output's first value is read when the place is built; a computed answer is the next tick's input) and ch. 7: the query's first value is the state 0; the click of tick 1 is the request of tick 1, which steps the state in tick 1; the response and the new total are answered in tick 2 (a request at n is answered at n+1). The run on the gen1 f24a (fix 9faddb0c) gives these bytes.
+test presses
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="ada +1")
+    0/[3]/0: Ui.Label(text="ada sees 0; nothing yet")
+
+tick 1
+  in:
+    0/[0]/0: click
+
+tick 2
+  changed:
+    0/[3]/0: Ui.Label(text="ada sees 1; Accepted")
+
+tick 3

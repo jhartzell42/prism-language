@@ -1,0 +1,22 @@
+# Derived by hand from host-bug-11-ghost-places-under-two-hosts' transcript (the same two hosts, by Semantics ch. 9: nested hosts add one tick per computing layer, so the response is heard at tick 2 and the new total at tick 3) with this program's paths: each guest sits under a `rebuild` of its sitting, generation #0 (ch. 8), so its places are `0/#0/k`. The run on the gen1 f24a (fix 9faddb0c) gives these bytes.
+test presses
+
+tick 0
+  added:
+    0/[0/[Presser "ada"]/1/[0/#0/0]/0]/0: Ui.Button(label="ada +1")
+    0/[0/[Presser "ada"]/1/[0/#0/3]/0]/0: Ui.Label(text="ada sees 0; nothing yet")
+    0/[0/[Presser "bob"]/1/[0/#0/0]/0]/0: Ui.Button(label="bob +1")
+    0/[0/[Presser "bob"]/1/[0/#0/3]/0]/0: Ui.Label(text="bob sees 0; nothing yet")
+
+tick 1
+  in:
+    0/[0/[Presser "ada"]/1/[0/#0/0]/0]/0: click
+
+tick 2
+  changed:
+    0/[0/[Presser "ada"]/1/[0/#0/3]/0]/0: Ui.Label(text="ada sees 0; Accepted")
+
+tick 3
+  changed:
+    0/[0/[Presser "ada"]/1/[0/#0/3]/0]/0: Ui.Label(text="ada sees 1; Accepted")
+    0/[0/[Presser "bob"]/1/[0/#0/3]/0]/0: Ui.Label(text="bob sees 1; nothing yet")
