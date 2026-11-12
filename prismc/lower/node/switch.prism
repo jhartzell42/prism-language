@@ -1882,13 +1882,38 @@ fn FlattenLine wx, menv, args, ?bound:
 HeldFlatten: unbounded fn Wx, Env, Expr, ?Bn -> ((Wx, Wres))
 fn HeldFlatten wx, menv, x, ?bound:
     let t = OutTyOf wx.lx, (Peel (Peel (TypeAt wx.lx, x.span)))
-    match menv.names["#whole{DynKey x}"]:
-        ? (BnLocal (XField (XSelf), dyn), ignore, ignore):
-            let ((name, wx1)) = match ?bound:
+    # the outer as a field of the node: the live dynamic its line made, or, kept in a field
+    # of its own made at the build (`{name}_outer`), the block's live dynamic read through
+    # a row's or a generation's `parent` (`WholeOfBlock`), or a global's constant (no node
+    # writes a global: `let $$nested = $ ($ 3)` is the constant of its one inner)
+    let ?kept = match menv.names["#whole{DynKey x}"]:
+        ? (BnLocal (XField (XSelf), ignore), ignore, ignore): nil
+        ? (BnLocal over, ignore, ignore): ?ThroughParent over
+        otherwise: if IsGlobalName menv, x: ? (XCall (HelperRef "dyn_constant"), [[Own (ValueOf wx.lx, menv, x)]]) else: nil
+    let ?own = match menv.names["#whole{DynKey x}"]:
+        ? (BnLocal (XField (XSelf), dyn), ignore, ignore): ? dyn
+        otherwise: nil
+    match ((?own, ?kept)):
+        ((nil, nil)):
+            let wx2 = update wx:
+                &_.build <= Push &_.build, (RefusalDo "`@Flatten` of `{SrcText wx.lx, wx.lx.file, x.span}`, a dynamic of dynamics with no live dynamic at the build where the line reads it (gap LF)")
+            ((wx2, WrUnit))
+        otherwise:
+            let ((name, wx0)) = match ?bound:
                 ? (BnHold f, ignore): ((f, wx))
                 # bound as a widget's result (`IsGetterBuiltin`): the getter the name was pre-bound to
                 ? (BnDyn (XMethod (XSelf), f, ignore), ignore, ignore): ((f, wx))
                 otherwise: FreshName wx, "flatten"
+            let dyn = match ?own:
+                ? d: d
+                nil: "{name}_outer"
+            let wx1 = match ?kept:
+                ? built: update wx0:
+                    &_.taken <= Push &_.taken, dyn
+                    &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind dyn), (OutDyn (OutDyn t))), built)
+                    &_.fields <= Push &_.fields, ((dyn, (OutDyn (OutDyn t)), "`@Flatten`'s outer `{SrcText wx.lx, wx.lx.file, x.span}`, the dynamic of dynamics it follows, taken at the build"))
+                    &_.moves <= Push &_.moves, ((dyn, (XClone (XVar dyn))))
+                nil: wx0
             let inner = "{name}_inner"
             let follow = "{name}_follow"
             let ofollow = "{name}_ofollow"
@@ -1906,10 +1931,13 @@ fn HeldFlatten wx, menv, x, ?bound:
                 &_.dynReads <= Insert &_.dynReads, name, [[OwnRead inner]]
                 &_.flattens <= Push &_.flattens, FlatDef(name=name, outer=dyn, generation="", held=True, ty=t)
             ((wx2, (WrDyn (XMethod (XSelf), name, [[XCx]]), [[OwnRead inner]], t)))
-        otherwise:
-            let wx2 = update wx:
-                &_.build <= Push &_.build, (RefusalDo "`@Flatten` of `{SrcText wx.lx, wx.lx.file, x.span}`, a dynamic of dynamics with no live dynamic at the build where the line reads it (gap LF)")
-            ((wx2, WrUnit))
+
+# Whether an expression is a global's name (one no block binds): no node writes it.
+IsGlobalName: fn Env, Expr -> Bool
+fn IsGlobalName menv, x = match x.kind:
+    EGroup y: IsGlobalName menv, y
+    EName n: (Len n.path) > 1 or not (HasKey menv.names, (SNameKey n))
+    otherwise: False
 
 # `for k, $v <- $each:` over `$(k ==> $v)` (Semantics ch. 4, ruling FV; a host document's
 # entries, `$(Path ==> $Elem c)`, and `@PerKey`'s inners): `$v` is the row's entry flattened.
