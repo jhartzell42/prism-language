@@ -1,0 +1,29 @@
+# Part VII ch. 7, step C1's test: `Never` is the prelude's type with no values (Part III
+# ch. 6, "`Never` closes a role's requests"; Jimmy, 12 November: "Never is an empty choice
+# and goes in the prelude"). A tag's `!Never` field wired to `never` builds and never
+# fires: the hold that counts its firings, and the hold that words its last value through
+# a `match` with no arm, stay as they were built while the button is pressed.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Watch.*
+test mod Tests
+
+# A watcher's request element: a role that requests nothing has `Never` for its requests.
+tag Watch.Request of Element unit:
+    !requests: Never
+
+!RequestsOf: fn Element Watch.* o -> !Never
+fn !RequestsOf element = match element:
+    Watch.Request(!requests=!requests): !requests
+
+# A function from `Never`: a `match` with no arm is complete.
+Worded: fn Never -> Text
+fn Worded request = match request:
+
+@page: @unit
+@page:
+    !press <- Ui.Button($label=$"press")                                        # 0
+    let asked = Watch.Request(!requests=never)
+    $count <- 0 then $count + (1 on (!RequestsOf asked))
+    $said <- "nothing" then Worded (!RequestsOf asked)
+    $pressed <- 0 then $pressed + (1 on !press)
+    Ui.Label($text=$"asked {$count} times, last {$said}; pressed {$pressed}")   # 1

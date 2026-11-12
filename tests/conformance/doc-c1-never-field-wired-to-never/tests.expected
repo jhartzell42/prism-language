@@ -1,0 +1,19 @@
+# Derived by hand from Part III ch. 6 (`!Never` has one value, `never`, the event that never fires; a `match` on `Never` needs no arms): the request count and the last request stay as built, and only the pressed count moves.
+test never_fires
+
+tick 0
+  added:
+    0: Ui.Button(label="press")
+    1: Ui.Label(text="asked 0 times, last nothing; pressed 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="asked 0 times, last nothing; pressed 1")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="asked 0 times, last nothing; pressed 2")
