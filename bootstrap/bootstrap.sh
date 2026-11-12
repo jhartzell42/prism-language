@@ -67,12 +67,16 @@ pack() {
     COPYFILE_DISABLE=1 tar ${flags[@]+"${flags[@]}"} -C "$dir" -cJf "$out" "$@"
 }
 # copy_runtime FROM TO: the Rust target's runtime crates of the root FROM (runtime/rust,
-# worlds/*/rust), with no build output, copied into the root TO
+# worlds/*/rust), with no build output, copied into the root TO. The copies are stamped
+# with the time of the copy, not their sources' times: target/bootstrap/src is built in the
+# one build directory every run shares, so a runtime changed since the last run, whose
+# files are older than that run's build, would otherwise pass for fresh and cargo would
+# link the last run's prism_rtl.
 copy_runtime() {
     local d
     for d in $(cd "$1" && ls -d runtime/rust worlds/*/rust 2> /dev/null); do
         mkdir -p "$2/$d"
-        tar -C "$1/$d" --exclude=./target -cf - . | tar -C "$2/$d" -xf -
+        tar -C "$1/$d" --exclude=./target -cf - . | tar -C "$2/$d" -xmf -
     done
 }
 # fetch=1 on a fresh clone: every build is offline, so each runtime's crates are fetched
@@ -88,7 +92,11 @@ build_crate() {
         cp -r "$1/src" "$1/Cargo.toml" "$at/"
     fi
     if [ $fetch = 1 ]; then cargo fetch -q --manifest-path "$PWD/$at/Cargo.toml"; fi
-    CARGO_TARGET_DIR="$PWD/$b/build" cargo build --offline --release -q --manifest-path "$PWD/$at/Cargo.toml" 2> "$log"
+    if ! CARGO_TARGET_DIR="$PWD/$b/build" cargo build --offline --release -q --manifest-path "$PWD/$at/Cargo.toml" 2> "$log"; then
+        grep -E -A5 '^error' "$log" | head -40 >&2
+        echo "$1: cargo refused the crate (the log is $log)" >&2
+        exit 1
+    fi
     cp "$b/build/release/prismc" "$1/prismc"
 }
 # build_seed DIR: the seed unpacked into DIR, a root holding the runtime crates it carries,
