@@ -1,4 +1,4 @@
-# The regular-expression corpus: what both runtimes must answer, byte for byte.
+# The regular-expression corpus: what the runtime must answer, byte for byte.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 # The format is tests/regex/README.md's; the dialect is claude/regex-dialect.md's.
 # kind	pattern	flags	arg	input	expected

@@ -578,8 +578,6 @@ reaches it.
 - lower/templates.prism:90, 105 a template call that names no function or fills no
   argument. The checker refuses each: tests/checker/neg/template-unknown and
   tests/checker/neg/template-missing-argument.
-- emit/cpp/expr.prism:332, 347, 567, 575 a constructor, record or pattern of no type the
-  C++ emitter knows. Not probed: the C++ target is not run in this phase.
 
 Types the lowering does not spell (`OutRefused`)
 - lower/expr.prism:1162, 1163 a type argument of a call that its type at the call does
@@ -676,7 +674,6 @@ Refusals outside `Refusal` / `RefusalDo`, which the table above does not hold:
 | site | class | test | state |
 |---|---|---|---|
 | emit/rust/items.prism `DeepPodOf`: a level field's walk at a type that holds no time | G | - | internal error ("a prismc bug: a level field's walk met .."): arrays, maps, options, `~T`s, tuples, `Rc`s, dynamics and generic program types are walked (sem-ch09-tag-field-array-of-dynamics, -named-type-of-dynamic, -fault-of-dynamic) |
-| emit/cpp/mod.prism `PrinterRefusal`: a constructor, record or pattern of no type the C++ printer's tables know | G | - | internal error ("a prismc bug: the C++ printer met ..") |
 | lower/types.prism, `OutQuantified` (two sites): a quantified type variable no instantiation gives a type | R | sem-ch08-widget-value-generic-through-local-function | refused: a widget's local generic function (`fn ?Made y, label = ?Framed ((y, y)), label`) calling a generic function that reads a generic widget as a value; when the local function reads the widget itself it lowers (sem-ch08-widget-value-generic-in-generalized-let). `Len [[]]`, `Size {}`, an unused `let empty = [[]]`, an unused generalized `let` of a lambda and one handed to a function of its callee's color (oq1-oq3) are lowered |
 | lower/expr.prism `ClosureParams`, a typed lambda parameter with no type | G | - | internal error: a lambda's type has as many parameters as it has (the checker's arity, check/expr/calls.prism), so its target type gives one per parameter: `OutFn` (`PlainLambda`), a `Start` (`JobLambda`), or `OutQuantified`, now given to each parameter and refused as the type is |
 

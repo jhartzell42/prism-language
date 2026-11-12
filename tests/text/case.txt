@@ -1,4 +1,4 @@
-# `Upper` and `Lower` (Semantics Appendix B, Text): what both runtimes answer, character
+# `Upper` and `Lower` (Semantics Appendix B, Text): what the runtime answers, character
 # for character. Written by Claude on the claude-self-hosting branch; subject to change.
 # The format and the statement are tests/text/README.md's.
 # input	upper	lower

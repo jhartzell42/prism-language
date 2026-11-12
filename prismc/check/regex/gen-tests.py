@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Writes tests.prism and tests.expected beside this script from tests/regex/corpus.txt:
 # the test module `Check.Regex.Tests`, which holds prismc's dialect check to the same
-# corpus both runtimes read (claude/regex-dialect.md). A test module runs under the Test
+# corpus the runtime reads (claude/regex-dialect.md). A test module runs under the Test
 # World, which reads no file, so the corpus is turned into checks here: every `refuse`
 # row's diagnostic, `part@at message`, and every other row's pattern (with its
 # replacement, for `replace`) accepted. Run it after the corpus changes:

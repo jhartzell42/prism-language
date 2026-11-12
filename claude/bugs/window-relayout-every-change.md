@@ -15,11 +15,6 @@ of its rows (`bench/gui/prism/app.prism`):
 
 | target | op | ticks | build | patch | paint | total | ÷ create1k |
 |---|---|---|---|---|---|---|---|
-| C++ | create1k | 8 | 422.2 | 30.1 | 22.6 | 631.6 | 1.000 |
-| C++ | update10th | 9 | 13.7 | 8.4 | 2.7 | 37.8 | 0.060 |
-| C++ | select | 9 | 6.3 | 7.1 | 1.4 | 20.6 | 0.033 |
-| C++ | swap | 9 | 6.5 | 7.1 | 1.3 | 20.9 | 0.033 |
-| C++ | remove | 8 | 90.4 | 11.4 | 18.4 | 130.7 | 0.207 |
 | Rust | create1k | 8 | 248.6 | 28.4 | 38.4 | 532.9 | 1.000 |
 | Rust | update10th | 9 | 11.4 | 9.3 | 14.2 | 49.7 | 0.093 |
 | Rust | select | 9 | 4.6 | 8.0 | 12.7 | 31.1 | 0.058 |
@@ -35,17 +30,11 @@ pass, and the paint is the damaged boxes.
 - **Presenting a Rust frame** is about 11 M instructions whatever changed: softbuffer
   hands a new zeroed buffer each frame on macOS, the whole frame is copied in and becomes
   a new `CGImage` (worlds/canvas/rust/src/app.rs). It is most of a Rust select's
-  paint; C++ sets its layer's image from its own buffer.
+  paint.
 - **A structural change** (remove, create, clear) gathers the outer of the column's
   document from every place's entry (3,003 entries), once, and the window re-stacks the
   column's children: per change, a pass over every row's entry and every row's plan, not
-  over its layout. In C++ it is three times Rust's (remove's build 90 M against 29 M):
-  `HostDoc::insert` puts the entries in one at a time (a profile of swap, while it still
-  gathered the outer, showed `Map::put` of the outer's two maps on top). Both runtimes'
-  maps change their own nodes in place and copy only a node another map shares; with
-  that, on the Linux machine, remove's build is 7.5 ms of CPU in C++ against 8.8 before
-  (one run each), so the path copies were a part of the gap, not its body: what remains
-  is to profile.
+  over its layout.
 - **One re-stack per level of the moved path:** the column's result is computed again from
   its 1,001 children's plans (each reused), and the placing pass visits each plan to cull
   what does not show: linear, a few million instructions.
@@ -82,4 +71,4 @@ pass, and the paint is the damaged boxes.
 - **`tests/cost/run.sh`**: a `let` read by ten places costs one computation; a builder over
   the source it last built from costs nothing; forty one-key edits of a map under
   `@PerKey` cost one row's work each (all pass).
-- **The bench:** `bench/gui/run.sh prism-cpp prism-rust`.
+- **The bench:** `bench/gui/run.sh prism-rust`.

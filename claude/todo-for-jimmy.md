@@ -8,46 +8,36 @@ tree as it stands.*
 
 - **Bootstrap from nothing:** `make bootstrap` on a fresh clone (`bootstrap/bootstrap.sh`:
   the seed `bootstrap/prismc-rust.tar.xz`, cargo, a fixed point installed as
-  `target/bootstrap/prismc`), `make bootstrap-cpp` for the C++ one, then `make test`
+  `target/bootstrap/prismc`), then `make test`
   (bootstrap/bootstrap.sh's header).
-- **Chess in both Worlds:** `./prism run examples/basic-chess` (or `make basic-chess`; Rust, the winit
-  canvas World) and `./prism run --target cpp examples/basic-chess` (C++, the Cocoa loop on a
-  Mac, Xlib on Linux). `./prism test examples/basic-chess` runs its test modules under the Test
+- **Chess:** `./prism run examples/basic-chess` (or `make basic-chess`; Rust, the winit
+  canvas World). `./prism test examples/basic-chess` runs its test modules under the Test
   World (examples/basic-chess/README.md).
 - **The benchmarks:** `bench/building/run.sh` (how long Prism takes to build), then
   `bench/running/run.sh` (how fast it runs, prismc on itself and the GUI table), each
   writing a `RESULTS.md` beside itself; `bench/gui/run.sh` times the table alone
-  (each script's header). `make -C bench/gui/prism` builds the table's two
-  drivers and `bench/gui/prism/check.sh` prints what each operation costs by phase. The
-  drivers each run one operation; to click through the table yourself, run its root under
+  (each script's header). `make -C bench/gui/prism` builds the table's
+  driver and `bench/gui/prism/check.sh` prints what each operation costs by phase. The
+  driver runs one operation; to click through the table yourself, run its root under
   the canvas World the way the Makefile compiles it, `./prism run bench/gui/prism
   examples/basic-chess/basic_window` (unrun here).
 - **Break the compiler on purpose:** edit a module under `prismc/` (`prismc/syntax/lexer/`,
-  `prismc/syntax/parser/`, `prismc/check/`, `prismc/lower/`, `prismc/emit/rust/`,
-  `prismc/emit/cpp/`), run `make bootstrap`, and watch the fixed point refuse or the suites
-  fail; `tests/compiled/run.sh NAME` runs one program (`tests/compiled/run.sh chess`), and
-  `--target cpp` the same through C++.
+  `prismc/syntax/parser/`, `prismc/check/`, `prismc/lower/`, `prismc/emit/rust/`), run `make bootstrap`, and watch the fixed point refuse or the suites
+  fail; `tests/compiled/run.sh NAME` runs one program (`tests/compiled/run.sh chess`).
 - **Write a new example** as a tree under `examples/` (claude/modules-style-pass.md): a
   directory with its root `app.prism`, a `test mod Tests` in `tests.prism` beside it and
   its transcript `tests.expected`, as `tests/conformance/counter/` is laid out; run it with
-  `./prism test examples/NAME` on both targets, and add it to `tests/compiled/run.sh` to
+  `./prism test examples/NAME`, and add it to `tests/compiled/run.sh` to
   pin it.
-- **Handles against inline variants under jemalloc** (doubt CH1, prismc/emit/cpp/): under
-  glibc the C++ choice as a handle (one shared block per value, `7dc334d^`) compiled prismc
-  about 9% faster than the inline `std::variant`; jemalloc makes allocation cheaper, so the
-  gap may have moved. To measure: bootstrap the C++ prismc from `7dc334d^` with the
-  jemalloc link, then six interleaved self-compiles against the tip's
-  (claude/benchmarks-preliminary.md, "Choices as inline variants (C++)", for the method).
-- **TODO: jemalloc for the Rust target** (the C++ side's link is runtime/cpp/Makefile's). The Rust programs
+- **TODO: jemalloc for the Rust target**. The Rust programs
   run on the system allocator. jemalloc took the Rust prismc's self-compile from 69.9 s to
   51.6 s on the Linux VM (claude/benchmarks-preliminary.md, "jemalloc (Rust)"), but
   through `tikv-jemallocator`, which compiles jemalloc's C sources on every clean build
-  (chess's clean Rust build 73 s → 128 s there). Linking the system's jemalloc, as the C++
-  target does through `pkg-config`, would keep the speed without the build: the
+  (chess's clean Rust build 73 s → 128 s there). Linking the system's jemalloc would keep the speed without the build: the
   `tikv-jemalloc-sys` crate's system-library mode (or a few lines of `#[link]` and a
   `GlobalAlloc` over `mallocx`), the `#[global_allocator]` line back in the emitted
-  `main.rs` (prismc/emit/rust/templates/mod.prism; commit `10211d6` has it), and the same
-  hard error as C++ when jemalloc is missing.
+  `main.rs` (prismc/emit/rust/templates/mod.prism; commit `10211d6` has it), and a
+  hard error when jemalloc is missing.
 
 ## Making the code yours
 
@@ -68,25 +58,23 @@ green at every step:
    them, and `tests/compiled/run.sh` runs them), then the checker, `prismc/check/`
    (`tests/checker/run.sh`: every corpus program clean, every `tests/checker/neg/` program
    its `.expected` diagnostic).
-2. **Then lowering and the printers** (`prismc/lower/`, `prismc/emit/rust/`,
-   `prismc/emit/cpp/`, the templates under each `emit/*/templates/`): the fixed point and
-   both compiled suites (`tests/compiled/run.sh`, `--target cpp`) catch any change in
-   behavior. Rewrite a function at a time; `make bootstrap` and `make bootstrap-cpp` after
+2. **Then lowering and the printer** (`prismc/lower/`, `prismc/emit/rust/`,
+   the templates under `emit/rust/templates/`): the fixed point and
+   the compiled suite (`tests/compiled/run.sh`) catch any change in
+   behavior. Rewrite a function at a time; `make bootstrap` after
    each batch.
-3. **Then the runtimes and the Worlds** (`runtime/rust`, `runtime/cpp`, `worlds/cli`,
-   `worlds/canvas`, each in both languages): their unit tests (`cargo test --workspace`,
-   `make -C runtime/cpp test`, `make -C worlds/cli/cpp test`, `make -C worlds/canvas/cpp
-   test`), then the compiled suites over them.
+3. **Then the runtime and the Worlds** (`runtime/rust`, `worlds/cli`,
+   `worlds/canvas`): their unit tests (`cargo test --workspace`), then the compiled suite over them.
 4. **Then the scripts and the prose:** `prism`, `Makefile`, `bootstrap/`,
    `tests/*/run.sh`, `bench/*/run.sh`, every README and `claude/`.
-5. **Last, the seeds:** `make bootstrap-update` and `make bootstrap-cpp-update` from your
-   own compiler, so `bootstrap/prismc-rust.tar.xz` and `bootstrap/prismc-cpp.tar.xz` are
+5. **Last, the seed:** `make bootstrap-update` from your
+   own compiler, so `bootstrap/prismc-rust.tar.xz` is
    yours too.
 
 ## A shell World
 
 Replace the `prism` shell script (and in time `bootstrap/bootstrap.sh`,
-`bootstrap/bootstrap-cpp.sh`, `tests/*/run.sh`, `bench/*/run.sh`) with Prism: a World for
+`tests/*/run.sh`, `bench/*/run.sh`) with Prism: a World for
 coordinating Unix processes, so that a Prism program reads like a shell script.
 
 - Tags for running a process (argv, environment, working directory; its exit code,

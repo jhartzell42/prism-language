@@ -16,7 +16,6 @@ How the `prism` command works as the tree stands; `bin/prism` is the source of t
   ```
   cargo fetch                                   # once; every later build is offline
   bootstrap/bootstrap.sh --from-seed            # installs target/bootstrap/prismc
-  CXX=clang++ bootstrap/bootstrap-cpp.sh --from-seed   # only for --target cpp work
   ```
 
   `prism` uses `$PRISMC` when it is set, else the newest of `target/bootstrap/prismc` and
@@ -33,29 +32,24 @@ Each takes one or more sources. A source is a directory, a tree whose root is it
   reads the test modules too. `--unused` adds a warning at each definition nothing uses.
   `--world` names the tag families the World answers, when the root's row does not
   decide it.
-- **`prism test [--target rust|cpp] SRC...`** compiles the program with its test modules,
+- **`prism test SRC...`** compiles the program with its test modules,
   builds it, and runs every test under the Test World. Each test's transcript must equal
   the `.expected` file of its module's name (`tests.expected` for `tests.prism`) byte for
   byte; a difference is printed as a diff.
-- **`prism run [--target rust|cpp] [--world cli|canvas] [--print-world] SRC... [-- ARGS...]`**
+- **`prism run [--world cli|canvas] [--print-world] SRC... [-- ARGS...]`**
   compiles and builds the program without its tests and runs its `@main` root. The World
   comes from the root module's `emit` row: `Gui.*` runs in a window (the canvas World),
   anything else on the terminal (the CLI World). `--world` overrides. A row with `Ui.*`
   and no `Gui.*` is refused, since no World answers `Ui` elements alone. `--print-world`
   prints the World it would use and stops. Everything after `--`, or after the first
   argument that is not a source, goes to the program.
-- **`prism compile [--target rust|cpp] SRC... -o OUT`** writes the program to `OUT` and
-  stops: a Rust crate over `runtime/rust`, or a C++ program with a Makefile over
-  `runtime/cpp`.
+- **`prism compile SRC... -o OUT`** writes the program to `OUT` and
+  stops: a Rust crate over `runtime/rust`.
 
-## Targets and builds
+## Builds
 
-- **`--target rust`** (the default) writes the crate to `target/prism/NAME` and builds it
+- The crate goes to `target/prism/NAME` and is built
   with cargo, release, into `target/prism-build`.
-- **`--target cpp`** writes to `target/prism-cpp/NAME` and builds it with make and
-  `$CXX` (g++ when unset; clang++ is the stricter), linking jemalloc through `pkg-config`
-  (Ubuntu `libjemalloc-dev`, Homebrew `jemalloc`; the build stops naming the package when
-  it is missing).
 - `NAME` is the first source's file or directory name, with anything but letters,
   digits and `_` made `_`.
 
@@ -64,24 +58,18 @@ Each takes one or more sources. A source is a directory, a tree whose root is it
 | Variable | Effect |
 |---|---|
 | `PRISMC` | the prismc binary to run, instead of the installed one |
-| `CXX` | the C++ compiler for `--target cpp` (default `g++`) |
-| `PRISM_OPT` | C++ optimization flags (default `-O3`; `-O0 -g` to debug a failing test) |
-| `PRISM_JOBS` | make's job count (default: every core) |
-| `PRISM_SANITIZE=1` | C++ under AddressSanitizer and UBSan, without jemalloc; on macOS with Homebrew's clang (`brew install llvm`) |
 
 ## `chess` and `basic-chess`
 
 `chess` is `prism run examples/chess`: chess the document way, the hot seat in a window
 (claude/document-chess.md). `basic-chess` is `prism run examples/basic-chess`: the basic
-chess game in a window. Options go to `prism run`, so `basic-chess --target cpp` runs the
-C++ build and `basic-chess --print-world` says `canvas`.
+chess game in a window. Options go to `prism run`, so `basic-chess --print-world` says `canvas`.
 
 ## Examples
 
 ```
 prism check examples/basic-chess          # the checker's report on the basic chess tree
 prism test examples/basic-chess           # basic chess's rules and board tests, Rust
-prism test --target cpp tests/conformance/sem-ch04-birth   # one conformance program in C++
 prism run bench/gui/prism                 # the GUI benchmark table in a window
 prism compile examples/basic-chess -o /tmp/chess-crate   # the Rust crate, to read
 ```

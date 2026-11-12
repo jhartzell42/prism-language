@@ -13,14 +13,14 @@ with the alternative refused, and Jimmy overrules by editing. Book citations are
 
 - **The GUI table** (`bench/gui/`, js-framework-benchmark's operations over 1,000 rows,
   each an id label, a select button and a remove button) ran a small change in 0.6 to 0.85
-  of the instructions of Create 1,000 rows (C++ select 494 M against 636 M), because each
+  of the instructions of Create 1,000 rows, because each
   host document was one value of the whole tree, rebuilt when any place moved, and the
   window laid out the whole tree as one function of it, twice per change, with a word set
   walked over every label (`claude/bugs/window-relayout-every-change.md`).
-- **With the document as `$(Path ==> $Elem c)`** a select costs 21 M in C++ and 31 M in
+- **With the document as `$(Path ==> $Elem c)`** a select costs 31 M in
   Rust, with the canvas Worlds painting only the damage of a new scene (doubt PB) and the
-  table's rows reading their values through `@PerKey`; it was 166 M and 177 M painting the
-  whole frame, and before the document changed, 494 M and 436 M.
+  table's rows reading their values through `@PerKey`; it was 177 M painting the
+  whole frame, and before the document changed, 436 M.
 
 ## Jimmy's constraints
 
@@ -87,7 +87,7 @@ with the alternative refused, and Jimmy overrules by editing. Book citations are
 
 ### The compiler and the runtimes
 
-- **Each hosted place is an `Entry`** (`prism_rtl::Entry`, both runtimes), a field of the
+- **Each hosted place is an `Entry`** (`prism_rtl::Entry`), a field of the
   node the place is in: its own snapshot, taken at the node's build in its scope's turn
   and again in the patch pass when a write behind the place dirtied the node, as a World
   place is sent. A take compares the level (the derived `PartialEq` of the program's `Elem`,
@@ -177,8 +177,8 @@ row's), each a computed answer a tick late.
 
 ### What a small change still costs
 
-- **Painting** (doubt PB): only the damage of a new scene; a select paints 1.3 M in C++
-  and 8.8 M in Rust (most of that presenting the whole frame through softbuffer).
+- **Painting** (doubt PB): only the damage of a new scene; a select paints
+  8.8 M in Rust (most of that presenting the whole frame through softbuffer).
 - **The 1,000 selected flags** compared at n+3, each row's `@Distinct` reading the
   selection (doubt SE); no row whose value the write leaves alone is marked for the patch
   pass (`@PerKey`, below).
@@ -189,10 +189,6 @@ row's), each a computed answer a tick late.
   (claude/bugs/window-relayout-every-change.md).
 - **A structural change** (remove, create, clear) gathers the outer of its host's document
   from every place's entry, once, and the window re-stacks the column's children.
-- **A structural change costs C++ three times Rust's** (remove's build 90 M against 29 M
-  on the Mac): the outer's maps are built an insert at a time
-  (claude/bugs/window-relayout-every-change.md, which says what the map's in-place
-  update took off it and what is left to profile).
 
 ### The table's rows over `@PerKey`
 
@@ -224,15 +220,15 @@ row's), each a computed answer a tick late.
 
 ## Values that keep their sharing
 
-- **Both runtimes:** `Snapshot::take_compared` keeps the snapshot that stood when the new
+- **The runtime:** `Snapshot::take_compared` keeps the snapshot that stood when the new
   one is equal to it; `==` on maps and arrays answers at once for a node both sides share
   at the same place, every `^Eq` being reflexive (a `Float` compares by its bits,
   runtime/rust/src/float.rs). Safe by Semantics ch. 11: "sharing is invisible".
-- **Both printers:** a `for`'s builder does nothing when its source is the very map it last
+- **The printer:** a `for`'s builder does nothing when its source is the very map it last
   built from (`Map::same`); a host's rows do the same over the places.
-- **Both runtimes:** a map collected from entries in ascending key order (a `for`'s
+- **The runtime:** a map collected from entries in ascending key order (a `for`'s
   gathered results, by the rows' keys) is built balanced at once.
-- **Both printers:** a builder in a hosted scope tells its host that places came or went
+- **The printer:** a builder in a hosted scope tells its host that places came or went
   only when its rows' keys changed (`same_keys`), so a swap or an update of values gathers
   no outer.
 
@@ -282,8 +278,8 @@ ch. 1 (`@Grid`, doubt GR), ch. 2 (`Elem r`, the primitives), RULINGS (WL); the P
   tail could stand for such a tag.
 - **PB** The canvas Worlds paint only where a new scene's draw commands differ from the
   last (worlds/canvas/rust/src/damage.rs), and each window is in sRGB so Core Animation no
-  longer converts every frame on the CPU: a select's paint is 1.3 M instructions in C++
-  and 8.8 M in Rust, where the whole frame was 141 M and 155 M.
+  longer converts every frame on the CPU: a select's paint is
+  8.8 M instructions in Rust, where the whole frame was 155 M.
 - **SE** The table's rows each hold `@Distinct` of whether they are the selected one, so a
   select compares 1,000 flags and moves two labels.
 - **RF** (Claude's) Routing visits every child of a box through its own filter (1,001 at

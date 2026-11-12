@@ -13,8 +13,7 @@ implementation. The back end's finer picks and its known gaps are in the comment
 ## D1. Rust is the only target for now (Jimmy's)
 
 One target gets to self-hosting faster; `prism-language` is a Cargo crate; rustc checks
-the emitted code. C++ comes after (Compiler ch. 5's second target), through a second set
-of code templates and a C++ runtime.
+the emitted code.
 
 ## D4. Graph's propagation, minus the parts an AOT demo doesn't need (Jimmy's)
 
@@ -130,7 +129,7 @@ or `name/mod.prism` when it has children; to any depth; both files there, or a l
 and `prism check` read and which reaches its parent by `use Parent.*` (`use App.*` for a
 program tree's root). A tree's root is `app.prism` (a program) or `lib.prism` (`mod`
 lines only). A module is reached only through `use`, by full path; no namespace is shared
-across files. One module is one Rust module (`src/PATH/mod.rs`) and one C++ unit. Files
+across files. One module is one Rust module (`src/PATH/mod.rs`). Files
 on the command line stay loose (Semantics ch. 6). The design, its rulings and the refused
 alternatives are claude/modules-style-pass.md.
 
