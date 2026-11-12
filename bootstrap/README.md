@@ -4,7 +4,7 @@
 keeps no binary; it keeps one archive.
 
 - **`prismc-rust.tar.xz`** is the seed: the Rust crate `prismc` emitted for itself at its
-  last fixed point (its `src/` and `Cargo.toml`), compressed. It is the only compiled
+  last fixed point, compressed. It is the only compiled
   code in the repository, kept apart from the source.
 - **`bootstrap.sh`** starts from `$PRISMC`, else the installed `target/bootstrap/prismc`,
   else the seed unpacked and built with cargo (after a `cargo fetch` of its crates, the
