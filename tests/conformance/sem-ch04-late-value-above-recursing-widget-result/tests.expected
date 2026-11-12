@@ -1,0 +1,9 @@
+# Derived by hand from Semantics ch. 4 ("the order of a group's lines decides positions and nothing else"; widgets recurse as deep as their data), ch. 8 (`<-` binds the plain result; a widget application is transparent, an arm adds no path segment) and ruling TC (places counted as built): `@Count 0` gives 1, `@Count 1` 2, `@Count 2` 3, so `@Wide 3` builds its label at 0 and gives 1; the next label is 1, and `@Count 2` builds "level 2" at 2 and "level 1" at 3. Never run: prismc refuses the program.
+test counted
+
+tick 0
+  added:
+    0: Ui.Label(text="three")
+    1: Ui.Label(text="wide 1")
+    2: Ui.Label(text="level 2")
+    3: Ui.Label(text="level 1")
