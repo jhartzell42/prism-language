@@ -24,9 +24,9 @@ fn @Page loud:
     @Wide n
     n <- if loud:
         for x <- [[1, 2]]:
-            Ui.Label($text=$"row {x}")                                 # 2, 3
+            Ui.Label($text=$"row {x}")                                 # 2/[k]/0
         m <- if True:
-            Ui.Label($text=$"inner")                                   # 4
+            Ui.Label($text=$"inner")                                   # 3
             @ 3
         else:
             @ 4
