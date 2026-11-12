@@ -201,8 +201,8 @@ namespace prelude {
 }  // namespace crate
 </cpp>
 
-CppElemTypes: fn Text, Text -> Text
-fn CppElemTypes includes, values = inline_text <cpp>
+CppElemTypes: fn Text, Text, Text -> Text
+fn CppElemTypes includes, values, applied = inline_text <cpp>
 // The program's `Elem` and `Output` with their cases, emitted by prismc (claude/backend.md).
 // Edit the Prism sources, not this file.
 #pragma once
@@ -213,6 +213,12 @@ fn CppElemTypes includes, values = inline_text <cpp>
 namespace crate {
 
 {{values}}
+
+namespace prelude {
+
+{{applied}}
+
+}  // namespace prelude
 
 }  // namespace crate
 </cpp>

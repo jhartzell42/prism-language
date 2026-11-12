@@ -206,7 +206,7 @@ fn EmitCpp model, runtime, scripts:
         nil: CppNoRoot model.name
     let both = JoinParts elem, answer
     let elemDecl = CppElemDecl (Includes "decl", (Append model.elemComplete, model.elemDeclared)), (Join both.forward, "\n\n"), (CppPreludeRows "")
-    let elemTypes = CppElemTypes (Join (Filter [[(Includes "types", model.elemComplete), (Includes "decl", model.elemDeclared)]], \|t| t != ""), "\n"), (Join (Each both.values, \|v| v.text), "\n\n")
+    let elemTypes = CppElemTypes (Join (Filter [[(Includes "types", model.elemComplete), (Includes "decl", model.elemDeclared)]], \|t| t != ""), "\n"), (Join (Each both.values, \|v| v.text), "\n\n"), (CppPreludeApplied "")
     let pairs = Each (Range0 (Len model.mods)), \|i| (((Or model.mods[i], noMod), (Or mods[i], noParts)))
     let generics = Fold pairs, [[]], \|acc, ((m, p))| if (Len p.generic) > 0: Push acc, m.name else: acc
     let perModule = Each pairs, \|((m, p))| ModuleFiles m, p

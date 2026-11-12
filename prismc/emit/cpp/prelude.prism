@@ -5,7 +5,8 @@
 # function takes its arguments by `const&` and gives back a value, as emitted functions do;
 # a closure parameter is any callable. `CppPreludeRows` is the part that names the
 # program's `Elem` and `Output`: the `Row` of a `for` or a `rebuild`, in `elem.decl.hpp` after
-# them.
+# their declarations; `CppPreludeApplied` the part that needs them complete, a blueprint
+# value applied, at the end of `elem.types.hpp`.
 #
 # Written by Claude, 3 November 2026, on the claude-self-hosting branch. Subject to change:
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
@@ -1116,7 +1117,13 @@ inline Pod kind_of(const Error& e) { return e.kind(); }
 
 /// A fault kind made with fields (`Count.TooMany(limit=5, asked=n)`): the tag's value,
 /// its fields as plain data in declaration order.
-inline Pod fault_kind_of(const std::string& name, Pod::Fields fields) { return Pod::element(name, std::move(fields)); }
+/// (The model gives the fields as a vector of (name, value) tuples.)
+template <class Named>
+Pod fault_kind_of(const std::string& name, const std::vector<Named>& fields) {
+    ::prism_rtl::Fields out;
+    for (const auto& [n, v] : fields) out.emplace_back(std::string(n), v);
+    return Pod::element(name, std::move(out));
+}
 
 /// A field of an `Error`'s kind, read back at the field's type (a pattern's binder).
 template <class T>
@@ -1159,8 +1166,8 @@ int run_cli(const std::vector<std::string>& args) { return ::prism_world_cli::ru
 }  // namespace crate
 </cpp>
 
-# The prelude's part that names the program's `Elem` and `Output`: a row, and a row
-# subscribing to its block's port.
+# The prelude's part that names the program's `Elem` and `Output`, declared only: a row,
+# and a row subscribing to its block's port.
 CppPreludeRows: fn Text -> Text
 fn CppPreludeRows unused = inline_text <cpp>
 /// A row of a `for` or a generation of a `rebuild`: a node its builder tears down. A row
@@ -1195,6 +1202,38 @@ template <class N, class R>
         [row](std::span<const Segment> at, const Output& v, Cx& cx) -> Done { return row->deliver(at, v, cx); }};
 }
 
+/// A row subscribing to its block's port for one event: the row heard weakly, the handle
+/// kept for its leaving (claude/backend.md: `Port::subscribe_above`). `above` is the call's
+/// height twin: told the port's height at once and each time it rises.
+template <class N, class P, class Port, class Call, class AboveFn>
+void subscribe_row(const ::prism_rtl::Rc<N>& node, std::optional<::prism_rtl::Rc<P>> parent, Port port, Call call, AboveFn above, std::optional<Handle>& slot) {
+    if (!parent) return;
+    ::prism_rtl::Weak<N> me = node;
+    using T = typename std::remove_cvref_t<decltype(deref(port(*parent)))>::Value;
+    Handle h = deref(port(*parent)).subscribe_above([me, call](const T& v, Cx& cx) -> Done {
+        if (auto n = me.lock()) call(n, v, cx);
+        return {};
+    }, ::prism_rtl::make_rc<const std::function<void(std::uint32_t)>>([me, above](std::uint32_t h) {
+        if (auto n = me.lock()) above(n, h);
+    }));
+    slot = h;
+}
+
+/// A row's subscription to an event value's own port, undone when the row leaves
+/// (claude/backend.md, `SubscribedValue`): the port kept beside the handle, both taken, so
+/// a second leaving does nothing.
+template <class PortSlot>
+void unsubscribe_value(PortSlot& port, std::optional<Handle>& slot) {
+    if (port && slot) deref(*port).unsubscribe(*slot);
+    port.reset();
+    slot.reset();
+}
+</cpp>
+
+# The prelude's part that needs `Elem` and `Output` complete: a blueprint value applied
+# and its answers, at the end of `elem.types.hpp`, after them.
+CppPreludeApplied: fn Text -> Text
+fn CppPreludeApplied unused = inline_text <cpp>
 /// A blueprint value a block applied: what it built, as the block's generation at the
 /// line. A World's answer under it goes to the blueprint's node, the position counted
 /// from the blueprint's first. In a hosted scope its places are entries of the host's
@@ -1244,7 +1283,7 @@ inline ::prism_rtl::Scope<Elem, Output> applied_scope(std::optional<::prism_rtl:
 /// (`above` is the sink's height twin, told the global height such an answer comes at.)
 template <class AboveFn, class Hear>
 Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint_heard(const ::prism_rtl::Blueprint<Elem, Output>& blueprint, Path path, std::uint32_t base, std::optional<::prism_rtl::Rc<::prism_rtl::HostOf<Elem, Output>>> hosted, AboveFn above, Hear hear, Cx& cx) {
-    ::prism_rtl::Sink<Output> sink(std::function<Done(const Output&, Cx&)>([hear = std::move(hear)](const Output& answer, Cx& cx) -> Done { return hear(answer, cx); }), std::make_shared<const std::function<void(std::uint32_t)>>(std::move(above)));
+    ::prism_rtl::Sink<Output> sink(std::function<Done(const Output&, Cx&)>([hear = std::move(hear)](const Output& answer, Cx& cx) -> Done { return hear(answer, cx); }), ::prism_rtl::make_rc<const std::function<void(std::uint32_t)>>(std::move(above)));
     auto supplied = TRY(blueprint(std::move(path), sink, applied_scope(std::move(hosted)), base, cx));
     std::uint32_t built = supplied.built;
     return std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>{::prism_rtl::make_rc<AppliedBlueprint>(std::move(supplied), base, sink), built};
@@ -1389,7 +1428,7 @@ auto event_part(const ::prism_rtl::Event<V>& events, Part part) {
 /// (`above` is `hear`'s height twin, told the port's height.)
 template <class T, class AboveFn, class Hear>
 void hear_part(const ::prism_rtl::Event<T>& event, AboveFn above, Hear hear) {
-    deref(event.port).subscribe_above([hear](const T& v, Cx& cx) -> Done { return hear(v, cx); }, std::make_shared<const std::function<void(std::uint32_t)>>(std::move(above)));
+    deref(event.port).subscribe_above([hear](const T& v, Cx& cx) -> Done { return hear(v, cx); }, ::prism_rtl::make_rc<const std::function<void(std::uint32_t)>>(std::move(above)));
 }
 
 /// A blueprint value applied by a block at one of its lines (Semantics ch. 8: "a blueprint
@@ -1399,33 +1438,5 @@ void hear_part(const ::prism_rtl::Event<T>& event, AboveFn above, Hear hear) {
 /// line of unit drops.
 inline Result<std::tuple<::prism_rtl::Rc<Row>, std::uint32_t>> apply_blueprint(const ::prism_rtl::Blueprint<Elem, Output>& blueprint, Path path, std::uint32_t base, std::optional<::prism_rtl::Rc<::prism_rtl::HostOf<Elem, Output>>> hosted, Cx& cx) {
     return apply_blueprint_heard(blueprint, std::move(path), base, std::move(hosted), [](std::uint32_t) {}, [](const Output&, Cx&) -> Done { return {}; }, cx);
-}
-}
-
-/// A row subscribing to its block's port for one event: the row heard weakly, the handle
-/// kept for its leaving (claude/backend.md: `Port::subscribe_above`). `above` is the call's
-/// height twin: told the port's height at once and each time it rises.
-template <class N, class P, class Port, class Call, class AboveFn>
-void subscribe_row(const ::prism_rtl::Rc<N>& node, std::optional<::prism_rtl::Rc<P>> parent, Port port, Call call, AboveFn above, std::optional<Handle>& slot) {
-    if (!parent) return;
-    ::prism_rtl::Weak<N> me = node;
-    using T = typename std::remove_cvref_t<decltype(deref(port(*parent)))>::Value;
-    Handle h = deref(port(*parent)).subscribe_above([me, call](const T& v, Cx& cx) -> Done {
-        if (auto n = me.lock()) call(n, v, cx);
-        return {};
-    }, std::make_shared<const std::function<void(std::uint32_t)>>([me, above](std::uint32_t h) {
-        if (auto n = me.lock()) above(n, h);
-    }));
-    slot = h;
-}
-
-/// A row's subscription to an event value's own port, undone when the row leaves
-/// (claude/backend.md, `SubscribedValue`): the port kept beside the handle, both taken, so
-/// a second leaving does nothing.
-template <class PortSlot>
-void unsubscribe_value(PortSlot& port, std::optional<Handle>& slot) {
-    if (port && slot) deref(*port).unsubscribe(*slot);
-    port.reset();
-    slot.reset();
 }
 </cpp>
