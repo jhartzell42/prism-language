@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": any line may use any name the block binds, and the order of a group's lines decides positions and nothing else), ch. 9 (a supplier answers a hosted place; a place it answers with `@Element e` is that element at its row's place 0) and Type System ch. 1 (the generalized `let` read at `Nat` and at `Text`): loud builds the label "before" at 0, so the host is 1; soft builds nothing there, so the host is 0. The answer is ((3, "up")). Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="before")
+    1/[0]/0: Ui.Label(text="3 3")
+    1/[2]/0: Ui.Label(text="3 up")
+
+test soft
+
+tick 0
+  added:
+    0/[0]/0: Ui.Label(text="3 3")
+    0/[2]/0: Ui.Label(text="3 up")
