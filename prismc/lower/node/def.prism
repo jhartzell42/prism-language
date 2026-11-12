@@ -1679,6 +1679,10 @@ fn GivesResult lx, menv, e = match e.kind:
     EFor ignore, ignore, ignore: (IsBundle (LineOutFull lx, e)) or (ResultLayer (TypeAt lx, e.span)) == LyDyn
     EMatch ignore, ignore: (IsBundle (LineOutFull lx, e)) or (ResultLayer (TypeAt lx, e.span)) == LyDyn
     EIf ignore, ignore, ignore: (IsBundle (LineOutFull lx, e)) or (ResultLayer (TypeAt lx, e.span)) == LyDyn
+    # a `rebuild` that hands back a dynamic (`RebuildDynamic`): a structural dynamic of
+    # the node, a getter defined at the `rebuild`'s line, so a line above reads it and
+    # `!Updated` of it there has its publication to hear
+    ERebuild ignore, ignore: GivesDynamic (TypeAt lx, e.span)
     otherwise:
         let callee = match e.kind:
             ECall c, ignore, ignore, ignore: c
