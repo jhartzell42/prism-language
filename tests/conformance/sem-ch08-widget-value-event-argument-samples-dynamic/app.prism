@@ -1,0 +1,27 @@
+# A widget read as a value, given an event written in place that samples a dynamic:
+# `@Shows ($n on !go)` (Semantics ch. 8: a blueprint builds nothing until a block applies
+# it; ch. 7, R2: a sample reads the tick's opening, so `$n on !go` fires with the value
+# `$n` had as the tick opened). The widget's parameter is an event of numbers: the
+# argument is the event of `$n`'s values at the firings, never an event of the dynamic.
+# sem-ch08-widget-value-event-parameter with the argument a sample.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Shows: fn !Nat -> @unit
+fn @Shows !fired:
+    $shown <- 0 then !fired
+    Ui.Label($text=$"shown {$shown}")
+
+@Page: @unit
+@Page:
+    !go <- Ui.Button($label=$"go")                               # 0
+    $n <- 5 then $n + 1 on !go
+    match ?Pick True, (@Shows ($n on !go)):                      # 1
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    Ui.Label($text=$"n {$n}")                                    # 2
