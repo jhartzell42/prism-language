@@ -1703,6 +1703,35 @@ it make every program an interpreter run, and every type mistake a runtime fault
   opens, printed under that tick's `in:` as a delivery is, and that tick is owed; a
   poisoned subtree is served nothing again, a test's own delivery included. The policy
   prints nothing; the CLI and canvas Worlds print what a poisoned root has to say.
+- **A terminal of lines is the CLI World's** (worlds/cli/rust/src/console.rs, its C++
+  twin in worlds/cli/cpp/src/cli.cpp). A program declares the family itself, as
+  examples/chess/console.prism does: `Console.Read(name)`, `!Text`, each firing one line
+  typed; `Console.Print(name, !lines)`, each firing the lines to print. One line in, one
+  line out, for shell scripts, agents, people with a physical board, and teletypes:
+  - The input is the process's standard input, read on a thread of its own from the
+    first `Console.Read` place on; a program with none never reads it. A line goes in
+    without its line end (`\n`, or `\r\n`), the last line with none included, as an
+    answer to every live `Console.Read` of its terminal.
+  - A line goes in only when no tick is owed and nothing else waits, one line per tick,
+    so a program has answered one line before it hears the next, piped or typed alike.
+    While a `Console.Read` waits, a `Time.After` wake still comes when due.
+  - Each line printed is written to standard output and flushed at once: a pipe or a
+    teletype sees each answer as it fires. No terminal modes, no cursor, no colour.
+  - With more than one terminal in the document (the names of the live `Console.Read`
+    and `Console.Print` places), a line in is addressed `NAME: text` and goes to that
+    terminal, and a line out is printed `NAME: text`. With one terminal, lines are plain
+    both ways. A line that names no terminal is reported on standard error and goes
+    nowhere.
+  - At the end of the input the reads stop firing. `!Text` has no end case, so the end
+    is no value: a `Console.Read` after it is no live stream (Semantics ch. 9, "a
+    `Cli.Stdin` before `End`"), and a program with nothing else to wait for exits 0. A
+    failed write to standard output is the World's failure: reported, exit 1.
+  - The Test World needs none of this: a test sends a line to a `Console.Read` and reads
+    a `Console.Print`'s firings off the transcript like any other tag's.
+  - Tests: worlds/cli/rust/tests/cli.rs (and test_cli.cpp's twins), and
+    tests/driver/run.sh's `console-echo` and `console-terminals`, real programs under
+    `prism run` with standard input from a file and standard output compared to an
+    expected file.
 
 ## The library's API
 
@@ -1837,6 +1866,16 @@ tick 0 and again by each runtime).
 
 ## Doubts
 
+- **CT Several terminals on one standard input.** A process has one input and one
+  output; chess's `Tables.@terminals` names three terminals. *First ruling (Claude's):*
+  lines addressed `NAME: text` both ways when more than one terminal is in the document,
+  plain with one. *If otherwise:* a terminal per name on a file or a FIFO the command
+  line names (`--console White=/dev/pts/3`), or every line to every terminal.
+- **CE The end of the input.** `Console.Read` is `!Text`, with no end case. *First ruling
+  (Claude's):* the reads stop firing, and the program exits 0 once nothing can cause a
+  tick, as the book's live-stream rule has it. *If otherwise:* the family gains a typed
+  end (`!Line`, `choice: Typed Text | Ended`), which changes examples/chess's
+  `console.prism`.
 - **MO Monomorphization against one class per block** (Q-B9). The book keeps one node
   class per block so a checkpoint names blocks; with no checkpoints rustc monomorphizes.
   *First ruling (Claude's):* rustc's generics. *If otherwise:* trait objects per block.

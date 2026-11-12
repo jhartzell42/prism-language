@@ -80,8 +80,10 @@
     line, when it is played; `draw offered`; `over: …`, the result; the moves played or
     the legal moves on one line, a space between two.
   - A terminal is two elements of the program's own family, `Console.Read(name)` and
-    `Console.Print(name, !lines)`. No World answers them: the CLI World reads no standard
-    input. They run under the Test World (`terminal_tests.prism`).
+    `Console.Print(name, !lines)`. The CLI World answers them on standard input and
+    output (claude/backend.md, "A terminal of lines is the CLI World's"): with the three
+    terminals of `@terminals`, a line is addressed `White: e2e4` in and out. The Test
+    World runs them in `terminal_tests.prism`.
 - **A board against a terminal, and boards watched from a terminal:**
   `Tables.@againstTerminal`, `Tables.@watched`.
 - **The text interfaces and the scripts:** `Tables.@hotSeat`, `@foolsMate`, `@castling`,
@@ -247,7 +249,6 @@
   place's path; the prelude takes no path apart, so each seat has its own host.
 - **A map's entries.** The prelude lists keys and values; `Documents.Entries` looks each
   key up again.
-- **A World that reads lines.** `Console.*` runs under the Test World alone.
 - **A role with no request has no request tag** (`Watch.*`): that part is the design's
   own, and `Never` is what its trait names.
 
