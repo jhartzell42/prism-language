@@ -1084,7 +1084,13 @@ fn ?ConstantDynamic d = match d.kind:
     otherwise: nil
 
 PlainBlueprint: unbounded fn Lx, Env, Expr, Ref, OutTy -> Vl
-fn PlainBlueprint lx, env, x, variant, t = VlOwned (XCall (RefRuntime "prism_rtl::plain_blueprint::<crate::Elem, _>"), [[(TaggedOrHeld variant, (OutTyOf lx, (Peel (TypeAt lx, x.span))), (Own (ValueOf lx, env, x)))]]), t
+fn PlainBlueprint lx, env, x, variant, t:
+    # an answer whose type holds dynamics below its top (`@ [[$ 1]]` for `[$Nat]`, Type
+    # System ch. 1) is built with them whole, as the tag's output holds them
+    let lxw = update lx:
+        &_.whole <= True
+    let lxa = if HoldsTimeWhole lx, x: lxw else: lx
+    VlOwned (XCall (RefRuntime "prism_rtl::plain_blueprint::<crate::Elem, _>"), [[(TaggedOrHeld variant, (OutTyOf lx, (Peel (TypeAt lx, x.span))), (Own (ValueOf lxa, env, x)))]]), t
 
 # `@ $d` with `$d` a dynamic of the host that is not a constant (round 3 DY): prism_rtl's
 # `dynamic_blueprint` over a `Dynamic` of the tag's `Output` whose read is the owner's getter
