@@ -1,0 +1,33 @@
+# `@Flatten` in a row and in a generation over a dynamic of dynamics of their block
+# (Semantics ch. 4: a row reads its block's names; ch. 7 and Appendix B, `@Flatten`;
+# ruling FV: the flatten adopts, after the tick its outer fires, the inner the outer then
+# holds, and reads it from the next tick, owed).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+$Choose: fn Bool, $Nat, $Nat -> $Nat
+fn $Choose second, $p, $q = if second: $q else: $p
+
+@inRow: @unit
+@inRow:
+    !go <- Ui.Button($label=$"go")                                # 0
+    $a <- 5 then $a + 1 on !go
+    $b <- 20 then $b + 2 on !go
+    $$current <- $a then $Choose (True on !go), $a, $b
+    for j, ignore <- $ {"x": unit}:                              # 1/[j]
+        $shown <- @Flatten $$current
+        Ui.Label($text=$"{j}: {$shown}")                          # 1/[j]/0
+
+@inGeneration: @unit
+@inGeneration:
+    !go <- Ui.Button($label=$"go")                                # 0
+    !next <- Ui.Button($label=$"next")                            # 1
+    $a <- 5 then $a + 1 on !go
+    $b <- 20 then $b + 2 on !go
+    $page <- 1 then $page + 1 on !next
+    $$current <- $a then $Choose (True on !go), $a, $b
+    rebuild $page:                                               # 2/#g
+        $shown <- @Flatten $$current
+        Ui.Label($text=$"page {_}: {$shown}")                     # 2/#g/0
