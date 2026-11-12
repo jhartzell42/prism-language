@@ -2074,7 +2074,20 @@ fn Recolored lx, x, fromTy, toTy, depth:
         (((TySig "$", d), (TySig "$", e))): XMethod x, "map", [[(XClosure True, [[(PaTyped (PaBind inner), (OutRef (OutTyOf lx, d)))]], (Recolored lx, (XClone (XVar inner)), d, e, depth + 1))]]
         (((TyCon n, fromArgs), (TyCon m, toArgs))) if n == m: NamedRecolored lx, x, fromTy, n, fromArgs, toArgs, to, depth
         (((TyFn ignore, dps, dr), (TyFn ignore2, eps, er))) if (Len dps) == (Len eps): FunctionRecolored lx, x, from, to, dps, dr, eps, er, depth
-        otherwise: Refusal "a function value of its callee's own color inside the value a call returns, at a call that makes the color bounded, held by a type that is no array, event, dynamic, optional, `~T`, tuple, map, record, choice or function"
+        # an associated type at a known head is the type its impl chooses
+        # (`?ImplAssoc`): the signature can write the result so (`Out (Holder (u fn Nat
+        # -> Nat))`), the call has the type the impl gives
+        otherwise: if (KnownAssoc lx, fromTy) != fromTy or (KnownAssoc lx, toTy) != toTy: Recolored lx, x, (KnownAssoc lx, fromTy), (KnownAssoc lx, toTy), depth
+        else: Refusal "a function value of its callee's own color inside the value a call returns, at a call that makes the color bounded, held by a type that is no array, event, dynamic, optional, `~T`, tuple, map, record, choice or function"
+
+# An associated type at a known head as the type its impl chooses (`?ImplAssoc`), once
+# more until it is none; any other type as it is.
+KnownAssoc: unbounded fn Lx, Ty -> Ty
+fn KnownAssoc lx, t = match t:
+    TyAssoc tr, n, a: match ?ImplAssoc lx.g, tr, n, a:
+        ? chosen: KnownAssoc lx, chosen
+        nil: t
+    otherwise: t
 
 # A record or a choice made again (`Recolored`): each field read at its type under the
 # signature's type arguments and walked to its type under the call's.
