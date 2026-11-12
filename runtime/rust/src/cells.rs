@@ -556,6 +556,22 @@ impl<T: Clone + 'static> Event<T> {
         self.port.subscribe_above(Rc::new(move |v: &T, cx: &mut Cx| out.fire(f(v), cx)), Rc::new(move |h| raised.raise(h)));
         Event { owner: self.owner.clone(), port }
     }
+    /// The event `f` of this one, `f` given each firing's read point: a lifted call that
+    /// samples a dynamic at the firing (`(F $d) on !e` as an event value reads `$d` as the
+    /// tick opened, Semantics ch. 7).
+    pub fn map_at<U: Clone + 'static>(&self, f: impl Fn(&T, &Cx) -> U + 'static) -> Event<U> {
+        let port = Rc::new(Port::new());
+        let out = port.clone();
+        let raised = port.clone();
+        self.port.subscribe_above(
+            Rc::new(move |v: &T, cx: &mut Cx| {
+                let at_firing = f(v, cx);
+                out.fire(at_firing, cx)
+            }),
+            Rc::new(move |h| raised.raise(h)),
+        );
+        Event { owner: self.owner.clone(), port }
+    }
 }
 
 impl<U: Clone + 'static> Event<Option<U>> {
@@ -697,6 +713,8 @@ struct MergeNode<T: Clone + 'static> {
     out: Rc<Port<crate::collections::Array<T>>>,
     /// The merge, the node's one combinator.
     heights: Heights,
+    /// Itself: nothing else holds the node once the event value is let go ([`merge_all`]).
+    kept: RefCell<Option<Rc<MergeNode<T>>>>,
 }
 
 impl<T: Clone + 'static> Node for MergeNode<T> {
@@ -715,7 +733,7 @@ impl<T: Clone + 'static> Node for MergeNode<T> {
 /// every event of the list, so it fires once in a tick, after each of them had its turn;
 /// its own port fires at that height. Owned by the event.
 pub fn merge_all<T: Clone + 'static>(events: &crate::collections::Array<Event<T>>) -> Event<crate::collections::Array<T>> {
-    let node = Rc::new(MergeNode { list: MergeList::new(), out: Rc::new(Port::new()), heights: Heights::new(vec![1]) });
+    let node = Rc::new(MergeNode { list: MergeList::new(), out: Rc::new(Port::new()), heights: Heights::new(vec![1]), kept: RefCell::new(None) });
     node.out.raise(node.heights.of(0));
     node.list.listen_above(
         events,
@@ -727,6 +745,10 @@ pub fn merge_all<T: Clone + 'static>(events: &crate::collections::Array<Event<T>
             }
         },
     );
+    // the list hears into the node weakly, and a reader subscribes to the event's port and
+    // lets the event value go: the node keeps itself, as a mapped event's subscription
+    // keeps its closure, for as long as its inputs' ports live
+    *node.kept.borrow_mut() = Some(node.clone());
     let port = node.out.clone();
     Event { owner: Some(node), port }
 }

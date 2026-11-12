@@ -152,9 +152,23 @@ impl FromPod for PreludeUnwrap {
     }
 }
 
+/// The description of `Prelude.Unwrap`: the element applied as a plain value (`@Element
+/// (Prelude.Unwrap(!~value=..))`), its field as given, the event of `~a`s (a type
+/// parameter's values are plain data here).
+#[derive(Clone)]
+#[allow(non_camel_case_types)]
+pub struct PreludeUnwrap_desc {
+    pub value_e: ::prism_rtl::Event<::std::result::Result<Pod, Error>>,
+}
+
 /// `tag Prelude.Exceptions of Element !Exception`.
 #[derive(Clone, PartialEq, Eq)]
 pub struct PreludeExceptions {}
+
+/// The description of `Prelude.Exceptions`: the element applied as a plain value.
+#[derive(Clone)]
+#[allow(non_camel_case_types)]
+pub struct PreludeExceptions_desc {}
 
 impl PreludeExceptions {
     pub const TAG: &'static str = "Prelude.Exceptions";

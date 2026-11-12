@@ -45,7 +45,7 @@ fn matches(p: &Pod, v: &Pod) -> bool {
         (Pod::Element(t, _), Pod::Element(u, _)) if t.ends_with(".*") => u.rsplit_once('.').is_some_and(|(f, _)| *f == t[..t.len() - 2]),
         (Pod::Record(n, ps), Pod::Record(m, fs)) | (Pod::Element(n, ps), Pod::Element(m, fs)) => n == m && fields(ps, fs),
         // A bare qualified name is a fault kind, or an element with no fields.
-        (Pod::Choice(c, a), Pod::Element(t, fs)) => a.is_empty() && fs.is_empty() && c == t,
+        (Pod::Choice(c, a), Pod::Element(t, fs)) => a.is_empty() && fs.is_empty() && **c == **t,
         (Pod::Choice(c, ps), Pod::Choice(d, vs)) => (c == d || names_case(c, d)) && all(ps, vs),
         (Pod::Tuple(ps), Pod::Tuple(vs)) | (Pod::Array(ps), Pod::Array(vs)) => all(ps, vs),
         (Pod::Map(ps), Pod::Map(es)) => ps.len() == es.len() && ps.iter().zip(es).all(|((pk, pv), (k, v))| matches(pk, k) && matches(pv, v)),

@@ -1,0 +1,31 @@
+# Derived by hand from the Bible's recorded transcript of the same test on the same library (prism-notes, claude/04-domains-and-documents/evidence/documents/tests.expected, test accepted), with this version's four buttons (the table at position 5) and its one `compute` before the click: the views' first answers are told at tick 2 as there, the click is tick 2's input, and by Semantics ch. 9 (a request at n is answered at n+1) the response and the new total are told at tick 3. The run on the gen1 f24a (fix ce1b0a05) gives these bytes.
+test accepted
+
+tick 0
+  added:
+    0: Ui.Button(label="cy joins")
+    1: Ui.Button(label="cy leaves")
+    2: Ui.Button(label="ada leaves")
+    3: Ui.Button(label="bob becomes eager")
+    5/[(((Teller "ada"), Person))]/0/[1]/0: Ui.Button(label="ada +1")
+    5/[(((Teller "ada"), Person))]/0/[2]/0: Ui.Button(label="ada +2")
+    5/[(((Teller "ada"), Person))]/0/[4]/0: Ui.Label(text="ada: (loading); nothing yet")
+    5/[(((Teller "bob"), Person))]/0/[1]/0: Ui.Button(label="bob +1")
+    5/[(((Teller "bob"), Person))]/0/[2]/0: Ui.Button(label="bob +2")
+    5/[(((Teller "bob"), Person))]/0/[4]/0: Ui.Label(text="bob: (loading); nothing yet")
+
+tick 1
+
+tick 2
+  in:
+    5/[(((Teller "ada"), Person))]/0/[1]/0: click
+  changed:
+    5/[(((Teller "ada"), Person))]/0/[4]/0: Ui.Label(text="ada: total 0, may add; nothing yet")
+    5/[(((Teller "bob"), Person))]/0/[4]/0: Ui.Label(text="bob: total 0, may add; nothing yet")
+
+tick 3
+  changed:
+    5/[(((Teller "ada"), Person))]/0/[4]/0: Ui.Label(text="ada: total 1, may not add; accepted")
+    5/[(((Teller "bob"), Person))]/0/[4]/0: Ui.Label(text="bob: total 1, may add; nothing yet")
+
+tick 4

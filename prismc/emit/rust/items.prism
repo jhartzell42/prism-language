@@ -278,13 +278,22 @@ fn PrismFieldOf c, f = Fold (Range0 (Len c.fields)), (PrismField f), \|found, i|
     ((? ((g, ignore)), ? label)): if g == f: label else: found
     otherwise: found
 
+# A case's arm of a choice's `to_pod`: its constructor with the case's position in the
+# type (`prism_rtl::ConstructorName::at`), so plain data of the type orders as the type's
+# derived `^Ord` does, by the order the cases are declared in, and a path whose key is a
+# choice stands in the key type's order (hosting bug 28).
+ChoicePodArm: unbounded fn TyDef, Nat -> Text
+fn ChoicePodArm t, i:
+    let c = Or t.cases[i], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+    "{CasePattern t, c} => crate::prelude::Pod::Choice(::prism_rtl::ConstructorName::at(\"{c.prism}\", {i}), vec![{Join (Each (Binders (Len c.fields)), \|b| "{b}.to_pod()"), ", "}]),"
+
 ToPodImpl: unbounded fn TyDef, Text -> Text
 fn ToPodImpl t, head:
     let body = match t.shape:
         ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
             "crate::prelude::Pod::record(\"{t.prism}\", vec![{Join (Each c.fields, \|((f, ignore))| "(\"{PrismFieldOf c, f}\", self.{f}.to_pod())"), ", "}])"
-        otherwise: MatchSelf (Join (Each t.cases, \|c| "{CasePattern t, c} => crate::prelude::Pod::Choice(\"{c.prism}\".into(), vec![{Join (Each (Binders (Len c.fields)), \|b| "{b}.to_pod()"), ", "}]),"), "\n")
+        otherwise: MatchSelf (Join (Each (Range0 (Len t.cases)), \|i| ChoicePodArm t, i), "\n")
     let shown = if t.show == ShownOwn: ShownPod body else: body
     # its own `^Show` may hold under its `where` bounds alone, which the crossing needs
     let bound = if t.show == ShownOwn and (Len t.params) > 0: " where {head}: crate::prelude::Show" else: ""

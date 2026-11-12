@@ -87,10 +87,12 @@ fn EventRef wx, menv, e:
             (((EvRefOf w4, id), w4))
         EBinary "on", l, r:
             let ((rr, w1)) = EventRef wx, menv, r
-            # an event of values that hold time (`(($b, "t")) on !swap`, `$b on !swap` as a
-            # hold of dynamics' step): the value holds its dynamics whole, each the live
-            # dynamic its line made (`WholeArgsAt`), never a copy of its value
-            let lxValue = if HasTime (Peel (TypeAt lx, e.span)): update lx:
+            # an event of values that hold time, its value written over readers (`(($b,
+            # "t")) on !swap`, a hold's step): the value holds its dynamics whole, each the
+            # live dynamic its line made (`WholeArgsAt`), never a copy of its value. A
+            # value that is a dynamic itself is what `on` lifts over (`$other on !swap`,
+            # `$other` a dynamic of such tuples): read at the firing, as any operand
+            let lxValue = if (HasTime (Peel (TypeAt lx, e.span))) and (LayerOf (TypeAt lx, l.span)) != LyDyn: update lx:
                 &_.whole <= True
             else: lx
             let value = Own (ValueOf lxValue, menv, l)

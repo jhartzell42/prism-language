@@ -437,6 +437,15 @@ struct Event {
         port->subscribe([out, f](const T& v, Cx& cx) -> Done { return out->fire(f(v), cx); });
         return Event<U>{owner, out};
     }
+    /// The event `f` of this one, `f` given each firing's read point: a lifted call that
+    /// samples a dynamic at the firing (`(F $d) on !e` as an event value).
+    template <class F>
+    auto map_at(F f) const -> Event<std::invoke_result_t<F, const T&, const Cx&>> {
+        using U = std::invoke_result_t<F, const T&, const Cx&>;
+        auto out = make_rc<Port<U>>();
+        port->subscribe([out, f](const T& v, Cx& cx) -> Done { return out->fire(f(v, cx), cx); });
+        return Event<U>{owner, out};
+    }
 };
 
 /// `!Filter`: the present values.
