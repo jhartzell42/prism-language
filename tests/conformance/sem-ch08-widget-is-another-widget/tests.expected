@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 8 (a blueprint applied builds its places where it stands); never run.
+test the_other_widget_is_built
+
+tick 0
+  added:
+    0: Ui.Label(text="page")
