@@ -405,6 +405,31 @@ fn DynamicPlace wx1, tg, out, pos, f, level, accessor:
         &_.build <= Push &_.build, (DoExpr (XMethod (XCx), "listen", [[(XClone (XField (XVar "node"), "{f}_element")), (XRef (XCast (XClone (XVar "node")), (OutObj (OutNamed (RefRuntime "rt::Node"), [[]]))))]]))
     else: wx2
 
+# A World's place with a `$` output whose constant field reads a late result
+# (`LateFieldPlaces`; Semantics ch. 8, "A new place's first value": a state is keyed by
+# the element's value, which has none at the block's build): its hold `f` is empty at the
+# node's making (`Hold<Option<T>>`, read as the value it holds, `LatePlaceBn`), and where
+# the generation that gives the late result is built (`Wx.lateAsks`) the place asks its
+# first value with the element its getter reads then, sets the hold, keeps the element
+# its pushes are keyed by (`{f}_element`, a cell empty until then, which the push compares
+# with what it is told) and listens for them. A push writes the present value
+# (`DynPlaceWrite`).
+LateAskedPlace: unbounded fn Wx, TagInfo, OutTy, Pos, Text, Ex, Text -> Wx
+fn LateAskedPlace wx, tg, out, pos, f, level, accessor:
+    let element = "{f}_element"
+    let pod = XMethod level, "to_pod", [[]]
+    let first = XCtor (RefRuntime "std::Some"), [[(XDecode out, (XRef (XVar "first_{PlaceText pos}")))]]
+    let node = XRef (XCast (XClone XSelf), (OutObj (OutNamed (RefRuntime "rt::Node"), [[]])))
+    let asked = [[(FirstValueLet wx, pos, tg, level, out), (DoExpr (XMethod (XField XSelf, f), "set", [[first, XCx]])), (DoExpr (XMethod (XField XSelf, element), "replace", [[(XCtor (RefRuntime "std::Some"), [[pod]])]])), (DoExpr (XMethod (XCx), "listen", [[pod, node]]))]]
+    update wx:
+        &_.fields <= Append &_.fields, [[((f, (OutHold (OutOpt out)), "pushed to place {PlaceText pos}, empty until its first value is asked, where the late result its element reads is built")), ((element, (OutCell (OutOpt OutPod)), "place {PlaceText pos}'s element, which pushes are keyed by: empty until the place asks its first value"))]]
+        &_.moves <= Append &_.moves, [[((f, (XCall (RefRuntime "rt::Hold::new"), [[XNone, XCx]]))), ((element, (XCall (RefRuntime "std::RefCell::new"), [[XNone]])))]]
+        &_.latePlaces <= Push &_.latePlaces, f
+        &_.lateElements <= Push &_.lateElements, f
+        &_.dynPlaces <= Push &_.dynPlaces, ((pos, f, out, accessor))
+        &_.lateAsks <= Append &_.lateAsks, asked
+        &_.fallible <= True
+
 # A place with a `$` output in a hosted scope whose host answers with a dynamic that has
 # no value while the node is being made (`Wx.lateHosts`; Semantics ch. 9: a dynamic
 # output's first value is read in the birth tick; ch. 7, "Structural dynamics": the
@@ -452,6 +477,11 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
             let wx3 = update (LateFirstPlace wx1, pos, f, out, asked):
                 &_.dynPlaces <= Push &_.dynPlaces, ((pos, f, out, (AnswerAccessor tg)))
             ((wx3, (BnRes (LatePlaceBn f, out))))
+        # a World's place whose constant field reads a late result (`LateFieldPlaces`):
+        # asked where the generation that gives the result is built (`LateAskedPlace`)
+        LyDyn if (IsSome (?LatePlaceHold ?bound)) and (Emits wx, pos):
+            let f = Or (?LatePlaceHold ?bound), ""
+            (((LateAskedPlace wx, tg, out, pos, f, level, (AnswerAccessor tg)), WrUnit))
         LyDyn:
             let ((f, wx1)) = match ?bound:
                 ? (BnHold hf, ignore): ((hf, wx))

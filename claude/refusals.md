@@ -236,9 +236,9 @@ Building `match`, clause widgets, `rebuild`
   (`LateTakerResults`).
   Left refused: a `let` of a type with time inside that is no bundle and reads the late
   name (the `unbuilt` refusals of `BindLate`, `MarkLateLets`); a place whose constant
-  field reads the late name and whose answer is a `$` or a bundle, is bound by a
-  pattern, or stands in a hosted scope (`BindLate`'s `unbuilt`: R; the `$` answer's
-  test is sem-ch04-late-value-above-in-dynamic-place-field, red; the others have none); the late
+  field reads the late name and whose answer is a bundle, is bound by a pattern, or
+  stands in a hosted scope (`BindLate`'s `unbuilt`: R, no test; a `$` answer is asked
+  late as a plain one is, `LateAskedPlace`: sem-ch04-late-value-above-in-dynamic-place-field); the late
   names of `LateFieldPlaces` and `LateTakerResults` read at the build by a line that
   takes a value there and is not deferred (their `unbuilt`: unsure G, as
   `MarkLateLets`'); and in `DeferredLine`, a line that takes the late name and whose

@@ -644,8 +644,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
     gives the late result is built, right after the row and before the holds' late
     first values (`LateFieldPlaces`, `Wx.lateAsks`, `WithLateInits`), with the element
     its getter reads then; the name is late, the value of a `Hold<Option<T>>` written
-    once (`LatePlainBn`). Refused: the same with a `$` or a bundle answer, with a
-    pattern for the answer, or in a hosted scope (the `unbuilt` marker of `BindLate`);
+    once (`LatePlainBn`). With a `$` answer (`$c <- Pad.Count(..)`) the same: its
+    `Hold<Option<T>>` is set there (`LateAskedPlace`, read as `LatePlaceBn`), and the
+    element its pushes are keyed by is kept then, in `{f}_element`, a
+    `RefCell<Option<Pod>>` the push compares (`Wx.lateElements`), the place listening
+    from then on. Refused: the same with a bundle answer, with a pattern for the
+    answer, or in a hosted scope (the `unbuilt` marker of `BindLate`);
   - a plain `let` of the node that reads a late name is late too (`MarkLateLets`): a
     getter of the node that computes it (`late_{name}`, `LateLetGetters`), bound under
     `{name}#late` as the split line's names are, so what reads it reads it late in turn;
