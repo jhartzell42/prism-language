@@ -385,6 +385,27 @@ fn ErrorPat lx, fps, ty, mode, fresh:
                     match ?kq:
                         ? kq: if HasKey lx.g.tags, kq: ((([[CcIf (XBin OpEq, (XRef (XDeref (XField (XVar fresh), "kind_p"))), (XStr kq))]]), [[]])) else: (([[]], [[((SNameKey k, (BnLocal (XCall (HelperRef "kind_of"), [[(XRef (XVar fresh))]]), Owned, OutPod)))]]))
                         nil: (([[]], [[((SNameKey k, (BnLocal (XCall (HelperRef "kind_of"), [[(XRef (XVar fresh))]]), Owned, OutPod)))]]))
+                # a kind with fields, `Count.TooMany(limit=l, asked=a)`: the kind's name
+                # compared, then each field read back at its type (the prelude's
+                # `fault_field`) and matched by its own pattern
+                PRecord k, kfps, ignore:
+                    let ((?kq, ignore)) = ResolveValue lx.g, lx.home, k
+                    let ?kindTag = match ?kq:
+                        ? kq: lx.g.tags[kq]
+                        nil: nil
+                    match ?kindTag:
+                        ? tg:
+                            let named = CcIf (XBin OpEq, (XRef (XDeref (XField (XVar fresh), "kind_p"))), (XStr tg.name))
+                            let names = Each tg.fields, \|((f, ignore))| f
+                            Fold (Range0 (Len kfps)), (([[named]], [[]])), \|((cs, bs)), i|
+                                let kfp = Or kfps[i], dummyFieldPat
+                                let fname = TagFieldName kfp, names, i
+                                let ft = Fold tg.fields, TyErr, \|found, ((f, t))| if f == fname: t else: found
+                                let local = "{fresh}_k{i}"
+                                let read = XCallAt (HelperRef "fault_field"), [[(OutTyOf lx, (Peel ft))]], [[(XRef (XVar fresh)), (XStr fname)]]
+                                let o = RustPat lx, kfp.pattern, (Peel ft), ByRef, "{local}_p"
+                                (((Append (Push cs, (CcLet o.pa, (XRef read))), o.conds), (Append bs, o.binds)))
+                        nil: (([[CcIf (InternalBug "an `Error`'s kind matched against what is no fault kind")]], [[]]))
                 otherwise: (([[]], [[]]))
             "message": match fp.pattern.kind:
                 PName m: (([[]], [[((SNameKey m, (BnLocal (XField (XVar fresh), "message_p"), Owned, OutText)))]]))

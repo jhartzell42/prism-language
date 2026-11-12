@@ -563,11 +563,8 @@ fn ConvTag g, st, info, t, span:
     let ((bs, st4a)) = ConvBounds cx, st3, t.bounds
     # `collision`: a tag is declared once; the first declaration stays the tag
     let st4b = if HasKey g.tags, name: Err st4a, "collision", span, "a second tag `{name}`" else: st4a
-    # a fault kind is its tag alone (Semantics ch. 10): what failed goes in the `Error`'s
-    # message, and a kind with a field has no value a `match` on kinds could name
-    let st4 = match t.fields[0]:
-        ? f if kind == "Fault" or kind == "Prelude.Fault": ErrFix st4b, "mismatch", span, "the fault kind `{name}` declares a field, `{f.name.name}`; a fault kind is its tag alone", "say what failed in the message of the `Error`"
-        otherwise: st4b
+    # (a fault kind may declare fields: a fault holds typed values, ruling TF)
+    let st4 = st4b
     # `field-variable`: a variable in a field appears in the tag's output (Type System
     # ch. 2, "A variable in a field must appear in the index"), which is what decides it
     # where the tag is matched

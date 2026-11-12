@@ -1703,7 +1703,15 @@ fn TagValue lx, env, tg, args:
     let t = OutNamed (KindRef lx, tg.kind), [[]]
     match tg.kind:
         "Element": ElementValue lx, env, tg, args
-        "Prelude.Fault": VlOwned (Refusal "a fault kind applied ({tg.name})"), t
+        # a fault kind made with its fields (ruling TF, "faults hold typed values"): the
+        # tag's value, its fields as plain data in declaration order (the prelude's
+        # `fault_kind_of`); an `Error` keeps them (`error_of`), a pattern reads them back
+        # at their types (`ErrorPat`)
+        "Prelude.Fault":
+            let fields = Each tg.fields, \|((fname, ignore))| match ?TagArg args, fname:
+                ? x: XTuple [[(XStr fname), (XMethod (Own (ValueOf lx, env, x)), "to_pod", [[]])]]
+                nil: InternalBug "the fault kind {tg.name} made without its field {fname}"
+            VlOwned (XCall (HelperRef "fault_kind_of"), [[(XStr tg.name), (XVec fields)]]), OutPod
         otherwise:
             let named = Fold args, False, \|f, a| f or IsNamedArg a
             let fields = Each (Range0 (Len tg.fields)), \|i|

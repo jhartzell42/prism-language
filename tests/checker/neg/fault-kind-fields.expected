@@ -1,5 +1,0 @@
-tests/checker/neg/fault-kind-fields.prism:11: error[mismatch]: the fault kind `Disk.Full` declares a field, `left`; a fault kind is its tag alone
-    tag Disk.Full of Fault:
-    ^^^^^^^^^^^^^^^^^^^^^^^
-  fix: say what failed in the message of the `Error`
-1 error
