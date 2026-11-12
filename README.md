@@ -3,11 +3,11 @@
 This is a self-hosting prototype for the Prism programming language. As of now, this is an
 LLM-based prototype, so there might be a lot of weird stuff going on in here.
 
-It compiles Prism through Rust (or through C++, but Rust is the more mature
-recommended option).  That is to say that a compiler written in Prism translates
+It compiles Prism through Rust.
+That is to say that a compiler written in Prism translates
 Prism to Rust, and then the Rust compiler translates that Rust into machine
 code. The compiler can bootstrap, and in [`bootstrap/`](bootstrap/) there are
-archives of the Rust and C++ translations of a compiler for bootstrapping purposes.
+archives of the Rust translation of a compiler for bootstrapping purposes.
 
 I'm working on a human-based rewrite. I ([Jimmy Hartzell](https://www.thecodedmessage.com/),
 notoriously a human) am currently writing this `README.md` document as one of the first steps towards this

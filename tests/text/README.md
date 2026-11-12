@@ -1,18 +1,14 @@
-# tests/text: what both runtimes answer for texts
+# tests/text: what the runtime answers for texts
 
 Written by Claude on the claude-self-hosting branch; subject to change.
 
 `case.txt` states what `Upper` and `Lower` (Semantics Appendix B, Text) answer, character
-for character. Two tests read it, so the two runtimes are held to one source and never
-compared with each other:
+for character. One test reads it:
 
 - Rust: `runtime/rust/tests/case.rs` (`cargo test --release -p prism_rtl --test case`),
-  which runs the Rust prelude's bodies (`str::to_uppercase`, `str::to_lowercase`);
-- C++: `runtime/cpp/tests/test_case.cpp` (`make -C runtime/cpp test`, test `case_file`),
-  which runs `prism_rtl::text_upper` and `text_lower`, what the C++ prelude calls.
+  which runs the Rust prelude's bodies (`str::to_uppercase`, `str::to_lowercase`).
 
-The program `tests/conformance/sem-appB-upper-lower/` checks a selection through both
-compiled targets.
+The program `tests/conformance/sem-appB-upper-lower/` checks a selection.
 
 ## The statement
 
@@ -35,8 +31,7 @@ compiled targets.
 
 This is what Rust's `str::to_uppercase` and `str::to_lowercase` do (whose tables are
 Unicode 17.0.0's in Rust 1.98, `char::UNICODE_VERSION`). A text already in the target
-case comes back equal; whether it is the same buffer is not promised (C++ answers the
-text itself, Rust a copy), and no program can tell.
+case comes back equal; whether it is the same buffer is not promised, and no program can tell.
 
 ## The format
 

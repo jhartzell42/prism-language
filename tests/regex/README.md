@@ -2,13 +2,11 @@
 
 Written by Claude on the claude-self-hosting branch; subject to change.
 
-`corpus.txt` states what both runtimes answer for regular expressions (Semantics
+`corpus.txt` states what the runtime answers for regular expressions (Semantics
 Appendix B, "Regular expressions"; the dialect as `claude/regex-dialect.md` fixes it),
-byte offsets and diagnostics included. Two tests read it, so the two runtimes are held
-to one source and never compared with each other:
+byte offsets and diagnostics included. One test reads it:
 
-- Rust: `runtime/rust/tests/regex.rs` (`cargo test --release -p prism_rtl --test regex`);
-- C++: `runtime/cpp/tests/test_regex.cpp` (`make -C runtime/cpp test`, test `regex_corpus`).
+- Rust: `runtime/rust/tests/regex.rs` (`cargo test --release -p prism_rtl --test regex`).
 
 prismc's checker is held to its refusals and acceptances too: `Check.Regex.Tests`
 (`prismc/check/regex/tests.prism`) is written from this file by `gen-tests.py` beside it
