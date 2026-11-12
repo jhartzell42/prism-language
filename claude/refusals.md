@@ -599,17 +599,20 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | site | class | test | state |
 |---|---|---|---|
 | node/elements.prism `ElementLine`, an element of an unknown tag | G | - | internal error: the checker's `unknown-name` (tests/checker/neg/unknown-tag) |
-| node/elements.prism `ElementOutputOf`, a hosted place with a plain answer no plain name binds, under a host placed after its node | R | none | refused |
+| node/elements.prism `ElementOutputOf`, a hosted place with a plain answer no plain name binds, under a host placed after its node | R | none | refused; `LateHostedOutput` takes every name, `(a)` and a plain pair's tuple pattern under a host below a building `if` (e1b, e3, e4) |
 | node/finish.prism `UpdatedGaps`, `!Updated` of a dynamic no sink of the node writes (UP) | G | sem-ch07-updated-rebuild-dynamic-above reached it | internal error: every dynamic a node binds reads a hold, a getter over its holds, a structural dynamic or a kept result; the program that reached it (a `rebuild`'s dynamic read above its line) was bound to a field the node did not have, lowered by `GivesResult` |
 | node/finish.prism `UpdatedGaps`, the same in a row over a name of its block (SU) | G | the same test's second widget reached it | internal error, by the same argument |
-| node/finish.prism `PlaceNumber`, two sites: a place read at its row's or block's build before its node, after rows that differ in width | R | none | refused |
+| node/finish.prism `PlaceNumber`, a place read at its block's build after rows built after the node that differ in width | R | sem-ch09-host-place-asks-below-building-if | refused: a hosted child's place asking its host its first value below a building `if` of the child (a plain or a `$` answer) |
+| node/finish.prism `PlaceNumber`, the same at its row's build in a row numbered late | G | - | internal error: the callers with no receiver are `HostLine` under `PlaceUnknownAtBuild`, the early clause rows under `NumberedLate` (both true for such a row's scope-0 places) and `FirstValueLet` in a hosted scope, whose positions have no `?base` |
 | node/switch.prism `RebuildDynamic`, a `rebuild` that hands back a dynamic whose generation gives no dynamic, value or bundle | G | sem-ch04-rebuild-ends-on-host reached it | internal error: the one result left out, a host's line last in the generation, is lowered as the host's bundle (`GenRowOf`); `GivesDynamic` keeps events and unit away |
-| node/switch.prism `ArmRowOf`, two sites: a late plain result beside a `for`, a `rebuild` or a widget that calls itself, in a row numbered after its node | R | none | refused |
+| node/switch.prism `ArmRowOf`, two sites: a late plain result beside a `for`, a `rebuild` or a widget that calls itself, in a row numbered after its node | R | sem-ch04-late-value-above-recursing-widget-result (both sites) | refused |
 | node/switch.prism `HeldFlatten`, `@Flatten` with no live dynamic where the line reads it (LF) | G | none | internal error: every widget line goes through `WholeArgsAt` before its `@Flatten` is lowered, and it makes a live dynamic for every outer (a hold or dynamic of the node, a dynamic `let` of a row by its expression, an outer in place); a row's outer of its block is the block's through the parent, a global its constant, a shared row's parameter its `#whole#{name}` |
 | node/def.prism `SplitBlockInto`, a block split at a line whose result is not late | U | none | refused |
-| node/def.prism, the build-side markers of a late name (`PreBindWhole`, `PreBindWholeParts`, `BindLate`, `MarkLateLets`, `LateTakerResults`, `LateFieldPlaces`, `LatePlaceParts`, `LateHostedOutput`, `MarkLateBundle`, `LateBundleParts`: twelve sites) | R | none (sem-ch04-late-value-above-in-plain-place-field passes) | refused: a place with a `$` or bundle answer, bound by a pattern or in a hosted scope, whose constant field reads the late name; a `let` of a type with time inside that is no bundle |
+| node/def.prism, the build-side markers of a late name in `BindLate`, `MarkLateLets`, `LateFieldPlaces` (three sites) | R | sem-ch04-late-value-above-in-bundle-place-field, sem-ch04-late-let-above-in-bundle-place-field, sem-ch04-late-place-answer-above-in-bundle-place-field | refused: a World's place with a bundle answer taken apart by a tuple pattern, whose constant field reads the late name (the split line's result, a plain `let` over it, a place's plain answer whose field reads it); the first value is asked at the build by the element as built |
+| node/def.prism, the other markers (`PreBindWhole`, `PreBindWholeParts`, `LateTakerResults`, `LatePlaceParts` two, `LateHostedOutput`, `MarkLateBundle` two, `LateBundleParts`: nine sites) | R | none | refused where read at the build; the same bundle place reading a taker's result lowers (v1248), and in a hosted scope under a late host a bundle place reading a late plain part or plain answer lowers (v1321, v1376) |
 | node/def.prism, a late plain result in a bundle (`WrLate`) | U | none | refused |
-| node/def.prism `DeferredLine`, two sites: a line that takes a late result above the line that gives it, with counted places (where the giver numbers no rows late: a recursing widget, a blueprint value, a bundle, a scope built at its host's line, a late name of another kind; `LateGiving` lowers the rest) or a plain result no name binds | R | sem-ch04-late-value-above-clause-widget-result-from-arm-lines, -late-let-from-arm-lines, -widget-result-from-arm-lines, -in-late-numbered-row, sem-ch09-host-late-value-above-from-arm-lines (the lowered cases) | narrowed |
+| node/def.prism `DeferredLine`, a line that takes a late result above the line that gives it, with counted places, where the giver numbers no rows late | R | sem-ch08-late-value-above-blueprint-parameter-result (a blueprint parameter applied), sem-ch04-late-value-above-bundle-plain-part (a bundle taken apart: fix 5e0cf1fe); lowered: sem-ch04-late-value-above-clause-widget-result-from-arm-lines, -late-let-from-arm-lines, -widget-result-from-arm-lines, -in-late-numbered-row, sem-ch09-host-late-value-above-from-arm-lines | refused for a blueprint value and a late name of another kind (a late place's answer, m1's `@Wide (Len a)`); a recursing widget gives late and reaches `ArmRowOf` instead; a hosted giver under a host below a building `if` lowers (g4b) |
+| node/def.prism `DeferredLine`, a taker's plain result no name binds | R | none | refused; a tuple pattern (sem-ch04-late-value-above-taker-result-tuple, green) and `ignore <-` (g7) lower, a bare line is the checker's `discarded` |
 | node/static.prism `WidgetCall`, a widget line whose name has no value entry | G | - | internal error: the checker's `unknown-name`; a `for`'s binder that is a blueprint (`for @each <- [[@One, @Two]]:`) applied as a line of the row is a value of the node (`WidgetLine`'s `held`; sem-ch08-for-over-blueprints) |
 | node/static.prism `HostLine`, a host without its child or its supplier | G | - | internal error: the checker's `mismatch` (tests/checker/neg/ignore-binds-a-function, neg/builtin-widget-without-argument) |
 | node/static.prism `InlineWidget`, a widget of several clauses that takes no arguments | G | - | internal error: the checker's `collision` (ruling ZD; tests/checker/neg/clause-widget-without-arguments) |
@@ -630,13 +633,15 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | expr.prism `FunctionRecolored`, a function whose color no use of its `let` decides | U | none | refused |
 | patterns.prism, a pattern inside an element's `$` field | G | - | internal error: the checker's `live-field-pattern` (ruling LP; tests/checker/neg/live-field-pattern) |
 
-Totals: 35 `Refusal` / `RefusalDo` calls stand in prismc/lower. 2 are internal errors
-by their text (`PartsBlueprint`); 4 are R with a red test (`AnyValue`, the named
-bundle, the block widget, one `WidgetValueWords` call); 19 are R with no test (the 12
-late-name markers, `DeferredLine` 2, `PlaceNumber` 2, `ArmRowOf` 2, `ElementOutputOf`);
-10 are U (`SplitBlockInto`, `WrLate`, the generic widget, LE, LF of expr.prism, an event
-read as a value, the other `WidgetValueWords` call and `UndecidedParameter`, `Recolored`,
-`FunctionRecolored`). Twelve guards are internal errors and no longer refusals.
+Totals: 34 `Refusal` / `RefusalDo` calls stand in prismc/lower. 2 are internal errors
+by their text (`PartsBlueprint`); 11 are R with a red test (`AnyValue`, the named
+bundle, the block widget, one `WidgetValueWords` call, `ArmRowOf` 2, `DeferredLine`'s
+counted line, `PlaceNumber`'s block site, the markers of `BindLate`, `MarkLateLets` and
+`LateFieldPlaces`); 11 are R with no test (9 late-name markers, `DeferredLine`'s unnamed
+result, `ElementOutputOf`); 10 are U (`SplitBlockInto`, `WrLate`, the generic widget, LE,
+LF of expr.prism, an event read as a value, the other `WidgetValueWords` call and
+`UndecidedParameter`, `Recolored`, `FunctionRecolored`). Thirteen guards are internal
+errors and no longer refusals.
 
 Refusals outside `Refusal` / `RefusalDo`, which the table above does not hold:
 
@@ -683,5 +688,42 @@ refusal. They are the attempts behind the R rows with no test and the U rows.
 - An event read as a value: `!MergeAll` over a block's events, a widget's event
   parameter, a generation's and a row's own events and a switched one, in a block, a
   generation and a row (a3).
+- Under target/fx/s4 of the fourth sweep's worktree, compiled by keep-B: a taker above a
+  hosted giver under a host below a building `if` (g4b), `ignore <- @Wide n` above the
+  giver (g7), a grouped taker `w <- (@Wide n)` and one over a `let` (m4, m5), a `for`
+  over a late place's answer (m6), a hold starting from a function of a late bundle
+  bound whole (b1), a hosted place's plain answer bound by `(a)`, by a plain pair's
+  tuple pattern, read by another place's field, and a bundle place reading a late plain
+  part, under a host below a building `if` (e1b, e3, e4, e5, e6, v1321, v1376), a
+  bundle place reading a taker's result (v1248): each lowered.
 - Not tried: `SplitBlockInto`, `WrLate`, the generic widget, `UndecidedParameter`,
   `Recolored`, `FunctionRecolored`, and the four sites of the second table.
+
+## Designs for the red R tests with no fix
+
+- A World's place with a bundle answer taken apart by a tuple pattern, whose constant
+  field reads a late name (the three marker tests): `LateFieldPlaces` takes a `PName`
+  alone. Take a `PTuple` of a bundle answer as `LatePlaceParts` takes a hosted late
+  place's: each plain part a hold set where the place asks (`LatePlainBn`), each `$`
+  part empty until then (`LatePlaceBn`, as `LateAskedPlace` does for a `$` answer), each
+  event part subscribed then; the ask goes into `Wx.lateAsks` (where the late result's
+  generation is built) with the element its getter reads, as a plain answer's does in
+  `ElementOutputOf`, and `BundleOutputOf` sets the holds from the decoded first value.
+- A hosted child's place below a building line of the child (sem-ch09-host-place-asks-
+  below-building-if): its number is not known at the build, so it cannot ask its host
+  there. Ask it where the scope's places ask once the node stands (`Wx.lateFirsts`), as
+  under a host placed late, with `PlaceAt wx, "self", pos` (the node stands then); its
+  plain answer is a late name, marked as `LateHostedOutput` marks one, but decided by the
+  line above being a gappy building line of the same block (known before the lines are
+  lowered: `IsGivingLine` or a widget of several clauses above it in the block).
+- A blueprint parameter applied as the giver (sem-ch08-late-value-above-blueprint-
+  parameter-result): `IsGivingLine` stops at a parameter. Follow the argument the
+  parameter is bound to (`#blueprint`) as it follows a one-clause widget; the applied
+  row (`AppliedBlueprintLine`) then needs the `number_places` hook a transparent arm
+  row has (`weakLate` under `GivenUnnumbered`), so its rows are built before the taker
+  and numbered after it.
+- A widget that calls itself in the giver's arm (sem-ch04-late-value-above-recursing-
+  widget-result): the arm row numbered late (`GivenUnnumbered`) holds a shared row
+  (`SharedClauseLine`) that numbers its places as built. Give the shared rows of a row
+  numbered late the same `weakLate` numbering (built unnumbered, numbered by the parent's
+  `number_places` in place order), so `ArmRowOf` no longer meets an unnumbered step.
