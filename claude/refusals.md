@@ -102,7 +102,11 @@ Hosting
   the lowering can find (`DefInstancesAnswer`, `?GrowsFrom`: a line through a
   constraint an impl solves, or through a use whose types hold an associated type,
   that holds one definition twice, the earlier types embedded in the later, which may
-  be a finite program's, `EndlessThroughImpl`: R, no test), or a use of the
+  be a finite program's, `EndlessThroughImpl`: R,
+  sem-ch08-widget-value-generic-through-associated-type; a line through an impl's
+  constraint alone is a substitution, followed when it settles,
+  sem-ch08-widget-value-generic-in-method-at-settling-types, and the checker's
+  `grows-without-end` when it grows, tests/checker/neg/impl-at-ever-larger-types), or a use of the
   definition leaves a type parameter undecided (`UndecidedParameter`). A line of
   uses by name that gives a type parameter a larger type holding itself is the
   checker's `grows-without-end` (ruling PG: tests/checker/neg/function-at-ever-larger-types,
