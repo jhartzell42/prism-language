@@ -343,10 +343,15 @@ fn CppRecord cp, p, fs = CppRecordAs cp, p, fs, (OwnTypePath cp, p)
 CppRecordAs: unbounded fn Cp, Ref, [((Text, Ex))], Text -> Text
 fn CppRecordAs cp, p, fs, head = match ?TypeOf cp, p:
     ? info:
-        let ordered = Each info.fields, \|f| Or (Fold fs, nil, \|?found, ((g, v))| if g == f: ? v else: ?found), XUnit
-        let values = CppArgList cp, ordered
-        if info.kind == "job": "{TypePath (RefSpelled p)}({Join values, ", "})"
-        else: "{head}\{{Join (Each (Range0 (Len info.fields)), \|i| ".{FieldId (Or info.fields[i], "")} = {Or values[i], ""}"), ", "}\}"
+        # every field the type declares is given: one the model leaves out is a prismc bug
+        let given = Each fs, \|((g, ignore))| g
+        let missing = Filter info.fields, \|f| not (InList given, f)
+        if (Len missing) > 0: PrinterRefusal "a record of {RefSpelled p} without its field {Join missing, ", "}"
+        else:
+            let ordered = Each info.fields, \|f| Or (Fold fs, nil, \|?found, ((g, v))| if g == f: ? v else: ?found), XUnit
+            let values = CppArgList cp, ordered
+            if info.kind == "job": "{TypePath (RefSpelled p)}({Join values, ", "})"
+            else: "{head}\{{Join (Each (Range0 (Len info.fields)), \|i| ".{FieldId (Or info.fields[i], "")} = {Or values[i], ""}"), ", "}\}"
     nil: PrinterRefusal "a record of no type it knows ({RefSpelled p})"
 
 # A call of a named function: the runtime's and the prelude code's functions by their C++
