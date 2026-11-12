@@ -1,0 +1,23 @@
+# Derived by hand from Semantics ch. 4 (a `for` over an array: one row a key, the index; each row a block of its own) and ruling FV (`@Flatten` adopts, after the tick its outer fires, the inner the outer then holds, and reads it from the next tick, owed): the click moves `$a` to 6 and gives each row's hold the row's `$v`; tick 2 reads it. Equal to the first run, on prismc-f4.
+test each_row_flattens_its_own
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1/[0]/0: Ui.Label(text="0: 5")
+    1/[1]/0: Ui.Label(text="1: 5")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1/[0]/0: Ui.Label(text="0: 6")
+    1/[1]/0: Ui.Label(text="1: 6")
+
+tick 2
+  changed:
+    1/[0]/0: Ui.Label(text="0: 1")
+    1/[1]/0: Ui.Label(text="1: 2")
+tests/conformance/sem-ch07-flatten-in-for-row/tests.prism: test each_row_flattens_its_own line 9: Expect(Pattern(Element("Ui.Label", [("text", Text("2: 5"))]))) did not hold
+tests/conformance/sem-ch07-flatten-in-for-row/tests.prism: test each_row_flattens_its_own line 11: Expect(Pattern(Element("Ui.Label", [("text", Text("2: 6"))]))) did not hold
+tests/conformance/sem-ch07-flatten-in-for-row/tests.prism: test each_row_flattens_its_own line 13: Expect(Pattern(Element("Ui.Label", [("text", Text("2: 2"))]))) did not hold
