@@ -30,6 +30,14 @@ it make every program an interpreter run, and every type mistake a runtime fault
     root's constructor, `rt.close(cx)`; the arguments arrive as data (`FromPod`);
   - `tick(&mut self, input, ready)`: `rt.tick(&root, input, ready)`;
   - `compact(&mut self)`: `rt.compact()`.
+- **A root widget whose body is not one block** (one expression, `fn @Show text = @Inner
+  text`; several clauses; an alias, `fn @main = @page`): its node takes its parameters by
+  name (`argument0`, ..) and its block is one line, the widget applied to them
+  (`RootApplicationItems`), lowered as that line is anywhere: the expression inlined, or
+  the clause chosen at the build (`ClauseWidgetLine`), transparent, so the places stand
+  at the root's positions. The line is made, not parsed: its types are noted in
+  `Lx.tys` at spans past the end of any file (`rootApplicationStart`). A widget of no
+  arguments defined as one expression is an alias: inlined where it is applied.
 - **The tick** (`Runtime::tick`, Graph ch. 4's order): last round's undone clean-ups; the
   started list's `Node::started` and the armed `Node::deferred`; the computed answers a
   host's supplier queued last tick (`Cx::answer_later`); answers through

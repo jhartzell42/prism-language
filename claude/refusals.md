@@ -618,7 +618,7 @@ is found. "Test" is the test that reaches the site today, red, or none.
 | expr.prism `NameValueOf`, an event read as a value | U | none | refused |
 | expr.prism `NameValueOf`, a tuple pattern's binding as a value | R | ts-ch02-named-bundle-as-argument | refused: a bundle bound to one name and passed whole to a function |
 | expr.prism `NameValueOf`, a widget defined in a block read as a blueprint value outside a line's value places | R | sem-ch08-block-widget-given-by-lambda | refused: a lambda of the block that gives the widget |
-| expr.prism `WidgetValueWords`, a widget as a value where `ValuedWidgets` does not look (two calls) | R (one call), U (the other) | sem-ch08-widget-is-another-widget | refused: a widget defined as one expression that is another widget (`fn @main = @page`) |
+| expr.prism `WidgetValueWords`, a widget as a value where `ValuedWidgets` does not look (two calls) | R (one call), U (the other) | none | refused; a widget defined as one expression that is another widget (`fn @main = @page`) is an alias and no longer reaches it (sem-ch08-widget-is-another-widget) |
 | expr.prism `OpenWidgetValueWords`: `EndlessByName`, `EndlessThroughImpl` | G | - | internal errors: the checker's `grows-without-end` |
 | expr.prism `OpenWidgetValueWords`: `UndecidedParameter` | U | none | refused |
 | expr.prism `Recolored`, a function value held by a type that is none of those it maps through | U | none | refused |
@@ -640,7 +640,6 @@ Refusals outside `Refusal` / `RefusalDo`, which the table above does not hold:
 | site | class | test | state |
 |---|---|---|---|
 | emit/rust/items.prism `DeepPod` (and the C++ printer's): a tag's plain field that holds a dynamic other than `$Elem` or a map of them | R | sem-ch09-tag-field-array-of-dynamics | a `compile_error!` whose text does not begin "prismc does not lower", so `CompileProgram` reports nothing, exits 0, and rustc refuses the crate |
-| lower/program.prism `DefItems`, `ItRefused`: a root widget whose body is one expression; a root widget of several clauses | U | none | refused; `fn @main = @page` as a root reaches `WidgetValueWords` first |
 | lower/types.prism, `OutQuantified` (two sites): a quantified type variable no instantiation gives a type | U | none | refused; `Len [[]]`, `Size {}` and an unused `let empty = [[]]` are lowered |
 | lower/expr.prism, `OutRefused "a parameter"`: a typed parameter pattern with no type | U | none | refused |
 
@@ -673,11 +672,6 @@ Each is red on prismc-r21 by a compile of the one program; the transcripts are b
   widget of a block read as a value is the blueprint value of its block in the
   environment where it stands, as `WidgetBlueprintValueFrom` makes for a top-level
   widget read as a value; the block's captures are the lambda's.
-- **sem-ch08-widget-is-another-widget** (`WidgetValueWords`). `ValuedWidgets` looks at
-  suppliers' answers and blueprint arguments; a widget whose body is one expression
-  that names another widget is neither. Design: such a widget is an alias: inline the
-  named widget where the alias is applied (`InlineWidget` on the body's callee), and as
-  a root build the named widget's node.
 - **sem-ch08-for-over-blueprints** (`WidgetCall`'s internal error). A `for`'s value
   binder that is a blueprint is a `BnLocal` of a `Blueprint` value in the row; the line
   `@each` finds no value entry and none of the lines above takes it. Design: the row
