@@ -1,0 +1,7 @@
+# Derived by hand from Semantics ch. 4 (a `for` over an array: one row a key, the index) and ch. 8 (a blueprint applied as a line builds its places where the line stands); never run.
+test each_row_builds_its_blueprint
+
+tick 0
+  added:
+    0/[0]/0: Ui.Label(text="one")
+    0/[1]/0: Ui.Label(text="two")

@@ -1,0 +1,19 @@
+# A `for` over an array of blueprints, each row applying its own (Semantics ch. 8: a
+# blueprint is a value; ch. 4: a `for` over an array, one row a key, the index).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@One: @unit
+@One:
+    Ui.Label($text=$"one")
+
+@Two: @unit
+@Two:
+    Ui.Label($text=$"two")
+
+@main: @unit
+@main:
+    for @each <- [[@One, @Two]]:                                 # 0/[k]
+        @each                                                     # 0/[k]/0

@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 3 ("Existentials": the packed value keeps its type's dictionary; "Associated types"); never run.
+test a_trait_with_an_associated_type_is_packed
+
+tick 0
+  added:
+    0: Ui.Label(text="3 2 0")
