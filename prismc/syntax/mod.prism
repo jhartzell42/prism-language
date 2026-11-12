@@ -340,6 +340,8 @@ type StmtKind = choice:
     SFn FnClause
     SWidget WidgetDecl
     SSet Expr, Expr
+    # `&e <: v`: a map entry put from a `?V` (Jimmy's ruling on map entries)
+    SPut Expr, Expr
     SAccum Expr, Text, Expr
     SRequire Expr
     SForbid Expr

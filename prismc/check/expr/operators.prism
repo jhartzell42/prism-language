@@ -195,7 +195,13 @@ fn IsBlueprintExpr env, st, x = match x.kind:
 # A field access is a plain function: it lifts over `$` then `?`; on a plain bundle it does
 # not lift, and it shows the field's stack (ch. 1, Sigils on fields).
 InferField: unbounded fn Env, St, Expr, Text, Ident, Range -> ((Ty, St))
-fn InferField env, st, recv, sigils, name, span:
+fn InferField env, st, recv, sigils, name, span = match ?EntryIn env, st, recv:
+    # a map's entry has no fields (Jimmy's ruling on map entries)
+    ? st1: ((TyErr, (ErrFix st1, "mismatch", name.span, "an `Entry` has no field `{name.name}`", entryChange)))
+    nil: InferFieldOf env, st, recv, sigils, name, span
+
+InferFieldOf: unbounded fn Env, St, Expr, Text, Ident, Range -> ((Ty, St))
+fn InferFieldOf env, st, recv, sigils, name, span:
     let ((rt, st1)) = Infer env, st, recv
     let head = HeadSigil st1, rt
     let inner = if IsTimeSigil head: InnerOf st1, rt else: rt
@@ -259,7 +265,13 @@ fn ?IndexOf xs, x = Fold (Range0 (Len xs)), nil, \|?found, i| match ?found:
 # map. A text has no index (Appendix B, Text; round 4 TX): a byte index is read off a
 # cursor, not cut at.
 InferIndex: unbounded fn Env, St, Expr, Expr, Range -> ((Ty, St))
-fn InferIndex env, st, recv, idx, span:
+fn InferIndex env, st, recv, idx, span = match ?EntryIn env, st, recv:
+    # a map's entry has no index (Jimmy's ruling on map entries)
+    ? st1: ((TyErr, (ErrFix st1, "mismatch", idx.span, "an `Entry` has no index", entryChange)))
+    nil: InferIndexOf env, st, recv, idx, span
+
+InferIndexOf: unbounded fn Env, St, Expr, Expr, Range -> ((Ty, St))
+fn InferIndexOf env, st, recv, idx, span:
     let ((rt, st1)) = Infer env, st, recv
     let head = HeadSigil st1, rt
     let inner = if IsTimeSigil head: InnerOf st1, rt else: rt

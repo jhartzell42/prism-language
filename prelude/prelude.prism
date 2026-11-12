@@ -318,6 +318,10 @@ fn @Numbered !e:
 # `&` blocks (Appendix B, `&` blocks; Semantics ch. 5)
 # ---------------------------------------------------------------------------------------
 
+# `Entry K V` is a map's entry (Jimmy's ruling on map entries): what `&m[k]` names in an
+# `&` block when `m` is a map, put from a `?V` with `<:` and read as `m[k]` is. It is the
+# checker's own, like `Buffer` and `Table`, and a program's own `Entry` type hides it.
+
 # A `Buffer a` becomes `[a]`, a `Table k v` becomes `[((k, v))]` in insertion order;
 # constant. `Buffer.Numbered n` and `Table.Empty` are builtins reached by their
 # qualified names.

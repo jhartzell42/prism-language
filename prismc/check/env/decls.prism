@@ -330,11 +330,12 @@ fn Insert2 xs, i, x = Append (Push (Take xs, i), x), (Drop xs, i + 1)
 # named with `&`". It takes exactly one `&` parameter (`lens-arity`: "Rust's lifetime
 # elision rule for a function with one reference parameter") and nothing else (appendix
 # A.6: `"&" uname ref` has no place for a second argument), and its result is a reference
-# (`lens-result`).
+# (`lens-result`). A map's entry, `Entry K V`, stands where a reference does, taken or
+# given back (Jimmy's ruling on map entries).
 LensCheck: fn St, Src, Text, Type, Range -> St
 fn LensCheck st, src, name, t, span = match t.kind:
     TFn ignore, ps, res:
-        let refs = Filter ps, \|p| IsRefType p
+        let refs = Filter ps, \|p| (IsRefType p) or IsEntryType p
         if (Len refs) > 1: ErrFix st, "lens-arity", span, "a lens takes one reference", "take the second part as a plain value"
         else: if (Len refs) == 0:
             let fix = match ps[0]:
@@ -342,9 +343,15 @@ fn LensCheck st, src, name, t, span = match t.kind:
                 nil: "give it one parameter, a reference"
             ErrFix st, "lens-arity", span, "a lens takes one reference, and `{name}` takes none", fix
         else: if (Len ps) > 1: ErrFix st, "lens-arity", span, "a lens takes one reference and nothing else, and `{name}` takes {Len ps} parameters", "write a lens for each part, or the path in the `update` block"
-        else: if not (IsRefType res): ErrFix st, "lens-result", span, "a lens gives back a reference, and `{name}` gives back `{SpanText src, res.span}`", "write the result as `&{SpanText src, res.span}`"
+        else: if not ((IsRefType res) or IsEntryType res): ErrFix st, "lens-result", span, "a lens gives back a reference, and `{name}` gives back `{SpanText src, res.span}`", "write the result as `&{SpanText src, res.span}`"
         else: st
     otherwise: ErrFix st, "lens-result", span, "a name with `&` is a lens, a function from one reference to a reference", "write `{name}: fn &Whole -> &Part`, or name it without `&`"
+
+# `Entry K V` as written (Jimmy's ruling on map entries): a lens may take or give back one.
+IsEntryType: fn Type -> Bool
+fn IsEntryType t = match t.kind:
+    TName n, ignore: n.sigils == "" and (n.path == [["Entry"]] or n.path == [["Prelude", "Entry"]])
+    otherwise: False
 
 IsRefType: fn Type -> Bool
 fn IsRefType t = match t.kind:

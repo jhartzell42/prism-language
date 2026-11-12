@@ -824,6 +824,7 @@ StatementLets: unbounded fn [Stmt] -> [Expr]
 fn StatementLets stmts = Fold stmts, [[]], \|acc, s| match s.kind:
     SLet ignore, ignore, e: Push acc, e
     SSet ignore, e: Push acc, e
+    SPut ignore, e: Push acc, e
     SFn f: Append acc, (BodyLets f.body)
     SWidget w: Append acc, (StatementLets w.body.stmts)
     SWhile ignore, b: Append acc, (StatementLets b.stmts)

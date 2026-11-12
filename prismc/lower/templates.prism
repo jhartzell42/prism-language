@@ -194,6 +194,9 @@ fn UpdStmt lx, env, s = match s.kind:
     SSet target, value:
         let v = Own (ValueOf lx, env, value)
         (([[(Assign lx, env, target, v)]], env))
+    SPut target, value:
+        let v = Own (ValueOf lx, env, value)
+        (([[(Put lx, env, target, v)]], env))
     SAccum target, op, value:
         let cur = PlaceOf lx, env, target
         let tt = OutTyOf lx, (Peel (TypeAt lx, target.span))
@@ -404,6 +407,7 @@ fn PlaceOf lx, env, e = match e.kind:
     otherwise: match ?LensCall lx, e:
         ? ((qk, argument)):
             if LensEndsAtIndex lx, qk, (Len lx.g.defs): InternalBug "the place of a lens that ends at an index, which is set and read whole"
+            else: if LensGivesEntry lx, qk: InternalBug "the place of a lens that gives back a map's entry, which is put and read whole"
             else: XTarget (LensCallEx lx, env, qk, argument)
         nil: InternalBug "a reference path this back end does not lower"
 
@@ -437,7 +441,7 @@ fn Assign lx, env, target, v = match target.kind:
         let f = match rt:
             OutMap ignore, ignore: HelperRef "set_key"
             otherwise: HelperRef "set_index"
-        DoExpr (XCall f, [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k), v]])
+        IndexWrite lx, env, f, r, k, target.span, v
     EGroup x: Assign lx, env, x, v
     otherwise: match ?LensCall lx, target:
         # a lens that ends at an array's index: the value first (it may read what the lens
@@ -446,6 +450,64 @@ fn Assign lx, env, target, v = match target.kind:
             let held = "part{SpanStem target.span}"
             DoExpr (XBlock [[(DoLet (PaBind held), v)]], (XCall (HelperRef "set_part"), [[(LensCallEx lx, env, qk, argument), (XVar held)]]))
         otherwise: DoAssign (PlaceOf lx, env, target), v
+
+# A write at an index (`set_key`, `set_index`): the key and the value first, since either
+# may read the collection the write borrows (`&_.board[to] <: &_.board[from]`).
+IndexWrite: unbounded fn Lx, Env, Ref, Expr, Expr, Range, Ex -> Do
+fn IndexWrite lx, env, f, r, k, span, v:
+    let keyName = "key{SpanStem span}"
+    let held = "part{SpanStem span}"
+    let lets = [[(DoLet (PaBind keyName), (Own (ValueOf lx, env, k))), (DoLet (PaBind held), v)]]
+    DoExpr (XBlock lets, (XCall f, [[(XRefMut (PlaceOf lx, env, r)), (XRef (XVar keyName)), (XVar held)]]))
+
+# `&e <: v` (Jimmy's ruling on map entries): the entry at a map's key, or one a lens gives
+# back, put from a `?V`: `? x` writes the key, `nil` removes it.
+Put: unbounded fn Lx, Env, Expr, Ex -> Do
+fn Put lx, env, target, v = match target.kind:
+    EGroup x: Put lx, env, x, v
+    EIndex r, k: IndexWrite lx, env, (HelperRef "set_key"), r, k, target.span, v
+    otherwise: match ?LensCall lx, target:
+        ? ((qk, argument)):
+            let held = "part{SpanStem target.span}"
+            DoExpr (XBlock [[(DoLet (PaBind held), v)]], (XCall (HelperRef "put_entry"), [[(LensCallEx lx, env, qk, argument), (XVar held)]]))
+        nil: InternalBugDo "a put whose target is no map's entry (the checker gives `put-location`)"
+
+# The entry a reference names, as a lens takes or gives it back (`EntryMut`): a map's key
+# with the map borrowed, the entry a lens gives back, or a lens's own entry parameter.
+EntryRef: unbounded fn Lx, Env, Expr -> Ex
+fn EntryRef lx, env, e = match e.kind:
+    EGroup x: EntryRef lx, env, x
+    EIndex r, k: XCall (HelperRef "entry_mut"), [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k)]]
+    EName n: match env.names[SNameKey n]:
+        ? (BnLocal rs, ignore, ignore): rs
+        otherwise: InternalBug "an entry named by no local"
+    otherwise: match ?LensCall lx, e:
+        ? ((qk, argument)): LensCallEx lx, env, qk, argument
+        nil: InternalBug "an entry this back end does not lower"
+
+# Whether a lens takes a map's entry, and whether it gives one back, by its signature.
+LensTakesEntry: fn Lx, Text -> Bool
+fn LensTakesEntry lx, qk = match lx.g.vals[qk]:
+    ? v: match v.scheme.ty:
+        TyFn ignore, params, ignore: IsEntryTy (Or params[0], TyErr)
+        otherwise: False
+    nil: False
+
+LensGivesEntry: fn Lx, Text -> Bool
+fn LensGivesEntry lx, qk = match lx.g.vals[qk]:
+    ? v: match v.scheme.ty:
+        TyFn ignore, ignore, res: IsEntryTy res
+        otherwise: False
+    nil: False
+
+IsEntryTy: fn Ty -> Bool
+fn IsEntryTy (TyCon "Prelude.Entry", ignore) = True
+fn IsEntryTy t = False
+
+# The prelude's `EntryMut<K, V>`, a lens's entry.
+EntryMutOf: unbounded fn Lx, Ty -> OutTy
+fn EntryMutOf lx, (TyCon "Prelude.Entry", [[k, v]]) = OutNamed (HelperRef "EntryMut"), [[(OutTyOf lx, k), (OutTyOf lx, v)]]
+fn EntryMutOf lx, t = InternalBugType "an entry's type that is no `Entry K V`"
 
 # ---------------------------------------------------------------------------------------
 # Named lenses (Semantics ch. 5, "References and lens paths"; claude/backend.md)
@@ -464,7 +526,9 @@ fn ?LensCall lx, e = match ?LensApplied e:
 # The reference a lens gives back for an argument: its function over the argument's place
 # (`acc_l(&mut this.regs)`; C++ passes the place itself).
 LensCallEx: unbounded fn Lx, Env, Text, Expr -> Ex
-fn LensCallEx lx, env, qk, argument = XCall (ValueRef lx, qk), [[(XRefMut (PlaceOf lx, env, argument))]]
+fn LensCallEx lx, env, qk, argument:
+    let handed = if LensTakesEntry lx, qk: EntryRef lx, env, argument else: XRefMut (PlaceOf lx, env, argument)
+    XCall (ValueRef lx, qk), [[handed]]
 
 # A lens's body, in the module that defines it.
 ?LensBody: fn Lx, Text -> ?((Text, Expr))
@@ -484,12 +548,14 @@ fn ?LensBody lx, qk = Fold lx.g.defs, nil, \|?found, d| match ?found:
 LensEndsAtIndex: unbounded fn Lx, Text, Nat -> Bool
 fn LensEndsAtIndex lx, qk, fuel = match fuel -? 1:
     nil: False
-    ? left: match ?LensBody lx, qk:
-        ? ((home, body)):
-            let there = update lx:
-                &_.home <= home
-            PathEndsAtIndex there, body, left
-        nil: False
+    ? left:
+        if LensGivesEntry lx, qk: False
+        else: match ?LensBody lx, qk:
+            ? ((home, body)):
+                let there = update lx:
+                    &_.home <= home
+                PathEndsAtIndex there, body, left
+            nil: False
 
 PathEndsAtIndex: unbounded fn Lx, Expr, Nat -> Bool
 fn PathEndsAtIndex lx, e, fuel = match e.kind:
@@ -529,18 +595,27 @@ fn LensDefs lx, qk, clauses, sc:
             ? p: PlainBinder lx, p
             nil: ""
         nil: ""
-    let env = Bind emptyEnv, binder, (BnLocal (XTarget (XVar parameter)), Owned, whole)
+    # a map's entry (Jimmy's ruling on map entries) is taken and given back as the
+    # prelude's `EntryMut`, by value
+    let ((ptys, res)) = SignatureTys sc
+    let takesEntry = LensTakesEntry lx, qk
+    let givesEntry = LensGivesEntry lx, qk
+    let env = if takesEntry: Bind emptyEnv, binder, (BnLocal (XVar parameter), Owned, whole)
+        else: Bind emptyEnv, binder, (BnLocal (XTarget (XVar parameter)), Owned, whole)
     let body = match clauses[0]:
         ? c: match c.body:
-            BodyExpr e: LensReference lxb, env, e
+            BodyExpr e: if givesEntry: EntryRef lxb, env, e else: LensReference lxb, env, e
             BodyBlock ignore: InternalBug "a lens whose body is a block"
         nil: InternalBug "a lens without a clause"
     let entry = match part:
         OutOpt inside: inside
         other: other
-    let ret = if LensEndsAtIndex lx, qk, (Len lx.g.defs): OutOpt (OutRefMut entry) else: OutRefMut part
+    let ret = if givesEntry: EntryMutOf lx, res
+        else: if LensEndsAtIndex lx, qk, (Len lx.g.defs): OutOpt (OutRefMut entry)
+        else: OutRefMut part
+    let taken = if takesEntry: EntryMutOf lx, (Or ptys[0], TyErr) else: OutRefMut whole
     let read = FnDefOf lx, qk, clauses, sc
-    let reference = FnDef(name=read.name, generics=read.generics, params=[[((parameter, (OutRefMut whole)))]], ret=ret, body=body, doc=read.doc, public=True)
+    let reference = FnDef(name=read.name, generics=read.generics, params=[[((parameter, taken))]], ret=ret, body=body, doc=read.doc, public=True)
     # a body that steps through an index is read through the entry in place (`at_shared`)
     let shared = Bind emptyEnv, binder, (BnLocal (XVar parameter), ByRef, whole)
     let ?throughIndex = match clauses[0]:

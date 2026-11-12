@@ -222,6 +222,7 @@ fn SexpStmt s, d = match s.kind:
     SFn f: SexpFn f, d
     SWidget w: "(widget {SNameText w.name}{SexpBlock w.body, d})"
     SSet t, v: "(set {SexpExpr t, d} {SexpExpr v, d})"
+    SPut t, v: "(put {SexpExpr t, d} {SexpExpr v, d})"
     SAccum t, op, v: "({op} {SexpExpr t, d} {SexpExpr v, d})"
     SRequire c: "(require {SexpExpr c, d})"
     SForbid c: "(forbid {SexpExpr c, d})"

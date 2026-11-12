@@ -714,7 +714,7 @@ pub fn set_part<A>(part: Option<&mut A>, v: Option<A>) {
     }
 }
 
-/// `&m[k] <= v` in an `&` block: `? x` writes the key, `nil` removes it.
+/// `&m[k] <: v` in an `&` block: `? x` writes the key, `nil` removes it.
 pub fn set_key<K: Ord + Clone, V: Clone>(m: &mut Map<K, V>, k: &K, v: Option<V>) {
     match v {
         Some(x) => {
@@ -724,6 +724,23 @@ pub fn set_key<K: Ord + Clone, V: Clone>(m: &mut Map<K, V>, k: &K, v: Option<V>)
             m.remove(k);
         }
     }
+}
+
+/// A map's entry as a named lens takes and gives it back (Jimmy's ruling on map entries):
+/// the map, borrowed, and the key. `put_entry` is `<:` through it.
+pub struct EntryMut<'a, K, V> {
+    map: &'a mut Map<K, V>,
+    key: K,
+}
+
+pub fn entry_mut<'a, K: Ord + Clone, V: Clone>(m: &'a mut Map<K, V>, k: &K) -> EntryMut<'a, K, V> {
+    EntryMut { map: m, key: k.clone() }
+}
+
+/// `&Lens r <: v` where the lens gives back a map's entry: `? x` writes the key, `nil`
+/// removes it, as `set_key` does.
+pub fn put_entry<K: Ord + Clone, V: Clone>(entry: EntryMut<'_, K, V>, v: Option<V>) {
+    set_key(entry.map, &entry.key, v)
 }
 
 pub fn take<A: Clone>(xs: &Array<A>, n: &Nat) -> Array<A> {

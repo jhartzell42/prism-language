@@ -152,19 +152,21 @@ fn OptionalRhs p:
     let ((e, q)) = ParseRhsExpr p
     ((? e, q))
 
-# `&r <= e` and `&r += e`: a reference at the head of a statement, then a setting or
-# accumulating operator ("`<=` is one token with two meanings, decided by statement
-# position").
+# `&r <= e`, `&r <: e` and `&r += e`: a reference at the head of a statement, then a
+# setting, putting or accumulating operator ("`<=` is one token with two meanings, decided
+# by statement position"). `<:` puts a map entry (Jimmy's ruling on map entries).
 ParseUpdateStmt: unbounded fn Ps -> ((StmtKind, Ps))
 fn ParseUpdateStmt p:
     let ((target, p1)) = ParseReference p
     let op = match Kind p1:
         KOp o, ignore: o
         otherwise: ""
-    if p1.bad or not (op == "<=" or op == "+=" or op == "-=" or op == "*=" or op == "/="): ((SExpr noExpr, (Fail p1)))
+    if p1.bad or not (op == "<=" or op == "<:" or op == "+=" or op == "-=" or op == "*=" or op == "/="): ((SExpr noExpr, (Fail p1)))
     else:
         let ((value, q)) = ParseRhsExpr (Adv p1)
-        if op == "<=": (((SSet target, value), q)) else: (((SAccum target, op, value), q))
+        if op == "<=": (((SSet target, value), q))
+        else: if op == "<:": (((SPut target, value), q))
+        else: (((SAccum target, op, value), q))
 
 # `ref ::= "&_" lens* | "&" lname lens* | "&" uname ref` (Appendix A.6).
 ParseReference: unbounded fn Ps -> ((Expr, Ps))

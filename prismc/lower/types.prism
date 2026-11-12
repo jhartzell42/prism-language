@@ -74,6 +74,9 @@ fn OutTyOf lx, t = match t:
     TyCon "Buffer", [[a]]: OutArray (OutTyOf lx, a)
     TyCon "Table", [[k, v]]: OutArray (OutTuple [[(OutTyOf lx, k), (OutTyOf lx, v)]])
     TyCon "\u{0}Event", [[a]]: OutEvent (OutTyOf lx, a)
+    # a map's entry as a value is its read, the value that may be absent (Jimmy's ruling
+    # on map entries); a lens that gives one back gives the prelude's `EntryMut`
+    TyCon "Prelude.Entry", [[ignore, v]]: OutOpt (OutTyOf lx, v)
     TyCon n, args: NamedTy lx, n, (Each args, \|a| OutTyOf lx, a)
     TyFn c, ps, res:
         # A function value of any color but bounded is a `Start` (D8: a color variable may

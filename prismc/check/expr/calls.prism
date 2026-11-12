@@ -283,7 +283,9 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
         let a = Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)
         if IsLambda a.value: (((Push acc, TyErr), s))
         else:
-            let ((t, s2)) = Infer env, s, a.value
+            # a reference where an entry is wanted (a lens that takes one) is the place it
+            # names
+            let ((t, s2)) = if (IsEntry s, (Or params[i], TyErr)) and IsRef a.value: InferPlace env, s, a.value else: Infer env, s, a.value
             match (((Walk s2, (Or params[i], TyErr)), (Walk s2, t))):
                 (((TyFn pc, ignore, ignore), (TyFn ac, aps, ar))): (((Push acc, (TyFn pc, aps, ar)), (AddLeq s2, ac, pc, a.value.span, "arg", fname, "")))
                 otherwise: (((Push acc, t), s2))

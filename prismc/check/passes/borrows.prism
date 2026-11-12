@@ -169,6 +169,7 @@ fn RefsIn e = match e.kind:
 BorrowStmts: unbounded fn Env, St, [Stmt], [ [Text] ] -> St
 fn BorrowStmts env, st, stmts, lent = Fold stmts, st, \|s, stmt| match stmt.kind:
     SSet t, ignore: CheckLent env, s, t, lent
+    SPut t, ignore: CheckLent env, s, t, lent
     SAccum t, ignore, ignore: CheckLent env, s, t, lent
     SWhile ignore, body: BorrowStmts env, s, body.stmts, lent
     SExpr e: match e.kind:
@@ -232,6 +233,7 @@ fn PathReceivers e = match e.kind:
 SetTargetSpans: unbounded fn [Stmt] -> [Range]
 fn SetTargetSpans stmts = Fold stmts, [[]], \|acc, stmt| match stmt.kind:
     SSet t, ignore: Push acc, t.span
+    SPut t, ignore: Push acc, t.span
     SAccum t, ignore, ignore: Push acc, t.span
     SWhile ignore, body: Append acc, (SetTargetSpans body.stmts)
     SExpr e: match e.kind:
