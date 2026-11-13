@@ -2438,7 +2438,18 @@ fn ValueRenamed env, n, e = match e.kind:
 # second part: a dynamic of the owner's, its getter `host_k_doc` (pick HO), in place of the
 # hold the prebinding took it for.
 BindHosted: unbounded fn Wx, Env, Env, Wres, Bn, [Pattern] -> ((Wx, Env, Env))
-fn BindHosted wx, benv, menv, res, doc, ps:
+fn BindHosted wx, benv, menv, res, doc, ps = match ((res, ps[0])):
+    # a child's bundle taken apart by a tuple pattern (`(((($n, !clicked)), ignore)) <-
+    # @Host @child, ..`): its parts bound part by part as an inlined widget's are, so an
+    # event part is connected to the name it was prebound to (`BindParts`, `BindRes`)
+    (((WrParts parts), ? (Pattern(kind=(PTuple qs), span=ignore)))):
+        let ((wx1, be1, me1)) = BindParts wx, benv, menv, parts, qs, (Each parts, \|ignore2| TyErr)
+        let wx2 = PartGetter wx1, me1, ps[1], (? doc)
+        BindPart2 wx2, be1, me1, ps[1], (? doc)
+    otherwise: BindHostedWhole wx, benv, menv, res, doc, ps
+
+BindHostedWhole: unbounded fn Wx, Env, Env, Wres, Bn, [Pattern] -> ((Wx, Env, Env))
+fn BindHostedWhole wx, benv, menv, res, doc, ps:
     let ?r = match res:
         WrEv r: ? (BnEv r, OutUnit)
         WrDyn ex, rds, t: ? (BnDyn ex, rds, t)
