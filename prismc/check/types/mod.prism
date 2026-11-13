@@ -490,8 +490,8 @@ fn ShowTyIn st, t, nested = match t:
         let inner = "Element {ShowRowIn rw, True} {ShowTyIn st, o, True}"
         if nested: "({inner})" else: inner
     TyElemAny rw: if nested: "(Elem {ShowRowIn rw, True})" else: "Elem {ShowRowIn rw, True}"
-    TyAssoc ignore, n, a, ix:
-        let inner = "{n} {Join (Each (Append [[a]], ix), \|i| ShowTyIn st, i, True), " "}"
+    TyAssoc ignore, n, a, indices:
+        let inner = "{n} {Join (Each (Append [[a]], indices), \|i| ShowTyIn st, i, True), " "}"
         if nested: "({inner})" else: inner
     TyRole r: BareName r
     TyAny ts: "any {Join (Each ts, \|x| "^{BareName x}"), " "}"

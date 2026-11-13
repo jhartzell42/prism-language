@@ -89,7 +89,7 @@ fn NormAssocOnce st, t = match t:
         TyCon "Float", [[]]: tFloat
         TyCon n, [[]]: if n == "Nat" or n == "Int" or n == "U8": TySig "?", (TyCon n, [[]]) else: ImplAssoc st, tr, "Quotient", (Walk st, a), [[]], t
         otherwise: ImplAssoc st, tr, "Quotient", (Walk st, a), [[]], t
-    TyAssoc tr, n, a, ix: ImplAssoc st, tr, n, (Walk st, a), (Each ix, \|i| Zonk st, i), t
+    TyAssoc tr, n, a, indices: ImplAssoc st, tr, n, (Walk st, a), (Each indices, \|i| Zonk st, i), t
     other: other
 
 # An associated type at a known head: the type the one impl of its trait whose head
@@ -101,16 +101,17 @@ fn NormAssocOnce st, t = match t:
 # itself, an equation's variable any index; an index that is no role constructor where an
 # equation wants one leaves the type waiting, equal only to itself.
 ImplAssoc: unbounded fn St, Text, Text, Ty, [Ty], Ty -> Ty
-fn ImplAssoc st, tr, n, a, ix, t = match a:
+fn ImplAssoc st, tr, n, a, indices, t = match a:
     TyFlex ignore: t
     TyRigid ignore: t
     otherwise:
         let whole = Zonk st, a
         let found = Fold st.assocImpls, AssocMissed, \|found, ai| if found != AssocMissed or ai.cls != tr or ai.name != n: found else: match ?MatchHead ai.head, whole, {}:
-            ? tys: match MatchIndices ai.indices, ix, tys:
+            ? tys: match MatchIndices ai.indices, indices, tys:
                 AssocMatched all: AssocChose (SubstQ Inst(tys=all, rows={}, cols={}), ai.value)
                 AssocWaits: AssocWaits
                 AssocMissed: AssocMissed
+                AssocChose chosen: AssocChose chosen
             nil: found
         match found:
             AssocChose chosen: chosen
@@ -128,8 +129,8 @@ derive ^Eq, ^Show
 # An equation's indices against an application's: each variable bound to its index, each
 # role constructor the same constructor.
 MatchIndices: fn [AssocIndex], [Ty], (Text ==> Ty) -> AssocFound
-fn MatchIndices pats, ix, m0 = if (Len pats) != (Len ix): AssocMissed else: Fold (Range0 (Len pats)), (AssocMatched m0), \|acc, i| match acc:
-    AssocMatched m: match ((Or pats[i], (IndexVar "")), (Or ix[i], TyErr)):
+fn MatchIndices pats, indices, m0 = if (Len pats) != (Len indices): AssocMissed else: Fold (Range0 (Len pats)), (AssocMatched m0), \|acc, i| match acc:
+    AssocMatched m: match (((Or pats[i], (IndexVar "")), (Or indices[i], TyErr))):
         ((IndexVar v, x)): AssocMatched (Insert m, v, x)
         ((IndexRole k, TyRole r)): if k == r: AssocMatched m else: AssocMissed
         otherwise: AssocWaits
@@ -155,7 +156,7 @@ fn ?MatchAll xs, ys, m = Fold (Range0 (Len xs)), (? m), \|?acc, i| match ?acc:
 
 IsWaitingAssoc: unbounded fn St, Ty -> Bool
 fn IsWaitingAssoc st, t = match t:
-    TyAssoc ignore, ignore, a, ix: (IsFlexVar st, a) or Fold ix, False, \|b, i| b or IsFlexVar st, i
+    TyAssoc ignore, ignore, a, indices: (IsFlexVar st, a) or Fold indices, False, \|b, i| b or IsFlexVar st, i
     otherwise: False
 
 Defer: fn St, Ty, Ty, Range -> St

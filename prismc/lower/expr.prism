@@ -2186,7 +2186,7 @@ fn Recolored lx, x, fromTy, toTy, depth:
 # more until it is none; any other type as it is.
 KnownAssoc: unbounded fn Lx, Ty -> Ty
 fn KnownAssoc lx, t = match t:
-    TyAssoc tr, n, a, ix: match ?ImplAssoc lx.g, tr, n, a, ix:
+    TyAssoc tr, n, a, indices: match ?ImplAssoc lx.g, tr, n, a, indices:
         ? chosen: KnownAssoc lx, chosen
         nil: t
     otherwise: t
@@ -2802,7 +2802,7 @@ fn Instantiated t, params, args = match t:
     TyArray e: TyArray (Instantiated e, params, args)
     TyMap k, v: TyMap (Instantiated k, params, args), (Instantiated v, params, args)
     TySig s, i: TySig s, (Instantiated i, params, args)
-    TyAssoc tr, n, a, ix: TyAssoc tr, n, (Instantiated a, params, args), (Each ix, \|i| Instantiated i, params, args)
+    TyAssoc tr, n, a, indices: TyAssoc tr, n, (Instantiated a, params, args), (Each indices, \|i| Instantiated i, params, args)
     otherwise: t
 
 # `xs[i]`: an optional, of an array or a map (a text has no index: the checker refuses it).
@@ -3409,7 +3409,7 @@ fn OpenTyQs lx, t = match t:
     TySig ignore, i: OpenTyQs lx, i
     TyAt i, ignore: OpenTyQs lx, i
     TyElem ignore, o: OpenTyQs lx, o
-    TyAssoc ignore, ignore, a, ix: Fold ix, (OpenTyQs lx, a), \|acc, i| Append acc, (OpenTyQs lx, i)
+    TyAssoc ignore, ignore, a, indices: Fold indices, (OpenTyQs lx, a), \|acc, i| Append acc, (OpenTyQs lx, i)
     otherwise: [[]]
 
 # Lowering at an instantiation: its variables' types and colors in the substitution.

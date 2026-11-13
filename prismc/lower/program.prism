@@ -516,7 +516,7 @@ fn PartsOfType t = match t:
     TySig ignore, i: [[i]]
     TyAt i, ignore: [[i]]
     TyElem ignore, o: [[o]]
-    TyAssoc ignore, ignore, x, ix: Append [[x]], ix
+    TyAssoc ignore, ignore, x, indices: Append [[x]], indices
     otherwise: [[]]
 
 # A type's former: the type with nothing at its parts.
@@ -530,7 +530,7 @@ fn TypeFormer t = match t:
     TySig s, ignore: TySig s, TyErr
     TyAt ignore, r: TyAt TyErr, r
     TyElem r, ignore: TyElem r, TyErr
-    TyAssoc cls, n, ignore, ix: TyAssoc cls, n, TyErr, (Each ix, \|i| TyErr)
+    TyAssoc cls, n, ignore, indices: TyAssoc cls, n, TyErr, (Each indices, \|i| TyErr)
     other: other
 
 # What one use instantiates where the definition it stands in has the types `types`: a

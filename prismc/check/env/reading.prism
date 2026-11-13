@@ -165,10 +165,10 @@ fn ConvNamed cx, st, n, args, span:
                             nil: 0
                         if (Len args) == 1 + more:
                             let ((a, st2)) = ConvType cx, st1, (Or args[0], dummyType)
-                            let ((ix, st3)) = Fold (Drop args, 1), (([[]], st2)), \|((xs, s)), arg|
+                            let ((indices, st3)) = Fold (Drop args, 1), (([[]], st2)), \|((xs, s)), arg|
                                 let ((x, s2)) = ConvIndex cx, s, arg
                                 (((Push xs, x), s2))
-                            (((TyAssoc tr, (BareName qk), a, ix), st3))
+                            (((TyAssoc tr, (BareName qk), a, indices), st3))
                         else: if more == 0: ((TyErr, (Err st1, "kind", span, "the associated type `{name}` takes one type; here it has {CountWord (Len args)}")))
                         else: ((TyErr, (Err st1, "kind", span, "the associated type `{name}` takes {CountWord (1 + more)} types, its trait's and {if more == 1: "an index" else: "{CountWord more} indices"}; here it has {CountWord (Len args)}")))
                     nil: ConvNamedType cx, st1, qk, ti, name, args, span

@@ -338,7 +338,7 @@ fn ResolveIn st, t = match t:
     TySig s, i: TySig s, (ResolveIn st, i)
     TyAt i, rw: TyAt (ResolveIn st, i), rw
     TyElem rw, o: TyElem rw, (ResolveIn st, o)
-    TyAssoc tr, n, a, ix: TyAssoc tr, n, (ResolveIn st, a), (Each ix, \|i| ResolveIn st, i)
+    TyAssoc tr, n, a, indices: TyAssoc tr, n, (ResolveIn st, a), (Each indices, \|i| ResolveIn st, i)
     other: other
 
 # A binder's variable remembers where the binder stands, for `mark-stack`.
@@ -397,7 +397,7 @@ fn Zonk st, t = match NormAssoc st, (Walk st, t):
     TyAt i, rw: TyAt (Zonk st, i), (WalkRow st, rw)
     TyElem rw, o: TyElem (WalkRow st, rw), (Zonk st, o)
     TyElemAny rw: TyElemAny (WalkRow st, rw)
-    TyAssoc tr, n, a, ix: TyAssoc tr, n, (Zonk st, a), (Each ix, \|i| Zonk st, i)
+    TyAssoc tr, n, a, indices: TyAssoc tr, n, (Zonk st, a), (Each indices, \|i| Zonk st, i)
     w: w
 
 # The flexible type variables of a type.
@@ -415,5 +415,5 @@ fn FreeVarsInto st, acc, t = match Walk st, t:
     TySig ignore, i: FreeVarsInto st, acc, i
     TyAt i, ignore: FreeVarsInto st, acc, i
     TyElem ignore, o: FreeVarsInto st, acc, o
-    TyAssoc ignore, ignore, a, ix: Fold ix, (FreeVarsInto st, acc, a), \|acc2, i| FreeVarsInto st, acc2, i
+    TyAssoc ignore, ignore, a, indices: Fold indices, (FreeVarsInto st, acc, a), \|acc2, i| FreeVarsInto st, acc2, i
     otherwise: acc

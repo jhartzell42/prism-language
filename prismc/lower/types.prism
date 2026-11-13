@@ -113,7 +113,7 @@ fn OutTyOf lx, t = match t:
     TyElem ignore, ignore: OutLive (OutNamed elemRef, [[]])
     TyElemAny ignore: OutNamed elemRef, [[]]
     TyAt i, ignore: blueprintTy
-    TyAssoc tr, n, a, ix: AssocOut lx, tr, n, a, ix
+    TyAssoc tr, n, a, indices: AssocOut lx, tr, n, a, indices
     # a role constructor as a type stands only as an associated type's index, which the
     # lowering reads at a known index (`?ImplAssoc`); as a type of its own it is refused
     TyRole r: OutRefused "the role constructor `{r}` as a type a value has, outside an associated type's index (Type System ch. 6): its Rust unit struct is not lowered"
@@ -587,10 +587,10 @@ fn AsBool v = Copy v
 # System ch. 5, Traits), else the application as the target writes one, `<A as Box>::Item`
 # or `Self::Item` (`OutAssoc`).
 AssocOut: unbounded fn Lx, Text, Text, Ty, [Ty] -> OutTy
-fn AssocOut lx, tr, n, a, ix = match ?ImplAssoc lx.g, tr, n, a, ix:
+fn AssocOut lx, tr, n, a, indices = match ?ImplAssoc lx.g, tr, n, a, indices:
     ? t: OutTyOf lx, t
     nil: match lx.g.traits[tr]:
-        ? info: if (Len ix) == 0: OutAssoc (PathIn lx, info.home, (TraitName info.name)), (Camel n), (OutTyOf lx, a)
+        ? info: if (Len indices) == 0: OutAssoc (PathIn lx, info.home, (TraitName info.name)), (Camel n), (OutTyOf lx, a)
         else: OutRefused "an associated type with indices, `{n}`, at an index that is no role constructor, in a type the program keeps (Type System ch. 6): its Rust trait per associated type is not lowered"
         nil: InternalBugType "an associated type `{n}` of `{tr}`, which no trait of the program declares"
 
@@ -598,22 +598,22 @@ fn AssocOut lx, tr, n, a, ix = match ?ImplAssoc lx.g, tr, n, a, ix:
 # variables the head's arguments; with indices, the equation whose indices match them
 # (Type System ch. 6).
 ?ImplAssoc: unbounded fn G, Text, Text, Ty, [Ty] -> ?Ty
-fn ?ImplAssoc g, tr, n, a, ix = match a:
+fn ?ImplAssoc g, tr, n, a, indices = match a:
     TyCon c, args: Fold (Or g.impls[tr], [[]]), nil, \|?found, im| match ?found:
         ? t: ? t
-        nil: ?ImplChoice im, n, c, args, ix
+        nil: ?ImplChoice im, n, c, args, indices
     otherwise: nil
 
 # What one impl chooses for an associated type at the head `c` with these arguments and
 # indices.
 ?ImplChoice: unbounded fn ImplInfo, Text, Text, [Ty], [Ty] -> ?Ty
-fn ?ImplChoice im, n, c, args, ix = match im.head:
+fn ?ImplChoice im, n, c, args, indices = match im.head:
     TyCon hc, hargs if hc == c and (Len hargs) == (Len args):
         let params = Each hargs, \|h| match h:
             TyQ q: q
             otherwise: ""
-        if (Len ix) == 0: Fold im.assocs, nil, \|?f2, ((an, at))| if an == n and ?f2 == nil: ? (Instantiated at, params, args) else: ?f2
-        else: Fold im.indexed, nil, \|?f2, e| if ?f2 != nil or e.name != n: ?f2 else: match ?IndexArgs e.indices, ix:
+        if (Len indices) == 0: Fold im.assocs, nil, \|?f2, ((an, at))| if an == n and ?f2 == nil: ? (Instantiated at, params, args) else: ?f2
+        else: Fold im.indexed, nil, \|?f2, e| if ?f2 != nil or e.name != n: ?f2 else: match ?IndexArgs e.indices, indices:
             ? ((vars, vals)): ? (Instantiated e.value, (Append params, vars), (Append args, vals))
             nil: nil
     otherwise: nil
@@ -621,8 +621,8 @@ fn ?ImplChoice im, n, c, args, ix = match im.head:
 # An equation's indices against known ones: its variables with the indices they stand
 # for, when each role constructor is the index's own.
 ?IndexArgs: fn [AssocIndex], [Ty] -> ?(([Text], [Ty]))
-fn ?IndexArgs pats, ix = if (Len pats) != (Len ix): nil else: Fold (Range0 (Len pats)), (? (([[]], [[]]))), \|?acc, i| match ?acc:
-    ? ((vars, vals)): match (((Or pats[i], (IndexVar "")), (Or ix[i], TyErr))):
+fn ?IndexArgs pats, indices = if (Len pats) != (Len indices): nil else: Fold (Range0 (Len pats)), (? (([[]], [[]]))), \|?acc, i| match ?acc:
+    ? ((vars, vals)): match (((Or pats[i], (IndexVar "")), (Or indices[i], TyErr))):
         ((IndexVar v, x)): ? (((Push vars, v), (Push vals, x)))
         ((IndexRole k, TyRole r)): if k == r: ? ((vars, vals)) else: nil
         otherwise: nil
