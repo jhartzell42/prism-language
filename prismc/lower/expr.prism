@@ -2611,7 +2611,7 @@ fn NumMethod "-?" = "sub_opt"
 fn NumMethod "*?" = "mul_opt"
 fn NumMethod other = "add"
 
-# A prelude function (prelude/prelude.prism; its Rust is `Emit.Rust.Prelude`): borrowed
+# A prelude function (library/prelude.prism; its Rust is `Emit.Rust.Prelude`): borrowed
 # arguments, the variant for a text or a map where one name serves several (doubt LZ).
 PreludeCall: unbounded fn Lx, Env, Text, [Arg], Range, OutTy -> Vl
 fn PreludeCall lx, env, qk, args, span, t:

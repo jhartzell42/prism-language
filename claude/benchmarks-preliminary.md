@@ -206,7 +206,7 @@ above, so compare only within this section. The before is the prismc at
 `3a5ff1f` (the branch point, the seeds' fixed point), the after the fixed points at
 `01935cb`.
 
-- **The Rust prismc compiling itself to Rust** (`prismc compile prismc --prelude prelude
+- **The Rust prismc compiling itself to Rust** (`prismc compile prismc --prelude library
   --target rust`, `/usr/bin/time -v`, six runs each, interleaved; load 0.21 at the start):
 
   | Float | wall, s (median; runs) | peak RSS |

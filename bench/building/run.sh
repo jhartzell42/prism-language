@@ -33,7 +33,7 @@ mkdir -p "$out"
 
 sources_of() { # subject: prismc's arguments naming its sources and its name
     case "$1" in
-        prismc) echo "prismc --prelude prelude --name prismc" ;;
+        prismc) echo "prismc --prelude library --name prismc" ;;
         chess) echo "examples/basic-chess --name chess" ;;
         table) echo "bench/gui/prism examples/basic-chess/basic_window --name bench" ;;
         *) echo "bench: unknown subject $1 (prismc chess table)" >&2; exit 2 ;;

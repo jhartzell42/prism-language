@@ -1,6 +1,6 @@
 # Duration literals (Semantics ch. 2, "Durations": a digit string with at most one point
 # and a unit, a whole number of nanoseconds, a prefix minus) and the element they ask a
-# World for, `Time.After` (Appendix B, `@Later`; prelude/time.prism): its request field
+# World for, `Time.After` (Appendix B, `@Later`; library/time.prism): its request field
 # carries a `Wake` whose `after` is a duration, and its output, the wake answered back, is
 # heard in the tick the World delivers it. A transcript prints a duration in its largest
 # whole unit (Type System ch. 2). Written by Claude on the claude-lowering branch; subject

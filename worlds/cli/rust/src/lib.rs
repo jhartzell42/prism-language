@@ -1,6 +1,6 @@
 //! The CLI World over `prism_rtl`'s protocol (claude/backend.md, "Hosting"; Semantics ch. 9,
 //! "The CLI World's policy"). It answers the `Fs`, `Process` and `Time` families of
-//! `prelude/`, the prelude's own `Prelude.Unwrap` and `Prelude.Exceptions`, and the
+//! `library/`, the prelude's own `Prelude.Unwrap` and `Prelude.Exceptions`, and the
 //! `Fs.List` this crate adds for the compiler.
 //!
 //! - **`Fs.Contents(path)`** answers `$~Contents` from the ready state. When this World

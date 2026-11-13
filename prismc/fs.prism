@@ -1,4 +1,4 @@
-# The `Fs` family as prismc sees it: the prelude's `prelude/fs.prism`, and `Fs.List`, the
+# The `Fs` family as prismc sees it: the standard library's `library/fs.prism`, and `Fs.List`, the
 # CLI World's listing, which `compile DIR` reads.
 emit Fs.*
 

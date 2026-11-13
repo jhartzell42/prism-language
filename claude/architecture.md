@@ -29,15 +29,15 @@ prismc/             the compiler, in Prism, a tree of nested modules, each a fil
                     with children, a directory (claude/modules-style-pass.md):
   app.prism         the root: the driver (a rebuild over the source set), with its
                     child modules Reading, Checking and Compile
-  fs.prism          Fs, the prelude's with Fs.List
+  fs.prism          Fs, the standard library's with Fs.List
   syntax/           Syntax, the tree; lexer/, parser/ (each with a test module),
                     sexp.prism
   check/            Check, the checker; errors.prism, types/ env/ expr/ blocks/
                     passes/ shrink/ typed/
   lower/            Lower, lowering; model.prism (the core form), node/ (widget blocks)
   emit/             the printer: rust/, with templates/ and prelude.prism
-prelude/            the Prism prelude the checker reads, a library tree of one file per
-                    module; its Rust is prismc's emit/rust/prelude.prism, emitted
+library/            the standard library the checker reads, a tree of one file per
+                    module; the Prelude's Rust is prismc's emit/rust/prelude.prism, emitted
                     beside every program
 examples/           chess (rules, board, window library)
 runtime/rust/       the runtime the emitted code runs on

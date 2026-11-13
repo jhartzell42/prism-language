@@ -94,7 +94,7 @@ fn @CheckMain args:
             ? w: SplitOn w, ","
             nil: [[]]
         let opts = CheckOpts(world=world, ?out=(?OptionValue args, "--out"), typed=(HasText args, "--typed"), unused=(HasText args, "--unused"))
-        @ReadSources (Checking opts), (PlainArgs args, checkValued), (NoSlash (Or (?OptionValue args, "--prelude"), "prelude")), (HasText args, "--tests")
+        @ReadSources (Checking opts), (PlainArgs args, checkValued), (NoSlash (Or (?OptionValue args, "--prelude"), "library")), (HasText args, "--tests")
 
 let checkValued = [["--prelude", "--out", "--world"]]
 

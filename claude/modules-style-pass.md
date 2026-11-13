@@ -45,7 +45,7 @@ just nest indefinitely a la Rust." Everything below follows from it.
   - `lib.prism` holds only `mod Name` lines, the library's top-level modules
     (`lib-header`). *Refused:* `lib.prism` as the namespace of a module named after its
     directory (Rust's crate root); Prism has no crates yet (Semantics ch. 6 Q-C1,
-    Appendix C), and the prelude's `Ui` would become `Prelude.Ui`.
+    Appendix C), and the standard library's `Ui` would become `Prelude.Ui`.
 - **Every file is one module.** Its header is `emit`, then `mod` lines, then `use` lines:
   what before from where (Semantics ch. 6, "A file is a module": "`emit` comes before
   `use`"), and what a module is made of is a what. A file in a tree has no `module` line;
@@ -248,7 +248,7 @@ prismc/app.prism             the root (217)
       tests.prism          Syntax.Parser.Tests (59)
       types.prism          Syntax.Parser.Types (391)
     sexp.prism             Syntax.Sexp (414)
-prelude/lib.prism            the root (10)
+library/lib.prism            the root (10)
   fs.prism                 Fs (39)
   gui.prism                Gui (107)
   prelude.prism            Prelude (281)
@@ -362,7 +362,7 @@ tests/conformance/NAME/      app.prism, tests.prism (Tests), tests.expected; chi
 - **ER** (Claude's) A test module writes its own `emit` (`emit r` for checks), as every
   module does; or a test module takes its parent's row? Taken: its own, no special case.
 - **FS** (Claude's) A family lives in one file, its module's, as the ruling has it; none in
-  prismc, chess or the prelude is split, and `neg/family-across-modules` refuses a tag in
+  prismc, chess or the standard library is split, and `neg/family-across-modules` refuses a tag in
   a child module.
 - **QX** (Claude's) A qualified name of a declaration in a parent's child names the child
   (`Lower.Program.LowerProgram`); or the parent re-exports its children's names (Rust's

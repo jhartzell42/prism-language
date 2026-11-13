@@ -7,7 +7,7 @@
 # and gen1's binary is installed as target/bootstrap/prismc, which `./prism` uses. When
 # prismc/ changes what prismc emits, gen1 is the new compiler still emitting the starting
 # binary's output, so they differ: gen2 is built and compiles gen3, which must equal gen2,
-# and gen2's binary is installed. Every compile reads one copy of prismc/ and prelude/
+# and gen2's binary is installed. Every compile reads one copy of prismc/ and library/
 # taken at the start (target/bootstrap/src), so an edit made during the run reaches none.
 #
 # A compiler emits code for the runtime of its own source: the runtime's interface (runtime/rust,
@@ -149,9 +149,9 @@ if [ $from = seed ]; then
 fi
 rm -rf "$b/gen1" "$b/gen2" "$b/gen3" "$b/src"
 mkdir -p "$b/src"
-cp -r prismc prelude "$b/src/"
+cp -r prismc library "$b/src/"
 copy_runtime . "$b/src"
-src=("$b/src/prismc" --prelude "$b/src/prelude")
+src=("$b/src/prismc" --prelude "$b/src/library")
 # compile N BINARY: prismc/ compiled by BINARY into genN
 compile() {
     local t=$(date +%s) log="$b/gen$1-compile.log"

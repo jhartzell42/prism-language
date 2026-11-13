@@ -43,7 +43,7 @@ trap 'rm -rf "$tmp"' EXIT
 check() {
     local name=$1; shift
     rm -f "$tmp/$name.out"
-    timeout "${PRISM_CHECK_TIMEOUT:-600}" "$prismc" --check --tests "$@" --out "$tmp/$name.out" > "$tmp/$name.err" 2>&1
+    timeout "${PRISM_CHECK_TIMEOUT:-600}" "$prismc" --check --prelude library --tests "$@" --out "$tmp/$name.out" > "$tmp/$name.err" 2>&1
     if [ ! -f "$tmp/$name.out" ]; then
         { echo "(the checker wrote nothing)"; tail -3 "$tmp/$name.err"; } > "$tmp/$name.out"
     fi
@@ -73,7 +73,7 @@ for d in tests/conformance/*/; do
     [ -f "$d/app.prism" ] && programs[$(basename "$d")]="${d%/}"
 done
 programs[chess]=examples/basic-chess
-programs[prelude]=prelude
+programs[library]=library
 programs[prismc]=prismc
 for f in "$here"/pos/*.prism; do [ -e "$f" ] && programs[$(basename "$f" .prism)]="$f"; done
 # a directory under pos/ is one program, a tree (claude/modules-style-pass.md)
