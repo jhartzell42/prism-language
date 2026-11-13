@@ -101,6 +101,10 @@ fn ProjectionBounds t, p = match (AssocBounds t)[p]:
 DeclHead: fn TyDef -> Text
 fn DeclHead t = if (Len t.params) == 0: t.name else: "{t.name}<{Join (Each t.params, \|p| DeclParam t, p), ", "}>"
 
+# The parameters with their projection bounds alone, for an impl that asks nothing more.
+DeclGenerics: fn TyDef -> Text
+fn DeclGenerics t = if (Len t.params) == 0: "" else: "<{Join (Each t.params, \|p| DeclParam t, p), ", "}>"
+
 DeclParam: fn TyDef, Text -> Text
 fn DeclParam t, p = match (AssocBounds t)[p]:
     ? trs: "{p}: {Join trs, " + "}"
@@ -481,7 +485,7 @@ fn DeepWalkImpl t, head:
     let ports = match t.shape:
         ShapeRecord: Join (Each single.fields, \|((f, ft))| DeepPortsOf "self.{f}", ft, ps), " "
         otherwise: MatchSelfOf t, (Join (Each t.cases, \|c| DeepChoicePortsArm t, c), "\n")
-    DeepWalk (GenericNames ps), head, t.prism, podWalks, portWalks, pods, ports
+    DeepWalk (DeclGenerics t), head, t.prism, podWalks, portWalks, pods, ports
 
 # A case of a generic choice in its deep walk (`DeepWalkImpl`): its parts as plain data,
 # each part of a type parameter through that parameter's walk.
