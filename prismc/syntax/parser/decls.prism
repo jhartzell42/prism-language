@@ -242,35 +242,53 @@ fn ParseFnBody p:
         ((BodyBlock b, q))
     else: ((BodyExpr noExpr, (ErrorHere p, "expected `=` and an expression, or `:` and a block, after the parameters")))
 
-# Lowercase names with no sigil, one after another: a declaration's parameters.
-LowerParams: fn Ps -> (([Ident], Ps))
-fn LowerParams p0 = update (([[]], p0)):
-    let &ps = [[]]
-    let &p = p0
-    let &fuel = Len p0.toks
-    while ? left <- &fuel -? 1 if IsPlainLower (Kind &p):
-        &fuel <= left
-        let ((i, q)) = ParseIdent &p
-        &ps <= Push &ps, i
-        &p <= q
-    &_ <= ((&ps, &p))
+# Lowercase names with no sigil, one after another: a declaration's parameters. A
+# parameter may state its kind, `(u: Unit)` (Jimmy's ruling PK, promoted constructors):
+# its name is among the parameters and its kind among the kinds.
+LowerParams: unbounded fn Ps -> (([Ident], Ps))
+fn LowerParams p0:
+    let ((ps, ignore, p)) = KindedParams p0, False
+    ((ps, p))
 
-# An associated type's further parameters (Type System ch. 6): in a trait each a
-# lowercase name; in an impl's equation each a lowercase name, which stands for every
-# role, or a role constructor, a bare uppercase name (`type Request Librarian = ...`).
-AssocParams: fn Ps -> (([Ident], Ps))
-fn AssocParams p0 = update (([[]], p0)):
+KindedParams: unbounded fn Ps, Bool -> (([Ident], [((Text, Type))], Ps))
+fn KindedParams p0, assoc = update (([[]], [[]], p0)):
     let &ps = [[]]
+    let &ks = [[]]
     let &p = p0
     let &fuel = Len p0.toks
-    while ? left <- &fuel -? 1 if IsAssocParam (Kind &p):
+    while ? left <- &fuel -? 1 if (IsParamStart &p, assoc):
         &fuel <= left
-        let name = match Kind &p:
-            KName n: Or n.path[0], ""
-            otherwise: ""
-        &ps <= Push &ps, Ident(name=name, span=(Here &p))
-        &p <= Adv &p
-    &_ <= ((&ps, &p))
+        if AtSingleOpen &p, "(":
+            let ((i, q1)) = ParseIdent (Adv &p)
+            let ((k, q2)) = ParseType (ExpectColon q1)
+            &ps <= Push &ps, i
+            &ks <= Push &ks, ((i.name, k))
+            &p <= ExpectClose q2, "("
+        else: if assoc:
+            let name = match Kind &p:
+                KName n: Or n.path[0], ""
+                otherwise: ""
+            &ps <= Push &ps, Ident(name=name, span=(Here &p))
+            &p <= Adv &p
+        else:
+            let ((i, q)) = ParseIdent &p
+            &ps <= Push &ps, i
+            &p <= q
+    &_ <= ((&ps, &ks, &p))
+
+# Where a parameter starts: a lowercase name, an associated type's equation's constructor
+# (`type Request Librarian = ...`), or `(name:` with its kind.
+IsParamStart: fn Ps, Bool -> Bool
+fn IsParamStart p, assoc:
+    let kinded = (AtSingleOpen p, "(") and (IsPlainLower (KindAt p, 1)) and (KindAt p, 2) == KColon
+    kinded or (if assoc: IsAssocParam (Kind p) else: IsPlainLower (Kind p))
+
+# An associated type's further parameters (Type System ch. 6, Jimmy's ruling AP): in a
+# trait each a lowercase name or `(m: Mode)` with its kind; in an impl's equation each a
+# lowercase name, which stands for every case, or a constructor, a bare uppercase name
+# (`type Out Idle = Nat`).
+AssocParams: unbounded fn Ps -> (([Ident], [((Text, Type))], Ps))
+fn AssocParams p0 = KindedParams p0, True
 
 IsAssocParam: fn TokKind -> Bool
 fn IsAssocParam k = match k:
@@ -286,9 +304,9 @@ ParseTypeDecl: unbounded fn Ps -> ((TypeDecl, Ps))
 fn ParseTypeDecl p0:
     let start = Here p0
     let ((name, p1)) = ParseQualName (Adv p0)
-    let ((params, p2)) = LowerParams p1
+    let ((params, kinds, p2)) = KindedParams p1, False
     let ((?body, p3)) = if AtOp p2, "=": ParseTypeBody (Adv p2), name, params else: ((nil, p2))
-    ((TypeDecl(name=name, params=params, ?body=?body, span=(To start, (Prev p3))), p3))
+    ((TypeDecl(name=name, params=params, kinds=kinds, ?body=?body, span=(To start, (Prev p3))), p3))
 
 ParseTypeBody: unbounded fn Ps, QualName, [Ident] -> ((?TypeBody, Ps))
 fn ParseTypeBody p, name, params = match Kind p:
@@ -417,12 +435,12 @@ fn ParseTraitItem p = match Kind p:
         match Kind p1:
             KName n if n.case == CaseUpper and n.sigils == "" and (Len n.path) == 1:
                 let name = Ident(name=(Or n.path[0], ""), span=(Here p1))
-                let ((params, p2)) = AssocParams (Adv p1)
+                let ((params, kinds, p2)) = AssocParams (Adv p1)
                 let ((?value, p3)) = if AtOp p2, "=": OptionalType (Adv p2) else: ((nil, p2))
-                let item = TiAssocType name, params, ?value, (To start, (Prev p3))
+                let item = TiAssocType name, params, kinds, ?value, (To start, (Prev p3))
                 ((item, p3))
             otherwise:
-                let item = TiAssocType noIdent, [[]], nil, noRange
+                let item = TiAssocType noIdent, [[]], [[]], nil, noRange
                 ((item, (ErrorHere p1, "expected the associated type's name")))
     KKw "row", ignore:
         let start = Here p

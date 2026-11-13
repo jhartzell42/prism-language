@@ -58,4 +58,4 @@ fn Unlogged log = match log:
 
 @page: @unit
 @page:
-    Ui.Label($text=$"idle at {WhenIdle kettle}; {WhenHeating kettle}; {Boiling kettle}; {Climbed [5, 10, 15]}; {Last 20}")   # 0
+    Ui.Label($text=$"idle at {WhenIdle kettle}; {WhenHeating kettle}; {Boiling kettle}; {Climbed [[5, 10, 15]]}; {Last 20}")   # 0

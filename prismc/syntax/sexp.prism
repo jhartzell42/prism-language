@@ -133,7 +133,7 @@ fn SexpItems items, depth = Concat (Each items, \|it| "{Nl depth + 1}{SexpItem i
 SexpItem: fn TraitItem, Nat -> Text
 fn SexpItem (TiSignature s), ignore = SexpSignature s
 fn SexpItem (TiFn f), d = SexpFn f, d
-fn SexpItem (TiAssocType name, params, ?value, ignore), ignore = "(assoc-type {name.name}{Concat (Each params, \|p| " {p.name}")}{OptType ?value})"
+fn SexpItem (TiAssocType name, params, ignore, ?value, ignore), ignore = "(assoc-type {name.name}{Concat (Each params, \|p| " {p.name}")}{OptType ?value})"
 fn SexpItem (TiAssocRow name, ignore), ignore = "(assoc-row {SNameText name})"
 
 # ---------------------------------------------------------------------------------------

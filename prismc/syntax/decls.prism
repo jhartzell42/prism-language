@@ -74,6 +74,8 @@ derive ^Eq, ^Show
 type TypeDecl = record:
     name: QualName
     params: [Ident]
+    # the parameters whose kinds are stated, `(u: Unit)`, with their kinds
+    kinds: [((Text, Type))]
     ?body: TypeBody
     span: Range
 derive ^Eq, ^Show
@@ -121,7 +123,8 @@ derive ^Eq, ^Show
 type TraitItem = choice:
     TiSignature Signature
     TiFn FnClause
-    TiAssocType Ident, [Ident], ?Type, Range
+    # an associated type: its name, parameters, the stated kinds of some, and its value
+    TiAssocType Ident, [Ident], [((Text, Type))], ?Type, Range
     TiAssocRow SName, Range
 derive ^Eq, ^Show
 
