@@ -2457,12 +2457,18 @@ fn BindHosted wx, benv, menv, res, doc, ps:
 
 # A dynamic part of a host's line, read above the line through the getter its name was
 # prebound to (`IsHostBuiltin`): that getter, reading the part.
-PartGetter: fn Wx, Env, ?Pattern, ?Bn -> Wx
+PartGetter: unbounded fn Wx, Env, ?Pattern, ?Bn -> Wx
 fn PartGetter wx, menv, ?p, ?b = match ((?p, ?b)):
     ((? p, ? (BnDyn ex, rds, t))): match p.kind:
         PName n:
             let ((w2, ignore, ignore)) = ResultGetter wx, menv, n, ex, rds, t, emptyEnv, emptyEnv
             w2
+        PGroup q: PartGetter wx, menv, (? q), ?b
+        otherwise: wx
+    # a bundle's parts (`(($n, !clicked))`): a getter for each dynamic among them
+    ((? p, ? (BnParts parts))): match p.kind:
+        PTuple qs: Fold (Range0 (Len qs)), wx, \|w, i| PartGetter w, menv, qs[i], (Or parts[i], nil)
+        PGroup q: PartGetter wx, menv, (? q), ?b
         otherwise: wx
     otherwise: wx
 
