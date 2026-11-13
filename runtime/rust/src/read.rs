@@ -193,7 +193,7 @@ fn lex(src: &str) -> Result<Vec<Tok>, String> {
             out.push(Tok::Name(cs[start..i].iter().collect()));
         } else {
             let two: String = cs[i..(i + 2).min(cs.len())].iter().collect();
-            if let Some(p) = ["((", "))", "[[", "]]", ".."].into_iter().find(|p| *p == two) {
+            if let Some(p) = ["((", "))", "[[", "]]", "{{", "}}", ".."].into_iter().find(|p| *p == two) {
                 out.push(Tok::P(p));
                 i += 2;
                 continue;
@@ -260,7 +260,7 @@ impl Parser {
     }
     fn starts_atom(&self) -> bool {
         match self.peek() {
-            Some(Tok::P(p)) => matches!(*p, "(" | "((" | "[[" | "{"),
+            Some(Tok::P(p)) => matches!(*p, "(" | "((" | "[[" | "{{"),
             Some(_) => true,
             None => false,
         }
@@ -340,9 +340,11 @@ impl Parser {
             Some(Tok::P("((")) => Pod::Tuple(self.items("))")?),
             Some(Tok::P("-")) => Pod::Absent,
             Some(Tok::P("[[")) => Pod::Array(self.items("]]")?),
-            Some(Tok::P("{")) => {
+            // a map is `{{k: v}}` (Jimmy's ruling DB); a single brace is no value
+            Some(Tok::P("{")) => return Err("a map is written `{{k: v}}`, with double braces".into()),
+            Some(Tok::P("{{")) => {
                 let mut es = Vec::new();
-                while !self.is("}") {
+                while !self.is("}}") {
                     let k = self.value(false)?;
                     self.expect(":")?;
                     es.push((k, self.value(false)?));
@@ -350,7 +352,7 @@ impl Parser {
                         break;
                     }
                 }
-                self.expect("}")?;
+                self.expect("}}")?;
                 es.sort_by(|a, b| a.0.cmp(&b.0));
                 Pod::Map(es)
             }
