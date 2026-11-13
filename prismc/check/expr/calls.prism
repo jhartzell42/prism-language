@@ -488,9 +488,23 @@ CtorApp: unbounded fn Env, St, CtorInfo, [Arg], Range, Range -> ((Ty, St))
 fn CtorApp env, st, c, args, span, cspan:
     let ((self, st0, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), span, [[]]
     let fieldTys = Each c.args, \|t| SubstQ inst, t
-    let st1 = NamedTwice (NoteTy st0, cspan, (TyFn CBound, fieldTys, self)), args
+    let st1n = NamedTwice (NoteTy st0, cspan, (TyFn CBound, fieldTys, self)), args
     let named = Filter args, \|a| a.?name != nil
-    let lifts = (Len c.params) == 0 or not (Fold c.args, False, \|bare, t| bare or IsBareParameter t)
+    let lifts = True
+    # SWEEP-PROBE (scaffold, never committed): every argument with a sigil at a bare
+    # type-parameter field, which the old rule held whole
+    let st1 = Fold (Range0 (Len args)), st1n, \|s, i| match args[i]:
+        ? a:
+            let fi = match a.?name:
+                ? id: Or (?IndexOf c.fields, id.name), 9999
+                nil: i
+            if (IsLambda a.value) or not (IsBareParameter (Or c.args[fi], TyErr)): s
+            else:
+                let ((t, s2)) = Infer env, s, a.value
+                let stack = StackOf s2, t
+                if stack == "": s
+                else: Err s, "hold-sweep", a.value.span, "`{BareName c.name}` over `{stack}` at a bare type-parameter field"
+        nil: s
     if (Len named) > 0 and (Len c.fields) > 0:
         let st2 = Fold named, st1, \|s, a| match a.?name:
             ? id: match ?IndexOf c.fields, id.name:

@@ -129,7 +129,7 @@ Severity: fn CDiag -> Text
 fn Severity d = if IsWarning d: "warning" else: "error"
 
 IsWarning: fn CDiag -> Bool
-fn IsWarning d = d.code == "unused"
+fn IsWarning d = d.code == "unused" or d.code == "hold-sweep"
 
 # Diagnostics in order of file, then position, then the order they were found; duplicates
 # dropped.
