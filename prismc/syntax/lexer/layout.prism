@@ -144,7 +144,7 @@ fn StreamEndsHere l:
         MPlaceholder "brace": StartsWith l, "\}\}"
         MPathKey: c == "]"
         otherwise: False
-    let width = if l.mode == MPlaceholder "double" or l.mode == MPlaceholder "brace": 2 else: 1
+    let width = if l.mode == (MPlaceholder "double") or l.mode == (MPlaceholder "brace"): 2 else: 1
     if (Len l.frames) == 0 and closes: ((True, (Forward l, width))) else: ((False, l))
 
 # Rule 2 and rule 3 look at the last token of the line that just ended: a `:` or a closing

@@ -201,7 +201,7 @@ PlaceholderItem: unbounded fn Lex, Nat, Mode -> ((RawItem, Lex))
 fn PlaceholderItem l, width, mode:
     let ps = l.pos
     let ((toks, l2)) = Nested (Forward l, width), mode
-    ((RiPlaceholder toks, Range(start=ps, end=l2.pos, origin=InSource), l2))
+    (((RiPlaceholder toks, Range(start=ps, end=l2.pos, origin=InSource)), l2))
 
 # The state of reading a template call's attributes.
 type CallRead = record:
