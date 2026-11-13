@@ -639,7 +639,20 @@ fn ImplHasAbove g, st, im, shown, above = if im.head == TyErr: st else:
 ImplHasHeadBound: unbounded fn G, St, ImplInfo, Text, Text, Ty, Text -> St
 fn ImplHasHeadBound g, st, im, param, shown, h, above = if im.head == TyErr: st else:
     let head = SubstQ (ParamInst im.qs, (Each im.qs, \|q| TyRigid q)), im.head
-    let asked = SubstQ (ParamInst [[param]], [[head]]), h
+    let asked0 = SubstQ (ParamInst [[param]], [[head]]), h
+    match asked0:
+        # at every case: each equation of the impl's (`type Request Watcher = Wish`)
+        TyAssoc tr, n, a, indices if Fold indices, False, \|seen, x| seen or x == TyEvery:
+            Fold st.assocImpls, st, \|s, e| if e.cls != tr or e.name != n or (?MatchHead e.head, a, {{}}) == nil: s else: ImplHasHeadBoundAt g, s, im, shown, (TyAssoc tr, n, a, (Each e.indices, \|x| IndexAsType x)), above
+        otherwise: ImplHasHeadBoundAt g, st, im, shown, asked0, above
+
+# An equation's index as a type: its case, or its variable rigid.
+IndexAsType: fn AssocIndex -> Ty
+fn IndexAsType (IndexRole k) = TyRole k
+fn IndexAsType (IndexVar v) = TyRigid v
+
+ImplHasHeadBoundAt: unbounded fn G, St, ImplInfo, Text, Ty, Text -> St
+fn ImplHasHeadBoundAt g, st, im, shown, asked, above:
     let trial = update st:
         &_.diags <= [[]]
         &_.wants <= [[Want(cls=above, ty=asked, file=im.file, span=im.span, level=0)]]
