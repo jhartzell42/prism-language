@@ -128,7 +128,8 @@ let dummyImpl = ImplInfo(rows=[[]], ?through=nil, cls="", head=TyErr, qs=[[]], b
 
 CheckPair: unbounded fn G, St, ImplInfo, ImplInfo -> St
 fn CheckPair g, st, a, b:
-    if not (HeadsMayMeet a.head, b.head): st
+    # an orphan is refused where it stands (`orphan`), and meets no other impl
+    if not (HeadsMayMeet a.head, b.head) or (IsOrphan g, a) or (IsOrphan g, b): st
     else: if a.file < b.file or (a.file == b.file and a.span.start <= b.span.start): CheckPairIn g, st, a, b
     else: CheckPairIn g, st, b, a
 
@@ -165,13 +166,17 @@ fn ShapeOf t = match t:
     TySig s, i: "{s}{ShapeOf i}"
     otherwise: "?"
 
+IsOrphan: unbounded fn G, ImplInfo -> Bool
+fn IsOrphan g, i:
+    let traitMod = (Or g.traits[i.cls], dummyTrait).home
+    let owners = Each (TypeNamesIn i.head), \|n| (Or g.types[n], dummyTyInfo).home
+    not (i.derived or i.home == traitMod or HasText owners, i.home)
+
 # No orphans (Semantics ch. 6): an impl stands in the trait's module or in a module that
 # declares a type its header mentions.
 CheckOrphan: unbounded fn G, St, ImplInfo -> St
 fn CheckOrphan g, st, i:
-    let traitMod = (Or g.traits[i.cls], dummyTrait).home
-    let owners = Each (TypeNamesIn i.head), \|n| (Or g.types[n], dummyTyInfo).home
-    if i.derived or i.home == traitMod or HasText owners, i.home: st
+    if not (IsOrphan g, i): st
     else:
         let s = update st:
             &_.file <= i.file
