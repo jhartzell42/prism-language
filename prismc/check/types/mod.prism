@@ -68,6 +68,9 @@ type Tail = choice:
     # an associated row at its type, `Lower d` (Type System ch. 3): the trait, the row's
     # name, the type; the impl's row once the type is known
     TlAssoc Text, Text, Ty
+    # a whole row standing for a row variable in a substitution only (a type's row
+    # argument, ruling RR): `SubstRowQ` merges it into the row it stands in
+    TlRow Rw
 derive ^Eq, ^Show
 
 # A row: a set of families (sorted), the tags an arm above has taken (the remainder
@@ -559,6 +562,7 @@ fn ShowRowIn st, rw, nested:
         TlRigid n: [[n]]
         TlQ n: [[n]]
         TlAssoc ignore, n, h: [["{n} {ShowTyIn st, (Zonk st, h), True}"]]
+        TlRow whole: [[(ShowRowIn st, whole, False)]]
     let parts = Append tail, fams
     let minus = if (Len rw.minus) == 0: "" else: " − \{{Join rw.minus, ", "}\}"
     let inner = if (Len parts) == 0: "unit" else: Join parts, " | "

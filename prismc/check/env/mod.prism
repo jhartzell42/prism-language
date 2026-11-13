@@ -62,6 +62,9 @@ type TyInfo = record:
     params: [Text]
     # the parameters whose kind the declaration states (`(u: Unit)`), with the kind as written
     kinds: [((Text, Type))]
+    # the parameters written only in a row's place, which take rows (Jimmy, 13 November,
+    # ruling RR: `type ChessSeats rest` with `emit ... | rest`)
+    rowParams: [Text]
     body: TyBody
     derives: [Text]
     file: Nat

@@ -52,6 +52,7 @@ fn SubstQ m, t = match t:
 SubstRowQ: unbounded fn Inst, Rw -> Rw
 fn SubstRowQ m, rw = match rw.tail:
     TlQ n: match m.rows[n]:
+        ? (TlRow whole): Rw(fams=(SortTexts (UnionTexts rw.fams, whole.fams)), minus=rw.minus, tail=whole.tail, idx=(MergeIdxMaps (SubstIdx m, rw.idx), whole.idx))
         ? t: Rw(fams=rw.fams, minus=rw.minus, tail=t, idx=(SubstIdx m, rw.idx))
         nil: SubstIdxRow m, rw
     TlAssoc tr, n, h: SubstIdxRow m, (Rw(fams=rw.fams, minus=rw.minus, tail=(TlAssoc tr, n, (SubstQ m, h)), idx=rw.idx))
@@ -250,3 +251,9 @@ fn EnterLevel st = update st:
 LeaveLevel: fn St -> St
 fn LeaveLevel st = update st:
     &_.level <= Or (&_.level -? 1), 0
+
+# Two rows' family indices as one row's.
+MergeIdxMaps: fn (Text ==> [Ty]), (Text ==> [Ty]) -> (Text ==> [Ty])
+fn MergeIdxMaps a, b = Fold (Keys b), a, \|m, k| match m[k]:
+    ? ignore: m
+    nil: Insert m, k, (Or b[k], [[]])

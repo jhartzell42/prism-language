@@ -392,7 +392,7 @@ fn TraitDefOf lx0, tr:
         let fd = FnDefIn lx, (if defaultQk == "": mq else: defaultQk), mq, (if (Len clauses) == 0: [[dummyClause]] else: clauses), sc
         update fd:
             &_.public <= (Len clauses) > 0
-    TraitDef(supers=(Fold tr.supers, [[]], \|acc, c| Append acc, (BoundOf lx, c)), wheres=(Each (Filter tr.headBounds, \|((h, ignore))| IsPlainProjection h), \|((h, c))| (((OutTyOf lx, (SelfIn h, tr.param)), (BoundOf lx, c)))), name=(TraitName tr.name), resultOnly=(ResultOnlyNames lx, tr), assocs=(Each (PlainAssocs tr), \|a| Camel a), methods=methods, defaults=tr.defaults, doc=(TypeDoc lx, (TyInfo(name=tr.name, home=tr.home, params=[[]], kinds=[[]], body=BOpaque, derives=[[]], file=tr.file, span=tr.span))))
+    TraitDef(supers=(Fold tr.supers, [[]], \|acc, c| Append acc, (BoundOf lx, c)), wheres=(Each (Filter tr.headBounds, \|((h, ignore))| IsPlainProjection h), \|((h, c))| (((OutTyOf lx, (SelfIn h, tr.param)), (BoundOf lx, c)))), name=(TraitName tr.name), resultOnly=(ResultOnlyNames lx, tr), assocs=(Each (PlainAssocs tr), \|a| Camel a), methods=methods, defaults=tr.defaults, doc=(TypeDoc lx, (TyInfo(rowParams=[[]], name=tr.name, home=tr.home, params=[[]], kinds=[[]], body=BOpaque, derives=[[]], file=tr.file, span=tr.span))))
 
 # A projection with no indices, which Rust bounds on a trait (`Self::State: ...`); one
 # with indices is normalized at each use and asks its impls (`ImplHasHeadBound`).

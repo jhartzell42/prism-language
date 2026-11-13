@@ -61,6 +61,7 @@ fn RowSexp rw:
         TlRigid n: " (tail {n})"
         TlQ n: " (tail {n})"
         TlAssoc ignore, n, ignore2: " (tail {n})"
+        TlRow whole: " (tail {RowSexp whole})"
     let minus = if (Len rw.minus) == 0: "" else: " (minus{Concat (Each rw.minus, \|m| " {m}")})"
     "(row{Concat (Each rw.fams, \|f| " {f}.*")}{tail}{minus})"
 

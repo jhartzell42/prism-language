@@ -273,7 +273,12 @@ fn ConvNamedType cx, st1, qk, ti, name, args, span:
         # (`Stepped ChessGame`, a type and its own case), a case only where no type is
         let param = Or ti.params[i], ""
         let kinded = (?KindOf ti, param) != nil
-        let ((x, s2)) = if kinded: ConvIndex cx, s, arg else: UnkindedArg cx, s, arg, "`{param}` of `{name}`", "type {name} {Join (Each ti.params, \|p| if p == param: "({p}: {CaseKindShown cx, arg})" else: p), " "}", span
+        # a parameter that takes a row takes it as a row (ruling RR), held as `Elem` of it
+        # in the type's arguments, as a row given to `<<..>>` is (`InstantiateWith`)
+        let ((x, s2)) = if HasText ti.rowParams, param:
+            let ((rw, sr)) = ConvRow cx, s, arg
+            ((TyElemAny rw, sr))
+        else: if kinded: ConvIndex cx, s, arg else: UnkindedArg cx, s, arg, "`{param}` of `{name}`", "type {name} {Join (Each ti.params, \|p| if p == param: "({p}: {CaseKindShown cx, arg})" else: p), " "}", span
         (((Push acc, x), s2))
     let st2 = Fold (Range0 (Min (Len xs), (Len ti.params))), st0, \|s, i| KindCheck cx, s, ti, name, (Or ti.params[i], ""), (Or xs[i], TyErr), span
     if (Len xs) != (Len ti.params):
@@ -326,7 +331,15 @@ fn ?OwnerOfCase cx, c = match cx.g.ctors[c]:
 let dummyType = Type(kind=TAbsent, span=Range(start=0, end=0, origin=InSource))
 
 ParamInst: fn [Text], [Ty] -> Inst
-fn ParamInst ps, xs = Inst(tys=(Fold (Range0 (Len ps)), {{}}, \|m, i| Insert m, (Or ps[i], ""), (Or xs[i], TyErr)), rows={{}}, cols={{}})
+fn ParamInst ps, xs = Inst(tys=(Fold (Range0 (Len ps)), {{}}, \|m, i| Insert m, (Or ps[i], ""), (Or xs[i], TyErr)), rows=(RowArgs ps, xs), cols={{}})
+
+# A type's row arguments (ruling RR), each standing for its parameter in each row's place.
+RowArgs: fn [Text], [Ty] -> (Text ==> Tail)
+fn RowArgs ps, xs = Fold (Range0 (Len ps)), {{}}, \|m, i| RowArgInto m, (Or ps[i], ""), (Or xs[i], TyErr)
+
+RowArgInto: fn (Text ==> Tail), Text, Ty -> (Text ==> Tail)
+fn RowArgInto m, p, (TyElemAny rw) = Insert m, p, (TlRow rw)
+fn RowArgInto m, p, other = m
 
 # A row written in a type (`emit` clauses, `Element r o`, `Elem c`).
 ConvRow: unbounded fn Cx, St, Type -> ((Rw, St))
@@ -395,6 +408,7 @@ fn TailWritten st, tl = match tl:
     TlRigid v: v
     TlAssoc ignore, n, h: "{n} {ShowTyIn st, h, True}"
     TlFlex n: "r{n}"
+    TlRow whole: ShowRowIn st, whole, False
     TlClosed: ""
 
 # A signature's scheme (ch. 5): its type variables, row variables (those in a row's place,
@@ -575,6 +589,9 @@ fn IsFnType t = match t.kind:
 # Whether a type writes a blueprint or bare element that takes the scope's row.
 UsesScope: unbounded fn Type -> Bool
 fn UsesScope t = match t.kind:
+    # a blueprint whose type writes its own row (`$@(@unit emit Ui.* | rest)`) uses none
+    TName n, args if (Contains n.sigils, "@") and (Len args) == 1 and WritesEmitIn (Or args[0], dummyType): UsesScope (Or args[0], dummyType)
+    TSigiled s, i if (Contains s, "@") and WritesEmitIn i: UsesScope i
     TName n, args: (Contains n.sigils, "@") or ((Dotted n.path) == "Element" and (Len args) < 2) or ((Dotted n.path) == "Elem" and (Len args) == 0) or Fold args, False, \|seen, a| seen or UsesScope a
     TSigiled s, i: (Contains s, "@") or UsesScope i
     TUnit s: Contains s, "@"
@@ -684,3 +701,10 @@ fn ColorVarsOfType t = match t.kind:
     TEmit ty, ignore: ColorVarsOfType ty
     otherwise: [[]]
 
+
+# Whether a type writes its row with `emit` at its top, under groups and a blueprint's `@`.
+WritesEmitIn: unbounded fn Type -> Bool
+fn WritesEmitIn t = match t.kind:
+    TEmit ignore, ignore2: True
+    TGroup x: WritesEmitIn x
+    otherwise: False

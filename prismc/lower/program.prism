@@ -1332,7 +1332,7 @@ TagDefOf: unbounded fn Lx, TagInfo -> TagDef
 fn TagDefOf lx, tg:
     let fields = Each (LevelFields tg), \|((fname, ft))| ((fname, (FieldSpell tg.home, fname, ft), (TagFieldOut lx, ft)))
     let events = Each (LevelEvents tg), \|((fname, ft))| (((FieldSpell tg.home, fname, ft), (TagFieldOut lx, ft)))
-    TagDef(name=(TagStructOf tg), tagName=tg.name, fields=fields, events=events, doc=(TypeDoc lx, (TyInfo(name=tg.name, home=tg.home, params=[[]], kinds=[[]], body=BOpaque, derives=[[]], file=tg.file, span=tg.span))), pod=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and Podable t), eq=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and RuntimeEq t))
+    TagDef(name=(TagStructOf tg), tagName=tg.name, fields=fields, events=events, doc=(TypeDoc lx, (TyInfo(rowParams=[[]], name=tg.name, home=tg.home, params=[[]], kinds=[[]], body=BOpaque, derives=[[]], file=tg.file, span=tg.span))), pod=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and Podable t), eq=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and RuntimeEq t))
 
 # A tag's items: its struct, and an element tag's description beside it.
 TagItems: unbounded fn Lx, TagInfo -> [Item]
