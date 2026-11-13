@@ -85,27 +85,55 @@ fn NormAssoc st, t:
 
 NormAssocOnce: unbounded fn St, Ty -> Ty
 fn NormAssocOnce st, t = match t:
-    TyAssoc tr, "Quotient", a if tr == quotientTrait: match Walk st, a:
+    TyAssoc tr, "Quotient", a, [[]] if tr == quotientTrait: match Walk st, a:
         TyCon "Float", [[]]: tFloat
-        TyCon n, [[]]: if n == "Nat" or n == "Int" or n == "U8": TySig "?", (TyCon n, [[]]) else: ImplAssoc st, tr, "Quotient", (Walk st, a), t
-        otherwise: ImplAssoc st, tr, "Quotient", (Walk st, a), t
-    TyAssoc tr, n, a: ImplAssoc st, tr, n, (Walk st, a), t
+        TyCon n, [[]]: if n == "Nat" or n == "Int" or n == "U8": TySig "?", (TyCon n, [[]]) else: ImplAssoc st, tr, "Quotient", (Walk st, a), [[]], t
+        otherwise: ImplAssoc st, tr, "Quotient", (Walk st, a), [[]], t
+    TyAssoc tr, n, a, ix: ImplAssoc st, tr, n, (Walk st, a), (Each ix, \|i| Zonk st, i), t
     other: other
 
 # An associated type at a known head: the type the one impl of its trait whose head
 # matches chooses (one-way matching, `?MatchHead`: a named type's head, a collection's or
 # a tuple's, as the impl itself is found), its variables what the match gives them (ch.
 # 5: "the impl's `?Int` before comparing"); at a variable, at a type no head matches yet,
-# or with no impl choosing it, the application as it is.
-ImplAssoc: unbounded fn St, Text, Text, Ty, Ty -> Ty
-fn ImplAssoc st, tr, n, a, t = match a:
+# or with no impl choosing it, the application as it is. An associated type with indices
+# (Type System ch. 6) takes the equation whose indices match: a role constructor matches
+# itself, an equation's variable any index; an index that is no role constructor where an
+# equation wants one leaves the type waiting, equal only to itself.
+ImplAssoc: unbounded fn St, Text, Text, Ty, [Ty], Ty -> Ty
+fn ImplAssoc st, tr, n, a, ix, t = match a:
     TyFlex ignore: t
     TyRigid ignore: t
     otherwise:
         let whole = Zonk st, a
-        Fold st.assocImpls, t, \|found, ai| if found != t or ai.cls != tr or ai.name != n: found else: match ?MatchHead ai.head, whole, {}:
-            ? tys: SubstQ Inst(tys=tys, rows={}, cols={}), ai.value
+        let found = Fold st.assocImpls, AssocMissed, \|found, ai| if found != AssocMissed or ai.cls != tr or ai.name != n: found else: match ?MatchHead ai.head, whole, {}:
+            ? tys: match MatchIndices ai.indices, ix, tys:
+                AssocMatched all: AssocChose (SubstQ Inst(tys=all, rows={}, cols={}), ai.value)
+                AssocWaits: AssocWaits
+                AssocMissed: AssocMissed
             nil: found
+        match found:
+            AssocChose chosen: chosen
+            otherwise: t
+
+# Where an associated type's equations leave it: one chose this type; one matches once an
+# index is known; none matches.
+type AssocFound = choice:
+    AssocChose Ty
+    AssocMatched (Text ==> Ty)
+    AssocWaits
+    AssocMissed
+derive ^Eq, ^Show
+
+# An equation's indices against an application's: each variable bound to its index, each
+# role constructor the same constructor.
+MatchIndices: fn [AssocIndex], [Ty], (Text ==> Ty) -> AssocFound
+fn MatchIndices pats, ix, m0 = if (Len pats) != (Len ix): AssocMissed else: Fold (Range0 (Len pats)), (AssocMatched m0), \|acc, i| match acc:
+    AssocMatched m: match ((Or pats[i], (IndexVar "")), (Or ix[i], TyErr)):
+        ((IndexVar v, x)): AssocMatched (Insert m, v, x)
+        ((IndexRole k, TyRole r)): if k == r: AssocMatched m else: AssocMissed
+        otherwise: AssocWaits
+    other: other
 
 # One-way matching of an impl head (with `TyQ` variables) against a type.
 ?MatchHead: unbounded fn Ty, Ty, (Text ==> Ty) -> ?(Text ==> Ty)
@@ -127,7 +155,7 @@ fn ?MatchAll xs, ys, m = Fold (Range0 (Len xs)), (? m), \|?acc, i| match ?acc:
 
 IsWaitingAssoc: unbounded fn St, Ty -> Bool
 fn IsWaitingAssoc st, t = match t:
-    TyAssoc ignore, ignore, a: IsFlexVar st, a
+    TyAssoc ignore, ignore, a, ix: (IsFlexVar st, a) or Fold ix, False, \|b, i| b or IsFlexVar st, i
     otherwise: False
 
 Defer: fn St, Ty, Ty, Range -> St
@@ -189,7 +217,8 @@ fn UnifyHeads st, e, f, span:
             let ((v, st2)) = UnifyRow st, r1, r2, span
             if v != "": ((v, st2)) else: UnifyIn st2, o1, o2, span
         ((TyElemAny r1, TyElemAny r2)): UnifyRow st, r1, r2, span
-        (((TyAssoc t1, n1, a1), (TyAssoc t2, n2, a2))): if t1 == t2 and n1 == n2: UnifyIn st, a1, a2, span else: (("mismatch", st))
+        (((TyAssoc t1, n1, a1, ix1), (TyAssoc t2, n2, a2, ix2))): if t1 == t2 and n1 == n2 and (Len ix1) == (Len ix2): UnifyAll st, (Append [[a1]], ix1), (Append [[a2]], ix2), span else: (("mismatch", st))
+        ((TyRole r1, TyRole r2)): if r1 == r2: (("", st)) else: (("mismatch", st))
         ((TyAny xs, TyAny ys)): if (SortTexts xs) == (SortTexts ys): (("", st)) else: (("mismatch", st))
         otherwise: (("mismatch", st))
 

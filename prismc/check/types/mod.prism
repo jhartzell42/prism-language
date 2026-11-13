@@ -89,8 +89,11 @@ type Ty = choice:
     TyElem Rw, Ty
     TyElemAny Rw
     # an associated type applied: the trait that declares it (its key), its name, its
-    # argument
-    TyAssoc Text, Text, Ty
+    # argument, and its further arguments, its indices (`Request d r`; Type System ch. 6)
+    TyAssoc Text, Text, Ty, [Ty]
+    # a role constructor in type position, an associated type's index (`Request d
+    # Player`; Type System ch. 6): the constructor's key
+    TyRole Text
     TyAny [Text]
     TyErr
 derive ^Eq, ^Show
@@ -255,7 +258,17 @@ type AssocImpl = record:
     name: Text
     head: Ty
     qs: [Text]
+    # an equation's indices, one per further parameter of the associated type (Type
+    # System ch. 6): none for an associated type with no further parameters
+    indices: [AssocIndex]
     value: Ty
+derive ^Eq, ^Show
+
+# One index of an equation (`type Request Librarian = ...`, `type Query r = ...`): a role
+# constructor, by its key, or a variable, which stands for every role.
+type AssocIndex = choice:
+    IndexRole Text
+    IndexVar Text
 derive ^Eq, ^Show
 
 # A dynamic (`$`) or event (`!`) given at an element's identity field `field`, at `arg` in
@@ -477,7 +490,10 @@ fn ShowTyIn st, t, nested = match t:
         let inner = "Element {ShowRowIn rw, True} {ShowTyIn st, o, True}"
         if nested: "({inner})" else: inner
     TyElemAny rw: if nested: "(Elem {ShowRowIn rw, True})" else: "Elem {ShowRowIn rw, True}"
-    TyAssoc ignore, n, a: if nested: "({n} {ShowTyIn st, a, True})" else: "{n} {ShowTyIn st, a, True}"
+    TyAssoc ignore, n, a, ix:
+        let inner = "{n} {Join (Each (Append [[a]], ix), \|i| ShowTyIn st, i, True), " "}"
+        if nested: "({inner})" else: inner
+    TyRole r: BareName r
     TyAny ts: "any {Join (Each ts, \|x| "^{BareName x}"), " "}"
     TyErr: "?"
 

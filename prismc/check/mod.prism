@@ -265,7 +265,7 @@ fn RigidNamesIn t = match t:
     TySig ignore, i: RigidNamesIn i
     TyAt i, ignore: RigidNamesIn i
     TyElem ignore, o: RigidNamesIn o
-    TyAssoc ignore, ignore2, a: RigidNamesIn a
+    TyAssoc ignore, ignore2, a, ix: Fold ix, (RigidNamesIn a), \|acc, i| Append acc, (RigidNamesIn i)
     otherwise: [[]]
 
 # A definition of the walk as a message names it: a function, a widget or a `let` by its
@@ -295,14 +295,14 @@ fn FlexNamed t = match t:
     TySig s, i: TySig s, (FlexNamed i)
     TyAt i, rw: TyAt (FlexNamed i), rw
     TyElem rw, o: TyElem rw, (FlexNamed o)
-    TyAssoc tr, n, a: TyAssoc tr, n, (FlexNamed a)
+    TyAssoc tr, n, a, ix: TyAssoc tr, n, (FlexNamed a), (Each ix, \|i| FlexNamed i)
     other: other
 
 # Whether a type holds an associated type, which stands for another type once its
 # argument is known.
 HoldsAssociatedType: unbounded fn Ty -> Bool
 fn HoldsAssociatedType t = match t:
-    TyAssoc ignore, ignore, ignore2: True
+    TyAssoc ignore, ignore, ignore2, ignore3: True
     TyCon ignore, args: Fold args, False, \|found, a| found or HoldsAssociatedType a
     TyFn ignore, ps, r: Fold ps, (HoldsAssociatedType r), \|found, a| found or HoldsAssociatedType a
     TyTuple ts: Fold ts, False, \|found, a| found or HoldsAssociatedType a
@@ -389,7 +389,7 @@ fn TypeNodes t = match t:
     TySig ignore, i: 1 + TypeNodes i
     TyAt i, ignore: 1 + TypeNodes i
     TyElem ignore, o: 1 + TypeNodes o
-    TyAssoc ignore, ignore2, a: 1 + TypeNodes a
+    TyAssoc ignore, ignore2, a, ix: 1 + (TypeNodes a) + (Fold ix, 0, \|k, i| k + (TypeNodes i))
     otherwise: 1
 
 # A type with each type parameter named in `by` replaced by its type there, all at once.
@@ -406,7 +406,7 @@ fn SubstRigids by, t = match t:
     TySig s, i: TySig s, (SubstRigids by, i)
     TyAt i, rw: TyAt (SubstRigids by, i), rw
     TyElem rw, o: TyElem rw, (SubstRigids by, o)
-    TyAssoc tr, n, a: TyAssoc tr, n, (SubstRigids by, a)
+    TyAssoc tr, n, a, ix: TyAssoc tr, n, (SubstRigids by, a), (Each ix, \|i| SubstRigids by, i)
     other: other
 
 # The typed output: every recorded type followed to its end, and the scheme of every

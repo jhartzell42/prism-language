@@ -222,7 +222,7 @@ fn ?HoldsFunction t = match t:
     TyFn ignore, ignore, ignore: ? True
     TyFlex ignore: nil
     TyErr: nil
-    TyAssoc ignore, ignore, ignore: nil
+    TyAssoc ignore, ignore, ignore, ignore: nil
     otherwise: ? False
 
 # A field of an element seen through a document (`Elem r`, a snapshot) binds its level

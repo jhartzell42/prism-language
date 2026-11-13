@@ -158,11 +158,38 @@ fn ConvNamed cx, st, n, args, span:
                 match cx.g.assocNames[qk]:
                     # an associated type applied (Type System ch. 3, ch. 5's Traits), a name
                     # of its trait's module: normalized when unified, at an impl's head
-                    ? tr: if (Len args) == 1:
-                        let ((a, st2)) = ConvType cx, st1, (Or args[0], dummyType)
-                        (((TyAssoc tr, (BareName qk), a), st2))
-                    else: ((TyErr, (Err st1, "kind", span, "the associated type `{name}` takes one type; here it has {CountWord (Len args)}")))
+                    # with its indices after the head, `Request d r` (Type System ch. 6)
+                    ? tr:
+                        let more = match cx.g.traits[tr]:
+                            ? ti: Or ti.assocParams[BareName qk], 0
+                            nil: 0
+                        if (Len args) == 1 + more:
+                            let ((a, st2)) = ConvType cx, st1, (Or args[0], dummyType)
+                            let ((ix, st3)) = Fold (Drop args, 1), (([[]], st2)), \|((xs, s)), arg|
+                                let ((x, s2)) = ConvIndex cx, s, arg
+                                (((Push xs, x), s2))
+                            (((TyAssoc tr, (BareName qk), a, ix), st3))
+                        else: if more == 0: ((TyErr, (Err st1, "kind", span, "the associated type `{name}` takes one type; here it has {CountWord (Len args)}")))
+                        else: ((TyErr, (Err st1, "kind", span, "the associated type `{name}` takes {CountWord (1 + more)} types, its trait's and {if more == 1: "an index" else: "{CountWord more} indices"}; here it has {CountWord (Len args)}")))
                     nil: ConvNamedType cx, st1, qk, ti, name, args, span
+
+# An associated type's index: a bare uppercase name that names a constructor is that
+# role constructor as a type (Type System ch. 6: "Each role constructor also names a
+# type", only in type position), even where a type takes the same name; any other type is
+# read as a type.
+ConvIndex: unbounded fn Cx, St, Type -> ((Ty, St))
+fn ConvIndex cx, st, t = match t.kind:
+    TName n, args if (Len args) == 0 and n.sigils == "" and (Len n.path) == 1 and IsUpperText (Or n.path[0], ""):
+        match ?RoleConstructor cx.g, cx.home, (Or n.path[0], ""):
+            ? k: (((TyRole k), st))
+            nil: ConvType cx, st, t
+    otherwise: ConvType cx, st, t
+
+# The key of the constructor a bare name reaches from module `m`, if it reaches one.
+?RoleConstructor: fn G, Text, Text -> ?Text
+fn ?RoleConstructor g, m, name = match ResolveValue g, m, SName(sigils="", path=[[name]], span=(Range(start=0, end=0, origin=InSource))):
+    ((? k, ignore)): if HasKey g.ctors, k: ? k else: nil
+    otherwise: nil
 
 ConvNamedType: unbounded fn Cx, St, Text, TyInfo, Text, [Type], Range -> ((Ty, St))
 fn ConvNamedType cx, st1, qk, ti, name, args, span:

@@ -76,7 +76,7 @@ fn CollectDecl g, st, info, d, ?lastType = match d.kind:
         let assocs = Fold t.items, [[]], \|acc, it| match it:
             TiAssocType n, ignore, ignore, ignore: Push acc, n.name
             otherwise: acc
-        let ti = TraitInfo(name=name, home=info.name, param=(Or (Each t.params, \|p| p.name)[0], "a"), supers=[[]], methods=[[]], defaults=[[]], assocs=assocs, assocDefaults=[[]], file=info.file, span=d.span)
+        let ti = TraitInfo(name=name, home=info.name, param=(Or (Each t.params, \|p| p.name)[0], "a"), supers=[[]], methods=[[]], defaults=[[]], assocs=assocs, assocParams=(AssocParamCounts t.items), assocDefaults=[[]], file=info.file, span=d.span)
         # each a name of the module: a second trait of the module declaring it is
         # `duplicate-name`
         let ((names, st2)) = Fold t.items, ((g.assocNames, st)), \|((m, s)), it| match it:
@@ -340,3 +340,10 @@ fn ?ResolveTrait g, m, path:
     else:
         let qk = QualKey (QualModule g, (Take path, (Dec (Len path)))), (Or (?Last path), "")
         if HasKey g.traits, qk: ? qk else: nil
+
+# How many further parameters each associated type of a trait takes, for those that take
+# any (`type Request r`; Type System ch. 6).
+AssocParamCounts: fn [TraitItem] -> (Text ==> Nat)
+fn AssocParamCounts items = Fold items, {}, \|m, it| match it:
+    TiAssocType n, params, ignore, ignore: if (Len params) == 0: m else: Insert m, n.name, (Len params)
+    otherwise: m
