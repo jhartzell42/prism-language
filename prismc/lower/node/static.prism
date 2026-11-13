@@ -1969,7 +1969,7 @@ fn ?ParamMatch pat, t, m = match ((pat, t)):
     # an associated type at a variable (`Move r` against `Step`) decides nothing about it:
     # the argument's type is already the impl's (`?InstanceMatch`); another parameter
     # decides the variable, or it stays unmatched
-    (((TyAssoc ignore, ignore, ignore), ignore)): ? m
+    (((TyAssoc ignore, ignore, ignore, ignore), ignore)): ? m
     otherwise: if pat == t: ? m else: nil
 
 ?ParamMatchAll: unbounded fn [Ty], [Ty], (Text ==> Ty) -> ?(Text ==> Ty)

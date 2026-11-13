@@ -491,7 +491,7 @@ fn EmbeddedAbove all, ?at, definition, types = match ?at:
 # argument is known.
 HoldsAssociated: unbounded fn Ty -> Bool
 fn HoldsAssociated t = match t:
-    TyAssoc ignore, ignore, ignore2: True
+    TyAssoc ignore, ignore, ignore2, ignore3: True
     otherwise: Fold (PartsOfType t), False, \|found, part| found or HoldsAssociated part
 
 # Whether one type is found inside another, former by former (the homeomorphic
@@ -516,7 +516,7 @@ fn PartsOfType t = match t:
     TySig ignore, i: [[i]]
     TyAt i, ignore: [[i]]
     TyElem ignore, o: [[o]]
-    TyAssoc ignore, ignore, x: [[x]]
+    TyAssoc ignore, ignore, x, ix: Append [[x]], ix
     otherwise: [[]]
 
 # A type's former: the type with nothing at its parts.
@@ -530,7 +530,7 @@ fn TypeFormer t = match t:
     TySig s, ignore: TySig s, TyErr
     TyAt ignore, r: TyAt TyErr, r
     TyElem r, ignore: TyElem r, TyErr
-    TyAssoc cls, n, ignore: TyAssoc cls, n, TyErr
+    TyAssoc cls, n, ignore, ix: TyAssoc cls, n, TyErr, (Each ix, \|i| TyErr)
     other: other
 
 # What one use instantiates where the definition it stands in has the types `types`: a

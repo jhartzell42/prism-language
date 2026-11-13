@@ -255,6 +255,28 @@ fn LowerParams p0 = update (([[]], p0)):
         &p <= q
     &_ <= ((&ps, &p))
 
+# An associated type's further parameters (Type System ch. 6): in a trait each a
+# lowercase name; in an impl's equation each a lowercase name, which stands for every
+# role, or a role constructor, a bare uppercase name (`type Request Librarian = ...`).
+AssocParams: fn Ps -> (([Ident], Ps))
+fn AssocParams p0 = update (([[]], p0)):
+    let &ps = [[]]
+    let &p = p0
+    let &fuel = Len p0.toks
+    while ? left <- &fuel -? 1 if IsAssocParam (Kind &p):
+        &fuel <= left
+        let name = match Kind &p:
+            KName n: Or n.path[0], ""
+            otherwise: ""
+        &ps <= Push &ps, Ident(name=name, span=(Here &p))
+        &p <= Adv &p
+    &_ <= ((&ps, &p))
+
+IsAssocParam: fn TokKind -> Bool
+fn IsAssocParam k = match k:
+    KName n: n.sigils == "" and (Len n.path) == 1
+    otherwise: False
+
 IsPlainLower: fn TokKind -> Bool
 fn IsPlainLower (KName n) = n.case == CaseLower and n.sigils == ""
 fn IsPlainLower ignore = False
@@ -395,7 +417,7 @@ fn ParseTraitItem p = match Kind p:
         match Kind p1:
             KName n if n.case == CaseUpper and n.sigils == "" and (Len n.path) == 1:
                 let name = Ident(name=(Or n.path[0], ""), span=(Here p1))
-                let ((params, p2)) = LowerParams (Adv p1)
+                let ((params, p2)) = AssocParams (Adv p1)
                 let ((?value, p3)) = if AtOp p2, "=": OptionalType (Adv p2) else: ((nil, p2))
                 let item = TiAssocType name, params, ?value, (To start, (Prev p3))
                 ((item, p3))

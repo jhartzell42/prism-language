@@ -2182,7 +2182,7 @@ fn Recolored lx, x, fromTy, toTy, depth:
 # more until it is none; any other type as it is.
 KnownAssoc: unbounded fn Lx, Ty -> Ty
 fn KnownAssoc lx, t = match t:
-    TyAssoc tr, n, a: match ?ImplAssoc lx.g, tr, n, a:
+    TyAssoc tr, n, a, ix: match ?ImplAssoc lx.g, tr, n, a, ix:
         ? chosen: KnownAssoc lx, chosen
         nil: t
     otherwise: t
@@ -2311,7 +2311,7 @@ fn ?InstanceMatch pat, t, m = match ((pat, t)):
     (((TyFn ignore, ps, r), (TyFn ignore, qs, s))): if (Len ps) == (Len qs): ?InstanceMatchAll (Push ps, r), (Push qs, s), m else: nil
     # an associated type at a variable decides nothing about it: its instance is already
     # normalized
-    (((TyAssoc ignore, ignore, ignore), ignore)): ? m
+    (((TyAssoc ignore, ignore, ignore, ignore), ignore)): ? m
     otherwise: if pat == t: ? m else: nil
 
 ?InstanceMatchAll: unbounded fn [Ty], [Ty], (Text ==> Ty) -> ?(Text ==> Ty)
@@ -2543,7 +2543,7 @@ fn ?SelfAt lx, span, cls = Fold (Or lx.impls[PlaceKey lx, span], [[]]), nil, \|?
     ? x: ? x
     nil: if n.cls == cls: ? (OutTyOf lx, (SubstTy lx, n.ty)) else: nil
 
-let dummyTraitInfo = TraitInfo(name="", home="", param="a", supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], assocDefaults=[[]], file=0, span=Range(start=0, end=0, origin=InSource))
+let dummyTraitInfo = TraitInfo(name="", home="", param="a", supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], assocParams={}, assocDefaults=[[]], file=0, span=Range(start=0, end=0, origin=InSource))
 
 PreludeMethod: unbounded fn Lx, Text, Text, [Vl], Range, OutTy -> Vl
 fn PreludeMethod lx, cls, m, vals, span, t:
@@ -2798,7 +2798,7 @@ fn Instantiated t, params, args = match t:
     TyArray e: TyArray (Instantiated e, params, args)
     TyMap k, v: TyMap (Instantiated k, params, args), (Instantiated v, params, args)
     TySig s, i: TySig s, (Instantiated i, params, args)
-    TyAssoc tr, n, a: TyAssoc tr, n, (Instantiated a, params, args)
+    TyAssoc tr, n, a, ix: TyAssoc tr, n, (Instantiated a, params, args), (Each ix, \|i| Instantiated i, params, args)
     otherwise: t
 
 # `xs[i]`: an optional, of an array or a map (a text has no index: the checker refuses it).
@@ -3405,7 +3405,7 @@ fn OpenTyQs lx, t = match t:
     TySig ignore, i: OpenTyQs lx, i
     TyAt i, ignore: OpenTyQs lx, i
     TyElem ignore, o: OpenTyQs lx, o
-    TyAssoc ignore, ignore, a: OpenTyQs lx, a
+    TyAssoc ignore, ignore, a, ix: Fold ix, (OpenTyQs lx, a), \|acc, i| Append acc, (OpenTyQs lx, i)
     otherwise: [[]]
 
 # Lowering at an instantiation: its variables' types and colors in the substitution.

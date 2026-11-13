@@ -112,6 +112,9 @@ type TraitInfo = record:
     methods: [Text]
     defaults: [Text]
     assocs: [Text]
+    # The associated types with further parameters, each with how many (`type Request r`:
+    # one; Type System ch. 6); an associated type not here takes none.
+    assocParams: (Text ==> Nat)
     # The associated types the trait gives a default, each with the default over the
     # trait's parameter (`type Item = a`).
     assocDefaults: [((Text, Ty))]
@@ -129,6 +132,8 @@ type ImplInfo = record:
     span: Range
     derived: Bool
     assocs: [((Text, Ty))]
+    # the equations of its associated types with indices (`type Request Librarian = ...`)
+    indexed: [AssocImpl]
     methods: [Text]
 derive ^Eq, ^Show
 

@@ -113,7 +113,7 @@ fn NamesAlias g, t = match t:
     TySig ignore, i: NamesAlias g, i
     TyAt i, ignore: NamesAlias g, i
     TyElem ignore, o: NamesAlias g, o
-    TyAssoc ignore, ignore, a: NamesAlias g, a
+    TyAssoc ignore, ignore, a, ignore2: NamesAlias g, a
     otherwise: False
 
 AnyNamesAlias: unbounded fn G, [Ty] -> Bool
@@ -494,7 +494,7 @@ fn ImplDefaults g, st = Fold (Values g.traits), ((g, st)), \|((g1, st1)), tr|
                 else: Push acc, ((assoc, (SubstQ Inst(tys={tr.param: im.head}, rows={}, cols={}), value)))
             let filled = update im:
                 &_.assocs <= Append &_.assocs, taken
-            (((Push done, filled), (Append new, (Each taken, \|((an, at))| AssocImpl(cls=im.cls, name=an, head=im.head, qs=im.qs, value=at)))))
+            (((Push done, filled), (Append new, (Each taken, \|((an, at))| AssocImpl(cls=im.cls, name=an, head=im.head, qs=im.qs, indices=[[]], value=at)))))
         let g2 = update g1:
             &_.impls <= Insert &_.impls, tr.name, impls
         let st2 = update st1:
@@ -520,12 +520,57 @@ fn ImplsComplete g, st0:
                 if defined or HasText tr.defaults, method: s
                 else: ErrFix s, "impl-lacks", im.span, "this impl of `^{shown}` lacks `{BareName method}`, which has no default body", "define it under the impl, `fn {BareName method} ...`"
             let s4 = Fold tr.assocs, s3, \|s, assoc|
-                if Fold im.assocs, False, \|seen, ((chosen, ignore))| seen or chosen == assoc: s
+                if HasKey tr.assocParams, assoc: EquationsComplete g, s, tr, im, assoc
+                else: if Fold im.assocs, False, \|seen, ((chosen, ignore))| seen or chosen == assoc: s
                 else: ErrFix s, "impl-lacks", im.span, "this impl of `^{shown}` lacks `type {assoc}`", "choose it under the impl, `type {assoc} = ...`"
-            let s5 = Fold im.assocs, s4, \|s, ((chosen, ignore))| if HasText tr.assocs, chosen: s else: Err s, "mismatch", im.span, "`^{shown}` has no associated type `{chosen}`"
+            let s5a = Fold im.assocs, s4, \|s, ((chosen, ignore))| if not (HasText tr.assocs, chosen): Err s, "mismatch", im.span, "`^{shown}` has no associated type `{chosen}`"
+                else: match tr.assocParams[chosen]:
+                    ? k: ErrFix s, "kind", im.span, "`type {chosen}` of `^{shown}` takes {if k == 1: "an index" else: "{CountWord k} indices"}; this impl gives it none", "write one equation per role, `type {chosen} Role = ...`, or one for every role, `type {chosen} r = ...`"
+                    nil: s
+            let s5 = Fold im.indexed, s5a, \|s, e| if not (HasText tr.assocs, e.name): Err s, "mismatch", im.span, "`^{shown}` has no associated type `{e.name}`"
+                else: if (Or tr.assocParams[e.name], 0) != (Len e.indices): ErrFix s, "kind", im.span, "`type {e.name}` of `^{shown}` takes {CountWord (Or tr.assocParams[e.name], 0)} indices; an equation of this impl gives it {CountWord (Len e.indices)}", "give it as many as the trait's `type {e.name}` names"
+                else: s
             Fold tr.supers, s5, \|s, above| ImplHasAbove g, s, im, shown, above
     update st:
         &_.file <= st0.file
+
+# `assoc-role-missing`: an impl's equations for an associated type with indices cover every
+# role (Type System ch. 6, "The equations are closed and exhaustive"; doubt EQ): one
+# equation whose indices are all variables, or one per constructor of the roles' choice at
+# the one index that names constructors. An equation of all variables beside others
+# overlaps them, a `collision`.
+EquationsComplete: unbounded fn G, St, TraitInfo, ImplInfo, Text -> St
+fn EquationsComplete g, st, tr, im, assoc:
+    let eqs = Filter im.indexed, \|e| e.name == assoc
+    let general = Filter eqs, \|e| Fold e.indices, True, \|all, x| all and IsIndexVar x
+    let shown = BareName tr.name
+    let head = ShowTy st, im.head
+    if (Len eqs) == 0: ErrFix st, "impl-lacks", im.span, "this impl of `^{shown}` lacks `type {assoc}`", "give it an equation per role, `type {assoc} Role = ...`, or one for every role, `type {assoc} r = ...`"
+    else: if (Len general) > 0:
+        if (Len eqs) > 1: Err st, "collision", im.span, "`type {assoc}` has an equation for every role beside equations for single roles"
+        else: st
+    else:
+        let positions = Filter (Range0 (Or tr.assocParams[assoc], 0)), \|i| Fold eqs, False, \|b, e| b or not (IsIndexVar (Or e.indices[i], (IndexVar "")))
+        if (Len positions) > 1: Err st, "unsupported", im.span, "this checker does not implement equations of `type {assoc}` naming roles at more than one index"
+        else:
+            let at = Or positions[0], 0
+            let named = Fold eqs, [[]], \|ks, e| match e.indices[at]:
+                ? (IndexRole k): AddText ks, k
+                otherwise: ks
+            let owner = match g.ctors[Or named[0], ""]:
+                ? c: c.owner
+                nil: ""
+            let roles = Filter (Keys g.ctors), \|k| match g.ctors[k]:
+                ? c: c.owner == owner
+                nil: False
+            let st2 = Fold named, st, \|s, k| if HasText roles, k: s else: Err s, "mismatch", im.span, "`type {assoc}` names the roles of two choices, `{BareName (Or named[0], "")}` and `{BareName k}`"
+            Fold roles, st2, \|s, k| if HasText named, k: s
+                else: ErrFix s, "assoc-role-missing", im.span, "the impl of `^{shown}` for `{head}` gives `{assoc}` no equation for the role `{BareName k}`", "add `type {assoc} {BareName k} = ...`, or `type {assoc} r = ...` for every role"
+
+IsIndexVar: fn AssocIndex -> Bool
+fn IsIndexVar x = match x:
+    IndexVar ignore: True
+    IndexRole ignore: False
 
 # A trait's `where` on its parameter (`trait ^Titled a where a: ^Named`, Type System ch. 3)
 # asks every type of the trait for the impl above too: an impl's head has it, under the
@@ -620,9 +665,13 @@ fn ConvTrait g, st, info, t, span:
     let ((supers, st2)) = ConvBounds cx, st1, t.bounds
     # a default for an associated type, `type Item = a`, read over the trait's parameter
     let ((assocDefaults, st2d)) = Fold t.items, (([[]], st2)), \|((acc, s)), it| match it:
-        TiAssocType n, ignore, (? v), ignore:
-            let ((vt, s2)) = ConvType cx, s, v
-            (((Push acc, ((n.name, vt))), s2))
+        TiAssocType n, params, (? v), aspan:
+            if (Len params) > 0: ((acc, (Err s, "unsupported", aspan, "this checker does not implement a default for an associated type with indices")))
+            else:
+                let ((vt, s2)) = ConvType cx, s, v
+                (((Push acc, ((n.name, vt))), s2))
+        # a trait's own further parameters are variables, `type Request r`
+        TiAssocType n, params, nil, aspan: Fold params, ((acc, s)), \|((a2, s2)), p| if IsUpperText p.name: ((a2, (ErrFix s2, "syntax", p.span, "`{p.name}` stands where `type {n.name}` names its parameters, which are lowercase", "write a lowercase name, `type {n.name} r`; a role's own equation stands under an impl"))) else: ((a2, s2))
         otherwise: ((acc, s))
     let ((g3, st3, methods, defaults, assocs)) = Fold t.items, ((g, st2d, [[]], [[]], [[]])), \|((gg, s, ms, ds, assocAcc)), it| match it:
         TiSignature sg:
@@ -655,7 +704,7 @@ fn ConvTrait g, st, info, t, span:
     let st4 = Fold t.items, st3, \|s, it| match it:
         TiFn f: if HasText methods, (QualKey info.name, (DefNameText f.name)): s else: Err s, "mismatch", f.span, "`^{Dotted t.name.path}` has no method `{DefNameText f.name}`"
         otherwise: s
-    let ti = TraitInfo(name=name, home=info.name, param=param, supers=(Each supers, \|((ignore, k))| k), methods=methods, defaults=defaults, assocs=assocs, assocDefaults=assocDefaults, file=info.file, span=span)
+    let ti = TraitInfo(name=name, home=info.name, param=param, supers=(Each supers, \|((ignore, k))| k), methods=methods, defaults=defaults, assocs=assocs, assocParams=(AssocParamCounts t.items), assocDefaults=assocDefaults, file=info.file, span=span)
     let upd3 = update g3:
         &_.traits <= Insert &_.traits, name, ti
     ((upd3, st4))
@@ -671,19 +720,37 @@ fn ConvImpl g, st, info, i, span = match ?ResolveTrait g, info.name, i.traitRef.
         let ((bs, st2a)) = ConvBounds cx, (TraitCollisionAt g, st, info.name, i.traitRef.path, i.traitRef.span), i.bounds
         let st2 = BoundsNamed st2a, i.bounds, (TypeVarsOfType i.ty), "the impl's head", "the head"
         let ((head, st3)) = ConvType cx, st2, i.ty
-        let ((assocs, st4)) = Fold i.items, (([[]], st3)), \|((acc, s)), it| match it:
-            TiAssocType n, ignore, (? v), chosenAt:
+        let ((assocs, st4a)) = Fold i.items, (([[]], st3)), \|((acc, s)), it| match it:
+            TiAssocType n, params, (? v), chosenAt if (Len params) == 0:
                 let ((vt, s2)) = ConvType cx, s, v
                 # `collision`: an impl chooses an associated type once; the first stays
                 if Fold acc, False, \|seen, ((chosen, ignore))| seen or chosen == n.name: ((acc, (Err s2, "collision", chosenAt, "a second choice of `type {n.name}`")))
                 else: (((Push acc, ((n.name, vt))), s2))
             otherwise: ((acc, s))
+        # the equations with indices (Type System ch. 6): a lowercase index a variable for
+        # every role, an uppercase one a role constructor
+        let ((indexed, st4)) = Fold i.items, (([[]], st4a)), \|((acc, s)), it| match it:
+            TiAssocType n, params, (? v), chosenAt if (Len params) > 0:
+                let ((vt, s2)) = ConvType cx, s, v
+                let ((indices, s3)) = Fold params, (([[]], s2)), \|((xs, ss)), p|
+                    if IsUpperText p.name: match ?RoleConstructor g, info.name, p.name:
+                        ? k: (((Push xs, (IndexRole k)), ss))
+                        nil: (((Push xs, (IndexVar "")), (ErrFix ss, "unknown-name", p.span, "no constructor `{p.name}` to stand for a role", "name a constructor of the document's roles, or a lowercase variable for every role")))
+                    else: (((Push xs, (IndexVar p.name)), ss))
+                let vars = Fold indices, [[]], \|vs, x| match x:
+                    IndexVar q: if q == "": vs else: Push vs, q
+                    otherwise: vs
+                let eq = AssocImpl(cls=cls, name=n.name, head=head, qs=(Append (TypeVarsOfType i.ty), vars), indices=indices, value=vt)
+                # `collision`: one equation per index
+                if Fold acc, False, \|seen, e| seen or (e.name == n.name and e.indices == indices): ((acc, (Err s3, "collision", chosenAt, "a second equation for `type {n.name}` at these indices")))
+                else: (((Push acc, eq), s3))
+            otherwise: ((acc, s))
         let names = Fold i.items, [[]], \|acc, it| match it:
             TiFn f: AddText acc, (DefNameText f.name)
             otherwise: acc
-        let im = ImplInfo(cls=cls, head=head, qs=(TypeVarsOfType i.ty), bounds=bs, home=info.name, file=info.file, span=span, derived=False, assocs=assocs, methods=names)
+        let im = ImplInfo(cls=cls, head=head, qs=(TypeVarsOfType i.ty), bounds=bs, home=info.name, file=info.file, span=span, derived=False, assocs=assocs, indexed=indexed, methods=names)
         let st5 = update st4:
-            &_.assocImpls <= Append &_.assocImpls, (Each assocs, \|((an, at))| AssocImpl(cls=cls, name=an, head=head, qs=im.qs, value=at))
+            &_.assocImpls <= Append (Append &_.assocImpls, (Each assocs, \|((an, at))| AssocImpl(cls=cls, name=an, head=head, qs=im.qs, indices=[[]], value=at))), indexed
         let g2 = update g:
             &_.impls <= Insert &_.impls, cls, (Push (Or &_.impls[cls], [[]]), im)
         let g3 = Fold names, g2, \|gg, mname|

@@ -213,7 +213,7 @@ fn SubstTyIn lx, t = match t:
     TySig s, i: TySig s, (SubstTyIn lx, i)
     TyAt i, rw: TyAt (SubstTyIn lx, i), rw
     TyElem rw, o: TyElem rw, (SubstTyIn lx, o)
-    TyAssoc tr, n, a: TyAssoc tr, n, (SubstTyIn lx, a)
+    TyAssoc tr, n, a, ix: TyAssoc tr, n, (SubstTyIn lx, a), (Each ix, \|i| SubstTyIn lx, i)
     other: other
 
 InstCol: fn Lx, Col -> Col
