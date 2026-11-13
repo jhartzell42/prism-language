@@ -1,0 +1,6 @@
+# Derived by hand from Jimmy's ruling of 12 November (`ValueOf<<r>>` is the case `r` as a value of its choice): `Keyed<<Writer>> 3` opened names the writer with 3 edits, `Keyed<<Reader>> 5` the reader with 5, and `ValueOf<<Writer>>` is `Writer`.
+test valued
+
+tick 0
+  added:
+    0: Ui.Label(text="writer edits 3; reader edits 5; writer")

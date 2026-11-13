@@ -1,0 +1,6 @@
+# Derived by hand from Jimmy's ruling of 12 November (`any` over an index with no trait bound) and Type System ch. 3 ("Existentials"): the readers' pair merges to 1 + 2 = 3, the writers' to 10 + 20 = 30, and the list of both totals 33.
+test opened
+
+tick 0
+  added:
+    0: Ui.Label(text="3 + 30 = 33")

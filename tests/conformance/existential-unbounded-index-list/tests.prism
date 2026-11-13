@@ -1,0 +1,6 @@
+# The tests of existential-unbounded-index-list.
+emit Ui.*
+use App.*
+
+test opened, @page:
+    build

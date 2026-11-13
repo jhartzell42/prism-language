@@ -1,0 +1,6 @@
+# Derived by hand from Jimmy's ruling of 12 November (`forall`: scoped type variables, kinds on variables, and an ambiguous trait method fixed by naming its parameter): `((1, "one"))` swapped is `(("one", 1))`, the writer's draft shows its body `hello`, and a `Clock` state of 5 stepped twice is 7.
+test quantified
+
+tick 0
+  added:
+    0: Ui.Label(text="one 1; hello; 7")
