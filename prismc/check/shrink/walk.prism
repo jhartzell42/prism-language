@@ -147,6 +147,7 @@ fn StmtKids s, m = match s.kind:
     SFn f: [[(BodyKid f.body, (Later (Hide m, (PatternsNames f.params))))]]
     SWidget w: [[(KidStmts w.body.stmts, (Later m))]]
     SSet t, v: ExprsKids [[t, v]], m
+    SPut t, v: ExprsKids [[t, v]], m
     SAccum t, ignore, v: ExprsKids [[t, v]], m
     SRequire c: [[(KidExpr c, m)]]
     SForbid c: [[(KidExpr c, m)]]

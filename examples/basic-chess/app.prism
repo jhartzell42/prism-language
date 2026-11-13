@@ -4,7 +4,7 @@
 # (the UI of jhartzell42/reflex-chess, Frontend/Chess.hs) into the books' spelling. Its tests
 # are in tests.prism. Work in progress, subject to change.
 #
-# Around the board (Claude's, README): a side panel with the status, the move counter, the
+# Around the board (Claude's): a side panel with the status, the move counter, the
 # Back, Forward, Reset and Settings buttons and the list of moves; and a settings dialog in
 # the window's bottom right corner that edits the interface's texts, the players' names, the
 # squares' colours and the board's border, live. The settings start at their defaults every
@@ -22,7 +22,7 @@ use BasicWindow.Layout.*
 use BasicWindow.Hits.*
 
 # the grid's places, keyed in reading order from a8, since a grid lays its children out in
-# their paths' order; a spot prints as its square, `e2` (README, doubt SP)
+# their paths' order; a spot prints as its square, `e2`
 type Spot = record:
     down: Nat                  # 0 is the eighth rank, at the top
     across: Nat                # 0 is the a file
@@ -186,7 +186,7 @@ FirstOf: fn [a], Nat -> [a]
 fn FirstOf xs, n = Fold xs, [[]], \|acc, x| if (Len acc) < n: Push acc, x else: acc
 
 # A move made on the position shown: the moves after it are discarded and the game goes on
-# from there (Claude's, README).
+# from there (Claude's).
 Played: fn History, Game, Text -> History
 fn Played r, next, move = History(games=(Push (FirstOf r.games, r.shown + 1), next), moves=(Push (FirstOf r.moves, r.shown), move), shown=(r.shown + 1))
 

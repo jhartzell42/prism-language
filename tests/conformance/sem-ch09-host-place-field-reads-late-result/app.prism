@@ -1,0 +1,31 @@
+# A hosted child's place with a plain answer bound to a name, whose constant field reads a
+# building `if`'s late plain result written below it (Semantics ch. 4, "Binding groups and
+# cycles": any line may use any name the block binds, and the order of a group's lines
+# decides positions and nothing else; ch. 9: a supplier answers a hosted place, its plain
+# answer the place's first value, asked by the element as built). Nothing here is a cycle:
+# the `if` reads nothing of the place. The same place of the World's lowers
+# (conformance/sem-ch04-late-value-above-in-dynamic-place-field and its kin). Reaches
+# `BindLate`'s marker "the late result `k` read at its block's build" on prismc-fd1.
+# Written by Claude (sweep-7, the prismc run), 12 November 2026; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+tag Pad.Ask of Element Text:
+    name: Text
+
+@Inner: fn Bool -> @unit
+fn @Inner loud:
+    a <- Pad.Ask(name="ask {k}")                                       # [0]
+    Ui.Label($text=$"asked {a}")                                       # [1]
+    k <- if loud:
+        Ui.Label($text=$"loud")                                        # [2]
+        @ "x"
+    else:
+        @ "y"
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    ignore <- @HostDocument (@Inner loud), \|p, e| match e:           # 0/[p]
+        Pad.Ask(name=n): @ "yes {n}"
+        otherwise: @Element e

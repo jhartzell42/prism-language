@@ -374,8 +374,33 @@ fn IsWholeObject lx, e = match e.kind:
         if not (NotLifted lx, e.span): False
         else: if (qk != "") and IsWholeFn lx, qk: True
         else: if HasKey lx.g.ctors, qk: False
-        else: (NotLifted lx, e.span) and Fold args, False, \|seen, a| seen or (IsWholeObject lx, a.value) or HoldsTimeWhole lx, a.value
+        else: (NotLifted lx, e.span) and Fold (Range0 (Len args)), False, \|seen, i| seen or WholeArgumentAt lx, qk, args, i
     otherwise: False
+
+# Whether argument `i` of a call of `qk` makes the call a `Dynamic` value: one that is or
+# holds a dynamic whole, at a parameter that does not read it (`ReadAtParameter`).
+WholeArgumentAt: unbounded fn Lx, Text, [Arg], Nat -> Bool
+fn WholeArgumentAt lx, qk, args, i = match args[i]:
+    ? a: (not (ReadAtParameter lx, qk, i)) and ((IsWholeObject lx, a.value) or HoldsTimeWhole lx, a.value)
+    nil: False
+
+# A program function lowered lifted: its time only `$` on top of its types, so it takes
+# its dynamics' values and gives its result's (claude/backend.md, "A function that takes
+# time whole"); a constructor, a method, a prelude function and a widget function aside.
+IsLiftedProgramFn: fn Lx, Text -> Bool
+fn IsLiftedProgramFn lx, qk = if (qk == "") or (IsWholeFn lx, qk) or HasKey lx.g.ctors, qk: False else: match lx.g.vals[qk]:
+    ? v: v.home != "Prelude" and v.sort != "method" and (not (IsWidgetFn v)) and (not (HasEventParameter v.scheme.ty)) and DynOnlyOnTop v.scheme.ty
+    nil: False
+
+# Whether argument `i` of a call of `qk` is read where the call is: a `$` parameter of a
+# program function lowered lifted takes the dynamic's value (gap LE), sampled at the read
+# point, or with a read context of no node in a function's body (`SampledAt`).
+ReadAtParameter: fn Lx, Text, Nat -> Bool
+fn ReadAtParameter lx, qk, i = if not (IsLiftedProgramFn lx, qk): False else: match lx.g.vals[qk]:
+    ? v: match v.scheme.ty:
+        TyFn ignore, ps, ignore: (LayerOf (Or ps[i], TyErr)) == LyDyn
+        otherwise: False
+    nil: False
 
 # An argument that can only be taken whole: its type holds a dynamic or an event below the
 # top (`[[(($a, 1))]]` to a generic function), a bundle aside.
@@ -406,8 +431,25 @@ fn SampledObject lx, env, e:
         &_.whole <= True
     let obj = Own (ValueByKind lxw, env, e)
     if (LayerOf (TypeAt lx, e.span)) != LyDyn: VlOwned obj, (OutTyOf lx, (TypeAt lx, e.span))
-    else: if lx.noCx: VlOwned (Refusal "`{SrcText lx, lx.file, e.span}`, a dynamic a function gives whole, read in a plain function, which has no read point (gap LE)"), t
-    else: VlOwned (XMethod obj, "sample", [[XCx]]), t
+    else: VlOwned (SampledAt lx, obj), t
+
+# A dynamic's value where a reader is wanted: sampled at the read point; in a function's
+# body, which has none, with a read context of no node (`sample_detached`, gap LE). No
+# plain value can depend on a dynamic's value (Type System ch. 4: no function turns a
+# dynamic into its current value), so such a read reaches only a `$` parameter of a
+# function lowered lifted, whose plain result does not show it, or a lifted body's own
+# values, which its caller reads again at its read point.
+SampledAt: fn Lx, Ex -> Ex
+fn SampledAt lx, obj = if lx.noCx: XCall (HelperRef "sample_detached"), [[(XRef obj)]] else: XMethod obj, "sample", [[XCx]]
+
+# An argument at a `$` parameter a lifted function reads (`ReadAtParameter`), in a body that
+# holds its dynamics whole: the `Dynamic`'s value.
+SampledArgument: unbounded fn Lx, Env, Expr -> Ex
+fn SampledArgument lx, env, e:
+    let v = ValueOf lx, env, e
+    match ValueTy v:
+        OutDyn ignore: XRef (SampledAt lx, (Own v))
+        otherwise: Ref v
 
 # A value in a function that takes time whole, or in a call of one: a dynamic is a
 # `Dynamic`. A node's reader is the live dynamic its line made for it (`WholeArgs`), never a
@@ -448,7 +490,20 @@ fn WholeValueOf lx, env, e:
         else: if (LayerOf (TypeAt lx, x.span)) == LyDyn: ValueOf lx, env, x else: VlOwned (XCall (HelperRef "dyn_constant"), [[Own (ValueOf (if ConstantOfTimeAt lx, e: lx else: lxp), env, x)]]), (OutDyn (OutTyOf lx, (Peel full)))
         otherwise:
             if not (NotLifted lx, e.span): DynamicLift lx, env, e
-            else: ValueByKind lx, env, e
+            else: match ?LiftedCallSources lx, e:
+                ? srcs: DynamicLiftOver lx, env, e, srcs
+                nil: ValueByKind lx, env, e
+
+# A call of a program function lowered lifted, in a body that holds its dynamics whole (`$Inc
+# (Or xs[0], ($ 0))` in a function over `[$Nat]`): the call over the values of its `$`
+# arguments, mapped (`DynamicLiftOver`); with none, the constant of its value (gap LE).
+?LiftedCallSources: unbounded fn Lx, Expr -> ?[Expr]
+fn ?LiftedCallSources lx, e = match e.kind:
+    ECall c, args, ignore, ignore:
+        let qk = CalleeKey lx, c
+        if not (IsLiftedProgramFn lx, qk): nil
+        else: ? (Each (Filter (Range0 (Len args)), \|i| (ReadAtParameter lx, qk, i) and (LayerOf (TypeAt lx, (Or args[i], dummyArg).value.span)) == LyDyn), \|i| (Or args[i], dummyArg).value)
+    otherwise: nil
 
 # An expression's operands as a lift maps them: a lifted `if` or `match` maps its
 # condition or scrutinee and its arms' results (`if $useB: $ $q else: $ $p`, a `$$Nat`
@@ -476,10 +531,13 @@ fn BlockResult b = Fold b.stmts, [[]], \|ignore, st| match st.kind:
 # expression over their values, mapped; two are read together, one update event firing
 # when either moves.
 DynamicLift: unbounded fn Lx, Env, Expr -> Vl
-fn DynamicLift lx, env, e:
+fn DynamicLift lx, env, e = DynamicLiftOver lx, env, e, (Filter (MappedOperands e), \|x| (LayerOf (TypeAt lx, x.span)) == LyDyn)
+
+# The same over the operands `srcs`.
+DynamicLiftOver: unbounded fn Lx, Env, Expr, [Expr] -> Vl
+fn DynamicLiftOver lx, env, e, srcs:
     let full = TypeAt lx, e.span
     let t = OutTyOf lx, (Peel full)
-    let srcs = Filter (MappedOperands e), \|x| (LayerOf (TypeAt lx, x.span)) == LyDyn
     let lxp = update lx:
         &_.whole <= False
     let caps = Filter (WithInstances env, (ReadNames (ExprsIn e))), \|n| match env.names[n]:
@@ -883,12 +941,13 @@ fn OutputEvent lx, env, ev = match ev.kind:
 
 # One part of a bundle answer: a plain value (a constant `$` part among them, `$
 # "offline"`); a live `$` part, a `Dynamic` of its value; an event part, an `Event` of the
-# type given; or a part this back end refuses, in words.
+# type given; or a part no checked program has (an internal error, `DynamicOutputs` makes a
+# getter for every dynamic answer), its words.
 type OutputPart = choice:
     PartPlain Ex
     PartLive Ex
     PartEvent Ex, OutTy
-    PartRefused Text
+    PartInternalBug Text
 
 BundleBlueprint: unbounded fn Lx, Env, Expr, Ref, OutTy -> Vl
 fn BundleBlueprint lx, env, x, variant, t = match x.kind:
@@ -919,7 +978,7 @@ fn WrittenPart lx, env, y = match LayerOf (TypeAt lx, y.span):
             ? dynamic: PartLive dynamic
             nil: match ?HeldDynamic lx, env, d:
                 ? held: PartLive held
-                nil: PartRefused "{internalBug}`{SrcText lx, lx.file, y.span}`, a bundle answer's `$` part with no getter of the host's line and a reader that is no live dynamic where it is written"
+                nil: PartInternalBug "`{SrcText lx, lx.file, y.span}`, a bundle answer's `$` part with no getter of the host's line and a reader that is no live dynamic where it is written"
     otherwise: PartPlain (Own (ValueOf lx, env, y))
 
 # A bundle answer of its parts (round 3 DY). The plain and `$` parts are the state: one
@@ -940,9 +999,9 @@ fn PartsBlueprint lx, env, x, parts, variant:
         otherwise: [[]]
     let heldWhole = variant == untaggedRef and Fold partTys, False, \|found, part| found or not (Podable (OutTyOf lx, (Peel part)))
     let refused = Fold parts, "", \|found, part| if found != "": found else: match part:
-        PartRefused why: why
+        PartInternalBug why: why
         otherwise: ""
-    if heldWhole and refused != "": Refusal refused
+    if heldWhole and refused != "": InternalBug refused
     else: if heldWhole:
         let whole = Each (Range0 (Len parts)), \|i| match parts[i]:
             # a constant `$` part is its value: the dynamic that never moves
@@ -971,14 +1030,14 @@ fn PartsOutputOf lx, env, what, parts, variant:
     let stIx = Filter idx, \|i| not (IsEvent i)
     let liveIx = Filter idx, IsLive
     let refused = Fold parts, "", \|found, part| if found != "": found else: match part:
-        PartRefused why: why
+        PartInternalBug why: why
         otherwise: ""
     let ?stateVariant = if (Len evIx) == 0: ? variant else: match env.names["#tagfirst"]:
         ? (BnLocal (XPath firstVariant), ignore, ignore): ? firstVariant
         otherwise: nil
     match ?stateVariant:
         nil: InternalBug "{what}, a bundle answer under a tag the arm does not name"
-        ? stateVariant: if refused != "": Refusal refused else:
+        ? stateVariant: if refused != "": InternalBug refused else:
             let lets = Fold stIx, [[]], \|acc, i| match parts[i]:
                 ? (PartPlain v): Push acc, (DoLet (PaBind "part{i}"), v)
                 ? (PartLive d): Append acc, [[(DoLet (PaBind "part{i}"), d), (DoLet (PaBind "moved{i}"), (XClone (XField (XVar "part{i}"), "updates")))]]
@@ -1025,7 +1084,13 @@ fn ?ConstantDynamic d = match d.kind:
     otherwise: nil
 
 PlainBlueprint: unbounded fn Lx, Env, Expr, Ref, OutTy -> Vl
-fn PlainBlueprint lx, env, x, variant, t = VlOwned (XCall (RefRuntime "prism_rtl::plain_blueprint::<crate::Elem, _>"), [[(TaggedOrHeld variant, (OutTyOf lx, (Peel (TypeAt lx, x.span))), (Own (ValueOf lx, env, x)))]]), t
+fn PlainBlueprint lx, env, x, variant, t:
+    # an answer whose type holds dynamics below its top (`@ [[$ 1]]` for `[$Nat]`, Type
+    # System ch. 1) is built with them whole, as the tag's output holds them
+    let lxw = update lx:
+        &_.whole <= True
+    let lxa = if HoldsTimeWhole lx, x: lxw else: lx
+    VlOwned (XCall (RefRuntime "prism_rtl::plain_blueprint::<crate::Elem, _>"), [[(TaggedOrHeld variant, (OutTyOf lx, (Peel (TypeAt lx, x.span))), (Own (ValueOf lxa, env, x)))]]), t
 
 # `@ $d` with `$d` a dynamic of the host that is not a constant (round 3 DY): prism_rtl's
 # `dynamic_blueprint` over a `Dynamic` of the tag's `Output` whose read is the owner's getter
@@ -1209,7 +1274,17 @@ fn NameValueOf lx, env, n, span:
                 # an event parameter of a widget that calls itself: the caller's event
                 # the shared row holds (`LiveParams`)
                 ? (BnLocal held, mode, (OutEvent heldTy)): LocalPlace held, mode, (OutEvent heldTy)
-                otherwise: VlOwned (Refusal "an event read as a value"), et
+                # (class G: every name bound to an event node is bound beside the port it
+                # fires, `{name}#port`: a line's or a `let`'s name where it is prebound
+                # (`PreBindName`; a pattern's part, a host's child's result and a `let`
+                # over a bundle bind the name prebound so, `BindNamedPart`, `BindPart`), an
+                # inlined widget's event parameter (`BindEventParam`); a row's names of its
+                # block's events are the block's, their ports read through the parent
+                # (`RowEnvNames`, `EventsOf`, with `WholeOfBlock`); a shared row's event
+                # parameter is its caller's event (`#whole#{name}`, `LiveParams`). A
+                # bundle's event part (`PreBindWholeParts`, `RowPartBn`) is a name only
+                # through such a pattern. claude/refusals.md lists the probes)
+                otherwise: VlOwned (InternalBug "the event `{nkey}` read as a value with no port it fires: every name of an event node is bound beside its port (`PreBindName`, `BindEventParam`, `WholeOfBlock`) or is a caller's event (`LiveParams`)"), et
         # a named bundle that is one value of the build (`BundleValue`)
         ? (BnParts ignore): match env.names["{nkey}#value"]:
             ? (BnLocal rs, mode, lt): LocalPlace rs, mode, lt
@@ -1462,7 +1537,10 @@ fn WidgetBlueprintValueFrom lx, lxArguments, recast, env, qk, calleeSpan, args, 
         else: if fires and not untagged: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_event_output_blueprint::<crate::Elem, crate::Output, _>"), [[build, buildHosted, fired]])), t
         else: if fires: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_event_blueprint::<crate::Elem, crate::Output, _>"), [[build, buildHosted, fired]])), t
         else: VlOwned (XBlock lets, (XCall (RefRuntime "prism_rtl::widget_blueprint::<crate::Elem, crate::Output, _>"), [[build, buildHosted, answer]])), t
-    otherwise: VlOwned (Refusal (WidgetValueWords qk)), t
+    # (class G: every caller asks for the reading's entry first, `WidgetNamed` and
+    # `GlobalCall` by `HasKey lx.valued`, `?OpenWidgetBlueprintValue` by `rowed` for
+    # each instantiation, and each has the widget's value from `lx.g.vals`)
+    otherwise: VlOwned (InternalBug "the widget function {BareName qk} as a value with no rows made for this reading: every caller asks `Lx.valued` for the reading first"), t
 
 # The name of a valued widget's row built under a host, by its row for the World's scope
 # (`ValuedRows`).
@@ -1487,7 +1565,16 @@ fn OpenWidgetValueWords lx, qk = match EnclosingOutput lx:
     EndlessByName: "{internalBug}the generic widget function {BareName qk} as a value in {lx.inDefinition}, which reaches itself by name at types that grow without end: the checker refuses such a definition (`grows-without-end`)"
     # the checker's `grows-without-end` through an impl or an associated type
     EndlessThroughImpl: "{internalBug}the generic widget function {BareName qk} as a value in {lx.inDefinition}, which reaches itself through a constraint an impl solves or an associated type, three times at types that each hold the earlier ones: the checker refuses a definition that grows so (`grows-without-end`)"
-    UndecidedParameter: "the generic widget function {BareName qk} as a value in {lx.inDefinition}, given a type parameter of that definition: its rows are made for each set of types the program gives the definition, and a use of it leaves a type parameter undecided"
+    # (class G: `?UseTargets` gives no answer only where a use's types still name a type
+    # parameter once the types of the user's instantiation are put in. `AddTargets` is
+    # given an instantiation's types, which `?ClosedTypes` made for every type parameter
+    # of the user's signature (`RigidsIn`), a method's own ones beside its impl's
+    # (`MethodOwnRigids`); a type the checker left open at a use (`Frame [[]]`) is a
+    # variable, no type parameter, and is taken as it is; a local generic function's or
+    # a generalized `let`'s own variable is not one either (its uses meet `OutQuantified`
+    # first, sem-ch08-widget-value-generic-through-local-function). Probes ud1-ud4 of
+    # the sweeps, claude/refusals.md)
+    UndecidedParameter: "{internalBug}the generic widget function {BareName qk} as a value in {lx.inDefinition}, given a type parameter of that definition, where a use of that definition leaves one of its type parameters undecided: every instantiation's types are closed (`?ClosedTypes`), so no use's types name a type parameter once they are put in"
 
 WidgetValueWords: fn Text -> Text
 fn WidgetValueWords qk = "the widget function {BareName qk} as a value: a blueprint value is a supplier's answer that builds no place (`@ x`, `@Element e`, a `match` of them); one with places is a widget-function blueprint as an answer (pick HO)"
@@ -2074,7 +2161,20 @@ fn Recolored lx, x, fromTy, toTy, depth:
         (((TySig "$", d), (TySig "$", e))): XMethod x, "map", [[(XClosure True, [[(PaTyped (PaBind inner), (OutRef (OutTyOf lx, d)))]], (Recolored lx, (XClone (XVar inner)), d, e, depth + 1))]]
         (((TyCon n, fromArgs), (TyCon m, toArgs))) if n == m: NamedRecolored lx, x, fromTy, n, fromArgs, toArgs, to, depth
         (((TyFn ignore, dps, dr), (TyFn ignore2, eps, er))) if (Len dps) == (Len eps): FunctionRecolored lx, x, from, to, dps, dr, eps, er, depth
-        otherwise: Refusal "a function value of its callee's own color inside the value a call returns, at a call that makes the color bounded, held by a type that is no array, event, dynamic, optional, `~T`, tuple, map, record, choice or function"
+        # an associated type at a known head is the type its impl chooses
+        # (`?ImplAssoc`): the signature can write the result so (`Out (Holder (u fn Nat
+        # -> Nat))`), the call has the type the impl gives
+        otherwise: if (KnownAssoc lx, fromTy) != fromTy or (KnownAssoc lx, toTy) != toTy: Recolored lx, x, (KnownAssoc lx, fromTy), (KnownAssoc lx, toTy), depth
+        else: Refusal "a function value of its callee's own color inside the value a call returns, at a call that makes the color bounded, held by a type that is no array, event, dynamic, optional, `~T`, tuple, map, record, choice or function"
+
+# An associated type at a known head as the type its impl chooses (`?ImplAssoc`), once
+# more until it is none; any other type as it is.
+KnownAssoc: unbounded fn Lx, Ty -> Ty
+fn KnownAssoc lx, t = match t:
+    TyAssoc tr, n, a: match ?ImplAssoc lx.g, tr, n, a:
+        ? chosen: KnownAssoc lx, chosen
+        nil: t
+    otherwise: t
 
 # A record or a choice made again (`Recolored`): each field read at its type under the
 # signature's type arguments and walked to its type under the call's.
@@ -2260,9 +2360,13 @@ fn ArgsFor lx, env, v, args:
             let lxw = update lx:
                 &_.whole <= True
             XRef (Own (ValueOf lxw, env, a.value))
+        # a lifted function's `$` parameter in a body that holds its dynamics whole: the
+        # value of the `Dynamic` given (gap LE)
+        else: if lx.whole and ReadAtParameter lx, v.qk, i: SampledArgument lx, env, a.value
         else: ArgumentAt lx, env, (Or ps[i], TyErr), a.value
 
 let dummyExpr = Expr(kind=EError, span=Range(start=0, end=0, origin=InSource))
+let dummyArg = Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0, origin=InSource))
 
 # A constructor applied (claude/backend.md: a record is a struct, a choice an enum with
 # recursive payloads behind `Rc`, a newtype a tuple struct, a unit type a unit struct).
@@ -2838,9 +2942,12 @@ PlainLambda: unbounded fn Lx, Env, [Pattern], LambdaBody, OutTy -> Vl
 fn PlainLambda lx, env, ps, body, ft:
     let pts = match ft:
         OutFn xs, ignore: xs
+        # a lambda whose color no use decides: its parameters are refused as its type is
+        # (`OutQuantified`, where the closure is cast to it)
+        OutQuantified b: Each ps, \|ignore| OutQuantified b
         otherwise: [[]]
     let ((dos, env1)) = LambdaCaptures env, (WithInstances env, (LambdaReads ps, body))
-    let ((pas, env2)) = ClosureParams lx, env1, ps, pts, True
+    let ((pas, env2)) = ClosureParams (WholeLambda lx, pts), env1, ps, pts, True
     let v = LambdaBodyValue (WholeLambda lx, pts), env2, body
     # Cast to its function type, so that two lambdas meet where one type is wanted (an
     # array's elements, an `if`'s or a `match`'s arms), each a closure type of its own.
@@ -2990,7 +3097,7 @@ fn CondAsLet (CcIf x) = DoExpr (XUnit)
 # A lambda passed to a parameter: a borrowed closure, its types from the parameter.
 LambdaArg: unbounded fn Lx, Env, [Pattern], LambdaBody, [OutTy] -> Ex
 fn LambdaArg lx, env, ps, body, pts:
-    let ((pas, env2)) = ClosureParams lx, env, ps, pts, (Len pts) > 0
+    let ((pas, env2)) = ClosureParams (WholeLambda lx, pts), env, ps, pts, (Len pts) > 0
     let v = LambdaBodyValue (WholeLambda lx, pts), env2, body
     XClosure False, pas, (Own v)
 
@@ -3025,7 +3132,12 @@ fn ClosureParams lx, env, ps, pts, typed = Fold (Range0 (Len ps)), (([[]], env))
     ? p:
         let po = RustPat lx, p, (BinderTyOfPattern lx, p), ByRef, "a{SpanStem p.span}"
         let en2 = BindAll en, (Each po.binds, HeldFunction)
-        let pa = if typed: PaTyped po.pa, (OutRef (Or pts[i], (OutRefused "a parameter"))) else: po.pa
+        # (class G: a lambda's type is a function of as many parameters as it has, the
+        # checker's (check/expr/calls.prism, "this lambda takes .."), so its target type
+        # is a bounded function of as many (`PlainLambda`), a `Start` (`JobLambda`), or
+        # quantified (`OutQuantified`, given to each parameter); `LambdaArg` types its
+        # parameters only when `LambdaParamTys` found one per parameter)
+        let pa = if typed: PaTyped po.pa, (OutRef (Or pts[i], (InternalBugType "a lambda's parameter {i} with no type: a lambda's type is a function of as many parameters as the lambda has (the checker's arity), and each target function type gives each one"))) else: po.pa
         (((Push acc, pa), en2))
     nil: ((acc, en))
 
@@ -3139,7 +3251,7 @@ ArmPat: unbounded fn Lx, ?Pattern, Ty, Holding, Text -> PatOut
 fn ArmPat lx, (? p), ty, mode, fresh = RustPat lx, p, ty, mode, fresh
 fn ArmPat lx, nil, ty, mode, fresh = PatOut(pa=PaWild, conds=[[]], binds=[[]])
 
-# A block of `let`s and a last expression, in page order (gap DG of the README: the
+# A block of `let`s and a last expression, in page order (the
 # group's dependency order is the checker's to give).
 BlockValue: unbounded fn Lx, Env, Block -> Vl
 fn BlockValue lx, env, b = if IsGivenBlock b.stmts: GivenValue lx, env, b, (BlockTy lx, b), b.span else: PlainBlockValue lx, env, b

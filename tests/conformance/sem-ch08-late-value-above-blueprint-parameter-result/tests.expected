@@ -1,0 +1,14 @@
+# Derived by hand from Semantics ch. 4 ("the order of a group's lines decides positions and nothing else"), ch. 8 (a blueprint parameter is built where the widget applies it; `<-` binds its plain result; a widget application is transparent) and ruling TC (places counted as built): loud gives 10, so `@Wide 10` builds its label at 0 and gives 1, the next label is 1, and the blueprint's label is 2; soft gives 20, `@Wide 20` builds nothing and gives 2, and the blueprint builds nothing. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="ten")
+    1: Ui.Label(text="wide 1")
+    2: Ui.Label(text="loud")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="wide 2")

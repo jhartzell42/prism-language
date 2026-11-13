@@ -39,7 +39,7 @@ impl Text {
     /// A literal of the program (what an emitted text literal is): a buffer of its own, as
     /// `new` makes. A literal held where it is, a `&'static str` beside the `Rc<str>`, made
     /// every read branch and cost the normalize compile 2% more instructions than the
-    /// allocations it saved (prismc/README.md, string churn).
+    /// allocations it saved.
     pub fn lit(s: &'static str) -> Text {
         Text::new(s)
     }

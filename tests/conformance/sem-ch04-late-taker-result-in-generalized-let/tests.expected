@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": any line may use any name the block binds, and the order of a group's lines decides positions and nothing else), ch. 8 (a widget application is transparent, its plain result a value) and Type System ch. 1: loud gives 7, so `w` is 14, the label "14 14", the widget's label 1 and the arm's 2; soft gives 20 and builds nothing in its arm. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="14 14")
+    1: Ui.Label(text="twice 7")
+    2: Ui.Label(text="seven")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="40 40")
+    1: Ui.Label(text="twice 20")

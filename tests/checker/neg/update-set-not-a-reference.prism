@@ -2,7 +2,7 @@
 # "Statements": "A comparison is never a statement, since a statement is `unit`, so the
 # two `<=`s never collide"), so one whose left side is no reference path is reported as a
 # set that names no reference, not as a discarded `Bool`: a path whose field step shows
-# the field's stack (a reference path writes its steps bare, prismc/README.md's RP), and
+# the field's stack (a reference path writes its steps bare), and
 # a plain value's field. The expected text is derived by hand. Written by Claude on the
 # claude-bugs branch; subject to change.
 emit Ui.*

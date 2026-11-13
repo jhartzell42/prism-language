@@ -1,4 +1,4 @@
-// The Prism table's driver for the Rust target (bench/gui/README.md), driver.cpp in Rust:
+// The Prism table's driver for the Rust target, driver.cpp in Rust:
 // bench.prism compiled to Rust runs under the Rust canvas World with `Hooks`, and each
 // step of an operation's script is a press at a button's text, found in the scene the
 // World last read. A timed step's clock starts when the press is queued and stops at the
@@ -7,8 +7,8 @@
 //   driver OP RUNS WARMUP     prints `OP RUN MS` per timed run, then `peak_rss_bytes N`
 //   driver OP RUNS WARMUP check
 //                             also counts each step's work by phase, and fails the run
-//                             when a scene draws outside the window (bench/gui/README.md,
-//                             "The checks")
+//                             when a scene draws outside the window
+//
 //
 // The work is counted as driver.cpp counts it: instructions retired on macOS
 // (`proc_pid_rusage`, `thread_selfcounts`) and on Linux through a perf_event counter per

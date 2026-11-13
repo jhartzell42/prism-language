@@ -1,0 +1,3 @@
+# A standard library with a module that does not check, for neg/library-type-error.
+mod Prelude
+mod Broken

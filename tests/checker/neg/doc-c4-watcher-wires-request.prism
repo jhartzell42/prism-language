@@ -1,0 +1,62 @@
+# Part VII ch. 7, step C4's test: a watcher's guest that wires its raises into its
+# `Seat.Request` is refused at the wiring line (Part IV ch. 3, "`Never`"; Part III ch. 6:
+# the watcher's requests are `Request Count Watcher`, which is `Never`). The guest's row
+# names the family at the watcher's index.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+
+trait ^Document d:
+    type Role
+    type Request r
+    type Reason r
+    type Query r
+    type Answer r
+
+type CountRole = choice:
+    Raiser
+    Watcher
+derive ^Eq, ^Ord, ^Show
+
+type Count = record:
+    total: Nat
+derive ^Eq, ^Show
+
+type Raise = choice:
+    Raise Nat
+derive ^Eq, ^Show
+
+type TooHigh = choice:
+    StopsAt Nat
+derive ^Eq, ^Show
+
+type Whole = choice:
+    Whole
+derive ^Eq, ^Show
+
+impl ^Document Count:
+    type Role = CountRole
+    type Request Raiser = Raise
+    type Request Watcher = Never
+    type Reason Raiser = TooHigh
+    type Reason Watcher = Never
+    type Query r = Whole
+    type Answer r = Nat
+
+type Response d r = choice:
+    Accepted
+    Declined (Reason d r)
+
+# The seat's language: one family, every tag of it taking a document and a role.
+family Seat d r where d: ^Document
+
+tag Seat.Request of Element !(Response d r):
+    !requests: Request d r
+
+tag Seat.Query of Element $?(Answer d r):
+    $query: Query d r
+
+@Watch: fn !Raise -> @unit emit Seat.* Count Watcher
+fn @Watch !raises:
+    !response <- Seat.Request(!requests=!raises)
+    $total <- Seat.Query($query=$ Whole)
+    @ unit

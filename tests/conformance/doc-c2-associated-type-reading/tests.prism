@@ -1,0 +1,7 @@
+# The tests of doc-c2-associated-type-reading (Compiler ch. 7, step C2).
+emit Ui.*
+use App.*
+
+test each_gauge_reads_its_own, @shown:
+    build
+        => expect Ui.Label(text="42 north")

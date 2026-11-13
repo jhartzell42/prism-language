@@ -1,0 +1,23 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": the order of a group's lines decides positions and nothing else), ch. 7 as ruled (round 3 ST: a gathered dynamic moves at n+1, an owed tick), ch. 9 (a place's first value is read in its birth tick; an event answer is the next tick's input, owed; round 3 DY), ch. 8 (`<-` builds the child and binds its result, the tuple pattern taking the bundle apart), Type System ch. 2 ("Bundles") and ruling TC: sem-ch09-host-late-plain-part-taken-above's ticks, the child's place 0 the pair's button over the plain part 7, the bundle's plain part 8; no press of it, so the count stays 0. Never run: prismc-s4 refuses the program.
+test a_late_plain_part_is_taken_by_a_bundle_giver
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/[1]/0: Ui.Label(text="one")
+    2/[0]/0: Ui.Button(label="b 7")
+    2/[2]/0: Ui.Label(text="7 wide 8 1: none 0")
+
+tick 1
+  in:
+    0: click
+  added:
+    1/[2]/0: Ui.Label(text="two")
+
+tick 2
+  changed:
+    2/[2]/0: Ui.Label(text="7 wide 8 1: hello 0")
+
+tick 3
+  changed:
+    2/[2]/0: Ui.Label(text="7 wide 8 2: hello 0")

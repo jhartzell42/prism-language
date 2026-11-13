@@ -1,0 +1,16 @@
+# `<:` puts a map entry, and anything else a reference names is a location, which `<=`
+# sets (Jimmy's ruling on map entries, 12 November): a field, an array's `&xs[i]`, a lens
+# to either.
+# Written by Claude on the claude-lowering branch; subject to change.
+type Game = record:
+    cells: [Text]
+    turn: Nat
+
+&Turn: fn &Game -> &Nat
+fn &Turn &game = &game.turn
+
+Step: fn Game -> Game
+fn Step game = update game:
+    &_.turn <: 1
+    &_.cells[0] <: ? "K"
+    &Turn &_ <: 2

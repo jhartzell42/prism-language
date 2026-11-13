@@ -38,10 +38,10 @@ SRCS := src/main.cpp {{sources}}
 OBJS := $(SRCS:src/%.cpp=build/%.o)
 WORLD_LIBS :=
 SYS_LIBS :=
-# The runtime's regular expressions are on RE2 (runtime/cpp/README.md), which the library
+# The runtime's regular expressions are on RE2, which the library
 # needs at link time whenever a program reaches them.
 RE2_LIBS := $(shell pkg-config --libs re2)
-# The allocator is jemalloc, found with pkg-config (runtime/cpp/README.md, pick AL); a
+# The allocator is jemalloc, found with pkg-config; a
 # sanitizer build (`-fsanitize` in OPT, prism's PRISM_SANITIZE) keeps the C library's,
 # which AddressSanitizer replaces with its own.
 ifeq ($(findstring -fsanitize,$(OPT)),)
@@ -91,7 +91,7 @@ $(WORLD_LIBS): FORCE | $(LIB)
 	@$(MAKE) -s -C $(CANVAS) lib CXX=$(CXX) CONFIG=$(CONFIG) OPT="$(OPT)"
 </cpp>
 
-# A module's headers, three layers and a fourth for templates (prismc/README.md, pick MH):
+# A module's headers, three layers and a fourth for templates:
 # `NAME.decl.hpp`, its types and nodes declared; `NAME.types.hpp`, its value types (records,
 # tags, newtypes and choices with their cases, each after the types it holds by value);
 # `NAME.hpp`, its functions' prototypes and its nodes and jobs; `NAME.generic.hpp`, when it

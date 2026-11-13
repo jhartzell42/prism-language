@@ -1,0 +1,9 @@
+# The tests of sem-ch04-late-value-above-in-ignored-bundle-place-field.
+emit Ui.* | Pad.*
+use App.*
+
+test loud, @Page True:
+    with Pad.Port(name="port 10") = ((7, "up")), build
+
+test soft, @Page False:
+    with Pad.Port(name="port 20") = ((8, "up")), build

@@ -222,6 +222,21 @@ type St = record:
     # recorded, for the growth check (`GrowthCheck`; ruling PG).
     definition: Text
     genericUses: [GenericUse]
+    # Every name a pattern binds in the definition being checked, asked at its end whether
+    # its case says what it holds (`CaseQuestions`).
+    caseQs: [CaseQ]
+derive ^Eq, ^Show
+
+# A name a pattern binds: the name as written, its sigils, the name under them, the marks
+# its type shows, the type it was bound to and where it stands.
+type CaseQ = record:
+    name: Text
+    sigils: Text
+    bare: Text
+    marks: Text
+    ty: Ty
+    span: Range
+    file: Nat
 derive ^Eq, ^Show
 
 # One use by name of a definition with type parameters: the definition the use
@@ -277,7 +292,7 @@ UseKey: fn Nat, Range -> Text
 fn UseKey file, span = "{file}:{span.start}:{span.end}"
 
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, unsignedFns=[[]], localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], plainArms=[[]], faultQs=[[]], plainQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={}, packs=[[]], definition="", genericUses=[[]])
+fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, unsignedFns=[[]], localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], plainArms=[[]], faultQs=[[]], plainQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={}, packs=[[]], definition="", genericUses=[[]], caseQs=[[]])
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed)

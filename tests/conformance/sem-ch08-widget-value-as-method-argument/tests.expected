@@ -1,0 +1,12 @@
+# Derived by hand from Semantics ch. 8 (a blueprint value applied builds it) and Type System ch. 1 (a method call is the call of its function with the receiver first): loud picks `@One`, whose label is 0; soft picks nothing, and the `nil` arm's label is 0. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="one")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="none")

@@ -714,7 +714,7 @@ pub fn set_part<A>(part: Option<&mut A>, v: Option<A>) {
     }
 }
 
-/// `&m[k] <= v` in an `&` block: `? x` writes the key, `nil` removes it.
+/// `&m[k] <: v` in an `&` block: `? x` writes the key, `nil` removes it.
 pub fn set_key<K: Ord + Clone, V: Clone>(m: &mut Map<K, V>, k: &K, v: Option<V>) {
     match v {
         Some(x) => {
@@ -724,6 +724,23 @@ pub fn set_key<K: Ord + Clone, V: Clone>(m: &mut Map<K, V>, k: &K, v: Option<V>)
             m.remove(k);
         }
     }
+}
+
+/// A map's entry as a named lens takes and gives it back (Jimmy's ruling on map entries):
+/// the map, borrowed, and the key. `put_entry` is `<:` through it.
+pub struct EntryMut<'a, K, V> {
+    map: &'a mut Map<K, V>,
+    key: K,
+}
+
+pub fn entry_mut<'a, K: Ord + Clone, V: Clone>(m: &'a mut Map<K, V>, k: &K) -> EntryMut<'a, K, V> {
+    EntryMut { map: m, key: k.clone() }
+}
+
+/// `&Lens r <: v` where the lens gives back a map's entry: `? x` writes the key, `nil`
+/// removes it, as `set_key` does.
+pub fn put_entry<K: Ord + Clone, V: Clone>(entry: EntryMut<'_, K, V>, v: Option<V>) {
+    set_key(entry.map, &entry.key, v)
 }
 
 pub fn take<A: Clone>(xs: &Array<A>, n: &Nat) -> Array<A> {
@@ -989,7 +1006,7 @@ pub fn indexed<A: Clone>(xs: &Array<A>) -> Map<Nat, A> {
 }
 
 /// A row of a `for` or a generation of a `rebuild`: a node its builder tears down. A row
-/// of a hosted child's (prismc/README.md, pick HO) is an entry of its host's document: its
+/// of a hosted child's is an entry of its host's document: its
 /// own places' entries, by their paths relative to the row, and a host's typed answer to one
 /// of them.
 pub trait Row: Node {
@@ -1418,7 +1435,7 @@ pub fn for_turns_indexed<V: Clone + 'static, S: 'static>(entries: impl IntoItera
 }
 
 /// The job of a lambda of unbounded type: its body, run as a job body from its first
-/// cycle (prismc/README.md, pick JB).
+/// cycle.
 pub struct Once<B>(::std::cell::RefCell<Option<Box<dyn FnOnce() -> Turn<B>>>>);
 
 impl<B> Job<B> for Once<B> {
@@ -1506,7 +1523,7 @@ pub fn recursive<A, R>(step: &dyn for<'a> Fn(&'a dyn Fn(A) -> R, A) -> R, first:
 }
 
 /// A job run to its result inside the cycle: a call of an unbounded function value from
-/// direct-style code (gap DS of prismc/README.md).
+/// direct-style code.
 pub fn run_to_end<B>(job: Rc<dyn Job<B>>) -> B {
     let mut job = job;
     loop {
@@ -1530,14 +1547,14 @@ pub fn world_option(args: &[String], default: &str) -> (String, Vec<String>) {
     }
 }
 
-/// Run on a thread with a large stack: unbounded code runs direct-style within a cycle
-/// (doubt DS of prismc/README.md), and Rust's default stack is 8 MB.
+/// Run on a thread with a large stack: unbounded code runs direct-style within a cycle,
+/// and Rust's default stack is 8 MB.
 pub fn on_big_stack(f: impl FnOnce() -> u8 + Send + 'static) -> u8 {
     ::std::thread::Builder::new().stack_size(1 << 30).spawn(f).map_or(1, |h| h.join().unwrap_or(1))
 }
 
-/// A port's firing from an event method, which returns nothing to pass a fault on through
-/// (prismc/README.md, PF). No fault reaches here today: a port's subscribers (a row's
+/// A port's firing from an event method, which returns nothing to pass a fault on through.
+/// No fault reaches here today: a port's subscribers (a row's
 /// event method, a host's blueprint) return `Ok`, and every fault a firing can raise goes
 /// by `Cx::fail_later` or the tick's own result. A fault that ever does is a bug, so it
 /// stops the program naming it rather than being lost.
@@ -1551,6 +1568,12 @@ pub fn no_fault(d: Done) {
 /// reader's value at the read point.
 pub fn dyn_constant<T: Clone + 'static>(v: T) -> Dynamic<T> {
     Dynamic::constant(v)
+}
+
+/// A dynamic's value where a plain function's body reads one it made (gap LE): a read
+/// context of no node (`prism_rtl::cx::detached`), since such a dynamic has one value.
+pub fn sample_detached<T: Clone + 'static>(d: &Dynamic<T>) -> T {
+    d.sample_detached()
 }
 
 /// `!MergeAll` of a list as an event value (a merge made where `!MergeAll` is lifted over a

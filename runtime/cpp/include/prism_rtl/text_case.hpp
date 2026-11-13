@@ -1,5 +1,5 @@
 // `Upper` and `Lower` (Semantics Appendix B, Text): the Unicode default full case mapping,
-// locale-independent, with the final sigma rule (README.md, "Upper and Lower"). The
+// locale-independent, with the final sigma rule (tests/text/README.md). The
 // tables are generated from the Unicode Character Database (src/case_tables.inc,
 // tools/README.md).
 //

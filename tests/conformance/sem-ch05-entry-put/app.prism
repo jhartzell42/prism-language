@@ -1,0 +1,31 @@
+# Jimmy's ruling on map entries (11 and 12 November; claude/rulings-since-the-bible.md):
+# on a map, `&m[k]` is an `Entry K V`, which `<:` sets from a `?V`. `<: ? v` puts the
+# value, `<: nil` removes the key, and an entry read is a `?V`, as `m[k]` is.
+# Written by Claude on the claude-lowering branch; subject to change.
+test mod Tests
+type Game = record:
+    board: (Int ==> Text)
+    turn: Nat
+derive ^Eq, ^Show
+
+Place: fn Game, Int, Text -> Game
+fn Place game, sq, piece = update game:
+    &_.board[sq] <: ? piece
+
+Clear: fn Game, Int -> Game
+fn Clear game, sq = update game:
+    &_.board[sq] <: nil
+
+# The book's move: the entry at `to` takes what the entry at `from` reads, `nil` included.
+Move: fn Game, Int, Int -> Game
+fn Move game, from, to = update game:
+    &_.board[to] <: &_.board[from]
+    &_.board[from] <: nil
+    &_.turn += 1
+
+?At: fn Game, Int -> ?Text
+fn ?At game, sq = update nil:
+    let &copy = game
+    &_ <= &copy.board[sq]
+
+let start = Game(board={1: "K", 2: "Q"}, turn=0)

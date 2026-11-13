@@ -1,4 +1,4 @@
-# A dynamic `let` whose expression is costly, read by one place (tests/cost/README.md): a
+# A dynamic `let` whose expression is costly, read by one place: a
 # write behind it costs one computation of it, whatever the readers. Written for prismc's
 # back end; subject to change.
 emit Ui.*

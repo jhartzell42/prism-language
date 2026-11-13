@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The Cuis table (table.st) for one operation, on the Cog VM with the Cuis image
-# (bench/README.md, "Cuis"): the script with OP, RUNS and WARMUP written in, run in a copy
+# The Cuis table (table.st) for one operation, on the Cog VM with the Cuis image:
+# the script with OP, RUNS and WARMUP written in, run in a copy
 # of the image so the clone stays clean. Prints `OP RUN MS` per timed run, as the other
 # drivers do.
 #

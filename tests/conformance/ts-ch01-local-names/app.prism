@@ -1,4 +1,4 @@
-# Locals' Rust names (prismc/README.md, pick NM): a `?x` beside a plain `x` of the same
+# Locals' Rust names: a `?x` beside a plain `x` of the same
 # scope, and a local named as a function of the module (`kind` beside `Kind`). Written
 # for prismc's back end. Work in progress, subject to change.
 emit Ui.*

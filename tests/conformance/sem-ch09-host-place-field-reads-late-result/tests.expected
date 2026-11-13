@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 4 ("the order of a group's lines decides positions and nothing else"), ch. 9 (the supplier answers the hosted place by its element as built: "yes ask x"; a place the supplier answers with `@Element e` is that element at its row's place 0) and ruling TC: loud gives "x", so the ask is "ask x", answered "yes ask x", and the arm's label is the child's place 2; soft gives "y" and builds nothing in its arm. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0/[1]/0: Ui.Label(text="asked yes ask x")
+    0/[2]/0: Ui.Label(text="loud")
+
+test soft
+
+tick 0
+  added:
+    0/[1]/0: Ui.Label(text="asked yes ask y")

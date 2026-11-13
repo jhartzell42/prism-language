@@ -1,0 +1,31 @@
+# A `let` of a lambda in a hosted child under a host below a building `if`, closing over
+# the plain part of a place's bundle answer written below it, used at two types, so the
+# `let` is generalized (Semantics ch. 4, "Binding groups and cycles"; ch. 9: the host
+# answers once it is placed; Type System ch. 1). Reaches `LatePlainPartOf`'s marker "the
+# plain part `p` of a late place's answer" on prismc-fd1.
+# Written by Claude (sweep-7, the prismc run), 12 November 2026; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+tag Pad.Port of Element ((Nat, $Text)):
+    name: Text
+
+Second: fn ((t, Nat)) -> Nat
+fn Second ((ignore, k)) = k
+
+@Inner: @unit
+@Inner:
+    let Wrap = \|x| ((x, p))
+    Ui.Label($text=$"{Second (Wrap 1)} {Second (Wrap "a")}")                     # [0]
+    ((p, $s)) <- Pad.Port(name="port")                                  # [1]
+    Ui.Label($text=$"{p} {$s}")                                       # [2]
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    if loud:
+        Ui.Label($text=$"before")
+    ignore <- @HostDocument @Inner, \|p, e| match e:
+        Pad.Port(..): @ ((3, $"up"))
+        otherwise: @Element e
+

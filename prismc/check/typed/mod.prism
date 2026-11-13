@@ -1,6 +1,6 @@
 # The checker's typed output, for the back end (Type System ch. 5, Elaboration): the tree
 # annotated with what inference decided. The annotations are tables keyed by where each
-# node stands (its file and its range), beside the unchanged tree (pick TO of the README):
+# node stands (its file and its range), beside the unchanged tree:
 # the type of every expression, the lifting decision at every application, the color of
 # every function, the impl resolved at every method call (and every other constraint), the
 # dependency order of every binding group, the type of every binder and the scheme of every

@@ -1,0 +1,6 @@
+# `hold-needed`: a function lifts over a sigiled argument at its type variable, even when
+# its other arguments already made that variable an event; only a hold, `{!e}`, keeps the
+# event whole there (Jimmy's ruling of 12 November: the braces are mandatory for
+# functions and constructors alike).
+Heard: fn [!Nat], !Nat -> [!Nat]
+fn Heard events, !e = Push events, !e

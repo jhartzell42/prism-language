@@ -34,7 +34,7 @@ pass, and the paint is the damaged boxes.
 
 - **Presenting a Rust frame** is about 11 M instructions whatever changed: softbuffer
   hands a new zeroed buffer each frame on macOS, the whole frame is copied in and becomes
-  a new `CGImage` (worlds/canvas/rust/README.md, "Painting"). It is most of a Rust select's
+  a new `CGImage` (worlds/canvas/rust/src/app.rs). It is most of a Rust select's
   paint; C++ sets its layer's image from its own buffer.
 - **A structural change** (remove, create, clear) gathers the outer of the column's
   document from every place's entry (3,003 entries), once, and the window re-stacks the

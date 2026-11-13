@@ -94,7 +94,7 @@ fn PathSegText (PstKey toks) = "[{RenderInner toks}]"
 
 PartText: fn TPartTok -> Text
 fn PartText (TptText t) = DebugText t
-fn PartText (TptPlaceholder toks, ?col, ignore) = "\{\{{RenderInner toks}\}\}{ColText ?col}"
+fn PartText (TptPlaceholder toks, ?col, ignore) = "<<{RenderInner toks}>>{ColText ?col}"
 fn PartText (TptBlock toks, ignore) = "BLOCK\{ {RenderInner toks} \}"
 fn PartText (TptCall name, attrs, ?body, ignore) = "<{name.sigils}{Join name.path, "."}{Concat (Each attrs, AttrText)}{CallBody name, ?body}"
 
@@ -103,7 +103,7 @@ fn ColText nil = ""
 fn ColText (? c) = "@col{c}"
 
 AttrText: fn AttrTok -> Text
-fn AttrText a = " {a.name}=\{{RenderInner a.tokens}\}"
+fn AttrText a = " {a.name}=<<{RenderInner a.tokens}>>"
 
 CallBody: fn NameTok, ?[TPartTok] -> Text
 fn CallBody ignore, nil = "/>"

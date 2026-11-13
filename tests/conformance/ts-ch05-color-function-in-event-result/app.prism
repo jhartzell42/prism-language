@@ -14,11 +14,11 @@ Call: fn (fn Nat -> Nat), Nat -> Nat
 fn Call F, n = F n
 
 !Made: fn ((!(fn Nat -> Nat), Nat)) -> !(fn Nat -> Nat)
-fn !Made ((!made, ignore)) = !made
+fn !Made ((!Inner, ignore)) = !Inner
 
 @page: @unit
 @page:
     !go <- Ui.Button($label=$"go")                               # 0
-    let !made = !Made (Kept (\|n| n + 1), !go)
-    $shown <- 0 then Call !made, 5
+    let !Bump = !Made (Kept (\|n| n + 1), !go)
+    $shown <- 0 then Call !Bump, 5
     Ui.Label($text=$"{$shown}")                                  # 1

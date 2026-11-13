@@ -145,7 +145,13 @@ fn ConvNamed cx, st, n, args, span:
     else:
         let ((?key, why)) = ResolveType cx.g, cx.home, n.path
         match ?key:
-            nil: ((TyErr, (Err st, "unknown-name", span, "no type `{name}`")))
+            # `Entry K V`, a map's entry (Jimmy's ruling on map entries), is the prelude's
+            # where no declared type takes the name
+            nil: if name == "Entry" or name == "Prelude.Entry":
+                let ((xs, st2)) = ConvTypes cx, st, args
+                if (Len args) == 2: (((TyCon "Prelude.Entry", xs), st2))
+                else: ((TyErr, (Err st2, "kind", span, "`Entry` takes two types, the key's and the value's; here it has {CountWord (Len args)}")))
+            else: ((TyErr, (Err st, "unknown-name", span, "no type `{name}`")))
             ? qk:
                 let ti = Or cx.g.types[qk], dummyTyInfo
                 let st1 = if why == "collision": ErrFix st, "collision", span, "`{name}` is declared by two modules this file reaches by a bare name", "write it qualified, `{qk}`, or rename this file's own" else: st

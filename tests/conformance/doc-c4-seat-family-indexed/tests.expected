@@ -1,0 +1,19 @@
+# Derived by hand from Part III ch. 6 (a family at an index; a field read back at its index's type; `!Never` never fires) and Type System ch. 4 (a pattern binds an element's field with its stack): each click adds 2, and the watcher's request count stays 0.
+test one_family_two_indices
+
+tick 0
+  added:
+    0: Ui.Button(label="raise 2")
+    1: Ui.Label(text="raised to 0; a watcher asked 0 times")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="raised to 2; a watcher asked 0 times")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="raised to 4; a watcher asked 0 times")

@@ -1,0 +1,25 @@
+tests/checker/neg/case-mark.prism:12: error[case-mark]: `W` holds a `Nat`, not a function: an uppercase name is a function, a constructor, a type or a trait
+        let W = Len xs
+            ^
+  fix: rename to `w`
+tests/checker/neg/case-mark.prism:18: error[case-mark]: `next` holds a function: a lowercase name is a value now
+        let next = \|x| x + 1
+            ^^^^
+  fix: rename to `Next`
+tests/checker/neg/case-mark.prism:25: error[case-mark]: `f` holds a function: a lowercase name is a value now
+    fn Again f, x = Apply f, x
+             ^
+  fix: rename to `F`
+tests/checker/neg/case-mark.prism:29: error[case-mark]: `Low` holds a `Nat`, not a function: an uppercase name is a function, a constructor, a type or a trait
+        let ((Low, high)) = ((n, n + 1))
+              ^^^
+  fix: rename to `low`
+tests/checker/neg/case-mark.prism:35: error[case-mark]: `N` holds a `Nat`, not a function: an uppercase name is a function, a constructor, a type or a trait
+        ? N: [[N]]
+          ^
+  fix: rename to `n`
+tests/checker/neg/case-mark.prism:39: error[case-mark]: `Y` holds a `Nat`, not a function: an uppercase name is a function, a constructor, a type or a trait
+    fn Up xs = Each xs, \|Y| Y + 1
+                          ^
+  fix: rename to `y`
+6 errors

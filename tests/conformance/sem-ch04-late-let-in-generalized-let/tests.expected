@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": any line may use any name the block binds, and the order of a group's lines decides positions and nothing else) and Type System ch. 1 (the generalized `let` read at `Nat` and at `Text`): loud gives 10, so `k` is 11, the label "11 11" and the arm's label 1; soft gives 20 and builds nothing in its arm. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="11 11")
+    1: Ui.Label(text="loud")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="21 21")

@@ -1,0 +1,33 @@
+# A generic widget whose parameter's type is an associated type at its type variable
+# (`Move r`), applied where an impl gives the associated type (Type System ch. 3,
+# "Associated types": `Move Chess` is `Step` by the impl; Semantics ch. 8: a widget is
+# applied as a function is, its places its caller's). The parameter decides nothing about
+# `r`: the first parameter does. Reaches `InlineWidget`'s refusal "the generic widget
+# @Shown at a call whose types its parameters' do not match" on prismc-s4.
+# Written by Claude (sweep-5, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+trait ^Game r:
+    type Move
+    Name: fn r, Move r -> Text
+
+type Chess = choice:
+    Chess
+derive ^Eq, ^Show
+
+type Step = choice:
+    Step Nat
+derive ^Eq, ^Show
+
+impl ^Game Chess:
+    type Move = Step
+    fn Name game, (Step n) = "step {n}"
+
+@Shown: fn r, Move r -> @unit where r: ^Game
+fn @Shown game, move:
+    Ui.Label($text=$"{Name game, move}")
+
+@Page: @unit
+@Page:
+    @Shown Chess, (Step 3)                                       # 0

@@ -253,7 +253,7 @@ fn MergeListEvent wx, menv, x, t:
         &_.taken <= Append &_.taken, [["{nm}_events", "{nm}_in"]]
     (((EvRefOf w3, id), w3))
 
-# `!Updated $d`: the event half of a dynamic (Semantics R3; README pick UP). A graph node
+# `!Updated $d`: the event half of a dynamic (Semantics R3). A graph node
 # of kind "updated", decided in the wake like a merge, one above every node whose sink
 # writes a hold the dynamic reads: a write to one of them sets the node's `_moved` flag and
 # asks the wake; the decision takes the flag (once a tick, so a double firing cannot
@@ -282,8 +282,8 @@ fn FilterEvent wx, menv, args, isUnit:
         ? a:
             let ((r, w1)) = EventRef wx, menv, a.value
             let bound = if isUnit: PaWild else: PaBind "w"
-            let pipe = \|x, K| r.pipe x, \|y| [[(DoIfLet (PaCtor (RefRuntime "std::Some"), [[bound]]), y, (K (if isUnit: XUnit else: XVar "w")), [[]])]]
-            ((EvRef(node=r.node, owner=r.owner, pipe=pipe), w1))
+            let Pipe = \|x, K| r.pipe x, \|y| [[(DoIfLet (PaCtor (RefRuntime "std::Some"), [[bound]]), y, (K (if isUnit: XUnit else: XVar "w")), [[]])]]
+            ((EvRef(node=r.node, owner=r.owner, pipe=Pipe), w1))
 
 # `!Gate $b, !e` fires `!e` while `$b` reads true.
 GateEvent: unbounded fn Wx, Env, [Arg] -> ((EvRef, Wx))
@@ -294,8 +294,8 @@ fn GateEvent wx, menv, args = match args[1]:
         let cond = match args[0]:
             ? b: AsBool (ValueOf wx.lx, menv, b.value)
             nil: (XBool False)
-        let pipe = \|x, K| r.pipe x, \|y| [[(DoIf cond, (K y), [[]])]]
-        ((EvRef(node=r.node, owner=r.owner, pipe=pipe), w1))
+        let Pipe = \|x, K| r.pipe x, \|y| [[(DoIf cond, (K y), [[]])]]
+        ((EvRef(node=r.node, owner=r.owner, pipe=Pipe), w1))
 
 # Any other event expression maps the one event among its operands: the event's value is
 # bound at its place in the source, and the expression lowers as a plain one over it.
@@ -309,8 +309,8 @@ fn EventMap wx, menv, e:
             let ((r, w1)) = EventRef wx, menv, one
             let et = OutTyOf lx, (Peel (TypeAt lx, one.span))
             let k = PlaceKey lx, one.span
-            let pipe = \|x, K| r.pipe x, \|y| K (Own (ValueOf lx, (BindSpan menv, k, (FiringValue y, et)), e))
-            ((EvRef(node=r.node, owner=r.owner, pipe=pipe), w1))
+            let Pipe = \|x, K| r.pipe x, \|y| K (Own (ValueOf lx, (BindSpan menv, k, (FiringValue y, et)), e))
+            ((EvRef(node=r.node, owner=r.owner, pipe=Pipe), w1))
         otherwise: NeverEvent wx, t
 
 # A firing's value where an expression reads it: a local is a place, anything else an

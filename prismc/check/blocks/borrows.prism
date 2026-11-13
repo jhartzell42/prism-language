@@ -58,10 +58,10 @@ fn InferUpdate env, st, target, body, span:
     let st4 = AndBlockChecks env2, st3, body, t
     ((t, st4))
 
-# A set at an index path of a non-empty map (Type System ch. 2, Collections): `nil` there
-# removes the key (Semantics ch. 5, References and lens paths) and could leave the map
-# empty, so the value is one written `? v`, which only adds or replaces. An array has no
-# entry to remove (`nil` at its index is a fault of the run), so a `[a]+` keeps its promise.
+# A put at a key of a non-empty map (Type System ch. 2, Collections): `nil` there removes
+# the key (Jimmy's ruling on map entries) and could leave the map empty, so the value is
+# one written `? v`, which only adds or replaces. An array has no entry to remove (`nil` at
+# its index is a fault of the run), so a `[a]+` keeps its promise.
 KeepsNonEmpty: unbounded fn Env, St, Expr, Expr -> St
 fn KeepsNonEmpty env, st, target, value = match target.kind:
     EGroup x: KeepsNonEmpty env, st, x, value
@@ -75,8 +75,8 @@ fn KeepsNonEmpty env, st, target, value = match target.kind:
                 let plain = "update the plain map (`as` drops the promise) and check the result with `as {shown}?`"
                 match SetValue value:
                     SetsPresent: st
-                    SetsAbsent: ErrFix st, "mismatch", value.span, "setting `nil` at a key removes it, and a `{shown}` is non-empty", plain
-                    SetsEither: ErrFix st, "mismatch", value.span, "this may be `nil`, which set at a key removes it, and a `{shown}` is non-empty", "write `? v` to set a value, or {plain}"
+                    SetsAbsent: ErrFix st, "mismatch", value.span, "putting `nil` at a key removes it, and a `{shown}` is non-empty", plain
+                    SetsEither: ErrFix st, "mismatch", value.span, "this may be `nil`, which put at a key removes it, and a `{shown}` is non-empty", "write `? v` to put a value, or {plain}"
             nil: st
     otherwise: st
 
@@ -107,9 +107,20 @@ fn UpdateStmts env, st, stmts = Fold stmts, ((env, st)), \|((en, s)), stmt| Upda
 UpdateStmt: unbounded fn Env, St, Stmt -> ((Env, St))
 fn UpdateStmt env, st, s = match s.kind:
     SSet target, value:
-        let ((tt, st1)) = Infer env, st, target
+        let ((pt, st1)) = InferPlace env, st, target
         let st2 = RefTarget env, st1, target
-        ((env, (KeepsNonEmpty env, (Check env, st2, value, tt), target, value)))
+        match ?EntryParts st2, pt:
+            ? ignore: ((env, (SetEntry env, (Checked env, st2, value), target, value)))
+            nil: ((env, (KeepsNonEmpty env, (Check env, st2, value, pt), target, value)))
+    SPut target, value:
+        let ((pt, st1)) = InferPlace env, st, target
+        let st2 = RefTarget env, st1, target
+        match ?EntryParts st2, pt:
+            ? ((ignore, v)): ((env, (KeepsNonEmpty env, (Check env, st2, value, (TySig "?", v)), target, value)))
+            nil:
+                let st3 = Checked env, st2, value
+                if (Walk st3, pt) == TyErr: ((env, st3))
+                else: ((env, (ErrFix st3, "put-location", target.span, "`<:` puts a map entry, and `{SrcText env, target.span}` is a location", "write `{SrcText env, target.span} <= {SrcText env, value.span}`")))
     SAccum target, op, value:
         let ((tt, st1)) = Infer env, st, target
         let st2 = RefTarget env, st1, target
@@ -143,6 +154,16 @@ fn UpdateStmt env, st, s = match s.kind:
         CheckLocalFn env1, st1, [[f]], s.span
     SSignature ignore: PreBind env, st, s
     otherwise: ((env, (Err st, "mismatch", s.span, "this statement belongs in a widget or `given:` block")))
+
+# `set-entry`: `<=` sets a location, and a map's entry is put with `<:`.
+SetEntry: fn Env, St, Expr, Expr -> St
+fn SetEntry env, st, target, value = ErrFix st, "set-entry", target.span, "`<=` sets a location, and `{SrcText env, target.span}` is a map entry", "write `{SrcText env, target.span} <: {SrcText env, value.span}`"
+
+# A value read for its own errors where the statement is refused.
+Checked: unbounded fn Env, St, Expr -> St
+fn Checked env, st, e:
+    let ((ignore, st2)) = Infer env, st, e
+    st2
 
 # The left side of a set is a reference: `&_`, a local, a lens path from either.
 RefTarget: unbounded fn Env, St, Expr -> St
@@ -186,6 +207,83 @@ fn IsRef e = match e.kind:
         nil: False
 
 # ---------------------------------------------------------------------------------------
+# Map entries (Jimmy's ruling on map entries, 11 and 12 November)
+# ---------------------------------------------------------------------------------------
+
+# On a map, `&m[k]` is an `Entry K V`: no location, so `<=` does not set it and it has no
+# fields and no index. `<:` puts it from a `?V` (`? v` puts the value, `nil` removes the
+# key), and a read gives the `?V` that `m[k]` gives. A named lens may take or give back an
+# entry, as any function may.
+
+# A reference as the place it names (a set's or a put's target, a lens's body or
+# argument): an index path into a map is the key's entry, a lens applied is what its
+# signature gives back; anything else is the part it names, as `Infer` types it. The
+# entry's index path is noted at its read, `?V`.
+InferPlace: unbounded fn Env, St, Expr -> ((Ty, St))
+fn InferPlace env, st, e = match e.kind:
+    EGroup x: InferPlace env, st, x
+    EIndex r, k:
+        let ((ct, st1)) = if IsRef r: Infer env, st, r else: ((TyErr, st))
+        match ?MapParts st1, ct:
+            ? ((kt, vt)):
+                let st2 = Check env, st1, k, kt
+                (((EntryOf kt, vt), (NoteTy st2, e.span, (TySig "?", vt))))
+            nil: Infer env, st, e
+    otherwise: match ?LensApplied e:
+        ? ignore:
+            let ((t, st1)) = InferKind env, st, e
+            ((t, (NoteTy st1, e.span, (EntryRead st1, t))))
+        nil: Infer env, st, e
+
+# The key's and the value's types of a map, a non-empty one or a `Table`.
+?MapParts: unbounded fn St, Ty -> ?((Ty, Ty))
+fn ?MapParts st, t = match Walk st, (Or (?NonEmptyColl st, t), t):
+    TyMap k, v: ? ((k, v))
+    TyCon "Table", [[k, v]]: ? ((k, v))
+    otherwise: nil
+
+EntryOf: fn Ty, Ty -> Ty
+fn EntryOf k, v = TyCon "Prelude.Entry", [[k, v]]
+
+# The key's and the value's types of an entry; none for any other type.
+?EntryParts: unbounded fn St, Ty -> ?((Ty, Ty))
+fn ?EntryParts st, t = match Walk st, t:
+    TyCon "Prelude.Entry", [[k, v]]: ? ((k, v))
+    otherwise: nil
+
+IsEntry: unbounded fn St, Ty -> Bool
+fn IsEntry st, t = match ?EntryParts st, t:
+    ? ignore: True
+    nil: False
+
+# An entry read: the value's `?V`; any other type as it is.
+EntryRead: unbounded fn St, Ty -> Ty
+fn EntryRead st, t = match ?EntryParts st, t:
+    ? ((ignore, v)): TySig "?", v
+    nil: t
+
+# The state after a reference path that names an entry is read, where it names one: the
+# receiver of a field or an index step, which an entry does not have.
+?EntryIn: unbounded fn Env, St, Expr -> ?St
+fn ?EntryIn env, st, e:
+    if (IsRef e) and MayNameEntry e:
+        let ((t, st1)) = InferPlace env, st, e
+        if IsEntry st1, t: ? st1 else: nil
+    else: nil
+
+# An index step or a lens applied, the steps that may end at an entry.
+MayNameEntry: fn Expr -> Bool
+fn MayNameEntry e = match e.kind:
+    EGroup x: MayNameEntry x
+    EIndex ignore, ignore: True
+    otherwise: match ?LensApplied e:
+        ? ignore: True
+        nil: False
+
+# The fix of a field or an index step through an entry.
+let entryChange = "read the value at the key, change it, and put it back with `<:`"
+
+# ---------------------------------------------------------------------------------------
 # Named lenses (Semantics ch. 5, "References and lens paths"; Type System ch. 3, "Lenses")
 # ---------------------------------------------------------------------------------------
 
@@ -202,16 +300,13 @@ fn CheckLens env, st, name, clauses, sc, span = match sc.ty:
         let env2 = update env:
             &_.inUpdate <= True
         let st1 = CheckClauses env2, st, name, clauses, sc, span
-        let whole = match Skolemize sc:
-            TyFn ignore, params, ignore: Or params[0], TyErr
-            otherwise: TyErr
         let st2 = match clauses[0]:
-            ? c: LensClause env2, st1, c, whole
+            ? c: LensClause env, st1, c
             nil: st1
         Fold (Drop clauses, 1), st2, \|s, c| ErrFix s, "lens-body", c.span, "a lens has one clause: its body is one path", "delete this clause"
 
-LensClause: unbounded fn Env, St, FnClause, Ty -> St
-fn LensClause env, st, c, whole = match c.params[0]:
+LensClause: unbounded fn Env, St, FnClause -> St
+fn LensClause env, st, c = match c.params[0]:
     ? p: match ?LensParameter p:
         nil: ErrFix st, "lens-body", p.span, "a lens's parameter is a reference, written with `&`", "write `&{SrcText env, p.span}`, and the body as a path from it"
         ? n:
@@ -219,11 +314,7 @@ fn LensClause env, st, c, whole = match c.params[0]:
             let wrong = "a lens's body is a reference from its parameter: a path from `{root}`, or a lens applied to one"
             match c.body:
                 BodyExpr e:
-                    # the path's collections are read with the parameter in scope, in a
-                    # state that is dropped (`LensKeys` reports into `st`)
-                    if (IsRef e) and (Take (RefPath e), 1) == [[root]]:
-                        let ((inside, ignore)) = BindPattern (Unpending env), st, p, whole, False
-                        LensKeys inside, st, e, True
+                    if (IsRef e) and (Take (RefPath e), 1) == [[root]]: st
                     else: ErrFix st, "lens-body", e.span, wrong, "write a path, `{root}.field`"
                 BodyBlock b: ErrFix st, "lens-body", b.span, wrong, "write a path, `{root}.field`"
     nil: st
@@ -234,27 +325,6 @@ fn ?LensParameter p = match p.kind:
     PName n: if (HasPrefix n.sigils, "&") and not (IsLensName n): ? n else: nil
     PGroup q: ?LensParameter q
     otherwise: nil
-
-# `lens-map-key` (Jimmy's ruling ME, 11 November): a named lens cannot end at a map key,
-# nor step through one: a key's part is an entry, not a location. The `update` block's own
-# index paths stay as they are, and a lens may end at an array's index or step through one.
-LensKeys: unbounded fn Env, St, Expr, Bool -> St
-fn LensKeys env, st, e, last = match e.kind:
-    EGroup x: LensKeys env, st, x, last
-    EField r, ignore, ignore: LensKeys env, st, r, False
-    EIndex r, ignore:
-        # the collection's type, read in a state that is dropped: its notes and errors are
-        # the body's already
-        let ((ct, read)) = Infer env, st, r
-        let keyed = match Walk read, (Or (?NonEmptyColl read, ct), ct):
-            TyMap ignore, ignore: True
-            TyCon "Table", ignore: True
-            otherwise: False
-        if keyed: ErrFix st, "lens-map-key", e.span, "a named lens cannot {if last: "end at" else: "step through"} a map key: a key's part is an entry, not a location", "write the path in the `update` block"
-        else: LensKeys env, st, r, False
-    otherwise: match ?LensApplied e:
-        ? ((ignore, argument)): LensKeys env, st, argument, False
-        nil: st
 
 # `lens-argument`: a named lens is applied to a reference, and no reference exists outside
 # an `update` block or a lens's body.

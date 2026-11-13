@@ -1,0 +1,26 @@
+# A `let` of a lambda that passes a bundle bound whole to one name, whose plain part a
+# building `if` gives late below it, to a function, used at two types, so the `let` is
+# generalized (Semantics ch. 4, "Binding groups and cycles"; Type System ch. 1; ch. 2,
+# "Bundles": a bundle is a plain aggregate a function takes). Reaches `PreBindWhole`'s
+# marker "the bundle `both`, whose plain part is late, read as one value" on prismc-fd1.
+# Written by Claude (sweep-7, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Second: fn ((t, Nat)) -> Nat
+fn Second ((ignore, k)) = k
+
+First: fn ((Nat, !Click)) -> Nat
+fn First ((k, ignore)) = k
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    let Wrap = \|x| ((x, First both))
+    Ui.Label($text=$"{Second (Wrap 1)} {Second (Wrap "a")}")        # 0
+    !add <- Ui.Button($label=$"add")                                   # 1
+    both <- if loud:
+        Ui.Label($text=$"loud")
+        @ ((10, !add))
+    else:
+        @ ((20, !add))

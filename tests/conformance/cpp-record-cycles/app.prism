@@ -3,7 +3,7 @@
 # optional and a tuple, three records in a ring, a generic record, and two records that
 # hold each other with nothing to end it, a type no value has, which a function still
 # names. Every field that reaches its own record is behind a shared pointer on both
-# targets (pick OW of the README), so C++ orders the types as Rust does. Written by Claude
+# targets, so C++ orders the types as Rust does. Written by Claude
 # on the claude-bugs branch; subject to change.
 emit Ui.*
 test mod Tests
@@ -40,13 +40,13 @@ type Chain a = record:
     ?more: (Chain a)
 derive ^Eq, ^Show
 
-type Never = record:
+type Nevermore = record:
     other: Ever
 
 type Ever = record:
-    never: Never
+    never: Nevermore
 
-Back: fn Never -> Ever
+Back: fn Nevermore -> Ever
 fn Back n = n.other
 
 Depth: fn Link -> Nat

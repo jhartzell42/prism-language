@@ -1,12 +1,12 @@
 # Emission for C++: the model lowering decided (`Lower`) spelled as a C++20 program over
-# `runtime/cpp` (`prism_rtl` in C++, whose README maps every Rust type of the library to its
+# `runtime/cpp` (`prism_rtl` in C++, which gives every Rust type of the library its
 # C++ form) through the templates (`Emit.Cpp.Templates`, `Emit.Cpp.Prelude`):
 # `Makefile`, three headers per Prism module in its directory (`src/DIR/decl.hpp`,
 # `src/DIR/types.hpp`, `src/DIR/module.hpp`, DIR its path, `check/env` for `Check.Env`) and a
 # fourth when it has generic definitions (`src/DIR/generic.hpp`),
 # two for `Elem` and `Output` (`src/elem.decl.hpp`, `src/elem.types.hpp`), the program
 # classes (`src/programs.hpp`), `src/main.cpp` and the modules' definitions in units,
-# `src/unit_N.cpp` (prismc/README.md, picks MH and SF). As in emit.prism, nothing here decides (K9).
+# `src/unit_N.cpp`. As in emit.prism, nothing here decides (K9).
 #
 # The model names the Rust runtime's operations (`Rc::new`, `borrow`, `upgrade`); this
 # printer maps each to its C++ spelling through the tables `CallName` and `MethodForm`, and
@@ -14,7 +14,7 @@
 # constructors, the order of a record's fields, which names are a node's members (reached
 # through the node's shared pointer, `->`).
 #
-# The C++ forms (prismc/README.md, "The C++ target"): a record is a struct, a choice a class
+# The C++ forms: a record is a struct, a choice a class
 # holding a `std::variant` of its cases by value, as Rust's enum is by value, and a
 # recursive payload (the lowering's `OutRc`) a `::prism_rtl::Val`, an immutable shared value
 # that compares by its value as Rust's `Rc<T>` does; `*x` of the model is `::prism_rtl::val(x)`,
@@ -84,7 +84,7 @@ derive ^Eq, ^Show
 # path and its constructors (a choice's cases by `Type::Case`), the names of every node's
 # members, and the fields of the node or job being printed. `owned` is every local the
 # scope holds by value (a `let` of a value, a lambda's by-value parameter), which a bare
-# read moves (pick MV of the README); `moveCaptures` the `let`s before a move closure that
+# read moves; `moveCaptures` the `let`s before a move closure that
 # only its body reads, which it takes by moving init-captures.
 type Cp = record:
     home: Text

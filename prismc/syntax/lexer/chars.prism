@@ -30,7 +30,7 @@ fn Join xs, sep = match xs[0]:
 
 # Texts are walked with cursors (Semantics Appendix B, Text): a position is a byte index,
 # and a character is reached by stepping to it. A character here is a one-character text,
-# a view of the text it is in (README, pick CH).
+# a view of the text it is in.
 
 # The character at a cursor, or `""` at the end.
 CharAt: fn Cursor -> Text
@@ -176,7 +176,7 @@ IsHexDigit: fn Text -> Bool
 fn IsHexDigit c = (IsDigit c) or ("a" <= c and c <= "f") or ("A" <= c and c <= "F")
 
 # Past ASCII. A non-ASCII letter glued to a name is an error; prismc counts every non-ASCII
-# character a letter there (README, pick NA).
+# character a letter there.
 IsNonAscii: fn Text -> Bool
 fn IsNonAscii c = c > "\u{7f}"
 

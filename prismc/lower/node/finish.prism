@@ -357,8 +357,9 @@ fn FinishNode wx0, qk, params, isRow:
     # then: `LateAskedPlace`)
     let PlaceElementIs = \|f| if HasText wx.lateElements, f: XBin OpEq, (XCtor (RefRuntime "std::Some"), [[(XVar "element")]]), (XMethod (XMethod (XField XSelf, "{f}_element"), "borrow", [[]]), "as_ref", [[]]) else: XBin OpEq, (XVar "element"), (XRef (XField XSelf, "{f}_element"))
     let pushBody0 = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, f, t, ignore))| DoIf (PlaceElementIs f), (DynPlaceWrite sinks, f, (XDecode t, (XVar "v"))), [[]]
-    # and a bundle's place with `$` parts: the push is its whole state (`BundleStateWrite`)
-    let pushBody = Append pushBody0, (Each (Filter wx.bundles, \|bp| bp.stem != "" and Emits wx, bp.pos), \|bp| DoIf (XBin OpEq, (XVar "element"), (XRef (XField XSelf, "{bp.stem}_element"))), (BundleStateWrite sinks, bp, (XDecode bp.stateTy, (XVar "v"))), [[]])
+    # and a bundle's place with `$` parts: the push is its whole state (`BundleStateWrite`;
+    # one that asks late keeps its element in a cell too, `AskedElement`)
+    let pushBody = Append pushBody0, (Each (Filter wx.bundles, \|bp| bp.stem != "" and Emits wx, bp.pos), \|bp| DoIf (PlaceElementIs bp.stem), (BundleStateWrite sinks, bp, (XDecode bp.stateTy, (XVar "v"))), [[]])
     # the node leaves: each live dynamic of its own holds keeps the hold's value after this
     # tick (`holdsLast`), what it reads once the node is gone
     let leaveBody = Each wx.holdsLast, \|name| DoAssign (XDeref (XMethod (XField XSelf, "{name}_last"), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XMethod XSelf, name, [[XCx]])]])
@@ -595,8 +596,12 @@ fn ScopeSteps sk, atBuild, k, fuel = match fuel -? 1:
         # generation of the scope is, the one that gives the result among them
         # (`DeferredLine`)
         let deferred = Fold (Filter wx.gens, \|gd| gd.pos.scope == k and Deferred gd), [[]], \|a, gd| Append a, (Gen gd)
+        # a hosted place below a building line of its block built after the node asks its
+        # first value here, its number known (`Wx.lateFirsts`, `BelowGappyLine`); a scope
+        # of a late host asks at the host's line instead (`LateChild`)
+        let asked = if atBuild and wx.genPhase != 1 and not (HasNat wx.lateHosts, k): Fold (Append wx.lateFirsts, wx.lateStarts), [[]], \|firsts, ((scope, dos))| if scope == k: Append firsts, dos else: firsts else: [[]]
         let ordered = Fold (SortNats (Fold steps, [[]], \|seen, ((ignore, at, ignore, ignore, ignore))| if (Len (Filter seen, \|y| y == at)) == 0: Push seen, at else: seen)), [[]], \|a, at| Fold (Range0 ((2 * (Len steps)) + 2)), a, \|a1, rank| Fold steps, a1, \|a2, ((ignore, at2, rank2, ignore, dos))| if at2 == at and rank2 == rank: Append a2, dos else: a2
-        Append (Append ordered, deferred), entries
+        Append (Append (Append ordered, asked), deferred), entries
 
 # A hosted live place's entry taken, its level read from `recv` (the node in its build,
 # `self` in the patch pass): compared with the one that stood, published the tick after if
@@ -964,7 +969,12 @@ fn PlaceNumber wx, recv, pos:
     if (Len gaps) == 0 and not (IsSomeNat ?base): XIndex pos.at
     else: if recv == "":
         let start = match ?base:
-            ? s: if wx.baseLate: Refusal "a place that is read at its row's build (place {PlaceText pos}: a host's, or a hosted place's first value) in an arm or a clause that is built before its block's node and numbered after it" else: XBin OpAdd, (XVar "base"), (XIndex (Or (pos.at -? s), 0))
+            # (no checked program reaches a row numbered late here: `?base` is the row's
+            # own scope's, and the callers with no receiver are `HostLine` under
+            # `PlaceUnknownAtBuild` and `EarlyClauseLine` under `NumberedLate`, both true
+            # for such a row's places, and `FirstValueLet` in a hosted scope, whose
+            # positions have no `?base`)
+            ? s: if wx.baseLate: InternalBug "a place read at its row's build (place {PlaceText pos}) in a row numbered after its block's node" else: XBin OpAdd, (XVar "base"), (XIndex (Or (pos.at -? s), 0))
             nil: XIndex pos.at
         Fold gaps, start, \|acc, gd| if gd.early and not (HasText wx.lateNumbered, gd.name): XBin OpSub, acc, (XVar "{gd.name}_gap_now") else: Refusal "a place that is read at its block's build (place {PlaceText pos}) after a building `match`, `if` or widget of several clauses whose rows differ in width and are built after the block's node"
     else: XMethod (if recv == "self": XSelf else: XVar recv), (PlaceMethod pos.scope), [[XIndex pos.at]]
@@ -1154,7 +1164,7 @@ SortNats: fn [Nat] -> [Nat]
 fn SortNats xs = Fold xs, [[]], \|acc, x| Append (Push (Filter acc, \|y| y < x), x), (Filter acc, \|y| not (y < x))
 
 # Asking for a combinator's wake: the node's `Heights` records the combinator and asks the
-# wake at its global height (`Node::wake` is not told the height, gap WH of the README).
+# wake at its global height (`Node::wake` is not told the height).
 AskWake: fn Sinks, Gn -> [Do]
 fn AskWake sk, g = [[DoExpr (XMethod (XField XSelf, "heights"), "ask", [[(XIndex (CombinatorOf sk.combs, g)), XCx, (XClone XSelf)]])]]
 

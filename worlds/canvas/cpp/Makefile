@@ -58,7 +58,7 @@ LIB_OBJS := $(LIB_SRCS:src/%.cpp=$(BUILD)/%.o) $(BUILD)/app.o $(BUILD)/cli.o
 # the runtime's headers too: an object of this World holds the runtime's types by value
 HEADERS := $(wildcard include/prism_world_canvas/*.hpp) $(wildcard $(RT)/include/prism_rtl/*.hpp)
 
-# The allocator of every binary linked here is jemalloc (runtime/cpp/README.md, pick AL), found with
+# The allocator of every binary linked here is jemalloc, found with
 # pkg-config, except under a sanitizer (SANITIZE set: AddressSanitizer replaces malloc
 # with its own, which jemalloc would take the allocations from). The library itself links
 # nothing; a binary's link stops and names the package when pkg-config does not find it.

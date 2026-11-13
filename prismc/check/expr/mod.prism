@@ -141,7 +141,12 @@ fn IsLambda e = match e.kind:
 
 Infer: unbounded fn Env, St, Expr -> ((Ty, St))
 fn Infer env, st, e:
-    let ((t, st2)) = InferKind env, st, e
+    let ((t0, st2)) = InferKind env, st, e
+    # a lens applied that gives back a map's entry, read, is the entry's `?V`, as `m[k]` is
+    # (Jimmy's ruling on map entries); `InferPlace` keeps the entry
+    let t = match ?LensApplied e:
+        ? ignore: EntryRead st2, t0
+        nil: t0
     ((t, (NoteTy st2, e.span, t)))
 
 InferKind: unbounded fn Env, St, Expr -> ((Ty, St))
@@ -265,7 +270,9 @@ fn Check env, st, e, expected = match e.kind:
         Unify (NoteTy st2, e.span, t), expected, t, e.span
     EAny x: NoteTy (CheckAny env, st, x, expected, e.span), e.span, expected
     otherwise:
-        let ((t, st2)) = Infer env, st, e
+        # a reference where an entry is wanted (a lens's body, a lens's argument) is the
+        # place it names
+        let ((t, st2)) = if (IsEntry st, expected) and IsRef e: InferPlace env, st, e else: Infer env, st, e
         UnifyAt st2, expected, t, e.span
 
 # A tuple's part: one that is a bare `Error` gets a variable of its own (`FaultOf`); any
@@ -340,7 +347,7 @@ fn InferNameIn env, st, n, span:
         nil: InferGlobal env, st, n, span
 
 # A local's scheme instantiated at a use; a generalized `let`'s use is noted with its
-# instantiation, for lowering (pick LG of the README).
+# instantiation, for lowering.
 InstantiateLocal: unbounded fn St, Scheme, Range, Text -> ((Ty, St))
 fn InstantiateLocal st, sc, span, name:
     if (Len sc.qs) == 0 and (Len sc.cqs) == 0: Instantiate st, sc, span

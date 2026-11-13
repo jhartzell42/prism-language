@@ -1,0 +1,5 @@
+tests/checker/neg/hold-needed.prism:6: error[hold-needed]: `Push` lifts over `!e`, but its type variable here already holds a `!Nat`
+    fn Heard events, !e = Push events, !e
+                                       ^^
+  fix: keep it whole with braces: `{!e}`
+1 error

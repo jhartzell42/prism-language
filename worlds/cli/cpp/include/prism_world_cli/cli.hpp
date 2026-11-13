@@ -2,8 +2,8 @@
 // World compiled programs run under at the command line, over `prism_rtl`'s protocol. It
 // answers `Fs`, `Process` and `Time`, the prelude's `Prelude.Unwrap` and
 // `Prelude.Exceptions`, `Fs.List`, and a program's `Console.Read` and `Console.Print` on
-// standard input and output; worlds/cli/rust/README.md says what each answers, and holds
-// here word for word.
+// standard input and output; each answers what the Rust World's (worlds/cli/rust/src)
+// answers, word for word.
 //
 //   prism_world_cli::run<MyProgram>(args)       // the real file system, at the working directory
 //   CliWorld world(std::make_unique<MemFs>(), args); prism_rtl::drive<MyProgram>(world, {}, patience);

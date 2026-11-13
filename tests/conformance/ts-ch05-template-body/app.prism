@@ -1,4 +1,4 @@
-# A template call by the attribute rule (prismc/README.md, pick TK): the body fills the
+# A template call by the attribute rule: the body fills the
 # last place, attributes fill the places their names have in any clause, written in any
 # order, a name read without its marks (`?note`) and through parentheses, and clauses
 # other than the first name places too. Written for prismc's back end. Work in progress,

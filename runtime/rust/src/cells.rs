@@ -58,7 +58,7 @@ impl<T: Clone> Hold<T> {
     }
     /// The tick's one write (G1, Semantics R3): the older slot takes the value, stamped
     /// now. A second write in a tick is a node woken twice for the same inputs: a fault of
-    /// the tick, worded as the C++ runtime words it (prismc/README.md, TW).
+    /// the tick, worded as the C++ runtime words it.
     pub fn set(&self, v: T, cx: &Cx) {
         let mut s = self.slots.borrow_mut();
         if s.1 == cx.tick() && s.2.is_some() {
@@ -817,6 +817,11 @@ impl<T: Clone + 'static> Dynamic<T> {
     }
     pub fn sample(&self, cx: &Cx) -> T {
         (self.read)(cx)
+    }
+    /// Its value read with a context of no node ([`crate::cx::detached`]): where a plain
+    /// function's body reads a dynamic it made, which has one value (gap LE).
+    pub fn sample_detached(&self) -> T {
+        crate::cx::detached(|cx| self.sample(cx))
     }
     /// The dynamic `f` of this one: the same owner and update event, the read mapped.
     pub fn map<U: 'static>(&self, f: impl Fn(&T) -> U + 'static) -> Dynamic<U> {

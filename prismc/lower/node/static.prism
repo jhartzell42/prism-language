@@ -1077,7 +1077,15 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
     let givenOn = Filter (ExprsIn e), \|x| match x.kind:
         EBinary "on", value, ignore: (HasTime (Peel (TypeAt lx, x.span))) and (LayerOf (TypeAt lx, value.span)) != LyDyn
         otherwise: False
-    let roots = Fold (Append (Append (Append calls, updatedCalls), constants), givenOn), (if whole: ExprsIn e else: [[]]), \|acc, c| match c.kind:
+    # and a lambda whose parameters hold time (`\|$x| $x + $count` given to a plain
+    # function): its body takes time whole (`WholeLambda`), so every reader it reads is
+    # passed whole (gap LF)
+    let wholeLambdaReads = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
+        ELambda ignore, ignore: match Peel (TypeAt lx, x.span):
+            TyFn ignore2, ps, ignore3: if Fold ps, False, \|seen, p| seen or HasTime p: Append acc, (ExprsIn x) else: acc
+            otherwise: acc
+        otherwise: acc
+    let roots = Fold (Append (Append (Append calls, updatedCalls), constants), givenOn), (Append (if whole: ExprsIn e else: [[]]), wholeLambdaReads), \|acc, c| match c.kind:
         ECall ignore, args, ignore, ignore: Fold args, acc, \|acc2, a| Append acc2, (ExprsIn a.value)
         EFreeSigil ignore, x: Append acc, (ExprsIn x)
         EBinary "on", value, ignore: Append acc, (ExprsIn value)
@@ -1844,10 +1852,20 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                         else: if (Recursion wx.inlining, qk) > 16: TooDeep wx, qk, e
                         else:
                             let call = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
+                            # a generic function of several clauses (the prelude's `Or` at
+                            # `@unit`, Type System ch. 1): its type parameters at this call,
+                            # read off its arguments' types as for a widget of one clause, so
+                            # its rows' parameters and lines have this call's types
+                            let instance = Or (?CallInstance lx, v, args), {}
+                            let lxs = update lx:
+                                &_.subst <= Fold (Keys instance), &_.subst, \|m, q| Insert m, q, (Or instance[q], TyErr)
+                            let vs = update v:
+                                &_.scheme <= update v.scheme:
+                                    &_.ty <= SubstTy lxs, v.scheme.ty
                             let inside = update wx:
                                 &_.inlining <= Push &_.inlining, qk
-                                &_.lx <= WithRecursing lx, qk
-                            let ((done, res)) = ClauseWidgetLine inside, benv, menv, a.value, call, qk, v, e, args
+                                &_.lx <= WithRecursing lxs, qk
+                            let ((done, res)) = ClauseWidgetLine inside, benv, menv, a.value, call, qk, vs, e, args
                             let outside = update done:
                                 &_.inlining <= wx.inlining
                                 &_.lx <= lx
@@ -1870,9 +1888,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                     otherwise: [[]]
                 # a generic widget's type parameters, over which its body was checked: their
                 # types at this call, read off its arguments' types
-                let ?params = Fold (Range0 (Len params)), (? {}), \|?acc, i| match ((?acc, args[i])):
-                    ((? m, ? a)): ?ParamInstance (Or ptys[i], TyErr), (TypeAt lx, a.value.span), m
-                    otherwise: ?acc
+                let ?params = ?CallInstance lx, v, args
                 let unmatched = Filter (Fold ptys, [[]], \|acc, t| UnionTexts acc, (RigidsIn t)), \|q| not (HasKey (Or ?params, {}), q)
                 let lxp = update lx:
                     &_.subst <= Fold (Keys (Or ?params, {})), &_.subst, \|m, q| Insert m, q, (Or (Or ?params, {})[q], TyErr)
@@ -1908,6 +1924,18 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                         &_.result <= wx.result
                     ((back, done.result))
 
+# A widget's or a function's type parameters at a call (`v` the callee): each parameter's
+# type matched to its argument's (`?ParamInstance`), keyed by name; nothing when two
+# arguments disagree.
+?CallInstance: unbounded fn Lx, ValInfo, [Arg] -> ?(Text ==> Ty)
+fn ?CallInstance lx, v, args:
+    let ptys = match v.scheme.ty:
+        TyFn ignore, ps, ignore: ps
+        otherwise: [[]]
+    Fold (Range0 (Len ptys)), (? {}), \|?acc, i| match ((?acc, args[i])):
+        ((? m, ? a)): ?ParamInstance (Or ptys[i], TyErr), (TypeAt lx, a.value.span), m
+        otherwise: ?acc
+
 # A widget's type parameters at one of its arguments: its parameter's type matched to the
 # argument's (a plain parameter lifted over a dynamic argument, to the value under it),
 # keyed by name, as `SubstTy` reads a rigid or quantified variable.
@@ -1933,6 +1961,10 @@ fn ?ParamMatch pat, t, m = match ((pat, t)):
     (((TySig s1, i1), (TySig s2, i2))): if s1 == s2: ?ParamMatch i1, i2, m else: nil
     # an element parameter (`Element Ui.* o` against `Element Ui.* !Click`): its output
     (((TyElem ignore, o1), (TyElem ignore, o2))): ?ParamMatch o1, o2, m
+    # an associated type at a variable (`Move r` against `Step`) decides nothing about it:
+    # the argument's type is already the impl's (`?InstanceMatch`); another parameter
+    # decides the variable, or it stays unmatched
+    (((TyAssoc ignore, ignore, ignore), ignore)): ? m
     otherwise: if pat == t: ? m else: nil
 
 ?ParamMatchAll: unbounded fn [Ty], [Ty], (Text ==> Ty) -> ?(Text ==> Ty)

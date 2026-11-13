@@ -1,0 +1,36 @@
+# A World's place with a bundle answer, taken apart by a tuple pattern, whose constant
+# field reads a building `match`'s late plain result written below it (Semantics ch. 4,
+# "Binding groups and cycles": any line may use any name the block binds, and "the order
+# of a group's lines decides positions and nothing else"; ch. 8, "A new place's first
+# value": the first-value query answers at the build, by the element as built; Type
+# System ch. 2, "Bundles and sparse tuples"; ruling TC). Nothing here is a cycle: the
+# `match` reads nothing of the place. With a `$` answer bound to one name the program is
+# conformance/sem-ch04-late-value-above-in-dynamic-place-field. Reaches `BindLate`'s
+# marker "the late result `n` read at its block's build" on keep-B.
+# Written by Claude (sweep-4, the prismc run), 12 November 2026; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+tag Pad.Port of Element ((Nat, $Text)):
+    name: Text
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Panel: fn Mode -> @unit
+fn @Panel mode:
+    ((p, $s)) <- Pad.Port(name="port {n}")                             # 0
+    Ui.Label($text=$"{p} {$s} of {n}")                                 # 1
+    n <- match mode:
+        Loud t:
+            Ui.Label($text=$"{t}")                                     # 2
+            @ 10
+        Soft:
+            @ 20
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    @Panel mode

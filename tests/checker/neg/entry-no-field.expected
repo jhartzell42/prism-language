@@ -1,0 +1,13 @@
+tests/checker/neg/entry-no-field.prism:16: error[mismatch]: an `Entry` has no field `color`
+    fn &Color &game = &game.board[1].color
+                                     ^^^^^
+  fix: read the value at the key, change it, and put it back with `<:`
+tests/checker/neg/entry-no-field.prism:20: error[mismatch]: an `Entry` has no field `color`
+        &_.board[2].color <= c
+                    ^^^^^
+  fix: read the value at the key, change it, and put it back with `<:`
+tests/checker/neg/entry-no-field.prism:21: error[mismatch]: an `Entry` has no field `rank`
+        &_.turn <= &_.board[3].rank
+                               ^^^^
+  fix: read the value at the key, change it, and put it back with `<:`
+3 errors

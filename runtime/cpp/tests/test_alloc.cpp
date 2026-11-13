@@ -1,4 +1,4 @@
-// The allocator the test binary runs on (README.md, pick AL): jemalloc's, unless the build
+// The allocator the test binary runs on: jemalloc's, unless the build
 // is a sanitizer's, whose AddressSanitizer keeps its own. A link that silently kept the C
 // library's malloc fails here.
 //

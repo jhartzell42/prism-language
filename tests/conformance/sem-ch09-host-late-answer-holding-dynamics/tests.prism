@@ -1,0 +1,9 @@
+# The tests of sem-ch09-host-late-answer-holding-dynamics.
+emit Ui.*
+use App.*
+
+test loud, @Page True:
+    build
+
+test soft, @Page False:
+    build

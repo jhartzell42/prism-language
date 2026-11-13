@@ -1,0 +1,17 @@
+# Derived by hand from Semantics ch. 4 ("the order of a group's lines decides positions and nothing else"), ch. 8 (a clause is chosen by its pattern) and ruling TC (places counted as built): loud gives the inner `if`'s 3, so the widget's clause `k` builds "one 3" and "two 3" at 0 and 1, the `for` its two rows under its position 2 (keys [0] and [1]), the inner arm its label at 3; soft gives 20 and builds nothing in its arm. Corrected by hand for the `for`'s paths (Semantics ch. 8, "Document paths": a `for` takes a number, then a key `[k]` for each entry).
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="one 3")
+    1: Ui.Label(text="two 3")
+    2/[0]/0: Ui.Label(text="row 1")
+    2/[1]/0: Ui.Label(text="row 2")
+    3: Ui.Label(text="inner")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="one 20")
+    1: Ui.Label(text="two 20")

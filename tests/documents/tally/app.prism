@@ -1,7 +1,7 @@
 # A table for the tally document: tellers, keepers and viewers come and go by the table's
-# buttons and by their own. The hosting library's second document, kept as its test: the
-# library is `examples/chess/documents`, given as a second source,
-# `./prism test tests/documents/tally examples/chess/documents`.
+# buttons and by their own. The standard library's `Documents` hosts it, and this is its
+# test; until the library's design form checks, the library is given as a second source,
+# `./prism test tests/documents/tally tests/documents/library`.
 # Written by Claude on the claude-document-chess branch; subject to change.
 emit Ui.*
 mod Tally
@@ -22,26 +22,32 @@ WhyNotAdded: fn TellerReason -> Text
 fn WhyNotAdded AddedLast = "you added last"
 fn WhyNotAdded (StopsAt most) = "the count stops at {most}"
 
-Said: fn Response TellerReason -> Text
+Said: fn Response (Tallied o) Teller -> Text
 fn Said Accepted = "accepted"
 fn Said (Declined why) = "declined: {WhyNotAdded why}"
 
 WhyNotCleared: fn KeeperReason -> Text
 fn WhyNotCleared NothingToClear = "nothing to clear"
 
-SaidToKeeper: fn Response KeeperReason -> Text
+SaidToKeeper: fn Response (Tallied o) Keeper -> Text
 fn SaidToKeeper Accepted = "accepted"
 fn SaidToKeeper (Declined why) = "declined: {WhyNotCleared why}"
 
-Seen: fn TellerView -> Text
-fn Seen view = "total {view.total}, {if view.mayAdd: "may add" else: "may not add"}"
+Seen: fn ?TellerView -> Text
+fn Seen nil = "loading"
+fn Seen (? view) = "total {view.total}, {if view.mayAdd: "may add" else: "may not add"}"
 
-LastOf: fn ?Teller -> Text
+LastOf: fn ?Text -> Text
 fn LastOf nil = "nobody"
-fn LastOf (? (Teller name)) = name
+fn LastOf (? name) = name
 
-Counted: fn Tally -> Text
-fn Counted tally = "total {tally.total}, {LastOf tally.?last} added last"
+Counted: fn ?Tally -> Text
+fn Counted nil = "loading"
+fn Counted (? tally) = "total {tally.total}, {LastOf tally.?last} added last"
+
+Total: fn ?Nat -> Text
+fn Total nil = "loading"
+fn Total (? total) = "{total}"
 
 Note: fn Sitting -> Text
 fn Note Person = ""
@@ -59,60 +65,71 @@ fn ?Reached (? n), view = if view.total == n: ? (Add 1) else: nil
 fn ?Full nil, tally = nil
 fn ?Full (? n), tally = if tally.total == n: ? Clear else: nil
 
+# An answer as an event: the one it has when the block is built, and each change. A
+# participant that acts on what it is told acts on its first answer too.
+@Told: fn $?a -> @!a
+fn @Told $?value:
+    !first <- @started
+    @ !Filter ((!Updated $?value) <| ($?value on !first))
+
 # ---- the participants
 
-# A teller. It emits `Ui.*`, `Tell.*` and the way to leave, and nothing else: it reaches
-# the tally through its seat's elements only. An eager one also adds one, by itself, when
-# it is told the total has reached its number. Its last button adds one and leaves: the
-# request and the leaving, two elements in one tick.
-@Teller: fn Teller, Sitting -> @unit emit Ui.* | Seat.* | Tell.*
-fn @Teller (Teller name), sitting:
-    $view <- Tell.Query($query=$ Whole)                                    # 0
+# A teller: `Ui.*` and the teller's seat language, and nothing else. An eager one also
+# adds one, by itself, when it is told the total has reached its number. Its last button
+# adds one and leaves: the leaving holds the last request.
+@Teller: fn Text, Sitting -> @unit emit Ui.* | Seat.* (Tallied o) Teller
+fn @Teller name, sitting:
+    $?view <- Seat.Query($query=$ Whole)                                   # 0
     !one <- Ui.Button($label=$"{name} +1")                                 # 1
     !two <- Ui.Button($label=$"{name} +2")                                 # 2
     !last <- Ui.Button($label=$"{name} +1 and leaves")                     # 3
-    !told <- @Told $view
+    !told <- @Told $?view
     let !eager = !Filter (?Reached (?EagerAt sitting), !told)
-    !response <- Tell.Request(!requests=((Add 1) on !one <| (Add 2) on !two <| (Add 1) on !last <| !eager))   # 4
-    Seat.Leave(!leaves=(unit on !last))                                    # 5
+    !response <- Seat.Request(!requests=((Add 1) on !one <| (Add 2) on !two <| !eager))   # 4
+    Seat.Leave(!?leaves=((? (Add 1)) on !last))                            # 5
     $said <- "nothing yet" then Said !response
-    Ui.Label($text=$"{name}{Note sitting}: {Seen $view}; {$said}")         # 6
+    Ui.Label($text=$"{name}{Note sitting}: {Seen $?view}; {$said}")        # 6
 
-# A keeper: `Ui.*` and `Keep.*`. It clears the count by its button; an eager one also
-# clears, by itself, when it is told the total has reached its number.
-@Keeper: fn Keeper, Sitting -> @unit emit Ui.* | Seat.* | Keep.*
-fn @Keeper (Keeper name), sitting:
-    $tally <- Keep.Query($query=$ Whole)                                   # 0
+# A keeper. It clears the count by its button; an eager one also clears, by itself, when
+# it is told the total has reached its number.
+@Keeper: fn Text, Sitting -> @unit emit Ui.* | Seat.* (Tallied o) Keeper
+fn @Keeper name, sitting:
+    $?tally <- Seat.Query($query=$ Whole)                                  # 0
     !clear <- Ui.Button($label=$"{name} clears")                           # 1
-    !told <- @Told $tally
+    !told <- @Told $?tally
     let !eager = !Filter (?Full (?EagerAt sitting), !told)
-    !response <- Keep.Request(!requests=(Clear on !clear <| !eager))       # 2
+    !response <- Seat.Request(!requests=(Clear on !clear <| !eager))       # 2
     $said <- "nothing yet" then SaidToKeeper !response
-    Ui.Label($text=$"{name}{Note sitting} keeps: {Counted $tally}; {$said}") # 3
+    Ui.Label($text=$"{name}{Note sitting} keeps: {Counted $?tally}; {$said}")   # 3
 
-# A viewer: `Ui.*` and `View.*`. `View.*` has a query, and the library's way to leave, and
-# no request.
-@Watcher: fn Viewer -> @unit emit Ui.* | Seat.* | View.*
-fn @Watcher (Viewer name):
-    $total <- View.Query($query=$ Whole)                                   # 0
-    Ui.Label($text=$"{name} watches: total {$total}")                      # 1
+# A viewer: its requests are `Never`, so it places no request element; it asks, and it
+# leaves.
+@Watcher: fn Text -> @unit emit Ui.* | Seat.* (Tallied o) Viewer
+fn @Watcher name:
+    $?total <- Seat.Query($query=$ Whole)                                  # 0
+    Ui.Label($text=$"{name} watches: total {Total $?total}")               # 1
     !leave <- Ui.Button($label=$"{name} leaves")                           # 2
-    Seat.Leave(!leaves=(unit on !leave))                                   # 3
+    Seat.Leave(!?leaves=(nil on !leave))                                   # 3
 
-let ada = Teller "ada"
-let bob = Teller "bob"
-let dee = Teller "dee"
-let eve = Teller "eve"
-let fay = Teller "fay"
-let gus = Teller "gus"
-let kay = Keeper "kay"
-let cy = Viewer "cy"
+# ---- the table: two tellers from the start, and buttons that seat and remove the others.
+# It holds one live map of blueprints per role; a seat the table removes leaves its map.
 
-# The table: two tellers from the start, and buttons that seat and remove the others. It
-# is the tally's seats function: given the state and each tick's responses, it hosts every
-# seat and gives back each tick's notices.
-@Table: fn $Tally, ![TallyResponse] -> @![Notice Tally Requester TallyResponse] emit Ui.*
-fn @Table $state, !responses:
+# Each change the table makes to one role's map: the seats it seats, and those it removes.
+type Change a = record:
+    seat: (Text ==> a)
+    remove: [Text]
+
+Changed: fn (Text ==> a), Change a -> (Text ==> a)
+fn Changed seats, change = Fold change.remove, (Union change.seat, seats), Remove
+
+Seating: fn (Text ==> a) -> Change a
+fn Seating seats = Change(seat=seats, remove=[[]])
+
+Removing: fn [Text] -> Change a
+fn Removing names = Change(seat={}, remove=names)
+
+@Table: @(TallySeats o Ui.*) emit Ui.* where o: ^TallyOrder
+@Table:
     !cyJoins <- Ui.Button($label=$"cy joins")                              # 0
     !cyRemoved <- Ui.Button($label=$"cy is removed")                       # 1
     !adaRemoved <- Ui.Button($label=$"ada is removed")                     # 2
@@ -124,20 +141,22 @@ fn @Table $state, !responses:
     !kayJoins <- Ui.Button($label=$"kay joins")                            # 8
     !rolesJoin <- Ui.Button($label=$"dee and kay join, eager at 4")        # 9
     !eveRemoved <- Ui.Button($label=$"eve is removed")                     # 10
-    let !seatTellers = ({bob: (@Teller bob, (Eager 2))}) on !bobEager <| ({dee: (@Teller dee, (Eager 3)), eve: (@Teller eve, (Eager 3))}) on !pairJoins <| ({dee: (@Teller dee, (Eager 2)), eve: (@Teller eve, (Eager 2)), gus: (@Teller gus, (Eager 2))}) on !threeJoin <| ({fay: (@Teller fay, (Eager 1))}) on !fayJoins <| ({dee: (@Teller dee, (Eager 4))}) on !rolesJoin
-    let !removeTellers = [[ada]] on !adaRemoved <| [[fay]] on !fayRemoved <| [[eve]] on !eveRemoved
-    let !seatKeepers = ({kay: (@Keeper kay, Person)}) on !kayJoins <| ({kay: (@Keeper kay, (Eager 4))}) on !rolesJoin
-    !fromTellers <- @HostTellers {ada: (@Teller ada, Person), bob: (@Teller bob, Person)}, !seatTellers, !removeTellers, $state, !responses   # 11
-    !fromKeepers <- @HostKeepers {}, !seatKeepers, never, $state, !responses                  # 12
-    @HostViewers {}, ({cy: (@Watcher cy)}) on !cyJoins, [[cy]] on !cyRemoved, $state          # 13
-    @ !MergeWith Append, [[!fromTellers, !fromKeepers]]
+    let !tellerChange = (Seating {"bob": $ (@Teller "bob", (Eager 2))}) on !bobEager <| (Seating {"dee": $ (@Teller "dee", (Eager 3)), "eve": $ (@Teller "eve", (Eager 3))}) on !pairJoins <| (Seating {"dee": $ (@Teller "dee", (Eager 2)), "eve": $ (@Teller "eve", (Eager 2)), "gus": $ (@Teller "gus", (Eager 2))}) on !threeJoin <| (Seating {"fay": $ (@Teller "fay", (Eager 1))}) on !fayJoins <| (Seating {"dee": $ (@Teller "dee", (Eager 4))}) on !rolesJoin <| (Removing [["ada"]]) on !adaRemoved <| (Removing [["fay"]]) on !fayRemoved <| (Removing [["eve"]]) on !eveRemoved
+    let !keeperChange = (Seating {"kay": $ (@Keeper "kay", Person)}) on !kayJoins <| (Seating {"kay": $ (@Keeper "kay", (Eager 4))}) on !rolesJoin
+    let !viewerChange = (Seating {"cy": $ (@Watcher "cy")}) on !cyJoins <| (Removing [["cy"]]) on !cyRemoved
+    $tellers <- {"ada": $ (@Teller "ada", Person), "bob": $ (@Teller "bob", Person)} then Changed $tellers, !tellerChange
+    $keepers <- {} then Changed $keepers, !keeperChange
+    $viewers <- {} then Changed $viewers, !viewerChange
+    @ TallySeats($teller=$tellers, $keeper=$keepers, $viewer=$viewers)
 
 # One tally in memory, seated by the table, its requests in the default order.
 @table: @unit
 @table:
-    @InMemory empty, @Table
+    seats <- @Table<<OneEach>>                                             # 0 to 10
+    @HostDocument (@InMemory<<Tallied OneEach>> empty), seats              # 11
 
-# The same table on a tally that orders its own requests.
+# The same table on the tally that orders its own requests, keepers first.
 @keepersFirst: @unit
 @keepersFirst:
-    @InMemoryOrdered empty, KeepersFirst, @Table
+    seats <- @Table<<KeepersFirst>>
+    @HostDocument (@InMemory<<Tallied KeepersFirst>> empty), seats

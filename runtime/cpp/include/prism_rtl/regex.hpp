@@ -51,7 +51,7 @@ struct Group {
     Cursor front_p, back_p;
     friend bool operator==(const Group& a, const Group& b) { return a.text_p == b.text_p && a.front_p == b.front_p && a.back_p == b.back_p; }
     void show(Printer& p) const;
-    /// Itself, as every emitted record answers `->` (prismc/README.md, pick PT).
+    /// Itself, as every emitted record answers `->`.
     const Group* operator->() const { return this; }
 };
 
@@ -65,7 +65,7 @@ struct Match {
         return a.text_p == b.text_p && a.front_p == b.front_p && a.back_p == b.back_p && a.groups_p == b.groups_p && a.named_p == b.named_p;
     }
     void show(Printer& p) const;
-    /// Itself, as every emitted record answers `->` (prismc/README.md, pick PT).
+    /// Itself, as every emitted record answers `->`.
     const Match* operator->() const { return this; }
 };
 
@@ -149,7 +149,7 @@ private:
 // whose cursors are opaque; but an emitted record derives the runtime's `ToPod` and
 // `FromPod` whatever its fields, and a `check` line's value is plain data. A regex goes
 // out as it shows, its spelling (which is how it compares), over its parts as written,
-// and reads back from those (prismc/README.md, PD); a match, as a `Cursor`, is never read
+// and reads back from those; a match, as a `Cursor`, is never read
 // back.
 
 namespace detail {

@@ -20,7 +20,7 @@
 //! - **Clones** share everything; an update copies what it changes (`Rc::make_mut` on the
 //!   path to an element), so no array sharing a node sees it.
 //!
-//! The costs, `n` elements (Semantics Appendix B, Arrays; runtime/rust/README.md): `len`
+//! The costs, `n` elements (Semantics Appendix B, Arrays): `len`
 //! constant; indexing log (constant in the tail, where every array of 64 or fewer
 //! elements is); `push_back` amortised constant (at most 64 elements copied, and once in
 //! 64 pushes one path of the tree); `append` log; `take`, `skip`, `update`, `set` and

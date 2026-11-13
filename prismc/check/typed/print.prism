@@ -155,6 +155,7 @@ fn StmtExprs s = match s.kind:
     SFn f: BodyExprs f.body
     SWidget w: StmtsExprs w.body.stmts
     SSet t, v: Append (ExprsIn t), (ExprsIn v)
+    SPut t, v: Append (ExprsIn t), (ExprsIn v)
     SAccum t, ignore, v: Append (ExprsIn t), (ExprsIn v)
     SRequire c: ExprsIn c
     SForbid c: ExprsIn c

@@ -6,7 +6,7 @@ emit Ui.*
 test mod Tests
 
 MapF: fn (fn a -> b), [a] -> [b]
-fn MapF f, xs = Each xs, f
+fn MapF F, xs = Each xs, F
 
 Fst: fn ((a, b)) -> a
 fn Fst ((x, y)) = x

@@ -1,0 +1,86 @@
+# Part VII ch. 7, step C4: a family indexed by document and role, with sigiled field
+# names (Part III ch. 6, "Families indexed by document and role"; Part IV ch. 3, "The
+# tags"). `Seat.* Count Raiser` and `Seat.* Count Watcher` are one family at two indices:
+# a raiser's request element takes `!Raise`, a watcher's takes `!Never`, and each field is
+# read back at its index's type. A type variable in a tag's field appears in the tag's
+# header (Jimmy's ruling CC): `d` and `r` are the family's.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type Request r
+    type Reason r
+    type Query r
+    type Answer r
+
+type CountRole = choice:
+    Raiser
+    Watcher
+derive ^Eq, ^Ord, ^Show
+
+type Count = record:
+    total: Nat
+derive ^Eq, ^Show
+
+type Raise = choice:
+    Raise Nat
+derive ^Eq, ^Show
+
+type TooHigh = choice:
+    StopsAt Nat
+derive ^Eq, ^Show
+
+type Whole = choice:
+    Whole
+derive ^Eq, ^Show
+
+impl ^Document Count:
+    type Role = CountRole
+    type Request Raiser = Raise
+    type Request Watcher = Never
+    type Reason Raiser = TooHigh
+    type Reason Watcher = Never
+    type Query r = Whole
+    type Answer r = Nat
+
+type Response d r = choice:
+    Accepted
+    Declined (Reason d r)
+
+# The seat's language: one family, every tag of it taking a document and a role.
+family Seat d r where d: ^Document
+
+tag Seat.Request of Element !(Response d r):
+    !requests: Request d r
+
+tag Seat.Query of Element $?(Answer d r):
+    $query: Query d r
+
+# A raiser's request element, and a watcher's, which cannot fire.
+Asking: fn !Raise -> Element (Seat.* Count Raiser) !(Response Count Raiser)
+fn Asking !raises = Seat.Request(!requests=!raises)
+
+Idle: fn unit -> Element (Seat.* Count Watcher) !(Response Count Watcher)
+fn Idle nothing = Seat.Request(!requests=never)
+
+!RaisesIn: fn Element (Seat.* Count Raiser) o -> !Raise
+fn !RaisesIn element = match element:
+    Seat.Request(!requests=!requests): !requests
+    otherwise: never
+
+!WatchersIn: fn Element (Seat.* Count Watcher) o -> !Never
+fn !WatchersIn element = match element:
+    Seat.Request(!requests=!requests): !requests
+    otherwise: never
+
+Added: fn Raise -> Nat
+fn Added (Raise n) = n
+
+@page: @unit
+@page:
+    !raise <- Ui.Button($label=$"raise 2")                                       # 0
+    $total <- 0 then $total + (Added (!RaisesIn (Asking ((Raise 2) on !raise))))
+    $watched <- 0 then $watched + (1 on (!WatchersIn (Idle unit)))
+    Ui.Label($text=$"raised to {$total}; a watcher asked {$watched} times")      # 1

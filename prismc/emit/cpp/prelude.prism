@@ -569,7 +569,7 @@ inline std::optional<char32_t> char_of(const Nat& n) {
     return char32_t(*v);
 }
 /// `Upper`, `Lower`: Unicode's default full case mapping, as Rust's `str::to_uppercase`
-/// and `to_lowercase` (runtime/cpp/README.md, "Upper and Lower").
+/// and `to_lowercase`.
 inline Text upper(const Text& t) { return text_upper(t); }
 inline Text lower(const Text& t) { return text_lower(t); }
 
@@ -797,7 +797,7 @@ JobRef<S> loop_turns(S state, F step) {
 
 
 /// The job of a lambda of unbounded type: its body, run as a job body from its first
-/// cycle (prismc/README.md, pick JB).
+/// cycle.
 template <class B>
 struct Once : Job<B> {
     std::function<Turn<B>()> body;
@@ -915,7 +915,7 @@ R recursive(const F& step, A first) {
 }
 
 /// A job run to its result inside the cycle: a call of an unbounded function value from
-/// direct-style code (gap DS of prismc/README.md).
+/// direct-style code.
 template <class B>
 B run_to_end(JobRef<B> job) {
     while (true) {
@@ -982,7 +982,7 @@ inline int run_scripts(const TestWorld& world, const std::vector<std::string>& g
 }
 
 /// Run on a thread with a large stack (4 GB, committed as it is used): unbounded code runs
-/// direct-style within a cycle (doubt DS of prismc/README.md), and a C++ frame of the
+/// direct-style within a cycle, and a C++ frame of the
 /// emitted code is larger than Rust's, whose runner takes 1 GB.
 inline int on_big_stack(std::function<int()> f) {
     struct Job {
@@ -1007,8 +1007,8 @@ inline int on_big_stack(std::function<int()> f) {
     return job.code;
 }
 
-/// A port's firing from an event method, which returns nothing to pass a fault on through
-/// (prismc/README.md, PF). No fault reaches here today: a port's subscribers (a row's
+/// A port's firing from an event method, which returns nothing to pass a fault on through.
+/// No fault reaches here today: a port's subscribers (a row's
 /// event method, a host's blueprint) return success, and every fault a firing can raise goes
 /// by `Cx::fail_later` or the tick's own result. A fault that ever does is a bug, so it
 /// stops the program naming it rather than being lost.
@@ -1020,6 +1020,15 @@ inline void no_fault(const Done& d) {
 /// reader's value at the read point.
 template <class T>
 Dynamic<T> dyn_constant(T v) { return Dynamic<T>::constant(std::move(v)); }
+
+/// A dynamic's value where a plain function's body reads one it made (gap LE): a read
+/// context of no node (`Cx::detached`), since such a dynamic has one value.
+template <class T>
+T sample_detached(const Dynamic<T>& d) {
+    static const ReadyMap none;
+    Cx cx = Cx::detached(none);
+    return d.sample(cx);
+}
 
 /// `!MergeAll` of a list as an event value (a merge made where `!MergeAll` is lifted over a
 /// dynamic list, Type System ch. 4): prism_rtl's own node decides each tick's firing.
@@ -1164,7 +1173,7 @@ int run_cli(const std::vector<std::string>& args) { return ::prism_world_cli::ru
 CppPreludeRows: fn Text -> Text
 fn CppPreludeRows unused = inline_text <cpp>
 /// A row of a `for` or a generation of a `rebuild`: a node its builder tears down. A row
-/// of a hosted child's (prismc/README.md, pick HO) is an entry of its host's document: its
+/// of a hosted child's is an entry of its host's document: its
 /// own places' entries, by their paths relative to the row, and a host's typed answer to
 /// one of them.
 class Row : public Node {

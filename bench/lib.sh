@@ -1,4 +1,4 @@
-# The benchmark scripts' shared measuring (bench/README.md, "Measuring on each platform"):
+# The benchmark scripts' shared measuring:
 # sourced by bench/building/run.sh, bench/running/run.sh, bench/gui/run.sh and
 # tests/cost/run.sh. Each platform has the same facts under different names, and this file
 # is where the names are chosen, so the scripts read alike.

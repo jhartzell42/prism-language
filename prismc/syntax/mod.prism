@@ -5,7 +5,7 @@
 # Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
 #
-# The spellings that differ from ast.rs, each for a reason prismc/README.md gives (pick AS):
+# The spellings that differ from ast.rs, each for a reason:
 # a sigil stack is the text of its sigils, outermost first (`"@$?"`); an operator, a
 # keyword, a bound name and an accumulation are the text of their spelling; a choice's
 # constructors carry a prefix of their type (`EName`, `PName`, `TName`), since Prism's
@@ -205,7 +205,7 @@ type Literal = record:
     span: Range
 derive ^Eq, ^Show
 
-# A character is a one-character `Text` (prismc/README.md, pick CH).
+# A character is a one-character `Text`.
 type LitKind = choice:
     LInt Text
     LFloat Text
@@ -340,6 +340,8 @@ type StmtKind = choice:
     SFn FnClause
     SWidget WidgetDecl
     SSet Expr, Expr
+    # `&e <: v`: a map entry put from a `?V` (Jimmy's ruling on map entries)
+    SPut Expr, Expr
     SAccum Expr, Text, Expr
     SRequire Expr
     SForbid Expr

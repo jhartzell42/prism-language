@@ -96,6 +96,8 @@ fn SpotKeepsWithin (SpotStmt s, m), i = match s.kind:
     SSet t, value:
         if (Take (RefPath t), 1) != [["&_"]]: True
         else: (RefPath t) == [["&_"]] and Within m, i, value
+    # an entry put sets below `&_`, never `&_` itself
+    SPut t, ignore: (Take (RefPath t), 1) != [["&_"]]
     SAccum t, ignore, ignore: (Take (RefPath t), 1) != [["&_"]]
     otherwise: True
 fn SpotKeepsWithin (SpotExpr ignore, ignore), ignore = True
@@ -331,6 +333,7 @@ fn SetTargets stmts = Fold (StmtsSpots stmts, {}), [[]], \|acc, sp| UnionTexts a
 SpotSetRoot: unbounded fn Spot -> [Text]
 fn SpotSetRoot (SpotStmt s, ignore) = match s.kind:
     SSet t, ignore: Take (RefPath t), 1
+    SPut t, ignore: Take (RefPath t), 1
     SAccum t, ignore, ignore: Take (RefPath t), 1
     otherwise: [[]]
 fn SpotSetRoot (SpotExpr ignore, ignore) = [[]]
@@ -370,6 +373,7 @@ fn StmtSetsWeak s, v, vi, rels = Fold (StmtSpots s, rels), False, \|seen, sp| se
 SpotSetsWeak: unbounded fn Spot, Text, Nat -> Bool
 fn SpotSetsWeak (SpotStmt s, m), v, vi = match s.kind:
     SSet t, value: (Take (RefPath t), 1) == [[v]] and not (SetsStrict value, v, vi, m) and not ((RefPath t) == [[v]] and IsZeroLit value)
+    SPut t, value: (Take (RefPath t), 1) == [[v]] and not (SetsStrict value, v, vi, m)
     SAccum t, ignore, ignore: (Take (RefPath t), 1) == [[v]]
     otherwise: False
 fn SpotSetsWeak (SpotExpr ignore, ignore), ignore, ignore = False

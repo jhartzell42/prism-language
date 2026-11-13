@@ -29,6 +29,12 @@ type Ordering = choice:
     Greater
 derive ^Eq, ^Ord, ^Show
 
+# The type with no value (Part III ch. 6, "`Never` closes a role's requests"; Jimmy, 12
+# November: "Never is an empty choice and goes in the prelude"). A `match` on it has no
+# arm, and `!Never` has one value, `never`, the event that never fires.
+type Never = choice:
+derive ^Eq, ^Ord, ^Show
+
 # The row kinds (Type System ch. 2, Rows; Semantics ch. 10).
 type Element o = row
 type Fault = row
@@ -317,6 +323,10 @@ fn @Numbered !e:
 # ---------------------------------------------------------------------------------------
 # `&` blocks (Appendix B, `&` blocks; Semantics ch. 5)
 # ---------------------------------------------------------------------------------------
+
+# `Entry K V` is a map's entry (Jimmy's ruling on map entries): what `&m[k]` names in an
+# `&` block when `m` is a map, put from a `?V` with `<:` and read as `m[k]` is. It is the
+# checker's own, like `Buffer` and `Table`, and a program's own `Entry` type hides it.
 
 # A `Buffer a` becomes `[a]`, a `Table k v` becomes `[((k, v))]` in insertion order;
 # constant. `Buffer.Numbered n` and `Table.Empty` are builtins reached by their

@@ -1,0 +1,21 @@
+# A plain function (no dynamic in its signature) handing the dynamic a function that takes
+# time whole gives to a function with a `$` parameter that does not take it whole (Type
+# System ch. 4, Application).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Gen: fn Nat -> [$Nat]
+fn Gen n = [[$ n]]
+
+$Head: fn [$Nat] -> $Nat
+fn $Head xs = Or xs[0], ($ 0)
+
+Five: fn $Nat -> Nat
+fn Five $a = 5
+
+Pick: fn Nat -> Nat
+fn Pick n = Five ($Head (Gen n))
+
+@shown:
+    Ui.Label($text=$"pick {Pick 3}")      # 0

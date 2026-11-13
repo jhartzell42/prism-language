@@ -1,6 +1,6 @@
 // `Upper` and `Lower` (text_case.hpp): one pass over the text's UTF-8, each character
 // looked up in two-stage tables generated from the Unicode Character Database
-// (case_tables.inc, written by tools/gen_case_tables.py; README.md, "Upper and Lower").
+// (case_tables.inc, written by tools/gen_case_tables.py; tools/README.md).
 //
 // A character's record holds its uppercase and lowercase mappings, each a delta from the
 // code point or, for a mapping of two or three code points, an index into `seqs`, and its

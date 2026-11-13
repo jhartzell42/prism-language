@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 8 (a blueprint builds nothing until a block applies it) and Type System ch. 2 (a blueprint is a value): the map holds two blueprints, none applied. Never run: prismc-s4 refuses it (`WidgetValueWords`, twice: `ValuedWidgets` does not look into a map literal).
+test widgets_as_map_values
+
+tick 0
+  added:
+    0: Ui.Label(text="entries 2")
