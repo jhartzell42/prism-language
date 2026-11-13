@@ -227,7 +227,9 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   library's `ValueOf: forall (r: k). k` gives a promoted case's value
   (`ValueOf<<Writer>>`). Refused: a singleton type `Is r` whose literal takes its type
   from the expected type, which makes every case polymorphic. Jimmy: "this is nicer
-  really".
+  really". Its replacement for the singleton, which this entry had lost: `Fixed r`, whose
+  value is written with its type, `Fixed<<Writer>>`. Jimmy, 13 November: "we came up with
+  a replacement, Fixed r, with a value Fixed<<WhateverChoice>>".
 - **IN** No injectivity for `State`: a game's state may belong to several documents (a
   file, the network). An ambiguous call names its type, `Step<<d>>`. Jimmy: "Chess app
   should allow saving games in a file and doing them over a network, actually".
