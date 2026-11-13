@@ -1,0 +1,21 @@
+# A tag arm narrows the matched element to its family's row (Claude's call under ruling
+# OP, 13 November; the library's `@HostRole`, which bundles a seat element at its role):
+# in the `Count.Ask` arm, `element`, an `Element (Count.* | rest) o`, is an
+# `Element Count.* o`, so `@Answer` takes it.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+module Narrow
+emit r | Count.*
+
+family Count
+
+tag Count.Ask of Element Nat:
+    by: Nat
+
+@Answer: fn Element Count.* o -> @o
+fn @Answer element = match element:
+    Count.Ask(by=by): @ by
+
+@HostOne: fn Element (Count.* | rest) o -> @o emit rest
+fn @HostOne element = match element:
+    Count.Ask(..): @Answer element
+    otherwise: @Element element

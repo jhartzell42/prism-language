@@ -1,0 +1,35 @@
+# A derive asks equalities of associated types (Claude's call DE, 13 November; the
+# library's `derive ^StateDocument g via ^PerfectInformationGame g where State g = g,
+# Request g Player = Move g, ...`): the via definitions apply a `^Doc`'s request as a
+# `^Game`'s move, which only the equality `Request g = Move g` makes well typed; the type
+# that opts in says both.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Game g:
+    type Move
+    Play: fn g, Move g -> g
+
+trait ^Doc d:
+    type Request
+    Apply: fn d, Request d -> d
+
+derive ^Doc g via ^Game g where Request g = Move g:
+    fn Apply game, move = Play game, move
+
+type Counter = record:
+    n: Nat
+
+impl ^Game Counter:
+    type Move = Nat
+    fn Play counter, by = Counter(n=counter.n + by)
+
+impl ^Doc Counter:
+    type Request = Nat
+
+derive ^Doc via ^Game for Counter
+
+@page: @unit
+@page:
+    Ui.Label($text=$"counted {(Apply Counter(n=2), 3).n}")              # 0

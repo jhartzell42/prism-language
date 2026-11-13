@@ -3,4 +3,4 @@ test renamed
 
 tick 0
   added:
-    0: Ui.Label(text="1 2")
+    0: Ui.Label(text="1 2 X")

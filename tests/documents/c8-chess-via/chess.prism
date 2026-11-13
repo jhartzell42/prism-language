@@ -41,7 +41,9 @@ type ChessSeats rest = record:
 
 type ChessResults = record:
     $player: (Color ==> unit)
+    !playersLeft: [Color]                # the seats whose participants left this tick
     $spectator: (Text ==> unit)
+    !spectatorsLeft: [Text]
 
 impl ^Document ChessGame:
     type Role = GameRole
@@ -57,9 +59,9 @@ impl ^Document ChessGame:
     type Results = ChessResults
     type State = ChessGame
     fn @HostSeats seats, Supply:
-        ((players, $playing)) <- @HostRole Fixed<<Player>>, seats.$player, Supply
-        ((spectators, $watching)) <- @HostRole Fixed<<Spectator>>, seats.$spectator, Supply
-        @ ((ChessResults($player=players, $spectator=spectators), $Merge [[$playing, $watching]]))
+        (($players, !playersLeft, $playing)) <- @HostRole Fixed<<Player>>, seats.$player, Supply
+        (($spectators, !spectatorsLeft, $watching)) <- @HostRole Fixed<<Spectator>>, seats.$spectator, Supply
+        @ ((ChessResults($player=$players, !playersLeft=!playersLeft, $spectator=$spectators, !spectatorsLeft=!spectatorsLeft), $Merge [[$playing, $watching]]))
 
 # ---- the game's five functions (Part V ch. 9), and the state rung derived from them
 

@@ -9,7 +9,8 @@ test mod Tests
 use Birds.*
 use Fish.Count as FishCount
 use Fish.Kind as FishKind
+use Prelude.Upper as Shout
 
 @page: @unit
 @page:
-    Ui.Label($text=$"{Count Small} {FishCount Fish.Huge}")                  # 0
+    Ui.Label($text=$"{Count Small} {FishCount Fish.Huge} {Shout "x"}")                  # 0

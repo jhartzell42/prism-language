@@ -1,0 +1,29 @@
+# A `Fixed s` matched against `Fixed<<r>>`, `r` a type variable whose `Fixed r` is in
+# scope (Claude's call under ruling OP, 13 November; the library's `?ResponseTo`): the
+# arm runs when the two are the same case, and in it `s` is `r`, so a `Tagged s` is a
+# `Tagged r`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Side = choice:
+    Left
+    Right
+
+type Tagged (r: Side) = record:
+    n: Nat
+
+?Cast: forall (r: Side) (s: Side). fn Fixed r, Fixed s, Tagged s -> ?(Tagged r)
+fn ?Cast mine, theirs, tagged = match theirs:
+    Fixed<<r>>: ? tagged
+    otherwise: nil
+
+Said: fn ?(Tagged Left) -> Text
+fn Said (? t) = "yes"
+fn Said nil = "no"
+
+@page: @unit
+@page:
+    let left: Tagged Left = Tagged(n=1)
+    let right: Tagged Right = Tagged(n=2)
+    Ui.Label($text=$"{Said (?Cast Fixed<<Left>>, Fixed<<Left>>, left)} {Said (?Cast Fixed<<Left>>, Fixed<<Right>>, right)}")   # 0

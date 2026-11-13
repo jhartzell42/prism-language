@@ -111,7 +111,9 @@ fn @Watcher name:
     Seat.Leave(!?leaves=(nil on !leave))                                   # 3
 
 # ---- the table: two tellers from the start, and buttons that seat and remove the others.
-# It holds one live map of blueprints per role; a seat the table removes leaves its map.
+# It holds one live map of blueprints per role; a seat the table removes leaves its map,
+# and so does a seat whose participant leaves, which the hosted document's results tell it
+# (ruling SL).
 
 # Each change the table makes to one role's map: the seats it seats, and those it removes.
 type Change a = record:
@@ -127,8 +129,8 @@ fn Seating seats = Change(seat=seats, remove=[[]])
 Removing: fn [Text] -> Change a
 fn Removing names = Change(seat={{}}, remove=names)
 
-@Table: @(TallySeats o Ui.*) emit Ui.* where o: ^TallyOrder
-@Table:
+@Table: fn TallyResults -> @(TallySeats o Ui.*) emit Ui.* where o: ^TallyOrder
+fn @Table results:
     !cyJoins <- Ui.Button($label=$"cy joins")                              # 0
     !cyRemoved <- Ui.Button($label=$"cy is removed")                       # 1
     !adaRemoved <- Ui.Button($label=$"ada is removed")                     # 2
@@ -143,19 +145,21 @@ fn Removing names = Change(seat={{}}, remove=names)
     let !tellerChange = (Seating {{"bob": $ (@Teller "bob", (Eager 2))}}) on !bobEager <| (Seating {{"dee": $ (@Teller "dee", (Eager 3)), "eve": $ (@Teller "eve", (Eager 3))}}) on !pairJoins <| (Seating {{"dee": $ (@Teller "dee", (Eager 2)), "eve": $ (@Teller "eve", (Eager 2)), "gus": $ (@Teller "gus", (Eager 2))}}) on !threeJoin <| (Seating {{"fay": $ (@Teller "fay", (Eager 1))}}) on !fayJoins <| (Seating {{"dee": $ (@Teller "dee", (Eager 4))}}) on !rolesJoin <| (Removing [["ada"]]) on !adaRemoved <| (Removing [["fay"]]) on !fayRemoved <| (Removing [["eve"]]) on !eveRemoved
     let !keeperChange = (Seating {{"kay": $ (@Keeper "kay", Person)}}) on !kayJoins <| (Seating {{"kay": $ (@Keeper "kay", (Eager 4))}}) on !rolesJoin
     let !viewerChange = (Seating {{"cy": $ (@Watcher "cy")}}) on !cyJoins <| (Removing [["cy"]]) on !cyRemoved
-    $tellers <- {{"ada": $ (@Teller "ada", Person), "bob": $ (@Teller "bob", Person)}} then Changed $tellers, !tellerChange
-    $keepers <- {{}} then Changed $keepers, !keeperChange
-    $viewers <- {{}} then Changed $viewers, !viewerChange
+    $tellers <- {{"ada": $ (@Teller "ada", Person), "bob": $ (@Teller "bob", Person)}} then Changed $tellers, (!tellerChange <| (Removing results.!tellersLeft))
+    $keepers <- {{}} then Changed $keepers, (!keeperChange <| (Removing results.!keepersLeft))
+    $viewers <- {{}} then Changed $viewers, (!viewerChange <| (Removing results.!viewersLeft))
     @ TallySeats($teller=$tellers, $keeper=$keepers, $viewer=$viewers)
 
 # One tally in memory, seated by the table, its requests in the default order.
 @table: @unit
 @table:
-    seats <- @Table<<OneEach>>                                             # 0 to 10
-    @HostDocument (@InMemory<<Tallied OneEach>> empty), seats              # 11
+    seats <- @Table<<OneEach>> results                                     # 0 to 10
+    results <- @HostDocument (@InMemory<<Tallied OneEach>> empty), seats   # 11
+    @ unit
 
 # The same table on the tally that orders its own requests, keepers first.
 @keepersFirst: @unit
 @keepersFirst:
-    seats <- @Table<<KeepersFirst>>
-    @HostDocument (@InMemory<<Tallied KeepersFirst>> empty), seats
+    seats <- @Table<<KeepersFirst>> results
+    results <- @HostDocument (@InMemory<<Tallied KeepersFirst>> empty), seats
+    @ unit

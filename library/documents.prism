@@ -353,7 +353,9 @@ type FileSeats rest = record:
 
 type FileResults = record:
     $editor: (unit ==> unit)
+    !editorsLeft: [unit]
     $viewer: (unit ==> unit)
+    !viewersLeft: [unit]
 
 impl ^Document File:
     type Role = FileRole
@@ -367,9 +369,9 @@ impl ^Document File:
     type Results = FileResults
     row Lower = Fs.*
     fn @HostSeats seats, Supply:
-        (($editors, $editorTree)) <- @HostRole Fixed<<Editor>>, seats.$editor, Supply
-        (($viewers, $viewerTree)) <- @HostRole Fixed<<Viewer>>, seats.$viewer, Supply
-        @ ((FileResults($editor=$editors, $viewer=$viewers), ($Merge [[$editorTree, $viewerTree]])))
+        (($editors, !editorsLeft, $editorTree)) <- @HostRole Fixed<<Editor>>, seats.$editor, Supply
+        (($viewers, !viewersLeft, $viewerTree)) <- @HostRole Fixed<<Viewer>>, seats.$viewer, Supply
+        @ ((FileResults($editor=$editors, !editorsLeft=!editorsLeft, $viewer=$viewers, !viewersLeft=!viewersLeft), ($Merge [[$editorTree, $viewerTree]])))
 
 # A file of the World's at a path, as a file document's implementation: its contents live,
 # each tick's last replace written through. A file the World cannot read (missing, or not
@@ -544,15 +546,26 @@ fn @HostDocument Implement, seats:
     @ results                                            # each seat's own result
 
 # One role's seats: one host over a `for` of the seats. The arms answer only the seat
-# tags; everything else a guest emits passes up.
-@HostRole: forall d (r: Role d). fn Fixed r, $(SeatId d r ==> $@(@a emit Seat.* d r | rest)), Supplier d -> @(($(SeatId d r ==> a), Guests d)) emit rest where d: ^Document
+# tags; everything else a guest emits passes up. Its results are each seat's result and,
+# each tick, the seats whose participants left: the program's map still holds them until
+# it removes them (Jimmy, 13 November, ruling SL).
+@HostRole: forall d (r: Role d). fn Fixed r, $(SeatId d r ==> $@(@a emit Seat.* d r | rest)), Supplier d -> @(($(SeatId d r ==> a), ![SeatId d r], Guests d)) emit rest where d: ^Document
 fn @HostRole role, $seats, Supply:
     (($results, $tree)) <- @Host (@Seated $seats), \|path, element| match element:
         Seat.Request(..): Supply path, (any ((role, (SeatIdAt<<d, r>> path), element)))
         Seat.Query(..): Supply path, (any ((role, (SeatIdAt<<d, r>> path), element)))
         Seat.Leave(..): @ unit
         otherwise: @Element element
-    @ (($results, ($GuestsOf<<d>> role, $tree)))
+    !leaving <- for at, $element <- $tree:                 # the seats whose participants leave
+        @Switch (!LeavesAt<<d, r>> at, $element)
+    @ (($results, (Values !leaving), ($GuestsOf<<d>> role, $tree)))
+
+# A place whose participant leaves, as its seat id, in the tick it leaves (ruling SL: the
+# program removes the seat from its map by this, as it removes any).
+!LeavesAt: forall d (r: Role d). fn Path, Elem (Seat.* d r | rest) -> !(SeatId d r) where d: ^Document
+fn !LeavesAt at, element = match element:
+    Seat.Leave(!?leaves=!?leaves): (SeatIdAt<<d, r>> at) on !?leaves
+    otherwise: never
 
 # A role's tree as guests: each seat's places, each with the role and its seat id (the
 # path's first key); a place of another language is not the document's.

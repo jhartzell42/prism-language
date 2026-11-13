@@ -1,0 +1,6 @@
+# Derived by hand: the derive's Apply is the game's Play, 2 + 3
+test applied
+
+tick 0
+  added:
+    0: Ui.Label(text="counted 5")

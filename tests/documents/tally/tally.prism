@@ -90,8 +90,11 @@ type TallySeats o rest = record:
 
 type TallyResults = record:
     $teller: (Text ==> unit)
+    !tellersLeft: [Text]                 # the seats whose participants left this tick
     $keeper: (Text ==> unit)
+    !keepersLeft: [Text]
     $viewer: (Text ==> unit)
+    !viewersLeft: [Text]
 
 # ---- the protocol
 
@@ -113,10 +116,10 @@ impl ^Document (Tallied o) where o: ^TallyOrder:
     type State = Tally
     fn Order due = OrderOf due
     fn @HostSeats seats, Supply:
-        ((tellers, $telling)) <- @HostRole Fixed<<Teller>>, seats.$teller, Supply
-        ((keepers, $keeping)) <- @HostRole Fixed<<Keeper>>, seats.$keeper, Supply
-        ((viewers, $viewing)) <- @HostRole Fixed<<Viewer>>, seats.$viewer, Supply
-        @ ((TallyResults($teller=tellers, $keeper=keepers, $viewer=viewers), $Merge [[$telling, $keeping, $viewing]]))
+        (($tellers, !tellersLeft, $telling)) <- @HostRole Fixed<<Teller>>, seats.$teller, Supply
+        (($keepers, !keepersLeft, $keeping)) <- @HostRole Fixed<<Keeper>>, seats.$keeper, Supply
+        (($viewers, !viewersLeft, $viewing)) <- @HostRole Fixed<<Viewer>>, seats.$viewer, Supply
+        @ ((TallyResults($teller=$tellers, !tellersLeft=!tellersLeft, $keeper=$keepers, !keepersLeft=!keepersLeft, $viewer=$viewers, !viewersLeft=!viewersLeft), $Merge [[$telling, $keeping, $viewing]]))
 
 impl ^StateDocument (Tallied o) where o: ^TallyOrder:
     fn Step tally, Fixed<<Teller>>, name, (Add n) = if tally.?last == ? name: Denied AddedLast else:

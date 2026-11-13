@@ -47,13 +47,18 @@ Kinds: **gap** a compiler feature or fix to write in step 2; Q3 and Q4 are answe
 | library builtins with no body, each needing the runtime: `SeatPathOf`, `$Merge`, `SeatIdAt`, `$GuestsOf`, `@Answer`, `!Outgoing`, `?ResponseFrom`, `$?AnswerFrom` | every document test | not reached |
 | `!Filter` over a `!??`, Seat.Leave's last request (chess agent) | examples/chess | not confirmed |
 | clause widgets whose rows differ; `$` over an applied `@Serve<<ChessGame>>` blueprint (chess agent, unconfirmed) | examples/chess | errors of the kinds c8 has |
+| a derive asks equalities (DE), alone | conformance/doc-c8-derive-via-asks-equalities | parse error at `where` |
+| `Fixed s` against `Fixed<<r>>` (OP), alone | conformance/vo-fixed-matched-against-variable | `kind`: `r` is a type |
+| a tag arm narrows its element (OP), alone | checker/pos/tag-arm-narrows-element-to-family | `expected Element Count.* t10, found Element (rest \| Count.*) o` |
+| `use Prelude.X as Y` (UA) | conformance/use-name-as | parse error at `as` |
+| the seats that left, told to the program (SL) | tally (`!tellersLeft`, `@Table results`); library `!LeavesAt` | behind the library's errors |
 | `row-lacks` per family instantiation, not per family | library `@HostRole` (`Seat.* d r \| rest`) | "`rest \| Seat.*` promises `rest` has no `Seat` tags" |
 
 ## Waiting on Jimmy
 
 | question | where it shows |
 |---|---|
-| a seat whose participant leaves stays in the program's map of seats; the book's `Reseated` removed it (chess agent) | examples/chess, tally |
+| (none: SL answers the departing seat) | |
 
 ## Checker suite mismatches on p11 (tests/checker/run.sh)
 

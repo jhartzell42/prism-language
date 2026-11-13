@@ -1,0 +1,6 @@
+# The tests of vo-fixed-matched-against-variable.
+emit Ui.*
+use App.*
+
+test cast, @page:
+    build

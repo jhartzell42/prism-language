@@ -266,7 +266,13 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   is covered too: a file's own `Len` shadows `Prelude.Len` ("prelude covered too"), so
   the file document's request keeps the book's name, `Replace [U8]`.
 - **UA** `use` renames what it reaches with `as`: `use Fish.Count as FishCount`. Jimmy,
-  13 November: "Use can support as".
+  13 November: "Use can support as". The prelude's names too: `use Prelude.Upper as Shout` ("but you can use
+  things from the prelude too with as").
+- **SL** A seat whose participant leaves is told to the program: `@HostRole` gives, beside
+  each seat's result, an event of the seats whose participants left in a tick, and a
+  document's results carry one per role (`!tellersLeft: [Text]`); the program removes
+  them from its map as it removes any. Jimmy, 13 November: "a seems like the only correct
+  choice".
 - **RR** A parameter used only after `|` in an `emit` row is a row and declares no kind:
   `type ChessSeats rest = record: $player: (Color ==> $@(@unit emit Seat.* ChessGame
   Player | rest))`. That position holds nothing else, unlike a case. Jimmy, 13 November:
