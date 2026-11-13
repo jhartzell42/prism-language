@@ -1,0 +1,22 @@
+# Semantics ch. 4, "Every block passes through its last line": a block whose last line is
+# a bind returns `unit`, and `ignore <-` is a bind's left side that drops the result. So
+# a widget clause whose whole body is `ignore <- @unit` is legal: it builds nothing and
+# gives `unit`, as the other clause's label does. prismc-p1 gives an internal error here
+# ("a widget line whose name has no value entry"; another test agent's probe pn2,
+# minimised).
+# Expected transcript derived by hand from Semantics ch. 4 and ruling TC (places counted
+# as built); never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@Two: fn Bool -> @unit
+fn @Two True:
+    Ui.Label($text=$"loud")                                            # 0
+fn @Two False:
+    ignore <- @unit
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    @Two loud
+    Ui.Label($text=$"after")                                           # 1, or 0
