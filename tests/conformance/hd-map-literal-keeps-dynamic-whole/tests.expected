@@ -1,0 +1,6 @@
+# Derived by hand: two entries.
+test kept_whole
+
+tick 0
+  added:
+    0: Ui.Label(text="2 entries")

@@ -1,0 +1,14 @@
+# A map literal keeps its values whole, as tuple and array literals keep their parts
+# (ruling HD): `{{"a": $ 1, "b": $ 2}}` is a `(Text ==> $Nat)`, not a lifted
+# `$(Text ==> Nat)`. The seats of every document are maps of live blueprints written this
+# way (tests/documents/c8-chess-via, `{{White: $ (@Board ...)}}`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Entries: fn (Text ==> $Nat) -> Nat
+fn Entries m = Size m
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Entries {{"a": $ 1, "b": $ 2}}} entries")     # 0

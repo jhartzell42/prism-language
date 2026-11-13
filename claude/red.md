@@ -1,45 +1,90 @@
 # Red tests
 
-The tests red on the full run of build 2 (prismc-p2, claude-saved/step2, run 12-13
-November 2026; the run stopped at its time limit after the conformance programs, before
-the tests/documents trees, examples and module tests), with where each stands on
-claude-saved/step3. A test leaves this list when it passes.
+Step 1 of the loop (RULES.md, 13 November): every known issue and every wanted change has a
+failing test before prismc/ is touched. This lists them on prismc-p11 (the fixed point
+through 60ad099d) with what each needs. A test leaves this list when it passes. The full
+run on p11 stopped at `ts-ch02-constructor-hold`; from 8bf86dd1 on, the library's final
+form makes every program red on p11 (each loads Documents), so the rest of the run goes on
+a tree at 20004f18, before the library, to find the remaining lowering reds
+(shared/loop/full-p11-oldlib.summary); they are added as they land. The nine p2 reds past
+that point (ts-ch04 whole-result tests, ts-ch05-color-function-in-dynamic-through-lifted-call)
+check clean on p11 there.
 
-| test | how it fails on p2 | where it stands |
+Kinds: **gap** a compiler feature or fix to write in step 2; **Q3**/**Q4** waits on
+Jimmy's questions of 13 November (one role per place; two row variables).
+
+## Features, each with its test
+
+| feature (ruling) | test(s) | on p11 |
 |---|---|---|
-| assoc-params-mode-indexed |  | fixed in step3 (ok on p3) |
-| doc-c1-never-field-wired-to-never | error[E0277]: the trait bound `Never: prism_rtl::FromPod` is not satisfied | fixed in step3 (ok on p3) |
-| doc-c2-associated-type-reading | error[E0277]: the trait bound `G: Gauge_t` is not satisfied | deep walk lacked projection bounds; fixed after p3 |
-| doc-c4-seat-family-indexed |  | indexed families: in p3; tag-variable fix after p3 |
-| doc-c5-widget-function-partly-applied | tests/conformance/doc-c5-widget-function-partly-applied/app.prism:24: error[mismatch]: `@Counter` takes two arguments; here it has one | partial application: checker after p3, lowering not written |
-| doc-c6-hosted-bundle-result | error[E0599]: no method named `n_d0` found for reference `&Page_w` in the current scope | lowering bug: `n_d0` on `Page_w` |
-| doc-c8-derive-via |  | derive via: written after p3 |
-| doc-seat-family-every-role |  | indexed families: in p3; tag-variable fix after p3 |
-| doc-seats-record-of-rows |  | indexed families: in p3; tag-variable fix after p3 |
-| doc-sk-existential-seat-key |  | needs a ruling: a `Role d` value refining `r` (question AF to Jimmy); existential lowering not written |
-| doc-state-document-bound-and-default | tests/conformance/doc-state-document-bound-and-default/app.prism:25: error[mismatch]: a hold's step is an event; this is `State t7` | `State t7` ambiguous: the call names its document (ruling IN), test or checker to settle |
-| heights-updated-of-mapped-dynamic-across-nodes | tests/conformance/heights-updated-of-mapped-dynamic-across-nodes/app.prism:22: error[hold-needed]: `Or` lifts over `($ 0)`, but its type variable here | test held per ruling HD (ok on p3) |
-| promoted-constructors-unit-index |  | case read in an alias before cases were known; fixed after p3 |
-| sem-ch04-building-match-no-arm-bound-live | error[E0599]: the variant, associated function, or constant `from_pod` exists for enum `Option<Never>`, but its trait bounds were not satisfied | fixed in step3 (ok on p3) |
-| sem-ch04-building-match-no-arm | error[E0599]: the variant, associated function, or constant `from_pod` exists for enum `Option<Never>`, but its trait bounds were not satisfied | fixed in step3 (ok on p3) |
-| sem-ch04-late-value-above-arm-with-rebuild-beside-inner-if | error[not-lowered]: src/program.rs: the plain result of an arm or a clause that is built before its block's node and numbered after it, read from a ge | lowering bug |
-| sem-ch04-late-value-taken-by-arm-result-above | error[internal]: src/program.rs: a prismc bug: the name n, which nothing declares | lowering bug |
-| sem-ch04-late-value-through-local-function-let-above-clause-widget | error[not-lowered]: src/program.rs: `@Wide m`, a line that takes a late result at its build, above the line that gives it, and whose places are counte | lowering bug |
-| sem-ch07-while-match-for | FAILED tests/conformance/sem-ch07-while-match-for/tests.prism: the script did not parse: line 15: expected :, found Some(P("}")) | the test script does not parse (line 15) |
-| sem-ch08-blueprint-value-from-or-in-late-numbered-arm | error[not-lowered]: src/program.rs: a generation whose rows take their numbers as they are built (a blueprint value applied) in an arm or a clause tha | lowering bug |
-| sem-ch08-global-let-of-applied-widget-value | error[not-lowered]: src/program.rs: the widget function @Called as a value: a blueprint value is a supplier's answer that builds no place (`@ x`, `@El | lowering bug |
-| sem-ch08-global-let-of-widget-value | error[not-lowered]: src/program.rs: the widget function @One as a value: a blueprint value is a supplier's answer that builds no place (`@ x`, `@Eleme | lowering bug |
-| sem-ch08-widget-value-generic-through-associated-type | error[internal]: src/program.rs: a prismc bug: the generic widget function @Named as a value in ?Frame, which reaches itself through a constraint an i | lowering bug |
-| sem-ch08-widget-value-generic-through-local-function | error[not-lowered]: src/program.rs: a quantified type variable of `?Made`: no instantiation gives it a type | lowering bug |
-| sem-ch09-host-dynamic-answer-below-building-if-host-below-if | error[not-lowered]: src/program.rs: a place that is read at its block's build (place h1_1) after a building `match`, `if` or widget of several clauses | lowering bug |
-| sem-ch09-host-late-plain-part-taken-above-bundle-result | error[not-lowered]: src/program.rs: a late plain result in a bundle | lowering bug |
-| sem-ch09-tag-field-named-type-of-dynamic | tests/conformance/sem-ch09-tag-field-named-type-of-dynamic/app.prism:22: error[no-impl]: no impl of `^Num` for `$Nat` | checker: `no-impl` of `^Num` for `$Nat` |
-| ts-ch04-plain-function-gives-whole-result-to-sigiled-parameter | tests/conformance/ts-ch04-plain-function-gives-whole-result-to-sigiled-parameter/app.prism:12: error[hold-needed]: `Or` lifts over `($ 0)`, but its ty | hold-needed: test held per ruling HD |
-| ts-ch04-plain-function-lifts-over-whole-result | tests/conformance/ts-ch04-plain-function-lifts-over-whole-result/app.prism:15: error[hold-needed]: `Or` lifts over `($ 0)`, but its type variable here | hold-needed: test held per ruling HD |
-| ts-ch04-plain-function-reads-whole-result-lifted | tests/conformance/ts-ch04-plain-function-reads-whole-result-lifted/app.prism:12: error[hold-needed]: `Or` lifts over `($ 0)`, but its type variable he | hold-needed: test held per ruling HD |
-| ts-ch04-time-taken-whole | tests/conformance/ts-ch04-time-taken-whole/app.prism:28: error[hold-needed]: `Or` lifts over `($ 0)`, but its type variable here already holds a `$Nat | hold-needed: test held per ruling HD |
-| ts-ch04-whole-anywhere | tests/conformance/ts-ch04-whole-anywhere/app.prism:14: error[hold-needed]: `Or` lifts over `($ 0)`, but its type variable here already holds a `$Nat` | hold-needed: test held per ruling HD |
-| ts-ch04-whole-event-heard | tests/conformance/ts-ch04-whole-event-heard/app.prism:14: error[hold-needed]: `Or` lifts over `never`, but its type variable here already holds a `!Cl | hold-needed: test held per ruling HD |
-| ts-ch04-whole-in-a-body | tests/conformance/ts-ch04-whole-in-a-body/app.prism:12: error[hold-needed]: `Or` lifts over `($ 0)`, but its type variable here already holds a `$Nat` | hold-needed: test held per ruling HD |
-| ts-ch04-whole-lifts-many | tests/conformance/ts-ch04-whole-lifts-many/app.prism:23: error[hold-needed]: `Or` lifts over `($ 0)`, but its type variable here already holds a `$Nat | hold-needed: test held per ruling HD |
-| ts-ch05-color-function-in-dynamic-through-lifted-call | error[not-lowered]: src/program.rs: a function value of its callee's own color inside the value a call returns, at a call that makes the color bounded | lowering bug |
+| empty impl, header alone (EI) | conformance/subtrait-default-for-method-above, neg/default-from-two-rungs | parse error |
+| sub-trait default for a method above (SD) | conformance/subtrait-default-for-method-above | parse error (EI first) |
+| two rungs' defaults are `ambiguous` (SD) | neg/default-from-two-rungs | parse error (EI first) |
+| own declaration shadows `use X.*` (OS) | conformance/own-declaration-shadows-use | `collision` on `Kind` |
+| row parameter needs no kind (RR) | doc-seats-record-of-rows (checker and conformance); library `FileSeats`, tally, c6, c8 seats | "a record has no row of its own"; "`Ui.*` is a row, not a type" |
+| associated row default, `row Lower = unit` in a trait | library ^Document (tally, c6, c8) | "a trait declares an associated row ...; an impl chooses it" |
+| `type State = unit` default; `@Request`/`@Query` on the state (RS) | library ^Document/^StateDocument (tally, c6, c8) | `^StateDocument` has no method `@Request` |
+| `forall o.` in a type alias body | library `Supplier` | "`o` is no parameter of `Supplier`" |
+| a supplier lambda's arms checked at the refined `o` | neg/doc-seat-family-arm-answers-other-role; library `SupplierFrom`, `@OnDisk`, `@Over` | arm results mismatch `o` |
+| binding-group cycle through a function value (book ch. 5: "the two bindings refer to each other, and that is legal") | library `@HostDocument` (every document test) | `prompt-cycle` `$guests`, `Supply` |
+| Fixed narrowing at an associated kind (VO) | doc-sk-existential-seat-key; c6 `Stepping` | not-exhaustive; `SeatId ChessGame r` not narrowed to `Color` |
+| `ValueOf` on a variable (VO) | (to write with Q3's answer) | |
+| prelude `Utf8Bytes`, `~Utf8Text` in the runtime | library `@OnDisk` (tally's saved-game test, chess) | unknown name before 589eaa5e |
+| Net and File worlds in the runtime | library `@Over`, `@Serve`, `@OnDisk`; chess (agent writing) | not reached |
+| existential lowering | existential-unbounded-index-list | not-lowered |
+| family associated types in lowering, a variant per instantiation | doc-c4-seat-family-indexed, doc-seat-family-every-role | not-lowered |
+| partial application lowering (AF) | doc-c5-widget-function-partly-applied | not-lowered |
+| default widget method inlined with its parameter substituted | doc-state-document-bound-and-default | internal: no value entry |
+| `Step<<d>>` call recorded at its type | forall-three-jobs | internal |
+| `{ $x }` placeholder escapes (wip-brace-placeholder.patch) | neg/brace-placeholder | wording/span |
+| alias name kept in messages | neg/doc-sk-opened-role-escapes | message names the expansion |
+| a map literal keeps its values whole, as array literals do (HD) | conformance/hd-map-literal-keeps-dynamic-whole; the seats of tally, c6, c8 | `expected Text ==> $Nat, found Text ==> t9` |
+| `row-lacks` per family instantiation, not per family | library `@HostRole` (`Seat.* d r \| rest`) | "`rest \| Seat.*` promises `rest` has no `Seat` tags" |
+
+## Waiting on Jimmy
+
+| question | where it shows | on p11 |
+|---|---|---|
+| Q3: one role per place (the seat and the element at one `r`) | library `PendingAt`, `!HeardAt`, `LeftWith`, `?ResponseTo`, `$ReadLive` | `expected ((Fixed r, SeatId d r, Request d r)), found` the same text at another `r`; existential-escape |
+| Q4: two row variables, `emit lower \| rest` (book ch. 5) against neg/row-two-tails | library `@HostDocument` | `row-two-tails` |
+
+## Checker suite mismatches on p11 (tests/checker/run.sh)
+
+| test | kind | why |
+|---|---|---|
+| doc-seats-record-of-rows | gap (RR) | row parameter read as a type |
+| doc-sk-existential-seat-key | gap (VO) | Fixed at an associated kind |
+| neg/brace-placeholder | gap | the saved patch: TpBadEscape and the BraceBlock span |
+| neg/doc-c4-watcher-wires-request | gap | the outer `!` layer, and the note |
+| neg/doc-seat-family-arm-answers-other-role | gap | supplier lambda arm not checked at the refined output |
+| neg/doc-sk-opened-role-escapes | gap | alias name `SeatKey d` not kept |
+| neg/forall-ambiguous-trait-method | gap | wording |
+| neg/hold-needed-constructor-at-expected-type | gap | hold-needed not raised for a constructor at its expected type |
+| neg/prelude-module | gap | library diagnostics when a program replaces Prelude |
+| neg/sem-ch07-hold-updated-cycle-through-parameter-given-a-lambda | gap | cycle through a parameter given a lambda |
+
+## Conformance reds on p11 (lowering, older)
+
+| test | why |
+|---|---|
+| sem-ch04-late-value-above-arm-with-rebuild-beside-inner-if | not-lowered: late plain result of an arm |
+| sem-ch04-late-value-taken-by-arm-result-above | internal: name `n` undeclared |
+| sem-ch04-late-value-through-local-function-let-above-clause-widget | not-lowered: late result above its giver |
+| sem-ch08-blueprint-value-from-or-in-late-numbered-arm | not-lowered |
+| sem-ch08-global-let-of-applied-widget-value | not-lowered: widget function as a value |
+| sem-ch08-global-let-of-widget-value | not-lowered: widget function as a value |
+| sem-ch08-widget-value-generic-through-associated-type | internal |
+| sem-ch08-widget-value-generic-through-local-function | not-lowered: quantified variable without instantiation |
+| sem-ch09-host-dynamic-answer-below-building-if-host-below-if | not-lowered |
+| sem-ch09-host-late-plain-part-taken-above-bundle-result | not-lowered: late plain result in a bundle |
+| doc-c6-hosted-bundle-result | transcript differs: the event part of the host bundle |
+| doc-seats-record-of-rows | checker (RR), above |
+| doc-sk-existential-seat-key | checker (VO), above |
+
+## Document trees (p11 check)
+
+- **tests/documents/tally**, **c6-chess-by-hand**, **c8-chess-via**: every error traces
+  to a row above (the library's features, Q3, Q4, RR, OS, the map literal). The tally's
+  `no impl of ^TallyOrder for o` through `impl ^Document (Tallied o) where o: ^TallyOrder`
+  is still to classify.
+- **examples/chess**: being rewritten to the final form (step 1, an agent); listed when it lands.

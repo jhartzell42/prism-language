@@ -1,0 +1,6 @@
+# The tests of hd-map-literal-keeps-dynamic-whole.
+emit Ui.*
+use App.*
+
+test kept_whole, @page:
+    build
