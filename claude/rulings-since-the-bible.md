@@ -213,10 +213,10 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
 - **GF** Type-system features are generic, never shaped to the case that motivated them.
   Jimmy, of a rule for a trait's own role: "far too ad hoc. It makes Role special, and we
   don't want special." Rulings PK to VO below follow it.
-- **PK** Promoted constructors: a choice whose cases carry no payload is also a kind,
-  its cases types of that kind; a parameter that takes a case declares its kind, `(r:
+- **PK** Promoted constructors: a choice whose variants carry no payload is also a kind,
+  its variants types of that kind; a parameter that takes a variant declares its kind, `(r:
   Access)` or `(r: Role d)` (an associated type is a kind like any type), and a parameter
-  with no kind is a type, so a case there is `kind`; a choice with a payload is no kind.
+  with no kind is a type, so a variant there is `kind`; a choice with a payload is no kind.
   Jimmy: "good"; and, 13 November, of whether the kind may be left to inference: "it must
   declare its kind".
 - **AP** Associated types take parameters of any kind, given by equations on the
@@ -225,11 +225,11 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
 - **FA** `forall` is the explicit universal: it scopes a signature's variables over its
   body (for `<<a>>`), gives variables kinds, and later allows higher rank. `any` stays
   the existential of Type System ch. 3, now over any type variable.
-- **VO** A promoted case stays an ordinary value of its choice; a type index is passed
+- **VO** A promoted variant stays an ordinary value of its choice; a type index is passed
   explicitly (`Keyed<<Writer>> 3`) and must match the signature, and the standard
-  library's `ValueOf: forall (r: k). k` gives a promoted case's value
+  library's `ValueOf: forall (r: k). k` gives a promoted variant's value
   (`ValueOf<<Writer>>`). Refused: a singleton type `Is r` whose literal takes its type
-  from the expected type, which makes every case polymorphic. Jimmy: "this is nicer
+  from the expected type, which makes every variant polymorphic. Jimmy: "this is nicer
   really". Its replacement for the singleton, which this entry had lost: `Fixed r`, whose
   value is written with its type, `Fixed<<Writer>>`. Jimmy, 13 November: "we came up with
   a replacement, Fixed r, with a value Fixed<<WhateverChoice>>". A clause or arm that
@@ -275,7 +275,7 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   choice".
 - **RR** A parameter used only after `|` in an `emit` row is a row and declares no kind:
   `type ChessSeats rest = record: $player: (Color ==> $@(@unit emit Seat.* ChessGame
-  Player | rest))`. That position holds nothing else, unlike a case. Jimmy, 13 November:
+  Player | rest))`. That position holds nothing else, unlike a variant. Jimmy, 13 November:
   "sure let's do a".
 - **OP** A place has one role: the seat and the element at a place are one existential,
   `type Guest d = any (r: Role d): ((Fixed r, SeatId d r, Elem (Seat.* d r)))`, and the
@@ -292,3 +292,5 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   ^PerfectInformationGame g where State g = g, Request g Player = Move g, ...` (Claude's
   call, 13 November, from the chess agent's report that the derive's `Step` asked nothing
   of the game's `impl ^Document`).
+- **VA** A choice's alternatives are its variants, never its cases, in prose, diagnostics
+  and names (`assoc-variant-missing`). Jimmy, 13 November: "We say variant not case".

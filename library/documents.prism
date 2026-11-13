@@ -8,7 +8,7 @@
 # the tally, tests/documents/tally, and chess, examples/chess.
 #
 # In the form the rulings give it (claude/rulings-since-the-bible.md): every parameter that
-# takes a case declares its kind, `(r: Role d)` (PK); a role that travels as a value is a
+# takes a variant declares its kind, `(r: Role d)` (PK); a role that travels as a value is a
 # `Fixed r`, matched as `Fixed<<Teller>>` (VO); a call whose document no argument decides
 # names it, `Step<<d>>` (IN); a widget function applied to its settings alone is a value,
 # `@InMemory start` (AF).

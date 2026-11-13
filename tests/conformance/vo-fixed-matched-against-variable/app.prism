@@ -1,6 +1,6 @@
 # A `Fixed s` matched against `Fixed<<r>>`, `r` a type variable whose `Fixed r` is in
 # scope (Claude's call under ruling OP, 13 November; the library's `?ResponseTo`): the
-# arm runs when the two are the same case, and in it `s` is `r`, so a `Tagged s` is a
+# arm runs when the two are the same variant, and in it `s` is `r`, so a `Tagged s` is a
 # `Tagged r`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.*

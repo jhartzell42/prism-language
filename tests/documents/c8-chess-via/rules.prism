@@ -295,7 +295,7 @@ fn HasMove position = AnyOf (Keys position.board), \|from| (Owns position, from,
 # A move as a request names it, and every legal move
 
 # A move as a request names it: an ordinary move of a piece from one square to another, or
-# a pawn's move to its last rank, which names what the pawn becomes. A promotion is a case
+# a pawn's move to its last rank, which names what the pawn becomes. A promotion is a variant
 # of its own, so no move holds a piece it does not need and none lacks one it does.
 type ChessMove = choice:
     Moving Square, Square              # from, to

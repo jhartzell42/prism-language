@@ -1,6 +1,6 @@
-# A table for the tally document: tellers, keepers and viewers come and go by the table's
-# buttons and by their own. The standard library's `Documents` hosts it, and this is its
-# test: `./prism test tests/documents/tally`.
+# A test of the standard library's `Documents`, nothing more: the tally document hosted at
+# a table, where tellers, keepers and viewers come and go by the table's buttons and by
+# their own. No program is written after it; `./prism test tests/documents/tally` runs it.
 # Written by Claude on the claude-document-chess branch; subject to change.
 emit Ui.*
 mod Tally

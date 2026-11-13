@@ -1,4 +1,5 @@
-# Tally: a tiny document. Tellers add to a shared count that stops at five, and nobody
+# The tally: a tiny document that exists only to test the standard library's `Documents`
+# (tests/documents/tally), never a model for a program. Tellers add to a shared count that stops at five, and nobody
 # adds twice in a row; keepers clear the count; viewers watch. A teller is told the total
 # and whether it may add; a keeper is told the tally whole; a viewer is told the total
 # and nothing else. Written in the design's form of Part IV, chapters 3 to 6: one

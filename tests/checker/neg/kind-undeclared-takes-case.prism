@@ -1,5 +1,5 @@
-# Jimmy's ruling PK (13 November): a parameter that takes a case declares its kind. `Edit`'s
-# `r` has none, so it is a type, and `Writer` there is a case where a type goes: `kind`.
+# Jimmy's ruling PK (13 November): a parameter that takes a variant declares its kind. `Edit`'s
+# `r` has none, so it is a type, and `Writer` there is a variant where a type goes: `kind`.
 # Expected text derived by hand; never run.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 type Access = choice:
