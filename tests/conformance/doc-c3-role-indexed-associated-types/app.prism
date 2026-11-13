@@ -11,11 +11,11 @@ test mod Tests
 # The protocol: five facts per role (Part IV ch. 3).
 trait ^Document d:
     type Role
-    type SeatId r
-    type Request r
-    type Reason r
-    type Query r
-    type Answer r
+    type SeatId (r: Role d)
+    type Request (r: Role d)
+    type Reason (r: Role d)
+    type Query (r: Role d)
+    type Answer (r: Role d)
 
 type CountRole = choice:
     Raiser

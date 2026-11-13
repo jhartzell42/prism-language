@@ -1,5 +1,5 @@
 # Part III ch. 6, doubt SK: a seat key is an existential over the role, `type SeatKey d =
-# any r: ((Role d, SeatId d r))`, since a seat id's type depends on its role. A key is
+# any (r: Role d): ((Role d, SeatId d r))`, since a seat id's type depends on its role. A key is
 # built with `any ((role, id))` inside a function generic in the role `r`, so the packed
 # type is that `r`; the call sites name the role type by explicit type arguments (Type
 # System ch. 2, "Explicit type arguments": `Keyed<<Count, Raiser>>` fills `d`, then `r`).
@@ -14,7 +14,7 @@ test mod Tests
 
 trait ^Document d:
     type Role
-    type SeatId r
+    type SeatId (r: Role d)
     Described: fn Role d, SeatId d r -> Text
 
 type CountRole = choice:
@@ -34,7 +34,7 @@ impl ^Document Count:
     fn Described Watcher, name = "watcher {name}"
 
 # A seat: a role, and a seat id of that role's own type.
-type SeatKey d = any r: ((Role d, SeatId d r))
+type SeatKey d = any (r: Role d): ((Role d, SeatId d r))
 
 # A record with a field of an existential type.
 type Due d = record:

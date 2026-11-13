@@ -1,9 +1,9 @@
 # Jimmy's ruling, 12 November: `any` over a type variable with no trait bound. `Paired`
-# hides the index `r` of two edits, `any r: ((Edit r, Edit r))`: the two share one index,
+# hides the index `r` of two edits, `any (r: Access): ((Edit r, Edit r))`: the two share one index,
 # and nothing else is known of it. A list holds pairs at different indexes, a reader's
 # and a writer's. A `match` arm `any ((first, second))` opens a pair at the arm's own
-# fresh `r`, and `Merged`, which needs both edits at one index, takes them. The kind of
-# `r` comes from its use in `Edit r`.
+# fresh `r`, and `Merged`, which needs both edits at one index, takes them. `r` declares
+# its kind, `Access` (ruling PK, 13 November).
 # Expected transcript derived by hand from the ruling and Type System ch. 3
 # ("Existentials"). Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.*
@@ -18,7 +18,7 @@ type Edit (r: Access) = record:
     count: Nat
 
 # Two edits at one hidden index.
-type Paired = any r: ((Edit r, Edit r))
+type Paired = any (r: Access): ((Edit r, Edit r))
 
 Read: fn Nat -> Edit Reader
 fn Read n = Edit(count=n)

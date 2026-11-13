@@ -16,11 +16,11 @@ emit rest | Seat.*
 # `@HostSeats`, one line per role, each calling `@HostRole`.
 trait ^Document d:
     type Role                          # a choice: Player | Spectator
-    type SeatId r                      # who sits at a seat of role r: Color, UserId, unit
-    type Request r                     # what role r may ask to change; Never closes it
-    type Reason r                      # why a request of role r is declined
-    type Query r                       # what role r may ask to know
-    type Answer r                      # what role r is told
+    type SeatId (r: Role d)                      # who sits at a seat of role r: Color, UserId, unit
+    type Request (r: Role d)                     # what role r may ask to change; Never closes it
+    type Reason (r: Role d)                      # why a request of role r is declined
+    type Query (r: Role d)                       # what role r may ask to know
+    type Answer (r: Role d)                      # what role r is told
     type Seats rest                    # one live map of guests per role (chapter 5)
     type Results                       # one live map of the guests' results per role
     Order: fn [Due d] -> Ordered d     # which of a tick's requests are applied, and which wait
@@ -30,14 +30,14 @@ trait ^Document d:
     fn Order due = OneATick due
 
 # A request's response: accepted, or declined with a reason of the role's own type.
-type Response d r = choice:
+type Response d (r: Role d) = choice:
     Accepted
     Declined (Reason d r)
 derive ^Eq, ^Show
 
 # ---- the seat's language: one family, indexed by document and role (chapter 3)
 
-family Seat d r where d: ^Document
+family Seat d (r: Role d) where d: ^Document
 
 # Each firing, one request; a role whose requests are `Never` has nothing to put in it.
 tag Seat.Request of Element !(Response d r):
@@ -55,7 +55,7 @@ tag Seat.Leave of Element:
 # ---- where a request is made (chapter 5)
 
 # A seat: a role, and a seat id of that role's own type (Part III ch. 6, doubt SK).
-type SeatKey d = any r: ((Role d, SeatId d r))
+type SeatKey d = any (r: Role d): ((Role d, SeatId d r))
 
 # The guests' element tree: a live map of live entries, one per place.
 type Guests d = $(Path ==> $Elem (Seat.* d _))
@@ -131,7 +131,7 @@ trait ^StateDocument d where d: ^Document:
 # role's own type.
 type Pending d = record:
     due: Due d
-    asked: any r: ((Role d, SeatId d r, Request d r))
+    asked: any (r: Role d): ((Role d, SeatId d r, Request d r))
 
 # What one place of the guests fires in a tick: a request, or that its participant leaves,
 # with a last request or with none.
@@ -157,7 +157,7 @@ fn LeftWith at, nil = Leaving (SeatPathOf at)
 # A response on its way to the place that asked, at its role's own reason.
 type Responded d = record:
     at: Path
-    response: any r: Response d r
+    response: any (r: Role d): Response d r
 
 # The state after some requests of one tick, each applied request's response, and the
 # requests that wait.

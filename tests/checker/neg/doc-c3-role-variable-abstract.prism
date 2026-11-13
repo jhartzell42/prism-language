@@ -5,7 +5,7 @@
 # Written by Claude on the claude-lowering branch; subject to change.
 trait ^Document d:
     type Role
-    type Request r
+    type Request (r: Role d)
 
 type CountRole = choice:
     Raiser

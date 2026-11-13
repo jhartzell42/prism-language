@@ -7,10 +7,10 @@ emit Ui.*
 
 trait ^Document d:
     type Role
-    type Request r
-    type Reason r
-    type Query r
-    type Answer r
+    type Request (r: Role d)
+    type Reason (r: Role d)
+    type Query (r: Role d)
+    type Answer (r: Role d)
 
 type CountRole = choice:
     Raiser
@@ -42,12 +42,12 @@ impl ^Document Count:
     type Query r = Whole
     type Answer r = Nat
 
-type Response d r = choice:
+type Response d (r: Role d) = choice:
     Accepted
     Declined (Reason d r)
 
 # The seat's language: one family, every tag of it taking a document and a role.
-family Seat d r where d: ^Document
+family Seat d (r: Role d) where d: ^Document
 
 tag Seat.Request of Element !(Response d r):
     !requests: Request d r

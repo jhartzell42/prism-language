@@ -8,7 +8,7 @@ trait ^SerializableValue s:
 
 trait ^Document d:
     type Role
-    type Request r
+    type Request (r: Role d)
 
 trait ^RemoteDocument d where d: ^Document, Request d _: ^SerializableValue:
     Address: fn d -> Text

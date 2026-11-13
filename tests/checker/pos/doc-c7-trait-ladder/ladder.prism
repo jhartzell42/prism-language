@@ -3,7 +3,7 @@
 # steps.
 emit rest | File.* | Net.*
 
-type Response d r = choice:
+type Response d (r: Role d) = choice:
     Accepted
     Declined (Reason d r)
 
@@ -38,11 +38,11 @@ type Supplier d = fn Path -> @unit
 
 trait ^Document d:
     type Role
-    type SeatId r
-    type Request r
-    type Reason r
-    type Query r
-    type Answer r
+    type SeatId (r: Role d)
+    type Request (r: Role d)
+    type Reason (r: Role d)
+    type Query (r: Role d)
+    type Answer (r: Role d)
     row Lower                                      # the document's lower language
     @Request: fn Role d, SeatId d r, Request d r -> @!(Response d r) emit Lower d
     @Query: fn Role d, SeatId d r, $(Query d r) -> @$?(Answer d r) emit Lower d

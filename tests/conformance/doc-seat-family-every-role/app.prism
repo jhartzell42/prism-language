@@ -13,8 +13,8 @@ test mod Tests
 
 trait ^Document d:
     type Role
-    type Query r
-    type Answer r
+    type Query (r: Role d)
+    type Answer (r: Role d)
 
 type CountRole = choice:
     Raiser
@@ -35,7 +35,7 @@ impl ^Document Count:
     type Answer Raiser = Nat
     type Answer Watcher = Text
 
-family Seat d r where d: ^Document
+family Seat d (r: Role d) where d: ^Document
 
 tag Seat.Query of Element $?(Answer d r):
     $query: Query d r
