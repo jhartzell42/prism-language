@@ -1,0 +1,6 @@
+# The tests of assoc-params-mode-indexed.
+emit Ui.*
+use App.*
+
+test modes, @page:
+    build

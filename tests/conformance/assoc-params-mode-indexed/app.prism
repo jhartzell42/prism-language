@@ -1,0 +1,61 @@
+# Jimmy's ruling, 12 November: associated types with parameters, given by equations,
+# generic. `^Appliance`'s `Out` takes a parameter of the kind `Mode`, a payload-free
+# choice (promoted constructors); `Logged` takes a type and a `Mode`. The impl gives one
+# equation per case of `Mode`, matching on the constructor, and `Logged`'s equations keep
+# a variable for the type. A use at a constructor normalizes by that equation:
+# `Out Kettle Heating` is `Text`, `Logged Kettle Nat Heating` is `[Nat]`.
+# Expected transcript derived by hand. Written by Claude on the claude-self-hosting
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Mode = choice:
+    Idle
+    Heating
+    Boiled
+derive ^Eq, ^Show
+
+# What an appliance gives in each mode, and what it logs of a reading in each mode.
+trait ^Appliance a:
+    type Out (m: Mode)
+    type Logged x (m: Mode)
+
+type Kettle = record:
+    degrees: Nat
+derive ^Eq, ^Show
+
+impl ^Appliance Kettle:
+    type Out Idle = Nat
+    type Out Heating = Text
+    type Out Boiled = Bool
+    type Logged x Idle = x
+    type Logged x Heating = [x]
+    type Logged x Boiled = Never
+
+let kettle = Kettle(degrees=20)
+
+WhenIdle: fn Kettle -> Out Kettle Idle
+fn WhenIdle cold = cold.degrees
+
+WhenHeating: fn Kettle -> Out Kettle Heating
+fn WhenHeating warming = "heating from {warming.degrees}"
+
+WhenBoiled: fn Kettle -> Out Kettle Boiled
+fn WhenBoiled hot = hot.degrees >= 100
+
+Boiling: fn Kettle -> Text
+fn Boiling pot = if WhenBoiled pot: "boiled" else: "not boiled"
+
+Climbed: fn Logged Kettle Nat Heating -> Text
+fn Climbed readings = "{Sum readings} degrees climbed"
+
+Last: fn Logged Kettle Nat Idle -> Text
+fn Last reading = "last {reading}"
+
+# A boiled kettle logs nothing: the `match` has no arm.
+Unlogged: fn Logged Kettle Nat Boiled -> Text
+fn Unlogged log = match log:
+
+@page: @unit
+@page:
+    Ui.Label($text=$"idle at {WhenIdle kettle}; {WhenHeating kettle}; {Boiling kettle}; {Climbed [5, 10, 15]}; {Last 20}")   # 0

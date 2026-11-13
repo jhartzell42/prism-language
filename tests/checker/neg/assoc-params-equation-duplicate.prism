@@ -1,0 +1,20 @@
+# Jimmy's ruling, 12 November: associated types with parameters, generic. The impl gives
+# `Out` one equation per case of `Mode`; a second equation for `Idle` would make
+# `Out Kettle Idle` both `Nat` and `Bool`: an error at the second, naming the case.
+# Expected diagnostic derived by hand. Written by Claude on the claude-self-hosting
+# branch; subject to change.
+type Mode = choice:
+    Idle
+    Heating
+derive ^Eq, ^Show
+
+trait ^Appliance a:
+    type Out (m: Mode)
+
+type Kettle = record:
+    degrees: Nat
+
+impl ^Appliance Kettle:
+    type Out Idle = Nat
+    type Out Heating = Text
+    type Out Idle = Bool
