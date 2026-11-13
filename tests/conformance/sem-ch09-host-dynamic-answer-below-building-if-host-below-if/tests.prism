@@ -1,0 +1,9 @@
+# The tests of sem-ch09-host-dynamic-answer-below-building-if-host-below-if.
+emit Ui.* | Pad.*
+use App.*
+
+test loud, @Page True:
+    build
+
+test soft, @Page False:
+    build

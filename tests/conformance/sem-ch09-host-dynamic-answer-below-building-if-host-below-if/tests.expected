@@ -1,0 +1,14 @@
+# Derived by hand from Semantics ch. 4, ch. 9 (the supplier answers the place by its element, `$"yes ask"`; a place it answers with `@Element e` is that element at its row's place 0) and ruling TC (places counted as built): loud builds the outer label at 0, so the host is 1, and the child's arm label at the child's place 0, so the ask is 1 and the last label 2; soft builds neither label, so the host is 0 and the ask and the last label are the child's 0 and 1. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="outer")
+    1/[0]/0: Ui.Label(text="loud")
+    1/[2]/0: Ui.Label(text="asked yes ask")
+
+test soft
+
+tick 0
+  added:
+    0/[1]/0: Ui.Label(text="asked yes ask")
