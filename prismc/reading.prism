@@ -601,11 +601,11 @@ fn ViasOf m = Fold m.decls, [[]], \|acc, d| match d.kind:
 # `derive ^Named via ^Titled for Book` is the impl the `derive ^Named a via ^Titled a:`
 # line writes, for `Book` (Jimmy's ruling AF): an impl like any other from here on, which
 # knows the trait it came through. A via no module writes is the checker's `unknown-name`.
-DerivedVia: fn Module, [ViaDecl] -> Module
+DerivedVia: unbounded fn Module, [ViaDecl] -> Module
 fn DerivedVia m, vias = update m:
     &_.decls <= Each &_.decls, \|d| match d.kind:
         DDeriveVia dv: match (Filter vias, \|v| (Last v.traitRef.path) == (Last dv.traitRef.path) and (Last v.through.path) == (Last dv.through.path))[0]:
-            ? v: Decl(kind=(DImpl ImplDecl(traitRef=dv.traitRef, ty=dv.ty, bounds=[[]], items=v.items, span=dv.span, ?through=(? dv.through))), span=d.span)
+            ? v: Decl(kind=(DImpl ImplDecl(traitRef=dv.traitRef, ty=dv.ty, bounds=(Each v.bounds, \|b| BoundAt b, v.param.name, dv.ty, dv.span), items=v.items, span=dv.span, ?through=(? dv.through))), span=d.span)
             nil: d
         otherwise: d
 
@@ -626,3 +626,29 @@ fn AnyIn xs, ys = Fold xs, False, \|seen, x| seen or HasText ys, x
 # Parse errors, `path:line:col: message`, each at the file of its unit it is in.
 RenderParse: fn Src, [Diag] -> Text
 fn RenderParse src, ds = Concat (Each (Filter ds, \|d| d.stage != "out"), \|d| "{SrcPlace src, d.span.start}:{(ColumnOf src.text, (Or src.starts[CLineOf src.starts, d.span.start], 0), d.span.start) + 1}: {d.message}\n")
+
+# A derive's bound at the type that opts in: its variable read as that type, at the
+# `derive ... for` line (Claude's call DE).
+BoundAt: unbounded fn Bound, Text, Type, Range -> Bound
+fn BoundAt b, param, ty, at:
+    let ?head = match b.?head:
+        ? h: ? (TypeAt h, param, ty)
+        nil: nil
+    let ?equals = match b.?equals:
+        ? e: ? (TypeAt e, param, ty)
+        nil: nil
+    Bound(var=b.var, ?head=?head, traits=b.traits, ?equals=?equals, span=at)
+
+# A type with a variable read as a type.
+TypeAt: unbounded fn Type, Text, Type -> Type
+fn TypeAt t, param, ty = match t.kind:
+    TName n, args:
+        if (Len args) == 0 and n.sigils == "" and n.path == [[param]]: ty
+        else: Type(kind=(TName n, (Each args, \|a| TypeAt a, param, ty)), span=t.span)
+    TSigiled s, i: Type(kind=(TSigiled s, (TypeAt i, param, ty)), span=t.span)
+    TArray i, ne: Type(kind=(TArray (TypeAt i, param, ty), ne), span=t.span)
+    TTuple xs: Type(kind=(TTuple (Each xs, \|x| TypeAt x, param, ty)), span=t.span)
+    TGroup i: Type(kind=(TGroup (TypeAt i, param, ty)), span=t.span)
+    TMap k, v: Type(kind=(TMap (TypeAt k, param, ty), (TypeAt v, param, ty)), span=t.span)
+    TFn c, ps, r: Type(kind=(TFn c, (Each ps, \|x| TypeAt x, param, ty), (TypeAt r, param, ty)), span=t.span)
+    otherwise: t

@@ -96,7 +96,7 @@ fn Undeclared env, n = match ResolveValue env.g, env.home, n:
     ((nil, ignore)): True
     otherwise: False
 
-# `ValueOf<<r>>` (Jimmy's ruling VO): the value of the case `r` names as a type, of the
+# `ValueOf<<r>>` (Jimmy's ruling VO): the value of the variant `r` names as a type, of the
 # case's choice; under a `forall (r: Access)`, an `Access`.
 ValueOfCase: unbounded fn Env, St, [Type], Range -> ((Ty, St))
 fn ValueOfCase env, st, tys, span:
@@ -110,9 +110,9 @@ fn ValueOfCase env, st, tys, span:
                     nil: ((TyErr, st2))
                 TyQ q: match (Filter env.scopedKinds, \|((v, ignore))| v == q)[0]:
                     ? ((ignore, k)): (((TyCon k, [[]]), st2))
-                    nil: ((TyErr, (Err st2, "kind", span, "`ValueOf` takes a case of a payload-free choice; `{q}` has no stated kind (`forall ({q}: ...)`)")))
-                otherwise: ((TyErr, (Err st2, "kind", span, "`ValueOf` takes a case of a payload-free choice; `{ShowTy st2, x}` is a type, no case of a choice")))
-        otherwise: ((TyErr, (Err st, "kind", span, "`ValueOf` takes one case, `ValueOf<<Writer>>`")))
+                    nil: ((TyErr, (Err st2, "kind", span, "`ValueOf` takes a variant of a payload-free choice; `{q}` has no stated kind (`forall ({q}: ...)`)")))
+                otherwise: ((TyErr, (Err st2, "kind", span, "`ValueOf` takes a variant of a payload-free choice; `{ShowTy st2, x}` is a type, no variant of a choice")))
+        otherwise: ((TyErr, (Err st, "kind", span, "`ValueOf` takes one variant, `ValueOf<<Writer>>`")))
 
 # `Fixed<<Metre>>`, the one value of `Fixed Metre` (Jimmy's ruling VO): a case, or a
 # `forall` variable of a stated kind.
@@ -126,8 +126,8 @@ fn FixedValue env, st, tys, span:
                 TyRole ignore: (((TyCon "Prelude.Fixed", [[x]]), st2))
                 TyQ q: if HasText env.scoped, q: (((TyCon "Prelude.Fixed", [[(TyRigid q)]]), st2)) else: ((TyErr, (ErrFix st2, "unknown-name", one.span, "no type `{q}` here: a signature's variables are in scope in its body only under `forall`", (ForallFix env, st2))))
                 TyErr: ((TyErr, st2))
-                otherwise: ((TyErr, (Err st2, "kind", span, "`Fixed` takes a case of a payload-free choice; `{ShowTy st2, x}` is a type, no case of a choice")))
-        otherwise: ((TyErr, (Err st, "kind", span, "`Fixed` takes one case, `Fixed<<Metre>>`")))
+                otherwise: ((TyErr, (Err st2, "kind", span, "`Fixed` takes a variant of a payload-free choice; `{ShowTy st2, x}` is a type, no variant of a choice")))
+        otherwise: ((TyErr, (Err st, "kind", span, "`Fixed` takes one variant, `Fixed<<Metre>>`")))
 
 # The type variables a type names.
 FreeQs: fn Ty -> [Text]
@@ -390,11 +390,12 @@ fn ApplyRuleOf env, st, fname, col, params, res, args, span, ctor:
         let bare = (IsTypeVariable (Or params[i], TyErr)) and not holds
         let ((held, s)) = if IsHoldBraces a.value: HoldAt env, s0, fname, bare, pnow, at, a else: ((False, s0))
         let head = HeadSigil s, at
-        # (a map literal is a container: a blueprint among its entries goes in whole, as an
-        # array's does, ch. 4, "Where the table looks"; there is no lift over a blueprint)
+        # (a map literal is a container: its entries go in whole, a blueprint, a dynamic
+        # or an event, as an array's and a tuple's do; ruling HD, conformance/hd-map-literal-
+        # keeps-dynamic-whole)
         let lifting = bare and IsTimeSigil head
         let ctorWhole = ctor and bare and (head == "@" or IsPlainSigil head)
-        let wholeNow = ctorWhole or ((not lifting) and ((IsTimeSigil (HeadSigil s, pnow)) or (HeadSigil s, pnow) == "@" or (holds and head == "@")))
+        let wholeNow = ctorWhole or ((not lifting) and ((IsTimeSigil (HeadSigil s, pnow)) or (HeadSigil s, pnow) == "@" or (holds and (head == "@" or IsTimeSigil head))))
         if IsLambda a.value: ((s, done))
         else: if held: (((Unify s, pnow, at, a.value.span), (Push done, i)))
         else: if wholeNow and (StackOf s, at) != "": (((Unify s, pnow, at, a.value.span), (Push done, i)))

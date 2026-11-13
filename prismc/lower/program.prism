@@ -1213,7 +1213,7 @@ fn TyDefs lx, ti:
                 [[((cn, [[]]))]]: if IsLowerText cn: ShapeUnit else: ShapeChoice
                 [[((cn, ignore))]]: if cn == bare: ShapeNewtype else: ShapeChoice
                 otherwise: ShapeChoice
-            # a choice whose cases carry no payload is also a kind (Jimmy's ruling PK):
+            # a choice whose variants carry no payload is also a kind (Jimmy's ruling PK):
             # each case a unit struct, the case as a type
             let promoted = if (Len cases) > 0 and Fold cases, True, \|all, ((ignore, ats))| all and (Len ats) == 0: Each cases, \|((cn, ignore))| ItType (TyDef(name=(PromotedName ti.name, (QualKey ti.home, cn)), prism=cn, params=[[]], keyed=[[]], shape=ShapeUnit, cases=[[CaseDef(name=(PromotedName ti.name, (QualKey ti.home, cn)), prism=cn, fields=[[]], labels=[[]])]], eq=True, ord=True, show=ShownDerived, pod=True, doc="/// `{cn}` of `{bare}` as a type.")) else: [[]]
             Push promoted, (ItType (Mk shape, defs))

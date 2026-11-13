@@ -126,7 +126,26 @@ fn BindFixed env, st, n, tys, t, span:
                 TyErr: ((env, st2))
                 other: ((env, (Err st2, "mismatch", span, "`Fixed<<{BareName k}>>` matches a `Fixed r`; this is `{ShowTy st2, other}`")))
             TyErr: ((env, st2))
-            other: ((env, (Err st2, "kind", span, "`Fixed` takes a case of a payload-free choice; `{ShowTy st2, other}` is a type")))
+            # `Fixed<<r>>`, `r` a variable of the definition (Claude's call under ruling OP,
+            # 13 November): the arm runs where the matched `Fixed s` is the same variant as
+            # `r`'s, and in it `s` is `r`
+            TyQ w: FixedAgainstVariable env, st2, w, t, span
+            TyRigid w: FixedAgainstVariable env, st2, w, t, span
+            other: ((env, (Err st2, "kind", span, "`Fixed` takes a variant of a payload-free choice; `{ShowTy st2, other}` is a type")))
+
+FixedAgainstVariable: unbounded fn Env, St, Text, Ty, Range -> ((Env, St))
+fn FixedAgainstVariable env, st, w, t, span = match Walk st, t:
+    TyCon "Prelude.Fixed", [[at]]: match Walk st, at:
+        TyRigid v:
+            if v == w: ((env, st))
+            else:
+                let narrowed = update env:
+                    &_.refine <= Insert &_.refine, v, (TyRigid w)
+                ((narrowed, st))
+        other: ((env, (Unify st, other, (TyRigid w), span)))
+    TyFlex ignore: ((env, (Unify st, t, (TyCon "Prelude.Fixed", [[(TyRigid w)]]), span)))
+    TyErr: ((env, st))
+    other: ((env, (Err st, "mismatch", span, "`Fixed<<{w}>>` matches a `Fixed s`; this is `{ShowTy st, other}`")))
 
 # The equalities a clause's or arm's `Fixed<<..>>` patterns taught (`BindFixed`), on the
 # types its names were bound at and on the type it gives.

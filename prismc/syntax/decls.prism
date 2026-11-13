@@ -52,6 +52,9 @@ type Bound = record:
     # Part III ch. 7); `var` is then its first name
     ?head: Type
     traits: [TraitRef]
+    # an equality of types, `Request g = Move g` (Claude's call DE): the head is the left
+    # side, this the right, and `traits` is empty
+    ?equals: Type
     span: Range
 derive ^Eq, ^Show
 
@@ -163,6 +166,8 @@ type ViaDecl = record:
     traitRef: TraitRef
     param: Ident
     through: TraitRef
+    # what the derive asks of each type that opts in, `where Request g = Move g` (DE)
+    bounds: [Bound]
     items: [TraitItem]
     span: Range
 derive ^Eq, ^Show

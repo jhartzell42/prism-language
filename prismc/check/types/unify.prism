@@ -239,7 +239,7 @@ fn AtPosition xs, y = Or (Filter xs, \|x| SameExistsVar x, y)[0], y
 SameExistsVar: fn Text, Text -> Bool
 fn SameExistsVar a, b = (Or (SplitOn a, "\u{0}")[1], a) == (Or (SplitOn b, "\u{0}")[1], b)
 
-# A family's indices in two rows: `_` (`TyEvery`) stands for every case and meets any.
+# A family's indices in two rows: `_` (`TyEvery`) stands for every variant and meets any.
 UnifyIndices: unbounded fn St, [Ty], [Ty], Range -> ((Text, St))
 fn UnifyIndices st, xs, ys, span = if (Len xs) != (Len ys): (("mismatch", st)) else: Fold (Range0 (Len xs)), (("", st)), \|((v, s)), i| if v != "": ((v, s)) else: match (((Or xs[i], TyErr), (Or ys[i], TyErr))):
     ((TyEvery, ignore)): ((v, s))
@@ -425,6 +425,6 @@ fn IndicesIncluded st, sub, sup, span = Fold (Keys sub.idx), st, \|s, f| match s
 IndexIncluded: unbounded fn St, Text, [Ty], [Ty], Range -> St
 fn IndexIncluded st, f, xs, ys, span = Fold (Range0 (Len xs)), st, \|s, i| match (((Or xs[i], TyErr), (Or ys[i], TyErr))):
     ((ignore, TyEvery)): s
-    ((TyEvery, y)): ErrFix s, "row-outside", span, "a child that emits `{f}.*` at every case of an index in a scope that emits it at `{ShowTy s, y}`", "emit `{f}.*` at `_` in the scope too, or the child at `{ShowTy s, y}`"
+    ((TyEvery, y)): ErrFix s, "row-outside", span, "a child that emits `{f}.*` at every variant of an index in a scope that emits it at `{ShowTy s, y}`", "emit `{f}.*` at `_` in the scope too, or the child at `{ShowTy s, y}`"
     ((x, y)): Unify s, x, y, span
 

@@ -147,17 +147,17 @@ fn TypeHeadVariables st, t:
         else: (((ErrFix s1, "unknown-name", ty.span, "`{v}` is no parameter of `{Dotted t.name.path}`", "declare it in the head, `type {Join (Append [[Dotted t.name.path]], (Push params, v)), " "} = ...`"), (Push seen, v)))
     st2
 
-# A parameter's stated kind is a choice whose cases carry nothing (Jimmy's ruling PK).
+# A parameter's stated kind is a choice whose variants carry nothing (Jimmy's ruling PK).
 DeclaredKinds: unbounded fn Cx, St, [((Text, Type))] -> St
 fn DeclaredKinds cx, st, kinds = Fold kinds, st, \|s, ((ignore, k))| match k.kind:
     TName n, ignore3 if IsAssocName cx, n.path: s
     TName n, [[]]: match ResolveType cx.g, cx.home, n.path:
         ((? kindKey, ignore2)): if Fold (Values cx.g.caseOwners), False, \|seen, o| seen or o == kindKey: s else:
             match ?PayloadCaseOf cx.g, kindKey:
-                ? c: ErrFix s, "kind", k.span, "`{Dotted n.path}` is no kind: its case `{c}` carries a payload", "index by a choice whose cases carry nothing"
-                nil: ErrFix s, "kind", k.span, "`{Dotted n.path}` is no kind: a kind is a choice whose cases carry nothing", "index by a choice whose cases carry nothing"
+                ? c: ErrFix s, "kind", k.span, "`{Dotted n.path}` is no kind: its variant `{c}` carries a payload", "index by a choice whose variants carry nothing"
+                nil: ErrFix s, "kind", k.span, "`{Dotted n.path}` is no kind: a kind is a choice whose variants carry nothing", "index by a choice whose variants carry nothing"
         otherwise: Err s, "unknown-name", k.span, "no type `{Dotted n.path}` to be a kind"
-    otherwise: Err s, "kind", k.span, "a kind is a choice whose cases carry nothing"
+    otherwise: Err s, "kind", k.span, "a kind is a choice whose variants carry nothing"
 
 # A choice's first case that carries a payload, read from its declaration.
 ?PayloadCaseOf: fn G, Text -> ?Text
@@ -483,7 +483,7 @@ fn FieldRowBound st, info, owner, f:
 # record's field does (`FieldRowBound`).
 CaseRowsBound: unbounded fn St, ModInfo, Text, [Case] -> St
 fn CaseRowsBound st, info, owner, cs = if info.rowVar == "": st else: Fold cs, st, \|s, c|
-    if Fold c.args, False, \|seen, a| seen or UsesScope a: ErrFix s, "unknown-name", c.span, "the case `{SNameKey c.name}` of `{owner}` emits the module's row `{info.rowVar}`, and a choice has no row of its own", "write the row on the case's type, as `emit Ui.*`"
+    if Fold c.args, False, \|seen, a| seen or UsesScope a: ErrFix s, "unknown-name", c.span, "the variant `{SNameKey c.name}` of `{owner}` emits the module's row `{info.rowVar}`, and a choice has no row of its own", "write the row on the variant's type, as `emit Ui.*`"
     else: s
 
 # Whether a field's type writes its row with `emit`.
@@ -581,7 +581,12 @@ fn ImplsComplete g, st0:
             let s5 = Fold im.indexed, s5a, \|s, e| if not (HasText tr.assocs, e.name): Err s, "mismatch", im.span, "`^{shown}` has no associated type `{e.name}`"
                 else: if (Or tr.assocParams[e.name], 0) != (Len e.indices): ErrFix s, "kind", im.span, "`type {e.name}` of `^{shown}` takes {CountWord (Or tr.assocParams[e.name], 0)} indices; an equation of this impl gives it {CountWord (Len e.indices)}", "give it as many as the trait's `type {e.name}` names"
                 else: s
-            let s6 = Fold tr.supers, s5, \|s, above| ImplHasAbove g, s, im, shown, above
+            # each equality a derive asks of the type holds once its associated types are read
+            let s5e = Fold im.equalities, s5, \|s, ((l, r, at))|
+                let ln = NormAssoc s, l
+                let rn = NormAssoc s, r
+                if ln == rn: s else: Err s, "mismatch", at, "`derive ^{shown} via ^{Or im.?through, ""}` asks `{ShowTy s, l}` to be `{ShowTy s, r}`; here they are `{ShowTy s, ln}` and `{ShowTy s, rn}`"
+            let s6 = Fold tr.supers, s5e, \|s, above| ImplHasAbove g, s, im, shown, above
             Fold tr.headBounds, s6, \|s, ((h, above))| ImplHasHeadBound g, s, im, tr.param, shown, h, above
     update st:
         &_.file <= st0.file
@@ -619,12 +624,12 @@ fn EquationsComplete g, st, tr, im, assoc:
             let kindName = BareName owner
             let var = Lower (Take1 kindName)
             Fold roles, st2, \|s, k| if HasText named, k: s
-                else: ErrFix s, "assoc-case-missing", im.span, "the impl of `^{shown}` for `{head}` gives `{assoc}` no equation for the case `{BareName k}` of `{kindName}`", "add `type {assoc} {BareName k} = ...`, or `type {assoc} {var} = ...` for every case"
+                else: ErrFix s, "assoc-variant-missing", im.span, "the impl of `^{shown}` for `{head}` gives `{assoc}` no equation for the variant `{BareName k}` of `{kindName}`", "add `type {assoc} {BareName k} = ...`, or `type {assoc} {var} = ...` for every variant"
 
 # An equation's indices as a message names them: its one case, or all of them.
 IndicesShown: fn [AssocIndex] -> Text
 fn IndicesShown xs = match Filter xs, \|x| not (IsIndexVar x):
-    [[IndexRole k]]: "the case `{BareName k}`"
+    [[IndexRole k]]: "the variant `{BareName k}`"
     otherwise: "these indices"
 
 # The line of an impl's first equation for an associated type at these parameters.
@@ -842,7 +847,14 @@ fn ConvImpl g, st, info, i, span = match ?ResolveTrait g, info.name, i.traitRef.
         # the bounds before the head and the choices
         let ((bs, st2a)) = ConvBounds cx, (TraitCollisionAt g, st, info.name, i.traitRef.path, i.traitRef.span), i.bounds
         let st2 = BoundsNamed st2a, i.bounds, (TypeVarsOfType i.ty), "the impl's head", "the head"
-        let ((head, st3)) = ConvType cx, st2, i.ty
+        let ((head, st3h)) = ConvType cx, st2, i.ty
+        # the equalities a derive asks of the type (Claude's call DE), each side read here
+        let ((equalities, st3)) = Fold i.bounds, (([[]], st3h)), \|((acc, s)), b| match ((b.?head, b.?equals)):
+            ((? left, ? right)):
+                let ((l, s2)) = ConvType cx, s, left
+                let ((r, s3)) = ConvType cx, s2, right
+                (((Push acc, ((l, r, b.span))), s3))
+            otherwise: ((acc, s))
         let ((assocs, st4a)) = Fold i.items, (([[]], st3)), \|((acc, s)), it| match it:
             TiAssocType n, params, ignore, (? v), chosenAt if (Len params) == 0:
                 let ((vt, s2)) = ConvType cx, s, v
@@ -858,14 +870,14 @@ fn ConvImpl g, st, info, i, span = match ?ResolveTrait g, info.name, i.traitRef.
                 let ((indices, s3)) = Fold params, (([[]], s2)), \|((xs, ss)), p|
                     if IsUpperText p.name: match ?RoleConstructor g, info.name, p.name:
                         ? k: (((Push xs, (IndexRole k)), ss))
-                        nil: (((Push xs, (IndexVar "")), (ErrFix ss, "unknown-name", p.span, "no case `{p.name}` of a payload-free choice to stand here", "name a case of the parameter's kind, or a lowercase variable for every case")))
+                        nil: (((Push xs, (IndexVar "")), (ErrFix ss, "unknown-name", p.span, "no variant `{p.name}` of a payload-free choice to stand here", "name a case of the parameter's kind, or a lowercase variable for every variant")))
                     else: (((Push xs, (IndexVar p.name)), ss))
                 let vars = Fold indices, [[]], \|vs, x| match x:
                     IndexVar q: if q == "": vs else: Push vs, q
                     otherwise: vs
                 let eq = AssocImpl(cls=cls, name=n.name, head=head, qs=(Append (TypeVarsOfType i.ty), vars), indices=indices, value=vt)
-                # `assoc-case-duplicate`: one equation per index (Jimmy's ruling AP)
-                if Fold acc, False, \|seen, e| seen or (e.name == n.name and e.indices == indices): ((acc, (ErrFix s3, "assoc-case-duplicate", chosenAt, "the impl of `^{BareName cls}` for `{ShowTy s3, head}` gives `{n.name}` a second equation for {IndicesShown indices}; the first is at line {FirstEquationLine g, info, i, n.name, params}", "remove one of them")))
+                # `assoc-variant-duplicate`: one equation per index (Jimmy's ruling AP)
+                if Fold acc, False, \|seen, e| seen or (e.name == n.name and e.indices == indices): ((acc, (ErrFix s3, "assoc-variant-duplicate", chosenAt, "the impl of `^{BareName cls}` for `{ShowTy s3, head}` gives `{n.name}` a second equation for {IndicesShown indices}; the first is at line {FirstEquationLine g, info, i, n.name, params}", "remove one of them")))
                 else: (((Push acc, eq), s3))
             otherwise: ((acc, s))
         # its associated rows, `row Lower = Ui.*` (Type System ch. 3)
@@ -878,7 +890,7 @@ fn ConvImpl g, st, info, i, span = match ?ResolveTrait g, info.name, i.traitRef.
         let names = Fold i.items, [[]], \|acc, it| match it:
             TiFn f: AddText acc, (DefNameText f.name)
             otherwise: acc
-        let im = ImplInfo(aboveChosen=[[]], rows=(Each rowImpls, \|r| r.name), ?through=(?ViaShown i), cls=cls, head=head, qs=(TypeVarsOfType i.ty), bounds=bs, home=info.name, file=info.file, span=span, derived=False, assocs=assocs, indexed=indexed, methods=names)
+        let im = ImplInfo(equalities=equalities, aboveChosen=[[]], rows=(Each rowImpls, \|r| r.name), ?through=(?ViaShown i), cls=cls, head=head, qs=(TypeVarsOfType i.ty), bounds=bs, home=info.name, file=info.file, span=span, derived=False, assocs=assocs, indexed=indexed, methods=names)
         let st5 = update st4r:
             &_.assocRowImpls <= Append &_.assocRowImpls, rowImpls
             &_.assocImpls <= Append (Append &_.assocImpls, (Each assocs, \|((an, at))| AssocImpl(cls=cls, name=an, head=head, qs=im.qs, indices=[[]], value=at))), indexed

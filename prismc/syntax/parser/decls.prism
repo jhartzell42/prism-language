@@ -168,8 +168,10 @@ fn DeclKindOf p, fragment, start = match Kind p:
             let ((param, p2)) = ParseIdent p1
             let ((through, p3)) = ParseTraitRef (Adv p2)
             let p4 = if (IsPlainLower (Kind p3)): Adv p3 else: ErrorHere p3, "expected the variable again after the trait of `via`, `via ^Titled {param.name}`"
-            let ((items, p5)) = ParseTraitItems p4
-            ((DVia ViaDecl(traitRef=first, param=param, through=through, items=items, span=(To start, (Prev p5))), p5))
+            # `where Request g = Move g`: what it asks of each type that opts in (DE)
+            let ((bounds, p4b)) = OptionalBounds p4
+            let ((items, p5)) = ParseTraitItems p4b
+            ((DVia ViaDecl(traitRef=first, param=param, through=through, bounds=bounds, items=items, span=(To start, (Prev p5))), p5))
         else:
             let ((rest, q)) = if AtComma p1: Commas (Adv p1), ParseTraitRef else: (([[]], p1))
             ((DDerive (Append [[first]], rest), q))
@@ -310,7 +312,7 @@ fn IsParamStart p, assoc:
 
 # An associated type's further parameters (Type System ch. 6, Jimmy's ruling AP): in a
 # trait each a lowercase name or `(m: Mode)` with its kind; in an impl's equation each a
-# lowercase name, which stands for every case, or a constructor, a bare uppercase name
+# lowercase name, which stands for every variant, or a constructor, a bare uppercase name
 # (`type Out Idle = Nat`).
 AssocParams: unbounded fn Ps -> (([Ident], [((Text, Type))], Ps))
 fn AssocParams p0 = KindedParams p0, True

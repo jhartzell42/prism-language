@@ -161,6 +161,8 @@ type ImplInfo = record:
     # the methods it leaves unwritten that take a default of a trait below (ruling SD):
     # the method's bare name, the default's definition key, and the trait below
     aboveChosen: [((Text, Text, Text))]
+    # the equalities of types a derive asks of the impl's head (Claude's call DE)
+    equalities: [((Ty, Ty, Range))]
 derive ^Eq, ^Show
 
 # A definition whose body is checked.
