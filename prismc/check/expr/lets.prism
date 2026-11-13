@@ -565,29 +565,35 @@ fn TemplatePartCheck env, st, part = match part:
 # lexer still reads the old `{{expr}}` and `{{` ... `}}`, so the checker refuses them by the
 # text around the placeholder's expression or the block's statements
 # (`brace-placeholder`).
-BracePlaceholder: fn Env, St, Range -> St
+BracePlaceholder: unbounded fn Env, St, Range -> St
 fn BracePlaceholder env, st, r:
-    let before = TrimEndBlank (Between env.src.text, (r.start -? 8), r.start)
-    let after = Between env.src.text, r.end, r.end + 8
-    if (HasSuffix before, "\{\{") and (HasPrefix (TrimStartBlank after), "\}\}"):
-        let open = r.start -? ((CountChars (Between env.src.text, (r.start -? 8), r.start)) -? ((CountChars before) -? 2))
-        let close = r.end + (CountChars after) - (CountChars (TrimStartBlank after)) + 2
+    let lead = Between env.src.text, (Down r.start, 8), r.start
+    let before = TrimEndBlank lead
+    let tail = Between env.src.text, r.end, r.end + 8
+    let after = TrimStartBlank tail
+    if (HasSuffix before, "\{\{") and (HasPrefix after, "\}\}"):
+        let open = Down (r.start + (CountChars before)), ((CountChars lead) + 2)
+        let close = r.end + (Down (CountChars tail), (CountChars after)) + 2
         ErrFix st, "brace-placeholder", Range(start=open, end=close, origin=r.origin), "a code template's placeholder is `<<expr>>`, and braces are text", "write `<<{SrcText env, r}>>`"
     else: st
 
-BraceBlock: fn Env, St, Range -> St
+BraceBlock: unbounded fn Env, St, Range -> St
 fn BraceBlock env, st, r:
-    let raw = Between env.src.text, (r.start -? 40), r.start
-    let before = TrimEndBlank raw
+    let lead = Between env.src.text, (Down r.start, 40), r.start
+    let before = TrimEndBlank lead
     if HasSuffix before, "\{\{":
-        let open = r.start -? ((CountChars raw) -? ((CountChars before) -? 2))
+        let open = Down (r.start + (CountChars before)), ((CountChars lead) + 2)
         ErrFix st, "brace-placeholder", Range(start=open, end=open + 2, origin=r.origin), "a code template's brace block runs from `<<` alone on a line to `>>` alone on a line, and braces are text", "write `<<` here and `>>` in place of its closing `\}\}`"
     else: st
 
-TrimEndBlank: fn Text -> Text
-fn TrimEndBlank t = if (HasSuffix t, " ") or (HasSuffix t, "\n"): TrimEndBlank (Between t, 0, (CountChars t) -? 1) else: t
+# `n - k`, or 0 below it.
+Down: fn Nat, Nat -> Nat
+fn Down n, k = Or (n -? k), 0
 
-TrimStartBlank: fn Text -> Text
+TrimEndBlank: unbounded fn Text -> Text
+fn TrimEndBlank t = if (HasSuffix t, " ") or (HasSuffix t, "\n"): TrimEndBlank (Between t, 0, (Down (CountChars t), 1)) else: t
+
+TrimStartBlank: unbounded fn Text -> Text
 fn TrimStartBlank t = if (HasPrefix t, " ") or (HasPrefix t, "\n"): TrimStartBlank (Between t, 1, CountChars t) else: t
 
 # `<@Name attr={{v}}>body</@Name>` is a call like any (Templates ch. 2; lowering passes it
