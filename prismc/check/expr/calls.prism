@@ -62,7 +62,10 @@ fn InferCall env, st, callee, args, span = match callee.kind:
         EName n if (Dotted n.path) == "ValueOf" and (Len args) == 0 and Undeclared env, n: ValueOfCase env, st, tys, callee.span
         EName n:
             let cx = EnvCx env
-            let ((given1, st1)) = ConvTypes cx, st, tys
+            # a type argument may be a case, `Keyed<<Writer>>` (Jimmy's ruling VO)
+            let ((given1, st1)) = Fold tys, (([[]], st)), \|((acc, s)), ty|
+                let ((x, s2)) = if NamesType cx, ty: ConvType cx, s, ty else: ConvIndex cx, s, ty
+                (((Push acc, x), s2))
             # a type variable in `<<a>>` is the definition's own, rigid, only where its
             # signature's `forall` names it (Jimmy's ruling FA)
             let st2 = Fold (Range0 (Len given1)), st1, \|s, k| Fold (FreeQs (Or given1[k], TyErr)), s, \|s2, q| if HasText env.scoped, q: s2 else: ErrFix s2, "unknown-name", (Or tys[k], dummyType).span, "no type `{q}` here: a signature's variables are in scope in its body only under `forall`", (ForallFix env, s2)
