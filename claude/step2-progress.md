@@ -45,6 +45,8 @@ Written by Claude on the claude-self-hosting branch; subject to change.
   ts-ch03-associated-row (a widget call's one element is at the call's place); library:
   a supplier's answer emits nothing, `emit unit`.
 
+- A widget method whose parameters hold only associated types finds its impl and its
+  default by the callee's type at the call (`?WidgetMethodImpl`, lower/node/static).
 - Kinded type variables at run time: a function's hidden leading `{r}_variant: &Nat`
   parameters (`KindsOf`/`KindsOfVal`, lower/functions; `lx.kinded`), given at each
   declared call (`KindArgs`, lower/expr, from `?ParamMatch` of the callee's type there);
@@ -79,8 +81,13 @@ Written by Claude on the claude-self-hosting branch; subject to change.
 - Lowering: partial application (doc-c5). Where a widget function parameter is given
   `@Counter 5` (`ApplyWidgetParam`, lower/node/static), the plan is to read it as a lambda
   of the missing parameters whose body is the full call; the obstacle is that the line's
-  arguments and the partial call's own are in two files' environments and spans. Default
-  widget methods (doc-state), doc-c6's bundle event part.
+  arguments and the partial call's own are in two files' environments and spans.
+- doc-c6's bundle event part: in p11's Rust for the test (compiled in the scratch tree,
+  `target/c6t`), the hosted child's `!inc` handler (`inc_e0_3`) sets its own hold and
+  fires its own port, but the parent's `!clicked` (`clicked_e1`, `clicked_e1_v_port`) is
+  a port nobody fires: the event part of a `@Host`'s result bundle is bound apart from
+  the child's event (`BindParts`, lower/node/def.prism, handles the inlined-call case;
+  the host's result is another path).
 - The library's builtins with no body: `SeatPathOf`, `$Merge`, `SeatIdAt`, `$GuestsOf`,
   `@Answer`, `!Outgoing`, `?ResponseFrom`, `$?AnswerFrom` (their types depend on MB).
 - The checker red doc-c4-watcher-wires-request: the mismatch at a tag's sigiled field
