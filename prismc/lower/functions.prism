@@ -201,14 +201,19 @@ fn FnDefIn lx, definition, qk, clauses, sc:
     # or an event below the top takes and gives them whole, `Dynamic`s and `Event`s (Type
     # System ch. 4, Application; gap LF): its body lifts by mapping them.
     let whole = IsWholeFn lx, qk
+    # each kinded type variable's variant, a hidden leading parameter (ruling PK; `ValueOf
+    # <<r>>`, `Fixed<<r>>` read it), given at each call (`KindArgs`)
+    let kinds = KindsOf lx, qk
     let lxb = update lx:
         &_.whole <= whole
         &_.noCx <= True
         &_.inDefinition <= definition
+        &_.kinded <= Fold kinds, &_.kinded, \|m, ((r, kindChoice))| Insert m, r, (((KindParamName r), kindChoice))
     let ((pts, ret)) = SignatureOut lx, qk, sc
     let names = ParamNames lx, clauses, pts
     let body = ClausesBody lxb, emptyEnv, clauses, names, ptys, FnBodyValue, "c", ret
-    let params = Each (Range0 (Len pts)), \|i| (((Or (Each names, \|((n, ignore))| n)[i], "arg"), (OutRef (Or pts[i], OutUnit))))
+    let hidden = Each kinds, \|((r, ignore))| (((KindParamName r), (OutRef OutNat)))
+    let params = Append hidden, (Each (Range0 (Len pts)), \|i| (((Or (Each names, \|((n, ignore))| n)[i], "arg"), (OutRef (Or pts[i], OutUnit)))))
     let generics = FnGenerics lx, qk, sc
     FnDef(name=(Or lx.rsNames[qk], (Snake (BareName qk))), generics=generics, params=params, ret=ret, body=body, doc=(SignatureText lx, qk), public=True)
 
@@ -510,3 +515,33 @@ fn MethodClauses d = match d.body:
 # indices (Type System ch. 6) is normalized at each use and declares nothing there.
 PlainAssocs: fn TraitInfo -> [Text]
 fn PlainAssocs tr = Filter tr.assocs, \|a| not (HasKey tr.assocParams, a)
+
+# A definition's kinded type variables (`forall (r: Access)`, ruling PK), each with its
+# kind's choice, in the order its `forall` names them.
+KindsOf: unbounded fn Lx, Text -> [((Text, Text))]
+fn KindsOf lx, qk = match lx.g.vals[qk]:
+    ? v: KindsOfVal lx, v
+    nil: [[]]
+
+# A value's kinded type variables: those its `forall` gives a choice as kind, and those of
+# an associated kind (`(r: Role d)`) that a `Fixed r` of its type names, their choice "".
+KindsOfVal: unbounded fn Lx, ValInfo -> [((Text, Text))]
+fn KindsOfVal lx, v = if v.sort == "method": [[]] else:
+    let fixed = Filter (FixedVarsIn v.scheme.ty), \|q| HasText v.scoped, q
+    Fold fixed, v.scopedKinds, \|acc, q| if Fold acc, False, \|seen, ((k, ignore))| seen or k == q: acc else: Push acc, ((q, ""))
+
+# The variables a type holds as `Fixed r`.
+FixedVarsIn: unbounded fn Ty -> [Text]
+fn FixedVarsIn t = match t:
+    TyCon "Prelude.Fixed", [[(TyQ q)]]: [[q]]
+    TyCon "Prelude.Fixed", [[(TyRigid q)]]: [[q]]
+    TyCon ignore, xs: Fold xs, [[]], \|acc, x| UnionTexts acc, (FixedVarsIn x)
+    TyFn ignore, ps, r: Fold ps, (FixedVarsIn r), \|acc, x| UnionTexts acc, (FixedVarsIn x)
+    TyTuple xs: Fold xs, [[]], \|acc, x| UnionTexts acc, (FixedVarsIn x)
+    TySig ignore, i: FixedVarsIn i
+    TyExists ignore, b, ignore2: FixedVarsIn b
+    otherwise: [[]]
+
+# The hidden parameter that holds a kinded type variable's variant.
+KindParamName: fn Text -> Text
+fn KindParamName r = "{Snake r}_variant"

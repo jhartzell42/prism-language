@@ -72,6 +72,9 @@ use Lower.Program.*
 
 type Lx = record:
     g: G
+    # the kinded type variables of the definition being lowered (ruling PK), each with the
+    # Rust name of the hidden parameter that holds its variant and its kind's choice
+    kinded: (Text ==> ((Text, Text)))
     tys: (Text ==> Ty)
     apps: (Text ==> AppNote)
     # The expressions lifted over a `?` or `~` at the plain layer, by place.

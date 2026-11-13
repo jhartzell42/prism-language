@@ -819,11 +819,21 @@ fn PlainValueByKind lx, env, e:
         # `ValueOf<<Writer>>` (Jimmy's ruling VO): the case's value
         ETypeArgs x, [[one]] if IsValueOfName x: match one.kind:
             TName n, [[]] if IsUpperText (Dotted n.path): NameValue lx, env, n, e.span
-            otherwise: VlOwned (Refusal "`ValueOf` of a type variable (Jimmy's ruling VO): its lowering is not written yet"), t
+            # a kinded type variable: the variant its hidden parameter holds, or the one
+            # the instance being lowered gives it
+            TName n, [[]]: match ?KindedVariant lx, (Dotted n.path):
+                ? ((x2, ignore)): VlOwned x2, t
+                nil: VlOwned (Refusal "`ValueOf<<{Dotted n.path}>>`, a type variable with no stated kind here"), t
+            otherwise: VlOwned (Refusal "`ValueOf` of a type that is no variant"), t
         # `Fixed<<Metre>>` (Jimmy's ruling VO): the case's number in its choice
         ETypeArgs x, [[one]] if IsFixedName x: match ?FixedNumber lx, one:
             ? i: VlOwned (Number OutNat, "{i}", False), OutNat
-            nil: VlOwned (Refusal "`Fixed` of a type variable (Jimmy's ruling VO): its lowering is not written yet"), t
+            nil: match one.kind:
+                # a kinded type variable's variant, as its number in its choice
+                TName n, [[]]: match ?KindedNumber lx, (Dotted n.path):
+                    ? ((x2, ignore)): VlOwned x2, OutNat
+                    nil: VlOwned (Refusal "`Fixed<<{Dotted n.path}>>`, a type variable with no stated kind here"), t
+                otherwise: VlOwned (Refusal "`Fixed` of a type that is no variant"), t
         ETypeArgs x, ignore: ValueOf lx, env, x
         EGiven b: GivenValue lx, env, b, t, e.span
         EUpdate target, b: UpdateValue lx, env, target, b, t, e.span
@@ -2096,7 +2106,7 @@ fn DeclaredCall lx, env, qk, args, span, cspan, t:
                 if v.sort == "method": MethodCall lx, env, v, args, span, cspan, t
                 else: if v.home == "Prelude": PreludeCall lx, env, qk, args, span, t
                 else:
-                    let callArgs = ArgsFor lx, env, v, args
+                    let callArgs = Append (KindArgs lx, v, cspan), (ArgsFor lx, env, v, args)
                     let call = match ?TypeArgsAt lx, qk, v.scheme, cspan:
                         ? tys: XCallAt (ValueRef lx, qk), tys, callArgs
                         nil: XCall (ValueRef lx, qk), callArgs
@@ -3497,3 +3507,62 @@ fn PlainLet lx, env, s, p, x:
 ?EitherSelf: fn ?OutTy, ?OutTy -> ?OutTy
 fn ?EitherSelf (? first), ?second = ? first
 fn ?EitherSelf nil, ?second = ?second
+
+# A kinded type variable's variant as its number in its choice (`Fixed`'s value, ruling
+# VO), and its kind's choice ("" for an associated type's): the hidden parameter of the
+# definition being lowered, or the variant the instance being lowered gives the variable.
+?KindedNumber: fn Lx, Text -> ?((Ex, Text))
+fn ?KindedNumber lx, r = match lx.kinded[r]:
+    ? ((name, kindChoice)): ? (((XClone (XVar name)), kindChoice))
+    nil: match lx.subst[r]:
+        ? (TyRole k): match lx.g.ctors[k]:
+            ? ci: ? (((Number OutNat, "{ci.index}", False), ci.owner))
+            nil: nil
+        otherwise: nil
+
+# A kinded type variable's variant as a Rust value: its number read back as the variant of
+# its choice.
+?KindedVariant: fn Lx, Text -> ?((Ex, Text))
+fn ?KindedVariant lx, r = match ?KindedNumber lx, r:
+    ? ((n, kindChoice)): if kindChoice == "": nil else: ? (((VariantOfNumberEx lx, kindChoice, n), kindChoice))
+    nil: nil
+
+# A number as the variant of the choice it numbers (the choice's last for any other).
+VariantOfNumberEx: fn Lx, Text, Ex -> Ex
+fn VariantOfNumberEx lx, kindChoice, n:
+    let cases = Filter (Values lx.g.ctors), \|c| c.owner == kindChoice
+    match cases[Dec (Len cases)]:
+        nil: InternalBug "the choice `{kindChoice}` with no variant"
+        ? last: Fold (Take cases, (Dec (Len cases))), (VariantValueEx lx, last.name), \|rest, c| XIf (XBin OpEq, n, (Number OutNat, "{c.index}", False)), (VariantValueEx lx, c.name), rest
+
+# A payload-free choice's variant as a Rust value.
+VariantValueEx: fn Lx, Text -> Ex
+fn VariantValueEx lx, k = match lx.g.ctors[k]:
+    ? ci: match lx.g.types[ci.owner]:
+        ? owner: XPath (RefChild (RefIn lx, owner.home, (TypeItemName ci.owner)), (Camel (BareName k)))
+        nil: InternalBug "the choice of the variant `{k}`, which the checker did not declare"
+    nil: InternalBug "the variant `{k}`, which the checker did not declare"
+
+# The hidden arguments of a call of a definition with kinded type variables (ruling PK):
+# each variable's variant at this call, as the checker's type of the callee there gives
+# it: a variant named, or a kinded variable of the caller, passed on.
+KindArgs: unbounded fn Lx, ValInfo, Range -> [Ex]
+fn KindArgs lx, v, cspan = if (Len (KindsOfVal lx, v)) == 0: [[]] else:
+    let found = Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, cspan), {{}}), {{}}
+    Each (KindsOfVal lx, v), \|((r, ignore))| match found[r]:
+        ? (TyRole k): XRef (VariantNumberOf lx, k)
+        ? (TyRigid q): match lx.kinded[q]:
+            ? ((name, ignore)): XVar name
+            nil: match lx.subst[q]:
+                ? (TyRole k): XRef (VariantNumberOf lx, k)
+                otherwise: InternalBug "the kinded variable `{r}` at a call, given `{q}`, which holds no variant here"
+        ? (TyQ q): match lx.kinded[q]:
+            ? ((name, ignore)): XVar name
+            nil: InternalBug "the kinded variable `{r}` at a call, given `{q}`, which holds no variant here"
+        otherwise: InternalBug "the kinded variable `{r}` at a call, which the callee's type there does not give"
+
+# A variant's number in its choice, as a Rust value.
+VariantNumberOf: fn Lx, Text -> Ex
+fn VariantNumberOf lx, k = match lx.g.ctors[k]:
+    ? ci: Number OutNat, "{ci.index}", False
+    nil: InternalBug "the variant `{k}`, which the checker did not declare"
