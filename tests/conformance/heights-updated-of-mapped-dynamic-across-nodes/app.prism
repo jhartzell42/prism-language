@@ -19,7 +19,7 @@ fn @Counter !bump:
 fn ?Pick b, @w = if b: ? @w else: nil
 
 !Changes: fn [$Nat] -> !Nat
-fn !Changes shown = !Updated ((Or shown[0], ($ 0)) + 1)
+fn !Changes shown = !Updated ((Or shown[0], {$ 0}) + 1)
 
 @page: @unit
 @page:
