@@ -1,0 +1,23 @@
+# Part VII ch. 7, step R1: the standard library's domain host is `@Host`, the glossary's
+# name, where the prelude declares `@HostDocument` today. A child asks a question of its
+# own tag; the host's supplier answers it and passes every other element up, forwarded at
+# host/[p]/0 (Semantics ch. 9).
+# Expected transcript derived by hand from Semantics ch. 9 (a supplier's dynamic answer is
+# the place's value from its birth tick); never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+tag Pad.Ask of Element $Text:
+    name: Text
+
+@child: @unit emit Pad.* | Ui.*
+@child:
+    $told <- Pad.Ask(name="ada")                                        # 0
+    Ui.Label($text=$"told {$told}")                                     # 1
+
+@page: @unit
+@page:
+    ignore <- @Host @child, \|path, element| match element:            # 0/[p]
+        Pad.Ask(name=name): @ $"hello {name}"
+        otherwise: @Element element
