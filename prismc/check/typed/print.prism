@@ -183,6 +183,7 @@ fn ExprsIn e:
         EArray es: Fold es, [[]], \|acc, x| Append acc, (ExprsIn x)
         EMap kvs: Fold kvs, [[]], \|acc, ((k, v))| Append (Append acc, (ExprsIn k)), (ExprsIn v)
         EGroup x: ExprsIn x
+        EHold x: ExprsIn x
         ECall c, args, ignore, ignore: Append (ExprsIn c), (ArgsExprs args)
         EBinary ignore, l, r: Append (ExprsIn l), (ExprsIn r)
         EUnary ignore, x: ExprsIn x

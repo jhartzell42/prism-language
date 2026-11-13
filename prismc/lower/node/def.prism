@@ -494,6 +494,7 @@ fn WithLocalWidgets env, b = Fold b.stmts, env, \|en, s| match s.kind:
 IsGivingLine: unbounded fn Lx, Env, Expr, Nat -> Bool
 fn IsGivingLine lx, menv, e, depth = match e.kind:
     EGroup x: IsGivingLine lx, menv, x, depth
+    EHold x: IsGivingLine lx, menv, x, depth
     EIf ignore, ignore, (? ignore): True
     EMatch ignore, ignore: True
     otherwise:
@@ -541,6 +542,7 @@ fn IsGivingParam menv, n, args, depth = if (Len args) > 0 or HasKey menv.names, 
 IsLateExpr: unbounded fn Lx, Env, Expr, Nat -> Bool
 fn IsLateExpr lx, menv, e, depth = match e.kind:
     EGroup x: IsLateExpr lx, menv, x, depth
+    EHold x: IsLateExpr lx, menv, x, depth
     EIf ignore, ignore, (? ignore): IsPlainResult lx, e
     EMatch ignore, ignore: IsPlainResult lx, e
     EWidgetBlock b: IsLateBlock lx, menv, b, depth
@@ -1625,6 +1627,7 @@ fn IsLateBundleStmt lx, fns, me, s = match s.kind:
 fn ?LateBundleAlias me, p, e = match ((p.kind, e.kind)):
     ((PGroup q, ignore)): ?LateBundleAlias me, q, e
     ((ignore, EGroup x)): ?LateBundleAlias me, p, x
+    ((ignore, EHold x)): ?LateBundleAlias me, p, x
     ((PName n, EName m)): if (Len m.path) == 1 and (HasKey me.names, "{SNameKey m}#late") and IsLateBundleName me, (SNameKey m): ? n else: nil
     otherwise: nil
 
@@ -2049,6 +2052,7 @@ derive ^Eq, ^Show
 GivesResult: unbounded fn Lx, Env, Expr -> Bool
 fn GivesResult lx, menv, e = match e.kind:
     EGroup x: GivesResult lx, menv, x
+    EHold x: GivesResult lx, menv, x
     EWidgetBlock ignore: True
     # a builder that gives a bundle: each dynamic part is a getter of the node (`BindParts`)
     # a builder that gives a dynamic (a `for`'s gathered result): a getter of the node,
@@ -2354,6 +2358,7 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
 fn ?BundleWritten lx, p, e = match ((p.kind, e.kind)):
     ((PName n, ETuple ignore)): if IsBundle (TypeAt lx, e.span): ? ((n, e)) else: nil
     ((ignore, EGroup x)): ?BundleWritten lx, p, x
+    ((ignore, EHold x)): ?BundleWritten lx, p, x
     otherwise: nil
 
 # A named bundle of plain parts and events as one value of the build (Type System ch. 2,
@@ -2413,6 +2418,7 @@ fn ?BundleNamed menv, p, e = match ((p.kind, e.kind)):
         ? (BnParts bs): ? ((n, (BnParts bs)))
         otherwise: nil
     ((ignore, EGroup x)): ?BundleNamed menv, p, x
+    ((ignore, EHold x)): ?BundleNamed menv, p, x
     otherwise: nil
 
 # Another name of a bundle (`let same = both`, `?BundleNamed`) as one value: the value
@@ -2420,6 +2426,7 @@ fn ?BundleNamed menv, p, e = match ((p.kind, e.kind)):
 ValueRenamed: unbounded fn Env, SName, Expr -> Env
 fn ValueRenamed env, n, e = match e.kind:
     EGroup x: ValueRenamed env, n, x
+    EHold x: ValueRenamed env, n, x
     EName m: match env.names["{SNameKey m}#value"]:
         ? held: Bind env, "{SNameKey n}#value", held
         nil: env
@@ -2548,6 +2555,7 @@ fn FieldedParts wx, stem, parts = Fold parts, ((wx, [[]], [[]])), \|((w, builds,
 fn ?NamedBundleTaken env, p, e = match ((p.kind, e.kind)):
     ((PGroup q, ignore)): ?NamedBundleTaken env, q, e
     ((ignore, EGroup x)): ?NamedBundleTaken env, p, x
+    ((ignore, EHold x)): ?NamedBundleTaken env, p, x
     ((PTuple ps, EName m)): match (if (Len m.path) == 1: env.names[SNameKey m] else: nil):
         ? (BnParts bs): ? ((ps, bs))
         otherwise: nil
@@ -2975,6 +2983,7 @@ fn ?PlacedTag lx, e:
         ECall c, ignore, ignore, ignore: TagNameOf lx, c
         EName ignore: TagNameOf lx, e
         EGroup x: TagNameOf lx, x
+        EHold x: TagNameOf lx, x
         otherwise: ""
     match lx.g.tags[name]:
         ? tg: if tg.kind == "Element": ? tg else: nil
@@ -3365,6 +3374,7 @@ fn BuildLine wx, benv, menv, e, ?bound = if IsLateTaker wx.lx, menv, e: Deferred
 IsLateTaker: unbounded fn Lx, Env, Expr -> Bool
 fn IsLateTaker lx, menv, e = match e.kind:
     EGroup ignore: False
+    EHold ignore: False
     otherwise: match Peel (TypeAt lx, e.span):
         TyElem ignore, ignore: False
         otherwise: ReadsLate menv, e
@@ -3457,6 +3467,7 @@ fn BuildLineNow wx, benv, menv, e, ?bound:
     let full = TypeAt lx, e.span
     match e.kind:
         EGroup x: BuildLine wx, benv, menv, x, ?bound
+        EHold x: BuildLine wx, benv, menv, x, ?bound
         EWidgetBlock b: InlineBlock wx, benv, menv, b, lx
         EFor ?binders, source, body: ForLine wx, benv, menv, ?binders, source, body, e, ?bound
         ERebuild scrut, body: RebuildLine wx, benv, menv, scrut, body, e, ?bound

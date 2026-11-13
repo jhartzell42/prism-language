@@ -291,6 +291,7 @@ fn SexpExpr e, d = match e.kind:
     EArray es: "(array{SexpExprs es, d})"
     EMap es: "(map{Concat (Each es, \|((k, v))| " ({SexpExpr k, d}: {SexpExpr v, d})")})"
     EGroup x: "(group {SexpExpr x, d})"
+    EHold x: "(hold {SexpExpr x, d})"
     ECall callee, args, parens, rest: "({if parens: "call()" else: "call"} {SexpExpr callee, d}{SexpArgs args, d}{if rest: " .." else: ""})"
     EBinary op, lhs, rhs: "({op} {SexpExpr lhs, d} {SexpExpr rhs, d})"
     ESuffixed op, ty, lhs, rhs: "({op}{Path ty.path} {SexpExpr lhs, d} {SexpExpr rhs, d})"

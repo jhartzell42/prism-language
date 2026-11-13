@@ -65,6 +65,7 @@ fn InferUpdate env, st, target, body, span:
 KeepsNonEmpty: unbounded fn Env, St, Expr, Expr -> St
 fn KeepsNonEmpty env, st, target, value = match target.kind:
     EGroup x: KeepsNonEmpty env, st, x, value
+    EHold x: KeepsNonEmpty env, st, x, value
     EIndex collection, ignore:
         # the collection's type, read in a state that is dropped: its notes and errors are
         # the target's already
@@ -97,6 +98,7 @@ type SetWritten = choice:
 SetValue: fn Expr -> SetWritten
 fn SetValue value = match value.kind:
     EGroup x: SetValue x
+    EHold x: SetValue x
     EFreeSigil "?", ignore: SetsPresent
     ENil ignore: SetsAbsent
     otherwise: SetsEither
@@ -189,6 +191,7 @@ fn ?BarePath env, e = match e.kind:
         ? root: ? "{root}[{SrcText env, index.span}]"
         nil: nil
     EGroup x: ?BarePath env, x
+    EHold x: ?BarePath env, x
     otherwise: match ?LensApplied e:
         ? ((ignore, argument)): match ?BarePath env, argument:
             ? ignore: ? (SrcText env, e.span)
@@ -201,6 +204,7 @@ fn IsRef e = match e.kind:
     EField r, ignore, ignore: IsRef r
     EIndex r, ignore: IsRef r
     EGroup x: IsRef x
+    EHold x: IsRef x
     # a named lens applied to a reference is one ("applying it gives back a reference")
     otherwise: match ?LensApplied e:
         ? ((ignore, argument)): IsRef argument
@@ -222,6 +226,7 @@ fn IsRef e = match e.kind:
 InferPlace: unbounded fn Env, St, Expr -> ((Ty, St))
 fn InferPlace env, st, e = match e.kind:
     EGroup x: InferPlace env, st, x
+    EHold x: InferPlace env, st, x
     EIndex r, k:
         let ((ct, st1)) = if IsRef r: Infer env, st, r else: ((TyErr, st))
         match ?MapParts st1, ct:
@@ -275,6 +280,7 @@ fn ?EntryIn env, st, e:
 MayNameEntry: fn Expr -> Bool
 fn MayNameEntry e = match e.kind:
     EGroup x: MayNameEntry x
+    EHold x: MayNameEntry x
     EIndex ignore, ignore: True
     otherwise: match ?LensApplied e:
         ? ignore: True

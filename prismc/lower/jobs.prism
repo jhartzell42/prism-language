@@ -59,6 +59,7 @@ fn Tail lx, env, e = match ?FrameCall lx, env, e, True:
 TailHere: unbounded fn Lx, Env, Expr -> Ex
 fn TailHere lx, env, e = match e.kind:
     EGroup x: Tail lx, env, x
+    EHold x: Tail lx, env, x
     EUpdate target, b:
         if HasTopWhile lx, b: UpdTail lx, env, target, b, e.span, \|en, v| XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[v]]
         else: XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[Own (ValueOf lx, env, e)]]
@@ -222,6 +223,7 @@ fn TailK lx, env, e, K = match ?FrameCall lx, env, e, False:
             nil: K en2, XUnit
         match e.kind:
             EGroup y: TailK lx, env, y, K
+            EHold y: TailK lx, env, y, K
             EMatch sc, arms if BranchJobs lx, env, e:
                 let sty = TypeAt lx, sc.span
                 let label = "m{SpanStem e.span}"
@@ -247,6 +249,7 @@ fn TailK lx, env, e, K = match ?FrameCall lx, env, e, False:
 BranchJobs: unbounded fn Lx, Env, Expr -> Bool
 fn BranchJobs lx, env, e = match e.kind:
     EGroup y: BranchJobs lx, env, y
+    EHold y: BranchJobs lx, env, y
     EMatch ignore, arms: Fold arms, False, \|f, a| f or BlockJob lx, env, a.body
     EIf (CondExpr ignore), thenB, ?elseB: (BlockJob lx, env, thenB) or match ?elseB:
         ? eb: BlockJob lx, env, eb
@@ -570,6 +573,7 @@ fn ?FrameCall lx, env, e, top:
     if HasKey env.spans, (PlaceKey lx, e.span): nil
     else: match e.kind:
         EGroup x: ?FrameCall lx, env, x, top
+        EHold x: ?FrameCall lx, env, x, top
         ECall c, args, ignore, ignore: match ?FirstFrame lx, env, (Each args, \|a| a.value):
             ? x: ? x
             nil:
@@ -712,6 +716,7 @@ fn ?LocalJobFn lx, env, c = match c.kind:
         if (Len n.path) == 1 and HasKey env.names, (SNameKey n): ?JobValue (NameValue lx, env, n, c.span)
         else: nil
     EGroup x: ?LocalJobFn lx, env, x
+    EHold x: ?LocalJobFn lx, env, x
     EField ignore, ignore, ignore: ?JobValue (ValueOf lx, env, c)
     otherwise: nil
 
@@ -732,6 +737,7 @@ CalleeText: fn Expr -> Text
 fn CalleeText c = match c.kind:
     EName n: Dotted n.path
     EGroup x: CalleeText x
+    EHold x: CalleeText x
     otherwise: "call"
 
 # The locals a frame's continuation reads: from `from` to the end of `to`, the call

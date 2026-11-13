@@ -2008,6 +2008,7 @@ fn HeldFlatten wx, menv, x, ?bound:
 IsGlobalName: fn Env, Expr -> Bool
 fn IsGlobalName menv, x = match x.kind:
     EGroup y: IsGlobalName menv, y
+    EHold y: IsGlobalName menv, y
     EName n: (Len n.path) > 1 or not (HasKey menv.names, (SNameKey n))
     otherwise: False
 

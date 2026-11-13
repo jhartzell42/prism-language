@@ -349,7 +349,7 @@ fn ParsePrimary p, commas:
             ((Expr(kind=(ETemplate tpl), span=tok.span), False, q))
         KOpen "(", ignore: ParenPrimary p
         KOpen "[", ignore: SquarePrimary p
-        KOpen ignore, ignore: MapPrimary p
+        KOpen ignore, ignore: BracePrimary p
         KDot True:
             let p1 = Adv p
             match Kind p1:
@@ -444,6 +444,26 @@ fn SquarePrimary p:
         let ((index, p1)) = Bracketed (Adv p), ParseExpr
         let p2 = ExpectClose p1, "["
         ((Expr(kind=(ETopicIndex index), span=(To start, (Prev p2))), False, p2))
+
+# A brace opens a map or a hold: a double brace is a map, and a single one a hold unless
+# it is empty or its top level has a colon, `{}` and `{"ada": 3}` being maps in single
+# braces until they go.
+BracePrimary: unbounded fn Ps -> ((Expr, Bool, Ps))
+fn BracePrimary p:
+    let p1 = Adv p
+    if (AtDoubleOpen p, "\{") or AtClose p1, "\{": MapPrimary p
+    else:
+        let ((ignore, q)) = Bracketed p1, ParseArgExpr
+        if AtClose q, "\{": HoldPrimary p else: MapPrimary p
+
+# A hold, `{!e}`: the sigiled value inside goes into a type variable whole, unlifted
+# (Jimmy's ruling of 12 November). `holdBraces` spells it in diagnostics.
+HoldPrimary: unbounded fn Ps -> ((Expr, Bool, Ps))
+fn HoldPrimary p:
+    let start = Here p
+    let ((inner, p1)) = Bracketed (Adv p), ParseArgExpr
+    let p2 = ExpectClose p1, "\{"
+    ((Expr(kind=(EHold inner), span=(To start, (Prev p2))), False, p2))
 
 # A map: `{{"ada": 3}}`, `{{}}`, a double brace as an array is a double square bracket
 # (Jimmy's ruling, 12 November: every literal gets a doubled bracket). A single brace

@@ -338,6 +338,7 @@ ExprName: fn Expr -> Text
 fn ExprName e = match e.kind:
     EName n: SNameKey n
     EGroup x: ExprName x
+    EHold x: ExprName x
     otherwise: ""
 
 # A clause's parameters, over `base`: a name is no larger than its parameter, a part taken

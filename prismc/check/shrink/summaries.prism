@@ -76,6 +76,7 @@ fn Within m, i, e = match ?RelOf m, e:
         EArray es: Fold es, True, \|ok, x| ok and Part m, i, x
         EMap kvs: Fold kvs, True, \|ok, ((k, v))| ok and (Part m, i, k) and Part m, i, v
         EGroup x: Within m, i, x
+        EHold x: Within m, i, x
         EMatch s, arms: Fold arms, True, \|ok, a| ok and WithinBlock (ArmPatRels s, a, m), i, a.body
         EIf c, t, (? el): (WithinBlock (CondRels c, m), i, t) and WithinBlock m, i, el
         EUpdate start, b: (Within m, i, start) and UpdateWithin (Insert m, "&_", Rel(param=i, strict=False)), i, b
@@ -134,6 +135,7 @@ BuildsOn: unbounded fn (Text ==> Rel), Nat, Text, Expr -> Bool
 fn BuildsOn m, i, acc, e = match e.kind:
     EName n: (SNameKey n) == acc
     EGroup x: BuildsOn m, i, acc, x
+    EHold x: BuildsOn m, i, acc, x
     EMatch s, arms: Fold arms, True, \|ok, a| ok and not (HasText (OptNames a.?pattern), acc) and BuildsOnBlock (ArmPatRels s, a, m), i, acc, a.body
     EIf c, t, (? el): (not (HasText (CondNames c), acc)) and (BuildsOnBlock (CondRels c, m), i, acc, t) and BuildsOnBlock m, i, acc, el
     otherwise: match ?CallOf e:
@@ -166,6 +168,7 @@ Part: unbounded fn (Text ==> Rel), Nat, Expr -> Bool
 fn Part m, i, e = match e.kind:
     ETuple es: Fold es, True, \|ok, x| ok and Part m, i, x
     EGroup x: Part m, i, x
+    EHold x: Part m, i, x
     otherwise: match ?RelOf m, e:
         ? r: r.param == i and r.strict
         nil: False
@@ -195,6 +198,7 @@ let dummyArg = Arg(marks="", ?name=nil, value=Expr(kind=EError, span=Range(start
 fn ?DecrementOf m, e = match e.kind:
     EBinary "-?", l, r: if (IsPositiveLit r) and IsNatMinus m, e: ?Smaller m, l else: nil
     EGroup x: ?DecrementOf m, x
+    EHold x: ?DecrementOf m, x
     otherwise: match ?CallOf e:
         ? ((c, args)): match ?CalleeName c:
             ? n: if PreIs m, n, "?Step": ?Smaller m, (Or args[0], dummyArg).value else: nil
@@ -218,6 +222,7 @@ fn IsPositiveLit e = match e.kind:
         LInt d: d != "0"
         otherwise: False
     EGroup x: IsPositiveLit x
+    EHold x: IsPositiveLit x
     otherwise: False
 
 # The composition closure of the size-change graphs, to its fixed point: each round
@@ -387,6 +392,7 @@ fn IsZeroLit e = match e.kind:
         LInt d: d == "0"
         otherwise: False
     EGroup x: IsZeroLit x
+    EHold x: IsZeroLit x
     otherwise: False
 
 # Pick SW: a value set into `v` is strictly smaller than `v` itself (its measure `vi`), not
@@ -401,6 +407,7 @@ fn IsZeroLit e = match e.kind:
 SetsStrict: unbounded fn Expr, Text, Nat, (Text ==> Rel) -> Bool
 fn SetsStrict e, v, vi, rels = match e.kind:
     EGroup x: SetsStrict x, v, vi, rels
+    EHold x: SetsStrict x, v, vi, rels
     EBinary "-?", l, ignore: (IsNatMinus rels, e) and SetsStrict l, v, vi, rels
     otherwise: (RelStrict rels, e, vi) or (CallStrict e, v, vi, rels)
 

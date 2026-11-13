@@ -1802,12 +1802,14 @@ fn ?ElementLet menv, e = match (Ungrouped e).kind:
 Ungrouped: fn Expr -> Expr
 fn Ungrouped e = match e.kind:
     EGroup x: Ungrouped x
+    EHold x: Ungrouped x
     otherwise: e
 
 # Whether an expression is an element tag applied, `Ui.Button(..)` or a bare tag.
 IsTagApplication: unbounded fn Lx, Expr -> Bool
 fn IsTagApplication lx, e = match e.kind:
     EGroup x: IsTagApplication lx, x
+    EHold x: IsTagApplication lx, x
     ECall c, ignore, ignore, ignore: HasKey lx.g.tags, (TagNameOf lx, c)
     EName ignore: HasKey lx.g.tags, (TagNameOf lx, e)
     otherwise: False

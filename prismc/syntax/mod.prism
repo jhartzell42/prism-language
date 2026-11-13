@@ -254,6 +254,9 @@ type ExprKind = choice:
     EArray [Expr]
     EMap [((Expr, Expr))]
     EGroup Expr
+    # `{ e }`, a hold: a sigiled value goes into a type variable whole, unlifted (Jimmy's
+    # ruling of 12 November)
+    EHold Expr
     ECall Expr, [Arg], Bool, Bool
     EBinary Text, Expr, Expr
     EUnary Text, Expr
@@ -283,6 +286,16 @@ type ExprKind = choice:
     ELens [Ident]
     EError
 derive ^Eq, ^Show
+
+# A hold's braces, for diagnostics that show one: `{!e}`. The parser's `HoldPrimary`
+# reads them.
+let holdBraces = (("\{", "\}"))
+
+# An expression's source text in a hold's braces.
+Held: fn Text -> Text
+fn Held src:
+    let ((open, close)) = holdBraces
+    "{open}{src}{close}"
 
 # `marks` are the sigils written on a named argument's field (`$label=$t`), "" for a plain
 # name or a positional argument.
