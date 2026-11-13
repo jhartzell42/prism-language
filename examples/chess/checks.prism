@@ -1,5 +1,6 @@
-# The checks: the rules through the document's step function, the draws, and the
-# notation, with no host and no tick. `checks.expected` is the transcript.
+# The checks: the rules through the document's step function, the game's five functions,
+# the draws, the notation, the game written down and read back, and the command line, with
+# no host and no tick. `checks.expected` is the transcript.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit rest
 use Documents.*
@@ -8,17 +9,20 @@ use Notation.*
 use Squares.*
 use Lines.*
 use Game.*
+use Implementations.*
+use Modes.*
 
 # ---- the rules through the document's step function, with no host and no tick
 
-# the response to a request by the side given
-Reply: fn ChessGame, Color, PlayerRequest -> Response ChessReason
-fn Reply game, color, request = match StepBy game, color, request:
+# The response to a request by the side given, through the document's own step at the
+# player role. Only the state decides the call, so it names the document (ruling IN).
+Reply: fn ChessGame, Color, PlayerRequest -> Response ChessGame Player
+fn Reply game, color, request = match Step<<ChessGame>> game, Fixed<<Player>>, color, request:
     Next next: Accepted
     Denied why: Declined why
 
 Playing: fn Square, Square -> PlayerRequest
-fn Playing from, to = Play (Moving from, to)
+fn Playing from, to = MakeMove (Moving from, to)
 
 # a position from pieces, with no castling right spent
 Setup: fn [((Square, Piece))], Color -> ChessGame
@@ -33,7 +37,7 @@ fn SetupAt pieces, turn, quiet:
 ?On: fn ChessGame, Square -> ?Piece
 fn ?On game, square = ?At game.position, square
 
-?ResultOf: fn ChessGame -> ?Result
+?ResultOf: fn ChessGame -> ?ChessResult
 fn ?ResultOf game = game.?result
 
 let whiteKing = Piece White, King
@@ -66,7 +70,7 @@ check moves_and_turns:
 # a line with a move the document declines is a fault that holds the request, its side
 # and the reason, never a shorter line
 check declined_line:
-    ?ResultOf (~Line [[(Moving e2, e4), (Moving e2, e4)]]) => Error(kind=Line.Declined(request=(Play (Moving e2, e4)), by=Black, reason=(NoPieceThere e2)), message="")
+    ?ResultOf (~Line [[(Moving e2, e4), (Moving e2, e4)]]) => Error(kind=Line.Declined(request=(MakeMove (Moving e2, e4)), by=Black, reason=(NoPieceThere e2)), message="")
 
 check check_and_mate:
     ?ResultOf (~Line foolsMate) => ~ (? (Checkmated White))
@@ -96,10 +100,10 @@ check en_passant:
     Reply (~Line (Append pawnPassed, [[(Moving h2, h3), (Moving h7, h6)]])), White, (Playing e5, d6) => ~ (Declined (IllegalMove NothingToCapture))
 
 check promotion:
-    ?On (~After (Setup promotionPieces, White), White, (Play (Promoting a7, a8, Knight))), a8 => ~ ? Piece(color=White, man=Knight)
+    ?On (~After (Setup promotionPieces, White), White, (MakeMove (Promoting a7, a8, Knight))), a8 => ~ ? Piece(color=White, man=Knight)
     Reply (Setup promotionPieces, White), White, (Playing a7, a8) => Declined (IllegalMove PromotionNotNamed)
-    Reply (Setup promotionPieces, White), White, (Play (Promoting a7, a8, King)) => Declined (IllegalMove (PromotionTo King))
-    Reply (Setup promotionPieces, White), White, (Play (Promoting e1, e2, Queen)) => Declined (IllegalMove (NothingPromotes Queen))
+    Reply (Setup promotionPieces, White), White, (MakeMove (Promoting a7, a8, King)) => Declined (IllegalMove (PromotionTo King))
+    Reply (Setup promotionPieces, White), White, (MakeMove (Promoting e1, e2, Queen)) => Declined (IllegalMove (NothingPromotes Queen))
     Len (LegalMoves (Setup promotionPieces, White).position) => 9
 
 check resigning_and_draws:
@@ -146,3 +150,48 @@ check notation:
     ?ParseMove "e2e9" => nil
     ?ParseMove "castle" => nil
     Each [[(Moving e2, e4), (Promoting b7, a8, Knight)]], Spelled => [["e2e4", "b7a8n"]]
+
+# The game's five functions: whose turn it is, why a move is not legal, the game after a
+# move, and how the game ended as the library's `Result`.
+check perfect_information:
+    Turn fresh => White
+    Legal fresh, White, (Moving e2, e4) => nil
+    Legal fresh, Black, (Moving e7, e5) => ? NotYourTurn
+    Legal fresh, White, (Moving e2, e5) => ? (IllegalMove (NotHowThatPieceMoves Pawn))
+    (Play fresh, (Moving e2, e4)).moves => [[(Moving e2, e4)]]
+    Outcome fresh => nil
+    Outcome (~Line foolsMate) => ~ (? (Won Black))
+    Outcome (~After fresh, White, Resign) => ~ (? (Won Black))
+    Outcome (~Line (Append knightsOut, knightsOut)) => ~ (? Drawn)
+
+# What each role is told: a player its legal moves while it is its move, none otherwise;
+# a spectator the game alone. A spectator's step has no request to answer.
+check reading:
+    Len (Read<<ChessGame>> fresh, Fixed<<Player>>, White, Whole).legal => 20
+    (Read<<ChessGame>> fresh, Fixed<<Player>>, Black, Whole).legal => [[]]
+    (Read<<ChessGame>> fresh, Fixed<<Spectator>>, "ada", Whole) == fresh => True
+
+# The game written down and read back: `^Pod`'s text, the same game.
+ReadsBack: fn ChessGame -> Bool
+fn ReadsBack game = match ~Decode<<ChessGame>> (Encode game):
+    ~ back: back == game
+    otherwise: False
+
+check written_down:
+    ~Decode<<ChessGame>> (Encode fresh) => ~ fresh
+    ReadsBack (~Line foolsMate) => ~ True
+    (Encode fresh) == (Utf8Bytes (Print [[fresh]])) => True
+    ~Decode<<PlayerRequest>> (Encode (MakeMove (Promoting a7, a8, Knight))) => ~ (MakeMove (Promoting a7, a8, Knight))
+    ~Decode<<ChessReason>> (Encode (IllegalMove LeavesKingInCheck)) => ~ (IllegalMove LeavesKingInCheck)
+
+# The command line as a mode, and the lines that are none.
+check command_line:
+    ?ModeOf [[]] => ? (Running Boards, InMemory, [[White, Black]])
+    ?ModeOf [["--terminals"]] => ? (Running Terminals, InMemory, [[White, Black]])
+    ?ModeOf [["--file", "game.pod"]] => ? (Running Boards, (InFile "game.pod"), [[White, Black]])
+    ?ModeOf [["--terminals", "--file", "game.pod"]] => ? (Running Terminals, (InFile "game.pod"), [[White, Black]])
+    ?ModeOf [["--connect", "hub.example", "7000", "black"]] => ? (Running Boards, (Over Address(host="hub.example", port=7000)), [[Black]])
+    ?ModeOf [["--hub", "7000"]] => ? (HubOn 7000)
+    ?ModeOf [["--file"]] => nil
+    ?ModeOf [["--connect", "hub.example", "seven", "black"]] => nil
+    ?ModeOf [["--castle"]] => nil

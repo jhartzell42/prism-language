@@ -1,7 +1,9 @@
 # Lines of play as values, for checks: the game after requests made one after another,
 # with no host and no tick. A request the document declines is a fault that holds the
 # request, who made it and the reason, as values, so a line with a move that is not played
-# is never read as a shorter line.
+# is never read as a shorter line. Each request goes through the document's own step at
+# the player role, `Step<<ChessGame>>`: only the state decides the call, and a state may
+# belong to several documents (ruling IN).
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit rest
 use Documents.*
@@ -17,7 +19,7 @@ tag Line.Declined of Fault:
 # the game after a request by the side given; the prelude's `Error` has a message beside
 # its fault, and this one says nothing in it
 ~After: fn ChessGame, Color, PlayerRequest -> ~ChessGame
-fn ~After game, color, request = match StepBy game, color, request:
+fn ~After game, color, request = match Step<<ChessGame>> game, Fixed<<Player>>, color, request:
     Next next: ~ next
     Denied why: Error(kind=Line.Declined(request=request, by=color, reason=why), message="")
 
@@ -26,10 +28,10 @@ fn ~After game, color, request = match StepBy game, color, request:
 fn ~Then (~ game), color, request = ~After game, color, request
 fn ~Then (Error(kind=kind, message=message)), color, request = Error(kind=kind, message=message)
 
-~Further: fn ~ChessGame, Move -> ~ChessGame
-fn ~Further (~ game), move = ~After game, game.position.turn, (Play move)
+~Further: fn ~ChessGame, ChessMove -> ~ChessGame
+fn ~Further (~ game), move = ~After game, game.position.turn, (MakeMove move)
 fn ~Further (Error(kind=kind, message=message)), move = Error(kind=kind, message=message)
 
 # the game after moves played in turn from the start
-~Line: fn [Move] -> ~ChessGame
+~Line: fn [ChessMove] -> ~ChessGame
 fn ~Line moves = Fold moves, (~ fresh), ~Further

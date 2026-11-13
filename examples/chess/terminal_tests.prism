@@ -3,8 +3,10 @@
 # the same participants under today's forms of the hosting; no transcript is kept, since a
 # place's path under a seat is the compiler's to give.
 # Written by Claude on the claude-self-hosting branch; subject to change.
-emit Console.* | Seat.* | Play.* | Watch.*
+emit Console.* | Fs.* | Net.*
 use Tables.*
+use TestWorlds.*
+use Fs.*
 
 # ---- the command line: two players and a spectator, each at a terminal
 
@@ -111,7 +113,8 @@ test repetition_at_terminals, @terminals:
         => requested Console.Print(name="White", ..), [["f6g8", "over: a draw: one position three times"]]
         => requested Console.Print(name="ada", ..), [["f6g8", "over: a draw: one position three times"]]
 
-# Black resigns; ada leaves; White leaves without resigning.
+# Black resigns; ada leaves; White leaves without resigning: each leaving holds no last
+# request (`Seat.Leave` with nil).
 test resigning_and_leaving_at_terminals, @terminals:
     build
     compute
@@ -127,3 +130,18 @@ test resigning_and_leaving_at_terminals, @terminals:
         => requested Console.Print(name="ada", ..), [["over: Black has resigned"]]
     send Console.Read(name="White", ..), "leave"
     compute
+
+# ---- a saved game on the World's disk: `--terminals --file game.pod`
+
+# The test supplies the file, empty: the game is the opening, and a move is written
+# through to the file, a one-shot `Fs.File` write of the game's `^Pod` text. What the text
+# says is the saved game's test's (`tests.prism`, `saved_and_resumed`); this one holds the
+# disk's side: the file is read once and written after a change.
+test saved_on_disk, @savedOnDisk:
+    with Fs.Contents(path="game.pod") = ~ Contents(text=""), build
+    compute
+    compute
+    send Console.Read(name="White", ..), "e2e4"
+    compute
+        => requested Console.Print(name="White", ..), [["ok"]]
+        => requested Fs.File(path="game.pod"), Write _

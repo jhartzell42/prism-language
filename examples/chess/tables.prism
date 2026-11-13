@@ -1,12 +1,16 @@
-# The tables: programs that seat participants at one game of chess in memory. Each lists
-# its seats, every seat with the blueprint of the participant that sits there, and hands
-# them to the role hosts; `@InMemory` holds the game. No participant is given the state.
+# The tables: programs that seat participants at one game of chess. Each builds the game's
+# `ChessSeats`, every seat with the blueprint of the participant that sits there, and
+# hands them to `@HostDocument` with an implementation (`Implementations`). No participant
+# is given the state. The front ends the command line picks take the implementation as
+# their one argument; the tables the tests run keep the game in memory, but for the saved
+# game's and the remote game's.
 # Written by Claude on the claude-self-hosting branch; subject to change.
-emit Ui.* | Pane.* | Gui.* | Console.*
+emit Ui.* | Pane.* | Gui.* | Console.* | Fs.* | Net.*
 use Documents.*
 use Rules.*
 use Squares.*
 use Game.*
+use Implementations.*
 use TextPlayers.*
 use CommandLine.*
 use Board.*
@@ -14,92 +18,76 @@ use Window.*
 use Window.Panes.*
 use Window.Widgets.*
 
-let white = Player White
-let black = Player Black
-let ada = Spectator "ada"
-let bea = Spectator "bea"
+# ---- the front ends the command line picks (`app.prism`)
+
+# a board per side that sits here
+BoardSeats: fn [Color] -> (Color ==> $@(@unit emit Pane.* | Gui.* | Seat.* ChessGame Player | r))
+fn BoardSeats seated = Map (Each seated, \|color| ((color, $ (@BoardPlayer color))))
+
+# a terminal per side that sits here
+LineSeats: fn [Color] -> (Color ==> $@(@unit emit Console.* | Seat.* ChessGame Player | r))
+fn LineSeats seated = Map (Each seated, \|color| ((color, $ (@LinePlayer color))))
+
+# The boards of the sides that sit here, side by side, the game kept as `keeping` says.
+@Boards: fn Keeping, [Color] -> @unit emit Pane.* | Gui.* | Fs.* | Net.*
+fn @Boards keeping, seated = @Row 16.0, @widget:
+    @Kept keeping, ChessSeats($player=$ (BoardSeats seated), $spectator=$ {{}})
+
+# The terminals of the sides that sit here, the game kept as `keeping` says.
+@Terminals: fn Keeping, [Color] -> @unit emit Console.* | Fs.* | Net.*
+fn @Terminals keeping, seated:
+    @Kept keeping, ChessSeats($player=$ (LineSeats seated), $spectator=$ {{}})
 
 # ---- the hot seat in a window: two boards side by side
-
-@BoardSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.*
-fn @BoardSeats $state, !responses = @HostPlayers {{white: (@BoardPlayer white), black: (@BoardPlayer black)}}, never, never, $state, !responses
 
 @boards: @unit emit Pane.* | Gui.*
 @boards:
     @Row 16.0, @widget:
-        @InMemory fresh, @BoardSeats
+        @InMemoryGame ChessSeats($player=$ {{White: $ (@BoardPlayer White), Black: $ (@BoardPlayer Black)}}, $spectator=$ {{}})
+
+@twoBoards: @unit emit Pane.* | Gui.*
+@twoBoards:
+    @Window ($ "Chess"), (Extent 1400.0, 760.0), @boards
 
 # The same with a spectator at a terminal: its lines pass up through the row and the
 # window to the root.
-@WatchedSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.* | Console.*
-fn @WatchedSeats $state, !responses:
-    !asked <- @HostPlayers {{white: (@BoardPlayer white), black: (@BoardPlayer black)}}, never, never, $state, !responses
-    @HostSpectators {{ada: (@LineSpectator ada)}}, never, never, $state
-    @ !asked
-
 @watched: @unit emit Pane.* | Gui.* | Console.*
 @watched:
     @Window ($ "Chess"), (Extent 1400.0, 760.0), @widget:
         @Row 16.0, @widget:
-            @InMemory fresh, @WatchedSeats
+            @InMemoryGame ChessSeats($player=$ {{White: $ (@BoardPlayer White), Black: $ (@BoardPlayer Black)}}, $spectator=$ {{"ada": $ (@LineSpectator "ada")}})
 
 # White at a board in a window, Black at a terminal: one role, two ways of sitting, in
-# one map of seats.
-@AgainstTerminalSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.* | Console.*
-fn @AgainstTerminalSeats $state, !responses = @HostPlayers {{white: (@BoardPlayer white), black: (@LinePlayer black)}}, never, never, $state, !responses
-
+# one map of seats (each participant's row is open, ruling OR).
 @againstTerminal: @unit emit Pane.* | Gui.* | Console.*
 @againstTerminal:
     @Window ($ "Chess"), (Extent 700.0, 760.0), @widget:
-        @InMemory fresh, @AgainstTerminalSeats
+        @InMemoryGame ChessSeats($player=$ {{White: $ (@BoardPlayer White), Black: $ (@LinePlayer Black)}}, $spectator=$ {{}})
 
 # ---- terminals: two players and a spectator, nothing but lines
 
-@TerminalSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Console.*
-fn @TerminalSeats $state, !responses:
-    !asked <- @HostPlayers {{white: (@LinePlayer white), black: (@LinePlayer black)}}, never, never, $state, !responses   # 0, 1
-    @HostSpectators {{ada: (@LineSpectator ada)}}, never, never, $state                                                  # 2, 3
-    @ !asked
-
 @terminals: @unit emit Console.*
 @terminals:
-    @InMemory fresh, @TerminalSeats
+    @InMemoryGame ChessSeats($player=$ {{White: $ (@LinePlayer White), Black: $ (@LinePlayer Black)}}, $spectator=$ {{"ada": $ (@LineSpectator "ada")}})
 
 # ---- the hot seat at text interfaces: two players and a spectator, and a button that
 # seats a second spectator
 
-@TextSeats: fn !(Spectator ==> (@unit emit Ui.* | Seat.* | Watch.*)), $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Ui.*
-fn @TextSeats !joins, $state, !responses:
-    !asked <- @HostPlayers {{white: (@TextPlayer white), black: (@TextPlayer black)}}, never, never, $state, !responses   # 1, 2
-    @HostSpectators {{ada: (@SpectatorView ada)}}, !joins, never, $state                                                 # 3, 4
-    @ !asked
-
-# The table's button is the program's own; the seats function is the block's, and reads
-# the button's event.
 @hotSeat: @unit emit Ui.*
 @hotSeat:
-    !beaJoins <- Ui.Button($label=$"bea joins")                                                  # 0
-    @Seats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Ui.*
-    fn @Seats $state, !responses = @TextSeats ({{bea: (@SpectatorView bea)}}) on !beaJoins, $state, !responses
-    @InMemory fresh, @Seats
+    !beaJoins <- Ui.Button($label=$"bea joins")                                    # 0
+    $spectators <- {{"ada": $ (@SpectatorView "ada")}} then {{"ada": $ (@SpectatorView "ada"), "bea": $ (@SpectatorView "bea")}} on !beaJoins
+    @InMemoryGame ChessSeats($player=$ {{White: $ (@TextPlayer White), Black: $ (@TextPlayer Black)}}, $spectator=$spectators)   # 1
 
 # ---- scripted players and a spectator
 
 # A script as a program writes it: moves as values, each a request to play it.
-Plays: fn [Move] -> Script
-fn Plays moves = InTurn (Each moves, \|move| Play move)
-
-@ScriptedSeats: fn Script, Script, $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Ui.*
-fn @ScriptedSeats whiteScript, blackScript, $state, !responses:
-    !asked <- @HostPlayers {{white: (@ScriptedPlayer white, whiteScript), black: (@ScriptedPlayer black, blackScript)}}, never, never, $state, !responses   # 0, 1
-    @HostSpectators {{ada: (@SpectatorView ada)}}, never, never, $state                                                                                   # 2, 3
-    @ !asked
+Plays: fn [ChessMove] -> Script
+fn Plays moves = InTurn (Each moves, \|move| MakeMove move)
 
 @Scripted: fn Script, Script -> @unit emit Ui.*
 fn @Scripted whiteScript, blackScript:
-    @Seats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Ui.*
-    fn @Seats $state, !responses = @ScriptedSeats whiteScript, blackScript, $state, !responses
-    @InMemory fresh, @Seats
+    @InMemoryGame ChessSeats($player=$ {{White: $ (@ScriptedPlayer White, whiteScript), Black: $ (@ScriptedPlayer Black, blackScript)}}, $spectator=$ {{"ada": $ (@SpectatorView "ada")}})
 
 @foolsMate: @unit emit Ui.*
 @foolsMate:
@@ -125,4 +113,4 @@ fn @Scripted whiteScript, blackScript:
 # Two players that each ask once, in one tick: White for e2e4, Black for e7e5.
 @bothOpen: @unit emit Ui.*
 @bothOpen:
-    @Scripted (AtTheStart (Play (Moving e2, e4))), (AtTheStart (Play (Moving e7, e5)))
+    @Scripted (AtTheStart (MakeMove (Moving e2, e4))), (AtTheStart (MakeMove (Moving e7, e5)))

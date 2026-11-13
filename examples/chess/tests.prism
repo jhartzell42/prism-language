@@ -3,10 +3,13 @@
 # and is over the repository's limit for a kept transcript, so none is kept. A move at the
 # hot seat is two inputs: the move typed into the box, then the button. Each test builds
 # and computes twice before anyone moves, which a seat's first answer no longer needs: it
-# is told the game in the tick it is built.
+# is told the game in the tick it is built. The saved game's and the remote game's tests
+# run in the worlds of `test_worlds.prism`: a file kept in a hold, and a wire between a
+# phone and a Hub in one program.
 # Written by Claude on the claude-self-hosting branch; subject to change.
-emit Ui.* | Seat.* | Play.* | Watch.*
+emit Ui.*
 use Tables.*
+use TestWorlds.*
 use Documents.*
 use Rules.*
 use Game.*
@@ -117,7 +120,9 @@ test draw_by_agreement, @hotSeat:
 
 # A spectator joins a game under way and leaves it. bea is seated by the table after two
 # moves, is told the game as it stands in the tick she is seated, sees the next move in the tick ada
-# does, and leaves by her own button; no other seat's place is touched.
+# does, and leaves by her own button; no other seat's place is touched. The table's map
+# still lists her after she leaves: nothing in the library takes a departed seat out of
+# the program's map.
 test spectator_joins_and_leaves, @hotSeat:
     build
     compute
@@ -140,8 +145,8 @@ test spectator_joins_and_leaves, @hotSeat:
     compute
         => expect Ui.Label(text="ada watches: White to move")
 
-# Resign and leave in one tick: White's button fires its request, to resign, and its
-# seat's leaving. The request is applied, then the seat goes: White's places are torn down in that tick, and
+# Resign and leave in one tick: White's button fires its seat's leaving with a last
+# request, to resign. The request is applied, then the seat goes: White's places are torn down in that tick, and
 # Black and the spectator are told White has resigned in the next.
 test resign_and_leave, @hotSeat:
     build
@@ -195,8 +200,8 @@ test promotion, @promotion:
         => expect Ui.Label(text="moves: a2a4 b7b5 a4b5 a7a6 b5a6 c8b7 a6b7 b8c6 b7a8n")
 
 # Two players ask in one tick under the default order: White for e2e4 and Black for e7e5,
-# both in the tick after the build. A player's place orders by its seat, and `Player White`
-# is before `Player Black`: White's request is applied in that tick and Black's waits, is
+# both in the tick after the build. A player's place orders by its seat, `0/[White]/...`
+# before `0/[Black]/...`, since White is before Black: White's request is applied in that tick and Black's waits, is
 # applied a tick later against the game White's move left, and is accepted then.
 test both_players_ask_in_one_tick, @bothOpen:
     build
@@ -210,3 +215,57 @@ test both_players_ask_in_one_tick, @bothOpen:
         => expect Ui.Label(text="Black (scripted): accepted")
         => expect Ui.Label(text="moves: e2e4 e7e5")
     compute
+
+# ---- a saved game, in a file of the test's own
+
+# Two moves are written through, each as `^Pod`'s text of the whole game; the restart
+# builds the game's domain anew, which reads the file back: the same game, both moves in
+# its move list, and play goes on from it.
+test saved_and_resumed, @savedGame:
+    build
+    compute
+    compute
+        => expect Ui.Label(text="White's view: White to move")
+    send Ui.TextInput(name="White's move", ..), Letter "e2e4"
+    click Ui.Button(label="White: move")
+    send Ui.TextInput(name="Black's move", ..), Letter "e7e5"
+    click Ui.Button(label="Black: move")
+    compute until idle
+        => expect Ui.Label(text="file: the game's pod text; moves: e2e4 e7e5")
+        => expect Ui.Label(text="White's view: White to move")
+    click Ui.Button(label="restart")
+    compute until idle
+        => expect Ui.Label(text="run 2")
+        => expect Ui.Label(text="White's view: White to move")
+        => expect Ui.Label(text="moves: e2e4 e7e5")
+    send Ui.TextInput(name="White's move", ..), Letter "g1f3"
+    click Ui.Button(label="White: move")
+    compute until idle
+        => expect Ui.Label(text="White's last request: accepted")
+        => expect Ui.Label(text="file: the game's pod text; moves: e2e4 e7e5 g1f3")
+
+# ---- a remote game: a phone `@Over` a Hub, the Hub `@Serve`-ing it
+
+# White plays on the phone, Black at the Hub's own seat. Each move reaches the other side
+# across the wire: the phone's view lags the Hub's by the wire, so each step waits until
+# idle.
+test remote_game, @remoteGame:
+    build
+    compute until idle
+        => expect Ui.Label(text="White's view: White to move")
+        => expect Ui.Label(text="Black's view: White to move")
+    send Ui.TextInput(name="White's move", ..), Letter "e2e4"
+    click Ui.Button(label="White: move")
+    compute until idle
+        => expect Ui.Label(text="White's last request: accepted")
+        => expect Ui.Label(text="Black's view: Black to move")
+        => expect Ui.Label(text="White's view: Black to move")
+    send Ui.TextInput(name="Black's move", ..), Letter "e7e4"
+    click Ui.Button(label="Black: move")
+    compute until idle
+        => expect Ui.Label(text="Black's last request: declined: a Pawn does not move so")
+    send Ui.TextInput(name="Black's move", ..), Letter "e7e5"
+    click Ui.Button(label="Black: move")
+    compute until idle
+        => expect Ui.Label(text="White's view: White to move")
+        => expect Ui.Label(text="Black's last request: accepted")

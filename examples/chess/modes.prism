@@ -1,0 +1,105 @@
+# The command line as a value: which front end, which implementation, which sides sit
+# at this program, or a Hub. The words, in any order:
+#   (none)                          two boards in a window, the game in memory: a hot seat
+#   --terminals                     the players at terminals instead of boards
+#   --file PATH                     the game kept in the file at PATH (`@InFile`), read back
+#                                   when the program starts again
+#   --connect HOST PORT white|black one side's seat here, the game at the Hub at HOST:PORT
+#                                   (`@Over`)
+#   --hub PORT                      a Hub: the game in memory, each connection to PORT a
+#                                   seat (`@Serve`); the other words are not asked
+# A line the program cannot read is no mode at all: `?ModeOf` gives nil, and the program
+# exits with code 2.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit rest
+use Documents.*
+use Rules.*
+use Implementations.*
+
+type FrontEnd = choice:
+    Boards                       # a board per side, in one window
+    Terminals                    # a terminal per side
+derive ^Eq, ^Show
+
+type Mode = choice:
+    Running FrontEnd, Keeping, [Color]   # the sides that sit at this program
+    HubOn Nat                            # a Hub listening on this port
+derive ^Eq, ^Show
+
+# what a word of the command line asks for
+type Flag = choice:
+    AtTerminals
+    FileAt
+    Connecting
+    HubAt
+derive ^Eq, ^Show
+
+let flags = {{"--terminals": AtTerminals, "--file": FileAt, "--connect": Connecting, "--hub": HubAt}}
+let sides = {{"white": White, "black": Black}}
+
+# the hot seat: two boards, the game in memory
+let hotSeat = Running Boards, InMemory, [[White, Black]]
+
+# How many words a flag takes after it.
+WordsTaken: fn Flag -> Nat
+fn WordsTaken AtTerminals = 0
+fn WordsTaken FileAt = 1
+fn WordsTaken Connecting = 3
+fn WordsTaken HubAt = 1
+
+# Where reading the command line stands after some of its words: reading flags, with the
+# mode so far; taking the words a flag takes, those taken so far; or unreadable.
+type Reading = choice:
+    Flags Mode
+    Taking Flag, [Text], Mode
+    Unreadable
+derive ^Eq, ^Show
+
+?ModeOf: fn [Text] -> ?Mode
+fn ?ModeOf args = match Fold args, (Flags hotSeat), ReadWord:
+    Flags mode: ? mode
+    Taking flag, taken, mode: nil                # a flag short of its words
+    Unreadable: nil
+
+ReadWord: fn Reading, Text -> Reading
+fn ReadWord (Flags mode), word = match flags[word]:
+    ? flag: Took flag, [[]], mode
+    nil: Unreadable
+fn ReadWord (Taking flag, taken, mode), word = Took flag, (Push taken, word), mode
+fn ReadWord Unreadable, word = Unreadable
+
+# a flag with the words taken so far: done once it has all it takes
+Took: fn Flag, [Text], Mode -> Reading
+fn Took flag, taken, mode = if (Len taken) < (WordsTaken flag): Taking flag, taken, mode else: match ?Flagged flag, taken, mode:
+    ? next: Flags next
+    nil: Unreadable
+
+# one flag and its words
+?Flagged: fn Flag, [Text], Mode -> ?Mode
+fn ?Flagged AtTerminals, taken, mode = ? (OnTerminals mode)
+fn ?Flagged FileAt, taken, mode:
+    path <- taken[0]
+    ? (KeptBy mode, (InFile path))
+fn ?Flagged Connecting, taken, mode:
+    host <- taken[0]
+    portWord <- taken[1]
+    port <- ?ParseNat portWord
+    sideWord <- taken[2]
+    side <- sides[Lower sideWord]
+    ? (Seating (KeptBy mode, (Over Address(host=host, port=port))), [[side]])
+fn ?Flagged HubAt, taken, mode:
+    portWord <- taken[0]
+    port <- ?ParseNat portWord
+    ? (HubOn port)
+
+OnTerminals: fn Mode -> Mode
+fn OnTerminals (Running frontEnd, keeping, seated) = Running Terminals, keeping, seated
+fn OnTerminals (HubOn port) = HubOn port
+
+KeptBy: fn Mode, Keeping -> Mode
+fn KeptBy (Running frontEnd, before, seated), keeping = Running frontEnd, keeping, seated
+fn KeptBy (HubOn port), keeping = HubOn port
+
+Seating: fn Mode, [Color] -> Mode
+fn Seating (Running frontEnd, keeping, before), seated = Running frontEnd, keeping, seated
+fn Seating (HubOn port), seated = HubOn port

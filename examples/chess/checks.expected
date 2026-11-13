@@ -82,3 +82,36 @@ check notation
 6: ok
 7: ok
 
+check perfect_information
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok
+9: ok
+
+check reading
+1: ok
+2: ok
+3: ok
+
+check written_down
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+
+check command_line
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok
+9: ok

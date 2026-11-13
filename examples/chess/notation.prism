@@ -35,7 +35,7 @@ fn AtEnd cursor = match ?Step cursor:
 
 # a move's end: nothing more, or one letter that names what a pawn becomes and nothing
 # after it; any other letter, and anything after, is no move
-?Ending: fn Square, Square, ?((Char, Cursor)) -> ?Move
+?Ending: fn Square, Square, ?((Char, Cursor)) -> ?ChessMove
 fn ?Ending from, to, nil = ? (Moving from, to)
 fn ?Ending from, to, (? ((letter, rest))):
     man <- promotions[Text letter]
@@ -43,14 +43,14 @@ fn ?Ending from, to, (? ((letter, rest))):
     ? (Promoting from, to, man)
 
 # what a person types: e2e4, e7e8n. Text that is no move in coordinates reads as nil.
-?ParseMove: fn Text -> ?Move
+?ParseMove: fn Text -> ?ChessMove
 fn ?ParseMove text:
     ((from, afterFrom)) <- ?SquareAt (Front (Lower text))
     ((to, afterTo)) <- ?SquareAt afterFrom
     ?Ending from, to, (?Step afterTo)
 
 # a move in coordinates
-Spelled: fn Move -> Text
+Spelled: fn ChessMove -> Text
 fn Spelled (Moving from, to) = "{from}{to}"
 fn Spelled (Promoting from, to, man) = "{from}{to}{Lower (ManLetter man)}"
 
@@ -61,3 +61,8 @@ fn PieceLetter (? piece) = if piece.color == White: ManLetter piece.man else: Lo
 # one rank of the board as text, White's pieces capital: `2  P P P P . P P P`
 RankLine: fn (Square ==> Piece), Nat -> Text
 fn RankLine board, rank = "{rank + 1}  {Joined (Each eight, \|file| PieceLetter board[(Square file, rank)]), " "}"
+
+# the same of a board not told yet: the rank's number alone
+RankLineOf: fn ?(Square ==> Piece), Nat -> Text
+fn RankLineOf (? board), rank = RankLine board, rank
+fn RankLineOf nil, rank = "{rank + 1}"

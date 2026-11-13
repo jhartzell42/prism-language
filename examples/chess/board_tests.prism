@@ -1,16 +1,16 @@
 # The board's tests: two boards in one window, pressed by path. A place under the window is
 # pressed through the scene's `Draw.Clickable` for it (`whiteE2`, `blackBack`: each place's
 # key names its seat), and every press is followed by `compute until idle`, since it
-# reaches its seat through layers of hosts. The transcript prints the window's whole scene
+# reaches its seat through layers of hosts. `@twoBoards` is the root's hot seat, two
+# boards in a window with the game in memory, with no command line to read. The transcript prints the window's whole scene
 # at every change and is not kept; each test passes on its own checks.
 # Written by Claude on the claude-self-hosting branch; subject to change.
-emit Pane.* | Gui.* | Console.* | Seat.* | Play.* | Watch.*
-use App.*
+emit Pane.* | Gui.* | Console.*
 use Tables.*
 use Window.*
 use Window.Panes.*
 
-test boards_show_the_opening, @main:
+test boards_show_the_opening, @twoBoards:
     build
     compute until idle
         => expect Draw.Text(text="White: White to move", ..)
@@ -18,7 +18,7 @@ test boards_show_the_opening, @main:
 
 # The fool's mate, each move two presses on the mover's own board. Both boards show the
 # result, each from its own seat's answer.
-test fools_mate_on_two_boards, @main:
+test fools_mate_on_two_boards, @twoBoards:
     build
     compute until idle
     click element 0/[whiteF2]/0
@@ -43,7 +43,7 @@ test fools_mate_on_two_boards, @main:
 
 # A move the rules refuse, and a move out of turn: each board shows the typed reason of
 # its own last response, in its own words; the other board shows none.
-test declined_on_a_board, @main:
+test declined_on_a_board, @twoBoards:
     build
     compute until idle
     click element 0/[whiteE2]/0
@@ -66,7 +66,7 @@ test declined_on_a_board, @main:
 
 # Back and Forward show earlier positions out of the game the seat is told; the move that
 # led to the position shown is in brackets, on that board alone.
-test back_and_forward, @main:
+test back_and_forward, @twoBoards:
     build
     compute until idle
     click element 0/[whiteE2]/0
@@ -95,7 +95,7 @@ test back_and_forward, @main:
 
 # A pawn moved to its last rank opens the dialog; Cancel sends nothing, and a piece chosen
 # sends the promoting move.
-test promotion_dialog, @main:
+test promotion_dialog, @twoBoards:
     build
     compute until idle
     click element 0/[whiteA2]/0
@@ -151,7 +151,7 @@ test promotion_dialog, @main:
         => expect Draw.Text(text="White: Black to move", ..)
 
 # A draw offered on one board and accepted on the other; then nothing more is taken.
-test draw_by_buttons, @main:
+test draw_by_buttons, @twoBoards:
     build
     compute until idle
     click element 0/[blackAccept]/0

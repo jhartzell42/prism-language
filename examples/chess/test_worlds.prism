@@ -1,0 +1,130 @@
+# The worlds the saved game's and the remote game's tests run in, written in Prism: a file
+# kept in a hold, which a test can read back and start again from, and a wire between a
+# phone and a Hub in one program (Part IV ch. 10, seams 4 and 5). The tables over them
+# are here too.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit rest | Ui.* | Seat.* | Net.* | Fs.*
+use Documents.*
+use Rules.*
+use Notation.*
+use Game.*
+use Implementations.*
+use TextPlayers.*
+use CommandLine.*
+use Tables.*
+use Ui.*
+
+# ---- a file with no disk
+
+# A file kept in a hold, as a file document's implementation: its bytes start as given,
+# and each tick's last overwrite replaces them. It outlives everything seated at it, so a
+# game hosted there can stop and start again.
+@InHold: fn [U8], Guests File -> @(Supplier File)
+fn @InHold initial, $guests:
+    !overwrites <- for at, $element <- $guests:                                  # 0
+        @Switch (!ReplacesAt at, $element)
+    let !overwritten = !Filter (?LastOf (Values !overwrites))
+    $bytes <- initial then !overwritten
+    @ \|at, seat, element| match element:
+        Seat.Request(..): @ (Accepted on !overwritten)
+        Seat.Query(..): @ ? $bytes
+        Seat.Leave(..): @ unit
+
+# What the file holds, as a viewer of it reads it: nothing yet, the game in `^Pod`'s text,
+# or something else.
+type FileHolds = choice:
+    NotRead
+    Empty
+    PodTextOf ChessGame          # the bytes are exactly `^Pod`'s text of this game
+    OtherBytes
+derive ^Eq, ^Show
+
+HoldsOf: fn ?[U8] -> FileHolds
+fn HoldsOf nil = NotRead
+fn HoldsOf (? bytes) = if (Len bytes) == 0: Empty else: match ~Decode<<ChessGame>> bytes:
+    ~ game: if (Utf8Bytes (Print [[game]])) == bytes: PodTextOf game else: OtherBytes
+    otherwise: OtherBytes
+
+HoldsText: fn FileHolds -> Text
+fn HoldsText NotRead = "file: not read"
+fn HoldsText Empty = "file: empty"
+fn HoldsText (PodTextOf game) = "file: the game's pod text; moves: {Joined (Each game.moves, Spelled), " "}"
+fn HoldsText OtherBytes = "file: not a game's pod text"
+
+# A viewer at the file: what it holds, in words.
+@FileView: @unit emit Ui.* | Seat.* File Viewer
+@FileView:
+    $?bytes <- Seat.Query($query=$ Contents)                                     # 0
+    Ui.Label($text=(HoldsText (HoldsOf $?bytes)))                                # 1
+
+# The hot seat at text interfaces, its game kept in a file of the test's own. A button
+# stops the game and starts it again: the editor seat's blueprint changes with the run's
+# number, so the game's domain is built anew and `@InFile` reads the file it left. A
+# viewer at the file shows what is written.
+@SavedRun: fn Nat -> @unit emit Ui.* | Seat.* File Editor
+fn @SavedRun run:
+    Ui.Label($text=$"run {run}")                                                 # 0
+    @Filed ChessSeats($player=$ {{White: $ (@TextPlayer White), Black: $ (@TextPlayer Black)}}, $spectator=$ {{"ada": $ (@SpectatorView "ada")}})   # 1
+
+@savedGame: @unit emit Ui.*
+@savedGame:
+    !restart <- Ui.Button($label=$"restart")                                     # 0
+    $run <- 1 then $run + (1 on !restart)
+    ignore <- @HostDocument (@InHold [[]]), FileSeats($editor=$ {{unit: (@SavedRun $run)}}, $viewer=$ {{unit: $ @FileView}})   # 1
+
+# The same at terminals on the World's disk: `--terminals --file game.pod`. The test
+# supplies the file's contents.
+@savedOnDisk: @unit emit Console.* | Fs.* | Net.*
+@savedOnDisk:
+    @Terminals (InFile "game.pod"), [[White, Black]]
+
+# ---- a wire with no network
+
+# One wire inside one program: a host over a phone and a Hub that answers the phone's one
+# `Net.Link` with the Hub's connection 0. The Hub's listener is told the connection when
+# the program starts; what the phone's link sends is what the Hub's channel for
+# connection 0 receives, and back. It carries one link: a second phone needs a listener
+# that is told two connections, a tick apart.
+@OneWire: fn @a emit Net.* | r -> @a emit r
+fn @OneWire @guest:
+    !started <- @started                                                         # 0
+    ((result, $tree)) <- @Host @guest, \|path, element| match element:          # 1
+        Net.Link(..): @ !down
+        Net.Listen(..): @ (Connection(id=0) on !started)
+        Net.Channel(..): @ !up
+        otherwise: @Element element
+    !ups <- for at, $element <- $tree:                                           # 2
+        @Switch (!LinkSends $element)
+    !downs <- for at, $element <- $tree:                                         # 3
+        @Switch (!ChannelSends $element)
+    let !up = Fold (Values !ups), [[]], Append
+    let !down = Fold (Values !downs), [[]], Append
+    @ result
+
+!LinkSends: fn Elem (Net.* | r) -> ![Message]
+fn !LinkSends element = match element:
+    Net.Link(!sends=!sends): !sends
+    otherwise: never
+
+!ChannelSends: fn Elem (Net.* | r) -> ![Message]
+fn !ChannelSends element = match element:
+    Net.Channel(!sends=!sends): !sends
+    otherwise: never
+
+let hub = Address(host="hub", port=7000)
+
+# The phone: White's text player, its game at the Hub.
+@Phone: @unit emit Ui.* | Net.*
+@Phone:
+    ignore <- @HostDocument (@Over<<ChessGame>> hub), ChessSeats($player=$ {{White: $ (@TextPlayer White)}}, $spectator=$ {{}})
+
+# The Hub, with Black's text player its own seat; the phone's connection takes White.
+@HubSide: @unit emit Ui.* | Net.*
+@HubSide:
+    @Hub hub.port, [[((Black, $ (@TextPlayer Black)))]]
+
+@remoteGame: @unit emit Ui.*
+@remoteGame:
+    @OneWire @widget:
+        @Phone                                                                   # 0
+        @HubSide                                                                 # 1

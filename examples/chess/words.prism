@@ -7,7 +7,7 @@ use Documents.*
 use Rules.*
 use Game.*
 
-ResultText: fn Result -> Text
+ResultText: fn ChessResult -> Text
 fn ResultText (Checkmated color) = "{color} has been checkmated"
 fn ResultText Stalemate = "stalemate"
 fn ResultText (Resigned color) = "{color} has resigned"
@@ -43,6 +43,6 @@ fn ReasonText (IllegalMove fault) = FaultText fault
 fn ReasonText NoDrawOffered = "no draw has been offered to you"
 fn ReasonText DrawAlreadyOffered = "you have already offered a draw"
 
-Said: fn Response ChessReason -> Text
+Said: fn Response ChessGame Player -> Text
 fn Said Accepted = "accepted"
 fn Said (Declined why) = "declined: {ReasonText why}"

@@ -1,0 +1,12 @@
+# What a participant that acts on its seat's answer is written with: the answer as an
+# event. A seat's answer is nil until it is loaded (`Seat.Query`'s output is `$?`), and a
+# participant that acts on what it is told acts on its first answer too.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit rest
+
+# The answer's values as an event: the one it has when the block is built, if it is
+# loaded, and each later one.
+@Told: fn $?a -> @!a
+fn @Told $?value:
+    !first <- @started
+    @ !Filter ((!Updated $?value) <| ($?value on !first))

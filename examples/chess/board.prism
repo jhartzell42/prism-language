@@ -4,9 +4,11 @@
 # nothing else. Back and Forward show earlier positions out of the game it is told. A pawn
 # moved to its last rank opens a dialog that asks what it becomes. The board and its panel
 # follow the basic chess's (`examples/basic-chess/app.prism`, `@Board` and `@Panel`), on
-# this program's copy of the window library (`window/`), with no settings dialog.
+# this program's copy of the window library (`window/`), with no settings dialog. It speaks
+# the library's `Seat.* ChessGame Player`; until its seat's answer is loaded it shows an
+# empty board and "loading".
 # Written by Claude on the claude-self-hosting branch; subject to change.
-emit rest | Pane.* | Gui.* | Seat.* | Play.*
+emit rest | Pane.* | Gui.* | Seat.*
 use Documents.*
 use Rules.*
 use Notation.*
@@ -120,16 +122,27 @@ fn ?Earliest picks:
     ((ignore, command)) <- ?First picks
     ? command
 
-# the position on the board: the earlier one picked out by Back, or the latest told
-Showing: fn ?Viewing, PlayerTold -> Position
-fn Showing (? viewing), told = viewing.position
-fn Showing nil, told = told.game.position
+# the position on the board: the earlier one picked out by Back, or the latest told; none
+# before the seat is told the game
+?Showing: fn ?Viewing, ?PlayerTold -> ?Position
+fn ?Showing (? viewing), ?told = ? viewing.position
+fn ?Showing nil, (? told) = ? told.game.position
+fn ?Showing nil, nil = nil
+
+?PieceShown: fn ?Position, Square -> ?Piece
+fn ?PieceShown (? position), square = ?At position, square
+fn ?PieceShown nil, square = nil
+
+# whether the seat is told a game with its own piece on the square
+OwnsTold: fn ?PlayerTold, Square, Color -> Bool
+fn OwnsTold (? told), square, color = Owns told.game.position, square, color
+fn OwnsTold nil, square, color = False
 
 # A first press on one's own piece selects it; a second press, anywhere, clears the
 # selection. A press while an earlier position shows selects nothing; so does any button.
-?Selecting: fn Color, ?Square, ?Viewing, PlayerTold, Command -> ?Square
-fn ?Selecting color, ?selected, ?pinned, told, command = match command:
-    Pick square: if ?selected == nil and ?pinned == nil and Owns told.game.position, square, color: ? square else: nil
+?Selecting: fn Color, ?Square, ?Viewing, ?PlayerTold, Command -> ?Square
+fn ?Selecting color, ?selected, ?pinned, ?told, command = match command:
+    Pick square: if ?selected == nil and ?pinned == nil and OwnsTold ?told, square, color: ? square else: nil
     Act button: nil
     Choose offer: nil
 
@@ -142,19 +155,21 @@ fn ?Stepping ?selected, ?pinned, command = match command:
     Act button: nil
     Choose offer: nil
 
-Promoted: fn PlayerTold, Pending -> Bool
-fn Promoted told, step = Promotes told.game.position, step.from, step.to
+Promoted: fn ?PlayerTold, Pending -> Bool
+fn Promoted (? told), step = Promotes told.game.position, step.from, step.to
+fn Promoted nil, step = False
 
 # a pawn stepping to its last rank waits for the dialog; any other press closes the dialog
-?Waiting: fn ?Square, ?Viewing, PlayerTold, Command -> ?Pending
-fn ?Waiting ?selected, ?pinned, told, command = match ?Stepping ?selected, ?pinned, command:
-    ? step: if Promoted told, step: ? step else: nil
+?Waiting: fn ?Square, ?Viewing, ?PlayerTold, Command -> ?Pending
+fn ?Waiting ?selected, ?pinned, ?told, command = match ?Stepping ?selected, ?pinned, command:
+    ? step: if Promoted ?told, step: ? step else: nil
     nil: nil
 
 # Back and Forward walk the positions before the latest; a press on a square returns to
 # the latest; any other press leaves the board where it is.
-?Browsing: fn ?Viewing, PlayerTold, Command -> ?Viewing
-fn ?Browsing ?pinned, told, command = match command:
+?Browsing: fn ?Viewing, ?PlayerTold, Command -> ?Viewing
+fn ?Browsing ?pinned, nil, command = ?pinned
+fn ?Browsing ?pinned, (? told), command = match command:
     Pick square: nil
     Act GoBack: ?Before ?pinned, told.game
     Act GoForward: ?After ?pinned, told.game
@@ -184,22 +199,22 @@ fn ?After (? viewing), game = ?ViewingAt game, (viewing.index + 1)
 # What a press asks the document for. The board decides nothing about legality: a second
 # press is sent as a move, whatever it is; a pawn's step to its last rank is sent when the
 # dialog says what the pawn becomes.
-?Asked: fn ?Square, ?Viewing, ?Pending, PlayerTold, Command -> ?PlayerRequest
-fn ?Asked ?selected, ?pinned, ?waiting, told, command = match command:
+?Asked: fn ?Square, ?Viewing, ?Pending, ?PlayerTold, Command -> ?PlayerRequest
+fn ?Asked ?selected, ?pinned, ?waiting, ?told, command = match command:
     Pick to: match ?Stepping ?selected, ?pinned, command:
-        ? step: if Promoted told, step: nil else: ? (Play (Moving step.from, step.to))
+        ? step: if Promoted ?told, step: nil else: ? (MakeMove (Moving step.from, step.to))
         nil: nil
     Act GiveUp: ? Resign
     Act ProposeDraw: ? OfferDraw
     Act TakeDraw: ? AcceptDraw
     Act other: nil
     Choose (Become man): match ?waiting:
-        ? step: ? (Play (Promoting step.from, step.to, man))
+        ? step: ? (MakeMove (Promoting step.from, step.to, man))
         nil: nil
     Choose Withdraw: nil
 
 # the reason in the last response, if it was declined
-?Declined: fn Response ChessReason -> ?ChessReason
+?Declined: fn Response ChessGame Player -> ?ChessReason
 fn ?Declined Accepted = nil
 fn ?Declined (Declined why) = ? why
 
@@ -227,18 +242,20 @@ let lightPaint = Rgb 0.9411764705882353, 0.8509803921568627, 0.7098039215686275
 let reachPaint = Rgb 0.6, 0.8, 0.5
 
 # whether the selected piece has a legal move to this square, by what the seat is told
-Reaches: fn ?Square, PlayerTold, Square -> Bool
-fn Reaches nil, told, square = False
-fn Reaches (? from), told, square = AnyOf told.legal, \|move| (Origin move) == from and (Destination move) == square
+Reaches: fn ?Square, ?PlayerTold, Square -> Bool
+fn Reaches nil, ?told, square = False
+fn Reaches (? from), nil, square = False
+fn Reaches (? from), (? told), square = AnyOf told.legal, \|move| (Origin move) == from and (Destination move) == square
 
 # the selected square is yellow, and the squares its piece may move to are green
-PaintOf: fn ?Square, PlayerTold, Square -> Paint
-fn PaintOf ?selected, told, square = if ?selected == (? square): Yellow else:
-    if Reaches ?selected, told, square: reachPaint else:
+PaintOf: fn ?Square, ?PlayerTold, Square -> Paint
+fn PaintOf ?selected, ?told, square = if ?selected == (? square): Yellow else:
+    if Reaches ?selected, ?told, square: reachPaint else:
         if IsDark square: darkPaint else: lightPaint
 
-StatusLine: fn Color, PlayerTold -> Text
-fn StatusLine color, told = if told.game.?offered == (? (Opponent color)): "{color}: {StatusText told.game}; a draw is offered" else: "{color}: {StatusText told.game}"
+StatusLine: fn Color, ?PlayerTold -> Text
+fn StatusLine color, nil = "{color}: loading"
+fn StatusLine color, (? told) = if told.game.?offered == (? (Opponent color)): "{color}: {StatusText told.game}; a draw is offered" else: "{color}: {StatusText told.game}"
 
 DeclinedLine: fn ?ChessReason -> Text
 fn DeclinedLine nil = ""
@@ -246,18 +263,19 @@ fn DeclinedLine (? why) = "declined: {ReasonText why}"
 
 # the moves as the panel lists them: a line per full move, `2. g1f3 b8c6`, the move that
 # led to the position shown in brackets
-MoveAt: fn [Move], Nat, Nat -> Text
+MoveAt: fn [ChessMove], Nat, Nat -> Text
 fn MoveAt moves, shown, index = match moves[index]:
     ? move: if index + 1 == shown: "[{Spelled move}]" else: Spelled move
     nil: ""
 
-MoveLine: fn [Move], Nat, Nat -> Text
+MoveLine: fn [ChessMove], Nat, Nat -> Text
 fn MoveLine moves, shown, line:
     let second = MoveAt moves, shown, (2 * line + 1)
     if second == "": "{line + 1}. {MoveAt moves, shown, (2 * line)}" else: "{line + 1}. {MoveAt moves, shown, (2 * line)} {second}"
 
-MoveLines: fn PlayerTold, ?Viewing -> (Nat ==> Text)
-fn MoveLines told, ?pinned:
+MoveLines: fn ?PlayerTold, ?Viewing -> (Nat ==> Text)
+fn MoveLines nil, ?pinned = {{}}
+fn MoveLines (? told), ?pinned:
     let shown = IndexOf ?pinned, told.game
     let ((ignore, lines)) = Fold told.game.moves, ((0, {{}})), \|((index, all)), move| ((index + 1, (if index mod 2 == 0: Insert all, (Size all), (MoveLine told.game.moves, shown, (Size all)) else: all)))
     lines
@@ -265,27 +283,27 @@ fn MoveLines told, ?pinned:
 # ---- the widgets
 
 # the board on its border: a press on a square is a `Pick`
-@Squares: fn Color, $PlayerTold, $?Viewing, $?Square -> @!Command
-fn @Squares color, $told, $?pinned, $?selected = @Bordered ($ 8.0), Ink, @widget:
+@Squares: fn Color, $?PlayerTold, $?Viewing, $?Square -> @!Command
+fn @Squares color, $?told, $?pinned, $?selected = @Bordered ($ 8.0), Ink, @widget:
     !picks <- @Grid 8, @widget:
         !squares <- for cell, $present <- $ (Cells color):
-            !pressed <- Pane.Image($src=(Picture (?At (Showing $?pinned, $told), cell.square)), $paint=(PaintOf $?selected, $told, cell.square))
+            !pressed <- Pane.Image($src=(Picture (?PieceShown (?Showing $?pinned, $?told), cell.square)), $paint=(PaintOf $?selected, $?told, cell.square))
             @ (Pick cell.square) on !pressed
         @ !Filter (?Earliest !squares)
     @ !picks
 
 # beside the board: where the game stands, why the last request was declined, the buttons,
 # and the moves
-@Panel: fn Color, $PlayerTold, $?Viewing, $?ChessReason -> @!Command
-fn @Panel color, $told, $?pinned, $?declined = @Column 6.0, @widget:
-    Pane.Label($text=(StatusLine color, $told))
+@Panel: fn Color, $?PlayerTold, $?Viewing, $?ChessReason -> @!Command
+fn @Panel color, $?told, $?pinned, $?declined = @Column 6.0, @widget:
+    Pane.Label($text=(StatusLine color, $?told))
     Pane.Label($text=(DeclinedLine $?declined))
     !pressed <- @Row 4.0, @widget:
         !buttons <- for knob, $present <- $ (Knobs color):
             !click <- Pane.Button($label=$ (ButtonLabel knob.button))
             @ (Act knob.button) on !click
         @ !Filter (?Earliest !buttons)
-    for slot, $line <- MoveLines $told, $?pinned:
+    for slot, $line <- MoveLines $?told, $?pinned:
         Pane.Label($text=$line)
     @ !pressed
 
@@ -305,18 +323,18 @@ fn Open ?waiting = ?waiting != nil
 
 # A player at a board. Its seat's answer and its requests' responses are everything it
 # knows of the game.
-@BoardPlayer: fn Player -> @unit emit r | Pane.* | Gui.* | Seat.* | Play.*
-fn @BoardPlayer (Player color):
-    $told <- Play.Query($query=$ Game.Whole)                                          # 0
+@BoardPlayer: fn Color -> @unit emit r | Pane.* | Gui.* | Seat.* ChessGame Player
+fn @BoardPlayer color:
+    $?told <- Seat.Query($query=$ Game.Whole)                                                         # 0
     !command <- @Layers @widget:                                                     # 1 hosts; 2 is the layers
         !played <- @Column 8.0, @widget:
-            !onBoard <- @Squares color, $told, $?pinned, $?selected
-            !onPanel <- @Panel color, $told, $?pinned, $?declined
+            !onBoard <- @Squares color, $?told, $?pinned, $?selected
+            !onPanel <- @Panel color, $?told, $?pinned, $?declined
             @ !onBoard <| !onPanel
         !chosen <- @Overlay (Open $?waiting), (Point 0.5, 0.5), (@PromotionForm color)
         @ !played <| !chosen
-    !response <- Play.Request(!requests=(!Filter (?Asked $?selected, $?pinned, $?waiting, $told, !command)))   # 3
-    $?selected <- nil then ?Selecting color, $?selected, $?pinned, $told, !command
-    $?waiting <- nil then ?Waiting $?selected, $?pinned, $told, !command
-    $?pinned <- nil then ?Browsing $?pinned, $told, !command
+    !response <- Seat.Request(!requests=(!Filter (?Asked $?selected, $?pinned, $?waiting, $?told, !command)))   # 3
+    $?selected <- nil then ?Selecting color, $?selected, $?pinned, $?told, !command
+    $?waiting <- nil then ?Waiting $?selected, $?pinned, $?told, !command
+    $?pinned <- nil then ?Browsing $?pinned, $?told, !command
     $?declined <- nil then ?Declined !response

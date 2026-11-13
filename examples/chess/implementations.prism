@@ -1,0 +1,83 @@
+# Where a game of chess is kept: in memory for a hot seat, in a file so a crash costs
+# nothing, or at a Hub over the wire; and the Hub itself. The seats do not change with
+# it: a program builds its `ChessSeats` and hands them to `@HostDocument` with one
+# implementation, and that one argument's `emit` says what the program must be able to
+# do (Part IV ch. 6). The library writes every implementation; chess writes none.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit rest | Seat.* | Fs.* | Net.*
+use Documents.*
+use Rules.*
+use Game.*
+
+# How a program keeps its game.
+type Keeping = choice:
+    InMemory                     # a hot seat: nothing survives the program
+    InFile Text                  # a saved game: the file at this path, in `^Pod`'s text of the game
+    Over Address                 # a game against a Hub at this address
+derive ^Eq, ^Show
+
+# The game in memory: the narrowest hosting, whose `emit` adds nothing to the seats'. The
+# tables a test runs use it, so their rows say they touch no disk and no wire. The
+# document is named, `<<ChessGame>>`: only the state `fresh` and the seats decide it, and
+# neither decides a document (ruling IN).
+@InMemoryGame: fn ChessSeats rest -> @unit emit rest
+fn @InMemoryGame seats:
+    ignore <- @HostDocument (@InMemory<<ChessGame>> fresh), seats
+
+# The game kept as the program's command line chose: one argument picks the
+# implementation, and the program's row admits all three (a disk and a wire it may not
+# use). A saved game is hosted at a file's editor seat by `@Filed`, and the file is
+# seated on the World's disk by the library's `@OnDisk`, which emits `Fs.*`.
+@Kept: fn Keeping, ChessSeats rest -> @unit emit Fs.* | Net.* | rest
+fn @Kept InMemory, seats:
+    ignore <- @HostDocument (@InMemory<<ChessGame>> fresh), seats
+fn @Kept (InFile path), seats:
+    ignore <- @HostDocument (@OnDisk path), FileSeats($editor=$ {{unit: $ (@Filed seats)}}, $viewer=$ {{}})
+fn @Kept (Over address), seats:
+    ignore <- @HostDocument (@Over<<ChessGame>> address), seats
+
+# The game hosted in a file: this domain sits at the file's editor seat, which is what
+# `@InFile` emits, `Seat.* File Editor`. Its file is whatever seats it: `@OnDisk` on the
+# World's disk, or a test's own file.
+@Filed: fn ChessSeats rest -> @unit emit Seat.* File Editor | rest
+fn @Filed seats:
+    ignore <- @HostDocument (@InFile<<ChessGame>> fresh), seats
+
+# ---- the Hub
+
+# A Hub: the game in memory, its seats the wire's connections as they open, one `@Serve`
+# per connection, beside the player seats the Hub's own program holds, given as pairs of
+# a color and its participant. The colors the program leaves empty go to the first
+# connections, White first; every later connection is a spectator, named for its
+# connection. The Hub seats each connection once (doubt MX): what a phone's paths say of
+# its seat is not asked. `@Serve` names its document: a connection decides none. The
+# seats are built as lists of pairs and made maps by `Map`: a tuple literal keeps its
+# parts whole, where `Insert` would lift over a seat's live blueprint (ruling HD).
+@Hub: fn Nat, [((Color, $@(@unit emit Seat.* ChessGame Player | Net.* | rest)))] -> @unit emit Net.* | rest
+fn @Hub port, local:
+    !opened <- Net.Listen(port=port)                                           # 0
+    $connections <- [[]] then Push $connections, !opened
+    ignore <- @HostDocument (@InMemory<<ChessGame>> fresh), ChessSeats($player=(PlayersFrom local, $connections), $spectator=(SpectatorsFrom local, $connections))   # 1
+
+# the colors no seat of the Hub's own program holds, White first
+FreeColors: fn [((Color, v))] -> [Color]
+fn FreeColors local = Filter [[White, Black]], \|color| not (AnyOf local, \|((held, guest))| held == color)
+
+# the Hub's player seats: its own, and a connection at each free color, in order
+PlayersFrom: fn [((Color, $@(@unit emit Seat.* ChessGame Player | Net.* | rest)))], [Connection] -> (Color ==> $@(@unit emit Seat.* ChessGame Player | Net.* | rest))
+fn PlayersFrom local, connections:
+    let free = FreeColors local
+    let served = Each (Take connections, (Len free)), \|connection| $ (@Serve<<ChessGame>> connection)
+    Map (Append local, (Paired free, served))
+
+# the Hub's spectators: every connection after those the free colors took
+SpectatorsFrom: fn [((Color, v))], [Connection] -> (Text ==> $@(@unit emit Seat.* ChessGame Spectator | Net.* | rest))
+fn SpectatorsFrom local, connections = Map (Each (Drop connections, (Len (FreeColors local))), \|connection| (("connection {connection.id}", $ (@Serve<<ChessGame>> connection))))
+
+# the first of each list beside the second's at the same place, as long as both last
+Paired: fn [a], [b] -> [((a, b))]
+fn Paired firsts, seconds:
+    let ((pairs, ignore)) = Fold firsts, (([[]], 0)), \|((all, at)), first| match seconds[at]:
+        ? second: (((Push all, ((first, second))), at + 1))
+        nil: ((all, at + 1))
+    pairs

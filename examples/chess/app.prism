@@ -1,32 +1,58 @@
-# Chess, the document way: one game of chess as a document in memory, and participants
-# that hold its seats. This is the root: the hot seat in a window, two boards side by
-# side, each holding one player's seat. The other seatings (text interfaces, terminals, a
-# board against a terminal, scripts) are in `tables.prism`; claude/document-chess.md has
-# the module map.
+# Chess, the document way: one game of chess as a document, and participants that hold
+# its seats. This is the root. It reads its command line (`Modes`, where the words are
+# listed) and runs one of: boards in a window or players at terminals, the game kept in
+# memory (`chess`), in a file (`chess --file game.pod`) or at a Hub
+# (`chess --connect HOST PORT white`); or a Hub (`chess --hub PORT`). The front ends take
+# the implementation as their one argument. The other seatings the tests run (text
+# interfaces, scripts, a board against a terminal) are in `tables.prism`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
-emit Pane.* | Gui.*
-mod Documents
+emit Pane.* | Gui.* | Console.* | Fs.* | Net.* | Process.*
 mod Rules
 mod Game
 mod Notation
 mod Words
 mod Squares
 mod Lines
+mod Told
+mod Implementations
+mod Modes
 mod TextPlayers
 mod Console
 mod CommandLine
 mod Window
 mod Board
 mod Tables
+mod TestWorlds
 test mod Checks
 test mod Tests
 test mod TerminalTests
 test mod BoardTests
+use Documents.*
+use Rules.*
+use Implementations.*
+use Modes.*
 use Tables.*
 use Window.*
 use Window.Panes.*
 use Window.Widgets.*
 
-@main: @unit emit Pane.* | Gui.*
+@main: @unit emit Pane.* | Gui.* | Console.* | Fs.* | Net.* | Process.*
 @main:
-    @Window ($ "Chess"), (Extent 1400.0, 760.0), @boards
+    args <- Process.Args                                                       # 0
+    match ?ModeOf args:                                                        # 1
+        ? mode: @RunMode mode
+        nil: @Unreadable
+
+# What a mode runs: the window's boards or the terminals, the game kept as the mode
+# says; or a Hub, which seats nobody of its own.
+@RunMode: fn Mode -> @unit emit Pane.* | Gui.* | Console.* | Fs.* | Net.*
+fn @RunMode (Running Boards, keeping, seated) = @Window ($ "Chess"), (Extent 1400.0, 760.0), @widget:
+    @Boards keeping, seated
+fn @RunMode (Running Terminals, keeping, seated) = @Terminals keeping, seated
+fn @RunMode (HubOn port) = @Hub port, [[]]
+
+# A command line the program cannot read: it exits with code 2.
+@Unreadable: @unit emit Process.*
+@Unreadable:
+    !started <- @started                                                       # 0
+    Process.Exit(!code=(2 on !started))                                        # 1
