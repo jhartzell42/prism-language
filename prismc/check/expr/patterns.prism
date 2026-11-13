@@ -97,7 +97,7 @@ fn BindPattern env, st, p, t, refutable = match p.kind:
     # a fresh rigid type in the arm, equal only to itself
     PAny q: match Walk st, t:
         TyExists vs, b, ignore:
-            let opened = Each vs, \|v| TyRigid "{ShownVar v}#{st.next}"
+            let opened = Each vs, \|v| TyRigid "{ShownVar v}#any{st.next}"
             let st2 = update st:
                 &_.next += 1
             BindPattern env, st2, q, (SubstQ (ParamInst vs, opened), b), refutable

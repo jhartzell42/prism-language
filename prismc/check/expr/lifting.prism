@@ -141,14 +141,14 @@ fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
     match ?expected:
         ? want:
             let ((bt, st3a)) = InferExprBlock env2, st2, arm.body
-            let st3 = NoteFaultAt st3a, (TailSpan arm.body), want, bt
+            let st3 = OpenedEscapes (NoteFaultAt st3a, (TailSpan arm.body), want, bt), st.next, st1.next, bt, scrutTy, (ResultSpan arm.body)
             let fwd = arm.?pattern == nil or (IsFamilyArm arm)
             match ?refinedOut:
                 ? ((o, out)): ((acc, st3, (? ArmWait(o=o, out=out, ty=bt, span=(ResultSpan arm.body), ?against=(? want), fwd=fwd))))
                 nil: ((acc, (ArmAgainst st3, want, bt, (ResultSpan arm.body), fwd), nil))
         nil:
             let ((bt, st3b)) = InferExprBlock env2, st2, arm.body
-            let st3 = NoteFaultAt st3b, (TailSpan arm.body), res, bt
+            let st3 = OpenedEscapes (NoteFaultAt st3b, (TailSpan arm.body), res, bt), st.next, st1.next, bt, scrutTy, (ResultSpan arm.body)
             let head = HeadSigil st3, bt
             let plainBt = if IsTimeSigil head: InnerOf st3, bt else: bt
             let acc2 = if IsTimeSigil head: Push acc, ((head, arm.body.span)) else: Push acc, (("", arm.body.span))
@@ -156,6 +156,19 @@ fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
             match ?refinedOut:
                 ? ((o, out)): ((acc3, st3, (? ArmWait(o=o, out=out, ty=plainBt, span=(ResultSpan arm.body), ?against=nil, fwd=False))))
                 nil: ((acc3, (UnifyArm st3, res, plainBt, (ResultSpan arm.body)), nil))
+
+# `existential-escape` (Type System ch. 3): a type an arm's `any` pattern opened, one
+# numbered from `lo` up to `hi`, stays in the arm; its value may not have it.
+OpenedEscapes: unbounded fn St, Nat, Nat, Ty, Ty, Range -> St
+fn OpenedEscapes st, lo, hi, bt, scrutTy, span:
+    let leaving = Filter (RigidNamesIn (Zonk st, bt)), \|n| OpenedBetween n, lo, hi
+    if (Len leaving) == 0: st
+    else: ErrFix st, "existential-escape", span, "the type hidden in `{ShowTy st, scrutTy}` would leave it here", "use the opened value inside the arm, and give back a type without it"
+
+OpenedBetween: fn Text, Nat, Nat -> Bool
+fn OpenedBetween n, lo, hi = match ?ParseNat (Or (SplitOn n, "#any")[1], ""):
+    ? k: k >= lo and k < hi
+    nil: False
 
 # An arm's value against the type the match is checked at: a blueprint's row goes in an
 # obligation, which at an arm that may forward is the forwarding check (ch. 5, pass 5).
