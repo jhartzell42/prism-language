@@ -1,0 +1,26 @@
+# Type System ch. 3, "An associated row is an associated type that is a row, declared
+# `row Lang`": a trait declares `row Lower`, each impl chooses it (`row Lower = Ui.*`), and
+# a widget method emits `Lower p`, which at `Greeting` is `Ui.*`. The page, emitting
+# `Ui.*`, hosts the greeting's labels as its own.
+# Expected transcript derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Panel p:
+    row Lower
+    @Shown: fn p -> @unit emit Lower p
+
+type Greeting = record:
+    text: Text
+derive ^Eq, ^Show
+
+impl ^Panel Greeting:
+    row Lower = Ui.*
+    fn @Shown greeting:
+        Ui.Label($text=$ greeting.text)                                 # 0
+
+@page: @unit
+@page:
+    @Shown Greeting(text="hello")                                       # 0
+    Ui.Label($text=$"below")                                            # 1

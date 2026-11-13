@@ -1,0 +1,15 @@
+# Type System ch. 3: an impl chooses each associated row its trait declares; this impl of
+# `^Panel` names no `row Lower`: `impl-lacks`.
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+trait ^Panel p:
+    row Lower
+    Title: fn p -> Text
+
+type Greeting = record:
+    text: Text
+
+impl ^Panel Greeting:
+    fn Title greeting = greeting.text

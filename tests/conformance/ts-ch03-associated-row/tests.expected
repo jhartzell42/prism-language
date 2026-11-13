@@ -1,0 +1,7 @@
+# Derived by hand from Type System ch. 3: `@Shown` at `Greeting` emits `Lower Greeting`, the impl's `Ui.*`, so its label stands in the page as the page's first child's first child.
+test lower_row_is_the_impls
+
+tick 0
+  added:
+    0/0: Ui.Label(text="hello")
+    1: Ui.Label(text="below")
