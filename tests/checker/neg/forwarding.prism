@@ -3,7 +3,7 @@ module Sandbox
 emit r
 use Fs.*
 
-@Sandbox: fn @a emit Fs.* | r -> @a
+@Sandbox: prompt fn @a emit Fs.* | r -> @a
 fn @Sandbox @child:
     ((x, ignore)) <- @Host @child, \|p, e| match e:
         Fs.Contents(..): @ $ (~ Contents(text="sandboxed"))

@@ -6,7 +6,7 @@ emit rest
 
 # The answer's values as an event: the one it has when the block is built, if it is
 # loaded, and each later one.
-@Told: fn $?a -> @!a
+@Told: prompt fn $?a -> @!a
 fn @Told $?value:
     !first <- @started
     @ !Filter ((!Updated $?value) <| ($?value on !first))

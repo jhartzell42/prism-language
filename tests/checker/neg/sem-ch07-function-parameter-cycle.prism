@@ -7,12 +7,12 @@
 # promptly): `!asked` and `!responses` would fire each other in one tick.
 emit Ui.*
 
-@Echo: fn $Nat, !Nat -> @((unit, !Nat)) emit Ui.*
+@Echo: prompt fn $Nat, !Nat -> @((unit, !Nat)) emit Ui.*
 fn @Echo $state, !responses:
     Ui.Label($text=$"{$state}")                                    # 0
     @ ((unit, !responses))
 
-@Loop: fn Nat, (fn $Nat, !Nat -> @((a, !Nat)) emit rest) -> @a emit rest
+@Loop: fn Nat, (prompt fn $Nat, !Nat -> @((a, !Nat)) emit rest) -> @a emit rest
 fn @Loop initial, Seats:
     ((results, !asked)) <- Seats $state, !responses
     let !responses = !asked + 1

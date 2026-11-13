@@ -328,7 +328,7 @@ fn SquarePaint s, dark = if dark: s.dark else: s.light
 # The widgets
 
 # the board on its border: a click on a square is a `Pick`
-@Board: fn $Settings, $History, $?Sq -> @!Command
+@Board: prompt fn $Settings, $History, $?Sq -> @!Command
 fn @Board $settings, $history, $?selected = @Bordered (Width $settings.border), Ink, @widget:
     !picks <- @Grid 8, @widget:                                      # 0/[p] hosts; 1 is the grid
         !squares <- for spot, $dark <- $ darkness:                   # 0/[spot] in the grid's child

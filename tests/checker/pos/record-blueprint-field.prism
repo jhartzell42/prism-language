@@ -23,7 +23,7 @@ type Card = record:
     Ui.Label($text=$"seven")
     @ 7
 
-@Show: fn Card -> @Nat
+@Show: prompt fn Card -> @Nat
 fn @Show card:
     Ui.Label($text=$"{card.title}")
     ignore <- card.@body

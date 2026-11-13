@@ -62,7 +62,7 @@ fn Asked doc = Fold doc, [[]], \|acc, p, e| match e:
 Told: fn Kept s -> Text where s: ^Rules
 fn Told k = Read k.state
 
-@InMemory: fn s, @a emit Ui.* | Seat.* -> @a emit Ui.* where s: ^Rules
+@InMemory: prompt fn s, @a emit Ui.* | Seat.* -> @a emit Ui.* where s: ^Rules
 fn @InMemory initial, @guest:
     let !stepped = !Updated $kept
     ((result, $doc)) <- @Host @guest, \|p, e| match e:

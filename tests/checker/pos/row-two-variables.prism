@@ -5,7 +5,7 @@
 module Rows
 emit r
 
-@Both: fn @a emit lower, @b emit rest -> @((a, b)) emit lower | rest
+@Both: prompt fn @a emit lower, @b emit rest -> @((a, b)) emit lower | rest
 fn @Both @first, @second:
     x <- @first
     y <- @second

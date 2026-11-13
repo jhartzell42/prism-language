@@ -45,7 +45,7 @@ trait ^Document d:
     type Answer (r: Role d)
     row Lower                                      # the document's lower language
     @Request: fn Role d, SeatId d r, Request d r -> @!(Response d r) emit Lower d
-    @Query: fn Role d, SeatId d r, $(Query d r) -> @$?(Answer d r) emit Lower d
+    @Query: prompt fn Role d, SeatId d r, $(Query d r) -> @$?(Answer d r) emit Lower d
 
 trait ^StateDocument d where d: ^Document:
     type State

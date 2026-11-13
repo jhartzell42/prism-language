@@ -51,7 +51,7 @@ fn @TextInput name, initial:
 
 # A text input whose text is also set from outside: each firing of `!set` replaces it, the
 # caret at its end; a text box kept in step with a slider.
-@TextField: fn Text, Text, !Text -> @$Text
+@TextField: prompt fn Text, Text, !Text -> @$Text
 fn @TextField name, initial, !set:
     !key <- Ui.TextInput(name=name, $text=$edit.text, $cursor=$edit.cursor)
     $edit <- Edit initial, (Len initial) then (AtEnd !set) <| (Apply $edit, !key)
@@ -60,83 +60,83 @@ fn @TextField name, initial, !set:
 AtEnd: fn Text -> Edit
 fn AtEnd t = Edit t, (Len t)
 
-@Grid: fn Nat, @a -> @a
+@Grid: prompt fn Nat, @a -> @a
 fn @Grid columns, @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
     !in <- Ui.Grid(columns=columns, $children=$elems)
     @ r
 
-@VBox: fn @a -> @a
+@VBox: prompt fn @a -> @a
 fn @VBox @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
     !in <- Ui.VBox($children=$elems)
     @ r
 
-@HBox: fn @a -> @a
+@HBox: prompt fn @a -> @a
 fn @HBox @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
     !in <- Ui.HBox($children=$elems)
     @ r
 
-@Row: fn Float, @a -> @a
+@Row: prompt fn Float, @a -> @a
 fn @Row spacing, @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
     !in <- Ui.Row(spacing=spacing, align=Start, $children=$elems)
     @ r
 
-@Column: fn Float, @a -> @a
+@Column: prompt fn Float, @a -> @a
 fn @Column spacing, @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
     !in <- Ui.Column(spacing=spacing, align=Start, $children=$elems)
     @ r
 
-@Layers: fn @a -> @a
+@Layers: prompt fn @a -> @a
 fn @Layers @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
     !in <- Ui.Layers($children=$elems)
     @ r
 
-@Framed: fn FrameSpec, @a -> @a
+@Framed: prompt fn FrameSpec, @a -> @a
 fn @Framed spec, @child = @FramedBy ($ spec), @child
 
 # a frame whose spec is live: its padding or background follows a setting
-@FramedBy: fn $FrameSpec, @a -> @a
+@FramedBy: prompt fn $FrameSpec, @a -> @a
 fn @FramedBy $spec, @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
     !in <- Ui.Frame($spec=$spec, $children=$elems)
     @ r
 
 # its children in a column drawn only while `$shown`; hidden, they keep their state
-@ShowIf: fn $Bool, @a -> @a
+@ShowIf: prompt fn $Bool, @a -> @a
 fn @ShowIf $shown, @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
     !in <- Ui.Shown($shown=$shown, $children=$elems)
     @ r
 
 # the modifiers: each is one frame around its child
-@Pad: fn Float, @a -> @a
+@Pad: prompt fn Float, @a -> @a
 fn @Pad p, @child = @Framed (FrameSpec p, nil, nil, nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, nil), @child
 
-@Fill: fn Float, @a -> @a
+@Fill: prompt fn Float, @a -> @a
 fn @Fill f, @child = @Framed (FrameSpec 0.0, nil, nil, nil, f, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, nil), @child
 
-@Sized: fn Float, Float, @a -> @a
+@Sized: prompt fn Float, Float, @a -> @a
 fn @Sized w, h, @child = @Framed (FrameSpec 0.0, (? w), (? h), nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, nil), @child
 
-@Aspect: fn Float, @a -> @a
+@Aspect: prompt fn Float, @a -> @a
 fn @Aspect ratio, @child = @Framed (FrameSpec 0.0, nil, nil, (? ratio), 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, nil), @child
 
-@Anchor: fn Point, Point, @a -> @a
+@Anchor: prompt fn Point, Point, @a -> @a
 fn @Anchor at, off, @child = @Framed (FrameSpec 0.0, nil, nil, nil, 0.0, at, off, 0.0, 1.0, nil), @child
 
-@Turned: fn Float, @a -> @a
+@Turned: prompt fn Float, @a -> @a
 fn @Turned deg, @child = @Framed (FrameSpec 0.0, nil, nil, nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), deg, 1.0, nil), @child
 
-@Backed: fn Paint, Float, @a -> @a
+@Backed: prompt fn Paint, Float, @a -> @a
 fn @Backed c, p, @child = @Framed (BandSpec p, c), @child
 
 # its child on a band of `paint` all round, `$width` wide: a board's border
-@Bordered: fn $Float, Paint, @a -> @a
+@Bordered: prompt fn $Float, Paint, @a -> @a
 fn @Bordered $width, paint, @child = @FramedBy (BandSpec $width, paint), @child
 
 BandSpec: fn Float, Paint -> FrameSpec
@@ -146,7 +146,7 @@ fn BandSpec width, paint = FrameSpec width, nil, nil, nil, 0.0, (Point 0.0, 0.0)
 # (`Point 1.0, 0.5` is the middle of the right edge), on paper with a dark edge, drawn only
 # while `$open`. Its background takes the presses its children do not, so nothing beneath
 # it hears them; hidden, its children keep their state (a dialog's text boxes their texts).
-@Overlay: fn $Bool, Point, @a -> @a
+@Overlay: prompt fn $Bool, Point, @a -> @a
 fn @Overlay $open, at, @child = @Anchor at, (Point 0.0, 0.0), @widget:
     r <- @ShowIf $open, @widget:
         inner <- @Backed Ink, 2.0, @widget:
@@ -168,7 +168,7 @@ fn @Overlay $open, at, @child = @Anchor at, (Point 0.0, 0.0), @widget:
 # its birth tick). It ends on the element's `Res`, plain data with `^Eq`, so an equal result
 # moves nothing above it; the room is a hold of the row's own (`@Distinct`), so the result
 # is computed once per write behind it.
-@Laid: fn $Elem, $Room, [Path] -> @$Res
+@Laid: prompt fn $Elem, $Room, [Path] -> @$Res
 fn @Laid $e, $outer, chain:
     $room <- @Distinct $outer
     $kids <- for p, $c <- KidsOf $e:                                     # 0/[p]
@@ -179,7 +179,7 @@ fn @Laid $e, $outer, chain:
     let $res = ResOf $e, $room, $kids, $sizes, chain
     @ $res
 
-@Window: fn $Text, Extent, @a -> @a
+@Window: prompt fn $Text, Extent, @a -> @a
 fn @Window $title, start, @app:
     ((result, $elems)) <- @HostSome @app, \|p, e| ?Boxed p, e, !route    # 0/[p]
     ((id, !incoming)) <- Gui.Window($title=$title, size=start)                 # 1

@@ -66,7 +66,7 @@ fn ?Full (? n), tally = if tally.total == n: ? Clear else: nil
 
 # An answer as an event: the one it has when the block is built, and each change. A
 # participant that acts on what it is told acts on its first answer too.
-@Told: fn $?a -> @!a
+@Told: prompt fn $?a -> @!a
 fn @Told $?value:
     !first <- @started
     @ !Filter ((!Updated $?value) <| ($?value on !first))
@@ -129,7 +129,7 @@ fn Seating seats = Change(seat=seats, remove=[[]])
 Removing: fn [Text] -> Change a
 fn Removing names = Change(seat={{}}, remove=names)
 
-@Table: fn TallyResults -> @(TallySeats o Ui.*) emit Ui.* where o: ^TallyOrder
+@Table: prompt fn TallyResults -> @(TallySeats o Ui.*) emit Ui.* where o: ^TallyOrder
 fn @Table results:
     !cyJoins <- Ui.Button($label=$"cy joins")                              # 0
     !cyRemoved <- Ui.Button($label=$"cy is removed")                       # 1
