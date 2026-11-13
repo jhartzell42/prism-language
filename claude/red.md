@@ -88,6 +88,27 @@ Kinds: **gap** a compiler feature or fix to write in step 2; Q3 and Q4 are answe
 | doc-seats-record-of-rows | checker (RR), above |
 | doc-sk-existential-seat-key | checker (VO), above |
 
+## The rest of the p11 run (at 20004f18, before the library)
+
+Regressions since p2 (green there):
+
+| test | how it fails on p11 | needs |
+|---|---|---|
+| ts-ch02-regex-values | checks 4 and 5 compare a `Match` and fail; the transcript prints the match | equality of a `Match` (its `named` map, or a group list of optionals) |
+| ts-ch03-assoc-in-impl-match | internal: a call of `Make` at a type the checker did not record | the result-only method change (20e2fb97) records no type at these calls; forall-three-jobs is the same |
+| ts-ch03-impl-calls-at-its-part | internal: `?Zero` at an unrecorded type | the same |
+| ts-ch03-impl-collection-head | internal: `Blank` at an unrecorded type | the same |
+| ts-ch03-result-only-method | internal: `Blank` at an unrecorded type | the same |
+| ts-ch03-result-only-self | internal: `?Read` at an unrecorded type | the same |
+
+New tests, red:
+
+| test | how it fails | needs |
+|---|---|---|
+| ts-ch03-associated-row | the widget method's label is at `0`; expected `0/0` | an inlined widget method still a node of its own (a448fdc5 flattens it) |
+| value-of-promoted-case | not-lowered: `ValueOf` of a type variable | VO's lowering |
+| ts-ch05-color-function-in-dynamic-through-lifted-call | not-lowered (red on p2 too) | a function value of its callee's color inside a call's result |
+
 ## Document trees (p11 check)
 
 - **tests/documents/tally**, **c6-chess-by-hand**, **c8-chess-via**: every error traces
