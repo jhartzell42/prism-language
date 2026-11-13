@@ -1,0 +1,31 @@
+# Semantics ch. 5, `update`: a field whose type reaches its own record (a tree's `kind`
+# holds trees) written in an update block, `&_.kind <= Node (...)`. The back end stores
+# such a field behind a pointer and wrote the new value unwrapped, so rustc refused the
+# crate (prismc's own `HolesNamed`, build 5).
+# Expected transcript derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Tree = record:
+    kind: Shape
+    label: Text
+derive ^Eq, ^Show
+
+type Shape = choice:
+    Leaf
+    Wrap Tree
+derive ^Eq, ^Show
+
+Wrapped: fn Tree -> Tree
+fn Wrapped t = update t:
+    &_.kind <= Wrap (Tree(kind=Leaf, label="inner"))
+
+Depth: fn Tree -> Nat
+fn Depth t = match t.kind:
+    Leaf: 0
+    Wrap inner: 1 + Depth inner
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Depth (Wrapped Tree(kind=Leaf, label="outer"))}")      # 0
