@@ -73,6 +73,8 @@ type Env = record:
     pending: [Text]
     # The id of the binder each local name stands for here (pick UN).
     ids: (Text ==> Nat)
+    # the definition's `forall` variables, rigid in its body (Jimmy's ruling FA)
+    scoped: [Text]
 derive ^Eq, ^Show
 
 WithLocal: fn Env, Text, Scheme -> Env

@@ -101,6 +101,8 @@ type ValInfo = record:
     scheme: Scheme
     sort: Text
     hasSig: Bool
+    # the variables its signature's `forall` names, in scope over its body (Jimmy's ruling FA)
+    scoped: [Text]
     home: Text
     file: Nat
     span: Range
@@ -322,4 +324,4 @@ fn AddBuiltins g:
         &_.vals <= Insert &_.vals, "Table.Empty", (Builtin "Table.Empty", tabEmpty)
 
 Builtin: fn Text, Scheme -> ValInfo
-fn Builtin qk, sc = ValInfo(qk=qk, scheme=sc, sort="builtin", hasSig=True, home="Prelude", file=0, span=Range(start=0, end=0, origin=InSource))
+fn Builtin qk, sc = ValInfo(qk=qk, scheme=sc, sort="builtin", hasSig=True, scoped=[[]], home="Prelude", file=0, span=Range(start=0, end=0, origin=InSource))

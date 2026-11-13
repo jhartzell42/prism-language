@@ -69,7 +69,7 @@ fn WithInferredLets g, tp:
     let schemes = Fold tp.defs, {{}}, \|m, n| Insert m, n.name, n.scheme
     Fold g.defs, g, \|sofar, d| match ((d.body, schemes[d.qk])):
         ((DbLet ignore, ? scheme)): if HasKey sofar.vals, d.qk: sofar else: update sofar:
-            &_.vals <= Insert &_.vals, d.qk, ValInfo(qk=d.qk, scheme=scheme, sort="let", hasSig=False, home=d.home, file=d.file, span=d.span)
+            &_.vals <= Insert &_.vals, d.qk, ValInfo(qk=d.qk, scheme=scheme, sort="let", hasSig=False, scoped=[[]], home=d.home, file=d.file, span=d.span)
         otherwise: sofar
 
 LowerProgram: unbounded fn [Src], [Module], Nat, TProgram, Text -> Model
@@ -952,7 +952,7 @@ fn ValOf lx, qk = match lx.g.vals[qk]:
     ? v: v
     nil:
         let d = Fold lx.g.defs, dummyDef, \|found, df| if df.qk == qk: df else: found
-        ValInfo(qk=qk, scheme=(Mono TyErr), sort="fn", hasSig=False, home=d.home, file=d.file, span=d.span)
+        ValInfo(qk=qk, scheme=(Mono TyErr), sort="fn", hasSig=False, scoped=[[]], home=d.home, file=d.file, span=d.span)
 
 # The program around a root widget.
 ProgDefOf: unbounded fn Lx, Text -> ProgDef

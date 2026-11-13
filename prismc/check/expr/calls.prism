@@ -60,13 +60,29 @@ fn InferCall env, st, callee, args, span = match callee.kind:
     ETypeArgs target, tys: match target.kind:
         EName n:
             let cx = EnvCx env
-            let ((given2, st2)) = ConvTypes cx, st, tys
+            let ((given1, st1)) = ConvTypes cx, st, tys
+            # a type variable in `<<a>>` is the definition's own, rigid, only where its
+            # signature's `forall` names it (Jimmy's ruling FA)
+            let st2 = Fold given1, st1, \|s, t| Fold (FreeQs t), s, \|s2, q| if HasText env.scoped, q: s2 else: ErrFix s2, "unknown-name", callee.span, "`{q}` is no type variable here: a body names its signature's variables in `<<..>>` only when the signature's `forall` names them", "write the signature `forall {q} ... . fn ...`"
+            let given2 = Each given1, \|t| SubstQ (ParamInst env.scoped, (Each env.scoped, \|q| TyRigid q)), t
             CallGlobal env, st2, n, args, span, given2, callee.span
         otherwise: ((TyErr, (Err st, "mismatch", callee.span, "`<<T>>` applies to a function's name")))
     EGroup x: InferCall env, st, x, args, span
     otherwise:
         let ((t, st2)) = Infer env, st, callee
         ApplyFn env, st2, (SrcText env, callee.span), t, (Positional args), span
+
+# The type variables a type names.
+FreeQs: fn Ty -> [Text]
+fn FreeQs t = match t:
+    TyQ q: [[q]]
+    TyCon ignore, xs: Fold xs, [[]], \|acc, x| Append acc, (FreeQs x)
+    TyTuple xs: Fold xs, [[]], \|acc, x| Append acc, (FreeQs x)
+    TyArray x: FreeQs x
+    TyMap k, v: Append (FreeQs k), (FreeQs v)
+    TySig ignore, x: FreeQs x
+    TyFn ignore, ps, r: Fold ps, (FreeQs r), \|acc, x| Append acc, (FreeQs x)
+    otherwise: [[]]
 
 Positional: fn [Arg] -> [Arg]
 fn Positional args = args
