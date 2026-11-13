@@ -3,5 +3,5 @@ test lower_row_is_the_impls
 
 tick 0
   added:
-    0/0: Ui.Label(text="hello")
+    0: Ui.Label(text="hello")
     1: Ui.Label(text="below")
