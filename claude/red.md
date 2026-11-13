@@ -22,7 +22,7 @@ Kinds: **gap** a compiler feature or fix to write in step 2; Q3 and Q4 are answe
 | own declaration shadows `use X.*` (OS) | conformance/own-declaration-shadows-use | `collision` on `Kind` |
 | row parameter needs no kind (RR) | doc-seats-record-of-rows (checker and conformance); library `FileSeats`, tally, c6, c8 seats | "a record has no row of its own"; "`Ui.*` is a row, not a type" |
 | associated row default, `row Lower = unit` in a trait | conformance/ts-ch03-associated-row-default; library ^Document (tally, c6, c8) | "a trait declares an associated row ...; an impl chooses it" |
-| `type State = unit` default; `@Request`/`@Query` on the state (RS) | library ^Document/^StateDocument (tally, c6, c8) | `^StateDocument` has no method `@Request` |
+| `@Request`/`@Query` on the state, their defaults in ^StateDocument (RS) | library ^Document/^StateDocument (tally, c6, c8); the default is SD's, and an associated type's default already works (ts-ch03-assoc-default, green) | `^StateDocument` has no method `@Request` |
 | `forall o.` in a type alias body | conformance/ts-ch06-forall-in-alias-body; library `Supplier` | "`o` is no parameter of `Supplier`" |
 | a supplier lambda's arms checked at the refined `o` | neg/doc-seat-family-arm-answers-other-role; library `SupplierFrom`, `@OnDisk`, `@Over` | arm results mismatch `o` |
 | binding-group cycle through a function value (book ch. 5: "the two bindings refer to each other, and that is legal") | library `@HostDocument` (every document test); conformance/sem-ch05-binding-group-cycle-through-function-value checks clean on p11 (its lowering is untested), so the library's `prompt-cycle` likely comes from its `Supplier` error; rechecked once the library checks | `prompt-cycle` `$guests`, `Supply` |
@@ -46,7 +46,8 @@ Kinds: **gap** a compiler feature or fix to write in step 2; Q3 and Q4 are answe
 | a tag arm narrows the matched element to its family's row (OP) | library `@HostRole` | (behind the parse error) |
 | library builtins with no body, each needing the runtime: `SeatPathOf`, `$Merge`, `SeatIdAt`, `$GuestsOf`, `@Answer`, `!Outgoing`, `?ResponseFrom`, `$?AnswerFrom` | every document test | not reached |
 | `!Filter` over a `!??`, Seat.Leave's last request (chess agent) | examples/chess | not confirmed |
-| clause widgets whose rows differ; `$` over an applied `@Serve<<ChessGame>>` blueprint (chess agent, unconfirmed) | examples/chess | errors of the kinds c8 has |
+| clause widgets whose rows differ (chess agent) | conformance/sem-ch08-clauses-emit-parts-of-the-row: checks clean on p11; its lowering and hand-derived transcript are unverified | |
+| `$` over an applied `@Serve<<ChessGame>>` blueprint, and `!Filter` over Seat.Leave's `!??` (chess agent, unconfirmed) | examples/chess: rechecked once the library checks | |
 | a derive asks equalities (DE), alone | conformance/doc-c8-derive-via-asks-equalities | parse error at `where` |
 | `Fixed s` against `Fixed<<r>>` (OP), alone | conformance/vo-fixed-matched-against-variable | `kind`: `r` is a type |
 | a tag arm narrows its element (OP), alone | checker/pos/tag-arm-narrows-element-to-family | `expected Element Count.* t10, found Element (rest \| Count.*) o` |

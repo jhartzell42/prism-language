@@ -1,0 +1,7 @@
+# Derived by hand: each clause places its own element.
+test both_clauses
+
+tick 0
+  added:
+    0/0: Ui.Label(text="a label")
+    1/0: Time.After()

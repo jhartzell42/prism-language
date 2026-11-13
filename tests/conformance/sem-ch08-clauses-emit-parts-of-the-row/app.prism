@@ -1,0 +1,19 @@
+# A widget function's clauses each emit a part of its declared row (Semantics ch. 8; the
+# chess agent's report on examples/chess, whose front ends choose a world by clause): the
+# `True` clause places a label (`Ui.*`), the `False` clause a timer (`Time.*`), and the
+# function's row holds both.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.* | Time.*
+test mod Tests
+
+@Shown: fn Bool -> @unit emit Ui.* | Time.*
+fn @Shown True:
+    Ui.Label($text=$"a label")                                           # 0
+fn @Shown False:
+    !woke <- Time.After(!wakes=never)                                    # 0
+    @ unit
+
+@page: @unit emit Ui.* | Time.*
+@page:
+    @Shown True                                                          # 0
+    @Shown False                                                         # 1
