@@ -476,7 +476,7 @@ fn ShowTyIn st, t, nested = match t:
     TyFlex n: "t{n}"
     TyRigid n: ShownRigid n
     TyEvery: "_"
-    TyQ n: n
+    TyQ n: ShownVar n
     TyCon n, [[]]: BareName n
     TyCon "Prelude.NonEmpty", [[c]]: "{ShowTyIn st, c, True}+"
     TyCon "Output", [[TyElemAny rw]]: if nested: "(Output {ShowRowIn st, rw, True})" else: "Output {ShowRowIn st, rw, True}"
@@ -511,7 +511,7 @@ fn ShowTyIn st, t, nested = match t:
 
 # A canonical existential variable as a message shows it, `x0`.
 ShownVar: fn Text -> Text
-fn ShownVar v = if HasPrefix v, "\u{0}": Between v, 1, (CountChars v) else: v
+fn ShownVar v = if HasPrefix v, "\u{0}": Or (SplitOn v, "\u{0}")[2], v else: v
 
 # A rigid variable as written: one an arm learned (`ρ#40.1`) shows as `ρ`.
 ShownRigid: fn Text -> Text

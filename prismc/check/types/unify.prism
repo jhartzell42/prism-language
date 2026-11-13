@@ -224,8 +224,20 @@ fn UnifyHeads st, e, f, span:
         ((TyAny xs, TyAny ys)): if (SortTexts xs) == (SortTexts ys): (("", st)) else: (("mismatch", st))
         # two existentials are one type when their bodies are, variable by canonical
         # variable, and their bounds agree
-        (((TyExists xs, b1, bs1), (TyExists ys, b2, bs2))): if xs == ys and bs1 == bs2: UnifyIn st, b1, b2, span else: (("mismatch", st))
+        (((TyExists xs, b1, bs1), (TyExists ys, b2, bs2))):
+            # one existential however its variables are written: `ys` renamed to `xs`
+            let renamed = Each ys, \|y| AtPosition xs, y
+            let by = Inst(tys=(Map (Each (Range0 (Len ys)), \|i| (((Or ys[i], ""), (TyQ (Or renamed[i], "")))))), rows={{}}, cols={{}})
+            let bs2r = Each bs2, \|((v, tr))| (((AtPosition xs, v), tr))
+            if (Len xs) == (Len ys) and bs1 == bs2r: UnifyIn st, b1, (SubstQ by, b2), span else: (("mismatch", st))
         otherwise: (("mismatch", st))
+
+# Two existential variables at one position (`\u{0}x0\u{0}r`, `\u{0}x0\u{0}s`).
+AtPosition: fn [Text], Text -> Text
+fn AtPosition xs, y = Or (Filter xs, \|x| SameExistsVar x, y)[0], y
+
+SameExistsVar: fn Text, Text -> Bool
+fn SameExistsVar a, b = (Or (SplitOn a, "\u{0}")[1], a) == (Or (SplitOn b, "\u{0}")[1], b)
 
 # A family's indices in two rows: `_` (`TyEvery`) stands for every case and meets any.
 UnifyIndices: unbounded fn St, [Ty], [Ty], Range -> ((Text, St))

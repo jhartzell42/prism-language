@@ -87,7 +87,7 @@ fn ConvType cx, st, t = match t.kind:
         let ((b, st2)) = ConvType cx, st, body
         let ((bs, st3)) = ConvBounds cx, st2, bounds
         let names = Each vars, \|v| v.name
-        let canon = Each (Range0 (Len names)), \|i| ExistsVar i
+        let canon = Each (Range0 (Len names)), \|i| ExistsVar i, (Or names[i], "")
         let by = ParamInst names, (Each canon, \|c| TyQ c)
         let bounds2 = Each bs, \|((v, tr))| (((CanonOf names, v), tr))
         (((TyExists canon, (SubstQ by, b), bounds2), st3))
@@ -104,11 +104,12 @@ fn ConvType cx, st, t = match t.kind:
 
 # A bound's variable by its canonical name, if the existential binds it.
 CanonOf: fn [Text], Text -> Text
-fn CanonOf names, v = Fold (Range0 (Len names)), v, \|found, i| if (Or names[i], "") == v: ExistsVar i else: found
+fn CanonOf names, v = Fold (Range0 (Len names)), v, \|found, i| if (Or names[i], "") == v: ExistsVar i, v else: found
 
 # An existential's variable by its position, the one name every spelling of it shares.
-ExistsVar: fn Nat -> Text
-fn ExistsVar i = "\u{0}x{i}"
+# The position decides the variable (`\u{0}x0`); the name as written follows, for messages.
+ExistsVar: fn Nat, Text -> Text
+fn ExistsVar i, name = "\u{0}x{i}\u{0}{name}"
 
 ConvTypes: unbounded fn Cx, St, [Type] -> (([Ty], St))
 fn ConvTypes cx, st, ts = Fold ts, (([[]], st)), \|((acc, s)), x|

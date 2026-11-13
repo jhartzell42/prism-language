@@ -85,6 +85,8 @@ fn ?CtorsOf env, st, t = match Zonk st, t:
     TyCon "unit", [[]]: ? [[Ctor(name="unit", arity=0, args=[[]], shown="unit")]]
     TySig "?", i: ? [[Ctor(name="?", arity=1, args=[[i]], shown="? _"), Ctor(name="nil", arity=0, args=[[]], shown="nil")]]
     TySig "~", i: ? [[Ctor(name="~", arity=1, args=[[i]], shown="~ _"), Ctor(name="Error", arity=2, args=[[(TyCon "Prelude.Fault", [[]]), tText]], shown="Error(..)")]]
+    # an existential has one constructor, `any`, over its body
+    TyExists ignore, b, ignore2: ? [[Ctor(name="any", arity=1, args=[[b]], shown="any _")]]
     TyTuple ts: ? [[Ctor(name="tuple", arity=(Len ts), args=ts, shown="(({Join (Each ts, \|ignore| "_"), ", "}))")]]
     TyCon "Prelude.Error", [[]]: ? [[Ctor(name="Error", arity=2, args=[[(TyCon "Prelude.Fault", [[]]), tText]], shown="Error(..)")]]
     TyCon n, args: match env.g.types[n]:
@@ -144,7 +146,7 @@ fn ToPat env, p = match p.kind:
     PTuple ps: PtCon "tuple", (Each ps, \|q| ToPat env, q)
     PArray ps: PtCon "len{Len ps}", (Each ps, \|q| ToPat env, q)
     PGroup q: ToPat env, q
-    PAny q: ToPat env, q
+    PAny q: PtCon "any", [[(ToPat env, q)]]
     PFamily q: PtFam (Dotted q.path)
 
 LitText: fn Literal -> Text
