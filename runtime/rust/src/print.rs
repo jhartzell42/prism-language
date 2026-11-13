@@ -153,14 +153,15 @@ impl Printer {
     }
 
     pub fn map<'a>(&mut self, entries: impl Iterator<Item = (&'a dyn Show, &'a dyn Show)>) {
-        self.out.push('{');
+        // as a map literal is written, `{{k: v}}` (Jimmy's ruling DB)
+        self.out.push_str("{{");
         for (i, (k, v)) in entries.enumerate() {
             self.out.push_str(if i > 0 { ", " } else { "" });
             self.inner(k, At::Inner);
             self.out.push_str(": ");
             self.inner(v, At::Inner);
         }
-        self.out.push('}');
+        self.out.push_str("}}");
     }
 
     /// `nil` or `? x`.
