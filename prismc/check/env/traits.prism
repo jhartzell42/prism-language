@@ -702,7 +702,48 @@ fn DefaultWants g, st, givens:
     let s4 = Fold leftover, s3, \|s, w|
         let s5 = update s:
             &_.file <= w.file
-        ErrFix s5, "ambiguous", w.span, "nothing decides `{ShowTy s, w.ty}` in `^{BareName w.cls} {ShowTy s, w.ty}`; annotate, or write a suffixed operator", "annotate the value's type"
+        match ?OnlyThroughAssoc g, s, w:
+            # a method whose trait's parameter is only under an associated type (ruling IN):
+            # the call names its type; the waiting equation of that associated type says
+            # the same and goes
+            ? ((method, param, shown)):
+                let s6 = ErrFix s5, "ambiguous", w.span, "nothing decides `{param}` in `^{BareName w.cls} {param}` at `{method}`: `{shown}` does not determine `{param}`", "name the type, `{method}<<{param}>>`"
+                update s6:
+                    &_.deferred <= Filter &_.deferred, \|dw| dw.span != w.span
+            nil: ErrFix s5, "ambiguous", w.span, "nothing decides `{ShowTy s, w.ty}` in `^{BareName w.cls} {ShowTy s, w.ty}`; annotate, or write a suffixed operator", "annotate the value's type"
     update s4:
         &_.wants <= [[]]
         &_.file <= st.file
+
+# The method a waiting constraint came from, where its trait's parameter stands in its
+# type only under an associated type (`Step: fn State d -> ..`): the method's name, the
+# parameter, and the first such associated type as the signature writes it.
+?OnlyThroughAssoc: unbounded fn G, St, Want -> ?((Text, Text, Text))
+fn ?OnlyThroughAssoc g, st, w = match st.methodUses[UseKey w.file, w.span]:
+    nil: nil
+    ? mk: match ((g.vals[mk], g.traits[w.cls])):
+        ((? v, ? tr)):
+            let ps = match v.scheme.ty:
+                TyFn ignore, xs, ignore2: xs
+                other: [[other]]
+            let direct = Fold ps, False, \|seen, p| seen or ParamBare p, tr.param
+            let ?under = Fold ps, nil, \|?found, p| match ?found:
+                ? f: ? f
+                nil: ?AssocOver p, tr.param
+            match ?under:
+                ? a: if direct: nil else: ? ((BareName mk, tr.param, (ShowTy st, a)))
+                nil: nil
+        otherwise: nil
+
+# Whether a parameter's type is the trait's parameter itself, under sigils.
+ParamBare: fn Ty, Text -> Bool
+fn ParamBare (TyQ q), param = q == param
+fn ParamBare (TySig ignore, t), param = ParamBare t, param
+fn ParamBare ignore, param = False
+
+# An associated type over the trait's parameter in a type, if one is there.
+?AssocOver: unbounded fn Ty, Text -> ?Ty
+fn ?AssocOver t, param = match t:
+    TyAssoc ignore, ignore2, (TyQ q), ignore3: if q == param: ? t else: nil
+    TySig ignore, i: ?AssocOver i, param
+    otherwise: nil
