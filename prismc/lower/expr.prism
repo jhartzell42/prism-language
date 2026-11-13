@@ -2074,7 +2074,7 @@ fn DeclaredCall lx, env, qk, args, span, cspan, t:
             ? v if HasKey lx.valued, (ValuedKeyAt lx, qk, cspan, args): WidgetBlueprintValue lx, env, qk, cspan, args, t
             ? v if (IsWidgetFn v) and not (IsValueWidget lx, qk): Or (?OpenWidgetBlueprintValue lx, env, qk, cspan, args, [[]], t), (VlOwned (Refusal (OpenWidgetValueWords lx, qk)), t)
             ? v:
-                if v.sort == "method": MethodCall lx, env, v, args, span, t
+                if v.sort == "method": MethodCall lx, env, v, args, span, cspan, t
                 else: if v.home == "Prelude": PreludeCall lx, env, qk, args, span, t
                 else:
                     let callArgs = ArgsFor lx, env, v, args
@@ -2502,8 +2502,8 @@ fn CtorArgs lx, env, c, args:
 # A trait method applied: the operator a builtin, derived or written impl answers (an
 # `impl ^Eq` is emitted as Rust's `PartialEq` and `Eq`, so `==` reaches it), or the method of a
 # program's own trait.
-MethodCall: unbounded fn Lx, Env, ValInfo, [Arg], Range, OutTy -> Vl
-fn MethodCall lx, env, v, args, span, t:
+MethodCall: unbounded fn Lx, Env, ValInfo, [Arg], Range, Range, OutTy -> Vl
+fn MethodCall lx, env, v, args, span, cspan, t:
     let cls = Or (Each v.scheme.bounds, \|((ignore, c))| c)[0], ""
     let m = BareName v.qk
     let vals = Each args, \|a| ValueOf lx, env, a.value
@@ -2513,7 +2513,7 @@ fn MethodCall lx, env, v, args, span, t:
         let mname = Or lx.rsNames[v.qk], (Snake m)
         # a method whose type is only in its result is called at the type the call gives,
         # which the checker's impl note at the call says
-        if IsResultOnly lx, v.qk, tr.param: match ?SelfAt lx, span, cls:
+        if IsResultOnly lx, v.qk, tr.param: match Or (?SelfAt lx, span, cls), (?SelfAt lx, cspan, cls):
             ? self: VlOwned (XCallSelf (RefIn lx, tr.home, (TraitName cls)), mname, self, (ArgsFor lx, env, v, args)), t
             nil: VlOwned (InternalBug "a call of `{m}` at a type the checker did not record"), t
         else:
@@ -2537,7 +2537,7 @@ fn MethodFn lx, v, span, t = match t:
         let names = Each (Range0 (Len pts)), \|i| "a{i}"
         let fakes = Each (Range0 (Len pts)), \|i| Arg(marks="", ?name=nil, value=(Expr(kind=EAbsent, span=Range(start=i, end=i, origin=MadeBy ConstructorArguments))), span=Range(start=0, end=0, origin=MadeBy ConstructorArguments))
         let env = Fold (Range0 (Len pts)), emptyEnv, \|en, i| BindSpan en, (PlaceKey lx, (Range(start=i, end=i, origin=MadeBy ConstructorArguments))), (VlPlace (XVar (Or names[i], "a")), ByRef, (Or pts[i], OutUnit))
-        let made = Own (MethodCall lx, env, v, fakes, span, rt)
+        let made = Own (MethodCall lx, env, v, fakes, span, span, rt)
         let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "a")), (OutRef (Or pts[i], OutUnit))
         VlOwned (XCall (RefRuntime "std::Rc::new"), [[(XClosure False, pas, made)]]), t
     # a method signed `unbounded fn` (`Score: unbounded fn a -> Nat`): a `Start` whose
@@ -2553,7 +2553,7 @@ fn MethodFn lx, v, span, t = match t:
         let names = Each (Range0 (Len pts)), \|i| "a{i}"
         let fakes = Each (Range0 (Len pts)), \|i| Arg(marks="", ?name=nil, value=(Expr(kind=EAbsent, span=Range(start=i, end=i, origin=MadeBy ConstructorArguments))), span=Range(start=0, end=0, origin=MadeBy ConstructorArguments))
         let env = Fold (Range0 (Len pts)), emptyEnv, \|en, i| BindSpan en, (PlaceKey lx, (Range(start=i, end=i, origin=MadeBy ConstructorArguments))), (VlPlace (XVar (Or names[i], "a")), Owned, (Or pts[i], OutUnit))
-        let made = Own (MethodCall lx, env, v, fakes, span, rt)
+        let made = Own (MethodCall lx, env, v, fakes, span, span, rt)
         let pa = if (Len pts) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
         VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure True, [[pa]], (XCall (HelperRef "once_job"), [[(XClosure True, [[]], (XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[made]]))]]))]]), t), t
     otherwise: VlOwned (InternalBug "the trait method `{BareName v.qk}` named as a value of a type that is no function's"), t
