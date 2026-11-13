@@ -1653,6 +1653,10 @@ fn Application lx, env, callee, args, span:
                     match ValueTy f:
                         OutJobFn ignore, ignore:
                             VlOwned (XCall (HelperRef "run_to_end"), [[(StartCall f, (StartArgs lx, env, f, args))]]), t
+                        # a value of a quantified type (Jimmy's ruling FA) holds its
+                        # variables packed: the arguments packed where its parameters are,
+                        # its result read at the type this call gives it
+                        OutFn ps, r: VlOwned (PackedApply lx, env, (Ref f), ps, r, args, t), t
                         otherwise: VlOwned (XApply (Ref f), (Each args, \|a| ValueArgument lx, env, a.value)), t
                 nil:
                     let ((?qk, why)) = ResolveValue lx.g, lx.home, n
@@ -3566,3 +3570,26 @@ VariantNumberOf: fn Lx, Text -> Ex
 fn VariantNumberOf lx, k = match lx.g.ctors[k]:
     ? ci: Number OutNat, "{ci.index}", False
     nil: InternalBug "the variant `{k}`, which the checker did not declare"
+
+# A function value applied, its packed parameters and result (a quantified type's
+# variables, `OutTyOf`'s `TyForall`) met: an argument packed where its parameter is a
+# `Packed` and it is not, the result read back where it is a `Packed` and the call's type
+# is not.
+PackedApply: unbounded fn Lx, Env, Ex, [OutTy], OutTy, [Arg], OutTy -> Ex
+fn PackedApply lx, env, f, ps, r, args, t:
+    let handed = Each (Range0 (Len args)), \|i|
+        let a = Or args[i], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0, origin=InSource)))
+        let v = ValueArgument lx, env, a.value
+        let at = OutTyOf lx, (Peel (TypeAt lx, a.value.span))
+        if (IsPackedOut (StripRef (Or ps[i], OutUnit))) and not (IsPackedOut at): XRef (XMethod (XCall (RefRuntime "prism_rtl::Packed::of"), [[(XClone v)]]), "packed", [[]]) else: v
+    let call = XApply f, handed
+    if (IsPackedOut r) and not (IsPackedOut t): XCallAt (RefRuntime "prism_rtl::unpacked"), [[t]], [[(XRef call)]] else: call
+
+let packedOut = OutNamed (RefRuntime "prism_rtl::Packed"), [[]]
+
+StripRef: fn OutTy -> OutTy
+fn StripRef (OutRef x) = x
+fn StripRef x = x
+
+IsPackedOut: fn OutTy -> Bool
+fn IsPackedOut x = x == packedOut

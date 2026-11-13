@@ -174,3 +174,9 @@ pub fn recast<To: 'static>(value: impl std::any::Any) -> To {
         None => panic!("a prismc bug: a value read at a type that is not its own"),
     }
 }
+
+/// A packed value read back at its own type, owned: a quantified function value's result
+/// (Jimmy's ruling FA) at the type its call gives it.
+pub fn unpacked<T: Clone + 'static>(p: &Packed) -> T {
+    p.held::<T>().clone()
+}
