@@ -122,9 +122,16 @@ let noQual = QualName(path=[[]], span=noRange)
 
 ParseUse: fn Ps, Range -> ((Use, Ps))
 fn ParseUse p, start = match Kind p:
-    KFamily path: ((Use(target=QualName(path=path, span=(Here p)), star=True, span=(To start, (Here p))), (Adv p)))
-    KName n if n.sigils == "" and n.case == CaseUpper: ((Use(target=QualName(path=n.path, span=(Here p)), star=False, span=(To start, (Here p))), (Adv p)))
-    otherwise: ((Use(target=noQual, star=False, span=noRange), (ErrorHere p, "expected a module name after `use`")))
+    KFamily path: ((Use(target=QualName(path=path, span=(Here p)), star=True, ?alias=nil, span=(To start, (Here p))), (Adv p)))
+    KName n if n.sigils == "" and n.case == CaseUpper:
+        let q = Adv p
+        # `use Fish.Count as FishCount`, `use Prelude.Upper as Shout` (ruling UA)
+        if IsKwKind (Kind q), "as": match Kind (Adv q):
+            KName a if a.sigils == "" and (Len a.path) == 1 and a.case == CaseUpper:
+                ((Use(target=QualName(path=n.path, span=(Here p)), star=False, ?alias=(? Ident(name=(Or a.path[0], ""), span=(Here (Adv q)))), span=(To start, (Here (Adv q)))), (Adv (Adv q))))
+            otherwise: ((Use(target=noQual, star=False, ?alias=nil, span=noRange), (ErrorHere (Adv q), "expected the name the `use` reaches it by after `as`, as `use Fish.Count as FishCount`")))
+        else: ((Use(target=QualName(path=n.path, span=(Here p)), star=False, ?alias=nil, span=(To start, (Here p))), q))
+    otherwise: ((Use(target=noQual, star=False, ?alias=nil, span=noRange), (ErrorHere p, "expected a module name after `use`")))
 
 let noExpr = Expr(kind=EError, span=noRange)
 let noType = Type(kind=TAbsent, span=noRange)

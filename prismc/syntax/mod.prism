@@ -113,6 +113,8 @@ derive ^Eq, ^Show
 type Use = record:
     target: QualName
     star: Bool
+    # `use Fish.Count as FishCount`: the name the target is reached by here (ruling UA)
+    ?alias: Ident
     span: Range
 derive ^Eq, ^Show
 

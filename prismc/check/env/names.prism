@@ -146,14 +146,29 @@ fn BuildTables g, st, m = match g.mods[m]:
             &_.file <= info.file
         # at the `use` line (Semantics ch. 6: "A `use` of a module not among the files is an
         # error at the `use`")
-        let s1 = Fold info.tree.uses, s0, \|s, line|
-            let u = UseName g, (Dotted line.target.path)
+        let s1a = Fold info.tree.uses, s0, \|s, line|
+            let u = UseName g, (Dotted (if line.?alias != nil: Take line.target.path, (Dec (Len line.target.path)) else: line.target.path))
             if (HasKey g.mods, u) or u == "Prelude": s else: Err s, "unknown-name", line.span, "no module `{u}` among the program's files"
         let starred = Fold info.uses, [[]], \|acc, ((u, star))| if star and u != m: Push acc, u else: acc
-        let sources = AddText (Append [[m]], starred), "Prelude"
-        let vals = Fold sources, {{}}, \|acc, src| BareValuesOf g, src, acc
-        let tys = Fold sources, {{}}, \|acc, src| BareTypesOf g, src, acc
-        let trs = Fold sources, {{}}, \|acc, src| BareTraitsOf g, src, acc
+        # a module's own names shadow those it reaches, the prelude's too, and a name a
+        # `use ... as` gives shadows those reached by `use X.*` (Jimmy, 13 November,
+        # rulings OS and UA); two modules reached alike still collide at the use
+        let others = AddText (Filter starred, \|u| u != m), "Prelude"
+        let reachedVals = Fold (Filter others, \|u| u != m), {{}}, \|acc, src| BareValuesOf g, src, acc
+        let reachedTys = Fold (Filter others, \|u| u != m), {{}}, \|acc, src| BareTypesOf g, src, acc
+        let reachedTrs = Fold (Filter others, \|u| u != m), {{}}, \|acc, src| BareTraitsOf g, src, acc
+        let ((aliasVals, aliasTys, s1)) = Fold info.tree.uses, (({{}}, {{}}, s1a)), \|((av, at, s)), line| match line.?alias:
+            nil: ((av, at, s))
+            ? alias:
+                let src = UseName g, (Dotted (Take line.target.path, (Dec (Len line.target.path))))
+                let named = Or line.target.path[Dec (Len line.target.path)], ""
+                let vs = Or (BareValuesOf g, src, {{}})[named], [[]]
+                let ts = Or (BareTypesOf g, src, {{}})[named], [[]]
+                if (Len vs) == 0 and (Len ts) == 0: ((av, at, (Err s, "unknown-name", line.span, "`{src}` declares no `{named}`")))
+                else: (((if (Len vs) > 0: Insert av, alias.name, vs else: av), (if (Len ts) > 0: Insert at, alias.name, ts else: at), s))
+        let vals = Shadowing (BareValuesOf g, m, {{}}), (Shadowing aliasVals, reachedVals)
+        let tys = Shadowing (BareTypesOf g, m, {{}}), (Shadowing aliasTys, reachedTys)
+        let trs = Shadowing (BareTraitsOf g, m, {{}}), reachedTrs
         let ((rw, rv, s2)) = ModuleRow g, s1, info
         let info2 = update info:
             &_.emitRw <= rw
@@ -164,6 +179,10 @@ fn BuildTables g, st, m = match g.mods[m]:
             &_.bareTraits <= Insert &_.bareTraits, m, trs
             &_.mods <= Insert &_.mods, m, info2
         ((upd, s2))
+
+# The names of `near`, and those of `far` that `near` does not have.
+Shadowing: fn (Text ==> [Text]), (Text ==> [Text]) -> (Text ==> [Text])
+fn Shadowing near, far = Fold (Keys far), near, \|acc, k| if HasKey near, k: acc else: Insert acc, k, (Or far[k], [[]])
 
 AddBare: fn (Text ==> [Text]), Text, Text -> (Text ==> [Text])
 fn AddBare acc, name, qk:
