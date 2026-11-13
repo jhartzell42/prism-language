@@ -80,6 +80,9 @@ tag Prelude.Unmet of Fault
 # `~ParseNat` on a text that is no number.
 tag Prelude.NotANumber of Fault
 
+# `~Utf8Text` on bytes that are not UTF-8.
+tag Prelude.NotText of Fault
+
 # ---------------------------------------------------------------------------------------
 # Traits (Appendix B, Traits; Type System ch. 3)
 # ---------------------------------------------------------------------------------------

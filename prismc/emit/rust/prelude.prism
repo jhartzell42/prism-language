@@ -984,6 +984,17 @@ pub fn parse_nat_try(t: &Text) -> Result<Nat, Error> {
     parse_nat_opt(t).ok_or_else(|| Error::new("Prelude.NotANumber", format!("not a number: {t}")))
 }
 
+/// `Utf8Bytes`: a text's UTF-8 bytes.
+pub fn utf8_bytes(t: &Text) -> Array<u8> {
+    t.as_str().as_bytes().iter().copied().collect()
+}
+
+/// `~Utf8Text`: bytes read back as a text, refused where they are not UTF-8.
+pub fn utf8_text_try(bytes: &Array<u8>) -> Result<Text, Error> {
+    let v: Vec<u8> = bytes.iter().copied().collect();
+    String::from_utf8(v).map(Text::from).map_err(|_| Error::new("Prelude.NotText", "bytes that are not UTF-8"))
+}
+
 /// `Buffer.Numbered n`: `0` to `n - 1`, linear.
 pub fn numbered(n: &Nat) -> Array<Nat> {
     (0..ix(n)).map(nat_of).collect()
