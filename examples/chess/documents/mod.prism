@@ -2,7 +2,7 @@
 # what every document shares: the response, the step's result, the trait a role's seat type
 # implements, the order of one tick's requests, what a role's host does with its seats,
 # and the in-memory implementation, written once.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit rest | Seat.*
 
 # A request's response: accepted, or declined with a reason of the role's own type `a`.

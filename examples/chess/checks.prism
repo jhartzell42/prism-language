@@ -1,6 +1,6 @@
 # The checks: the rules through the document's step function, the draws, and the
 # notation, with no host and no tick. `checks.expected` is the transcript.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit rest
 use Documents.*
 use Rules.*

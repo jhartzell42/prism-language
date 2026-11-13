@@ -1,7 +1,7 @@
 # Notation: squares, moves and the board as text, for participants; the document itself
 # reads and writes none. Moves are written in coordinates, `e2e4`, with a promotion's
 # piece as a fifth letter, `e7e8n`.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit rest
 use Rules.*
 

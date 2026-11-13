@@ -2,7 +2,7 @@
 # no redraw: a shell script, a teletype or a person reading moves off a wooden board can
 # stand at the other end. A terminal is named; its reading element and its printing element
 # name the same terminal.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit Console.*
 
 # Each firing is one line typed at the terminal, without its line end.

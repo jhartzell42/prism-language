@@ -5,7 +5,7 @@
 # library (`examples/basic-chess/basic_window`, module `BasicWindow`), with its element
 # family named `Pane` and its child module `Window.Panes`: the text participants of this
 # program draw with the prelude's `Ui` family, and a program holds one family of a name.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit r | Pane.* | Gui.*
 mod Panes
 mod Hosting

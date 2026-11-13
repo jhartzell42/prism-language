@@ -4,7 +4,7 @@
 # hot seat is two inputs: the move typed into the box, then the button. Each test builds
 # and computes twice before anyone moves, which a seat's first answer no longer needs: it
 # is told the game in the tick it is built.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.* | Seat.* | Play.* | Watch.*
 use Tables.*
 use Documents.*

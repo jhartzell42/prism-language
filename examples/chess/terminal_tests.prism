@@ -2,7 +2,7 @@
 # Each step says what each terminal prints in its tick (`requested`), taken from a run of
 # the same participants under today's forms of the hosting; no transcript is kept, since a
 # place's path under a seat is the compiler's to give.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit Console.* | Seat.* | Play.* | Watch.*
 use Tables.*
 

@@ -3,7 +3,7 @@
 # key names its seat), and every press is followed by `compute until idle`, since it
 # reaches its seat through layers of hosts. The transcript prints the window's whole scene
 # at every change and is not kept; each test passes on its own checks.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit Pane.* | Gui.* | Console.* | Seat.* | Play.* | Watch.*
 use App.*
 use Tables.*

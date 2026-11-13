@@ -1,7 +1,7 @@
 # The words: a result, a status, a reason and a response as text, for a person or a script
 # to read. Every participant that shows words calls these at the last moment; the document
 # and the rules build no sentence.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit rest
 use Documents.*
 use Rules.*

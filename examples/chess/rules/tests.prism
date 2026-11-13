@@ -1,6 +1,6 @@
 # The rule book's own checks: plain functions on positions, with no document. They need
 # nothing but `Rules` and the squares' names; `tests.expected` is the transcript.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit rest
 use Rules.*
 use Squares.*

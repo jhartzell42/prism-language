@@ -2,7 +2,7 @@
 # with no host and no tick. A request the document declines is a fault that holds the
 # request, who made it and the reason, as values, so a line with a move that is not played
 # is never read as a shorter line.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit rest
 use Documents.*
 use Rules.*

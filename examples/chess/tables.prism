@@ -1,7 +1,7 @@
 # The tables: programs that seat participants at one game of chess in memory. Each lists
 # its seats, every seat with the blueprint of the participant that sits there, and hands
 # them to the role hosts; `@InMemory` holds the game. No participant is given the state.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.* | Pane.* | Gui.* | Console.*
 use Documents.*
 use Rules.*

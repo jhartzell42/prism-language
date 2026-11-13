@@ -3,15 +3,16 @@
 # corners, one record of ranks per color, a move's manner as a value, a move as a request
 # names it, why a move is not played as a typed fault, and what the draws ask of a
 # position. This program's own rule book: the basic chess keeps its own
-# (`examples/basic-chess/rules`), and the two share nothing.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# (`examples/basic-chess/rules`), and the two share nothing. Every type a game's state, a
+# request or a reason holds derives `^Pod`, so a saved game and the wire can write it down.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit rest
 test mod Tests
 
 type Color = choice:
     White
     Black
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Show, ^Pod
 
 type Man = choice:
     King
@@ -20,17 +21,17 @@ type Man = choice:
     Bishop
     Knight
     Pawn
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Show, ^Pod
 
 type Piece = record:
     color: Color
     man: Man
-derive ^Eq, ^Show
+derive ^Eq, ^Show, ^Pod
 
 type Square = record:
     file: Nat                  # a to h, as 0 to 7
     rank: Nat                  # 1 to 8, as 0 to 7
-derive ^Eq, ^Ord
+derive ^Eq, ^Ord, ^Pod
 
 let letters = [["a", "b", "c", "d", "e", "f", "g", "h"]]
 
@@ -46,7 +47,7 @@ type Position = record:
     turn: Color
     corners: [Square]              # the rook corners whose castling right is unspent
     ?passed: Square                # the square a pawn's double step just passed over
-derive ^Eq, ^Show
+derive ^Eq, ^Show, ^Pod
 
 # every color-dependent rank, so that the rules say `own.forward`
 type Ranks = record:
@@ -301,7 +302,7 @@ fn HasMove position = AnyOf (Keys position.board), \|from| (Owns position, from,
 type Move = choice:
     Moving Square, Square              # from, to
     Promoting Square, Square, Man      # from, to, what the pawn becomes
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Show, ^Pod
 
 Origin: fn Move -> Square
 fn Origin (Moving from, to) = from
@@ -345,7 +346,7 @@ type MoveFault = choice:
     CastlingOutOfCheck             # the king is in check
     CastlingThroughCheck           # the square the king passes over is attacked
     LeavesKingInCheck              # the move is one the piece makes, and the mover's king is in check after it
-derive ^Eq, ^Show
+derive ^Eq, ^Show, ^Pod
 
 # why castling is refused, where `?CastleTo` gives nil: its checks in its order
 CastleFault: fn Position, Color, Square, Square -> MoveFault

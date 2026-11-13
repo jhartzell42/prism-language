@@ -3,7 +3,7 @@
 # `moves`, `legal`, `leave`. A player's terminal also prints the opponent's move when it
 # is played, a draw offer when it is made and the result when the game ends. It never
 # draws a board.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit rest | Console.* | Seat.* | Play.* | Watch.*
 use Documents.*
 use Rules.*

@@ -1,6 +1,6 @@
 # The squares of the board by name, for programs and tests that write moves as values:
 # `Moving e2, e4`.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit rest
 use Rules.*
 

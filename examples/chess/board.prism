@@ -5,7 +5,7 @@
 # moved to its last rank opens a dialog that asks what it becomes. The board and its panel
 # follow the basic chess's (`examples/basic-chess/app.prism`, `@Board` and `@Panel`), on
 # this program's copy of the window library (`window/`), with no settings dialog.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit rest | Pane.* | Gui.* | Seat.* | Play.*
 use Documents.*
 use Rules.*

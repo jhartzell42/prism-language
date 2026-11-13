@@ -3,7 +3,7 @@
 # side, each holding one player's seat. The other seatings (text interfaces, terminals, a
 # board against a terminal, scripts) are in `tables.prism`; claude/document-chess.md has
 # the module map.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit Pane.* | Gui.*
 mod Documents
 mod Rules

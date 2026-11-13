@@ -2,7 +2,7 @@
 # request is declined, the step function with the rules in it, the two languages, and the
 # hosting of each role. Nothing here is text: a participant is sent the game, and a
 # declined request a reason.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit rest | Seat.* | Play.* | Watch.*
 use Documents.*
 use Rules.*

@@ -3,7 +3,7 @@
 # None can name the game's state, another seat, or the implementation. A participant is
 # sent the game and, when a request is declined, a reason; drawing the board and putting
 # the status and the reason into words are its own work.
-# Written by Claude on the claude-document-chess branch; subject to change.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit rest | Ui.* | Seat.* | Play.* | Watch.*
 use Documents.*
 use Rules.*
