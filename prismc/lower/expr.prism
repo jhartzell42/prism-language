@@ -2159,6 +2159,10 @@ fn Recolored lx, x, fromTy, toTy, depth:
         # an event and a dynamic are mapped (prism_rtl's `Event::map`, `Dynamic::map`)
         (((TySig "!", d), (TySig "!", e))): XMethod x, "map", [[(XClosure True, [[(PaTyped (PaBind inner), (OutRef (OutTyOf lx, d)))]], (Recolored lx, (XClone (XVar inner)), d, e, depth + 1))]]
         (((TySig "$", d), (TySig "$", e))): XMethod x, "map", [[(XClosure True, [[(PaTyped (PaBind inner), (OutRef (OutTyOf lx, d)))]], (Recolored lx, (XClone (XVar inner)), d, e, depth + 1))]]
+        # a non-empty collection (`[a]+`, `(K ==> V)+`, Type System ch. 2), which no
+        # declaration holds: its collection walked, and the promise made again over it
+        # (the prelude's `plain_collection`, `non_empty_of`)
+        (((TyCon "Prelude.NonEmpty", [[d]]), (TyCon "Prelude.NonEmpty", [[e]]))): XCall (HelperRef "non_empty_of"), [[(Recolored lx, (XClone (XCall (HelperRef "plain_collection"), [[(XRef x)]])), d, e, depth + 1)]]
         (((TyCon n, fromArgs), (TyCon m, toArgs))) if n == m: NamedRecolored lx, x, fromTy, n, fromArgs, toArgs, to, depth
         (((TyFn ignore, dps, dr), (TyFn ignore2, eps, er))) if (Len dps) == (Len eps): FunctionRecolored lx, x, from, to, dps, dr, eps, er, depth
         # an associated type at a known head is the type its impl chooses
