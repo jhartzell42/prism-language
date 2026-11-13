@@ -156,6 +156,7 @@ fn NonEmptyRels m, p, e, refutable = if not refutable: m else: match ?NonEmptyNa
 ?NonEmptyName: fn Pattern, Expr -> ?Text
 fn ?NonEmptyName p, e = match e.kind:
     EGroup x: ?NonEmptyName p, x
+    EHold x: ?NonEmptyName p, x
     EIndex r, ignore: match p.kind:
         PSigil "?", ignore: ?NameOf r
         PGroup q: ?NonEmptyName q, e
@@ -170,6 +171,7 @@ fn ?NonEmptyName p, e = match e.kind:
 fn ?NameOf e = match e.kind:
     EName n: ? (SNameKey n)
     EGroup x: ?NameOf x
+    EHold x: ?NameOf x
     otherwise: nil
 
 # A `match` arm's relations before its block: its pattern's, from the subject.

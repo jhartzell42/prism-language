@@ -346,6 +346,7 @@ fn IsWholeSig t = match t:
 IsWholeObject: unbounded fn Lx, Expr -> Bool
 fn IsWholeObject lx, e = match e.kind:
     EGroup x: IsWholeObject lx, x
+    EHold x: IsWholeObject lx, x
     EIndex r, ignore: IsWholeObject lx, r
     EName ignore:
         let t = TypeAt lx, e.span
@@ -446,6 +447,7 @@ fn WholeValueOf lx, env, e:
     if (LayerOf full) != LyDyn: if IsEventValue lx, env, e: EventValueOf lx, env, e else: ValueByKind lx, env, e
     else: match e.kind:
         EGroup x: ValueOf lx, env, x
+        EHold x: ValueOf lx, env, x
         EName n: match env.names["#whole{SpanKey e.span}"]:
             ? (BnLocal x, mode, dt): LocalPlace x, mode, dt
             otherwise: match (if (Len n.path) == 1: env.names["#whole#{SNameKey n}"] else: nil):
@@ -576,6 +578,7 @@ IsEventValue: unbounded fn Lx, Env, Expr -> Bool
 fn IsEventValue lx, env, e = match e.kind:
     EName ignore: False
     EGroup ignore: False
+    EHold ignore: False
     otherwise: ((LayerOf (TypeAt lx, e.span)) == LyEv) and (not (Fold (Operands e), False, \|bound, c| bound or HasKey env.spans, (PlaceKey lx, c.span))) and ((HasEventSource lx, env, e) or (?UpdatedValue lx, env, e) != nil)
 
 # `!Updated $d` where `$d` is a dynamic value here (a live dynamic its line made for a
@@ -584,6 +587,7 @@ fn IsEventValue lx, env, e = match e.kind:
 ?UpdatedValue: unbounded fn Lx, Env, Expr -> ?Expr
 fn ?UpdatedValue lx, env, e = match e.kind:
     EGroup x: ?UpdatedValue lx, env, x
+    EHold x: ?UpdatedValue lx, env, x
     ECall c, args, ignore, ignore: if (CalleeKey lx, c) != "Prelude.!Updated": nil else: match args[0]:
         ? a: match a.value.kind:
             EName n: if HasKey env.names, "#whole{SpanKey a.value.span}": ? a.value else: match env.names[SNameKey n]:
@@ -608,12 +612,14 @@ fn IsEventSource lx, env, c:
             ? (BnEv ignore, ignore): HasKey env.names, "{SNameKey n}#port"
             otherwise: False
         EGroup x: IsEventSource lx, env, x
+        EHold x: IsEventSource lx, env, x
         otherwise: (HasEventSource lx, env, c) or (?UpdatedValue lx, env, c) != nil
 
 # The value of `x on !e`, parentheses aside: `x`, which reads nothing of the firing.
 ?SampledOn: fn Expr -> ?Expr
 fn ?SampledOn e = match e.kind:
     EGroup x: ?SampledOn x
+    EHold x: ?SampledOn x
     EBinary "on", value, ignore: ? value
     otherwise: nil
 
@@ -728,6 +734,7 @@ fn ?OperandAt e, r = Fold (DirectOperands e), nil, \|?found, x| if ?found == nil
 DirectOperands: fn Expr -> [Expr]
 fn DirectOperands e = match e.kind:
     EGroup x: DirectOperands x
+    EHold x: DirectOperands x
     ECall ignore, args, ignore, ignore: Each args, \|a| a.value
     EMethod r, ignore, args: Append [[r]], (Each args, \|a| a.value)
     EBinary ignore, l, r: [[l, r]]
@@ -762,6 +769,7 @@ fn PlainValueByKind lx, env, e:
         EMap [[]]: VlOwned (XTyped (XCall (RefRuntime "rt::Map::new"), [[]]), t), t
         EMap kvs: VlOwned (XCall (HelperRef "map_of"), [[XVec (Each kvs, \|((k, v))| XTuple [[Own (ValueOf lx, env, k), Own (ValueOf lx, env, v)]])]]), t
         EGroup x: ValueOf lx, env, x
+        EHold x: ValueOf lx, env, x
         ECall c, args, ignore, ignore: match ?LensCall lx, e:
             ? ((qk, argument)): LensRead lx, env, qk, argument, t
             nil: Application lx, env, c, args, e.span
@@ -903,6 +911,7 @@ fn PureBlueprint lx, env, x, t:
 IsBundleOutput: fn Lx, Expr -> Bool
 fn IsBundleOutput lx, x = match x.kind:
     EGroup y: IsBundleOutput lx, y
+    EHold y: IsBundleOutput lx, y
     ETuple es: Fold es, False, \|f, y| f or (LayerOf (TypeAt lx, y.span)) == LyEv or (LayerOf (TypeAt lx, y.span)) == LyDyn
     # a bundle not written as a tuple (`@ pair`, `pair` a `let`): by its type
     otherwise: match TypeAt lx, x.span:
@@ -915,6 +924,7 @@ fn IsBundleOutput lx, x = match x.kind:
 OutputEvent: unbounded fn Lx, Env, Expr -> Ex
 fn OutputEvent lx, env, ev = match ev.kind:
     EGroup y: OutputEvent lx, env, y
+    EHold y: OutputEvent lx, env, y
     EName n:
         let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
         if ?qk == ? "Prelude.never": XBlock [[(DoLet (PaTyped (PaBind "output_event"), (OutTyOf lx, (TypeAt lx, ev.span))), (Own (ValueOf lx, env, ev)))]], (XVar "output_event")
@@ -934,6 +944,7 @@ type OutputPart = choice:
 BundleBlueprint: unbounded fn Lx, Env, Expr, Ref, OutTy -> Vl
 fn BundleBlueprint lx, env, x, variant, t = match x.kind:
     EGroup y: BundleBlueprint lx, env, y, variant, t
+    EHold y: BundleBlueprint lx, env, y, variant, t
     ETuple es: VlOwned (PartsBlueprint lx, env, x, (Each es, \|y| WrittenPart lx, env, y), variant), t
     # a bundle that is a value already (`@ pair`): its parts are the tuple's, an event
     # part its `Event`, a `$` part its `Dynamic`
@@ -1062,6 +1073,7 @@ fn ?PartDynamic lx, env, x, d = match ((env.names["#dyn{DynKey x}"], env.names["
 ?ConstantDynamic: fn Expr -> ?Expr
 fn ?ConstantDynamic d = match d.kind:
     EGroup y: ?ConstantDynamic y
+    EHold y: ?ConstantDynamic y
     EFreeSigil "$", inner: ? inner
     otherwise: nil
 
@@ -1178,6 +1190,7 @@ fn ElementBlueprint lx, env, args, t = match args[0]:
 IsElementApplied: unbounded fn Lx, Expr -> Bool
 fn IsElementApplied lx, e = match e.kind:
     EGroup x: IsElementApplied lx, x
+    EHold x: IsElementApplied lx, x
     ECall callee, ignore, ignore, ignore: match callee.kind:
         EName n:
             let ((?qk, why)) = ResolveValue lx.g, lx.home, n
@@ -1607,6 +1620,7 @@ fn Application lx, env, callee, args, span:
                             else: GlobalCall lx, env, qk, args, span, callee.span, t
                         nil: VlOwned (InternalBug "a call of {nkey}, which nothing declares"), t
         EGroup x: Application lx, env, x, args, span
+        EHold x: Application lx, env, x, args, span
         otherwise:
             let f = ValueOf lx, env, callee
             match ValueTy f:
@@ -1817,6 +1831,7 @@ fn ArgumentByKind lx, env, e = match e.kind:
     ELambda ?ps, body: XRef (LambdaArg lx, env, (Or ?ps, [[]]), body, (LambdaParamTys lx, e, (Len (Or ?ps, [[]]))))
     # a group the checker found a `~T`'s failure at keeps its place (`AsFailure`)
     EGroup x: if HasKey lx.faults, (PlaceKey lx, e.span): Ref (ValueOf lx, env, e) else: Argument lx, env, x
+    EHold x: if HasKey lx.faults, (PlaceKey lx, e.span): Ref (ValueOf lx, env, e) else: Argument lx, env, x
     EName n:
         let t = TypeAt lx, e.span
         match Peel t:
@@ -1865,6 +1880,7 @@ IsLambdaValue: fn Expr -> Bool
 fn IsLambdaValue e = match e.kind:
     ELambda ignore, ignore: True
     EGroup x: IsLambdaValue x
+    EHold x: IsLambdaValue x
     otherwise: False
 
 # A bounded function value where a `&dyn Fn` is taken (a prelude function's parameter): a
@@ -2655,6 +2671,7 @@ fn ?PreludeJobCall lx, env, e = match e.kind:
 AsJobValue: unbounded fn Lx, Env, Expr -> Ex
 fn AsJobValue lx, env, e = match e.kind:
     EGroup x: AsJobValue lx, env, x
+    EHold x: AsJobValue lx, env, x
     otherwise:
         let target = match Peel (TypeAt lx, e.span):
             TyFn ignore, ps, r: OutJobFn (RustTyOfParams lx, ps), (OutTyOf lx, r)

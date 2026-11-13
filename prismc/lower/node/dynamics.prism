@@ -87,6 +87,7 @@ fn EventRef wx, menv, e:
     let t = OutTyOf lx, (Peel (TypeAt lx, e.span))
     match e.kind:
         EGroup x: EventRef wx, menv, x
+        EHold x: EventRef wx, menv, x
         EName n: match menv.names[SNameKey n]:
             ? (BnEv r, ignore):
                 if r.owner == wx.node: ((r, wx))
@@ -329,6 +330,7 @@ fn Operands e = match e.kind:
     EUnary ignore, x: [[x]]
     EFreeSigil ignore, x: [[x]]
     EGroup x: [[x]]
+    EHold x: [[x]]
     EField r, ignore, ignore: [[r]]
     EIndex r, i: [[r, i]]
     ETuple es: es

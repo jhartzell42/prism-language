@@ -168,6 +168,11 @@ fn InferKind env, st, e = match e.kind:
     EArray es: InferArray env, st, es, e.span
     EMap entries: InferMap env, st, entries, e.span
     EGroup x: Infer env, st, x
+    # a hold anywhere but an argument (`InferArgument`) means nothing
+    EHold x:
+        let src = SrcText env, x.span
+        let ((t, st2)) = Infer env, st, x
+        ((t, (ErrFix st2, "hold-meaningless", e.span, "braces around `{src}` mean nothing outside an argument", "drop the braces: `{src}`")))
     ECall callee, args, ignore, ignore: InferCall env, (LensArgument env, st, e), callee, args, e.span
     EBinary op, lhs, rhs: InferBinary env, st, op, lhs, rhs, e.span
     EUnary op, x: InferUnary env, st, op, x, e.span

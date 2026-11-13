@@ -208,6 +208,7 @@ derive ^Eq, ^Show
 WidgetLineEdges: unbounded fn PCx, (Text ==> Text), [Text], Expr, [Text] -> [((Text, Text))]
 fn WidgetLineEdges cx, heads, names, e, defs = match e.kind:
     EGroup x: WidgetLineEdges cx, heads, names, x, defs
+    EHold x: WidgetLineEdges cx, heads, names, x, defs
     ECall c, args, ignore, ignore: match ?LineFlows cx, c, args:
         ? flows:
             let ups = UpdateNodes heads, names
@@ -329,6 +330,7 @@ fn LamLetRels s, m = match s.kind:
 fn ?LambdaOf e = match e.kind:
     ELambda ignore, ignore: ? e
     EGroup x: ?LambdaOf x
+    EHold x: ?LambdaOf x
     otherwise: nil
 
 # Every lambda a `let` of these statements binds, at any depth, by where it starts.
@@ -590,6 +592,7 @@ fn GivenAt cx, home, params, args, rels, bound:
 fn ?GivenName e = match e.kind:
     EName n: ? (SNameKey n)
     EGroup x: ?GivenName x
+    EHold x: ?GivenName x
     otherwise: nil
 
 # The uses of the widget function whose body a block is, each as what it gives for the
@@ -877,6 +880,7 @@ fn PlaceNames g, home, s = match s.kind:
 IsPlaceOf: unbounded fn G, Text, Expr -> Bool
 fn IsPlaceOf g, home, e = match e.kind:
     EGroup x: IsPlaceOf g, home, x
+    EHold x: IsPlaceOf g, home, x
     ECall c, ignore, ignore, ignore: match c.kind:
         EName n: match ResolveValue g, home, n:
             ((? qk, why)): why == "tag" and IsElementTag g, qk
@@ -931,6 +935,7 @@ fn ?LineChoice g, home, bound, names, s = match s.kind:
 ?ExprChoice: unbounded fn G, Text, [Text], [Text], Expr -> ?PlaceChoice
 fn ?ExprChoice g, home, bound, names, e = match e.kind:
     EGroup x: ?ExprChoice g, home, bound, names, x
+    EHold x: ?ExprChoice g, home, bound, names, x
     EMatch scrutinee, arms:
         if Mentions scrutinee, names: ? (MatchChoice (Each arms, \|arm| BlockWidth g, home, [[]], (ArmBound bound, arm), arm.body))
         else: nil
@@ -1045,6 +1050,7 @@ fn LineWidth g, home, path, bound, s = match s.kind:
 ExprWidth: unbounded fn G, Text, [Text], [Text], Expr -> Width
 fn ExprWidth g, home, path, bound, e = match e.kind:
     EGroup x: ExprWidth g, home, path, bound, x
+    EHold x: ExprWidth g, home, path, bound, x
     EFreeSigil "@", ignore: WidthKnown 0
     ECall c, ignore, ignore, ignore: match c.kind:
         EName n:

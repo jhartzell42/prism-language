@@ -308,6 +308,7 @@ fn IsRefPath e = match e.kind:
     EField r, ignore, ignore: IsRefPath r
     EIndex r, ignore: IsRefPath r
     EGroup x: IsRefPath x
+    EHold x: IsRefPath x
     otherwise: match ?LensApplied e:
         ? ((ignore, argument)): IsRefPath argument
         nil: False
@@ -403,6 +404,7 @@ fn PlaceOf lx, env, e = match e.kind:
             otherwise: HelperRef "at_mut"
         XDeref (XCall f, [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k)]])
     EGroup x: PlaceOf lx, env, x
+    EHold x: PlaceOf lx, env, x
     # a named lens applied: what its reference names (`*acc(&mut this)`)
     otherwise: match ?LensCall lx, e:
         ? ((qk, argument)):
@@ -422,6 +424,7 @@ fn PlaceTy lx, e = match TypeAt lx, e.span:
             otherwise: TyErr
         EField r, ignore, name: FieldTy lx, (Peel (PlaceTy lx, r)), name.name
         EGroup x: PlaceTy lx, x
+        EHold x: PlaceTy lx, x
         otherwise: TyErr
     t: t
 
@@ -443,6 +446,7 @@ fn Assign lx, env, target, v = match target.kind:
             otherwise: HelperRef "set_index"
         IndexWrite lx, env, f, r, k, target.span, v
     EGroup x: Assign lx, env, x, v
+    EHold x: Assign lx, env, x, v
     otherwise: match ?LensCall lx, target:
         # a lens that ends at an array's index: the value first (it may read what the lens
         # borrows), then the entry written through the reference (`set_part`)
@@ -465,6 +469,7 @@ fn IndexWrite lx, env, f, r, k, span, v:
 Put: unbounded fn Lx, Env, Expr, Ex -> Do
 fn Put lx, env, target, v = match target.kind:
     EGroup x: Put lx, env, x, v
+    EHold x: Put lx, env, x, v
     EIndex r, k: IndexWrite lx, env, (HelperRef "set_key"), r, k, target.span, v
     otherwise: match ?LensCall lx, target:
         ? ((qk, argument)):
@@ -477,6 +482,7 @@ fn Put lx, env, target, v = match target.kind:
 EntryRef: unbounded fn Lx, Env, Expr -> Ex
 fn EntryRef lx, env, e = match e.kind:
     EGroup x: EntryRef lx, env, x
+    EHold x: EntryRef lx, env, x
     EIndex r, k: XCall (HelperRef "entry_mut"), [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k)]]
     EName n: match env.names[SNameKey n]:
         ? (BnLocal rs, ignore, ignore): rs
@@ -560,6 +566,7 @@ fn LensEndsAtIndex lx, qk, fuel = match fuel -? 1:
 PathEndsAtIndex: unbounded fn Lx, Expr, Nat -> Bool
 fn PathEndsAtIndex lx, e, fuel = match e.kind:
     EGroup x: PathEndsAtIndex lx, x, fuel
+    EHold x: PathEndsAtIndex lx, x, fuel
     EIndex ignore, ignore: True
     otherwise: match ?LensCall lx, e:
         ? ((qk, ignore)): LensEndsAtIndex lx, qk, fuel
@@ -570,6 +577,7 @@ fn PathEndsAtIndex lx, e, fuel = match e.kind:
 LensReference: unbounded fn Lx, Env, Expr -> Ex
 fn LensReference lx, env, e = match e.kind:
     EGroup x: LensReference lx, env, x
+    EHold x: LensReference lx, env, x
     EIndex r, k: XCall (HelperRef "part_mut"), [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k)]]
     otherwise: match ?LensCall lx, e:
         ? ((qk, argument)): LensCallEx lx, env, qk, argument
@@ -635,6 +643,7 @@ fn LensDefs lx, qk, clauses, sc:
 StepsThroughIndex: unbounded fn Expr, Bool -> Bool
 fn StepsThroughIndex e, last = match e.kind:
     EGroup x: StepsThroughIndex x, last
+    EHold x: StepsThroughIndex x, last
     EField r, ignore, ignore: StepsThroughIndex r, False
     EIndex r, ignore: if last: StepsThroughIndex r, False else: True
     otherwise: match ?LensApplied e:
@@ -658,6 +667,7 @@ fn SharedPlaceOf lx, env, e = match e.kind:
             otherwise: HelperRef "at_shared"
         XDeref (XCall helper, [[(XRef (SharedPlaceOf lx, env, r)), (Argument lx, env, k)]])
     EGroup x: SharedPlaceOf lx, env, x
+    EHold x: SharedPlaceOf lx, env, x
     otherwise: InternalBug "a reference path read through an index that this back end does not lower"
 
 # A reference that steps through an index, read: the part's value by the shared place, an
@@ -665,6 +675,7 @@ fn SharedPlaceOf lx, env, e = match e.kind:
 LensReadThrough: unbounded fn Lx, Env, Expr -> Ex
 fn LensReadThrough lx, env, e = match e.kind:
     EGroup x: LensReadThrough lx, env, x
+    EHold x: LensReadThrough lx, env, x
     EIndex r, k: XCall (HelperRef "index"), [[(XRef (SharedPlaceOf lx, env, r)), (Argument lx, env, k)]]
     otherwise: match ?LensCall lx, e:
         ? ((qk, argument)): XCall (LensReadRef lx, qk), [[(XRef (SharedPlaceOf lx, env, argument))]]

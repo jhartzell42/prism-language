@@ -737,6 +737,7 @@ fn CallsItself lx, qk = match lx.g.vals[qk]:
 ValueWidgetsAt: unbounded fn Lx, Expr -> [((Text, [((Text, Ty))]))]
 fn ValueWidgetsAt lx, e = match e.kind:
     EGroup x: ValueWidgetsAt lx, x
+    EHold x: ValueWidgetsAt lx, x
     EMatch ignore, arms: Fold arms, [[]], \|acc, a| Append acc, (ValueWidgetsOfBlock lx, a.body)
     EIf ignore, yes, (? no): Append (ValueWidgetsOfBlock lx, yes), (ValueWidgetsOfBlock lx, no)
     EIf ignore, yes, nil: ValueWidgetsOfBlock lx, yes
@@ -880,6 +881,7 @@ BlueprintQk: fn Lx, Expr -> Text
 fn BlueprintQk lx, e = match e.kind:
     ECall c, ignore, ignore, ignore: BlueprintQk lx, c
     EGroup x: BlueprintQk lx, x
+    EHold x: BlueprintQk lx, x
     EName n:
         let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
         Or ?q, ""
@@ -922,6 +924,7 @@ PureBlueprintExpr: unbounded fn Lx, Expr, [Text] -> Bool
 fn PureBlueprintExpr lx, e, seen = match e.kind:
     EFreeSigil "@", ignore: True
     EGroup x: PureBlueprintExpr lx, x, seen
+    EHold x: PureBlueprintExpr lx, x, seen
     EMatch ignore, arms: Fold arms, True, \|ok, a| ok and PureBlueprintBlock lx, a.body, seen
     EIf ignore, yes, (? no): (PureBlueprintBlock lx, yes, seen) and PureBlueprintBlock lx, no, seen
     ECall c, ignore, ignore, ignore:

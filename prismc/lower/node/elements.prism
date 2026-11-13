@@ -234,6 +234,7 @@ fn TagNameOf lx, c = match c.kind:
         let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
         Or ?qk, (Dotted n.path)
     EGroup x: TagNameOf lx, x
+    EHold x: TagNameOf lx, x
     otherwise: ""
 
 ?TagArg: fn [Arg], Text -> ?Expr

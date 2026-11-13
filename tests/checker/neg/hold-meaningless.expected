@@ -1,8 +1,8 @@
-tests/checker/neg/hold-meaningless.prism:9: error[hold-meaningless]: braces around `5` mean nothing: they keep a dynamic or an event whole at a type variable, and `5` is a `Nat`
+tests/checker/neg/hold-meaningless.prism:9: error[hold-meaningless]: braces around `5` mean nothing: they keep a dynamic or an event whole at a type variable, and `5` is neither
     fn Five n = Push [[n]], {5}
                             ^^^
   fix: drop the braces: `5`
-tests/checker/neg/hold-meaningless.prism:12: error[hold-meaningless]: braces around `?x` mean nothing: they keep a dynamic or an event whole at a type variable, and `?x` is a `?Nat`
+tests/checker/neg/hold-meaningless.prism:12: error[hold-meaningless]: braces around `?x` mean nothing: they keep a dynamic or an event whole at a type variable, and `?x` is neither
     fn Kept ?x = Box {?x}
                      ^^^^
   fix: drop the braces: `?x`

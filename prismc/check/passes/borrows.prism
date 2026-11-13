@@ -101,6 +101,7 @@ fn CallsLocalMaker env, e = match e.kind:
         ? k: k != "Buffer.Numbered"
         nil: False
     EGroup x: CallsLocalMaker env, x
+    EHold x: CallsLocalMaker env, x
     otherwise: False
 
 ?MakerOf: fn Env, Expr -> ?Text
@@ -160,6 +161,7 @@ fn RefsIn e = match e.kind:
     EField r, ignore, ignore: RefsIn r
     EIndex r, i: Append (RefsIn r), (RefsIn i)
     EGroup x: RefsIn x
+    EHold x: RefsIn x
     ETuple es: Fold es, [[]], \|acc, x| Append acc, (RefsIn x)
     EArray es: Fold es, [[]], \|acc, x| Append acc, (RefsIn x)
     otherwise: [[]]
@@ -199,6 +201,7 @@ fn CheckLent env, st, t, lent:
 IsLensSource: unbounded fn Expr -> Bool
 fn IsLensSource e = match e.kind:
     EGroup x: IsLensSource x
+    EHold x: IsLensSource x
     otherwise: match ?LensApplied e:
         ? ignore: True
         nil: False
@@ -225,6 +228,7 @@ fn PathReceivers e = match e.kind:
     EField r, ignore, ignore: Push (PathReceivers r), r.span
     EIndex r, ignore: Push (PathReceivers r), r.span
     EGroup x: Push (PathReceivers x), x.span
+    EHold x: Push (PathReceivers x), x.span
     otherwise: match ?LensApplied e:
         ? ((ignore, argument)): Push (PathReceivers argument), argument.span
         nil: [[]]
@@ -261,6 +265,7 @@ fn RefPath e = match e.kind:
         let p = RefPath r
         if (Len p) > 0: Push p, "[]" else: p
     EGroup x: RefPath x
+    EHold x: RefPath x
     # a named lens applied names some part of its argument: a step by the lens's name
     otherwise: match ?LensApplied e:
         ? ((n, argument)):
@@ -274,6 +279,7 @@ fn RefPath e = match e.kind:
 LentPath: unbounded fn Expr -> [Text]
 fn LentPath e = match e.kind:
     EGroup x: LentPath x
+    EHold x: LentPath x
     otherwise: match ?LensApplied e:
         ? ((ignore, argument)): LentPath argument
         nil: RefPath e

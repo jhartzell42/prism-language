@@ -95,6 +95,7 @@ fn ExprKids e, m = match e.kind:
     EField r, ignore, ignore: [[(KidExpr r, m)]]
     ETopicIndex x: [[(KidExpr x, m)]]
     EGroup x: [[(KidExpr x, m)]]
+    EHold x: [[(KidExpr x, m)]]
     ETypeArgs x, ignore: [[(KidExpr x, m)]]
     ECast x, ignore, ignore: [[(KidExpr x, m)]]
     ENonEmpty x: [[(KidExpr x, m)]]
@@ -413,6 +414,7 @@ fn ?RelOf m, e = match e.kind:
         nil: nil
     EIndex r, ignore: ?RelOf m, r
     EGroup x: ?RelOf m, x
+    EHold x: ?RelOf m, x
     # a cast is the value it casts, checked or not
     ECast x, ignore, ignore: ?RelOf m, x
     otherwise: match ?CallOf e:

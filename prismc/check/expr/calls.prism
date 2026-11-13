@@ -274,8 +274,17 @@ let mapLiteral = "a map literal"
 # peeled `?` or `~`, under the row's layer. The color is the closure arguments' join: a
 # function argument at a function parameter owes the parameter's color its own, and the
 # two types unify with the parameter's color (ch. 5, The color, doubt CJ).
+#
+# A sigiled argument at a parameter declared as a bare type variable lifts the application,
+# even where the other arguments made that variable an event or a dynamic already
+# (`hold-needed` there); only a hold, `{!e}`, puts it in the variable whole (Jimmy's
+# ruling of 12 November). A constructor's application (`ctor`) takes a `?`, `~` or `@`
+# whole at such a field, and peels only the time layer.
 ApplyRule: unbounded fn Env, St, Text, Col, [Ty], Ty, [Arg], Range -> ((Ty, St))
-fn ApplyRule env, st, fname, col, params, res, args, span:
+fn ApplyRule env, st, fname, col, params, res, args, span = ApplyRuleOf env, st, fname, col, params, res, args, span, False
+
+ApplyRuleOf: unbounded fn Env, St, Text, Col, [Ty], Ty, [Arg], Range, Bool -> ((Ty, St))
+fn ApplyRuleOf env, st, fname, col, params, res, args, span, ctor:
     let n = Len args
     let cmp = IsComparison fname
     let holds = fname == mapLiteral
@@ -285,7 +294,7 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
         else:
             # a reference where an entry is wanted (a lens that takes one) is the place it
             # names
-            let ((t, s2)) = if (IsEntry s, (Or params[i], TyErr)) and IsRef a.value: InferPlace env, s, a.value else: Infer env, s, a.value
+            let ((t, s2)) = if (IsEntry s, (Or params[i], TyErr)) and IsRef a.value: InferPlace env, s, a.value else: InferArgument env, s, a.value
             match (((Walk s2, (Or params[i], TyErr)), (Walk s2, t))):
                 (((TyFn pc, ignore, ignore), (TyFn ac, aps, ar))): (((Push acc, (TyFn pc, aps, ar)), (AddLeq s2, ac, pc, a.value.span, "arg", fname, "")))
                 otherwise: (((Push acc, t), s2))
@@ -295,14 +304,20 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
     let st1b = Fold (Range0 n), st1, \|s, i| match (((?NonEmptyColl s, (Or inferred[i], TyErr)), (?NonEmptyColl s, (Or argTys[i], TyErr)))):
         ((? c, nil)): AskPlainAt s, (Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)).value.span, c
         otherwise: s
-    let ((st2, whole)) = Fold (Range0 n), ((st1b, [[]])), \|((s, done)), i|
+    let ((st2, whole)) = Fold (Range0 n), ((st1b, [[]])), \|((s0, done)), i|
         let a = Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)
         let at = Or argTys[i], TyErr
-        let pnow = NormAssoc s, (Walk s, (Or params[i], TyErr))
+        let pnow = NormAssoc s0, (Walk s0, (Or params[i], TyErr))
+        let bare = (IsTypeVariable (Or params[i], TyErr)) and not holds
+        let ((held, s)) = if IsHold a.value: HoldAt env, s0, fname, bare, pnow, at, a else: ((False, s0))
+        let head = HeadSigil s, at
         # (a map literal is a container: a blueprint among its entries goes in whole, as an
         # array's does, ch. 4, "Where the table looks"; there is no lift over a blueprint)
-        let wholeNow = (IsTimeSigil (HeadSigil s, pnow)) or (HeadSigil s, pnow) == "@" or (holds and (HeadSigil s, at) == "@")
+        let lifting = bare and IsTimeSigil head
+        let ctorWhole = ctor and bare and (head == "@" or IsPlainSigil head)
+        let wholeNow = ctorWhole or ((not lifting) and ((IsTimeSigil (HeadSigil s, pnow)) or (HeadSigil s, pnow) == "@" or (holds and head == "@")))
         if IsLambda a.value: ((s, done))
+        else: if held: (((Unify s, pnow, at, a.value.span), (Push done, i)))
         else: if wholeNow and (StackOf s, at) != "": (((Unify s, pnow, at, a.value.span), (Push done, i)))
         else: if (StackOf s, at) != "" or (IsFreeHeaded s, at): ((s, done))
         else: (((ArgOrUnpack env, s, fname, (Or params[i], TyErr), pnow, at, a, res, span), done))
@@ -322,7 +337,8 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
         if (IsLambda a.value) or (HasNat whole, i) or ((StackOf s, at) == "" and not (IsFreeHeaded s, at)): ((acc, s))
         else:
             let before = Len s.diags
-            let ((acc2, s2)) = LayeredArg env, s, acc, fname, cmp, (Or params[i], TyErr), at, a
+            let bare = (IsTypeVariable (Or params[i], TyErr)) and not holds
+            let ((acc2, s2)) = LayeredArg env, s, acc, fname, cmp, (Or params[i], TyErr), at, a, bare, ctor
             # A layer this application cannot take (two layers, a layer under an optional,
             # a blueprint) leaves the result unknown, so the error reports once.
             let broke = (Len s2.diags) > before and Fold (Drop s2.diags, before), False, \|seen, d| seen or HasText [["two-layers", "layer-under-optional", "blueprint-operand"]], d.code
@@ -383,6 +399,44 @@ fn ArgOrUnpack env, st, fname, param, pnow, at, a, res, span = match Walk st, at
         otherwise: PlainArg env, st, fname, param, at, a
     otherwise: PlainArg env, st, fname, param, at, a
 
+# A parameter declared as a type variable alone (`a` in `Push: fn [a], a -> [a]`, a
+# constructor's `first: a`), however far its variable is decided by now.
+IsTypeVariable: fn Ty -> Bool
+fn IsTypeVariable t = match t:
+    TyFlex ignore: True
+    otherwise: False
+
+IsHold: fn Expr -> Bool
+fn IsHold e = match e.kind:
+    EHold ignore: True
+    otherwise: False
+
+# An argument's type: a hold's is its inside's, noted at the hold too (a hold anywhere but
+# an argument is `hold-meaningless`, in `Infer`).
+InferArgument: unbounded fn Env, St, Expr -> ((Ty, St))
+fn InferArgument env, st, e = match e.kind:
+    EHold x:
+        let ((t, st2)) = Infer env, st, x
+        ((t, (NoteTy st2, e.span, t)))
+    otherwise: Infer env, st, e
+
+# A hold, `{!e}`, keeps its dynamic or event whole at a type variable (Jimmy's ruling of
+# 12 November). Around a value with no time layer, or at a parameter that is no type
+# variable, the braces mean nothing: `hold-meaningless`, and the argument is read as if
+# they were not there. Whether the hold takes its argument whole.
+HoldAt: unbounded fn Env, St, Text, Bool, Ty, Ty, Arg -> ((Bool, St))
+fn HoldAt env, st, fname, bare, pnow, at, a:
+    let inner = match a.value.kind:
+        EHold x: x
+        otherwise: a.value
+    let src = SrcText env, inner.span
+    let fix = "drop the braces: `{src}`"
+    if not (IsTimeSigil (HeadSigil st, at)) and not (IsFreeHeaded st, at):
+        ((False, (ErrFix st, "hold-meaningless", a.value.span, "braces around `{src}` mean nothing: they keep a dynamic or an event whole at a type variable, and `{src}` is neither", fix)))
+    else: if not bare:
+        ((False, (ErrFix st, "hold-meaningless", a.value.span, "braces around `{src}` mean nothing: `{fname}` takes a `{ShowTy st, pnow}` here, not a type variable", fix)))
+    else: ((True, st))
+
 HasRange: fn [Range], Range -> Bool
 fn HasRange rs, r = Fold rs, False, \|seen, x| seen or x == r
 
@@ -404,8 +458,8 @@ fn PlainArg env, st, fname, param, at, a:
     else: UnifyAt st, p, at, a.value.span
 
 # A layered argument against its parameter as it now stands.
-LayeredArg: unbounded fn Env, St, Peeled, Text, Bool, Ty, Ty, Arg -> ((Peeled, St))
-fn LayeredArg env, st, acc, fname, cmp, param, at, a:
+LayeredArg: unbounded fn Env, St, Peeled, Text, Bool, Ty, Ty, Arg, Bool, Bool -> ((Peeled, St))
+fn LayeredArg env, st, acc, fname, cmp, param, at, a, bare, ctor:
     # an associated type is the impl's choice before its head says how the argument is
     # taken (`Item Jar` is `?Text`: a `?` there is whole)
     let p = NormAssoc st, (Walk st, param)
@@ -418,8 +472,13 @@ fn LayeredArg env, st, acc, fname, cmp, param, at, a:
     else: if IsFreeHeaded st, at:
         let st2 = if (IsTimeSigil ph) or ph == "@" or ph == "&" or cmp: st else: AskLayer st, at, span, fname
         ((acc, (Unify st2, p, at, span)))
+    # a type variable the other arguments made an event or a dynamic: the application
+    # still lifts over a sigiled argument there, which cannot fit; a hold keeps it whole
+    else: if bare and (IsTimeSigil (HeadSigil st, at)) and ((IsTimeSigil ph) or ph == "@"):
+        let src = SrcText env, span
+        ((acc, (ErrFix st, "hold-needed", span, "`{fname}` lifts over `{src}`, but its type variable here already holds a `{ShowTy st, p}`", "keep it whole with braces: `{Held src}`")))
     else: if (IsTimeSigil ph) or ph == "@" or ph == "&": ((acc, (Unify st, p, at, span)))
-    else: if IsPlainSigil ph: PeelTimeOnly env, st, acc, fname, p, at, a
+    else: if (IsPlainSigil ph) or (ctor and bare): PeelTimeOnly env, st, acc, fname, p, at, a
     else:
         let head = HeadSigil st, at
         if head == "@": ((acc, (ErrFix st, "blueprint-operand", span, "`{fname}` over a blueprint; bind it first", "bind it, `x <- {SrcText env, span}`, and use `x`")))
@@ -478,21 +537,19 @@ fn PeelTimeOnly env, st, acc, fname, p, at, a:
         else: ((acc2, (Unify st, p, inner, span)))
     else: ((acc, (Unify st, p, at, span)))
 
-# A constructor takes every argument whole (ch. 5): positionally, or a record's by name.
-# One whose type has no parameters lifts over a dynamic or an event at a plain field as a
-# function does (Type System ch. 4, "A dynamic where a plain field goes": `Mono(left=$q.left
-# + 1)` is a `$Mono`); a sigiled field takes its argument whole. A type parameter's field
-# takes its argument whole too, sigils and all (ch. 2: `Pair $home, $away` is a `Pair $Int
-# $Int`), so a generic type's constructor with such a field never lifts. A constructor none
-# of whose fields is a bare type parameter (`Removing [k]`) has no field that could take a
-# sigil whole, and lifts as a function does: `Removing !gone` is a `!(Happening k v a)`.
+# A constructor's application, positionally or a record's by name, lifts over a dynamic or
+# an event as a function's does (Jimmy's ruling of 12 November, which replaces Type System
+# ch. 2's "A type-parameter field takes its argument whole"): `Mono(left=$q.left + 1)` is a
+# `$Mono`, `Pair $home, $away` a `$(Pair Int Int)`, `Requested !asked` a `!(Heard Asked)`. A
+# sigiled field takes its argument whole; a hold puts a sigiled value in a type-parameter
+# field whole, `Pair {$home}, {$away}` being the bundle `Pair $Int $Int`; and a `?`, `~` or
+# `@` goes in whole at a type-parameter field (`ApplyRuleOf`).
 CtorApp: unbounded fn Env, St, CtorInfo, [Arg], Range, Range -> ((Ty, St))
 fn CtorApp env, st, c, args, span, cspan:
     let ((self, st0, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), span, [[]]
     let fieldTys = Each c.args, \|t| SubstQ inst, t
     let st1 = NamedTwice (NoteTy st0, cspan, (TyFn CBound, fieldTys, self)), args
     let named = Filter args, \|a| a.?name != nil
-    let lifts = (Len c.params) == 0 or not (Fold c.args, False, \|bare, t| bare or IsBareParameter t)
     if (Len named) > 0 and (Len c.fields) > 0:
         let st2 = Fold named, st1, \|s, a| match a.?name:
             ? id: match ?IndexOf c.fields, id.name:
@@ -507,27 +564,10 @@ fn CtorApp env, st, c, args, span, cspan:
         let ptys = Each known, \|a| match a.?name:
             ? id: Or fieldTys[Or (?IndexOf c.fields, id.name), 0], TyErr
             nil: TyErr
-        CtorArgs env, st3, c, known, ptys, self, lifts, span
+        ApplyRuleOf env, st3, (BareName c.name), CBound, ptys, self, known, span, True
     else: if (Len args) != (Len fieldTys):
         ((TyErr, (Err st1, "mismatch", span, "`{BareName c.name}` takes {CountWord (Len fieldTys)} argument{if (Len fieldTys) == 1: "" else: "s"}; here it has {CountWord (Len args)}")))
-    else: CtorArgs env, st1, c, args, fieldTys, self, lifts, span
-
-# A field declared as a type parameter alone (`first: a`), which takes its argument whole.
-IsBareParameter: fn Ty -> Bool
-fn IsBareParameter t = match t:
-    TyQ ignore: True
-    otherwise: False
-
-# A constructor's arguments against their fields' types: through the application rule when
-# the constructor lifts, else each whole.
-CtorArgs: unbounded fn Env, St, CtorInfo, [Arg], [Ty], Ty, Bool, Range -> ((Ty, St))
-fn CtorArgs env, st, c, args, ptys, self, lifts, span:
-    if lifts: ApplyRule env, st, (BareName c.name), CBound, ptys, self, args, span
-    else:
-        let st2 = Fold (Range0 (Len args)), st, \|s, i| match args[i]:
-            ? a: Check env, s, a.value, (Or ptys[i], TyErr)
-            nil: s
-        ((self, st2))
+    else: ApplyRuleOf env, st1, (BareName c.name), CBound, fieldTys, self, args, span, True
 
 # A tag's construction (Semantics ch. 8): each argument against its field by the lifting
 # table. A dynamic at a plain field lifts the construction, as a record's does (Type System
