@@ -345,9 +345,8 @@ fn RowArgInto m, p, other = m
 ConvRow: unbounded fn Cx, St, Type -> ((Rw, St))
 fn ConvRow cx, st, t:
     let ((fams, tails, idx, st2)) = RowParts cx, st, t
-    let st3 = if (Len tails) > 1: ErrFix st2, "row-two-tails", t.span, "a row has one variable; `{Join (Each tails, \|tl| TailWritten st2, tl), " | "}` names two", "keep one variable" else: st2
-    let tail = Or tails[0], TlClosed
-    ((Rw(fams=(SortTexts fams), minus=[[]], tail=tail, idx=idx), st3))
+    # a row may hold several variables, each decided apart (Jimmy, 13 November, ruling RT)
+    ((Rw(fams=(SortTexts fams), minus=[[]], tail=(UnionTail tails), idx=idx), st2))
 
 RowParts: unbounded fn Cx, St, Type -> (([Text], [Tail], (Text ==> [Ty]), St))
 fn RowParts cx, st, t = match t.kind:
@@ -399,6 +398,7 @@ fn FamilyIndices cx, st, fam, args, span:
 # The tail a scope's own row gives `Element` in a row's place: none when closed.
 ScopeTails: fn Tail -> [Tail]
 fn ScopeTails TlClosed = [[]]
+fn ScopeTails (TlUnion ps) = ps
 fn ScopeTails tl = [[tl]]
 
 # A tail as a row writes it.
@@ -409,6 +409,7 @@ fn TailWritten st, tl = match tl:
     TlAssoc ignore, n, h: "{n} {ShowTyIn st, h, True}"
     TlFlex n: "r{n}"
     TlRow whole: ShowRowIn st, whole, False
+    TlUnion ps: Join (Each ps, \|p| TailWritten st, p), " | "
     TlClosed: ""
 
 # A signature's scheme (ch. 5): its type variables, row variables (those in a row's place,

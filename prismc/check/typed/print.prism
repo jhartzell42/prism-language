@@ -62,6 +62,7 @@ fn RowSexp rw:
         TlQ n: " (tail {n})"
         TlAssoc ignore, n, ignore2: " (tail {n})"
         TlRow whole: " (tail {RowSexp whole})"
+        TlUnion ps: " (tails{Concat (Each ps, \|p| " {TailSexp p}")})"
     let minus = if (Len rw.minus) == 0: "" else: " (minus{Concat (Each rw.minus, \|m| " {m}")})"
     "(row{Concat (Each rw.fams, \|f| " {f}.*")}{tail}{minus})"
 
@@ -242,3 +243,11 @@ fn OptBlockExprs nil = [[]]
 OptExprs: unbounded fn ?Expr -> [Expr]
 fn OptExprs (? x) = ExprsIn x
 fn OptExprs nil = [[]]
+
+# One variable of a row of several (ruling RT).
+TailSexp: fn Tail -> Text
+fn TailSexp (TlFlex n) = "r{n}"
+fn TailSexp (TlRigid n) = n
+fn TailSexp (TlQ n) = n
+fn TailSexp (TlAssoc ignore, n, ignore2) = n
+fn TailSexp ignore = "?"

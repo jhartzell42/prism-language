@@ -430,6 +430,10 @@ fn DischargeOne g, st, inc:
     let sup = WalkRow st, inc.sup
     let st1a = match sub.tail:
         TlFlex n: CloseTail st, n
+        # each unsolved variable of a row of several (ruling RT)
+        TlUnion ps: Fold ps, st, \|s, p| match p:
+            TlFlex n: CloseTail s, n
+            otherwise: s
         otherwise: st
     let sub2 = WalkRow st1a, inc.sub
     let inFile = update st1a:
@@ -439,6 +443,10 @@ fn DischargeOne g, st, inc:
         &_.file <= st1a.file
     let left = Filter sub2.fams, \|f| not (HasText sup.fams, f) and (Len (TagsLeft g, f, sub2.minus)) > 0
     let tailBad = match ((sub2.tail, sup.tail)):
+        # a row of several variables (ruling RT): each of the child's within the scope's
+        ((TlUnion xs, TlUnion ys)): Fold xs, False, \|bad, x| bad or ((IsFixedTail x) and not (HasTail ys, x))
+        ((TlUnion xs, y)): Fold xs, False, \|bad, x| bad or ((IsFixedTail x) and x != y)
+        ((x, TlUnion ys)): (IsFixedTail x) and not (HasTail ys, x)
         ((TlRigid a, TlRigid b)): a != b
         ((TlRigid ignore, ignore)): True
         (((TlAssoc t1, n1, h1), (TlAssoc t2, n2, h2))): not (t1 == t2 and n1 == n2 and h1 == h2)
@@ -464,3 +472,9 @@ fn IsElementTag g, t = match g.tags[t]:
 CloseTail: fn St, Nat -> St
 fn CloseTail st, n = update st:
     &_.rows <= Insert &_.rows, n, emptyRow
+
+# A tail no unification will move: a rigid variable or an associated row.
+IsFixedTail: fn Tail -> Bool
+fn IsFixedTail (TlRigid ignore) = True
+fn IsFixedTail (TlAssoc ignore, ignore2, ignore3) = True
+fn IsFixedTail ignore = False

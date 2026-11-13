@@ -71,6 +71,9 @@ type Tail = choice:
     # a whole row standing for a row variable in a substitution only (a type's row
     # argument, ruling RR): `SubstRowQ` merges it into the row it stands in
     TlRow Rw
+    # several variables in one row, each decided apart (Jimmy, 13 November, ruling RT:
+    # `@HostDocument ... emit lower | rest`); never empty nor of one part (`UnionTail`)
+    TlUnion [Tail]
 derive ^Eq, ^Show
 
 # A row: a set of families (sorted), the tags an arm above has taken (the remainder
@@ -563,7 +566,35 @@ fn ShowRowIn st, rw, nested:
         TlQ n: [[n]]
         TlAssoc ignore, n, h: [["{n} {ShowTyIn st, (Zonk st, h), True}"]]
         TlRow whole: [[(ShowRowIn st, whole, False)]]
+        TlUnion ps: Each ps, \|p| TailShown st, p
     let parts = Append tail, fams
     let minus = if (Len rw.minus) == 0: "" else: " − \{{Join rw.minus, ", "}\}"
     let inner = if (Len parts) == 0: "unit" else: Join parts, " | "
     if nested and ((Len parts) > 1 or minus != ""): "({inner}{minus})" else: "{inner}{minus}"
+
+# One tail as a row shows it.
+TailShown: unbounded fn St, Tail -> Text
+fn TailShown st, tl = match tl:
+    TlClosed: ""
+    TlFlex n: "r{n}"
+    TlRigid n: n
+    TlQ n: n
+    TlAssoc ignore, n, h: "{n} {ShowTyIn st, (Zonk st, h), True}"
+    TlRow whole: ShowRowIn st, whole, False
+    TlUnion ps: Join (Each ps, \|p| TailShown st, p), " | "
+
+# Several tails as one: nested unions flattened, closed ones dropped, each once; none is
+# closed and one is itself (ruling RT).
+UnionTail: fn [Tail] -> Tail
+fn UnionTail ps:
+    let flat = Fold ps, [[]], \|acc, p| match p:
+        TlUnion qs: Fold qs, acc, \|a2, q| if q == TlClosed or HasTail a2, q: a2 else: Push a2, q
+        TlClosed: acc
+        other: if HasTail acc, other: acc else: Push acc, other
+    match Len flat:
+        0: TlClosed
+        1: Or flat[0], TlClosed
+        otherwise: TlUnion flat
+
+HasTail: fn [Tail], Tail -> Bool
+fn HasTail ts, t = Fold ts, False, \|seen, x| seen or x == t

@@ -56,6 +56,10 @@ fn SubstRowQ m, rw = match rw.tail:
         ? t: Rw(fams=rw.fams, minus=rw.minus, tail=t, idx=(SubstIdx m, rw.idx))
         nil: SubstIdxRow m, rw
     TlAssoc tr, n, h: SubstIdxRow m, (Rw(fams=rw.fams, minus=rw.minus, tail=(TlAssoc tr, n, (SubstQ m, h)), idx=rw.idx))
+    # each variable of the row substituted apart (ruling RT)
+    TlUnion ps: Fold ps, (SubstIdxRow m, (Rw(fams=rw.fams, minus=rw.minus, tail=TlClosed, idx=rw.idx))), \|acc, p|
+        let one = SubstRowQ m, (Rw(fams=[[]], minus=[[]], tail=p, idx={{}}))
+        Rw(fams=(SortTexts (UnionTexts acc.fams, one.fams)), minus=acc.minus, tail=(UnionTail [[acc.tail, one.tail]]), idx=(MergeIdxMaps acc.idx, one.idx))
     otherwise: SubstIdxRow m, rw
 
 # A row's indices with a substitution applied.

@@ -366,6 +366,8 @@ fn UnifyRowRest st, a, b, span:
         ((TlQ x, TlQ y)): if x == y and (Len onlyA) == 0 and (Len onlyB) == 0: (("", st)) else: (("mismatch", st))
         # one associated row at one type is one row, equal only to itself until known
         (((TlAssoc t1, n1, h1), (TlAssoc t2, n2, h2))): if t1 == t2 and n1 == n2 and (Len onlyA) == 0 and (Len onlyB) == 0: UnifyIn st, h1, h2, span else: (("mismatch", st))
+        # two rows of several variables are one when they hold the same ones (ruling RT)
+        ((TlUnion xs, TlUnion ys)): if (Len onlyA) == 0 and (Len onlyB) == 0 and (Len xs) == (Len ys) and Fold xs, True, \|all, x| all and HasTail ys, x: (("", st)) else: (("mismatch", st))
         otherwise: (("mismatch", st))
 
 # A field access whose record nothing had decided yet: the receiver, the field, the type
