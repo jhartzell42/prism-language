@@ -1190,7 +1190,7 @@ fn TyDefs lx, ti:
     let derives = Fold ti.derives, [[]], \|acc, dn| match ?ResolveTrait lx.g, ti.home, (SplitOn dn, "."):
         ? cls: Push acc, cls
         nil: acc
-    let params = Each ti.params, \|p| Camel p
+    let params = Each (Filter ti.params, \|p| ParamUsed ti, p), \|p| Camel p
     let bare = BareName ti.name
     let Mk = \|shape, cases| TyDef(name=(Camel bare), prism=bare, params=params, keyed=(Each (KeyedParameters lx, ti.name), \|q| Camel q), shape=shape, cases=cases, eq=(HasText derives, "Prelude.Eq"), ord=(HasText derives, "Prelude.Ord"), show=(if HasOwnShow lx, ti.name: ShownOwn else: if HasText derives, "Prelude.Show": ShownDerived else: NotShown), pod=((TyPodable lx, (TyCon ti.name, [[]]), [[]]) and Fold cases, True, \|ok, c| ok and Fold c.fields, True, \|ok2, ((ignore, ft))| ok2 and Podable ft), doc=(TypeDoc lx, ti))
     match ti.body:

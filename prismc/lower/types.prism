@@ -187,6 +187,16 @@ fn RustTyOfParams lx, ps = match ps:
     [[p]]: OutTyOf lx, p
     otherwise: OutTuple (Each ps, \|p| OutTyOf lx, p)
 
+# Whether a field or a case of a declared type names its parameter.
+ParamUsed: unbounded fn TyInfo, Text -> Bool
+fn ParamUsed ti, p = match ti.body:
+    BRecord fs: Fold fs, False, \|seen, ((ignore, ft))| seen or (Mentions ft, p)
+    BChoice cs: Fold cs, False, \|seen, ((ignore, ats))| seen or Fold ats, False, \|s2, at| s2 or (Mentions at, p)
+    otherwise: True
+
+Mentions: unbounded fn Ty, Text -> Bool
+fn Mentions t, p = (Instantiated t, [[p]], [[TyErr]]) != t
+
 # A declared type: an alias is its target; a prelude type is the prelude module's.
 NamedTy: unbounded fn Lx, Text, [OutTy] -> OutTy
 fn NamedTy lx, n, args = match lx.g.types[n]:
@@ -194,7 +204,9 @@ fn NamedTy lx, n, args = match lx.g.types[n]:
         BAlias a: OutTyOf lx, a
         # A fault kind is its name (`Error`'s `kind`); any other row kind is its enum.
         BRowKind: if n == "Prelude.Fault": OutPod else: OutNamed (RefIn lx, ti.home, (TypeItemName n)), [[]]
-        otherwise: OutNamed (RefIn lx, ti.home, (TypeItemName n)), args
+        # a parameter no field names (`Quantity u`, a unit's case) is the checker's alone:
+        # Rust has no unused type parameter, so the Rust type leaves it out
+        otherwise: OutNamed (RefIn lx, ti.home, (TypeItemName n)), (Fold (Range0 (Len args)), [[]], \|acc, i| if ParamUsed ti, (Or ti.params[i], ""): Push acc, (Or args[i], OutUnit) else: acc)
     nil: if HasKey lx.g.families, n: OutPod else: InternalBugType "the type `{n}`, which the checker did not declare"
 
 # The Rust unit struct of a choice's case as a type (Jimmy's ruling PK): `Unit`'s
