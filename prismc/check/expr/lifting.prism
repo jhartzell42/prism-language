@@ -97,6 +97,26 @@ fn TakenBy env, arm, taken = if arm.?guard != nil: taken else: match arm.?patter
 # the arms above have not taken (ch. 5, Refinement at tag matches, doubt RM).
 Narrowed: unbounded fn Env, St, Arm, Text, Ty, [Text] -> Env
 fn Narrowed env, st, arm, name, t, taken:
+    # in a tag's arm, the scrutinee's name is an element of the tag's family alone (Claude's
+    # call under ruling OP: a seat's arm hands its element on at its family's row)
+    let ?tagFamily = match arm.?pattern:
+        ? p: if arm.?guard != nil: nil else: match ?TagOfPattern env, p:
+            ? tg: ? tg.familyName
+            nil: nil
+        nil: nil
+    match ?tagFamily:
+        ? fam: if name == "": env else: match Walk st, t:
+            TyElem rw, o:
+                let w = WalkRow st, rw
+                let idx = match w.idx[fam]:
+                    ? indices: Insert {{}}, fam, indices
+                    nil: {{}}
+                WithLocal env, name, (Mono (TyElem (Rw(fams=[[fam]], minus=[[]], tail=TlClosed, idx=idx)), o))
+            otherwise: env
+        nil: NarrowedToRemainder env, st, arm, name, t, taken
+
+NarrowedToRemainder: unbounded fn Env, St, Arm, Text, Ty, [Text] -> Env
+fn NarrowedToRemainder env, st, arm, name, t, taken:
     let forwards = match arm.?pattern:
         ? p: match p.kind:
             PFamily ignore: True
