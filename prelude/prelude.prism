@@ -86,7 +86,7 @@ trait ^Eq a:
 
 trait ^Ord a where a: ^Eq:
     Compare: fn a, a -> Ordering
-    <: fn a, a -> Bool
+    < : fn a, a -> Bool
     <=: fn a, a -> Bool
     >: fn a, a -> Bool
     >=: fn a, a -> Bool

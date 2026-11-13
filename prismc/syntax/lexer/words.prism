@@ -125,8 +125,8 @@ fn PushOpSuffix l, op, start:
 # The first symbol operator at the cursor, or `""` (ch. 2, "Operators and punctuation":
 # longest match): the table as one alternation, longer before their prefixes, which a
 # leftmost-first search tries left to right (Appendix B), with `=>` only in a test's
-# checks. `<:` puts a map entry (Jimmy's ruling on map entries); in a trait's member
-# position the parser reads it as the method `<` and its signature's colon.
+# checks. `<:` puts a map entry (Jimmy's ruling on map entries), so a trait declares its
+# method `<` as `< :`, with a space.
 FirstOp: fn Lex -> Text
 fn FirstOp l = MatchHere (if FatArrowOn l: %/==>|<-|<=|<:|<\||->|-=|-\?|\+=|\+\?|\*=|\*\?|\/=|==|>=|=>|<|>|-|\+|\*|\/|=/ else: %/==>|<-|<=|<:|<\||->|-=|-\?|\+=|\+\?|\*=|\*\?|\/=|==|>=|<|>|-|\+|\*|\/|=/), l
 

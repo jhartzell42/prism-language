@@ -181,3 +181,8 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
     match, and in a trait's member position the parser reads it as the method `<` and its
     signature's colon (`<: fn a, a -> Bool` in `^Ord`). Refused: a lexer that splits `<:`
     by context, which no other operator needs.
+  - (overrules the bullet above) Jimmy, 12 November 18:12: "make someone put a space".
+    A trait declares its method `<` as `< :`, with a space (`< : fn a, a -> Bool` in the
+    prelude's `^Ord`), and an unspaced `<:` in a trait's member position is a parse error
+    whose message says to write `< :`. The parser has no special case for it. Refused:
+    reading `<:` there as `<` and its colon.

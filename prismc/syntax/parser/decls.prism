@@ -203,9 +203,7 @@ ParseSignature: unbounded fn Ps -> ((Signature, Ps))
 fn ParseSignature p:
     let start = Here p
     let ((name, p1)) = ParseDefName p
-    # `<: fn a, a -> Bool` in a trait: the one token `<:` is the method `<` and its colon
-    let split = p.inTrait and (AtOp p, "<:")
-    let ((ty, p2)) = ParseType (if split: p1 else: ExpectColon p1)
+    let ((ty, p2)) = ParseType (ExpectColon p1)
     let ((bounds, p3)) = OptionalBounds p2
     ((Signature(name=name, ty=ty, bounds=bounds, span=(To start, (Prev p3))), p3))
 
@@ -217,8 +215,11 @@ fn ParseDefName p = match Kind p:
     KName n:
         let ((name, q)) = ParseSName p
         ((DefSName name, q))
+    # `<:` puts a map entry (Jimmy's ruling on map entries): the method `<` is declared with
+    # a space before its colon, `< :` (Jimmy: "make someone put a space")
+    KOp "<:", ignore if p.inTrait: ((DefSName noSName, (ErrorAt p, (Here p), "`<:` puts a map entry: write `< :` for the method `<` and its colon")))
     KOp op, ignore if p.inTrait:
-        let name = DefOp (if op == "<:": "<" else: op), (Here p)
+        let name = DefOp op, (Here p)
         ((name, (Adv p)))
     otherwise: ((DefSName noSName, (ErrorHere p, "expected a name")))
 
