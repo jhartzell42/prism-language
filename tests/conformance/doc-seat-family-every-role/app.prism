@@ -42,24 +42,24 @@ tag Seat.Query of Element $?(Answer d r):
 
 @Raising: @$?Nat emit Seat.* Count Raiser
 @Raising:
-    $told <- Seat.Query($query=$ Whole)                                  # 0
-    @ $told
+    $?told <- Seat.Query($query=$ Whole)                                  # 0
+    @ $?told
 
 @Watching: @$?Text emit Seat.* Count Watcher
 @Watching:
-    $told <- Seat.Query($query=$ Whole)                                  # 0
-    @ $told
+    $?told <- Seat.Query($query=$ Whole)                                  # 0
+    @ $?told
 
 # Both roles' guests: the family at every role.
 @Guests: @(($?Nat, $?Text)) emit Seat.* Count _
 @Guests:
-    $raiser <- @Raising                                                  # 0
-    $watcher <- @Watching                                                # 1
-    @ (($raiser, $watcher))
+    $?raiser <- @Raising                                                  # 0
+    $?watcher <- @Watching                                                # 1
+    @ (($?raiser, $?watcher))
 
 @page: @unit
 @page:
     let none = "none"
-    (((($raiser, $watcher)), ignore)) <- @Host @Guests, \|path, element| match element:    # 0
+    (((($?raiser, $?watcher)), ignore)) <- @Host @Guests, \|path, element| match element:    # 0
         Seat.Query(..): @ $nil
-    Ui.Label($text=$"raiser told {Or $raiser, 0}, watcher told {Or $watcher, none}")       # 1
+    Ui.Label($text=$"raiser told {Or $?raiser, 0}, watcher told {Or $?watcher, none}")       # 1

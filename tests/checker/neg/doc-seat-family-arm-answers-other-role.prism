@@ -35,11 +35,11 @@ tag Seat.Query of Element $?(Answer d r):
 
 @Raising: @unit emit Seat.* Count Raiser
 @Raising:
-    $told <- Seat.Query($query=$ Whole)
+    $?told <- Seat.Query($query=$ Whole)
 
 @Watching: @unit emit Seat.* Count Watcher
 @Watching:
-    $told <- Seat.Query($query=$ Whole)
+    $?told <- Seat.Query($query=$ Whole)
 
 @Guests: @unit emit Seat.* Count _
 @Guests:
