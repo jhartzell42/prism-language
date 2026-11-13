@@ -262,9 +262,27 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   modules reached by `use` that both declare a name still collide at the use, and the
   prelude against a file's own still collides (Semantics ch. 6, neg/collision). Jimmy, 13
   November, on chess's `Move` against `^PerfectInformationGame`'s: "a and c both just do
-  both". So also **CR**: chess names its own move `ChessMove`. The file document's request
-  is `Overwrite [U8]`, since the prelude's `Replace` still collides (Claude's call).
+  both". So also **CR**: chess names its own move `ChessMove` (Jimmy: "good"). The prelude
+  is covered too: a file's own `Len` shadows `Prelude.Len` ("prelude covered too"), so
+  the file document's request keeps the book's name, `Replace [U8]`.
+- **UA** `use` renames what it reaches with `as`: `use Fish.Count as FishCount`. Jimmy,
+  13 November: "Use can support as".
 - **RR** A parameter used only after `|` in an `emit` row is a row and declares no kind:
   `type ChessSeats rest = record: $player: (Color ==> $@(@unit emit Seat.* ChessGame
   Player | rest))`. That position holds nothing else, unlike a case. Jimmy, 13 November:
   "sure let's do a".
+- **OP** A place has one role: the seat and the element at a place are one existential,
+  `type Guest d = any (r: Role d): ((Fixed r, SeatId d r, Elem (Seat.* d r)))`, and the
+  supplier is given `any (r: Role d): ((Fixed r, SeatId d r, Element (Seat.* d r) o))`, so
+  opening it tells the arm the role of all three. Jimmy, 13 November: "a indeed".
+  Claude's calls under it: a `Fixed s` matched against `Fixed<<r>>`, `r` a variable of
+  the function whose `Fixed r` parameter is in scope, compares the two and narrows `s` to
+  `r` (VO for a variable; library `?ResponseTo`); a tag arm narrows the matched element
+  to its family's row (library `@HostRole`); `@Serve` takes the connection's role from its
+  caller.
+- **RT** A row may hold several variables, each decided by an argument: `@HostDocument ...
+  emit lower | rest` (documents book ch. 5). Jimmy, 13 November: "a".
+- **DE** A derive may ask equalities of associated types, `derive ^StateDocument g via
+  ^PerfectInformationGame g where State g = g, Request g Player = Move g, ...` (Claude's
+  call, 13 November, from the chess agent's report that the derive's `Step` asked nothing
+  of the game's `impl ^Document`).

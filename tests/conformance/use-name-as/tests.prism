@@ -1,0 +1,6 @@
+# The tests of use-name-as.
+emit Ui.*
+use App.*
+
+test renamed, @page:
+    build

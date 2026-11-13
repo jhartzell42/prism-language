@@ -1,0 +1,6 @@
+# Derived by hand: Birds' count is 1, Fish's 2.
+test renamed
+
+tick 0
+  added:
+    0: Ui.Label(text="1 2")

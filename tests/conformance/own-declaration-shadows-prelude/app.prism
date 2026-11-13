@@ -1,0 +1,13 @@
+# A file's own declaration shadows the prelude's (Jimmy, 13 November, ruling OS: "prelude
+# covered too"): this file's `Len` counts words, and a bare `Len` here is this file's;
+# `Prelude.Len` still reaches the prelude's.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Len: fn Text -> Nat
+fn Len text = Prelude.Len (SplitOn text, " ")
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Len "one two three"} {Prelude.Len "one"}")      # 0

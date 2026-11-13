@@ -1,0 +1,15 @@
+# `use` renames what it reaches with `as` (Jimmy, 13 November, ruling OS: "Use can support
+# as"): `Birds` and `Fish` both declare `Kind` and `Count`; this file reaches `Birds`'s
+# by their own names and `Fish`'s `Count` as `FishCount`, so no bare name collides.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+mod Birds
+mod Fish
+test mod Tests
+use Birds.*
+use Fish.Count as FishCount
+use Fish.Kind as FishKind
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Count Small} {FishCount Fish.Huge}")                  # 0

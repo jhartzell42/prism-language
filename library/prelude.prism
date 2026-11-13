@@ -33,7 +33,7 @@ derive ^Eq, ^Ord, ^Show
 # November: "Never is an empty choice and goes in the prelude"). A `match` on it has no
 # arm, and `!Never` has one value, `never`, the event that never fires.
 type Never = choice:
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Show, ^Pod
 
 # The row kinds (Type System ch. 2, Rows; Semantics ch. 10).
 type Element o = row

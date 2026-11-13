@@ -69,4 +69,4 @@ fn @Watcher name:
 @hotSeat: @unit
 @hotSeat:
     seats <- @Table                                                            # 0, 1
-    @HostDocument (@InMemory fresh), seats                                     # 2
+    @HostDocument (@InMemory<<ChessGame>> fresh), seats                        # 2

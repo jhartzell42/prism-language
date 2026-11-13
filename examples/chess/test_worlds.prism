@@ -17,7 +17,7 @@ use Ui.*
 # ---- a file with no disk
 
 # A file kept in a hold, as a file document's implementation: its bytes start as given,
-# and each tick's last overwrite replaces them. It outlives everything seated at it, so a
+# and each tick's last replace replaces them. It outlives everything seated at it, so a
 # game hosted there can stop and start again.
 @InHold: fn [U8], Guests File -> @(Supplier File)
 fn @InHold initial, $guests:
@@ -25,10 +25,11 @@ fn @InHold initial, $guests:
         @Switch (!ReplacesAt at, $element)
     let !overwritten = !Filter (?LastOf (Values !overwrites))
     $bytes <- initial then !overwritten
-    @ \|at, seat, element| match element:
-        Seat.Request(..): @ (Accepted on !overwritten)
-        Seat.Query(..): @ ? $bytes
-        Seat.Leave(..): @ unit
+    @ \|at, asking| match asking:
+        any ((role, id, element)): match element:
+            Seat.Request(..): @ (Accepted on !overwritten)
+            Seat.Query(..): @ ? $bytes
+            Seat.Leave(..): @ unit
 
 # What the file holds, as a viewer of it reads it: nothing yet, the game in `^Pod`'s text,
 # or something else.

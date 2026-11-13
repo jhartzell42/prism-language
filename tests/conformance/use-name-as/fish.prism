@@ -1,0 +1,9 @@
+# `Fish`, a child module of the root, declaring `Kind` and `Count` as `Birds` does.
+emit r
+
+type Kind = choice:
+    Tiny
+    Huge
+
+Count: fn Kind -> Nat
+fn Count k = 2

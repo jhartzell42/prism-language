@@ -1,0 +1,12 @@
+# A row may hold two variables, each decided by an argument (Jimmy, 13 November, ruling
+# RT; documents book ch. 5's `@HostDocument ... emit lower | rest`): `@Both` builds a
+# blueprint of each row in one scope that emits both.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+module Rows
+emit r
+
+@Both: fn @a emit lower, @b emit rest -> @((a, b)) emit lower | rest
+fn @Both @first, @second:
+    x <- @first
+    y <- @second
+    @ ((x, y))

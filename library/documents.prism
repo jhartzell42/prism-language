@@ -69,12 +69,20 @@ tag Seat.Leave of Element:
 # doubt SK). The role is a `Fixed r`, so opening the key tells the arm its role.
 type SeatKey d = any (r: Role d): ((Fixed r, SeatId d r))
 
-# The guests' element tree: a live map of live entries, one per place.
-type Guests d = $(Path ==> $Elem (Seat.* d _))
+# One place of the guests at its seat: the role, the seat id and the element, at one role,
+# so opening it tells the arm the role of all three (Jimmy, 13 November, ruling OP: "a
+# indeed", a place has one role).
+type Guest d = any (r: Role d): ((Fixed r, SeatId d r, Elem (Seat.* d r)))
 
-# What answers each place of the guests: given its path, its seat and its element, the
-# element's output, at the role the tag's match learns.
-type Supplier d = forall o. fn Path, SeatKey d, Element (Seat.* d _) o -> @o
+# The guests' element tree: a live map of live entries, one per place.
+type Guests d = $(Path ==> $(Guest d))
+
+# One element to answer, at its seat, at one role.
+type Asking d o = any (r: Role d): ((Fixed r, SeatId d r, Element (Seat.* d r) o))
+
+# What answers each place of the guests: given its path and its element at its seat, the
+# element's output.
+type Supplier d = forall o. fn Path, Asking d o -> @o
 
 # An implementation: given the guests' element tree, built once, it gives the supplier;
 # what it emits is the caller's to speak (`@HostDocument`'s `lower`).
@@ -83,8 +91,6 @@ type Implementation d lower = fn Guests d -> @(Supplier d) emit lower
 # A seat is a path's first key. Across the guests' merged tree the first index names the
 # role and the first key the seat: `0/[White]/#g/2` is White's. The prelude takes a path
 # apart (Part IV ch. 5, "A seat is a path's first key").
-SeatOf: fn Path -> SeatKey d where d: ^Document
-
 # A seat's own prefix of a place's path: the role's index and the seat's key.
 SeatPathOf: fn Path -> Path
 
@@ -161,25 +167,25 @@ type Heard d = choice:
     Leaving Path
     LeavingWith (Pending d)
 
-!HeardAt: forall d. fn Path, Elem (Seat.* d _) -> !(Heard d) where d: ^Document
-fn !HeardAt at, element = match element:
-    Seat.Request(!requests=!requests): Requested (PendingAt<<d>> at, !requests)
-    Seat.Leave(!?leaves=!?leaves): LeftWith<<d>> at, !?leaves
-    otherwise: never
+!HeardAt: forall d. fn Path, Guest d -> !(Heard d) where d: ^Document
+fn !HeardAt at, guest = match guest:
+    any ((role, id, element)): match element:
+        Seat.Request(!requests=!requests): Requested (PendingFrom<<d>> at, role, id, !requests)
+        Seat.Leave(!?leaves=!?leaves): LeftWith<<d>> at, role, id, !?leaves
+        otherwise: never
 
 # A request at a place: the place's seat, opened, keeps the request at the seat's role.
-PendingAt: forall d (r: Role d). fn Path, Request d r -> Pending d where d: ^Document
-fn PendingAt at, request = match SeatOf<<d>> at:
-    any ((role, id)): Pending(due=Due(seat=(SeatOf<<d>> at), at=at), asked=(any ((role, id, request))))
+PendingFrom: forall d (r: Role d). fn Path, Fixed r, SeatId d r, Request d r -> Pending d where d: ^Document
+fn PendingFrom at, role, id, request = Pending(due=Due(seat=(any ((role, id))), at=at), asked=(any ((role, id, request))))
 
-LeftWith: forall d (r: Role d). fn Path, ?(Request d r) -> Heard d where d: ^Document
-fn LeftWith at, (? last) = LeavingWith (PendingAt<<d, r>> at, last)
-fn LeftWith at, nil = Leaving (SeatPathOf at)
+LeftWith: forall d (r: Role d). fn Path, Fixed r, SeatId d r, ?(Request d r) -> Heard d where d: ^Document
+fn LeftWith at, role, id, (? last) = LeavingWith (PendingFrom<<d>> at, role, id, last)
+fn LeftWith at, role, id, nil = Leaving (SeatPathOf at)
 
 # A response on its way to the place that asked, at its role's own reason.
 type Responded d = record:
     at: Path
-    response: any (r: Role d): Response d r
+    response: any (r: Role d): ((Fixed r, Response d r))
 
 # The state after some requests of one tick, each applied request's response, and the
 # requests that wait.
@@ -242,15 +248,8 @@ fn Picked byPlace, dues = Fold dues, [[]], \|all, due| match ?Get byPlace, due.a
 StepOne: forall d. fn State d, Kept d, Pending d -> Kept d where d: ^StateDocument
 fn StepOne state, kept, pending = match pending.asked:
     any ((role, id, request)): match Step<<d>> state, role, id, request:
-        Next next: Kept(?state=(? next), responses=(Push kept.responses, Responded(at=pending.due.at, response=(any (AcceptedAt<<d>> role)))), waiting=kept.waiting)
-        Denied why: Kept(?state=kept.?state, responses=(Push kept.responses, Responded(at=pending.due.at, response=(any (DeclinedAt<<d>> role, why)))), waiting=kept.waiting)
-
-# A response at the role a `Fixed r` decides (ruling IN: `Response d r` decides no `r`).
-AcceptedAt: forall d (r: Role d). fn Fixed r -> Response d r
-fn AcceptedAt role = Accepted
-
-DeclinedAt: forall d (r: Role d). fn Fixed r, Reason d r -> Response d r
-fn DeclinedAt role, why = Declined why
+        Next next: Kept(?state=(? next), responses=(Push kept.responses, Responded(at=pending.due.at, response=(any ((role, Accepted))))), waiting=kept.waiting)
+        Denied why: Kept(?state=kept.?state, responses=(Push kept.responses, Responded(at=pending.due.at, response=(any ((role, Declined why))))), waiting=kept.waiting)
 
 ?StateOf: fn Kept d -> ?(State d)
 fn ?StateOf kept = kept.?state
@@ -269,24 +268,26 @@ $Loaded: fn $s -> $?s
 fn $Loaded $state = ? $state
 
 # What a request place is sent: its own response of this tick, if any, at the place's role.
-?ResponseTo: forall d (r: Role d). fn Path, [Responded d] -> ?(Response d r)
-fn ?ResponseTo at, responded = Fold responded, nil, \|?found, one| if one.at != at: ?found else: match one.response:
-    any response: ? response
+?ResponseTo: forall d (r: Role d). fn Fixed r, Path, [Responded d] -> ?(Response d r)
+fn ?ResponseTo role, at, responded = Fold responded, nil, \|?found, one| if one.at != at: ?found else: match one.response:
+    any ((theirs, response)): match theirs:
+        Fixed<<r>>: ? response                  # the response's role is this place's
+        otherwise: ?found
 
 # A query, read against the state, kept current as the state changes.
-$ReadLive: forall d (r: Role d). fn $?(State d), SeatKey d, $(Query d r) -> $?(Answer d r) where d: ^StateDocument
-fn $ReadLive $?state, seat, $query = match seat:
-    any ((role, id)): match $?state:
-        ? state: ? (Read<<d>> state, role, id, $query)
-        nil: nil
+$ReadLive: forall d (r: Role d). fn $?(State d), Fixed r, SeatId d r, $(Query d r) -> $?(Answer d r) where d: ^StateDocument
+fn $ReadLive $?state, role, id, $query = match $?state:
+    ? state: ? (Read<<d>> state, role, id, $query)
+    nil: nil
 
 # A state and a tick's responses as a supplier: each request place gets its response, each
 # query place its answer, kept current; a leaving has no output.
 SupplierFrom: forall d. fn $?(State d), ![Responded d] -> Supplier d where d: ^StateDocument
-fn SupplierFrom $?state, !responses = \|path, seat, element| match element:
-    Seat.Request(..): @ !Filter (?ResponseTo<<d>> path, !responses)
-    Seat.Query($query=$query): @ $ReadLive<<d>> $?state, seat, $query
-    Seat.Leave(..): @ unit
+fn SupplierFrom $?state, !responses = \|path, asking| match asking:
+    any ((role, id, element)): match element:
+        Seat.Request(..): @ !Filter (?ResponseTo<<d>> role, path, !responses)
+        Seat.Query($query=$query): @ $ReadLive<<d>> $?state, role, id, $query
+        Seat.Leave(..): @ unit
 
 # ---- a state that can be written down (chapter 4) and kept in a file (chapters 6 and 7)
 
@@ -312,7 +313,7 @@ trait ^SerializableDocument d where d: ^StateDocument, State d: ^SerializableVal
         $?state <- nil then ? ((Decoded<<d>> initial, (!Arrived $?bytes)) <| (!Filter (?StateOf !outcome)))
         $waiting <- [[]] then WaitingOf !outcome
         $seated <- [[]] then SeatsIn (Keys (!Updated $guests))
-        !written <- Seat.Request(!requests=(Overwrite (Encode (!Filter (?StateOf !outcome)))))   # write through
+        !written <- Seat.Request(!requests=(Replace (Encode (!Filter (?StateOf !outcome)))))   # write through
         @ SupplierFrom<<d>> $?state, (ResponsesOf !outcome)
 
 # A file's bytes as a state: nothing written yet is the initial state; bytes the state's
@@ -339,7 +340,7 @@ type FileRole = choice:
 derive ^Eq, ^Ord, ^Show
 
 type FileRequest = choice:
-    Overwrite [U8]
+    Replace [U8]
 derive ^Eq, ^Show
 
 type FileQuery = choice:
@@ -380,10 +381,11 @@ fn @OnDisk path, $guests:
         @Switch (!ReplacesAt at, $element)
     let !replaced = !Filter (?LastOf (Values !replaces))
     !~written <- Fs.File(path=path, !requests=(Fs.Write (TextOf !replaced)))   # 2: written through
-    @ \|at, seat, element| match element:
-        Seat.Request(..): @ (Accepted on !replaced)
-        Seat.Query(..): @ ? (BytesOf $~contents)
-        Seat.Leave(..): @ unit
+    @ \|at, asking| match asking:
+        any ((role, id, element)): match element:
+            Seat.Request(..): @ (Accepted on !replaced)
+            Seat.Query(..): @ ? (BytesOf $~contents)
+            Seat.Leave(..): @ unit
 
 # A file's text as bytes; a file the World could not read, as none.
 BytesOf: fn ~Fs.Contents -> [U8]
@@ -401,11 +403,14 @@ fn TextOf bytes = match ~Utf8Text bytes:
 ?LastOf: fn [a] -> ?a
 fn ?LastOf all = Fold all, nil, \|?last, each| ? each
 
-!ReplacesAt: fn Path, Elem (Seat.* File _) -> ![U8]
-fn !ReplacesAt at, element = match element:
-    Seat.Request(!requests=!requests): match !requests:
-        Overwrite bytes: bytes
-    otherwise: never
+!ReplacesAt: fn Path, Guest File -> ![U8]
+fn !ReplacesAt at, guest = match guest:
+    any ((role, id, element)): match role:
+        Fixed<<Editor>>: match element:                 # an editor's request is a FileRequest
+            Seat.Request(!requests=!requests): match !requests:
+                Replace bytes: bytes
+            otherwise: never
+        Fixed<<Viewer>>: never
 
 # ---- a protocol that crosses a wire (chapters 4, 6 and 9)
 
@@ -451,18 +456,20 @@ trait ^RemoteDocument d where d: ^Document, Request d _: ^SerializableValue, Rea
     @Over: fn Address, Guests d -> @(Supplier d) emit Net.*
     fn @Over address, $guests:
         !arrived <- Net.Link(to=address, !sends=(!Outgoing<<d>> $guests))
-        @ \|path, seat, element| match element:
-            Seat.Request(..): @ !Filter (?ResponseFrom<<d>> path, seat, !arrived)
-            Seat.Query(..): @ $?AnswerFrom<<d>> path, seat, !arrived
-            Seat.Leave(..): @ unit
+        @ \|path, asking| match asking:
+            any ((role, id, element)): match element:
+                Seat.Request(..): @ !Filter (?ResponseFrom<<d>> role, path, !arrived)
+                Seat.Query(..): @ $?AnswerFrom<<d>> role, path, !arrived
+                Seat.Leave(..): @ unit
     # The other end: each message from a connection fired at the host this sits under,
     # as the seat's own request or query; each response and answer sent back.
-    @Serve: fn Connection -> @unit emit Seat.* d _ | Net.*
-    fn @Serve connection:
+    # The caller decides the connection's role, as it decides any seat's.
+    @Serve: forall (r: Role d). fn Fixed r, Connection -> @unit emit Seat.* d r | Net.*
+    fn @Serve role, connection:
         !received <- Net.Channel(connection=connection, !sends=(Values !replies))
         $open <- {{}} then Opened $open, !received          # the far end's places, by path
         !replies <- for at, $message <- $open:
-            @Answer<<d>> at, $message
+            @Answer<<d>> role, at, $message
         @ unit
 
 # The far end's places after a message: a request or a query opens or changes its place,
@@ -480,16 +487,16 @@ fn PlaceOf (Departing at) = at
 
 # One of the far end's places, placed here at its seat's role: its request or query
 # decoded at the role's own types, its response or answer sent back written down.
-@Answer: forall d. fn Path, $Message -> @!Message emit Seat.* d _ where d: ^RemoteDocument
+@Answer: forall d (r: Role d). fn Fixed r, Path, $Message -> @!Message emit Seat.* d r where d: ^RemoteDocument
 
 # What a seat's places send up: each request as it fires, each query as it changes.
 !Outgoing: forall d. fn Guests d -> ![Message] where d: ^RemoteDocument
 
 # The response the wire brought for a request place, at the place's role.
-?ResponseFrom: forall d (r: Role d). fn Path, SeatKey d, [Message] -> ?(Response d r) where d: ^RemoteDocument
+?ResponseFrom: forall d (r: Role d). fn Fixed r, Path, [Message] -> ?(Response d r) where d: ^RemoteDocument
 
 # The answer the wire keeps bringing for a query place, held since the last.
-$?AnswerFrom: forall d (r: Role d). fn Path, SeatKey d, ![Message] -> $?(Answer d r) where d: ^RemoteDocument
+$?AnswerFrom: forall d (r: Role d). fn Fixed r, Path, ![Message] -> $?(Answer d r) where d: ^RemoteDocument
 
 # ---- games (chapter 4): a perfect-information game, and the state rung it derives
 
@@ -515,8 +522,10 @@ trait ^PerfectInformationGame g:
     Outcome: fn g -> ?(Result (Side g))
 
 # What the derive gives: a player's step is a legal move; every seat reads the whole game.
-# The game's `impl ^Document` says its state is the game, `type State = ChessGame`.
-derive ^StateDocument g via ^PerfectInformationGame g:
+# It asks the game's `impl ^Document` to say its state is the game, a player's seat a side,
+# a player's request a move and a player's reason why one is illegal (equalities of
+# associated types, Claude's call of 13 November).
+derive ^StateDocument g via ^PerfectInformationGame g where State g = g, SeatId g Player = Side g, Request g Player = Move g, Reason g Player = Illegal g, Request g Spectator = Never:
     fn Step game, Fixed<<Player>>, side, move = match Legal game, side, move:
         nil: Next (Play game, move)
         ? why: Denied why
@@ -539,11 +548,15 @@ fn @HostDocument Implement, seats:
 @HostRole: forall d (r: Role d). fn Fixed r, $(SeatId d r ==> $@(@a emit Seat.* d r | rest)), Supplier d -> @(($(SeatId d r ==> a), Guests d)) emit rest where d: ^Document
 fn @HostRole role, $seats, Supply:
     (($results, $tree)) <- @Host (@Seated $seats), \|path, element| match element:
-        Seat.Request(..): Supply path, (any ((role, (SeatIdAt<<d, r>> path)))), element
-        Seat.Query(..): Supply path, (any ((role, (SeatIdAt<<d, r>> path)))), element
+        Seat.Request(..): Supply path, (any ((role, (SeatIdAt<<d, r>> path), element)))
+        Seat.Query(..): Supply path, (any ((role, (SeatIdAt<<d, r>> path), element)))
         Seat.Leave(..): @ unit
         otherwise: @Element element
-    @ (($results, $tree))
+    @ (($results, ($GuestsOf<<d>> role, $tree)))
+
+# A role's tree as guests: each seat's places, each with the role and its seat id (the
+# path's first key); a place of another language is not the document's.
+$GuestsOf: forall d (r: Role d). fn Fixed r, $(Path ==> $Elem (Seat.* d r | rest)) -> Guests d where d: ^Document
 
 # Within one role's tree, a place's first key is its seat id.
 SeatIdAt: forall d (r: Role d). fn Path -> SeatId d r where d: ^Document

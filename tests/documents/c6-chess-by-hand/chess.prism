@@ -87,8 +87,8 @@ fn Turn due:
 Steps: fn ChessGame, Turned -> ((ChessGame, [Responded ChessGame]))
 fn Steps game, turn = Fold turn.apply, ((game, [[]])), \|((now, said)), pending| match pending.asked:
     any ((role, id, request)): match Stepping now, role, id, request:
-        Next next: ((next, (Push said, Responded(at=pending.due.at, response=(any Accepted)))))
-        Denied why: ((now, (Push said, Responded(at=pending.due.at, response=(any (Declined why))))))
+        Next next: ((next, (Push said, Responded(at=pending.due.at, response=(any ((role, Accepted)))))))
+        Denied why: ((now, (Push said, Responded(at=pending.due.at, response=(any ((role, Declined why)))))))
 
 PlayAll: fn ChessGame, Turned -> ChessGame
 fn PlayAll game, turn = match Steps game, turn:
@@ -107,17 +107,18 @@ fn ?Any all = if (Len all) == 0: nil else: ? unit
 @ChessByHand: fn Guests ChessGame -> @(Supplier ChessGame)
 fn @ChessByHand $guests:
     !fired <- for at, $element <- $guests:                  # each place of the guests
-        @Switch (!HeardAt at, $element)
+        @Switch (!HeardAt<<ChessGame>> at, $element)
     !again <- @Defer (!Filter (?Any (Waiting !turn)))       # a tick after a request waits
-    let !due = Due $waiting, ((Values !fired) <| ([[]] on !again))   # this tick's and those that wait
+    let !due = DueThisTick $waiting, ((Values !fired) <| ([[]] on !again))   # this tick's and those that wait
     let !turn = Turn !due                                   # the default order (chapter 3)
     $game <- fresh then PlayAll $game, !turn                # the applied ones, each in turn
     $waiting <- [[]] then Waiting !turn                     # the rest, due in the next tick
     let !judged = Judge $game, !turn                        # Accepted or Declined why, by path
-    @ \|path, seat, element| match element:
-        Seat.Request(..): @ !Filter (?ResponseTo path, !judged)
-        Seat.Query(..): @ $Loaded $game                      # never nil in memory
-        Seat.Leave(..): @ unit
+    @ \|path, asking| match asking:
+        any ((role, id, element)): match element:
+            Seat.Request(..): @ !Filter (?ResponseTo<<ChessGame>> role, path, !judged)
+            Seat.Query(..): @ $Loaded $game                  # never nil in memory
+            Seat.Leave(..): @ unit
 
 # ---- the game as words, for the participants; the document never speaks
 

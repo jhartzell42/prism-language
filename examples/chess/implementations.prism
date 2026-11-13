@@ -50,7 +50,8 @@ fn @Filed seats:
 # a color and its participant. The colors the program leaves empty go to the first
 # connections, White first; every later connection is a spectator, named for its
 # connection. The Hub seats each connection once (doubt MX): what a phone's paths say of
-# its seat is not asked. `@Serve` names its document: a connection decides none. The
+# its seat is not asked. `@Serve` names its document and the connection's role: a
+# connection decides neither. The
 # seats are built as lists of pairs and made maps by `Map`: a tuple literal keeps its
 # parts whole, where `Insert` would lift over a seat's live blueprint (ruling HD).
 @Hub: fn Nat, [((Color, $@(@unit emit Seat.* ChessGame Player | Net.* | rest)))] -> @unit emit Net.* | rest
@@ -67,12 +68,12 @@ fn FreeColors local = Filter [[White, Black]], \|color| not (AnyOf local, \|((he
 PlayersFrom: fn [((Color, $@(@unit emit Seat.* ChessGame Player | Net.* | rest)))], [Connection] -> (Color ==> $@(@unit emit Seat.* ChessGame Player | Net.* | rest))
 fn PlayersFrom local, connections:
     let free = FreeColors local
-    let served = Each (Take connections, (Len free)), \|connection| $ (@Serve<<ChessGame>> connection)
+    let served = Each (Take connections, (Len free)), \|connection| $ (@Serve<<ChessGame>> Fixed<<Player>>, connection)
     Map (Append local, (Paired free, served))
 
 # the Hub's spectators: every connection after those the free colors took
 SpectatorsFrom: fn [((Color, v))], [Connection] -> (Text ==> $@(@unit emit Seat.* ChessGame Spectator | Net.* | rest))
-fn SpectatorsFrom local, connections = Map (Each (Drop connections, (Len (FreeColors local))), \|connection| (("connection {connection.id}", $ (@Serve<<ChessGame>> connection))))
+fn SpectatorsFrom local, connections = Map (Each (Drop connections, (Len (FreeColors local))), \|connection| (("connection {connection.id}", $ (@Serve<<ChessGame>> Fixed<<Spectator>>, connection))))
 
 # the first of each list beside the second's at the same place, as long as both last
 Paired: fn [a], [b] -> [((a, b))]
