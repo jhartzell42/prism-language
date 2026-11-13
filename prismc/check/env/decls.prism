@@ -468,7 +468,7 @@ MissingDefinitions: unbounded fn G, St -> St
 fn MissingDefinitions g, st0:
     let defined = Fold g.defs, {}, \|m, x| Insert m, x.qk, True
     # the prelude module's signature lines with no clauses are its builtins, which each back
-    # end supplies (prelude/prelude.prism's header), wherever it is read from
+    # end supplies (library/prelude.prism's header), wherever it is read from
     let st = Fold (Values g.mods), st0, \|s0, info| if info.file >= g.preludeFrom or info.name == "Prelude": s0 else:
         let s1 = update s0:
             &_.file <= info.file

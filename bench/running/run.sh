@@ -58,13 +58,13 @@ for c in "${configs[@]}"; do
     dir=$out/$c
     rm -rf "$dir" && mkdir -p "$dir"
     echo "bench: $c: prismc/ compiled to $target by it" >&2
-    self_s[$c]=$(timed "$dir/self.log" "$bin" compile prismc --prelude prelude -o "$dir/self" --name prismc)
+    self_s[$c]=$(timed "$dir/self.log" "$bin" compile prismc --prelude library -o "$dir/self" --name prismc)
     self_mb[$c]=$(peak_mb "$dir/self.log.time")
     self_gi[$c]=$(instr_g "$dir/self.log")
     echo "bench: $c: normalize compiled to $target by it, $norm times" >&2
     : > "$dir/norm.txt"
     for i in $(seq "$norm"); do
-        s=$(timed "$dir/norm.log" "$bin" compile "$normal" --prelude prelude -o "$dir/norm" --name norm)
+        s=$(timed "$dir/norm.log" "$bin" compile "$normal" --prelude library -o "$dir/norm" --name norm)
         echo "$s $(peak_mb "$dir/norm.log.time") $(instr_g "$dir/norm.log")" >> "$dir/norm.txt"
     done
     norm_s[$c]=$(awk '{print $1}' "$dir/norm.txt" | median)

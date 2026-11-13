@@ -112,7 +112,7 @@ if [ "$cmd" = check ]; then
     [ -n "$world" ] && opts+=(--world "$world")
     [ "$unused" = 1 ] && opts+=(--unused)
     code=0
-    "$prismc" --check "${opts[@]}" "${rel[@]}" --out "$tmp" > /dev/null 2>&1 || code=$?
+    "$prismc" --check --prelude library "${opts[@]}" "${rel[@]}" --out "$tmp" > /dev/null 2>&1 || code=$?
     if [ -s "$tmp" ]; then cat "$tmp"; else echo "prism: the checker wrote nothing" >&2; fi
     exit $code
 fi
@@ -136,7 +136,7 @@ case "$out" in /*) runtime=(--runtime "$root") ;; esac
 rm -rf "$out"
 tests=()
 [ "$cmd" = test ] && tests=(--tests)
-"$prismc" compile "${sources[@]}" -o "$out" --name "$name" "${runtime[@]}" "${tests[@]}"
+"$prismc" compile "${sources[@]}" -o "$out" --name "$name" --prelude library "${runtime[@]}" "${tests[@]}"
 [ "$cmd" = compile ] && exit 0
 
 build() { # profile flags...

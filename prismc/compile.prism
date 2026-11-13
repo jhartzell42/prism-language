@@ -69,7 +69,7 @@ fn @CompileMain opts:
     if (Len bad) > 0: @Refuse "{Join bad, "; "} (compile takes -o OUT, --name NAME, --prelude DIR, --runtime PATH, --tests)"
     else: if ?runtime == nil: @Refuse "an absolute -o needs --runtime PATH or PRISM_ROOT: the runtime's path from {out} cannot be told from its segments"
     else:
-        let prelude = NoSlash (Or (?OptionValue opts, "--prelude"), "prelude")
+        let prelude = NoSlash (Or (?OptionValue opts, "--prelude"), "library")
         let settings = CompileSettings(out=out, prelude=prelude, name=(Or (?OptionValue opts, "--name"), "program"), runtime=(Or ?runtime, ""))
         @ReadSources (Compiling settings), (PlainArgs opts, compileValued), prelude, (HasText opts, "--tests")
 

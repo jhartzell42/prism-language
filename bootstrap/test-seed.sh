@@ -18,7 +18,7 @@ ln -s "$away" "$link"
 trap 'rm -rf "$link" "$away"' EXIT
 failed=()
 check() { # name, binary
-    if [ -x "$2" ] && "$2" --check tests/driver/cli-root.prism --out "$away/$1.out" > /dev/null 2>&1 && [ "$(tail -1 "$away/$1.out")" = "no errors" ]; then
+    if [ -x "$2" ] && "$2" --check --prelude library tests/driver/cli-root.prism --out "$away/$1.out" > /dev/null 2>&1 && [ "$(tail -1 "$away/$1.out")" = "no errors" ]; then
         echo "ok $1: the seed builds through a symlinked target and checks a file"
     else
         failed+=("$1"); echo "FAILED $1"

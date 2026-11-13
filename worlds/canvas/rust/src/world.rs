@@ -4,7 +4,7 @@
 //! here touches a display, so it is tested without one; `app` is the half that opens
 //! windows and paints.
 //!
-//! What it answers (the four tags of Pitch ch. 6, as `prelude/gui.prism` declares them):
+//! What it answers (the four tags of Pitch ch. 6, as `library/gui.prism` declares them):
 //!
 //! - **`Gui.Window(title, size)`**: the first value is `WindowId title`, the Test World's
 //!   policy, so a program sees the same id under both. One
@@ -35,7 +35,7 @@ use crate::font::Font;
 /// The four tags this World answers.
 pub const TAGS: &[&str] = &["Gui.Window", "Gui.Scene", "Gui.Metrics", "Gui.Focus"];
 
-/// The `Gui` family's values as plain data (`prelude/gui.prism`).
+/// The `Gui` family's values as plain data (`library/gui.prism`).
 pub mod gui {
     use super::*;
 
