@@ -104,6 +104,42 @@ fn BindPattern env, st, p, t, refutable = match p.kind:
         TyErr: BindPattern env, st, q, TyErr, refutable
         other: ((env, (Err st, "mismatch", p.span, "`any` opens an existential; this is `{ShowTy st, other}`")))
     PFamily q: BindFamily env, st, (Dotted q.path), t, p.span
+    PTypeArgs n, tys: BindFixed env, st, n, tys, t, p.span
+
+# `Fixed<<Raiser>>` (Jimmy's ruling VO): the one value of `Fixed Raiser`. Matched where
+# the type is `Fixed r` for the definition's own `r`, it tells the clause or arm `r` is
+# `Raiser` (`env.refine`, applied to what the clause binds and gives).
+BindFixed: unbounded fn Env, St, SName, [Type], Ty, Range -> ((Env, St))
+fn BindFixed env, st, n, tys, t, span:
+    if (Dotted n.path) != "Fixed" or (Len tys) != 1: ((env, (Err st, "mismatch", span, "a pattern with `<<..>>` is `Fixed<<Case>>`")))
+    else:
+        let ((x, st2)) = ConvIndex (EnvCx env), st, (Or tys[0], dummyType)
+        match x:
+            TyRole k: match Walk st2, t:
+                TyCon "Prelude.Fixed", [[at]]: match Walk st2, at:
+                    TyRigid v:
+                        let narrowed = update env:
+                            &_.refine <= Insert &_.refine, v, x
+                        ((narrowed, st2))
+                    other: ((env, (Unify st2, other, x, span)))
+                TyFlex ignore: ((env, (Unify st2, t, (TyCon "Prelude.Fixed", [[x]]), span)))
+                TyErr: ((env, st2))
+                other: ((env, (Err st2, "mismatch", span, "`Fixed<<{BareName k}>>` matches a `Fixed r`; this is `{ShowTy st2, other}`")))
+            TyErr: ((env, st2))
+            other: ((env, (Err st2, "kind", span, "`Fixed` takes a case of a payload-free choice; `{ShowTy st2, other}` is a type")))
+
+# The equalities a clause's or arm's `Fixed<<..>>` patterns taught (`BindFixed`), on the
+# types its names were bound at and on the type it gives.
+Refined: unbounded fn Env, Ty -> Ty
+fn Refined env, t = Fold (Keys env.refine), t, \|acc, v| SubstRigid v, (Or env.refine[v], TyErr), acc
+
+RefinedEnv: unbounded fn Env -> Env
+fn RefinedEnv env = if (Len (Keys env.refine)) == 0: env else: update env:
+    &_.locals <= Map (Each (Keys &_.locals), \|k| ((k, (RefinedScheme env, (Or &_.locals[k], (Mono TyErr))))))
+
+RefinedScheme: unbounded fn Env, Scheme -> Scheme
+fn RefinedScheme env, sc = update sc:
+    &_.ty <= Refined env, &_.ty
 
 # `collision`: the patterns of one parameter list, or one pattern, bind a name once. A
 # constructor a pattern names binds nothing.
@@ -281,6 +317,7 @@ fn TestsValue env, p = match p.kind:
     PTuple parts: Fold parts, False, \|seen, q| seen or TestsValue env, q
     PGroup q: TestsValue env, q
     PAny q: TestsValue env, q
+    PTypeArgs ignore, ignore2: True
     otherwise: False
 
 # Whether a name in a pattern is a constructor's, its marks set aside: a qualified name,

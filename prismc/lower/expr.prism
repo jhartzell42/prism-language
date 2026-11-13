@@ -820,11 +820,30 @@ fn PlainValueByKind lx, env, e:
         ETypeArgs x, [[one]] if IsValueOfName x: match one.kind:
             TName n, [[]] if IsUpperText (Dotted n.path): NameValue lx, env, n, e.span
             otherwise: VlOwned (Refusal "`ValueOf` of a type variable (Jimmy's ruling VO): its lowering is not written yet"), t
+        # `Fixed<<Metre>>` (Jimmy's ruling VO): the case's number in its choice
+        ETypeArgs x, [[one]] if IsFixedName x: match ?FixedNumber lx, one:
+            ? i: VlOwned (Number OutNat, "{i}", False), OutNat
+            nil: VlOwned (Refusal "`Fixed` of a type variable (Jimmy's ruling VO): its lowering is not written yet"), t
         ETypeArgs x, ignore: ValueOf lx, env, x
         EGiven b: GivenValue lx, env, b, t, e.span
         EUpdate target, b: UpdateValue lx, env, target, b, t, e.span
         EAny x: AnyValue lx, env, x, (TypeAt lx, e.span)
         otherwise: VlOwned (InternalBug "{KindWords e.kind} as a value (the checker gives `mismatch` for a `for` or a `rebuild` as a plain value and `unsupported` for a suffixed operator, a monadic block and a lens value; a topic, `..` and an absent value stand only where an `update` block, a pattern or an element's fields read them)"), t
+
+IsFixedName: fn Expr -> Bool
+fn IsFixedName x = match x.kind:
+    EName n: (Dotted n.path) == "Fixed"
+    otherwise: False
+
+# The number of the case a `Fixed<<Case>>` names, in its choice.
+?FixedNumber: fn Lx, Type -> ?Nat
+fn ?FixedNumber lx, one = match one.kind:
+    TName n, [[]]: match ?RoleConstructor lx.g, lx.home, (Dotted n.path):
+        ? k: match lx.g.ctors[k]:
+            ? ci: ? ci.index
+            nil: nil
+        nil: nil
+    otherwise: nil
 
 IsValueOfName: fn Expr -> Bool
 fn IsValueOfName x = match x.kind:

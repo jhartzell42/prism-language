@@ -169,7 +169,12 @@ fn ConvNamed cx, st, n, args, span:
         match ?key:
             # `Entry K V`, a map's entry (Jimmy's ruling on map entries), is the prelude's
             # where no declared type takes the name
-            nil: if name == "Entry" or name == "Prelude.Entry":
+            # `Fixed r`, the singleton of a case (Jimmy's ruling VO): its one value is
+            # `Fixed<<r>>`
+            nil: if (name == "Fixed" or name == "Prelude.Fixed") and (Len args) == 1:
+                let ((x, st2)) = ConvIndex cx, st, (Or args[0], dummyType)
+                (((TyCon "Prelude.Fixed", [[x]]), st2))
+            else: if name == "Entry" or name == "Prelude.Entry":
                 let ((xs, st2)) = ConvTypes cx, st, args
                 if (Len args) == 2: (((TyCon "Prelude.Entry", xs), st2))
                 else: ((TyErr, (Err st2, "kind", span, "`Entry` takes two types, the key's and the value's; here it has {CountWord (Len args)}")))

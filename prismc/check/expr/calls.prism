@@ -60,6 +60,7 @@ fn InferCall env, st, callee, args, span = match callee.kind:
     ETypeArgs target, tys: match target.kind:
         # `ValueOf<<Writer>>`, a promoted case's value (Jimmy's ruling VO)
         EName n if (Dotted n.path) == "ValueOf" and (Len args) == 0 and Undeclared env, n: ValueOfCase env, st, tys, callee.span
+        EName n if (Dotted n.path) == "Fixed" and (Len args) == 0 and Undeclared env, n: FixedValue env, st, tys, callee.span
         EName n:
             let cx = EnvCx env
             # a type argument may be a case, `Keyed<<Writer>>` (Jimmy's ruling VO)
@@ -112,6 +113,21 @@ fn ValueOfCase env, st, tys, span:
                     nil: ((TyErr, (Err st2, "kind", span, "`ValueOf` takes a case of a payload-free choice; `{q}` has no stated kind (`forall ({q}: ...)`)")))
                 otherwise: ((TyErr, (Err st2, "kind", span, "`ValueOf` takes a case of a payload-free choice; `{ShowTy st2, x}` is a type, no case of a choice")))
         otherwise: ((TyErr, (Err st, "kind", span, "`ValueOf` takes one case, `ValueOf<<Writer>>`")))
+
+# `Fixed<<Metre>>`, the one value of `Fixed Metre` (Jimmy's ruling VO): a case, or a
+# `forall` variable of a stated kind.
+FixedValue: unbounded fn Env, St, [Type], Range -> ((Ty, St))
+fn FixedValue env, st, tys, span:
+    let cx = EnvCx env
+    match tys:
+        [[one]]:
+            let ((x, st2)) = ConvIndex cx, st, one
+            match x:
+                TyRole ignore: (((TyCon "Prelude.Fixed", [[x]]), st2))
+                TyQ q: if HasText env.scoped, q: (((TyCon "Prelude.Fixed", [[(TyRigid q)]]), st2)) else: ((TyErr, (ErrFix st2, "unknown-name", one.span, "no type `{q}` here: a signature's variables are in scope in its body only under `forall`", (ForallFix env, st2))))
+                TyErr: ((TyErr, st2))
+                otherwise: ((TyErr, (Err st2, "kind", span, "`Fixed` takes a case of a payload-free choice; `{ShowTy st2, x}` is a type, no case of a choice")))
+        otherwise: ((TyErr, (Err st, "kind", span, "`Fixed` takes one case, `Fixed<<Metre>>`")))
 
 # The type variables a type names.
 FreeQs: fn Ty -> [Text]

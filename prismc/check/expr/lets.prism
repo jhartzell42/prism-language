@@ -503,8 +503,9 @@ fn CheckClause env, st, c, params, res:
     if (Len c.params) != (Len params):
         Err st, "mismatch", c.span, "this clause takes {CountWord (Len c.params)} parameter{if (Len c.params) == 1: "" else: "s"}; the signature has {CountWord (Len params)}"
     else:
-        let ((env2, st1)) = Fold (Range0 (Len params)), ((env, (BoundTwice env, st, c.params))), \|((en, s)), i| BindPattern en, s, (Or c.params[i], Pattern(kind=PIgnore, span=c.span)), (Or params[i], TyErr), True
-        CheckBody env2, st1, c.body, (RefinedResult env, st1, c.params, params, res)
+        let ((env1, st1)) = Fold (Range0 (Len params)), ((env, (BoundTwice env, st, c.params))), \|((en, s)), i| BindPattern en, s, (Or c.params[i], Pattern(kind=PIgnore, span=c.span)), (Or params[i], TyErr), True
+        let env2 = RefinedEnv env1
+        CheckBody env2, st1, c.body, (Refined env1, (RefinedResult env, st1, c.params, params, res))
 
 # A clause's result where its tag patterns stand: a parameter that is an element with a
 # rigid output, matched by a tag's pattern, refines the output to the tag's in the clause's

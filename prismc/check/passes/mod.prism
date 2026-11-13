@@ -76,6 +76,9 @@ type Ctor = record:
     shown: Text
 derive ^Eq, ^Show
 
+FixedCtor: fn Text -> Ctor
+fn FixedCtor c = Ctor(name="fixed:{c}", arity=0, args=[[]], shown="Fixed<<{BareName c}>>")
+
 # The constructors of a type when it has finitely many: a choice's, `Bool`'s, an optional's,
 # a fault's, a tuple's, a record's, `unit`'s, a closed row's tags. `nil` for a type no
 # finite set of constructors covers (numbers, texts, arrays, functions, open rows).
@@ -85,6 +88,14 @@ fn ?CtorsOf env, st, t = match Zonk st, t:
     TyCon "unit", [[]]: ? [[Ctor(name="unit", arity=0, args=[[]], shown="unit")]]
     TySig "?", i: ? [[Ctor(name="?", arity=1, args=[[i]], shown="? _"), Ctor(name="nil", arity=0, args=[[]], shown="nil")]]
     TySig "~", i: ? [[Ctor(name="~", arity=1, args=[[i]], shown="~ _"), Ctor(name="Error", arity=2, args=[[(TyCon "Prelude.Fault", [[]]), tText]], shown="Error(..)")]]
+    # `Fixed r` has a value per case of `r`'s kind: one at a case, every case at a
+    # variable whose `forall` states its kind (Jimmy's ruling VO)
+    TyCon "Prelude.Fixed", [[x]]: match x:
+        TyRole k: ? [[(FixedCtor k)]]
+        TyRigid v: match (Filter env.scopedKinds, \|((q, ignore))| q == v)[0]:
+            ? ((ignore, kindKey)): ? (Each (Filter (Keys env.g.caseOwners), \|c| env.g.caseOwners[c] == ? kindKey), FixedCtor)
+            nil: nil
+        otherwise: nil
     # an existential has one constructor, `any`, over its body
     TyExists ignore, b, ignore2: ? [[Ctor(name="any", arity=1, args=[[b]], shown="any _")]]
     TyTuple ts: ? [[Ctor(name="tuple", arity=(Len ts), args=ts, shown="(({Join (Each ts, \|ignore| "_"), ", "}))")]]
@@ -147,6 +158,9 @@ fn ToPat env, p = match p.kind:
     PArray ps: PtCon "len{Len ps}", (Each ps, \|q| ToPat env, q)
     PGroup q: ToPat env, q
     PAny q: PtCon "any", [[(ToPat env, q)]]
+    PTypeArgs ignore, tys: match ?CaseNamed (EnvCx env), (Or tys[0], dummyType):
+        ? c: PtCon "fixed:{c}", [[]]
+        nil: PtAny
     PFamily q: PtFam (Dotted q.path)
 
 LitText: fn Literal -> Text

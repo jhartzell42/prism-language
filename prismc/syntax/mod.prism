@@ -195,6 +195,8 @@ type PatternKind = choice:
     PFamily QualName
     # `any p`, an existential opened (Type System ch. 3): its hidden types fresh in the arm
     PAny Pattern
+    # `Fixed<<Raiser>>`, a value written with its type (Jimmy's ruling VO)
+    PTypeArgs SName, [Type]
 derive ^Eq, ^Show
 
 # `marks` are the sigils written on the field's name (`$label=ignore`), "" for a plain name.

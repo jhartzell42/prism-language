@@ -403,6 +403,7 @@ fn SexpPattern p, d = match p.kind:
     PGroup x: "(group {SexpPattern x, d})"
     PFamily q: "{Path q.path}.*"
     PAny x: "(any {SexpPattern x, d})"
+    PTypeArgs n, ts: "({SNameText n}<<{Join (Each ts, SexpType), " "}>>)"
 
 SexpType: fn Type -> Text
 fn SexpType t = match t.kind:

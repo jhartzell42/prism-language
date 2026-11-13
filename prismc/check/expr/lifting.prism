@@ -125,9 +125,10 @@ derive ^Eq, ^Show
 
 InferArm: unbounded fn Env, St, Arm, Ty, Ty, ?Ty, ?Text, [((Text, Range))] -> (([((Text, Range))], St, ?ArmWait))
 fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
-    let ((env2, st1)) = match arm.?pattern:
+    let ((env1, st1)) = match arm.?pattern:
         ? p: BindPattern env, st, p, scrutTy, True
         nil: ((env, st))
+    let env2 = RefinedEnv env1
     let ?refinedOut = match ?rigidOut:
         ? o: match arm.?pattern:
             ? p: match ?TagOfPattern env, p:
@@ -145,7 +146,7 @@ fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
             let fwd = arm.?pattern == nil or (IsFamilyArm arm)
             match ?refinedOut:
                 ? ((o, out)): ((acc, st3, (? ArmWait(o=o, out=out, ty=bt, span=(ResultSpan arm.body), ?against=(? want), fwd=fwd))))
-                nil: ((acc, (ArmAgainst st3, want, bt, (ResultSpan arm.body), fwd), nil))
+                nil: ((acc, (ArmAgainst st3, (Refined env1, want), bt, (ResultSpan arm.body), fwd), nil))
         nil:
             let ((bt, st3b)) = InferExprBlock env2, st2, arm.body
             let st3 = OpenedEscapes (NoteFaultAt st3b, (TailSpan arm.body), res, bt), st.next, st1.next, bt, scrutTy, (ResultSpan arm.body)

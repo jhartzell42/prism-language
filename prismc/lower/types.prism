@@ -49,6 +49,8 @@ use Lower.Node.Switch.*
 OutTyOf: unbounded fn Lx, Ty -> OutTy
 fn OutTyOf lx, t = match t:
     TyCon "Nat", [[]]: OutNat
+    # `Fixed r` (Jimmy's ruling VO): its one value is the case's number in its choice
+    TyCon "Prelude.Fixed", ignore: OutNat
     TyCon "Int", [[]]: OutInt
     TyCon "U8", [[]]: OutU8
     TyCon "Float", [[]]: OutFloat

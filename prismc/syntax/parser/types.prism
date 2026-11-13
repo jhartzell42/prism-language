@@ -397,7 +397,10 @@ fn NamePattern p0, n, commas:
     let start = Here p0
     let name = SName(sigils=n.sigils, path=n.path, span=start)
     let p = Adv p0
-    if (IsCallee name) and (AtSingleOpen p, "(") and (Tk p).touches: ParseRecordPattern p, name
+    if (IsCallee name) and (Kind p) == KLtLt:
+        let ((types, q)) = ParseTypeArgs p
+        ((Pattern(kind=(PTypeArgs name, types), span=(To start, (Prev q))), q))
+    else: if (IsCallee name) and (AtSingleOpen p, "(") and (Tk p).touches: ParseRecordPattern p, name
     else: if (IsCallee name) and (PatArgStartsHere p):
         let ((first, p1)) = ParsePattern p, False
         let r = update (([[first]], p1)):
