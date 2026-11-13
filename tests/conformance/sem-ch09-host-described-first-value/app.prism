@@ -20,10 +20,10 @@ fn ShowResponse (Error(..)) = "(cannot read)"
 
 @jail: @unit
 @jail:
-    ignore <- @HostDocument @child, \|p, e| match e:            # 0/[p]
+    ignore <- @Host @child, \|p, e| match e:            # 0/[p]
         Fs.Contents(path=q): @Element (Fs.Contents(path="/jail/{q}"))
         otherwise: @Element e
 
 @page: @unit
 @page:
-    ignore <- @HostDocument @jail, \|q, e| @Element e           # 0/[q]
+    ignore <- @Host @jail, \|q, e| @Element e           # 0/[q]

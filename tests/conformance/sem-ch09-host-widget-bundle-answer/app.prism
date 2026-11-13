@@ -24,6 +24,6 @@ fn @Knocker name:
 
 @host: @unit
 @host:
-    ignore <- @HostDocument @doors, \|p, e| match e:            # 0/[p]
+    ignore <- @Host @doors, \|p, e| match e:            # 0/[p]
         Pad.Door(name=n): @Knocker n
         otherwise: @Element e

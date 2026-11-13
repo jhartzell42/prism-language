@@ -18,6 +18,6 @@ test mod Tests
     !go <- @Element (Ui.Button($label=$"go {$n}"))               # 1
     $gone <- 0 then $gone + 1 on !go
     Ui.Label($text=$"went {$gone}")                              # 2
-    ignore <- @HostDocument @child, \|p, e| match e:            # 3/[p]
+    ignore <- @Host @child, \|p, e| match e:            # 3/[p]
         Ui.Label(..): @Element (Ui.Label($text=$"replaced"))
         otherwise: @Element e

@@ -19,6 +19,6 @@ tag Pad.Gauge of Element $Nat:
     !go <- Ui.Button($label=$"go")
     $level <- 1 then $level + 1 on !go
     let @$live = @ $level
-    ignore <- @HostDocument @child, \|p, e| match e:
+    ignore <- @Host @child, \|p, e| match e:
         Pad.Gauge(..): @$live
         otherwise: @Element e

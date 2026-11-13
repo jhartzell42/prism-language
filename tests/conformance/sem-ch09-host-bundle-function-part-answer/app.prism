@@ -19,6 +19,6 @@ tag Pad.Counter of Element ((fn Nat -> Nat, !Nat)):
 @mocked: @unit
 @mocked:
     !go <- Ui.Button($label=$"go")
-    ignore <- @HostDocument @counted, \|p, e| match e:
+    ignore <- @Host @counted, \|p, e| match e:
         Pad.Counter(..): @ ((\|n| n + 2, 3 on !go))
         otherwise: @Element e

@@ -22,6 +22,6 @@ tag Pad.Echo of Element !r where r: ^Show:
 
 @host: @unit
 @host:
-    ignore <- @HostDocument @guest, \|p, e| match e:            # 0/[p]
+    ignore <- @Host @guest, \|p, e| match e:            # 0/[p]
         Pad.Echo(..): @ never
         otherwise: @Element e

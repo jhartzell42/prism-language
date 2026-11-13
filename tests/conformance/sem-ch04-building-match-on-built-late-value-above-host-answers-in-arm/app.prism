@@ -39,7 +39,7 @@ fn @Panel mode:
     n <- match mode:
         Loud t:
             size <- @Sized t                                           # 2
-            ignore <- @HostDocument @note, \|p, e| match e:            # 3/[p]
+            ignore <- @Host @note, \|p, e| match e:            # 3/[p]
                 Pad.Count(..): @ 4
                 otherwise: @Element e
             @ size + 9

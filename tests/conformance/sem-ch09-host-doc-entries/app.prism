@@ -20,6 +20,6 @@ use Ui.*
 
 @counter: @unit
 @counter:
-    ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e    # 0/[p]/0
+    ((ignore, $doc)) <- @Host @child, \|p, e| @Element e    # 0/[p]/0
     $moves <- 0 then $moves + 1 on !Updated $doc
     Ui.Label($text=$"{$moves} moves")                             # 1

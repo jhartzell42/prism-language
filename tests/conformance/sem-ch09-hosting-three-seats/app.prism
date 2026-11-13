@@ -113,15 +113,15 @@ fn GameOf s = s.game
 
 @host: @unit
 @host:
-    ((ignore, $white)) <- @HostDocument (@Player "White"), \|p, e| match e:     # 0/[p]
+    ((ignore, $white)) <- @Host (@Player "White"), \|p, e| match e:     # 0/[p]
         Play.Request(..): @ !Filter (?ResponseTo White, p, !outcome)
         Play.Query(..): @ GameOf $state
         otherwise: @Element e
-    ((ignore, $black)) <- @HostDocument (@Player "Black"), \|p, e| match e:     # 1/[p]
+    ((ignore, $black)) <- @Host (@Player "Black"), \|p, e| match e:     # 1/[p]
         Play.Request(..): @ !Filter (?ResponseTo Black, p, !outcome)
         Play.Query(..): @ GameOf $state
         otherwise: @Element e
-    ignore <- @HostDocument @spectator, \|p, e| match e:                        # 2/[p]
+    ignore <- @Host @spectator, \|p, e| match e:                        # 2/[p]
         Watch.Query(..): @ GameOf $state
         otherwise: @Element e
     $whiteNow <- for p, $e <- $white:

@@ -17,7 +17,7 @@ tag Pad.Socket of Element ((!Text, $Nat)):
 
 @Hosting: fn @((!Text, $Nat)) -> @unit
 fn @Hosting @answer:
-    ignore <- @HostDocument @chat, \|p, e| match e:               # 1/[p]
+    ignore <- @Host @chat, \|p, e| match e:               # 1/[p]
         Pad.Socket(..): @answer
         otherwise: @Element e
 

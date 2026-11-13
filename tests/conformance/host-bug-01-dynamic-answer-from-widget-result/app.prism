@@ -98,7 +98,7 @@ fn ?ResponseTo place, responses = ?Get responses, place
 @host: @unit
 @host:
     let seat = Presser "ada"
-    ((ignore, $doc)) <- @HostDocument (@Presser "ada"), \|p, e| match e:
+    ((ignore, $doc)) <- @Host (@Presser "ada"), \|p, e| match e:
         Count.Request(..): @ !Filter (?ResponseTo p, !responses)
         Count.Query($query=$q): @ Read $state, seat, $q
         otherwise: @Element e

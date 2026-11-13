@@ -18,5 +18,5 @@ use Ui.*
     !next <- Ui.Button($label=$"next")                            # 0
     $page <- 1 then $page + 1 on !next
     $both <- rebuild $page:                                      # 1/#g
-        @HostDocument @child, \|p, e| @Element e                  # 1/#g/0/[p]/0
+        @Host @child, \|p, e| @Element e                  # 1/#g/0/[p]/0
     Ui.Label($text=$"page {$page}")                               # 2

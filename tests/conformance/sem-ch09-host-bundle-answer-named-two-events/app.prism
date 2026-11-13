@@ -21,6 +21,6 @@ tag Pad.Line of Element ((!Text, !Nat)):
     !say <- Ui.Button($label=$"say")
     !drop <- Ui.Button($label=$"drop")
     let pair = (("hello" on !say, 3 on !drop))
-    ignore <- @HostDocument @chat, \|p, e| match e:
+    ignore <- @Host @chat, \|p, e| match e:
         Pad.Line(..): @ pair
         otherwise: @Element e

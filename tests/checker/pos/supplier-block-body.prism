@@ -21,4 +21,4 @@ fn @Supply p, e:
 
 @named: @unit
 @named:
-    ignore <- @HostDocument @child, @Supply                       # 0/[p]
+    ignore <- @Host @child, @Supply                       # 0/[p]

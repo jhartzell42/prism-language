@@ -19,6 +19,6 @@ tag Pad.Socket of Element ((!Text, $Text)):
     !flip <- Ui.Button($label=$"flip")
     $state <- "down" then "up" on !flip
     let pair = (("hello" on !flip, $state))
-    ignore <- @HostDocument @chat, \|p, e| match e:
+    ignore <- @Host @chat, \|p, e| match e:
         Pad.Socket(..): @ pair
         otherwise: @Element e

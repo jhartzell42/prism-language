@@ -14,4 +14,4 @@ fn @Fixed p, e = @ $ (~ Contents(text="A"))
 
 @named: @unit
 @named:
-    ignore <- @HostDocument @child, @Fixed                        # 0/[p]
+    ignore <- @Host @child, @Fixed                        # 0/[p]

@@ -23,4 +23,4 @@ fn @Supply !add, $count, e = match e:
 @host:
     !add <- Ui.Button($label=$"add")                              # 0
     $count <- 0 then $count + 1 on !add
-    ignore <- @HostDocument @chat, \|p, e| @Supply !add, $count, e   # 1/[p]
+    ignore <- @Host @chat, \|p, e| @Supply !add, $count, e   # 1/[p]

@@ -424,7 +424,7 @@ fn DischargeOne g, st, inc:
         let s0 = update st1:
             &_.file <= inc.file
         let tags = Fold left, [[]], \|acc, f| Append acc, (TagsLeft g, f, sub2.minus)
-        let s1 = if inc.forward: ErrFix s0, "forwarding", inc.span, "forwarding {Join tags, ", "} from a scope that emits {ShowRow sup}", "answer {if (Len tags) == 1: "it" else: "them"} above this arm, for example `{Or tags[0], ""}(..): @ never`" else: ErrFix s0, "row-outside", inc.span, "a child that emits `{ShowRow sub2}` in a scope that emits `{ShowRow sup}`", "widen the scope's `emit` row, or host the child with `@HostDocument`"
+        let s1 = if inc.forward: ErrFix s0, "forwarding", inc.span, "forwarding {Join tags, ", "} from a scope that emits {ShowRow sup}", "answer {if (Len tags) == 1: "it" else: "them"} above this arm, for example `{Or tags[0], ""}(..): @ never`" else: ErrFix s0, "row-outside", inc.span, "a child that emits `{ShowRow sub2}` in a scope that emits `{ShowRow sup}`", "widen the scope's `emit` row, or host the child with `@Host`"
         update s1:
             &_.file <= st1.file
 

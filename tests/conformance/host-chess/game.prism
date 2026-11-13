@@ -199,7 +199,7 @@ fn @HostPlayers first, !seat, !remove, Guest, $state, !responses:
         let !now = !news
         let !mine = !responses
         $?told <- nil then ? (Read !now, seat, Whole)               # this seat's live answer
-        ((ignore, $doc)) <- @HostDocument (Guest seat, (SittingOf both)), \|p, e| match e:
+        ((ignore, $doc)) <- @Host (Guest seat, (SittingOf both)), \|p, e| match e:
             Play.Request(..): @ !Filter (?ResponseTo seat, p, !mine)
             Play.Query(..): @ $?told
             Play.Leave(..): @ unit
@@ -227,7 +227,7 @@ fn @HostSpectators first, !seat, !remove, Guest, $state:
         let seat = SeatOf both
         let !now = !news
         $?told <- nil then ? (Read !now, seat, Whole)
-        ((ignore, $doc)) <- @HostDocument (Guest seat, (SittingOf both)), \|p, e| match e:
+        ((ignore, $doc)) <- @Host (Guest seat, (SittingOf both)), \|p, e| match e:
             Watch.Query(..): @ $?told
             Watch.Leave(..): @ unit
             otherwise: @Element e

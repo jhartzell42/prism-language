@@ -26,4 +26,4 @@ tag Pad.Socket of Element ((!Text, $Nat)):
     fn @Supply e = match e:
         Pad.Socket(..): @ (("hello" on !add, $count))
         otherwise: @Element e
-    ignore <- @HostDocument @chat, \|p, e| @Supply e              # 1/[p]
+    ignore <- @Host @chat, \|p, e| @Supply e              # 1/[p]

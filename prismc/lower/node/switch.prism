@@ -1473,7 +1473,7 @@ fn GenRowOf wx, menv, body, vt, rowName, genName:
     let be = Bind (BuildSpelling ports), "_", (BnLocal (XVar "value"), Owned, vt)
     let me = Bind ports, "_", (BnLocal (XField XSelf, "value"), Owned, vt)
     let r2 = BlockInto r1, be, me, body
-    # a block that ends on a host's line (`@HostDocument child, supplier` last, no name
+    # a block that ends on a host's line (`@Host child, supplier` last, no name
     # between) gives the host's bundle: its child's result and the child's document, a
     # dynamic of the generation
     let handedBack = match r2.result:

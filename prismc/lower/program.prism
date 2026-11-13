@@ -702,7 +702,7 @@ ValueWidgetsIn: unbounded fn Lx, Expr -> [((Text, [((Text, Ty))]))]
 fn ValueWidgetsIn lx, e = match e.kind:
     ECall c, args, ignore, ignore:
         let qk = BlueprintQk lx, c
-        let hosts = qk == "Prelude.@HostDocument" or qk == "Prelude.@HostSome" or qk == "Prelude.@HostList"
+        let hosts = qk == "Prelude.@Host" or qk == "Prelude.@HostSome" or qk == "Prelude.@HostList"
         let applies = match lx.g.vals[qk]:
             ? v: IsWidgetTy (WidgetResultOf v.scheme.ty)
             nil: False

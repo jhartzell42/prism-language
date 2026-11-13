@@ -22,7 +22,7 @@ fn !Fired e = match e:
 
 @host: @unit
 @host:
-    ((ignore, $doc)) <- @HostDocument @guest, \|p, e| match e:           # 0/[p]
+    ((ignore, $doc)) <- @Host @guest, \|p, e| match e:           # 0/[p]
         Seat.Request(..): @ !Filter (?Mine p, !heard)
         otherwise: @Element e
     $evs <- for p, $e <- $doc:

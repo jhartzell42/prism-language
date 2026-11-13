@@ -65,7 +65,7 @@ fn Told k = Read k.state
 @InMemory: fn s, @a emit Ui.* | Seat.* -> @a emit Ui.* where s: ^Rules
 fn @InMemory initial, @guest:
     let !stepped = !Updated $kept
-    ((result, $doc)) <- @HostDocument @guest, \|p, e| match e:
+    ((result, $doc)) <- @Host @guest, \|p, e| match e:
         Seat.Request(..): @ !Filter (?ResponseTo p, !stepped)
         Seat.Query(..): @ Told $kept
         otherwise: @Element e

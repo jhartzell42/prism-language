@@ -16,10 +16,10 @@ use Ui.*
 
 @inner: @unit
 @inner:
-    ignore <- @HostDocument @child, \|p, e| match e:            # 0/[p]
+    ignore <- @Host @child, \|p, e| match e:            # 0/[p]
         Ui.Label($text=$t): @Element (Ui.Label($text=$"<{$t}>"))
         otherwise: @Element e
 
 @page: @unit
 @page:
-    ignore <- @HostDocument @inner, \|q, e| @Element e          # 0/[q]
+    ignore <- @Host @inner, \|q, e| @Element e          # 0/[q]

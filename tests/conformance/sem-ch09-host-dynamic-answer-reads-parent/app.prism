@@ -19,6 +19,6 @@ tag Pad.Gauge of Element $Nat:
     !more <- Ui.Button($label=$"more")
     $n <- 0 then $n + 1 on !more
     for k, name <- {{1: "one"}}:
-        ignore <- @HostDocument @child, \|p, e| match e:
+        ignore <- @Host @child, \|p, e| match e:
             Pad.Gauge(..): @ $n
             otherwise: @Element e

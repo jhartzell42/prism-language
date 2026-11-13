@@ -25,7 +25,7 @@ fn Second ((ignore, k)) = k
 fn @Page loud:
     if loud:
         Ui.Label($text=$"before")
-    ignore <- @HostDocument @Inner, \|p, e| match e:
+    ignore <- @Host @Inner, \|p, e| match e:
         Pad.Port(..): @ ((3, $"up"))
         otherwise: @Element e
 

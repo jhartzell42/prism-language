@@ -46,7 +46,13 @@ use Lower.Model.*
 # ---------------------------------------------------------------------------------------
 
 WidgetLine: unbounded fn Wx, Env, Env, Expr, ?Bn -> ((Wx, Wres))
-fn WidgetLine wx, benv, menv, e, ?bound:
+fn WidgetLine wx, benv, menv, e, ?bound = match e.kind:
+    # `@unit`, the blueprint of nothing (`ignore <- @unit`): no place, and `unit`
+    EUnit "@": ((wx, WrUnit))
+    otherwise: NamedWidgetLine wx, benv, menv, e, ?bound
+
+NamedWidgetLine: unbounded fn Wx, Env, Env, Expr, ?Bn -> ((Wx, Wres))
+fn NamedWidgetLine wx, benv, menv, e, ?bound:
     let lx = wx.lx
     let ((callee, args)) = match e.kind:
         ECall c, xs, ignore, ignore: ((c, xs))
@@ -677,7 +683,7 @@ fn WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target:
         "Prelude.@PerKey": PerKeyLine wx, menv, args, ?bound
         "Prelude.@Run": RunLine wx, benv, args, e, ?target
         "Prelude.@Machine": MachineLine wx, benv, menv, args, e, ?target
-        "Prelude.@HostDocument": HostLine wx, benv, menv, HostEach, args, ?bound
+        "Prelude.@Host": HostLine wx, benv, menv, HostEach, args, ?bound
         "Prelude.@HostSome": HostLine wx, benv, menv, HostSome, args, ?bound
         "Prelude.@HostList": HostLine wx, benv, menv, HostList, args, ?bound
         "Prelude.@Element": ElementCallLine wx, benv, menv, args, e, ?bound
@@ -701,7 +707,7 @@ fn WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target:
 # methods), linked to the node once it is made, since a child place's first value asks the
 # host before then. The child's result is the line's first part (`WrHosted`), the document
 # the second.
-# The host forms: `@HostDocument`; `@HostSome`, whose `nil` forwards; `@HostList`, the Each
+# The host forms: `@Host`; `@HostSome`, whose `nil` forwards; `@HostList`, the Each
 # form whose owner also sends answers down by path (prismc's first ruling HL: each firing
 # of its event hands each keyed place its answer, decoded by the place's tag, the next
 # tick's input, as any computed answer; prism_rtl's `Host::hear`).

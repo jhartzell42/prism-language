@@ -20,6 +20,6 @@ tag Pad.Socket of Element ((!Text, $Nat)):
     !more <- Ui.Button($label=$"more")
     $n <- 0 then $n + 1 on !more
     for k, name <- {{1: "one"}}:
-        ignore <- @HostDocument @chat, \|p, e| match e:
+        ignore <- @Host @chat, \|p, e| match e:
             Pad.Socket(..): @ (("hello" on !more, $n))
             otherwise: @Element e

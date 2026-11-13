@@ -1,4 +1,4 @@
-# Semantics ch. 9, "`@HostDocument` and its forms": a child that counts and watches a file,
+# Semantics ch. 9, "`@Host` and its forms": a child that counts and watches a file,
 # hosted three ways. `@mocked` answers its `Fs.Contents` and forwards the rest; `@some`
 # says the same through `@HostSome`, `nil` meaning "forward it"; `@forwarded` forwards
 # everything and is observably not there: the same answers in the same ticks, under
@@ -20,7 +20,7 @@ fn ShowResponse (Error(..)) = "(cannot read)"
 
 @mocked: @unit
 @mocked:
-    ((ignore, $doc)) <- @HostDocument @child, \|p, e| match e:   # 0/[p]
+    ((ignore, $doc)) <- @Host @child, \|p, e| match e:   # 0/[p]
         Fs.Contents(..): @ $ (~ Contents(text="mock"))
         otherwise: @Element e
     Ui.Label($text=$"{Size $doc} places")                    # 1
@@ -37,10 +37,10 @@ fn ?Give p, e = match e:
 
 @forwarded: @unit
 @forwarded:
-    ignore <- @HostDocument @child, \|p, e| @Element e
+    ignore <- @Host @child, \|p, e| @Element e
 
 # The document a host holds is its child's, element by element.
 @watcher: @unit
 @watcher:
-    ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e
+    ((ignore, $doc)) <- @Host @child, \|p, e| @Element e
     Ui.Label($text=$"{Len (Keys $doc)} child places")

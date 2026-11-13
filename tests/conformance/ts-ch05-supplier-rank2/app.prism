@@ -21,7 +21,7 @@ fn Shown (Error(..)) = "(none)"
 
 @inline: @unit
 @inline:
-    ignore <- @HostDocument @child, \|p, e| match e:               # 0/[p]
+    ignore <- @Host @child, \|p, e| match e:               # 0/[p]
         Fs.Contents(..): @ $ (~ Contents(text="A"))
         Fs.File(..): @ never
         otherwise: @Element e

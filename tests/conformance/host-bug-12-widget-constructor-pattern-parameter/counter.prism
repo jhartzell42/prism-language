@@ -63,7 +63,7 @@ fn @HostPressers $seats, Guest, !responses:
         $state <- CounterSeat.State()
         let !mine = !responses
         let $told = Read $state, seat, Whole
-        ((ignore, $doc)) <- @HostDocument (Guest seat), \|p, e| match e:
+        ((ignore, $doc)) <- @Host (Guest seat), \|p, e| match e:
             Count.Request(..): @ !Filter (?Mine seat, !mine, p)
             Count.Query(..): @ $told
             otherwise: @Element e
@@ -75,7 +75,7 @@ fn @HostPressers $seats, Guest, !responses:
 
 @HostCounter: fn $(Presser ==> v), (fn Presser -> @a emit rest | Count.*), $Nat, !(Place ==> Response) -> @((unit, ![Asked Nat])) emit rest
 fn @HostCounter $seats, Guest, $state, !responses:
-    ((!heard, ignore)) <- @HostDocument (@HostPressers $seats, Guest, !responses), \|p, e| match e:
+    ((!heard, ignore)) <- @Host (@HostPressers $seats, Guest, !responses), \|p, e| match e:
         CounterSeat.State(..): @ $state
         otherwise: @Element e
     @ ((unit, InOrder !heard))

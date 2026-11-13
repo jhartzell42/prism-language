@@ -33,4 +33,4 @@ fn @Panel mode:
             @ 20
     $~motd <- Fs.Contents(path="motd")                                 # 1, or 0
     Ui.Label($text=$"{n}: {ShowResponse $~motd}")                      # 2, or 1
-    ignore <- @HostDocument @child, \|p, e| @Element e                # 3/[p], or 2/[p]
+    ignore <- @Host @child, \|p, e| @Element e                # 3/[p], or 2/[p]

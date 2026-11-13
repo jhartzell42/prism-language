@@ -65,7 +65,7 @@ fn @HostCounter $seats, Guest, $state, !responses:
         !born <- @started
         let !mine = !responses
         $?told <- nil then (? ToldTo seat, !moved) <| (? ((ToldTo seat, $state) on !born))
-        ((ignore, $doc)) <- @HostDocument (@Sat seat, $sitting, Guest), \|p, e| match e:
+        ((ignore, $doc)) <- @Host (@Sat seat, $sitting, Guest), \|p, e| match e:
             Count.Request(..): @ !Filter (?Mine seat, !mine, p)
             Count.Query(..): @ $?told
             otherwise: @Element e

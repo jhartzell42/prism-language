@@ -5,7 +5,7 @@ use Fs.*
 
 @Sandbox: fn @a emit Fs.* | r -> @a
 fn @Sandbox @child:
-    ((x, ignore)) <- @HostDocument @child, \|p, e| match e:
+    ((x, ignore)) <- @Host @child, \|p, e| match e:
         Fs.Contents(..): @ $ (~ Contents(text="sandboxed"))
         otherwise: @Element e
     @ x

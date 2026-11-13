@@ -19,7 +19,7 @@ use Ui.*
 
 @host: @unit
 @host:
-    ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e              # 0/[p]/0
+    ((ignore, $doc)) <- @Host @child, \|p, e| @Element e              # 0/[p]/0
     $old <- 0 then Size $doc on (!Updated $doc)
     $new <- 0 then Size (!Updated $doc)
     Ui.Label($text=$"old {$old}, new {$new}")                                 # 1

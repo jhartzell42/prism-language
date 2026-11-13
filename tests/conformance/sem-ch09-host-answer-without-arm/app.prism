@@ -1,4 +1,4 @@
-# A supplier's answer written outside the tag's arm (Semantics ch. 9, "`@HostDocument` and
+# A supplier's answer written outside the tag's arm (Semantics ch. 9, "`@Host` and
 # its forms": the supplier maps a place's path and element to a blueprint of that
 # element's output; "How a supplier answers": the supplier's blueprint "can read anything
 # the host's block binds", and a plain output is answered once, by a plain value). `@ 7`
@@ -22,7 +22,7 @@ tag Pad.Word of Element Text:
 @page: @unit
 @page:
     let @seven = @ 7
-    ((got, ignore)) <- @HostDocument @child, \|p, e| match e:   # 0/[p]
+    ((got, ignore)) <- @Host @child, \|p, e| match e:   # 0/[p]
         Pad.Num(..): @seven
         Pad.Word(..): @ "w"
     Ui.Label($text=$"{got}")                                 # 1

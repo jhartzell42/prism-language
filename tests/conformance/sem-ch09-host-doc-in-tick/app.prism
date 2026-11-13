@@ -39,7 +39,7 @@ fn Tag doc, n = Fold (Keys doc), {{}}, \|acc, p| match ?Get doc, p:
 
 @owner: @unit
 @owner:
-    ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e    # 0/[p]/0
+    ((ignore, $doc)) <- @Host @child, \|p, e| @Element e    # 0/[p]/0
     $flat <- for p, $e <- $doc:                                   # 1/[p], no places
         @ $e
     !tap <- Ui.Button($label=$"tap")                              # 2

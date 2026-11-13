@@ -17,6 +17,6 @@ tag Pad.Port of Element ((Nat, $Text)):
 @mocked:
     !flip <- Ui.Button($label=$"flip")
     $mood <- "idle" then "busy" on !flip
-    ignore <- @HostDocument @chat, \|p, e| match e:
+    ignore <- @Host @chat, \|p, e| match e:
         Pad.Port(..): @ ((7, $mood))
         otherwise: @Element e

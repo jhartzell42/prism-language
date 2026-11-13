@@ -19,6 +19,6 @@ tag Pad.Socket of Element ((!Text, $Text)):
 
 @offline: @unit
 @offline:
-    ignore <- @HostDocument @chat, \|p, e| match e:             # 0/[p]
+    ignore <- @Host @chat, \|p, e| match e:             # 0/[p]
         Pad.Socket(..): @ ((never, $ "offline"))
         otherwise: @Element e

@@ -24,14 +24,14 @@ fn ~Motd text = ~ Contents(text=text)
 @redirect: @unit
 @redirect:
     $~real <- Fs.Contents(path="/etc/real")                     # 0
-    ignore <- @HostDocument @child, \|p, e| match e:            # 1/[p]
+    ignore <- @Host @child, \|p, e| match e:            # 1/[p]
         Fs.Contents(..): @ $~real
         otherwise: @Element e
 
 @later: @unit
 @later:
     !change <- Ui.Button($label=$"change")                       # 0
-    ignore <- @HostDocument @child, \|p, e| match e:            # 1/[p]
+    ignore <- @Host @child, \|p, e| match e:            # 1/[p]
         Fs.Contents(..): @ $~shown
         otherwise: @Element e
     let $~shown = ~Motd $motd

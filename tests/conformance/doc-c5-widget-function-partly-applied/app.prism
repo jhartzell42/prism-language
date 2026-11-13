@@ -1,6 +1,6 @@
 # Part VII ch. 7, step C5's test: a widget function applied to its settings only is a
 # function value (Part III ch. 7; Part IV ch. 5, doubt PA's first ruling: `@InMemory
-# fresh` leaves the guests' element tree for `@HostDocument` to supply). `@Counter 5` is
+# fresh` leaves the guests' element tree for `@Host` to supply). `@Counter 5` is
 # passed to a function that builds it once, with the rest of its arguments; the count
 # starts at 5.
 # Written by Claude on the claude-lowering branch; subject to change.

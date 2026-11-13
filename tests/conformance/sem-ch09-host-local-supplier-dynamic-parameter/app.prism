@@ -25,4 +25,4 @@ tag Pad.Gauge of Element $Nat:
     fn @Supply $d, e = match e:
         Pad.Gauge(..): @ $d
         otherwise: @Element e
-    ignore <- @HostDocument @meter, \|p, e| @Supply $count, e     # 1/[p]
+    ignore <- @Host @meter, \|p, e| @Supply $count, e     # 1/[p]

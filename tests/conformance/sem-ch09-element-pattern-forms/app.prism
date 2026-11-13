@@ -26,7 +26,7 @@ fn IsUi e = match e:
 
 @page: @unit
 @page:
-    ignore <- @HostDocument @child, \|p, e| match e:            # 0/[p]
+    ignore <- @Host @child, \|p, e| match e:            # 0/[p]
         Ui.Label(..):
             let d = Ui.Label($text=$Shown e)
             @Element (Ui.Label($text=$"{$Shown d} {IsUi d}"))

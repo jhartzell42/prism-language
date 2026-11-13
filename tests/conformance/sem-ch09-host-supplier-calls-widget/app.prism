@@ -26,4 +26,4 @@ fn @Supply p, e = match e:
 
 @called: @unit
 @called:
-    ignore <- @HostDocument @child, \|p, e| @Supply p, e          # 0/[p]
+    ignore <- @Host @child, \|p, e| @Supply p, e          # 0/[p]

@@ -35,7 +35,7 @@ fn @Pick mode:
 
 @Page: fn Mode -> @unit
 fn @Page mode:
-    ignore <- @HostDocument @sized, \|p, e| match e:                   # 0/[p]
+    ignore <- @Host @sized, \|p, e| match e:                   # 0/[p]
         Pad.Size(..): @ n
         otherwise: @Element e
     n <- @Pick mode

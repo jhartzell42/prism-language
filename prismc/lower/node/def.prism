@@ -2088,11 +2088,11 @@ fn IsPreludeName q = (?Find %/^Prelude\./, q) != nil
 IsGetterBuiltin: fn Text -> Bool
 fn IsGetterBuiltin q = q == "Prelude.@Distinct" or q == "Prelude.@PerKey" or q == "Prelude.@Flatten"
 
-# A host (`@HostDocument` and its forms), whose document is a getter of the node: a line
+# A host (`@Host` and its forms), whose document is a getter of the node: a line
 # above it may read `$doc`, through a getter named for the name it is bound to
 # (`BindHosted`).
 IsHostBuiltin: fn Text -> Bool
-fn IsHostBuiltin q = q == "Prelude.@HostDocument" or q == "Prelude.@HostSome" or q == "Prelude.@HostList"
+fn IsHostBuiltin q = q == "Prelude.@Host" or q == "Prelude.@HostSome" or q == "Prelude.@HostList"
 
 IsWidgetTy: fn Ty -> Bool
 fn IsWidgetTy t = match t:

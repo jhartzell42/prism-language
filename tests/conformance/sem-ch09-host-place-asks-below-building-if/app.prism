@@ -23,6 +23,6 @@ fn @Inner loud:
 
 @Page: fn Bool -> @unit
 fn @Page loud:
-    ignore <- @HostDocument (@Inner loud), \|p, e| match e:            # 0/[p]
+    ignore <- @Host (@Inner loud), \|p, e| match e:            # 0/[p]
         Pad.Ask(name=n): @ "yes {n}"
         otherwise: @Element e

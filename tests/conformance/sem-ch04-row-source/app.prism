@@ -28,4 +28,4 @@ fn Entries n, t = match n -? 1:
 
 @hosted: @unit
 @hosted:
-    ignore <- @HostDocument @rows, \|p, e| @Element e              # 0/[p]
+    ignore <- @Host @rows, \|p, e| @Element e              # 0/[p]

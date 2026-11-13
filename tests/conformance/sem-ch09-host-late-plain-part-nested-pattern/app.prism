@@ -25,6 +25,6 @@ tag Pad.Socket of Element ((((Nat, Text)), !Text, $Nat)):
     $lens <- for k, $name <- $names:                                   # 1/[k]
         Ui.Label($text=$name)
         @ Len $name
-    ignore <- @HostDocument @chat, \|p, e| match e:                    # 2/[p]
+    ignore <- @Host @chat, \|p, e| match e:                    # 2/[p]
         Pad.Socket(..): @ ((((7, "ann")), "hello" on !add, Size $lens))
         otherwise: @Element e

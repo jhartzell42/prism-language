@@ -38,6 +38,6 @@ fn @Pair n:
     $lens <- for k, $name <- $names:                                   # 1/[k]
         Ui.Label($text=$name)
         @ Len $name
-    ignore <- @HostDocument @chat, \|p, e| match e:                    # 2/[p]
+    ignore <- @Host @chat, \|p, e| match e:                    # 2/[p]
         Pad.Socket(..): @ ((7, "hello" on !add, Size $lens))
         otherwise: @Element e

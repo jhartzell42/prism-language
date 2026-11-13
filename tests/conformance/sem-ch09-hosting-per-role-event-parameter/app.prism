@@ -114,7 +114,7 @@ fn GameOf s = s.game
 # One player seat: the guest hosted, its requests read out of its document.
 @HostPlayer: fn Side, @a emit Ui.* | Play.*, $State, !State -> @((a, $[Asking])) emit Ui.*
 fn @HostPlayer side, @guest, $state, !outcome:
-    ((result, $doc)) <- @HostDocument @guest, \|p, e| match e:
+    ((result, $doc)) <- @Host @guest, \|p, e| match e:
         Play.Request(..): @ !Filter (?ResponseTo side, p, !outcome)
         Play.Query(..): @ GameOf $state
         otherwise: @Element e
@@ -131,7 +131,7 @@ fn @Seated $watchers:
 
 @HostWatchers: fn $(Text ==> unit), $State -> @unit emit Ui.*
 fn @HostWatchers $watchers, $state:
-    ignore <- @HostDocument (@Seated $watchers), \|p, e| match e:
+    ignore <- @Host (@Seated $watchers), \|p, e| match e:
         Watch.Query(..): @ GameOf $state
         otherwise: @Element e
 

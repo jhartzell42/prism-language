@@ -6,7 +6,7 @@ test mod Tests
 
 @Wrap: fn @a -> @a
 fn @Wrap @child:
-    ((r, ignore)) <- @HostDocument @child, \|p, e| @Element e
+    ((r, ignore)) <- @Host @child, \|p, e| @Element e
     @ r
 
 @$counter: @$Text

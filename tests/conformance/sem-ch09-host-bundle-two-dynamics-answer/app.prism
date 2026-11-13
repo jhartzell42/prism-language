@@ -19,6 +19,6 @@ tag Pad.Link of Element (($Text, $Nat)):
     !join <- Ui.Button($label=$"join")
     $count <- 0 then $count + 1 on !join
     $mood <- "idle" then "busy" on !join
-    ignore <- @HostDocument @chat, \|p, e| match e:
+    ignore <- @Host @chat, \|p, e| match e:
         Pad.Link(..): @ (($mood, $count))
         otherwise: @Element e

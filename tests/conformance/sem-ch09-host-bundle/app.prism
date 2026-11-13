@@ -20,10 +20,10 @@ tag Pad.Door of Element ((Text, !Nat)):
 @computed: @unit
 @computed:
     !go <- Ui.Button($label=$"knock")                         # 0
-    ignore <- @HostDocument @doors, \|p, e| match e:         # 1/[p]
+    ignore <- @Host @doors, \|p, e| match e:         # 1/[p]
         Pad.Door(..): @ (("mock", 2 on !go))
         otherwise: @Element e
 
 @forwarded: @unit
 @forwarded:
-    ignore <- @HostDocument @doors, \|p, e| @Element e       # 0/[p]/0
+    ignore <- @Host @doors, \|p, e| @Element e       # 0/[p]/0

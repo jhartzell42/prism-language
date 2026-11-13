@@ -47,4 +47,4 @@ fn @Page c:
     $k <- 0 then $k + 1 on !add
     if LabelFirst c:
         Ui.Label($text=$"before")                                      # 1
-    ignore <- @HostDocument (@Inner (Loud c), $k), \|p, e| @Element e      # 2/[p]/0, or 1/[p]/0
+    ignore <- @Host (@Inner (Loud c), $k), \|p, e| @Element e      # 2/[p]/0, or 1/[p]/0

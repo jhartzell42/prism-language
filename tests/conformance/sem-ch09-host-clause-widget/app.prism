@@ -27,4 +27,4 @@ fn @Pick (? n):
 
 @hosted: @unit
 @hosted:
-    ignore <- @HostDocument @child, \|p, e| @Element e          # 0/[p]/0
+    ignore <- @Host @child, \|p, e| @Element e          # 0/[p]/0

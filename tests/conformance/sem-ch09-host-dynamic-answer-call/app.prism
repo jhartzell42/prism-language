@@ -27,6 +27,6 @@ fn $~Shout $text = ~Motd "{$text}!"
 @host:
     !change <- Ui.Button($label=$"change")                       # 0
     $motd <- "first" then "second" on !change
-    ignore <- @HostDocument @child, \|p, e| match e:            # 1/[p]
+    ignore <- @Host @child, \|p, e| match e:            # 1/[p]
         Fs.Contents(..): @ $~Shout $motd
         otherwise: @Element e

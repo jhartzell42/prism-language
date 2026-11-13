@@ -1,5 +1,5 @@
 # A hosted child's dynamic result passed whole to a function that takes it so (Type
-# System ch. 4, Application; Semantics ch. 9: `@HostDocument` gives the child's result
+# System ch. 4, Application; Semantics ch. 9: `@Host` gives the child's result
 # beside its document). Written by Claude on the claude-lowering branch; subject to
 # change.
 emit Ui.*
@@ -17,6 +17,6 @@ fn Wrap $a = [[$a]]
 
 @rows: @unit
 @rows:
-    (($r, ignore)) <- @HostDocument @child, \|p, e| @Element e    # 0/[p]
+    (($r, ignore)) <- @Host @child, \|p, e| @Element e    # 0/[p]
     for $d <- Wrap $r:                                           # 1/[0]
         Ui.Label($text=$"row {$d}")                              # 1/[0]/0

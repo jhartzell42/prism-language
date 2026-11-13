@@ -276,7 +276,7 @@ type Wx = record:
     ports: [Text]
     subs: [((Text, Text, OutTy))]
     parentEnv: Env
-    # The hosts of the block (`@HostDocument`, `@HostSome`), in order (pick HO): host `k`
+    # The hosts of the block (`@Host`, `@HostSome`), in order (pick HO): host `k`
     # (from 1) is `hosts[k - 1]`, and a position of scope `k` is a place of its child.
     hosts: [HostDef]
     # The places whose element answers a dynamic: position, the hold, its type, and the
@@ -475,7 +475,7 @@ type BundlePlace = record:
     eventAccessor: Text
     firstVariant: Ref
 
-# A host of the block (`@HostDocument`, `@HostSome`; pick HO): its line's position, its
+# A host of the block (`@Host`, `@HostSome`; pick HO): its line's position, its
 # field (`host_k`, `k` the scope of its child's places), and that scope.
 type HostDef = record:
     pos: Pos

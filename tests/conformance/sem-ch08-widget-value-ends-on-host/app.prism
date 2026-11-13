@@ -21,7 +21,7 @@ fn ?Pick b, @w = if b: ? @w else: nil
 
 @Framed: @((unit, $(Path ==> $Elem Ui.*)))
 @Framed:
-    @HostDocument @child, \|p, e| @Element e                      # 0/[p]/0
+    @Host @child, \|p, e| @Element e                      # 0/[p]/0
 
 @Page: fn Bool -> @unit
 fn @Page b:

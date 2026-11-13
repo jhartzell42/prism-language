@@ -19,6 +19,6 @@ tag Pad.Tap of Element !Nat:
 @host:
     !go <- Ui.Button($label=$"go")
     let @!later = @ (3 on !go)
-    ignore <- @HostDocument @child, \|p, e| match e:
+    ignore <- @Host @child, \|p, e| match e:
         Pad.Tap(..): @!later
         otherwise: @Element e

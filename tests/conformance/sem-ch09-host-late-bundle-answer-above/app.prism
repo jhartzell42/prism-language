@@ -36,7 +36,7 @@ fn @Choose mode:
 
 @Page: fn Mode -> @unit
 fn @Page mode:
-    ignore <- @HostDocument @dial, \|p, e| match e:                    # 0/[p]
+    ignore <- @Host @dial, \|p, e| match e:                    # 0/[p]
         Pad.Dial(..): @ both
         otherwise: @Element e
     both <- @Choose mode                                               # 1 and 2, or 1

@@ -20,6 +20,6 @@ fn $Shown e = match e:
 
 @page: @unit
 @page:
-    ignore <- @HostDocument @child, \|p, e| match e:            # 0/[p]
+    ignore <- @Host @child, \|p, e| match e:            # 0/[p]
         Ui.Label(..): @Element (Ui.Label($text=$Shown e))
         otherwise: @Element e

@@ -22,4 +22,4 @@ fn ?Pick b, @w = if b: ? @w else: nil
 
 @main: @unit
 @main:
-    ignore <- @HostDocument @child, \|p, e| @Element e
+    ignore <- @Host @child, \|p, e| @Element e

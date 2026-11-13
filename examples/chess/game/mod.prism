@@ -181,7 +181,7 @@ fn !RequestsIn element = match element:
 fn @HostPlayers first, !seat, !remove, $state, !responses:
     $seats <- first then Reseated $seats, !tick
     !heard <- for seat, $@guest <- $seats:                                     # [seat]
-        ((ignore, $places)) <- @HostDocument (@Sitting $@guest), \|place, element| match element:
+        ((ignore, $places)) <- @Host (@Sitting $@guest), \|place, element| match element:
             Play.Request(..): @ !Filter (?ResponseTo seat, place, !responses)
             Play.Query($query=$asks): @ Read $state, seat, $asks
             Seat.Leave(..): @ unit
@@ -204,7 +204,7 @@ fn Left gone = [[Leaving]]
 fn @HostSpectators first, !seat, !remove, $state:
     $seats <- first then Reseated $seats, !tick
     !heard <- for seat, $@guest <- $seats:
-        ((ignore, $places)) <- @HostDocument (@Sitting $@guest), \|place, element| match element:
+        ((ignore, $places)) <- @Host (@Sitting $@guest), \|place, element| match element:
             Watch.Query($query=$asks): @ Read $state, seat, $asks
             Seat.Leave(..): @ unit
             otherwise: @Element element

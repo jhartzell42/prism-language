@@ -12,4 +12,4 @@ use Ui.*
 @page: @unit
 @page:
     @Element
-    ignore <- @HostDocument @child, \|p, e| @Element
+    ignore <- @Host @child, \|p, e| @Element

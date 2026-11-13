@@ -20,13 +20,13 @@ use Ui.*
 @inner: @unit
 @inner:
     !go <- Ui.Button($label=$"go")                                # 0, answered by the outer host's !tap
-    ignore <- @HostDocument @leaf, \|p, e| match e:             # 1/[p]
+    ignore <- @Host @leaf, \|p, e| match e:             # 1/[p]
         Ui.Button(..): @ !go
         otherwise: @Element e
 
 @outer: @unit
 @outer:
     !tap <- Ui.Button($label=$"tap")                              # 0
-    ignore <- @HostDocument @inner, \|p, e| match e:            # 1/[p]
+    ignore <- @Host @inner, \|p, e| match e:            # 1/[p]
         Ui.Button(..): @ !tap
         otherwise: @Element e

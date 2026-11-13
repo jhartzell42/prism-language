@@ -15,7 +15,7 @@ use Fs.*
 
 @viaLet: @unit
 @viaLet:
-    ignore <- @HostDocument @child, \|p, e|                       # 0/[p]
+    ignore <- @Host @child, \|p, e|                       # 0/[p]
         let @b = match e:
             Fs.Contents(..): @ $ (~ Contents(text="A"))
             Fs.File(..): @ never

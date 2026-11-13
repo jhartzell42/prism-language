@@ -19,4 +19,4 @@ tag Pad.Socket of Element ((!Text, $Text)):
 
 @forwarded: @unit
 @forwarded:
-    ignore <- @HostDocument @chat, \|p, e| @Element e           # 0/[p]/0
+    ignore <- @Host @chat, \|p, e| @Element e           # 0/[p]/0

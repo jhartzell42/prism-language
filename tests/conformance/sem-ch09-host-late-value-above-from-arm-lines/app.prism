@@ -40,4 +40,4 @@ fn @Inner mode, $k:
 fn @Page mode:
     !add <- Ui.Button($label=$"add")                                   # 0
     $k <- 0 then $k + 1 on !add
-    ignore <- @HostDocument (@Inner mode, $k), \|p, e| @Element e      # 1/[p]/0
+    ignore <- @Host (@Inner mode, $k), \|p, e| @Element e      # 1/[p]/0

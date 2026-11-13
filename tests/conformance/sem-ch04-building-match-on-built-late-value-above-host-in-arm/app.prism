@@ -34,7 +34,7 @@ fn @Panel mode:
     n <- match mode:
         Loud t:
             size <- @Sized t                                           # 2
-            ignore <- @HostDocument @note, \|p, e| @Element e          # 3/[p]
+            ignore <- @Host @note, \|p, e| @Element e          # 3/[p]
             @ size + 9
         Soft:
             @ 20

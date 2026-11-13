@@ -55,7 +55,7 @@ fn !Requested e = match e:
 @HostPressers: fn $(Presser ==> v), (fn Presser, v -> @a emit rest | Count.*), $Nat, !(Place ==> Response) -> @!(Presser ==> (Path ==> Asked Nat)) emit rest
 fn @HostPressers $seats, Guest, $state, !responses:
     !heard <- for seat, $sitting <- $seats:
-        ((ignore, $doc)) <- @HostDocument (@Sat seat, $sitting, Guest), \|p, e| match e:
+        ((ignore, $doc)) <- @Host (@Sat seat, $sitting, Guest), \|p, e| match e:
             Count.Request(..): @ !Filter (?ResponseTo seat, p, !responses)
             Count.Query(..): @ Read $state, seat, Whole
             otherwise: @Element e

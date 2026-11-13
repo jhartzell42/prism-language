@@ -59,7 +59,7 @@ tag CounterSeat.Pressing of Element $Nat:
 fn @HostPressers $seats, Guest, !responses:
     !heard <- for seat, $sitting <- $seats:
         $told <- CounterSeat.Pressing(seat=seat)
-        ((ignore, $doc)) <- @HostDocument (@Sat seat, $sitting, Guest), \|p, e| match e:
+        ((ignore, $doc)) <- @Host (@Sat seat, $sitting, Guest), \|p, e| match e:
             Count.Request(..): @ !Filter (?ResponseTo seat, p, !responses)
             Count.Query(..): @ $told
             otherwise: @Element e
@@ -71,7 +71,7 @@ fn @HostPressers $seats, Guest, !responses:
 
 @HostCounter: fn $(Presser ==> v), (fn Presser, v -> @a emit rest | Count.*), $Nat, !(Place ==> Response) -> @((unit, ![Asked Nat])) emit rest
 fn @HostCounter $seats, Guest, $state, !responses:
-    ((!heard, ignore)) <- @HostDocument (@HostPressers $seats, Guest, !responses), \|p, e| match e:
+    ((!heard, ignore)) <- @Host (@HostPressers $seats, Guest, !responses), \|p, e| match e:
         CounterSeat.Pressing(seat=seat): @ Read $state, seat, Whole
         otherwise: @Element e
     @ ((unit, InOrder !heard))

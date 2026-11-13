@@ -24,7 +24,7 @@ fn Texts doc = Fold (Values doc), "", \|acc, e| match e:
 
 @counter: @unit
 @counter:
-    ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e    # 0/[p]/0
+    ((ignore, $doc)) <- @Host @child, \|p, e| @Element e    # 0/[p]/0
     $flat <- for p, $e <- $doc:                                   # 1/[p], no places
         @ $e
     let !moved = !Updated $flat

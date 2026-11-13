@@ -17,6 +17,6 @@ tag Seat.Request of Element !Text:
 
 @host: @unit
 @host:
-    ignore <- @HostDocument @guest, \|p, e| match e:           # 0/[p]
+    ignore <- @Host @guest, \|p, e| match e:           # 0/[p]
         Seat.Request(!requests=!r): @ "ok {!r}"
         otherwise: @Element e

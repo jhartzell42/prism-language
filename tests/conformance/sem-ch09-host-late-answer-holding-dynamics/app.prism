@@ -22,6 +22,6 @@ tag Pad.Ask of Element [$Nat]:
 fn @Page loud:
     if loud:
         Ui.Label($text=$"before")                                      # 0
-    ignore <- @HostDocument @Inner, \|p, e| match e:                   # 1/[p], or 0/[p]
+    ignore <- @Host @Inner, \|p, e| match e:                   # 1/[p], or 0/[p]
         Pad.Ask(..): @ [[$ 1]]
         otherwise: @Element e

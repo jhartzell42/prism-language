@@ -22,6 +22,6 @@ tag Pad.Gauge of Element $Nat:
     $lens <- for k, $name <- $names:
         Ui.Label($text=$name)
         @ Len $name
-    ignore <- @HostDocument @child, \|p, e| match e:
+    ignore <- @Host @child, \|p, e| match e:
         Pad.Gauge(..): @ Size $lens
         otherwise: @Element e

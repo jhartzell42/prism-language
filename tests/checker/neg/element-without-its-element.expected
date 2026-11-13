@@ -7,6 +7,6 @@ tests/checker/neg/element-without-its-element.prism:14: error[discarded]: this l
         ^^^^^^^^
   fix: write `ignore <-` in front of it, or bind it
 tests/checker/neg/element-without-its-element.prism:15: error[mismatch]: expected `@o'7`, found `fn Element r14 t13 -> @t13`
-        ignore <- @HostDocument @child, \|p, e| @Element
-                                                ^^^^^^^^
+        ignore <- @Host @child, \|p, e| @Element
+                                        ^^^^^^^^
 3 errors

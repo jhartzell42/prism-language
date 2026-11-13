@@ -25,10 +25,10 @@ fn @Answerer name:
 
 @host: @unit
 @host:
-    ignore <- @HostDocument @guest, \|p, e| match e:            # 0/[p]
+    ignore <- @Host @guest, \|p, e| match e:            # 0/[p]
         Pad.Ask(name=n): @Answerer n
         otherwise: @Element e
 
 @outer: @unit
 @outer:
-    ignore <- @HostDocument @host, \|p, e| @Element e           # 0/[p]/0
+    ignore <- @Host @host, \|p, e| @Element e           # 0/[p]/0

@@ -22,7 +22,7 @@ tag Pad.Socket of Element ((!Text, $Nat)):
 @host:
     !add <- Ui.Button($label=$"add")                              # 0
     $names <- {{1: "one"}} then Insert $names, 2, "two" on !add
-    ((ignore, $doc)) <- @HostDocument @chat, \|p, e| match e:     # 1/[p]
+    ((ignore, $doc)) <- @Host @chat, \|p, e| match e:     # 1/[p]
         Pad.Socket(..): @ (("hello" on !add, Size $lens))
         otherwise: @Element e
     ignore <- rebuild Size $doc:                                  # 2/#g
