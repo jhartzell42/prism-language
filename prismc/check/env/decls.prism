@@ -528,7 +528,12 @@ fn MissingDefinitions g, st0:
 # as the impl's head, so `Item Crate` is `Crate`. The impl then holds the choice as if it
 # were written, which is what the associated type's uses and both back ends read.
 ImplDefaults: unbounded fn G, St -> ((G, St))
-fn ImplDefaults g, st = Fold (Values g.traits), ((g, st)), \|((g1, st1)), tr|
+fn ImplDefaults g0, st0:
+    let ((g, st)) = ImplRowDefaults g0, st0
+    Fold (Values g.traits), ((g, st)), \|((g1, st1)), tr| ImplTypeDefaults g1, st1, tr
+
+ImplTypeDefaults: unbounded fn G, St, TraitInfo -> ((G, St))
+fn ImplTypeDefaults g1, st1, tr:
     if (Len tr.assocDefaults) == 0: ((g1, st1))
     else:
         let ((impls, added)) = Fold (Or g1.impls[tr.name], [[]]), (([[]], [[]])), \|((done, new)), im|
@@ -821,13 +826,18 @@ fn ConvTrait g, st, info, t, span:
                     &_.defs <= Push &_.defs, def
                 ((upd, s, ms, (Push ds, qk), assocAcc))
         TiAssocType n, ignore, ignore, ignore, ignore: ((gg, s, ms, ds, (Push assocAcc, n.name)))
-        TiAssocRow ignore, (? ignore2), r: ((gg, (Err s, "mismatch", r, "a trait declares an associated row, `row Name`; an impl chooses it"), ms, ds, assocAcc))
-        TiAssocRow ignore, nil, ignore2: ((gg, s, ms, ds, assocAcc))
+        TiAssocRow ignore, ?ignore2, ignore3: ((gg, s, ms, ds, assocAcc))
     # a default body is a body of a method the trait signs, or of one a trait above it
     # signs (ruling SD; `AboveDefaultsKnown` checks that one, once every trait is read)
     let st4 = st3
     let above = Fold defaults, [[]], \|acc, dq| if HasText methods, dq: acc else: Push acc, (((AboveDefaultName dq), dq))
-    let ti = TraitInfo(aboveDefaults=above, assocRows=(AssocRowsOf t.items), name=name, home=info.name, param=param, supers=(Each supers, \|((ignore, k))| k), headBounds=headBounds, methods=methods, defaults=(Filter defaults, \|dq| HasText methods, dq), assocs=assocs, assocParams=(AssocParamCounts t.items), assocKinded=(AssocKindedOf t.items), assocDefaults=assocDefaults, file=info.file, span=span)
+    # a default for an associated row, `row Lower = unit`, read over the trait's parameter
+    let ((rowDefaults, st4r)) = Fold t.items, (([[]], st4)), \|((acc, s)), it| match it:
+        TiAssocRow n, (? r), ignore:
+            let ((rw, s2)) = ConvRow cx, s, r
+            (((Push acc, ((SNameKey n, rw))), s2))
+        otherwise: ((acc, s))
+    let ti = TraitInfo(assocRowDefaults=rowDefaults, aboveDefaults=above, assocRows=(AssocRowsOf t.items), name=name, home=info.name, param=param, supers=(Each supers, \|((ignore, k))| k), headBounds=headBounds, methods=methods, defaults=(Filter defaults, \|dq| HasText methods, dq), assocs=assocs, assocParams=(AssocParamCounts t.items), assocKinded=(AssocKindedOf t.items), assocDefaults=assocDefaults, file=info.file, span=span)
     let upd3 = update g3:
         &_.traits <= Insert &_.traits, name, ti
     ((upd3, st4))
@@ -981,3 +991,30 @@ fn DefSpanOf g, qk = Fold g.defs, Range(start=0, end=0, origin=InSource), \|r, d
 
 HasAboveChosen: fn ImplInfo, Text -> Bool
 fn HasAboveChosen im, method = Fold im.aboveChosen, False, \|seen, ((m, ignore, ignore2))| seen or m == method
+
+# A trait's default for an associated row (`row Lower = unit` under the trait): an impl that
+# does not choose the row takes the default, the trait's parameter read as the impl's head,
+# as for an associated type's default (`ImplTypeDefaults`).
+ImplRowDefaults: unbounded fn G, St -> ((G, St))
+fn ImplRowDefaults g, st = Fold (Values g.traits), ((g, st)), \|((g1, st1)), tr|
+    if (Len tr.assocRowDefaults) == 0: ((g1, st1))
+    else:
+        let ((impls, added)) = Fold (Or g1.impls[tr.name], [[]]), (([[]], [[]])), \|((done, new)), im|
+            let taken = Filter tr.assocRowDefaults, \|((name, ignore))| not (im.derived or HasText im.rows, name)
+            let filled = update im:
+                &_.rows <= Append &_.rows, (Each taken, \|((name, ignore))| name)
+            let rowImpls = Each taken, \|((name, rw))| AssocRowImpl(cls=im.cls, name=name, head=im.head, chosen=(SubstRowParam rw, tr.param, im.head))
+            (((Push done, filled), (Append new, rowImpls)))
+        let g2 = update g1:
+            &_.impls <= Insert &_.impls, tr.name, impls
+        let st2 = update st1:
+            &_.assocRowImpls <= Append &_.assocRowImpls, added
+        ((g2, st2))
+
+# A row read over a trait's parameter at a head: an associated row there, `Lower d`, at the
+# head.
+SubstRowParam: fn Rw, Text, Ty -> Rw
+fn SubstRowParam rw, param, head = match rw.tail:
+    TlAssoc tr, name, (TyQ p) if p == param: update rw:
+        &_.tail <= TlAssoc tr, name, head
+    otherwise: rw

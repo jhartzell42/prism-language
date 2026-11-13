@@ -337,6 +337,8 @@ fn RowParts cx, st, t = match t.kind:
         let ((f2, v2, i2, s2)) = RowParts cx, s, x
         (((Append fs, f2), (Append vs, v2), (MergeIdx seen, i2), s2))
     TGroup x: RowParts cx, st, x
+    # `unit`, the empty row (`row Lower = unit`: a document with no lower language)
+    TUnit "": (([[]], [[]], {{}}, st))
     TFamily q, args:
         let fam = Dotted q.path
         let st2 = CheckFamily cx.g, st, fam, q.span
@@ -344,7 +346,8 @@ fn RowParts cx, st, t = match t.kind:
         (([[fam]], [[]], (if (Len indices) == 0: {{}} else: Insert {{}}, fam, indices), st3))
     TName n, [[]]:
         let name = Dotted n.path
-        if (Len n.path) == 1 and (IsLowerText name): (([[]], [[(TlQ name)]], {{}}, st))
+        if name == "unit": (([[]], [[]], {{}}, st))
+        else: if (Len n.path) == 1 and (IsLowerText name): (([[]], [[(TlQ name)]], {{}}, st))
         else: if name == "Element": ((cx.scope.fams, (ScopeTails cx.scope.tail), cx.scope.idx, st))
         else: (([[]], [[]], {{}}, (ErrFix st, "row-single-tag", t.span, "a row names families, not tags: `{name}`", "write `{Dotted (Take n.path, (Dec (Len n.path)))}.*`")))
     # an associated row at its type, `Lower d` (Type System ch. 3)

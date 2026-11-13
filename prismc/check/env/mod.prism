@@ -137,6 +137,8 @@ type TraitInfo = record:
     # The defaults it gives for methods of traits above it (Jimmy, 13 November, ruling
     # SD): each method's bare name and the default's definition key.
     aboveDefaults: [((Text, Text))]
+    # the associated rows it gives a default, `row Lower = unit`, each over its parameter
+    assocRowDefaults: [((Text, Rw))]
     file: Nat
     span: Range
 derive ^Eq, ^Show
