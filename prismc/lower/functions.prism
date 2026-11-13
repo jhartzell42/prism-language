@@ -379,7 +379,9 @@ fn TraitDefOf lx0, tr:
     # a default's body has the trait's parameter as `Self`, as its signature does
     let lx = update (InModule lx0, tr.file, tr.home):
         &_.subst <= Insert &_.subst, tr.param, (TyCon "\u{0}Self", [[]])
-    let methods = Each tr.methods, \|mq|
+    # a widget method is inlined at each call by its impl (`?ImplWidgetClauses`), no
+    # method of the Rust trait
+    let methods = Each (Filter tr.methods, \|mq| not (HasPrefix (BareName mq), "@")), \|mq|
         let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
         let sc = update v.scheme:
             &_.ty <= SelfIn &_.ty, tr.param
@@ -452,7 +454,7 @@ ImplDefOf: unbounded fn Lx, ImplInfo -> ImplDef
 fn ImplDefOf lx, im:
     let tr = Or lx.g.traits[im.cls], dummyTraitInfo
     let head = OutTyOf lx, im.head
-    let defs = Filter lx.g.defs, \|d| IsMethodOf d, im
+    let defs = Filter lx.g.defs, \|d| (IsMethodOf d, im) and not (HasPrefix d.name, "@")
     let methods = Each defs, \|d|
         let mq = Fold tr.methods, "", \|found, q| if (BareName q) == d.name: q else: found
         let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
