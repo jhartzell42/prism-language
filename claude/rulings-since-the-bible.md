@@ -270,7 +270,7 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   things from the prelude too with as").
 - **SL** A seat whose participant leaves is told to the program: `@HostRole` gives, beside
   each seat's result, an event of the seats whose participants left in a tick, and a
-  document's results carry one per role (`!tellersLeft: [Text]`); the program removes
+  document's results carry one per role (`!playersLeft: [Color]` for chess); the program removes
   them from its map as it removes any. Jimmy, 13 November: "a seems like the only correct
   choice".
 - **RR** A parameter used only after `|` in an `emit` row is a row and declares no kind:
