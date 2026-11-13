@@ -82,7 +82,7 @@ Written by Claude on the claude-self-hosting branch; subject to change.
   `@Counter 5` (`ApplyWidgetParam`, lower/node/static), the plan is to read it as a lambda
   of the missing parameters whose body is the full call; the obstacle is that the line's
   arguments and the partial call's own are in two files' environments and spans.
-- doc-c6's bundle event part: in p11's Rust for the test (compiled in the scratch tree,
+- Done after: doc-c6 (`BindHosted` binds a tuple pattern part by part). Its cause, in p11's Rust for the test (compiled in the scratch tree,
   `target/c6t`), the hosted child's `!inc` handler (`inc_e0_3`) sets its own hold and
   fires its own port, but the parent's `!clicked` (`clicked_e1`, `clicked_e1_v_port`) is
   a port nobody fires: the event part of a `@Host`'s result bundle is bound apart from
