@@ -167,6 +167,7 @@ fn InferKind env, st, e = match e.kind:
         ((TyTuple parts, st3))
     EArray es: InferArray env, st, es, e.span
     EMap entries: InferMap env, st, entries, e.span
+    EMapSingle entries: InferMap env, (ErrFix st, "single-brace-map", e.span, "a map literal is doubled, and single braces hold", "write `\{{SrcText env, e.span}\}`"), entries, e.span
     EGroup x: Infer env, st, x
     # a hold anywhere but an argument (`InferArgument`) means nothing
     EHold x:
@@ -233,6 +234,7 @@ fn InferNonEmpty env, st, x, span:
     let ?count = match x.kind:
         EArray es: ? (Len es)
         EMap kvs: ? (Len kvs)
+        EMapSingle kvs: ? (Len kvs)
         otherwise: nil
     match ?count:
         nil: ((TyErr, (Err st, "mismatch", span, "only an array or a map literal is non-empty")))

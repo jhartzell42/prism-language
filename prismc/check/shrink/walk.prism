@@ -103,6 +103,7 @@ fn ExprKids e, m = match e.kind:
     ETuple es: ExprsKids es, m
     EArray es: ExprsKids es, m
     EMap kvs: Fold kvs, [[]], \|acc, ((k, v))| Append acc, (ExprsKids [[k, v]], m)
+    EMapSingle kvs: Fold kvs, [[]], \|acc, ((k, v))| Append acc, (ExprsKids [[k, v]], m)
     ELit l: match l.kind:
         LText segs: Fold segs, [[]], \|acc, sg| match sg:
             SegPlaceholder x: Push acc, (KidExpr x, m)

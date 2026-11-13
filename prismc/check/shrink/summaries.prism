@@ -75,6 +75,7 @@ fn Within m, i, e = match ?RelOf m, e:
     nil: match e.kind:
         EArray es: Fold es, True, \|ok, x| ok and Part m, i, x
         EMap kvs: Fold kvs, True, \|ok, ((k, v))| ok and (Part m, i, k) and Part m, i, v
+        EMapSingle kvs: Fold kvs, True, \|ok, ((k, v))| ok and (Part m, i, k) and Part m, i, v
         EGroup x: Within m, i, x
         EHold x: Within m, i, x
         EMatch s, arms: Fold arms, True, \|ok, a| ok and WithinBlock (ArmPatRels s, a, m), i, a.body

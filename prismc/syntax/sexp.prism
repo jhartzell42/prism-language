@@ -290,6 +290,7 @@ fn SexpExpr e, d = match e.kind:
     ETuple es: "(tuple{SexpExprs es, d})"
     EArray es: "(array{SexpExprs es, d})"
     EMap es: "(map{Concat (Each es, \|((k, v))| " ({SexpExpr k, d}: {SexpExpr v, d})")})"
+    EMapSingle es: "(map{Concat (Each es, \|((k, v))| " ({SexpExpr k, d}: {SexpExpr v, d})")})"
     EGroup x: "(group {SexpExpr x, d})"
     EHold x: "(hold {SexpExpr x, d})"
     ECall callee, args, parens, rest: "({if parens: "call()" else: "call"} {SexpExpr callee, d}{SexpArgs args, d}{if rest: " .." else: ""})"

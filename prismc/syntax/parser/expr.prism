@@ -475,7 +475,8 @@ fn MapPrimary p:
     let p1 = if doubled: OpenDouble p else: Adv p
     let ((entries, p2)) = if AtClose p1, "\{": (([[]], p1)) else: Commas p1, ParseMapEntry
     let p3 = if doubled: CloseDouble p2, "\{" else: ExpectClose p2, "\{"
-    ((Expr(kind=(EMap entries), span=(To start, (Prev p3))), False, p3))
+    let kind = if doubled: EMap entries else: EMapSingle entries
+    ((Expr(kind=kind, span=(To start, (Prev p3))), False, p3))
 
 ParseMapEntry: unbounded fn Ps -> ((((Expr, Expr)), Ps))
 fn ParseMapEntry p:

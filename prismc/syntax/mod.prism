@@ -253,6 +253,8 @@ type ExprKind = choice:
     ETuple [Expr]
     EArray [Expr]
     EMap [((Expr, Expr))]
+    # a map in single braces, refused by the checker (`single-brace-map`): single braces hold
+    EMapSingle [((Expr, Expr))]
     EGroup Expr
     # `{ e }`, a hold: a sigiled value goes into a type variable whole, unlifted (Jimmy's
     # ruling of 12 November)

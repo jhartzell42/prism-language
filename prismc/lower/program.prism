@@ -721,6 +721,7 @@ fn ValueWidgetsIn lx, e = match e.kind:
     EArray xs: Fold xs, [[]], \|acc, x| Append acc, (ValueWidgetsAt lx, x)
     # (a map literal's values: a key is no blueprint, which has no order)
     EMap entries: Fold entries, [[]], \|acc, ((ignore, x))| Append acc, (ValueWidgetsAt lx, x)
+    EMapSingle entries: Fold entries, [[]], \|acc, ((ignore, x))| Append acc, (ValueWidgetsAt lx, x)
     otherwise: [[]]
 
 # Whether a widget's own clauses apply it.

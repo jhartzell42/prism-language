@@ -336,6 +336,7 @@ fn Operands e = match e.kind:
     ETuple es: es
     EArray es: es
     EMap kvs: Fold kvs, [[]], \|acc, ((k, v))| Append acc, [[k, v]]
+    EMapSingle kvs: Fold kvs, [[]], \|acc, ((k, v))| Append acc, [[k, v]]
     ELit l: match l.kind:
         LText segs: Fold segs, [[]], \|acc, sg| match sg:
             SegPlaceholder x: Push acc, x
