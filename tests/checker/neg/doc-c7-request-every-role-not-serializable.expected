@@ -1,0 +1,5 @@
+tests/checker/neg/doc-c7-request-every-role-not-serializable.prism:37: error[no-impl]: `^RemoteDocument` asks `Request Count Watcher: ^SerializableValue`, and there is no impl of `^SerializableValue` for `Wish`
+    impl ^RemoteDocument Count:
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: write `impl ^SerializableValue Wish`
+1 error

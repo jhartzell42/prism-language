@@ -1,0 +1,38 @@
+# Type System ch. 6, "Bounds on associated types": `^RemoteDocument` asks `Request d _:
+# ^SerializableValue`, at every role, so each equation's type meets it. The watcher's
+# request, a `Wish`, has no impl: `no-impl` at the impl, naming the role.
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+trait ^SerializableValue s:
+    Encode: fn s -> [U8]
+
+trait ^Document d:
+    type Role
+    type Request r
+
+trait ^RemoteDocument d where d: ^Document, Request d _: ^SerializableValue:
+    Address: fn d -> Text
+
+type CountRole = choice:
+    Raiser
+    Watcher
+
+type Count = record:
+    total: Nat
+
+type Raise = record:
+    by: U8
+
+type Wish = record:
+    note: Text
+
+impl ^SerializableValue Raise:
+    fn Encode raise = [[raise.by]]
+
+impl ^Document Count:
+    type Role = CountRole
+    type Request Raiser = Raise
+    type Request Watcher = Wish
+
+impl ^RemoteDocument Count:
+    fn Address count = "count"
