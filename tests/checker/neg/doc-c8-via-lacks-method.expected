@@ -1,4 +1,4 @@
 tests/checker/neg/doc-c8-via-lacks-method.prism:24: error[mismatch]: `derive ^Named via ^Titled` gives no method `Greeting` of `^Named`
-        derive ^Named via ^Titled for Book
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    derive ^Named via ^Titled for Book
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 1 error
