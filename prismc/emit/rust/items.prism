@@ -91,6 +91,30 @@ fn Projections t = match t:
     OutLive x: Projections x
     otherwise: [[]]
 
+# The projections a type's fields name at its parameters (`<G as Gauge_t>::Reading`).
+ProjTypes: fn TyDef -> [OutTy]
+fn ProjTypes t = Fold t.cases, [[]], \|acc, c| Fold c.fields, acc, \|acc2, ((ignore, ft))| Fold (ProjTypesIn ft), acc2, \|acc3, p| if Fold acc3, False, \|seen, q| seen or q == p: acc3 else: Push acc3, p
+
+ProjTypesIn: fn OutTy -> [OutTy]
+fn ProjTypesIn t = match t:
+    OutAssoc ignore, ignore2, (OutGen ignore3): [[t]]
+    OutAssoc ignore, ignore2, x: ProjTypesIn x
+    OutNamed ignore, ts: Fold ts, [[]], \|acc, x| Append acc, (ProjTypesIn x)
+    OutTuple ts: Fold ts, [[]], \|acc, x| Append acc, (ProjTypesIn x)
+    OutMap k, v: Append (ProjTypesIn k), (ProjTypesIn v)
+    OutOpt x: ProjTypesIn x
+    OutRes x: ProjTypesIn x
+    OutArray x: ProjTypesIn x
+    otherwise: [[]]
+
+# An impl's head with a `where` for each projection its fields name, by the impl's trait
+# (`Logged<G> where <G as Gauge_t>::Reading: ToPod`): Rust asks it of a projection, which
+# a parameter's own bound does not reach. `more` are the head's other clauses.
+ProjHead: unbounded fn TyDef, Text, Text, [Text] -> Text
+fn ProjHead t, head, tr, more:
+    let clauses = Append (Each (ProjTypes t), \|p| "{Type p}: {tr}"), more
+    if (Len clauses) == 0: head else: "{head} where {Join clauses, ", "}"
+
 # ` + Tr + Tr2` for a parameter's projections, or nothing.
 ProjectionBounds: fn TyDef, Text -> Text
 fn ProjectionBounds t, p = match (AssocBounds t)[p]:
@@ -276,8 +300,9 @@ fn EqImpls t, head:
     let body = match t.shape:
         ShapeRecord: FieldsEq t, (Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]])))
         otherwise: "match (self, other) \{\n{Concat (Each t.cases, \|c| "    ({CasePatternAs t, c, "a"}, {CasePatternAs t, c, "b"}) => {FieldsEq t, c},\n")}    #[allow(unreachable_patterns)]\n    _ => false,\n\}"
-    let eqImpl = Impl (BoundedT t, "::std::cmp::Eq"), "::std::cmp::PartialEq", head, "fn eq(&self, other: &Self) -> bool", body
-    "{eqImpl}\nimpl{BoundedT t, "::std::cmp::Eq"} ::std::cmp::Eq for {head} \{\}"
+    let wHead = ProjHead t, head, "::std::cmp::Eq", [[]]
+    let eqImpl = Impl (BoundedT t, "::std::cmp::Eq"), "::std::cmp::PartialEq", wHead, "fn eq(&self, other: &Self) -> bool", body
+    "{eqImpl}\nimpl{BoundedT t, "::std::cmp::Eq"} ::std::cmp::Eq for {wHead} \{\}"
 
 # The order of a generic type: a choice's cases in their order, then field by field.
 OrdImpls: unbounded fn TyDef, Text -> Text
@@ -287,8 +312,9 @@ fn OrdImpls t, head:
     let body = match t.shape:
         ShapeRecord: FieldsCmp t, (Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]])))
         otherwise: "{rank}\nmatch (self, other) \{\n{Concat (Each t.cases, \|c| "    ({CasePatternAs t, c, "a"}, {CasePatternAs t, c, "b"}) => {FieldsCmp t, c},\n")}    #[allow(unreachable_patterns)]\n    _ => rank(self).cmp(&rank(other)),\n\}"
-    let partial = Impl (BoundedT t, "::std::cmp::Ord"), "::std::cmp::PartialOrd", head, "fn partial_cmp(&self, other: &Self) -> ::std::option::Option<::std::cmp::Ordering>", "::std::option::Option::Some(::std::cmp::Ord::cmp(self, other))"
-    let total = Impl (BoundedT t, "::std::cmp::Ord"), "::std::cmp::Ord", head, "fn cmp(&self, other: &Self) -> ::std::cmp::Ordering", body
+    let wHead = ProjHead t, head, "::std::cmp::Ord", [[]]
+    let partial = Impl (BoundedT t, "::std::cmp::Ord"), "::std::cmp::PartialOrd", wHead, "fn partial_cmp(&self, other: &Self) -> ::std::option::Option<::std::cmp::Ordering>", "::std::option::Option::Some(::std::cmp::Ord::cmp(self, other))"
+    let total = Impl (BoundedT t, "::std::cmp::Ord"), "::std::cmp::Ord", wHead, "fn cmp(&self, other: &Self) -> ::std::cmp::Ordering", body
     "{partial}\n{total}"
 
 # A case's fields equal, pair by pair.
@@ -339,7 +365,7 @@ fn ShowImpl t, head:
             "p.record(\"{t.prism}\", &[{Join (Each c.fields, \|((f, ignore))| "(\"{PrismFieldOf c, f}\", &self.{f})"), ", "}]);"
         otherwise: MatchSelfOf t, (Join (Each t.cases, \|c| "{CasePattern t, c} => p.choice(\"{c.prism}\", &[{Join (Binders (Len c.fields)), ", "}]),"), "\n")
     # `Clone` beside `Show`: an array of the parameter prints only `Clone` elements
-    Impl (BoundedKeyed t, "crate::prelude::Show + ::std::clone::Clone"), "crate::prelude::Show", head, "fn show(&self, p: &mut crate::prelude::Printer)", body
+    Impl (BoundedKeyed t, "crate::prelude::Show + ::std::clone::Clone"), "crate::prelude::Show", (ProjHead t, head, "crate::prelude::Show", [[]]), "fn show(&self, p: &mut crate::prelude::Printer)", body
 
 # A field's Prism spelling: the Rust one without the `_` a keyword took.
 PrismField: fn Text -> Text
@@ -369,8 +395,8 @@ fn ToPodImpl t, head:
         otherwise: MatchSelfOf t, (Join (Each (Range0 (Len t.cases)), \|i| ChoicePodArm t, i), "\n")
     let shown = if t.show == ShownOwn: ShownPod body else: body
     # its own `^Show` may hold under its `where` bounds alone, which the crossing needs
-    let bound = if t.show == ShownOwn and (Len t.params) > 0: " where {head}: crate::prelude::Show" else: ""
-    Impl (BoundedKeyed t, "crate::prelude::ToPod + ::std::clone::Clone"), "crate::prelude::ToPod", "{head}{bound}", "fn to_pod(&self) -> crate::prelude::Pod", shown
+    let bound = if t.show == ShownOwn and (Len t.params) > 0: [["{head}: crate::prelude::Show"]] else: [[]]
+    Impl (BoundedKeyed t, "crate::prelude::ToPod + ::std::clone::Clone"), "crate::prelude::ToPod", (ProjHead t, head, "crate::prelude::ToPod", bound), "fn to_pod(&self) -> crate::prelude::Pod", shown
 
 FromPodImpl: unbounded fn TyDef, Text -> Text
 fn FromPodImpl t, head:
@@ -384,7 +410,7 @@ fn FromPodImpl t, head:
                 let made = if n == 0: (if t.shape == ShapeUnit: t.name else: "{t.name}::{c.name}") else: "{if t.shape == ShapeNewtype: t.name else: "{t.name}::{c.name}"}({Join (Each (Range0 n), \|i| "crate::prelude::FromPod::from_pod(&a[{i}])?"), ", "})"
                 "crate::prelude::Pod::Choice(c, a) if &**c == \"{c.prism}\" && a.len() == {n} => ::std::result::Result::Ok({made}),"
             FromPodBody (Join arms, "\n"), "a {t.prism}"
-    Impl (BoundedKeyed t, "crate::prelude::FromPod + ::std::clone::Clone"), "crate::prelude::FromPod", head, "fn from_pod(p: &crate::prelude::Pod) -> ::std::result::Result<Self, crate::prelude::Fault>", body
+    Impl (BoundedKeyed t, "crate::prelude::FromPod + ::std::clone::Clone"), "crate::prelude::FromPod", (ProjHead t, head, "crate::prelude::FromPod", [[]]), "fn from_pod(p: &crate::prelude::Pod) -> ::std::result::Result<Self, crate::prelude::Fault>", body
 
 RustTag: unbounded fn TagDef -> Text
 fn RustTag t:
@@ -485,7 +511,7 @@ fn DeepWalkImpl t, head:
     let ports = match t.shape:
         ShapeRecord: Join (Each single.fields, \|((f, ft))| DeepPortsOf "self.{f}", ft, ps), " "
         otherwise: MatchSelfOf t, (Join (Each t.cases, \|c| DeepChoicePortsArm t, c), "\n")
-    DeepWalk (DeclGenerics t), head, t.prism, podWalks, portWalks, pods, ports
+    DeepWalk (DeclGenerics t), (ProjHead t, head, "crate::prelude::ToPod", [[]]), t.prism, podWalks, portWalks, pods, ports
 
 # A case of a generic choice in its deep walk (`DeepWalkImpl`): its parts as plain data,
 # each part of a type parameter through that parameter's walk.

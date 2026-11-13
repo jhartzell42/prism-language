@@ -414,3 +414,17 @@ fn BindRow st, n, rw, span:
             otherwise: st
         (("", update st2:
             &_.rows <= Insert &_.rows, n, rw))
+
+# A family both rows name: the child's indices within the scope's, where the scope's `_`
+# takes every case (Part III ch. 6; Jimmy's ruling AF).
+IndicesIncluded: unbounded fn St, Rw, Rw, Range -> St
+fn IndicesIncluded st, sub, sup, span = Fold (Keys sub.idx), st, \|s, f| match sup.idx[f]:
+    nil: s
+    ? ys: IndexIncluded s, f, (Or sub.idx[f], [[]]), ys, span
+
+IndexIncluded: unbounded fn St, Text, [Ty], [Ty], Range -> St
+fn IndexIncluded st, f, xs, ys, span = Fold (Range0 (Len xs)), st, \|s, i| match (((Or xs[i], TyErr), (Or ys[i], TyErr))):
+    ((ignore, TyEvery)): s
+    ((TyEvery, y)): ErrFix s, "row-outside", span, "a child that emits `{f}.*` at every case of an index in a scope that emits it at `{ShowTy s, y}`", "emit `{f}.*` at `_` in the scope too, or the child at `{ShowTy s, y}`"
+    ((x, y)): Unify s, x, y, span
+

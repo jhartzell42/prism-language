@@ -341,9 +341,14 @@ fn RefuseLifted st, l:
     if l.layer == "$": ErrFix st, "identity-dynamic", l.arg, "a dynamic in the identity field `{l.field}`", "for a new element per value, write `rebuild {l.src}:` with `{l.owner}({l.field}=_, ...)` inside"
     else: ErrFix st, "identity-dynamic", l.arg, "an event in the identity field `{l.field}`", "hold it first, `$x <- ... then {l.src}`, and give the field the `$x`"
 
-AddIncl: fn St, Rw, Rw, Range, Text -> St
-fn AddIncl st, sub, sup, span, what = update st:
-    &_.incls <= Push &_.incls, Incl(sub=sub, sup=sup, file=&_.file, span=span, what=what, forward=False)
+# A child's row within its scope's, checked once its tails are known; a family both name
+# has its indices met now, so the child's tags read their fields at the scope's indices
+# (`Seat.* Count Raiser`) while the block is checked.
+AddIncl: unbounded fn St, Rw, Rw, Range, Text -> St
+fn AddIncl st, sub, sup, span, what:
+    let st2 = IndicesIncluded st, (WalkRow st, sub), (WalkRow st, sup), span
+    update st2:
+        &_.incls <= Push &_.incls, Incl(sub=sub, sup=sup, file=&_.file, span=span, what=what, forward=False)
 
 # A hold, `$x <- init then step` (Semantics ch. 4): the name is a `$T`, its initial value a
 # `T`, its step an `!T`.
