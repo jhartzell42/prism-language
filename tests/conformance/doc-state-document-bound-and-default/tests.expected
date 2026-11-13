@@ -1,0 +1,19 @@
+# Derived by hand from Part IV ch. 4 (`^StateDocument d where d: ^Document`, `@InMemory` its default widget method) and Semantics ch. 4 (a hold's `then` takes the step in the tick of the request): each click steps the state by 2.
+test default_in_memory_keeps_the_state
+
+tick 0
+  added:
+    0: Ui.Button(label="raise 2")
+    1: Ui.Label(text="total 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="total 2")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="total 4")
