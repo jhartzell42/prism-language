@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 4 ("the order of a group's lines decides positions and nothing else") and ruling TC (places counted as built): loud builds the first arm's label at 0 and `@Twice 7` at 1 (`@Seven` gives 7), so `m` is 14, its label at 2 and `@Seven`'s at 3; soft builds no arm, `m` is 1 and its label stands at 0. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="arm")
+    1: Ui.Label(text="twice 7")
+    2: Ui.Label(text="m 14")
+    3: Ui.Label(text="seven")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="m 1")

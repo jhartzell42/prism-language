@@ -1,0 +1,37 @@
+# An arm of a building `if` that ends on a widget taking a building `if`'s late plain
+# result, the giver below the taker's `if` in the outer block, so the taker's result is
+# the arm's own result and no name binds it (Semantics ch. 4, "Binding groups and
+# cycles": any line may use any name the block binds, and the order of a group's lines
+# decides positions and nothing else; ruling TC: places are counted as they are built).
+# The closest program found to `DeferredLine`'s refusal "a line that takes a late result
+# at its build, above the line that gives it, and gives a plain result of its own that no
+# name binds (a pattern's, or the block's own result)"; on prismc-r27 it stops earlier,
+# at the internal error "a prismc bug: the name n, which nothing declares".
+# Written by Claude (t2, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Twice: fn Nat -> @Nat
+fn @Twice k:
+    Ui.Label($text=$"twice {k}")
+    @ k * 2
+
+@Seven: @Nat
+@Seven:
+    Ui.Label($text=$"seven")
+    @ 7
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    m <- if loud:
+        Ui.Label($text=$"arm")                                         # 0
+        @Twice n                                                       # 1
+    else:
+        @ 1
+    Ui.Label($text=$"m {m}")                                           # 2, or 0
+    n <- if loud:
+        k <- @Seven                                                    # 3
+        @ k
+    else:
+        @ 20
