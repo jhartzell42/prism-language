@@ -51,6 +51,22 @@ impl ToPod for Ordering {
     }
 }
 
+/// `type Never = choice:` with no case; `derive ^Eq, ^Ord, ^Show` (Part VII ch. 7, step C1).
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum Never {}
+
+impl Show for Never {
+    fn show(&self, _p: &mut Printer) {
+        match *self {}
+    }
+}
+
+impl ToPod for Never {
+    fn to_pod(&self) -> Pod {
+        match *self {}
+    }
+}
+
 /// `type Span = record: file, line, column, binding`.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Span {
