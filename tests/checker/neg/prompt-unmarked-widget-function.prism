@@ -1,0 +1,12 @@
+# `prompt-unmarked` (Jimmy, 13 November, ruling PT): a widget function whose result event
+# fires in the tick its argument's does says `prompt` in its type, and by default it is
+# not. `@Pass` gives its argument back, so its body is prompt and its signature is not;
+# the error stands at the body, read alone (the check is local). A plain function is
+# always prompt and says nothing.
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+@Pass: fn !Nat -> @!Nat
+fn @Pass !passed:
+    @ !passed

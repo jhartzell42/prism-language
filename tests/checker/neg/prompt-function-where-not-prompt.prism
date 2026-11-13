@@ -1,0 +1,20 @@
+# A prompt function where a function that is not is wanted (Jimmy, 13 November, ruling
+# PT): promptness is part of the type, so `@Pass`, `prompt fn !Nat -> @!Nat`, is not a
+# `fn !Nat -> @!Nat`, as an unbounded function is not a bounded one.
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+@Pass: prompt fn !Nat -> @!Nat
+fn @Pass !passed:
+    @ !passed
+
+@Use: fn (fn !Nat -> @!Nat) -> @unit emit Ui.*
+fn @Use Make:
+    !press <- Ui.Button($label=$"press")
+    !made <- Make (1 on !press)
+    Ui.Label($text=$"used")
+
+@main: @unit emit Ui.*
+@main:
+    @Use @Pass

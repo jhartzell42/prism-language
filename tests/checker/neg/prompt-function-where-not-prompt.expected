@@ -1,0 +1,4 @@
+tests/checker/neg/prompt-function-where-not-prompt.prism:20: error[mismatch]: expected `fn !Nat -> @!Nat`, found `prompt fn !Nat -> @!Nat`
+        @Use @Pass
+             ^^^^^
+1 error

@@ -1,20 +1,20 @@
-# needs a ruling: a summary declared on a parameter's type
-# `prompt-cycle`, through a function parameter given a lambda: `@Loop` binds `!step` to
-# what its parameter `Pass` gives for `!fed`, `$seen` steps on `!step`, and `!fed` merges
-# `!Updated $total`, the update event of a dynamic lifted over the hold. The one use gives
-# `Pass` a lambda that hands its argument straight back, so a press would step `$seen`,
-# update `$total`, fire `!fed` and `!step`, and step `$seen` again in one tick (a hold's
-# update event fires in the tick of its step, Semantics ch. 7, R3). The same loop through a
-# widget function given by name is neg/sem-ch07-hold-updated-cycle-through-widget-line.
-# The checker takes this program: the walk over update events reads a function parameter
-# by what each use gives by name, and a lambda gives nothing known
-# (claude/prompt-cycles.md, "A loop through `!Updated` of a hold"); the worst for such a
-# parameter would refuse the hosting library's `@InMemory`, which passes its `HostSeats`
-# on. This `.expected` is written by hand. Written by Claude (left-a3, the prismc run),
-# 11 November 2026; subject to change.
+# `prompt-cycle`, through a function parameter: `@Loop` binds `!step` to what its
+# parameter `Pass` gives for `!fed`, `$seen` steps on `!step`, and `!fed` merges
+# `!Updated $total`, the update event of a dynamic lifted over the hold. A press would step
+# `$seen`, update `$total`, fire `!fed` and `!step`, and step `$seen` again in one tick (a
+# hold's update event fires in the tick of its step, Semantics ch. 7, R3).
+# Promptness is part of a function's type, and the check is local (Jimmy, 13 November,
+# ruling PT): `Pass`'s type says `prompt`, so applying it is a same-tick link, and the
+# loop is found in `@Loop`'s own body whatever a caller gives it. The caller's lambda says
+# `prompt` too, as it must to stand where a prompt function is wanted; a lambda that is not
+# prompt given to a parameter that is not, and the loop's absence, is
+# pos/prompt-parameter-not-prompt.
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+# A plain function is always prompt (ruling PT); only a widget function says it in its type.
 emit Ui.*
 
-@Loop: fn (fn !Nat -> @!Nat) -> @unit emit Ui.*
+@Loop: fn (prompt fn !Nat -> @!Nat) -> @unit emit Ui.*
 fn @Loop Pass:
     !press <- Ui.Button($label=$"press")
     let !fed = (1 on !press) <| !Updated $total
@@ -25,4 +25,4 @@ fn @Loop Pass:
 
 @host: @unit
 @host:
-    @Loop \|!passed| @ !passed
+    @Loop prompt \|!passed| @ !passed

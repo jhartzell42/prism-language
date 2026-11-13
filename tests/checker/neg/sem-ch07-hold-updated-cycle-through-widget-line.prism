@@ -1,19 +1,19 @@
 # `prompt-cycle`, through a widget's line: `$seen` steps on `!step`, `!fed` merges
 # `!Updated $total`, the update event of a dynamic lifted over the hold, and `!step` is
-# what the widget `@Pass` gives for `!fed`: its own argument, in the same tick (its
-# summary: the result is prompt in the argument). A hold's VALUE is delayed, but its
-# update event fires in the tick of its step (Semantics ch. 7, R3), so a press would step
-# `$seen`, update `$total`, fire `!fed` and `!step`, and step `$seen` again in one tick
-# (run on the Rust target, it aborts at the build: "a prismc bug: a combinator's height
-# does not settle (a prompt cycle across nodes)"). The same loop with `let !step = !fed`
-# is neg/sem-ch07-block-hold-updated-cycle.
-# The checker takes this program today: the walk over update events has edges for `let`s
-# and holds alone (left-a's doubt 1; claude/prompt-cycles.md, "A loop through `!Updated`
-# of a hold"). This `.expected` is written by hand. Written by Claude (left-a2, the
-# prismc run), 11 November 2026; subject to change.
+# what `@Pass` gives for `!fed`. A hold's value is delayed, but its update event fires in
+# the tick of its step (Semantics ch. 7, R3), so a press would step `$seen`, update
+# `$total`, fire `!fed` and `!step`, and step `$seen` again in one tick.
+# Promptness is part of a function's type, and the check is local (Jimmy, 13 November,
+# ruling PT): `@Pass`'s signature says `prompt`, so its line is a same-tick link from its
+# argument to its result, and the loop is found in `@host` from that type alone, never by
+# reading `@Pass`'s body. The same `@Pass` without the word is refused at its own body
+# (neg/prompt-unmarked-widget-function).
+# The same loop with `let !step = !fed` is neg/sem-ch07-block-hold-updated-cycle.
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.*
 
-@Pass: fn !Nat -> @!Nat
+@Pass: prompt fn !Nat -> @!Nat
 fn @Pass !passed:
     @ !passed
 

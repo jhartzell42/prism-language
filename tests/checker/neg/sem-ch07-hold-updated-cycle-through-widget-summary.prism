@@ -1,17 +1,17 @@
-# `prompt-cycle`, through a widget function's summary: `@Echo` holds `$seen`, stepped by
-# its argument `!step`, and gives `!Updated $seen` back. A hold's VALUE is delayed, but
-# its update event fires in the tick of its step (Semantics ch. 7, R3), so `@Echo`'s
-# result is prompt in its argument, and the block that merges that result into the
-# argument has `!back` and `!step` firing each other in one tick (run on the Rust target,
-# it aborts at the build: "a prismc bug: a combinator's height does not settle (a prompt
-# cycle across nodes)").
-# The checker takes this program today: a widget function's summary takes a hold as a
-# cut, `@ (!Updated $hold)` included (left-a's doubt 2; claude/prompt-cycles.md, "A loop
-# through `!Updated` of a hold"). This `.expected` is written by hand. Written by Claude
-# (left-a2, the prismc run), 11 November 2026; subject to change.
+# `prompt-cycle`, through a widget whose result is a hold's update: `@Echo` steps a hold
+# on its argument and gives the hold's update event, which fires in the tick of the step
+# (Semantics ch. 7, R3), so `!back` fires in the tick `!step` does, and `!step` merges
+# `!back`: one press loops within a tick.
+# Promptness is part of a function's type, and the check is local (Jimmy, 13 November,
+# ruling PT): `@Echo`'s signature says `prompt`, and the loop is found in `@host` from
+# that type alone, never by reading `@Echo`'s body. Without the word, `@Echo` is refused at
+# its own body (neg/prompt-unmarked-widget-function).
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+# A plain function is always prompt (ruling PT); only a widget function says it in its type.
 emit Ui.*
 
-@Echo: fn !Nat -> @!Nat
+@Echo: prompt fn !Nat -> @!Nat
 fn @Echo !step:
     $seen <- 0 then $seen + 1 on !step
     @ (!Updated $seen)
