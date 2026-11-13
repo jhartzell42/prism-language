@@ -63,6 +63,19 @@ Written by Claude on the claude-self-hosting branch; subject to change.
 - A `forall` value applied packs its arguments and unpacks its result (`PackedApply`,
   `prism_rtl::unpacked`). Not yet: making such a value from a generic function by name.
 
+## Claude's calls that change no semantics (Jimmy, 13 November: "MB/LR decisions that
+## don't influence semantics are yours, if they're dicey put them in the handover doc")
+
+- MB, dicey: the Rust back end monomorphizes. Each generic definition becomes one Rust
+  function per instantiation the program reaches (the fixed point `?DefInstances`
+  already computes them), so every `d` is concrete in Rust, an indexed associated type at
+  a known role is a known type, and an existential over `r: Role d` is opened by a match
+  over `d`'s roles, each arm lowered at its role. Why dicey: it is the largest change of
+  step 2, it grows the Rust code, and a program whose instantiations do not end is
+  refused by the growth check already (ruling PG), so nothing new is refused. Refused
+  alternative: erasing such values to `Rc<dyn Any>`, which fails at run time where the
+  checker was right.
+
 ## Asked of Jimmy
 
 - MB: the Rust representation of values whose type depends on a variable (existentials
