@@ -505,7 +505,16 @@ fn DefEnv g, d:
     let scope = match info.emitRw.tail:
         TlQ v: Rw(fams=info.emitRw.fams, minus=[[]], tail=(TlRigid v), idx=info.emitRw.idx)
         otherwise: info.emitRw
-    Env(g=g, home=d.home, file=d.file, src=(Or g.srcs[d.file], (MkSrc "", "")), locals={{}}, scope=scope, givens=[[]], mark="", inUpdate=False, defName=d.name, refine={{}}, pending=[[]], ids={{}}, scoped=(Or g.vals[d.qk], dummyVal).scoped, scopedKinds=(Or g.vals[d.qk], dummyVal).scopedKinds)
+    Env(g=g, home=d.home, file=d.file, src=(Or g.srcs[d.file], (MkSrc "", "")), locals={{}}, scope=scope, givens=[[]], mark="", inUpdate=False, defName=d.name, refine={{}}, pending=[[]], ids={{}}, scoped=(UnionTexts (Or g.vals[d.qk], dummyVal).scoped, (TraitParamOf g, d)), scopedKinds=(Or g.vals[d.qk], dummyVal).scopedKinds)
+
+# A trait's parameter, which a default body of the trait names in `<<..>>` as a `forall`
+# variable (`Step<<d>> $state, !requests`; ruling IN): the trait's methods quantify it.
+TraitParamOf: fn G, Def -> [Text]
+fn TraitParamOf g, d = match d.body:
+    DbDefault ignore, cls: match g.traits[cls]:
+        ? tr: [[tr.param]]
+        nil: [[]]
+    otherwise: [[]]
 
 # One definition: its body against its signature; its constraints solved and defaulted;
 # its row obligations discharged.
