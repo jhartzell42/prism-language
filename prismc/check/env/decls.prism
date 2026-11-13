@@ -147,13 +147,38 @@ fn TypeHeadVariables st, t:
         else: (((ErrFix s1, "unknown-name", ty.span, "`{v}` is no parameter of `{Dotted t.name.path}`", "declare it in the head, `type {Join (Append [[Dotted t.name.path]], (Push params, v)), " "} = ...`"), (Push seen, v)))
     st2
 
+# A parameter's stated kind is a choice whose cases carry nothing (Jimmy's ruling PK).
+DeclaredKinds: unbounded fn Cx, St, [((Text, Type))] -> St
+fn DeclaredKinds cx, st, kinds = Fold kinds, st, \|s, ((ignore, k))| match k.kind:
+    TName n, [[]]: match ResolveType cx.g, cx.home, n.path:
+        ((? kindKey, ignore2)): if Fold (Values cx.g.caseOwners), False, \|seen, o| seen or o == kindKey: s else:
+            match ?PayloadCaseOf cx.g, kindKey:
+                ? c: ErrFix s, "kind", k.span, "`{Dotted n.path}` is no kind: its case `{c}` carries a payload", "index by a choice whose cases carry nothing"
+                nil: ErrFix s, "kind", k.span, "`{Dotted n.path}` is no kind: a kind is a choice whose cases carry nothing", "index by a choice whose cases carry nothing"
+        otherwise: Err s, "unknown-name", k.span, "no type `{Dotted n.path}` to be a kind"
+    otherwise: Err s, "kind", k.span, "a kind is a choice whose cases carry nothing"
+
+# A choice's first case that carries a payload, read from its declaration.
+?PayloadCaseOf: fn G, Text -> ?Text
+fn ?PayloadCaseOf g, kindKey = match g.types[kindKey]:
+    ? ti: match g.mods[ti.home]:
+        ? info: Fold info.tree.decls, nil, \|?found, d| if ?found != nil: ?found else: match d.kind:
+            DType t: if (QualKey info.name, (Dotted t.name.path)) != kindKey: nil else: match t.?body:
+                ? (TbChoice cs): match (Filter cs, \|c| (Len c.args) > 0)[0]:
+                    ? c: ? (SNameKey c.name)
+                    nil: nil
+                otherwise: nil
+            otherwise: nil
+        nil: nil
+    nil: nil
+
 ConvertTypeDecl: unbounded fn G, St, ModInfo, Decl -> ((G, St))
 fn ConvertTypeDecl g, st0, info, d = match d.kind:
     DType t:
         let name = QualKey info.name, (Dotted t.name.path)
         let ti = Or g.types[name], dummyTyInfo
-        let st = if ti.span == d.span: TypeHeadVariables st0, t else: st0
         let cx = CxOf g, info.name
+        let st = if ti.span == d.span: DeclaredKinds cx, (TypeHeadVariables st0, t), t.kinds else: st0
         let params = Each t.params, \|p| p.name
         let self = TyCon name, (Each params, \|p| TyQ p)
         # a second type of one name (`collision`, `CollectDecl`) is not read: the first stays

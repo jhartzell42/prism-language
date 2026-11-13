@@ -65,8 +65,10 @@ fn InferCall env, st, callee, args, span = match callee.kind:
             let ((given1, st1)) = ConvTypes cx, st, tys
             # a type variable in `<<a>>` is the definition's own, rigid, only where its
             # signature's `forall` names it (Jimmy's ruling FA)
-            let st2 = Fold given1, st1, \|s, t| Fold (FreeQs t), s, \|s2, q| if HasText env.scoped, q: s2 else: ErrFix s2, "unknown-name", callee.span, "`{q}` is no type variable here: a body names its signature's variables in `<<..>>` only when the signature's `forall` names them", "write the signature `forall {q} ... . fn ...`"
-            let given2 = Each given1, \|t| SubstQ (ParamInst env.scoped, (Each env.scoped, \|q| TyRigid q)), t
+            let st2 = Fold (Range0 (Len given1)), st1, \|s, k| Fold (FreeQs (Or given1[k], TyErr)), s, \|s2, q| if HasText env.scoped, q: s2 else: ErrFix s2, "unknown-name", (Or tys[k], dummyType).span, "no type `{q}` here: a signature's variables are in scope in its body only under `forall`", (ForallFix env, s2)
+            # an unscoped variable is reported once, then stands for anything
+            let given1b = Each given1, \|t| SubstQ (ParamInst (FreeQs t), (Each (FreeQs t), \|q| if HasText env.scoped, q: TyQ q else: TyErr)), t
+            let given2 = Each given1b, \|t| SubstQ (ParamInst env.scoped, (Each env.scoped, \|q| TyRigid q)), t
             CallGlobal env, st2, n, args, span, given2, callee.span
         otherwise: ((TyErr, (Err st, "mismatch", callee.span, "`<<T>>` applies to a function's name")))
     EGroup x: InferCall env, st, x, args, span
@@ -616,6 +618,12 @@ fn CtorApp env, st, c, args, span, cspan:
     else: if (Len args) != (Len fieldTys):
         ((TyErr, (Err st1, "mismatch", span, "`{BareName c.name}` takes {CountWord (Len fieldTys)} argument{if (Len fieldTys) == 1: "" else: "s"}; here it has {CountWord (Len args)}")))
     else: ApplyRuleOf env, st1, (BareName c.name), CBound, fieldTys, self, args, span, True
+
+# The definition's signature with a `forall` over its variables, as a fix writes it.
+ForallFix: unbounded fn Env, St -> Text
+fn ForallFix env, st = match env.g.vals[QualKey env.home, env.defName]:
+    ? v: "write the signature as `forall {Join v.scheme.qs, " "}. {ShowTy st, v.scheme.ty}`"
+    nil: "write the signature with a `forall` over its variables"
 
 # A tag's construction (Semantics ch. 8): each argument against its field by the lifting
 # table. A dynamic at a plain field lifts the construction, as a record's does (Type System

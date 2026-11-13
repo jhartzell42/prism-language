@@ -234,7 +234,7 @@ fn ConvNamedType cx, st1, qk, ti, name, args, span:
         let kinded = (?KindOf ti, (Or ti.params[i], "")) != nil
         let ((x, s2)) = if kinded or not (NamesType cx, arg): ConvIndex cx, s, arg else: ConvType cx, s, arg
         (((Push acc, x), s2))
-    let st2 = Fold (Range0 (Min (Len xs), (Len ti.params))), st0, \|s, i| KindCheck cx, s, ti, name, (Or ti.params[i], ""), (Or xs[i], TyErr), (Or args[i], dummyType).span
+    let st2 = Fold (Range0 (Min (Len xs), (Len ti.params))), st0, \|s, i| KindCheck cx, s, ti, name, (Or ti.params[i], ""), (Or xs[i], TyErr), span
     if (Len xs) != (Len ti.params):
         ((TyErr, (Err st2, "kind", span, "`{name}` takes {CountWord (Len ti.params)} type{if (Len ti.params) == 1: "" else: "s"}; here it has {CountWord (Len xs)}")))
     else: match ti.body:
@@ -267,7 +267,7 @@ fn KindArgCheck cx, st, name, kindKey, shown, x, span:
         nil: False
     if (Len payload) > 0: Err st, "kind", span, "`{shown}` is no kind: its case `{BareName (Or payload[0], "")}` carries a payload"
     else: match x:
-        TyRole c: if HasText cases, c: st else: Err st, "kind", span, "`{name}` takes a case of `{shown}`; `{BareName c}` is a case of `{BareName (Or (?OwnerOfCase cx, c), "")}`"
+        TyRole c: if HasText cases, c: st else: ErrFix st, "kind", span, "`{name}` takes a case of `{shown}`; `{BareName c}` is a case of `{BareName (Or (?OwnerOfCase cx, c), "")}`", "write one of {Join (Each cases, \|k| "`{BareName k}`"), ", "}"
         TyQ ignore: st
         TyRigid ignore: st
         TyFlex ignore: st
@@ -587,6 +587,8 @@ fn TypeVarsInto acc, t = match t.kind:
     TFn ignore, ps, res: TypeVarsInto (Fold ps, acc, \|a, x| TypeVarsInto a, x), res
     TEmit ty, rowT: Fold (IndexTypes rowT), (TypeVarsInto acc, ty), \|a, x| TypeVarsInto a, x
     TNonEmpty x: TypeVarsInto acc, x
+    # a `forall`'s variables are the signature's own (Jimmy's ruling FA)
+    TForall ignore, ignore2, body: TypeVarsInto acc, body
     otherwise: acc
 
 # Where each lowercase type variable of a type is first written.
@@ -608,6 +610,8 @@ fn TypeVarPlaces acc, t = match t.kind:
     TFn ignore, ps, res: TypeVarPlaces (Fold ps, acc, \|a, x| TypeVarPlaces a, x), res
     TEmit ty, rowT: Fold (IndexTypes rowT), (TypeVarPlaces acc, ty), \|a, x| TypeVarPlaces a, x
     TNonEmpty x: TypeVarPlaces acc, x
+    # a `forall`'s variables are the signature's own (Jimmy's ruling FA)
+    TForall ignore, ignore2, body: TypeVarPlaces acc, body
     otherwise: acc
 
 ColorVarsOfType: unbounded fn Type -> [Text]
