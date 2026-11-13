@@ -54,6 +54,7 @@ Kinds: **gap** a compiler feature or fix to write in step 2; Q3 and Q4 are answe
 | `use Prelude.X as Y` (UA) | conformance/use-name-as | parse error at `as` |
 | the seats that left, told to the program (SL) | tally (`!tellersLeft`, `@Table results`); library `!LeavesAt` | behind the library's errors |
 | `row-lacks` per family instantiation, not per family | library `@HostRole` (`Seat.* d r \| rest`) | "`rest \| Seat.*` promises `rest` has no `Seat` tags" |
+| `prompt` in a function's type, checked locally (PT) | neg/prompt-unmarked-widget-function, neg/prompt-function-where-not-prompt, neg/prompt-lambda-where-not-prompt, the three neg/sem-ch07-hold-updated-cycle-through-* (now annotated), pos/prompt-parameter-not-prompt; every annotated signature in the prelude, library, examples and tests | no errors; parse error at `prompt` |
 
 ## Waiting on Jimmy
 
@@ -74,7 +75,7 @@ Kinds: **gap** a compiler feature or fix to write in step 2; Q3 and Q4 are answe
 | neg/forall-ambiguous-trait-method | gap | wording |
 | neg/hold-needed-constructor-at-expected-type | gap | hold-needed not raised for a constructor at its expected type |
 | neg/prelude-module | gap | library diagnostics when a program replaces Prelude |
-| neg/sem-ch07-hold-updated-cycle-through-parameter-given-a-lambda | gap | cycle through a parameter given a lambda |
+| neg/sem-ch07-hold-updated-cycle-through-parameter-given-a-lambda | gap (PT) | parse error at `prompt \|..|`; the parameter's type says it is prompt |
 
 ## Conformance reds on p11 (lowering, older)
 

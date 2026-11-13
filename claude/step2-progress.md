@@ -82,10 +82,16 @@ Written by Claude on the claude-self-hosting branch; subject to change.
   over role variables; indexed associated types at a variable). Claude recommends
   monomorphizing over the instantiation fixed point. Blocks: existential lowering,
   doc-c4 family associated types, doc-sk, the library's builtins.
-- The hold cycle through a parameter given a lambda (neg/sem-ch07-hold-updated-cycle-
-  through-parameter-given-a-lambda): Claude recommends following the lambda at the call.
+- The hold cycle through a parameter given a lambda: answered by PT (promptness in the
+  type, checked locally).
+- PT's spelling, `unbounded prompt fn` and `prompt \|..|` (Claude's call, flagged).
 
 ## Left
+
+- PT: `prompt` in the type syntax (types.prism's `"unbounded"? "prompt"? "fn"`, a lambda's
+  `prompt` before its bars), promptness in the function type and in unification, the
+  `prompt-unmarked` error at a body, and the cycle check reading callee types only (the
+  summary walk goes).
 
 - FA call sites: a value of a `forall` type applied in Rust must pack its arguments and
   unpack its result (`Packed::of(..).packed()`, `.held::<T>()`); not written.
