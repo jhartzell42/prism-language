@@ -655,7 +655,7 @@ ImplHasHeadBoundAt: unbounded fn G, St, ImplInfo, Text, Ty, Text -> St
 fn ImplHasHeadBoundAt g, st, im, shown, asked, above:
     let trial = update st:
         &_.diags <= [[]]
-        &_.wants <= [[Want(cls=above, ty=asked, file=im.file, span=im.span, level=0)]]
+        &_.wants <= [[Want(cls=above, ty=(NormAssoc st, asked), file=im.file, span=im.span, level=0)]]
     let out = SolveWants g, trial, im.bounds, False
     if (Len out.diags) == 0 and (Len out.wants) == 0: st
     else:
