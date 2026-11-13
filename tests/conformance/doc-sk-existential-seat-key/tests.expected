@@ -1,4 +1,4 @@
-# Derived by hand from Part III ch. 6 (doubt SK: the key is `any r: ((Role d, SeatId d r))`, unpacked in the arm) and Type System ch. 3 ("Existentials"): each key, opened, describes its seat id at its own role's type.
+# Derived by hand from Part III ch. 6 (doubt SK: the key is `any (r: Role d): ((Fixed r, SeatId d r))`, unpacked in the arm; Jimmy's ruling VO: matching `Fixed<<Raiser>>` tells the clause its role) and Type System ch. 3 ("Existentials"): each key, opened, describes its seat id at its own role's type.
 test keys_opened_at_their_roles
 
 tick 0

@@ -1,5 +1,5 @@
 # Part III ch. 6, doubt SK, and Type System ch. 7, "Traits during inference": a seat key,
-# `any (r: Role d): ((Role d, SeatId d r))`, opened in a `match` arm gives a fresh rigid role type
+# `any (r: Role d): ((Fixed r, SeatId d r))`, opened in a `match` arm gives a fresh rigid role type
 # that may not reach the arm's result. The arm hands back the seat id, a `SeatId d r` at
 # the arm's own `r`, so the hidden role would leave the arm: `existential-escape` at the
 # arm's result. `Described role, id`, a `Text`, would be fine.
@@ -9,7 +9,7 @@ trait ^Document d:
     type Role
     type SeatId (r: Role d)
 
-type SeatKey d = any (r: Role d): ((Role d, SeatId d r))
+type SeatKey d = any (r: Role d): ((Fixed r, SeatId d r))
 
 Leaked: fn SeatKey d -> Text where d: ^Document
 fn Leaked seatKey:

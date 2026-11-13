@@ -1,11 +1,10 @@
 # Part III ch. 6, doubt SK: a seat key is an existential over the role, `type SeatKey d =
-# any (r: Role d): ((Role d, SeatId d r))`, since a seat id's type depends on its role. A key is
-# built with `any ((role, id))` inside a function generic in the role `r`, so the packed
-# type is that `r`; the call sites name the role type by explicit type arguments (Type
-# System ch. 2, "Explicit type arguments": `Keyed<<Count, Raiser>>` fills `d`, then `r`).
-# A `match` arm `any ((role, id)): ...` opens the key: `id` is a `SeatId Count r` for the
-# arm's own fresh `r`, and `Described`, generic in the role, takes it at that type. A
-# record field, `Due.seat`, holds a key.
+# any (r: Role d): ((Fixed r, SeatId d r))`, since a seat id's type depends on its role.
+# The role travels as `Fixed r`, the singleton whose value names its type,
+# `Fixed<<Raiser>>` (Jimmy's ruling VO). A key is built with `any ((role, id))` inside a
+# function generic in the role `r`. A `match` arm `any ((role, id)): ...` opens the key at
+# the arm's own fresh `r`, and the impl's `Described` matches `Fixed<<Raiser>>`, which
+# tells it `r` is `Raiser` and so `n` a `Nat`. A record field, `Due.seat`, holds a key.
 # Expected transcript derived by hand from Part III ch. 6 (doubt SK) and Type System ch. 3
 # ("Existentials"); never run.
 # Written by Claude on the claude-self-hosting branch; subject to change.
@@ -15,7 +14,7 @@ test mod Tests
 trait ^Document d:
     type Role
     type SeatId (r: Role d)
-    Described: fn Role d, SeatId d r -> Text
+    Described: fn Fixed r, SeatId d r -> Text
 
 type CountRole = choice:
     Raiser
@@ -30,18 +29,18 @@ impl ^Document Count:
     type Role = CountRole
     type SeatId Raiser = Nat
     type SeatId Watcher = Text
-    fn Described Raiser, n = "raiser {n}"
-    fn Described Watcher, name = "watcher {name}"
+    fn Described Fixed<<Raiser>>, n = "raiser {n}"
+    fn Described Fixed<<Watcher>>, name = "watcher {name}"
 
 # A seat: a role, and a seat id of that role's own type.
-type SeatKey d = any (r: Role d): ((Role d, SeatId d r))
+type SeatKey d = any (r: Role d): ((Fixed r, SeatId d r))
 
 # A record with a field of an existential type.
 type Due d = record:
     seat: SeatKey d
     at: Nat
 
-Keyed: fn Role d, SeatId d r -> SeatKey d where d: ^Document
+Keyed: forall d (r: Role d). fn Fixed r, SeatId d r -> SeatKey d where d: ^Document
 fn Keyed role, id = any ((role, id))
 
 # The key opened in an arm: the role and the seat id at the arm's own role type.
@@ -54,7 +53,7 @@ fn ToldDue due = "{Told due.seat} at {due.at}"
 
 @page: @unit
 @page:
-    let first = Due(seat=(Keyed<<Count, Raiser>> Raiser, 3), at=0)
-    let second = Due(seat=(Keyed<<Count, Watcher>> Watcher, "ada"), at=1)
+    let first = Due(seat=(Keyed<<Count, Raiser>> Fixed<<Raiser>>, 3), at=0)
+    let second = Due(seat=(Keyed<<Count, Watcher>> Fixed<<Watcher>>, "ada"), at=1)
     Ui.Label($text=$ (ToldDue first))                                           # 0
     Ui.Label($text=$ (ToldDue second))                                          # 1

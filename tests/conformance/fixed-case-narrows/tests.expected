@@ -1,0 +1,6 @@
+# Derived by hand from Jimmy's ruling VO: each clause reads its quantity at its own unit.
+test fixed_narrows
+
+tick 0
+  added:
+    0: Ui.Label(text="300 m; 60 s; metre")

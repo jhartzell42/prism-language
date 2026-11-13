@@ -1,0 +1,35 @@
+# Jimmy's ruling VO (13 November): `Fixed r`, the singleton whose value names its type,
+# `Fixed<<Metre>>`. A clause that matches `Fixed<<Metre>>` knows `u` is `Metre` in its
+# body, so the quantity there is a `Quantity Metre`, which `Walked` takes. The literal
+# `Metre` stays a plain `Unit`.
+# Expected transcript derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Unit = choice:
+    Metre
+    Second
+derive ^Eq, ^Show
+
+type Quantity (u: Unit) = record:
+    amount: Nat
+derive ^Eq, ^Show
+
+Walked: fn Quantity Metre -> Text
+fn Walked distance = "{distance.amount} m"
+
+Timed: fn Quantity Second -> Text
+fn Timed span = "{span.amount} s"
+
+Shown: fn Fixed u, Quantity u -> Text
+fn Shown Fixed<<Metre>>, q = Walked q
+fn Shown Fixed<<Second>>, q = Timed q
+
+Plain: fn Unit -> Text
+fn Plain Metre = "metre"
+fn Plain Second = "second"
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Shown Fixed<<Metre>>, Quantity(amount=300)}; {Shown Fixed<<Second>>, Quantity(amount=60)}; {Plain Metre}")   # 0

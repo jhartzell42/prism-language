@@ -1,0 +1,17 @@
+# Jimmy's ruling VO (13 November): a clause that matches `Fixed<<Second>>` knows `u` is
+# `Second`, so its quantity is a `Quantity Second`, which `Walked` does not take.
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+type Unit = choice:
+    Metre
+    Second
+
+type Quantity (u: Unit) = record:
+    amount: Nat
+
+Walked: fn Quantity Metre -> Text
+fn Walked distance = "{distance.amount} m"
+
+Shown: fn Fixed u, Quantity u -> Text
+fn Shown Fixed<<Second>>, q = Walked q
+fn Shown Fixed<<Metre>>, q = Walked q
