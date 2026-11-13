@@ -25,6 +25,8 @@
 //!   line is addressed `NAME: text`, in and out. A line is handed in only when no tick is
 //!   owed and nothing else waits, so a program has answered one line before it hears the
 //!   next. At the end of the input the reads stop firing.
+//! - **`Net.Link`, `Net.Listen`, `Net.Channel`**: a document's messages over TCP
+//!   ([`net`]).
 //! - **`Prelude.Unwrap`, `Prelude.Exceptions`**: [`prism_rtl::world::prelude`].
 //!
 //! The exit codes (Semantics ch. 9 and ch. 10): the code `Process.Exit` asked for; 0 when
@@ -38,6 +40,7 @@
 
 pub mod console;
 pub mod fs;
+pub mod net;
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -52,7 +55,7 @@ pub use prism_rtl::world::prelude::{self, Prelude, UnwrapWorld};
 pub use prism_rtl::world::{EXIT_FAILED, EXIT_UNCHECKED};
 
 /// The families this World answers, for a root's row check.
-pub const FAMILIES: &[&str] = &["Fs", "Process", "Time", "Console", "Prelude"];
+pub const FAMILIES: &[&str] = &["Fs", "Process", "Time", "Console", "Net", "Prelude"];
 
 /// The CLI World's patience under [`run`]: unlimited unless `PRISM_PATIENCE` sets a budget
 /// (Semantics ch. 9: a budget is the World's and optional).
@@ -126,6 +129,8 @@ pub struct CliWorld<F: FileSystem> {
     /// The last tick said another is owed: no waiting on a timer while compute is.
     pending: bool,
     exit: Option<u8>,
+    /// The wire's sockets ([`net`]).
+    net: net::Net,
 }
 
 impl<F: FileSystem + 'static> CliWorld<F> {
@@ -143,6 +148,7 @@ impl<F: FileSystem + 'static> CliWorld<F> {
             terminals: BTreeSet::new(),
             pending: false,
             exit: None,
+            net: net::Net::default(),
         }
     }
 
@@ -188,6 +194,7 @@ impl<F: FileSystem + 'static> CliWorld<F> {
                 }
                 return;
             }
+            (Some("Net.Link"), _) | (Some("Net.Channel"), _) => return self.net.send(element, path, value),
             (Some("Fs.File"), Pod::Choice(c, _)) if &**c == "Read" => {
                 let Some(file) = text_field(element, "path") else { return };
                 contents(self.fs.borrow().read(&file))
@@ -274,6 +281,16 @@ impl<F: FileSystem + 'static> World for CliWorld<F> {
         }
         self.doc.apply(&out.patch);
         for (p, e) in &out.patch.removed {
+            if e.tag().is_some_and(|t| t.starts_with("Net.")) {
+                self.net.removed(p);
+            }
+        }
+        for (p, e) in &out.patch.added {
+            if e.tag().is_some_and(|t| t.starts_with("Net.")) && !self.prelude.is_poisoned(p) {
+                self.net.added(p, e);
+            }
+        }
+        for (p, e) in &out.patch.removed {
             if e.tag() == Some("Fs.List") && !self.doc.iter().any(|(q, f)| q != p && f == e) {
                 self.lists.remove(e);
             }
@@ -311,6 +328,8 @@ impl<F: FileSystem + 'static> World for CliWorld<F> {
     fn next_inputs(&mut self) -> Option<TickIn> {
         loop {
             self.due();
+            let heard = self.net.poll();
+            self.answers.extend(heard);
             self.answers.extend(self.prelude.take_outputs());
             if self.answers.is_empty() && self.pushes.is_empty() && !self.pending {
                 let wake = self.timers.iter().map(|(at, _, _)| *at).min();
@@ -329,8 +348,12 @@ impl<F: FileSystem + 'static> World for CliWorld<F> {
             if !input.answers.is_empty() || !input.pushes.is_empty() {
                 return Some(input);
             }
-            if (self.timers.is_empty() && !self.console_waits()) || self.pending {
+            if (self.timers.is_empty() && !self.console_waits() && !self.net.open()) || self.pending {
                 return None;
+            }
+            // the wire may bring something: look again shortly
+            if self.net.open() && self.timers.is_empty() && !self.console_waits() {
+                std::thread::sleep(Duration::from_millis(5));
             }
         }
     }
