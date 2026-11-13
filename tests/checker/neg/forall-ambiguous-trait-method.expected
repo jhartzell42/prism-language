@@ -1,0 +1,5 @@
+tests/checker/neg/forall-ambiguous-trait-method.prism:13: error[ambiguous]: nothing decides `d` in `^Machine d` at `Step`: `State d` does not determine `d`
+    fn Once state = Step state
+                    ^^^^^^^^^^
+  fix: name the type, `Step<<d>>`
+1 error
