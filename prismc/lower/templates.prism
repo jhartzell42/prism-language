@@ -453,7 +453,18 @@ fn Assign lx, env, target, v = match target.kind:
         ? ((qk, argument)) if LensEndsAtIndex lx, qk, (Len lx.g.defs):
             let held = "part{SpanStem target.span}"
             DoExpr (XBlock [[(DoLet (PaBind held), v)]], (XCall (HelperRef "set_part"), [[(LensCallEx lx, env, qk, argument), (XVar held)]]))
-        otherwise: DoAssign (PlaceOf lx, env, target), v
+        otherwise: DoAssign (PlaceOf lx, env, target), (if IsRcFieldPlace lx, target: XCall (RefRuntime "std::Rc::new"), [[v]] else: v)
+
+# Whether a place is a record's field kept behind a pointer (a recursive type's, `RcField`),
+# which a write fills with a new pointer.
+IsRcFieldPlace: unbounded fn Lx, Expr -> Bool
+fn IsRcFieldPlace lx, target = match target.kind:
+    EField r, ignore, name: match Peel (PlaceTy lx, r):
+        TyCon n, ignore2: match lx.g.ctors[n]:
+            ? c: Fold (Range0 (Len c.fields)), False, \|found, i| found or ((Or c.fields[i], "") == name.name and RcField lx, c.name, i)
+            nil: False
+        otherwise: False
+    otherwise: False
 
 # A write at an index (`set_key`, `set_index`): the key and the value first, since either
 # may read the collection the write borrows (`&_.board[to] <: &_.board[from]`).
