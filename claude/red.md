@@ -10,8 +10,7 @@ a tree at 20004f18, before the library, to find the remaining lowering reds
 that point (ts-ch04 whole-result tests, ts-ch05-color-function-in-dynamic-through-lifted-call)
 check clean on p11 there.
 
-Kinds: **gap** a compiler feature or fix to write in step 2; **Q3**/**Q4** waits on
-Jimmy's questions of 13 November (one role per place; two row variables).
+Kinds: **gap** a compiler feature or fix to write in step 2; Q3 and Q4 are answered (rulings OP, RT).
 
 ## Features, each with its test
 
@@ -39,14 +38,22 @@ Jimmy's questions of 13 November (one role per place; two row variables).
 | `{ $x }` placeholder escapes (wip-brace-placeholder.patch) | neg/brace-placeholder | wording/span |
 | alias name kept in messages | neg/doc-sk-opened-role-escapes | message names the expansion |
 | a map literal keeps its values whole, as array literals do (HD) | conformance/hd-map-literal-keeps-dynamic-whole; the seats of tally, c6, c8 | `expected Text ==> $Nat, found Text ==> t9` |
+| own declaration shadows the prelude (OS) | conformance/own-declaration-shadows-prelude | `collision` on `Len` |
+| `use X.Name as Other` (UA) | conformance/use-name-as | parse error at `as` |
+| a row with two variables (RT) | checker/pos/row-two-variables; library `@HostDocument` | `row-two-tails` |
+| derive asks equalities of associated types (DE) | library via derive (c8, chess) | parse error at `where` |
+| `Fixed s` matched against `Fixed<<r>>`, `r` a variable (OP, VO) | library `?ResponseTo` | (behind the library's parse error) |
+| a tag arm narrows the matched element to its family's row (OP) | library `@HostRole` | (behind the parse error) |
+| library builtins with no body, each needing the runtime: `SeatPathOf`, `$Merge`, `SeatIdAt`, `$GuestsOf`, `@Answer`, `!Outgoing`, `?ResponseFrom`, `$?AnswerFrom` | every document test | not reached |
+| `!Filter` over a `!??`, Seat.Leave's last request (chess agent) | examples/chess | not confirmed |
+| clause widgets whose rows differ; `$` over an applied `@Serve<<ChessGame>>` blueprint (chess agent, unconfirmed) | examples/chess | errors of the kinds c8 has |
 | `row-lacks` per family instantiation, not per family | library `@HostRole` (`Seat.* d r \| rest`) | "`rest \| Seat.*` promises `rest` has no `Seat` tags" |
 
 ## Waiting on Jimmy
 
-| question | where it shows | on p11 |
-|---|---|---|
-| Q3: one role per place (the seat and the element at one `r`) | library `PendingAt`, `!HeardAt`, `LeftWith`, `?ResponseTo`, `$ReadLive` | `expected ((Fixed r, SeatId d r, Request d r)), found` the same text at another `r`; existential-escape |
-| Q4: two row variables, `emit lower \| rest` (book ch. 5) against neg/row-two-tails | library `@HostDocument` | `row-two-tails` |
+| question | where it shows |
+|---|---|
+| a seat whose participant leaves stays in the program's map of seats; the book's `Reseated` removed it (chess agent) | examples/chess, tally |
 
 ## Checker suite mismatches on p11 (tests/checker/run.sh)
 
@@ -91,4 +98,4 @@ Jimmy's questions of 13 November (one role per place; two row variables).
   20004f18, so it is likely a cascade from the library's own errors; it is rechecked
   once the library checks. The tally's `no impl of ^TallyOrder for o` was its own
   slip: its participants now say `where o: ^TallyOrder`.
-- **examples/chess**: being rewritten to the final form (step 1, an agent); listed when it lands.
+- **examples/chess**: in its final form (6378d7f1, then OP's supplier and `@Serve`); on p11 it stops on the kinds of error c8 has, and on the two unconfirmed rows above.
