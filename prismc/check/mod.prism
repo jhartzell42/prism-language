@@ -443,7 +443,7 @@ fn TopLets g, st:
     let ((g1, st1)) = Fold unsigned, ((g, st)), \|((gg, s)), d|
         let ((v, s2)) = FreshVar s, False, d.name
         let gg2 = update gg:
-            &_.vals <= Insert &_.vals, d.qk, ValInfo(qk=d.qk, scheme=(Mono v), sort="let", hasSig=False, scoped=[[]], home=d.home, file=d.file, span=d.span)
+            &_.vals <= Insert &_.vals, d.qk, ValInfo(qk=d.qk, scheme=(Mono v), sort="let", hasSig=False, scoped=[[]], scopedKinds=[[]], home=d.home, file=d.file, span=d.span)
         ((gg2, s2))
     Fold unsigned, ((g1, st1)), \|((gg, s)), d| match d.body:
         DbLet l:
@@ -480,11 +480,11 @@ fn TopLets g, st:
             let ((sc, s5a)) = if HoldsNode s4, t: ((Mono t, s4)) else: Generalize s4, t, keep, bounds
             let s5 = if used: s5a else: Unify s5a, ahead, t, d.span
             let gg2 = update gg:
-                &_.vals <= Insert &_.vals, d.qk, ValInfo(qk=d.qk, scheme=sc, sort="let", hasSig=False, scoped=[[]], home=d.home, file=d.file, span=d.span)
+                &_.vals <= Insert &_.vals, d.qk, ValInfo(qk=d.qk, scheme=sc, sort="let", hasSig=False, scoped=[[]], scopedKinds=[[]], home=d.home, file=d.file, span=d.span)
             ((gg2, (DischargeIncls gg, (CaseQuestions (LayerQuestions (ResolveFields gg, (CheckColors s5), True))), 0)))
         otherwise: ((gg, s))
 
-let dummyVal = ValInfo(qk="", scheme=(Mono TyErr), sort="", hasSig=False, scoped=[[]], home="", file=0, span=Range(start=0, end=0, origin=InSource))
+let dummyVal = ValInfo(qk="", scheme=(Mono TyErr), sort="", hasSig=False, scoped=[[]], scopedKinds=[[]], home="", file=0, span=Range(start=0, end=0, origin=InSource))
 
 # A top-level `let`'s name is asked as a pattern's is (`CaseQuestions`).
 AskLetCase: fn St, Pattern, Ty -> St
@@ -505,7 +505,7 @@ fn DefEnv g, d:
     let scope = match info.emitRw.tail:
         TlQ v: Rw(fams=info.emitRw.fams, minus=[[]], tail=(TlRigid v))
         otherwise: info.emitRw
-    Env(g=g, home=d.home, file=d.file, src=(Or g.srcs[d.file], (MkSrc "", "")), locals={{}}, scope=scope, givens=[[]], mark="", inUpdate=False, defName=d.name, refine={{}}, pending=[[]], ids={{}}, scoped=(Or g.vals[d.qk], dummyVal).scoped)
+    Env(g=g, home=d.home, file=d.file, src=(Or g.srcs[d.file], (MkSrc "", "")), locals={{}}, scope=scope, givens=[[]], mark="", inUpdate=False, defName=d.name, refine={{}}, pending=[[]], ids={{}}, scoped=(Or g.vals[d.qk], dummyVal).scoped, scopedKinds=(Or g.vals[d.qk], dummyVal).scopedKinds)
 
 # One definition: its body against its signature; its constraints solved and defaulted;
 # its row obligations discharged.

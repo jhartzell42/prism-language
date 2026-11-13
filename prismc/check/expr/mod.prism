@@ -75,6 +75,8 @@ type Env = record:
     ids: (Text ==> Nat)
     # the definition's `forall` variables, rigid in its body (Jimmy's ruling FA)
     scoped: [Text]
+    # those whose kind the `forall` states, with the kind's choice
+    scopedKinds: [((Text, Text))]
 derive ^Eq, ^Show
 
 WithLocal: fn Env, Text, Scheme -> Env

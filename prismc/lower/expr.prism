@@ -816,11 +816,20 @@ fn PlainValueByKind lx, env, e:
         ECast x, ignore, checked: if checked: CheckedCastValue lx, env, x, t else: ValueOf lx, env, x
         # `[[x, y]]+`, `{k: v}+`: the literal's collection in the non-empty type's wrapper
         ENonEmpty x: VlOwned (XTyped (XCall (HelperRef "non_empty_of"), [[(Own (ValueOf lx, env, x))]]), t), t
+        # `ValueOf<<Writer>>` (Jimmy's ruling VO): the case's value
+        ETypeArgs x, [[one]] if IsValueOfName x: match one.kind:
+            TName n, [[]] if IsUpperText (Dotted n.path): NameValue lx, env, n, e.span
+            otherwise: VlOwned (Refusal "`ValueOf` of a type variable (Jimmy's ruling VO): its lowering is not written yet"), t
         ETypeArgs x, ignore: ValueOf lx, env, x
         EGiven b: GivenValue lx, env, b, t, e.span
         EUpdate target, b: UpdateValue lx, env, target, b, t, e.span
         EAny x: AnyValue lx, env, x, (TypeAt lx, e.span)
         otherwise: VlOwned (InternalBug "{KindWords e.kind} as a value (the checker gives `mismatch` for a `for` or a `rebuild` as a plain value and `unsupported` for a suffixed operator, a monadic block and a lens value; a topic, `..` and an absent value stand only where an `update` block, a pattern or an element's fields read them)"), t
+
+IsValueOfName: fn Expr -> Bool
+fn IsValueOfName x = match x.kind:
+    EName n: (Dotted n.path) == "ValueOf"
+    otherwise: False
 
 # `any x` (Type System ch. 5, "Existentials are dictionaries"): the value with the impls of
 # the existential's bounds at its type, taken while its type is known; an `any ^Show` is

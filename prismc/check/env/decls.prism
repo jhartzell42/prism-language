@@ -242,6 +242,16 @@ fn ForallNames t = match t.kind:
     TForall vs, ignore, ignore2: Each vs, \|v| v.name
     otherwise: [[]]
 
+# The kinds a signature's `forall` states, each a choice's key.
+ForallKinds: fn G, Text, Type -> [((Text, Text))]
+fn ForallKinds g, m, t = match t.kind:
+    TForall ignore, kinds, ignore2: Fold kinds, [[]], \|acc, ((v, k))| match k.kind:
+        TName n, [[]]: match ResolveType g, m, n.path:
+            ((? found, ignore)): Push acc, ((v, found))
+            otherwise: acc
+        otherwise: acc
+    otherwise: [[]]
+
 ConvertDecl: unbounded fn G, St, ModInfo, Decl -> ((G, St))
 fn ConvertDecl g, st, info, d = match d.kind:
     DSignature s:
@@ -264,7 +274,7 @@ fn ConvertDecl g, st, info, d = match d.kind:
             ? constructor: ((g, (Err st3, "collision", d.span, "`{DefNameText s.name}` is a constructor of `{BareName constructor.owner}` in this module")))
             nil:
                 let upd = update g:
-                    &_.vals <= Insert &_.vals, qk, ValInfo(qk=qk, scheme=sc, sort="fn", hasSig=True, scoped=(ForallNames s.ty), home=info.name, file=info.file, span=d.span)
+                    &_.vals <= Insert &_.vals, qk, ValInfo(qk=qk, scheme=sc, sort="fn", hasSig=True, scoped=(ForallNames s.ty), scopedKinds=(ForallKinds g, info.name, s.ty), home=info.name, file=info.file, span=d.span)
                 ((upd, st3))
     DFn f:
         let qk = QualKey info.name, (DefNameText f.name)
@@ -713,7 +723,7 @@ fn ConvTrait g, st, info, t, span:
                 &_.qs <= if HasText &_.qs, param: &_.qs else: Append [[param]], &_.qs
                 &_.bounds <= Append [[((param, name))]], &_.bounds
             let upd = update gg:
-                &_.vals <= Insert &_.vals, qk, ValInfo(qk=qk, scheme=sc2, sort="method", hasSig=True, scoped=[[]], home=info.name, file=info.file, span=sg.span)
+                &_.vals <= Insert &_.vals, qk, ValInfo(qk=qk, scheme=sc2, sort="method", hasSig=True, scoped=[[]], scopedKinds=[[]], home=info.name, file=info.file, span=sg.span)
             ((upd, s2, (Push ms, qk), ds, assocAcc))
         TiFn f:
             let qk = QualKey info.name, (DefNameText f.name)

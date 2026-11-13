@@ -58,6 +58,8 @@ fn InferCall env, st, callee, args, span = match callee.kind:
                 ApplyFn env, (NoteTy st2, callee.span, t), local, t, (Positional args), span
             nil: CallGlobal env, st, n, args, span, [[]], callee.span
     ETypeArgs target, tys: match target.kind:
+        # `ValueOf<<Writer>>`, a promoted case's value (Jimmy's ruling VO)
+        EName n if (Dotted n.path) == "ValueOf" and (Len args) == 0 and Undeclared env, n: ValueOfCase env, st, tys, callee.span
         EName n:
             let cx = EnvCx env
             let ((given1, st1)) = ConvTypes cx, st, tys
@@ -71,6 +73,30 @@ fn InferCall env, st, callee, args, span = match callee.kind:
     otherwise:
         let ((t, st2)) = Infer env, st, callee
         ApplyFn env, st2, (SrcText env, callee.span), t, (Positional args), span
+
+# A name no declaration reaches from here.
+Undeclared: fn Env, SName -> Bool
+fn Undeclared env, n = match ResolveValue env.g, env.home, n:
+    ((nil, ignore)): True
+    otherwise: False
+
+# `ValueOf<<r>>` (Jimmy's ruling VO): the value of the case `r` names as a type, of the
+# case's choice; under a `forall (r: Access)`, an `Access`.
+ValueOfCase: unbounded fn Env, St, [Type], Range -> ((Ty, St))
+fn ValueOfCase env, st, tys, span:
+    let cx = EnvCx env
+    match tys:
+        [[one]]:
+            let ((x, st2)) = ConvIndex cx, st, one
+            match x:
+                TyRole c: match env.g.ctors[c]:
+                    ? ci: (((TyCon ci.owner, [[]]), st2))
+                    nil: ((TyErr, st2))
+                TyQ q: match (Filter env.scopedKinds, \|((v, ignore))| v == q)[0]:
+                    ? ((ignore, k)): (((TyCon k, [[]]), st2))
+                    nil: ((TyErr, (Err st2, "kind", span, "`ValueOf` takes a case of a payload-free choice; `{q}` has no stated kind (`forall ({q}: ...)`)")))
+                otherwise: ((TyErr, (Err st2, "kind", span, "`ValueOf` takes a case of a payload-free choice; `{ShowTy st2, x}` is a type, no case of a choice")))
+        otherwise: ((TyErr, (Err st, "kind", span, "`ValueOf` takes one case, `ValueOf<<Writer>>`")))
 
 # The type variables a type names.
 FreeQs: fn Ty -> [Text]
