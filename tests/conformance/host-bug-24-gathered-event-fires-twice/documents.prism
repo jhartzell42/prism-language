@@ -77,7 +77,7 @@ fn AllAtOnce due = Ordered(apply=due, wait=[[]])
 # This tick's own requests by place: by the document's seat order, then by place in the
 # seat's guest.
 ByPlace: fn [Asked s k d] -> [Asked s k d] where k: ^Ord
-fn ByPlace asked = Values (Fold asked, {}, \|all, one| Insert all, one.place, one)
+fn ByPlace asked = Values (Fold asked, {{}}, \|all, one| Insert all, one.place, one)
 
 # The state after some requests of one tick, the response to each by place, whether any
 # was accepted, and the requests that wait.
@@ -99,7 +99,7 @@ fn StepOne kept, asked:
 StepTick: fn (fn [Asked s k d] -> Ordered s k d), s, [Asked s k d], [Asked s k d] -> Kept s k d where k: ^Ord
 fn StepTick Order, state, waiting, arrived:
     let turn = Order (Append waiting, (ByPlace arrived))
-    Fold turn.apply, Kept(state=state, responses={}, moved=False, waiting=turn.wait), StepOne
+    Fold turn.apply, Kept(state=state, responses={{}}, moved=False, waiting=turn.wait), StepOne
 
 ?StateOf: fn Kept s k d -> ?s
 fn ?StateOf kept = if kept.moved: ? kept.state else: nil
@@ -127,7 +127,7 @@ fn @InMemoryOrdered initial, Order, HostSeats:
     let !outcome = StepTick Order, $state, $waiting, !due
     $state <- initial then !Filter (?StateOf !outcome)      # the hold
     $waiting <- [[]] then WaitingOf !outcome
-    $answered <- {} then ResponsesOf !outcome
+    $answered <- {{}} then ResponsesOf !outcome
     let !responses = !Updated $answered
 
 # The same with the default order.
@@ -161,7 +161,7 @@ fn @News $state, !reseated:
 # A role's seats as a `for` reads them: one key per seat and what sits there, so a seat
 # whose sitting changes is a new key, and that seat alone is built again.
 Sittings: fn (k ==> v) -> (((k, v)) ==> unit) where k: ^Ord, v: ^Ord
-fn Sittings seats = Fold (Keys seats), {}, \|all, k| match ?Get seats, k:
+fn Sittings seats = Fold (Keys seats), {{}}, \|all, k| match ?Get seats, k:
     ? v: Insert all, ((k, v)), unit
     nil: all
 
@@ -202,7 +202,7 @@ Removes: fn [k] -> Happening k v a
 fn Removes removed = Removing removed
 
 Hears: fn (((k, v)) ==> (Path ==> Heard a)) -> Happening k v a where k: ^Ord, v: ^Ord
-fn Hears heard = Hearing (Fold (Keys heard), [[]], \|all, both| Push all, (((SeatOf both), (Values (Or (?Get heard, both), {})))))
+fn Hears heard = Hearing (Fold (Keys heard), [[]], \|all, both| Push all, (((SeatOf both), (Values (Or (?Get heard, both), {{}})))))
 
 Requests: fn a -> Heard a
 fn Requests request = Requested request
@@ -256,7 +256,7 @@ fn Reseated seats, happenings = Fold happenings, seats, \|now, one| match one:
     Hearing heard: Fold heard, now, \|still, ((seat, fired))| if Departs fired: Remove still, seat else: still
 
 One: fn Nat, a -> (Nat ==> a)
-fn One n, a = {n: a}
+fn One n, a = {{n: a}}
 
 # One tick's happenings out of the union a role's host makes of its three events, each
 # under a number of its own (`One 0`, `One 1`, `One 2`).

@@ -16,7 +16,7 @@ use Ui.*
     !swap <- Ui.Button($label=$"swap")                            # 0
     !bump <- Ui.Button($label=$"bump")                            # 1
     $gen <- 0 then $gen + 1 on !swap
-    let keys = {0: "a", 1: "b"}
+    let keys = {{0: "a", 1: "b"}}
     $each <- for k, v <- keys:                                   # 2/[k]
         $$r <- rebuild $gen:                                     # 2/[k]/0/#g
             let start = _ * 100

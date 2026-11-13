@@ -41,7 +41,7 @@ BothAfter: fn [Nat], [Nat]+ -> [ [Nat] ]
 fn BothAfter ys, xs = [[ys, xs]]
 
 Named: fn (Nat ==> Text)+, (Nat ==> Text) -> (Nat ==> (Nat ==> Text))
-fn Named m, n = {1: m, 2: n}
+fn Named m, n = {{1: m, 2: n}}
 
 Kept: fn Bool, [Nat]+, [Nat]+ -> [Nat]+
 fn Kept first, xs, ys = if first: xs else: Choose ys, xs

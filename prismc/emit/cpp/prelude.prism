@@ -938,7 +938,7 @@ inline std::optional<std::string> read_file(const std::string& path) {
     std::ifstream f(path, std::ios::binary);
     if (!f) return std::nullopt;
     std::stringstream s;
-    s << f.rdbuf();
+    s \<< f.rdbuf();
     return s.str();
 }
 
@@ -991,7 +991,7 @@ inline int on_big_stack(std::function<int()> f) {
     } job{std::move(f)};
     pthread_attr_t attr;
     pthread_attr_init(&attr);
-    pthread_attr_setstacksize(&attr, std::size_t(4) << 30);
+    pthread_attr_setstacksize(&attr, std::size_t(4) \<< 30);
     pthread_t t;
     auto run = [](void* p) -> void* {
         auto* j = static_cast<Job*>(p);

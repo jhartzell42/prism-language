@@ -1,9 +1,9 @@
 tests/checker/neg/map-key-unbounded.prism:11: error[no-impl]: no impl of `^Ord` for `k`
-    fn Pairs keys, v = Fold keys, {}, \|all, k| Insert all, ((k, v)), unit
-                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    fn Pairs keys, v = Fold keys, {{}}, \|all, k| Insert all, ((k, v)), unit
+                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^
   fix: add `where k: ^Ord` to the signature
 tests/checker/neg/map-key-unbounded.prism:11: error[no-impl]: no impl of `^Ord` for `v`
-    fn Pairs keys, v = Fold keys, {}, \|all, k| Insert all, ((k, v)), unit
-                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    fn Pairs keys, v = Fold keys, {{}}, \|all, k| Insert all, ((k, v)), unit
+                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^
   fix: add `where v: ^Ord` to the signature
 2 errors

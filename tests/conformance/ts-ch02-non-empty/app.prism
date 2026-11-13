@@ -23,8 +23,8 @@ fn KeyCount nil = "no keys"
 @main: @unit
 @main:
     let xs = [[1, 2, 3]]+
-    let m = {1: "a", 2: "b"}+
+    let m = {{1: "a", 2: "b"}}+
     let ys = xs as [Nat]
     let empty = [[]] as [Nat]
-    let none = {} as (Nat ==> Text)
+    let none = {{}} as (Nat ==> Text)
     Ui.Label($text=$"{Total xs} {Count m} {Summed (empty as [Nat]+?)} {Summed (ys as [Nat]+?)} {KeyCount (none as (Nat ==> Text)+?)} {KeyCount (m as (Nat ==> Text)+?)} {(Len ys) as Nat}")    # 0

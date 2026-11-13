@@ -252,7 +252,7 @@ fn TypesHeader title, members, declared, complete, p:
     let holdsElem = Fold p.values, False, \|f, v| f or Fold v.deps, False, \|g, d| g or d == "Elem" or d == "Output"
     let elem = if holdsElem: "#include \"elem.types.hpp\"" else: "#include \"elem.decl.hpp\""
     let includes = Join (Filter [[(Includes "decl", members), elem, (Includes "decl", declared), (Includes "types", complete)]], \|t| t != ""), "\n"
-    let values = Join (OrderValues p.values, (Fold p.values, {}, \|acc, v| Insert acc, v.path, False), [[]]), "\n\n"
+    let values = Join (OrderValues p.values, (Fold p.values, {{}}, \|acc, v| Insert acc, v.path, False), [[]]), "\n\n"
     CppTypesHeader title, includes, values
 
 # `#include` lines for these modules' headers of one layer (`decl`, `types`, `generic`, or

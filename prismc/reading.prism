@@ -380,10 +380,10 @@ fn TestPaths u = Each (Filter u.segs, \|s| s.role == "test"), \|s| s.path
 # reach; every other file of the listing is stray.
 WalkTree: unbounded fn Text, [Text], (Text ==> Text) -> TreeAcc
 fn WalkTree root, files, texts:
-    let has = Fold files, {}, \|m, f| Insert m, f, True
+    let has = Fold files, {{}}, \|m, f| Insert m, f, True
     let app = Under root, "app.prism"
     let lib = Under root, "lib.prism"
-    let acc0 = TreeAcc(units=[[]], declared={}, diags=[[]])
+    let acc0 = TreeAcc(units=[[]], declared={{}}, diags=[[]])
     let acc1 = if (HasKey has, app) and (HasKey has, lib): AddTreeDiag acc0, lib, noSpan, "two-roots", "`app.prism` and `lib.prism` in one directory: a tree has one root", "keep app.prism for a program or lib.prism for a library" else: acc0
     let acc2 = if HasKey has, app: WalkModule has, texts, acc1, app, "", "", False else: WalkLib has, texts, acc1, lib
     let acc3 = update acc2:
@@ -493,7 +493,7 @@ fn Stray has, texts, acc, f:
 # the tree's order.
 ReachTree: unbounded fn [ModFiles], Text -> [ModFiles]
 fn ReachTree units, main:
-    let byName = Fold units, {}, \|m, u| Insert m, (UnitName u), u
+    let byName = Fold units, {{}}, \|m, u| Insert m, (UnitName u), u
     let start = Fold units, [[]], \|s, u| if (MainPath u) == main or (u.parent == main and IsTestUnit u): Push s, (UnitName u) else: s
     let reached = ReachNames byName, start, start
     Filter units, \|u| HasText reached, (UnitName u)

@@ -10,7 +10,7 @@ use Ui.*
 
 # 0 to n - 1 as keys
 Big: fn Nat -> (Nat ==> Nat)
-fn Big n = update {}:
+fn Big n = update {{}}:
     let &i = 0
     let &left = n
     while ? m <- &left -? 1:

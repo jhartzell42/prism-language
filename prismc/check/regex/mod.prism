@@ -311,7 +311,7 @@ fn RxHexText n = update "":
 fn ?RegexRefusal pattern, flags, ?replacement = match ?RxFlagsRefusal flags:
     ? d: ? d
     nil:
-        let st0 = RxState(s=pattern, i=0, open=0, groups=0, names={}, ?err=nil)
+        let st0 = RxState(s=pattern, i=0, open=0, groups=0, names={{}}, ?err=nil)
         let ((m, st)) = RxAlternation st0, (?RxFind flags, 0, "i") != nil
         match st.?err:
             ? d: ? d

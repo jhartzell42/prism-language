@@ -466,7 +466,7 @@ fn MissingSignatures g, st, info = Fold g.defs, st, \|s, d|
 # `no-definition`: a signature line of a program's own file with no definition under it.
 MissingDefinitions: unbounded fn G, St -> St
 fn MissingDefinitions g, st0:
-    let defined = Fold g.defs, {}, \|m, x| Insert m, x.qk, True
+    let defined = Fold g.defs, {{}}, \|m, x| Insert m, x.qk, True
     # the prelude module's signature lines with no clauses are its builtins, which each back
     # end supplies (prelude/prelude.prism's header), wherever it is read from
     let st = Fold (Values g.mods), st0, \|s0, info| if info.file >= g.preludeFrom or info.name == "Prelude": s0 else:
@@ -491,7 +491,7 @@ fn ImplDefaults g, st = Fold (Values g.traits), ((g, st)), \|((g1, st1)), tr|
         let ((impls, added)) = Fold (Or g1.impls[tr.name], [[]]), (([[]], [[]])), \|((done, new)), im|
             let taken = Fold tr.assocDefaults, [[]], \|acc, ((assoc, value))|
                 if im.derived or (Fold im.assocs, False, \|seen, ((chosen, ignore))| seen or chosen == assoc): acc
-                else: Push acc, ((assoc, (SubstQ Inst(tys={tr.param: im.head}, rows={}, cols={}), value)))
+                else: Push acc, ((assoc, (SubstQ Inst(tys={{tr.param: im.head}}, rows={{}}, cols={{}}), value)))
             let filled = update im:
                 &_.assocs <= Append &_.assocs, taken
             (((Push done, filled), (Append new, (Each taken, \|((an, at))| AssocImpl(cls=im.cls, name=an, head=im.head, qs=im.qs, value=at)))))

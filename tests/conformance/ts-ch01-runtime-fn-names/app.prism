@@ -52,7 +52,7 @@ fn RunToEnd n = n + 12
 
 # Every one of them, beside an index of a map and of an array and a map literal.
 All: fn (Text ==> P), [Nat] -> Nat
-fn All m, xs = (Or m["k"], P(a=0, b="")).a + (Or xs[0], 0) + (Or {"z": 1}["z"], 0) + Field 0 + Get 0 + Index 0 + MapOf 0 + Mismatch 0 + Rc 0 + Drive 0 + CallValue 0 + CallThen 0 + Entered 0 + OnceJob 0 + RunToEnd 0
+fn All m, xs = (Or m["k"], P(a=0, b="")).a + (Or xs[0], 0) + (Or {{"z": 1}}["z"], 0) + Field 0 + Get 0 + Index 0 + MapOf 0 + Mismatch 0 + Rc 0 + Drive 0 + CallValue 0 + CallThen 0 + Entered 0 + OnceJob 0 + RunToEnd 0
 
 # A job whose frames call the runtime's `call_value` and `call_then` beside the program's.
 Step: unbounded fn Nat -> Nat

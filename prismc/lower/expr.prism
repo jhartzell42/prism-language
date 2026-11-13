@@ -250,11 +250,11 @@ fn WholeFns lx:
     # and a function from dynamics to an event (`fn !Changes $a, $b = !Updated ($a +
     # $b)`): no firing reaches its body to lift it over, and `!Updated` takes its
     # dynamic whole, so the function takes the dynamics and gives the `Event`
-    let bySig = Fold fns, {}, \|m, ((d, ignore, v))| if (IsWholeSig v.scheme.ty) or (HasElementParam v.scheme.ty) or (GivesEventOfDynamics v.scheme.ty) or ((HasDynamicParam v.scheme.ty) and IsValueWidget lx, d.qk): Insert m, d.qk, True else: m
+    let bySig = Fold fns, {{}}, \|m, ((d, ignore, v))| if (IsWholeSig v.scheme.ty) or (HasElementParam v.scheme.ty) or (GivesEventOfDynamics v.scheme.ty) or ((HasDynamicParam v.scheme.ty) and IsValueWidget lx, d.qk): Insert m, d.qk, True else: m
     # and those a call takes with time below the top of what it gives (`$Sel (True on
     # !swap), $a, $b`, a `!$Nat`: lifted over a plain parameter, the call gives the dynamic
     # it returns whole, Type System ch. 4)
-    let known = Fold fns, {}, \|m, ((d, ignore, v))| match v.scheme.ty:
+    let known = Fold fns, {{}}, \|m, ((d, ignore, v))| match v.scheme.ty:
         TyFn ignore, ignore, r: if (LayerOf r) == LyDyn or (LayerOf r) == LyEv: Insert m, d.qk, True else: m
         otherwise: m
     let start = Fold lx.g.defs, bySig, \|m, d|
@@ -1321,7 +1321,7 @@ fn LetValue lx, qk, span, t:
     let parameters = GeneralizedParameters lx, qk
     if (Len parameters) == 0: VlOwned (XCall (ValueRef lx, qk), [[]]), t
     else: match lx.g.vals[qk]:
-        ? v: match ?ParamMatch v.scheme.ty, (Peel (TypeAt lx, span)), {}:
+        ? v: match ?ParamMatch v.scheme.ty, (Peel (TypeAt lx, span)), {{}}:
             ? found: VlOwned (XCallAt (ValueRef lx, qk), (Each parameters, \|((q, ignore))| GeneralizedArgument lx, qk, found[q]), [[]]), t
             nil: VlOwned (InternalBug "the generalized `let` {BareName qk} read at a type its scheme does not match"), t
         nil: VlOwned (InternalBug "the `let` {BareName qk}, which nothing declares"), t
@@ -2071,10 +2071,10 @@ fn ?SignatureResult lx, v, cspan, span, t:
         TyFn ignore, ignore, r: Peel r
         other: Peel other
     let callTy = Peel (SubstTy lx, (TypeAt lx, span))
-    let ?calleeTypes = ?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, cspan), {}
+    let ?calleeTypes = ?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, cspan), {{}}
     let lxCallee = update lx:
-        &_.subst <= Or ?calleeTypes, {}
-        &_.csubst <= {}
+        &_.subst <= Or ?calleeTypes, {{}}
+        &_.csubst <= {{}}
     let signatureTy = SubstTy lxCallee, declaredTy
     # (where the callee's type at the call does not give its type parameters, the walk is
     # made when no `Start` is left at the call)
@@ -2267,7 +2267,7 @@ fn ?TypeArgsAt lx, qk, sc, cspan:
     if Fold generics, True, \|all, g| all and HasText deduced, g: nil
     else:
         let qs = Filter sc.qs, \|q| HasText generics, (Camel q)
-        let ?m = ?InstanceMatch sc.ty, (TypeAt lx, cspan), {}
+        let ?m = ?InstanceMatch sc.ty, (TypeAt lx, cspan), {{}}
         ? (Each qs, \|q| TypeArgOf lx, qk, ?m, q)
 
 # An array literal's element, at the element type when that is an optional or a fault.
@@ -3083,7 +3083,7 @@ fn EntersLambda lx, e = match Peel (TypeAt lx, e.span):
 # live in it); holds, dynamics and events stay.
 OnlyCaptured: fn Env, [Text] -> Env
 fn OnlyCaptured env, caps = update env:
-    &_.names <= Fold (Keys env.names), {}, \|m, k| match env.names[k]:
+    &_.names <= Fold (Keys env.names), {{}}, \|m, k| match env.names[k]:
         ? (BnLocal rs, mode, t): if (HasText caps, k) or mode == Owned: Insert m, k, (BnLocal rs, mode, t) else: m
         ? b: Insert m, k, b
         nil: m

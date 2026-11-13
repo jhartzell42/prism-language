@@ -13,6 +13,6 @@ use Ui.*
     let $at = $n * 2
     let $child = $n + 10
     let $join = "{$at}/{$child}"
-    for k, ignore <- {1: unit, 2: unit}:                      # 1/[k]
+    for k, ignore <- {{1: unit, 2: unit}}:                      # 1/[k]
         Ui.Label($text=$"row {k} at {$at}")                    # 1/[k]/0
     Ui.Label($text=$join)                                     # 2

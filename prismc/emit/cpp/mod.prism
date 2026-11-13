@@ -179,17 +179,17 @@ fn Context model:
         let top = Or (SplitOn n, "::")[0], n
         if (InList names, top) or InList acc, top: acc else: Push acc, top
     let mods = Push (Append names, tops), "prelude"
-    let base = Cp(home="", mods=mods, types=preludeTypes, ctors=preludeCtors, members=nodeBase, methods={}, fieldNames={}, fields={}, pointers={}, owned={}, moveCaptures=[[]], localTypes={})
+    let base = Cp(home="", mods=mods, types=preludeTypes, ctors=preludeCtors, members=nodeBase, methods={{}}, fieldNames={{}}, fields={{}}, pointers={{}}, owned={{}}, moveCaptures=[[]], localTypes={{}})
     let withElem = AddRow (AddOutput base, model.answer), "", model.elem
     Fold model.mods, withElem, \|cp, m| Fold m.items, cp, \|c, it| AddModelItem c, m.name, it
 
 # The prelude's own types and constructors (prelude.prism beside this file).
-let preludeTypes = {"prelude::Ordering": TyInfo(kind="choice", fields=[[]], params=[[]]), "prelude::Span": TyInfo(kind="record", fields=[["file_p", "line_p", "column_p", "binding_p"]], params=[[]]), "prelude::Exception": TyInfo(kind="record", fields=[["kind_p", "message_p", "spans_p", "path_o"]], params=[[]]), "prelude::Duration": TyInfo(kind="newtype", fields=[[]], params=[[]]), "prelude::PreludeUnwrap": TyInfo(kind="tag", fields=[[]], params=[[]]), "prelude::PreludeExceptions": TyInfo(kind="tag", fields=[[]], params=[[]])}
+let preludeTypes = {{"prelude::Ordering": TyInfo(kind="choice", fields=[[]], params=[[]]), "prelude::Span": TyInfo(kind="record", fields=[["file_p", "line_p", "column_p", "binding_p"]], params=[[]]), "prelude::Exception": TyInfo(kind="record", fields=[["kind_p", "message_p", "spans_p", "path_o"]], params=[[]]), "prelude::Duration": TyInfo(kind="newtype", fields=[[]], params=[[]]), "prelude::PreludeUnwrap": TyInfo(kind="tag", fields=[[]], params=[[]]), "prelude::PreludeExceptions": TyInfo(kind="tag", fields=[[]], params=[[]])}}
 
-let preludeCtors = {"prelude::Ordering::Less": "choice", "prelude::Ordering::Equal": "choice", "prelude::Ordering::Greater": "choice"}
+let preludeCtors = {{"prelude::Ordering::Less": "choice", "prelude::Ordering::Equal": "choice", "prelude::Ordering::Greater": "choice"}}
 
 # What every node has: its path, and the runtime's methods a node is called by.
-let nodeBase = {"make": True, "push": True, "wake": True, "started": True, "deferred": True, "build": True, "swap": True, "leave": True, "patch": True, "edges": True, "release": True, "clean_up": True, "path": True, "leave_row": True, "answer": True, "document": True, "entries": True, "deliver": True, "document_moved": True, "me": True, "result_dynamic": True}
+let nodeBase = {{"make": True, "push": True, "wake": True, "started": True, "deferred": True, "build": True, "swap": True, "leave": True, "patch": True, "edges": True, "release": True, "clean_up": True, "path": True, "leave_row": True, "answer": True, "document": True, "entries": True, "deliver": True, "document_moved": True, "me": True, "result_dynamic": True}}
 
 AddModelItem: fn Cp, Text, Item -> Cp
 fn AddModelItem cp, m, it = match it:
@@ -254,7 +254,7 @@ fn InHome cp, m = update cp:
 
 WithFields: fn Cp, [((Text, OutTy))] -> Cp
 fn WithFields cp, fs = update cp:
-    &_.fields <= Fold fs, {}, \|acc, ((f, t))| Insert acc, f, t
+    &_.fields <= Fold fs, {{}}, \|acc, ((f, t))| Insert acc, f, t
 
 # ---------------------------------------------------------------------------------------
 # Types

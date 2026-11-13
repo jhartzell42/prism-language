@@ -66,7 +66,7 @@ fn InModuleAt lx, file, home, site = update lx:
 # variables are its getter's type parameters (`LetGetter`).
 WithInferredLets: unbounded fn G, TProgram -> G
 fn WithInferredLets g, tp:
-    let schemes = Fold tp.defs, {}, \|m, n| Insert m, n.name, n.scheme
+    let schemes = Fold tp.defs, {{}}, \|m, n| Insert m, n.name, n.scheme
     Fold g.defs, g, \|sofar, d| match ((d.body, schemes[d.qk])):
         ((DbLet ignore, ? scheme)): if HasKey sofar.vals, d.qk: sofar else: update sofar:
             &_.vals <= Insert &_.vals, d.qk, ValInfo(qk=d.qk, scheme=scheme, sort="let", hasSig=False, home=d.home, file=d.file, span=d.span)
@@ -77,15 +77,15 @@ fn LowerProgram srcs, trees, shown, tp, name:
     let ((declared, ignore)) = BuildG srcs, trees
     let g = WithInferredLets declared, tp
     let ((tys, apps, bs, ims)) = TypedTables tp
-    let gens = Fold tp.gens, {}, \|m, n| Insert m, (AtKey n.at), n
-    let insts = Fold tp.insts, {}, \|m, n| Insert m, (InstKey n), (Push (Or m[InstKey n], [[]]), n)
-    let quants = Fold tp.gens, {}, \|m, n| Fold (Append n.tys, n.cols), m, \|m2, q| Insert m2, q, n.name
-    let genOfQ = Fold tp.gens, {}, \|m, n| Fold (Append n.tys, n.cols), m, \|m2, q| Insert m2, q, n
-    let useInsts = Fold tp.insts, {}, \|m, n| Insert m, (AtKey n.at), n
+    let gens = Fold tp.gens, {{}}, \|m, n| Insert m, (AtKey n.at), n
+    let insts = Fold tp.insts, {{}}, \|m, n| Insert m, (InstKey n), (Push (Or m[InstKey n], [[]]), n)
+    let quants = Fold tp.gens, {{}}, \|m, n| Fold (Append n.tys, n.cols), m, \|m2, q| Insert m2, q, n.name
+    let genOfQ = Fold tp.gens, {{}}, \|m, n| Fold (Append n.tys, n.cols), m, \|m2, q| Insert m2, q, n
+    let useInsts = Fold tp.insts, {{}}, \|m, n| Insert m, (AtKey n.at), n
     let mods = NeededMods g, shown
-    let rsMods = Fold mods, {}, \|acc, m| Insert acc, m, (RustModName m)
-    let modSegments = Fold (Values rsMods), {}, \|acc, p| Fold (SplitOn p, "::"), acc, \|a2, seg| Insert a2, seg, True
-    let lx0 = Lx(g=g, tys=tys, apps=apps, lifts=(Fold tp.lifts, {}, \|m, n| Insert m, (AtKey n.at), n), binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, modSegments=modSegments, rsNames=(ValueNames g), layouts=(Layouts g), unbs=[[]], notes=[[]], globals=(GlobalNames g), inNode=False, whole=False, wholeFns={}, noCx=False, unshrunk=(Fold tp.unshrunk, {}, \|m, a| Insert m, (AtKey a), True), gens=gens, insts=insts, quants=quants, genOfQ=genOfQ, useInsts=useInsts, localIds=(Fold tp.locals, {}, \|m, n| Insert m, (AtKey n.at), n.id), useIds=(Fold tp.uses, {}, \|m, n| Insert m, (AtKey n.at), n.id), useNames=(Fold tp.uses, {}, \|m, n| Insert m, n.at.file, (Push (Or m[n.at.file], [[]]), ((n.at.span.start, n.name)))), callIds=(Fold tp.calls, {}, \|m, n| Insert m, (AtKey n.at), n.id), inlined="", subst={}, csubst={}, faults=(Fold tp.faults, {}, \|m, n| Insert m, (AtKey n.at), n.ty), plains=(Fold tp.plains, {}, \|m, at| Insert m, (AtKey at), True), shared={}, recursing=[[]], valued={}, valuedAt={}, inDefinition="")
+    let rsMods = Fold mods, {{}}, \|acc, m| Insert acc, m, (RustModName m)
+    let modSegments = Fold (Values rsMods), {{}}, \|acc, p| Fold (SplitOn p, "::"), acc, \|a2, seg| Insert a2, seg, True
+    let lx0 = Lx(g=g, tys=tys, apps=apps, lifts=(Fold tp.lifts, {{}}, \|m, n| Insert m, (AtKey n.at), n), binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, modSegments=modSegments, rsNames=(ValueNames g), layouts=(Layouts g), unbs=[[]], notes=[[]], globals=(GlobalNames g), inNode=False, whole=False, wholeFns={{}}, noCx=False, unshrunk=(Fold tp.unshrunk, {{}}, \|m, a| Insert m, (AtKey a), True), gens=gens, insts=insts, quants=quants, genOfQ=genOfQ, useInsts=useInsts, localIds=(Fold tp.locals, {{}}, \|m, n| Insert m, (AtKey n.at), n.id), useIds=(Fold tp.uses, {{}}, \|m, n| Insert m, (AtKey n.at), n.id), useNames=(Fold tp.uses, {{}}, \|m, n| Insert m, n.at.file, (Push (Or m[n.at.file], [[]]), ((n.at.span.start, n.name)))), callIds=(Fold tp.calls, {{}}, \|m, n| Insert m, (AtKey n.at), n.id), inlined="", subst={{}}, csubst={{}}, faults=(Fold tp.faults, {{}}, \|m, n| Insert m, (AtKey n.at), n.ty), plains=(Fold tp.plains, {{}}, \|m, at| Insert m, (AtKey at), True), shared={{}}, recursing=[[]], valued={{}}, valuedAt={{}}, inDefinition="")
     let ((valuedCases, valuedInstances)) = ValuedWidgets lx0
     let lx = update lx0:
         &_.unbs <= JobRoots lx0
@@ -132,14 +132,14 @@ fn WithNeeds g, srcs, tp, defs:
 # (a trait method's overload, which a target that declares before it calls must see).
 NamedMods: unbounded fn G, [Src], TProgram, [Text] -> (Text ==> [Text])
 fn NamedMods g, srcs, tp, ms:
-    let byPath = Fold (Values g.mods), {}, \|acc, info| Insert acc, (Or srcs[info.file], (MkSrc "", "")).path, info.name
-    let byFile = Fold (Values g.mods), {}, \|acc, info| Insert acc, info.file, info.name
-    let solved = Fold tp.impls, {}, \|acc, n| match byFile[n.at.file]:
+    let byPath = Fold (Values g.mods), {{}}, \|acc, info| Insert acc, (Or srcs[info.file], (MkSrc "", "")).path, info.name
+    let byFile = Fold (Values g.mods), {{}}, \|acc, info| Insert acc, info.file, info.name
+    let solved = Fold tp.impls, {{}}, \|acc, n| match byFile[n.at.file]:
         ? site: match byPath[ImplPath n.how]:
             ? home: if home == site or HasText (Or acc[site], [[]]), home: acc else: Insert acc, site, (Push (Or acc[site], [[]]), home)
             nil: acc
         nil: acc
-    Fold ms, {}, \|acc, m| match g.mods[m]:
+    Fold ms, {{}}, \|acc, m| match g.mods[m]:
         ? info:
             let named = Append (Each (Filter tp.globals, \|n| n.at.file == info.file), \|n| n.target), (TypesNamedIn tp, info.file)
             let qualified = Filter ms, \|o| o != m and o != "" and Fold named, False, \|f, k| f or (OwnerOf k) == o
@@ -182,7 +182,7 @@ fn ImplPath how:
 # choice holds its variant by value), which a type holding one by
 # value needs complete.
 ValueTypes: fn [ModDef] -> (Text ==> Bool)
-fn ValueTypes defs = Fold defs, {}, \|acc, d| Fold d.items, acc, \|a, it| match it:
+fn ValueTypes defs = Fold defs, {{}}, \|acc, d| Fold d.items, acc, \|a, it| match it:
     ItType t: Insert a, "{d.name}::{t.name}", True
     ItTag t: Insert a, "{d.name}::{t.name}", True
     otherwise: a
@@ -242,8 +242,8 @@ fn NamedIn names, home, t = match t:
 # order.
 WithGroups: unbounded fn [ModDef] -> [ModDef]
 fn WithGroups defs:
-    let edges = Fold defs, {}, \|m, d| Insert m, d.name, d.complete
-    let reach = Fold defs, {}, \|m, d| Insert m, d.name, (ReachedBy edges, [[d.name]], [[]])
+    let edges = Fold defs, {{}}, \|m, d| Insert m, d.name, d.complete
+    let reach = Fold defs, {{}}, \|m, d| Insert m, d.name, (ReachedBy edges, [[d.name]], [[]])
     Each defs, \|d|
         let mine = Or reach[d.name], [[]]
         update d:
@@ -296,7 +296,7 @@ fn RootWidgets lx:
 # (`?ValuedTypes`). A widget function parameter is a function value of the row, and the
 # widget its argument names is read as a value too (`WidgetNamed`).
 ValuedWidgets: unbounded fn Lx -> (((Text ==> [((Text, Pa, [Cc], [Ex]))]), (Text ==> [((Text, [((Text, Ty))]))])))
-fn ValuedWidgets lx = Fold lx.g.defs, (({}, {})), \|acc, d|
+fn ValuedWidgets lx = Fold lx.g.defs, (({{}}, {{}})), \|acc, d|
     let lxd = update (InModule lx, d.file, d.home):
         &_.inDefinition <= InstanceKey d
     let held = Fold (DefExprs d), [[]], \|sites, e| Append sites, (ValueWidgetsIn lxd, e)
@@ -327,7 +327,7 @@ fn ?ValuedTypes lx, v, calleeSpan, args:
         let ptys = match v.scheme.ty:
             TyFn ignore, ps, ignore: ps
             otherwise: [[]]
-        let fromArguments = Fold (Range0 (Len ptys)), {}, \|m, i| match args[i]:
+        let fromArguments = Fold (Range0 (Len ptys)), {{}}, \|m, i| match args[i]:
             ? a: Or (?ParamInstance (Or ptys[i], TyErr), (TypeAt lx, a.value.span), m), m
             nil: m
         let found = if Fold rigids, True, \|all, q| all and HasKey fromArguments, q: fromArguments else: Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, calleeSpan), fromArguments), fromArguments
@@ -380,7 +380,7 @@ DefInstancesOutput: unbounded fn Lx, Text -> InstancesOutput
 fn DefInstancesOutput lxAt, wanted:
     # the types as the checker wrote them, under no instantiation
     let lx = update lxAt:
-        &_.subst <= {}
+        &_.subst <= {{}}
     let definitions = Filter lx.g.defs, \|d| (InstanceKey d) == wanted
     let rigids = Fold definitions, [[]], \|acc, d| UnionTexts acc, (DefinitionRigids lx, d)
     if (Len definitions) == 0: NoDefinition
@@ -463,10 +463,10 @@ fn InstanceUses lx = Fold lx.g.defs, [[]], \|acc, d|
                 let ptys = match v.scheme.ty:
                     TyFn ignore, ps, ignore: ps
                     otherwise: [[]]
-                let fromArguments = Fold (Range0 (Len ptys)), {}, \|m, i| match args[i]:
+                let fromArguments = Fold (Range0 (Len ptys)), {{}}, \|m, i| match args[i]:
                     ? a: Or (?ParamInstance (Or ptys[i], TyErr), (TypeAt lxd, a.value.span), m), m
                     nil: m
-                let found = Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lxd, c.span), {}), fromArguments
+                let found = Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lxd, c.span), {{}}), fromArguments
                 (((Push uses, (UseOfDefinition user, (CalleeKey lxd, c), found)), (Push spans, c.span.start)))
             otherwise: ((uses, spans))
         otherwise: ((uses, spans))
@@ -478,8 +478,8 @@ fn InstanceUses lx = Fold lx.g.defs, [[]], \|acc, d|
             EName n:
                 let ((?named, ignore)) = ResolveValue lx.g, lxd.home, n
                 match lx.g.vals[Or ?named, ""]:
-                    ? v if v.sort == "method" and (Len (MethodOwnRigids lx, (Or (Each v.scheme.bounds, \|((ignore, bound))| bound)[0], ""), (Or ?named, ""))) > 0: Push solved, (UseOfMethod user, (Or ?named, ""), (Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lxd, x.span), {}), {}))
-                    ? v if (Len (RigidsIn v.scheme.ty)) > 0 and v.sort != "method" and not (HasNat callees, x.span.start): Push solved, (UseOfDefinition user, (Or ?named, ""), (Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lxd, x.span), {}), {}))
+                    ? v if v.sort == "method" and (Len (MethodOwnRigids lx, (Or (Each v.scheme.bounds, \|((ignore, bound))| bound)[0], ""), (Or ?named, ""))) > 0: Push solved, (UseOfMethod user, (Or ?named, ""), (Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lxd, x.span), {{}}), {{}}))
+                    ? v if (Len (RigidsIn v.scheme.ty)) > 0 and v.sort != "method" and not (HasNat callees, x.span.start): Push solved, (UseOfDefinition user, (Or ?named, ""), (Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lxd, x.span), {{}}), {{}}))
                     otherwise: solved
             otherwise: solved
 
@@ -613,8 +613,8 @@ fn ?GrowsFrom lx, all, ?at, definition, types, ?composed = match ?at:
             let ?further = match ((?composed, above.?step)):
                 ((? composed, ? step)):
                     let lxStep = update lx:
-                        &_.subst <= Fold step, {}, \|m, ((q, t))| Insert m, q, t
-                        &_.csubst <= {}
+                        &_.subst <= Fold step, {{}}, \|m, ((q, t))| Insert m, q, t
+                        &_.csubst <= {{}}
                     ? (Each composed, \|((q, t))| ((q, (SubstTyIn lxStep, t))))
                 otherwise: nil
             match ?grows:
@@ -687,12 +687,12 @@ fn TypeFormer t = match t:
 ?UseTargets: unbounded fn Lx, InstanceUse, [((Text, Ty))] -> ?[((Text, [((Text, Ty))], ?[((Text, Ty))]))]
 fn ?UseTargets lx, site, types:
     let lxu = update lx:
-        &_.subst <= Fold types, {}, \|m, ((q, t))| Insert m, q, t
+        &_.subst <= Fold types, {{}}, \|m, ((q, t))| Insert m, q, t
     match site:
         UseOfDefinition ignore, target, found: match lx.g.vals[target]:
             ? v:
                 let rigids = RigidsIn v.scheme.ty
-                let read = Fold rigids, {}, \|m, q| match found[q]:
+                let read = Fold rigids, {{}}, \|m, q| match found[q]:
                     ? t: Insert m, q, (SubstTy lxu, t)
                     nil: m
                 let written = Fold (SortTexts rigids), [[]], \|acc, q| match found[q]:
@@ -713,7 +713,7 @@ fn ?UseTargets lx, site, types:
             ? v:
                 let cls = Or (Each v.scheme.bounds, \|((ignore, bound))| bound)[0], ""
                 let own = MethodOwnRigids lx, cls, methodQk
-                let ownRead = Fold own, {}, \|m, q| match found[q]:
+                let ownRead = Fold own, {{}}, \|m, q| match found[q]:
                     ? t: Insert m, q, (SubstTy lxu, t)
                     nil: m
                 let ?ownTypes = ?ClosedTypes own, ownRead
@@ -733,7 +733,7 @@ fn ?UseTargets lx, site, types:
 # trait's default where that impl leaves the method unwritten, at the type and the
 # method's own types.
 MethodTargets: unbounded fn Lx, Text, Text, Ty, [((Text, Ty))] -> [((Text, [((Text, Ty))]))]
-fn MethodTargets lx, cls, methodQk, ty, ownTypes = Fold (Or lx.g.impls[cls], [[]]), [[]], \|acc, im| match ?ParamMatch (Unrigid im.head), ty, {}:
+fn MethodTargets lx, cls, methodQk, ty, ownTypes = Fold (Or lx.g.impls[cls], [[]]), [[]], \|acc, im| match ?ParamMatch (Unrigid im.head), ty, {{}}:
     nil: acc
     ? matched:
         let taken = Each (SortTexts im.qs), \|q| ((q, (Or matched[q], TyErr)))
@@ -759,7 +759,7 @@ fn InstanceTypes outer, own:
 # bound the impl puts on a parameter, at that parameter's type (a part of the type, so
 # this ends).
 ImplTargets: unbounded fn Lx, Text, Ty -> [((Text, [((Text, Ty))]))]
-fn ImplTargets lx, cls, ty = Fold (Or lx.g.impls[cls], [[]]), [[]], \|acc, im| match ?ParamMatch (Unrigid im.head), ty, {}:
+fn ImplTargets lx, cls, ty = Fold (Or lx.g.impls[cls], [[]]), [[]], \|acc, im| match ?ParamMatch (Unrigid im.head), ty, {{}}:
     nil: acc
     ? matched:
         let taken = Each (SortTexts im.qs), \|q| ((q, (Or matched[q], TyErr)))
@@ -1012,7 +1012,7 @@ ValuedRowsIn: unbounded fn Lx, Text, Text, ?Block, ValInfo, Bool -> [Item]
 fn ValuedRowsIn lx, qk, stem, ?body, v, hosted:
     let Named = \|i| if hosted: HostedValuedRow "{stem}{i}" else: "{stem}{i}"
     let ?hostedBy = if hosted: ? sharedMoved else: nil
-    let wx0 = NewWx lx, "{stem}s", [[]], [[]], [[]], [[]], {}, nodeHooks, [[]], ?hostedBy
+    let wx0 = NewWx lx, "{stem}s", [[]], [[]], [[]], [[]], {{}}, nodeHooks, [[]], ?hostedBy
     let clauses = ClausesOf lx.g, qk
     let rows = match ?body:
         ? b: if (Len clauses) > 0: [[]] else: [[(ArmRowOf wx0, emptyEnv, lx, [[]], [[]], nil, b, (Named 0), "valued", True, False, OutUnit, [[]], [[]], [[]], True)]]
@@ -1360,7 +1360,7 @@ fn TyDefs lx, ti:
 # by rounds that each add a parameter or stop (the parameters are finitely many).
 KeyedParameters: unbounded fn Lx, Text -> [Text]
 fn KeyedParameters lx, name = match lx.g.types[name]:
-    ? ti: if (Len ti.params) == 0: [[]] else: Or (KeyedRounds lx, {})[name], [[]]
+    ? ti: if (Len ti.params) == 0: [[]] else: Or (KeyedRounds lx, {{}})[name], [[]]
     nil: [[]]
 
 KeyedRounds: unbounded fn Lx, (Text ==> [Text]) -> (Text ==> [Text])

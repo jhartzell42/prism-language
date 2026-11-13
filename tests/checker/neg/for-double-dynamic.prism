@@ -6,7 +6,7 @@ emit Ui.*
 @rows: @unit
 @rows:
     !go <- @started
-    $m <- {0: "a"} then $m on !go
+    $m <- {{0: "a"}} then $m on !go
     $each <- @PerKey $m
     for k, $$d <- $each:
         $v <- @Flatten $$d

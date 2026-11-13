@@ -69,7 +69,7 @@ fn Instantiate st, sc, span:
 # order; a row is given as a type `TyElemAny row`.
 InstantiateWith: unbounded fn St, Scheme, Range, [Ty] -> ((Ty, St, Inst))
 fn InstantiateWith st, sc, span, explicit:
-    let ((tys, st1)) = Fold (Range0 (Len sc.qs)), (({}, st)), \|((m, s)), i|
+    let ((tys, st1)) = Fold (Range0 (Len sc.qs)), (({{}}, st)), \|((m, s)), i|
         let q = Or sc.qs[i], ""
         match explicit[i]:
             ? g: (((Insert m, q, g), s))
@@ -77,10 +77,10 @@ fn InstantiateWith st, sc, span, explicit:
                 let ((v, s2)) = FreshVar s, (HasText sc.plainQs, q), ""
                 (((Insert m, q, v), s2))
     let nq = Len sc.qs
-    let ((rows, st2)) = Fold sc.rqs, (({}, st1)), \|((m, s)), q|
+    let ((rows, st2)) = Fold sc.rqs, (({{}}, st1)), \|((m, s)), q|
         let ((rw, s2)) = FreshRow s, (LacksIn sc.ty, q)
         (((Insert m, q, rw.tail), (NameRow s2, rw.tail, q)))
-    let ((cols, st2b)) = Fold sc.cqs, (({}, st2)), \|((m, s)), q|
+    let ((cols, st2b)) = Fold sc.cqs, (({{}}, st2)), \|((m, s)), q|
         let ((c, s2)) = FreshCol s
         (((Insert m, q, c), s2))
     let inst = Inst(tys=tys, rows=rows, cols=cols)
@@ -122,19 +122,19 @@ fn ApartName q, implQs, ownQs = if HasText implQs, q: "{q}{Join (Append implQs, 
 SchemeApart: unbounded fn Scheme, [Text] -> Scheme
 fn SchemeApart sc, implQs:
     let own = sc.qs
-    let tys = Fold own, {}, \|m, q| Insert m, q, (TyQ (ApartName q, implQs, own))
+    let tys = Fold own, {{}}, \|m, q| Insert m, q, (TyQ (ApartName q, implQs, own))
     update sc:
         &_.qs <= Each own, \|q| ApartName q, implQs, own
         &_.plainQs <= Each &_.plainQs, \|q| ApartName q, implQs, own
         &_.bounds <= Each &_.bounds, \|((q, cls))| (((ApartName q, implQs, own), cls))
-        &_.ty <= SubstQ Inst(tys=tys, rows={}, cols={}), &_.ty
+        &_.ty <= SubstQ Inst(tys=tys, rows={{}}, cols={{}}), &_.ty
 
 # A scheme whose quantified variables are rigid: a signature as its body sees it.
 Skolemize: unbounded fn Scheme -> Ty
 fn Skolemize sc:
-    let tys = Fold sc.qs, {}, \|m, q| Insert m, q, (TyRigid q)
-    let rows = Fold sc.rqs, {}, \|m, q| Insert m, q, (TlRigid q)
-    let cols = Fold sc.cqs, {}, \|m, q| Insert m, q, (CRigid q)
+    let tys = Fold sc.qs, {{}}, \|m, q| Insert m, q, (TyRigid q)
+    let rows = Fold sc.rqs, {{}}, \|m, q| Insert m, q, (TlRigid q)
+    let cols = Fold sc.cqs, {{}}, \|m, q| Insert m, q, (CRigid q)
     SubstQ Inst(tys=tys, rows=rows, cols=cols), sc.ty
 
 # Generalize a type over the variables above the current level (a local `let`, ch. 5):
@@ -169,8 +169,8 @@ fn GeneralizeIn st0, t, keep, bounds, own:
     let z = Zonk st, t
     let vs = Filter (FreeVars st, z), \|v| (InfoOf st, v).level > st.level and not (HasNat keep, v)
     let cvs = Filter (FreeColVars st, z), \|v| (InfoOf st, v).level > st.level
-    let tys = Fold vs, {}, \|m, v| Insert m, v, (TyQ "'{v}")
-    let cols = Fold cvs, {}, \|m, v| Insert m, v, (CQ "'c{v}")
+    let tys = Fold vs, {{}}, \|m, v| Insert m, v, (TyQ "'{v}")
+    let cols = Fold cvs, {{}}, \|m, v| Insert m, v, (CQ "'c{v}")
     let named = SubstFlex tys, cols, z
     let plains = Each (Filter vs, \|v| (InfoOf st, v).plain), \|v| "'{v}"
     let bs = Each (Filter bounds, \|((v, ignore))| HasNat vs, v), \|((v, tr))| (("'{v}", tr))

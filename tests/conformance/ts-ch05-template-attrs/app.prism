@@ -8,7 +8,7 @@ Pair: fn Text, Text -> Text
 fn Pair left, right = "{left} before {right}"
 
 Both: fn Text, Text -> Text
-fn Both a, b = inline_text <t><@Pair right={{b}} left={{a}}/></t>
+fn Both a, b = inline_text <t><@Pair right=<<b>> left=<<a>>/></t>
 
 @shown: @unit
 @shown:

@@ -22,8 +22,8 @@ fn Pick n, xs, ys = match n:
     let xs = [[1, 2]]+
     let ys = [[1, 2]]
     let short = [[7]]
-    let m = {1: "a"}+
-    let n = {1: "a"}
+    let m = {{1: "a"}}+
+    let n = {{1: "a"}}
     let left = if xs == ys: "same" else: "differs"
     let right = if ys == xs: "same" else: "differs"
     let other = if xs != short: "differs" else: "same"

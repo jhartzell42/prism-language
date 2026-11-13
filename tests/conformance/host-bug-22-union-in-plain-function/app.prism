@@ -136,12 +136,12 @@ fn @Table $state, !responses:
     !fayRemoved <- Ui.Button($label=$"fay is removed")                     # 7
     !kayJoins <- Ui.Button($label=$"kay joins")                            # 8
     !rolesJoin <- Ui.Button($label=$"dee and kay join, eager at 4")        # 9
-    let !seatTellers = ({bob: Eager 2}) on !bobEager <| ({dee: Eager 3, eve: Eager 3}) on !pairJoins <| ({dee: Eager 2, eve: Eager 2, gus: Eager 2}) on !threeJoin <| ({fay: Eager 1}) on !fayJoins <| ({dee: Eager 4}) on !rolesJoin
+    let !seatTellers = ({{bob: Eager 2}}) on !bobEager <| ({{dee: Eager 3, eve: Eager 3}}) on !pairJoins <| ({{dee: Eager 2, eve: Eager 2, gus: Eager 2}}) on !threeJoin <| ({{fay: Eager 1}}) on !fayJoins <| ({{dee: Eager 4}}) on !rolesJoin
     let !removeTellers = [[ada]] on !adaRemoved <| [[fay]] on !fayRemoved
-    let !seatKeepers = ({kay: Person}) on !kayJoins <| ({kay: Eager 4}) on !rolesJoin
-    !fromTellers <- @HostTellers {ada: Person, bob: Person}, !seatTellers, !removeTellers, @Teller, $state, !responses   # 10
-    !fromKeepers <- @HostKeepers {}, !seatKeepers, never, @Keeper, $state, !responses        # 11
-    @HostViewers {}, ({cy: unit}) on !cyJoins, [[cy]] on !cyRemoved, @Watcher, $state        # 12
+    let !seatKeepers = ({{kay: Person}}) on !kayJoins <| ({{kay: Eager 4}}) on !rolesJoin
+    !fromTellers <- @HostTellers {{ada: Person, bob: Person}}, !seatTellers, !removeTellers, @Teller, $state, !responses   # 10
+    !fromKeepers <- @HostKeepers {{}}, !seatKeepers, never, @Keeper, $state, !responses        # 11
+    @HostViewers {{}}, ({{cy: unit}}) on !cyJoins, [[cy]] on !cyRemoved, @Watcher, $state        # 12
     @ !Together !fromTellers, !fromKeepers
 
 # One tally in memory, seated by the table, its requests in the default order.

@@ -21,7 +21,7 @@ let black = Player Black
 # both players at boards
 @BoardSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.*
 fn @BoardSeats $state, !responses:
-    !asked <- @HostPlayers {white: unit, black: unit}, never, never, @BoardPlayer, $state, !responses
+    !asked <- @HostPlayers {{white: unit, black: unit}}, never, never, @BoardPlayer, $state, !responses
     @ !asked
 
 @boards: @unit
@@ -41,10 +41,10 @@ fn @BoardSeats $state, !responses:
 fn @WatchedSeats $state, !responses:
     !asked <- @Window ($ "Chess"), (Extent 1400.0, 760.0), @widget:
         !fromBoards <- @Row 16.0, @widget:
-            !fromSeats <- @HostPlayers {white: unit, black: unit}, never, never, @BoardPlayer, $state, !responses
+            !fromSeats <- @HostPlayers {{white: unit, black: unit}}, never, never, @BoardPlayer, $state, !responses
             @ !fromSeats
         @ !fromBoards
-    @HostSpectators {(Spectator "ada"): unit}, never, never, @LineSpectator, $state
+    @HostSpectators {{(Spectator "ada"): unit}}, never, never, @LineSpectator, $state
     @ !asked
 
 @watchedWindow: @unit
@@ -56,9 +56,9 @@ fn @WatchedSeats $state, !responses:
 @AgainstTerminalSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.* | Console.*
 fn @AgainstTerminalSeats $state, !responses:
     !fromBoard <- @Window ($ "Chess"), (Extent 700.0, 760.0), @widget:
-        !fromSeat <- @HostPlayers {white: unit}, never, never, @BoardPlayer, $state, !responses
+        !fromSeat <- @HostPlayers {{white: unit}}, never, never, @BoardPlayer, $state, !responses
         @ !fromSeat
-    !fromTerminal <- @HostPlayers {black: unit}, never, never, @LinePlayer, $state, !responses
+    !fromTerminal <- @HostPlayers {{black: unit}}, never, never, @LinePlayer, $state, !responses
     @ Together (!Union (One 0, !fromBoard), (One 1, !fromTerminal))
 
 @againstTerminal: @unit

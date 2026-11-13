@@ -51,7 +51,7 @@ fn Made n = [[Error(kind=Prelude.NotANumber, message="k{n}")]]
 @main:
     let xs = [[Error(kind=Prelude.NotANumber, message="a")]]
     let ?~o = ? Error(kind=Prelude.NotANumber, message="o")
-    let m = {1: Error(kind=Prelude.NotANumber, message="m")}
+    let m = {{1: Error(kind=Prelude.NotANumber, message="m")}}
     let b = Box(item=Error(kind=Prelude.NotANumber, message="b"))
     let r = Has Error(kind=Prelude.NotANumber, message="r")
     let F = \|n| Error(kind=Prelude.NotANumber, message="l{n}")

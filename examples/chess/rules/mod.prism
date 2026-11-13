@@ -120,7 +120,7 @@ fn Opening board, ((file, man)):
 
 let allCorners = [[(Square 0, 0), (Square 7, 0), (Square 0, 7), (Square 7, 7)]]
 
-let start = Position(board=(Fold backRank, {}, Opening), turn=White, corners=allCorners, ?passed=nil)
+let start = Position(board=(Fold backRank, {{}}, Opening), turn=White, corners=allCorners, ?passed=nil)
 
 ?At: fn Position, Square -> ?Piece
 fn ?At position, square = position.board[square]

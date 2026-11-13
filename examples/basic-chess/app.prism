@@ -41,7 +41,7 @@ IsDark: fn Sq -> Bool
 fn IsDark sq = (sq.file + sq.rank) mod 2 == 0
 
 # whether each square is dark, by its spot
-let darkness = Fold squares, {}, \|m, sq| Insert m, (SpotOf sq), (IsDark sq)
+let darkness = Fold squares, {{}}, \|m, sq| Insert m, (SpotOf sq), (IsDark sq)
 
 # the selected square is yellow
 Tint: fn Paint, Sq, ?Sq -> Paint
@@ -116,7 +116,7 @@ fn Filled template, marker, value:
 
 # ---- colours as `#rrggbb`
 
-let hexDigits = {"0": 0, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "a": 10, "b": 11, "c": 12, "d": 13, "e": 14, "f": 15}
+let hexDigits = {{"0": 0, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "a": 10, "b": 11, "c": 12, "d": 13, "e": 14, "f": 15}}
 
 # two hex digits at a cursor, and the cursor after them
 ?HexByte: fn Cursor -> ?((Nat, Cursor))
@@ -224,7 +224,7 @@ fn MoveLines r:
     let current = Or ((Or (r.shown -? 1), 0) / 2), 0
     let top = Or ((current + 1) -? listRows), 0
     let count = Min listRows, (Or (lines -? top), 0)
-    Fold (Indices count), {}, \|m, slot| Insert m, slot, (MoveLine r, top + slot)
+    Fold (Indices count), {{}}, \|m, slot| Insert m, slot, (MoveLine r, top + slot)
 
 # ---------------------------------------------------------------------------
 # What a press asks for
@@ -252,7 +252,7 @@ fn ?TitleOf c = match c:
     otherwise: nil
 
 # the panel's buttons, in this order
-let toolbar = {GoBack: unit, GoForward: unit, StartOver: unit, OpenSettings: unit}
+let toolbar = {{GoBack: unit, GoForward: unit, StartOver: unit, OpenSettings: unit}}
 
 ActionLabel: fn Copy, Action -> Text
 fn ActionLabel c, GoBack = c.back

@@ -192,7 +192,7 @@ fn KidsOf e = match e:
     Pane.Shown($children=$cs, ..): $cs
     Pane.Frame($children=$cs, ..): $cs
     Pane.Grid($children=$cs, ..): $cs
-    otherwise: {}
+    otherwise: {{}}
 
 # a text split at its spaces, a character at a time, walked with a cursor
 Words: fn Text -> [Text]
@@ -222,10 +222,10 @@ fn Joined ws, sep = Fold ws, "", \|acc, w| if acc == "": w else: "{acc}{sep}{w}"
 # a label's words and the space; a button's label; an input's text and its text to the cursor
 TextsOf: fn Elem -> (Text ==> unit)
 fn TextsOf e = match e:
-    Pane.Label($text=$t): Fold (Words $t), {" ": unit}, \|a, w| Insert a, w, unit
-    Pane.Button($label=$l): {$l: unit}
-    Pane.TextInput($text=$t, $cursor=$c, ..): Insert {$t: unit}, (TextBefore $t, $c), unit
-    otherwise: {}
+    Pane.Label($text=$t): Fold (Words $t), {{" ": unit}}, \|a, w| Insert a, w, unit
+    Pane.Button($label=$l): {{$l: unit}}
+    Pane.TextInput($text=$t, $cursor=$c, ..): Insert {{$t: unit}}, (TextBefore $t, $c), unit
+    otherwise: {{}}
 
 # ---- labels, wrapped by words at the room's width
 

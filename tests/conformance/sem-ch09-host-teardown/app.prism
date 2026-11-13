@@ -11,7 +11,7 @@ use Ui.*
 @child: @unit
 @child:
     !drop <- Ui.TextInput(name="drop", $text=$"")                 # 0, forwarded: any key drops row 2
-    $names <- {1: "one", 2: "two"} then Remove $names, 2 on !drop
+    $names <- {{1: "one", 2: "two"}} then Remove $names, 2 on !drop
     for k, $name <- $names:                                      # 1/[k]
         !hit <- Ui.Button($label=$name)                           # 1/[k]/0, answered by the host's !tap
         $n <- 0 then $n + 1 on !hit

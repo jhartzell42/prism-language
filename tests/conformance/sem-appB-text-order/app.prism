@@ -4,4 +4,4 @@
 # A map's keys come in the texts' order.
 test mod Tests
 Sorted: fn [Text] -> [Text]
-fn Sorted ts = Keys (Fold ts, {}, \|m, t| Insert m, t, True)
+fn Sorted ts = Keys (Fold ts, {{}}, \|m, t| Insert m, t, True)

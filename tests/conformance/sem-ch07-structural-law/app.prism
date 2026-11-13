@@ -13,7 +13,7 @@ use Ui.*
 @child: @unit
 @child:
     !add <- Ui.Button($label=$"add")                                          # 0
-    $names <- {1: "k1"} then Insert $names, (Size $names) + 1, "k{(Size $names) + 1}" on !add
+    $names <- {{1: "k1"}} then Insert $names, (Size $names) + 1, "k{(Size $names) + 1}" on !add
     for k, $name <- $names:                                                  # 1/[k]
         Ui.Label($text=$name)                                                 # 1/[k]/0
 
@@ -29,7 +29,7 @@ use Ui.*
 @gathered: @unit
 @gathered:
     !add <- Ui.Button($label=$"add")                                          # 0
-    $names <- {1: "one"} then Insert $names, (Size $names) + 1, "more" on !add
+    $names <- {{1: "one"}} then Insert $names, (Size $names) + 1, "more" on !add
     $lens <- for k, $name <- $names:                                         # 1/[k]
         Ui.Label($text=$name)                                                 # 1/[k]/0
         @ Len $name

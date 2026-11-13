@@ -22,7 +22,7 @@ fn Count n:
     let m = l + 1
     let o = m + 1
     let ?map = ?Div o, 2
-    let seen = {"one": 1, "two": 2}
+    let seen = {{"one": 1, "two": 2}}
     (Or ?map, 0) + (Len seen)
 
 @shown: @unit

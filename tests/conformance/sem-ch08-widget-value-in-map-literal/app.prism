@@ -18,4 +18,4 @@ Count: fn (Text ==> @unit) -> Nat
 fn Count m = Size m
 
 @shown:
-    Ui.Label($text=$"entries {Count {"a": @Inner, "b": @Labelled "x"}}")     # 0
+    Ui.Label($text=$"entries {Count {{"a": @Inner, "b": @Labelled "x"}}}")     # 0

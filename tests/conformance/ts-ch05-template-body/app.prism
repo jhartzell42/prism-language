@@ -11,7 +11,7 @@ fn Card 0, (?note), body = "[empty] {body}{Or ?note, ""}"
 fn Card depth, ?note, body = "[{depth}] {body}{Or ?note, ""}"
 
 Page: fn Nat -> Text
-fn Page n = inline_text <t><@Card note={{? " (see below)"}} depth={{n}}>body text</@Card></t>
+fn Page n = inline_text <t><@Card note=<<? " (see below)">> depth=<<n>>>body text</@Card></t>
 
 @shown: @unit
 @shown:

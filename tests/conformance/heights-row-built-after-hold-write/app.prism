@@ -22,7 +22,7 @@ fn ?Pick b, @w = if b: ? @w else: nil
 @page:
     !bump <- Ui.Button($label=$"bump")                           # 0
     !grow <- Ui.Button($label=$"grow")                           # 1
-    $names <- {"a": unit} then (Insert $names, "b", unit) on !grow
+    $names <- {{"a": unit}} then (Insert $names, "b", unit) on !grow
     match ?Pick True, (@Counter !bump):                          # 2
         ? @!t:
             !counted <- @!t

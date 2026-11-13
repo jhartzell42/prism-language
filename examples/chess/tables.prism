@@ -22,7 +22,7 @@ let bea = Spectator "bea"
 # ---- the hot seat in a window: two boards side by side
 
 @BoardSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.*
-fn @BoardSeats $state, !responses = @HostPlayers {white: (@BoardPlayer white), black: (@BoardPlayer black)}, never, never, $state, !responses
+fn @BoardSeats $state, !responses = @HostPlayers {{white: (@BoardPlayer white), black: (@BoardPlayer black)}}, never, never, $state, !responses
 
 @boards: @unit emit Pane.* | Gui.*
 @boards:
@@ -33,8 +33,8 @@ fn @BoardSeats $state, !responses = @HostPlayers {white: (@BoardPlayer white), b
 # window to the root.
 @WatchedSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.* | Console.*
 fn @WatchedSeats $state, !responses:
-    !asked <- @HostPlayers {white: (@BoardPlayer white), black: (@BoardPlayer black)}, never, never, $state, !responses
-    @HostSpectators {ada: (@LineSpectator ada)}, never, never, $state
+    !asked <- @HostPlayers {{white: (@BoardPlayer white), black: (@BoardPlayer black)}}, never, never, $state, !responses
+    @HostSpectators {{ada: (@LineSpectator ada)}}, never, never, $state
     @ !asked
 
 @watched: @unit emit Pane.* | Gui.* | Console.*
@@ -46,7 +46,7 @@ fn @WatchedSeats $state, !responses:
 # White at a board in a window, Black at a terminal: one role, two ways of sitting, in
 # one map of seats.
 @AgainstTerminalSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.* | Console.*
-fn @AgainstTerminalSeats $state, !responses = @HostPlayers {white: (@BoardPlayer white), black: (@LinePlayer black)}, never, never, $state, !responses
+fn @AgainstTerminalSeats $state, !responses = @HostPlayers {{white: (@BoardPlayer white), black: (@LinePlayer black)}}, never, never, $state, !responses
 
 @againstTerminal: @unit emit Pane.* | Gui.* | Console.*
 @againstTerminal:
@@ -57,8 +57,8 @@ fn @AgainstTerminalSeats $state, !responses = @HostPlayers {white: (@BoardPlayer
 
 @TerminalSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Console.*
 fn @TerminalSeats $state, !responses:
-    !asked <- @HostPlayers {white: (@LinePlayer white), black: (@LinePlayer black)}, never, never, $state, !responses   # 0, 1
-    @HostSpectators {ada: (@LineSpectator ada)}, never, never, $state                                                  # 2, 3
+    !asked <- @HostPlayers {{white: (@LinePlayer white), black: (@LinePlayer black)}}, never, never, $state, !responses   # 0, 1
+    @HostSpectators {{ada: (@LineSpectator ada)}}, never, never, $state                                                  # 2, 3
     @ !asked
 
 @terminals: @unit emit Console.*
@@ -70,8 +70,8 @@ fn @TerminalSeats $state, !responses:
 
 @TextSeats: fn !(Spectator ==> (@unit emit Ui.* | Seat.* | Watch.*)), $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Ui.*
 fn @TextSeats !joins, $state, !responses:
-    !asked <- @HostPlayers {white: (@TextPlayer white), black: (@TextPlayer black)}, never, never, $state, !responses   # 1, 2
-    @HostSpectators {ada: (@SpectatorView ada)}, !joins, never, $state                                                 # 3, 4
+    !asked <- @HostPlayers {{white: (@TextPlayer white), black: (@TextPlayer black)}}, never, never, $state, !responses   # 1, 2
+    @HostSpectators {{ada: (@SpectatorView ada)}}, !joins, never, $state                                                 # 3, 4
     @ !asked
 
 # The table's button is the program's own; the seats function is the block's, and reads
@@ -80,7 +80,7 @@ fn @TextSeats !joins, $state, !responses:
 @hotSeat:
     !beaJoins <- Ui.Button($label=$"bea joins")                                                  # 0
     @Seats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Ui.*
-    fn @Seats $state, !responses = @TextSeats ({bea: (@SpectatorView bea)}) on !beaJoins, $state, !responses
+    fn @Seats $state, !responses = @TextSeats ({{bea: (@SpectatorView bea)}}) on !beaJoins, $state, !responses
     @InMemory fresh, @Seats
 
 # ---- scripted players and a spectator
@@ -91,8 +91,8 @@ fn Plays moves = InTurn (Each moves, \|move| Play move)
 
 @ScriptedSeats: fn Script, Script, $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Ui.*
 fn @ScriptedSeats whiteScript, blackScript, $state, !responses:
-    !asked <- @HostPlayers {white: (@ScriptedPlayer white, whiteScript), black: (@ScriptedPlayer black, blackScript)}, never, never, $state, !responses   # 0, 1
-    @HostSpectators {ada: (@SpectatorView ada)}, never, never, $state                                                                                   # 2, 3
+    !asked <- @HostPlayers {{white: (@ScriptedPlayer white, whiteScript), black: (@ScriptedPlayer black, blackScript)}}, never, never, $state, !responses   # 0, 1
+    @HostSpectators {{ada: (@SpectatorView ada)}}, never, never, $state                                                                                   # 2, 3
     @ !asked
 
 @Scripted: fn Script, Script -> @unit emit Ui.*

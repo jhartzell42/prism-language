@@ -11,6 +11,6 @@ use Ui.*
     let base = 10
     fn Shifted k = k + base
     !more <- Ui.Button($label=$"more")                           # 0
-    $names <- {1: "ale"} then Insert $names, 2, "bun" on !more
+    $names <- {{1: "ale"}} then Insert $names, 2, "bun" on !more
     for k, $name <- $names:                                      # 1/[k]
         Ui.Label($text=$"{$name} {Shifted k}")                   # 1/[k]/0

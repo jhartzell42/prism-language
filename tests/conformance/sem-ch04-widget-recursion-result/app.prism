@@ -26,6 +26,6 @@ fn @Count $t:
 @counted: @unit
 @counted:
     !grow <- Ui.Button($label=$"grow")                            # 0
-    $t <- (Tree "a", {0: (Tree "b", {})}) then (Tree "a", {0: (Tree "b", {0: (Tree "c", {})})}) on !grow
+    $t <- (Tree "a", {{0: (Tree "b", {{}})}}) then (Tree "a", {{0: (Tree "b", {{0: (Tree "c", {{}})}})}}) on !grow
     $n <- @Count $t                                              # 1/[k]
     Ui.Label($text=$"{$n} nodes")                                 # 2

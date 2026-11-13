@@ -295,7 +295,7 @@ fn IsShowOnly bounds = Fold bounds, True, \|ok, b| ok and (BareName b) == "Show"
 # optional or a tuple), so they go behind an `Rc` (claude/backend.md: recursive payloads
 # behind `Rc`). Arrays and maps are behind a pointer already.
 Layouts: unbounded fn G -> (Text ==> [Bool])
-fn Layouts g = Fold (Values g.ctors), {}, \|m, c| Insert m, c.name, (Each c.args, \|a| Reaches g, a, c.owner, [[]])
+fn Layouts g = Fold (Values g.ctors), {{}}, \|m, c| Insert m, c.name, (Each c.args, \|a| Reaches g, a, c.owner, [[]])
 
 Reaches: unbounded fn G, Ty, Text, [Text] -> Bool
 fn Reaches g, t, target, seen = match t:
@@ -330,14 +330,14 @@ TagFieldOut: unbounded fn Lx, Ty -> OutTy
 fn TagFieldOut lx, ft:
     # the tag's variables are its own: the caller's instantiation does not name them
     let own = update lx:
-        &_.subst <= {}
+        &_.subst <= {{}}
     ErasedOut (OutTyOf own, (Peel ft))
 
 # Whether a tag's field has a variable of the tag in its type.
 TagFieldOpen: unbounded fn Lx, Ty -> Bool
 fn TagFieldOpen lx, ft:
     let own = update lx:
-        &_.subst <= {}
+        &_.subst <= {{}}
     HoldsGen (OutTyOf own, (Peel ft))
 
 ErasedOut: unbounded fn OutTy -> OutTy
@@ -473,7 +473,7 @@ type Env = record:
     # instantiation, with the key of its binding (`Twin#inst1`).
     uses: (Text ==> Text)
 
-let emptyEnv = Env(names={}, spans={}, uses={})
+let emptyEnv = Env(names={{}}, spans={{}}, uses={{}})
 
 # The key of the binding a name names at a place: a generalized `let`'s instantiation
 # there (pick LG), else the name's own.

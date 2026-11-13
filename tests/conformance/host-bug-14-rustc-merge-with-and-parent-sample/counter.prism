@@ -59,7 +59,7 @@ fn ToldTo seat, state = Read state, seat, Whole
 fn ?Mine seat, responses, p = ?ResponseTo seat, p, responses
 
 Sittings: fn (k ==> v) -> (((k, v)) ==> unit) where k: ^Ord, v: ^Ord
-fn Sittings seats = Fold (Keys seats), {}, \|all, k| match ?Get seats, k:
+fn Sittings seats = Fold (Keys seats), {{}}, \|all, k| match ?Get seats, k:
     ? v: Insert all, ((k, v)), unit
     nil: all
 

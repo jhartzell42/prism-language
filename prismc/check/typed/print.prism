@@ -84,7 +84,7 @@ fn PosText src, offset:
 # the order the tree has it, with its type (`unknown` when none was found); then the tables.
 TypedSexp: unbounded fn [Src], [Module], Nat, TProgram -> Text
 fn TypedSexp srcs, trees, shown, tp:
-    let tys = Fold tp.exprs, {}, \|m, n| Insert m, (AtKey n.at), n.ty
+    let tys = Fold tp.exprs, {{}}, \|m, n| Insert m, (AtKey n.at), n.ty
     let files = Filter (Range0 (Len trees)), \|i| i < shown
     let defs = Concat (Each (Filter tp.defs, \|d| d.at.file < shown), \|d| "  (def {d.name} {AtText srcs, d.at} {SchemeSexp d.scheme})\n")
     let exprs = Concat (Each files, \|i| ExprsOfFile srcs, tys, i, (Or trees[i], emptyMod))

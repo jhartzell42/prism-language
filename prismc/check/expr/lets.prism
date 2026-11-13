@@ -87,7 +87,7 @@ fn BindGroup env, st, stmts:
     let st1 = Fold stmts, st0, \|s, stmt| UndefinedSignature s, stmts, stmt
     let st2 = if st1.recording and (Len stmts) > 1: NoteGroup st1, (StmtsSpan stmts), "expr", (DepOrder stmts) else: st1
     # each line's uses, by binder id, for the cycle check after
-    let ((envN, stN, uses)) = Fold order, ((env1, st2, {})), \|((en, s, m)), i|
+    let ((envN, stN, uses)) = Fold order, ((env1, st2, {{}})), \|((en, s, m)), i|
         let before = Len s.useIds
         let ((en2, s2)) = CheckGroupStmt en, s, stmts, i, (IsLast stmts, i)
         ((en2, s2, (Insert m, i, (Drop s2.useIds, before))))
@@ -590,11 +590,11 @@ fn TemplateCallCheck env, st, n, args, ?parts, span:
                 nil: 0
             if (Len clauses) == 0: Err st, "mismatch", span, "`<@{cname}>` calls a function without clauses, which name no parameters for its attributes"
             else:
-                let ((slots, st1)) = Fold args, (({}, st)), \|((m, s)), a| match a.?name:
+                let ((slots, st1)) = Fold args, (({{}}, st)), \|((m, s)), a| match a.?name:
                     ? id: match ?TemplateSlot clauses, id.name:
                         ? j: if HasKey m, "{j}": ((m, (Err s, "mismatch", a.span, "`{id.name}` is given twice"))) else: (((Insert m, "{j}", a.value), s))
                         nil: ((m, (Err s, "mismatch", a.span, "`{cname}` has no parameter `{id.name}`")))
-                    nil: ((m, (Err s, "mismatch", a.span, "a template call names each argument: `name=\{\{value\}\}`")))
+                    nil: ((m, (Err s, "mismatch", a.span, "a template call names each argument: `name=<<value>>`")))
                 let ?body = match ?parts:
                     ? ps: ? (Expr(kind=(ETemplate (Template(keyword="InlineText", lang="", delims="double", parts=ps, span=span))), span=span))
                     nil: nil

@@ -389,7 +389,7 @@ CollisionAt: fn Env, St, Text, Text, Range -> St
 fn CollisionAt env, st, why, name, span:
     if why != "collision": st
     else:
-        let keys = Or (Or env.g.bare[env.home], {})[name], [[]]
+        let keys = Or (Or env.g.bare[env.home], {{}})[name], [[]]
         let others = Filter keys, \|k| Contains k, "."
         ErrFix st, "collision", span, "`{name}` is declared by more than one module this file reaches by a bare name: {Join (Each keys, \|k| "`{k}`"), ", "}", "write the one meant qualified, as `{Or others[0], name}`, or rename this file's own"
 

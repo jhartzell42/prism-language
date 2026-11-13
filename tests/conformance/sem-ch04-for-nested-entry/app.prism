@@ -14,7 +14,7 @@ derive ^Eq, ^Show
 @main: @unit
 @main:
     !grow <- Ui.Button($label=$"grow")                            # 0
-    $t <- (Tree "a", {0: (Tree "b", {})}) then (Tree "a", {0: (Tree "b", {0: (Tree "c", {})})}) on !grow
+    $t <- (Tree "a", {{0: (Tree "b", {{}})}}) then (Tree "a", {{0: (Tree "b", {{0: (Tree "c", {{}})}})}}) on !grow
     for k, $c <- $t.kids:                                        # 1/[k]
         Ui.Label($text=$c.name)                                   # 1/[k]/0
         for j, $d <- $c.kids:                                    # 1/[k]/1/[j]

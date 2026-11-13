@@ -7,7 +7,7 @@ use Ui.*
 
 @Rows: fn $Nat -> @unit
 fn @Rows $c:
-    for k, ignore <- $ {"x": unit}:                              # 1/[k]
+    for k, ignore <- $ {{"x": unit}}:                              # 1/[k]
         $n <- 0 then $n + 1 on !Updated $c
         Ui.Label($text=$"{k} heard {$n}")                        # 1/[k]/0
 

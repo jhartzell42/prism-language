@@ -151,27 +151,27 @@ derive ^Eq, ^Show
 # again or one that stays open is larger than the round before (`GrownThroughAssociated`).
 GrowthCheck: unbounded fn G, St, [Def] -> St
 fn GrowthCheck g, st, defs:
-    let named = Fold defs, {}, \|m, d| match g.vals[d.qk]:
+    let named = Fold defs, {{}}, \|m, d| match g.vals[d.qk]:
         ? v: if (IsGenericUse v) and IsNamedDef d: Insert m, d.qk, v.scheme.qs else: m
         nil: m
     # a written impl with type parameters is a definition of the walk too: its methods'
     # bodies are its body, read at every set of types its head is matched at, and a
     # constraint it solves is a use of it (`NoteImplUse`)
     # (a derived impl too: its body is what its type's fields need, `DerivedUses`)
-    let impls = Fold (Keys g.impls), {}, \|m, cls| Fold (Or g.impls[cls], [[]]), m, \|m2, im| if (Len im.qs) == 0: m2 else: Insert m2, (GrowthKey im), im
+    let impls = Fold (Keys g.impls), {{}}, \|m, cls| Fold (Or g.impls[cls], [[]]), m, \|m2, im| if (Len im.qs) == 0: m2 else: Insert m2, (GrowthKey im), im
     let generic = Fold (Keys impls), named, \|m, implKey| match impls[implKey]:
         ? im: Insert m, implKey, im.qs
         nil: m
     # each method's definition by its impl
-    let implOf = Fold defs, {}, \|m, d| match d.body:
+    let implOf = Fold defs, {{}}, \|m, d| match d.body:
         DbMethod ignore, ignore, im: Insert m, (OwnKey d).qk, "impl:{im.file}.{im.span.start}"
         otherwise: m
-    let shown = Fold (Keys impls), {}, \|m, implKey| match impls[implKey]:
+    let shown = Fold (Keys impls), {{}}, \|m, implKey| match impls[implKey]:
         ? im: Insert m, implKey, "impl ^{BareName im.cls} {ShowTy st, im.head}"
         nil: m
     # a trait's default method is the body of every impl that does not write the method:
     # its uses are read again in each such impl, the trait's parameter as the impl's head
-    let defaultOf = Fold defs, {}, \|m, d| match d.body:
+    let defaultOf = Fold defs, {{}}, \|m, d| match d.body:
         DbDefault ignore, cls: Insert m, d.qk, ((cls, d.name))
         otherwise: m
     let withDefaults = Fold st.genericUses, st.genericUses, \|acc, noted| match defaultOf[noted.user]:
@@ -187,7 +187,7 @@ fn GrowthCheck g, st, defs:
     let allUses = Fold (Keys impls), withDefaults, \|acc, implKey| match impls[implKey]:
         ? im: if im.derived: Fold (DerivedUses g, im, implKey), acc, \|acc2, step| Push acc2, step else: acc
         nil: acc
-    let usesBy = Fold allUses, {}, \|m, noted|
+    let usesBy = Fold allUses, {{}}, \|m, noted|
         let user = Or implOf[noted.user], noted.user
         # a method's own type parameter is none of its impl's: a use that gives one is
         # read by no substitution over the impl's, and is no step of a walk
@@ -199,16 +199,16 @@ fn GrowthCheck g, st, defs:
                 &_.types <= Each &_.types, \|((q, t))| ((q, (FlexNamed (Zonk st, t))))
             Insert m, user, (Push (Or m[user], [[]]), read)
         else: m
-    let found = Fold (Keys generic), GrowthFound(st=st, reported=[[]], seen={}), \|sofar, start|
+    let found = Fold (Keys generic), GrowthFound(st=st, reported=[[]], seen={{}}), \|sofar, start|
         let own = Each (Or generic[start], [[]]), \|q| ((q, (TyRigid q)))
         let fresh = update sofar:
-            &_.seen <= Insert {}, "{start} {Show own}", True
+            &_.seen <= Insert {{}}, "{start} {Show own}", True
         GrowthWalk usesBy, shown, [[GrowthStep(definition=start, types=own, place="")]], start, own, fresh
     found.st
 
 # An impl's head with its type parameters as the walk names them.
 RigidHead: unbounded fn ImplInfo -> Ty
-fn RigidHead im = SubstQ Inst(tys=(Fold im.qs, {}, \|m, q| Insert m, q, (TyRigid q)), rows={}, cols={}), im.head
+fn RigidHead im = SubstQ Inst(tys=(Fold im.qs, {{}}, \|m, q| Insert m, q, (TyRigid q)), rows={{}}, cols={{}}), im.head
 
 # What a derived impl's methods use, read off its type: the impl's trait at the type of
 # every field of every constructor (`ConstraintUses`), over the impl's type parameters.
@@ -217,7 +217,7 @@ fn RigidHead im = SubstQ Inst(tys=(Fold im.qs, {}, \|m, q| Insert m, q, (TyRigid
 DerivedUses: unbounded fn G, ImplInfo, Text -> [GenericUse]
 fn DerivedUses g, im, user = match im.head:
     TyCon owner, ignore:
-        let rigid = Inst(tys=(Fold im.qs, {}, \|m, q| Insert m, q, (TyRigid q)), rows={}, cols={})
+        let rigid = Inst(tys=(Fold im.qs, {{}}, \|m, q| Insert m, q, (TyRigid q)), rows={{}}, cols={{}})
         Fold (Values g.ctors), [[]], \|acc, constructor| if constructor.owner != owner: acc else: Fold constructor.args, acc, \|acc2, field| Fold (ConstraintUses g, im.cls, (SubstQ rigid, field), user, im), acc2, \|acc3, step| Push acc3, step
     otherwise: [[]]
 
@@ -231,7 +231,7 @@ fn ConstraintUses g, cls, t, user, by = match t:
     otherwise:
         let ?answer = Fold (Or g.impls[cls], [[]]), nil, \|?found, im| match ?found:
             ? f: ? f
-            nil: match ?MatchHead im.head, t, {}:
+            nil: match ?MatchHead im.head, t, {{}}:
                 ? m: ? ((im, m))
                 nil: nil
         match ?answer:
@@ -493,7 +493,7 @@ fn DefEnv g, d:
     let scope = match info.emitRw.tail:
         TlQ v: Rw(fams=info.emitRw.fams, minus=[[]], tail=(TlRigid v))
         otherwise: info.emitRw
-    Env(g=g, home=d.home, file=d.file, src=(Or g.srcs[d.file], (MkSrc "", "")), locals={}, scope=scope, givens=[[]], mark="", inUpdate=False, defName=d.name, refine={}, pending=[[]], ids={})
+    Env(g=g, home=d.home, file=d.file, src=(Or g.srcs[d.file], (MkSrc "", "")), locals={{}}, scope=scope, givens=[[]], mark="", inUpdate=False, defName=d.name, refine={{}}, pending=[[]], ids={{}})
 
 # One definition: its body against its signature; its constraints solved and defaulted;
 # its row obligations discharged.
@@ -593,11 +593,11 @@ fn CheckMethod env, st, d, clauses, cls, im = match ?MethodKey env.g, cls, d.nam
         nil: st
         ? v:
             let ti = Or env.g.traits[cls], dummyTrait
-            let head = SubstQ (Inst(tys=(Fold im.qs, {}, \|m, q| Insert m, q, (TyRigid q)), rows={}, cols={})), im.head
+            let head = SubstQ (Inst(tys=(Fold im.qs, {{}}, \|m, q| Insert m, q, (TyRigid q)), rows={{}}, cols={{}})), im.head
             # the method's own variables are apart from the head's of one name (`SchemeApart`)
             let own = SchemeApart (Scheme(eqs=[[]], qs=(Filter v.scheme.qs, \|q| q != ti.param), plainQs=[[]], rqs=v.scheme.rqs, cqs=v.scheme.cqs, cjoins=v.scheme.cjoins, bounds=(Filter v.scheme.bounds, \|((q, ignore))| q != ti.param), ty=v.scheme.ty)), im.qs
             let sc = update own:
-                &_.ty <= SubstQ (Inst(tys={ti.param: head}, rows={}, cols={})), &_.ty
+                &_.ty <= SubstQ (Inst(tys={{ti.param: head}}, rows={{}}, cols={{}})), &_.ty
             let env2 = update env:
                 &_.givens <= im.bounds
             CheckClauses env2, st, d.name, clauses, sc, d.span

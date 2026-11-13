@@ -11,5 +11,5 @@ use Ui.*
     !go <- Ui.Button($label=$"go")
     for k, $v <- $each:
         Ui.Label($text=$v)
-    $m <- {0: "a"} then $m on !go
+    $m <- {{0: "a"}} then $m on !go
     $each <- @PerKey $m

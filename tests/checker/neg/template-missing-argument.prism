@@ -7,5 +7,5 @@ fn Quote mark, text = "{mark} {text}"
 
 Broken: fn Text -> Text
 fn Broken t = inline_text <txt>
-<@Quote text={{t}}/>
+<@Quote text=<<t>>/>
 </txt>

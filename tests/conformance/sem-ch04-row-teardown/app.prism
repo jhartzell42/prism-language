@@ -12,7 +12,7 @@ test mod Tests
 @rows:
     !drop <- Ui.Button($label=$"drop")                           # 0
     !ring <- Ui.Button($label=$"ring")                           # 1
-    $names <- {1: "one", 2: "two"} then Remove $names, 2 on !drop
+    $names <- {{1: "one", 2: "two"}} then Remove $names, 2 on !drop
     !rang <- for k, $name <- $names:                            # 2/[k]
         Ui.Label($text=$name)                                     # 2/[k]/0
         Test.Log(!requests="ring {k}" on !ring)                  # 2/[k]/1

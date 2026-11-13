@@ -23,5 +23,5 @@ fn @Rows $each:
     @Rows $each                                                 # 2/[k]
     $n <- "a" then "b" on !go
     $d <- @Distinct $n
-    $m <- {0: "a"} then {0: "b", 1: "c"} on !go
+    $m <- {{0: "a"}} then {{0: "b", 1: "c"}} on !go
     $each <- @PerKey $m

@@ -63,7 +63,7 @@ AndBlockChecks: unbounded fn Env, St, Block, Ty -> St
 fn AndBlockChecks env, st, b, t:
     let st1 = if IsLocalType st, t: ErrFix st, "local-escapes", b.span, "a `{BlockLocalName st, t}` cannot leave its block", "`Freeze` it into a plain value first" else: st
     let st2 = EscapeStmts env, st1, b.stmts
-    let ((ignore, st3)) = FrozenStmts env, st2, b.stmts, {}
+    let ((ignore, st3)) = FrozenStmts env, st2, b.stmts, {{}}
     BorrowStmts env, st3, b.stmts, [[]]
 
 BlockLocalName: unbounded fn St, Ty -> Text

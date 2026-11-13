@@ -13,7 +13,7 @@ use Ui.*
     !inc <- Ui.Button($label=$"inc")                              # 0
     !add <- Ui.Button($label=$"add")                              # 1
     $n <- 0 then $n + 1 on !inc
-    $items <- {} then (Insert $items, (Size $items), unit) on !add
+    $items <- {{}} then (Insert $items, (Size $items), unit) on !add
     Ui.Label($text=$"{$n}")                                       # 2
     for k, $u <- $items:                                         # 3/[k]
         Ui.Label($text=$"item {k}")                               # 3/[k]/0

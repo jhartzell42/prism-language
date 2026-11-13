@@ -43,4 +43,4 @@ Mark: fn Vm, Text -> Vm
 fn Mark vm, name = update vm:
     &Same &_.regs[name] <: ? 1
 
-let boot = Vm(regs={"acc": 7, "x": 5}, steps=2)
+let boot = Vm(regs={{"acc": 7, "x": 5}}, steps=2)

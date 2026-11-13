@@ -23,5 +23,5 @@ fn Indices xs = update 0:
 
 @shown: @unit
 @shown:
-    Ui.Label($text=$(Named {"a": 1, "b": 2}))
-    Ui.Label($text=$"{Len (KeyNames {"a": 1})} {Indices [["x", "y"]]}")
+    Ui.Label($text=$(Named {{"a": 1, "b": 2}}))
+    Ui.Label($text=$"{Len (KeyNames {{"a": 1}})} {Indices [["x", "y"]]}")

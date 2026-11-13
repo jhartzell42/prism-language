@@ -112,7 +112,7 @@ fn Disowning cp, n = update cp:
 # move closure are taken by the closure being printed, not by one inside it.
 Captured: fn Cp -> Cp
 fn Captured cp = update cp:
-    &_.owned <= {}
+    &_.owned <= {{}}
     &_.moveCaptures <= [[]]
 
 # The names a pattern binds.

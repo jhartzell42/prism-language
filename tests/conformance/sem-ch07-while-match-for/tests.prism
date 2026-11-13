@@ -12,7 +12,7 @@ test a_loop_in_a_for_turns_a_cycle_each, @ForShown [[2, 1]]:
     compute until idle
         => expect Ui.Label(text="3")
 
-test a_loop_in_a_for_over_a_map, @MapShown {"a": 1, "b": 2}:
+test a_loop_in_a_for_over_a_map, @MapShown {{"a": 1, "b": 2}}:
     build
     compute until idle
         => expect Ui.Label(text="abb")

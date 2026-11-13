@@ -70,7 +70,7 @@ type State = record:
     seen: (((Side, Path)) ==> Nat)
     judged: (((Side, Path)) ==> Response)
 
-let fresh = State(game=Game(count=0, turn=White), seen={}, judged={})
+let fresh = State(game=Game(count=0, turn=White), seen={{}}, judged={{}})
 
 # One request: who asked, where, its number, and what it asks.
 type Asking = record:
@@ -103,7 +103,7 @@ fn Step s, a = if (?Get s.seen, ((a.side, a.place))) == (? a.number): s else:
     State(game=g, seen=(Insert s.seen, ((a.side, a.place)), a.number), judged=(Insert s.judged, ((a.side, a.place)), r))
 
 StepAll: fn State, [Asking] -> State
-fn StepAll s, asked = Fold asked, State(game=s.game, seen=s.seen, judged={}), Step
+fn StepAll s, asked = Fold asked, State(game=s.game, seen=s.seen, judged={{}}), Step
 
 ?ResponseTo: fn Side, Path, State -> ?Response
 fn ?ResponseTo side, p, s = ?Get s.judged, ((side, p))

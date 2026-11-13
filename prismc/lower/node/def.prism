@@ -52,7 +52,7 @@ fn NodeDefOf lx, qk, params, body, sc, isRoot:
     let ptys = match sc.ty:
         TyFn ignore, ps, ignore: ps
         otherwise: [[]]
-    let wx0 = NewWx lx, name, [[]], [[]], [[]], [[]], {}, nodeHooks, [[]], nil
+    let wx0 = NewWx lx, name, [[]], [[]], [[]], [[]], {{}}, nodeHooks, [[]], nil
     let ((ps, wx1, benv, menv)) = Fold (Range0 (Len params)), (([[]], wx0, emptyEnv, emptyEnv)), \|((acc, w, be, me)), i|
         let p = Or params[i], dummyPat
         let nkey = PlainBinder lx, p
@@ -1122,7 +1122,7 @@ fn PreBindUps wx, benv, menv, staying:
 WithoutNames: fn Env, [Text] -> Env
 fn WithoutNames env, gone:
     let bare = update env:
-        &_.names <= {}
+        &_.names <= {{}}
     Fold (Keys env.names), bare, \|en, nm| match env.names[nm]:
         ? bn: if HasText gone, nm: en else: Bind en, nm, bn
         nil: en

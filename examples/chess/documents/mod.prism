@@ -113,7 +113,7 @@ fn OneATick due = Ordered(apply=(Take due, 1), wait=(Drop due, 1))
 # This tick's own requests by place: by the document's seat order, then by place in the
 # seat's guest.
 ByPlace: fn [Asked s k d] -> [Asked s k d] where k: ^Ord
-fn ByPlace asked = Values (Fold asked, {}, \|all, one| Insert all, one.place, one)
+fn ByPlace asked = Values (Fold asked, {{}}, \|all, one| Insert all, one.place, one)
 
 Has: fn [k], k -> Bool where k: ^Eq
 fn Has seats, seat = Fold seats, False, \|found, one| found or one == seat

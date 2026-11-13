@@ -8,7 +8,7 @@ emit Ui.*
 
 @host: @unit
 @host:
-    let $names = $ {"a": unit, "b": unit}
+    let $names = $ {{"a": unit, "b": unit}}
     !pressed <- for k, ignore <- $names:                          # 0/[k]
         !press <- Ui.Button($label=$"{k}")                         # 0/[k]/0
         let !both = (1 on !press) <| !echo

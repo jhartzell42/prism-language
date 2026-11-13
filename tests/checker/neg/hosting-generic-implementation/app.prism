@@ -46,7 +46,7 @@ fn StepOne k, ((p, n, r)) = if (?Get k.seen, p) == (? n): k else: match Step k.s
     Denied why: Kept(state=k.state, seen=(Insert k.seen, p, n), judged=(Insert k.judged, p, (Refused why)))
 
 StepAll: fn Kept s, [((Path, Nat, Request s))] -> Kept s where s: ^Rules
-fn StepAll k, asked = Fold asked, Kept(state=k.state, seen=k.seen, judged={}), StepOne
+fn StepAll k, asked = Fold asked, Kept(state=k.state, seen=k.seen, judged={{}}), StepOne
 
 ?ResponseTo: fn Path, Kept s -> ?Response
 fn ?ResponseTo p, k = ?Get k.judged, p
@@ -71,7 +71,7 @@ fn @InMemory initial, @guest:
         otherwise: @Element e
     $now <- for p, $e <- $doc:
         @ $e
-    $kept <- Kept(state=initial, seen={}, judged={}) then StepAll $kept, !Updated (Asked $now)
+    $kept <- Kept(state=initial, seen={{}}, judged={{}}) then StepAll $kept, !Updated (Asked $now)
     @ result
 
 # One document: a counter that refuses to pass ten.

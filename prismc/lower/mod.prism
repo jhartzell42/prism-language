@@ -231,10 +231,10 @@ fn IsQuantCol lx, c = False
 # The tables of the typed program by place.
 TypedTables: unbounded fn TProgram -> (((Text ==> Ty), (Text ==> AppNote), (Text ==> Ty), (Text ==> [ImplNote])))
 fn TypedTables tp:
-    let tys = Fold tp.exprs, {}, \|m, n| Insert m, (AtKey n.at), n.ty
-    let apps = Fold tp.apps, {}, \|m, n| Insert m, (AtKey n.at), n
-    let bs = Fold tp.binders, {}, \|m, n| Insert m, (AtKey n.at), n.ty
-    let ims = Fold tp.impls, {}, \|m, n| Insert m, (AtKey n.at), (Push (Or m[AtKey n.at], [[]]), n)
+    let tys = Fold tp.exprs, {{}}, \|m, n| Insert m, (AtKey n.at), n.ty
+    let apps = Fold tp.apps, {{}}, \|m, n| Insert m, (AtKey n.at), n
+    let bs = Fold tp.binders, {{}}, \|m, n| Insert m, (AtKey n.at), n.ty
+    let ims = Fold tp.impls, {{}}, \|m, n| Insert m, (AtKey n.at), (Push (Or m[AtKey n.at], [[]]), n)
     ((tys, apps, bs, ims))
 
 # ---------------------------------------------------------------------------------------
@@ -350,8 +350,8 @@ fn ValueNames g:
         DbLet ignore: AddText acc, d.qk
         otherwise: acc
     let keys = UnionTexts (Keys g.vals), lets
-    let bases = Fold keys, {}, \|m, k| Insert m, (BaseKey k), (Push (Or m[BaseKey k], [[]]), k)
-    Fold keys, {}, \|m, k|
+    let bases = Fold keys, {{}}, \|m, k| Insert m, (BaseKey k), (Push (Or m[BaseKey k], [[]]), k)
+    Fold keys, {{}}, \|m, k|
         let runtimes = (OwnerOf k) == "Prelude" or match g.vals[k]:
             ? v: v.sort == "builtin" or v.home == "Prelude"
             nil: False
@@ -391,7 +391,7 @@ fn GlobalLetter g, k = match g.vals[k]:
 GlobalNames: unbounded fn G -> (Text ==> Bool)
 fn GlobalNames g:
     let names = ValueNames g
-    Fold (Keys names), {}, \|m, k| Insert m, "{OwnerOf k}.{Or names[k], ""}", True
+    Fold (Keys names), {{}}, \|m, k| Insert m, "{OwnerOf k}.{Or names[k], ""}", True
 
 # A local's Rust name (pick NM): a `?x` is `x_opt`, a `~x` is `x_try` and a `K` is
 # `k_fn`, so that it never hides a plain `x` or `k` of the same scope; a local whose name a

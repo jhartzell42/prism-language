@@ -53,7 +53,7 @@ use Check.Passes.Borrows.*
 # type, so a cycle reaches only its pieces. A summary reads its body without other
 # summaries, so it never depends on itself.
 PartsSummaries: unbounded fn Shrink, [Def] -> (Text ==> Nat)
-fn PartsSummaries sk, fns = Fold fns, {}, \|m, d| match d.body:
+fn PartsSummaries sk, fns = Fold fns, {{}}, \|m, d| match d.body:
     DbFn clauses:
         let n = match clauses[0]:
             ? c0: Len c0.params
@@ -328,7 +328,7 @@ fn NoteUnshrunk st, span = update st:
 # statement, a nested loop's, an `if`'s or `match`'s, a `for`'s, a nested `update`'s, a
 # `let` value's, a lambda's.
 SetTargets: unbounded fn [Stmt] -> [Text]
-fn SetTargets stmts = Fold (StmtsSpots stmts, {}), [[]], \|acc, sp| UnionTexts acc, (SpotSetRoot sp)
+fn SetTargets stmts = Fold (StmtsSpots stmts, {{}}), [[]], \|acc, sp| UnionTexts acc, (SpotSetRoot sp)
 
 SpotSetRoot: unbounded fn Spot -> [Text]
 fn SpotSetRoot (SpotStmt s, ignore) = match s.kind:

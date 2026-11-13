@@ -103,8 +103,8 @@ fn ImplAssoc st, tr, n, a, t = match a:
     TyRigid ignore: t
     otherwise:
         let whole = Zonk st, a
-        Fold st.assocImpls, t, \|found, ai| if found != t or ai.cls != tr or ai.name != n: found else: match ?MatchHead ai.head, whole, {}:
-            ? tys: SubstQ Inst(tys=tys, rows={}, cols={}), ai.value
+        Fold st.assocImpls, t, \|found, ai| if found != t or ai.cls != tr or ai.name != n: found else: match ?MatchHead ai.head, whole, {{}}:
+            ? tys: SubstQ Inst(tys=tys, rows={{}}, cols={{}}), ai.value
             nil: found
 
 # One-way matching of an impl head (with `TyQ` variables) against a type.

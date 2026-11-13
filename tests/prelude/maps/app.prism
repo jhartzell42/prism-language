@@ -6,7 +6,7 @@ test mod Tests
 
 # The keys `from` to `to - 1` (below 200), each with the value `v`.
 Keyed: fn Nat, Nat, Text -> (Nat ==> Text)
-fn Keyed from, to, v = Fold tens, {}, \|m, t| Fold ones, m, \|m2, o| KeyedAt m2, (t * 10 + o), from, to, v
+fn Keyed from, to, v = Fold tens, {{}}, \|m, t| Fold ones, m, \|m2, o| KeyedAt m2, (t * 10 + o), from, to, v
 
 KeyedAt: fn (Nat ==> Text), Nat, Nat, Nat, Text -> (Nat ==> Text)
 fn KeyedAt m, k, from, to, v = if k < from: m else: if k < to: Insert m, k, v else: m
