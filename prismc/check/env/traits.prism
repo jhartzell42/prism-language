@@ -449,7 +449,9 @@ fn SolveOne g, st, givens, w:
     let s0 = update st:
         &_.file <= w.file
     let Restore = \|s| WithFile s, st.file
-    match t:
+    # a trait's bound on a type of its parameter, given in its default body
+    if Fold st.headGivens, False, \|seen, ((h, gc))| seen or ((Zonk st, h) == (Zonk st, t) and HasText (SuperClosure g, gc), w.cls): (([[]], (Solved st, w, t, "given")))
+    else: match t:
         TyFlex ignore: (([[w]], st))
         TyErr: (([[]], st))
         TyRigid v:

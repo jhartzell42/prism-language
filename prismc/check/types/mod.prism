@@ -195,6 +195,9 @@ type St = record:
     # The bounds of every existential unpacked at a parameter, by its rigid type (`e'N`,
     # Type System ch. 5): givens for the rest of the program.
     anyGivens: [((Text, Text))]
+    # a trait's bounds on types of its parameter, given in its default bodies
+    # (`State d: ^SerializableValue`)
+    headGivens: [((Ty, Text))]
     # Every impl's associated types, for normalizing (Type System ch. 5, Traits): the
     # associated type's trait and name, the impl's head and its variables, and the type it chooses.
     assocImpls: [AssocImpl]
@@ -325,7 +328,7 @@ UseKey: fn Nat, Range -> Text
 fn UseKey file, span = "{file}:{span.start}:{span.end}"
 
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={{}}, infos={{}}, rows={{}}, lacks={{}}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={{}}, cleqs=[[]], colQ={{}}, colUp={{}}, deferred=[[]], binderAt={{}}, rowNames={{}}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={{}}, sizeTys={{}}, unsignedFns=[[]], localNext=0, localIds={{}}, anyGivens=[[]], assocImpls=[[]], assocRowImpls=[[]], plainArms=[[]], faultQs=[[]], plainQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={{}}, packs=[[]], definition="", genericUses=[[]], caseQs=[[]])
+fn NewSt file = St(next=0, tys={{}}, infos={{}}, rows={{}}, lacks={{}}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={{}}, cleqs=[[]], colQ={{}}, colUp={{}}, deferred=[[]], binderAt={{}}, rowNames={{}}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={{}}, sizeTys={{}}, unsignedFns=[[]], localNext=0, localIds={{}}, anyGivens=[[]], headGivens=[[]], assocImpls=[[]], assocRowImpls=[[]], plainArms=[[]], faultQs=[[]], plainQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={{}}, packs=[[]], definition="", genericUses=[[]], caseQs=[[]])
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed, idx={{}})

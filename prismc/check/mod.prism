@@ -516,6 +516,15 @@ fn TraitParamOf g, d = match d.body:
         nil: [[]]
     otherwise: [[]]
 
+# A trait's bounds on types of its parameter, given in a default body of the trait, the
+# parameter rigid there.
+HeadGivensOf: unbounded fn G, Def -> [((Ty, Text))]
+fn HeadGivensOf g, d = match d.body:
+    DbDefault ignore, cls: match g.traits[cls]:
+        ? tr: Each tr.headBounds, \|((h, above))| (((SubstQ (ParamInst [[tr.param]], [[(TyRigid tr.param)]]), h), above))
+        nil: [[]]
+    otherwise: [[]]
+
 # One definition: its body against its signature; its constraints solved and defaulted;
 # its row obligations discharged.
 CheckDef: unbounded fn G, St, Def -> St
@@ -532,6 +541,7 @@ fn CheckDef g, st, d:
         &_.colorWhy <= ""
         &_.colorFlex <= [[]]
         &_.cleqs <= [[]]
+        &_.headGivens <= HeadGivensOf g, d
     let s1 = match d.body:
         DbFn clauses: match g.vals[d.qk]:
             ? v: if IsLensText d.name: CheckLens env, s0, d.name, clauses, v.scheme, d.span else: CheckClauses env, s0, d.name, clauses, v.scheme, d.span
