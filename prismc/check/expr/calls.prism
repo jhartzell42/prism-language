@@ -276,7 +276,11 @@ fn ApplyFn env, st, fname, fty, args, span:
     let st0 = if (Len named) > 0: Err st, "mismatch", span, "`{fname}` takes its arguments by position; named arguments are a record's or a tag's" else: st
     match Walk st0, fty:
         TyFn col, params, res:
-            if (Len params) != (Len args):
+            # fewer arguments than parameters is a partial application (Jimmy's ruling AF;
+            # Part III ch. 6, `@InMemory start`): a function of the rest
+            if (Len args) > 0 and (Len args) < (Len params) and (Len named) == 0:
+                ApplyRule env, st0, fname, col, (Take params, (Len args)), (TyFn col, (Drop params, (Len args)), res), args, span
+            else: if (Len params) != (Len args):
                 ((TyErr, (Err st0, "mismatch", span, "`{fname}` takes {CountWord (Len params)} argument{if (Len params) == 1: "" else: "s"}; here it has {CountWord (Len args)}")))
             else: ApplyRule env, st0, fname, col, params, res, args, span
         TyFlex ignore:
