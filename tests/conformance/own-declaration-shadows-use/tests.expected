@@ -1,0 +1,6 @@
+# Derived by hand: this file's `Count Tall` is 2; `Birds.Count` is 10.
+test own_name_wins
+
+tick 0
+  added:
+    0: Ui.Label(text="2 10")

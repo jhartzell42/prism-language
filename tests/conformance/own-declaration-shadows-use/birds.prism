@@ -1,0 +1,9 @@
+# `Birds`, a child module of the root, declaring names the root declares too.
+emit r
+
+type Kind = choice:
+    Small
+    Large
+
+Count: fn Kind -> Nat
+fn Count k = 10

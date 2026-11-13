@@ -33,7 +33,7 @@ fn Status (? game) = StatusText game
 
 # Part IV ch. 3's player: it fires the moves it is handed and gives back the game and the
 # responses (a result of several parts, in the host's scope).
-@Player: fn !Move -> @(($?ChessGame, !Response ChessGame Player)) emit Seat.* ChessGame Player
+@Player: fn !ChessMove -> @(($?ChessGame, !Response ChessGame Player)) emit Seat.* ChessGame Player
 fn @Player !moves:
     $?game <- Seat.Query($query=$ Whole)                                       # 0
     !response <- Seat.Request(!requests=!moves)                                # 1
@@ -41,7 +41,7 @@ fn @Player !moves:
 
 # A player's board: two buttons, each a move, and the game as it is told. It counts the
 # responses it is sent, so a board built anew would read 0 again.
-@Board: fn Color, Move, Move -> @unit emit Ui.* | Seat.* ChessGame Player
+@Board: fn Color, ChessMove, ChessMove -> @unit emit Ui.* | Seat.* ChessGame Player
 fn @Board side, first, second:
     !one <- Ui.Button($label=$"{side} plays {Spelled first}")                  # 0
     !two <- Ui.Button($label=$"{side} plays {Spelled second}")                 # 1

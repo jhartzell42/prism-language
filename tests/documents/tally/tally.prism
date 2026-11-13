@@ -116,7 +116,7 @@ impl ^Document (Tallied o) where o: ^TallyOrder:
         ((tellers, $telling)) <- @HostRole Fixed<<Teller>>, seats.$teller, Supply
         ((keepers, $keeping)) <- @HostRole Fixed<<Keeper>>, seats.$keeper, Supply
         ((viewers, $viewing)) <- @HostRole Fixed<<Viewer>>, seats.$viewer, Supply
-        @ ((TallyResults($teller=tellers, $keeper=keepers, $viewer=viewers), Merge [[$telling, $keeping, $viewing]]))
+        @ ((TallyResults($teller=tellers, $keeper=keepers, $viewer=viewers), $Merge [[$telling, $keeping, $viewing]]))
 
 impl ^StateDocument (Tallied o) where o: ^TallyOrder:
     fn Step tally, Fixed<<Teller>>, name, (Add n) = if tally.?last == ? name: Denied AddedLast else:

@@ -203,6 +203,10 @@ fn ~ParseNat text = match ?ParseNat text:
     ? n: ~ n
     nil: Error(kind=Prelude.NotANumber, message="not a number: {text}")
 
+# A text's UTF-8 bytes, and bytes read back as a text: refused where they are not UTF-8.
+Utf8Bytes: fn Text -> [U8]
+~Utf8Text: fn [U8] -> ~Text
+
 # The POD printed form (Type System ch. 2): one top-level node per line.
 Print: fn [[t]] -> Text where t: ^Pod
 

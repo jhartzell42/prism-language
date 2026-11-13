@@ -258,3 +258,13 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
 - **IF** The file implementation is `@InFile`. Jimmy: "it's 'in file' buckaroo".
 - **EI** An impl with nothing to write is its header alone, `impl ^Named Pen`, with no
   colon and no block (Claude's call, 13 November, for an impl that takes every default).
+- **OS** A file's own declaration shadows a name it reaches through `use X.*`; two
+  modules reached by `use` that both declare a name still collide at the use, and the
+  prelude against a file's own still collides (Semantics ch. 6, neg/collision). Jimmy, 13
+  November, on chess's `Move` against `^PerfectInformationGame`'s: "a and c both just do
+  both". So also **CR**: chess names its own move `ChessMove`. The file document's request
+  is `Overwrite [U8]`, since the prelude's `Replace` still collides (Claude's call).
+- **RR** A parameter used only after `|` in an `emit` row is a row and declares no kind:
+  `type ChessSeats rest = record: $player: (Color ==> $@(@unit emit Seat.* ChessGame
+  Player | rest))`. That position holds nothing else, unlike a case. Jimmy, 13 November:
+  "sure let's do a".

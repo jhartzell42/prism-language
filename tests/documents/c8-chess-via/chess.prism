@@ -15,7 +15,7 @@ use Notation.*
 
 type ChessGame = record:
     positions: [Position]
-    moves: [Move]
+    moves: [ChessMove]
 derive ^Eq, ^Show
 
 let fresh = ChessGame(positions=[[start]], moves=[[]])
@@ -26,7 +26,7 @@ fn Now g = Or (?Last g.positions), start
 # why a move is not played (Part IV ch. 4, ruling NT): a value, never a sentence
 type ChessReason = choice:
     NotYourMove
-    IllegalMove Move
+    IllegalMove ChessMove
 derive ^Eq, ^Show
 
 # ---- the protocol (Part IV ch. 3)
@@ -47,7 +47,7 @@ impl ^Document ChessGame:
     type Role = GameRole
     type SeatId Player = Color
     type SeatId Spectator = Text
-    type Request Player = Move
+    type Request Player = ChessMove
     type Request Spectator = Never
     type Reason Player = ChessReason
     type Reason Spectator = Never
@@ -59,14 +59,14 @@ impl ^Document ChessGame:
     fn @HostSeats seats, Supply:
         ((players, $playing)) <- @HostRole Fixed<<Player>>, seats.$player, Supply
         ((spectators, $watching)) <- @HostRole Fixed<<Spectator>>, seats.$spectator, Supply
-        @ ((ChessResults($player=players, $spectator=spectators), Merge [[$playing, $watching]]))
+        @ ((ChessResults($player=players, $spectator=spectators), $Merge [[$playing, $watching]]))
 
 # ---- the game's five functions (Part V ch. 9), and the state rung derived from them
 
 impl ^PerfectInformationGame ChessGame:
     type Side = Color
-    type Move = Move
-    type Reason = ChessReason
+    type Move = ChessMove
+    type Illegal = ChessReason
     fn Turn g = (Now g).turn
     fn Legal g, side, move = if side != (Now g).turn: ? NotYourMove else: match ?Played (Now g), move:
         ? ignore: nil
@@ -80,7 +80,7 @@ derive ^StateDocument via ^PerfectInformationGame for ChessGame
 
 # ---- the game as words, for the participants; the document never speaks
 
-Spelling: fn [Move] -> Text
+Spelling: fn [ChessMove] -> Text
 fn Spelling moves = if (Len moves) == 0: "none" else: Joined (Each moves, Spelled), " "
 
 StatusText: fn ChessGame -> Text

@@ -207,7 +207,7 @@ fn ?CastleTo position, color, from, to:
     forbid (Attacked position, landing, (Opponent color))       # not through check
     ? Castling corner, landing
 
-# whether the piece can get there, and in what manner; the check test is ?Move's
+# whether the piece can get there, and in what manner; the check test is ?ChessMove's
 ?Legal: fn Position, Piece, Square, Square -> ?Manner
 fn ?Legal position, piece, from, to:
     let own = RanksOf piece.color
@@ -297,35 +297,35 @@ fn HasMove position = AnyOf (Keys position.board), \|from| (Owns position, from,
 # A move as a request names it: an ordinary move of a piece from one square to another, or
 # a pawn's move to its last rank, which names what the pawn becomes. A promotion is a case
 # of its own, so no move holds a piece it does not need and none lacks one it does.
-type Move = choice:
+type ChessMove = choice:
     Moving Square, Square              # from, to
     Promoting Square, Square, Man      # from, to, what the pawn becomes
 derive ^Eq, ^Ord, ^Show
 
-Origin: fn Move -> Square
+Origin: fn ChessMove -> Square
 fn Origin (Moving from, to) = from
 fn Origin (Promoting from, to, man) = from
 
-Destination: fn Move -> Square
+Destination: fn ChessMove -> Square
 fn Destination (Moving from, to) = to
 fn Destination (Promoting from, to, man) = to
 
-?Becoming: fn Move -> ?Man
+?Becoming: fn ChessMove -> ?Man
 fn ?Becoming (Moving from, to) = nil
 fn ?Becoming (Promoting from, to, man) = ? man
 
-?Played: fn Position, Move -> ?Position
+?Played: fn Position, ChessMove -> ?Position
 fn ?Played position, move = ?Moved position, (Origin move), (Destination move), (?Becoming move)
 
-MovesTo: fn Position, Square, Square -> [Move]
+MovesTo: fn Position, Square, Square -> [ChessMove]
 fn MovesTo position, from, to = if not (CanMove position, from, to): [[]] else:
     if Promotes position, from, to: Each [[Queen, Rook, Bishop, Knight]], \|man| Promoting from, to, man else: [[(Moving from, to)]]
 
-MovesFrom: fn Position, Square -> [Move]
+MovesFrom: fn Position, Square -> [ChessMove]
 fn MovesFrom position, from = Fold squares, [[]], \|found, to| Append found, (MovesTo position, from, to)
 
 # every legal move of the side to move, by square
-LegalMoves: fn Position -> [Move]
+LegalMoves: fn Position -> [ChessMove]
 fn LegalMoves position = Fold (Keys position.board), [[]], \|found, from| if Owns position, from, position.turn: Append found, (MovesFrom position, from) else: found
 
 # ---------------------------------------------------------------------------
@@ -388,7 +388,7 @@ fn AfterReaching promotes, (? man) = if not promotes: NothingPromotes man else:
     if man == King or man == Pawn: PromotionTo man else: LeavesKingInCheck
 
 # why `?Played` gives nil for a move of the mover's own piece
-FaultOf: fn Position, Piece, Move -> MoveFault
+FaultOf: fn Position, Piece, ChessMove -> MoveFault
 fn FaultOf position, piece, move = if Owns position, (Destination move), position.turn: OwnPieceThere else:
     match ?Legal position, piece, (Origin move), (Destination move):
         nil: Unreachable position, piece, (Origin move), (Destination move)
@@ -399,7 +399,7 @@ fn FaultOf position, piece, move = if Owns position, (Destination move), positio
 
 # whether a move can never be taken back: a pawn's move, or a capture. A pawn's capture in
 # passing is a pawn's move, so the square it lands on being empty changes nothing.
-Lasting: fn Position, Move -> Bool
+Lasting: fn Position, ChessMove -> Bool
 fn Lasting position, move = (?At position, (Destination move)) != nil or match ?At position, (Origin move):
     ? piece: piece.man == Pawn
     nil: False

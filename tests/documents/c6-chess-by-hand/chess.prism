@@ -14,7 +14,7 @@ use Notation.*
 
 type ChessGame = record:
     positions: [Position]
-    moves: [Move]
+    moves: [ChessMove]
 derive ^Eq, ^Show
 
 let fresh = ChessGame(positions=[[start]], moves=[[]])
@@ -25,10 +25,10 @@ fn Now g = Or (?Last g.positions), start
 # why a move is not played (Part IV ch. 4, ruling NT): a value, never a sentence
 type ChessReason = choice:
     NotYourMove
-    IllegalMove Move
+    IllegalMove ChessMove
 derive ^Eq, ^Show
 
-MoveBy: fn ChessGame, Color, Move -> Stepped ChessGame ChessReason
+MoveBy: fn ChessGame, Color, ChessMove -> Stepped ChessGame ChessReason
 fn MoveBy game, side, move = if side != (Now game).turn: Denied NotYourMove else:
     match ?Played (Now game), move:
         ? next: Next ChessGame(positions=(Push game.positions, next), moves=(Push game.moves, move))
@@ -52,7 +52,7 @@ impl ^Document ChessGame:
     type Role = GameRole
     type SeatId Player = Color
     type SeatId Spectator = Text
-    type Request Player = Move
+    type Request Player = ChessMove
     type Request Spectator = Never
     type Reason Player = ChessReason
     type Reason Spectator = Never
@@ -63,7 +63,7 @@ impl ^Document ChessGame:
     fn @HostSeats seats, Supply:
         ((players, $playing)) <- @HostRole Fixed<<Player>>, seats.$player, Supply
         ((spectators, $watching)) <- @HostRole Fixed<<Spectator>>, seats.$spectator, Supply
-        @ ((ChessResults($player=players, $spectator=spectators), Merge [[$playing, $watching]]))
+        @ ((ChessResults($player=players, $spectator=spectators), $Merge [[$playing, $watching]]))
 
 # One request's step, by role: a player moves; a spectator's request is `Never`.
 Stepping: forall (r: Role ChessGame). fn ChessGame, Fixed r, SeatId ChessGame r, Request ChessGame r -> Stepped ChessGame (Reason ChessGame r)
@@ -87,8 +87,8 @@ fn Turn due:
 Steps: fn ChessGame, Turned -> ((ChessGame, [Responded ChessGame]))
 fn Steps game, turn = Fold turn.apply, ((game, [[]])), \|((now, said)), pending| match pending.asked:
     any ((role, id, request)): match Stepping now, role, id, request:
-        Next next: ((next, Push said, Responded(at=pending.due.at, response=(any Accepted))))
-        Denied why: ((now, Push said, Responded(at=pending.due.at, response=(any (Declined why)))))
+        Next next: ((next, (Push said, Responded(at=pending.due.at, response=(any Accepted)))))
+        Denied why: ((now, (Push said, Responded(at=pending.due.at, response=(any (Declined why))))))
 
 PlayAll: fn ChessGame, Turned -> ChessGame
 fn PlayAll game, turn = match Steps game, turn:
@@ -116,12 +116,12 @@ fn @ChessByHand $guests:
     let !judged = Judge $game, !turn                        # Accepted or Declined why, by path
     @ \|path, seat, element| match element:
         Seat.Request(..): @ !Filter (?ResponseTo path, !judged)
-        Seat.Query(..): @ Loaded $game                      # never nil in memory
+        Seat.Query(..): @ $Loaded $game                      # never nil in memory
         Seat.Leave(..): @ unit
 
 # ---- the game as words, for the participants; the document never speaks
 
-Spelling: fn [Move] -> Text
+Spelling: fn [ChessMove] -> Text
 fn Spelling moves = if (Len moves) == 0: "none" else: Joined (Each moves, Spelled), " "
 
 StatusText: fn ChessGame -> Text
