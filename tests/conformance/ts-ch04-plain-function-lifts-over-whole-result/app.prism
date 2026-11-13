@@ -12,7 +12,7 @@ Five: fn $Nat -> Nat
 fn Five $a = 5
 
 Pick: fn Nat -> Nat
-fn Pick n = Five (Or (Gen n)[0], ($ 0))
+fn Pick n = Five (Or (Gen n)[0], {$ 0})
 
 @shown:
     Ui.Label($text=$"pick {Pick 3}")      # 0

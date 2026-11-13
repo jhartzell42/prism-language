@@ -9,7 +9,7 @@ Gen: fn Nat -> [$Nat]
 fn Gen n = [[$ n]]
 
 $Head: fn [$Nat] -> $Nat
-fn $Head xs = Or xs[0], ($ 0)
+fn $Head xs = Or xs[0], {$ 0}
 
 Five: fn $Nat -> Nat
 fn Five $a = 5

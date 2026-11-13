@@ -25,7 +25,7 @@ fn !Bump $n, !go = $n + 1 on !go
 @wrapped:
     !inc <- Ui.Button($label=$"Inc")                             # 0
     $count <- 0 then $count + 1 on !inc
-    let $first = Or (Wrap $count)[0], ($ 0)
+    let $first = Or (Wrap $count)[0], {$ 0}
     Ui.Label($text=$"first {$first}")                            # 1
 
 @incremented:
@@ -53,6 +53,6 @@ fn !Bump $n, !go = $n + 1 on !go
     $ones <- 0 then $ones + 1 on !inc
     $tens <- 0 then $tens + 10 on !ten
     let ls = Lifts $ones, $tens
-    let $both = Or ls[0], ($ 0)
-    let $next = Or ls[1], ($ 0)
+    let $both = Or ls[0], {$ 0}
+    let $next = Or ls[1], {$ 0}
     Ui.Label($text=$"both {$both} next {$next}")                 # 2

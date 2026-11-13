@@ -9,7 +9,7 @@ Wrap: fn $Nat -> [$Nat]
 fn Wrap $a = [[$a]]
 
 $First: fn $Nat -> $Nat
-fn $First $a = Or (Wrap $a)[0], ($ 0)
+fn $First $a = Or (Wrap $a)[0], {$ 0}
 
 Count: fn $Nat -> Nat
 fn Count $a = Len (Wrap $a)
