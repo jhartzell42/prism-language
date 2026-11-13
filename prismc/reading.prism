@@ -565,7 +565,8 @@ fn ParseProgram read:
     let kept = Filter preParsed, \|((ignore, p))| not (HasText userMods, (ModName p.tree)) and not (AnyIn (TagFamilies p.tree), userFams)
     let all = Append parsed, kept
     let errors = Fold all, "", \|acc, ((src, p))| if AnyErrors p.diags: "{acc}{RenderParse src, p.diags}" else: acc
-    ParsedProgram(srcs=(Each all, \|((s, ignore))| s), trees=(Each all, \|((ignore, p))| p.tree), shown=(Len parsed), parents=(Each read.units, \|u| u.parent), errors=errors)
+    let vias = Fold all, [[]], \|acc, ((ignore, p))| Append acc, (ViasOf p.tree)
+    ParsedProgram(srcs=(Each all, \|((s, ignore))| s), trees=(Each all, \|((ignore, p))| DerivedVia p.tree, vias), shown=(Len parsed), parents=(Each read.units, \|u| u.parent), errors=errors)
 
 # In a tree, `test` and `check` stand only in a test module (`test-outside`), and a test
 # module declares no tag, trait or impl (`test-declares`).
@@ -591,6 +592,27 @@ fn DeclRoleDiags src, parent, i, d:
     if role == "main" and (what == "test" or what == "check"): [[CDiag(code="test-outside", file=i, span=d.span, message="a `{what}` in a tree stands only in a test module", fix="move it to a test module: `test mod Tests` in {main}, and tests.prism")]]
     else: if role == "test" and (what == "tag" or what == "trait" or what == "impl"): [[CDiag(code="test-declares", file=i, span=d.span, message="a test module declares no tag, trait or impl", fix="declare it in {tested}, the module the test module tests")]]
     else: [[]]
+
+ViasOf: fn Module -> [ViaDecl]
+fn ViasOf m = Fold m.decls, [[]], \|acc, d| match d.kind:
+    DVia v: Push acc, v
+    otherwise: acc
+
+# `derive ^Named via ^Titled for Book` is the impl the `derive ^Named a via ^Titled a:`
+# line writes, for `Book` (Jimmy's ruling AF): an impl like any other from here on, which
+# knows the trait it came through. A via no module writes is the checker's `unknown-name`.
+DerivedVia: fn Module, [ViaDecl] -> Module
+fn DerivedVia m, vias = update m:
+    &_.decls <= Each &_.decls, \|d| match d.kind:
+        DDeriveVia dv: match (Filter vias, \|v| (Last v.traitRef.path) == (Last dv.traitRef.path) and (Last v.via.path) == (Last dv.via.path))[0]:
+            ? v: Decl(kind=(DImpl ImplDecl(traitRef=dv.traitRef, ty=dv.ty, bounds=[[]], items=v.items, span=dv.span, ?via=(? dv.via))), span=d.span)
+            nil: d
+        otherwise: d
+
+Last: fn [Text] -> Text
+fn Last xs = match (Len xs) -? 1:
+    ? i: Or xs[i], ""
+    nil: ""
 
 TagFamilies: fn Module -> [Text]
 fn TagFamilies m = Fold m.decls, [[]], \|acc, d| match d.kind:

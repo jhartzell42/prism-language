@@ -210,7 +210,7 @@ fn ConvIndex cx, st, t = match t.kind:
 # The key of the constructor a bare name reaches from module `m`, if it reaches one.
 ?RoleConstructor: fn G, Text, Text -> ?Text
 fn ?RoleConstructor g, m, name = match ResolveValue g, m, SName(sigils="", path=[[name]], span=(Range(start=0, end=0, origin=InSource))):
-    ((? k, ignore)): if HasKey g.ctors, k: ? k else: nil
+    ((? k, ignore)): if (HasKey g.ctors, k) or (HasKey g.caseOwners, k): ? k else: nil
     otherwise: nil
 
 ConvNamedType: unbounded fn Cx, St, Text, TyInfo, Text, [Type], Range -> ((Ty, St))
@@ -244,9 +244,10 @@ fn ?KindOf ti, param = Fold ti.kinds, nil, \|?found, ((n, k))| if n == param: ? 
 
 KindArgCheck: unbounded fn Cx, St, Text, Text, Text, Ty, Range -> St
 fn KindArgCheck cx, st, name, kindKey, shown, x, span:
-    let cases = Filter (Keys cx.g.ctors), \|c| match cx.g.ctors[c]:
+    let built = Filter (Keys cx.g.ctors), \|c| match cx.g.ctors[c]:
         ? ci: ci.owner == kindKey
         nil: False
+    let cases = UnionTexts built, (Filter (Keys cx.g.caseOwners), \|c| cx.g.caseOwners[c] == ? kindKey)
     let payload = Filter cases, \|c| match cx.g.ctors[c]:
         ? ci: (Len ci.args) > 0
         nil: False
@@ -262,7 +263,7 @@ fn KindArgCheck cx, st, name, kindKey, shown, x, span:
 ?OwnerOfCase: fn Cx, Text -> ?Text
 fn ?OwnerOfCase cx, c = match cx.g.ctors[c]:
     ? ci: ? ci.owner
-    nil: nil
+    nil: cx.g.caseOwners[c]
 
 let dummyType = Type(kind=TAbsent, span=Range(start=0, end=0, origin=InSource))
 

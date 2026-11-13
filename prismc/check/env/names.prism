@@ -47,6 +47,7 @@ fn CollectDecl g, st, info, d, ?lastType = match d.kind:
         else:
             let upd = update g:
                 &_.types <= Insert &_.types, name, ti
+                &_.caseOwners <= Fold (PayloadFreeCases t), &_.caseOwners, \|m, c| Insert m, (QualKey info.name, c), name
             ((upd, st, ? name))
     DDerive trs: match ?lastType:
         ? tn:
@@ -106,6 +107,15 @@ fn CollectDecl g, st, info, d, ?lastType = match d.kind:
     otherwise: ((g, st, nil))
 
 let dummyTyInfo = TyInfo(name="", home="", params=[[]], kinds=[[]], body=BOpaque, derives=[[]], file=0, span=Range(start=0, end=0, origin=InSource))
+
+# The cases of a choice none of whose cases carries a payload; none for any other type.
+PayloadFreeCases: fn TypeDecl -> [Text]
+fn PayloadFreeCases t = match t.?body:
+    ? body: match body:
+        TbChoice cs: if Fold cs, False, \|seen, c| seen or (Len c.args) > 0 or c.?indexed != nil: [[]] else: Each cs, \|c| SNameKey c.name
+        TbUnit i: [[i.name]]
+        otherwise: [[]]
+    nil: [[]]
 
 AddDerives: fn TyInfo, [Text] -> TyInfo
 fn AddDerives ti, trs = update ti:

@@ -149,8 +149,23 @@ fn DeclKindOf p, fragment, start = match Kind p:
         let ((d, q)) = ParseFamilyDecl p
         ((DFamily d, q))
     KKw "derive", ignore:
-        let ((traits, q)) = Commas (Adv p), ParseTraitRef
-        ((DDerive traits, q))
+        let ((first, p1)) = ParseTraitRef (Adv p)
+        if AtKw p1, "via":
+            # `derive ^Named via ^Titled for Book`
+            let ((via, p2)) = ParseTraitRef (Adv p1)
+            let p3 = if AtKw p2, "for": Adv p2 else: ErrorHere p2, "expected `for` and a type after `derive ^T via ^U`"
+            let ((ty, p4)) = ParseType p3
+            ((DDeriveVia DeriveViaDecl(traitRef=first, via=via, ty=ty, span=(To start, (Prev p4))), p4))
+        else: if (IsPlainLower (Kind p1)) and AtKw (Adv p1), "via":
+            # `derive ^Named a via ^Titled a:` and the methods
+            let ((param, p2)) = ParseIdent p1
+            let ((via, p3)) = ParseTraitRef (Adv p2)
+            let p4 = if (IsPlainLower (Kind p3)): Adv p3 else: ErrorHere p3, "expected the variable again after the trait of `via`, `via ^Titled {param.name}`"
+            let ((items, p5)) = ParseTraitItems p4
+            ((DVia ViaDecl(traitRef=first, param=param, via=via, items=items, span=(To start, (Prev p5))), p5))
+        else:
+            let ((rest, q)) = if AtComma p1: Commas (Adv p1), ParseTraitRef else: (([[]], p1))
+            ((DDerive (Append [[first]], rest), q))
     KKw "trait", ignore:
         let ((d, q)) = ParseTraitDecl p
         ((DTrait d, q))
@@ -423,7 +438,7 @@ fn ParseImplDecl p0:
     let ((ty, p2)) = ParseType p1
     let ((bounds, p3)) = OptionalBounds p2
     let ((items, p4)) = ParseTraitItems p3
-    ((ImplDecl(traitRef=traitRef, ty=ty, bounds=bounds, items=items, span=(To start, (Prev p4))), p4))
+    ((ImplDecl(traitRef=traitRef, ty=ty, bounds=bounds, items=items, span=(To start, (Prev p4)), ?via=nil), p4))
 
 ParseTraitItems: unbounded fn Ps -> (([TraitItem], Ps))
 fn ParseTraitItems p0:

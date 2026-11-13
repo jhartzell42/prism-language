@@ -146,6 +146,8 @@ type ImplInfo = record:
     # the equations of its associated types with indices (`type Request Librarian = ...`)
     indexed: [AssocImpl]
     methods: [Text]
+    # the trait an impl of `derive ... via` came through, as written
+    ?via: Text
 derive ^Eq, ^Show
 
 # A definition whose body is checked.
@@ -177,6 +179,9 @@ type G = record:
     famOwner: (Text ==> Text)
     # a family's `family` line, where one declares its indices (Jimmy's ruling AF)
     famDecls: (Text ==> FamilyDecl)
+    # each case of a payload-free choice and its choice, known before any type is read, so
+    # an alias above reads a case as a type (`type Distance = Quantity Metre`; ruling PK)
+    caseOwners: (Text ==> Text)
     vals: (Text ==> ValInfo)
     traits: (Text ==> TraitInfo)
     impls: (Text ==> [ImplInfo])
@@ -250,7 +255,7 @@ fn IsUpperText t = IsUpper (Head t)
 # The program's files, parsed: the environment, and the diagnostics of every declaration.
 BuildG: unbounded fn [Src], [Module] -> ((G, St))
 fn BuildG srcs, trees:
-    let g0 = G(mods={{}}, types={{}}, ctors={{}}, tags={{}}, families={{}}, famOwner={{}}, famDecls={{}}, vals={{}}, traits={{}}, impls={{}}, bare={{}}, bareTypes={{}}, bareTraits={{}}, assocNames={{}}, srcs=srcs, defs=[[]], programRow=emptyRow, elemFams=[[]], ?rootModule=nil, appRoot=(AppRoot srcs, trees), fnAt={{}}, preludeFrom=(Len trees))
+    let g0 = G(mods={{}}, types={{}}, ctors={{}}, tags={{}}, families={{}}, famOwner={{}}, famDecls={{}}, caseOwners={{}}, vals={{}}, traits={{}}, impls={{}}, bare={{}}, bareTypes={{}}, bareTraits={{}}, assocNames={{}}, srcs=srcs, defs=[[]], programRow=emptyRow, elemFams=[[]], ?rootModule=nil, appRoot=(AppRoot srcs, trees), fnAt={{}}, preludeFrom=(Len trees))
     let st0 = NewSt 0
     let ((g1, st1)) = Fold (Range0 (Len trees)), ((g0, st0)), \|((g, st)), i| AddModule g, st, i, (Or trees[i], emptyModule)
     let g2 = AddBuiltins g1

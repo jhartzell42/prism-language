@@ -21,6 +21,11 @@ type DeclKind = choice:
     DTag TagDecl
     DFamily FamilyDecl
     DDerive [TraitRef]
+    # `derive ^Named a via ^Titled a:` and its methods, an impl written once over any type
+    # with the second trait's impl (Jimmy's ruling AF; Part VII ch. 7, step C8)
+    DVia ViaDecl
+    # `derive ^Named via ^Titled for Book`: that impl, for one type
+    DDeriveVia DeriveViaDecl
     DTrait TraitDecl
     DImpl ImplDecl
     DCheck CheckDecl
@@ -148,6 +153,23 @@ type ImplDecl = record:
     ty: Type
     bounds: [Bound]
     items: [TraitItem]
+    span: Range
+    # the trait an impl written by `derive ... via` came through
+    ?via: TraitRef
+derive ^Eq, ^Show
+
+type ViaDecl = record:
+    traitRef: TraitRef
+    param: Ident
+    via: TraitRef
+    items: [TraitItem]
+    span: Range
+derive ^Eq, ^Show
+
+type DeriveViaDecl = record:
+    traitRef: TraitRef
+    via: TraitRef
+    ty: Type
     span: Range
 derive ^Eq, ^Show
 
