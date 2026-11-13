@@ -18,7 +18,7 @@ fn Told heard = Fold heard, "", \|acc, one| match one:
     Requested request: "{acc}+{request}"
     Leaving: "{acc}-"
 
-@Hearing: fn !Nat, !unit -> @![Heard Text]
+@Hearing: prompt fn !Nat, !unit -> @![Heard Text]
 fn @Hearing !requests, !leaves:
     @ !MergeAll [[(Requested (Asking 1, "a", !requests)), (Leaving on !leaves)]]
 

@@ -14,7 +14,7 @@ tag Pad.Socket of Element ((!Text, $Nat)):
     $last <- "none" then !rx
     Ui.Label($text=$"{$peers}: {$last}")
 
-@Supply: fn !Ui.Click, $Nat, Element (Ui.* | Pad.*) o -> @o
+@Supply: prompt fn !Ui.Click, $Nat, Element (Ui.* | Pad.*) o -> @o
 fn @Supply !add, $count, e = match e:
     Pad.Socket(..): @ (("hello" on !add, $count))
     otherwise: @Element e

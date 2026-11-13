@@ -9,7 +9,7 @@ test mod Tests
 Told: fn [Nat] -> Text
 fn Told heard = Fold heard, "", \|acc, n| "{acc}+{n}"
 
-@Heard: fn !Nat, !Nat -> @![Nat]
+@Heard: prompt fn !Nat, !Nat -> @![Nat]
 fn @Heard !one, !two:
     let events = Push [[!one]], {!two}
     @ !MergeAll events
