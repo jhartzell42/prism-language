@@ -54,7 +54,7 @@ trait ^StateDocument d where d: ^Document:
     @InMemory: fn State d, Guests d -> @(Supplier d)
 
 trait ^SerializableDocument d where d: ^StateDocument, State d: ^SerializableValue:
-    @OnFile: fn State d, Guests d -> @(Supplier d) emit File.*
+    @InFile: fn State d, Guests d -> @(Supplier d) emit File.*
 
 trait ^RemoteDocument d where d: ^Document, Request d _: ^SerializableValue, Reason d _: ^SerializableValue, Query d _: ^SerializableValue, Answer d _: ^SerializableValue:
     @Over: fn Address, Guests d -> @(Supplier d) emit Net.*

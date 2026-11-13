@@ -1,0 +1,20 @@
+# Two rungs that do not extend each other both give a default for one method above them:
+# an impl under both that writes the method itself is fine, one that does not is
+# `ambiguous` at the impl, which must write it (Claude's first ruling, 13 November).
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+trait ^Named a:
+    Name: fn a -> Text
+
+trait ^Titled a where a: ^Named:
+    fn Name x = "titled"
+
+trait ^Labelled a where a: ^Named:
+    fn Name x = "labelled"
+
+type Book = record:
+    title: Text
+
+impl ^Titled Book
+impl ^Labelled Book
+impl ^Named Book

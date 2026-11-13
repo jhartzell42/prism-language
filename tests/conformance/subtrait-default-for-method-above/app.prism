@@ -1,0 +1,32 @@
+# A sub-trait gives a default for a method of a trait above it (Jimmy, 13 November: "A
+# subtrait can define a default impl of a method above it, why not?"). An impl gets its
+# own method, else the default of the lowest rung it implements that gives one: a book,
+# `^Titled`, is "titled"; a pen, only `^Named`, is "named".
+# Expected transcript derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Named a:
+    Name: fn a -> Text
+    fn Name x = "named"
+
+trait ^Titled a where a: ^Named:
+    Title: fn a -> Text
+    fn Name x = "titled"
+
+type Book = record:
+    title: Text
+
+type Pen = record:
+    ink: Text
+
+impl ^Named Book
+impl ^Titled Book:
+    fn Title book = book.title
+
+impl ^Named Pen
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Name Book(title="Dune")} {Name Pen(ink="blue")}")      # 0

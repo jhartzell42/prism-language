@@ -245,3 +245,16 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   backpedal".
 - **TC2** This conversation outranks the books where they differ; the Bible hears of
   every change by channel note. Jimmy: "This conversation beats the books."
+- **SD** A sub-trait may give a default for a method of a trait above it. An impl gets its
+  own method, else the default of the lowest rung it implements that gives one; two rungs
+  that do not extend each other both giving one is `ambiguous` at the impl, which writes
+  the method (the diamond: Claude's first ruling). Jimmy: "A subtrait can define a default
+  impl of a method above it, why not?" Replaces the "no-override rule" Claude had filed
+  under AF, which was never Jimmy's.
+- **RS** `^Document`'s `@Request` and `@Query` take the state they answer against, `State
+  d`, which `^Document` declares with the default `unit` (a database has none);
+  `^StateDocument` gives them defaults lifted from `Step` and `Read`. Jimmy: "b seems
+  right".
+- **IF** The file implementation is `@InFile`. Jimmy: "it's 'in file' buckaroo".
+- **EI** An impl with nothing to write is its header alone, `impl ^Named Pen`, with no
+  colon and no block (Claude's call, 13 November, for an impl that takes every default).

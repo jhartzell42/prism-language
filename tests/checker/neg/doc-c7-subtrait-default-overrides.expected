@@ -1,4 +1,0 @@
-tests/checker/neg/doc-c7-subtrait-default-overrides.prism:12: error[mismatch]: `^Titled` has no method `Name`
-        fn Name x = "titled"
-        ^^^^^^^^^^^^^^^^^^^^
-1 error

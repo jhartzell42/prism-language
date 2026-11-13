@@ -3,7 +3,7 @@
 # implementation. This module holds what every document shares: the trait ladder
 # (`^Document`, `^StateDocument`, `^SerializableDocument`, `^RemoteDocument`) and
 # `^PerfectInformationGame` beside it, the response, the seat family's tags, the order of
-# one tick's requests, the hosts, the implementations (`@InMemory`, `@OnFile`, `@Over`,
+# one tick's requests, the hosts, the implementations (`@InMemory`, `@InFile`, `@Over`,
 # `@Serve`), the file document they write through, and the wire they cross. Its test is
 # the tally, tests/documents/tally, and chess, examples/chess.
 #
@@ -30,7 +30,13 @@ trait ^Document d:
     type Seats rest                              # one live map of guests per role (chapter 5)
     type Results                                 # one live map of the guests' results per role
     row Lower = unit                             # the document's lower language: none, unless it says
+    type State = unit                            # what its answers are read against: none for a database
     Order: fn [Due d] -> Ordered d               # which of a tick's requests are applied now
+    # A request's work and a query's, each a widget, since answering one may mean asking a
+    # lower document; each against the document's state (Jimmy, 13 November: the methods
+    # take the state they answer against, `unit` for a document with none).
+    @Request: forall (r: Role d). fn State d, Fixed r, SeatId d r, Request d r -> @!(Response d r) emit Lower d
+    @Query: forall (r: Role d). fn $(State d), Fixed r, SeatId d r, $(Query d r) -> @$?(Answer d r) emit Lower d
     @HostSeats: fn Seats d rest, Supplier d -> @((Results d, Guests d)) emit rest
     fn Order due = OneATick due
 
@@ -118,10 +124,14 @@ derive ^Eq, ^Show
 # time. A state may belong to several documents (a file, the wire): `State` decides no
 # document, so a call that only a state decides names its document (ruling IN).
 trait ^StateDocument d where d: ^Document:
-    type State
     Step: forall (r: Role d). fn State d, Fixed r, SeatId d r, Request d r -> Stepped (State d) (Reason d r)
     Read: forall (r: Role d). fn State d, Fixed r, SeatId d r, Query d r -> Answer d r
     @InMemory: fn State d, Guests d -> @(Supplier d)
+    # `^Document`'s methods, lifted from the rules (a sub-trait gives a default for a method
+    # above it: Jimmy, 13 November). An implementation applies a tick's requests in the
+    # document's order itself; these answer one request, or one query, on their own.
+    fn @Request state, role, id, request = @Run ResponseOf<<d>>, (Step<<d>> state, role, id, request)
+    fn @Query $state, role, id, $query = @ ? (Read<<d>> $state, role, id, $query)
     fn @InMemory initial, $guests:
         !fired <- for at, $element <- $guests:                      # each place of the guests
             @Switch (!HeardAt<<d>> at, $element)
@@ -132,6 +142,11 @@ trait ^StateDocument d where d: ^Document:
         $waiting <- [[]] then WaitingOf !outcome                    # due again in the next tick
         $seated <- [[]] then SeatsIn $guests                        # who sat, as of the last tick
         @ Answering<<d>> (Loaded $state), (ResponsesOf !outcome)
+
+# A step's response: accepted on the next state, declined with the denial's reason.
+ResponseOf: forall d (r: Role d). unbounded fn Stepped (State d) (Reason d r) -> Response d r
+fn ResponseOf (Next ignore) = Accepted
+fn ResponseOf (Denied why) = Declined why
 
 # One request as the implementation keeps it: what the order sees, and the request at its
 # role's own type.
@@ -274,13 +289,13 @@ trait ^SerializableValue s:
     Encode: fn s -> [U8]
     ~Decode: fn [U8] -> ~s
 
-# A document whose state can be written down. `@OnFile` sits at a file's editor seat: it
+# A document whose state can be written down. `@InFile` sits at a file's editor seat: it
 # reads the file once, when it arrives, and writes it after every change; the hold is the
 # truth, and queries are answered from it. Before the file arrives every request waits
 # (doubt LD), and an empty file is the initial state.
 trait ^SerializableDocument d where d: ^StateDocument, State d: ^SerializableValue:
-    @OnFile: fn State d, Guests d -> @(Supplier d) emit Seat.* File Editor
-    fn @OnFile initial, $guests:
+    @InFile: fn State d, Guests d -> @(Supplier d) emit Seat.* File Editor
+    fn @InFile initial, $guests:
         $?bytes <- Seat.Query($query=$ Contents)                       # this domain sits at a file
         !fired <- for at, $element <- $guests:
             @Switch (!HeardAt<<d>> at, $element)
@@ -474,10 +489,9 @@ trait ^PerfectInformationGame g:
     Play: fn g, Move g -> g
     Outcome: fn g -> ?(Result (Side g))
 
-# What the derive gives: the state is the game; a player's step is a legal move; every
-# seat reads the whole game.
+# What the derive gives: a player's step is a legal move; every seat reads the whole game.
+# The game's `impl ^Document` says its state is the game, `type State = ChessGame`.
 derive ^StateDocument g via ^PerfectInformationGame g:
-    type State = g
     fn Step game, Fixed<<Player>>, side, move = match Legal game, side, move:
         nil: Next (Play game, move)
         ? why: Denied why

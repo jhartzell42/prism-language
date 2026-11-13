@@ -110,6 +110,7 @@ impl ^Document (Tallied o) where o: ^TallyOrder:
     type Answer Viewer = Nat
     type Seats rest = TallySeats o rest
     type Results = TallyResults
+    type State = Tally
     fn Order due = OrderOf due
     fn @HostSeats seats, Supply:
         ((tellers, $telling)) <- @HostRole Fixed<<Teller>>, seats.$teller, Supply
@@ -118,7 +119,6 @@ impl ^Document (Tallied o) where o: ^TallyOrder:
         @ ((TallyResults($teller=tellers, $keeper=keepers, $viewer=viewers), Merge [[$telling, $keeping, $viewing]]))
 
 impl ^StateDocument (Tallied o) where o: ^TallyOrder:
-    type State = Tally
     fn Step tally, Fixed<<Teller>>, name, (Add n) = if tally.?last == ? name: Denied AddedLast else:
         if tally.total + n > limit: Denied (StopsAt limit) else: Next Tally(total=tally.total + n, ?last=(? name))
     fn Step tally, Fixed<<Keeper>>, name, Clear = if tally.total == 0: Denied NothingToClear else: Next empty

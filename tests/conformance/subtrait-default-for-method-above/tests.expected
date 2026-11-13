@@ -1,0 +1,6 @@
+# Derived by hand: the book's name is ^Titled's default, the pen's ^Named's.
+test lowest_rung_default
+
+tick 0
+  added:
+    0: Ui.Label(text="titled named")

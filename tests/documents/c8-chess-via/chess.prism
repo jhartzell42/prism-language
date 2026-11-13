@@ -55,6 +55,7 @@ impl ^Document ChessGame:
     type Answer r = ChessGame
     type Seats rest = ChessSeats rest
     type Results = ChessResults
+    type State = ChessGame
     fn @HostSeats seats, Supply:
         ((players, $playing)) <- @HostRole Fixed<<Player>>, seats.$player, Supply
         ((spectators, $watching)) <- @HostRole Fixed<<Spectator>>, seats.$spectator, Supply
