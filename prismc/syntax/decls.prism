@@ -145,7 +145,8 @@ type TraitItem = choice:
     TiFn FnClause
     # an associated type: its name, parameters, the stated kinds of some, and its value
     TiAssocType Ident, [Ident], [((Text, Type))], ?Type, Range
-    TiAssocRow SName, Range
+    # `row Lower` in a trait, `row Lower = Ui.*` in an impl (Type System ch. 3)
+    TiAssocRow SName, ?Type, Range
 derive ^Eq, ^Show
 
 type ImplDecl = record:

@@ -543,7 +543,8 @@ fn ImplsComplete g, st0:
                 else: match im.?via:
                     ? via: Err s, "mismatch", im.span, "`derive ^{shown} via ^{via}` gives no method `{BareName method}` of `^{shown}`"
                     nil: ErrFix s, "impl-lacks", im.span, "this impl of `^{shown}` lacks `{BareName method}`, which has no default body", "define it under the impl, `fn {BareName method} ...`"
-            let s4 = Fold tr.assocs, s3, \|s, assoc|
+            let s3r = Fold tr.assocRows, s3, \|s, rowName| if HasText im.rows, rowName: s else: ErrFix s, "impl-lacks", im.span, "this impl of `^{shown}` lacks `row {rowName}`", "choose it under the impl, `row {rowName} = ...`"
+            let s4 = Fold tr.assocs, s3r, \|s, assoc|
                 if HasKey tr.assocParams, assoc: EquationsComplete g, s, tr, im, assoc
                 else: if Fold im.assocs, False, \|seen, ((chosen, ignore))| seen or chosen == assoc: s
                 else: ErrFix s, "impl-lacks", im.span, "this impl of `^{shown}` lacks `type {assoc}`", "choose it under the impl, `type {assoc} = ...`"
@@ -771,15 +772,21 @@ fn ConvTrait g, st, info, t, span:
                     &_.defs <= Push &_.defs, def
                 ((upd, s, ms, (Push ds, qk), assocAcc))
         TiAssocType n, ignore, ignore, ignore, ignore: ((gg, s, ms, ds, (Push assocAcc, n.name)))
-        TiAssocRow ignore, r: ((gg, (Err s, "unsupported", r, "this checker does not implement associated rows"), ms, ds, assocAcc))
+        TiAssocRow ignore, (? ignore2), r: ((gg, (Err s, "mismatch", r, "a trait declares an associated row, `row Name`; an impl chooses it"), ms, ds, assocAcc))
+        TiAssocRow ignore, nil, ignore2: ((gg, s, ms, ds, assocAcc))
     # a default body is a body of a method the trait signs, as an impl's method is
     let st4 = Fold t.items, st3, \|s, it| match it:
         TiFn f: if HasText methods, (QualKey info.name, (DefNameText f.name)): s else: Err s, "mismatch", f.span, "`^{Dotted t.name.path}` has no method `{DefNameText f.name}`"
         otherwise: s
-    let ti = TraitInfo(name=name, home=info.name, param=param, supers=(Each supers, \|((ignore, k))| k), headBounds=headBounds, methods=methods, defaults=defaults, assocs=assocs, assocParams=(AssocParamCounts t.items), assocDefaults=assocDefaults, file=info.file, span=span)
+    let ti = TraitInfo(assocRows=(AssocRowsOf t.items), name=name, home=info.name, param=param, supers=(Each supers, \|((ignore, k))| k), headBounds=headBounds, methods=methods, defaults=defaults, assocs=assocs, assocParams=(AssocParamCounts t.items), assocDefaults=assocDefaults, file=info.file, span=span)
     let upd3 = update g3:
         &_.traits <= Insert &_.traits, name, ti
     ((upd3, st4))
+
+AssocRowsOf: fn [TraitItem] -> [Text]
+fn AssocRowsOf items = Fold items, [[]], \|acc, it| match it:
+    TiAssocRow n, ignore, ignore2: Push acc, (SNameKey n)
+    otherwise: acc
 
 # An impl: its trait, its head with the head's variables quantified, its `where` bounds,
 # its methods checked later against the trait's signatures.
@@ -817,11 +824,19 @@ fn ConvImpl g, st, info, i, span = match ?ResolveTrait g, info.name, i.traitRef.
                 if Fold acc, False, \|seen, e| seen or (e.name == n.name and e.indices == indices): ((acc, (ErrFix s3, "assoc-case-duplicate", chosenAt, "the impl of `^{BareName cls}` for `{ShowTy s3, head}` gives `{n.name}` a second equation for {IndicesShown indices}; the first is at line {FirstEquationLine g, info, i, n.name, params}", "remove one of them")))
                 else: (((Push acc, eq), s3))
             otherwise: ((acc, s))
+        # its associated rows, `row Lower = Ui.*` (Type System ch. 3)
+        let ((rowImpls, st4r)) = Fold i.items, (([[]], st4)), \|((acc, s)), it| match it:
+            TiAssocRow n, (? r), ignore:
+                let ((rw, s2)) = ConvRow cx, s, r
+                (((Push acc, AssocRowImpl(cls=cls, name=(SNameKey n), head=head, chosen=rw)), s2))
+            TiAssocRow n, nil, at: ((acc, (ErrFix s, "impl-lacks", at, "an impl chooses its associated row: `row {SNameKey n}` names none", "write `row {SNameKey n} = ...`, a row")))
+            otherwise: ((acc, s))
         let names = Fold i.items, [[]], \|acc, it| match it:
             TiFn f: AddText acc, (DefNameText f.name)
             otherwise: acc
-        let im = ImplInfo(?via=(?ViaShown i), cls=cls, head=head, qs=(TypeVarsOfType i.ty), bounds=bs, home=info.name, file=info.file, span=span, derived=False, assocs=assocs, indexed=indexed, methods=names)
-        let st5 = update st4:
+        let im = ImplInfo(rows=(Each rowImpls, \|r| r.name), ?via=(?ViaShown i), cls=cls, head=head, qs=(TypeVarsOfType i.ty), bounds=bs, home=info.name, file=info.file, span=span, derived=False, assocs=assocs, indexed=indexed, methods=names)
+        let st5 = update st4r:
+            &_.assocRowImpls <= Append &_.assocRowImpls, rowImpls
             &_.assocImpls <= Append (Append &_.assocImpls, (Each assocs, \|((an, at))| AssocImpl(cls=cls, name=an, head=head, qs=im.qs, indices=[[]], value=at))), indexed
         let g2 = update g:
             &_.impls <= Insert &_.impls, cls, (Push (Or &_.impls[cls], [[]]), im)

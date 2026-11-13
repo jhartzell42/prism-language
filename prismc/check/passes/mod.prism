@@ -427,6 +427,8 @@ fn DischargeOne g, st, inc:
     let tailBad = match ((sub2.tail, sup.tail)):
         ((TlRigid a, TlRigid b)): a != b
         ((TlRigid ignore, ignore)): True
+        (((TlAssoc t1, n1, h1), (TlAssoc t2, n2, h2))): not (t1 == t2 and n1 == n2 and h1 == h2)
+        (((TlAssoc ignore, ignore2, ignore3), ignore4)): True
         otherwise: False
     if (Len left) == 0 and not tailBad: st1
     else:

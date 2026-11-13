@@ -65,6 +65,9 @@ type Tail = choice:
     TlFlex Nat
     TlRigid Text
     TlQ Text
+    # an associated row at its type, `Lower d` (Type System ch. 3): the trait, the row's
+    # name, the type; the impl's row once the type is known
+    TlAssoc Text, Text, Ty
 derive ^Eq, ^Show
 
 # A row: a set of families (sorted), the tags an arm above has taken (the remainder
@@ -195,6 +198,7 @@ type St = record:
     # Every impl's associated types, for normalizing (Type System ch. 5, Traits): the
     # associated type's trait and name, the impl's head and its variables, and the type it chooses.
     assocImpls: [AssocImpl]
+    assocRowImpls: [AssocRowImpl]
     # The result variables of the matches and `if`s with a `[a]+` arm beside an `[a]` arm:
     # such a construct's value is the `[a]` (`UnifyArm`, `ArmResult`).
     plainArms: [Nat]
@@ -261,6 +265,14 @@ type GenericUse = record:
     types: [((Text, Ty))]
 derive ^Eq, ^Show
 
+# An impl's associated row, `row Lower = Ui.*` (Type System ch. 3).
+type AssocRowImpl = record:
+    cls: Text
+    name: Text
+    head: Ty
+    chosen: Rw
+derive ^Eq, ^Show
+
 type AssocImpl = record:
     cls: Text
     name: Text
@@ -313,7 +325,7 @@ UseKey: fn Nat, Range -> Text
 fn UseKey file, span = "{file}:{span.start}:{span.end}"
 
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={{}}, infos={{}}, rows={{}}, lacks={{}}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={{}}, cleqs=[[]], colQ={{}}, colUp={{}}, deferred=[[]], binderAt={{}}, rowNames={{}}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={{}}, sizeTys={{}}, unsignedFns=[[]], localNext=0, localIds={{}}, anyGivens=[[]], assocImpls=[[]], plainArms=[[]], faultQs=[[]], plainQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={{}}, packs=[[]], definition="", genericUses=[[]], caseQs=[[]])
+fn NewSt file = St(next=0, tys={{}}, infos={{}}, rows={{}}, lacks={{}}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={{}}, cleqs=[[]], colQ={{}}, colUp={{}}, deferred=[[]], binderAt={{}}, rowNames={{}}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={{}}, sizeTys={{}}, unsignedFns=[[]], localNext=0, localIds={{}}, anyGivens=[[]], assocImpls=[[]], assocRowImpls=[[]], plainArms=[[]], faultQs=[[]], plainQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={{}}, packs=[[]], definition="", genericUses=[[]], caseQs=[[]])
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed, idx={{}})
@@ -537,6 +549,7 @@ fn ShowRowIn st, rw, nested:
         TlFlex n: [["r{n}"]]
         TlRigid n: [[n]]
         TlQ n: [[n]]
+        TlAssoc ignore, n, h: [["{n} {ShowTyIn st, (Zonk st, h), True}"]]
     let parts = Append tail, fams
     let minus = if (Len rw.minus) == 0: "" else: " − \{{Join rw.minus, ", "}\}"
     let inner = if (Len parts) == 0: "unit" else: Join parts, " | "

@@ -471,8 +471,12 @@ fn ParseTraitItem p = match Kind p:
                 ((item, (ErrorHere p1, "expected the associated type's name")))
     KKw "row", ignore:
         let start = Here p
-        let ((name, q)) = ParseSName (Adv p)
-        let item = TiAssocRow name, (To start, (Prev q))
+        let ((name, q0)) = ParseSName (Adv p)
+        let ((?chosen, q)) = if AtOp q0, "=":
+            let ((r, q1)) = ParseUnionType (Adv q0)
+            (((? r), q1))
+        else: ((nil, q0))
+        let item = TiAssocRow name, ?chosen, (To start, (Prev q))
         ((item, q))
     otherwise:
         let ((sig, q)) = ParseSignature p

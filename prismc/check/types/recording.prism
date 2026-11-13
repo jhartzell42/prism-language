@@ -390,7 +390,23 @@ fn WalkRow st, r = match r.tail:
             let w = WalkRow st, r2
             Rw(fams=(SortTexts (UnionTexts r.fams, w.fams)), minus=(UnionTexts r.minus, w.minus), tail=w.tail, idx=(MergeIdx r.idx, w.idx))
         nil: r
+    # an associated row at a known type is its impl's row (Type System ch. 3)
+    TlAssoc tr, n, h: match ?AssocRowAt st, tr, n, (Zonk st, h):
+        ? r2:
+            let w = WalkRow st, r2
+            Rw(fams=(SortTexts (UnionTexts r.fams, w.fams)), minus=(UnionTexts r.minus, w.minus), tail=w.tail, idx=(MergeIdx r.idx, w.idx))
+        nil: r
     otherwise: r
+
+# The row an impl chooses for an associated row at a type its head matches; none at a
+# variable or with no impl.
+?AssocRowAt: unbounded fn St, Text, Text, Ty -> ?Rw
+fn ?AssocRowAt st, tr, n, h = match h:
+    TyFlex ignore: nil
+    TyRigid ignore: nil
+    otherwise: Fold st.assocRowImpls, nil, \|?found, ai| if ?found != nil or ai.cls != tr or ai.name != n: ?found else: match ?MatchHead ai.head, h, {{}}:
+        ? tys: ? (SubstRowQ Inst(tys=tys, rows={{}}, cols={{}}), ai.chosen)
+        nil: ?found
 
 # A type with every bound variable replaced, all the way down.
 Zonk: unbounded fn St, Ty -> Ty

@@ -142,7 +142,9 @@ SexpItem: fn TraitItem, Nat -> Text
 fn SexpItem (TiSignature s), ignore = SexpSignature s
 fn SexpItem (TiFn f), d = SexpFn f, d
 fn SexpItem (TiAssocType name, params, ignore, ?value, ignore), ignore = "(assoc-type {name.name}{Concat (Each params, \|p| " {p.name}")}{OptType ?value})"
-fn SexpItem (TiAssocRow name, ignore), ignore = "(assoc-row {SNameText name})"
+fn SexpItem (TiAssocRow name, ?chosen, ignore), ignore = match ?chosen:
+    ? r: "(assoc-row {SNameText name} {SexpType r})"
+    nil: "(assoc-row {SNameText name})"
 
 # ---------------------------------------------------------------------------------------
 # Tests

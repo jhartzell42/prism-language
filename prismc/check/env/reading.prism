@@ -177,7 +177,8 @@ fn ConvNamed cx, st, n, args, span:
             ? qk:
                 let ti = Or cx.g.types[qk], dummyTyInfo
                 let st1 = if why == "collision": ErrFix st, "collision", span, "`{name}` is declared by two modules this file reaches by a bare name", "write it qualified, `{qk}`, or rename this file's own" else: st
-                match cx.g.assocNames[qk]:
+                if HasKey cx.g.assocRowNames, qk: ((TyErr, (Err st1, "kind", span, "`{name}` is an associated row, not a type: it stands where a row does, `emit {name} ...`")))
+                else: match cx.g.assocNames[qk]:
                     # an associated type applied (Type System ch. 3, ch. 5's Traits), a name
                     # of its trait's module: normalized when unified, at an impl's head
                     # with its indices after the head, `Request d r` (Type System ch. 6)
@@ -273,14 +274,12 @@ fn ParamInst ps, xs = Inst(tys=(Fold (Range0 (Len ps)), {{}}, \|m, i| Insert m, 
 # A row written in a type (`emit` clauses, `Element r o`, `Elem c`).
 ConvRow: unbounded fn Cx, St, Type -> ((Rw, St))
 fn ConvRow cx, st, t:
-    let ((fams, vars, idx, st2)) = RowParts cx, st, t
-    let st3 = if (Len vars) > 1: ErrFix st2, "row-two-tails", t.span, "a row has one variable; `{Join vars, " | "}` names two", "keep one variable" else: st2
-    let tail = match vars[0]:
-        ? v: TlQ v
-        nil: TlClosed
+    let ((fams, tails, idx, st2)) = RowParts cx, st, t
+    let st3 = if (Len tails) > 1: ErrFix st2, "row-two-tails", t.span, "a row has one variable; `{Join (Each tails, \|tl| TailWritten st2, tl), " | "}` names two", "keep one variable" else: st2
+    let tail = Or tails[0], TlClosed
     ((Rw(fams=(SortTexts fams), minus=[[]], tail=tail, idx=idx), st3))
 
-RowParts: unbounded fn Cx, St, Type -> (([Text], [Text], (Text ==> [Ty]), St))
+RowParts: unbounded fn Cx, St, Type -> (([Text], [Tail], (Text ==> [Ty]), St))
 fn RowParts cx, st, t = match t.kind:
     TRowUnion ts: Fold ts, (([[]], [[]], {{}}, st)), \|((fs, vs, seen, s)), x|
         let ((f2, v2, i2, s2)) = RowParts cx, s, x
@@ -293,9 +292,15 @@ fn RowParts cx, st, t = match t.kind:
         (([[fam]], [[]], (if (Len indices) == 0: {{}} else: Insert {{}}, fam, indices), st3))
     TName n, [[]]:
         let name = Dotted n.path
-        if (Len n.path) == 1 and (IsLowerText name): (([[]], [[name]], {{}}, st))
-        else: if name == "Element": ((cx.scope.fams, (TailNames cx.scope.tail), cx.scope.idx, st))
+        if (Len n.path) == 1 and (IsLowerText name): (([[]], [[(TlQ name)]], {{}}, st))
+        else: if name == "Element": ((cx.scope.fams, (ScopeTails cx.scope.tail), cx.scope.idx, st))
         else: (([[]], [[]], {{}}, (ErrFix st, "row-single-tag", t.span, "a row names families, not tags: `{name}`", "write `{Dotted (Take n.path, (Dec (Len n.path)))}.*`")))
+    # an associated row at its type, `Lower d` (Type System ch. 3)
+    TName n, [[h]]: match ResolveType cx.g, cx.home, n.path:
+        ((? qk, ignore)) if HasKey cx.g.assocRowNames, qk:
+            let ((ht, st2)) = ConvType cx, st, h
+            (([[]], [[(TlAssoc (Or cx.g.assocRowNames[qk], ""), (BareName qk), ht)]], {{}}, st2))
+        otherwise: (([[]], [[]], {{}}, (Err st, "kind", t.span, "this is not a row")))
     otherwise: (([[]], [[]], {{}}, (Err st, "kind", t.span, "this is not a row")))
 
 # A family's indices as a row applies it: one per parameter its `family` line declares,
@@ -314,10 +319,19 @@ fn FamilyIndices cx, st, fam, args, span:
             let ((x, s2)) = ConvIndex cx, s, a
             (((Push acc, x), s2))
 
-TailNames: fn Tail -> [Text]
-fn TailNames (TlQ v) = [[v]]
-fn TailNames (TlRigid v) = [[v]]
-fn TailNames ignore = [[]]
+# The tail a scope's own row gives `Element` in a row's place: none when closed.
+ScopeTails: fn Tail -> [Tail]
+fn ScopeTails TlClosed = [[]]
+fn ScopeTails tl = [[tl]]
+
+# A tail as a row writes it.
+TailWritten: unbounded fn St, Tail -> Text
+fn TailWritten st, tl = match tl:
+    TlQ v: v
+    TlRigid v: v
+    TlAssoc ignore, n, h: "{n} {ShowTyIn st, h, True}"
+    TlFlex n: "r{n}"
+    TlClosed: ""
 
 # A signature's scheme (ch. 5): its type variables, row variables (those in a row's place,
 # and the module's own `emit r`), its color variables and their joins, its bounds.
