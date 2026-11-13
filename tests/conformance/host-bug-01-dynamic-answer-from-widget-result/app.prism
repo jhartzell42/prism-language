@@ -46,7 +46,7 @@ fn StateOf kept = kept.state
 ResponsesOf: fn Kept s -> (Path ==> Response)
 fn ResponsesOf kept = kept.responses
 
-@InMemory: fn s, ![Asked s] -> @(($s, !(Path ==> Response)))
+@InMemory: prompt fn s, ![Asked s] -> @(($s, !(Path ==> Response)))
 fn @InMemory initial, !asked:
     let !outcome = StepAll $state, !asked
     $state <- initial then StateOf !outcome
@@ -98,7 +98,7 @@ fn ?ResponseTo place, responses = ?Get responses, place
 @host: @unit
 @host:
     let seat = Presser "ada"
-    ((ignore, $doc)) <- @Host (@Presser "ada"), \|p, e| match e:
+    ((ignore, $doc)) <- @Host (@Presser "ada"), prompt \|p, e| match e:
         Count.Request(..): @ !Filter (?ResponseTo p, !responses)
         Count.Query($query=$q): @ Read $state, seat, $q
         otherwise: @Element e

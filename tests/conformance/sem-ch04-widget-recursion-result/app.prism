@@ -15,7 +15,7 @@ type Tree = record:
     kids: Nat ==> Tree
 derive ^Eq, ^Show
 
-@Count: fn $Tree -> @$Nat
+@Count: prompt fn $Tree -> @$Nat
 fn @Count $t:
     $counts <- for k, $c <- $t.kids:                             # 0/[k]
         $n <- @Count $c

@@ -122,7 +122,7 @@ fn ?StillWaiting kept = if (Len kept.waiting) == 0: nil else: ? unit
 # own function that hosts its seats (chapter 5: "each document writes `@HostSeats`"); it
 # is given the state and each tick's responses, and gives back each tick's requests.
 # `Order` is the document's order of one tick's requests.
-@InMemoryOrdered: fn s, (fn [Asked s k d] -> Ordered s k d), (fn $s, !(Place k ==> Response d) -> @![Asked s k d] emit rest) -> @unit emit rest where k: ^Ord
+@InMemoryOrdered: fn s, (fn [Asked s k d] -> Ordered s k d), (prompt fn $s, !(Place k ==> Response d) -> @![Asked s k d] emit rest) -> @unit emit rest where k: ^Ord
 fn @InMemoryOrdered initial, Order, HostSeats:
     !arrived <- HostSeats $state, !responses
     !again <- @Defer (!Filter (?StillWaiting !outcome))     # a tick after a request waits
@@ -134,7 +134,7 @@ fn @InMemoryOrdered initial, Order, HostSeats:
     let !responses = !Updated $answered
 
 # The same with the default order.
-@InMemory: fn s, (fn $s, !(Place k ==> Response d) -> @![Asked s k d] emit rest) -> @unit emit rest where k: ^Ord
+@InMemory: fn s, (prompt fn $s, !(Place k ==> Response d) -> @![Asked s k d] emit rest) -> @unit emit rest where k: ^Ord
 fn @InMemory initial, HostSeats = @InMemoryOrdered initial, OneATick, HostSeats
 
 # ---- what a role's host is written with
@@ -154,7 +154,7 @@ fn ?Lowered Lower, (? (Declined why)) = match Lower why:
 
 # The state as each seat's host hears it: when it changes, a tick after a seat joins, and
 # a tick after the document is built. A seat's host keeps what it hears in its own hold.
-@News: fn $s, $(k ==> v) -> @!s
+@News: prompt fn $s, $(k ==> v) -> @!s
 fn @News $state, $seats:
     !first <- @started
     !settled <- @Defer (!Updated $seats)

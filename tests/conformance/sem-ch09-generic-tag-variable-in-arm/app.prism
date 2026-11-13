@@ -23,6 +23,6 @@ tag Pad.Echo of Element !r where r: ^Show:
 
 @host: @unit
 @host:
-    ignore <- @Host @guest, \|p, e| match e:            # 0/[p]
+    ignore <- @Host @guest, prompt \|p, e| match e:            # 0/[p]
         Pad.Echo($?latest=$?l): @ !Filter (!Updated $?l)
         otherwise: @Element e

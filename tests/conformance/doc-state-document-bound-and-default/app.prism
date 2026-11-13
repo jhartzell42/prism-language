@@ -20,7 +20,7 @@ trait ^Document d:
 trait ^StateDocument d where d: ^Document:
     type State
     Step: fn State d, Request d -> State d
-    @InMemory: fn State d, !(Request d) -> @$(State d)
+    @InMemory: prompt fn State d, !(Request d) -> @$(State d)
     fn @InMemory initial, !requests:
         $state <- initial then Step<<d>> $state, !requests              # the hold
         @ $state

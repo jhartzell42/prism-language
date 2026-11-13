@@ -87,7 +87,7 @@ fn !AddsOf e = match e:
 
 # The tellers. Each seat is one entry of the `for`, with its own host: the seat is the
 # entry's key, so no element names it.
-@HostTellers: fn $(Teller ==> v), (fn Teller, v -> @a emit rest | Tell.*), $Tally, !(Place ==> Response) -> @![Asked Tally] emit rest where v: ^Ord
+@HostTellers: prompt fn $(Teller ==> v), (fn Teller, v -> @a emit rest | Tell.*), $Tally, !(Place ==> Response) -> @![Asked Tally] emit rest where v: ^Ord
 fn @HostTellers $seats, Guest, $state, !responses:
     !news <- @News $state, $seats
     !heard <- for both, $u <- (Sittings $seats):                    # [seat and sitting]
@@ -119,7 +119,7 @@ fn @HostViewers $seats, Guest, $state:
 
 # The document's seats: a live map per role, and per role the function that builds a
 # seat's guest from what sits there.
-@HostSeats: fn $(Teller ==> v), (fn Teller, v -> @a emit rest | Tell.*), $(Viewer ==> w), (fn Viewer, w -> @b emit rest | View.*), $Tally, !(Place ==> Response) -> @![Asked Tally] emit rest where v: ^Ord, w: ^Ord
+@HostSeats: prompt fn $(Teller ==> v), (fn Teller, v -> @a emit rest | Tell.*), $(Viewer ==> w), (fn Viewer, w -> @b emit rest | View.*), $Tally, !(Place ==> Response) -> @![Asked Tally] emit rest where v: ^Ord, w: ^Ord
 fn @HostSeats $tellers, TellerGuest, $viewers, ViewerGuest, $state, !responses:
     !asked <- @HostTellers $tellers, TellerGuest, $state, !responses    # tellers fold first
     @HostViewers $viewers, ViewerGuest, $state

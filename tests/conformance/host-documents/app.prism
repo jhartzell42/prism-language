@@ -125,7 +125,7 @@ let cy = Viewer "cy"
 # is the tally's `@HostSeats` (chapter 5): given the state and each tick's responses, it
 # hosts every seat and gives back each tick's requests. A role's host takes two places:
 # its news, then the `for` its seats are entries of.
-@Table: fn $Tally, ![TallyResponse] -> @![Notice Tally Requester TallyResponse] emit Ui.*
+@Table: prompt fn $Tally, ![TallyResponse] -> @![Notice Tally Requester TallyResponse] emit Ui.*
 fn @Table $state, !responses:
     !cyJoins <- Ui.Button($label=$"cy joins")                              # 0
     !cyRemoved <- Ui.Button($label=$"cy is removed")                       # 1

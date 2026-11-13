@@ -124,7 +124,7 @@ let cy = Viewer "cy"
 # The table: two tellers from the start, and buttons that seat and remove the others. It
 # is the tally's `@HostSeats` (chapter 5): given the state and each tick's responses, it
 # hosts every seat and gives back each tick's requests.
-@Table: fn $Tally, !(Place Requester ==> Response TallyReason) -> @![Asked Tally Requester TallyReason] emit Ui.*
+@Table: prompt fn $Tally, !(Place Requester ==> Response TallyReason) -> @![Asked Tally Requester TallyReason] emit Ui.*
 fn @Table $state, !responses:
     !cyJoins <- Ui.Button($label=$"cy joins")                              # 0
     !cyRemoved <- Ui.Button($label=$"cy is removed")                       # 1

@@ -50,7 +50,7 @@ fn StateOf kept = kept.state
 ResponsesOf: fn Kept s -> (Place ==> Response)
 fn ResponsesOf kept = kept.responses
 
-@InMemory: fn s, (fn $s, !(Place ==> Response) -> @((a, ![Asked s])) emit rest) -> @a emit rest
+@InMemory: fn s, (prompt fn $s, !(Place ==> Response) -> @((a, ![Asked s])) emit rest) -> @a emit rest
 fn @InMemory initial, HostSeats:
     ((results, !asked)) <- HostSeats $state, !responses
     let !outcome = StepAll $state, !asked

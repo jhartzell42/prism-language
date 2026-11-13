@@ -72,6 +72,6 @@ let cy = Viewer "cy"
     !bobScripted <- Ui.Button($label=$"bob becomes eager")
     $tellers <- {{ada: Person, bob: Person}} then (Remove $tellers, ada) on !adaLeaves <| (Insert $tellers, bob, (Eager 5)) on !bobScripted
     $viewers <- {{}} then (Insert $viewers, cy, unit) on !cyJoins <| (Remove $viewers, cy) on !cyLeaves
-    @Seats: fn $Tally, !(Place ==> Response) -> @![Asked Tally] emit Ui.*
+    @Seats: prompt fn $Tally, !(Place ==> Response) -> @![Asked Tally] emit Ui.*
     fn @Seats $state, !responses = @HostSeats $tellers, @Teller, $viewers, @Watcher, $state, !responses
     @InMemory empty, @Seats
