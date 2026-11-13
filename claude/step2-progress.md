@@ -57,8 +57,16 @@ Written by Claude on the claude-self-hosting branch; subject to change.
   parameter's type first (`Env.?expect`); a program that is its own Prelude is checked
   without the library's other modules.
 
+- The CLI World answers `Net` over TCP (worlds/cli/rust/src/net.rs; `cargo check` clean).
+- A `forall` value applied packs its arguments and unpacks its result (`PackedApply`,
+  `prism_rtl::unpacked`). Not yet: making such a value from a generic function by name.
+
 ## Asked of Jimmy
 
+- MB: the Rust representation of values whose type depends on a variable (existentials
+  over role variables; indexed associated types at a variable). Claude recommends
+  monomorphizing over the instantiation fixed point. Blocks: existential lowering,
+  doc-c4 family associated types, doc-sk, the library's builtins.
 - The hold cycle through a parameter given a lambda (neg/sem-ch07-hold-updated-cycle-
   through-parameter-given-a-lambda): Claude recommends following the lambda at the call.
 
@@ -66,11 +74,15 @@ Written by Claude on the claude-self-hosting branch; subject to change.
 
 - FA call sites: a value of a `forall` type applied in Rust must pack its arguments and
   unpack its result (`Packed::of(..).packed()`, `.held::<T>()`); not written.
-- Lowering: existentials (`any`), family associated types per instantiation (doc-c4,
-  every-role), partial application (doc-c5; a widget function as a value), default
-  widget methods (doc-state), doc-c6's bundle event part, doc-sk's not-exhaustive.
+- Lowering, waiting on MB: existentials (`any`), family associated types per
+  instantiation (doc-c4, every-role), doc-sk.
+- Lowering: partial application (doc-c5). Where a widget function parameter is given
+  `@Counter 5` (`ApplyWidgetParam`, lower/node/static), the plan is to read it as a lambda
+  of the missing parameters whose body is the full call; the obstacle is that the line's
+  arguments and the partial call's own are in two files' environments and spans. Default
+  widget methods (doc-state), doc-c6's bundle event part.
 - The library's builtins with no body: `SeatPathOf`, `$Merge`, `SeatIdAt`, `$GuestsOf`,
-  `@Answer`, `!Outgoing`, `?ResponseFrom`, `$?AnswerFrom`; the Net and File worlds.
+  `@Answer`, `!Outgoing`, `?ResponseFrom`, `$?AnswerFrom` (their types depend on MB).
 - The checker red doc-c4-watcher-wires-request: the mismatch at a tag's sigiled field
   shows the peeled types (`Never`, wanted `!Never`) and has no note line; diagnostics have
   no notes yet.
