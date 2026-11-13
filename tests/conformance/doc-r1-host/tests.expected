@@ -1,0 +1,6 @@
+# Derived by hand from Part VII ch. 7 (step R1: `@Host` is the prelude's domain host) and Semantics ch. 9 (the supplier answers the child's question in its birth tick; the child's label is forwarded at host/[1]/0).
+test hosted_by_host
+
+tick 0
+  added:
+    0/[1]/0: Ui.Label(text="told hello ada")

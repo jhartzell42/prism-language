@@ -1,0 +1,6 @@
+# The tests of doc-sk-existential-seat-key.
+emit Ui.*
+use App.*
+
+test keys_opened_at_their_roles, @page:
+    build

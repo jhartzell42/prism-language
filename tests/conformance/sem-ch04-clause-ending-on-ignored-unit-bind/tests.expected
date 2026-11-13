@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 4 ("A block whose last line is a bind or a `let` returns `unit`"; `ignore` stands as the left side of a bind) and ruling TC (places counted as built): loud builds the clause's label at 0 and "after" at 1; soft's clause builds nothing, so "after" stands at 0.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="loud")
+    1: Ui.Label(text="after")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="after")

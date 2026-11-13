@@ -1,0 +1,52 @@
+# Part III ch. 6, "Families indexed by document and role": matching a tag of `Seat.* d _`
+# learns its role as a fresh type in the arm, so the `Seat.Query(..)` arm's output is
+# `$?(Answer Count ρ)` for that arm's `ρ`, and the supplier must answer exactly that. This
+# arm answers with a raiser's answer, a `Nat`, as if every role were a raiser: `mismatch`
+# at the answer. (A watcher is told a `Text`.)
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+trait ^Document d:
+    type Role
+    type Query r
+    type Answer r
+
+type CountRole = choice:
+    Raiser
+    Watcher
+
+type Count = record:
+    total: Nat
+
+type Whole = choice:
+    Whole
+
+impl ^Document Count:
+    type Role = CountRole
+    type Query r = Whole
+    type Answer Raiser = Nat
+    type Answer Watcher = Text
+
+family Seat d r where d: ^Document
+
+tag Seat.Query of Element $?(Answer d r):
+    $query: Query d r
+
+@Raising: @unit emit Seat.* Count Raiser
+@Raising:
+    $told <- Seat.Query($query=$ Whole)
+
+@Watching: @unit emit Seat.* Count Watcher
+@Watching:
+    $told <- Seat.Query($query=$ Whole)
+
+@Guests: @unit emit Seat.* Count _
+@Guests:
+    @Raising
+    @Watching
+
+@page: @unit
+@page:
+    ignore <- @Host @Guests, \|path, element| match element:
+        Seat.Query(..): @ $ (? 5)

@@ -1,0 +1,7 @@
+# Derived by hand from Part III ch. 6 ("A per-document record of rows") and Part IV ch. 5 (`@HostRole` is one host over a `for` of the role's seats), with Semantics ch. 9's forwarding: the raisers' host is the page's place 0 and the watchers' place 1; inside each, the `for` is place 0, the seat's key, the `rebuild` place 0 and its generation #0, and the guest's label its place 1, forwarded at host/[p]/0. Each query is answered nil, so each guest is told 0.
+test each_role_hosted_by_its_own_line
+
+tick 0
+  added:
+    0/[0/[1]/0/#0/1]/0: Ui.Label(text="raiser 1 told 0")
+    1/[0/["ada"]/0/#0/1]/0: Ui.Label(text="watcher ada told 0")

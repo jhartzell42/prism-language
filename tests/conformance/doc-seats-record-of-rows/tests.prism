@@ -1,0 +1,6 @@
+# The tests of doc-seats-record-of-rows.
+emit Ui.*
+use App.*
+
+test each_role_hosted_by_its_own_line, @page:
+    build

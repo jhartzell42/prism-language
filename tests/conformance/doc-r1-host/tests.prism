@@ -1,0 +1,6 @@
+# The tests of doc-r1-host.
+emit Ui.*
+use App.*
+
+test hosted_by_host, @page:
+    build

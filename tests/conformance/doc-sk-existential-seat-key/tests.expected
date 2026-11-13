@@ -1,0 +1,7 @@
+# Derived by hand from Part III ch. 6 (doubt SK: the key is `any r: ((Role d, SeatId d r))`, unpacked in the arm) and Type System ch. 3 ("Existentials"): each key, opened, describes its seat id at its own role's type.
+test keys_opened_at_their_roles
+
+tick 0
+  added:
+    0: Ui.Label(text="raiser 3 at 0")
+    1: Ui.Label(text="watcher ada at 1")

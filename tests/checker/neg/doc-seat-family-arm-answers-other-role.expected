@@ -1,0 +1,5 @@
+tests/checker/neg/doc-seat-family-arm-answers-other-role.prism:52: error[mismatch]: expected `$?(Answer Count ρ)`, found `$?Nat`
+            Seat.Query(..): @ $ (? 5)
+                              ^^^^^^^
+  note: this arm's role is `ρ`, a fresh type learned from `Seat.Query`, and `Answer Count ρ` is no `Nat`
+1 error

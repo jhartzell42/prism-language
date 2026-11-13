@@ -1,0 +1,6 @@
+# Derived by hand from Part III ch. 6 ("Families indexed by document and role": `Seat.* d _` is the family at every role, and a tag's arm answers `$?(Answer d ρ)` at its own fresh role) and Semantics ch. 9 (the supplier's answer is each place's value from its birth tick): both queries are answered nil, so each guest's answer is still loading, and the host forwards no element.
+test every_role_answered_at_its_own_type
+
+tick 0
+  added:
+    1: Ui.Label(text="raiser told 0, watcher told none")

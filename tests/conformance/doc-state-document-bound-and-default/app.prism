@@ -1,0 +1,48 @@
+# Part IV ch. 4, "`^StateDocument`: a state in memory", and Part III ch. 6, "What else
+# documents ask of the type system": a trait with a bound on its parameter, `trait
+# ^StateDocument d where d: ^Document:`, whose methods use the parameter's associated
+# types from the bound (`Request d`), and a widget method with a generic default,
+# `@InMemory`, which keeps the state in a hold. `Count`'s impl does not override it, so
+# `@InMemory<<Count>>` runs the default. The default calls the trait's own `Step`, at the
+# trait's parameter: "it is generic code under the trait's own bound" (Part III ch. 3,
+# "Defaults"). The protocol is kept to one associated type, no role.
+# `<<Count>>` names the document, which inference cannot see through `State d` (Type
+# System ch. 2, "Explicit type arguments").
+# Expected transcript derived by hand from Part IV ch. 4 and Part III ch. 3 (widget
+# methods with defaults); never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Request
+
+trait ^StateDocument d where d: ^Document:
+    type State
+    Step: fn State d, Request d -> State d
+    @InMemory: fn State d, !(Request d) -> @$(State d)
+    fn @InMemory initial, !requests:
+        $state <- initial then Step $state, !requests                   # the hold
+        @ $state
+
+type Count = record:
+    total: Nat
+derive ^Eq, ^Show
+
+type Raise = choice:
+    Raise Nat
+derive ^Eq, ^Show
+
+impl ^Document Count:
+    type Request = Raise
+
+# No `@InMemory` here: the trait's default is Count's.
+impl ^StateDocument Count:
+    type State = Nat
+    fn Step total, (Raise n) = total + n
+
+@page: @unit
+@page:
+    !raise <- Ui.Button($label=$"raise 2")                                          # 0
+    $total <- @InMemory<<Count>> 0, ((Raise 2) on !raise)
+    Ui.Label($text=$"total {$total}")                                                # 1
