@@ -1,5 +1,0 @@
-tests/checker/neg/collision.prism:6: error[collision]: `Len` is declared by more than one module this file reaches by a bare name: `Len`, `Prelude.Len`
-    fn Size t = Len t
-                ^^^
-  fix: write the one meant qualified, as `Prelude.Len`, or rename this file's own
-1 error

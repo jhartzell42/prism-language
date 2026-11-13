@@ -1,3 +1,0 @@
-# `row-two-tails`: a row has one variable.
-module Tails
-emit r | s
