@@ -39,7 +39,7 @@ CollectDecl: unbounded fn G, St, ModInfo, Decl, ?Text -> ((G, St, ?Text))
 fn CollectDecl g, st, info, d, ?lastType = match d.kind:
     DType t:
         let name = QualKey info.name, (Dotted t.name.path)
-        let ti = TyInfo(name=name, home=info.name, params=(Each t.params, \|p| p.name), body=BOpaque, derives=[[]], file=info.file, span=d.span)
+        let ti = TyInfo(name=name, home=info.name, params=(Each t.params, \|p| p.name), kinds=t.kinds, body=BOpaque, derives=[[]], file=info.file, span=d.span)
         if HasKey g.types, name: ((g, (Err st, "collision", d.span, "a second type `{Dotted t.name.path}`"), ?lastType))
         # an associated type is a type-level name of its trait's module (AK): a trait above
         # declared this name
@@ -93,7 +93,7 @@ fn CollectDecl g, st, info, d, ?lastType = match d.kind:
         ((upd, st2, nil))
     otherwise: ((g, st, nil))
 
-let dummyTyInfo = TyInfo(name="", home="", params=[[]], body=BOpaque, derives=[[]], file=0, span=Range(start=0, end=0, origin=InSource))
+let dummyTyInfo = TyInfo(name="", home="", params=[[]], kinds=[[]], body=BOpaque, derives=[[]], file=0, span=Range(start=0, end=0, origin=InSource))
 
 AddDerives: fn TyInfo, [Text] -> TyInfo
 fn AddDerives ti, trs = update ti:

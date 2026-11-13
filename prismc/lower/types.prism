@@ -116,7 +116,13 @@ fn OutTyOf lx, t = match t:
     TyAssoc tr, n, a, indices: AssocOut lx, tr, n, a, indices
     # a role constructor as a type stands only as an associated type's index, which the
     # lowering reads at a known index (`?ImplAssoc`); as a type of its own it is refused
-    TyRole r: OutRefused "the role constructor `{r}` as a type a value has, outside an associated type's index (Type System ch. 6): its Rust unit struct is not lowered"
+    # a case of a payload-free choice as a type (Jimmy's ruling PK): its Rust unit
+    # struct, declared beside the choice (`PromotedDefs`)
+    TyRole r: match lx.g.ctors[r]:
+        ? ci: match lx.g.types[ci.owner]:
+            ? ti: OutNamed (RefIn lx, ti.home, (PromotedName ci.owner, r)), [[]]
+            nil: InternalBugType "the choice of the case `{r}`, which the checker did not declare"
+        nil: InternalBugType "the case `{r}`, which the checker did not declare"
     TyErr: InternalBugType "a type the checker did not find"
 
 # A blueprint as a value, `@o` (a supplier's answer): prism_rtl's, over the program's
@@ -187,6 +193,11 @@ fn NamedTy lx, n, args = match lx.g.types[n]:
         BRowKind: if n == "Prelude.Fault": OutPod else: OutNamed (RefIn lx, ti.home, (TypeItemName n)), [[]]
         otherwise: OutNamed (RefIn lx, ti.home, (TypeItemName n)), args
     nil: if HasKey lx.g.families, n: OutPod else: InternalBugType "the type `{n}`, which the checker did not declare"
+
+# The Rust unit struct of a choice's case as a type (Jimmy's ruling PK): `Unit`'s
+# `Metre` is `UnitIsMetre`.
+PromotedName: fn Text, Text -> Text
+fn PromotedName owner, c = "{TypeItemName owner}Is{Camel (BareName c)}"
 
 # A non-empty collection's target type (Type System ch. 2, "Collections": `[a]+` and
 # `(K ==> V)+`): the emitted prelude's `NonEmpty` over the collection's, a type of its own,

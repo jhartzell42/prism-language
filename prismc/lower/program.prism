@@ -1207,7 +1207,10 @@ fn TyDefs lx, ti:
                 [[((cn, [[]]))]]: if IsLowerText cn: ShapeUnit else: ShapeChoice
                 [[((cn, ignore))]]: if cn == bare: ShapeNewtype else: ShapeChoice
                 otherwise: ShapeChoice
-            [[ItType (Mk shape, defs)]]
+            # a choice whose cases carry no payload is also a kind (Jimmy's ruling PK):
+            # each case a unit struct, the case as a type
+            let promoted = if (Len cases) > 0 and Fold cases, True, \|all, ((ignore, ats))| all and (Len ats) == 0: Each cases, \|((cn, ignore))| ItType (TyDef(name=(PromotedName ti.name, (QualKey ti.home, cn)), prism=cn, params=[[]], keyed=[[]], shape=ShapeUnit, cases=[[CaseDef(name=(PromotedName ti.name, (QualKey ti.home, cn)), prism=cn, fields=[[]], labels=[[]])]], eq=True, ord=True, show=ShownDerived, pod=True, doc="/// `{cn}` of `{bare}` as a type.")) else: [[]]
+            Push promoted, (ItType (Mk shape, defs))
         BRowKind: if ti.name == "Prelude.Fault": [[]] else: [[ItRow (RowDefOf lx, ti)]]
         otherwise: [[]]
 
@@ -1323,7 +1326,7 @@ TagDefOf: unbounded fn Lx, TagInfo -> TagDef
 fn TagDefOf lx, tg:
     let fields = Each (LevelFields tg), \|((fname, ft))| ((fname, (FieldSpell tg.home, fname, ft), (TagFieldOut lx, ft)))
     let events = Each (LevelEvents tg), \|((fname, ft))| (((FieldSpell tg.home, fname, ft), (TagFieldOut lx, ft)))
-    TagDef(name=(TagStructOf tg), tagName=tg.name, fields=fields, events=events, doc=(TypeDoc lx, (TyInfo(name=tg.name, home=tg.home, params=[[]], body=BOpaque, derives=[[]], file=tg.file, span=tg.span))), pod=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and Podable t), eq=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and RuntimeEq t))
+    TagDef(name=(TagStructOf tg), tagName=tg.name, fields=fields, events=events, doc=(TypeDoc lx, (TyInfo(name=tg.name, home=tg.home, params=[[]], kinds=[[]], body=BOpaque, derives=[[]], file=tg.file, span=tg.span))), pod=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and Podable t), eq=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and RuntimeEq t))
 
 # A tag's items: its struct, and an element tag's description beside it.
 TagItems: unbounded fn Lx, TagInfo -> [Item]

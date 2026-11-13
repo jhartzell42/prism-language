@@ -60,6 +60,8 @@ type TyInfo = record:
     name: Text
     home: Text
     params: [Text]
+    # the parameters whose kind the declaration states (`(u: Unit)`), with the kind as written
+    kinds: [((Text, Type))]
     body: TyBody
     derives: [Text]
     file: Nat

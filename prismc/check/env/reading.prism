@@ -193,13 +193,54 @@ fn ?RoleConstructor g, m, name = match ResolveValue g, m, SName(sigils="", path=
 
 ConvNamedType: unbounded fn Cx, St, Text, TyInfo, Text, [Type], Range -> ((Ty, St))
 fn ConvNamedType cx, st1, qk, ti, name, args, span:
-    let ((xs, st2)) = ConvTypes cx, st1, args
+    # a type argument may be a case of a payload-free choice, a type of that choice's kind
+    # (Jimmy's ruling PK): read as `ConvIndex` reads an associated type's index
+    let ((xs, st0)) = Fold args, (([[]], st1)), \|((acc, s)), arg|
+        let ((x, s2)) = ConvIndex cx, s, arg
+        (((Push acc, x), s2))
+    let st2 = Fold (Range0 (Min (Len xs), (Len ti.params))), st0, \|s, i| KindCheck cx, s, ti, name, (Or ti.params[i], ""), (Or xs[i], TyErr), (Or args[i], dummyType).span
     if (Len xs) != (Len ti.params):
         ((TyErr, (Err st2, "kind", span, "`{name}` takes {CountWord (Len ti.params)} type{if (Len ti.params) == 1: "" else: "s"}; here it has {CountWord (Len xs)}")))
     else: match ti.body:
         BAlias body: (((SubstQ (ParamInst ti.params, xs), body), st2))
         BRowKind: (((TyCon qk, xs), st2))
         otherwise: (((TyCon qk, xs), st2))
+
+# A parameter's stated kind against its argument (Jimmy's ruling PK): a kind is a choice
+# whose cases carry no payload, and its argument one of its cases.
+KindCheck: unbounded fn Cx, St, TyInfo, Text, Text, Ty, Range -> St
+fn KindCheck cx, st, ti, name, param, x, span = match ?KindOf ti, param:
+    nil: st
+    ? k: match k.kind:
+        TName n, [[]]: match ResolveType cx.g, cx.home, n.path:
+            ((? kindKey, ignore)): KindArgCheck cx, st, name, kindKey, (Dotted n.path), x, span
+            otherwise: Err st, "unknown-name", k.span, "no type `{Dotted n.path}` to be a kind"
+        otherwise: Err st, "kind", k.span, "a kind is a choice whose cases carry no payload"
+
+?KindOf: fn TyInfo, Text -> ?Type
+fn ?KindOf ti, param = Fold ti.kinds, nil, \|?found, ((n, k))| if n == param: ? k else: ?found
+
+KindArgCheck: unbounded fn Cx, St, Text, Text, Text, Ty, Range -> St
+fn KindArgCheck cx, st, name, kindKey, shown, x, span:
+    let cases = Filter (Keys cx.g.ctors), \|c| match cx.g.ctors[c]:
+        ? ci: ci.owner == kindKey
+        nil: False
+    let payload = Filter cases, \|c| match cx.g.ctors[c]:
+        ? ci: (Len ci.args) > 0
+        nil: False
+    if (Len payload) > 0: Err st, "kind", span, "`{shown}` is no kind: its case `{BareName (Or payload[0], "")}` carries a payload"
+    else: match x:
+        TyRole c: if HasText cases, c: st else: Err st, "kind", span, "`{name}` takes a case of `{shown}`; `{BareName c}` is a case of `{BareName (Or (?OwnerOfCase cx, c), "")}`"
+        TyQ ignore: st
+        TyRigid ignore: st
+        TyFlex ignore: st
+        TyErr: st
+        otherwise: ErrFix st, "kind", span, "`{name}` takes a case of `{shown}`; `{ShowTy st, x}` is a type, no case of `{shown}`", "write one of {Join (Each cases, \|c| "`{BareName c}`"), ", "}"
+
+?OwnerOfCase: fn Cx, Text -> ?Text
+fn ?OwnerOfCase cx, c = match cx.g.ctors[c]:
+    ? ci: ? ci.owner
+    nil: nil
 
 let dummyType = Type(kind=TAbsent, span=Range(start=0, end=0, origin=InSource))
 
