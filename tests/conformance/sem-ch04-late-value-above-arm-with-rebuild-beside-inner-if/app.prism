@@ -1,0 +1,39 @@
+# A widget of several clauses that takes a building `if`'s late plain result, above it,
+# where the `if`'s arm builds a `rebuild` beside a building `if` of its own whose result
+# the arm gives (Semantics ch. 4, "Binding groups and cycles": any line may use any name
+# the block binds, and the order of a group's lines decides positions and nothing else;
+# ruling TC: places are counted as they are built). The taker counts its places as built,
+# so the outer `if`'s rows are numbered late; the arm's own result is late too, and its
+# `rebuild` numbers its rows as built. The twin of
+# sem-ch04-late-value-above-arm-with-for-beside-inner-if with a `rebuild` for the `for`.
+# Reaches `ArmRowOf`'s refusal "the plain result of an arm or a clause that is built
+# before its block's node and numbered after it" on prismc-r26.
+# Written by Claude (t2, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Wide: fn Nat -> @unit
+fn @Wide 0:
+    Ui.Label($text=$"none")
+fn @Wide k:
+    Ui.Label($text=$"one {k}")
+    Ui.Label($text=$"two {k}")
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    !go <- Ui.Button($label=$"go")                                 # 0
+    $page <- 1 then $page + 1 on !go
+    @Wide n                                                            # 1 and 2
+    n <- if loud:
+        $shown <- rebuild $page:
+            Ui.Label($text=$"page {_}")                                # 3/#0/0
+            @ _ * 2
+        m <- if True:
+            Ui.Label($text=$"inner {$shown}")                           # 4
+            @ 3
+        else:
+            @ 4
+        @ m
+    else:
+        @ 20

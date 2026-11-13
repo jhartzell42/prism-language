@@ -1,0 +1,18 @@
+# Derived by hand from Semantics ch. 4 ("the order of a group's lines decides positions and nothing else"; a `rebuild` builds its first generation from the dynamic's value, `#0`), ch. 8 (a clause is chosen by its pattern) and ruling TC (places counted as built): loud gives the inner `if`'s 3, so the widget's clause `k` builds "one 3" and "two 3" at 1 and 2, the `rebuild` its first generation from page 1 under its position 3, the inner arm its label at 4 with page 1 doubled; soft gives 20 and builds nothing in its arm. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="one 3")
+    2: Ui.Label(text="two 3")
+    3/#0/0: Ui.Label(text="page 1")
+    4: Ui.Label(text="inner 2")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="one 20")
+    2: Ui.Label(text="two 20")
