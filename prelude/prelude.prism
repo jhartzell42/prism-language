@@ -29,6 +29,12 @@ type Ordering = choice:
     Greater
 derive ^Eq, ^Ord, ^Show
 
+# The type with no value (Part III ch. 6, "`Never` closes a role's requests"; Jimmy, 12
+# November: "Never is an empty choice and goes in the prelude"). A `match` on it has no
+# arm, and `!Never` has one value, `never`, the event that never fires.
+type Never = choice:
+derive ^Eq, ^Ord, ^Show
+
 # The row kinds (Type System ch. 2, Rows; Semantics ch. 10).
 type Element o = row
 type Fault = row

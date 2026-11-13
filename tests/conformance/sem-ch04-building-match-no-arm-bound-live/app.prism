@@ -9,8 +9,6 @@ emit Ui.*
 test mod Tests
 use Ui.*
 
-type Never = choice:
-
 @Absurd: fn Never -> @unit
 fn @Absurd never:
     $shown <- match never:

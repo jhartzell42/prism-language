@@ -40,13 +40,13 @@ type Chain a = record:
     ?more: (Chain a)
 derive ^Eq, ^Show
 
-type Never = record:
+type Nevermore = record:
     other: Ever
 
 type Ever = record:
-    never: Never
+    never: Nevermore
 
-Back: fn Never -> Ever
+Back: fn Nevermore -> Ever
 fn Back n = n.other
 
 Depth: fn Link -> Nat

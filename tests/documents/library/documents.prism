@@ -1,0 +1,280 @@
+# Documents: the standard library's document hosting, in the design's form of Part IV,
+# chapters 3 to 6. A document is what seats take part in: a protocol typed by role, hosted
+# by an implementation. This module holds what every document shares: the protocol and
+# its state rung, the response, the seat family's tags, the order of one tick's requests,
+# the hosts, and the in-memory implementation, written once. It moves into the standard
+# library as `Documents` in the commit where it checks; until then the tally, its test,
+# is given it as a second source.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit rest | Seat.*
+
+# ---- the protocol (chapter 3) and its widget methods (chapters 4 and 5)
+
+# One document's protocol: five facts per role, the record of its seats and of their
+# results, and the order of one tick's requests. Then a request's work and a query's, each
+# a widget, since answering one may mean asking a lower document; and the document's own
+# `@HostSeats`, one line per role, each calling `@HostRole`.
+trait ^Document d:
+    type Role                          # a choice: Player | Spectator
+    type SeatId r                      # who sits at a seat of role r: Color, UserId, unit
+    type Request r                     # what role r may ask to change; Never closes it
+    type Reason r                      # why a request of role r is declined
+    type Query r                       # what role r may ask to know
+    type Answer r                      # what role r is told
+    type Seats rest                    # one live map of guests per role (chapter 5)
+    type Results                       # one live map of the guests' results per role
+    Order: fn [Due d] -> Ordered d     # which of a tick's requests are applied, and which wait
+    @Request: fn Role d, SeatId d r, Request d r -> @!(Response d r)
+    @Query: fn Role d, SeatId d r, $(Query d r) -> @$?(Answer d r)
+    @HostSeats: fn Seats d rest, Supplier d -> @((Results d, Guests d)) emit rest
+    fn Order due = OneATick due
+
+# A request's response: accepted, or declined with a reason of the role's own type.
+type Response d r = choice:
+    Accepted
+    Declined (Reason d r)
+derive ^Eq, ^Show
+
+# ---- the seat's language: one family, indexed by document and role (chapter 3)
+
+family Seat d r where d: ^Document
+
+# Each firing, one request; a role whose requests are `Never` has nothing to put in it.
+tag Seat.Request of Element !(Response d r):
+    !requests: Request d r
+
+# The question, live; the answer, nil until loaded.
+tag Seat.Query of Element $?(Answer d r):
+    $query: Query d r
+
+# A participant leaves: nil, it just leaves; a request, it asks it and then leaves. A
+# request fired in the tick its participant leaves is applied, and then the seat goes.
+tag Seat.Leave of Element:
+    !?leaves: Request d r
+
+# ---- where a request is made (chapter 5)
+
+# A seat: a role, and a seat id of that role's own type (Part III ch. 6, doubt SK).
+type SeatKey d = any r: ((Role d, SeatId d r))
+
+# The guests' element tree: a live map of live entries, one per place.
+type Guests d = $(Path ==> $Elem (Seat.* d _))
+
+# What answers each place of the guests: given its path, its seat and its element, the
+# element's output, at the role the tag's match learns.
+type Supplier d = fn Path, SeatKey d, Element (Seat.* d _) o -> @o
+
+# An implementation: given the guests' element tree, built once, it gives the supplier.
+type Implementation d = fn Guests d -> @(Supplier d)
+
+# A seat is a path's first key. Across the guests' merged tree the first index names the
+# role and the first key the seat: `0/[White]/#g/2` is White's. Within one role's tree the
+# first key is the seat id. The prelude takes a path apart (Part IV ch. 5, "A seat is a
+# path's first key").
+SeatOf: fn Path -> SeatKey d where d: ^Document
+SeatIdOf: fn Path -> SeatId d r where d: ^Document
+
+# A seat's own prefix of a place's path: the role's index and the seat's key.
+SeatPathOf: fn Path -> Path
+
+# The roles' trees as one: each role's tree under the role's position in the list.
+Merge: fn [Guests d] -> Guests d
+
+# ---- the order of one tick's requests (chapter 3)
+
+# One request that is due, as an order sees it: its seat, and its place.
+type Due d = record:
+    seat: SeatKey d
+    at: Path
+
+# Which requests are applied in this tick, in this order, and which are due again in the
+# next.
+type Ordered d = record:
+    apply: [Due d]
+    wait: [Due d]
+
+# The default order: one request a tick. The requests due are those that waited, the
+# longest first, then this tick's own by place; the first is applied and each other waits
+# a tick, so no request is declined for arriving with another.
+OneATick: fn [Due d] -> Ordered d
+fn OneATick due = Ordered(apply=(Take due, 1), wait=(Drop due, 1))
+
+# ---- the state rung (chapter 4) and the in-memory implementation (chapter 6)
+
+# What a step gives: the next state, or a denial and its reason.
+type Stepped s d = choice:
+    Next s
+    Denied d
+derive ^Eq, ^Show
+
+# A document whose state is finite, writeable values, with pure rules. Its default
+# implementation keeps the state in a hold and the requests that wait in another; a
+# request that waits is due again a tick later by `@Defer`, and no World is asked the
+# time.
+trait ^StateDocument d where d: ^Document:
+    type State
+    Step: fn State d, Role d, SeatId d r, Request d r -> Stepped (State d) (Reason d r)
+    Read: fn State d, Role d, SeatId d r, Query d r -> Answer d r
+    @InMemory: fn State d, Guests d -> @(Supplier d)
+    fn @InMemory initial, $guests:
+        !fired <- for at, $element <- $guests:                      # each place of the guests
+            @Switch (!HeardAt at, $element)
+        !again <- @Defer (!Filter (?StillWaiting !outcome))         # a tick after a request waits
+        let !heard = (Values !fired) <| ([[]] on !again)
+        let !outcome = StepTick $state, (Kicked $seated, $guests, !heard), (Due $waiting, !heard)
+        $state <- initial then !Filter (?StateOf !outcome)          # the hold
+        $waiting <- [[]] then WaitingOf !outcome                    # due again in the next tick
+        $seated <- [[]] then SeatsIn $guests                        # who sat, as of the last tick
+        @ Answering (Loaded $state), (ResponsesOf !outcome)
+
+# One request as the implementation keeps it: what the order sees, and the request at its
+# role's own type.
+type Pending d = record:
+    due: Due d
+    asked: any r: ((Role d, SeatId d r, Request d r))
+
+# What one place of the guests fires in a tick: a request, or that its participant leaves,
+# with a last request or with none.
+type Heard d = choice:
+    Requested (Pending d)
+    Leaving Path
+    LeavingWith (Pending d)
+
+!HeardAt: fn Path, Elem (Seat.* d _) -> !(Heard d) where d: ^Document
+fn !HeardAt at, element = match element:
+    Seat.Request(!requests=!requests): Requested (PendingAt at, !requests)
+    Seat.Leave(!?leaves=!?leaves): LeftWith at, !?leaves
+    otherwise: never
+
+PendingAt: fn Path, Request d r -> Pending d where d: ^Document
+fn PendingAt at, request = match SeatOf at:
+    any ((role, id)): Pending(due=Due(seat=(SeatOf at), at=at), asked=(any ((role, id, request))))
+
+LeftWith: fn Path, ?(Request d r) -> Heard d where d: ^Document
+fn LeftWith at, (? last) = LeavingWith (PendingAt at, last)
+fn LeftWith at, nil = Leaving (SeatPathOf at)
+
+# A response on its way to the place that asked, at its role's own reason.
+type Responded d = record:
+    at: Path
+    response: any r: Response d r
+
+# The state after some requests of one tick, each applied request's response, and the
+# requests that wait.
+type Kept d = record:
+    ?state: State d
+    responses: [Responded d]
+    waiting: [Pending d]
+
+Has: fn [a], a -> Bool where a: ^Eq
+fn Has all, one = Fold all, False, \|found, each| found or each == one
+
+# The seats with a place in the guests' element tree, each as its path's prefix.
+SeatsIn: fn (Path ==> Elem (Seat.* d _)) -> [Path] where d: ^Document
+fn SeatsIn guests = Keys (Map (Each (Keys guests), \|at| ((SeatPathOf at, unit))))
+
+# The seats the program removed: those that sat in the last tick and have no place now,
+# but for a participant that left by its own `Seat.Leave`. A removed seat's requests are
+# all dropped, those already waiting included.
+Kicked: fn [Path], (Path ==> Elem (Seat.* d _)), [Heard d] -> [Path] where d: ^Document
+fn Kicked before, guests, heard:
+    let now = SeatsIn guests
+    let left = Fold heard, [[]], \|all, one| match one:
+        Leaving seat: Push all, seat
+        LeavingWith pending: Push all, (SeatPathOf pending.due.at)
+        Requested pending: all
+    Filter before, \|seat| not (Has now, seat) and not (Has left, seat)
+
+# The requests due in a tick: those that waited, the longest first, then this tick's own
+# by place. A leaving's last request is due as a request; its seat goes after it.
+Due: fn [Pending d], [Heard d] -> [Pending d]
+fn Due waiting, heard:
+    let arrived = Fold heard, [[]], \|all, one| match one:
+        Requested pending: Push all, pending
+        LeavingWith pending: Push all, pending
+        Leaving seat: all
+    Append waiting, (Values (Map (Each arrived, \|pending| ((pending.due.at, pending)))))
+
+# One tick: the requests due, but for those of a seat the program removed; the document's
+# order says which are applied, each against the state the one before left, and which wait.
+StepTick: fn State d, [Path], [Pending d] -> Kept d where d: ^StateDocument
+fn StepTick state, kicked, due:
+    let staying = Filter due, \|pending| not (Has kicked, (SeatPathOf pending.due.at))
+    let byPlace = Map (Each staying, \|pending| ((pending.due.at, pending)))
+    let turn = Order (Each staying, \|pending| pending.due)
+    Fold (Picked byPlace, turn.apply), Kept(?state=nil, responses=[[]], waiting=(Picked byPlace, turn.wait)), \|kept, pending| StepOne (Or kept.?state, state), kept, pending
+
+Picked: fn (Path ==> Pending d), [Due d] -> [Pending d]
+fn Picked byPlace, dues = Fold dues, [[]], \|all, due| match ?Get byPlace, due.at:
+    ? pending: Push all, pending
+    nil: all
+
+StepOne: fn State d, Kept d, Pending d -> Kept d where d: ^StateDocument
+fn StepOne state, kept, pending = match pending.asked:
+    any ((role, id, request)): match Step state, role, id, request:
+        Next next: Kept(?state=(? next), responses=(Push kept.responses, Responded(at=pending.due.at, response=(any Accepted))), waiting=kept.waiting)
+        Denied why: Kept(?state=kept.?state, responses=(Push kept.responses, Responded(at=pending.due.at, response=(any (Declined why)))), waiting=kept.waiting)
+
+?StateOf: fn Kept d -> ?(State d)
+fn ?StateOf kept = kept.?state
+
+WaitingOf: fn Kept d -> [Pending d]
+fn WaitingOf kept = kept.waiting
+
+ResponsesOf: fn Kept d -> [Responded d]
+fn ResponsesOf kept = kept.responses
+
+?StillWaiting: fn Kept d -> ?unit
+fn ?StillWaiting kept = if (Len kept.waiting) == 0: nil else: ? unit
+
+# An optional dynamic present from the first tick: in memory a query is never nil.
+Loaded: fn $s -> $?s
+fn Loaded $state = ? $state
+
+# What a request place is sent: its own response of this tick, if any.
+?ResponseTo: fn Path, [Responded d] -> ?(Response d r)
+fn ?ResponseTo at, responded = Fold responded, nil, \|?found, one| if one.at == at: (match one.response: any response: ? response) else: ?found
+
+# A query, read against the state, kept current as the state changes.
+ReadLive: fn $?(State d), SeatKey d, $(Query d r) -> $?(Answer d r) where d: ^StateDocument
+fn ReadLive $?state, seat, $query = match seat:
+    any ((role, id)): match $?state:
+        ? state: ? (Read state, role, id, $query)
+        nil: nil
+
+# A state and a tick's responses as a supplier: each request place gets its response, each
+# query place its answer, kept current; a leaving has no output.
+Answering: fn $?(State d), ![Responded d] -> Supplier d where d: ^StateDocument
+fn Answering $?state, !responses = \|path, seat, element| match element:
+    Seat.Request(..): @ !Filter (?ResponseTo path, !responses)
+    Seat.Query($query=$query): @ ReadLive $?state, seat, $query
+    Seat.Leave(..): @ unit
+
+# ---- hosting a document (chapter 5)
+
+# The document hosted: each role hosted once by the document's own `@HostSeats`, the
+# implementation built once, here; the result is every seat's own result.
+@HostDocument: fn Implementation d emit lower, Seats d rest -> @(Results d) emit lower | rest where d: ^Document
+fn @HostDocument @Implement, seats:
+    ((results, $guests)) <- @HostSeats seats, Supply     # each role hosted once
+    Supply <- @Implement $guests                         # built here, once
+    @ results                                            # each seat's own result
+
+# One role's seats: one host over a `for` of the seats. The arms answer only the seat
+# tags; everything else a guest emits passes up.
+@HostRole: fn Role d, $(SeatId d r ==> $@(@a emit Seat.* d r | rest)), Supplier d -> @(($(SeatId d r ==> a), Guests d)) emit rest where d: ^Document
+fn @HostRole role, $seats, Supply:
+    (($results, $tree)) <- @Host (@Seated $seats), \|path, element| match element:
+        Seat.Request(..): Supply path, (any ((role, (SeatIdOf path)))), element
+        Seat.Query(..): Supply path, (any ((role, (SeatIdOf path)))), element
+        Seat.Leave(..): @ unit
+        otherwise: @Element element
+    @ (($results, $tree))
+
+# Each seat's guest, built: one entry per seat, built anew only when that seat's own
+# blueprint changes.
+@Seated: fn $(k ==> $@(@a emit rest)) -> @$(k ==> a) emit rest
+fn @Seated $seats:
+    for seat, $guest <- $seats:
+        rebuild $guest:
+            _
