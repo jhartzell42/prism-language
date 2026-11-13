@@ -1,0 +1,6 @@
+# The tests of doc-seat-family-every-role.
+emit Ui.*
+use App.*
+
+test every_role_answered_at_its_own_type, @page:
+    build
