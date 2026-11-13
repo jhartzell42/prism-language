@@ -154,7 +154,9 @@ fn RustTrait t:
     let ms = Join (Append types, (Each t.methods, \|f| TraitMethod f)), "\n"
     # every Prism value is a whole value its functions may copy and keep (a default's
     # closure, a default giving `Self`)
-    "{SourceDoc "", t.doc}pub trait {t.name}: ::std::clone::Clone + 'static \{\n{Indent ms}\n\}\n"
+    let supers = Concat (Each t.supers, \|s| " + {RsPath s}")
+    let wheres = if (Len t.wheres) == 0: "" else: " where {Join (Each t.wheres, \|((w, bs))| "{Type w}: {Join (Each bs, \|b| RsPath b), " + "}"), ", "}"
+    "{SourceDoc "", t.doc}pub trait {t.name}: ::std::clone::Clone + 'static{supers}{wheres} \{\n{Indent ms}\n\}\n"
 
 Signature: unbounded fn FnDef, Text -> Text
 fn Signature f, vis:

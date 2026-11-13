@@ -643,6 +643,10 @@ type TraitDef = record:
     assocs: [Text]
     methods: [FnDef]
     defaults: [Text]
+    # the traits its `where` asks of its parameter (`where d: ^StateDocument`), as paths,
+    # and of types of its parameter (`State d: ^SerializableValue`), each with its paths
+    supers: [Text]
+    wheres: [((OutTy, [Text]))]
     doc: Text
 derive ^Eq, ^Show
 
