@@ -1,0 +1,69 @@
+# Part VII ch. 7, step C3's test: the catalogue's impl without `type Request Reader =
+# Never` is refused at the impl, naming the role (Part III ch. 6: "A role with no
+# equation is an error at the impl, naming the role"; doubt EQ's first ruling). The impl
+# with the equation is pos/doc-c3-catalogue-protocol.
+# Written by Claude on the claude-lowering branch; subject to change.
+trait ^Document d:
+    type Role
+    type SeatId r
+    type Request r
+    type Reason r
+    type Query r
+    type Answer r
+
+type CatalogueRole = choice:
+    Librarian
+    Reader
+derive ^Eq, ^Ord, ^Show
+
+type UserId = choice:
+    UserId Text
+derive ^Eq, ^Ord, ^Show
+
+type BookId = choice:
+    BookId Nat
+derive ^Eq, ^Ord, ^Show
+
+type Book = record:
+    id: BookId
+    title: Text
+derive ^Eq, ^Show
+
+type Filter = choice:
+    Titled Text
+derive ^Eq, ^Show
+
+type Catalogue = record:
+    books: [Book]
+derive ^Eq, ^Show
+
+impl ^Document Catalogue:
+    type Role = CatalogueRole
+    type SeatId r = UserId
+    type Request Librarian = LibrarianRequest
+    type Reason Librarian = LibrarianReason
+    type Reason Reader = Never
+    type Query r = Search
+    type Answer r = [Book]
+
+type LibrarianRequest = choice:
+    Add Book
+    Withdraw BookId
+derive ^Eq, ^Show
+
+type LibrarianReason = choice:
+    AlreadyHeld BookId
+    NoSuchBook BookId
+derive ^Eq, ^Show
+
+type Search = choice:
+    Search Filter
+derive ^Eq, ^Show
+
+# A librarian's request, at the role's own types.
+Asks: fn SeatId Catalogue Librarian, Request Catalogue Librarian -> ?(Reason Catalogue Librarian)
+fn Asks who, (Add book) = nil
+fn Asks who, (Withdraw id) = ? (NoSuchBook id)
+
+Found: fn Catalogue, Query Catalogue Reader -> Answer Catalogue Reader
+fn Found catalogue, (Search (Titled title)) = Filter catalogue.books, \|book| book.title == title

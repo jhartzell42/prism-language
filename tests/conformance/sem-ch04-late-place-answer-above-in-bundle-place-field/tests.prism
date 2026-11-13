@@ -1,0 +1,11 @@
+# The tests of sem-ch04-late-place-answer-above-in-bundle-place-field.
+# The World's state for the port is the whole first value, the plain part and the `$` part's current value.
+emit Ui.* | Pad.*
+use App.*
+
+test loud, @Page (Loud "x"):
+    with Pad.Ask(name="ask 10") = "hi", with Pad.Port(name="port hi") = ((7, "up")), build
+    push Pad.Port(name="port hi") = ((7, "down"))
+
+test soft, @Page Soft:
+    with Pad.Ask(name="ask 20") = "ho", with Pad.Port(name="port ho") = ((8, "up")), build

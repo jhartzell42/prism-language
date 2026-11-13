@@ -1,0 +1,128 @@
+# Tally: a tiny document. Tellers add to a shared count that stops at five, and nobody
+# adds twice in a row; keepers clear the count; viewers watch. A teller is told the total
+# and whether it may add; a keeper is told the tally whole; a viewer is told the total
+# and nothing else. Written in the design's form of Part IV, chapters 3 to 6: one
+# protocol with its facts indexed by role, and the library's `Seat` family at each role.
+# Written by Claude on the claude-document-chess branch; subject to change.
+emit rest | Seat.*
+use Documents.*
+
+# ---- the roles, and who sits at a seat of each: a name
+
+type TallyRole = choice:
+    Teller
+    Keeper
+    Viewer
+derive ^Eq, ^Ord, ^Show
+
+# ---- the state and its rules: plain functions
+
+let limit = 5
+
+type Tally = record:
+    total: Nat
+    ?last: Text                          # the teller who added last
+derive ^Eq, ^Show
+
+let empty = Tally(total=0, ?last=nil)
+
+type Add = choice:
+    Add Nat
+derive ^Eq, ^Show
+
+type KeeperRequest = choice:
+    Clear
+derive ^Eq, ^Show
+
+type Asks = choice:
+    Whole
+derive ^Eq, ^Show
+
+# why a teller's request is declined
+type TellerReason = choice:
+    AddedLast                            # this teller added last
+    StopsAt Nat                          # the sum would pass the limit, which is this
+derive ^Eq, ^Show
+
+# why a keeper's request is declined
+type KeeperReason = choice:
+    NothingToClear
+derive ^Eq, ^Show
+
+type TellerView = record:
+    total: Nat
+    mayAdd: Bool
+derive ^Eq, ^Show
+
+# ---- the document: the tally under an order of one tick's requests. The order is the
+# protocol's (ruling SO), so the document's type names it: `Tallied OneEach` is the tally
+# in the default order, and `Tallied KeepersFirst` applies every request in the tick it is
+# made, in the reverse of place order, so a keeper's before a teller's. Every other fact
+# is the same for both, and so are the participants.
+
+type Tallied o = choice:
+    Tallied
+
+trait ^TallyOrder o:
+    OrderOf: fn [Due (Tallied o)] -> Ordered (Tallied o)
+
+type OneEach = choice:
+    OneEach
+
+type KeepersFirst = choice:
+    KeepersFirst
+
+impl ^TallyOrder OneEach:
+    fn OrderOf due = OneATick due
+
+Reversed: fn [a] -> [a]
+fn Reversed xs = Fold xs, [[]], \|all, x| Append [[x]], all
+
+impl ^TallyOrder KeepersFirst:
+    fn OrderOf due = Ordered(apply=(Reversed due), wait=[[]])
+
+# ---- the seats: one live map of blueprints per role, and each seat's result
+
+type TallySeats o rest = record:
+    $teller: (Text ==> $@(@unit emit Seat.* (Tallied o) Teller | rest))
+    $keeper: (Text ==> $@(@unit emit Seat.* (Tallied o) Keeper | rest))
+    $viewer: (Text ==> $@(@unit emit Seat.* (Tallied o) Viewer | rest))
+
+type TallyResults = record:
+    $teller: (Text ==> unit)
+    $keeper: (Text ==> unit)
+    $viewer: (Text ==> unit)
+
+# ---- the protocol
+
+impl ^Document (Tallied o) where o: ^TallyOrder:
+    type Role = TallyRole
+    type SeatId r = Text
+    type Request Teller = Add
+    type Request Keeper = KeeperRequest
+    type Request Viewer = Never
+    type Reason Teller = TellerReason
+    type Reason Keeper = KeeperReason
+    type Reason Viewer = Never
+    type Query r = Asks
+    type Answer Teller = TellerView
+    type Answer Keeper = Tally
+    type Answer Viewer = Nat
+    type Seats rest = TallySeats o rest
+    type Results = TallyResults
+    fn Order due = OrderOf due
+    fn @HostSeats seats, Supply:
+        ((tellers, $telling)) <- @HostRole Teller, seats.$teller, Supply
+        ((keepers, $keeping)) <- @HostRole Keeper, seats.$keeper, Supply
+        ((viewers, $viewing)) <- @HostRole Viewer, seats.$viewer, Supply
+        @ ((TallyResults($teller=tellers, $keeper=keepers, $viewer=viewers), Merge [[$telling, $keeping, $viewing]]))
+
+impl ^StateDocument (Tallied o) where o: ^TallyOrder:
+    type State = Tally
+    fn Step tally, Teller, name, (Add n) = if tally.?last == ? name: Denied AddedLast else:
+        if tally.total + n > limit: Denied (StopsAt limit) else: Next Tally(total=tally.total + n, ?last=(? name))
+    fn Step tally, Keeper, name, Clear = if tally.total == 0: Denied NothingToClear else: Next empty
+    fn Step tally, Viewer, name, request = match request:
+    fn Read tally, Teller, name, Whole = TellerView(total=tally.total, mayAdd=(tally.?last != (? name) and tally.total < limit))
+    fn Read tally, Keeper, name, Whole = tally
+    fn Read tally, Viewer, name, Whole = tally.total

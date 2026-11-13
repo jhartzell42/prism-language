@@ -1,0 +1,27 @@
+# `prompt-cycle`, through a widget's line: `$seen` steps on `!step`, `!fed` merges
+# `!Updated $total`, the update event of a dynamic lifted over the hold, and `!step` is
+# what the widget `@Pass` gives for `!fed`: its own argument, in the same tick (its
+# summary: the result is prompt in the argument). A hold's VALUE is delayed, but its
+# update event fires in the tick of its step (Semantics ch. 7, R3), so a press would step
+# `$seen`, update `$total`, fire `!fed` and `!step`, and step `$seen` again in one tick
+# (run on the Rust target, it aborts at the build: "a prismc bug: a combinator's height
+# does not settle (a prompt cycle across nodes)"). The same loop with `let !step = !fed`
+# is neg/sem-ch07-block-hold-updated-cycle.
+# The checker takes this program today: the walk over update events has edges for `let`s
+# and holds alone (left-a's doubt 1; claude/prompt-cycles.md, "A loop through `!Updated`
+# of a hold"). This `.expected` is written by hand. Written by Claude (left-a2, the
+# prismc run), 11 November 2026; subject to change.
+emit Ui.*
+
+@Pass: fn !Nat -> @!Nat
+fn @Pass !passed:
+    @ !passed
+
+@host: @unit
+@host:
+    !press <- Ui.Button($label=$"press")
+    let !fed = (1 on !press) <| !Updated $total
+    !step <- @Pass !fed
+    $seen <- 0 then $seen + 1 on !step
+    let $total = $seen * 2
+    Ui.Label($text=$"{$total}")

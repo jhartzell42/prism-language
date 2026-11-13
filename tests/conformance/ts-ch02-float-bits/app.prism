@@ -1,0 +1,55 @@
+# `Float`'s `==` is bit identity and `^Ord` the IEEE total order (Type System round 6,
+# ruling FB): a NaN equals itself, `0.0` and `-0.0` differ and `-0.0` sorts first; a
+# record, a choice, a recursive choice behind `Rc`, an array and a map key holding a NaN
+# equal themselves and a copy; `Compare` and `<` agree with `==`. Arithmetic stays IEEE:
+# `0.0 / 0.0` makes the NaN. Written for prismc's back ends; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Pt = record:
+    x: Float
+    y: Float
+derive ^Eq, ^Ord, ^Show
+
+type Shape = choice:
+    Dot Float
+    Disc Pt, Float
+derive ^Eq, ^Ord, ^Show
+
+type Chain = choice:
+    End Float
+    Link Float, Chain
+derive ^Eq, ^Ord, ^Show
+
+let nan = 0.0 / 0.0
+let zero = 0.0
+let negZero = -0.0
+
+Yes: fn Bool -> Text
+fn Yes True = "T"
+fn Yes False = "F"
+
+Ord: fn Ordering -> Text
+fn Ord Less = "L"
+fn Ord Equal = "E"
+fn Ord Greater = "G"
+
+let p = Pt(x=nan, y=1.0)
+let pCopy = Pt(x=p.x, y=p.y)
+let s = Disc p, nan
+let sCopy = Disc pCopy, nan
+let c = Link nan, (Link 2.0, (End nan))
+let cCopy = Link nan, (Link 2.0, (End nan))
+let m = Map [[((Pt(x=nan, y=1.0), "nan")), ((Pt(x=negZero, y=0.0), "neg")), ((Pt(x=zero, y=0.0), "pos"))]]
+
+@floats: @unit
+@floats:
+    Ui.Label($text=$"{Yes nan == nan} {Yes nan != nan} {Yes nan < nan} {Ord (Compare nan, nan)}")              # 0
+    Ui.Label($text=$"{Yes zero == negZero} {Yes negZero < zero} {Yes zero < negZero} {Ord (Compare negZero, zero)} {Ord (Compare zero, negZero)}")  # 1
+    Ui.Label($text=$"{Yes p == p} {Yes p == pCopy} {Ord (Compare p, pCopy)} {Yes (Pt(x=zero, y=0.0)) == (Pt(x=negZero, y=0.0))}")  # 2
+    Ui.Label($text=$"{Yes s == s} {Yes s == sCopy} {Ord (Compare s, sCopy)} {Yes (Dot zero) == (Dot negZero)} {Yes (Dot negZero) < (Dot zero)}")  # 3
+    Ui.Label($text=$"{Yes c == c} {Yes c == cCopy} {Ord (Compare c, cCopy)}")                                  # 4
+    Ui.Label($text=$"{Yes [[nan, 1.0]] == [[nan, 1.0]]} {Yes [[negZero]] == [[zero]]}")                       # 5
+    Ui.Label($text=$"{Size m} {Or (?Get m, (Pt(x=nan, y=1.0))), "missing"} {Or (?Get m, (Pt(x=negZero, y=0.0))), "missing"} {Or (?Get m, (Pt(x=zero, y=0.0))), "missing"}")  # 6
+    Ui.Label($text=$"{Yes (1.0 + 2.0) == 3.0} {Yes (0.1 + 0.2) == 0.3} {Yes (zero - zero) == zero} {Yes (zero * -1.0) == negZero}")  # 7

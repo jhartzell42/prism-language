@@ -1,0 +1,27 @@
+# A widget with parameters defined as one expression that is a blueprint, built as a
+# root: another widget applied to the arguments, and an `if` between two blueprints
+# (Semantics ch. 8: a blueprint is a value; a widget is a function to a blueprint, so its
+# body may be any expression of that type). The widget of no arguments that is another
+# widget is sem-ch08-widget-is-another-widget.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@Inner: fn Text -> @unit
+fn @Inner text:
+    Ui.Label($text=$"shown: {text}")                          # 0
+
+@Show: fn Text -> @unit
+fn @Show text = @Inner text
+
+@one: @unit
+@one:
+    Ui.Label($text=$"one")                                    # 0
+
+@two: @unit
+@two:
+    Ui.Label($text=$"two")                                    # 0
+    Ui.Label($text=$"second")                                 # 1
+
+@Pick: fn Bool -> @unit
+fn @Pick flag = if flag: @one else: @two

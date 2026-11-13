@@ -1,0 +1,32 @@
+# Derived by hand from Semantics ch. 9 (a host's supplier answers each child place; a forwarded element is re-emitted at its row's 0 and answered by the World in the tick it delivers): `@named` is ts-ch05-supplier-rank2's inline supplier named, so its transcript is that test's; `@Forward` forwards every place, so the host is observably not there but for the deeper paths.
+test named_supplier
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="read")
+    0/[3]/0: Ui.Label(text="A, nothing")
+
+tick 1
+  in:
+    0/[0]/0: click
+
+test forwarding_supplier
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="read")
+    0/[1]/0: Fs.Contents(path="a")
+    0/[2]/0: Fs.File(path="b")
+    0/[3]/0: Ui.Label(text="a, nothing")
+
+tick 1
+  in:
+    0/[0]/0: click
+  requested:
+    0/[2]/0: Read
+
+tick 2
+  in:
+    0/[2]/0: ~ Contents(text="b")
+  changed:
+    0/[3]/0: Ui.Label(text="a, b")

@@ -1,0 +1,11 @@
+# The event held whole in an array: declarations of ts-ch04-hold-event-in-array.
+emit Ui.*
+use App.*
+
+test both_events_are_heard, @page:
+    build
+        => expect Ui.Label(text="none")
+    click at 0
+        => expect Ui.Label(text="+1")
+    click at 1
+        => expect Ui.Label(text="+2")

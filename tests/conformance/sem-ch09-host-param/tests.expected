@@ -1,0 +1,21 @@
+# Derived by hand from Semantics ch. 9 (forwarding is re-emission at host/[p]/0, the host's result the child's).
+test the_child_reads_and_answers_out
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1/[0]/0: Ui.Button(label="in 0")
+    2: Ui.Label(text="1 inside")
+    3: Ui.Label(text="0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1/[0]/0: Ui.Button(label="in 1")
+
+tick 2
+  in:
+    1/[0]/0: click
+  changed:
+    3: Ui.Label(text="1")

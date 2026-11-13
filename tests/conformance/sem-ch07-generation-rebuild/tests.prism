@@ -1,0 +1,10 @@
+# The inner rebuild's tests: declarations of sem-ch07-generation-rebuild.
+emit Ui.*
+use App.*
+
+test the_inner_rebuild_follows_the_block, @main:
+    build
+        => expect Ui.Label(text="zoom 1")
+    click Ui.Button(label="zoom")
+        => expect Ui.Label(text="zoom 2")
+        => expect_none Ui.Label(text="zoom 1")

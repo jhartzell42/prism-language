@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# `chess`: chess the document way in a window, `prism run examples/chess`: the hot seat,
+# two boards (claude/document-chess.md). Options go to `prism run`.
+#
+# Written by Claude on the claude-self-hosting branch; subject to change.
+set -eu
+self=$0
+while [ -L "$self" ]; do
+    link=$(readlink "$self")
+    case "$link" in /*) self=$link ;; *) self=$(dirname "$self")/$link ;; esac
+done
+bin=$(cd "$(dirname "$self")" && pwd)
+exec "$bin/prism" run "$@" "$bin/../examples/chess"

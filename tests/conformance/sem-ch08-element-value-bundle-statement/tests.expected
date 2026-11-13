@@ -1,0 +1,19 @@
+# Derived by hand from the transcript of sem-ch09-bundle-dynamic-part (the same tag placed by an inline statement; Type System ch. 2: `@Element` of an element value places it as its statement would). Never run: prismc refuses the program.
+test a_placed_socket
+
+tick 0
+  added:
+    0: Pad.Socket(address="chat:7000")
+    1: Ui.Label(text="up: none")
+
+tick 1
+  in:
+    0: "hello"
+  changed:
+    1: Ui.Label(text="up: hello")
+
+tick 2
+  in:
+    Pad.Socket(address="chat:7000") = "down"
+  changed:
+    1: Ui.Label(text="down: hello")

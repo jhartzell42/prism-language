@@ -1,0 +1,9 @@
+tests/checker/neg/local-function-ring-unsigned.prism:11: error[no-signature]: `Even` calls itself through `Odd` and has no signature line: a block's function that calls itself needs one, as a top-level function does
+        fn Even k = match k -? 1:
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: write `Even: fn ... -> ...` above it, in its block
+tests/checker/neg/local-function-ring-unsigned.prism:14: error[no-signature]: `Odd` calls itself through `Even` and has no signature line: a block's function that calls itself needs one, as a top-level function does
+        fn Odd k = match k -? 1:
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: write `Odd: fn ... -> ...` above it, in its block
+2 errors

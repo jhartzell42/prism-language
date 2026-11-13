@@ -1,0 +1,852 @@
+# `Check.Regex`: a literal's pattern, flags and replacement read against the dialect
+# (claude/regex-dialect.md), the first diagnostic or none, as both runtimes read them
+# (runtime/rust/src/regex_dialect.rs, runtime/cpp/src/regex.cpp): one left-to-right
+# parse, the same decisions in the same order, the same positions and messages. The
+# shared corpus, tests/regex/corpus.txt, is its test module (`Tests`). Nothing here
+# spells a pattern for a library; the runtimes do that from the same text.
+#
+# A pattern is read by byte offsets and one-character texts: a code point is a
+# one-character `Text`, and since UTF-8 orders bytewise as it orders code points, two
+# literal characters compare as texts. A code point named by `\x` is a number, compared
+# with a literal character by its UTF-8 length, and at the same length by a class of the
+# dialect itself (`RxPast`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+test mod Tests
+
+# A refusal: the part (`flags`, `pattern` or `replacement`), the byte offset in it, and
+# one of the dialect's fixed messages.
+type RxDiag = record:
+    part: Text
+    at: Nat
+    message: Text
+derive ^Eq, ^Show
+
+# ---------------------------------------------------------------------------------------
+# The messages, word for word as claude/regex-dialect.md has them
+# ---------------------------------------------------------------------------------------
+
+let rxUnknownFlag = "an unknown flag: the flags are i, m and s"
+let rxFlagTwice = "a flag written twice"
+let rxStrayBracket = "a ] outside a class: a literal one is \\]"
+let rxStrayBrace = "a \} outside a count: a literal one is \\\}"
+let rxTrailingBackslash = "a \\ at the end of the pattern"
+let rxHexTwo = "a \\x escape needs two hex digits or braces"
+let rxHexBraces = "a \\x\{...\} escape needs one to six hex digits"
+let rxHexNoChar = "a \\x escape names no character: a surrogate or past U+10FFFF"
+let rxWordBraces = "\\b\{...\} is Rust's only: write \\b"
+let rxAngle = "\\< and \\> are Rust's only: write \\b"
+let rxBackreference = "a backreference: refused so that every match is linear in its text"
+let rxOctal = "an octal escape is RE2's only: write \\x"
+let rxQuote = "\\Q...\\E is RE2's only: escape each character"
+let rxOneByte = "\\C, one byte, is RE2's only"
+let rxUnknownEscape = "an unknown escape"
+let rxPropertyName = "a \\p escape needs a property name"
+let rxPropertyOpen = "a \\p\{ that is never closed"
+let rxPropertyNegated = "a negated property is written \\P\{...\}"
+let rxPropertyRefused = "the property is refused: RE2 and Rust disagree on C, Cn, Cs and LC"
+let rxPropertyUnknown = "an unknown property: general categories by short name, scripts and Any"
+let rxClassOpen = "a class opened here is never closed"
+let rxClassFirstBracket = "a ] first in a class: write \\]"
+let rxClassNested = "a [ inside a class: write \\[ (nested classes are Rust's only)"
+let rxClassAsciiUnknown = "an unknown ASCII class"
+let rxClassSetOperation = "&&, ~~ and -- in a class are Rust's set operations: escape them"
+let rxClassDash = "a - in a class that is neither a range nor first or last: write \\-"
+let rxClassOrder = "a range whose ends are out of order"
+let rxClassRangeSet = "a range end that is a class"
+let rxClassNegatedUnderI = "a negated class inside a class under i: write it outside the class"
+let rxClassEscape = "an escape that a class cannot hold"
+let rxLookaround = "a lookaround: refused so that every match is linear in its text"
+let rxUnknownGroup = "an unknown group: the groups are (re), (?:re), (?<name>re), (?P<name>re) and the flag groups"
+let rxNameShape = "a group name is a lowercase value name, [a-z_][a-z0-9_]*"
+let rxNameOpen = "a group name that is never closed"
+let rxNameTwice = "a group name used twice"
+let rxGroupOpen = "a group opened here is never closed"
+let rxGroupClose = "a ) that closes no group"
+let rxFlagsEmpty = "an empty flag group"
+let rxFlagsSecondDash = "a second - in a flag group"
+let rxFlagsDash = "a - that turns off no flag"
+let rxBrace = "a brace that opens no count: a literal one is \\\{"
+let rxCountZero = "a count with a leading zero"
+let rxCountBound = "a count above 1000"
+let rxCountOrder = "a count whose minimum exceeds its maximum"
+let rxNothingToRepeat = "a repetition with nothing to repeat"
+let rxRepeatRepeat = "a repetition of a repetition: write (?:a*)* to say it"
+let rxRepeatAssertion = "a repetition of an assertion"
+let rxProduct = "nested counts multiplying past 1000"
+let rxNesting = "groups and repetitions nested more than 100 deep"
+let rxSize = "the pattern expands past 10,000 atoms"
+let rxRZero = "a group number with a leading zero"
+let rxRBraces = "a $\{...\} that is neither a group number nor a group name"
+let rxRDollar = "a $ that is not $n, $\{n\}, $\{name\} or $$"
+let rxRNoNumber = "the pattern has no group of that number"
+let rxRNoName = "the pattern has no group of that name"
+let rxRUnicode = "a \\u\{...\} escape needs one to six hex digits naming a character"
+let rxREscape = "an unknown escape in a replacement: the escapes are \\\\, \\n, \\t, \\u\{hex\} and \\/"
+
+# ---------------------------------------------------------------------------------------
+# The names the dialect accepts
+# ---------------------------------------------------------------------------------------
+
+# The general categories both libraries read alike (doubt PC refuses C, Cn, Cs, LC).
+let rxCategories = [["Cc", "Cf", "Co", "L", "Ll", "Lm", "Lo", "Lt", "Lu", "M", "Mc", "Me", "Mn", "N", "Nd", "Nl",
+    "No", "P", "Pc", "Pd", "Pe", "Pf", "Pi", "Po", "Ps", "S", "Sc", "Sk", "Sm", "So", "Z", "Zl",
+    "Zp", "Zs"]]
+
+# Unicode 15.0's scripts, the names both libraries accept (doubt UN).
+let rxScripts = [["Adlam", "Ahom", "Anatolian_Hieroglyphs", "Arabic", "Armenian", "Avestan", "Balinese", "Bamum",
+    "Bassa_Vah", "Batak", "Bengali", "Bhaiksuki", "Bopomofo", "Brahmi", "Braille", "Buginese",
+    "Buhid", "Canadian_Aboriginal", "Carian", "Caucasian_Albanian", "Chakma", "Cham", "Cherokee",
+    "Chorasmian", "Common", "Coptic", "Cuneiform", "Cypriot", "Cypro_Minoan", "Cyrillic", "Deseret",
+    "Devanagari", "Dives_Akuru", "Dogra", "Duployan", "Egyptian_Hieroglyphs", "Elbasan", "Elymaic",
+    "Ethiopic", "Georgian", "Glagolitic", "Gothic", "Grantha", "Greek", "Gujarati", "Gunjala_Gondi",
+    "Gurmukhi", "Han", "Hangul", "Hanifi_Rohingya", "Hanunoo", "Hatran", "Hebrew", "Hiragana",
+    "Imperial_Aramaic", "Inherited", "Inscriptional_Pahlavi", "Inscriptional_Parthian", "Javanese",
+    "Kaithi", "Kannada", "Katakana", "Kawi", "Kayah_Li", "Kharoshthi", "Khitan_Small_Script",
+    "Khmer", "Khojki", "Khudawadi", "Lao", "Latin", "Lepcha", "Limbu", "Linear_A", "Linear_B",
+    "Lisu", "Lycian", "Lydian", "Mahajani", "Makasar", "Malayalam", "Mandaic", "Manichaean",
+    "Marchen", "Masaram_Gondi", "Medefaidrin", "Meetei_Mayek", "Mende_Kikakui", "Meroitic_Cursive",
+    "Meroitic_Hieroglyphs", "Miao", "Modi", "Mongolian", "Mro", "Multani", "Myanmar", "Nabataean",
+    "Nag_Mundari", "Nandinagari", "New_Tai_Lue", "Newa", "Nko", "Nushu", "Nyiakeng_Puachue_Hmong",
+    "Ogham", "Ol_Chiki", "Old_Hungarian", "Old_Italic", "Old_North_Arabian", "Old_Permic",
+    "Old_Persian", "Old_Sogdian", "Old_South_Arabian", "Old_Turkic", "Old_Uyghur", "Oriya", "Osage",
+    "Osmanya", "Pahawh_Hmong", "Palmyrene", "Pau_Cin_Hau", "Phags_Pa", "Phoenician",
+    "Psalter_Pahlavi", "Rejang", "Runic", "Samaritan", "Saurashtra", "Sharada", "Shavian",
+    "Siddham", "SignWriting", "Sinhala", "Sogdian", "Sora_Sompeng", "Soyombo", "Sundanese",
+    "Syloti_Nagri", "Syriac", "Tagalog", "Tagbanwa", "Tai_Le", "Tai_Tham", "Tai_Viet", "Takri",
+    "Tamil", "Tangsa", "Tangut", "Telugu", "Thaana", "Thai", "Tibetan", "Tifinagh", "Tirhuta",
+    "Toto", "Ugaritic", "Vai", "Vithkuqi", "Wancho", "Warang_Citi", "Yezidi", "Yi",
+    "Zanabazar_Square"]]
+
+let rxProperties = Map (Each (Push (Append rxCategories, rxScripts), "Any"), \|n| ((n, True)))
+
+let rxAsciiClasses = Map (Each [["alnum", "alpha", "ascii", "blank", "cntrl", "digit", "graph", "lower", "print", "punct", "space", "upper", "word", "xdigit"]], \|n| ((n, True)))
+
+# The code points below 0x80, each at its own byte.
+let rxAscii = "\u{0}\u{1}\u{2}\u{3}\u{4}\u{5}\u{6}\u{7}\u{8}\u{9}\u{a}\u{b}\u{c}\u{d}\u{e}\u{f}\u{10}\u{11}\u{12}\u{13}\u{14}\u{15}\u{16}\u{17}\u{18}\u{19}\u{1a}\u{1b}\u{1c}\u{1d}\u{1e}\u{1f} !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|\}~\u{7f}"
+
+# ASCII punctuation but `<` and `>`, which an escape writes as itself.
+let rxPunctuation = "!\"#$%&'()*+,-./:;=?@[\\]^_`\{|\}~"
+
+# ---------------------------------------------------------------------------------------
+# The parse's state
+# ---------------------------------------------------------------------------------------
+
+# The pattern, the byte position, how many groups are open, the capture groups read and
+# each name with its group's number, and the first diagnostic.
+type RxState = record:
+    s: Text
+    i: Nat
+    open: Nat
+    groups: Nat
+    names: Text ==> Nat
+    ?err: RxDiag
+derive ^Eq, ^Show
+
+# What the last piece of a sequence was, for the repetition checks.
+type RxLast = choice:
+    RxLastNothing
+    RxLastFlagGroup
+    RxLastAssertion
+    RxLastRepetition
+    RxLastAtom
+derive ^Eq, ^Show
+
+# The whole-pattern measures of a piece (the whole-pattern checks): its depth, its size
+# with counted repetition expanded, and the largest product of counts in it.
+type RxMeasure = record:
+    depth: Nat
+    size: Nat
+    product: Nat
+derive ^Eq, ^Show
+
+let rxNone = RxMeasure(depth=0, size=0, product=0)
+let rxAtom = RxMeasure(depth=0, size=1, product=1)
+
+RxThen: fn RxMeasure, RxMeasure -> RxMeasure
+fn RxThen a, b = RxMeasure(depth=(Max a.depth, b.depth), size=a.size + b.size, product=(Max a.product, b.product))
+
+# A code point read inside a class: a literal character, or the number a `\x` escape
+# names (past ASCII; one below is its character).
+type RxCp = choice:
+    RxLit Text
+    RxNum Nat
+derive ^Eq, ^Show
+
+RxBad: fn RxState -> Bool
+fn RxBad st = st.?err != nil
+
+# The state with a diagnostic of the pattern at `at`, unless it has one already.
+RxFail: fn RxState, Nat, Text -> RxState
+fn RxFail st, at, message = if RxBad st: st else: RxState(s=st.s, i=st.i, open=st.open, groups=st.groups, names=st.names, ?err=(? RxDiag(part="pattern", at=at, message=message)))
+
+RxGo: fn RxState, Nat -> RxState
+fn RxGo st, n = update st:
+    &_.i <= n
+
+RxPeek: fn RxState -> Text
+fn RxPeek st = RxCharAt st.s, st.i
+
+# ---------------------------------------------------------------------------------------
+# Characters
+# ---------------------------------------------------------------------------------------
+
+# The character at byte `n` of `t`, `""` past the end or inside a character.
+RxCharAt: fn Text, Nat -> Text
+fn RxCharAt t, n = match ?CursorAt t, n:
+    ? c: match ?Step (Front (After c)):
+        ? ((ignore, one)): Before one
+        nil: ""
+    nil: ""
+
+# The bytes of `t` from `a` to `b`.
+RxSlice: fn Text, Nat, Nat -> Text
+fn RxSlice t, a, b = match ?CursorAt t, b:
+    ? cb: match ?CursorAt (Before cb), a:
+        ? ca: After ca
+        nil: ""
+    nil: ""
+
+# The byte offset of the first `x` at or after byte `from`, by characters.
+?RxFind: fn Text, Nat, Text -> ?Nat
+fn ?RxFind t, from, x = match ?CursorAt t, from:
+    nil: nil
+    ? c0:
+        let ((?found, ignore)) = update ((nil, c0)):
+            let &c = c0
+            let &?found = nil
+            while ? ((ignore, next)) <- ?Step &c if &?found == nil:
+                if (RxSlice t, (At &c), (At next)) == x:
+                    &?found <= ? (At &c)
+                &c <= next
+            &_ <= ((&?found, &c))
+        ?found
+
+# Whether `c` is one of the characters of `set`.
+RxIn: fn Text, Text -> Bool
+fn RxIn set, c = c != "" and (?RxFind set, 0, c) != nil
+
+RxIsDigit: fn Text -> Bool
+fn RxIsDigit c = "0" <= c and c <= "9" and (Len c) == 1
+
+RxIsLetter: fn Text -> Bool
+fn RxIsLetter c = ("a" <= c and c <= "z") or ("A" <= c and c <= "Z")
+
+RxIsHex: fn Text -> Bool
+fn RxIsHex c = (RxIsDigit c) or ("a" <= c and c <= "f") or ("A" <= c and c <= "F")
+
+# A Prism value name, lowercase: `[a-z_][a-z0-9_]*`.
+RxIsName: fn Text -> Bool
+fn RxIsName t:
+    let first = RxCharAt t, 0
+    t != "" and (("a" <= first and first <= "z") or first == "_") and (RxAll t, \|c| ("a" <= c and c <= "z") or (RxIsDigit c) or c == "_")
+
+# Every character of `t` satisfies `P`.
+RxAll: fn Text, (fn Text -> Bool) -> Bool
+fn RxAll t, P = update True:
+    let &c = Front t
+    while ? ((ignore, next)) <- ?Step &c:
+        if not (P (RxSlice t, (At &c), (At next))):
+            &_ <= False
+        &c <= next
+
+# The first byte at or after `at` where `P` fails (ASCII characters only satisfy it).
+RxSpanEnd: unbounded fn Text, Nat, (fn Text -> Bool) -> Nat
+fn RxSpanEnd t, at, P = update at:
+    while P (RxCharAt t, &_):
+        &_ += 1
+
+RxHexValue: fn Text -> Nat
+fn RxHexValue t = update 0:
+    let &c = Front t
+    while ? ((ignore, next)) <- ?Step &c:
+        let d = RxSlice t, (At &c), (At next)
+        &_ <= &_ * 16 + (Or (?RxFind "0123456789abcdef", 0, (Lower d)), 0)
+        &c <= next
+
+# The code point a `\x` escape names: its character when ASCII, its number past.
+RxCpOf: fn Nat -> RxCp
+fn RxCpOf v = if v < 128: RxLit (RxCharAt rxAscii, v) else: RxNum v
+
+# The length of a code point's UTF-8.
+RxWidth: fn Nat -> Nat
+fn RxWidth v = if v < 128: 1 else: if v < 2048: 2 else: if v < 65536: 3 else: 4
+
+# Whether `a` is past `b` by code point. Two characters compare as texts, two numbers as
+# numbers, a character and a number by their UTF-8 lengths, and at the same length by
+# whether the character falls in a class from the number: Prism has no code point of a
+# character, and a regular expression reads one.
+RxPast: fn RxCp, RxCp -> Bool
+fn RxPast (RxLit a), (RxLit b) = a > b
+fn RxPast (RxNum a), (RxNum b) = a > b
+fn RxPast (RxLit a), (RxNum b) = if (Len a) != (RxWidth b): (Len a) > (RxWidth b) else: not (RxInRange a, 0, b)
+fn RxPast (RxNum a), (RxLit b) = if (RxWidth a) != (Len b): (RxWidth a) > (Len b) else: not (RxInRange b, a, 1114111)
+
+# Whether the character `c` is a code point from `lo` to `hi`, two code points that are
+# neither surrogates nor past U+10FFFF (both come from checked `\x` escapes or are the
+# bounds), so that the class is always in the dialect.
+RxInRange: fn Text, Nat, Nat -> Bool
+fn RxInRange c, lo, hi = match ?Regex "[\\x\{{RxHexText lo}\}-\\x\{{RxHexText hi}\}]":
+    ? r: (?Find r, c) != nil
+    nil: False
+
+# A code point as six hexadecimal digits, as `\x{...}` takes them.
+RxHexText: fn Nat -> Text
+fn RxHexText n = update "":
+    let &k = n
+    let &fuel: Nat = 6
+    while ? left <- &fuel -? 1:
+        &fuel <= left
+        &_ <= "{RxCharAt "0123456789abcdef", (Or (?Mod &k, 16), 0)}{&_}"
+        &k <= Or (?Div &k, 16), 0
+
+# ---------------------------------------------------------------------------------------
+# The check
+# ---------------------------------------------------------------------------------------
+
+# A literal's pattern, flags and replacement (`nil` for a `Regex`): the first diagnostic,
+# flags first, then the pattern, then the replacement; `nil` when the dialect accepts
+# them. `?Regex` reads a text the same way with no flags and no replacement.
+?RegexRefusal: unbounded fn Text, Text, ?Text -> ?RxDiag
+fn ?RegexRefusal pattern, flags, ?replacement = match ?RxFlagsRefusal flags:
+    ? d: ? d
+    nil:
+        let st0 = RxState(s=pattern, i=0, open=0, groups=0, names={}, ?err=nil)
+        let ((m, st)) = RxAlternation st0, (?RxFind flags, 0, "i") != nil
+        match st.?err:
+            ? d: ? d
+            nil:
+                if st.i < (Len pattern): ? RxDiag(part="pattern", at=st.i, message=rxGroupClose)
+                else: if m.depth > 100: ? RxDiag(part="pattern", at=0, message=rxNesting)
+                else: if m.size > 10000: ? RxDiag(part="pattern", at=0, message=rxSize)
+                else: match ?replacement:
+                    nil: nil
+                    ? r: ?RxReplacementRefusal r, st.groups, st.names
+
+# The flags after a literal's last slash: `i`, `m` and `s`, each at most once.
+?RxFlagsRefusal: fn Text -> ?RxDiag
+fn ?RxFlagsRefusal flags:
+    let ((?d, ignore)) = update ((nil, "")):
+        let &c = Front flags
+        let &?d = nil
+        let &seen = ""
+        while ? ((ignore, next)) <- ?Step &c if &?d == nil:
+            let ch = RxSlice flags, (At &c), (At next)
+            if not (ch == "i" or ch == "m" or ch == "s"):
+                &?d <= ? RxDiag(part="flags", at=(At &c), message=rxUnknownFlag)
+            else:
+                if RxIn &seen, ch:
+                    &?d <= ? RxDiag(part="flags", at=(At &c), message=rxFlagTwice)
+                else:
+                    &seen <= "{&seen}{ch}"
+            &c <= next
+        &_ <= ((&?d, &seen))
+    ?d
+
+# Branches until the end or a `)`, which is left for the caller; a bare flag group in one
+# branch holds in the next (as in both libraries). `fi` is whether `i` is on.
+RxAlternation: unbounded fn RxState, Bool -> ((RxMeasure, RxState))
+fn RxAlternation st0, fi0:
+    let ((m0, fi1, st1)) = RxSequence st0, fi0
+    update ((m0, st1)):
+        let &m = m0
+        let &fi = fi1
+        let &st = st1
+        while not (RxBad &st) and (RxPeek &st) == "|":
+            let ((m2, fi2, st2)) = RxSequence (RxGo &st, &st.i + 1), &fi
+            &m <= RxThen &m, m2
+            &fi <= fi2
+            &st <= st2
+        &_ <= ((&m, &st))
+
+# Pieces until the end, a `|` or a `)`, with the repetition checks.
+RxSequence: unbounded fn RxState, Bool -> ((RxMeasure, Bool, RxState))
+fn RxSequence st0, fi0 = update ((rxNone, fi0, st0)):
+    let &total = rxNone
+    let &fi = fi0
+    let &st = st0
+    let &last = RxLastNothing
+    let &lastM = rxNone
+    let &going = True
+    while &going and not (RxBad &st):
+        let c = RxPeek &st
+        let at = &st.i
+        if c == "" or c == "|" or c == ")":
+            &going <= False
+        else:
+            if c == "*" or c == "+" or c == "?" or c == "\{":
+                let ((lo, ?hi, st2)) = if c == "\{": RxCount &st else: RxSimpleRepetition &st, c
+                &st <= st2
+                if not (RxBad &st):
+                    &st <= match &last:
+                        RxLastNothing: RxFail &st, at, rxNothingToRepeat
+                        RxLastFlagGroup: RxFail &st, at, rxNothingToRepeat
+                        RxLastRepetition: RxFail &st, at, rxRepeatRepeat
+                        RxLastAssertion: RxFail &st, at, rxRepeatAssertion
+                        RxLastAtom: &st
+                if not (RxBad &st):
+                    let counted = c == "\{"
+                    let factor = if counted: Max (Or ?hi, lo), 1 else: 1
+                    let product = factor * (Max &lastM.product, 1)
+                    if counted and product > 1000:
+                        &st <= RxFail &st, at, rxProduct
+                    else:
+                        if (RxPeek &st) == "?":
+                            &st <= RxGo &st, &st.i + 1
+                        let m = RxMeasure(depth=&lastM.depth + 1, size=&lastM.size * factor, product=product)
+                        # The repeated piece replaces the piece it repeats in the sums.
+                        &total <= RxMeasure(depth=(Max &total.depth, m.depth), size=(Or (&total.size -? &lastM.size), 0) + m.size, product=(Max &total.product, m.product))
+                        &last <= RxLastRepetition
+                        &lastM <= m
+            else:
+                let ((kind, m, fi2, st2)) = RxPiece &st, &fi
+                &st <= st2
+                &fi <= fi2
+                if kind != RxLastFlagGroup:
+                    &total <= RxThen &total, m
+                &last <= kind
+                &lastM <= m
+    &_ <= ((&total, &fi, &st))
+
+# `*`, `+` or `?` at the cursor: its bounds.
+RxSimpleRepetition: fn RxState, Text -> ((Nat, ?Nat, RxState))
+fn RxSimpleRepetition st, c:
+    let st2 = RxGo st, st.i + 1
+    if c == "*": ((0, nil, st2))
+    else: if c == "+": ((1, nil, st2))
+    else: ((0, ? 1, st2))
+
+# A count at its `{`: its shape, zeros, bound and order, as `(n, m)` (`nil`: no bound).
+RxCount: unbounded fn RxState -> ((Nat, ?Nat, RxState))
+fn RxCount st:
+    let at = st.i
+    let s = st.s
+    let j1 = RxSpanEnd s, at + 1, RxIsDigit
+    let first = RxSlice s, at + 1, j1
+    let c = RxCharAt s, j1
+    if first == "": ((0, nil, (RxFail st, at, rxBrace)))
+    else: if c == "\}": RxCountChecked st, at, first, nil, j1 + 1
+    else: if c == ",":
+        let j2 = RxSpanEnd s, j1 + 1, RxIsDigit
+        if (RxCharAt s, j2) != "\}": ((0, nil, (RxFail st, at, rxBrace)))
+        else: RxCountChecked st, at, first, (? (RxSlice s, j1 + 1, j2)), j2 + 1
+    else: ((0, nil, (RxFail st, at, rxBrace)))
+
+RxCountChecked: fn RxState, Nat, Text, ?Text, Nat -> ((Nat, ?Nat, RxState))
+fn RxCountChecked st, at, first, ?second, next:
+    let st1 = RxGo st, next
+    let lo = Or (?ParseNat first), 0
+    let ?hi = match ?second:
+        nil: ? lo
+        ? "": nil
+        ? d: ?ParseNat d
+    let zero = (RxLeadingZero first) or (RxLeadingZero (Or ?second, ""))
+    if zero: ((0, nil, (RxFail st1, at, rxCountZero)))
+    else: if lo > 1000 or (Or ?hi, 0) > 1000: ((0, nil, (RxFail st1, at, rxCountBound)))
+    else: if lo > (Or ?hi, lo): ((0, nil, (RxFail st1, at, rxCountOrder)))
+    else: ((lo, ?hi, st1))
+
+RxLeadingZero: fn Text -> Bool
+fn RxLeadingZero d = (Len d) > 1 and (RxCharAt d, 0) == "0"
+
+# One piece that is not a repetition operator: what it was, its measure, the flags after
+# it (a bare flag group changes them), and the state after it.
+RxPiece: unbounded fn RxState, Bool -> ((RxLast, RxMeasure, Bool, RxState))
+fn RxPiece st, fi:
+    let at = st.i
+    let c = RxPeek st
+    match c:
+        "(": RxGroup st, fi
+        "[": ((RxLastAtom, rxAtom, fi, (RxClass st, fi)))
+        "]": ((RxLastAtom, rxAtom, fi, (RxFail st, at, rxStrayBracket)))
+        "\}": ((RxLastAtom, rxAtom, fi, (RxFail st, at, rxStrayBrace)))
+        "^": ((RxLastAssertion, rxAtom, fi, (RxGo st, at + 1)))
+        "$": ((RxLastAssertion, rxAtom, fi, (RxGo st, at + 1)))
+        "\\": RxEscape st, fi
+        otherwise: ((RxLastAtom, rxAtom, fi, (RxGo st, at + (Len c))))
+
+# An escape outside a class, at its `\`; every diagnostic is at the `\`.
+RxEscape: unbounded fn RxState, Bool -> ((RxLast, RxMeasure, Bool, RxState))
+fn RxEscape st, fi:
+    let at = st.i
+    let s = st.s
+    let c = RxCharAt s, at + 1
+    let Atom = \|next| ((RxLastAtom, rxAtom, fi, next))
+    if c == "": Atom (RxFail st, at, rxTrailingBackslash)
+    else: if c == "<" or c == ">": Atom (RxFail st, at, rxAngle)
+    else: if RxIn rxPunctuation, c: Atom (RxGo st, at + 2)
+    else: if RxIn "tnrfva", c: Atom (RxGo st, at + 2)
+    else: if c == "x":
+        let ((ignore, st2)) = RxHex st, at
+        Atom st2
+    else: if RxIn "dwsDWS", c: Atom (RxGo st, at + 2)
+    else: if c == "p" or c == "P":
+        let ((ignore, st2)) = RxProperty st, at
+        Atom st2
+    else: if RxIn "AzbB", c:
+        if c == "b" and (RxCharAt s, at + 2) == "\{": Atom (RxFail st, at, rxWordBraces)
+        else: ((RxLastAssertion, rxAtom, fi, (RxGo st, at + 2)))
+    else: if RxIn "123456789", c: Atom (RxFail st, at, rxBackreference)
+    else: if c == "0": Atom (RxFail st, at, rxOctal)
+    else: if c == "Q" or c == "E": Atom (RxFail st, at, rxQuote)
+    else: if c == "C": Atom (RxFail st, at, rxOneByte)
+    else: Atom (RxFail st, at, rxUnknownEscape)
+
+# `\x..` at the `\` at `at`: the code point and the state after it.
+RxHex: unbounded fn RxState, Nat -> ((Nat, RxState))
+fn RxHex st, at:
+    let s = st.s
+    let x = at + 1
+    if (RxCharAt s, x + 1) == "\{":
+        let start = x + 2
+        let j = RxSpanEnd s, start, RxIsHex
+        let digits = RxSlice s, start, j
+        if (RxCharAt s, j) != "\}" or digits == "" or (Len digits) > 6: ((0, (RxFail st, at, rxHexBraces)))
+        else: RxHexChecked (RxGo st, j + 1), at, (RxHexValue digits)
+    else:
+        let a = RxCharAt s, x + 1
+        let b = RxCharAt s, x + 2
+        if (RxIsHex a) and (RxIsHex b): RxHexChecked (RxGo st, x + 3), at, (RxHexValue "{a}{b}")
+        else: ((0, (RxFail st, at, rxHexTwo)))
+
+RxHexChecked: fn RxState, Nat, Nat -> ((Nat, RxState))
+fn RxHexChecked st, at, v:
+    if (55296 <= v and v <= 57343) or v > 1114111: ((v, (RxFail st, at, rxHexNoChar)))
+    else: ((v, st))
+
+# `\p...` or `\P...` at the `\` at `at`: its name, checked, and the state after it.
+RxProperty: unbounded fn RxState, Nat -> ((Text, RxState))
+fn RxProperty st, at:
+    let s = st.s
+    let c = RxCharAt s, at + 2
+    if c == "\{":
+        let start = at + 3
+        match ?RxFind s, start, "\}":
+            nil: (("", (RxFail st, at, rxPropertyOpen)))
+            ? close:
+                let name = RxSlice s, start, close
+                if (RxCharAt name, 0) == "^": ((name, (RxFail st, at, rxPropertyNegated)))
+                else: RxPropertyNamed (RxGo st, close + 1), at, name
+    else: if RxIsLetter c: RxPropertyNamed (RxGo st, at + 3), at, c
+    else: (("", (RxFail st, at, rxPropertyName)))
+
+RxPropertyNamed: fn RxState, Nat, Text -> ((Text, RxState))
+fn RxPropertyNamed st, at, name:
+    if name == "C" or name == "Cn" or name == "Cs" or name == "LC": ((name, (RxFail st, at, rxPropertyRefused)))
+    else: if rxProperties[name] != nil: ((name, st))
+    else: ((name, (RxFail st, at, rxPropertyUnknown)))
+
+# ---------------------------------------------------------------------------------------
+# Classes
+# ---------------------------------------------------------------------------------------
+
+# A class at its `[`, to its closing `]`.
+RxClass: unbounded fn RxState, Bool -> RxState
+fn RxClass st0, fi:
+    let open = st0.i
+    let start = if (RxCharAt st0.s, open + 1) == "^": open + 2 else: open + 1
+    update RxGo st0, start:
+        let &first = True
+        let &done = False
+        while not &done:
+            let ((closed, st2)) = RxClassItem &_, open, start, &first, fi
+            &_ <= st2
+            &first <= False
+            &done <= closed or (RxBad st2)
+
+# Whether the cursor is at `&&`, `~~` or `--`.
+RxAtSetOperation: fn RxState -> Bool
+fn RxAtSetOperation st:
+    let c = RxPeek st
+    (c == "&" or c == "~" or c == "-") and (RxCharAt st.s, st.i + 1) == c
+
+# One item of a class at the cursor: whether the class closed, and the state after it.
+RxClassItem: unbounded fn RxState, Nat, Nat, Bool, Bool -> ((Bool, RxState))
+fn RxClassItem st, open, start, first, fi:
+    let at = st.i
+    let c = RxPeek st
+    let next = RxCharAt st.s, at + 1
+    if c == "": ((True, (RxFail st, open, rxClassOpen)))
+    else: if c == "]" and first: ((True, (RxFail st, at, rxClassFirstBracket)))
+    else: if c == "]": ((True, (RxGo st, at + 1)))
+    else: if RxAtSetOperation st: ((True, (RxFail st, at, rxClassSetOperation)))
+    else: if c == "[": ((False, (RxAsciiItem st, fi)))
+    else: if c == "-" and next == "": ((True, (RxFail st, open, rxClassOpen)))
+    else: if c == "-" and (at == start or next == "]"): ((False, (RxGo st, at + 1)))
+    else: if c == "-": ((True, (RxFail st, at, rxClassDash)))
+    else: ((False, (RxClassRange st, open, fi)))
+
+# A single character or a set, and a range when a `-` follows a single character.
+RxClassRange: unbounded fn RxState, Nat, Bool -> RxState
+fn RxClassRange st, open, fi:
+    let at = st.i
+    let ((?lo, st1)) = RxClassAtom st, fi
+    match ?lo:
+        nil: st1
+        ? lo:
+            let s = st1.s
+            let ranged = (RxPeek st1) == "-" and (RxCharAt s, st1.i + 1) != "]"
+            if (RxBad st1) or not ranged: st1
+            else: if RxAtSetOperation st1: RxFail st1, st1.i, rxClassSetOperation
+            else:
+                let right = st1.i + 1
+                let st2 = RxGo st1, right
+                let rc = RxPeek st2
+                if rc == "": RxFail st2, open, rxClassOpen
+                else: if rc == "[": RxFail st2, right, rxClassNested
+                else: if RxAtSetOperation st2: RxFail st2, right, rxClassSetOperation
+                else:
+                    let ((?hi, st3)) = RxClassAtom st2, fi
+                    if RxBad st3: st3
+                    else: match ?hi:
+                        nil: RxFail st3, right, rxClassRangeSet
+                        ? hi: if RxPast lo, hi: RxFail st3, at, rxClassOrder else: st3
+
+# One character inside a class: a code point, or `nil` for a set (`\d`, `\p{...}`, ...).
+RxClassAtom: unbounded fn RxState, Bool -> ((?RxCp, RxState))
+fn RxClassAtom st, fi:
+    let at = st.i
+    let s = st.s
+    let c = RxPeek st
+    if c != "\\": ((? (RxLit c), (RxGo st, at + (Len c))))
+    else:
+        let e = RxCharAt s, at + 1
+        if e == "": ((nil, (RxFail st, at, rxTrailingBackslash)))
+        else: if e == "<" or e == ">": ((nil, (RxFail st, at, rxClassEscape)))
+        else: if RxIn rxPunctuation, e: ((? (RxLit e), (RxGo st, at + 2)))
+        else: if RxIn "tnrfva", e: ((? (RxLit (RxControl e)), (RxGo st, at + 2)))
+        else: if e == "x":
+            let ((v, st2)) = RxHex st, at
+            ((? (RxCpOf v), st2))
+        else: if RxIn "dws", e: ((nil, (RxGo st, at + 2)))
+        else: if RxIn "DWS", e:
+            if fi: ((nil, (RxFail st, at, rxClassNegatedUnderI)))
+            else: ((nil, (RxGo st, at + 2)))
+        else: if e == "p" or e == "P":
+            let ((ignore, st2)) = RxProperty st, at
+            if e == "P" and fi and not (RxBad st2): ((nil, (RxFail st2, at, rxClassNegatedUnderI)))
+            else: ((nil, st2))
+        else: ((nil, (RxFail st, at, rxClassEscape)))
+
+# The character `\t`, `\n`, `\r`, `\f`, `\v` or `\a` writes.
+RxControl: fn Text -> Text
+fn RxControl "t" = "\t"
+fn RxControl "n" = "\n"
+fn RxControl "r" = "\u{d}"
+fn RxControl "f" = "\u{c}"
+fn RxControl "v" = "\u{b}"
+fn RxControl ignore = "\u{7}"
+
+# An ASCII class `[:name:]` at the cursor (a `[` inside a class), or the nested-class
+# diagnostic.
+RxAsciiItem: unbounded fn RxState, Bool -> RxState
+fn RxAsciiItem st, fi:
+    let at = st.i
+    let s = st.s
+    let negated = (RxCharAt s, at + 2) == "^"
+    let start = if negated: at + 3 else: at + 2
+    let j = RxSpanEnd s, start, RxIsLetter
+    let shaped = (RxCharAt s, at + 1) == ":" and j > start and (RxCharAt s, j) == ":" and (RxCharAt s, j + 1) == "]"
+    if not shaped: RxFail st, at, rxClassNested
+    else: if rxAsciiClasses[RxSlice s, start, j] == nil: RxFail st, at, rxClassAsciiUnknown
+    else: if negated and fi: RxFail st, at, rxClassNegatedUnderI
+    else: RxGo st, j + 2
+
+# ---------------------------------------------------------------------------------------
+# Groups
+# ---------------------------------------------------------------------------------------
+
+# A group at its `(`; a bare flag group gives the flags for the rest of the enclosing one.
+RxGroup: unbounded fn RxState, Bool -> ((RxLast, RxMeasure, Bool, RxState))
+fn RxGroup st, fi:
+    let open = st.i
+    let s = st.s
+    let c = RxCharAt s, open + 1
+    let d = RxCharAt s, open + 2
+    let e = RxCharAt s, open + 3
+    let Fail = \|message| ((RxLastAtom, rxAtom, fi, (RxFail st, open, message)))
+    if c != "?": RxGroupBody (RxGo st, open + 1), open, fi, fi, True, nil
+    else: if d == "": Fail rxGroupOpen
+    else: if d == ":": RxGroupBody (RxGo st, open + 3), open, fi, fi, False, nil
+    else: if d == "=" or d == "!": Fail rxLookaround
+    else: if d == "<" and (e == "=" or e == "!"): Fail rxLookaround
+    else: if d == "<": RxNamed st, open, open + 3, fi
+    else: if d == "P" and e == "": Fail rxGroupOpen
+    else: if d == "P" and e == "<": RxNamed st, open, open + 4, fi
+    else: if d == "P" and (e == "=" or e == ">"): Fail rxBackreference
+    else: if d == "P": Fail rxUnknownGroup
+    else: if (RxIsLetter d) or d == "-" or d == ")": RxFlagGroup st, open, fi
+    else: Fail rxUnknownGroup
+
+# A named group, its name beginning at `start`.
+RxNamed: unbounded fn RxState, Nat, Nat, Bool -> ((RxLast, RxMeasure, Bool, RxState))
+fn RxNamed st, open, start, fi = match ?RxFind st.s, start, ">":
+    nil: ((RxLastAtom, rxAtom, fi, (RxFail st, open, rxNameOpen)))
+    ? close:
+        let name = RxSlice st.s, start, close
+        if not (RxIsName name): ((RxLastAtom, rxAtom, fi, (RxFail st, start, rxNameShape)))
+        else: if st.names[name] != nil: ((RxLastAtom, rxAtom, fi, (RxFail st, open, rxNameTwice)))
+        else: RxGroupBody (RxGo st, close + 1), open, fi, fi, True, (? name)
+
+# A flag group `(?flags)` or `(?flags:re)` at its `(`.
+RxFlagGroup: unbounded fn RxState, Nat, Bool -> ((RxLast, RxMeasure, Bool, RxState))
+fn RxFlagGroup st, open, fi:
+    let ((bare, inner, st2)) = RxFlagLetters st, open, fi
+    if RxBad st2: ((RxLastAtom, rxAtom, fi, st2))
+    else: if bare: ((RxLastFlagGroup, rxNone, inner, st2))
+    else: RxGroupBody st2, open, inner, fi, False, nil
+
+# The letters of a flag group from after its `?`, to its `)` or `:`: whether it was bare,
+# whether `i` is on inside it, and the state past the `)` or `:`.
+RxFlagLetters: unbounded fn RxState, Nat, Bool -> ((Bool, Bool, RxState))
+fn RxFlagLetters st0, open, fi0 = update ((False, fi0, st0)):
+    let &st = RxGo st0, open + 2
+    let &fi = fi0
+    let &seen = ""
+    let &?dash = nil
+    let &afterDash = False
+    let &named = False
+    let &bare = False
+    let &going = True
+    while &going and not (RxBad &st):
+        let at = &st.i
+        let c = RxPeek &st
+        if c == "":
+            &st <= RxFail &st, open, rxGroupOpen
+        else:
+            if c == ")" or c == ":":
+                if not &named and &?dash == nil:
+                    &st <= RxFail &st, open, rxFlagsEmpty
+                else:
+                    match &?dash:
+                        ? d if not &afterDash:
+                            &st <= RxFail &st, d, rxFlagsDash
+                        otherwise:
+                            &st <= RxGo &st, at + 1
+                            &bare <= c == ")"
+                            &going <= False
+            else:
+                if c == "-":
+                    if &?dash != nil:
+                        &st <= RxFail &st, at, rxFlagsSecondDash
+                    else:
+                        &?dash <= ? at
+                        &st <= RxGo &st, at + 1
+                else:
+                    if RxIsLetter c:
+                        if not (c == "i" or c == "m" or c == "s"):
+                            &st <= RxFail &st, at, rxUnknownFlag
+                        else:
+                            if RxIn &seen, c:
+                                &st <= RxFail &st, at, rxFlagTwice
+                            else:
+                                &seen <= "{&seen}{c}"
+                                &named <= True
+                                if &?dash != nil:
+                                    &afterDash <= True
+                                if c == "i":
+                                    &fi <= &?dash == nil
+                                &st <= RxGo &st, at + 1
+                    else:
+                        &st <= RxFail &st, open, rxUnknownGroup
+    &_ <= ((&bare, &fi, &st))
+
+# What a group holds, from the cursor past its opening to its `)`: a capture counted (and
+# named), the nesting checked early, the alternation under `inner`, and `outer` the flags
+# after it.
+RxGroupBody: unbounded fn RxState, Nat, Bool, Bool, Bool, ?Text -> ((RxLast, RxMeasure, Bool, RxState))
+fn RxGroupBody st0, open, inner, outer, capture, ?name:
+    let counted = if capture: RxCapture st0, ?name else: st0
+    if counted.open == 100: ((RxLastAtom, rxAtom, outer, (RxFail counted, 0, rxNesting)))
+    else:
+        let deeper = update counted:
+            &_.open += 1
+        let ((m, st2)) = RxAlternation deeper, inner
+        if RxBad st2: ((RxLastAtom, rxAtom, outer, st2))
+        else: if (RxPeek st2) != ")": ((RxLastAtom, rxAtom, outer, (RxFail st2, open, rxGroupOpen)))
+        else:
+            let closed = update st2:
+                &_.i += 1
+                &_.open <= Or (&_.open -? 1), 0
+            ((RxLastAtom, RxMeasure(depth=m.depth + 1, size=m.size, product=m.product), outer, closed))
+
+# A capture group counted, and its name given its number.
+RxCapture: fn RxState, ?Text -> RxState
+fn RxCapture st, ?name:
+    let n = st.groups + 1
+    let names = match ?name:
+        ? x: Insert st.names, x, n
+        nil: st.names
+    RxState(s=st.s, i=st.i, open=st.open, groups=n, names=names, ?err=st.?err)
+
+# ---------------------------------------------------------------------------------------
+# Replacements (chapter 2, "The replacement"; RX-E)
+# ---------------------------------------------------------------------------------------
+
+# A replacement read against its pattern's groups and names: the first diagnostic, each
+# at the `$` or `\` that begins the bad form.
+?RxReplacementRefusal: unbounded fn Text, Nat, (Text ==> Nat) -> ?RxDiag
+fn ?RxReplacementRefusal r, groups, names:
+    let ((?d, ignore)) = update ((nil, 0)):
+        let &i = 0
+        let &?d = nil
+        while &?d == nil and (RxCharAt r, &i) != "":
+            let at = &i
+            let c = RxCharAt r, at
+            let next = RxCharAt r, at + 1
+            if c == "$":
+                if next == "$":
+                    &i <= at + 2
+                else:
+                    if RxIsDigit next:
+                        let j = RxSpanEnd r, at + 1, RxIsDigit
+                        &?d <= ?RxGroupNumber (RxSlice r, at + 1, j), groups, at
+                        &i <= j
+                    else:
+                        if next == "\{":
+                            match ?RxFind r, at + 2, "\}":
+                                nil:
+                                    &?d <= ?RxReplacementAt at, rxRBraces
+                                ? close:
+                                    let inner = RxSlice r, at + 2, close
+                                    if inner != "" and (RxAll inner, RxIsDigit):
+                                        &?d <= ?RxGroupNumber inner, groups, at
+                                    else:
+                                        if RxIsName inner:
+                                            if names[inner] == nil:
+                                                &?d <= ?RxReplacementAt at, rxRNoName
+                                        else:
+                                            &?d <= ?RxReplacementAt at, rxRBraces
+                                    &i <= close + 1
+                        else:
+                            &?d <= ?RxReplacementAt at, rxRDollar
+            else:
+                if c == "\\":
+                    if next == "\\" or next == "n" or next == "t" or next == "/":
+                        &i <= at + 2
+                    else:
+                        if next == "u":
+                            let j = RxSpanEnd r, at + 3, RxIsHex
+                            let digits = RxSlice r, at + 3, j
+                            let v = RxHexValue digits
+                            let named = (RxCharAt r, at + 2) == "\{" and (RxCharAt r, j) == "\}" and digits != "" and (Len digits) <= 6 and not ((55296 <= v and v <= 57343) or v > 1114111)
+                            if named:
+                                &i <= j + 1
+                            else:
+                                &?d <= ?RxReplacementAt at, rxRUnicode
+                        else:
+                            &?d <= ?RxReplacementAt at, rxREscape
+                else:
+                    &i <= at + (Len c)
+        &_ <= ((&?d, &i))
+    ?d
+
+?RxReplacementAt: fn Nat, Text -> ?RxDiag
+fn ?RxReplacementAt at, message = ? RxDiag(part="replacement", at=at, message=message)
+
+# `$n` or `${n}` at `at`: a leading zero refused, then a number past the pattern's groups.
+?RxGroupNumber: fn Text, Nat, Nat -> ?RxDiag
+fn ?RxGroupNumber digits, groups, at:
+    if RxLeadingZero digits: ?RxReplacementAt at, rxRZero
+    else: if (Or (?ParseNat digits), 0) > groups: ?RxReplacementAt at, rxRNoNumber
+    else: nil

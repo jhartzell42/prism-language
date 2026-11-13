@@ -1,0 +1,22 @@
+# A one-clause widget whose parameter is a record pattern that binds a dynamic inside it
+# (Semantics ch. 8: a widget's parameters are patterns, as a function's are; ch. 4: a
+# pattern names what it binds, and a dynamic named is that dynamic; Type System ch. 2: a
+# record's field may be a dynamic). `$l` follows `$n`, the dynamic the record was made
+# with. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Gauge = record:
+    $level: Nat
+    name: Text
+
+@Shown: fn Gauge -> @unit
+fn @Shown Gauge($level=$l, name=nm):
+    Ui.Label($text=$"{nm} at {$l}")
+
+@page: @unit
+@page:
+    !go <- Ui.Button($label=$"go")                                # 0
+    $n <- 0 then $n + 1 on !go
+    @Shown (Gauge($level=$n, name="tank"))                        # 1

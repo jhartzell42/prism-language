@@ -1,0 +1,18 @@
+# `impl-overlap` with three impls: the third meets each of the two before it, so it is
+# reported once for each pair, and the second once; no pair is reported twice. Written by
+# Claude on the claude-lowering branch; subject to change.
+type Pair a b = record:
+    first: a
+    second: b
+
+trait ^Loud a:
+    Loud: fn a -> Text
+
+impl ^Loud (Pair Int b):
+    fn Loud p = "int"
+
+impl ^Loud (Pair a Text):
+    fn Loud p = "text"
+
+impl ^Loud (Pair Int Text):
+    fn Loud p = "both"

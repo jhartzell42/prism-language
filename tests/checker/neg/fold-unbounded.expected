@@ -1,0 +1,5 @@
+tests/checker/neg/fold-unbounded.prism:7: error[calls-unbounded]: bounded `Sum` calls unbounded `Fold`
+    fn Sum xs = Fold xs, 0, \|acc, x| acc + (Grow x)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: mark `Sum` `unbounded fn`, or run the call through `@Run`
+1 error

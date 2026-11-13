@@ -1,0 +1,20 @@
+# Derived by hand, never run (prismc refuses the program): ruling EP (`!Fired` reads the event each request description was made with), Semantics ch. 9 (the document's entries have their first values in the build tick, so the `for`'s rows are built in tick 0; a computed answer is the next tick's input) and round 47 SW (`@Switch` hears from n+1 the inner its dynamic holds after n, so from tick 1 the merge of tick 0's rows): the click fires `!heard` with one request in tick 1, the host counts it in that tick, and the answer `"ok 1"` reaches the guest in the owed tick 2. The widget lines `for` and the label take positions 1 and 2; `@Switch` takes none.
+test body_reads_the_request
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="move")
+    0/[2]/0: Ui.Label(text="heard: ")
+    2: Ui.Label(text="host heard 0")
+
+tick 1
+  in:
+    0/[0]/0: click
+  changed:
+    2: Ui.Label(text="host heard 1")
+
+tick 2
+  changed:
+    0/[2]/0: Ui.Label(text="heard: ok 1")
+
+tick 3

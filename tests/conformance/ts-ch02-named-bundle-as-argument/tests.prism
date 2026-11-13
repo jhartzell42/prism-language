@@ -1,0 +1,7 @@
+# The tests of ts-ch02-named-bundle-as-argument.
+emit Ui.*
+use App.*
+
+test the_function_takes_the_bundle, @main:
+    build
+    click at 0

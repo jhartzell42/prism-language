@@ -1,0 +1,10 @@
+# Audited: the counter's button is forwarded twice (inner host's row 0/[0], outer host's row for that path); the result "0" at the build and "1" after the click.
+# The root result's tests: declarations of sem-ch09-root-dynamic.prism (Semantics chapter 6).
+emit Ui.*
+use App.*
+
+test the_result_crosses_two_hosts, @$twice:
+    build
+        => returns "0"
+    click Ui.Button(label="inc")
+        => returns "1"

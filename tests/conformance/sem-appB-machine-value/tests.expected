@@ -1,0 +1,17 @@
+# Derived by hand from Appendix B's `@Machine`: each firing steps the state, 2 then 4, and the step's `? 4` (over the limit 3) fires in the second click's tick.
+test a_lambda_steps
+
+tick 0
+  added:
+    0: Ui.Button(label="Go")
+    1: Ui.Label(text="no")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="past 4")

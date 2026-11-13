@@ -1,0 +1,14 @@
+# A check line's pattern names a case by its qualified name (`Sizes.Large`), as an
+# expression would (Semantics ch. 2, "Qualified names and families"; Conformance ch. 1,
+# "Checks"): the case's module path is part of the name, and the value printed bare
+# (`Large`) matches it. Gap QP: the Test Worlds compared the pattern's whole spelling with
+# the bare case name.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+mod Sizes
+test mod Tests
+use Ui
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Show (Sizes.Of 3)}")

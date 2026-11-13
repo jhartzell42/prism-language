@@ -1,0 +1,17 @@
+# A bundle with two event parts (Type System ch. 2, "Bundles and sparse tuples": "a plain
+# aggregate with functor values inside is a bundle", so a tag's output may hold any number
+# of events; Semantics ch. 8, "The patch": answers coming in are `Edge`s, which keep "only
+# the event components that fired"). Each part is bound by the tuple pattern and fires on
+# its own. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Line of Element ((!Text, !Nat)):
+    address: Text
+
+@chat: @unit
+@chat:
+    ((!rx, !lost)) <- Pad.Line(address="chat:7000")              # 0
+    $last <- "none" then !rx
+    $drops <- 0 then $drops + !lost
+    Ui.Label($text=$"{$last}, {$drops} lost")                    # 1

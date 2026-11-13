@@ -1,0 +1,22 @@
+# Rows and generations that read their block's plain values: a `for` row reading the
+# widget's parameter, and a `rebuild` choosing between two clauses, one binding a field of
+# an error record. Written for prismc's back end. Work in progress, subject to change.
+emit Ui.*
+test mod Tests
+
+@Tagged: fn Text -> @unit
+fn @Tagged prefix:
+    !add <- Ui.Button($label=$"Add")                         # 0
+    $next <- 0 then $next + 1 on !add
+    $items <- {} then Insert $items, $next, "item {$next}" on !add
+    ignore <- for $items:                                   # 1/[key]
+        Ui.Label($text=$"{prefix}: {$_}")                    # 1/[key]/0
+    $~reply <- (~ 1) then (~ParseNat "x{$next}") on !add
+    ignore <- rebuild $~reply:                              # 2/#g
+        @Shown prefix, _
+
+@Shown: fn Text, ~Nat -> @unit
+fn @Shown label, (~ n):
+    Ui.Label($text=$"{label} says {n}")                      # 0
+fn @Shown label, (Error(message=m, ..)):
+    Ui.Label($text=$"{label} failed: {m}")                   # 0

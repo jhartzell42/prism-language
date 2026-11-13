@@ -1,0 +1,10 @@
+# A name a prelude widget binds, read above its line: declarations of
+# sem-ch04-bind-read-above. Written by Claude on the claude-self-hosting branch; subject to
+# change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test read_above, @main:
+    build
+    click at 0

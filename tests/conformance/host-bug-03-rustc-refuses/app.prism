@@ -1,0 +1,108 @@
+# probe 1: the generic core
+emit Ui.* | Count.*
+test mod Tests
+
+type Response = choice:
+    Accepted
+    Declined Text
+derive ^Eq, ^Show
+
+type Stepped s = choice:
+    Next s
+    Denied Text
+
+trait ^Seat r:
+    type State
+    type Request
+    type Query
+    type Told
+    Step: fn State r, r, Request r -> Stepped (State r)
+    Read: fn State r, r, Query r -> Told r
+
+type Asked s = record:
+    place: Path
+    apply: fn s -> Stepped s
+
+Asking: fn r, Path, Request r -> Asked (State r) where r: ^Seat
+fn Asking seat, place, request = Asked(place=place, apply=(\|state| Step state, seat, request))
+
+type Kept s = record:
+    state: s
+    responses: (Path ==> Response)
+
+StepOne: fn Kept s, Asked s -> Kept s
+fn StepOne kept, asked:
+    let Apply = asked.apply
+    match Apply kept.state:
+        Next state: Kept(state=state, responses=(Insert kept.responses, asked.place, Accepted))
+        Denied why: Kept(state=kept.state, responses=(Insert kept.responses, asked.place, (Declined why)))
+
+StepAll: fn s, [Asked s] -> Kept s
+fn StepAll state, asked = Fold asked, Kept(state=state, responses={}), StepOne
+
+StateOf: fn Kept s -> s
+fn StateOf kept = kept.state
+
+ResponsesOf: fn Kept s -> (Path ==> Response)
+fn ResponsesOf kept = kept.responses
+
+@InMemory: fn s, ![Asked s] -> @(($s, !(Path ==> Response)))
+fn @InMemory initial, !asked:
+    let !outcome = StepAll $state, !asked
+    $state <- initial then StateOf !outcome
+    @ (($state, ResponsesOf !outcome))
+
+# ---- the counter document
+type Presser = choice:
+    Presser Text
+derive ^Eq, ^Ord, ^Show
+
+type Add = choice:
+    Add Nat
+derive ^Eq, ^Show
+
+type Whole = choice:
+    Whole
+derive ^Eq, ^Show
+
+impl ^Seat Presser:
+    type State = Nat
+    type Request = Add
+    type Query = Whole
+    type Told = Nat
+    fn Step total, seat, (Add n) = if total + n > 5: Denied "the count stops at five" else: Next (total + n)
+    fn Read total, seat, Whole = total
+
+tag Count.Request of Element !Response:
+    !requests: Add
+
+tag Count.Query of Element $Nat:
+    $query: Whole
+
+@Presser: fn Text -> @unit emit Ui.* | Count.*
+fn @Presser name:
+    !one <- Ui.Button($label=$"{name} +1")
+    !response <- Count.Request(!requests=((Add 1) on !one))
+    $total <- Count.Query($query=$ Whole)
+    $last <- "nothing yet" then Show !response
+    Ui.Label($text=$"{name} sees {$total}; {$last}")
+
+!Requested: fn Presser, Path, Elem (Ui.* | Count.*) -> !(Asked Nat)
+fn !Requested seat, place, e = match e:
+    Count.Request(!requests=!r): Asking seat, place, !r
+    otherwise: never
+
+?ResponseTo: fn Path, (Path ==> Response) -> ?Response
+fn ?ResponseTo place, responses = ?Get responses, place
+
+@host: @unit
+@host:
+    let seat = Presser "ada"
+    (($state, !responses)) <- @InMemory 0, !asked
+    ((ignore, $doc)) <- @HostDocument (@Presser "ada"), \|p, e| match e:
+        Count.Request(..): @ !Filter (?ResponseTo p, !responses)
+        Count.Query(..): @ Read $state, seat, Whole
+        otherwise: @Element e
+    $heard <- for p, $e <- $doc:
+        @ !Requested seat, p, $e
+    !asked <- @Switch (!MergeAll (Values $heard))

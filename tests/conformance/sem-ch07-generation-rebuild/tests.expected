@@ -1,0 +1,17 @@
+# Derived by hand from Semantics ch. 7 (a `rebuild` builds a new generation after each tick its source moves, the old one torn down): the zoom moves the inner `rebuild`'s source at 1, under the page's standing generation.
+test the_inner_rebuild_follows_the_block
+
+tick 0
+  added:
+    0: Ui.Button(label="next")
+    1: Ui.Button(label="zoom")
+    2/#0/0: Ui.Label(text="page 1")
+    2/#0/1/#0/0: Ui.Label(text="zoom 1")
+
+tick 1
+  in:
+    1: click
+  added:
+    2/#0/1/#1/0: Ui.Label(text="zoom 2")
+  torn down:
+    2/#0/1/#0/0: Ui.Label(text="zoom 1")

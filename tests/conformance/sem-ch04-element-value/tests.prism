@@ -1,0 +1,12 @@
+# The element values' tests: declarations of sem-ch04-element-value.
+emit Ui.*
+use App.*
+
+test an_element_value_is_placed, @main:
+    build
+        => expect Ui.Button(label="go 0")
+        => expect Ui.Label(text="replaced")
+    click Ui.Button(label="inc")
+        => expect Ui.Button(label="go 1")
+    click Ui.Button(label="go 1")
+        => expect Ui.Label(text="went 1")

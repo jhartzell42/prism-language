@@ -1,0 +1,25 @@
+# `prompt-cycle`, through a widget function's summary: `@Echo` holds `$seen`, stepped by
+# its argument `!step`, and gives `!Updated $seen` back. A hold's VALUE is delayed, but
+# its update event fires in the tick of its step (Semantics ch. 7, R3), so `@Echo`'s
+# result is prompt in its argument, and the block that merges that result into the
+# argument has `!back` and `!step` firing each other in one tick (run on the Rust target,
+# it aborts at the build: "a prismc bug: a combinator's height does not settle (a prompt
+# cycle across nodes)").
+# The checker takes this program today: a widget function's summary takes a hold as a
+# cut, `@ (!Updated $hold)` included (left-a's doubt 2; claude/prompt-cycles.md, "A loop
+# through `!Updated` of a hold"). This `.expected` is written by hand. Written by Claude
+# (left-a2, the prismc run), 11 November 2026; subject to change.
+emit Ui.*
+
+@Echo: fn !Nat -> @!Nat
+fn @Echo !step:
+    $seen <- 0 then $seen + 1 on !step
+    @ (!Updated $seen)
+
+@host: @unit
+@host:
+    !press <- Ui.Button($label=$"press")
+    !back <- @Echo !step
+    let !step = (1 on !press) <| !back
+    $last <- 0 then !step
+    Ui.Label($text=$"{$last}")

@@ -1,0 +1,5 @@
+tests/checker/neg/freeze-resolved.prism:8: error[frozen]: `&parent` was frozen on line 7
+        &parent[0] <= ? 1
+        ^^^^^^^
+  fix: use the frozen value, or make a new local
+1 error

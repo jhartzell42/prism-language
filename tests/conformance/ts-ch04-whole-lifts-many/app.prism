@@ -1,0 +1,25 @@
+# A function that takes dynamics whole lifts inside its body over three and over four of
+# them at once (Type System ch. 4: a plain function of several arguments lifts over all at
+# once, one row for the whole application), each result kept whole in its list and read
+# by a widget across ticks. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Add3: fn Nat, Nat, Nat -> Nat
+fn Add3 x, y, z = x + y + z
+
+Add4: fn Nat, Nat, Nat, Nat -> Nat
+fn Add4 w, x, y, z = w + x + y + z
+
+Sums: fn $Nat, $Nat, $Nat, $Nat -> [$Nat]
+fn Sums $a, $b, $c, $d = [[(Add3 $a, $b, $c), (Add4 $a, $b, $c, $d)]]
+
+@summed:
+    !one <- Ui.Button($label=$"One")                             # 0
+    !ten <- Ui.Button($label=$"Ten")                             # 1
+    $ones <- 0 then $ones + 1 on !one
+    $tens <- 0 then $tens + 10 on !ten
+    let ss = Sums $ones, $tens, ($ 100), ($ 1000)
+    let $three = Or ss[0], ($ 0)
+    let $four = Or ss[1], ($ 0)
+    Ui.Label($text=$"three {$three} four {$four}")               # 2

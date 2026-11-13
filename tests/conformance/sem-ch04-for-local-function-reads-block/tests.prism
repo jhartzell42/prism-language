@@ -1,0 +1,8 @@
+# The tests of sem-ch04-for-local-function-reads-block.
+emit Ui.*
+use App.*
+use Ui.*
+
+test a_row_calls_the_blocks_function, @page:
+    build
+    click at 0

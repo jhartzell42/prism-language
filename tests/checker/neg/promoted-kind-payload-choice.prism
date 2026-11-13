@@ -1,0 +1,12 @@
+# Jimmy's ruling, 12 November: promoted constructors, generic. Only a choice whose cases
+# all carry no payload is also a kind. `Shape`'s case `Circle` carries a `Nat`, so
+# `Shape` is no kind, and `(s: Shape)` is an error naming that case.
+# Expected diagnostic derived by hand. Written by Claude on the claude-self-hosting
+# branch; subject to change.
+type Shape = choice:
+    Circle Nat
+    Square
+derive ^Eq, ^Show
+
+type Drawn (s: Shape) = record:
+    ink: Text

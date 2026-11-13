@@ -1,0 +1,6 @@
+# The tests of promoted-constructors-unit-index.
+emit Ui.*
+use App.*
+
+test measured, @page:
+    build

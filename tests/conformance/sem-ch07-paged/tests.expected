@@ -1,0 +1,29 @@
+# Semantics ch. 7, the paged viewer's transcript, byte for byte, under its test's header.
+test paged_viewer_builds_once
+
+tick 0
+  added:
+    0: Ui.Button(label="Next")
+    1/#0/0: Ui.Label(text="Page 0")
+    1/#0/1/#0/1: Test.Log
+    1/#0/1/#0/2: Ui.Image(src="page0.png")
+
+tick 1
+  requested:
+    1/#0/1/#0/1: "page0.png"
+
+tick 2
+  in:
+    0: click
+  added:
+    1/#1/0: Ui.Label(text="Page 1")
+    1/#1/1/#0/1: Test.Log
+    1/#1/1/#0/2: Ui.Image(src="page1.png")
+  torn down:
+    1/#0/0: Ui.Label(text="Page 0")
+    1/#0/1/#0/1: Test.Log
+    1/#0/1/#0/2: Ui.Image(src="page0.png")
+
+tick 3
+  requested:
+    1/#1/1/#0/1: "page1.png"

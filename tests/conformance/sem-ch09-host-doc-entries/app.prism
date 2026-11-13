@@ -1,0 +1,25 @@
+# A host's child document is `$(Path ==> $Elem c)` (Jimmy, 6 November 2026): the outer
+# dynamic moves when a place of the child comes or goes, each entry when that one place's
+# element changes. A click on the forwarded "inc" moves the child's label, an entry: the
+# host's count of the outer's updates stays where it was. A click on "add" gives the child
+# a new place: the outer moves, in the owed tick after (round 3 ST), and the host counts it.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@child: @unit
+@child:
+    !inc <- Ui.Button($label=$"inc")                              # 0
+    !add <- Ui.Button($label=$"add")                              # 1
+    $n <- 0 then $n + 1 on !inc
+    $items <- {} then (Insert $items, (Size $items), unit) on !add
+    Ui.Label($text=$"{$n}")                                       # 2
+    for k, $u <- $items:                                         # 3/[k]
+        Ui.Label($text=$"item {k}")                               # 3/[k]/0
+
+@counter: @unit
+@counter:
+    ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e    # 0/[p]/0
+    $moves <- 0 then $moves + 1 on !Updated $doc
+    Ui.Label($text=$"{$moves} moves")                             # 1

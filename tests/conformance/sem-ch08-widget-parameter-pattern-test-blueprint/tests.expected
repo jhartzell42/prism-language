@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 8 (a widget's parameters bind as patterns do, the tuple's names values of the build) and ch. 4 (a building `if` over a plain scrutinee builds its arm or nothing; places counted as built, ruling TC). Never run: prismc-s4 reaches an internal error at each name of the pattern.
+test many
+
+tick 0
+  added:
+    0: Ui.Label(text="ada: 3")
+    1: Ui.Label(text="many")
+
+test few
+
+tick 0
+  added:
+    0: Ui.Label(text="bo: 1")

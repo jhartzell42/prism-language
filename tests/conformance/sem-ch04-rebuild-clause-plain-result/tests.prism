@@ -1,0 +1,11 @@
+# The tests of sem-ch04-rebuild-clause-plain-result.
+emit Ui.*
+use App.*
+
+test a_generation_of_clauses, @main:
+    build
+        => expect Ui.Label(text="zero")
+    click at 0
+        => expect Ui.Label(text="second")
+    compute
+        => expect Ui.Label(text="n1")

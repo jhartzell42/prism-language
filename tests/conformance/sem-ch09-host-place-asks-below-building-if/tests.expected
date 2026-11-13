@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 9 (the supplier answers the asking place, building nothing for it; a forwarding host's place for its child's place p is 0/[p]/0), ch. 8 and ruling TC (places counted as built): loud builds the child's label at 0, the asking place is 1 and the last label 2; soft builds nothing in its `if`, so the asking place is 0 and the label 1. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0/[0]/0: Ui.Label(text="loud")
+    0/[2]/0: Ui.Label(text="asked yes q")
+
+test soft
+
+tick 0
+  added:
+    0/[1]/0: Ui.Label(text="asked yes q")

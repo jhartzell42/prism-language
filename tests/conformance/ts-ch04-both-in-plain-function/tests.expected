@@ -1,0 +1,19 @@
+# Derived by hand from Appendix B (`!Both` fires in a tick in which both events fire, with the pair) and Type System ch. 4 (the call in the plain function is not lifted; `Total` is lifted over its firing): the first click fires the left alone and nothing is heard; the second tick fires both, 1 + 2. Never run.
+test t
+
+tick 0
+  added:
+    0: Ui.Button(label="left")
+    1: Ui.Button(label="right")
+    2: Ui.Label(text="0: 0")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  in:
+    0: click
+    1: click
+  changed:
+    2: Ui.Label(text="1: 3")

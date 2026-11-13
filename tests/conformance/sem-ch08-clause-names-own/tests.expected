@@ -1,0 +1,20 @@
+# Derived by hand: the page's button counts a click and the clause's picks 3; neither is the other's.
+test the_clause_hears_its_own_button
+
+tick 0
+  added:
+    0: Ui.Button(label="page")
+    1: Ui.Button(label="pick 3")
+    2: Ui.Label(text="0 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="0 1")
+
+tick 2
+  in:
+    1: click
+  changed:
+    2: Ui.Label(text="3 1")

@@ -1,0 +1,38 @@
+# A supplier's dynamic answer over what the host's node does not hold at its own build
+# (Semantics ch. 9, "How a supplier answers": the supplier's blueprint "can read anything
+# the host's block binds"; round 3 DY): `@redirect` answers the child's watch with the
+# host's own watch of another file, a place the World answers and pushes; `@later` answers
+# it with a `let` written below the host's line (a block's lines are a group, ch. 4).
+# The first value is read in the birth tick; each later change is a push delivered the
+# next tick. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Fs.*
+test mod Tests
+use Fs.*
+
+ShowResponse: fn ~Contents -> Text
+fn ShowResponse (~ c) = c.text
+fn ShowResponse (Error(..)) = "(cannot read)"
+
+~Motd: fn Text -> ~Contents
+fn ~Motd text = ~ Contents(text=text)
+
+@child: @unit
+@child:
+    $~motd <- Fs.Contents(path="/etc/motd")                     # 0
+    Ui.Label($text=$"{ShowResponse $~motd}")                     # 1
+
+@redirect: @unit
+@redirect:
+    $~real <- Fs.Contents(path="/etc/real")                     # 0
+    ignore <- @HostDocument @child, \|p, e| match e:            # 1/[p]
+        Fs.Contents(..): @ $~real
+        otherwise: @Element e
+
+@later: @unit
+@later:
+    !change <- Ui.Button($label=$"change")                       # 0
+    ignore <- @HostDocument @child, \|p, e| match e:            # 1/[p]
+        Fs.Contents(..): @ $~shown
+        otherwise: @Element e
+    let $~shown = ~Motd $motd
+    $motd <- "first" then "second" on !change

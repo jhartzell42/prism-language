@@ -1,0 +1,46 @@
+# The `Fs` family as prismc sees it: the prelude's `prelude/fs.prism`, and `Fs.List`, the
+# CLI World's listing, which `compile DIR` reads.
+emit Fs.*
+
+type Contents = record:
+    text: Text
+derive ^Eq, ^Ord, ^Show
+
+type FileRequest = choice:
+    Read
+    Write Text
+derive ^Eq, ^Show
+
+type WriteState = choice:
+    Writing
+    Written
+    WriteFailed Error
+derive ^Eq, ^Show
+
+# A file's state: its text, or an `Error` while it is missing.
+tag Fs.Contents of Element $~Contents:
+    path: Text
+
+# One-shot reads and writes, each answered in a later tick.
+tag Fs.File of Element !~Contents:
+    path: Text
+    !requests: FileRequest
+
+# A file whose text is the field's: the World writes it whenever the text changes.
+tag Fs.Output of Element $WriteState:
+    path: Text
+    $text: Text
+
+tag Fs.NotFound of Fault
+tag Fs.Denied of Fault
+tag Fs.Failed of Fault
+# A file whose bytes are not UTF-8: a `Text` holds only UTF-8 (Semantics Appendix B, Text),
+# so the World answers `Fs.Contents` and `Fs.File` with this `Error` instead.
+tag Fs.NotText of Fault
+
+# A directory's sources, a directory listing for the
+# compiler's sake: every `.prism` and `.prismtest` path under `dir`, sorted. Declared
+# here, by the program that uses it, so the prelude's `Fs` keeps no listing; this module
+# replaces the prelude's `fs.prism` for prismc.
+tag Fs.List of Element $[Text]:
+    dir: Text

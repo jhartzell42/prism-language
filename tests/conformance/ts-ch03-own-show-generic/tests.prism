@@ -1,0 +1,7 @@
+# The tests of ts-ch03-own-show-generic (Type System chapter 3).
+emit Ui.*
+use App.*
+
+test own_show_generic, @main:
+    build
+        => expect Ui.Label(text="ann: 1.2. [[bo: \"x\".]]")

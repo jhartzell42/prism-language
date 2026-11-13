@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 4 ("the order of a group's lines decides positions and nothing else"), ch. 8 (a clause is chosen by its pattern) and ruling TC (places counted as built): loud gives `@Seven`'s 7, doubled by the local function to 14, so the widget's clause `k` builds "one 14" and "two 14" at 0 and 1 and `@Seven` its label at 2; soft gives 20, doubled to 40, and builds nothing in its arm. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="one 14")
+    1: Ui.Label(text="two 14")
+    2: Ui.Label(text="seven")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="one 40")
+    1: Ui.Label(text="two 40")

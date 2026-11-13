@@ -1,0 +1,37 @@
+# A `for k, $v <- $each:` over `@PerKey` of a large map, each row's place costly to send,
+# its hold written with one key removed per click: the outer moves,
+# and the `for`'s walk over the keys finds every kept key's dynamic the one its row was
+# built from, so no kept row is woken (Semantics ch. 4, ruling FV); a click costs the walk
+# and the removed row's leaving, not a patch of every row. Written by Claude on the
+# claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+# 0 to n - 1 as keys
+Big: fn Nat -> (Nat ==> Nat)
+fn Big n = update {}:
+    let &i = 0
+    let &left = n
+    while ? m <- &left -? 1:
+        &left <= m
+        &_ <= Insert &_, &i, &i
+        &i += 1
+
+# a row's work: a thousand steps of arithmetic
+Costly: fn Nat -> Nat
+fn Costly v = update v:
+    let &left = 1000
+    while ? m <- &left -? 1:
+        &left <= m
+        &_ <= (&_ * 31 + m) mod 1000003
+
+@rows: @unit
+@rows:
+    !drop <- Ui.Button($label=$"drop")                        # 0
+    $i <- 0 then $i + 1 on !drop
+    $m <- (Big 2000) then (Remove $m, $i) on !drop
+    $each <- @PerKey $m
+    for k, $v <- $each:                                      # 1/[k]
+        Ui.Label($text=$"{Costly $v}")                        # 1/[k]/0
+    Ui.Label($text=$"{Size $m}")                              # 2

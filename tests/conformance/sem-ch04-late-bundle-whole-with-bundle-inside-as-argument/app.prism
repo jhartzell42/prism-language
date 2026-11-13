@@ -1,0 +1,22 @@
+# A bundle bound whole to one name, with a bundle inside whose plain part a building `if`
+# gives late below it, passed whole to a function by a place's live field above it
+# (Semantics ch. 4, "Binding groups and cycles"; Type System ch. 2, "Bundles": a bundle
+# is a plain aggregate a function takes, a bundle inside one too). Reaches
+# `PreBindWholeParts`' marker "a late plain part of the bundle `both`" on prismc-fd1.
+# Written by Claude (sweep-7, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Inner: fn ((!Click, ((Nat, !Click)))) -> Nat
+fn Inner ((ignore, ((k, ignore)))) = k
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    !add <- Ui.Button($label=$"add")                                   # 0
+    Ui.Label($text=$"{Inner both}")                                    # 1
+    both <- if loud:
+        Ui.Label($text=$"loud")
+        @ ((!add, ((10, !add))))
+    else:
+        @ ((!add, ((20, !add))))

@@ -1,0 +1,4 @@
+tests/checker/neg/error-is-no-fault-param.prism:11: error[mismatch]: expected `fn ~Nat -> Text`, found `fn Error -> Text`
+    fn Shown n = Use Msg, (~ n)
+                     ^^^
+1 error

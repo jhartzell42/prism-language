@@ -1,0 +1,25 @@
+# Derived by hand from Part III ch. 6 (an index that is a constructor picks its equation) and Semantics ch. 4 (a hold's new value is read in the tick of its event): each click raises the count by 2, and the third, past the limit of 5, is declined with `StopsAt 5`.
+test raised_until_declined
+
+tick 0
+  added:
+    0: Ui.Button(label="raise 2")
+    1: Ui.Label(text="ada sees 0, a watcher sees 0; nothing yet")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="ada sees 2, a watcher sees 2; raised to 2")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="ada sees 4, a watcher sees 4; raised to 4")
+
+tick 3
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="ada sees 4, a watcher sees 4; declined: the count stops at 5")

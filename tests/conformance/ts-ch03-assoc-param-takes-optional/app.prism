@@ -1,0 +1,24 @@
+# A parameter of an associated type that the call decides (`Item a` at a jar is `?Text`):
+# an optional argument there is taken whole, as at a `?Text` parameter, never lifted over.
+# Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Box a:
+    type Item
+    Make: fn a, Item a -> a
+
+type Jar = choice:
+    Full Text
+    Empty
+derive ^Eq, ^Show
+
+impl ^Box Jar:
+    type Item = ?Text
+    fn Make j, ?t = match ?t:
+        ? t: Full t
+        nil: j
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Show (Make Empty, (? "x"))} {Show (Make (Full "y"), nil)}")    # 0

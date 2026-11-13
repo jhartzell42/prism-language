@@ -1,0 +1,30 @@
+# The checked cast's `+?` directly before a block's `:` is the non-empty mark and the
+# option, so a `match` or an `if let` on a checked cast needs no parentheses (Type System
+# ch. 2, "Collections"; Semantics ch. 2, "Operators and punctuation", with Jimmy's ruling
+# CL, "fix the lexer"). A sum's `+` and the checked sum's `+?` read as they did: `(a)+ b`
+# and `a +? b` are operators, and `a + ?b` adds an option. Written by Claude on the
+# claude-bugs branch; subject to change.
+FirstOr: fn [Nat], Nat -> Nat
+fn FirstOr xs, fallback = match xs as [Nat]+?:
+    nil: fallback
+    ? some: Or some[0], fallback
+
+Entries: fn (Nat ==> Text) -> Nat
+fn Entries m = match m as (Nat ==> Text)+?:
+    nil: 0
+    ? some: Len some
+
+Kept: fn [Nat]+ -> [Nat]+
+fn Kept xs = match xs as [Nat]+:
+    kept: kept
+
+Sum: fn Nat, Nat -> Nat
+fn Sum a, b = (a)+ b
+
+?CheckedSum: fn Nat, Nat -> ?Nat
+fn ?CheckedSum a, b = a +? b
+
+Spaced: fn [Nat], [Nat] -> Bool
+fn Spaced xs, ys = match xs == [[1]]+ :
+    True: (Len ys) == 0
+    False: False

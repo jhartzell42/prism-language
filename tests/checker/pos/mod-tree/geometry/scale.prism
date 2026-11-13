@@ -1,0 +1,5 @@
+# `Geometry.Scale`, at depth 2.
+emit r
+
+By: fn Nat, Nat -> Nat
+fn By k, n = k * n

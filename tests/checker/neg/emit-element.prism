@@ -1,0 +1,3 @@
+# `emit-element`: a library writes its own row.
+module Lib
+emit Element

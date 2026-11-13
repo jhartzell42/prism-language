@@ -1,0 +1,9 @@
+# A recursive widget under a `for` row: declarations of sem-ch04-widget-recursion.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test the_outline_grows_a_level, @outline:
+    build
+    click at 0

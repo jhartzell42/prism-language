@@ -1,0 +1,64 @@
+# Jimmy's ruling, 12 November: `forall`, explicit universal quantification (`any` stays
+# the existential, Type System ch. 3, "Existentials"). `forall` does three jobs, one per
+# function here:
+# - `Swap`: scoped type variables. The signature's `forall` puts `a` and `b` in scope in
+#   the body, which fills `Make`'s variables with them, `Make<<b, a>>` (Type System ch. 7:
+#   `<<T>>` fills a signature's variables in order of first appearance).
+# - `Shown`: a kind on a variable. `(r: Access)` names the payload-free choice `Access`
+#   as the kind of `r` (promoted constructors), and `Body<<s, r>>` uses both variables.
+# - `Twice`: an ambiguous call fixed by naming the type. `Step`'s trait parameter `d`
+#   appears only inside the associated type `State d`, so nothing in `Step state` decides
+#   it; `Step<<d>>` names it, with `d` in scope from `Twice`'s `forall`.
+# Expected transcript derived by hand. Written by Claude on the claude-self-hosting
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Access = choice:
+    Reader
+    Writer
+derive ^Eq, ^Show
+
+# A body of any type, indexed by who may edit it.
+type Edit s (r: Access) = record:
+    body: s
+
+Make: fn b, a -> ((b, a))
+fn Make second, first = ((second, first))
+
+Swap: forall a b. fn ((a, b)) -> ((b, a))
+fn Swap pair = match pair:
+    ((first, second)): Make<<b, a>> second, first
+
+Told: fn ((Text, Int)) -> Text
+fn Told pair = match pair:
+    ((word, number)): "{word} {number}"
+
+Body: fn Edit s r -> s
+fn Body edit = edit.body
+
+Shown: forall s (r: Access). fn Edit s r -> Text where s: ^Show
+fn Shown edit = "{Body<<s, r>> edit}"
+
+Drafted: fn Text -> Edit Text Writer
+fn Drafted words = Edit(body=words)
+
+trait ^Machine d:
+    type State
+    Step: fn State d -> State d
+
+type Clock = record:
+    hour: Nat
+
+impl ^Machine Clock:
+    type State = Nat
+    fn Step hour = hour + 1
+
+Twice: forall d. fn State d -> State d where d: ^Machine
+fn Twice state = Step<<d>> (Step<<d>> state)
+
+@page: @unit
+@page:
+    let swapped = Swap ((1, "one"))
+    let draft = Drafted "hello"
+    Ui.Label($text=$"{Told swapped}; {Shown draft}; {Twice<<Clock>> 5}")   # 0

@@ -1,0 +1,219 @@
+# prismc's driver. `prismc compile SRC... -o OUT [--target rust|cpp] [--tests] [--name N]
+# [--prelude DIR] [--runtime DIR]` compiles a program (compile.prism); `--check` and
+# `--typed` run the checker (below; checking.prism); anything else is the front end alone:
+# `prismc FILE [OUT]` reads FILE through `Fs.Contents`, lexes and parses it, and writes its
+# tree as S-expressions (sexp.prism), then its diagnostics, through `Fs.Output` to OUT
+# (`FILE.sexp` when OUT is not given). With `--tokens` it writes the tokens in the layout
+# corpus's notation instead, and with `--fragment` it parses the file as a run of
+# statements. A file with a lexical or parse error is written all the same, and then the
+# program gives up with the diagnostics, which the CLI World prints before it exits 1. The
+# `prism` command (bin/prism, claude/usage.md) runs prismc for a person.
+#
+# With `--check FILE|DIR...` it reads the program (a directory as a tree, claude/
+# modules-style-pass.md; test modules with `--tests`), parses it, adds the prelude's
+# modules from `--prelude DIR` (`prelude` when not given) that it does not replace, and runs
+# the checker: the diagnostics, then a count, go to `--out OUT` when
+# given, and the program gives up with them when there is an error. `--world FAM,FAM`
+# names the families a World answers, for the root row check. `--typed FILE...` does the
+# same and writes the typed program (typed.prism) as S-expressions before the
+# diagnostics, which follow it as `;` comments.
+#
+# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+emit Fs.* | Process.* | Prelude.*
+mod Reading
+mod Checking
+mod Compile
+mod Fs
+mod Check
+mod Syntax
+mod Lower
+mod Emit
+use Fs.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Syntax.Parser.*
+use Syntax.Parser.Decls.*
+use Syntax.Parser.Expr.*
+use Syntax.Parser.Blocks.*
+use Syntax.Parser.Types.*
+use Syntax.Parser.TestLanguage.*
+use Syntax.Sexp.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.*
+use Check.Passes.*
+use Check.Passes.Cycles.*
+use Check.Passes.Borrows.*
+use Check.Shrink.*
+use Check.Shrink.Types.*
+use Check.Shrink.Calls.*
+use Check.Shrink.Locals.*
+use Check.Shrink.Relations.*
+use Check.Shrink.Walk.*
+use Check.Shrink.Summaries.*
+use Check.Typed
+use Lower
+use Emit.Rust
+use Reading.*
+use Checking.*
+use Compile.*
+
+# What the driver asks of the front end, and what it hands back.
+type Job = record:
+    tokens: Bool
+    fragment: Bool
+    text: Text
+derive ^Eq, ^Show
+
+type Outcome = record:
+    text: Text
+    failed: Bool
+    report: Text
+derive ^Eq, ^Show
+
+# A file the front end refused: its diagnostics are the message.
+tag Prismc.Refused of Fault
+
+# The front end over one file, run through `@Run` (decisions.md D7: the parser is
+# `unbounded`).
+FrontEnd: unbounded fn Job -> Outcome
+fn FrontEnd job:
+    if job.tokens:
+        let lexed = LexFile job.text
+        let report = RenderDiags job.text, lexed.diags
+        Outcome(text="{RenderTokens lexed.tokens}{report}\n", failed=(AnyErrors lexed.diags), report=report)
+    else:
+        let parsed = if job.fragment: ParseFragment job.text else: ParseFile job.text
+        let report = RenderDiags job.text, parsed.diags
+        Outcome(text="{SexpModule parsed.tree}{report}\n", failed=(AnyErrors parsed.diags), report=report)
+
+# Whether a diagnostic is an error: out-of-scope features are reported and pass.
+AnyErrors: fn [Diag] -> Bool
+fn AnyErrors ds = Fold ds, False, \|seen, d| seen or d.stage != "out"
+
+# `line:col: message`, one-based, one per line.
+RenderDiags: fn Text, [Diag] -> Text
+fn RenderDiags text, ds:
+    let starts = LineStarts text
+    Join (Each ds, \|d| RenderDiag text, starts, d), "\n"
+
+# Columns count characters, not bytes.
+RenderDiag: fn Text, [Nat], Diag -> Text
+fn RenderDiag text, starts, d:
+    let line = LineOf starts, d.span.start
+    let col = (ColumnOf text, (Or starts[line], 0), d.span.start) + 1
+    let at = "{line + 1}:{col}"
+    match d.?feature:
+        ? f: "{at}: out of scope ({f}): {d.message}"
+        nil: "{at}: {d.message}"
+
+# Where each line begins, as a byte offset.
+LineStarts: fn Text -> [Nat]
+fn LineStarts text:
+    let ((starts, ignore)) = Fold (SplitOn text, "\n"), (([[]], 0)), \|((acc, at)), line| (((Push acc, at), at + (Len line) + 1))
+    starts
+
+# The zero-based line holding an offset: the last line that starts at or before it.
+LineOf: fn [Nat], Nat -> Nat
+fn LineOf starts, offset = Dec (Fold starts, 0, \|n, s| if s <= offset: n + 1 else: n)
+
+# The value an option takes: the argument after it.
+?OptionValue: fn [Text], Text -> ?Text
+fn ?OptionValue args, name = Fold (Range0 (Len args)), nil, \|?found, i| if args[i] == ? name: args[i + 1] else: ?found
+
+# What is wrong with a mode's options: each argument starting with `-` that is neither one
+# of `flags` nor one of `valued` (which take the argument after them), and a `valued`
+# option with nothing after it. A mode refuses these rather than ignoring them.
+BadOptions: fn [Text], [Text], [Text] -> [Text]
+fn BadOptions args, flags, valued:
+    let ((bad, owed)) = Fold args, (([[]], "")), \|((acc, owed)), a|
+        if owed != "": ((acc, ""))
+        else: if HasText valued, a: ((acc, a))
+        else: if (HasPrefix a, "-") and not (HasText flags, a): (((AddText acc, "unknown option {a}"), ""))
+        else: ((acc, ""))
+    if owed == "": bad else: AddText bad, "{owed} takes a value"
+
+# Gives up with `why`, as a refused program does.
+@Refuse: fn Text -> @unit
+fn @Refuse why:
+    !started <- @started
+    let !~gaveUp: !~unit = Error(kind=Prismc.Refused, message=why) on !started
+    ignore <- Prelude.Unwrap(!~value=!~gaveUp)
+
+# The arguments that are neither options nor the values of the `valued` options.
+PlainArgs: fn [Text], [Text] -> [Text]
+fn PlainArgs args, valued:
+    let ((kept, ignore)) = Fold args, (([[]], False)), \|((acc, skip)), a|
+        if skip: ((acc, False))
+        else: if HasText valued, a: ((acc, True))
+        else: if (HasPrefix a, "-"): ((acc, False))
+        else: (((Push acc, a), False))
+    Each kept, \|a| NoSlash a
+
+# A directory argument without the `/` it may end with.
+NoSlash: fn Text -> Text
+fn NoSlash a = if a != "/" and HasSuffix a, "/": Or (?BeforeSuffix a, "/"), a else: a
+
+@main:
+    args <- Process.Args
+    let checking = Fold args, False, \|seen, a| seen or a == "--check" or a == "--typed"
+    let compiling = (Or args[0], "") == "compile"
+    if compiling: @CompileMain (Drop args, 1)
+    else: if checking: @CheckMain args
+    else: @FrontMain args
+
+# ---------------------------------------------------------------------------------------
+# The front end proper: the tree, the tokens or a fragment of one file
+# ---------------------------------------------------------------------------------------
+
+@FrontMain: fn [Text] -> @unit
+fn @FrontMain args:
+    let tokens = Fold args, False, \|seen, a| seen or a == "--tokens"
+    let fragment = Fold args, False, \|seen, a| seen or a == "--fragment"
+    let names = Fold args, [[]], \|acc, a| if (HasPrefix a, "--"): acc else: Push acc, a
+    let file = Or names[0], ""
+    let out = Or names[1], "{file}.sexp"
+    $~source <- Fs.Contents(path=file)
+    ignore <- rebuild $~source:
+        @Compile Job(tokens=tokens, fragment=fragment, text=""), file, out, _
+
+# One file, once its contents are read.
+@Compile: fn Job, Text, Text, ~Contents -> @unit
+fn @Compile job, file, out, (~ c):
+    let full = update job:
+        &_.text <= c.text
+    !done <- @Run FrontEnd, full
+    $?outcome <- nil then ? !done
+    ignore <- rebuild $?outcome:
+        @Finish out, _
+fn @Compile job, file, out, (Error(message=m, ..)):
+    !started <- @started
+    let !~gaveUp: !~unit = Error(kind=Prismc.Refused, message="cannot read {file}: {m}") on !started
+    ignore <- Prelude.Unwrap(!~value=!~gaveUp)
+
+# Writes the output, and gives up with the diagnostics when there was an error.
+@Finish: fn Text, ?Outcome -> @unit
+fn @Finish out, nil:
+    @ unit
+fn @Finish out, (? o):
+    ignore <- Fs.Output(path=out, $text=$ o.text)
+    !started <- @started
+    let !~verdict = (if o.failed: Error(kind=Prismc.Refused, message=o.report) else: ~ unit) on !started
+    ignore <- Prelude.Unwrap(!~value=!~verdict)

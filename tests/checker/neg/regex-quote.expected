@@ -1,0 +1,4 @@
+tests/checker/neg/regex-quote.prism:2: error[regex]: \Q...\E is RE2's only: escape each character
+    let r = %/\Q*\E/
+              ^
+1 error

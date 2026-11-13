@@ -1,0 +1,10 @@
+# The root's test module.
+emit Ui.*
+use App.*
+
+check both_types:
+    A.Describe 3 => "4 small"
+    A.Describe 12 => "13 large"
+    Types.Count (Types.Make 5) => 5
+    A.Types.Of 20 => A.Types.Large
+    Show (A.Types.Of 1) => "Small"

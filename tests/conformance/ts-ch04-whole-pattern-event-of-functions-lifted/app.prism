@@ -1,0 +1,23 @@
+# A plain function over an event of functions that a tuple pattern binds: the application
+# is lifted over the event (Type System ch. 4, Application: a sigiled parameter is not
+# lifted over, an application over a `!` value is; ch. 2: a function is a value an event
+# may hold; ch. 5: a `u fn` takes its color from its call). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Kept: u fn (u fn Nat -> Nat), !Click -> ((!(u fn Nat -> Nat), Nat))
+fn Kept F, !go = ((F on !go, 2))
+
+Call: fn (fn Nat -> Nat), Nat -> Nat
+fn Call F, n = F n
+
+!Fired: fn ((!(fn Nat -> Nat), Nat)) -> !Nat
+fn !Fired ((!Made, more)) = (Call !Made, 5) + more
+
+@page: @unit
+@page:
+    !go <- Ui.Button($label=$"go")                               # 0
+    $shown <- 0 then !Fired (Kept (\|n| n + 1), !go)
+    Ui.Label($text=$"{$shown}")                                  # 1

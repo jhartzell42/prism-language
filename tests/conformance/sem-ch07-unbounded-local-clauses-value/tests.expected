@@ -1,0 +1,24 @@
+# Derived by hand from D6 as sem-ch07-unbounded-lambda applies it (each entry of an unbounded function is a cycle point, a function value's included): Work, Apply, Step and Inc entered, four cycles; `Step 0` is `Inc 10`, `Step 5` is `Inc 5`.
+test the_first_clause_runs
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 4 ticks, 1 to 4
+
+tick 4
+  changed:
+    1: Ui.Label(text="11")
+
+test the_second_clause_runs
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 4 ticks, 1 to 4
+
+tick 4
+  changed:
+    1: Ui.Label(text="6")

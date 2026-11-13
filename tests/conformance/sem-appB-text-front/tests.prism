@@ -1,0 +1,13 @@
+# `Front`: declarations of sem-appB-text-front.prism.
+emit r
+use App.*
+
+check front:
+    At (Front sample) => 0
+    At (Front "") => 0
+    After (Front sample) => "héllo→世界"
+    Before (Front sample) => ""
+    ?FirstChar sample => ? 'h'
+    ?FirstChar "世界" => ? '世'
+    ?FirstChar "" => nil
+    ?StepBack (Front sample) => nil

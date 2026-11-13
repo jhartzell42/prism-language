@@ -1,0 +1,4 @@
+tests/checker/neg/regex-class-set-operation.prism:2: error[regex]: &&, ~~ and -- in a class are Rust's set operations: escape them
+    let r = %/[a&&b]/
+                ^
+1 error

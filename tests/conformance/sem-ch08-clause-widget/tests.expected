@@ -1,0 +1,16 @@
+# An inlined widget's places stand in its caller's sequence (Semantics
+# ch. 8). prismc lowers a widget of several clauses in a static position as a generation built
+# once, its place at 1/#0/0, so prismc fails this test.
+test the_clause_is_chosen_at_the_build
+
+tick 0
+  added:
+    0: Ui.Label(text="notes")
+    1: Ui.Label(text="Mine: first")
+
+test the_other_clause
+
+tick 0
+  added:
+    0: Ui.Label(text="notes")
+    1: Ui.Label(text="untitled: first")

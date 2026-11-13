@@ -1,0 +1,12 @@
+# The tests of sem-ch09-host-widget-event-answer-delay.
+emit Ui.*
+use App.*
+use Ui.*
+
+test a_widget_functions_event_answer_is_a_tick_late, @host:
+    build
+    click at 0
+        => expect Ui.Label(text="1 taps")
+        => expect Ui.Label(text="0 hits")
+    compute
+        => expect Ui.Label(text="1 hits")

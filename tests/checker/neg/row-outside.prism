@@ -1,0 +1,8 @@
+# `row-outside`: a child that emits `Fs.*` in a scope that emits `Ui.*`.
+emit Ui.*
+use Fs.*
+
+@reader: @unit
+@reader:
+    $~contents <- Fs.Contents(path="/etc/motd")
+    Ui.Label($text=$"read")

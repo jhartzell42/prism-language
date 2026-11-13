@@ -1,0 +1,24 @@
+# A tag whose output is a bundle with a function part, answered by a host under the
+# tag's arm with the bundle written out (Type System ch. 2: a function is a value, and a
+# plain aggregate with a functor value inside is a bundle; "Bundles": the bundle is
+# answered part by part; Semantics ch. 9, "How a supplier answers": a plain part is
+# answered once, at the place's build, an event answer is the next tick's input).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Counter of Element ((fn Nat -> Nat, !Nat)):
+    name: Text
+
+@counted: @unit
+@counted:
+    ((Step, !bump)) <- Pad.Counter(name="c")
+    $count <- 0 then Step ($count + !bump)
+    Ui.Label($text=$"{$count}")
+
+@mocked: @unit
+@mocked:
+    !go <- Ui.Button($label=$"go")
+    ignore <- @HostDocument @counted, \|p, e| match e:
+        Pad.Counter(..): @ ((\|n| n + 2, 3 on !go))
+        otherwise: @Element e

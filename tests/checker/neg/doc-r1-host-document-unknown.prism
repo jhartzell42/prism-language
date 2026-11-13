@@ -1,0 +1,20 @@
+# Part VII ch. 7, step R1's test: the prelude's domain host is `@Host`, so a program that
+# calls `@HostDocument` to host a domain gives `unknown-name`. `@HostDocument` is then
+# free for Part IV's library, which this program does not use.
+# Expected text derived by hand, in the wording of neg/bare-name-no-use; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+tag Pad.Ask of Element $Text:
+    name: Text
+
+@child: @unit emit Pad.* | Ui.*
+@child:
+    $told <- Pad.Ask(name="ada")
+    Ui.Label($text=$"told {$told}")
+
+@page: @unit
+@page:
+    ignore <- @HostDocument @child, \|path, element| match element:
+        Pad.Ask(name=name): @ $"hello {name}"
+        otherwise: @Element element

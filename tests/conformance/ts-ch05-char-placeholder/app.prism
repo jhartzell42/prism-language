@@ -1,0 +1,12 @@
+# A `Char` in a text's placeholder displays as itself (Semantics round 10 IP:
+# interpolation is display, `^Show` stays debug), so `"{c}"` is `q`, as `Text c`, the
+# character itself as a text, is. Written for prismc's back end; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+let quote = Text '\''
+
+@chars: @unit
+@chars:
+    Ui.Label($text=$"{'q'} {Text 'q'} {Text 'é'}{quote}")      # 0

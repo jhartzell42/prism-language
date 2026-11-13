@@ -1,0 +1,87 @@
+# Part III ch. 6, "A per-document record of rows": a document's seats are a record, one
+# field per role, each a live map from seat id to that seat's guest blueprint. `rest` is
+# one row variable shared by every field, the guests' other languages, and the host
+# passes it up. The trait's `type Seats rest` is given by an equation, `type Seats rest =
+# CountSeats rest`, and the document's own `@HostSeats` is one line per role, each
+# calling `@HostRole` (ruling SR). `@HostRole` and `@Seated` are written here as Part IV
+# ch. 5 gives them, the supplier left out: every query is answered nil. Here `rest` is
+# `Ui.*`, so each guest's label passes up through its role's host.
+# `@HostSeats<<Count>>` names the document, which inference cannot see through the
+# equation (Type System ch. 2, "Explicit type arguments").
+# Expected transcript derived by hand from Part III ch. 6, Part IV ch. 5 and Semantics
+# ch. 9 (a forwarded element sits at host/[p]/0); never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type SeatId r
+    type Query r
+    type Answer r
+    type Seats rest
+    @HostSeats: fn Seats d rest -> @unit emit rest
+
+type CountRole = choice:
+    Raiser
+    Watcher
+derive ^Eq, ^Ord, ^Show
+
+type Count = record:
+    total: Nat
+derive ^Eq, ^Show
+
+type Whole = choice:
+    Whole
+derive ^Eq, ^Show
+
+family Seat d r where d: ^Document
+
+tag Seat.Query of Element $?(Answer d r):
+    $query: Query d r
+
+# One field per role, one row variable shared by both.
+type CountSeats rest = record:
+    $raiser: (Nat ==> $@(@unit emit Seat.* Count Raiser | rest))
+    $watcher: (Text ==> $@(@unit emit Seat.* Count Watcher | rest))
+
+impl ^Document Count:
+    type Role = CountRole
+    type SeatId Raiser = Nat
+    type SeatId Watcher = Text
+    type Query r = Whole
+    type Answer r = Nat
+    type Seats rest = CountSeats rest
+    fn @HostSeats seats:                                  # one line per role
+        @HostRole Raiser, seats.$raiser
+        @HostRole Watcher, seats.$watcher
+
+# One role's seats, one host over a `for` of them; the seat tags are answered here and
+# everything else passes up.
+@HostRole: fn Role d, $(SeatId d r ==> $@(@unit emit Seat.* d r | rest)) -> @unit emit rest where d: ^Document
+fn @HostRole role, $seats:
+    ignore <- @Host (@Seated $seats), \|path, element| match element:
+        Seat.Query(..): @ $nil
+        otherwise: @Element element
+
+# Each seat's guest, built anew only when its own blueprint changes.
+@Seated: fn $(k ==> $@(@unit emit rest)) -> @unit emit rest where k: ^Ord
+fn @Seated $seats:
+    for seat, $@guest <- $seats:
+        rebuild $@guest:
+            _
+
+@Raising: fn Nat -> @unit emit Seat.* Count Raiser | Ui.*
+fn @Raising n:
+    $told <- Seat.Query($query=$ Whole)                                  # 0
+    Ui.Label($text=$"raiser {n} told {Or $told, 0}")                     # 1
+
+@Watching: fn Text -> @unit emit Seat.* Count Watcher | Ui.*
+fn @Watching name:
+    $told <- Seat.Query($query=$ Whole)                                  # 0
+    Ui.Label($text=$"watcher {name} told {Or $told, 0}")                 # 1
+
+@page: @unit
+@page:
+    let seats = CountSeats($raiser=$ {{1: @Raising 1}}, $watcher=$ {{"ada": @Watching "ada"}})
+    @HostSeats<<Count>> seats                            # 0: the raisers' host; 1: the watchers'

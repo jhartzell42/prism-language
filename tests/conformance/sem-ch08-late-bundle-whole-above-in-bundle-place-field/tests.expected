@@ -1,0 +1,17 @@
+# Derived by hand from Semantics ch. 4 ("the order of a group's lines decides positions and nothing else"), ch. 8 ("A new place's first value": the query answers at the build, by the element as built, its field reading the bundle once it has a value), Type System ch. 2 ("Bundles": `First` takes the bundle as one value) and ruling TC: loud gives ((10, !add)), so the port is "port 10", answered ((7, "up")), its label 2 and the arm's label 3; soft gives ((20, !add)) and builds nothing in its arm. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Pad.Port(name="port 10")
+    2: Ui.Label(text="7 up")
+    3: Ui.Label(text="loud")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Pad.Port(name="port 20")
+    2: Ui.Label(text="8 up")

@@ -1,0 +1,15 @@
+# Derived by hand: the button and the label are the page's places 0 and 1 (widget functions are transparent, Semantics ch. 8), and a click on the button counts at once.
+test widgets_nest_as_deep_as_they_are_written
+
+tick 0
+  added:
+    0: Ui.Button(label="poke")
+    1: Ui.Label(text="deep 0")
+  result: "0"
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="deep 1")
+  result: "1"

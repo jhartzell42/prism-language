@@ -1,0 +1,22 @@
+# A generic function building a case of a generic choice at its own type parameter (`Node`
+# of `Tree a` inside `Plant`): the case's type depends on the parameter, which C++ names
+# only as a type (`typename`). Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Tree a = choice:
+    Leaf
+    Node (Tree a), a, (Tree a)
+derive ^Eq, ^Show
+
+Plant: fn Tree a, a -> Tree a where a: ^Ord
+fn Plant Leaf, x = Node Leaf, x, Leaf
+fn Plant (Node l, y, r), x = if x < y: Node (Plant l, x), y, r else: Node l, y, (Plant r, x)
+
+Count: fn Tree a -> Nat
+fn Count Leaf = 0
+fn Count (Node l, ignore, r) = (Count l) + 1 + (Count r)
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Count (Plant (Plant Leaf, 2), 1)} {(Plant Leaf, 3) == (Node Leaf, 3, Leaf)}")    # 0

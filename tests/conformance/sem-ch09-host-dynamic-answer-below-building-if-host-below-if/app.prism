@@ -1,0 +1,30 @@
+# A hosted child's place with a `$` answer below a building `if` of the child, under a
+# host that stands below a building `if` of its own block (Semantics ch. 4; ch. 9: a
+# supplier answers a hosted place, its `$` answer the place's dynamic, asked by the place
+# as built; ruling TC: places are counted as they are built, so the host's number and the
+# place's are known once each `if` is built). With the host at the top of its block the
+# program lowers (sem-ch09-host-dynamic-answer-below-building-if), and so does it with no
+# `if` in the child. Reaches `PlaceNumber`'s refusal "a place that is read at its block's
+# build ... after a building `match`, `if` or widget of several clauses" on prismc-r27.
+# Written by Claude (t2, the prismc run), 12 November 2026; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+tag Pad.Ask of Element $Text:
+    name: Text
+
+@Inner: fn Bool -> @unit
+fn @Inner loud:
+    if loud:
+        Ui.Label($text=$"loud")                                        # [0]
+    $a <- Pad.Ask(name="ask")                                          # [1], or [0]
+    Ui.Label($text=$"asked {$a}")                                      # [2], or [1]
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    if loud:
+        Ui.Label($text=$"outer")                                       # 0
+    ignore <- @HostDocument (@Inner loud), \|p, e| match e:           # 1/[p], or 0/[p]
+        Pad.Ask(name=n): @ $"yes {n}"
+        otherwise: @Element e

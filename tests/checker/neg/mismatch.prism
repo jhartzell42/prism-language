@@ -1,0 +1,3 @@
+# `mismatch`: a number where the signature says text.
+Label: fn Int -> Text
+fn Label n = n + 1

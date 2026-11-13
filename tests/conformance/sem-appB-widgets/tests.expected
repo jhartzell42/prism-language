@@ -1,0 +1,33 @@
+# The book prints none for this program; checked by hand against the book's rules.
+test the_prelude_bindings
+
+tick 0
+  added:
+    0: Ui.Button(label="Go")
+    1: Ui.Label(text="0 0 0 none no []")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="0 1 0 ((0, click)) no 1")
+
+tick 2
+  changed:
+    1: Ui.Label(text="1 1 0 ((0, click)) no 1")
+
+tick 3
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1 1 1 ((1, click)) no 1")
+
+tick 4
+  changed:
+    1: Ui.Label(text="2 1 1 ((1, click)) no 1")
+
+tick 5
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="2 1 2 ((2, click)) past 6 1")

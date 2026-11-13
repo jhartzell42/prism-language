@@ -1,0 +1,6 @@
+# Checked by hand against the books' rules.
+test a_local_never_spells_a_helper
+
+tick 0
+  added:
+    0: Ui.Label(text="9")

@@ -1,0 +1,1634 @@
+# `Lower.Program`, a child module of `Lower`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Lower.*
+use Lower.Types.*
+use Lower.Expr.*
+use Lower.Patterns.*
+use Lower.Templates.*
+use Lower.Functions.*
+use Lower.Jobs.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Typed.*
+use Check.Typed.Print.*
+use Lower.Model.*
+use Lower.Node.*
+use Lower.Node.Def.*
+use Lower.Node.Elements.*
+use Lower.Node.Static.*
+use Lower.Node.Dynamics.*
+use Lower.Node.Finish.*
+use Lower.Node.Keyed.*
+use Lower.Node.Switch.*
+
+# ---------------------------------------------------------------------------------------
+# The program
+# ---------------------------------------------------------------------------------------
+
+InModule: fn Lx, Nat, Text -> Lx
+fn InModule lx, file, home = update lx:
+    &_.file <= file
+    &_.home <= home
+    &_.site <= home
+
+# The same, with the code placed in another module (an inlined widget's in its caller's,
+# a check line's in `main.rs`).
+InModuleAt: fn Lx, Nat, Text, Text -> Lx
+fn InModuleAt lx, file, home, site = update lx:
+    &_.file <= file
+    &_.home <= home
+    &_.site <= site
+
+# The whole program as a model: one Rust module per Prism module (the prelude's is the
+# template's own), a node per root widget (the ones the tests name and `@main`), every
+# other widget inlined where it is applied.
+# The program's names with each top-level `let` that has no signature at the scheme the
+# checker inferred for it (the typed program's `defs`): a generalized one's type
+# variables are its getter's type parameters (`LetGetter`).
+WithInferredLets: unbounded fn G, TProgram -> G
+fn WithInferredLets g, tp:
+    let schemes = Fold tp.defs, {}, \|m, n| Insert m, n.name, n.scheme
+    Fold g.defs, g, \|sofar, d| match ((d.body, schemes[d.qk])):
+        ((DbLet ignore, ? scheme)): if HasKey sofar.vals, d.qk: sofar else: update sofar:
+            &_.vals <= Insert &_.vals, d.qk, ValInfo(qk=d.qk, scheme=scheme, sort="let", hasSig=False, home=d.home, file=d.file, span=d.span)
+        otherwise: sofar
+
+LowerProgram: unbounded fn [Src], [Module], Nat, TProgram, Text -> Model
+fn LowerProgram srcs, trees, shown, tp, name:
+    let ((declared, ignore)) = BuildG srcs, trees
+    let g = WithInferredLets declared, tp
+    let ((tys, apps, bs, ims)) = TypedTables tp
+    let gens = Fold tp.gens, {}, \|m, n| Insert m, (AtKey n.at), n
+    let insts = Fold tp.insts, {}, \|m, n| Insert m, (InstKey n), (Push (Or m[InstKey n], [[]]), n)
+    let quants = Fold tp.gens, {}, \|m, n| Fold (Append n.tys, n.cols), m, \|m2, q| Insert m2, q, n.name
+    let genOfQ = Fold tp.gens, {}, \|m, n| Fold (Append n.tys, n.cols), m, \|m2, q| Insert m2, q, n
+    let useInsts = Fold tp.insts, {}, \|m, n| Insert m, (AtKey n.at), n
+    let mods = NeededMods g, shown
+    let rsMods = Fold mods, {}, \|acc, m| Insert acc, m, (RustModName m)
+    let modSegments = Fold (Values rsMods), {}, \|acc, p| Fold (SplitOn p, "::"), acc, \|a2, seg| Insert a2, seg, True
+    let lx0 = Lx(g=g, tys=tys, apps=apps, lifts=(Fold tp.lifts, {}, \|m, n| Insert m, (AtKey n.at), n), binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, modSegments=modSegments, rsNames=(ValueNames g), layouts=(Layouts g), unbs=[[]], notes=[[]], globals=(GlobalNames g), inNode=False, whole=False, wholeFns={}, noCx=False, unshrunk=(Fold tp.unshrunk, {}, \|m, a| Insert m, (AtKey a), True), gens=gens, insts=insts, quants=quants, genOfQ=genOfQ, useInsts=useInsts, localIds=(Fold tp.locals, {}, \|m, n| Insert m, (AtKey n.at), n.id), useIds=(Fold tp.uses, {}, \|m, n| Insert m, (AtKey n.at), n.id), useNames=(Fold tp.uses, {}, \|m, n| Insert m, n.at.file, (Push (Or m[n.at.file], [[]]), ((n.at.span.start, n.name)))), callIds=(Fold tp.calls, {}, \|m, n| Insert m, (AtKey n.at), n.id), inlined="", subst={}, csubst={}, faults=(Fold tp.faults, {}, \|m, n| Insert m, (AtKey n.at), n.ty), plains=(Fold tp.plains, {}, \|m, at| Insert m, (AtKey at), True), shared={}, recursing=[[]], valued={}, valuedAt={}, inDefinition="")
+    let ((valuedCases, valuedInstances)) = ValuedWidgets lx0
+    let lx = update lx0:
+        &_.unbs <= JobRoots lx0
+        &_.wholeFns <= WholeFns lx0
+        &_.valued <= valuedCases
+        &_.valuedAt <= valuedInstances
+    let roots = RootWidgets lx
+    let modDefs = Each mods, \|m| ModDefOf lx, m, roots, (Or g.mods[m], dummyMod), mods
+    let programs = Each roots, \|((qk, ignore))| ProgDefOf lx, qk
+    let mainQk = Fold g.defs, "", \|found, d| if found == "" and (IsMain d.qk): d.qk else: found
+    let ?root = if mainQk == "": nil else: ? (ProgDefOf lx, mainQk)
+    let checks = Fold g.defs, [[]], \|acc, d| match d.body:
+        DbCheck c: Push acc, (CheckDefOf (InModuleAt lx, d.file, d.home, "\u{0}main"), c)
+        otherwise: acc
+    let withNeeds = WithGroups (WithNeeds g, srcs, tp, modDefs)
+    let elem = ElemRow lx, mods
+    let answer = OutputEnum (InModuleAt lx, 0, "", "\u{0}main"), mods
+    let names = Each withNeeds, \|d| d.name
+    let valueTys = ValueTypes withNeeds
+    let elemHeld = Fold elem.cases, [[]], \|acc, ((ignore, sp))| UnionTexts acc, (HeldIn names, valueTys, "", (OutNamed sp, [[]]))
+    let outputHeld = Fold answer.cases, elemHeld, \|acc, k| UnionTexts acc, (HeldIn names, valueTys, "", k.ty)
+    let outputNamed = Fold answer.cases, [[]], \|acc, k| UnionTexts acc, (NamedIn names, "", k.ty)
+    Model(name=name, mods=withNeeds, programs=programs, ?root=?root, checks=checks, elem=elem, answer=answer, elemComplete=outputHeld, elemDeclared=(MinusTexts outputNamed, outputHeld), scripts=[[]], notes=[[]])
+
+# Each module with what it needs of the others (`ModDef.complete` and `declared`).
+WithNeeds: unbounded fn G, [Src], TProgram, [ModDef] -> [ModDef]
+fn WithNeeds g, srcs, tp, defs:
+    let names = Each defs, \|d| d.name
+    let valueTys = ValueTypes defs
+    let refs = NamedMods g, srcs, tp, (Each defs, \|d| d.prism)
+    Each defs, \|d|
+        let held = Fold d.items, [[]], \|acc, it| UnionTexts acc, (ItemHeld names, valueTys, d.name, it)
+        let complete = Filter held, \|n| n != d.name
+        let reached = Each (ReachedBy refs, [[d.prism]], [[]]), \|m| RustModName m
+        let declared = Filter names, \|n| n != d.name and (HasText reached, n) and not (HasText complete, n)
+        update d:
+            &_.complete <= complete
+            &_.declared <= declared
+
+# The modules each of these modules names, by Prism name: its `use`s and emitted families
+# (`ModRefs`); the modules it names qualified (`Lower.Model`: a line of its source that is
+# no comment holds the module's name and a dot, which a text literal can hold too, adding
+# a module it does not need); and the modules of the impls its constraints were solved by
+# (a trait method's overload, which a target that declares before it calls must see).
+NamedMods: unbounded fn G, [Src], TProgram, [Text] -> (Text ==> [Text])
+fn NamedMods g, srcs, tp, ms:
+    let byPath = Fold (Values g.mods), {}, \|acc, info| Insert acc, (Or srcs[info.file], (MkSrc "", "")).path, info.name
+    let byFile = Fold (Values g.mods), {}, \|acc, info| Insert acc, info.file, info.name
+    let solved = Fold tp.impls, {}, \|acc, n| match byFile[n.at.file]:
+        ? site: match byPath[ImplPath n.how]:
+            ? home: if home == site or HasText (Or acc[site], [[]]), home: acc else: Insert acc, site, (Push (Or acc[site], [[]]), home)
+            nil: acc
+        nil: acc
+    Fold ms, {}, \|acc, m| match g.mods[m]:
+        ? info:
+            let named = Append (Each (Filter tp.globals, \|n| n.at.file == info.file), \|n| n.target), (TypesNamedIn tp, info.file)
+            let qualified = Filter ms, \|o| o != m and o != "" and Fold named, False, \|f, k| f or (OwnerOf k) == o
+            Insert acc, m, (UnionTexts (UnionTexts (ModRefs g, m), qualified), (Or solved[m], [[]]))
+        nil: acc
+
+# The program's types a file's expressions, binders and definitions have, by key: what of
+# the other modules' types its code names, resolved as the checker resolved it.
+TypesNamedIn: unbounded fn TProgram, Nat -> [Text]
+fn TypesNamedIn tp, file:
+    let fromExprs = Fold (Filter tp.exprs, \|n| n.at.file == file), [[]], \|acc, n| UnionTexts acc, (TyConNames n.ty)
+    let fromBinders = Fold (Filter tp.binders, \|n| n.at.file == file), fromExprs, \|acc, n| UnionTexts acc, (TyConNames n.ty)
+    Fold (Filter tp.defs, \|n| n.at.file == file), fromBinders, \|acc, n| UnionTexts acc, (TyConNames n.scheme.ty)
+
+TyConNames: unbounded fn Ty -> [Text]
+fn TyConNames t = match t:
+    TyCon "Prelude.NonEmpty", [[c]]: TyConNames c
+    TyCon n, args: Fold args, [[n]], \|acc, a| UnionTexts acc, (TyConNames a)
+    TyFn ignore, ps, r: Fold ps, (TyConNames r), \|acc, a| UnionTexts acc, (TyConNames a)
+    TyTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (TyConNames a)
+    TyArray x: TyConNames x
+    TyMap k, v: UnionTexts (TyConNames k), (TyConNames v)
+    TySig ignore, x: TyConNames x
+    TyAt x, ignore: TyConNames x
+    TyElem ignore, x: TyConNames x
+    TyAssoc ignore, ignore, x: TyConNames x
+    otherwise: [[]]
+
+# The source path of an impl an `ImplNote` names (`impl PATH:LINE`, `derived PATH:LINE`),
+# or "" for a constraint no written or derived impl solved.
+ImplPath: fn Text -> Text
+fn ImplPath how:
+    let rest = Or (?AfterPrefix how, "impl "), (Or (?AfterPrefix how, "derived "), "")
+    let parts = SplitOn rest, ":"
+    Join (Take parts, (Dec (Len parts))), ":"
+
+# The program's types held by value where they are held (records, newtypes, unit types
+# and tags; a choice and a row are handles), by path (`ast::Span`).
+# The program's value types by path: records, newtypes, unit types, tags and choices (a C++
+# choice holds its variant by value), which a type holding one by
+# value needs complete.
+ValueTypes: fn [ModDef] -> (Text ==> Bool)
+fn ValueTypes defs = Fold defs, {}, \|acc, d| Fold d.items, acc, \|a, it| match it:
+    ItType t: Insert a, "{d.name}::{t.name}", True
+    ItTag t: Insert a, "{d.name}::{t.name}", True
+    otherwise: a
+
+# A module's item as the crate root's items refer to it (`crate::Elem`'s variants, written
+# in `main`): by its module's path.
+RootRef: fn Text, Text -> Ref
+fn RootRef home, name = RefItem (RustModName home), name, "{RustModName home}::{name}"
+
+# The modules whose value types an item's own type holds by value.
+ItemHeld: fn [Text], (Text ==> Bool), Text, Item -> [Text]
+fn ItemHeld names, valueTys, home, it = match it:
+    ItType t: Fold t.cases, [[]], \|acc, c| Fold c.fields, acc, \|a, ((ignore, ft))| UnionTexts a, (HeldIn names, valueTys, home, ft)
+    ItTag t: Fold t.fields, [[]], \|acc, ((ignore, ignore, ft))| UnionTexts acc, (HeldIn names, valueTys, home, ft)
+    ItRow r: Fold r.cases, [[]], \|acc, ((ignore, sp))| UnionTexts acc, (HeldIn names, valueTys, home, (OutNamed sp, [[]]))
+    otherwise: [[]]
+
+# The modules of the value types a type holds by value: itself, an option's, a result's,
+# a tuple's parts', a cell's, and a named type's arguments (which it may hold). What is
+# behind a pointer (an `Rc`, an array, a map) needs only its declaration, which `declared`
+# gives (the type is named in the source).
+HeldIn: fn [Text], (Text ==> Bool), Text, OutTy -> [Text]
+fn HeldIn names, valueTys, home, t = match t:
+    OutNamed n, args:
+        let own = match n:
+            RefItem m, ignore, ignore: if HasKey valueTys, (Or (?RefKey n), ""): [[m]] else: [[]]
+            otherwise: [[]]
+        Fold args, own, \|acc, a| UnionTexts acc, (HeldIn names, valueTys, home, a)
+    OutOpt i: HeldIn names, valueTys, home, i
+    OutRes i: HeldIn names, valueTys, home, i
+    OutCell i: HeldIn names, valueTys, home, i
+    OutTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (HeldIn names, valueTys, home, a)
+    otherwise: [[]]
+
+# The modules of every type a type names, however it holds them.
+NamedIn: fn [Text], Text, OutTy -> [Text]
+fn NamedIn names, home, t = match t:
+    OutNamed n, args:
+        let own = match n:
+            RefItem m, ignore, ignore: if HasText names, m: [[m]] else: [[]]
+            otherwise: [[]]
+        Fold args, own, \|acc, a| UnionTexts acc, (NamedIn names, home, a)
+    OutOpt i: NamedIn names, home, i
+    OutRes i: NamedIn names, home, i
+    OutCell i: NamedIn names, home, i
+    OutArray i: NamedIn names, home, i
+    OutRc i: NamedIn names, home, i
+    OutEvent i: NamedIn names, home, i
+    OutDyn i: NamedIn names, home, i
+    OutMap k, v: UnionTexts (NamedIn names, home, k), (NamedIn names, home, v)
+    OutTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (NamedIn names, home, a)
+    OutFn ps, r: Fold ps, (NamedIn names, home, r), \|acc, a| UnionTexts acc, (NamedIn names, home, a)
+    otherwise: [[]]
+
+# Each module with the modules its value types are ordered with (`ModDef.typesWith`): the
+# ones it reaches by `complete` that reach it back, itself among them, in the program's
+# order.
+WithGroups: unbounded fn [ModDef] -> [ModDef]
+fn WithGroups defs:
+    let edges = Fold defs, {}, \|m, d| Insert m, d.name, d.complete
+    let reach = Fold defs, {}, \|m, d| Insert m, d.name, (ReachedBy edges, [[d.name]], [[]])
+    Each defs, \|d|
+        let mine = Or reach[d.name], [[]]
+        update d:
+            &_.typesWith <= Filter (Each defs, \|o| o.name), \|n| n == d.name or ((HasText mine, n) and (HasText (Or reach[n], [[]]), d.name))
+
+# The modules reached from these along the edges, these among them.
+ReachedBy: unbounded fn (Text ==> [Text]), [Text], [Text] -> [Text]
+fn ReachedBy edges, todo, seen = match todo[0]:
+    nil: seen
+    ? m: if HasText seen, m: ReachedBy edges, (Drop todo, 1), seen else: ReachedBy edges, (Append (Drop todo, 1), (Or edges[m], [[]])), (Push seen, m)
+
+# The modules a program needs: its own files', and the modules they use or whose families
+# they emit, followed (the prelude's are emitted only when reached).
+NeededMods: unbounded fn G, Nat -> [Text]
+fn NeededMods g, shown:
+    let own = Filter (Keys g.mods), \|m| (Or g.mods[m], dummyMod).file < shown and m != "Prelude"
+    let grown = Fold (Range0 6), own, \|acc, ignore| Fold acc, acc, \|a, m| UnionTexts a, (ModRefs g, m)
+    Filter (Keys g.mods), \|m| m != "Prelude" and HasText grown, m
+
+ModRefs: unbounded fn G, Text -> [Text]
+fn ModRefs g, m = match g.mods[m]:
+    ? info:
+        let used = Each info.uses, \|((u, ignore))| u
+        let fams = match info.tree.?emitRow:
+            ? rw: Fold rw.terms, [[]], \|acc, t| match t:
+                RFamily q: Push acc, (Or g.famOwner[Dotted q.path], (Dotted q.path))
+                otherwise: acc
+            nil: [[]]
+        Filter (Append used, fams), \|x| HasKey g.mods, x
+    nil: [[]]
+
+# The root widgets: every widget a test names, and the root module's `@main`.
+RootWidgets: fn Lx -> [((Text, Bool))]
+fn RootWidgets lx:
+    let tested = Fold lx.g.defs, [[]], \|acc, d| match d.body:
+        DbTest t: match BlueprintQk (InModule lx, d.file, d.home), t.blueprint:
+            "": acc
+            qk: if HasText (Each acc, \|((q, ignore))| q), qk: acc else: Push acc, ((qk, True))
+        otherwise: acc
+    let main = Fold lx.g.defs, [[]], \|acc, d| if IsMain d.qk: Push acc, ((d.qk, False)) else: acc
+    Fold main, tested, \|acc, ((k, b))| if HasText (Each acc, \|((q, ignore))| q), k: acc else: Push acc, ((k, b))
+
+# The widgets with places that the program reads as blueprint values (Type System ch. 2:
+# a blueprint is an opaque handle and still a value; Semantics ch. 8: it builds nothing
+# until a block applies it): an argument of a function that is no widget or of a
+# constructor, a host's supplier, what a lambda gives, the operand of `?`, a part of a
+# tuple or an array, a value of a map literal, the value of a `let`, what a `<=` writes. Each is lowered once more as rows of its own (`ValuedRows`), which the
+# blueprint made at the value site builds (`WidgetBlueprintValue`). A generic widget is
+# lowered so once for each set of types its readings give its type parameters
+# (`?ValuedTypes`). A widget function parameter is a function value of the row, and the
+# widget its argument names is read as a value too (`WidgetNamed`).
+ValuedWidgets: unbounded fn Lx -> (((Text ==> [((Text, Pa, [Cc], [Ex]))]), (Text ==> [((Text, [((Text, Ty))]))])))
+fn ValuedWidgets lx = Fold lx.g.defs, (({}, {})), \|acc, d|
+    let lxd = update (InModule lx, d.file, d.home):
+        &_.inDefinition <= InstanceKey d
+    let held = Fold (DefExprs d), [[]], \|sites, e| Append sites, (ValueWidgetsIn lxd, e)
+    # a `let` names a value: the widget it names is read as one where the name is
+    let named = Fold (LetValues d), held, \|sites, e| Append sites, (ValueWidgetsAt lxd, e)
+    Fold named, acc, \|((cases, instances)), ((qk, types))|
+        let valuedKey = ValuedKey qk, types
+        let known = Or instances[qk], [[]]
+        if HasKey cases, valuedKey: ((cases, instances)) else: match ?ValuedCases lx, qk, types, (ValuedStemAt qk, (Len known), types):
+            ? found: (((Insert cases, valuedKey, found), (Insert instances, qk, (Push known, ((valuedKey, types))))))
+            nil: ((cases, instances))
+
+# A valued widget's key in `Lx.valued`: the widget, and for a generic one the types this
+# reading of it gives its type parameters.
+ValuedKey: fn Text, [((Text, Ty))] -> Text
+fn ValuedKey qk, types = if (Len types) == 0: qk else: "{qk}#{Show types}"
+
+# The types a reading of a widget as a value gives the widget's type parameters, in the
+# parameters' order by name: read off the arguments' types as an inlined call reads them
+# (`?ParamInstance`), and off the widget's own type where it is read. Nothing for a
+# widget with no type parameter; no answer when a type parameter stays open there (the
+# reading stands in a generic function, whose own parameter it is given).
+?ValuedTypes: unbounded fn Lx, ValInfo, Range, [Arg] -> ?[((Text, Ty))]
+fn ?ValuedTypes lx, v, calleeSpan, args:
+    let rigids = RigidsIn v.scheme.ty
+    if (Len rigids) == 0: ? [[]]
+    else:
+        let ptys = match v.scheme.ty:
+            TyFn ignore, ps, ignore: ps
+            otherwise: [[]]
+        let fromArguments = Fold (Range0 (Len ptys)), {}, \|m, i| match args[i]:
+            ? a: Or (?ParamInstance (Or ptys[i], TyErr), (TypeAt lx, a.value.span), m), m
+            nil: m
+        let found = if Fold rigids, True, \|all, q| all and HasKey fromArguments, q: fromArguments else: Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, calleeSpan), fromArguments), fromArguments
+        ?ClosedTypes rigids, found
+
+# The types found for a definition's type parameters, in the parameters' order by name,
+# when each has one and none names a type parameter.
+?ClosedTypes: unbounded fn [Text], (Text ==> Ty) -> ?[((Text, Ty))]
+fn ?ClosedTypes rigids, found:
+    let closed = Fold rigids, True, \|all, q| all and match found[q]:
+        ? t: (Len (RigidsIn t)) == 0
+        nil: False
+    if closed: ? (Each (SortTexts rigids), \|q| ((q, (Or found[q], TyErr)))) else: nil
+
+# The types the program gives a generic definition's type parameters, each set once: a
+# fixed point over the program's instantiations. A use that is closed gives its types; a
+# use in another generic definition's body gives them at each of that one's own
+# instantiations, however deep, the definition's uses of itself at other types included
+# (a function is a target generic, lowered once; what its body builds for one set of
+# types, a widget's rows read as a value, is chosen by them where it runs,
+# `OpenWidgetBlueprintValue`). An impl's method is instantiated wherever a constraint is
+# solved by its impl (the checker's `ImplNote`s), at the types the impl's head takes
+# there, and so is its trait's default the impl leaves unwritten. No answer where the
+# program has no finite set of them (`GrowInstances`), or where a use leaves a type
+# parameter undecided.
+?DefInstances: unbounded fn Lx, Text -> ?[ [((Text, Ty))] ]
+fn ?DefInstances lx, wanted = match DefInstancesOutput lx, wanted:
+    InstancesReached all: ? (Each all, \|instantiation| instantiation.types)
+    otherwise: nil
+
+# What the fixed point over the program's instantiations answers: the instantiations,
+# or why there is no finite list of them to read.
+type InstancesOutput = choice:
+    InstancesReached [Instantiation]
+    # a line of uses by name that gives a type parameter a larger type holding itself:
+    # the checker's `grows-without-end` (ruling PG), so no checked program has one
+    EndlessByName
+    # a line through a constraint an impl solves, or through an associated type, that
+    # holds one definition three times, each one's types embedded in the next one's: the
+    # checker's `grows-without-end`, so no checked program has one
+    EndlessThroughImpl
+    # a use leaves a type parameter undecided
+    UndecidedParameter
+    # nothing by that name is defined
+    NoDefinition
+derive ^Eq, ^Show
+
+# `?DefInstances` with its reason: the instantiations of `wanted` alone.
+DefInstancesOutput: unbounded fn Lx, Text -> InstancesOutput
+fn DefInstancesOutput lxAt, wanted:
+    # the types as the checker wrote them, under no instantiation
+    let lx = update lxAt:
+        &_.subst <= {}
+    let definitions = Filter lx.g.defs, \|d| (InstanceKey d) == wanted
+    let rigids = Fold definitions, [[]], \|acc, d| UnionTexts acc, (DefinitionRigids lx, d)
+    if (Len definitions) == 0: NoDefinition
+    else: if (Len rigids) == 0: InstancesReached [[Instantiation(definition=wanted, types=[[]], ?parent=nil, ?step=nil)]]
+    else:
+        let uses = InstanceUses lx
+        let relevant = RelevantDefinitions lx, uses, [[wanted]]
+        let reaching = Filter uses, \|site| ReachesRelevant lx, relevant, site
+        # the uses in a definition with no type parameter are read once, at no types
+        let closed = Fold lx.g.defs, [[]], \|acc, d| if (Len (DefinitionRigids lx, d)) == 0 and not (HasText acc, (InstanceKey d)): Push acc, (InstanceKey d) else: acc
+        let seeded = Fold closed, (InstancesReached [[]]), \|answer, user| match answer:
+            InstancesReached acc: AddTargets lx, reaching, relevant, acc, user, [[]], nil
+            otherwise: answer
+        match seeded:
+            InstancesReached seeds: match GrowInstances lx, reaching, relevant, seeds, 0:
+                InstancesReached all: InstancesReached (Filter all, \|instantiation| instantiation.definition == wanted)
+                other: other
+            other: other
+
+# A definition's name among the program's instantiations: its qualified name, and for an
+# impl's method, which shares its trait's method's name with every other impl's, its
+# place too.
+InstanceKey: fn Def -> Text
+fn InstanceKey d = match d.body:
+    DbMethod ignore, ignore, ignore: "{d.qk} at {d.file}:{SpanStem d.span}"
+    otherwise: d.qk
+
+# The type parameters a definition's body is written over, by name: a function's or a
+# widget's own, an impl's for its method, the trait's parameter for a default.
+DefinitionRigids: unbounded fn Lx, Def -> [Text]
+fn DefinitionRigids lx, d = match d.body:
+    DbMethod ignore, cls, im: SortTexts (UnionTexts im.qs, (Each (MethodOwnRigids lx, cls, (TraitMethodKey lx, cls, d.name)), \|q| MethodOwnName lx, cls, (TraitMethodKey lx, cls, d.name), im, q))
+    DbDefault ignore, cls: match lx.g.traits[cls]:
+        ? tr: SortTexts (UnionTexts [[tr.param]], (MethodOwnRigids lx, cls, d.qk))
+        nil: [[]]
+    DbFn ignore: match lx.g.vals[d.qk]:
+        ? v: SortTexts (RigidsIn v.scheme.ty)
+        nil: [[]]
+    DbWidget ignore: match lx.g.vals[d.qk]:
+        ? v: SortTexts (RigidsIn v.scheme.ty)
+        nil: [[]]
+    otherwise: [[]]
+
+# One place of the program that instantiates a generic definition, by the definition it
+# stands in (`InstanceKey`): a use of a function or widget by its name, with the types
+# the use gives its type parameters, and a constraint an impl solves, with the trait and
+# the type. The types name the type parameters of the definition the place stands in.
+type InstanceUse = choice:
+    UseOfDefinition Text, Text, (Text ==> Ty)
+    UseOfImpl Text, Text, Ty
+    # a trait method with type parameters of its own, named: the method, and the types
+    # its name has there for the trait's parameter and its own
+    UseOfMethod Text, Text, (Text ==> Ty)
+derive ^Eq, ^Show
+
+# One instantiation the fixed point found, and the one whose body's use gave it (its
+# place in the list; `nil` for a use in a definition with no type parameter).
+type Instantiation = record:
+    definition: Text
+    types: [((Text, Ty))]
+    ?parent: Nat
+    # The use by name that gave it: each of its type parameters as the use wrote it,
+    # a type over the parent's type parameters. `nil` for a constraint an impl solves
+    # and for a use whose types hold an associated type.
+    ?step: [((Text, Ty))]
+derive ^Eq, ^Show
+
+# Every use of a generic function or widget and every constraint an impl solves, over
+# the whole program.
+InstanceUses: unbounded fn Lx -> [InstanceUse]
+fn InstanceUses lx = Fold lx.g.defs, [[]], \|acc, d|
+    let lxd = InModule lx, d.file, d.home
+    let user = InstanceKey d
+    let exprs = InstantiatingExprs d
+    # a call of a generic definition: its type parameters off the callee's type there,
+    # else off the arguments
+    let ((called, callees)) = Fold exprs, ((acc, [[]])), \|((uses, spans)), x| match x.kind:
+        ECall c, args, ignore, ignore: match lx.g.vals[CalleeKey lxd, c]:
+            ? v if (Len (RigidsIn v.scheme.ty)) > 0 and v.sort != "method":
+                let ptys = match v.scheme.ty:
+                    TyFn ignore, ps, ignore: ps
+                    otherwise: [[]]
+                let fromArguments = Fold (Range0 (Len ptys)), {}, \|m, i| match args[i]:
+                    ? a: Or (?ParamInstance (Or ptys[i], TyErr), (TypeAt lxd, a.value.span), m), m
+                    nil: m
+                let found = Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lxd, c.span), {}), fromArguments
+                (((Push uses, (UseOfDefinition user, (CalleeKey lxd, c), found)), (Push spans, c.span.start)))
+            otherwise: ((uses, spans))
+        otherwise: ((uses, spans))
+    Fold exprs, called, \|uses, x|
+        # a constraint solved by a written impl at this place
+        let solved = Fold (Or lxd.impls[PlaceKey lxd, x.span], [[]]), uses, \|more, note| if HasPrefix note.how, "impl ": Push more, (UseOfImpl user, note.cls, note.ty) else: more
+        match x.kind:
+            # a generic definition's name as a value: off its type there
+            EName n:
+                let ((?named, ignore)) = ResolveValue lx.g, lxd.home, n
+                match lx.g.vals[Or ?named, ""]:
+                    ? v if v.sort == "method" and (Len (MethodOwnRigids lx, (Or (Each v.scheme.bounds, \|((ignore, bound))| bound)[0], ""), (Or ?named, ""))) > 0: Push solved, (UseOfMethod user, (Or ?named, ""), (Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lxd, x.span), {}), {}))
+                    ? v if (Len (RigidsIn v.scheme.ty)) > 0 and v.sort != "method" and not (HasNat callees, x.span.start): Push solved, (UseOfDefinition user, (Or ?named, ""), (Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lxd, x.span), {}), {}))
+                    otherwise: solved
+            otherwise: solved
+
+# Every expression of a definition that may instantiate another: its body's, a test's
+# blueprint, a check's lines.
+InstantiatingExprs: unbounded fn Def -> [Expr]
+fn InstantiatingExprs d = match d.body:
+    DbTest t: ExprsIn t.blueprint
+    DbCheck c: Fold c.lines, [[]], \|acc, line| Append acc, (ExprsIn line.expr)
+    otherwise: DefExprs d
+
+# The definition a use stands in.
+UseUser: fn InstanceUse -> Text
+fn UseUser site = match site:
+    UseOfDefinition user, ignore, ignore: user
+    UseOfImpl user, ignore, ignore: user
+    UseOfMethod user, ignore, ignore: user
+
+# Whether a use may instantiate one of `relevant`: a use by name, of that name; a solved
+# constraint, of any impl's method or any default among them (which impl solves it is
+# known at the types alone).
+ReachesRelevant: unbounded fn Lx, [Text], InstanceUse -> Bool
+fn ReachesRelevant lx, relevant, site = match site:
+    UseOfDefinition ignore, target, ignore: HasText relevant, target
+    UseOfImpl ignore, ignore, ignore: HoldsMethod lx, relevant
+    UseOfMethod ignore, ignore, ignore: HoldsMethod lx, relevant
+
+# Whether an impl's method or a trait's default is among `relevant`.
+HoldsMethod: unbounded fn Lx, [Text] -> Bool
+fn HoldsMethod lx, relevant = Fold lx.g.defs, False, \|found, d| found or match d.body:
+    DbMethod ignore, ignore, ignore: HasText relevant, (InstanceKey d)
+    DbDefault ignore, ignore: HasText relevant, (InstanceKey d)
+    otherwise: False
+
+# A trait's method by its bare name: its key among the program's values ("" for none).
+TraitMethodKey: unbounded fn Lx, Text, Text -> Text
+fn TraitMethodKey lx, cls, name = match lx.g.traits[cls]:
+    ? tr: Fold tr.methods, "", \|found, k| if found == "" and ((BareName k) == name or (DropPrefix k, "{tr.home}.") == name): k else: found
+    nil: ""
+
+# The type parameters of a trait method's own, by name: those of its signature beside
+# the trait's parameter (`?FrameWith: fn a, b -> ?@unit` of `trait ^Framed a` has `b`).
+# They are decided at each call of the method, not by the impl that answers it.
+MethodOwnRigids: unbounded fn Lx, Text, Text -> [Text]
+fn MethodOwnRigids lx, cls, methodQk = match ((lx.g.traits[cls], lx.g.vals[methodQk])):
+    ((? tr, ? v)): SortTexts (Filter (RigidsIn v.scheme.ty), \|q| q != tr.param)
+    otherwise: [[]]
+
+# The name one of them has in an impl's method: its own, or one apart from the impl's
+# type parameter of the same name (`ApartName`, as the checker read the method's body).
+MethodOwnName: unbounded fn Lx, Text, Text, ImplInfo, Text -> Text
+fn MethodOwnName lx, cls, methodQk, im, q = match ((lx.g.traits[cls], lx.g.vals[methodQk])):
+    ((? tr, ? v)): ApartName q, im.qs, (Filter v.scheme.qs, \|own| own != tr.param)
+    otherwise: q
+
+# The definitions whose instantiations decide those of `relevant`: each generic
+# definition with a use that may instantiate one of them, and so on to the end (the
+# definitions are finitely many, and each round adds one or stops).
+RelevantDefinitions: unbounded fn Lx, [InstanceUse], [Text] -> [Text]
+fn RelevantDefinitions lx, uses, relevant:
+    let grown = Fold uses, relevant, \|acc, site| if (HasText acc, (UseUser site)) or not (ReachesRelevant lx, acc, site): acc else: Push acc, (UseUser site)
+    if (Len grown) == (Len relevant): relevant else: RelevantDefinitions lx, uses, grown
+
+# The fixed point's step: the uses in the body of the instantiation at `next` are read
+# at its types, and what they instantiate is added behind; done when none is left.
+GrowInstances: unbounded fn Lx, [InstanceUse], [Text], [Instantiation], Nat -> InstancesOutput
+fn GrowInstances lx, uses, relevant, all, next = match all[next]:
+    nil: InstancesReached all
+    ? instantiation: match AddTargets lx, uses, relevant, all, instantiation.definition, instantiation.types, (? next):
+        InstancesReached more: GrowInstances lx, uses, relevant, more, (next + 1)
+        other: other
+
+# What the uses in `user`'s body instantiate at the types `types` give `user`'s type
+# parameters, added to `all` where new. No list where a use leaves a type parameter
+# undecided, and where the program has no finite set of instantiations (`?GrowsFrom`).
+AddTargets: unbounded fn Lx, [InstanceUse], [Text], [Instantiation], Text, [((Text, Ty))], ?Nat -> InstancesOutput
+fn AddTargets lx, uses, relevant, all, user, types, ?parent = Fold uses, (InstancesReached all), \|answer, site| match answer:
+    InstancesReached acc: if (UseUser site) != user: answer else: match ?UseTargets lx, site, types:
+        nil: UndecidedParameter
+        ? targets: Fold targets, answer, \|inner, ((definition, taken, ?step))| match inner:
+            InstancesReached sofar:
+                let known = Fold sofar, False, \|seen, other| seen or (other.definition == definition and (Show other.types) == (Show taken))
+                if known or not (HasText relevant, definition): inner
+                else: match ?GrowsFrom lx, sofar, ?parent, definition, taken, ?step:
+                    ? endless: endless
+                    nil: InstancesReached (Push sofar, Instantiation(definition=definition, types=taken, ?parent=?parent, ?step=?step))
+            otherwise: inner
+    otherwise: answer
+
+# Whether a new instantiation of `definition` at `types` is one of an endless line: the
+# line of its parents from `?at` holds the same definition, and what led from there to
+# here would lead on from here for ever.
+# Where every step between the two is a use by name, the steps make one substitution
+# (`?composed`: each of the definition's type parameters as a type over the same
+# parameters, whatever types the earlier instantiation has), and the same steps are
+# taken again from the new instantiation, since every use in a body is followed at
+# every instantiation. The line is endless exactly when the substitution gives some
+# parameter a larger type that holds the parameter itself (`a` becomes `[a]`): each
+# round then makes that parameter's type larger. A substitution that gives none such
+# (`a` becomes `[b]`, `b` becomes `Nat`) is no reason to stop.
+# Where a step between the two is a constraint an impl solves, or its types hold an
+# associated type, which impl answers the next round depends on the types, and no
+# substitution says what follows. The checker refuses the lines that grow through one
+# (`grows-without-end`: its walk takes an impl's constraint as a substitution and an
+# associated type by the round applied to itself), so a stop here is an internal error:
+# the line holds the definition three times, each one's types embedded in the next one's,
+# each found again inside (`Embeds`, `EmbeddedAbove`). One embedding is no stop: a
+# finite program's first round may give `Box (Box Nat)` from `Box Nat` and its second
+# the same again.
+# The fixed point ends without a count. An endless line of instantiations has endlessly
+# many steps by an impl, and then, among the instantiations of one definition with such
+# steps between them, endlessly many each embedded in the next (the types are finite
+# trees over the program's finitely many type formers), so three; or from some point on only uses by
+# name, and then types of unbounded depth, each layer added by one step to a parameter
+# of a definition, so some parameter of some definition is reached again from itself
+# with a layer added between: the substitution between those two holds it inside its
+# own larger type.
+?GrowsFrom: unbounded fn Lx, [Instantiation], ?Nat, Text, [((Text, Ty))], ?[((Text, Ty))] -> ?InstancesOutput
+fn ?GrowsFrom lx, all, ?at, definition, types, ?composed = match ?at:
+    nil: nil
+    ? at: match all[at]:
+        nil: nil
+        ? above:
+            let ?grows = if above.definition != definition: nil else: match ?composed:
+                ? composed: if Fold composed, False, \|found, ((q, t))| found or (t != (TyRigid q) and HasText (RigidsIn t), q): ? EndlessByName else: nil
+                nil:
+                    let embedded = (Len above.types) == (Len types) and Fold (Range0 (Len types)), True, \|every, i| every and match ((above.types[i], types[i])):
+                        ((? ((ignore, small)), ? ((ignore2, large)))): Embeds small, large
+                        otherwise: False
+                    if embedded and EmbeddedAbove all, above.?parent, definition, above.types: ? EndlessThroughImpl else: nil
+            let ?further = match ((?composed, above.?step)):
+                ((? composed, ? step)):
+                    let lxStep = update lx:
+                        &_.subst <= Fold step, {}, \|m, ((q, t))| Insert m, q, t
+                        &_.csubst <= {}
+                    ? (Each composed, \|((q, t))| ((q, (SubstTyIn lxStep, t))))
+                otherwise: nil
+            match ?grows:
+                ? endless: ? endless
+                nil: ?GrowsFrom lx, all, above.?parent, definition, types, ?further
+
+# Whether the line of parents from `?at` holds `definition` at types embedded in
+# `types`, each found again inside.
+EmbeddedAbove: unbounded fn [Instantiation], ?Nat, Text, [((Text, Ty))] -> Bool
+fn EmbeddedAbove all, ?at, definition, types = match ?at:
+    nil: False
+    ? at: match all[at]:
+        nil: False
+        ? above:
+            let embedded = above.definition == definition and (Len above.types) == (Len types) and Fold (Range0 (Len types)), True, \|every, i| every and match ((above.types[i], types[i])):
+                ((? ((ignore, small)), ? ((ignore2, large)))): Embeds small, large
+                otherwise: False
+            embedded or EmbeddedAbove all, above.?parent, definition, types
+
+# Whether a type holds an associated type, which stands for another type once its
+# argument is known.
+HoldsAssociated: unbounded fn Ty -> Bool
+fn HoldsAssociated t = match t:
+    TyAssoc ignore, ignore, ignore2: True
+    otherwise: Fold (PartsOfType t), False, \|found, part| found or HoldsAssociated part
+
+# Whether one type is found inside another, former by former (the homeomorphic
+# embedding of trees): the same type, or found inside one of the other's parts, or of
+# the same former with each part found inside the part at its place.
+Embeds: unbounded fn Ty, Ty -> Bool
+fn Embeds small, large:
+    let smallParts = PartsOfType small
+    let largeParts = PartsOfType large
+    let inside = Fold largeParts, False, \|found, part| found or Embeds small, part
+    let sameFormer = (Len smallParts) == (Len largeParts) and (TypeFormer small) == (TypeFormer large)
+    small == large or inside or (sameFormer and Fold (Range0 (Len smallParts)), True, \|every, i| every and Embeds (Or smallParts[i], TyErr), (Or largeParts[i], TyErr))
+
+# A type's parts, in order.
+PartsOfType: fn Ty -> [Ty]
+fn PartsOfType t = match t:
+    TyCon ignore, args: args
+    TyFn ignore, ps, r: Push ps, r
+    TyTuple ts: ts
+    TyArray e: [[e]]
+    TyMap k, v: [[k, v]]
+    TySig ignore, i: [[i]]
+    TyAt i, ignore: [[i]]
+    TyElem ignore, o: [[o]]
+    TyAssoc ignore, ignore, x: [[x]]
+    otherwise: [[]]
+
+# A type's former: the type with nothing at its parts.
+TypeFormer: fn Ty -> Ty
+fn TypeFormer t = match t:
+    TyCon n, args: TyCon n, (Each args, \|ignore| TyErr)
+    TyFn c, ps, ignore: TyFn c, (Each ps, \|ignore2| TyErr), TyErr
+    TyTuple ts: TyTuple (Each ts, \|ignore| TyErr)
+    TyArray ignore: TyArray TyErr
+    TyMap ignore, ignore2: TyMap TyErr, TyErr
+    TySig s, ignore: TySig s, TyErr
+    TyAt ignore, r: TyAt TyErr, r
+    TyElem r, ignore: TyElem r, TyErr
+    TyAssoc cls, n, ignore: TyAssoc cls, n, TyErr
+    other: other
+
+# What one use instantiates where the definition it stands in has the types `types`: a
+# use by name, that definition at the types the use gives, read at `types`; a solved
+# constraint, the methods of the impl whose head the type has (`ImplTargets`). No answer
+# where a type parameter stays undecided.
+?UseTargets: unbounded fn Lx, InstanceUse, [((Text, Ty))] -> ?[((Text, [((Text, Ty))], ?[((Text, Ty))]))]
+fn ?UseTargets lx, site, types:
+    let lxu = update lx:
+        &_.subst <= Fold types, {}, \|m, ((q, t))| Insert m, q, t
+    match site:
+        UseOfDefinition ignore, target, found: match lx.g.vals[target]:
+            ? v:
+                let rigids = RigidsIn v.scheme.ty
+                let read = Fold rigids, {}, \|m, q| match found[q]:
+                    ? t: Insert m, q, (SubstTy lxu, t)
+                    nil: m
+                let written = Fold (SortTexts rigids), [[]], \|acc, q| match found[q]:
+                    ? t: Push acc, ((q, t))
+                    nil: acc
+                let ?step = if Fold written, False, \|held, ((ignore, t))| held or HoldsAssociated t: nil else: ? written
+                match ?ClosedTypes rigids, read:
+                    ? taken: ? [[((target, taken, ?step))]]
+                    nil: nil
+            nil: nil
+        UseOfImpl ignore, cls, ty:
+            let at = SubstTy lxu, ty
+            if (Len (RigidsIn at)) > 0: nil else: ? (Each (ImplTargets lx, cls, at), \|((definition, taken))| ((definition, taken, nil)))
+        # a method with type parameters of its own, named: the method of the impl whose
+        # head the trait's parameter has there (or the trait's default that impl leaves
+        # unwritten), at the head's types and at the types the use gives the method's own
+        UseOfMethod ignore, methodQk, found: match lx.g.vals[methodQk]:
+            ? v:
+                let cls = Or (Each v.scheme.bounds, \|((ignore, bound))| bound)[0], ""
+                let own = MethodOwnRigids lx, cls, methodQk
+                let ownRead = Fold own, {}, \|m, q| match found[q]:
+                    ? t: Insert m, q, (SubstTy lxu, t)
+                    nil: m
+                let ?ownTypes = ?ClosedTypes own, ownRead
+                let ?at = match lx.g.traits[cls]:
+                    ? tr: match found[tr.param]:
+                        ? t: ? (SubstTy lxu, t)
+                        nil: nil
+                    nil: nil
+                match ((?ownTypes, ?at)):
+                    ((? ownTypes, ? at)): if (Len (RigidsIn at)) > 0: nil else: ? (Each (MethodTargets lx, cls, methodQk, at, ownTypes), \|((definition, taken))| ((definition, taken, nil)))
+                    otherwise: nil
+            nil: nil
+
+# The definition a call of a trait method with type parameters of its own instantiates,
+# the trait's parameter at the closed type `ty`: the method of the impl whose head the
+# type has, at the types the head's parameters take and the method's own types; the
+# trait's default where that impl leaves the method unwritten, at the type and the
+# method's own types.
+MethodTargets: unbounded fn Lx, Text, Text, Ty, [((Text, Ty))] -> [((Text, [((Text, Ty))]))]
+fn MethodTargets lx, cls, methodQk, ty, ownTypes = Fold (Or lx.g.impls[cls], [[]]), [[]], \|acc, im| match ?ParamMatch (Unrigid im.head), ty, {}:
+    nil: acc
+    ? matched:
+        let taken = Each (SortTexts im.qs), \|q| ((q, (Or matched[q], TyErr)))
+        let written = Filter lx.g.defs, \|d| (IsMethodOf d, im) and (TraitMethodKey lx, cls, d.name) == methodQk
+        let ownThere = Each ownTypes, \|((q, t))| (((MethodOwnName lx, cls, methodQk, im, q), t))
+        let methods = Fold written, acc, \|more, d| Push more, (((InstanceKey d), (InstanceTypes taken, ownThere)))
+        if (Len written) > 0: methods else: match lx.g.traits[cls]:
+            ? tr: if HasText tr.defaults, methodQk: Push methods, ((methodQk, (InstanceTypes [[((tr.param, ty))]], ownTypes))) else: methods
+            nil: methods
+
+# An instantiation's types in its type parameters' order by name (`DefinitionRigids`):
+# an impl's or a trait's, and a method's own.
+InstanceTypes: fn [((Text, Ty))], [((Text, Ty))] -> [((Text, Ty))]
+fn InstanceTypes outer, own:
+    let all = Append outer, own
+    Fold (SortTexts (Each all, \|((q, ignore))| q)), [[]], \|acc, q| match (Filter all, \|((other, ignore))| other == q)[0]:
+        ? found: Push acc, found
+        nil: acc
+
+# The definitions a constraint instantiates, solved for a closed type: each method of
+# the impl whose head the type has, at the types the head's parameters take; each
+# default of the trait that impl leaves unwritten, at the type; and the same for each
+# bound the impl puts on a parameter, at that parameter's type (a part of the type, so
+# this ends).
+ImplTargets: unbounded fn Lx, Text, Ty -> [((Text, [((Text, Ty))]))]
+fn ImplTargets lx, cls, ty = Fold (Or lx.g.impls[cls], [[]]), [[]], \|acc, im| match ?ParamMatch (Unrigid im.head), ty, {}:
+    nil: acc
+    ? matched:
+        let taken = Each (SortTexts im.qs), \|q| ((q, (Or matched[q], TyErr)))
+        let written = Filter lx.g.defs, \|d| IsMethodOf d, im
+        # (a method with type parameters of its own is instantiated where it is called,
+        # `UseOfMethod`)
+        let methods = Fold written, acc, \|more, d| if (Len (MethodOwnRigids lx, cls, (TraitMethodKey lx, cls, d.name))) > 0: more else: Push more, (((InstanceKey d), taken))
+        let defaults = match lx.g.traits[cls]:
+            ? tr: Fold tr.defaults, methods, \|more, defaultQk| if (Len (MethodOwnRigids lx, cls, defaultQk)) > 0 or Fold written, False, \|found, d| found or d.name == (BareName defaultQk): more else: Push more, ((defaultQk, [[((tr.param, ty))]]))
+            nil: methods
+        Fold im.bounds, defaults, \|more, ((q, bound))| match matched[q]:
+            ? part: Append more, (ImplTargets lx, bound, part)
+            nil: more
+
+# The instantiations of the generic definition whose body is being lowered
+# (`Lx.inDefinition`, `?DefInstances`); the one of no types for a definition with no type
+# parameter.
+?EnclosingInstances: unbounded fn Lx -> ?[ [((Text, Ty))] ]
+fn ?EnclosingInstances lx = if lx.inDefinition == "": nil else: ?DefInstances lx, lx.inDefinition
+
+# The same with its reason (`DefInstancesOutput`), for a refusal's words.
+EnclosingOutput: unbounded fn Lx -> InstancesOutput
+fn EnclosingOutput lx = if lx.inDefinition == "": NoDefinition else: DefInstancesOutput lx, lx.inDefinition
+
+# A valued widget's key where it is read (`ValuedKey`), "" where its type parameters stay
+# open.
+ValuedKeyAt: unbounded fn Lx, Text, Range, [Arg] -> Text
+fn ValuedKeyAt lx, qk, calleeSpan, args = match lx.g.vals[qk]:
+    ? v: match ?ValuedTypes lx, v, calleeSpan, args:
+        ? types: ValuedKey qk, types
+        nil: ""
+    nil: ""
+
+# A widget at the types a reading of it gives its type parameters: its signature with
+# them in place.
+ValInfoAt: fn Lx, ValInfo -> ValInfo
+fn ValInfoAt lx, v:
+    let scheme = update v.scheme:
+        &_.ty <= SubstTy lx, &_.ty
+    update v:
+        &_.scheme <= scheme
+
+# The value of every `let` and every `<=` of a definition, at any depth: its body's own, and those of
+# every block an expression of it holds.
+LetValues: unbounded fn Def -> [Expr]
+fn LetValues d:
+    let own = match d.body:
+        DbFn clauses: Fold clauses, [[]], \|acc, c| Append acc, (BodyLets c.body)
+        DbMethod clauses, ignore, ignore: Fold clauses, [[]], \|acc, c| Append acc, (BodyLets c.body)
+        DbDefault clauses, ignore: Fold clauses, [[]], \|acc, c| Append acc, (BodyLets c.body)
+        DbWidget w: StatementLets w.body.stmts
+        otherwise: [[]]
+    Fold (DefExprs d), own, \|acc, e| Fold (BlocksHeld e), acc, \|acc2, b| Append acc2, (StatementLets b.stmts)
+
+BodyLets: unbounded fn FnBody -> [Expr]
+fn BodyLets (BodyExpr ignore) = [[]]
+fn BodyLets (BodyBlock b) = StatementLets b.stmts
+
+# The `let`s among statements, and those of the functions, widgets and loops they define;
+# and what a `<=` writes, a value as a `let`'s is (`&_.body <= @Row 2` in an `update`).
+StatementLets: unbounded fn [Stmt] -> [Expr]
+fn StatementLets stmts = Fold stmts, [[]], \|acc, s| match s.kind:
+    SLet ignore, ignore, e: Push acc, e
+    SSet ignore, e: Push acc, e
+    SPut ignore, e: Push acc, e
+    SFn f: Append acc, (BodyLets f.body)
+    SWidget w: Append acc, (StatementLets w.body.stmts)
+    SWhile ignore, b: Append acc, (StatementLets b.stmts)
+    otherwise: acc
+
+# The blocks one expression holds itself (not those of the expressions inside it).
+BlocksHeld: fn Expr -> [Block]
+fn BlocksHeld e = match e.kind:
+    ELambda ignore, (LbBlock b): [[b]]
+    EIf ignore, yes, (? no): [[yes, no]]
+    EIf ignore, yes, nil: [[yes]]
+    EMatch ignore, arms: Each arms, \|a| a.body
+    ERebuild ignore, b: [[b]]
+    EFor ignore, ignore, b: [[b]]
+    EGiven b: [[b]]
+    EUpdate ignore, b: [[b]]
+    EWidgetBlock b: [[b]]
+    otherwise: [[]]
+
+# The widgets one expression holds in a value's place.
+ValueWidgetsIn: unbounded fn Lx, Expr -> [((Text, [((Text, Ty))]))]
+fn ValueWidgetsIn lx, e = match e.kind:
+    ECall c, args, ignore, ignore:
+        let qk = BlueprintQk lx, c
+        let hosts = qk == "Prelude.@HostDocument" or qk == "Prelude.@HostSome" or qk == "Prelude.@HostList"
+        let applies = match lx.g.vals[qk]:
+            ? v: IsWidgetTy (WidgetResultOf v.scheme.ty)
+            nil: False
+        if hosts: Fold (Drop args, 1), [[]], \|acc, a| Append acc, (ValueWidgetsAt lx, a.value)
+        # a widget that calls itself takes its blueprint arguments as values past its
+        # first level (`IsSharable`)
+        else: if applies: (if CallsItself lx, qk: Fold args, [[]], \|acc, a| if (LayerOf (TypeAt lx, a.value.span)) == LyBlueprint: Append acc, (ValueWidgetsAt lx, a.value) else: acc else: [[]])
+        else: Fold args, [[]], \|acc, a| Append acc, (ValueWidgetsAt lx, a.value)
+    # a method call is the call of its function with the receiver first, as the checker
+    # and the lowering read it (`Application`)
+    EMethod r, m, args: ValueWidgetsIn lx, (Expr(kind=(ECall (Expr(kind=(EName m), span=m.span)), (Append [[Arg(marks="", ?name=nil, value=r, span=r.span)]], args), False, False), span=e.span))
+    ELambda ignore, (LbExpr x): ValueWidgetsAt lx, x
+    ELambda ignore, (LbBlock b): ValueWidgetsOfBlock lx, b
+    EFreeSigil "?", x: ValueWidgetsAt lx, x
+    ETuple xs: Fold xs, [[]], \|acc, x| Append acc, (ValueWidgetsAt lx, x)
+    EArray xs: Fold xs, [[]], \|acc, x| Append acc, (ValueWidgetsAt lx, x)
+    # (a map literal's values: a key is no blueprint, which has no order)
+    EMap entries: Fold entries, [[]], \|acc, ((ignore, x))| Append acc, (ValueWidgetsAt lx, x)
+    otherwise: [[]]
+
+# Whether a widget's own clauses apply it.
+CallsItself: unbounded fn Lx, Text -> Bool
+fn CallsItself lx, qk = match lx.g.vals[qk]:
+    nil: False
+    ? v:
+        let lxv = InModule lx, v.file, v.home
+        Fold (ClausesOf lx.g, qk), False, \|found, c| found or Fold (BodyExprs c.body), False, \|found2, x| found2 or match x.kind:
+            ECall callee, ignore, ignore, ignore: (BlueprintQk lxv, callee) == qk
+            otherwise: False
+
+# The widgets an expression in a value's place is: itself, or what its arms end on.
+ValueWidgetsAt: unbounded fn Lx, Expr -> [((Text, [((Text, Ty))]))]
+fn ValueWidgetsAt lx, e = match e.kind:
+    EGroup x: ValueWidgetsAt lx, x
+    EMatch ignore, arms: Fold arms, [[]], \|acc, a| Append acc, (ValueWidgetsOfBlock lx, a.body)
+    EIf ignore, yes, (? no): Append (ValueWidgetsOfBlock lx, yes), (ValueWidgetsOfBlock lx, no)
+    EIf ignore, yes, nil: ValueWidgetsOfBlock lx, yes
+    # a widget applied to its arguments, and the widgets its blueprint arguments are,
+    # values of the row the blueprint builds
+    # (and the widget a widget function argument names, `@Frame @Row`: a function value
+    # of the row, `WidgetNamed`)
+    ECall c, args, ignore, ignore: Fold args, (PlacedWidget lx, (BlueprintQk lx, c), c.span, args), \|acc, a| if (LayerOf (TypeAt lx, a.value.span)) == LyBlueprint or IsWidgetFnTy (Peel (TypeAt lx, a.value.span)): Append acc, (ValueWidgetsAt lx, a.value) else: acc
+    EName ignore: PlacedWidget lx, (BlueprintQk lx, e), e.span, [[]]
+    # (a module's lowercase widget written qualified, `@Parts.header`)
+    EField ignore, ignore2, ignore3: PlacedWidget lx, (BlueprintQk lx, e), e.span, [[]]
+    otherwise: [[]]
+
+ValueWidgetsOfBlock: unbounded fn Lx, Block -> [((Text, [((Text, Ty))]))]
+fn ValueWidgetsOfBlock lx, b = match (Or b.stmts[Dec (Len b.stmts)], dummyStmtL).kind:
+    SExpr x: ValueWidgetsAt lx, x
+    otherwise: [[]]
+
+# A widget with places by its name where it is read as a value: one the program defines
+# that is no pure blueprint (`IsValueWidget`), with the types the reading gives its type
+# parameters (`?ValuedTypes`).
+PlacedWidget: unbounded fn Lx, Text, Range, [Arg] -> [((Text, [((Text, Ty))]))]
+fn PlacedWidget lx, qk, calleeSpan, args = match lx.g.vals[qk]:
+    ? v:
+        let defined = Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsWidgetDef d)
+        # (a reading inside a generalized `let` or local function, at that one's own
+        # type variable, is a reading at each of its instantiations, `AtLetInstantiations`)
+        let Closed = \|lxAt, types| Fold (AtLetInstantiations lxAt, types), [[]], \|acc, lxk| match ?ValuedTypes lxk, v, calleeSpan, args:
+            ? closed: Push acc, ((qk, closed))
+            nil: acc
+        if defined and (IsWidgetTy (WidgetResultOf v.scheme.ty)) and not (IsValueWidget lx, qk): match ?ValuedTypes lx, v, calleeSpan, args:
+            ? types: Closed lx, types
+            # a type parameter of the definition the reading stands in stays open: the
+            # reading at each of that definition's instantiations
+            nil: Fold (Or (?EnclosingInstances lx), [[]]), [[]], \|acc, user|
+                let lxu = update lx:
+                    &_.subst <= Fold user, &_.subst, \|m, ((q, t))| Insert m, q, t
+                match ?ValuedTypes lxu, v, calleeSpan, args:
+                    ? types: Append acc, (Closed lxu, types)
+                    nil: acc
+        else: [[]]
+    nil: [[]]
+
+# The lowerings a reading's types are closed at: the lowering itself where the types
+# hold no variable of a generalized `let`; else one for each instantiation the `let`'s
+# uses give that variable (`Instantiations`; the one at `unit` for a `let` no use
+# reads, which is lowered so, `LetInstantiations`), and so on for the next variable.
+AtLetInstantiations: unbounded fn Lx, [((Text, Ty))] -> [Lx]
+fn AtLetInstantiations lx, types:
+    let unclosed = Fold types, [[]], \|acc, ((ignore, t))| Append acc, (OpenTyQs lx, t)
+    match unclosed[0]:
+        nil: [[lx]]
+        ? q: match lx.genOfQ[q]:
+            nil: [[lx]]
+            ? gn:
+                let read = Instantiations lx, gn
+                let instantiations = if (Len read) > 0: read else: [[(((Each gn.tys, \|variable| ((variable, (TyTuple [[]])))), (Each gn.cols, \|c| ((c, CBound)))))]]
+                Fold instantiations, [[]], \|acc, instantiation|
+                    let lxk = AtInstance lx, instantiation
+                    Append acc, (AtLetInstantiations lxk, (Each types, \|((name, t))| ((name, (SubstTy lxk, t)))))
+
+IsWidgetDef: fn Def -> Bool
+fn IsWidgetDef d = match d.body:
+    DbWidget ignore: True
+    DbFn ignore: True
+    otherwise: False
+
+# The stem of the names of a valued widget's rows: `{stem}{i}` is clause `i`'s.
+ValuedStem: fn Text -> Text
+fn ValuedStem qk = "{Camel (BareName qk)}_value"
+
+# The same for one reading of a generic widget: each set of types its type parameters
+# are given has rows of its own, numbered in the order the program reads them.
+ValuedStemAt: fn Text, Nat, [((Text, Ty))] -> Text
+fn ValuedStemAt qk, k, types = if (Len types) == 0: ValuedStem qk else: "{ValuedStem qk}_at{k}_"
+
+# A valued widget's clauses as a blueprint chooses and builds them (`SharedCaseOf`), when
+# whatever its parameters are and whatever it gives back: no answer only for a name that
+# is no widget's. A generic widget's are made once for each set of
+# types the program's readings give its type parameters (`types`, `ValuedKey`).
+?ValuedCases: unbounded fn Lx, Text, [((Text, Ty))], Text -> ?[((Text, Pa, [Cc], [Ex]))]
+fn ?ValuedCases lx, qk, types, stem = match lx.g.vals[qk]:
+    nil: nil
+    ? declared:
+        let lxv = AtInstance (InModuleAt lx, declared.file, declared.home, declared.home), ((types, [[]]))
+        let v = ValInfoAt lxv, declared
+        let ptys = match v.scheme.ty:
+            TyFn ignore, ps, ignore: ps
+            otherwise: [[]]
+        # any result: nothing, a plain value, an event (the row fires a port,
+        # `ValuedEventResult`), a dynamic or a bundle (the row's one value, its events
+        # and dynamics whole, `ValueRowWhole`)
+        let plainResult = match WidgetResultOf v.scheme.ty:
+            TyAt ignore, ignore: True
+            otherwise: False
+        # a plain parameter; a `$` or an event parameter, the caller's live value the row
+        # holds (`LiveParams`); a blueprint parameter, a value of the row
+        # (`ClauseRowOf`); a widget function parameter, a function value of the row,
+        # which gives the blueprint a line of the row applies (`AppliedFunctionLine`)
+        let plainParams = Fold ptys, True, \|ok, pt| ok and ((IsWidgetFnTy pt) or (LayerOf pt) == LyPlain or (LayerOf pt) == LyBlueprint or IsLiveParam pt)
+        if not (plainResult and plainParams): nil
+        else:
+            let clauses = ClausesOf lx.g, qk
+            if (Len clauses) == 0: ? [[(("{stem}0", (PaTuple [[]]), [[]], [[(XVar "row_base")]]))]]
+            else: ? (Each (Range0 (Len clauses)), \|i| SharedCaseOf lxv, v, (Or clauses[i], dummyClause), "{stem}{i}", True)
+
+# A valued widget's rows, items of its module: each clause lowered as a row of its own,
+# its places numbered from 0 and built from a base, holding no block, telling how many
+# places it built, as the rows of a widget that calls itself are (`SharedClauseLine`).
+# Each clause is lowered twice: the row whose places are the World's, and the row built
+# under a host (`HostedValuedRow`), whose places are entries of that host's document and
+# which is given the host and what tells it, as a shared row in a hosted scope is. A
+# blueprint value is built in the scope of what applies it, which no value site knows.
+ValuedRows: unbounded fn Lx, Text, ?Block -> [Item]
+fn ValuedRows lx, qk, ?body = match lx.g.vals[qk]:
+    ? v:
+        let instances = Or lx.valuedAt[qk], [[]]
+        Fold (Range0 (Len instances)), [[]], \|acc, k|
+            let ((ignore, types)) = Or instances[k], (("", [[]]))
+            let lxk = AtInstance lx, ((types, [[]]))
+            let stem = ValuedStemAt qk, k, types
+            Append (Append acc, (ValuedRowsIn lxk, qk, stem, ?body, (ValInfoAt lxk, v), False)), (ValuedRowsIn lxk, qk, stem, ?body, (ValInfoAt lxk, v), True)
+    nil: [[]]
+
+ValuedRowsIn: unbounded fn Lx, Text, Text, ?Block, ValInfo, Bool -> [Item]
+fn ValuedRowsIn lx, qk, stem, ?body, v, hosted:
+    let Named = \|i| if hosted: HostedValuedRow "{stem}{i}" else: "{stem}{i}"
+    let ?hostedBy = if hosted: ? sharedMoved else: nil
+    let wx0 = NewWx lx, "{stem}s", [[]], [[]], [[]], [[]], {}, nodeHooks, [[]], ?hostedBy
+    let clauses = ClausesOf lx.g, qk
+    let rows = match ?body:
+        ? b: if (Len clauses) > 0: [[]] else: [[(ArmRowOf wx0, emptyEnv, lx, [[]], [[]], nil, b, (Named 0), "valued", True, False, OutUnit, [[]], [[]], [[]], True)]]
+        nil: Each (Range0 (Len clauses)), \|i| ClauseRowOf wx0, emptyEnv, (Or clauses[i], dummyClause), v, (Named i), "valued", True, OutUnit, [[]], True
+    Fold rows, [[]], \|acc, cr| Append (Push acc, (ItNode cr.case.node)), (Each cr.case.node.children, \|c| ItNode c)
+
+# The root module's `@main` (`@$main` too: Semantics ch. 6).
+IsMain: fn Text -> Bool
+fn IsMain qk = (OwnerOf qk) == "" and (Base (BareName qk)) == "main" and (HasPrefix (BareName qk), "@")
+
+BlueprintQk: fn Lx, Expr -> Text
+fn BlueprintQk lx, e = match e.kind:
+    ECall c, ignore, ignore, ignore: BlueprintQk lx, c
+    EGroup x: BlueprintQk lx, x
+    EName n:
+        let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
+        Or ?q, ""
+    # a module's lowercase declaration written qualified (`@Parts.header`), which the
+    # parser reads as a field (`?QualifiedField`)
+    EField r, sigils, name: match ?QualifiedField lx.g, lx.home, r, sigils, name:
+        ? n:
+            let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
+            Or ?q, ""
+        nil: ""
+    otherwise: ""
+
+# A widget function that is a value (gap NS): a supplier, answering an element it is given
+# with a blueprint of that element's output, every clause's body (its `let`s, then one expression) builds no place, a pure blueprint (`@ x`, `@Element e`, a `match` or `if` of them, or a
+# call of another such function), so it is emitted as a function giving the blueprint, and
+# a host's supplier, a lambda calling it or a value naming it calls that. A widget function
+# with places is a node, inlined where it is applied, never a value.
+IsValueWidget: unbounded fn Lx, Text -> Bool
+fn IsValueWidget lx, qk = PureWidgetFn lx, qk, [[]]
+
+PureWidgetFn: unbounded fn Lx, Text, [Text] -> Bool
+fn PureWidgetFn lx, qk, seen:
+    if HasText seen, qk: True
+    else:
+        # a supplier's shape: it answers an element it is given, `fn .., Element c o, .. -> @o`
+        let isWidget = match lx.g.vals[qk]:
+            ? v: match v.scheme.ty:
+                TyFn ignore, ps, (TyAt o, ignore): Fold ps, False, \|found, p| found or match p:
+                    TyElem ignore, po: po == o
+                    otherwise: False
+                otherwise: False
+            nil: False
+        let defs = Filter lx.g.defs, \|d| d.qk == qk
+        let clauses = ClausesOf lx.g, qk
+        isWidget and (Len defs) > 0 and (Len clauses) > 0 and Fold defs, True, \|ok, d| ok and Fold (DefClauses d, [[]]), True, \|ok2, c| ok2 and match c.body:
+            BodyExpr x: PureBlueprintExpr (InModule lx, d.file, d.home), x, (Push seen, qk)
+            BodyBlock b: PureBlueprintBlock (InModule lx, d.file, d.home), b, (Push seen, qk)
+
+PureBlueprintExpr: unbounded fn Lx, Expr, [Text] -> Bool
+fn PureBlueprintExpr lx, e, seen = match e.kind:
+    EFreeSigil "@", ignore: True
+    EGroup x: PureBlueprintExpr lx, x, seen
+    EMatch ignore, arms: Fold arms, True, \|ok, a| ok and PureBlueprintBlock lx, a.body, seen
+    EIf ignore, yes, (? no): (PureBlueprintBlock lx, yes, seen) and PureBlueprintBlock lx, no, seen
+    ECall c, ignore, ignore, ignore:
+        let qk = BlueprintQk lx, c
+        qk == "Prelude.@Element" or PureWidgetFn lx, qk, seen
+    otherwise: False
+
+PureBlueprintBlock: unbounded fn Lx, Block, [Text] -> Bool
+fn PureBlueprintBlock lx, b, seen:
+    let n = Len b.stmts
+    let k = Or (n -? 1), 0
+    let lets = Fold (Take b.stmts, k), True, \|ok, st| ok and match st.kind:
+        SLet ignore, ignore, ignore: True
+        otherwise: False
+    let last = Or b.stmts[k], (Stmt(kind=(SExpr (Expr(kind=EError, span=b.span))), span=b.span))
+    n > 0 and lets and match last.kind:
+        SExpr x: PureBlueprintExpr lx, x, seen
+        otherwise: False
+
+# A definition's value, or for a block with no signature its definition's place.
+ValOf: fn Lx, Text -> ValInfo
+fn ValOf lx, qk = match lx.g.vals[qk]:
+    ? v: v
+    nil:
+        let d = Fold lx.g.defs, dummyDef, \|found, df| if df.qk == qk: df else: found
+        ValInfo(qk=qk, scheme=(Mono TyErr), sort="fn", hasSig=False, home=d.home, file=d.file, span=d.span)
+
+# The program around a root widget.
+ProgDefOf: unbounded fn Lx, Text -> ProgDef
+fn ProgDefOf lx, qk:
+    let v = ValOf lx, qk
+    let ptys = match v.scheme.ty:
+        TyFn ignore, ps, ignore: ps
+        otherwise: [[]]
+    let lxm = InModuleAt lx, v.file, v.home, "\u{0}main"
+    let params = Each (Range0 (Len ptys)), \|i| (("arg{i}", (OutTyOf lxm, (Peel (Or ptys[i], TyErr)))))
+    let node = "{RustModName v.home}::{NodeName qk}"
+    # the World the root's row asks for: `Gui` the canvas World; `Ui` without `Gui` none,
+    # since no World answers Ui elements alone; anything else the CLI World
+    let fams = (Or lx.g.mods[v.home], dummyMod).emitRw.fams
+    let world = if HasText fams, "Gui": "canvas" else: if HasText fams, "Ui": "none" else: "cli"
+    ProgDef(name="{Camel (BareName qk)}Program", prism=(AfterFirst (BareName qk)), node=node, params=params, fallible=True, world=world)
+
+# The unbounded functions with jobs: those `@Run` is given, and those they tail-call.
+JobRoots: unbounded fn Lx -> [Text]
+fn JobRoots lx:
+    let direct = Fold lx.g.defs, [[]], \|acc, d|
+        let lxd = InModule lx, d.file, d.home
+        UnionTexts (UnionTexts acc, (RunTargets lxd, d)), (UnboundedValues lxd, d)
+    Fold (Range0 8), direct, \|acc, ignore| Fold acc, acc, \|a, qk| UnionTexts a, (TailTargets lx, qk)
+
+# The unbounded functions a definition names as values, not called: each value is its
+# `Start` (claude/backend.md), so each has a job.
+UnboundedValues: unbounded fn Lx, Def -> [Text]
+fn UnboundedValues lx, d:
+    let es = match d.body:
+        DbWidget w: BlockExprs w.body
+        DbFn cs: Fold cs, [[]], \|acc, c| Append acc, (BodyExprs c.body)
+        DbLet l: ExprsIn l.value
+        otherwise: [[]]
+    let callees = Fold es, [[]], \|acc, e| match e.kind:
+        ECall c, ignore, ignore, ignore: Push acc, (PlaceKey lx, c.span)
+        otherwise: acc
+    Fold es, [[]], \|acc, e| match e.kind:
+        EName n:
+            if HasText callees, (PlaceKey lx, e.span): acc
+            else:
+                let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
+                match ?q:
+                    ? q: if IsUnbounded lx, q: AddText acc, q else: acc
+                    nil: acc
+        otherwise: acc
+
+# A function whose color is a variable (`u fn`, D8): unbounded where a caller gives it an
+# unbounded closure. Entering it is not a cycle point (it is not an unbounded function);
+# the calls it makes through its closures are.
+InPrelude: fn Lx, Text -> Bool
+fn InPrelude lx, q = match lx.g.vals[q]:
+    ? v: v.home == "Prelude"
+    nil: False
+
+IsColorPoly: fn Lx, Text -> Bool
+fn IsColorPoly lx, q = match lx.g.vals[q]:
+    ? v: match v.scheme.ty:
+        TyFn (CQ ignore), ignore, ignore: True
+        TyFn (CRigid ignore), ignore, ignore: True
+        otherwise: False
+    nil: False
+
+# A color-polymorphic function is entered at once (it is not an unbounded function)
+# unless this call instantiates its color variable unbounded: an argument at a function
+# parameter is itself unbounded (D6: then the call is a cycle point). An argument whose
+# color is a variable of the caller's own stays entered at once.
+EntersAtOnce: fn Lx, Text, [Arg] -> Bool
+fn EntersAtOnce lx, q, args = (IsColorPoly lx, q) and not (Fold args, False, \|seen, a| seen or IsUnboundedArg lx, a)
+
+IsUnboundedArg: fn Lx, Arg -> Bool
+fn IsUnboundedArg lx, a = match Peel (TypeAt lx, a.value.span):
+    TyFn CUnbound, ignore, ignore: True
+    otherwise: False
+
+IsUnbounded: fn Lx, Text -> Bool
+fn IsUnbounded lx, q = match lx.g.vals[q]:
+    ? v: match v.scheme.ty:
+        TyFn CBound, ignore, ignore: False
+        TyFn ignore, ignore, ignore: True
+        otherwise: False
+    nil: False
+
+RunTargets: unbounded fn Lx, Def -> [Text]
+fn RunTargets lx, d:
+    let es = match d.body:
+        DbWidget w: BlockExprs w.body
+        DbFn cs: Fold cs, [[]], \|acc, c| Append acc, (BodyExprs c.body)
+        otherwise: [[]]
+    Fold es, [[]], \|acc, e| match e.kind:
+        ECall c, args, ignore, ignore:
+            if (BlueprintQk lx, c) == "Prelude.@Run": match args[0]:
+                ? a: match a.value.kind:
+                    EName n:
+                        let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
+                        match ?q:
+                            ? q: AddText acc, q
+                            nil: acc
+                    otherwise: acc
+                nil: acc
+            else: acc
+        otherwise: acc
+
+# The unbounded functions a function calls, in tail position or not: each has a job.
+TailTargets: unbounded fn Lx, Text -> [Text]
+fn TailTargets lx, qk:
+    let v = Or lx.g.vals[qk], (Builtin qk, (Mono TyErr))
+    let lxm = InModule lx, v.file, v.home
+    Fold (ClausesOf lx.g, qk), [[]], \|acc, c| UnionTexts acc, (TailsOfBody lxm, c.body)
+
+TailsOfBody: unbounded fn Lx, FnBody -> [Text]
+fn TailsOfBody lx, body = Fold (BodyExprs body), [[]], \|acc, e| match e.kind:
+    ECall c, ignore, ignore, ignore:
+        let q = BlueprintQk lx, c
+        match lx.g.vals[q]:
+            ? v: match v.scheme.ty:
+                TyFn CBound, ignore, ignore: acc
+                TyFn ignore, ignore, ignore: AddText acc, q
+                otherwise: acc
+            nil: acc
+    otherwise: acc
+
+# One Prism module's Rust module.
+ModDefOf: unbounded fn Lx, Text, [((Text, Bool))], ModInfo, [Text] -> ModDef
+fn ModDefOf lx0, m, roots, info, mods:
+    let lx = InModule lx0, info.file, m
+    let path = match lx.g.srcs[info.file]:
+        ? src: src.path
+        nil: ""
+    let types = Fold (Values lx.g.types), [[]], \|acc, ti| if ti.home == m: Append acc, (TyDefs lx, ti) else: acc
+    let tags = Fold (Values lx.g.tags), [[]], \|acc, tg| if tg.home == m and tg.kind != "Prelude.Fault": Append acc, (TagItems lx, tg) else: acc
+    let defs = Fold lx.g.defs, [[]], \|acc, d| if d.home == m: Append acc, (DefItems (InModule lx, d.file, m), d, roots) else: acc
+    let traits = Fold (Values lx.g.traits), [[]], \|acc, tr| if tr.home == m: Append (Push acc, (ItTrait (TraitDefOf lx, tr))), (PackedItems lx, tr) else: acc
+    let impls = Fold (Values lx.g.impls), [[]], \|acc, ims| Fold ims, acc, \|a, im| if im.home == m and not im.derived: Push a, (ItImpl (ImplDefOf (InModule lx, im.file, m), im)) else: a
+    let uses = Filter (Each mods, \|o| RustModName o), \|o| o != (RustModName m)
+    ModDef(name=(RustModName m), prism=m, path=path, uses=uses, complete=[[]], declared=[[]], typesWith=[[]], items=(Append (Append (Append (Append types, tags), traits), impls), defs))
+
+# A trait's dictionary and impl for an existential, when it has one (`?PackedDefOf`).
+PackedItems: unbounded fn Lx, TraitInfo -> [Item]
+fn PackedItems lx, tr = match ?PackedDefOf lx, tr:
+    ? pd: [[ItPacked pd]]
+    nil: [[]]
+
+# A definition's items: a function (and its job when `@Run` cycles it), a node for a root
+# widget, a getter for a `let`.
+DefItems: unbounded fn Lx, Def, [((Text, Bool))] -> [Item]
+fn DefItems lx, d, roots:
+    let isRoot = HasText (Each roots, \|((q, ignore))| q), d.qk
+    match d.body:
+        DbWidget w:
+            let valued = ValuedRows lx, d.qk, (? w.body)
+            if isRoot: Append (NodeItems (NodeDefOf lx, d.qk, [[]], w.body, (Or lx.g.vals[d.qk], (Builtin d.qk, (Mono TyErr))).scheme, True)), valued
+            else: Push valued, (ItNote "`{d.name}` is inlined where it is applied.")
+        DbFn clauses: match lx.g.vals[d.qk]:
+            nil: [[]]
+            ? v: match v.scheme.ty:
+                TyFn ignore, ignore, (TyAt ignore, ignore):
+                    if not isRoot:
+                        if IsValueWidget lx, d.qk: [[ItFn (FnDefOf lx, d.qk, clauses, v.scheme)]]
+                        else: Push (ValuedRows lx, d.qk, nil), (ItNote "`{d.name}` is inlined where it is applied.")
+                    else: Append (ValuedRows lx, d.qk, nil), match clauses:
+                        # (a parameter that is a pattern other than a name or `ignore`,
+                        # `fn @Page ((name, count))`, binds where the widget is applied,
+                        # as any line binds it: the root applies it to its arguments)
+                        [[c]]: match c.body:
+                            BodyBlock b if Fold c.params, True, \|ok, p| ok and ((PlainBinder lx, p) != "" or IsIgnoreParameter p): NodeItems (NodeDefOf lx, d.qk, c.params, b, v.scheme, True)
+                            otherwise: RootApplicationItems lx, d, v.scheme
+                        otherwise: RootApplicationItems lx, d, v.scheme
+                # a widget of no arguments written as one expression (`fn @main =
+                # @page`): an alias, inlined where it is applied, as a root its body
+                TyAt ignore, ignore if (IsAliasWidget clauses) and not (IsValueWidget lx, d.qk):
+                    if isRoot: Append (ValuedRows lx, d.qk, nil), (RootApplicationItems lx, d, v.scheme)
+                    else: Push (ValuedRows lx, d.qk, nil), (ItNote "`{d.name}` is inlined where it is applied.")
+                otherwise: if IsLensText d.qk: Each (LensDefs lx, d.qk, clauses, v.scheme), \|f| ItFn f else:
+                    let f = ItFn (FnDefOf lx, d.qk, clauses, v.scheme)
+                    if HasText lx.unbs, d.qk: [[f, ItJob (JobDefOf lx, d.qk, clauses, v.scheme)]] else: [[f]]
+        DbLet l: [[ItFn (LetGetter lx, d.qk, l)]]
+        otherwise: [[]]
+
+# Whether a parameter is `ignore` (in parentheses or not): it binds nothing.
+IsIgnoreParameter: fn Pattern -> Bool
+fn IsIgnoreParameter p = match p.kind:
+    PIgnore: True
+    PGroup q: IsIgnoreParameter q
+    otherwise: False
+
+# A widget of no arguments defined as one expression (`fn @main = @page`, Semantics ch. 8:
+# a widget's name is its blueprint).
+IsAliasWidget: fn [FnClause] -> Bool
+fn IsAliasWidget clauses = match clauses:
+    [[c]]: (Len c.params) == 0 and match c.body:
+        BodyExpr ignore: True
+        otherwise: False
+    otherwise: False
+
+# A root widget whose body is not one block: one expression (`fn @Show text = @Inner
+# text`), several clauses, or an alias (`fn @main = @page`); or one block whose parameter
+# is a pattern other than a name (`fn @Page ((name, count))`). Semantics ch. 8: a widget is
+# a function to a blueprint, and a blueprint applied builds its places where it stands.
+# Its node takes its parameters by name (`argument0`, `argument1`, ..), and its block is one line,
+# the widget applied to them, lowered as that line is anywhere: a body of one expression
+# inlined, a clause chosen at the build from the plain arguments (`ClauseWidgetLine`), each
+# transparent, so the places stand at the root's positions. The line and its names are
+# made here, not parsed, so their spans are made ones (`MadeBy RootApplication`, counted
+# from 0 in a space no file shares) and their types are noted beside the checker's
+# (`Lx.tys`) at those spans.
+RootApplicationItems: unbounded fn Lx, Def, Scheme -> [Item]
+fn RootApplicationItems lx, d, sc:
+    let ((ptys, result)) = match sc.ty:
+        TyFn ignore, ps, r: ((ps, r))
+        other: (([[]], other))
+    let At = \|i| Range(start=i, end=i, origin=MadeBy RootApplication)
+    let ParameterSpan = \|i| At (3 + 2 * i)
+    let ArgumentSpan = \|i| At (4 + 2 * i)
+    let params = Each (Range0 (Len ptys)), \|i| Pattern(kind=(PName (SName(sigils="", path=[["argument{i}"]], span=(ParameterSpan i)))), span=(ParameterSpan i))
+    let args = Each (Range0 (Len ptys)), \|i| Arg(marks="", ?name=nil, value=(Expr(kind=(EName (SName(sigils="", path=[["argument{i}"]], span=(ArgumentSpan i)))), span=(ArgumentSpan i))), span=(ArgumentSpan i))
+    let callee = Expr(kind=(EName (SName(sigils="", path=[[d.name]], span=(At 1)))), span=(At 1))
+    let line = if (Len ptys) == 0: Expr(kind=callee.kind, span=(At 2)) else: Expr(kind=(ECall callee, args, False, False), span=(At 2))
+    let typed = Fold (Range0 (Len ptys)), (Insert (Insert lx.tys, (PlaceKey lx, (At 1)), sc.ty), (PlaceKey lx, (At 2)), result), \|m, i|
+        let t = Or ptys[i], TyErr
+        Insert (Insert m, (PlaceKey lx, (ParameterSpan i)), t), (PlaceKey lx, (ArgumentSpan i)), t
+    let lxr = update lx:
+        &_.tys <= typed
+    let body = Block(stmts=[[Stmt(kind=(SExpr line), span=(At 2))]], inline=False, span=(At 0))
+    NodeItems (NodeDefOf lxr, d.qk, params, body, sc, True)
+
+# A node and the rows of its `for`s.
+NodeItems: fn NodeDef -> [Item]
+fn NodeItems n = Append [[ItNode n]], (Each n.children, \|c| ItNode c)
+
+# A declared type's Rust type (claude/backend.md, "Types").
+TyDefs: unbounded fn Lx, TyInfo -> [Item]
+fn TyDefs lx, ti:
+    # the derives by the traits they resolve to, as the checker's derived impls read them
+    let derives = Fold ti.derives, [[]], \|acc, dn| match ?ResolveTrait lx.g, ti.home, (SplitOn dn, "."):
+        ? cls: Push acc, cls
+        nil: acc
+    let params = Each ti.params, \|p| Camel p
+    let bare = BareName ti.name
+    let Mk = \|shape, cases| TyDef(name=(Camel bare), prism=bare, params=params, keyed=(Each (KeyedParameters lx, ti.name), \|q| Camel q), shape=shape, cases=cases, eq=(HasText derives, "Prelude.Eq"), ord=(HasText derives, "Prelude.Ord"), show=(if HasOwnShow lx, ti.name: ShownOwn else: if HasText derives, "Prelude.Show": ShownDerived else: NotShown), pod=((TyPodable lx, (TyCon ti.name, [[]]), [[]]) and Fold cases, True, \|ok, c| ok and Fold c.fields, True, \|ok2, ((ignore, ft))| ok2 and Podable ft), doc=(TypeDoc lx, ti))
+    match ti.body:
+        BRecord fs:
+            let fields = Each (Range0 (Len fs)), \|i|
+                let ((fname, ft)) = Or fs[i], (("", TyErr))
+                let rt = OutTyOf lx, ft
+                (((FieldSpell ti.home, fname, ft), (if RcField lx, ti.name, i: OutRc rt else: rt)))
+            [[ItType (Mk ShapeRecord, [[CaseDef(name=(Camel bare), prism=bare, fields=fields, labels=(Each fs, \|((fname, ignore))| fname))]])]]
+        BChoice cases:
+            let defs = Each cases, \|((cn, ats))|
+                let ck = QualKey ti.home, cn
+                CaseDef(name=(Camel cn), prism=cn, fields=(Each (Range0 (Len ats)), \|i| (("", (CaseField lx, ck, i, (Or ats[i], TyErr))))), labels=[[]])
+            let shape = match cases:
+                [[((cn, [[]]))]]: if IsLowerText cn: ShapeUnit else: ShapeChoice
+                [[((cn, ignore))]]: if cn == bare: ShapeNewtype else: ShapeChoice
+                otherwise: ShapeChoice
+            [[ItType (Mk shape, defs)]]
+        BRowKind: if ti.name == "Prelude.Fault": [[]] else: [[ItRow (RowDefOf lx, ti)]]
+        otherwise: [[]]
+
+# The type parameters of a declared type that a map's key holds (`type Roster k v =
+# choice: Listed (k ==> v)` keys by `k`), in a field of the type or in a type a field
+# names at them: the least answer over the program's types with type parameters, found
+# by rounds that each add a parameter or stop (the parameters are finitely many).
+KeyedParameters: unbounded fn Lx, Text -> [Text]
+fn KeyedParameters lx, name = match lx.g.types[name]:
+    ? ti: if (Len ti.params) == 0: [[]] else: Or (KeyedRounds lx, {})[name], [[]]
+    nil: [[]]
+
+KeyedRounds: unbounded fn Lx, (Text ==> [Text]) -> (Text ==> [Text])
+fn KeyedRounds lx, known:
+    let next = Fold (Values lx.g.types), known, \|m, ti|
+        if (Len ti.params) == 0: m
+        else:
+            let fields = match ti.body:
+                BRecord fs: Each fs, \|((ignore, ft))| ft
+                BChoice cases: Fold cases, [[]], \|acc, ((ignore, ats))| Append acc, ats
+                otherwise: [[]]
+            let found = Fold fields, (Or m[ti.name], [[]]), \|acc, ft| UnionTexts acc, (KeyedIn lx, m, ft, False)
+            Insert m, ti.name, (Filter found, \|q| HasText ti.params, q)
+    if (Show next) == (Show known): known else: KeyedRounds lx, next
+
+# The type parameters in a type that a map's key holds, `inKey` inside one: a map's key;
+# a declared type's argument at a parameter that type keys by (`known`).
+KeyedIn: unbounded fn Lx, (Text ==> [Text]), Ty, Bool -> [Text]
+fn KeyedIn lx, known, t, inKey = match t:
+    TyQ q: if inKey: [[q]] else: [[]]
+    TyRigid q: if inKey: [[q]] else: [[]]
+    TyMap k, v: UnionTexts (KeyedIn lx, known, k, True), (KeyedIn lx, known, v, inKey)
+    TyCon n, args:
+        let params = match lx.g.types[n]:
+            ? ti: ti.params
+            nil: [[]]
+        let keyed = Or known[n], [[]]
+        Fold (Range0 (Len args)), [[]], \|acc, i| UnionTexts acc, (KeyedIn lx, known, (Or args[i], TyErr), (inKey or HasText keyed, (Or params[i], "")))
+    other: Fold (PartsOfType other), [[]], \|acc, part| UnionTexts acc, (KeyedIn lx, known, part, inKey)
+
+# Whether a checker type can cross to a World, through the declarations it names: a
+# record holding a function anywhere inside is not `^Pod` (a type reached again is taken
+# as podable, so cycles end).
+TyPodable: unbounded fn Lx, Ty, [Text] -> Bool
+fn TyPodable lx, t, seen = match t:
+    TyFn ignore, ignore, ignore: False
+    TyAt ignore, ignore: False
+    TySig "!", ignore: False
+    TySig "$", ignore: False
+    TySig ignore, i: TyPodable lx, i, seen
+    TyTuple ts: Fold ts, True, \|ok, x| ok and TyPodable lx, x, seen
+    TyArray e: TyPodable lx, e, seen
+    TyMap k, v: (TyPodable lx, k, seen) and TyPodable lx, v, seen
+    TyCon "Prelude.NonEmpty", [[c]]: TyPodable lx, c, seen
+    TyCon n, args:
+        if HasText seen, n: True
+        else:
+            let more = Push seen, n
+            let argsOk = Fold args, True, \|ok, x| ok and TyPodable lx, x, more
+            argsOk and match lx.g.types[n]:
+                ? ti: match ti.body:
+                    BRecord fs: Fold fs, True, \|ok, ((ignore, ft))| ok and TyPodable lx, ft, more
+                    BChoice cs: Fold cs, True, \|ok, ((ignore, ats))| ok and Fold ats, True, \|ok2, x| ok2 and TyPodable lx, x, more
+                    BAlias a: TyPodable lx, a, more
+                    otherwise: True
+                nil: True
+    otherwise: True
+
+# Whether a type's Rust type compares (`PartialEq`): the plain scalars, text, paths, errors
+# and elements do; a tuple, array or map when its parts do; a declared type when it derives
+# `^Eq` or has its own `impl ^Eq`, and its arguments compare; a function, a job, an event or
+# a dynamic never. A structural dynamic's snapshot of such a type dedupes its update event
+# (pick ST).
+TyHasEq: unbounded fn Lx, Ty, [Text] -> Bool
+fn TyHasEq lx, t, seen = match t:
+    TyFn ignore, ignore, ignore: False
+    TyAt ignore, ignore: False
+    TySig "!", ignore: False
+    TySig "$", ignore: False
+    TySig ignore, i: TyHasEq lx, i, seen
+    TyTuple ts: Fold ts, True, \|ok, x| ok and TyHasEq lx, x, seen
+    TyArray e: TyHasEq lx, e, seen
+    TyMap k, v: (TyHasEq lx, k, seen) and TyHasEq lx, v, seen
+    TyElem ignore, ignore: True
+    TyElemAny ignore: True
+    TyCon "Prelude.NonEmpty", [[c]]: TyHasEq lx, c, seen
+    TyCon n, args:
+        if HasText seen, n: True
+        else:
+            let argsOk = Fold args, True, \|ok, x| ok and TyHasEq lx, x, (Push seen, n)
+            argsOk and match lx.g.types[n]:
+                ? ti: (Fold ti.derives, False, \|f, d| f or (?ResolveTrait lx.g, ti.home, (SplitOn d, ".")) == ? "Prelude.Eq") or HasOwnEq lx, n
+                nil: True
+    otherwise: False
+
+HasOwnEq: fn Lx, Text -> Bool
+fn HasOwnEq lx, tn = Fold (Or lx.g.impls["Prelude.Eq"], [[]]), False, \|f, im| f or (HeadName im.head) == tn
+
+CaseField: unbounded fn Lx, Text, Nat, Ty -> OutTy
+fn CaseField lx, ck, i, t:
+    let rt = OutTyOf lx, t
+    if RcField lx, ck, i: OutRc rt else: rt
+
+TypeDoc: fn Lx, TyInfo -> Text
+fn TypeDoc lx, ti = match lx.g.srcs[ti.file]:
+    ? src: Trim (LineText src, (CLineOf src.starts, ti.span.start))
+    nil: ti.name
+
+# A tag's struct: an element tag's `Level`, its plain and dynamic fields and the events
+# of its event fields (`LevelEvents`; a firing is a request too); any other tag's fields,
+# all plain.
+TagDefOf: unbounded fn Lx, TagInfo -> TagDef
+fn TagDefOf lx, tg:
+    let fields = Each (LevelFields tg), \|((fname, ft))| ((fname, (FieldSpell tg.home, fname, ft), (TagFieldOut lx, ft)))
+    let events = Each (LevelEvents tg), \|((fname, ft))| (((FieldSpell tg.home, fname, ft), (TagFieldOut lx, ft)))
+    TagDef(name=(TagStructOf tg), tagName=tg.name, fields=fields, events=events, doc=(TypeDoc lx, (TyInfo(name=tg.name, home=tg.home, params=[[]], body=BOpaque, derives=[[]], file=tg.file, span=tg.span))), pod=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and Podable t), eq=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and RuntimeEq t))
+
+# A tag's items: its struct, and an element tag's description beside it.
+TagItems: unbounded fn Lx, TagInfo -> [Item]
+fn TagItems lx, tg = if tg.kind == "Element": [[(ItTag (TagDefOf lx, tg)), (ItType (DescDefOf lx, tg))]] else: [[ItTag (TagDefOf lx, tg)]]
+
+# An element tag's description (gap LE; Type System ch. 2: an element applied, before
+# anything places it, is a plain value): a record of its fields as the application gives
+# them, a `$` field its `Dynamic`, an event field its `Event`, a plain field its value. A
+# pattern over an element matches it, or a live element's view as one (`DescView`).
+DescDefOf: unbounded fn Lx, TagInfo -> TyDef
+fn DescDefOf lx, tg:
+    let name = DescStructOf tg
+    let fields = Each tg.fields, \|((fname, ft))| (((FieldSpell tg.home, fname, ft), (DescFieldTy lx, ft)))
+    TyDef(name=name, prism=name, params=[[]], keyed=[[]], shape=ShapeRecord, cases=[[CaseDef(name=name, prism=name, fields=fields, labels=(Each tg.fields, \|((fname, ignore))| fname))]], eq=False, ord=False, show=NotShown, pod=False, doc="The description of `{tg.name}`: an element applied as a plain value, its fields as given.")
+
+DescFieldTy: unbounded fn Lx, Ty -> OutTy
+fn DescFieldTy lx, ft = match LayerOf ft:
+    LyDyn: OutDyn (TagFieldOut lx, ft)
+    LyEv: OutEvent (TagFieldOut lx, ft)
+    otherwise: TagFieldOut lx, ft
+
+# An element tag's event fields as its level holds them (ruling EP: an event field in an
+# element pattern binds the event the element was made with, and a document's entry is
+# matched as a description is): each the event itself, beside the plain and `$` fields.
+# The core prelude's own element tags, whose structs the prelude template writes, hold
+# none (`Prelude.Unwrap`'s `!~value` is heard as a request alone).
+LevelEvents: fn TagInfo -> [((Text, Ty))]
+fn LevelEvents tg = if tg.kind != "Element" or tg.home == "Prelude": [[]] else: Filter tg.fields, \|((ignore, ft))| (LayerOf ft) == LyEv
+
+LevelFields: fn TagInfo -> [((Text, Ty))]
+fn LevelFields tg = Filter tg.fields, \|((ignore, ft))| (LayerOf ft) != LyEv
+
+# The tags of a row kind, in their modules: the variants of its enum (pick RV). A tag
+# whose module the program does not emit is not among them.
+KindTags: fn Lx, Text, [Text] -> [TagInfo]
+fn KindTags lx, kind, mods = Filter (Values lx.g.tags), \|tg| tg.kind == kind and HasText mods, tg.home
+
+RowDefOf: unbounded fn Lx, TyInfo -> RowDef
+fn RowDefOf lx, ti:
+    let tags = KindTags lx, ti.name, (Keys lx.rsMods)
+    let cases = Each tags, \|tg| (((TagStruct tg.name), (RefIn lx, tg.home, (TagStructOf tg))))
+    let pod = Fold tags, True, \|ok, tg| ok and (TagDefOf lx, tg).pod
+    let eq = Fold tags, True, \|ok, tg| ok and (TagDefOf lx, tg).eq
+    RowDef(name=(Camel (BareName ti.name)), prism=ti.name, cases=cases, pod=pod, doc=(TypeDoc lx, ti), eq=eq, level=False, deep=[[]])
+
+# `crate::Elem`: every element tag's `Level`, the value of a document's entry; the
+# prelude's element tags among them (`Prelude.Unwrap`, `Prelude.Exceptions`), which the
+# prelude template defines.
+ElemRow: unbounded fn Lx, [Text] -> RowDef
+fn ElemRow lx, mods:
+    let tags = KindTags lx, "Element", (Push mods, "Prelude")
+    let cases = Each tags, \|tg| (((TagStruct tg.name), (RootRef tg.home, (TagStructOf tg))))
+    let pod = Fold tags, True, \|ok, tg| ok and (TagDefOf lx, tg).pod
+    let eq = Fold tags, True, \|ok, tg| ok and (TagDefOf lx, tg).eq
+    let deep = Fold tags, [[]], \|acc, tg| if TagHoldsDyn lx, tg: Push acc, (TagStruct tg.name) else: acc
+    RowDef(name="Elem", prism="Elem", cases=cases, pod=pod, doc="`Elem r`: an element as a document holds it, its `Level` in a tick.", eq=eq, level=True, deep=deep)
+
+# Whether a tag's level holds dynamics (a box's `children: $(Path ==> $Elem)`), so a World
+# reads it deep (doubt WD).
+TagHoldsDyn: unbounded fn Lx, TagInfo -> Bool
+fn TagHoldsDyn lx, tg = Fold (TagDefOf lx, tg).fields, False, \|f, ((ignore, ignore, t))| f or HoldsDyn t
+
+# `crate::Output`: a variant per element tag, carrying the tag's output type.
+OutputEnum: unbounded fn Lx, [Text] -> OutputDef
+fn OutputEnum lx, mods:
+    let tags = KindTags lx, "Element", (Push mods, "Prelude")
+    OutputDef(cases=(Each tags, \|tg| OutputCase(variant=(TagStruct tg.name), accessor=(OutputAccessor tg), structPath=(RootRef tg.home, (TagStructOf tg)), tagName=tg.name, ty=(OutputTy lx, tg), ?first=(?BundleFirstTy lx, tg), ?heldWhole=(?HeldWholeTy lx, tg), ?heldParts=(?HeldPartsOf lx, tg))))
+
+# A bundle tag's output as one value, its events and dynamics whole, when a part of it
+# is no plain data (a function): what a blueprint of such a bundle made outside the
+# tag's arm answers with, held (`PartsBlueprint`). `nil` for any other tag.
+?HeldWholeTy: unbounded fn Lx, TagInfo -> ?OutTy
+fn ?HeldWholeTy lx, tg = match Peel tg.out:
+    TyTuple parts: if Fold parts, False, \|found, part| found or not (Podable (OutTyOf lx, (Peel part))): ? (OutTyOf lx, (TyTuple parts)) else: nil
+    otherwise: nil
+
+# The function from such a value to the tag's parts answer: each part read out of the
+# value, answered as the bundle written under the tag's arm is (`PartsOutputOf`).
+?HeldPartsOf: unbounded fn Lx, TagInfo -> ?Ex
+fn ?HeldPartsOf lx, tg = match (((?HeldWholeTy lx, tg), (Peel tg.out))):
+    ((? whole, TyTuple parts)):
+        let read = Each (Range0 (Len parts)), \|i|
+            let part = Or parts[i], TyErr
+            let value = XClone (XPart (XVar "held_whole"), i)
+            match LayerOf part:
+                LyEv: PartEvent value, (OutTyOf lx, (Peel part))
+                LyDyn: PartLive value
+                otherwise: PartPlain value
+        let env = Bind (Bind emptyEnv, "#tag", (BnLocal (XPath (OutputVariant tg)), Owned, OutUnit)), "#tagfirst", (BnLocal (XPath (OutputFirstVariant tg)), Owned, OutUnit)
+        ? (XClosure False, [[(PaTyped (PaBind "held_whole"), (OutRef whole))]], (PartsOutputOf lx, env, "a bundle held whole as {tg.name}'s answer", read, (OutputVariant tg)))
+    otherwise: nil
+
+# A bundle tag's state (Type System ch. 2, "Bundles"): its plain and `$` parts' values, one
+# part itself, several a tuple in the tag's order; `nil` for a tag whose output is no
+# tuple, or a tuple of events alone.
+?BundleStateTy: unbounded fn Lx, TagInfo -> ?OutTy
+fn ?BundleStateTy lx, tg = match Peel tg.out:
+    TyTuple cs: match Filter cs, \|c| (LayerOf c) != LyEv:
+        [[]]: nil
+        [[c]]: ? (TagFieldOut lx, c)
+        state: ? (OutTuple (Each state, \|c| TagFieldOut lx, c))
+    otherwise: nil
+
+# A bundle tag's state in a variant of its own (`OutputCase.first`), when the tag has
+# event parts too: the place's first value and each push after it. A bundle of state
+# parts alone answers with its state in the tag's own variant (`OutputTy`); `nil` for it,
+# for a tag whose output is no bundle, and for a bundle of events alone.
+?BundleFirstTy: unbounded fn Lx, TagInfo -> ?OutTy
+fn ?BundleFirstTy lx, tg = match Peel tg.out:
+    TyTuple cs: if Fold cs, False, \|f, c| f or (LayerOf c) == LyEv: ?BundleStateTy lx, tg else: nil
+    otherwise: nil
+
+# One part of a sparse tuple (prism_rtl's `SparsePart`): the part's value, or absent.
+SparsePartTy: fn OutTy -> OutTy
+fn SparsePartTy t = OutNamed (RefRuntime "prism_rtl::SparsePart"), [[t]]
+
+# What an answer to a tag's element carries: its output's value. Of a bundle (a tuple
+# with time inside, `Gui.Window`'s `((WindowId, !WindowInput))`) with one event part, the
+# event's value, which is what a World answers with; with several event parts, a sparse
+# tuple of them, the parts that fired (Type System ch. 2, "Bundles and sparse tuples");
+# with none, its state (`?BundleStateTy`). A variable of the tag is the answer as it
+# came, a `Pod` (`TagFieldOut`).
+OutputTy: unbounded fn Lx, TagInfo -> OutTy
+fn OutputTy lx, tg:
+    let out = Peel tg.out
+    match out:
+        TyTuple cs: if not (IsBundle out): TagFieldOut lx, out else: match Filter cs, \|c| (LayerOf c) == LyEv:
+            [[]]: Or (?BundleStateTy lx, tg), OutUnit
+            [[c]]: TagFieldOut lx, c
+            evs: OutTuple (Each evs, \|c| SparsePartTy (TagFieldOut lx, c))
+        otherwise: TagFieldOut lx, out
+
+# An answer taken out of its tag's variant (`v.pad_echo()?`), as the place that asked
+# reads it: itself, or of a generic tag (whose variant holds each variable as plain data,
+# `TagFieldOut`) recoded to the type the place was placed at.
+OutputTaken: unbounded fn Lx, Text, OutTy, Ex -> Ex
+fn OutputTaken lx, accessor, placed, taken:
+    let ?named = Fold (Values lx.g.tags), nil, \|?found, tg| if tg.kind == "Element" and (OutputAccessor tg) == accessor: ? tg else: ?found
+    # a bundle's first-value accessor (`{accessor}_first`)
+    let ?first = Fold (Values lx.g.tags), nil, \|?found, tg| if tg.kind == "Element" and "{OutputAccessor tg}_first" == accessor: ? tg else: ?found
+    match ((?named, ?first)):
+        ((? tg, ignore)): RecodedOutput (OutputOpen lx, tg), (OutputTy lx, tg), placed, taken
+        ((nil, ? tg)): RecodedOutput (OutputOpen lx, tg), (Or (?BundleFirstTy lx, tg), OutUnit), placed, taken
+        otherwise: InternalBug "an answer taken by `{accessor}`, which is no tag's accessor"
+
+# Whether a tag's output has a variable of the tag.
+OutputOpen: unbounded fn Lx, TagInfo -> Bool
+fn OutputOpen lx, tg = TagFieldOpen lx, tg.out
+
+RecodedOutput: fn Bool, OutTy, OutTy, Ex -> Ex
+fn RecodedOutput open, carried, placed, taken = if open and carried != placed: XCallAt (HelperRef "recode"), [[placed]], [[XRef taken]] else: taken
+
+# The Rust path of a tag's enum variant and of its struct, from the current module.
+TagPaths: fn Lx, TagInfo -> ((Ref, Ref))
+fn TagPaths lx, tg = (((VariantOf lx, tg), (RefIn lx, tg.home, (TagStructOf tg))))
+
+VariantOf: fn Lx, TagInfo -> Ref
+fn VariantOf lx, tg = RefChild (KindRef lx, tg.kind), (TagStruct tg.name)
+
+KindRef: fn Lx, Text -> Ref
+fn KindRef lx, kind = if kind == "Element": elemRef else: RefIn lx, (Or lx.g.types[kind], dummyTyInfo).home, (Camel (BareName kind))
+
+# A `check` block: each line's value as plain data, or the fault that stopped it.
+CheckDefOf: unbounded fn Lx, CheckDecl -> CheckDef
+fn CheckDefOf lx, c = CheckDef(name=c.name.name, lines=(Each c.lines, \|l| XCtor (RefRuntime "std::Ok"), [[(XMethod (Own (ValueOf lx, emptyEnv, l.expr)), "to_pod", [[]])]]))

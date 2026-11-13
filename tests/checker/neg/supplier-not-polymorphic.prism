@@ -1,0 +1,17 @@
+# Written by Claude on the claude-self-hosting branch; subject to change.
+# `mismatch`: a named supplier that is not polymorphic in its element's output cannot be
+# given where the host's supplier is rank-2 in it (Type System ch. 5, "Refinement at tag
+# matches").
+emit Ui.* | Fs.*
+use Fs.*
+
+@child: @unit
+@child:
+    Ui.Label($text=$"child")                                       # 0
+
+@Fixed: fn Path, Element (Ui.* | Fs.*) $~Contents -> @$~Contents
+fn @Fixed p, e = @ $ (~ Contents(text="A"))
+
+@named: @unit
+@named:
+    ignore <- @HostDocument @child, @Fixed                        # 0/[p]

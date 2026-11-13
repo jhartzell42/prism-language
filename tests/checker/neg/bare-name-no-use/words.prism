@@ -1,0 +1,5 @@
+# `Words`, which the root does not `use`.
+emit r
+
+Name: fn Nat -> Text
+fn Name n = "{n} units"

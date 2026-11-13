@@ -1,0 +1,25 @@
+# A `while` the shrink check does not clear in the body of a `for &` of an unbounded
+# function's `update` block (Semantics ch. 5: `for &s <- &_:` yields a reference per
+# element; D6 as ruled: each turn of such a loop is a cycle point, as in the `for` of
+# sem-ch07-while-match-for). The `Int` countdown does not shrink a `Nat`.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Joined: fn [Int] -> Text
+fn Joined xs = Fold xs, "", \|acc, x| if acc == "": "{x}" else: "{acc},{x}"
+
+# Each element is doubled, one step of the countdown at a time.
+InRef: unbounded fn [Int] -> [Int]
+fn InRef xs = update xs:
+    for &s <- &_:
+        let &i = &s
+        while &i > 0:
+            &i <= &i - 1
+            &s += 1
+
+@RefShown: fn [Int] -> @unit
+fn @RefShown xs:
+    !done <- @Run InRef, xs                                 # 0
+    $shown <- "working" then Joined !done
+    Ui.Label($text=$shown)                                   # 1

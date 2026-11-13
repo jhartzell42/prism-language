@@ -1,0 +1,7 @@
+# Derived by hand from Semantics ch. 8 (`<-` builds the child and binds its result; a widget block is transparent): the parameter's arm label is 0 and the label reading its result is 1.
+test the_parameter_result_is_bound
+
+tick 0
+  added:
+    0: Ui.Label(text="x")
+    1: Ui.Label(text="got 10")

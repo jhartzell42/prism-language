@@ -1,0 +1,31 @@
+# A widget function that recurses as deep as its data and gives a result (Semantics ch. 4:
+# "widget functions recurse as deep as their data"): each row of the `for` over a tree's
+# children counts the child's own nodes, and the gathered counts add up a level at a time,
+# one tick per gathered `for` (round 3 ST). The lowering inlines the recursion a bounded
+# number of levels; a row deeper than that faults at its build, loudly, and the levels it
+# does inline compile whatever the result's type. A click grows the tree a level: the new
+# row is built at the end of the tick (R7), and the count reaches the root two gathered
+# ticks later. Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Tree = record:
+    name: Text
+    kids: Nat ==> Tree
+derive ^Eq, ^Show
+
+@Count: fn $Tree -> @$Nat
+fn @Count $t:
+    $counts <- for k, $c <- $t.kids:                             # 0/[k]
+        $n <- @Count $c
+        @ $n
+    let $total = Fold (Values $counts), 1, \|a, n| a + n
+    @ $total
+
+@counted: @unit
+@counted:
+    !grow <- Ui.Button($label=$"grow")                            # 0
+    $t <- (Tree "a", {0: (Tree "b", {})}) then (Tree "a", {0: (Tree "b", {0: (Tree "c", {})})}) on !grow
+    $n <- @Count $t                                              # 1/[k]
+    Ui.Label($text=$"{$n} nodes")                                 # 2

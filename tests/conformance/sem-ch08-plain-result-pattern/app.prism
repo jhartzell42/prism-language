@@ -1,0 +1,24 @@
+# A widget's plain result bound by a pattern (Semantics ch. 8: `<-` builds the child and
+# binds its result; ch. 4: a pattern that cannot fail binds wherever a name does): a record
+# pattern and a tuple inside a tuple, each name read at the build by the line below.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Extent = record:
+    wide: Nat
+    high: Nat
+derive ^Eq, ^Show
+
+@Measure: fn Nat -> @((Extent, ((Nat, Text))))
+fn @Measure n:
+    Ui.Label($text=$"measured")                                        # 0
+    @ ((Extent(wide=n, high=n + 1), ((n + 2, "deep"))))
+
+@main: @unit
+@main:
+    ((Extent(wide=w, high=h), ((d, t)))) <- @Measure 3                   # 0
+    !go <- Ui.Button($label=$"go")                                     # 1
+    $gone <- 0 then $gone + w on !go
+    Ui.Label($text=$"{w} {h} {d} {t} {$gone}")                         # 2

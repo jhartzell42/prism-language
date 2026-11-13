@@ -1,0 +1,9 @@
+# A trait's default body is a body of a method the trait signs, as an impl's method is
+# (`^Box` has no method `Other`), and its clauses are one definition: a second clause the
+# first already takes is never reached (Type System ch. 3: "An impl gives each method its
+# definition lines"). Written by Claude on the claude-bugs branch; subject to change.
+trait ^Shape a:
+    Area: fn a -> Nat
+    fn Area x = 1
+    fn Area x = 2
+    fn Extra x = 0

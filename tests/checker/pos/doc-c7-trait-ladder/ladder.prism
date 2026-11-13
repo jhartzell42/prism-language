@@ -1,0 +1,60 @@
+# The trait ladder (Part IV ch. 4): `^Document`, `^StateDocument`, `^SerializableDocument`,
+# `^RemoteDocument`. Widget methods are signatures only: their defaults are Part IV's H
+# steps.
+emit rest | File.* | Net.*
+
+type Response d r = choice:
+    Accepted
+    Declined (Reason d r)
+
+type Stepped s d = choice:
+    Next s
+    Denied d
+
+# Part III ch. 5's sketch.
+trait ^SerializableValue s:
+    Encode: fn s -> [U8]
+    ~Decode: fn [U8] -> ~s
+
+tag File.Content of Element $?[U8]:
+    path: Text
+
+type Address = record:
+    host: Text
+    port: Nat
+derive ^Eq, ^Show
+
+type Connection = record:
+    id: Nat
+derive ^Eq, ^Show
+
+tag Net.Link of Element !unit:
+    to: Address
+
+# The guests' element tree and what answers it stand in as plain types here: their forms
+# over the `Seat` family are step C4's, tested by doc-c4-seat-family-indexed.
+type Guests d = $(Path ==> Text)
+type Supplier d = fn Path -> @unit
+
+trait ^Document d:
+    type Role
+    type SeatId r
+    type Request r
+    type Reason r
+    type Query r
+    type Answer r
+    row Lower                                      # the document's lower language
+    @Request: fn Role d, SeatId d r, Request d r -> @!(Response d r) emit Lower d
+    @Query: fn Role d, SeatId d r, $(Query d r) -> @$?(Answer d r) emit Lower d
+
+trait ^StateDocument d where d: ^Document:
+    type State
+    Step: fn State d, Role d, SeatId d r, Request d r -> Stepped (State d) (Reason d r)
+    Read: fn State d, Role d, SeatId d r, Query d r -> Answer d r
+    @InMemory: fn State d, Guests d -> @(Supplier d)
+
+trait ^SerializableDocument d where d: ^StateDocument, State d: ^SerializableValue:
+    @OnFile: fn State d, Guests d -> @(Supplier d) emit File.*
+
+trait ^RemoteDocument d where d: ^Document, Request d _: ^SerializableValue, Reason d _: ^SerializableValue, Query d _: ^SerializableValue, Answer d _: ^SerializableValue:
+    @Over: fn Address, Guests d -> @(Supplier d) emit Net.*

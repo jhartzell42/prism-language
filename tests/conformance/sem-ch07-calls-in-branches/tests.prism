@@ -1,0 +1,23 @@
+# Audited: each function's entry is one cycle and its one call of `Inc` or `Pos` another, so
+# the result lands at tick 2: 3 + 1 + 1 = 5 in an arm and in a branch, not True = False.
+# The tests of sem-ch07-calls-in-branches (Semantics chapter 7).
+emit Ui.*
+use App.*
+
+test a_call_in_an_arm_is_a_cycle, @Arm 3:
+    build
+        => expect Ui.Label(text="working")
+    compute until idle
+        => expect Ui.Label(text="5")
+
+test a_call_in_a_branch_is_a_cycle, @Branch 3:
+    build
+        => expect Ui.Label(text="working")
+    compute until idle
+        => expect Ui.Label(text="5")
+
+test a_call_right_of_and_is_a_cycle, @And 3:
+    build
+        => expect Ui.Label(text="working")
+    compute until idle
+        => expect Ui.Label(text="False")

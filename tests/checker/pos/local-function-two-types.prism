@@ -1,0 +1,8 @@
+# A local function is generalized as a top-level function is, so one `fn` line of a block
+# is used at two types. Written by Claude on the claude-bugs branch; subject to change.
+Both: fn [Nat], [Text] -> Nat
+fn Both ns, ts:
+    fn Same x = x
+    let a = Each ns, Same
+    let b = Each ts, Same
+    (Len a) + (Len b)

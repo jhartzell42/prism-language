@@ -1,0 +1,24 @@
+# A function of its callee's own color under an event, in the tuple a call returns, at a
+# call that makes the color bounded (Type System ch. 5: a `u fn` takes its color from its
+# call; ch. 2: a plain aggregate with functor values inside is a bundle, and a function
+# is a value an event may hold). Written by Claude on the claude-lowering branch; subject
+# to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Kept: u fn (u fn Nat -> Nat), !Click -> ((!(u fn Nat -> Nat), Nat))
+fn Kept F, !go = ((F on !go, 2))
+
+Call: fn (fn Nat -> Nat), Nat -> Nat
+fn Call F, n = F n
+
+!Made: fn ((!(fn Nat -> Nat), Nat)) -> !(fn Nat -> Nat)
+fn !Made ((!Inner, ignore)) = !Inner
+
+@page: @unit
+@page:
+    !go <- Ui.Button($label=$"go")                               # 0
+    let !Bump = !Made (Kept (\|n| n + 1), !go)
+    $shown <- 0 then Call !Bump, 5
+    Ui.Label($text=$"{$shown}")                                  # 1

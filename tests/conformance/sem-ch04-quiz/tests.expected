@@ -1,0 +1,53 @@
+# The book prints none for this program; checked by hand against the book's rules.
+test two_right_then_start_over
+
+tick 0
+  added:
+    0: Ui.Button(label="Start over")
+    1/#0/0: Ui.Label(text="Round 1")
+    1/#0/1/[1]/0: Ui.Label(text="Owls are birds")
+    1/#0/1/[1]/1: Ui.Button(label="True")
+    1/#0/1/[1]/2: Ui.Button(label="False")
+    1/#0/1/[2]/0: Ui.Label(text="Bats are birds")
+    1/#0/1/[2]/1: Ui.Button(label="True")
+    1/#0/1/[2]/2: Ui.Button(label="False")
+    2: Ui.Label(text="keep going")
+
+tick 1
+  in:
+    1/#0/1/[1]/1: click
+
+tick 2
+  in:
+    1/#0/1/[2]/2: click
+  changed:
+    2: Ui.Label(text="2 right")
+
+tick 3
+  in:
+    0: click
+  added:
+    1/#1/0: Ui.Label(text="Round 2")
+    1/#1/1/[1]/0: Ui.Label(text="Owls are birds")
+    1/#1/1/[1]/1: Ui.Button(label="True")
+    1/#1/1/[1]/2: Ui.Button(label="False")
+    1/#1/1/[2]/0: Ui.Label(text="Bats are birds")
+    1/#1/1/[2]/1: Ui.Button(label="True")
+    1/#1/1/[2]/2: Ui.Button(label="False")
+  changed:
+    2: Ui.Label(text="keep going")
+  torn down:
+    1/#0/0: Ui.Label(text="Round 1")
+    1/#0/1/[1]/0: Ui.Label(text="Owls are birds")
+    1/#0/1/[1]/1: Ui.Button(label="True")
+    1/#0/1/[1]/2: Ui.Button(label="False")
+    1/#0/1/[2]/0: Ui.Label(text="Bats are birds")
+    1/#0/1/[2]/1: Ui.Button(label="True")
+    1/#0/1/[2]/2: Ui.Button(label="False")
+
+tick 4
+  in:
+    1/#1/1/[1]/2: click
+    1/#1/1/[2]/2: click
+  changed:
+    2: Ui.Label(text="1 right")

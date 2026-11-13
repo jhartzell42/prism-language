@@ -1,0 +1,24 @@
+# A bundle with a `$` part (Type System ch. 2, "Bundles and sparse tuples": `tag
+# Net.Socket of Element ((!SocketEvent, $Link))`, bound `((!rx, $link)) <- Net.Socket(..)`;
+# Semantics ch. 8, "The patch": a type with both inside "becomes two channels with one
+# input"). Under the World the `$` part takes a first value and pushes, the event part
+# answers. Under a host, Semantics ch. 9's `@Offline` answers the socket with
+# `@ ((never, $ (Disconnected "offline")))`. Written by Claude on the claude-lowering
+# branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Socket of Element ((!Text, $Text)):
+    address: Text
+
+@chat: @unit
+@chat:
+    ((!rx, $link)) <- Pad.Socket(address="chat:7000")           # 0
+    $last <- "none" then !rx
+    Ui.Label($text=$"{$link}: {$last}")                          # 1
+
+@offline: @unit
+@offline:
+    ignore <- @HostDocument @chat, \|p, e| match e:             # 0/[p]
+        Pad.Socket(..): @ ((never, $ "offline"))
+        otherwise: @Element e

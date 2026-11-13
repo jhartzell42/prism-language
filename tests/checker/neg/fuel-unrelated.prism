@@ -1,0 +1,23 @@
+# `may-not-end`: a `while` keeps shrinking only when what it sets gets smaller than
+# itself. `Spin` sets `&fuel` to the `? less` of `&other -? 1`, smaller than `&other` but
+# not than `&fuel`, and puts `&other` back every turn, so it never ends. `Drain` sets
+# `&fuel` from `&fuel -? 1` and checks clean.
+Spin: fn Nat, Nat -> Nat
+fn Spin fuel, other = update 0:
+    let &fuel = fuel
+    let &other = other
+    while &fuel > 0:
+        &_ += 1
+        match &other -? 1:
+            ? less: &fuel <= less
+            nil: &fuel <= 0
+        &other <= other
+
+Drain: fn Nat, Nat -> Nat
+fn Drain fuel, other = update 0:
+    let &fuel = fuel
+    let &other = other
+    while ? less <- &fuel -? 1:
+        &_ += 1
+        &fuel <= less
+        &other <= other

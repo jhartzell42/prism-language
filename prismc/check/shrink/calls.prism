@@ -1,0 +1,216 @@
+# `Check.Shrink.Calls`, a child module of `Check.Shrink`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Shrink.*
+use Check.Shrink.Types.*
+use Check.Shrink.Locals.*
+use Check.Shrink.Relations.*
+use Check.Shrink.Walk.*
+use Check.Shrink.Summaries.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Expr.*
+use Check.Expr.Operators.*
+use Check.Expr.Calls.*
+use Check.Expr.Patterns.*
+use Check.Expr.Lifting.*
+use Check.Expr.Lets.*
+use Check.Blocks.*
+use Check.Blocks.Structure.*
+use Check.Blocks.Borrows.*
+use Check.Typed.*
+use Check.Typed.Print.*
+use Check.*
+use Check.Passes.*
+use Check.Passes.Cycles.*
+use Check.Passes.Borrows.*
+
+# ---- Pick CT, the call test for closures (Semantics ch. 7, "Finding the cycles"). A
+# closure passed to a program function is cleared when the function only calls it: the
+# parameter at that slot is, in every clause, the callee of calls (at any depth, but not
+# inside a closure that may run later, `Later`) or passed whole to another cleared slot,
+# and nothing else. Then the closure runs only inside that call, so its calls are read at
+# the call site that passed it, with what the function's summary says it is given: for
+# each of the closure's parameters `q`, the function's parameter it is no larger than (or
+# strictly smaller than) at every call of the closure. `Spaced xs, SexpType` is then a
+# call `SexpType x` with `x` a part of `xs`, as `Each xs, SexpType` is (doubt TR). A
+# closure at any other place is a call with no edges where it is written (the reference
+# graph). Both are greatest fixed points, each round read under the last round's seeds: a
+# slot stays cleared while what is passed to it stays cleared, by induction on how deep
+# the call that runs the closure is nested.
+
+# A closure slot: the function, the parameter's place, the closure's arity.
+type Slot = record:
+    owner: Text
+    at: Nat
+    arity: Nat
+derive ^Eq, ^Show
+
+# The seeds of each module's walks: the prelude's names (`PreludeSeeds`), and every
+# cleared slot's `acc:` and `sum:` entries.
+HofSeeds: unbounded fn Shrink, [Text] -> (Text ==> (Text ==> Rel))
+fn HofSeeds sk, homes:
+    let cands = HofCandidates sk
+    let cleared = ClearSlots sk, homes, cands, 0
+    let sums = SlotSums sk, homes, cleared, (TopSums cleared), 0
+    Fold homes, {}, \|m, h| Insert m, h, (SlotSeeds sk, h, cleared, sums, False)
+
+# The slots whose parameter's declared type is a function, every clause binding it by a
+# name (or `ignore`).
+HofCandidates: fn Shrink -> [Slot]
+fn HofCandidates sk = Fold sk.fns, [[]], \|acc, d| match d.body:
+    DbFn clauses: match sk.g.vals[d.qk]:
+        ? v: match v.scheme.ty:
+            TyFn ignore, ps, ignore: Fold (Range0 (Len ps)), acc, \|a2, j| match ps[j]:
+                ? (TyFn ignore, fps, ignore): if Fold clauses, True, \|ok, c| ok and SlotNamed c, j: Push a2, Slot(owner=d.qk, at=j, arity=(Len fps)) else: a2
+                otherwise: a2
+            otherwise: acc
+        nil: acc
+    otherwise: acc
+
+SlotNamed: fn FnClause, Nat -> Bool
+fn SlotNamed c, j = match c.params[j]:
+    ? p: match p.kind:
+        PName ignore: True
+        PIgnore: True
+        otherwise: False
+    nil: False
+
+# The name a clause gives a slot's parameter, or `""` for `ignore`.
+SlotName: fn FnClause, Nat -> Text
+fn SlotName c, j = match c.params[j]:
+    ? p: match p.kind:
+        PName n: SNameKey n
+        otherwise: ""
+    nil: ""
+
+# The seeds of module `h` for these slots and summaries; `withTop` keeps the `⊤` entries
+# the fixed point reads (a slot not yet narrowed), which the final seeds drop.
+SlotSeeds: fn Shrink, Text, [Slot], (Text ==> Rel), Bool -> (Text ==> Rel)
+fn SlotSeeds sk, h, slots, sums, withTop:
+    let pre = Or sk.seeds[h], {}
+    let start = if withTop: Insert pre, "⊤", Rel(param=topParam, strict=False) else: pre
+    Fold slots, start, \|m, sl| Fold (Spellings sk.g, h, sl.owner), m, \|m2, sp|
+        let m3 = Insert m2, "acc:{sp}:{sl.at}", Rel(param=sl.arity, strict=False)
+        Fold (Range0 sl.arity), m3, \|m4, q| match sums["{sl.owner}:{sl.at}:{q}"]:
+            ? r: if r.param == topParam and not withTop: m4 else: Insert m4, "sum:{sp}:{sl.at}:{q}", r
+            nil: m4
+
+# The spellings of a global name that resolve to it from module `h`: bare, qualified.
+Spellings: fn G, Text, Text -> [Text]
+fn Spellings g, h, k = Filter (AddText [[BareName k]], k), \|sp| (?ResolveName g, h, sp) == ? k
+
+# Drop every slot whose parameter escapes, until none does.
+ClearSlots: unbounded fn Shrink, [Text], [Slot], Nat -> [Slot]
+fn ClearSlots sk, homes, slots, round:
+    let sks = SeedsFor sk, homes, slots, {}, False
+    let kept = Filter slots, \|sl| not (SlotEscapes sks, sl)
+    if (Len kept) == (Len slots): kept
+    else: if round > 20: [[]]
+    else: ClearSlots sk, homes, kept, round + 1
+
+SeedsFor: fn Shrink, [Text], [Slot], (Text ==> Rel), Bool -> Shrink
+fn SeedsFor sk, homes, slots, sums, withTop = update sk:
+    &_.seeds <= Fold homes, {}, \|m, h| Insert m, h, (SlotSeeds sk, h, slots, sums, withTop)
+
+# Whether a slot's parameter is used but as a callee or passed to a cleared slot: a name
+# that still means the parameter, read as a value; a call of it inside a closure that may
+# run later.
+SlotEscapes: unbounded fn Shrink, Slot -> Bool
+fn SlotEscapes sk, sl = match sk.byKey[sl.owner]:
+    ? d: Fold (DefClauses d), False, \|seen, c|
+        let n = SlotName c, sl.at
+        if seen or n == "": seen
+        else: Fold (BodySpots c.body, (ClauseBase sk, d, c)), False, \|esc, sp| esc or SpotEscapes sp, n, sl.at
+    nil: True
+
+SpotEscapes: unbounded fn Spot, Text, Nat -> Bool
+fn SpotEscapes sp, n, j = match sp:
+    SpotExpr e, m: match e.kind:
+        EName x: (SNameKey x) == n and IsSlotParam m, n, j
+        otherwise: Fold (SpotSites sp), False, \|seen, site| seen or (site.callee == n and (IsSlotParam site.rels, n, j) and HasKey site.rels, "lam:")
+    SpotStmt ignore, ignore: False
+
+# Whether a name, where it stands, still means parameter `j` (nothing bound it again).
+IsSlotParam: fn (Text ==> Rel), Text, Nat -> Bool
+fn IsSlotParam m, n, j = m[n] == ? Rel(param=j, strict=False)
+
+# Every summary entry `KEY:J:Q` at the start of the fixed point: anything (`⊤`).
+TopSums: fn [Slot] -> (Text ==> Rel)
+fn TopSums slots = Fold slots, {}, \|m, sl| Fold (Range0 sl.arity), m, \|m2, q| Insert m2, "{sl.owner}:{sl.at}:{q}", Rel(param=topParam, strict=False)
+
+# Each round: every call of a slot's parameter, a forward to a cleared slot included,
+# narrows what the summary says of each argument; a round that changes nothing ends it.
+# One that never settles keeps no summary (sound: the closure's parameters relate to
+# nothing).
+SlotSums: unbounded fn Shrink, [Text], [Slot], (Text ==> Rel), Nat -> (Text ==> Rel)
+fn SlotSums sk, homes, slots, sums, round:
+    let sks = SeedsFor sk, homes, slots, sums, True
+    let next = Fold slots, {}, \|m, sl|
+        let calls = SlotCalls sks, sl
+        Fold (Range0 sl.arity), m, \|m2, q| match ?MeetArgs calls, q:
+            ? r: Insert m2, "{sl.owner}:{sl.at}:{q}", r
+            nil: m2
+    if next == sums: next
+    else: if round > 12: {}
+    else: SlotSums sk, homes, slots, next, round + 1
+
+# The calls of a slot's parameter in every clause, read with the clause's summaries.
+SlotCalls: unbounded fn Shrink, Slot -> [Site]
+fn SlotCalls sk, sl = match sk.byKey[sl.owner]:
+    ? d: Fold (DefClauses d), [[]], \|acc, c|
+        let n = SlotName c, sl.at
+        if n == "": acc
+        else:
+            let base = ClauseBase sk, d, c
+            let rels = SummarySeeds sk, d, (BodySpots c.body, base), base
+            Fold (BodySpots c.body, rels), acc, \|a2, sp| match sp:
+                SpotExpr e, ignore: match e.kind:
+                    EName ignore: a2
+                    otherwise: Append a2, (Filter (SpotSites sp), \|site| site.callee == n and IsSlotParam site.rels, n, sl.at)
+                otherwise: a2
+    nil: [[]]
+
+# What every call passes as argument `q`: the one parameter all of them are no larger
+# than, strictly when all are strictly smaller; `⊤` when no call narrows it; `nil` when
+# two disagree or one relates to nothing.
+?MeetArgs: unbounded fn [Site], Nat -> ?Rel
+fn ?MeetArgs calls, q = Fold calls, (? Rel(param=topParam, strict=False)), \|?acc, site| match ?acc:
+    nil: nil
+    ? acc: match site.args[q]:
+        ? a: if a.?name != nil: nil else: match ?RelOf site.rels, a.value:
+            ? r: if r.param == topParam: ? acc else: if acc.param == topParam: ? r else: if acc.param == r.param: ? Rel(param=r.param, strict=(acc.strict and r.strict)) else: nil
+            nil: nil
+        nil: nil
+
+# The definitions a body mentions, resolved to their keys; a name bound where it stands
+# (a parameter, a `let`, a pattern, a local `fn`) is not a global.
+DefRefs: unbounded fn Shrink, Def -> [Text]
+fn DefRefs sk, d = Fold (DefClauses d), [[]], \|acc, c| SpotsRefs sk, d, (BodySpots c.body, (ClauseBase sk, d, c)), acc
+
+SpotsRefs: unbounded fn Shrink, Def, [Spot], [Text] -> [Text]
+fn SpotsRefs sk, d, spots, acc = Fold spots, acc, \|a1, sp| Fold (SpotSites sp), a1, \|a2, site| match ?LocalTarget sk, d, site:
+        ? t: AddText a2, t
+        nil:
+            if (IsLocal site.rels, site.callee) or HasKey sk.localOf, d.qk: a2
+            else: match ?ResolveCallee sk.g, d.home, site.callee:
+                ? k: Fold (TargetsOf sk, k), a2, \|a3, t| if HasKey sk.byKey, t: AddText a3, t else: a3
+                nil: a2

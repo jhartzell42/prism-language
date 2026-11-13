@@ -1,0 +1,9 @@
+# The tests of sem-ch04-rebuild-ends-on-host.
+emit Ui.*
+use App.*
+
+test generations_end_on_a_host, @main:
+    build
+    click at 1/#0/0/[0]/0
+    click at 0
+    click at 1/#1/0/[0]/0

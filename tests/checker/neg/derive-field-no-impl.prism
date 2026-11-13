@@ -1,0 +1,11 @@
+# `no-impl` at a derive: a derived `^Show` shows each field (Type System ch. 3, "Derive, out
+# loud": a derived impl is structural), so a field whose type has no `^Show` refuses the
+# derive at the type's line, where the target compilers would refuse the derived code.
+emit Ui.*
+type Inner = record:
+    n: Nat
+derive ^Eq
+
+type Outer = record:
+    i: Inner
+derive ^Eq, ^Show

@@ -1,0 +1,24 @@
+# Derived by hand from D6 as ruled (each entry of an unbounded function a cycle) and Type System ch. 4 (lifting over `?`): with 1, Work and both Incs are entered, three cycles, and 1 + 1 + 1 is 3; with 0, only Work is entered, and both lifted calls are `nil` at once.
+test present
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 3 ticks, 1 to 3
+
+tick 3
+  changed:
+    1: Ui.Label(text="3")
+
+test absent
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 1 tick, 1 to 1
+
+tick 1
+  changed:
+    1: Ui.Label(text="none")

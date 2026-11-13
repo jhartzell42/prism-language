@@ -1,0 +1,5 @@
+tests/checker/neg/no-signature.prism:2: error[no-signature]: `Twice` has no signature line
+    fn Twice n = n + n
+    ^^^^^^^^^^^^^^^^^^
+  fix: write `Twice: fn ... -> ...` above it
+1 error

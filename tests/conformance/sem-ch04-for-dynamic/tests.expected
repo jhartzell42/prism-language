@@ -1,0 +1,18 @@
+# Derived by hand from Semantics ch. 7 (a `for` returning a dynamic consolidates its rows) and ch. 9 (first values), with the gathered dynamic structural (round 3 ST, as ruled): its value after m is the snapshot of m-1, so the label over it shows the newborn row's contents in the owed tick after the birth.
+test rows_give_a_dynamic
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/["a"]/0: Fs.Contents(path="a")
+    2: Ui.Label(text="A")
+
+tick 1
+  in:
+    0: click
+  added:
+    1/["b"]/0: Fs.Contents(path="b")
+
+tick 2
+  changed:
+    2: Ui.Label(text="A B")

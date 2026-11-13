@@ -1,0 +1,23 @@
+# An event field in an element pattern (Type System ch. 4: a field of an element binds
+# with its stack, a `$` field a `$T`, and so an event field a `!T`; ch. 2: an element
+# applied is a plain value, a description that keeps what it was given). `!RingsOf` reads
+# the event the description was made with, and the hold counts its firings.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+tag Pad.Bell of Element unit:
+    name: Text
+    !rings: Nat
+
+!RingsOf: fn Element Pad.* o -> !Nat
+fn !RingsOf e = match e:
+    Pad.Bell(!rings=!r, ..): !r
+
+@page: @unit
+@page:
+    !press <- Ui.Button($label=$"press")                         # 0
+    let bell = Pad.Bell(name="front", !rings=(1 on !press))
+    $n <- 0 then $n + (!RingsOf bell)
+    Ui.Label($text=$"rang {$n}")                                 # 1

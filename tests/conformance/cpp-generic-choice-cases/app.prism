@@ -1,0 +1,29 @@
+# A generic choice's cases, built nested (a case inside a case, a unit case, a case as a
+# function value) and matched in a generic function: C++ spells the choice's type
+# arguments at each, which class template argument deduction cannot find from a nested
+# case. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Tree a = choice:
+    Leaf a
+    Node (Tree a), (Tree a)
+    Empty
+derive ^Eq, ^Show
+
+Count: fn Tree a -> Nat
+fn Count (Leaf ignore) = 1
+fn Count (Node l, r) = (Count l) + (Count r)
+fn Count Empty = 0
+
+Built: fn Nat -> Tree Nat
+fn Built n = Node (Node (Leaf n), Empty), (Leaf (n + 1))
+
+Leaves: fn [Text] -> [Tree Text]
+fn Leaves ts = Each ts, Leaf
+
+@page: @unit
+@page:
+    let t = Built 3
+    Ui.Label($text=$"{Count t} {t} {Leaves [["a", "b"]]} {t == (Built 3)}")      # 0

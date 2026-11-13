@@ -1,0 +1,17 @@
+# A trait asked at `[Nat]+` is asked of that type: an impl for `[Nat]` is not one for
+# `[Nat]+`, a type of its own (Type System ch. 2, "Collections": "there is no subtyping";
+# the one implicit conversion fills a place already known to want an `[a]`, and a type
+# variable is no such place; ch. 3: an impl is chosen by the type). Passing the collection
+# with `as [Nat]` asks the `[Nat]` impl. Written by Claude on the claude-lowering branch;
+# subject to change.
+trait ^Named a:
+    Name: fn a -> Text
+
+impl ^Named [Nat]:
+    fn Name xs = "plain"
+
+Told: fn [Nat]+ -> Text
+fn Told xs = Name xs
+
+Dropped: fn [Nat]+ -> Text
+fn Dropped xs = Name (xs as [Nat])

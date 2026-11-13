@@ -1,0 +1,7 @@
+# Floats compared by their bits: declarations of app.prism.
+emit Ui.*
+use App.*
+use Ui.*
+
+test float_bits, @floats:
+    build

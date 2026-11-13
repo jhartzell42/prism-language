@@ -1,0 +1,21 @@
+# Groups: declarations of sem-appB-regex-groups.
+emit r
+use App.*
+
+check numbered:
+    Spans (?Find %/(a)(b)?/, "xa") => "1-2 1-2 nil"
+    Spans (?Find %/(a)|(b)/, "b") => "0-1 nil 0-1"
+    Spans (?Find %/(?:a)(b)/, "ab") => "0-2 1-2"
+    Spans (?Find %/((a)b)/, "ab") => "0-2 0-2 0-1"
+    Texts (?Find %/(\w+)@(\w+)/, "me@host") => "me@host me host"
+    Texts (?Find %/(a)|b/, "b") => "b -"
+    Count (?Find %/(a)(b)(c)/, "abc") => 4
+    Count (?Find %/(a)(?:b)/, "ab") => 2
+    Count (?Find %/(a){0}b/, "b") => 2
+
+check named:
+    Spans (?Find %/(?<key>[a-z]+)=(?<value>\d+)/, "x key=42") => "2-8 2-5 6-8 key=2-5 value=6-8"
+    Spans (?Find %/(?P<x>a)|(?<y>b)/, "b") => "0-1 nil 0-1 y=0-1"
+    Spans (?Find %/(?<b>x)(?<a>y)/, "xy") => "0-2 0-1 1-2 a=1-2 b=0-1"
+    ?Key "name = 3" => ? "name"
+    ?Key "= 3" => nil

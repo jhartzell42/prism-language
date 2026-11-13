@@ -1,0 +1,18 @@
+# Jimmy's ruling, 12 November: promoted constructors, generic. `Edit` is indexed by
+# `Access`, a choice whose cases carry no payload, so its argument is a case of `Access`.
+# `Edit Writer` checks; `Text` is a type, no case of `Access`: a kind error at the use.
+# Expected diagnostic derived by hand. Written by Claude on the claude-self-hosting
+# branch; subject to change.
+type Access = choice:
+    Reader
+    Writer
+derive ^Eq, ^Show
+
+type Edit (r: Access) = record:
+    body: Text
+
+Wrote: fn Edit Writer -> Text
+fn Wrote edit = edit.body
+
+Typed: fn Edit Text -> Text
+fn Typed edit = edit.body

@@ -1,0 +1,40 @@
+# Every function parameter has a color variable of its own, and the function's color is
+# their join, as if it called every function it takes (round 3 CD). `Apply` writes no
+# color: the call with a bounded lambda is bounded, the call with an unbounded one is
+# unbounded. `pos/param-color.colors` holds the typed output's colors.
+Grow: unbounded fn Nat -> Nat
+fn Grow n = n + 1
+
+Apply: fn Nat, (fn Nat -> Nat) -> Nat
+fn Apply x, F = F x
+
+Calm: fn Nat -> Nat
+fn Calm n = Apply n, \|y| y + 1
+
+Wild: unbounded fn Nat -> Nat
+fn Wild n = Apply n, \|y| Grow y
+
+# Two parameters, two variables: the bounded `Mild` gives both bounded lambdas, and
+# `Both` is unbounded once one of them is.
+Twice: fn Nat, (fn Nat -> Nat), (fn Nat -> Nat) -> Nat
+fn Twice x, F, G = G (F x)
+
+Inc: fn Nat -> Nat
+fn Inc n = n + 1
+
+Mild: fn Nat -> Nat
+fn Mild n = Twice n, Inc, \|y| y + 2
+
+Both: unbounded fn Nat -> Nat
+fn Both n = Twice n, Inc, \|y| Grow y
+
+# A written variable on one parameter is joined like a default one.
+Pick: fn Nat, (v fn Nat -> Nat), (fn Nat -> Nat) -> Nat
+fn Pick x, F, G = (F x) + (G x)
+
+# A parameter written `unbounded` makes the function unbounded.
+Drive: fn Nat, (unbounded fn Nat -> Nat) -> Nat
+fn Drive x, F = F x
+
+Driven: unbounded fn Nat -> Nat
+fn Driven n = Drive n, Grow

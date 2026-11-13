@@ -1,0 +1,31 @@
+# An existential of a program's own trait (Type System ch. 3: "`any ^Show` is a value of
+# some type that implements `^Show`, the type hidden"; ch. 5, "Existentials are
+# dictionaries": `any e` solves the bounds at `e`'s type and stores them, and the value is
+# unpacked at a parameter that is not one). `^Weighed` is the program's; a hidden number
+# and a hidden text each answer `Weigh` by their own impl.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+trait ^Weighed a:
+    Weigh: fn a -> Nat
+
+impl ^Weighed Nat:
+    fn Weigh n = n
+
+impl ^Weighed Text:
+    fn Weigh t = Len t
+
+Hide: fn Nat -> any ^Weighed
+fn Hide n = any n
+
+HideText: fn Text -> any ^Weighed
+fn HideText t = any t
+
+Measure: fn a -> Nat where a: ^Weighed
+fn Measure x = Weigh x
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Measure (Hide 3)} {Measure (HideText "ab")}")      # 0

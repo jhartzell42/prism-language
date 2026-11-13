@@ -1,0 +1,23 @@
+# A hold keeps an event whole at a function's type variable: `Push events, {!two}` pushes
+# the event into the array of events, where `Push events, !two` would lift `Push` over it
+# (Jimmy's ruling of 12 November: `{ !e }` is the only way a sigiled value fills a type
+# variable unlifted, for functions and constructors alike). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Told: fn [Nat] -> Text
+fn Told heard = Fold heard, "", \|acc, n| "{acc}+{n}"
+
+@Heard: fn !Nat, !Nat -> @![Nat]
+fn @Heard !one, !two:
+    let events = Push [[!one]], {!two}
+    @ !MergeAll events
+
+@page: @unit
+@page:
+    !one <- Ui.Button($label=$"one")                             # 0
+    !two <- Ui.Button($label=$"two")                             # 1
+    !heard <- @Heard (1 on !one), (2 on !two)
+    $last <- "none" then Told !heard
+    Ui.Label($text=$last)                                        # 2

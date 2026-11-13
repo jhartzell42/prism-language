@@ -1,0 +1,8 @@
+# The tests of sem-ch07-updated-clause-result.
+emit Ui.*
+use App.*
+
+test a_clause_widgets_result_is_heard, @page:
+    build
+    click at 0
+    click at 0

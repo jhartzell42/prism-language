@@ -1,0 +1,36 @@
+# A dynamic `let` whose expression is costly, read by ten places: a
+# write behind it costs one computation of it, whatever the readers. Written for prismc's
+# back end; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+# 0 + 1 + ... + 199,999 + n, over an array of 200,000
+Heavy: fn Nat -> Nat
+fn Heavy n = Fold (Upto 200000), n, \|a, i| a + i
+
+# 0 to n - 1, as the GUI benchmark's
+Upto: fn Nat -> [Nat]
+fn Upto n = update [[]]:
+    let &i = 0
+    let &left = n
+    while ? m <- &left -? 1:
+        &left <= m
+        &_ <= Push &_, &i
+        &i += 1
+
+@shared: @unit
+@shared:
+    !go <- Ui.Button($label=$"go")                            # 0
+    $n <- 0 then $n + 1 on !go
+    let $heavy = Heavy $n
+    Ui.Label($text=$"1: {$heavy}")
+    Ui.Label($text=$"2: {$heavy}")
+    Ui.Label($text=$"3: {$heavy}")
+    Ui.Label($text=$"4: {$heavy}")
+    Ui.Label($text=$"5: {$heavy}")
+    Ui.Label($text=$"6: {$heavy}")
+    Ui.Label($text=$"7: {$heavy}")
+    Ui.Label($text=$"8: {$heavy}")
+    Ui.Label($text=$"9: {$heavy}")
+    Ui.Label($text=$"10: {$heavy}")

@@ -1,0 +1,12 @@
+# The tests of sem-ch08-widget-value-dynamic-parameter.
+emit Ui.*
+use App.*
+
+test picked, @Page True:
+    build
+    click at 0
+        => expect Ui.Label(text="meter 8")
+
+test not_picked, @Page False:
+    build
+    click at 0

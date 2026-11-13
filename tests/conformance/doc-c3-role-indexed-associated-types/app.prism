@@ -1,0 +1,95 @@
+# Part VII ch. 7, step C3: associated types indexed by a role (Part III ch. 6,
+# "Associated types indexed by a role"; Part IV ch. 3, "The protocol"). A document's
+# roles are a choice, its associated `Role`, and each role constructor names a type in
+# type position: `Request Count Raiser` is `Raise` and `Request Count Watcher` is `Never`.
+# An impl gives one equation per role, or one with a variable for every role (`type Query
+# r = Whole`); a use at a constructor index normalizes by that equation.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+# The protocol: five facts per role (Part IV ch. 3).
+trait ^Document d:
+    type Role
+    type SeatId r
+    type Request r
+    type Reason r
+    type Query r
+    type Answer r
+
+type CountRole = choice:
+    Raiser
+    Watcher
+derive ^Eq, ^Ord, ^Show
+
+# A count that raisers raise, which stops at five, and watchers watch.
+type Count = record:
+    total: Nat
+derive ^Eq, ^Show
+
+type Raise = choice:
+    Raise Nat
+derive ^Eq, ^Show
+
+type TooHigh = choice:
+    StopsAt Nat
+derive ^Eq, ^Show
+
+type Whole = choice:
+    Whole
+derive ^Eq, ^Show
+
+impl ^Document Count:
+    type Role = CountRole
+    type SeatId Raiser = Text
+    type SeatId Watcher = unit
+    type Request Raiser = Raise
+    type Request Watcher = Never
+    type Reason Raiser = TooHigh
+    type Reason Watcher = Never
+    type Query r = Whole
+    type Answer Raiser = Count
+    type Answer Watcher = Nat
+
+let limit = 5
+
+# What a raiser's request does: the next count, or why not.
+type Outcome = choice:
+    Next Count
+    Denied (Reason Count Raiser)
+derive ^Eq, ^Show
+
+Stepped: fn Count, Request Count Raiser -> Outcome
+fn Stepped count, (Raise n) = if count.total + n > limit: Denied (StopsAt limit) else: Next Count(total=(count.total + n))
+
+Kept: fn Count, Outcome -> Count
+fn Kept count, (Next next) = next
+fn Kept count, (Denied why) = count
+
+Said: fn Outcome -> Text
+fn Said (Next count) = "raised to {count.total}"
+fn Said (Denied (StopsAt most)) = "declined: the count stops at {most}"
+
+ToRaiser: fn Count, Query Count Raiser -> Answer Count Raiser
+fn ToRaiser count, Whole = count
+
+ToWatcher: fn Count, Query Count Watcher -> Answer Count Watcher
+fn ToWatcher count, Whole = count.total
+
+# A watcher's request: there is none, and the `match` has no arm.
+Asked: fn Request Count Watcher -> Text
+fn Asked request = match request:
+
+Named: fn SeatId Count Raiser -> Text
+fn Named name = name
+
+Seen: fn Answer Count Raiser -> Text
+fn Seen count = "{count.total}"
+
+@page: @unit
+@page:
+    !raise <- Ui.Button($label=$"raise 2")                                                         # 0
+    let !outcome = Stepped $count, ((Raise 2) on !raise)
+    $count <- Count(total=0) then Kept $count, !outcome
+    $said <- "nothing yet" then Said !outcome
+    Ui.Label($text=$"{Named "ada"} sees {Seen (ToRaiser $count, Whole)}, a watcher sees {ToWatcher $count, Whole}; {$said}")   # 1

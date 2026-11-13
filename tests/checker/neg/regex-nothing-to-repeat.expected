@@ -1,0 +1,4 @@
+tests/checker/neg/regex-nothing-to-repeat.prism:2: error[regex]: a repetition with nothing to repeat
+    let r = %/*a/
+              ^
+1 error

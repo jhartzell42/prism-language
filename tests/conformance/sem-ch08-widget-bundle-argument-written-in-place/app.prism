@@ -1,0 +1,25 @@
+# A widget function whose parameter is a bundle, given a tuple written in place over an
+# event and a dynamic of the block: `@Shows ((!counted, $n))` (Type System ch. 1: a tuple
+# that holds an event and a dynamic is a value as any other; Semantics ch. 8: a widget
+# function's parameters are its row's). fix-22's probe e9, never run before.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@counter: @((!Nat, $Nat))
+@counter:
+    !go <- Ui.Button($label=$"go")                           # 0
+    $n <- 0 then $n + 1 on !go
+    @ ((($n + 1) on !go, $n))
+
+@Shows: fn ((!Nat, $Nat)) -> @unit
+fn @Shows pair:
+    let ((!fired, $n)) = pair
+    $shown <- 0 then !fired
+    Ui.Label($text=$"{$shown} {$n}")
+
+@page: @unit
+@page:
+    ((!counted, $n)) <- @counter
+    @Shows ((!counted, $n))

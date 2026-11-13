@@ -1,0 +1,43 @@
+# A widget of several clauses with a plain result applied, above the line that gives it,
+# to a late `let` over a building `match`'s late plain result, where the arm gives that
+# result from what its own lines build: the taker's places are counted as built, before
+# the arm's, and its own result is read below it (Semantics ch. 4, "Binding groups and
+# cycles": any line may use any name the block binds, and "the order of a group's lines
+# decides positions and nothing else"; ch. 8: `<-` builds the child and binds its plain
+# result; ruling TC). Nothing here is a cycle. With the `match`'s own name taken the
+# program is conformance/sem-ch04-late-value-above-clause-widget-result-from-arm-lines.
+# Written by Claude (fin-b4, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Wide: fn Nat -> @Nat
+fn @Wide 10:
+    Ui.Label($text=$"ten")
+    @ 1
+fn @Wide k:
+    @ 2
+
+@Panel: fn Mode, $Nat -> @unit
+fn @Panel mode, $k:
+    w <- @Wide m                                                       # 1 when m is 10
+    Ui.Label($text=$"wide {w}")                                        # 2, or 1
+    n <- match mode:
+        Loud t:
+            Ui.Label($text=$"{t} {$k}")                                # 3
+            v <- @Wide 10                                              # 4
+            @ v + 8
+        Soft:
+            @ 19
+    let m = n + 1
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    !add <- Ui.Button($label=$"add")                                   # 0
+    $k <- 0 then $k + 1 on !add
+    @Panel mode, $k

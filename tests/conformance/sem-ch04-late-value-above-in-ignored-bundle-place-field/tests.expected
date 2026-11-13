@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 4 ("the order of a group's lines decides positions and nothing else"), ch. 8 ("A new place's first value": the query answers at the build, by the element as built, its field reading the late result), Type System ch. 2 (the parts are taken and bound to nothing) and ruling TC: loud gives 10, so the port is "port 10", the label 1 and the arm's label 2; soft gives 20 and builds nothing in its arm. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Pad.Port(name="port 10")
+    1: Ui.Label(text="of 10")
+    2: Ui.Label(text="loud")
+
+test soft
+
+tick 0
+  added:
+    0: Pad.Port(name="port 20")
+    1: Ui.Label(text="of 20")

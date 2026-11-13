@@ -1,0 +1,37 @@
+# Jimmy's ruling, 12 November: promoted constructors, generic. A choice whose cases all
+# carry no payload is also a kind, and its cases are types of that kind. `Unit` is such a
+# choice. `Quantity (u: Unit)` is a record indexed by it: the index is a phantom, and it
+# keeps metres from adding to grams. `Distance` is an alias at one case. `Added` declares
+# no kind for its `u`; the kind is inferred from its use in `Quantity u`.
+# Expected transcript derived by hand. Written by Claude on the claude-self-hosting
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Unit = choice:
+    Metre
+    Second
+    Gram
+derive ^Eq, ^Show
+
+type Quantity (u: Unit) = record:
+    amount: Nat
+derive ^Eq, ^Show
+
+type Distance = Quantity Metre
+
+Added: fn Quantity u, Quantity u -> Quantity u
+fn Added left, right = Quantity(amount=(left.amount + right.amount))
+
+Walked: fn Distance -> Text
+fn Walked distance = "{distance.amount} m"
+
+Timed: fn Quantity Second -> Text
+fn Timed span = "{span.amount} s"
+
+Weighed: fn Quantity Gram -> Text
+fn Weighed weight = "{weight.amount} g"
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Walked (Added Quantity(amount=300), Quantity(amount=200))}, {Timed (Added Quantity(amount=60), Quantity(amount=30))}, {Weighed Quantity(amount=5)}")   # 0

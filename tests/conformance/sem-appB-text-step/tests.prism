@@ -1,0 +1,11 @@
+# `?Step`: declarations of sem-appB-text-step.prism.
+emit r
+use App.*
+
+check step:
+    Walk sample => [['h', 'é', 'l', 'l', 'o', '→', '世', '界']]
+    Positions sample => [[0, 1, 3, 4, 5, 6, 9, 12, 15]]
+    Walk "" => [[]]
+    Positions "" => [[0]]
+    Ascii sample => 4
+    Len (Walk sample) => 8

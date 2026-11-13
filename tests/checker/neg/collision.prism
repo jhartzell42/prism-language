@@ -1,0 +1,6 @@
+# `collision`: a file's own declaration does not shadow the prelude's.
+Len: fn Text -> Nat
+fn Len t = 0
+
+Size: fn Text -> Nat
+fn Size t = Len t

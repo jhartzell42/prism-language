@@ -1,0 +1,33 @@
+# Derived by hand from Semantics ch. 4, 7 and 8: the arm built is fixed; its dynamic is `$shown`, so a write of the arm's hold or of the panel's `$resets` changes the label in that tick; the label takes the next number after the places the arm built (ruling TC): 2 after the loud arm's button, 1 after the soft arm, which builds none.
+test a_loud_arm
+
+tick 0
+  added:
+    0: Ui.Button(label="reset")
+    1: Ui.Button(label="hey!")
+    2: Ui.Label(text="hey 0 0")
+
+tick 1
+  in:
+    1: click
+  changed:
+    2: Ui.Label(text="hey 1 0")
+
+tick 2
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="hey 1 1")
+
+test a_soft_arm
+
+tick 0
+  added:
+    0: Ui.Button(label="reset")
+    1: Ui.Label(text="soft 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="soft 1")

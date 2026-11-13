@@ -1,0 +1,13 @@
+# Union's bias at both size orders, over app.prism's declarations.
+emit r
+use App.*
+
+check union_left_wins:
+    ValuesAt (Union (Keyed 0, 3, "a"), (Keyed 1, 2, "b")), [[0, 1, 2, 3]] => "aaa-"
+    ValuesAt (Union (Keyed 1, 2, "a"), (Keyed 0, 3, "b")), [[0, 1, 2, 3]] => "bab-"
+    ValuesAt (Union (Keyed 0, 100, "a"), (Keyed 98, 102, "b")), [[97, 98, 99, 100, 101, 102]] => "aaabb-"
+    ValuesAt (Union (Keyed 98, 102, "a"), (Keyed 0, 100, "b")), [[97, 98, 99, 100, 101, 102]] => "baaaa-"
+    Size (Union (Keyed 0, 100, "a"), (Keyed 50, 150, "b")) => 150
+    Size (Union (Keyed 50, 150, "a"), (Keyed 0, 100, "b")) => 150
+    ValuesAt (Union {}, (Keyed 0, 2, "b")), [[0, 1]] => "bb"
+    ValuesAt (Union (Keyed 0, 2, "a"), {}), [[0, 1]] => "aa"

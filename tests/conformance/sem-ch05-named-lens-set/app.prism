@@ -1,0 +1,23 @@
+# Semantics ch. 5, "References and lens paths": "A named lens takes `&` on its name and
+# its one parameter, and applying it gives back a reference", the book's `&Acc` and
+# `Reset`. Written by Claude on the claude-lowering branch; subject to change.
+test mod Tests
+type Regs = record:
+    acc: Int
+    x: Int
+derive ^Eq, ^Show
+
+type Vm = record:
+    pc: Nat
+    regs: Regs
+    steps: Nat
+derive ^Eq, ^Show
+
+&Acc: fn &Vm -> &Int
+fn &Acc &vm = &vm.regs.acc
+
+Reset: fn Vm -> Vm
+fn Reset vm = update vm:
+    &Acc &_ <= 0
+
+let boot = Vm(pc=4, regs=Regs(acc=7, x=5), steps=2)

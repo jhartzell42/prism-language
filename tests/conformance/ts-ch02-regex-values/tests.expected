@@ -1,0 +1,26 @@
+# Derived by hand from Type System ch. 2: two regular expressions are equal when their pattern, flags and replacement are written alike, and a transcript prints the plain literal; `Group` and `Match` are records deriving `^Eq` and `^Show`, printed field by field in declaration order (text, front, back; then groups and named), a cursor as `Cursor(at=n)`; a regex passes to a function, sits in a record field and an array, and its fields read back as written.
+check equality
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok
+9: ok
+
+check show
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+
+check passing
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok

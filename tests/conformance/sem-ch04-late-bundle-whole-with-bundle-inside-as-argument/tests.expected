@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": any line may use any name the block binds, and the order of a group's lines decides positions and nothing else) and Type System ch. 2: loud gives ((!add, ((10, !add)))), so the label reads "10" and the arm's label is 2; soft gives 20 and builds nothing in its arm. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Ui.Label(text="10")
+    2: Ui.Label(text="loud")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Ui.Label(text="20")

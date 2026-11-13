@@ -1,0 +1,22 @@
+# Derived by hand from Semantics ch. 4 (R7: the new row at the end of the click's tick) and
+# ch. 7 (round 3 ST: a gathered `for` publishes a tick after its rows moved): one row, then
+# the click's new row at 1, whose key the gathered results take, published at 2.
+test rows_gather_plain_results
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1/[0]/0: Ui.Label(text="i0=5")
+    2: Ui.Label(text="1")
+
+tick 1
+  in:
+    0: click
+  added:
+    1/[1]/0: Ui.Label(text="i1=7")
+
+compute until idle: 1 tick, 2 to 2
+
+tick 2
+  changed:
+    2: Ui.Label(text="2")

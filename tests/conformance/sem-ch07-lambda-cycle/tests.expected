@@ -1,0 +1,12 @@
+# Derived by hand from D6 (a call of an unbounded lambda is a cycle point): IsEven's entry, then Even 3, Odd 2, Even 1 and Odd 0 entered, five cycles; Odd 0 is False.
+test lambdas_take_a_cycle_a_call
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 5 ticks, 1 to 5
+
+tick 5
+  changed:
+    1: Ui.Label(text="False")

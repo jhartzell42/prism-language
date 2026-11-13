@@ -1,0 +1,12 @@
+# The list form's tests: declarations of sem-ch09-host-list.
+emit Ui.*
+use App.*
+
+test answers_go_down_by_path, @list:
+    build
+    click at 0
+        => expect Ui.Label(text="pressed 0")
+    compute
+        => expect Ui.Label(text="pressed 1")
+    click at 1/[0]/0
+        => expect Ui.Label(text="pressed 2")

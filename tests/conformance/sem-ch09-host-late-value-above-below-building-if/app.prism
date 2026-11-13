@@ -1,0 +1,50 @@
+# A hosted child whose widget of several clauses, applied above the line that gives it,
+# takes a building `if`'s late plain result, under a host placed below a building `if` of
+# its parent (Semantics ch. 4, "Binding groups and cycles": "the order of a group's lines
+# decides positions and nothing else"; ch. 8: `<-` builds the child and binds its plain
+# result; ch. 9: a host re-emits each forwarded place of its child under its own place,
+# keyed by the child's path; ruling TC). Nothing here is a cycle. The fourth sweep's probe
+# g4b (the hosted giver under a host placed late), which compiled with no refusal.
+# Written by Claude (sweep-5, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Wide: fn Nat -> @Nat
+fn @Wide 10:
+    Ui.Label($text=$"ten")
+    @ 1
+fn @Wide k:
+    @ 2
+
+@Inner: fn Bool, $Nat -> @unit
+fn @Inner loud, $k:
+    w <- @Wide n                                                       # 0 when n is 10
+    Ui.Label($text=$"wide {w}")                                        # 1, or 0
+    n <- if loud:
+        Ui.Label($text=$"loud {$k}")                                   # 2
+        @ 10
+    else:
+        @ 20
+
+type Case = choice:
+    LoudAfterLabel
+    SoftAfterLabel
+    LoudAlone
+derive ^Eq, ^Show
+
+LabelFirst: fn Case -> Bool
+fn LabelFirst LoudAlone = False
+fn LabelFirst ignore = True
+
+Loud: fn Case -> Bool
+fn Loud SoftAfterLabel = False
+fn Loud ignore = True
+
+@Page: fn Case -> @unit
+fn @Page c:
+    !add <- Ui.Button($label=$"add")                                   # 0
+    $k <- 0 then $k + 1 on !add
+    if LabelFirst c:
+        Ui.Label($text=$"before")                                      # 1
+    ignore <- @HostDocument (@Inner (Loud c), $k), \|p, e| @Element e      # 2/[p]/0, or 1/[p]/0

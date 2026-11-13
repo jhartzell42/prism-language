@@ -1,0 +1,50 @@
+# A program's own types named as the C++ runtime's classes are (`Row`, `Node`, `Program`,
+# `Hold`, `Segment`, `Cx`): the emitted C++ names the runtime's by `prism_rtl::`, so the two
+# never collide. A `for` makes a row node, whose base class is the runtime's `Row`, beside
+# the program's `Row` record. Written for prismc's back end; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Row = record:
+    name: Text
+derive ^Eq, ^Show
+
+type Node = Node Nat
+derive ^Eq, ^Show
+
+type Program = choice:
+    Started
+    Stopped
+derive ^Eq, ^Show
+
+type Hold = Hold Text
+derive ^Eq, ^Show
+
+type Segment = record:
+    count: Nat
+derive ^Eq, ^Show
+
+type Cx = Cx Nat
+derive ^Eq, ^Show
+
+RowsUpTo: fn Nat -> (Nat ==> Row)
+fn RowsUpTo n = Fold [[1, 2, 3]], {}, \|m, k| if k <= n: Insert m, k, (Row "r{k}") else: m
+
+Summary: fn Nat -> Text
+fn Summary n:
+    let node = Node n
+    let seg = Segment(count=n)
+    let hold = Hold "h"
+    let cx = Cx n
+    let state = if n > 1: Started else: Stopped
+    let ((Node a, Hold h, Cx c)) = ((node, hold, cx))
+    "{a} {seg.count} {h} {c} {if state == Started: "started" else: "stopped"}"
+
+@rows: @unit
+@rows:
+    !add <- Ui.Button($label=$"add")                          # 0
+    $n <- 1 then $n + 1 on !add
+    for k, $r <- RowsUpTo $n:                                 # 1/[k]
+        Ui.Label($text=$r.name)                               # 1/[k]/0
+    Ui.Label($text=(Summary $n))                              # 2

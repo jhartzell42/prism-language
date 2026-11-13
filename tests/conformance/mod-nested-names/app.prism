@@ -1,0 +1,15 @@
+# Modules as directories (claude/modules-style-pass.md): `A.Types` beside a top-level
+# `Types`, each with a type `Amount`. A qualified name is a full path from the root, never
+# relative, so inside `A` `Types.Amount` is the top-level one: the C++ target qualifies every
+# reference from the global namespace (an inner `a::types` would hide `types`), and the
+# Rust one by its path from the crate (`a/mod.rs` declares `pub mod types`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+mod A
+mod Types
+test mod Tests
+use Ui
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{A.Describe 3}")

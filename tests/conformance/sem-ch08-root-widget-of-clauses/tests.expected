@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 8 (the clause is chosen at the build from the plain arguments; its places stand in sequence); never run.
+test the_second_clause_is_built
+
+tick 0
+  added:
+    0: Ui.Label(text="titled")
+    1: Ui.Label(text="Mine")
+
+test the_first_clause_is_built
+
+tick 0
+  added:
+    0: Ui.Label(text="untitled")

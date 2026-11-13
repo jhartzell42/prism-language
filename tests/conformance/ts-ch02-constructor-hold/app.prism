@@ -1,0 +1,40 @@
+# A hold keeps a sigiled value whole at a constructor's type variable: `Requested
+# {!asked}` is the bundle `Heard !Nat`, and `Pair {$home}, {$away}` the bundle `Pair $Nat
+# $Nat`; a pattern takes no braces, and `Requested !r` binds the event (Jimmy's ruling of
+# 12 November: a constructor lifts over a sigiled argument as a function does, and
+# `{ !e }` is the only way a sigiled value fills a type variable unlifted). Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Pair a b = record:
+    first: a
+    second: b
+
+type Heard a = choice:
+    Requested a
+    Leaving
+
+Both: fn $Nat, $Nat -> Pair $Nat $Nat
+fn Both $home, $away = Pair {$home}, {$away}
+
+$Total: fn Pair $Nat $Nat -> $Nat
+fn $Total pair = match pair:
+    Pair $first, $second: $first + $second
+
+Request: fn !Nat -> Heard !Nat
+fn Request !asked = Requested {!asked}
+
+!Asked: fn Heard !Nat -> !Nat
+fn !Asked heard = match heard:
+    Requested !r: !r
+    Leaving: never
+
+@page: @unit
+@page:
+    !h <- Ui.Button($label=$"home")                              # 0
+    !a <- Ui.Button($label=$"away")                              # 1
+    $home <- 0 then $home + 1 on !h
+    $away <- 0 then $away + 1 on !a
+    $asked <- 0 then !Asked (Request (10 on !a))
+    Ui.Label($text=$"{$Total (Both $home, $away)}/{$asked}")     # 2

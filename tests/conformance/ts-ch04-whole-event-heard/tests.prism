@@ -1,0 +1,12 @@
+# Audited: each click of Inc fires `es[0]`, so `$n` counts the clicks.
+# The tests of ts-ch04-whole-event-heard (Type System chapter 4).
+emit Ui.*
+use App.*
+
+test an_event_kept_whole_is_heard, @shown:
+    build
+        => expect Ui.Label(text="n 0")
+    click Ui.Button(label="Inc")
+        => expect Ui.Label(text="n 1")
+    click Ui.Button(label="Inc")
+        => expect Ui.Label(text="n 2")

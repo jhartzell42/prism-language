@@ -1,0 +1,13 @@
+# Derived by hand from Type System ch. 4, Application (a function whose parameter holds a dynamic below the top takes the dynamic whole), as ts-ch04-whole-dynamic-kept derives it for a hold of the block: `$r` is the hosted child's result, its hold, so the row's label changes in the tick of the click; the child's button is forwarded at `0/[0]/0` (Semantics ch. 8, a host document).
+test a_kept_dynamic_follows
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="inc")
+    1/[0]/0: Ui.Label(text="row 0")
+
+tick 1
+  in:
+    0/[0]/0: click
+  changed:
+    1/[0]/0: Ui.Label(text="row 1")

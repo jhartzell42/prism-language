@@ -1,0 +1,24 @@
+# Derived by hand from Semantics ch. 4 ("`rebuild`": holds start over, places are new under `#g`, a generation is built at the end of the tick its dynamic changes and the old one leaves at the end of that tick; "What a `rebuild` hands back") and ch. 8 (a widget application is transparent; "The patch": a place that leaves at the end of n is removed in n).
+test generations_give_a_named_bundle
+
+tick 0
+  added:
+    0: Ui.Button(label="next")
+    1/#0/0: Ui.Button(label="more on 1")
+    1/#0/1: Ui.Label(text="page 1: 1")
+
+tick 1
+  in:
+    1/#0/0: click
+  changed:
+    1/#0/1: Ui.Label(text="page 1: 2")
+
+tick 2
+  in:
+    0: click
+  added:
+    1/#1/0: Ui.Button(label="more on 2")
+    1/#1/1: Ui.Label(text="page 2: 1")
+  torn down:
+    1/#0/0: Ui.Button(label="more on 1")
+    1/#0/1: Ui.Label(text="page 1: 2")

@@ -1,0 +1,411 @@
+# `Check.Expr.Patterns`, a child module of `Check.Expr`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Expr.*
+use Check.Expr.Operators.*
+use Check.Expr.Calls.*
+use Check.Expr.Lifting.*
+use Check.Expr.Lets.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Blocks.*
+use Check.Blocks.Structure.*
+use Check.Blocks.Borrows.*
+use Check.*
+use Check.Passes.*
+use Check.Passes.Cycles.*
+use Check.Passes.Borrows.*
+use Check.Shrink.*
+use Check.Shrink.Types.*
+use Check.Shrink.Calls.*
+use Check.Shrink.Locals.*
+use Check.Shrink.Relations.*
+use Check.Shrink.Walk.*
+use Check.Shrink.Summaries.*
+
+# ---------------------------------------------------------------------------------------
+# Patterns
+# ---------------------------------------------------------------------------------------
+
+# Bind a pattern against a type: names show their marks (each a type at once, ch. 5); a
+# refutable pattern stands only where the block has somewhere to go (`refutable`).
+BindPattern: unbounded fn Env, St, Pattern, Ty, Bool -> ((Env, St))
+fn BindPattern env, st, p, t, refutable = match p.kind:
+    PName n:
+        let bare = Or n.path[0], ""
+        let isCtor = (IsUpperText bare) and (Len n.sigils) == 0 and (IsCtorName env, n)
+        if isCtor or (Len n.path) > 1: BindCtor env, st, p, n, [[]], t
+        else: BindName env, st, n, t
+    PIgnore: ((env, st))
+    PLit l:
+        let ((lt, st2)) = InferLit env, st, l, False, p.span
+        ((env, (Unify st2, t, lt, p.span)))
+    PNeg l:
+        let ((lt, st2)) = InferLit env, st, l, True, p.span
+        ((env, (Unify st2, t, lt, p.span)))
+    PUnit: ((env, (Unify st, t, tUnit, p.span)))
+    PNil:
+        let ((v, st2)) = FreshVar st, False, ""
+        ((env, (Unify st2, t, (TySig "?", v), p.span)))
+    PCtor n, args: BindCtor env, st, p, n, args, t
+    PRecord n, fields, rest: BindRecord env, st, p, n, fields, rest, t
+    PSigil s, inner:
+        if s == "?" or s == "~":
+            let ((v, st2)) = FreshVar st, False, ""
+            let st3 = Unify st2, t, (TySig s, v), p.span
+            BindPattern env, st3, inner, v, refutable
+        else:
+            let ((v, st2)) = FreshVar st, False, ""
+            let st3 = Unify st2, t, (WithMarks s, v, env.scope), p.span
+            BindPattern env, st3, inner, v, refutable
+    PTuple ps:
+        let ((vs, st2)) = Fold ps, (([[]], st)), \|((acc, s)), ignore|
+            let ((v, s2)) = FreshVar s, False, ""
+            (((Push acc, v), s2))
+        let st3 = Unify st2, t, (TyTuple vs), p.span
+        Fold (Range0 (Len ps)), ((env, st3)), \|((en, s)), i| BindPattern en, s, (Or ps[i], Pattern(kind=PIgnore, span=p.span)), (Or vs[i], TyErr), refutable
+    PArray ps:
+        let ((v, st2)) = FreshVar st, False, ""
+        # a non-empty array is matched as the array it is, and has no length zero (Type
+        # System ch. 2, "Exhaustiveness, with rows")
+        let st3 = match ?NonEmptyColl st2, t:
+            ? c:
+                let s = Unify st2, c, (TyArray v), p.span
+                if (Len ps) == 0: ErrFix s, "unreachable", p.span, "a non-empty array has no length zero", "remove the arm" else: s
+            nil: Unify st2, t, (TyArray v), p.span
+        Fold ps, ((env, st3)), \|((en, s)), q| BindPattern en, s, q, v, refutable
+    PGroup q: BindPattern env, st, q, t, refutable
+    PFamily q: BindFamily env, st, (Dotted q.path), t, p.span
+
+# `collision`: the patterns of one parameter list, or one pattern, bind a name once. A
+# constructor a pattern names binds nothing.
+BoundTwice: unbounded fn Env, St, [Pattern] -> St
+fn BoundTwice env, st, patterns:
+    let binders = Fold patterns, [[]], \|acc, p| Append acc, (BindersOf env, p)
+    let ((ignore, checked)) = Fold binders, (([[]], st)), \|((seen, s)), ((name, at))|
+        if HasText seen, name: ((seen, (Err s, "collision", at, "`{name}` is bound twice here"))) else: (((Push seen, name), s))
+    checked
+
+# The binders of a pattern with where each stands (`PatternBinders`), less the names that
+# are constructors where the pattern stands.
+BindersOf: unbounded fn Env, Pattern -> [((Text, Range))]
+fn BindersOf env, p = match p.kind:
+    PName n: if (Len n.path) > 1 or ((Len n.sigils) == 0 and (IsUpperText (Or n.path[0], "")) and (IsCtorName env, n)): [[]] else: [[((SNameKey n, n.span))]]
+    PCtor ignore, ps: Fold ps, [[]], \|acc, q| Append acc, (BindersOf env, q)
+    PRecord ignore, fs, ignore: Fold fs, [[]], \|acc, f| Append acc, (BindersOf env, f.pattern)
+    PSigil ignore, q: BindersOf env, q
+    PTuple ps: Fold ps, [[]], \|acc, q| Append acc, (BindersOf env, q)
+    PArray ps: Fold ps, [[]], \|acc, q| Append acc, (BindersOf env, q)
+    PGroup q: BindersOf env, q
+    otherwise: [[]]
+
+# `collision`: a written name is bound once per block (Semantics ch. 4, "Binding groups and
+# cycles"), by its `let`s and binds; `_` and `$_` are rebound freely.
+BlockBoundOnce: unbounded fn Env, St, [Stmt] -> St
+fn BlockBoundOnce env, st, stmts:
+    let binders = Fold stmts, [[]], \|acc, s| match s.kind:
+        SBind p, ignore, ignore: Append acc, (BindersOf env, p)
+        SLet p, ignore, ignore: Append acc, (BindersOf env, p)
+        otherwise: acc
+    let ((ignore, checked)) = Fold binders, (([[]], st)), \|((seen, s)), ((name, at))|
+        if name == "_" or name == "$_": ((seen, s))
+        else: if HasText seen, name: ((seen, (ErrFix s, "collision", at, "`{name}` is bound twice in this block", "a written name is bound once per block: give the second another name"))) else: (((Push seen, name), s))
+    checked
+
+# A `let`'s bare capitalised name that resolves to a constructor: as in every other
+# pattern (`BindPattern`), it is the constructor, and the `let` binds no name by it.
+LetNamesConstructor: fn Env, Pattern -> Bool
+fn LetNamesConstructor env, p = match p.kind:
+    PName n: (Len n.path) == 1 and (Len n.sigils) == 0 and (IsUpperText (Or n.path[0], "")) and IsCtorName env, n
+    otherwise: False
+
+IsCtorName: fn Env, SName -> Bool
+fn IsCtorName env, n:
+    let ((?qk, ignore)) = ResolveValue env.g, env.home, n
+    match ?qk:
+        ? qk: HasKey env.g.ctors, qk
+        nil: False
+
+# A binder: its marks make its type at once, over a plain-headed variable named for it;
+# a type whose stack disagrees with the marks is `mark-stack`.
+BindName: unbounded fn Env, St, SName, Ty -> ((Env, St))
+fn BindName env, st, n, t:
+    let name = SNameKey n
+    if HasText env.pending, name:
+        match env.locals[name]:
+            ? sc:
+                let ((ok, st1)) = TryUnify st, sc.ty, t, n.span
+                let marksAgree = (StackOf st, t) == (TypeMarks n.sigils) or (IsFlexVar st, t)
+                let stA = if ok: st1 else: if marksAgree: Unify st, sc.ty, t, n.span else: ErrFix st, "mark-stack", n.span, "`{name}` has type `{ShowTy st, t}`, whose stack is `{StackOf st, t}`; the name shows `{TypeMarks n.sigils}`", "rename to `{RefMark n.sigils}{StackOf st, t}{DropPrefix name, n.sigils}`"
+                BindLocalId env, (NoteBinder (AskCase stA, n, (TypeMarks n.sigils), t), n.span, name, t), name, n.span
+            nil: BindFresh env, st, n, t
+    else: BindFresh env, st, n, t
+
+BindFresh: unbounded fn Env, St, SName, Ty -> ((Env, St))
+fn BindFresh env, st, n, t = BindFreshMarked env, st, n, (TypeMarks n.sigils), t
+
+# A binder whose type's stack must be `marks`: the name's own marks, or a level binder's
+# with the field's `$` taken off (`BindLevel`).
+BindFreshMarked: unbounded fn Env, St, SName, Text, Ty -> ((Env, St))
+fn BindFreshMarked env, st, n, marks, t:
+    let name = SNameKey n
+    let ((v, st2)) = FreshVar st, True, name
+    let ((rw, st3)) = FreshRow st2, [[]]
+    let marked = WithMarks marks, v, rw
+    let ((ok, st4)) = TryUnify st3, t, marked, n.span
+    let st5 = if ok: st4
+        else:
+            let stack = StackOf st3, t
+            ErrFix st3, "mark-stack", n.span, "`{name}` has type `{ShowTy st3, t}`, whose stack is `{stack}`; the name shows `{marks}`", "rename to `{RefMark n.sigils}{stack}{DropPrefix name, n.sigils}`"
+    BindLocalId (WithLocal env, name, (Mono t)), (NoteBinder (AskCase st5, n, marks, t), n.span, name, t), name, n.span
+
+# A name a pattern binds, asked at its definition's end whether its case says what it
+# holds (`CaseQuestions`): `marks` are the marks its type shows.
+AskCase: fn St, SName, Text, Ty -> St
+fn AskCase st, n, marks, t = update st:
+    &_.caseQs <= Push &_.caseQs, CaseQ(name=(SNameKey n), sigils=n.sigils, bare=(Or n.path[0], ""), marks=marks, ty=t, span=n.span, file=&_.file)
+
+# `case-mark`: the end of a definition asks every name a pattern bound whether its case
+# says what it holds (Language ch. 10 and ch. 1's case mark; Type System ch. 1): an
+# uppercase name holds a function, a lowercase one, or one that begins with `_`, a value.
+# The type under the marks the name shows decides. A type still a variable, an error's or
+# an associated type's says nothing yet; the topic `_` and a `&` name are not asked. A
+# block checked twice (its borrows) asks a binder twice, and it is answered once.
+CaseQuestions: unbounded fn St -> St
+fn CaseQuestions st:
+    let qs = st.caseQs
+    let cleared = update st:
+        &_.caseQs <= [[]]
+    let ((ignore, answered)) = Fold qs, (([[]], cleared)), \|((seen, s)), q|
+        let place = "{q.file}.{q.span.start}"
+        if (HasText seen, place) or q.bare == "_" or q.bare == "" or (HasPrefix q.sigils, "&"): ((seen, s))
+        else: (((Push seen, place), (AnswerCase s, q)))
+    answered
+
+AnswerCase: unbounded fn St, CaseQ -> St
+fn AnswerCase st, q:
+    let held = UnderMarks st, q.ty, q.marks
+    let upper = IsUpperText q.bare
+    match ?HoldsFunction held:
+        ? True if not upper: AddDiag st, (DiagFix "case-mark", q.file, q.span, "`{q.name}` holds a function: a lowercase name is a value now", "rename to `{q.sigils}{Upper (Head q.bare)}{AfterFirst q.bare}`")
+        ? False if upper: AddDiag st, (DiagFix "case-mark", q.file, q.span, "`{q.name}` holds a `{ShowTy st, held}`, not a function: an uppercase name is a function, a constructor, a type or a trait", "rename to `{q.sigils}{Lower (Head q.bare)}{AfterFirst q.bare}`")
+        otherwise: st
+
+# A type under the marks a name shows, each mark taken off while the type has it on top.
+UnderMarks: unbounded fn St, Ty, Text -> Ty
+fn UnderMarks st, t, marks = if marks == "": Walk st, t else: match Walk st, t:
+    TySig s, inner if s == (Head marks): UnderMarks st, inner, (AfterFirst marks)
+    TyAt inner, ignore if (Head marks) == "@": UnderMarks st, inner, (AfterFirst marks)
+    other: other
+
+# Whether a walked type is a function's; nil when it does not say yet.
+?HoldsFunction: fn Ty -> ?Bool
+fn ?HoldsFunction t = match t:
+    TyFn ignore, ignore, ignore: ? True
+    TyFlex ignore: nil
+    TyErr: nil
+    TyAssoc ignore, ignore, ignore: nil
+    otherwise: ? False
+
+# A field of an element seen through a document (`Elem r`, a snapshot) binds its level
+# (doubt WL): a `$` field's value in that tick, plain. The binder may show the field's
+# declared `$`, as the tag declares it (`Ui.Label(text=$t)`, Pitch ch. 5's `held=$n`),
+# and the level drops it: `$t` is a `Text` there. A blueprint's element (`Element r o`:
+# an element expression, a supplier's `e`) binds each field with its stack.
+BindField: unbounded fn Env, St, Pattern, Ty, Bool -> ((Env, St))
+fn BindField env, st, p, ft, snapshot = match Walk st, ft:
+    TySig s, level if snapshot and s == "$": BindLevel env, st, p, level
+    otherwise: BindPattern env, st, p, ft, True
+
+# `live-field-pattern`: a blueprint's element has its `$` and `!` fields as nodes, which a
+# pattern binds; a pattern that can fail there would test a value the field has only in a
+# tick (Semantics ch. 8; Jimmy's ruling LP: a pattern cannot test a dynamic's value). A
+# document's element has levels, which a pattern may test.
+LiveFieldTested: unbounded fn Env, St, Text, Pattern, Ty -> St
+fn LiveFieldTested env, st, fname, p, ft:
+    let stack = StackOf st, ft
+    let binder = "{stack}{Head fname}"
+    ErrFix st, "live-field-pattern", p.span, "an element's `{stack}{fname}` binds its {if (HasPrefix stack, "$"): "dynamic" else: "event"}; `{SrcText env, p.span}` would test a value the field has only in a tick", "bind it, `{stack}{fname}={binder}`, and read `{binder}` where a tick reads it"
+
+# Whether a field's pattern tests a live field: a `$` or `!` field of a blueprint's
+# element, under a pattern that can fail.
+TestsLiveField: unbounded fn Env, St, Pattern, Ty, Bool -> Bool
+fn TestsLiveField env, st, p, ft, snapshot = match Walk st, ft:
+    TySig s, ignore: (s == "$" or s == "!") and not snapshot and TestsValue env, p
+    otherwise: False
+
+# Whether a pattern can fail on the value it meets: a literal, `nil`, a constructor's or a
+# tag's pattern (a constructor's bare name too, with or without the field's marks before
+# it: `$True` names `True`, and binds nothing), an array's, `? p` and `~ p`, a family, and a
+# tuple or a group with such a part.
+TestsValue: unbounded fn Env, Pattern -> Bool
+fn TestsValue env, p = match p.kind:
+    PName n: NamesConstructor env, n
+    PLit ignore: True
+    PNeg ignore: True
+    PNil: True
+    PCtor ignore, ignore: True
+    PRecord ignore, ignore, ignore: True
+    PArray ignore: True
+    PFamily ignore: True
+    PSigil s, q: (Contains s, "?") or (Contains s, "~") or TestsValue env, q
+    PTuple parts: Fold parts, False, \|seen, q| seen or TestsValue env, q
+    PGroup q: TestsValue env, q
+    otherwise: False
+
+# Whether a name in a pattern is a constructor's, its marks set aside: a qualified name,
+# or a capitalised one that resolves to a constructor.
+NamesConstructor: fn Env, SName -> Bool
+fn NamesConstructor env, n = (Len n.path) > 1 or ((IsUpperText (Or n.path[0], "")) and IsCtorName env, (Unmarked n))
+
+# A name with its marks set aside: `True` of `$True`.
+Unmarked: fn SName -> SName
+fn Unmarked n = SName(sigils="", path=n.path, span=n.span)
+
+BindLevel: unbounded fn Env, St, Pattern, Ty -> ((Env, St))
+fn BindLevel env, st, p, level = match p.kind:
+    PName n:
+        # a constructor written with the field's mark, `$lit=$True`, tests the level as
+        # the bare `True` does, and binds nothing
+        if (HasPrefix n.sigils, "$") and (Len n.path) == 1 and NamesConstructor env, n: BindPattern env, st, Pattern(kind=(PName (Unmarked n)), span=p.span), level, True
+        else: if (HasPrefix n.sigils, "$") and (Len n.path) == 1: BindFreshMarked env, st, n, (AfterFirst n.sigils), level
+        else: BindPattern env, st, p, level, True
+    PGroup q: BindLevel env, st, q, level
+    otherwise: BindPattern env, st, p, level, True
+
+BindCtor: unbounded fn Env, St, Pattern, SName, [Pattern], Ty -> ((Env, St))
+fn BindCtor env, st0, p, n, args, t:
+    let ((?qk, why)) = ResolveValue env.g, env.home, n
+    # two bare candidates are an error at the use (Semantics ch. 6), and a pattern is one
+    let st = CollisionAt env, st0, why, (SNameKey n), n.span
+    match ?qk:
+        nil: ((env, (Err st, "unknown-name", n.span, "no constructor `{SNameKey n}`")))
+        ? qk:
+            if why == "tag": BindTagPattern env, st, p, qk, [[]], True, t
+            else: match env.g.ctors[qk]:
+                nil: ((env, (Err st, "unknown-name", n.span, "`{SNameKey n}` is not a constructor")))
+                ? c:
+                    let ((self, st1, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), p.span, [[]]
+                    let st2 = if IsFailurePattern st1, t, self: st1 else: Unify st1, t, self, p.span
+                    if (Len args) != (Len c.args) and not ((Len args) == 1 and (Len c.args) > 1):
+                        ((env, (Err st2, "mismatch", p.span, "`{BareName c.name}` takes {CountWord (Len c.args)} argument{if (Len c.args) == 1: "" else: "s"}; this pattern gives {CountWord (Len args)}")))
+                    else: Fold (Range0 (Len args)), ((env, st2)), \|((en, s)), i| BindPattern en, s, (Or args[i], Pattern(kind=PIgnore, span=p.span)), (SubstQ inst, (Or c.args[i], TyErr)), True
+
+# A record pattern: a record's fields by name or position, `..` for the rest; a tag
+# pattern refines the element's output in its arm (see `InferMatch`).
+BindRecord: unbounded fn Env, St, Pattern, SName, [FieldPat], Bool, Ty -> ((Env, St))
+fn BindRecord env, st0, p, n, fields, rest, t:
+    let ((?qk, why)) = ResolveValue env.g, env.home, n
+    let st = CollisionAt env, st0, why, (SNameKey n), n.span
+    match ?qk:
+        nil: ((env, (Err st, "unknown-name", n.span, "no record or tag `{SNameKey n}`")))
+        ? qk:
+            if why == "tag": BindTagPattern env, st, p, qk, fields, rest, t
+            else: match env.g.ctors[qk]:
+                nil: ((env, (Err st, "unknown-name", n.span, "`{SNameKey n}` is not a record")))
+                ? c:
+                    let ((self, st1, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), p.span, [[]]
+                    let st2 = if IsFailurePattern st1, t, self: st1 else: Unify st1, t, self, p.span
+                    Fold (Range0 (Len fields)), ((env, st2)), \|((en, s)), i|
+                        let fp = Or fields[i], FieldPat(marks="", ?name=nil, pattern=Pattern(kind=PIgnore, span=p.span), span=p.span)
+                        let fname = FieldPatName fp, c.fields, i
+                        # `collision`: a pattern names a field once, as a construction does
+                        let before = Fold (Range0 i), False, \|seen, k| seen or (FieldPatName (Or fields[k], fp), c.fields, k) == fname
+                        # (its pattern still binds, so the names it writes are known below)
+                        let s0 = if before: Err s, "collision", fp.span, "`{fname}` is matched twice" else: s
+                        match ?IndexOf c.fields, fname:
+                            ? j: BindPattern en, (PatMarks s0, (BareName c.owner), fname, (Or c.args[j], TyErr), fp), fp.pattern, (SubstQ inst, (Or c.args[j], TyErr)), True
+                            nil: ((en, (Err s0, "mismatch", fp.span, "`{BareName c.owner}` has no field `{fname}`")))
+
+# A field pattern's sigils, when it writes any, are its field's (`$label=ignore`); a plain
+# name matches a sigiled field too, as a World pattern reads levels (`Ui.Button(label="OK")`).
+PatMarks: unbounded fn St, Text, Text, Ty, FieldPat -> St
+fn PatMarks st, owner, field, declared, fp = if fp.marks == "": st else: ArgMarks st, owner, field, declared, fp.marks, fp.span
+
+# A field pattern's field: its name, or a bare name that is a field (punning), or its
+# position.
+FieldPatName: fn FieldPat, [Text], Nat -> Text
+fn FieldPatName fp, fields, i = match fp.?name:
+    ? id: id.name
+    nil: match fp.pattern.kind:
+        PName n: if HasText fields, (SNameKey n): SNameKey n else: Or fields[i], ""
+        otherwise: Or fields[i], ""
+
+# A tag arm `Net.Http(url, ..)` needs `Net` among the row's families, not its tail
+# (`row-not-here`), and binds the fields: with their stacks on a blueprint's element, as
+# levels on a document's (`BindField`).
+BindTagPattern: unbounded fn Env, St, Pattern, Text, [FieldPat], Bool, Ty -> ((Env, St))
+fn BindTagPattern env, st, p, name, fields, rest, t = match env.g.tags[name]:
+    nil: ((env, (Err st, "unknown-name", p.span, "no tag `{name}`")))
+    ? tg:
+        let st1 = if tg.kind == "Element": TagInRow env, st, tg, t, p.span else: Unify st, t, (TyCon tg.kind, [[]]), p.span
+        let snapshot = IsSnapshot st1, t
+        let ((ignore, st2, inst)) = InstantiateWith st1, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=[[]], ty=tg.out)), p.span, [[]]
+        let names = Each tg.fields, \|((f, ignore))| f
+        Fold (Range0 (Len fields)), ((env, st2)), \|((en, s)), i|
+            let fp = Or fields[i], FieldPat(marks="", ?name=nil, pattern=Pattern(kind=PIgnore, span=p.span), span=p.span)
+            let fname = FieldPatName fp, names, i
+            # `collision`: a tag pattern names a field once, as a record's does (its
+            # pattern still binds, so the names it writes are known below)
+            let before = Fold (Range0 i), False, \|seen, k| seen or (FieldPatName (Or fields[k], fp), names, k) == fname
+            let s0 = if before: Err s, "collision", fp.span, "`{fname}` is matched twice" else: s
+            match ?FieldOfTag tg, fname:
+                ? ft:
+                    let marked = PatMarks s0, name, fname, ft, fp
+                    if TestsLiveField env, marked, fp.pattern, ft, snapshot:
+                        # refused; its names are bound all the same, against anything, so
+                        # the arm below reads them and nothing more is reported
+                        let ((anything, s1)) = FreshVar (LiveFieldTested env, marked, fname, fp.pattern, ft), False, ""
+                        BindPattern en, s1, fp.pattern, anything, True
+                    else: BindField en, marked, fp.pattern, (SubstQ inst, ft), snapshot
+                nil: ((en, (Err s0, "mismatch", fp.span, "`{name}` has no field `{fname}`")))
+
+# An element seen through a document: `Elem r`, the document's value type (Type System
+# ch. 2), as against a blueprint's `Element r o` (doubt WL).
+IsSnapshot: unbounded fn St, Ty -> Bool
+fn IsSnapshot st, t = match Walk st, t:
+    TyElemAny ignore: True
+    otherwise: False
+
+TagInRow: unbounded fn Env, St, TagInfo, Ty, Range -> St
+fn TagInRow env, st, tg, t, span = match Walk st, t:
+    TyElem rw, ignore:
+        let w = WalkRow st, rw
+        if HasText w.fams, tg.family: st
+        else: ErrFix st, "row-not-here", span, "`{tg.name}` is not in this row, `{ShowRow w}`", "add `{tg.family}.*` to the row, or answer the tag elsewhere"
+    TyElemAny rw:
+        let w = WalkRow st, rw
+        if HasText w.fams, tg.family: st
+        else: ErrFix st, "row-not-here", span, "`{tg.name}` is not in this row, `{ShowRow w}`", "add `{tg.family}.*` to the row, or answer the tag elsewhere"
+    TyFlex ignore:
+        let ((rw, st2)) = FreshRow st, [[tg.family]]
+        let ((o, st3)) = FreshVar st2, False, ""
+        Unify st3, t, (TyElem (Rw(fams=[[tg.family]], minus=[[]], tail=rw.tail)), o), span
+    TyErr: st
+    other: Err st, "mismatch", span, "a tag pattern matches an element; this is `{ShowTy st, other}`"
+
+BindFamily: unbounded fn Env, St, Text, Ty, Range -> ((Env, St))
+fn BindFamily env, st, fam, t, span = match Walk st, t:
+    TyElem rw, ignore:
+        let w = WalkRow st, rw
+        if HasText w.fams, fam: ((env, st))
+        else: ((env, (ErrFix st, "row-not-here", span, "`{fam}.*` is not in this row, `{ShowRow w}`", "add `{fam}.*` to the row")))
+    otherwise: ((env, st))

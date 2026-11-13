@@ -1,0 +1,6 @@
+# `Shapes` as a file, with a child.
+emit r
+mod Square
+
+Unit: fn Nat -> Nat
+fn Unit n = n

@@ -1,0 +1,24 @@
+# A supplier answers a bundle of two event parts with two events of the host (Type System
+# ch. 2, "Bundles and sparse tuples": a supplier answers the bundle part by part;
+# Semantics ch. 9, "How a supplier answers": an event answer is the next tick's input).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Line of Element ((!Text, !Nat)):
+    address: Text
+
+@chat: @unit
+@chat:
+    ((!rx, !lost)) <- Pad.Line(address="chat:7000")
+    $last <- "none" then !rx
+    $drops <- 0 then $drops + !lost
+    Ui.Label($text=$"{$last}, {$drops} lost")
+
+@mocked: @unit
+@mocked:
+    !say <- Ui.Button($label=$"say")
+    !drop <- Ui.Button($label=$"drop")
+    ignore <- @HostDocument @chat, \|p, e| match e:
+        Pad.Line(..): @ (("hello" on !say, 3 on !drop))
+        otherwise: @Element e

@@ -1,0 +1,36 @@
+# A place's first value asked at the build, and a host's line, below a building `match`
+# whose arms differ in width and whose plain result the block reads (rulings since the
+# Bible, TC: places are counted as they are built, so the watch and the host stand at the
+# next numbers after what the arm built; Semantics ch. 8, "A new place's first value":
+# the place's `$` reads its first value in the tick it is built; ch. 9: a hosted place's
+# first value reaches it through its host with no delay). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.* | Fs.*
+test mod Tests
+use Fs.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+ShowResponse: fn ~Contents -> Text
+fn ShowResponse (~ c) = c.text
+fn ShowResponse (Error(..)) = "(cannot read)"
+
+@child: @unit
+@child:
+    $~inner <- Fs.Contents(path="inner")                               # 0
+    Ui.Label($text=$"{ShowResponse $~inner}")                          # 1
+
+@Panel: fn Mode -> @unit
+fn @Panel mode:
+    n <- match mode:
+        Loud t:
+            Ui.Label($text=$"{t}")                                     # 0
+            @ 10
+        Soft:
+            @ 20
+    $~motd <- Fs.Contents(path="motd")                                 # 1, or 0
+    Ui.Label($text=$"{n}: {ShowResponse $~motd}")                      # 2, or 1
+    ignore <- @HostDocument @child, \|p, e| @Element e                # 3/[p], or 2/[p]

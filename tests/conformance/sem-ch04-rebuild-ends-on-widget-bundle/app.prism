@@ -1,0 +1,21 @@
+# A `rebuild` whose generation ends on a widget application that gives a bundle, with no
+# name between (Semantics ch. 4: a block's last line is its result; ch. 8: a widget
+# application is transparent; Type System ch. 2, "Bundles"). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Counter: fn Nat -> @((!Click, $Nat))
+fn @Counter page:
+    !more <- Ui.Button($label=$"more on {page}")                  # 0
+    $guests <- 1 then $guests + 1 on !more
+    Ui.Label($text=$"page {page}: {$guests}")                     # 1
+    @ ((!more, $guests))
+
+@main: @unit
+@main:
+    !next <- Ui.Button($label=$"next")                            # 0
+    $page <- 1 then $page + 1 on !next
+    $kept <- rebuild $page:                                      # 1/#g
+        @Counter _                                                # 1/#g/0, 1/#g/1

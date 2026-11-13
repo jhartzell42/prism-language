@@ -1,0 +1,11 @@
+# `Shapes.Static`: a module whose name is a Rust keyword (`static`).
+emit r
+
+type Polygon = choice:
+    Triangle
+    Square
+derive ^Eq, ^Show
+
+Sides: fn Polygon -> Nat
+fn Sides Triangle = 3
+fn Sides Square = 4

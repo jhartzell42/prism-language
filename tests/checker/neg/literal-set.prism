@@ -1,0 +1,16 @@
+# `may-not-end`: a set to a literal is never a decrease: `0` is smaller only than a local
+# known to be greater, which the checker cannot know. `Spin` sets `&n` to `0` on every
+# turn, forever; `Drain` sets it from `&n -? 1`, and checks clean.
+Spin: fn Nat -> Nat
+fn Spin n = update 0:
+    let &n = n
+    while True:
+        &_ += 1
+        &n <= 0
+
+Drain: fn Nat -> Nat
+fn Drain n = update 0:
+    let &n = n
+    while ? less <- &n -? 1:
+        &_ += 1
+        &n <= less

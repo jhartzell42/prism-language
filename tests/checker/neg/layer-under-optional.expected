@@ -1,0 +1,5 @@
+tests/checker/neg/layer-under-optional.prism:3: error[layer-under-optional]: `+` over an optional dynamic
+    fn ?Faster ?$speed = ?$speed + 1
+                         ^^^^^^^
+  fix: match the optional once, at build time, to find out whether there is a dynamic
+1 error

@@ -1,0 +1,21 @@
+# Widgets with places read as blueprint values as the values of a map literal, one named
+# and one applied to its argument (Type System ch. 2: a blueprint is an opaque handle and
+# still a value; Semantics ch. 8: it builds nothing until a block applies it). `Count`
+# only measures the map.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@Inner: @unit
+@Inner:
+    Ui.Label($text=$"inner")
+
+@Labelled: fn Text -> @unit
+fn @Labelled t:
+    Ui.Label($text=$"labelled {t}")
+
+Count: fn (Text ==> @unit) -> Nat
+fn Count m = Size m
+
+@shown:
+    Ui.Label($text=$"entries {Count {"a": @Inner, "b": @Labelled "x"}}")     # 0

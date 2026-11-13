@@ -1,0 +1,12 @@
+# Semantics ch. 7, "Construction is not prompt": a score clicked in the same tick as a new
+# round counts in the old round. The book gives the test and no transcript.
+emit Ui.*
+test mod Tests
+
+@rounds:
+    !again <- Ui.Button($label=$"New round")                 # 0
+    !score <- Ui.Button($label=$"Score")                     # 1
+    $round <- 0 then $round + 1 on !again
+    ignore <- rebuild $round:                               # 2/#g
+        $points <- 0 then $points + 1 on !score
+        Ui.Label($text=$"round {_}: {$points}")              # 2/#g/0

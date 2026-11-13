@@ -1,0 +1,10 @@
+# Derived by hand from Type System ch. 5 (a `u fn` takes its color from its call: `Maker Inc` is bounded, so calling it and `Make` are no cycle points) and Semantics D6 as sem-ch07-run-constructor applies it (entering `Through` is the one cycle point): 5 + 1 + 2 at tick 1. Never run.
+test it_runs
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+tick 1
+  changed:
+    1: Ui.Label(text="8")

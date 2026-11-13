@@ -1,0 +1,39 @@
+# sem-ch04-building-match-on-built-late-value-above where the `match` above leaves a
+# position unbuilt and the lower arm builds a place: the arm's label stands one lower
+# than the widest row would put it (Semantics ch. 4, "Binding groups and cycles": "the
+# order of a group's lines decides positions and nothing else"; ruling TC: places are
+# counted as they are built). Nothing here is a cycle.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Sized: fn Text -> @Nat
+fn @Sized t:
+    Ui.Label($text=$"{t}")
+    @ Len t
+
+@Panel: fn Mode -> @unit
+fn @Panel mode:
+    match n -? 15:                                                     # 0 and 1, or 0
+        ? over:
+            Ui.Label($text=$"over by {over}")
+        nil:
+            Ui.Label($text=$"under")
+            Ui.Label($text=$"at {n}")
+    n <- match mode:
+        Loud t:
+            size <- @Sized t                                           # 2
+            @ size + 9
+        Soft:
+            @ 20
+    Ui.Label($text=$"below {n}")                                       # 3, or 1
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    @Panel mode

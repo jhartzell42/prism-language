@@ -1,0 +1,115 @@
+# `Checking`, a child module of the root.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Fs.* | Process.* | Prelude.*
+use App.*
+use Reading.*
+use Compile.*
+use Fs.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Syntax.Parser.*
+use Syntax.Parser.Decls.*
+use Syntax.Parser.Expr.*
+use Syntax.Parser.Blocks.*
+use Syntax.Parser.Types.*
+use Syntax.Parser.TestLanguage.*
+use Syntax.Sexp.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.*
+use Check.Passes.*
+use Check.Passes.Cycles.*
+use Check.Passes.Borrows.*
+use Check.Shrink.*
+use Check.Shrink.Types.*
+use Check.Shrink.Calls.*
+use Check.Shrink.Locals.*
+use Check.Shrink.Relations.*
+use Check.Shrink.Walk.*
+use Check.Shrink.Summaries.*
+use Check.Typed
+use Lower
+use Emit.Rust
+
+# ---------------------------------------------------------------------------------------
+# `--check`: the checker's report
+# ---------------------------------------------------------------------------------------
+
+# What the checker is asked to check: what was read, and the World's families.
+type CheckJob = record:
+    read: ReadInput
+    world: [Text]
+    typed: Bool
+    unused: Bool
+derive ^Eq, ^Show
+
+# The checker over a program: its files read as trees and parsed, then checked.
+CheckFiles: unbounded fn CheckJob -> Outcome
+fn CheckFiles job:
+    let read = Assemble job.read
+    if (Len read.errors) > 0:
+        let report = TreeReport job.read, read.errors
+        Outcome(text="{report}\n", failed=True, report=report)
+    else:
+        let pp = ParseProgram read
+        if pp.errors != "": Outcome(text="{pp.errors}parse errors\n", failed=True, report="{pp.errors}parse errors")
+        else:
+            let pre = TreeDeclDiags pp
+            # tests are checked by running them, as in a compile (pick PT); a `check`
+            # line's pattern is checked against its expression
+            let checked = Each pp.trees, \|t| WithoutTests t
+            let report = CheckProgram pp.srcs, checked, job.world, pp.shown, job.typed, job.unused, pre
+            let summary = if report.errors == 0: "no errors\n" else: "{report.errors} error{if report.errors == 1: "" else: "s"}\n"
+            let shown = if job.typed: "{Check.Typed.Print.TypedSexp pp.srcs, checked, pp.shown, report.typed}{Commented "{report.text}{summary}"}" else: "{report.text}{summary}"
+            Outcome(text=shown, failed=(report.errors > 0), report="{report.text}{summary}")
+
+# Text as `;` comment lines, after the typed program.
+Commented: fn Text -> Text
+fn Commented t = Concat (Each (Filter (SplitOn t, "\n"), \|l| l != ""), \|l| "; {l}\n")
+
+# `--check FILE|DIR...`: everything read, then the checker run through `@Run`; an option it
+# does not know is refused.
+@CheckMain: fn [Text] -> @unit
+fn @CheckMain args:
+    let bad = BadOptions args, [["--check", "--typed", "--unused", "--tests"]], checkValued
+    if (Len bad) > 0: @Refuse "{Join bad, "; "} (--check takes --typed, --unused, --tests, --prelude DIR, --out FILE, --world W,...)"
+    else:
+        let world = match ?OptionValue args, "--world":
+            ? w: SplitOn w, ","
+            nil: [[]]
+        let opts = CheckOpts(world=world, ?out=(?OptionValue args, "--out"), typed=(HasText args, "--typed"), unused=(HasText args, "--unused"))
+        @ReadSources (Checking opts), (PlainArgs args, checkValued), (NoSlash (Or (?OptionValue args, "--prelude"), "prelude")), (HasText args, "--tests")
+
+let checkValued = [["--prelude", "--out", "--world"]]
+
+@FinishCheck: fn ?Text, ?Outcome -> @unit
+fn @FinishCheck ?out, nil:
+    @ unit
+fn @FinishCheck ?out, (? o):
+    ignore <- @WriteOut ?out, o.text
+    !started <- @started
+    let !~verdict = (if o.failed: Error(kind=Prismc.Refused, message=o.report) else: ~ unit) on !started
+    ignore <- Prelude.Unwrap(!~value=!~verdict)
+
+@WriteOut: fn ?Text, Text -> @unit
+fn @WriteOut nil, ignore:
+    @ unit
+fn @WriteOut (? path), text:
+    ignore <- Fs.Output(path=path, $text=$ text)
+    @ unit

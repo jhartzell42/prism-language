@@ -1,0 +1,17 @@
+# Derived by hand from Semantics ch. 4 (a widget block is one binding group; a widget applied in a static position is transparent, its places numbered in the caller's sequence) and Appendix B (`@Distinct`, `@PerKey`): the click changes `$n` and key 0 and adds key 1.
+test read_above
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="a")
+    2/[0]/0: Ui.Label(text="0: a")
+
+tick 1
+  in:
+    0: click
+  added:
+    2/[1]/0: Ui.Label(text="1: c")
+  changed:
+    1: Ui.Label(text="b")
+    2/[0]/0: Ui.Label(text="0: b")

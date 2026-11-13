@@ -1,0 +1,7 @@
+# The tests of sem-ch07-run-lambda.
+emit Ui.*
+use App.*
+
+test a_lambda_runs, @page:
+    build
+    compute

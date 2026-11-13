@@ -1,0 +1,15 @@
+# A widget defined in a block, given as a blueprint value by a lambda of the block
+# (Semantics ch. 8: a blueprint is a value; a lambda closes over its block's names).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@main: @unit
+@main:
+    @Inner: @unit
+    @Inner:
+        Ui.Label($text=$"inner")
+    let Make = \|count| @Inner
+    let @made = Make 1
+    @made                                                         # 0

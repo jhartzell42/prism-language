@@ -1,0 +1,22 @@
+# An `if` whose arms are a dynamic of a `[Nat]+` and a dynamic of a `[Nat]`: the `if` lifts
+# over the dynamics, and its value is the `[Nat]` (Type System ch. 2, "Collections": a
+# `[a]+` fills a place wanting an `[a]`; ruling NS: the conversion is symmetric between
+# arms; ch. 4: an `if` over dynamics is the plain `if` over their values), in a widget
+# block and in a function that takes the dynamics.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+$Chosen: fn Bool, $[Nat]+, $[Nat] -> $[Nat]
+fn $Chosen first, $a, $b = if first: $a else: $b
+
+@main: @unit
+@main:
+    !more <- Ui.Button($label=$"more")                           # 0
+    $a <- [[1]]+ then [[1, 2]]+ on !more
+    $b <- [[5]] then [[6]] on !more
+    let flag = True
+    let $pick = if flag: $a else: $b
+    let $other = $Chosen False, $a, $b
+    let $third = $Chosen True, $a, $b
+    Ui.Label($text=$"{$pick} {$other} {$third}")    # 1

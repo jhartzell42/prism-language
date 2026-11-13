@@ -1,0 +1,8 @@
+# Derived by hand from Semantics ch. 4 (a building `match`'s arm adds no path segment), ch. 8 (a blueprint is built at the applying block's next positions) and appendix B (`Show` of an array is its literal, `[[9]]`, as sem-ch07-unbounded-prelude has `[[2, 4, 6]]`), as sem-ch08-widget-value-generic-function-at-other-type has its places: `?Wrapped 5, 9, 1` runs `?Wrapped [9], 0, 0`, and `?Wrapped 5, 9, 3` runs `[9], 2, 2`, `[2], 1, 1`, `[1], 0, 0`. Never run.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="9=5")
+    1: Ui.Label(text="0=[[9]]")
+    2: Ui.Label(text="0=[[1]]")

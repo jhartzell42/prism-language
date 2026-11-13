@@ -1,0 +1,22 @@
+# A record shows its fields as the program spells them (Type System ch. 2: a derived
+# `^Show` prints a value as it is written), `byName` and `isOpen`, not the target's own
+# spelling of them; a choice of such records too. Written by Claude on the claude-bugs
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Entry = record:
+    byName: Text
+    isOpen: Bool
+derive ^Eq, ^Show
+
+type Slot = choice:
+    Filled Entry
+    Empty
+derive ^Eq, ^Show
+
+@page: @unit
+@page:
+    let e = Entry(byName="door", isOpen=True)
+    Ui.Label($text=$"{e} {[[(Filled e), Empty]]}")                             # 0

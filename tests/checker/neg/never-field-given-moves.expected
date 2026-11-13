@@ -1,0 +1,4 @@
+tests/checker/neg/never-field-given-moves.prism:17: error[mismatch]: expected `!Never`, found `!Move`
+        let asked = Watch.Request(!requests=((Move 1) on !press))
+                                             ^^^^^^^^^^^^^^^^^^
+1 error

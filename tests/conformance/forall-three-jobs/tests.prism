@@ -1,0 +1,6 @@
+# The tests of forall-three-jobs.
+emit Ui.*
+use App.*
+
+test quantified, @page:
+    build

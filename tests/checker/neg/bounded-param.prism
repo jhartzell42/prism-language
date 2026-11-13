@@ -1,0 +1,10 @@
+# `calls-unbounded`: a parameter written `bounded fn` takes no unbounded closure, whatever
+# the caller's color.
+Grow: unbounded fn Nat -> Nat
+fn Grow n = n + 1
+
+Safe: fn Nat, (bounded fn Nat -> Nat) -> Nat
+fn Safe x, F = F x
+
+Wild: unbounded fn Nat -> Nat
+fn Wild n = Safe n, \|y| Grow y

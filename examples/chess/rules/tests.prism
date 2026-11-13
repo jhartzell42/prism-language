@@ -1,0 +1,53 @@
+# The rule book's own checks: plain functions on positions, with no document. They need
+# nothing but `Rules` and the squares' names; `tests.expected` is the transcript.
+# Written by Claude on the claude-document-chess branch; subject to change.
+emit rest
+use Rules.*
+use Squares.*
+
+let whiteKing = Piece White, King
+let whitePawn = Piece White, Pawn
+let whiteRook = Piece White, Rook
+let whiteBishop = Piece White, Bishop
+let whiteKnight = Piece White, Knight
+let blackKing = Piece Black, King
+let blackBishop = Piece Black, Bishop
+
+# a position from pieces, White to move, with no castling right spent
+Standing: fn [((Square, Piece))] -> Position
+fn Standing pieces = Position(board=(Map pieces), turn=White, corners=allCorners, ?passed=nil)
+
+let bareKings = [[((e1, whiteKing)), ((e8, blackKing))]]
+let pawnOnSeventh = Standing [[((a7, whitePawn)), ((e1, whiteKing)), ((h6, blackKing))]]
+
+check the_opening:
+    Len (LegalMoves start) => 20
+    HasMove start => True
+    InCheck start, White => False
+    Insufficient start => False
+
+# A promotion is its own move: a pawn put on its last rank by an ordinary move is not
+# played, and a promoting move where no pawn promotes is not played either.
+check a_promotion_is_its_own_move:
+    (?Played pawnOnSeventh, (Moving a7, a8)) == nil => True
+    (?Played pawnOnSeventh, (Promoting a7, a8, Knight)) == nil => False
+    FaultOf pawnOnSeventh, whitePawn, (Moving a7, a8) => PromotionNotNamed
+    FaultOf pawnOnSeventh, whitePawn, (Promoting a7, a8, King) => PromotionTo King
+    FaultOf pawnOnSeventh, whiteKing, (Promoting e1, e2, Queen) => NothingPromotes Queen
+    Len (LegalMoves pawnOnSeventh) => 9
+
+check insufficient_material:
+    Insufficient (Standing bareKings) => True
+    Insufficient (Standing (Push bareKings, ((c1, whiteBishop)))) => True
+    Insufficient (Standing (Push bareKings, ((b1, whiteKnight)))) => True
+    Insufficient (Standing (Append bareKings, [[((c1, whiteBishop)), ((f8, blackBishop))]])) => True
+    Insufficient (Standing (Append bareKings, [[((c1, whiteBishop)), ((c8, blackBishop))]])) => False
+    Insufficient (Standing (Append bareKings, [[((c1, whiteBishop)), ((b1, whiteKnight))]])) => False
+    Insufficient (Standing (Push bareKings, ((a1, whiteRook)))) => False
+    Insufficient (Standing (Push bareKings, ((h2, whitePawn)))) => False
+
+# a pawn's move and a capture are the moves that can never be taken back
+check lasting_moves:
+    Lasting start, (Moving e2, e4) => True
+    Lasting start, (Moving g1, f3) => False
+    Lasting (Standing (Append bareKings, [[((a1, whiteRook)), ((a8, blackBishop))]])), (Moving a1, a8) => True

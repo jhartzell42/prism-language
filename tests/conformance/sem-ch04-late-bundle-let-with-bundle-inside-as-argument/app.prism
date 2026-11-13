@@ -1,0 +1,22 @@
+# A `let` of a bundle written out, with a bundle inside whose plain part reads a building
+# `if`'s late plain result below it, passed whole to a function by a place's live field
+# (Semantics ch. 4, "Binding groups and cycles"; Type System ch. 2, "Bundles"). Reaches
+# `LateBundleParts`' marker "a late plain part of the bundle `pair`" on prismc-fd1.
+# Written by Claude (sweep-7, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Inner: fn ((!Click, ((Nat, !Click)))) -> Nat
+fn Inner ((ignore, ((k, ignore)))) = k
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    !add <- Ui.Button($label=$"add")                                   # 0
+    let pair = ((!add, ((n + 1, !add))))
+    Ui.Label($text=$"{Inner pair}")                                    # 1
+    n <- if loud:
+        Ui.Label($text=$"loud")
+        @ 10
+    else:
+        @ 20

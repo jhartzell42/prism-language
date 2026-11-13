@@ -1,0 +1,28 @@
+# The `Ui` family (Semantics ch. 8). A library, not the prelude (Appendix B, Prelude
+# tags); prismc reads it from the prelude directory beside the prelude, so a program can
+# name `Ui.Button` without shipping the file.
+emit Ui.*
+
+# A button's answer (Type System ch. 2, "A unit type has one value, lowercase").
+type Click = click
+derive ^Eq, ^Show
+
+tag Ui.Button of Element !Click:
+    $label: Text
+
+tag Ui.Label of Element:
+    $text: Text
+
+# A key the box answers with (Semantics ch. 8's `Key`, declared here, where the tag that
+# answers it is).
+type Key = choice:
+    Letter Text
+    Backspace
+derive ^Eq, ^Show
+
+tag Ui.TextInput of Element !Key:
+    name: Text
+    $text: Text
+
+tag Ui.Image of Element:
+    src: Text

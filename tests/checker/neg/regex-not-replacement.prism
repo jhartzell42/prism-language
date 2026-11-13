@@ -1,0 +1,3 @@
+# `regex-not-replacement`: `Replace` takes a `RegexReplacement`, and `%/_/` is a `Regex` (Appendix B).
+Dashed: fn Text -> Text
+fn Dashed t = Replace %/_/, t

@@ -1,0 +1,23 @@
+# The transcript prismc at 10ca993 gave for attempt 03 (the evidence's transcript.txt), kept byte for byte: it pins the behaviour the Bible's Part IV relies on, with the live-field workaround's three ticks from request to response.
+test host_reads_the_latest_request
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="add 2")
+    0/[1]/0: Ui.Button(label="add 9")
+    0/[3]/0: Ui.Label(text="guest: nothing yet")
+    2: Ui.Label(text="host: 0 counted on the document's update")
+    3: Ui.Label(text="host: 0 in the document now")
+
+tick 1
+  in:
+    0/[0]/0: click
+
+tick 2
+
+tick 3
+  changed:
+    2: Ui.Label(text="host: 1 counted on the document's update")
+    3: Ui.Label(text="host: 1 in the document now")
+
+tick 4

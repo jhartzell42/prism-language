@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 3 (each impl chooses the associated type its trait declares): the crate opens to 4 (plus 1 is 5, plus 2 is 6) and pours "figs".
+test each_trait_its_item
+
+tick 0
+  added:
+    0: Ui.Label(text="5 figs! 6 figs?")

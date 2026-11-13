@@ -1,0 +1,10 @@
+# A recursive widget with a result: declarations of sem-ch04-widget-recursion-result.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test the_count_grows_a_level, @counted:
+    build
+    click at 0
+    compute until idle

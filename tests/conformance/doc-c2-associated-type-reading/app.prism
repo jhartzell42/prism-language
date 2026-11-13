@@ -1,0 +1,45 @@
+# Part III's probe for step C2 of Part VII's documents plan (Compiler ch. 7): a trait's
+# `type Reading`, an impl's `type Reading = Nat`, and `Reading g` in a signature, a
+# record's field and a generic function's result (Type System ch. 3, "Associated types":
+# resolved by name in the trait's module, ruling AK; normalized through the impl the head
+# selects). A thermometer reads a number, a weathervane a word. Written by Claude; subject
+# to change.
+emit Ui.*
+test mod Tests
+
+trait ^Gauge g:
+    type Reading
+    Read: fn g -> Reading g
+
+type Thermometer = record:
+    degrees: Nat
+derive ^Eq, ^Show
+
+type Weathervane = record:
+    wind: Text
+derive ^Eq, ^Show
+
+impl ^Gauge Thermometer:
+    type Reading = Nat
+    fn Read t = t.degrees
+
+impl ^Gauge Weathervane:
+    type Reading = Text
+    fn Read w = w.wind
+
+# a gauge's reading kept beside the gauge, generic in the gauge
+type Logged g = record:
+    gauge: g
+    last: Reading g
+
+Log: fn g -> Logged g where g: ^Gauge
+fn Log g = Logged(gauge=g, last=(Read g))
+
+Twice: fn g -> ((Reading g, Reading g)) where g: ^Gauge
+fn Twice g = ((Read g, Read g))
+
+@shown: @unit
+@shown:
+    let ((a, b)) = Twice (Thermometer(degrees=21))
+    let logged = Log (Weathervane(wind="north"))
+    Ui.Label($text=$"{a + b} {logged.last}")

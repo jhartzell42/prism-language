@@ -1,0 +1,21 @@
+# A test module is a child module (claude/modules-style-pass.md, Jimmy's ruling of 5
+# November): `test mod Tests` declares `tests.prism`, the module `Tests` beside the root's
+# other children, read only by `prism test` and `prism check`. It reaches its parent by
+# `use`, as any child does: the root's test module by `use App.*` (the root of a program
+# tree, named by its file), `Counter.Tests` by `use Counter.*`. A test module may name
+# another test module's helpers (`Counter.Tests.Stepped`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+mod Counter
+test mod Tests
+use Ui
+use Counter.*
+
+Caption: fn Nat -> Text
+fn Caption n = "{Step n} steps"
+
+@main: @unit
+@main:
+    !next <- Ui.Button($label=$"Next")                       # 0
+    $n <- 0 then $n + 1 on !next
+    Ui.Label($text=(Caption $n))                            # 1

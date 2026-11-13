@@ -1,0 +1,63 @@
+# A bare `Error(..)` inside a value: an array's element, an optional's, a map's value, a
+# generic record's field, a generic choice's payload, a lambda's result, an `if`'s arrays,
+# a generic function's argument, an operand of `==`. Bound first by a `let`, the value then
+# meets a type whose part there is a `~T`: the `Error` is that `~T`'s failure (Semantics
+# ch. 10: a `~T` is a `T` or an `Error`). Written by Claude on the claude-bugs branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+
+type Box a = record:
+    item: a
+
+type Res a = choice:
+    Has a
+    Not
+
+SaidN: fn ~Nat -> Text
+fn SaidN (~ n) = "{n}"
+fn SaidN (Error(message=m, ..)) = "!{m}"
+
+Firsts: fn [~Nat] -> Text
+fn Firsts xs = Concat (Each xs, SaidN)
+
+SaidO: fn ?~Nat -> Text
+fn SaidO (? ~x) = SaidN ~x
+fn SaidO nil = "none"
+
+SaidM: fn (Nat ==> ~Nat) -> Text
+fn SaidM m = Concat (Each (Keys m), \|k| SaidN (Or m[k], (~ 0)))
+
+SaidB: fn Box ~Nat -> Text
+fn SaidB b = SaidN b.~item
+
+SaidR: fn Res ~Nat -> Text
+fn SaidR (Has ~x) = SaidN ~x
+fn SaidR Not = "not"
+
+Apply: fn (fn Nat -> ~Nat) -> Text
+fn Apply F = SaidN (F 3)
+
+MkErr: fn Text -> Error
+fn MkErr t = Error(kind=Prelude.NotANumber, message=t)
+
+Id: fn a -> a
+fn Id x = x
+
+Made: fn Nat -> [~Nat]
+fn Made n = [[Error(kind=Prelude.NotANumber, message="k{n}")]]
+
+@main: @unit
+@main:
+    let xs = [[Error(kind=Prelude.NotANumber, message="a")]]
+    let ?~o = ? Error(kind=Prelude.NotANumber, message="o")
+    let m = {1: Error(kind=Prelude.NotANumber, message="m")}
+    let b = Box(item=Error(kind=Prelude.NotANumber, message="b"))
+    let r = Has Error(kind=Prelude.NotANumber, message="r")
+    let F = \|n| Error(kind=Prelude.NotANumber, message="l{n}")
+    let fs = [[MkErr "f"]]
+    let is = if True: [[Error(kind=Prelude.NotANumber, message="i")]] else: [[(~ 1)]]
+    let nested = [[[[Error(kind=Prelude.NotANumber, message="n")]]]]
+    let e = Error(kind=Prelude.NotANumber, message="q")
+    let ~x = (~ 3)
+    Ui.Label($text=$"{Firsts xs} {SaidO ?~o} {SaidM m} {SaidB b} {SaidR r} {Apply F} {Firsts fs} {Firsts is} {Concat (Each nested, Firsts)} {Firsts (Id [[Error(kind=Prelude.NotANumber, message="d")]])} {Firsts (Made 1)} {~x == e} {e == ~x}")    # 0

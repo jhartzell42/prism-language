@@ -1,0 +1,4 @@
+tests/checker/neg/regex-class-ascii-unknown.prism:2: error[regex]: an unknown ASCII class
+    let r = %/[[:foo:]]/
+               ^
+1 error

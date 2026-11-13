@@ -1,0 +1,8 @@
+tests/checker/neg/impl-failed.prism:18: error[no-impl]: no impl of `^Num` for `Text`
+        fn Show a = 5
+                    ^
+tests/checker/neg/impl-failed.prism:21: error[may-not-end]: `Show` calls itself on `b`, not smaller than what it was given
+        fn Show b = Show b
+                    ^^^^^^
+  fix: make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`
+2 errors

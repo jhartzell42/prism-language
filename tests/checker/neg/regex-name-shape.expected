@@ -1,0 +1,4 @@
+tests/checker/neg/regex-name-shape.prism:2: error[regex]: a group name is a lowercase value name, [a-z_][a-z0-9_]*
+    let r = %/(?<>a)/
+                 ^
+1 error

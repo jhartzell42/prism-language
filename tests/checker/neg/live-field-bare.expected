@@ -1,0 +1,5 @@
+tests/checker/neg/live-field-bare.prism:8: error[mark-stack]: `t` has type `$Text`, whose stack is `$`; the name shows ``
+            Ui.Label($text=t): @Element Ui.Label($text=t)
+                           ^
+  fix: rename to `$t`
+1 error

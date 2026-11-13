@@ -1,0 +1,20 @@
+# Derived by hand from Semantics ch. 4 ("`rebuild`": a generation is built at the end of the tick its dynamic changes, the old one leaves at the end of that tick) and the dynamic law as ruled for structural dynamics (round 3 ST): the `rebuild`'s dynamic is published in the tick after the generation is built; never run.
+test a_place_above_reads_the_rebuild
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="2")
+    2/#0/0: Ui.Label(text="page 1")
+
+tick 1
+  in:
+    0: click
+  added:
+    2/#1/0: Ui.Label(text="page 2")
+  torn down:
+    2/#0/0: Ui.Label(text="page 1")
+
+tick 2
+  changed:
+    1: Ui.Label(text="4")

@@ -1,0 +1,22 @@
+# `@Run` of a named function value that is no function definition (Semantics Appendix B:
+# `@Run: fn (unbounded fn a -> b), a -> @!b`; Type System ch. 5: a bounded function stands
+# where an unbounded one is wanted; a constructor is a function). `Boxed` has no call
+# inside, so its entry is its one cycle (D6), as a lambda's is (sem-ch07-run-lambda).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Parcel = choice:
+    Boxed Nat
+    Loose
+
+Weight: fn Parcel -> Text
+fn Weight (Boxed n) = "boxed {n}"
+fn Weight Loose = "loose"
+
+@page: @unit
+@page:
+    !done <- @Run Boxed, 3                                     # 0
+    $shown <- "working" then Weight !done
+    Ui.Label($text=$shown)                                       # 1

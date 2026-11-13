@@ -1,0 +1,35 @@
+# A widget of several clauses that takes a building `if`'s late plain result, above it,
+# where the `if`'s arm builds a `for` beside a building `if` of its own whose result the
+# arm gives (Semantics ch. 4, "Binding groups and cycles": any line may use any name the
+# block binds, and the order of a group's lines decides positions and nothing else; ruling
+# TC: places are counted as they are built). The taker counts its places as built, so the
+# outer `if`'s rows are numbered late (`LateGiving`); the arm's own result is late too, and
+# its `for` numbers its rows as built. Reaches `ArmRowOf`'s refusal "the plain result of an
+# arm or a clause that is built before its block's node and numbered after it" on
+# prismc-fd1.
+# Written by Claude (sweep-7, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Wide: fn Nat -> @unit
+fn @Wide 0:
+    Ui.Label($text=$"none")
+fn @Wide k:
+    Ui.Label($text=$"one {k}")                                         # 0
+    Ui.Label($text=$"two {k}")                                         # 1
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    @Wide n
+    n <- if loud:
+        for x <- [[1, 2]]:
+            Ui.Label($text=$"row {x}")                                 # 2/[k]/0
+        m <- if True:
+            Ui.Label($text=$"inner")                                   # 3
+            @ 3
+        else:
+            @ 4
+        @ m
+    else:
+        @ 20

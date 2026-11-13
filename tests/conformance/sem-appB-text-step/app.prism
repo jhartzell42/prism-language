@@ -1,0 +1,30 @@
+# Semantics Appendix B, Text: `?Step` walks a text one character at a time, `nil` at
+# the end; the walk's measure is what is left of the text (Semantics ch. 7).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+test mod Tests
+
+let sample = "héllo→世界"
+
+# Every character, front to back.
+Walk: fn Text -> [Char]
+fn Walk t = update [[]]:
+    let &c = Front t
+    while ? ((ch, next)) <- ?Step &c:
+        &_ <= Push &_, ch
+        &c <= next
+
+# The byte index of every cursor the walk passes, the back included.
+Positions: fn Text -> [Nat]
+fn Positions t = update [[0]]:
+    let &c = Front t
+    while ? ((ignore, next)) <- ?Step &c:
+        &_ <= Push &_, (At next)
+        &c <= next
+
+# The characters that are letters `a` to `z`, counted by the walk.
+Ascii: fn Text -> Nat
+fn Ascii t = update 0:
+    let &c = Front t
+    while ? ((ch, next)) <- ?Step &c:
+        if 'a' <= ch and ch <= 'z': &_ += 1
+        &c <= next

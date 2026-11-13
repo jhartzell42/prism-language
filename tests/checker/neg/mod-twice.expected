@@ -1,0 +1,5 @@
+tests/checker/neg/mod-twice/app.prism:7: error[collision]: a second `mod Words`
+    mod Words
+    ^^^^^^^^^
+  fix: drop one of the two lines
+1 error

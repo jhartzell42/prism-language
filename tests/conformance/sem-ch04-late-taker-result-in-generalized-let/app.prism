@@ -1,0 +1,34 @@
+# A `let` of a lambda that closes over the plain result of a widget that takes a building
+# `if`'s late plain result, both written below it, used at two types, so the `let` is
+# generalized (Semantics ch. 4, "Binding groups and cycles"; Type System ch. 1). The arm
+# gives what its own widget gives, so the `if` is no pure choice and the taker is built
+# after it. Reaches `LateTakerResults`' marker "the late result `w` of a line that takes a
+# late name" on prismc-fd1.
+# Written by Claude (sweep-7, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Second: fn ((t, Nat)) -> Nat
+fn Second ((ignore, k)) = k
+
+@Twice: fn Nat -> @Nat
+fn @Twice k:
+    Ui.Label($text=$"twice {k}")
+    @ k * 2
+
+@Seven: @Nat
+@Seven:
+    Ui.Label($text=$"seven")
+    @ 7
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    let Wrap = \|x| ((x, w))
+    Ui.Label($text=$"{Second (Wrap 1)} {Second (Wrap "a")}")                     # 0
+    w <- @Twice n                                                      # 1
+    n <- if loud:
+        k <- @Seven                                                    # 2
+        @ k
+    else:
+        @ 20

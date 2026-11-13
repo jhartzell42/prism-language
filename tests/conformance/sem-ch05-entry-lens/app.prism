@@ -1,0 +1,46 @@
+# Jimmy's ruling on map entries (11 and 12 November; claude/rulings-since-the-bible.md):
+# named lenses are not special, and a lens may take or return an `Entry`. A lens to a
+# map's key gives back the entry, which `<:` sets and a read gives as a `?V`; a lens may
+# apply such a lens, and one may take an entry and give it back.
+# Written by Claude on the claude-lowering branch; subject to change.
+test mod Tests
+type Vm = record:
+    regs: (Text ==> Int)
+    steps: Nat
+derive ^Eq, ^Show
+
+&Acc: fn &(Text ==> Int) -> Entry Text Int
+fn &Acc &registers = &registers["acc"]
+
+# A lens over a lens that gives back an entry.
+&VmAcc: fn &Vm -> Entry Text Int
+fn &VmAcc &vm = &Acc &vm.regs
+
+Store: fn Vm, Int -> Vm
+fn Store vm, n = update vm:
+    &VmAcc &_ <: ? n
+
+Forget: fn Vm -> Vm
+fn Forget vm = update vm:
+    &VmAcc &_ <: nil
+
+?Read: fn Vm -> ?Int
+fn ?Read vm = update nil:
+    let &copy = vm
+    &_ <= &VmAcc &copy
+
+# The read, then the entry put from what was read.
+Bump: fn Vm -> Vm
+fn Bump vm = update vm:
+    if ? n <- &VmAcc &_:
+        &VmAcc &_ <: ? n + 1
+
+# A lens that takes an entry and gives it back.
+&Same: fn Entry Text Int -> Entry Text Int
+fn &Same &entry = &entry
+
+Mark: fn Vm, Text -> Vm
+fn Mark vm, name = update vm:
+    &Same &_.regs[name] <: ? 1
+
+let boot = Vm(regs={"acc": 7, "x": 5}, steps=2)

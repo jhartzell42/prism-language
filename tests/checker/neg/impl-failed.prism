@@ -1,0 +1,24 @@
+# `no-impl` and `may-not-end`: a definition that fails inference is skipped by the later
+# checks, and a failed impl's method is that impl's alone. `A`'s `Show` gives a number
+# where a text goes (no `^Num` for `Text`); `B`'s `Show` calls itself on what it was given and never ends, reported though
+# it shares the method with `A`'s; `C`'s shows its field, and checks clean.
+type A = choice:
+    MkA Nat
+derive ^Eq
+
+type B = choice:
+    MkB Nat
+derive ^Eq
+
+type C = choice:
+    MkC Nat
+derive ^Eq
+
+impl ^Show A:
+    fn Show a = 5
+
+impl ^Show B:
+    fn Show b = Show b
+
+impl ^Show C:
+    fn Show (MkC n) = Show n

@@ -1,0 +1,109 @@
+# `Window.Panes`, a child module of `Window`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r | Pane.* | Gui.*
+use Window.*
+use Window.Hosting.*
+use Window.Widgets.*
+use Window.Layout.*
+use Window.Hits.*
+
+# ---------------------------------------------------------------------------
+# The Pane family: leaves answer the inputs routed to them; containers hold their children in a
+# live field, their host's document as it is, `$(Path ==> $Elem)` (each child's element a
+# dynamic of its own; Jimmy, 6 November 2026), and answer with inputs addressed by a child's
+# path
+
+type Click = click
+
+type Routed = record:                  # an input for the place at `path`
+    path: Path
+    input: Input
+derive ^Eq, ^Show
+
+type Input = choice:
+    Clicked
+    Typed Key
+    Slid Nat                           # a slider pressed at this step
+    Inner Routed                       # for a place inside the container at `path`
+derive ^Eq, ^Show
+
+tag Pane.Label of Element unit:
+    $text: Text                        # live: new text, same label
+
+tag Pane.Button of Element !Click:
+    $label: Text
+
+tag Pane.TextInput of Element !Key:
+    name: Text                         # identity
+    $text: Text
+    $cursor: Nat
+
+tag Pane.Image of Element !Click:        # a picture on a painted cell, clickable: a chess square
+    $src: Text
+    $paint: Paint
+
+# A track with a knob, from `low` to `high` in whole steps: a press on the track answers the
+# step nearest it. The canvas Worlds send presses but no pointer motion, so there is no
+# dragging.
+tag Pane.Slider of Element !Nat:
+    $value: Nat
+    low: Nat
+    high: Nat
+
+type Align = choice:
+    Start
+    Middle
+    End
+    Stretch
+derive ^Eq, ^Show
+
+tag Pane.VBox of Element !Routed:        # a column with no spacing
+    $children: (Path ==> $Elem)
+
+tag Pane.HBox of Element !Routed:        # a row with no spacing
+    $children: (Path ==> $Elem)
+
+tag Pane.Row of Element !Routed:
+    spacing: Float                     # negative overlaps: a hand of cards
+    align: Align                       # across the row
+    $children: (Path ==> $Elem)
+
+tag Pane.Column of Element !Routed:
+    spacing: Float
+    align: Align
+    $children: (Path ==> $Elem)
+
+tag Pane.Layers of Element !Routed:      # children on top of each other, each at its frame's anchor
+    $children: (Path ==> $Elem)
+
+# A column drawn and hit only while `shown`; hidden, it takes no room, and its children
+# live on (their holds, a text box's text), so a dialog keeps what was typed in it.
+tag Pane.Shown of Element !Routed:
+    $shown: Bool
+    $children: (Path ==> $Elem)
+
+type FrameSpec = record:
+    pad: Float
+    ?width: Float
+    ?height: Float
+    ?aspect: Float                     # width over height
+    flex: Float                        # a share of a row's or column's free room; 0 takes its natural size
+    anchor: Point                      # in layers: where in the room, as fractions
+    offset: Point                      # in layers: and then how far, in points
+    turn: Float                        # degrees about the frame's centre
+    scale: Float
+    ?bg: Paint
+derive ^Eq, ^Show
+
+tag Pane.Frame of Element !Routed:
+    $spec: FrameSpec                   # live: a new padding or background, same frame
+    $children: (Path ==> $Elem)
+
+# children in rows of `columns`: each column as wide as its widest child, each row as tall as
+# its tallest, and each child laid out to fill its cell (a board's squares, a form's labels
+# and boxes)
+tag Pane.Grid of Element !Routed:
+    columns: Nat
+    $children: (Path ==> $Elem)
+
+let plain = FrameSpec 0.0, nil, nil, nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, nil

@@ -1,0 +1,19 @@
+tests/checker/neg/second-declaration.prism:7: error[collision]: a second signature for `Open`
+        Open: fn a -> Text
+        ^^^^^^^^^^^^^^^^^^
+tests/checker/neg/second-declaration.prism:11: error[collision]: a second field `left`
+        left: Text
+        ^^^^^^^^^^
+tests/checker/neg/second-declaration.prism:15: error[collision]: a second constructor `Heads`
+        Heads
+        ^^^^^
+tests/checker/neg/second-declaration.prism:18: error[collision]: a second constructor `Heads`: `Coin` has one
+        Heads
+        ^^^^^
+tests/checker/neg/second-declaration.prism:23: error[collision]: a second field `label`
+        $label: Nat
+        ^^^^^^^^^^^
+tests/checker/neg/second-declaration.prism:25: error[collision]: a second tag `Dial.Knob`
+    tag Dial.Knob of Element:
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+6 errors

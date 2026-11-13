@@ -1,0 +1,5 @@
+tests/checker/neg/forall-type-argument-without-forall.prism:12: error[unknown-name]: no type `b` here: a signature's variables are in scope in its body only under `forall`
+        ((first, second)): Make<<b>> second, first
+                                 ^
+  fix: write the signature as `forall a b. fn ((a, b)) -> ((b, a))`
+1 error

@@ -1,0 +1,18 @@
+# `may-not-end`: a `match` arm's bindings are seen only in that arm. The `Leaf` arm binds
+# its own `l`, a bigger tree, which relates to nothing the `Node` arm took apart, so
+# `Grow` calls itself on something no smaller and loops forever on a `Leaf`. `Total` takes
+# its tree apart per arm and checks clean.
+type Tree = choice:
+    Leaf Nat
+    Node Tree, Tree
+
+Grow: fn Tree -> Nat
+fn Grow t = match t:
+    Node l, r: Grow l
+    Leaf n:
+        let l = Node t, t
+        Grow l
+
+Total: fn Tree -> Nat
+fn Total (Leaf n) = n
+fn Total (Node l, r) = (Total l) + (Total r)

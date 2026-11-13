@@ -1,0 +1,5 @@
+tests/checker/neg/lifted-unbounded.prism:11: error[lifted-unbounded]: unbounded `Spin` lifted over `$n`; use `@Run`
+        let $m = Spin $n
+                 ^^^^^^^
+  fix: run it through `!done <- @Run Spin, ...`
+1 error

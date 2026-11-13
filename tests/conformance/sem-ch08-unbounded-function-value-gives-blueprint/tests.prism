@@ -1,0 +1,6 @@
+# The tests of sem-ch08-unbounded-function-value-gives-blueprint.
+emit Ui.*
+use App.*
+
+test it_builds, @Page:
+    build

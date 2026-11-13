@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 10 (a bare `Error(..)` where a `~T` is wanted is that `~T`'s failure): each place shows its message after `!`, the array's first element its number.
+test error_is_the_failure
+
+tick 0
+  added:
+    0: Ui.Label(text="!c !a 1!el !field")

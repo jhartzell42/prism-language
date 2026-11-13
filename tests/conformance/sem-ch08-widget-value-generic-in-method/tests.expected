@@ -1,0 +1,7 @@
+# Derived by hand from Semantics ch. 4 (a building `match`'s arm adds no path segment), ch. 8 (a blueprint is built at the applying block's next positions) and appendix B (`Show` of a text is its quoted form). Never run.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="first=7")
+    1: Ui.Label(text="first=\"a\"")

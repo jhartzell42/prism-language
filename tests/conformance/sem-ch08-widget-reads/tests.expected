@@ -1,0 +1,23 @@
+# Derived by hand: the label at 0 reads `$a` and the `let` `$both` over two widgets' results bound below it; each row of `@Rows` reads its `$label` parameter; the door's first value is asked at the build with the name its parameter holds there; `?Least` of a map keyed by texts is the value at "y". A click on the first Go changes `$a`, and every reader moves in that tick.
+test a_block_reads_its_widgets_results
+
+tick 0
+  added:
+    0: Ui.Label(text="a and ab")
+    1: Ui.Button(label="go a")
+    2: Ui.Button(label="go b")
+    3/[1]/0: Ui.Label(text="1 a")
+    3/[2]/0: Ui.Label(text="2 a")
+    4: Pad.Door(name="front")
+    5: Ui.Label(text="door 1 3")
+    6: Ui.Button(label="never")
+  result: "ab"
+
+tick 1
+  in:
+    1: click
+  changed:
+    0: Ui.Label(text="a! and a!b")
+    3/[1]/0: Ui.Label(text="1 a!")
+    3/[2]/0: Ui.Label(text="2 a!")
+  result: "a!b"

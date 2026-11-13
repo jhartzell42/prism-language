@@ -1,0 +1,14 @@
+# A `where` bound names a variable of the signature or of the impl's head: nothing decides
+# any other, so no call could choose its impl (Type System ch. 5: "`ambiguous`: nothing
+# decides `a` in `^Ord a`"). Written by Claude on the claude-bugs branch; subject to change.
+Keep: fn a -> a where b: ^Eq
+fn Keep x = x
+
+trait ^Shape a:
+    Area: fn a -> Nat
+
+type Square = record:
+    side: Nat
+
+impl ^Shape Square where q: ^Eq:
+    fn Area s = s.side * s.side

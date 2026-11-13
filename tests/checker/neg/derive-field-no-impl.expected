@@ -1,0 +1,5 @@
+tests/checker/neg/derive-field-no-impl.prism:9: error[no-impl]: `derive ^Show` on `Outer`, whose `i` is `Inner`, which has no `^Show`
+    type Outer = record:
+    ^^^^^^^^^^^^^^^^^^^^
+  fix: derive `^Show` on `Inner`, or drop the derive
+1 error

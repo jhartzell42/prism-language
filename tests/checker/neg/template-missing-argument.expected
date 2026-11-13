@@ -1,0 +1,4 @@
+tests/checker/neg/template-missing-argument.prism:10: error[mismatch]: `<@Quote>` needs `mark=`
+    <@Quote text={{t}}/>
+    ^^^^^^^^^^^^^^^^^^^^
+1 error

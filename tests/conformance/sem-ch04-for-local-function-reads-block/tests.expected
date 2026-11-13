@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 3 (`fn` defines a function in the block) and ch. 4 (`for`: a row per key at `[k]`, built after the tick that brings its key).
+test a_row_calls_the_blocks_function
+
+tick 0
+  added:
+    0: Ui.Button(label="more")
+    1/[1]/0: Ui.Label(text="ale 11")
+
+tick 1
+  in:
+    0: click
+  added:
+    1/[2]/0: Ui.Label(text="bun 12")

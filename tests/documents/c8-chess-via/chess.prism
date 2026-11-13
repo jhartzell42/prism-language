@@ -1,0 +1,90 @@
+# Chess as a document whose state rung is derived: `impl ^PerfectInformationGame
+# ChessGame` and `derive ^StateDocument via ^PerfectInformationGame for ChessGame` (Part
+# IV ch. 4; Part V ch. 9), hosted by the library's default `@InMemory`, the plan's step H3
+# (Part IV ch. 13; Part VII ch. 7, step C8's test). The protocol is Part IV ch. 3's,
+# written out; everything else is c6-chess-by-hand's, and so is the game it plays.
+# Rules and Notation are host-chess's, copied unchanged.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit rest | Seat.*
+use Documents.*
+use Rules.*
+use Notation.*
+use Games.*
+
+# ---- the game (Part V ch. 9): every position and every move
+
+type ChessGame = record:
+    positions: [Position]
+    moves: [Move]
+derive ^Eq, ^Show
+
+let fresh = ChessGame(positions=[[start]], moves=[[]])
+
+Now: fn ChessGame -> Position
+fn Now g = Or (?Last g.positions), start
+
+# why a move is not played (Part IV ch. 4, ruling NT): a value, never a sentence
+type ChessReason = choice:
+    NotYourMove
+    IllegalMove Move
+derive ^Eq, ^Show
+
+# ---- the protocol (Part IV ch. 3)
+
+type ChessQuery = choice:
+    Whole
+derive ^Eq, ^Show
+
+type ChessSeats rest = record:
+    $player: (Color ==> $@(@unit emit Seat.* ChessGame Player | rest))
+    $spectator: (Text ==> $@(@unit emit Seat.* ChessGame Spectator | rest))
+
+type ChessResults = record:
+    $player: (Color ==> unit)
+    $spectator: (Text ==> unit)
+
+impl ^Document ChessGame:
+    type Role = GameRole
+    type SeatId Player = Color
+    type SeatId Spectator = Text
+    type Request Player = Move
+    type Request Spectator = Never
+    type Reason Player = ChessReason
+    type Reason Spectator = Never
+    type Query r = ChessQuery
+    type Answer r = ChessGame
+    type Seats rest = ChessSeats rest
+    type Results = ChessResults
+    fn @HostSeats seats, Supply:
+        ((players, $playing)) <- @HostRole Player, seats.$player, Supply
+        ((spectators, $watching)) <- @HostRole Spectator, seats.$spectator, Supply
+        @ ((ChessResults($player=players, $spectator=spectators), Merge [[$playing, $watching]]))
+
+# ---- the game's five functions (Part V ch. 9), and the state rung derived from them
+
+impl ^PerfectInformationGame ChessGame:
+    type Side = Color
+    type Move = Move
+    type Reason = ChessReason
+    fn Turn g = (Now g).turn
+    fn Legal g, side, move = if side != (Now g).turn: ? NotYourMove else: match ?Played (Now g), move:
+        ? ignore: nil
+        nil: ? (IllegalMove move)
+    fn Play g, move = match ?Played (Now g), move:
+        ? next: ChessGame(positions=(Push g.positions, next), moves=(Push g.moves, move))
+        nil: g                                     # Legal has said yes before Play runs
+    fn Outcome g = if HasMove (Now g): nil else: if InCheck (Now g), (Now g).turn: ? (Won (Opponent (Now g).turn)) else: ? Drawn
+
+derive ^StateDocument via ^PerfectInformationGame for ChessGame
+
+# ---- the game as words, for the participants; the document never speaks
+
+Spelling: fn [Move] -> Text
+fn Spelling moves = if (Len moves) == 0: "none" else: Joined (Each moves, Spelled), " "
+
+StatusText: fn ChessGame -> Text
+fn StatusText game:
+    let now = Now game
+    let winner = Opponent now.turn
+    if HasMove now: "{now.turn} to move; moves: {Spelling game.moves}" else:
+        if InCheck now, now.turn: "checkmate, {winner} wins; moves: {Spelling game.moves}" else: "stalemate; moves: {Spelling game.moves}"

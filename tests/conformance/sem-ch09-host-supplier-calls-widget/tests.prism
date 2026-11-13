@@ -1,0 +1,8 @@
+# The calling supplier's tests: declarations of sem-ch09-host-supplier-calls-widget.
+emit Ui.* | Fs.*
+use App.*
+use Fs.*
+
+test supplier_calls_a_widget, @called:
+    build
+    click at 0/[0]/0

@@ -1,0 +1,94 @@
+# The lexer's test module: its checks and the helpers they need, which only
+# `prism test` and `prism check` read (claude/modules-style-pass.md).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Syntax.*
+use Syntax.Decls.*
+
+# The helpers of prismc's lexer checks (the checks below): each renders a text's
+# tokens in the layout corpus's notation, as `prismc --tokens` does.
+
+Toks: unbounded fn Text -> Text
+fn Toks src = RenderTokens (LexFile src).tokens
+
+Errs: unbounded fn Text -> Nat
+fn Errs src = Len (LexFile src).diags
+
+# Each diagnostic as `start-end message`, byte offsets.
+Diags: unbounded fn Text -> [Text]
+fn Diags src = Each (LexFile src).diags, \|d| "{d.span.start}-{d.span.end} {d.message}"
+
+# The checks.
+check words:
+    Toks "x" => "x\n"
+    Toks "let x = 1" => "let x = 1\n"
+    Toks "@$?draft Ui.Button Ui.*" => "@$?draft Ui.Button Ui.*\n"
+
+check layout:
+    Toks "a:\n    b\n    c\nd" => "a :\nopen b\nsep c\nclose\nsep d\n"
+
+check operators:
+    Toks "a -1 b - 1 x-?y" => "a -pre 1 b - 1 x -? y\n"
+    Toks "f((a, b))" => "f (·( a , b )·)\n"
+
+check texts:
+    Toks "\"hi \{x\} there\"" => "TEXT(hi \{x\} there)\n"
+    Errs "\"open" => 1
+
+# Regular expressions (Semantics ch. 2): the pattern as written between the delimiters,
+# then the replacement, then the flags.
+check regexes:
+    Toks "%/a/" => "REGEX(\"a\"/)\n"
+    Toks "%/a/ims" => "REGEX(\"a\"/ims)\n"
+    Toks "%/a\\/b/" => "REGEX(\"a\\\\/b\"/)\n"
+    Toks "%#/a/b/#" => "REGEX(\"a/b\"/)\n"
+    Toks "%##/a/#b/##i" => "REGEX(\"a/#b\"/i)\n"
+    Toks "%#/a\\/#" => "REGEX(\"a\\\\\"/)\n"
+    Toks "%/[a-z]\{2,3\}/" => "REGEX(\"[a-z]\{2,3\}\"/)\n"
+    Toks "$%/\\d+/" => "$REGEX(\"\\\\d+\"/)\n"
+    Toks "%/a/ == %/b/" => "REGEX(\"a\"/) == REGEX(\"b\"/)\n"
+
+# The one character after the letters that follow the pattern's closing slash.
+check regex_lookahead:
+    Toks "[[%/a/,%/b/]]" => "[·[ REGEX(\"a\"/) , REGEX(\"b\"/) ]·]\n"
+    Toks "f(%/a/i)" => "f ( REGEX(\"a\"/i) )\n"
+    Toks "%/a/i;" => "REGEX(\"a\"/i) ;\n"
+    Toks "(%/a/)" => "( REGEX(\"a\"/) )\n"
+    Toks "%/_/-/" => "REGEX(\"_\"/\"-\"/)\n"
+    Toks "%/a/b/" => "REGEX(\"a\"/\"b\"/)\n"
+    Toks "%/a//" => "REGEX(\"a\"/\"\"/)\n"
+    Toks "%/a/bc/im" => "REGEX(\"a\"/\"bc\"/im)\n"
+    Toks "%/x/-y z/" => "REGEX(\"x\"/\"-y z\"/)\n"
+    Toks "%/x/\\/\\\\/" => "REGEX(\"x\"/\"\\\\/\\\\\\\\\"/)\n"
+    Toks "%/x/$1/g" => "REGEX(\"x\"/\"$1\"/g)\n"
+    Toks "%/x/hello world/" => "REGEX(\"x\"/hello) world /\n"
+    Toks "%#/(\\w+) (\\w+)/#$2 $1/#" => "REGEX(\"(\\\\w+) (\\\\w+)\"/\"$2 $1\"/)\n"
+    Toks "%#/x/#hello world/#" => "REGEX(\"x\"/\"hello world\"/)\n"
+    Toks "%#/x/#i y" => "REGEX(\"x\"/i) y\n"
+    Toks "%#/x/# y" => "REGEX(\"x\"/) y\n"
+    Toks "%#/x/#,y" => "REGEX(\"x\"/) , y\n"
+
+# `%` is never an operator; a literal stays on its line.
+check regex_errors:
+    Errs "%/a/" => 0
+    Diags "5 % 3" => [["2-3 `%` is no operator: the remainder is `mod`, and `%` begins a regular expression only as `%/` or `%#/`"]]
+    Diags "%x" => [["0-1 `%` is no operator: the remainder is `mod`, and `%` begins a regular expression only as `%/` or `%#/`"]]
+    Diags "%" => [["0-1 `%` is no operator: the remainder is `mod`, and `%` begins a regular expression only as `%/` or `%#/`"]]
+    Diags "%##x" => [["0-3 a hashed regular expression opens with `%`, its hashes and `/`: `%#/.../#`"]]
+    Diags "%/abc" => [["0-5 a regular expression ends on its line: close its pattern with `/`"]]
+    Diags "%/ab\nc/" => [["0-4 a regular expression ends on its line: close its pattern with `/`"]]
+    Diags "%/ab\\" => [["0-5 a regular expression ends on its line: close its pattern with `/`"]]
+    Diags "%#/a/b" => [["0-6 a regular expression ends on its line: close its pattern with `/#`"]]
+    Diags "%##/a/#b" => [["0-8 a regular expression ends on its line: close its pattern with `/##`"]]
+    Diags "%/a/-b" => [["0-6 a regular expression ends on its line: close its replacement with `/`"]]
+    Diags "%/a/i2" => [["5-6 `2` touches the flags of a regular expression: the flags are letters, and no name character follows them"]]
+    Diags "%/a/b/i_" => [["7-8 `_` touches the flags of a regular expression: the flags are letters, and no name character follows them"]]
+    Errs "%/a/b" => 0
+    Errs "%/x/hello world/" => 0

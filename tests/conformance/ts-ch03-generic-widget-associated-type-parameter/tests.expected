@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 3 ("Associated types": `Move Chess` is `Step`) and Semantics ch. 8 (the widget's label is its caller's place 0). Never run: prismc-s4 refuses the program.
+test the_move_is_shown
+
+tick 0
+  added:
+    0: Ui.Label(text="step 3")

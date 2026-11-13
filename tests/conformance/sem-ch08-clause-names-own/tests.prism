@@ -1,0 +1,10 @@
+# The clause's own names' tests: declarations of sem-ch08-clause-names-own.
+emit Ui.*
+use App.*
+
+test the_clause_hears_its_own_button, @page:
+    build
+    click at 0
+        => expect Ui.Label(text="0 1")
+    click at 1
+        => expect Ui.Label(text="3 1")

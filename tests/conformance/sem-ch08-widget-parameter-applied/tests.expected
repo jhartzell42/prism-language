@@ -1,0 +1,9 @@
+# Derived by hand from Semantics ch. 8 (widget function applications are transparent: each application's places take the caller's next numbers).
+test a_parameter_applied_twice
+
+tick 0
+  added:
+    0: Ui.Label(text="top")
+    1: Ui.Label(text="row 1")
+    2: Ui.Label(text="row 2")
+    3: Ui.Label(text="bottom")

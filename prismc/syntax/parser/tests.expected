@@ -1,0 +1,37 @@
+check declarations
+1: ok
+2: ok
+3: ok
+
+check precedence
+1: ok
+2: ok
+3: ok
+4: ok
+
+check lambdas
+1: ok
+
+check widgets
+1: ok
+
+check tests
+1: ok
+
+check recovery
+1: ok
+2: ok
+3: ok
+
+check regexes
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+
+check entries
+1: ok
+2: ok
+3: ok

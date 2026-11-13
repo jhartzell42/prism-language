@@ -1,0 +1,37 @@
+# A bundle with a late plain part, named whole and given another name by a `let` below
+# the line that builds it (Type System ch. 2, "Bundles": a name binds the bundle whole;
+# Semantics ch. 4: `let` names a value; ch. 8: `<-` binds the child's result, and a
+# building `match`'s plain result is known once its arm is built). Written by Claude on
+# the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Choose: fn Mode -> @((Nat, !Click))
+fn @Choose mode:
+    n <- match mode:
+        Loud t:
+            Ui.Label($text=$"{t}")                                     # 0
+            @ 10
+        Soft:
+            @ 20
+    !go <- Ui.Button($label=$"go")                                     # 1, or 0
+    @ ((n, !go))
+
+@Named: fn Mode -> @((Nat, !Click))
+fn @Named mode:
+    both <- @Choose mode                                               # 0 and 1, or 0
+    let same = both
+    Ui.Label($text=$"named")                                           # 2, or 1
+    @ same
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    ((n, !go)) <- @Named mode                                          # 0 to 2, or 0 and 1
+    $gone <- 0 then $gone + n on !go
+    Ui.Label($text=$"n {n}, gone {$gone}")                             # 3, or 2

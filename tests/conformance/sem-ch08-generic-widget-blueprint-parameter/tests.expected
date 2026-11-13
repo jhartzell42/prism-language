@@ -1,0 +1,10 @@
+# Derived by hand, never run (prismc refuses the program): Semantics ch. 8 (a widget function's application is transparent, so the two calls' lines take positions 0 to 3 of the root) and Appendix B's `Show` (a number shows as its digits, a text quoted).
+test a_generic_widget_takes_a_blueprint
+
+tick 0
+  added:
+    0: Ui.Label(text="starts at 3")
+    1: Ui.Label(text="guest one")
+    2: Ui.Label(text="starts at \"three\"")
+    3: Ui.Label(text="guest two")
+    4: Ui.Label(text="one and two")

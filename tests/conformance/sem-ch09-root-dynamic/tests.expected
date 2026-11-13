@@ -1,0 +1,12 @@
+# Derived by hand from Semantics ch. 9 (a forwarding host is not there, under deeper paths; its result is its child's).
+test the_result_crosses_two_hosts
+
+tick 0
+  added:
+    0/[0/[0]/0]/0: Ui.Button(label="inc")
+  result: "0"
+
+tick 1
+  in:
+    0/[0/[0]/0]/0: click
+  result: "1"

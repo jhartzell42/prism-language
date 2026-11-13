@@ -1,0 +1,10 @@
+emit Ui.*
+use App.*
+
+test counter_counts, @counter:
+    build
+        => expect Ui.Label(text="Count: 0")
+    click Ui.Button(label="Increment")
+        => expect Ui.Label(text="Count: 1")
+    click Ui.Button(label="Increment"), click Ui.Button(label="Decrement")
+        => expect Ui.Label(text="Count: 0")

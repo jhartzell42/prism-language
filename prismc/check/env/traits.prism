@@ -1,0 +1,689 @@
+# `Check.Env.Traits`, a child module of `Check.Env`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+
+# ---------------------------------------------------------------------------------------
+# Coherence (ch. 3; ch. 5: impl headers unified pairwise per trait, before any body)
+# ---------------------------------------------------------------------------------------
+
+# The derived impls, from every `derive` line: structural, each type parameter bounded.
+DerivedImpls: fn G -> G
+fn DerivedImpls g = Fold (Keys g.types), g, \|gg, k| match gg.types[k]:
+    ? ti: Fold ti.derives, gg, \|g2, tr| match ?ResolveTrait g2, ti.home, (SplitOn tr, "."):
+        ? cls:
+            let im = ImplInfo(cls=cls, head=(TyCon ti.name, (Each ti.params, \|p| TyQ p)), qs=ti.params, bounds=(Each ti.params, \|p| ((p, cls))), home=ti.home, file=ti.file, span=ti.span, derived=True, assocs=[[]], methods=[[]])
+            update g2:
+                &_.impls <= Insert &_.impls, cls, (Push (Or &_.impls[cls], [[]]), im)
+        nil: g2
+    nil: gg
+
+# `derive ^Eq` (or `^Ord`, `^Show`) on a type a field of which holds a dynamic or an event,
+# below any layer of its own (a box's children, `$(Path ==> $Elem)`): refused, since a
+# dynamic has no `^Eq` (Type System ch. 2) and no trait has an impl at a sigiled type (T6),
+# so no program compares or shows one (doubt EQ).
+DerivedDynamics: fn G, St -> St
+fn DerivedDynamics g, st = Fold (Keys g.types), st, \|s, k| match g.types[k]:
+    ? ti:
+        let held = Filter ti.derives, \|d| HasText [["Eq", "Ord", "Show"]], (BareName d)
+        match ?FieldHolding ti.body:
+            ? f if (Len held) > 0: WithFile (ErrFix (WithFile s, ti.file), "derive-dynamic", ti.span, "`derive ^{BareName (Or held[0], "")}` on `{BareName ti.name}`, whose `{f}` holds a dynamic or an event, which does not compare or print", "drop the derive"), s.file
+            otherwise: s
+    nil: s
+
+# A derived `^Eq`, `^Ord` or `^Show` is structural (Type System ch. 3, "Derive, out loud"):
+# each field's type has the trait, the type's parameters given it as the derived impl's
+# bounds give it. A field whose type has none refuses the derive at the type's line
+# (`no-impl`), where the target compilers would refuse the derived code. A field holding a
+# dynamic or an event is `derive-dynamic`'s.
+DerivedFields: unbounded fn G, St -> St
+fn DerivedFields g, st = Fold (Keys g.types), st, \|s, k| match g.types[k]:
+    ? ti: if (?FieldHolding ti.body) != nil: s else: Fold ti.derives, s, \|s1, tr| match ?ResolveTrait g, ti.home, (SplitOn tr, "."):
+        ? cls: if HasText [["Eq", "Ord", "Show"]], (BareName cls): DeriveFieldsHave g, s1, ti, cls else: s1
+        nil: s1
+    nil: s
+
+DeriveFieldsHave: unbounded fn G, St, TyInfo, Text -> St
+fn DeriveFieldsHave g, st, ti, cls:
+    let inst = ParamInst ti.params, (Each ti.params, \|p| TyRigid p)
+    let fields = match ti.body:
+        BRecord fs: Each fs, \|((f, t))| ((f, "is", t))
+        BChoice cs: Fold cs, [[]], \|acc, ((c, ts))| Append acc, (Each ts, \|t| ((c, "holds", t)))
+        otherwise: [[]]
+    let givens = Each ti.params, \|p| ((p, cls))
+    let ?lacking = Fold fields, nil, \|?found, ((f, how, t))| match ?found:
+        ? x: ? x
+        nil:
+            let ft = SubstQ inst, t
+            let trial = update st:
+                &_.file <= ti.file
+                &_.diags <= [[]]
+                &_.wants <= [[Want(cls=cls, ty=ft, file=ti.file, span=ti.span, level=0)]]
+            let out = SolveWants g, trial, givens, False
+            if (Len out.diags) > 0 or (Len out.wants) > 0: ? ((f, how, ft)) else: nil
+    match ?lacking:
+        ? ((f, how, ft)):
+            let bare = BareName cls
+            let shown = ShowTy st, ft
+            WithFile (ErrFix (WithFile st, ti.file), "no-impl", ti.span, "`derive ^{bare}` on `{BareName ti.name}`, whose `{f}` {how} `{shown}`, which has no `^{bare}`", "derive `^{bare}` on `{shown}`, or drop the derive"), st.file
+        nil: st
+
+# The first field (or a choice's case) of a type's body whose type holds a dynamic or an
+# event.
+?FieldHolding: fn TyBody -> ?Text
+fn ?FieldHolding b = match b:
+    BRecord fs: Fold fs, nil, \|?found, ((f, t))| if ?found == nil and HoldsLayer t: ? f else: ?found
+    BChoice cs: Fold cs, nil, \|?found, ((c, ts))| if ?found == nil and Fold ts, False, \|h, t| h or HoldsLayer t: ? c else: ?found
+    otherwise: nil
+
+# Whether a type holds a `$` or `!` layer anywhere in its structure (not inside a named type,
+# whose own derive answers for it).
+HoldsLayer: fn Ty -> Bool
+fn HoldsLayer t = match t:
+    TySig "$", ignore: True
+    TySig "!", ignore: True
+    TySig ignore, i: HoldsLayer i
+    TyTuple ts: Fold ts, False, \|h, x| h or HoldsLayer x
+    TyArray e: HoldsLayer e
+    TyMap k, v: (HoldsLayer k) or HoldsLayer v
+    otherwise: False
+
+# Whether an element row's tags hold dynamics below their own live fields (a box's
+# `children: $(Path ==> $Elem)`): then its `Elem` neither compares nor prints (doubt EQ). A
+# row's open tail stands for tags no one knows, judged by the ones it names (Claude's, ET).
+RowHoldsDynamics: fn G, Rw -> Bool
+fn RowHoldsDynamics g, w = Fold (Values g.tags), False, \|h, tg| h or (tg.kind == "Element" and (HasText w.fams, tg.family) and (not (HasText w.minus, tg.name)) and Fold tg.fields, False, \|f, ((ignore, ft))| f or HoldsLayer (Unlive ft))
+
+# A tag field's type without its own live layer: `$T`'s `T`.
+Unlive: fn Ty -> Ty
+fn Unlive t = match t:
+    TySig "$", i: i
+    other: other
+
+Coherence: unbounded fn G, St -> St
+fn Coherence g, st = Fold (Keys g.impls), st, \|s, cls|
+    let impls = Or g.impls[cls], [[]]
+    let s2 = Fold impls, s, \|s1, i| CheckOrphan g, s1, i
+    Fold (Range0 (Len impls)), s2, \|s3, a| Fold (Range0 (Len impls)), s3, \|s4, b| if a < b: CheckPair g, s4, (Or impls[a], dummyImpl), (Or impls[b], dummyImpl) else: s4
+
+let dummyImpl = ImplInfo(cls="", head=TyErr, qs=[[]], bounds=[[]], home="", file=0, span=Range(start=0, end=0, origin=InSource), derived=False, assocs=[[]], methods=[[]])
+
+CheckPair: unbounded fn G, St, ImplInfo, ImplInfo -> St
+fn CheckPair g, st, a, b:
+    if not (HeadsMayMeet a.head, b.head): st
+    else: if a.file < b.file or (a.file == b.file and a.span.start <= b.span.start): CheckPairIn g, st, a, b
+    else: CheckPairIn g, st, b, a
+
+# Two heads with different constructors never unify: most pairs of a trait's impls. A head
+# that is no type (its own error is reported where it is written) is no impl to meet.
+HeadsMayMeet: fn Ty, Ty -> Bool
+fn HeadsMayMeet (TyCon x, ignore), (TyCon y, ignore) = x == y
+fn HeadsMayMeet TyErr, ignore = False
+fn HeadsMayMeet ignore, TyErr = False
+fn HeadsMayMeet ignore, ignore = True
+
+CheckPairIn: unbounded fn G, St, ImplInfo, ImplInfo -> St
+fn CheckPairIn g, st, a, b:
+    let s0 = update st:
+        &_.file <= b.file
+    let ((ta, s1)) = Instantiate s0, (Scheme(eqs=[[]], qs=a.qs, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=a.head)), b.span
+    let ((tb, s2)) = Instantiate s1, (Scheme(eqs=[[]], qs=b.qs, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=b.head)), b.span
+    let ((ok, s3)) = TryUnify s2, ta, tb, b.span
+    if not ok: st
+    else:
+        let same = (Len a.qs) == 0 and (Len b.qs) == 0 or (ShapeOf a.head) == (ShapeOf b.head)
+        let code = if same: "impl-duplicate" else: "impl-overlap"
+        let firstAt = SrcPlace (Or g.srcs[a.file], (MkSrc "?", "")), a.span.start
+        ErrFix s0, code, b.span, "a second impl of `^{BareName a.cls}` for `{ShowTy s0, b.head}`", "the first is at {firstAt}; keep one"
+
+# A head with its variables erased, to tell a duplicate from an overlap.
+ShapeOf: unbounded fn Ty -> Text
+fn ShapeOf t = match t:
+    TyQ ignore: "_"
+    TyCon n, args: "{n}({Join (Each args, ShapeOf), ","})"
+    TyTuple ts: "(({Join (Each ts, ShapeOf), ","}))"
+    TyArray e: "[{ShapeOf e}]"
+    TyMap k, v: "{ShapeOf k}==>{ShapeOf v}"
+    TySig s, i: "{s}{ShapeOf i}"
+    otherwise: "?"
+
+# No orphans (Semantics ch. 6): an impl stands in the trait's module or in a module that
+# declares a type its header mentions.
+CheckOrphan: unbounded fn G, St, ImplInfo -> St
+fn CheckOrphan g, st, i:
+    let traitMod = (Or g.traits[i.cls], dummyTrait).home
+    let owners = Each (TypeNamesIn i.head), \|n| (Or g.types[n], dummyTyInfo).home
+    if i.derived or i.home == traitMod or HasText owners, i.home: st
+    else:
+        let s = update st:
+            &_.file <= i.file
+        ErrFix s, "orphan", i.span, "{if i.home == "": "this file" else: "`{i.home}`"} declares neither `^{BareName i.cls}` nor `{ShowTy s, i.head}`", "wrap the type in a newtype of this module, or move the impl"
+
+let dummyTrait = TraitInfo(name="", home="", param="a", supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], assocDefaults=[[]], file=0, span=Range(start=0, end=0, origin=InSource))
+
+TypeNamesIn: unbounded fn Ty -> [Text]
+fn TypeNamesIn t = match t:
+    TyCon n, args: Fold args, [[n]], \|acc, a| UnionTexts acc, (TypeNamesIn a)
+    TyTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (TypeNamesIn a)
+    TyArray e: TypeNamesIn e
+    TyMap k, v: UnionTexts (TypeNamesIn k), (TypeNamesIn v)
+    TySig ignore, i: TypeNamesIn i
+    TyFn ignore, ps, r: Fold ps, (TypeNamesIn r), \|acc, a| UnionTexts acc, (TypeNamesIn a)
+    otherwise: [[]]
+
+# ---------------------------------------------------------------------------------------
+# Trait resolution (ch. 5, Traits)
+# ---------------------------------------------------------------------------------------
+
+# A trait's superclasses, closed: `^Ord` entails `^Eq`.
+SuperClosure: unbounded fn G, Text -> [Text]
+fn SuperClosure g, cls = SuperReach g, [[cls]], [[]]
+
+# The traits reached from `frontier` by `where`s, each once (a ring of traits ends here; it
+# is `trait-cycle`, `TraitCycles`).
+SuperReach: unbounded fn G, [Text], [Text] -> [Text]
+fn SuperReach g, frontier, seen = match frontier[0]:
+    nil: seen
+    ? cls:
+        if HasText seen, cls: SuperReach g, (Drop frontier, 1), seen
+        else: SuperReach g, (Append (Drop frontier, 1), (Or g.traits[cls], dummyTrait).supers), (Push seen, cls)
+
+# `trait-cycle`: a trait whose `where` reaches the trait itself asks, of every impl, for an
+# impl that asks for it (Type System ch. 3). Each trait of the ring says so; the tables
+# keep the `where`s (`SuperReach` reads each trait once), so a bound on one trait of the
+# ring still gives the others and nothing more is reported.
+TraitCycles: unbounded fn G, St -> St
+fn TraitCycles g, st = Fold (Keys g.traits), st, \|s, name|
+    let ti = Or g.traits[name], dummyTrait
+    match ?RingFrom g, name, ti.supers, [[name]]:
+        nil: s
+        ? ring: WithFile (ErrFix (WithFile s, ti.file), "trait-cycle", ti.span, "the trait `^{BareName name}` asks for itself: its `where` names a ring of traits, {Join (Each ring, \|r| "`^{BareName r}`"), ", "}", "drop the `where` of one trait of the ring"), s.file
+
+# `tag-variable`: a tag's type variable is bounded by `^Show` on the tag's line (Semantics
+# ch. 8's table, "tag variables: appear in the output; bounded by `^Show` on the line";
+# "Every field and every output prints"), by the bound itself or by one whose `where`s
+# reach `^Show`. Read once the traits are, so a bound's `where`s are known. The variables
+# are the output's.
+TagVariablesPrint: unbounded fn G, St -> St
+fn TagVariablesPrint g, st = Fold (Keys g.tags), st, \|s, name|
+    match g.tags[name]:
+        nil: s
+        ? tg: Fold tg.qs, s, \|s1, variable|
+            let prints = Fold tg.bounds, False, \|seen, ((bounded, cls))| seen or (bounded == variable and HasText (SuperClosure g, cls), "Prelude.Show")
+            # a variable of a field alone is `field-variable` already (`ConvTag`)
+            let inOutput = (SubstQ Inst(tys=(Insert {}, variable, TyErr), rows={}, cols={}), tg.out) != tg.out
+            if prints or not inOutput: s1
+            else: WithFile (ErrFix (WithFile s1, tg.file), "tag-variable", tg.span, "the type variable `{variable}` of the tag `{name}` has no `^Show` bound: every field and every output prints", "write `where {variable}: ^Show` on the tag's line"), s1.file
+
+# A tag's field prints (Semantics ch. 8's table, "tag fields: the outermost mark is the
+# field's kind; the type beneath prints"; "Every field and every output prints"): the type
+# beneath the field's marks has `^Show`. A field that holds elements, or dynamics of
+# elements, prints through its level, each child at its own place in the document, so no
+# `^Show` is asked of the element type (the books' own `$children: (Path ==> $Elem)`,
+# whose `Elem` has none by Type System ch. 2); so does a value of a row kind (`[Draw]`),
+# by its tags. A variable of the tag is `tag-variable`'s.
+# Read once the derived impls are known.
+TagFieldsPrint: unbounded fn G, St -> St
+fn TagFieldsPrint g, st = Fold (Keys g.tags), st, \|s, name| match g.tags[name]:
+    nil: s
+    ? tg: Fold (Range0 (Len tg.fields)), s, \|s1, i|
+        let ((ignore, fieldType)) = Or tg.fields[i], (("", TyErr))
+        let ((label, at)) = Or tg.fieldAt[i], (("", tg.span))
+        match ?Unprintable g, s1, fieldType:
+            nil: s1
+            ? ((bad, why, fix)):
+                let message = "the field `{label}` of the tag `{name}` does not print: no impl of `^Show` for `{ShowTy s1, bad}`{why}"
+                let there = WithFile s1, tg.file
+                WithFile (if fix == "": Err there, "no-impl", at, message else: ErrFix there, "no-impl", at, message, fix), s1.file
+
+# `fault-field`: a fault kind's fields are plain data (ruling TF: a fault holds typed
+# values). A fault leaves the tick it was made in, handed to a World and printed in a
+# transcript (Semantics ch. 10), and its fields are kept as plain data and read back at
+# their types, so a field that holds a dynamic, an event, a reference, a blueprint, an
+# element or a packed value has nothing to keep. A function is `no-impl` already: the
+# field does not print (`TagFieldsPrint`).
+FaultFieldsPlain: unbounded fn G, St -> St
+fn FaultFieldsPlain g, st = Fold (Keys g.tags), st, \|s, name| match g.tags[name]:
+    nil: s
+    ? tg:
+        if not (tg.kind == "Fault" or tg.kind == "Prelude.Fault"): s
+        else: Fold (Range0 (Len tg.fields)), s, \|s1, i|
+            let ((ignore, fieldType)) = Or tg.fields[i], (("", TyErr))
+            let ((label, at)) = Or tg.fieldAt[i], (("", tg.span))
+            match ?NotPlainData fieldType:
+                nil: s1
+                ? what: WithFile (ErrFix (WithFile s1, tg.file), "fault-field", at, "the field `{label}` of the fault kind `{name}` is no plain data: it holds {what}", "give the field the value as the fault is made, a type with no `$`, `!`, `@` or `any` in it"), s1.file
+
+# What a type holds that is no plain data, the first found; none for plain data.
+?NotPlainData: unbounded fn Ty -> ?Text
+fn ?NotPlainData t = match t:
+    TySig "$", ignore: ? "a dynamic"
+    TySig "!", ignore: ? "an event"
+    TySig "&", ignore: ? "a reference"
+    TySig ignore, inner: ?NotPlainData inner
+    TyAt ignore, ignore: ? "a blueprint"
+    TyElem ignore, ignore: ? "an element"
+    TyElemAny ignore: ? "an element"
+    TyAny ignore: ? "a packed value (`any`)"
+    TyTuple parts: ?FirstNotPlainData parts
+    TyArray element: ?NotPlainData element
+    TyMap k, v: ?FirstNotPlainData [[k, v]]
+    TyCon ignore, args: ?FirstNotPlainData args
+    otherwise: nil
+
+?FirstNotPlainData: unbounded fn [Ty] -> ?Text
+fn ?FirstNotPlainData parts = Fold parts, nil, \|?found, part| match ?found:
+    ? what: ? what
+    nil: ?NotPlainData part
+
+# The first part of a tag's field type that does not print, with what the message adds and
+# its fix; none when the type prints.
+?Unprintable: unbounded fn G, St, Ty -> ?((Ty, Text, Text))
+fn ?Unprintable g, st, t = match t:
+    TySig ignore, inner: ?Unprintable g, st, inner
+    TyAt inner, ignore: ?Unprintable g, st, inner
+    TyFn ignore, ignore, ignore: ? ((t, ": functions do not compare or print", ""))
+    TyTuple parts: ?FirstUnprintable g, st, parts
+    TyArray element: ?Unprintable g, st, element
+    TyMap k, v: ?FirstUnprintable g, st, [[k, v]]
+    TyCon "Prelude.NonEmpty", [[c]]: ?Unprintable g, st, c
+    TyAny traits: if Fold traits, False, \|seen, tr| seen or (HasText (SuperClosure g, tr), "Prelude.Show"): nil else: ? ((t, "", ""))
+    TyCon con, args:
+        if (BuiltinHas "Prelude.Show", con) or IsRowKind g, con: nil
+        else: match ?FindImpl g, st, "Prelude.Show", t:
+            ? ((wants, ignore, ignore, ignore)): ?FirstUnprintable g, st, (Fold wants, [[]], \|acc, ((wanted, cls))| if cls == "Prelude.Show": Push acc, wanted else: acc)
+            nil: ? ((t, "", "derive `^Show` on `{BareName con}`, or write `impl ^Show {BareName con}`"))
+    otherwise: nil
+
+# A row kind's values are its tags, which print by their fields, each checked here at its
+# own tag (as `Fault`'s do).
+IsRowKind: fn G, Text -> Bool
+fn IsRowKind g, con = match g.types[con]:
+    ? info: info.body == BRowKind
+    nil: False
+
+?FirstUnprintable: unbounded fn G, St, [Ty] -> ?((Ty, Text, Text))
+fn ?FirstUnprintable g, st, parts = Fold parts, nil, \|?found, part| match ?found:
+    ? f: ? f
+    nil: ?Unprintable g, st, part
+
+# The ring from `name` back to itself through `where`s: its traits in the order the
+# `where`s name them, `name` first; none when no path of `where`s comes back.
+?RingFrom: unbounded fn G, Text, [Text], [Text] -> ?[Text]
+fn ?RingFrom g, name, nexts, path = Fold nexts, nil, \|?found, next| match ?found:
+    ? ring: ? ring
+    nil:
+        if next == name: ? path
+        else: if HasText path, next: nil
+        else: ?RingFrom g, name, (Or g.traits[next], dummyTrait).supers, (Push path, next)
+
+WithFile: fn St, Nat -> St
+fn WithFile s, f = update s:
+    &_.file <= f
+
+# The traits the primitives and built-in formers have (Type System ch. 3, "The three built
+# in"): every primitive is `^Eq`, `^Ord`, `^Show`; the numbers are `^Num`; tuples, arrays,
+# maps, optionals and faults have what their parts have; elements compare and print.
+BuiltinHas: fn Text, Text -> Bool
+fn BuiltinHas cls, con:
+    let bare = BareName cls
+    if bare == "Num": con == "Nat" or con == "Int" or con == "U8" or con == "Float"
+    else: if bare == "Eq" or bare == "Show": (IsPrimType con) or con == "Fault" or con == "Prelude.Fault"
+    # A regular expression compares by its spelling and has no order (Type System ch. 2,
+    # RX-EQ).
+    else: if bare == "Ord": ((IsPrimType con) and not (IsRegexType con)) or con == "Fault" or con == "Prelude.Fault"
+    else: False
+
+# Solve the wanted constraints above `level` that can be solved now; keep the rest. With
+# `final`, flexible variables default (doubt LD) or are `ambiguous`.
+SolveWants: unbounded fn G, St, [((Text, Text))], Bool -> St
+fn SolveWants g, st, givens, final:
+    let s4 = SolveRounds g, (ResolvePacks st, final), givens, 0
+    if final: DefaultWants g, s4, givens else: s4
+
+# Each waiting `any e` (Type System ch. 5, "Existentials are dictionaries": "`any e` solves
+# the bounds at `e`'s type"): once the variable it gave is an existential, its bounds are
+# wanted at `e`'s type; one that met another type is a `mismatch`; with `final`, one that
+# met nothing is `ambiguous`.
+ResolvePacks: unbounded fn St, Bool -> St
+fn ResolvePacks st, final:
+    let cleared = update st:
+        &_.packs <= [[]]
+    let done = Fold st.packs, cleared, \|s, p| match Walk s, p.result:
+        TyAny trs: update s:
+            &_.wants <= Append &_.wants, (Each trs, \|tr| Want(cls=tr, ty=p.inner, file=p.file, span=p.span, level=&_.level))
+        TyFlex ignore:
+            if final: ErrFix (WithFile s, p.file), "ambiguous", p.span, "nothing decides which existential this `any` packs for", "say it where the value goes, as `let x: any ^Show = any ...`"
+            else: update s:
+                &_.packs <= Push &_.packs, p
+        TyErr: s
+        other: Err (WithFile s, p.file), "mismatch", p.span, "expected `{ShowTy s, other}`, found a packed value, `any ...`"
+    WithFile done, st.file
+
+# Solve until nothing changes: an impl's `where` clauses and a tuple's parts are new
+# constraints, solved in the next round.
+SolveRounds: unbounded fn G, St, [((Text, Text))], Nat -> St
+fn SolveRounds g, st0, givens, round:
+    let st = ResolveFields g, (RetryDeferred st0), False
+    let cleared = update st:
+        &_.wants <= [[]]
+    let ((keep, s2)) = Fold st.wants, (([[]], cleared)), \|((acc, s)), w|
+        let ((left, s3)) = SolveOne g, s, givens, w
+        (((Append acc, left), s3))
+    let s4 = update s2:
+        &_.wants <= Append keep, &_.wants
+    if s4.wants == st.wants or round > 6: s4 else: SolveRounds g, s4, givens, round + 1
+
+# The field accesses that waited for their record: read where the record is now known;
+# with `final`, one still unknown is `ambiguous`.
+ResolveFields: unbounded fn G, St, Bool -> St
+fn ResolveFields g, st, final:
+    let qs = st.fieldQs
+    let cleared = update st:
+        &_.fieldQs <= [[]]
+    let done = Fold qs, cleared, \|s, q| ResolveField g, s, q, final
+    WithFile done, st.file
+
+ResolveField: unbounded fn G, St, FieldQ, Bool -> St
+fn ResolveField g, st, q, final:
+    let s = WithFile st, q.file
+    match Walk s, q.recv:
+        TyCon n, args: match g.ctors[n]:
+            ? c:
+                let ?i = Fold (Range0 (Len c.fields)), nil, \|?at, k| if c.fields[k] == ? q.field: ? k else: ?at
+                match ?i:
+                    ? i:
+                        let ft = SubstQ (ParamInst c.params, args), (Or c.args[i], TyErr)
+                        FieldMarks (Unify s, q.result, ft, q.span), q, ft
+                    nil: Err s, "mismatch", q.span, "`{BareName n}` has no field `{q.field}`"
+            nil: Err s, "mismatch", q.span, "`{BareName n}` has no fields"
+        TyFlex ignore:
+            if final: ErrFix s, "ambiguous", q.span, "nothing decides which record `.{q.field}` reads: {Join (Each q.owners, \|o| "`{o}`"), ", "} have it", "annotate the value's type, or name it from a signature"
+            else: update s:
+                &_.fieldQs <= Push &_.fieldQs, q
+        TyErr: s
+        other: Err s, "mismatch", q.span, "`{ShowTy s, other}` has no field `{q.field}`"
+
+# A waiting field read's marks against the field's stack, now that its record is known
+# (gap FM), as `InferField` checks a read whose record was known.
+FieldMarks: unbounded fn St, FieldQ, Ty -> St
+fn FieldMarks st, q, ft = match q.?marks:
+    ? ((sigils, at)):
+        let stack = StackOf st, ft
+        if stack == sigils or ft == TyErr: st
+        else: ErrFix st, "mark-stack", at, "`.{sigils}{q.field}` has type `{ShowTy st, ft}`, whose stack is `{stack}`; the access shows `{sigils}`", "write `.{stack}{q.field}`"
+    nil: st
+SolveOne: unbounded fn G, St, [((Text, Text))], Want -> (([Want], St))
+fn SolveOne g, st, givens, w:
+    let t = Walk st, w.ty
+    let s0 = update st:
+        &_.file <= w.file
+    let Restore = \|s| WithFile s, st.file
+    match t:
+        TyFlex ignore: (([[w]], st))
+        TyErr: (([[]], st))
+        TyRigid v:
+            if (HasPrefix w.cls, "Range ") or w.cls == "Prelude.Sub" or w.cls == "Prelude.Signed": (([[]], st))
+            else: if Fold (Append givens, st.anyGivens), False, \|seen, ((gv, gc))| seen or (gv == v and HasText (SuperClosure g, gc), w.cls):
+                # the type hidden in an existential unpacked at a parameter (`e'N`)
+                if HasPrefix v, "e'":
+                    let bounds = Fold st.anyGivens, [[]], \|acc, ((gv, gc))| if gv == v: Push acc, "^{BareName gc}" else: acc
+                    (([[]], Restore (AskOfPacked g, (Solved s0, w, t, "given"), w, "any {Join bounds, " "}")))
+                else: (([[]], (Solved st, w, t, "given")))
+            else: (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{v}`", "add `where {v}: ^{BareName w.cls}` to the signature")))
+        TySig s, inner:
+            if (s == "?" or s == "~") and (HasText [["Eq", "Ord", "Show"]], (BareName w.cls)): (([[Want(cls=w.cls, ty=inner, file=w.file, span=w.span, level=w.level)]], (Solved st, w, t, "parts")))
+            else: (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy st, t}`", "no trait has an impl at a sigiled type (Type System ch. 3, T6); take the layer off first")))
+        # a non-empty collection compares and prints as the collection it is, by its parts;
+        # any other trait is asked of the non-empty type itself, a type of its own with the
+        # impls written for it (`impl ^Named [a]+`, Type System ch. 2, "Collections": there
+        # is no subtyping; an `[a]`'s impl would build an empty `[a]+` where the trait's
+        # type is a result)
+        TyCon "Prelude.NonEmpty", [[c]]:
+            if HasText [["Eq", "Ord", "Show"]], (BareName w.cls): (([[Want(cls=w.cls, ty=c, file=w.file, span=w.span, level=w.level)]], st))
+            else: SolveAtHead g, st, s0, Restore, givens, w, t
+        TyAt ignore, ignore: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy st, t}`")))
+        TyFn ignore, ignore, ignore: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy st, t}`: functions do not compare or print")))
+        otherwise: SolveAtHead g, st, s0, Restore, givens, w, t
+
+SolveAtHead: unbounded fn G, St, St, (fn St -> St), [((Text, Text))], Want, Ty -> (([Want], St))
+fn SolveAtHead g, st, s0, Restore, givens, w, t:
+    if (HasPrefix w.cls, "Range "): (([[]], Restore (LiteralRange s0, w, t)))
+    else: if w.cls == "Prelude.Sub" or w.cls == "Prelude.Signed": (([[]], Restore (SignedAt s0, w, t)))
+    else: SolveClass g, st, s0, Restore, givens, w, t
+
+# `literal-range` (ch. 5, Literals): a literal out of range for its final type.
+LiteralRange: unbounded fn St, Want, Ty -> St
+fn LiteralRange st, w, t:
+    let lit = DropPrefix w.cls, "Range "
+    let negative = (HasPrefix lit, "-")
+    let digits = if negative: AfterFirst lit else: lit
+    let ?n = ?ParseNat digits
+    match t:
+        TyCon "Nat", [[]]: if negative and digits != "0": Err st, "literal-range", w.span, "`{lit}` does not fit `Nat`" else: st
+        TyCon "U8", [[]]: match ?n:
+            ? v: if negative or v > 255: Err st, "literal-range", w.span, "`{lit}` does not fit `U8`" else: st
+            nil: st
+        otherwise: st
+
+# `-` is not `Nat`'s (round 47 NS, doubt NN's first ruling (a)): `nat-minus`.
+SignedAt: unbounded fn St, Want, Ty -> St
+fn SignedAt st, w, t = match t:
+    TyCon "Nat", [[]]: if w.cls == "Prelude.Sub": ErrFix st, "nat-minus", w.span, "`Nat - Nat`: write `-?` for a `?Nat`, or `Int n`", "write `a -? b` and handle its `nil`, or widen with `Int a`" else: st
+    TyCon "U8", [[]]: if w.cls == "Prelude.Sub": st else: st
+    otherwise: st
+
+SolveClass: unbounded fn G, St, St, (fn St -> St), [((Text, Text))], Want, Ty -> (([Want], St))
+fn SolveClass g, st, s0, Restore, givens, w, t:
+    let bare = BareName w.cls
+    let ?parts = match t:
+        TyTuple ts: ? ts
+        TyArray e: ? [[e]]
+        TyMap k, v: ? [[k, v]]
+        otherwise: nil
+    let structural = bare == "Eq" or bare == "Ord" or bare == "Show"
+    match ?parts:
+        ? ps:
+            if structural: (((Each ps, \|p| Want(cls=w.cls, ty=p, file=w.file, span=w.span, level=w.level)), (Solved st, w, t, "parts")))
+            # a tuple, an array or a map has the impls written for it (`impl ^Blank [a]
+            # where a: ^Blank`, Type System ch. 3), found as a named type's are
+            else: match ?FindImpl g, st, w.cls, t:
+                ? ((im, s2, how, ch)):
+                    let wants = Each im, \|((ty, cls))| Want(cls=cls, ty=ty, file=w.file, span=w.span, level=w.level)
+                    ((wants, (NoteImplUse g, (NoteChoice (Solved s2, w, t, how), w.file, w.span, w.cls, ch), w, t)))
+                nil: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
+        nil: match t:
+            TySig ignore, ignore: (([[]], st))
+            TyElem rw, ignore: ElemTrait g, st, s0, Restore, w, t, bare, rw
+            TyElemAny rw: ElemTrait g, st, s0, Restore, w, t, bare, rw
+            # a comparison takes two values of one type, and each existential hides a type
+            # of its own, so an `any` has no `^Eq` or `^Ord` (Jimmy, 9 November 2026)
+            TyAny trs if HasText (SuperClosure g, w.cls), "Prelude.Eq": (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`: each existential hides a type of its own, so two do not compare")))
+            TyAny trs: if (HasText trs, w.cls) or (Fold trs, False, \|seen, tr| seen or (HasText (SuperClosure g, tr), w.cls)): (([[]], Restore (AskOfPacked g, (Solved s0, w, t, "packed"), w, (ShowTy st, t)))) else: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
+            TyCon con, args:
+                if BuiltinHas w.cls, con: (([[]], (Solved st, w, t, "builtin")))
+                else: match ?FindImpl g, st, w.cls, t:
+                    ? ((im, s2, how, ch)):
+                        let wants = Each im, \|((ty, cls))| Want(cls=cls, ty=ty, file=w.file, span=w.span, level=w.level)
+                        ((wants, (NoteImplUse g, (NoteChoice (Solved s2, w, t, how), w.file, w.span, w.cls, ch), w, t)))
+                    nil:
+                        let fix = if (bare == "Num" and con == "Text") or (IsRegexType con): ""
+                        else: if con == "Prelude.NonEmpty": "write `impl ^{bare} {ShowTy st, t}`, or pass the collection it is, with `as {ShowTy st, (Or args[0], TyErr)}`"
+                        else: "derive `^{bare}` on `{BareName con}`, or write `impl ^{bare} {BareName con}`"
+                        (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`", fix)))
+            otherwise: (([[]], st))
+
+# `existential-method` (Jimmy's ruling EX, by Rust's rule for a `dyn` trait's methods): a
+# packed value keeps its own dictionary (Type System ch. 3, "Existentials"), so a method
+# is asked of one through a parameter of the trait's bare type and no other way. The
+# error is at the use, so the trait is still packed and its other methods asked: a want
+# made at a method's own use (`methodUses`) asks that method; any other want is a
+# function's bound, which may call every method of the trait and of the traits its
+# `where`s reach.
+AskOfPacked: unbounded fn G, St, Want, Text -> St
+fn AskOfPacked g, st, w, shown:
+    let fix = "ask it of a value whose type is known, before `any` packs it"
+    let ?own = match st.methodUses[UseKey w.file, w.span]:
+        ? method: if (MethodTrait g, method) == w.cls: ? method else: nil
+        nil: nil
+    match ?own:
+        ? method: match ?PackedRefusal g, st, method:
+            ? why: ErrFix st, "existential-method", w.span, "`{BareName method}` cannot be asked of the value packed in `{shown}`: {why}", fix
+            nil: st
+        nil: match ?TraitRefusal g, st, w.cls:
+            ? ((method, why)): ErrFix st, "existential-method", w.span, "`^{BareName w.cls}` is asked of the value packed in `{shown}` here, and its method `{BareName method}` cannot be asked of one: {why}", fix
+            nil: st
+
+# The trait a method is signed in.
+MethodTrait: fn G, Text -> Text
+fn MethodTrait g, method = match g.vals[method]:
+    ? v:
+        let ((ignore, cls)) = Or v.scheme.bounds[0], (("", ""))
+        if v.sort == "method": cls else: ""
+    nil: ""
+
+# The first method of a trait, or of a trait its `where`s reach, that a packed value
+# cannot be asked, with why.
+?TraitRefusal: unbounded fn G, St, Text -> ?((Text, Text))
+fn ?TraitRefusal g, st, cls = Fold (SuperClosure g, cls), nil, \|?found, tr| match ?found:
+    ? f: ? f
+    nil: match g.traits[tr]:
+        ? ti: Fold ti.methods, nil, \|?first, method| match ?first:
+            ? f: ? f
+            nil: match ?PackedRefusal g, st, method:
+                ? why: ? ((method, why))
+                nil: nil
+        nil: nil
+
+# Why a packed value cannot be asked a method, if it cannot: the method takes the trait's
+# type inside another type, gives it inside another type (an associated type `Unit a`
+# among them: the impl for a packed value has no type to give, `?PackedDefOf`), has a
+# type parameter of its own, or has no parameter of the trait's bare type.
+?PackedRefusal: unbounded fn G, St, Text -> ?Text
+fn ?PackedRefusal g, st, method = match g.vals[method]:
+    nil: nil
+    ? v:
+        let ((param, ignore)) = Or v.scheme.bounds[0], (("", ""))
+        let own = Filter v.scheme.qs, \|q| q != param
+        let erased = Inst(tys=(Insert {}, param, TyErr), rows={}, cols={})
+        let noValue = "it has no parameter of the trait's type `{param}`, so there is no packed value to read a dictionary from"
+        match v.scheme.ty:
+            TyFn ignore, params, result:
+                let ?inside = Fold params, nil, \|?found, p| match ?found:
+                    ? f: ? f
+                    nil: if p != (TyQ param) and (SubstQ erased, p) != p: ? p else: nil
+                let givesInside = result != (TyQ param) and (SubstQ erased, result) != result
+                match ?inside:
+                    ? p: ? "it takes the trait's type inside `{ShowTy st, p}`, and a collection of packed values has no one dictionary"
+                    nil:
+                        if givesInside: ? "it gives the trait's type inside `{ShowTy st, result}`, which a packed value's dictionary cannot hide again"
+                        else: match own[0]:
+                            ? q: ? "it has a type parameter of its own, `{q}`, and a packed value's dictionary holds one function for a method"
+                            nil: if Fold params, False, \|seen, p| seen or p == (TyQ param): nil else: ? noValue
+            otherwise: ? noValue
+
+# An element's `^Eq` and `^Show` are built in, unless its row's tags hold dynamics (doubt EQ).
+ElemTrait: unbounded fn G, St, St, (fn St -> St), Want, Ty, Text, Rw -> (([Want], St))
+fn ElemTrait g, st, s0, Restore, w, t, bare, rw:
+    if not (bare == "Eq" or bare == "Show"): (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
+    else: if RowHoldsDynamics g, (WalkRow st, rw): (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`: a tag of its row holds dynamics (a container's children, `$(Path ==> $Elem)`), which do not compare or print", "compare or show what the element holds, a field at a time")))
+    else: (([[]], (Solved st, w, t, "builtin")))
+
+# The one impl whose header matches, by one-way matching (T1): its `where` bounds as
+# wanted constraints on the matched types, and the choice the shrink check reads
+# (`NoteChoice`).
+?FindImpl: unbounded fn G, St, Text, Ty -> ?(([((Ty, Text))], St, Text, Text))
+fn ?FindImpl g, st, cls, t = Fold (Or g.impls[cls], [[]]), nil, \|?found, im| match ?found:
+    ? f: ? f
+    nil: match ?MatchHead im.head, (Zonk st, t), {}:
+        ? m: ? (((Each im.bounds, \|((v, c))| (((Or m[v], TyErr), c))), st, (ImplHow g, im), (ImplChoice im)))
+        nil: nil
+
+# A constraint an impl with type parameters solved, as a use of that impl for the
+# growth check (`GrowthCheck`; ruling PG): the impl's type parameters as the constraint's
+# type gives them, matched against the impl's head as `?FindImpl` matched it, in the
+# definition whose body wanted the constraint. A derived impl is one too: what it needs
+# in turn is read off its type's fields (`DerivedUses`).
+NoteImplUse: unbounded fn G, St, Want, Ty -> St
+fn NoteImplUse g, st, w, t = Fold (Or g.impls[w.cls], [[]]), st, \|s, im|
+    if (Len im.qs) == 0: s
+    else: match ?MatchHead im.head, (Zonk st, t), {}:
+        ? m: update s:
+            &_.genericUses <= Push &_.genericUses, GenericUse(user=st.definition, target=(GrowthKey im), file=w.file, span=w.span, types=(Each im.qs, \|q| ((q, (Or m[q], TyErr)))))
+        nil: s
+
+# An impl as a definition of the growth check's walk: a written one by where it stands,
+# a derived one by its trait and its type.
+GrowthKey: fn ImplInfo -> Text
+fn GrowthKey im = if im.derived: "derived:{im.cls}:{im.file}.{im.span.start}" else: ImplChoice im
+
+# An impl as a choice: a derived one by its type, a written one by where it stands.
+ImplChoice: fn ImplInfo -> Text
+fn ImplChoice im = match im.head:
+    TyCon n, ignore: if im.derived: "derived:{n}" else: "impl:{im.file}.{im.span.start}"
+    otherwise: if im.derived: "any" else: "impl:{im.file}.{im.span.start}"
+
+# Where an impl stands, for the typed output: `impl PATH:LINE` or `derived PATH:LINE`.
+ImplHow: fn G, ImplInfo -> Text
+fn ImplHow g, im:
+    let src = Or g.srcs[im.file], (MkSrc "?", "")
+    "{if im.derived: "derived" else: "impl"} {src.path}:{(CLineOf src.starts, im.span.start) + 1}"
+
+# A constraint solved, noted for the typed output and, but for a written or derived impl
+# (`?FindImpl` notes those), as the shrink check's choice: a given, a packed value, a
+# quantified `let` may be any impl; a built-in type or a former's parts none.
+Solved: fn St, Want, Ty, Text -> St
+fn Solved st, w, t, how:
+    let s2 = NoteImpl st, w.file, w.span, w.cls, t, how
+    if how == "given": NoteChoice s2, w.file, w.span, w.cls, (GivenChoice t)
+    else: if how == "packed" or how == "quantified": NoteChoice s2, w.file, w.span, w.cls, "any"
+    else: if how == "builtin" or how == "parts": NoteChoice s2, w.file, w.span, w.cls, "none"
+    else: s2
+
+# A want a given solved, for the shrink check: at a rigid variable it names it
+# (`given:a`; an impl's method calling its trait's method at a part of its head), and
+# reaches every definition as `any` does.
+GivenChoice: fn Ty -> Text
+fn GivenChoice (TyRigid v) = "given:{v}"
+fn GivenChoice ignore = "any"
+
+# The end of a definition (doubt LD): a variable whose constraints include `^Num` and lie
+# among `^Num`, `^Eq`, `^Ord`, `^Show` becomes `Int`; anything else left is `ambiguous`.
+DefaultWants: unbounded fn G, St, [((Text, Text))] -> St
+fn DefaultWants g, st, givens:
+    let flexVars = Fold st.wants, [[]], \|acc, w| match Walk st, w.ty:
+        TyFlex n: AddNat acc, n
+        otherwise: acc
+    let s2 = Fold flexVars, st, \|s, v|
+        let classes = Each (Filter s.wants, \|w| (Walk s, w.ty) == (TyFlex v)), \|w| BareName w.cls
+        let defaultable = (HasText classes, "Num") and Fold classes, True, \|ok, c| ok and ((HasText [["Num", "Eq", "Ord", "Show", "Sub", "Signed"]], c) or (HasPrefix c, "Range "))
+        if defaultable: update s:
+            &_.tys <= Insert &_.tys, v, tInt
+        else: s
+    let s3 = SolveWants g, s2, givens, False
+    let leftover = Filter s3.wants, \|w| (IsFlexVar s3, w.ty) and (not (HasPrefix w.cls, "Range ")) and w.cls != "Prelude.Sub" and w.cls != "Prelude.Signed"
+    let s4 = Fold leftover, s3, \|s, w|
+        let s5 = update s:
+            &_.file <= w.file
+        ErrFix s5, "ambiguous", w.span, "nothing decides `{ShowTy s, w.ty}` in `^{BareName w.cls} {ShowTy s, w.ty}`; annotate, or write a suffixed operator", "annotate the value's type"
+    update s4:
+        &_.wants <= [[]]
+        &_.file <= st.file

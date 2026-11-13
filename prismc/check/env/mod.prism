@@ -1,0 +1,318 @@
+# The checker's environment (Type System ch. 5, "What the checker knows before it
+# starts"): every module's header, its declarations by qualified name, what each file
+# reaches by a bare name (Semantics ch. 6, collisions an error at the use), the types with
+# their kinds, row kinds and tags with their outputs (each family a fixed map, ch. 2), the
+# traits with their methods and superclasses, the impls with coherence checked (one impl,
+# no orphans, no overlap; ch. 3), the prelude's declared signatures, and constructors.
+# Trait resolution (ch. 5, Traits) lives here too, since it reads the impls.
+#
+# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+emit r
+mod Names
+mod Reading
+mod Decls
+mod Traits
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+
+# ---------------------------------------------------------------------------------------
+# What the environment holds
+# ---------------------------------------------------------------------------------------
+
+type ModInfo = record:
+    name: Text
+    file: Nat
+    emitRw: Rw
+    rowVar: Text
+    uses: [((Text, Bool))]
+    root: Bool
+    tree: Module
+derive ^Eq, ^Show
+
+type TyBody = choice:
+    BRecord [((Text, Ty))]
+    BChoice [((Text, [Ty]))]
+    BRowKind
+    BAlias Ty
+    BOpaque
+    BPrim
+derive ^Eq, ^Show
+
+type TyInfo = record:
+    name: Text
+    home: Text
+    params: [Text]
+    body: TyBody
+    derives: [Text]
+    file: Nat
+    span: Range
+derive ^Eq, ^Show
+
+# A constructor: of a choice (`args` positional), a record (`fields` named too), a newtype
+# or a unit type. `ty` is the type it builds, over `TyQ` params.
+type CtorInfo = record:
+    name: Text
+    owner: Text
+    params: [Text]
+    args: [Ty]
+    fields: [Text]
+    ty: Ty
+    index: Nat
+derive ^Eq, ^Show
+
+type TagInfo = record:
+    name: Text
+    family: Text
+    kind: Text
+    out: Ty
+    qs: [Text]
+    rqs: [Text]
+    bounds: [((Text, Text))]
+    fields: [((Text, Ty))]
+    # Each field as its line writes it, marks and name (`$text`), and the line's place.
+    fieldAt: [((Text, Range))]
+    home: Text
+    file: Nat
+    span: Range
+derive ^Eq, ^Show
+
+type ValInfo = record:
+    qk: Text
+    scheme: Scheme
+    sort: Text
+    hasSig: Bool
+    home: Text
+    file: Nat
+    span: Range
+derive ^Eq, ^Show
+
+type TraitInfo = record:
+    name: Text
+    home: Text
+    param: Text
+    supers: [Text]
+    methods: [Text]
+    defaults: [Text]
+    assocs: [Text]
+    # The associated types the trait gives a default, each with the default over the
+    # trait's parameter (`type Item = a`).
+    assocDefaults: [((Text, Ty))]
+    file: Nat
+    span: Range
+derive ^Eq, ^Show
+
+type ImplInfo = record:
+    cls: Text
+    head: Ty
+    qs: [Text]
+    bounds: [((Text, Text))]
+    home: Text
+    file: Nat
+    span: Range
+    derived: Bool
+    assocs: [((Text, Ty))]
+    methods: [Text]
+derive ^Eq, ^Show
+
+# A definition whose body is checked.
+type DefBody = choice:
+    DbFn [FnClause]
+    DbLet LetDecl
+    DbWidget WidgetDecl
+    DbMethod [FnClause], Text, ImplInfo
+    DbDefault [FnClause], Text
+    DbCheck CheckDecl
+    DbTest TestDecl
+derive ^Eq, ^Show
+
+type Def = record:
+    qk: Text
+    name: Text
+    home: Text
+    file: Nat
+    span: Range
+    body: DefBody
+derive ^Eq, ^Show
+
+type G = record:
+    mods: (Text ==> ModInfo)
+    types: (Text ==> TyInfo)
+    ctors: (Text ==> CtorInfo)
+    tags: (Text ==> TagInfo)
+    families: (Text ==> [Text])
+    famOwner: (Text ==> Text)
+    vals: (Text ==> ValInfo)
+    traits: (Text ==> TraitInfo)
+    impls: (Text ==> [ImplInfo])
+    bare: (Text ==> (Text ==> [Text]))
+    bareTypes: (Text ==> (Text ==> [Text]))
+    bareTraits: (Text ==> (Text ==> [Text]))
+    # Each associated type, a type-level name of its trait's module (`Box.Item`), and its
+    # trait's key (Jimmy's ruling AK, as in Haskell).
+    assocNames: (Text ==> Text)
+    srcs: [Src]
+    defs: [Def]
+    programRow: Rw
+    elemFams: [Text]
+    ?rootModule: Text
+    appRoot: Bool
+    fnAt: (Text ==> Nat)
+    preludeFrom: Nat
+derive ^Eq, ^Show
+
+# The primitive types (the runtimes' own; prelude.prism declares none of them).
+# The two opaque types of the regular-expression literals (Type System ch. 2).
+IsRegexType: fn Text -> Bool
+fn IsRegexType n = n == "Regex" or n == "RegexReplacement"
+
+IsPrimType: fn Text -> Bool
+fn IsPrimType n = HasText [["Bool", "unit", "Char", "Text", "Nat", "Int", "U8", "Float", "Path", "Duration", "Cursor", "Regex", "RegexReplacement"]], n
+
+QualKey: fn Text, Text -> Text
+fn QualKey m, name = if m == "": name else: "{m}.{name}"
+
+Dotted: fn [Text] -> Text
+fn Dotted parts = Join parts, "."
+
+SNameKey: fn SName -> Text
+fn SNameKey n = "{n.sigils}{Dotted n.path}"
+
+DefNameText: fn DefName -> Text
+fn DefNameText (DefSName n) = SNameKey n
+fn DefNameText (DefOp o, ignore) = o
+
+DefNameSpan: fn DefName -> Range
+fn DefNameSpan (DefSName n) = n.span
+fn DefNameSpan (DefOp ignore, r) = r
+
+# A named lens's name where it is used (Semantics ch. 5; ruling LN): `&`, then an uppercase
+# name under whatever marks its part shows (`&Acc`, `&?Second`, `&Board.Acc`).
+IsLensName: fn SName -> Bool
+fn IsLensName n = (HasPrefix n.sigils, "&") and IsUpperText (Or (?Last n.path), "")
+
+# A named lens applied, `&Acc r` (appendix A.6: `ref ::= .. | "&" uname ref`): the lens's
+# name and its one argument.
+?LensApplied: fn Expr -> ?((SName, Expr))
+fn ?LensApplied e = match e.kind:
+    ECall callee, args, ignore, ignore: match callee.kind:
+        EName n: match args[0]:
+            ? a: if (IsLensName n) and (Len args) == 1: ? ((n, a.value)) else: nil
+            nil: nil
+        otherwise: nil
+    otherwise: nil
+
+IsLowerText: fn Text -> Bool
+fn IsLowerText t = IsLower (Head t)
+
+IsUpperText: fn Text -> Bool
+fn IsUpperText t = IsUpper (Head t)
+
+# ---------------------------------------------------------------------------------------
+# Building the environment
+# ---------------------------------------------------------------------------------------
+
+# The program's files, parsed: the environment, and the diagnostics of every declaration.
+BuildG: unbounded fn [Src], [Module] -> ((G, St))
+fn BuildG srcs, trees:
+    let g0 = G(mods={}, types={}, ctors={}, tags={}, families={}, famOwner={}, vals={}, traits={}, impls={}, bare={}, bareTypes={}, bareTraits={}, assocNames={}, srcs=srcs, defs=[[]], programRow=emptyRow, elemFams=[[]], ?rootModule=nil, appRoot=(AppRoot srcs, trees), fnAt={}, preludeFrom=(Len trees))
+    let st0 = NewSt 0
+    let ((g1, st1)) = Fold (Range0 (Len trees)), ((g0, st0)), \|((g, st)), i| AddModule g, st, i, (Or trees[i], emptyModule)
+    let g2 = AddBuiltins g1
+    let ((g3, st3)) = Fold (Keys g2.mods), ((g2, st1)), \|((g, st)), m| CollectNames g, st, m
+    let g4 = update g3:
+        &_.programRow <= ProgramRow &_
+    let ((g6, st6)) = Fold (Keys g4.mods), ((g4, st3)), \|((g, st)), m| BuildTables g, st, m
+    let ((g6a, st6a)) = ConvertAliases g6, st6
+    let ((g6b, st6b)) = Fold (Keys g6a.mods), ((g6a, st6a)), \|((g, st)), m| ConvertTypes g, st, m
+    let ((g7, st7)) = Fold (Keys g6b.mods), ((g6b, st6b)), \|((g, st)), m| ConvertDecls g, st, m
+    let st7a = TagVariablesPrint g7, (TraitCycles g7, st7)
+    let g8 = DerivedImpls g7
+    let st8 = FaultFieldsPlain g8, (TagFieldsPrint g8, (Coherence g8, (DerivedFields g8, (DerivedDynamics g8, st7a))))
+    # here, so that lowering, which builds the tables again, reads the defaults too
+    ImplDefaults g8, st8
+
+let emptyModule = Module(?name=nil, ?emitRow=nil, mods=[[]], uses=[[]], decls=[[]], ?template=nil, span=Range(start=0, end=0, origin=InSource))
+
+ModName: fn Module -> Text
+fn ModName m = match m.?name:
+    ? q: Dotted q.path
+    nil: ""
+
+# Whether `App` names the root (claude/modules-style-pass.md, doubt RA): the program's root
+# is a tree's `app.prism` (its file read as a tree's, not loose), and no module is named
+# `App`. A child module reaches the root's declarations by `use App.*` or `App.Name`, as a
+# Rust module names the crate root's by `crate::`; a loose root file stays out of reach
+# (Semantics ch. 6: nothing can `use` a root file).
+AppRoot: fn [Src], [Module] -> Bool
+fn AppRoot srcs, trees = Fold (Range0 (Len trees)), False, \|seen, i|
+    let t = Or trees[i], emptyModule
+    let name = ModName t
+    if name == "App": False
+    else: if name == "" and (SegAt (Or srcs[i], (MkSrc "", "")), 0).role != "loose": True
+    else: seen
+
+# A `use` line's module, `App` read as the root's `""` when it names the root.
+UseName: fn G, Text -> Text
+fn UseName g, u = if g.appRoot and u == "App": "" else: u
+
+# A qualified name's module, likewise.
+QualModule: fn G, [Text] -> Text
+fn QualModule g, parts = UseName g, (Dotted parts)
+
+AddModule: fn G, St, Nat, Module -> ((G, St))
+fn AddModule g, st, i, tree:
+    let name = ModName tree
+    let s = update st:
+        &_.file <= i
+    if HasKey g.mods, name:
+        let what = if name == "": "two files have no `module` line" else: "two files declare `module {name}`"
+        ((g, (Err s, "collision", tree.span, what)))
+    else:
+        let info = ModInfo(name=name, file=i, emitRw=emptyRow, rowVar="", uses=(Each tree.uses, \|u| (((UseName g, (Dotted u.target.path)), u.star))), root=(name == ""), tree=tree)
+        let g2 = update g:
+            &_.mods <= Insert &_.mods, name, info
+            if name == "":
+                &_.rootModule <= ? ""
+        ((g2, s))
+
+HasKey: fn (Text ==> a), Text -> Bool
+fn HasKey m, k = match m[k]:
+    ? ignore: True
+    nil: False
+
+# The builtins with no declaration: `True` and `False`, `never`, the block-local types'
+# makers (Semantics ch. 5) and the `Elem` existential.
+AddBuiltins: fn G -> G
+fn AddBuiltins g:
+    let BoolCtor = \|n, i| CtorInfo(name=n, owner="Bool", params=[[]], args=[[]], fields=[[]], ty=tBool, index=i)
+    let pre = Scheme(eqs=[[]], qs=[["a"]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(TySig "!", (TyQ "a")))
+    let numbered = Mono (TyFn CBound, [[tNat]], (TyCon "Buffer", [[tNat]]))
+    let bufEmpty = Scheme(eqs=[[]], qs=[["a"]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(TyCon "Buffer", [[TyQ "a"]]))
+    let tabEmpty = Scheme(eqs=[[]], qs=[["k", "v"]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(TyCon "Table", [[TyQ "k", TyQ "v"]]))
+    update g:
+        &_.ctors <= Insert (Insert &_.ctors, "True", (BoolCtor "True", 0)), "False", (BoolCtor "False", 1)
+        &_.vals <= Insert &_.vals, "Prelude.never", (Builtin "Prelude.never", pre)
+        &_.vals <= Insert &_.vals, "Buffer.Numbered", (Builtin "Buffer.Numbered", numbered)
+        &_.vals <= Insert &_.vals, "Buffer.Empty", (Builtin "Buffer.Empty", bufEmpty)
+        &_.vals <= Insert &_.vals, "Table.Empty", (Builtin "Table.Empty", tabEmpty)
+
+Builtin: fn Text, Scheme -> ValInfo
+fn Builtin qk, sc = ValInfo(qk=qk, scheme=sc, sort="builtin", hasSig=True, home="Prelude", file=0, span=Range(start=0, end=0, origin=InSource))

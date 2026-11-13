@@ -1,0 +1,9 @@
+tests/checker/neg/bound-on-no-variable.prism:4: error[ambiguous]: nothing decides `b` in `^Eq b`: the signature names no `b`
+    Keep: fn a -> a where b: ^Eq
+                          ^^^^^^
+  fix: bound a variable of the signature, or drop the bound
+tests/checker/neg/bound-on-no-variable.prism:13: error[ambiguous]: nothing decides `q` in `^Eq q`: the impl's head names no `q`
+    impl ^Shape Square where q: ^Eq:
+                             ^^^^^^
+  fix: bound a variable of the head, or drop the bound
+2 errors

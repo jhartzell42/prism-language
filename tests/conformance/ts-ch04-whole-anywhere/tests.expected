@@ -1,0 +1,38 @@
+# Derived by hand from Type System ch. 4 and Semantics ch. 7: the label's text is the count
+# through `Wrap`'s dynamic; the hold takes the count as the Keep tick opened, so a tick
+# that clicks Inc and Keep keeps the count before the click.
+test in_an_element_argument
+
+tick 0
+  added:
+    0: Ui.Button(label="Inc")
+    1: Ui.Label(text="first 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="first 1")
+
+test in_a_hold_step
+
+tick 0
+  added:
+    0: Ui.Button(label="Inc")
+    1: Ui.Button(label="Keep")
+    2: Ui.Label(text="kept 0")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  in:
+    1: click
+  changed:
+    2: Ui.Label(text="kept 1")
+
+tick 3
+  in:
+    0: click
+    1: click

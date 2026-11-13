@@ -1,0 +1,7 @@
+# The tests of ts-ch02-generic-function-value (Type System chapter 2).
+emit Ui.*
+use App.*
+
+test generic_function_value, @main:
+    build
+        => expect Ui.Label(text="Pair(left=\"b\", right=1)")

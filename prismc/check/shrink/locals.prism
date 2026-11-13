@@ -1,0 +1,350 @@
+# `Check.Shrink.Locals`, a child module of `Check.Shrink`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Shrink.*
+use Check.Shrink.Types.*
+use Check.Shrink.Calls.*
+use Check.Shrink.Relations.*
+use Check.Shrink.Walk.*
+use Check.Shrink.Summaries.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Expr.*
+use Check.Expr.Operators.*
+use Check.Expr.Calls.*
+use Check.Expr.Patterns.*
+use Check.Expr.Lifting.*
+use Check.Expr.Lets.*
+use Check.Blocks.*
+use Check.Blocks.Structure.*
+use Check.Blocks.Borrows.*
+use Check.Typed.*
+use Check.Typed.Print.*
+use Check.*
+use Check.Passes.*
+use Check.Passes.Cycles.*
+use Check.Passes.Borrows.*
+
+# ---- Pick LF. A local `fn` or widget is a definition of the shrink check too. This
+# never ends, and nothing global is on its cycle:
+#
+#     fn Grow n:
+#         fn Spin k = Spin k
+#         Spin n
+#
+# A call of a local is never a global's (pick RN), so `Spin k` was an edge to nothing.
+# Each local, every clause of it at any depth of a definition's body (`fn` lines of one
+# name in one block are one local), is a definition keyed by where it stands, its walk
+# starting from the relations where it is written less what they say of names (a captured
+# name is no parameter of the local) and its own parameters'. A call of a name that means
+# that local where it stands (`lfn:NAME`, by where the block's first clause of it starts)
+# is a call of it. A local's calls of globals stay where they were, read in place as the
+# enclosing definition's (its captured names related to the enclosing parameters), so the
+# local's own graphs are its calls of locals; a cycle among locals is cleared when the
+# enclosing definition is `unbounded fn`.
+WithLocals: unbounded fn Shrink, [((Def, Text, Text, (Text ==> Rel), ?FnClause, ?WidgetDecl))] -> Shrink
+fn WithLocals sk, found:
+    let ((bases, owners, clauses, wdecls)) = Fold found, (({}, {}, {}, {})), \|((bs, os, cs, ws)), ((d, gk, n, m, ?c, ?w))|
+        let qk = LocalKey n, d.qk, gk
+        let bs2 = if HasKey bs, qk: bs else: Insert bs, qk, (Marks m)
+        let os2 = Insert os, qk, d.qk
+        let cs2 = match ?c:
+            ? c: Insert cs, qk, (Push (Or cs[qk], [[]]), c)
+            nil: cs
+        let ws2 = match ?w:
+            ? w: Insert ws, qk, ((d, w))
+            nil: ws
+        ((bs2, os2, cs2, ws2))
+    let fnDefs = Fold (Keys clauses), [[]], \|acc, qk| match ((owners[qk], clauses[qk])):
+        ((? oq, ? cl)): match sk.byKey[oq]:
+            ? d: Push acc, Def(qk=qk, name=(Or (SplitOn qk, " #")[0], qk), home=d.home, file=d.file, span=d.span, body=(DbFn cl))
+            nil: acc
+        otherwise: acc
+    let wDefs = Fold (Keys wdecls), [[]], \|acc, qk| match wdecls[qk]:
+        ? ((d, w)): Push acc, Def(qk=qk, name=(SNameKey w.name), home=d.home, file=d.file, span=w.span, body=(DbWidget w))
+        nil: acc
+    let locals = Append fnDefs, wDefs
+    update sk:
+        &_.fns <= Append &_.fns, locals
+        &_.byKey <= Fold locals, &_.byKey, \|m, d| Insert m, d.qk, d
+        &_.localOf <= owners
+        &_.localBase <= bases
+
+# A local's key: its name, the top-level definition that holds it, where its block's
+# first clause of it stands (`FILE.START`).
+LocalKey: fn Text, Text, Text -> Text
+fn LocalKey n, owner, gk = "{n} #local {owner} {gk}"
+
+# A top-level definition's references (`DefRefs`) and every local `fn` clause and local
+# widget its body holds, at any depth, from one walk: each local with where its name's
+# block group stands, its name, and the relations where it is written.
+DefWalk: unbounded fn Shrink, Def -> ((Text, [Text], [((Def, Text, Text, (Text ==> Rel), ?FnClause, ?WidgetDecl))]))
+fn DefWalk sk, d:
+    let ((refs, locals)) = Fold (DefClauses d), (([[]], [[]])), \|((rs, ls)), c|
+        let spots = BodySpots c.body, (ClauseBase sk, d, c)
+        (((SpotsRefs sk, d, spots, rs), (Fold spots, ls, \|a2, sp| Append a2, (SpotLocal d, sp))))
+    ((d.qk, refs, locals))
+
+SpotLocal: fn Def, Spot -> [((Def, Text, Text, (Text ==> Rel), ?FnClause, ?WidgetDecl))]
+fn SpotLocal d, sp = match sp:
+    SpotStmt s, m: match s.kind:
+        SFn f:
+            let n = DefNameText f.name
+            match m["lfn:{n}"]:
+                ? r: [[((d, "{d.file}.{r.param}", n, m, (? f), nil))]]
+                nil: [[]]
+        SWidget w:
+            let n = SNameKey w.name
+            match m["lfn:{n}"]:
+                ? r: [[((d, "{d.file}.{r.param}", n, m, nil, (? w)))]]
+                nil: [[]]
+        otherwise: [[]]
+    otherwise: [[]]
+
+# The local a site calls, when its name means one where it stands (pick LF).
+?LocalTarget: fn Shrink, Def, Site -> ?Text
+fn ?LocalTarget sk, d, site = match site.rels["lfn:{site.callee}"]:
+    ? r: ? (LocalKey site.callee, (Or sk.localOf[d.qk], d.qk), "{d.file}.{r.param}")
+    nil: nil
+
+# The relations a clause's walk starts from: its module's seeds, its parameters'.
+ClauseBase: unbounded fn Shrink, Def, FnClause -> (Text ==> Rel)
+fn ClauseBase sk, d, c:
+    let base = match sk.localBase[d.qk]:
+        ? b: ParamRelsOn b, c.params
+        nil: ParamRelsOn (Insert (Or sk.seeds[d.home], {}), "file:", Rel(param=d.file, strict=False)), c.params
+    NonEmptyParams sk, d, c, base
+
+# A parameter the signature types `[a]+` or `(K ==> V)+` is known non-empty from the
+# clause's first line (`ne:`, as a pattern that took an element shows; Type System ch. 2,
+# "Collections").
+NonEmptyParams: fn Shrink, Def, FnClause, (Text ==> Rel) -> (Text ==> Rel)
+fn NonEmptyParams sk, d, c, base = match sk.g.vals[d.qk]:
+    ? v: match v.scheme.ty:
+        TyFn ignore, declared, ignore: Fold (Range0 (Len c.params)), base, \|m, i| match ((c.params[i], declared[i])):
+            ((? p, ? (TyCon "Prelude.NonEmpty", ignore))): match p.kind:
+                PName n: Insert m, "ne:{SNameKey n}", noRel
+                otherwise: m
+            otherwise: m
+        otherwise: base
+    nil: base
+
+# The key a site's name calls: an operator by its spelling, as inference reads it; a
+# template call's `<@Name` as `@Name`, else `Name`, as lowering reads it.
+?ResolveCallee: fn G, Text, Text -> ?Text
+fn ?ResolveCallee g, m, n = if IsOpText n: ?ResolveOp g, m, n else: match ?ResolveName g, m, n:
+    ? k: ? k
+    nil: if (HasPrefix n, "@"): ?ResolveName g, m, (AfterFirst n) else: nil
+
+?ResolveOp: fn G, Text, Text -> ?Text
+fn ?ResolveOp g, m, op:
+    let ((?k, ignore)) = ResolveValue g, m, (SName(sigils="", path=[[op]], span=Range(start=0, end=0, origin=InSource)))
+    ?k
+
+# An operator's spelling: no letter in it.
+IsOpText: fn Text -> Bool
+fn IsOpText n = (Len n) > 0 and not (FoldChars n, False, \|seen, ch| seen or (IsUpper ch) or (IsLower ch) or ch == "_")
+
+?ResolveName: fn G, Text, Text -> ?Text
+fn ?ResolveName g, m, n:
+    let marks = MarksOf n
+    let path = SplitOn (DropPrefix n, marks), "."
+    let ((?k, ignore)) = ResolveValue g, m, (SName(sigils=marks, path=path, span=Range(start=0, end=0, origin=InSource)))
+    ?k
+
+# Every name a statement mentions, at any depth (`CheckBlocks.DepOrder` reads it too).
+NamesInStmt: unbounded fn Stmt -> [Text]
+fn NamesInStmt s = SpotsNames (StmtSpots s, {})
+
+# Strongly connected components with a cycle (Kosaraju's two passes, from memory): a
+# depth-first post-order over the graph, then the reversed graph read in the reverse of
+# that order, each new root collecting its component. A component counts when it has two
+# definitions or one that names itself.
+Sccs: unbounded fn [Text], [((Text, [Text]))] -> [ [Text] ]
+fn Sccs keys, refs:
+    let adj = Fold refs, {}, \|m, ((k, rs))| Insert m, k, rs
+    let rev = Fold refs, {}, \|m, ((k, rs))| Fold rs, m, \|m2, r| Insert m2, r, (Push (Or m2[r], [[]]), k)
+    let ((ignore, post)) = Fold keys, (({}, [[]])), \|((seen, out)), k| PostVisit adj, seen, out, k
+    let ((ignore2, comps)) = Fold (Reverse2 post), (({}, [[]])), \|((seen, acc)), k|
+        if HasKey seen, k: ((seen, acc))
+        else:
+            let ((seen2, comp)) = Collect rev, seen, [[]], k
+            ((seen2, (Push acc, comp)))
+    Filter comps, \|c| (Len c) > 1 or (Fold c, False, \|self, k| self or HasText (Or adj[k], [[]]), k)
+
+PostVisit: unbounded fn (Text ==> [Text]), (Text ==> Bool), [Text], Text -> (((Text ==> Bool), [Text]))
+fn PostVisit adj, seen, out, k:
+    if HasKey seen, k: ((seen, out))
+    else:
+        let ((seen2, out2)) = Fold (Or adj[k], [[]]), (((Insert seen, k, True), out)), \|((s, o)), n| PostVisit adj, s, o, n
+        ((seen2, (Push out2, k)))
+
+Collect: unbounded fn (Text ==> [Text]), (Text ==> Bool), [Text], Text -> (((Text ==> Bool), [Text]))
+fn Collect rev, seen, comp, k:
+    if HasKey seen, k: ((seen, comp))
+    else: Fold (Or rev[k], [[]]), (((Insert seen, k, True), (Push comp, k))), \|((s, c)), n| Collect rev, s, c, n
+
+# `no-signature`: a block's `fn` that calls itself, directly or through a ring of calls,
+# needs a signature line, as a top-level function does (Jimmy's ruling LS: "Self calling
+# local function needs a signature why not?"). One that does not call itself has none
+# and generalizes (Type System ch. 5). Reported for each such function of the cycle, and
+# the cycle is then not read for shrinking.
+UnsignedOnCycle: unbounded fn Shrink, St, [Text] -> St
+fn UnsignedOnCycle sk, st, comp = Fold comp, st, \|s, k| match ((sk.byKey[k], (?Last (SplitOn k, " ")))):
+    ((? d, ? place)) if (Contains k, " #local ") and HasText st.unsignedFns, place: match d.body:
+        DbFn clauses: match clauses[0]:
+            ? first:
+                let others = Filter comp, \|other| other != k
+                let how = if (Len others) == 0: "calls itself" else: "calls itself through {Join (Each others, \|other| "`{ShownKey other}`"), ", "}"
+                let s2 = ErrFix (WithFile s, d.file), "no-signature", first.span, "`{ShownKey k}` {how} and has no signature line: a block's function that calls itself needs one, as a top-level function does", "write `{ShownKey k}: fn ... -> ...` above it, in its block"
+                WithFile s2, s.file
+            nil: s
+        otherwise: s
+    otherwise: s
+
+# One cycle of the reference graph: cleared when every function on it is unbounded,
+# else every idempotent size-change graph of the composition closure needs a strictly
+# smaller edge from a parameter to itself.
+ShrinkComponent: unbounded fn Shrink, St, [Text] -> St
+fn ShrinkComponent sk, st0, comp:
+    let st = UnsignedOnCycle sk, st0, comp
+    if (Len st.diags) > (Len st0.diags): st
+    else: if Fold comp, True, \|ok, k| ok and IsUnboundedKey sk.g, (SigKeyOf sk, (Or sk.localOf[k], k)): st
+    else:
+        let graphs = Fold sk.fns, [[]], \|acc, d| if HasText comp, d.qk: Append acc, (CallGraphs sk, d, comp) else: acc
+        let closure = Closure graphs
+        let bad = Filter closure, \|sc| sc.caller == sc.callee and (Compose sc, sc).edges == sc.edges and not (Fold sc.edges, False, \|seen, ((a, b, s))| seen or (a == b and s))
+        match bad[0]:
+            ? sc:
+                let s2 = update st:
+                    &_.file <= sc.file
+                let what = if sc.arg == "": "" else: " on `{sc.arg}`"
+                let st3 = ErrFix s2, "may-not-end", sc.span, "`{ShownKey sc.caller}` calls {if sc.caller == sc.callee: "itself" else: "`{ShownKey sc.callee}`"}{what}, not smaller than what it was given", "make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`"
+                update st3:
+                    &_.file <= st.file
+            nil: st
+
+# Every call from `d` into the component, as a size-change graph. A name mentioned but
+# not called is a call with no edges.
+CallGraphs: unbounded fn Shrink, Def, [Text] -> [Sc]
+fn CallGraphs sk, d, comp = Fold (DefClauses d), [[]], \|acc, c| Append acc, (ClauseGraphs sk, d, c, comp)
+
+ClauseGraphs: unbounded fn Shrink, Def, FnClause, [Text] -> [Sc]
+fn ClauseGraphs sk, d, c, comp:
+    let base = ClauseBase sk, d, c
+    let rels = SummarySeeds sk, d, (BodySpots c.body, base), base
+    Fold (BodySites c.body, rels), [[]], \|acc, site| match ?LocalTarget sk, d, site:
+        ? t: if HasText comp, t: Push acc, (SiteGraph sk, d, site, t) else: acc
+        nil:
+            if (IsLocal site.rels, site.callee) or HasKey sk.localOf, d.qk: acc
+            else: match ?ResolveCallee sk.g, d.home, site.callee:
+                ? k: Fold (DispatchTargets sk, d, site, k), acc, \|acc2, t| if HasText comp, t: Push acc2, (SiteGraph sk, d, site, t) else: acc2
+                nil: acc
+
+# One call as a size-change graph: an edge from what each argument is no larger than to
+# the parameter it fills.
+SiteGraph: unbounded fn Shrink, Def, Site, Text -> Sc
+fn SiteGraph sk, d, site, k:
+    let edges = Fold (ArgSlots sk, site.args, k), [[]], \|es, ((j, a))| match ?RelOf site.rels, a.value:
+        ? r: Push es, ((r.param, j, r.strict))
+        nil: es
+    let argText = match site.args[0]:
+        ? a: ExprName a.value
+        nil: ""
+    Sc(caller=d.qk, callee=k, edges=(Append edges, (SelfTypeEdges sk, d, site, k)), span=site.span, file=d.file, arg=argText)
+
+# An impl's method calling its trait's method at a variable of its own head (`Name (Left p)`
+# in the impl at `Pair a` is a call at `a`): the instance it reaches is at a strictly
+# smaller type, which no chain of calls can do forever. An edge of the self type's slot,
+# strictly smaller. A call at the head itself or at a bigger type (`Pair (Pair a)`,
+# polymorphic recursion) has none, and its arguments must shrink.
+SelfTypeEdges: unbounded fn Shrink, Def, Site, Text -> [((Nat, Nat, Bool))]
+fn SelfTypeEdges sk, d, site, k = match d.body:
+    DbMethod ignore, cls, im: match ?SiteClass sk, d, site:
+        ? kc if kc == cls: match sk.choices[ChoiceKey d.file, site.span, cls]:
+            ? chs: if (Len chs) > 0 and Fold chs, True, \|all, ch| all and (HasPrefix ch, "given:") and HasText im.qs, (DropPrefix ch, "given:"): [[((selfTypeSlot, selfTypeSlot, True))]] else: [[]]
+            nil: [[]]
+        otherwise: [[]]
+    otherwise: [[]]
+
+# The trait whose method a call names, if it names one (the call's targets are the impls'
+# definitions, not the method).
+?SiteClass: unbounded fn Shrink, Def, Site -> ?Text
+fn ?SiteClass sk, d, site = match ?ResolveCallee sk.g, d.home, site.callee:
+    ? mk: ?MethodClass sk.g, mk
+    nil: nil
+
+# The slot of the self type's size beside the parameters' (`SelfTypeEdges`).
+let selfTypeSlot = 4096
+
+# Each argument with the callee's parameter it fills: a positional one by its place among
+# the positional ones; a named one (a template call's attribute, `<@Item depth={{d}}/>`)
+# by name, the parameter every clause of the callee that names it gives that place, and
+# none when no clause names it or two disagree.
+ArgSlots: unbounded fn Shrink, [Arg], Text -> [((Nat, Arg))]
+fn ArgSlots sk, args, k:
+    let ((ignore, out)) = Fold args, ((0, [[]])), \|((pos, acc)), a| match a.?name:
+        nil: ((pos + 1, (Push acc, ((pos, a)))))
+        ? id: match ?ParamNamed sk, k, id.name:
+            ? j: ((pos, (Push acc, ((j, a)))))
+            nil: ((pos, acc))
+    out
+
+?ParamNamed: unbounded fn Shrink, Text, Text -> ?Nat
+fn ?ParamNamed sk, k, name:
+    let clauses = DefClauses (Or sk.byKey[k], dummyDef)
+    if name == "#body": match clauses[0]:
+        ? c: if (Len c.params) > 0: ? (Dec (Len c.params)) else: nil
+        nil: nil
+    else: ?ParamNamedIn clauses, name
+
+# The place every clause that names `name` gives it (pick TK's rule, as the checker reads a
+# template call's attributes).
+?ParamNamedIn: unbounded fn [FnClause], Text -> ?Nat
+fn ?ParamNamedIn clauses, name:
+    let found = Fold clauses, [[]], \|acc, c| Fold (Range0 (Len c.params)), acc, \|a2, i| match c.params[i]:
+        ? p: if (ParamNameOf p) == name and not (HasNat a2, i): Push a2, i else: a2
+        nil: a2
+    if (Len found) == 1: found[0] else: nil
+
+# The name a parameter pattern gives its parameter, without its marks: `depth`, `$text`.
+ParamNameOf: unbounded fn Pattern -> Text
+fn ParamNameOf p = match p.kind:
+    PName n:
+        let text = SNameKey n
+        DropPrefix text, (MarksOf text)
+    PGroup q: ParamNameOf q
+    otherwise: ""
+
+ExprName: fn Expr -> Text
+fn ExprName e = match e.kind:
+    EName n: SNameKey n
+    EGroup x: ExprName x
+    otherwise: ""
+
+# A clause's parameters, over `base`: a name is no larger than its parameter, a part taken
+# apart by the clause's pattern is strictly smaller; each is a local where the clause stands.
+ParamRelsOn: unbounded fn (Text ==> Rel), [Pattern] -> (Text ==> Rel)
+fn ParamRelsOn base, ps = Fold (Range0 (Len ps)), (Hide base, (PatternsNames ps)), \|m, i| match ps[i]:
+    ? p: match p.kind:
+        PName n: Insert m, (SNameKey n), Rel(param=i, strict=False)
+        otherwise: Fold (PatternNames p), m, \|m2, n| Insert m2, n, Rel(param=i, strict=True)
+    nil: m

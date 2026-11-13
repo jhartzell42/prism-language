@@ -1,0 +1,15 @@
+# A widget block's `let` of a record pattern (Semantics ch. 4: `let` binds by any pattern
+# that cannot fail). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Box = record:
+    w: Nat
+    h: Nat
+derive ^Eq, ^Show
+
+@page: @unit
+@page:
+    let Box(w=w, h=h) = Box(w=2, h=3)
+    Ui.Label($text=$"{w} by {h}")

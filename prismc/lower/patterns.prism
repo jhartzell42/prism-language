@@ -1,0 +1,431 @@
+# `Lower.Patterns`, a child module of `Lower`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Lower.*
+use Lower.Types.*
+use Lower.Expr.*
+use Lower.Templates.*
+use Lower.Functions.*
+use Lower.Jobs.*
+use Lower.Program.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Typed.*
+use Check.Typed.Print.*
+use Lower.Model.*
+use Lower.Node.*
+use Lower.Node.Def.*
+use Lower.Node.Elements.*
+use Lower.Node.Static.*
+use Lower.Node.Dynamics.*
+use Lower.Node.Finish.*
+use Lower.Node.Keyed.*
+use Lower.Node.Switch.*
+
+# ---------------------------------------------------------------------------------------
+# Patterns: a Rust pattern, the conditions after it, and the names it binds
+# ---------------------------------------------------------------------------------------
+
+type PatOut = record:
+    pa: Pa
+    conds: [Cc]
+    binds: [((Text, Bn))]
+
+PatOnly: fn Pa -> PatOut
+fn PatOnly pa = PatOut(pa=pa, conds=[[]], binds=[[]])
+
+# A pattern against a scrutinee of checker type `ty`, matched by reference (`ref`: its
+# binders are references) or by value (`own`). `fresh` names the binders a condition
+# needs.
+RustPat: unbounded fn Lx, Pattern, Ty, Holding, Text -> PatOut
+fn RustPat lx, p, ty, mode, fresh = match p.kind:
+    PName n:
+        let nkey = SNameKey n
+        let ((?qk, why)) = ResolveValue lx.g, lx.home, n
+        # (a lower-case name that is also a unit type's value, `leaves` beside `type Leaves =
+        # leaves`: the checker decides; where it bound the name, a lambda's parameter, the
+        # pattern is the binder it recorded, and where it matched the value it recorded none)
+        let isCtor = match ?qk:
+            ? qk: (HasKey lx.g.ctors, qk) and ((IsUpperText (Base nkey)) or (Len n.path) > 1 or ((IsUnitCtor lx, qk) and not (HasKey lx.binders, (PlaceKey lx, n.span))))
+            nil: False
+        let ?tagged = match ?qk:
+            ? qk: lx.g.tags[qk]
+            nil: nil
+        if isCtor: CtorPat lx, n, [[]], ty, mode, fresh
+        else: if why == "tag" and ?tagged != nil: TagPat lx, (Or ?tagged, dummyTagInfo), [[]], True, ty, mode, fresh
+        else:
+            let rs = LocalNameAt lx, nkey, n.span
+            # in a function that takes time whole the scrutinee's dynamics and events are
+            # `Dynamic`s and `Event`s, and so is what a `$` or `!` binder names (`fn !Fired
+            # ((!made, more))`): a lift over it maps it (`EventValueOf`, `DynamicLift`)
+            let full = BinderTy lx, n.span
+            let bt = OutTyOf lx, (if lx.whole: full else: Peel full)
+            PatOut(pa=(PaBind rs), conds=[[]], binds=[[((nkey, (BnLocal (XVar rs), mode, bt)))]])
+    PIgnore: PatOnly PaWild
+    PUnit: PatOnly PaWild
+    PNil: PatOnly (PaUnit (RefRuntime "std::None"))
+    PLit l: LitPat lx, l, ty, mode, fresh, False
+    PNeg l: LitPat lx, l, ty, mode, fresh, True
+    PSigil "?", q: WrapPat lx, (RefRuntime "std::Some"), q, (InnerTy ty), mode, fresh
+    PSigil "~", q: WrapPat lx, (RefRuntime "std::Ok"), q, (InnerTy ty), mode, fresh
+    PSigil ignore, q: RustPat lx, q, ty, mode, fresh
+    PGroup q: RustPat lx, q, ty, mode, fresh
+    PCtor n, ps: CtorPat lx, n, ps, ty, mode, fresh
+    PRecord n, fps, rest: RecordPat lx, n, fps, rest, ty, mode, fresh
+    PTuple ps:
+        let ts = match Peel ty:
+            TyTuple xs: xs
+            otherwise: [[]]
+        let subs = Each (Range0 (Len ps)), \|i| RustPat lx, (Or ps[i], dummyPat), (Or ts[i], TyErr), mode, "{fresh}_{i}"
+        PatOut(pa=(PaTuple (Each subs, \|o| o.pa)), conds=(Fold subs, [[]], \|acc, o| Append acc, o.conds), binds=(Fold subs, [[]], \|acc, o| Append acc, o.binds))
+    PArray ps: ArrayPat lx, ps, ty, mode, fresh
+    PFamily q: FamilyPat lx, q, ty, fresh
+
+let dummyPat = Pattern(kind=PIgnore, span=Range(start=0, end=0, origin=InSource))
+
+InnerTy: fn Ty -> Ty
+fn InnerTy t = match Peel t:
+    TySig "?", i: i
+    TySig "~", i: i
+    otherwise: TyErr
+
+# Whether a constructor is a unit type's value (`click`), which a lowercase name may name.
+IsUnitCtor: fn Lx, Text -> Bool
+fn IsUnitCtor lx, qk = match lx.g.ctors[qk]:
+    ? c: match (Or lx.g.types[c.owner], dummyTyInfo).body:
+        BChoice [[((ignore, [[]]))]]: IsLowerText (BareName qk)
+        otherwise: False
+    nil: False
+
+WrapPat: unbounded fn Lx, Ref, Pattern, Ty, Holding, Text -> PatOut
+fn WrapPat lx, ctor, q, inner, mode, fresh:
+    let o = RustPat lx, q, inner, mode, fresh
+    update o:
+        &_.pa <= PaCtor ctor, [[&_.pa]]
+
+# A literal: a fresh binder and an equality after it (a number or a text is no Rust
+# literal pattern).
+LitPat: unbounded fn Lx, Literal, Ty, Holding, Text, Bool -> PatOut
+fn LitPat lx, l, ty, mode, fresh, neg:
+    let t = OutTyOf lx, (Peel ty)
+    match l.kind:
+        LChar c: PatOnly (PaChar c)
+        otherwise:
+            # A number is of the scrutinee's type (a `0` against a `Nat` is a `Nat`), not
+            # the type the checker defaulted the literal to.
+            let lit = match l.kind:
+                LInt d: if t == OutNat or t == OutInt or t == OutU8 or t == OutFloat: VlOwned (Number t, d, neg), t else: LiteralValue lx, emptyEnv, l, l.span, neg
+                otherwise: LiteralValue lx, emptyEnv, l, l.span, neg
+            let lv = VlOwned (Own lit), t
+            let b = LocalPlace (XVar fresh), mode, t
+            PatOut(pa=(PaBind fresh), conds=[[CcIf (XBin OpEq, (Ref b), (Ref lv))]], binds=[[]])
+
+# `Ctor p, q`: a choice's case, a newtype, a unit type's value, `True`, a record by
+# position. A payload behind an `Rc` matches through a `let` after the pattern.
+CtorPat: unbounded fn Lx, SName, [Pattern], Ty, Holding, Text -> PatOut
+fn CtorPat lx, n, ps, ty, mode, fresh:
+    let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
+    match ?qk:
+        ? "True": PatOnly (PaBool True)
+        ? "False": PatOnly (PaBool False)
+        ? qk: match lx.g.ctors[qk]:
+            ? c:
+                let owner = Or lx.g.types[c.owner], dummyTyInfo
+                let tyPath = RefIn lx, owner.home, (TypeItemName c.owner)
+                let args = match Peel ty:
+                    TyCon ignore, xs: xs
+                    otherwise: [[]]
+                let subs = Each (Range0 (Len ps)), \|i| SubPat lx, c, i, (Or ps[i], dummyPat), (Instantiated (Or c.args[i], TyErr), c.params, args), mode, "{fresh}_{i}"
+                let conds = Fold subs, [[]], \|acc, o| Append acc, o.conds
+                let binds = Fold subs, [[]], \|acc, o| Append acc, o.binds
+                let pas = Each subs, \|o| o.pa
+                match owner.body:
+                    BRecord fs: PatOut(pa=(PaRecord tyPath, (Each (Range0 (Len pas)), \|i| (((FieldSpell (OwnerOf c.owner), (Or c.fields[i], ""), (Or c.args[i], TyErr)), (Or pas[i], PaWild)))), ((Len pas) < (Len c.fields))), conds=conds, binds=binds)
+                    otherwise:
+                        let isUnitType = (Len c.args) == 0 and IsUnitCtor lx, qk
+                        # a newtype is a tuple struct, matched by its own name; a choice whose one
+                        # case has the type's name and no fields is an enum of one variant
+                        # (`ShapeChoice`), matched by its variant
+                        let isNewtype = (Len c.args) > 0 and (BareName c.name) == (BareName c.owner) and match owner.body:
+                            BChoice cases: (Len cases) == 1
+                            otherwise: False
+                        let path = if isUnitType or isNewtype: tyPath else: RefChild tyPath, (Camel (BareName c.name))
+                        if (Len c.args) == 0: PatOut(pa=(PaUnit path), conds=[[]], binds=[[]])
+                        else: PatOut(pa=(PaCtor path, pas), conds=conds, binds=binds)
+            nil: PatOut(pa=PaWild, conds=[[CcIf (InternalBug "a pattern of {qk}")]], binds=[[]])
+        nil: PatOut(pa=PaWild, conds=[[CcIf (InternalBug "a pattern of an unknown constructor")]], binds=[[]])
+
+# A constructor's field `i` in a pattern: through an `Rc`, a binder holds the `Rc` and a
+# nested pattern matches behind it in a `let`.
+SubPat: unbounded fn Lx, CtorInfo, Nat, Pattern, Ty, Holding, Text -> PatOut
+fn SubPat lx, c, i, p, ty, mode, fresh:
+    if not (RcField lx, c.name, i): RustPat lx, p, ty, mode, fresh
+    else:
+        let rcMode = if mode == Owned: RcOwned else: RcRef
+        match p.kind:
+            PIgnore: PatOnly PaWild
+            PName n:
+                let o = RustPat lx, p, ty, rcMode, fresh
+                match o.pa:
+                    PaBind ignore: o
+                    otherwise: BehindRc lx, p, ty, rcMode, fresh
+            otherwise: BehindRc lx, p, ty, rcMode, fresh
+
+BehindRc: unbounded fn Lx, Pattern, Ty, Holding, Text -> PatOut
+fn BehindRc lx, p, ty, rcMode, fresh:
+    let inner = RustPat lx, p, ty, ByRef, "{fresh}_r"
+    let place = Ref (LocalPlace (XVar fresh), rcMode, (InternalBugType "a payload"))
+    PatOut(pa=(PaBind fresh), conds=(Append [[(CcLet inner.pa, place)]], inner.conds), binds=inner.binds)
+
+# `Rec(f=p, ..)` (a record) or `Error(kind=K, ..)` (the prelude's error, matched in `~T`
+# as `Err`).
+RecordPat: unbounded fn Lx, SName, [FieldPat], Bool, Ty, Holding, Text -> PatOut
+fn RecordPat lx, n, fps, rest, ty, mode, fresh:
+    let ((?qk, why)) = ResolveValue lx.g, lx.home, n
+    let qk = Or ?qk, ""
+    if qk == "Prelude.Error": ErrorPat lx, fps, ty, mode, fresh
+    else: if why == "tag" and HasKey lx.g.tags, qk: TagPat lx, (Or lx.g.tags[qk], dummyTagInfo), fps, rest, ty, mode, fresh
+    else: match lx.g.ctors[qk]:
+        ? c:
+            let owner = Or lx.g.types[c.owner], dummyTyInfo
+            let tyPath = RefIn lx, owner.home, (TypeItemName c.owner)
+            match owner.body:
+                # `Box(..)` on a choice's positional case: that case, every field ignored
+                BChoice cases if (Len fps) == 0: RestCasePat c, cases, tyPath
+                otherwise: FieldsPat lx, c, fps, rest, ty, mode, fresh, tyPath
+        nil: match lx.g.tags[qk]:
+            ? tg: TagPat lx, tg, fps, rest, ty, mode, fresh
+            nil: PatOut(pa=PaWild, conds=[[CcIf (InternalBug "a pattern of {qk}")]], binds=[[]])
+
+RestCasePat: fn CtorInfo, [((Text, [Ty]))], Ref -> PatOut
+fn RestCasePat c, cases, tyPath:
+    let isNewtype = (Len cases) == 1 and (BareName c.name) == (BareName c.owner) and (Len c.args) > 0
+    let path = if isNewtype: tyPath else: RefChild tyPath, (Camel (BareName c.name))
+    if (Len c.args) == 0: PatOut(pa=(PaUnit path), conds=[[]], binds=[[]])
+    else: PatOut(pa=(PaCtor path, (Each c.args, \|ignore| PaWild)), conds=[[]], binds=[[]])
+
+# A record's (or a case's) fields by name: `Rec(f=p, ..)`.
+FieldsPat: unbounded fn Lx, CtorInfo, [FieldPat], Bool, Ty, Holding, Text, Ref -> PatOut
+fn FieldsPat lx, c, fps, rest, ty, mode, fresh, tyPath:
+            let args = match Peel ty:
+                TyCon ignore, xs: xs
+                otherwise: [[]]
+            let subs = Each (Range0 (Len fps)), \|i|
+                let fp = Or fps[i], dummyFieldPat
+                let fname = match fp.?name:
+                    ? id: id.name
+                    nil: Or c.fields[i], ""
+                let fix = Fold (Range0 (Len c.fields)), i, \|found, j| if (Or c.fields[j], "") == fname: j else: found
+                (((FieldSpell (OwnerOf c.owner), fname, (Or c.args[fix], TyErr)), (SubPat lx, c, fix, fp.pattern, (Instantiated (Or c.args[fix], TyErr), c.params, args), mode, "{fresh}_{i}")))
+            let conds = Fold subs, [[]], \|acc, ((ignore, o))| Append acc, o.conds
+            let binds = Fold subs, [[]], \|acc, ((ignore, o))| Append acc, o.binds
+            PatOut(pa=(PaRecord tyPath, (Each subs, \|((f, o))| ((f, o.pa))), (rest or (Len subs) < (Len c.fields))), conds=conds, binds=binds)
+
+let dummyFieldPat = FieldPat(marks="", ?name=nil, pattern=dummyPat, span=Range(start=0, end=0, origin=InSource))
+
+let dummyTagInfo = TagInfo(name="", family="", kind="", out=TyErr, qs=[[]], rqs=[[]], bounds=[[]], fields=[[]], fieldAt=[[]], home="", file=0, span=Range(start=0, end=0, origin=InSource))
+
+# Whether a scrutinee is a live element (`Element r o`), whose patterns bind each field
+# with its stack, against a document's element or another row's value, plain data.
+IsLive: fn Ty -> Bool
+fn IsLive t = match Peel t:
+    TyElem ignore, ignore: True
+    otherwise: False
+
+# A tag's field a pattern names: by name, punned, or by position.
+TagFieldName: fn FieldPat, [Text], Nat -> Text
+fn TagFieldName fp, names, i = match fp.?name:
+    ? id: id.name
+    nil: match fp.pattern.kind:
+        PName n: if HasText names, (SNameKey n): SNameKey n else: Or names[i], ""
+        otherwise: Or names[i], ""
+
+# `Ui.Label(text=$t)`, `Draw.Rect(rect=r, ..)` (pick RV): the enum's variant around the
+# tag's struct. On a plain row value or a document's element (`Elem r`, a snapshot, the
+# checker's WL) every field is plain, a `$` field its value in that tick. On a live
+# element the tag and plain fields match its level at the build, and a `$` field binds
+# its dynamic, the element's level over time projected to the field.
+TagPat: unbounded fn Lx, TagInfo, [FieldPat], Bool, Ty, Holding, Text -> PatOut
+fn TagPat lx, tg, fps, rest, ty, mode, fresh:
+    let ((variant, structPath)) = TagPaths lx, tg
+    let live = IsLive ty
+    let names = Each tg.fields, \|((f, ignore))| f
+    let subMode = if live: ByRef else: mode
+    let parts = Each (Range0 (Len fps)), \|i|
+        let fp = Or fps[i], dummyFieldPat
+        let fname = TagFieldName fp, names, i
+        let ft = Fold tg.fields, TyErr, \|found, ((f, t))| if f == fname: t else: found
+        match LayerOf ft:
+            # an event field binds the event the description was made with, or a live
+            # element's requests through the field (ruling EP), from the element's view
+            LyEv if live: ((nil, (EventFieldPat lx, fp.pattern, fname, (FieldSpell tg.home, fname, ft), ft, "{fresh}_v", (RefIn lx, tg.home, (DescStructOf tg)))))
+            # a document's entry (`Elem r`): the event its level holds (`LevelEvents`)
+            LyEv if (Len (LevelEvents tg)) > 0:
+                let o = RustPat lx, fp.pattern, ft, subMode, "{fresh}_{i}"
+                ((? (FieldSpell tg.home, fname, ft), o))
+            LyEv: ((nil, (PatOut(pa=PaWild, conds=[[CcIf (InternalBug "an event field in a pattern of a row value that is no element ({tg.name}.{fname})")]], binds=[[]]))))
+            LyDyn if live: ((nil, (LiveFieldPat lx, fp.pattern, fname, (FieldSpell tg.home, fname, ft), ft, "{fresh}_v", (RefIn lx, tg.home, (DescStructOf tg)))))
+            otherwise:
+                let o = RustPat lx, fp.pattern, (Peel ft), subMode, "{fresh}_{i}"
+                ((? (FieldSpell tg.home, fname, ft), o))
+    let fieldPas = Fold parts, [[]], \|acc, ((?f, o))| match ?f:
+        ? f: Push acc, ((f, o.pa))
+        nil: acc
+    let conds = Fold parts, [[]], \|acc, ((ignore, o))| Append acc, o.conds
+    let binds = Fold parts, [[]], \|acc, ((ignore, o))| Append acc, o.binds
+    let level = PaCtor variant, [[(PaRecord structPath, fieldPas, True)]]
+    # the arm names the tag: a `@ x` in it answers with the tag's variant of `crate::Output`
+    let tagged = Push (Push binds, (("#tag", (BnLocal (XPath (OutputVariant tg)), Owned, OutUnit)))), (("#tagfirst", (BnLocal (XPath (OutputFirstVariant tg)), Owned, OutUnit)))
+    # an element, live or a description, matched through its view as the tag's description
+    # (`DescView`), its plain fields' values and its `$` fields' dynamics
+    let view = "{fresh}_v"
+    let descPath = RefIn lx, tg.home, (DescStructOf tg)
+    let viewed = [[(CcLet (PaCtor (RefRuntime "std::Some"), [[PaBind view]]), (DescView lx, tg, fresh)), (CcLet (PaRecord descPath, fieldPas, True), (XRef (XVar view)))]]
+    if live: PatOut(pa=(PaBind fresh), conds=(Append viewed, conds), binds=tagged)
+    else: PatOut(pa=level, conds=conds, binds=binds)
+
+# An element seen as its tag's description (`prism_rtl::element_view`): a description
+# when it is one of the tag's, a live element of the tag as the description of its level,
+# each `$` field its level projected (`Dynamic::map`), each event field one that never
+# fires (a pattern names none, `TagPat`), else `None`.
+DescView: unbounded fn Lx, TagInfo, Text -> Ex
+fn DescView lx, tg, fresh = DescViewBy lx, tg, fresh, "prism_rtl::element_view"
+
+# The view through one of the runtime's two readers: `element_view`, the description, or
+# `element_is`, whether there is one (a family pattern).
+DescViewBy: unbounded fn Lx, TagInfo, Text, Text -> Ex
+fn DescViewBy lx, tg, fresh, reader:
+    let ((variant, structPath)) = TagPaths lx, tg
+    let descPath = RefIn lx, tg.home, (DescStructOf tg)
+    let fields = Each tg.fields, \|((fname, ft))|
+        let f = FieldSpell tg.home, fname, ft
+        let v = match LayerOf ft:
+            LyDyn: LiveProjection "l", variant, structPath, f, (TagFieldOut lx, ft)
+            # a live element's event field: the requests its place makes through it,
+            # named when the tag has several event fields (`SkRequest`)
+            LyEv: XMethod (XVar "l"), "requested", [[(if (RequestField tg, fname) == "": XNone else: XCtor (RefRuntime "std::Some"), [[XStr (RequestField tg, fname)]])]]
+            otherwise: XClone (XFieldOf (XVar "x"), structPath, f)
+        ((f, v))
+    let some = XCtor (RefRuntime "std::Some"), [[(XRecord descPath, fields)]]
+    let descTy = OutNamed descPath, [[]]
+    let arms = [[XArm(pat=(PaCtor variant, [[PaBind "x"]]), conds=[[]], body=some), XArm(pat=PaWild, conds=[[]], body=(XTyped XNone, (OutOpt descTy)))]]
+    let liveTy = OutRef (OutNamed (RefRuntime "prism_rtl::Live"), [[(OutNamed elemRef, [[]])]])
+    let ofLive = XClosure False, [[(PaTyped (PaBind "l"), liveTy)]], (XMatch (XRef (XField (XVar "l"), "identity")), arms, False, (OutOpt descTy))
+    XCallAt (RefRuntime reader), [[(OutNamed elemRef, [[]]), descTy]], [[(XRef (XVar fresh)), ofLive]]
+
+# An element's `$` field: a binder takes the field's dynamic from the element's view
+# (`DescView`): a description's, or a live element's level projected.
+LiveFieldPat: unbounded fn Lx, Pattern, Text, Text, Ty, Text, Ref -> PatOut
+fn LiveFieldPat lx, p, fname, rsField, ft, view, descPath = match p.kind:
+    PIgnore: PatOnly PaWild
+    PName n: PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal (XClone (XFieldOf (XVar view), descPath, rsField)), Owned, (OutDyn (TagFieldOut lx, ft)))))]])
+    PGroup q: LiveFieldPat lx, q, fname, rsField, ft, view, descPath
+    otherwise: PatOut(pa=PaWild, conds=[[CcIf (InternalBug "a pattern inside an element's `$` field ({fname}) (the checker's `live-field-pattern`)")]], binds=[[]])
+
+# An element's event field (ruling EP): a binder takes the field's event from the
+# element's view, as a `$` field's binder its dynamic.
+EventFieldPat: unbounded fn Lx, Pattern, Text, Text, Ty, Text, Ref -> PatOut
+fn EventFieldPat lx, p, fname, rsField, ft, view, descPath = match p.kind:
+    PIgnore: PatOnly PaWild
+    PName n: PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal (XClone (XFieldOf (XVar view), descPath, rsField)), Owned, (OutEvent (TagFieldOut lx, ft)))))]])
+    PGroup q: EventFieldPat lx, q, fname, rsField, ft, view, descPath
+    otherwise: PatOut(pa=PaWild, conds=[[CcIf (InternalBug "a pattern inside an element's event field ({fname})")]], binds=[[]])
+
+LiveProjection: fn Text, Ref, Ref, Text, OutTy -> Ex
+fn LiveProjection fresh, variant, structPath, fname, ft:
+    let arm = XArm(pat=(PaCtor variant, [[PaBind "x"]]), conds=[[]], body=(XClone (XFieldOf (XVar "x"), structPath, fname)))
+    let other = XArm(pat=PaWild, conds=[[]], body=XUnreachable)
+    XMethod (XField (XVar fresh), "level"), "map", [[(XClosure True, [[PaBind "l"]], (XMatch (XVar "l"), [[arm, other]], False, ft))]]
+
+# `Ui.*`: the scrutinee is one of the family's tags.
+FamilyPat: unbounded fn Lx, QualName, Ty, Text -> PatOut
+fn FamilyPat lx, q, ty, fresh:
+    let fam = Dotted (Filter q.path, \|x| x != "*")
+    let kind = match Peel ty:
+        TyElem ignore, ignore: "Element"
+        TyElemAny ignore: "Element"
+        TyCon k, ignore: k
+        otherwise: ""
+    let tags = Filter (KindTags lx, kind, (Keys lx.rsMods)), \|tg| tg.family == fam
+    # an element, live or a description, is one of the family's when its view as one of
+    # their descriptions is (`DescView`)
+    let isOne = if IsLive ty: Fold tags, (XBool False), \|acc, tg| XBin OpOr, acc, (DescViewBy lx, tg, fresh, "prism_rtl::element_is") else: XIsCase (XVar fresh), (Each tags, \|tg| VariantOf lx, tg)
+    PatOut(pa=(PaBind fresh), conds=[[CcIf isOne]], binds=[[]])
+
+# `Error(kind=Fs.NotFound, message=m)`: `Err(e)` and the kind compared after it.
+ErrorPat: unbounded fn Lx, [FieldPat], Ty, Holding, Text -> PatOut
+fn ErrorPat lx, fps, ty, mode, fresh:
+    let e = LocalPlace (XVar fresh), mode, OutError
+    let parts = Each fps, \|fp|
+        let fname = match fp.?name:
+            ? id: id.name
+            nil: ""
+        match fname:
+            "kind": match fp.pattern.kind:
+                PName k:
+                    let ((?kq, ignore)) = ResolveValue lx.g, lx.home, k
+                    match ?kq:
+                        ? kq: if HasKey lx.g.tags, kq: ((([[CcIf (XBin OpEq, (XRef (XDeref (XField (XVar fresh), "kind_p"))), (XStr kq))]]), [[]])) else: (([[]], [[((SNameKey k, (BnLocal (XCall (HelperRef "kind_of"), [[(XRef (XVar fresh))]]), Owned, OutPod)))]]))
+                        nil: (([[]], [[((SNameKey k, (BnLocal (XCall (HelperRef "kind_of"), [[(XRef (XVar fresh))]]), Owned, OutPod)))]]))
+                # a kind with fields, `Count.TooMany(limit=l, asked=a)`: the kind's name
+                # compared, then each field read back at its type (the prelude's
+                # `fault_field`) and matched by its own pattern
+                PRecord k, kfps, ignore:
+                    let ((?kq, ignore)) = ResolveValue lx.g, lx.home, k
+                    let ?kindTag = match ?kq:
+                        ? kq: lx.g.tags[kq]
+                        nil: nil
+                    match ?kindTag:
+                        ? tg:
+                            let named = CcIf (XBin OpEq, (XRef (XDeref (XField (XVar fresh), "kind_p"))), (XStr tg.name))
+                            let names = Each tg.fields, \|((f, ignore))| f
+                            Fold (Range0 (Len kfps)), (([[named]], [[]])), \|((cs, bs)), i|
+                                let kfp = Or kfps[i], dummyFieldPat
+                                let fname = TagFieldName kfp, names, i
+                                let ft = Fold tg.fields, TyErr, \|found, ((f, t))| if f == fname: t else: found
+                                let local = "{fresh}_k{i}"
+                                let read = XCallAt (HelperRef "fault_field"), [[(OutTyOf lx, (Peel ft))]], [[(XRef (XVar fresh)), (XStr fname)]]
+                                let o = RustPat lx, kfp.pattern, (Peel ft), ByRef, "{local}_p"
+                                (((Append (Push cs, (CcLet o.pa, (XRef read))), o.conds), (Append bs, o.binds)))
+                        nil: (([[CcIf (InternalBug "an `Error`'s kind matched against what is no fault kind")]], [[]]))
+                otherwise: (([[]], [[]]))
+            "message": match fp.pattern.kind:
+                PName m: (([[]], [[((SNameKey m, (BnLocal (XField (XVar fresh), "message_p"), Owned, OutText)))]]))
+                otherwise: (([[]], [[]]))
+            otherwise: (([[]], [[]]))
+    let wrapped = match Peel ty:
+        TySig "~", ignore: PaCtor (RefRuntime "std::Err"), [[PaBind fresh]]
+        otherwise: PaBind fresh
+    PatOut(pa=wrapped, conds=(Fold parts, [[]], \|acc, ((cs, ignore))| Append acc, cs), binds=(Fold parts, [[]], \|acc, ((ignore, bs))| Append acc, bs))
+
+# `[[a, b]]`: the length, then each element by index.
+ArrayPat: unbounded fn Lx, [Pattern], Ty, Holding, Text -> PatOut
+fn ArrayPat lx, ps, ty, mode, fresh:
+    # (a non-empty array is matched as the array it is)
+    let et = match Collection (Peel ty):
+        TyArray x: x
+        otherwise: TyErr
+    let arr = PlainValue (LocalPlace (XVar fresh), mode, (OutTyOf lx, (Peel ty)))
+    let lenCond = CcIf (XBin OpEq, (XMethod (Ref arr), "len", [[]]), (XIndex (Len ps)))
+    let subs = Each (Range0 (Len ps)), \|i| ((i, (RustPat lx, (Or ps[i], dummyPat), et, Owned, "{fresh}_{i}")))
+    let conds = Fold subs, [[lenCond]], \|acc, ((i, o))| Append (Push acc, (CcLet (PaCtor (RefRuntime "std::Some"), [[o.pa]]), (XCall (HelperRef "index"), [[Ref arr, (XRef (XNat "{i}"))]]))), o.conds
+    let binds = Fold subs, [[]], \|acc, ((ignore, o))| Append acc, o.binds
+    PatOut(pa=(PaBind fresh), conds=conds, binds=binds)

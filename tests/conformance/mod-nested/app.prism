@@ -1,0 +1,17 @@
+# Modules nest to any depth (claude/modules-style-pass.md, Jimmy's ruling of 5 November):
+# every `mod Name` declares a child module named by its dotted path, whose file is
+# `name.prism` beside the declaring file, or `name/mod.prism` when it has children of its
+# own. Here `Shapes.Round.Circle` is a file at depth 3 and `Shapes.Round.Oval` a directory
+# at depth 3 with the file `Shapes.Round.Oval.Egg` under it; siblings and parents use each
+# other by full path, both ways. `Shapes.Static` and `Shapes.Switch` are named by a Rust
+# and a C++ keyword: each target escapes the module's name as it escapes any other.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+mod Shapes
+test mod Tests
+use Ui
+use Shapes.Round.Circle.*
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Area 2} {Shapes.Flat.Area 3} {Shapes.Total 1}")

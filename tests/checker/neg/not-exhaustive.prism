@@ -1,0 +1,10 @@
+# `not-exhaustive`: a match misses a case.
+type Filter = choice:
+    All
+    Active
+    Finished
+
+Visible: fn Filter, Bool -> Bool
+fn Visible f, done = match f:
+    All: True
+    Active: not done

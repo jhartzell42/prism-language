@@ -1,0 +1,7 @@
+# The tests of ts-ch03-assoc-two-traits (Type System chapter 3).
+emit Ui.*
+use App.*
+
+test each_trait_its_item, @main:
+    build
+        => expect Ui.Label(text="5 figs! 6 figs?")

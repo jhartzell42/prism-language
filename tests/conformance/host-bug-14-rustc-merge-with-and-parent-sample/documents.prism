@@ -1,0 +1,66 @@
+# probe 2: the library
+emit rest
+
+type Response = choice:
+    Accepted
+    Declined Text
+derive ^Eq, ^Show
+
+type Stepped s = choice:
+    Next s
+    Denied Text
+
+trait ^Seat r:
+    type State
+    type Request
+    type Query
+    type Told
+    Step: fn State r, r, Request r -> Stepped (State r)
+    Read: fn State r, r, Query r -> Told r
+
+type Place = record:
+    seat: Text
+    at: Path
+derive ^Eq, ^Ord, ^Show
+
+type Asked s = record:
+    place: Place
+    apply: fn s -> Stepped s
+
+Asking: fn r, Path, Request r -> Asked (State r) where r: ^Seat, r: ^Show
+fn Asking seat, at, request = Asked(place=Place(seat=(Show seat), at=at), apply=(\|state| Step state, seat, request))
+
+type Kept s = record:
+    state: s
+    responses: (Place ==> Response)
+
+StepOne: fn Kept s, Asked s -> Kept s
+fn StepOne kept, asked:
+    let Apply = asked.apply
+    match Apply kept.state:
+        Next state: Kept(state=state, responses=(Insert kept.responses, asked.place, Accepted))
+        Denied why: Kept(state=kept.state, responses=(Insert kept.responses, asked.place, (Declined why)))
+
+StepAll: fn s, [Asked s] -> Kept s
+fn StepAll state, asked = Fold asked, Kept(state=state, responses={}), StepOne
+
+StateOf: fn Kept s -> s
+fn StateOf kept = kept.state
+
+ResponsesOf: fn Kept s -> (Place ==> Response)
+fn ResponsesOf kept = kept.responses
+
+@InMemory: fn s, (fn $s, !(Place ==> Response) -> @((a, ![Asked s])) emit rest) -> @a emit rest
+fn @InMemory initial, HostSeats:
+    ((results, !asked)) <- HostSeats $state, !responses
+    let !outcome = StepAll $state, !asked
+    $state <- initial then StateOf !outcome
+    $answered <- {} then ResponsesOf !outcome
+    let !responses = !Updated $answered
+    @ results
+
+?ResponseTo: fn r, Path, (Place ==> Response) -> ?Response where r: ^Show
+fn ?ResponseTo seat, at, responses = ?Get responses, Place(seat=(Show seat), at=at)
+
+InOrder: fn (k ==> (Path ==> a)) -> [a]
+fn InOrder asked = Fold (Values asked), [[]], \|all, places| Append all, (Values places)

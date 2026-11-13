@@ -1,0 +1,37 @@
+# A widget of several clauses applied, above the line that gives it, to the late plain
+# result of a blueprint parameter applied, whose argument is a widget of one clause ending
+# on a building `if` that gives that result from what its own lines build (Semantics
+# ch. 4, "Binding groups and cycles": any line may use any name the block binds, and "the
+# order of a group's lines decides positions and nothing else"; ch. 8: a blueprint
+# parameter is built where the widget applies it, at the widget's next positions; `<-`
+# binds its plain result; ruling TC). Nothing here is a cycle. Reaches `DeferredLine`'s
+# refusal "whose places are counted as they are built" on keep-B.
+# Written by Claude (sweep-4, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Wide: fn Nat -> @Nat
+fn @Wide 10:
+    Ui.Label($text=$"ten")
+    @ 1
+fn @Wide k:
+    @ 2
+
+@Choose: fn Bool -> @Nat
+fn @Choose loud:
+    if loud:
+        Ui.Label($text=$"loud")
+        @ 10
+    else:
+        @ 20
+
+@Panel: fn @Nat -> @unit
+fn @Panel @inner:
+    w <- @Wide n                                                       # 0 when n is 10
+    Ui.Label($text=$"wide {w}")                                        # 1, or 0
+    n <- @inner                                                        # 2
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    @Panel (@Choose loud)

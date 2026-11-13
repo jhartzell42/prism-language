@@ -1,0 +1,12 @@
+# Derived by hand from D6 as ruled: Go, Run, Id, the lambda passed to Id and Grow entered, five cycles.
+test the_pipe_runs
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 5 ticks, 1 to 5
+
+tick 5
+  changed:
+    1: Ui.Label(text="5")

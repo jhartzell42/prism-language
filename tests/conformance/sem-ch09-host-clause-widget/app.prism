@@ -1,0 +1,30 @@
+# A widget of several clauses, and a building `match`, in a static position of a hosted
+# scope (Semantics ch. 9: a hosted child is any blueprint; ch. 8: a clause widget and a
+# building `match` stand transparent in their block, pick CS): the child's places are the
+# host's document's entries at the child's own paths, and the World's answers to the
+# forwarded elements reach them. Written by Claude on the claude-lowering branch; subject
+# to change.
+emit Ui.*
+test mod Tests
+
+@Pick: fn ?Nat -> @!Nat
+fn @Pick nil:
+    !b <- Ui.Button($label=$"none")                               # 0
+    @ (0 on !b)
+fn @Pick (? n):
+    Ui.Label($text=$"some {n}")                                   # 0
+    !b <- Ui.Button($label=$"pick {n}")                           # 1
+    @ (n on !b)
+
+@child: @unit
+@child:
+    !picked <- @Pick (? 3)                                       # 0, 1
+    $total <- 0 then $total + !picked
+    let mode = 2
+    match mode:                                                  # 2
+        1: Ui.Label($text=$"one")
+        otherwise: Ui.Label($text=$"total {$total}")
+
+@hosted: @unit
+@hosted:
+    ignore <- @HostDocument @child, \|p, e| @Element e          # 0/[p]/0

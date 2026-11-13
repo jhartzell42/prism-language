@@ -1,0 +1,12 @@
+# Checked by hand against the books' rules.
+test errors_are_failures
+
+tick 0
+  added:
+    1: Ui.Label(text="failed: no / ok")
+
+compute until idle: 1 tick, 1 to 1
+
+tick 1
+  changed:
+    1: Ui.Label(text="failed: refused / failed: given up")

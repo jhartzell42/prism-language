@@ -1,0 +1,17 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": the order of a group's lines decides positions and nothing else), ch. 8 (`<-` binds the plain result), ch. 9 (a host re-emits each forwarded place of its child under its own place, keyed by the child's path) and ruling TC (places counted as built): the child's places are numbered from 0 as in sem-ch04-late-value-above-clause-widget-result-from-arm-lines, each forwarded at 1/[p]/0. Never run: prismc refuses the program.
+test loud
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/[0]/0: Ui.Label(text="ten")
+    1/[1]/0: Ui.Label(text="wide 1")
+    1/[2]/0: Ui.Label(text="x 0")
+    1/[3]/0: Ui.Label(text="ten")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/[0]/0: Ui.Label(text="wide 2")

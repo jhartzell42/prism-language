@@ -1,0 +1,13 @@
+# Derived by hand from Type System ch. 2 (an element applied is a plain value until a host places it) and Semantics ch. 9 (a forwarding layer adds no tick and nests the path, host/[p]/0 twice over; a forwarded place re-emits in the tick it moves): the inner host's new label is a place of the inner's document, which the outer host forwards, and it follows the child's label in the tick of the click.
+test a_hosted_element_value_is_forwarded
+
+tick 0
+  added:
+    0/[0/[0]/0]/0: Ui.Button(label="inc")
+    0/[0/[1]/0]/0: Ui.Label(text="<0>")
+
+tick 1
+  in:
+    0/[0/[0]/0]/0: click
+  changed:
+    0/[0/[1]/0]/0: Ui.Label(text="<1>")

@@ -1,0 +1,19 @@
+# Derived by hand from Semantics ch. 7 ("double firings never") and Appendix B (`!MergeAll` fires once in a tick, with the values of the events that fired, in the list's order); R3 for `!Updated $count` (the value after the tick).
+test both_inputs_one_firing
+
+tick 0
+  added:
+    0: Ui.Button(label="bump")
+    1: Ui.Label(text="0: none")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1: 100,1")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="2: 100,2")

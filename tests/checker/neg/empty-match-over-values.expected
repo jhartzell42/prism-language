@@ -1,0 +1,5 @@
+tests/checker/neg/empty-match-over-values.prism:9: error[not-exhaustive]: this match misses `True`
+    fn Wrong flag = match flag:
+                    ^^^^^^^^^^^
+  fix: add an arm for it, or `otherwise:`
+1 error

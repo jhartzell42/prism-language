@@ -1,0 +1,42 @@
+# Games: Part IV ch. 4's `^PerfectInformationGame`, and what `derive ^StateDocument via
+# ^PerfectInformationGame` gives a game. Both belong in the standard library beside
+# `Documents`; tests/documents/library does not hold them yet, so this test carries them.
+# The form of the via definitions, `derive ^StateDocument g via ^PerfectInformationGame
+# g:` with the methods under it, is Claude's first ruling: the books name the derive line
+# and show the derived `Step` "for reading" (Part IV ch. 4).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit rest | Seat.*
+use Documents.*
+
+# A game's two roles: a player seat per side, and spectators (Part IV ch. 4: "player
+# seats by side, a spectator seat").
+type GameRole = choice:
+    Player
+    Spectator
+derive ^Eq, ^Ord, ^Show
+
+# How a game ends: a side wins, or nobody does. Part IV ch. 4 writes `?Result`; the side
+# is the game's own, so the type takes it.
+type Result s = choice:
+    Won s
+    Drawn
+derive ^Eq, ^Show
+
+trait ^PerfectInformationGame g:
+    type Side                          # White | Black
+    type Move
+    type Reason                        # why a move is not legal: a choice the game declares
+    Turn: fn g -> Side
+    Legal: fn g, Side, Move -> ?(Reason g)   # nil: legal; a reason: why not
+    Play: fn g, Move -> g
+    Outcome: fn g -> ?(Result (Side g))
+
+# What the derive gives: the state is the game; a player's step is a legal move; every
+# seat reads the whole game.
+derive ^StateDocument g via ^PerfectInformationGame g:
+    type State = g
+    fn Step game, Player, side, move = match Legal game, side, move:
+        nil: Next (Play game, move)
+        ? why: Denied why                        # NotYourMove, or IllegalMove move
+    fn Step game, Spectator, user, request = match request:
+    fn Read game, role, id, query = game

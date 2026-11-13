@@ -1,0 +1,18 @@
+# Dynamics named as the runtime's `Path` methods (`at`, `child`, `join`), in a block that
+# also makes paths (a `for`, whose rows' places are built from the node's path): the
+# emitted C++ must still reach a path's methods with `.`, since a node's member of the
+# same name says nothing about a path. Written for prismc's back end; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@names: @unit
+@names:
+    !add <- Ui.Button($label=$"add")                          # 0
+    $n <- 1 then $n + 1 on !add
+    let $at = $n * 2
+    let $child = $n + 10
+    let $join = "{$at}/{$child}"
+    for k, ignore <- {1: unit, 2: unit}:                      # 1/[k]
+        Ui.Label($text=$"row {k} at {$at}")                    # 1/[k]/0
+    Ui.Label($text=$join)                                     # 2

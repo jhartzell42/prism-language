@@ -1,0 +1,28 @@
+# `Replace`: declarations of sem-appB-regex-replace.
+emit r
+use App.*
+
+check groups:
+    Replace swap, "ab cd" => "cd ab"
+    Replace %/a/$$/, "bab" => "b$b"
+    Replace %/(a)/${1}x/, "a" => "ax"
+    Replace %/(a)/$1x/, "a" => "ax"
+    Replace %/(?<k>a)/${k}${k}/, "bab" => "baab"
+    Replace %/(a)|b/[$1]/, "ab" => "[a][]"
+    Replace %/x/$0$0/, "axb" => "axxb"
+
+check escapes:
+    Replace %/x/\n/, "axb" => "a\nb"
+    Replace %/x/\t/, "axb" => "a\tb"
+    Replace %/x/\//, "axb" => "a/b"
+    Replace %/x/\\/, "axb" => "a\\b"
+    Replace %/x/\u{41}/, "axb" => "aAb"
+    Replace %/x/\u{e9}/, "axb" => "aéb"
+    Replace %#/x/#"/#, "axb" => "a\"b"
+
+check every:
+    Replace %/a*/-/, "baaa" => "-b-"
+    Replace %/x/y/, "" => ""
+    Replace %/ /_/, "a b c" => "a_b_c"
+    Replace %//-/, "ab" => "-a-b-"
+    Replace %/é/e/, "éé" => "ee"

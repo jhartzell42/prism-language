@@ -1,0 +1,447 @@
+# `Syntax.Parser.Decls`, a child module of `Syntax.Parser`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Syntax.Parser.*
+use Syntax.Parser.Expr.*
+use Syntax.Parser.Blocks.*
+use Syntax.Parser.Types.*
+use Syntax.Parser.TestLanguage.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Syntax.Sexp.*
+
+# ---------------------------------------------------------------------------------------
+# The top-level forms (decls.rs; Semantics ch. 3, "The top-level forms"; ch. 6; Appendix
+# A.6, `file` and `decl`)
+# ---------------------------------------------------------------------------------------
+
+# A file being read: the cursor, the module so far, and how far into its header it is (0:
+# nothing yet; 1: `module`; 2: `emit`; 3: `mod`; 4: `use`; 5: declarations).
+type ModRead = record:
+    p: Ps
+    m: Module
+    stage: Nat
+derive ^Eq, ^Show
+
+# A file: the header (`module`, then `emit`, then `mod`, then `use`), then declarations. With
+# `fragment`, statements are accepted among the declarations.
+ParseModule: unbounded fn Ps, Bool -> ((Module, Ps))
+fn ParseModule p0, fragment:
+    let start = Here p0
+    let ((?template, p1)) = match Kind p0:
+        KTemplate t:
+            let ((tpl, q)) = ParseTemplate (Adv p0), t, (Here p0)
+            ((? tpl, q))
+        otherwise: ((nil, p0))
+    let m0 = Module(?name=nil, ?emitRow=nil, mods=[[]], uses=[[]], decls=[[]], ?template=?template, span=start)
+    let r = update ModRead(p=p1, m=m0, stage=0):
+        while not (AtEof &_.p):
+            &_ <= ModuleItem &_, fragment
+    let m = update r.m:
+        &_.span <= To start, (Prev r.p)
+    ((m, r.p))
+
+ModuleItem: unbounded fn ModRead, Bool -> ModRead
+fn ModuleItem s, fragment:
+    if AtSep s.p: update s:
+        &_.p <= Adv &_.p
+    else:
+        let s1 = HeaderOrDecl s, fragment, (Here s.p)
+        let p2 = Recovered s1.p
+        # A stray close at the top level only follows an error.
+        let p3 = if AtCloseL p2: Adv p2 else: if AtEof p2: p2 else: ExpectStmtEnd p2, "declaration"
+        update s1:
+            &_.p <= p3
+
+HeaderOrDecl: unbounded fn ModRead, Bool, Range -> ModRead
+fn HeaderOrDecl s, fragment, itemStart = match Kind s.p:
+    KKw "module", "":
+        let ((name, p)) = ParseQualName (Adv s.p)
+        if p.bad: update s:
+            &_.p <= p
+        else:
+            let late = s.stage > 0 or s.m.?name != nil
+            update s:
+                &_.p <= if late: NoteError p, itemStart, "the `module` line comes first in a file" else: p
+                &_.m.name <= ? name
+                &_.stage <= 1
+    KKw "emit", "":
+        let ((emitRow, p)) = ParseRow (Adv s.p)
+        if p.bad: update s:
+            &_.p <= p
+        else:
+            let late = s.stage > 1 or s.m.?emitRow != nil
+            update s:
+                &_.p <= if late: NoteError p, itemStart, "`emit` comes after `module` and above `use`, once (Semantics ch. 6)" else: p
+                &_.m.emitRow <= ? emitRow
+                &_.stage <= 2
+    KKw "use", "":
+        let ((u, p)) = ParseUse (Adv s.p), itemStart
+        if p.bad: update s:
+            &_.p <= p
+        else:
+            update s:
+                &_.p <= if s.stage > 4: NoteError p, itemStart, "`use` lines belong to the header, above the declarations" else: p
+                &_.m.uses <= Push &_.m.uses, u
+                &_.stage <= 4
+    KKw "mod", "": ModHeader s, (Adv s.p), False, itemStart
+    KKw "test", "" if IsKwKind (Kind (Adv s.p)), "mod": ModHeader s, (Adv (Adv s.p)), True, itemStart
+    otherwise:
+        let ((d, p)) = ParseDecl s.p, fragment
+        update s:
+            &_.p <= p
+            &_.stage <= 5
+            if not p.bad:
+                &_.m.decls <= Push &_.m.decls, d
+
+# A `mod` or `test mod` line, its name at `p`: after `emit`, above `use`.
+ModHeader: fn ModRead, Ps, Bool, Range -> ModRead
+fn ModHeader s, p, isTest, itemStart = match Kind p:
+    KName n if n.sigils == "" and (Len n.path) == 1:
+        let line = ModLine(name=Ident(name=(Or n.path[0], ""), span=(Here p)), isTest=isTest, span=(To itemStart, (Here p)))
+        update s:
+            &_.p <= if s.stage > 3: NoteError (Adv p), itemStart, "`mod` lines come after `emit` and above `use` (claude/modules-style-pass.md)" else: Adv p
+            &_.m.mods <= Push &_.m.mods, line
+            &_.stage <= 3
+    otherwise: update s:
+        &_.p <= ErrorHere p, (if isTest: "expected a test module's name after `test mod`" else: "expected a module's name after `mod`")
+
+IsKwKind: fn TokKind, Text -> Bool
+fn IsKwKind k, w = match k:
+    KKw x, ignore: x == w
+    otherwise: False
+
+let noQual = QualName(path=[[]], span=noRange)
+
+ParseUse: fn Ps, Range -> ((Use, Ps))
+fn ParseUse p, start = match Kind p:
+    KFamily path: ((Use(target=QualName(path=path, span=(Here p)), star=True, span=(To start, (Here p))), (Adv p)))
+    KName n if n.sigils == "" and n.case == CaseUpper: ((Use(target=QualName(path=n.path, span=(Here p)), star=False, span=(To start, (Here p))), (Adv p)))
+    otherwise: ((Use(target=noQual, star=False, span=noRange), (ErrorHere p, "expected a module name after `use`")))
+
+let noExpr = Expr(kind=EError, span=noRange)
+let noType = Type(kind=TAbsent, span=noRange)
+let noPattern = Pattern(kind=PIgnore, span=noRange)
+let noBlock = Block(stmts=[[]], inline=True, span=noRange)
+
+ParseDecl: unbounded fn Ps, Bool -> ((Decl, Ps))
+fn ParseDecl p, fragment:
+    let start = Here p
+    let ((kind, q)) = DeclKindOf p, fragment, start
+    ((Decl(kind=kind, span=(To start, (Prev q))), q))
+
+DeclKindOf: unbounded fn Ps, Bool, Range -> ((DeclKind, Ps))
+fn DeclKindOf p, fragment, start = match Kind p:
+    KKw "type", ignore:
+        let ((d, q)) = ParseTypeDecl p
+        ((DType d, q))
+    KKw "tag", ignore:
+        let ((d, q)) = ParseTagDecl p
+        ((DTag d, q))
+    KKw "derive", ignore:
+        let ((traits, q)) = Commas (Adv p), ParseTraitRef
+        ((DDerive traits, q))
+    KKw "trait", ignore:
+        let ((d, q)) = ParseTraitDecl p
+        ((DTrait d, q))
+    KKw "impl", ignore:
+        let ((d, q)) = ParseImplDecl p
+        ((DImpl d, q))
+    KKw "check", ignore:
+        let ((d, q)) = ParseCheckDecl p
+        ((DCheck d, q))
+    KKw "test", ignore:
+        let ((d, q)) = ParseTestDecl p
+        ((DTest d, q))
+    KKw "fn", ignore:
+        let ((d, q)) = ParseFnClause p
+        ((DFn d, q))
+    KKw "let", ignore:
+        let ((pattern, p1)) = ParsePattern (Adv p), False
+        let ((?ty, p2)) = OptionalAnnotation p1
+        let ((value, p3)) = ParseRhsExpr (ExpectOp p2, "=")
+        ((DLet LetDecl(pattern=pattern, ?ty=?ty, value=value, span=(To start, (Prev p3))), p3))
+    KName ignore if (KindAt p, 1) == KColon:
+        if (KindAt p, 2) == KLayOpen:
+            let ((name, p1)) = ParseSName p
+            let ((body, p2)) = ParseBlockAfterColon p1
+            ((DWidget WidgetDecl(name=name, body=body, span=(To start, body.span)), p2))
+        else:
+            let ((sig, q)) = ParseSignature p
+            ((DSignature sig, q))
+    otherwise:
+        if fragment:
+            let ((st, q)) = ParseStmt p
+            ((DStmt st, q))
+        else:
+            # A statement at the top: name what it is, since "Nothing at top level is built"
+            # (Semantics ch. 6).
+            let ((st, q)) = ParseStmt p
+            match st.kind:
+                SBind ignore, ignore, ignore if not q.bad: ((DStmt st, (ErrorAt q, start, "a bind or hold is a statement of a widget block: nothing at top level is built (Semantics ch. 6)")))
+                otherwise:
+                    let at = if q.bad: p else: q
+                    ((DStmt st, (ErrorHere at, "expected a declaration (`fn`, `let`, `type`, `tag`, `derive`, `trait`, `impl`, `test`, `check`, or a signature `Name: type`)")))
+
+# `: Type` after a `let`'s pattern (`let byte: U8 = 255`, Semantics ch. 2, Numbers).
+OptionalAnnotation: unbounded fn Ps -> ((?Type, Ps))
+fn OptionalAnnotation p:
+    if AtColon p:
+        let ((ty, q)) = ParseType (Adv p)
+        ((? ty, q))
+    else: ((nil, p))
+
+# `Name: type (where bounds)?`, or in a trait, `+: fn a, a -> a`.
+ParseSignature: unbounded fn Ps -> ((Signature, Ps))
+fn ParseSignature p:
+    let start = Here p
+    let ((name, p1)) = ParseDefName p
+    # `<: fn a, a -> Bool` in a trait: the one token `<:` is the method `<` and its colon
+    let split = p.inTrait and (AtOp p, "<:")
+    let ((ty, p2)) = ParseType (if split: p1 else: ExpectColon p1)
+    let ((bounds, p3)) = OptionalBounds p2
+    ((Signature(name=name, ty=ty, bounds=bounds, span=(To start, (Prev p3))), p3))
+
+OptionalBounds: unbounded fn Ps -> (([Bound], Ps))
+fn OptionalBounds p = if AtKw p, "where": ParseBounds (Adv p) else: (([[]], p))
+
+ParseDefName: fn Ps -> ((DefName, Ps))
+fn ParseDefName p = match Kind p:
+    KName n:
+        let ((name, q)) = ParseSName p
+        ((DefSName name, q))
+    KOp op, ignore if p.inTrait:
+        let name = DefOp (if op == "<:": "<" else: op), (Here p)
+        ((name, (Adv p)))
+    otherwise: ((DefSName noSName, (ErrorHere p, "expected a name")))
+
+# `fn Name p, q = e` or `fn Name p, q:` and a block.
+ParseFnClause: unbounded fn Ps -> ((FnClause, Ps))
+fn ParseFnClause p0:
+    let start = Here p0
+    let ((name, p1)) = ParseDefName (ExpectKw p0, "fn")
+    let ((params, p2)) = if (AtOp p1, "=") or (AtColon p1): (([[]], p1)) else: Commas p1, \|q| ParsePattern q, False
+    let ((body, p3)) = ParseFnBody p2
+    ((FnClause(name=name, params=params, body=body, span=(To start, (Prev p3))), p3))
+
+ParseFnBody: unbounded fn Ps -> ((FnBody, Ps))
+fn ParseFnBody p:
+    if AtOp p, "=":
+        let ((e, q)) = ParseRhsExpr (Adv p)
+        ((BodyExpr e, q))
+    else: if AtColon p:
+        let ((b, q)) = ParseBlockAfterColon p
+        ((BodyBlock b, q))
+    else: ((BodyExpr noExpr, (ErrorHere p, "expected `=` and an expression, or `:` and a block, after the parameters")))
+
+# Lowercase names with no sigil, one after another: a declaration's parameters.
+LowerParams: fn Ps -> (([Ident], Ps))
+fn LowerParams p0 = update (([[]], p0)):
+    let &ps = [[]]
+    let &p = p0
+    let &fuel = Len p0.toks
+    while ? left <- &fuel -? 1 if IsPlainLower (Kind &p):
+        &fuel <= left
+        let ((i, q)) = ParseIdent &p
+        &ps <= Push &ps, i
+        &p <= q
+    &_ <= ((&ps, &p))
+
+IsPlainLower: fn TokKind -> Bool
+fn IsPlainLower (KName n) = n.case == CaseLower and n.sigils == ""
+fn IsPlainLower ignore = False
+
+# `type Name params (= body)?`.
+ParseTypeDecl: unbounded fn Ps -> ((TypeDecl, Ps))
+fn ParseTypeDecl p0:
+    let start = Here p0
+    let ((name, p1)) = ParseQualName (Adv p0)
+    let ((params, p2)) = LowerParams p1
+    let ((?body, p3)) = if AtOp p2, "=": ParseTypeBody (Adv p2), name, params else: ((nil, p2))
+    ((TypeDecl(name=name, params=params, ?body=?body, span=(To start, (Prev p3))), p3))
+
+ParseTypeBody: unbounded fn Ps, QualName, [Ident] -> ((?TypeBody, Ps))
+fn ParseTypeBody p, name, params = match Kind p:
+    KKw "record", "":
+        let ((fields, q)) = ParseFieldBlock (Adv p)
+        ((? (TbRecord fields), q))
+    KKw "choice", "":
+        let p1 = ExpectColon (Adv p)
+        # a choice with no case, `type Never = choice:`, is a type with no value: the lexer
+        # gives its `:` an empty block
+        if (AtOpenL p1) and AtCloseL (Adv p1): ((? (TbChoice [[]]), (Adv (Adv p1))))
+        else: if AtOpenL p1:
+            let ((cases, q)) = LayoutItems (Adv p1), ParseCase
+            ((? (TbChoice cases), q))
+        else: ((nil, (ErrorHere p1, "a choice's cases stand in an indented block after `choice:`")))
+    KKw "row", "": ((? TbRow, (Adv p)))
+    # "A newtype is a choice of one alternative on one line, `type Meters = Meters Float`."
+    KName n if n.sigils == "" and (Len n.path) == 1 and (?Last n.path) == (?Last name.path):
+        let ((c, q)) = ParseCase p
+        ((? (TbNewtype c), q))
+    # "A unit type has one value, lowercase, `type Click = click`."
+    KName n if (IsUnitBody p, n, params):
+        let ((i, q)) = ParseIdent p
+        ((? (TbUnit i), q))
+    otherwise:
+        let ((ty, q)) = ParseType p
+        ((? (TbAlias ty), q))
+
+IsUnitBody: fn Ps, NameTok, [Ident] -> Bool
+fn IsUnitBody p, n, params:
+    let w = Or n.path[0], ""
+    let param = Fold params, False, \|seen, i| seen or i.name == w
+    let ends = match KindAt p, 1:
+        KLaySep: True
+        KLayOpen: True
+        KLayClose: True
+        KEof: True
+        otherwise: False
+    n.sigils == "" and n.case == CaseLower and (Len n.path) == 1 and not param and ends
+
+# `: open field (sep field)* close`.
+ParseFieldBlock: unbounded fn Ps -> (([Field], Ps))
+fn ParseFieldBlock p0:
+    let p = ExpectColon p0
+    if AtOpenL p: LayoutItems (Adv p), ParseField
+    else: (([[]], (ErrorHere p, "fields stand in an indented block, one `name: Type` per line")))
+
+ParseField: unbounded fn Ps -> ((Field, Ps))
+fn ParseField p:
+    let start = Here p
+    let ((sigils, name, p1)) = match Kind p:
+        KName n if n.sigils != "" and (Len n.path) == 1 and n.case == CaseLower: ((n.sigils, Ident(name=(Or n.path[0], ""), span=(Here p)), (Adv p)))
+        otherwise:
+            let ((id, q)) = ParseIdent p
+            (("", id, q))
+    let ((ty, p2)) = ParseType (ExpectColon p1)
+    ((Field(sigils=sigils, name=name, ty=ty, span=(To start, (Prev p2))), p2))
+
+# A choice's alternative: `Name`, `Name T, U`, or the indexed `Name: T -> R`.
+ParseCase: unbounded fn Ps -> ((Case, Ps))
+fn ParseCase p0:
+    let start = Here p0
+    let ((name, p1)) = ParseSName p0
+    let p2 = if name.sigils != "": NoteError p1, name.span, "a constructor takes no sigil" else: p1
+    if AtColon p2:
+        # `Lit: Int -> Expr Int`: an indexed choice (a GADT).
+        let p3 = Adv p2
+        let ((args, p4)) = if AtOp p3, "->": (([[]], p3)) else: Commas p3, ParseEmitType
+        let ((result, p5)) = ParseType (ExpectOp p4, "->")
+        let p6 = OutOfScope p5, start, "indexed choices/GADTs for user types", "`{NameText name}` is an indexed alternative: indexed choices for user types are out of this compiler"
+        ((Case(name=name, args=args, ?indexed=(? result), span=(To start, (Prev p6))), p6))
+    else:
+        let ((args, p3)) = if AtStmtBoundary p2: (([[]], p2)) else: Commas p2, ParseType
+        ((Case(name=name, args=args, ?indexed=nil, span=(To start, (Prev p3))), p3))
+
+# `tag F.Name of K out (where bounds)? (: fields)?`.
+ParseTagDecl: unbounded fn Ps -> ((TagDecl, Ps))
+fn ParseTagDecl p0:
+    let start = Here p0
+    let ((name, p1)) = ParseQualName (Adv p0)
+    let ((ofType, p2)) = ParseType (ExpectKw p1, "of")
+    let ((bounds, p3)) = OptionalBounds p2
+    let ((fields, p4)) = if AtColon p3: ParseFieldBlock p3 else: (([[]], p3))
+    ((TagDecl(name=name, ofType=ofType, bounds=bounds, fields=fields, span=(To start, (Prev p4))), p4))
+
+# `trait ^T a (where bounds)?:` and its items.
+ParseTraitDecl: unbounded fn Ps -> ((TraitDecl, Ps))
+fn ParseTraitDecl p0:
+    let start = Here p0
+    let ((name, p1)) = ParseTraitRef (Adv p0)
+    let ((params, p2)) = LowerParams p1
+    let ((bounds, p3)) = OptionalBounds p2
+    let ((items, p4)) = ParseTraitItems p3
+    let decl = TraitDecl(name=name, params=params, bounds=bounds, items=items, span=(To start, (Prev p4)))
+    ((decl, (CheckHigherKinded p4, decl)))
+
+# `impl ^T Type (where bounds)?:` and its items.
+ParseImplDecl: unbounded fn Ps -> ((ImplDecl, Ps))
+fn ParseImplDecl p0:
+    let start = Here p0
+    let ((traitRef, p1)) = ParseTraitRef (Adv p0)
+    let ((ty, p2)) = ParseType p1
+    let ((bounds, p3)) = OptionalBounds p2
+    let ((items, p4)) = ParseTraitItems p3
+    ((ImplDecl(traitRef=traitRef, ty=ty, bounds=bounds, items=items, span=(To start, (Prev p4))), p4))
+
+ParseTraitItems: unbounded fn Ps -> (([TraitItem], Ps))
+fn ParseTraitItems p0:
+    let p = ExpectColon p0
+    if AtOpenL p:
+        let inside = update (Adv p):
+            &_.inTrait <= True
+        let ((items, q)) = LayoutItems inside, ParseTraitItem
+        ((items, (update q:
+            &_.inTrait <= p.inTrait)))
+    else: (([[]], (ErrorHere p, "a trait's or impl's items stand in an indented block")))
+
+ParseTraitItem: unbounded fn Ps -> ((TraitItem, Ps))
+fn ParseTraitItem p = match Kind p:
+    KKw "fn", ignore:
+        let ((f, q)) = ParseFnClause p
+        ((TiFn f, q))
+    KKw "type", ignore:
+        let start = Here p
+        let p1 = Adv p
+        match Kind p1:
+            KName n if n.case == CaseUpper and n.sigils == "" and (Len n.path) == 1:
+                let name = Ident(name=(Or n.path[0], ""), span=(Here p1))
+                let ((params, p2)) = LowerParams (Adv p1)
+                let ((?value, p3)) = if AtOp p2, "=": OptionalType (Adv p2) else: ((nil, p2))
+                let item = TiAssocType name, params, ?value, (To start, (Prev p3))
+                ((item, p3))
+            otherwise:
+                let item = TiAssocType noIdent, [[]], nil, noRange
+                ((item, (ErrorHere p1, "expected the associated type's name")))
+    KKw "row", ignore:
+        let start = Here p
+        let ((name, q)) = ParseSName (Adv p)
+        let item = TiAssocRow name, (To start, (Prev q))
+        ((item, q))
+    otherwise:
+        let ((sig, q)) = ParseSignature p
+        ((TiSignature sig, q))
+
+OptionalType: unbounded fn Ps -> ((?Type, Ps))
+fn OptionalType p:
+    let ((ty, q)) = ParseType p
+    ((? ty, q))
+
+# "higher-kinded traits" are out: a trait whose parameter is applied to arguments in its
+# items' types (`trait ^Timeline f:` with `f a`). `^Monad` is reported by its own name.
+CheckHigherKinded: fn Ps, TraitDecl -> Ps
+fn CheckHigherKinded p, t:
+    let hk = Fold t.items, False, \|seen, item| seen or (ItemApplies item, t.params)
+    if hk and t.name.path != [["Monad"]]: OutOfScope p, t.name.span, "higher-kinded traits", "`^{Join t.name.path, "."}` applies its parameter to arguments: higher-kinded traits are out of this compiler"
+    else: p
+
+ItemApplies: fn TraitItem, [Ident] -> Bool
+fn ItemApplies (TiSignature s), params = Applies s.ty, params
+fn ItemApplies ignore, ignore = False
+
+AnyApplies: fn [Type], [Ident] -> Bool
+fn AnyApplies ts, params = Fold ts, False, \|seen, t| seen or (Applies t, params)
+
+Applies: fn Type, [Ident] -> Bool
+fn Applies ty, params = match ty.kind:
+    TName name, args:
+        let head = (Len args) > 0 and (Len name.path) == 1 and (Fold params, False, \|seen, i| seen or i.name == (Or name.path[0], ""))
+        head or (AnyApplies args, params)
+    TSigiled ignore, inner: Applies inner, params
+    TGroup inner: Applies inner, params
+    TNonEmpty inner: Applies inner, params
+    TArray elem, ignore: Applies elem, params
+    TTuple ts: AnyApplies ts, params
+    TRowUnion ts: AnyApplies ts, params
+    TMap k, v: (Applies k, params) or (Applies v, params)
+    TFn ignore, ps, result: (AnyApplies ps, params) or (Applies result, params)
+    TEmit t, r: (Applies t, params) or (Applies r, params)
+    otherwise: False

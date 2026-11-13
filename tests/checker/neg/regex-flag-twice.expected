@@ -1,0 +1,4 @@
+tests/checker/neg/regex-flag-twice.prism:2: error[regex]: a flag written twice
+    let r = %/a/ii
+                 ^
+1 error

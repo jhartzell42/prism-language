@@ -1,0 +1,215 @@
+# Chess as a document: the state, the two roles and what each may ask and is told, why a
+# request is declined, the step function with the rules in it, the two languages, and the
+# hosting of each role. Nothing here is text: a participant is sent the game, and a
+# declined request a reason.
+# Written by Claude on the claude-document-chess branch; subject to change.
+emit rest | Seat.* | Play.* | Watch.*
+use Documents.*
+use Rules.*
+
+# ---- the state
+
+type Result = choice:
+    Checkmated Color                     # the side that was mated
+    Stalemate
+    Resigned Color
+    DrawAgreed
+    DrawnByFiftyMoves                    # fifty moves by each side with no capture and no pawn's move
+    DrawnByRepetition                    # one position for the third time
+    DrawnByInsufficientMaterial          # neither side can ever mate
+derive ^Eq, ^Show
+
+type ChessGame = record:
+    position: Position                   # the board, the side to move, castling rights, the en passant square
+    moves: [Move]                        # the moves played, in order
+    quiet: Nat                           # the moves by either side since the last capture or pawn's move
+    earlier: [Position]                  # every position before this one, the opening first
+    ?offered: Color                      # who has a draw offer standing
+    ?result: Result
+derive ^Eq, ^Show
+
+let fresh = ChessGame(position=start, moves=[[]], quiet=0, earlier=[[]], ?offered=nil, ?result=nil)
+
+# ---- the roles: each a seat type
+
+type Player = choice:
+    Player Color
+derive ^Eq, ^Ord, ^Show
+
+type Spectator = choice:
+    Spectator Text
+derive ^Eq, ^Ord, ^Show
+
+ColorOf: fn Player -> Color
+fn ColorOf (Player color) = color
+
+NameOf: fn Spectator -> Text
+fn NameOf (Spectator name) = name
+
+# what a player may ask to change
+type PlayerRequest = choice:
+    Play Move
+    Resign
+    OfferDraw
+    AcceptDraw
+derive ^Eq, ^Ord, ^Show
+
+# why a player's request is declined
+type ChessReason = choice:
+    NotYourTurn
+    GameOver Result
+    NoPieceThere Square                  # a move from an empty square
+    NotYourPiece Square                  # a move of the other side's piece
+    IllegalMove MoveFault                # a move of the player's own piece, and why the rules refuse it
+    NoDrawOffered
+    DrawAlreadyOffered
+derive ^Eq, ^Show
+
+# what either role may ask to know
+type Asks = choice:
+    Whole
+derive ^Eq, ^Show
+
+# what a player is told: the game, and its own legal moves, which are none unless it is
+# this seat's move
+type PlayerTold = record:
+    game: ChessGame
+    legal: [Move]
+derive ^Eq, ^Show
+
+# ---- the rules as a step function: plain functions
+
+# how many of the positions are this one, compared as values
+Times: fn [Position], Position -> Nat
+fn Times positions, position = Len (Filter positions, \|one| one == position)
+
+# How a position ends the game, if it does: by mate or stalemate first; then by the draws
+# nobody has to claim, in the order insufficient material, repetition, fifty moves.
+?Ended: fn Position, Nat, [Position] -> ?Result
+fn ?Ended position, quiet, earlier = if not (HasMove position): (if InCheck position, position.turn: ? (Checkmated position.turn) else: ? Stalemate) else:
+    if Insufficient position: ? DrawnByInsufficientMaterial else:
+        if (Times earlier, position) >= 2: ? DrawnByRepetition else:
+            if quiet >= 100: ? DrawnByFiftyMoves else: nil
+
+# why the position refuses a move of the side to move
+Refusing: fn Position, Move -> ChessReason
+fn Refusing position, move = match ?At position, (Origin move):
+    nil: NoPieceThere (Origin move)
+    ? piece: if piece.color != position.turn: NotYourPiece (Origin move) else: IllegalMove (FaultOf position, piece, move)
+
+# the game after a move that is played. The position comes a third time when two of the
+# earlier ones equal it; one from before the last capture or pawn's move never does.
+AfterPlaying: fn ChessGame, Move, Position, Nat -> ChessGame
+fn AfterPlaying game, move, next, quiet:
+    let earlier = Push game.earlier, game.position
+    ChessGame(position=next, moves=(Push game.moves, move), quiet=quiet, earlier=earlier, ?offered=nil, ?result=(?Ended next, quiet, earlier))
+
+MoveBy: fn ChessGame, Color, Move -> Stepped ChessGame ChessReason
+fn MoveBy game, color, move = if game.position.turn != color: Denied NotYourTurn else:
+    match ?Played game.position, move:
+        nil: Denied (Refusing game.position, move)
+        ? next: Next (AfterPlaying game, move, next, (if Lasting game.position, move: 0 else: game.quiet + 1))
+
+Ending: fn ChessGame, Result -> ChessGame
+fn Ending game, result = ChessGame(position=game.position, moves=game.moves, quiet=game.quiet, earlier=game.earlier, ?offered=nil, ?result=(? result))
+
+Offering: fn ChessGame, Color -> Stepped ChessGame ChessReason
+fn Offering game, color = if game.?offered == (? color): Denied DrawAlreadyOffered else: Next ChessGame(position=game.position, moves=game.moves, quiet=game.quiet, earlier=game.earlier, ?offered=(? color), ?result=nil)
+
+Accepting: fn ChessGame, Color -> Stepped ChessGame ChessReason
+fn Accepting game, color = if game.?offered == (? (Opponent color)): Next (Ending game, DrawAgreed) else: Denied NoDrawOffered
+
+StepOn: fn ChessGame, Color, PlayerRequest -> Stepped ChessGame ChessReason
+fn StepOn game, color, request = match request:
+    Play move: MoveBy game, color, move
+    Resign: Next (Ending game, (Resigned color))
+    OfferDraw: Offering game, color
+    AcceptDraw: Accepting game, color
+
+StepBy: fn ChessGame, Color, PlayerRequest -> Stepped ChessGame ChessReason
+fn StepBy game, color, request = match game.?result:
+    ? result: Denied (GameOver result)
+    nil: StepOn game, color, request
+
+LegalFor: fn ChessGame, Color -> [Move]
+fn LegalFor game, color = if game.?result != nil or game.position.turn != color: [[]] else: LegalMoves game.position
+
+impl ^Seat Player:
+    type State = ChessGame
+    type Request = PlayerRequest
+    type Reason = ChessReason
+    type Query = Asks
+    type Told = PlayerTold
+    fn Step game, seat, request = StepBy game, (ColorOf seat), request
+    fn Read game, seat, asks = PlayerTold(game=game, legal=(LegalFor game, (ColorOf seat)))
+
+# A spectator asks for nothing: its request type and its reason type have no value, and
+# its step has no case to answer.
+impl ^Seat Spectator:
+    type State = ChessGame
+    type Request = Never
+    type Reason = Never
+    type Query = Asks
+    type Told = ChessGame
+    fn Step game, seat, request = match request:
+    fn Read game, seat, asks = game
+
+# ---- the two languages, one per role; each also has the library's `Seat.Leave`
+
+tag Play.Request of Element !(Response ChessReason):
+    !requests: PlayerRequest
+
+tag Play.Query of Element $PlayerTold:
+    $query: Asks
+
+tag Watch.Query of Element $ChessGame:
+    $query: Asks
+
+# ---- hosting: one function per role; a program lists its seats by calling them
+
+!RequestsIn: fn Elem (rest | Seat.* | Play.*) -> !PlayerRequest
+fn !RequestsIn element = match element:
+    Play.Request(!requests=!requests): !requests
+    otherwise: never
+
+# The players. The program seats them with `first` and `!seat`, each seat with the
+# blueprint of the participant that sits there, and removes them with `!remove`; a player
+# leaves with `Seat.Leave`. Each seat is one entry of the `for`, with its own host: the
+# seat is the entry's key, so no element names it. A query is answered from the state
+# itself, by the question asked.
+@HostPlayers: fn (Player ==> (@a emit rest | Seat.* | Play.*)), !(Player ==> (@a emit rest | Seat.* | Play.*)), ![Player], $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit rest
+fn @HostPlayers first, !seat, !remove, $state, !responses:
+    $seats <- first then Reseated $seats, !tick
+    !heard <- for seat, $@guest <- $seats:                                     # [seat]
+        ((ignore, $places)) <- @HostDocument (@Sitting $@guest), \|place, element| match element:
+            Play.Request(..): @ !Filter (?ResponseTo seat, place, !responses)
+            Play.Query($query=$asks): @ Read $state, seat, $asks
+            Seat.Leave(..): @ unit
+            otherwise: @Element element
+        !fired <- for place, $element <- $places:                              # each place of the guest
+            !requests <- @Switch (!RequestsIn $element)
+            !leaves <- @Switch (!LeavesOf $element)
+            @ !MergeAll [[(Requested (Asking seat, place, !requests)), (Leaving on !leaves)]]
+        @ !fired
+    let !tick = !MergeAll [[(Seating !seat), (Removing !remove), (Hearing !heard)]]
+    @ !Filter (?Notices (\|player| player), !tick)
+
+# What a spectator's host hears of a place: nothing but leaving.
+Left: fn unit -> [Heard Never]
+fn Left gone = [[Leaving]]
+
+# The spectators: no request arm, since `Watch.*` has no request tag; a spectator still
+# leaves.
+@HostSpectators: fn (Spectator ==> (@a emit rest | Seat.* | Watch.*)), !(Spectator ==> (@a emit rest | Seat.* | Watch.*)), ![Spectator], $ChessGame -> @unit emit rest
+fn @HostSpectators first, !seat, !remove, $state:
+    $seats <- first then Reseated $seats, !tick
+    !heard <- for seat, $@guest <- $seats:
+        ((ignore, $places)) <- @HostDocument (@Sitting $@guest), \|place, element| match element:
+            Watch.Query($query=$asks): @ Read $state, seat, $asks
+            Seat.Leave(..): @ unit
+            otherwise: @Element element
+        !fired <- for place, $element <- $places:
+            !leaves <- @Switch (!LeavesOf $element)
+            @ Left !leaves
+        @ !fired
+    let !tick = !MergeAll [[(Seating !seat), (Removing !remove), (Hearing !heard)]]

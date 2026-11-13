@@ -1,0 +1,15 @@
+# The tests of sem-ch09-bundle-two-events. An answer to a bundle of two events is written
+# as a sparse tuple, the parts that fired (Type System ch. 2: `((a, b))-`, "at least one
+# component", `-` an absent one).
+emit Ui.* | Pad.*
+use App.*
+
+test two_events, @chat:
+    build
+        => expect Ui.Label(text="none, 0 lost")
+    send Pad.Line(..), (("hello", -))
+        => expect Ui.Label(text="hello, 0 lost")
+    send Pad.Line(..), ((-, 3))
+        => expect Ui.Label(text="hello, 3 lost")
+    send Pad.Line(..), (("bye", 2))
+        => expect Ui.Label(text="bye, 5 lost")

@@ -1,0 +1,17 @@
+# A `rebuild` inside a `rebuild`'s generation over a name of the block that the outer
+# `rebuild`'s source does not read (Semantics ch. 7, `rebuild`: a new generation each time
+# its source moves): the zoom moves the inner `rebuild` while the page's generation
+# stands. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@main: @unit
+@main:
+    !next <- Ui.Button($label=$"next")                       # 0
+    !zoom <- Ui.Button($label=$"zoom")                       # 1
+    $page <- 1 then $page + 1 on !next
+    $zoom <- 1 then $zoom + 1 on !zoom
+    ignore <- rebuild $page:                                 # 2/#g
+        Ui.Label($text=$"page {_}")                          # 2/#g/0
+        ignore <- rebuild $zoom:                             # 2/#g/1/#h
+            Ui.Label($text=$"zoom {_}")                      # 2/#g/1/#h/0

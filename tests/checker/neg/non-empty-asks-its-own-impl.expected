@@ -1,0 +1,5 @@
+tests/checker/neg/non-empty-asks-its-own-impl.prism:14: error[no-impl]: no impl of `^Named` for `[Nat]+`
+    fn Told xs = Name xs
+                 ^^^^^^^
+  fix: write `impl ^Named [Nat]+`, or pass the collection it is, with `as [Nat]`
+1 error

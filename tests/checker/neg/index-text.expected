@@ -1,0 +1,5 @@
+tests/checker/neg/index-text.prism:3: error[mismatch]: a text has no index: a position in a text is a cursor
+    fn ?Third t = t[2]
+                  ^^^^
+  fix: walk it with `Front` and `?Step`, or make a cursor from a byte offset with `?CursorAt`
+1 error

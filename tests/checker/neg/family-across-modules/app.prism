@@ -1,0 +1,14 @@
+# A family's tags in a child module of its family's: refused (collision). Every tag of a
+# family is declared in its family's module (Type System ch. 2), and a child module is a
+# module of its own (claude/modules-style-pass.md, Jimmy's ruling of 5 November): a family's
+# cases are all in one file.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+mod Lines
+use Ui
+
+type Ink = row
+derive ^Eq, ^Show
+
+tag Ink.Fill of Ink:
+    width: Nat

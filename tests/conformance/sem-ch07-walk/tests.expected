@@ -1,0 +1,29 @@
+test a_walk_takes_a_cycle_per_call
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 5 ticks, 1 to 5
+
+tick 5
+  changed:
+    1: Ui.Label(text="6")
+
+test the_frames_wait
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+tick 1
+
+tick 2
+
+tick 3
+
+tick 4
+
+tick 5
+  changed:
+    1: Ui.Label(text="6")

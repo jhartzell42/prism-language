@@ -1,0 +1,28 @@
+# `@Element e` in a widget block where `e` is the widget's parameter, an element value
+# passed in, and where the element is a function call's result (Semantics ch. 8,
+# "Elements and the element statement": "No implicit conversion from element to blueprint
+# exists, so `let c = Door.Chime(..)` is a value and `@Element c` a blueprint"; `@Element`
+# is the statement as a function, at the same path; Type System ch. 2, "Names and
+# sigils": an element applied "is a plain value", so a parameter takes it and a function
+# gives it). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Framed: fn Element Ui.* o -> @o
+fn @Framed e:
+    Ui.Label($text=$"frame")                                     # 0
+    @Element e                                                   # 1
+
+Shout: fn Text -> Element Ui.* !Click
+fn Shout t = Ui.Button($label=$"{t}!")
+
+@main: @unit
+@main:
+    !inc <- Ui.Button($label=$"inc")                             # 0
+    $n <- 0 then $n + 1 on !inc
+    !go <- @Framed (Ui.Button($label=$"go {$n}"))                # 1 and 2
+    $gone <- 0 then $gone + 1 on !go
+    !more <- @Element (Shout "more")                             # 3
+    $shouts <- 0 then $shouts + 1 on !more
+    Ui.Label($text=$"went {$gone}, shouts {$shouts}")            # 4

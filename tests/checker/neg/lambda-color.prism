@@ -1,0 +1,12 @@
+# A lambda's color follows its parameters' (gap LB): `\|y| K y` calls `K`, whose color is not
+# known when the lambda is read, so the lambda is as colored as `K`; `Run` is
+# color-polymorphic in it. Given the unbounded `Grow`, `G` is unbounded, and the bounded
+# `Sneak` calls it.
+Grow: unbounded fn Nat -> Nat
+fn Grow n = n + 1
+
+Sneak: fn Nat -> Nat
+fn Sneak n:
+    let Run = \|K| \|y| K y
+    let G = Run Grow
+    G n

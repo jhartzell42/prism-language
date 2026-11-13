@@ -1,0 +1,28 @@
+# A hosted child's place with a plain answer below a building `if` of the child, whose
+# rows differ in width: the place asks its first value of the host, at its own path as
+# built (Semantics ch. 9, "How a supplier answers": the supplier's blueprint is built when
+# the child's place is built; a host re-emits each forwarded place of its child under its
+# own place, keyed by the child's path; ch. 8, "A new place's first value"; ruling TC:
+# places are counted as built, so the asking place is 1 when loud and 0 when not).
+# Reaches `PlaceNumber`'s refusal "a place that is read at its block's build ... after a
+# building `match`, `if` or widget of several clauses" on keep-B.
+# Written by Claude (sweep-4, the prismc run), 12 November 2026; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+tag Pad.Ask of Element Text:
+    name: Text
+
+@Inner: fn Bool -> @unit emit Ui.* | Pad.*
+fn @Inner loud:
+    if loud:
+        Ui.Label($text=$"loud")                                        # 0
+    a <- Pad.Ask(name="q")                                             # 1, or 0
+    Ui.Label($text=$"asked {a}")                                       # 2, or 1
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    ignore <- @HostDocument (@Inner loud), \|p, e| match e:            # 0/[p]
+        Pad.Ask(name=n): @ "yes {n}"
+        otherwise: @Element e

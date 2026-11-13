@@ -1,0 +1,20 @@
+# Derived by hand from Jimmy's ruling of 12 November (a constructor lifts over an event at a type-parameter field, as a function does) and Semantics Appendix B (`!MergeAll` fires the values of the inputs that fired, in the list's order).
+test a_request_and_a_leave_are_heard
+
+tick 0
+  added:
+    0: Ui.Button(label="ask")
+    1: Ui.Button(label="leave")
+    2: Ui.Label(text="none")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="+1/a/7")
+
+tick 2
+  in:
+    1: click
+  changed:
+    2: Ui.Label(text="-")

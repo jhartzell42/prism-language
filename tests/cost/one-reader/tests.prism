@@ -1,0 +1,17 @@
+# Ten writes behind the costly `let`: declarations of the program beside it.
+emit Ui.*
+use App.*
+use Ui.*
+
+test ten_writes, @shared:
+    build
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0

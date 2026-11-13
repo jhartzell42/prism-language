@@ -1,0 +1,38 @@
+# A building `match`'s plain result taken as a value at the build by lines above it: a
+# widget's plain argument, and a `for` whose rows read it (Semantics ch. 4, "Binding
+# groups and cycles": a widget block is one binding group, any line may use any name the
+# block binds, and "the order of a group's lines decides positions and nothing else";
+# ch. 8: `<-` binds the arm's plain result). Nothing here is a cycle: the `match` reads
+# neither the tile nor the rows. Written by Claude on the claude-lowering branch; subject
+# to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Tile: fn Nat -> @unit
+fn @Tile k:
+    Ui.Label($text=$"tile {k}")
+
+@Panel: fn Mode, $[Text] -> @unit
+fn @Panel mode, $names:
+    @Tile n                                                            # 0
+    for k, $name <- $names:                                            # 1/[k]
+        Ui.Label($text=$"{$name} of {n}")                              # 1/[k]/0
+    n <- match mode:
+        Loud t:
+            Ui.Label($text=$"{t}")                                     # 2
+            @ 10
+        Soft:
+            @ 20
+    Ui.Label($text=$"below {n}")                                       # 3, or 2
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    !add <- Ui.Button($label=$"add")                                   # 0
+    $names <- [["a"]] then Push $names, "b" on !add
+    @Panel mode, $names                                                # 1 to 4, or 1 to 3

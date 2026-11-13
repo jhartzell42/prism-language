@@ -1,0 +1,23 @@
+# A lambda argument in parentheses is the lambda (Semantics ch. 3, "Calls, commas and the
+# time words": a comma belongs to the nearest bracket around it): last, where the
+# parentheses only group it, and first, where they end it before the next argument. Each takes its parameter type from the function it is passed to. Written by
+# Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Twice: fn Nat, (fn Nat -> Nat) -> Nat
+fn Twice n, F = F (F n)
+
+Apply: fn (fn Nat -> Nat), Nat -> Nat
+fn Apply F, n = F n
+
+Last: fn Nat -> Nat
+fn Last n = Twice n, (\|k| k + 1)
+
+First: fn Nat -> Nat
+fn First n = Apply (\|k| k * 10), n
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Last 1} {First 2}")                                      # 0

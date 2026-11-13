@@ -1,0 +1,6 @@
+# Derived by hand (ruling SH): `G` takes the pair's first text and the tag's name, and counts each.
+test two_types
+
+tick 0
+  added:
+    0: Ui.Label(text="2 3")

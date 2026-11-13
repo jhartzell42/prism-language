@@ -1,0 +1,29 @@
+# A lambda supplier that calls a named widget function, `\|p, e| @Supply p, e`: the call
+# is a blueprint value, the function's answer for the place (Semantics ch. 9). prismc once
+# emitted a call of a Rust function it never wrote, which rustc refused. Written by Claude
+# on the claude-lowering branch; subject to change.
+emit Ui.* | Fs.*
+test mod Tests
+use Fs.*
+
+Shown: fn ~Contents -> Text
+fn Shown (~ c) = c.text
+fn Shown (Error(..)) = "(none)"
+
+@child: @unit
+@child:
+    !read <- Ui.Button($label=$"read")                             # 0
+    $~text <- Fs.Contents(path="a")                               # 1
+    !~got <- Fs.File(path="b", !requests=Read on !read)            # 2
+    $last <- "nothing" then Shown !~got
+    Ui.Label($text=$"{Shown $~text}, {$last}")                     # 3
+
+@Supply: fn Path, Element (Ui.* | Fs.*) o -> @o
+fn @Supply p, e = match e:
+    Fs.Contents(..): @ $ (~ Contents(text="A"))
+    Fs.File(..): @ never
+    otherwise: @Element e
+
+@called: @unit
+@called:
+    ignore <- @HostDocument @child, \|p, e| @Supply p, e          # 0/[p]

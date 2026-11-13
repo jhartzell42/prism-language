@@ -1,0 +1,35 @@
+# Jimmy's ruling, 12 November: the standard library's `ValueOf: forall (r: k). k`, the
+# value of a promoted case named as a type. `ValueOf<<Writer>>` is `Writer : Access`. The
+# cases stay ordinary values of their choice, never polymorphic. `Keyed` is generic in
+# `(r: Access)`; the call names the case, `Keyed<<Writer>> 3`, and the `Edit Writer` it
+# gives reaches `Opened`, whose `r` is then `Writer`, so `ValueOf<<r>>` there is the value
+# `Writer`. `Named` takes the case as an ordinary `Access` value.
+# Expected transcript derived by hand. Written by Claude on the claude-self-hosting
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Access = choice:
+    Reader
+    Writer
+derive ^Eq, ^Show
+
+type Edit (r: Access) = record:
+    count: Nat
+
+Named: fn Access -> Text
+fn Named access = match access:
+    Reader: "reader"
+    Writer: "writer"
+
+Keyed: forall (r: Access). fn Nat -> Edit r
+fn Keyed n = Edit(count=n)
+
+Opened: forall (r: Access). fn Edit r -> Text
+fn Opened edit = "{Named ValueOf<<r>>} edits {edit.count}"
+
+@page: @unit
+@page:
+    let written = Keyed<<Writer>> 3
+    let read = Keyed<<Reader>> 5
+    Ui.Label($text=$"{Opened written}; {Opened read}; {Named ValueOf<<Writer>>}")   # 0

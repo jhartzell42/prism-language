@@ -1,0 +1,307 @@
+# `Check.Shrink.Types`, a child module of `Check.Shrink`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Shrink.*
+use Check.Shrink.Calls.*
+use Check.Shrink.Locals.*
+use Check.Shrink.Relations.*
+use Check.Shrink.Walk.*
+use Check.Shrink.Summaries.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Expr.*
+use Check.Expr.Operators.*
+use Check.Expr.Calls.*
+use Check.Expr.Patterns.*
+use Check.Expr.Lifting.*
+use Check.Expr.Lets.*
+use Check.Blocks.*
+use Check.Blocks.Structure.*
+use Check.Blocks.Borrows.*
+use Check.Typed.*
+use Check.Typed.Print.*
+use Check.*
+use Check.Passes.*
+use Check.Passes.Cycles.*
+use Check.Passes.Borrows.*
+
+# ---- Pick NT. "A type that appears left of a function arrow in its own definition is a
+# cycle" (Semantics ch. 7, "Finding the cycles"). `type R = choice: Wrap (fn R -> Nat)`
+# lets `Omega r = Unwrap r, r` call itself through the function an `R` holds, and no call
+# graph shows it: so the type is the cycle, and nothing in it shrinks. It is
+# `may-not-end` at the type, unless every arrow the type stands left of is `unbounded
+# fn`, whose calls are unbounded and spread the color as ch. 7 says. Left of an arrow is
+# anywhere inside a parameter of a function type, at any depth; another type the
+# definition names is read through its own definition, with its parameters filled, so a
+# type reached through `Box R` or a mutual definition is found too.
+NegativeTypes: unbounded fn G, St -> St
+fn NegativeTypes g, st:
+    let arrowy = ArrowyTypes g
+    Fold (Keys g.types), st, \|s, n| NegativeType g, s, arrowy, n
+
+# A type no arrow can reach (`ArrowyTypes`) stands left of none, and is not walked.
+NegativeType: unbounded fn G, St, (Text ==> Bool), Text -> St
+fn NegativeType g, s, arrowy, n = match g.types[n]:
+    ? ti:
+        let ((neg, ignore)) = if ti.file >= g.preludeFrom or not (HasKey arrowy, n): ((False, {})) else: NegWalks g, n, (BodyTys ti), False, {}
+        if not neg: s
+        else:
+            let s0 = update s:
+                &_.file <= ti.file
+            let s1 = ErrFix s0, "may-not-end", ti.span, "`{BareName n}` stands left of a function arrow in its own definition: a call through the function it holds is a cycle, and nothing in it shrinks", "keep `{BareName n}` right of the arrow, or make the arrow `unbounded fn`, which makes every call through it unbounded"
+            update s1:
+                &_.file <= s.file
+    nil: s
+
+# The types whose definitions reach a function arrow: one written in it, or a type it
+# names that does, to a fixed point (each round adds a type or ends).
+ArrowyTypes: unbounded fn G -> (Text ==> Bool)
+fn ArrowyTypes g:
+    let names = Fold (Keys g.types), {}, \|m, n| match g.types[n]:
+        ? ti: Insert m, n, (Fold (BodyTys ti), [[]], \|acc, t| UnionTexts acc, (TyNamesIn t))
+        nil: m
+    let direct = Fold (Keys g.types), {}, \|m, n| match g.types[n]:
+        ? ti: if Fold (BodyTys ti), False, \|seen, t| seen or HasArrow t: Insert m, n, True else: m
+        nil: m
+    ArrowyFrom names, direct
+
+ArrowyFrom: unbounded fn (Text ==> [Text]), (Text ==> Bool) -> (Text ==> Bool)
+fn ArrowyFrom names, got:
+    let next = Fold (Keys names), got, \|m, n| if HasKey m, n: m else: if Fold (Or names[n], [[]]), False, \|seen, r| seen or HasKey got, r: Insert m, n, True else: m
+    if (Len (Keys next)) == (Len (Keys got)): got else: ArrowyFrom names, next
+
+# The named types a type mentions at any depth, inside function types too.
+TyNamesIn: unbounded fn Ty -> [Text]
+fn TyNamesIn t = match t:
+    TyCon c, args: Fold args, [[c]], \|acc, a| UnionTexts acc, (TyNamesIn a)
+    TyFn ignore, ps, res: Fold ps, (TyNamesIn res), \|acc, a| UnionTexts acc, (TyNamesIn a)
+    TyTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (TyNamesIn a)
+    TyArray e: TyNamesIn e
+    TyMap k, v: UnionTexts (TyNamesIn k), (TyNamesIn v)
+    TySig ignore, i: TyNamesIn i
+    TyAt i, ignore: TyNamesIn i
+    TyElem ignore, i: TyNamesIn i
+    TyAssoc ignore, ignore, i: TyNamesIn i
+    otherwise: [[]]
+
+HasArrow: unbounded fn Ty -> Bool
+fn HasArrow t = match t:
+    TyFn ignore, ignore, ignore: True
+    TyCon ignore, args: Fold args, False, \|seen, a| seen or HasArrow a
+    TyTuple ts: Fold ts, False, \|seen, a| seen or HasArrow a
+    TyArray e: HasArrow e
+    TyMap k, v: (HasArrow k) or HasArrow v
+    TySig ignore, i: HasArrow i
+    TyAt i, ignore: HasArrow i
+    TyElem ignore, i: HasArrow i
+    TyAssoc ignore, ignore, i: HasArrow i
+    otherwise: False
+
+# The types a definition is made of: a record's fields, a choice's cases' arguments, an
+# alias's type.
+BodyTys: fn TyInfo -> [Ty]
+fn BodyTys ti = match ti.body:
+    BRecord fields: Each fields, \|((ignore, t))| t
+    BChoice cases: Fold cases, [[]], \|acc, ((ignore, args))| Append acc, args
+    BAlias t: [[t]]
+    otherwise: [[]]
+
+# Whether `target` stands left of a bounded arrow in `t` (`b`: `t` itself already does).
+# A named type is read through its definition with its arguments in, once per arguments
+# and side for the whole walk (`seen`: what a type says once it says again); a walk that
+# never closes (a type that grows its own arguments) is taken as the cycle.
+NegWalk: unbounded fn G, Text, Ty, Bool, (Text ==> Bool) -> ((Bool, (Text ==> Bool)))
+fn NegWalk g, target, t, b, seen = match t:
+    TyCon c, args:
+        if c == target: ((b, seen))
+        else: match g.types[c]:
+            ? ti:
+                let sk = "{if b: "-" else: "+"}{ShowTy (NewSt 0), t}"
+                if HasKey seen, sk: ((False, seen))
+                else: if (Len (Keys seen)) > 400: ((True, seen))
+                else: NegWalks g, target, (Each (BodyTys ti), \|bt| SubstQ (ParamInst ti.params, args), bt), b, (Insert seen, sk, True)
+            nil: NegWalks g, target, args, b, seen
+    TyFn col, ps, res:
+        let ((bad, seen2)) = NegWalks g, target, ps, (b or col != CUnbound), seen
+        if bad: ((True, seen2)) else: NegWalk g, target, res, b, seen2
+    TyTuple ts: NegWalks g, target, ts, b, seen
+    TyArray e: NegWalk g, target, e, b, seen
+    TyMap k, v: NegWalks g, target, [[k, v]], b, seen
+    TySig ignore, i: NegWalk g, target, i, b, seen
+    TyAt i, ignore: NegWalk g, target, i, b, seen
+    TyElem ignore, i: NegWalk g, target, i, b, seen
+    TyAssoc ignore, ignore, i: NegWalk g, target, i, b, seen
+    otherwise: ((False, seen))
+
+NegWalks: unbounded fn G, Text, [Ty], Bool, (Text ==> Bool) -> ((Bool, (Text ==> Bool)))
+fn NegWalks g, target, ts, b, seen = Fold ts, ((False, seen)), \|((bad, sn)), t| if bad: ((True, sn)) else: NegWalk g, target, t, b, sn
+
+# Every `-?` whose operand the solver made a `Nat`, as `nat:FILE:START:END` (pick SW).
+NatMinusSeeds: unbounded fn St -> (Text ==> Rel)
+fn NatMinusSeeds st = Fold (Keys st.sizeTys), {}, \|m, k| match st.sizeTys[k]:
+    ? t: if (Zonk st, t) == tNat: Insert m, "nat:{k}", noRel else: m
+    nil: m
+
+# A definition's clauses: a function's, an impl's method's, a trait's default method's;
+# a top-level widget block's and a top-level `let`'s, each one clause without parameters.
+# A widget that binds itself builds itself forever (Semantics ch. 7, "a widget function
+# that binds itself is held to the same test"), and a `let` that reaches itself through
+# the functions it calls never has a value: both are cycles of the reference graph, with
+# no parameter to shrink.
+DefClauses: fn Def -> [FnClause]
+fn DefClauses d = match d.body:
+    DbFn clauses: clauses
+    DbMethod clauses, ignore, ignore: clauses
+    DbDefault clauses, ignore: clauses
+    DbWidget w: [[FnClause(name=(DefSName w.name), params=[[]], body=(BodyBlock w.body), span=w.span)]]
+    DbLet l: [[FnClause(name=(DefOp d.name, l.span), params=[[]], body=(BodyExpr l.value), span=l.span)]]
+    otherwise: [[]]
+
+# Two impls' methods share a key (`Prelude.Show impl Show`), so here each is told apart by
+# where its impl stands.
+OwnKey: fn Def -> Def
+fn OwnKey d = match d.body:
+    DbMethod ignore, ignore, im: update d:
+        &_.qk <= "{d.qk} #{im.file}.{im.span.start}"
+    otherwise: d
+
+# The trait method an impl's method or a default method defines.
+?MethodOf: fn G, Def -> ?Text
+fn ?MethodOf g, d = match d.body:
+    DbMethod ignore, cls, ignore: ?MethodKey g, cls, d.name
+    DbDefault ignore, cls: ?MethodKey g, cls, d.name
+    otherwise: nil
+
+# Pick OP: a trait method's name, an operator's spelling included, calls the definitions
+# of that method in the program, each impl's and the default (`DispatchTargets` narrows
+# them by the solver's choice at the call).
+MethodTargets: fn G, [Def] -> (Text ==> [Text])
+fn MethodTargets g, fns = Fold fns, {}, \|m, d| match ?MethodOf g, d:
+    ? mk: Insert m, mk, (AddText (Or m[mk], [[]]), d.qk)
+    nil: m
+
+# Each impl's definition of each method, by the method and where the impl stands, as the
+# solver's `impl:FILE.START` names it.
+ImplDefs: fn G, [Def] -> (Text ==> Text)
+fn ImplDefs g, fns = Fold fns, {}, \|m, d| match d.body:
+    DbMethod ignore, ignore, im: match ?MethodOf g, d:
+        ? mk: Insert m, "{mk}|{im.file}.{im.span.start}", d.qk
+        nil: m
+    otherwise: m
+
+# The trait a method belongs to, when the key is a trait method's.
+?MethodClass: fn G, Text -> ?Text
+fn ?MethodClass g, k = match g.vals[k]:
+    ? v: if v.sort != "method": nil else: match v.scheme.bounds[0]:
+        ? ((ignore, cls)): ? cls
+        nil: nil
+    nil: nil
+
+# The definitions a call of method `k` reaches, by what the solver chose at the call's
+# place for the method's trait (pick OP): a written impl's definition of the method, or the
+# trait's default when the impl has none; a derived impl reaches what its fields' types
+# choose; a type variable under a bound, a packed value or a quantified `let`, every
+# definition (sound); a built-in type, none of the program's. A call the solver noted
+# nothing for reaches every definition.
+DispatchTargets: unbounded fn Shrink, Def, Site, Text -> [Text]
+fn DispatchTargets sk, d, site, k:
+    let all = TargetsOf sk, k
+    match ?MethodClass sk.g, k:
+        nil: all
+        ? cls:
+            let ck = ChoiceKey d.file, site.span, cls
+            match sk.choices[ck]:
+                nil: all
+                ? cs: Fold cs, [[]], \|acc, ch| UnionTexts acc, (ChoiceTargets sk, k, cls, all, ch, [[]])
+
+ChoiceTargets: unbounded fn Shrink, Text, Text, [Text], Text, [Text] -> [Text]
+fn ChoiceTargets sk, k, cls, all, ch, seen:
+    if ch == "none": [[]]
+    else: if (HasPrefix ch, "impl:"): match sk.implDefs["{k}|{DropPrefix ch, "impl:"}"]:
+        ? q: [[q]]
+        nil: Filter all, \|q| q == k
+    else: if (HasPrefix ch, "derived:"): DerivedTargets sk, k, cls, all, (DropPrefix ch, "derived:"), seen
+    else: all
+
+# A derived impl calls the method on its fields: each field's type's own choice, a type
+# parameter's coming from the call's other constraints at the same place.
+DerivedTargets: unbounded fn Shrink, Text, Text, [Text], Text, [Text] -> [Text]
+fn DerivedTargets sk, k, cls, all, n, seen:
+    if HasText seen, n: [[]]
+    else:
+        let tys = match sk.g.types[n]:
+            ? ti: match ti.body:
+                BRecord fields: Each fields, \|((ignore, t))| t
+                BChoice cases: Fold cases, [[]], \|acc, ((ignore, args))| Append acc, args
+                BAlias t: [[t]]
+                otherwise: [[]]
+            nil: [[]]
+        let heads = Fold tys, [[]], \|acc, t| UnionTexts acc, (TyHeads t)
+        Fold heads, [[]], \|acc, h| UnionTexts acc, (HeadTargets sk, k, cls, all, h, (Push seen, n))
+
+# The named types a field's type holds at any depth (a type variable, a function, an
+# element hold none of the program's impls); `?` for one the walk cannot name.
+TyHeads: fn Ty -> [Text]
+fn TyHeads t = match t:
+    TyCon n, args: Fold args, [[n]], \|acc, a| UnionTexts acc, (TyHeads a)
+    TyTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (TyHeads a)
+    TyArray e: TyHeads e
+    TyMap a, b: UnionTexts (TyHeads a), (TyHeads b)
+    TySig ignore, i: TyHeads i
+    TyQ ignore: [[]]
+    TyRigid ignore: [[]]
+    TyFn ignore, ignore, ignore: [[]]
+    TyElem ignore, ignore: [[]]
+    TyElemAny ignore: [[]]
+    otherwise: [["?"]]
+
+HeadTargets: unbounded fn Shrink, Text, Text, [Text], Text, [Text] -> [Text]
+fn HeadTargets sk, k, cls, all, h, seen:
+    if h == "?": all
+    else: if (BuiltinHas cls, h) or IsPrimType h: [[]]
+    else: match (Filter (Or sk.g.impls[cls], [[]]), \|im| (?HeadKey im.head) == ? h)[0]:
+        ? im: ChoiceTargets sk, k, cls, all, (ImplChoice im), seen
+        nil: all
+
+# The type a type's head names, when it is a named type.
+?HeadKey: fn Ty -> ?Text
+fn ?HeadKey (TyCon n, ignore) = ? n
+fn ?HeadKey ignore = nil
+
+TargetsOf: fn Shrink, Text -> [Text]
+fn TargetsOf sk, k = Or sk.targets[k], [[k]]
+
+# The signature a definition is declared by: its own, or its trait method's.
+SigKeyOf: fn Shrink, Text -> Text
+fn SigKeyOf sk, k = match sk.byKey[k]:
+    ? d: Or (?MethodOf sk.g, d), k
+    nil: k
+
+# How a message names a definition: an impl's method by the method's name.
+ShownKey: fn Text -> Text
+fn ShownKey k = BareName (Or (SplitOn (Or (?Last (SplitOn k, " impl ")), k), " #")[0], k)
+
+IsUnboundedKey: fn G, Text -> Bool
+fn IsUnboundedKey g, k = match g.vals[k]:
+    ? v: match v.scheme.ty:
+        TyFn CUnbound, ignore, ignore: True
+        otherwise: False
+    nil: False

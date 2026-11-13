@@ -1,0 +1,13 @@
+# Derived by hand from claude/incremental-host-document.md, WD (a foreign World reads a level flattened through, every nested dynamic sampled, and the place is sent again when one moves); never run.
+test a_world_reads_the_dynamics_sampled
+
+tick 0
+  added:
+    0: Ui.Button(label="+1")
+    1: Count.Many(values=[[0, 5]])
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Count.Many(values=[[1, 5]])

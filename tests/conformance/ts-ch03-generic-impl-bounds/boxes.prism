@@ -1,0 +1,9 @@
+# `Boxes`, a child module of ts-ch03-generic-impl-bounds.
+emit r
+use Loud.*
+
+type Box a = record:
+    item: a
+
+impl ^Loud (Box a) where a: ^Loud:
+    fn Shout b = "box of {Shout b.item}"

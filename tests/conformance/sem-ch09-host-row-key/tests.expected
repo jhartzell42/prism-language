@@ -1,0 +1,18 @@
+# Derived by hand from Semantics ch. 9 (a forwarded child place is re-emitted at 0/[p]/0, its row built in the tick the place is born) and ch. 7 (round 3 ST: the document after n is published at n+1): each row's label shows its own key.
+test the_rows_label_reads_its_own_key
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="add")
+    0/[1/[0]/0]/0: Ui.Label(text="item 0")
+    1: Ui.Label(text="2 places")
+
+tick 1
+  in:
+    0/[0]/0: click
+  added:
+    0/[1/[1]/0]/0: Ui.Label(text="item 1")
+
+tick 2
+  changed:
+    1: Ui.Label(text="3 places")

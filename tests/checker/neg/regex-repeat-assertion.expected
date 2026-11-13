@@ -1,0 +1,4 @@
+tests/checker/neg/regex-repeat-assertion.prism:2: error[regex]: a repetition of an assertion
+    let r = %/^*/
+               ^
+1 error

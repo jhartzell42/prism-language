@@ -1,0 +1,12 @@
+# `two-layers`: lifting takes off one layer (Type System ch. 4, `@title_bar`).
+emit Ui.*
+
+$Titled: fn unit -> $Text
+fn $Titled u = $"opened"
+
+@title: @unit
+@title:
+    !go <- Ui.Button($label=$"Go")
+    $$title <- $"untitled" then $Titled (unit on !go)
+    let $bad = Len $$title
+    Ui.Label($text=$"x")

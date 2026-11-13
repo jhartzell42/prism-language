@@ -1,0 +1,4 @@
+tests/checker/neg/event-in-text.prism:8: error[event-in-text]: an event in a dynamic text
+        Ui.Label($text=$"{!said}")
+                          ^^^^^
+1 error

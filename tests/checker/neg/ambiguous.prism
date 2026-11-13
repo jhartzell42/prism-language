@@ -1,0 +1,3 @@
+# `ambiguous`: nothing decides the element type of an empty array printed.
+Empty: fn Int -> Text
+fn Empty n = Show [[]]

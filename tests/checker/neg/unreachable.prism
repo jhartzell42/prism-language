@@ -1,0 +1,5 @@
+# `unreachable`: an arm nothing reaches.
+Describe: fn ?Int -> Text
+fn Describe ?n = match ?n:
+    ?winner: "some"
+    nil: "none"

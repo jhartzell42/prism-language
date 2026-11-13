@@ -1,0 +1,29 @@
+# A `let` of an event, written above a building `match` whose plain result it reads (Semantics ch. 4,
+# "Binding groups and cycles": any line may use any name the block binds, and "the order
+# of a group's lines decides positions and nothing else"). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Panel: fn Mode -> @unit
+fn @Panel mode:
+    !go <- Ui.Button($label=$"go")
+    let !steps = (n + 1) on !go
+    $total <- 0 then $total + !steps
+    Ui.Label($text=$"total {$total}")
+    n <- match mode:
+        Loud t:
+            Ui.Label($text=$"{t}")
+            @ 10
+        Soft:
+            @ 20
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    @Panel mode

@@ -1,0 +1,29 @@
+# Derived by hand from Type System ch. 4 (`!MergeAll $evs` is lifted, a `$![a]`) and round 47 SW (`@Switch` hears the inner the dynamic holds after each tick, from n+1): `a` fires the first list's merge; the swap moves the list at 2, after which the switch hears only the second list's merge, so `a` at 3 counts nothing and `b` at 4 counts.
+test the_switch_follows_the_merged_list
+
+tick 0
+  added:
+    0: Ui.Button(label="a")
+    1: Ui.Button(label="b")
+    2: Ui.Button(label="swap")
+    3: Ui.Label(text="0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    3: Ui.Label(text="1")
+
+tick 2
+  in:
+    2: click
+
+tick 3
+  in:
+    0: click
+
+tick 4
+  in:
+    1: click
+  changed:
+    3: Ui.Label(text="2")

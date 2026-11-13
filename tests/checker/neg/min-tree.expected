@@ -1,0 +1,5 @@
+tests/checker/neg/min-tree.prism:12: error[may-not-end]: `Climb` calls itself, not smaller than what it was given
+    fn Climb (Node l, r) = Climb (Min l, (Node l, r))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`
+1 error

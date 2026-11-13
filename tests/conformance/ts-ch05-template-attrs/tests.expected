@@ -1,0 +1,7 @@
+# Written by hand from the rule that attributes are named arguments: bound by name, not in
+# written order.
+test attributes_bind_by_name
+
+tick 0
+  added:
+    0: Ui.Label(text="first before second")

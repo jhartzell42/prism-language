@@ -1,0 +1,16 @@
+# The hosted bundle's tests: declarations of sem-ch09-host-bundle.
+emit Ui.* | Pad.*
+use App.*
+
+test a_supplier_answers_a_bundle, @computed:
+    build
+        => expect Ui.Label(text="mock: 0")
+    click at 0
+    compute
+        => expect Ui.Label(text="mock: 2")
+
+test a_forwarded_bundle, @forwarded:
+    with Pad.Door(name="front") = "door 1", build
+        => expect Ui.Label(text="door 1: 0")
+    send Pad.Door(..), 3
+        => expect Ui.Label(text="door 1: 3")

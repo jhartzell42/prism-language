@@ -1,0 +1,348 @@
+# The prelude: Semantics Appendix B, the module every file implicitly `use`s with `*`
+# (Semantics ch. 6, "The prelude is used by every file"). Its functions and types come in
+# bare; its tags come with their family, `Prelude.Unwrap`.
+#
+# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to
+# change; Jimmy rewrites it by hand.
+#
+# How to read this file: a signature line with `fn` clauses under it is a prelude
+# function written in Prism. A signature line with no clauses is a builtin: prismc checks
+# and lifts it by this signature (Type System ch. 4, "Where the table looks") and each back
+# end supplies its body (prismc/emit/rust/prelude.prism and prismc/emit/cpp/prelude.prism,
+# emitted with every program, over runtime/rust and runtime/cpp). Each builtin's cost
+# promise is Appendix B's.
+
+emit r
+
+# ---------------------------------------------------------------------------------------
+# Types (Appendix B, Types)
+# ---------------------------------------------------------------------------------------
+
+# `Bool`, `unit`, `Char`, `Text`, `Nat`, `Int`, `U8`, `Duration`, `Path` and `Cursor` are
+# the runtime's own; they need no declaration here. A `Cursor` (Appendix B, Text) is
+# opaque: a text and a byte position in it, on a character boundary.
+
+# What `Compare` answers (Type System ch. 3, `^Ord`).
+type Ordering = choice:
+    Less
+    Equal
+    Greater
+derive ^Eq, ^Ord, ^Show
+
+# The type with no value (Part III ch. 6, "`Never` closes a role's requests"; Jimmy, 12
+# November: "Never is an empty choice and goes in the prelude"). A `match` on it has no
+# arm, and `!Never` has one value, `never`, the event that never fires.
+type Never = choice:
+derive ^Eq, ^Ord, ^Show
+
+# The row kinds (Type System ch. 2, Rows; Semantics ch. 10).
+type Element o = row
+type Fault = row
+
+# The one error value (Semantics ch. 10, "`~T`, `Error` and `Fault` as a row").
+type Error = record:
+    kind: Fault
+    message: Text
+derive ^Eq, ^Ord, ^Show
+
+# A widget giving up (Semantics ch. 10, "Exceptions: a widget giving up").
+type Exception = record:
+    kind: Fault
+    message: Text
+    spans: [Span]
+    ?path: Path
+derive ^Eq, ^Show
+
+# A source range: file, line, column, binding (Appendix B, Types).
+type Span = record:
+    file: Text
+    line: Nat
+    column: Nat
+    binding: Text
+derive ^Eq, ^Ord, ^Show
+
+# What one cycle of a job gives (Appendix B, Types; Semantics ch. 7).
+type Turn b = choice:
+    More
+    Done b
+derive ^Eq, ^Show
+
+# The prelude's tags (Appendix B, Prelude tags; Semantics ch. 10).
+tag Prelude.Unwrap of Element !a where a: ^Show:
+    !~value: a
+
+tag Prelude.Exceptions of Element !Exception
+
+# A failed `require` or `forbid` under a `~` name (decisions.md D11): its message is the
+# guard's source text.
+tag Prelude.Unmet of Fault
+
+# `~ParseNat` on a text that is no number.
+tag Prelude.NotANumber of Fault
+
+# ---------------------------------------------------------------------------------------
+# Traits (Appendix B, Traits; Type System ch. 3)
+# ---------------------------------------------------------------------------------------
+
+# Derivable and structural. With no `impl`, a `derive` gives each method structurally
+# (Type System ch. 3, "Derive, out loud"); an `impl` for a type replaces it.
+trait ^Eq a:
+    ==: fn a, a -> Bool
+    !=: fn a, a -> Bool
+
+trait ^Ord a where a: ^Eq:
+    Compare: fn a, a -> Ordering
+    <: fn a, a -> Bool
+    <=: fn a, a -> Bool
+    >: fn a, a -> Bool
+    >=: fn a, a -> Bool
+
+trait ^Show a:
+    Show: fn a -> Text
+
+# `Nat` has `-?` and no `-` (round 47 NS); `/` gives `?` on the integers (doubt NN).
+trait ^Num a where a: ^Eq:
+    +: fn a, a -> a
+    -: fn a, a -> a
+    *: fn a, a -> a
+    /: fn a, a -> ?a
+    +?: fn a, a -> ?a
+    -?: fn a, a -> ?a
+    *?: fn a, a -> ?a
+
+# Derive only (Type System ch. 2, `^Pod`; Q-PD2).
+trait ^Pod t:
+    Children: fn t -> [[t]]
+
+# ---------------------------------------------------------------------------------------
+# Arrays (Appendix B, Arrays)
+# ---------------------------------------------------------------------------------------
+
+# One name for arrays, texts and maps (doubt LZ): elements, bytes, entries. Constant.
+Len: fn a -> Nat
+
+# Logarithmic.
+Append: fn [a], [a] -> [a]
+
+# The first `n` elements, and the rest; logarithmic. An array only: a text is cut at a
+# cursor (`Before`, `After`).
+Take: fn [a], Nat -> [a]
+Drop: fn [a], Nat -> [a]
+
+# Amortised constant.
+Push: fn [a], a -> [a]
+
+# `n·t`. Over a map, the step takes the key and the value: `\|acc, k, v|`.
+Fold: fn [a], b, (fn b, a -> b) -> b
+
+Each: fn [a], (fn a -> b) -> [b]
+fn Each xs, F = Fold xs, [[]], \|acc, x| Push acc, (F x)
+
+# Not in Appendix B, which is a slip: Semantics ch. 4's quiz and Type System ch. 4 use it.
+Filter: fn [a], (fn a -> Bool) -> [a]
+fn Filter xs, Keep = Fold xs, [[]], \|acc, x| if Keep x: Push acc, x else: acc
+
+Sum: fn [a] -> a where a: ^Num
+fn Sum xs = Fold xs, 0, \|s, x| s + x
+
+Max: fn a, a -> a where a: ^Ord
+fn Max a, b = if a < b: b else: a
+
+Min: fn a, a -> a where a: ^Ord
+fn Min a, b = if b < a: b else: a
+
+# Linear in the total length.
+Concat: fn [Text] -> Text
+
+# ---------------------------------------------------------------------------------------
+# Maps (Appendix B, Maps; names by round 47 PM)
+# ---------------------------------------------------------------------------------------
+
+# A map's key is `^Ord` (Type System ch. 3: "Map keys must be `^Ord`, so a map iterates in
+# one order everywhere"): what puts a key in, or finds one, asks for it.
+Insert: fn (k ==> v), k, v -> (k ==> v) where k: ^Ord
+Remove: fn (k ==> v), k -> (k ==> v) where k: ^Ord
+?Get: fn (k ==> v), k -> ?v where k: ^Ord
+?First: fn (k ==> v) -> ?((k, v))
+Keys: fn (k ==> v) -> [k]
+Values: fn (k ==> v) -> [v]
+Size: fn (k ==> v) -> Nat
+Map: fn [((k, v))] -> (k ==> v) where k: ^Ord
+Union: fn (k ==> v), (k ==> v) -> (k ==> v) where k: ^Ord
+
+# ---------------------------------------------------------------------------------------
+# Text (Appendix B, Text; round 4 TX)
+# ---------------------------------------------------------------------------------------
+
+# A text is UTF-8: a position in it is a byte index, and its characters are walked with a
+# cursor. Nothing counts or indexes characters; `t[i]`, `Take` and `Drop` on a text are
+# type errors. Texts order bytewise. Each constant but `Upper`, `Lower` and `SplitOn`.
+Front: fn Text -> Cursor
+Back: fn Text -> Cursor
+?Step: fn Cursor -> ?((Char, Cursor))
+?StepBack: fn Cursor -> ?((Char, Cursor))
+Before: fn Cursor -> Text
+After: fn Cursor -> Text
+At: fn Cursor -> Nat
+?CursorAt: fn Text, Nat -> ?Cursor
+Upper: fn Text -> Text
+# Not in Appendix B: a character as the one-character text it is (as `"{c}"` places it).
+Text: fn Char -> Text
+# Not in Appendix B: the character whose code point is `n`; `nil` past 10FFFF and for a
+# surrogate (D800 to DFFF), which no character is.
+?CharOf: fn Nat -> ?Char
+Lower: fn Text -> Text
+# Not in Appendix B, whose `Split` is a regular expression's (below): the pieces between
+# the separators, what `Split` gives for the expression that matches the separator, so an
+# empty one cuts at every character boundary (`SplitOn "ab", ""` is `[["", "a", "b", ""]]`).
+SplitOn: fn Text, Text -> [Text]
+?ParseNat: fn Text -> ?Nat
+
+~ParseNat: fn Text -> ~Nat
+fn ~ParseNat text = match ?ParseNat text:
+    ? n: ~ n
+    nil: Error(kind=Prelude.NotANumber, message="not a number: {text}")
+
+# The POD printed form (Type System ch. 2): one top-level node per line.
+Print: fn [[t]] -> Text where t: ^Pod
+
+# ---------------------------------------------------------------------------------------
+# Regular expressions (Appendix B, Regular expressions; claude/regex-dialect.md)
+# ---------------------------------------------------------------------------------------
+
+# `Regex` and `RegexReplacement` are the runtime's own and opaque, the types of the
+# literals `%/.../` and `%/.../.../` (Semantics ch. 2), checked against the dialect before
+# tick 0. A match's texts are views of the searched text, its cursors cursors into it.
+type Group = record:
+    text: Text
+    front: Cursor
+    back: Cursor
+derive ^Eq, ^Show
+
+# `groups[0]` is the whole match, `nil` a group that took no part; `named` holds each
+# named group that took part.
+type Match = record:
+    text: Text
+    front: Cursor
+    back: Cursor
+    groups: [?Group]
+    named: Text ==> Group
+derive ^Eq, ^Show
+
+# `p` the pattern's size, `n` the text's length in bytes, `k` the matches.
+# Linear in the text and in `p`; `nil` outside the dialect, with no flags.
+?Regex: fn Text -> ?Regex
+# The match that starts at the cursor: `p` times the bytes the search reads.
+?Match: fn Regex, Cursor -> ?Match
+# The leftmost-first match; `p·n`.
+?Find: fn Regex, Text -> ?Match
+# Every match by the iteration rule; `p·n·(k+1)` at worst (doubt QM).
+Matches: fn Regex, Text -> [Match]
+# Every match replaced; `Matches`'s cost and the result's length.
+Replace: fn RegexReplacement, Text -> Text
+# The `k + 1` texts between the matches, each a view; `Matches`'s cost.
+Split: fn Regex, Text -> [Text]
+
+# ---------------------------------------------------------------------------------------
+# Numbers
+# ---------------------------------------------------------------------------------------
+
+# Widening and narrowing (Type System ch. 2, "No implicit widening").
+Int: fn Nat -> Int
+?Nat: fn Int -> ?Nat
+?U8: fn Int -> ?U8
+
+# Division and remainder as functions, `nil` for a zero divisor.
+?Div: fn a, a -> ?a
+?Mod: fn a, a -> ?a
+
+# ---------------------------------------------------------------------------------------
+# Optionals (Appendix B, Optionals and faults)
+# ---------------------------------------------------------------------------------------
+
+Or: fn ?a, a -> a
+fn Or nil, d = d
+fn Or (? x), ignore = x
+
+# ---------------------------------------------------------------------------------------
+# Events (Appendix B, Events): constant per firing, plus the function they apply
+# ---------------------------------------------------------------------------------------
+
+!Filter: fn !?a -> !a
+!Present: fn !?a -> !unit
+!Union: fn !(k ==> v), !(k ==> v) -> !(k ==> v) where k: ^Ord
+!MergeAll: fn [!a] -> ![a]
+!MergeWith: fn (fn a, a -> a), [!a] -> !a
+!Both: fn !a, !b -> !((a, b))
+!Except: fn !a, !b -> !a
+!Gate: fn $Bool, !a -> !a
+!Updated: fn $a -> !a
+
+# ---------------------------------------------------------------------------------------
+# Widgets (Appendix B, Widgets): each a widget binding, set up once per instance
+# ---------------------------------------------------------------------------------------
+
+@started: @!unit
+@Element: fn Element r o -> @o emit r
+@HostDocument: fn @a emit c, (fn Path, Element c o -> @o) -> @((a, $(Path ==> $Elem c)))
+@HostSome: fn @a emit c, (fn Path, Element c o -> ?@o) -> @((a, $(Path ==> $Elem c)))
+@HostList: fn @a emit c, !(Path ==> Output c), (fn Path, Element c o -> @o) -> @((a, $(Path ==> $Wired c)))
+@Switch: fn $!a -> @!a
+@Flatten: fn $$a -> @$a
+# `$y <- @Distinct $x`: `$x`'s value, whose update event fires only when the value changed
+# (Jimmy, 5 November 2026, reversing Appendix B's D-DT; a builtin of the lowering).
+@Distinct: fn $a -> @$a where a: ^Eq
+# `$each <- @PerKey $m`: `$m` taken apart by key (Semantics Appendix B; round 9 PK,
+# Jimmy's; a builtin of the lowering). The outer fires only when a key comes or goes; each
+# key's inner holds that key's value and fires only when it changes by `==` (`@Distinct`,
+# per key). A row of `for k, $v <- $each:` reads its own inner as `$v` (Semantics ch. 4,
+# ruling FV: over `$(k ==> $v)` the value binder is the value under the row's key, which
+# follows a replaced dynamic; `@Flatten` is for a `rebuild`'s `$$a`).
+@PerKey: fn $(k ==> v) -> @$(k ==> $v) where v: ^Eq
+@Defer: fn !a -> @!a
+@Later: fn !a -> @!a
+@Machine: fn (fn s, a -> ((s, ?b))), s, !a -> @!b
+@Run: fn (unbounded fn a -> b), a -> @!b
+
+@Once: fn !a -> @!a
+fn @Once !e:
+    $done <- False then True on !e
+    @ !Gate (not $done), !e
+
+@AfterFirst: fn !a -> @!a
+fn @AfterFirst !e:
+    $done <- False then True on !e
+    @ !Gate $done, !e
+
+@Numbered: fn !a -> @!((Nat, a))
+fn @Numbered !e:
+    fn Paired k, v = ((k, v))
+    $n <- 0 then $n + 1 on !e
+    @ Paired $n, !e
+
+# ---------------------------------------------------------------------------------------
+# `&` blocks (Appendix B, `&` blocks; Semantics ch. 5)
+# ---------------------------------------------------------------------------------------
+
+# `Entry K V` is a map's entry (Jimmy's ruling on map entries): what `&m[k]` names in an
+# `&` block when `m` is a map, put from a `?V` with `<:` and read as `m[k]` is. It is the
+# checker's own, like `Buffer` and `Table`, and a program's own `Entry` type hides it.
+
+# A `Buffer a` becomes `[a]`, a `Table k v` becomes `[((k, v))]` in insertion order;
+# constant. `Buffer.Numbered n` and `Table.Empty` are builtins reached by their
+# qualified names.
+Freeze: fn a -> b
+
+# ---------------------------------------------------------------------------------------
+# Float (decisions.md D14): IEEE double
+# ---------------------------------------------------------------------------------------
+
+# An integer as a `Float`; `ToFloat` is the same function under the name D14 gives.
+Float: fn Int -> Float
+ToFloat: fn Int -> Float
+Cos: fn Float -> Float
+Sin: fn Float -> Float
+
+# On any number: the magnitude, and -1, 0 or 1 of the same type.
+Abs: fn a -> a
+Sign: fn a -> a

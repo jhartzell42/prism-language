@@ -1,0 +1,24 @@
+# A supplier answering a hosted place whose plain answer is an array of dynamics (Semantics
+# ch. 9: the supplier answers the asking place, building nothing for it; a forwarding
+# host's place for its child's place p is pos/[p]/0; Type System ch. 1: a type that holds
+# a dynamic is a type as any other). rustc refuses prismc-s4's and prismc-s6's output:
+# the answer `[[$ 1]]` is spelled an `Array<Nat>` where the tag's output holds an
+# `Array<Dynamic<Nat>>`.
+# Written by Claude (sweep-6, the prismc run), 12 November 2026; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+tag Pad.Ask of Element [$Nat]:
+    name: Text
+
+@Inner: @unit emit Ui.* | Pad.*
+@Inner:
+    a <- Pad.Ask(name="q")                                             # 0
+    Ui.Label($text=$"asked {Len a}")                                   # 1
+
+@Page: @unit
+@Page:
+    ignore <- @HostDocument @Inner, \|p, e| match e:                   # 0/[p]
+        Pad.Ask(..): @ [[$ 1]]
+        otherwise: @Element e

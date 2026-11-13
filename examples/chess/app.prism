@@ -1,0 +1,32 @@
+# Chess, the document way: one game of chess as a document in memory, and participants
+# that hold its seats. This is the root: the hot seat in a window, two boards side by
+# side, each holding one player's seat. The other seatings (text interfaces, terminals, a
+# board against a terminal, scripts) are in `tables.prism`; claude/document-chess.md has
+# the module map.
+# Written by Claude on the claude-document-chess branch; subject to change.
+emit Pane.* | Gui.*
+mod Documents
+mod Rules
+mod Game
+mod Notation
+mod Words
+mod Squares
+mod Lines
+mod TextPlayers
+mod Console
+mod CommandLine
+mod Window
+mod Board
+mod Tables
+test mod Checks
+test mod Tests
+test mod TerminalTests
+test mod BoardTests
+use Tables.*
+use Window.*
+use Window.Panes.*
+use Window.Widgets.*
+
+@main: @unit emit Pane.* | Gui.*
+@main:
+    @Window ($ "Chess"), (Extent 1400.0, 760.0), @boards

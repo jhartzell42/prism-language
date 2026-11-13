@@ -1,0 +1,8 @@
+# A module named as the emitted code's old path to the runtime, for
+# ts-ch01-module-named-runtime.
+emit r
+
+type Hold = choice:
+    Hold Nat
+    Cell
+derive ^Eq, ^Show

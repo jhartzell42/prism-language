@@ -1,0 +1,12 @@
+# The tests of sem-ch04-building-match-on-built-late-value-above-inner-match.
+emit Ui.*
+use App.*
+
+test small, @Page (Loud Small):
+    build
+
+test big, @Page (Loud Big):
+    build
+
+test soft, @Page Soft:
+    build

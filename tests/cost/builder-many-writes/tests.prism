@@ -1,0 +1,47 @@
+# Forty writes of the same value: declarations of the program beside it.
+emit Ui.*
+use App.*
+use Ui.*
+
+test forty_writes, @rows:
+    build
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0

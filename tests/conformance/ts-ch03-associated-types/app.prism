@@ -1,0 +1,38 @@
+# An associated type an impl chooses (Type System ch. 3, "Associated types"; ch. 5,
+# Traits: it normalizes during unification, at a known head to the impl's choice). Each
+# box opens to its own item: a crate to a count, a jar to a label. Written by Claude on
+# the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Box a:
+    type Item
+    Open: fn a -> Item a
+
+type Crate = record:
+    count: Nat
+derive ^Eq, ^Show
+
+type Jar = record:
+    label: Text
+derive ^Eq, ^Show
+
+impl ^Box Crate:
+    type Item = Nat
+    fn Open c = c.count
+
+impl ^Box Jar:
+    type Item = Text
+    fn Open j = j.label
+
+# At a known head the item is the impl's: a crate's adds, a jar's joins.
+Total: fn Crate -> Nat
+fn Total c = (Open c) + 1
+
+Named: fn Jar -> Text
+fn Named j = "{Open j}!"
+
+@shown: @unit
+@shown:
+    let jar = Jar(label="figs")
+    Ui.Label($text=$"{Total (Crate(count=4))} {Named jar}")      # 0

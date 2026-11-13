@@ -1,0 +1,4 @@
+tests/checker/neg/existential-no-eq.prism:8: error[no-impl]: no impl of `^Eq` for `any ^Eq`: each existential hides a type of its own, so two do not compare
+    fn Equal n = [[HideNat n]] == [[HideNat 2]]
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1 error

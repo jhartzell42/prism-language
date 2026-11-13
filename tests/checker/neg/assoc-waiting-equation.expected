@@ -1,0 +1,4 @@
+tests/checker/neg/assoc-waiting-equation.prism:23: error[mismatch]: expected `Text`, found `Nat`
+        G (Pair(one=n, two=n))
+        ^
+1 error

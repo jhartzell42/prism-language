@@ -1,0 +1,72 @@
+# Chess on the hot seat, hosted by a hand-written implementation: Part IV ch. 5's
+# `@HostRole`, `@Seated` and `@ChessByHand`, the plan's step H2 (Part VII ch. 7, step C6's
+# test). Each player has a board of its own; a spectator joins and leaves by the table's
+# buttons. The library's `Documents` is given as a second source:
+# `./prism test tests/documents/c6-chess-by-hand tests/documents/library`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+mod Rules
+mod Notation
+mod Chess
+test mod Tests
+use Documents.*
+use Rules.*
+use Notation.*
+use Chess.*
+
+let f2f3 = Moving (Square 5, 1), (Square 5, 2)
+let e7e5 = Moving (Square 4, 6), (Square 4, 4)
+let g2g4 = Moving (Square 6, 1), (Square 6, 3)
+let d8h4 = Moving (Square 3, 7), (Square 7, 3)
+
+# ---- the words: a participant turns what it is sent into text
+
+Said: fn Response ChessGame Player -> Text
+fn Said Accepted = "accepted"
+fn Said (Declined NotYourMove) = "declined: not your move"
+fn Said (Declined (IllegalMove move)) = "declined: {Spelled move} is illegal"
+
+Status: fn ?ChessGame -> Text
+fn Status nil = "loading"
+fn Status (? game) = StatusText game
+
+# ---- the participants
+
+# Part IV ch. 3's player: it fires the moves it is handed and gives back the game and the
+# responses (a result of several parts, in the host's scope).
+@Player: fn !Move -> @(($?ChessGame, !Response ChessGame Player)) emit Seat.* ChessGame Player
+fn @Player !moves:
+    $?game <- Seat.Query($query=$ Whole)                                       # 0
+    !response <- Seat.Request(!requests=!moves)                                # 1
+    @ (($?game, !response))
+
+# A player's board: two buttons, each a move, and the game as it is told. It counts the
+# responses it is sent, so a board built anew would read 0 again.
+@Board: fn Color, Move, Move -> @unit emit Ui.* | Seat.* ChessGame Player
+fn @Board side, first, second:
+    !one <- Ui.Button($label=$"{side} plays {Spelled first}")                  # 0
+    !two <- Ui.Button($label=$"{side} plays {Spelled second}")                 # 1
+    (($?game, !response)) <- @Player ((first on !one) <| (second on !two))     # 2
+    $answered <- 0 then $answered + (1 on !response)
+    $said <- "nothing yet" then Said !response
+    Ui.Label($text=$"{side}'s board: {Status $?game}; {$said}; {$answered} answered")   # 3
+
+# A spectator: its requests are `Never`, so it places no request element.
+@Watcher: fn Text -> @unit emit Ui.* | Seat.* ChessGame Spectator
+fn @Watcher name:
+    $?game <- Seat.Query($query=$ Whole)                                       # 0
+    Ui.Label($text=$"{name} watches: {Status $?game}")                         # 1
+
+# ---- the table: two players from the start, and a spectator who joins and leaves
+
+@Table: @(ChessSeats Ui.*) emit Ui.*
+@Table:
+    !adaJoins <- Ui.Button($label=$"ada joins")                                # 0
+    !adaLeaves <- Ui.Button($label=$"ada leaves")                              # 1
+    $spectators <- {} then ({"ada": $ (@Watcher "ada")} on !adaJoins) <| ({} on !adaLeaves)
+    @ ChessSeats($player=$ {White: $ (@Board White, f2f3, g2g4), Black: $ (@Board Black, e7e5, d8h4)}, $spectator=$spectators)
+
+@hotSeat: @unit
+@hotSeat:
+    seats <- @Table                                                            # 0, 1
+    @HostDocument @ChessByHand, seats                                          # 2

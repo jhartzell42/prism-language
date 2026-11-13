@@ -1,0 +1,74 @@
+# Records that hold one another in a cycle (Type System ch. 2: a field may name any type,
+# its own included): a record holding itself in an optional, two records through an
+# optional and a tuple, three records in a ring, a generic record, and two records that
+# hold each other with nothing to end it, a type no value has, which a function still
+# names. Every field that reaches its own record is behind a shared pointer on both
+# targets, so C++ orders the types as Rust does. Written by Claude
+# on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Link = record:
+    n: Nat
+    ?next: Link
+derive ^Eq, ^Show
+
+type Inner = record:
+    back: Outer
+    k: Nat
+derive ^Eq, ^Show
+
+type Outer = record:
+    ?pair: ((Nat, Inner))
+derive ^Eq, ^Show
+
+type Ring = record:
+    mid: Mid
+derive ^Eq, ^Show
+
+type Mid = record:
+    last: Last
+derive ^Eq, ^Show
+
+type Last = record:
+    ?ring: Ring
+derive ^Eq, ^Show
+
+type Chain a = record:
+    item: a
+    ?more: (Chain a)
+derive ^Eq, ^Show
+
+type Nevermore = record:
+    other: Ever
+
+type Ever = record:
+    never: Nevermore
+
+Back: fn Nevermore -> Ever
+fn Back n = n.other
+
+Depth: fn Link -> Nat
+fn Depth l = match l.?next:
+    ? m: 1 + Depth m
+    nil: 1
+
+Ks: fn Outer -> Nat
+fn Ks o = match o.?pair:
+    ? ((n, i)): n + i.k + Ks i.back
+    nil: 0
+
+Total: fn Chain Nat -> Nat
+fn Total c = match c.?more:
+    ? m: c.item + Total m
+    nil: c.item
+
+@page: @unit
+@page:
+    let l = Link(n=1, ?next=(? Link(n=2, ?next=nil)))
+    let o = Outer(?pair=(? ((1, Inner(back=Outer(?pair=nil), k=5)))))
+    let r = Ring(mid=Mid(last=Last(?ring=nil)))
+    let c = Chain(item=2, ?more=(? Chain(item=3, ?more=nil)))
+    Ui.Label($text=$"{Depth l} {Ks o} {Total c}")                                # 0
+    Ui.Label($text=$"{r} {l == l}")                                              # 1

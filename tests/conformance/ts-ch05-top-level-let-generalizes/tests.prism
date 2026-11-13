@@ -1,0 +1,7 @@
+# The tests of ts-ch05-top-level-let-generalizes.
+emit Ui.*
+use App.*
+
+test each_use_has_its_own_type, @Page:
+    build
+        => expect Ui.Label(text="8 abab <4> <True>")

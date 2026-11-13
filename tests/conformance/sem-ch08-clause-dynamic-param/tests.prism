@@ -1,0 +1,9 @@
+# The dynamic parameter's tests: declarations of sem-ch08-clause-dynamic-param.
+emit Ui.*
+use App.*
+
+test the_clause_follows_its_parameter, @top:
+    build
+        => expect Ui.Label(text="some 3 x")
+    click at 0
+        => expect Ui.Label(text="some 3 y")

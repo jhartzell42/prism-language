@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 3: each parenthesized lambda is the lambda inside, so `Last 1` is 1 + 1 + 1 = 3 and `First 2` is 2 * 10 = 20.
+test a_parenthesized_lambda_is_the_lambda
+
+tick 0
+  added:
+    0: Ui.Label(text="3 20")

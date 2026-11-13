@@ -1,0 +1,18 @@
+# A generic tag placed at a function type: the tag's variable is bounded by `^Show` on its
+# line (Semantics ch. 8: "Every field and every output prints"; its table, "tag
+# variables: appear in the output; bounded by `^Show` on the line"), and a function has
+# no `^Show` (Type System ch. 3). Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.* | Pad.*
+
+tag Pad.Echo of Element !r where r: ^Show:
+    $?latest: r
+
+Twice: fn Nat -> Nat
+fn Twice n = n * 2
+
+@guest: @unit
+@guest:
+    !Back <- Pad.Echo($?latest=$(? Twice))
+    $heard <- 0 then $heard + 1 on !Back
+    Ui.Label($text=$"heard {$heard}")

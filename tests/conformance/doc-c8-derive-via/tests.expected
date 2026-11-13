@@ -1,0 +1,6 @@
+# Derived by hand from Part IV ch. 4 (doubt DV: `derive ^Named via ^Titled for Book` gives `Book` the impl the via definitions write, over `Book`'s own `^Titled`), so `Name` of the book is "named by its title, Dune".
+test delegated_name
+
+tick 0
+  added:
+    0: Ui.Label(text="named by its title, Dune")

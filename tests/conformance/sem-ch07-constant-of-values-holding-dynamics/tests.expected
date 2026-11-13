@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 7 (`$ v` is the constant of `v`; `@Flatten` reads the inner its outer holds, here `$a` itself) and Type System ch. 1: the label follows `$a` through the tuple. Never run.
+test the_tuple_holds_the_dynamic
+
+tick 0
+  added:
+    0: Ui.Button(label="inc")
+    1: Ui.Label(text="0 main 2 3")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1 main 2 3")

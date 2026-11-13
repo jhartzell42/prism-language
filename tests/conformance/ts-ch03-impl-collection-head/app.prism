@@ -1,0 +1,52 @@
+# An impl whose head is a collection or a tuple (Type System ch. 3, traits: an impl is
+# written for a type, and `[a]`, `((a, b))` and `k ==> v` are types): `impl ^Blank [a]
+# where a: ^Blank` is used at `[Text]`, `impl ^Blank ((a, b))` at `((Nat, Text))`, and
+# `impl ^Blank (Text ==> a)` at `Text ==> Nat`. `Blank`'s type is only in its result, so
+# each call is at the impl its result's type picks. Written by Claude on the fix-2 branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+trait ^Blank a:
+    Blank: fn Nat -> a
+    Twice: fn a -> a
+
+impl ^Blank Nat:
+    fn Blank n = n
+    fn Twice x = x * 2
+
+impl ^Blank Text:
+    fn Blank n = "b{n}"
+    fn Twice x = "{x}{x}"
+
+impl ^Blank [a] where a: ^Blank:
+    fn Blank n = [[Blank n, Blank (n + 1)]]
+    fn Twice xs = Each xs, \|x| Twice x
+
+impl ^Blank ((a, b)) where a: ^Blank, b: ^Blank:
+    fn Blank n = ((Blank n, Blank n))
+    fn Twice ((x, y)) = ((Twice x, Twice y))
+
+impl ^Blank (Text ==> a) where a: ^Blank:
+    fn Blank n = {"k": Blank n}
+    fn Twice m = Fold m, {}, \|acc, k, v| Insert acc, k, (Twice v)
+
+Texts: fn Nat -> [Text]
+fn Texts n = Twice (Blank n)
+
+Pair: fn Nat -> ((Nat, Text))
+fn Pair n = Twice (Blank n)
+
+Keyed: fn Nat -> (Text ==> Nat)
+fn Keyed n = Twice (Blank n)
+
+Joined: fn [Text] -> Text
+fn Joined ts = Fold ts, "", \|acc, t| "{acc}[{t}]"
+
+PairText: fn ((Nat, Text)) -> Text
+fn PairText ((n, t)) = "{n}/{t}"
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Joined (Texts 1)} {PairText (Pair 3)} {Or (?Get (Keyed 4), "k"), 0}")    # 0

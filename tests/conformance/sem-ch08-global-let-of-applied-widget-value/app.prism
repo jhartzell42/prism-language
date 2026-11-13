@@ -1,0 +1,19 @@
+# A top-level `let` whose value is a widget applied to its argument as a blueprint
+# value, built by a widget of the module (Semantics ch. 3: `let` for values; ch. 8: a
+# blueprint is an opaque handle and still a value, built where a block applies it).
+# `ValuedWidgets` reads no top-level `let`'s value. Reaches `DeclaredCall`'s (GlobalCall)
+# refusal "the widget function @Called as a value" on prismc-r27.
+# Written by Claude (t2, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Called: fn Nat -> @unit
+fn @Called k:
+    Ui.Label($text=$"called {k}")
+
+let @shown = @Called 3
+
+@page: @unit
+@page:
+    @shown                                                             # 0

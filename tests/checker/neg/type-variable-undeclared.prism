@@ -1,0 +1,15 @@
+# A type's variables are its parameters: a field, a case or an alias that names a variable
+# the declaration's head does not is refused where it is written, and a head names each
+# parameter once (Type System ch. 2: "A record may take type parameters, `type Pair a b =
+# record:`"). Written by Claude on the claude-bugs branch; subject to change.
+type Loose = record:
+    held: b
+
+type Shade c = choice:
+    Dark d
+    Light c
+
+type Free = [e]
+
+type Twice a a = record:
+    one: a

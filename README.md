@@ -1,15 +1,33 @@
 # Prism
 
-**NOTE:** This is not a repo ready to use for any purpose, including basic
-demonstrations. I'm making it public because I can, and because that way I can
-share with friends, but not because it is ready for any real-world use.
+This is a self-hosting prototype for the Prism programming language. As of now, this is an
+LLM-based prototype, so there might be a lot of weird stuff going on in here.
 
-Prism is a planned programming language that will be a Reflex-style FRP framework
-as its own programming language. All primitive state will be expressed through dynamics
-and events.
+It compiles Prism through Rust (or through C++, but Rust is the more mature
+recommended option).  That is to say that a compiler written in Prism translates
+Prism to Rust, and then the Rust compiler translates that Rust into machine
+code. The compiler can bootstrap, and in [`bootstrap/`](bootstrap/) there are
+archives of the Rust and C++ translations of a compiler for bootstrapping purposes.
 
-Currently, I'm prototyping the runtime in Rust. You can't write a Prism program yet.
+I'm working on a human-based rewrite. I ([Jimmy Hartzell](https://www.thecodedmessage.com/),
+notoriously a human) am currently writing this `README.md` document as one of the first steps towards this
+human-based rewrite. When the rewrite is complete... it will still be a
+prototype, but I hope a much more legible one. I'll then probably do another
+round of LLM-based experimentation on it, before another round of human refactoring and
+reimplementing, before I'll have something I'm proud enough of to actually demo.
 
-`LANGUAGE.md` contains a pitch for what I want the programming language to look
-like someday, and why I'm writing it. I'm making my progress available under the
-MIT license, available in `LICENSE.md`.
+`LANGUAGE.md` contains an (obsolete) pitch for Prism, including my initial
+motivations for writing it. I'm making my progress available under the MIT
+license, available in `LICENSE.md`.
+
+## Building and running
+
+```sh
+make bootstrap                # Get bootstrapping version
+./prism run examples/chess    # Run chess
+make chess                    # Also run chess
+./prism test examples/chess   # Run unit tests for chess
+make test                     # Run overly thorough test suite
+```
+
+Many subdirectories have their own `README.md` files, which contain more information.

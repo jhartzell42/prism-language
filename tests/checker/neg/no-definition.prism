@@ -1,0 +1,8 @@
+# `no-definition`: a signature line with no definition under it, at the top level and in a
+# block. Written by Claude on the claude-bugs branch; subject to change.
+Lone: fn Nat -> Nat
+
+Size: fn Nat -> Nat
+fn Size n:
+    ys: [Nat]
+    n

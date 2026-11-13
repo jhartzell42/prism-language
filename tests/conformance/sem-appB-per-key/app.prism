@@ -1,0 +1,31 @@
+# `$each <- @PerKey $m` (Semantics Appendix B; round 9 PK, Jimmy's): a dynamic map taken
+# apart by key. The outer `$(k ==> $v)` fires only when a key comes or goes; each key's
+# inner holds that key's value and fires only when a write gives it a value unequal (`==`)
+# to the one it holds. A row of `for k, $v <- $each:` reads its own inner as `$v`
+# (ruling FV). "same" writes `$m` with a fresh map of equal values (a key put in and
+# taken out again): nothing fires.
+# "edit 0" changes key 0 only: its row counts one change, key 1's none, the outer none.
+# "drop 1" and "back 1": the key leaves and comes back with another value, and gets a new
+# row and a new inner, which starts at its value and fires nothing in the tick it is born
+# (Semantics ch. 4: keys are identity; a newborn row hears nothing of its birth tick).
+# "both" adds a key and changes key 0 in one write: the outer fires once and key 0's inner
+# once (R5). Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@perkey: @unit
+@perkey:
+    !edit <- Ui.Button($label=$"edit 0")                         # 0
+    !same <- Ui.Button($label=$"same")                           # 1
+    !drop <- Ui.Button($label=$"drop 1")                         # 2
+    !back <- Ui.Button($label=$"back 1")                         # 3
+    !both <- Ui.Button($label=$"both")                           # 4
+    $edits <- 0 then $edits + 1 on !edit
+    $m <- {0: "a", 1: "b"} then (Insert $m, 0, "e{$edits}") on !edit <| (Remove (Insert $m, 7, "z"), 7) on !same <| (Remove $m, 1) on !drop <| (Insert $m, 1, "B") on !back <| (Insert (Insert $m, 2, "c"), 0, "x") on !both
+    $each <- @PerKey $m
+    $outer <- 0 then $outer + 1 on !Updated $each
+    Ui.Label($text=$"outer {$outer}")                            # 5
+    for k, $v <- $each:                                         # 6/[k]
+        $n <- 0 then $n + 1 on !Updated $v
+        Ui.Label($text=$"{k}: {$v} changed {$n}")                # 6/[k]/0

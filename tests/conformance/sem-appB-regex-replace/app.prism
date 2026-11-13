@@ -1,0 +1,8 @@
+# Semantics ch. 2, "The replacement", and Appendix B, `Replace`: every match `Matches`
+# finds, replaced by the replacement read by chapter 2's rule (`$n`, `${n}`, `${name}`,
+# `$$`; the escapes `\\`, `\n`, `\t`, `\u{hex}`, `\/`; a group that took no part copies
+# nothing).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+test mod Tests
+
+let swap = %/(\w+) (\w+)/$2 $1/

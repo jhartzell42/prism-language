@@ -1,0 +1,31 @@
+# Written by Claude on the claude-self-hosting branch; subject to change.
+# A `for` over a computed source (pick RE: each row's entry is the block's source at its
+# key, at the read point), the source moved by each write path a block has: a hold's sink
+# (`$n`), a World's push to a dynamic place (`$~motd`), and, hosted, the host's typed
+# answer to that place. Every row reads the source's new value in the tick of the write
+# (gap SR: the source computed once per write, not per read).
+emit Ui.* | Fs.*
+test mod Tests
+use Fs.*
+
+Shown: fn ~Contents -> Text
+fn Shown (~ c) = c.text
+fn Shown (Error(..)) = "?"
+
+Entries: fn Nat, Text -> (Nat ==> Text)
+fn Entries n, t = match n -? 1:
+    ? m: Insert (Entries m, t), m, "{t}{m}"
+    nil: {}
+
+@rows: @unit
+@rows:
+    !add <- Ui.Button($label=$"add")                               # 0
+    $n <- 1 then $n + 1 on !add
+    $~motd <- Fs.Contents(path="m")                               # 1
+    let $src = Entries $n, (Shown $~motd)
+    for k, $v <- $src:                                            # 2/[k]
+        Ui.Label($text=$"{k} {$v}")                                # 2/[k]/0
+
+@hosted: @unit
+@hosted:
+    ignore <- @HostDocument @rows, \|p, e| @Element e              # 0/[p]

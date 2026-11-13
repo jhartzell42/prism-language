@@ -1,0 +1,41 @@
+# Widgets that call widgets nest as deep as a program writes them: only recursion is
+# bounded (gap ID, sixteen levels of one widget). Nine levels of `@Wrap`, each a call of
+# `@Inner` that applies its widget parameter, put the innermost label and hold under
+# eighteen widget calls and eighteen parameter applications; the label shows, and the
+# button below it counts. Written for prismc's back end. Work in progress, subject to
+# change.
+emit Ui.*
+test mod Tests
+
+@Inner: fn @a -> @a
+fn @Inner @child:
+    r <- @child
+    @ r
+
+@Wrap: fn @a -> @a
+fn @Wrap @child = @Inner @child
+
+@page: @$Text
+@page:
+    $deep <- @Wrap @widget:
+        $r1 <- @Wrap @widget:
+            $r2 <- @Wrap @widget:
+                $r3 <- @Wrap @widget:
+                    $r4 <- @Wrap @widget:
+                        $r5 <- @Wrap @widget:
+                            $r6 <- @Wrap @widget:
+                                $r7 <- @Wrap @widget:
+                                    $r8 <- @Wrap @widget:
+                                        !poke <- Ui.Button($label=$"poke")          # 0
+                                        $n <- 0 then $n + 1 on !poke
+                                        Ui.Label($text=$"deep {$n}")                # 1
+                                        @ $n
+                                    @ $r8
+                                @ $r7
+                            @ $r6
+                        @ $r5
+                    @ $r4
+                @ $r3
+            @ $r2
+        @ $r1
+    @ "{$deep}"

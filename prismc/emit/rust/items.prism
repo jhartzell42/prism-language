@@ -1,0 +1,667 @@
+# `Emit.Rust.Items`, a child module of `Emit.Rust`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Emit.Rust.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Lower.*
+use Lower.Types.*
+use Lower.Expr.*
+use Lower.Patterns.*
+use Lower.Templates.*
+use Lower.Functions.*
+use Lower.Jobs.*
+use Lower.Program.*
+use Lower.Model.*
+use Lower.Node.*
+use Lower.Node.Def.*
+use Lower.Node.Elements.*
+use Lower.Node.Static.*
+use Lower.Node.Dynamics.*
+use Lower.Node.Finish.*
+use Lower.Node.Keyed.*
+use Lower.Node.Switch.*
+use Emit.Rust.Templates.*
+use Emit.Rust.Templates.Items.*
+use Emit.Rust.Prelude.*
+
+# ---------------------------------------------------------------------------------------
+# Items
+# ---------------------------------------------------------------------------------------
+
+Generics: fn [((Text, [Text]))] -> Text
+fn Generics [[]] = ""
+fn Generics gs = "<{Join (Each gs, \|((g, bs))| if (Len bs) == 0: g else: "{g}: {Join (Each bs, \|b| RsPath b), " + "}"), ", "}>"
+
+GenericNames: fn [Text] -> Text
+fn GenericNames [[]] = ""
+fn GenericNames ps = "<{Join ps, ", "}>"
+
+Bounded: fn [Text], Text -> Text
+fn Bounded [[]], ignore = ""
+fn Bounded ps, tr = "<{Join (Each ps, \|p| "{p}: {tr}"), ", "}>"
+
+# A type's parameters bounded for an impl that reads its maps: each by the trait, and one
+# a map's key holds (`TyDef.keyed`) by `Ord` too, as the runtime's impls for `Map` want.
+BoundedKeyed: fn TyDef, Text -> Text
+fn BoundedKeyed t, tr = match t.params:
+    [[]]: ""
+    ps: "<{Join (Each ps, \|p| if (Fold t.keyed, False, \|found, q| found or q == p): "{p}: {tr} + ::std::cmp::Ord" else: "{p}: {tr}"), ", "}>"
+
+RustItem: unbounded fn Item -> Text
+fn RustItem it = match it:
+    ItTrait t: RustTrait t
+    ItImpl i: RustImpl i
+    ItPacked d: RustPacked d
+    ItType t: TypeDecl t
+    ItTag t: RustTag t
+    ItRow r: RustRow r
+    ItFn f: RustFn f
+    ItJob j: RustJob j
+    ItNode n: RustNode n
+    ItNote t: "// {t}\n"
+    ItRefused t: "compile_error!(\"{loweringRefusal}{Escape t}\");\n"
+
+RustTrait: unbounded fn TraitDef -> Text
+fn RustTrait t:
+    let types = Each t.assocs, \|a| "type {a}: ::std::clone::Clone;"
+    let ms = Join (Append types, (Each t.methods, \|f| TraitMethod f)), "\n"
+    # every Prism value is a whole value its functions may copy and keep (a default's
+    # closure, a default giving `Self`)
+    "{SourceDoc "", t.doc}pub trait {t.name}: ::std::clone::Clone + 'static \{\n{Indent ms}\n\}\n"
+
+Signature: unbounded fn FnDef, Text -> Text
+fn Signature f, vis:
+    let params = Join (Each f.params, \|((n, t))| "{n}: {Type t}"), ", "
+    # A method's own type parameters live as long as the program, as a function's do
+    # (`RustFn`): its body may ask a type's key or build a closure over them.
+    "{vis}fn {f.name}{StaticGenerics f.generics}({params}) -> {Type f.ret}"
+
+TraitMethod: unbounded fn FnDef -> Text
+fn TraitMethod f = if f.public: Fn "", (Signature f, ""), (BodyLines f.body) else: "{Signature f, ""};"
+
+# An impl: a program's trait's methods inside it; `^Show`, `^Eq` and `^Ord` as Rust's
+# traits over the method, a function of its own, generic over the impl's type parameters
+# as well as its own (which live as long as the program, as a function's do).
+RustImpl: unbounded fn ImplDef -> Text
+fn RustImpl i:
+    let head = Type i.head
+    let Own = \|f| RustFn (update f:
+        &_.generics <= Append i.generics, &_.generics)
+    match i.cls:
+        "Prelude.Show":
+            let fns = Join (Each i.methods, \|f| Own f), "\n"
+            let shown = Or (Each i.methods, \|f| f.name)[0], "show"
+            "{fns}\n{Impl (StaticGenerics i.generics), "crate::prelude::Show", head, "fn show(&self, p: &mut crate::prelude::Printer)", "p.raw(&{shown}(self).to_string());"}"
+        "Prelude.Eq":
+            let fns = Join (Each i.methods, \|f| Own f), "\n"
+            let eq = Fold i.methods, "", \|acc, f| if (not (HasPrefix f.name, "ne")) and acc == "": f.name else: acc
+            let sgens = StaticGenerics i.generics
+            "{fns}\n{Impl sgens, "::std::cmp::PartialEq", head, "fn eq(&self, other: &Self) -> bool", "{eq}(self, other)"}\nimpl{sgens} ::std::cmp::Eq for {head} \{\}"
+        otherwise:
+            let types = Each i.assocs, \|((a, t))| "type {a} = {Type t};"
+            "impl{StaticGenerics i.generics} {i.tr} for {head} \{\n{Indent (Join (Append types, (Each i.methods, \|f| Fn "", (Signature f, ""), (BodyLines f.body))), "\n")}\n\}\n"
+
+# A program's trait as an existential keeps it (`PackedDef`): the dictionary, a struct of
+# one function per method over packed values; the function that makes it at a type, each
+# entry reading the hidden values at that type (`Packed::held`) and hiding a result of it
+# again (`Packed::repacked`); the trait's impl for the packed value, each method asking the
+# dictionary found in its first hidden argument.
+RustPacked: unbounded fn PackedDef -> Text
+fn RustPacked d:
+    let dictionary = "{d.name}_packed"
+    let fields = Each d.methods, \|m| "pub {m.method.name}: fn({Join (Each m.method.params, \|((ignore, t))| Type t), ", "}) -> {Type m.method.ret},"
+    let entries = Each d.methods, \|m|
+        let names = Each m.method.params, \|((n, ignore))| n
+        let args = Each (Range0 (Len names)), \|i| if Or m.hidden[i], False: "{Or names[i], ""}.held::<T>()" else: Or names[i], ""
+        let call = "<T as {d.tr}>::{m.method.name}({Join args, ", "})"
+        "{m.method.name}: |{Join names, ", "}| {if m.hiddenResult: "{PackedFirstHidden m}.repacked({call})" else: call},"
+    let asked = Each d.methods, \|m| Fn "", (Signature m.method, ""), "({PackedFirstHidden m}.dictionary::<{dictionary}>().{m.method.name})({Join (Each m.method.params, \|((n, ignore))| n), ", "})"
+    # a method that cannot be asked of a packed value: the trait's impl needs every
+    # item, and the checker refuses every call that would run this one
+    let methods = Append asked, (Each d.unasked, \|f| Fn "", (Signature f, ""), "panic!(\"a prismc bug: `{f.name}` of `{d.name}` asked of a packed value, which the checker refuses (`existential-method`)\")")
+    # each associated type the unit type: only an unasked method names one
+    let types = Each d.assocs, \|a| "type {a} = ();"
+    let made = Fn "/// The dictionary of `{d.name}` at the type of a value.", "pub fn {Lower d.name}_packed_of<T: {d.tr}>(_: &T) -> {dictionary}", "{dictionary} \{\n{Indent (Indent (Join entries, "\n"))}\n    \}"
+    "/// The dictionary of `{d.name}` an existential keeps: each method over packed values.\npub struct {dictionary} \{\n{Indent (Join fields, "\n")}\n\}\n{made}\nimpl {d.tr} for ::prism_rtl::Packed \{\n{Indent (Join (Append types, methods), "\n")}\n\}\n"
+
+# The first parameter of a packed method that is the hidden value: its dictionaries.
+PackedFirstHidden: fn PackedMethod -> Text
+fn PackedFirstHidden m = Fold (Range0 (Len m.hidden)), "", \|found, i| if found == "" and Or m.hidden[i], False: (Or (Each m.method.params, \|((n, ignore))| n)[i], "") else: found
+
+RustFn: unbounded fn FnDef -> Text
+fn RustFn f:
+    let params = Join (Each f.params, \|((n, t))| "{n}: {Type t}"), ", "
+    # A function may build a job or a closure over its type parameters, which then live
+    # as long as the program (every Prism type does).
+    let sig = "pub fn {f.name}{StaticGenerics f.generics}({params}) -> {Type f.ret}"
+    Fn (SourceDoc "", f.doc), sig, (BodyLines f.body)
+
+StaticGenerics: fn [((Text, [Text]))] -> Text
+fn StaticGenerics gs = Generics (Each gs, \|((g, bs))| ((g, (Push bs, "'static"))))
+
+RustJob: unbounded fn JobDef -> Text
+fn RustJob j:
+    let gnames = GenericNames (Each j.generics, \|((g, ignore))| g)
+    # Public: a tail call from another module builds the job by its fields.
+    # A type parameter no field names (one in the function's result alone, `unbounded fn
+    # Nat -> [a]`) is named by a marker field: Rust takes no struct with a type parameter
+    # it does not use. The job is then made by its `Start` alone (the lowering's
+    # `JobByStart`), which names the type parameters.
+    let named = Fold j.fields, [[]], \|acc, ((ignore, t))| Append acc, (TyParamsIn t)
+    let unnamed = Filter (Each j.generics, \|((g, ignore))| g), \|g| not (Fold named, False, \|found, other| found or other == g)
+    let marker = if (Len unnamed) == 0: [[]] else: [["pub type_parameters: ::std::marker::PhantomData<({Join unnamed, ", "},)>,"]]
+    let fields = Join (Append (Each j.fields, \|((n, t))| "pub {n}: {Type t},"), marker), "\n"
+    let params = Join (Each j.fields, \|((n, t))| "{n}: {Type t}"), ", "
+    # A job is an `Rc<dyn Job>`, so its type parameters live as long as the program.
+    let bounded = StaticGenerics j.generics
+    let start = "pub fn {j.start}{bounded}({params}) -> ::std::rc::Rc<dyn ::prism_rtl::Job<{Type j.ret}>>"
+    let made = Append (Each j.fields, \|((n, ignore))| n), (if (Len unnamed) == 0: [[]] else: [["type_parameters: ::std::marker::PhantomData"]])
+    let startBody = "::std::rc::Rc::new({j.name}{if gnames == "": "" else: "::{gnames}"} \{ {Join made, ", "} \})"
+    Job (SourceDoc "", j.doc), j.name, gnames, bounded, fields, (Type j.ret), (BodyLines j.body), start, startBody
+
+# A type, its derives, and its printer and plain-data impls (claude/backend.md, "Printing").
+TypeDecl: unbounded fn TyDef -> Text
+#
+# A generic type compares by impls of its own, each bounding its parameters by the trait
+# itself (`A: Eq`): a derive bounds them by `PartialEq` alone, and a field that holds them
+# in an array (`[a]`) compares only `Eq` elements (`EqImpls`, `OrdImpls`).
+fn TypeDecl t:
+    let generic = (Len t.params) > 0
+    let derives = if generic: "::std::clone::Clone" else: Join (Filter [["::std::clone::Clone", (if t.eq or t.ord: "::std::cmp::PartialEq, ::std::cmp::Eq" else: ""), (if t.ord: "::std::cmp::PartialOrd, ::std::cmp::Ord" else: "")]], \|d| d != ""), ", "
+    let head = "{t.name}{GenericNames t.params}"
+    let doc = SourceDoc "`{t.prism}`:", t.doc
+    let decl = match t.shape:
+        ShapeRecord:
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+            Struct doc, derives, head, (Join (Each c.fields, \|((f, ft))| "pub {f}: {Type ft},"), "\n")
+        ShapeUnit: TupleStruct doc, derives, head, ""
+        ShapeNewtype:
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+            TupleStruct doc, derives, head, "({Join (Each c.fields, \|((ignore, ft))| "pub {Type ft}"), ", "})"
+        otherwise: Enum doc, derives, head, (Join (Each t.cases, \|c| EnumCase c), "\n")
+    let show = if t.show == ShownDerived: "\n{ShowImpl t, head}" else: ""
+    let pod = if t.pod: "\n{ToPodImpl t, head}\n{FromPodImpl t, head}" else: ""
+    # a level field may hold it with a dynamic as an argument (`Boxed $Nat`): its deep walk
+    let deep = if t.pod and generic: "\n{DeepWalkImpl t, head}" else: ""
+    # (a generic plain-data type compares in Rust even without `^Eq`, which no Prism code
+    # can then call: an element whose level field holds it, `value: Boxed $Nat`, is
+    # compared as the runtime compares every element)
+    let eq = if generic and (t.eq or t.ord or t.pod): "\n{EqImpls t, head}" else: ""
+    let ord = if generic and t.ord: "\n{OrdImpls t, head}" else: ""
+    "{decl}{show}{pod}{deep}{eq}{ord}"
+
+# A case's pattern with its fields bound by a prefix, `Pair::Two(b0, b1)`.
+CasePatternAs: fn TyDef, CaseDef, Text -> Text
+fn CasePatternAs t, c, prefix:
+    let names = Join (Each (Range0 (Len c.fields)), \|i| "{prefix}{i}"), ", "
+    match t.shape:
+        ShapeNewtype: "{t.name}({names})"
+        ShapeUnit: t.name
+        otherwise: if (Len c.fields) == 0: "{t.name}::{c.name}" else: "{t.name}::{c.name}({names})"
+
+# The pairs of a case's fields, `self`'s against `other`'s: a record's by name, a case's by
+# the binders `CasePatternAs` gives.
+FieldPairs: fn TyDef, CaseDef -> [((Text, Text))]
+fn FieldPairs t, c = match t.shape:
+    ShapeRecord: Each c.fields, \|((f, ignore))| (("self.{f}", "other.{f}"))
+    otherwise: Each (Range0 (Len c.fields)), \|i| (("a{i}", "b{i}"))
+
+# `==` of a generic type: field by field, a choice's cases matched in pairs.
+EqImpls: unbounded fn TyDef, Text -> Text
+fn EqImpls t, head:
+    let body = match t.shape:
+        ShapeRecord: FieldsEq t, (Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]])))
+        otherwise: "match (self, other) \{\n{Concat (Each t.cases, \|c| "    ({CasePatternAs t, c, "a"}, {CasePatternAs t, c, "b"}) => {FieldsEq t, c},\n")}    #[allow(unreachable_patterns)]\n    _ => false,\n\}"
+    let eqImpl = Impl (Bounded t.params, "::std::cmp::Eq"), "::std::cmp::PartialEq", head, "fn eq(&self, other: &Self) -> bool", body
+    "{eqImpl}\nimpl{Bounded t.params, "::std::cmp::Eq"} ::std::cmp::Eq for {head} \{\}"
+
+# The order of a generic type: a choice's cases in their order, then field by field.
+OrdImpls: unbounded fn TyDef, Text -> Text
+fn OrdImpls t, head:
+    let arms = Concat (Each (Range0 (Len t.cases)), \|i| RankArm t, i)
+    let rank = if (Len t.cases) == 0: "let rank = |x: &Self| -> usize \{ match *x \{\} \};" else: "let rank = |x: &Self| match x \{ {arms}\};"
+    let body = match t.shape:
+        ShapeRecord: FieldsCmp t, (Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]])))
+        otherwise: "{rank}\nmatch (self, other) \{\n{Concat (Each t.cases, \|c| "    ({CasePatternAs t, c, "a"}, {CasePatternAs t, c, "b"}) => {FieldsCmp t, c},\n")}    #[allow(unreachable_patterns)]\n    _ => rank(self).cmp(&rank(other)),\n\}"
+    let partial = Impl (Bounded t.params, "::std::cmp::Ord"), "::std::cmp::PartialOrd", head, "fn partial_cmp(&self, other: &Self) -> ::std::option::Option<::std::cmp::Ordering>", "::std::option::Option::Some(::std::cmp::Ord::cmp(self, other))"
+    let total = Impl (Bounded t.params, "::std::cmp::Ord"), "::std::cmp::Ord", head, "fn cmp(&self, other: &Self) -> ::std::cmp::Ordering", body
+    "{partial}\n{total}"
+
+# A case's fields equal, pair by pair.
+FieldsEq: fn TyDef, CaseDef -> Text
+fn FieldsEq t, c = Fold (FieldPairs t, c), "true", \|acc, ((a, b))| "{acc} && {a} == {b}"
+
+# A case's fields compared in order, the first unequal pair deciding.
+FieldsCmp: fn TyDef, CaseDef -> Text
+fn FieldsCmp t, c = Fold (FieldPairs t, c), "::std::cmp::Ordering::Equal", \|acc, ((a, b))| "{acc}.then_with(|| {a}.cmp(&{b}))"
+
+# A case's arm of the `rank` closure: its place among the cases.
+RankArm: fn TyDef, Nat -> Text
+fn RankArm t, i = match t.cases[i]:
+    ? c: "{CaseRankPattern t, c} => {i}usize, "
+    nil: ""
+
+CaseRankPattern: fn TyDef, CaseDef -> Text
+fn CaseRankPattern t, c = match t.shape:
+    ShapeNewtype: "{t.name}(..)"
+    ShapeUnit: t.name
+    otherwise: if (Len c.fields) == 0: "{t.name}::{c.name}" else: "{t.name}::{c.name}(..)"
+
+EnumCase: unbounded fn CaseDef -> Text
+fn EnumCase c = if (Len c.fields) == 0: "{c.name}," else: "{c.name}({Join (Each c.fields, \|((ignore, ft))| Type ft), ", "}),"
+
+# The bound variables of a case, `a0, a1`.
+Binders: fn Nat -> [Text]
+fn Binders n = Each (Range0 n), \|i| "a{i}"
+
+CasePattern: fn TyDef, CaseDef -> Text
+fn CasePattern t, c = match t.shape:
+    ShapeNewtype: "{t.name}({Join (Binders (Len c.fields)), ", "})"
+    ShapeUnit: t.name
+    otherwise: if (Len c.fields) == 0: "{t.name}::{c.name}" else: "{t.name}::{c.name}({Join (Binders (Len c.fields)), ", "})"
+
+# A `match self` of one arm per case. A choice with no case (`type Never = choice:`) has
+# no value, and rustc takes a `match` with no arm only over the value itself, never over
+# a reference to it: `match *self {}`.
+MatchSelfOf: fn TyDef, Text -> Text
+fn MatchSelfOf t, arms = if (Len t.cases) == 0: "match *self \{\}" else: MatchSelf arms
+
+# `derive ^Show`: one printer call per constructor; the printer decides the parentheses.
+ShowImpl: unbounded fn TyDef, Text -> Text
+fn ShowImpl t, head:
+    let body = match t.shape:
+        ShapeRecord:
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+            "p.record(\"{t.prism}\", &[{Join (Each c.fields, \|((f, ignore))| "(\"{PrismFieldOf c, f}\", &self.{f})"), ", "}]);"
+        otherwise: MatchSelfOf t, (Join (Each t.cases, \|c| "{CasePattern t, c} => p.choice(\"{c.prism}\", &[{Join (Binders (Len c.fields)), ", "}]),"), "\n")
+    # `Clone` beside `Show`: an array of the parameter prints only `Clone` elements
+    Impl (BoundedKeyed t, "crate::prelude::Show + ::std::clone::Clone"), "crate::prelude::Show", head, "fn show(&self, p: &mut crate::prelude::Printer)", body
+
+# A field's Prism spelling: the Rust one without the `_` a keyword took.
+PrismField: fn Text -> Text
+fn PrismField f = if (LastChar f) == "_": BeforeLast f else: f
+
+# A record's field as the program spells it (`CaseDef.labels`), by its Rust name.
+PrismFieldOf: fn CaseDef, Text -> Text
+fn PrismFieldOf c, f = Fold (Range0 (Len c.fields)), (PrismField f), \|found, i| match ((c.fields[i], c.labels[i])):
+    ((? ((g, ignore)), ? label)): if g == f: label else: found
+    otherwise: found
+
+# A case's arm of a choice's `to_pod`: its constructor with the case's position in the
+# type (`prism_rtl::ConstructorName::at`), so plain data of the type orders as the type's
+# derived `^Ord` does, by the order the cases are declared in, and a path whose key is a
+# choice stands in the key type's order (hosting bug 28).
+ChoicePodArm: unbounded fn TyDef, Nat -> Text
+fn ChoicePodArm t, i:
+    let c = Or t.cases[i], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+    "{CasePattern t, c} => crate::prelude::Pod::Choice(::prism_rtl::ConstructorName::at(\"{c.prism}\", {i}), vec![{Join (Each (Binders (Len c.fields)), \|b| "{b}.to_pod()"), ", "}]),"
+
+ToPodImpl: unbounded fn TyDef, Text -> Text
+fn ToPodImpl t, head:
+    let body = match t.shape:
+        ShapeRecord:
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+            "crate::prelude::Pod::record(\"{t.prism}\", vec![{Join (Each c.fields, \|((f, ignore))| "(\"{PrismFieldOf c, f}\", self.{f}.to_pod())"), ", "}])"
+        otherwise: MatchSelfOf t, (Join (Each (Range0 (Len t.cases)), \|i| ChoicePodArm t, i), "\n")
+    let shown = if t.show == ShownOwn: ShownPod body else: body
+    # its own `^Show` may hold under its `where` bounds alone, which the crossing needs
+    let bound = if t.show == ShownOwn and (Len t.params) > 0: " where {head}: crate::prelude::Show" else: ""
+    Impl (BoundedKeyed t, "crate::prelude::ToPod + ::std::clone::Clone"), "crate::prelude::ToPod", "{head}{bound}", "fn to_pod(&self) -> crate::prelude::Pod", shown
+
+FromPodImpl: unbounded fn TyDef, Text -> Text
+fn FromPodImpl t, head:
+    let body = match t.shape:
+        ShapeRecord:
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+            "::std::result::Result::Ok({t.name} \{ {Join (Each c.fields, \|((f, ignore))| "{f}: crate::prelude::FromPod::from_pod(crate::prelude::field(p, \"{PrismFieldOf c, f}\")?)?"), ", "} \})"
+        otherwise:
+            let arms = Each t.cases, \|c|
+                let n = Len c.fields
+                let made = if n == 0: (if t.shape == ShapeUnit: t.name else: "{t.name}::{c.name}") else: "{if t.shape == ShapeNewtype: t.name else: "{t.name}::{c.name}"}({Join (Each (Range0 n), \|i| "crate::prelude::FromPod::from_pod(&a[{i}])?"), ", "})"
+                "crate::prelude::Pod::Choice(c, a) if &**c == \"{c.prism}\" && a.len() == {n} => ::std::result::Result::Ok({made}),"
+            FromPodBody (Join arms, "\n"), "a {t.prism}"
+    Impl (BoundedKeyed t, "crate::prelude::FromPod + ::std::clone::Clone"), "crate::prelude::FromPod", head, "fn from_pod(p: &crate::prelude::Pod) -> ::std::result::Result<Self, crate::prelude::Fault>", body
+
+RustTag: unbounded fn TagDef -> Text
+fn RustTag t:
+    let fields = Join (Append (Each t.fields, \|((ignore, f, ft))| "pub {f}: {Type ft},"), (Each t.events, \|((f, et))| "pub {f}: {Type (OutEvent et)},")), "\n"
+    let pods = Join (Each t.fields, \|((p, f, ignore))| "(\"{p}\", self.{f}.to_pod())"), ", "
+    let derives = if t.eq: "::std::clone::Clone, ::std::cmp::PartialEq, ::std::cmp::Eq" else: "::std::clone::Clone"
+    # an element read back from plain data was made with no event: each never fires
+    let reads = Join (Append (Each t.fields, \|((p, f, ignore))| "{f}: crate::prelude::FromPod::from_pod(crate::prelude::field(p, \"{p}\")?)?"), (Each t.events, \|((f, ignore))| "{f}: crate::prelude::Event::never()")), ", "
+    let back = if t.pod: "\n{TagFromPod t.name, t.tagName, reads}" else: ""
+    let deep = Fold t.fields, False, \|d, ((ignore, ignore, ft))| d or HoldsDyn ft
+    let deepPods = Join (Each t.fields, \|((p, f, ft))| DeepField p, f, ft), ", "
+    let deepPorts = Concat (Each t.fields, \|((ignore, f, ft))| DeepPorts f, ft)
+    let levels = if deep: "\n{TagLevel t.name, t.tagName, deepPods, deepPorts}" else: ""
+    "{Tag (SourceDoc "The `Level` of `{t.tagName}`:", t.doc), derives, t.name, fields, t.tagName, pods}{back}{levels}"
+
+DeepField: unbounded fn Text, Text, OutTy -> Text
+fn DeepField p, f, ft = "(\"{p}\", {DeepPod f, ft})"
+
+# A level field as a World reads it (WD: a foreign World reads it flattened through): plain
+# data as it is; every dynamic it holds sampled at the read point, deep (`DeepPodOf`).
+DeepPod: unbounded fn Text, OutTy -> Text
+fn DeepPod f, ft = match ft:
+    OutMap ignore, (OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore)): "::prism_rtl::dynamics_pod(&self.{f}, cx)"
+    other: DeepPodOf "self.{f}", other, [[]]
+
+# Whether a type holds a dynamic, or one of the type parameters `params` (a part a
+# generic type's walk hands to the walk its caller gives for that parameter).
+HoldsTimeOrParameter: unbounded fn OutTy, [Text] -> Bool
+fn HoldsTimeOrParameter t, params = match t:
+    OutGen p: Fold params, False, \|found, q| found or q == p
+    OutDyn ignore: True
+    OutNamed ignore, args: Fold args, False, \|f, a| f or HoldsTimeOrParameter a, params
+    OutOpt i: HoldsTimeOrParameter i, params
+    OutRes i: HoldsTimeOrParameter i, params
+    OutRc i: HoldsTimeOrParameter i, params
+    OutTuple ts: Fold ts, False, \|f, a| f or HoldsTimeOrParameter a, params
+    OutArray e: HoldsTimeOrParameter e, params
+    OutMap k, v: (HoldsTimeOrParameter k, params) or HoldsTimeOrParameter v, params
+    otherwise: False
+
+# The expression `x` of type `t` as plain data with its dynamics sampled, written over the
+# type's shape: a dynamic sampled (an element's dynamic as its level), an array's, a map's
+# values', an option's, a `~T`'s value (its failure as plain data), a tuple's and an `Rc`'s
+# parts each in turn; a program type whose arguments hold time through the type's own walk
+# (`deep_pod_with`, `DeepWalkImpl`), given the walk of each argument; inside that walk, a
+# part of a type parameter of `params` through the walk its caller gave for it. A type
+# holding none of these is its plain data.
+DeepPodOf: unbounded fn Text, OutTy, [Text] -> Text
+fn DeepPodOf x, t, params = if not (HoldsTimeOrParameter t, params): "({x}).to_pod()" else: match t:
+    OutGen p: "walk_{p}(&({x}))"
+    OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore): "::prism_rtl::Level::level_pod(&({x}).sample(cx), cx)"
+    OutDyn i: DeepPodOf "({x}).sample(cx)", i, params
+    OutArray i: "crate::prelude::Pod::Array(({x}).iter().map(|v| {DeepPodOf "v", i, params}).collect())"
+    OutMap kt, v: "crate::prelude::Pod::Map(({x}).iter().map(|(k, v)| ({DeepPodOf "k", kt, params}, {DeepPodOf "v", v, params})).collect())"
+    OutOpt i: "({x}).as_ref().map_or(crate::prelude::Pod::Nil, |v| crate::prelude::Pod::Some(::std::boxed::Box::new({DeepPodOf "v", i, params})))"
+    OutRes i: "match ({x}).as_ref() \{ ::std::result::Result::Ok(v) => crate::prelude::Pod::Ok(::std::boxed::Box::new({DeepPodOf "v", i, params})), ::std::result::Result::Err(e) => crate::prelude::Pod::Failed(::std::boxed::Box::new(e.to_pod())) \}"
+    OutRc i: DeepPodOf "*({x})", i, params
+    OutTuple ts: "crate::prelude::Pod::Tuple(vec![{Join (Each (Range0 (Len ts)), \|i| DeepPodOf "({x}).{i}", (Or ts[i], OutUnit), params), ", "}])"
+    OutNamed ignore, args: "({x}).deep_pod_with(cx, {Join (Each args, \|a| "&|v| {DeepPodOf "v", a, params}"), ", "})"
+    other: "compile_error!(\"{loweringRefusal}a prismc bug: a level field's walk met `{Escape (Type other)}`, which holds no time\")"
+
+DeepPorts: unbounded fn Text, OutTy -> Text
+fn DeepPorts f, ft = match ft:
+    OutMap ignore, (OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore)): "\n        ::prism_rtl::dynamics_ports(&self.{f}, cx, out);"
+    other: if HoldsDyn other: "\n        {DeepPortsOf "self.{f}", other, [[]]}" else: ""
+
+# The update events of every dynamic `x` holds, pushed to `out` (`DeepPodOf`'s walk): a
+# place whose level holds them is sent again when any one moves.
+DeepPortsOf: unbounded fn Text, OutTy, [Text] -> Text
+fn DeepPortsOf x, t, params = if not (HoldsTimeOrParameter t, params): "" else: match t:
+    OutGen p: "walk_{p}(&({x}), out);"
+    OutDyn (OutNamed (RefItem "", "Elem", ignore), ignore): "out.push(({x}).updates.clone()); ::prism_rtl::Level::level_ports(&({x}).sample(cx), cx, out);"
+    OutDyn i: "out.push(({x}).updates.clone()); \{ let v = ({x}).sample(cx); {DeepPortsOf "v", i, params} \}"
+    OutArray i: "for v in ({x}).iter() \{ {DeepPortsOf "v", i, params} \}"
+    OutMap ignore, v: "for (_, v) in ({x}).iter() \{ {DeepPortsOf "v", v, params} \}"
+    OutOpt i: "if let ::std::option::Option::Some(v) = ({x}).as_ref() \{ {DeepPortsOf "v", i, params} \}"
+    OutRes i: "if let ::std::result::Result::Ok(v) = ({x}).as_ref() \{ {DeepPortsOf "v", i, params} \}"
+    OutRc i: DeepPortsOf "*({x})", i, params
+    OutTuple ts: Join (Each (Range0 (Len ts)), \|i| DeepPortsOf "({x}).{i}", (Or ts[i], OutUnit), params), " "
+    OutNamed ignore, args: "({x}).deep_ports_with(cx, out, {Join (Each args, \|a| "&|v, out| \{ {DeepPortsOf "v", a, params} \}"), ", "});"
+    otherwise: ""
+
+# A generic program type's deep walk (WD: a level field of `Boxed $Nat` is read with its
+# dynamics sampled): `deep_pod_with` is the type's plain data with each part of a type
+# parameter as the walk given for that parameter, and `deep_ports_with` gathers the
+# update events those walks find. A part of the type that holds no parameter is its plain
+# data. A level field's walk calls them with the walks of the field's type arguments
+# (`DeepPodOf`), so each instance of the type is walked by the one generic impl.
+DeepWalkImpl: unbounded fn TyDef, Text -> Text
+fn DeepWalkImpl t, head:
+    let ps = t.params
+    let podWalks = Join (Each ps, \|p| ", walk_{p}: &dyn Fn(&{p}) -> crate::prelude::Pod"), ""
+    let portWalks = Join (Each ps, \|p| ", walk_{p}: &dyn Fn(&{p}, &mut ::std::vec::Vec<::std::rc::Rc<crate::prelude::Port<()>>>)"), ""
+    let single = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+    let pods = match t.shape:
+        ShapeRecord: "crate::prelude::Pod::record(\"{t.prism}\", vec![{Join (Each single.fields, \|((f, ft))| "(\"{PrismFieldOf single, f}\", {DeepPodOf "self.{f}", ft, ps})"), ", "}])"
+        otherwise: MatchSelfOf t, (Join (Each (Range0 (Len t.cases)), \|i| DeepChoicePodArm t, i), "\n")
+    let ports = match t.shape:
+        ShapeRecord: Join (Each single.fields, \|((f, ft))| DeepPortsOf "self.{f}", ft, ps), " "
+        otherwise: MatchSelfOf t, (Join (Each t.cases, \|c| DeepChoicePortsArm t, c), "\n")
+    DeepWalk (GenericNames ps), head, t.prism, podWalks, portWalks, pods, ports
+
+# A case of a generic choice in its deep walk (`DeepWalkImpl`): its parts as plain data,
+# each part of a type parameter through that parameter's walk.
+DeepChoicePodArm: unbounded fn TyDef, Nat -> Text
+fn DeepChoicePodArm t, i:
+    let c = Or t.cases[i], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+    let parts = Each (Range0 (Len c.fields)), \|j| DeepPodOf "a{j}", (CaseFieldType c, j), t.params
+    "{CasePattern t, c} => crate::prelude::Pod::Choice(::prism_rtl::ConstructorName::at(\"{c.prism}\", {i}), vec![{Join parts, ", "}]),"
+
+DeepChoicePortsArm: unbounded fn TyDef, CaseDef -> Text
+fn DeepChoicePortsArm t, c:
+    let parts = Each (Range0 (Len c.fields)), \|j| DeepPortsOf "a{j}", (CaseFieldType c, j), t.params
+    "{CasePattern t, c} => \{ {Join parts, " "} \}"
+
+# The type of a case's `j`th field.
+CaseFieldType: fn CaseDef, Nat -> OutTy
+fn CaseFieldType c, j = match c.fields[j]:
+    ? ((ignore, ft)): ft
+    nil: OutUnit
+
+# A row kind's enum (pick RV): a variant per tag, printing and crossing as the tag's level.
+RustRow: unbounded fn RowDef -> Text
+fn RustRow r:
+    let derives = if r.eq: "::std::clone::Clone, ::std::cmp::PartialEq, ::std::cmp::Eq" else: "::std::clone::Clone"
+    let cases = Join (Each r.cases, \|((v, st))| "{v}({RsRef st}),"), "\n"
+    let pods = Join (Each r.cases, \|((v, ignore))| "{r.name}::{v}(x) => x.to_pod(),"), "\n"
+    let reads = Join (Each r.cases, \|((v, st))| "::std::option::Option::Some(t) if t == {RsRef st}::TAG => ::std::result::Result::Ok({r.name}::{v}(crate::prelude::FromPod::from_pod(p)?)),"), "\n"
+    let back = if r.pod: "\n{RowFromPod r.name, reads}" else: ""
+    # An empty row's enum has no values: its match is over `*self`, with no arms.
+    let pods2 = if (Len r.cases) == 0: "_ => unreachable!()," else: pods
+    let deepPods = Concat (Each r.deep, \|v| "{r.name}::{v}(x) => x.level_pod(cx),\n            ")
+    let deepPorts = Concat (Each r.deep, \|v| "{r.name}::{v}(x) => x.level_ports(cx, out),\n            ")
+    let level = if r.level: "\n{RowLevel r.name, deepPods, deepPorts}" else: ""
+    "{Row (SourceDoc "`{r.prism}`, a row kind's values:", r.doc), derives, r.name, cases, pods2}{back}{level}"
+
+# `crate::Output` (pick HO): a variant per element tag with the tag's output; an accessor
+# per variant; the decode of a World's answer by the element's tag. With no element tag the
+# enum is empty, and its matches are over the value, which has none.
+RustOutput: unbounded fn OutputDef -> Text
+fn RustOutput a:
+    # a bundle's tag has a second variant, its plain parts, the first value (pick HO)
+    let firsts = Fold a.cases, [[]], \|acc, c| match c.?first:
+        ? ft: Push acc, ((c, ft))
+        nil: acc
+    # and one case of no tag, an answer made outside a tag's arm, as plain data (the
+    # lowering's `untaggedRef`)
+    # and one more of no tag for an answer that is no plain data (a function, a dynamic, a
+    # bundle with its events and dynamics whole), held as it is and read back at the type
+    # of the line that binds it (the prelude's `output_held`, `Output::held`)
+    let cases = Join (Push (Push (Append (Each a.cases, \|c| "{c.variant}({Type c.ty}),"), (Each firsts, \|((c, ft))| "{c.variant}First({Type ft}),")), "Untagged_a(crate::prelude::Pod),"), "Held_a(::std::rc::Rc<dyn ::std::any::Any>),"), "\n"
+    let tags = Join (Push (Push (Append (Each a.cases, \|c| "Output::{c.variant}(_) => {RsRef c.structPath}::TAG,"), (Each firsts, \|((c, ft))| "Output::{c.variant}First(_) => {RsRef c.structPath}::TAG,")), "Output::Untagged_a(_) => \"no tag (an answer made outside a tag's arm)\","), "Output::Held_a(_) => \"no tag (an answer made outside a tag's arm that is no plain data)\","), "\n"
+    let accessors = Join (Append (Each a.cases, \|c| OutputGetter c.accessor, c.variant, c.tagName, (Type c.ty), (OutsideArm c.ty)), (Each firsts, \|((c, ft))| OutputGetter "{c.accessor}_first", "{c.variant}First", c.tagName, (Type ft), (OutsideArm ft))), "\n"
+    # a World answers with plain data: an output that is none (a function) is a host's
+    # to answer, and a World's answer for it a fault
+    let decodes = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Each a.cases, \|c| if Podable c.ty: "Elem::{c.variant}(..) => ::std::result::Result::Ok(Output::{c.variant}({DecodeHead c.ty}::from_pod(v)?))," else: "Elem::{c.variant}(..) => {NoWorldOutput c.tagName},"), "\n"
+    let decodeFirsts = Join (Push (Each firsts, \|((c, ft))| if Podable ft: "Elem::{c.variant}(..) => ::std::result::Result::Ok(Output::{c.variant}First({DecodeHead ft}::from_pod(v)?))," else: "Elem::{c.variant}(..) => {NoWorldOutput c.tagName},"), "_ => Self::decode(e, v),"), "\n"
+    # a bundle held whole, answered to a place of a tag that takes such a bundle
+    let heldArms = Fold a.cases, [[]], \|acc, c| match ((c.?heldWhole, c.?heldParts)):
+        ((? whole, ? parts)): Push acc, "Elem::{c.variant}(..) => answer.held_as::<{Type whole}>().map(|whole| ({Expression parts})(&whole)),"
+        otherwise: acc
+    let helds = Join (Push heldArms, "_ => ::std::option::Option::None,"), "\n"
+    # an answer of plain data under any tag, as one of no tag (`Output::untagged`)
+    let untagged = Join (Fold a.cases, [[]], \|acc, c| if Podable c.ty: Push acc, "Output::{c.variant}(v) => Output::Untagged_a(crate::prelude::ToPod::to_pod(v))," else: acc), "\n"
+    OutputType cases, tags, accessors, decodes, decodeFirsts, helds, untagged
+
+# An accessor's arm for an answer made outside a tag's arm, read at the type the tag's
+# place takes: plain data from `Output`'s case of no tag; a value that is no plain data
+# (a function) from the case that holds it as it is (the prelude's `output_held`).
+OutsideArm: unbounded fn OutTy -> Text
+fn OutsideArm t = if Podable t: "Output::Untagged_a(p) => crate::prelude::FromPod::from_pod(p)," else: "Output::Held_a(_) => self.held(),"
+
+# A World's answer for a tag whose output is no plain data: a fault of the run.
+NoWorldOutput: fn Text -> Text
+fn NoWorldOutput tagName = "::std::result::Result::Err(crate::prelude::Fault::answer(::std::string::String::from(\"a World's answer for {tagName}, whose output is no plain data: a host answers it\")))"
+
+# ---------------------------------------------------------------------------------------
+# Nodes and programs
+# ---------------------------------------------------------------------------------------
+
+RustNode: unbounded fn NodeDef -> Text
+fn RustNode n:
+    let fields = Join (Each n.fields, \|((f, t, doc))| "{Doc doc}{f}: {Type t},"), "\n"
+    let consts = Concat (Each n.consts, \|((c, h, doc))| "{Doc "The {doc}."}const {c}: u32 = {h};\n")
+    let params = Concat (Each n.params, \|((p, t))| "{p}: {Type t}, ")
+    let ret = if n.fallible: "::std::result::Result<::std::rc::Rc<{n.name}>, crate::prelude::Fault>" else: "::std::rc::Rc<{n.name}>"
+    let inits = Join (Append [["path"]], (Each n.inits, \|((f, v))| FieldInit f, v)), ", "
+    let tail = if n.fallible: "::std::result::Result::Ok(node)" else: "node"
+    let restText = if (Len n.build) == 0: tail else: "{Statements n.build}\n{tail}"
+    let build = Build n.name, params, ret, (Statements n.lets), inits, restText
+    let methods = Join (Each n.methods, \|m| RustMethod m, "pub(crate) "), "\n"
+    # a node with gaps of its own seats an answer's position first (the lowering's `seat`)
+    let seating = if Fold n.methods, False, \|f, m| f or m.name == "seat": "let seated = crate::prelude::seated(at, |a| self.seat(a));\nlet at = crate::prelude::segments_of(&seated);" else: ""
+    let answer = if (Len n.answers) == 0: "" else: Output seating, (Join (Each n.answers, \|((pat, call))| "{Pattern pat} => {Expression call},"), "\n")
+    let builders = Concat (Append (Each n.builders, \|b| "\n{ForBuilder b}"), (Each n.gens, \|gd| "\n{GenBuilder gd}"))
+    let rowImpl = if n.rowKind == NotARow: "" else: "\n{RustRowImpl n}"
+    let hooks = Join (Each n.hooks, \|((h, body))| if h == "push": PushHook (Statements body) else: Hook h, (Statements body)), "\n"
+    let doc = SourceDoc "`{n.prism}`: a node of its own (claude/backend.md, \"A widget block\").", n.doc
+    "{Node doc, n.name, fields, consts, build, "{methods}{builders}", hooks, answer}{rowImpl}"
+
+# A `for`'s builder: rows that left torn down, new keys built.
+ForBuilder: unbounded fn ForDef -> Text
+fn ForBuilder b = ForBuild b.name, (Expression b.at), (Type b.keyTy), (Type b.valueTy), (RsPath b.rowNode), b.source, (Expression b.parent), (Concat (Each b.passed, \|x| ", {Expression x}")), (MovedCall b.name, b.moved), (FromKept b.name, b.replaced), (ReplacedCall b.replaced)
+
+# The source the rows were last built from, kept: over a map of dynamics the walk reads the
+# one it replaces, to compare each kept key's dynamic with the one its row was built from.
+FromKept: fn Text, [Text] -> Text
+fn FromKept name, replaced = if (Len replaced) == 0: "*self.{name}_from.borrow_mut() = items.clone();" else: "let from = ::std::mem::replace(&mut *self.{name}_from.borrow_mut(), items.clone());"
+
+# A kept key whose dynamic is another than the one its row was built from (ruling FV): the
+# row is told, and adopts it among the next tick's first firings.
+ReplacedCall: fn [Text] -> Text
+fn ReplacedCall replaced = if (Len replaced) == 0: "" else: " else if from.get(k) != items.get(k) \{\n            // the dynamic under a kept key was replaced: that row follows it from the next tick\n{Concat (Each replaced, \|m| "            row.{m}(cx);\n")}        \}"
+
+# A builder whose rows' places are a host's document tells the host its child's places came
+# or went (`$(Path ==> $Elem c)`'s outer moves).
+MovedCall: fn Text, Text -> Text
+fn MovedCall name, m = if m == "": "" else: "\n    // the places of the host's child came or went: its document's outer moves\n    if !::prism_rtl::same_keys(&self.{name}.borrow(), &old) \{\n        self.{m}(cx);\n    \}"
+
+# A generation's builder: a new generation's places always came.
+GenMovedCall: fn Text -> Text
+fn GenMovedCall m = if m == "": "" else: "\n    // the places of the host's child came or went: its document's outer moves\n    self.{m}(cx);"
+
+# A `rebuild`'s builder: the old generation torn down, the next one built.
+GenBuilder: unbounded fn GenDef -> Text
+fn GenBuilder gd:
+    # a transparent generation (a widget of several clauses in a static position) stands at
+    # its caller's path
+    let path = if gd.transparent: "self.path.clone()" else: "{Expression gd.at}.child(crate::prelude::Segment::Gen(g))"
+    GenBuild gd.name, (Expression gd.at), path, (Expression gd.source), (Type gd.valueTy), (Expression gd.select), (GenMovedCall gd.moved)
+
+# A row's leaving (prelude `Row`): a `for` row keeps its entry as the tick opened, since
+# its key is gone from the source after it (R8); its places are torn down; its
+# subscriptions let go. A hosted row's `Row` methods beside it.
+RustRowImpl: unbounded fn NodeDef -> Text
+fn RustRowImpl n:
+    let kept = if n.rowKind == ForRow: [["*self.left_entry.borrow_mut() = ::std::option::Option::Some(self.entry(cx));"]] else: [[]]
+    let unsubscribe = Each n.subs, \|((ev, m, ignore))| "if let (::std::option::Option::Some(p), ::std::option::Option::Some(h)) = (self.parent.upgrade(), self.{m}_sub.take()) \{\n    p.{ev}_port.unsubscribe(h);\n\}"
+    RowImpl n.name, (Join (Append (Push kept, "self.remove_places(cx);"), unsubscribe), "\n"), (Join (Each n.hosted, \|m| RustMethod m, ""), "\n")
+
+# A node's method. One of its own is seen by the whole crate: a row is built, and its
+# methods called, by the block that reads its widget as a value, which may be another
+# module's (`@Parts.header` read in `App`). One of a `Row` impl has the trait's visibility.
+RustMethod: unbounded fn MethDef, Text -> Text
+fn RustMethod m, visibility:
+    let recv = match m.recv:
+        RecvRc: "self: &::std::rc::Rc<Self>"
+        RecvRef: "&self"
+        RecvOwned: "self: ::std::rc::Rc<Self>"
+    let cx = match m.cx:
+        CxMut: ", cx: &mut crate::prelude::Cx"
+        CxRef: ", cx: &crate::prelude::Cx"
+        CxNone: ""
+    let params = Concat (Each m.params, \|((p, t))| ", {p}: {Type t}")
+    let ret = if m.ret == OutUnit: "" else: " -> {Type m.ret}"
+    let sig = "{visibility}fn {m.name}({recv}{params}{cx}){ret}"
+    let body = if m.ret == OutUnit: Statements m.body else: if (Len m.body) == 0: BodyLines m.tail else: "{Statements m.body}\n{BodyLines m.tail}"
+    Method (Doc m.doc), sig, body
+
+RustProgram: unbounded fn ProgDef, Bool -> Text
+fn RustProgram p, fallible:
+    let n = Len p.params
+    let names = Each p.params, \|((a, ignore))| a
+    let decode = if n == 0: "let _ = args;" else: DecodeArgs p, names
+    let call = "{p.node}::build(crate::prelude::Path::root(), {Concat (Each names, \|a| "{a}, ")}&mut cx){if fallible: "?" else: ""}"
+    Program p.name, p.prism, p.node, decode, call
+
+DecodeArgs: unbounded fn ProgDef, [Text] -> Text
+fn DecodeArgs p, names:
+    let n = Len names
+    let plural = if n == 1: "" else: "s"
+    let head = "let [{Join names, ", "}] = args else \{ return ::std::result::Result::Err(crate::prelude::Fault::answer(\"@{p.prism} takes {n} argument{plural}\")) \};"
+    Join (Append [[head]], (Each p.params, \|((a, t))| "let {a} = {DecodeHead t}::from_pod({a})?;")), "\n"
+
+# ---------------------------------------------------------------------------------------
+# The crate
+# ---------------------------------------------------------------------------------------
+
+# A module's file; `kids` declares its submodules (`pub mod env;`). Another module's items
+# are named from the crate (`crate::check::env::BuildG`), so it needs no `use`.
+RustModule: unbounded fn ModDef, Text -> Text
+fn RustModule m, kids = Module (if m.prism == "": "The root module" else: "The module `{m.prism}`"), m.path, kids, (Join (Each m.items, \|it| RustItem it), "\n")
+
+# Whether a node is built fallibly: the program's `?`.
+NodeFallible: fn Model, Text -> Bool
+fn NodeFallible model, path = Fold model.mods, False, \|f, m| Fold m.items, f, \|f2, it| match it:
+    ItNode n: f2 or ("{m.name}::{n.name}" == path and n.fallible)
+    otherwise: f2
+
+# The crate's files: path and text.
+EmitCrate: unbounded fn Model, Text, [Text] -> [((Text, Text))]
+fn EmitCrate model, runtime, scripts:
+    let gui = match model.?root:
+        ? r: r.world == "canvas"
+        nil: False
+    let cargo = Cargo model.name, runtime, (if gui: "\"canvas\"" else: "")
+    let paths = RustModPaths model.mods
+    let mods = Concat (Each (Filter paths, \|p| not (Contains p, ":")), \|p| "mod {p};\n")
+    let programs = Join (Each (AllPrograms model), \|p| RustProgram p, (NodeFallible model, p.node)), "\n"
+    let regs = Concat (Each model.programs, \|p| ".program::<{p.name}>(\"{p.prism}\")\n")
+    let checks = Concat (Each model.checks, \|c| ".check(\"{c.name}\", || vec![{Join (Each c.lines, \|l| Expression l), ", "}])\n")
+    let scriptList = Concat (Each scripts, \|s| "\"{Escape s}\",\n")
+    let runRoot = match model.?root:
+        ? r: RunRoot r.name
+        nil: NoRoot model.name
+    let world = match model.?root:
+        ? r: r.world
+        nil: "test"
+    let main = Main model.name, "mod prelude;\n{mods}", "{RustRow model.elem}\n{RustOutput model.answer}\n{programs}", "{regs}{checks}", scriptList, runRoot, world
+    let files = Each model.mods, \|m| (((RustModFile m.name), (RustModule m, (KidsOf paths, m.name))))
+    let named = Each model.mods, \|m| m.name
+    let bare = Each (Filter paths, \|p| not (Fold named, False, \|f, n| f or n == p)), \|p| (((RustModFile p), "//! Emitted by prismc: the modules under `{p}`, which declares nothing of its own.\n\n{KidsOf paths, p}"))
+    Append [[(("Cargo.toml", cargo)), (("src/main.rs", main)), (("src/prelude.rs", (PreludeSource "")))]], (Append files, bare)
+
+# Every module path of the crate, with the parents a nested one needs (`check` for
+# `check::env` when no Prism module is `Check`), in order.
+RustModPaths: fn [ModDef] -> [Text]
+fn RustModPaths mods = Fold mods, [[]], \|acc, m|
+    let segs = SplitOn m.name, "::"
+    Fold (Range0 (Len segs)), acc, \|a, i| AddPath a, (Join (Take segs, i + 1), "::")
+
+AddPath: fn [Text], Text -> [Text]
+fn AddPath ps, p = if Fold ps, False, \|f, q| f or q == p: ps else: Push ps, p
+
+# A module's file: `src/program.rs` for the root, else `src/PATH/mod.rs`.
+RustModFile: fn Text -> Text
+fn RustModFile p = if p == "program": "src/program.rs" else: "src/{Join (SplitOn p, "::"), "/"}/mod.rs"
+
+# The `pub mod` lines of a module path's children.
+KidsOf: fn [Text], Text -> Text
+fn KidsOf paths, p = Concat (Each (Filter paths, \|q| (HasPrefix q, "{p}::") and not (Contains (DropPrefix q, "{p}::"), ":")), \|q| "pub mod {DropPrefix q, "{p}::"};\n")
+
+# Every program, the root's among them, once.
+AllPrograms: fn Model -> [ProgDef]
+fn AllPrograms model = match model.?root:
+    ? r: if Fold model.programs, False, \|f, p| f or p.name == r.name: model.programs else: Push model.programs, r
+    nil: model.programs

@@ -1,0 +1,5 @@
+tests/checker/neg/impl-lacks-superclass.prism:20: error[no-impl]: no impl of `^Named` for `Book`, which `^Titled` asks of its types
+    impl ^Titled Book:
+    ^^^^^^^^^^^^^^^^^^
+  fix: add `impl ^Named Book`
+1 error

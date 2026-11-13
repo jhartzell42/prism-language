@@ -1,0 +1,10 @@
+# `two-events`: two events in one operation (Type System ch. 4, `@adder`).
+emit Ui.*
+
+@adder: @unit
+@adder:
+    !a <- Ui.Button($label=$"Add 1")
+    !b <- Ui.Button($label=$"Add 10")
+    let !total = (1 on !a) + (10 on !b)
+    $sum <- 0 then $sum + !total
+    Ui.Label($text=$"{$sum}")

@@ -1,0 +1,13 @@
+# `for-double-dynamic`: a `for` over a map of dynamics, `$(k ==> $v)`, binds the value
+# under the row's key as `$v` (Semantics ch. 4, ruling FV); a `$$d` binder, the old form
+# flattened on the next line, is refused with the fix.
+emit Ui.*
+
+@rows: @unit
+@rows:
+    !go <- @started
+    $m <- {0: "a"} then $m on !go
+    $each <- @PerKey $m
+    for k, $$d <- $each:
+        $v <- @Flatten $$d
+        Ui.Label($text=$v)

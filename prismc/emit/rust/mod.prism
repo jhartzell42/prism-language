@@ -1,0 +1,446 @@
+# Emission: the model lowering decided (`Lower`) spelled as a Rust crate through the
+# templates (`Emit.Rust.Templates`, `Emit.Rust.Prelude`): `Cargo.toml`, `src/main.rs`,
+# `src/prelude.rs` and one `src/PATH/mod.rs` per Prism module. Each function here spells one
+# construct of the core form; nothing here decides (K9). An expression's text is
+# relative to the column it starts at, so a template's placeholder alone on its line
+# indents a piece of several lines as a person would.
+#
+# Written by Claude, 1 November 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+emit r
+mod Items
+mod Templates
+mod Prelude
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Lower.*
+use Lower.Types.*
+use Lower.Expr.*
+use Lower.Patterns.*
+use Lower.Templates.*
+use Lower.Functions.*
+use Lower.Jobs.*
+use Lower.Program.*
+use Lower.Model.*
+use Lower.Node.*
+use Lower.Node.Def.*
+use Lower.Node.Elements.*
+use Lower.Node.Static.*
+use Lower.Node.Dynamics.*
+use Lower.Node.Finish.*
+use Lower.Node.Keyed.*
+use Lower.Node.Switch.*
+use Emit.Rust.Templates.*
+use Emit.Rust.Templates.Items.*
+use Emit.Rust.Prelude.*
+use Emit.Rust.Items.*
+
+# ---------------------------------------------------------------------------------------
+# Types
+# ---------------------------------------------------------------------------------------
+
+Type: unbounded fn OutTy -> Text
+fn Type t = match t:
+    OutNat: "crate::prelude::Nat"
+    OutInt: "crate::prelude::Int"
+    OutU8: "u8"
+    OutFloat: "crate::prelude::Float"
+    OutBool: "bool"
+    OutChar: "char"
+    OutText: "crate::prelude::Text"
+    OutCursor: "crate::prelude::Cursor"
+    OutRegex: "crate::prelude::Regex"
+    OutReplacement: "crate::prelude::RegexReplacement"
+    OutUnit: "()"
+    OutPath: "crate::prelude::Path"
+    OutDuration: "crate::prelude::Duration"
+    OutError: "crate::prelude::Error"
+    OutNamed n, [[]]: RsRef n
+    OutNamed n, args: "{RsRef n}<{Types args}>"
+    OutOpt i: "::std::option::Option<{Type i}>"
+    OutRes i: "::std::result::Result<{Type i}, crate::prelude::Error>"
+    OutTuple [[one]]: "({Type one},)"
+    OutTuple ts: "({Types ts})"
+    OutArray e: "crate::prelude::Array<{Type e}>"
+    OutMap k, v: "crate::prelude::Map<{Type k}, {Type v}>"
+    OutFn ps, r: "::std::rc::Rc<dyn ::std::ops::Fn({RefTypes ps}) -> {Type r}>"
+    OutRef i: "&{Type i}"
+    OutRefMut i: "&mut {Type i}"
+    OutJobFn a, b: "::std::rc::Rc<dyn ::std::ops::Fn({Type a}) -> ::std::rc::Rc<dyn ::prism_rtl::Job<{Type b}>>>"
+    OutJob b: "::std::rc::Rc<dyn ::prism_rtl::Job<{Type b}>>"
+    OutEvent i: "crate::prelude::Event<{Type i}>"
+    OutDyn i: "crate::prelude::Dynamic<{Type i}>"
+    OutGen n: n
+    OutRc i: "::std::rc::Rc<{Type i}>"
+    OutPod: "crate::prelude::Pod"
+    OutShowAny: "::std::rc::Rc<dyn crate::prelude::Show>"
+    OutHold i: "crate::prelude::Hold<{Type i}>"
+    OutStamped i: "crate::prelude::Stamped<{Type i}>"
+    OutSnapshot i: "crate::prelude::Snapshot<{Type i}>"
+    OutDefer i: "crate::prelude::Defer<{Type i}>"
+    OutWeak n: "::std::rc::Weak<{n}>"
+    OutCell i: "::std::cell::RefCell<{Type i}>"
+    OutWakes: "crate::prelude::Wakes"
+    OutCount: "u32"
+    OutObj i: "::std::rc::Rc<dyn {Type i}>"
+    OutSlice i: "[{Type i}]"
+    OutPort i: "crate::prelude::Port<{Type i}>"
+    OutLive i: "crate::prelude::Element<{Type i}>"
+    OutTurn: "() /* the job's turn */"
+    OutAssoc tr, n, (OutNamed (RefRuntime "Self"), [[]]): "Self::{n}"
+    OutAssoc tr, n, a: "<{Type a} as {tr}>::{n}"
+    OutRefused what: "compile_error!(\"{loweringRefusal}{what}\")"
+    OutQuantified b: "compile_error!(\"{loweringRefusal}a quantified type variable of `{b}`: no instantiation gives it a type\")"
+
+# A path the model writes as Rust spells it: the standard library's items, which the model
+# marks `std::` (`std::Rc::new`, `std::Some`), from the root (`::std::rc::Rc::new`,
+# `::std::option::Option::Some`), so that a program's type or node of the same name (`Rc`,
+# `Some`) hides none of them; the runtime side's are `crate::prelude::` already, a program's from the
+# crate or its own module.
+RsRef: fn Ref -> Text
+fn RsRef (RefItem ignore, ignore, s) = s
+fn RsRef (RefRuntime t) = RsPath t
+
+RsPath: fn Text -> Text
+fn RsPath p = if (HasPrefix p, "rt::") or HasPrefix p, "prism_rtl::": RuntimePath p else: if HasPrefix p, "std::":
+    let segs = SplitOn (DropPrefix p, "std::"), "::"
+    match ?StdPath (Or segs[0], ""):
+        ? full: Join (Append [[full]], (Drop segs, 1)), "::"
+        nil: p
+else: p
+
+?StdPath: fn Text -> ?Text
+fn ?StdPath "Rc" = ? "::std::rc::Rc"
+fn ?StdPath "Weak" = ? "::std::rc::Weak"
+fn ?StdPath "Cell" = ? "::std::cell::Cell"
+fn ?StdPath "RefCell" = ? "::std::cell::RefCell"
+fn ?StdPath "Option" = ? "::std::option::Option"
+fn ?StdPath "Some" = ? "::std::option::Option::Some"
+fn ?StdPath "None" = ? "::std::option::Option::None"
+fn ?StdPath "Result" = ? "::std::result::Result"
+fn ?StdPath "Ok" = ? "::std::result::Result::Ok"
+fn ?StdPath "Err" = ? "::std::result::Result::Err"
+fn ?StdPath "Vec" = ? "::std::vec::Vec"
+fn ?StdPath "String" = ? "::std::string::String"
+fn ?StdPath "Box" = ? "::std::boxed::Box"
+fn ?StdPath "Default" = ? "::std::default::Default"
+fn ?StdPath "Clone" = ? "::std::clone::Clone"
+fn ?StdPath "Eq" = ? "::std::cmp::Eq"
+fn ?StdPath "Ord" = ? "::std::cmp::Ord"
+fn ?StdPath other = nil
+
+Types: unbounded fn [OutTy] -> Text
+fn Types ts = Join (Each ts, \|t| Type t), ", "
+
+RefTypes: unbounded fn [OutTy] -> Text
+fn RefTypes ts = Join (Each ts, \|t| "&{Type t}"), ", "
+
+# ---------------------------------------------------------------------------------------
+# Expressions
+# ---------------------------------------------------------------------------------------
+
+# Whether an expression must be parenthesized as an operand or a receiver.
+IsLoose: fn Ex -> Bool
+fn IsLoose x = match x:
+    XBlock [[]], inner: IsLoose inner
+    XTyped inner, ignore: IsLoose inner
+    XBin ignore, ignore, ignore: True
+    XUnary ignore, ignore: True
+    XClosure ignore, ignore, ignore: True
+    XIf ignore, ignore, ignore: True
+    XMatch ignore, ignore, ignore, ignore: True
+    XChain ignore, ignore, ignore, ignore: True
+    XCast ignore, ignore: True
+    XRef ignore: True
+    XRefMut ignore: True
+    XDeref ignore: True
+    otherwise: False
+
+Tight: unbounded fn Ex -> Text
+fn Tight x = if IsLoose x: "({Expression x})" else: Expression x
+
+Operand: unbounded fn Ex -> Text
+fn Operand x = match x:
+    XBlock [[]], inner: Operand inner
+    XTyped inner, ignore: Operand inner
+    XBin ignore, ignore, ignore: "({Expression x})"
+    XClosure ignore, ignore, ignore: "({Expression x})"
+    XIf ignore, ignore, ignore: "({Expression x})"
+    XCast ignore, ignore: "({Expression x})"
+    otherwise: Expression x
+
+Args: unbounded fn [Ex] -> Text
+fn Args xs = Join (Each xs, \|x| Expression x), ", "
+
+Expression: unbounded fn Ex -> Text
+fn Expression x = match x:
+    XVar n: n
+    XPath p: RsRef p
+    XSelf: "self"
+    XCx: "cx"
+    XConst n: "Self::{n}"
+    XUnit: "()"
+    XNone: "::std::option::Option::None"
+    XBool b: if b: "true" else: "false"
+    XNat d: if (Len d) <= 9: "crate::prelude::Nat::from({d}u32)" else: if (Len d) <= 18: "crate::prelude::Nat::from_int(crate::prelude::Int::from({d}i64)).unwrap()" else: "crate::prelude::Nat::from_int(crate::prelude::Int::parse(\"{d}\").unwrap()).unwrap()"
+    XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "crate::prelude::Int::from({d})" else: "crate::prelude::Int::parse(\"{d}\").unwrap()"
+    XByte d: "{d}u8"
+    XFloat d: "crate::prelude::Float({d})"
+    XDuration n: "crate::prelude::Duration({n})"
+    XIndex n: "{n}"
+    XChar c: "'{CharEscape c}'"
+    XStr t: "\"{Escape t}\""
+    # One literal, one compiled regex per thread: the static is built on its first use and
+    # each use clones it, which counts a reference (prism_rtl's `Regex` is an `Rc`).
+    XRegex p, f: "\{ thread_local!(static R: crate::prelude::Regex = crate::prelude::Regex::lit(\"{Escape p}\", \"{Escape f}\")); R.with(crate::prelude::Regex::clone) \}"
+    XReplacement p, r, f: "\{ thread_local!(static R: crate::prelude::RegexReplacement = crate::prelude::RegexReplacement::lit(\"{Escape p}\", \"{Escape f}\", \"{Escape r}\")); R.with(crate::prelude::RegexReplacement::clone) \}"
+    XRef y: "&{Operand y}"
+    XRefMut y: "&mut {Operand y}"
+    XDeref y: "*{Operand y}"
+    XTarget y: "(*{Expression y})"
+    XClone y: "{Tight y}.clone()"
+    XWeak y: "::std::rc::Rc::downgrade({Expression y})"
+    XUpgrade y: "{Tight y}.upgrade()"
+    XBreak l, y: "break {Label l} {Expression y}"
+    XBreakLoop: "break"
+    XLater y: "::std::boxed::Box::new(move |cx| \{ {Expression y}; ::std::result::Result::Ok(()) \})"
+    XFormatStr parts: FormatStr parts
+    XIsCase y, [[]]: "false"
+    XIsCase y, cs: "matches!({Expression y}, {Join (Each cs, \|c| "{RsRef c}(..)"), " | "})"
+    XRefusal what: "compile_error!(\"{loweringRefusal}{Escape what}\")"
+    XUnreachable: "unreachable!()"
+    XCall f, args: "{RsRef f}({Args args})"
+    XCallAt f, tys, args: "{RsRef f}::<{Types tys}>({Args args})"
+    XCallSelf tr, m, self, args: "<{Type self} as {RsRef tr}>::{m}({Args args})"
+    # a closure in a field is called through parentheses (`(self.f)(x)`), not as a method
+    XApply (XField r, n), args: "({Expression (XField r, n)})({Args args})"
+    XApply f, args: "{Tight f}({Args args})"
+    XMethod r, m, args: "{Tight r}.{m}({Args args})"
+    XBin op, l, r: "{Operand l} {BinOpText op} {Operand r}"
+    XUnary op, y: "{UnOpText op}{Operand y}"
+    XCtor p, args: "{RsRef p}({Args args})"
+    XRecord p, fs: "{RsRef p} \{ {Join (Each fs, \|((f, v))| FieldInit f, v), ", "} \}"
+    XTuple [[one]]: "({Expression one},)"
+    XTuple xs: "({Args xs})"
+    XVec xs: "vec![{Args xs}]"
+    XText t: "crate::prelude::Text::lit(\"{Escape t}\")"
+    XFormat parts: Format parts
+    XMatch s, arms, fallback, ignore: MatchBlock (Expression s), (Arms arms, fallback)
+    XChain label, s, arms, ignore: Chain (Label label), s, arms
+    XIf c, t, e: IfExpression c, t, e
+    XBlock [[]], e: Expression e
+    XBlock dos, e: Block (Statements dos), (Expression e)
+    XLabeled label, dos, e, ignore: Labeled (Label label), (Statements dos), (Expression e)
+    XClosure mv, ps, body: "{if mv: "move " else: ""}|{Join (Each ps, \|p| Pattern p), ", "}| {Expression body}"
+    XTry y: "{Tight y}?"
+    XField r, f: "{Tight r}.{f}"
+    XFieldOf r, ignore, f: "{Tight r}.{f}"
+    XPart r, k: "{Tight r}.{k}"
+    XDecode t, y: "{DecodeHead t}::from_pod({Expression y})?"
+    XCast y, t: "{Tight y} as {Type t}"
+    XTyped y, ignore: Expression y
+
+FieldInit: unbounded fn Text, Ex -> Text
+fn FieldInit f, (XVar v) = if v == f: f else: "{f}: {v}"
+fn FieldInit f, v = "{f}: {Expression v}"
+
+DecodeHead: unbounded fn OutTy -> Text
+fn DecodeHead t = match t:
+    OutNamed n, [[]]: RsRef n
+    OutNat: "crate::prelude::Nat"
+    OutInt: "crate::prelude::Int"
+    OutText: "crate::prelude::Text"
+    otherwise: "<{Type t}>"
+
+Label: fn Text -> Text
+fn Label l = if (HasPrefix l, "'"): l else: "'{l}"
+
+# `Text::from(format!(..))`: the literal runs with their braces doubled, a `{}` per value;
+# with no value, the literal itself (`Text::lit`).
+Format: unbounded fn [Ex] -> Text
+fn Format parts:
+    let lit = Concat (Each parts, \|p| FormatPiece p)
+    let vals = Filter parts, \|p| not (IsText p)
+    if (Len vals) == 0: "crate::prelude::Text::lit(\"{Escape (Concat (Each parts, \|p| PlainPiece p))}\")"
+    else: "crate::prelude::Text::from(format!(\"{lit}\", {Args vals}))"
+
+PlainPiece: fn Ex -> Text
+fn PlainPiece (XText t) = t
+fn PlainPiece other = ""
+
+# `format!(..)`, a message's text (a fault's), not a `Text`: a local is named in the
+# literal, any other value placed by position.
+FormatStr: unbounded fn [Ex] -> Text
+fn FormatStr parts:
+    let lit = Concat (Each parts, \|p| StrPiece p)
+    let vals = Filter parts, \|p| not (IsText p) and not (IsVar p)
+    if (Len vals) == 0: "\"{lit}\"" else: "format!(\"{lit}\", {Args vals})"
+
+IsVar: fn Ex -> Bool
+fn IsVar (XVar ignore) = True
+fn IsVar other = False
+
+StrPiece: fn Ex -> Text
+fn StrPiece (XVar n) = "\{{n}\}"
+fn StrPiece other = FormatPiece other
+
+IsText: fn Ex -> Bool
+fn IsText (XText ignore) = True
+fn IsText other = False
+
+FormatPiece: fn Ex -> Text
+fn FormatPiece (XText t) = FormatEscape (Escape t)
+fn FormatPiece other = "\{\}"
+
+FormatEscape: fn Text -> Text
+fn FormatEscape t = MapChars t, \|c| FormatEscapeChar c
+
+FormatEscapeChar: fn Text -> Text
+fn FormatEscapeChar "\{" = "\{\{"
+fn FormatEscapeChar "\}" = "\}\}"
+fn FormatEscapeChar c = c
+
+# `if c { a } else { b }` on one line when both sides are short.
+IfExpression: unbounded fn Ex, Ex, Ex -> Text
+fn IfExpression c, t, e:
+    let ct = Expression c
+    let tt = Expression t
+    let et = Expression e
+    let short = not (Contains "{tt}{et}", "\n") and (Len "{ct}{tt}{et}") < 70
+    if short: "if {ct} \{ {tt} \} else \{ {et} \}" else: If ct, tt, et
+
+# A `match`'s arms, guards joined; the fallback arm when a guard leaves the match open.
+Arms: unbounded fn [XArm], Bool -> Text
+fn Arms arms, fallback:
+    let lines = Each arms, \|a| Arm a
+    let all = if fallback: Push lines, "_ => unreachable!(\"no arm matched\")," else: lines
+    Join all, "\n"
+
+Arm: unbounded fn XArm -> Text
+fn Arm a:
+    let guard = if (Len a.conds) == 0: "" else: " if {Join (Each a.conds, \|c| Condition c), " && "}"
+    let body = Expression a.body
+    "{Pattern a.pat}{guard} => {body},"
+
+Condition: unbounded fn Cc -> Text
+fn Condition (CcIf x) = Operand x
+fn Condition (CcLet p, x) = "let {Pattern p} = {Expression x}"
+
+# An if-let chain over arms in a labelled block: each arm breaks with its value; a last arm
+# that matches anything ends the block.
+Chain: unbounded fn Text, Ex, [XArm] -> Text
+fn Chain label, s, arms:
+    let inPlace = match s:
+        XRef y: IsBound y
+        otherwise: IsBound s
+    let ((bind, scrut)) = if inPlace: (([[]], Expression s)) else: (([["let scrutinee = {Expression s};"]], "scrutinee"))
+    let n = Len arms
+    let lines = Each (Range0 n), \|i|
+        let a = Or arms[i], (XArm(pat=PaWild, conds=[[]], body=XUnit))
+        let catchAll = (a.pat == PaWild) and (Len a.conds) == 0
+        if catchAll: Expression a.body
+        else:
+            let head = Join (Append [["let {Pattern a.pat} = {scrut}"]], (Each a.conds, \|c| Condition c)), " && "
+            ChainArm head, label, (Continued (Expression a.body), "    ")
+    let ends = match ?Last arms:
+        ? a: (a.pat == PaWild) and (Len a.conds) == 0
+        nil: False
+    let tail = if ends: [[]] else: [["unreachable!(\"no clause matched\")"]]
+    "{label}: \{\n{Indent (Join (Append (Append bind, lines), tail), "\n")}\n\}"
+
+# A place a name is bound to (a local, a field of the node, of the block through a row's
+# parent, the element a `for &s` loop updates): a chain matches it where it stands.
+IsBound: fn Ex -> Bool
+fn IsBound x = match x:
+    XVar ignore: True
+    XField XSelf, ignore: True
+    XField (XMethod (XUpgrade ignore), ignore, ignore), ignore: True
+    XTarget ignore: True
+    XPart (XVar ignore), ignore: True
+    otherwise: False
+
+# A text placed after other text on an indented line: its later lines take the indent.
+Continued: fn Text, Text -> Text
+fn Continued t, pad:
+    let ls = SplitOn t, "\n"
+    Join (Each (Range0 (Len ls)), \|i| if i == 0 or (Or ls[i], "") == "": Or ls[i], "" else: "{pad}{Or ls[i], ""}"), "\n"
+
+# A function's body: a block's statements and value without its braces.
+BodyLines: unbounded fn Ex -> Text
+fn BodyLines (XBlock dos, e) = if (Len dos) == 0: BodyLines e else: "{Statements dos}\n{BodyLines e}"
+fn BodyLines x = Expression x
+
+# Every line of a text four spaces in.
+Indent: fn Text -> Text
+fn Indent t = Join (Each (SplitOn t, "\n"), \|l| if l == "": "" else: "    {l}"), "\n"
+
+# ---------------------------------------------------------------------------------------
+# Patterns and statements
+# ---------------------------------------------------------------------------------------
+
+Pattern: unbounded fn Pa -> Text
+fn Pattern p = match p:
+    PaWild: "_"
+    PaBind n: n
+    PaMut n: "mut {n}"
+    PaCtor c, ps: "{RsRef c}({Join (Each ps, \|q| Pattern q), ", "})"
+    PaUnit c: RsRef c
+    PaRecord c0, fs, rest:
+        let c = RsRef c0
+        let parts = Each fs, \|((f, q))| match q:
+            PaBind n: if n == f: f else: "{f}: {n}"
+            otherwise: "{f}: {Pattern q}"
+        let all = if rest: Push parts, ".." else: parts
+        "{c} \{ {Join all, ", "} \}"
+    PaTuple [[one]]: "({Pattern one},)"
+    PaTuple ps: "({Join (Each ps, \|q| Pattern q), ", "})"
+    PaChar c: "'{CharEscape c}'"
+    PaBool b: if b: "true" else: "false"
+    PaIndex n: "{n}"
+    PaConst n: "Self::{n}"
+    PaSlice ps: "[{Join (Each ps, \|q| Pattern q), ", "}]"
+    PaRest "": ".."
+    PaRest n: "{n} @ .."
+    PaTyped q, t: "{Pattern q}: {Type t}"
+
+Statements: unbounded fn [Do] -> Text
+fn Statements dos = Join (Each dos, \|d| Statement d), "\n"
+
+Statement: unbounded fn Do -> Text
+fn Statement d = match d:
+    DoLet p, x: "let {Pattern p} = {Expression x};"
+    DoLetElse p, x, e: "let {Pattern p} = {Expression x} else \{ {Expression e} \};"
+    DoAssign p, x: "{Expression p} = {Expression x};"
+    DoWhile c, body: IfStmt "while {Expression c}", (Statements body)
+    DoWhileLet p, x, body: IfStmt "while let {Pattern p} = {Expression x}", (Statements body)
+    DoFor p, x, body: IfStmt "for {Pattern p} in {Expression x}", (Statements body)
+    DoExpr x: "{Expression x};"
+    DoIf c, t, e: "{IfStmt "if {Expression c}", (Statements t)}{ElseBranch e}"
+    DoIfLet p, x, t, e: "{IfStmt "if let {Pattern p} = {Expression x}", (Statements t)}{ElseBranch e}"
+    DoMatch x, cases: MatchBlock (Expression x), (Join (Each cases, \|((p, body))| ArmBlock (Pattern p), (Statements body)), "\n")
+    DoReturn x: "return {Expression x};"
+    DoBlock body: Scope (Statements body)
+    DoScope body: "\{ {InlineStatements body} \};"
+    DoLine body: "{InlineStatements body};"
+    DoNote t: "// {t}"
+
+# Statements on one line (`DoScope`, `DoLine`).
+InlineStatements: unbounded fn [Do] -> Text
+fn InlineStatements dos = Join (Each dos, \|d| InlineStatement d), " "
+
+InlineStatement: unbounded fn Do -> Text
+fn InlineStatement (DoIf c, t, [[]]) = "if {Expression c} \{ {InlineStatements t} \}"
+fn InlineStatement d = Statement d
+
+# An `else`, `else if` for a lone `if` inside.
+ElseBranch: unbounded fn [Do] -> Text
+fn ElseBranch [[]] = ""
+fn ElseBranch [[(DoIf c, t, e)]] = " else {Statement (DoIf c, t, e)}"
+fn ElseBranch [[(DoIfLet p, x, t, e)]] = " else {Statement (DoIfLet p, x, t, e)}"
+fn ElseBranch body = Else (Statements body)

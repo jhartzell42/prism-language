@@ -1,0 +1,310 @@
+# `Emit.Cpp.Stmts`, a child module of `Emit.Cpp`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Emit.Cpp.*
+use Emit.Cpp.Expr.*
+use Emit.Cpp.Patterns.*
+use Emit.Cpp.Items.*
+use Emit.Cpp.Program.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Lower.*
+use Lower.Types.*
+use Lower.Expr.*
+use Lower.Patterns.*
+use Lower.Templates.*
+use Lower.Functions.*
+use Lower.Jobs.*
+use Lower.Program.*
+use Lower.Model.*
+use Lower.Node.*
+use Lower.Node.Def.*
+use Lower.Node.Elements.*
+use Lower.Node.Static.*
+use Lower.Node.Dynamics.*
+use Lower.Node.Finish.*
+use Lower.Node.Keyed.*
+use Lower.Node.Switch.*
+use Emit.Cpp.Templates.*
+use Emit.Cpp.Templates.Items.*
+use Emit.Cpp.Prelude.*
+
+# ---------------------------------------------------------------------------------------
+# Statements
+# ---------------------------------------------------------------------------------------
+
+CppStatements: unbounded fn Cp, [Do] -> Text
+fn CppStatements cp, dos:
+    let ((st, ignore)) = CppStatementsCp cp, dos
+    st
+
+# Statements in order, each in the context the ones before it leave: a `let` that rebinds a
+# name from its own old value (Rust's shadowing, `let mut fuel = fuel.clone()`) binds a new
+# name, which the statements after it read.
+CppStatementsCp: unbounded fn Cp, [Do] -> ((Text, Cp))
+fn CppStatementsCp cp, dos:
+    let ((lines, last)) = Fold dos, (([[]], cp)), \|((acc, c)), d|
+        let c2 = Rebound c, d
+        let line = match d:
+            DoLet p, x: CppLet c, c2, p, x
+            otherwise: CppStatement c2, d
+        (((Push acc, line), c2))
+    (((Join lines, "\n"), last))
+
+# A block's last expression that C++ would read as a declaration (`Text(out);` declares
+# `out`), parenthesized.
+Unvexed: fn Text -> Text
+fn Unvexed t:
+    let head = Or (SplitOn t, "(")[0], ""
+    let typeLike = (Contains head, ":") or Contains "ABCDEFGHIJKLMNOPQRSTUVWXYZ", (Head head)
+    let vexing = (LastChar t) == ")" and (not (Contains head, " ")) and head != "" and typeLike
+    if vexing: "({t})" else: t
+
+# The context after a statement: what a `let` binds, held or pointing.
+Rebound: unbounded fn Cp, Do -> Cp
+fn Rebound cp, d = match d:
+    DoLetElse p, ignore, ignore: Unbind cp, (PatNames p)
+    DoLet (PaTuple ps), ignore: Unbind cp, (PatNames (PaTuple ps))
+    DoLet (PaCtor c, ps), ignore: Unbind cp, (PatNames (PaCtor c, ps))
+    DoLet (PaRecord c, fs, r), ignore: Unbind cp, (PatNames (PaRecord c, fs, r))
+    DoLet p, x: match ?LetName p:
+        ? n:
+            let pointing = if IsPointerLet cp, p, x: Pointing cp, n else: KnownValue cp, p, n
+            let held = if IsValueLet p, x: Owning pointing, n else: Disowning pointing, n
+            match p:
+                PaTyped ignore, t: update held:
+                    &_.localTypes <= Insert &_.localTypes, n, t
+                otherwise: update held:
+                    &_.localTypes <= Remove &_.localTypes, n
+        nil: cp
+    otherwise: cp
+
+# Whether a `let` of one name holds its value (`auto x = ..`, a typed value), which a bare
+# read then moves (pick MV), or binds a reference (`const auto& x = ..`, a typed reference).
+IsValueLet: fn Pa, Ex -> Bool
+fn IsValueLet p, x = match p:
+    PaBind ignore: match x:
+        XRef ignore: False
+        otherwise: True
+    PaMut ignore: True
+    PaTyped ignore, (OutRef ignore): False
+    PaTyped ignore, ignore: True
+    otherwise: False
+
+# A local the scope holds by value: a bare read of it is its last (Rust moved there), and
+# prints as `std::move`.
+Owning: fn Cp, Text -> Cp
+fn Owning cp, n = update cp:
+    &_.owned <= Insert &_.owned, n, True
+
+Disowning: fn Cp, Text -> Cp
+fn Disowning cp, n = update cp:
+    &_.owned <= Remove &_.owned, n
+
+# The context inside a lambda's body: the outer locals are its captures (constant copies
+# in a `[=]` lambda, references in a `[&]` one), which no read moves; the `let`s before a
+# move closure are taken by the closure being printed, not by one inside it.
+Captured: fn Cp -> Cp
+fn Captured cp = update cp:
+    &_.owned <= {}
+    &_.moveCaptures <= [[]]
+
+# The names a pattern binds.
+PatNames: unbounded fn Pa -> [Text]
+fn PatNames p = match p:
+    PaBind n: [[n]]
+    PaMut n: [[n]]
+    PaTyped q, ignore: PatNames q
+    PaCtor ignore, ps: Concat2 (Each ps, \|q| PatNames q)
+    PaRecord ignore, fs, ignore: Concat2 (Each fs, \|((ignore, q))| PatNames q)
+    PaTuple ps: Concat2 (Each ps, \|q| PatNames q)
+    PaSlice ps: Concat2 (Each ps, \|q| PatNames q)
+    PaRest n: if n == "": [[]] else: [[n]]
+    otherwise: [[]]
+
+ArmNames: unbounded fn XArm -> [Text]
+fn ArmNames a = Append (PatNames a.pat), (Concat2 (Each a.conds, \|c| CondNames c))
+
+CondNames: unbounded fn Cc -> [Text]
+fn CondNames (CcLet q, ignore) = PatNames q
+fn CondNames (CcIf ignore) = [[]]
+
+# The context inside a scope that binds `names` anew: an outer one's being a pointer is
+# hidden.
+Unbind: fn Cp, [Text] -> Cp
+fn Unbind cp, names = update cp:
+    &_.pointers <= Fold names, &_.pointers, \|m, n| Remove m, n
+    &_.owned <= Fold names, &_.owned, \|m, n| Remove m, n
+    &_.localTypes <= Fold names, &_.localTypes, \|m, n| Remove m, n
+
+# A local the context knows is a shared pointer: its members are reached by `->`.
+Pointing: fn Cp, Text -> Cp
+fn Pointing cp, n = update cp:
+    &_.pointers <= Insert &_.pointers, n, True
+
+# A local whose type the `let` says and is no pointer: its members are reached by `.`.
+KnownValue: fn Cp, Pa, Text -> Cp
+fn KnownValue cp, p, n = match p:
+    PaTyped ignore, ignore: update cp:
+        &_.pointers <= Insert &_.pointers, n, False
+    otherwise: cp
+
+# Whether a `let` binds a shared pointer: its type says so, or its value is one.
+IsPointerLet: fn Cp, Pa, Ex -> Bool
+fn IsPointerLet cp, p, x = match p:
+    PaTyped ignore, t: IsPointerTy cp, t
+    otherwise: match x:
+        XCall (RefRuntime "prism_rtl::Host::new"), ignore: True
+        XCall (RefRuntime "std::Rc::new"), [[(XCall (RefRuntime "rt::Port::new"), ignore)]]: True
+        otherwise: match ?Pointer cp, x:
+            ? b: b
+            nil: False
+
+?LetName: fn Pa -> ?Text
+fn ?LetName p = match p:
+    PaBind n: ? n
+    PaMut n: ? n
+    PaTyped q, ignore: ?LetName q
+    otherwise: nil
+
+VarName: fn Cp, Text -> Text
+fn VarName cp, n = CppId n
+
+CppStatement: unbounded fn Cp, Do -> Text
+fn CppStatement cp, d = match d:
+    DoLet p, x: CppLet cp, cp, p, x
+    DoLetElse p, x, e:
+        let v = "_{Or (?FirstBinder p), "m"}"
+        "auto&& {v} = {CppExpr cp, x};\nif (!({Conds (PatConds cp, p, v)})) \{ {CppExpr cp, e}; \}\n{Join (PatBinds cp, p, v), "\n"}"
+    DoAssign p, x: "{CppPlace cp, p} = {CppExpr cp, x};"
+    DoWhile c, body: Block "while ({CppExpr cp, c})", (CppStatements cp, body)
+    DoWhileLet p, x, body:
+        let v = "_m"
+        let head = "auto&& _m = {CppExpr cp, x};\nif (!({Conds (PatConds cp, p, v)})) break;"
+        Block "while (true)", (Join (Append (Append [[head]], (PatBinds cp, p, v)), [[(CppStatements cp, body)]]), "\n")
+    DoFor p, x, body: CppFor cp, p, x, body
+    DoExpr (XBreak l, y): CppBreak cp, l, y
+    DoExpr XBreakLoop: "break;"
+    DoExpr x: "{CppExpr cp, x};"
+    DoIf c, t, e: "{Block "if ({CppExpr cp, c})", (CppStatements cp, t)}{CppElse cp, e}"
+    DoIfLet p, x, t, e: CppIfLet cp, p, x, t, e
+    DoMatch x, cases: CppDoMatch cp, x, cases
+    DoReturn x: "return {CppReturned cp, x};"
+    DoBlock body: Braced (CppStatements cp, body)
+    DoScope body: "\{ {CppInline cp, body} \}"
+    DoLine body: CppInline cp, body
+    DoNote t: "// {t}"
+
+CppInline: unbounded fn Cp, [Do] -> Text
+fn CppInline cp, dos = Join (Each dos, \|d| CppStatement cp, d), " "
+
+CppElse: unbounded fn Cp, [Do] -> Text
+fn CppElse cp, [[]] = ""
+fn CppElse cp, [[(DoIf c, t, e)]] = " else {CppStatement cp, (DoIf c, t, e)}"
+fn CppElse cp, [[(DoIfLet p, x, t, e)]] = " else {CppStatement cp, (DoIfLet p, x, t, e)}"
+fn CppElse cp, body = " else {Block "", (CppStatements cp, body)}"
+
+# `let`: a name binds its value (a reference to a place it borrows); a pattern binds through
+# a local of the value.
+CppLet: unbounded fn Cp, Cp, Pa, Ex -> Text
+fn CppLet cp, named, p, x = match p:
+    PaWild: "static_cast<void>({CppExpr cp, x});"
+    PaBind n: match x:
+        XRef ignore: "const auto& {VarName named, n} = {CppExpr cp, x};"
+        otherwise: "auto {VarName named, n} = {CppExpr cp, x};"
+    PaMut n: "auto {VarName named, n} = {CppExpr cp, x};"
+    PaTyped (PaBind n), t: match x:
+        # a local whose value is never computed (a widget's result too deep to inline,
+        # behind its fault): a throw expression is `void`, so a call of the local's type
+        XUnreachable: "{CppType cp, t} {VarName named, n} = ::prism_rtl::unreachable_as<{CppType cp, t}>();"
+        otherwise: "{CppType cp, t} {VarName named, n} = {CppExpr cp, x};"
+    PaTyped (PaMut n), t: "{CppType cp, t} {VarName named, n} = {CppExpr cp, x};"
+    PaTuple ps:
+        if Fold ps, True, \|f, q| f and IsName q: "auto [{Join (Each ps, \|q| PatName q), ", "}] = {CppExpr cp, x};"
+        else: LetThrough cp, p, x
+    otherwise: LetThrough cp, p, x
+
+# A `let` of a pattern: the value in a local named after the pattern's first binder.
+LetThrough: unbounded fn Cp, Pa, Ex -> Text
+fn LetThrough cp, p, x:
+    let t = "_{Or (?FirstBinder p), "t"}"
+    "auto&& {t} = {CppExpr cp, x};\n{Join (PatBinds cp, p, t), "\n"}"
+
+# A pattern's first binder, which names the local a `let`-`else` tests.
+?FirstBinder: unbounded fn Pa -> ?Text
+fn ?FirstBinder p = match p:
+    PaBind n: ? n
+    PaMut n: ? n
+    PaTyped q, ignore: ?FirstBinder q
+    PaCtor ignore, ps: Fold ps, nil, \|?f, q| match ?f:
+        ? b: ? b
+        nil: ?FirstBinder q
+    PaTuple ps: Fold ps, nil, \|?f, q| match ?f:
+        ? b: ? b
+        nil: ?FirstBinder q
+    otherwise: nil
+
+IsName: fn Pa -> Bool
+fn IsName (PaBind ignore) = True
+fn IsName (PaMut ignore) = True
+fn IsName other = False
+
+PatName: fn Pa -> Text
+fn PatName (PaBind n) = CppId n
+fn PatName (PaMut n) = CppId n
+fn PatName other = "_"
+
+CppIfLet: unbounded fn Cp, Pa, Ex, [Do], [Do] -> Text
+fn CppIfLet cp0, p, x, t, e:
+    let cp = Unbind cp0, (PatNames p)
+    let v = "_m"
+    let head = "if (auto&& _m = {CppExpr cp, x}; {Conds (PatConds cp, p, v)})"
+    let body = Join (Append (PatBinds cp, p, v), [[(CppStatements cp, t)]]), "\n"
+    "{Block head, body}{CppElse cp, e}"
+
+CppDoMatch: unbounded fn Cp, Ex, [((Pa, [Do]))] -> Text
+fn CppDoMatch cp, x, cases:
+    let v = "_m"
+    let arms = Each cases, \|((p, body))|
+        let tests = PatConds cp, p, v
+        let inner = Join (Append (PatBinds cp, p, v), [[(CppStatements cp, body)]]), "\n"
+        ((tests, inner))
+    let blocks = Each (Range0 (Len arms)), \|i|
+        let ((tests, inner)) = Or arms[i], (([[]], ""))
+        let head = if i == 0: "if ({Conds tests})" else: if (Len tests) == 0: "else" else: "else if ({Conds tests})"
+        Block head, inner
+    Braced "auto&& _m = {CppExpr cp, x};\n{Join blocks, " "}"
+
+# `for p in xs`: each element bound by the pattern; a map's entries are pairs.
+CppFor: unbounded fn Cp, Pa, Ex, [Do] -> Text
+fn CppFor cp0, p, x, body = CppForIn (Unbind cp0, (PatNames p)), p, (CppPlace cp0, x), body
+
+CppForIn: unbounded fn Cp, Pa, Text, [Do] -> Text
+fn CppForIn cp, p, xs, body = match p:
+    PaBind n: Block "for (auto&& {CppId n} : {xs})", (CppStatements cp, body)
+    PaMut n: Block "for (auto {CppId n} : {xs})", (CppStatements cp, body)
+    PaTuple ps:
+        if Fold ps, True, \|f, q| f and IsName q: Block "for (auto&& [{Join (Each ps, \|q| PatName q), ", "}] : {xs})", (CppStatements cp, body)
+        else: Block "for (auto&& _e : {xs})", (Join (Append (PatBinds cp, p, "_e"), [[(CppStatements cp, body)]]), "\n")
+    otherwise: Block "for (auto&& _e : {xs})", (Join (Append (PatBinds cp, p, "_e"), [[(CppStatements cp, body)]]), "\n")
+
+# A function's body: its statements, then the value returned.
+CppBody: unbounded fn Cp, Ex -> Text
+fn CppBody cp, (XBlock dos, e):
+    let ((st, cp2)) = CppStatementsCp cp, dos
+    if (Len dos) == 0: CppBody cp, e else: "{st}\n{CppBody cp2, e}"
+fn CppBody cp, (XMatch s, arms, fallback, t) = ReturnMatch cp, s, arms, t
+fn CppBody cp, (XChain label, s, arms, t) = ReturnMatch cp, s, arms, t
+fn CppBody cp, x = if Leaves x: "{CppExpr cp, x};" else: "return {CppReturned cp, x};"
+
+# A returned value: a local by its name, which `return` moves on its own (and which
+# `std::move` would keep from being elided).
+CppReturned: unbounded fn Cp, Ex -> Text
+fn CppReturned cp, (XVar n) = VarName cp, n
+fn CppReturned cp, x = CppExpr cp, x

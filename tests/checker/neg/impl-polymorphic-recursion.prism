@@ -1,0 +1,15 @@
+# `may-not-end`: an impl at `Pair a` calling its trait's method at `Pair (Pair a)`, a
+# bigger type, on the same arguments: each call needs an instance one level deeper, and
+# none ends (polymorphic recursion).
+trait ^Deep a:
+    Depth: fn a, Nat -> Nat
+
+type Pair a = record:
+    left: a
+    right: a
+
+impl ^Deep Nat:
+    fn Depth x, k = k
+
+impl ^Deep (Pair a) where a: ^Deep:
+    fn Depth p, k = Depth (Pair(left=p, right=p)), k

@@ -1,0 +1,7 @@
+# Derived by hand from Type System ch. 2: the link has two nodes, the outer record's pair adds 1 and 5 over an empty outer record, the chain holds 2 and 3; a record shows as its constructor with its fields named, and a value equals itself.
+test records_in_cycles
+
+tick 0
+  added:
+    0: Ui.Label(text="2 6 5")
+    1: Ui.Label(text="Ring(mid=Mid(last=Last(ring=nil))) True")

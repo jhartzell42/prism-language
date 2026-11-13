@@ -1,0 +1,10 @@
+# Audited: `Twice` gives 2 whatever function it is given; a click changes nothing shown.
+# The tests of ts-ch04-whole-lambda-reads-hold-in-lifted-call (Type System chapter 4).
+emit Ui.*
+use App.*
+
+test a_whole_lambda_reading_a_hold, @shown:
+    build
+        => expect Ui.Label(text="twice 2")
+    click Ui.Button(label="Inc")
+        => expect Ui.Label(text="twice 2")

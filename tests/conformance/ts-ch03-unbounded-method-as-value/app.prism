@@ -1,0 +1,27 @@
+# A trait method signed `unbounded fn`, named and not applied: a function value of
+# its type (Type System ch. 3: a method is a function, named as one; ch. 2: a function
+# is a value; ch. 5: its color is its signature's). `Chosen` gives the method back and
+# a `let` names it; each is then applied. ts-ch03-result-only-method has the bounded
+# method as a value. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+trait ^Scored a:
+    Score: unbounded fn a -> Nat
+
+impl ^Scored Nat:
+    fn Score n = n + 1
+
+Chosen: fn Nat -> (unbounded fn Nat -> Nat)
+fn Chosen n = Score
+
+@Page: @unit
+@Page:
+    let five: Nat = 5
+    let nine: Nat = 9
+    let Made = Chosen 1
+    let Kept = Score
+    let first = Made five
+    let second = Kept nine
+    Ui.Label($text=$"{first} {second}")

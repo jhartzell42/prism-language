@@ -1,0 +1,7 @@
+# The tests of sem-ch10-error-in-tuple (Semantics chapter 10).
+emit Ui.*
+use App.*
+
+test error_part, @main:
+    build
+        => expect Ui.Label(text="!tup/2 1/3")

@@ -1,0 +1,65 @@
+# Part III ch. 6, "Families indexed by document and role": `Seat.* d _` is the family at
+# every role, the union over the roles of `d`, a closed row. Two guests emit the family at
+# two roles, and `@Guests` emits `Seat.* Count _`. The host's supplier matches an element
+# of `Seat.* Count _` by tag; the `Seat.Query(..)` arm learns the role as a fresh type `ρ`,
+# so its output is `$?(Answer Count ρ)`, and the arm answers exactly that: `$ nil`, which
+# is one at every role. A raiser is told a `Nat` and a watcher a `Text`, each still
+# loading.
+# Expected transcript derived by hand from Part III ch. 6 and Semantics ch. 9 (a
+# supplier's dynamic answer is the place's value from its birth tick); never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type Query r
+    type Answer r
+
+type CountRole = choice:
+    Raiser
+    Watcher
+derive ^Eq, ^Ord, ^Show
+
+type Count = record:
+    total: Nat
+derive ^Eq, ^Show
+
+type Whole = choice:
+    Whole
+derive ^Eq, ^Show
+
+impl ^Document Count:
+    type Role = CountRole
+    type Query r = Whole
+    type Answer Raiser = Nat
+    type Answer Watcher = Text
+
+family Seat d r where d: ^Document
+
+tag Seat.Query of Element $?(Answer d r):
+    $query: Query d r
+
+@Raising: @$?Nat emit Seat.* Count Raiser
+@Raising:
+    $told <- Seat.Query($query=$ Whole)                                  # 0
+    @ $told
+
+@Watching: @$?Text emit Seat.* Count Watcher
+@Watching:
+    $told <- Seat.Query($query=$ Whole)                                  # 0
+    @ $told
+
+# Both roles' guests: the family at every role.
+@Guests: @(($?Nat, $?Text)) emit Seat.* Count _
+@Guests:
+    $raiser <- @Raising                                                  # 0
+    $watcher <- @Watching                                                # 1
+    @ (($raiser, $watcher))
+
+@page: @unit
+@page:
+    let none = "none"
+    (((($raiser, $watcher)), ignore)) <- @Host @Guests, \|path, element| match element:    # 0
+        Seat.Query(..): @ $nil
+    Ui.Label($text=$"raiser told {Or $raiser, 0}, watcher told {Or $watcher, none}")       # 1

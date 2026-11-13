@@ -1,0 +1,25 @@
+# Checked by hand against the books' rules.
+test rows_read_the_parameter
+
+tick 0
+  added:
+    0: Ui.Button(label="Add")
+    2/#0/0: Ui.Label(text="todo says 1")
+
+tick 1
+  in:
+    0: click
+  added:
+    1/[0]/0: Ui.Label(text="todo: item 0")
+    2/#1/0: Ui.Label(text="todo failed: not a number: x0")
+  torn down:
+    2/#0/0: Ui.Label(text="todo says 1")
+
+tick 2
+  in:
+    0: click
+  added:
+    1/[1]/0: Ui.Label(text="todo: item 1")
+    2/#2/0: Ui.Label(text="todo failed: not a number: x1")
+  torn down:
+    2/#1/0: Ui.Label(text="todo failed: not a number: x0")

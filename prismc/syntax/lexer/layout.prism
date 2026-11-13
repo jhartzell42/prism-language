@@ -1,0 +1,327 @@
+# `Syntax.Lexer.Layout`, a child module of `Syntax.Lexer`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Syntax.*
+use Syntax.Decls.*
+
+# ---------------------------------------------------------------------------------------
+# Streams
+# ---------------------------------------------------------------------------------------
+
+# A whole file: a token stream ending in `Eof`, with the layout tokens in it. A file whose
+# first token is a language tag is a template (A.7).
+LexFile: unbounded fn Text -> Lexed
+fn LexFile src:
+    let start = Lex(src=src, pos=0, diags=[[]], mode=MFile, tokens=[[]], layout=[[]],
+        frames=[[]], lastWs=True, lambdaOpen=False, pendingOpen=False, pendingEmpty=False, pendingSpan=Range(start=0, end=0, origin=InSource),
+        lineFirst=0, markLineStart=False, firstLine=True, testPending="", ?testDepth=nil,
+        ?checkDepth=nil, pathNext=False)
+    let skipped = SkipBlankAndCommentLines start
+    let opened = (Peek skipped) == "<" and (TemplateTagAhead skipped) != ""
+    let ((head, l)) = if opened: TemplateHead skipped else: (([[]], start))
+    let body = LexStream (Fresh l, MFile)
+    Lexed(tokens=(Append head, body.tokens), diags=body.diags)
+
+# The template that makes a file a template file, as its first token.
+TemplateHead: unbounded fn Lex -> (([Tok], Lex))
+fn TemplateHead l0:
+    let ((kind, l)) = LexTemplate l0, "File", l0.pos
+    let tok = Tok(kind=kind, span=Range(start=l0.pos, end=l.pos, origin=InSource), touches=False, lineStart=False)
+    (([[tok]], l))
+
+SkipBlankAndCommentLines: unbounded fn Lex -> Lex
+fn SkipBlankAndCommentLines l = update l:
+    let &going = True
+    while &going:
+        let line = RestOfLine &_
+        let t = TrimStart line
+        if (t == "" or (Head t) == "#") and &_.pos + (Len line) < (Len &_.src):
+            &_.pos += (Len line) + 1
+        else:
+            &going <= False
+
+# A nested stream (a placeholder, a brace block, a path's key) over the same text: its
+# tokens, and the shared state where it ended.
+Nested: unbounded fn Lex, Mode -> (([Tok], Lex))
+fn Nested l, mode:
+    let inner = LexStream (Fresh l, mode)
+    let back = update l:
+        &_.pos <= inner.pos
+        &_.diags <= inner.diags
+    ((inner.tokens, back))
+
+# One stream to its end, per its mode.
+LexStream: unbounded fn Lex -> Lex
+fn LexStream l0 = update l0:
+    let &atLineStart = LayoutOn &_.mode
+    let &done = False
+    while not &done:
+        let &go = True
+        # Layout happens at the start of each physical line, outside brackets.
+        if &atLineStart and (LayoutActive &_):
+            &atLineStart <= False
+            let ((l, verdict)) = BeginLine &_
+            &_ <= l
+            if verdict == "skip":
+                &atLineStart <= True
+                &go <= False
+            if verdict == "end":
+                &done <= True
+                &go <= False
+        if &go:
+            let c = Peek &_
+            match c:
+                "":
+                    &_ <= UnclosedStream &_
+                    &done <= True
+                "\n":
+                    &_.pos += 1
+                    &_.lastWs <= True
+                    if &_.lambdaOpen:
+                        &_ <= LexErr &_, (Dec &_.pos), &_.pos, "a lambda's parameter list closes with `|` on its own line"
+                        &_.lambdaOpen <= False
+                    if LayoutActive &_:
+                        &_ <= EndLine &_
+                        &atLineStart <= True
+                " ":
+                    &_.pos += 1
+                    &_.lastWs <= True
+                "\u{d}":
+                    &_.pos += 1
+                    &_.lastWs <= True
+                # A.1: a tab in leading whitespace is an error; elsewhere it is whitespace.
+                "\t":
+                    &_.pos += 1
+                    &_.lastWs <= True
+                # A comment runs to the end of the line, and is whitespace for every purpose.
+                "#":
+                    &_.pos <= LineEnd &_
+                    &_.lastWs <= True
+                otherwise:
+                    let ((ends, l)) = StreamEndsHere &_
+                    &_ <= l
+                    if ends:
+                        &done <= True
+                    else:
+                        &_ <= LexToken &_
+    # Rule 10: "End of file closes every block."
+    if LayoutOn &_.mode:
+        # the file's last line ends in a `:` whose block may stand empty
+        if &_.pendingOpen and &_.pendingEmpty:
+            &_.pendingOpen <= False
+            &_ <= PushTok &_, KLayOpen, &_.pendingSpan.end, &_.pendingSpan.end
+            &_ <= PushTok &_, KLayClose, &_.pendingSpan.end, &_.pendingSpan.end
+        while (Len &_.layout) > 1:
+            &_.layout <= Pop &_.layout
+            &_ <= PushTok &_, KLayClose, &_.pos, &_.pos
+    if &_.mode == MFile:
+        &_ <= PushTok &_, KEof, &_.pos, &_.pos
+
+UnclosedStream: fn Lex -> Lex
+fn UnclosedStream l = match l.mode:
+    MFile: l
+    MBrace ignore: LexErr l, l.pos, l.pos, "a brace block never closes: expected its closing delimiter alone on a line"
+    MPlaceholder "single": LexErr l, l.pos, l.pos, "a placeholder never closes: expected `\}`"
+    MPlaceholder "brace": LexErr l, l.pos, l.pos, "a placeholder never closes: expected `\}\}`"
+    MPlaceholder ignore: LexErr l, l.pos, l.pos, "a placeholder never closes: expected `>>`"
+    MPathKey: LexErr l, l.pos, l.pos, "a path key never closes: expected `]`"
+
+# Whether the character at the cursor ends a nested stream; consumes the closer if so.
+StreamEndsHere: fn Lex -> ((Bool, Lex))
+fn StreamEndsHere l:
+    let c = Peek l
+    let closes = match l.mode:
+        MPlaceholder "single": c == "\}"
+        # "A `>>` closes a placeholder only while one is open" (Jimmy's ruling, 12 November),
+        # and only at the top of its brackets: `<<Show<<Nat>> x>>`.
+        MPlaceholder "double": StartsWith l, ">>"
+        MPlaceholder "brace": StartsWith l, "\}\}"
+        MPathKey: c == "]"
+        otherwise: False
+    let width = if l.mode == (MPlaceholder "double") or l.mode == (MPlaceholder "brace"): 2 else: 1
+    if (Len l.frames) == 0 and closes: ((True, (Forward l, width))) else: ((False, l))
+
+# Rule 2 and rule 3 look at the last token of the line that just ended: a `:` or a closing
+# lambda bar opens a layout block.
+EndLine: fn Lex -> Lex
+fn EndLine l = match ?Last l.tokens:
+    ? t if (Len l.tokens) > l.lineFirst and (OpensBlock t.kind):
+        update l:
+            &_.pendingOpen <= True
+            &_.pendingSpan <= t.span
+            &_.pendingEmpty <= t.kind == KColon and MayStandEmpty (Drop l.tokens, l.lineFirst)
+    otherwise: l
+
+# Whether the `:` that ends a line may stand over no block at all: a choice with no case
+# (`type Never = choice:`), and a `match` with no arm, which is exhaustive over such a
+# type (`fn Absurd never = match never:`). The `:` is a choice's when `choice` stands
+# before it, and a `match`'s when it is the one `:` outside brackets after the line's
+# last `match`.
+MayStandEmpty: fn [Tok] -> Bool
+fn MayStandEmpty line:
+    let ((inMatch, depth, colons)) = Fold line, ((False, 0, 0)), \|((m, d, c)), t| match t.kind:
+        KKw "match", ignore: ((True, 0, 0))
+        KOpen ignore, ignore: ((m, d + 1, c))
+        KClose ignore: ((m, (Or (d -? 1), 0), c))
+        KColon: ((m, d, (if d == 0: c + 1 else: c)))
+        otherwise: ((m, d, c))
+    let lastTwo = Drop line, (Or ((Len line) -? 2), 0)
+    let choiceColon = match lastTwo:
+        [[a, b]]: b.kind == KColon and (IsChoiceWord a.kind)
+        otherwise: False
+    choiceColon or (inMatch and depth == 0 and colons == 1)
+
+IsChoiceWord: fn TokKind -> Bool
+fn IsChoiceWord (KKw "choice", ignore) = True
+fn IsChoiceWord ignore = False
+
+OpensBlock: fn TokKind -> Bool
+fn OpensBlock KColon = True
+fn OpensBlock (KLambdaBar False) = True
+fn OpensBlock ignore = False
+
+# ---------------------------------------------------------------------------------------
+# Layout (rules 1 to 4 and 10; Conformance A.1 inside a `test` block)
+# ---------------------------------------------------------------------------------------
+
+# Measures a line's indentation and emits its layout tokens. The verdict: `"tokens"`, the
+# line has tokens; `"skip"`, a blank or comment line; `"end"`, the stream is over.
+BeginLine: unbounded fn Lex -> ((Lex, Text))
+fn BeginLine l0:
+    let lineBegin = l0.pos
+    let ((l1, col)) = Indentation l0
+    match Peek l1:
+        "": ((l1, "end"))
+        "\n": ((Bump l1, "skip"))
+        # Rule 10: "Blank and comment-only lines never open, close or continue anything."
+        "#":
+            let l2 = update l1:
+                &_.pos <= LineEnd &_
+            if (Peek l2) == "\n": ((Bump l2, "skip")) else: ((l2, "end"))
+        otherwise:
+            if ClosesBraceBlock l1: ((SkipLine l1, "end"))
+            else:
+                let l2 = IndentedLine l1, col, lineBegin
+                ((l2, "tokens"))
+
+# The leading spaces: a tab is an error and counts one column; `\u{d}` counts none.
+Indentation: unbounded fn Lex -> ((Lex, Nat))
+fn Indentation l0 = update ((l0, 0)):
+    let &l = l0
+    let &col = 0
+    let &going = True
+    while &going:
+        match Peek &l:
+            " ":
+                &l <= Bump &l
+                &col += 1
+            "\t":
+                &l <= LexErr (Bump &l), &l.pos, &l.pos + 1, "a tab in leading whitespace is an error: indent with spaces"
+                &col += 1
+            "\u{d}": &l <= Bump &l
+            otherwise: &going <= False
+    &_ <= ((&l, &col))
+
+# A brace block ends "at the closing delimiter alone on a line".
+ClosesBraceBlock: unbounded fn Lex -> Bool
+fn ClosesBraceBlock l = match l.mode:
+    MBrace "double": (TrimEnd (RestOfLine l)) == ">>"
+    MBrace "brace": (TrimEnd (RestOfLine l)) == "\}\}"
+    MBrace ignore: (TrimEnd (RestOfLine l)) == "\}"
+    otherwise: False
+
+SkipLine: unbounded fn Lex -> Lex
+fn SkipLine l0:
+    let l = update l0:
+        &_.pos <= LineEnd &_
+    if (Peek l) == "\n": Bump l else: l
+
+# The layout tokens of a line with tokens on it; `col` its indentation, `lineBegin` where
+# its leading whitespace began.
+IndentedLine: unbounded fn Lex, Nat, Nat -> Lex
+fn IndentedLine l0, col, lineBegin:
+    let here = l0.pos
+    let l = update l0:
+        &_.lineFirst <= Len &_.tokens
+        &_.lastWs <= True
+    if l.firstLine: FirstLine l, col, lineBegin, here else: LayoutLine l, col, lineBegin, here
+
+FirstLine: fn Lex, Nat, Nat, Nat -> Lex
+fn FirstLine l0, col, lineBegin, here = update l0:
+    &_.firstLine <= False
+    if &_.mode == MFile:
+        &_.layout <= [[0]]
+        if col != 0:
+            &_ <= LexErr &_, lineBegin, here, "the first line of a file starts at column 0"
+            &_.layout <= [[col]]
+    else:
+        # "A brace block in a template resumes layout, its first statement fixing its column."
+        &_.layout <= Push &_.layout, col
+
+# `d` is set and `depth` is below it.
+Below: fn ?Nat, Nat -> Bool
+fn Below nil, ignore = False
+fn Below (? d), depth = depth < d
+
+LayoutLine: fn Lex, Nat, Nat, Nat -> Lex
+fn LayoutLine l0, col, lineBegin, here = update l0:
+    let top = Or (?Last &_.layout), 0
+    let fat = StartsWith &_, "=>"
+    let &opened = False
+    let &fuel = Len &_.layout
+    if &_.pendingOpen:
+        &_.pendingOpen <= False
+        if col > top:
+            &_.layout <= Push &_.layout, col
+            &_ <= PushTok &_, KLayOpen, here, here
+            if &_.testPending == "test":
+                &_.testDepth <= ? (Len &_.layout)
+            if &_.testPending == "check":
+                &_.checkDepth <= ? (Len &_.layout)
+            &_.testPending <= ""
+            &opened <= True
+        else:
+            # a block with nothing in it, where one may stand empty (`MayStandEmpty`)
+            if &_.pendingEmpty:
+                &_ <= PushTok &_, KLayOpen, &_.pendingSpan.end, &_.pendingSpan.end
+                &_ <= PushTok &_, KLayClose, &_.pendingSpan.end, &_.pendingSpan.end
+            else:
+                &_.diags <= Push &_.diags, (LexDiag &_.pendingSpan, "expected an indented block after `:`")
+    if not &opened:
+        # Conformance A.1 rule 1: "A more-indented line that begins with `=>` opens the
+        # step's checks", with no `:` written.
+        if col > top and fat and &_.testDepth == ? (Len &_.layout):
+            &_.layout <= Push &_.layout, col
+            &_ <= PushTok &_, KLayOpen, here, here
+        else:
+            if col == top:
+                # Rule 4: "A line at the block's column begins a statement, after a `sep`."
+                &_ <= PushTok &_, KLaySep, here, here
+                if (Len &_.layout) == 1:
+                    &_.testPending <= ""
+            else:
+                if col > top:
+                    # "A line indented more continues the statement and emits nothing."
+                    &_.markLineStart <= True
+                else:
+                    # "A line indented less emits `close`, pops, and compares again."
+                    while ? left <- &fuel -? 1 if (Len &_.layout) > 1 and col < (Or (?Last &_.layout), 0):
+                        &fuel <= left
+                        &_.layout <= Pop &_.layout
+                        &_ <= PushTok &_, KLayClose, here, here
+                        let depth = Len &_.layout
+                        if Below &_.testDepth, depth:
+                            &_.testDepth <= nil
+                        if Below &_.checkDepth, depth:
+                            &_.checkDepth <= nil
+                    if col != (Or (?Last &_.layout), 0):
+                        &_ <= LexErr &_, lineBegin, here, "unindent does not match any open block"
+                    &_ <= PushTok &_, KLaySep, here, here
+                    if (Len &_.layout) == 1:
+                        &_.testPending <= ""

@@ -1,0 +1,189 @@
+# The window library's tests (`BasicWindow.Tests`, a test module of `Window`): what the window
+# draws of a column taller than it, and how the focus moves. Under the Test World a text is 9 wide a character and
+# 14 high, so the button is 30 high and each label 22: in the 200 by 100 window the button
+# and the first four labels show (the fourth starts at 96), and the window draws those
+# alone. The Bump button changes the last label, which is far below the window's edge, so
+# the scene does not change, only the words the window measures do.
+#
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.* | Gui.*
+use BasicWindow.*
+use BasicWindow.Ui.*
+use BasicWindow.Hosting.*
+use BasicWindow.Widgets.*
+use BasicWindow.Layout.*
+use BasicWindow.Hits.*
+
+@$tall: @$Text
+@$tall:
+    !bump <- @Column 0.0, @widget:
+        !b <- Ui.Button($label=$"Bump")
+        Ui.Label($text=$"one")
+        Ui.Label($text=$"two")
+        Ui.Label($text=$"three")
+        Ui.Label($text=$"four")
+        Ui.Label($text=$"five")
+        Ui.Label($text=$"six")
+        Ui.Label($text=$"seven")
+        Ui.Label($text=$"last {$count}")
+        @ !b
+    $count <- 0 then $count + 1 on !bump
+    @ "{$count}"
+
+@$window: @$Text
+@$window:
+    @Window $"Tall", (Extent 200.0, 100.0), @$tall
+
+test a_column_taller_than_the_window_draws_what_shows, @$window:
+    build
+        => returns "0"
+        => expect Gui.Metrics(text="seven")
+    click element 0
+    compute until idle
+        => returns "1"
+        => expect Gui.Metrics(text="1")
+
+# Focus: a press on an input focuses it (its caret shows and the focus ring is its box), Tab
+# moves it to the next input in drawing order, and a press on a button leaves it where it was.
+@$form: @$Text
+@$form:
+    $typed <- @Column 0.0, @widget:
+        $first <- @TextInput "a", "x"
+        $second <- @TextInput "b", "y"
+        ignore <- Ui.Button($label=$"Go")
+        @ "{$first}{$second}"
+    @ $typed
+
+@$formWindow: @$Text
+@$formWindow:
+    @Window $"Form", (Extent 300.0, 200.0), @$form
+
+test the_focus_moves_by_press_and_by_tab, @$formWindow:
+    build
+        => expect Gui.Focus(at=nil, ..)
+    click element 0
+    compute until idle
+        => expect Gui.Focus(at=(? Rect(x=0.0, y=0.0, w=200.0, h=22.0)), ..)
+    send Gui.Window(..), Pressed Tab
+    compute until idle
+        => expect Gui.Focus(at=(? Rect(x=0.0, y=22.0, w=200.0, h=22.0)), ..)
+    click element 2
+    compute until idle
+        => expect Gui.Focus(at=(? Rect(x=0.0, y=22.0, w=200.0, h=22.0)), ..)
+
+# Typing: a key goes to the focused input as the character it is.
+test a_key_types_its_character, @$formWindow:
+    build
+        => returns "xy"
+    click element 0
+    compute until idle
+    send Gui.Window(..), Pressed (Char 'q')
+    compute until idle
+        => returns "xqy"
+
+# A slider from 0 to 10 and a text box kept in step with it (`@TextField`): a press on the
+# track answers the step nearest it, and the box shows it; a number typed in the box moves
+# the knob. The slider is 200 wide, its knob's centre 4 in from either end, so a step is 19.2.
+@$slide: @$Text
+@$slide:
+    $shown <- @Column 0.0, @widget:
+        !slid <- Ui.Slider($value=$level, low=0, high=10)
+        $typed <- @TextField "level", "3", (StepText !slid)
+        $level <- 3 then !slid <| !Filter (?ParseNat (!Updated $typed))
+        @ "{$level} {$typed}"
+    @ $shown
+
+StepText: fn Nat -> Text
+fn StepText n = "{n}"
+
+@$slideWindow: @$Text
+@$slideWindow:
+    @Window $"Slide", (Extent 300.0, 100.0), @$slide
+
+test a_slider_and_its_box_move_together, @$slideWindow:
+    build
+        => returns "3 3"
+    click element 0                                         # the track's middle: step 5
+    compute until idle
+        => returns "5 5"
+    send Gui.Window(..), Press Point(x=196.0, y=11.0)       # the right end: step 10
+    compute until idle
+        => returns "10 10"
+    send Gui.Window(..), Press Point(x=1.0, y=11.0)         # the left end: step 0
+    compute until idle
+        => returns "0 0"
+    click element 1                                         # the box, then a 7 after its 0
+    compute until idle
+    send Gui.Window(..), Pressed (Char '7')
+    compute until idle
+        => returns "7 07"
+
+# A dialog over a button (`@Overlay` in `@Layers`): hidden, it draws nothing and the button
+# under it hears its press; shown, its background takes the press. Its text box keeps its
+# text while hidden, and a key typed while it is hidden reaches nobody.
+@$overlaid: @$Text
+@$overlaid:
+    $said <- @Layers @widget:
+        !under <- Ui.Button($label=$"Under the dialog")
+        $typed <- @Overlay $open, (Point 0.0, 0.0), @widget:
+            $t <- @TextInput "note", "hi"
+            @ $t
+        $presses <- 0 then $presses + 1 on !under
+        $open <- False then (not $open) on !toggle
+        @ "{$presses} {$typed}"
+    !toggle <- Ui.Button($label=$"Toggle")
+    @ $said
+
+@$overlaidWindow: @$Text
+@$overlaidWindow:
+    @Window $"Overlay", (Extent 400.0, 200.0), @$overlaid
+
+test a_dialog_hides_shows_and_keeps_its_text, @$overlaidWindow:
+    build
+        => returns "0 hi"
+        => expect_none Draw.Text(text="hi", ..)
+    send Gui.Window(..), Press Point(x=8.0, y=8.0)          # the button under the hidden dialog
+    compute until idle
+        => returns "1 hi"
+    click element 2                                         # Toggle (the layers are places 0 and 1): the dialog opens
+    compute until idle
+        => expect Draw.Text(text="hi", ..)
+    send Gui.Window(..), Press Point(x=4.0, y=4.0)          # the dialog's edge, over the button
+    compute until idle
+        => returns "1 hi"
+    send Gui.Window(..), Press Point(x=100.0, y=25.0)       # its box: focused, then typed in
+    compute until idle
+    send Gui.Window(..), Pressed (Char '!')
+    compute until idle
+        => returns "1 hi!"
+    click element 2                                         # Toggle: it closes, and keeps its text
+    compute until idle
+        => expect_none Draw.Text(text="hi!", ..)
+    send Gui.Window(..), Pressed (Char '?')                 # to the hidden box: nobody hears it
+    compute until idle
+        => returns "1 hi!"
+    click element 2
+    compute until idle
+        => expect Draw.Text(text="hi!", ..)
+
+# A grid's columns each as wide as their widest child, its rows as tall as their tallest:
+# the captions' column is as wide as "A longer caption" and the boxes' as a text box.
+@$form2: @$Text
+@$form2:
+    $both <- @Grid 2, @widget:
+        Ui.Label($text=$"Name")
+        $a <- @TextInput "a", "x"
+        Ui.Label($text=$"A longer caption")
+        $b <- @TextInput "b", "y"
+        @ "{$a}{$b}"
+    @ $both
+
+@$form2Window: @$Text
+@$form2Window:
+    @Window $"Grid", (Extent 500.0, 100.0), @$form2
+
+test a_grid_sizes_each_column_to_its_widest_child, @$form2Window:
+    build
+        => returns "xy"
+        => expect Draw.Clickable(rect=Rect(x=152.0, y=0.0, w=200.0, h=22.0), ..)
+        => expect Draw.Clickable(rect=Rect(x=152.0, y=22.0, w=200.0, h=22.0), ..)

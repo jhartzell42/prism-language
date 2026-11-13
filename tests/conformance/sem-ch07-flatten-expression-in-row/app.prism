@@ -1,0 +1,31 @@
+# `@Flatten` in a `for`'s row of a dynamic of dynamics written in place: over the block's
+# names alone, and over the block's names and the row's own `$v` (Semantics ch. 4: a row
+# is a block of its own that reads its block's names; Appendix B: `@Flatten: fn $$a ->
+# @$a` takes an expression as well as a name). sem-ch07-flatten-call in a row.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+$Pick: fn $Bool, $Nat, $Nat -> $$Nat
+fn $Pick $useB, $p, $q = if $useB: $ $q else: $ $p
+
+@blockNames: @unit
+@blockNames:
+    !inc <- Ui.Button($label=$"inc")                         # 0
+    !swap <- Ui.Button($label=$"swap")                       # 1
+    $a <- 0 then $a + 1 on !inc
+    $b <- 100 then $b + 1 on !inc
+    $useB <- False then True on !swap
+    for j, ignore <- $ {"x": unit}:                          # 2/[j]
+        $shown <- @Flatten ($Pick $useB, $a, $b)
+        Ui.Label($text=$"{j}: {$shown}")                      # 2/[j]/0
+
+@rowName: @unit
+@rowName:
+    !inc <- Ui.Button($label=$"inc")                         # 0
+    !swap <- Ui.Button($label=$"swap")                       # 1
+    $a <- 0 then $a + 1 on !inc
+    $useB <- False then True on !swap
+    for j, $v <- $ {"x": 7}:                                 # 2/[j]
+        $shown <- @Flatten ($Pick $useB, $a, $v)
+        Ui.Label($text=$"{j}: {$shown}")                      # 2/[j]/0

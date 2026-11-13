@@ -1,0 +1,506 @@
+# Lowering: the checked program to the core form a printer spells (Compiler ch. 3,
+# "The translation, construct by construct"; claude/backend.md, the contract). The input is
+# the tree as parsed, the checker's environment (CheckEnv's `G`: every module, type,
+# constructor, tag, trait and impl, every definition with its clauses) and its typed
+# tables (typed.prism's `TProgram`: the type of every expression, the lifting decision at
+# every application, the impl solved at every method). The output, a `Model`, decides
+# everything: one output type per Prism type, names, which value is borrowed and which is
+# cloned, the node of every widget with its fields, methods, heights and places, the
+# step machine of every unbounded function. Emission (emit.prism) and the templates
+# (templates/*.prism) only spell it (K9).
+#
+# The core form is a small imperative language (Compiler ch. 4, "The class model"):
+# expressions (`Ex`), statements (`Do`), patterns (`Pa`) and types (`OutTy`), with
+# items (`Item`) for types, tags, functions, jobs and nodes. Every constructor here has a
+# prefix of its type, since constructors share one namespace with the modules this one
+# uses (Out, X, Do, Pa, Cc, It, Bn, Vl, Sk).
+#
+# Written by Claude, 1 November 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+emit r
+mod Types
+mod Expr
+mod Patterns
+mod Templates
+mod Functions
+mod Jobs
+mod Program
+mod Model
+mod Node
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Typed.*
+use Check.Typed.Print.*
+use Lower.Model.*
+use Lower.Node.*
+use Lower.Node.Def.*
+use Lower.Node.Elements.*
+use Lower.Node.Static.*
+use Lower.Node.Dynamics.*
+use Lower.Node.Finish.*
+use Lower.Node.Keyed.*
+use Lower.Node.Switch.*
+use Lower.Types.*
+use Lower.Expr.*
+use Lower.Patterns.*
+use Lower.Templates.*
+use Lower.Functions.*
+use Lower.Jobs.*
+use Lower.Program.*
+
+# ---------------------------------------------------------------------------------------
+# The context: the environment, the typed tables by place, the module being lowered
+# ---------------------------------------------------------------------------------------
+
+type Lx = record:
+    g: G
+    tys: (Text ==> Ty)
+    apps: (Text ==> AppNote)
+    # The expressions lifted over a `?` or `~` at the plain layer, by place.
+    lifts: (Text ==> LiftNote)
+    binders: (Text ==> Ty)
+    impls: (Text ==> [ImplNote])
+    file: Nat
+    home: Text
+    site: Text
+    rsMods: (Text ==> Text)
+    # Every segment of every module's path as the printers name it: a C++ namespace that
+    # a bare prelude call of the same name would find instead (`regex`, `?Regex`, beside
+    # a module `Regex`).
+    modSegments: (Text ==> Bool)
+    rsNames: (Text ==> Text)
+    layouts: (Text ==> [Bool])
+    unbs: [Text]
+    notes: [Text]
+    # Every module-level Rust name a local could hide, as `Module.name`; the prelude's
+    # under `Prelude`, which every module imports.
+    globals: (Text ==> Bool)
+    # Lowering inside a node, which has a read point (`cx`): a host's supplier.
+    inNode: Bool
+    # Lowering the body of a function that takes a dynamic or an event whole (a `$` or `!`
+    # below the top of a parameter or its result, Type System ch. 4, Application): its
+    # time values are `Dynamic`s and `Event`s, never samples, and a lift in it maps them.
+    whole: Bool
+    # The functions that take a dynamic or an event whole (`WholeFns`).
+    wholeFns: (Text ==> Bool)
+    # Lowering a plain function's or a job's body, which has no read point (`cx`).
+    noCx: Bool
+    # The `while` loops of unbounded functions the shrink check did not clear, by place:
+    # each turn of one is a cycle point (D6).
+    unshrunk: (Text ==> Bool)
+    # The generalized local `let`s (pick LG): each by its binder's place; its uses'
+    # instantiations by the scheme's first variable; every quantified variable with its
+    # binding's name; and the instantiation being lowered, for the type and color
+    # variables of the value lowered at it.
+    gens: (Text ==> GenNote)
+    insts: (Text ==> [InstNote])
+    quants: (Text ==> Text)
+    genOfQ: (Text ==> GenNote)
+    useInsts: (Text ==> InstNote)
+    # Every local binder's id and every use's binder's id, by place (pick UN).
+    localIds: (Text ==> Nat)
+    useIds: (Text ==> Nat)
+    # each file's uses of locals: where each starts, and the name it was written as (a
+    # frame's or a continuation's captures are the locals the rest reads)
+    useNames: (Nat ==> [((Nat, Text))])
+    # Every use of a top-level widget's id, by place, and the ids of the uses a widget
+    # being lowered was inlined at, outermost first, as its locals' suffix (`_7_3`).
+    callIds: (Text ==> Nat)
+    inlined: Text
+    subst: (Text ==> Ty)
+    csubst: (Text ==> Col)
+    # The expressions whose `Error` value is the failure of the `~T` it meets, with that
+    # type, by place (the typed output's `faults`).
+    faults: (Text ==> Ty)
+    # The expressions whose value, a non-empty collection, stands where its plain
+    # collection is wanted, by place (the typed output's `plains`): each is converted
+    # there (`AsPlain`).
+    plains: (Text ==> Bool)
+    # The widgets that call themselves whose rows are being lowered around this place
+    # (`SharedClauseLine`): by widget, each clause's row, the pattern and conditions that
+    # choose it, and what its `build` is passed.
+    shared: (Text ==> [((Text, Pa, [Cc], [Ex]))])
+    # The widgets being lowered inside their own bodies (`InlineWidget`): a call of one
+    # there, when it is sharable, is a generation of shared rows, its plain result late
+    # (`IsRecursingCall`).
+    recursing: [Text]
+    # The widgets with places the program reads as blueprint values (`ValuedWidgets`): by
+    # widget (and for a generic one the types a reading gives it, `ValuedKey`), each clause's row, the pattern and conditions that choose it, and what its
+    # `build` is passed. The rows are items of the widget's module (`ValuedRows`), built
+    # by the blueprint a value site makes (`WidgetBlueprintValue`).
+    valued: (Text ==> [((Text, Pa, [Cc], [Ex]))])
+    # Every valued widget's readings: each one's key in `valued` (`ValuedKey`) with the
+    # types it gives the widget's type parameters, in the order its rows are numbered
+    # (`ValuedStemAt`). A widget with no type parameter has the one, its own name.
+    valuedAt: (Text ==> [((Text, [((Text, Ty))]))])
+    # The definition whose body is being lowered, "" outside one: a generic function's
+    # instantiations over the program are read by it (`?DefInstances`).
+    inDefinition: Text
+derive ^Eq, ^Show
+
+# A key into the typed tables: the file and the range.
+PlaceKey: fn Lx, Range -> Text
+fn PlaceKey lx, r = match r.origin:
+    InSource: "{lx.file}:{SpanKey r}"
+    # (a made span is spelled by what made it, not by a file)
+    MadeBy ignore: "made:{SpanKey r}"
+
+# A span's offsets, as the lowering's own keys and the names it derives from a span spell
+# them: a written span's bare (`12:30`), a made span's after what made it
+# (`root_application_2:2`), so the two never meet (`Origin`).
+SpanKey: fn Range -> Text
+fn SpanKey r = "{SpanStem r}:{r.end}"
+
+# A span's start as a name's stem (an identifier's part): `12`, or `root_application_2`.
+SpanStem: fn Range -> Text
+fn SpanStem r = match r.origin:
+    InSource: "{r.start}"
+    MadeBy m: "{MakingStem m}{r.start}"
+
+# The same, the start in base 32 (`Base32`).
+SpanStem32: unbounded fn Range -> Text
+fn SpanStem32 r = match r.origin:
+    InSource: Base32 r.start
+    MadeBy m: "{MakingStem m}{Base32 r.start}"
+
+MakingStem: fn Making -> Text
+fn MakingStem RootApplication = "root_application_"
+fn MakingStem ConstructorArguments = "constructor_argument_"
+
+# What a made span's text reads as, where the lowering quotes an expression's text.
+MakingText: fn Making -> Text
+fn MakingText RootApplication = "the root widget applied"
+fn MakingText ConstructorArguments = "a constructor's argument"
+
+TypeAt: fn Lx, Range -> Ty
+fn TypeAt lx, r = SubstTy lx, (Or lx.tys[PlaceKey lx, r], TyErr)
+
+BinderTy: fn Lx, Range -> Ty
+fn BinderTy lx, r = match lx.binders[PlaceKey lx, r]:
+    ? t: SubstTy lx, t
+    nil: TypeAt lx, r
+
+# A type at the instantiation being lowered (pick LG): a generalized `let`'s type and color
+# variables replaced by what this instantiation gives them.
+SubstTy: fn Lx, Ty -> Ty
+fn SubstTy lx, t = if (Len (Keys lx.subst)) == 0 and (Len (Keys lx.csubst)) == 0: t else: SubstTyIn lx, t
+
+SubstTyIn: fn Lx, Ty -> Ty
+fn SubstTyIn lx, t = match t:
+    TyFlex n: Or lx.subst["'{n}"], t
+    # an inlined generic widget's own parameters (`?InstanceOf`)
+    TyQ n: Or lx.subst[n], t
+    TyRigid n: Or lx.subst[n], t
+    TyCon n, args: TyCon n, (Each args, \|a| SubstTyIn lx, a)
+    TyFn c, ps, res: TyFn (InstCol lx, c), (Each ps, \|p| SubstTyIn lx, p), (SubstTyIn lx, res)
+    TyTuple ts: TyTuple (Each ts, \|a| SubstTyIn lx, a)
+    TyArray e: TyArray (SubstTyIn lx, e)
+    TyMap k, v: TyMap (SubstTyIn lx, k), (SubstTyIn lx, v)
+    TySig s, i: TySig s, (SubstTyIn lx, i)
+    TyAt i, rw: TyAt (SubstTyIn lx, i), rw
+    TyElem rw, o: TyElem rw, (SubstTyIn lx, o)
+    TyAssoc tr, n, a: TyAssoc tr, n, (SubstTyIn lx, a)
+    other: other
+
+InstCol: fn Lx, Col -> Col
+fn InstCol lx, (CQ q) = Or lx.csubst[q], (CQ q)
+fn InstCol lx, c = c
+
+IsQuantCol: fn Lx, Col -> Bool
+fn IsQuantCol lx, (CQ q) = HasKey lx.quants, q
+fn IsQuantCol lx, c = False
+
+# The tables of the typed program by place.
+TypedTables: unbounded fn TProgram -> (((Text ==> Ty), (Text ==> AppNote), (Text ==> Ty), (Text ==> [ImplNote])))
+fn TypedTables tp:
+    let tys = Fold tp.exprs, {}, \|m, n| Insert m, (AtKey n.at), n.ty
+    let apps = Fold tp.apps, {}, \|m, n| Insert m, (AtKey n.at), n
+    let bs = Fold tp.binders, {}, \|m, n| Insert m, (AtKey n.at), n.ty
+    let ims = Fold tp.impls, {}, \|m, n| Insert m, (AtKey n.at), (Push (Or m[AtKey n.at], [[]]), n)
+    ((tys, apps, bs, ims))
+
+# ---------------------------------------------------------------------------------------
+# Names (Compiler ch. 4: a block's class is named after its function, a binding after its
+# variable; Rust's conventions)
+# ---------------------------------------------------------------------------------------
+
+let rustKeywords = [["as", "async", "await", "box", "break", "const", "continue", "crate", "do", "dyn", "else", "enum", "extern", "false", "final", "fn", "for", "gen", "if", "impl", "in", "let", "loop", "macro", "match", "mod", "move", "mut", "override", "priv", "pub", "ref", "return", "self", "static", "struct", "super", "trait", "true", "try", "type", "typeof", "unsafe", "unsized", "use", "virtual", "where", "while", "yield", "u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "f32", "f64", "bool", "char", "str", "usize", "isize", "cx", "node", "path", "v", "p"]]
+
+# A Prism name without its sigils.
+Base: fn Text -> Text
+fn Base name = DropPrefix name, (MarksOf name)
+
+# `rootModule` and `ParseNat` as `root_module` and `parse_nat`; a Rust keyword, or a name
+# the emitted code uses for itself, takes a `_`.
+Snake: fn Text -> Text
+fn Snake name:
+    let ((out, ignore)) = FoldChars (Base name), (("", "")), \|((acc, prev)), c|
+        let sep = if (IsUpper c) and ((IsLower prev) or (IsDigit prev)): "_" else: ""
+        ((("{acc}{sep}{LowerChar c}"), c))
+    let plain = if out == "": "x" else: out
+    if HasText rustKeywords, plain: "{plain}_" else: plain
+
+LowerChar: fn Text -> Text
+fn LowerChar c = if IsUpper c: Lower c else: c
+
+# A type or constructor name as Rust and C++ write one: the first letter upper, and `Self`
+# (Rust's keyword) with a `_`. The emitted code reaches the runtime side's types by path
+# (`rt::Row`) and the standard library's from the root (`::std::rc::Rc`), so a program's
+# `Row` or `Option` is its own (`ts-ch02-runtime-type-names`).
+Camel: fn Text -> Text
+fn Camel name:
+    let b = Base name
+    let first = Head b
+    let fixed = if IsLower first: "{Upper first}{AfterFirst b}" else: b
+    if fixed == "Self": "{fixed}_" else: fixed
+
+# A Prism module's Rust module, by its path from the crate: `Check.Env` is `check::env`
+# (claude/modules-style-pass.md), the root `program`. The C++ target's namespaces and
+# directories are the same path, so a segment that is a C++ keyword takes a `_` too
+# (`Shapes.Switch` is `shapes::switch_` in both).
+RustModName: fn Text -> Text
+fn RustModName m = if m == "": "program" else: Join (Each (SplitOn m, "."), \|s| ModSegment s), "::"
+
+ModSegment: fn Text -> Text
+fn ModSegment s:
+    let n = Snake s
+    if HasText cppKeywords, n: "{n}_" else: n
+
+# The C++ keywords and the names the C++ standard library reaches bare (`errno`, `assert`).
+let cppKeywords = [["explicit", "and", "and_eq", "asm", "auto", "bitand", "bitor", "bool", "case", "catch", "char", "char8_t", "char16_t", "char32_t", "class", "compl", "concept", "const_cast", "consteval", "constexpr", "constinit", "co_await", "co_return", "co_yield", "decltype", "default", "delete", "double", "dynamic_cast", "explicit", "export", "extern", "float", "friend", "goto", "inline", "int", "long", "mutable", "namespace", "new", "noexcept", "not", "not_eq", "nullptr", "operator", "or", "or_eq", "private", "protected", "public", "register", "reinterpret_cast", "requires", "short", "signed", "sizeof", "static_assert", "static_cast", "switch", "template", "this", "thread_local", "throw", "try", "typedef", "typeid", "typename", "union", "unsigned", "using", "virtual", "void", "volatile", "wchar_t", "xor", "xor_eq", "errno", "assert", "NULL", "EOF", "stdin", "stdout", "stderr", "major", "minor"]]
+
+
+# The Rust path of a module's item `name` as written in module `here`: another module's
+# from the crate (`crate::check::env::BuildG`), so a submodule of the same name as a
+# top-level module (`a::types` beside `types`) never stands in for it.
+PathIn: fn Lx, Text, Text -> Text
+fn PathIn lx, owner, name:
+    if owner == lx.site: name
+    else: if owner == "Prelude": PreludePath lx, name
+    else: "crate::{Or lx.rsMods[owner], (RustModName owner)}::{name}"
+
+# A prelude function's path, and a helper's of the runtimes or the emitted prelude, from
+# the crate (pick UN): never bare, so neither target finds a program's local or value of
+# the same spelling in its place (`map_of`, beside a `?map` with id 15).
+PreludePath: fn Lx, Text -> Text
+fn PreludePath ignore, name = Helper name
+
+Helper: fn Text -> Text
+fn Helper n = "crate::prelude::{n}"
+
+# A widget's node (a Rust struct, a C++ class): the widget's name with `_w` after it, which
+# no program type has (a type's name is UpperCamelCase, with no `_`); its rows' and
+# generations' nodes extend it (`Main_wRow`, `Main_wGen1`).
+NodeName: fn Text -> Text
+fn NodeName qk = "{Camel (BareName qk)}_w"
+
+# A trait as a target names it (a Rust trait, a C++ namespace): a program trait's name with
+# `_t` after it, apart from a type of the same name (`^Loud` and `Loud`), which no type's
+# name (UpperCamelCase, with no `_`) can be; the prelude's by the names its hand-written
+# code gives them (`Num`), beside no program type.
+TraitName: fn Text -> Text
+fn TraitName cls = if HasPrefix cls, "Prelude.": Camel (BareName cls) else: "{Camel (BareName cls)}_t"
+
+# A module's item `name` as the model refers to it from the site (pick UN): resolved to its
+# output module, with its path as `PathIn` writes it.
+RefIn: fn Lx, Text, Text -> Ref
+fn RefIn lx, owner, name = RefItem (Or lx.rsMods[owner], (RustModName owner)), name, (PathIn lx, owner, name)
+
+# A type's name as the emitted code spells it: its own in CamelCase. The prelude's `Turn`
+# (Appendix B: what one cycle of a job gives, `More | Done b`) is `PreludeTurn`: the
+# runtime's `Turn` is the job's own, and the emitted prelude brings both into one module.
+TypeItemName: fn Text -> Text
+fn TypeItemName n = if n == "Prelude.Turn": "PreludeTurn" else: Camel (BareName n)
+
+# An item lowering makes in the module it lowers (a node, a job): bare at the site.
+SiteRef: fn Lx, Text -> Ref
+fn SiteRef lx, name = RefIn lx, lx.site, name
+
+# A function or type of the emitted prelude's hand-written code, from the crate.
+HelperRef: fn Text -> Ref
+fn HelperRef n = RefItem "prelude", n, (Helper n)
+
+# The Rust and C++ name of a top-level value of a module (pick UN): its name in snake
+# case, `_` and the letter of its kind, by its sigil (`?` `o`, `~` `r`, `!` `e`, `$` `d`,
+# `@` `b`) or else its type's outer layer (`f` a function, `p` anything plain):
+# `parse_nat_f`, `parse_nat_o`, `limit_p`. So a value never hides a runtime's helper,
+# a local (whose letter has an id after it) or a keyword. The prelude's own keep their
+# runtime spellings.
+ValueNames: unbounded fn G -> (Text ==> Text)
+fn ValueNames g:
+    let lets = Fold g.defs, [[]], \|acc, d| match d.body:
+        DbLet ignore: AddText acc, d.qk
+        otherwise: acc
+    let keys = UnionTexts (Keys g.vals), lets
+    let bases = Fold keys, {}, \|m, k| Insert m, (BaseKey k), (Push (Or m[BaseKey k], [[]]), k)
+    Fold keys, {}, \|m, k|
+        let runtimes = (OwnerOf k) == "Prelude" or match g.vals[k]:
+            ? v: v.sort == "builtin" or v.home == "Prelude"
+            nil: False
+        Insert m, k, (if runtimes: ValueName k, (Len (Or bases[BaseKey k], [[]])) else: "{GlobalBase k}_{GlobalLetter g, k}")
+
+# A top-level name in snake case without its marks or a trailing `_`.
+GlobalBase: unbounded fn Text -> Text
+fn GlobalBase k:
+    let base = TrimUnderscores (Snake (BareName k))
+    if base == "": "topic" else: base
+
+# A field's Rust and C++ name (pick UN): its name in snake case, `_` and the letter of its
+# kind, by its sigil or else its declared type's outer layer (`count_p`, `text_d`,
+# `parent_o`), so a field is never a member every value type has (`show`, `to_pod`) or a
+# keyword. The core prelude's records the runtimes write by hand are spelled so too
+# (`Error`'s `message_p`, `Span`'s `line_p`, `Match`'s `groups_p`).
+FieldSpell: unbounded fn Text, Text, Ty -> Text
+fn FieldSpell ignore, fname, ft = "{GlobalBase fname}_{SigilOrKind fname, ft}"
+
+SigilOrKind: fn Text, Ty -> Text
+fn SigilOrKind name, t:
+    let marks = MarksOf name
+    # a named lens (`&Acc` beside a function `Acc`)
+    if Contains marks, "&": "l"
+    else: if Contains marks, "?": "o"
+    else: if Contains marks, "~": "r"
+    else: if Contains marks, "!": "e"
+    else: if Contains marks, "$": "d"
+    else: if Contains marks, "@": "b"
+    else: KindLetter t
+
+GlobalLetter: fn G, Text -> Text
+fn GlobalLetter g, k = match g.vals[k]:
+    ? v: SigilOrKind (BareName k), v.scheme.ty
+    nil: SigilOrKind (BareName k), (if IsUpperText (Head (Base (BareName k))): TyFn CBound, [[]], TyErr else: TyErr)
+
+GlobalNames: unbounded fn G -> (Text ==> Bool)
+fn GlobalNames g:
+    let names = ValueNames g
+    Fold (Keys names), {}, \|m, k| Insert m, "{OwnerOf k}.{Or names[k], ""}", True
+
+# A local's Rust name (pick NM): a `?x` is `x_opt`, a `~x` is `x_try` and a `K` is
+# `k_fn`, so that it never hides a plain `x` or `k` of the same scope; a local whose name a
+# value of the module or the prelude has takes a `_`. The runtimes' helpers are reached by
+# path (`Helper`), so no local hides one.
+LocalName: fn Lx, Text -> Text
+fn LocalName lx, nkey:
+    let marks = MarksOf nkey
+    let base = Snake nkey
+    let bare = DropPrefix nkey, marks
+    let s0 = if Contains marks, "?": "{base}_opt" else: if Contains marks, "~": "{base}_try" else: base
+    # A capitalised local is a function value (`K`, `Pipe`); Rust's case would make it
+    # the plain `k` beside it.
+    let s1 = if IsUpperText (Head bare): "{s0}_fn" else: s0
+    if (HasKey lx.globals, "{lx.site}.{s1}") or HasKey lx.globals, "Prelude.{s1}": "{s1}_" else: s1
+
+# A local binder's Rust and C++ name (pick UN): its name, `_`, the letter of its type's
+# outer layer and its id in base 32 (`door_p3`, `go_e1`, `x_d4`, `k_o2`), the id the
+# checker gave it, and in a widget inlined at a use, that use's id (`w_p0_7`); a binder
+# the checker gave none (lowering's own) keeps `LocalName`'s.
+LocalNameAt: unbounded fn Lx, Text, Range -> Text
+fn LocalNameAt lx, nkey, span = match lx.localIds[PlaceKey lx, span]:
+    ? id: "{LocalBase nkey}_{KindLetter (BinderTy lx, span)}{Base32 id}{lx.inlined}"
+    nil: LocalName lx, nkey
+
+# A name without its marks, in snake case, without a trailing `_` (so the separator is
+# the name's last `_`); the topic `_` is `topic`.
+LocalBase: unbounded fn Text -> Text
+fn LocalBase nkey:
+    let bare = DropPrefix nkey, (MarksOf nkey)
+    let base = Snake bare
+    let trimmed = TrimUnderscores base
+    if trimmed == "": "topic" else: trimmed
+
+TrimUnderscores: unbounded fn Text -> Text
+fn TrimUnderscores t = match ?BeforeSuffix t, "_":
+    ? s: TrimUnderscores s
+    nil: t
+
+# A binding's kind by its type's outer layer: `e` an event, `d` a dynamic, `b` a
+# blueprint, `f` a function, `o` an optional, `r` a fallible, `p` anything plain.
+KindLetter: fn Ty -> Text
+fn KindLetter t = match t:
+    TySig "!", ignore: "e"
+    TySig "$", ignore: "d"
+    TySig "?", ignore: "o"
+    TySig "~", ignore: "r"
+    TySig "&", i: KindLetter i
+    TyAt ignore, ignore: "b"
+    TyFn ignore, ignore, ignore: "f"
+    otherwise: "p"
+
+# A number in base 32, lowercase: `0`-`9` then `a`-`v`.
+Base32: unbounded fn Nat -> Text
+fn Base32 n:
+    let digit = CharAtByte "0123456789abcdefghijklmnopqrstuv", (Or (?Mod n, 32), 0)
+    match ?Div n, 32:
+        ? q if q > 0: "{Base32 q}{digit}"
+        otherwise: digit
+
+BaseKey: fn Text -> Text
+fn BaseKey k:
+    let parts = SplitOn k, "."
+    let last = Or (?Last parts), k
+    "{Join (Take parts, (Dec (Len parts))), "."}.{Snake last}"
+
+ValueName: fn Text, Nat -> Text
+fn ValueName k, count:
+    let last = BareName k
+    let marks = MarksOf last
+    let base = Snake last
+    if count > 1 and marks != "": "{base}_{SigilWord (Head marks)}"
+    else: if count > 1 and not (IsUpperText (Head last)): "{base}_value"
+    else: base
+
+SigilWord: fn Text -> Text
+fn SigilWord "?" = "opt"
+fn SigilWord "~" = "try"
+fn SigilWord "!" = "ev"
+fn SigilWord "$" = "dyn"
+fn SigilWord "@" = "widget"
+fn SigilWord "&" = "ref"
+fn SigilWord other = "x"
+
+# A top-level value as the model refers to it.
+ValueRef: fn Lx, Text -> Ref
+fn ValueRef lx, qk:
+    let owner = match lx.g.vals[qk]:
+        ? v: v.home
+        nil: OwnerOf qk
+    RefIn lx, owner, (Or lx.rsNames[qk], (Snake (BareName qk)))
+
+# The module a qualified key belongs to: everything before its last segment.
+OwnerOf: fn Text -> Text
+fn OwnerOf qk:
+    let parts = SplitOn qk, "."
+    Join (Take parts, (Dec (Len parts))), "."
+
+# A tag's Rust struct: its family and name run together (`Ui.Button` is `UiButton`).
+TagStruct: fn Text -> Text
+fn TagStruct tn = Concat (Each (SplitOn tn, "."), \|p| Camel p)
+
+# A tag's level struct (`Level`), named apart from every program type: its family and name
+# run together with `_g` after them (`InkRect_g`), which no type's name (UpperCamelCase,
+# with no `_`) can be; the prelude's tags by the names its hand-written code gives them.
+# The variants of a row's enum and of `Output` keep `TagStruct`, inside their enum.
+# An element tag's description struct (`DescDefOf`).
+DescStructOf: fn TagInfo -> Text
+fn DescStructOf tg = "{TagStruct tg.name}_desc"
+
+TagStructOf: fn TagInfo -> Text
+fn TagStructOf tg = if tg.home == "Prelude": TagStruct tg.name else: "{TagStruct tg.name}_g"

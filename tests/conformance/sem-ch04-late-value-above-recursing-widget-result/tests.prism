@@ -1,0 +1,6 @@
+# The tests of sem-ch04-late-value-above-recursing-widget-result.
+emit Ui.*
+use App.*
+
+test counted, @main:
+    build

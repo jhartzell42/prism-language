@@ -1,0 +1,26 @@
+# A widget that calls itself in a static position deeper than sixteen levels in a hosted
+# scope: the child of a host that forwards everything (Semantics ch. 4: "widget functions
+# recurse as deep as their data"; ch. 8: each place the next number; ruling TC; ch. 9: a
+# forwarding host places each of the child's elements under its own row, at
+# `pos/[p]/0`). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Chain: fn Nat -> @unit
+fn @Chain 0:
+    Ui.Label($text=$"end")
+fn @Chain n:
+    Ui.Label($text=$"level {n}")
+    match n -? 1:
+        ? m: @Chain m
+        nil: Ui.Label($text=$"end")
+
+@child: @unit
+@child:
+    @Chain 20                                                    # 0 to 20
+    Ui.Label($text=$"after")                                      # 21
+
+@main: @unit
+@main:
+    ignore <- @HostDocument @child, \|p, e| @Element e          # 0/[p]

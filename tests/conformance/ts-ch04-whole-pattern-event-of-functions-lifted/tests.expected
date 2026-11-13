@@ -1,0 +1,13 @@
+# Derived by hand from Type System ch. 4 (an application lifted over an event fires in that event's tick, with the plain application's value) and Semantics ch. 3 (`on` fires with its left side's value in the tick of its event): the click fires the function, which adds one to 5, and the tuple's 2 is added. Never run.
+test it_fires
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="8")

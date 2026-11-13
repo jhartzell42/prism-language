@@ -1,0 +1,14 @@
+# Written by Claude on the claude-self-hosting branch; subject to change.
+# The cycle of neg/sem-ch07-for-own-gather broken with a hold (Semantics ch. 7): the rows
+# read the count as the tick opened, so the `for`'s gathered result is prompt in nothing
+# of its own.
+emit Ui.*
+
+@host: @unit
+@host:
+    let $names = $ {"a": unit, "b": unit}
+    $rows <- for k, ignore <- $names:                             # 0/[k]
+        Ui.Label($text=$"{$count} rows")                           # 0/[k]/0
+        @ $count
+    $count <- 0 then Size (!Updated $rows)
+    Ui.Label($text=$"{$count}")                                    # 1

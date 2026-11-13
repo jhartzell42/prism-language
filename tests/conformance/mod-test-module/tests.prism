@@ -1,0 +1,17 @@
+# The root's test module, `Tests`: the root's names by `use App.*`, Counter's by `use
+# Counter.*`, and `Counter.Tests`' helpers by `use Counter.Tests.*`.
+emit r
+use App.*
+use Counter.*
+use Counter.Tests.*
+
+test counting_up, @main:
+    build
+        => expect Ui.Label(text="0 steps")
+    click Ui.Button(label="Next")
+        => expect Ui.Label(text="2 steps")
+
+check captions:
+    Caption 2 => "4 steps"
+    App.Caption 1 => "2 steps"
+    Caption (Stepped Run(from=1, twice=True)) => "8 steps"

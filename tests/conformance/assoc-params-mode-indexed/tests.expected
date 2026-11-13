@@ -1,0 +1,6 @@
+# Derived by hand from Jimmy's ruling of 12 November (associated types with parameters: an index that is a constructor picks its equation): a kettle at 20 degrees is idle at 20, heats from 20, has not boiled, and its heating log [5, 10, 15] sums to 30.
+test modes
+
+tick 0
+  added:
+    0: Ui.Label(text="idle at 20; heating from 20; not boiled; 30 degrees climbed; last 20")

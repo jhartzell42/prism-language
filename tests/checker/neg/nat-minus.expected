@@ -1,0 +1,5 @@
+tests/checker/neg/nat-minus.prism:3: error[nat-minus]: `Nat - Nat`: write `-?` for a `?Nat`, or `Int n`
+    fn Down n = n - 1
+                ^^^^^
+  fix: write `a -? b` and handle its `nil`, or widen with `Int a`
+1 error

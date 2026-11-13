@@ -1,0 +1,10 @@
+# The tests of sem-ch08-late-bundle-whole-above-in-bundle-place-field.
+# The World's state for the port is the whole first value, the plain part and the `$` part's current value.
+emit Ui.* | Pad.*
+use App.*
+
+test loud, @Page True:
+    with Pad.Port(name="port 10") = ((7, "up")), build
+
+test soft, @Page False:
+    with Pad.Port(name="port 20") = ((8, "up")), build

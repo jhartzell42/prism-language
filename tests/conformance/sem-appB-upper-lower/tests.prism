@@ -1,0 +1,44 @@
+# `Upper` and `Lower` beyond ASCII: declarations of sem-appB-upper-lower's app.prism. The
+# texts are UTF-8 as written, since `\u{hex}` reaches only ASCII:
+# upper 5 is U+FB01 U+FB03; upper 9 is U+0390 and U+0399 U+0308 U+0301; upper 14 and lower
+# 16 are U+10428 and U+10400; upper 15 is e and E with U+0301; lower 5 has U+0307 after
+# its i; lower 12 has U+0301 after its sigma; lower 17 is U+212A, the Kelvin sign.
+emit r
+use App.*
+
+check upper:
+    Shout "" => ""
+    Shout "Hello, World! 123" => "HELLO, WORLD! 123"
+    Shout "àéîõüýÿ" => "ÀÉÎÕÜÝŸ"
+    Shout "Straße" => "STRASSE"
+    Shout "ﬁﬃ" => "FIFFI"
+    Shout "İı" => "İI"
+    Shout "ǅ" => "Ǆ"
+    Shout "οδυσσευς" => "ΟΔΥΣΣΕΥΣ"
+    Shout "ΐ" => "Ϊ́"
+    Shout "Привет" => "ПРИВЕТ"
+    Shout "և" => "ԵՒ"
+    Shout "ქართული" => "ᲥᲐᲠᲗᲣᲚᲘ"
+    Shout "ꮳꮃꭹ" => "ᏣᎳᎩ"
+    Shout "𐐨" => "𐐀"
+    Shout "é" => "É"
+    Shout "中文 😀" => "中文 😀"
+
+check lower:
+    Hush "" => ""
+    Hush "Hello, World! 123" => "hello, world! 123"
+    Hush "ÀÉÎÕÜÝ" => "àéîõüý"
+    Hush "ẞ" => "ß"
+    Hush "İSTANBUL" => "i̇stanbul"
+    Hush "ǅ" => "ǆ"
+    Hush "ΟΔΥΣΣΕΥΣ" => "οδυσσευς"
+    Hush "Σ" => "σ"
+    Hush "ΑΣ ΣΑΣ" => "ας σας"
+    Hush "ΑΣ'Α" => "ασ'α"
+    Hush "Α'Σ" => "α'ς"
+    Hush "ΑΣ́" => "ας́"
+    Hush "ПРИВЕТ" => "привет"
+    Hush "ᲥᲐᲠᲗᲣᲚᲘ" => "ქართული"
+    Hush "ᏣᎳᎩ" => "ꮳꮃꭹ"
+    Hush "𐐀" => "𐐨"
+    Hush "K" => "k"

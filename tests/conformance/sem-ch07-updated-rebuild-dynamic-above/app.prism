@@ -1,0 +1,29 @@
+# `!Updated` of a `rebuild`'s dynamic written above the `rebuild` (Semantics ch. 4: a
+# block's bindings are a group, ruling HA; ch. 7: a `rebuild`'s dynamic is structural,
+# published in the tick after the generation behind it is built, round 3 ST), in the
+# block itself and in a row of the block.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@above: @unit
+@above:
+    !go <- Ui.Button($label=$"go")                                # 0
+    $page <- 1 then $page + 1 on !go
+    $heard <- 0 then $heard + 1 on !Updated $doubled
+    $doubled <- rebuild $page:                                   # 1/#g
+        Ui.Label($text=$"page {_}")                               # 1/#g/0
+        @ _ * 2
+    Ui.Label($text=$"{$doubled} heard {$heard}")                  # 2
+
+@inRow: @unit
+@inRow:
+    !go <- Ui.Button($label=$"go")                                # 0
+    $page <- 1 then $page + 1 on !go
+    for j, ignore <- $ {"x": unit}:                              # 1/[j]
+        $heard <- 0 then $heard + 1 on !Updated $doubled
+        Ui.Label($text=$"{j} heard {$heard}")                     # 1/[j]/0
+    $doubled <- rebuild $page:                                   # 2/#g
+        Ui.Label($text=$"page {_}")                               # 2/#g/0
+        @ _ * 2

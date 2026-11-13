@@ -1,0 +1,25 @@
+# An existential is unpacked at a parameter that is not one (Type System ch. 5,
+# "Existentials are dictionaries"): `Twice`'s `a` becomes the hidden type, with `^Eq` given,
+# so a hidden number and a hidden text each compare with themselves; the value carries
+# its own `^Eq`, whatever type it hides. Written by Claude on the claude-bugs branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Twice: fn a -> Bool where a: ^Eq
+fn Twice x = x == x
+
+Hide: fn Nat -> any ^Eq
+fn Hide n = any n
+
+HideText: fn Text -> any ^Eq
+fn HideText t = any t
+
+Yes: fn Bool -> Text
+fn Yes True = "T"
+fn Yes False = "F"
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Yes (Twice (Hide 3))} {Yes (Twice (HideText "a"))}")      # 0

@@ -1,0 +1,24 @@
+# Derived by hand from Semantics ch. 7 and the coordinator's ruling FV (`@Flatten` adopts, after the tick its outer fires, the inner the outer then holds, and reads it from the next tick, owed), as sem-ch07-flatten-held's: the inc moves `$a` in its tick; the swap gives the hold the other tuple at 2, whose name the label shows at once; the flatten adopts `$b` after 2 and reads 101 at 3. Never run.
+test the_held_tuple_holds_the_dynamic
+
+tick 0
+  added:
+    0: Ui.Button(label="inc")
+    1: Ui.Button(label="swap")
+    2: Ui.Label(text="0 s")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="1 s")
+
+tick 2
+  in:
+    1: click
+  changed:
+    2: Ui.Label(text="1 t")
+
+tick 3
+  changed:
+    2: Ui.Label(text="101 t")

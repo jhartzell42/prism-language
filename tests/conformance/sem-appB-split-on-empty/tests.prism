@@ -1,0 +1,10 @@
+# `SplitOn`: declarations of sem-appB-split-on-empty.
+emit r
+use App.*
+
+check split_on:
+    SplitOn "abc", "" => [["", "a", "b", "c", ""]]
+    SplitOn "", "" => [["", ""]]
+    SplitOn "aé", "" => [["", "a", "é", ""]]
+    SplitOn "a,,b", "," => [["a", "", "b"]]
+    Words "one two" => [["one", "two"]]

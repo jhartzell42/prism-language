@@ -1,0 +1,266 @@
+# `Emit.Cpp.Patterns`, a child module of `Emit.Cpp`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Emit.Cpp.*
+use Emit.Cpp.Expr.*
+use Emit.Cpp.Stmts.*
+use Emit.Cpp.Items.*
+use Emit.Cpp.Program.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Lower.*
+use Lower.Types.*
+use Lower.Expr.*
+use Lower.Patterns.*
+use Lower.Templates.*
+use Lower.Functions.*
+use Lower.Jobs.*
+use Lower.Program.*
+use Lower.Model.*
+use Lower.Node.*
+use Lower.Node.Def.*
+use Lower.Node.Elements.*
+use Lower.Node.Static.*
+use Lower.Node.Dynamics.*
+use Lower.Node.Finish.*
+use Lower.Node.Keyed.*
+use Lower.Node.Switch.*
+use Emit.Cpp.Templates.*
+use Emit.Cpp.Templates.Items.*
+use Emit.Cpp.Prelude.*
+
+# ---------------------------------------------------------------------------------------
+# Patterns
+# ---------------------------------------------------------------------------------------
+
+# What a pattern tests of the value `v` (C++ conditions, in order) and what it binds (C++
+# declarations, after the tests hold).
+PatConds: unbounded fn Cp, Pa, Text -> [Text]
+fn PatConds cp, p, v = match p:
+    PaWild: [[]]
+    PaBind ignore: [[]]
+    PaMut ignore: [[]]
+    PaTyped q, ignore: PatConds cp, q, v
+    PaUnit c: [[(CaseTest cp, c, v)]]
+    PaCtor c, ps:
+        let own = CaseTest cp, c, v
+        let inner = Concat2 (Each (Range0 (Len ps)), \|i| PatConds cp, (Or ps[i], PaWild), (Payload cp, c, v, i))
+        Filter (Append [[own]], inner), \|t| t != "true"
+    PaRecord c, fs, ignore: Concat2 (Each fs, \|((f, q))| PatConds cp, q, "{v}.{FieldId f}")
+    PaTuple ps: Concat2 (Each (Range0 (Len ps)), \|i| PatConds cp, (Or ps[i], PaWild), "::std::get<{i}>({v})")
+    PaChar c: [["{v} == U'{CppCharEscape c}'"]]
+    PaBool b: [[if b: v else: "!{v}"]]
+    PaIndex n: [["{v} == {n}u"]]
+    PaConst n: [["{v} == {n}"]]
+    PaSlice ps:
+        let rest = Fold ps, False, \|f, q| f or IsRest q
+        let fixed = Len (Filter ps, \|q| not (IsRest q))
+        let size = if rest: "{v}.size() >= {fixed}" else: "{v}.size() == {fixed}"
+        Append [[size]], (Concat2 (Each (Range0 (Len ps)), \|i| PatConds cp, (Or ps[i], PaWild), "{v}[{i}]"))
+    PaRest ignore: [[]]
+
+PatBinds: unbounded fn Cp, Pa, Text -> [Text]
+fn PatBinds cp, p, v = match p:
+    PaWild: [[]]
+    PaBind n: [["auto&& {CppId n} = {v};"]]
+    PaMut n: [["auto {CppId n} = {v};"]]
+    PaTyped (PaBind n), t: [["{CppType cp, (Unref t)} {CppId n} = {v};"]]
+    PaTyped q, ignore: PatBinds cp, q, v
+    PaUnit ignore: [[]]
+    PaCtor c, ps: Concat2 (Each (Range0 (Len ps)), \|i| PatBinds cp, (Or ps[i], PaWild), (Payload cp, c, v, i))
+    PaRecord c, fs, ignore: Concat2 (Each fs, \|((f, q))| PatBinds cp, q, "{v}.{FieldId f}")
+    PaTuple ps: Concat2 (Each (Range0 (Len ps)), \|i| PatBinds cp, (Or ps[i], PaWild), "::std::get<{i}>({v})")
+    PaSlice ps: Concat2 (Each (Range0 (Len ps)), \|i| SliceBinds cp, (Or ps[i], PaWild), v, i)
+    otherwise: [[]]
+
+SliceBinds: unbounded fn Cp, Pa, Text, Nat -> [Text]
+fn SliceBinds cp, (PaRest ""), v, i = [[]]
+fn SliceBinds cp, (PaRest n), v, i = [["auto {CppId n} = {v}.subspan({i});"]]
+fn SliceBinds cp, p, v, i = PatBinds cp, p, "{v}[{i}]"
+
+IsRest: fn Pa -> Bool
+fn IsRest (PaRest ignore) = True
+fn IsRest other = False
+
+Concat2: fn [ [Text] ] -> [Text]
+fn Concat2 xss = Fold xss, [[]], \|acc, xs| Append acc, xs
+
+Conds: fn [Text] -> Text
+fn Conds [[]] = "true"
+fn Conds cs = Join cs, " && "
+
+# Whether a pattern binds nothing and tests nothing: an arm that always matches.
+IsCatchAll: fn Pa -> Bool
+fn IsCatchAll p = match p:
+    PaWild: True
+    PaBind ignore: True
+    PaMut ignore: True
+    PaTyped q, ignore: IsCatchAll q
+    otherwise: False
+
+# Whether an expression leaves instead of giving a value: a `break`, a `return`, an
+# unreachable arm.
+Leaves: fn Ex -> Bool
+fn Leaves x = match x:
+    XBreak ignore, ignore: True
+    XBreakLoop: True
+    XUnreachable: True
+    otherwise: False
+
+# A `match` or an if-let chain: the scrutinee bound once (a name through its rename, pick
+# RN), each arm tested in turn; the arm that holds sets the value and leaves. A guard that fails, or a `let` after the pattern
+# that does not match, goes on to the next arm (Rust's semantics of both).
+CppMatch: unbounded fn Cp, Ex, [XArm], OutTy -> Text
+fn CppMatch cp, s, arms, OutTurn = TernaryMatch cp, s, arms
+fn CppMatch cp, s, arms, t:
+    let ?bound = match s:
+        XVar n: ? (VarName cp, n)
+        XRef (XVar n): ? (VarName cp, n)
+        otherwise: nil
+    let subject = Or ?bound, "_m"
+    let bind = match ?bound:
+        ? ignore: ""
+        nil: "auto&& _m = {CppExpr cp, s};\n"
+    let lines = Each arms, \|a| MatchArm cp, subject, a, False
+    MatchExpr (CppType cp, t), "{bind}{Join lines, "\n"}\n{MatchTail arms}"
+
+# A `match` or an if-let chain that is a function's value: the same
+# tests, each arm returning its value (an arm's own `match` returning in turn), with no
+# statement expression, `Slot` or jump.
+ReturnMatch: unbounded fn Cp, Ex, [XArm], OutTy -> Text
+fn ReturnMatch cp, s, arms, OutTurn = "return {TernaryMatch cp, s, arms};"
+fn ReturnMatch cp, s, arms, t:
+    let ?bound = match s:
+        XVar n: ? (VarName cp, n)
+        XRef (XVar n): ? (VarName cp, n)
+        otherwise: nil
+    let subject = Or ?bound, "_m"
+    let bind = match ?bound:
+        ? ignore: ""
+        nil: "auto&& _m = {CppExpr cp, s};\n"
+    let lines = Each arms, \|a| MatchArm cp, subject, a, True
+    "{bind}{Join lines, "\n"}\n{MatchTail arms}"
+
+# After a match's arms: nothing when the last arm always holds, else the fault.
+MatchTail: fn [XArm] -> Text
+fn MatchTail arms:
+    let ends = match ?Last arms:
+        ? a: (IsCatchAll a.pat) and (Len a.conds) == 0
+        nil: False
+    if ends: "" else: "::prism_rtl::unreachable(\"no arm matched\");\n"
+
+# A `match` whose type the model does not give (a job's turn): a
+# chain of conditional expressions, whose type C++ works out; a guard's test binds the
+# pattern's names once for the test and once for the value.
+TernaryMatch: unbounded fn Cp, Ex, [XArm] -> Text
+fn TernaryMatch cp, s, arms:
+    let ?bound = match s:
+        XVar n: ? (VarName cp, n)
+        XRef (XVar n): ? (VarName cp, n)
+        otherwise: nil
+    let subject = Or ?bound, "_m"
+    let bind = match ?bound:
+        ? ignore: ""
+        nil: "auto&& _m = {CppExpr cp, s};\n"
+    # an arm that tests nothing ends the chain: the arms after it are never reached
+    let reached = Fold arms, (([[]], False)), \|((acc, done)), a| if done: ((acc, done)) else: (((Push acc, a), (Len (PatConds cp, a.pat, subject)) == 0 and (Len a.conds) == 0))
+    let ((kept, ends)) = reached
+    let parts = Each kept, \|a| TernaryArm cp, subject, a
+    let lastText = if ends: "" else: "\n    : throw ::prism_rtl::Panic(\"no arm matched\")"
+    StmtExpr "{bind}", "{Join parts, "\n    : "}{lastText}"
+
+TernaryArm: unbounded fn Cp, Text, XArm -> Text
+fn TernaryArm cp0, subject, a:
+    let cp = Unbind cp0, (ArmNames a)
+    let tests = PatConds cp, a.pat, subject
+    let binds = PatBinds cp, a.pat, subject
+    let n = Len a.conds
+    let lets = Concat2 (Each (Range0 n), \|i| CondBinds cp, (Or a.conds[i], (CcIf XUnit)), (Or (n -? i), 0))
+    let value = if (Len binds) + (Len lets) == 0: CppExpr cp, a.body else: StmtExpr (Join (Append binds, lets), "\n"), (CppExpr cp, a.body)
+    let guard = if (Len a.conds) == 0: [[]] else: [[(StmtExpr (Join binds, "\n"), (GuardTest cp, a.conds))]]
+    let all = Append tests, guard
+    if (Len all) == 0: value else: "{Conds all} ? {value}"
+
+CondBinds: unbounded fn Cp, Cc, Nat -> [Text]
+fn CondBinds cp, (CcLet p, x), k:
+    let ((v, pre)) = CondSubject cp, x, k
+    Append pre, (PatBinds cp, p, v)
+fn CondBinds cp, (CcIf x), k = [[]]
+
+# The value a condition's `let` matches: a place as it is; any other value in a local
+# (`_c2`), so that what the pattern binds by reference into it lives as long as the
+# bindings do. `k` counts the conditions left, which tells the locals of one arm apart.
+CondSubject: unbounded fn Cp, Ex, Nat -> ((Text, [Text]))
+fn CondSubject cp, x, k = if IsPlaceEx x: (((CppTight cp, x), [[]])) else: (("_c{k}", [["auto&& _c{k} = {CppExpr cp, x};"]]))
+
+IsPlaceEx: fn Ex -> Bool
+fn IsPlaceEx x = match x:
+    XVar ignore: True
+    XField y, ignore: IsPlaceEx y
+    XFieldOf y, ignore, ignore: IsPlaceEx y
+    XPart y, ignore: IsPlaceEx y
+    XTarget ignore: True
+    XSelf: True
+    XRef y: IsPlaceEx y
+    XDeref y: IsPlaceEx y
+    otherwise: False
+
+# The conditions after a pattern as one test, each `let` binding before the next.
+GuardTest: unbounded fn Cp, [Cc] -> Text
+fn GuardTest cp, [[]] = "true"
+fn GuardTest cp, cs:
+    let first = Or cs[0], (CcIf XUnit)
+    let rest = GuardTest cp, (Drop cs, 1)
+    match first:
+        CcIf x: if (Len cs) == 1: CppTight cp, x else: "{CppTight cp, x} && {rest}"
+        CcLet p, x:
+            let ((v, pre)) = CondSubject cp, x, (Len cs)
+            let tests = Conds (PatConds cp, p, v)
+            let whole = if (Len cs) == 1: tests else: "{tests} && {StmtExpr (Join (PatBinds cp, p, v), "\n"), rest}"
+            if (Len pre) == 0: whole else: StmtExpr (Join pre, "\n"), whole
+
+# One arm: its tests, its bindings, and its value set and the match left, or (`returns`)
+# its value returned from the function.
+MatchArm: unbounded fn Cp, Text, XArm, Bool -> Text
+fn MatchArm cp0, subject, a, returns:
+    let cp = Unbind cp0, (ArmNames a)
+    let tests = PatConds cp, a.pat, subject
+    let binds = PatBinds cp, a.pat, subject
+    let body = if returns: CppBody cp, a.body else: if Leaves a.body: "{CppExpr cp, a.body};" else: "_v.set({CppExpr cp, a.body});\ngoto _done;"
+    let guarded = if (Len a.conds) == 0: body else: GuardedArm cp, a.conds, body
+    let inner = Join (Append binds, [[guarded]]), "\n"
+    if (Len tests) == 0: Braced inner else: IfBlock (Conds tests), inner
+
+# The conditions after a pattern, nested so that each `let` binds before the next test.
+GuardedArm: unbounded fn Cp, [Cc], Text -> Text
+fn GuardedArm cp, [[]], body = body
+fn GuardedArm cp, cs, body:
+    let first = Or cs[0], (CcIf XUnit)
+    let rest = GuardedArm cp, (Drop cs, 1), body
+    match first:
+        CcIf x: IfBlock (CppExpr cp, x), rest
+        CcLet p, x:
+            let ((v, pre)) = CondSubject cp, x, (Len cs)
+            let inner = IfBlock (Conds (PatConds cp, p, v)), (Join (Append (PatBinds cp, p, v), [[rest]]), "\n")
+            if (Len pre) == 0: inner else: Braced (Join (Push pre, inner), "\n")
+
+# A labelled block with its value: a `break` sets the value and jumps to the end.
+CppLabeled: unbounded fn Cp, Text, [Do], Ex, OutTy -> Text
+fn CppLabeled cp, label, dos, e, t:
+    let l = CppLabel label
+    let last = if Leaves e: "{CppExpr cp, e};" else: "{l}_v.set({CppExpr cp, e});"
+    LabeledExpr l, (CppType cp, t), (Join (Push (Each dos, \|d| CppStatement cp, d), last), "\n")
+
+CppLabel: fn Text -> Text
+fn CppLabel l = if (HasPrefix l, "'"): AfterFirst l else: l
+
+CppBreak: unbounded fn Cp, Text, Ex -> Text
+fn CppBreak cp, l, y:
+    let n = CppLabel l
+    "\{ {n}_v.set({CppExpr cp, y}); goto {n}; \}"

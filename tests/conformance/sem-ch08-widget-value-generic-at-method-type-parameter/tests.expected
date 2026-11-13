@@ -1,0 +1,9 @@
+# Derived by hand from Semantics ch. 4 (a building `match`'s arm adds no path segment), ch. 8 (a blueprint is built at the applying block's next positions) and appendix B (`Show` of a text is its quoted form, of a `Bool` its name), as sem-ch08-widget-value-generic-in-method has its two places. Never run.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="counted=\"a\"")
+    1: Ui.Label(text="counted=True")
+    2: Ui.Label(text="named=7")
+    3: Ui.Label(text="none")

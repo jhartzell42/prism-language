@@ -1,0 +1,47 @@
+# A call of an unbounded function is a cycle point wherever it stands (D6):
+# in an arm of a `match` that is not the function's tail, in a branch of an `if`, and
+# right of `and`. Each function here makes one such call, so two cycles: its entry and the
+# call. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Inc: unbounded fn Nat -> Nat
+fn Inc n = n + 1
+
+Pos: unbounded fn Nat -> Bool
+fn Pos n = n > 0
+
+InArm: unbounded fn Nat -> Nat
+fn InArm n:
+    let a = match n:
+        0: Inc 10
+        otherwise: Inc n
+    a + 1
+
+InBranch: unbounded fn Nat -> Nat
+fn InBranch n:
+    let b = if n > 1: Inc n else: 0
+    b + 1
+
+RightOfAnd: unbounded fn Nat -> Bool
+fn RightOfAnd n:
+    let c = (n > 0) and (Pos n)
+    not c
+
+@Arm: fn Nat -> @unit
+fn @Arm n:
+    !done <- @Run InArm, n                                  # 0
+    $shown <- "working" then Show !done
+    Ui.Label($text=$shown)                                   # 1
+
+@Branch: fn Nat -> @unit
+fn @Branch n:
+    !done <- @Run InBranch, n                               # 0
+    $shown <- "working" then Show !done
+    Ui.Label($text=$shown)                                   # 1
+
+@And: fn Nat -> @unit
+fn @And n:
+    !done <- @Run RightOfAnd, n                             # 0
+    $shown <- "working" then Show !done
+    Ui.Label($text=$shown)                                   # 1

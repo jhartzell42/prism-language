@@ -1,0 +1,10 @@
+# Derived by hand from Semantics Appendix B (`@Run` starts the function and fires its result) and D6 as sem-ch07-run-lambda applies it (entering the function is a cycle point, and a constructor makes no call): one cycle, so the result lands at tick 1.
+test a_constructor_runs
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+tick 1
+  changed:
+    1: Ui.Label(text="boxed 3")

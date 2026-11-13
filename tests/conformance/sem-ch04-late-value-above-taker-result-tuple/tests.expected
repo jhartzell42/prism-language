@@ -1,0 +1,14 @@
+# Derived by hand from Semantics ch. 4 ("the order of a group's lines decides positions and nothing else"), ch. 8 (`<-` binds the plain result, here through a tuple pattern; a widget application is transparent) and ruling TC (places counted as built): loud gives 10, so `@Wide 10` builds its label at 0 and gives (1, 2), the next label is 1 and the arm's label 2; soft gives 20, `@Wide 20` builds nothing and gives (3, 4). Run on keep-B: it matches.
+test loud
+
+tick 0
+  added:
+    0: Ui.Label(text="ten")
+    1: Ui.Label(text="wide 1 2")
+    2: Ui.Label(text="loud")
+
+test soft
+
+tick 0
+  added:
+    0: Ui.Label(text="wide 3 4")

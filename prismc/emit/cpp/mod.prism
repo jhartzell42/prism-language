@@ -1,0 +1,371 @@
+# Emission for C++: the model lowering decided (`Lower`) spelled as a C++20 program over
+# `runtime/cpp` (`prism_rtl` in C++, which gives every Rust type of the library its
+# C++ form) through the templates (`Emit.Cpp.Templates`, `Emit.Cpp.Prelude`):
+# `Makefile`, three headers per Prism module in its directory (`src/DIR/decl.hpp`,
+# `src/DIR/types.hpp`, `src/DIR/module.hpp`, DIR its path, `check/env` for `Check.Env`) and a
+# fourth when it has generic definitions (`src/DIR/generic.hpp`),
+# two for `Elem` and `Output` (`src/elem.decl.hpp`, `src/elem.types.hpp`), the program
+# classes (`src/programs.hpp`), `src/main.cpp` and the modules' definitions in units,
+# `src/unit_N.cpp`. As in emit.prism, nothing here decides (K9).
+#
+# The model names the Rust runtime's operations (`Rc::new`, `borrow`, `upgrade`); this
+# printer maps each to its C++ spelling through the tables `CallName` and `MethodForm`, and
+# looks names up in `Cp`, what the model says about its own items: which paths are
+# constructors, the order of a record's fields, which names are a node's members (reached
+# through the node's shared pointer, `->`).
+#
+# The C++ forms: a record is a struct, a choice a class
+# holding a `std::variant` of its cases by value, as Rust's enum is by value, and a
+# recursive payload (the lowering's `OutRc`) a `::prism_rtl::Val`, an immutable shared value
+# that compares by its value as Rust's `Rc<T>` does; `*x` of the model is `::prism_rtl::val(x)`,
+# the value behind a `Val` or the place itself. A node is a class deriving from `Node`, held
+# by `::prism_rtl::Rc`; a `match`, an if-let chain and a labelled block are GNU statement
+# expressions whose value is a `Slot`, except a function's closing `match`, which returns
+# from its arms.
+#
+# Written by Claude, 3 November 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+emit r
+mod Expr
+mod Patterns
+mod Stmts
+mod Items
+mod Program
+mod Templates
+mod Prelude
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Lower.*
+use Lower.Types.*
+use Lower.Expr.*
+use Lower.Patterns.*
+use Lower.Templates.*
+use Lower.Functions.*
+use Lower.Jobs.*
+use Lower.Program.*
+use Lower.Model.*
+use Lower.Node.*
+use Lower.Node.Def.*
+use Lower.Node.Elements.*
+use Lower.Node.Static.*
+use Lower.Node.Dynamics.*
+use Lower.Node.Finish.*
+use Lower.Node.Keyed.*
+use Lower.Node.Switch.*
+use Emit.Cpp.Templates.*
+use Emit.Cpp.Templates.Items.*
+use Emit.Cpp.Prelude.*
+use Emit.Cpp.Expr.*
+use Emit.Cpp.Patterns.*
+use Emit.Cpp.Stmts.*
+use Emit.Cpp.Items.*
+use Emit.Cpp.Program.*
+
+# ---------------------------------------------------------------------------------------
+# What the printer looks up
+# ---------------------------------------------------------------------------------------
+
+# A type of the program, by its path (`program::Term`): what kind of C++ type it is
+# (`choice`, `record`, `newtype`, `unit`, `tag`, `row`, `job`, `answer`), its fields in
+# order (a record's, a tag's, a job's), and its type parameters.
+type TyInfo = record:
+    kind: Text
+    fields: [Text]
+    params: [Text]
+derive ^Eq, ^Show
+
+# The printer's context: the module being printed, the modules, the program's types by
+# path and its constructors (a choice's cases by `Type::Case`), the names of every node's
+# members, and the fields of the node or job being printed. `owned` is every local the
+# scope holds by value (a `let` of a value, a lambda's by-value parameter), which a bare
+# read moves; `moveCaptures` the `let`s before a move closure that
+# only its body reads, which it takes by moving init-captures.
+type Cp = record:
+    home: Text
+    mods: [Text]
+    types: (Text ==> TyInfo)
+    ctors: (Text ==> Text)
+    members: (Text ==> Bool)
+    methods: (Text ==> Bool)
+    fieldNames: (Text ==> Bool)
+    fields: (Text ==> OutTy)
+    pointers: (Text ==> Bool)
+    owned: (Text ==> Bool)
+    moveCaptures: [Text]
+    # The model's type of each local whose type the scope says (a parameter, a typed
+    # `let`), which tells a `*` of a reference from a `*` of an `Rc` (pick PT).
+    localTypes: (Text ==> OutTy)
+
+# A name as a C++ identifier: a C++ keyword that is no Rust keyword (lowering escaped
+# those) takes a `_` after it, as the prelude's `or_` and `int_` do (`cppKeywords` is
+# Lower's, which escapes a module's name in both targets).
+CppId: fn Text -> Text
+fn CppId n = if InList cppKeywords, n: "{n}_" else: n
+
+
+# A record's field: an identifier. A program's field ends in its kind's letter (pick UN), so
+# it is never a member every value type has (`show`, `to_pod`, `from_pod`, `cases`).
+FieldId: fn Text -> Text
+fn FieldId f = CppId f
+
+# A path as C++, each segment an identifier.
+CppPathId: fn Text -> Text
+fn CppPathId p = Join (Each (SplitOn p, "::"), \|s| CppId s), "::"
+
+# A path of the model without its side's mark: the runtime side's `crate::prelude::` and the standard
+# library's `std::` (`std::Some`, `std::Rc::new`), as the printer's own spellings match it.
+Bare: fn Text -> Text
+fn Bare p = DropPrefix (DropPrefix p, "rt::"), "std::"
+
+InList: fn [Text], Text -> Bool
+fn InList xs, x = Fold xs, False, \|seen, y| seen or y == x
+
+# The type a reference names, by its key: the program's, the prelude's, or the crate's own
+# (`Elem`). A runtime name is none of them.
+?TypeOf: fn Cp, Ref -> ?TyInfo
+fn ?TypeOf cp, r = match ?RefKey r:
+    ? k: cp.types[k]
+    nil: nil
+
+# The choice a constructor is a case of (`Term::Var` of `Term`).
+?CaseOf: fn Cp, Ref -> ?Ref
+fn ?CaseOf cp, r = match ?RefKey r:
+    ? k: match cp.ctors[k]:
+        ? ignore: ? (RefParent r)
+        nil: nil
+    nil: nil
+
+# What the printer cannot print: a program's item its tables do not have, which lowering
+# referred to. No checked program reaches it: an internal error, marked as a refusal is,
+# so `CompileProgram` reports it (`error[internal]`) and the target compiler never sees it.
+PrinterRefusal: fn Text -> Text
+fn PrinterRefusal what = "compile_error!(\"{loweringRefusal}{internalBug}the C++ printer met {what}\")"
+
+# A choice's case as a C++ name: a class cannot hold a member named as itself, so a case
+# named as its choice (`Card` of `Card`, beside `Joker`) takes a `_` after it.
+CaseId: fn Text, Text -> Text
+fn CaseId ty, c = if c == ty: "{c}_" else: c
+
+# A case reference's C++ name in its choice.
+CaseIdOf: fn Ref -> Text
+fn CaseIdOf r = CaseId (RefLast (RefParent r)), (RefLast r)
+
+# A choice's cases with their C++ names (`CaseId`).
+CppCases: fn TyDef -> TyDef
+fn CppCases t = if t.shape != ShapeChoice: t else: update t:
+    &_.cases <= Each &_.cases, \|c| update c:
+        &_.name <= CaseId t.name, &_.name
+
+# A path without its last segment.
+ParentPath: fn Text -> Text
+fn ParentPath p:
+    let segs = SplitOn p, "::"
+    Join (Take segs, (Dec (Len segs))), "::"
+
+LastSegment: fn Text -> Text
+fn LastSegment p = Or (?Last (SplitOn p, "::")), p
+
+# The context of a model: every module's types, constructors and node members.
+Context: fn Model -> Cp
+fn Context model:
+    let names = Each model.mods, \|m| m.name
+    let tops = Fold names, [[]], \|acc, n|
+        let top = Or (SplitOn n, "::")[0], n
+        if (InList names, top) or InList acc, top: acc else: Push acc, top
+    let mods = Push (Append names, tops), "prelude"
+    let base = Cp(home="", mods=mods, types=preludeTypes, ctors=preludeCtors, members=nodeBase, methods={}, fieldNames={}, fields={}, pointers={}, owned={}, moveCaptures=[[]], localTypes={})
+    let withElem = AddRow (AddOutput base, model.answer), "", model.elem
+    Fold model.mods, withElem, \|cp, m| Fold m.items, cp, \|c, it| AddModelItem c, m.name, it
+
+# The prelude's own types and constructors (prelude.prism beside this file).
+let preludeTypes = {"prelude::Ordering": TyInfo(kind="choice", fields=[[]], params=[[]]), "prelude::Span": TyInfo(kind="record", fields=[["file_p", "line_p", "column_p", "binding_p"]], params=[[]]), "prelude::Exception": TyInfo(kind="record", fields=[["kind_p", "message_p", "spans_p", "path_o"]], params=[[]]), "prelude::Duration": TyInfo(kind="newtype", fields=[[]], params=[[]]), "prelude::PreludeUnwrap": TyInfo(kind="tag", fields=[[]], params=[[]]), "prelude::PreludeExceptions": TyInfo(kind="tag", fields=[[]], params=[[]])}
+
+let preludeCtors = {"prelude::Ordering::Less": "choice", "prelude::Ordering::Equal": "choice", "prelude::Ordering::Greater": "choice"}
+
+# What every node has: its path, and the runtime's methods a node is called by.
+let nodeBase = {"make": True, "push": True, "wake": True, "started": True, "deferred": True, "build": True, "swap": True, "leave": True, "patch": True, "edges": True, "release": True, "clean_up": True, "path": True, "leave_row": True, "answer": True, "document": True, "entries": True, "deliver": True, "document_moved": True, "me": True, "result_dynamic": True}
+
+AddModelItem: fn Cp, Text, Item -> Cp
+fn AddModelItem cp, m, it = match it:
+    ItType t: AddType cp, m, t
+    ItTag t: AddTy cp, "{m}::{t.name}", TyInfo(kind="tag", fields=(Each t.fields, \|((ignore, f, ignore))| f), params=[[]])
+    ItRow r: AddRow cp, m, r
+    ItJob j: AddTy cp, "{m}::{j.name}", TyInfo(kind="job", fields=(Each j.fields, \|((f, ignore))| f), params=(Each j.generics, \|((g, ignore))| g))
+    ItNode n: AddNode cp, m, n
+    otherwise: cp
+
+AddTy: fn Cp, Text, TyInfo -> Cp
+fn AddTy cp, path, info = update cp:
+    &_.types <= Insert &_.types, path, info
+
+AddCtor: fn Cp, Text, Text -> Cp
+fn AddCtor cp, path, kind = update cp:
+    &_.ctors <= Insert &_.ctors, path, kind
+
+AddMember: fn Cp, Text -> Cp
+fn AddMember cp, name = update cp:
+    &_.members <= Insert &_.members, name, True
+
+AddType: fn Cp, Text, TyDef -> Cp
+fn AddType cp, m, t:
+    let path = "{m}::{t.name}"
+    let first = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+    match t.shape:
+        ShapeRecord: AddTy cp, path, TyInfo(kind="record", fields=(Each first.fields, \|((f, ignore))| f), params=t.params)
+        ShapeNewtype: AddTy cp, path, TyInfo(kind="newtype", fields=[[]], params=t.params)
+        ShapeUnit: AddTy cp, path, TyInfo(kind="unit", fields=[[]], params=t.params)
+        ShapeChoice: Fold t.cases, (AddTy cp, path, TyInfo(kind="choice", fields=[[]], params=t.params)), \|c, k| AddCtor c, "{path}::{k.name}", "choice"
+
+AddRow: fn Cp, Text, RowDef -> Cp
+fn AddRow cp, m, r:
+    let path = if m == "": r.name else: "{m}::{r.name}"
+    Fold r.cases, (AddTy cp, path, TyInfo(kind="choice", fields=[[]], params=[[]])), \|c, ((v, ignore))| AddCtor c, "{path}::{v}", "choice"
+
+AddOutput: fn Cp, OutputDef -> Cp
+fn AddOutput cp, a = Fold a.cases, (AddCtor (AddCtor (AddTy cp, "Output", TyInfo(kind="choice", fields=[[]], params=[[]])), "Output::Untagged_a", "choice"), "Output::Held_a", "choice"), \|c, k| AddOutputCase c, k
+
+# A tag's case, and a bundle tag's first-value case (`OutputCase.first`).
+AddOutputCase: fn Cp, OutputCase -> Cp
+fn AddOutputCase c, k:
+    let c1 = AddCtor c, "Output::{k.variant}", "choice"
+    match k.?first:
+        ? ignore: AddCtor c1, "Output::{k.variant}First", "choice"
+        nil: c1
+
+AddNode: fn Cp, Text, NodeDef -> Cp
+fn AddNode cp, m, n:
+    let withFields = Fold n.fields, cp, \|c, ((f, ignore, ignore))| update (AddMember c, f):
+        &_.fieldNames <= Insert &_.fieldNames, f, True
+    let withMethods = Fold (Append n.methods, n.hosted), withFields, \|c, md| update (AddMember c, md.name):
+        &_.methods <= Insert &_.methods, md.name, True
+    let withBuilders = Fold n.builders, withMethods, \|c, b| AddMember c, "{b.name}_build"
+    let withGens = Fold n.gens, withBuilders, \|c, g| AddMember c, "{g.name}_build"
+    AddTy withGens, "{m}::{n.name}", TyInfo(kind="node", fields=(Each n.fields, \|((f, ignore, ignore))| f), params=[[]])
+
+InHome: fn Cp, Text -> Cp
+fn InHome cp, m = update cp:
+    &_.home <= m
+
+WithFields: fn Cp, [((Text, OutTy))] -> Cp
+fn WithFields cp, fs = update cp:
+    &_.fields <= Fold fs, {}, \|acc, ((f, t))| Insert acc, f, t
+
+# ---------------------------------------------------------------------------------------
+# Types
+# ---------------------------------------------------------------------------------------
+
+CppType: unbounded fn Cp, OutTy -> Text
+fn CppType cp, t = match t:
+    OutNat: "crate::prelude::Nat"
+    OutInt: "crate::prelude::Int"
+    OutU8: "::std::uint8_t"
+    OutFloat: "crate::prelude::Float"
+    OutBool: "bool"
+    OutChar: "char32_t"
+    OutText: "crate::prelude::Text"
+    OutCursor: "crate::prelude::Cursor"
+    OutRegex: "crate::prelude::Regex"
+    OutReplacement: "crate::prelude::RegexReplacement"
+    OutUnit: "crate::prelude::Unit"
+    OutPath: "crate::prelude::Path"
+    OutDuration: "crate::prelude::Duration"
+    OutError: "crate::prelude::Error"
+    OutNamed (RefRuntime "std::Cell"), [[i]]: CppType cp, i
+    OutNamed (RefRuntime "std::RefCell"), [[i]]: CppType cp, i
+    OutNamed (RefRuntime "std::Vec"), [[i]]: "::std::vector<{CppType cp, i}>"
+    OutNamed (RefRuntime "std::Result"), [[a, b]]: "crate::prelude::Expected<{CppType cp, a}, {CppType cp, b}>"
+    OutNamed n, [[]]: OwnTypePath cp, n
+    OutNamed n, args: "{OwnTypePath cp, n}<{CppTypes cp, args}>"
+    OutOpt (OutRefMut i): "{CppType cp, i}*"
+    OutOpt i: "::std::optional<{CppType cp, i}>"
+    OutRes i: "crate::prelude::Fallible<{CppType cp, i}>"
+    OutTuple ts: "::std::tuple<{CppTypes cp, ts}>"
+    OutArray e: "crate::prelude::Array<{CppType cp, e}>"
+    OutMap k, v: "crate::prelude::Map<{CppType cp, k}, {CppType cp, v}>"
+    OutFn ps, r: "crate::prelude::Fn<{CppType cp, r}({ParamTypes cp, ps})>"
+    OutRef (OutFn ps, r): "const ::std::function<{CppType cp, r}({ParamTypes cp, ps})>&"
+    OutRef (OutSlice i): "::std::span<const {CppType cp, i}>"
+    OutRef i: "const {CppType cp, i}&"
+    # a named lens's result: the part itself, or a pointer to an array's entry that may be
+    # absent (`part_mut`)
+    OutRefMut i: "{CppType cp, i}&"
+    OutJobFn a, b: "::prism_rtl::Fn<::prism_rtl::JobRef<{CppType cp, b}>({CppType cp, a})>"
+    OutJob b: "::prism_rtl::JobRef<{CppType cp, b}>"
+    OutEvent i: "crate::prelude::Event<{CppType cp, i}>"
+    OutDyn i: "crate::prelude::Dynamic<{CppType cp, i}>"
+    OutGen n: n
+    OutRc i: if IsValueTy cp, i: "::prism_rtl::Rc<const {CppType cp, i}>" else: "::prism_rtl::Rc<{CppType cp, i}>"
+    OutPod: "crate::prelude::Pod"
+    OutShowAny: "::prism_rtl::Rc<const crate::prelude::DynShow>"
+    OutHold i: "crate::prelude::Hold<{CppType cp, i}>"
+    OutStamped i: "crate::prelude::Stamped<{CppType cp, i}>"
+    OutSnapshot i: "crate::prelude::Snapshot<{CppType cp, i}>"
+    OutDefer i: "crate::prelude::Defer<{CppType cp, i}>"
+    OutWeak n: "::prism_rtl::Weak<{TypePath n}>"
+    OutCell i: CppType cp, i
+    OutWakes: "crate::prelude::Wakes"
+    OutCount: "::std::uint32_t"
+    OutObj i: "::prism_rtl::Rc<{CppType cp, i}>"
+    OutSlice i: "::std::span<const {CppType cp, i}>"
+    OutPort i: "crate::prelude::Port<{CppType cp, i}>"
+    OutLive i: "crate::prelude::Element<{CppType cp, i}>"
+    OutTurn: "decltype(this->cycle())"
+    # a trait's associated type is a class template of its namespace, each impl's choice a
+    # specialization at the impl's head (`TraitParts`, `ImplParts`)
+    OutAssoc tr, n, a: "typename {TypePath tr}::{n}<{CppType cp, a}>::type"
+    OutRefused what: "compile_error!(\"{loweringRefusal}{what}\")"
+    OutQuantified b: "compile_error!(\"{loweringRefusal}a quantified type variable of `{b}`: no instantiation gives it a type\")"
+
+CppTypes: unbounded fn Cp, [OutTy] -> Text
+fn CppTypes cp, ts = Join (Each ts, \|t| CppType cp, t), ", "
+
+# A function's parameters as a `std::function` signature takes them: by reference.
+ParamTypes: unbounded fn Cp, [OutTy] -> Text
+fn ParamTypes cp, ts = Join (Each ts, \|t| "const {CppType cp, t}&"), ", "
+
+# A program's type, or a case of one, by its whole path from the crate: a class deriving
+# from a runtime base reads a bare name as the base's (its injected class name, `Node` in
+# a node's `make`), so no program type is ever spelled bare. A runtime type as the model
+# writes it.
+OwnTypePath: fn Cp, Ref -> Text
+fn OwnTypePath cp, r = match ?CaseOf cp, r:
+    ? ty: "{OwnItemPath ty}::{CaseIdOf r}"
+    nil: OwnItemPath r
+
+OwnItemPath: fn Ref -> Text
+fn OwnItemPath r = match r:
+    RefItem "", p, ignore: "crate::{TypePath p}"
+    RefItem m, p, ignore: "crate::{m}::{TypePath p}"
+    RefRuntime t: TypePath (RuntimePath t)
+
+# A Rust path with its turbofish as a C++ path: `Link::<N>` is `Link<N>`, a `_` argument
+# left to deduction.
+TypePath: fn Text -> Text
+fn TypePath p:
+    let noFish = Join (SplitOn p, "::<"), "<"
+    let noHoles = Join (SplitOn noFish, ", _>"), ">"
+    Join (SplitOn noHoles, "<_>"), ""
+
+# A type whose values are shared by copying (the C++ runtime's `IsValue`): an `Rc` of one
+# is a `::prism_rtl::Rc<const T>`, an immutable shared value that compares by its value; of a
+# node or a cell, a `::prism_rtl::Rc<T>` (pick CH).
+IsValueTy: fn Cp, OutTy -> Bool
+fn IsValueTy cp, t = match t:
+    OutNamed n, ignore: match ?TypeOf cp, n:
+        ? info: info.kind != "node" and info.kind != "job"
+        nil: False
+    OutCell ignore: False
+    OutPort ignore: False
+    OutHold ignore: False
+    OutStamped ignore: False
+    OutSnapshot ignore: False
+    OutDefer ignore: False
+    OutObj ignore: False
+    OutWakes: False
+    otherwise: True

@@ -1,0 +1,9 @@
+# The tests of sem-ch07-flatten-held-above.
+emit Ui.*
+use App.*
+
+test the_flatten_follows_and_adopts, @page:
+    build
+    click at 1
+    click at 2
+    compute

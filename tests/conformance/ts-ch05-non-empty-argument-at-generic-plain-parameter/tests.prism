@@ -1,0 +1,6 @@
+# The tests of ts-ch05-non-empty-argument-at-generic-plain-parameter.
+emit Ui.*
+use App.*
+
+test the_non_empty_fills_the_plain_place, @main:
+    build

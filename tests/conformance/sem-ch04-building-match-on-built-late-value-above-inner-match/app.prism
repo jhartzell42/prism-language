@@ -1,0 +1,46 @@
+# sem-ch04-building-match-on-built-late-value-above where the lower `match`'s arm gives
+# its result from a building `match` of its own, built after the arm's other lines
+# (Semantics ch. 4, "Binding groups and cycles": any line may use any name the block
+# binds, and "the order of a group's lines decides positions and nothing else"; a
+# building `match`'s arm adds no path segment; ruling TC: places are counted as they
+# are built). Nothing here is a cycle.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Size = choice:
+    Big
+    Small
+derive ^Eq, ^Show
+
+type Mode = choice:
+    Loud Size
+    Soft
+derive ^Eq, ^Show
+
+@Panel: fn Mode -> @unit
+fn @Panel mode:
+    match n -? 15:                                                     # 0 and 1, or 0
+        ? over:
+            Ui.Label($text=$"over by {over}")
+        nil:
+            Ui.Label($text=$"under")
+            Ui.Label($text=$"at {n}")
+    n <- match mode:
+        Loud size:
+            m <- match size:
+                Small:
+                    Ui.Label($text=$"small")                           # 2
+                    @ Len "s"
+                Big:
+                    @ Len "bb"
+            Ui.Label($text=$"loud {m}")                                # 3, or 2
+            @ m + 9
+        Soft:
+            @ 20
+    Ui.Label($text=$"below {n}")                                       # 4, 3 or 1
+
+@Page: fn Mode -> @unit
+fn @Page mode:
+    @Panel mode

@@ -1,0 +1,11 @@
+# Derived by hand, never run (rustc refuses the crate): Semantics ch. 9 (the place the host answers adds nothing to the host's document, the rest is forwarded at 0/[p]/0; `never` never fires, so the guest hears nothing).
+test a_generic_tag_is_placed_and_hosted
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="press")
+    0/[2]/0: Ui.Label(text="heard nothing")
+
+tick 1
+  in:
+    0/[0]/0: click

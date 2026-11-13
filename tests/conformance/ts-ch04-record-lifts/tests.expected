@@ -1,0 +1,13 @@
+# Derived by hand (Type System ch. 4: a dynamic at a record's plain field lifts the construction): both records follow `$n` in the tick of the click.
+test lifted_records
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Ui.Label(text="2 1/10")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="3 2/20")

@@ -1,0 +1,8 @@
+# The tests of sem-ch04-event-let.
+emit Ui.*
+use App.*
+
+test an_event_named_again, @main:
+    build
+    click at 0
+        => expect Ui.Label(text="1")

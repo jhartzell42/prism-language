@@ -1,0 +1,7 @@
+# Jimmy's ruling, 12 November: `ValueOf: forall (r: k). k`, the value of a promoted case
+# named as a type. Its `k` is the kind of a payload-free choice; `Text` is a type, no case
+# of any choice, so `ValueOf<<Text>>` is a kind error.
+# Expected diagnostic derived by hand. Written by Claude on the claude-self-hosting
+# branch; subject to change.
+Valued: fn Nat -> Text
+fn Valued n = ValueOf<<Text>>

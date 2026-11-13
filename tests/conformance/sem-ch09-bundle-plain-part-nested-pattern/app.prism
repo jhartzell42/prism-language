@@ -1,0 +1,16 @@
+# A bundle place's plain part taken apart by a pattern of its own: the tag answers a
+# pair beside a `$` part, and the binder's pattern names the pair's two halves (Type
+# System ch. 2, "Bundles and sparse tuples"; Semantics ch. 8: `<-` builds the child and
+# binds its result by a pattern; "A new place's first value": the plain part is fixed at
+# the place's build). sem-ch09-bundle-plain-beside-dynamic with the plain part a pair.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Port of Element ((((Nat, Text)), $Text)):
+    address: Text
+
+@chat: @unit
+@chat:
+    ((((id, owner)), $state)) <- Pad.Port(address="chat:7000")   # 0
+    Ui.Label($text=$"port {id} of {owner}: {$state}")            # 1

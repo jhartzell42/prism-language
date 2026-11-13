@@ -1,0 +1,19 @@
+# A trait's `where` names what its type must already have (`trait ^Ord a where a: ^Eq`,
+# Type System ch. 3): two traits that each ask for the other are a ring, and neither can
+# be had first. The checker does not end on this program today (no report after a
+# minute); it should name the ring at each trait. Written by Claude on the
+# claude-lowering branch; subject to change.
+trait ^Up a where a: ^Down:
+    Up: fn a -> a
+
+trait ^Down a where a: ^Up:
+    Down: fn a -> a
+
+impl ^Up Nat:
+    fn Up n = n + 1
+
+impl ^Down Nat:
+    fn Down n = n
+
+Both: fn a -> a where a: ^Up
+fn Both x = Down (Up x)

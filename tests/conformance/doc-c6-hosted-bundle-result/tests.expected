@@ -1,0 +1,19 @@
+# Derived by hand from Semantics ch. 9 (a host gives its child's result beside the element tree; a forwarding host hands the place the World's answers in their own tick) and Type System ch. 2, "Bundles": `$n` is the child's hold, read in the tick of the click, and each firing of `!inc` reaches `$seen`, a hold, in that same tick; the child's button is forwarded at `0/[0]/0`, as in ts-ch04-whole-hosted-result.
+test both_parts_read
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="inc")
+    1: Ui.Label(text="0 counted, 0 seen")
+
+tick 1
+  in:
+    0/[0]/0: click
+  changed:
+    1: Ui.Label(text="1 counted, 1 seen")
+
+tick 2
+  in:
+    0/[0]/0: click
+  changed:
+    1: Ui.Label(text="2 counted, 2 seen")

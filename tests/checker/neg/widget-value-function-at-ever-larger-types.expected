@@ -1,0 +1,4 @@
+tests/checker/neg/widget-value-function-at-ever-larger-types.prism:15: error[grows-without-end]: `?Wrapped` calls itself at `[a]` for `a`: a type that grows without end
+        ? less: ?Wrapped [[xs]], less
+                ^^^^^^^^
+1 error

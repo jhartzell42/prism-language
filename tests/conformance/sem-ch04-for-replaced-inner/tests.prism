@@ -1,0 +1,13 @@
+# A `for` over a map of dynamics whose dynamics are replaced: declarations of
+# sem-ch04-for-replaced-inner. Written by Claude on the claude-self-hosting branch; subject
+# to change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test follows_a_replaced_inner, @replaced:
+    build
+    click at 1
+    click at 0
+    compute until idle
+    click at 1

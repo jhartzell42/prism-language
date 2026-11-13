@@ -1,0 +1,8 @@
+# Audited: the map has two entries; neither blueprint is applied, so no other label.
+# The tests of sem-ch08-widget-value-in-map-literal (Semantics chapter 8).
+emit Ui.*
+use App.*
+
+test widgets_as_map_values, @shown:
+    build
+        => expect Ui.Label(text="entries 2")

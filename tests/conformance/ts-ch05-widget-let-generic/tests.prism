@@ -1,0 +1,7 @@
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+use App.*
+
+test each_use_its_own_field, @shown:
+    build
+    click at 0

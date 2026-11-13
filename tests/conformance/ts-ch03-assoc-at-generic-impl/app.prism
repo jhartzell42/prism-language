@@ -1,0 +1,26 @@
+# An associated type a generic impl chooses as its own parameter (`type Item = a` of
+# `Pair a`): at `Pair Text` it is `Text`, interpolated as text, and a generic function's
+# result over it (`[Item a]`) is an array of it, in both targets. Written by Claude on the
+# claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Box a:
+    type Item
+    Open: fn a -> Item a
+
+type Pair a = record:
+    one: a
+    two: a
+derive ^Eq, ^Show
+
+impl ^Box (Pair a):
+    type Item = a
+    fn Open p = p.one
+
+Firsts: fn [a] -> [Item a] where a: ^Box
+fn Firsts xs = Fold xs, [[]], \|acc, x| Push acc, (Open x)
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Open (Pair(one="a", two="b"))} {Show (Firsts [[(Pair(one=1, two=2)), (Pair(one=3, two=4))]])}")    # 0

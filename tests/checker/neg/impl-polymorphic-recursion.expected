@@ -1,0 +1,8 @@
+tests/checker/neg/impl-polymorphic-recursion.prism:15: error[may-not-end]: `Depth` calls itself, not smaller than what it was given
+        fn Depth p, k = Depth (Pair(left=p, right=p)), k
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`
+tests/checker/neg/impl-polymorphic-recursion.prism:15: error[grows-without-end]: `impl ^Deep Pair a` needs itself at `Pair a` for `a`: a type that grows without end
+        fn Depth p, k = Depth (Pair(left=p, right=p)), k
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2 errors

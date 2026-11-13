@@ -1,0 +1,13 @@
+# The order on texts: declarations of sem-appB-text-order.prism.
+emit r
+use App.*
+
+check order:
+    "ab" < "b" => True
+    "Z" < "a" => True
+    "z" < "é" => True
+    "é" < "世" => True
+    "｡" < "😀" => True
+    "" < "a" => True
+    "héllo" < "hello" => False
+    Sorted [["世", "é", "z", "a", "Z", "😀", "｡"]] => [["Z", "a", "z", "é", "世", "｡", "😀"]]

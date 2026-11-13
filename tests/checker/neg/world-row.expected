@@ -1,0 +1,5 @@
+tests/checker/neg/world-row.prism:3: error[world-row]: the program emits `Fs.*`, which this World does not answer
+    emit Ui.* | Fs.*
+    ^^^^^^^^^^^^^^^^
+  fix: host the tags it cannot answer, or run under a World that answers them
+1 error

@@ -1,0 +1,9 @@
+# The fields' tests: declarations of cpp-regex-fields.
+emit Ui.*
+use App.*
+
+test fields_through_a_lambda, @Shown:
+    build
+        => expect Ui.Label(text="ab,cd 0 3 0")
+    click Ui.Button(..)
+        => expect Ui.Label(text="e,fg 0 2 1")

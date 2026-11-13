@@ -1,0 +1,6 @@
+# The tests of doc-c8-derive-via.
+emit Ui.*
+use App.*
+
+test delegated_name, @page:
+    build

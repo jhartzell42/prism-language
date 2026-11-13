@@ -1,0 +1,7 @@
+# The tests of sem-ch04-local-function-clauses-value.
+emit Ui.*
+use App.*
+
+test it_builds, @page:
+    build
+        => expect Ui.Label(text="silver gold none ")

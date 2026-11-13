@@ -1,0 +1,23 @@
+# An element applied as a plain value (Type System ch. 2, "Names and sigils": `Ui.Button(..)`
+# before anything binds it "is a plain value") is a description, live only where a statement
+# or a host places it. `!go <- @Element (Ui.Button(..))` is the element statement (Semantics
+# ch. 4, "Elements": a function application adds no segment to a path), its label following
+# a hold; a host's supplier answers the child's label with a new element (Semantics ch. 9).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@child: @unit
+@child:
+    Ui.Label($text=$"child")                                     # 0
+
+@main: @unit
+@main:
+    !inc <- Ui.Button($label=$"inc")                             # 0
+    $n <- 0 then $n + 1 on !inc
+    !go <- @Element (Ui.Button($label=$"go {$n}"))               # 1
+    $gone <- 0 then $gone + 1 on !go
+    Ui.Label($text=$"went {$gone}")                              # 2
+    ignore <- @HostDocument @child, \|p, e| match e:            # 3/[p]
+        Ui.Label(..): @Element (Ui.Label($text=$"replaced"))
+        otherwise: @Element e

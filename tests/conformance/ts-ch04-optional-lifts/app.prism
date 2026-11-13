@@ -1,0 +1,66 @@
+# Type System ch. 4, `?` and `~` at the plain layer: a plain operation given a `?T` where
+# it wants a `T` gives a `?` result, `nil` if any operand was `nil`; `~` lifts exactly as
+# `?` does, giving the leftmost `Error`. A field read, an application, an operator, an
+# index and a method call each lift; a lift inside a lift; and under a dynamic, `$` peeled
+# then `?` (`Len $~contents.text`'s shape). Type System ch. 2's own example reads a field
+# through the `?` of a map's index.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type P = record:
+    a: Nat
+    b: Text
+derive ^Eq, ^Show
+
+Twice: fn Nat -> Nat
+fn Twice n = n * 2
+
+# A field read through a `?` (the map's index).
+?A: fn (Text ==> P), Text -> ?Nat
+fn ?A ps, k = ps[k].a
+
+# The field read lifted, then the application over it.
+?TwiceA: fn (Text ==> P), Text -> ?Nat
+fn ?TwiceA ps, k = Twice ps[k].a
+
+# An operator over two optionals: `nil` if either is.
+?Sum: fn ?Nat, ?Nat -> ?Nat
+fn ?Sum ?x, ?y = ?x + ?y
+
+# An index of an optional map, a `??[Nat]` (the `?` is never lost), one layer taken off,
+# and a prelude function over the optional left.
+?Size: fn ?(Text ==> [Nat]), Text -> ?Nat
+fn ?Size ?m, k = Len (Or ?m[k], nil)
+
+# A method call (a trait's) through the `?`.
+?Shown: fn ?P -> ?Text
+fn ?Shown ?p = Show ?p
+
+# `~` lifts as `?` does, the leftmost `Error` winning.
+~Half: fn Nat -> ~Nat
+fn ~Half n = if n mod 2 == 0: ~ (Or (n / 2), 0) else: Error(kind=Prelude.NotANumber, message="{n} is odd")
+
+~Halves: fn Nat, Nat -> ~Nat
+fn ~Halves m, n = (~Half m) + (~Half n)
+
+~HalfB: fn ~P -> ~Text
+fn ~HalfB ~p = ~p.b
+
+Shown: fn ~Nat -> Text
+fn Shown (~ n) = "{n}"
+fn Shown (Error(message=m, ..)) = "error: {m}"
+
+# Type System ch. 2's example, as the book writes it, the signature named by the rule.
+?Key: fn Text -> ?Text
+fn ?Key line = match ?Find %/^(?<key>[a-z_]+)\s*=/, line:
+    ? m: m.named["key"].text
+    nil: nil
+
+# Under a dynamic: `$` peeled, then `?`.
+@Lookup: @unit
+@Lookup:
+    !tap <- Ui.Button($label=$"Next")
+    $n <- 0 then $n + 1 on !tap
+    let $?p = [[P(a=4, b="four"), P(a=7, b="seven")]][$n]
+    Ui.Label($text=$"{Or $?p.b, "none"} {Or (Twice $?p.a), 0}")

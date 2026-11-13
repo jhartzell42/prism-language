@@ -1,0 +1,7 @@
+# The tests of cpp-let-named-as-temporary.
+emit Ui.*
+use App.*
+
+test named, @main:
+    build
+        => expect Ui.Label(text="4 5 10")

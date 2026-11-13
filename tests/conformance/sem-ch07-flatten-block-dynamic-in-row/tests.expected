@@ -1,0 +1,43 @@
+# Derived by hand from ruling FV (`@Flatten` adopts, after the tick its outer fires, the inner the outer then holds, and reads it from the next tick, owed) as sem-ch07-flatten-in-for-row's transcript is: the click moves `$a` to 6 and `$b` to 22 and gives the hold `$b`; that tick still reads `$a`, the owed tick reads `$b`; a generation built later adopts at its build the inner the outer holds then (Semantics ch. 4, "`rebuild`"); never run.
+test a_row_flattens_its_blocks_dynamic
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1/["x"]/0: Ui.Label(text="x: 5")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1/["x"]/0: Ui.Label(text="x: 6")
+
+tick 2
+  changed:
+    1/["x"]/0: Ui.Label(text="x: 22")
+
+test a_generation_flattens_its_blocks_dynamic
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Button(label="next")
+    2/#0/0: Ui.Label(text="page 1: 5")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2/#0/0: Ui.Label(text="page 1: 6")
+
+tick 2
+  changed:
+    2/#0/0: Ui.Label(text="page 1: 22")
+
+tick 3
+  in:
+    1: click
+  added:
+    2/#1/0: Ui.Label(text="page 2: 22")
+  torn down:
+    2/#0/0: Ui.Label(text="page 1: 22")

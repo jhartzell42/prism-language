@@ -1,0 +1,20 @@
+# Derived by hand from Jimmy's ruling of 12 November (a hold, `{ e }`, keeps a dynamic or an event whole at a constructor's type variable; a pattern binds the event) and Semantics ch. 4 (`then` holds the event's last value).
+test bundles_follow_their_parts
+
+tick 0
+  added:
+    0: Ui.Button(label="home")
+    1: Ui.Button(label="away")
+    2: Ui.Label(text="0/0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="1/0")
+
+tick 2
+  in:
+    1: click
+  changed:
+    2: Ui.Label(text="2/10")

@@ -1,0 +1,14 @@
+# `Back`: declarations of sem-appB-text-back.prism.
+emit r
+use App.*
+
+check back:
+    At (Back sample) => 15
+    At (Back "") => 0
+    Before (Back sample) => "héllo→世界"
+    After (Back sample) => ""
+    ?LastChar sample => ? '界'
+    ?LastChar "é" => ? 'é'
+    ?LastChar "" => nil
+    ?Step (Back sample) => nil
+    (Back "") == (Front "") => True

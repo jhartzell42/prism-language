@@ -1,0 +1,18 @@
+# An element above a dynamic `let` it reads (Semantics ch. 4: a block is one binding
+# group, and the order of its lines decides positions and nothing else): the door's first
+# value is asked at the build with `$greet`'s value then, which reads `$count`'s initial
+# value, a hold below both; the click changes the count, so the door's name follows.
+# Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Door of Element ((Text, !Nat)):
+    $name: Text
+
+@page: @Text
+@page:
+    ((door, !knocks)) <- Pad.Door($name=$greet)              # 0
+    let $greet = "hi {$count}"
+    !bump <- Ui.Button($label=$"bump")                       # 1
+    $count <- 1 then $count + 1 on !bump
+    @ door

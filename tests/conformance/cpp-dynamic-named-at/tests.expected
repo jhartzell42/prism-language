@@ -1,0 +1,17 @@
+# Derived by hand from Semantics ch. 7's change law: `$at`, `$child` and `$join` follow `$n` in the tick of the click, and every row reads `$at`.
+test paths_and_dynamics_named_alike
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/[1]/0: Ui.Label(text="row 1 at 2")
+    1/[2]/0: Ui.Label(text="row 2 at 2")
+    2: Ui.Label(text="2/11")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1/[1]/0: Ui.Label(text="row 1 at 4")
+    1/[2]/0: Ui.Label(text="row 2 at 4")
+    2: Ui.Label(text="4/12")

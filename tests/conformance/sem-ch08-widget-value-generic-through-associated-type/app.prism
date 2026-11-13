@@ -1,0 +1,43 @@
+# A generic widget taken as a blueprint value in a generic function that reaches itself
+# through an associated type: `?Frame` at `a` asks `?Onward` at `Inner a`, which asks
+# `?Frame` at `Box b`. `impl ^Boxed (Box a)` gives `Inner (Box a) = Box Nat`, so the
+# page's `Box Nat` reaches `?Frame` at `Box (Box Nat)`, whose `Inner` is `Box Nat` again:
+# three sets of types and no more (ruling PG; Type System ch. 2: recursion at another type that reaches finitely
+# many types is legal; ch. 3: an associated type is normalized where its impl is known;
+# Semantics ch. 8: "a blueprint builds nothing until a block applies it").
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Named: fn a, Text -> @unit
+fn @Named x, label:
+    Ui.Label($text=$"{label}")
+
+trait ^Boxed a:
+    type Inner
+    Open: fn a -> Inner a
+
+type Box a = record:
+    held: a
+
+impl ^Boxed (Box a):
+    type Inner = Box Nat
+    fn Open box = Box(held=0)
+
+?Frame: unbounded fn a, Nat -> ?@unit where a: ^Boxed
+fn ?Frame x, more = match more -? 1:
+    ? less: ?Onward (Open x), less
+    nil: ?Pick True, (@Named x, "framed")
+
+?Onward: unbounded fn b, Nat -> ?@unit
+fn ?Onward y, more = ?Frame Box(held=y), more
+
+@Page: @unit
+@Page:
+    match ?Frame Box(held=7), 2:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")

@@ -1,0 +1,8 @@
+# Derived by hand: each qualified name resolves to the module its path names (Semantics ch. 2, "Qualified names and families"), and the arithmetic follows.
+check qualified_and_bare
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok

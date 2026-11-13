@@ -1,0 +1,23 @@
+# Derived by hand from Semantics ch. 4 ("Binding groups and cycles": the order of a group's lines decides positions and nothing else), ch. 7 as ruled (round 3 ST: a gathered dynamic moves at n+1, an owed tick; at the build it reads the rows built above it), ch. 9 (a place's first value is read in its birth tick; an event answer is the next tick's input, owed; round 3 DY), ch. 8 (`<-` builds the child and binds its plain result) and ruling TC (places are counted as they are built): the plain part is 7, so the line above the place builds the first clause's label at the child's place 0 and gives 1, the socket is the child's place 1 (the host answers it, so it is no place of the World's document) and the last label the child's place 2; as sem-ch09-host-late-plain-part-clause-widget-result from there, the first label's key 0.
+test a_late_plain_part_is_taken
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/[1]/0: Ui.Label(text="one")
+    2/[0]/0: Ui.Label(text="seven")
+    2/[2]/0: Ui.Label(text="7 wide 1 1: none")
+
+tick 1
+  in:
+    0: click
+  added:
+    1/[2]/0: Ui.Label(text="two")
+
+tick 2
+  changed:
+    2/[2]/0: Ui.Label(text="7 wide 1 1: hello")
+
+tick 3
+  changed:
+    2/[2]/0: Ui.Label(text="7 wide 1 2: hello")

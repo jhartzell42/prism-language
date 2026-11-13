@@ -1,0 +1,25 @@
+# An element value placed in a hosted scope (Type System ch. 2: an element applied is a plain
+# value until a statement or a host places it; Semantics ch. 9: a host in a hosted scope
+# re-emits into the enclosing host's document). The inner host's supplier answers the
+# child's label with a new element made from it; the outer host forwards every place of the
+# inner's, the new element among them, which is a place of the inner host's own.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@child: @unit
+@child:
+    !inc <- Ui.Button($label=$"inc")                             # 0
+    $n <- 0 then $n + 1 on !inc
+    Ui.Label($text=$"{$n}")                                      # 1
+
+@inner: @unit
+@inner:
+    ignore <- @HostDocument @child, \|p, e| match e:            # 0/[p]
+        Ui.Label($text=$t): @Element (Ui.Label($text=$"<{$t}>"))
+        otherwise: @Element e
+
+@page: @unit
+@page:
+    ignore <- @HostDocument @inner, \|q, e| @Element e          # 0/[q]

@@ -1,0 +1,23 @@
+# A record's constructor lifts over two dynamics at its type-parameter fields, as a
+# function does: `Pair $home, $away` is a `$(Pair Nat Nat)`, one record per tick (Jimmy's
+# ruling of 12 November, "every application lifts", which replaces Type System chapter 2's
+# "A type-parameter field takes its argument whole"). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Pair a b = record:
+    first: a
+    second: b
+
+Score: fn Pair Nat Nat -> Text
+fn Score pair = "{pair.first}:{pair.second}"
+
+@page: @unit
+@page:
+    !h <- Ui.Button($label=$"home")                              # 0
+    !a <- Ui.Button($label=$"away")                              # 1
+    $home <- 0 then $home + 1 on !h
+    $away <- 0 then $away + 1 on !a
+    let $score = Pair $home, $away
+    Ui.Label($text=Score $score)                                 # 2

@@ -1,0 +1,4 @@
+tests/checker/neg/regex-backreference.prism:2: error[regex]: a backreference: refused so that every match is linear in its text
+    let r = %/\1/
+              ^
+1 error
