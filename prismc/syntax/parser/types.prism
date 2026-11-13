@@ -226,11 +226,27 @@ fn ParseBounds p0 = update (([[]], p0)):
         let ((b, q)) = ParseBound &p
         &bounds <= Push &bounds, b
         &p <= q
-        if (AtComma &p) and (IsNameKind (KindAt &p, 1)) and (KindAt &p, 2) == KColon:
+        # after a comma a name begins the next bound, a variable (`b: ^Ord`) or a type
+        # (`State d: ^SerializableValue`); a trait continues the same bound's list
+        if (AtComma &p) and (BoundStartsAt &p, 1):
             &p <= Adv &p
         else:
             &going <= False
     &_ <= ((&bounds, &p))
+
+# Whether a bound begins `k` tokens on: names (and `_`, parentheses) up to a colon, as
+# `b:` or `State d:` or `Request d _:` begin one; anything else ends the `where` list.
+BoundStartsAt: fn Ps, Nat -> Bool
+fn BoundStartsAt p, k = (IsNameKind (KindAt p, k)) and (BoundHeadRunsTo p, k + 1, 8)
+
+BoundHeadRunsTo: fn Ps, Nat, Nat -> Bool
+fn BoundHeadRunsTo p, k, fuel = match fuel -? 1:
+    nil: False
+    ? left: match KindAt p, k:
+        KColon: True
+        KOpen "(", ignore: BoundHeadRunsTo p, k + 1, left
+        KClose "(": BoundHeadRunsTo p, k + 1, left
+        other: if IsNameKind other: BoundHeadRunsTo p, k + 1, left else: False
 
 AnyTraitType: unbounded fn Ps, Range -> ((Type, Ps))
 fn AnyTraitType p, start:

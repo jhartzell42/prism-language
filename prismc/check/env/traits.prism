@@ -230,7 +230,9 @@ fn TagVariablesPrint g, st = Fold (Keys g.tags), st, \|s, name|
             let prints = Fold tg.bounds, False, \|seen, ((bounded, cls))| seen or (bounded == variable and HasText (SuperClosure g, cls), "Prelude.Show")
             # a variable of a field alone is `field-variable` already (`ConvTag`)
             let inOutput = (SubstQ Inst(tys=(Insert {{}}, variable, TyErr), rows={{}}, cols={{}}), tg.out) != tg.out
-            if prints or not inOutput: s1
+            # a family's index is decided by the row the element is in (`Seat.* Count
+            # Raiser`), where the output prints at that index, not by the tag
+            if prints or not inOutput or HasText tg.famParams, variable: s1
             else: WithFile (ErrFix (WithFile s1, tg.file), "tag-variable", tg.span, "the type variable `{variable}` of the tag `{name}` has no `^Show` bound: every field and every output prints", "write `where {variable}: ^Show` on the tag's line"), s1.file
 
 # A tag's field prints (Semantics ch. 8's table, "tag fields: the outermost mark is the
