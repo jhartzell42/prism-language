@@ -1,0 +1,6 @@
+# Derived by hand: the alias's function answers a Nat and a Text, each at its own type
+test each_its_own
+
+tick 0
+  added:
+    0: Ui.Label(text="1 yes")

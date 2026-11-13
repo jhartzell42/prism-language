@@ -1,0 +1,18 @@
+# A type alias whose body is quantified, `type Echo = forall a. fn a -> a` (ruling FA,
+# library Documents' `Supplier`): a parameter of that type is applied at two types in one
+# body.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Echo = forall a. fn a -> a
+
+Same: fn a -> a
+fn Same x = x
+
+Both: fn Echo -> Text
+fn Both E = "{E 1} {E "yes"}"
+
+@page: @unit
+@page:
+    Ui.Label($text=$ (Both Same))                                        # 0

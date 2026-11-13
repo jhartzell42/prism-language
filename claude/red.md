@@ -22,14 +22,14 @@ Jimmy's questions of 13 November (one role per place; two row variables).
 | two rungs' defaults are `ambiguous` (SD) | neg/default-from-two-rungs | parse error (EI first) |
 | own declaration shadows `use X.*` (OS) | conformance/own-declaration-shadows-use | `collision` on `Kind` |
 | row parameter needs no kind (RR) | doc-seats-record-of-rows (checker and conformance); library `FileSeats`, tally, c6, c8 seats | "a record has no row of its own"; "`Ui.*` is a row, not a type" |
-| associated row default, `row Lower = unit` in a trait | library ^Document (tally, c6, c8) | "a trait declares an associated row ...; an impl chooses it" |
+| associated row default, `row Lower = unit` in a trait | conformance/ts-ch03-associated-row-default; library ^Document (tally, c6, c8) | "a trait declares an associated row ...; an impl chooses it" |
 | `type State = unit` default; `@Request`/`@Query` on the state (RS) | library ^Document/^StateDocument (tally, c6, c8) | `^StateDocument` has no method `@Request` |
-| `forall o.` in a type alias body | library `Supplier` | "`o` is no parameter of `Supplier`" |
+| `forall o.` in a type alias body | conformance/ts-ch06-forall-in-alias-body; library `Supplier` | "`o` is no parameter of `Supplier`" |
 | a supplier lambda's arms checked at the refined `o` | neg/doc-seat-family-arm-answers-other-role; library `SupplierFrom`, `@OnDisk`, `@Over` | arm results mismatch `o` |
-| binding-group cycle through a function value (book ch. 5: "the two bindings refer to each other, and that is legal") | library `@HostDocument` (every document test) | `prompt-cycle` `$guests`, `Supply` |
+| binding-group cycle through a function value (book ch. 5: "the two bindings refer to each other, and that is legal") | library `@HostDocument` (every document test); conformance/sem-ch05-binding-group-cycle-through-function-value checks clean on p11 (its lowering is untested), so the library's `prompt-cycle` likely comes from its `Supplier` error; rechecked once the library checks | `prompt-cycle` `$guests`, `Supply` |
 | Fixed narrowing at an associated kind (VO) | doc-sk-existential-seat-key; c6 `Stepping` | not-exhaustive; `SeatId ChessGame r` not narrowed to `Color` |
 | `ValueOf` on a variable (VO) | (to write with Q3's answer) | |
-| prelude `Utf8Bytes`, `~Utf8Text` in the runtime | library `@OnDisk` (tally's saved-game test, chess) | unknown name before 589eaa5e |
+| prelude `Utf8Bytes`, `~Utf8Text` in the runtime | conformance/sem-appb-utf8-bytes; library `@OnDisk` | unknown name (at 20004f18) |
 | Net and File worlds in the runtime | library `@Over`, `@Serve`, `@OnDisk`; chess (agent writing) | not reached |
 | existential lowering | existential-unbounded-index-list | not-lowered |
 | family associated types in lowering, a variant per instantiation | doc-c4-seat-family-indexed, doc-seat-family-every-role | not-lowered |

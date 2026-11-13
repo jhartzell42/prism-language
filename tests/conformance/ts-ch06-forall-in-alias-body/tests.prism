@@ -1,0 +1,6 @@
+# The tests of ts-ch06-forall-in-alias-body.
+emit Ui.*
+use App.*
+
+test each_its_own, @page:
+    build

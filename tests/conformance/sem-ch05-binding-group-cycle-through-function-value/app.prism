@@ -1,0 +1,28 @@
+# Two lines of a widget block that refer to each other through a function value (Part
+# IV ch. 5's `@HostDocument`: "The two bindings refer to each other, and that is legal: a
+# widget block is one binding group whose names are nodes before they have values"). The
+# first is given `Scale`, the function the second line gives, and applies it only when its
+# own button fires; the second, a widget function the block is given (as `@HostDocument`
+# is given its implementation), reads the first's dynamic.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@Asking: fn (fn Nat -> Nat) -> @((Text, $Nat)) emit Ui.*
+fn @Asking Scale:
+    !press <- Ui.Button($label=$"press")                                 # 0
+    $n <- 2 then Scale (2 on !press)
+    @ (("asked", $n))
+
+@Scaler: fn $Nat -> @(fn Nat -> Nat)
+fn @Scaler $base = @ \|x| x * 2
+
+@Hosting: fn (fn $Nat -> @(fn Nat -> Nat)) -> @unit emit Ui.*
+fn @Hosting Build:
+    ((said, $n)) <- @Asking Scale                                        # 0
+    Scale <- Build $n
+    Ui.Label($text=$"{said} {$n * 2}")                                   # 1
+
+@page: @unit
+@page:
+    @Hosting @Scaler

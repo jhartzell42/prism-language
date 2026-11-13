@@ -1,0 +1,6 @@
+# Derived by hand: the default row is unit, so the plain panel emits nothing and the page labels it
+test default_row
+
+tick 0
+  added:
+    0: Ui.Label(text="quiet 0")

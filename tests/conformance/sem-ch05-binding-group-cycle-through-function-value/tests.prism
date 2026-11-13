@@ -1,0 +1,6 @@
+# The tests of sem-ch05-binding-group-cycle-through-function-value.
+emit Ui.*
+use App.*
+
+test cycle, @page:
+    build

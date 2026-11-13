@@ -1,0 +1,18 @@
+# The prelude's `Utf8Bytes` and `~Utf8Text` (library Documents' file document, whose
+# bytes the World's `Fs` reads and writes as text): a text's UTF-8 bytes, read back; bytes
+# that are not UTF-8 are refused.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Back: fn [U8] -> Text
+fn Back bytes = match ~Utf8Text bytes:
+    ~ text: text
+    otherwise: "refused"
+
+Refused: fn [U8] -> Bool
+fn Refused bytes = (Back bytes) == "refused"
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Len (Utf8Bytes "aé")} {Back (Utf8Bytes "é")} {Refused [[255]]}")     # 0

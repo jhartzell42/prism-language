@@ -1,0 +1,7 @@
+# Derived by hand: the first line takes the function the second gives, which reads the first's result
+test cycle
+
+tick 0
+  added:
+    0: Ui.Button(label="press")
+    1: Ui.Label(text="asked 4")

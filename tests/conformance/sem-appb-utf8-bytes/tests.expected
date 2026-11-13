@@ -1,0 +1,6 @@
+# Derived by hand: é is two bytes of UTF-8; [[255]] is not UTF-8
+test round_trip
+
+tick 0
+  added:
+    0: Ui.Label(text="3 é true")
