@@ -77,6 +77,11 @@ type Env = record:
     scoped: [Text]
     # those whose kind the `forall` states, with the kind's choice
     scopedKinds: [((Text, Text))]
+    # the type a constructor's application is wanted at, where the application is an
+    # argument whose parameter's type is known: unified with the constructor's own type
+    # before its arguments are read, so a field's type variable knows its layer there
+    # (`hold-needed` at a constructor, ruling HD)
+    ?expect: Ty
 derive ^Eq, ^Show
 
 WithLocal: fn Env, Text, Scheme -> Env

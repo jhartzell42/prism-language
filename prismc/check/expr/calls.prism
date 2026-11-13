@@ -375,7 +375,9 @@ fn ApplyRuleOf env, st, fname, col, params, res, args, span, ctor:
         else:
             # a reference where an entry is wanted (a lens that takes one) is the place it
             # names
-            let ((t, s2)) = if (IsEntry s, (Or params[i], TyErr)) and IsRef a.value: InferPlace env, s, a.value else: InferArgument env, s, a.value
+            let envArg = update env:
+                &_.expect <= ? (Walk s, (Or params[i], TyErr))
+            let ((t, s2)) = if (IsEntry s, (Or params[i], TyErr)) and IsRef a.value: InferPlace env, s, a.value else: InferArgument envArg, s, a.value
             match (((Walk s2, (Or params[i], TyErr)), (Walk s2, t))):
                 (((TyFn pc, ignore, ignore), (TyFn ac, aps, ar))): (((Push acc, (TyFn pc, aps, ar)), (AddLeq s2, ac, pc, a.value.span, "arg", fname, "")))
                 otherwise: (((Push acc, t), s2))
@@ -628,7 +630,14 @@ fn PeelTimeOnly env, st, acc, fname, p, at, a:
 # `@` goes in whole at a type-parameter field (`ApplyRuleOf`).
 CtorApp: unbounded fn Env, St, CtorInfo, [Arg], Range, Range -> ((Ty, St))
 fn CtorApp env, st, c, args, span, cspan:
-    let ((self, st0, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), span, [[]]
+    let ((self, st0a, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), span, [[]]
+    # the type the application is wanted at, where it is the constructor's own type with
+    # no layer on top: its fields' variables take it before the arguments are read
+    let st0 = match env.?expect:
+        ? want: match (((Walk st0a, want), self)):
+            (((TyCon a, ignore), (TyCon b, ignore2))): if a == b: Unify st0a, want, self, span else: st0a
+            otherwise: st0a
+        nil: st0a
     let fieldTys = Each c.args, \|t| SubstQ inst, t
     let st1 = NamedTwice (NoteTy st0, cspan, (TyFn CBound, fieldTys, self)), args
     let named = Filter args, \|a| a.?name != nil
