@@ -1823,13 +1823,52 @@ fn IsTagApplication lx, e = match e.kind:
     EName ignore: HasKey lx.g.tags, (TagNameOf lx, e)
     otherwise: False
 
+# The clauses of the impl's widget method a trait's widget method reaches at a call: the
+# impl whose head names the type of the argument at the trait's parameter.
+?ImplWidgetClauses: unbounded fn Lx, Text, [Arg] -> ?[FnClause]
+fn ?ImplWidgetClauses lx, qk, args:
+    let ?tr = Fold (Values lx.g.traits), nil, \|?found, tr| if ?found != nil: ?found else: if HasText tr.methods, qk: ? tr else: nil
+    match ?tr:
+        nil: nil
+        ? tr:
+            let ps = match (Or lx.g.vals[qk], (Builtin qk, (Mono TyErr))).scheme.ty:
+                TyFn ignore, xs, ignore2: xs
+                otherwise: [[]]
+            let ?at = Fold (Range0 (Len ps)), nil, \|?found, i| if ?found != nil: ?found else: if (CoreOf (Or ps[i], TyErr)) == (TyQ tr.param): ? i else: nil
+            match ?at:
+                nil: nil
+                ? i:
+                    let argTy = match args[i]:
+                        ? a: CoreOf (TypeAt lx, a.value.span)
+                        nil: TyErr
+                    let ?im = Fold (Or lx.g.impls[tr.name], [[]]), nil, \|?found, im| if ?found != nil: ?found else: if SameHead im.head, argTy: ? im else: nil
+                    match ?im:
+                        nil: nil
+                        ? im: match Filter lx.g.defs, \|d| (IsMethodOf d, im) and d.name == (BareName qk):
+                            [[d]]: ? (MethodClauses d)
+                            otherwise: nil
+
+# A type under its sigils.
+CoreOf: fn Ty -> Ty
+fn CoreOf (TySig ignore, t) = CoreOf t
+fn CoreOf t = t
+
+# Whether two types have one head: a named type's name.
+SameHead: fn Ty, Ty -> Bool
+fn SameHead (TyCon a, ignore), (TyCon b, ignore2) = a == b
+fn SameHead ignore, ignore2 = False
+
 # A user widget inlined: its parameters bound to the arguments by layer (an event to the
 # caller's event, a dynamic to its reader, a plain value to a field), its block lowered
 # into the caller's node with its positions in the caller's sequence.
 InlineWidget: unbounded fn Wx, Env, Env, Text, ValInfo, [Arg], Expr -> ((Wx, Wres))
 fn InlineWidget wx, benv, menv, qk, v, args, e:
     let lx = wx.lx
-    let clauses = ClausesOf lx.g, qk
+    # a trait's widget method (`@Shown greeting`): the clauses of the impl its argument's
+    # type chooses, as the call's type was checked (Type System ch. 3)
+    let clauses = match ClausesOf lx.g, qk:
+        [[]]: Or (?ImplWidgetClauses lx, qk, args), [[]]
+        cs: cs
     let ?w = ?WidgetDeclOf lx.g, qk
     let ((params, ?body)) = match ?w:
         ? wd: (([[]], ? wd.body))
