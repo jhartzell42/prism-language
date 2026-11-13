@@ -2532,7 +2532,7 @@ fn MethodCall lx, env, v, args, span, cspan, t:
         let mname = Or lx.rsNames[v.qk], (Snake m)
         # a method whose type is only in its result is called at the type the call gives,
         # which the checker's impl note at the call says
-        if IsResultOnly lx, v.qk, tr.param: match Or (?SelfAt lx, span, cls), (?SelfAt lx, cspan, cls):
+        if IsResultOnly lx, v.qk, tr.param: match ?EitherSelf (?SelfAt lx, span, cls), (?SelfAt lx, cspan, cls):
             ? self: VlOwned (XCallSelf (RefIn lx, tr.home, (TraitName cls)), mname, self, (ArgsFor lx, env, v, args)), t
             nil: VlOwned (InternalBug "a call of `{m}` at a type the checker did not record"), t
         else:
@@ -3488,3 +3488,10 @@ fn PlainLet lx, env, s, p, x:
         let v = ValueOf lx, env, x
         let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "l{SpanStem s.span}"
         (([[(DoLet po.pa, (Own v))]], (BindAll env, po.binds)))
+
+# The first of two optional types that is there. (Not `Or`: at an optional, `Or` wraps the
+# first in one more `?` and keeps a `nil` it is given, which lost the callee's type and
+# turned five result-only calls into "a call at a type the checker did not record".)
+?EitherSelf: fn ?OutTy, ?OutTy -> ?OutTy
+fn ?EitherSelf (? first), ?second = ? first
+fn ?EitherSelf nil, ?second = ?second

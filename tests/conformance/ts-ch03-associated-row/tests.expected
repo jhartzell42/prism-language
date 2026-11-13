@@ -1,4 +1,4 @@
-# Derived by hand from Type System ch. 3: `@Shown` at `Greeting` emits `Lower Greeting`, the impl's `Ui.*`, so its label stands in the page as the page's first child's first child.
+# Derived by hand from Type System ch. 3: `@Shown` at `Greeting` emits `Lower Greeting`, the impl's `Ui.*`, so its label stands at the call's own place, 0, as any widget call's one element does.
 test lower_row_is_the_impls
 
 tick 0
