@@ -214,8 +214,11 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   Jimmy, of a rule for a trait's own role: "far too ad hoc. It makes Role special, and we
   don't want special." Rulings PK to VO below follow it.
 - **PK** Promoted constructors: a choice whose cases carry no payload is also a kind,
-  its cases types of that kind; a parameter declares its kind, `(r: Access)`, or has it
-  inferred; a choice with a payload is no kind. Jimmy: "good".
+  its cases types of that kind; a parameter that takes a case declares its kind, `(r:
+  Access)` or `(r: Role d)` (an associated type is a kind like any type), and a parameter
+  with no kind is a type, so a case there is `kind`; a choice with a payload is no kind.
+  Jimmy: "good"; and, 13 November, of whether the kind may be left to inference: "it must
+  declare its kind".
 - **AP** Associated types take parameters of any kind, given by equations on the
   parameters' constructors, exhaustive over a closed kind, abstract under a variable.
   Jimmy: "good".
@@ -229,7 +232,8 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   from the expected type, which makes every case polymorphic. Jimmy: "this is nicer
   really". Its replacement for the singleton, which this entry had lost: `Fixed r`, whose
   value is written with its type, `Fixed<<Writer>>`. Jimmy, 13 November: "we came up with
-  a replacement, Fixed r, with a value Fixed<<WhateverChoice>>".
+  a replacement, Fixed r, with a value Fixed<<WhateverChoice>>". A clause or arm that
+  matches `Fixed<<Raiser>>` knows `r` is `Raiser` in its body. Jimmy: "indeed!".
 - **IN** No injectivity for `State`: a game's state may belong to several documents (a
   file, the network). An ambiguous call names its type, `Step<<d>>`. Jimmy: "Chess app
   should allow saving games in a file and doing them over a network, actually".
