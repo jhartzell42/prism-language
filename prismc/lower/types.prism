@@ -112,6 +112,9 @@ fn OutTyOf lx, t = match t:
             ? b: OutQuantified b
             nil: InternalBugType "a type variable the checker left undecided (`t{n}`)"
     TyAny bounds: if IsShowOnly bounds: OutShowAny else: OutNamed (RefRuntime "prism_rtl::Packed"), [[]]
+    # a quantified type (Jimmy's ruling FA): its variables hidden, each a packed value
+    # (`prism_rtl::Packed`), so one Rust value serves every instance
+    TyForall vs, b: OutTyOf lx, (SubstQ Inst(tys=(Map (Each vs, \|v| ((v, (TyAny [[]]))))), rows={{}}, cols={{}}), b)
     TyExists ignore, ignore2, ignore3: OutRefused "an existential over type variables, `any r: ..` (Jimmy's ruling FA): its lowering is not written yet"
     TyElem ignore, ignore: OutLive (OutNamed elemRef, [[]])
     TyElemAny ignore: OutNamed elemRef, [[]]
@@ -166,6 +169,7 @@ fn HasTime t = match t:
     TyMap k, v: (HasTime k) or HasTime v
     TyAssoc ignore, ignore, x, ignore2: HasTime x
     TyExists ignore, b, ignore2: HasTime b
+    TyForall ignore, b: HasTime b
     otherwise: False
 
 # An event parameter taken as an event value: a type `Peel` leaves and `OutTyOf` spells

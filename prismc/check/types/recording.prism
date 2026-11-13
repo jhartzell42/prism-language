@@ -340,6 +340,7 @@ fn ResolveIn st, t = match t:
     TyElem rw, o: TyElem rw, (ResolveIn st, o)
     TyAssoc tr, n, a, indices: TyAssoc tr, n, (ResolveIn st, a), (Each indices, \|i| ResolveIn st, i)
     TyExists vs, b, bs: TyExists vs, (ResolveIn st, b), bs
+    TyForall vs, b: TyForall vs, (ResolveIn st, b)
     other: other
 
 # A binder's variable remembers where the binder stands, for `mark-stack`.
@@ -422,6 +423,7 @@ fn Zonk st, t = match NormAssoc st, (Walk st, t):
     TyElemAny rw: TyElemAny (WalkRow st, rw)
     TyAssoc tr, n, a, indices: TyAssoc tr, n, (Zonk st, a), (Each indices, \|i| Zonk st, i)
     TyExists vs, b, bs: TyExists vs, (Zonk st, b), bs
+    TyForall vs, b: TyForall vs, (Zonk st, b)
     w: w
 
 # The flexible type variables of a type.
@@ -441,4 +443,5 @@ fn FreeVarsInto st, acc, t = match Walk st, t:
     TyElem ignore, o: FreeVarsInto st, acc, o
     TyAssoc ignore, ignore, a, indices: Fold indices, (FreeVarsInto st, acc, a), \|acc2, i| FreeVarsInto st, acc2, i
     TyExists ignore, b, ignore2: FreeVarsInto st, acc, b
+    TyForall ignore, b: FreeVarsInto st, acc, b
     otherwise: acc

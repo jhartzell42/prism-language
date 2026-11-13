@@ -104,6 +104,9 @@ type Ty = choice:
     # `any r: t where r: ^C` (Type System ch. 3; Jimmy's ruling FA): its variables, by
     # canonical names (`ExistsVar`), the type over them, and their bounds
     TyExists [Text], Ty, [((Text, Text))]
+    # `forall o. fn Path, Element c o -> @o` inside a type (Jimmy's ruling FA, a type alias's
+    # body): its variables (as `TyQ`s in the body), each use a fresh instance
+    TyForall [Text], Ty
     # `_` at a family's index in a row: every case of the index's kind
     TyEvery
     TyErr
@@ -519,6 +522,9 @@ fn ShowTyIn st, t, nested = match t:
         if nested: "({inner})" else: inner
     TyRole r: BareName r
     TyAny ts: "any {Join (Each ts, \|x| "^{BareName x}"), " "}"
+    TyForall vs, b:
+        let inner = "forall {Join vs, " "}. {ShowTyIn st, b, False}"
+        if nested: "({inner})" else: inner
     TyExists vs, b, bs:
         let inner = "any {Join (Each vs, \|v| ShownVar v), " "}: {ShowTyIn st, b, False}{if (Len bs) == 0: "" else: " where {Join (Each bs, \|((v, tr))| "{ShownVar v}: ^{BareName tr}"), ", "}"}"
         if nested: "({inner})" else: inner

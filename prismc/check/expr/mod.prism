@@ -363,7 +363,14 @@ fn InferNameIn env, st, n, span:
             let st2 = match env.ids[local]:
                 ? id: NoteUse st, span, id, local
                 nil: st
-            InstantiateLocal st2, sc, span, local
+            let ((t, st3)) = InstantiateLocal st2, sc, span, local
+            # a local of a quantified type (`E: Echo`, `type Echo = forall a. fn a -> a`) is
+            # used at a fresh instance (Jimmy's ruling FA)
+            match Walk st3, t:
+                TyForall vs, b: Fold vs, ((b, st3)), \|((body, s)), v|
+                    let ((fresh, s2)) = FreshVar s, False, ""
+                    (((SubstQ Inst(tys={{v: fresh}}, rows={{}}, cols={{}}), body), s2))
+                otherwise: ((t, st3))
         nil: InferGlobal env, st, n, span
 
 # A local's scheme instantiated at a use; a generalized `let`'s use is noted with its

@@ -80,7 +80,12 @@ fn ConvType cx, st, t = match t.kind:
         nil: ((TyErr, (Err st, "unknown-name", tr.span, "no trait `^{Dotted tr.path}`")))
     # `forall a (r: Access). t` (Jimmy's ruling FA): a signature quantifies its variables
     # either way; `forall` names them, which scopes them over the body (`ForallVars`)
-    TForall ignore, ignore2, body: ConvType cx, st, body
+    # a `forall` inside a type, `type Supplier d = forall o. fn ...`, is a quantified type,
+    # each use a fresh instance (Jimmy's ruling FA); a signature's own `forall` is its
+    # scheme's (`SigType` takes it off)
+    TForall vs, ignore, body:
+        let ((b, st2)) = ConvType cx, st, body
+        (((TyForall (Each vs, \|v| v.name), b), st2))
     # `any r: t where ...`: the variables renamed to canonical names, so two spellings of one
     # existential are one type (`ExistsVar`)
     TExists vars, ignore, body, bounds:
@@ -421,6 +426,7 @@ fn SigScheme cx, st, t, bounds:
 SigType: unbounded fn Cx, St, Type, [Text] -> ((Ty, [Text], [((Text, Text))], St))
 fn SigType cx, st, t, written = match t.kind:
     TGroup x: SigType cx, st, x, written
+    TForall ignore, ignore2, body: SigType cx, st, body, written
     TFn color, ps, res:
         if (MentionsTime t) or not (TakesClosure t): BoundedSig cx, st, t
         else: ClosureSig cx, st, color, ps, res, written
@@ -614,7 +620,10 @@ fn IndexTypes t = match t.kind:
 
 # The lowercase type variables a type writes, in order of first appearance (Q-RW8).
 TypeVarsOfType: unbounded fn Type -> [Text]
-fn TypeVarsOfType t = TypeVarsInto [[]], t
+fn TypeVarsOfType t = match t.kind:
+    # a signature's own `forall` names its variables (Jimmy's ruling FA)
+    TForall ignore, ignore2, body: TypeVarsInto [[]], body
+    otherwise: TypeVarsInto [[]], t
 
 TypeVarsInto: unbounded fn [Text], Type -> [Text]
 fn TypeVarsInto acc, t = match t.kind:
@@ -633,8 +642,8 @@ fn TypeVarsInto acc, t = match t.kind:
     TFn ignore, ps, res: TypeVarsInto (Fold ps, acc, \|a, x| TypeVarsInto a, x), res
     TEmit ty, rowT: Fold (IndexTypes rowT), (TypeVarsInto acc, ty), \|a, x| TypeVarsInto a, x
     TNonEmpty x: TypeVarsInto acc, x
-    # a `forall`'s variables are the signature's own (Jimmy's ruling FA)
-    TForall ignore, ignore2, body: TypeVarsInto acc, body
+    # a `forall` inside a type binds its variables there (Jimmy's ruling FA)
+    TForall vs, ignore, body: Fold (TypeVarsInto [[]], body), acc, \|a, v| if Fold vs, False, \|seen, b| seen or b.name == v: a else: AddText a, v
     otherwise: acc
 
 # Where each lowercase type variable of a type is first written.

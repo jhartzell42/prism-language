@@ -158,6 +158,7 @@ IsWaitingAssoc: unbounded fn St, Ty -> Bool
 fn IsWaitingAssoc st, t = match t:
     TyAssoc ignore, ignore, a, indices: (IsFlexVar st, a) or Fold indices, False, \|b, i| b or IsFlexVar st, i
     TyExists ignore, b, ignore2: IsFlexVar st, b
+    TyForall ignore, b: IsFlexVar st, b
     otherwise: False
 
 Defer: fn St, Ty, Ty, Range -> St
@@ -230,7 +231,30 @@ fn UnifyHeads st, e, f, span:
             let by = Inst(tys=(Map (Each (Range0 (Len ys)), \|i| (((Or ys[i], ""), (TyQ (Or renamed[i], "")))))), rows={{}}, cols={{}})
             let bs2r = Each bs2, \|((v, tr))| (((AtPosition xs, v), tr))
             if (Len xs) == (Len ys) and bs1 == bs2r: UnifyIn st, b1, (SubstQ by, b2), span else: (("mismatch", st))
+        # two quantified types are one when their bodies are, variable by variable
+        (((TyForall xs, b1), (TyForall ys, b2))):
+            if (Len xs) != (Len ys): (("mismatch", st))
+            else:
+                let by = Inst(tys=(Map (Each (Range0 (Len ys)), \|i| (((Or ys[i], ""), (TyQ (Or xs[i], "")))))), rows={{}}, cols={{}})
+                UnifyIn st, b1, (SubstQ by, b2), span
+        # a quantified type against one that is not: the quantified one at fresh rigid
+        # variables (a value given where `forall o. ..` is wanted works at every `o`; one
+        # of that type used is used at one)
+        (((TyForall vs, b), other)):
+            let ((opened, st2)) = OpenForall st, vs, b
+            UnifyIn st2, opened, other, span
+        ((other, (TyForall vs, b))):
+            let ((opened, st2)) = OpenForall st, vs, b
+            UnifyIn st2, other, opened, span
         otherwise: (("mismatch", st))
+
+# A quantified type's body at fresh rigid variables.
+OpenForall: unbounded fn St, [Text], Ty -> ((Ty, St))
+fn OpenForall st, vs, b:
+    let by = Inst(tys=(Map (Each vs, \|v| ((v, (TyRigid "{v}#forall{st.next}"))))), rows={{}}, cols={{}})
+    let st2 = update st:
+        &_.next += 1
+    (((SubstQ by, b), st2))
 
 # Two existential variables at one position (`\u{0}x0\u{0}r`, `\u{0}x0\u{0}s`).
 AtPosition: fn [Text], Text -> Text
