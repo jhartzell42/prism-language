@@ -120,7 +120,7 @@ fn TagsOfKind env, kind = Filter (Values env.g.tags), \|tg| tg.kind == kind or (
 
 # The tags of a row: its families' element tags, less the tags an arm above took.
 TagsOfRow: fn Env, Rw -> [TagInfo]
-fn TagsOfRow env, w = Filter (Values env.g.tags), \|tg| tg.kind == "Element" and (HasText w.fams, tg.family) and not (HasText w.minus, tg.name)
+fn TagsOfRow env, w = Filter (Values env.g.tags), \|tg| tg.kind == "Element" and (HasText w.fams, tg.familyName) and not (HasText w.minus, tg.name)
 
 # A pattern as a `Pat`, against the type it matches.
 ToPat: unbounded fn Env, Pattern -> Pat
@@ -412,10 +412,15 @@ DischargeOne: unbounded fn G, St, Incl -> St
 fn DischargeOne g, st, inc:
     let sub = WalkRow st, inc.sub
     let sup = WalkRow st, inc.sup
-    let st1 = match sub.tail:
+    let st1a = match sub.tail:
         TlFlex n: CloseTail st, n
         otherwise: st
-    let sub2 = WalkRow st1, inc.sub
+    let sub2 = WalkRow st1a, inc.sub
+    let inFile = update st1a:
+        &_.file <= inc.file
+    let st1b = IndicesIncluded inFile, sub2, sup, inc.span
+    let st1 = update st1b:
+        &_.file <= st1a.file
     let left = Filter sub2.fams, \|f| not (HasText sup.fams, f) and (Len (TagsLeft g, f, sub2.minus)) > 0
     let tailBad = match ((sub2.tail, sup.tail)):
         ((TlRigid a, TlRigid b)): a != b
@@ -426,9 +431,22 @@ fn DischargeOne g, st, inc:
         let s0 = update st1:
             &_.file <= inc.file
         let tags = Fold left, [[]], \|acc, f| Append acc, (TagsLeft g, f, sub2.minus)
-        let s1 = if inc.forward: ErrFix s0, "forwarding", inc.span, "forwarding {Join tags, ", "} from a scope that emits {ShowRow sup}", "answer {if (Len tags) == 1: "it" else: "them"} above this arm, for example `{Or tags[0], ""}(..): @ never`" else: ErrFix s0, "row-outside", inc.span, "a child that emits `{ShowRow sub2}` in a scope that emits `{ShowRow sup}`", "widen the scope's `emit` row, or host the child with `@Host`"
+        let s1 = if inc.forward: ErrFix s0, "forwarding", inc.span, "forwarding {Join tags, ", "} from a scope that emits {ShowRow s0, sup}", "answer {if (Len tags) == 1: "it" else: "them"} above this arm, for example `{Or tags[0], ""}(..): @ never`" else: ErrFix s0, "row-outside", inc.span, "a child that emits `{ShowRow s0, sub2}` in a scope that emits `{ShowRow s0, sup}`", "widen the scope's `emit` row, or host the child with `@Host`"
         update s1:
             &_.file <= st1.file
+
+# A family both rows name: the child's indices within the scope's, where the scope's `_`
+# takes every case (Part III ch. 6; Jimmy's ruling AF).
+IndicesIncluded: unbounded fn St, Rw, Rw, Range -> St
+fn IndicesIncluded st, sub, sup, span = Fold (Keys sub.idx), st, \|s, f| match sup.idx[f]:
+    nil: s
+    ? ys: IndexIncluded s, f, (Or sub.idx[f], [[]]), ys, span
+
+IndexIncluded: unbounded fn St, Text, [Ty], [Ty], Range -> St
+fn IndexIncluded st, f, xs, ys, span = Fold (Range0 (Len xs)), st, \|s, i| match (((Or xs[i], TyErr), (Or ys[i], TyErr))):
+    ((ignore, TyEvery)): s
+    ((TyEvery, y)): ErrFix s, "row-outside", span, "a child that emits `{f}.*` at every case of an index in a scope that emits it at `{ShowTy s, y}`", "emit `{f}.*` at `_` in the scope too, or the child at `{ShowTy s, y}`"
+    ((x, y)): Unify s, x, y, span
 
 TagsLeft: fn G, Text, [Text] -> [Text]
 fn TagsLeft g, fam, minus = Filter (Or g.families[fam], [[]]), \|t| not (HasText minus, t) and (IsElementTag g, t)

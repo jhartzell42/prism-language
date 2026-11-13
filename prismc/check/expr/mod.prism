@@ -427,10 +427,9 @@ fn TagValue env, st, name, span = match env.g.tags[name]:
     nil: ((TyErr, (Err st, "unknown-name", span, "no tag `{name}`")))
     ? tg:
         if tg.kind == "Element":
-            let ((rw, st2)) = FreshRow st, [[tg.family]]
-            let erow = Rw(fams=[[tg.family]], minus=[[]], tail=rw.tail)
-            let ((out, st3)) = Instantiate st2, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span
-            (((TyElem erow, out), st3))
+            let ((rw, st2)) = FreshRow st, [[tg.familyName]]
+            let ((out, st3, inst)) = InstantiateWith st2, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span, [[]]
+            (((TyElem (TagRow tg, rw.tail, inst), out), st3))
         else: (((TyCon tg.kind, [[]]), st))
 
 # `Ui.Button.Output`, the output constructor of an element tag (Semantics rulings round 12,
@@ -441,10 +440,14 @@ OutputConstructor: unbounded fn Env, St, Text, Range -> ((Ty, St))
 fn OutputConstructor env, st, name, span = match env.g.tags[name]:
     nil: ((TyErr, (Err st, "unknown-name", span, "no tag `{name}`")))
     ? tg:
-        let ((rw, st2)) = FreshRow st, [[tg.family]]
-        let answered = Rw(fams=[[tg.family]], minus=[[]], tail=rw.tail)
-        let ((out, st3)) = Instantiate st2, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span
-        (((TyFn CBound, [[CarriedOutput out]], (OutputType answered)), st3))
+        let ((rw, st2)) = FreshRow st, [[tg.familyName]]
+        let ((out, st3, inst)) = InstantiateWith st2, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span, [[]]
+        (((TyFn CBound, [[CarriedOutput out]], (OutputType (TagRow tg, rw.tail, inst))), st3))
+
+# A tag's element row: its family, at the indices the tag's instantiation gives it
+# (`Seat.Request` with `d := Count`, `r := Raiser` is in `Seat.* Count Raiser`).
+TagRow: fn TagInfo, Tail, Inst -> Rw
+fn TagRow tg, tail, inst = Rw(fams=[[tg.familyName]], minus=[[]], tail=tail, idx=(if (Len tg.famParams) == 0: {{}} else: Insert {{}}, tg.familyName, (Each tg.famParams, \|p| Or inst.tys[p], TyErr)))
 
 InferBound: fn Env, St, Text, Range -> ((Ty, St))
 fn InferBound env, st, b, span = match env.locals[b]:

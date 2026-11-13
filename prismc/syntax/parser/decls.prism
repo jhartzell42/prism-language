@@ -145,6 +145,9 @@ fn DeclKindOf p, fragment, start = match Kind p:
     KKw "tag", ignore:
         let ((d, q)) = ParseTagDecl p
         ((DTag d, q))
+    KKw "family", ignore:
+        let ((d, q)) = ParseFamilyDecl p
+        ((DFamily d, q))
     KKw "derive", ignore:
         let ((traits, q)) = Commas (Adv p), ParseTraitRef
         ((DDerive traits, q))
@@ -298,6 +301,15 @@ fn IsAssocParam k = match k:
 IsPlainLower: fn TokKind -> Bool
 fn IsPlainLower (KName n) = n.case == CaseLower and n.sigils == ""
 fn IsPlainLower ignore = False
+
+# `family Name params (where bounds)?`.
+ParseFamilyDecl: unbounded fn Ps -> ((FamilyDecl, Ps))
+fn ParseFamilyDecl p0:
+    let start = Here p0
+    let ((name, p1)) = ParseQualName (Adv p0)
+    let ((params, kinds, p2)) = KindedParams p1, False
+    let ((bounds, p3)) = OptionalBounds p2
+    ((FamilyDecl(name=name, params=params, kinds=kinds, bounds=bounds, span=(To start, (Prev p3))), p3))
 
 # `type Name params (= body)?`.
 ParseTypeDecl: unbounded fn Ps -> ((TypeDecl, Ps))
@@ -482,6 +494,7 @@ fn Applies ty, params = match ty.kind:
     TArray elem, ignore: Applies elem, params
     TTuple ts: AnyApplies ts, params
     TRowUnion ts: AnyApplies ts, params
+    TFamily ignore, ts: AnyApplies ts, params
     TMap k, v: (Applies k, params) or (Applies v, params)
     TFn ignore, ps, result: (AnyApplies ps, params) or (Applies result, params)
     TEmit t, r: (Applies t, params) or (Applies r, params)

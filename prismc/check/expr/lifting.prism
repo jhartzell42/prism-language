@@ -106,7 +106,7 @@ fn Narrowed env, st, arm, name, t, taken:
     else: match Walk st, t:
         TyElem rw, o:
             let w = WalkRow st, rw
-            WithLocal env, name, (Mono (TyElem (Rw(fams=w.fams, minus=(UnionTexts w.minus, taken), tail=w.tail)), o))
+            WithLocal env, name, (Mono (TyElem (Rw(fams=w.fams, minus=(UnionTexts w.minus, taken), tail=w.tail, idx=w.idx)), o))
         otherwise: env
 
 # One arm: its pattern bound, its guard a `Bool`, its body's plain layer unified with the
@@ -131,7 +131,7 @@ fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
     let ?refinedOut = match ?rigidOut:
         ? o: match arm.?pattern:
             ? p: match ?TagOfPattern env, p:
-                ? tg: ? ((o, tg.out))
+                ? tg: ? ((o, (FamilyOut st1, tg, scrutTy, p)))
                 nil: nil
             nil: nil
         nil: nil

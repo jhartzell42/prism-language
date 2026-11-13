@@ -134,6 +134,19 @@ fn ParseAppType p:
                 &_ <= ((&args, &q))
             let ((args, q)) = r
             ((Type(kind=(TName name, args), span=(To start, (Prev q))), q))
+        # a family heading an application takes indices: `Seat.* Count Raiser` (ruling AF);
+        # an argument of a type's application is an atom, so `Element Pad.* o` stays two
+        TFamily q, [[]] if TypeAtomStartsHere p1:
+            let r = update (([[]], p1)):
+                let &args = [[]]
+                let &q2 = p1
+                while (TypeAtomStartsHere &q2) and not &q2.bad:
+                    let ((a, q3)) = ParseTypeAtom &q2
+                    &args <= Push &args, a
+                    &q2 <= q3
+                &_ <= ((&args, &q2))
+            let ((args, q4)) = r
+            ((Type(kind=(TFamily q, args), span=(To start, (Prev q4))), q4))
         otherwise: ((head, p1))
 
 TypeAtomStartsHere: fn Ps -> Bool
@@ -184,7 +197,7 @@ fn TypeAtomBody p, start = match Kind p:
         let p2 = if AtDot p1: Adv p1 else: ErrorHere p1, "expected `.` after `forall`'s variables"
         let ((body, p3)) = ParseType p2
         ((Type(kind=(TForall vars, kinds, body), span=(To start, (Prev p3))), p3))
-    KFamily path: ((Type(kind=(TFamily QualName(path=path, span=start)), span=start), (Adv p)))
+    KFamily path: ((Type(kind=(TFamily QualName(path=path, span=start), [[]]), span=start), (Adv p)))
     KAbsent: ((Type(kind=TAbsent, span=start), (OutOfScope (Adv p), start, "sparse tuples", "a sparse tuple type is out of this compiler")))
     KOpen "(", ignore:
         if AtDoubleOpen p, "(":

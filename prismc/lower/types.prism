@@ -125,6 +125,7 @@ fn OutTyOf lx, t = match t:
             nil: InternalBugType "the choice of the case `{r}`, which the checker did not declare"
         nil: InternalBugType "the case `{r}`, which the checker did not declare"
     TyErr: InternalBugType "a type the checker did not find"
+    TyEvery: InternalBugType "`_`, every case of a family's index, which is no type of a value"
 
 # A blueprint as a value, `@o` (a supplier's answer): prism_rtl's, over the program's
 # element and answer enums (pick HO).

@@ -110,7 +110,7 @@ fn HoldsLayer t = match t:
 # `children: $(Path ==> $Elem)`): then its `Elem` neither compares nor prints (doubt EQ). A
 # row's open tail stands for tags no one knows, judged by the ones it names (Claude's, ET).
 RowHoldsDynamics: fn G, Rw -> Bool
-fn RowHoldsDynamics g, w = Fold (Values g.tags), False, \|h, tg| h or (tg.kind == "Element" and (HasText w.fams, tg.family) and (not (HasText w.minus, tg.name)) and Fold tg.fields, False, \|f, ((ignore, ft))| f or HoldsLayer (Unlive ft))
+fn RowHoldsDynamics g, w = Fold (Values g.tags), False, \|h, tg| h or (tg.kind == "Element" and (HasText w.fams, tg.familyName) and (not (HasText w.minus, tg.name)) and Fold tg.fields, False, \|f, ((ignore, ft))| f or HoldsLayer (Unlive ft))
 
 # A tag field's type without its own live layer: `$T`'s `T`.
 Unlive: fn Ty -> Ty

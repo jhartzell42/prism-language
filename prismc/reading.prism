@@ -595,6 +595,7 @@ fn DeclRoleDiags src, parent, i, d:
 TagFamilies: fn Module -> [Text]
 fn TagFamilies m = Fold m.decls, [[]], \|acc, d| match d.kind:
     DTag t: Push acc, (Join (Take t.name.path, (Dec (Len t.name.path))), ".")
+    DFamily f: Push acc, (Dotted f.name.path)
     otherwise: acc
 
 AnyIn: fn [Text], [Text] -> Bool

@@ -643,8 +643,8 @@ fn TagApp env, st, name, args, span, cspan = match env.g.tags[name]:
         let st3 = if (Len missing) > 0 and not (Fold args, False, \|seen, a| seen or a.value.kind == ERest): Err st2, "mismatch", span, "`{name}` needs {Join (Each missing, \|((f, ignore))| "`{f}`"), ", "}" else: st2
         let fieldTys = Each tg.fields, \|((ignore, ft))| SubstQ inst, ft
         if element:
-            let ((rw, st4)) = FreshRow st3, [[tg.family]]
-            let et = TyElem (Rw(fams=[[tg.family]], minus=[[]], tail=rw.tail)), out
+            let ((rw, st4)) = FreshRow st3, [[tg.familyName]]
+            let et = TyElem (TagRow tg, rw.tail, inst), out
             let lifted = if layer == "": et else: TySig layer, et
             ((lifted, (NoteTy st4, cspan, (TyFn CBound, fieldTys, et))))
         else:

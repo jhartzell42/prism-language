@@ -82,12 +82,14 @@ derive ^Eq, ^Show
 
 type TagInfo = record:
     name: Text
-    family: Text
+    familyName: Text
     kind: Text
     out: Ty
     qs: [Text]
     rqs: [Text]
     bounds: [((Text, Text))]
+    # the family's indices, which the tag's own variables begin with (`d`, `r` of `Seat`)
+    famParams: [Text]
     fields: [((Text, Ty))]
     # Each field as its line writes it, marks and name (`$text`), and the line's place.
     fieldAt: [((Text, Range))]
@@ -170,6 +172,8 @@ type G = record:
     tags: (Text ==> TagInfo)
     families: (Text ==> [Text])
     famOwner: (Text ==> Text)
+    # a family's `family` line, where one declares its indices (Jimmy's ruling AF)
+    famDecls: (Text ==> FamilyDecl)
     vals: (Text ==> ValInfo)
     traits: (Text ==> TraitInfo)
     impls: (Text ==> [ImplInfo])
@@ -243,7 +247,7 @@ fn IsUpperText t = IsUpper (Head t)
 # The program's files, parsed: the environment, and the diagnostics of every declaration.
 BuildG: unbounded fn [Src], [Module] -> ((G, St))
 fn BuildG srcs, trees:
-    let g0 = G(mods={{}}, types={{}}, ctors={{}}, tags={{}}, families={{}}, famOwner={{}}, vals={{}}, traits={{}}, impls={{}}, bare={{}}, bareTypes={{}}, bareTraits={{}}, assocNames={{}}, srcs=srcs, defs=[[]], programRow=emptyRow, elemFams=[[]], ?rootModule=nil, appRoot=(AppRoot srcs, trees), fnAt={{}}, preludeFrom=(Len trees))
+    let g0 = G(mods={{}}, types={{}}, ctors={{}}, tags={{}}, families={{}}, famOwner={{}}, famDecls={{}}, vals={{}}, traits={{}}, impls={{}}, bare={{}}, bareTypes={{}}, bareTraits={{}}, assocNames={{}}, srcs=srcs, defs=[[]], programRow=emptyRow, elemFams=[[]], ?rootModule=nil, appRoot=(AppRoot srcs, trees), fnAt={{}}, preludeFrom=(Len trees))
     let st0 = NewSt 0
     let ((g1, st1)) = Fold (Range0 (Len trees)), ((g0, st0)), \|((g, st)), i| AddModule g, st, i, (Or trees[i], emptyModule)
     let g2 = AddBuiltins g1

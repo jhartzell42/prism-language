@@ -73,6 +73,9 @@ type Rw = record:
     fams: [Text]
     minus: [Text]
     tail: Tail
+    # a family's indices where the row names it applied (`Seat.* Chess Player`; Jimmy's
+    # ruling AF); `TyEvery` at an index is every case of its kind (`Seat.* Chess _`)
+    idx: (Text ==> [Ty])
 derive ^Eq, ^Show
 
 type Ty = choice:
@@ -98,6 +101,8 @@ type Ty = choice:
     # `any r: t where r: ^C` (Type System ch. 3; Jimmy's ruling FA): its variables, by
     # canonical names (`ExistsVar`), the type over them, and their bounds
     TyExists [Text], Ty, [((Text, Text))]
+    # `_` at a family's index in a row: every case of the index's kind
+    TyEvery
     TyErr
 derive ^Eq, ^Show
 
@@ -311,9 +316,9 @@ NewSt: fn Nat -> St
 fn NewSt file = St(next=0, tys={{}}, infos={{}}, rows={{}}, lacks={{}}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={{}}, cleqs=[[]], colQ={{}}, colUp={{}}, deferred=[[]], binderAt={{}}, rowNames={{}}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={{}}, sizeTys={{}}, unsignedFns=[[]], localNext=0, localIds={{}}, anyGivens=[[]], assocImpls=[[]], plainArms=[[]], faultQs=[[]], plainQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={{}}, packs=[[]], definition="", genericUses=[[]], caseQs=[[]])
 
 Closed: fn [Text] -> Rw
-fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed)
+fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed, idx={{}})
 
-let emptyRow = Rw(fams=[[]], minus=[[]], tail=TlClosed)
+let emptyRow = Rw(fams=[[]], minus=[[]], tail=TlClosed, idx={{}})
 
 # The primitive types by name.
 let tInt = TyCon "Int", [[]]
@@ -469,11 +474,12 @@ fn ShowTy st, t = ShowTyIn st, (Zonk st, t), False
 ShowTyIn: unbounded fn St, Ty, Bool -> Text
 fn ShowTyIn st, t, nested = match t:
     TyFlex n: "t{n}"
-    TyRigid n: n
+    TyRigid n: ShownRigid n
+    TyEvery: "_"
     TyQ n: n
     TyCon n, [[]]: BareName n
     TyCon "Prelude.NonEmpty", [[c]]: "{ShowTyIn st, c, True}+"
-    TyCon "Output", [[TyElemAny rw]]: if nested: "(Output {ShowRowIn rw, True})" else: "Output {ShowRowIn rw, True}"
+    TyCon "Output", [[TyElemAny rw]]: if nested: "(Output {ShowRowIn st, rw, True})" else: "Output {ShowRowIn st, rw, True}"
     TyCon n, args:
         let inner = "{BareName n}{Concat (Each args, \|a| " {ShowTyIn st, a, True}")}"
         if nested: "({inner})" else: inner
@@ -490,9 +496,9 @@ fn ShowTyIn st, t, nested = match t:
     TySig s, i: "{s}{ShowTyIn st, i, True}"
     TyAt i, rw: "@{ShowTyIn st, i, True}"
     TyElem rw, o:
-        let inner = "Element {ShowRowIn rw, True} {ShowTyIn st, o, True}"
+        let inner = "Element {ShowRowIn st, rw, True} {ShowTyIn st, o, True}"
         if nested: "({inner})" else: inner
-    TyElemAny rw: if nested: "(Elem {ShowRowIn rw, True})" else: "Elem {ShowRowIn rw, True}"
+    TyElemAny rw: if nested: "(Elem {ShowRowIn st, rw, True})" else: "Elem {ShowRowIn st, rw, True}"
     TyAssoc ignore, n, a, indices:
         let inner = "{n} {Join (Each (Append [[a]], indices), \|i| ShowTyIn st, i, True), " "}"
         if nested: "({inner})" else: inner
@@ -507,6 +513,10 @@ fn ShowTyIn st, t, nested = match t:
 ShownVar: fn Text -> Text
 fn ShownVar v = if HasPrefix v, "\u{0}": Between v, 1, (CountChars v) else: v
 
+# A rigid variable as written: one an arm learned (`ρ#40.1`) shows as `ρ`.
+ShownRigid: fn Text -> Text
+fn ShownRigid v = Or (SplitOn v, "#")[0], v
+
 ShowCol: fn Col -> Text
 fn ShowCol CBound = ""
 fn ShowCol CUnbound = "unbounded "
@@ -514,12 +524,14 @@ fn ShowCol (CRigid n) = "{n} "
 fn ShowCol (CQ n) = "{n} "
 fn ShowCol (CFlex ignore) = ""
 
-ShowRow: fn Rw -> Text
-fn ShowRow rw = ShowRowIn rw, False
+ShowRow: unbounded fn St, Rw -> Text
+fn ShowRow st, rw = ShowRowIn st, rw, False
 
-ShowRowIn: fn Rw, Bool -> Text
-fn ShowRowIn rw, nested:
-    let fams = Each rw.fams, \|f| "{f}.*"
+ShowRowIn: unbounded fn St, Rw, Bool -> Text
+fn ShowRowIn st, rw, nested:
+    let fams = Each rw.fams, \|f| match rw.idx[f]:
+        ? xs: "{f}.*{Concat (Each xs, \|x| " {ShowTyIn st, (Zonk st, x), True}")}"
+        nil: "{f}.*"
     let tail = match rw.tail:
         TlClosed: [[]]
         TlFlex n: [["r{n}"]]

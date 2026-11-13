@@ -147,7 +147,8 @@ type TypeKind = choice:
     TFn Color, [Type], Type
     TEmit Type, Type
     TRowUnion [Type]
-    TFamily QualName
+    # `Seat.* Count Raiser`: a family and the indices it is applied to (Jimmy's ruling AF)
+    TFamily QualName, [Type]
     TAny TraitRef
     # `forall a (r: Access). t` (Jimmy's ruling FA): the variables, the kinds some state,
     # the type they quantify

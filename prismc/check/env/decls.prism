@@ -643,15 +643,23 @@ fn AddDefaultClause d, qk, cls, f = match d.body:
 ConvTag: unbounded fn G, St, ModInfo, TagDecl, Range -> ((G, St))
 fn ConvTag g, st, info, t, span:
     let name = Dotted t.name.path
-    let family = Dotted (Take t.name.path, (Dec (Len t.name.path)))
+    let familyName = Dotted (Take t.name.path, (Dec (Len t.name.path)))
     let cx = CxOf g, info.name
     let ((kind, out, st2)) = TagKind g, cx, st, t.ofType
     let ((fields, st3)) = Fold t.fields, (([[]], st2)), \|((acc, s)), f|
         let ((ft, s2)) = ConvType cx, (SigilsOnName (SecondField s, acc, f), (Or g.srcs[info.file], (MkSrc "?", "")), f), f.ty
         let ((fieldRow, s3)) = if Contains f.sigils, "@": FieldRow cx, s2, f.ty else: ((cx.scope, s2))
         (((Push acc, ((f.name.name, (FieldSigils f.sigils, ft, fieldRow)))), s3))
-    let qs = Fold t.fields, (TypeVarsOfType t.ofType), \|acc, f| UnionTexts acc, (TypeVarsOfType f.ty)
-    let ((bs, st4a)) = ConvBounds cx, st3, t.bounds
+    # a family's indices are every tag's variables (`family Seat d r`; ruling AF)
+    let ?fd = g.famDecls[familyName]
+    let famParams = match ?fd:
+        ? fd: Each fd.params, \|p| p.name
+        nil: [[]]
+    let qs = Fold t.fields, (UnionTexts famParams, (TypeVarsOfType t.ofType)), \|acc, f| UnionTexts acc, (TypeVarsOfType f.ty)
+    let famBounds = match ?fd:
+        ? fd: fd.bounds
+        nil: [[]]
+    let ((bs, st4a)) = ConvBounds cx, st3, (Append famBounds, t.bounds)
     # `collision`: a tag is declared once; the first declaration stays the tag
     let st4b = if HasKey g.tags, name: Err st4a, "collision", span, "a second tag `{name}`" else: st4a
     # (a fault kind may declare fields: a fault holds typed values, ruling TF)
@@ -659,14 +667,14 @@ fn ConvTag g, st, info, t, span:
     # `field-variable`: a variable in a field appears in the tag's output (Type System
     # ch. 2, "A variable in a field must appear in the index"), which is what decides it
     # where the tag is matched
-    let indexed = TypeVarsOfType t.ofType
+    let indexed = UnionTexts famParams, (TypeVarsOfType t.ofType)
     let outText = match t.ofType.kind:
         TName ignore, [[o]]: SpanText (Or g.srcs[info.file], (MkSrc "?", "")), o.span
         otherwise: "unit"
     let st5 = Fold t.fields, st4, \|s, f| Fold (TypeVarPlaces [[]], f.ty), s, \|s2, ((v, at))|
         if HasText indexed, v: s2
         else: ErrFix s2, "field-variable", at, "the type variable `{v}` in the field `{f.name.name}` of `{name}` does not appear in the tag's output, `{outText}`", "put `{v}` in the output, or give the field a type without it"
-    let tg = TagInfo(name=name, family=family, kind=kind, out=out, qs=qs, rqs=(if info.rowVar == "": [[]] else: [[info.rowVar]]), bounds=bs, fields=fields, fieldAt=(Each t.fields, \|f| (("{f.sigils}{f.name.name}", f.span))), home=info.name, file=info.file, span=span)
+    let tg = TagInfo(name=name, familyName=familyName, kind=kind, out=out, qs=qs, rqs=(if info.rowVar == "": [[]] else: [[info.rowVar]]), bounds=bs, famParams=famParams, fields=fields, fieldAt=(Each t.fields, \|f| (("{f.sigils}{f.name.name}", f.span))), home=info.name, file=info.file, span=span)
     let upd = update g:
         if not (HasKey &_.tags, name):
             &_.tags <= Insert &_.tags, name, tg

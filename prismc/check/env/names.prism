@@ -54,20 +54,32 @@ fn CollectDecl g, st, info, d, ?lastType = match d.kind:
                 &_.types <= Insert &_.types, tn, (AddDerives (Or g.types[tn], dummyTyInfo), (Each trs, \|tr| Dotted tr.path))
             ((upd, st, ?lastType))
         nil: ((g, (Err st, "mismatch", d.span, "a `derive` line follows a type declaration"), nil))
+    DFamily f:
+        let familyName = Dotted f.name.path
+        let owner = Or g.famOwner[familyName], info.name
+        let st2 = if HasKey g.famDecls, familyName: Err st, "collision", d.span, "a second `family {familyName}`"
+            else: if owner != info.name: Err st, "collision", d.span, "the family `{familyName}` has tags in {if owner == "": "the root" else: "`{owner}`"}; a family is declared in its tags' module"
+            else: st
+        let g2 = update g:
+            if not (HasKey &_.famDecls, familyName):
+                &_.famDecls <= Insert &_.famDecls, familyName, f
+            &_.families <= Insert &_.families, familyName, (Or g.families[familyName], [[]])
+            &_.famOwner <= Insert &_.famOwner, familyName, owner
+        ((g2, st2, nil))
     DTag t:
         let name = Dotted t.name.path
-        let family = Dotted (Take t.name.path, (Dec (Len t.name.path)))
-        let tags = Or g.families[family], [[]]
-        let owner = Or g.famOwner[family], info.name
-        let st2 = if owner != info.name: Err st, "collision", d.span, "the family `{family}` is declared in {if owner == "": "the root" else: "`{owner}`"}; every tag of a family is declared in its family's module" else: st
+        let familyName = Dotted (Take t.name.path, (Dec (Len t.name.path)))
+        let tags = Or g.families[familyName], [[]]
+        let owner = Or g.famOwner[familyName], info.name
+        let st2 = if owner != info.name: Err st, "collision", d.span, "the family `{familyName}` is declared in {if owner == "": "the root" else: "`{owner}`"}; every tag of a family is declared in its family's module" else: st
         let isElem = match t.ofType.kind:
             TName n, ignore: (Dotted n.path) == "Element"
             otherwise: False
         let g2 = update g:
-            &_.families <= Insert &_.families, family, (Push tags, name)
-            &_.famOwner <= Insert &_.famOwner, family, owner
+            &_.families <= Insert &_.families, familyName, (Push tags, name)
+            &_.famOwner <= Insert &_.famOwner, familyName, owner
             if isElem:
-                &_.elemFams <= AddText &_.elemFams, family
+                &_.elemFams <= AddText &_.elemFams, familyName
         ((g2, st2, nil))
     DTrait t:
         let name = QualKey info.name, (Dotted t.name.path)
@@ -218,7 +230,7 @@ fn ModuleRow g, st, info = match info.tree.?emitRow:
         let tail = match vars[0]:
             ? v: TlQ v
             nil: TlClosed
-        ((Rw(fams=(SortTexts fams), minus=[[]], tail=tail), (Or vars[0], ""), s3))
+        ((Rw(fams=(SortTexts fams), minus=[[]], tail=tail, idx={{}}), (Or vars[0], ""), s3))
 
 RowTermOf: fn G, St, ModInfo, RowTerm, [Text], [Text] -> (([Text], [Text], St))
 fn RowTermOf g, s, info, term, fs, vs = match term:

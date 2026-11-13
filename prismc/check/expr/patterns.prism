@@ -371,7 +371,9 @@ fn BindTagPattern env, st, p, name, fields, rest, t = match env.g.tags[name]:
     ? tg:
         let st1 = if tg.kind == "Element": TagInRow env, st, tg, t, p.span else: Unify st, t, (TyCon tg.kind, [[]]), p.span
         let snapshot = IsSnapshot st1, t
-        let ((ignore, st2, inst)) = InstantiateWith st1, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=[[]], ty=tg.out)), p.span, [[]]
+        let ((ignore, st2a, inst)) = InstantiateWith st1, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=[[]], ty=tg.out)), p.span, [[]]
+        # the family's indices are the row's, `_` a type the arm learns (ruling AF)
+        let st2 = Fold (PatternIndices st2a, tg, t, p.span), st2a, \|s, ((q, x))| Unify s, (Or inst.tys[q], TyErr), x, p.span
         let names = Each tg.fields, \|((f, ignore))| f
         Fold (Range0 (Len fields)), ((env, st2)), \|((en, s)), i|
             let fp = Or fields[i], FieldPat(marks="", ?name=nil, pattern=Pattern(kind=PIgnore, span=p.span), span=p.span)
@@ -398,20 +400,49 @@ fn IsSnapshot st, t = match Walk st, t:
     TyElemAny ignore: True
     otherwise: False
 
+# The indices a tag pattern learns from its scrutinee's row (Part III ch. 6, "Families
+# indexed by document and role"): each index the row applies the tag's family to, and for
+# `_`, every case, a fresh type of the arm's own, `ρ`.
+PatternIndices: unbounded fn St, TagInfo, Ty, Range -> [((Text, Ty))]
+fn PatternIndices st, tg, t, span = match Walk st, t:
+    TyElem rw, ignore: IndicesIn st, tg, rw, span
+    TyElemAny rw: IndicesIn st, tg, rw, span
+    otherwise: [[]]
+
+IndicesIn: unbounded fn St, TagInfo, Rw, Range -> [((Text, Ty))]
+fn IndicesIn st, tg, rw, span = match (WalkRow st, rw).idx[tg.familyName]:
+    ? xs: Each (Range0 (Len tg.famParams)), \|i| (((Or tg.famParams[i], ""), (LearnedIndex (Or xs[i], TyErr), span, i)))
+    nil: [[]]
+
+LearnedIndex: fn Ty, Range, Nat -> Ty
+fn LearnedIndex TyEvery, span, i = TyRigid "ρ#{span.start}.{i}"
+fn LearnedIndex x, ignore, ignore2 = x
+
+# A tag's output where an arm matches it: the family's indices the row gives
+# (`$?(Answer Count ρ)` for `Seat.Query` under `Seat.* Count _`).
+FamilyOut: unbounded fn St, TagInfo, Ty, Pattern -> Ty
+fn FamilyOut st, tg, t, p = SubstQ Inst(tys=(Fold (PatternIndices st, tg, t, (TagPatternSpan p)), {{}}, \|m, ((q, x))| Insert m, q, x), rows={{}}, cols={{}}), tg.out
+
+# The span of the tag pattern itself, under its parentheses.
+TagPatternSpan: fn Pattern -> Range
+fn TagPatternSpan p = match p.kind:
+    PGroup q: TagPatternSpan q
+    otherwise: p.span
+
 TagInRow: unbounded fn Env, St, TagInfo, Ty, Range -> St
 fn TagInRow env, st, tg, t, span = match Walk st, t:
     TyElem rw, ignore:
         let w = WalkRow st, rw
-        if HasText w.fams, tg.family: st
-        else: ErrFix st, "row-not-here", span, "`{tg.name}` is not in this row, `{ShowRow w}`", "add `{tg.family}.*` to the row, or answer the tag elsewhere"
+        if HasText w.fams, tg.familyName: st
+        else: ErrFix st, "row-not-here", span, "`{tg.name}` is not in this row, `{ShowRow st, w}`", "add `{tg.familyName}.*` to the row, or answer the tag elsewhere"
     TyElemAny rw:
         let w = WalkRow st, rw
-        if HasText w.fams, tg.family: st
-        else: ErrFix st, "row-not-here", span, "`{tg.name}` is not in this row, `{ShowRow w}`", "add `{tg.family}.*` to the row, or answer the tag elsewhere"
+        if HasText w.fams, tg.familyName: st
+        else: ErrFix st, "row-not-here", span, "`{tg.name}` is not in this row, `{ShowRow st, w}`", "add `{tg.familyName}.*` to the row, or answer the tag elsewhere"
     TyFlex ignore:
-        let ((rw, st2)) = FreshRow st, [[tg.family]]
+        let ((rw, st2)) = FreshRow st, [[tg.familyName]]
         let ((o, st3)) = FreshVar st2, False, ""
-        Unify st3, t, (TyElem (Rw(fams=[[tg.family]], minus=[[]], tail=rw.tail)), o), span
+        Unify st3, t, (TyElem (Rw(fams=[[tg.familyName]], minus=[[]], tail=rw.tail, idx={{}})), o), span
     TyErr: st
     other: Err st, "mismatch", span, "a tag pattern matches an element; this is `{ShowTy st, other}`"
 
@@ -420,5 +451,5 @@ fn BindFamily env, st, fam, t, span = match Walk st, t:
     TyElem rw, ignore:
         let w = WalkRow st, rw
         if HasText w.fams, fam: ((env, st))
-        else: ((env, (ErrFix st, "row-not-here", span, "`{fam}.*` is not in this row, `{ShowRow w}`", "add `{fam}.*` to the row")))
+        else: ((env, (ErrFix st, "row-not-here", span, "`{fam}.*` is not in this row, `{ShowRow st, w}`", "add `{fam}.*` to the row")))
     otherwise: ((env, st))

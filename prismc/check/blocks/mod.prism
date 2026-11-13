@@ -192,14 +192,14 @@ RowAsType: fn Row -> Type
 fn RowAsType rowDecl = Type(kind=(TRowUnion (Each rowDecl.terms, RowTermType)), span=rowDecl.span)
 
 RowTermType: fn RowTerm -> Type
-fn RowTermType (RFamily q) = Type(kind=(TFamily q), span=q.span)
+fn RowTermType (RFamily q) = Type(kind=(TFamily q, [[]]), span=q.span)
 fn RowTermType (RVar v) = Type(kind=(TName (SName(sigils="", path=[[v.name]], span=v.span)), [[]]), span=v.span)
 fn RowTermType (RType t) = t
 
 # A block's row naming the module's variable reads the variable as the body sees it.
 ResolveScopeRow: fn Env, Rw -> Rw
 fn ResolveScopeRow env, rw = match rw.tail:
-    TlQ v: Rw(fams=rw.fams, minus=rw.minus, tail=env.scope.tail)
+    TlQ v: Rw(fams=rw.fams, minus=rw.minus, tail=env.scope.tail, idx=rw.idx)
     otherwise: rw
 
 # Every name a statement binds gets its marked type before any line is read.

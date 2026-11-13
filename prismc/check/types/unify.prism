@@ -45,7 +45,7 @@ fn ShowTyQ st, t = match Zonk st, t:
         let inner = ShowTyQ st, e
         if (HasPrefix inner, "["): "[ {inner} ]" else: "[{inner}]"
     TyMap k, v: "({ShowTyQ st, k} ==> {ShowTyQ st, v})"
-    TyAt i, rw: "@{ShowTyQ st, i} emit {ShowRowIn rw, True}"
+    TyAt i, rw: "@{ShowTyQ st, i} emit {ShowRowIn st, rw, True}"
     other: ShowTy st, other
 
 # Unify, and say whether it worked, with no diagnostic for a plain mismatch: for the
@@ -227,6 +227,19 @@ fn UnifyHeads st, e, f, span:
         (((TyExists xs, b1, bs1), (TyExists ys, b2, bs2))): if xs == ys and bs1 == bs2: UnifyIn st, b1, b2, span else: (("mismatch", st))
         otherwise: (("mismatch", st))
 
+# A family's indices in two rows: `_` (`TyEvery`) stands for every case and meets any.
+UnifyIndices: unbounded fn St, [Ty], [Ty], Range -> ((Text, St))
+fn UnifyIndices st, xs, ys, span = if (Len xs) != (Len ys): (("mismatch", st)) else: Fold (Range0 (Len xs)), (("", st)), \|((v, s)), i| if v != "": ((v, s)) else: match (((Or xs[i], TyErr), (Or ys[i], TyErr))):
+    ((TyEvery, ignore)): ((v, s))
+    ((ignore, TyEvery)): ((v, s))
+    ((x, y)): UnifyIn s, x, y, span
+
+# The indices of these families.
+IdxOf: fn (Text ==> [Ty]), [Text] -> (Text ==> [Ty])
+fn IdxOf idx, fams = Fold fams, {{}}, \|acc, f| match idx[f]:
+    ? xs: Insert acc, f, xs
+    nil: acc
+
 UnifyAll: unbounded fn St, [Ty], [Ty], Range -> ((Text, St))
 fn UnifyAll st, xs, ys, span = Fold (Range0 (Len xs)), (("", st)), \|((v, s)), i| if v != "": ((v, s)) else: UnifyIn s, (Or xs[i], TyErr), (Or ys[i], TyErr), span
 
@@ -290,6 +303,15 @@ UnifyRow: unbounded fn St, Rw, Rw, Range -> ((Text, St))
 fn UnifyRow st, a0, b0, span:
     let a = WalkRow st, a0
     let b = WalkRow st, b0
+    # a family both rows name has one instance: its indices unify, `_` with any
+    let ((vi, sti)) = Fold (Keys a.idx), (("", st)), \|((v, s)), f| if v != "": ((v, s)) else: match b.idx[f]:
+        ? ys: UnifyIndices s, (Or a.idx[f], [[]]), ys, span
+        nil: ((v, s))
+    if vi != "": ((vi, sti)) else: UnifyRowRest sti, a, b, span
+
+# The rows' families and tails (Rémy's algorithm), their indices already unified.
+UnifyRowRest: unbounded fn St, Rw, Rw, Range -> ((Text, St))
+fn UnifyRowRest st, a, b, span:
     let onlyA = MinusTexts a.fams, b.fams
     let onlyB = MinusTexts b.fams, a.fams
     match ((a.tail, b.tail)):
@@ -300,10 +322,10 @@ fn UnifyRow st, a0, b0, span:
             else:
                 let lacking = UnionTexts (UnionTexts (LacksOf st, x), (LacksOf st, y)), (UnionTexts a.fams, b.fams)
                 let ((fresh, st2)) = FreshRow st, lacking
-                let ((v1, st3)) = BindRow st2, x, (Rw(fams=onlyB, minus=[[]], tail=fresh.tail)), span
-                if v1 != "": ((v1, st3)) else: BindRow st3, y, (Rw(fams=onlyA, minus=[[]], tail=fresh.tail)), span
-        ((TlFlex x, other)): if (Len onlyA) == 0: BindRow st, x, (Rw(fams=onlyB, minus=b.minus, tail=other)), span else: (("mismatch", st))
-        ((other, TlFlex y)): if (Len onlyB) == 0: BindRow st, y, (Rw(fams=onlyA, minus=a.minus, tail=other)), span else: (("mismatch", st))
+                let ((v1, st3)) = BindRow st2, x, (Rw(fams=onlyB, minus=[[]], tail=fresh.tail, idx=(IdxOf b.idx, onlyB))), span
+                if v1 != "": ((v1, st3)) else: BindRow st3, y, (Rw(fams=onlyA, minus=[[]], tail=fresh.tail, idx=(IdxOf a.idx, onlyA))), span
+        ((TlFlex x, other)): if (Len onlyA) == 0: BindRow st, x, (Rw(fams=onlyB, minus=b.minus, tail=other, idx=(IdxOf b.idx, onlyB))), span else: (("mismatch", st))
+        ((other, TlFlex y)): if (Len onlyB) == 0: BindRow st, y, (Rw(fams=onlyA, minus=a.minus, tail=other, idx=(IdxOf a.idx, onlyA))), span else: (("mismatch", st))
         ((TlRigid x, TlRigid y)): if x == y and (Len onlyA) == 0 and (Len onlyB) == 0: (("", st)) else: (("mismatch", st))
         ((TlQ x, TlQ y)): if x == y and (Len onlyA) == 0 and (Len onlyB) == 0: (("", st)) else: (("mismatch", st))
         otherwise: (("mismatch", st))

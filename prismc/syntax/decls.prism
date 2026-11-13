@@ -19,6 +19,7 @@ type DeclKind = choice:
     DWidget WidgetDecl
     DType TypeDecl
     DTag TagDecl
+    DFamily FamilyDecl
     DDerive [TraitRef]
     DTrait TraitDecl
     DImpl ImplDecl
@@ -101,6 +102,17 @@ type Case = record:
     name: SName
     args: [Type]
     ?indexed: Type
+    span: Range
+derive ^Eq, ^Show
+
+# `family Seat d (r: Role) where d: ^Document` (Part III ch. 6, "Families indexed by
+# document and role"; Jimmy's ruling AF): a tag family's parameters, which every tag of
+# the family may use, and their bounds.
+type FamilyDecl = record:
+    name: QualName
+    params: [Ident]
+    kinds: [((Text, Type))]
+    bounds: [Bound]
     span: Range
 derive ^Eq, ^Show
 

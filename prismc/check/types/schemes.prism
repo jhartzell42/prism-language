@@ -48,12 +48,26 @@ fn SubstQ m, t = match t:
     TyExists vs, b, bs: TyExists vs, (SubstQ m, b), bs
     other: other
 
-SubstRowQ: fn Inst, Rw -> Rw
+SubstRowQ: unbounded fn Inst, Rw -> Rw
 fn SubstRowQ m, rw = match rw.tail:
     TlQ n: match m.rows[n]:
-        ? t: Rw(fams=rw.fams, minus=rw.minus, tail=t)
-        nil: rw
-    otherwise: rw
+        ? t: Rw(fams=rw.fams, minus=rw.minus, tail=t, idx=(SubstIdx m, rw.idx))
+        nil: SubstIdxRow m, rw
+    otherwise: SubstIdxRow m, rw
+
+# A row's indices with a substitution applied.
+SubstIdxRow: unbounded fn Inst, Rw -> Rw
+fn SubstIdxRow m, rw = update rw:
+    &_.idx <= SubstIdx m, rw.idx
+
+SubstIdx: unbounded fn Inst, (Text ==> [Ty]) -> (Text ==> [Ty])
+fn SubstIdx m, idx = Map (Each (Keys idx), \|f| SubstIdxEntry m, idx, f)
+
+SubstIdxEntry: unbounded fn Inst, (Text ==> [Ty]), Text -> ((Text, [Ty]))
+fn SubstIdxEntry m, idx, f = ((f, (SubstAllQ m, (Or idx[f], [[]]))))
+
+SubstAllQ: unbounded fn Inst, [Ty] -> [Ty]
+fn SubstAllQ m, ts = Each ts, \|t| SubstQ m, t
 
 SubstCol: fn Inst, Col -> Col
 fn SubstCol m, (CQ n) = Or m.cols[n], (CQ n)

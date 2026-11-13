@@ -513,8 +513,8 @@ fn CheckClause env, st, c, params, res:
 # `fn @Supply p, (Pad.Num(..)) = @ 7` under `fn Path, Element Pad.* o -> @o` answers a `Nat`.
 RefinedResult: unbounded fn Env, St, [Pattern], [Ty], Ty -> Ty
 fn RefinedResult env, st, patterns, params, res = Fold (Range0 (Len params)), res, \|r, i| match ((patterns[i], (Walk st, (Or params[i], TyErr)))):
-    (((? p), (TyElem ignore, o))): match (((Walk st, o), (?TagOfPattern env, p))):
-        (((TyRigid name), (? tg))): SubstRigid name, tg.out, r
+    (((? p), (TyElem rw, o))): match (((Walk st, o), (?TagOfPattern env, p))):
+        (((TyRigid name), (? tg))): SubstRigid name, (FamilyOut st, tg, (TyElem rw, o), p), r
         otherwise: r
     otherwise: r
 

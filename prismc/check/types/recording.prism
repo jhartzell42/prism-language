@@ -354,7 +354,7 @@ fn FreshRow st, lacking:
     let st2 = update st:
         &_.next += 1
         &_.lacks <= Insert &_.lacks, n, lacking
-    ((Rw(fams=[[]], minus=[[]], tail=TlFlex n), st2))
+    ((Rw(fams=[[]], minus=[[]], tail=TlFlex n, idx={{}}), st2))
 
 AddDiag: fn St, CDiag -> St
 fn AddDiag st, d = update st:
@@ -377,12 +377,18 @@ fn Walk st, (TyFlex n) = match st.tys[n]:
 fn Walk st, t = t
 
 # A row with its bound tails followed: the families of every tail on the way are added.
+# Two rows' indices as one: a family indexed in either keeps its indices.
+MergeIdx: fn (Text ==> [Ty]), (Text ==> [Ty]) -> (Text ==> [Ty])
+fn MergeIdx a, b = Fold (Keys b), a, \|acc, f| match acc[f]:
+    ? ignore: acc
+    nil: Insert acc, f, (Or b[f], [[]])
+
 WalkRow: unbounded fn St, Rw -> Rw
 fn WalkRow st, r = match r.tail:
     TlFlex n: match st.rows[n]:
         ? r2:
             let w = WalkRow st, r2
-            Rw(fams=(SortTexts (UnionTexts r.fams, w.fams)), minus=(UnionTexts r.minus, w.minus), tail=w.tail)
+            Rw(fams=(SortTexts (UnionTexts r.fams, w.fams)), minus=(UnionTexts r.minus, w.minus), tail=w.tail, idx=(MergeIdx r.idx, w.idx))
         nil: r
     otherwise: r
 

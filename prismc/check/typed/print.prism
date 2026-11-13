@@ -43,6 +43,7 @@ fn TySexp t = match t:
     TyAny trs: "(any{Concat (Each trs, \|x| " ^{x}")})"
     TyExists vs, b, bs: "(exists ({Join vs, " "}) {TySexp b}{Concat (Each bs, \|((v, tr))| " ({v} ^{tr})")})"
     TyErr: "unknown"
+    TyEvery: "_"
 
 ColSexp: fn Col -> Text
 fn ColSexp CBound = "bounded"

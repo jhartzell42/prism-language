@@ -503,7 +503,7 @@ DefEnv: fn G, Def -> Env
 fn DefEnv g, d:
     let info = Or g.mods[d.home], dummyMod
     let scope = match info.emitRw.tail:
-        TlQ v: Rw(fams=info.emitRw.fams, minus=[[]], tail=(TlRigid v))
+        TlQ v: Rw(fams=info.emitRw.fams, minus=[[]], tail=(TlRigid v), idx=info.emitRw.idx)
         otherwise: info.emitRw
     Env(g=g, home=d.home, file=d.file, src=(Or g.srcs[d.file], (MkSrc "", "")), locals={{}}, scope=scope, givens=[[]], mark="", inUpdate=False, defName=d.name, refine={{}}, pending=[[]], ids={{}}, scoped=(Or g.vals[d.qk], dummyVal).scoped, scopedKinds=(Or g.vals[d.qk], dummyVal).scopedKinds)
 
@@ -620,7 +620,7 @@ RootRow: unbounded fn G, St, [Text] -> ((Text, St))
 fn RootRow g, st, world = match g.mods[""]:
     nil: (("", st))
     ? info:
-        let shown = ShowRow info.emitRw
+        let shown = ShowRow st, info.emitRw
         if (Len world) == 0: ((shown, st))
         else:
             let missing = Filter info.emitRw.fams, \|f| not (HasText world, f)
