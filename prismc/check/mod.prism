@@ -69,7 +69,12 @@ derive ^Eq, ^Show
 # are the front end's own diagnostics at the program's files (a tree's, claude/
 # modules-style-pass.md), sorted in with the checker's.
 CheckProgram: unbounded fn [Src], [Module], [Text], Nat, Bool, Bool, [CDiag] -> Report
-fn CheckProgram srcs, trees, world, shown, recording, unused, pre:
+fn CheckProgram srcs, trees0, world, shown, recording, unused, pre:
+    # A program that is its own `module Prelude` replaces the prelude, and the standard
+    # library's other modules, written over the prelude it replaced, are not read with it
+    # (neg/prelude-module).
+    let ownPrelude = Fold (Take trees0, shown), False, \|seen, t| seen or (ModName t) == "Prelude"
+    let trees = if ownPrelude: Take trees0, shown else: trees0
     let ((g0a, stb)) = BuildG srcs, trees
     # The prelude is the files from `shown` on (pick RN): a program's own `module Prelude`
     # is one of its files, and means nothing special.
