@@ -151,7 +151,7 @@ type ImplInfo = record:
     # the associated rows it chooses
     rows: [Text]
     # the trait an impl of `derive ... via` came through, as written
-    ?via: Text
+    ?through: Text
 derive ^Eq, ^Show
 
 # A definition whose body is checked.

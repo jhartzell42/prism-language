@@ -604,8 +604,8 @@ fn ViasOf m = Fold m.decls, [[]], \|acc, d| match d.kind:
 DerivedVia: fn Module, [ViaDecl] -> Module
 fn DerivedVia m, vias = update m:
     &_.decls <= Each &_.decls, \|d| match d.kind:
-        DDeriveVia dv: match (Filter vias, \|v| (Last v.traitRef.path) == (Last dv.traitRef.path) and (Last v.via.path) == (Last dv.via.path))[0]:
-            ? v: Decl(kind=(DImpl ImplDecl(traitRef=dv.traitRef, ty=dv.ty, bounds=[[]], items=v.items, span=dv.span, ?via=(? dv.via))), span=d.span)
+        DDeriveVia dv: match (Filter vias, \|v| (Last v.traitRef.path) == (Last dv.traitRef.path) and (Last v.through.path) == (Last dv.through.path))[0]:
+            ? v: Decl(kind=(DImpl ImplDecl(traitRef=dv.traitRef, ty=dv.ty, bounds=[[]], items=v.items, span=dv.span, ?through=(? dv.through))), span=d.span)
             nil: d
         otherwise: d
 

@@ -156,20 +156,20 @@ type ImplDecl = record:
     items: [TraitItem]
     span: Range
     # the trait an impl written by `derive ... via` came through
-    ?via: TraitRef
+    ?through: TraitRef
 derive ^Eq, ^Show
 
 type ViaDecl = record:
     traitRef: TraitRef
     param: Ident
-    via: TraitRef
+    through: TraitRef
     items: [TraitItem]
     span: Range
 derive ^Eq, ^Show
 
 type DeriveViaDecl = record:
     traitRef: TraitRef
-    via: TraitRef
+    through: TraitRef
     ty: Type
     span: Range
 derive ^Eq, ^Show

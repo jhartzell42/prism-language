@@ -30,7 +30,7 @@ DerivedImpls: fn G -> G
 fn DerivedImpls g = Fold (Keys g.types), g, \|gg, k| match gg.types[k]:
     ? ti: Fold ti.derives, gg, \|g2, tr| match ?ResolveTrait g2, ti.home, (SplitOn tr, "."):
         ? cls:
-            let im = ImplInfo(rows=[[]], ?via=nil, cls=cls, head=(TyCon ti.name, (Each ti.params, \|p| TyQ p)), qs=ti.params, bounds=(Each ti.params, \|p| ((p, cls))), home=ti.home, file=ti.file, span=ti.span, derived=True, assocs=[[]], indexed=[[]], methods=[[]])
+            let im = ImplInfo(rows=[[]], ?through=nil, cls=cls, head=(TyCon ti.name, (Each ti.params, \|p| TyQ p)), qs=ti.params, bounds=(Each ti.params, \|p| ((p, cls))), home=ti.home, file=ti.file, span=ti.span, derived=True, assocs=[[]], indexed=[[]], methods=[[]])
             update g2:
                 &_.impls <= Insert &_.impls, cls, (Push (Or &_.impls[cls], [[]]), im)
         nil: g2
@@ -124,7 +124,7 @@ fn Coherence g, st = Fold (Keys g.impls), st, \|s, cls|
     let s2 = Fold impls, s, \|s1, i| CheckOrphan g, s1, i
     Fold (Range0 (Len impls)), s2, \|s3, a| Fold (Range0 (Len impls)), s3, \|s4, b| if a < b: CheckPair g, s4, (Or impls[a], dummyImpl), (Or impls[b], dummyImpl) else: s4
 
-let dummyImpl = ImplInfo(rows=[[]], ?via=nil, cls="", head=TyErr, qs=[[]], bounds=[[]], home="", file=0, span=Range(start=0, end=0, origin=InSource), derived=False, assocs=[[]], indexed=[[]], methods=[[]])
+let dummyImpl = ImplInfo(rows=[[]], ?through=nil, cls="", head=TyErr, qs=[[]], bounds=[[]], home="", file=0, span=Range(start=0, end=0, origin=InSource), derived=False, assocs=[[]], indexed=[[]], methods=[[]])
 
 CheckPair: unbounded fn G, St, ImplInfo, ImplInfo -> St
 fn CheckPair g, st, a, b:

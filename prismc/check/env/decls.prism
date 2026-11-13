@@ -299,7 +299,7 @@ fn ConvertDecl g, st, info, d = match d.kind:
         if Fold g.defs, False, \|seen, other| seen or (IsWidgetOf other, qk): ((upd, (Err st, "collision", d.span, "`{SNameKey w.name}` is defined twice")))
         else: ((upd, st))
     DTag t: ConvTag g, st, info, t, d.span
-    DDeriveVia v: ((g, (Err st, "unknown-name", d.span, "no `derive ^{Dotted v.traitRef.path} a via ^{Dotted v.via.path} a:` writes this derivation")))
+    DDeriveVia v: ((g, (Err st, "unknown-name", d.span, "no `derive ^{Dotted v.traitRef.path} a via ^{Dotted v.through.path} a:` writes this derivation")))
     DTrait t: ConvTrait g, st, info, t, d.span
     DImpl i: ConvImpl g, st, info, i, d.span
     DCheck c:
@@ -519,7 +519,7 @@ fn ImplDefaults g, st = Fold (Values g.traits), ((g, st)), \|((g1, st1)), tr|
         ((g2, st2))
 
 ?ViaShown: fn ImplDecl -> ?Text
-fn ?ViaShown i = match i.?via:
+fn ?ViaShown i = match i.?through:
     ? v: ? (Dotted v.path)
     nil: nil
 
@@ -540,8 +540,8 @@ fn ImplsComplete g, st0:
             let s3 = Fold tr.methods, s2, \|s, method|
                 let defined = Fold im.methods, False, \|seen, m| seen or (BareName method) == m or (DropPrefix method, "{tr.home}.") == m
                 if defined or HasText tr.defaults, method: s
-                else: match im.?via:
-                    ? via: Err s, "mismatch", im.span, "`derive ^{shown} via ^{via}` gives no method `{BareName method}` of `^{shown}`"
+                else: match im.?through:
+                    ? through: Err s, "mismatch", im.span, "`derive ^{shown} via ^{through}` gives no method `{BareName method}` of `^{shown}`"
                     nil: ErrFix s, "impl-lacks", im.span, "this impl of `^{shown}` lacks `{BareName method}`, which has no default body", "define it under the impl, `fn {BareName method} ...`"
             let s3r = Fold tr.assocRows, s3, \|s, rowName| if HasText im.rows, rowName: s else: ErrFix s, "impl-lacks", im.span, "this impl of `^{shown}` lacks `row {rowName}`", "choose it under the impl, `row {rowName} = ...`"
             let s4 = Fold tr.assocs, s3r, \|s, assoc|
@@ -847,7 +847,7 @@ fn ConvImpl g, st, info, i, span = match ?ResolveTrait g, info.name, i.traitRef.
         let names = Fold i.items, [[]], \|acc, it| match it:
             TiFn f: AddText acc, (DefNameText f.name)
             otherwise: acc
-        let im = ImplInfo(rows=(Each rowImpls, \|r| r.name), ?via=(?ViaShown i), cls=cls, head=head, qs=(TypeVarsOfType i.ty), bounds=bs, home=info.name, file=info.file, span=span, derived=False, assocs=assocs, indexed=indexed, methods=names)
+        let im = ImplInfo(rows=(Each rowImpls, \|r| r.name), ?through=(?ViaShown i), cls=cls, head=head, qs=(TypeVarsOfType i.ty), bounds=bs, home=info.name, file=info.file, span=span, derived=False, assocs=assocs, indexed=indexed, methods=names)
         let st5 = update st4r:
             &_.assocRowImpls <= Append &_.assocRowImpls, rowImpls
             &_.assocImpls <= Append (Append &_.assocImpls, (Each assocs, \|((an, at))| AssocImpl(cls=cls, name=an, head=head, qs=im.qs, indices=[[]], value=at))), indexed
