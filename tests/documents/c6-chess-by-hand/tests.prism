@@ -1,0 +1,41 @@
+# Hand-derived: every expected line in this test is derived by hand from the books, not from a run.
+# The tests of c6-chess-by-hand. Expected lines derived by hand from Part IV ch. 3 (a move
+# fires at n and is applied at n; its response reaches the player at n+1, and both
+# players' queries show it at n+1), ch. 5 ("A hand-written implementation"; `@Seated`: a
+# seat that stays is never rebuilt) and the tally's tests, whose timing these follow: a
+# click is tick n, the `compute` after it tick n+1.
+emit Ui.* | Seat.*
+use App.*
+
+# The fool's mate, on two boards: each response a tick after its move; a spectator who
+# joins and leaves between the moves leaves White's board unrebuilt, its count of
+# responses kept.
+test fools_mate, @hotSeat:
+    build
+    compute
+    compute
+        => expect Ui.Label(text="White's board: White to move; moves: none; nothing yet; 0 answered")
+        => expect Ui.Label(text="Black's board: White to move; moves: none; nothing yet; 0 answered")
+    click Ui.Button(label="White plays f2f3")
+    compute
+        => expect Ui.Label(text="White's board: Black to move; moves: f2f3; accepted; 1 answered")
+        => expect Ui.Label(text="Black's board: Black to move; moves: f2f3; nothing yet; 0 answered")
+    click Ui.Button(label="Black plays e7e5")
+    compute
+        => expect Ui.Label(text="White's board: White to move; moves: f2f3 e7e5; accepted; 1 answered")
+        => expect Ui.Label(text="Black's board: White to move; moves: f2f3 e7e5; accepted; 1 answered")
+    click Ui.Button(label="ada joins")
+    compute
+    compute
+        => expect Ui.Label(text="ada watches: White to move; moves: f2f3 e7e5")
+        => expect Ui.Label(text="White's board: White to move; moves: f2f3 e7e5; accepted; 1 answered")
+    click Ui.Button(label="ada leaves")
+    compute
+        => expect Ui.Label(text="White's board: White to move; moves: f2f3 e7e5; accepted; 1 answered")
+    click Ui.Button(label="White plays g2g4")
+    compute
+        => expect Ui.Label(text="White's board: Black to move; moves: f2f3 e7e5 g2g4; accepted; 2 answered")
+    click Ui.Button(label="Black plays d8h4")
+    compute
+        => expect Ui.Label(text="White's board: checkmate, Black wins; moves: f2f3 e7e5 g2g4 d8h4; accepted; 2 answered")
+        => expect Ui.Label(text="Black's board: checkmate, Black wins; moves: f2f3 e7e5 g2g4 d8h4; accepted; 2 answered")
