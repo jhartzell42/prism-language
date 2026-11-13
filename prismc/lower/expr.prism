@@ -1603,10 +1603,17 @@ fn StartRef lx, qk:
     RefIn lx, owner, "start_{Or lx.rsNames[qk], (Snake (BareName qk))}"
 
 # `f a, b`.
+# Whether a call gives its function fewer arguments than the function's type takes.
+IsPartial: unbounded fn Lx, Expr, [Arg] -> Bool
+fn IsPartial lx, callee, args = match Peel (TypeAt lx, callee.span):
+    TyFn ignore, ps, ignore2: (Len args) > 0 and (Len args) < (Len ps)
+    otherwise: False
+
 Application: unbounded fn Lx, Env, Expr, [Arg], Range -> Vl
 fn Application lx, env, callee, args, span:
     let t = OutTyOf lx, (Peel (TypeAt lx, span))
-    match callee.kind:
+    if IsPartial lx, callee, args: VlOwned (Refusal "`{SrcText lx, lx.file, span}`, a function applied to fewer arguments than it takes (partial application, Jimmy's ruling AF): its lowering is not written yet"), t
+    else: match callee.kind:
         EName n:
             let nkey = NameKeyAt lx, env, n, callee.span
             let ?local = if (Len n.path) == 1: env.names[nkey] else: nil
