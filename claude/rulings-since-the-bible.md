@@ -294,3 +294,17 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   of the game's `impl ^Document`).
 - **VA** A choice's alternatives are its variants, never its cases, in prose, diagnostics
   and names (`assoc-variant-missing`). Jimmy, 13 November: "We say variant not case".
+- **PT** Promptness is part of a function's type. A widget function or widget lambda
+  whose result event can fire in the tick an argument's event fires says `prompt`:
+  `@Pass: prompt fn !Nat -> @!Nat`, `prompt \|!e| @ !e`; by default it is not, and a body
+  that is prompt under a type that is not is `prompt-unmarked`. A prompt function is no
+  `fn` that is not prompt, as an unbounded one is no bounded one. A plain function is
+  always prompt and says nothing. Checking is local: a call's promptness is read from the
+  callee's type, never its body, so the summary walk over callee bodies goes. Jimmy,
+  13 November: "you need an annotation to promptly output an input event through a widget
+  function, the whole function becomes "prompt" and by default promptness isn't allowed
+  and it's part of the type for a function or lambda. This goes for named functions too,
+  because you've been violating a design principle that type checking is LOCAL"; "no
+  plain functions are always assumed to be prompt". Claude's calls: the spelling,
+  `prompt` just before `fn` and after `unbounded` (`unbounded prompt fn`), and before a
+  lambda's bars.
