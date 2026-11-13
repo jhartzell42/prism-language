@@ -47,12 +47,64 @@ Bounded: fn [Text], Text -> Text
 fn Bounded [[]], ignore = ""
 fn Bounded ps, tr = "<{Join (Each ps, \|p| "{p}: {tr}"), ", "}>"
 
+# A type's parameters bounded by a trait for one of its impls, with their projection
+# bounds (`AssocBounds`).
+BoundedT: fn TyDef, Text -> Text
+fn BoundedT t, tr = match t.params:
+    [[]]: ""
+    ps: "<{Join (Each ps, \|p| "{p}: {tr}{ProjectionBounds t, p}"), ", "}>"
+
 # A type's parameters bounded for an impl that reads its maps: each by the trait, and one
 # a map's key holds (`TyDef.keyed`) by `Ord` too, as the runtime's impls for `Map` want.
 BoundedKeyed: fn TyDef, Text -> Text
 fn BoundedKeyed t, tr = match t.params:
     [[]]: ""
-    ps: "<{Join (Each ps, \|p| if (Fold t.keyed, False, \|found, q| found or q == p): "{p}: {tr} + ::std::cmp::Ord" else: "{p}: {tr}"), ", "}>"
+    ps: "<{Join (Each ps, \|p| if (Fold t.keyed, False, \|found, q| found or q == p): "{p}: {tr} + ::std::cmp::Ord{ProjectionBounds t, p}" else: "{p}: {tr}{ProjectionBounds t, p}"), ", "}>"
+
+# The bounds a type's parameter needs because a field names an associated type at it
+# (`last: Reading g` is `<G as Gauge_t>::Reading`, which Rust takes only under `G:
+# Gauge_t`): the trait of each such projection, by parameter. The type's declaration and
+# each of its impls state them.
+AssocBounds: fn TyDef -> (Text ==> [Text])
+fn AssocBounds t = Fold t.cases, {{}}, \|acc, c| Fold c.fields, acc, \|acc2, ((ignore, ft))| Fold (Projections ft), acc2, \|acc3, ((p, tr))| match acc3[p]:
+    ? trs: if Fold trs, False, \|seen, x| seen or x == tr: acc3 else: Insert acc3, p, (Push trs, tr)
+    nil: Insert acc3, p, [[tr]]
+
+Projections: fn OutTy -> [((Text, Text))]
+fn Projections t = match t:
+    OutAssoc tr, ignore, (OutGen p): [[((p, tr))]]
+    OutAssoc ignore, ignore, x: Projections x
+    OutNamed ignore, ts: Fold ts, [[]], \|acc, x| Append acc, (Projections x)
+    OutTuple ts: Fold ts, [[]], \|acc, x| Append acc, (Projections x)
+    OutFn ts, r: Fold ts, (Projections r), \|acc, x| Append acc, (Projections x)
+    OutJobFn a, r: Append (Projections a), (Projections r)
+    OutMap k, v: Append (Projections k), (Projections v)
+    OutOpt x: Projections x
+    OutRes x: Projections x
+    OutArray x: Projections x
+    OutJob x: Projections x
+    OutEvent x: Projections x
+    OutDyn x: Projections x
+    OutRc x: Projections x
+    OutHold x: Projections x
+    OutCell x: Projections x
+    OutLive x: Projections x
+    otherwise: [[]]
+
+# ` + Tr + Tr2` for a parameter's projections, or nothing.
+ProjectionBounds: fn TyDef, Text -> Text
+fn ProjectionBounds t, p = match (AssocBounds t)[p]:
+    ? trs: Concat (Each trs, \|tr| " + {tr}")
+    nil: ""
+
+# The declaration's head with its projection bounds, `Logged<G: Gauge_t>`.
+DeclHead: fn TyDef -> Text
+fn DeclHead t = if (Len t.params) == 0: t.name else: "{t.name}<{Join (Each t.params, \|p| DeclParam t, p), ", "}>"
+
+DeclParam: fn TyDef, Text -> Text
+fn DeclParam t, p = match (AssocBounds t)[p]:
+    ? trs: "{p}: {Join trs, " + "}"
+    nil: p
 
 RustItem: unbounded fn Item -> Text
 fn RustItem it = match it:
@@ -177,15 +229,16 @@ fn TypeDecl t:
     let derives = if generic: "::std::clone::Clone" else: Join (Filter [["::std::clone::Clone", (if t.eq or t.ord: "::std::cmp::PartialEq, ::std::cmp::Eq" else: ""), (if t.ord: "::std::cmp::PartialOrd, ::std::cmp::Ord" else: "")]], \|d| d != ""), ", "
     let head = "{t.name}{GenericNames t.params}"
     let doc = SourceDoc "`{t.prism}`:", t.doc
+    let declHead = DeclHead t
     let decl = match t.shape:
         ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
-            Struct doc, derives, head, (Join (Each c.fields, \|((f, ft))| "pub {f}: {Type ft},"), "\n")
-        ShapeUnit: TupleStruct doc, derives, head, ""
+            Struct doc, derives, declHead, (Join (Each c.fields, \|((f, ft))| "pub {f}: {Type ft},"), "\n")
+        ShapeUnit: TupleStruct doc, derives, declHead, ""
         ShapeNewtype:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
-            TupleStruct doc, derives, head, "({Join (Each c.fields, \|((ignore, ft))| "pub {Type ft}"), ", "})"
-        otherwise: Enum doc, derives, head, (Join (Each t.cases, \|c| EnumCase c), "\n")
+            TupleStruct doc, derives, declHead, "({Join (Each c.fields, \|((ignore, ft))| "pub {Type ft}"), ", "})"
+        otherwise: Enum doc, derives, declHead, (Join (Each t.cases, \|c| EnumCase c), "\n")
     let show = if t.show == ShownDerived: "\n{ShowImpl t, head}" else: ""
     let pod = if t.pod: "\n{ToPodImpl t, head}\n{FromPodImpl t, head}" else: ""
     # a level field may hold it with a dynamic as an argument (`Boxed $Nat`): its deep walk
@@ -219,8 +272,8 @@ fn EqImpls t, head:
     let body = match t.shape:
         ShapeRecord: FieldsEq t, (Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]])))
         otherwise: "match (self, other) \{\n{Concat (Each t.cases, \|c| "    ({CasePatternAs t, c, "a"}, {CasePatternAs t, c, "b"}) => {FieldsEq t, c},\n")}    #[allow(unreachable_patterns)]\n    _ => false,\n\}"
-    let eqImpl = Impl (Bounded t.params, "::std::cmp::Eq"), "::std::cmp::PartialEq", head, "fn eq(&self, other: &Self) -> bool", body
-    "{eqImpl}\nimpl{Bounded t.params, "::std::cmp::Eq"} ::std::cmp::Eq for {head} \{\}"
+    let eqImpl = Impl (BoundedT t, "::std::cmp::Eq"), "::std::cmp::PartialEq", head, "fn eq(&self, other: &Self) -> bool", body
+    "{eqImpl}\nimpl{BoundedT t, "::std::cmp::Eq"} ::std::cmp::Eq for {head} \{\}"
 
 # The order of a generic type: a choice's cases in their order, then field by field.
 OrdImpls: unbounded fn TyDef, Text -> Text
@@ -230,8 +283,8 @@ fn OrdImpls t, head:
     let body = match t.shape:
         ShapeRecord: FieldsCmp t, (Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]])))
         otherwise: "{rank}\nmatch (self, other) \{\n{Concat (Each t.cases, \|c| "    ({CasePatternAs t, c, "a"}, {CasePatternAs t, c, "b"}) => {FieldsCmp t, c},\n")}    #[allow(unreachable_patterns)]\n    _ => rank(self).cmp(&rank(other)),\n\}"
-    let partial = Impl (Bounded t.params, "::std::cmp::Ord"), "::std::cmp::PartialOrd", head, "fn partial_cmp(&self, other: &Self) -> ::std::option::Option<::std::cmp::Ordering>", "::std::option::Option::Some(::std::cmp::Ord::cmp(self, other))"
-    let total = Impl (Bounded t.params, "::std::cmp::Ord"), "::std::cmp::Ord", head, "fn cmp(&self, other: &Self) -> ::std::cmp::Ordering", body
+    let partial = Impl (BoundedT t, "::std::cmp::Ord"), "::std::cmp::PartialOrd", head, "fn partial_cmp(&self, other: &Self) -> ::std::option::Option<::std::cmp::Ordering>", "::std::option::Option::Some(::std::cmp::Ord::cmp(self, other))"
+    let total = Impl (BoundedT t, "::std::cmp::Ord"), "::std::cmp::Ord", head, "fn cmp(&self, other: &Self) -> ::std::cmp::Ordering", body
     "{partial}\n{total}"
 
 # A case's fields equal, pair by pair.

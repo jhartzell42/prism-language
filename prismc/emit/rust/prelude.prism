@@ -67,6 +67,12 @@ impl ToPod for Never {
     }
 }
 
+impl FromPod for Never {
+    fn from_pod(p: &Pod) -> Result<Self, Fault> {
+        ::prism_rtl::pod::mismatch("no value: `Never` has none", p)
+    }
+}
+
 /// `type Span = record: file, line, column, binding`.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Span {
