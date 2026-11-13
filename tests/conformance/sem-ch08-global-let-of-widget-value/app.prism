@@ -1,0 +1,19 @@
+# A top-level `let` whose value is a widget named as a blueprint value, built by a widget
+# of the module (Semantics ch. 3: `let` for values; ch. 8: a blueprint is an opaque handle
+# and still a value, built where a block applies it). `ValuedWidgets` reads no top-level
+# `let`'s value. Reaches `WidgetNamed`'s refusal "the widget function @One as a value"
+# on prismc-r27.
+# Written by Claude (t2, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@One: @unit
+@One:
+    Ui.Label($text=$"one")
+
+let @shown = @One
+
+@page: @unit
+@page:
+    @shown                                                             # 0

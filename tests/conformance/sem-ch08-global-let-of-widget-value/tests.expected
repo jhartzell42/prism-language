@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 8 (applying a blueprint value builds it): `@shown` is `@One`, which builds its label at 0. Never run: prismc refuses the program.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="one")

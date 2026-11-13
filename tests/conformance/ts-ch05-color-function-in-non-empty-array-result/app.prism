@@ -1,0 +1,22 @@
+# A function of its callee's own color inside a non-empty array the call returns
+# (`[T]+`), at a call that makes the color bounded (Type System ch. 4: a function that
+# takes a closure takes the closure's color). `NamedRecolored` meets `Prelude.NonEmpty`,
+# the array's type as the checker gives it, which no declaration names. Reaches the
+# internal error "a prismc bug: the type `Prelude.NonEmpty` of a value a call returns,
+# which nothing declares" on prismc-r27 (probe rc4 of fin-g).
+# Written by Claude (t2, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Both: u fn (u fn Nat -> Nat) -> [u fn Nat -> Nat]+
+fn Both F = [[F, F]]+
+
+Twice: fn Nat -> Nat
+fn Twice k:
+    let fs = Both (\|n| n + 1)
+    Fold fs, k, \|acc, F| F acc
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Twice 5}")                                 # 0

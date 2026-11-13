@@ -1,0 +1,6 @@
+# The tests of ts-ch05-color-function-in-non-empty-array-result.
+emit Ui.*
+use App.*
+
+test it_builds, @page:
+    build
