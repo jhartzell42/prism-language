@@ -22,7 +22,7 @@ fn Walked distance = "{distance.amount} m"
 Timed: fn Quantity Second -> Text
 fn Timed span = "{span.amount} s"
 
-Shown: fn Fixed u, Quantity u -> Text
+Shown: forall (u: Unit). fn Fixed u, Quantity u -> Text
 fn Shown Fixed<<Metre>>, q = Walked q
 fn Shown Fixed<<Second>>, q = Timed q
 

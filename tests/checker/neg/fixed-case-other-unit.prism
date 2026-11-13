@@ -12,6 +12,6 @@ type Quantity (u: Unit) = record:
 Walked: fn Quantity Metre -> Text
 fn Walked distance = "{distance.amount} m"
 
-Shown: fn Fixed u, Quantity u -> Text
+Shown: forall (u: Unit). fn Fixed u, Quantity u -> Text
 fn Shown Fixed<<Second>>, q = Walked q
 fn Shown Fixed<<Metre>>, q = Walked q

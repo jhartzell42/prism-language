@@ -14,7 +14,7 @@ test mod Tests
 trait ^Document d:
     type Role
     type SeatId (r: Role d)
-    Described: fn Fixed r, SeatId d r -> Text
+    Described: forall (r: Role d). fn Fixed r, SeatId d r -> Text
 
 type CountRole = choice:
     Raiser
