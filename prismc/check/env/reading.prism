@@ -474,13 +474,12 @@ fn TraitHeadBounds cx, st, bounds = Fold bounds, (([[]], st)), \|((acc, s)), b| 
 
 # A type with each `_` as a variable of this name.
 HolesNamed: fn Type, Text -> Type
+# (written with `Type(..)`, not `update`: the compiler that builds this one wrote a field
+# behind a pointer unwrapped, conformance/sem-ch05-update-recursive-field)
 fn HolesNamed t, name = match t.kind:
-    THole n: update t:
-        &_.kind <= TName SName(sigils="", path=[[name]], span=n.span), [[]]
-    TName n, args: update t:
-        &_.kind <= TName n, (Each args, \|a| HolesNamed a, name)
-    TGroup x: update t:
-        &_.kind <= TGroup (HolesNamed x, name)
+    THole n: Type(kind=(TName SName(sigils="", path=[[name]], span=n.span), [[]]), span=t.span)
+    TName n, args: Type(kind=(TName n, (Each args, \|a| HolesNamed a, name)), span=t.span)
+    TGroup x: Type(kind=(TGroup (HolesNamed x, name)), span=t.span)
     otherwise: t
 
 # Whether a signature's type writes `$`, `!` or `@` anywhere (ch. 5, The color).
