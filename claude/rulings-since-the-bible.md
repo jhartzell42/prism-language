@@ -298,7 +298,9 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   whose result event can fire in the tick an argument's event fires says `prompt`:
   `@Pass: prompt fn !Nat -> @!Nat`, `prompt \|!e| @ !e`; by default it is not, and a body
   that is prompt under a type that is not is `prompt-unmarked`. A prompt function is no
-  `fn` that is not prompt, as an unbounded one is no bounded one. A plain function is
+  `fn` that is not prompt, as an unbounded one is no bounded one; one that is not prompt
+  stands where a `prompt fn` is wanted (Claude's call), so a supplier parameter, which
+  answers a request in its tick, is `prompt fn`. A plain function is
   always prompt and says nothing. Checking is local: a call's promptness is read from the
   callee's type, never its body, so the summary walk over callee bodies goes. Jimmy,
   13 November: "you need an annotation to promptly output an input event through a widget
