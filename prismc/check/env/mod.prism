@@ -128,6 +128,9 @@ type TraitInfo = record:
     # The associated types with further parameters, each with how many (`type Request r`:
     # one; Type System ch. 6); an associated type not here takes none.
     assocParams: (Text ==> Nat)
+    # whether each further parameter of an associated type declares its kind (`type
+    # Request (r: Role d)`), so its index may be a case (Jimmy's ruling PK)
+    assocKinded: (Text ==> [Bool])
     # The associated types the trait gives a default, each with the default over the
     # trait's parameter (`type Item = a`).
     assocDefaults: [((Text, Ty))]

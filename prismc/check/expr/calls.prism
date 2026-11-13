@@ -63,9 +63,19 @@ fn InferCall env, st, callee, args, span = match callee.kind:
         EName n:
             let cx = EnvCx env
             # a type argument may be a case, `Keyed<<Writer>>` (Jimmy's ruling VO)
-            let ((given1, st1)) = Fold tys, (([[]], st)), \|((acc, s)), ty|
-                let ((x, s2)) = if NamesType cx, ty: ConvType cx, s, ty else: ConvIndex cx, s, ty
-                (((Push acc, x), s2))
+            # a case only at a variable whose `forall` declares its kind (ruling PK)
+            let ?callee = match ResolveValue env.g, env.home, n:
+                ((? k, ignore)): env.g.vals[k]
+                otherwise: nil
+            let ((given1, st1)) = Fold tys, (([[]], st)), \|((acc, s)), ty| match ?callee:
+                ? v:
+                    let q = Or v.scheme.qs[Len acc], ""
+                    let kinded = Fold v.scopedKinds, False, \|seen, ((kq, ignore))| seen or kq == q
+                    let ((x, s2)) = if kinded: ConvIndex cx, s, ty else: UnkindedArg cx, s, ty, "`{q}` of `{SNameKey n}`", "forall ({q}: {CaseKindShown cx, ty}). ...", ty.span
+                    (((Push acc, x), s2))
+                nil:
+                    let ((x, s2)) = ConvType cx, s, ty
+                    (((Push acc, x), s2))
             # a type variable in `<<a>>` is the definition's own, rigid, only where its
             # signature's `forall` names it (Jimmy's ruling FA)
             let st2 = Fold (Range0 (Len given1)), st1, \|s, k| Fold (FreeQs (Or given1[k], TyErr)), s, \|s2, q| if HasText env.scoped, q: s2 else: ErrFix s2, "unknown-name", (Or tys[k], dummyType).span, "no type `{q}` here: a signature's variables are in scope in its body only under `forall`", (ForallFix env, s2)

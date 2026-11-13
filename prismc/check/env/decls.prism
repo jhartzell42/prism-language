@@ -150,6 +150,7 @@ fn TypeHeadVariables st, t:
 # A parameter's stated kind is a choice whose cases carry nothing (Jimmy's ruling PK).
 DeclaredKinds: unbounded fn Cx, St, [((Text, Type))] -> St
 fn DeclaredKinds cx, st, kinds = Fold kinds, st, \|s, ((ignore, k))| match k.kind:
+    TName n, ignore3 if IsAssocName cx, n.path: s
     TName n, [[]]: match ResolveType cx.g, cx.home, n.path:
         ((? kindKey, ignore2)): if Fold (Values cx.g.caseOwners), False, \|seen, o| seen or o == kindKey: s else:
             match ?PayloadCaseOf cx.g, kindKey:
@@ -816,7 +817,7 @@ fn ConvTrait g, st, info, t, span:
     let st4 = Fold t.items, st3, \|s, it| match it:
         TiFn f: if HasText methods, (QualKey info.name, (DefNameText f.name)): s else: Err s, "mismatch", f.span, "`^{Dotted t.name.path}` has no method `{DefNameText f.name}`"
         otherwise: s
-    let ti = TraitInfo(assocRows=(AssocRowsOf t.items), name=name, home=info.name, param=param, supers=(Each supers, \|((ignore, k))| k), headBounds=headBounds, methods=methods, defaults=defaults, assocs=assocs, assocParams=(AssocParamCounts t.items), assocDefaults=assocDefaults, file=info.file, span=span)
+    let ti = TraitInfo(assocRows=(AssocRowsOf t.items), name=name, home=info.name, param=param, supers=(Each supers, \|((ignore, k))| k), headBounds=headBounds, methods=methods, defaults=defaults, assocs=assocs, assocParams=(AssocParamCounts t.items), assocKinded=(AssocKindedOf t.items), assocDefaults=assocDefaults, file=info.file, span=span)
     let upd3 = update g3:
         &_.traits <= Insert &_.traits, name, ti
     ((upd3, st4))

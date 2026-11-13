@@ -188,8 +188,11 @@ fn ConvNamed cx, st, n, args, span:
                             nil: 0
                         if (Len args) == 1 + more:
                             let ((a, st2)) = ConvType cx, st1, (Or args[0], dummyType)
+                            let kindedAt = match cx.g.traits[tr]:
+                                ? ti: Or ti.assocKinded[BareName qk], [[]]
+                                nil: [[]]
                             let ((indices, st3)) = Fold (Drop args, 1), (([[]], st2)), \|((xs, s)), arg|
-                                let ((x, s2)) = ConvIndex cx, s, arg
+                                let ((x, s2)) = if Or kindedAt[Len xs], False: ConvIndex cx, s, arg else: UnkindedArg cx, s, arg, "this index of `{name}`", "type {BareName qk} (r: {CaseKindShown cx, arg})", span
                                 (((Push xs, x), s2))
                             (((TyAssoc tr, (BareName qk), a, indices), st3))
                         else: if more == 0: ((TyErr, (Err st1, "kind", span, "the associated type `{name}` takes one type; here it has {CountWord (Len args)}")))
@@ -207,6 +210,33 @@ fn ConvIndex cx, st, t = match t.kind:
             ? k: (((TyRole k), st))
             nil: ConvType cx, st, t
     otherwise: ConvType cx, st, t
+
+# Whether a path names an associated type.
+IsAssocName: fn Cx, [Text] -> Bool
+fn IsAssocName cx, path = match ResolveType cx.g, cx.home, path:
+    ((? k, ignore)): HasKey cx.g.assocNames, k
+    otherwise: False
+
+# A type argument where the parameter declares no kind (Jimmy's ruling PK, 13 November):
+# a type; a case there is `kind`, its fix the parameter's kind declared.
+UnkindedArg: unbounded fn Cx, St, Type, Text, Text, Range -> ((Ty, St))
+fn UnkindedArg cx, st, arg, what, declared, span:
+    if NamesType cx, arg: ConvType cx, st, arg
+    else: match ?CaseNamed cx, arg:
+        ? c: ((TyErr, (ErrFix st, "kind", span, "`{BareName c}` is a case of `{BareName (Or (?OwnerOfCase cx, c), "")}`, and {what} declares no kind, so it takes a type", "declare the kind: `{declared}`")))
+        nil: ConvType cx, st, arg
+
+# The case a bare uppercase type argument names, if it names one.
+?CaseNamed: fn Cx, Type -> ?Text
+fn ?CaseNamed cx, t = match t.kind:
+    TName n, args if (Len args) == 0 and n.sigils == "" and (Len n.path) == 1: ?RoleConstructor cx.g, cx.home, (Or n.path[0], "")
+    otherwise: nil
+
+# The kind a case argument's choice is, as a declaration writes it.
+CaseKindShown: fn Cx, Type -> Text
+fn CaseKindShown cx, t = match ?CaseNamed cx, t:
+    ? c: BareName (Or (?OwnerOfCase cx, c), "")
+    nil: "Kind"
 
 # Whether a type argument is a bare name a type of this name answers.
 NamesType: fn Cx, Type -> Bool
@@ -231,8 +261,9 @@ fn ConvNamedType cx, st1, qk, ti, name, args, span:
         let arg = Or args[i], dummyType
         # a case where the parameter states its kind; otherwise a type of the name first
         # (`Stepped ChessGame`, a type and its own case), a case only where no type is
-        let kinded = (?KindOf ti, (Or ti.params[i], "")) != nil
-        let ((x, s2)) = if kinded or not (NamesType cx, arg): ConvIndex cx, s, arg else: ConvType cx, s, arg
+        let param = Or ti.params[i], ""
+        let kinded = (?KindOf ti, param) != nil
+        let ((x, s2)) = if kinded: ConvIndex cx, s, arg else: UnkindedArg cx, s, arg, "`{param}` of `{name}`", "type {name} {Join (Each ti.params, \|p| if p == param: "({p}: {CaseKindShown cx, arg})" else: p), " "}", span
         (((Push acc, x), s2))
     let st2 = Fold (Range0 (Min (Len xs), (Len ti.params))), st0, \|s, i| KindCheck cx, s, ti, name, (Or ti.params[i], ""), (Or xs[i], TyErr), span
     if (Len xs) != (Len ti.params):
@@ -251,6 +282,9 @@ fn KindCheck cx, st, ti, name, param, x, span = match ?KindOf ti, param:
         TName n, [[]]: match ResolveType cx.g, cx.home, n.path:
             ((? kindKey, ignore)): KindArgCheck cx, st, name, kindKey, (Dotted n.path), x, span
             otherwise: Err st, "unknown-name", k.span, "no type `{Dotted n.path}` to be a kind"
+        # an associated type is a kind like any type (`(r: Role d)`): its cases are the
+        # impl's choice's, known where the type is
+        TName n, ignore2 if IsAssocName cx, n.path: st
         otherwise: Err st, "kind", k.span, "a kind is a choice whose cases carry no payload"
 
 ?KindOf: fn TyInfo, Text -> ?Type
@@ -329,7 +363,11 @@ fn FamilyIndices cx, st, fam, args, span:
     else: Fold args, (([[]], st)), \|((acc, s)), a| match a.kind:
         THole ignore: (((Push acc, TyEvery), s))
         otherwise:
-            let ((x, s2)) = if NamesType cx, a: ConvType cx, s, a else: ConvIndex cx, s, a
+            let p = Or params[Len acc], ""
+            let kinded = match cx.g.famDecls[fam]:
+                ? fd: Fold fd.kinds, False, \|seen, ((n, ignore))| seen or n == p
+                nil: False
+            let ((x, s2)) = if kinded: ConvIndex cx, s, a else: UnkindedArg cx, s, a, "`{p}` of the family `{fam}`", "family {fam} {Join (Each params, \|q| if q == p: "({q}: {CaseKindShown cx, a})" else: q), " "}", a.span
             (((Push acc, x), s2))
 
 # The tail a scope's own row gives `Element` in a row's place: none when closed.
