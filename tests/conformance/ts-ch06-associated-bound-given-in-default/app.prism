@@ -1,0 +1,41 @@
+# Type System ch. 6, "Bounds on associated types": `^SerializableDocument` asks `State d:
+# ^SerializableValue`, so its default method encodes a `State d` with the bound as a
+# given, at a document whose impl checked it.
+# Expected transcript derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^SerializableValue s:
+    Encode: fn s -> [U8]
+
+trait ^StateDocument d:
+    type State
+    Start: fn d -> State d
+
+trait ^SerializableDocument d where d: ^StateDocument, State d: ^SerializableValue:
+    Title: fn d -> Text
+    Saved: fn d -> Nat
+    fn Saved document = Len (Encode (Start document))
+
+type Board = record:
+    squares: [U8]
+derive ^Eq, ^Show
+
+type Game = record:
+    name: Text
+derive ^Eq, ^Show
+
+impl ^SerializableValue Board:
+    fn Encode board = board.squares
+
+impl ^StateDocument Game:
+    type State = Board
+    fn Start game = Board(squares=[[1, 2, 3]])
+
+impl ^SerializableDocument Game:
+    fn Title game = game.name
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Saved Game(name="chess")} bytes")                 # 0

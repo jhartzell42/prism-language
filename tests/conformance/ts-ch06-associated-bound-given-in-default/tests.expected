@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 6: the default `Saved` encodes the game's start board, three squares.
+test bound_given_in_default
+
+tick 0
+  added:
+    0: Ui.Label(text="3 bytes")
