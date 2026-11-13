@@ -1,8 +1,7 @@
 # Chess on the hot seat, hosted by a hand-written implementation: Part IV ch. 5's
 # `@HostRole`, `@Seated` and `@ChessByHand`, the plan's step H2 (Part VII ch. 7, step C6's
 # test). Each player has a board of its own; a spectator joins and leaves by the table's
-# buttons. The library's `Documents` is given as a second source:
-# `./prism test tests/documents/c6-chess-by-hand tests/documents/library`.
+# buttons. `./prism test tests/documents/c6-chess-by-hand`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.*
 mod Rules

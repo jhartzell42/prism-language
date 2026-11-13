@@ -3,13 +3,13 @@
 # IV ch. 4; Part V ch. 9), hosted by the library's default `@InMemory`, the plan's step H3
 # (Part IV ch. 13; Part VII ch. 7, step C8's test). The protocol is Part IV ch. 3's,
 # written out; everything else is c6-chess-by-hand's, and so is the game it plays.
-# Rules and Notation are host-chess's, copied unchanged.
+# Rules and Notation are host-chess's, copied unchanged. `^PerfectInformationGame`, its
+# roles and the derive's definitions are the standard library's `Documents`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit rest | Seat.*
 use Documents.*
 use Rules.*
 use Notation.*
-use Games.*
 
 # ---- the game (Part V ch. 9): every position and every move
 
@@ -56,8 +56,8 @@ impl ^Document ChessGame:
     type Seats rest = ChessSeats rest
     type Results = ChessResults
     fn @HostSeats seats, Supply:
-        ((players, $playing)) <- @HostRole Player, seats.$player, Supply
-        ((spectators, $watching)) <- @HostRole Spectator, seats.$spectator, Supply
+        ((players, $playing)) <- @HostRole Fixed<<Player>>, seats.$player, Supply
+        ((spectators, $watching)) <- @HostRole Fixed<<Spectator>>, seats.$spectator, Supply
         @ ((ChessResults($player=players, $spectator=spectators), Merge [[$playing, $watching]]))
 
 # ---- the game's five functions (Part V ch. 9), and the state rung derived from them

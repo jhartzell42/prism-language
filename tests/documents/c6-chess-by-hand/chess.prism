@@ -36,11 +36,6 @@ fn MoveBy game, side, move = if side != (Now game).turn: Denied NotYourMove else
 
 # ---- the protocol (Part IV ch. 3)
 
-type ChessRole = choice:
-    Player
-    Spectator
-derive ^Eq, ^Ord, ^Show
-
 type ChessQuery = choice:
     Whole
 derive ^Eq, ^Show
@@ -54,7 +49,7 @@ type ChessResults = record:
     $spectator: (Text ==> unit)
 
 impl ^Document ChessGame:
-    type Role = ChessRole
+    type Role = GameRole
     type SeatId Player = Color
     type SeatId Spectator = Text
     type Request Player = Move
@@ -66,14 +61,14 @@ impl ^Document ChessGame:
     type Seats rest = ChessSeats rest
     type Results = ChessResults
     fn @HostSeats seats, Supply:
-        ((players, $playing)) <- @HostRole Player, seats.$player, Supply
-        ((spectators, $watching)) <- @HostRole Spectator, seats.$spectator, Supply
+        ((players, $playing)) <- @HostRole Fixed<<Player>>, seats.$player, Supply
+        ((spectators, $watching)) <- @HostRole Fixed<<Spectator>>, seats.$spectator, Supply
         @ ((ChessResults($player=players, $spectator=spectators), Merge [[$playing, $watching]]))
 
 # One request's step, by role: a player moves; a spectator's request is `Never`.
-Stepping: fn ChessGame, Role ChessGame, SeatId ChessGame r, Request ChessGame r -> Stepped ChessGame (Reason ChessGame r)
-fn Stepping game, Player, side, move = MoveBy game, side, move
-fn Stepping game, Spectator, user, request = match request:
+Stepping: forall (r: Role ChessGame). fn ChessGame, Fixed r, SeatId ChessGame r, Request ChessGame r -> Stepped ChessGame (Reason ChessGame r)
+fn Stepping game, Fixed<<Player>>, side, move = MoveBy game, side, move
+fn Stepping game, Fixed<<Spectator>>, user, request = match request:
 
 # ---- the hand-written implementation (Part IV ch. 5)
 

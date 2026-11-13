@@ -1,19 +1,17 @@
 # Chess on the hot seat, its state rung derived through `^PerfectInformationGame` and
 # hosted by the library's default `@InMemory`: the plan's step H3 (Part VII ch. 7, step
-# C8's test), playing H2's game (c6-chess-by-hand) with the same expected lines. Each player has a board of its own; a spectator joins and leaves by the table's
-# buttons. The library's `Documents` is given as a second source:
-# `./prism test tests/documents/c8-chess-via tests/documents/library`.
+# C8's test), playing H2's game (c6-chess-by-hand) with the same expected lines. Each
+# player has a board of its own; a spectator joins and leaves by the table's buttons.
+# `./prism test tests/documents/c8-chess-via`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.*
 mod Rules
 mod Notation
-mod Games
 mod Chess
 test mod Tests
 use Documents.*
 use Rules.*
 use Notation.*
-use Games.*
 use Chess.*
 
 let f2f3 = Moving (Square 5, 1), (Square 5, 2)
