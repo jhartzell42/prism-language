@@ -27,7 +27,7 @@ Kinds: **gap** a compiler feature or fix to write in step 2; Q3 and Q4 are answe
 | a supplier lambda's arms checked at the refined `o` | neg/doc-seat-family-arm-answers-other-role; library `SupplierFrom`, `@OnDisk`, `@Over` | arm results mismatch `o` |
 | binding-group cycle through a function value (book ch. 5: "the two bindings refer to each other, and that is legal") | library `@HostDocument` (every document test); conformance/sem-ch05-binding-group-cycle-through-function-value checks clean on p11 (its lowering is untested), so the library's `prompt-cycle` likely comes from its `Supplier` error; rechecked once the library checks | `prompt-cycle` `$guests`, `Supply` |
 | Fixed narrowing at an associated kind (VO) | doc-sk-existential-seat-key; c6 `Stepping` | not-exhaustive; `SeatId ChessGame r` not narrowed to `Color` |
-| `ValueOf` on a variable (VO) | (to write with Q3's answer) | |
+| `ValueOf` on a variable (VO) | covered by the `Fixed<<r>>` match below (library `?ResponseTo`) | |
 | prelude `Utf8Bytes`, `~Utf8Text` in the runtime | conformance/sem-appb-utf8-bytes; library `@OnDisk` | unknown name (at 20004f18) |
 | Net and File worlds in the runtime | library `@Over`, `@Serve`, `@OnDisk`; chess (agent writing) | not reached |
 | existential lowering | existential-unbounded-index-list | not-lowered |
@@ -91,7 +91,7 @@ Kinds: **gap** a compiler feature or fix to write in step 2; Q3 and Q4 are answe
 ## Document trees (p11 check)
 
 - **tests/documents/tally**, **c6-chess-by-hand**, **c8-chess-via**: every error traces
-  to a row above (the library's features, Q3, Q4, RR, OS, the map literal), . One
+  to a row above (the library's features, OP, RT, RR, OS, the map literal). One
   error has no test of its own yet: `expected ?Nat, found ?(Answer (Tallied o) Viewer)`
   (tally app.prism:109). An associated type read through `impl ^Document (Tallied o)
   where o: ^TallyOrder`, by case equations, reduces on p11 in a small program at
