@@ -186,3 +186,56 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
     prelude's `^Ord`), and an unspaced `<:` in a trait's member position is a parse error
     whose message says to write `< :`. The parser has no special case for it. Refused:
     reading `<:` there as `<` and its colon.
+- **HD** Holding braces and lifting constructors: every application lifts a sigiled
+  argument, a constructor as a function does, and `{ !e }` is the only way a sigiled
+  value fills a type variable unlifted (`Requested {!asked}` is the bundle `Heard !Asked`;
+  `Push events, {!e}` pushes the event). Constructors lift over `$` and `!` only; `?`,
+  `~` and `@` go in whole. Tuple and array literals keep their parts whole; a declared
+  sigiled parameter or field takes the live argument as it is; braces that hold nothing
+  are `hold-meaningless`; patterns take no braces. Jimmy: "There should be an operator
+  which disables lifting ON THE SIGILED ITEM for both that just lets it be in a type
+  variable... It's mandatory for both constructors and functions." Replaces Type System
+  ch. 2's "A type-parameter field takes its argument whole" and LC's second half.
+- **DB** Every literal doubles its bracket: a map is `{{k: v}}`, the empty map `{{}}`;
+  single braces hold. A code template's placeholder is `<<expr>>` and its brace block
+  runs from `<<` to `>>` alone on lines, with `\<` and `\\` as escapes; text keeps
+  `"{x}"`. The old forms are `single-brace-map` and `brace-placeholder`. The HTML-like
+  template notation, out of this compiler, switches the same way (for the Bible).
+- **CM** A name's case says what it holds (Language ch. 10): an uppercase name is a
+  function, constructor, type or trait; a lowercase one a value; `case-mark` otherwise.
+  Jimmy: "why would we allow an uppercase let name unless it was a function?"
+- **NC** No C++: the C++ target is dropped (emitter, runtime, worlds, seed, the target
+  layer and `--target`); its shared lowering fixes are kept. Jimmy: "thoroughly drop C++
+  everywhere, I think it's served its purpose".
+- **LB** The standard library's directory is `library/`; `Prelude` names only the module
+  every file uses without an import. Jimmy: "Prelude strictly speaking means things you
+  don't have to import."
+- **GF** Type-system features are generic, never shaped to the case that motivated them.
+  Jimmy, of a rule for a trait's own role: "far too ad hoc. It makes Role special, and we
+  don't want special." Rulings PK to VO below follow it.
+- **PK** Promoted constructors: a choice whose cases carry no payload is also a kind,
+  its cases types of that kind; a parameter declares its kind, `(r: Access)`, or has it
+  inferred; a choice with a payload is no kind. Jimmy: "good".
+- **AP** Associated types take parameters of any kind, given by equations on the
+  parameters' constructors, exhaustive over a closed kind, abstract under a variable.
+  Jimmy: "good".
+- **FA** `forall` is the explicit universal: it scopes a signature's variables over its
+  body (for `<<a>>`), gives variables kinds, and later allows higher rank. `any` stays
+  the existential of Type System ch. 3, now over any type variable.
+- **VO** A promoted case stays an ordinary value of its choice; a type index is passed
+  explicitly (`Keyed<<Writer>> 3`) and must match the signature, and the standard
+  library's `ValueOf: forall (r: k). k` gives a promoted case's value
+  (`ValueOf<<Writer>>`). Refused: a singleton type `Is r` whose literal takes its type
+  from the expected type, which makes every case polymorphic. Jimmy: "this is nicer
+  really".
+- **IN** No injectivity for `State`: a game's state may belong to several documents (a
+  file, the network). An ambiguous call names its type, `Step<<d>>`. Jimmy: "Chess app
+  should allow saving games in a file and doing them over a network, actually".
+- **AF** All the design form's features are built, generically: indexed tag families
+  with `_` over a closed kind, `any` over type variables, row parameters on aliases and
+  associated types, trait bounds on a trait's parameter, `where` heads of any type,
+  associated rows, the no-override rule, `derive ... via` as an opted-in generic impl,
+  and partial application. Jimmy: "Do all the features including ones you tried to
+  backpedal".
+- **TC2** This conversation outranks the books where they differ; the Bible hears of
+  every change by channel note. Jimmy: "This conversation beats the books."
