@@ -84,7 +84,10 @@ Jimmy's questions of 13 November (one role per place; two row variables).
 ## Document trees (p11 check)
 
 - **tests/documents/tally**, **c6-chess-by-hand**, **c8-chess-via**: every error traces
-  to a row above (the library's features, Q3, Q4, RR, OS, the map literal). The tally's
-  `no impl of ^TallyOrder for o` through `impl ^Document (Tallied o) where o: ^TallyOrder`
-  is still to classify.
+  to a row above (the library's features, Q3, Q4, RR, OS, the map literal), and to one
+  more gap: an associated type read through an impl whose head has a variable,
+  `impl ^Document (Tallied o) where o: ^TallyOrder` with `type Answer r = Nat`, is not
+  reduced at `Answer (Tallied o) Viewer` (tally app.prism:109, `expected ?Nat, found
+  ?(Answer (Tallied o) Viewer)`). The tally's `no impl of ^TallyOrder for o` was its own
+  slip: its participants now say `where o: ^TallyOrder`.
 - **examples/chess**: being rewritten to the final form (step 1, an agent); listed when it lands.

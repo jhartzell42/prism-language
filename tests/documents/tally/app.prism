@@ -21,14 +21,14 @@ WhyNotAdded: fn TellerReason -> Text
 fn WhyNotAdded AddedLast = "you added last"
 fn WhyNotAdded (StopsAt most) = "the count stops at {most}"
 
-Said: fn Response (Tallied o) Teller -> Text
+Said: fn Response (Tallied o) Teller -> Text where o: ^TallyOrder
 fn Said Accepted = "accepted"
 fn Said (Declined why) = "declined: {WhyNotAdded why}"
 
 WhyNotCleared: fn KeeperReason -> Text
 fn WhyNotCleared NothingToClear = "nothing to clear"
 
-SaidToKeeper: fn Response (Tallied o) Keeper -> Text
+SaidToKeeper: fn Response (Tallied o) Keeper -> Text where o: ^TallyOrder
 fn SaidToKeeper Accepted = "accepted"
 fn SaidToKeeper (Declined why) = "declined: {WhyNotCleared why}"
 
@@ -76,7 +76,7 @@ fn @Told $?value:
 # A teller: `Ui.*` and the teller's seat language, and nothing else. An eager one also
 # adds one, by itself, when it is told the total has reached its number. Its last button
 # adds one and leaves: the leaving holds the last request.
-@Teller: fn Text, Sitting -> @unit emit Ui.* | Seat.* (Tallied o) Teller
+@Teller: fn Text, Sitting -> @unit emit Ui.* | Seat.* (Tallied o) Teller where o: ^TallyOrder
 fn @Teller name, sitting:
     $?view <- Seat.Query($query=$ Whole)                                   # 0
     !one <- Ui.Button($label=$"{name} +1")                                 # 1
@@ -91,7 +91,7 @@ fn @Teller name, sitting:
 
 # A keeper. It clears the count by its button; an eager one also clears, by itself, when
 # it is told the total has reached its number.
-@Keeper: fn Text, Sitting -> @unit emit Ui.* | Seat.* (Tallied o) Keeper
+@Keeper: fn Text, Sitting -> @unit emit Ui.* | Seat.* (Tallied o) Keeper where o: ^TallyOrder
 fn @Keeper name, sitting:
     $?tally <- Seat.Query($query=$ Whole)                                  # 0
     !clear <- Ui.Button($label=$"{name} clears")                           # 1
@@ -103,7 +103,7 @@ fn @Keeper name, sitting:
 
 # A viewer: its requests are `Never`, so it places no request element; it asks, and it
 # leaves.
-@Watcher: fn Text -> @unit emit Ui.* | Seat.* (Tallied o) Viewer
+@Watcher: fn Text -> @unit emit Ui.* | Seat.* (Tallied o) Viewer where o: ^TallyOrder
 fn @Watcher name:
     $?total <- Seat.Query($query=$ Whole)                                  # 0
     Ui.Label($text=$"{name} watches: total {Total $?total}")               # 1
