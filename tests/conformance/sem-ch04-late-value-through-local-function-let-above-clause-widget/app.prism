@@ -1,0 +1,40 @@
+# A widget of several clauses that takes a plain `let` over a building `if`'s late plain
+# result, the `let` calling a function local to the widget, both above the `if`
+# (Semantics ch. 4, "Binding groups and cycles": any line may use any name the block
+# binds, and the order of a group's lines decides positions and nothing else; a widget's
+# block may define local functions; ruling TC: places are counted as they are built). The
+# taker counts its places as built. Reaches `DeferredLine`'s refusal "a line that takes
+# a late result at its build, above the line that gives it, and whose places are counted
+# as they are built" on prismc-r27.
+# Written by Claude (t2, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Wide: fn Nat -> @unit
+fn @Wide 0:
+    Ui.Label($text=$"none")
+fn @Wide k:
+    Ui.Label($text=$"one {k}")
+    Ui.Label($text=$"two {k}")
+
+@Twice: fn Nat -> @Nat
+fn @Twice k:
+    Ui.Label($text=$"twice {k}")
+    @ k * 2
+
+@Seven: @Nat
+@Seven:
+    Ui.Label($text=$"seven")
+    @ 7
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    fn Double x = x * 2
+    @Wide m                                                            # 0 and 1
+    let m = Double n
+    n <- if loud:
+        k <- @Seven                                                    # 2
+        @ k
+    else:
+        @ 20
