@@ -60,7 +60,7 @@ Kinds: **gap** a compiler feature or fix to write in step 2; Q3 and Q4 are answe
 
 | question | where it shows |
 |---|---|
-| (none: SL answers the departing seat) | |
+| PT is whole-function: `@Table` (prompt in `results` by its holds' updates) and `@HostDocument` (prompt in `seats` by the blueprint rule) make a prompt cycle in the tally's `@table`, though the hosted requests come from the participants' own buttons; defer in `@Table`, or something finer? | tests/documents/tally `@table` |
 
 ## Checker suite mismatches on p11 (tests/checker/run.sh)
 
