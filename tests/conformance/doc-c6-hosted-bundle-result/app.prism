@@ -1,0 +1,18 @@
+# Part VII ch. 7, step C6: a result of several parts in a hosted scope. The hosted child
+# gives back a dynamic and an event, `@ (($n, !inc))`, as Part IV ch. 3's `@Player` gives
+# back `(($?game, !response))` under its seat's host; the host's caller reads both parts.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@child: @(($Nat, !Ui.Click)) emit Ui.*
+@child:
+    !inc <- Ui.Button($label=$"inc")                                    # 0
+    $n <- 0 then $n + (1 on !inc)
+    @ (($n, !inc))
+
+@page: @unit
+@page:
+    (((($n, !clicked)), ignore)) <- @Host @child, \|p, e| @Element e     # 0/[0]/0
+    $seen <- 0 then $seen + (1 on !clicked)
+    Ui.Label($text=$"{$n} counted, {$seen} seen")                       # 1
