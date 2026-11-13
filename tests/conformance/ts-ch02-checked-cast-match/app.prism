@@ -18,5 +18,5 @@ fn Entries m = match m as (Nat ==> Text)+?:
 @main: @unit
 @main:
     let empty: [Nat] = [[]]
-    let none: (Nat ==> Text) = {}
-    Ui.Label($text=$"{FirstOr [[4, 5]], 9} {FirstOr empty, 9} {Entries {1: "a", 2: "b"}} {Entries none}")    # 0
+    let none: (Nat ==> Text) = {{}}
+    Ui.Label($text=$"{FirstOr [[4, 5]], 9} {FirstOr empty, 9} {Entries {{1: "a", 2: "b"}}} {Entries none}")    # 0

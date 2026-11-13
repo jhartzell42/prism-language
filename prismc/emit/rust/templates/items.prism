@@ -10,37 +10,37 @@ use Emit.Rust.Templates.*
 # A record as a struct.
 Struct: fn Text, Text, Text, Text -> Text
 fn Struct doc, derives, head, fields = inline_text <rust>
-{{doc}}
-#[derive({{derives}})]
-pub struct {{head}} {
-    {{fields}}
+<<doc>>
+#[derive(<<derives>>)]
+pub struct <<head>> {
+    <<fields>>
 }
 </rust>
 
 # A choice as an enum.
 Enum: fn Text, Text, Text, Text -> Text
 fn Enum doc, derives, head, cases = inline_text <rust>
-{{doc}}
-#[derive({{derives}})]
-pub enum {{head}} {
-    {{cases}}
+<<doc>>
+#[derive(<<derives>>)]
+pub enum <<head>> {
+    <<cases>>
 }
 </rust>
 
 # A newtype as a tuple struct, a unit type as a unit struct.
 TupleStruct: fn Text, Text, Text, Text -> Text
 fn TupleStruct doc, derives, head, fields = inline_text <rust>
-{{doc}}
-#[derive({{derives}})]
-pub struct {{head}}{{fields}};
+<<doc>>
+#[derive(<<derives>>)]
+pub struct <<head>><<fields>>;
 </rust>
 
 # An impl of a trait with one method.
 Impl: fn Text, Text, Text, Text, Text -> Text
 fn Impl generics, tr, ty, signature, body = inline_text <rust>
-impl{{generics}} {{tr}} for {{ty}} {
-    {{signature}} {
-        {{body}}
+impl<<generics>> <<tr>> for <<ty>> {
+    <<signature>> {
+        <<body>>
     }
 }
 </rust>
@@ -49,7 +49,7 @@ impl{{generics}} {{tr}} for {{ty}} {
 MatchSelf: fn Text -> Text
 fn MatchSelf arms = inline_text <rust>
 match self {
-    {{arms}}
+    <<arms>>
 }
 </rust>
 
@@ -58,7 +58,7 @@ match self {
 ShownPod: fn Text -> Text
 fn ShownPod structure = inline_text <rust>
 let structure = {
-    {{structure}}
+    <<structure>>
 };
 crate::prelude::Pod::Shown(crate::prelude::show(self).as_str().into(), ::std::boxed::Box::new(structure))
 </rust>
@@ -67,32 +67,32 @@ crate::prelude::Pod::Shown(crate::prelude::show(self).as_str().into(), ::std::bo
 FromPodBody: fn Text, Text -> Text
 fn FromPodBody arms, want = inline_text <rust>
 match p.structure() {
-    {{arms}}
-    other => ::prism_rtl::pod::mismatch("{{want}}", other),
+    <<arms>>
+    other => ::prism_rtl::pod::mismatch("<<want>>", other),
 }
 </rust>
 
 # A tag's struct: an element tag's `Level`, or a plain row value's fields.
 Tag: fn Text, Text, Text, Text, Text, Text -> Text
 fn Tag doc, derives, name, fields, tagName, pods = inline_text <rust>
-{{doc}}
-#[derive({{derives}})]
-pub struct {{name}} {
-    {{fields}}
+<<doc>>
+#[derive(<<derives>>)]
+pub struct <<name>> {
+    <<fields>>
 }
 
-impl {{name}} {
+impl <<name>> {
     /// The tag's qualified name, as its `Pod` carries it.
-    pub const TAG: &'static str = "{{tagName}}";
+    pub const TAG: &'static str = "<<tagName>>";
 }
 
-impl crate::prelude::ToPod for {{name}} {
+impl crate::prelude::ToPod for <<name>> {
     fn to_pod(&self) -> crate::prelude::Pod {
-        crate::prelude::Pod::element("{{tagName}}", vec![{{pods}}])
+        crate::prelude::Pod::element("<<tagName>>", vec![<<pods>>])
     }
 }
 
-impl crate::prelude::Show for {{name}} {
+impl crate::prelude::Show for <<name>> {
     fn show(&self, p: &mut crate::prelude::Printer) {
         self.to_pod().show(p);
     }
@@ -103,14 +103,14 @@ impl crate::prelude::Show for {{name}} {
 # sampled at the read point, deep, and the update events of the dynamics it holds.
 TagLevel: fn Text, Text, Text, Text -> Text
 fn TagLevel name, tagName, pods, ports = inline_text <rust>
-impl {{name}} {
+impl <<name>> {
     /// The level as a World reads it: each dynamic it holds sampled at the read point.
     pub fn level_pod(&self, cx: &crate::prelude::Cx) -> crate::prelude::Pod {
-        crate::prelude::Pod::element("{{tagName}}", vec![{{pods}}])
+        crate::prelude::Pod::element("<<tagName>>", vec![<<pods>>])
     }
     /// The update events of the dynamics it holds, and of theirs.
     pub fn level_ports(&self, cx: &crate::prelude::Cx, out: &mut ::std::vec::Vec<::std::rc::Rc<crate::prelude::Port<()>>>) {
-        let _ = (cx, &out);{{ports}}
+        let _ = (cx, &out);<<ports>>
     }
 }
 </rust>
@@ -119,17 +119,17 @@ impl {{name}} {
 # any other as its plain data.
 RowLevel: fn Text, Text, Text -> Text
 fn RowLevel name, pods, ports = inline_text <rust>
-impl ::prism_rtl::Level for {{name}} {
+impl ::prism_rtl::Level for <<name>> {
     fn level_pod(&self, cx: &crate::prelude::Cx) -> crate::prelude::Pod {
         let _ = cx;
         match self {
-            {{pods}}_ => self.to_pod(),
+            <<pods>>_ => self.to_pod(),
         }
     }
     fn level_ports(&self, cx: &crate::prelude::Cx, out: &mut ::std::vec::Vec<::std::rc::Rc<crate::prelude::Port<()>>>) {
         let _ = (cx, &out);
         match self {
-            {{ports}}_ => {}
+            <<ports>>_ => {}
         }
     }
 }
@@ -138,11 +138,11 @@ impl ::prism_rtl::Level for {{name}} {
 # A tag's struct read back from its `Pod`.
 TagFromPod: fn Text, Text, Text -> Text
 fn TagFromPod name, tagName, reads = inline_text <rust>
-impl crate::prelude::FromPod for {{name}} {
+impl crate::prelude::FromPod for <<name>> {
     fn from_pod(p: &crate::prelude::Pod) -> ::std::result::Result<Self, crate::prelude::Fault> {
         match p.tag() {
-            ::std::option::Option::Some("{{tagName}}") => ::std::result::Result::Ok({{name}} { {{reads}} }),
-            _ => ::prism_rtl::pod::mismatch("a {{tagName}}", p),
+            ::std::option::Option::Some("<<tagName>>") => ::std::result::Result::Ok(<<name>> { <<reads>> }),
+            _ => ::prism_rtl::pod::mismatch("a <<tagName>>", p),
         }
     }
 }
@@ -151,21 +151,21 @@ impl crate::prelude::FromPod for {{name}} {
 # A row kind's enum: a variant per tag (pick RV).
 Row: fn Text, Text, Text, Text, Text -> Text
 fn Row doc, derives, name, cases, pods = inline_text <rust>
-{{doc}}
-#[derive({{derives}})]
-pub enum {{name}} {
-    {{cases}}
+<<doc>>
+#[derive(<<derives>>)]
+pub enum <<name>> {
+    <<cases>>
 }
 
-impl crate::prelude::ToPod for {{name}} {
+impl crate::prelude::ToPod for <<name>> {
     fn to_pod(&self) -> crate::prelude::Pod {
         match self {
-            {{pods}}
+            <<pods>>
         }
     }
 }
 
-impl crate::prelude::Show for {{name}} {
+impl crate::prelude::Show for <<name>> {
     fn show(&self, p: &mut crate::prelude::Printer) {
         self.to_pod().show(p);
     }
@@ -174,11 +174,11 @@ impl crate::prelude::Show for {{name}} {
 
 RowFromPod: fn Text, Text -> Text
 fn RowFromPod name, reads = inline_text <rust>
-impl crate::prelude::FromPod for {{name}} {
+impl crate::prelude::FromPod for <<name>> {
     fn from_pod(p: &crate::prelude::Pod) -> ::std::result::Result<Self, crate::prelude::Fault> {
         match p.tag() {
-            {{reads}}
-            _ => ::prism_rtl::pod::mismatch("a {{name}}", p),
+            <<reads>>
+            _ => ::prism_rtl::pod::mismatch("a <<name>>", p),
         }
     }
 }
@@ -190,9 +190,9 @@ impl crate::prelude::FromPod for {{name}} {
 
 Fn: fn Text, Text, Text -> Text
 fn Fn doc, signature, body = inline_text <rust>
-{{doc}}
-{{signature}} {
-    {{body}}
+<<doc>>
+<<signature>> {
+    <<body>>
 }
 </rust>
 
@@ -200,24 +200,24 @@ fn Fn doc, signature, body = inline_text <rust>
 # `cycle`, and its `Start`.
 Job: fn Text, Text, Text, Text, Text, Text, Text, Text, Text -> Text
 fn Job doc, head, generics, bounded, fields, ret, body, start, startBody = inline_text <rust>
-/// The step machine of `{{head}}`, stopped at a cycle point: the call about to be
+/// The step machine of `<<head>>`, stopped at a cycle point: the call about to be
 /// entered. A tail call leaves no frame; any other call waits in a `Frame` around the
 /// callee's job, so the job's stack is its frames.
 ///
-{{doc}}
-pub struct {{head}}{{generics}} {
-    {{fields}}
+<<doc>>
+pub struct <<head>><<generics>> {
+    <<fields>>
 }
 
-impl{{bounded}} ::prism_rtl::Job<{{ret}}> for {{head}}{{generics}} {
-    fn cycle(&self) -> ::prism_rtl::Turn<{{ret}}> {
-        {{body}}
+impl<<bounded>> ::prism_rtl::Job\<<<ret>>> for <<head>><<generics>> {
+    fn cycle(&self) -> ::prism_rtl::Turn\<<<ret>>> {
+        <<body>>
     }
 }
 
-/// `Start {{head}}, x`: what the function value is when passed to `@Run`.
-{{start}} {
-    {{startBody}}
+/// `Start <<head>>, x`: what the function value is when passed to `@Run`.
+<<start>> {
+    <<startBody>>
 }
 </rust>
 
@@ -228,21 +228,21 @@ impl{{bounded}} ::prism_rtl::Job<{{ret}}> for {{head}}{{generics}} {
 # A widget block's node: the struct, its constructor and methods, and the `Node` hooks.
 Node: fn Text, Text, Text, Text, Text, Text, Text, Text -> Text
 fn Node doc, name, fields, consts, build, methods, hooks, answer = inline_text <rust>
-{{doc}}
-pub struct {{name}} {
+<<doc>>
+pub struct <<name>> {
     path: crate::prelude::Path,
-    {{fields}}
+    <<fields>>
 }
 
-impl {{name}} {
-    {{consts}}
-    {{build}}
-    {{methods}}
+impl <<name>> {
+    <<consts>>
+    <<build>>
+    <<methods>>
 }
 
-impl crate::prelude::Node for {{name}} {
-    {{answer}}
-    {{hooks}}
+impl crate::prelude::Node for <<name>> {
+    <<answer>>
+    <<hooks>>
 }
 </rust>
 
@@ -250,18 +250,18 @@ Build: fn Text, Text, Text, Text, Text, Text -> Text
 fn Build name, params, ret, lets, inits, rest = inline_text <rust>
 /// Built after propagation: holds take their initial values, places go out with
 /// `cx.added`, and nothing fires.
-pub fn build(path: crate::prelude::Path, {{params}}cx: &mut crate::prelude::Cx) -> {{ret}} {
-    {{lets}}
-    let node = ::std::rc::Rc::new({{name}} { {{inits}} });
-    {{rest}}
+pub fn build(path: crate::prelude::Path, <<params>>cx: &mut crate::prelude::Cx) -> <<ret>> {
+    <<lets>>
+    let node = ::std::rc::Rc::new(<<name>> { <<inits>> });
+    <<rest>>
 }
 </rust>
 
 Method: fn Text, Text, Text -> Text
 fn Method doc, signature, body = inline_text <rust>
-{{doc}}
-{{signature}} {
-    {{body}}
+<<doc>>
+<<signature>> {
+    <<body>>
 }
 </rust>
 
@@ -277,16 +277,16 @@ fn Method doc, signature, body = inline_text <rust>
 # the row's `{name}_replaced`, which adopts it next tick); the row is kept, never rebuilt.
 ForBuild: fn Text, Text, Text, Text, Text, Text, Text, Text, Text, Text, Text -> Text
 fn ForBuild name, at, keyTy, valueTy, rowNode, source, parent, passed, moved, from, replaced = inline_text <rust>
-/// The rows of the `for` at `{{at}}`: rows whose key left are torn down, new keys are
+/// The rows of the `for` at `<<at>>`: rows whose key left are torn down, new keys are
 /// built under it at `[k]` from the values after the tick; kept rows keep reading their
 /// entry out of the source. Nothing to do when the source is the map last built from.
-fn {{name}}_build(self: &::std::rc::Rc<Self>, cx: &mut crate::prelude::Cx) -> crate::prelude::Done {
-    let items: crate::prelude::Map<{{keyTy}}, {{valueTy}}> = self.{{source}}(cx);
-    if self.{{name}}_from.borrow().same(&items) {
+fn <<name>>_build(self: &::std::rc::Rc<Self>, cx: &mut crate::prelude::Cx) -> crate::prelude::Done {
+    let items: crate::prelude::Map\<<<keyTy>>, <<valueTy>>> = self.<<source>>(cx);
+    if self.<<name>>_from.borrow().same(&items) {
         return ::std::result::Result::Ok(());
     }
-    {{from}}
-    let old = self.{{name}}.borrow().clone();
+    <<from>>
+    let old = self.<<name>>.borrow().clone();
     // the kept rows stay where they are: only the keys that left or came are touched
     let mut next = old.clone();
     for (k, row) in old.iter() {
@@ -294,17 +294,17 @@ fn {{name}}_build(self: &::std::rc::Rc<Self>, cx: &mut crate::prelude::Cx) -> cr
             row.leave_row(cx);
             cx.leave_later(row.clone());
             next.remove(k);
-        }{{replaced}}
+        }<<replaced>>
     }
     for (k, v) in items.iter() {
         if !old.contains_key(k) {
-            let row = {{rowNode}}::build({{at}}.child(crate::prelude::Segment::Key(k.to_pod())), k.clone(), v.clone(), {{parent}}{{passed}}, cx)?;
+            let row = <<rowNode>>::build(<<at>>.child(crate::prelude::Segment::Key(k.to_pod())), k.clone(), v.clone(), <<parent>><<passed>>, cx)?;
             next.insert(k.clone(), row);
         }
     }
-    *self.{{name}}.borrow_mut() = next;
+    *self.<<name>>.borrow_mut() = next;
     // What the block reads of its rows (a `for` that gives a dynamic) moved.
-    cx.dirty(self.clone());{{moved}}
+    cx.dirty(self.clone());<<moved>>
     ::std::result::Result::Ok(())
 }
 </rust>
@@ -313,19 +313,19 @@ fn {{name}}_build(self: &::std::rc::Rc<Self>, cx: &mut crate::prelude::Cx) -> cr
 # clauses in a static position: at its caller's path).
 GenBuild: fn Text, Text, Text, Text, Text, Text, Text -> Text
 fn GenBuild name, at, path, source, valueTy, select, moved = inline_text <rust>
-/// The `rebuild` at `{{at}}`: the old generation torn down (it ran to the end of the
-/// tick), the next built at `{{path}}` from the source after the tick.
-fn {{name}}_build(self: &::std::rc::Rc<Self>, cx: &mut crate::prelude::Cx) -> crate::prelude::Done {
-    if let ::std::option::Option::Some(old) = self.{{name}}.borrow_mut().take() {
+/// The `rebuild` at `<<at>>`: the old generation torn down (it ran to the end of the
+/// tick), the next built at `<<path>>` from the source after the tick.
+fn <<name>>_build(self: &::std::rc::Rc<Self>, cx: &mut crate::prelude::Cx) -> crate::prelude::Done {
+    if let ::std::option::Option::Some(old) = self.<<name>>.borrow_mut().take() {
         old.leave_row(cx);
         cx.leave_later(old);
     }
-    let g = self.{{name}}_count.get();
-    self.{{name}}_count.set(g + 1);
-    let path = {{path}};
-    let value: {{valueTy}} = {{source}};
-    let row: ::std::rc::Rc<dyn crate::prelude::Row> = {{select}};
-    *self.{{name}}.borrow_mut() = ::std::option::Option::Some(row);{{moved}}
+    let g = self.<<name>>_count.get();
+    self.<<name>>_count.set(g + 1);
+    let path = <<path>>;
+    let value: <<valueTy>> = <<source>>;
+    let row: ::std::rc::Rc<dyn crate::prelude::Row> = <<select>>;
+    *self.<<name>>.borrow_mut() = ::std::option::Option::Some(row);<<moved>>
     ::std::result::Result::Ok(())
 }
 </rust>
@@ -335,11 +335,11 @@ fn {{name}}_build(self: &::std::rc::Rc<Self>, cx: &mut crate::prelude::Cx) -> cr
 # `deliver`, its `document`, its `document_moved`.
 RowImpl: fn Text, Text, Text -> Text
 fn RowImpl name, leaving, hosted = inline_text <rust>
-impl crate::prelude::Row for {{name}} {
+impl crate::prelude::Row for <<name>> {
     fn leave_row(&self, cx: &mut crate::prelude::Cx) {
-        {{leaving}}
+        <<leaving>>
     }
-    {{hosted}}
+    <<hosted>>
 }
 </rust>
 
@@ -352,23 +352,23 @@ fn OutputType cases, tags, accessors, decodes, firsts, helds, untagged = inline_
 /// decodes to, carrying the tag's output.
 #[derive(Clone)]
 pub enum Output {
-    {{cases}}
+    <<cases>>
 }
 
 impl Output {
     /// The tag the answer is for.
     pub fn tag(&self) -> &'static str {
         match self {
-            {{tags}}
+            <<tags>>
         }
     }
-    {{accessors}}
+    <<accessors>>
     /// The answer as one made outside a tag's arm, where it is plain data: what a place
     /// of another tag reads at its own type (an element of the host's own making given
     /// under a tag's arm, `@Element (Prelude.Unwrap(..))`). Any other answer is itself.
     pub fn untagged(&self) -> Output {
         match self {
-            {{untagged}}
+            <<untagged>>
             other => other.clone(),
         }
     }
@@ -398,21 +398,21 @@ impl ::prism_rtl::OutputOf<Elem> for Output {
     /// A World's answer to the element `e`, decoded by its tag.
     fn decode(e: &Elem, v: &crate::prelude::Pod) -> ::std::result::Result<Output, crate::prelude::Fault> {
         match e {
-            {{decodes}}
+            <<decodes>>
         }
     }
     /// A World's first value for the element `e`: a bundle's plain parts, any other tag's
     /// answer.
     fn decode_first(e: &Elem, v: &crate::prelude::Pod) -> ::std::result::Result<Output, crate::prelude::Fault> {
         match e {
-            {{firsts}}
+            <<firsts>>
         }
     }
     /// An answer held whole (a bundle with a part that is no plain data, made outside a
     /// tag's arm) as the parts the tag of `e` takes.
     fn held_parts(e: &Elem, answer: &Output) -> ::std::option::Option<::prism_rtl::PartsOutput<Output>> {
         match e {
-            {{helds}}
+            <<helds>>
         }
     }
 }
@@ -422,12 +422,12 @@ impl ::prism_rtl::OutputOf<Elem> for Output {
 # `outside` is the arm for an answer made outside a tag's arm (the emitter's `OutsideArm`).
 OutputGetter: fn Text, Text, Text, Text, Text -> Text
 fn OutputGetter accessor, variant, tagName, ty, outside = inline_text <rust>
-/// A `{{tagName}}`'s answer.
-pub fn {{accessor}}(&self) -> ::std::result::Result<{{ty}}, crate::prelude::Fault> {
+/// A `<<tagName>>`'s answer.
+pub fn <<accessor>>(&self) -> ::std::result::Result\<<<ty>>, crate::prelude::Fault> {
     match self {
-        Output::{{variant}}(v) => ::std::result::Result::Ok(v.clone()),
-        {{outside}}
-        other => ::std::result::Result::Err(crate::prelude::Fault::answer(format!("an answer for {}, where {{tagName}}'s was expected", other.tag()))),
+        Output::<<variant>>(v) => ::std::result::Result::Ok(v.clone()),
+        <<outside>>
+        other => ::std::result::Result::Err(crate::prelude::Fault::answer(format!("an answer for {}, where <<tagName>>'s was expected", other.tag()))),
     }
 }
 </rust>
@@ -435,9 +435,9 @@ pub fn {{accessor}}(&self) -> ::std::result::Result<{{ty}}, crate::prelude::Faul
 Output: fn Text, Text -> Text
 fn Output seating, arms = inline_text <rust>
 fn answer(self: ::std::rc::Rc<Self>, at: &[crate::prelude::Segment], v: &crate::prelude::Pod, cx: &mut crate::prelude::Cx) -> crate::prelude::Done {
-    {{seating}}
+    <<seating>>
     match at {
-        {{arms}}
+        <<arms>>
         _ => return ::std::result::Result::Err(crate::prelude::Fault::answer(format!("no answering place at {}", crate::prelude::Path(at.to_vec())))),
     }
     ::std::result::Result::Ok(())
@@ -446,8 +446,8 @@ fn answer(self: ::std::rc::Rc<Self>, at: &[crate::prelude::Segment], v: &crate::
 
 Hook: fn Text, Text -> Text
 fn Hook name, body = inline_text <rust>
-fn {{name}}(self: ::std::rc::Rc<Self>, cx: &mut crate::prelude::Cx) -> crate::prelude::Done {
-    {{body}}
+fn <<name>>(self: ::std::rc::Rc<Self>, cx: &mut crate::prelude::Cx) -> crate::prelude::Done {
+    <<body>>
     ::std::result::Result::Ok(())
 }
 </rust>
@@ -456,7 +456,7 @@ fn {{name}}(self: ::std::rc::Rc<Self>, cx: &mut crate::prelude::Cx) -> crate::pr
 PushHook: fn Text -> Text
 fn PushHook body = inline_text <rust>
 fn push(self: ::std::rc::Rc<Self>, element: &crate::prelude::Pod, v: &crate::prelude::Pod, cx: &mut crate::prelude::Cx) -> crate::prelude::Done {
-    {{body}}
+    <<body>>
     ::std::result::Result::Ok(())
 }
 </rust>
@@ -464,20 +464,20 @@ fn push(self: ::std::rc::Rc<Self>, element: &crate::prelude::Pod, v: &crate::pre
 # The program around a root node, as every World drives it.
 Program: fn Text, Text, Text, Text, Text -> Text
 fn Program name, prism, node, decode, call = inline_text <rust>
-/// The program of `@{{prism}}`: the root node and the runtime.
-pub struct {{name}} {
+/// The program of `@<<prism>>`: the root node and the runtime.
+pub struct <<name>> {
     rt: crate::prelude::Runtime,
-    root: ::std::rc::Rc<{{node}}>,
+    root: ::std::rc::Rc\<<<node>>>,
 }
 
-impl crate::prelude::Program for {{name}} {
+impl crate::prelude::Program for <<name>> {
     fn build(args: &[crate::prelude::Pod], ready: &dyn crate::prelude::ReadyState) -> ::std::result::Result<(Self, crate::prelude::TickOut), crate::prelude::Fault> {
-        {{decode}}
+        <<decode>>
         let mut rt = crate::prelude::Runtime::new();
         let mut cx = rt.build(ready);
-        let root = {{call}};
+        let root = <<call>>;
         let out = rt.close(cx)?;
-        ::std::result::Result::Ok(({{name}} { rt, root }, out))
+        ::std::result::Result::Ok((<<name>> { rt, root }, out))
     }
     fn tick(&mut self, input: &crate::prelude::TickIn, ready: &dyn crate::prelude::ReadyState) -> ::std::result::Result<crate::prelude::TickOut, crate::prelude::Fault> {
         let root: ::std::rc::Rc<dyn crate::prelude::Node> = self.root.clone();
@@ -495,77 +495,77 @@ impl crate::prelude::Program for {{name}} {
 
 MatchBlock: fn Text, Text -> Text
 fn MatchBlock scrut, arms = inline_text <rust>
-match {{scrut}} {
-    {{arms}}
+match <<scrut>> {
+    <<arms>>
 }</rust>
 
 Block: fn Text, Text -> Text
 fn Block stmts, tail = inline_text <rust>
 {
-    {{stmts}}
-    {{tail}}
+    <<stmts>>
+    <<tail>>
 }</rust>
 
 Labeled: fn Text, Text, Text -> Text
 fn Labeled label, stmts, tail = inline_text <rust>
-{{label}}: {
-    {{stmts}}
-    {{tail}}
+<<label>>: {
+    <<stmts>>
+    <<tail>>
 }</rust>
 
 If: fn Text, Text, Text -> Text
 fn If cond, thenX, elseX = inline_text <rust>
-if {{cond}} {
-    {{thenX}}
+if <<cond>> {
+    <<thenX>>
 } else {
-    {{elseX}}
+    <<elseX>>
 }</rust>
 
 IfStmt: fn Text, Text -> Text
 fn IfStmt head, body = inline_text <rust>
-{{head}} {
-    {{body}}
+<<head>> {
+    <<body>>
 }</rust>
 
 # A block of statements in a scope of their own.
 Scope: fn Text -> Text
 fn Scope body = inline_text <rust>
 {
-    {{body}}
+    <<body>>
 }</rust>
 
 Else: fn Text -> Text
 fn Else body = inline_text <rust>
  else {
-    {{body}}
+    <<body>>
 }</rust>
 
 ArmBlock: fn Text, Text -> Text
 fn ArmBlock pat, body = inline_text <rust>
-{{pat}} => {
-    {{body}}
+<<pat>> => {
+    <<body>>
 }</rust>
 
 ChainArm: fn Text, Text, Text -> Text
 fn ChainArm head, label, body = inline_text <rust>
-if {{head}} {
-    break {{label}} {{body}};
+if <<head>> {
+    break <<label>> <<body>>;
 }</rust>
 
 # A generic program type's deep walk (`DeepWalkImpl`): its plain data with each part of a
 # type parameter through the walk its caller gives, and the update events those walks find.
 DeepWalk: fn Text, Text, Text, Text, Text, Text, Text -> Text
 fn DeepWalk generics, head, prism, podWalks, portWalks, pods, ports = inline_text <rust>
-impl{{generics}} {{head}} {
-    /// `{{prism}}` as a World reads it in a level: each part of a type parameter as its walk gives it.
-    pub fn deep_pod_with(&self, cx: &crate::prelude::Cx{{podWalks}}) -> crate::prelude::Pod {
+impl<<generics>> <<head>> {
+    /// `<<prism>>` as a World reads it in a level: each part of a type parameter as its walk gives it.
+    pub fn deep_pod_with(&self, cx: &crate::prelude::Cx<<podWalks>>) -> crate::prelude::Pod {
         let _ = cx;
-        {{pods}}
+        <<pods>>
     }
     /// The update events of the dynamics its parts hold, as their walks find them.
-    pub fn deep_ports_with(&self, cx: &crate::prelude::Cx, out: &mut ::std::vec::Vec<::std::rc::Rc<crate::prelude::Port<()>>>{{portWalks}}) {
+    pub fn deep_ports_with(&self, cx: &crate::prelude::Cx, out: &mut ::std::vec::Vec<::std::rc::Rc<crate::prelude::Port<()>>><<portWalks>>) {
         let _ = (cx, &out);
-        {{ports}}
+        <<ports>>
     }
 }
 </rust>

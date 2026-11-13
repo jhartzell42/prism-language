@@ -31,6 +31,6 @@ fn Head ((people, n)) = "{Len people} people {n}"
     let same = if team == again: "same" else: "differs"
     Ui.Label($text=$"{Lead (? [[4]]+)} {Lead (? [[4, 5]]+)} {Lead (? [[4, 5, 6]]+)} {Lead nil} {Head (([["ann"]]+, 1))} {Head ((team.members, 2))} {total} {same}")    # 0
     !more <- Ui.Button($label=$"more")                           # 1
-    $rows <- {1: "x"}+ then {1: "x", 2: "y"}+ on !more
+    $rows <- {{1: "x"}}+ then {{1: "x", 2: "y"}}+ on !more
     for k, $v <- $rows:                                          # 2/[k]
         Ui.Label($text=$"{k} {$v}")                               # 2/[k]/0

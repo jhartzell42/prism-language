@@ -17,7 +17,7 @@ fn Describe xs = match xs:
 @main: @unit
 @main:
     let xs = [[3, 1, 2]]+
-    let m = {1: "a", 2: "b"}+
+    let m = {{1: "a", 2: "b"}}+
     let first = Or xs[0], 0
     let name = Or m[2], "none"
     let again = [[3, 1, 2]]+

@@ -12,7 +12,7 @@ fn Total m = Fold (Values m), 0, \|acc, n| acc + n
 @shop: @unit
 @shop:
     !drop <- Ui.Button($label=$"drop")                           # 0
-    $names <- {1: "ale", 2: "bun"} then Remove $names, 2 on !drop
+    $names <- {{1: "ale", 2: "bun"}} then Remove $names, 2 on !drop
     ((!sold, $counts)) <- for k, $name <- $names:               # 1/[k]
         !sell <- Ui.Button($label=$name)                          # 1/[k]/0
         $n <- 0 then $n + 1 on !sell

@@ -124,7 +124,7 @@ fn Opening board, file:
 
 let allCorners = [[(Sq 0, 0), (Sq 7, 0), (Sq 0, 7), (Sq 7, 7)]]
 
-let initial = Game(board=(Fold eight, {}, Opening), turn=White, corners=allCorners, ?passed=nil)
+let initial = Game(board=(Fold eight, {{}}, Opening), turn=White, corners=allCorners, ?passed=nil)
 
 ?At: fn Game, Sq -> ?Piece
 fn ?At g, sq = g.board[sq]

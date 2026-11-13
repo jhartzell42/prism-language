@@ -59,7 +59,7 @@ fn StepOne kept, asked:
 # One tick's requests, folded in the order given, each against the state the one before
 # left (chapter 3, doubt SO).
 StepAll: fn s, [Asked s] -> Kept s
-fn StepAll state, asked = Fold asked, Kept(state=state, responses={}), StepOne
+fn StepAll state, asked = Fold asked, Kept(state=state, responses={{}}), StepOne
 
 StateOf: fn Kept s -> s
 fn StateOf kept = kept.state
@@ -76,7 +76,7 @@ fn @InMemory initial, HostSeats:
     !asked <- HostSeats $state, !responses
     let !outcome = StepAll $state, !asked
     $state <- initial then StateOf !outcome                 # the hold
-    $answered <- {} then ResponsesOf !outcome
+    $answered <- {{}} then ResponsesOf !outcome
     let !responses = !Updated $answered
 
 # What a seat's request place is answered with: its own response of this tick, if any.
@@ -94,7 +94,7 @@ fn @News $state, $seats:
 # A role's seats as a `for` reads them: one key per seat and what sits there, so a seat
 # whose sitting changes is a new key, and that seat alone is built again.
 Sittings: fn (k ==> v) -> (((k, v)) ==> unit) where k: ^Ord, v: ^Ord
-fn Sittings seats = Fold (Keys seats), {}, \|all, k| match ?Get seats, k:
+fn Sittings seats = Fold (Keys seats), {{}}, \|all, k| match ?Get seats, k:
     ? v: Insert all, ((k, v)), unit
     nil: all
 

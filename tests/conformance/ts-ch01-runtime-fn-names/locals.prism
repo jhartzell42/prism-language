@@ -11,4 +11,4 @@ fn Total m, xs:
     let rc = 5
     let show = 6
     let mismatch = 7
-    (Or m["k"], 0) + (Or xs[0], 0) + (Or {"z": 1}["z"], 0) + field + get + index + mapOf + rc + show + mismatch
+    (Or m["k"], 0) + (Or xs[0], 0) + (Or {{"z": 1}}["z"], 0) + field + get + index + mapOf + rc + show + mismatch

@@ -70,8 +70,8 @@ let cy = Viewer "cy"
     !cyLeaves <- Ui.Button($label=$"cy leaves")
     !adaLeaves <- Ui.Button($label=$"ada leaves")
     !bobScripted <- Ui.Button($label=$"bob becomes eager")
-    $tellers <- {ada: Person, bob: Person} then (Remove $tellers, ada) on !adaLeaves <| (Insert $tellers, bob, (Eager 5)) on !bobScripted
-    $viewers <- {} then (Insert $viewers, cy, unit) on !cyJoins <| (Remove $viewers, cy) on !cyLeaves
+    $tellers <- {{ada: Person, bob: Person}} then (Remove $tellers, ada) on !adaLeaves <| (Insert $tellers, bob, (Eager 5)) on !bobScripted
+    $viewers <- {{}} then (Insert $viewers, cy, unit) on !cyJoins <| (Remove $viewers, cy) on !cyLeaves
     @Seats: fn $Tally, !(Place ==> Response) -> @![Asked Tally] emit Ui.*
     fn @Seats $state, !responses = @HostSeats $tellers, @Teller, $viewers, @Watcher, $state, !responses
     @InMemory empty, @Seats

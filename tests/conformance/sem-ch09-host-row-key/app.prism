@@ -8,7 +8,7 @@ use Ui.*
 @child: @unit
 @child:
     !add <- Ui.Button($label=$"add")                              # 0
-    $items <- {0: unit} then (Insert $items, (Size $items), unit) on !add
+    $items <- {{0: unit}} then (Insert $items, (Size $items), unit) on !add
     for k, $u <- $items:                                         # 1/[k]
         Ui.Label($text=$"item {k}")                               # 1/[k]/0
 

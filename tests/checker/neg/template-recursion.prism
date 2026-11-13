@@ -5,13 +5,13 @@
 Spin: fn Nat, Nat -> Text
 fn Spin depth, n = match n -? 1:
     ? m: inline_text <txt>
-<@Spin n={{n}} depth={{m}}/>
+<@Spin n=<<n>> depth=<<m>>/>
 </txt>
     nil: "{depth}"
 
 Count: fn Nat, Nat -> Text
 fn Count depth, n = match n -? 1:
     ? m: inline_text <txt>
-<@Count n={{m}} depth={{depth}}/>
+<@Count n=<<m>> depth=<<depth>>/>
 </txt>
     nil: "{depth}"

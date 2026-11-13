@@ -8,7 +8,7 @@ test mod Tests
 use Ui.*
 
 Named: u fn (u fn Nat -> Nat) -> (Text ==> (u fn Nat -> Nat))
-fn Named F = {"once": F}
+fn Named F = {{"once": F}}
 
 Later: u fn (u fn Nat -> Nat) -> (fn Nat -> (u fn Nat -> Nat))
 fn Later F = \|ignore| F

@@ -1550,7 +1550,7 @@ pub fn world_option(args: &[String], default: &str) -> (String, Vec<String>) {
 /// Run on a thread with a large stack: unbounded code runs direct-style within a cycle,
 /// and Rust's default stack is 8 MB.
 pub fn on_big_stack(f: impl FnOnce() -> u8 + Send + 'static) -> u8 {
-    ::std::thread::Builder::new().stack_size(1 << 30).spawn(f).map_or(1, |h| h.join().unwrap_or(1))
+    ::std::thread::Builder::new().stack_size(1 \<< 30).spawn(f).map_or(1, |h| h.join().unwrap_or(1))
 }
 
 /// A port's firing from an event method, which returns nothing to pass a fault on through.

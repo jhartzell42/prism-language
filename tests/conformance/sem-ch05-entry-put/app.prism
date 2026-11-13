@@ -28,4 +28,4 @@ fn ?At game, sq = update nil:
     let &copy = game
     &_ <= &copy.board[sq]
 
-let start = Game(board={1: "K", 2: "Q"}, turn=0)
+let start = Game(board={{1: "K", 2: "Q"}}, turn=0)

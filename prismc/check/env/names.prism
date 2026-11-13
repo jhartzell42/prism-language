@@ -120,9 +120,9 @@ fn BuildTables g, st, m = match g.mods[m]:
             if (HasKey g.mods, u) or u == "Prelude": s else: Err s, "unknown-name", line.span, "no module `{u}` among the program's files"
         let starred = Fold info.uses, [[]], \|acc, ((u, star))| if star and u != m: Push acc, u else: acc
         let sources = AddText (Append [[m]], starred), "Prelude"
-        let vals = Fold sources, {}, \|acc, src| BareValuesOf g, src, acc
-        let tys = Fold sources, {}, \|acc, src| BareTypesOf g, src, acc
-        let trs = Fold sources, {}, \|acc, src| BareTraitsOf g, src, acc
+        let vals = Fold sources, {{}}, \|acc, src| BareValuesOf g, src, acc
+        let tys = Fold sources, {{}}, \|acc, src| BareTypesOf g, src, acc
+        let trs = Fold sources, {{}}, \|acc, src| BareTraitsOf g, src, acc
         let ((rw, rv, s2)) = ModuleRow g, s1, info
         let info2 = update info:
             &_.emitRw <= rw
@@ -246,7 +246,7 @@ fn ResolveValue g, m, n:
     let marks = n.sigils
     if (Len n.path) == 1:
         let name = "{marks}{Or n.path[0], ""}"
-        let table = Or g.bare[m], {}
+        let table = Or g.bare[m], {{}}
         let keys = Or table[name], [[]]
         if (Len keys) == 1: ((keys[0], ""))
         else: if (Len keys) > 1: ((? (OwnFirst m, keys), "collision"))
@@ -296,7 +296,7 @@ fn ?QualifiedField g, m, recv, sigils, name = match recv.kind:
 # reading goes on with the first.
 TraitCollisionAt: fn G, St, Text, [Text], Range -> St
 fn TraitCollisionAt g, st, m, path, span:
-    let keys = if (Len path) == 1: Or (Or g.bareTraits[m], {})[Or path[0], ""], [[]] else: [[]]
+    let keys = if (Len path) == 1: Or (Or g.bareTraits[m], {{}})[Or path[0], ""], [[]] else: [[]]
     if (Len keys) < 2: st
     else:
         let qualified = Filter keys, \|k| Contains k, "."
@@ -317,7 +317,7 @@ fn DeclaresElementTag g, name = match g.tags[name]:
 ResolveType: fn G, Text, [Text] -> ((?Text, Text))
 fn ResolveType g, m, path:
     if (Len path) == 1:
-        let keys = Or (Or g.bareTypes[m], {})[Or path[0], ""], [[]]
+        let keys = Or (Or g.bareTypes[m], {{}})[Or path[0], ""], [[]]
         if (Len keys) == 1: ((keys[0], ""))
         else: if (Len keys) > 1: ((? (OwnFirst m, keys), "collision"))
         else: ((nil, "unknown"))
@@ -335,7 +335,7 @@ fn OwnFirst m, keys:
 ?ResolveTrait: fn G, Text, [Text] -> ?Text
 fn ?ResolveTrait g, m, path:
     if (Len path) == 1:
-        let keys = Or (Or g.bareTraits[m], {})[Or path[0], ""], [[]]
+        let keys = Or (Or g.bareTraits[m], {{}})[Or path[0], ""], [[]]
         keys[0]
     else:
         let qk = QualKey (QualModule g, (Take path, (Dec (Len path)))), (Or (?Last path), "")
@@ -344,6 +344,6 @@ fn ?ResolveTrait g, m, path:
 # How many further parameters each associated type of a trait takes, for those that take
 # any (`type Request r`; Type System ch. 6).
 AssocParamCounts: fn [TraitItem] -> (Text ==> Nat)
-fn AssocParamCounts items = Fold items, {}, \|m, it| match it:
+fn AssocParamCounts items = Fold items, {{}}, \|m, it| match it:
     TiAssocType n, params, ignore, ignore: if (Len params) == 0: m else: Insert m, n.name, (Len params)
     otherwise: m

@@ -126,7 +126,7 @@ Seating: fn (Text ==> a) -> Change a
 fn Seating seats = Change(seat=seats, remove=[[]])
 
 Removing: fn [Text] -> Change a
-fn Removing names = Change(seat={}, remove=names)
+fn Removing names = Change(seat={{}}, remove=names)
 
 @Table: @(TallySeats o Ui.*) emit Ui.* where o: ^TallyOrder
 @Table:
@@ -141,12 +141,12 @@ fn Removing names = Change(seat={}, remove=names)
     !kayJoins <- Ui.Button($label=$"kay joins")                            # 8
     !rolesJoin <- Ui.Button($label=$"dee and kay join, eager at 4")        # 9
     !eveRemoved <- Ui.Button($label=$"eve is removed")                     # 10
-    let !tellerChange = (Seating {"bob": $ (@Teller "bob", (Eager 2))}) on !bobEager <| (Seating {"dee": $ (@Teller "dee", (Eager 3)), "eve": $ (@Teller "eve", (Eager 3))}) on !pairJoins <| (Seating {"dee": $ (@Teller "dee", (Eager 2)), "eve": $ (@Teller "eve", (Eager 2)), "gus": $ (@Teller "gus", (Eager 2))}) on !threeJoin <| (Seating {"fay": $ (@Teller "fay", (Eager 1))}) on !fayJoins <| (Seating {"dee": $ (@Teller "dee", (Eager 4))}) on !rolesJoin <| (Removing [["ada"]]) on !adaRemoved <| (Removing [["fay"]]) on !fayRemoved <| (Removing [["eve"]]) on !eveRemoved
-    let !keeperChange = (Seating {"kay": $ (@Keeper "kay", Person)}) on !kayJoins <| (Seating {"kay": $ (@Keeper "kay", (Eager 4))}) on !rolesJoin
-    let !viewerChange = (Seating {"cy": $ (@Watcher "cy")}) on !cyJoins <| (Removing [["cy"]]) on !cyRemoved
-    $tellers <- {"ada": $ (@Teller "ada", Person), "bob": $ (@Teller "bob", Person)} then Changed $tellers, !tellerChange
-    $keepers <- {} then Changed $keepers, !keeperChange
-    $viewers <- {} then Changed $viewers, !viewerChange
+    let !tellerChange = (Seating {{"bob": $ (@Teller "bob", (Eager 2))}}) on !bobEager <| (Seating {{"dee": $ (@Teller "dee", (Eager 3)), "eve": $ (@Teller "eve", (Eager 3))}}) on !pairJoins <| (Seating {{"dee": $ (@Teller "dee", (Eager 2)), "eve": $ (@Teller "eve", (Eager 2)), "gus": $ (@Teller "gus", (Eager 2))}}) on !threeJoin <| (Seating {{"fay": $ (@Teller "fay", (Eager 1))}}) on !fayJoins <| (Seating {{"dee": $ (@Teller "dee", (Eager 4))}}) on !rolesJoin <| (Removing [["ada"]]) on !adaRemoved <| (Removing [["fay"]]) on !fayRemoved <| (Removing [["eve"]]) on !eveRemoved
+    let !keeperChange = (Seating {{"kay": $ (@Keeper "kay", Person)}}) on !kayJoins <| (Seating {{"kay": $ (@Keeper "kay", (Eager 4))}}) on !rolesJoin
+    let !viewerChange = (Seating {{"cy": $ (@Watcher "cy")}}) on !cyJoins <| (Removing [["cy"]]) on !cyRemoved
+    $tellers <- {{"ada": $ (@Teller "ada", Person), "bob": $ (@Teller "bob", Person)}} then Changed $tellers, !tellerChange
+    $keepers <- {{}} then Changed $keepers, !keeperChange
+    $viewers <- {{}} then Changed $viewers, !viewerChange
     @ TallySeats($teller=$tellers, $keeper=$keepers, $viewer=$viewers)
 
 # One tally in memory, seated by the table, its requests in the default order.

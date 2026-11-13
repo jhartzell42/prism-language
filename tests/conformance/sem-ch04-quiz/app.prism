@@ -9,7 +9,7 @@ type Question = record:
 
 let owls = Question(prompt="Owls are birds", truth=True)
 let bats = Question(prompt="Bats are birds", truth=False)
-let questions = {1: owls, 2: bats}
+let questions = {{1: owls, 2: bats}}
 
 ?Score: fn (Nat ==> Bool) -> ?Nat
 fn ?Score marks:
@@ -28,7 +28,7 @@ fn ?Score marks:
             !no <- Ui.Button($label=$"False")                        # .../[id]/2
             @ q.truth on !yes <| (not q.truth) on !no
     !marks <- @Switch $!rounds
-    $answers <- {} then {} on !again <| (Union !marks, $answers)
+    $answers <- {{}} then {{}} on !again <| (Union !marks, $answers)
     let $verdict = match ?Score $answers:
         ? n: "{n} right"
         nil: "keep going"

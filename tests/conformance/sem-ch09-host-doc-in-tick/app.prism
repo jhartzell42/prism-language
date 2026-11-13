@@ -33,7 +33,7 @@ derive ^Eq, ^Show
 
 # each place's text, paired with the owner's count
 Tag: fn (Path ==> Elem Ui.*), Nat -> (Path ==> Tagged)
-fn Tag doc, n = Fold (Keys doc), {}, \|acc, p| match ?Get doc, p:
+fn Tag doc, n = Fold (Keys doc), {{}}, \|acc, p| match ?Get doc, p:
     ? e: Insert acc, p, (Tagged (TextOf e), n)
     nil: acc
 

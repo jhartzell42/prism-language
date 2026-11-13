@@ -539,7 +539,7 @@ fn BundleTagsOf lx, full:
 # Whether a generic tag's bundle output, part by part, is the bundle a line binds at some
 # types of the tag's variables.
 MatchesOpen: unbounded fn [Ty], [Ty] -> Bool
-fn MatchesOpen open, parts = (Len open) == (Len parts) and match ?ParamMatchAll (Each open, Unrigid), parts, {}:
+fn MatchesOpen open, parts = (Len open) == (Len parts) and match ?ParamMatchAll (Each open, Unrigid), parts, {{}}:
     ? ignore: True
     nil: False
 
@@ -1861,7 +1861,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                             # `@unit`, Type System ch. 1): its type parameters at this call,
                             # read off its arguments' types as for a widget of one clause, so
                             # its rows' parameters and lines have this call's types
-                            let instance = Or (?CallInstance lx, v, args), {}
+                            let instance = Or (?CallInstance lx, v, args), {{}}
                             let lxs = update lx:
                                 &_.subst <= Fold (Keys instance), &_.subst, \|m, q| Insert m, q, (Or instance[q], TyErr)
                             let vs = update v:
@@ -1894,9 +1894,9 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                 # a generic widget's type parameters, over which its body was checked: their
                 # types at this call, read off its arguments' types
                 let ?params = ?CallInstance lx, v, args
-                let unmatched = Filter (Fold ptys, [[]], \|acc, t| UnionTexts acc, (RigidsIn t)), \|q| not (HasKey (Or ?params, {}), q)
+                let unmatched = Filter (Fold ptys, [[]], \|acc, t| UnionTexts acc, (RigidsIn t)), \|q| not (HasKey (Or ?params, {{}}), q)
                 let lxp = update lx:
-                    &_.subst <= Fold (Keys (Or ?params, {})), &_.subst, \|m, q| Insert m, q, (Or (Or ?params, {})[q], TyErr)
+                    &_.subst <= Fold (Keys (Or ?params, {{}})), &_.subst, \|m, q| Insert m, q, (Or (Or ?params, {{}})[q], TyErr)
                 let ((wx1, be1, me1)) = Fold (Range0 (Len params)), ((wx, emptyEnv, emptyEnv)), \|((w, be, me)), i|
                     let p = Or params[i], dummyPat
                     let nkey = PlainBinder lxc, p
@@ -1911,7 +1911,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                     &_.inlined <= match lx.callIds[PlaceKey lx, callSpan]:
                         ? id: "{lx.inlined}_{Base32 id}"
                         nil: lx.inlined
-                    &_.subst <= Fold (Keys (Or ?params, {})), &_.subst, \|m, q| Insert m, q, (Or (Or ?params, {})[q], TyErr)
+                    &_.subst <= Fold (Keys (Or ?params, {{}})), &_.subst, \|m, q| Insert m, q, (Or (Or ?params, {{}})[q], TyErr)
                     &_.recursing <= AddText lx.recursing, qk
                 let inner = update wx1:
                     &_.lx <= lxi
@@ -1937,7 +1937,7 @@ fn ?CallInstance lx, v, args:
     let ptys = match v.scheme.ty:
         TyFn ignore, ps, ignore: ps
         otherwise: [[]]
-    Fold (Range0 (Len ptys)), (? {}), \|?acc, i| match ((?acc, args[i])):
+    Fold (Range0 (Len ptys)), (? {{}}), \|?acc, i| match ((?acc, args[i])):
         ((? m, ? a)): ?ParamInstance (Or ptys[i], TyErr), (TypeAt lx, a.value.span), m
         otherwise: ?acc
 

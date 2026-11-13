@@ -42,7 +42,7 @@ fn StepOne kept, asked:
         Denied why: Kept(state=kept.state, responses=(Insert kept.responses, asked.place, (Declined why)))
 
 StepAll: fn s, [Asked s] -> Kept s
-fn StepAll state, asked = Fold asked, Kept(state=state, responses={}), StepOne
+fn StepAll state, asked = Fold asked, Kept(state=state, responses={{}}), StepOne
 
 StateOf: fn Kept s -> s
 fn StateOf kept = kept.state

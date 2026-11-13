@@ -43,7 +43,7 @@ fn Added n = Add "item {n}"
 @todos:
     !add <- Ui.Button($label=$"Add")                                 # 0
     $next <- 0 then $next + 1 on !add
-    let !adds = {$next: Added $next} on !add
+    let !adds = {{$next: Added $next}} on !add
     !rows <- for $items:                                            # 1/[key]
         !toggle <- Ui.Button($label=$"Toggle")                       # 1/[key]/0
         !delete <- Ui.Button($label=$"Delete")                       # 1/[key]/1
@@ -51,4 +51,4 @@ fn Added n = Add "item {n}"
         $starred <- False then not $starred on !star
         Ui.Label($text=(Describe $_, $starred))                      # 1/[key]/3
         @ Toggle on !toggle <| Delete on !delete
-    $items <- {} then StepAll $items, (!Union !adds, !rows)
+    $items <- {{}} then StepAll $items, (!Union !adds, !rows)

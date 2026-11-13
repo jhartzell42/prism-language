@@ -973,7 +973,7 @@ fn SharedCaseOf lx, v, c, rowName, withBase:
     # a live parameter (`IsLiveParam`) matches anything and is handed on whole
     let live = Filter (Range0 (Len c.params)), \|i| IsLiveParam (Or ptys[i], TyErr)
     let pos = Each (Range0 (Len c.params)), \|i| if HasNat live, i: PatOut(pa=(PaBind "live{i}"), conds=[[]], binds=[[]]) else: ArmPat lxc, c.params[i], (Or ptys[i], TyErr), ByRef, "c{i}"
-    let binds = Fold pos, {}, \|m, o| Fold o.binds, m, \|m2, ((n, b))| Insert m2, n, b
+    let binds = Fold pos, {{}}, \|m, o| Fold o.binds, m, \|m2, ((n, b))| Insert m2, n, b
     let named = Fold c.params, [[]], \|acc, p| Append acc, (PatternBinders p)
     let binders = Filter named, \|((bn, ignore))| HasKey binds, bn
     let passed = Each binders, \|((bn, ignore))| match binds[bn]:
@@ -1055,7 +1055,7 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
     let upName = "{genName}_up"
     let pos = Each (Range0 (Len pats)), \|i| ArmPat lxc, (Or pats[i], nil), (Or ptys[i], TyErr), ByRef, "c{i}"
     let pa = PaTuple (Each pos, \|o| o.pa)
-    let binds = Fold pos, {}, \|m, o| Fold o.binds, m, \|m2, ((n, b))| Insert m2, n, b
+    let binds = Fold pos, {{}}, \|m, o| Fold o.binds, m, \|m2, ((n, b))| Insert m2, n, b
     let guardConds = match ?guard:
         ? g: [[CcIf (AsBool (ValueOf lxc, (BindAll menv, (Fold pos, [[]], \|acc, o| Append acc, o.binds)), g))]]
         nil: [[]]
@@ -1109,7 +1109,7 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
         ? ignore: [[(((if zeroBased: hostAbove else: "enclosing"), hostOfTy))]]
         nil: [[]]
     let movedParam = if shared and IsSome ?hostedBy: [[(("moved", movedTy))]] else: [[]]
-    let rowFresh = NewWx lxc, rowName, rowFields, rowInits, [[(("parent", (XClone (XVar "parent"))))]], [[]], {}, rowTaken, wx.inlining, ?hostedBy
+    let rowFresh = NewWx lxc, rowName, rowFields, rowInits, [[(("parent", (XClone (XVar "parent"))))]], [[]], {{}}, rowTaken, wx.inlining, ?hostedBy
     let r0000 = if zeroBased: UnderItsPath rowFresh, ?hostedBy else: rowFresh
     let r000 = update r0000:
         &_.baseLate <= numberedLate
@@ -1465,7 +1465,7 @@ GenRowOf: unbounded fn Wx, Env, Block, OutTy, Text, Text -> GenRow
 fn GenRowOf wx, menv, body, vt, rowName, genName:
     let lx = wx.lx
     let upName = "{genName}_up"
-    let r00 = UnderItsPath (NewWx lx, rowName, [[(("value", vt, "the generation's value, `_`")), (("parent", (OutWeak wx.node), "the node of the `rebuild`"))]], [[(("value", (XClone (XVar "value"))))]], [[(("parent", (XClone (XVar "parent"))))]], [[]], {}, (Append nodeHooks, [["value", "parent", "result", "result_dynamic"]]), wx.inlining, (?HostedRows wx)), (?HostedRows wx)
+    let r00 = UnderItsPath (NewWx lx, rowName, [[(("value", vt, "the generation's value, `_`")), (("parent", (OutWeak wx.node), "the node of the `rebuild`"))]], [[(("value", (XClone (XVar "value"))))]], [[(("parent", (XClone (XVar "parent"))))]], [[]], {{}}, (Append nodeHooks, [["value", "parent", "result", "result_dynamic"]]), wx.inlining, (?HostedRows wx)), (?HostedRows wx)
     # a block that ends on a bundle gives it as one value (`WholeResultOf`)
     let r0 = update (GenCurrent r00, wx, genName):
         &_.wholeResultAt <= BundleResultKey lx, body

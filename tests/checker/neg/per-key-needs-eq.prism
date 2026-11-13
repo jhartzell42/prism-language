@@ -6,5 +6,5 @@ type Opaque = Opaque Nat
 @seen: @unit
 @seen:
     !go <- @started
-    $o <- {0: (Opaque 1)} then {0: (Opaque 2)} on !go
+    $o <- {{0: (Opaque 1)}} then {{0: (Opaque 2)}} on !go
     $each <- @PerKey $o

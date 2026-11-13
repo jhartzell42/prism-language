@@ -19,13 +19,13 @@ fn Wrap $a = [[$a]]
     !keep <- Ui.Button($label=$"keep")                            # 2
     !more <- Ui.Button($label=$"more")                            # 3
     $bonus <- 0 then $bonus + 10 on !more
-    $names <- {1: "one", 2: "two"} then Remove $names, 2 on !drop
+    $names <- {{1: "one", 2: "two"}} then Remove $names, 2 on !drop
     $all <- for k, $name <- $names:                              # 4/[k]
         $rings <- 0 then $rings + 1 on !ring
         let $twice = $rings * 2
         Ui.Label($text=$"{$name} {$rings}")                       # 4/[k]/0
         @ Wrap $twice
-    $kept <- {} then $all on !keep
+    $kept <- {{}} then $all on !keep
     for k, $part <- $kept:                                       # 5/[k]
         for j, $each <- $part:                                   # 5/[k]/0/[j]
             Ui.Label($text=$"kept {$each} {$bonus}")              # 5/[k]/0/[j]/0
@@ -37,13 +37,13 @@ fn Wrap $a = [[$a]]
     !keep <- Ui.Button($label=$"keep")                            # 2
     !more <- Ui.Button($label=$"more")                            # 3
     $bonus <- 0 then $bonus + 10 on !more
-    $names <- {1: "one", 2: "two"} then Remove $names, 2 on !drop
+    $names <- {{1: "one", 2: "two"}} then Remove $names, 2 on !drop
     $all <- for k, $name <- $names:                              # 4/[k]
         $rings <- 0 then $rings + 1 on !ring
         let $total = $rings + $bonus
         Ui.Label($text=$"{$name} {$rings}")                       # 4/[k]/0
         @ Wrap $total
-    $kept <- {} then $all on !keep
+    $kept <- {{}} then $all on !keep
     for k, $part <- $kept:                                       # 5/[k]
         for j, $each <- $part:                                   # 5/[k]/0/[j]
             Ui.Label($text=$"kept {$each}")                       # 5/[k]/0/[j]/0

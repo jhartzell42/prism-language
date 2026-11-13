@@ -106,9 +106,9 @@ fn ImplAssoc st, tr, n, a, indices, t = match a:
     TyRigid ignore: t
     otherwise:
         let whole = Zonk st, a
-        let found = Fold st.assocImpls, AssocMissed, \|found, ai| if found != AssocMissed or ai.cls != tr or ai.name != n: found else: match ?MatchHead ai.head, whole, {}:
+        let found = Fold st.assocImpls, AssocMissed, \|found, ai| if found != AssocMissed or ai.cls != tr or ai.name != n: found else: match ?MatchHead ai.head, whole, {{}}:
             ? tys: match MatchIndices ai.indices, indices, tys:
-                AssocMatched all: AssocChose (SubstQ Inst(tys=all, rows={}, cols={}), ai.value)
+                AssocMatched all: AssocChose (SubstQ Inst(tys=all, rows={{}}, cols={{}}), ai.value)
                 AssocWaits: AssocWaits
                 AssocMissed: AssocMissed
                 AssocChose chosen: AssocChose chosen

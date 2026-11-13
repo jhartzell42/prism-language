@@ -6,10 +6,10 @@ fn Quote text = "> {text}"
 
 Broken: fn Nat -> Text
 fn Broken n = inline_text <txt>
-<@Quote text={{n}}/>
+<@Quote text=<<n>>/>
 </txt>
 
 Fine: fn Text -> Text
 fn Fine t = inline_text <txt>
-<@Quote text={{t}}/>
+<@Quote text=<<t>>/>
 </txt>

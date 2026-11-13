@@ -177,7 +177,7 @@ fn CheckOrphan g, st, i:
             &_.file <= i.file
         ErrFix s, "orphan", i.span, "{if i.home == "": "this file" else: "`{i.home}`"} declares neither `^{BareName i.cls}` nor `{ShowTy s, i.head}`", "wrap the type in a newtype of this module, or move the impl"
 
-let dummyTrait = TraitInfo(name="", home="", param="a", supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], assocParams={}, assocDefaults=[[]], file=0, span=Range(start=0, end=0, origin=InSource))
+let dummyTrait = TraitInfo(name="", home="", param="a", supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], assocParams={{}}, assocDefaults=[[]], file=0, span=Range(start=0, end=0, origin=InSource))
 
 TypeNamesIn: unbounded fn Ty -> [Text]
 fn TypeNamesIn t = match t:
@@ -229,7 +229,7 @@ fn TagVariablesPrint g, st = Fold (Keys g.tags), st, \|s, name|
         ? tg: Fold tg.qs, s, \|s1, variable|
             let prints = Fold tg.bounds, False, \|seen, ((bounded, cls))| seen or (bounded == variable and HasText (SuperClosure g, cls), "Prelude.Show")
             # a variable of a field alone is `field-variable` already (`ConvTag`)
-            let inOutput = (SubstQ Inst(tys=(Insert {}, variable, TyErr), rows={}, cols={}), tg.out) != tg.out
+            let inOutput = (SubstQ Inst(tys=(Insert {{}}, variable, TyErr), rows={{}}, cols={{}}), tg.out) != tg.out
             if prints or not inOutput: s1
             else: WithFile (ErrFix (WithFile s1, tg.file), "tag-variable", tg.span, "the type variable `{variable}` of the tag `{name}` has no `^Show` bound: every field and every output prints", "write `where {variable}: ^Show` on the tag's line"), s1.file
 
@@ -583,7 +583,7 @@ fn ?PackedRefusal g, st, method = match g.vals[method]:
     ? v:
         let ((param, ignore)) = Or v.scheme.bounds[0], (("", ""))
         let own = Filter v.scheme.qs, \|q| q != param
-        let erased = Inst(tys=(Insert {}, param, TyErr), rows={}, cols={})
+        let erased = Inst(tys=(Insert {{}}, param, TyErr), rows={{}}, cols={{}})
         let noValue = "it has no parameter of the trait's type `{param}`, so there is no packed value to read a dictionary from"
         match v.scheme.ty:
             TyFn ignore, params, result:
@@ -613,7 +613,7 @@ fn ElemTrait g, st, s0, Restore, w, t, bare, rw:
 ?FindImpl: unbounded fn G, St, Text, Ty -> ?(([((Ty, Text))], St, Text, Text))
 fn ?FindImpl g, st, cls, t = Fold (Or g.impls[cls], [[]]), nil, \|?found, im| match ?found:
     ? f: ? f
-    nil: match ?MatchHead im.head, (Zonk st, t), {}:
+    nil: match ?MatchHead im.head, (Zonk st, t), {{}}:
         ? m: ? (((Each im.bounds, \|((v, c))| (((Or m[v], TyErr), c))), st, (ImplHow g, im), (ImplChoice im)))
         nil: nil
 
@@ -625,7 +625,7 @@ fn ?FindImpl g, st, cls, t = Fold (Or g.impls[cls], [[]]), nil, \|?found, im| ma
 NoteImplUse: unbounded fn G, St, Want, Ty -> St
 fn NoteImplUse g, st, w, t = Fold (Or g.impls[w.cls], [[]]), st, \|s, im|
     if (Len im.qs) == 0: s
-    else: match ?MatchHead im.head, (Zonk st, t), {}:
+    else: match ?MatchHead im.head, (Zonk st, t), {{}}:
         ? m: update s:
             &_.genericUses <= Push &_.genericUses, GenericUse(user=st.definition, target=(GrowthKey im), file=w.file, span=w.span, types=(Each im.qs, \|q| ((q, (Or m[q], TyErr)))))
         nil: s

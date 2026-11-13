@@ -16,4 +16,4 @@ fn @Pressing seat, name:
 @host: @unit
 @host:
     (($state, !responses)) <- @InMemory 0, (InOrder !heard)
-    !heard <- @HostPressers ($ {(Presser "ada"): "ada", (Presser "bob"): "bob"}), @Pressing, $state, !responses
+    !heard <- @HostPressers ($ {{(Presser "ada"): "ada", (Presser "bob"): "bob"}}), @Pressing, $state, !responses

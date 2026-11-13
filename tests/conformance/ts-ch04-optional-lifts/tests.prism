@@ -2,7 +2,7 @@
 emit Ui.*
 use App.*
 
-let ps = {"x": P(a=1, b="one")}
+let ps = {{"x": P(a=1, b="one")}}
 
 check fields:
     ?A ps, "x" => ? 1
@@ -17,8 +17,8 @@ check operands:
     ?Sum (? 1), (? 2) => ? 3
     ?Sum nil, (? 2) => nil
     ?Sum (? 1), nil => nil
-    ?Size (? {"k": [[1, 2]]}), "k" => ? 2
-    ?Size (? {"k": [[1, 2]]}), "j" => nil
+    ?Size (? {{"k": [[1, 2]]}}), "k" => ? 2
+    ?Size (? {{"k": [[1, 2]]}}), "j" => nil
     ?Size nil, "k" => nil
     ?Shown (? P(a=1, b="u")) => ? "P(a=1, b=\"u\")"
     ?Shown nil => nil

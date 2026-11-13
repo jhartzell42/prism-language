@@ -209,7 +209,7 @@ fn CheckColors st0:
     update st2:
         &_.cleqs <= [[]]
         &_.colorFlex <= [[]]
-        &_.colUp <= {}
+        &_.colUp <= {{}}
 
 LeqDiag: fn CLeq, Col, Col -> CDiag
 fn LeqDiag c, lo, hi:

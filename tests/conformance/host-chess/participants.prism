@@ -16,7 +16,7 @@ use Ui.*
 # ---- the board
 
 # the board's ranks as a `for` reads them: the eighth rank first
-let ranksDown = {0: 7, 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1, 7: 0}
+let ranksDown = {{0: 7, 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1, 7: 0}}
 
 # The board as eight lines of text, and the files under them; until the board is told,
 # the ranks' numbers alone.

@@ -9,5 +9,5 @@ check union_left_wins:
     ValuesAt (Union (Keyed 98, 102, "a"), (Keyed 0, 100, "b")), [[97, 98, 99, 100, 101, 102]] => "baaaa-"
     Size (Union (Keyed 0, 100, "a"), (Keyed 50, 150, "b")) => 150
     Size (Union (Keyed 50, 150, "a"), (Keyed 0, 100, "b")) => 150
-    ValuesAt (Union {}, (Keyed 0, 2, "b")), [[0, 1]] => "bb"
-    ValuesAt (Union (Keyed 0, 2, "a"), {}), [[0, 1]] => "aa"
+    ValuesAt (Union {{}}, (Keyed 0, 2, "b")), [[0, 1]] => "bb"
+    ValuesAt (Union (Keyed 0, 2, "a"), {{}}), [[0, 1]] => "aa"

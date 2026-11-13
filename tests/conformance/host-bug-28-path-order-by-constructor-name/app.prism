@@ -9,7 +9,7 @@ type Color = choice:
     Black
 derive ^Eq, ^Ord, ^Show
 
-let seats = {White: unit, Black: unit}
+let seats = {{White: unit, Black: unit}}
 
 Listed: fn [Color] -> Text
 fn Listed colors = Fold colors, "", \|all, color| "{all} {color}"

@@ -62,7 +62,7 @@ use Check.Passes.Borrows.*
 # enclosing definition is `unbounded fn`.
 WithLocals: unbounded fn Shrink, [((Def, Text, Text, (Text ==> Rel), ?FnClause, ?WidgetDecl))] -> Shrink
 fn WithLocals sk, found:
-    let ((bases, owners, clauses, wdecls)) = Fold found, (({}, {}, {}, {})), \|((bs, os, cs, ws)), ((d, gk, n, m, ?c, ?w))|
+    let ((bases, owners, clauses, wdecls)) = Fold found, (({{}}, {{}}, {{}}, {{}})), \|((bs, os, cs, ws)), ((d, gk, n, m, ?c, ?w))|
         let qk = LocalKey n, d.qk, gk
         let bs2 = if HasKey bs, qk: bs else: Insert bs, qk, (Marks m)
         let os2 = Insert os, qk, d.qk
@@ -130,7 +130,7 @@ ClauseBase: unbounded fn Shrink, Def, FnClause -> (Text ==> Rel)
 fn ClauseBase sk, d, c:
     let base = match sk.localBase[d.qk]:
         ? b: ParamRelsOn b, c.params
-        nil: ParamRelsOn (Insert (Or sk.seeds[d.home], {}), "file:", Rel(param=d.file, strict=False)), c.params
+        nil: ParamRelsOn (Insert (Or sk.seeds[d.home], {{}}), "file:", Rel(param=d.file, strict=False)), c.params
     NonEmptyParams sk, d, c, base
 
 # A parameter the signature types `[a]+` or `(K ==> V)+` is known non-empty from the
@@ -172,7 +172,7 @@ fn ?ResolveName g, m, n:
 
 # Every name a statement mentions, at any depth (`CheckBlocks.DepOrder` reads it too).
 NamesInStmt: unbounded fn Stmt -> [Text]
-fn NamesInStmt s = SpotsNames (StmtSpots s, {})
+fn NamesInStmt s = SpotsNames (StmtSpots s, {{}})
 
 # Strongly connected components with a cycle (Kosaraju's two passes, from memory): a
 # depth-first post-order over the graph, then the reversed graph read in the reverse of
@@ -180,10 +180,10 @@ fn NamesInStmt s = SpotsNames (StmtSpots s, {})
 # definitions or one that names itself.
 Sccs: unbounded fn [Text], [((Text, [Text]))] -> [ [Text] ]
 fn Sccs keys, refs:
-    let adj = Fold refs, {}, \|m, ((k, rs))| Insert m, k, rs
-    let rev = Fold refs, {}, \|m, ((k, rs))| Fold rs, m, \|m2, r| Insert m2, r, (Push (Or m2[r], [[]]), k)
-    let ((ignore, post)) = Fold keys, (({}, [[]])), \|((seen, out)), k| PostVisit adj, seen, out, k
-    let ((ignore2, comps)) = Fold (Reverse2 post), (({}, [[]])), \|((seen, acc)), k|
+    let adj = Fold refs, {{}}, \|m, ((k, rs))| Insert m, k, rs
+    let rev = Fold refs, {{}}, \|m, ((k, rs))| Fold rs, m, \|m2, r| Insert m2, r, (Push (Or m2[r], [[]]), k)
+    let ((ignore, post)) = Fold keys, (({{}}, [[]])), \|((seen, out)), k| PostVisit adj, seen, out, k
+    let ((ignore2, comps)) = Fold (Reverse2 post), (({{}}, [[]])), \|((seen, acc)), k|
         if HasKey seen, k: ((seen, acc))
         else:
             let ((seen2, comp)) = Collect rev, seen, [[]], k

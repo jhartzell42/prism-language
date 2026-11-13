@@ -11,7 +11,7 @@ type Holder a = record:
     item: a
 
 Held: u fn (u fn Nat -> Nat) -> (Nat ==> Holder (u fn Nat -> Nat))
-fn Held F = {1: Holder(item=F)}
+fn Held F = {{1: Holder(item=F)}}
 
 Through: fn Nat -> Nat
 fn Through k:

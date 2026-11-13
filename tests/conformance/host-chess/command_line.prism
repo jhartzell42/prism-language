@@ -22,7 +22,7 @@ type Typed = choice:
     Unreadable Text                    # anything else, as typed
 derive ^Eq, ^Show
 
-let words = {"resign": (Requesting Resign), "draw": (Requesting OfferDraw), "accept": (Requesting AcceptDraw), "moves": ListMoves, "legal": ListLegal, "leave": Depart}
+let words = {{"resign": (Requesting Resign), "draw": (Requesting OfferDraw), "accept": (Requesting AcceptDraw), "moves": ListMoves, "legal": ListLegal, "leave": Depart}}
 
 TypedOf: fn Text -> Typed
 fn TypedOf line = match words[Lower line]:

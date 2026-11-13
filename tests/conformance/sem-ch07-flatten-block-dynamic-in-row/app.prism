@@ -16,7 +16,7 @@ fn $Choose second, $p, $q = if second: $q else: $p
     $a <- 5 then $a + 1 on !go
     $b <- 20 then $b + 2 on !go
     $$current <- $a then $Choose (True on !go), $a, $b
-    for j, ignore <- $ {"x": unit}:                              # 1/[j]
+    for j, ignore <- $ {{"x": unit}}:                              # 1/[j]
         $shown <- @Flatten $$current
         Ui.Label($text=$"{j}: {$shown}")                          # 1/[j]/0
 

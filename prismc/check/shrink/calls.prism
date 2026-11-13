@@ -71,7 +71,7 @@ fn HofSeeds sk, homes:
     let cands = HofCandidates sk
     let cleared = ClearSlots sk, homes, cands, 0
     let sums = SlotSums sk, homes, cleared, (TopSums cleared), 0
-    Fold homes, {}, \|m, h| Insert m, h, (SlotSeeds sk, h, cleared, sums, False)
+    Fold homes, {{}}, \|m, h| Insert m, h, (SlotSeeds sk, h, cleared, sums, False)
 
 # The slots whose parameter's declared type is a function, every clause binding it by a
 # name (or `ignore`).
@@ -106,7 +106,7 @@ fn SlotName c, j = match c.params[j]:
 # the fixed point reads (a slot not yet narrowed), which the final seeds drop.
 SlotSeeds: fn Shrink, Text, [Slot], (Text ==> Rel), Bool -> (Text ==> Rel)
 fn SlotSeeds sk, h, slots, sums, withTop:
-    let pre = Or sk.seeds[h], {}
+    let pre = Or sk.seeds[h], {{}}
     let start = if withTop: Insert pre, "⊤", Rel(param=topParam, strict=False) else: pre
     Fold slots, start, \|m, sl| Fold (Spellings sk.g, h, sl.owner), m, \|m2, sp|
         let m3 = Insert m2, "acc:{sp}:{sl.at}", Rel(param=sl.arity, strict=False)
@@ -121,7 +121,7 @@ fn Spellings g, h, k = Filter (AddText [[BareName k]], k), \|sp| (?ResolveName g
 # Drop every slot whose parameter escapes, until none does.
 ClearSlots: unbounded fn Shrink, [Text], [Slot], Nat -> [Slot]
 fn ClearSlots sk, homes, slots, round:
-    let sks = SeedsFor sk, homes, slots, {}, False
+    let sks = SeedsFor sk, homes, slots, {{}}, False
     let kept = Filter slots, \|sl| not (SlotEscapes sks, sl)
     if (Len kept) == (Len slots): kept
     else: if round > 20: [[]]
@@ -129,7 +129,7 @@ fn ClearSlots sk, homes, slots, round:
 
 SeedsFor: fn Shrink, [Text], [Slot], (Text ==> Rel), Bool -> Shrink
 fn SeedsFor sk, homes, slots, sums, withTop = update sk:
-    &_.seeds <= Fold homes, {}, \|m, h| Insert m, h, (SlotSeeds sk, h, slots, sums, withTop)
+    &_.seeds <= Fold homes, {{}}, \|m, h| Insert m, h, (SlotSeeds sk, h, slots, sums, withTop)
 
 # Whether a slot's parameter is used but as a callee or passed to a cleared slot: a name
 # that still means the parameter, read as a value; a call of it inside a closure that may
@@ -155,7 +155,7 @@ fn IsSlotParam m, n, j = m[n] == ? Rel(param=j, strict=False)
 
 # Every summary entry `KEY:J:Q` at the start of the fixed point: anything (`⊤`).
 TopSums: fn [Slot] -> (Text ==> Rel)
-fn TopSums slots = Fold slots, {}, \|m, sl| Fold (Range0 sl.arity), m, \|m2, q| Insert m2, "{sl.owner}:{sl.at}:{q}", Rel(param=topParam, strict=False)
+fn TopSums slots = Fold slots, {{}}, \|m, sl| Fold (Range0 sl.arity), m, \|m2, q| Insert m2, "{sl.owner}:{sl.at}:{q}", Rel(param=topParam, strict=False)
 
 # Each round: every call of a slot's parameter, a forward to a cleared slot included,
 # narrows what the summary says of each argument; a round that changes nothing ends it.
@@ -164,13 +164,13 @@ fn TopSums slots = Fold slots, {}, \|m, sl| Fold (Range0 sl.arity), m, \|m2, q| 
 SlotSums: unbounded fn Shrink, [Text], [Slot], (Text ==> Rel), Nat -> (Text ==> Rel)
 fn SlotSums sk, homes, slots, sums, round:
     let sks = SeedsFor sk, homes, slots, sums, True
-    let next = Fold slots, {}, \|m, sl|
+    let next = Fold slots, {{}}, \|m, sl|
         let calls = SlotCalls sks, sl
         Fold (Range0 sl.arity), m, \|m2, q| match ?MeetArgs calls, q:
             ? r: Insert m2, "{sl.owner}:{sl.at}:{q}", r
             nil: m2
     if next == sums: next
-    else: if round > 12: {}
+    else: if round > 12: {{}}
     else: SlotSums sk, homes, slots, next, round + 1
 
 # The calls of a slot's parameter in every clause, read with the clause's summaries.

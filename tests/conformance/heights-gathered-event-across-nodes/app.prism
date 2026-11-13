@@ -20,7 +20,7 @@ fn ?Pick b, @w = if b: ? @w else: nil
 
 @page: @unit
 @page:
-    let $names = $ {"a": unit, "b": unit}
+    let $names = $ {{"a": unit, "b": unit}}
     !heard <- for k, ignore <- $names:                          # 0/[k]
         !now <- Ui.Button($label=$"{k} now")                      # 0/[k]/0
         !later <- Ui.Button($label=$"{k} later")                  # 0/[k]/1

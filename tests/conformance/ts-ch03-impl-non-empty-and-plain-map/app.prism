@@ -22,8 +22,8 @@ fn Checked m = match m as (Nat ==> Text)+?:
 
 @main: @unit
 @main:
-    let some = {1: "a"}+
-    let plain = {1: "a", 2: "b"}
-    let none: (Nat ==> Text) = {}
+    let some = {{1: "a"}}+
+    let plain = {{1: "a", 2: "b"}}
+    let none: (Nat ==> Text) = {{}}
     let dropped = some as (Nat ==> Text)
     Ui.Label($text=$"{Count some}, {Count plain}, {Count dropped}, {Checked plain}, {Checked none}")    # 0

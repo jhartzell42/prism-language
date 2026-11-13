@@ -18,7 +18,7 @@ tag Pad.Gauge of Element $Nat:
 @host: @unit
 @host:
     !add <- Ui.Button($label=$"add")
-    $names <- {1: "one"} then Insert $names, 2, "two" on !add
+    $names <- {{1: "one"}} then Insert $names, 2, "two" on !add
     $lens <- for k, $name <- $names:
         Ui.Label($text=$name)
         @ Len $name

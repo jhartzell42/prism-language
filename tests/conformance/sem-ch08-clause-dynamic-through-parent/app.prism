@@ -19,6 +19,6 @@ fn @Show False, $n:
     !inc <- Ui.Button($label=$"inc")                              # 0
     !drop <- Ui.Button($label=$"drop")                            # 1
     $count <- 0 then $count + 1 on !inc
-    $names <- {1: "one", 2: "two"} then Remove $names, 2 on !drop
+    $names <- {{1: "one", 2: "two"}} then Remove $names, 2 on !drop
     for k, $name <- $names:                                      # 2/[k]
         @Show (k == 1), $count

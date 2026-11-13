@@ -63,8 +63,8 @@ fn @Watcher name:
 @Table:
     !adaJoins <- Ui.Button($label=$"ada joins")                                # 0
     !adaLeaves <- Ui.Button($label=$"ada leaves")                              # 1
-    $spectators <- {} then ({"ada": $ (@Watcher "ada")} on !adaJoins) <| ({} on !adaLeaves)
-    @ ChessSeats($player=$ {White: $ (@Board White, f2f3, g2g4), Black: $ (@Board Black, e7e5, d8h4)}, $spectator=$spectators)
+    $spectators <- {{}} then ({{"ada": $ (@Watcher "ada")}} on !adaJoins) <| ({{}} on !adaLeaves)
+    @ ChessSeats($player=$ {{White: $ (@Board White, f2f3, g2g4), Black: $ (@Board Black, e7e5, d8h4)}}, $spectator=$spectators)
 
 @hotSeat: @unit
 @hotSeat:

@@ -37,7 +37,7 @@ type Sheet = record:
     ?selected: Nat             # a slot
 derive ^Eq, ^Show
 
-let empty = Sheet(rows={}, next=1, slot=0, seed=42, ?selected=nil)
+let empty = Sheet(rows={{}}, next=1, slot=0, seed=42, ?selected=nil)
 
 # js-framework-benchmark's words
 let adjectives = [["pretty", "large", "big", "small", "tall", "short", "long", "handsome", "plain", "quaint", "clean", "elegant", "easy", "angry", "crazy", "helpful", "mushy", "odd", "unsightly", "adorable", "important", "inexpensive", "cheap", "expensive", "fancy"]]
@@ -86,7 +86,7 @@ fn Swapped m, keys:
         otherwise: m
 
 Step: fn Sheet, Op -> Sheet
-fn Step t, (Create n) = Added (update t: &_.rows <= {}), n
+fn Step t, (Create n) = Added (update t: &_.rows <= {{}}), n
 fn Step t, (AddMore n) = Added t, n
 fn Step t, UpdateTenth:
     let keys = Keys t.rows
@@ -94,7 +94,7 @@ fn Step t, UpdateTenth:
     update t:
         &_.rows <= rows
 fn Step t, Clear = update t:
-    &_.rows <= {}
+    &_.rows <= {{}}
 fn Step t, Swap = update t:
     &_.rows <= Swapped t.rows, (Keys t.rows)
 fn Step t, (Select s) = update t:

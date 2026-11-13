@@ -78,7 +78,7 @@ fn PreIs m, n, bare = (n == bare or n == "Prelude.{bare}") and (HasKey m, "pre:{
 let preludeNames = [["Drop", "Take", "Filter", "Remove", "Min", "Values", "Keys", "?Step", "Fold", "Each", "Push", "Insert", "Append", "Freeze", "-?", "@Defer", "@Later", "@Run", "@Machine", "@started"]]
 
 PreludeSeeds: fn G, Text -> (Text ==> Rel)
-fn PreludeSeeds g, h = Fold preludeNames, {}, \|m, n|
+fn PreludeSeeds g, h = Fold preludeNames, {{}}, \|m, n|
     let q = "Prelude.{n}"
     if not (IsPreludeKey g, q): m
     else: Fold [[n, q]], m, \|m2, sp| if (?ResolveCallee g, h, sp) == ? q: Insert m2, "pre:{sp}", noRel else: m2

@@ -8,7 +8,7 @@ test mod Tests
 @host: @unit
 @host:
     !go <- Ui.Button($label=$"go")                                 # 0
-    let $names = $ {"a": unit}
+    let $names = $ {{"a": unit}}
     !heard <- for k, ignore <- $names:                            # 1/[k]
         $c <- 0 then $c + 1 on !go
         Ui.Label($text=$"row {$c}")                                # 1/[k]/0
@@ -21,7 +21,7 @@ test mod Tests
 @alone: @unit
 @alone:
     !go <- Ui.Button($label=$"go")                                 # 0
-    let $names = $ {"a": unit}
+    let $names = $ {{"a": unit}}
     !heard <- for k, ignore <- $names:                            # 1/[k]
         $c <- 0 then $c + 1 on !go
         Ui.Label($text=$"row {$c}")                                # 1/[k]/0
@@ -33,12 +33,12 @@ test mod Tests
 @nested: @unit
 @nested:
     !go <- Ui.Button($label=$"go")                                 # 0
-    let $outer = $ {"a": unit}
+    let $outer = $ {{"a": unit}}
     !heard <- for k, ignore <- $outer:                            # 1/[k]
         !b <- Ui.Button($label=$"outer")                           # 1/[k]/0
         $d <- 0 then $d + 1 on !b
         Ui.Label($text=$"outer {$d}")                              # 1/[k]/1
-        let $inner = $ {"x": unit}
+        let $inner = $ {{"x": unit}}
         for j, ignore <- $inner:                                  # 1/[k]/2/[j]
             !ib <- Ui.Button($label=$"inner")                      # 1/[k]/2/[j]/0
             $c <- 0 then $c + 1 on !go

@@ -29,8 +29,8 @@ impl ^Blank ((a, b)) where a: ^Blank, b: ^Blank:
     fn Twice ((x, y)) = ((Twice x, Twice y))
 
 impl ^Blank (Text ==> a) where a: ^Blank:
-    fn Blank n = {"k": Blank n}
-    fn Twice m = Fold m, {}, \|acc, k, v| Insert acc, k, (Twice v)
+    fn Blank n = {{"k": Blank n}}
+    fn Twice m = Fold m, {{}}, \|acc, k, v| Insert acc, k, (Twice v)
 
 Texts: fn Nat -> [Text]
 fn Texts n = Twice (Blank n)

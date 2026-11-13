@@ -24,5 +24,5 @@ fn Same x, y = x == y
 @main:
     let some = [[1, 2]]+
     let plain = [[1, 2]]
-    let m = {1: "a"}+
+    let m = {{1: "a"}}+
     Ui.Label($text=$"{Count some} {Entries m} {Both some, 9} {Same some, plain} {Same plain, some} {Same some, some} {Same some, [[4]]+}")    # 0

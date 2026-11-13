@@ -12,6 +12,6 @@ fn Wrap $a = [[$a]]
 @rows:
     !inc <- Ui.Button($label=$"Inc")                             # 0
     $count <- 0 then $count + 1 on !inc
-    for k, ignore <- $ {"x": unit}:                              # 1/[k]
+    for k, ignore <- $ {{"x": unit}}:                              # 1/[k]
         for $d <- Wrap $count:                                   # 1/[k]/0/[0]
             Ui.Label($text=$"{k} row {$d}")                      # 1/[k]/0/[0]/0

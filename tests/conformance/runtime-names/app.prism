@@ -29,7 +29,7 @@ type Cx = Cx Nat
 derive ^Eq, ^Show
 
 RowsUpTo: fn Nat -> (Nat ==> Row)
-fn RowsUpTo n = Fold [[1, 2, 3]], {}, \|m, k| if k <= n: Insert m, k, (Row "r{k}") else: m
+fn RowsUpTo n = Fold [[1, 2, 3]], {{}}, \|m, k| if k <= n: Insert m, k, (Row "r{k}") else: m
 
 Summary: fn Nat -> Text
 fn Summary n:

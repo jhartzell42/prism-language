@@ -7,7 +7,7 @@ type Cabin = record:
     beds: Nat
     rate: Nat
 
-let cabins = {"Birch": Cabin(beds=2, rate=80), "Oak": Cabin(beds=6, rate=150)}
+let cabins = {{"Birch": Cabin(beds=2, rate=80), "Oak": Cabin(beds=6, rate=150)}}
 
 ?Quote: fn (Text ==> Cabin), Text, Nat, Nat -> ?Nat
 fn ?Quote cabins, name, guests, nights:

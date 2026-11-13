@@ -61,7 +61,7 @@ fn NegativeTypes g, st:
 NegativeType: unbounded fn G, St, (Text ==> Bool), Text -> St
 fn NegativeType g, s, arrowy, n = match g.types[n]:
     ? ti:
-        let ((neg, ignore)) = if ti.file >= g.preludeFrom or not (HasKey arrowy, n): ((False, {})) else: NegWalks g, n, (BodyTys ti), False, {}
+        let ((neg, ignore)) = if ti.file >= g.preludeFrom or not (HasKey arrowy, n): ((False, {{}})) else: NegWalks g, n, (BodyTys ti), False, {{}}
         if not neg: s
         else:
             let s0 = update s:
@@ -75,10 +75,10 @@ fn NegativeType g, s, arrowy, n = match g.types[n]:
 # names that does, to a fixed point (each round adds a type or ends).
 ArrowyTypes: unbounded fn G -> (Text ==> Bool)
 fn ArrowyTypes g:
-    let names = Fold (Keys g.types), {}, \|m, n| match g.types[n]:
+    let names = Fold (Keys g.types), {{}}, \|m, n| match g.types[n]:
         ? ti: Insert m, n, (Fold (BodyTys ti), [[]], \|acc, t| UnionTexts acc, (TyNamesIn t))
         nil: m
-    let direct = Fold (Keys g.types), {}, \|m, n| match g.types[n]:
+    let direct = Fold (Keys g.types), {{}}, \|m, n| match g.types[n]:
         ? ti: if Fold (BodyTys ti), False, \|seen, t| seen or HasArrow t: Insert m, n, True else: m
         nil: m
     ArrowyFrom names, direct
@@ -156,7 +156,7 @@ fn NegWalks g, target, ts, b, seen = Fold ts, ((False, seen)), \|((bad, sn)), t|
 
 # Every `-?` whose operand the solver made a `Nat`, as `nat:FILE:START:END` (pick SW).
 NatMinusSeeds: unbounded fn St -> (Text ==> Rel)
-fn NatMinusSeeds st = Fold (Keys st.sizeTys), {}, \|m, k| match st.sizeTys[k]:
+fn NatMinusSeeds st = Fold (Keys st.sizeTys), {{}}, \|m, k| match st.sizeTys[k]:
     ? t: if (Zonk st, t) == tNat: Insert m, "nat:{k}", noRel else: m
     nil: m
 
@@ -194,14 +194,14 @@ fn ?MethodOf g, d = match d.body:
 # of that method in the program, each impl's and the default (`DispatchTargets` narrows
 # them by the solver's choice at the call).
 MethodTargets: fn G, [Def] -> (Text ==> [Text])
-fn MethodTargets g, fns = Fold fns, {}, \|m, d| match ?MethodOf g, d:
+fn MethodTargets g, fns = Fold fns, {{}}, \|m, d| match ?MethodOf g, d:
     ? mk: Insert m, mk, (AddText (Or m[mk], [[]]), d.qk)
     nil: m
 
 # Each impl's definition of each method, by the method and where the impl stands, as the
 # solver's `impl:FILE.START` names it.
 ImplDefs: fn G, [Def] -> (Text ==> Text)
-fn ImplDefs g, fns = Fold fns, {}, \|m, d| match d.body:
+fn ImplDefs g, fns = Fold fns, {{}}, \|m, d| match d.body:
     DbMethod ignore, ignore, im: match ?MethodOf g, d:
         ? mk: Insert m, "{mk}|{im.file}.{im.span.start}", d.qk
         nil: m

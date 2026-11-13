@@ -95,11 +95,11 @@ derive ^Eq, ^Show
 ShrinkCheck: unbounded fn G, St, [Def] -> ((St, [((Text, [Text]))]))
 fn ShrinkCheck g, st, defs:
     let fns = Each (Filter defs, \|d| (Len (DefClauses d)) > 0), \|d| OwnKey d
-    let byKey = Fold fns, {}, \|m, d| Insert m, d.qk, d
+    let byKey = Fold fns, {{}}, \|m, d| Insert m, d.qk, d
     let homes = Fold fns, [[]], \|acc, d| AddText acc, d.home
     let nats = NatMinusSeeds st
-    let pre = Fold homes, {}, \|m, h| Insert m, h, (Fold (Keys nats), (PreludeSeeds g, h), \|m2, k| Insert m2, k, noRel)
-    let sk0 = Shrink(g=g, fns=fns, byKey=byKey, targets=(MethodTargets g, fns), implDefs=(ImplDefs g, fns), choices=st.choices, sums={}, seeds=pre, localOf={}, localBase={})
+    let pre = Fold homes, {{}}, \|m, h| Insert m, h, (Fold (Keys nats), (PreludeSeeds g, h), \|m2, k| Insert m2, k, noRel)
+    let sk0 = Shrink(g=g, fns=fns, byKey=byKey, targets=(MethodTargets g, fns), implDefs=(ImplDefs g, fns), choices=st.choices, sums={{}}, seeds=pre, localOf={{}}, localBase={{}})
     let sk1 = update sk0:
         &_.sums <= PartsSummaries sk0, fns
     let skg = update sk1:
@@ -119,7 +119,7 @@ fn ShrinkCheck g, st, defs:
 # lines name is used (a test module's helpers), by its name as written, bare or qualified.
 UnusedDefs: unbounded fn [Def], [((Text, [Text]))], Nat -> [CDiag]
 fn UnusedDefs defs, refs, shown:
-    let used0 = Fold refs, {}, \|m, ((k, rs))| Fold rs, m, \|m2, r| if r == k: m2 else: Insert m2, r, unit
+    let used0 = Fold refs, {{}}, \|m, ((k, rs))| Fold rs, m, \|m2, r| if r == k: m2 else: Insert m2, r, unit
     let used = Fold defs, used0, \|m, d| match d.body:
         DbCheck c: Fold c.lines, m, \|m2, l| Fold (ExprsIn l.expr), m2, \|m3, e| match e.kind:
             EName n: Insert (Insert m3, (SNameKey n), unit), (QualKey d.home, (SNameKey n)), unit
@@ -134,10 +134,10 @@ fn UnusedDefs defs, refs, shown:
 # declaration's meaning changes.
 TestOnlyReached: fn [Src], [Def], [((Text, [Text]))] -> [CDiag]
 fn TestOnlyReached srcs, defs, refs:
-    let inTest = Fold defs, {}, \|m, d| if (DefRole srcs, d) == "test": Insert m, d.qk, d else: m
+    let inTest = Fold defs, {{}}, \|m, d| if (DefRole srcs, d) == "test": Insert m, d.qk, d else: m
     if (Size inTest) == 0: [[]]
     else:
-        let byKey = Fold defs, {}, \|m, d| Insert m, d.qk, d
+        let byKey = Fold defs, {{}}, \|m, d| Insert m, d.qk, d
         Fold refs, [[]], \|acc, ((k, rs))| match byKey[k]:
             ? d: if (DefRole srcs, d) == "test": acc else: Fold rs, acc, \|a, r| match inTest[r]:
                 ? t: Push a, CDiag(code="test-only-reached", file=d.file, span=d.span, message="`{d.name}` names `{t.qk}`, which a test module declares ({LastPathPart (SegAt (Or srcs[t.file], (MkSrc "", "")), t.span.start).path}): only test modules name it", fix="move `{t.qk}` out of the test module, or `{d.name}` into one")

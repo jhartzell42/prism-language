@@ -8,7 +8,7 @@
 emit Ui.*
 
 Pairs: fn [k], v -> (((k, v)) ==> unit)
-fn Pairs keys, v = Fold keys, {}, \|all, k| Insert all, ((k, v)), unit
+fn Pairs keys, v = Fold keys, {{}}, \|all, k| Insert all, ((k, v)), unit
 
 @main: @unit
 @main:

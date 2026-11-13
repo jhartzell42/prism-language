@@ -204,7 +204,7 @@ fn ConvNamedType cx, st1, qk, ti, name, args, span:
 let dummyType = Type(kind=TAbsent, span=Range(start=0, end=0, origin=InSource))
 
 ParamInst: fn [Text], [Ty] -> Inst
-fn ParamInst ps, xs = Inst(tys=(Fold (Range0 (Len ps)), {}, \|m, i| Insert m, (Or ps[i], ""), (Or xs[i], TyErr)), rows={}, cols={})
+fn ParamInst ps, xs = Inst(tys=(Fold (Range0 (Len ps)), {{}}, \|m, i| Insert m, (Or ps[i], ""), (Or xs[i], TyErr)), rows={{}}, cols={{}})
 
 # A row written in a type (`emit` clauses, `Element r o`, `Elem c`).
 ConvRow: unbounded fn Cx, St, Type -> ((Rw, St))

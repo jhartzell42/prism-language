@@ -810,7 +810,7 @@ StartOf: unbounded fn Lx, Text, Expr, [Ex] -> Ex
 fn StartOf lx, qk, callee, vals:
     let start = RefIn lx, (OwnerOf qk), "start_{Or lx.rsNames[qk], (Snake (BareName qk))}"
     match lx.g.vals[qk]:
-        ? v if JobByStart lx, qk: match ?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, callee.span), {}:
+        ? v if JobByStart lx, qk: match ?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, callee.span), {{}}:
             ? found: if Fold v.scheme.qs, True, \|all, q| all and HasKey found, q: XCallAt start, (Each v.scheme.qs, \|q| OutTyOf lx, (Or found[q], TyErr)), vals else: XCall start, vals
             nil: XCall start, vals
         otherwise: XCall start, vals

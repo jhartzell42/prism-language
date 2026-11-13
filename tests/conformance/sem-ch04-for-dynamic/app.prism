@@ -7,7 +7,7 @@ test mod Tests
 use Fs.*
 
 Keyed: fn [Text] -> (Text ==> unit)
-fn Keyed names = Fold names, {}, \|m, n| Insert m, n, unit
+fn Keyed names = Fold names, {{}}, \|m, n| Insert m, n, unit
 
 TextOf: fn ~Contents -> Text
 fn TextOf (~ c) = c.text

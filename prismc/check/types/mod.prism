@@ -305,7 +305,7 @@ UseKey: fn Nat, Range -> Text
 fn UseKey file, span = "{file}:{span.start}:{span.end}"
 
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, unsignedFns=[[]], localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], plainArms=[[]], faultQs=[[]], plainQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={}, packs=[[]], definition="", genericUses=[[]], caseQs=[[]])
+fn NewSt file = St(next=0, tys={{}}, infos={{}}, rows={{}}, lacks={{}}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={{}}, cleqs=[[]], colQ={{}}, colUp={{}}, deferred=[[]], binderAt={{}}, rowNames={{}}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={{}}, sizeTys={{}}, unsignedFns=[[]], localNext=0, localIds={{}}, anyGivens=[[]], assocImpls=[[]], plainArms=[[]], faultQs=[[]], plainQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={{}}, packs=[[]], definition="", genericUses=[[]], caseQs=[[]])
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed)

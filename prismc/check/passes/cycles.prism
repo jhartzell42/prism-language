@@ -63,8 +63,8 @@ fn IsDelayedWidget n = HasText [["@Defer", "@Later", "@Run", "@Machine", "@start
 BlockPromptCycles: unbounded fn Env, St, Block -> St
 fn BlockPromptCycles env, st, b:
     let defs = Fold b.stmts, [[]], \|acc, s| Append acc, (StmtDefs s)
-    let cx = PCx(g=env.g, home=env.home, lams=(LetLambdas b.stmts), base=(PromptBase env, b.stmts), path=[[]], reach=False, supplied={}, flows={}, names=(Keys env.locals))
-    let heads = Fold defs, {}, \|m, n| Insert m, n, (LocalHead env, st, n)
+    let cx = PCx(g=env.g, home=env.home, lams=(LetLambdas b.stmts), base=(PromptBase env, b.stmts), path=[[]], reach=False, supplied={{}}, flows={{}}, names=(Keys env.locals))
+    let heads = Fold defs, {{}}, \|m, n| Insert m, n, (LocalHead env, st, n)
     # a widget function's body is checked once for each use of the function in the
     # program, a call of a function parameter read by the summary of what that use gives
     # for it (`ParameterUses`); the first cycle found is the block's
@@ -335,7 +335,7 @@ fn ?LambdaOf e = match e.kind:
 
 # Every lambda a `let` of these statements binds, at any depth, by where it starts.
 LetLambdas: unbounded fn [Stmt] -> (Nat ==> Expr)
-fn LetLambdas stmts = Fold (StmtsSpots stmts, {}), {}, \|m, sp| match sp:
+fn LetLambdas stmts = Fold (StmtsSpots stmts, {{}}), {{}}, \|m, sp| match sp:
     SpotStmt s, ignore: match s.kind:
         SLet ignore, ignore, e: match ?LambdaOf e:
             ? lam: Insert m, lam.span.start, lam
@@ -554,7 +554,7 @@ fn Reach edges, frontier, seen = match frontier[0]:
 # demand bottom-up. A function already on the path (a cycle of widget functions) has none,
 # and is read as prompt in everything, as is any other callee.
 ?PromptSummary: unbounded fn PCx, Text -> ?[Bool]
-fn ?PromptSummary cx, k = ?PromptSummaryAt cx, k, [[]], {}
+fn ?PromptSummary cx, k = ?PromptSummaryAt cx, k, [[]], {{}}
 
 # The summary at one use (Semantics ch. 7: "Where a blueprint arrives as a parameter, the
 # worst is assumed" holds for a parameter nothing is known of): where the use gives a
@@ -575,8 +575,8 @@ else: match Filter cx.g.defs, \|d| d.qk == k:
 # summary. A use with a named argument gives nothing.
 GivenAt: unbounded fn PCx, Text, [Pattern], [Arg], (Text ==> Rel), [Text] -> (Text ==> [Bool])
 fn GivenAt cx, home, params, args, rels, bound:
-    if Fold args, False, \|named, a| named or a.?name != nil: {}
-    else: Fold (Range0 (Len params)), {}, \|supplied, i| match ((params[i], args[i])):
+    if Fold args, False, \|named, a| named or a.?name != nil: {{}}
+    else: Fold (Range0 (Len params)), {{}}, \|supplied, i| match ((params[i], args[i])):
         ((? parameter, ? a)): match ((PatternNames parameter, ?GivenName a.value)):
             (([[name]], ? n)):
                 if (IsLocal rels, n) or HasText bound, n: supplied
@@ -647,7 +647,7 @@ fn LocalGiven cx, user, params, args, atUse:
     else: Fold (Range0 (Len params)), atUse, \|supplied, i| match ((params[i], args[i])):
         ((? parameter, ? a)): match ((PatternNames parameter, ?GivenName a.value)):
             (([[name]], ? n)): match locals[n]:
-                ? [[c]]: match ?BlockSummary cx, n, user.home, c.params, (BodyAsBlock c.body), {}:
+                ? [[c]]: match ?BlockSummary cx, n, user.home, c.params, (BodyAsBlock c.body), {{}}:
                     ? flags: Given(prompt=(Insert supplied.prompt, name, flags), flows=supplied.flows)
                     nil: supplied
                 otherwise: supplied
@@ -663,7 +663,7 @@ fn OwnBlockClauses d:
             otherwise: [[]]
         DbWidget w: w.body.stmts
         otherwise: [[]]
-    Fold stmts, {}, \|found, s| match s.kind:
+    Fold stmts, {{}}, \|found, s| match s.kind:
         SFn c: Insert found, (DefNameText c.name), (Push (Or found[DefNameText c.name], [[]]), c)
         otherwise: found
 
@@ -709,7 +709,7 @@ fn IsBodyOf d, b = (HasPrefix (BareName d.qk), "@") and match d.body:
 CallsParameter: unbounded fn [Pattern], Block -> Bool
 fn CallsParameter params, b:
     let names = PatternsNames params
-    Fold (StmtsSpots b.stmts, {}), False, \|called, spot| called or Fold (SpotSites spot), False, \|found, site| found or ((Len site.args) > 0 and (HasText names, site.callee) and not (IsLocal site.rels, site.callee))
+    Fold (StmtsSpots b.stmts, {{}}), False, \|called, spot| called or Fold (SpotSites spot), False, \|found, site| found or ((Len site.args) > 0 and (HasText names, site.callee) and not (IsLocal site.rels, site.callee))
 
 # Every call site of a definition's body, a function's parameters its locals.
 DefSites: unbounded fn Def -> [Site]
@@ -717,13 +717,13 @@ fn DefSites d = match d.body:
     DbFn clauses: ClausesSites clauses
     DbMethod clauses, ignore, ignore: ClausesSites clauses
     DbDefault clauses, ignore: ClausesSites clauses
-    DbWidget w: SpotsSites (StmtsSpots w.body.stmts, {})
-    DbLet l: SpotsSites (ExprSpots l.value, {})
-    DbTest t: SpotsSites (ExprSpots t.blueprint, {})
-    DbCheck c: Fold c.lines, [[]], \|acc, line| Append acc, (SpotsSites (ExprSpots line.expr, {}))
+    DbWidget w: SpotsSites (StmtsSpots w.body.stmts, {{}})
+    DbLet l: SpotsSites (ExprSpots l.value, {{}})
+    DbTest t: SpotsSites (ExprSpots t.blueprint, {{}})
+    DbCheck c: Fold c.lines, [[]], \|acc, line| Append acc, (SpotsSites (ExprSpots line.expr, {{}}))
 
 ClausesSites: unbounded fn [FnClause] -> [Site]
-fn ClausesSites clauses = Fold clauses, [[]], \|acc, c| Append acc, (BodySites c.body, (Hide {}, (PatternsNames c.params)))
+fn ClausesSites clauses = Fold clauses, [[]], \|acc, c| Append acc, (BodySites c.body, (Hide {{}}, (PatternsNames c.params)))
 
 SpotsSites: unbounded fn [Spot] -> [Site]
 fn SpotsSites spots = Fold spots, [[]], \|acc, spot| Append acc, (SpotSites spot)
@@ -735,7 +735,7 @@ fn ?BlockSummary cx, k, home, params, b, supplied = match ?Last b.stmts:
             let paramNames = Each params, \|p| PatternNames p
             let defs = Fold b.stmts, (Fold paramNames, [[]], \|acc, ns| Append acc, ns), \|acc, s| Append acc, (StmtDefs s)
             let base = Fold b.stmts, (PreludeSeeds cx.g, home), \|m, s| LamLetRels s, m
-            let inner = PCx(g=cx.g, home=home, lams=(LetLambdas b.stmts), base=base, path=(Push cx.path, k), reach=cx.reach, supplied=supplied, flows={}, names=defs)
+            let inner = PCx(g=cx.g, home=home, lams=(LetLambdas b.stmts), base=base, path=(Push cx.path, k), reach=cx.reach, supplied=supplied, flows={{}}, names=defs)
             let edges = Fold b.stmts, [[]], \|acc, s| Append acc, (SummaryEdges inner, s, defs)
             let reached = Reach edges, (PromptReads inner, result, defs), [[]]
             ? (Each paramNames, \|ns| Fold ns, False, \|f, n| f or HasText reached, n)
@@ -757,13 +757,13 @@ else: match Filter cx.g.defs, \|d| d.qk == k:
 # the flows of each function given by name.
 FlowsGivenAt: unbounded fn PCx, Text, [Pattern], [Arg], (Text ==> Rel), [Text] -> (Text ==> [ParameterFlow])
 fn FlowsGivenAt cx, home, params, args, rels, bound:
-    if Fold args, False, \|named, a| named or a.?name != nil: {}
-    else: Fold (Range0 (Len params)), {}, \|flows, i| match ((params[i], args[i])):
+    if Fold args, False, \|named, a| named or a.?name != nil: {{}}
+    else: Fold (Range0 (Len params)), {{}}, \|flows, i| match ((params[i], args[i])):
         ((? parameter, ? a)): match ((PatternNames parameter, ?GivenName a.value)):
             (([[name]], ? n)):
                 if (IsLocal rels, n) or HasText bound, n: flows
                 else: match ?ResolveCallee cx.g, home, n:
-                    ? function: match ?FlowSummaryAt cx, function, [[]], {}:
+                    ? function: match ?FlowSummaryAt cx, function, [[]], {{}}:
                         ? handed: Insert flows, name, handed
                         nil: flows
                     nil: flows
@@ -784,7 +784,7 @@ fn ?BlockFlows cx, k, home, params, b, supplied, flows = match ?Last b.stmts:
             let defs = Fold b.stmts, (Fold paramNames, [[]], \|acc, ns| Append acc, ns), \|acc, s| Append acc, (StmtDefs s)
             let base = Fold b.stmts, (PreludeSeeds cx.g, home), \|m, s| LamLetRels s, m
             let inner = PCx(g=cx.g, home=home, lams=(LetLambdas b.stmts), base=base, path=(Push cx.path, k), reach=cx.reach, supplied=supplied, flows=flows, names=defs)
-            let heads = Fold defs, {}, \|m, n| Insert m, n, (SigilHead n)
+            let heads = Fold defs, {{}}, \|m, n| Insert m, n, (SigilHead n)
             let edges = Fold b.stmts, [[]], \|acc, s| Append (Append acc, (SummaryEdges inner, s, defs)), (UpdateLineEdges inner, heads, s, defs)
             let reads = PromptReads inner, result, defs
             let ofResult = Reach edges, (Append reads, (Each (UpdatedReads inner, result, defs), \|n| UpdateNode n)), [[]]
@@ -915,7 +915,7 @@ fn PlainReaders stmts, names:
 # Whether an expression mentions one of some names, where nothing inside it binds the
 # name again.
 Mentions: unbounded fn Expr, [Text] -> Bool
-fn Mentions e, names = Fold (ExprSpots e, {}), False, \|found, spot| found or Fold (SpotSites spot), False, \|here, site| here or ((HasText names, site.callee) and not (IsLocal site.rels, site.callee))
+fn Mentions e, names = Fold (ExprSpots e, {{}}), False, \|found, spot| found or Fold (SpotSites spot), False, \|here, site| here or ((HasText names, site.callee) and not (IsLocal site.rels, site.callee))
 
 # Whether two of some widths are known and differ.
 WidthsDiffer: fn [Width] -> Bool
@@ -1083,6 +1083,6 @@ else: match Filter g.defs, \|d| d.qk == qk:
         otherwise: [[]]
     otherwise: [[]]
 
-let nothingGiven = Given(prompt={}, flows={})
+let nothingGiven = Given(prompt={{}}, flows={{}})
 
 let dummyArgP = Arg(marks="", ?name=nil, value=(Expr(kind=EError, span=Range(start=0, end=0, origin=InSource))), span=Range(start=0, end=0, origin=InSource))

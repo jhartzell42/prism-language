@@ -36,8 +36,8 @@ impl ^Show Cell:
 let mirror = [[((0, 7)), ((1, 6)), ((2, 5)), ((3, 4)), ((4, 3)), ((5, 2)), ((6, 1)), ((7, 0))]]
 
 Cells: fn Color -> (Cell ==> unit)
-fn Cells White = Fold mirror, {}, \|all, ((down, rank))| Fold eight, all, \|some, file| Insert some, Cell(order=(down * 8 + file), side=White, square=(Square file, rank)), unit
-fn Cells Black = Fold mirror, {}, \|all, ((across, file))| Fold eight, all, \|some, rank| Insert some, Cell(order=(rank * 8 + across), side=Black, square=(Square file, rank)), unit
+fn Cells White = Fold mirror, {{}}, \|all, ((down, rank))| Fold eight, all, \|some, file| Insert some, Cell(order=(down * 8 + file), side=White, square=(Square file, rank)), unit
+fn Cells Black = Fold mirror, {{}}, \|all, ((across, file))| Fold eight, all, \|some, rank| Insert some, Cell(order=(rank * 8 + across), side=Black, square=(Square file, rank)), unit
 
 type Button = choice:
     GoBack                             # show the position before the one shown
@@ -64,7 +64,7 @@ impl ^Show Knob:
     fn Show knob = "{Lower (Show knob.side)}{ButtonName knob.button}"
 
 Knobs: fn Color -> (Knob ==> unit)
-fn Knobs color = Fold [[GoBack, GoForward, GiveUp, ProposeDraw, TakeDraw]], {}, \|all, button| Insert all, Knob(side=color, button=button), unit
+fn Knobs color = Fold [[GoBack, GoForward, GiveUp, ProposeDraw, TakeDraw]], {{}}, \|all, button| Insert all, Knob(side=color, button=button), unit
 
 ButtonLabel: fn Button -> Text
 fn ButtonLabel GoBack = "Back"
@@ -92,7 +92,7 @@ impl ^Show Choice:
     fn Show option = "{Lower (Show option.side)}{OfferLabel option.offer}"
 
 Choices: fn Color -> (Choice ==> unit)
-fn Choices color = Fold [[(Become Queen), (Become Rook), (Become Bishop), (Become Knight), Withdraw]], {}, \|all, offer| Insert all, Choice(side=color, offer=offer), unit
+fn Choices color = Fold [[(Become Queen), (Become Rook), (Become Bishop), (Become Knight), Withdraw]], {{}}, \|all, offer| Insert all, Choice(side=color, offer=offer), unit
 
 # ---- what a press asks for
 
@@ -259,7 +259,7 @@ fn MoveLine moves, shown, line:
 MoveLines: fn PlayerTold, ?Viewing -> (Nat ==> Text)
 fn MoveLines told, ?pinned:
     let shown = IndexOf ?pinned, told.game
-    let ((ignore, lines)) = Fold told.game.moves, ((0, {})), \|((index, all)), move| ((index + 1, (if index mod 2 == 0: Insert all, (Size all), (MoveLine told.game.moves, shown, (Size all)) else: all)))
+    let ((ignore, lines)) = Fold told.game.moves, ((0, {{}})), \|((index, all)), move| ((index + 1, (if index mod 2 == 0: Insert all, (Size all), (MoveLine told.game.moves, shown, (Size all)) else: all)))
     lines
 
 # ---- the widgets

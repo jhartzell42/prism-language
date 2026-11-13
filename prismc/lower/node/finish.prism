@@ -726,7 +726,7 @@ fn UpdatedGaps wx, gns:
 # gather of a row's firings sits one above the row's heights.
 FinishPending: unbounded fn Wx, [Gn] -> (([NodeDef], [Gn]))
 fn FinishPending wx, gns = Fold wx.pending, (([[]], gns)), \|((defs, cur)), p|
-    let floors = Fold (RowHears p.wx), {}, \|acc, m| Insert acc, m, (ParentFloor wx, cur, [[ParentRead m]])
+    let floors = Fold (RowHears p.wx), {{}}, \|acc, m| Insert acc, m, (ParentFloor wx, cur, [[ParentRead m]])
     let floored = update p.wx:
         &_.floors <= floors
         &_.gns <= Each &_.gns, \|g| if g.kind == GnUpdated: WithFloor g, (ParentFloor wx, cur, (ReadsClosed p.wx.dynReads, g.reads)) else: g

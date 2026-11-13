@@ -24,13 +24,13 @@ fn @Field initial:
 
 @Rows: fn $Text -> @unit
 fn @Rows $label:
-    for k, ignore <- $ {1: unit, 2: unit}:
+    for k, ignore <- $ {{1: unit, 2: unit}}:
         Ui.Label($text=$"{k} {$label}")
 
 @Door: fn $Text -> @unit
 fn @Door $name:
     ((door, !knocks)) <- Pad.Door($name=$name)
-    Ui.Label($text=$"{door} {Or (?Least {"z": 7, "y": 3}), 0}")
+    Ui.Label($text=$"{door} {Or (?Least {{"z": 7, "y": 3}}), 0}")
 
 @page: @$Text
 @page:

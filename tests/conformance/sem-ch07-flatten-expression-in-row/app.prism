@@ -16,7 +16,7 @@ fn $Pick $useB, $p, $q = if $useB: $ $q else: $ $p
     $a <- 0 then $a + 1 on !inc
     $b <- 100 then $b + 1 on !inc
     $useB <- False then True on !swap
-    for j, ignore <- $ {"x": unit}:                          # 2/[j]
+    for j, ignore <- $ {{"x": unit}}:                          # 2/[j]
         $shown <- @Flatten ($Pick $useB, $a, $b)
         Ui.Label($text=$"{j}: {$shown}")                      # 2/[j]/0
 
@@ -26,6 +26,6 @@ fn $Pick $useB, $p, $q = if $useB: $ $q else: $ $p
     !swap <- Ui.Button($label=$"swap")                       # 1
     $a <- 0 then $a + 1 on !inc
     $useB <- False then True on !swap
-    for j, $v <- $ {"x": 7}:                                 # 2/[j]
+    for j, $v <- $ {{"x": 7}}:                                 # 2/[j]
         $shown <- @Flatten ($Pick $useB, $a, $v)
         Ui.Label($text=$"{j}: {$shown}")                      # 2/[j]/0

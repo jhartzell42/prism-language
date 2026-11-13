@@ -321,7 +321,7 @@ fn ApplyRuleOf env, st, fname, col, params, res, args, span, ctor:
         else: if wholeNow and (StackOf s, at) != "": (((Unify s, pnow, at, a.value.span), (Push done, i)))
         else: if (StackOf s, at) != "" or (IsFreeHeaded s, at): ((s, done))
         else: (((ArgOrUnpack env, s, fname, (Or params[i], TyErr), pnow, at, a, res, span), done))
-    let ((ignore, st3)) = Fold (Range0 n), (({}, st2)), \|((m, s)), i|
+    let ((ignore, st3)) = Fold (Range0 n), (({{}}, st2)), \|((m, s)), i|
         let a = Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)
         if IsLambda a.value:
             let p = Walk s, (Or params[i], TyErr)

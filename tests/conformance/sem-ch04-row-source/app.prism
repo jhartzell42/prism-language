@@ -15,7 +15,7 @@ fn Shown (Error(..)) = "?"
 Entries: fn Nat, Text -> (Nat ==> Text)
 fn Entries n, t = match n -? 1:
     ? m: Insert (Entries m, t), m, "{t}{m}"
-    nil: {}
+    nil: {{}}
 
 @rows: @unit
 @rows:

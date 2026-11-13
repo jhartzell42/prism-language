@@ -18,4 +18,4 @@ fn @Presser name:
     let @ada = @Presser "ada"
     let @bob = @Presser "bob"
     (($state, !responses)) <- @InMemory 0, (InOrder !heard)
-    !heard <- @HostPressers ($ {(Presser "ada"): @ada, (Presser "bob"): @bob}), $state, !responses
+    !heard <- @HostPressers ($ {{(Presser "ada"): @ada, (Presser "bob"): @bob}}), $state, !responses

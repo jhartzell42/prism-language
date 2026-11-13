@@ -47,7 +47,7 @@ type State = record:
     seen: (Path ==> Nat)
     judged: (Path ==> Response)
 
-let fresh = State(total=0, seen={}, judged={})
+let fresh = State(total=0, seen={{}}, judged={{}})
 
 Asked: fn (Path ==> Elem (Ui.* | Seat.*)) -> [((Path, Nat, Nat))]
 fn Asked doc = Fold doc, [[]], \|acc, p, e| match e:
@@ -63,7 +63,7 @@ fn Step s, ((p, n, r)) = if (?Get s.seen, p) == (? n): s else:
     else: State(total=s.total + r, seen=(Insert s.seen, p, n), judged=(Insert s.judged, p, Accepted))
 
 StepAll: fn State, [((Path, Nat, Nat))] -> State
-fn StepAll s, asked = Fold asked, State(total=s.total, seen=s.seen, judged={}), Step
+fn StepAll s, asked = Fold asked, State(total=s.total, seen=s.seen, judged={{}}), Step
 
 ?ResponseTo: fn Path, State -> ?Response
 fn ?ResponseTo p, s = ?Get s.judged, p
