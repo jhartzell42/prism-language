@@ -1,4 +1,4 @@
 tests/checker/neg/template-type.prism:9: error[mismatch]: expected `Text`, found `Nat`
-    <@Quote text={{n}}/>
+    <@Quote text=<<n>>/>
                    ^
 1 error
