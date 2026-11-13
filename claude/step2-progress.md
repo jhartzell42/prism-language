@@ -45,24 +45,35 @@ Written by Claude on the claude-self-hosting branch; subject to change.
   ts-ch03-associated-row (a widget call's one element is at the call's place); library:
   a supplier's answer emits nothing, `emit unit`.
 
+- Kinded type variables at run time: a function's hidden leading `{r}_variant: &Nat`
+  parameters (`KindsOf`/`KindsOfVal`, lower/functions; `lx.kinded`), given at each
+  declared call (`KindArgs`, lower/expr, from `?ParamMatch` of the callee's type there);
+  `ValueOf<<r>>` (`?KindedVariant`, an if-chain from the number), `Fixed<<r>>`
+  (`?KindedNumber`), and the `Fixed<<r>>` pattern (a guard). Not yet: a kinded function
+  as a value or partly applied (no hidden arguments there), a widget function's.
+- Checker reds: the ambiguous result-only call names `Step<<d>>`
+  (`?OnlyThroughAssoc`); an escaping existential by its alias (`AliasOrShown`;
+  `?MatchHead` reads associated types, roles and rigids); a constructor argument takes its
+  parameter's type first (`Env.?expect`); a program that is its own Prelude is checked
+  without the library's other modules.
+
+## Asked of Jimmy
+
+- The hold cycle through a parameter given a lambda (neg/sem-ch07-hold-updated-cycle-
+  through-parameter-given-a-lambda): Claude recommends following the lambda at the call.
+
 ## Left
 
 - FA call sites: a value of a `forall` type applied in Rust must pack its arguments and
   unpack its result (`Packed::of(..).packed()`, `.held::<T>()`); not written.
-- Kinded type parameters at run time (`ValueOf<<r>>`, `Fixed<<r>>` patterns, the
-  library's `?ResponseTo`): plan, a function with kinded parameters takes each one's
-  variant as a hidden leading value parameter, passed at each call from the instantiation
-  the checker recorded (a constant for `TyRole k`, the caller's own hidden parameter for
-  its rigid); `ValueOf<<r>>` reads it, `Fixed<<r>>` takes its index.
 - Lowering: existentials (`any`), family associated types per instantiation (doc-c4,
   every-role), partial application (doc-c5; a widget function as a value), default
   widget methods (doc-state), doc-c6's bundle event part, doc-sk's not-exhaustive.
 - The library's builtins with no body: `SeatPathOf`, `$Merge`, `SeatIdAt`, `$GuestsOf`,
   `@Answer`, `!Outgoing`, `?ResponseFrom`, `$?AnswerFrom`; the Net and File worlds.
-- The checker reds: doc-c4-watcher-wires-request, doc-sk-opened-role-escapes (alias name
-  in the message), forall-ambiguous-trait-method (wording),
-  hold-needed-constructor-at-expected-type, prelude-module,
-  sem-ch07-hold-updated-cycle-through-parameter-given-a-lambda.
+- The checker red doc-c4-watcher-wires-request: the mismatch at a tag's sigiled field
+  shows the peeled types (`Never`, wanted `!Never`) and has no note line; diagnostics have
+  no notes yet.
 - The ten old lowering reds (sem-ch04/08/09 late values, widget values).
 - Then: the first check of the library, the tally, c6, c8 and chess with the new
   compiler, and their remaining errors (the prompt-cycle, the agent's two unconfirmed
