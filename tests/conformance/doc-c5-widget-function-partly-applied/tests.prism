@@ -1,0 +1,8 @@
+# The tests of doc-c5-widget-function-partly-applied.
+emit Ui.*
+use App.*
+
+test built_once_from_its_settings, @page:
+    build
+    click at 1/0
+    click at 1/0
