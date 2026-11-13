@@ -370,6 +370,16 @@ fn ResolvePacks st, final:
     let done = Fold st.packs, cleared, \|s, p| match Walk s, p.result:
         TyAny trs: update s:
             &_.wants <= Append &_.wants, (Each trs, \|tr| Want(cls=tr, ty=p.inner, file=p.file, span=p.span, level=&_.level))
+        # an existential over type variables: the packed value at its body, each variable a
+        # fresh one, its bounds wanted
+        TyExists vs, b, bs:
+            let ((fresh, s2)) = Fold vs, (([[]], s)), \|((acc, ss)), ignore|
+                let ((v, ss2)) = FreshVar ss, True, ""
+                (((Push acc, v), ss2))
+            let inst = ParamInst vs, fresh
+            let s3 = Unify (WithFile s2, p.file), (SubstQ inst, b), p.inner, p.span
+            update s3:
+                &_.wants <= Append &_.wants, (Each bs, \|((v, tr))| Want(cls=tr, ty=(SubstQ inst, (TyQ v)), file=p.file, span=p.span, level=&_.level))
         TyFlex ignore:
             if final: ErrFix (WithFile s, p.file), "ambiguous", p.span, "nothing decides which existential this `any` packs for", "say it where the value goes, as `let x: any ^Show = any ...`"
             else: update s:

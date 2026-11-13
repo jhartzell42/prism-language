@@ -142,7 +142,7 @@ fn TypeAtomStartsHere p = match Kind p:
     KFamily ignore: True
     KFree ignore: True
     KOpen ignore, ignore: True
-    KKw w, ignore: w == "unit" or w == "any"
+    KKw w, ignore: w == "unit" or w == "any" or w == "forall"
     otherwise: False
 
 ParseTypeAtom: unbounded fn Ps -> ((Type, Ps))
@@ -177,9 +177,13 @@ fn TypeAtomBody p, start = match Kind p:
         if n.case == CaseTopic or n.case == CaseHole: ((Type(kind=(THole name), span=start), (Adv p)))
         else: ((Type(kind=(TName name, [[]]), span=start), (CheckTypeNameScope (Adv p), name)))
     KKw "unit", sigils: ((Type(kind=(TUnit sigils), span=start), (Adv p)))
-    KKw "any", ignore:
-        let ((tr, q)) = ParseTraitRef (Adv p)
-        ((Type(kind=(TAny tr), span=(To start, (Prev q))), q))
+    KKw "any", ignore: if IsTraitKind (KindAt p, 1): AnyTraitType p, start else: ExistsType p, start
+    KKw "forall", ignore:
+        # `forall a b (r: Access). t` (Jimmy's ruling FA)
+        let ((vars, kinds, p1)) = KindedParams (Adv p), False
+        let p2 = if AtDot p1: Adv p1 else: ErrorHere p1, "expected `.` after `forall`'s variables"
+        let ((body, p3)) = ParseType p2
+        ((Type(kind=(TForall vars, kinds, body), span=(To start, (Prev p3))), p3))
     KFamily path: ((Type(kind=(TFamily QualName(path=path, span=start)), span=start), (Adv p)))
     KAbsent: ((Type(kind=TAbsent, span=start), (OutOfScope (Adv p), start, "sparse tuples", "a sparse tuple type is out of this compiler")))
     KOpen "(", ignore:
@@ -214,6 +218,24 @@ fn ParseBounds p0 = update (([[]], p0)):
         else:
             &going <= False
     &_ <= ((&bounds, &p))
+
+AnyTraitType: unbounded fn Ps, Range -> ((Type, Ps))
+fn AnyTraitType p, start:
+    let ((tr, q)) = ParseTraitRef (Adv p)
+    ((Type(kind=(TAny tr), span=(To start, (Prev q))), q))
+
+# `any r: t where ...` (Jimmy's ruling FA)
+ExistsType: unbounded fn Ps, Range -> ((Type, Ps))
+fn ExistsType p, start:
+    let ((vars, kinds, p1)) = KindedParams (Adv p), False
+    let ((body, p2)) = ParseType (ExpectColon p1)
+    let ((bounds, p3)) = OptionalBounds p2
+    ((Type(kind=(TExists vars, kinds, body, bounds), span=(To start, (Prev p3))), p3))
+
+AtDot: fn Ps -> Bool
+fn AtDot p = match Kind p:
+    KDot ignore: True
+    otherwise: False
 
 IsNameKind: fn TokKind -> Bool
 fn IsNameKind (KName ignore) = True
@@ -290,6 +312,9 @@ fn ParsePattern p, commas0:
         KKw "ignore", ignore: ((Pattern(kind=PIgnore, span=start), (Adv p)))
         KKw "unit", ignore: ((Pattern(kind=PUnit, span=start), (Adv p)))
         KKw "nil", ignore: ((Pattern(kind=PNil, span=start), (Adv p)))
+        KKw "any", ignore:
+            let ((inner, q)) = ParsePattern (Adv p), commas
+            ((Pattern(kind=(PAny inner), span=(To start, inner.span)), q))
         KInt ignore, ignore: LiteralPattern p
         KFloat ignore, ignore: LiteralPattern p
         KDuration ignore, ignore, ignore: LiteralPattern p

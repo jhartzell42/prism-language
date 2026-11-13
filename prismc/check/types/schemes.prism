@@ -45,6 +45,7 @@ fn SubstQ m, t = match t:
     TyElem rw, o: TyElem (SubstRowQ m, rw), (SubstQ m, o)
     TyElemAny rw: TyElemAny (SubstRowQ m, rw)
     TyAssoc tr, n, a, indices: TyAssoc tr, n, (SubstQ m, a), (Each indices, \|i| SubstQ m, i)
+    TyExists vs, b, bs: TyExists vs, (SubstQ m, b), bs
     other: other
 
 SubstRowQ: fn Inst, Rw -> Rw
@@ -211,6 +212,7 @@ fn SubstFlex m, cm, t = match t:
     TyAt i, rw: TyAt (SubstFlex m, cm, i), rw
     TyElem rw, o: TyElem rw, (SubstFlex m, cm, o)
     TyAssoc tr, n, a, indices: TyAssoc tr, n, (SubstFlex m, cm, a), (Each indices, \|i| SubstFlex m, cm, i)
+    TyExists vs, b, bs: TyExists vs, (SubstFlex m, cm, b), bs
     other: other
 
 # Whether a type has a `$` or `!` outside every function arrow (ch. 5: a `let` holding a

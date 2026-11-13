@@ -95,6 +95,9 @@ type Ty = choice:
     # Player`; Type System ch. 6): the constructor's key
     TyRole Text
     TyAny [Text]
+    # `any r: t where r: ^C` (Type System ch. 3; Jimmy's ruling FA): its variables, by
+    # canonical names (`ExistsVar`), the type over them, and their bounds
+    TyExists [Text], Ty, [((Text, Text))]
     TyErr
 derive ^Eq, ^Show
 
@@ -495,7 +498,14 @@ fn ShowTyIn st, t, nested = match t:
         if nested: "({inner})" else: inner
     TyRole r: BareName r
     TyAny ts: "any {Join (Each ts, \|x| "^{BareName x}"), " "}"
+    TyExists vs, b, bs:
+        let inner = "any {Join (Each vs, \|v| ShownVar v), " "}: {ShowTyIn st, b, False}{if (Len bs) == 0: "" else: " where {Join (Each bs, \|((v, tr))| "{ShownVar v}: ^{BareName tr}"), ", "}"}"
+        if nested: "({inner})" else: inner
     TyErr: "?"
+
+# A canonical existential variable as a message shows it, `x0`.
+ShownVar: fn Text -> Text
+fn ShownVar v = if HasPrefix v, "\u{0}": Between v, 1, (CountChars v) else: v
 
 ShowCol: fn Col -> Text
 fn ShowCol CBound = ""

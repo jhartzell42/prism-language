@@ -78,6 +78,19 @@ fn ConvType cx, st, t = match t.kind:
     TAny tr: match ?ResolveTrait cx.g, cx.home, tr.path:
         ? k: ((TyAny [[k]], (TraitCollisionAt cx.g, st, cx.home, tr.path, tr.span)))
         nil: ((TyErr, (Err st, "unknown-name", tr.span, "no trait `^{Dotted tr.path}`")))
+    # `forall a (r: Access). t` (Jimmy's ruling FA): a signature quantifies its variables
+    # either way; `forall` names them, which scopes them over the body (`ForallVars`)
+    TForall ignore, ignore2, body: ConvType cx, st, body
+    # `any r: t where ...`: the variables renamed to canonical names, so two spellings of one
+    # existential are one type (`ExistsVar`)
+    TExists vars, ignore, body, bounds:
+        let ((b, st2)) = ConvType cx, st, body
+        let ((bs, st3)) = ConvBounds cx, st2, bounds
+        let names = Each vars, \|v| v.name
+        let canon = Each (Range0 (Len names)), \|i| ExistsVar i
+        let by = ParamInst names, (Each canon, \|c| TyQ c)
+        let bounds2 = Each bs, \|((v, tr))| (((CanonOf names, v), tr))
+        (((TyExists canon, (SubstQ by, b), bounds2), st3))
     TAbsent: ((TyErr, (Err st, "unsupported", t.span, "this checker does not implement sparse tuples")))
     TNonEmpty inner:
         let ((c, st2)) = ConvType cx, st, inner
@@ -88,6 +101,14 @@ fn ConvType cx, st, t = match t.kind:
     THole ignore: ((TyErr, (Err st, "unsupported", t.span, "this checker does not implement higher-kinded traits")))
     TFamily q: ((TyErr, (Err st, "kind", t.span, "`{Dotted q.path}.*` is a row, not a type")))
     TRowUnion ignore: ((TyErr, (Err st, "kind", t.span, "a row is not a type")))
+
+# A bound's variable by its canonical name, if the existential binds it.
+CanonOf: fn [Text], Text -> Text
+fn CanonOf names, v = Fold (Range0 (Len names)), v, \|found, i| if (Or names[i], "") == v: ExistsVar i else: found
+
+# An existential's variable by its position, the one name every spelling of it shares.
+ExistsVar: fn Nat -> Text
+fn ExistsVar i = "\u{0}x{i}"
 
 ConvTypes: unbounded fn Cx, St, [Type] -> (([Ty], St))
 fn ConvTypes cx, st, ts = Fold ts, (([[]], st)), \|((acc, s)), x|

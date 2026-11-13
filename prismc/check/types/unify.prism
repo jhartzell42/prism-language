@@ -157,6 +157,7 @@ fn ?MatchAll xs, ys, m = Fold (Range0 (Len xs)), (? m), \|?acc, i| match ?acc:
 IsWaitingAssoc: unbounded fn St, Ty -> Bool
 fn IsWaitingAssoc st, t = match t:
     TyAssoc ignore, ignore, a, indices: (IsFlexVar st, a) or Fold indices, False, \|b, i| b or IsFlexVar st, i
+    TyExists ignore, b, ignore2: IsFlexVar st, b
     otherwise: False
 
 Defer: fn St, Ty, Ty, Range -> St
@@ -221,6 +222,9 @@ fn UnifyHeads st, e, f, span:
         (((TyAssoc t1, n1, a1, ix1), (TyAssoc t2, n2, a2, ix2))): if t1 == t2 and n1 == n2 and (Len ix1) == (Len ix2): UnifyAll st, (Append [[a1]], ix1), (Append [[a2]], ix2), span else: (("mismatch", st))
         ((TyRole r1, TyRole r2)): if r1 == r2: (("", st)) else: (("mismatch", st))
         ((TyAny xs, TyAny ys)): if (SortTexts xs) == (SortTexts ys): (("", st)) else: (("mismatch", st))
+        # two existentials are one type when their bodies are, variable by canonical
+        # variable, and their bounds agree
+        (((TyExists xs, b1, bs1), (TyExists ys, b2, bs2))): if xs == ys and bs1 == bs2: UnifyIn st, b1, b2, span else: (("mismatch", st))
         otherwise: (("mismatch", st))
 
 UnifyAll: unbounded fn St, [Ty], [Ty], Range -> ((Text, St))

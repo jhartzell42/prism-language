@@ -302,6 +302,15 @@ fn FaultOf st, t, span = match Walk st, t:
 # `any e` against `any ^Show`: the bounds are solved at `e`'s type (ch. 5, Existentials).
 CheckAny: unbounded fn Env, St, Expr, Ty, Range -> St
 fn CheckAny env, st, x, expected, span = match Walk st, expected:
+    # packing an existential over type variables (Jimmy's ruling FA): each variable a fresh
+    # one at the packing, its bounds wanted there
+    TyExists vs, b, bs:
+        let ((fresh, st2)) = Fold vs, (([[]], st)), \|((acc, s)), ignore|
+            let ((v, s2)) = FreshVar s, True, ""
+            (((Push acc, v), s2))
+        let inst = ParamInst vs, fresh
+        let st3 = Check env, st2, x, (SubstQ inst, b)
+        Fold bs, st3, \|s, ((v, tr))| AddWant s, tr, (SubstQ inst, (TyQ v)), span
     TyAny trs:
         let ((t, st2)) = Infer env, st, x
         Fold trs, st2, \|s, tr| AddWant s, tr, t, span

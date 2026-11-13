@@ -274,6 +274,7 @@ fn RigidNamesIn t = match t:
     TyAt i, ignore: RigidNamesIn i
     TyElem ignore, o: RigidNamesIn o
     TyAssoc ignore, ignore2, a, indices: Fold indices, (RigidNamesIn a), \|acc, i| Append acc, (RigidNamesIn i)
+    TyExists ignore, b, ignore2: RigidNamesIn b
     otherwise: [[]]
 
 # A definition of the walk as a message names it: a function, a widget or a `let` by its
@@ -304,6 +305,7 @@ fn FlexNamed t = match t:
     TyAt i, rw: TyAt (FlexNamed i), rw
     TyElem rw, o: TyElem rw, (FlexNamed o)
     TyAssoc tr, n, a, indices: TyAssoc tr, n, (FlexNamed a), (Each indices, \|i| FlexNamed i)
+    TyExists vs, b, bs: TyExists vs, (FlexNamed b), bs
     other: other
 
 # Whether a type holds an associated type, which stands for another type once its
@@ -398,6 +400,7 @@ fn TypeNodes t = match t:
     TyAt i, ignore: 1 + TypeNodes i
     TyElem ignore, o: 1 + TypeNodes o
     TyAssoc ignore, ignore2, a, indices: 1 + (TypeNodes a) + (Fold indices, 0, \|k, i| k + (TypeNodes i))
+    TyExists ignore, b, ignore2: 1 + (TypeNodes b)
     otherwise: 1
 
 # A type with each type parameter named in `by` replaced by its type there, all at once.
@@ -415,6 +418,7 @@ fn SubstRigids by, t = match t:
     TyAt i, rw: TyAt (SubstRigids by, i), rw
     TyElem rw, o: TyElem rw, (SubstRigids by, o)
     TyAssoc tr, n, a, indices: TyAssoc tr, n, (SubstRigids by, a), (Each indices, \|i| SubstRigids by, i)
+    TyExists vs, b, bs: TyExists vs, (SubstRigids by, b), bs
     other: other
 
 # The typed output: every recorded type followed to its end, and the scheme of every

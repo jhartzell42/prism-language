@@ -517,6 +517,7 @@ fn PartsOfType t = match t:
     TyAt i, ignore: [[i]]
     TyElem ignore, o: [[o]]
     TyAssoc ignore, ignore, x, indices: Append [[x]], indices
+    TyExists ignore, b, ignore2: [[b]]
     otherwise: [[]]
 
 # A type's former: the type with nothing at its parts.

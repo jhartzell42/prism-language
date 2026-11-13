@@ -88,6 +88,8 @@ fn RustPat lx, p, ty, mode, fresh = match p.kind:
     PSigil "~", q: WrapPat lx, (RefRuntime "std::Ok"), q, (InnerTy ty), mode, fresh
     PSigil ignore, q: RustPat lx, q, ty, mode, fresh
     PGroup q: RustPat lx, q, ty, mode, fresh
+    # an existential opened (Jimmy's ruling FA): its lowering is not written yet
+    PAny ignore: PatOut(pa=PaWild, conds=[[CcIf (Refusal "an existential opened by `any` in a pattern")]], binds=[[]])
     PCtor n, ps: CtorPat lx, n, ps, ty, mode, fresh
     PRecord n, fps, rest: RecordPat lx, n, fps, rest, ty, mode, fresh
     PTuple ps:

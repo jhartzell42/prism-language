@@ -226,7 +226,7 @@ fn IsBoundWord w = w == "key" or w == "ix" or w == "jx" or w == "kx"
 
 # Keywords, reserved everywhere (Semantics ch. 2, Keywords; Appendix A.2).
 let keywordList = [["module", "emit", "use", "type", "record", "choice", "row", "tag", "of",
-    "derive", "trait", "impl", "where", "any", "let", "fn", "test", "check", "widget",
+    "derive", "trait", "impl", "where", "any", "forall", "let", "fn", "test", "check", "widget",
     "rebuild", "for", "given", "monad", "update", "while", "match", "if", "else", "otherwise",
     "require", "forbid", "return", "ignore", "then", "on", "not", "and", "or", "mod", "as",
     "output", "inline_text", "raw", "unbounded", "unit", "nil", "key", "ix", "jx", "kx"]]

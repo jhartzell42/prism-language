@@ -41,6 +41,7 @@ fn TySexp t = match t:
     TyAssoc ignore, n, a, indices: "(assoc {n} {Join (Each (Append [[a]], indices), \|i| TySexp i), " "})"
     TyRole r: "(role {r})"
     TyAny trs: "(any{Concat (Each trs, \|x| " ^{x}")})"
+    TyExists vs, b, bs: "(exists ({Join vs, " "}) {TySexp b}{Concat (Each bs, \|((v, tr))| " ({v} ^{tr})")})"
     TyErr: "unknown"
 
 ColSexp: fn Col -> Text

@@ -93,6 +93,16 @@ fn BindPattern env, st, p, t, refutable = match p.kind:
             nil: Unify st2, t, (TyArray v), p.span
         Fold ps, ((env, st3)), \|((en, s)), q| BindPattern en, s, q, v, refutable
     PGroup q: BindPattern env, st, q, t, refutable
+    # `any p` opens an existential (Type System ch. 3; Jimmy's ruling FA): each hidden type
+    # a fresh rigid type in the arm, equal only to itself
+    PAny q: match Walk st, t:
+        TyExists vs, b, ignore:
+            let opened = Each vs, \|v| TyRigid "{ShownVar v}#{st.next}"
+            let st2 = update st:
+                &_.next += 1
+            BindPattern env, st2, q, (SubstQ (ParamInst vs, opened), b), refutable
+        TyErr: BindPattern env, st, q, TyErr, refutable
+        other: ((env, (Err st, "mismatch", p.span, "`any` opens an existential; this is `{ShowTy st, other}`")))
     PFamily q: BindFamily env, st, (Dotted q.path), t, p.span
 
 # `collision`: the patterns of one parameter list, or one pattern, bind a name once. A
@@ -115,6 +125,7 @@ fn BindersOf env, p = match p.kind:
     PTuple ps: Fold ps, [[]], \|acc, q| Append acc, (BindersOf env, q)
     PArray ps: Fold ps, [[]], \|acc, q| Append acc, (BindersOf env, q)
     PGroup q: BindersOf env, q
+    PAny q: BindersOf env, q
     otherwise: [[]]
 
 # `collision`: a written name is bound once per block (Semantics ch. 4, "Binding groups and
@@ -269,6 +280,7 @@ fn TestsValue env, p = match p.kind:
     PSigil s, q: (Contains s, "?") or (Contains s, "~") or TestsValue env, q
     PTuple parts: Fold parts, False, \|seen, q| seen or TestsValue env, q
     PGroup q: TestsValue env, q
+    PAny q: TestsValue env, q
     otherwise: False
 
 # Whether a name in a pattern is a constructor's, its marks set aside: a qualified name,
@@ -289,6 +301,7 @@ fn BindLevel env, st, p, level = match p.kind:
         else: if (HasPrefix n.sigils, "$") and (Len n.path) == 1: BindFreshMarked env, st, n, (AfterFirst n.sigils), level
         else: BindPattern env, st, p, level, True
     PGroup q: BindLevel env, st, q, level
+    PAny q: BindLevel env, st, q, level
     otherwise: BindPattern env, st, p, level, True
 
 BindCtor: unbounded fn Env, St, Pattern, SName, [Pattern], Ty -> ((Env, St))

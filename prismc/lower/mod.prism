@@ -214,6 +214,7 @@ fn SubstTyIn lx, t = match t:
     TyAt i, rw: TyAt (SubstTyIn lx, i), rw
     TyElem rw, o: TyElem rw, (SubstTyIn lx, o)
     TyAssoc tr, n, a, indices: TyAssoc tr, n, (SubstTyIn lx, a), (Each indices, \|i| SubstTyIn lx, i)
+    TyExists vs, b, bs: TyExists vs, (SubstTyIn lx, b), bs
     other: other
 
 InstCol: fn Lx, Col -> Col

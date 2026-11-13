@@ -144,6 +144,7 @@ fn ToPat env, p = match p.kind:
     PTuple ps: PtCon "tuple", (Each ps, \|q| ToPat env, q)
     PArray ps: PtCon "len{Len ps}", (Each ps, \|q| ToPat env, q)
     PGroup q: ToPat env, q
+    PAny q: ToPat env, q
     PFamily q: PtFam (Dotted q.path)
 
 LitText: fn Literal -> Text
@@ -360,6 +361,7 @@ fn OnlyBinds p = match p.kind:
     PIgnore: True
     PTuple ps: Fold ps, True, \|ok, q| ok and OnlyBinds q
     PGroup q: OnlyBinds q
+    PAny q: OnlyBinds q
     PSigil s, q: s != "?" and s != "~" and OnlyBinds q
     otherwise: False
 

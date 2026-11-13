@@ -149,6 +149,13 @@ type TypeKind = choice:
     TRowUnion [Type]
     TFamily QualName
     TAny TraitRef
+    # `forall a (r: Access). t` (Jimmy's ruling FA): the variables, the kinds some state,
+    # the type they quantify
+    TForall [Ident], [((Text, Type))], Type
+    # `any r: t where ...`, an existential over type variables (Type System ch. 3,
+    # "Existentials"; Jimmy's ruling FA): the variables, their stated kinds, the type, the
+    # bounds
+    TExists [Ident], [((Text, Type))], Type, [Bound]
     TUnit Text
     THole SName
     TAbsent
@@ -185,6 +192,8 @@ type PatternKind = choice:
     PArray [Pattern]
     PGroup Pattern
     PFamily QualName
+    # `any p`, an existential opened (Type System ch. 3): its hidden types fresh in the arm
+    PAny Pattern
 derive ^Eq, ^Show
 
 # `marks` are the sigils written on the field's name (`$label=ignore`), "" for a plain name.

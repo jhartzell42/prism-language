@@ -110,6 +110,7 @@ fn OutTyOf lx, t = match t:
             ? b: OutQuantified b
             nil: InternalBugType "a type variable the checker left undecided (`t{n}`)"
     TyAny bounds: if IsShowOnly bounds: OutShowAny else: OutNamed (RefRuntime "prism_rtl::Packed"), [[]]
+    TyExists ignore, ignore2, ignore3: OutRefused "an existential over type variables, `any r: ..` (Jimmy's ruling FA): its lowering is not written yet"
     TyElem ignore, ignore: OutLive (OutNamed elemRef, [[]])
     TyElemAny ignore: OutNamed elemRef, [[]]
     TyAt i, ignore: blueprintTy
@@ -161,6 +162,7 @@ fn HasTime t = match t:
     TyArray x: HasTime x
     TyMap k, v: (HasTime k) or HasTime v
     TyAssoc ignore, ignore, x, ignore2: HasTime x
+    TyExists ignore, b, ignore2: HasTime b
     otherwise: False
 
 # An event parameter taken as an event value: a type `Peel` leaves and `OutTyOf` spells

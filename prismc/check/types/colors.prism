@@ -133,6 +133,7 @@ fn FreeColsInto st, acc, t = match Walk st, t:
     TyAt i, ignore: FreeColsInto st, acc, i
     TyElem ignore, o: FreeColsInto st, acc, o
     TyAssoc ignore, ignore, a, indices: Fold indices, (FreeColsInto st, acc, a), \|acc2, i| FreeColsInto st, acc2, i
+    TyExists ignore, b, ignore2: FreeColsInto st, acc, b
     otherwise: acc
 
 # A join owed: `lo` at most `hi`. One that already holds (`lo` bounded, `hi` unbounded,

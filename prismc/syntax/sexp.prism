@@ -392,6 +392,7 @@ fn SexpPattern p, d = match p.kind:
     PArray ps: "(array{Concat (Each ps, \|x| " {SexpPattern x, d}")})"
     PGroup x: "(group {SexpPattern x, d})"
     PFamily q: "{Path q.path}.*"
+    PAny x: "(any {SexpPattern x, d})"
 
 SexpType: fn Type -> Text
 fn SexpType t = match t.kind:
@@ -408,6 +409,8 @@ fn SexpType t = match t.kind:
     TRowUnion ts: "(|{Concat (Each ts, \|x| " {SexpType x}")})"
     TFamily q: "{Path q.path}.*"
     TAny tr: "(any ^{Path tr.path})"
+    TForall vs, ignore, b: "(forall ({Join (Each vs, \|v| v.name), " "}) {SexpType b})"
+    TExists vs, ignore, b, ignore2: "(exists ({Join (Each vs, \|v| v.name), " "}) {SexpType b})"
     TUnit s: "{s}unit"
     THole n: SNameText n
     TAbsent: "absent"

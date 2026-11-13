@@ -2804,6 +2804,7 @@ fn Instantiated t, params, args = match t:
     TyMap k, v: TyMap (Instantiated k, params, args), (Instantiated v, params, args)
     TySig s, i: TySig s, (Instantiated i, params, args)
     TyAssoc tr, n, a, indices: TyAssoc tr, n, (Instantiated a, params, args), (Each indices, \|i| Instantiated i, params, args)
+    TyExists vs, b, bs: TyExists vs, (Instantiated b, params, args), bs
     otherwise: t
 
 # `xs[i]`: an optional, of an array or a map (a text has no index: the checker refuses it).
@@ -3411,6 +3412,7 @@ fn OpenTyQs lx, t = match t:
     TyAt i, ignore: OpenTyQs lx, i
     TyElem ignore, o: OpenTyQs lx, o
     TyAssoc ignore, ignore, a, indices: Fold indices, (OpenTyQs lx, a), \|acc, i| Append acc, (OpenTyQs lx, i)
+    TyExists vs, b, ignore: Filter (OpenTyQs lx, b), \|q| not (HasText vs, q)
     otherwise: [[]]
 
 # Lowering at an instantiation: its variables' types and colors in the substitution.
