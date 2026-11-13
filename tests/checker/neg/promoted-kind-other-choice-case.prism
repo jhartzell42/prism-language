@@ -1,0 +1,20 @@
+# Jimmy's ruling, 12 November: promoted constructors, generic. Each payload-free choice
+# is its own kind. `Edit` takes a case of `Access`; `Green` is a case of `Light`, a type
+# of the kind `Light`, so `Edit Green` is a kind error though both choices are kinds.
+# Expected diagnostic derived by hand. Written by Claude on the claude-self-hosting
+# branch; subject to change.
+type Access = choice:
+    Reader
+    Writer
+derive ^Eq, ^Show
+
+type Light = choice:
+    Red
+    Green
+derive ^Eq, ^Show
+
+type Edit (r: Access) = record:
+    body: Text
+
+Shone: fn Edit Green -> Text
+fn Shone edit = edit.body
