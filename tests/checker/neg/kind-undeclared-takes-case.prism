@@ -1,0 +1,13 @@
+# Jimmy's ruling PK (13 November): a parameter that takes a case declares its kind. `Edit`'s
+# `r` has none, so it is a type, and `Writer` there is a case where a type goes: `kind`.
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+type Access = choice:
+    Reader
+    Writer
+
+type Edit s r = record:
+    body: s
+
+Drafted: fn Text -> Edit Text Writer
+fn Drafted words = Edit(body=words)
