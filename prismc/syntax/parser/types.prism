@@ -261,7 +261,11 @@ fn IsTraitKind ignore = False
 ParseBound: unbounded fn Ps -> ((Bound, Ps))
 fn ParseBound p:
     let start = Here p
-    let ((var, p1)) = ParseIdent p
+    let ((var, p0)) = ParseIdent p
+    # a head that is a type, `State d: ^X`, reads as a type up to its colon
+    let ((?head, p1)) = if (Kind p0) == KColon: ((nil, p0)) else:
+        let ((t, q0)) = ParseAppType p
+        (((? t), q0))
     let ((first, p2)) = ParseTraitRef (ExpectColon p1)
     let r = update (([[first]], p2)):
         let &traits = [[first]]
@@ -272,7 +276,7 @@ fn ParseBound p:
             &q <= q2
         &_ <= ((&traits, &q))
     let ((traits, q)) = r
-    ((Bound(var=var, traits=traits, span=(To start, (Prev q))), q))
+    ((Bound(var=var, ?head=?head, traits=traits, span=(To start, (Prev q))), q))
 
 # A row in an `emit` line or statement: `Ui.* | Net.*`, `r`, `r | Ui.*`, `Element`.
 ParseRow: unbounded fn Ps -> ((Row, Ps))

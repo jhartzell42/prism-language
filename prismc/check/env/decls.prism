@@ -546,7 +546,8 @@ fn ImplsComplete g, st0:
             let s5 = Fold im.indexed, s5a, \|s, e| if not (HasText tr.assocs, e.name): Err s, "mismatch", im.span, "`^{shown}` has no associated type `{e.name}`"
                 else: if (Or tr.assocParams[e.name], 0) != (Len e.indices): ErrFix s, "kind", im.span, "`type {e.name}` of `^{shown}` takes {CountWord (Or tr.assocParams[e.name], 0)} indices; an equation of this impl gives it {CountWord (Len e.indices)}", "give it as many as the trait's `type {e.name}` names"
                 else: s
-            Fold tr.supers, s5, \|s, above| ImplHasAbove g, s, im, shown, above
+            let s6 = Fold tr.supers, s5, \|s, above| ImplHasAbove g, s, im, shown, above
+            Fold tr.headBounds, s6, \|s, ((h, above))| ImplHasHeadBound g, s, im, tr.param, shown, h, above
     update st:
         &_.file <= st0.file
 
@@ -624,11 +625,26 @@ fn ImplHasAbove g, st, im, shown, above = if im.head == TyErr: st else:
     if (Len out.diags) == 0 and (Len out.wants) == 0: st
     else: ErrFix st, "no-impl", im.span, "no impl of `^{BareName above}` for `{ShowTy st, im.head}`, which `^{shown}` asks of its types", "add `impl ^{BareName above} {ShowTyIn st, im.head, True}`"
 
+# A trait's `where` on a type of its parameter (`State d: ^SerializableValue`) asks every
+# impl for that type's impl, the type read at the impl's head.
+ImplHasHeadBound: unbounded fn G, St, ImplInfo, Text, Text, Ty, Text -> St
+fn ImplHasHeadBound g, st, im, param, shown, h, above = if im.head == TyErr: st else:
+    let head = SubstQ (ParamInst im.qs, (Each im.qs, \|q| TyRigid q)), im.head
+    let asked = SubstQ (ParamInst [[param]], [[head]]), h
+    let trial = update st:
+        &_.diags <= [[]]
+        &_.wants <= [[Want(cls=above, ty=asked, file=im.file, span=im.span, level=0)]]
+    let out = SolveWants g, trial, im.bounds, False
+    if (Len out.diags) == 0 and (Len out.wants) == 0: st
+    else:
+        let reduced = NormAssoc st, asked
+        ErrFix st, "no-impl", im.span, "`^{shown}` asks `{ShowTy st, asked}: ^{BareName above}`, and there is no impl of `^{BareName above}` for `{ShowTy st, reduced}`", "write `impl ^{BareName above} {ShowTyIn st, reduced, True}`"
+
 # A `where` bound names a variable of its signature or of its impl's head (`known`): nothing
 # decides any other (Type System ch. 5, `ambiguous`), so no use could choose its impl.
 BoundsNamed: fn St, [Bound], [Text], Text, Text -> St
 fn BoundsNamed st, bounds, known, place, short = Fold bounds, st, \|s, b|
-    if HasText known, b.var.name: s
+    if b.?head != nil or HasText known, b.var.name: s
     else: ErrFix s, "ambiguous", b.span, "nothing decides `{b.var.name}` in `^{Join (Each b.traits, \|tr| Dotted tr.path), ", ^"} {b.var.name}`: {place} names no `{b.var.name}`", "bound a variable of {short}, or drop the bound"
 
 # A further clause of a trait's default body: the clauses of one method are one definition.
@@ -709,7 +725,8 @@ fn ConvTrait g, st, info, t, span:
     let param = Or (Each t.params, \|p| p.name)[0], "a"
     let st1 = if (Len t.params) > 1: Err st, "unsupported", span, "this checker does not implement traits of several types" else: st
     let cx = CxOf g, info.name
-    let ((supers, st2)) = ConvBounds cx, st1, t.bounds
+    let ((supers, st2a)) = ConvBounds cx, st1, (Filter t.bounds, \|b| b.?head == nil)
+    let ((headBounds, st2)) = TraitHeadBounds cx, st2a, t.bounds
     # a default for an associated type, `type Item = a`, read over the trait's parameter
     let ((assocDefaults, st2d)) = Fold t.items, (([[]], st2)), \|((acc, s)), it| match it:
         TiAssocType n, params, ignore, (? v), aspan:
@@ -751,7 +768,7 @@ fn ConvTrait g, st, info, t, span:
     let st4 = Fold t.items, st3, \|s, it| match it:
         TiFn f: if HasText methods, (QualKey info.name, (DefNameText f.name)): s else: Err s, "mismatch", f.span, "`^{Dotted t.name.path}` has no method `{DefNameText f.name}`"
         otherwise: s
-    let ti = TraitInfo(name=name, home=info.name, param=param, supers=(Each supers, \|((ignore, k))| k), methods=methods, defaults=defaults, assocs=assocs, assocParams=(AssocParamCounts t.items), assocDefaults=assocDefaults, file=info.file, span=span)
+    let ti = TraitInfo(name=name, home=info.name, param=param, supers=(Each supers, \|((ignore, k))| k), headBounds=headBounds, methods=methods, defaults=defaults, assocs=assocs, assocParams=(AssocParamCounts t.items), assocDefaults=assocDefaults, file=info.file, span=span)
     let upd3 = update g3:
         &_.traits <= Insert &_.traits, name, ti
     ((upd3, st4))

@@ -177,7 +177,7 @@ fn CheckOrphan g, st, i:
             &_.file <= i.file
         ErrFix s, "orphan", i.span, "{if i.home == "": "this file" else: "`{i.home}`"} declares neither `^{BareName i.cls}` nor `{ShowTy s, i.head}`", "wrap the type in a newtype of this module, or move the impl"
 
-let dummyTrait = TraitInfo(name="", home="", param="a", supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], assocParams={{}}, assocDefaults=[[]], file=0, span=Range(start=0, end=0, origin=InSource))
+let dummyTrait = TraitInfo(name="", home="", param="a", supers=[[]], headBounds=[[]], methods=[[]], defaults=[[]], assocs=[[]], assocParams={{}}, assocDefaults=[[]], file=0, span=Range(start=0, end=0, origin=InSource))
 
 TypeNamesIn: unbounded fn Ty -> [Text]
 fn TypeNamesIn t = match t:

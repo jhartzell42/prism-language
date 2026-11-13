@@ -433,9 +433,25 @@ fn SigColName 0 = "u"
 fn SigColName k = "u{k}"
 
 ConvBounds: fn Cx, St, [Bound] -> (([((Text, Text))], St))
-fn ConvBounds cx, st, bounds = Fold bounds, (([[]], st)), \|((acc, s)), b| Fold b.traits, ((acc, s)), \|((a2, s2)), tr| match ?ResolveTrait cx.g, cx.home, tr.path:
+fn ConvBounds cx, st, bounds = Fold bounds, (([[]], st)), \|((acc, s)), b| if b.?head != nil: ((acc, (TypeHeadedHere s, b))) else: Fold b.traits, ((acc, s)), \|((a2, s2)), tr| match ?ResolveTrait cx.g, cx.home, tr.path:
     ? k: (((Push a2, ((b.var.name, k))), (TraitCollisionAt cx.g, s2, cx.home, tr.path, tr.span)))
     nil: ((a2, (Err s2, "unknown-name", tr.span, "no trait `^{Dotted tr.path}`")))
+
+# A bound on a type that is no variable (`State d: ^X`) is read in a trait's `where`
+# (`TraitHeadBounds`); elsewhere this compiler does not read one yet (R gap).
+TypeHeadedHere: fn St, Bound -> St
+fn TypeHeadedHere st, b = Err st, "unsupported", b.span, "a `where` bound on a type that is no variable is read only in a trait's `where` by this compiler"
+
+# A trait's bounds on types (`trait ^SerializableDocument d where State d: ^SerializableValue`):
+# each head over the trait's parameter, and the trait it asks.
+TraitHeadBounds: unbounded fn Cx, St, [Bound] -> (([((Ty, Text))], St))
+fn TraitHeadBounds cx, st, bounds = Fold bounds, (([[]], st)), \|((acc, s)), b| match b.?head:
+    nil: ((acc, s))
+    ? onType:
+        let ((h, s1)) = ConvType cx, s, onType
+        Fold b.traits, ((acc, s1)), \|((a2, s2)), tr| match ?ResolveTrait cx.g, cx.home, tr.path:
+            ? k: (((Push a2, ((h, k))), s2))
+            nil: ((a2, (Err s2, "unknown-name", tr.span, "no trait `^{Dotted tr.path}`")))
 
 # Whether a signature's type writes `$`, `!` or `@` anywhere (ch. 5, The color).
 MentionsTime: unbounded fn Type -> Bool

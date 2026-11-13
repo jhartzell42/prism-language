@@ -43,6 +43,9 @@ derive ^Eq, ^Show
 
 type Bound = record:
     var: Ident
+    # the bound's head where it is a type, not a variable (`State d: ^SerializableValue`,
+    # Part III ch. 7); `var` is then its first name
+    ?head: Type
     traits: [TraitRef]
     span: Range
 derive ^Eq, ^Show

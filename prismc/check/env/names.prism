@@ -88,7 +88,7 @@ fn CollectDecl g, st, info, d, ?lastType = match d.kind:
         let assocs = Fold t.items, [[]], \|acc, it| match it:
             TiAssocType n, ignore, ignore, ignore, ignore: Push acc, n.name
             otherwise: acc
-        let ti = TraitInfo(name=name, home=info.name, param=(Or (Each t.params, \|p| p.name)[0], "a"), supers=[[]], methods=[[]], defaults=[[]], assocs=assocs, assocParams=(AssocParamCounts t.items), assocDefaults=[[]], file=info.file, span=d.span)
+        let ti = TraitInfo(name=name, home=info.name, param=(Or (Each t.params, \|p| p.name)[0], "a"), supers=[[]], headBounds=[[]], methods=[[]], defaults=[[]], assocs=assocs, assocParams=(AssocParamCounts t.items), assocDefaults=[[]], file=info.file, span=d.span)
         # each a name of the module: a second trait of the module declaring it is
         # `duplicate-name`
         let ((names, st2)) = Fold t.items, ((g.assocNames, st)), \|((m, s)), it| match it:

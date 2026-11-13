@@ -117,6 +117,9 @@ type TraitInfo = record:
     home: Text
     param: Text
     supers: [Text]
+    # the trait's bounds on types of its parameter (`State d: ^SerializableValue`), each
+    # head over the parameter
+    headBounds: [((Ty, Text))]
     methods: [Text]
     defaults: [Text]
     assocs: [Text]

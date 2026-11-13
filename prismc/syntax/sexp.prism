@@ -108,8 +108,13 @@ SexpDefName: fn DefName -> Text
 fn SexpDefName (DefSName n) = SNameText n
 fn SexpDefName (DefOp o, ignore) = "(op {o})"
 
+BoundHeadText: fn Bound -> Text
+fn BoundHeadText b = match b.?head:
+    ? t: SexpType t
+    nil: b.var.name
+
 SexpBounds: fn [Bound] -> Text
-fn SexpBounds bs = Concat (Each bs, \|b| " (where {b.var.name}{Concat (Each b.traits, \|t| " ^{Path t.path}")})")
+fn SexpBounds bs = Concat (Each bs, \|b| " (where {BoundHeadText b}{Concat (Each b.traits, \|t| " ^{Path t.path}")})")
 
 SexpFn: fn FnClause, Nat -> Text
 fn SexpFn f, depth:
