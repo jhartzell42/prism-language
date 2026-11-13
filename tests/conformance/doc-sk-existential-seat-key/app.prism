@@ -46,7 +46,7 @@ fn Keyed role, id = any ((role, id))
 
 # The key opened in an arm: the role and the seat id at the arm's own role type.
 Told: fn SeatKey d -> Text where d: ^Document
-fn Told key = match key:
+fn Told seatKey = match seatKey:
     any ((role, id)): Described role, id
 
 ToldDue: fn Due d -> Text where d: ^Document

@@ -12,7 +12,7 @@ trait ^Document d:
 type SeatKey d = any r: ((Role d, SeatId d r))
 
 Leaked: fn SeatKey d -> Text where d: ^Document
-fn Leaked key:
-    let id = match key:
+fn Leaked seatKey:
+    let id = match seatKey:
         any ((role, seat)): seat
     "leaked"

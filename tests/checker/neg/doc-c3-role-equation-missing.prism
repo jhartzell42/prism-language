@@ -61,9 +61,9 @@ type Search = choice:
 derive ^Eq, ^Show
 
 # A librarian's request, at the role's own types.
-Asks: fn SeatId Catalogue Librarian, Request Catalogue Librarian -> ?(Reason Catalogue Librarian)
-fn Asks who, (Add book) = nil
-fn Asks who, (Withdraw id) = ? (NoSuchBook id)
+?Asks: fn SeatId Catalogue Librarian, Request Catalogue Librarian -> ?(Reason Catalogue Librarian)
+fn ?Asks who, (Add book) = nil
+fn ?Asks who, (Withdraw id) = ? (NoSuchBook id)
 
 Found: fn Catalogue, Query Catalogue Reader -> Answer Catalogue Reader
 fn Found catalogue, (Search (Titled title)) = Filter catalogue.books, \|book| book.title == title
