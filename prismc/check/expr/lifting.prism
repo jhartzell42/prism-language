@@ -162,14 +162,14 @@ fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
     match ?expected:
         ? want:
             let ((bt, st3a)) = InferExprBlock env2, st2, arm.body
-            let st3 = OpenedEscapes (NoteFaultAt st3a, (TailSpan arm.body), want, bt), st.next, st1.next, bt, scrutTy, (ResultSpan arm.body)
+            let st3 = OpenedEscapes env.g, (NoteFaultAt st3a, (TailSpan arm.body), want, bt), st.next, st1.next, bt, scrutTy, (ResultSpan arm.body)
             let fwd = arm.?pattern == nil or (IsFamilyArm arm)
             match ?refinedOut:
                 ? ((o, out)): ((acc, st3, (? ArmWait(o=o, out=out, ty=bt, span=(ResultSpan arm.body), ?against=(? want), fwd=fwd))))
                 nil: ((acc, (ArmAgainst st3, (Refined env1, want), bt, (ResultSpan arm.body), fwd), nil))
         nil:
             let ((bt, st3b)) = InferExprBlock env2, st2, arm.body
-            let st3 = OpenedEscapes (NoteFaultAt st3b, (TailSpan arm.body), res, bt), st.next, st1.next, bt, scrutTy, (ResultSpan arm.body)
+            let st3 = OpenedEscapes env.g, (NoteFaultAt st3b, (TailSpan arm.body), res, bt), st.next, st1.next, bt, scrutTy, (ResultSpan arm.body)
             let head = HeadSigil st3, bt
             let plainBt = if IsTimeSigil head: InnerOf st3, bt else: bt
             let acc2 = if IsTimeSigil head: Push acc, ((head, arm.body.span)) else: Push acc, (("", arm.body.span))
@@ -180,11 +180,11 @@ fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
 
 # `existential-escape` (Type System ch. 3): a type an arm's `any` pattern opened, one
 # numbered from `lo` up to `hi`, stays in the arm; its value may not have it.
-OpenedEscapes: unbounded fn St, Nat, Nat, Ty, Ty, Range -> St
-fn OpenedEscapes st, lo, hi, bt, scrutTy, span:
+OpenedEscapes: unbounded fn G, St, Nat, Nat, Ty, Ty, Range -> St
+fn OpenedEscapes g, st, lo, hi, bt, scrutTy, span:
     let leaving = Filter (RigidNamesIn (Zonk st, bt)), \|n| OpenedBetween n, lo, hi
     if (Len leaving) == 0: st
-    else: ErrFix st, "existential-escape", span, "the type hidden in `{ShowTy st, scrutTy}` would leave it here", "use the opened value inside the arm, and give back a type without it"
+    else: ErrFix st, "existential-escape", span, "the type hidden in `{AliasOrShown g, st, scrutTy}` would leave it here", "use the opened value inside the arm, and give back a type without it"
 
 OpenedBetween: fn Text, Nat, Nat -> Bool
 fn OpenedBetween n, lo, hi = match ?ParseNat (Or (SplitOn n, "#any")[1], ""):
@@ -316,3 +316,19 @@ fn IfBranches thenEnv, st, elseEnv, thenB, ?elseB, res:
             let st4 = UnifyArm st3, res, (if IsTimeSigil h2: InnerOf st3, t2 else: t2), (ResultSpan b)
             (((Push l1, (((LayerHead h2), b.span))), st4))
         nil: ((l1, (Unify st2, res, tUnit, (ResultSpan thenB))))
+
+# A type as the program names it: an existential an alias declares by that alias at its
+# arguments (`SeatKey d`), else as it is.
+AliasOrShown: unbounded fn G, St, Ty -> Text
+fn AliasOrShown g, st, t:
+    let whole = Zonk st, t
+    let ?named = Fold (Values g.types), nil, \|?found, ti| match ?found:
+        ? f: ? f
+        nil: match ti.body:
+            BAlias (TyExists vs, b, bs): match whole:
+                TyExists ws, c, cs: if (Len vs) != (Len ws): nil else: match ?MatchHead (SubstQ (ParamInst vs, (Each ws, \|w| TyQ w)), b), c, {{}}:
+                    ? m: ? "{BareName ti.name}{Concat (Each ti.params, \|p| " {ShowTyIn st, (Or m[p], (TyQ p)), True}")}"
+                    nil: nil
+                otherwise: nil
+            otherwise: nil
+    Or ?named, (ShowTy st, whole)

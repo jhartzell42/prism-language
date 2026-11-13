@@ -147,6 +147,11 @@ fn ?MatchHead pat, t, m = match ((pat, t)):
     ((TyArray x, TyArray y)): ?MatchHead x, y, m
     (((TyMap k1, v1), (TyMap k2, v2))): ?MatchAll [[k1, v1]], [[k2, v2]], m
     (((TySig s1, i1), (TySig s2, i2))): if s1 == s2: ?MatchHead i1, i2, m else: nil
+    # (an alias's existential read back by its name, `AliasOrShown`: associated types,
+    # roles and rigid variables as they stand)
+    (((TyAssoc t1, n1, a1, ix1), (TyAssoc t2, n2, a2, ix2))): if t1 == t2 and n1 == n2 and (Len ix1) == (Len ix2): ?MatchAll (Append [[a1]], ix1), (Append [[a2]], ix2), m else: nil
+    ((TyRole a, TyRole b)): if a == b: ? m else: nil
+    ((TyRigid a, TyRigid b)): if a == b: ? m else: nil
     otherwise: nil
 
 ?MatchAll: unbounded fn [Ty], [Ty], (Text ==> Ty) -> ?(Text ==> Ty)
