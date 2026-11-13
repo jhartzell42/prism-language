@@ -1,0 +1,27 @@
+# Jimmy's ruling, 12 November: associated types with parameters, generic. Under a
+# variable parameter `m` of the kind `Mode` the associated type stays abstract until a
+# constructor fixes it. `Passed` hands an `Out s m` along and checks. `Built` makes a
+# `Text` where it gives an `Out Kettle m`: a mismatch, though every equation of
+# `Kettle`'s `Out` is `Text`, since no constructor fixes `m`.
+# Expected diagnostic derived by hand. Written by Claude on the claude-self-hosting
+# branch; subject to change.
+type Mode = choice:
+    Idle
+    Heating
+derive ^Eq, ^Show
+
+trait ^Appliance a:
+    type Out (m: Mode)
+
+type Kettle = record:
+    degrees: Nat
+
+impl ^Appliance Kettle:
+    type Out Idle = Text
+    type Out Heating = Text
+
+Passed: fn s, Out s m -> Out s m where s: ^Appliance
+fn Passed appliance, out = out
+
+Built: fn Kettle, Out Kettle m -> Out Kettle m
+fn Built kettle, out = "warm"
