@@ -1,4 +1,4 @@
-tests/checker/neg/value-of-not-a-case.prism:7: error[kind]: `ValueOf` takes a case of a payload-free choice; `Text` is a type, no case of a choice
+tests/checker/neg/value-of-not-a-case.prism:7: error[kind]: `ValueOf` takes a variant of a payload-free choice; `Text` is a type, no variant of a choice
     fn Valued n = ValueOf<<Text>>
                   ^^^^^^^^^^^^^^^
 1 error

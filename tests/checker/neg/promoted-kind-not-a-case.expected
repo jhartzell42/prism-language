@@ -1,4 +1,4 @@
-tests/checker/neg/promoted-kind-not-a-case.prism:17: error[kind]: `Edit` takes a case of `Access`; `Text` is a type, no case of `Access`
+tests/checker/neg/promoted-kind-not-a-case.prism:17: error[kind]: `Edit` takes a variant of `Access`; `Text` is a type, no variant of `Access`
     Typed: fn Edit Text -> Text
               ^^^^^^^^^
   fix: write one of `Reader`, `Writer`

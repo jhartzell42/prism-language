@@ -1,4 +1,4 @@
-tests/checker/neg/promoted-kind-other-choice-case.prism:19: error[kind]: `Edit` takes a case of `Access`; `Green` is a case of `Light`
+tests/checker/neg/promoted-kind-other-choice-case.prism:19: error[kind]: `Edit` takes a variant of `Access`; `Green` is a variant of `Light`
     Shone: fn Edit Green -> Text
               ^^^^^^^^^^
   fix: write one of `Reader`, `Writer`

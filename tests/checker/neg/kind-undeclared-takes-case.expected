@@ -1,4 +1,4 @@
-tests/checker/neg/kind-undeclared-takes-case.prism:12: error[kind]: `Writer` is a case of `Access`, and `r` of `Edit` declares no kind, so it takes a type
+tests/checker/neg/kind-undeclared-takes-case.prism:12: error[kind]: `Writer` is a variant of `Access`, and `r` of `Edit` declares no kind, so it takes a type
     Drafted: fn Text -> Edit Text Writer
                         ^^^^^^^^^^^^^^^^
   fix: declare the kind: `type Edit s (r: Access)`

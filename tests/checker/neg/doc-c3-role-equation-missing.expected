@@ -1,5 +1,5 @@
-tests/checker/neg/doc-c3-role-equation-missing.prism:40: error[assoc-case-missing]: the impl of `^Document` for `Catalogue` gives `Request` no equation for the case `Reader` of `CatalogueRole`
+tests/checker/neg/doc-c3-role-equation-missing.prism:40: error[assoc-variant-missing]: the impl of `^Document` for `Catalogue` gives `Request` no equation for the variant `Reader` of `CatalogueRole`
     impl ^Document Catalogue:
     ^^^^^^^^^^^^^^^^^^^^^^^^^
-  fix: add `type Request Reader = ...`, or `type Request c = ...` for every case
+  fix: add `type Request Reader = ...`, or `type Request c = ...` for every variant
 1 error

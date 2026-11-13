@@ -1,4 +1,4 @@
-tests/checker/neg/assoc-params-equation-duplicate.prism:20: error[assoc-case-duplicate]: the impl of `^Appliance` for `Kettle` gives `Out` a second equation for the case `Idle`; the first is at line 18
+tests/checker/neg/assoc-params-equation-duplicate.prism:20: error[assoc-variant-duplicate]: the impl of `^Appliance` for `Kettle` gives `Out` a second equation for the variant `Idle`; the first is at line 18
         type Out Idle = Bool
         ^^^^^^^^^^^^^^^^^^^^
   fix: remove one of them

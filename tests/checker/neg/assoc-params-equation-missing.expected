@@ -1,5 +1,5 @@
-tests/checker/neg/assoc-params-equation-missing.prism:18: error[assoc-case-missing]: the impl of `^Appliance` for `Kettle` gives `Out` no equation for the case `Boiled` of `Mode`
+tests/checker/neg/assoc-params-equation-missing.prism:18: error[assoc-variant-missing]: the impl of `^Appliance` for `Kettle` gives `Out` no equation for the variant `Boiled` of `Mode`
     impl ^Appliance Kettle:
     ^^^^^^^^^^^^^^^^^^^^^^^
-  fix: add `type Out Boiled = ...`, or `type Out m = ...` for every case
+  fix: add `type Out Boiled = ...`, or `type Out m = ...` for every variant
 1 error
