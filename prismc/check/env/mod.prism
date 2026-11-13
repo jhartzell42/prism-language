@@ -134,6 +134,9 @@ type TraitInfo = record:
     # The associated types the trait gives a default, each with the default over the
     # trait's parameter (`type Item = a`).
     assocDefaults: [((Text, Ty))]
+    # The defaults it gives for methods of traits above it (Jimmy, 13 November, ruling
+    # SD): each method's bare name and the default's definition key.
+    aboveDefaults: [((Text, Text))]
     file: Nat
     span: Range
 derive ^Eq, ^Show
@@ -155,6 +158,9 @@ type ImplInfo = record:
     rows: [Text]
     # the trait an impl of `derive ... via` came through, as written
     ?through: Text
+    # the methods it leaves unwritten that take a default of a trait below (ruling SD):
+    # the method's bare name, the default's definition key, and the trait below
+    aboveChosen: [((Text, Text, Text))]
 derive ^Eq, ^Show
 
 # A definition whose body is checked.
@@ -279,7 +285,8 @@ fn BuildG srcs, trees:
     let g8 = DerivedImpls g7
     let st8 = FaultFieldsPlain g8, (TagFieldsPrint g8, (Coherence g8, (DerivedFields g8, (DerivedDynamics g8, st7a))))
     # here, so that lowering, which builds the tables again, reads the defaults too
-    ImplDefaults g8, st8
+    let ((g9, st9)) = ImplDefaults g8, st8
+    AboveDefaults g9, st9
 
 let emptyModule = Module(?name=nil, ?emitRow=nil, mods=[[]], uses=[[]], decls=[[]], ?template=nil, span=Range(start=0, end=0, origin=InSource))
 

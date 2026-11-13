@@ -457,7 +457,7 @@ fn ImplDefOf lx, im:
     let tr = Or lx.g.traits[im.cls], dummyTraitInfo
     let head = OutTyOf lx, im.head
     let defs = Filter lx.g.defs, \|d| (IsMethodOf d, im) and not (HasPrefix d.name, "@")
-    let methods = Each defs, \|d|
+    let methods0 = Each defs, \|d|
         let mq = Fold tr.methods, "", \|found, q| if (BareName q) == d.name: q else: found
         let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
         # the method's own type parameters are apart from the head's of one name, as the
@@ -469,6 +469,21 @@ fn ImplDefOf lx, im:
             &_.ty <= Instantiated &_.ty, [[tr.param]], [[im.head]]
         let fd = FnDefIn lx, (InstanceKey d), mq, (MethodClauses d), sc
         if (HasPrefix im.cls, "Prelude."): Renamed fd, "{Snake d.name}_{HeadWord im.head}" else: fd
+    # a method the impl leaves to a default of a trait below (ruling SD): that default's
+    # body, its trait's parameter read as the impl's head
+    let fromBelow = Each (Filter im.aboveChosen, \|((m, ignore, ignore2))| not (HasPrefix m, "@") and not (Fold defs, False, \|seen, d| seen or d.name == m)), \|((m, dq, below))|
+        let mq = Fold tr.methods, "", \|found, q| if (BareName q) == m: q else: found
+        let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
+        let own = update v.scheme:
+            &_.qs <= Filter &_.qs, \|q| q != tr.param
+            &_.bounds <= Filter &_.bounds, \|((q, ignore))| q != tr.param
+        let sc = update (SchemeApart own, im.qs):
+            &_.ty <= Instantiated &_.ty, [[tr.param]], [[im.head]]
+        let belowParam = (Or lx.g.traits[below], dummyTraitInfo).param
+        let lxBelow = update lx:
+            &_.subst <= Insert &_.subst, belowParam, im.head
+        FnDefIn lxBelow, dq, mq, (DefaultClauses lx.g, dq), sc
+    let methods = Append methods0, fromBelow
     # an impl's `where` clauses bound its type parameters, as a function's do
     let generics = Each im.qs, \|q| ((Camel q, (ImplBounds lx, im, q)))
     ImplDef(cls=im.cls, tr=(PathIn lx, tr.home, (TraitName im.cls)), head=head, generics=generics, assocs=(Each im.assocs, \|((an, at))| (((Camel an), (OutTyOf lx, at)))), resultOnly=(ResultOnlyNames lx, tr), methods=methods, doc="")

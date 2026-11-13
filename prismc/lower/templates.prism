@@ -56,6 +56,7 @@ fn TemplateValue lx, env, tp:
 TemplatePartDos: unbounded fn Lx, Env, TemplatePart -> [Do]
 fn TemplatePartDos lx, env, part = match part:
     TpText t: [[DoExpr (XMethod (XVar "out"), "push_str", [[(XStr t)]])]]
+    TpBadEscape ignore: [[DoExpr (InternalBug "`\\\{\{` in a code template, which the checker refuses (`brace-placeholder`)")]]
     TpPlaceholder x, ?col:
         let v = ValueOf lx, env, x
         let column = match ?col:

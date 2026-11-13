@@ -430,14 +430,15 @@ fn ParseTraitDecl p0:
     let decl = TraitDecl(name=name, params=params, bounds=bounds, items=items, span=(To start, (Prev p4)))
     ((decl, (CheckHigherKinded p4, decl)))
 
-# `impl ^T Type (where bounds)?:` and its items.
+# `impl ^T Type (where bounds)?:` and its items, or the header alone.
 ParseImplDecl: unbounded fn Ps -> ((ImplDecl, Ps))
 fn ParseImplDecl p0:
     let start = Here p0
     let ((traitRef, p1)) = ParseTraitRef (Adv p0)
     let ((ty, p2)) = ParseType p1
     let ((bounds, p3)) = OptionalBounds p2
-    let ((items, p4)) = ParseTraitItems p3
+    # An impl that takes every default is its header alone, `impl ^Named Pen` (ruling EI).
+    let ((items, p4)) = if AtColon p3: ParseTraitItems p3 else: (([[]], p3))
     ((ImplDecl(traitRef=traitRef, ty=ty, bounds=bounds, items=items, span=(To start, (Prev p4)), ?through=nil), p4))
 
 ParseTraitItems: unbounded fn Ps -> (([TraitItem], Ps))

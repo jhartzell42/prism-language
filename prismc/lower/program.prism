@@ -594,9 +594,12 @@ fn MethodTargets lx, cls, methodQk, ty, ownTypes = Fold (Or lx.g.impls[cls], [[]
         let written = Filter lx.g.defs, \|d| (IsMethodOf d, im) and (TraitMethodKey lx, cls, d.name) == methodQk
         let ownThere = Each ownTypes, \|((q, t))| (((MethodOwnName lx, cls, methodQk, im, q), t))
         let methods = Fold written, acc, \|more, d| Push more, (((InstanceKey d), (InstanceTypes taken, ownThere)))
-        if (Len written) > 0: methods else: match lx.g.traits[cls]:
-            ? tr: if HasText tr.defaults, methodQk: Push methods, ((methodQk, (InstanceTypes [[((tr.param, ty))]], ownTypes))) else: methods
-            nil: methods
+        if (Len written) > 0: methods else: match ?AboveChosenFor im, (BareName methodQk):
+            # a default of a trait below (ruling SD), at the type for that trait's parameter
+            ? ((dq, below)): Push methods, ((dq, (InstanceTypes [[(((Or lx.g.traits[below], dummyTraitInfo).param, ty))]], ownTypes)))
+            nil: match lx.g.traits[cls]:
+                ? tr: if HasText tr.defaults, methodQk: Push methods, ((methodQk, (InstanceTypes [[((tr.param, ty))]], ownTypes))) else: methods
+                nil: methods
 
 # An instantiation's types in its type parameters' order by name (`DefinitionRigids`):
 # an impl's or a trait's, and a method's own.
@@ -621,9 +624,11 @@ fn ImplTargets lx, cls, ty = Fold (Or lx.g.impls[cls], [[]]), [[]], \|acc, im| m
         # (a method with type parameters of its own is instantiated where it is called,
         # `UseOfMethod`)
         let methods = Fold written, acc, \|more, d| if (Len (MethodOwnRigids lx, cls, (TraitMethodKey lx, cls, d.name))) > 0: more else: Push more, (((InstanceKey d), taken))
-        let defaults = match lx.g.traits[cls]:
-            ? tr: Fold tr.defaults, methods, \|more, defaultQk| if (Len (MethodOwnRigids lx, cls, defaultQk)) > 0 or Fold written, False, \|found, d| found or d.name == (BareName defaultQk): more else: Push more, ((defaultQk, [[((tr.param, ty))]]))
+        let defaults0 = match lx.g.traits[cls]:
+            ? tr: Fold tr.defaults, methods, \|more, defaultQk| if (Len (MethodOwnRigids lx, cls, defaultQk)) > 0 or (Fold written, False, \|found, d| found or d.name == (BareName defaultQk)) or (?AboveChosenFor im, (BareName defaultQk)) != nil: more else: Push more, ((defaultQk, [[((tr.param, ty))]]))
             nil: methods
+        # each default of a trait below the impl takes (ruling SD), at the type
+        let defaults = Fold im.aboveChosen, defaults0, \|more, ((m, dq, below))| if HasPrefix m, "@": more else: Push more, ((dq, [[(((Or lx.g.traits[below], dummyTraitInfo).param, ty))]]))
         Fold im.bounds, defaults, \|more, ((q, bound))| match matched[q]:
             ? part: Append more, (ImplTargets lx, bound, part)
             nil: more
@@ -1493,3 +1498,10 @@ fn KindRef lx, kind = if kind == "Element": elemRef else: RefIn lx, (Or lx.g.typ
 # A `check` block: each line's value as plain data, or the fault that stopped it.
 CheckDefOf: unbounded fn Lx, CheckDecl -> CheckDef
 fn CheckDefOf lx, c = CheckDef(name=c.name.name, lines=(Each c.lines, \|l| XCtor (RefRuntime "std::Ok"), [[(XMethod (Own (ValueOf lx, emptyEnv, l.expr)), "to_pod", [[]])]]))
+
+# The default of a trait below an impl takes for its method of this bare name (ruling SD):
+# the default's definition key and the trait below.
+?AboveChosenFor: fn ImplInfo, Text -> ?((Text, Text))
+fn ?AboveChosenFor im, method = Fold im.aboveChosen, nil, \|?found, ((m, dq, below))| match ?found:
+    ? f: ? f
+    nil: if m == method: ? ((dq, below)) else: nil

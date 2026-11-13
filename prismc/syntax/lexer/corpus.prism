@@ -96,6 +96,7 @@ PartText: fn TPartTok -> Text
 fn PartText (TptText t) = DebugText t
 fn PartText (TptPlaceholder toks, ?col, ignore) = "<<{RenderInner toks}>>{ColText ?col}"
 fn PartText (TptBlock toks, ignore) = "BLOCK\{ {RenderInner toks} \}"
+fn PartText (TptBadEscape ignore) = "BAD-ESCAPE"
 fn PartText (TptCall name, attrs, ?body, ignore) = "<{name.sigils}{Join name.path, "."}{Concat (Each attrs, AttrText)}{CallBody name, ?body}"
 
 ColText: fn ?Nat -> Text

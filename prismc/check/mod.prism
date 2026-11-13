@@ -555,7 +555,15 @@ fn CheckDef g, st, d:
             ? mk: match g.vals[mk]:
                 ? v: CheckClauses env, s0, d.name, clauses, v.scheme, d.span
                 nil: s0
-            nil: s0
+            # a default for a method of a trait above (ruling SD): that method's signature,
+            # its trait's parameter read as this trait's, which is given here
+            nil: match ?SignerAbove g, cls, d.name:
+                ? signer: match ?MethodKey g, signer, d.name:
+                    ? mk: match g.vals[mk]:
+                        ? v: CheckClauses env, s0, d.name, clauses, (AboveScheme g, v.scheme, signer, cls), d.span
+                        nil: s0
+                    nil: s0
+                nil: s0
         DbCheck c: Fold c.lines, s0, \|s, line|
             let ((t, s2)) = Infer env, s, line.expr
             match line.?pattern:
@@ -648,3 +656,16 @@ fn RootRow g, st, world = match g.mods[""]:
                 let s0 = update st:
                     &_.file <= info.file
                 ((shown, (ErrFix s0, "world-row", info.tree.span, "the program emits {Join (Each missing, \|f| "`{f}.*`"), ", "}, which this World does not answer", "host the tags it cannot answer, or run under a World that answers them")))
+
+# An above trait's method's scheme as a default of a trait below reads it (ruling SD): the
+# above trait's parameter renamed to the one below's, which is also bound by the trait
+# below, so the default may call its methods.
+AboveScheme: unbounded fn G, Scheme, Text, Text -> Scheme
+fn AboveScheme g, sc, above, below:
+    let up = (Or g.traits[above], dummyTrait).param
+    let down = (Or g.traits[below], dummyTrait).param
+    let renamed = SubstQ (Inst(tys={{up: (TyQ down)}}, rows={{}}, cols={{}})), sc.ty
+    update sc:
+        &_.ty <= renamed
+        &_.qs <= Each &_.qs, \|q| if q == up: down else: q
+        &_.bounds <= Push (Each &_.bounds, \|((q, c))| if q == up: ((down, c)) else: ((q, c))), ((down, below))

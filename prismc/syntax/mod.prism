@@ -395,5 +395,7 @@ type TemplatePart = choice:
     TpText Text
     TpPlaceholder Expr, ?Nat
     TpBlock Block
+    # `\{{` in a code template, refused by the checker (`brace-placeholder`)
+    TpBadEscape Range
     TpCall SName, [Arg], ?[TemplatePart], Range
 derive ^Eq, ^Show

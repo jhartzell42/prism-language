@@ -604,6 +604,7 @@ fn TemplateParts p, parts = Fold parts, (([[]], p)), \|((acc, q)), part| Templat
 
 TemplatePartOf: unbounded fn [TemplatePart], Ps, TPartTok -> (([TemplatePart], Ps))
 fn TemplatePartOf acc, p, (TptText s) = (((Push acc, (TpText s)), p))
+fn TemplatePartOf acc, p, (TptBadEscape span) = (((Push acc, (TpBadEscape span)), p))
 fn TemplatePartOf acc, p, (TptPlaceholder toks, ?col, span):
     let ((e, q)) = ParseNested p, toks, span
     (((Push acc, (TpPlaceholder e, ?col)), q))

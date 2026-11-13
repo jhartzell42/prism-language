@@ -553,6 +553,7 @@ fn InferTemplate env, st, t:
 TemplatePartCheck: unbounded fn Env, St, TemplatePart -> St
 fn TemplatePartCheck env, st, part = match part:
     TpText ignore: st
+    TpBadEscape at: ErrFix st, "brace-placeholder", at, "`\\\{\{` is no escape in a code template, where braces are text", "write `\{\{`"
     TpPlaceholder x, ignore:
         let ((t, st2)) = Infer env, st, x
         BracePlaceholder env, (ShowWant st2, (if IsTimeSigil (HeadSigil st2, t): InnerOf st2, t else: t), x.span), x.span
@@ -582,7 +583,11 @@ BraceBlock: unbounded fn Env, St, Range -> St
 fn BraceBlock env, st, r:
     let lead = Between env.src.text, (Down r.start, 40), r.start
     let before = TrimEndBlank lead
-    if HasSuffix before, "\{\{":
+    let at = TrimStartBlank (Between env.src.text, r.start, r.start + 4)
+    if HasPrefix at, "\{\{":
+        let open = r.start + (Or ((CountChars (Between env.src.text, r.start, r.start + 4)) -? (CountChars at)), 0)
+        ErrFix st, "brace-placeholder", Range(start=open, end=open + 2, origin=r.origin), "a code template's brace block runs from `<<` alone on a line to `>>` alone on a line, and braces are text", "write `<<` here and `>>` in place of its closing `\}\}`"
+    else: if HasSuffix before, "\{\{":
         let open = Down (r.start + (CountChars before)), ((CountChars lead) + 2)
         ErrFix st, "brace-placeholder", Range(start=open, end=open + 2, origin=r.origin), "a code template's brace block runs from `<<` alone on a line to `>>` alone on a line, and braces are text", "write `<<` here and `>>` in place of its closing `\}\}`"
     else: st

@@ -117,6 +117,7 @@ type TPartTok = choice:
     TptPlaceholder [Tok], ?Nat, Range
     TptBlock [Tok], Range
     TptCall NameTok, [AttrTok], ?[TPartTok], Range
+    TptBadEscape Range
 derive ^Eq, ^Show
 
 type AttrTok = record:

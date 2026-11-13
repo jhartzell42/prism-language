@@ -564,7 +564,7 @@ fn ImplsComplete g, st0:
             let s2 = update s1:
                 &_.file <= im.file
             let s3 = Fold tr.methods, s2, \|s, method|
-                let defined = Fold im.methods, False, \|seen, m| seen or (BareName method) == m or (DropPrefix method, "{tr.home}.") == m
+                let defined = Fold im.methods, False, \|seen, m| seen or (BareName method) == m or (DropPrefix method, "{tr.home}.") == m or HasAboveChosen im, (BareName method)
                 if defined or HasText tr.defaults, method: s
                 else: match im.?through:
                     ? through: Err s, "mismatch", im.span, "`derive ^{shown} via ^{through}` gives no method `{BareName method}` of `^{shown}`"
@@ -799,7 +799,12 @@ fn ConvTrait g, st, info, t, span:
                 &_.vals <= Insert &_.vals, qk, ValInfo(qk=qk, scheme=sc2, sort="method", hasSig=True, scoped=[[]], scopedKinds=[[]], home=info.name, file=info.file, span=sg.span)
             ((upd, s2, (Push ms, qk), ds, assocAcc))
         TiFn f:
-            let qk = QualKey info.name, (DefNameText f.name)
+            # a default for a method the trait does not sign is one for a method of a
+            # trait above it (ruling SD), keyed apart from that method's own default
+            let own = Fold t.items, False, \|seen, other| seen or match other:
+                TiSignature osg: (DefNameText osg.name) == (DefNameText f.name)
+                otherwise: False
+            let qk = if own: QualKey info.name, (DefNameText f.name) else: AboveDefaultKey name, (DefNameText f.name)
             # the clauses of one default are one definition, as a function's are
             if HasText ds, qk:
                 let upd = update gg:
@@ -813,11 +818,11 @@ fn ConvTrait g, st, info, t, span:
         TiAssocType n, ignore, ignore, ignore, ignore: ((gg, s, ms, ds, (Push assocAcc, n.name)))
         TiAssocRow ignore, (? ignore2), r: ((gg, (Err s, "mismatch", r, "a trait declares an associated row, `row Name`; an impl chooses it"), ms, ds, assocAcc))
         TiAssocRow ignore, nil, ignore2: ((gg, s, ms, ds, assocAcc))
-    # a default body is a body of a method the trait signs, as an impl's method is
-    let st4 = Fold t.items, st3, \|s, it| match it:
-        TiFn f: if HasText methods, (QualKey info.name, (DefNameText f.name)): s else: Err s, "mismatch", f.span, "`^{Dotted t.name.path}` has no method `{DefNameText f.name}`"
-        otherwise: s
-    let ti = TraitInfo(assocRows=(AssocRowsOf t.items), name=name, home=info.name, param=param, supers=(Each supers, \|((ignore, k))| k), headBounds=headBounds, methods=methods, defaults=defaults, assocs=assocs, assocParams=(AssocParamCounts t.items), assocKinded=(AssocKindedOf t.items), assocDefaults=assocDefaults, file=info.file, span=span)
+    # a default body is a body of a method the trait signs, or of one a trait above it
+    # signs (ruling SD; `AboveDefaultsKnown` checks that one, once every trait is read)
+    let st4 = st3
+    let above = Fold defaults, [[]], \|acc, dq| if HasText methods, dq: acc else: Push acc, (((AboveDefaultName dq), dq))
+    let ti = TraitInfo(aboveDefaults=above, assocRows=(AssocRowsOf t.items), name=name, home=info.name, param=param, supers=(Each supers, \|((ignore, k))| k), headBounds=headBounds, methods=methods, defaults=(Filter defaults, \|dq| HasText methods, dq), assocs=assocs, assocParams=(AssocParamCounts t.items), assocKinded=(AssocKindedOf t.items), assocDefaults=assocDefaults, file=info.file, span=span)
     let upd3 = update g3:
         &_.traits <= Insert &_.traits, name, ti
     ((upd3, st4))
@@ -873,7 +878,7 @@ fn ConvImpl g, st, info, i, span = match ?ResolveTrait g, info.name, i.traitRef.
         let names = Fold i.items, [[]], \|acc, it| match it:
             TiFn f: AddText acc, (DefNameText f.name)
             otherwise: acc
-        let im = ImplInfo(rows=(Each rowImpls, \|r| r.name), ?through=(?ViaShown i), cls=cls, head=head, qs=(TypeVarsOfType i.ty), bounds=bs, home=info.name, file=info.file, span=span, derived=False, assocs=assocs, indexed=indexed, methods=names)
+        let im = ImplInfo(aboveChosen=[[]], rows=(Each rowImpls, \|r| r.name), ?through=(?ViaShown i), cls=cls, head=head, qs=(TypeVarsOfType i.ty), bounds=bs, home=info.name, file=info.file, span=span, derived=False, assocs=assocs, indexed=indexed, methods=names)
         let st5 = update st4r:
             &_.assocRowImpls <= Append &_.assocRowImpls, rowImpls
             &_.assocImpls <= Append (Append &_.assocImpls, (Each assocs, \|((an, at))| AssocImpl(cls=cls, name=an, head=head, qs=im.qs, indices=[[]], value=at))), indexed
@@ -886,3 +891,81 @@ fn ConvImpl g, st, info, i, span = match ?ResolveTrait g, info.name, i.traitRef.
             update gg:
                 &_.defs <= Push &_.defs, Def(qk="{cls} impl {mname}", name=mname, home=info.name, file=info.file, span=span, body=(DbMethod clauses, cls, im))
         ((g3, st5))
+
+# The key of a default a trait gives for a method of a trait above it (ruling SD): apart
+# from the method's own key and from the above trait's own default.
+AboveDefaultKey: fn Text, Text -> Text
+fn AboveDefaultKey cls, method = "{cls} default {method}"
+
+AboveDefaultName: fn Text -> Text
+fn AboveDefaultName defaultKey = Or (SplitOn defaultKey, " default ")[1], defaultKey
+
+# The traits above one, each once: its supertraits and theirs.
+TraitsAbove: unbounded fn G, Text -> [Text]
+fn TraitsAbove g, cls = AboveFrom g, (Or g.traits[cls], dummyTrait).supers, [[]]
+
+AboveFrom: unbounded fn G, [Text], [Text] -> [Text]
+fn AboveFrom g, todo, seen = match todo[0]:
+    nil: seen
+    ? next: if HasText seen, next: AboveFrom g, (Drop todo, 1), seen else: AboveFrom g, (Append (Drop todo, 1), (Or g.traits[next], dummyTrait).supers), (Push seen, next)
+
+# The trait above `cls` (or `cls` itself) that signs the method of this bare name.
+?SignerAbove: unbounded fn G, Text, Text -> ?Text
+fn ?SignerAbove g, cls, method = Fold (Push (TraitsAbove g, cls), cls), nil, \|?found, k| match ?found:
+    ? f: ? f
+    nil: if Fold (Or g.traits[k], dummyTrait).methods, False, \|seen, mq| seen or (BareName mq) == method or (DropPrefix mq, "{(Or g.traits[k], dummyTrait).home}.") == method: ? k else: nil
+
+# Every impl of a trait whose method an impl leaves unwritten takes the default of the
+# lowest rung below that trait it also implements that gives one (Jimmy, 13 November,
+# ruling SD): the impl then holds the method as if it were written there, the default's
+# clauses at the impl's head. Two rungs that do not extend each other both giving one
+# is `ambiguous` at the impl, which must write the method. A default for a method no trait
+# above signs is a `mismatch` at the default.
+AboveDefaults: unbounded fn G, St -> ((G, St))
+fn AboveDefaults g, st0:
+    let st1 = Fold (Values g.traits), st0, \|s, tr| Fold tr.aboveDefaults, s, \|s2, ((method, dq))| match ?SignerAbove g, tr.name, method:
+        ? ignore: s2
+        nil:
+            let s3 = update s2:
+                &_.file <= tr.file
+            Err s3, "mismatch", (DefSpanOf g, dq), "`^{BareName tr.name}` has no method `{method}`, and no trait it extends signs one"
+    Fold (Values g.traits), ((g, st1)), \|((g1, s1)), tr| Fold (Or g1.impls[tr.name], [[]]), ((g1, s1)), \|((g2, s2)), im| Fold tr.methods, ((g2, s2)), \|((g3, s3)), mq| AboveDefaultFor g3, s3, tr, im, mq
+
+AboveDefaultFor: unbounded fn G, St, TraitInfo, ImplInfo, Text -> ((G, St))
+fn AboveDefaultFor g, st, tr, im, mq:
+    let method = BareName mq
+    let written = Fold im.methods, False, \|seen, m| seen or m == method or (DropPrefix mq, "{tr.home}.") == m
+    if written or im.derived: ((g, st))
+    else:
+        # the rungs below `tr` that give this method a default and that the impl's head
+        # implements too
+        let givers = Filter (Values g.traits), \|below| below.name != tr.name and (HasText (TraitsAbove g, below.name), tr.name) and (HasAboveDefault below, method) and (HeadImplements g, below.name, im.head)
+        # the lowest: those no other giver extends
+        let lowest = Filter givers, \|one| not (Fold givers, False, \|seen, other| seen or (other.name != one.name and HasText (TraitsAbove g, other.name), one.name))
+        match lowest[0]:
+            nil: ((g, st))
+            ? chosen:
+                if (Len lowest) > 1:
+                    let s2 = update st:
+                        &_.file <= im.file
+                    let names = Each lowest, \|t| "`^{BareName t.name}`"
+                    ((g, (ErrFix s2, "ambiguous", im.span, "`{ShowTy st, im.head}` gets a default for `{method}` from both {Join names, " and "}", "write `fn {method} ...` under the impl")))
+                else:
+                    let filled = update im:
+                        &_.aboveChosen <= Push &_.aboveChosen, ((method, (AboveDefaultKey chosen.name, method), chosen.name))
+                    let upd = update g:
+                        &_.impls <= Insert &_.impls, tr.name, (Each (Or &_.impls[tr.name], [[]]), \|other| if other.span == im.span and other.file == im.file: filled else: other)
+                    ((upd, st))
+
+HasAboveDefault: fn TraitInfo, Text -> Bool
+fn HasAboveDefault tr, method = Fold tr.aboveDefaults, False, \|seen, ((m, ignore))| seen or m == method
+
+# Whether some impl of the trait has a head the type matches.
+HeadImplements: unbounded fn G, Text, Ty -> Bool
+fn HeadImplements g, cls, head = Fold (Or g.impls[cls], [[]]), False, \|seen, im| seen or (?MatchHead im.head, head, {{}}) != nil or im.head == head
+
+DefSpanOf: fn G, Text -> Range
+fn DefSpanOf g, qk = Fold g.defs, Range(start=0, end=0, origin=InSource), \|r, d| if d.qk == qk: d.span else: r
+
+HasAboveChosen: fn ImplInfo, Text -> Bool
+fn HasAboveChosen im, method = Fold im.aboveChosen, False, \|seen, ((m, ignore, ignore2))| seen or m == method

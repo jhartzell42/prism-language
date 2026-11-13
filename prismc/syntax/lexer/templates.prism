@@ -62,6 +62,8 @@ type RawItem = choice:
     RiPlaceholder [Tok], Range
     RiBlock [Tok], Range
     RiCall NameTok, [AttrTok], ?[TPartTok], Range
+    # `\{{` in a code template, where braces are text and no escape (`brace-placeholder`)
+    RiBadEscape Range
 derive ^Eq, ^Show
 
 let emptyLine = RawLine(items=[[]], newline=False, block=False)
@@ -182,7 +184,7 @@ fn TemplateItem l, how:
     let code = live and how.delims == "double"
     if code and (StartsWith l, "\\<"): ((RiText "<", (Forward l, 2)))
     else: if code and (StartsWith l, "\\\\"): ((RiText "\\", (Forward l, 2)))
-    else: if code and (StartsWith l, "\\\{\{"): ((RiText "\{\{", (Forward l, 3)))
+    else: if code and (StartsWith l, "\\\{\{"): (((RiBadEscape Range(start=l.pos, end=l.pos + 3, origin=InSource)), (Forward l, 3)))
     else: if live and how.delims == "single" and (StartsWith l, "\\\{"): ((RiText "\{", (Forward l, 2)))
     # A `<<` before whitespace is text: `1 << 30`.
     else: if live and (StartsWith l, how.open) and not (code and (IsSpaceChar (PeekAt l, 2))): PlaceholderItem l, (Len how.open), (MPlaceholder how.delims)
@@ -358,3 +360,4 @@ fn PushPart parts, (RiText t) = match ?Last parts:
 fn PushPart parts, (RiPlaceholder tokens, span) = Push parts, (TptPlaceholder tokens, nil, span)
 fn PushPart parts, (RiBlock tokens, span) = Push parts, (TptBlock tokens, span)
 fn PushPart parts, (RiCall name, attrs, ?body, span) = Push parts, (TptCall name, attrs, ?body, span)
+fn PushPart parts, (RiBadEscape span) = Push parts, (TptBadEscape span)

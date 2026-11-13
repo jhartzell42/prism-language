@@ -373,6 +373,7 @@ SexpPart: fn TemplatePart, Nat -> Text
 fn SexpPart (TpText s), ignore = DebugText s
 fn SexpPart (TpPlaceholder e, ?col), d = "\{\{{SexpExpr e, d}\}\}{ColumnText ?col}"
 fn SexpPart (TpBlock b), d = "(brace-block{SexpBlock b, d})"
+fn SexpPart (TpBadEscape ignore), ignore2 = "(bad-escape)"
 fn SexpPart (TpCall name, attrs, ?body, ignore), d = "(call {SNameText name}{SexpArgs attrs, d}{CallParts ?body, d})"
 
 ColumnText: fn ?Nat -> Text

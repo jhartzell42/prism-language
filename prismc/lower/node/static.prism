@@ -1846,7 +1846,36 @@ fn ?ImplWidgetClauses lx, qk, args:
                         nil: nil
                         ? im: match Filter lx.g.defs, \|d| (IsMethodOf d, im) and d.name == (BareName qk):
                             [[d]]: ? (MethodClauses d)
-                            otherwise: nil
+                            # left to a default: one of a trait below (ruling SD), else the
+                            # trait's own
+                            otherwise: match ?AboveChosenFor im, (BareName qk):
+                                ? ((dq, ignore)): ? (DefaultClauses lx.g, dq)
+                                nil: if HasText tr.defaults, qk: ? (DefaultClauses lx.g, qk) else: nil
+
+# The trait parameter a widget method's default body is written over, and the argument's
+# type it is read as, where the impl the argument's type chooses leaves the method to a
+# default; `nil` where the impl writes it.
+?WidgetDefaultSubst: unbounded fn Lx, Text, [Arg] -> ?((Text, Ty))
+fn ?WidgetDefaultSubst lx, qk, args:
+    let ?tr = Fold (Values lx.g.traits), nil, \|?found, tr| if ?found != nil: ?found else: if HasText tr.methods, qk: ? tr else: nil
+    match ?tr:
+        nil: nil
+        ? tr:
+            let ps = match (Or lx.g.vals[qk], (Builtin qk, (Mono TyErr))).scheme.ty:
+                TyFn ignore, xs, ignore2: xs
+                otherwise: [[]]
+            match Fold (Range0 (Len ps)), nil, \|?found, i| if ?found != nil: ?found else: if (CoreOf (Or ps[i], TyErr)) == (TyQ tr.param): ? i else: nil:
+                nil: nil
+                ? i:
+                    let argTy = match args[i]:
+                        ? a: CoreOf (TypeAt lx, a.value.span)
+                        nil: TyErr
+                    match Fold (Or lx.g.impls[tr.name], [[]]), nil, \|?found, im| if ?found != nil: ?found else: if SameHead im.head, argTy: ? im else: nil:
+                        nil: nil
+                        ? im: if (Len (Filter lx.g.defs, \|d| (IsMethodOf d, im) and d.name == (BareName qk))) > 0: nil
+                            else: match ?AboveChosenFor im, (BareName qk):
+                                ? ((ignore, below)): ? (((Or lx.g.traits[below], dummyTraitInfo).param, argTy))
+                                nil: if HasText tr.defaults, qk: ? ((tr.param, argTy)) else: nil
 
 # A type under its sigils.
 CoreOf: fn Ty -> Ty
@@ -1862,7 +1891,27 @@ fn SameHead ignore, ignore2 = False
 # caller's event, a dynamic to its reader, a plain value to a field), its block lowered
 # into the caller's node with its positions in the caller's sequence.
 InlineWidget: unbounded fn Wx, Env, Env, Text, ValInfo, [Arg], Expr -> ((Wx, Wres))
-fn InlineWidget wx, benv, menv, qk, v, args, e:
+fn InlineWidget wx0, benv, menv, qk, v, args, e:
+    # a trait's widget method its impl leaves to a default (the trait's own, or one of a
+    # trait below, ruling SD): the default's body is written over the trait's parameter,
+    # read here as the argument's type, and only while the body is lowered
+    match ?WidgetDefaultSubst wx0.lx, qk, args:
+        nil: InlineWidgetBody wx0, benv, menv, qk, v, args, e
+        ? ((param, ty)):
+            let before = wx0.lx.subst
+            let lxIn = update wx0.lx:
+                &_.subst <= Insert &_.subst, param, ty
+            let wxIn = update wx0:
+                &_.lx <= lxIn
+            let ((wxOut, res)) = InlineWidgetBody wxIn, benv, menv, qk, v, args, e
+            let lxOut = update wxOut.lx:
+                &_.subst <= before
+            let wxDone = update wxOut:
+                &_.lx <= lxOut
+            ((wxDone, res))
+
+InlineWidgetBody: unbounded fn Wx, Env, Env, Text, ValInfo, [Arg], Expr -> ((Wx, Wres))
+fn InlineWidgetBody wx, benv, menv, qk, v, args, e:
     let lx = wx.lx
     # a trait's widget method (`@Shown greeting`): the clauses of the impl its argument's
     # type chooses, as the call's type was checked (Type System ch. 3)
