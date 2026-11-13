@@ -478,7 +478,7 @@ fn TraitHeadBounds cx, st, bounds = Fold bounds, (([[]], st)), \|((acc, s)), b| 
     nil: ((acc, s))
     ? onType:
         # `Request d _`: `_` at an index is every case (TyEvery), each impl's every equation
-        let everyName = "\u{0}every"
+        let everyName = "every\u{0}hole"
         let ((h0, s1)) = ConvType cx, s, (HolesNamed onType, everyName)
         let h = SubstQ Inst(tys=(Insert {{}}, everyName, TyEvery), rows={{}}, cols={{}}), h0
         Fold b.traits, ((acc, s1)), \|((a2, s2)), tr| match ?ResolveTrait cx.g, cx.home, tr.path:

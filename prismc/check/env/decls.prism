@@ -685,7 +685,7 @@ fn ImplHasHeadBoundAt g, st, im, shown, asked, above:
     if (Len out.diags) == 0 and (Len out.wants) == 0: st
     else:
         let reduced = NormAssoc st, asked
-        ErrFix st, "no-impl", im.span, "`^{shown}` asks `{ShowTy st, asked}: ^{BareName above}`, and there is no impl of `^{BareName above}` for `{ShowTy st, reduced}`", "write `impl ^{BareName above} {ShowTyIn st, reduced, True}`"
+        ErrFix st, "no-impl", im.span, "`^{shown}` asks `{ShowTyIn st, asked, False}: ^{BareName above}`, and there is no impl of `^{BareName above}` for `{ShowTy st, reduced}`", "write `impl ^{BareName above} {ShowTyIn st, reduced, True}`"
 
 # A `where` bound names a variable of its signature or of its impl's head (`known`): nothing
 # decides any other (Type System ch. 5, `ambiguous`), so no use could choose its impl.
