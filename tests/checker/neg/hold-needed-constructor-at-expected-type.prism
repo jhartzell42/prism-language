@@ -1,0 +1,20 @@
+# `hold-needed` at a constructor (ruling HD): a record's field of a type variable, where
+# the expected type already makes that variable a dynamic (`Boxed $Nat`), lifts over a
+# dynamic argument all the same; only a hold, `{$asks}`, keeps it whole there. The
+# checker said `no-impl` of `^Num` for `$Nat` at the hold above instead.
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+type Boxed a = record:
+    item: a
+    label: Text
+
+Kept: fn Boxed $Nat -> Text
+fn Kept boxed = boxed.label
+
+@main: @unit
+@main:
+    !one <- Ui.Button($label=$"+1")
+    $asks <- 0 then $asks + 1 on !one
+    Ui.Label($text=$ (Kept Boxed(item=$asks, label="asks")))

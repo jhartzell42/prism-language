@@ -1,0 +1,5 @@
+tests/checker/neg/hold-needed-constructor-at-expected-type.prism:20: error[hold-needed]: `Boxed` lifts over `$asks`, but its type variable here already holds a `$Nat`
+        Ui.Label($text=$ (Kept Boxed(item=$asks, label="asks")))
+                                          ^^^^^
+  fix: keep it whole with braces: `{$asks}`
+1 error
