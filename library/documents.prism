@@ -81,8 +81,10 @@ type Guests d = $(Path ==> $(Guest d))
 type Asking d o = any (r: Role d): ((Fixed r, SeatId d r, Element (Seat.* d r) o))
 
 # What answers each place of the guests: given its path and its element at its seat, the
-# element's output.
-type Supplier d = forall o. fn Path, Asking d o -> @o
+# element's output. An answer places nothing: what an implementation asks of its lower
+# language it asks in its own body, built once, so the row is written, empty (a type
+# alias has no row of its own to take).
+type Supplier d = forall o. fn Path, Asking d o -> @o emit unit
 
 # An implementation: given the guests' element tree, built once, it gives the supplier;
 # what it emits is the caller's to speak (`@HostDocument`'s `lower`).
