@@ -1,0 +1,5 @@
+tests/checker/neg/promoted-kind-payload-choice.prism:11: error[kind]: `Shape` is no kind: its case `Circle` carries a payload
+    type Drawn (s: Shape) = record:
+                   ^^^^^
+  fix: index by a choice whose cases carry nothing
+1 error
