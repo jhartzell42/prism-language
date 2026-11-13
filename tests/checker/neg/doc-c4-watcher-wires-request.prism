@@ -58,5 +58,5 @@ tag Seat.Query of Element $?(Answer d r):
 @Watch: fn !Raise -> @unit emit Seat.* Count Watcher
 fn @Watch !raises:
     !response <- Seat.Request(!requests=!raises)
-    $total <- Seat.Query($query=$ Whole)
+    $?total <- Seat.Query($query=$ Whole)
     @ unit
