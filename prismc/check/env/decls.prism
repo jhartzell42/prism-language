@@ -564,8 +564,31 @@ fn EquationsComplete g, st, tr, im, assoc:
                 ? c: c.owner == owner
                 nil: False
             let st2 = Fold named, st, \|s, k| if HasText roles, k: s else: Err s, "mismatch", im.span, "`type {assoc}` names the roles of two choices, `{BareName (Or named[0], "")}` and `{BareName k}`"
+            let kindName = BareName owner
+            let var = Lower (Take1 kindName)
             Fold roles, st2, \|s, k| if HasText named, k: s
-                else: ErrFix s, "assoc-role-missing", im.span, "the impl of `^{shown}` for `{head}` gives `{assoc}` no equation for the role `{BareName k}`", "add `type {assoc} {BareName k} = ...`, or `type {assoc} r = ...` for every role"
+                else: ErrFix s, "assoc-case-missing", im.span, "the impl of `^{shown}` for `{head}` gives `{assoc}` no equation for the case `{BareName k}` of `{kindName}`", "add `type {assoc} {BareName k} = ...`, or `type {assoc} {var} = ...` for every case"
+
+# An equation's indices as a message names them: its one case, or all of them.
+IndicesShown: fn [AssocIndex] -> Text
+fn IndicesShown xs = match Filter xs, \|x| not (IsIndexVar x):
+    [[IndexRole k]]: "the case `{BareName k}`"
+    otherwise: "these indices"
+
+# The line of an impl's first equation for an associated type at these parameters.
+FirstEquationLine: fn G, ModInfo, ImplDecl, Text, [Ident] -> Nat
+fn FirstEquationLine g, info, i, name, params:
+    let spans = Fold i.items, [[]], \|acc, it| match it:
+        TiAssocType n, ps, ignore, ignore, at if n.name == name and (Each ps, \|p| p.name) == (Each params, \|p| p.name): Push acc, at
+        otherwise: acc
+    let src = Or g.srcs[info.file], (MkSrc "", "")
+    let at = Or spans[0], Range(start=0, end=0, origin=InSource)
+    let seg = SegAt src, at.start
+    (Or ((CLineOf src.starts, at.start) -? seg.line), 0) + 1
+
+# A text's first character.
+Take1: fn Text -> Text
+fn Take1 t = Between t, 0, 1
 
 IsIndexVar: fn AssocIndex -> Bool
 fn IsIndexVar x = match x:
@@ -735,14 +758,14 @@ fn ConvImpl g, st, info, i, span = match ?ResolveTrait g, info.name, i.traitRef.
                 let ((indices, s3)) = Fold params, (([[]], s2)), \|((xs, ss)), p|
                     if IsUpperText p.name: match ?RoleConstructor g, info.name, p.name:
                         ? k: (((Push xs, (IndexRole k)), ss))
-                        nil: (((Push xs, (IndexVar "")), (ErrFix ss, "unknown-name", p.span, "no constructor `{p.name}` to stand for a role", "name a constructor of the document's roles, or a lowercase variable for every role")))
+                        nil: (((Push xs, (IndexVar "")), (ErrFix ss, "unknown-name", p.span, "no case `{p.name}` of a payload-free choice to stand here", "name a case of the parameter's kind, or a lowercase variable for every case")))
                     else: (((Push xs, (IndexVar p.name)), ss))
                 let vars = Fold indices, [[]], \|vs, x| match x:
                     IndexVar q: if q == "": vs else: Push vs, q
                     otherwise: vs
                 let eq = AssocImpl(cls=cls, name=n.name, head=head, qs=(Append (TypeVarsOfType i.ty), vars), indices=indices, value=vt)
-                # `collision`: one equation per index
-                if Fold acc, False, \|seen, e| seen or (e.name == n.name and e.indices == indices): ((acc, (Err s3, "collision", chosenAt, "a second equation for `type {n.name}` at these indices")))
+                # `assoc-case-duplicate`: one equation per index (Jimmy's ruling AP)
+                if Fold acc, False, \|seen, e| seen or (e.name == n.name and e.indices == indices): ((acc, (ErrFix s3, "assoc-case-duplicate", chosenAt, "the impl of `^{BareName cls}` for `{ShowTy s3, head}` gives `{n.name}` a second equation for {IndicesShown indices}; the first is at line {FirstEquationLine g, info, i, n.name, params}", "remove one of them")))
                 else: (((Push acc, eq), s3))
             otherwise: ((acc, s))
         let names = Fold i.items, [[]], \|acc, it| match it:
