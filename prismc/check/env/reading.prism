@@ -208,18 +208,31 @@ fn ConvIndex cx, st, t = match t.kind:
             nil: ConvType cx, st, t
     otherwise: ConvType cx, st, t
 
+# Whether a type argument is a bare name a type of this name answers.
+NamesType: fn Cx, Type -> Bool
+fn NamesType cx, t = match t.kind:
+    TName n, [[]]: match ResolveType cx.g, cx.home, n.path:
+        ((? ignore, ignore2)): True
+        otherwise: False
+    otherwise: True
+
 # The key of the constructor a bare name reaches from module `m`, if it reaches one.
 ?RoleConstructor: fn G, Text, Text -> ?Text
 fn ?RoleConstructor g, m, name = match ResolveValue g, m, SName(sigils="", path=[[name]], span=(Range(start=0, end=0, origin=InSource))):
-    ((? k, ignore)): if (HasKey g.ctors, k) or (HasKey g.caseOwners, k): ? k else: nil
+    # a case of a payload-free choice, not a record's constructor of the type's own name
+    ((? k, ignore)): if HasKey g.caseOwners, k: ? k else: nil
     otherwise: nil
 
 ConvNamedType: unbounded fn Cx, St, Text, TyInfo, Text, [Type], Range -> ((Ty, St))
 fn ConvNamedType cx, st1, qk, ti, name, args, span:
     # a type argument may be a case of a payload-free choice, a type of that choice's kind
     # (Jimmy's ruling PK): read as `ConvIndex` reads an associated type's index
-    let ((xs, st0)) = Fold args, (([[]], st1)), \|((acc, s)), arg|
-        let ((x, s2)) = ConvIndex cx, s, arg
+    let ((xs, st0)) = Fold (Range0 (Len args)), (([[]], st1)), \|((acc, s)), i|
+        let arg = Or args[i], dummyType
+        # a case where the parameter states its kind; otherwise a type of the name first
+        # (`Stepped ChessGame`, a type and its own case), a case only where no type is
+        let kinded = (?KindOf ti, (Or ti.params[i], "")) != nil
+        let ((x, s2)) = if kinded or not (NamesType cx, arg): ConvIndex cx, s, arg else: ConvType cx, s, arg
         (((Push acc, x), s2))
     let st2 = Fold (Range0 (Min (Len xs), (Len ti.params))), st0, \|s, i| KindCheck cx, s, ti, name, (Or ti.params[i], ""), (Or xs[i], TyErr), (Or args[i], dummyType).span
     if (Len xs) != (Len ti.params):
@@ -316,7 +329,7 @@ fn FamilyIndices cx, st, fam, args, span:
     else: Fold args, (([[]], st)), \|((acc, s)), a| match a.kind:
         THole ignore: (((Push acc, TyEvery), s))
         otherwise:
-            let ((x, s2)) = ConvIndex cx, s, a
+            let ((x, s2)) = if NamesType cx, a: ConvType cx, s, a else: ConvIndex cx, s, a
             (((Push acc, x), s2))
 
 # The tail a scope's own row gives `Element` in a row's place: none when closed.
