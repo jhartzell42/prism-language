@@ -1,0 +1,27 @@
+# Part VII ch. 7, step C7's test: a document whose state has no `^SerializableValue` is
+# refused at its `^SerializableDocument` impl, which asks `State d: ^SerializableValue`
+# (Part IV ch. 4, "`^SerializableDocument`"). The rungs are pos/doc-c7-trait-ladder's,
+# cut to what the refusal needs.
+# Written by Claude on the claude-lowering branch; subject to change.
+trait ^SerializableValue s:
+    Encode: fn s -> [U8]
+
+trait ^StateDocument d:
+    type State
+
+trait ^SerializableDocument d where d: ^StateDocument, State d: ^SerializableValue:
+    Saved: fn d -> Text
+
+type Board = record:
+    squares: [Nat]
+derive ^Eq, ^Show
+
+type Game = choice:
+    Game
+derive ^Eq, ^Show
+
+impl ^StateDocument Game:
+    type State = Board
+
+impl ^SerializableDocument Game:
+    fn Saved game = "saved"
