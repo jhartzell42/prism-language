@@ -1,0 +1,6 @@
+# The tests of subtrait-default-beside-written-method.
+emit Ui.*
+use App.*
+
+test default_from_below, @page:
+    build
