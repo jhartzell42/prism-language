@@ -1,0 +1,7 @@
+# Part VII ch. 7, step C7's test: Part IV ch. 4's four rungs, declared in a library
+# module, check: bounds on associated types (`State d: ^SerializableValue`, `Request d _:
+# ^SerializableValue` at every role) and an associated row (`row Lower`, the document's
+# lower language, which its widget methods emit). `^SerializableValue` (C9), `File.*`
+# (R2) and `Net.*` (C10) are declared here, since none exists yet.
+# Written by Claude on the claude-lowering branch; subject to change.
+mod Ladder

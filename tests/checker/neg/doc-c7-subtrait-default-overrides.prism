@@ -1,0 +1,12 @@
+# Part VII ch. 7, step C7: a subtrait gives no default for its supertrait's method, so no
+# rung overrides a lower rung's default (Part III ch. 3, doubt SD; Part IV ch. 4, "Each
+# rung adds its own implementation"). The checker refuses it as a default of a method the
+# subtrait does not sign.
+# Written by Claude on the claude-lowering branch; subject to change.
+trait ^Named a:
+    Name: fn a -> Text
+    fn Name x = "named"
+
+trait ^Titled a where a: ^Named:
+    Title: fn a -> Text
+    fn Name x = "titled"
