@@ -316,4 +316,9 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   now". Claude's calls: the spelling, `prompt` before the parameter's type (in a function
   type too, `fn prompt !Nat -> @!Nat`, and before a lambda's parameter); a function with
   fewer prompt parameters stands where one with more is wanted, as a bounded one stands
-  where an unbounded one is wanted, so a supplier that is not prompt fits `@Host`.
+  where an unbounded one is wanted, so a supplier that is not prompt fits `@Host`; `prompt` is a
+  keyword only where a parameter's type or a lambda's parameter begins, so a field or a
+  name may still be called `prompt` (sem-ch04-quiz's `q.prompt`); a new row's
+  construction and a `rebuild`'s generation are not prompt (Semantics ch. 5), so a host
+  over a map of plain values is not prompt in it, and one over a map of blueprints is
+  (their own events reach its result).
