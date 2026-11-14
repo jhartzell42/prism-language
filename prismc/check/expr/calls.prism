@@ -381,6 +381,18 @@ let mapLiteral = "a map literal"
 ApplyRule: unbounded fn Env, St, Text, Col, [Ty], Ty, [Arg], Range -> ((Ty, St))
 fn ApplyRule env, st, fname, col, params, res, args, span = ApplyRuleOf env, st, fname, col, params, res, args, span, False
 
+# A map literal's value written as a live value of its own: `$ e`, a blueprint (`@widget:`,
+# `@F x`), which the map holds whole (ruling HD, conformance/hd-map-literal-keeps-dynamic-whole).
+IsWrittenLive: fn Expr -> Bool
+fn IsWrittenLive e = match e.kind:
+    EFreeSigil s, ignore: s == "$" or s == "@" or s == "!"
+    EGroup x: IsWrittenLive x
+    EWidgetBlock ignore: True
+    ECall c, ignore, ignore, ignore: IsWrittenLive c
+    ETypeArgs f, ignore: IsWrittenLive f
+    EName n: HasPrefix n.sigils, "@"
+    otherwise: False
+
 ApplyRuleOf: unbounded fn Env, St, Text, Col, [Ty], Ty, [Arg], Range, Bool -> ((Ty, St))
 fn ApplyRuleOf env, st, fname, col, params, res, args, span, ctor:
     let n = Len args
@@ -408,15 +420,17 @@ fn ApplyRuleOf env, st, fname, col, params, res, args, span, ctor:
         let a = Or args[i], Arg(marks="", ?name=nil, value=Expr(kind=EError, span=span), span=span)
         let at = Or argTys[i], TyErr
         let pnow = NormAssoc s0, (Walk s0, (Or params[i], TyErr))
-        let bare = (IsTypeVariable (Or params[i], TyErr)) and not holds
+        let bare = (IsTypeVariable (Or params[i], TyErr)) and not (holds and (i mod 2) == 1 and IsWrittenLive a.value)
         let ((held, s)) = if IsHoldBraces a.value: HoldAt env, s0, fname, bare, pnow, at, a else: ((False, s0))
         let head = HeadSigil s, at
-        # (a map literal is a container: its entries go in whole, a blueprint, a dynamic
-        # or an event, as an array's and a tuple's do; ruling HD, conformance/hd-map-literal-
-        # keeps-dynamic-whole)
+        # (a map literal is a container: its values go in whole, a blueprint, a dynamic or
+        # an event, as an array's and a tuple's do; ruling HD, conformance/hd-map-literal-
+        # keeps-dynamic-whole; a value written live, `$ (@Board ..)`, `@widget:`, goes in
+        # whole, and anything else lifts, keys too: `{{$next: Added $next}} on !add` is a
+        # live map of plain changes, Semantics ch. 4's labels, the todos)
         let lifting = bare and IsTimeSigil head
         let ctorWhole = ctor and bare and (head == "@" or IsPlainSigil head)
-        let wholeNow = ctorWhole or ((not lifting) and ((IsTimeSigil (HeadSigil s, pnow)) or (HeadSigil s, pnow) == "@" or (holds and (head == "@" or IsTimeSigil head))))
+        let wholeNow = ctorWhole or ((not lifting) and ((IsTimeSigil (HeadSigil s, pnow)) or (HeadSigil s, pnow) == "@" or ((holds and (i mod 2) == 1 and IsWrittenLive a.value) and (head == "@" or IsTimeSigil head))))
         if IsLambda a.value: ((s, done))
         else: if held: (((Unify s, pnow, at, a.value.span), (Push done, i)))
         else: if wholeNow and (StackOf s, at) != "": (((Unify s, pnow, at, a.value.span), (Push done, i)))
@@ -438,7 +452,7 @@ fn ApplyRuleOf env, st, fname, col, params, res, args, span, ctor:
         if (IsLambda a.value) or (HasNat whole, i) or ((StackOf s, at) == "" and not (IsFreeHeaded s, at)): ((acc, s))
         else:
             let before = Len s.diags
-            let bare = (IsTypeVariable (Or params[i], TyErr)) and not holds
+            let bare = (IsTypeVariable (Or params[i], TyErr)) and not (holds and (i mod 2) == 1 and IsWrittenLive a.value)
             let ((acc2, s2)) = LayeredArg env, s, acc, fname, cmp, (Or params[i], TyErr), at, a, bare, ctor
             # A layer this application cannot take (two layers, a layer under an optional,
             # a blueprint) leaves the result unknown, so the error reports once.
