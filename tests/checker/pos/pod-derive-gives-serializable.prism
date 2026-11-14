@@ -1,0 +1,28 @@
+# Deriving `^Pod` gives `^SerializableValue` in `^Pod`'s text form (documents book ch. 4,
+# "A `^Pod` state gets it for free"): `Point` derives `^Pod` alone, `Encode` takes it, and
+# it meets `^Wired`'s `Message d: ^SerializableValue`.
+# Found by the step 3 build on chess (`ChessGame`'s state, requests and reasons).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+use Documents.*
+
+type Point = record:
+    x: Nat
+    y: Nat
+derive ^Pod
+
+Written: fn Point -> [U8]
+fn Written point = Encode point
+
+trait ^Wired d where Message d: ^SerializableValue:
+    type Message
+
+type Line = record:
+    from: Point
+    to: Point
+
+impl ^Wired Line:
+    type Message = Point
+
+# The primitives are `^Pod` too (Jimmy, 14 November, QH), so `^SerializableValue`.
+Named: fn Text -> [U8]
+fn Named name = Encode name
