@@ -152,8 +152,13 @@ Written by Claude on the claude-self-hosting branch; subject to change.
   a port nobody fires: the event part of a `@Host`'s result bundle is bound apart from
   the child's event (`BindParts`, lower/node/def.prism, handles the inlined-call case;
   the host's result is another path).
-- The library's builtins with no body: `SeatPathOf`, `$Merge`, `SeatIdAt`, `$GuestsOf`,
-  `@Answer`, `!Outgoing`, `?ResponseFrom`, `$?AnswerFrom` (their types depend on MB).
+- The library's builtins with no body: done `SeatPathOf`, `SeatIdAt`, `$Merge`,
+  `$GuestsOf` (`prism_rtl::documents`, `LibraryBuiltinCall`). Left, the remote protocol:
+  `@Answer`, `!Outgoing`, `?ResponseFrom`, `$?AnswerFrom`. They read and write a guest's
+  request events, query dynamics, responses and answers as `Message`s of POD bytes, at
+  each place's role, over a live set of places: the lowering must give the runtime, per
+  role, closures that take a request or query out of an element and put a response or
+  answer back, since the element types are the program's.
 - The checker red doc-c4-watcher-wires-request: the mismatch at a tag's sigiled field
   shows the peeled types (`Never`, wanted `!Never`) and has no note line; diagnostics have
   no notes yet.
