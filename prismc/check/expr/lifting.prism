@@ -150,7 +150,6 @@ fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
     let ((env1, st1)) = match arm.?pattern:
         ? p: BindPattern env, st, p, scrutTy, True
         nil: ((env, st))
-    let env2 = RefinedEnv env1, st1
     let ?refinedOut = match ?rigidOut:
         ? o: match arm.?pattern:
             ? p: match ?TagOfPattern env, p:
@@ -158,12 +157,23 @@ fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
                 nil: nil
             nil: nil
         nil: nil
+    # a tag arm's equality holds on the arm's names too: the matched element, an
+    # `Element Seat.* d r o`, is an `Element Seat.* d r !(Response d r)` there (`@HostRole`
+    # hands it to the supplier, whose `o` it decides)
+    let env1b = match ?refinedOut:
+        ? ((o, out)): update env1:
+            &_.refine <= Insert &_.refine, o, out
+        nil: env1
+    let env2 = RefinedEnv env1b, st1
     let st2 = match arm.?guard:
         ? gd: CheckCond env2, st1, gd
         nil: st1
     match ?expected:
         ? want:
-            let ((bt, st3a)) = ArmBlockAt env2, st2, arm.body, want
+            let wantHere = match ?refinedOut:
+                ? ((o, out)): SubstRigid o, out, (Zonk st2, want)
+                nil: want
+            let ((bt, st3a)) = ArmBlockAt env2, st2, arm.body, wantHere
             let st3 = OpenedEscapes env.g, (NoteFaultAt st3a, (TailSpan arm.body), want, bt), st.next, st1.next, bt, scrutTy, (ResultSpan arm.body)
             let fwd = arm.?pattern == nil or (IsFamilyArm arm)
             match ?refinedOut:
