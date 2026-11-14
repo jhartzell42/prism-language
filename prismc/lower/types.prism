@@ -385,14 +385,38 @@ fn TagFieldOpen lx, ft:
 AssocErased: unbounded fn Ty -> Ty
 fn AssocErased t = match t:
     TyAssoc ignore, n, a, indices: match a:
-        TyCon ignore2, ignore3: if Fold indices, True, \|known, i| known and IsKnownIndex i: t else: TyQ "{n}\u{0}assoc"
-        otherwise: TyQ "{n}\u{0}assoc"
+        TyCon ignore2, ignore3: if Fold indices, True, \|known, i| known and IsKnownIndex i: t else: TyQ assocErasedName
+        otherwise: TyQ assocErasedName
     TyCon c, args: TyCon c, (Each args, \|x| AssocErased x)
     TyTuple ts: TyTuple (Each ts, \|x| AssocErased x)
     TyArray e: TyArray (AssocErased e)
     TyMap k, v: TyMap (AssocErased k), (AssocErased v)
     TySig sg, i: TySig sg, (AssocErased i)
     otherwise: t
+
+# The variable an associated type at a variable is read as (`AssocErased`).
+let assocErasedName = "\u{0}assoc"
+
+# A constructor's field type with each associated type at a variable erased to plain data
+# (a program's generic type, `Declined (Reason d r)`; MB): Rust's enum cannot name the
+# type, so the field holds the value as `Pod`, and each construction and pattern recodes it
+# at the concrete type its site gives.
+AssocPodOut: fn OutTy -> OutTy
+fn AssocPodOut t = if t == OutGen (Camel assocErasedName): OutPod else: match t:
+    OutNamed r, args: OutNamed r, (Each args, \|a| AssocPodOut a)
+    OutOpt i: OutOpt (AssocPodOut i)
+    OutRes i: OutRes (AssocPodOut i)
+    OutRc i: OutRc (AssocPodOut i)
+    OutTuple ts: OutTuple (Each ts, \|a| AssocPodOut a)
+    OutArray e: OutArray (AssocPodOut e)
+    OutMap k, v: OutMap (AssocPodOut k), (AssocPodOut v)
+    OutEvent i: OutEvent (AssocPodOut i)
+    OutDyn i: OutDyn (AssocPodOut i)
+    otherwise: t
+
+# Whether a type holds an associated type at a variable (`AssocErased` changes it).
+HasOpenAssoc: unbounded fn Ty -> Bool
+fn HasOpenAssoc t = (AssocErased t) != t
 
 IsKnownIndex: fn Ty -> Bool
 fn IsKnownIndex t = match t:

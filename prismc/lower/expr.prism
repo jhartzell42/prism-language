@@ -2606,8 +2606,12 @@ fn CtorArgs lx, env, c, args:
             let lxw = update lx:
                 &_.whole <= True
             let v = if wholeAt: Own (ValueOf lxw, env, x) else: Own (ValueOf lx, env, x)
-            if c.owner == "Prelude.Error" and i == 0: v
-            else: if RcField lx, c.name, i: XCall (RefRuntime "std::Rc::new"), [[v]] else: v
+            # a field of an associated type at the type's variables holds plain data: the
+            # argument recoded from its concrete type (MB, `CaseField`)
+            let field = Or c.args[i], TyErr
+            let v2 = if HasOpenAssoc field: XCallAt (HelperRef "recode"), [[(AssocPodOut (OutTyOf lx, (AssocErased field)))]], [[XRef v]] else: v
+            if c.owner == "Prelude.Error" and i == 0: v2
+            else: if RcField lx, c.name, i: XCall (RefRuntime "std::Rc::new"), [[v2]] else: v2
         otherwise: (XCall (RefRuntime "std::Default::default"), [[]])
 
 # A trait method applied: the operator a builtin, derived or written impl answers (an

@@ -1317,7 +1317,7 @@ fn HasOwnEq lx, tn = Fold (Or lx.g.impls["Prelude.Eq"], [[]]), False, \|f, im| f
 
 CaseField: unbounded fn Lx, Text, Nat, Ty -> OutTy
 fn CaseField lx, ck, i, t:
-    let rt = OutTyOf lx, t
+    let rt = if HasOpenAssoc t: AssocPodOut (OutTyOf lx, (AssocErased t)) else: OutTyOf lx, t
     if RcField lx, ck, i: OutRc rt else: rt
 
 TypeDoc: fn Lx, TyInfo -> Text
