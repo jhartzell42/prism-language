@@ -1,5 +1,5 @@
-tests/checker/neg/prompt-unmarked-widget-function.prism:12: error[prompt-unmarked]: `@Pass` gives an event that fires in the tick `!passed` fires, and its type does not say `prompt`
+tests/checker/neg/prompt-unmarked-widget-function.prism:12: error[prompt-unmarked]: `@Pass` gives an event that fires in the tick `!passed` fires, and its type does not mark `!passed`'s parameter `prompt`
         @ !passed
         ^^^^^^^^^
-  fix: say so in its type, `@Pass: prompt fn !Nat -> @!Nat`, or give it a tick later with `@Defer`
+  fix: mark the parameter in its type, `@Pass: fn prompt !Nat -> @!Nat`, or give it a tick later with `@Defer`
 1 error

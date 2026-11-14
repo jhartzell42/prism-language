@@ -11,7 +11,7 @@
 # A plain function is always prompt (ruling PT); only a widget function says it in its type.
 emit Ui.*
 
-@Echo: prompt fn !Nat -> @!Nat
+@Echo: fn prompt !Nat -> @!Nat
 fn @Echo !step:
     $seen <- 0 then $seen + 1 on !step
     @ (!Updated $seen)

@@ -1,5 +1,5 @@
-# `prompt-unmarked` (Jimmy, 13 November, ruling PT): a widget function whose result event
-# fires in the tick its argument's does says `prompt` in its type, and by default it is
+# `prompt-unmarked` (Jimmy, 13 November, ruling PT): a widget function marks a parameter
+# `prompt` when its result event can fire in the tick that argument fires; by default it is
 # not. `@Pass` gives its argument back, so its body is prompt and its signature is not;
 # the error stands at the body, read alone (the check is local). A plain function is
 # always prompt and says nothing.

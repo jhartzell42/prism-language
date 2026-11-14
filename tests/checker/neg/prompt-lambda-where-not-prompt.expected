@@ -1,5 +1,5 @@
-tests/checker/neg/prompt-lambda-where-not-prompt.prism:16: error[prompt-unmarked]: this lambda gives an event that fires in the tick `!e` fires, and the type it is given at does not say `prompt`
+tests/checker/neg/prompt-lambda-where-not-prompt.prism:16: error[prompt-unmarked]: this lambda gives an event that fires in the tick `!e` fires, and the type it is given at does not mark that parameter `prompt`
         @Use \|!e| @ !e
                    ^^^^
-  fix: give it a tick later with `@Defer`, or make the parameter `prompt fn ...` and write `prompt \|!e| ...`
+  fix: give it a tick later with `@Defer`, or mark the parameter's `!Nat` `prompt` and write `\|prompt !e| ...`
 1 error

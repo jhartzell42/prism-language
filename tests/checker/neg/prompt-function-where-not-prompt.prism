@@ -1,11 +1,11 @@
 # A prompt function where a function that is not is wanted (Jimmy, 13 November, ruling
-# PT): promptness is part of the type, so `@Pass`, `prompt fn !Nat -> @!Nat`, is not a
+# PT): promptness is part of the type, so `@Pass`, `fn prompt !Nat -> @!Nat`, is not a
 # `fn !Nat -> @!Nat`, as an unbounded function is not a bounded one.
 # Expected text derived by hand; never run.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.*
 
-@Pass: prompt fn !Nat -> @!Nat
+@Pass: fn prompt !Nat -> @!Nat
 fn @Pass !passed:
     @ !passed
 
