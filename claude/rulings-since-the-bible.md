@@ -322,3 +322,9 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   construction and a `rebuild`'s generation are not prompt (Semantics ch. 5), so a host
   over a map of plain values is not prompt in it, and one over a map of blueprints is
   (their own events reach its result).
+  A program that seats a document from the document's own results is a prompt cycle at
+  one bit per parameter, though not a real one (the map's update reaches the results only
+  by construction; what the map holds captures nothing from them): Jimmy, 14 November,
+  "choice a, for now": such a program defers what it reads back (the tally's `@Table`,
+  `@Defer results.!tellersLeft`), and splitting a dynamic's update from what it holds,
+  for dynamics of blueprints and events, is not taken for now.
