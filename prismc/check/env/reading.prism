@@ -49,7 +49,7 @@ fn ConvType cx, st, t = match t.kind:
         (((WithMarks n.sigils, base, cx.scope), st2))
     TSigiled sigils, inner:
         let ((i, st2)) = ConvType cx, st, inner
-        (((WithMarks sigils, i, cx.scope), st2))
+        (((WithMarks (BlueprintMarks sigils, inner, i), i, cx.scope), st2))
     TArray e, ignore:
         let ((i, st2)) = ConvType cx, st, e
         ((TyArray i, st2))
@@ -716,6 +716,15 @@ fn ColorVarsOfType t = match t.kind:
 
 
 # Whether a type writes its row with `emit` at its top, under groups and a blueprint's `@`.
+# A stack ending in `@` before a parenthesized blueprint that writes its own row is that
+# blueprint: `$@(@played emit Seat.* ChessGame Player | rest)` is a dynamic blueprint of
+# `played` (documents book ch. 5, "Seats: a record of live maps"), the parentheses there
+# to hold the `emit`; the `@` outside names the layer the parentheses give.
+BlueprintMarks: unbounded fn Text, Type, Ty -> Text
+fn BlueprintMarks sigils, inner, converted = match converted:
+    TyAt ignore, ignore2 if (HasSuffix sigils, "@") and WritesEmitIn inner: Or (?BeforeSuffix sigils, "@"), sigils
+    otherwise: sigils
+
 WritesEmitIn: unbounded fn Type -> Bool
 fn WritesEmitIn t = match t.kind:
     TEmit ignore, ignore2: True
