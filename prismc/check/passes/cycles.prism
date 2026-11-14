@@ -235,6 +235,16 @@ fn SignedMarksOrSilent g, k, marks = match g.vals[k]:
 # or a blueprint (applying one can), an element (its events), a type variable (it may stand
 # for any of these), an associated type, or a type holding one, a program's type by its
 # constructors' fields (`seen`: the types on the path, so a recursive type ends).
+# Whether trait `tr` bounds its associated type `n` by `^Pod` (`SeatId d _: ^Pod`).
+AssocIsPod: fn G, Text, Text -> Bool
+fn AssocIsPod g, tr, n = match g.traits[tr]:
+    ? ti: Fold ti.headBounds, False, \|found, ((head, bound))| found or (bound == "Prelude.Pod" and (AssocNamed head, n))
+    nil: False
+
+AssocNamed: fn Ty, Text -> Bool
+fn AssocNamed (TyAssoc ignore, hn, ignore2, ignore3), n = hn == n
+fn AssocNamed ignore, n = False
+
 CarriesTime: unbounded fn G, [Text], Ty -> Bool
 fn CarriesTime g, seen, t = match t:
     TySig "!", ignore: True
@@ -247,7 +257,8 @@ fn CarriesTime g, seen, t = match t:
     TyQ ignore: True
     TyRigid ignore: True
     TyFlex ignore: True
-    TyAssoc ignore, ignore2, ignore3, ignore4: True
+    # an associated type its trait bounds by `^Pod` holds plain data (ruling QD, `SeatId`)
+    TyAssoc tr, n, ignore, ignore2: not (AssocIsPod g, tr, n)
     # `Fixed r` holds a variant, known as a type: no value that moves
     TyCon "Prelude.Fixed", ignore: False
     TyCon n, args:
