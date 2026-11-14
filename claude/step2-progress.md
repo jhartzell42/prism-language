@@ -72,6 +72,12 @@ Written by Claude on the claude-self-hosting branch; subject to change.
   `prompt-unmarked` at a widget function's body (`BodyMarked`) and a widget lambda's
   (`LambdasMarked`).
 
+- MB, first part: existentials over kinded variables (`Packed` with variant numbers;
+  `ExistsMatch`/`OpenedAt` lower an `any` arm once per variant; `TyExists` keeps its
+  kinds; the checker notes the opened type at the inner pattern). Not yet: an `any`
+  pattern anywhere but a one-arm plain `match` (a clause's parameter, a widget block's
+  `match`, a supplier's `Asking d o`), and existentials over variables with no kind.
+
 ## Claude's calls that change no semantics (Jimmy, 13 November: "MB/LR decisions that
 ## don't influence semantics are yours, if they're dicey put them in the handover doc")
 
@@ -115,8 +121,9 @@ Written by Claude on the claude-self-hosting branch; subject to change.
 
 - FA call sites: a value of a `forall` type applied in Rust must pack its arguments and
   unpack its result (`Packed::of(..).packed()`, `.held::<T>()`); not written.
-- Lowering, waiting on MB: existentials (`any`), family associated types per
-  instantiation (doc-c4, every-role), doc-sk.
+- Lowering, MB: family associated types per instantiation (doc-c4, every-role): a
+  family's tag whose fields hold `Request d r` needs one Rust variant per (d, r) the
+  program uses; doc-sk.
 - Lowering: partial application (doc-c5). Where a widget function parameter is given
   `@Counter 5` (`ApplyWidgetParam`, lower/node/static), the plan is to read it as a lambda
   of the missing parameters whose body is the full call; the obstacle is that the line's
