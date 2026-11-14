@@ -164,3 +164,26 @@ Written by Claude on the claude-self-hosting branch; subject to change.
 - Then: the first check of the library, the tally, c6, c8 and chess with the new
   compiler, and their remaining errors (the prompt-cycle, the agent's two unconfirmed
   reports).
+
+## 14 November: gen2's library errors (build13, build14)
+
+Fixed in prismc, each with its failing test first (tests/checker/pos/):
+- a lambda where a quantified function is wanted is checked at rigid variables
+  (lambda-where-quantified-function-wanted); a quantified function takes a capital name and
+  applies at fresh variables (case-mark-on-a-quantified-function);
+- a `Fixed<<Left>>` arm's narrowing reaches associated-type indices (`SubstRigid` now walks
+  `TyAssoc`, `TyExists`, `TyForall`), and a kind an associated type gives at a named type
+  (`s: Side Box`) is covered through its impl (`AssocKindKey`, `KindThroughImpl`)
+  (fixed-arm-narrows-its-variable);
+- a method's `<<..>>` gives the trait's parameter first (method-type-arguments-trait-first);
+- a match that ends an arm is checked at the outer match's type (`ArmBlockAt`)
+  (match-in-an-any-arm-narrows);
+- `@ v` where a blueprint is wanted checks `v` at the blueprint's value, and a widget
+  block's last `@ v` line is checked so (blueprint-of-a-lambda-takes-the-type).
+- pos tests have no `module` line: a file with one and no `emit` is a library
+  (`emit-element`), so type-arguments-in-forall-order lost its.
+Library text: the protocol's places built by `rebuild` over a place's kind and a query,
+lists of one through `One` so they lift, `Departed` so `on` lifts over the event only,
+`@Outgoing`/`@AnswerFrom` emit nothing, `prompt` on `Supply`, on the suppliers' `asking`,
+on the guests of the implementations and on `@Query`'s seat id (open question to Jimmy:
+`SeatId d _: ^Pod` on `^Document` would make that mark unneeded).
