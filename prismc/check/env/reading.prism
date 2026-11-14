@@ -427,7 +427,15 @@ fn SigScheme cx, st, t, bounds:
     let written = ColorVarsOfType t
     let ((bs, st1)) = ConvBounds cx, st, bounds
     let ((ty, defaults, joins, st3)) = SigType cx2, st1, t, written
-    let tvs = Filter (TypeVarsOfType t), \|v| not (HasText rowVars, v)
+    # the variables in the order a `forall` names them, then any other in the order the
+    # type writes them: `<<..>>` at a use gives them in that order (`InstantiateWith`), so
+    # `PendingFrom<<d>>` under `forall d (r: Role d)` gives `d`, never the first variable the
+    # type happens to write
+    let found = Filter (TypeVarsOfType t), \|v| not (HasText rowVars, v)
+    let forallOrder = match t.kind:
+        TForall vs, ignore, ignore2: Filter (Each vs, \|v| v.name), \|v| HasText found, v
+        otherwise: [[]]
+    let tvs = Fold found, forallOrder, \|acc, v| AddText acc, v
     let cqs = Fold defaults, written, \|acc, v| AddText acc, v
     let rowsUsed = Filter rowVars, \|v| (HasText (RowVarsOfType t), v) or (UsesScope t)
     ((Scheme(eqs=[[]], qs=tvs, plainQs=[[]], rqs=rowsUsed, cqs=cqs, cjoins=joins, bounds=bs, ty=ty), st3))
