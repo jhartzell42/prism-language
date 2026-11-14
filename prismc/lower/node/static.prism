@@ -170,6 +170,12 @@ fn ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound:
                 LbBlock b: b
                 LbExpr y: Block(stmts=[[Stmt(kind=(SExpr y), span=y.span)]], inline=True, span=y.span)
             InlinedFunctionLine wx, benv, menv, cbenv, cmenv, clx, (Or ?params, [[]]), ptys, body, e, args
+        # a widget function partly applied (`@Hosted (@Counter 5)`; ruling AF): the call
+        # whole, its given arguments read where they were written and bound by their
+        # places, the line's arguments after them (`PartialWidgetLine`)
+        ECall c, supplied, ignore, ignore2: match ?PartialWidget clx, c, supplied, args:
+            ? qk: PartialWidgetLine wx, benv, menv, cmenv, clx, qk, supplied, e, args, ?bound
+            nil: AppliedFunctionLine wx, menv, clx, cmenv, x, e, args
         # any other function value (`@Use (Chosen "shows")`, a call's result; a field): the
         # value, read where the argument stands, applied to the line's arguments gives
         # a blueprint, which the line applies as any blueprint value
@@ -183,6 +189,30 @@ fn ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound:
         let back = update done:
             &_.lx <= lx
         ((back, res))
+
+# The widget function a partial application names, when its given arguments and the
+# line's together are all its parameters.
+?PartialWidget: unbounded fn Lx, Expr, [Arg], [Arg] -> ?Text
+fn ?PartialWidget clx, c, supplied, args = match (Ungrouped c).kind:
+    EName n: match ResolveValue clx.g, clx.home, n:
+        ((? qk, ignore)): match clx.g.vals[qk]:
+            ? v: match v.scheme.ty:
+                TyFn ignore, ps, (TyAt ignore2, ignore3), ignore4: if (Len ps) == (Len supplied) + (Len args) and (Len supplied) > 0: ? qk else: nil
+                otherwise: nil
+            nil: nil
+        otherwise: nil
+    otherwise: nil
+
+# A partial application applied at a line: the given arguments' values, read in the
+# caller's environment where they were written, bound by their places in the line's, so
+# the call reads them there as it reads the line's own arguments after them.
+PartialWidgetLine: unbounded fn Wx, Env, Env, Env, Lx, Text, [Arg], Expr, [Arg], ?Bn -> ((Wx, Wres))
+fn PartialWidgetLine wx, benv, menv, cmenv, clx, qk, supplied, e, args, ?bound:
+    let menv2 = Fold supplied, menv, \|en, a| BindSpan en, (PlaceKey wx.lx, a.value.span), (ValueOf clx, cmenv, a.value)
+    let ?target = match ?bound:
+        ? (BnEv er, ignore): ? er.node
+        otherwise: nil
+    WidgetCall wx, benv, menv2, e, ?bound, qk, (Append supplied, args), ?target
 
 # A function's body lowered at the line `e` that applies it (a lambda given as a widget
 # function parameter; a function of a block, `LocalFunctionLine`): its parameters bound
