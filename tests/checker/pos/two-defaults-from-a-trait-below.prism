@@ -1,0 +1,24 @@
+# A trait below gives defaults for two methods of the trait above (ruling SD), and an impl
+# of both gets each: `^Counted` gives `Name` and `@Badge`, and `impl ^Shown Box` writes
+# neither. Found by the step 3 build on the tally (`^StateDocument`'s `@Request` and
+# `@Query`: the first default chosen was lost when the second was).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+trait ^Shown d:
+    Name: fn d -> Text
+    Unused: fn d -> Nat
+    @Badge: fn d -> @Text
+
+trait ^Counted d where d: ^Shown:
+    Count: fn d -> Nat
+    fn Name x = "counted"
+    fn @Badge x = @ "badge"
+
+type Box = record:
+    size: Nat
+
+impl ^Shown Box:
+    fn Unused box = 0
+
+impl ^Counted Box:
+    fn Count box = box.size
