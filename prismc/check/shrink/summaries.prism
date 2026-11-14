@@ -114,7 +114,7 @@ StepWithin: unbounded fn (Text ==> Rel), Nat, Text, Expr, Expr, Nat, Expr -> Boo
 fn StepWithin m, i, f, coll, step, at, z:
     if PreIs m, f, "Filter": True
     else: match step.kind:
-        ELambda (? ps), body:
+        ELambda (? ps), body, prompts:
             let sm = StepRels m, coll, ps, at
             let ((bm, x)) = match body:
                 LbExpr y: ((sm, y))

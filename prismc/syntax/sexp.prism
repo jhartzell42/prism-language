@@ -318,7 +318,7 @@ fn SexpExpr e, d = match e.kind:
     ENonEmpty x: "(nonempty {SexpExpr x, d})"
     EAbsent: "absent"
     ERest: ".."
-    ELambda ?params, body: "(lambda{SexpLambdaParams ?params, d}{SexpLambdaBody body, d})"
+    ELambda ?params, body, prompts: "(lambda{SexpLambdaParams ?params, d}{SexpLambdaBody body, d})"
     EIf c, thenBlock, ?elseBlock: "(if {SexpCond c, d}{SexpBlock thenBlock, d}{SexpElse ?elseBlock, d})"
     EMatch scrutinee, arms: "(match {SexpExpr scrutinee, d}{Concat (Each arms, \|a| "{Nl d + 1}{SexpArm a, d + 1}")})"
     ERebuild scrutinee, body: "(rebuild {SexpExpr scrutinee, d}{SexpBlock body, d})"
@@ -416,7 +416,7 @@ fn SexpType t = match t.kind:
     TTuple ts: "(tuple{Concat (Each ts, \|x| " {SexpType x}")})"
     TGroup x: "(group {SexpType x})"
     TMap k, v: "(==> {SexpType k} {SexpType v})"
-    TFn color, params, result: "({ColorText color}fn{Concat (Each params, \|x| " {SexpType x}")} -> {SexpType result})"
+    TFn color, params, result, prompts: "({ColorText color}fn{ParamsSexp params, prompts} -> {SexpType result})"
     TEmit ty, r: "(emit {SexpType ty} {SexpType r})"
     TRowUnion ts: "(|{Concat (Each ts, \|x| " {SexpType x}")})"
     TFamily q, args: if (Len args) == 0: "{Path q.path}.*" else: "({Path q.path}.*{Concat (Each args, \|a| " {SexpType a}")})"
@@ -427,6 +427,17 @@ fn SexpType t = match t.kind:
     THole n: SNameText n
     TAbsent: "absent"
     TNonEmpty x: "(nonempty {SexpType x})"
+
+# A function type's parameters as s-expressions, each with its `prompt` mark first.
+ParamsSexp: fn [Type], [Bool] -> Text
+fn ParamsSexp params, prompts:
+    let ((text, ignore)) = Fold params, (("", 0)), \|((acc, i)), x| (("{acc} {PromptText (Or prompts[i], False)}{SexpType x}", i + 1))
+    text
+
+# A parameter's `prompt` mark (ruling PT), as it is written.
+PromptText: fn Bool -> Text
+fn PromptText True = "prompt "
+fn PromptText False = ""
 
 ColorText: fn Color -> Text
 fn ColorText Bounded = ""

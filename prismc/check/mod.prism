@@ -257,7 +257,7 @@ fn ConstraintUses g, cls, t, user, by = match t:
 TypeParts: fn Ty -> [Ty]
 fn TypeParts t = match t:
     TyCon ignore, args: args
-    TyFn ignore, ps, r: Push ps, r
+    TyFn ignore, ps, r, prompts: Push ps, r
     TyTuple ts: ts
     TyArray e: [[e]]
     TyMap k, v: [[k, v]]
@@ -271,7 +271,7 @@ RigidNamesIn: unbounded fn Ty -> [Text]
 fn RigidNamesIn t = match t:
     TyRigid n: [[n]]
     TyCon ignore, args: Fold args, [[]], \|acc, a| UnionTexts acc, (RigidNamesIn a)
-    TyFn ignore, ps, r: Fold ps, (RigidNamesIn r), \|acc, a| UnionTexts acc, (RigidNamesIn a)
+    TyFn ignore, ps, r, prompts: Fold ps, (RigidNamesIn r), \|acc, a| UnionTexts acc, (RigidNamesIn a)
     TyTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (RigidNamesIn a)
     TyArray e: RigidNamesIn e
     TyMap k, v: UnionTexts (RigidNamesIn k), (RigidNamesIn v)
@@ -303,7 +303,7 @@ FlexNamed: unbounded fn Ty -> Ty
 fn FlexNamed t = match t:
     TyFlex n: TyRigid "'{n}"
     TyCon n, args: TyCon n, (Each args, \|a| FlexNamed a)
-    TyFn c, ps, r: TyFn c, (Each ps, \|a| FlexNamed a), (FlexNamed r)
+    TyFn c, ps, r, prompts: TyFn c, (Each ps, \|a| FlexNamed a), (FlexNamed r), prompts
     TyTuple ts: TyTuple (Each ts, \|a| FlexNamed a)
     TyArray e: TyArray (FlexNamed e)
     TyMap k, v: TyMap (FlexNamed k), (FlexNamed v)
@@ -321,7 +321,7 @@ HoldsAssociatedType: unbounded fn Ty -> Bool
 fn HoldsAssociatedType t = match t:
     TyAssoc ignore, ignore, ignore2, ignore3: True
     TyCon ignore, args: Fold args, False, \|found, a| found or HoldsAssociatedType a
-    TyFn ignore, ps, r: Fold ps, (HoldsAssociatedType r), \|found, a| found or HoldsAssociatedType a
+    TyFn ignore, ps, r, prompts: Fold ps, (HoldsAssociatedType r), \|found, a| found or HoldsAssociatedType a
     TyTuple ts: Fold ts, False, \|found, a| found or HoldsAssociatedType a
     TyArray e: HoldsAssociatedType e
     TyMap k, v: (HoldsAssociatedType k) or HoldsAssociatedType v
@@ -399,7 +399,7 @@ fn GrownThroughAssociated st, round, now, earlier:
 TypeNodes: unbounded fn Ty -> Nat
 fn TypeNodes t = match t:
     TyCon ignore, args: Fold args, 1, \|count, a| count + TypeNodes a
-    TyFn ignore, ps, r: Fold ps, (1 + TypeNodes r), \|count, a| count + TypeNodes a
+    TyFn ignore, ps, r, prompts: Fold ps, (1 + TypeNodes r), \|count, a| count + TypeNodes a
     TyTuple ts: Fold ts, 1, \|count, a| count + TypeNodes a
     TyArray e: 1 + TypeNodes e
     TyMap k, v: 1 + (TypeNodes k) + TypeNodes v
@@ -418,7 +418,7 @@ fn SubstRigids by, t = match t:
         ? ((ignore, to)): to
         nil: t
     TyCon n, args: TyCon n, (Each args, \|a| SubstRigids by, a)
-    TyFn c, ps, r: TyFn c, (Each ps, \|a| SubstRigids by, a), (SubstRigids by, r)
+    TyFn c, ps, r, prompts: TyFn c, (Each ps, \|a| SubstRigids by, a), (SubstRigids by, r), prompts
     TyTuple ts: TyTuple (Each ts, \|a| SubstRigids by, a)
     TyArray e: TyArray (SubstRigids by, e)
     TyMap k, v: TyMap (SubstRigids by, k), (SubstRigids by, v)

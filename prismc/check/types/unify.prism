@@ -33,7 +33,30 @@ fn Unify st, expected, found, span:
         let f = ShowTy st2, found
         if e == f: Err st2, "mismatch", span, "expected `{ShowTyQ st2, expected}`, found `{ShowTyQ st2, found}`"
         else: Err st2, "mismatch", span, "expected `{e}`, found `{f}`"
+    else: if verdict == "" and not (PromptsFitTy st2, (Zonk st2, expected), (Zonk st2, found)):
+        Err st2, "mismatch", span, "expected `{ShowTy st2, expected}`, found `{ShowTy st2, found}`"
     else: st2
+
+# Whether a value of type `found` stands where `expected` is wanted by its functions'
+# `prompt` marks (ruling PT), the types already one: a function with fewer marks stands
+# where one with more is wanted, as a bounded function where an unbounded one is; a
+# function's parameters the other way round. Unification leaves the marks alone.
+PromptsFitTy: unbounded fn St, Ty, Ty -> Bool
+fn PromptsFitTy st, expected, found = match ((expected, found)):
+    (((TyFn ignore, ps, r1, wanted), (TyFn ignore2, qs, r2, marked))):
+        let own = Fold (Range0 (Len marked)), True, \|ok, i| ok and ((not (Or marked[i], False)) or Or wanted[i], False)
+        own and (PromptsFitAll st, qs, ps) and PromptsFitTy st, r1, r2
+    (((TyCon ignore, xs), (TyCon ignore2, ys))): PromptsFitAll st, xs, ys
+    ((TyTuple xs, TyTuple ys)): PromptsFitAll st, xs, ys
+    ((TyArray x, TyArray y)): PromptsFitTy st, x, y
+    (((TyMap k1, v1), (TyMap k2, v2))): (PromptsFitTy st, k1, k2) and PromptsFitTy st, v1, v2
+    (((TySig ignore, x), (TySig ignore2, y))): PromptsFitTy st, x, y
+    (((TyAt x, ignore), (TyAt y, ignore2))): PromptsFitTy st, x, y
+    (((TyElem ignore, x), (TyElem ignore2, y))): PromptsFitTy st, x, y
+    otherwise: True
+
+PromptsFitAll: unbounded fn St, [Ty], [Ty] -> Bool
+fn PromptsFitAll st, xs, ys = Fold (Range0 (Len xs)), True, \|ok, i| ok and PromptsFitTy st, (Or xs[i], TyErr), (Or ys[i], TyErr)
 
 # A type with its names qualified, for two types that print alike.
 ShowTyQ: unbounded fn St, Ty -> Text
@@ -209,7 +232,7 @@ fn UnifyHeads st, e, f, span:
         (((TyCon a, xs), (TyCon b, ys))):
             if a == b and (Len xs) == (Len ys): UnifyAll st, xs, ys, span
             else: (("mismatch", st))
-        (((TyFn c1, ps, r1), (TyFn c2, qs, r2))):
+        (((TyFn c1, ps, r1, ignore), (TyFn c2, qs, r2, ignore))):
             if (Len ps) == (Len qs):
                 let ((v, st2)) = UnifyCol st, c1, c2
                 if v != "": ((v, st2)) else: UnifyAll st2, (Push ps, r1), (Push qs, r2), span

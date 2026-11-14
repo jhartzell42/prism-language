@@ -30,7 +30,7 @@ fn TySexp t = match t:
     TyQ n: "(q {n})"
     TyCon n, [[]]: n
     TyCon n, args: "({n}{Concat (Each args, \|a| " {TySexp a}")})"
-    TyFn c, ps, res: "(fn {ColSexp c} ({Join (Each ps, TySexp), " "}) {TySexp res})"
+    TyFn c, ps, res, prompts: "(fn {ColSexp c} ({Join (Each ps, TySexp), " "}) {TySexp res})"
     TyTuple ts: "(tuple{Concat (Each ts, \|a| " {TySexp a}")})"
     TyArray e: "(array {TySexp e})"
     TyMap k, v: "(map {TySexp k} {TySexp v})"
@@ -202,7 +202,7 @@ fn ExprsIn e:
         EMethod r, ignore, args: Append (ExprsIn r), (ArgsExprs args)
         ETypeArgs x, ignore: ExprsIn x
         ECast x, ignore, ignore: ExprsIn x
-        ELambda ignore, body: match body:
+        ELambda ignore, body, prompts: match body:
             LbExpr x: ExprsIn x
             LbBlock b: BlockExprs b
         EIf c, t, ?el: Append (Append (CondExprs c), (BlockExprs t)), (OptBlockExprs ?el)

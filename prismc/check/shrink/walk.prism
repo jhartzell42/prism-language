@@ -109,7 +109,7 @@ fn ExprKids e, m = match e.kind:
             SegPlaceholder x: Push acc, (KidExpr x, m)
             otherwise: acc
         otherwise: [[]]
-    ELambda ?ps, body: [[(LambdaKid body, (Later (Hide m, (PatternsNames (Or ?ps, [[]])))))]]
+    ELambda ?ps, body, prompts: [[(LambdaKid body, (Later (Hide m, (PatternsNames (Or ?ps, [[]])))))]]
     EIf c, t, ?el:
         let withThen = Push (CondKids c, m), (KidStmts t.stmts, (CondRels c, m))
         match ?el:
@@ -184,7 +184,7 @@ fn CallKids c, args, m:
                 ? a: Push acc, (KidExpr a.value, m)
                 nil: acc
             match step.kind:
-                ELambda (? ps), body: Push others, (LambdaKid body, (StepRels m, coll, ps, at))
+                ELambda (? ps), body, prompts: Push others, (LambdaKid body, (StepRels m, coll, ps, at))
                 EName ignore: others
                 otherwise: Push others, (KidExpr step, m)
 
@@ -211,7 +211,7 @@ fn AccKids m, cn, args, i:
     let a = Or args[i], dummyArg
     if not (HasKey m, "acc:{cn}:{i}"): [[(KidExpr a.value, m)]]
     else: match a.value.kind:
-        ELambda ?ps, body: [[(LambdaKid body, (AccLambdaRels m, cn, i, (Or ?ps, [[]]), args))]]
+        ELambda ?ps, body, prompts: [[(LambdaKid body, (AccLambdaRels m, cn, i, (Or ?ps, [[]]), args))]]
         EName ignore: [[]]
         otherwise: [[(KidExpr a.value, m)]]
 

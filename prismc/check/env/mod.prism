@@ -350,7 +350,7 @@ AddBuiltins: fn G -> G
 fn AddBuiltins g:
     let BoolCtor = \|n, i| CtorInfo(name=n, owner="Bool", params=[[]], args=[[]], fields=[[]], ty=tBool, index=i)
     let pre = Scheme(eqs=[[]], qs=[["a"]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(TySig "!", (TyQ "a")))
-    let numbered = Mono (TyFn CBound, [[tNat]], (TyCon "Buffer", [[tNat]]))
+    let numbered = Mono (TyFn CBound, [[tNat]], (TyCon "Buffer", [[tNat]]), [[]])
     let bufEmpty = Scheme(eqs=[[]], qs=[["a"]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(TyCon "Buffer", [[TyQ "a"]]))
     let tabEmpty = Scheme(eqs=[[]], qs=[["k", "v"]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(TyCon "Table", [[TyQ "k", TyQ "v"]]))
     update g:

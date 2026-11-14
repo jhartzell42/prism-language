@@ -36,7 +36,7 @@ SubstQ: unbounded fn Inst, Ty -> Ty
 fn SubstQ m, t = match t:
     TyQ n: Or m.tys[n], (TyQ n)
     TyCon n, args: TyCon n, (Each args, \|a| SubstQ m, a)
-    TyFn c, ps, res: TyFn (SubstCol m, c), (Each ps, \|p| SubstQ m, p), (SubstQ m, res)
+    TyFn c, ps, res, prompts: TyFn (SubstCol m, c), (Each ps, \|p| SubstQ m, p), (SubstQ m, res), prompts
     TyTuple ts: TyTuple (Each ts, \|a| SubstQ m, a)
     TyArray e: TyArray (SubstQ m, e)
     TyMap k, v: TyMap (SubstQ m, k), (SubstQ m, v)
@@ -118,7 +118,7 @@ fn InstantiateWith st, sc, span, explicit:
 LacksIn: unbounded fn Ty, Text -> [Text]
 fn LacksIn t, q = match t:
     TyCon ignore, args: Fold args, [[]], \|acc, a| UnionTexts acc, (LacksIn a, q)
-    TyFn ignore, ps, r: Fold ps, (LacksIn r, q), \|acc, a| UnionTexts acc, (LacksIn a, q)
+    TyFn ignore, ps, r, prompts: Fold ps, (LacksIn r, q), \|acc, a| UnionTexts acc, (LacksIn a, q)
     TyTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (LacksIn a, q)
     TyArray e: LacksIn e, q
     TyMap k, v: UnionTexts (LacksIn k, q), (LacksIn v, q)
@@ -221,11 +221,11 @@ SubstFlex: unbounded fn (Nat ==> Ty), (Nat ==> Col), Ty -> Ty
 fn SubstFlex m, cm, t = match t:
     TyFlex n: Or m[n], (TyFlex n)
     TyCon n, args: TyCon n, (Each args, \|a| SubstFlex m, cm, a)
-    TyFn c, ps, res:
+    TyFn c, ps, res, prompts:
         let c2 = match c:
             CFlex n: Or cm[n], c
             other: other
-        TyFn c2, (Each ps, \|p| SubstFlex m, cm, p), (SubstFlex m, cm, res)
+        TyFn c2, (Each ps, \|p| SubstFlex m, cm, p), (SubstFlex m, cm, res), prompts
     TyTuple ts: TyTuple (Each ts, \|a| SubstFlex m, cm, a)
     TyArray e: TyArray (SubstFlex m, cm, e)
     TyMap k, v: TyMap (SubstFlex m, cm, k), (SubstFlex m, cm, v)

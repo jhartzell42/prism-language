@@ -138,7 +138,7 @@ fn FreeQs t = match t:
     TyArray x: FreeQs x
     TyMap k, v: Append (FreeQs k), (FreeQs v)
     TySig ignore, x: FreeQs x
-    TyFn ignore, ps, r: Fold ps, (FreeQs r), \|acc, x| Append acc, (FreeQs x)
+    TyFn ignore, ps, r, prompts: Fold ps, (FreeQs r), \|acc, x| Append acc, (FreeQs x)
     otherwise: [[]]
 
 Positional: fn [Arg] -> [Arg]
@@ -192,11 +192,11 @@ fn RankTwo st, sc, inst, nExplicit, span:
 
 IsRankTwo: fn Text, Ty -> Bool
 fn IsRankTwo q, t = match t:
-    TyFn ignore, ps, res:
+    TyFn ignore, ps, res, prompts:
         let holding = Filter ps, \|p| QOccurs q, p
         if (Len holding) != 1 or (QOccurs q, res): False
         else: match holding[0]:
-            ? (TyFn ignore, ignore, ignore): ElemOutQ q, (Or holding[0], TyErr)
+            ? (TyFn ignore, ignore, ignore, prompts): ElemOutQ q, (Or holding[0], TyErr)
             otherwise: False
     otherwise: False
 
@@ -205,7 +205,7 @@ QOccurs: fn Text, Ty -> Bool
 fn QOccurs q, t = match t:
     TyQ n: n == q
     TyCon ignore, args: Fold args, False, \|seen, a| seen or QOccurs q, a
-    TyFn ignore, ps, r: Fold ps, (QOccurs q, r), \|seen, a| seen or QOccurs q, a
+    TyFn ignore, ps, r, prompts: Fold ps, (QOccurs q, r), \|seen, a| seen or QOccurs q, a
     TyTuple ts: Fold ts, False, \|seen, a| seen or QOccurs q, a
     TyArray e: QOccurs q, e
     TyMap k, v: (QOccurs q, k) or QOccurs q, v
@@ -222,7 +222,7 @@ ElemOutQ: fn Text, Ty -> Bool
 fn ElemOutQ q, t = match t:
     TyElem ignore, o: o == (TyQ q) or ElemOutQ q, o
     TyCon ignore, args: Fold args, False, \|seen, a| seen or ElemOutQ q, a
-    TyFn ignore, ps, r: Fold ps, (ElemOutQ q, r), \|seen, a| seen or ElemOutQ q, a
+    TyFn ignore, ps, r, prompts: Fold ps, (ElemOutQ q, r), \|seen, a| seen or ElemOutQ q, a
     TyTuple ts: Fold ts, False, \|seen, a| seen or ElemOutQ q, a
     TyArray e: ElemOutQ q, e
     TyMap k, v: (ElemOutQ q, k) or ElemOutQ q, v
@@ -248,7 +248,7 @@ RigidIn: fn Text, Ty -> Bool
 fn RigidIn r, t = match t:
     TyRigid n: n == r
     TyCon ignore, args: Fold args, False, \|seen, a| seen or RigidIn r, a
-    TyFn ignore, ps, res: Fold ps, (RigidIn r, res), \|seen, a| seen or RigidIn r, a
+    TyFn ignore, ps, res, prompts: Fold ps, (RigidIn r, res), \|seen, a| seen or RigidIn r, a
     TyTuple ts: Fold ts, False, \|seen, a| seen or RigidIn r, a
     TyArray e: RigidIn r, e
     TyMap k, v: (RigidIn r, k) or RigidIn r, v
@@ -290,14 +290,14 @@ fn FoldApp env, st, t, args, span:
         nil: 2
     if lambdaArity == 3:
         match Walk st, t:
-            TyFn col, params, res:
+            TyFn col, params, res, prompts:
                 let ((k, st1)) = FreshVar st, False, ""
                 let ((v, st2)) = FreshVar st1, False, ""
                 let ((b, st3)) = FreshVar st2, False, ""
                 let stepCol = match params[2]:
-                    ? (TyFn c, ignore, ignore): c
+                    ? (TyFn c, ignore, ignore, prompts): c
                     otherwise: col
-                let params2 = [[(TyMap k, v), b, (TyFn stepCol, [[b, k, v]], b)]]
+                let params2 = [[(TyMap k, v), b, (TyFn stepCol, [[b, k, v]], b, prompts)]]
                 ApplyRule env, st3, "Fold", col, params2, b, args, span
             otherwise: ApplyFn env, st, "Fold", t, args, span
     else: ApplyFn env, st, "Fold", t, args, span
@@ -308,11 +308,11 @@ fn ApplyFn env, st, fname, fty, args, span:
     let named = Filter args, \|a| a.?name != nil
     let st0 = if (Len named) > 0: Err st, "mismatch", span, "`{fname}` takes its arguments by position; named arguments are a record's or a tag's" else: st
     match Walk st0, fty:
-        TyFn col, params, res:
+        TyFn col, params, res, prompts:
             # fewer arguments than parameters is a partial application (Jimmy's ruling AF;
             # Part III ch. 6, `@InMemory start`): a function of the rest
             if (Len args) > 0 and (Len args) < (Len params) and (Len named) == 0:
-                ApplyRule env, st0, fname, col, (Take params, (Len args)), (TyFn col, (Drop params, (Len args)), res), args, span
+                ApplyRule env, st0, fname, col, (Take params, (Len args)), (TyFn col, (Drop params, (Len args)), res, prompts), args, span
             else: if (Len params) != (Len args):
                 ((TyErr, (Err st0, "mismatch", span, "`{fname}` takes {CountWord (Len params)} argument{if (Len params) == 1: "" else: "s"}; here it has {CountWord (Len args)}")))
             else: ApplyRule env, st0, fname, col, params, res, args, span
@@ -322,7 +322,7 @@ fn ApplyFn env, st, fname, fty, args, span:
                 (((Push acc, v), s2))
             let ((res, st2)) = FreshVar st1, False, ""
             let ((col, st2b)) = FreshCol st2
-            let st3 = Unify st2b, fty, (TyFn col, params, res), span
+            let st3 = Unify st2b, fty, (TyFn col, params, res, [[]]), span
             ApplyRule env, st3, fname, col, params, res, args, span
         TyErr: ((TyErr, st0))
         other:
@@ -379,7 +379,7 @@ fn ApplyRuleOf env, st, fname, col, params, res, args, span, ctor:
                 &_.expect <= ? (Walk s, (Or params[i], TyErr))
             let ((t, s2)) = if (IsEntry s, (Or params[i], TyErr)) and IsRef a.value: InferPlace env, s, a.value else: InferArgument envArg, s, a.value
             match (((Walk s2, (Or params[i], TyErr)), (Walk s2, t))):
-                (((TyFn pc, ignore, ignore), (TyFn ac, aps, ar))): (((Push acc, (TyFn pc, aps, ar)), (AddLeq s2, ac, pc, a.value.span, "arg", fname, "")))
+                (((TyFn pc, ignore, ignore, ignore), (TyFn ac, aps, ar, prompts))): (((Push acc, (TyFn pc, aps, ar, prompts)), (AddLeq s2, ac, pc, a.value.span, "arg", fname, "")))
                 otherwise: (((Push acc, t), s2))
     let argTys = PlainBeside st1, params, inferred
     # each `[a]+` argument read as the `[a]` beside an `[a]` one stands where the `[a]` is
@@ -411,7 +411,7 @@ fn ApplyRuleOf env, st, fname, col, params, res, args, span, ctor:
             let p = Walk s, (Or params[i], TyErr)
             let ((lt, s2)) = InferLambda env, s, a.value, (? p)
             let s3 = match ((p, lt)):
-                (((TyFn pc, ignore, ignore), (TyFn lc, lps, lr))): AddLeq (Unify (NoteTy s2, a.value.span, lt), p, (TyFn pc, lps, lr), a.value.span), lc, pc, a.value.span, "arg", fname, ""
+                (((TyFn pc, ignore, ignore, ignore), (TyFn lc, lps, lr, prompts))): AddLeq (Unify (NoteTy s2, a.value.span, lt), p, (TyFn pc, lps, lr, prompts), a.value.span), lc, pc, a.value.span, "arg", fname, ""
                 otherwise: Unify (NoteTy s2, a.value.span, lt), p, lt, a.value.span
             ((m, s3))
         else: ((m, s))
@@ -639,7 +639,7 @@ fn CtorApp env, st, c, args, span, cspan:
             otherwise: st0a
         nil: st0a
     let fieldTys = Each c.args, \|t| SubstQ inst, t
-    let st1 = NamedTwice (NoteTy st0, cspan, (TyFn CBound, fieldTys, self)), args
+    let st1 = NamedTwice (NoteTy st0, cspan, (TyFn CBound, fieldTys, self, [[]])), args
     let named = Filter args, \|a| a.?name != nil
     if (Len named) > 0 and (Len c.fields) > 0:
         let st2 = Fold named, st1, \|s, a| match a.?name:
@@ -699,7 +699,7 @@ fn TagApp env, st, name, args, span, cspan = match env.g.tags[name]:
             let ((rw, st4)) = FreshRow st3, [[tg.familyName]]
             let et = TyElem (TagRow tg, rw.tail, inst), out
             let lifted = if layer == "": et else: TySig layer, et
-            ((lifted, (NoteTy st4, cspan, (TyFn CBound, fieldTys, et))))
+            ((lifted, (NoteTy st4, cspan, (TyFn CBound, fieldTys, et, [[]]))))
         else:
             let self = TyCon tg.kind, [[]]
             let known = Filter args, \|a| match a.?name:
@@ -708,7 +708,7 @@ fn TagApp env, st, name, args, span, cspan = match env.g.tags[name]:
             let ptys = Each known, \|a| match a.?name:
                 ? id: SubstQ inst, (Or (?FieldOfTag tg, id.name), TyErr)
                 nil: TyErr
-            ApplyRule env, (NoteTy st3, cspan, (TyFn CBound, fieldTys, self)), name, CBound, ptys, self, known, span
+            ApplyRule env, (NoteTy st3, cspan, (TyFn CBound, fieldTys, self, [[]])), name, CBound, ptys, self, known, span
 
 # A named argument's sigils against its field's: a field's sigils stand on its name
 # (`$label: Text`), and an argument names the field as declared (`$label=`), so a plain
@@ -758,7 +758,7 @@ fn TagField env, st, tagName, field, ft, a:
 # A lambda argument's parameter count, through parentheses; 2 for anything else.
 LambdaArity: fn Expr -> Nat
 fn LambdaArity e = match e.kind:
-    ELambda (? ps), ignore: Len ps
+    ELambda (? ps), ignore, prompts: Len ps
     EGroup x: LambdaArity x
     otherwise: 2
 
@@ -776,16 +776,16 @@ fn InferLambda env, st, e, ?expected = match e.kind:
 
 InferBareLambda: unbounded fn Env, St, Expr, ?Ty -> ((Ty, St))
 fn InferBareLambda env, st, e, ?expected:
-    let ((params, body)) = match e.kind:
-        ELambda (? ps), b: ((ps, b))
-        ELambda nil, b: (([[TopicPat e.span]], b))
-        ETopicField f: (([[TopicPat e.span]], LbExpr (TopicFieldExpr e.span, f)))
-        ETopicIndex x: (([[TopicPat e.span]], LbExpr (TopicIndexExpr e.span, x)))
-        otherwise: (([[]], LbExpr e))
+    let ((params, body, written)) = match e.kind:
+        ELambda (? ps), b, prompts: ((ps, b, prompts))
+        ELambda nil, b, ignore: (([[TopicPat e.span]], b, [[]]))
+        ETopicField f: (([[TopicPat e.span]], LbExpr (TopicFieldExpr e.span, f), [[]]))
+        ETopicIndex x: (([[TopicPat e.span]], LbExpr (TopicIndexExpr e.span, x), [[]]))
+        otherwise: (([[]], LbExpr e, [[]]))
     let ((expParams, ?expRes, st0)) = match ?expected:
         ? t: match Walk st, t:
-            TyFn ignore, ps, r:
-                if (Len ps) == (Len params): ((ps, ? r, st))
+            TyFn ignore, ps, r, wanted:
+                if (Len ps) == (Len params): ((ps, ? r, (PromptsFit st, written, wanted, e.span, "this lambda")))
                 else: (([[]], nil, (Err st, "mismatch", e.span, "this lambda takes {CountWord (Len params)} parameter{if (Len params) == 1: "" else: "s"}; here {CountWord (Len ps)} {if (Len ps) == 1: "is" else: "are"} wanted")))
             otherwise: (([[]], nil, st))
         nil: (([[]], nil, st))
@@ -823,7 +823,18 @@ fn InferBareLambda env, st, e, ?expected:
         &_.color <= outerColor
         &_.colorWhy <= outerWhy
         &_.colorFlex <= outerFlex
-    (((TyFn lcol, ptys, rt), (NoteFn st4, e.span, "lambda", lcol, lcol)))
+    (((TyFn lcol, ptys, rt, written), (NoteFn st4, e.span, "lambda", lcol, lcol)))
+
+# A function value's `prompt` marks where a function with `wanted` marks is wanted (ruling
+# PT): one with fewer marks stands where one with more is wanted, as a bounded function
+# stands where an unbounded one is wanted; a parameter marked where the wanted type does
+# not mark it is a mismatch, at the value.
+PromptsFit: unbounded fn St, [Bool], [Bool], Range, Text -> St
+fn PromptsFit st, marked, wanted, span, what:
+    let extra = Filter (Range0 (Len marked)), \|i| (Or marked[i], False) and not (Or wanted[i], False)
+    match extra[0]:
+        ? i: Err st, "mismatch", span, "{what} is prompt in its parameter {i + 1}, and the function wanted there is not"
+        nil: st
 
 # The topic `_` as a lambda's parameter, and the bodies of `\.f` and `\[i]`.
 TopicPat: fn Range -> Pattern

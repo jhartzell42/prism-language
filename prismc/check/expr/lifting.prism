@@ -228,7 +228,7 @@ SubstRigid: unbounded fn Text, Ty, Ty -> Ty
 fn SubstRigid name, by, t = match t:
     TyRigid n: if n == name: by else: t
     TyCon n, args: TyCon n, (Each args, \|a| SubstRigid name, by, a)
-    TyFn c, ps, r: TyFn c, (Each ps, \|a| SubstRigid name, by, a), (SubstRigid name, by, r)
+    TyFn c, ps, r, prompts: TyFn c, (Each ps, \|a| SubstRigid name, by, a), (SubstRigid name, by, r), prompts
     TyTuple ts: TyTuple (Each ts, \|a| SubstRigid name, by, a)
     TyArray e: TyArray (SubstRigid name, by, e)
     TyMap k, v: TyMap (SubstRigid name, by, k), (SubstRigid name, by, v)

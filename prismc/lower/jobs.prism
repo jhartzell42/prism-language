@@ -818,7 +818,7 @@ fn StartOf lx, qk, callee, vals:
 SchemeParts: fn Lx, Text -> (([Ty], Ty))
 fn SchemeParts lx, qk = match lx.g.vals[qk]:
     ? v: match v.scheme.ty:
-        TyFn ignore, ps, r: ((ps, r))
+        TyFn ignore, ps, r, prompts: ((ps, r))
         other: (([[]], other))
     nil: (([[]], TyErr))
 
@@ -845,7 +845,7 @@ fn DefClauses d, other = match d.body:
 JobDefOf: unbounded fn Lx, Text, [FnClause], Scheme -> JobDef
 fn JobDefOf lx, qk, clauses, sc:
     let ((ptys, res)) = match sc.ty:
-        TyFn ignore, ps, r: ((ps, r))
+        TyFn ignore, ps, r, prompts: ((ps, r))
         other: (([[]], other))
     let pts = Each ptys, \|p| OutTyOf lx, (Peel p)
     let names = ParamNames lx, clauses, pts

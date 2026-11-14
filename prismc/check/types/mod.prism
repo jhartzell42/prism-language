@@ -92,7 +92,10 @@ type Ty = choice:
     TyRigid Text
     TyQ Text
     TyCon Text, [Ty]
-    TyFn Col, [Ty], Ty
+    # a function: its color, its parameters, its result, and for each parameter whether
+    # it is marked `prompt` (ruling PT; empty where none is: a plain function's marks are
+    # never read, it is prompt in everything)
+    TyFn Col, [Ty], Ty, [Bool]
     TyTuple [Ty]
     TyArray Ty
     TyMap Ty, Ty
@@ -507,8 +510,8 @@ fn ShowTyIn st, t, nested = match t:
     TyCon n, args:
         let inner = "{BareName n}{Concat (Each args, \|a| " {ShowTyIn st, a, True}")}"
         if nested: "({inner})" else: inner
-    TyFn c, ps, res:
-        let inner = "{ShowCol c}fn {Join (Each ps, \|p| ShowTyIn st, p, False), ", "} -> {ShowTyIn st, res, False}"
+    TyFn c, ps, res, prompts:
+        let inner = "{ShowCol c}fn {Join (Each (Range0 (Len ps)), \|i| "{if Or prompts[i], False: "prompt " else: ""}{ShowTyIn st, (Or ps[i], TyErr), False}"), ", "} -> {ShowTyIn st, res, False}"
         if nested: "({inner})" else: inner
     TyTuple ts: "(({Join (Each ts, \|a| ShowTyIn st, a, False), ", "}))"
     TyArray e:

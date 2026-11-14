@@ -71,7 +71,7 @@ KeysBy: fn Ty, Text -> Bool
 fn KeysBy t, q = match t:
     TyMap k, v: (k == TyQ q) or (KeysBy k, q) or (KeysBy v, q)
     TyCon ignore, ts: Fold ts, False, \|found, x| found or KeysBy x, q
-    TyFn ignore, ps, r: (Fold ps, False, \|found, x| found or KeysBy x, q) or (KeysBy r, q)
+    TyFn ignore, ps, r, prompts: (Fold ps, False, \|found, x| found or KeysBy x, q) or (KeysBy r, q)
     TyTuple ts: Fold ts, False, \|found, x| found or KeysBy x, q
     TyArray x: KeysBy x, q
     TySig ignore, x: KeysBy x, q
@@ -161,7 +161,7 @@ fn FnBodyValue lx, env, (BodyBlock b) = Own (BlockValue lx, env, b)
 SignatureTys: fn Scheme -> (([Ty], Ty))
 fn SignatureTys sc:
     let ((ptys0, res)) = match sc.ty:
-        TyFn ignore, ps, r: ((ps, r))
+        TyFn ignore, ps, r, prompts: ((ps, r))
         other: (([[]], other))
     let ptys = if HasBlueprint res: Each ptys0, \|p| EventParam p else: ptys0
     ((ptys, res))
@@ -353,7 +353,7 @@ fn SelfIn t, param = Instantiated t, [[param]], [[(TyCon "\u{0}Self", [[]])]]
 IsResultOnly: fn Lx, Text, Text -> Bool
 fn IsResultOnly lx, mq, param = match lx.g.vals[mq]:
     ? v: match v.scheme.ty:
-        TyFn ignore, ps, ignore: not (Fold ps, False, \|f, p| f or HasText (DeducibleQs p), param)
+        TyFn ignore, ps, ignore, prompts: not (Fold ps, False, \|f, p| f or HasText (DeducibleQs p), param)
         otherwise: True
     nil: False
 
@@ -363,7 +363,7 @@ fn DeducibleQs t = match t:
     TyQ q: [[q]]
     TyRigid q: [[q]]
     TyCon ignore, xs: Fold xs, [[]], \|acc, x| UnionTexts acc, (DeducibleQs x)
-    TyFn ignore, ps, r: Fold ps, (DeducibleQs r), \|acc, x| UnionTexts acc, (DeducibleQs x)
+    TyFn ignore, ps, r, prompts: Fold ps, (DeducibleQs r), \|acc, x| UnionTexts acc, (DeducibleQs x)
     TyTuple xs: Fold xs, [[]], \|acc, x| UnionTexts acc, (DeducibleQs x)
     TyArray x: DeducibleQs x
     TyMap k, v: UnionTexts (DeducibleQs k), (DeducibleQs v)
@@ -431,7 +431,7 @@ fn ?PackedDefOf lx0, tr:
     let packed = Fold (Filter tr.methods, \|mq| not (HasPrefix (BareName mq), "@")), start, \|acc, mq|
         let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
         let ((ps, r)) = match v.scheme.ty:
-            TyFn ignore, ps, r: ((ps, r))
+            TyFn ignore, ps, r, prompts: ((ps, r))
             other: (([[]], other))
         let marked = Each ps, \|p| Instantiated p, [[tr.param]], [[hiddenTy]]
         let hidden = Each marked, \|m| m == hiddenTy
@@ -536,7 +536,7 @@ fn FixedVarsIn t = match t:
     TyCon "Prelude.Fixed", [[(TyQ q)]]: [[q]]
     TyCon "Prelude.Fixed", [[(TyRigid q)]]: [[q]]
     TyCon ignore, xs: Fold xs, [[]], \|acc, x| UnionTexts acc, (FixedVarsIn x)
-    TyFn ignore, ps, r: Fold ps, (FixedVarsIn r), \|acc, x| UnionTexts acc, (FixedVarsIn x)
+    TyFn ignore, ps, r, prompts: Fold ps, (FixedVarsIn r), \|acc, x| UnionTexts acc, (FixedVarsIn x)
     TyTuple xs: Fold xs, [[]], \|acc, x| UnionTexts acc, (FixedVarsIn x)
     TySig ignore, i: FixedVarsIn i
     TyExists ignore, b, ignore2: FixedVarsIn b

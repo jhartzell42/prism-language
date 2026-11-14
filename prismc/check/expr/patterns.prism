@@ -285,7 +285,7 @@ fn UnderMarks st, t, marks = if marks == "": Walk st, t else: match Walk st, t:
 # Whether a walked type is a function's; nil when it does not say yet.
 ?HoldsFunction: fn Ty -> ?Bool
 fn ?HoldsFunction t = match t:
-    TyFn ignore, ignore, ignore: ? True
+    TyFn ignore, ignore, ignore, prompts: ? True
     TyFlex ignore: nil
     TyErr: nil
     TyAssoc ignore, ignore, ignore, ignore: nil

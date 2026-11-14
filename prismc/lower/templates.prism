@@ -507,14 +507,14 @@ fn EntryRef lx, env, e = match e.kind:
 LensTakesEntry: fn Lx, Text -> Bool
 fn LensTakesEntry lx, qk = match lx.g.vals[qk]:
     ? v: match v.scheme.ty:
-        TyFn ignore, params, ignore: IsEntryTy (Or params[0], TyErr)
+        TyFn ignore, params, ignore, prompts: IsEntryTy (Or params[0], TyErr)
         otherwise: False
     nil: False
 
 LensGivesEntry: fn Lx, Text -> Bool
 fn LensGivesEntry lx, qk = match lx.g.vals[qk]:
     ? v: match v.scheme.ty:
-        TyFn ignore, ignore, res: IsEntryTy res
+        TyFn ignore, ignore, res, prompts: IsEntryTy res
         otherwise: False
     nil: False
 

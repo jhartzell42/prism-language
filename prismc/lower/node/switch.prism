@@ -650,7 +650,7 @@ fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent, parentTy, args, ze
     let lx = wx.lx
     let lxc = InModuleAt lx, v.file, v.home, lx.site
     let ptys = match v.scheme.ty:
-        TyFn ignore, ps, ignore: ps
+        TyFn ignore, ps, ignore, prompts: ps
         otherwise: [[]]
     # a blueprint parameter (and a widget function's) is no value of the row: its argument
     # is the caller's text, built where the clause applies it (`ArmRowOf`, `widgets`), so
@@ -700,7 +700,7 @@ fn IsShallowLiveParam pt = (IsLiveParam pt) and not (HasTime (Peel pt))
 
 HasLiveParam: fn ValInfo -> Bool
 fn HasLiveParam v = match v.scheme.ty:
-    TyFn ignore, ps, ignore: Fold ps, False, \|found, pt| found or IsLiveParam pt
+    TyFn ignore, ps, ignore, prompts: Fold ps, False, \|found, pt| found or IsLiveParam pt
     otherwise: False
 
 # A shared row's live parameters in their order (`ArmRowOf`, `LiveParams`): each binder
@@ -779,7 +779,7 @@ let wideGeneration = 1048576
 IsSharable: unbounded fn Wx, Env, ValInfo, Expr, [Arg] -> Bool
 fn IsSharable wx, menv, v, e, args:
     let ptys = match v.scheme.ty:
-        TyFn ignore, ps, ignore: ps
+        TyFn ignore, ps, ignore, prompts: ps
         otherwise: [[]]
     let plainResult = (ResultLayer (TypeAt wx.lx, e.span)) == LyPlain and not (IsBundle (LineOutFull wx.lx, e))
     let plainParams = Fold ptys, True, \|ok, pt| ok and (LayerOf pt) == LyPlain and not (IsWidgetFnTy pt)
@@ -830,7 +830,7 @@ fn IsBlueprintValued lx, menv, ?a = match ?a:
 SharedScrutinee: unbounded fn Lx, Env, ValInfo, [Arg] -> Ex
 fn SharedScrutinee lx, env, v, args:
     let ptys = match v.scheme.ty:
-        TyFn ignore, ps, ignore: ps
+        TyFn ignore, ps, ignore, prompts: ps
         otherwise: [[]]
     let parts = Each (Range0 (Len args)), \|i| match ((ptys[i], args[i])):
         ((? pt, ? a)) if (LayerOf pt) == LyBlueprint: match (Ungrouped a.value).kind:
@@ -873,7 +873,7 @@ fn SharedClauseLine wx, menv, scrut, qk, v, e, args:
     # `Dynamic` or `Event` and follows it (`LiveParams`), so a write behind the argument
     # patches the row's places and never makes the generation stale
     let liveFirst = match v.scheme.ty:
-        TyFn ignore, ps, ignore: IsLiveParam (Or ps[0], TyErr)
+        TyFn ignore, ps, ignore, prompts: IsLiveParam (Or ps[0], TyErr)
         otherwise: False
     let reads = if liveFirst: [[]] else: sourceReads
     let vt = OutTyOf lx, (Peel (TypeAt lx, scrut.span))
@@ -968,7 +968,7 @@ SharedCaseOf: unbounded fn Lx, ValInfo, FnClause, Text, Bool -> ((Text, Pa, [Cc]
 fn SharedCaseOf lx, v, c, rowName, withBase:
     let lxc = InModuleAt lx, v.file, v.home, lx.site
     let ptys = match v.scheme.ty:
-        TyFn ignore, ps, ignore: ps
+        TyFn ignore, ps, ignore, prompts: ps
         otherwise: [[]]
     # a live parameter (`IsLiveParam`) matches anything and is handed on whole
     let live = Filter (Range0 (Len c.params)), \|i| IsLiveParam (Or ptys[i], TyErr)
@@ -995,7 +995,7 @@ fn IsBlueprintParam pt = (LayerOf pt) == LyBlueprint or IsWidgetFnTy pt
 ClauseScrutinee: unbounded fn Lx, Env, ValInfo, [Arg] -> Ex
 fn ClauseScrutinee lx, env, v, args:
     let ptys = match v.scheme.ty:
-        TyFn ignore, ps, ignore: ps
+        TyFn ignore, ps, ignore, prompts: ps
         otherwise: [[]]
     XTuple (Each (Range0 (Len args)), \|i| ClauseArgument lx, env, ptys[i], args[i])
 

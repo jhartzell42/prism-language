@@ -79,8 +79,8 @@ HofCandidates: fn Shrink -> [Slot]
 fn HofCandidates sk = Fold sk.fns, [[]], \|acc, d| match d.body:
     DbFn clauses: match sk.g.vals[d.qk]:
         ? v: match v.scheme.ty:
-            TyFn ignore, ps, ignore: Fold (Range0 (Len ps)), acc, \|a2, j| match ps[j]:
-                ? (TyFn ignore, fps, ignore): if Fold clauses, True, \|ok, c| ok and SlotNamed c, j: Push a2, Slot(owner=d.qk, at=j, arity=(Len fps)) else: a2
+            TyFn ignore, ps, ignore, prompts: Fold (Range0 (Len ps)), acc, \|a2, j| match ps[j]:
+                ? (TyFn ignore, fps, ignore, prompts): if Fold clauses, True, \|ok, c| ok and SlotNamed c, j: Push a2, Slot(owner=d.qk, at=j, arity=(Len fps)) else: a2
                 otherwise: a2
             otherwise: acc
         nil: acc

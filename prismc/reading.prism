@@ -650,5 +650,5 @@ fn TypeAt t, param, ty = match t.kind:
     TTuple xs: Type(kind=(TTuple (Each xs, \|x| TypeAt x, param, ty)), span=t.span)
     TGroup i: Type(kind=(TGroup (TypeAt i, param, ty)), span=t.span)
     TMap k, v: Type(kind=(TMap (TypeAt k, param, ty), (TypeAt v, param, ty)), span=t.span)
-    TFn c, ps, r: Type(kind=(TFn c, (Each ps, \|x| TypeAt x, param, ty), (TypeAt r, param, ty)), span=t.span)
+    TFn c, ps, r, prompts: Type(kind=(TFn c, (Each ps, \|x| TypeAt x, param, ty), (TypeAt r, param, ty), prompts), span=t.span)
     otherwise: t

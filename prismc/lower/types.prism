@@ -80,7 +80,7 @@ fn OutTyOf lx, t = match t:
     # on map entries); a lens that gives one back gives the prelude's `EntryMut`
     TyCon "Prelude.Entry", [[ignore, v]]: OutOpt (OutTyOf lx, v)
     TyCon n, args: NamedTy lx, n, (Each args, \|a| OutTyOf lx, a)
-    TyFn c, ps, res:
+    TyFn c, ps, res, prompts:
         # A function value of any color but bounded is a `Start` (D8: a color variable may
         # be unbounded), so one representation serves both instantiations.
         let c2 = InstCol lx, c
@@ -183,7 +183,7 @@ fn EventParam t = match t:
 # unbounded one where the callee's own type says bounded (a parameter's color is
 # contravariant), and a `Start` serves both.
 JobParam: fn Ty -> Ty
-fn JobParam (TyFn ignore, ps, r) = TyFn CUnbound, ps, r
+fn JobParam (TyFn ignore, ps, r, prompts) = TyFn CUnbound, ps, r, prompts
 fn JobParam t = t
 
 # An unbounded function's parameter as a job function's: one parameter is itself, several

@@ -238,7 +238,7 @@ fn WholeFns lx:
     # !swap), $a, $b`, a `!$Nat`: lifted over a plain parameter, the call gives the dynamic
     # it returns whole, Type System ch. 4)
     let known = Fold fns, {{}}, \|m, ((d, ignore, v))| match v.scheme.ty:
-        TyFn ignore, ignore, r: if (LayerOf r) == LyDyn or (LayerOf r) == LyEv: Insert m, d.qk, True else: m
+        TyFn ignore, ignore, r, prompts: if (LayerOf r) == LyDyn or (LayerOf r) == LyEv: Insert m, d.qk, True else: m
         otherwise: m
     let start = Fold lx.g.defs, bySig, \|m, d|
         let lxd = update lx:
@@ -256,7 +256,7 @@ fn WholeFns lx:
 # blueprint (one that gives a blueprint takes its events as event values already).
 HasEventParameter: fn Ty -> Bool
 fn HasEventParameter t = match t:
-    TyFn ignore, ps, r: (not (HasBlueprint r)) and Fold ps, False, \|seen, p| seen or (LayerOf p) == LyEv
+    TyFn ignore, ps, r, prompts: (not (HasBlueprint r)) and Fold ps, False, \|seen, p| seen or (LayerOf p) == LyEv
     otherwise: False
 
 # Whether a named function takes an event as an event value: one that takes time whole, or
@@ -307,7 +307,7 @@ fn GrowWhole lx, fns, set, fuel:
 # Whether a signature's only time is `$` on top of parameters or the result.
 DynOnlyOnTop: fn Ty -> Bool
 fn DynOnlyOnTop t = match t:
-    TyFn ignore, ps, r:
+    TyFn ignore, ps, r, prompts:
         let all = Push ps, r
         let tops = Filter all, \|p| match p:
             TySig "$", i: not (HasTime i)
@@ -317,26 +317,26 @@ fn DynOnlyOnTop t = match t:
 
 HasElementParam: fn Ty -> Bool
 fn HasElementParam t = match t:
-    TyFn ignore, ps, r: (not (HasBlueprint r)) and Fold ps, False, \|seen, p| seen or match Peel p:
+    TyFn ignore, ps, r, prompts: (not (HasBlueprint r)) and Fold ps, False, \|seen, p| seen or match Peel p:
         TyElem ignore, ignore: True
         otherwise: False
     otherwise: False
 
 HasDynamicParam: fn Ty -> Bool
 fn HasDynamicParam t = match t:
-    TyFn ignore, ps, ignore: Fold ps, False, \|seen, p| seen or (LayerOf p) == LyDyn
+    TyFn ignore, ps, ignore, prompts: Fold ps, False, \|seen, p| seen or (LayerOf p) == LyDyn
     otherwise: False
 
 # Whether a signature gives an event from dynamics alone: an event on top of its result,
 # a dynamic on top of a parameter, no event parameter and no blueprint.
 GivesEventOfDynamics: fn Ty -> Bool
 fn GivesEventOfDynamics t = match t:
-    TyFn ignore, ps, r: (LayerOf r) == LyEv and (not (HasBlueprint r)) and (HasDynamicParam t) and not (HasEventParameter t)
+    TyFn ignore, ps, r, prompts: (LayerOf r) == LyEv and (not (HasBlueprint r)) and (HasDynamicParam t) and not (HasEventParameter t)
     otherwise: False
 
 IsWholeSig: fn Ty -> Bool
 fn IsWholeSig t = match t:
-    TyFn ignore, ps, r: (not (HasBlueprint r)) and Fold (Push ps, r), False, \|seen, p| seen or TimeWithin p
+    TyFn ignore, ps, r, prompts: (not (HasBlueprint r)) and Fold (Push ps, r), False, \|seen, p| seen or TimeWithin p
     otherwise: False
 
 # Whether an expression outside such a function is a `Dynamic` value rather than a reader:
@@ -382,7 +382,7 @@ fn IsLiftedProgramFn lx, qk = if (qk == "") or (IsWholeFn lx, qk) or HasKey lx.g
 ReadAtParameter: fn Lx, Text, Nat -> Bool
 fn ReadAtParameter lx, qk, i = if not (IsLiftedProgramFn lx, qk): False else: match lx.g.vals[qk]:
     ? v: match v.scheme.ty:
-        TyFn ignore, ps, ignore: (LayerOf (Or ps[i], TyErr)) == LyDyn
+        TyFn ignore, ps, ignore, prompts: (LayerOf (Or ps[i], TyErr)) == LyDyn
         otherwise: False
     nil: False
 
@@ -809,7 +809,7 @@ fn PlainValueByKind lx, env, e:
             # in place, as the path's place is on the left of `<=`
             nil: if (IsRefPath e) and (StepsThroughIndex e, True): VlOwned (XClone (SharedPlaceOf lx, env, e)), t else: FieldValue lx, env, r, name.name
         EIndex r, i: IndexValue lx, env, r, i, t
-        ELambda ?ps, body: LambdaValue lx, env, e, (Or ?ps, [[]]), body
+        ELambda ?ps, body, prompts: LambdaValue lx, env, e, (Or ?ps, [[]]), body
         EIf c, thenB, ?elseB: IfValue lx, env, c, thenB, ?elseB, t
         EMatch s, arms: MatchValue lx, env, s, arms, t, e.span
         ETemplate tp: TemplateValue lx, env, tp
@@ -1261,7 +1261,7 @@ fn KindWords k = match k:
     ENonEmpty ignore: "a non-empty literal"
     EAbsent: "an absent value"
     ERest: "a `..` rest"
-    ELambda ignore, ignore: "a lambda"
+    ELambda ignore, ignore, prompts: "a lambda"
     ERebuild ignore, ignore: "a `rebuild` outside a widget block"
     EFor ignore, ignore, ignore: "a `for` outside a widget block"
     EWidgetBlock ignore: "a widget block"
@@ -1422,7 +1422,7 @@ WidgetNamed: unbounded fn Lx, Text, Range, ValInfo, OutTy -> Vl
 fn WidgetNamed lx, qk, span, v, t:
     let Made = \|handed, gives| if HasKey lx.valued, (ValuedKeyAt lx, qk, span, [[]]): WidgetBlueprintValueFrom lx, lx, False, emptyEnv, qk, span, [[]], handed, gives else: Or (?OpenWidgetBlueprintValue lx, emptyEnv, qk, span, [[]], handed, gives), (VlOwned (Refusal (OpenWidgetValueWords lx, qk)), gives)
     let taken = match v.scheme.ty:
-        TyFn ignore, ps, ignore: Len ps
+        TyFn ignore, ps, ignore, prompts: Len ps
         otherwise: 0
     if taken == 0: Made [[]], t
     else: match t:
@@ -1502,13 +1502,13 @@ fn WidgetBlueprintValueFrom lx, lxArguments, recast, env, qk, calleeSpan, args, 
         # parameters (`?ValuedTypes`), and its signature is read with them in place
         let v = ValInfoAt (AtInstance lx, (((Or (?ValuedTypes lx, declared, calleeSpan, args), [[]]), [[]]))), declared
         let gives = match v.scheme.ty:
-            TyFn ignore, ignore, r: r
+            TyFn ignore, ignore, r, prompts: r
             otherwise: v.scheme.ty
         let resTy = OutTyOf lx, (OutOf gives)
         # a `$` or an event argument is the caller's live `Dynamic` or `Event` (its
         # line made the first, `WholeArgsAt`), which the rows built hold (`LiveParams`)
         let ptys = match v.scheme.ty:
-            TyFn ignore, ps, ignore: ps
+            TyFn ignore, ps, ignore, prompts: ps
             otherwise: [[]]
         let reads = if (Len args) == 0: handed else: Each (Range0 (Len args)), \|i| match args[i]:
             ? a: Own (ValueOf (if IsLiveParam (Or ptys[i], TyErr): AsWhole lxArguments else: lxArguments), env, a.value)
@@ -1588,7 +1588,7 @@ fn HostedValuedRow rowNode = "{rowNode}_hosted"
 
 IsWidgetFn: fn ValInfo -> Bool
 fn IsWidgetFn v = match v.scheme.ty:
-    TyFn ignore, ignore, (TyAt ignore, ignore): True
+    TyFn ignore, ignore, (TyAt ignore, ignore), prompts: True
     otherwise: False
 
 # A widget function as a value that is not one (pick HO): a supplier whose blueprint
@@ -1635,7 +1635,7 @@ fn StartRef lx, qk:
 # Whether a call gives its function fewer arguments than the function's type takes.
 IsPartial: unbounded fn Lx, Expr, [Arg] -> Bool
 fn IsPartial lx, callee, args = match Peel (TypeAt lx, callee.span):
-    TyFn ignore, ps, ignore2: (Len args) > 0 and (Len args) < (Len ps)
+    TyFn ignore, ps, ignore2, prompts: (Len args) > 0 and (Len args) < (Len ps)
     otherwise: False
 
 Application: unbounded fn Lx, Env, Expr, [Arg], Range -> Vl
@@ -1764,7 +1764,7 @@ fn RecursiveLocalFn lx, env0, cs, args, t:
             let again = "{LocalName lx, (DefNameText c.name)}_{SpanStem c.span}"
             let atCall = Each args, \|a| SubstTy lx, (TypeAt lx, a.value.span)
             let argTys = match Peel (SubstTy lx, (TypeAt lx, c.span)):
-                TyFn col, ps, r: if HasQuant (TyFn col, ps, r): atCall else: ps
+                TyFn col, ps, r, prompts: if HasQuant (TyFn col, ps, r, prompts): atCall else: ps
                 otherwise: atCall
             let outs = Each argTys, \|a| OutTyOf lx, a
             let argTy = if (Len outs) == 1: Or outs[0], OutUnit else: OutTuple outs
@@ -1852,7 +1852,7 @@ fn LocalClausesClosure lx, env, cs, pts, r, ft:
     let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "")), (OutRef (Or pts[i], OutUnit))
     let vals = Each (Range0 (Len pts)), \|i| Own (LocalPlace (XVar (Or names[i], "")), ByRef, (Or pts[i], OutUnit))
     let argTys = match Peel (SubstTy lx, (TypeAt lx, c.span)):
-        TyFn ignore, ps, ignore: ps
+        TyFn ignore, ps, ignore, prompts: ps
         otherwise: [[]]
     let v = LocalFnMatch lx, env1, cs, vals, argTys, r
     VlOwned (XBlock dos, (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure True, pas, (Own v))]]), ft)), ft
@@ -1861,7 +1861,7 @@ HasQuant: fn Ty -> Bool
 fn HasQuant t = match t:
     TyQ ignore: True
     TyCon ignore, xs: Fold xs, False, \|f, x| f or HasQuant x
-    TyFn ignore, ps, r: (HasQuant r) or Fold ps, False, \|f, x| f or HasQuant x
+    TyFn ignore, ps, r, prompts: (HasQuant r) or Fold ps, False, \|f, x| f or HasQuant x
     TyTuple xs: Fold xs, False, \|f, x| f or HasQuant x
     TyArray x: HasQuant x
     TyMap k, v: (HasQuant k) or HasQuant v
@@ -1878,14 +1878,14 @@ fn Argument lx, env, e = match env.spans[PlaceKey lx, e.span]:
 
 ArgumentByKind: unbounded fn Lx, Env, Expr -> Ex
 fn ArgumentByKind lx, env, e = match e.kind:
-    ELambda ?ps, body: XRef (LambdaArg lx, env, (Or ?ps, [[]]), body, (LambdaParamTys lx, e, (Len (Or ?ps, [[]]))))
+    ELambda ?ps, body, prompts: XRef (LambdaArg lx, env, (Or ?ps, [[]]), body, (LambdaParamTys lx, e, (Len (Or ?ps, [[]]))))
     # a group the checker found a `~T`'s failure at keeps its place (`AsFailure`)
     EGroup x: if HasKey lx.faults, (PlaceKey lx, e.span): Ref (ValueOf lx, env, e) else: Argument lx, env, x
     EHold x: if HasKey lx.faults, (PlaceKey lx, e.span): Ref (ValueOf lx, env, e) else: Argument lx, env, x
     EName n:
         let t = TypeAt lx, e.span
         match Peel t:
-            TyFn CBound, ignore, ignore:
+            TyFn CBound, ignore, ignore, prompts:
                 let ?local = if (Len n.path) == 1: env.names[NameKeyAt lx, env, n, e.span] else: nil
                 match ?local:
                     ? ignore: ClosureRef (ValueOf lx, env, e)
@@ -1913,7 +1913,7 @@ fn ValueArgument lx, env, e = match env.spans[PlaceKey lx, e.span]:
     ? v: Ref v
     nil: match Peel (TypeAt lx, e.span):
         # (a function named is made a value of the function type here: no borrow coerces it)
-        TyFn CBound, ignore, ignore: match ValueOf lx, env, e:
+        TyFn CBound, ignore, ignore, prompts: match ValueOf lx, env, e:
             VlPlace rs, mode, t: Ref (VlPlace rs, mode, t)
             v: XRef (XCast (Own v), (OutTyOf lx, (Peel (TypeAt lx, e.span))))
         otherwise: Argument lx, env, e
@@ -1923,12 +1923,12 @@ fn ValueArgument lx, env, e = match env.spans[PlaceKey lx, e.span]:
 # not the borrowed closure only a parameter of a function type takes.
 ArgumentAt: unbounded fn Lx, Env, Ty, Expr -> Ex
 fn ArgumentAt lx, env, declared, e = match Peel declared:
-    TyFn ignore, ignore, ignore: Argument lx, env, e
+    TyFn ignore, ignore, ignore, prompts: Argument lx, env, e
     otherwise: if IsLambdaValue e: Ref (ValueOf lx, env, e) else: Argument lx, env, e
 
 IsLambdaValue: fn Expr -> Bool
 fn IsLambdaValue e = match e.kind:
-    ELambda ignore, ignore: True
+    ELambda ignore, ignore, prompts: True
     EGroup x: IsLambdaValue x
     EHold x: IsLambdaValue x
     otherwise: False
@@ -2129,7 +2129,7 @@ fn DeclaredCall lx, env, qk, args, span, cspan, t:
 fn ?SignatureResult lx, v, cspan, span, t:
     let declared = ResultRepr lx, v
     let declaredTy = match v.scheme.ty:
-        TyFn ignore, ignore, r: Peel r
+        TyFn ignore, ignore, r, prompts: Peel r
         other: Peel other
     let callTy = Peel (SubstTy lx, (TypeAt lx, span))
     let ?calleeTypes = ?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, cspan), {{}}
@@ -2172,7 +2172,7 @@ fn BlueprintOutputs t = match t:
     TyArray e: BlueprintOutputs e
     TyMap k, v: Append (BlueprintOutputs k), (BlueprintOutputs v)
     TyCon ignore, args: Fold args, [[]], \|acc, x| Append acc, (BlueprintOutputs x)
-    TyFn ignore, ps, r: Fold (Push ps, r), [[]], \|acc, x| Append acc, (BlueprintOutputs x)
+    TyFn ignore, ps, r, prompts: Fold (Push ps, r), [[]], \|acc, x| Append acc, (BlueprintOutputs x)
     otherwise: [[]]
 
 # A value a call returns as its type at the call has it, where the callee's signature
@@ -2225,7 +2225,7 @@ fn Recolored lx, x, fromTy, toTy, depth:
         # (the prelude's `plain_collection`, `non_empty_of`)
         (((TyCon "Prelude.NonEmpty", [[d]]), (TyCon "Prelude.NonEmpty", [[e]]))): XCall (HelperRef "non_empty_of"), [[(Recolored lx, (XClone (XCall (HelperRef "plain_collection"), [[(XRef x)]])), d, e, depth + 1)]]
         (((TyCon n, fromArgs), (TyCon m, toArgs))) if n == m: NamedRecolored lx, x, fromTy, n, fromArgs, toArgs, to, depth
-        (((TyFn ignore, dps, dr), (TyFn ignore2, eps, er))) if (Len dps) == (Len eps): FunctionRecolored lx, x, from, to, dps, dr, eps, er, depth
+        (((TyFn ignore, dps, dr, ignore), (TyFn ignore2, eps, er, ignore))) if (Len dps) == (Len eps): FunctionRecolored lx, x, from, to, dps, dr, eps, er, depth
         # an associated type at a known head is the type its impl chooses
         # (`?ImplAssoc`): the signature can write the result so (`Out (Holder (u fn Nat
         # -> Nat))`), the call has the type the impl gives
@@ -2362,7 +2362,7 @@ fn ?InstanceMatch pat, t, m = match ((pat, t)):
     ((TyArray x, TyArray y)): ?InstanceMatch x, y, m
     (((TyMap k1, v1), (TyMap k2, v2))): ?InstanceMatchAll [[k1, v1]], [[k2, v2]], m
     (((TySig s1, i1), (TySig s2, i2))): if s1 == s2: ?InstanceMatch i1, i2, m else: nil
-    (((TyFn ignore, ps, r), (TyFn ignore, qs, s))): if (Len ps) == (Len qs): ?InstanceMatchAll (Push ps, r), (Push qs, s), m else: nil
+    (((TyFn ignore, ps, r, ignore), (TyFn ignore, qs, s, ignore))): if (Len ps) == (Len qs): ?InstanceMatchAll (Push ps, r), (Push qs, s), m else: nil
     # an associated type at a variable decides nothing about it: its instance is already
     # normalized
     (((TyAssoc ignore, ignore, ignore, ignore), ignore)): ? m
@@ -2377,7 +2377,7 @@ fn ?InstanceMatchAll xs, ys, m = Fold (Range0 (Len xs)), (? m), \|?acc, i| match
 # function's own color variable is a `Start` (`OutJobFn`), whatever color a call gives it.
 ResultRepr: unbounded fn Lx, ValInfo -> OutTy
 fn ResultRepr lx, v = match v.scheme.ty:
-    TyFn ignore, ignore, r: OutTyOf lx, (Peel r)
+    TyFn ignore, ignore, r, prompts: OutTyOf lx, (Peel r)
     other: OutTyOf lx, (Peel other)
 
 HasJobFn: unbounded fn OutTy -> Bool
@@ -2399,13 +2399,13 @@ fn HasJobFn t = match t:
 ArgsFor: unbounded fn Lx, Env, ValInfo, [Arg] -> [Ex]
 fn ArgsFor lx, env, v, args:
     let ps = match v.scheme.ty:
-        TyFn ignore, xs, ignore: xs
+        TyFn ignore, xs, ignore, prompts: xs
         otherwise: [[]]
     Each (Range0 (Len args)), \|i|
         let a = Or args[i], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0, origin=InSource)))
         let toUnbounded = match Peel (Or ps[i], TyErr):
-            TyFn CBound, ignore, ignore: False
-            TyFn ignore, ignore, ignore: True
+            TyFn CBound, ignore, ignore, prompts: False
+            TyFn ignore, ignore, ignore, prompts: True
             otherwise: False
         # a function that takes time whole, applied lifted outside such a body (`$Sel
         # (True on !swap), $a, $b`): its sigiled dynamics go in whole, the live dynamics
@@ -2417,7 +2417,7 @@ fn ArgsFor lx, env, v, args:
         # function value is (the signature's `&Rc<dyn Fn>`): a lambda and a named function
         # are made one (`ValueArgument`)
         let bounded = match Peel (Or ps[i], TyErr):
-            TyFn CBound, ignore, ignore: True
+            TyFn CBound, ignore, ignore, prompts: True
             otherwise: False
         if toUnbounded: XRef (AsJobValue lx, env, a.value)
         else: if bounded: ValueArgument lx, env, a.value
@@ -2578,7 +2578,7 @@ fn MethodFn lx, v, span, t = match t:
     # where a `Start` is wanted is (`CtorFn`)
     OutJobFn a, rt:
         let arity = match v.scheme.ty:
-            TyFn ignore, ps, ignore2: Len ps
+            TyFn ignore, ps, ignore2, prompts: Len ps
             otherwise: 1
         let pts = match a:
             OutTuple ts: if arity == 1: [[a]] else: ts
@@ -2676,7 +2676,7 @@ fn PreludeCall lx, env, qk, args, span, t:
         nil:
             let ps = match lx.g.vals[qk]:
                 ? v: match v.scheme.ty:
-                    TyFn ignore, xs, ignore: xs
+                    TyFn ignore, xs, ignore, prompts: xs
                     otherwise: [[]]
                 nil: [[]]
             VlOwned (XCall (HelperRef variant), (Each (Range0 (Len args)), \|i| ArgumentAt lx, env, (Or ps[i], TyErr), (Or args[i], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0, origin=InSource)))).value)), t
@@ -2728,13 +2728,13 @@ fn AsJobValue lx, env, e = match e.kind:
     EHold x: AsJobValue lx, env, x
     otherwise:
         let target = match Peel (TypeAt lx, e.span):
-            TyFn ignore, ps, r: OutJobFn (RustTyOfParams lx, ps), (OutTyOf lx, r)
+            TyFn ignore, ps, r, prompts: OutJobFn (RustTyOfParams lx, ps), (OutTyOf lx, r)
             other: OutTyOf lx, other
         let a = match target:
             OutJobFn x, ignore: x
             otherwise: OutUnit
         match e.kind:
-            ELambda ?ps, body: Own (JobLambda lx, env, (Or ?ps, [[]]), body, target, a, (EntersLambda lx, e))
+            ELambda ?ps, body, prompts: Own (JobLambda lx, env, (Or ?ps, [[]]), body, target, a, (EntersLambda lx, e))
             otherwise:
                 let v = ValueOf lx, env, e
                 match ValueTy v:
@@ -2758,8 +2758,8 @@ fn NamedArgsOwned lx, env, qk, args:
     Each (Range0 (Len args)), \|i|
         let a = Or args[i], (Arg(marks="", ?name=nil, value=dummyExpr, span=Range(start=0, end=0, origin=InSource)))
         match Peel (Or ps[i], TyErr):
-            TyFn CBound, ignore, ignore: Own (ValueOf lx, env, a.value)
-            TyFn ignore, ignore, ignore: AsJobValue lx, env, a.value
+            TyFn CBound, ignore, ignore, prompts: Own (ValueOf lx, env, a.value)
+            TyFn ignore, ignore, ignore, prompts: AsJobValue lx, env, a.value
             otherwise: Own (ValueOf lx, env, a.value)
 
 # A `Start` value's arguments, owned: one whose parameter type is a `Start` is made one.
@@ -2847,7 +2847,7 @@ fn Instantiated t, params, args = match t:
         let ?hit = Fold (Range0 (Len params)), nil, \|?found, i| if (Or params[i], "") == q: args[i] else: ?found
         Or ?hit, t
     TyCon n, xs: TyCon n, (Each xs, \|x| Instantiated x, params, args)
-    TyFn c, ps, res: TyFn c, (Each ps, \|x| Instantiated x, params, args), (Instantiated res, params, args)
+    TyFn c, ps, res, prompts: TyFn c, (Each ps, \|x| Instantiated x, params, args), (Instantiated res, params, args), prompts
     TyTuple ts: TyTuple (Each ts, \|x| Instantiated x, params, args)
     TyArray e: TyArray (Instantiated e, params, args)
     TyMap k, v: TyMap (Instantiated k, params, args), (Instantiated v, params, args)
@@ -2891,7 +2891,7 @@ fn FreeReads es, outer:
 # The scopes an expression opens directly (its nested expressions open their own).
 ScopesOf: unbounded fn Expr -> [(([Text], Range))]
 fn ScopesOf e = match e.kind:
-    ELambda ?ps, body:
+    ELambda ?ps, body, prompts:
         let names = Fold (Or ?ps, [[]]), [[]], \|acc, q| Append acc, (PatternNames q)
         let inner = match body:
             LbBlock b: BlockScopes b
@@ -3124,7 +3124,7 @@ fn JobLocalFn lx, env, cs, ft, a:
         otherwise: ((acc, en))
     let count = Len first.params
     let argTys = match Peel (SubstTy lx, (TypeAt lx, first.span)):
-        TyFn ignore, ps, ignore: ps
+        TyFn ignore, ps, ignore, prompts: ps
         otherwise: [[]]
     let owned = Each (Range0 count), \|i| "p{i}"
     let pa = if count == 1: PaTyped (PaBind "p0"), a else: PaTyped (PaTuple (Each owned, \|nm| PaBind nm)), a
@@ -3141,8 +3141,8 @@ fn JobLocalFn lx, env, cs, ft, a:
 # entering it is a cycle point (D6).
 EntersLambda: fn Lx, Expr -> Bool
 fn EntersLambda lx, e = match Peel (TypeAt lx, e.span):
-    TyFn CBound, ignore, ignore: False
-    TyFn ignore, ignore, ignore: True
+    TyFn CBound, ignore, ignore, prompts: False
+    TyFn ignore, ignore, ignore, prompts: True
     otherwise: False
 
 # An environment of only the locals a closure captured (its other borrowed locals cannot
@@ -3453,7 +3453,7 @@ fn OpenCols lx, c = [[]]
 OpenTyQs: unbounded fn Lx, Ty -> [Text]
 fn OpenTyQs lx, t = match t:
     TyFlex n: if (HasKey lx.genOfQ, "'{n}") and not (HasKey lx.subst, "'{n}"): [["'{n}"]] else: [[]]
-    TyFn c, ps, res: Fold (Push ps, res), (OpenCols lx, c), \|acc, x| Append acc, (OpenTyQs lx, x)
+    TyFn c, ps, res, prompts: Fold (Push ps, res), (OpenCols lx, c), \|acc, x| Append acc, (OpenTyQs lx, x)
     TyCon ignore, args: Fold args, [[]], \|acc, x| Append acc, (OpenTyQs lx, x)
     TyTuple ts: Fold ts, [[]], \|acc, x| Append acc, (OpenTyQs lx, x)
     TyArray e: OpenTyQs lx, e

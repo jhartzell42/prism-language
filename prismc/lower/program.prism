@@ -178,7 +178,7 @@ fn ?ValuedTypes lx, v, calleeSpan, args:
     if (Len rigids) == 0: ? [[]]
     else:
         let ptys = match v.scheme.ty:
-            TyFn ignore, ps, ignore: ps
+            TyFn ignore, ps, ignore, prompts: ps
             otherwise: [[]]
         let fromArguments = Fold (Range0 (Len ptys)), {{}}, \|m, i| match args[i]:
             ? a: Or (?ParamInstance (Or ptys[i], TyErr), (TypeAt lx, a.value.span), m), m
@@ -314,7 +314,7 @@ fn InstanceUses lx = Fold lx.g.defs, [[]], \|acc, d|
         ECall c, args, ignore, ignore: match lx.g.vals[CalleeKey lxd, c]:
             ? v if (Len (RigidsIn v.scheme.ty)) > 0 and v.sort != "method":
                 let ptys = match v.scheme.ty:
-                    TyFn ignore, ps, ignore: ps
+                    TyFn ignore, ps, ignore, prompts: ps
                     otherwise: [[]]
                 let fromArguments = Fold (Range0 (Len ptys)), {{}}, \|m, i| match args[i]:
                     ? a: Or (?ParamInstance (Or ptys[i], TyErr), (TypeAt lxd, a.value.span), m), m
@@ -509,7 +509,7 @@ fn Embeds small, large:
 PartsOfType: fn Ty -> [Ty]
 fn PartsOfType t = match t:
     TyCon ignore, args: args
-    TyFn ignore, ps, r: Push ps, r
+    TyFn ignore, ps, r, prompts: Push ps, r
     TyTuple ts: ts
     TyArray e: [[e]]
     TyMap k, v: [[k, v]]
@@ -524,7 +524,7 @@ fn PartsOfType t = match t:
 TypeFormer: fn Ty -> Ty
 fn TypeFormer t = match t:
     TyCon n, args: TyCon n, (Each args, \|ignore| TyErr)
-    TyFn c, ps, ignore: TyFn c, (Each ps, \|ignore2| TyErr), TyErr
+    TyFn c, ps, ignore, prompts: TyFn c, (Each ps, \|ignore2| TyErr), TyErr, prompts
     TyTuple ts: TyTuple (Each ts, \|ignore| TyErr)
     TyArray ignore: TyArray TyErr
     TyMap ignore, ignore2: TyMap TyErr, TyErr
@@ -692,7 +692,7 @@ fn StatementLets stmts = Fold stmts, [[]], \|acc, s| match s.kind:
 # The blocks one expression holds itself (not those of the expressions inside it).
 BlocksHeld: fn Expr -> [Block]
 fn BlocksHeld e = match e.kind:
-    ELambda ignore, (LbBlock b): [[b]]
+    ELambda ignore, (LbBlock b), prompts: [[b]]
     EIf ignore, yes, (? no): [[yes, no]]
     EIf ignore, yes, nil: [[yes]]
     EMatch ignore, arms: Each arms, \|a| a.body
@@ -720,8 +720,8 @@ fn ValueWidgetsIn lx, e = match e.kind:
     # a method call is the call of its function with the receiver first, as the checker
     # and the lowering read it (`Application`)
     EMethod r, m, args: ValueWidgetsIn lx, (Expr(kind=(ECall (Expr(kind=(EName m), span=m.span)), (Append [[Arg(marks="", ?name=nil, value=r, span=r.span)]], args), False, False), span=e.span))
-    ELambda ignore, (LbExpr x): ValueWidgetsAt lx, x
-    ELambda ignore, (LbBlock b): ValueWidgetsOfBlock lx, b
+    ELambda ignore, (LbExpr x), prompts: ValueWidgetsAt lx, x
+    ELambda ignore, (LbBlock b), prompts: ValueWidgetsOfBlock lx, b
     EFreeSigil "?", x: ValueWidgetsAt lx, x
     ETuple xs: Fold xs, [[]], \|acc, x| Append acc, (ValueWidgetsAt lx, x)
     EArray xs: Fold xs, [[]], \|acc, x| Append acc, (ValueWidgetsAt lx, x)
@@ -832,7 +832,7 @@ fn ?ValuedCases lx, qk, types, stem = match lx.g.vals[qk]:
         let lxv = AtInstance (InModuleAt lx, declared.file, declared.home, declared.home), ((types, [[]]))
         let v = ValInfoAt lxv, declared
         let ptys = match v.scheme.ty:
-            TyFn ignore, ps, ignore: ps
+            TyFn ignore, ps, ignore, prompts: ps
             otherwise: [[]]
         # any result: nothing, a plain value, an event (the row fires a port,
         # `ValuedEventResult`), a dynamic or a bundle (the row's one value, its events
@@ -916,7 +916,7 @@ fn PureWidgetFn lx, qk, seen:
         # a supplier's shape: it answers an element it is given, `fn .., Element c o, .. -> @o`
         let isWidget = match lx.g.vals[qk]:
             ? v: match v.scheme.ty:
-                TyFn ignore, ps, (TyAt o, ignore): Fold ps, False, \|found, p| found or match p:
+                TyFn ignore, ps, (TyAt o, ignore), prompts: Fold ps, False, \|found, p| found or match p:
                     TyElem ignore, po: po == o
                     otherwise: False
                 otherwise: False
@@ -964,7 +964,7 @@ ProgDefOf: unbounded fn Lx, Text -> ProgDef
 fn ProgDefOf lx, qk:
     let v = ValOf lx, qk
     let ptys = match v.scheme.ty:
-        TyFn ignore, ps, ignore: ps
+        TyFn ignore, ps, ignore, prompts: ps
         otherwise: [[]]
     let lxm = InModuleAt lx, v.file, v.home, "\u{0}main"
     let params = Each (Range0 (Len ptys)), \|i| (("arg{i}", (OutTyOf lxm, (Peel (Or ptys[i], TyErr)))))
@@ -1016,8 +1016,8 @@ fn InPrelude lx, q = match lx.g.vals[q]:
 IsColorPoly: fn Lx, Text -> Bool
 fn IsColorPoly lx, q = match lx.g.vals[q]:
     ? v: match v.scheme.ty:
-        TyFn (CQ ignore), ignore, ignore: True
-        TyFn (CRigid ignore), ignore, ignore: True
+        TyFn (CQ ignore), ignore, ignore, prompts: True
+        TyFn (CRigid ignore), ignore, ignore, prompts: True
         otherwise: False
     nil: False
 
@@ -1030,14 +1030,14 @@ fn EntersAtOnce lx, q, args = (IsColorPoly lx, q) and not (Fold args, False, \|s
 
 IsUnboundedArg: fn Lx, Arg -> Bool
 fn IsUnboundedArg lx, a = match Peel (TypeAt lx, a.value.span):
-    TyFn CUnbound, ignore, ignore: True
+    TyFn CUnbound, ignore, ignore, prompts: True
     otherwise: False
 
 IsUnbounded: fn Lx, Text -> Bool
 fn IsUnbounded lx, q = match lx.g.vals[q]:
     ? v: match v.scheme.ty:
-        TyFn CBound, ignore, ignore: False
-        TyFn ignore, ignore, ignore: True
+        TyFn CBound, ignore, ignore, prompts: False
+        TyFn ignore, ignore, ignore, prompts: True
         otherwise: False
     nil: False
 
@@ -1074,8 +1074,8 @@ fn TailsOfBody lx, body = Fold (BodyExprs body), [[]], \|acc, e| match e.kind:
         let q = BlueprintQk lx, c
         match lx.g.vals[q]:
             ? v: match v.scheme.ty:
-                TyFn CBound, ignore, ignore: acc
-                TyFn ignore, ignore, ignore: AddText acc, q
+                TyFn CBound, ignore, ignore, prompts: acc
+                TyFn ignore, ignore, ignore, prompts: AddText acc, q
                 otherwise: acc
             nil: acc
     otherwise: acc
@@ -1114,7 +1114,7 @@ fn DefItems lx, d, roots:
         DbFn clauses: match lx.g.vals[d.qk]:
             nil: [[]]
             ? v: match v.scheme.ty:
-                TyFn ignore, ignore, (TyAt ignore, ignore):
+                TyFn ignore, ignore, (TyAt ignore, ignore), prompts:
                     if not isRoot:
                         if IsValueWidget lx, d.qk: [[ItFn (FnDefOf lx, d.qk, clauses, v.scheme)]]
                         else: Push (ValuedRows lx, d.qk, nil), (ItNote "`{d.name}` is inlined where it is applied.")
@@ -1167,7 +1167,7 @@ fn IsAliasWidget clauses = match clauses:
 RootApplicationItems: unbounded fn Lx, Def, Scheme -> [Item]
 fn RootApplicationItems lx, d, sc:
     let ((ptys, result)) = match sc.ty:
-        TyFn ignore, ps, r: ((ps, r))
+        TyFn ignore, ps, r, prompts: ((ps, r))
         other: (([[]], other))
     let At = \|i| Range(start=i, end=i, origin=MadeBy RootApplication)
     let ParameterSpan = \|i| At (3 + 2 * i)
@@ -1262,7 +1262,7 @@ fn KeyedIn lx, known, t, inKey = match t:
 # as podable, so cycles end).
 TyPodable: unbounded fn Lx, Ty, [Text] -> Bool
 fn TyPodable lx, t, seen = match t:
-    TyFn ignore, ignore, ignore: False
+    TyFn ignore, ignore, ignore, prompts: False
     TyAt ignore, ignore: False
     TySig "!", ignore: False
     TySig "$", ignore: False
@@ -1292,7 +1292,7 @@ fn TyPodable lx, t, seen = match t:
 # (pick ST).
 TyHasEq: unbounded fn Lx, Ty, [Text] -> Bool
 fn TyHasEq lx, t, seen = match t:
-    TyFn ignore, ignore, ignore: False
+    TyFn ignore, ignore, ignore, prompts: False
     TyAt ignore, ignore: False
     TySig "!", ignore: False
     TySig "$", ignore: False

@@ -262,7 +262,7 @@ fn NoteChoice st, file, span, cls, ch:
 # trees may return the bigger one).
 NoteSizeTy: fn St, Range, Ty -> St
 fn NoteSizeTy st, span, t = match t:
-    TyFn ignore, ps, ignore: match ps[0]:
+    TyFn ignore, ps, ignore, prompts: match ps[0]:
         ? p: update st:
             &_.sizeTys <= Insert &_.sizeTys, "{st.file}:{span.start}:{span.end}", p
         nil: st
@@ -331,7 +331,7 @@ fn ResolveTy st, t = ResolveIn st, (Zonk st, t)
 ResolveIn: unbounded fn St, Ty -> Ty
 fn ResolveIn st, t = match t:
     TyCon n, args: TyCon n, (Each args, \|a| ResolveIn st, a)
-    TyFn c, ps, res: TyFn (ResolveCol st, c), (Each ps, \|p| ResolveIn st, p), (ResolveIn st, res)
+    TyFn c, ps, res, prompts: TyFn (ResolveCol st, c), (Each ps, \|p| ResolveIn st, p), (ResolveIn st, res), prompts
     TyTuple ts: TyTuple (Each ts, \|a| ResolveIn st, a)
     TyArray e: TyArray (ResolveIn st, e)
     TyMap k, v: TyMap (ResolveIn st, k), (ResolveIn st, v)
@@ -417,7 +417,7 @@ fn ?AssocRowAt st, tr, n, h = match h:
 Zonk: unbounded fn St, Ty -> Ty
 fn Zonk st, t = match NormAssoc st, (Walk st, t):
     TyCon n, args: TyCon n, (Each args, \|a| Zonk st, a)
-    TyFn c, ps, res: TyFn (WalkCol st, c), (Each ps, \|p| Zonk st, p), (Zonk st, res)
+    TyFn c, ps, res, prompts: TyFn (WalkCol st, c), (Each ps, \|p| Zonk st, p), (Zonk st, res), prompts
     TyTuple ts: TyTuple (Each ts, \|a| Zonk st, a)
     TyArray e: TyArray (Zonk st, e)
     TyMap k, v: TyMap (Zonk st, k), (Zonk st, v)
@@ -438,7 +438,7 @@ FreeVarsInto: unbounded fn St, [Nat], Ty -> [Nat]
 fn FreeVarsInto st, acc, t = match Walk st, t:
     TyFlex n: AddNat acc, n
     TyCon ignore, args: Fold args, acc, \|a, x| FreeVarsInto st, a, x
-    TyFn ignore, ps, res: FreeVarsInto st, (Fold ps, acc, \|a, x| FreeVarsInto st, a, x), res
+    TyFn ignore, ps, res, prompts: FreeVarsInto st, (Fold ps, acc, \|a, x| FreeVarsInto st, a, x), res
     TyTuple ts: Fold ts, acc, \|a, x| FreeVarsInto st, a, x
     TyArray e: FreeVarsInto st, acc, e
     TyMap k, v: FreeVarsInto st, (FreeVarsInto st, acc, k), v

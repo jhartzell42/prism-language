@@ -106,7 +106,7 @@ fn ConvertAlias g, st, info, d = match d.kind:
 NamesAlias: unbounded fn G, Ty -> Bool
 fn NamesAlias g, t = match t:
     TyCon n, args: (IsAliasBody (Or g.types[n], dummyTyInfo).body) or (AnyNamesAlias g, args)
-    TyFn ignore, ps, r: (AnyNamesAlias g, ps) or (NamesAlias g, r)
+    TyFn ignore, ps, r, prompts: (AnyNamesAlias g, ps) or (NamesAlias g, r)
     TyTuple ts: AnyNamesAlias g, ts
     TyArray e: NamesAlias g, e
     TyMap k, v: (NamesAlias g, k) or (NamesAlias g, v)
@@ -377,7 +377,7 @@ fn Insert2 xs, i, x = Append (Push (Take xs, i), x), (Drop xs, i + 1)
 # given back (Jimmy's ruling on map entries).
 LensCheck: fn St, Src, Text, Type, Range -> St
 fn LensCheck st, src, name, t, span = match t.kind:
-    TFn ignore, ps, res:
+    TFn ignore, ps, res, prompts:
         let refs = Filter ps, \|p| (IsRefType p) or IsEntryType p
         if (Len refs) > 1: ErrFix st, "lens-arity", span, "a lens takes one reference", "take the second part as a plain value"
         else: if (Len refs) == 0:
@@ -413,7 +413,7 @@ fn IsLensText name:
 # off its parameters and its result.
 LensPlain: fn Type -> Type
 fn LensPlain t = match t.kind:
-    TFn color, ps, res: Type(kind=(TFn color, (Each ps, WithoutRef), (WithoutRef res)), span=t.span)
+    TFn color, ps, res, prompts: Type(kind=(TFn color, (Each ps, WithoutRef), (WithoutRef res), prompts), span=t.span)
     otherwise: t
 
 WithoutRef: fn Type -> Type
@@ -431,7 +431,7 @@ fn WithoutRef t = match t.kind:
 # outermost mark of what it returns.
 CheckMarkFunction: unbounded fn St, Text, Ty, Range -> St
 fn CheckMarkFunction st, name, t, span = match t:
-    TyFn ignore, ignore, res:
+    TyFn ignore, ignore, res, prompts:
         let want = HeadSigil st, res
         let marks = MarksOf name
         let shown = Head marks

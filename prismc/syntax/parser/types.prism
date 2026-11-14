@@ -41,13 +41,44 @@ fn ParseType p:
     let ((color, p1)) = if AtKw p, "unbounded": ((Unbounded, (Adv p))) else: if colorVar: ColorVarOf p else: ((Bounded, p))
     if AtKw p1, "fn":
         let p2 = Adv p1
-        let ((params, p3)) = if AtOp p2, "->": (([[]], p2)) else: Commas p2, ParseEmitType
+        let ((marked, p3)) = if AtOp p2, "->": (([[]], p2)) else: Commas p2, ParseParamType
         let ((result, p4)) = ParseType (ExpectOp p3, "->")
-        ((Type(kind=(TFn color, params, result), span=(To start, result.span)), p4))
+        let params = Each marked, \|((ignore, t))| t
+        let prompts = Each marked, \|((m, ignore))| m
+        ((Type(kind=(TFn color, params, result, prompts), span=(To start, result.span)), p4))
     else: if color != Bounded: ((noType, (ErrorHere p1, "a color (`unbounded`, or a color variable) is written before a function type's `fn`")))
     else:
         let ((t, q)) = ParseEmitType p1
         if AtOp q, "->": ((t, (ErrorAt q, (Here q), "a function type begins with `fn`: `fn A -> B`"))) else: ((t, q))
+
+# A function type's parameter, `prompt` before it where the result can change or fire in
+# the tick the argument does (ruling PT). `prompt` is a keyword only here and before a
+# lambda's parameter: a plain lower name `prompt` followed by what begins a type.
+ParseParamType: unbounded fn Ps -> ((((Bool, Type)), Ps))
+fn ParseParamType p:
+    if IsPromptMark p:
+        let ((t, q)) = ParseEmitType (Adv p)
+        ((((True, t)), q))
+    else:
+        let ((t, q)) = ParseEmitType p
+        ((((False, t)), q))
+
+# Whether the parser stands at a `prompt` mark: the name `prompt`, then what begins a type
+# (a type variable named `prompt` is followed by a comma, an arrow or a bracket instead).
+IsPromptMark: fn Ps -> Bool
+fn IsPromptMark p = (IsPromptName (Kind p)) and StartsType (KindAt p, 1)
+
+StartsType: fn TokKind -> Bool
+fn StartsType (KName ignore) = True
+fn StartsType (KFamily ignore) = True
+fn StartsType (KFree ignore) = True
+fn StartsType (KOpen ignore, ignore2) = True
+fn StartsType (KKw ignore, ignore2) = True
+fn StartsType ignore = False
+
+IsPromptName: fn TokKind -> Bool
+fn IsPromptName (KName n) = n.sigils == "" and (Len n.path) == 1 and (Or n.path[0], "") == "prompt"
+fn IsPromptName ignore = False
 
 IsPlainLowerOne: fn TokKind -> Bool
 fn IsPlainLowerOne (KName n) = n.sigils == "" and n.case == CaseLower and (Len n.path) == 1

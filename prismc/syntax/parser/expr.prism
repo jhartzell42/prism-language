@@ -636,19 +636,40 @@ ParseLambda: unbounded fn Ps -> ((Expr, Ps))
 fn ParseLambda p0:
     let start = Here p0
     let p = Adv p0
-    let ((?params, p1)) = if (Kind p) == (KLambdaBar True): LambdaParams (Adv p) else: ((nil, p))
+    let ((?marked, p1)) = if (Kind p) == (KLambdaBar True): LambdaParams (Adv p) else: ((nil, p))
+    let ?params = match ?marked:
+        ? ms: ? (Each ms, \|((ignore, pattern))| pattern)
+        nil: nil
+    let prompts = Each (Or ?marked, [[]]), \|((m, ignore))| m
     if AtOpenL p1:
         let ((block, q)) = ParseIndentedBlock p1
-        ((Expr(kind=(ELambda ?params, (LbBlock block)), span=(To start, block.span)), q))
+        ((Expr(kind=(ELambda ?params, (LbBlock block), prompts), span=(To start, block.span)), q))
     else:
         let ((body, q)) = ParseExpr p1
-        ((Expr(kind=(ELambda ?params, (LbExpr body)), span=(To start, body.span)), q))
+        ((Expr(kind=(ELambda ?params, (LbExpr body), prompts), span=(To start, body.span)), q))
 
-LambdaParams: unbounded fn Ps -> ((?[Pattern], Ps))
+LambdaParams: unbounded fn Ps -> ((?[((Bool, Pattern))], Ps))
 fn LambdaParams p:
-    let ((ps, p1)) = if (Kind p) == (KLambdaBar False): (([[]], p)) else: Commas p, \|q| ParsePattern q, False
+    let ((ps, p1)) = if (Kind p) == (KLambdaBar False): (([[]], p)) else: Commas p, LambdaParam
     if (Kind p1) == (KLambdaBar False): ((? ps, (Adv p1)))
     else: ((nil, (ErrorHere p1, "expected `|` to close the lambda's parameters")))
+
+# A lambda's parameter, `prompt` before it where the lambda's result can change or fire in
+# the tick that argument does (ruling PT): the name `prompt` followed by a pattern.
+LambdaParam: unbounded fn Ps -> ((((Bool, Pattern)), Ps))
+fn LambdaParam p:
+    if (IsPromptName (Kind p)) and StartsPattern (KindAt p, 1):
+        let ((pattern, q)) = ParsePattern (Adv p), False
+        ((((True, pattern)), q))
+    else:
+        let ((pattern, q)) = ParsePattern p, False
+        ((((False, pattern)), q))
+
+StartsPattern: fn TokKind -> Bool
+fn StartsPattern (KName ignore) = True
+fn StartsPattern (KFree ignore) = True
+fn StartsPattern (KOpen ignore, ignore2) = True
+fn StartsPattern ignore = False
 
 # A condition, or `pattern <- e` with an optional guard.
 ParseCond: unbounded fn Ps, Bool -> ((Cond, Ps))

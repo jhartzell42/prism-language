@@ -63,7 +63,7 @@ fn InferArray env, st, es, span:
 # they promise, and says so, since the array's entries are then the `[a]`.
 CheckEntry: unbounded fn Env, St, Expr, Ty -> ((St, Bool))
 fn CheckEntry env, st, e, expected = match e.kind:
-    ELambda ignore, ignore: (((Check env, st, e, expected), False))
+    ELambda ignore, ignore, prompts: (((Check env, st, e, expected), False))
     EMatch ignore, ignore: (((Check env, st, e, expected), False))
     EIf ignore, ignore, ignore: (((Check env, st, e, expected), False))
     EAny ignore: (((Check env, st, e, expected), False))
@@ -116,8 +116,8 @@ fn InferBinary env, st, op, lhs, rhs, span:
 # (doubt QD).
 QuotientOf: unbounded fn St, Ty -> Ty
 fn QuotientOf st, t = match Walk st, t:
-    TyFn c, ps, ignore: match ps[0]:
-        ? p: TyFn c, ps, (TyAssoc quotientTrait, "Quotient", p, [[]])
+    TyFn c, ps, ignore, prompts: match ps[0]:
+        ? p: TyFn c, ps, (TyAssoc quotientTrait, "Quotient", p, [[]]), prompts
         nil: t
     other: other
 
@@ -125,7 +125,7 @@ fn QuotientOf st, t = match Walk st, t:
 # `Nat` refuses with `nat-minus`.
 SubWant: unbounded fn St, Ty, Range -> St
 fn SubWant st, t, span = match Walk st, t:
-    TyFn ignore, ps, ignore: match ps[0]:
+    TyFn ignore, ps, ignore, prompts: match ps[0]:
         ? p: AddWant st, "Prelude.Sub", p, span
         nil: st
     otherwise: st

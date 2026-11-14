@@ -50,7 +50,7 @@ NodeDefOf: unbounded fn Lx, Text, [Pattern], Block, Scheme, Bool -> NodeDef
 fn NodeDefOf lx, qk, params, body, sc, isRoot:
     let name = NodeName qk
     let ptys = match sc.ty:
-        TyFn ignore, ps, ignore: ps
+        TyFn ignore, ps, ignore, prompts: ps
         otherwise: [[]]
     let wx0 = NewWx lx, name, [[]], [[]], [[]], [[]], {{}}, nodeHooks, [[]], nil
     let ((ps, wx1, benv, menv)) = Fold (Range0 (Len params)), (([[]], wx0, emptyEnv, emptyEnv)), \|((acc, w, be, me)), i|
@@ -593,7 +593,7 @@ fn IsLateExpr lx, menv, e, depth = match e.kind:
 IsRecursingCall: unbounded fn Lx, Text, ValInfo, Expr -> Bool
 fn IsRecursingCall lx, q, v, e:
     let ptys = match v.scheme.ty:
-        TyFn ignore, ps, ignore: ps
+        TyFn ignore, ps, ignore, prompts: ps
         otherwise: [[]]
     (HasText lx.recursing, q) and (IsPlainResult lx, e) and (not (IsBundle (LineOutFull lx, e))) and (Len (RigidsIn v.scheme.ty)) == 0 and Fold ptys, True, \|ok, pt| ok and (LayerOf pt) == LyPlain and not (IsWidgetFnTy pt)
 
@@ -603,7 +603,7 @@ CalleeWidgetEnv: unbounded fn Lx, Env, Text, ValInfo, [Arg] -> Env
 fn CalleeWidgetEnv lx, menv, qk, v, args:
     let lxc = InModuleAt lx, v.file, v.home, lx.site
     let ptys = match v.scheme.ty:
-        TyFn ignore, ps, ignore: ps
+        TyFn ignore, ps, ignore, prompts: ps
         otherwise: [[]]
     match ClausesOf lx.g, qk:
         [[c]]: Fold (Range0 (Len c.params)), emptyEnv, \|en, i| match ((c.params[i], ptys[i], args[i])):

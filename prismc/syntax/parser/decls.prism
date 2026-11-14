@@ -525,6 +525,6 @@ fn Applies ty, params = match ty.kind:
     TRowUnion ts: AnyApplies ts, params
     TFamily ignore, ts: AnyApplies ts, params
     TMap k, v: (Applies k, params) or (Applies v, params)
-    TFn ignore, ps, result: (AnyApplies ps, params) or (Applies result, params)
+    TFn ignore, ps, result, prompts: (AnyApplies ps, params) or (Applies result, params)
     TEmit t, r: (Applies t, params) or (Applies r, params)
     otherwise: False

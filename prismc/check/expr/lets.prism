@@ -448,7 +448,7 @@ fn ClausesLambda env, st, name, clauses, span:
         &_.color <= outerColor
         &_.colorWhy <= outerWhy
         &_.colorFlex <= outerFlex
-    let t = TyFn lcol, params, res
+    let t = TyFn lcol, params, res, [[]]
     ((t, (NoteTy (NoteFn st9, span, "lambda", lcol, lcol), span, t)))
 
 # One clause as a lambda.
@@ -457,7 +457,7 @@ fn ClauseLambda env, st, f:
     let body = match f.body:
         BodyExpr e: LbExpr e
         BodyBlock b: LbBlock b
-    InferLambda env, st, (Expr(kind=(ELambda (? f.params), body), span=f.span)), nil
+    InferLambda env, st, (Expr(kind=(ELambda (? f.params), body, [[]]), span=f.span)), nil
 
 # ---------------------------------------------------------------------------------------
 # Function clauses under a signature
@@ -475,7 +475,7 @@ fn CheckClauses env, st, name, clauses, sc, span:
         &_.mark <= Head (MarksOf name)
         &_.defName <= name
     match t:
-        TyFn col, params, res:
+        TyFn col, params, res, prompts:
             let outerColor = st.color
             let outerFlex = st.colorFlex
             let st0 = update st:

@@ -61,14 +61,14 @@ fn ConvType cx, st, t = match t.kind:
         let ((kk, st2)) = ConvType cx, st, k
         let ((vv, st3)) = ConvType cx, st2, v
         (((TyMap kk, vv), st3))
-    TFn color, ps, res:
+    TFn color, ps, res, prompts:
         let ((xs, st2)) = ConvTypes cx, st, ps
         let ((r, st3)) = ConvType cx, st2, res
         let c = match color:
             Bounded: cx.unwritten
             Unbounded: CUnbound
             ColorVar v: if v.name == "bounded": CBound else: CQ v.name
-        (((TyFn c, xs, r), st3))
+        (((TyFn c, xs, r, prompts), st3))
     TEmit ty, rowT:
         let ((rw, st2)) = ConvRow cx, st, rowT
         let inner = update cx:
@@ -442,9 +442,9 @@ SigType: unbounded fn Cx, St, Type, [Text] -> ((Ty, [Text], [((Text, Text))], St
 fn SigType cx, st, t, written = match t.kind:
     TGroup x: SigType cx, st, x, written
     TForall ignore, ignore2, body: SigType cx, st, body, written
-    TFn color, ps, res:
+    TFn color, ps, res, prompts:
         if (MentionsTime t) or not (TakesClosure t): BoundedSig cx, st, t
-        else: ClosureSig cx, st, color, ps, res, written
+        else: ClosureSig cx, st, color, ps, res, prompts, written
     otherwise: BoundedSig cx, st, t
 
 BoundedSig: unbounded fn Cx, St, Type -> ((Ty, [Text], [((Text, Text))], St))
@@ -452,8 +452,8 @@ fn BoundedSig cx, st, t:
     let ((ty, st2)) = ConvType cx, st, t
     ((ty, [[]], [[]], st2))
 
-ClosureSig: unbounded fn Cx, St, Color, [Type], Type, [Text] -> ((Ty, [Text], [((Text, Text))], St))
-fn ClosureSig cx, st, color, ps, res, written:
+ClosureSig: unbounded fn Cx, St, Color, [Type], Type, [Bool], [Text] -> ((Ty, [Text], [((Text, Text))], St))
+fn ClosureSig cx, st, color, ps, res, prompts, written:
     let ((outerSet, outerW)) = WrittenCol color
     let boundedOuter = outerSet and outerW == CBound
     let nDefault = Len (Filter ps, \|p| (IsFnType p) and not (WritesCol (TopColor p)))
@@ -489,7 +489,7 @@ fn ClosureSig cx, st, color, ps, res, written:
         (((Push acc, y), s2))
     let ((r, st3)) = ConvType cxOuter, st2, res
     let added = if outerName == "": names else: Push names, outerName
-    (((TyFn outer, xs, r), added, joins, st3))
+    (((TyFn outer, xs, r, prompts), added, joins, st3))
 
 # The color a function type writes, and whether it writes one (`bounded` is bounded).
 WrittenCol: fn Color -> ((Bool, Col))
@@ -508,7 +508,7 @@ fn WritesCol ignore = True
 # A function type's color, through parentheses (`Bounded` for a type that is not one).
 TopColor: unbounded fn Type -> Color
 fn TopColor t = match t.kind:
-    TFn c, ignore, ignore: c
+    TFn c, ignore, ignore, prompts: c
     TGroup x: TopColor x
     otherwise: Bounded
 
@@ -572,18 +572,18 @@ fn MentionsTime t = match t.kind:
     TTuple ts: Fold ts, False, \|seen, a| seen or MentionsTime a
     TGroup x: MentionsTime x
     TMap k, v: (MentionsTime k) or MentionsTime v
-    TFn ignore, ps, res: (Fold ps, False, \|seen, a| seen or MentionsTime a) or MentionsTime res
+    TFn ignore, ps, res, prompts: (Fold ps, False, \|seen, a| seen or MentionsTime a) or MentionsTime res
     TEmit ty, ignore: True
     otherwise: False
 
 TakesClosure: unbounded fn Type -> Bool
 fn TakesClosure t = match t.kind:
-    TFn ignore, ps, ignore: Fold ps, False, \|seen, p| seen or IsFnType p
+    TFn ignore, ps, ignore, prompts: Fold ps, False, \|seen, p| seen or IsFnType p
     otherwise: False
 
 IsFnType: unbounded fn Type -> Bool
 fn IsFnType t = match t.kind:
-    TFn ignore, ignore, ignore: True
+    TFn ignore, ignore, ignore, prompts: True
     TGroup x: IsFnType x
     otherwise: False
 
@@ -600,7 +600,7 @@ fn UsesScope t = match t.kind:
     TTuple ts: Fold ts, False, \|seen, a| seen or UsesScope a
     TGroup x: UsesScope x
     TMap k, v: (UsesScope k) or UsesScope v
-    TFn ignore, ps, res: (Fold ps, False, \|seen, a| seen or UsesScope a) or UsesScope res
+    TFn ignore, ps, res, prompts: (Fold ps, False, \|seen, a| seen or UsesScope a) or UsesScope res
     TEmit ty, rowT: UsesScope rowT
     otherwise: False
 
@@ -617,7 +617,7 @@ fn RowVarsOfType t = match t.kind:
     TTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (RowVarsOfType a)
     TGroup x: RowVarsOfType x
     TMap k, v: UnionTexts (RowVarsOfType k), (RowVarsOfType v)
-    TFn ignore, ps, res: Fold ps, (RowVarsOfType res), \|acc, a| UnionTexts acc, (RowVarsOfType a)
+    TFn ignore, ps, res, prompts: Fold ps, (RowVarsOfType res), \|acc, a| UnionTexts acc, (RowVarsOfType a)
     TEmit ty, rowT: UnionTexts (RowVarsOfType ty), (RowNamesIn rowT)
     otherwise: [[]]
 
@@ -657,7 +657,7 @@ fn TypeVarsInto acc, t = match t.kind:
     TTuple ts: Fold ts, acc, \|a, x| TypeVarsInto a, x
     TGroup x: TypeVarsInto acc, x
     TMap k, v: TypeVarsInto (TypeVarsInto acc, k), v
-    TFn ignore, ps, res: TypeVarsInto (Fold ps, acc, \|a, x| TypeVarsInto a, x), res
+    TFn ignore, ps, res, prompts: TypeVarsInto (Fold ps, acc, \|a, x| TypeVarsInto a, x), res
     TEmit ty, rowT: Fold (IndexTypes rowT), (TypeVarsInto acc, ty), \|a, x| TypeVarsInto a, x
     TNonEmpty x: TypeVarsInto acc, x
     # a `forall` inside a type binds its variables there (Jimmy's ruling FA)
@@ -680,7 +680,7 @@ fn TypeVarPlaces acc, t = match t.kind:
     TTuple ts: Fold ts, acc, \|a, x| TypeVarPlaces a, x
     TGroup x: TypeVarPlaces acc, x
     TMap k, v: TypeVarPlaces (TypeVarPlaces acc, k), v
-    TFn ignore, ps, res: TypeVarPlaces (Fold ps, acc, \|a, x| TypeVarPlaces a, x), res
+    TFn ignore, ps, res, prompts: TypeVarPlaces (Fold ps, acc, \|a, x| TypeVarPlaces a, x), res
     TEmit ty, rowT: Fold (IndexTypes rowT), (TypeVarPlaces acc, ty), \|a, x| TypeVarPlaces a, x
     TNonEmpty x: TypeVarPlaces acc, x
     # a `forall`'s variables are the signature's own (Jimmy's ruling FA)
@@ -689,10 +689,10 @@ fn TypeVarPlaces acc, t = match t.kind:
 
 ColorVarsOfType: unbounded fn Type -> [Text]
 fn ColorVarsOfType t = match t.kind:
-    TFn (ColorVar v), ps, res:
+    TFn (ColorVar v), ps, res, prompts:
         let inner = Fold ps, (ColorVarsOfType res), \|acc, a| UnionTexts acc, (ColorVarsOfType a)
         if v.name == "bounded": inner else: AddText inner, v.name
-    TFn ignore, ps, res: Fold ps, (ColorVarsOfType res), \|acc, a| UnionTexts acc, (ColorVarsOfType a)
+    TFn ignore, ps, res, prompts: Fold ps, (ColorVarsOfType res), \|acc, a| UnionTexts acc, (ColorVarsOfType a)
     TName ignore, args: Fold args, [[]], \|acc, a| UnionTexts acc, (ColorVarsOfType a)
     TSigiled ignore, i: ColorVarsOfType i
     TArray e, ignore: ColorVarsOfType e

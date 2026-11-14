@@ -146,7 +146,9 @@ type TypeKind = choice:
     TTuple [Type]
     TGroup Type
     TMap Type, Type
-    TFn Color, [Type], Type
+    # a function type: its color, its parameters, its result, and for each parameter
+    # whether it is written `prompt` (ruling PT)
+    TFn Color, [Type], Type, [Bool]
     TEmit Type, Type
     TRowUnion [Type]
     # `Seat.* Count Raiser`: a family and the indices it is applied to (Jimmy's ruling AF)
@@ -288,7 +290,9 @@ type ExprKind = choice:
     ENonEmpty Expr
     EAbsent
     ERest
-    ELambda ?[Pattern], LambdaBody
+    # a lambda: its parameters (none written for `\body`), its body, and for each parameter
+    # whether it is written `prompt` (ruling PT)
+    ELambda ?[Pattern], LambdaBody, [Bool]
     EIf Cond, Block, ?Block
     EMatch Expr, [Arm]
     ERebuild Expr, Block

@@ -282,7 +282,7 @@ fn ReadIsPrompt env, st, n, layer = match env.locals[n]:
         if layer == "!": h == "!" or h == "@"
         else: if layer == "$": h == "$" or h == "!"
         else: match Walk st, sc.ty:
-            TyFn ignore, ignore, ignore: False
+            TyFn ignore, ignore, ignore, prompts: False
             otherwise: (IsLowerText (DropPrefix n, (MarksOf n))) and h == ""
     nil: False
 
@@ -328,7 +328,7 @@ fn LamLetRels s, m = match s.kind:
 
 ?LambdaOf: fn Expr -> ?Expr
 fn ?LambdaOf e = match e.kind:
-    ELambda ignore, ignore: ? e
+    ELambda ignore, ignore, prompts: ? e
     EGroup x: ?LambdaOf x
     EHold x: ?LambdaOf x
     otherwise: nil
@@ -365,7 +365,7 @@ fn PromptSpots cx, e, m = Fold (PromptKids cx, e, m), [[(SpotExpr e, m)]], \|acc
 # The walk's children of an expression, less the ones that are not read promptly.
 PromptKids: unbounded fn PCx, Expr, (Text ==> Rel) -> [Kid]
 fn PromptKids cx, e, m = match e.kind:
-    ELambda ignore, ignore: [[]]
+    ELambda ignore, ignore, prompts: [[]]
     ERebuild source, body: RowKidsFrom cx, source, body, m, [[]]
     EFor ?binders, source, body: RowKidsFrom cx, source, body, m, (ForBinderNames ?binders)
     EWidgetBlock ignore: [[]]
@@ -491,7 +491,7 @@ fn ByFlags cx, e, flags, m = match e.kind:
 OpenLambdas: unbounded fn PCx, [Kid] -> [Kid]
 fn OpenLambdas cx, kids = Fold kids, [[]], \|acc, k| match k:
     KidExpr x, m: match x.kind:
-        ELambda ?ps, body: Push acc, (LambdaKid body, (Hide m, (PatternsNames (Or ?ps, [[]]))))
+        ELambda ?ps, body, prompts: Push acc, (LambdaKid body, (Hide m, (PatternsNames (Or ?ps, [[]]))))
         EName n: Append (Push acc, k), (FollowLamLet cx, (SNameKey n), m)
         otherwise: Push acc, k
     otherwise: Push acc, k
@@ -506,7 +506,7 @@ fn FollowLamLet cx, n, m = match m["lamlet:{n}"]:
         if HasKey m, "seen:{r.param}": [[]]
         else: match cx.lams[r.param]:
             ? lam: match lam.kind:
-                ELambda ?ps, body:
+                ELambda ?ps, body, prompts:
                     let seen = Fold (Keys m), cx.base, \|m2, k| if (HasPrefix k, "seen:"): Insert m2, k, noRel else: m2
                     [[(LambdaKid body, (Hide (Insert seen, "seen:{r.param}", noRel), (PatternsNames (Or ?ps, [[]]))))]]
                 otherwise: [[]]

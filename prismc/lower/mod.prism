@@ -209,7 +209,7 @@ fn SubstTyIn lx, t = match t:
     TyQ n: Or lx.subst[n], t
     TyRigid n: Or lx.subst[n], t
     TyCon n, args: TyCon n, (Each args, \|a| SubstTyIn lx, a)
-    TyFn c, ps, res: TyFn (InstCol lx, c), (Each ps, \|p| SubstTyIn lx, p), (SubstTyIn lx, res)
+    TyFn c, ps, res, prompts: TyFn (InstCol lx, c), (Each ps, \|p| SubstTyIn lx, p), (SubstTyIn lx, res), prompts
     TyTuple ts: TyTuple (Each ts, \|a| SubstTyIn lx, a)
     TyArray e: TyArray (SubstTyIn lx, e)
     TyMap k, v: TyMap (SubstTyIn lx, k), (SubstTyIn lx, v)
@@ -384,7 +384,7 @@ fn SigilOrKind name, t:
 GlobalLetter: fn G, Text -> Text
 fn GlobalLetter g, k = match g.vals[k]:
     ? v: SigilOrKind (BareName k), v.scheme.ty
-    nil: SigilOrKind (BareName k), (if IsUpperText (Head (Base (BareName k))): TyFn CBound, [[]], TyErr else: TyErr)
+    nil: SigilOrKind (BareName k), (if IsUpperText (Head (Base (BareName k))): TyFn CBound, [[]], TyErr, [[]] else: TyErr)
 
 GlobalNames: unbounded fn G -> (Text ==> Bool)
 fn GlobalNames g:
@@ -439,7 +439,7 @@ fn KindLetter t = match t:
     TySig "~", ignore: "r"
     TySig "&", i: KindLetter i
     TyAt ignore, ignore: "b"
-    TyFn ignore, ignore, ignore: "f"
+    TyFn ignore, ignore, ignore, prompts: "f"
     otherwise: "p"
 
 # A number in base 32, lowercase: `0`-`9` then `a`-`v`.

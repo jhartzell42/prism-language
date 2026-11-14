@@ -139,7 +139,7 @@ fn ClauseBase sk, d, c:
 NonEmptyParams: fn Shrink, Def, FnClause, (Text ==> Rel) -> (Text ==> Rel)
 fn NonEmptyParams sk, d, c, base = match sk.g.vals[d.qk]:
     ? v: match v.scheme.ty:
-        TyFn ignore, declared, ignore: Fold (Range0 (Len c.params)), base, \|m, i| match ((c.params[i], declared[i])):
+        TyFn ignore, declared, ignore, prompts: Fold (Range0 (Len c.params)), base, \|m, i| match ((c.params[i], declared[i])):
             ((? p, ? (TyCon "Prelude.NonEmpty", ignore))): match p.kind:
                 PName n: Insert m, "ne:{SNameKey n}", noRel
                 otherwise: m

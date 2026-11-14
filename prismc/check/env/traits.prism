@@ -191,7 +191,7 @@ fn TypeNamesIn t = match t:
     TyArray e: TypeNamesIn e
     TyMap k, v: UnionTexts (TypeNamesIn k), (TypeNamesIn v)
     TySig ignore, i: TypeNamesIn i
-    TyFn ignore, ps, r: Fold ps, (TypeNamesIn r), \|acc, a| UnionTexts acc, (TypeNamesIn a)
+    TyFn ignore, ps, r, prompts: Fold ps, (TypeNamesIn r), \|acc, a| UnionTexts acc, (TypeNamesIn a)
     otherwise: [[]]
 
 # ---------------------------------------------------------------------------------------
@@ -307,7 +307,7 @@ fn ?FirstNotPlainData parts = Fold parts, nil, \|?found, part| match ?found:
 fn ?Unprintable g, st, t = match t:
     TySig ignore, inner: ?Unprintable g, st, inner
     TyAt inner, ignore: ?Unprintable g, st, inner
-    TyFn ignore, ignore, ignore: ? ((t, ": functions do not compare or print", ""))
+    TyFn ignore, ignore, ignore, prompts: ? ((t, ": functions do not compare or print", ""))
     TyTuple parts: ?FirstUnprintable g, st, parts
     TyArray element: ?Unprintable g, st, element
     TyMap k, v: ?FirstUnprintable g, st, [[k, v]]
@@ -480,7 +480,7 @@ fn SolveOne g, st, givens, w:
             if HasText [["Eq", "Ord", "Show"]], (BareName w.cls): (([[Want(cls=w.cls, ty=c, file=w.file, span=w.span, level=w.level)]], st))
             else: SolveAtHead g, st, s0, Restore, givens, w, t
         TyAt ignore, ignore: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy st, t}`")))
-        TyFn ignore, ignore, ignore: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy st, t}`: functions do not compare or print")))
+        TyFn ignore, ignore, ignore, prompts: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy st, t}`: functions do not compare or print")))
         otherwise: SolveAtHead g, st, s0, Restore, givens, w, t
 
 SolveAtHead: unbounded fn G, St, St, (fn St -> St), [((Text, Text))], Want, Ty -> (([Want], St))
@@ -605,7 +605,7 @@ fn ?PackedRefusal g, st, method = match g.vals[method]:
         let erased = Inst(tys=(Insert {{}}, param, TyErr), rows={{}}, cols={{}})
         let noValue = "it has no parameter of the trait's type `{param}`, so there is no packed value to read a dictionary from"
         match v.scheme.ty:
-            TyFn ignore, params, result:
+            TyFn ignore, params, result, prompts:
                 let ?inside = Fold params, nil, \|?found, p| match ?found:
                     ? f: ? f
                     nil: if p != (TyQ param) and (SubstQ erased, p) != p: ? p else: nil
@@ -724,7 +724,7 @@ fn ?OnlyThroughAssoc g, st, w = match st.methodUses[UseKey w.file, w.span]:
     ? mk: match ((g.vals[mk], g.traits[w.cls])):
         ((? v, ? tr)):
             let ps = match v.scheme.ty:
-                TyFn ignore, xs, ignore2: xs
+                TyFn ignore, xs, ignore2, prompts: xs
                 other: [[other]]
             let direct = Fold ps, False, \|seen, p| seen or ParamBare p, tr.param
             let ?under = Fold ps, nil, \|?found, p| match ?found:

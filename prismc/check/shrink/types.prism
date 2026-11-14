@@ -92,7 +92,7 @@ fn ArrowyFrom names, got:
 TyNamesIn: unbounded fn Ty -> [Text]
 fn TyNamesIn t = match t:
     TyCon c, args: Fold args, [[c]], \|acc, a| UnionTexts acc, (TyNamesIn a)
-    TyFn ignore, ps, res: Fold ps, (TyNamesIn res), \|acc, a| UnionTexts acc, (TyNamesIn a)
+    TyFn ignore, ps, res, prompts: Fold ps, (TyNamesIn res), \|acc, a| UnionTexts acc, (TyNamesIn a)
     TyTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (TyNamesIn a)
     TyArray e: TyNamesIn e
     TyMap k, v: UnionTexts (TyNamesIn k), (TyNamesIn v)
@@ -106,7 +106,7 @@ fn TyNamesIn t = match t:
 
 HasArrow: unbounded fn Ty -> Bool
 fn HasArrow t = match t:
-    TyFn ignore, ignore, ignore: True
+    TyFn ignore, ignore, ignore, prompts: True
     TyCon ignore, args: Fold args, False, \|seen, a| seen or HasArrow a
     TyTuple ts: Fold ts, False, \|seen, a| seen or HasArrow a
     TyArray e: HasArrow e
@@ -143,7 +143,7 @@ fn NegWalk g, target, t, b, seen = match t:
                 else: if (Len (Keys seen)) > 400: ((True, seen))
                 else: NegWalks g, target, (Each (BodyTys ti), \|bt| SubstQ (ParamInst ti.params, args), bt), b, (Insert seen, sk, True)
             nil: NegWalks g, target, args, b, seen
-    TyFn col, ps, res:
+    TyFn col, ps, res, prompts:
         let ((bad, seen2)) = NegWalks g, target, ps, (b or col != CUnbound), seen
         if bad: ((True, seen2)) else: NegWalk g, target, res, b, seen2
     TyTuple ts: NegWalks g, target, ts, b, seen
@@ -274,7 +274,7 @@ fn TyHeads t = match t:
     TySig ignore, i: TyHeads i
     TyQ ignore: [[]]
     TyRigid ignore: [[]]
-    TyFn ignore, ignore, ignore: [[]]
+    TyFn ignore, ignore, ignore, prompts: [[]]
     TyElem ignore, ignore: [[]]
     TyElemAny ignore: [[]]
     otherwise: [["?"]]
@@ -308,6 +308,6 @@ fn ShownKey k = BareName (Or (SplitOn (Or (?Last (SplitOn k, " impl ")), k), " #
 IsUnboundedKey: fn G, Text -> Bool
 fn IsUnboundedKey g, k = match g.vals[k]:
     ? v: match v.scheme.ty:
-        TyFn CUnbound, ignore, ignore: True
+        TyFn CUnbound, ignore, ignore, prompts: True
         otherwise: False
     nil: False

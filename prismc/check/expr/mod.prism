@@ -138,7 +138,7 @@ fn InnerOf st, t = match Walk st, t:
 
 IsLambda: fn Expr -> Bool
 fn IsLambda e = match e.kind:
-    ELambda ignore, ignore: True
+    ELambda ignore, ignore, prompts: True
     ETopicField ignore: True
     ETopicIndex ignore: True
     EGroup x: IsLambda x
@@ -207,7 +207,7 @@ fn InferKind env, st, e = match e.kind:
     ENonEmpty x: InferNonEmpty env, st, x, e.span
     EAbsent: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement sparse tuples")))
     ERest: ((TyErr, st))
-    ELambda ignore, ignore: InferLambda env, st, e, nil
+    ELambda ignore, ignore, prompts: InferLambda env, st, e, nil
     EIf c, thenB, ?elseB: InferIf env, st, c, thenB, ?elseB, e.span, nil
     EMatch scrut, arms: InferMatch env, st, scrut, arms, e.span, nil
     # A `rebuild` or a `for` written as a value builds nothing where it stands: it is the
@@ -274,7 +274,7 @@ fn InferAll env, st, es = Fold es, (([[]], st)), \|((acc, s)), x|
 # else is inferred and unified.
 Check: unbounded fn Env, St, Expr, Ty -> St
 fn Check env, st, e, expected = match e.kind:
-    ELambda ignore, ignore:
+    ELambda ignore, ignore, prompts:
         let ((t, st2)) = InferLambda env, st, e, (? expected)
         Unify (NoteTy st2, e.span, t), expected, t, e.span
     EGroup x: NoteTy (Check env, st, x, expected), e.span, expected
@@ -429,7 +429,7 @@ fn CollisionAt env, st, why, name, span:
 # arguments is a function that takes them whole.
 CtorValue: unbounded fn Env, St, CtorInfo, Range -> ((Ty, St))
 fn CtorValue env, st, c, span:
-    let sc = Scheme(eqs=[[]], qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(if (Len c.args) == 0: c.ty else: TyFn CBound, c.args, c.ty))
+    let sc = Scheme(eqs=[[]], qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(if (Len c.args) == 0: c.ty else: TyFn CBound, c.args, c.ty, [[]]))
     Instantiate st, sc, span
 
 # A tag named without arguments: an element with no fields (`Process.Args`), or a fault
@@ -454,7 +454,7 @@ fn OutputConstructor env, st, name, span = match env.g.tags[name]:
     ? tg:
         let ((rw, st2)) = FreshRow st, [[tg.familyName]]
         let ((out, st3, inst)) = InstantiateWith st2, (Scheme(eqs=[[]], qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span, [[]]
-        (((TyFn CBound, [[CarriedOutput out]], (OutputType (TagRow tg, rw.tail, inst))), st3))
+        (((TyFn CBound, [[CarriedOutput out]], (OutputType (TagRow tg, rw.tail, inst)), [[]]), st3))
 
 # A tag's element row: its family, at the indices the tag's instantiation gives it
 # (`Seat.Request` with `d := Count`, `r := Raiser` is in `Seat.* Count Raiser`).

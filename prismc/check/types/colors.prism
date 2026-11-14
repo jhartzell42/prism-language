@@ -121,7 +121,7 @@ fn FreeColVars st, t = FreeColsInto st, [[]], t
 FreeColsInto: unbounded fn St, [Nat], Ty -> [Nat]
 fn FreeColsInto st, acc, t = match Walk st, t:
     TyCon ignore, args: Fold args, acc, \|a, x| FreeColsInto st, a, x
-    TyFn c, ps, res:
+    TyFn c, ps, res, prompts:
         let acc2 = match WalkCol st, c:
             CFlex n: AddNat acc, n
             otherwise: acc
