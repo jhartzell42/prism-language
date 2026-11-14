@@ -646,8 +646,18 @@ ByFlags: unbounded fn PCx, Expr, [Bool], (Text ==> Rel) -> [Kid]
 fn ByFlags cx, e, flags, m = match e.kind:
     ECall ignore, args, ignore, ignore:
         if Fold args, False, \|named, a| named or a.?name != nil: OpenLambdas cx, (ExprKids e, m)
-        else: OpenLambdas cx, (Fold (Range0 (Len args)), [[]], \|acc, i| if (Or flags[i], True): Push acc, (KidExpr (Or args[i], dummyArgP).value, m) else: acc)
+        else: Fold (Range0 (Len args)), [[]], \|acc, i| if (Or flags[i], True): Append acc, (MarkedArgKids cx, (Or args[i], dummyArgP).value, m) else: acc
     otherwise: OpenLambdas cx, (ExprKids e, m)
+
+# An argument at a parameter marked `prompt` (ruling PT, choice (a)): itself, and the body
+# of every lambda inside it, however deep (a lambda in a record, a list, a tuple), and of
+# every lambda a `let` of the block binds that it names: what a function value captures
+# is read where the value is given.
+MarkedArgKids: unbounded fn PCx, Expr, (Text ==> Rel) -> [Kid]
+fn MarkedArgKids cx, a, m = Fold (ExprsIn a), (OpenLambdas cx, [[(KidExpr a, m)]]), \|acc, x| match x.kind:
+    ELambda ?ps, body, ignore: if x.span == a.span: acc else: Push acc, (LambdaKid body, (Hide m, (PatternsNames (Or ?ps, [[]]))))
+    EName n: if x.span == a.span: acc else: Append acc, (FollowLamLet cx, (SNameKey n), m)
+    otherwise: acc
 
 # A lambda among the children read through its body, its parameters bound there; a name
 # a block's `let` binds to a lambda (`let f = \|x| x + b`, then `Apply 1, f`) read through
