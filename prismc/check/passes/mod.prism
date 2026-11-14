@@ -83,7 +83,7 @@ fn FixedCtor c = Ctor(name="fixed:{c}", arity=0, args=[[]], shown="Fixed<<{BareN
 # a fault's, a tuple's, a record's, `unit`'s, a closed row's tags. `nil` for a type no
 # finite set of constructors covers (numbers, texts, arrays, functions, open rows).
 ?CtorsOf: unbounded fn Env, St, Ty -> ?[Ctor]
-fn ?CtorsOf env, st, t = match Zonk st, t:
+fn ?CtorsOf env, st, t = match NormAssoc st, (Zonk st, t):
     TyCon "Bool", [[]]: ? [[Ctor(name="True", arity=0, args=[[]], shown="True"), Ctor(name="False", arity=0, args=[[]], shown="False")]]
     TyCon "unit", [[]]: ? [[Ctor(name="unit", arity=0, args=[[]], shown="unit")]]
     TySig "?", i: ? [[Ctor(name="?", arity=1, args=[[i]], shown="? _"), Ctor(name="nil", arity=0, args=[[]], shown="nil")]]
@@ -228,7 +228,7 @@ fn Useful env, st, rows, q, tys = match q[0]:
         match q1:
             PtCon c, args:
                 let ctor = CtorNamed env, st, t1, c, (Len args)
-                Useful env, st, (Specialize rows, ctor), (Append args, (Drop q, 1)), (Append ctor.args, rest)
+                Useful env, st, (Specialize rows, ctor), (Append args, (Drop q, 1)), (Append ctor.args, (NarrowedRest st, t1, ctor, rest))
             PtLit l: Useful env, st, (SpecializeLit rows, l), (Drop q, 1), rest
             PtFam f: match ?CtorsOf env, st, t1:
                 ? cs: Fold (Filter cs, \|c| (CtorFamily c) == f), False, \|seen, c| seen or Useful env, st, (Specialize rows, c), (Append (Wilds c.arity), (Drop q, 1)), (Append c.args, rest)
@@ -238,9 +238,22 @@ fn Useful env, st, rows, q, tys = match q[0]:
                 match ?CtorsOf env, st, t1:
                     ? cs:
                         if Complete cs, heads, rows:
-                            Fold cs, False, \|seen, c| seen or Useful env, st, (Specialize rows, c), (Append (Wilds c.arity), (Drop q, 1)), (Append c.args, rest)
+                            Fold cs, False, \|seen, c| seen or Useful env, st, (Specialize rows, c), (Append (Wilds c.arity), (Drop q, 1)), (Append c.args, (NarrowedRest st, t1, c, rest))
                         else: Useful env, st, (DefaultRows rows), (Drop q, 1), rest
                     nil: Useful env, st, (DefaultRows rows), (Drop q, 1), rest
+
+# The columns after a `Fixed s` column, under one of its variants: `s` is that variant there,
+# so a `Request (Tallied o) s` column after `Fixed<<Keeper>>` is a `KeeperRequest` (a
+# function's clauses are a `match`, and `Fixed` narrows, Semantics ch. 3, ruling OP).
+NarrowedRest: unbounded fn St, Ty, Ctor, [Ty] -> [Ty]
+fn NarrowedRest st, t, c, rest = match Walk st, t:
+    TyCon "Prelude.Fixed", [[at]]: match (((Walk st, at), (?FixedCase c))):
+        ((TyRigid v, ? k)): Each rest, \|r| SubstRigid v, (TyRole k), (Zonk st, r)
+        otherwise: rest
+    otherwise: rest
+
+?FixedCase: fn Ctor -> ?Text
+fn ?FixedCase c = if HasPrefix c.name, "fixed:": ? (DropPrefix c.name, "fixed:") else: nil
 
 CtorFamily: fn Ctor -> Text
 fn CtorFamily c = if (HasPrefix c.name, "tag:"): Dotted (Pop (SplitOn (DropPrefix c.name, "tag:"), ".")) else: ""
@@ -308,7 +321,7 @@ fn ?Witness env, st, rows, tys = match tys[0]:
                 if Complete cs, heads, rows:
                     Fold cs, nil, \|?found, c| match ?found:
                         ? f: ? f
-                        nil: match ?Witness env, st, (Specialize rows, c), (Append c.args, rest):
+                        nil: match ?Witness env, st, (Specialize rows, c), (Append c.args, (NarrowedRest st, t1, c, rest)):
                             ? w: ? (Append [[(ShowWitness c, (Take w, c.arity))]], (Drop w, c.arity))
                             nil: nil
                 else: match ?Witness env, st, (DefaultRows rows), rest:
