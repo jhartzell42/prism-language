@@ -1,0 +1,13 @@
+# `prompt-unmarked` at a function-typed parameter (Jimmy, 14 November, ruling PT, choice
+# (a)): `@Use` gives back what applying `Make` gives, in that tick, so its result is prompt
+# in `Make` and the parameter must say so. Without the mark, a caller's lambda capturing an
+# event of the caller would smuggle that event through `@Use` unseen (a soundness hole:
+# neg/prompt-cycle-through-captured-event).
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+@Use: fn (fn !Nat -> @!Nat) -> @!Nat
+fn @Use Make:
+    !made <- Make never
+    @ !made
