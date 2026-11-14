@@ -386,14 +386,14 @@ impl ^Document File:
 # A file of the World's at a path, as a file document's implementation: its contents live,
 # each tick's last replace written through. A file the World cannot read (missing, or not
 # UTF-8) reads as no bytes, so the first replace makes it.
-@OnDisk: fn Text, Guests File -> @(Supplier File) emit Fs.*
+@OnDisk: fn Text, prompt Guests File -> @(Supplier File) emit Fs.*
 fn @OnDisk path, $guests:
     $~contents <- Fs.Contents(path=path)                                   # 0: the file as it is
     !replaces <- for at, $element <- $guests:                              # 1: each place's replaces
         @Switch (!ReplacesAt at, $element)
     let !replaced = !Filter (?LastOf (Values !replaces))
     !~written <- Fs.File(path=path, !requests=(Fs.Write (TextOf !replaced)))   # 2: written through
-    @ \|at, asking| match asking:
+    @ \|at, prompt asking| match asking:
         any ((role, id, element)): match element:
             Seat.Request(..): @ (Accepted on !replaced)
             Seat.Query(..): @ ? (BytesOf $~contents)
@@ -465,11 +465,11 @@ tag Net.Channel of Element ![Message]:
 trait ^RemoteDocument d where d: ^Document, Request d _: ^SerializableValue, Reason d _: ^SerializableValue, Query d _: ^SerializableValue, Answer d _: ^SerializableValue:
     # A live copy per seat, its requests forwarded: queries lag as the wire allows, nil
     # until the first answer (chapter 9).
-    @Over: fn Address, Guests d -> @(Supplier d) emit Net.*
+    @Over: fn Address, prompt Guests d -> @(Supplier d) emit Net.*
     fn @Over address, $guests:
         !outgoing <- @Outgoing<<d>> $guests
         !arrived <- Net.Link(to=address, !sends=!outgoing)
-        @ \|path, asking| match asking:
+        @ \|path, prompt asking| match asking:
             any ((role, id, element)): match element:
                 Seat.Request(..): @ !Filter (?ResponseFrom<<d>> role, path, !arrived)
                 Seat.Query(..): @AnswerFrom<<d>> role, path, !arrived
