@@ -78,6 +78,12 @@ Written by Claude on the claude-self-hosting branch; subject to change.
   pattern anywhere but a one-arm plain `match` (a clause's parameter, a widget block's
   `match`, a supplier's `Asking d o`), and existentials over variables with no kind.
 
+- MB, doc-sk: a definition that opens an existential by its own variable's roles, and a
+  generic function that calls one at its own variables, is lowered once per
+  instantiation (`OpensByVariable`, `InstanceFns`, `CallInstance`). Not yet: such a
+  definition used as a value (not called by name), or called from a widget function's
+  generic body.
+
 ## Claude's calls that change no semantics (Jimmy, 13 November: "MB/LR decisions that
 ## don't influence semantics are yours, if they're dicey put them in the handover doc")
 
@@ -129,14 +135,7 @@ Written by Claude on the claude-self-hosting branch; subject to change.
   (`AssocPodPat`) (Claude's call, dicey: refused alternative, a Rust trait per indexed
   associated type, `impl ReasonOf<Count> for Raiser`, with its bounds on every generic
   definition). Left: a record's such field read by `.field`.
-- doc-sk, and any `any` over `(r: Role d)` opened where `d` is the definition's own
-  variable (`Told: fn SeatKey d -> Text where d: ^Document`): the arm's code differs by
-  `d`'s roles, which a Rust generic over `D` cannot enumerate. Plan: such a definition
-  (one whose body opens an existential whose kind is an associated kind at one of its
-  variables) is lowered once per instantiation (`?DefInstances`), its variables given
-  (`lx.subst`), under a name with the instantiation's types in it, and a call at known
-  types calls that one; a call inside another such definition passes its own
-  instantiation on. Every other definition keeps its Rust generics.
+
 - Lowering: partial application (doc-c5). Where a widget function parameter is given
   `@Counter 5` (`ApplyWidgetParam`, lower/node/static), the plan is to read it as a lambda
   of the missing parameters whose body is the full call; the obstacle is that the line's
