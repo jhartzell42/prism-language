@@ -109,7 +109,9 @@ fn ValueOfCase env, st, tys, span:
                     ? ci: (((TyCon ci.owner, [[]]), st2))
                     nil: ((TyErr, st2))
                 TyQ q: match (Filter env.scopedKinds, \|((v, ignore))| v == q)[0]:
-                    ? ((ignore, k)): (((TyCon (KindThroughImpl st2, k), [[]]), st2))
+                    ? ((ignore, k)): match KindThroughImpl st2, k:
+                        found if not (HasPrefix found, "assoc\u{0}"): (((TyCon found, [[]]), st2))
+                        otherwise: ((TyErr, (Err st2, "kind", span, "`ValueOf` takes a variant of a payload-free choice; `{q}`'s kind is an associated type no impl decides here")))
                     nil: ((TyErr, (Err st2, "kind", span, "`ValueOf` takes a variant of a payload-free choice; `{q}` has no stated kind (`forall ({q}: ...)`)")))
                 otherwise: ((TyErr, (Err st2, "kind", span, "`ValueOf` takes a variant of a payload-free choice; `{ShowTy st2, x}` is a type, no variant of a choice")))
         otherwise: ((TyErr, (Err st, "kind", span, "`ValueOf` takes one variant, `ValueOf<<Writer>>`")))

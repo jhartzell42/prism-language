@@ -120,6 +120,21 @@ fn NormAssocOnce st, t = match t:
     TyAssoc tr, n, a, indices: ImplAssoc st, tr, n, (Walk st, a), (Each indices, \|i| Zonk st, i), t
     other: other
 
+# A scoped kind kept at a trait's parameter (`assoc Role @d`) read at an impl's head: the
+# kind the impl that matches the head gives (`Role (Tallied o)` is `TallyRole`); any other
+# kind as it is.
+KindAtParameter: unbounded fn St, Text, Text, Ty -> Text
+fn KindAtParameter st, written, param, head:
+    let parts = SplitOn written, "\u{0}"
+    if (Len parts) != 3 or (Or parts[0], "") != "assoc" or (Or parts[2], "") != "@{param}": written
+    else:
+        let assoc = Or parts[1], ""
+        Fold st.assocImpls, written, \|found, ai| if found != written or ai.name != assoc or (Len ai.indices) > 0: found else: match ?MatchHead ai.head, head, {{}}:
+            ? ignore: match ai.value:
+                TyCon k, [[]]: k
+                otherwise: found
+            nil: found
+
 # A scoped kind as the choice it names: an associated type's at a named type (`Side Box`,
 # kept by `AssocKindKey`) is the type the one impl that matches gives (`BoxSide`).
 KindThroughImpl: unbounded fn St, Text -> Text

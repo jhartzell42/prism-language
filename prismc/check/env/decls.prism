@@ -283,7 +283,9 @@ fn ForallKinds g, m, t = match t.kind:
         TName n, [[arg]]: match arg.kind:
             TName a, [[]]: match ResolveType g, m, a.path:
                 ((? found, ignore)): Push acc, ((v, (AssocKindKey (BareName (Dotted n.path)), found)))
-                otherwise: acc
+                # at a variable (`r: Role d`), kept by the variable's name: an impl's
+                # method reads it at the impl's head (`KindAtParameter`)
+                otherwise: if (Len a.path) == 1 and not (IsUpperText (Dotted a.path)): Push acc, ((v, (AssocKindKey (BareName (Dotted n.path)), "@{Dotted a.path}"))) else: acc
             otherwise: acc
         otherwise: acc
     otherwise: [[]]
@@ -822,7 +824,7 @@ fn ConvTrait g, st, info, t, span:
                 &_.qs <= Append [[param]], (Filter &_.qs, \|q| q != param)
                 &_.bounds <= Append [[((param, name))]], &_.bounds
             let upd = update gg:
-                &_.vals <= Insert &_.vals, qk, ValInfo(qk=qk, scheme=sc2, sort="method", hasSig=True, scoped=[[]], scopedKinds=[[]], home=info.name, file=info.file, span=sg.span)
+                &_.vals <= Insert &_.vals, qk, ValInfo(qk=qk, scheme=sc2, sort="method", hasSig=True, scoped=[[]], scopedKinds=(ForallKinds gg, info.name, sg.ty), home=info.name, file=info.file, span=sg.span)
             ((upd, s2, (Push ms, qk), ds, assocAcc))
         TiFn f:
             # a default for a method the trait does not sign is one for a method of a

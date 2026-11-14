@@ -646,8 +646,11 @@ fn CheckMethod env, st, d, clauses, cls, im = match ?MethodKey env.g, cls, d.nam
             let own = SchemeApart (Scheme(eqs=[[]], qs=(Filter v.scheme.qs, \|q| q != ti.param), plainQs=[[]], rqs=v.scheme.rqs, cqs=v.scheme.cqs, cjoins=v.scheme.cjoins, bounds=(Filter v.scheme.bounds, \|((q, ignore))| q != ti.param), ty=v.scheme.ty)), im.qs
             let sc = update own:
                 &_.ty <= SubstQ (Inst(tys={{ti.param: head}}, rows={{}}, cols={{}})), &_.ty
+            # the method's kinded variables at the impl's head (`r: Role d` is a `TallyRole`),
+            # so its clauses' `Fixed<<..>>` patterns are counted by the kind's cases
             let env2 = update env:
                 &_.givens <= im.bounds
+                &_.scopedKinds <= Each v.scopedKinds, \|((q, k))| ((q, (KindAtParameter st, k, ti.param, head)))
             CheckClauses env2, st, d.name, clauses, sc, d.span
 
 # The root row (ch. 5, pass 6): `@main`'s row, the program row when `emit` is implied,
