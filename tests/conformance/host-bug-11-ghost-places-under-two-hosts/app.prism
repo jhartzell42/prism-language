@@ -17,7 +17,7 @@ fn @Pressing seat:
     $last <- "nothing yet" then Show !response
     Ui.Label($text=$"{name} sees {$total}; {$last}")
 
-@Seats: prompt fn $Nat, !(Place ==> Response) -> @((unit, ![Asked Nat])) emit Ui.*
+@Seats: fn $Nat, !(Place ==> Response) -> @((unit, ![Asked Nat])) emit Ui.*
 fn @Seats $state, !responses = @HostCounter ($ {{(Presser "ada"): "ada", (Presser "bob"): "bob"}}), @Pressing, $state, !responses
 
 @host: @unit

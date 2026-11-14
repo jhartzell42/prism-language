@@ -71,7 +71,7 @@ fn ResponsesOf kept = kept.responses
 # `HostSeats` is the document's own function that hosts its seats (chapter 5: "each
 # document writes `@HostSeats`"); it is given the state and each tick's responses, and
 # gives back each tick's requests in fold order.
-@InMemory: fn s, (prompt fn $s, !(Place ==> Response) -> @![Asked s] emit rest) -> @unit emit rest
+@InMemory: fn s, (fn $s, !(Place ==> Response) -> @![Asked s] emit rest) -> @unit emit rest
 fn @InMemory initial, HostSeats:
     !asked <- HostSeats $state, !responses
     let !outcome = StepAll $state, !asked
@@ -85,7 +85,7 @@ fn ?ResponseTo seat, at, responses = ?Get responses, Place(seat=(Show seat), at=
 
 # The state as each seat's host hears it: when it changes, a tick after a seat joins, and
 # a tick after the document is built. A seat's host keeps what it hears in its own hold.
-@News: prompt fn $s, $(k ==> v) -> @!s
+@News: fn prompt $s, $(k ==> v) -> @!s
 fn @News $state, $seats:
     !first <- @started
     !settled <- @Defer (!Updated $seats)

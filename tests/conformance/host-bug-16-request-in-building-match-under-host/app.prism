@@ -63,7 +63,7 @@ let ada = Teller "ada"
 let bob = Teller "bob"
 let cy = Viewer "cy"
 
-@Seats: prompt fn $Tally, !(Place ==> Response) -> @![Asked Tally] emit Ui.*
+@Seats: fn $Tally, !(Place ==> Response) -> @![Asked Tally] emit Ui.*
 fn @Seats $state, !responses = @HostSeats ($ {{ada: Person, bob: Person}}), @Teller, ($ {{cy: unit}}), @Watcher, $state, !responses
 
 @table: @unit

@@ -63,7 +63,7 @@ fn Sittings seats = Fold (Keys seats), {{}}, \|all, k| match ?Get seats, k:
     ? v: Insert all, ((k, v)), unit
     nil: all
 
-@HostCounter: prompt fn $(Presser ==> v), (fn Presser, v -> @a emit rest | Count.*), $Nat, !(Place ==> Response) -> @((unit, ![Asked Nat])) emit rest where v: ^Ord
+@HostCounter: fn prompt $(Presser ==> v), (fn Presser, v -> @a emit rest | Count.*), $Nat, !(Place ==> Response) -> @((unit, ![Asked Nat])) emit rest where v: ^Ord
 fn @HostCounter $seats, Guest, $state, !responses:
     let !moved = !Updated $state
     !heard <- for ((seat, sitting)), $u <- (Sittings $seats):

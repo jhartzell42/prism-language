@@ -190,7 +190,7 @@ fn !?PlayerLeaves e = match e:
 # `!remove`; a player leaves with `Play.Leave`, which may hold a last request. Each seat
 # is one entry of the `for`, with its own host: the seat is the entry's key, so no element
 # names it.
-@HostPlayers: prompt fn (Player ==> v), !(Player ==> v), ![Player], (fn Player, v -> @a emit rest | Play.*), $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit rest where v: ^Ord
+@HostPlayers: fn (Player ==> v), prompt !(Player ==> v), prompt ![Player], (fn Player, v -> @a emit rest | Play.*), $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit rest where v: ^Ord
 fn @HostPlayers first, !seat, !remove, Guest, $state, !responses:
     $seats <- first then Reseated $seats, !tick
     !news <- @News $state, (!Filter (?Reseating !tick))

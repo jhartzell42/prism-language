@@ -276,7 +276,7 @@ fn MoveLines (? told), ?pinned:
 # ---- the widgets
 
 # the board on its border: a press on a square is a `Pick`
-@Squares: prompt fn Color, $?PlayerTold, $?Viewing, $?Square -> @!Command
+@Squares: fn Color, $?PlayerTold, $?Viewing, $?Square -> @!Command
 fn @Squares color, $?told, $?pinned, $?selected = @Bordered ($ 8.0), Ink, @widget:
     !picks <- @Grid 8, @widget:
         !squares <- for cell, $present <- $ (Cells color):
@@ -287,7 +287,7 @@ fn @Squares color, $?told, $?pinned, $?selected = @Bordered ($ 8.0), Ink, @widge
 
 # beside the board: where the game stands, why the last request was declined, the buttons,
 # and the moves
-@Panel: prompt fn Color, $?PlayerTold, $?Viewing, $?ChessReason -> @!Command
+@Panel: fn Color, $?PlayerTold, $?Viewing, $?ChessReason -> @!Command
 fn @Panel color, $?told, $?pinned, $?declined = @Column 6.0, @widget:
     Pane.Label($text=(StatusLine color, $?told))
     Pane.Label($text=(DeclinedLine $?declined))

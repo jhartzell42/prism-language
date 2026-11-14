@@ -19,7 +19,7 @@ let white = Player White
 let black = Player Black
 
 # both players at boards
-@BoardSeats: prompt fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.*
+@BoardSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.*
 fn @BoardSeats $state, !responses:
     !asked <- @HostPlayers {{white: unit, black: unit}}, never, never, @BoardPlayer, $state, !responses
     @ !asked
@@ -37,7 +37,7 @@ fn @BoardSeats $state, !responses:
 # Both players at boards in a window and a spectator at a terminal. The terminal's seat is
 # hosted beside the window, not inside it: a `Console` element passed up through the
 # window's boxes aborts the tick (bug 31).
-@WatchedSeats: prompt fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.* | Console.*
+@WatchedSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.* | Console.*
 fn @WatchedSeats $state, !responses:
     !asked <- @Window ($ "Chess"), (Extent 1400.0, 760.0), @widget:
         !fromBoards <- @Row 16.0, @widget:
@@ -53,7 +53,7 @@ fn @WatchedSeats $state, !responses:
 
 # White at a board in a window, Black at a terminal: the players' host is called once for
 # each way of sitting, and the two calls' notices go to the implementation together.
-@AgainstTerminalSeats: prompt fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.* | Console.*
+@AgainstTerminalSeats: fn $ChessGame, ![Responded Player ChessReason] -> @![Notice ChessGame Player (Responded Player ChessReason)] emit Pane.* | Gui.* | Console.*
 fn @AgainstTerminalSeats $state, !responses:
     !fromBoard <- @Window ($ "Chess"), (Extent 700.0, 760.0), @widget:
         !fromSeat <- @HostPlayers {{white: unit}}, never, never, @BoardPlayer, $state, !responses

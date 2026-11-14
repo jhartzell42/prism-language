@@ -181,7 +181,7 @@ fn !TellerLeaves e = match e:
 # The tellers. The host seats them with `first` and `!seat` and removes them with
 # `!remove`; a teller leaves with `Tell.Leave`. Each seat is one entry of the `for`, with
 # its own host: the seat is the entry's key, so no element names it.
-@HostTellers: prompt fn (Teller ==> v), !(Teller ==> v), ![Teller], (fn Teller, v -> @a emit rest | Tell.*), $Tally, !(Place Requester ==> Response TallyReason) -> @![Asked Tally Requester TallyReason] emit rest where v: ^Ord
+@HostTellers: fn (Teller ==> v), prompt !(Teller ==> v), prompt ![Teller], (fn Teller, v -> @a emit rest | Tell.*), $Tally, !(Place Requester ==> Response TallyReason) -> @![Asked Tally Requester TallyReason] emit rest where v: ^Ord
 fn @HostTellers first, !seat, !remove, Guest, $state, !responses:
     $seats <- first then Reseated $seats, !tick
     !news <- @News $state, $seats
@@ -214,7 +214,7 @@ fn !KeeperLeaves e = match e:
     otherwise: never
 
 # The keepers: the same lines with the keepers' tags, seat type and reason type.
-@HostKeepers: prompt fn (Keeper ==> v), !(Keeper ==> v), ![Keeper], (fn Keeper, v -> @a emit rest | Keep.*), $Tally, !(Place Requester ==> Response TallyReason) -> @![Asked Tally Requester TallyReason] emit rest where v: ^Ord
+@HostKeepers: fn (Keeper ==> v), prompt !(Keeper ==> v), prompt ![Keeper], (fn Keeper, v -> @a emit rest | Keep.*), $Tally, !(Place Requester ==> Response TallyReason) -> @![Asked Tally Requester TallyReason] emit rest where v: ^Ord
 fn @HostKeepers first, !seat, !remove, Guest, $state, !responses:
     $seats <- first then Reseated $seats, !tick
     !news <- @News $state, $seats

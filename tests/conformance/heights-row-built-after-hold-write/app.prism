@@ -9,7 +9,7 @@ emit Ui.*
 test mod Tests
 use Ui.*
 
-@Counter: prompt fn !Click -> @!Nat
+@Counter: fn prompt !Click -> @!Nat
 fn @Counter !bump:
     $count <- 0 then $count + 1 on !bump
     $shown <- 0 then !Updated $count
