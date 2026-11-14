@@ -87,7 +87,7 @@ fn LocalsMarked env, st, cx, b = Fold b.stmts, st, \|s, stmt| match stmt.kind:
                             otherwise: m
                         let block = BodyAsBlockOf c.body
                         match ?BlockFlows cx, name, env.home, c.params, block, supplied:
-                            ? flows: match ?Unmarked flows, marks, (ResultIsDynamic (Walk s, sc.ty)):
+                            ? flows: match ?Unmarked flows, (MarksOrSilent env.g, (Walk s, sc.ty), marks), (ResultIsDynamic (Walk s, sc.ty)):
                                 ? i:
                                     let param = ParamShown c.params, i
                                     ErrFix s, "prompt-unmarked", (ResultSpan block), "`{name}` gives {PromptWhat param}, and its type does not mark `{param}`'s parameter `prompt`", "mark the parameter in its type, `{name}: {ShowTy s, (MarkedAt sc.ty, i)}`, or give it a tick later with `@Defer`"
@@ -155,7 +155,7 @@ BodyMarked: unbounded fn Env, St, PCx, Block -> St
 fn BodyMarked env, st, cx, b = match Filter env.g.defs, \|d| d.file == env.file and (?ClauseOf d, b) != nil:
     [[d]]: match (((?ClauseOf d, b), (?CalleeMarks env.g, (SignedKey env.g, d)))):
         ((? c, ? marks)): match ?BlockFlows cx, d.qk, d.home, c.params, b, cx.supplied:
-            ? flows: match ?Unmarked flows, marks, (GivesDynamic env.g, (SignedKey env.g, d)):
+            ? flows: match ?Unmarked flows, (SignedMarksOrSilent env.g, (SignedKey env.g, d), marks), (GivesDynamic env.g, (SignedKey env.g, d)):
                 ? i:
                     let name = d.name
                     let shown = match env.g.vals[SignedKey env.g, d]:
@@ -212,6 +212,52 @@ fn ?Unmarked flows, marks, dynamic:
         ? f: (f.resultReadsValue or f.resultReadsUpdate or (dynamic and (f.updateReadsValue or f.updateReadsUpdate))) and not (Or marks[i], False)
         nil: False
     unmarked[0]
+
+# A widget function's marks for the prompt check, a parameter that can never fire or
+# change counted as marked (ruling PT is about events and dynamics: a plain value given is
+# fixed for the widget, and a result of no event or dynamic never fires): the marks as
+# they are where the parameter's type can carry time, `True` where it cannot, and all
+# `True` where the result cannot.
+MarksOrSilent: unbounded fn G, Ty, [Bool] -> [Bool]
+fn MarksOrSilent g, t, marks = match t:
+    TyFn ignore, ps, (TyAt inner, ignore2), ignore3:
+        if not (CarriesTime g, [[]], inner): Each ps, \|p| True
+        else: Each (Range0 (Len ps)), \|i| (Or marks[i], False) or not (CarriesTime g, [[]], (Or ps[i], TyErr))
+    TyForall ignore, body: MarksOrSilent g, body, marks
+    otherwise: marks
+
+SignedMarksOrSilent: unbounded fn G, Text, [Bool] -> [Bool]
+fn SignedMarksOrSilent g, k, marks = match g.vals[k]:
+    ? v: MarksOrSilent g, v.scheme.ty, marks
+    nil: marks
+
+# Whether a value of a type can fire or change in a tick: an event, a dynamic, a function
+# or a blueprint (applying one can), an element (its events), a type variable (it may stand
+# for any of these), an associated type, or a type holding one, a program's type by its
+# constructors' fields (`seen`: the types on the path, so a recursive type ends).
+CarriesTime: unbounded fn G, [Text], Ty -> Bool
+fn CarriesTime g, seen, t = match t:
+    TySig "!", ignore: True
+    TySig "$", ignore: True
+    TySig ignore, i: CarriesTime g, seen, i
+    TyFn ignore, ignore2, ignore3, ignore4: True
+    TyAt ignore, ignore2: True
+    TyElem ignore, ignore2: True
+    TyElemAny ignore: True
+    TyQ ignore: True
+    TyRigid ignore: True
+    TyFlex ignore: True
+    TyAssoc ignore, ignore2, ignore3, ignore4: True
+    TyCon n, args:
+        if Fold args, False, \|found, a| found or CarriesTime g, seen, a: True
+        else: if HasText seen, n: False
+        else: Fold (Values g.ctors), False, \|found, c| found or (c.owner == n and Fold c.args, False, \|f2, a| f2 or CarriesTime g, (Push seen, n), a)
+    TyTuple ts: Fold ts, False, \|found, a| found or CarriesTime g, seen, a
+    TyArray e: CarriesTime g, seen, e
+    TyMap k, v: (CarriesTime g, seen, k) or CarriesTime g, seen, v
+    TyExists ignore, b, ignore2, ignore3: CarriesTime g, seen, b
+    TyForall ignore, b: CarriesTime g, seen, b
+    otherwise: False
 
 # Whether a widget function's result is a dynamic, by its type.
 GivesDynamic: fn G, Text -> Bool
