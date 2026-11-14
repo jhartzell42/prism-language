@@ -150,7 +150,7 @@ fn InferWidgetBlockAt env, st, b, ?expected:
     let ((env3, st3, ?res)) = Fold (WidgetGroupOrder b.stmts), ((env2, st2, nil)), \|((en, s, ?r)), i|
         let stmt = Or b.stmts[i], dummyStmt2
         let ((en2, s2, ?r2)) = match ((?expected, stmt.kind)):
-            ((? want, SExpr e)) if i + 1 == n and IsElementMatch en, s, e: ((en, (Check en, s, e, (TyAt want, en.scope)), (? want)))
+            ((? want, SExpr e)) if i + 1 == n and ((IsElementMatch en, s, e) or (IsPlaced e)): ((en, (Check en, s, e, (TyAt want, en.scope)), (? want)))
             otherwise: WidgetStmt en, s, stmt, (LocalClauses b.stmts, i), i + 1 == n
         match ?r2:
             ? t: ((en2, s2, ? t))
@@ -169,6 +169,13 @@ fn IsElementMatch env, st, e = match e.kind:
         match Walk inferred, t:
             TyElem ignore, ignore: True
             otherwise: False
+    otherwise: False
+
+# An `@ v` line, checked at the wanted value so a lambda in it takes that type inward
+# (`@ \|at, prompt asking| ..` as a `Supplier File`).
+IsPlaced: fn Expr -> Bool
+fn IsPlaced e = match e.kind:
+    EFreeSigil s, ignore: s == "@"
     otherwise: False
 
 let dummyStmt2 = Stmt(kind=(SExpr (Expr(kind=EError, span=Range(start=0, end=0, origin=InSource)))), span=Range(start=0, end=0, origin=InSource))

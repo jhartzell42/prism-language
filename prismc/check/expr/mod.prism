@@ -285,11 +285,22 @@ fn Check env, st, e, expected = match e.kind:
         let ((t, st2)) = InferIf env, st, c, thenB, ?elseB, e.span, (? expected)
         Unify (NoteTy st2, e.span, t), expected, t, e.span
     EAny x: NoteTy (CheckAny env, st, x, expected, e.span), e.span, expected
+    # `@ v` where a blueprint is wanted: `v` checked at the blueprint's value, so a lambda
+    # there takes the type inward (`@ \|at, prompt asking| ..` as a `@(Supplier File)`);
+    # `@ v` places nothing, so it fits the wanted row
+    EFreeSigil "@", x if IsBlueprintTy st, expected: match Walk st, expected:
+        TyAt inner, ignore: NoteTy (Check env, st, x, inner), e.span, expected
+        otherwise: st
     otherwise:
         # a reference where an entry is wanted (a lens's body, a lens's argument) is the
         # place it names
         let ((t, st2)) = if (IsEntry st, expected) and IsRef e: InferPlace env, st, e else: Infer env, st, e
         UnifyAt st2, expected, t, e.span
+
+IsBlueprintTy: unbounded fn St, Ty -> Bool
+fn IsBlueprintTy st, t = match Walk st, t:
+    TyAt ignore, ignore2: True
+    otherwise: False
 
 # A tuple's part: one that is a bare `Error` gets a variable of its own (`FaultOf`); any
 # other keeps its type.
