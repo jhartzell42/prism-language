@@ -152,10 +152,17 @@ mkdir -p "$b/src"
 cp -r prismc library "$b/src/"
 copy_runtime . "$b/src"
 src=("$b/src/prismc" --prelude "$b/src/library")
+# A starting compiler older than the library's syntax compiles gen1 against an older
+# library (`GEN1_LIBRARY`, a directory like library/); gen2 on, the tree's own. prismc/
+# reaches only the prelude, so gen1 is prismc all the same, and the fixed point is
+# checked on the tree's library (gen1 and gen2 then differ, and gen3 decides).
+src1=("$b/src/prismc" --prelude "${GEN1_LIBRARY:-$b/src/library}")
 # compile N BINARY: prismc/ compiled by BINARY into genN
 compile() {
     local t=$(date +%s) log="$b/gen$1-compile.log"
-    if ! "$2" compile "${src[@]}" -o "$b/gen$1" --name prismc > "$log" 2>&1; then
+    local args=("${src[@]}")
+    [ "$1" = 1 ] && args=("${src1[@]}")
+    if ! "$2" compile "${args[@]}" -o "$b/gen$1" --name prismc > "$log" 2>&1; then
         tail -20 "$log" >&2
         if [ "$1" = 1 ] && [ $from = installed ]; then
             echo "the installed $start cannot compile this tree (it is older than the source's syntax); re-run with --from-seed" >&2
