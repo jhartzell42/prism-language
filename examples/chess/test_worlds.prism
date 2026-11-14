@@ -86,7 +86,7 @@ fn @SavedRun run:
 # the program starts; what the phone's link sends is what the Hub's channel for
 # connection 0 receives, and back. It carries one link: a second phone needs a listener
 # that is told two connections, a tick apart.
-@OneWire: prompt fn @a emit Net.* | r -> @a emit r
+@OneWire: fn prompt @a emit Net.* | r -> @a emit r
 fn @OneWire @guest:
     !started <- @started                                                         # 0
     ((result, $tree)) <- @Host @guest, \|path, element| match element:          # 1

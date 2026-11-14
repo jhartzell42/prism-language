@@ -3,16 +3,16 @@
 # (`Seats $state, !responses`), and what it gives back, `!responses`, is lifted over that
 # result's event. The function given at the program's one use, `@Echo`, gives its
 # `!responses` straight back, so its result is prompt in it (Semantics ch. 7, "There are no
-# cycles": each widget function has a summary, which arguments its result depends on
-# promptly): `!asked` and `!responses` would fire each other in one tick.
+# cycles"; ruling PT: `@Loop`'s parameter type marks its `!Nat` prompt, as `@Echo`'s type
+# does): `!asked` and `!responses` would fire each other in one tick.
 emit Ui.*
 
-@Echo: prompt fn $Nat, !Nat -> @((unit, !Nat)) emit Ui.*
+@Echo: fn $Nat, prompt !Nat -> @((unit, !Nat)) emit Ui.*
 fn @Echo $state, !responses:
     Ui.Label($text=$"{$state}")                                    # 0
     @ ((unit, !responses))
 
-@Loop: fn Nat, (prompt fn $Nat, !Nat -> @((a, !Nat)) emit rest) -> @a emit rest
+@Loop: fn Nat, (fn $Nat, prompt !Nat -> @((a, !Nat)) emit rest) -> @a emit rest
 fn @Loop initial, Seats:
     ((results, !asked)) <- Seats $state, !responses
     let !responses = !asked + 1

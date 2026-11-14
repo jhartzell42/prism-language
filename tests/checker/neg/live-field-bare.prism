@@ -2,7 +2,7 @@
 # supplier's `e` is the live element, not a document's snapshot, so `text=t` hides a `$`.
 emit Ui.*
 
-@Shout: prompt fn @a -> @a
+@Shout: fn prompt @a -> @a
 fn @Shout @child:
     ((x, ignore)) <- @Host @child, \|p, e| match e:
         Ui.Label($text=t): @Element Ui.Label($text=t)

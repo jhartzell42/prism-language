@@ -36,8 +36,8 @@ trait ^Document d:
     # lower document; each against the document's state (Jimmy, 13 November: the methods
     # take the state they answer against, `unit` for a document with none).
     @Request: forall (r: Role d). fn State d, Fixed r, SeatId d r, Request d r -> @!(Response d r) emit Lower d
-    @Query: forall (r: Role d). prompt fn $(State d), Fixed r, SeatId d r, $(Query d r) -> @$?(Answer d r) emit Lower d
-    @HostSeats: prompt fn Seats d rest, Supplier d -> @((Results d, Guests d)) emit rest
+    @Query: forall (r: Role d). fn prompt $(State d), Fixed r, SeatId d r, prompt $(Query d r) -> @$?(Answer d r) emit Lower d
+    @HostSeats: fn prompt Seats d rest, Supplier d -> @((Results d, Guests d)) emit rest
     fn Order due = OneATick due
 
 # A request's response: accepted, or declined with a reason of the role's own type.
@@ -84,7 +84,7 @@ type Asking d o = any (r: Role d): ((Fixed r, SeatId d r, Element (Seat.* d r) o
 # element's output. An answer places nothing: what an implementation asks of its lower
 # language it asks in its own body, built once, so the row is written, empty (a type
 # alias has no row of its own to take).
-type Supplier d = forall o. prompt fn Path, Asking d o -> @o emit unit
+type Supplier d = forall o. fn Path, prompt Asking d o -> @o emit unit
 
 # An implementation: given the guests' element tree, built once, it gives the supplier;
 # what it emits is the caller's to speak (`@HostDocument`'s `lower`).
@@ -285,7 +285,7 @@ fn $ReadLive $?state, role, id, $query = match $?state:
 # A state and a tick's responses as a supplier: each request place gets its response, each
 # query place its answer, kept current; a leaving has no output.
 SupplierFrom: forall d. fn $?(State d), ![Responded d] -> Supplier d where d: ^StateDocument
-fn SupplierFrom $?state, !responses = prompt \|path, asking| match asking:
+fn SupplierFrom $?state, !responses = \|path, prompt asking| match asking:
     any ((role, id, element)): match element:
         Seat.Request(..): @ !Filter (?ResponseTo<<d>> role, path, !responses)
         Seat.Query($query=$query): @ $ReadLive<<d>> $?state, role, id, $query
@@ -541,7 +541,7 @@ derive ^StateDocument g via ^PerfectInformationGame g where State g = g, SeatId 
 # The document hosted: each role hosted once by the document's own `@HostSeats`, the
 # implementation built once, here; the result is every seat's own result. Its lower
 # language passes up to the caller.
-@HostDocument: prompt fn Implementation d lower, Seats d rest -> @(Results d) emit lower | rest where d: ^Document
+@HostDocument: fn Implementation d lower, prompt Seats d rest -> @(Results d) emit lower | rest where d: ^Document
 fn @HostDocument Implement, seats:
     ((results, $guests)) <- @HostSeats seats, Supply     # each role hosted once
     Supply <- Implement $guests                          # built here, once
@@ -551,9 +551,9 @@ fn @HostDocument Implement, seats:
 # tags; everything else a guest emits passes up. Its results are each seat's result and,
 # each tick, the seats whose participants left: the program's map still holds them until
 # it removes them (Jimmy, 13 November, ruling SL).
-@HostRole: forall d (r: Role d). prompt fn Fixed r, $(SeatId d r ==> $@(@a emit Seat.* d r | rest)), Supplier d -> @(($(SeatId d r ==> a), ![SeatId d r], Guests d)) emit rest where d: ^Document
+@HostRole: forall d (r: Role d). fn Fixed r, prompt $(SeatId d r ==> $@(@a emit Seat.* d r | rest)), Supplier d -> @(($(SeatId d r ==> a), ![SeatId d r], Guests d)) emit rest where d: ^Document
 fn @HostRole role, $seats, Supply:
-    (($results, $tree)) <- @Host (@Seated $seats), prompt \|path, element| match element:
+    (($results, $tree)) <- @Host (@Seated $seats), \|path, prompt element| match element:
         Seat.Request(..): Supply path, (any ((role, (SeatIdAt<<d, r>> path), element)))
         Seat.Query(..): Supply path, (any ((role, (SeatIdAt<<d, r>> path), element)))
         Seat.Leave(..): @ unit
@@ -578,7 +578,7 @@ SeatIdAt: forall d (r: Role d). fn Path -> SeatId d r where d: ^Document
 
 # Each seat's guest, built: one entry per seat, built anew only when that seat's own
 # blueprint changes.
-@Seated: prompt fn $(k ==> $@(@a emit rest)) -> @$(k ==> a) emit rest
+@Seated: fn prompt $(k ==> $@(@a emit rest)) -> @$(k ==> a) emit rest
 fn @Seated $seats:
     for seat, $guest <- $seats:
         rebuild $guest:

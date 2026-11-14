@@ -12,7 +12,7 @@ type Mode = choice:
     Soft
 derive ^Eq, ^Show
 
-@Choose: prompt fn Mode, $Nat -> @$Text
+@Choose: fn Mode, prompt $Nat -> @$Text
 fn @Choose mode, $resets:
     match mode:                                                        # 0
         Loud t:
