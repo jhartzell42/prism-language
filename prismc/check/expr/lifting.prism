@@ -161,7 +161,7 @@ fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
         nil: st1
     match ?expected:
         ? want:
-            let ((bt, st3a)) = InferExprBlock env2, st2, arm.body
+            let ((bt, st3a)) = ArmBlockAt env2, st2, arm.body, want
             let st3 = OpenedEscapes env.g, (NoteFaultAt st3a, (TailSpan arm.body), want, bt), st.next, st1.next, bt, scrutTy, (ResultSpan arm.body)
             let fwd = arm.?pattern == nil or (IsFamilyArm arm)
             match ?refinedOut:
@@ -177,6 +177,25 @@ fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
             match ?refinedOut:
                 ? ((o, out)): ((acc3, st3, (? ArmWait(o=o, out=out, ty=plainBt, span=(ResultSpan arm.body), ?against=nil, fwd=False))))
                 nil: ((acc3, (UnifyArm st3, res, plainBt, (ResultSpan arm.body)), nil))
+
+# An arm's body where the match is checked at a type: a `match` that ends it is checked at
+# that type too, so its tag arms each narrow the result's rigid variable (an `any` arm
+# whose body matches the opened element, `SupplierFrom`); any other body is inferred.
+ArmBlockAt: unbounded fn Env, St, Block, Ty -> ((Ty, St))
+fn ArmBlockAt env, st, b, want:
+    let ?inner = if IsWidgetish b.stmts: nil else: match ?Last b.stmts:
+        ? s: match s.kind:
+            SExpr e: match e.kind:
+                EMatch scrut, arms: ? ((e, scrut, arms))
+                otherwise: nil
+            otherwise: nil
+        nil: nil
+    match ?inner:
+        ? ((e, scrut, arms)):
+            let ((env2, st2)) = BindGroup env, (BlockBoundOnce env, st, b.stmts), b.stmts
+            let ((t, st3)) = InferMatch env2, st2, scrut, arms, e.span, (? want)
+            ((t, (NoteTy st3, e.span, t)))
+        nil: InferExprBlock env, st, b
 
 # `existential-escape` (Type System ch. 3): a type an arm's `any` pattern opened, one
 # numbered from `lo` up to `hi`, stays in the arm; its value may not have it.
