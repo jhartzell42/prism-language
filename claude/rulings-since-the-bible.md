@@ -302,8 +302,13 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   prompt, and a body whose result is prompt in a parameter the type does not mark is
   `prompt-unmarked`. A read of a dynamic parameter counts, its value as much as its update
   (they change in the same tick); a hold breaks it, since a hold's value is the one the
-  tick opened with. A function-typed parameter takes no mark (a function value does not
-  fire). A plain function is always prompt and says nothing. Checking is local: a call's
+  tick opened with. A function-typed parameter takes the mark
+  where the result can fire in the tick applying the function gives a firing (Jimmy, 14
+  November, choice (a), after Claude showed the first wording unsound: a lambda capturing
+  the caller's event, given to a widget function that passes its result through, made a
+  cycle no check saw); at a marked parameter everything the argument captures counts,
+  lambdas inside data included. Jimmy: "Soundness bugs are important ... Allowing
+  unsoundness is a critical bug." A plain function is always prompt and says nothing. Checking is local: a call's
   promptness is read from the callee's type, never its body, so the summary walk over
   callee bodies goes. Jimmy, 13 November: "you need an annotation to promptly output an
   input event through a widget function ... it's part of the type for a function or
