@@ -100,7 +100,14 @@ fn ?CtorsOf env, st, t = match Zonk st, t:
                 # with no values)
                 if kindKey == written and (HasPrefix written, "assoc\u{0}"): nil
                 else: ? (Each (Filter (Keys env.g.caseOwners), \|c| env.g.caseOwners[c] == ? kindKey), FixedCtor)
-            nil: nil
+            # a type an `any` arm opened, of the kind its existential states
+            nil: match st.openedKinds[v]:
+                ? kt: match NormAssoc st, (Zonk st, kt):
+                    TyCon kindKey, [[]]:
+                        let cases = Filter (Keys env.g.caseOwners), \|c| env.g.caseOwners[c] == ? kindKey
+                        if (Len cases) == 0: nil else: ? (Each cases, FixedCtor)
+                    otherwise: nil
+                nil: nil
         otherwise: nil
     # an existential has one constructor, `any`, over its body
     TyExists ignore, b, ignore2, kinds: ? [[Ctor(name="any", arity=1, args=[[b]], shown="any _")]]

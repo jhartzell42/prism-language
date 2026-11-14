@@ -98,9 +98,11 @@ fn BindPattern env, st, p, t, refutable = match p.kind:
     PAny q: match Walk st, t:
         TyExists vs, b, ignore, kinds:
             let opened = Each vs, \|v| TyRigid "{ShownVar v}#any{st.next}"
+            let by = ParamInst vs, opened
             let st2 = update st:
                 &_.next += 1
-            let inner = SubstQ (ParamInst vs, opened), b
+                &_.openedKinds <= Fold kinds, &_.openedKinds, \|m, ((kv, kt))| Insert m, "{ShownVar kv}#any{st.next}", (SubstQ by, kt)
+            let inner = SubstQ by, b
             # the opened type noted at the inner pattern: the lowering reads the arm's own
             # variables from it, to open the value at each of their variants
             BindPattern env, (NoteTy st2, q.span, inner), q, inner, refutable

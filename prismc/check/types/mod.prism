@@ -262,6 +262,9 @@ type St = record:
     # its note names (`GuestRow`).
     unifying: ((Ty, Ty))
     ?guestRow: GuestRow
+    # The kind of each rigid type an `any` arm opened (`r: Role File`), by its name: a
+    # `Fixed` of it has a value per case of the kind (exhaustiveness, `?CtorsOf`).
+    openedKinds: (Text ==> Ty)
 derive ^Eq, ^Show
 
 # The family and indices an element's tag is applied at, while its fields are checked
@@ -359,7 +362,7 @@ UseKey: fn Nat, Range -> Text
 fn UseKey file, span = "{file}:{span.start}:{span.end}"
 
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={{}}, infos={{}}, rows={{}}, lacks={{}}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={{}}, cleqs=[[]], colQ={{}}, colUp={{}}, deferred=[[]], binderAt={{}}, rowNames={{}}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={{}}, sizeTys={{}}, unsignedFns=[[]], localNext=0, localIds={{}}, anyGivens=[[]], headGivens=[[]], assocImpls=[[]], assocRowImpls=[[]], plainArms=[[]], faultQs=[[]], plainQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={{}}, packs=[[]], definition="", genericUses=[[]], caseQs=[[]], unifying=((TyErr, TyErr)), ?guestRow=nil)
+fn NewSt file = St(next=0, tys={{}}, infos={{}}, rows={{}}, lacks={{}}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={{}}, cleqs=[[]], colQ={{}}, colUp={{}}, deferred=[[]], binderAt={{}}, rowNames={{}}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={{}}, sizeTys={{}}, unsignedFns=[[]], localNext=0, localIds={{}}, anyGivens=[[]], headGivens=[[]], assocImpls=[[]], assocRowImpls=[[]], plainArms=[[]], faultQs=[[]], plainQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={{}}, packs=[[]], definition="", genericUses=[[]], caseQs=[[]], unifying=((TyErr, TyErr)), ?guestRow=nil, openedKinds={{}})
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed, idx={{}})
