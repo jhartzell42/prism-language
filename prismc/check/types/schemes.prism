@@ -54,7 +54,11 @@ fn SubstRowQ m, rw = match rw.tail:
     TlQ n: match m.rows[n]:
         ? (TlRow whole): Rw(fams=(SortTexts (UnionTexts rw.fams, whole.fams)), minus=rw.minus, tail=whole.tail, idx=(MergeIdxMaps (SubstIdx m, rw.idx), whole.idx))
         ? t: Rw(fams=rw.fams, minus=rw.minus, tail=t, idx=(SubstIdx m, rw.idx))
-        nil: SubstIdxRow m, rw
+        # a type parameter given a row (`TallySeats o Ui.*`, its `rest` a `Ui.*`): the row
+        # stands where the parameter is a row's tail
+        nil: match m.tys[n]:
+            ? (TyElemAny whole): Rw(fams=(SortTexts (UnionTexts rw.fams, whole.fams)), minus=rw.minus, tail=whole.tail, idx=(MergeIdxMaps (SubstIdx m, rw.idx), whole.idx))
+            otherwise: SubstIdxRow m, rw
     TlAssoc tr, n, h: SubstIdxRow m, (Rw(fams=rw.fams, minus=rw.minus, tail=(TlAssoc tr, n, (SubstQ m, h)), idx=rw.idx))
     # each variable of the row substituted apart (ruling RT)
     TlUnion ps: Fold ps, (SubstIdxRow m, (Rw(fams=rw.fams, minus=rw.minus, tail=TlClosed, idx=rw.idx))), \|acc, p|
@@ -112,6 +116,32 @@ fn InstantiateWith st, sc, span, explicit:
     # each quantified equation at this use's types: checked here, or waiting for them
     let st4 = Fold sc.eqs, st3, \|s, w| Unify s, (SubstQ inst, w.expected), (SubstQ inst, w.found), span
     (((SubstQ inst, sc.ty), st4, inst))
+
+# A constructor's scheme: its type's parameters, and those that stand as a row's tail in
+# its fields (`rest` of `TallySeats o rest`, ruling RR) row variables too (`LinkRowParams`).
+CtorScheme: unbounded fn [Text], [Ty], Ty -> Scheme
+fn CtorScheme params, args, ty = Scheme(eqs=[[]], qs=params, plainQs=[[]], rqs=(Filter params, \|q| Fold args, False, \|seen, a| seen or TailQIn a, q), cqs=[[]], cjoins=[[]], bounds=[[]], ty=ty)
+
+# Whether `q` stands as a row's tail in a type.
+TailQIn: fn Ty, Text -> Bool
+fn TailQIn t, q = match t:
+    TyCon ignore, args: Fold args, False, \|seen, a| seen or TailQIn a, q
+    TyFn ignore, ps, r, prompts: Fold ps, (TailQIn r, q), \|seen, a| seen or TailQIn a, q
+    TyTuple ts: Fold ts, False, \|seen, a| seen or TailQIn a, q
+    TyArray e: TailQIn e, q
+    TyMap k, v: (TailQIn k, q) or TailQIn v, q
+    TySig ignore, i: TailQIn i, q
+    TyAt i, rw: (TailQIn i, q) or TailHasQ rw.tail, q
+    TyElem rw, o: (TailQIn o, q) or TailHasQ rw.tail, q
+    TyElemAny rw: TailHasQ rw.tail, q
+    TyForall ignore, b: TailQIn b, q
+    otherwise: False
+
+TailHasQ: fn Tail, Text -> Bool
+fn TailHasQ tl, q = match tl:
+    TlQ n: n == q
+    TlUnion ps: Fold ps, False, \|seen, p| seen or TailHasQ p, q
+    otherwise: False
 
 # The families a scheme's row variable is extended with: `r | Net.*` promises `r` has no
 # `Net` tags (ch. 5, Rows).

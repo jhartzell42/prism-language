@@ -647,7 +647,9 @@ fn PeelTimeOnly env, st, acc, fname, p, at, a:
 # `@` goes in whole at a type-parameter field (`ApplyRuleOf`).
 CtorApp: unbounded fn Env, St, CtorInfo, [Arg], Range, Range -> ((Ty, St))
 fn CtorApp env, st, c, args, span, cspan:
-    let ((self, st0a, inst)) = InstantiateWith st, (Scheme(eqs=[[]], qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), span, [[]]
+    let csc = CtorScheme c.params, c.args, c.ty
+    let ((self, st0x, inst)) = InstantiateWith st, csc, span, [[]]
+    let st0a = LinkRowParams st0x, csc, inst, span
     # the type the application is wanted at, where it is the constructor's own type with
     # no layer on top: its fields' variables take it before the arguments are read
     let st0 = match env.?expect:

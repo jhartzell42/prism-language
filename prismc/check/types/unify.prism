@@ -120,6 +120,13 @@ fn NormAssocOnce st, t = match t:
     TyAssoc tr, n, a, indices: ImplAssoc st, tr, n, (Walk st, a), (Each indices, \|i| Zonk st, i), t
     other: other
 
+# A constructor's row parameters after instantiating (`CtorScheme`): each one's type
+# argument is the row itself, so `TallySeats OneEach Ui.*` gives its fields `Ui.*` as `rest`.
+LinkRowParams: unbounded fn St, Scheme, Inst, Range -> St
+fn LinkRowParams st, sc, inst, span = Fold sc.rqs, st, \|s, q| match ((inst.tys[q], inst.rows[q])):
+    ((? t, ? tail)): Unify s, t, (TyElemAny (Rw(fams=[[]], minus=[[]], tail=tail, idx={{}}))), span
+    otherwise: s
+
 # A scoped kind kept at a trait's parameter (`assoc Role @d`) read at an impl's head: the
 # kind the impl that matches the head gives (`Role (Tallied o)` is `TallyRole`); any other
 # kind as it is.

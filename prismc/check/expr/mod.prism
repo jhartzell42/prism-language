@@ -440,8 +440,9 @@ fn CollisionAt env, st, why, name, span:
 # arguments is a function that takes them whole.
 CtorValue: unbounded fn Env, St, CtorInfo, Range -> ((Ty, St))
 fn CtorValue env, st, c, span:
-    let sc = Scheme(eqs=[[]], qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(if (Len c.args) == 0: c.ty else: TyFn CBound, c.args, c.ty, [[]]))
-    Instantiate st, sc, span
+    let sc = CtorScheme c.params, c.args, (if (Len c.args) == 0: c.ty else: TyFn CBound, c.args, c.ty, [[]])
+    let ((t, st2, inst)) = InstantiateWith st, sc, span, [[]]
+    ((t, (LinkRowParams st2, sc, inst, span)))
 
 # A tag named without arguments: an element with no fields (`Process.Args`), or a fault
 # (`Fs.NotFound`), a value of its row kind.
