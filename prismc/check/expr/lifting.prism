@@ -148,7 +148,7 @@ fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
     let ((env1, st1)) = match arm.?pattern:
         ? p: BindPattern env, st, p, scrutTy, True
         nil: ((env, st))
-    let env2 = RefinedEnv env1
+    let env2 = RefinedEnv env1, st1
     let ?refinedOut = match ?rigidOut:
         ? o: match arm.?pattern:
             ? p: match ?TagOfPattern env, p:

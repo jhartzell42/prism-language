@@ -155,13 +155,16 @@ fn FixedAgainstVariable env, st, w, t, span = match Walk st, t:
 Refined: unbounded fn Env, Ty -> Ty
 fn Refined env, t = Fold (Keys env.refine), t, \|acc, v| SubstRigid v, (Or env.refine[v], TyErr), acc
 
-RefinedEnv: unbounded fn Env -> Env
-fn RefinedEnv env = if (Len (Keys env.refine)) == 0: env else: update env:
-    &_.locals <= Map (Each (Keys &_.locals), \|k| ((k, (RefinedScheme env, (Or &_.locals[k], (Mono TyErr))))))
+RefinedEnv: unbounded fn Env, St -> Env
+fn RefinedEnv env, st = if (Len (Keys env.refine)) == 0: env else: update env:
+    &_.locals <= Map (Each (Keys &_.locals), \|k| ((k, (RefinedScheme env, st, (Or &_.locals[k], (Mono TyErr))))))
 
-RefinedScheme: unbounded fn Env, Scheme -> Scheme
-fn RefinedScheme env, sc = update sc:
-    &_.ty <= Refined env, &_.ty
+# A local's type with the refinements put in, its variables followed first: a name bound
+# outside the arm (`response`, opened by an `any` above) may hold a variable bound to the
+# rigid the arm's `Fixed<<r>>` narrows.
+RefinedScheme: unbounded fn Env, St, Scheme -> Scheme
+fn RefinedScheme env, st, sc = update sc:
+    &_.ty <= Refined env, (Zonk st, &_.ty)
 
 # `collision`: the patterns of one parameter list, or one pattern, bind a name once. A
 # constructor a pattern names binds nothing.

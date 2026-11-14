@@ -160,7 +160,9 @@ fn ToPat env, p = match p.kind:
     PAny q: PtCon "any", [[(ToPat env, q)]]
     PTypeArgs ignore, tys: match ?CaseNamed (EnvCx env), (Or tys[0], dummyType):
         ? c: PtCon "fixed:{c}", [[]]
-        nil: PtAny
+        # `Fixed<<r>>`, `r` a variable (ruling OP): it matches only where the value is
+        # `r`'s variant, so it covers nothing else, and an arm after it is reached
+        nil: PtCon "fixed-at-variable", [[]]
     PFamily q: PtFam (Dotted q.path)
 
 LitText: fn Literal -> Text
