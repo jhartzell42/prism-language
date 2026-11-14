@@ -1,0 +1,11 @@
+# `prompt-unmarked` for a function value in a widget function's result (ruling PT,
+# soundness): `@Make` gives back a function that captures its argument `!given`, so a
+# caller applying that function in the tick `!given` fires gets `!given`'s firing; its
+# result is prompt in `!given`, and the type must say so.
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+@Make: fn !Nat -> @(fn !Nat -> @!Nat)
+fn @Make !given:
+    @ \|!ignored| @ !given
