@@ -75,15 +75,21 @@ Written by Claude on the claude-self-hosting branch; subject to change.
 ## Claude's calls that change no semantics (Jimmy, 13 November: "MB/LR decisions that
 ## don't influence semantics are yours, if they're dicey put them in the handover doc")
 
-- MB, dicey: the Rust back end monomorphizes. Each generic definition becomes one Rust
-  function per instantiation the program reaches (the fixed point `?DefInstances`
-  already computes them), so every `d` is concrete in Rust, an indexed associated type at
-  a known role is a known type, and an existential over `r: Role d` is opened by a match
-  over `d`'s roles, each arm lowered at its role. Why dicey: it is the largest change of
-  step 2, it grows the Rust code, and a program whose instantiations do not end is
-  refused by the growth check already (ruling PG), so nothing new is refused. Refused
-  alternative: erasing such values to `Rc<dyn Any>`, which fails at run time where the
-  checker was right.
+- MB, dicey, revised 14 November on reading the lowering: kinded type variables are already
+  Rust generic parameters over the promoted unit structs (`TyRole`), with each variable's
+  variant number a hidden leading `{r}_variant` argument. So the back end keeps its Rust
+  generics and does not monomorphize whole definitions. Instead:
+  - an existential over kinded variables, `any (r: Role d): T`, is a `prism_rtl::Packed`
+    whose value is `T` at the packing site's `r`, beside each hidden variable's variant
+    number (`Packed::with_kinds`);
+  - opening it (`any p` in a pattern, a supplier's `Asking d o`) is a match over those
+    numbers, each arm lowered with `lx.subst` giving `r` that variant, so the arm's code is
+    monomorphic where Rust needs it;
+  - an associated type indexed at a kinded variable (`Request d r`) is lowered the same
+    way where a value of it is opened, and as a `Packed` where it is only held.
+  Why dicey: it duplicates an opening arm once per variant. Refused alternatives: whole-
+  program monomorphization (large, and nothing it adds is needed), and `Rc<dyn Any>` with
+  no variant numbers (an arm could not tell which type to read back).
 
 ## Known gaps, noted
 
