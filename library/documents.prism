@@ -88,7 +88,7 @@ type Supplier d = forall o. fn Path, prompt Asking d o -> @o emit unit
 
 # An implementation: given the guests' element tree, built once, it gives the supplier;
 # what it emits is the caller's to speak (`@HostDocument`'s `lower`).
-type Implementation d lower = fn Guests d -> @(Supplier d) emit lower
+type Implementation d lower = fn prompt Guests d -> @(Supplier d) emit lower
 
 # A seat is a path's first key. Across the guests' merged tree the first index names the
 # role and the first key the seat: `0/[White]/#g/2` is White's. The prelude takes a path
@@ -134,7 +134,7 @@ derive ^Eq, ^Show
 trait ^StateDocument d where d: ^Document:
     Step: forall (r: Role d). fn State d, Fixed r, SeatId d r, Request d r -> Stepped (State d) (Reason d r)
     Read: forall (r: Role d). fn State d, Fixed r, SeatId d r, Query d r -> Answer d r
-    @InMemory: fn State d, Guests d -> @(Supplier d)
+    @InMemory: fn State d, prompt Guests d -> @(Supplier d)
     # `^Document`'s methods, lifted from the rules (a sub-trait gives a default for a method
     # above it: Jimmy, 13 November). An implementation applies a tick's requests in the
     # document's order itself; these answer one request, or one query, on their own.
@@ -145,7 +145,7 @@ trait ^StateDocument d where d: ^Document:
             @Switch (!HeardAt<<d>> at, $element)
         !again <- @Defer (!Filter (?StillWaiting !outcome))         # a tick after a request waits
         let !heard = (Values !fired) <| ([[]] on !again)
-        let !outcome = StepTick<<d>> $state, (Kicked $seated, (Keys $guests), !heard), (DueThisTick $waiting, !heard)
+        let !outcome = StepHeard<<d>> $state, $seated, (Keys $guests), $waiting, !heard
         $state <- initial then !Filter (?StateOf !outcome)          # the hold
         $waiting <- [[]] then WaitingOf !outcome                    # due again in the next tick
         $seated <- [[]] then SeatsIn (Keys (!Updated $guests))                        # who sat, as of the last tick
@@ -240,6 +240,14 @@ StepTickWhenKnown: forall d. fn ?(State d), [Path], [Pending d] -> Kept d where 
 fn StepTickWhenKnown (? state), kicked, due = StepTick<<d>> state, kicked, due
 fn StepTickWhenKnown nil, kicked, due = Kept(?state=nil, responses=[[]], waiting=(Filter due, \|pending| not (Has kicked, (SeatPathOf pending.due.at))))
 
+# A tick's step from what the places said: the seats kicked and the requests due both read
+# off the one event of what was heard (one event to lift over, never two).
+StepHeard: forall d. fn State d, [Path], [Path], [Pending d], [Heard d] -> Kept d where d: ^StateDocument
+fn StepHeard state, seated, places, waiting, heard = StepTick<<d>> state, (Kicked seated, places, heard), (DueThisTick waiting, heard)
+
+StepHeardWhenKnown: forall d. fn ?(State d), [Path], [Path], [Pending d], [Heard d] -> Kept d where d: ^StateDocument
+fn StepHeardWhenKnown ?state, seated, places, waiting, heard = StepTickWhenKnown<<d>> ?state, (Kicked seated, places, heard), (DueThisTick waiting, heard)
+
 Picked: fn (Path ==> Pending d), [Due d] -> [Pending d]
 fn Picked byPlace, dues = Fold dues, [[]], \|all, due| match ?Get byPlace, due.at:
     ? pending: Push all, pending
@@ -304,14 +312,14 @@ trait ^SerializableValue s:
 # truth, and queries are answered from it. Before the file arrives every request waits
 # (doubt LD), and an empty file is the initial state.
 trait ^SerializableDocument d where d: ^StateDocument, State d: ^SerializableValue:
-    @InFile: fn State d, Guests d -> @(Supplier d) emit Seat.* File Editor
+    @InFile: fn State d, prompt Guests d -> @(Supplier d) emit Seat.* File Editor
     fn @InFile initial, $guests:
         $?bytes <- Seat.Query($query=$ Contents)                       # this domain sits at a file
         !fired <- for at, $element <- $guests:
             @Switch (!HeardAt<<d>> at, $element)
         !again <- @Defer (!Filter (?StillWaiting !outcome))
         let !heard = (Values !fired) <| ([[]] on !again)
-        let !outcome = StepTickWhenKnown<<d>> $?state, (Kicked $seated, (Keys $guests), !heard), (DueThisTick $waiting, !heard)
+        let !outcome = StepHeardWhenKnown<<d>> $?state, $seated, (Keys $guests), $waiting, !heard
         $?state <- nil then ? ((Decoded<<d>> initial, (!Arrived $?bytes)) <| (!Filter (?StateOf !outcome)))
         $waiting <- [[]] then WaitingOf !outcome
         $seated <- [[]] then SeatsIn (Keys (!Updated $guests))
