@@ -127,7 +127,7 @@ Len: fn a -> Nat
 # An array's last element, if any (the interfaces book's ch. 9, `Or (?Last g.positions),
 # start`).
 ?Last: fn [a] -> ?a
-fn ?Last all = Fold all, nil, \|?last, each| ? each
+fn ?Last all = all[Or ((Len all) -? 1), (Len all)]      # an empty array: index 0, none
 
 # Logarithmic.
 Append: fn [a], [a] -> [a]
