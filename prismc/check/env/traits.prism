@@ -30,9 +30,13 @@ DerivedImpls: fn G -> G
 fn DerivedImpls g = Fold (Keys g.types), g, \|gg, k| match gg.types[k]:
     ? ti: Fold ti.derives, gg, \|g2, tr| match ?ResolveTrait g2, ti.home, (SplitOn tr, "."):
         ? cls:
-            let im = ImplInfo(equalities=[[]], aboveChosen=[[]], rows=[[]], ?through=nil, cls=cls, head=(TyCon ti.name, (Each ti.params, \|p| TyQ p)), qs=ti.params, bounds=(Each ti.params, \|p| ((p, cls))), home=ti.home, file=ti.file, span=ti.span, derived=True, assocs=[[]], indexed=[[]], methods=[[]])
-            update g2:
-                &_.impls <= Insert &_.impls, cls, (Push (Or &_.impls[cls], [[]]), im)
+            # deriving `^Pod` generates `^SerializableValue` in `^Pod`'s text form (documents
+            # book ch. 4, "A `^Pod` state gets it for free"; type-system book ch. 5)
+            let also = if cls == "Prelude.Pod" and HasKey g2.traits, "Documents.SerializableValue": [["Documents.SerializableValue"]] else: [[]]
+            Fold (Push also, cls), g2, \|g3, one|
+                let im = ImplInfo(equalities=[[]], aboveChosen=[[]], rows=[[]], ?through=nil, cls=one, head=(TyCon ti.name, (Each ti.params, \|p| TyQ p)), qs=ti.params, bounds=(Each ti.params, \|p| ((p, one))), home=ti.home, file=ti.file, span=ti.span, derived=True, assocs=[[]], indexed=[[]], methods=[[]])
+                update g3:
+                    &_.impls <= Insert &_.impls, one, (Push (Or &_.impls[one], [[]]), im)
         nil: g2
     nil: gg
 
@@ -357,6 +361,10 @@ fn BuiltinHas cls, con:
     # A regular expression compares by its spelling and has no order (Type System ch. 2,
     # RX-EQ).
     else: if bare == "Ord": ((IsPrimType con) and not (IsRegexType con)) or con == "Fault" or con == "Prelude.Fault"
+    # the primitives are `^Pod` by built-in impls, so `^SerializableValue` in its text form
+    # (Jimmy, 14 November, QH: "A ABSOLUTELY"), a regular expression excepted (Type System
+    # ch. 2: neither `^Ord` nor `^Pod`); `Never` has no value to write
+    else: if bare == "Pod" or cls == "Documents.SerializableValue": ((IsPrimType con) and not (IsRegexType con)) or con == "Prelude.Never" or con == "Never"
     else: False
 
 # Solve the wanted constraints above `level` that can be solved now; keep the rest. With
