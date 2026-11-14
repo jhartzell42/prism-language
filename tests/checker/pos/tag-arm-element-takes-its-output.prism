@@ -1,0 +1,24 @@
+# In a tag arm the matched element's output is the tag's: in the `Count.Ask` arm,
+# `element`, an `Element Count.* o`, is an `Element Count.* Nat`, so `@AskOnly` takes it.
+# Found by the step 3 build on the library (`@HostRole` hands the narrowed element to the
+# supplier, whose `o` it decides).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Count.*
+
+family Count
+
+tag Count.Ask of Element Nat:
+    by: Nat
+
+tag Count.Name of Element Text:
+    name: Text
+
+@AskOnly: fn prompt Element Count.* Nat -> @Nat
+fn @AskOnly element = match element:
+    Count.Ask(by=by): @ by
+    otherwise: @ 0
+
+@Answer: fn prompt Element Count.* o -> @o
+fn @Answer element = match element:
+    Count.Ask(..): @AskOnly element
+    Count.Name(name=name): @ name
