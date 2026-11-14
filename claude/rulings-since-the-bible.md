@@ -343,3 +343,8 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   It crosses the wire and keys the program's maps, and a type with no time in it makes no
   call prompt. Chess's `Color` in c6 and c8 derives `^Pod` for it. Jimmy, 14 November:
   "sure whatever".
+- **QH** (amends QD) The primitives are `^Pod` by built-in impls, and so
+  `^SerializableValue` in `^Pod`'s text form: `Text`, `Nat`, `Int`, `Bool`, `U8`, `Float`,
+  `unit` and the rest, a regular expression excepted (Type System ch. 2); `Never` has no
+  value to write. "Derive only" still holds for every declared type. Jimmy, 14 November:
+  "A ABSOLUTELY".
