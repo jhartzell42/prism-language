@@ -1,0 +1,10 @@
+# `$ (@F<<T>> x)` is a dynamic of a blueprint, as `$ (@F x)` is: a widget function given
+# type arguments is still a blueprint. Found by the step 3 build on chess
+# (`$ (@Serve<<ChessGame>> Fixed<<Player>>, connection)`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+@Kept: forall a. fn prompt a -> @a
+fn @Kept x = @ x
+
+Seats: fn Nat -> (Text ==> $@Nat)
+fn Seats n = {{"one": $ (@Kept<<Nat>> n)}}
