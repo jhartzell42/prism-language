@@ -12,6 +12,11 @@
 //! value at its type ([`Packed::held`]) or packs a result with the same dictionaries
 //! ([`Packed::repacked`]).
 //!
+//! An existential over kinded variables (`any (r: Access): ..`, `any (r: Role d): ..`;
+//! ruling PK) keeps each hidden variable's variant number beside the value
+//! ([`Packing::with_kind`], [`Packed::kind`]): the code that opens it matches on the
+//! numbers and reads the value back at the type each variant gives.
+//!
 //! Written by Claude on the claude-bugs branch; subject to change.
 
 use std::any::Any;
@@ -33,6 +38,7 @@ pub struct Packed {
     eq: Option<EqFn>,
     cmp: Option<CmpFn>,
     dictionaries: Vec<Rc<dyn Any>>,
+    kinds: Vec<Rc<dyn Any>>,
 }
 
 /// A packing under way: the value's own type is still known, so each bound's impl can be
@@ -43,11 +49,12 @@ pub struct Packing<T: 'static> {
     eq: Option<EqFn>,
     cmp: Option<CmpFn>,
     dictionaries: Vec<Rc<dyn Any>>,
+    kinds: Vec<Rc<dyn Any>>,
 }
 
 impl Packed {
     pub fn of<T: 'static>(value: T) -> Packing<T> {
-        Packing { value, show: None, eq: None, cmp: None, dictionaries: Vec::new() }
+        Packing { value, show: None, eq: None, cmp: None, dictionaries: Vec::new(), kinds: Vec::new() }
     }
 }
 
@@ -86,7 +93,13 @@ impl<T: 'static> Packing<T> {
         self.with_dictionary(|_: &T| PodPacked { to_pod: |x| same::<T>(x).to_pod() })
     }
     pub fn packed(self) -> Packed {
-        Packed { value: Rc::new(self.value), show: self.show, eq: self.eq, cmp: self.cmp, dictionaries: self.dictionaries }
+        Packed { value: Rc::new(self.value), show: self.show, eq: self.eq, cmp: self.cmp, dictionaries: self.dictionaries, kinds: self.kinds }
+    }
+    /// The variant numbers of the existential's kinded variables, in the order it names
+    /// them, each the program's own number type.
+    pub fn with_kind<N: 'static>(mut self, number: N) -> Self {
+        self.kinds.push(Rc::new(number));
+        self
     }
     /// A program's trait: its dictionary at the value's type, which `make` gives from the
     /// value (the emitted `.._packed_of`).
@@ -109,7 +122,12 @@ impl Packed {
     }
     /// A value of the hidden type a method gave back, hidden again with this one's impls.
     pub fn repacked<T: 'static>(&self, value: T) -> Packed {
-        Packed { value: Rc::new(value), show: self.show, eq: self.eq, cmp: self.cmp, dictionaries: self.dictionaries.clone() }
+        Packed { value: Rc::new(value), show: self.show, eq: self.eq, cmp: self.cmp, dictionaries: self.dictionaries.clone(), kinds: self.kinds.clone() }
+    }
+    /// The variant number of the existential's kinded variable `i`, as it was packed.
+    pub fn kind<N: Clone + 'static>(&self, i: usize) -> N {
+        let held = self.kinds.get(i).expect("an existential opened by a kinded variable it was not packed with");
+        same::<N>(&**held).clone()
     }
 }
 
@@ -179,4 +197,10 @@ pub fn recast<To: 'static>(value: impl std::any::Any) -> To {
 /// (Jimmy's ruling FA) at the type its call gives it.
 pub fn unpacked<T: Clone + 'static>(p: &Packed) -> T {
     p.held::<T>().clone()
+}
+
+/// The variant number of an existential's kinded variable `i` (the program's number type),
+/// which the code that opens it matches on before it reads the value back.
+pub fn kind_of<N: Clone + 'static>(p: &Packed, i: usize) -> N {
+    p.kind::<N>(i)
 }

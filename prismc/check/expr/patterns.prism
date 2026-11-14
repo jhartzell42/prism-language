@@ -100,7 +100,10 @@ fn BindPattern env, st, p, t, refutable = match p.kind:
             let opened = Each vs, \|v| TyRigid "{ShownVar v}#any{st.next}"
             let st2 = update st:
                 &_.next += 1
-            BindPattern env, st2, q, (SubstQ (ParamInst vs, opened), b), refutable
+            let inner = SubstQ (ParamInst vs, opened), b
+            # the opened type noted at the inner pattern: the lowering reads the arm's own
+            # variables from it, to open the value at each of their variants
+            BindPattern env, (NoteTy st2, q.span, inner), q, inner, refutable
         TyErr: BindPattern env, st, q, TyErr, refutable
         other: ((env, (Err st, "mismatch", p.span, "`any` opens an existential; this is `{ShowTy st, other}`")))
     PFamily q: BindFamily env, st, (Dotted q.path), t, p.span

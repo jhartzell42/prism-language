@@ -890,7 +890,85 @@ fn AnyValue lx, env, x, t:
                             ? tr: XMethod acc, "with_dictionary", [[(XPath (PackedDictionaryOf lx, tr))]]
                             nil: acc
                     VlOwned (XMethod packing, "packed", [[]]), packedTy
+        TyExists vs, b, ignore, kinds:
+            if not (AllKinded vs, kinds): VlOwned (Refusal "an existential over type variables that are not kinded, `any r: ..` (Jimmy's ruling FA): its lowering is not written yet"), packedTy
+            else:
+                # each hidden variable's variant at the packing site, beside the value (MB)
+                let found = Or (?ParamMatch b, (TypeAt lx, x.span), {{}}), {{}}
+                let packing = Fold vs, (XCall (RefRuntime "prism_rtl::Packed::of"), [[v]]), \|acc, q| XMethod acc, "with_kind", [[(ExistsNumber lx, q, found[q])]]
+                VlOwned (XMethod packing, "packed", [[]]), packedTy
         otherwise: VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[v]]), OutShowAny), OutShowAny
+
+# Whether each of an existential's variables declares a kind (ruling PK): such an
+# existential is packed with its variables' variant numbers and opened by them (MB).
+AllKinded: fn [Text], [((Text, Ty))] -> Bool
+fn AllKinded vs, kinds = Fold vs, True, \|ok, q| ok and Fold kinds, False, \|seen, ((k, ignore))| seen or k == q
+
+# A hidden variable's variant number at the packing site: a variant's own, or the
+# variant a kinded variable of the definition holds there.
+ExistsNumber: fn Lx, Text, ?Ty -> Ex
+fn ExistsNumber lx, q, ?at = match ?at:
+    ? (TyRole k): VariantNumberOf lx, k
+    ? (TyRigid r): ExistsVariableNumber lx, q, r
+    ? (TyQ r): ExistsVariableNumber lx, q, r
+    otherwise: InternalBug "the existential's variable `{q}` at a packing that gives it no variant"
+
+ExistsVariableNumber: fn Lx, Text, Text -> Ex
+fn ExistsVariableNumber lx, q, r = match ?KindedNumber lx, r:
+    ? ((n, ignore)): n
+    nil: InternalBug "the existential's variable `{q}` packed at `{r}`, which holds no variant here"
+
+# The variants of a kind, by key, in their choice's order: a choice's own, or an
+# associated kind at a known type (`Role ChessGame`).
+KindVariants: unbounded fn Lx, Ty -> [Text]
+fn KindVariants lx, k = match SubstTyIn lx, k:
+    TyCon c, [[]]: Each (Filter (Values lx.g.ctors), \|ci| ci.owner == c), \|ci| ci.name
+    TyAssoc tr, n, a, indices: match ?ImplAssoc lx.g, tr, n, a, indices:
+        ? t: KindVariants lx, t
+        nil: [[]]
+    otherwise: [[]]
+
+# The kind an existential's variable declares.
+KindOfVar: fn [((Text, Ty))], Text -> Ty
+fn KindOfVar kinds, q = Fold kinds, TyErr, \|found, ((k, t))| if k == q: t else: found
+
+# `match s: any p: body` over an existential of kinded variables (MB): the variant numbers
+# read from the packed value pick, one variable after another, the variant each arm is
+# lowered at, where the value is read back at the type that variant gives.
+ExistsMatch: unbounded fn Lx, Env, Expr, Arm, Pattern, OutTy, Range -> Vl
+fn ExistsMatch lx, env, s, arm, p, t, span:
+    let label = "opened{SpanStem span}"
+    match Peel (TypeAt lx, s.span):
+        TyExists vs, b, ignore, kinds:
+            let pty = TypeAt lx, p.span
+            let fresh = Or (?ParamMatch b, pty, {{}}), {{}}
+            let packed = Own (ValueOf lx, env, s)
+            VlOwned (XBlock [[(DoLet (PaBind label), packed)]], (OpenedAt lx, env, label, vs, kinds, fresh, 0, p, arm, pty, t)), t
+        other: VlOwned (InternalBug "an `any` arm over a value that is no existential"), t
+
+OpenedAt: unbounded fn Lx, Env, Text, [Text], [((Text, Ty))], (Text ==> Ty), Nat, Pattern, Arm, Ty, OutTy -> Ex
+fn OpenedAt lx, env, label, vs, kinds, fresh, i, p, arm, pty, t = match vs[i]:
+    nil:
+        let value = XCallAt (RefRuntime "prism_rtl::unpacked"), [[(OutTyOf lx, pty)]], [[(XRef (XVar label))]]
+        let po = ArmPat lx, (? p), pty, Owned, "{label}_arm"
+        let env2 = BindAll env, po.binds
+        let guard = match arm.?guard:
+            ? ge: [[CcIf (AsBool (ValueOf lx, env2, ge))]]
+            nil: [[]]
+        let xarm = XArm(pat=po.pa, conds=(Append po.conds, guard), body=(Own (BlockValue lx, env2, arm.body)))
+        Own (ArmsValue value, [[xarm]], "{label}_arm", t)
+    ? q: match fresh[q]:
+        ? (TyRigid r):
+            let variants = KindVariants lx, (KindOfVar kinds, q)
+            let number = XCallAt (RefRuntime "prism_rtl::kind_of"), [[OutNat]], [[(XRef (XVar label)), (XIndex i)]]
+            match variants[Dec (Len variants)]:
+                nil: Refusal "an existential's variable whose kind has no variant the lowering can name"
+                ? last:
+                    let At = \|k| OpenedAt (update lx:
+                        &_.subst <= Insert &_.subst, r, (TyRole k)
+                    ), env, label, vs, kinds, fresh, i + 1, p, arm, pty, t
+                    Fold (Take variants, (Dec (Len variants))), (At last), \|rest, k| XIf (XBin OpEq, number, (VariantNumberOf lx, k)), (At k), rest
+        otherwise: InternalBug "an `any` arm whose variable `{q}` the checker did not open"
 
 # A bound that is a trait of the prelude, by its bare name: its packing is the runtime's
 # and the emitted prelude's own, `with_` and the name (`with_show`, `with_num`). A
@@ -3259,7 +3337,16 @@ fn IsLetCond (CcIf ignore) = False
 
 # `match s: arms` (a plain `match`; widget blocks lower theirs in the block's node).
 MatchValue: unbounded fn Lx, Env, Expr, [Arm], OutTy, Range -> Vl
-fn MatchValue lx, env, s, arms, t, span:
+fn MatchValue lx, env, s, arms, t, span = match arms:
+    [[arm]]: match arm.?pattern:
+        ? p: match p.kind:
+            PAny inner: ExistsMatch lx, env, s, arm, inner, t, span
+            otherwise: PlainMatchValue lx, env, s, arms, t, span
+        nil: PlainMatchValue lx, env, s, arms, t, span
+    otherwise: PlainMatchValue lx, env, s, arms, t, span
+
+PlainMatchValue: unbounded fn Lx, Env, Expr, [Arm], OutTy, Range -> Vl
+fn PlainMatchValue lx, env, s, arms, t, span:
     let sv = ValueOf lx, env, s
     let sty = TypeAt lx, s.span
     let label = "m{SpanStem span}"
