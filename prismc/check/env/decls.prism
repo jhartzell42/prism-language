@@ -991,7 +991,10 @@ fn AboveDefaultFor g, st, tr, im, mq:
                     let names = Each lowest, \|t| "`^{BareName t.name}`"
                     ((g, (ErrFix s2, "ambiguous", im.span, "`{ShowTy st, im.head}` gets a default for `{method}` from both {Join names, " and "}", "write `fn {method} ...` under the impl")))
                 else:
-                    let filled = update im:
+                    # the impl as it now stands: an earlier method's default chosen here is
+                    # kept (each method's pass starts from the impl the fold began with)
+                    let current = Or (Filter (Or g.impls[tr.name], [[]]), \|other| other.span == im.span and other.file == im.file)[0], im
+                    let filled = update current:
                         &_.aboveChosen <= Push &_.aboveChosen, ((method, (AboveDefaultKey chosen.name, method), chosen.name))
                     let upd = update g:
                         &_.impls <= Insert &_.impls, tr.name, (Each (Or &_.impls[tr.name], [[]]), \|other| if other.span == im.span and other.file == im.file: filled else: other)
