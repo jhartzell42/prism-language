@@ -1,0 +1,28 @@
+# A `Fixed` of a type an `any` arm opened has a value per case of the kind its existential
+# states: `s: Side Box` opened, `Fixed<<Left>>` and `Fixed<<Right>>` cover it. Found by the
+# step 3 build on the library (`!ReplacesAt`, a guest's role opened from `Guest File`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+trait ^Sided d:
+    type Side
+    type Payload (s: Side d)
+
+type BoxSide = choice:
+    Left
+    Right
+
+type Box = record:
+    size: Nat
+
+impl ^Sided Box:
+    type Side = BoxSide
+    type Payload Left = Nat
+    type Payload Right = Never
+
+type Held = any (s: Side Box): ((Fixed s, Payload Box s))
+
+Weight: fn Held -> Nat
+fn Weight held = match held:
+    any ((side, payload)): match side:
+        Fixed<<Left>>: payload + 1
+        Fixed<<Right>>: 0
