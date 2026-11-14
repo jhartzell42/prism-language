@@ -11,11 +11,11 @@ family Count
 tag Count.Ask of Element Nat:
     by: Nat
 
-@Answer: fn Element Count.* o -> @o
+@Answer: fn prompt Element Count.* o -> @o
 fn @Answer element = match element:
     Count.Ask(by=by): @ by
 
-@HostOne: fn Element (Count.* | rest) o -> @o emit rest
+@HostOne: fn prompt Element (Count.* | rest) o -> @o emit rest
 fn @HostOne element = match element:
     Count.Ask(..): @Answer element
     otherwise: @Element element
