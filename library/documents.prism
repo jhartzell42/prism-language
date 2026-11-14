@@ -459,11 +459,12 @@ trait ^RemoteDocument d where d: ^Document, Request d _: ^SerializableValue, Rea
     # until the first answer (chapter 9).
     @Over: fn Address, Guests d -> @(Supplier d) emit Net.*
     fn @Over address, $guests:
-        !arrived <- Net.Link(to=address, !sends=(!Outgoing<<d>> $guests))
+        !outgoing <- @Outgoing<<d>> $guests
+        !arrived <- Net.Link(to=address, !sends=!outgoing)
         @ \|path, asking| match asking:
             any ((role, id, element)): match element:
                 Seat.Request(..): @ !Filter (?ResponseFrom<<d>> role, path, !arrived)
-                Seat.Query(..): @ $?AnswerFrom<<d>> role, path, !arrived
+                Seat.Query(..): @AnswerFrom<<d>> role, path, !arrived
                 Seat.Leave(..): @ unit
     # The other end: each message from a connection fired at the host this sits under,
     # as the seat's own request or query; each response and answer sent back.
@@ -490,17 +491,111 @@ fn PlaceOf (Answering at, ignore) = at
 fn PlaceOf (Departing at) = at
 
 # One of the far end's places, placed here at its seat's role: its request or query
-# decoded at the role's own types, its response or answer sent back written down.
-@Answer: forall d (r: Role d). fn Fixed r, Path, $Message -> @!Message emit Seat.* d r where d: ^RemoteDocument
+# decoded at the role's own types, its response or answer sent back written down. A place
+# is built at the end of the tick its first message came, so it reads that message as it
+# starts (`@started`), and every later one as it comes.
+@Answer: forall d (r: Role d). fn Fixed r, Path, prompt $Message -> @!Message emit Seat.* d r where d: ^RemoteDocument
+fn @Answer role, at, $message:
+    !born <- @started
+    let !heard = $message on (!born <| !Updated $message)
+    match $message:
+        Asking ignore, ignore2:
+            !response <- Seat.Request(!requests=(!Filter (?AskedIn<<d, r>> !heard)))
+            @ (Responding at, (ResponseBytes<<d, r>> !response))
+        Querying ignore, ignore2:
+            !answered <- @Queried<<d, r>> at, !heard
+            @ !answered
+        otherwise: @ never
 
-# What a seat's places send up: each request as it fires, each query as it changes.
-!Outgoing: forall d. fn Guests d -> ![Message] where d: ^RemoteDocument
+# A query place of the far end: its query held as it arrives, the element placed once the
+# first query reads, and each answer as it changes sent back written down.
+@Queried: forall d (r: Role d). fn Path, prompt !Message -> @!Message emit Seat.* d r where d: ^RemoteDocument
+fn @Queried at, !heard:
+    $?query <- nil then ?QueriedIn<<d, r>> !heard
+    match $?query:
+        ? $query:
+            $?answer <- Seat.Query($query=$query)
+            @ (Answering at, (AnswerBytes<<d, r>> $?answer)) on (!Updated $?answer)
+        nil: @ never
+
+# What a seat's places send up: each request as it fires, each query as it starts and as
+# it changes, and a leaving, with its last request first if it has one.
+@Outgoing: forall d. fn prompt Guests d -> @![Message] where d: ^RemoteDocument
+fn @Outgoing $guests:
+    !sent <- for at, $guest <- $guests:
+        !born <- @started
+        @Switch (!SentAt<<d>> at, $guest, !born)
+    @ Fold (Values !sent), [[]], Append
+
+# One place's messages: what its element asks, as it asks it.
+!SentAt: forall d. fn Path, Guest d, !unit -> ![Message] where d: ^RemoteDocument
+fn !SentAt at, guest, !born = match guest:
+    any ((role, id, element)): match element:
+        Seat.Request(!requests=!requests): [[(Asking at, (Encode !requests))]]
+        Seat.Query($query=$query): [[(Querying at, (Encode $query))]] on (!born <| !Updated $query)
+        Seat.Leave(!?leaves=!?leaves): LeavingMessages at, !?leaves
+        otherwise: never
+
+# A leaving's messages: its last request, if any, then the seat's departure.
+LeavingMessages: forall d (r: Role d). fn Path, ?(Request d r) -> [Message] where d: ^RemoteDocument
+fn LeavingMessages at, (? last) = [[(Asking at, (Encode last)), (Departing (SeatPathOf at))]]
+fn LeavingMessages at, nil = [[Departing (SeatPathOf at)]]
 
 # The response the wire brought for a request place, at the place's role.
 ?ResponseFrom: forall d (r: Role d). fn Fixed r, Path, [Message] -> ?(Response d r) where d: ^RemoteDocument
+fn ?ResponseFrom role, path, messages = Fold messages, nil, \|?found, message| match message:
+    Responding at, bytes: if at == path: ?ResponseOf<<d, r>> bytes else: ?found
+    otherwise: ?found
 
 # The answer the wire keeps bringing for a query place, held since the last.
-$?AnswerFrom: forall d (r: Role d). fn Fixed r, Path, ![Message] -> $?(Answer d r) where d: ^RemoteDocument
+@AnswerFrom: forall d (r: Role d). fn Fixed r, Path, prompt ![Message] -> @$?(Answer d r) where d: ^RemoteDocument
+fn @AnswerFrom role, path, !arrived:
+    let !answers = !Filter (?AnswerIn<<d, r>> path, !arrived)
+    $?answer <- nil then ? !answers
+    @ $?answer
+
+# A request message's request, decoded at the role's own type.
+?AskedIn: forall d (r: Role d). fn Message -> ?(Request d r) where d: ^RemoteDocument
+fn ?AskedIn (Asking ignore, bytes) = ?DecodedAs<<Request d r>> bytes
+fn ?AskedIn ignore = nil
+
+# A query message's query, decoded at the role's own type.
+?QueriedIn: forall d (r: Role d). fn Message -> ?(Query d r) where d: ^RemoteDocument
+fn ?QueriedIn (Querying ignore, bytes) = ?DecodedAs<<Query d r>> bytes
+fn ?QueriedIn ignore = nil
+
+# The last answer for a place among a tick's messages, decoded at the role's own type.
+?AnswerIn: forall d (r: Role d). fn Path, [Message] -> ?(Answer d r) where d: ^RemoteDocument
+fn ?AnswerIn path, messages = Fold messages, nil, \|?found, message| match message:
+    Answering at, bytes: if at != path: ?found else: match ?DecodedAs<<Answer d r>> bytes:
+        ? answer: ? answer
+        nil: ?found
+    otherwise: ?found
+
+# How a response is written down: `Accepted` a byte 0, a reason after a byte 1.
+ResponseBytes: forall d (r: Role d). fn Response d r -> [U8] where d: ^RemoteDocument
+fn ResponseBytes Accepted = [[0]]
+fn ResponseBytes (Declined why) = Append [[1]], (Encode why)
+
+# A response read back from its bytes; none from bytes it refuses.
+?ResponseOf: forall d (r: Role d). fn [U8] -> ?(Response d r) where d: ^RemoteDocument
+fn ?ResponseOf bytes = match Take bytes, 1:
+    [[0]]: ? Accepted
+    [[1]]: match ?DecodedAs<<Reason d r>> (Drop bytes, 1):
+        ? why: ? (Declined why)
+        nil: nil
+    otherwise: nil
+
+# An answer written down; a query place not yet answered sends nothing.
+AnswerBytes: forall d (r: Role d). fn ?(Answer d r) -> [U8] where d: ^RemoteDocument
+fn AnswerBytes (? answer) = Encode answer
+fn AnswerBytes nil = [[]]
+
+# A value of a serializable type read back from bytes; none from bytes it refuses.
+?DecodedAs: forall t. fn [U8] -> ?t where t: ^SerializableValue
+fn ?DecodedAs bytes = match ~Decode<<t>> bytes:
+    ~ value: ? value
+    otherwise: nil
 
 # ---- games (chapter 4): a perfect-information game, and the state rung it derives
 
