@@ -128,7 +128,15 @@ Written by Claude on the claude-self-hosting branch; subject to change.
   `AssocPodOut`), recoded by a constructor's application and a constructor pattern
   (`AssocPodPat`) (Claude's call, dicey: refused alternative, a Rust trait per indexed
   associated type, `impl ReasonOf<Count> for Raiser`, with its bounds on every generic
-  definition). Left: a record's such field read by `.field`. Then doc-sk.
+  definition). Left: a record's such field read by `.field`.
+- doc-sk, and any `any` over `(r: Role d)` opened where `d` is the definition's own
+  variable (`Told: fn SeatKey d -> Text where d: ^Document`): the arm's code differs by
+  `d`'s roles, which a Rust generic over `D` cannot enumerate. Plan: such a definition
+  (one whose body opens an existential whose kind is an associated kind at one of its
+  variables) is lowered once per instantiation (`?DefInstances`), its variables given
+  (`lx.subst`), under a name with the instantiation's types in it, and a call at known
+  types calls that one; a call inside another such definition passes its own
+  instantiation on. Every other definition keeps its Rust generics.
 - Lowering: partial application (doc-c5). Where a widget function parameter is given
   `@Counter 5` (`ApplyWidgetParam`, lower/node/static), the plan is to read it as a lambda
   of the missing parameters whose body is the full call; the obstacle is that the line's
