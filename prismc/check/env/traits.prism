@@ -719,9 +719,29 @@ fn DefaultWants g, st, givens:
                 update s6:
                     &_.deferred <= Filter &_.deferred, \|dw| dw.span != w.span
             nil: ErrFix s5, "ambiguous", w.span, "nothing decides `{ShowTy s, w.ty}` in `^{BareName w.cls} {ShowTy s, w.ty}`; annotate, or write a suffixed operator", "annotate the value's type"
-    update s4:
+    # a constraint on an associated type nothing can ever decide (its arguments rigid, no
+    # equation chosen: `Answer Count ρ` for an arm's fresh role) is never met: refused, not
+    # dropped (a numeric literal answering every role's query, neg/doc-seat-family-arm-
+    # answers-other-role)
+    let stuck = Filter s3.wants, \|w| not (IsFlexVar s3, w.ty) and IsStuckAssoc s3, (NormAssoc s3, (Zonk s3, w.ty))
+    let s4b = Fold stuck, s4, \|s, w|
+        let s5 = update s:
+            &_.file <= w.file
+        ErrFix s5, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy s, w.ty}`, which no equation of its impls decides here", "annotate the value's type, or match the role first"
+    update s4b:
         &_.wants <= [[]]
         &_.file <= st.file
+
+# An associated type that stays one: no impl's equation chose it, and no variable in it
+# could later choose one.
+IsStuckAssoc: unbounded fn St, Ty -> Bool
+fn IsStuckAssoc st, t = match t:
+    # at a named type (`Count`), whose impl is known: a generic head's (`State d`) are the
+    # givens' to meet
+    TyAssoc ignore, ignore2, a, indices: (not (IsWaitingAssoc st, t)) and match Walk st, a:
+        TyCon ignore3, ignore4: True
+        otherwise: False
+    otherwise: False
 
 # The method a waiting constraint came from, where its trait's parameter stands in its
 # type only under an associated type (`Step: fn State d -> ..`): the method's name, the
