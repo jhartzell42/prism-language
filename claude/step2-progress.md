@@ -121,16 +121,15 @@ Written by Claude on the claude-self-hosting branch; subject to change.
 
 - FA call sites: a value of a `forall` type applied in Rust must pack its arguments and
   unpack its result (`Packed::of(..).packed()`, `.held::<T>()`); not written.
-- Lowering, MB: family associated types (doc-c4, every-role): a family's tag whose fields
-  hold `Request d r`. Plan (Claude's call, dicey, as FA's `forall` already does): such a
-  field's Rust type erases what depends on the family's indices to `prism_rtl::Packed`
-  (an event `Event<Packed>`, a dynamic `Dynamic<Packed>`), packed with `^Pod`/`^Eq`/
-  `^Show` dictionaries where the index types have them; an element's construction packs
-  each such field from its concrete type at the site (an event mapped firing by firing),
-  and a pattern's binder unpacks it at the concrete type the checker gives the binder
-  there (`prism_rtl::unpacked`); the tag's output (`!(Response d r)`) the same way. The
-  refused alternative, one Rust variant per (d, r) the program uses, touches every place a
-  tag's struct is named (rows, descriptions, worlds' tag names). Then doc-sk.
+- Lowering, MB: family associated types (doc-c4, every-role). Done: a tag's field of an
+  associated type at the tag's variables is erased to plain data (`AssocErased`) and
+  recoded at each site (`RecodedField`), as a generic tag's field already was. Left: a
+  program's generic type with such a field (`Response d r`'s `Declined (Reason d r)`),
+  whose Rust enum cannot name `Reason d r`: the same erasure in `CaseField`, a
+  constructor's application recoding the argument, and a constructor pattern's binder
+  recoding back at the binder's type (Claude's call, dicey: refused alternative, a Rust
+  trait per indexed associated type, `impl ReasonOf<Count> for Raiser`, with its bounds on
+  every generic definition). Then doc-sk.
 - Lowering: partial application (doc-c5). Where a widget function parameter is given
   `@Counter 5` (`ApplyWidgetParam`, lower/node/static), the plan is to read it as a lambda
   of the missing parameters whose body is the full call; the obstacle is that the line's
