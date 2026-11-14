@@ -93,7 +93,12 @@ fn NamedWidgetLine wx, benv, menv, e, ?bound:
             ? (BnDyn ignore, ignore, t): t == blueprintTy
             otherwise: False
         otherwise: False
+    # a program's top-level `let` of a blueprint (`let @shown = @One`, then `@shown`): its
+    # expression, built here as if written in its place, read in its own module
+    # (`GlobalLetLine`)
+    let ?globalLet = if (Len args) == 0 and not held and not (IsSome ?named) and not (IsSome ?param): ?GlobalLetBlueprint lx, qk else: nil
     if held: ValueBlueprintLine wx, menv, e
+    else: if ?globalLet != nil: GlobalLetLine wx, ?globalLet, ?bound
     else: match ?named:
         ? (BnWidget x, ignore, ignore, ignore): LetBlueprintLine wx, benv, menv, x, e, ?bound
         otherwise: match ?param:
@@ -108,6 +113,42 @@ fn NamedWidgetLine wx, benv, menv, e, ?bound:
             # it gives is applied as any blueprint value (`AppliedBlueprintLine`)
             ? (BnLocal ignore, ignore, ignore) if (Len args) > 0: AppliedFunctionLine wx, menv, wx.lx, menv, callee, e, args
             otherwise: WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target
+
+# A program's top-level `let` whose value is a blueprint: the definition and its value.
+?GlobalLetBlueprint: unbounded fn Lx, Text -> ?((Def, Expr))
+fn ?GlobalLetBlueprint lx, qk = if qk == "": nil
+else: Fold lx.g.defs, nil, \|?found, d| match ?found:
+    ? f: ? f
+    nil: if d.qk != qk or d.home == "Prelude": nil else: match d.body:
+        DbLet l:
+            let lxd = update lx:
+                &_.file <= d.file
+                &_.home <= d.home
+                &_.site <= d.home
+            match Peel (TypeAt lxd, l.value.span):
+                TyAt ignore, ignore2: ? ((d, l.value))
+                otherwise: nil
+        otherwise: nil
+
+# A top-level `let`'s blueprint applied at a line: its expression built here, read in its
+# own module with no environment of the line's (a top-level value closes over nothing),
+# so its places take this node's next positions (transparent, Semantics ch. 8).
+GlobalLetLine: unbounded fn Wx, ?((Def, Expr)), ?Bn -> ((Wx, Wres))
+fn GlobalLetLine wx, nil, ?bound:
+    let wx2 = update wx:
+        &_.build <= Push &_.build, (InternalBugDo "a top-level blueprint `let` that is not there")
+    ((wx2, WrUnit))
+fn GlobalLetLine wx, (? ((d, value))), ?bound:
+    let lx = wx.lx
+    let inner = update wx:
+        &_.lx <= update lx:
+            &_.file <= d.file
+            &_.home <= d.home
+            &_.site <= d.home
+    let ((done, res)) = BuildLine inner, emptyEnv, emptyEnv, value, ?bound
+    let back = update done:
+        &_.lx <= lx
+    ((back, res))
 
 # A function value that gives a blueprint (`function`, read in `clx` and `cmenv`, where
 # it stands), applied at the line `e` to the line's arguments, which are read in the

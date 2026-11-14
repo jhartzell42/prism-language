@@ -1134,7 +1134,11 @@ fn DefItems lx, d, roots:
                 otherwise: if IsLensText d.qk: Each (LensDefs lx, d.qk, clauses, v.scheme), \|f| ItFn f else: if OpensByVariable lx, d.qk: InstanceFns lx, d, clauses, v.scheme else:
                     let f = ItFn (FnDefOf lx, d.qk, clauses, v.scheme)
                     if HasText lx.unbs, d.qk: [[f, ItJob (JobDefOf lx, d.qk, clauses, v.scheme)]] else: [[f]]
-        DbLet l: [[ItFn (LetGetter lx, d.qk, l)]]
+        # a blueprint `let` is built where a line applies it (`GlobalLetLine`); it has no
+        # getter
+        DbLet l: match Peel (TypeAt lx, l.value.span):
+            TyAt ignore, ignore2: [[ItNote "`{d.name}` is a blueprint, built where a line applies it."]]
+            otherwise: [[ItFn (LetGetter lx, d.qk, l)]]
         otherwise: [[]]
 
 # A definition lowered once per instantiation the program reaches (`OpensByVariable`):
