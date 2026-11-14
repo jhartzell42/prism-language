@@ -142,7 +142,9 @@ fn TypeHeadVariables st, t:
             TbAlias a: [[a]]
             otherwise: [[]]
         nil: [[]]
-    let ((st2, ignore)) = Fold written, ((st1, params)), \|((s, known)), ty| Fold (TypeVarsOfType ty), ((s, known)), \|((s1, seen)), v|
+    # (a type's body is no signature: a `forall` there binds its own variables, `type
+    # Supplier d = forall o. ..`, so it is read as a `forall` inside a type is)
+    let ((st2, ignore)) = Fold written, ((st1, params)), \|((s, known)), ty| Fold (TypeVarsInto [[]], ty), ((s, known)), \|((s1, seen)), v|
         if HasText seen, v: ((s1, seen))
         else: (((ErrFix s1, "unknown-name", ty.span, "`{v}` is no parameter of `{Dotted t.name.path}`", "declare it in the head, `type {Join (Append [[Dotted t.name.path]], (Push params, v)), " "} = ...`"), (Push seen, v)))
     st2
