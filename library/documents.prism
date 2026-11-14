@@ -36,8 +36,8 @@ trait ^Document d:
     # lower document; each against the document's state (Jimmy, 13 November: the methods
     # take the state they answer against, `unit` for a document with none).
     @Request: forall (r: Role d). fn State d, Fixed r, SeatId d r, Request d r -> @!(Response d r) emit Lower d
-    @Query: forall (r: Role d). fn prompt $(State d), Fixed r, SeatId d r, prompt $(Query d r) -> @$?(Answer d r) emit Lower d
-    @HostSeats: fn prompt Seats d rest, Supplier d -> @((Results d, Guests d)) emit rest
+    @Query: forall (r: Role d). fn prompt $(State d), Fixed r, prompt SeatId d r, prompt $(Query d r) -> @$?(Answer d r) emit Lower d
+    @HostSeats: fn prompt Seats d rest, prompt Supplier d -> @((Results d, Guests d)) emit rest
     fn Order due = OneATick due
 
 # A request's response: accepted, or declined with a reason of the role's own type.
@@ -480,7 +480,7 @@ trait ^RemoteDocument d where d: ^Document, Request d _: ^SerializableValue, Rea
     @Serve: forall (r: Role d). fn Fixed r, Connection -> @unit emit Seat.* d r | Net.*
     fn @Serve role, connection:
         !received <- Net.Channel(connection=connection, !sends=(Values !replies))
-        $open <- {{}} then Opened $open, !received          # the far end's places, by path
+        $open <- {{}} then Fold !received, $open, Opened    # the far end's places, by path
         !replies <- for at, $message <- $open:
             @Answer<<d>> role, at, $message
         @ unit
@@ -505,30 +505,49 @@ fn PlaceOf (Departing at) = at
 @Answer: forall d (r: Role d). fn Fixed r, Path, prompt $Message -> @!Message emit Seat.* d r where d: ^RemoteDocument
 fn @Answer role, at, $message:
     !born <- @started
-    let !heard = $message on (!born <| !Updated $message)
-    match $message:
-        Asking ignore, ignore2:
-            !response <- Seat.Request(!requests=(!Filter (?AskedIn<<d, r>> !heard)))
-            @ (Responding at, (ResponseBytes<<d, r>> !response))
-        Querying ignore, ignore2:
-            !answered <- @Queried<<d, r>> at, !heard
-            @ !answered
-        otherwise: @ never
+    let !heard = ($message on !born) <| !Updated $message
+    $kind <- @Distinct (KindOf $message)                    # a place's kind never changes
+    $!sent <- rebuild $kind:                                # so this builds once
+        match _:
+            AskedPlace:
+                !response <- Seat.Request(!requests=(!Filter (?AskedIn<<d, r>> !heard)))
+                @ (Responding at, (ResponseBytes<<d, r>> !response))
+            QueriedPlace:
+                !answered <- @Queried<<d, r>> at, !heard
+                @ !answered
+            OtherPlace: @ never
+    !sending <- @Switch $!sent
+    @ !sending
+
+# What a far place is, by the first message it sent.
+type PlaceKind = choice:
+    AskedPlace
+    QueriedPlace
+    OtherPlace
+derive ^Eq, ^Show
+
+KindOf: fn Message -> PlaceKind
+fn KindOf (Asking ignore, ignore2) = AskedPlace
+fn KindOf (Querying ignore, ignore2) = QueriedPlace
+fn KindOf ignore = OtherPlace
 
 # A query place of the far end: its query held as it arrives, the element placed once the
 # first query reads, and each answer as it changes sent back written down.
 @Queried: forall d (r: Role d). fn Path, prompt !Message -> @!Message emit Seat.* d r where d: ^RemoteDocument
 fn @Queried at, !heard:
     $?query <- nil then ?QueriedIn<<d, r>> !heard
-    match $?query:
-        ? $query:
-            $?answer <- Seat.Query($query=$query)
-            @ (Answering at, (AnswerBytes<<d, r>> $?answer)) on (!Updated $?answer)
-        nil: @ never
+    $!sent <- rebuild $?query:                  # placed anew as the query changes
+        match _:
+            ? query:
+                $?answer <- Seat.Query($query=$ query)
+                @ (Answering at, (AnswerBytes<<d, r>> $?answer)) on (!Updated $?answer)
+            nil: @ never
+    !sending <- @Switch $!sent
+    @ !sending
 
 # What a seat's places send up: each request as it fires, each query as it starts and as
 # it changes, and a leaving, with its last request first if it has one.
-@Outgoing: forall d. fn prompt Guests d -> @![Message] where d: ^RemoteDocument
+@Outgoing: forall d. fn prompt Guests d -> @![Message] emit unit where d: ^RemoteDocument
 fn @Outgoing $guests:
     !sent <- for at, $guest <- $guests:
         !born <- @started
@@ -539,10 +558,14 @@ fn @Outgoing $guests:
 !SentAt: forall d. fn Path, Guest d, !unit -> ![Message] where d: ^RemoteDocument
 fn !SentAt at, guest, !born = match guest:
     any ((role, id, element)): match element:
-        Seat.Request(!requests=!requests): [[(Asking at, (Encode !requests))]]
-        Seat.Query($query=$query): [[(Querying at, (Encode $query))]] on (!born <| !Updated $query)
+        Seat.Request(!requests=!requests): One (Asking at, (Encode !requests))
+        Seat.Query($query=$query): One (Querying at, (Encode (($query on !born) <| !Updated $query)))
         Seat.Leave(!?leaves=!?leaves): LeavingMessages at, !?leaves
         otherwise: never
+
+# A list of one (a function, so it lifts over an event where a list literal does not).
+One: fn a -> [a]
+fn One x = [[x]]
 
 # A leaving's messages: its last request, if any, then the seat's departure.
 LeavingMessages: forall d (r: Role d). fn Path, ?(Request d r) -> [Message] where d: ^RemoteDocument
@@ -556,7 +579,7 @@ fn ?ResponseFrom role, path, messages = Fold messages, nil, \|?found, message| m
     otherwise: ?found
 
 # The answer the wire keeps bringing for a query place, held since the last.
-@AnswerFrom: forall d (r: Role d). fn Fixed r, Path, prompt ![Message] -> @$?(Answer d r) where d: ^RemoteDocument
+@AnswerFrom: forall d (r: Role d). fn Fixed r, Path, prompt ![Message] -> @$?(Answer d r) emit unit where d: ^RemoteDocument
 fn @AnswerFrom role, path, !arrived:
     let !answers = !Filter (?AnswerIn<<d, r>> path, !arrived)
     $?answer <- nil then ? !answers
@@ -654,7 +677,7 @@ fn @HostDocument Implement, seats:
 # tags; everything else a guest emits passes up. Its results are each seat's result and,
 # each tick, the seats whose participants left: the program's map still holds them until
 # it removes them (Jimmy, 13 November, ruling SL).
-@HostRole: forall d (r: Role d). fn Fixed r, prompt $(SeatId d r ==> $@(@a emit Seat.* d r | rest)), Supplier d -> @(($(SeatId d r ==> a), ![SeatId d r], Guests d)) emit rest where d: ^Document
+@HostRole: forall d (r: Role d). fn Fixed r, prompt $(SeatId d r ==> $@(@a emit Seat.* d r | rest)), prompt Supplier d -> @(($(SeatId d r ==> a), ![SeatId d r], Guests d)) emit rest where d: ^Document
 fn @HostRole role, $seats, Supply:
     (($results, $tree)) <- @Host (@Seated $seats), \|path, prompt element| match element:
         Seat.Request(..): Supply path, (any ((role, (SeatIdAt<<d, r>> path), element)))
@@ -669,8 +692,13 @@ fn @HostRole role, $seats, Supply:
 # program removes the seat from its map by this, as it removes any).
 !LeavesAt: forall d (r: Role d). fn Path, Elem (Seat.* d r | rest) -> !(SeatId d r) where d: ^Document
 fn !LeavesAt at, element = match element:
-    Seat.Leave(!?leaves=!?leaves): (SeatIdAt<<d, r>> at) on !?leaves
+    Seat.Leave(!?leaves=!?leaves): (SeatIdAt<<d, r>> at) on (Departed !?leaves)
     otherwise: never
+
+# That a leaving fired, with or without its last request (a function of the optional, so
+# it lifts over the event only).
+Departed: fn ?a -> unit
+fn Departed ignore = unit
 
 # A role's tree as guests: each seat's places, each with the role and its seat id (the
 # path's first key); a place of another language is not the document's.
