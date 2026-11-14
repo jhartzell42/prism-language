@@ -16,7 +16,7 @@ use Ui.*
     $hits <- 0 then $hits + 1 on !hit
     Ui.Label($text=$"{$hits} hits")                               # 1, forwarded
 
-@Relayed: prompt fn !a -> @!a
+@Relayed: fn prompt !a -> @!a
 fn @Relayed !taps:
     Ui.Label($text=$"relaying")                                   # 0
     @ !taps

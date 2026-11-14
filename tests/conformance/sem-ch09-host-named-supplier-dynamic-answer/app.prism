@@ -13,7 +13,7 @@ tag Pad.Gauge of Element $Nat:
     $level <- Pad.Gauge(name="tank")
     Ui.Label($text=$"level {$level}")
 
-@Supply: prompt fn $Nat, Element (Ui.* | Pad.*) o -> @o
+@Supply: fn prompt $Nat, Element (Ui.* | Pad.*) o -> @o
 fn @Supply $count, e = match e:
     Pad.Gauge(..): @ $count
     otherwise: @Element e

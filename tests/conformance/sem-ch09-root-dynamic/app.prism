@@ -4,7 +4,7 @@
 emit Ui.*
 test mod Tests
 
-@Wrap: fn @a -> @a
+@Wrap: fn prompt @a -> @a
 fn @Wrap @child:
     ((r, ignore)) <- @Host @child, \|p, e| @Element e
     @ r

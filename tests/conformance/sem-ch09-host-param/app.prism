@@ -6,7 +6,7 @@
 emit Ui.*
 test mod Tests
 
-@Boxed: fn @a -> @a
+@Boxed: fn prompt @a -> @a
 fn @Boxed @child:
     ((r, $doc)) <- @Host @child, \|p, e| @Element e     # 1/[p]
     Ui.Label($text=$"{Size $doc} inside")                        # 2

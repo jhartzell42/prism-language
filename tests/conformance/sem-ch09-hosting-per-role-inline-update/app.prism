@@ -110,7 +110,7 @@ GameOf: fn State -> Game
 fn GameOf s = s.game
 
 # One player seat: the guest hosted, its requests read out of its document.
-@HostPlayer: fn Side, @a emit Ui.* | Play.*, $State -> @((a, $[Asking])) emit Ui.*
+@HostPlayer: fn Side, prompt @a emit Ui.* | Play.*, $State -> @((a, $[Asking])) emit Ui.*
 fn @HostPlayer side, @guest, $state:
     ((result, $doc)) <- @Host @guest, \|p, e| match e:
         Play.Request(..): @ !Filter (?ResponseTo side, p, !Updated $state)

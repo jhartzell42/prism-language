@@ -21,7 +21,7 @@ tag Pad.Gauge of Element $Nat:
 @host:
     !add <- Ui.Button($label=$"add")                              # 0
     $count <- 0 then $count + 1 on !add
-    @Supply: prompt fn $Nat, Element (Ui.* | Pad.*) o -> @o
+    @Supply: fn prompt $Nat, Element (Ui.* | Pad.*) o -> @o
     fn @Supply $d, e = match e:
         Pad.Gauge(..): @ $d
         otherwise: @Element e
