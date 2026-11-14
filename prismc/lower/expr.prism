@@ -905,12 +905,44 @@ fn AnyValue lx, env, x, t:
 IsLibraryBuiltin: fn Lx, Text -> Bool
 fn IsLibraryBuiltin lx, qk = (HasPrefix qk, "Documents.") and not (Fold lx.g.defs, False, \|found, d| found or d.qk == qk)
 
-LibraryBuiltinCall: fn Lx, Text, [Ex], OutTy -> Ex
-fn LibraryBuiltinCall lx, qk, args, t = match BareName qk:
+LibraryBuiltinCall: unbounded fn Lx, Text, [Ex], [Arg], Range, OutTy -> Ex
+fn LibraryBuiltinCall lx, qk, args, written, span, t = match BareName qk:
     "SeatPathOf": XCall (HelperRef "documents_seat_path_of"), args
     "SeatIdAt": XCallAt (HelperRef "documents_seat_id_at"), [[t]], args
     "$Merge": XCall (HelperRef "documents_merge"), args
+    "$GuestsOf": GuestsOfCall lx, args, written, span
     other: Refusal "the library's builtin `{other}`, whose runtime is not written yet"
+
+# `$GuestsOf<<d, r>> role, $tree`: the runtime's, at the guest's parts as this call's
+# role gives them (the role, its seat id, the element), with the role's variant number
+# and a test that an element is of the `Seat` family.
+GuestsOfCall: unbounded fn Lx, [Ex], [Arg], Range -> Ex
+fn GuestsOfCall lx, args, written, span:
+    let role = match written[0]:
+        ? a: match Peel (SubstTyIn lx, (TypeAt lx, a.value.span)):
+            TyCon "Prelude.Fixed", [[x]]: x
+            otherwise: TyErr
+        nil: TyErr
+    match ?ExistsWithin (Peel (TypeAt lx, span)):
+        ? (TyExists vs, b, ignore, ignore2):
+            let parts = SubstTyIn lx, (SubstQ (ParamInst vs, [[role]]), b)
+            match parts:
+                TyTuple [[fixedTy, seatTy, elemTy]]:
+                    let seatTags = Filter (Values lx.g.tags), \|tg| tg.home == "Documents" and tg.familyName == "Seat"
+                    let isSeat = XClosure False, [[PaBind "element"]], (XIsCase (XVar "element"), (Each seatTags, \|tg| VariantOf lx, tg))
+                    let number = ExistsNumber lx, (Or vs[0], "r"), (? role)
+                    XCallAt (HelperRef "documents_guests_of"), [[(OutTyOf lx, fixedTy), (OutTyOf lx, seatTy), (OutTyOf lx, elemTy), OutNat]], (Append (Push [[number]], (Or args[0], XUnit)), [[(Or args[1], XUnit), isSeat]])
+                otherwise: InternalBug "`$GuestsOf` whose guest is no triple"
+        otherwise: InternalBug "`$GuestsOf` whose result holds no existential"
+
+# The first existential a type holds, through sigils, maps and lists.
+?ExistsWithin: fn Ty -> ?Ty
+fn ?ExistsWithin t = match t:
+    TyExists ignore, ignore2, ignore3, ignore4: ? t
+    TySig ignore, i: ?ExistsWithin i
+    TyMap ignore, v: ?ExistsWithin v
+    TyArray e: ?ExistsWithin e
+    otherwise: nil
 
 # Whether a definition opens an existential whose kind is an associated kind at one of
 # its own type variables (`Told: fn SeatKey d -> Text`, `any (r: Role d)` opened): Rust
@@ -2277,7 +2309,7 @@ fn DeclaredCall lx, env, qk, args, span, cspan, t:
             ? v:
                 if v.sort == "method": MethodCall lx, env, v, args, span, cspan, t
                 else: if v.home == "Prelude": PreludeCall lx, env, qk, args, span, t
-                else: if IsLibraryBuiltin lx, qk: VlOwned (LibraryBuiltinCall lx, qk, (ArgsFor lx, env, v, args), t), t
+                else: if IsLibraryBuiltin lx, qk: VlOwned (LibraryBuiltinCall lx, qk, (ArgsFor lx, env, v, args), args, span, t), t
                 else:
                     let callArgs = Append (KindArgs lx, v, cspan), (ArgsFor lx, env, v, args)
                     let call = if OpensByVariable lx, qk: XCall (InstanceRef lx, qk, (CallInstance lx, v, cspan)), callArgs
