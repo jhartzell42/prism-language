@@ -540,7 +540,7 @@ fn @Queried at, !heard:
         match _:
             ? query:
                 $?answer <- Seat.Query($query=$ query)
-                @ (Answering at, (AnswerBytes<<d, r>> $?answer)) on (!Updated $?answer)
+                @ (Answering at, (AnswerBytes<<d, r>> $?answer)) on (Happened (!Updated $?answer))
             nil: @ never
     !sending <- @Switch $!sent
     @ !sending
@@ -559,8 +559,8 @@ fn @Outgoing $guests:
 fn !SentAt at, guest, !born = match guest:
     any ((role, id, element)): match element:
         Seat.Request(!requests=!requests): One (Asking at, (Encode !requests))
-        Seat.Query($query=$query): One (Querying at, (Encode (($query on !born) <| !Updated $query)))
-        Seat.Leave(!?leaves=!?leaves): LeavingMessages at, !?leaves
+        Seat.Query($query=$query): One (Querying at, (Encode (!Sampled $query, !born)))
+        Seat.Leave(!?leaves=!?leaves): LeavingMessages<<d>> role, at, !?leaves
         otherwise: never
 
 # A list of one (a function, so it lifts over an event where a list literal does not).
@@ -568,9 +568,9 @@ One: fn a -> [a]
 fn One x = [[x]]
 
 # A leaving's messages: its last request, if any, then the seat's departure.
-LeavingMessages: forall d (r: Role d). fn Path, ?(Request d r) -> [Message] where d: ^RemoteDocument
-fn LeavingMessages at, (? last) = [[(Asking at, (Encode last)), (Departing (SeatPathOf at))]]
-fn LeavingMessages at, nil = [[Departing (SeatPathOf at)]]
+LeavingMessages: forall d (r: Role d). fn Fixed r, Path, ?(Request d r) -> [Message] where d: ^RemoteDocument
+fn LeavingMessages role, at, (? last) = [[(Asking at, (Encode last)), (Departing (SeatPathOf at))]]
+fn LeavingMessages role, at, nil = [[Departing (SeatPathOf at)]]
 
 # The response the wire brought for a request place, at the place's role.
 ?ResponseFrom: forall d (r: Role d). fn Fixed r, Path, [Message] -> ?(Response d r) where d: ^RemoteDocument
@@ -667,7 +667,7 @@ derive ^StateDocument g via ^PerfectInformationGame g where State g = g, SeatId 
 # The document hosted: each role hosted once by the document's own `@HostSeats`, the
 # implementation built once, here; the result is every seat's own result. Its lower
 # language passes up to the caller.
-@HostDocument: fn Implementation d lower, prompt Seats d rest -> @(Results d) emit lower | rest where d: ^Document
+@HostDocument: fn prompt Implementation d lower, prompt Seats d rest -> @(Results d) emit lower | rest where d: ^Document
 fn @HostDocument Implement, seats:
     ((results, $guests)) <- @HostSeats seats, Supply     # each role hosted once
     Supply <- Implement $guests                          # built here, once
@@ -692,13 +692,18 @@ fn @HostRole role, $seats, Supply:
 # program removes the seat from its map by this, as it removes any).
 !LeavesAt: forall d (r: Role d). fn Path, Elem (Seat.* d r | rest) -> !(SeatId d r) where d: ^Document
 fn !LeavesAt at, element = match element:
-    Seat.Leave(!?leaves=!?leaves): (SeatIdAt<<d, r>> at) on (Departed !?leaves)
+    Seat.Leave(!?leaves=!?leaves): (SeatIdAt<<d, r>> at) on (Happened !?leaves)
     otherwise: never
 
-# That a leaving fired, with or without its last request (a function of the optional, so
-# it lifts over the event only).
-Departed: fn ?a -> unit
-fn Departed ignore = unit
+# That an event of an optional fired, with or without a value (a function of the optional,
+# so it lifts over the event only): a leaving, with or without its last request.
+Happened: fn ?a -> unit
+fn Happened ignore = unit
+
+# A dynamic's value as it starts and as it changes (a function, so a lifted call around it
+# takes the event whole).
+!Sampled: fn $a, !unit -> !a
+fn !Sampled $x, !born = ($x on !born) <| !Updated $x
 
 # A role's tree as guests: each seat's places, each with the role and its seat id (the
 # path's first key); a place of another language is not the document's.
@@ -711,6 +716,6 @@ SeatIdAt: forall d (r: Role d). fn Path -> SeatId d r where d: ^Document
 # blueprint changes.
 @Seated: fn prompt $(k ==> $@(@a emit rest)) -> @$(k ==> a) emit rest
 fn @Seated $seats:
-    for seat, $guest <- $seats:
-        rebuild $guest:
+    for seat, $@guest <- $seats:
+        rebuild $@guest:
             _
