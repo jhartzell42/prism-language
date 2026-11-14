@@ -333,3 +333,9 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   "choice a, for now": such a program defers what it reads back (the tally's `@Table`,
   `@Defer results.!tellersLeft`), and splitting a dynamic's update from what it holds,
   for dynamics of blueprints and events, is not taken for now.
+- **LB** The remote protocol is library code, not builtins: `@Answer`, `@Outgoing` (a
+  widget: merging a changing set of places' events takes a `for`), `?ResponseFrom`,
+  `@AnswerFrom` (a widget: holding the last answer takes a hold), over
+  `^RemoteDocument`'s `Encode`/`~Decode`. Jimmy, 14 November: "they should definitely be
+  library code if they can be and so should the rest of them". The rest (`SeatPathOf`,
+  `SeatIdAt`, `$Merge`, `$GuestsOf`) wait on path builtins in the prelude (asked).
