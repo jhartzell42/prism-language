@@ -163,8 +163,11 @@ fn InferUnary env, st, op, x, span:
 InferFreeSigil: unbounded fn Env, St, Text, Expr, Range -> ((Ty, St))
 fn InferFreeSigil env, st, s, x, span:
     if s == "@":
+        # `@ v` places nothing: it fits a blueprint of any row (a default of `^Document`'s
+        # `@Query`, whose row is `Lower d`, written in a module that emits another)
         let ((t, st2)) = Infer env, st, x
-        (((TyAt t, env.scope), st2))
+        let ((rw, st3)) = FreshRow st2, [[]]
+        (((TyAt t, rw), st3))
     else: if s == "?" or s == "~" or s == "$":
         let ((v, st2)) = FreshVar st, False, ""
         if IsBlueprintExpr env, st2, x:

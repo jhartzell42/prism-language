@@ -248,6 +248,8 @@ fn CarriesTime g, seen, t = match t:
     TyRigid ignore: True
     TyFlex ignore: True
     TyAssoc ignore, ignore2, ignore3, ignore4: True
+    # `Fixed r` holds a variant, known as a type: no value that moves
+    TyCon "Prelude.Fixed", ignore: False
     TyCon n, args:
         if Fold args, False, \|found, a| found or CarriesTime g, seen, a: True
         else: if HasText seen, n: False

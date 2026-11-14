@@ -168,12 +168,20 @@ fn CallGlobal env, st0, n, args, span, explicit, cspan:
                     let st3a = NoteCallee (NoteMethodUse st2u, v, span), n.span, cspan, t
                     let st3 = if (BareName qk) == "Min": NoteSizeTy st3a, span, (Walk st3a, t) else: st3a
                     if (BareName qk) == "Fold" and v.home == "Prelude": FoldApp env, st3, t, args, span
+                    # `ResponseOf<<d>>` given no arguments: the function at those types, as a
+                    # value (`@Run ResponseOf<<d>>, ..`), never a call of none
+                    else: if (Len args) == 0 and (Len explicit) > 0 and TakesArguments st3, t: ((t, st3))
                     else:
                         let ((rt, st4)) = ApplyFn env, st3, name, t, args, span
                         ((rt, (Escaped env, st4, rigids, rt, name, span)))
                 nil: match env.g.ctors[qk]:
                     ? c: CtorApp env, st, c, args, span, cspan
                     nil: ((TyErr, (Err st, "unknown-name", n.span, "`{name}` has no signature line")))
+
+TakesArguments: unbounded fn St, Ty -> Bool
+fn TakesArguments st, t = match Walk st, t:
+    TyFn ignore, ps, ignore2, ignore3: (Len ps) > 0
+    otherwise: False
 
 # The rank-2 rule (Type System ch. 5, "Refinement at tag matches"): an element's output
 # variable that appears only inside one function-typed parameter is quantified at that
