@@ -817,7 +817,9 @@ fn ConvTrait g, st, info, t, span:
             # `collision`: a method is signed once
             let s2 = if HasText ms, qk: Err s2a, "collision", sg.span, "a second signature for `{mname}`" else: s2a
             let sc2 = update sc:
-                &_.qs <= if HasText &_.qs, param: &_.qs else: Append [[param]], &_.qs
+                # the trait's parameter first: `Step<<d>>` under `forall (r: Role d)` gives
+                # `d`, then the method's own variables in their `forall` order
+                &_.qs <= Append [[param]], (Filter &_.qs, \|q| q != param)
                 &_.bounds <= Append [[((param, name))]], &_.bounds
             let upd = update gg:
                 &_.vals <= Insert &_.vals, qk, ValInfo(qk=qk, scheme=sc2, sort="method", hasSig=True, scoped=[[]], scopedKinds=[[]], home=info.name, file=info.file, span=sg.span)
