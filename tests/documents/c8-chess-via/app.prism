@@ -34,7 +34,7 @@ fn Status (? game) = StatusText game
 
 # Part IV ch. 3's player: it fires the moves it is handed and gives back the game and the
 # responses (a result of several parts, in the host's scope).
-@Player: fn !ChessMove -> @(($?ChessGame, !Response ChessGame Player)) emit Seat.* ChessGame Player
+@Player: fn prompt !ChessMove -> @(($?ChessGame, !Response ChessGame Player)) emit Seat.* ChessGame Player
 fn @Player !moves:
     $?game <- Seat.Query($query=$ Whole)                                       # 0
     !response <- Seat.Request(!requests=!moves)                                # 1
