@@ -93,7 +93,9 @@ fn ?CtorsOf env, st, t = match Zonk st, t:
     TyCon "Prelude.Fixed", [[x]]: match x:
         TyRole k: ? [[(FixedCtor k)]]
         TyRigid v: match (Filter env.scopedKinds, \|((q, ignore))| q == v)[0]:
-            ? ((ignore, kindKey)): ? (Each (Filter (Keys env.g.caseOwners), \|c| env.g.caseOwners[c] == ? kindKey), FixedCtor)
+            ? ((ignore, written)):
+                let kindKey = KindThroughImpl st, written
+                ? (Each (Filter (Keys env.g.caseOwners), \|c| env.g.caseOwners[c] == ? kindKey), FixedCtor)
             nil: nil
         otherwise: nil
     # an existential has one constructor, `any`, over its body

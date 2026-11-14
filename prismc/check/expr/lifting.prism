@@ -223,7 +223,9 @@ fn ?TagOfPattern env, p = match p.kind:
     PGroup q: ?TagOfPattern env, q
     otherwise: nil
 
-# A rigid variable replaced by a type: the local equality a tag arm assumes.
+# A rigid variable replaced by a type: the local equality a tag arm assumes. It is replaced
+# everywhere it stands, an associated type's indices and an existential's kinds included
+# (`Payload Box s` under `Fixed<<Left>>` is `Payload Box Left`).
 SubstRigid: unbounded fn Text, Ty, Ty -> Ty
 fn SubstRigid name, by, t = match t:
     TyRigid n: if n == name: by else: t
@@ -235,6 +237,9 @@ fn SubstRigid name, by, t = match t:
     TySig s, i: TySig s, (SubstRigid name, by, i)
     TyAt i, rw: TyAt (SubstRigid name, by, i), rw
     TyElem rw, o: TyElem rw, (SubstRigid name, by, o)
+    TyAssoc tr, n, a, indices: TyAssoc tr, n, (SubstRigid name, by, a), (Each indices, \|i| SubstRigid name, by, i)
+    TyExists vs, b, bs, kinds: TyExists vs, (SubstRigid name, by, b), bs, (Each kinds, \|((kv, kt))| ((kv, (SubstRigid name, by, kt))))
+    TyForall vs, b: TyForall vs, (SubstRigid name, by, b)
     other: other
 
 MatchResult: unbounded fn Env, St, Text, [((Text, Range))], Ty, Range -> ((Ty, St))

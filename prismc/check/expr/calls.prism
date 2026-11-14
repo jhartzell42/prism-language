@@ -109,7 +109,7 @@ fn ValueOfCase env, st, tys, span:
                     ? ci: (((TyCon ci.owner, [[]]), st2))
                     nil: ((TyErr, st2))
                 TyQ q: match (Filter env.scopedKinds, \|((v, ignore))| v == q)[0]:
-                    ? ((ignore, k)): (((TyCon k, [[]]), st2))
+                    ? ((ignore, k)): (((TyCon (KindThroughImpl st2, k), [[]]), st2))
                     nil: ((TyErr, (Err st2, "kind", span, "`ValueOf` takes a variant of a payload-free choice; `{q}` has no stated kind (`forall ({q}: ...)`)")))
                 otherwise: ((TyErr, (Err st2, "kind", span, "`ValueOf` takes a variant of a payload-free choice; `{ShowTy st2, x}` is a type, no variant of a choice")))
         otherwise: ((TyErr, (Err st, "kind", span, "`ValueOf` takes one variant, `ValueOf<<Writer>>`")))
@@ -333,6 +333,13 @@ fn ApplyFn env, st, fname, fty, args, span:
             let st3 = Unify st2b, fty, (TyFn col, params, res, [[]]), span
             ApplyRule env, st3, fname, col, params, res, args, span
         TyErr: ((TyErr, st0))
+        # a quantified function (`Supply`, a `Supplier d`) applied at fresh variables, as a
+        # lowercase local of that type is used (Jimmy's ruling FA)
+        TyForall vs, b:
+            let ((body, st1)) = Fold vs, ((b, st0)), \|((t, s)), v|
+                let ((fresh, s2)) = FreshVar s, False, ""
+                (((SubstQ Inst(tys={{v: fresh}}, rows={{}}, cols={{}}), t), s2))
+            ApplyFn env, st1, fname, body, args, span
         other:
             if (Len args) == 0: ((other, st0))
             else: ((TyErr, (Err st0, "mismatch", span, "`{fname}` is a `{ShowTy st0, other}`, not a function")))

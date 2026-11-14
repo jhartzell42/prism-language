@@ -277,8 +277,20 @@ fn ForallKinds g, m, t = match t.kind:
         TName n, [[]]: match ResolveType g, m, n.path:
             ((? found, ignore)): Push acc, ((v, found))
             otherwise: acc
+        # a kind an associated type gives at a named type (`s: Side Box`): kept as the
+        # associated type and the type, and found through the impl where it is read
+        # (`?KindOfAssoc`)
+        TName n, [[arg]]: match arg.kind:
+            TName a, [[]]: match ResolveType g, m, a.path:
+                ((? found, ignore)): Push acc, ((v, (AssocKindKey (BareName (Dotted n.path)), found)))
+                otherwise: acc
+            otherwise: acc
         otherwise: acc
     otherwise: [[]]
+
+# The scoped-kind key of an associated type's kind at a named type (`ForallKinds`).
+AssocKindKey: fn Text, Text -> Text
+fn AssocKindKey assoc, head = "assoc\u{0}{assoc}\u{0}{head}"
 
 ConvertDecl: unbounded fn G, St, ModInfo, Decl -> ((G, St))
 fn ConvertDecl g, st, info, d = match d.kind:
