@@ -184,10 +184,10 @@ IsBlueprintExpr: fn Env, St, Expr -> Bool
 fn IsBlueprintExpr env, st, x = match x.kind:
     EFreeSigil "@", ignore: True
     EGroup y: IsBlueprintExpr env, st, y
-    ECall c, ignore, ignore, ignore: match c.kind:
-        EName n: (HasPrefix n.sigils, "@")
-        otherwise: False
+    ECall c, ignore, ignore, ignore: IsBlueprintExpr env, st, c
     EName n: (HasPrefix n.sigils, "@")
+    # a widget function given its type arguments (`@Serve<<ChessGame>> Fixed<<Player>>, c`)
+    ETypeArgs f, ignore: IsBlueprintExpr env, st, f
     EWidgetBlock ignore: True
     otherwise: False
 
