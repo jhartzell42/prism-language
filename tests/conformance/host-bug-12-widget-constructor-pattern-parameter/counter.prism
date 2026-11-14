@@ -57,7 +57,7 @@ tag CounterSeat.State of Element $Nat
 ?Mine: fn Presser, (Place ==> Response), Path -> ?Response
 fn ?Mine seat, responses, p = ?ResponseTo seat, p, responses
 
-@HostPressers: fn prompt $(Presser ==> v), (fn Presser -> @a emit rest | Count.*), !(Place ==> Response) -> @!(Presser ==> (Path ==> Asked Nat)) emit rest | CounterSeat.*
+@HostPressers: fn $(Presser ==> v), (fn Presser -> @a emit rest | Count.*), !(Place ==> Response) -> @!(Presser ==> (Path ==> Asked Nat)) emit rest | CounterSeat.*
 fn @HostPressers $seats, Guest, !responses:
     !heard <- for seat, $sitting <- $seats:
         $state <- CounterSeat.State()
@@ -73,7 +73,7 @@ fn @HostPressers $seats, Guest, !responses:
         @ !asked
     @ !heard
 
-@HostCounter: fn prompt $(Presser ==> v), (fn Presser -> @a emit rest | Count.*), $Nat, !(Place ==> Response) -> @((unit, ![Asked Nat])) emit rest
+@HostCounter: fn $(Presser ==> v), (fn Presser -> @a emit rest | Count.*), $Nat, !(Place ==> Response) -> @((unit, ![Asked Nat])) emit rest
 fn @HostCounter $seats, Guest, $state, !responses:
     ((!heard, ignore)) <- @Host (@HostPressers $seats, Guest, !responses), \|p, e| match e:
         CounterSeat.State(..): @ $state

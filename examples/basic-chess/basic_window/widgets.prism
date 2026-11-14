@@ -51,7 +51,7 @@ fn @TextInput name, initial:
 
 # A text input whose text is also set from outside: each firing of `!set` replaces it, the
 # caret at its end; a text box kept in step with a slider.
-@TextField: fn Text, Text, !Text -> @$Text
+@TextField: fn Text, Text, prompt !Text -> @$Text
 fn @TextField name, initial, !set:
     !key <- Ui.TextInput(name=name, $text=$edit.text, $cursor=$edit.cursor)
     $edit <- Edit initial, (Len initial) then (AtEnd !set) <| (Apply $edit, !key)

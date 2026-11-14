@@ -52,7 +52,7 @@ fn !Requested e = match e:
     Count.Request(!requests=!r): !r
     otherwise: never
 
-@HostPressers: fn prompt $(Presser ==> v), (fn Presser, v -> @a emit rest | Count.*), $Nat, !(Place ==> Response) -> @!(Presser ==> (Path ==> Asked Nat)) emit rest
+@HostPressers: fn $(Presser ==> v), (fn Presser, v -> @a emit rest | Count.*), $Nat, !(Place ==> Response) -> @!(Presser ==> (Path ==> Asked Nat)) emit rest
 fn @HostPressers $seats, Guest, $state, !responses:
     !heard <- for seat, $sitting <- $seats:
         ((ignore, $doc)) <- @Host (@Sat seat, $sitting, Guest), \|p, e| match e:
