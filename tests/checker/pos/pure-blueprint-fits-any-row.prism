@@ -1,0 +1,11 @@
+# `@ v` places nothing, so it fits a blueprint of any row: a module that emits `Ui.*`
+# gives `@ 3` where a blueprint of another row is wanted. Found by the step 3 build on the
+# library (`^Document`'s `@Query` default, row `Lower d`, written in a module of another).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+module PureBlueprint
+emit Ui.*
+
+family Quiet
+
+Given: fn Nat -> @Nat emit Quiet.*
+fn Given n = @ n
