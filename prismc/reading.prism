@@ -524,7 +524,7 @@ fn UnitName u = if u.named: u.name else: Fold (HeaderLines (MainText u)), "", \|
 
 # A tree's diagnostic as the checker prints one, at the file it names.
 RenderTreeDiag: fn (Text ==> Text), TreeDiag -> Text
-fn RenderTreeDiag texts, d = RenderCDiag [[(MkSrc d.path, (Or texts[d.path], ""))]], CDiag(code=d.code, file=0, span=d.span, message=d.message, fix=d.fix)
+fn RenderTreeDiag texts, d = RenderCDiag [[(MkSrc d.path, (Or texts[d.path], ""))]], CDiag(code=d.code, file=0, span=d.span, message=d.message, fix=d.fix, note="")
 
 # The errors of a reading, and their count, as the run's report.
 TreeReport: fn ReadInput, [TreeDiag] -> Text
@@ -589,8 +589,8 @@ fn DeclRoleDiags src, parent, i, d:
         DTrait ignore: "trait"
         DImpl ignore: "impl"
         otherwise: ""
-    if role == "main" and (what == "test" or what == "check"): [[CDiag(code="test-outside", file=i, span=d.span, message="a `{what}` in a tree stands only in a test module", fix="move it to a test module: `test mod Tests` in {main}, and tests.prism")]]
-    else: if role == "test" and (what == "tag" or what == "trait" or what == "impl"): [[CDiag(code="test-declares", file=i, span=d.span, message="a test module declares no tag, trait or impl", fix="declare it in {tested}, the module the test module tests")]]
+    if role == "main" and (what == "test" or what == "check"): [[CDiag(code="test-outside", file=i, span=d.span, message="a `{what}` in a tree stands only in a test module", fix="move it to a test module: `test mod Tests` in {main}, and tests.prism", note="")]]
+    else: if role == "test" and (what == "tag" or what == "trait" or what == "impl"): [[CDiag(code="test-declares", file=i, span=d.span, message="a test module declares no tag, trait or impl", fix="declare it in {tested}, the module the test module tests", note="")]]
     else: [[]]
 
 ViasOf: fn Module -> [ViaDecl]

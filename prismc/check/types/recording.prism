@@ -36,7 +36,7 @@ fn NoteTy st, span, t = if not st.recording: st else: update st:
 NoteFaultAt: unbounded fn St, Range, Ty, Ty -> St
 fn NoteFaultAt st, span, expected, found = match Walk st, found:
     TyCon "Prelude.Error", [[]]: update st:
-        &_.faultQs <= Push &_.faultQs, Waiting(expected=expected, found=found, span=span, file=st.file)
+        &_.faultQs <= Push &_.faultQs, Waiting(expected=expected, found=found, span=span, file=st.file, outer=((TyErr, TyErr)), ?guestRow=nil)
     TyCon "Prelude.NonEmpty", ignore: AskPlainAt st, span, expected
     # a dynamic or an event of a non-empty collection, where the dynamic or event of its
     # plain collection may be wanted (an arm of a lifted `if` beside a plain one's)
@@ -54,7 +54,7 @@ fn NotePlainUnder st, span, expected, inner = match Walk st, inner:
 # that is a non-empty collection there).
 AskPlainAt: fn St, Range, Ty -> St
 fn AskPlainAt st, span, expected = update st:
-    &_.plainQs <= Push &_.plainQs, Waiting(expected=expected, found=expected, span=span, file=st.file)
+    &_.plainQs <= Push &_.plainQs, Waiting(expected=expected, found=expected, span=span, file=st.file, outer=((TyErr, TyErr)), ?guestRow=nil)
 
 # The plain questions answered: each place whose wanted type is an array or a map, or is
 # the value of a match or an `if` with a `[a]` arm beside its `[a]+` arms (`UnifyArm`,
@@ -109,7 +109,7 @@ FaultVar: fn St, Range -> ((Ty, St))
 fn FaultVar st, span:
     let ((v, st2)) = FreshVar st, False, ""
     ((v, update st2:
-        &_.faultVars <= Push &_.faultVars, Waiting(expected=v, found=(TyCon "Prelude.Error", [[]]), span=span, file=st.file)))
+        &_.faultVars <= Push &_.faultVars, Waiting(expected=v, found=(TyCon "Prelude.Error", [[]]), span=span, file=st.file, outer=((TyErr, TyErr)), ?guestRow=nil)))
 
 # An `Error(..)` pattern against a `~T`: the pattern takes its failure.
 IsFailurePattern: unbounded fn St, Ty, Ty -> Bool

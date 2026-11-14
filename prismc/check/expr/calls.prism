@@ -687,7 +687,13 @@ fn TagApp env, st, name, args, span, cspan = match env.g.tags[name]:
                 ? ft:
                     let marked = ArgMarks s, name, id.name, ft, a.marks, a.span
                     if element:
-                        let ((l, s2)) = TagField env, marked, name, id.name, (SubstQ inst, ft), a
+                        # a field's waiting associated type is told by the guest that
+                        # emits the family at the tag's indices (`GuestRow`)
+                        let guest = update marked:
+                            &_.guestRow <= if (Len tg.famParams) == 0: nil else: ? GuestRow(familyName=tg.familyName, indices=(Each tg.famParams, \|q| SubstQ inst, (TyQ q)))
+                        let ((l, s2a)) = TagField env, guest, name, id.name, (SubstQ inst, ft), a
+                        let s2 = update s2a:
+                            &_.guestRow <= nil
                         (((if lay == "!" or l == "": lay else: l), s2))
                     else: ((lay, marked))
                 nil: ((lay, (Err s, "mismatch", a.span, "`{name}` has no field `{id.name}`")))

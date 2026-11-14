@@ -109,7 +109,7 @@ fn CheckProgram srcs, trees0, world, shown, recording, unused, pre:
 InLibrary: fn [Module], Nat, CDiag -> CDiag
 fn InLibrary trees, shown, d:
     if d.file < shown: d
-    else: CDiag(code=d.code, file=d.file, span=d.span, message="in the standard library's module `{ModName (Or trees[d.file], emptyModule)}`: {d.message}", fix=d.fix)
+    else: CDiag(code=d.code, file=d.file, span=d.span, message="in the standard library's module `{ModName (Or trees[d.file], emptyModule)}`: {d.message}", fix=d.fix, note=d.note)
 
 # ---------------------------------------------------------------------------------------
 # The growth check (ruling PG; Type System ch. 2, recursion at another type)

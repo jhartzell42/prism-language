@@ -27,7 +27,12 @@ use Check.Typed.Print.*
 # (`occurs`, `mark-stack`, `row-lacks`) report themselves.
 Unify: unbounded fn St, Ty, Ty, Range -> St
 fn Unify st, expected, found, span:
-    let ((verdict, st2)) = UnifyIn st, expected, found, span
+    let outerBefore = st.unifying
+    let entered = update st:
+        &_.unifying <= ((expected, found))
+    let ((verdict, st2a)) = UnifyIn entered, expected, found, span
+    let st2 = update st2a:
+        &_.unifying <= outerBefore
     if verdict == "mismatch":
         let e = ShowTy st2, expected
         let f = ShowTy st2, found
@@ -191,7 +196,7 @@ fn IsWaitingAssoc st, t = match t:
 
 Defer: fn St, Ty, Ty, Range -> St
 fn Defer st, e, f, span = update st:
-    &_.deferred <= Push &_.deferred, Waiting(expected=e, found=f, span=span, file=st.file)
+    &_.deferred <= Push &_.deferred, Waiting(expected=e, found=f, span=span, file=st.file, outer=st.unifying, ?guestRow=st.?guestRow)
 
 # The waiting equations, retried once their variables are bound, each in its own file.
 RetryDeferred: unbounded fn St -> St
@@ -202,9 +207,49 @@ fn RetryDeferred st:
     let done = Fold waiting, cleared, \|s, w|
         let there = update s:
             &_.file <= w.file
-        Unify there, w.expected, w.found, w.span
+        RetryOne there, w
     update done:
         &_.file <= st.file
+
+# One waiting equation again: a disagreement now reports the whole types the equation
+# came from (`!Never`, not the `Never` inside), and, for an element's field, a note that
+# names the guest and what its associated type is there.
+RetryOne: unbounded fn St, Waiting -> St
+fn RetryOne st, w:
+    let ((verdict, st2)) = UnifyIn st, w.expected, w.found, w.span
+    if verdict != "mismatch": st2
+    else:
+        let ((outerExpected, outerFound)) = w.outer
+        let shownE = ShowTy st2, (NormAssocDeep st2, (Zonk st2, (if outerExpected == TyErr: w.expected else: outerExpected)))
+        let shownF = ShowTy st2, (NormAssocDeep st2, (Zonk st2, (if outerFound == TyErr: w.found else: outerFound)))
+        let message = "expected `{shownE}`, found `{shownF}`"
+        match w.?guestRow:
+            ? gr: AddDiag st2, (DiagNote "mismatch", st2.file, w.span, message, (GuestNote st2, gr, w))
+            nil: Err st2, "mismatch", w.span, message
+
+# A type with every associated type in it normalized, for a message.
+NormAssocDeep: unbounded fn St, Ty -> Ty
+fn NormAssocDeep st, t = match NormAssoc st, t:
+    TySig sg, i: TySig sg, (NormAssocDeep st, i)
+    TyCon c, args: TyCon c, (Each args, \|a| NormAssocDeep st, a)
+    TyTuple ts: TyTuple (Each ts, \|a| NormAssocDeep st, a)
+    TyArray e: TyArray (NormAssocDeep st, e)
+    TyMap k, v: TyMap (NormAssocDeep st, k), (NormAssocDeep st, v)
+    other: other
+
+# The note of a field's waiting associated type: the guest's row, and the associated
+# type as written there with what it is.
+GuestNote: unbounded fn St, GuestRow, Waiting -> Text
+fn GuestNote st, gr, w:
+    let ?assoc = match Zonk st, w.expected:
+        TyAssoc tr, n, a, indices: ? (TyAssoc tr, n, a, indices)
+        otherwise: match Zonk st, w.found:
+            TyAssoc tr, n, a, indices: ? (TyAssoc tr, n, a, indices)
+            otherwise: nil
+    let emitted = "{gr.familyName}.*{Concat (Each gr.indices, \|i| " {ShowTyIn st, (Zonk st, i), True}")}"
+    match ?assoc:
+        ? t: "this guest emits `{emitted}`, and `{ShowTyIn st, t, False}` is `{ShowTy st, (NormAssoc st, t)}`"
+        nil: "this guest emits `{emitted}`"
 
 # The program's end: an equation still waiting has a variable nothing decided, and an
 # equation never checked would let any type through (`ambiguous`, never dropped).

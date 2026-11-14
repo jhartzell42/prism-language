@@ -126,7 +126,7 @@ fn UnusedDefs defs, refs, shown:
             otherwise: m3
         otherwise: m
     let own = Filter defs, \|d| d.file < shown and not (HasKey used, d.qk) and d.name != "@main" and not (IsMethodDef d) and not (IsTestingDef d)
-    Each own, \|d| CDiag(code="unused", file=d.file, span=d.span, message="nothing uses `{d.name}`", fix="delete it, or use it")
+    Each own, \|d| CDiag(code="unused", file=d.file, span=d.span, message="nothing uses `{d.name}`", fix="delete it, or use it", note="")
 
 # Nothing outside a test module names what one declares (`test-only-reached`, claude/
 # modules-style-pass.md): a definition in no test module whose references reach a
@@ -140,7 +140,7 @@ fn TestOnlyReached srcs, defs, refs:
         let byKey = Fold defs, {{}}, \|m, d| Insert m, d.qk, d
         Fold refs, [[]], \|acc, ((k, rs))| match byKey[k]:
             ? d: if (DefRole srcs, d) == "test": acc else: Fold rs, acc, \|a, r| match inTest[r]:
-                ? t: Push a, CDiag(code="test-only-reached", file=d.file, span=d.span, message="`{d.name}` names `{t.qk}`, which a test module declares ({LastPathPart (SegAt (Or srcs[t.file], (MkSrc "", "")), t.span.start).path}): only test modules name it", fix="move `{t.qk}` out of the test module, or `{d.name}` into one")
+                ? t: Push a, CDiag(code="test-only-reached", file=d.file, span=d.span, message="`{d.name}` names `{t.qk}`, which a test module declares ({LastPathPart (SegAt (Or srcs[t.file], (MkSrc "", "")), t.span.start).path}): only test modules name it", fix="move `{t.qk}` out of the test module, or `{d.name}` into one", note="")
                 nil: a
             nil: acc
 

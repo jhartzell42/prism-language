@@ -257,6 +257,19 @@ type St = record:
     # Every name a pattern binds in the definition being checked, asked at its end whether
     # its case says what it holds (`CaseQuestions`).
     caseQs: [CaseQ]
+    # The two whole types of the unification under way (`Unify`), which an equation that
+    # waits keeps for its message; and the guest an element's field is checked for, which
+    # its note names (`GuestRow`).
+    unifying: ((Ty, Ty))
+    ?guestRow: GuestRow
+derive ^Eq, ^Show
+
+# The family and indices an element's tag is applied at, while its fields are checked
+# (`TagField`): a waiting associated type of a field is told in its note by the guest
+# that emits the family at those indices.
+type GuestRow = record:
+    familyName: Text
+    indices: [Ty]
 derive ^Eq, ^Show
 
 # A name a pattern binds: the name as written, its sigils, the name under them, the marks
@@ -326,6 +339,10 @@ type Waiting = record:
     found: Ty
     span: Range
     file: Nat
+    # the unification it came from, whole, for the message (`!Never`, not `Never`), and
+    # the guest whose element's field it is, for the note
+    outer: ((Ty, Ty))
+    ?guestRow: GuestRow
 derive ^Eq, ^Show
 
 # An `any e` waiting for the existential it meets: the variable it gave, `e`'s type, and
@@ -342,7 +359,7 @@ UseKey: fn Nat, Range -> Text
 fn UseKey file, span = "{file}:{span.start}:{span.end}"
 
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={{}}, infos={{}}, rows={{}}, lacks={{}}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={{}}, cleqs=[[]], colQ={{}}, colUp={{}}, deferred=[[]], binderAt={{}}, rowNames={{}}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={{}}, sizeTys={{}}, unsignedFns=[[]], localNext=0, localIds={{}}, anyGivens=[[]], headGivens=[[]], assocImpls=[[]], assocRowImpls=[[]], plainArms=[[]], faultQs=[[]], plainQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={{}}, packs=[[]], definition="", genericUses=[[]], caseQs=[[]])
+fn NewSt file = St(next=0, tys={{}}, infos={{}}, rows={{}}, lacks={{}}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={{}}, cleqs=[[]], colQ={{}}, colUp={{}}, deferred=[[]], binderAt={{}}, rowNames={{}}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={{}}, sizeTys={{}}, unsignedFns=[[]], localNext=0, localIds={{}}, anyGivens=[[]], headGivens=[[]], assocImpls=[[]], assocRowImpls=[[]], plainArms=[[]], faultQs=[[]], plainQs=[[]], elemLifts=[[]], faultVars=[[]], binderIds=[[]], useIds=[[]], methodUses={{}}, packs=[[]], definition="", genericUses=[[]], caseQs=[[]], unifying=((TyErr, TyErr)), ?guestRow=nil)
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed, idx={{}})
