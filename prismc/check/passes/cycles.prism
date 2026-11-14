@@ -399,18 +399,7 @@ fn StmtDefs s = match s.kind:
 PromptEdges: unbounded fn Env, St, PCx, Stmt, [Text] -> [((Text, Text))]
 fn PromptEdges env, st, cx, s, defs = match s.kind:
     SBind ignore, ignore, (? ignore): [[]]
-    SBind p, e, nil:
-        let names = PatternNames p
-        let reads = PromptReads cx, e, defs
-        let captured = CaptureReads cx, e, defs
-        # a place tree (`$elems`, `$guests`: places' snapshots) is never prompt on a
-        # function its host was given (Jimmy, QG (c)): an answer reaches a place's next
-        # request only through the guest, whose element counts as prompt on its own
-        # fields, or through the program, whose seats a host marks `prompt`
-        let trees = Filter names, \|n| IsPlaceTreeLocal env, st, n
-        let rest = Filter names, \|n| not (HasText trees, n)
-        let plainReads = Filter reads, \|n| not (IsFunctionLocal env, st, n)
-        Append (Edges rest, (Append reads, captured)), (Edges trees, plainReads)
+    SBind p, e, nil: Edges (PatternNames p), (Append (PromptReads cx, e, defs), (CaptureReads cx, e, defs))
     SLet p, ignore, e:
         let names = PatternNames p
         let layer = Fold names, "", \|acc, n| match env.locals[n]:
@@ -418,36 +407,6 @@ fn PromptEdges env, st, cx, s, defs = match s.kind:
             nil: acc
         Edges names, (Append (Filter (PromptReads cx, e, defs), \|n| ReadIsPrompt env, st, n, layer), (CaptureReads cx, e, defs))
     otherwise: [[]]
-
-# Whether a block's name holds a place tree: a map whose entries hold places' snapshots
-# (`$(Path ==> $Elem c)`, `Guests d`).
-IsPlaceTreeLocal: unbounded fn Env, St, Text -> Bool
-fn IsPlaceTreeLocal env, st, n = match env.locals[n]:
-    ? sc: IsPlaceTree st, (Zonk st, sc.ty)
-    nil: False
-
-IsPlaceTree: unbounded fn St, Ty -> Bool
-fn IsPlaceTree st, t = match Walk st, t:
-    TySig ignore, i: IsPlaceTree st, i
-    TyMap ignore, v: HoldsSnapshot st, v
-    otherwise: False
-
-HoldsSnapshot: unbounded fn St, Ty -> Bool
-fn HoldsSnapshot st, t = match Walk st, t:
-    TyElemAny ignore: True
-    TySig ignore, i: HoldsSnapshot st, i
-    TyTuple ts: Fold ts, False, \|seen, x| seen or HoldsSnapshot st, x
-    TyExists ignore, b, ignore2, ignore3: HoldsSnapshot st, b
-    otherwise: False
-
-# Whether a block's name holds a function value (a supplier, a handler).
-IsFunctionLocal: unbounded fn Env, St, Text -> Bool
-fn IsFunctionLocal env, st, n = match env.locals[n]:
-    ? sc: match Walk st, sc.ty:
-        TyFn ignore, ignore2, ignore3, ignore4: True
-        TyForall ignore, b: True
-        otherwise: False
-    nil: False
 
 # What the function values a right side makes capture (ruling PT, choice (a)): the
 # block's names read in the body of every lambda in it, however deep, its own parameters
