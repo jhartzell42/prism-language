@@ -135,7 +135,7 @@ derive ^Eq, ^Show
 trait ^StateDocument d where d: ^Document:
     Step: forall (r: Role d). fn State d, Fixed r, SeatId d r, Request d r -> Stepped (State d) (Reason d r)
     Read: forall (r: Role d). fn State d, Fixed r, SeatId d r, Query d r -> Answer d r
-    @InMemory: fn State d, prompt Guests d -> @(Supplier d)
+    @InMemory: fn State d, prompt Guests d -> @(Supplier d) emit unit
     # `^Document`'s methods, lifted from the rules (a sub-trait gives a default for a method
     # above it: Jimmy, 13 November). An implementation applies a tick's requests in the
     # document's order itself; these answer one request, or one query, on their own.
