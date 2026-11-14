@@ -278,15 +278,20 @@ fn NormAssocDeep st, t = match NormAssoc st, t:
 # type as written there with what it is.
 GuestNote: unbounded fn St, GuestRow, Waiting -> Text
 fn GuestNote st, gr, w:
-    let ?assoc = match Zonk st, w.expected:
-        TyAssoc tr, n, a, indices: ? (TyAssoc tr, n, a, indices)
-        otherwise: match Zonk st, w.found:
-            TyAssoc tr, n, a, indices: ? (TyAssoc tr, n, a, indices)
-            otherwise: nil
+    let ?assoc = match ?AssocUnder st, w.expected:
+        ? t: ? t
+        nil: ?AssocUnder st, w.found
     let emitted = "{gr.familyName}.*{Concat (Each gr.indices, \|i| " {ShowTyIn st, (Zonk st, i), True}")}"
     match ?assoc:
         ? t: "this guest emits `{emitted}`, and `{ShowTyIn st, t, False}` is `{ShowTy st, (NormAssoc st, t)}`"
         nil: "this guest emits `{emitted}`"
+
+# An associated type under any sigils (`!(Request Count Watcher)`).
+?AssocUnder: unbounded fn St, Ty -> ?Ty
+fn ?AssocUnder st, t = match Zonk st, t:
+    TyAssoc tr, n, a, indices: ? (TyAssoc tr, n, a, indices)
+    TySig ignore, i: ?AssocUnder st, i
+    otherwise: nil
 
 # The program's end: an equation still waiting has a variable nothing decided, and an
 # equation never checked would let any type through (`ambiguous`, never dropped).
@@ -296,7 +301,11 @@ fn Undecided st0:
     let left = Fold st.deferred, st, \|s, w|
         let there = update s:
             &_.file <= w.file
-        ErrFix there, "ambiguous", w.span, "nothing decides the associated type in `{ShowTy s, w.expected}` = `{ShowTy s, w.found}`", "annotate the value's type"
+        # an equation inside an expression already `ambiguous` (the variable that would
+        # decide it is reported) is that one report
+        let covered = Fold s.diags, False, \|seen, d| seen or (d.code == "ambiguous" and d.file == w.file and d.span.start <= w.span.start and w.span.end <= d.span.end)
+        if covered: s
+        else: ErrFix there, "ambiguous", w.span, "nothing decides the associated type in `{ShowTy s, w.expected}` = `{ShowTy s, w.found}`", "annotate the value's type"
     update left:
         &_.deferred <= [[]]
         &_.file <= st.file
