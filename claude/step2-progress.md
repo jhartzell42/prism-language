@@ -110,8 +110,12 @@ Written by Claude on the claude-self-hosting branch; subject to change.
   marked parameter everything the argument captures is read (`MarkedArgKids`); a binding
   that holds a function value reads what it captures (`CaptureReads`); every widget body
   is read against its marks (`BodyMarked`, `LocalsMarked`, `LambdasMarked`, impl methods
-  by `SignedKey`). Still to audit: function values reaching a widget function through a
-  global `let`, a `Fixed`-indexed dispatch, or a trait's dictionary.
+  by `SignedKey`, defaults by their own or the signing trait's signature); expression
+  bodies (`ExprBodyMarked`); top-level `let` lambdas (`TopLambdasMarked`). Audited and
+  found sound: a clause per variant (`Fixed<<r>>` dispatch: each clause's body is read);
+  a trait method's call (its marks are the trait's signature's, and every impl is read
+  against them). Not yet audited: a widget function given where only its type is known
+  through a type variable (`a` instantiated at a function type), which no body can apply.
 
 ## Asked of Jimmy
 
