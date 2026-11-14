@@ -291,37 +291,37 @@ fn Or (? x), ignore = x
 
 @started: @!unit
 @Element: fn Element r o -> @o emit r
-@Host: prompt fn @a emit c, (prompt fn Path, Element c o -> @o) -> @((a, $(Path ==> $Elem c)))
-@HostSome: prompt fn @a emit c, (fn Path, Element c o -> ?@o) -> @((a, $(Path ==> $Elem c)))
-@HostList: prompt fn @a emit c, !(Path ==> Output c), (prompt fn Path, Element c o -> @o) -> @((a, $(Path ==> $Wired c)))
-@Switch: prompt fn $!a -> @!a
-@Flatten: prompt fn $$a -> @$a
+@Host: fn prompt @a emit c, (fn Path, prompt Element c o -> @o) -> @((a, $(Path ==> $Elem c)))
+@HostSome: fn prompt @a emit c, (fn Path, Element c o -> ?@o) -> @((a, $(Path ==> $Elem c)))
+@HostList: fn prompt @a emit c, !(Path ==> Output c), (fn Path, prompt Element c o -> @o) -> @((a, $(Path ==> $Wired c)))
+@Switch: fn prompt $!a -> @!a
+@Flatten: fn prompt $$a -> @$a
 # `$y <- @Distinct $x`: `$x`'s value, whose update event fires only when the value changed
 # (Jimmy, 5 November 2026, reversing Appendix B's D-DT; a builtin of the lowering).
-@Distinct: prompt fn $a -> @$a where a: ^Eq
+@Distinct: fn prompt $a -> @$a where a: ^Eq
 # `$each <- @PerKey $m`: `$m` taken apart by key (Semantics Appendix B; round 9 PK,
 # Jimmy's; a builtin of the lowering). The outer fires only when a key comes or goes; each
 # key's inner holds that key's value and fires only when it changes by `==` (`@Distinct`,
 # per key). A row of `for k, $v <- $each:` reads its own inner as `$v` (Semantics ch. 4,
 # ruling FV: over `$(k ==> $v)` the value binder is the value under the row's key, which
 # follows a replaced dynamic; `@Flatten` is for a `rebuild`'s `$$a`).
-@PerKey: prompt fn $(k ==> v) -> @$(k ==> $v) where v: ^Eq
+@PerKey: fn prompt $(k ==> v) -> @$(k ==> $v) where v: ^Eq
 @Defer: fn !a -> @!a
 @Later: fn !a -> @!a
-@Machine: prompt fn (fn s, a -> ((s, ?b))), s, !a -> @!b
+@Machine: fn (fn s, a -> ((s, ?b))), s, prompt !a -> @!b
 @Run: fn (unbounded fn a -> b), a -> @!b
 
-@Once: prompt fn !a -> @!a
+@Once: fn prompt !a -> @!a
 fn @Once !e:
     $done <- False then True on !e
     @ !Gate (not $done), !e
 
-@AfterFirst: prompt fn !a -> @!a
+@AfterFirst: fn prompt !a -> @!a
 fn @AfterFirst !e:
     $done <- False then True on !e
     @ !Gate $done, !e
 
-@Numbered: prompt fn !a -> @!((Nat, a))
+@Numbered: fn prompt !a -> @!((Nat, a))
 fn @Numbered !e:
     fn Paired k, v = ((k, v))
     $n <- 0 then $n + 1 on !e
