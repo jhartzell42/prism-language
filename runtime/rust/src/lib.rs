@@ -32,6 +32,7 @@ pub mod cells;
 pub mod collections;
 pub mod cx;
 pub mod doc;
+pub mod documents;
 pub mod existential;
 pub mod float;
 pub mod gc;
@@ -53,6 +54,7 @@ pub fn same_keys<K: Ord + Clone, V: Clone, W: Clone>(a: &Map<K, V>, b: &Map<K, W
 }
 pub use cx::{Cx, Done, Node, Runtime};
 pub use doc::{Document, Edit, Patch, Request};
+pub use documents::{documents_merge, documents_seat_id_at, documents_seat_path_of};
 pub use existential::{Packed, Packing, kind_of, recast, type_key, unpacked};
 pub use host::{OutputOf, Blueprint, outputs_mapped, BuiltWidget, Moved, RowDeliver, RowDocument, WeakRows, PartsOutput, parts_blueprint, parts_event, parts_state, host_moved, host_under, moved_by, widget_blueprint, widget_event_blueprint, widget_event_output_blueprint, widget_dynamic_blueprint, widget_parts_blueprint, Entry, Follow, Host, HostDoc, HostOf, HostRow, Level, Link, PerKey, Rows, Scope, Sink, Supplied, Supplier, Watch, dynamic_blueprint, dynamics_pod, dynamics_ports, described_blueprint, element_blueprint, event_blueprint, forward_on_none, never_blueprint, plain_blueprint};
 pub use float::Float;

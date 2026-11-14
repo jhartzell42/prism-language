@@ -899,6 +899,19 @@ fn AnyValue lx, env, x, t:
                 VlOwned (XMethod packing, "packed", [[]]), packedTy
         otherwise: VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[v]]), OutShowAny), OutShowAny
 
+# A declaration of the standard library's `Documents` with no body (library/
+# documents.prism: `SeatPathOf`, `SeatIdAt`, `$Merge`, ...): the runtime's
+# (`prism_rtl::documents`), called by its path from the prelude.
+IsLibraryBuiltin: fn Lx, Text -> Bool
+fn IsLibraryBuiltin lx, qk = (HasPrefix qk, "Documents.") and not (Fold lx.g.defs, False, \|found, d| found or d.qk == qk)
+
+LibraryBuiltinCall: fn Lx, Text, [Ex], OutTy -> Ex
+fn LibraryBuiltinCall lx, qk, args, t = match BareName qk:
+    "SeatPathOf": XCall (HelperRef "documents_seat_path_of"), args
+    "SeatIdAt": XCallAt (HelperRef "documents_seat_id_at"), [[t]], args
+    "$Merge": XCall (HelperRef "documents_merge"), args
+    other: Refusal "the library's builtin `{other}`, whose runtime is not written yet"
+
 # Whether a definition opens an existential whose kind is an associated kind at one of
 # its own type variables (`Told: fn SeatKey d -> Text`, `any (r: Role d)` opened): Rust
 # cannot enumerate `d`'s roles from a generic `D`, so the definition is lowered once per
@@ -2264,6 +2277,7 @@ fn DeclaredCall lx, env, qk, args, span, cspan, t:
             ? v:
                 if v.sort == "method": MethodCall lx, env, v, args, span, cspan, t
                 else: if v.home == "Prelude": PreludeCall lx, env, qk, args, span, t
+                else: if IsLibraryBuiltin lx, qk: VlOwned (LibraryBuiltinCall lx, qk, (ArgsFor lx, env, v, args), t), t
                 else:
                     let callArgs = Append (KindArgs lx, v, cspan), (ArgsFor lx, env, v, args)
                     let call = if OpensByVariable lx, qk: XCall (InstanceRef lx, qk, (CallInstance lx, v, cspan)), callArgs
