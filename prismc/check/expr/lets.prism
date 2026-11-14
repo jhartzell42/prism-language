@@ -526,7 +526,12 @@ fn RefinedResult env, st, patterns, params, res = Fold (Range0 (Len params)), re
 CheckBody: unbounded fn Env, St, FnBody, Ty -> St
 fn CheckBody env, st, body, res = match body:
     # a widget function's expression body is read against its marks (ruling PT)
-    BodyExpr e: if env.mark == "@": ExprBodyMarked env, (Check env, st, e, res), e else: Check env, st, e, res
+    # a widget function's expression body is its block's one line: a child whose row is
+    # within the signature's, as on any widget block's line (`fn @RunMode (..) =
+    # @Terminals ..`, its `Console.* | Fs.* | Net.*` within the mode's row)
+    BodyExpr e: if env.mark == "@" and IsBlueprintTy st, res: ExprBodyMarked env, (CheckBody env, st, (BodyBlock (Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span))), res), e
+        else: if env.mark == "@": ExprBodyMarked env, (Check env, st, e, res), e
+        else: Check env, st, e, res
     BodyBlock b:
         if env.mark == "@":
             match Walk st, res:
