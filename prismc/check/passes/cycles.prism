@@ -47,14 +47,6 @@ use Check.Shrink.Summaries.*
 # The prompt-cycle check (Semantics ch. 7, There are no cycles)
 # ---------------------------------------------------------------------------------------
 
-# The prelude's widget bindings whose result is not prompt in their argument: a deferral,
-# a later firing, a job's result (D6); every other widget function is taken as prompt in
-# everything it is given (the worst a blueprint parameter assumes, doubt PS). A name is
-# one of them only when it resolves to the prelude's own declaration, never to a local or
-# a program's own `@Defer`.
-IsDelayedWidget: fn Text -> Bool
-fn IsDelayedWidget n = HasText [["@Defer", "@Later", "@Run", "@Machine", "@started"]], n
-
 # A cycle of prompt edges among a widget block's bindings is `prompt-cycle`, naming its
 # bindings in order. A hold's value is delayed; a sample is delayed; a `rebuild`'s
 # generation is built at the end of the tick. A hold's update event is not delayed: a loop
@@ -63,28 +55,205 @@ fn IsDelayedWidget n = HasText [["@Defer", "@Later", "@Run", "@Machine", "@start
 BlockPromptCycles: unbounded fn Env, St, Block -> St
 fn BlockPromptCycles env, st, b:
     let defs = Fold b.stmts, [[]], \|acc, s| Append acc, (StmtDefs s)
-    let cx = PCx(g=env.g, home=env.home, lams=(LetLambdas b.stmts), base=(PromptBase env, b.stmts), path=[[]], reach=False, supplied={{}}, flows={{}}, names=(Keys env.locals))
+    let cx = PCx(g=env.g, home=env.home, lams=(LetLambdas b.stmts), base=(PromptBase env, b.stmts), path=[[]], reach=False, supplied=(LocalMarks env, st), names=(Keys env.locals))
     let heads = Fold defs, {{}}, \|m, n| Insert m, n, (LocalHead env, st, n)
-    # a widget function's body is checked once for each use of the function in the
-    # program, a call of a function parameter read by the summary of what that use gives
-    # for it (`ParameterUses`); the first cycle found is the block's
-    let cyc = Fold (ParameterUses cx, env, b), [[]], \|found, handed|
-        if (Len found) > 0: found
+    let found = FindCycle defs, (Fold b.stmts, [[]], \|acc, s| Append acc, (PromptEdges env, st, cx, s, defs))
+    # a loop through `!Updated` (`UpdateEdges`): it names the block's names, in the order
+    # the block binds them
+    let cyc = if (Len found) > 0: found
         else:
-            let cxu = update cx:
-                &_.supplied <= handed.prompt
-                &_.flows <= handed.flows
-            let found = FindCycle defs, (Fold b.stmts, [[]], \|acc, s| Append acc, (PromptEdges env, st, cxu, s, defs))
-            if (Len found) > 0: found
-            else:
-                # a loop through `!Updated` (`UpdateEdges`): it names the block's names,
-                # in the order the block binds them
-                let through = FindCycle (Append defs, (Each defs, \|n| UpdateNode n)), (Fold b.stmts, [[]], \|acc, s| Append acc, (UpdateEdges env, st, cxu, heads, s, defs))
-                Filter defs, \|n| (HasText through, n) or HasText through, (UpdateNode n)
-    if (Len cyc) == 0: st
-    else:
-        let span = Fold b.stmts, b.span, \|sp, s| if HasText (StmtDefs s), (Or cyc[0], ""): s.span else: sp
-        ErrFix st, "prompt-cycle", span, "a prompt cycle: {Join (Each cyc, \|n| "`{n}`"), ", "}", "break it with a hold: `$last <- start then ...` reads the value as the tick opened"
+            let through = FindCycle (Append defs, (Each defs, \|n| UpdateNode n)), (Fold b.stmts, [[]], \|acc, s| Append acc, (UpdateEdges env, st, cx, heads, s, defs))
+            Filter defs, \|n| (HasText through, n) or HasText through, (UpdateNode n)
+    let st2 = if (Len cyc) == 0: st
+        else:
+            let span = Fold b.stmts, b.span, \|sp, s| if HasText (StmtDefs s), (Or cyc[0], ""): s.span else: sp
+            ErrFix st, "prompt-cycle", span, "a prompt cycle: {Join (Each cyc, \|n| "`{n}`"), ", "}", "break it with a hold: `$last <- start then ...` reads the value as the tick opened"
+    LambdasMarked env, (BodyMarked env, st2, cx, b), cx, b
+
+# The `prompt` marks of the widget functions the block's scope binds (its function's
+# parameters, its own local functions), by name, read from their types (ruling PT: a
+# call's promptness is its callee's type, never its body).
+LocalMarks: unbounded fn Env, St -> (Text ==> [Bool])
+fn LocalMarks env, st = Fold (Keys env.locals), {{}}, \|m, n| match env.locals[n]:
+    ? sc: match ?WidgetMarks (Walk st, sc.ty):
+        ? marks: Insert m, n, marks
+        nil: m
+    nil: m
+
+# A widget function's `prompt` marks by its type, one for each parameter (ruling PT); none
+# for a function that is not a widget function, which is prompt in everything.
+?WidgetMarks: fn Ty -> ?[Bool]
+fn ?WidgetMarks t = match t:
+    TyFn ignore, ps, (TyAt ignore2, ignore3), prompts: ? (Each (Range0 (Len ps)), \|i| Or prompts[i], False)
+    TyForall ignore, body: ?WidgetMarks body
+    otherwise: nil
+
+# The marks of a program's or the prelude's widget function, by its key.
+?CalleeMarks: fn G, Text -> ?[Bool]
+fn ?CalleeMarks g, k = match g.vals[k]:
+    ? v: ?WidgetMarks v.scheme.ty
+    nil: nil
+
+# A widget function's body against its own marks (ruling PT): where its result can change
+# or fire in the tick a parameter it does not mark does (`?BlockFlows`, read with its
+# callees' marks), `prompt-unmarked` at the result. The block is the body of one clause of
+# a program's widget function; any other block has nothing to answer for.
+BodyMarked: unbounded fn Env, St, PCx, Block -> St
+fn BodyMarked env, st, cx, b = match Filter env.g.defs, \|d| d.file == env.file and (?ClauseOf d, b) != nil:
+    [[d]]: match (((?ClauseOf d, b), (?CalleeMarks env.g, d.qk))):
+        ((? c, ? marks)): match ?BlockFlows cx, d.qk, d.home, c.params, b, cx.supplied:
+            ? flows: match ?Unmarked flows, marks, (GivesDynamic env.g, d.qk):
+                ? i:
+                    let name = BareName d.qk
+                    let shown = match env.g.vals[d.qk]:
+                        ? v: ShowTy st, (MarkedAt v.scheme.ty, i)
+                        nil: ""
+                    let param = ParamShown c.params, i
+                    ErrFix st, "prompt-unmarked", (ResultSpan b), "`{name}` gives {PromptWhat param}, and its type does not mark `{param}`'s parameter `prompt`", "mark the parameter in its type, `{name}: {shown}`, or give it a tick later with `@Defer`"
+                nil: st
+            nil: st
+        otherwise: st
+    otherwise: st
+
+# The clause of a widget function whose body is this block.
+?ClauseOf: fn Def, Block -> ?FnClause
+fn ?ClauseOf d, b = if not (HasPrefix (BareName d.qk), "@"): nil
+else: match d.body:
+    DbFn clauses: match Filter clauses, \|c| IsClauseBody c, b:
+        [[c]]: ? c
+        otherwise: nil
+    otherwise: nil
+
+IsClauseBody: fn FnClause, Block -> Bool
+fn IsClauseBody c, b = match c.body:
+    BodyBlock body: body.span == b.span
+    otherwise: False
+
+# The first parameter a body is prompt in, by its flows, and its type does not mark. The
+# result's update counts only where the result is a dynamic: an event or a plain value
+# has none.
+?Unmarked: fn [ParameterFlow], [Bool], Bool -> ?Nat
+fn ?Unmarked flows, marks, dynamic:
+    let unmarked = Filter (Range0 (Len flows)), \|i| match flows[i]:
+        ? f: (f.resultReadsValue or f.resultReadsUpdate or (dynamic and (f.updateReadsValue or f.updateReadsUpdate))) and not (Or marks[i], False)
+        nil: False
+    unmarked[0]
+
+# Whether a widget function's result is a dynamic, by its type.
+GivesDynamic: fn G, Text -> Bool
+fn GivesDynamic g, k = match g.vals[k]:
+    ? v: ResultIsDynamic v.scheme.ty
+    nil: False
+
+ResultIsDynamic: fn Ty -> Bool
+fn ResultIsDynamic t = match t:
+    TyFn ignore, ignore2, (TyAt (TySig "$", ignore3), ignore4), ignore5: True
+    TyForall ignore, body: ResultIsDynamic body
+    otherwise: False
+
+# Whether a lambda's body gives a dynamic by name: `@ $seen`.
+EndsInDynamic: fn Block -> Bool
+fn EndsInDynamic b = match ?Last b.stmts:
+    ? last: match last.kind:
+        SExpr x: GivesDynamicName x
+        otherwise: False
+    nil: False
+
+GivesDynamicName: fn Expr -> Bool
+fn GivesDynamicName x = match x.kind:
+    EFreeSigil "@", inner: GivesDynamicName inner
+    EGroup inner: GivesDynamicName inner
+    EName n: HasPrefix (SNameKey n), "$"
+    otherwise: False
+
+# A function type with its parameter `i` marked `prompt`, to show the fix.
+MarkedAt: fn Ty, Nat -> Ty
+fn MarkedAt t, i = match t:
+    TyFn c, ps, r, prompts: TyFn c, ps, r, (Each (Range0 (Len ps)), \|j| j == i or Or prompts[j], False)
+    TyForall vs, body: MarkedAt body, i
+    otherwise: t
+
+# A parameter as the message names it: its name, or its place for a pattern of none or
+# several names.
+ParamShown: unbounded fn [Pattern], Nat -> Text
+fn ParamShown params, i = match params[i]:
+    ? p: match PatternNames p:
+        [[n]]: n
+        otherwise: "parameter {i + 1}"
+    nil: "parameter {i + 1}"
+
+# What a result is prompt in, in words: an event fires, a dynamic changes.
+PromptWhat: fn Text -> Text
+fn PromptWhat param = if HasPrefix param, "$": "a result that changes in the tick `{param}` changes" else: "an event that fires in the tick `{param}` fires"
+
+# The widget lambdas written on a block's own lines (not those of a nested block, which is
+# checked as a block of its own, nor those inside a lambda's body) against their marks:
+# a lambda's result that can change or fire in the tick a parameter it does not mark does
+# is `prompt-unmarked`, at its body (ruling PT).
+LambdasMarked: unbounded fn Env, St, PCx, Block -> St
+fn LambdasMarked env, st, cx, b:
+    let lambdas = Fold b.stmts, [[]], \|acc, s| Fold (StmtKids s, {{}}), acc, \|found, k| match k:
+        KidExpr x, ignore: Append found, (LambdasIn x)
+        otherwise: found
+    Fold lambdas, st, \|s, lam| LambdaMarked env, s, cx, lam
+
+# The lambdas in an expression, not looking inside a lambda's body or a nested block.
+LambdasIn: unbounded fn Expr -> [Expr]
+fn LambdasIn e = match e.kind:
+    ELambda ignore, ignore, ignore2: [[e]]
+    otherwise: Fold (ExprKids e, {{}}), [[]], \|acc, k| match k:
+        KidExpr x, ignore: Append acc, (LambdasIn x)
+        otherwise: acc
+
+LambdaMarked: unbounded fn Env, St, PCx, Expr -> St
+fn LambdaMarked env, st, cx, lam = match lam.kind:
+    ELambda (? params), body, marks:
+        if not (IsWidgetLambdaBody body): st
+        else:
+            let block = LambdaBlock body
+            match ?BlockFlows cx, "lambda@{lam.span.start}", env.home, params, block, cx.supplied:
+                ? flows: match ?Unmarked flows, marks, (EndsInDynamic block):
+                    ? i:
+                        let param = ParamShown params, i
+                        ErrFix st, "prompt-unmarked", (ResultSpan block), "this lambda gives {PromptWhat param}, and the type it is given at does not mark that parameter `prompt`", "give it a tick later with `@Defer`, or write `\\|prompt {param}| ...` where a function prompt in that parameter is wanted"
+                    nil: st
+                nil: st
+    otherwise: st
+
+# A lambda's body as a block: an expression body is a block of its result alone.
+LambdaBlock: fn LambdaBody -> Block
+fn LambdaBlock body = match body:
+    LbBlock b: b
+    LbExpr x: Block(stmts=[[Stmt(kind=(SExpr x), span=x.span)]], inline=True, span=x.span)
+
+# Whether a lambda's body builds: a blueprint written `@ ..`, a widget block, a call of a
+# widget function by name, or a block with a binding line or ending in one of those.
+IsWidgetLambdaBody: fn LambdaBody -> Bool
+fn IsWidgetLambdaBody body = match body:
+    LbExpr x: IsWidgetExpr x
+    LbBlock b: (Fold b.stmts, False, \|found, s| found or IsBindLine s) or EndsInWidget b
+
+IsBindLine: fn Stmt -> Bool
+fn IsBindLine s = match s.kind:
+    SBind ignore, ignore, ?ignore2: True
+    otherwise: False
+
+EndsInWidget: fn Block -> Bool
+fn EndsInWidget b = match ?Last b.stmts:
+    ? last: match last.kind:
+        SExpr x: IsWidgetExpr x
+        otherwise: False
+    nil: False
+
+IsWidgetExpr: fn Expr -> Bool
+fn IsWidgetExpr x = match x.kind:
+    EFreeSigil "@", ignore: True
+    EWidgetBlock ignore: True
+    EGroup inner: IsWidgetExpr inner
+    ECall c, ignore, ignore2, ignore3: match ?CalleeName c:
+        ? n: HasPrefix (BareName n), "@"
+        nil: False
+    otherwise: False
 
 StmtDefs: unbounded fn Stmt -> [Text]
 fn StmtDefs s = match s.kind:
@@ -191,14 +360,6 @@ type ParameterFlow = record:
     updateReadsUpdate: Bool
 derive ^Eq, ^Show
 
-# What one use of a widget function gives for its function parameters, by parameter name:
-# the prompt summary of each function given by name (`GivenAt`), and its flows
-# (`FlowsGivenAt`).
-type Given = record:
-    prompt: (Text ==> [Bool])
-    flows: (Text ==> [ParameterFlow])
-derive ^Eq, ^Show
-
 # The edges of a line `NAMES <- F ARGUMENTS` over update events, by `F`'s flows
 # (`?LineFlows`): for each argument, from the line's names to what the argument reads (the
 # names, and the updates under an `!Updated` written in it) where the result is prompt in
@@ -235,14 +396,22 @@ fn EdgesWhen wanted, froms, tos = if wanted: Edges froms, tos else: [[]]
 fn ?LineFlows cx, c, args:
     if Fold args, False, \|named, a| named or a.?name != nil: nil
     else: match ?CalleeName c:
-        ? n: match cx.flows[n]:
-            ? flows: ? flows
+        ? n: match cx.supplied[n]:
+            ? marks: ? (FlowsOfMarks marks)
             nil:
                 if (IsLocal cx.base, n) or HasText cx.names, n: nil
                 else: match ?ResolveCallee cx.g, cx.home, n:
-                    ? k: ?FlowSummaryAt cx, k, args, cx.base
+                    ? k: match ?CalleeMarks cx.g, k:
+                        ? marks: ? (FlowsOfMarks marks)
+                        nil: nil
                     nil: nil
         nil: nil
+
+# A widget function's flows by its marks (ruling PT): one bit per parameter, so a marked
+# parameter reaches the result and its update both by its value and by its update, and an
+# unmarked one neither.
+FlowsOfMarks: fn [Bool] -> [ParameterFlow]
+fn FlowsOfMarks marks = Each marks, \|m| ParameterFlow(resultReadsValue=m, resultReadsUpdate=m, updateReadsValue=m, updateReadsUpdate=m)
 
 # The block's names read under the prelude's `!Updated` in a right side, at any depth the
 # prompt walk reaches: `!Updated $total`, `!Updated ($a + $b)`.
@@ -294,16 +463,14 @@ type PCx = record:
     home: Text
     lams: (Nat ==> Expr)
     base: (Text ==> Rel)
-    # the widget functions whose summaries are being computed (`?PromptSummary`)
+    # the bodies whose flows are being read (`?BlockFlows`)
     path: [Text]
     # a walk for what a row's result reaches among the row's own lines (`RowReach`), which
     # also reads a `for`'s or a `rebuild`'s source and a hold's step
     reach: Bool
-    # the summaries given, at the use this walk is for, for the function parameters of the
-    # widget function whose body it reads (`GivenAt`), by parameter name
+    # the `prompt` marks of the widget functions the walk's scope binds, by name
+    # (`LocalMarks`): a function's parameters, a block's local functions
     supplied: (Text ==> [Bool])
-    # the flows given, at the same use, for those function parameters (`FlowsGivenAt`)
-    flows: (Text ==> [ParameterFlow])
     # the names bound where the walk's block stands: no global is meant by one of them
     names: [Text]
 derive ^Eq, ^Show
@@ -460,19 +627,16 @@ fn PromptCallKids cx, e, ?n, m = match ?n:
         let called = FollowLamLet cx, n, m
         if IsLocal m, n: Append called, (OpenLambdas cx, (ExprKids e, m))
         else: if (Len called) > 0: Append called, (OpenLambdas cx, (ExprKids e, m))
-        # a parameter of the widget function being read, called: by the summary the use
-        # gives for it (`GivenAt`)
+        # a widget function the scope binds (a parameter, a local function), called: by
+        # the marks of its type
         else: match cx.supplied[n]:
           ? flags: ByFlags cx, e, flags, m
           nil: match ?ResolveCallee cx.g, cx.home, n:
-            ? k:
-                if (IsPreludeKey cx.g, k) and (IsDelayedWidget (DropPrefix k, "Prelude.")): [[]]
-                else: if (IsPreludeKey cx.g, k) and (HasPrefix k, "Prelude.@"): ExprKids e, m
-                else: match e.kind:
-                    ECall ignore, args, ignore, ignore: match ?PromptSummaryAt cx, k, args, m:
-                        ? flags: ByFlags cx, e, flags, m
-                        nil: OpenLambdas cx, (ExprKids e, m)
-                    otherwise: OpenLambdas cx, (ExprKids e, m)
+            # a program's or the prelude's widget function: by the marks of its type
+            # (ruling PT); a plain function is prompt in everything
+            ? k: match ?CalleeMarks cx.g, k:
+                ? flags: ByFlags cx, e, flags, m
+                nil: OpenLambdas cx, (ExprKids e, m)
             nil: OpenLambdas cx, (ExprKids e, m)
     nil: OpenLambdas cx, (ExprKids e, m)
 
@@ -546,244 +710,20 @@ fn Reach edges, frontier, seen = match frontier[0]:
         if HasText seen, x: Reach edges, (Drop frontier, 1), seen
         else: Reach edges, (Append (Drop frontier, 1), (Each (Filter edges, \|((f, ignore))| f == x), \|((ignore, t))| t)), (Push seen, x)
 
-# Prompt-cycle summaries (Type System ch. 5, the separate checkers, pass 1): for a
-# program's widget function of one clause, whether its result reads each argument
-# promptly, read off its body as a block's prompt edges are: a hold delays, every `let`
-# read counts as prompt (the function's own types are not at hand, so the summary errs
-# prompt), and a call of another widget function goes by that one's summary, computed on
-# demand bottom-up. A function already on the path (a cycle of widget functions) has none,
-# and is read as prompt in everything, as is any other callee.
-?PromptSummary: unbounded fn PCx, Text -> ?[Bool]
-fn ?PromptSummary cx, k = ?PromptSummaryAt cx, k, [[]], {{}}
-
-# The summary at one use (Semantics ch. 7: "Where a blueprint arrives as a parameter, the
-# worst is assumed" holds for a parameter nothing is known of): where the use gives a
-# program's widget function by name for a function parameter, a call of that parameter in
-# the body goes by the given function's summary (`GivenAt`); any other parameter called is
-# prompt in everything.
-?PromptSummaryAt: unbounded fn PCx, Text, [Arg], (Text ==> Rel) -> ?[Bool]
-fn ?PromptSummaryAt cx, k, args, m = if (HasText cx.path, k) or not (HasPrefix (BareName k), "@"): nil
-else: match Filter cx.g.defs, \|d| d.qk == k:
-    [[d]]: match d.body:
-        DbFn [[c]]: ?BlockSummary cx, k, d.home, c.params, (BodyAsBlock c.body), (GivenAt cx, cx.home, c.params, args, m, cx.names)
-        otherwise: nil
-    otherwise: nil
-
-# What a use gives for a widget function's function parameters: for each parameter that is
-# one name, given a name that is a program's widget function there (resolved from the
-# use's module `home`; never a local of the use, `rels` and `bound`), that function's
-# summary. A use with a named argument gives nothing.
-GivenAt: unbounded fn PCx, Text, [Pattern], [Arg], (Text ==> Rel), [Text] -> (Text ==> [Bool])
-fn GivenAt cx, home, params, args, rels, bound:
-    if Fold args, False, \|named, a| named or a.?name != nil: {{}}
-    else: Fold (Range0 (Len params)), {{}}, \|supplied, i| match ((params[i], args[i])):
-        ((? parameter, ? a)): match ((PatternNames parameter, ?GivenName a.value)):
-            (([[name]], ? n)):
-                if (IsLocal rels, n) or HasText bound, n: supplied
-                else: match ?ResolveCallee cx.g, home, n:
-                    ? function: match ?PromptSummary cx, function:
-                        ? flags: Insert supplied, name, flags
-                        nil: supplied
-                    nil: supplied
-            otherwise: supplied
-        otherwise: supplied
-
-?GivenName: fn Expr -> ?Text
-fn ?GivenName e = match e.kind:
-    EName n: ? (SNameKey n)
-    EGroup x: ?GivenName x
-    EHold x: ?GivenName x
-    otherwise: nil
-
-# The uses of the widget function whose body a block is, each as what it gives for the
-# function's parameters (`GivenAt`): every application of the function's name in the
-# program's definitions and tests. A use that passes the function on as a value gives
-# nothing (every parameter called is prompt in everything), as does a block that is no
-# widget function's body and a function the program never uses: one use that gives nothing.
-ParameterUses: unbounded fn PCx, Env, Block -> [Given]
-fn ParameterUses cx, env, b = match Filter env.g.defs, \|d| d.file == env.file and IsBodyOf d, b:
-    [[d]]: match d.body:
-        DbFn [[c]]:
-            if not (CallsParameter c.params, b): [[nothingGiven]]
-            else: UsesOf cx, d, c.params, [[]]
-        otherwise: [[nothingGiven]]
-    otherwise: [[nothingGiven]]
-
-# The uses of the function `d`, whose parameters are `params`, each as what it gives for
-# them: every application of `d`'s name in the program. A use inside a function `user` that
-# hands on a parameter of its own (`fn @InMemory initial, HostSeats = @InMemoryOrdered
-# initial, OneATick, HostSeats`) gives, for each use of `user`, what that use gives for the
-# parameter handed on (`Forwarded`). `seen` holds the functions whose uses are being read,
-# so a function that hands a parameter to itself gives nothing for it. No use at all is one
-# use that gives nothing.
-UsesOf: unbounded fn PCx, Def, [Pattern], [Text] -> [Given]
-fn UsesOf cx, d, params, seen:
-    let uses = Fold cx.g.defs, [[]], \|acc, user| Fold (DefSites user), acc, \|found, site|
-        if (IsLocal site.rels, site.callee) or (?ResolveCallee cx.g, user.home, site.callee) != ? d.qk: found
-        else:
-            let named = Given(prompt=(GivenAt cx, user.home, params, site.args, site.rels, [[]]), flows=(FlowsGivenAt cx, user.home, params, site.args, site.rels, [[]]))
-            let atUse = LocalGiven cx, user, params, site.args, named
-            Append found, (Forwarded cx, user, params, site.args, atUse, (Push seen, d.qk))
-    if (Len uses) == 0: [[nothingGiven]] else: uses
-
-# What one use gives for a function's parameters: `atUse`, read at the use itself, and for
-# each parameter the use's own function `user` hands on, what each use of `user` gives for
-# it. A parameter a use of `user` gives nothing for stays as `atUse` has it.
-Forwarded: unbounded fn PCx, Def, [Pattern], [Arg], Given, [Text] -> [Given]
-fn Forwarded cx, user, params, args, atUse, seen = match user.body:
-    DbFn [[outer]]:
-        let handed = HandedOn params, args, (PatternsNames outer.params)
-        if (Len handed) == 0 or HasText seen, user.qk: [[atUse]]
-        else: Each (UsesOf cx, user, outer.params, seen), \|outerGiven| Fold handed, atUse, \|supplied, pair| HandOn supplied, outerGiven, pair
-    otherwise: [[atUse]]
-
-# What a use gives for a function's parameters where it gives a widget function its own
-# block defines (`@Seats` in `@hotSeat`, given to `@InMemory`): that function's summary,
-# read as a named function's is. A local of more than one clause gives nothing.
-LocalGiven: unbounded fn PCx, Def, [Pattern], [Arg], Given -> Given
-fn LocalGiven cx, user, params, args, atUse:
-    let locals = OwnBlockClauses user
-    if (Len (Keys locals)) == 0 or Fold args, False, \|named, a| named or a.?name != nil: atUse
-    else: Fold (Range0 (Len params)), atUse, \|supplied, i| match ((params[i], args[i])):
-        ((? parameter, ? a)): match ((PatternNames parameter, ?GivenName a.value)):
-            (([[name]], ? n)): match locals[n]:
-                ? [[c]]: match ?BlockSummary cx, n, user.home, c.params, (BodyAsBlock c.body), {{}}:
-                    ? flags: Given(prompt=(Insert supplied.prompt, name, flags), flows=supplied.flows)
-                    nil: supplied
-                otherwise: supplied
-            otherwise: supplied
-        otherwise: supplied
-
-# The functions a definition's own block defines, each name with its clauses.
-OwnBlockClauses: unbounded fn Def -> (Text ==> [FnClause])
-fn OwnBlockClauses d:
-    let stmts = match d.body:
-        DbFn [[c]]: match c.body:
-            BodyBlock b: b.stmts
-            otherwise: [[]]
-        DbWidget w: w.body.stmts
-        otherwise: [[]]
-    Fold stmts, {{}}, \|found, s| match s.kind:
-        SFn c: Insert found, (DefNameText c.name), (Push (Or found[DefNameText c.name], [[]]), c)
-        otherwise: found
-
-# A function's body as a block: an expression body is a block of its result alone.
-BodyAsBlock: fn FnBody -> Block
-fn BodyAsBlock body = match body:
-    BodyBlock b: b
-    BodyExpr e: Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
-
-# What a use gives for a parameter `name`, taken from what an outer use gives for the
-# parameter `own` the use hands on; nothing given there leaves `supplied` as it is.
-HandOn: fn Given, Given, ((Text, Text)) -> Given
-fn HandOn supplied, outerGiven, ((name, own)):
-    let prompt = match outerGiven.prompt[own]:
-        ? flags: Insert supplied.prompt, name, flags
-        nil: supplied.prompt
-    let flows = match outerGiven.flows[own]:
-        ? handed: Insert supplied.flows, name, handed
-        nil: supplied.flows
-    Given(prompt=prompt, flows=flows)
-
-# The parameters a use hands one of its own function's parameters (`outer`) to, each as
-# `(name, own)`: the parameter's name and the name of the own parameter given for it. A
-# use with a named argument hands on nothing, as `GivenAt` reads nothing of it.
-HandedOn: unbounded fn [Pattern], [Arg], [Text] -> [((Text, Text))]
-fn HandedOn params, args, outer:
-    if Fold args, False, \|named, a| named or a.?name != nil: [[]]
-    else: Fold (Range0 (Len params)), [[]], \|pairs, i| match ((params[i], args[i])):
-        ((? parameter, ? a)): match ((PatternNames parameter, ?GivenName a.value)):
-            (([[name]], ? n)): if HasText outer, n: Push pairs, ((name, n)) else: pairs
-            otherwise: pairs
-        otherwise: pairs
-
-# Whether a definition is a widget function of one clause whose body is this block.
-IsBodyOf: fn Def, Block -> Bool
-fn IsBodyOf d, b = (HasPrefix (BareName d.qk), "@") and match d.body:
-    DbFn [[c]]: match c.body:
-        BodyBlock body: body.span == b.span
-        otherwise: False
-    otherwise: False
-
-# Whether a block applies one of its function's parameters to arguments.
-CallsParameter: unbounded fn [Pattern], Block -> Bool
-fn CallsParameter params, b:
-    let names = PatternsNames params
-    Fold (StmtsSpots b.stmts, {{}}), False, \|called, spot| called or Fold (SpotSites spot), False, \|found, site| found or ((Len site.args) > 0 and (HasText names, site.callee) and not (IsLocal site.rels, site.callee))
-
-# Every call site of a definition's body, a function's parameters its locals.
-DefSites: unbounded fn Def -> [Site]
-fn DefSites d = match d.body:
-    DbFn clauses: ClausesSites clauses
-    DbMethod clauses, ignore, ignore: ClausesSites clauses
-    DbDefault clauses, ignore: ClausesSites clauses
-    DbWidget w: SpotsSites (StmtsSpots w.body.stmts, {{}})
-    DbLet l: SpotsSites (ExprSpots l.value, {{}})
-    DbTest t: SpotsSites (ExprSpots t.blueprint, {{}})
-    DbCheck c: Fold c.lines, [[]], \|acc, line| Append acc, (SpotsSites (ExprSpots line.expr, {{}}))
-
-ClausesSites: unbounded fn [FnClause] -> [Site]
-fn ClausesSites clauses = Fold clauses, [[]], \|acc, c| Append acc, (BodySites c.body, (Hide {{}}, (PatternsNames c.params)))
-
-SpotsSites: unbounded fn [Spot] -> [Site]
-fn SpotsSites spots = Fold spots, [[]], \|acc, spot| Append acc, (SpotSites spot)
-
-?BlockSummary: unbounded fn PCx, Text, Text, [Pattern], Block, (Text ==> [Bool]) -> ?[Bool]
-fn ?BlockSummary cx, k, home, params, b, supplied = match ?Last b.stmts:
-    ? last: match last.kind:
-        SExpr result:
-            let paramNames = Each params, \|p| PatternNames p
-            let defs = Fold b.stmts, (Fold paramNames, [[]], \|acc, ns| Append acc, ns), \|acc, s| Append acc, (StmtDefs s)
-            let base = Fold b.stmts, (PreludeSeeds cx.g, home), \|m, s| LamLetRels s, m
-            let inner = PCx(g=cx.g, home=home, lams=(LetLambdas b.stmts), base=base, path=(Push cx.path, k), reach=cx.reach, supplied=supplied, flows={{}}, names=defs)
-            let edges = Fold b.stmts, [[]], \|acc, s| Append acc, (SummaryEdges inner, s, defs)
-            let reached = Reach edges, (PromptReads inner, result, defs), [[]]
-            ? (Each paramNames, \|ns| Fold ns, False, \|f, n| f or HasText reached, n)
-        otherwise: nil
-    nil: nil
-
-# A widget function's flows at one use (`ParameterFlow`, one for each parameter), for the
-# functions `?PromptSummaryAt` has a summary for: a program's widget function of one
-# clause whose body is a block that ends in its result, and that is not on the path.
-?FlowSummaryAt: unbounded fn PCx, Text, [Arg], (Text ==> Rel) -> ?[ParameterFlow]
-fn ?FlowSummaryAt cx, k, args, m = if (HasText cx.path, k) or not (HasPrefix (BareName k), "@"): nil
-else: match Filter cx.g.defs, \|d| d.qk == k:
-    [[d]]: match d.body:
-        DbFn [[c]]: ?BlockFlows cx, k, d.home, c.params, (BodyAsBlock c.body), (GivenAt cx, cx.home, c.params, args, m, cx.names), (FlowsGivenAt cx, cx.home, c.params, args, m, cx.names)
-        otherwise: nil
-    otherwise: nil
-
-# What a use gives for a widget function's function parameters, as flows: `GivenAt` with
-# the flows of each function given by name.
-FlowsGivenAt: unbounded fn PCx, Text, [Pattern], [Arg], (Text ==> Rel), [Text] -> (Text ==> [ParameterFlow])
-fn FlowsGivenAt cx, home, params, args, rels, bound:
-    if Fold args, False, \|named, a| named or a.?name != nil: {{}}
-    else: Fold (Range0 (Len params)), {{}}, \|flows, i| match ((params[i], args[i])):
-        ((? parameter, ? a)): match ((PatternNames parameter, ?GivenName a.value)):
-            (([[name]], ? n)):
-                if (IsLocal rels, n) or HasText bound, n: flows
-                else: match ?ResolveCallee cx.g, home, n:
-                    ? function: match ?FlowSummaryAt cx, function, [[]], {{}}:
-                        ? handed: Insert flows, name, handed
-                        nil: flows
-                    nil: flows
-            otherwise: flows
-        otherwise: flows
-
 # A body's flows: the body's names and their update nodes, the parameters' among them,
 # with a summary's edges (`SummaryEdges`: a hold none, any other binding to all it reads)
 # and each line's edges over update events (`UpdateLineEdges`); a name's sigil stands for
 # its type's (the function's own types are not at hand). The result reaches from what it
 # reads and from the updates under an `!Updated` in it; the result's update reaches from
 # the updates of the dynamics the result reads and from the events it reads.
-?BlockFlows: unbounded fn PCx, Text, Text, [Pattern], Block, (Text ==> [Bool]), (Text ==> [ParameterFlow]) -> ?[ParameterFlow]
-fn ?BlockFlows cx, k, home, params, b, supplied, flows = match ?Last b.stmts:
+?BlockFlows: unbounded fn PCx, Text, Text, [Pattern], Block, (Text ==> [Bool]) -> ?[ParameterFlow]
+fn ?BlockFlows cx, k, home, params, b, supplied = match ?Last b.stmts:
     ? last: match last.kind:
         SExpr result:
             let paramNames = Each params, \|p| PatternNames p
             let defs = Fold b.stmts, (Fold paramNames, [[]], \|acc, ns| Append acc, ns), \|acc, s| Append acc, (StmtDefs s)
             let base = Fold b.stmts, (PreludeSeeds cx.g, home), \|m, s| LamLetRels s, m
-            let inner = PCx(g=cx.g, home=home, lams=(LetLambdas b.stmts), base=base, path=(Push cx.path, k), reach=cx.reach, supplied=supplied, flows=flows, names=defs)
+            let inner = PCx(g=cx.g, home=home, lams=(LetLambdas b.stmts), base=base, path=(Push cx.path, k), reach=cx.reach, supplied=supplied, names=defs)
             let heads = Fold defs, {{}}, \|m, n| Insert m, n, (SigilHead n)
             let edges = Fold b.stmts, [[]], \|acc, s| Append (Append acc, (SummaryEdges inner, s, defs)), (UpdateLineEdges inner, heads, s, defs)
             let reads = PromptReads inner, result, defs
@@ -1083,6 +1023,5 @@ else: match Filter g.defs, \|d| d.qk == qk:
         otherwise: [[]]
     otherwise: [[]]
 
-let nothingGiven = Given(prompt={{}}, flows={{}})
 
 let dummyArgP = Arg(marks="", ?name=nil, value=(Expr(kind=EError, span=Range(start=0, end=0, origin=InSource))), span=Range(start=0, end=0, origin=InSource))
