@@ -368,14 +368,37 @@ fn TagFieldOut lx, ft:
     # the tag's variables are its own: the caller's instantiation does not name them
     let own = update lx:
         &_.subst <= {{}}
-    ErasedOut (OutTyOf own, (Peel ft))
+    ErasedOut (OutTyOf own, (AssocErased (Peel ft)))
 
 # Whether a tag's field has a variable of the tag in its type.
 TagFieldOpen: unbounded fn Lx, Ty -> Bool
 fn TagFieldOpen lx, ft:
     let own = update lx:
         &_.subst <= {{}}
-    HoldsGen (OutTyOf own, (Peel ft))
+    HoldsGen (OutTyOf own, (AssocErased (Peel ft)))
+
+# A tag's field type with each associated type at one of the tag's variables
+# (`Request d r` of `Seat.Request`, a family indexed by document and role) read as a
+# variable of its own: like the variable, it is erased to plain data (`ErasedOut`), and a
+# value given for the field, or read from it, is recoded at the concrete type the site
+# gives (`RecodedField`; MB, a family's associated types).
+AssocErased: unbounded fn Ty -> Ty
+fn AssocErased t = match t:
+    TyAssoc ignore, n, a, indices: match a:
+        TyCon ignore2, ignore3: if Fold indices, True, \|known, i| known and IsKnownIndex i: t else: TyQ "{n}\u{0}assoc"
+        otherwise: TyQ "{n}\u{0}assoc"
+    TyCon c, args: TyCon c, (Each args, \|x| AssocErased x)
+    TyTuple ts: TyTuple (Each ts, \|x| AssocErased x)
+    TyArray e: TyArray (AssocErased e)
+    TyMap k, v: TyMap (AssocErased k), (AssocErased v)
+    TySig sg, i: TySig sg, (AssocErased i)
+    otherwise: t
+
+IsKnownIndex: fn Ty -> Bool
+fn IsKnownIndex t = match t:
+    TyRole ignore: True
+    TyCon ignore, ignore2: True
+    otherwise: False
 
 ErasedOut: unbounded fn OutTy -> OutTy
 fn ErasedOut t = match t:
