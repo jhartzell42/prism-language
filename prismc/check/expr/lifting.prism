@@ -73,10 +73,12 @@ fn InferMatch env, st, scrut, arms, span, ?expected:
     # matches: a variable from outside is untouchable in the arm), then meets the match's
     # type under the arm's equality.
     let st4 = Fold waits, st4a, \|s, w| match w.?against:
-        ? want: ArmAgainst s, (SubstRigid w.o, w.out, (Zonk s, want)), w.ty, w.span, w.fwd
+        # the equality holds on both sides: an arm's value that still names the rigid
+        # (`@Answer element`, an `@o`) is the output there too
+        ? want: ArmAgainst s, (SubstRigid w.o, w.out, (Zonk s, want)), (SubstRigid w.o, w.out, (Zonk s, w.ty)), w.span, w.fwd
         nil: match Walk s, res:
             TyFlex ignore: UnifyArm s, res, w.ty, w.span
-            otherwise: UnifyArm s, (SubstRigid w.o, w.out, (Zonk s, res)), w.ty, w.span
+            otherwise: UnifyArm s, (SubstRigid w.o, w.out, (Zonk s, res)), (SubstRigid w.o, w.out, (Zonk s, w.ty)), w.span
     let st5 = MatchCoverage env, st4, plainScrut, arms, span
     match ?expected:
         ? want: if checking: ((want, st5)) else: MatchResult env, st5, sh, layers, res, span
