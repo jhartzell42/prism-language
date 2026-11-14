@@ -10,7 +10,7 @@ emit rest
 type Color = choice:
     White
     Black
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Show, ^Pod
 
 type Man = choice:
     King

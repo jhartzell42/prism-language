@@ -20,7 +20,8 @@ emit rest | Seat.* | Net.*
 # One document's protocol: five facts per role, the record of its seats and of their
 # results, the order of one tick's requests, and its lower language: the elements its
 # implementation's work emits (a database's `Sql.*`), passed up through its host.
-trait ^Document d:
+# A seat id is plain data: it crosses wires and keys maps (ruling QD).
+trait ^Document d where SeatId d _: ^Pod:
     type Role                                    # a choice: Player | Spectator
     type SeatId (r: Role d)                      # who sits at a seat of role r
     type Request (r: Role d)                     # what role r may ask to change; Never closes it

@@ -339,3 +339,7 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   `^RemoteDocument`'s `Encode`/`~Decode`. Jimmy, 14 November: "they should definitely be
   library code if they can be and so should the rest of them". The rest (`SeatPathOf`,
   `SeatIdAt`, `$Merge`, `$GuestsOf`) wait on path builtins in the prelude (asked).
+- **QD** A document's seat id is plain data: `trait ^Document d where SeatId d _: ^Pod`.
+  It crosses the wire and keys the program's maps, and a type with no time in it makes no
+  call prompt. Chess's `Color` in c6 and c8 derives `^Pod` for it. Jimmy, 14 November:
+  "sure whatever".
