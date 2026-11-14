@@ -1,0 +1,5 @@
+tests/checker/neg/prompt-unmarked-widget-method.prism:16: error[prompt-unmarked]: `@Echo` gives an event that fires in the tick `!heard` fires, and its type does not mark `!heard`'s parameter `prompt`
+            @ !heard
+            ^^^^^^^^
+  fix: mark the parameter in its type, `@Echo: fn e, prompt !Nat -> @!Nat`, or give it a tick later with `@Defer`
+1 error

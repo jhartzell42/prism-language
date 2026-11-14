@@ -1,0 +1,16 @@
+# `prompt-unmarked` at an impl's widget method (ruling PT): the trait's signature says
+# `@Echo` is prompt in nothing, and `Shout`'s impl gives its argument back; callers read
+# the trait's marks, so the impl is read against them (soundness).
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+trait ^Echoing e:
+    @Echo: fn e, !Nat -> @!Nat
+
+type Shout = record:
+    loud: Bool
+
+impl ^Echoing Shout:
+    fn @Echo shout, !heard:
+        @ !heard
