@@ -910,14 +910,14 @@ fn LibraryBuiltinCall lx, qk, args, written, span, t = match BareName qk:
     "SeatPathOf": XCall (HelperRef "documents_seat_path_of"), args
     "SeatIdAt": XCallAt (HelperRef "documents_seat_id_at"), [[t]], args
     "$Merge": XCall (HelperRef "documents_merge"), args
-    "$GuestsOf": GuestsOfCall lx, args, written, span
+    "$GuestsOf": GuestsOfCall lx, qk, args, written, span
     other: Refusal "the library's builtin `{other}`, whose runtime is not written yet"
 
 # `$GuestsOf<<d, r>> role, $tree`: the runtime's, at the guest's parts as this call's
 # role gives them (the role, its seat id, the element), with the role's variant number
 # and a test that an element is of the `Seat` family.
-GuestsOfCall: unbounded fn Lx, [Ex], [Arg], Range -> Ex
-fn GuestsOfCall lx, args, written, span:
+GuestsOfCall: unbounded fn Lx, Text, [Ex], [Arg], Range -> Ex
+fn GuestsOfCall lx, qk, args, written, span:
     let role = match written[0]:
         ? a: match Peel (SubstTyIn lx, (TypeAt lx, a.value.span)):
             TyCon "Prelude.Fixed", [[x]]: x
@@ -928,12 +928,31 @@ fn GuestsOfCall lx, args, written, span:
             let parts = SubstTyIn lx, (SubstQ (ParamInst vs, [[role]]), b)
             match parts:
                 TyTuple [[fixedTy, seatTy, elemTy]]:
-                    let seatTags = Filter (Values lx.g.tags), \|tg| tg.home == "Documents" and tg.familyName == "Seat"
+                    # the families of the tree's elements as the builtin's own type declares
+                    # them (`Elem (Seat.* d r | rest)`): nothing here names a library family
+                    let fams = match lx.g.vals[qk]:
+                        ? v: match v.scheme.ty:
+                            TyFn ignore3, ps, ignore4, ignore5: match ?ElemRowWithin (Or ps[1], TyErr):
+                                ? rw: rw.fams
+                                nil: [[]]
+                            otherwise: [[]]
+                        nil: [[]]
+                    let seatTags = Filter (Values lx.g.tags), \|tg| tg.kind == "Element" and HasText fams, tg.familyName
                     let isSeat = XClosure False, [[PaBind "element"]], (XIsCase (XVar "element"), (Each seatTags, \|tg| VariantOf lx, tg))
                     let number = ExistsNumber lx, (Or vs[0], "r"), (? role)
                     XCallAt (HelperRef "documents_guests_of"), [[(OutTyOf lx, fixedTy), (OutTyOf lx, seatTy), (OutTyOf lx, elemTy), OutNat]], (Append (Push [[number]], (Or args[0], XUnit)), [[(Or args[1], XUnit), isSeat]])
                 otherwise: InternalBug "`$GuestsOf` whose guest is no triple"
         otherwise: InternalBug "`$GuestsOf` whose result holds no existential"
+
+# The row of the first element type a type holds, through sigils, maps and lists.
+?ElemRowWithin: fn Ty -> ?Rw
+fn ?ElemRowWithin t = match t:
+    TyElemAny rw: ? rw
+    TyElem rw, ignore: ? rw
+    TySig ignore, i: ?ElemRowWithin i
+    TyMap ignore, v: ?ElemRowWithin v
+    TyArray e: ?ElemRowWithin e
+    otherwise: nil
 
 # The first existential a type holds, through sigils, maps and lists.
 ?ExistsWithin: fn Ty -> ?Ty
