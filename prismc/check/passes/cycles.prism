@@ -109,6 +109,14 @@ fn BodyAsBlockOf body = match body:
     BodyBlock blk: blk
     BodyExpr e: Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
 
+# A widget function's body of one expression (`fn @Pass !e = @ !e`) against its marks,
+# read as the block of that one line (`BodyMarked`).
+ExprBodyMarked: unbounded fn Env, St, Expr -> St
+fn ExprBodyMarked env, st, e:
+    let b = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
+    let cx = PCx(g=env.g, home=env.home, lams={{}}, base=(PromptBase env, [[]]), path=[[]], reach=False, supplied=(LocalMarks env, st), names=(Keys env.locals))
+    BodyMarked env, st, cx, b
+
 # The `prompt` marks of the widget functions the block's scope binds (its function's
 # parameters, its own local functions), by name, read from their types (ruling PT: a
 # call's promptness is its callee's type, never its body).
@@ -180,7 +188,7 @@ fn ?OneClauseOf clauses, b = match Filter clauses, \|c| IsClauseBody c, b:
 IsClauseBody: fn FnClause, Block -> Bool
 fn IsClauseBody c, b = match c.body:
     BodyBlock body: body.span == b.span
-    otherwise: False
+    BodyExpr x: x.span == b.span
 
 # The first parameter a body is prompt in, by its flows, and its type does not mark. The
 # result's update counts only where the result is a dynamic: an event or a plain value

@@ -523,7 +523,8 @@ fn RefinedResult env, st, patterns, params, res = Fold (Range0 (Len params)), re
 # `?` or `~` a `given:` body, anything else an expression block (Semantics ch. 4).
 CheckBody: unbounded fn Env, St, FnBody, Ty -> St
 fn CheckBody env, st, body, res = match body:
-    BodyExpr e: Check env, st, e, res
+    # a widget function's expression body is read against its marks (ruling PT)
+    BodyExpr e: if env.mark == "@": ExprBodyMarked env, (Check env, st, e, res), e else: Check env, st, e, res
     BodyBlock b:
         if env.mark == "@":
             match Walk st, res:
