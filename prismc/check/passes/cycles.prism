@@ -68,7 +68,46 @@ fn BlockPromptCycles env, st, b:
         else:
             let span = Fold b.stmts, b.span, \|sp, s| if HasText (StmtDefs s), (Or cyc[0], ""): s.span else: sp
             ErrFix st, "prompt-cycle", span, "a prompt cycle: {Join (Each cyc, \|n| "`{n}`"), ", "}", "break it with a hold: `$last <- start then ...` reads the value as the tick opened"
-    LambdasMarked env, (BodyMarked env, st2, cx, b), cx, b
+    LocalsMarked env, (LambdasMarked env, (BodyMarked env, st2, cx, b), cx, b), cx, b
+
+# A block's own widget functions (`fn @Pass` among its lines) against their signatures'
+# marks, as a program's are (`BodyMarked`): each clause's flows, with the marks of its
+# function-typed parameters, its type's.
+LocalsMarked: unbounded fn Env, St, PCx, Block -> St
+fn LocalsMarked env, st, cx, b = Fold b.stmts, st, \|s, stmt| match stmt.kind:
+    SFn c:
+        let name = DefNameText c.name
+        if not (HasPrefix name, "@"): s
+        else: match env.locals[name]:
+            ? sc: match Walk s, sc.ty:
+                TyFn ignore, ps, ignore2, ignore3: match ?WidgetMarks (Walk s, sc.ty):
+                    ? marks:
+                        let supplied = Fold (Range0 (Len c.params)), cx.supplied, \|m, i| match (((ParamNamesAt c.params, i), (?WidgetMarks (Walk s, (Or ps[i], TyErr))))):
+                            (([[n]], ? pm)): Insert m, n, pm
+                            otherwise: m
+                        let block = BodyAsBlockOf c.body
+                        match ?BlockFlows cx, name, env.home, c.params, block, supplied:
+                            ? flows: match ?Unmarked flows, marks, (ResultIsDynamic (Walk s, sc.ty)):
+                                ? i:
+                                    let param = ParamShown c.params, i
+                                    ErrFix s, "prompt-unmarked", (ResultSpan block), "`{name}` gives {PromptWhat param}, and its type does not mark `{param}`'s parameter `prompt`", "mark the parameter in its type, `{name}: {ShowTy s, (MarkedAt sc.ty, i)}`, or give it a tick later with `@Defer`"
+                                nil: s
+                            nil: s
+                    nil: s
+                otherwise: s
+            nil: s
+    otherwise: s
+
+# The names a clause's parameter `i` binds, none past its last.
+ParamNamesAt: unbounded fn [Pattern], Nat -> [Text]
+fn ParamNamesAt params, i = match params[i]:
+    ? p: PatternNames p
+    nil: [[]]
+
+BodyAsBlockOf: fn FnBody -> Block
+fn BodyAsBlockOf body = match body:
+    BodyBlock blk: blk
+    BodyExpr e: Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
 
 # The `prompt` marks of the widget functions the block's scope binds (its function's
 # parameters, its own local functions), by name, read from their types (ruling PT: a
@@ -100,12 +139,12 @@ fn ?CalleeMarks g, k = match g.vals[k]:
 # a program's widget function; any other block has nothing to answer for.
 BodyMarked: unbounded fn Env, St, PCx, Block -> St
 fn BodyMarked env, st, cx, b = match Filter env.g.defs, \|d| d.file == env.file and (?ClauseOf d, b) != nil:
-    [[d]]: match (((?ClauseOf d, b), (?CalleeMarks env.g, d.qk))):
+    [[d]]: match (((?ClauseOf d, b), (?CalleeMarks env.g, (SignedKey env.g, d)))):
         ((? c, ? marks)): match ?BlockFlows cx, d.qk, d.home, c.params, b, cx.supplied:
-            ? flows: match ?Unmarked flows, marks, (GivesDynamic env.g, d.qk):
+            ? flows: match ?Unmarked flows, marks, (GivesDynamic env.g, (SignedKey env.g, d)):
                 ? i:
-                    let name = BareName d.qk
-                    let shown = match env.g.vals[d.qk]:
+                    let name = d.name
+                    let shown = match env.g.vals[SignedKey env.g, d]:
                         ? v: ShowTy st, (MarkedAt v.scheme.ty, i)
                         nil: ""
                     let param = ParamShown c.params, i
@@ -117,11 +156,25 @@ fn BodyMarked env, st, cx, b = match Filter env.g.defs, \|d| d.file == env.file 
 
 # The clause of a widget function whose body is this block.
 ?ClauseOf: fn Def, Block -> ?FnClause
-fn ?ClauseOf d, b = if not (HasPrefix (BareName d.qk), "@"): nil
+fn ?ClauseOf d, b = if not (HasPrefix d.name, "@"): nil
 else: match d.body:
-    DbFn clauses: match Filter clauses, \|c| IsClauseBody c, b:
-        [[c]]: ? c
-        otherwise: nil
+    DbFn clauses: ?OneClauseOf clauses, b
+    DbMethod clauses, ignore, ignore2: ?OneClauseOf clauses, b
+    DbDefault clauses, ignore: ?OneClauseOf clauses, b
+    otherwise: nil
+
+# The key of the signature a definition's body answers to: an impl's method answers to
+# its trait's method's, every other definition to its own.
+SignedKey: fn G, Def -> Text
+fn SignedKey g, d = match d.body:
+    DbMethod ignore, cls, ignore2: match g.traits[cls]:
+        ? tr: QualKey tr.home, d.name
+        nil: d.qk
+    otherwise: d.qk
+
+?OneClauseOf: fn [FnClause], Block -> ?FnClause
+fn ?OneClauseOf clauses, b = match Filter clauses, \|c| IsClauseBody c, b:
+    [[c]]: ? c
     otherwise: nil
 
 IsClauseBody: fn FnClause, Block -> Bool
