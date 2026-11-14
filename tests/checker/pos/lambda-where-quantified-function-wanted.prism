@@ -3,8 +3,7 @@
 # and the lambda's `Count.Ask` arm gives a `Nat`, its `Count.Name` arm a `Text`. Found by
 # the step 3 build on the library (`SupplierFrom`, whose lambda is a `Supplier d`).
 # Written by Claude on the claude-self-hosting branch; subject to change.
-module QuantifiedLambda
-emit Count.*
+
 
 family Count
 

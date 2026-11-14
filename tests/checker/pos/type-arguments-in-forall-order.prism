@@ -3,7 +3,6 @@
 # `Kept`'s type. Found by the step 3 build on the library (`PendingFrom<<d>>` under
 # `forall d (r: Role d)` gave `d` to `r`).
 # Written by Claude on the claude-self-hosting branch; subject to change.
-module ForallOrder
 
 type Access = choice:
     Reader

@@ -1,0 +1,25 @@
+# Matching a `Fixed s` on each of the kind's variants narrows `s`: in the `Fixed<<Left>>`
+# arm a `Payload Box s` is a `Nat`, and the two arms cover `Box`'s sides. Found by the step
+# 3 build on the library (`!ReplacesAt`, a `Request File r` under `Fixed<<Editor>>`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+trait ^Sided d:
+    type Side
+    type Payload (s: Side d)
+
+type BoxSide = choice:
+    Left
+    Right
+
+type Box = record:
+    size: Nat
+
+impl ^Sided Box:
+    type Side = BoxSide
+    type Payload Left = Nat
+    type Payload Right = Never
+
+Weight: forall (s: Side Box). fn Fixed s, Payload Box s -> Nat
+fn Weight side, payload = match side:
+    Fixed<<Left>>: payload + 1
+    Fixed<<Right>>: 0

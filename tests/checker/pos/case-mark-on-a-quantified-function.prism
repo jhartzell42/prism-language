@@ -2,8 +2,6 @@
 # take a capital name and be called: `Use` names its `Echo` `Echo` and calls it. Found by
 # the step 3 build on the library (`@HostSeats`'s `Supply`, a `Supplier d`).
 # Written by Claude on the claude-self-hosting branch; subject to change.
-module QuantifiedCase
-emit unit
 
 type Echo = forall a. fn a -> a
 
