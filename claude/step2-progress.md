@@ -142,7 +142,11 @@ Written by Claude on the claude-self-hosting branch; subject to change.
   associated type, `impl ReasonOf<Count> for Raiser`, with its bounds on every generic
   definition). Left: a record's such field read by `.field`.
 
-- Lowering: partial application (doc-c5). Where a widget function parameter is given
+- Lowering: partial application (doc-c5). Tried 14 November: reading `@Counter 5` as a
+  lambda of the missing parameters lowered in the caller's file needs the synthetic
+  parameters' types, which the checker records at no span; the fix is for the checker to
+  note the partial call's missing parameter types (at the call's span, as a function
+  type it already notes) and the lowering to read them there. Where a widget function parameter is given
   `@Counter 5` (`ApplyWidgetParam`, lower/node/static), the plan is to read it as a lambda
   of the missing parameters whose body is the full call; the obstacle is that the line's
   arguments and the partial call's own are in two files' environments and spans.
@@ -159,9 +163,8 @@ Written by Claude on the claude-self-hosting branch; subject to change.
   each place's role, over a live set of places: the lowering must give the runtime, per
   role, closures that take a request or query out of an element and put a response or
   answer back, since the element types are the program's.
-- The checker red doc-c4-watcher-wires-request: the mismatch at a tag's sigiled field
-  shows the peeled types (`Never`, wanted `!Never`) and has no note line; diagnostics have
-  no notes yet.
+- Done: notes in diagnostics (`CDiag.note`, `DiagNote`); a waiting equation's mismatch shows
+  its whole types and, for an element's field, the guest row (doc-c4-watcher).
 - The ten old lowering reds (sem-ch04/08/09 late values, widget values).
 - Then: the first check of the library, the tally, c6, c8 and chess with the new
   compiler, and their remaining errors (the prompt-cycle, the agent's two unconfirmed
