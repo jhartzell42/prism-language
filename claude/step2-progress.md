@@ -84,14 +84,16 @@ Written by Claude on the claude-self-hosting branch; subject to change.
   doc-c4 family associated types, doc-sk, the library's builtins.
 - The hold cycle through a parameter given a lambda: answered by PT (promptness in the
   type, checked locally).
-- PT's spelling, `unbounded prompt fn` and `prompt \|..|` (Claude's call, flagged).
+- PT's spelling, per parameter: `fn prompt !Nat -> @!Nat`, `\|prompt !e| ..` (Claude's call,
+  flagged; Jimmy okayed the whole-function spelling before ruling per parameter).
 
 ## Left
 
-- PT: `prompt` in the type syntax (types.prism's `"unbounded"? "prompt"? "fn"`, a lambda's
-  `prompt` before its bars), promptness in the function type and in unification, the
-  `prompt-unmarked` error at a body, and the cycle check reading callee types only (the
-  summary walk goes).
+- PT, per parameter: `prompt` before a parameter's type in a function type and before a
+  lambda's parameter; the marks as part of the function type, with subsumption (fewer
+  marks stand where more are wanted); `prompt-unmarked` at a body or a lambda; the cycle
+  check reading a call's edges from the callee's marks only (the summary walk and its
+  four flow bits go).
 
 - FA call sites: a value of a `forall` type applied in Rust must pack its arguments and
   unpack its result (`Packed::of(..).packed()`, `.held::<T>()`); not written.
