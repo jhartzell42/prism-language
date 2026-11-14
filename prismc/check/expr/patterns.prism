@@ -96,7 +96,7 @@ fn BindPattern env, st, p, t, refutable = match p.kind:
     # `any p` opens an existential (Type System ch. 3; Jimmy's ruling FA): each hidden type
     # a fresh rigid type in the arm, equal only to itself
     PAny q: match Walk st, t:
-        TyExists vs, b, ignore:
+        TyExists vs, b, ignore, kinds:
             let opened = Each vs, \|v| TyRigid "{ShownVar v}#any{st.next}"
             let st2 = update st:
                 &_.next += 1

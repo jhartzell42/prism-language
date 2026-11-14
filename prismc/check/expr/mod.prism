@@ -313,7 +313,7 @@ CheckAny: unbounded fn Env, St, Expr, Ty, Range -> St
 fn CheckAny env, st, x, expected, span = match Walk st, expected:
     # packing an existential over type variables (Jimmy's ruling FA): each variable a fresh
     # one at the packing, its bounds wanted there
-    TyExists vs, b, bs:
+    TyExists vs, b, bs, kinds:
         let ((fresh, st2)) = Fold vs, (([[]], st)), \|((acc, s)), ignore|
             let ((v, s2)) = FreshVar s, True, ""
             (((Push acc, v), s2))

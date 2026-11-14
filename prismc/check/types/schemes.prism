@@ -45,7 +45,7 @@ fn SubstQ m, t = match t:
     TyElem rw, o: TyElem (SubstRowQ m, rw), (SubstQ m, o)
     TyElemAny rw: TyElemAny (SubstRowQ m, rw)
     TyAssoc tr, n, a, indices: TyAssoc tr, n, (SubstQ m, a), (Each indices, \|i| SubstQ m, i)
-    TyExists vs, b, bs: TyExists vs, (SubstQ m, b), bs
+    TyExists vs, b, bs, kinds: TyExists vs, (SubstQ m, b), bs, (Each kinds, \|((kv, kt))| ((kv, (SubstQ m, kt))))
     TyForall vs, b: TyForall vs, (SubstQ m, b)
     other: other
 
@@ -233,7 +233,7 @@ fn SubstFlex m, cm, t = match t:
     TyAt i, rw: TyAt (SubstFlex m, cm, i), rw
     TyElem rw, o: TyElem rw, (SubstFlex m, cm, o)
     TyAssoc tr, n, a, indices: TyAssoc tr, n, (SubstFlex m, cm, a), (Each indices, \|i| SubstFlex m, cm, i)
-    TyExists vs, b, bs: TyExists vs, (SubstFlex m, cm, b), bs
+    TyExists vs, b, bs, kinds: TyExists vs, (SubstFlex m, cm, b), bs, (Each kinds, \|((kv, kt))| ((kv, (SubstFlex m, cm, kt))))
     TyForall vs, b: TyForall vs, (SubstFlex m, cm, b)
     other: other
 

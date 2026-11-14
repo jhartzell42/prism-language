@@ -325,8 +325,8 @@ fn AliasOrShown g, st, t:
     let ?named = Fold (Values g.types), nil, \|?found, ti| match ?found:
         ? f: ? f
         nil: match ti.body:
-            BAlias (TyExists vs, b, bs): match whole:
-                TyExists ws, c, cs: if (Len vs) != (Len ws): nil else: match ?MatchHead (SubstQ (ParamInst vs, (Each ws, \|w| TyQ w)), b), c, {{}}:
+            BAlias (TyExists vs, b, bs, kinds): match whole:
+                TyExists ws, c, cs, kinds: if (Len vs) != (Len ws): nil else: match ?MatchHead (SubstQ (ParamInst vs, (Each ws, \|w| TyQ w)), b), c, {{}}:
                     ? m: ? "{BareName ti.name}{Concat (Each ti.params, \|p| " {ShowTyIn st, (Or m[p], (TyQ p)), True}")}"
                     nil: nil
                 otherwise: nil

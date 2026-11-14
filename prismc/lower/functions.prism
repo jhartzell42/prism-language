@@ -539,7 +539,7 @@ fn FixedVarsIn t = match t:
     TyFn ignore, ps, r, prompts: Fold ps, (FixedVarsIn r), \|acc, x| UnionTexts acc, (FixedVarsIn x)
     TyTuple xs: Fold xs, [[]], \|acc, x| UnionTexts acc, (FixedVarsIn x)
     TySig ignore, i: FixedVarsIn i
-    TyExists ignore, b, ignore2: FixedVarsIn b
+    TyExists ignore, b, ignore2, kinds: FixedVarsIn b
     otherwise: [[]]
 
 # The hidden parameter that holds a kinded type variable's variant.

@@ -100,7 +100,7 @@ fn TyNamesIn t = match t:
     TyAt i, ignore: TyNamesIn i
     TyElem ignore, i: TyNamesIn i
     TyAssoc ignore, ignore, i, ignore2: TyNamesIn i
-    TyExists ignore, b, ignore2: TyNamesIn b
+    TyExists ignore, b, ignore2, kinds: TyNamesIn b
     TyForall ignore, b: TyNamesIn b
     otherwise: [[]]
 
@@ -115,7 +115,7 @@ fn HasArrow t = match t:
     TyAt i, ignore: HasArrow i
     TyElem ignore, i: HasArrow i
     TyAssoc ignore, ignore, i, ignore2: HasArrow i
-    TyExists ignore, b, ignore2: HasArrow b
+    TyExists ignore, b, ignore2, kinds: HasArrow b
     TyForall ignore, b: HasArrow b
     otherwise: False
 
@@ -153,7 +153,7 @@ fn NegWalk g, target, t, b, seen = match t:
     TyAt i, ignore: NegWalk g, target, i, b, seen
     TyElem ignore, i: NegWalk g, target, i, b, seen
     TyAssoc ignore, ignore, i, ignore2: NegWalk g, target, i, b, seen
-    TyExists ignore, body, ignore2: NegWalk g, target, body, b, seen
+    TyExists ignore, body, ignore2, kinds: NegWalk g, target, body, b, seen
     TyForall ignore, body: NegWalk g, target, body, b, seen
     otherwise: ((False, seen))
 

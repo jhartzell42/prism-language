@@ -42,7 +42,7 @@ fn TySexp t = match t:
     TyRole r: "(role {r})"
     TyAny trs: "(any{Concat (Each trs, \|x| " ^{x}")})"
     TyForall vs, b: "(forall ({Join vs, " "}) {TySexp b})"
-    TyExists vs, b, bs: "(exists ({Join vs, " "}) {TySexp b}{Concat (Each bs, \|((v, tr))| " ({v} ^{tr})")})"
+    TyExists vs, b, bs, kinds: "(exists ({Join vs, " "}) {TySexp b}{Concat (Each bs, \|((v, tr))| " ({v} ^{tr})")})"
     TyErr: "unknown"
     TyEvery: "_"
 

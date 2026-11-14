@@ -88,14 +88,18 @@ fn ConvType cx, st, t = match t.kind:
         (((TyForall (Each vs, \|v| v.name), b), st2))
     # `any r: t where ...`: the variables renamed to canonical names, so two spellings of one
     # existential are one type (`ExistsVar`)
-    TExists vars, ignore, body, bounds:
+    TExists vars, written, body, bounds:
         let ((b, st2)) = ConvType cx, st, body
         let ((bs, st3)) = ConvBounds cx, st2, bounds
         let names = Each vars, \|v| v.name
         let canon = Each (Range0 (Len names)), \|i| ExistsVar i, (Or names[i], "")
         let by = ParamInst names, (Each canon, \|c| TyQ c)
         let bounds2 = Each bs, \|((v, tr))| (((CanonOf names, v), tr))
-        (((TyExists canon, (SubstQ by, b), bounds2), st3))
+        # each kinded variable's kind, a type (`Access`, `Role d`), under the canonical names
+        let ((kinds, st4)) = Fold written, (([[]], st3)), \|((acc, s)), ((v, kt))|
+            let ((k, s2)) = ConvType cx, s, kt
+            (((Push acc, (((CanonOf names, v), (SubstQ by, k)))), s2))
+        (((TyExists canon, (SubstQ by, b), bounds2, kinds), st4))
     TAbsent: ((TyErr, (Err st, "unsupported", t.span, "this checker does not implement sparse tuples")))
     TNonEmpty inner:
         let ((c, st2)) = ConvType cx, st, inner

@@ -185,7 +185,7 @@ fn ?MatchAll xs, ys, m = Fold (Range0 (Len xs)), (? m), \|?acc, i| match ?acc:
 IsWaitingAssoc: unbounded fn St, Ty -> Bool
 fn IsWaitingAssoc st, t = match t:
     TyAssoc ignore, ignore, a, indices: (IsFlexVar st, a) or Fold indices, False, \|b, i| b or IsFlexVar st, i
-    TyExists ignore, b, ignore2: IsFlexVar st, b
+    TyExists ignore, b, ignore2, kinds: IsFlexVar st, b
     TyForall ignore, b: IsFlexVar st, b
     otherwise: False
 
@@ -253,7 +253,7 @@ fn UnifyHeads st, e, f, span:
         ((TyAny xs, TyAny ys)): if (SortTexts xs) == (SortTexts ys): (("", st)) else: (("mismatch", st))
         # two existentials are one type when their bodies are, variable by canonical
         # variable, and their bounds agree
-        (((TyExists xs, b1, bs1), (TyExists ys, b2, bs2))):
+        (((TyExists xs, b1, bs1, ignore), (TyExists ys, b2, bs2, ignore2))):
             # one existential however its variables are written: `ys` renamed to `xs`
             let renamed = Each ys, \|y| AtPosition xs, y
             let by = Inst(tys=(Map (Each (Range0 (Len ys)), \|i| (((Or ys[i], ""), (TyQ (Or renamed[i], "")))))), rows={{}}, cols={{}})

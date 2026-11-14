@@ -213,7 +213,7 @@ fn QOccurs q, t = match t:
     TyAt i, ignore: QOccurs q, i
     TyElem ignore, o: QOccurs q, o
     TyAssoc ignore, ignore, i, indices: (QOccurs q, i) or Fold indices, False, \|b, x| b or QOccurs q, x
-    TyExists vs, b, ignore: if HasText vs, q: False else: QOccurs q, b
+    TyExists vs, b, ignore, kinds: if HasText vs, q: False else: QOccurs q, b
     TyForall vs, b: if HasText vs, q: False else: QOccurs q, b
     otherwise: False
 
@@ -256,7 +256,7 @@ fn RigidIn r, t = match t:
     TyAt i, ignore: RigidIn r, i
     TyElem ignore, o: RigidIn r, o
     TyAssoc ignore, ignore, i, indices: (RigidIn r, i) or Fold indices, False, \|b, x| b or RigidIn r, x
-    TyExists ignore, b, ignore2: RigidIn r, b
+    TyExists ignore, b, ignore2, kinds: RigidIn r, b
     TyForall ignore, b: RigidIn r, b
     otherwise: False
 

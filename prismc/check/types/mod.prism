@@ -111,8 +111,10 @@ type Ty = choice:
     TyRole Text
     TyAny [Text]
     # `any r: t where r: ^C` (Type System ch. 3; Jimmy's ruling FA): its variables, by
-    # canonical names (`ExistsVar`), the type over them, and their bounds
-    TyExists [Text], Ty, [((Text, Text))]
+    # canonical names (`ExistsVar`), the type over them, their bounds, and the kinds the
+    # kinded ones declare (`any (r: Access): ..`, `any (r: Role d): ..`; ruling PK), a
+    # kind as a type (a choice, or an associated kind of a type)
+    TyExists [Text], Ty, [((Text, Text))], [((Text, Ty))]
     # `forall o. fn Path, Element c o -> @o` inside a type (Jimmy's ruling FA, a type alias's
     # body): its variables (as `TyQ`s in the body), each use a fresh instance
     TyForall [Text], Ty
@@ -534,7 +536,7 @@ fn ShowTyIn st, t, nested = match t:
     TyForall vs, b:
         let inner = "forall {Join vs, " "}. {ShowTyIn st, b, False}"
         if nested: "({inner})" else: inner
-    TyExists vs, b, bs:
+    TyExists vs, b, bs, kinds:
         let inner = "any {Join (Each vs, \|v| ShownVar v), " "}: {ShowTyIn st, b, False}{if (Len bs) == 0: "" else: " where {Join (Each bs, \|((v, tr))| "{ShownVar v}: ^{BareName tr}"), ", "}"}"
         if nested: "({inner})" else: inner
     TyErr: "?"
