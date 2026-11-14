@@ -552,17 +552,19 @@ fn @Queried at, !heard:
 fn @Outgoing $guests:
     !sent <- for at, $guest <- $guests:
         !born <- @started
-        @Switch (!SentAt<<d>> at, $guest, !born)
+        let !changed = !born <| Touched (!Updated $guest)      # a query's level changed
+        @Switch (!SentAt<<d>> at, $guest, !changed)
     @ Fold (Values !sent), [[]], Append
 
-# One place's messages: what its element asks, as it asks it.
+# One place's messages: what its element asks, as it asks it. A guest is a snapshot, its
+# query a level, sent as the place starts and as the snapshot changes.
 !SentAt: forall d. fn Path, Guest d, !unit -> ![Message] where d: ^RemoteDocument
-fn !SentAt at, guest, !born = match guest:
+fn !SentAt at, guest, !changed = match guest:
     any ((role, id, element)): match element:
         Seat.Request(!requests=!requests): One (Asking at, (Encode !requests))
-        Seat.Query($query=$query): One (Querying at, (Encode (!Sampled $query, !born)))
+        Seat.Query($query=query): One (Querying at, (Encode query)) on !changed
         Seat.Leave(!?leaves=!?leaves): LeavingMessages<<d>> role, at, !?leaves
-        otherwise: never
+
 
 # A list of one (a function, so it lifts over an event where a list literal does not).
 One: fn a -> [a]
@@ -701,10 +703,9 @@ fn !LeavesAt at, element = match element:
 Happened: fn ?a -> unit
 fn Happened ignore = unit
 
-# A dynamic's value as it starts and as it changes (a function, so a lifted call around it
-# takes the event whole).
-!Sampled: fn $a, !unit -> !a
-fn !Sampled $x, !born = ($x on !born) <| !Updated $x
+# That an event fired, whatever it carries (a function, so it lifts over the event).
+Touched: fn a -> unit
+fn Touched ignore = unit
 
 # A role's tree as guests: each seat's places, each with the role and its seat id (the
 # path's first key); a place of another language is not the document's.
