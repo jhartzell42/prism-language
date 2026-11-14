@@ -129,7 +129,7 @@ fn Seating seats = Change(seat=seats, remove=[[]])
 Removing: fn [Text] -> Change a
 fn Removing names = Change(seat={{}}, remove=names)
 
-@Table: fn TallyResults -> @(TallySeats o Ui.*) emit Ui.* where o: ^TallyOrder
+@Table: fn prompt TallyResults -> @(TallySeats o Ui.*) emit Ui.* where o: ^TallyOrder
 fn @Table results:
     !cyJoins <- Ui.Button($label=$"cy joins")                              # 0
     !cyRemoved <- Ui.Button($label=$"cy is removed")                       # 1
