@@ -1,0 +1,20 @@
+# A widget function's expression body is a child whose row is within the signature's, as a
+# widget block's line is: `@Either`'s second clause gives `@Plain`, which emits `Ui.*` only.
+# Found by the step 3 build on chess (`fn @RunMode (Running Terminals, ..) = @Terminals ..`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.* | Fs.*
+
+@Plain: fn Nat -> @unit emit Ui.*
+fn @Plain n:
+    Ui.Label($text=$"{n}")
+    @ unit
+
+@Filed: fn Nat -> @unit emit Ui.* | Fs.*
+fn @Filed n:
+    ignore <- Fs.Contents(path="{n}")
+    Ui.Label($text=$"{n}")
+    @ unit
+
+@Either: fn Bool, Nat -> @unit emit Ui.* | Fs.*
+fn @Either True, n = @Filed n
+fn @Either False, n = @Plain n
