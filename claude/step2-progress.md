@@ -105,11 +105,13 @@ Written by Claude on the claude-self-hosting branch; subject to change.
 
 ## Known gaps, noted
 
-- PT: a local widget function's body (a block's own `fn @X`) is not yet read against its
-  marks; only a program's top-level widget functions and lambdas are. A lambda given to a
-  widget function adds no edges for what it captures (as before PT): a widget function
-  that applies a function parameter and gives its result promptly would need a mark on
-  that parameter, which PT does not have.
+- PT soundness (Jimmy, 14 November: "Allowing unsoundness is a critical bug"): closed so
+  far, each with a test: a function-typed parameter takes the mark (choice (a)); at a
+  marked parameter everything the argument captures is read (`MarkedArgKids`); a binding
+  that holds a function value reads what it captures (`CaptureReads`); every widget body
+  is read against its marks (`BodyMarked`, `LocalsMarked`, `LambdasMarked`, impl methods
+  by `SignedKey`). Still to audit: function values reaching a widget function through a
+  global `let`, a `Fixed`-indexed dispatch, or a trait's dictionary.
 
 ## Asked of Jimmy
 
