@@ -190,8 +190,8 @@ check command_line:
     ?ModeOf [["--terminals"]] => ? (Running Terminals, InMemory, [[White, Black]])
     ?ModeOf [["--file", "game.pod"]] => ? (Running Boards, (InFile "game.pod"), [[White, Black]])
     ?ModeOf [["--terminals", "--file", "game.pod"]] => ? (Running Terminals, (InFile "game.pod"), [[White, Black]])
-    ?ModeOf [["--connect", "hub.example", "7000", "black"]] => ? (Running Boards, (Over Address(host="hub.example", port=7000)), [[Black]])
-    ?ModeOf [["--hub", "7000"]] => ? (HubOn 7000)
+    ?ModeOf [["--connect", "server.example", "7000", "black"]] => ? (Running Boards, (Over Address(host="server.example", port=7000)), [[Black]])
+    ?ModeOf [["--server", "7000"]] => ? (ServerOn 7000)
     ?ModeOf [["--file"]] => nil
-    ?ModeOf [["--connect", "hub.example", "seven", "black"]] => nil
+    ?ModeOf [["--connect", "server.example", "seven", "black"]] => nil
     ?ModeOf [["--castle"]] => nil

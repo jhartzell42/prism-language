@@ -1,8 +1,8 @@
 # Chess, the document way: one game of chess as a document, and participants that hold
 # its seats. This is the root. It reads its command line (`Modes`, where the words are
 # listed) and runs one of: boards in a window or players at terminals, the game kept in
-# memory (`chess`), in a file (`chess --file game.pod`) or at a Hub
-# (`chess --connect HOST PORT white`); or a Hub (`chess --hub PORT`). The front ends take
+# memory (`chess`), in a file (`chess --file game.pod`) or at a server
+# (`chess --connect HOST PORT white`); or a server (`chess --server PORT`). The front ends take
 # the implementation as their one argument. The other seatings the tests run (text
 # interfaces, scripts, a board against a terminal) are in `tables.prism`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
@@ -44,12 +44,12 @@ use Window.Widgets.*
         nil: @Unreadable
 
 # What a mode runs: the window's boards or the terminals, the game kept as the mode
-# says; or a Hub, which seats nobody of its own.
+# says; or a server, which seats nobody of its own.
 @RunMode: fn Mode -> @unit emit Pane.* | Gui.* | Console.* | Fs.* | Net.*
 fn @RunMode (Running Boards, keeping, seated) = @Window ($ "Chess"), (Extent 1400.0, 760.0), @widget:
     @Boards keeping, seated
 fn @RunMode (Running Terminals, keeping, seated) = @Terminals keeping, seated
-fn @RunMode (HubOn port) = @Hub port, [[]]
+fn @RunMode (ServerOn port) = @Server port, [[]]
 
 # A command line the program cannot read: it exits with code 2.
 @Unreadable: @unit emit Process.*

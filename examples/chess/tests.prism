@@ -5,7 +5,7 @@
 # and computes twice before anyone moves, which a seat's first answer no longer needs: it
 # is told the game in the tick it is built. The saved game's and the remote game's tests
 # run in the worlds of `test_worlds.prism`: a file kept in a hold, and a wire between a
-# phone and a Hub in one program.
+# client and a server in one program.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.*
 use Tables.*
@@ -244,10 +244,10 @@ test saved_and_resumed, @savedGame:
         => expect Ui.Label(text="White's last request: accepted")
         => expect Ui.Label(text="file: the game's pod text; moves: e2e4 e7e5 g1f3")
 
-# ---- a remote game: a phone `@Over` a Hub, the Hub `@Serve`-ing it
+# ---- a remote game: a client `@Over` a server, the server `@Serve`-ing it
 
-# White plays on the phone, Black at the Hub's own seat. Each move reaches the other side
-# across the wire: the phone's view lags the Hub's by the wire, so each step waits until
+# White plays on the client, Black at the server's own seat. Each move reaches the other side
+# across the wire: the client's view lags the server's by the wire, so each step waits until
 # idle.
 test remote_game, @remoteGame:
     build

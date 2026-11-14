@@ -1,5 +1,5 @@
 # Where a game of chess is kept: in memory for a hot seat, in a file so a crash costs
-# nothing, or at a Hub over the wire; and the Hub itself. The seats do not change with
+# nothing, or at a server over the wire; and the server itself. The seats do not change with
 # it: a program builds its `ChessSeats` and hands them to `@HostDocument` with one
 # implementation, and that one argument's `emit` says what the program must be able to
 # do (Part IV ch. 6). The library writes every implementation; chess writes none.
@@ -13,7 +13,7 @@ use Game.*
 type Keeping = choice:
     InMemory                     # a hot seat: nothing survives the program
     InFile Text                  # a saved game: the file at this path, in `^Pod`'s text of the game
-    Over Address                 # a game against a Hub at this address
+    Over Address                 # a game against a server at this address
 derive ^Eq, ^Show
 
 # The game in memory: the narrowest hosting, whose `emit` adds nothing to the seats'. The
@@ -43,35 +43,35 @@ fn @Kept (Over address), seats:
 fn @Filed seats:
     ignore <- @HostDocument (@InFile<<ChessGame>> fresh), seats
 
-# ---- the Hub
+# ---- the server
 
-# A Hub: the game in memory, its seats the wire's connections as they open, one `@Serve`
-# per connection, beside the player seats the Hub's own program holds, given as pairs of
+# A server: the game in memory, its seats the wire's connections as they open, one `@Serve`
+# per connection, beside the player seats the server's own program holds, given as pairs of
 # a color and its participant. The colors the program leaves empty go to the first
 # connections, White first; every later connection is a spectator, named for its
-# connection. The Hub seats each connection once (doubt MX): what a phone's paths say of
+# connection. The server seats each connection once (doubt MX): what a client's paths say of
 # its seat is not asked. `@Serve` names its document and the connection's role: a
 # connection decides neither. The
 # seats are built as lists of pairs and made maps by `Map`: a tuple literal keeps its
 # parts whole, where `Insert` would lift over a seat's live blueprint (ruling HD).
-@Hub: fn Nat, [((Color, $@(@unit emit Seat.* ChessGame Player | Net.* | rest)))] -> @unit emit Net.* | rest
-fn @Hub port, local:
+@Server: fn Nat, [((Color, $@(@unit emit Seat.* ChessGame Player | Net.* | rest)))] -> @unit emit Net.* | rest
+fn @Server port, local:
     !opened <- Net.Listen(port=port)                                           # 0
     $connections <- [[]] then Push $connections, !opened
     ignore <- @HostDocument (@InMemory<<ChessGame>> fresh), ChessSeats($player=(PlayersFrom local, $connections), $spectator=(SpectatorsFrom local, $connections))   # 1
 
-# the colors no seat of the Hub's own program holds, White first
+# the colors no seat of the server's own program holds, White first
 FreeColors: fn [((Color, v))] -> [Color]
 fn FreeColors local = Filter [[White, Black]], \|color| not (AnyOf local, \|((held, guest))| held == color)
 
-# the Hub's player seats: its own, and a connection at each free color, in order
+# the server's player seats: its own, and a connection at each free color, in order
 PlayersFrom: fn [((Color, $@(@unit emit Seat.* ChessGame Player | Net.* | rest)))], [Connection] -> (Color ==> $@(@unit emit Seat.* ChessGame Player | Net.* | rest))
 fn PlayersFrom local, connections:
     let free = FreeColors local
     let served = Each (Take connections, (Len free)), \|connection| $ (@Serve<<ChessGame>> Fixed<<Player>>, connection)
     Map (Append local, (Paired free, served))
 
-# the Hub's spectators: every connection after those the free colors took
+# the server's spectators: every connection after those the free colors took
 SpectatorsFrom: fn [((Color, v))], [Connection] -> (Text ==> $@(@unit emit Seat.* ChessGame Spectator | Net.* | rest))
 fn SpectatorsFrom local, connections = Map (Each (Drop connections, (Len (FreeColors local))), \|connection| (("connection {connection.id}", $ (@Serve<<ChessGame>> Fixed<<Spectator>>, connection))))
 
