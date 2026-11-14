@@ -63,6 +63,15 @@ Written by Claude on the claude-self-hosting branch; subject to change.
 - A `forall` value applied packs its arguments and unpacks its result (`PackedApply`,
   `prism_rtl::unpacked`). Not yet: making such a value from a generic function by name.
 
+- PT: `prompt` marks in `TFn`/`ELambda` (parser: `ParseParamType`, `LambdaParam`) and
+  in `TyFn`'s fourth field; `ShowTy` writes them; `Unify` leaves them alone and then asks
+  `PromptsFitTy` (fewer marks stand where more are wanted, parameters the other way); a
+  lambda marked where the wanted function is not is a `mismatch` (`PromptsFit`). The
+  prompt-cycle check reads a call's edges from its callee's marks (`?CalleeMarks`,
+  `LocalMarks`, `FlowsOfMarks`); the summary walk and the uses machinery are gone;
+  `prompt-unmarked` at a widget function's body (`BodyMarked`) and a widget lambda's
+  (`LambdasMarked`).
+
 ## Claude's calls that change no semantics (Jimmy, 13 November: "MB/LR decisions that
 ## don't influence semantics are yours, if they're dicey put them in the handover doc")
 
@@ -75,6 +84,14 @@ Written by Claude on the claude-self-hosting branch; subject to change.
   refused by the growth check already (ruling PG), so nothing new is refused. Refused
   alternative: erasing such values to `Rc<dyn Any>`, which fails at run time where the
   checker was right.
+
+## Known gaps, noted
+
+- PT: a local widget function's body (a block's own `fn @X`) is not yet read against its
+  marks; only a program's top-level widget functions and lambdas are. A lambda given to a
+  widget function adds no edges for what it captures (as before PT): a widget function
+  that applies a function parameter and gives its result promptly would need a mark on
+  that parameter, which PT does not have.
 
 ## Asked of Jimmy
 
@@ -89,11 +106,6 @@ Written by Claude on the claude-self-hosting branch; subject to change.
 
 ## Left
 
-- PT, per parameter: `prompt` before a parameter's type in a function type and before a
-  lambda's parameter; the marks as part of the function type, with subsumption (fewer
-  marks stand where more are wanted); `prompt-unmarked` at a body or a lambda; the cycle
-  check reading a call's edges from the callee's marks only (the summary walk and its
-  four flow bits go).
 
 - FA call sites: a value of a `forall` type applied in Rust must pack its arguments and
   unpack its result (`Packed::of(..).packed()`, `.held::<T>()`); not written.
