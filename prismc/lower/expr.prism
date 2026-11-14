@@ -2955,7 +2955,19 @@ fn FieldValue lx, env, r, name:
     # an `Error`'s `kind` is kept as its name: read, it is a `Fault` value (`kind_of`)
     match rty:
         TyCon "Prelude.Error", ignore if name == "kind": VlOwned (XCall (HelperRef "kind_of"), [[(XRef x)]]), OutPod
-        otherwise: VlPlace (FieldOfEx lx, x, rty, f), mode, ft
+        # a field of an associated type at the record's variables holds plain data (MB,
+        # `CaseField`): read back at the type the read's site gives
+        otherwise: if FieldHoldsOpenAssoc lx, rty, name: VlOwned (XCallAt (HelperRef "recode"), [[ft]], [[(XRef (FieldOfEx lx, x, rty, f))]]), ft
+            else: VlPlace (FieldOfEx lx, x, rty, f), mode, ft
+
+# Whether a record's field, as its type declares it, holds an associated type at the
+# type's variables.
+FieldHoldsOpenAssoc: unbounded fn Lx, Ty, Text -> Bool
+fn FieldHoldsOpenAssoc lx, rty, name = match rty:
+    TyCon n, ignore: match lx.g.ctors[n]:
+        ? c: Fold (Range0 (Len c.fields)), False, \|found, i| found or ((Or c.fields[i], "") == name and HasOpenAssoc (Or c.args[i], TyErr))
+        nil: False
+    otherwise: False
 
 # A field of a value of the program's type `rty`, by its owner type (`XFieldOf`); a type
 # lowering refused to name (`FieldInfo` says so) reads by the name alone.
