@@ -2,7 +2,8 @@
 # library's `derive ^StateDocument g via ^PerfectInformationGame g where State g = g,
 # Request g Player = Move g, ...`): the via definitions apply a `^Doc`'s request as a
 # `^Game`'s move, which only the equality `Request g = Move g` makes well typed; the type
-# that opts in says both.
+# that opts in says both: its `^Doc` impl, and the derive of `^StepDoc`, as chess's
+# `impl ^Document` and `derive ^StateDocument via ^PerfectInformationGame`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.*
 test mod Tests
@@ -13,9 +14,11 @@ trait ^Game g:
 
 trait ^Doc d:
     type Request
+
+trait ^StepDoc d where d: ^Doc:
     Apply: fn d, Request d -> d
 
-derive ^Doc g via ^Game g where Request g = Move g:
+derive ^StepDoc g via ^Game g where Request g = Move g:
     fn Apply game, move = Play game, move
 
 type Counter = record:
@@ -28,7 +31,7 @@ impl ^Game Counter:
 impl ^Doc Counter:
     type Request = Nat
 
-derive ^Doc via ^Game for Counter
+derive ^StepDoc via ^Game for Counter
 
 @page: @unit
 @page:
