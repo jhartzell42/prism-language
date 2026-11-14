@@ -175,7 +175,7 @@ fn IsElementMatch env, st, e = match e.kind:
 # (`@ \|at, prompt asking| ..` as a `Supplier File`).
 IsPlaced: fn Expr -> Bool
 fn IsPlaced e = match e.kind:
-    EFreeSigil s, ignore: s == "@"
+    EFreeSigil s, x: s == "@" and IsLambda x
     otherwise: False
 
 let dummyStmt2 = Stmt(kind=(SExpr (Expr(kind=EError, span=Range(start=0, end=0, origin=InSource)))), span=Range(start=0, end=0, origin=InSource))

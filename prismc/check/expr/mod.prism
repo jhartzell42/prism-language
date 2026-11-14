@@ -288,7 +288,7 @@ fn Check env, st, e, expected = match e.kind:
     # `@ v` where a blueprint is wanted: `v` checked at the blueprint's value, so a lambda
     # there takes the type inward (`@ \|at, prompt asking| ..` as a `@(Supplier File)`);
     # `@ v` places nothing, so it fits the wanted row
-    EFreeSigil "@", x if IsBlueprintTy st, expected: match Walk st, expected:
+    EFreeSigil "@", x if (IsBlueprintTy st, expected) and IsLambda x: match Walk st, expected:
         TyAt inner, ignore: NoteTy (Check env, st, x, inner), e.span, expected
         otherwise: st
     otherwise:

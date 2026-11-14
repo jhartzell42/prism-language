@@ -988,8 +988,17 @@ fn AboveDefaultFor g, st, tr, im, mq:
                 if (Len lowest) > 1:
                     let s2 = update st:
                         &_.file <= im.file
-                    let names = Each lowest, \|t| "`^{BareName t.name}`"
-                    ((g, (ErrFix s2, "ambiguous", im.span, "`{ShowTy st, im.head}` gets a default for `{method}` from both {Join names, " and "}", "write `fn {method} ...` under the impl")))
+                    # in the order the traits are declared
+                    let ordered = Fold lowest, [[]], \|acc, t| Append (Filter acc, \|a| a.span.start < t.span.start or a.file < t.file), (Append [[t]], (Filter acc, \|a| not (a.span.start < t.span.start or a.file < t.file)))
+                    let names = Each ordered, \|t| "`^{BareName t.name}`"
+                    # the method counts as given (`ambiguous` says what is wrong), so the
+                    # impl is not also told it lacks it
+                    let current = Or (Filter (Or g.impls[tr.name], [[]]), \|other| other.span == im.span and other.file == im.file)[0], im
+                    let marked = update current:
+                        &_.aboveChosen <= Push &_.aboveChosen, ((method, (AboveDefaultKey chosen.name, method), chosen.name))
+                    let upd = update g:
+                        &_.impls <= Insert &_.impls, tr.name, (Each (Or &_.impls[tr.name], [[]]), \|other| if other.span == im.span and other.file == im.file: marked else: other)
+                    ((upd, (ErrFix s2, "ambiguous", im.span, "`{ShowTy st, im.head}` gets a default for `{method}` from both {Join names, " and "}", "write `fn {method} ...` under the impl")))
                 else:
                     # the impl as it now stands: an earlier method's default chosen here is
                     # kept (each method's pass starts from the impl the fold began with)
