@@ -68,4 +68,4 @@ fn @Watcher name:
 @hotSeat: @unit
 @hotSeat:
     seats <- @Table                                                            # 0, 1
-    @HostDocument @ChessByHand, seats                                          # 2
+    ignore <- @HostDocument @ChessByHand, seats                                # 2
