@@ -1,0 +1,28 @@
+# An impl's method clauses that match a `Fixed s` on each of the kind's variants narrow `s`
+# for the parameters after it, and cover the kind at the impl's head: `Weigh`'s
+# `Fixed<<Left>>` clause takes its `Payload Box s` as a `Nat`, its `Fixed<<Right>>` clause
+# matches it as a `Label`, and the two clauses cover
+# `Side Box`. Found by the step 3 build on the tally (`Step`'s clauses, one per role).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+trait ^Sided d:
+    type Side
+    type Payload (s: Side d)
+    Weigh: forall (s: Side d). fn d, Fixed s, Payload d s -> Nat
+
+type BoxSide = choice:
+    Left
+    Right
+
+type Label = choice:
+    Label Text
+
+type Box = record:
+    size: Nat
+
+impl ^Sided Box:
+    type Side = BoxSide
+    type Payload Left = Nat
+    type Payload Right = Label
+    fn Weigh box, Fixed<<Left>>, n = n + box.size
+    fn Weigh box, Fixed<<Right>>, (Label text) = Len text
