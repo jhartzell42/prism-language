@@ -294,19 +294,26 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   of the game's `impl ^Document`).
 - **VA** A choice's alternatives are its variants, never its cases, in prose, diagnostics
   and names (`assoc-variant-missing`). Jimmy, 13 November: "We say variant not case".
-- **PT** Promptness is part of a function's type. A widget function or widget lambda
-  whose result event can fire in the tick an argument's event fires says `prompt`:
-  `@Pass: prompt fn !Nat -> @!Nat`, `prompt \|!e| @ !e`; by default it is not, and a body
-  that is prompt under a type that is not is `prompt-unmarked`. A prompt function is no
-  `fn` that is not prompt, as an unbounded one is no bounded one; one that is not prompt
-  stands where a `prompt fn` is wanted (Claude's call), so a supplier parameter, which
-  answers a request in its tick, is `prompt fn`. A plain function is
-  always prompt and says nothing. Checking is local: a call's promptness is read from the
-  callee's type, never its body, so the summary walk over callee bodies goes. Jimmy,
-  13 November: "you need an annotation to promptly output an input event through a widget
-  function, the whole function becomes "prompt" and by default promptness isn't allowed
-  and it's part of the type for a function or lambda. This goes for named functions too,
-  because you've been violating a design principle that type checking is LOCAL"; "no
-  plain functions are always assumed to be prompt". Claude's calls: the spelling,
-  `prompt` just before `fn` and after `unbounded` (`unbounded prompt fn`), and before a
-  lambda's bars.
+- **PT** Promptness is part of a function's type, per parameter. A widget function or
+  widget lambda whose result can change or fire in the tick one of its arguments changes
+  or fires marks that parameter `prompt`: `@Pass: fn prompt !Nat -> @!Nat`,
+  `\|prompt !e| @ !e`, `@HostPressers: fn prompt $(Presser ==> v), (fn Presser, v -> @a
+  emit rest | Count.*), $Nat, !(Place ==> Response) -> ...`. By default a parameter is not
+  prompt, and a body whose result is prompt in a parameter the type does not mark is
+  `prompt-unmarked`. A read of a dynamic parameter counts, its value as much as its update
+  (they change in the same tick); a hold breaks it, since a hold's value is the one the
+  tick opened with. A function-typed parameter takes no mark (a function value does not
+  fire). A plain function is always prompt and says nothing. Checking is local: a call's
+  promptness is read from the callee's type, never its body, so the summary walk over
+  callee bodies goes. Jimmy, 13 November: "you need an annotation to promptly output an
+  input event through a widget function ... it's part of the type for a function or
+  lambda. This goes for named functions too, because you've been violating a design
+  principle that type checking is LOCAL"; "no plain functions are always assumed to be
+  prompt"; then, the whole-function bit making the hosting loop (host-bug-07's `!heard`,
+  `!responses`) a cycle, per parameter: "RJ per parameter", with the note that he is
+  "pretty sure separating behavior + update promptness is incoherent", and his doubt
+  "Aren't dynamics kind of always assumed to be prompt on the behavior side? I'm not sure
+  now". Claude's calls: the spelling, `prompt` before the parameter's type (in a function
+  type too, `fn prompt !Nat -> @!Nat`, and before a lambda's parameter); a function with
+  fewer prompt parameters stands where one with more is wanted, as a bounded one stands
+  where an unbounded one is wanted, so a supplier that is not prompt fits `@Host`.
