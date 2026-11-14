@@ -12,7 +12,7 @@ fn @Echo $state, !responses:
     Ui.Label($text=$"{$state}")                                    # 0
     @ ((unit, !responses))
 
-@Loop: fn Nat, (fn $Nat, prompt !Nat -> @((a, !Nat)) emit rest) -> @a emit rest
+@Loop: fn Nat, prompt (fn $Nat, prompt !Nat -> @((a, !Nat)) emit rest) -> @a emit rest
 fn @Loop initial, Seats:
     ((results, !asked)) <- Seats $state, !responses
     let !responses = !asked + 1

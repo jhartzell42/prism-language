@@ -58,7 +58,7 @@ fn ToldTo seat, state = Read state, seat, Whole
 ?Mine: fn Presser, (Place ==> Response), Path -> ?Response
 fn ?Mine seat, responses, p = ?ResponseTo seat, p, responses
 
-@HostCounter: fn $(Presser ==> v), (fn Presser, v -> @a emit rest | Count.*), $Nat, !(Place ==> Response) -> @((unit, ![Asked Nat])) emit rest
+@HostCounter: fn $(Presser ==> v), prompt (fn Presser, v -> @a emit rest | Count.*), $Nat, !(Place ==> Response) -> @((unit, ![Asked Nat])) emit rest
 fn @HostCounter $seats, Guest, $state, !responses:
     let !moved = !Updated $state
     !heard <- for seat, $sitting <- $seats:
@@ -75,7 +75,7 @@ fn @HostCounter $seats, Guest, $state, !responses:
         @ !asked
     @ ((unit, InOrder !heard))
 
-@Sat: fn k, $v, (fn k, v -> @a emit r) -> @$a emit r
+@Sat: fn k, $v, prompt (fn k, v -> @a emit r) -> @$a emit r
 fn @Sat seat, $sitting, Guest:
     rebuild $sitting:
         Guest seat, _
