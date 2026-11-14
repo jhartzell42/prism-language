@@ -117,6 +117,12 @@ fn ExprBodyMarked env, st, e:
     let cx = PCx(g=env.g, home=env.home, lams={{}}, base=(PromptBase env, [[]]), path=[[]], reach=False, supplied=(LocalMarks env, st), names=(Keys env.locals))
     BodyMarked env, st, cx, b
 
+# The widget lambdas a top-level `let` makes, against their marks (ruling PT).
+TopLambdasMarked: unbounded fn Env, St, Expr -> St
+fn TopLambdasMarked env, st, e:
+    let cx = PCx(g=env.g, home=env.home, lams={{}}, base=(PromptBase env, [[]]), path=[[]], reach=False, supplied=(LocalMarks env, st), names=(Keys env.locals))
+    Fold (LambdasIn e), st, \|s, lam| LambdaMarked env, s, cx, lam
+
 # The `prompt` marks of the widget functions the block's scope binds (its function's
 # parameters, its own local functions), by name, read from their types (ruling PT: a
 # call's promptness is its callee's type, never its body).
@@ -173,11 +179,18 @@ else: match d.body:
 
 # The key of the signature a definition's body answers to: an impl's method answers to
 # its trait's method's, every other definition to its own.
-SignedKey: fn G, Def -> Text
+SignedKey: unbounded fn G, Def -> Text
 fn SignedKey g, d = match d.body:
     DbMethod ignore, cls, ignore2: match g.traits[cls]:
         ? tr: QualKey tr.home, d.name
         nil: d.qk
+    # a default answers to its own trait's signature, or to the one above that signs it
+    # (ruling SD)
+    DbDefault ignore, cls: match ?MethodKey g, cls, d.name:
+        ? mk: mk
+        nil: match ?SignerAbove g, cls, d.name:
+            ? signer: Or (?MethodKey g, signer, d.name), d.qk
+            nil: d.qk
     otherwise: d.qk
 
 ?OneClauseOf: fn [FnClause], Block -> ?FnClause
