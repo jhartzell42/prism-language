@@ -7,12 +7,12 @@
 emit Ui.*
 test mod Tests
 
-@Inner: fn @a -> @a
+@Inner: fn prompt @a -> @a
 fn @Inner @child:
     r <- @child
     @ r
 
-@Wrap: fn @a -> @a
+@Wrap: fn prompt @a -> @a
 fn @Wrap @child = @Inner @child
 
 @page: @$Text

@@ -7,7 +7,7 @@
 emit Ui.*
 test mod Tests
 
-@Labelled: fn Text, $Nat -> @$Nat emit Ui.*
+@Labelled: fn Text, prompt $Nat -> @$Nat emit Ui.*
 fn @Labelled name, $n:
     Ui.Label($text=$"{name} {$n}")
     @ $n + 1
@@ -16,7 +16,7 @@ fn @Labelled name, $n:
 @table:
     !add <- Ui.Button($label=$"add")
     $count <- 0 then $count + 1 on !add
-    @Row: fn Nat, $Nat -> @$Nat emit Ui.*
+    @Row: fn Nat, prompt $Nat -> @$Nat emit Ui.*
     fn @Row 0, $shown = @Labelled "none", $shown
     fn @Row n, $shown:
         Ui.Label($text=$"row {n}")

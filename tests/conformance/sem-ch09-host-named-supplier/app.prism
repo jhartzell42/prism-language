@@ -19,7 +19,7 @@ fn Shown (Error(..)) = "(none)"
     $last <- "nothing" then Shown !~got
     Ui.Label($text=$"{Shown $~text}, {$last}")                     # 3
 
-@Supply: fn Path, Element (Ui.* | Fs.*) o -> @o
+@Supply: fn Path, prompt Element (Ui.* | Fs.*) o -> @o
 fn @Supply p, e = match e:
     Fs.Contents(..): @ $ (~ Contents(text="A"))
     Fs.File(..): @ never

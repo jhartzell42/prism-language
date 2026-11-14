@@ -15,7 +15,7 @@ type Mode = choice:
     Soft
 derive ^Eq, ^Show
 
-@Choose: fn Mode, $Nat -> @!Click
+@Choose: fn Mode, prompt $Nat -> @!Click
 fn @Choose mode, $resets:
     Ui.Label($text=$"choose")                                           # 0
     match mode:                                                        # 1, 2

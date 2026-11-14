@@ -12,7 +12,7 @@ use Fs.*
     !~got <- Fs.File(path="b", !requests=never)                    # 1
     Ui.Label($text=$"child")                                       # 2
 
-@Supply: fn Path, Element (Ui.* | Fs.*) o -> @o
+@Supply: fn Path, prompt Element (Ui.* | Fs.*) o -> @o
 fn @Supply p, e = match e:
     Fs.Contents(..): @ $ (~ Contents(text="A"))
     Fs.File(..): @ never

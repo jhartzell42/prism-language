@@ -100,14 +100,14 @@ fn @Layers @child:
 fn @Framed spec, @child = @FramedBy ($ spec), @child
 
 # a frame whose spec is live: its padding or background follows a setting
-@FramedBy: fn $FrameSpec, prompt @a -> @a
+@FramedBy: fn prompt $FrameSpec, prompt @a -> @a
 fn @FramedBy $spec, @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
     !in <- Pane.Frame($spec=$spec, $children=$elems)
     @ r
 
 # its children in a column drawn only while `$shown`; hidden, they keep their state
-@ShowIf: fn $Bool, prompt @a -> @a
+@ShowIf: fn prompt $Bool, prompt @a -> @a
 fn @ShowIf $shown, @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
     !in <- Pane.Shown($shown=$shown, $children=$elems)
@@ -136,7 +136,7 @@ fn @Turned deg, @child = @Framed (FrameSpec 0.0, nil, nil, nil, 0.0, (Point 0.0,
 fn @Backed c, p, @child = @Framed (BandSpec p, c), @child
 
 # its child on a band of `paint` all round, `$width` wide: a board's border
-@Bordered: fn $Float, Paint, prompt @a -> @a
+@Bordered: fn prompt $Float, Paint, prompt @a -> @a
 fn @Bordered $width, paint, @child = @FramedBy (BandSpec $width, paint), @child
 
 BandSpec: fn Float, Paint -> FrameSpec
@@ -179,7 +179,7 @@ fn @Laid $e, $outer, chain:
     let $res = ResOf $e, $room, $kids, $sizes, chain
     @ $res
 
-@Window: fn $Text, Extent, prompt @a -> @a
+@Window: fn prompt $Text, Extent, prompt @a -> @a
 fn @Window $title, start, @app:
     ((result, $elems)) <- @HostSome @app, \|p, e| ?Boxed p, e, !route    # 0/[p]
     ((id, !incoming)) <- Gui.Window($title=$title, size=start)                 # 1

@@ -11,7 +11,7 @@ use Fs.*
     !~got <- Fs.File(path="b", !requests=never)                    # 1
     Ui.Label($text=$"child")                                       # 2
 
-@Supply: fn Path, Element (Ui.* | Fs.*) o -> @o
+@Supply: fn Path, prompt Element (Ui.* | Fs.*) o -> @o
 fn @Supply p, e:
     let fallback = Contents(text="A")
     match e:

@@ -7,7 +7,7 @@ emit Ui.*
 test mod Tests
 use Ui.*
 
-@Pick: fn ?Nat, $Text -> @$Text
+@Pick: fn ?Nat, prompt $Text -> @$Text
 fn @Pick nil, $tail:
     !go <- Ui.Button($label=$"none")                              # 0
     $said <- "zero" then "zero!" on !go

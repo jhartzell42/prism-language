@@ -168,7 +168,7 @@ fn ~Lowered Lower, (Declined why) = match Lower why:
 # A role's responses as its request places are sent them: each response as it comes, and
 # on a fault the seat's host gives up (`Prelude.Unwrap`: the seat's entry fires nothing
 # again, and the fault is reported).
-@Unwrapped: fn !~a -> @!a emit rest | Prelude.* where a: ^Show
+@Unwrapped: fn prompt !~a -> @!a emit rest | Prelude.* where a: ^Show
 fn @Unwrapped !~responses:
     !responses <- Prelude.Unwrap(!~value=!~responses)
     @ !responses

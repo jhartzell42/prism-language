@@ -9,7 +9,7 @@ emit Ui.*
 test mod Tests
 use Ui.*
 
-@Framed: fn s, @a -> @a where s: ^Show
+@Framed: fn s, prompt @a -> @a where s: ^Show
 fn @Framed initial, @guest:
     Ui.Label($text=$"starts at {Show initial}")
     result <- @guest
