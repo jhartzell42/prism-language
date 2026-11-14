@@ -266,14 +266,33 @@ fn StmtDefs s = match s.kind:
 PromptEdges: unbounded fn Env, St, PCx, Stmt, [Text] -> [((Text, Text))]
 fn PromptEdges env, st, cx, s, defs = match s.kind:
     SBind ignore, ignore, (? ignore): [[]]
-    SBind p, e, nil: Edges (PatternNames p), (PromptReads cx, e, defs)
+    SBind p, e, nil: Edges (PatternNames p), (Append (PromptReads cx, e, defs), (CaptureReads cx, e, defs))
     SLet p, ignore, e:
         let names = PatternNames p
         let layer = Fold names, "", \|acc, n| match env.locals[n]:
             ? sc: HeadSigil st, sc.ty
             nil: acc
-        Edges names, (Filter (PromptReads cx, e, defs), \|n| ReadIsPrompt env, st, n, layer)
+        Edges names, (Append (Filter (PromptReads cx, e, defs), \|n| ReadIsPrompt env, st, n, layer), (CaptureReads cx, e, defs))
     otherwise: [[]]
+
+# What the function values a right side makes capture (ruling PT, choice (a)): the
+# block's names read in the body of every lambda in it, however deep, its own parameters
+# aside. A binding that holds a function value reads what the value captures, so a
+# record, a list or a name that carries the value on to a parameter marked `prompt`
+# carries the capture with it (neg/prompt-cycle-through-let-bound-record).
+CaptureReads: unbounded fn PCx, Expr, [Text] -> [Text]
+fn CaptureReads cx, e, defs = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
+    ELambda ?ps, body, ignore:
+        let own = PatternsNames (Or ?ps, [[]])
+        Fold (LambdaBodyReads cx, body, defs), acc, \|found, n| if HasText own, n: found else: AddText found, n
+    otherwise: acc
+
+LambdaBodyReads: unbounded fn PCx, LambdaBody, [Text] -> [Text]
+fn LambdaBodyReads cx, body, defs = match body:
+    LbExpr x: PromptReads cx, x, defs
+    LbBlock b: Fold b.stmts, [[]], \|acc, s| Fold (StmtKids s, cx.base), acc, \|found, k| match k:
+        KidExpr x, ignore: Fold (PromptReads cx, x, defs), found, \|f2, n| AddText f2, n
+        otherwise: found
 
 # A dynamic's update event as a node of its own beside the dynamic's name (Semantics ch.
 # 7, "A dynamic is a sample and an update event"): the name is the value, which a hold
