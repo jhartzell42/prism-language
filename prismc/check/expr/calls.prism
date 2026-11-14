@@ -788,8 +788,21 @@ fn InferLambda env, st, e, ?expected = match e.kind:
         ((t, (NoteTy st2, x.span, t)))
     otherwise: InferBareLambda env, st, e, ?expected
 
+# A lambda where a quantified function is wanted (`Supplier d`, `forall o. fn .. -> @o`)
+# is checked at fresh rigid variables, so its arms may each refine them; its type is the
+# quantified one.
 InferBareLambda: unbounded fn Env, St, Expr, ?Ty -> ((Ty, St))
-fn InferBareLambda env, st, e, ?expected:
+fn InferBareLambda env, st, e, ?expected = match ?expected:
+    ? t: match Walk st, t:
+        TyForall vs, b:
+            let ((opened, st2)) = OpenForall st, vs, b
+            let ((ignore, st3)) = InferBareLambda env, st2, e, (? opened)
+            (((TyForall vs, b), st3))
+        otherwise: InferMonoLambda env, st, e, ?expected
+    nil: InferMonoLambda env, st, e, ?expected
+
+InferMonoLambda: unbounded fn Env, St, Expr, ?Ty -> ((Ty, St))
+fn InferMonoLambda env, st, e, ?expected:
     let ((params, body, written)) = match e.kind:
         ELambda (? ps), b, prompts: ((ps, b, prompts))
         ELambda nil, b, ignore: (([[TopicPat e.span]], b, [[]]))

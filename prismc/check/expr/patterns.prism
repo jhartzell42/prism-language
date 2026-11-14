@@ -292,6 +292,8 @@ fn UnderMarks st, t, marks = if marks == "": Walk st, t else: match Walk st, t:
 ?HoldsFunction: fn Ty -> ?Bool
 fn ?HoldsFunction t = match t:
     TyFn ignore, ignore, ignore, prompts: ? True
+    # a quantified function (`Supplier d`, `forall o. fn ..`) is a function
+    TyForall ignore, body: ?HoldsFunction body
     TyFlex ignore: nil
     TyErr: nil
     TyAssoc ignore, ignore, ignore, ignore: nil
