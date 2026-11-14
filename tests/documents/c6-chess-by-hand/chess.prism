@@ -110,7 +110,7 @@ fn Waiting turn = turn.wait
 ?Any: fn [a] -> ?unit
 fn ?Any all = if (Len all) == 0: nil else: ? unit
 
-@ChessByHand: fn Guests ChessGame -> @(Supplier ChessGame)
+@ChessByHand: fn prompt Guests ChessGame -> @(Supplier ChessGame) emit unit
 fn @ChessByHand $guests:
     !fired <- for at, $element <- $guests:                  # each place of the guests
         @Switch (!HeardAt<<ChessGame>> at, $element)
