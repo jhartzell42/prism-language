@@ -1131,11 +1131,27 @@ fn DefItems lx, d, roots:
                 TyAt ignore, ignore if (IsAliasWidget clauses) and not (IsValueWidget lx, d.qk):
                     if isRoot: Append (ValuedRows lx, d.qk, nil), (RootApplicationItems lx, d, v.scheme)
                     else: Push (ValuedRows lx, d.qk, nil), (ItNote "`{d.name}` is inlined where it is applied.")
-                otherwise: if IsLensText d.qk: Each (LensDefs lx, d.qk, clauses, v.scheme), \|f| ItFn f else:
+                otherwise: if IsLensText d.qk: Each (LensDefs lx, d.qk, clauses, v.scheme), \|f| ItFn f else: if OpensByVariable lx, d.qk: InstanceFns lx, d, clauses, v.scheme else:
                     let f = ItFn (FnDefOf lx, d.qk, clauses, v.scheme)
                     if HasText lx.unbs, d.qk: [[f, ItJob (JobDefOf lx, d.qk, clauses, v.scheme)]] else: [[f]]
         DbLet l: [[ItFn (LetGetter lx, d.qk, l)]]
         otherwise: [[]]
+
+# A definition lowered once per instantiation the program reaches (`OpensByVariable`):
+# each its variables given, under the instantiation's name, with no Rust generics left
+# for them. A program whose instantiations the fixed point cannot list is refused here.
+InstanceFns: unbounded fn Lx, Def, [FnClause], Scheme -> [Item]
+fn InstanceFns lx, d, clauses, sc = match ?DefInstances lx, d.qk:
+    ? all: Each all, \|types|
+        let lxi = update lx:
+            &_.subst <= Fold types, &_.subst, \|m, ((q, t))| Insert m, q, t
+        let f = FnDefOf lxi, d.qk, clauses, sc
+        let instantiated = Each types, \|((q, ignore))| Camel q
+        let named = update f:
+            &_.name <= InstanceName lx, d.qk, types
+            &_.generics <= Filter &_.generics, \|((g, ignore))| not (HasText instantiated, g)
+        ItFn named
+    nil: [[ItNote "`{d.name}` opens an existential by its own type variable's roles, and the program's instantiations of it have no finite list"]]
 
 # Whether a parameter is `ignore` (in parentheses or not): it binds nothing.
 IsIgnoreParameter: fn Pattern -> Bool

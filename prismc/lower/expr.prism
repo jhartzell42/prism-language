@@ -899,6 +899,83 @@ fn AnyValue lx, env, x, t:
                 VlOwned (XMethod packing, "packed", [[]]), packedTy
         otherwise: VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[v]]), OutShowAny), OutShowAny
 
+# Whether a definition opens an existential whose kind is an associated kind at one of
+# its own type variables (`Told: fn SeatKey d -> Text`, `any (r: Role d)` opened): Rust
+# cannot enumerate `d`'s roles from a generic `D`, so the definition is lowered once per
+# instantiation the program reaches (`?DefInstances`), its variables given (MB).
+OpensByVariable: unbounded fn Lx, Text -> Bool
+fn OpensByVariable lx, qk = OpensWithin lx, qk, [[]]
+
+# The same, through calls: a generic function that calls one at its own variables is
+# lowered per instantiation too, so that each of its instances calls one of the callee's.
+# `seen` holds the definitions on the path, so a recursion ends.
+OpensWithin: unbounded fn Lx, Text, [Text] -> Bool
+fn OpensWithin lx, qk, seen = if HasText seen, qk: False
+else: Fold lx.g.defs, False, \|found, d| found or (d.qk == qk and ((DefOpensAtVariable lx, d) or ((IsGenericValue lx, qk) and CallsOpening lx, d, (Push seen, qk))))
+
+IsGenericValue: unbounded fn Lx, Text -> Bool
+fn IsGenericValue lx, qk = match lx.g.vals[qk]:
+    ? v: (Len (RigidsIn v.scheme.ty)) > 0
+    nil: False
+
+# Whether a definition's body calls, by name, a definition lowered per instantiation.
+CallsOpening: unbounded fn Lx, Def, [Text] -> Bool
+fn CallsOpening lx, d, seen = match d.body:
+    DbFn clauses: Fold clauses, False, \|f, c| f or Fold (BodyExprs c.body), False, \|f2, x| f2 or match x.kind:
+        ECall callee, ignore, ignore2, ignore3: match callee.kind:
+            EName n: match ResolveValue lx.g, d.home, n:
+                ((? k, ignore4)): OpensWithin lx, k, seen
+                otherwise: False
+            otherwise: False
+        otherwise: False
+    otherwise: False
+
+DefOpensAtVariable: unbounded fn Lx, Def -> Bool
+fn DefOpensAtVariable lx, d = match d.body:
+    DbFn clauses: Fold clauses, False, \|f, c| f or Fold (BodyExprs c.body), False, \|f2, x| f2 or OpensAtVariable lx, x
+    otherwise: False
+
+# Whether an expression is a `match` with an `any` arm over an existential whose kind
+# names a type variable.
+OpensAtVariable: unbounded fn Lx, Expr -> Bool
+fn OpensAtVariable lx, x = match x.kind:
+    EMatch s, [[arm]]: match arm.?pattern:
+        ? p: match p.kind:
+            PAny ignore: match Peel (TypeAt lx, s.span):
+                TyExists ignore, ignore2, ignore3, kinds: Fold kinds, False, \|f, ((ignore4, k))| f or (Len (RigidsIn k)) > 0
+                otherwise: False
+            otherwise: False
+        nil: False
+    otherwise: False
+
+# The types a call gives a definition lowered per instantiation, by its variables' sorted
+# names, read through the caller's own instantiation.
+CallInstance: unbounded fn Lx, ValInfo, Range -> [((Text, Ty))]
+fn CallInstance lx, v, cspan:
+    let found = Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, cspan), {{}}), {{}}
+    Each (SortTexts (RigidsIn v.scheme.ty)), \|q| ((q, (SubstTyIn lx, (Or found[q], TyErr))))
+
+# The function of one instantiation: the definition's name and its types'.
+InstanceRef: fn Lx, Text, [((Text, Ty))] -> Ref
+fn InstanceRef lx, qk, types:
+    let owner = match lx.g.vals[qk]:
+        ? v: v.home
+        nil: OwnerOf qk
+    RefIn lx, owner, (InstanceName lx, qk, types)
+
+InstanceName: fn Lx, Text, [((Text, Ty))] -> Text
+fn InstanceName lx, qk, types = "{Or lx.rsNames[qk], (Snake (BareName qk))}_at{Concat (Each types, \|((ignore, t))| "_{TyMangle t}")}"
+
+# A type as part of a Rust name.
+TyMangle: fn Ty -> Text
+fn TyMangle t = match t:
+    TyCon n, [[]]: Snake (BareName n)
+    TyCon n, args: "{Snake (BareName n)}_of{Concat (Each args, \|a| "_{TyMangle a}")}"
+    TyRole k: Snake (BareName k)
+    TyTuple ts: "tuple{Concat (Each ts, \|a| "_{TyMangle a}")}"
+    TyArray e: "list_of_{TyMangle e}"
+    otherwise: "other"
+
 # Whether each of an existential's variables declares a kind (ruling PK): such an
 # existential is packed with its variables' variant numbers and opened by them (MB).
 AllKinded: fn [Text], [((Text, Ty))] -> Bool
@@ -2189,9 +2266,10 @@ fn DeclaredCall lx, env, qk, args, span, cspan, t:
                 else: if v.home == "Prelude": PreludeCall lx, env, qk, args, span, t
                 else:
                     let callArgs = Append (KindArgs lx, v, cspan), (ArgsFor lx, env, v, args)
-                    let call = match ?TypeArgsAt lx, qk, v.scheme, cspan:
-                        ? tys: XCallAt (ValueRef lx, qk), tys, callArgs
-                        nil: XCall (ValueRef lx, qk), callArgs
+                    let call = if OpensByVariable lx, qk: XCall (InstanceRef lx, qk, (CallInstance lx, v, cspan)), callArgs
+                        else: match ?TypeArgsAt lx, qk, v.scheme, cspan:
+                            ? tys: XCallAt (ValueRef lx, qk), tys, callArgs
+                            nil: XCall (ValueRef lx, qk), callArgs
                     match ?SignatureResult lx, v, cspan, span, t:
                         ? signatureTy: VlOwned (Recolored lx, call, signatureTy, (Peel (SubstTy lx, (TypeAt lx, span))), 0), t
                         nil: VlOwned call, t
