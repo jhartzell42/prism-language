@@ -7,18 +7,18 @@
 emit Ui.*
 
 type Box = record:
-    @make: fn !Nat -> @!Nat
+    make: fn !Nat -> @!Nat
 
 @Use: fn prompt Box -> @!Nat
 fn @Use box:
-    !made <- box.@make never
+    !made <- box.make never
     @ !made
 
 @host: @unit
 @host:
     !press <- Ui.Button($label=$"press")
     let !fed = (1 on !press) <| !out
-    let box = Box(@make=\|!ignored| @ !fed)
+    let box = Box(make=\|!ignored| @ !fed)
     !out <- @Use box
     $seen <- 0 then !out
     Ui.Label($text=$"{$seen}")

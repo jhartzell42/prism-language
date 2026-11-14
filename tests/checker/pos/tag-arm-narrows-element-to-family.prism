@@ -11,7 +11,7 @@ family Count
 tag Count.Ask of Element Nat:
     by: Nat
 
-@Answer: fn prompt Element Count.* o -> @o
+@Answer: fn prompt Element Count.* o -> @o emit unit
 fn @Answer element = match element:
     Count.Ask(by=by): @ by
 

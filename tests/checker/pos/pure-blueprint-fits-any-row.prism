@@ -7,5 +7,5 @@ emit Ui.*
 
 family Quiet
 
-Given: fn Nat -> @Nat emit Quiet.*
-fn Given n = @ n
+@Given: fn Nat -> @Nat emit Quiet.*
+fn @Given n = @ n
