@@ -437,7 +437,9 @@ fn SigScheme cx, st, t, bounds:
         otherwise: [[]]
     let tvs = Fold found, forallOrder, \|acc, v| AddText acc, v
     let cqs = Fold defaults, written, \|acc, v| AddText acc, v
-    let rowsUsed = Filter rowVars, \|v| (HasText (RowVarsOfType t), v) or (UsesScope t)
+    # and a variable given where a type's row parameter stands (`Count: fn Seated rest ->
+    # Nat`, `rest` read as a row there, ruling RR)
+    let rowsUsed = UnionTexts (Filter rowVars, \|v| (HasText (RowVarsOfType t), v) or (UsesScope t)), (Filter found, \|v| TailQIn ty, v)
     ((Scheme(eqs=[[]], qs=tvs, plainQs=[[]], rqs=rowsUsed, cqs=cqs, cjoins=joins, bounds=bs, ty=ty), st3))
 
 # A signature's unwritten colors (ch. 5, The color; round 3 CD). One mentioning `$`, `!`
