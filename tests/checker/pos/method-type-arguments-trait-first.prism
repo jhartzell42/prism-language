@@ -1,0 +1,17 @@
+# `<<..>>` on a trait's method gives the trait's parameter first, then the method's own
+# variables in their `forall` order: `Pick<<Box>>` gives `d`, though `Pick`'s `forall`
+# names only `b`. Found by the step 3 build on the library (`Step<<d>>` under
+# `forall (r: Role d)` gave `d` to `r`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+trait ^Picker d:
+    Pick: forall b. fn d, b -> b
+
+type Box = record:
+    size: Nat
+
+impl ^Picker Box:
+    fn Pick box, b = b
+
+Picked: fn Box -> Text
+fn Picked box = Pick<<Box>> box, "kept"
