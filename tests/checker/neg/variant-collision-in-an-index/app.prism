@@ -1,0 +1,14 @@
+# `collision`: a variant written bare where an associated type's index stands, declared by
+# two modules this file reaches (`Watch.Viewer` and `Shop.Viewer`), is never one of them
+# picked silently. Found by the step 3 build on the tally, whose `Viewer` met the library's
+# `FileRole.Viewer` and was read as the library's, so `Answer (Tallied o) Viewer` never
+# reduced. Expected text derived by hand.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+mod Watch
+mod Shop
+use Watch.*
+use Shop.*
+
+Told: fn Told Watching Viewer -> Nat
+fn Told n = n
