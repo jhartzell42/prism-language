@@ -505,7 +505,9 @@ fn OutputSink lx, name, t:
 # tag is the accessor's fault. `nil` when no tag answers with the type.
 ?OutputByTag: unbounded fn Lx, OutTy, Text -> ?Ex
 fn ?OutputByTag lx, t, answer:
-    let tags = Filter (Values lx.g.tags), \|tg| tg.kind == "Element" and ((OutputOpen lx, tg) or (OutputTy lx, tg) == t)
+    # the program's own element tags, those `crate::Output` has a variant for (a module
+    # the program does not reach, the library's `Documents`, declares tags it has none for)
+    let tags = Filter (Values lx.g.tags), \|tg| tg.kind == "Element" and (HasText (Push (Keys lx.rsMods), "Prelude"), tg.home) and ((OutputOpen lx, tg) or (OutputTy lx, tg) == t)
     let Taken = \|tg| RecodedOutput (OutputOpen lx, tg), (OutputTy lx, tg), t, (XTry (XMethod (XVar answer), (OutputAccessor tg), [[]]))
     match tags[0]:
         ? first: ? (Fold (Drop tags, 1), (Taken first), \|rest, tg| XIf (XIsCase (XVar answer), [[OutputVariant tg]]), (Taken tg), rest)
