@@ -5,6 +5,9 @@
 # function generic in the role `r`. A `match` arm `any ((role, id)): ...` opens the key at
 # the arm's own fresh `r`, and the impl's `Described` matches `Fixed<<Raiser>>`, which
 # tells it `r` is `Raiser` and so `n` a `Nat`. A record field, `Due.seat`, holds a key.
+# `SeatKey d` names `d` only inside associated types once the alias is read, so nothing
+# infers it: `Told<<d>>`, `Described<<d>>` and the `Due Count` annotations name it (Type
+# System ch. 2, "Explicit type arguments"), as the checker's fixes say.
 # Expected transcript derived by hand from Part III ch. 6 (doubt SK) and Type System ch. 3
 # ("Existentials"); never run.
 # Written by Claude on the claude-self-hosting branch; subject to change.
@@ -44,16 +47,16 @@ Keyed: forall d (r: Role d). fn Fixed r, SeatId d r -> SeatKey d where d: ^Docum
 fn Keyed role, id = any ((role, id))
 
 # The key opened in an arm: the role and the seat id at the arm's own role type.
-Told: fn SeatKey d -> Text where d: ^Document
+Told: forall d. fn SeatKey d -> Text where d: ^Document
 fn Told seatKey = match seatKey:
-    any ((role, id)): Described role, id
+    any ((role, id)): Described<<d>> role, id
 
-ToldDue: fn Due d -> Text where d: ^Document
-fn ToldDue due = "{Told due.seat} at {due.at}"
+ToldDue: forall d. fn Due d -> Text where d: ^Document
+fn ToldDue due = "{Told<<d>> due.seat} at {due.at}"
 
 @page: @unit
 @page:
-    let first = Due(seat=(Keyed<<Count, Raiser>> Fixed<<Raiser>>, 3), at=0)
-    let second = Due(seat=(Keyed<<Count, Watcher>> Fixed<<Watcher>>, "ada"), at=1)
+    let first: Due Count = Due(seat=(Keyed<<Count, Raiser>> Fixed<<Raiser>>, 3), at=0)
+    let second: Due Count = Due(seat=(Keyed<<Count, Watcher>> Fixed<<Watcher>>, "ada"), at=1)
     Ui.Label($text=$ (ToldDue first))                                           # 0
     Ui.Label($text=$ (ToldDue second))                                          # 1

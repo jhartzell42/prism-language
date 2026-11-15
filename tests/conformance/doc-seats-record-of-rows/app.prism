@@ -73,15 +73,15 @@ fn @Seated $seats:
 
 @Raising: fn Nat -> @unit emit Seat.* Count Raiser | Ui.*
 fn @Raising n:
-    $told <- Seat.Query($query=$ Whole)                                  # 0
-    Ui.Label($text=$"raiser {n} told {Or $told, 0}")                     # 1
+    $?told <- Seat.Query($query=$ Whole)                                  # 0
+    Ui.Label($text=$"raiser {n} told {Or $?told, 0}")                     # 1
 
 @Watching: fn Text -> @unit emit Seat.* Count Watcher | Ui.*
 fn @Watching name:
-    $told <- Seat.Query($query=$ Whole)                                  # 0
-    Ui.Label($text=$"watcher {name} told {Or $told, 0}")                 # 1
+    $?told <- Seat.Query($query=$ Whole)                                  # 0
+    Ui.Label($text=$"watcher {name} told {Or $?told, 0}")                 # 1
 
 @page: @unit
 @page:
-    let seats = CountSeats($raiser=$ {{1: @Raising 1}}, $watcher=$ {{"ada": @Watching "ada"}})
+    let seats = CountSeats($raiser=$ {{1: $ (@Raising 1)}}, $watcher=$ {{"ada": $ (@Watching "ada")}})
     @HostSeats<<Count>> seats                            # 0: the raisers' host; 1: the watchers'
