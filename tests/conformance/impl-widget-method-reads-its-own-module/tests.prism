@@ -1,0 +1,7 @@
+# The tests of impl-widget-method-reads-its-own-module.
+emit Ui.*
+use App.*
+use Framing.*
+
+test framed_twice, @page:
+    build
