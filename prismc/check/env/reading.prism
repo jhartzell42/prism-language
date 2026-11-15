@@ -221,7 +221,7 @@ ConvIndex: unbounded fn Cx, St, Type -> ((Ty, St))
 fn ConvIndex cx, st, t = match t.kind:
     TName n, args if (Len args) == 0 and n.sigils == "" and (Len n.path) == 1 and IsUpperText (Or n.path[0], ""):
         match ?RoleConstructor cx.g, cx.home, (Or n.path[0], ""):
-            ? k: (((TyRole k), st))
+            ? k: (((TyRole k), (VariantCollisionAt cx, st, (Or n.path[0], ""), t.span)))
             nil: ConvType cx, st, t
     otherwise: ConvType cx, st, t
 
@@ -266,6 +266,15 @@ fn ?RoleConstructor g, m, name = match ResolveValue g, m, SName(sigils="", path=
     # a variant of a payload-free choice, not a record's constructor of the type's own name
     ((? k, ignore)): if HasKey g.caseOwners, k: ? k else: nil
     otherwise: nil
+
+# `collision`: a variant written bare that two modules this file reaches declare (the
+# library's `FileRole.Viewer` and a document's own `Viewer`) is never one of them picked
+# silently.
+VariantCollisionAt: fn Cx, St, Text, Range -> St
+fn VariantCollisionAt cx, st, name, span:
+    let keys = Filter (Or (Or cx.g.bare[cx.home], {{}})[name], [[]]), \|k| HasKey cx.g.caseOwners, k
+    if (Len keys) < 2 or Fold keys, False, \|own, k| own or k == (QualKey cx.home, name): st
+    else: ErrFix st, "collision", span, "`{name}` is declared by more than one module this file reaches by a bare name: {Join (Each keys, \|k| "`{k}`"), ", "}", "write the one meant qualified, as `{Or keys[0], name}`"
 
 ConvNamedType: unbounded fn Cx, St, Text, TyInfo, Text, [Type], Range -> ((Ty, St))
 fn ConvNamedType cx, st1, qk, ti, name, args, span:
