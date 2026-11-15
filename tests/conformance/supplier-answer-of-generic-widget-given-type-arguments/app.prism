@@ -1,0 +1,31 @@
+# A supplier answers with a generic widget function given its type arguments
+# (`@Held<<Nat>> $count`), as the library's remote supplier answers a query with
+# `@AnswerFrom<<d>> role, path, !arrived` and a server builds `@Serve<<ChessGame>> ..`:
+# the widget read as a value is the one the name names. Found by the p19 run on chess
+# and c8.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Gauge of Element $Nat:
+    name: Text
+
+@meter: @unit
+@meter:
+    $level <- Pad.Gauge(name="tank")
+    Ui.Label($text=$"level {$level}")
+
+@Held: forall a. fn prompt $a -> @$a emit unit
+fn @Held $value:
+    @ $value
+
+@Supply: fn prompt $Nat, prompt Element (Ui.* | Pad.*) o -> @o
+fn @Supply $count, e = match e:
+    Pad.Gauge(..): @Held<<Nat>> $count
+    otherwise: @Element e
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")                              # 0
+    $count <- 0 then $count + 1 on !add
+    ignore <- @Host @meter, \|p, prompt e| @Supply $count, e     # 1/[p]

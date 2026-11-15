@@ -1,0 +1,7 @@
+# The tests of supplier-answer-of-generic-widget-given-type-arguments.
+emit Ui.*
+use App.*
+
+test held_answers, @host:
+    build
+    click at 0

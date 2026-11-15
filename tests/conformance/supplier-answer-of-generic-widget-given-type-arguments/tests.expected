@@ -1,0 +1,15 @@
+# Derived by hand as sem-ch09-host-named-supplier-dynamic-answer, whose answer `@Held<<Nat>> $count` gives back: the place is born with the count's 0; the count's change in tick 1 is heard in tick 2.
+test held_answers
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/[1]/0: Ui.Label(text="level 0")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1/[1]/0: Ui.Label(text="level 1")
