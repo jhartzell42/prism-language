@@ -5,5 +5,5 @@ use App.*
 test both_outputs_come_back, @main:
     with Pad.Num(name="n") = 7, build
         => expect Ui.Label(text="7, 0 clicks")
-    click at 2
+    click at 1/0
         => expect Ui.Label(text="7, 1 clicks")
