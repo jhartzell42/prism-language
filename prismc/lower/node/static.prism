@@ -484,7 +484,11 @@ fn AppliedBlueprintLine wx, e, blueprint, under:
         # the scope the blueprint is built in: the World's, or the host's whose document
         # this node's places at the line are entries of
         let hostedIn = if IsHostedScope wx: XCtor (RefRuntime "std::Some"), [[(XCast (XClone (HostFieldEx wx, pos)), hostOfTy)]] else: XNone
-        let at = [[blueprint, (AppliedPath wx, pos), (XVar "row_base"), hostedIn]]
+        # (under its caller's list, the blueprint's places stand at the line's position in
+        # the list of the inlined applications the line stands in, `pos.prefix`, ruling PL;
+        # under a place of its own, `UnderRows`' `path` already names that place)
+        let appliedAt = if under == UnderCaller: InPrefix (AppliedPath wx, pos), pos.prefix else: AppliedPath wx, pos
+        let at = [[blueprint, appliedAt, (XVar "row_base"), hostedIn]]
         # a line that binds a dynamic: each answer read at the line's type
         # (the value in a typed `let`)
         let taker = XClosure False, [[(PaBind "answer")]], (XBlock [[(DoLet (PaTyped (PaBind "taken"), outTy), (FirstOutputTaken lx, outTy, "answer"))]], (XCtor (RefRuntime "std::Ok"), [[(XVar "taken")]]))
@@ -590,7 +594,7 @@ fn AppliedBundleLine wx, e, blueprint, under:
     let hostedIn = if IsHostedScope wx: XCtor (RefRuntime "std::Some"), [[(XCast (XClone (HostFieldEx wx, pos)), hostOfTy)]] else: XNone
     let tags = BundleTagsOf lx, full
     let ((stateTy, eventsTy)) = BundleCarried lx, full
-    let applied = XTry (XCallAt (HelperRef "apply_blueprint_whole"), [[wholeTy, stateTy, eventsTy]], [[blueprint, (AppliedPath wx, pos), (XVar "row_base"), hostedIn, (BundleStateTaker lx, tags, stateTy), (BundleEventTaker lx, tags, eventsTy), (BundleAssembled full, tags), XCx]])
+    let applied = XTry (XCallAt (HelperRef "apply_blueprint_whole"), [[wholeTy, stateTy, eventsTy]], [[blueprint, (if under == UnderCaller: InPrefix (AppliedPath wx, pos), pos.prefix else: AppliedPath wx, pos), (XVar "row_base"), hostedIn, (BundleStateTaker lx, tags, stateTy), (BundleEventTaker lx, tags, eventsTy), (BundleAssembled full, tags), XCx]])
     let gap = XBin OpSub, (XIndex wideGeneration), (XVar "built")
     let keeps = DoAssign (XDeref (XMethod (XField XSelf, kept), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XVar "whole")]])
     let made = PaTuple [[(PaBind "row"), (PaBind "built"), (PaBind "whole")]]
