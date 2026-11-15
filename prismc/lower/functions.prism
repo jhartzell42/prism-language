@@ -571,7 +571,33 @@ fn KindsOf lx, qk = match lx.g.vals[qk]:
 KindsOfVal: unbounded fn Lx, ValInfo -> [((Text, Text))]
 fn KindsOfVal lx, v = if v.sort == "method": [[]] else:
     let fixed = Filter (FixedVarsIn v.scheme.ty), \|q| HasText v.scoped, q
-    Fold fixed, v.scopedKinds, \|acc, q| if Fold acc, False, \|seen, ((k, ignore))| seen or k == q: acc else: Push acc, ((q, ""))
+    let withFixed = Fold fixed, v.scopedKinds, \|acc, q| if Fold acc, False, \|seen, ((k, ignore))| seen or k == q: acc else: Push acc, ((q, ""))
+    # (and a variable its type gives where a type's parameter declares a kind, `r` of
+    # `Packed: fn Edit r, Edit r -> Paired`, `Edit (r: Access)`: kinded by that kind, with
+    # no `forall` naming it)
+    Fold (KindedVarsIn lx.g, v.scheme.ty), withFixed, \|acc, ((q, kind))| if Fold acc, False, \|seen, ((k, ignore))| seen or k == q: acc else: Push acc, ((q, kind))
+
+# The variables a type gives at a type's parameter that declares a kind naming a choice,
+# each with that choice (`Edit r`, `Edit (r: Access)`: `r`, `Access`).
+KindedVarsIn: unbounded fn G, Ty -> [((Text, Text))]
+fn KindedVarsIn g, t = match t:
+    TyCon c, args:
+        let own = match g.types[c]:
+            ? ti: Fold (Range0 (Len args)), [[]], \|acc, i| match (((Or args[i], TyErr), (?KindOf ti, (Or ti.params[i], "")))):
+                ((TyQ q, ? k)): match k.kind:
+                    TName n, [[]]: match ResolveType g, ti.home, n.path:
+                        ((? found, ignore)): Push acc, ((q, found))
+                        otherwise: acc
+                    otherwise: acc
+                otherwise: acc
+            nil: [[]]
+        Fold args, own, \|acc, a| Append acc, (KindedVarsIn g, a)
+    TyFn ignore, ps, r, prompts: Fold ps, (KindedVarsIn g, r), \|acc, p| Append acc, (KindedVarsIn g, p)
+    TyTuple ts: Fold ts, [[]], \|acc, x| Append acc, (KindedVarsIn g, x)
+    TyArray e: KindedVarsIn g, e
+    TyMap k, x: Append (KindedVarsIn g, k), (KindedVarsIn g, x)
+    TySig ignore, i: KindedVarsIn g, i
+    otherwise: [[]]
 
 # The variables a type holds as `Fixed r`.
 FixedVarsIn: unbounded fn Ty -> [Text]
