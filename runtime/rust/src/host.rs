@@ -1424,9 +1424,12 @@ impl<E: Clone + Eq + 'static, A: OutputOf<E>> HostRow<E, A> {
     /// for the place's blueprint, and the blueprint is built under the row's path, in the
     /// host's scope. The `for` machinery of the emitted code calls this with the host as
     /// the row's parent; the place's entry has its first snapshot, its identity.
+    /// `path` is the row's key under the host; the supplier's answer is a widget applied
+    /// there, so its places stand in a list of their own, `[p]/0` (ruling PL), as the
+    /// early construction's do.
     pub fn build(path: Path, key: Path, value: Rc<Entry<E>>, host: Rc<dyn HostOf<E, A>>, cx: &mut Cx) -> Result<Rc<HostRow<E, A>>, Fault> {
         let identity = value.current(cx);
-        HostRow::early(path, key, identity, value, host, cx)
+        HostRow::early(path.call(), key, identity, value, host, cx)
     }
 
     /// Built with the place's identity given: a first-value query at the place's build,
@@ -1539,7 +1542,7 @@ impl<E: Clone + Eq + 'static, A: OutputOf<E>> HostRow<E, A> {
         // (the answer's places stand in a list of their own under the key, ruling PL)
         let at = match at {
             [Segment::Call, rest @ ..] => rest,
-            other => other,
+            other => return Err(Fault::answer(format!("an answer at {} under the host row at {}, which is not in the row's own list", Path(other.to_vec()), self.path))),
         };
         let deliver = self.supplied.borrow().as_ref().and_then(|s| s.deliver.clone());
         if let Some(deliver) = deliver {
@@ -1575,6 +1578,11 @@ impl<E: Clone + Eq + 'static, A: OutputOf<E>> HostRow<E, A> {
 impl<E: Clone + Eq + 'static, A: Clone + 'static> Node for HostRow<E, A> {
     /// A World's answer under the row: to the blueprint's node (a forwarded element).
     fn answer(self: Rc<Self>, at: &[Segment], v: &Pod, cx: &mut Cx) -> Done {
+        // (the answer's places stand in a list of their own under the key, ruling PL)
+        let at = match at {
+            [Segment::Call, rest @ ..] => rest,
+            other => return Err(Fault::answer(format!("an answer at {} under the host row at {}, which is not in the row's own list", Path(other.to_vec()), self.path))),
+        };
         let inner = self.supplied.borrow().as_ref().map(|s| s.node.clone());
         match inner {
             Some(node) => node.answer(at, v, cx),
