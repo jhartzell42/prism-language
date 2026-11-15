@@ -66,6 +66,8 @@ impl ^Document ChessGame:
     # this document answers by hand, below, so these are never asked.
     fn @Request state, role, id, request = @ never
     fn @Query $state, role, id, $query = @ $nil
+    # Each role hosted once, by `@HostRole`: what its host answers reaches the places a tick
+    # later (ruling HO, Language ch. 6, "Tick by tick").
     fn @HostSeats seats, Supply:
         (($players, !playersLeft, $playing)) <- @HostRole Fixed<<Player>>, seats.$player, Supply
         (($spectators, !spectatorsLeft, $watching)) <- @HostRole Fixed<<Spectator>>, seats.$spectator, Supply

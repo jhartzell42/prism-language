@@ -116,6 +116,8 @@ impl ^Document (Tallied o) where o: ^TallyOrder:
     type Results = TallyResults
     type State = Tally
     fn Order due = OrderOf due
+    # Each role hosted once, by `@HostRole`: what its host answers reaches the places a tick
+    # later (ruling HO, Language ch. 6, "Tick by tick").
     fn @HostSeats seats, Supply:
         (($tellers, !tellersLeft, $telling)) <- @HostRole Fixed<<Teller>>, seats.$teller, Supply
         (($keepers, !keepersLeft, $keeping)) <- @HostRole Fixed<<Keeper>>, seats.$keeper, Supply

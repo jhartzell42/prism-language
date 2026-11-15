@@ -38,6 +38,10 @@ trait ^Document d where SeatId d _: ^Pod:
     # take the state they answer against, `unit` for a document with none).
     @Request: forall (r: Role d). fn State d, Fixed r, SeatId d r, Request d r -> @!(Response d r) emit Lower d
     @Query: forall (r: Role d). fn prompt $(State d), Fixed r, prompt SeatId d r, prompt $(Query d r) -> @$?(Answer d r) emit Lower d
+    # Each role's seats hosted, by `@HostRole`: a host's computed answer (the supplier's)
+    # is the next tick's input, a forwarded element this tick's (ruling HO, Language ch. 6, "Tick by tick"), so what
+    # comes off the guests' element trees is prompt in nothing and the seats need no
+    # `prompt` (changing them builds and ends guests: claude/promptness-checker.md).
     @HostSeats: fn Seats d rest, Supplier d -> @((Results d, Guests d)) emit rest
     fn Order due = OneATick due
 
@@ -82,13 +86,14 @@ type Guests d = $(Path ==> $(Guest d))
 type Asking d o = any (r: Role d): ((Fixed r, SeatId d r, Element (Seat.* d r) o))
 
 # What answers each place of the guests: given its path and its element at its seat, the
-# element's output. An answer places nothing: what an implementation asks of its lower
+# element's output. A host computes it, so the place hears it the next tick (ruling HO, Language ch. 6, "Tick by tick"). An answer places nothing: what an implementation asks of its lower
 # language it asks in its own body, built once, so the row is written, empty (a type
 # alias has no row of its own to take).
 type Supplier d = forall o. fn Path, prompt Asking d o -> @o emit unit
 
 # An implementation: given the guests' element tree, built once, it gives the supplier;
-# what it emits is the caller's to speak (`@HostDocument`'s `lower`).
+# what it emits is the caller's to speak (`@HostDocument`'s `lower`). It reads the tree
+# promptly, and the supplier's answers reach the places a tick later (ruling HO, Language ch. 6, "Tick by tick").
 type Implementation d lower = fn prompt Guests d -> @(Supplier d) emit lower
 
 # A seat is a path's first key. Across the guests' merged tree the first index names the
@@ -384,6 +389,8 @@ impl ^Document File:
     # asked.
     fn @Request state, role, id, request = @ never
     fn @Query $state, role, id, $query = @ $nil
+    # Each role hosted once, by `@HostRole`: what its host answers reaches the places a tick
+    # later (ruling HO, Language ch. 6, "Tick by tick").
     fn @HostSeats seats, Supply:
         (($editors, !editorsLeft, $editorTree)) <- @HostRole Fixed<<Editor>>, seats.$editor, Supply
         (($viewers, !viewersLeft, $viewerTree)) <- @HostRole Fixed<<Viewer>>, seats.$viewer, Supply
@@ -678,6 +685,10 @@ derive ^StateDocument g via ^PerfectInformationGame g where State g = g, SeatId 
 # Hosting inserts delay (ruling HO, Language ch. 6, "Tick by tick"): `Supply`'s answers
 # reach the places a tick after they ask, so `$guests` feeding `Implement`, whose supplier
 # answers the guests, is no prompt cycle.
+# Where the prompt check still refuses a loop through here, and the cycle is truly
+# spurious (every path really runs through a host, an ownership change or a hold), this
+# function inserts `@Defer` at that spot to dodge it, with a comment saying why it is
+# spurious; a real cycle is never dodged (claude/promptness-checker.md).
 @HostDocument: fn prompt Implementation d lower, Seats d rest -> @(Results d) emit lower | rest where d: ^Document
 fn @HostDocument Implement, seats:
     ((results, $guests)) <- @HostSeats seats, Supply     # each role hosted once
@@ -685,7 +696,9 @@ fn @HostDocument Implement, seats:
     @ results                                            # each seat's own result
 
 # One role's seats: one host over a `for` of the seats. The arms answer only the seat
-# tags; everything else a guest emits passes up. Its results are each seat's result and,
+# tags; everything else a guest emits passes up. The arms' answers are computed, so a
+# place hears them the next tick; what passes up by `@Element` is forwarded, this tick
+# (ruling HO, Language ch. 6, "Tick by tick"). `$tree`, and the departures read off it, are prompt in nothing. Its results are each seat's result and,
 # each tick, the seats whose participants left: the program's map still holds them until
 # it removes them (Jimmy, 13 November, ruling SL).
 @HostRole: forall d (r: Role d). fn Fixed r, $(SeatId d r ==> $@(@a emit Seat.* d r | rest)), Supplier d -> @(($(SeatId d r ==> a), ![SeatId d r], Guests d)) emit rest where d: ^Document
