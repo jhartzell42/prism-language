@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 6 (an associated type at a concrete index is its equation's type): `?Kept` gives back what it is given, a `Nat` at the raiser and a `Text` at the watcher.
+test kept_at_each_role
+
+tick 0
+  added:
+    0: Ui.Label(text="6 seen")

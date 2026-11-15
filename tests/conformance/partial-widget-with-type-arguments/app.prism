@@ -1,0 +1,18 @@
+# A widget function given its type arguments and part of its arguments (`@Over<<ChessGame>>
+# server`, ruling AF) handed to a function that applies the rest: the partial application
+# with `<<..>>` is the one without. Found by the p16 run on chess.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@Shown: forall a. fn Text, a -> @unit emit Ui.* where a: ^Show
+fn @Shown label, value:
+    Ui.Label($text=$"{label} {value}")                                          # 0
+
+@Given: fn (fn Nat -> @unit emit Ui.*) -> @unit emit Ui.*
+fn @Given Make:
+    Make 7
+
+@page: @unit
+@page:
+    @Given (@Shown<<Nat>> "seven")
