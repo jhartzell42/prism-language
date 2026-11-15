@@ -16,8 +16,12 @@ fn Down n = match n -? 1:
 Count: unbounded fn [Nat] -> Nat
 fn Count xs:
     let ?w = xs[0]
-    let total = Fold xs, 0, \|w, x| (Down x) + w
-    total + (Or ?w, 0)
+    let total = Fold xs, ((0, 0)), \|((w, k)), x|
+        let y = Down x
+        let z = Down y
+        ((z + w, k + 1))
+    let ((sum, ignore)) = total
+    sum + (Or ?w, 0)
 
 @page: @unit
 @page:
