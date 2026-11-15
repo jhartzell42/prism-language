@@ -595,7 +595,10 @@ fn ScopeSteps sk, atBuild, k, fuel = match fuel -? 1:
         # a line that takes a late result at its build is built once every other
         # generation of the scope is, the one that gives the result among them
         # (`DeferredLine`)
-        let deferred = Fold (Filter wx.gens, \|gd| gd.pos.scope == k and Deferred gd), [[]], \|a, gd| Append a, (Gen gd)
+        # (bottom up: a deferred line takes from lines below it, and one that gives a late
+        # result to a deferred line above it stands below that one, so the giver is built
+        # first, sem-ch04-late-taker-result-taken-by-clause-widget-above)
+        let deferred = Fold (Filter wx.gens, \|gd| gd.pos.scope == k and Deferred gd), [[]], \|a, gd| Append (Gen gd), a
         # a hosted place below a building line of its block built after the node asks its
         # first value here, its number known (`Wx.lateFirsts`, `BelowGappyLine`); a scope
         # of a late host asks at the host's line instead (`LateChild`)

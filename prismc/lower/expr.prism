@@ -2187,10 +2187,26 @@ fn ArgumentByKind lx, env, e = match e.kind:
                         match ?qk:
                             # a generic function goes as its closure at the types of this use
                             # (`GlobalValue`): its path alone names no one function
-                            ? qk: if (HasKey lx.g.ctors, qk) or why == "output" or (IsMethodKey lx, qk) or IsGenericGlobal lx, qk: ClosureRef (ValueOf lx, env, e) else: XRef (XPath (ValueRef lx, qk))
+                            # (one whose type parameters its parameters' types all decide
+                            # goes by its path, Rust inferring them where it is taken, as a
+                            # prelude function's `F: Fn + Clone` asks, host-bug-14)
+                            ? qk: if (HasKey lx.g.ctors, qk) or why == "output" or (IsMethodKey lx, qk) or ((IsGenericGlobal lx, qk) and not (GenericsDeduced lx, qk)): ClosureRef (ValueOf lx, env, e) else: XRef (XPath (ValueRef lx, qk))
                             nil: Ref (ValueOf lx, env, e)
             otherwise: Ref (ValueOf lx, env, e)
     otherwise: Ref (ValueOf lx, env, e)
+
+# Whether a generic function's type parameters are all decided by its parameters' types,
+# so Rust infers them where its path is taken.
+GenericsDeduced: unbounded fn Lx, Text -> Bool
+fn GenericsDeduced lx, qk = match lx.g.vals[qk]:
+    ? v:
+        let lxOwn = update lx:
+            &_.subst <= {{}}
+            &_.csubst <= {{}}
+        let ((pts, ignore)) = SignatureOut lxOwn, qk, v.scheme
+        let deduced = Fold pts, [[]], \|acc, p| UnionTexts acc, (TyParamsDeduced p)
+        Fold (FnGenerics lxOwn, qk, v.scheme), True, \|all, ((g, ignore))| all and HasText deduced, g
+    nil: False
 
 # Whether a global is a program's function with type parameters.
 IsGenericGlobal: fn Lx, Text -> Bool
@@ -2651,8 +2667,14 @@ fn ?TypeArgsAt lx, qk, sc, cspan = ?TypeArgsAtCall lx, qk, sc, cspan, cspan
 # bounds.
 ?TypeArgsAtCall: unbounded fn Lx, Text, Scheme, Range, Range -> ?[OutTy]
 fn ?TypeArgsAtCall lx, qk, sc, cspan, span:
-    let generics = Each (FnGenerics lx, qk, sc), \|((g, ignore))| g
-    let ((pts, ignore)) = SignatureOut lx, qk, sc
+    # (the callee's own signature, as its definition lowers it: the caller's instance,
+    # an inlined generic widget's type parameters, names none of the callee's, whose
+    # variables may share their names, host-bug-17's `StepTick` under a widget over `s`)
+    let lxOwn = update lx:
+        &_.subst <= {{}}
+        &_.csubst <= {{}}
+    let generics = Each (FnGenerics lxOwn, qk, sc), \|((g, ignore))| g
+    let ((pts, ignore)) = SignatureOut lxOwn, qk, sc
     let deduced = Fold pts, [[]], \|acc, p| UnionTexts acc, (TyParamsDeduced p)
     if Fold generics, True, \|all, g| all and HasText deduced, g: nil
     else:
