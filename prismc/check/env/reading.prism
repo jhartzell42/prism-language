@@ -223,6 +223,11 @@ fn ConvIndex cx, st, t = match t.kind:
         match ?RoleConstructor cx.g, cx.home, (Or n.path[0], ""):
             ? k: (((TyRole k), (VariantCollisionAt cx, st, (Or n.path[0], ""), t.span)))
             nil: ConvType cx, st, t
+    # a variant written qualified (`Tally.Viewer`), as a collision's fix says to write it
+    TName n, args if (Len args) == 0 and n.sigils == "" and (Len n.path) > 1 and IsUpperText (Or (?LastOf n.path), ""):
+        match ResolveValue cx.g, cx.home, n:
+            ((? k, ignore)) if HasKey cx.g.caseOwners, k: (((TyRole k), st))
+            otherwise: ConvType cx, st, t
     otherwise: ConvType cx, st, t
 
 # Whether a path names an associated type.
