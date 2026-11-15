@@ -38,7 +38,7 @@ trait ^Document d where SeatId d _: ^Pod:
     # take the state they answer against, `unit` for a document with none).
     @Request: forall (r: Role d). fn State d, Fixed r, SeatId d r, Request d r -> @!(Response d r) emit Lower d
     @Query: forall (r: Role d). fn prompt $(State d), Fixed r, prompt SeatId d r, prompt $(Query d r) -> @$?(Answer d r) emit Lower d
-    @HostSeats: fn prompt Seats d rest, prompt Supplier d -> @((Results d, Guests d)) emit rest
+    @HostSeats: fn prompt Seats d rest, Supplier d -> @((Results d, Guests d)) emit rest
     fn Order due = OneATick due
 
 # A request's response: accepted, or declined with a reason of the role's own type.
@@ -683,7 +683,7 @@ fn @HostDocument Implement, seats:
 # tags; everything else a guest emits passes up. Its results are each seat's result and,
 # each tick, the seats whose participants left: the program's map still holds them until
 # it removes them (Jimmy, 13 November, ruling SL).
-@HostRole: forall d (r: Role d). fn Fixed r, prompt $(SeatId d r ==> $@(@a emit Seat.* d r | rest)), prompt Supplier d -> @(($(SeatId d r ==> a), ![SeatId d r], Guests d)) emit rest where d: ^Document
+@HostRole: forall d (r: Role d). fn Fixed r, prompt $(SeatId d r ==> $@(@a emit Seat.* d r | rest)), Supplier d -> @(($(SeatId d r ==> a), ![SeatId d r], Guests d)) emit rest where d: ^Document
 fn @HostRole role, $seats, Supply:
     (($results, $tree)) <- @Host (@Seated $seats), \|path, prompt element| match element:
         Seat.Request(..): Supply path, (any ((role, (SeatIdAt<<d, r>> path), element)))
