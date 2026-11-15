@@ -4,9 +4,9 @@
 # .../1/[text]/0, Gui.Scene at 3, Gui.Focus at 4) and the board shows through `returns` (the
 # status) and the scene's draw commands (`expect Draw.Text(..)`, which the Test World finds
 # inside the scene); the interface's own elements are read under `@$alone`.
-# A square's place in the grid's document is 0/[e2]/0, the square as its spot
-# prints; a panel button's is 0/[GoBack]/0, its action as it prints; the settings dialog's
-# boxes are its grid's odd places, 1 to 35 (the slider is 33), and its Close button is 4. A
+# A square's place in the grid's document is 0.[e2].0, the square as its spot
+# prints; a panel button's is 0.[GoBack].0, its action as it prints; the settings dialog's
+# boxes are its grid's odd places, `1/0` to `35/0` (the slider, an element, is 33), and its Close button is 3. A
 # press reaches a square through computing layers of hosts, each a tick late (Semantics ch.
 # 9 as ruled), so every press is followed by `compute until idle`.
 #
@@ -61,27 +61,27 @@ test pawn_to_e4_by_pointer, @$main:
 test fools_mate_by_path, @$main:
     build
         => returns "White's turn"
-    click element 0/[f2]/0
+    click element 0.[f2].0
     compute until idle
         => returns "White's turn"
-    click element 0/[f3]/0
+    click element 0.[f3].0
     compute until idle
         => returns "Black's turn"
-    click element 0/[e7]/0
+    click element 0.[e7].0
     compute until idle
         => returns "Black's turn"
-    click element 0/[e5]/0
+    click element 0.[e5].0
     compute until idle
         => returns "White's turn"
-    click element 0/[g2]/0
+    click element 0.[g2].0
     compute until idle
-    click element 0/[g4]/0
+    click element 0.[g4].0
     compute until idle
         => returns "Black's turn"
-    click element 0/[d8]/0
+    click element 0.[d8].0
     compute until idle
         => settles
-    click element 0/[h4]/0
+    click element 0.[h4].0
     compute until idle
         => returns "White has been checkmated"
         => expect Draw.Text(text="White has been checkmated", ..)
@@ -91,13 +91,13 @@ test fools_mate_by_path, @$main:
 test a_second_click_that_cannot_move_only_clears, @$main:
     build
         => returns "White's turn"
-    click element 0/[e2]/0                                  # selects the pawn
+    click element 0.[e2].0                                  # selects the pawn
     compute until idle
         => returns "White's turn"
-    click element 0/[e5]/0                                  # three squares: no move, and the selection clears
+    click element 0.[e5].0                                  # three squares: no move, and the selection clears
     compute until idle
         => returns "White's turn"
-    click element 0/[e4]/0                                  # nothing selected, and an empty square
+    click element 0.[e4].0                                  # nothing selected, and an empty square
     compute until idle
         => returns "White's turn"
         => expect Gui.Scene(..)
@@ -109,17 +109,17 @@ test a_second_click_that_cannot_move_only_clears, @$main:
 test the_settings_button_opens_and_closes_the_dialog, @$main:
     build
         => expect_none Draw.Text(text="Title", ..)
-    click element 0/[OpenSettings]/0
+    click element 0.[OpenSettings].0
     compute until idle
         => expect Draw.Text(text="Title", ..)
         => expect Draw.Text(text="Close", ..)
-    click element 4                                         # Close
+    click element 3                                         # Close
     compute until idle
         => expect_none Draw.Text(text="Title", ..)
-    click element 0/[OpenSettings]/0
+    click element 0.[OpenSettings].0
     compute until idle
         => expect Draw.Text(text="Title", ..)
-    click element 0/[OpenSettings]/0
+    click element 0.[OpenSettings].0
     compute until idle
         => expect_none Draw.Text(text="Title", ..)
         => returns "White's turn"
@@ -129,20 +129,20 @@ test the_settings_button_opens_and_closes_the_dialog, @$main:
 test the_copy_and_the_names_take_effect, @$main:
     build
         => expect Gui.Window(title="Chess", ..)
-    click element 0/[OpenSettings]/0
+    click element 0.[OpenSettings].0
     compute until idle
-    click element 1                                         # the title's box
+    click element 1/0                                         # the title's box
     compute until idle
     send Gui.Window(..), Pressed (Char '!')
     compute until idle
         => expect Gui.Window(title="Chess!", ..)
         => expect Draw.Text(text="Chess!", ..)
-    click element 17                                        # the turn's template
+    click element 17/0                                        # the turn's template
     compute until idle
     send Gui.Window(..), Pressed (Char '!')
     compute until idle
         => returns "White's turn!"
-    click element 25                                        # White's name
+    click element 25/0                                        # White's name
     compute until idle
     send Gui.Window(..), Pressed Backspace
     compute until idle
@@ -155,9 +155,9 @@ test the_copy_and_the_names_take_effect, @$main:
 test an_invalid_colour_keeps_the_last_good_one, @$main:
     build
         => expect Draw.Rect(rect=Rect(x=72.0, y=38.0, w=64.0, h=64.0), paint=(Rgb 0.7098039215686275, 0.5333333333333333, 0.38823529411764707))     # b8, a dark square
-    click element 0/[OpenSettings]/0
+    click element 0.[OpenSettings].0
     compute until idle
-    click element 29                                        # the dark squares' box
+    click element 29/0                                        # the dark squares' box
     compute until idle
     send Gui.Window(..), Pressed Backspace
     compute until idle
@@ -179,13 +179,13 @@ test an_invalid_colour_keeps_the_last_good_one, @$main:
 test the_border_slider_and_its_box_move_together, @$main:
     build
         => expect Draw.Image(rect=Rect(x=8.0, y=38.0, w=64.0, h=64.0), src="examples/basic-chess/pieces/rd.png")
-    click element 0/[OpenSettings]/0
+    click element 0.[OpenSettings].0
     compute until idle
     click element 33                                        # the slider's middle
     compute until idle
         => expect Draw.Text(text="16", ..)
         => expect Draw.Image(rect=Rect(x=16.0, y=46.0, w=64.0, h=64.0), src="examples/basic-chess/pieces/rd.png")
-    click element 35                                        # the box: "16" becomes "1", then ""
+    click element 35/0                                        # the box: "16" becomes "1", then ""
     compute until idle
     send Gui.Window(..), Pressed Backspace
     compute until idle
@@ -213,38 +213,38 @@ test back_and_forward_step_through_the_moves, @$main:
     build
         => returns "White's turn"
         => expect Draw.Text(text="Move 0 of 0", ..)
-    click element 0/[e2]/0
+    click element 0.[e2].0
     compute until idle
-    click element 0/[e4]/0
+    click element 0.[e4].0
     compute until idle
-    click element 0/[e7]/0
+    click element 0.[e7].0
     compute until idle
-    click element 0/[e5]/0
+    click element 0.[e5].0
     compute until idle
         => returns "White's turn"
         => expect Draw.Text(text="Move 2 of 2", ..)
         => expect Draw.Text(text="1. e2-e4 [e7-e5]", ..)
-    click element 0/[GoBack]/0
+    click element 0.[GoBack].0
     compute until idle
         => returns "Black's turn"
         => expect Draw.Text(text="Move 1 of 2", ..)
         => expect Draw.Text(text="1. [e2-e4] e7-e5", ..)
         => expect Draw.Image(rect=Rect(x=264.0, y=230.0, w=64.0, h=64.0), src="examples/basic-chess/pieces/blank.png")     # e5 is empty again
         => expect Draw.Image(rect=Rect(x=264.0, y=102.0, w=64.0, h=64.0), src="examples/basic-chess/pieces/pd.png")        # and the pawn is back on e7
-    click element 0/[GoBack]/0
+    click element 0.[GoBack].0
     compute until idle
-    click element 0/[GoBack]/0                              # past the opening: it stays
+    click element 0.[GoBack].0                              # past the opening: it stays
     compute until idle
         => returns "White's turn"
         => expect Draw.Text(text="Move 0 of 2", ..)
         => expect Draw.Text(text="1. e2-e4 e7-e5", ..)
-    click element 0/[GoForward]/0
+    click element 0.[GoForward].0
     compute until idle
         => returns "Black's turn"
         => expect Draw.Text(text="Move 1 of 2", ..)
-    click element 0/[GoForward]/0
+    click element 0.[GoForward].0
     compute until idle
-    click element 0/[GoForward]/0                           # past the last move: it stays
+    click element 0.[GoForward].0                           # past the last move: it stays
     compute until idle
         => returns "White's turn"
         => expect Draw.Text(text="Move 2 of 2", ..)
@@ -254,47 +254,47 @@ test back_and_forward_step_through_the_moves, @$main:
 # there.
 test a_move_from_an_earlier_position_discards_the_later_ones, @$main:
     build
-    click element 0/[e2]/0
+    click element 0.[e2].0
     compute until idle
-    click element 0/[e4]/0
+    click element 0.[e4].0
     compute until idle
-    click element 0/[e7]/0
+    click element 0.[e7].0
     compute until idle
-    click element 0/[e5]/0
+    click element 0.[e5].0
     compute until idle
-    click element 0/[GoBack]/0
+    click element 0.[GoBack].0
     compute until idle
         => expect Draw.Text(text="Move 1 of 2", ..)
-    click element 0/[c7]/0
+    click element 0.[c7].0
     compute until idle
-    click element 0/[c5]/0
+    click element 0.[c5].0
     compute until idle
         => returns "White's turn"
         => expect Draw.Text(text="Move 2 of 2", ..)
         => expect Draw.Text(text="1. e2-e4 [c7-c5]", ..)
         => expect_none Draw.Text(text="1. e2-e4 e7-e5", ..)
-    click element 0/[GoForward]/0                           # there is nothing after it now
+    click element 0.[GoForward].0                           # there is nothing after it now
     compute until idle
         => expect Draw.Text(text="Move 2 of 2", ..)
 
 # Reset starts the game over and forgets its moves; the settings stay.
 test reset_starts_over_and_keeps_the_settings, @$main:
     build
-    click element 0/[OpenSettings]/0
+    click element 0.[OpenSettings].0
     compute until idle
-    click element 1                                         # the title's box
+    click element 1/0                                         # the title's box
     compute until idle
     send Gui.Window(..), Pressed (Char '!')
     compute until idle
-    click element 0/[OpenSettings]/0                        # closed again
+    click element 0.[OpenSettings].0                        # closed again
     compute until idle
-    click element 0/[e2]/0
+    click element 0.[e2].0
     compute until idle
-    click element 0/[e4]/0
+    click element 0.[e4].0
     compute until idle
         => returns "Black's turn"
         => expect Draw.Text(text="Move 1 of 1", ..)
-    click element 0/[StartOver]/0
+    click element 0.[StartOver].0
     compute until idle
         => returns "White's turn"
         => expect Draw.Text(text="Move 0 of 0", ..)
