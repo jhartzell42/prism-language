@@ -129,35 +129,20 @@ fn Seating seats = Change(seat=seats, remove=[[]])
 Removing: fn [Text] -> Change a
 fn Removing names = Change(seat={{}}, remove=names)
 
-# Why the table removes a departed seat a tick late (ruling PT, choice (a) "for now",
-# Jimmy, 14 November):
+# Why the table removes a departed seat in the tick it leaves, with no `@Defer` (ruling HO,
+# Language ch. 6, "Tick by tick"; Jimmy, 15 November: the checker applies it):
 #
 # - The loop. `@table` seats the document by the table (`seats <- @Table results`) and
 #   reads the document's results back into the table (`results <- @HostDocument ...,
 #   seats`), so that a seat whose participant leaves leaves the table's map (ruling SL).
-# - Promptness per parameter. `@HostDocument` is prompt in `seats`: it runs the
-#   blueprints the map holds, and their own requests reach the results in their ticks. A
-#   table that stepped its holds on `results.!tellersLeft` would be prompt in `results`
-#   too: the record it gives holds those holds, and a hold's update fires in its step's
-#   tick. Two prompt parameters in a loop are a prompt cycle to a checker that reads only
-#   types (PT: checking is local).
-# - Why the cycle is not real. `!tellersLeft` fires on a participant's own `Seat.Leave`
-#   (its own button), not on any change to the map; the blueprints the table puts in the
-#   map (`@Teller "ada", Person`) capture nothing from `results`; and a changed map only
-#   builds and ends guests, which is construction, built at the end of the tick and prompt
-#   in nothing (Semantics ch. 5). So the update of the table's map never reaches the
-#   results in its tick, and the requests that do reach them never come from the results.
-# - What a finer type would say. For a dynamic that holds blueprints or events, being
-#   prompt in its update (the map changes in the tick) and being prompt in what it holds
-#   (the events inside fire in the tick) come apart: the table's result would be prompt in
-#   `results` by its update only, and `@HostDocument` prompt in `seats` by its contents
-#   only, and the loop would check as written. For a dynamic of plain values the two are
-#   one, which is why one bit was chosen; the split for dynamics of blueprints and events
-#   is choice (b), not taken for now.
-# - So, for now: each departure goes through `@Defer`, and the table is prompt in nothing
-#   it is given. A participant that leaves is removed from the map one tick after it
-#   leaves: for that one tick its blueprint is still in the map and still runs. Any
-#   program that seats a document from that document's own results does the same.
+# - Promptness per parameter. `@HostDocument` is prompt in `seats`: a newborn guest's
+#   result is in `results` in its birth tick. The table steps its holds on
+#   `results.!tellersLeft`, so its result changes in the tick that event fires.
+# - Why that is no cycle. `!tellersLeft` is read off the guests' element trees: it fires
+#   on a participant's own `Seat.Leave`. Every path from a guest's element tree back
+#   into the guest is a tick (HO), so what the host derives from the tree is prompt in
+#   nothing, and the loop closes through a tick.
+
 @Table: fn TallyResults -> @(TallySeats o Ui.*) emit Ui.* where o: ^TallyOrder
 fn @Table results:
     !cyJoins <- Ui.Button($label=$"cy joins")                              # 0
@@ -171,22 +156,19 @@ fn @Table results:
     !kayJoins <- Ui.Button($label=$"kay joins")                            # 8
     !rolesJoin <- Ui.Button($label=$"dee and kay join, eager at 4")        # 9
     !eveRemoved <- Ui.Button($label=$"eve is removed")                     # 10
-    !tellersGone <- @Defer results.!tellersLeft                            # 11
-    !keepersGone <- @Defer results.!keepersLeft                            # 12
-    !viewersGone <- @Defer results.!viewersLeft                            # 13
     let !tellerChange = (Seating {{"bob": $ (@Teller "bob", (Eager 2))}}) on !bobEager <| (Seating {{"dee": $ (@Teller "dee", (Eager 3)), "eve": $ (@Teller "eve", (Eager 3))}}) on !pairJoins <| (Seating {{"dee": $ (@Teller "dee", (Eager 2)), "eve": $ (@Teller "eve", (Eager 2)), "gus": $ (@Teller "gus", (Eager 2))}}) on !threeJoin <| (Seating {{"fay": $ (@Teller "fay", (Eager 1))}}) on !fayJoins <| (Seating {{"dee": $ (@Teller "dee", (Eager 4))}}) on !rolesJoin <| (Removing [["ada"]]) on !adaRemoved <| (Removing [["fay"]]) on !fayRemoved <| (Removing [["eve"]]) on !eveRemoved
     let !keeperChange = (Seating {{"kay": $ (@Keeper "kay", Person)}}) on !kayJoins <| (Seating {{"kay": $ (@Keeper "kay", (Eager 4))}}) on !rolesJoin
     let !viewerChange = (Seating {{"cy": $ (@Watcher "cy")}}) on !cyJoins <| (Removing [["cy"]]) on !cyRemoved
-    $tellers <- {{"ada": $ (@Teller "ada", Person), "bob": $ (@Teller "bob", Person)}} then Changed $tellers, (!tellerChange <| (Removing !tellersGone))
-    $keepers <- {{}} then Changed $keepers, (!keeperChange <| (Removing !keepersGone))
-    $viewers <- {{}} then Changed $viewers, (!viewerChange <| (Removing !viewersGone))
+    $tellers <- {{"ada": $ (@Teller "ada", Person), "bob": $ (@Teller "bob", Person)}} then Changed $tellers, (!tellerChange <| (Removing results.!tellersLeft))
+    $keepers <- {{}} then Changed $keepers, (!keeperChange <| (Removing results.!keepersLeft))
+    $viewers <- {{}} then Changed $viewers, (!viewerChange <| (Removing results.!viewersLeft))
     @ TallySeats($teller=$tellers, $keeper=$keepers, $viewer=$viewers)
 
 # One tally in memory, seated by the table, its requests in the default order.
 @table: @unit
 @table:
-    seats <- @Table<<OneEach>> results                                     # 0 to 13
-    results <- @HostDocument (@InMemory<<Tallied OneEach>> empty), seats   # 14
+    seats <- @Table<<OneEach>> results                                     # 0 to 10
+    results <- @HostDocument (@InMemory<<Tallied OneEach>> empty), seats   # 11
     @ unit
 
 # The same table on the tally that orders its own requests, keepers first.

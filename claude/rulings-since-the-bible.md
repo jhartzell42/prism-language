@@ -348,3 +348,14 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   `unit` and the rest, a regular expression excepted (Type System ch. 2); `Never` has no
   value to write. "Derive only" still holds for every declared type. Jimmy, 14 November:
   "A ABSOLUTELY".
+
+## 15 November 2026
+
+- **HC** The prompt check applies ruling HO: whatever a function derives from a host's
+  element tree (`$tree`, and anything read off it, the departures `!LeavesAt` gives) is
+  prompt in nothing, since every path from a guest's element tree back into the guest is
+  a tick (Language ch. 6, "Tick by tick"). A widget's result is checked part by part
+  where its body says which part comes from the tree: the tally's table removes a
+  departed seat on `results.!tellersLeft` in the tick it leaves, with no `@Defer`. Chosen
+  over keeping `@Defer`, marks on parts of a result, and splitting promptness of
+  dynamics of blueprints. Jimmy, 15 November: "do c, and I thought HO was established".
