@@ -195,7 +195,7 @@ fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
 # whose body matches the opened element, `SupplierFrom`); any other body is inferred.
 ArmBlockAt: unbounded fn Env, St, Block, Ty -> ((Ty, St))
 fn ArmBlockAt env, st, b, want:
-    let ?inner = if IsWidgetish b.stmts: nil else: match ?Last b.stmts:
+    let ?inner = if IsWidgetish b.stmts: nil else: match ?LastOf b.stmts:
         ? s: match s.kind:
             SExpr e: match e.kind:
                 EMatch scrut, arms: ? ((e, scrut, arms))

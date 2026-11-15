@@ -104,10 +104,10 @@ fn ParseFragment src:
 
 NewPs: unbounded fn [Tok] -> Ps
 fn NewPs toks0:
-    let ends = match ?Last toks0:
+    let ends = match ?LastOf toks0:
         ? t: t.kind == KEof
         nil: False
-    let end = match ?Last toks0:
+    let end = match ?LastOf toks0:
         ? t: Range(start=t.span.end, end=t.span.end, origin=t.span.origin)
         nil: noRange
     let toks = if ends: toks0 else: Push toks0, Tok(kind=KEof, span=end, touches=False, lineStart=False)
@@ -131,7 +131,7 @@ fn Absorb p, sub = update p:
 FinishDiags: fn [Diag] -> [Diag]
 fn FinishDiags ds:
     let sorted = Fold ds, [[]], InsertDiag
-    Fold sorted, [[]], \|acc, d| match ?Last acc:
+    Fold sorted, [[]], \|acc, d| match ?LastOf acc:
         ? e if e.span == d.span and e.message == d.message: acc
         otherwise: Push acc, d
 
@@ -161,7 +161,7 @@ fn PairBrackets toks = update (Each toks, \|t| noPair):
         if ? k <- ?OpenKindOf t.kind:
             &stack <= Push &stack, ((ix, k))
         if ? k <- ?CloseKindOf t.kind:
-            if ? ((j, k2)) <- ?Last &stack:
+            if ? ((j, k2)) <- ?LastOf &stack:
                 if k2 == k:
                     &stack <= Pop &stack
                     &_[ix].partner <= ? j
@@ -437,11 +437,11 @@ let noSName = SName(sigils="", path=[[]], span=noRange)
 let noIdent = Ident(name="", span=noRange)
 
 IsUpperName: fn SName -> Bool
-fn IsUpperName n = IsUpper (Head (Or (?Last n.path), ""))
+fn IsUpperName n = IsUpper (Head (Or (?LastOf n.path), ""))
 
 # Applied later: an uppercase name or a reserved lowercase constructor.
 IsCallee: fn SName -> Bool
-fn IsCallee n = (IsUpperName n) or (IsReservedCtor (Or (?Last n.path), ""))
+fn IsCallee n = (IsUpperName n) or (IsReservedCtor (Or (?LastOf n.path), ""))
 
 IsTopic: fn SName -> Bool
 fn IsTopic n = n.path == [["_"]]
@@ -490,7 +490,7 @@ fn CheckNameScope p, name:
 # Type names out of this compiler: sized integers other than `U8`, and `Instant`.
 CheckTypeNameScope: fn Ps, SName -> Ps
 fn CheckTypeNameScope p, name:
-    let b = Or (?Last name.path), ""
+    let b = Or (?LastOf name.path), ""
     let sized = Fold [["U16", "U32", "U64", "U128", "I8", "I16", "I32", "I64", "I128"]], False, \|seen, s| seen or s == b
     if (Len name.path) != 1: p
     else: if sized: OutOfScope p, name.span, "sized ints other than `U8`", "`{b}` is out of this compiler: the sized integer it has is `U8`"

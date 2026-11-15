@@ -73,7 +73,7 @@ LexClose: fn Lex, Text, Nat -> Lex
 fn LexClose l, c, start:
     let kind = OpenOf c
     let l1 = Bump l
-    let l2 = match ?Last l1.frames:
+    let l2 = match ?LastOf l1.frames:
         ? k if k == kind: update l1:
             &_.frames <= Pop &_.frames
         ? "<<": LexErr l1, start, l1.pos, "`{c}` inside `<<`: expected `>>`"
@@ -147,11 +147,11 @@ fn ClosesSquareOrBrace nil = False
 fn ?LexOperator l, start:
     let c = Peek l
     let after = PeekAt l, 1
-    let nonEmpty = c == "+" and not l.lastWs and (ClosesSquareOrBrace (?Last l.tokens)) and ((EndsMark after) or (after == "?" and (EndsMark (PeekAt l, 2))))
+    let nonEmpty = c == "+" and not l.lastWs and (ClosesSquareOrBrace (?LastOf l.tokens)) and ((EndsMark after) or (after == "?" and (EndsMark (PeekAt l, 2))))
     if c == "-" and (Contains ",)]\}", after): ? (PushTok (Bump l), KAbsent, start, start + 1)
     else: if nonEmpty: ? (NonEmptyMark l, start, after)
     else: if StartsWith l, "<<": ? (OpenTypeArgs l, start)
-    else: if (StartsWith l, ">>") and (?Last l.frames) == ? "<<": ? (CloseTypeArgs l, start)
+    else: if (StartsWith l, ">>") and (?LastOf l.frames) == ? "<<": ? (CloseTypeArgs l, start)
     else: if StartsWith l, ">>": ? (LexErr (PushTok (Forward l, 2), KGtGt, start, start + 2), start, start + 2, "`>>` closes explicit type arguments, and none is open (Prism has no shift operators)")
     else: match FirstOp l:
         "": nil
@@ -167,7 +167,7 @@ fn NonEmptyMark l, start, after:
 # and `>>` are errors."
 OpenTypeArgs: fn Lex, Nat -> Lex
 fn OpenTypeArgs l, start:
-    let touching = not l.lastWs and (IsNameTok (?Last l.tokens))
+    let touching = not l.lastWs and (IsNameTok (?LastOf l.tokens))
     let l1 = Forward l, 2
     let l2 = if touching: l1 else: LexErr l1, start, l1.pos, "`<<` opens explicit type arguments and must touch a name on its left (Prism has no shift operators)"
     let l3 = update l2:
@@ -280,7 +280,7 @@ fn LexQualifiedPath l0 = update (([[]], l0)):
     let &l = l1
     let &going = True
     while &going:
-        let last = Or (?Last &path), ""
+        let last = Or (?LastOf &path), ""
         let next = PeekAt &l, 1
         if (Peek &l) != "." or not (IsUpper (Head last)):
             &going <= False
@@ -347,7 +347,7 @@ fn LexName l, path, sigils, start, wStart:
 
 NameCaseOf: fn Lex, [Text], Nat -> ((NameCase, Lex))
 fn NameCaseOf l, path, wStart:
-    let last = Or (?Last path), ""
+    let last = Or (?LastOf path), ""
     if last == "_": ((CaseTopic, l))
     else: if (Head last) == "_" and (AllChars (AfterFirst last), IsDigit): ((CaseHole, l))
     else: if (Head last) == "_": ((CaseLower, (LexErr l, wStart, l.pos, "`_` followed by a letter is not a name: `_` alone is the topic, `_1` a hole")))
@@ -363,7 +363,7 @@ IsPathWord: fn Lex, Text, [Text] -> Bool
 fn IsPathWord l, sigils, path:
     let w = Or path[0], ""
     let words = if w == "at": [["send", "click", "answer"]] else: [["click"]]
-    let prev = match ?Last l.tokens:
+    let prev = match ?LastOf l.tokens:
         ? t: match t.kind:
             KName n if n.sigils == "" and (Len n.path) == 1: Or n.path[0], ""
             otherwise: ""

@@ -71,8 +71,8 @@ else: t
 
 # A reference's last segment: an item's name, a runtime name's last part.
 RefLast: fn Ref -> Text
-fn RefLast (RefItem ignore, p, ignore) = Or (?Last (SplitOn p, "::")), p
-fn RefLast (RefRuntime t) = Or (?Last (SplitOn t, "::")), t
+fn RefLast (RefItem ignore, p, ignore) = Or (?LastOf (SplitOn p, "::")), p
+fn RefLast (RefRuntime t) = Or (?LastOf (SplitOn t, "::")), t
 
 # An item's member (a choice's case, a node's method, an associated function): the same
 # module, one segment more.

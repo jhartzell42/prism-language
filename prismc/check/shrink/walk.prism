@@ -391,7 +391,7 @@ fn ?TraversalOf m, c, args = match c.kind:
     otherwise: nil
 
 ?LastExpr: fn Block -> ?Expr
-fn ?LastExpr b = match ?Last b.stmts:
+fn ?LastExpr b = match ?LastOf b.stmts:
     ? s: match s.kind:
         SExpr x: ? x
         otherwise: nil

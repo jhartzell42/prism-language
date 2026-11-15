@@ -258,7 +258,7 @@ fn OpenOf ignore = "\{"
 # The spacing rule's left half: "whitespace, an open bracket, a comma, an operator or the
 # start of a line comes before it".
 PrefixPosition: fn Lex -> Bool
-fn PrefixPosition l = l.lastWs or (NoOperandBefore (?Last l.tokens))
+fn PrefixPosition l = l.lastWs or (NoOperandBefore (?LastOf l.tokens))
 
 NoOperandBefore: fn ?Tok -> Bool
 fn NoOperandBefore nil = True

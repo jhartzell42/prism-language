@@ -286,7 +286,7 @@ fn ResultIsDynamic t = match t:
 
 # Whether a lambda's body gives a dynamic by name: `@ $seen`.
 EndsInDynamic: fn Block -> Bool
-fn EndsInDynamic b = match ?Last b.stmts:
+fn EndsInDynamic b = match ?LastOf b.stmts:
     ? last: match last.kind:
         SExpr x: GivesDynamicName x
         otherwise: False
@@ -372,7 +372,7 @@ fn IsBindLine s = match s.kind:
     otherwise: False
 
 EndsInWidget: fn Block -> Bool
-fn EndsInWidget b = match ?Last b.stmts:
+fn EndsInWidget b = match ?LastOf b.stmts:
     ? last: match last.kind:
         SExpr x: IsWidgetExpr x
         otherwise: False
@@ -756,7 +756,7 @@ fn RowKidsFrom cx, source, body, m, binders:
 
 # A row's result line: its last statement, when that is an expression.
 ?RowResult: fn Block -> ?Stmt
-fn ?RowResult body = match ?Last body.stmts:
+fn ?RowResult body = match ?LastOf body.stmts:
     ? last: match last.kind:
         SExpr ignore: ? last
         otherwise: nil
@@ -908,7 +908,7 @@ fn Reach edges, frontier, seen = match frontier[0]:
 # reads and from the updates under an `!Updated` in it; the result's update reaches from
 # the updates of the dynamics the result reads and from the events it reads.
 ?BlockFlows: unbounded fn PCx, Text, Text, [Pattern], Block, (Text ==> [Bool]) -> ?[ParameterFlow]
-fn ?BlockFlows cx, k, home, params, b, supplied = match ?Last b.stmts:
+fn ?BlockFlows cx, k, home, params, b, supplied = match ?LastOf b.stmts:
     ? last: match last.kind:
         SExpr result:
             let paramNames = Each params, \|p| PatternNames p

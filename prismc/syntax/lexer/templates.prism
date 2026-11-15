@@ -74,7 +74,7 @@ fn AddItem line, item = update line:
     &_.items <= AddRaw &_.items, item
 
 AddRaw: fn [RawItem], RawItem -> [RawItem]
-fn AddRaw items, (RiText t) = match ?Last items:
+fn AddRaw items, (RiText t) = match ?LastOf items:
     ? (RiText s): Push (Pop items), (RiText "{s}{t}")
     otherwise: Push items, (RiText t)
 fn AddRaw items, item = Push items, item
@@ -354,7 +354,7 @@ fn AloneStep c, p, ignore = ((c, p))
 # A raw item as a template part, a text run merged into the run before it.
 PushPart: fn [TPartTok], RawItem -> [TPartTok]
 fn PushPart parts, (RiText "") = parts
-fn PushPart parts, (RiText t) = match ?Last parts:
+fn PushPart parts, (RiText t) = match ?LastOf parts:
     ? (TptText s): Push (Pop parts), (TptText "{s}{t}")
     otherwise: Push parts, (TptText t)
 fn PushPart parts, (RiPlaceholder tokens, span) = Push parts, (TptPlaceholder tokens, nil, span)

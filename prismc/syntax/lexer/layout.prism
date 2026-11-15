@@ -150,7 +150,7 @@ fn StreamEndsHere l:
 # Rule 2 and rule 3 look at the last token of the line that just ended: a `:` or a closing
 # lambda bar opens a layout block.
 EndLine: fn Lex -> Lex
-fn EndLine l = match ?Last l.tokens:
+fn EndLine l = match ?LastOf l.tokens:
     ? t if (Len l.tokens) > l.lineFirst and (OpensBlock t.kind):
         update l:
             &_.pendingOpen <= True
@@ -271,7 +271,7 @@ fn Below (? d), depth = depth < d
 
 LayoutLine: fn Lex, Nat, Nat, Nat -> Lex
 fn LayoutLine l0, col, lineBegin, here = update l0:
-    let top = Or (?Last &_.layout), 0
+    let top = Or (?LastOf &_.layout), 0
     let fat = StartsWith &_, "=>"
     let &opened = False
     let &fuel = Len &_.layout
@@ -311,7 +311,7 @@ fn LayoutLine l0, col, lineBegin, here = update l0:
                     &_.markLineStart <= True
                 else:
                     # "A line indented less emits `close`, pops, and compares again."
-                    while ? left <- &fuel -? 1 if (Len &_.layout) > 1 and col < (Or (?Last &_.layout), 0):
+                    while ? left <- &fuel -? 1 if (Len &_.layout) > 1 and col < (Or (?LastOf &_.layout), 0):
                         &fuel <= left
                         &_.layout <= Pop &_.layout
                         &_ <= PushTok &_, KLayClose, here, here
@@ -320,7 +320,7 @@ fn LayoutLine l0, col, lineBegin, here = update l0:
                             &_.testDepth <= nil
                         if Below &_.checkDepth, depth:
                             &_.checkDepth <= nil
-                    if col != (Or (?Last &_.layout), 0):
+                    if col != (Or (?LastOf &_.layout), 0):
                         &_ <= LexErr &_, lineBegin, here, "unindent does not match any open block"
                     &_ <= PushTok &_, KLaySep, here, here
                     if (Len &_.layout) == 1:

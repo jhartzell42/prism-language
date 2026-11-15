@@ -453,7 +453,7 @@ fn Base32 n:
 BaseKey: fn Text -> Text
 fn BaseKey k:
     let parts = SplitOn k, "."
-    let last = Or (?Last parts), k
+    let last = Or (?LastOf parts), k
     "{Join (Take parts, (Dec (Len parts))), "."}.{Snake last}"
 
 ValueName: fn Text, Nat -> Text

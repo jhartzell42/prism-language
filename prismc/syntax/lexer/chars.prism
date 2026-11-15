@@ -17,6 +17,11 @@ use Syntax.Decls.*
 Dec: fn Nat -> Nat
 fn Dec n = Or (n -? 1), 0
 
+# An array's last element, if any (prismc's own: the bootstrap's older prelude has no
+# `?Last`).
+?LastOf: fn [a] -> ?a
+fn ?LastOf xs = xs[Dec (Len xs)]
+
 Pop: fn [a] -> [a]
 fn Pop xs = Take xs, (Dec (Len xs))
 

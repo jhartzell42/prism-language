@@ -397,7 +397,7 @@ fn BareLine env, st, e, last:
 
 # A group's type is its inside's, the note just made.
 NoteAsLast: fn St, Range -> St
-fn NoteAsLast st, span = match ?Last st.typed.exprs:
+fn NoteAsLast st, span = match ?LastOf st.typed.exprs:
     ? n: NoteTy st, span, n.ty
     nil: st
 

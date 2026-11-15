@@ -172,7 +172,7 @@ DirOf: fn Text -> Text
 fn DirOf p = Join (Pop (SplitOn p, "/")), "/"
 
 BaseOf: fn Text -> Text
-fn BaseOf p = Or (?Last (SplitOn p, "/")), p
+fn BaseOf p = Or (?LastOf (SplitOn p, "/")), p
 
 Under: fn Text, Text -> Text
 fn Under d, n = if d == "" or d == ".": n else: "{d}/{n}"

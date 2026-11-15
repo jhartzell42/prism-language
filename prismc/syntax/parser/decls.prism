@@ -360,7 +360,7 @@ fn ParseTypeBody p, name, params = match Kind p:
         else: ((nil, (ErrorHere p1, "a choice's cases stand in an indented block after `choice:`")))
     KKw "row", "": ((? TbRow, (Adv p)))
     # "A newtype is a choice of one alternative on one line, `type Meters = Meters Float`."
-    KName n if n.sigils == "" and (Len n.path) == 1 and (?Last n.path) == (?Last name.path):
+    KName n if n.sigils == "" and (Len n.path) == 1 and (?LastOf n.path) == (?LastOf name.path):
         let ((c, q)) = ParseCase p
         ((? (TbNewtype c), q))
     # "A unit type has one value, lowercase, `type Click = click`."

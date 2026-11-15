@@ -53,7 +53,7 @@ fn InferExprBlock env, st, b:
     if IsWidgetish b.stmts: InferWidgetBlock env, st, b
     else:
         let ((env2, st2)) = BindGroup env, (BlockBoundOnce env, st, b.stmts), b.stmts
-        match ?Last b.stmts:
+        match ?LastOf b.stmts:
             ? s: match s.kind:
                 SExpr e: Infer env2, st2, e
                 otherwise: ((tUnit, st2))
@@ -167,7 +167,7 @@ fn UndefinedSignature st, stmts, s = match s.kind:
     otherwise: st
 
 StmtsSpan: fn [Stmt] -> Range
-fn StmtsSpan stmts = Range(start=(Or stmts[0], dummyStmt).span.start, end=(Or (?Last stmts), dummyStmt).span.end, origin=(Or stmts[0], dummyStmt).span.origin)
+fn StmtsSpan stmts = Range(start=(Or stmts[0], dummyStmt).span.start, end=(Or (?LastOf stmts), dummyStmt).span.end, origin=(Or stmts[0], dummyStmt).span.origin)
 
 let dummyStmt = Stmt(kind=(SExpr (Expr(kind=EError, span=Range(start=0, end=0, origin=InSource)))), span=Range(start=0, end=0, origin=InSource))
 

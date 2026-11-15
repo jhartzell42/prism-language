@@ -560,6 +560,11 @@ pub fn len<A: Clone>(xs: &Array<A>) -> Nat {
     nat_of(xs.len())
 }
 
+/// `?Last`: an array's last element, if any.
+pub fn last<A: Clone>(xs: &Array<A>) -> Option<A> {
+    if xs.len() == 0 { None } else { xs.get(xs.len() - 1).cloned() }
+}
+
 pub fn len_text(t: &Text) -> Nat {
     nat_of(t.len())
 }

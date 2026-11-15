@@ -251,7 +251,7 @@ fn DefNameSpan (DefOp ignore, r) = r
 # A named lens's name where it is used (Semantics ch. 5; ruling LN): `&`, then an uppercase
 # name under whatever marks its part shows (`&Acc`, `&?Second`, `&Board.Acc`).
 IsLensName: fn SName -> Bool
-fn IsLensName n = (HasPrefix n.sigils, "&") and IsUpperText (Or (?Last n.path), "")
+fn IsLensName n = (HasPrefix n.sigils, "&") and IsUpperText (Or (?LastOf n.path), "")
 
 # A named lens applied, `&Acc r` (appendix A.6: `ref ::= .. | "&" uname ref`): the lens's
 # name and its one argument.

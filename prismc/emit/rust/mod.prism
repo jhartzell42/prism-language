@@ -348,7 +348,7 @@ fn Chain label, s, arms:
         else:
             let head = Join (Append [["let {Pattern a.pat} = {scrut}"]], (Each a.conds, \|c| Condition c)), " && "
             ChainArm head, label, (Continued (Expression a.body), "    ")
-    let ends = match ?Last arms:
+    let ends = match ?LastOf arms:
         ? a: (a.pat == PaWild) and (Len a.conds) == 0
         nil: False
     let tail = if ends: [[]] else: [["unreachable!(\"no clause matched\")"]]

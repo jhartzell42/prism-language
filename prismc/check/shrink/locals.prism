@@ -208,7 +208,7 @@ fn Collect rev, seen, comp, k:
 # and generalizes (Type System ch. 5). Reported for each such function of the cycle, and
 # the cycle is then not read for shrinking.
 UnsignedOnCycle: unbounded fn Shrink, St, [Text] -> St
-fn UnsignedOnCycle sk, st, comp = Fold comp, st, \|s, k| match ((sk.byKey[k], (?Last (SplitOn k, " ")))):
+fn UnsignedOnCycle sk, st, comp = Fold comp, st, \|s, k| match ((sk.byKey[k], (?LastOf (SplitOn k, " ")))):
     ((? d, ? place)) if (Contains k, " #local ") and HasText st.unsignedFns, place: match d.body:
         DbFn clauses: match clauses[0]:
             ? first:
