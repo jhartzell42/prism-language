@@ -9,7 +9,7 @@ test mod Tests
 type Response = choice:
     Accepted
     Refused Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Stepped s = choice:
     Next s
@@ -77,7 +77,7 @@ fn @InMemory initial, @guest:
 # One document: a counter that refuses to pass ten.
 type Counter = record:
     total: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^Rules Counter:
     type Request = Nat

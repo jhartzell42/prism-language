@@ -53,7 +53,7 @@ type Last = choice:
     NothingAsked
     CouldNotRead Text
     Answered (Response ChessReason)
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 LastText: fn Last -> Text
 fn LastText NothingAsked = "none yet"
@@ -73,7 +73,7 @@ fn Returned response = Answered response
 @TextPlayer: fn Player, unit -> @unit emit Ui.* | Play.*
 fn @TextPlayer seat, sitting:
     let color = ColorOf seat
-    let name = Show color
+    let name = Debug color
     $?told <- Play.Query($query=$ Whole)                             # 0
     @BoardText (?BoardOf $?told)                                     # 1, 2
     Ui.Label($text=$"{name}'s view: {StatusOf color, $?told}")       # 3
@@ -108,7 +108,7 @@ fn @ScriptedPlayer seat, script:
     $?told <- Play.Query($query=$ Whole)                             # 0
     !response <- Play.Request(!requests=(!Filter (?NextOf (ColorOf seat), script, (!Updated $?told))))   # 1
     $said <- "nothing yet" then Said !response
-    Ui.Label($text=$"{Show (ColorOf seat)} (scripted): {$said}")     # 2
+    Ui.Label($text=$"{Debug (ColorOf seat)} (scripted): {$said}")     # 2
 
 # a player's opening request: asked when it is told a game with no move played
 ?Opening: fn PlayerRequest, ?PlayerTold -> ?PlayerRequest
@@ -122,7 +122,7 @@ fn @OpeningPlayer seat, request:
     $?told <- Play.Query($query=$ Whole)                             # 0
     !response <- Play.Request(!requests=(!Filter (?Opening request, (!Updated $?told))))   # 1
     $said <- "nothing yet" then Said !response
-    Ui.Label($text=$"{Show (ColorOf seat)} (opening): {$said}")      # 2
+    Ui.Label($text=$"{Debug (ColorOf seat)} (opening): {$said}")      # 2
 
 # ---- a spectator
 

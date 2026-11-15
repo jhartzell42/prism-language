@@ -20,7 +20,7 @@ type Typed = choice:
     ListLegal                          # `legal`
     Depart                             # `leave`
     Unreadable Text                    # anything else, as typed
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 let words = {{"resign": (Requesting Resign), "draw": (Requesting OfferDraw), "accept": (Requesting AcceptDraw), "moves": ListMoves, "legal": ListLegal, "leave": Depart}}
 
@@ -42,7 +42,7 @@ type Said = choice:
     Listed [Move]                      # the moves played, or the legal moves
     NotToldYet                         # a list asked for before the seat's first answer
     NoRequests                         # a request typed at a seat that may ask nothing
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 LineOf: fn Said -> Text
 fn LineOf Agreed = "ok"
@@ -117,13 +117,13 @@ fn ?All parts = ?Lines (Fold (Values parts), [[]], \|all, some| Append all, some
 fn @LinePlayer seat, sitting:
     let color = ColorOf seat
     $?told <- Play.Query($query=$ Whole)                             # 0
-    !line <- Console.Read(name=(Show color))                         # 1
+    !line <- Console.Read(name=(Debug color))                         # 1
     let !typed = TypedOf !line
     !response <- Play.Request(!requests=(!Filter (?RequestOf !typed)))   # 2
     Play.Leave(!?leaves=(!Filter (?Departing !typed)))               # 3
     $?before <- nil then !Updated $?told
     let !news = PlayerNews color, $?before, (!Updated $?told)
-    Console.Print(name=(Show color), !lines=(!Filter (?All (!Union (!Union (One 0, (Replied !response)), (One 1, !news)), (One 2, (Answered $?told, !typed))))))   # 4
+    Console.Print(name=(Debug color), !lines=(!Filter (?All (!Union (!Union (One 0, (Replied !response)), (One 1, !news)), (One 2, (Answered $?told, !typed))))))   # 4
 
 # ---- a spectator
 

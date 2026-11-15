@@ -11,22 +11,22 @@ use Documents.*
 
 type Teller = choice:
     Teller Text
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type Keeper = choice:
     Keeper Text
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type Viewer = choice:
     Viewer Text
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 # A seat that may request, of either requesting role. Its order is the default order of
 # one tick's requests: a teller's before a keeper's, then by name.
 type Requester = choice:
     TellerSeat Teller
     KeeperSeat Keeper
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 # ---- the state and its rules: plain functions
 
@@ -35,48 +35,48 @@ let limit = 5
 type Tally = record:
     total: Nat
     ?last: Teller                        # who added last
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 let empty = Tally(total=0, ?last=nil)
 
 type Add = choice:
     Add Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type KeeperRequest = choice:
     Clear
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Asks = choice:
     Whole
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A viewer's request type and its reason type have no value a viewer's language can send
 # or be sent: the `View` family has no request tag.
 type NoRequest = choice:
     NotARequest
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type NoReason = choice:
     NotAReason
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # why a teller's request is declined
 type TellerReason = choice:
     AddedLast                            # this teller added last
     StopsAt Nat                          # the sum would pass the limit, which is this
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # why a keeper's request is declined
 type KeeperReason = choice:
     NothingToClear
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # why a request to the tally is declined, of either requesting role
 type TallyReason = choice:
     ToTeller TellerReason
     ToKeeper KeeperReason
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 ?OfTeller: fn TallyReason -> ?TellerReason
 fn ?OfTeller (ToTeller why) = ? why
@@ -89,7 +89,7 @@ fn ?OfKeeper (ToTeller why) = nil
 type TellerView = record:
     total: Nat
     mayAdd: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 AddTo: fn Tally, Teller, Nat -> Stepped Tally TellerReason
 fn AddTo tally, seat, n = if tally.?last == ? seat: Denied AddedLast else:

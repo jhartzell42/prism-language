@@ -12,7 +12,7 @@ trait ^Box a:
 type Pair a = record:
     one: a
     two: a
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^Box (Pair a):
     type Item = a

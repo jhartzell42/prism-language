@@ -7,15 +7,15 @@ test mod Tests
 type Color = choice:
     White
     Black
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 let seats = {{White: unit, Black: unit}}
 
 Listed: fn [Color] -> Text
-fn Listed colors = Fold colors, "", \|all, color| "{all} {color}"
+fn Listed colors = Fold colors, "", \|all, color| "{all} {Debug color}"
 
 @main: @unit
 @main:
     Ui.Label($text=$"keys:{Listed (Keys seats)}; White < Black: {White < Black}")   # 0
     for color, sitting <- seats:                                                     # 1
-        Ui.Label($text=$"{color}")
+        Ui.Label($text=$"{Debug color}")

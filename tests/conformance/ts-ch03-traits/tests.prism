@@ -2,11 +2,11 @@ emit r
 use App.*
 
 check printing:
-    Show (Sq 4, 1) => "e2"
+    Debug (Sq 4, 1) => "e2"
     "{Sq 4, 3}" => "e4"
     Describe [[(Sq 0, 0), (Sq 7, 7)]] => "a1, h8"
-    Show Wren => "Wren"
-    Show (? 3) => ? "3"
+    Debug Wren => "Wren"
+    Debug (? 3) => ? "3"
 
 check order:
     Wren < Heron

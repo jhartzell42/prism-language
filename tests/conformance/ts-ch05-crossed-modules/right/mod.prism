@@ -5,7 +5,7 @@ use Left
 type Part = choice:
     Plain Nat
     Nested Left.Shape
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Weight: fn Part -> Nat
 fn Weight (Plain n) = n

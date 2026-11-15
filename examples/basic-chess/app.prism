@@ -28,8 +28,8 @@ type Spot = record:
     across: Nat                # 0 is the a file
 derive ^Eq, ^Ord
 
-impl ^Show Spot:
-    fn Show s = Show (SqOf s)
+impl ^Debug Spot:
+    fn Debug s = Debug (SqOf s)
 
 SqOf: fn Spot -> Sq
 fn SqOf s = Sq s.across, (Or (7 -? s.down), 0)
@@ -82,7 +82,7 @@ type Copy = record:
     inCheck: Text
     mate: Text
     stalemate: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 MakeCopy: fn Text, Text, Text, Text, Text, Text, Text, Text, Text, Text, Text, Text -> Copy
 fn MakeCopy title, settings, close, reset, back, forward, moves, counter, turn, inCheck, mate, stalemate = Copy(title=title, settings=settings, close=close, reset=reset, back=back, forward=forward, moves=moves, counter=counter, turn=turn, inCheck=inCheck, mate=mate, stalemate=stalemate)
@@ -94,7 +94,7 @@ type Settings = record:
     dark: Paint                # the squares' colours: the last good one typed
     light: Paint
     border: Nat                # the board's border, in points
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 MakeSettings: fn Copy, Text, Text, Paint, Paint, Nat -> Settings
 fn MakeSettings copy, white, black, dark, light, border = Settings(copy=copy, white=white, black=black, dark=dark, light=light, border=border)
@@ -174,7 +174,7 @@ type History = record:
     games: [Game]              # games[0] is the opening; games[i] follows the i-th move
     moves: [Text]              # moves[i] led from games[i] to games[i + 1]
     shown: Nat                 # the position on the board
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 let opening = History(games=[[initial]], moves=[[]], shown=0)
 
@@ -235,13 +235,13 @@ type Action = choice:
     StartOver                  # start the game over; the settings stay
     OpenSettings               # open the dialog, or close it
     CloseSettings              # close the dialog
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type Command = choice:
     Pick Sq                    # a square clicked
     Act Action                 # a button pressed
     Retitle Text               # the title typed: the window's title follows
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 RetitleTo: fn Text -> Command
 fn RetitleTo t = Retitle t

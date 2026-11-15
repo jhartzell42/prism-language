@@ -22,4 +22,4 @@ fn @Shown $n:
 @main: @unit
 @main:
     @Shown $ 0                                                   # 0
-    Ui.Label($text=$"{Len (Pad (Empty 1), "a")} {Len (Empty 2)} {Show (Pad (Empty 3), 7)}")    # 1
+    Ui.Label($text=$"{Len (Pad (Empty 1), "a")} {Len (Empty 2)} {Debug (Pad (Empty 3), 7)}")    # 1

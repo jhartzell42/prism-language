@@ -7,19 +7,19 @@ emit Gui.*
 type Point = record:
     x: Float
     y: Float
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Extent = record:
     w: Float
     h: Float
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Rect = record:
     x: Float
     y: Float
     w: Float
     h: Float
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What a scene draws: a row kind with no output, each command a tag. The Test World reads
 # `Draw.Clickable` to click an element by path (D9), through `Draw.Group` and `Draw.Clip`.
@@ -59,7 +59,7 @@ type Paint = choice:
     Green
     Felt
     Rgb Float, Float, Float
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # a turn about a pivot, then a scale
 type Turn = record:
@@ -67,7 +67,7 @@ type Turn = record:
     y: Float
     angle: Float
     scale: Float
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Key = choice:
     Char Char
@@ -76,17 +76,17 @@ type Key = choice:
     Backspace
     Tab
     Enter
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type WindowInput = choice:
     Press Point
     Pressed Key
     Resized Extent
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # the World's handle for a window, answered once
 type WindowId = WindowId Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # a bundle: the window's id, answered once by the first-value query, and its inputs
 tag Gui.Window of Element ((WindowId, !WindowInput)):

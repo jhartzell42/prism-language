@@ -7,7 +7,7 @@ use Ui.*
 type Box = record:
     w: Nat
     h: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 @page: @unit
 @page:

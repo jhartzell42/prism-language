@@ -6,8 +6,8 @@ test mod Tests
 Tally: fn Nat, Nat -> ((Nat, ?Nat))
 fn Tally total, n = ((total + n, if total + n > 4: ? (total + n) else: nil))
 
-Shown: fn ((Nat, a)) -> Text where a: ^Show
-fn Shown p = Show p
+Shown: fn ((Nat, a)) -> Text where a: ^Debug
+fn Shown p = Debug p
 
 Past: fn Nat -> Text
 fn Past t = "past {t}"

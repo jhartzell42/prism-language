@@ -10,8 +10,8 @@ fn @Pressing (Presser name):
     !one <- Ui.Button($label=$"{name} +1")
     !response <- Count.Request(!requests=((Add 1) on !one))
     $total <- Count.Query($query=$ Whole)
-    $last <- "nothing yet" then Show !response
-    Ui.Label($text=$"{name} sees {$total}; {$last}")
+    $last <- "nothing yet" then Debug !response
+    Ui.Label($text=$"{name} sees {Debug $total}; {$last}")
 
 @Seats: fn $Nat, !(Place ==> Response) -> @((unit, ![Asked Nat])) emit Ui.*
 fn @Seats $state, !responses = @HostCounter ($ {{(Presser "ada"): "ada", (Presser "bob"): "bob"}}), @Pressing, $state, !responses

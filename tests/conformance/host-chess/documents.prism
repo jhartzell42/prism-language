@@ -10,13 +10,13 @@ emit rest
 type Response a = choice:
     Accepted
     Declined a
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What a step gives: the next state, or a denial and its reason (chapter 4).
 type Stepped s d = choice:
     Next s
     Denied d
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # One role of one document. A value of `r` is one seat of the role: `Player White`,
 # `Spectator "ada"`. The associated types are chapter 3's facts per role, and `Step` and
@@ -35,18 +35,18 @@ trait ^Seat r:
 # type is `Never`, a choice with no case, which the parser refuses (bug 29).
 type NoRequest = choice:
     NotARequest
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type NoReason = choice:
     NotAReason
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # Where a request is made: the seat, as a value of the document's seat type `k`, and the
 # place within the seat's guest. Places order by seat, then by place.
 type Place k = record:
     seat: k
     at: Path
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 # A response on its way to the place that asked: the seat, as a value of the role's own
 # seat type `k`, the place within the seat's guest, and the response, its reason of that
@@ -55,7 +55,7 @@ type Responded k a = record:
     seat: k
     at: Path
     response: Response a
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What one request does to the document: the next state or none, and either way what the
 # place that asked is sent, as a value of the document's type `d`.
@@ -233,7 +233,7 @@ fn SittingOf ((k, v)) = v
 # What the leaving element of a role with no request fires: a unit type of the library's
 # own.
 type Leaves = leaves
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What a role's host hears from one place of a seat's guest: a request, or that the
 # participant leaves, with a last request or with none.

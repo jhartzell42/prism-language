@@ -10,7 +10,7 @@ emit rest
 type Color = choice:
     White
     Black
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type Man = choice:
     King
@@ -19,12 +19,12 @@ type Man = choice:
     Bishop
     Knight
     Pawn
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type Piece = record:
     color: Color
     man: Man
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Square = record:
     file: Nat                  # a to h, as 0 to 7
@@ -35,17 +35,21 @@ let letters = [["a", "b", "c", "d", "e", "f", "g", "h"]]
 
 # a square prints as a player reads it, `e2` (Type System chapter 3); a square off the
 # board has no such name and prints as its two numbers
-impl ^Show Square:
-    fn Show square = match letters[square.file]:
+impl ^Debug Square:
+    fn Debug square = match letters[square.file]:
         ? letter: "{letter}{square.rank + 1}"
         nil: "Square(file={square.file}, rank={square.rank})"
+
+# Text for people (ruling DD): as it debugs, the spelling this module chose.
+impl ^Display Square:
+    fn Display square = Debug square
 
 type Position = record:
     board: Square ==> Piece        # an absent key is an empty square
     turn: Color
     corners: [Square]              # the rook corners whose castling right is unspent
     ?passed: Square                # the square a pawn's double step just passed over
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # every color-dependent rank, so that the rules say `own.forward`
 type Ranks = record:
@@ -54,7 +58,7 @@ type Ranks = record:
     over: Nat                  # the rank a pawn's two steps pass over
     forward: Int               # the direction a pawn moves, up the ranks or down
     last: Nat                  # where a pawn promotes
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 RanksOf: fn Color -> Ranks
 fn RanksOf White = Ranks(home=0, pawns=1, over=2, forward=1, last=7)
@@ -70,7 +74,7 @@ type Manner = choice:
     Double Square                  # a pawn's two steps, and the square it passed over
     EnPassant Square               # a capture in passing, and the square of the pawn it takes
     Castling Square, Square            # the rook's corner, and the square the rook lands on
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---------------------------------------------------------------------------
 # Small helpers over arrays, the names kept apart from the prelude's
@@ -300,7 +304,7 @@ fn HasMove position = AnyOf (Keys position.board), \|from| (Owns position, from,
 type Move = choice:
     Moving Square, Square              # from, to
     Promoting Square, Square, Man      # from, to, what the pawn becomes
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 Origin: fn Move -> Square
 fn Origin (Moving from, to) = from
@@ -344,7 +348,7 @@ type MoveFault = choice:
     CastlingOutOfCheck             # the king is in check
     CastlingThroughCheck           # the square the king passes over is attacked
     LeavesKingInCheck              # the move is one the piece makes, and the mover's king is in check after it
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # why castling is refused, where `?CastleTo` gives nil: its checks in its order
 CastleFault: fn Position, Color, Square, Square -> MoveFault

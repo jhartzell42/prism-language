@@ -30,4 +30,4 @@ fn Sizes hs = Each hs, \|h| Extent h
 @page: @unit
 @page:
     let zero: Nat = Empty
-    Ui.Label($text=$"{Sizes [[(Hide 3), (HideText "ab")]]} {zero}")
+    Ui.Label($text=$"{Debug (Sizes [[(Hide 3), (HideText "ab")]])} {zero}")

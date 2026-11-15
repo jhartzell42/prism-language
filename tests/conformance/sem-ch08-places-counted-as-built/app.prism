@@ -11,7 +11,7 @@ use Ui.*
 type Mode = choice:
     Wide Text
     Narrow
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 @Tail: fn Bool -> @unit
 fn @Tail True:

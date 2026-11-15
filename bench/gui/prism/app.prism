@@ -17,7 +17,7 @@ use BasicWindow.Hits.*
 type Row = record:
     id: Nat
     label: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Op = choice:
     Create Nat                 # replace every row with this many new ones
@@ -27,7 +27,7 @@ type Op = choice:
     Swap                       # the second row and the 999th trade places
     Select Nat                 # the row in this slot
     Delete Nat                 # the row in this slot
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Sheet = record:
     rows: (Nat ==> Row)        # by slot, in order
@@ -35,7 +35,7 @@ type Sheet = record:
     slot: Nat                  # the next row's slot
     seed: Nat                  # the labels' generator
     ?selected: Nat             # a slot
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 let empty = Sheet(rows={{}}, next=1, slot=0, seed=42, ?selected=nil)
 

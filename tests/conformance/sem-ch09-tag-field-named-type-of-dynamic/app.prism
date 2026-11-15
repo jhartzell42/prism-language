@@ -11,7 +11,7 @@ use Ui.*
 type Boxed a = record:
     item: a
     label: Text
-derive ^Show
+derive ^Debug
 
 tag Count.Boxed of Element unit:
     value: Boxed $Nat

@@ -12,7 +12,7 @@ test mod Tests
 type P = record:
     a: Nat
     b: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Field: fn Nat -> Nat
 fn Field n = n + 1
@@ -64,5 +64,5 @@ fn Twice n = (Step n) + (Step (OnceJob n)) + (CallThen 0) + (RunToEnd 0)
 @Counted: fn Nat -> @unit
 fn @Counted n:
     !done <- @Run Twice, n
-    $shown <- "working" then Show !done
+    $shown <- "working" then Debug !done
     Ui.Label($text=$shown)

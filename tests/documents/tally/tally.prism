@@ -14,7 +14,7 @@ type TallyRole = choice:
     Teller
     Keeper
     Viewer
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 # ---- the state and its rules: plain functions
 
@@ -23,37 +23,37 @@ let limit = 5
 type Tally = record:
     total: Nat
     ?last: Text                          # the teller who added last
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 let empty = Tally(total=0, ?last=nil)
 
 type Add = choice:
     Add Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type KeeperRequest = choice:
     Clear
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Asks = choice:
     Whole
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # why a teller's request is declined
 type TellerReason = choice:
     AddedLast                            # this teller added last
     StopsAt Nat                          # the sum would pass the limit, which is this
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # why a keeper's request is declined
 type KeeperReason = choice:
     NothingToClear
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TellerView = record:
     total: Nat
     mayAdd: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---- the document: the tally under an order of one tick's requests. The order is the
 # protocol's (ruling SO), so the document's type names it: `Tallied OneEach` is the tally

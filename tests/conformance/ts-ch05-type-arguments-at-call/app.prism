@@ -17,7 +17,7 @@ fn Empty n = [[]]
 type Pair a b = record:
     left: a
     right: b
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Blank: fn Nat -> Pair [a] ?b
 fn Blank n = Pair(left=[[]], right=nil)

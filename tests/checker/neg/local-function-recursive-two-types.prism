@@ -17,4 +17,4 @@ fn Totals n, i:
 
 @page: @unit
 @page:
-    Ui.Label($text=$"sums {Totals 4, 4}")
+    Ui.Label($text=$"sums {Debug (Totals 4, 4)}")

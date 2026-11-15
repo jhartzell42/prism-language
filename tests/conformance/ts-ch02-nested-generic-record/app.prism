@@ -7,9 +7,9 @@ test mod Tests
 
 type Wrap a = record:
     inner: a
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 @main: @unit
 @main:
     let w = Wrap(inner=Wrap(inner=3))
-    Ui.Label($text=$"{Show w} {w.inner.inner}")    # 0
+    Ui.Label($text=$"{Debug w} {w.inner.inner}")    # 0

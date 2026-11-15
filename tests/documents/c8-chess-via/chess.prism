@@ -16,7 +16,7 @@ use Notation.*
 type ChessGame = record:
     positions: [Position]
     moves: [ChessMove]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 let fresh = ChessGame(positions=[[start]], moves=[[]])
 
@@ -27,13 +27,13 @@ fn Now g = Or (?Last g.positions), start
 type ChessReason = choice:
     NotYourMove
     IllegalMove ChessMove
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---- the protocol (Part IV ch. 3)
 
 type ChessQuery = choice:
     Whole
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type ChessSeats rest = record:
     $player: (Color ==> $@(@unit emit Seat.* ChessGame Player | rest))
@@ -91,5 +91,5 @@ StatusText: fn ChessGame -> Text
 fn StatusText game:
     let now = Now game
     let winner = Opponent now.turn
-    if HasMove now: "{now.turn} to move; moves: {Spelling game.moves}" else:
-        if InCheck now, now.turn: "checkmate, {winner} wins; moves: {Spelling game.moves}" else: "stalemate; moves: {Spelling game.moves}"
+    if HasMove now: "{Debug now.turn} to move; moves: {Spelling game.moves}" else:
+        if InCheck now, now.turn: "checkmate, {Debug winner} wins; moves: {Spelling game.moves}" else: "stalemate; moves: {Spelling game.moves}"

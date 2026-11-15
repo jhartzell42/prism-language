@@ -10,17 +10,17 @@ use Ui.*
 type Pt = record:
     x: Float
     y: Float
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type Shape = choice:
     Dot Float
     Disc Pt, Float
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type Chain = choice:
     End Float
     Link Float, Chain
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 let nan = 0.0 / 0.0
 let zero = 0.0

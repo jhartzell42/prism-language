@@ -25,15 +25,15 @@ trait ^Document d:
 type CountRole = choice:
     Raiser
     Watcher
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type Count = record:
     total: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Whole = choice:
     Whole
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 family Seat d (r: Role d) where d: ^Document
 

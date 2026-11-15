@@ -10,16 +10,16 @@ use Ui.*
 type Sq = record:
     file: Nat
     rank: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Watch = record:
     label: Text
-    value: any ^Show
+    value: any ^Debug
 
-Shown: fn (any ^Show) -> Text
-fn Shown v = Show v
+Shown: fn (any ^Debug) -> Text
+fn Shown v = Debug v
 
-Count: fn [any ^Show] -> Nat
+Count: fn [any ^Debug] -> Nat
 fn Count vs = Len vs
 
 @main: @unit

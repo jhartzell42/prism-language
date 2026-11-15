@@ -9,13 +9,13 @@ test mod Tests
 use Ui.*
 
 trait ^Paired a:
-    Pair: fn a, b -> Text where b: ^Show
+    Pair: fn a, b -> Text where b: ^Debug
 
 impl ^Paired Nat:
-    fn Pair n, y = "{n} with {Show y}"
+    fn Pair n, y = "{n} with {Debug y}"
 
-impl ^Paired [b] where b: ^Show:
-    fn Pair xs, y = "{Show xs} with {Show y}"
+impl ^Paired [b] where b: ^Debug:
+    fn Pair xs, y = "{Debug xs} with {Debug y}"
 
 @Page: @unit
 @Page:

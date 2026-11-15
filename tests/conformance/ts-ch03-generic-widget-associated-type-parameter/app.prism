@@ -14,11 +14,11 @@ trait ^Game r:
 
 type Chess = choice:
     Chess
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Step = choice:
     Step Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^Game Chess:
     type Move = Step

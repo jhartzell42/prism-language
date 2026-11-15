@@ -17,5 +17,5 @@ fn Run n = Twice Inc, n
 @Counted: fn Nat -> @unit
 fn @Counted n:
     !done <- @Run Run, n                                    # 0
-    $shown <- "working" then Show !done
+    $shown <- "working" then Debug !done
     Ui.Label($text=$shown)                                   # 1

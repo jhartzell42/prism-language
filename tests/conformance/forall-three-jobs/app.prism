@@ -17,7 +17,7 @@ test mod Tests
 type Access = choice:
     Reader
     Writer
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A body of any type, indexed by who may edit it.
 type Edit s (r: Access) = record:
@@ -37,7 +37,7 @@ fn Told pair = match pair:
 Body: fn Edit s r -> s
 fn Body edit = edit.body
 
-Shown: forall s (r: Access). fn Edit s r -> Text where s: ^Show
+Shown: forall s (r: Access). fn Edit s r -> Text where s: ^Display
 fn Shown edit = "{Body<<s, r>> edit}"
 
 Drafted: fn Text -> Edit Text Writer

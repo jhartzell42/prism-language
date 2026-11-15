@@ -1,7 +1,7 @@
-# `impl-duplicate`: a derived `^Show` and a written one.
+# `impl-duplicate`: a derived `^Debug` and a written one.
 type Card = record:
     rank: Nat
-derive ^Show
+derive ^Debug
 
-impl ^Show Card:
-    fn Show c = "card {c.rank}"
+impl ^Debug Card:
+    fn Debug c = "card {c.rank}"

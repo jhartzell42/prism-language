@@ -15,7 +15,7 @@ tag Line.Declined of Fault
 ~After: fn ChessGame, Color, PlayerRequest -> ~ChessGame
 fn ~After game, color, request = match StepBy game, color, request:
     Next next: ~ next
-    Denied why: Error(kind=Line.Declined, message="{request} by {color} is declined: {why}")
+    Denied why: Error(kind=Line.Declined, message="{Debug request} by {Debug color} is declined: {Debug why}")
 
 # the same after a game that is itself the end of a line
 ~Then: fn ~ChessGame, Color, PlayerRequest -> ~ChessGame

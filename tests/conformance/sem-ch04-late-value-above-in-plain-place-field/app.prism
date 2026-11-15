@@ -16,7 +16,7 @@ tag Pad.Count of Element Nat:
 type Mode = choice:
     Loud Text
     Soft
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 @Panel: fn Mode, $Nat -> @unit
 fn @Panel mode, $k:

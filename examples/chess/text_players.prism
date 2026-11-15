@@ -59,7 +59,7 @@ type Last = choice:
     NothingAsked
     CouldNotRead Text
     Answered (Response ChessGame Player)
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 LastText: fn Last -> Text
 fn LastText NothingAsked = "none yet"
@@ -77,7 +77,7 @@ fn ?Unread typed = if (?ParseMove typed) == nil: ? (CouldNotRead typed) else: ni
 # request is applied, then the seat goes.
 @TextPlayer: fn Color -> @unit emit r | Ui.* | Seat.* ChessGame Player
 fn @TextPlayer color:
-    let name = Show color
+    let name = Debug color
     $?told <- Seat.Query($query=$ Whole)                            # 0
     @BoardText (?BoardOf (?GameOf $?told))                           # 1, 2
     Ui.Label($text=$"{name}'s view: {StatusOf color, $?told}")       # 3
@@ -103,7 +103,7 @@ fn @TextPlayer color:
 type Script = choice:
     InTurn [PlayerRequest]
     AtTheStart PlayerRequest
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A script's next request when it is told the game: in turn, the entry for this move
 # number while the game is on and it is this seat's move; at the start, its one request
@@ -122,7 +122,7 @@ fn @ScriptedPlayer color, script:
     !told <- @Told $?told
     !response <- Seat.Request(!requests=(!Filter (?ScriptStep color, script, !told)))   # 1
     $said <- "nothing yet" then Said !response
-    Ui.Label($text=$"{Show color} (scripted): {$said}")              # 2
+    Ui.Label($text=$"{Debug color} (scripted): {$said}")              # 2
 
 # ---- a spectator
 

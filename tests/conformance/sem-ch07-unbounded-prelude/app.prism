@@ -13,5 +13,5 @@ fn Doubles xs = Each xs, Double
 @Listed: fn [Nat] -> @unit
 fn @Listed xs:
     !done <- @Run Doubles, xs                               # 0
-    $shown <- "working" then Show !done
+    $shown <- "working" then Debug !done
     Ui.Label($text=$shown)                                   # 1

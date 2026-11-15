@@ -1,5 +1,5 @@
-# An existential of a program's own trait (Type System ch. 3: "`any ^Show` is a value of
-# some type that implements `^Show`, the type hidden"; ch. 5, "Existentials are
+# An existential of a program's own trait (Type System ch. 3: "`any ^Debug` is a value of
+# some type that implements `^Debug`, the type hidden"; ch. 5, "Existentials are
 # dictionaries": `any e` solves the bounds at `e`'s type and stores them, and the value is
 # unpacked at a parameter that is not one). `^Weighed` is the program's; a hidden number
 # and a hidden text each answer `Weigh` by their own impl.

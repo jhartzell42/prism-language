@@ -27,13 +27,13 @@ type Ordering = choice:
     Less
     Equal
     Greater
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 # The type with no value (Part III ch. 6, "`Never` closes a role's requests"; Jimmy, 12
 # November: "Never is an empty choice and goes in the prelude"). A `match` on it has no
 # arm, and `!Never` has one value, `never`, the event that never fires.
 type Never = choice:
-derive ^Eq, ^Ord, ^Show, ^Pod
+derive ^Eq, ^Ord, ^Debug, ^Pod
 
 # The row kinds (Type System ch. 2, Rows; Semantics ch. 10).
 type Element o = row
@@ -43,7 +43,7 @@ type Fault = row
 type Error = record:
     kind: Fault
     message: Text
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 # A widget giving up (Semantics ch. 10, "Exceptions: a widget giving up").
 type Exception = record:
@@ -51,7 +51,7 @@ type Exception = record:
     message: Text
     spans: [Span]
     ?path: Path
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A source range: file, line, column, binding (Appendix B, Types).
 type Span = record:
@@ -59,16 +59,16 @@ type Span = record:
     line: Nat
     column: Nat
     binding: Text
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 # What one cycle of a job gives (Appendix B, Types; Semantics ch. 7).
 type Turn b = choice:
     More
     Done b
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The prelude's tags (Appendix B, Prelude tags; Semantics ch. 10).
-tag Prelude.Unwrap of Element !a where a: ^Show:
+tag Prelude.Unwrap of Element !a where a: ^Debug:
     !~value: a
 
 tag Prelude.Exceptions of Element !Exception
@@ -100,8 +100,17 @@ trait ^Ord a where a: ^Eq:
     >: fn a, a -> Bool
     >=: fn a, a -> Bool
 
-trait ^Show a:
-    Show: fn a -> Text
+# Text for debugging, and the transcript's (ruling DD): a text quoted, a character as its
+# literal; `derive ^Debug` writes it by structure.
+trait ^Debug a:
+    Debug: fn a -> Text
+
+# Text for people (ruling DD): what a placeholder (`"{x}"`) places. The prelude gives it a
+# text and a character as themselves, the numbers and `Bool`; a list, a map, an optional,
+# a record and a choice have none unless a program writes one, and a placeholder over one
+# writes `{Debug x}`.
+trait ^Display a:
+    Display: fn a -> Text
 
 # `Nat` has `-?` and no `-` (round 47 NS); `/` gives `?` on the integers (doubt NN).
 trait ^Num a where a: ^Eq:
@@ -229,7 +238,7 @@ type Group = record:
     text: Text
     front: Cursor
     back: Cursor
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # `groups[0]` is the whole match, `nil` a group that took no part; `named` holds each
 # named group that took part.
@@ -239,7 +248,7 @@ type Match = record:
     back: Cursor
     groups: [?Group]
     named: Text ==> Group
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # `p` the pattern's size, `n` the text's length in bytes, `k` the matches.
 # Linear in the text and in `p`; `nil` outside the dialect, with no flags.

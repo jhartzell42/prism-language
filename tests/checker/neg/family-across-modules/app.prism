@@ -8,7 +8,7 @@ mod Lines
 use Ui
 
 type Ink = row
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 tag Ink.Fill of Ink:
     width: Nat

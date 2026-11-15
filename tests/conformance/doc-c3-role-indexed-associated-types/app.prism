@@ -20,24 +20,24 @@ trait ^Document d:
 type CountRole = choice:
     Raiser
     Watcher
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 # A count that raisers raise, which stops at five, and watchers watch.
 type Count = record:
     total: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Raise = choice:
     Raise Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TooHigh = choice:
     StopsAt Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Whole = choice:
     Whole
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^Document Count:
     type Role = CountRole
@@ -57,7 +57,7 @@ let limit = 5
 type Outcome = choice:
     Next Count
     Denied (Reason Count Raiser)
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Stepped: fn Count, Request Count Raiser -> Outcome
 fn Stepped count, (Raise n) = if count.total + n > limit: Denied (StopsAt limit) else: Next Count(total=(count.total + n))

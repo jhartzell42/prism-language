@@ -3,7 +3,7 @@
 # in lambdas whose parameters are patterns, and constructor patterns nested through a
 # recursive choice's payloads. The back end types no field of an `Error`
 # (lower/expr.prism, `FieldInfo`: "a field of an Error"), and its message in a placeholder
-# prints as `Show` would, in quotes. Written by Claude on the
+# prints as `Debug` would, in quotes. Written by Claude on the
 # claude-lowering branch; subject to change.
 emit Ui.*
 test mod Tests
@@ -12,19 +12,19 @@ use Ui.*
 type Pair a b = record:
     left: a
     right: b
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Named = Pair Text Nat
 
 type Shape = choice:
     Circle Nat
     Box Pair Nat Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Tree = choice:
     Leaf Nat
     Node Tree, Tree
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Gone: fn Nat -> Error
 fn Gone n = Error(kind=Fs.NotFound, message="gone {n}")

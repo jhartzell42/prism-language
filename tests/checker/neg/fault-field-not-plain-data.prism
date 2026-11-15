@@ -19,7 +19,7 @@ tag Count.Moving of Fault:
     $limit: Nat
 
 tag Count.Packed of Fault:
-    what: any ^Show
+    what: any ^Debug
 
 tag Count.TooMany of Fault:
     limit: Nat

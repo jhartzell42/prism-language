@@ -15,12 +15,12 @@ use Ui.*
 type Size = choice:
     Big
     Small
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Mode = choice:
     Loud Size
     Soft
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 @Wide: fn Nat -> @Nat
 fn @Wide 10:

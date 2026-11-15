@@ -27,11 +27,11 @@ trait ^StateDocument d where d: ^Document:
 
 type Count = record:
     total: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Raise = choice:
     Raise Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^Document Count:
     type Request = Raise

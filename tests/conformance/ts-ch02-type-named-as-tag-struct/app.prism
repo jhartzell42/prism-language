@@ -5,15 +5,15 @@ emit Ui.*
 test mod Tests
 
 type Ink = row
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 tag Ink.Rect of Ink:
     w: Nat
 
 type InkRect = record:
     w: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 @main: @unit
 @main:
-    Ui.Label($text=$"{Show (InkRect(w=2))} {Show [[(Ink.Rect(w=3))]]}")    # 0
+    Ui.Label($text=$"{Debug (InkRect(w=2))} {Debug [[(Ink.Rect(w=3))]]}")    # 0

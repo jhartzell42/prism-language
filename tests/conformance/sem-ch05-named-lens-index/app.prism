@@ -10,7 +10,7 @@ test mod Tests
 type Regs = record:
     acc: Int
     x: Int
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 &?Second: fn &[Int] -> &?Int
 fn &?Second &xs = &xs[1]
@@ -42,7 +42,7 @@ fn Charge machines, n = update machines:
 type Deck = record:
     name: Text
     cards: [Int]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 &?SecondCard: fn &Deck -> &?Int
 fn &?SecondCard &deck = &?Second &deck.cards

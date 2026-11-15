@@ -9,12 +9,12 @@ use Ui.*
 type Sq = record:
     file: Nat
     rank: Nat
-derive ^Eq, ^Show, ^Pod
+derive ^Eq, ^Debug, ^Pod
 
 type Mark = choice:
     Cross
     Ring
-derive ^Eq, ^Show, ^Pod
+derive ^Eq, ^Debug, ^Pod
 
 Saved: fn [any ^Pod] -> Nat
 fn Saved vs = Len vs

@@ -8,19 +8,19 @@ use Ui.*
 
 type Main = record:
     n: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type MainRow = choice:
     MainRow Nat
     Other
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type MainGen = record:
     g: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 ShowMain: fn Nat -> Text
-fn ShowMain n = Show (Main(n=n))
+fn ShowMain n = Debug (Main(n=n))
 
 @main: @unit
 @main:
@@ -29,4 +29,4 @@ fn ShowMain n = Show (Main(n=n))
     for i, $x <- $xs:                                            # 1/[k]
         Ui.Label($text=$"{ShowMain $x}")
     ignore <- rebuild $xs:                                       # 2/#g
-        Ui.Label($text=$"{Show (MainRow (Len _))} {Show (MainGen(g=1))}")
+        Ui.Label($text=$"{Debug (MainRow (Len _))} {Debug (MainGen(g=1))}")

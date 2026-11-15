@@ -12,33 +12,33 @@ use Ui.*
 type Link = record:
     n: Nat
     ?next: Link
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Inner = record:
     back: Outer
     k: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Outer = record:
     ?pair: ((Nat, Inner))
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Ring = record:
     mid: Mid
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Mid = record:
     last: Last
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Last = record:
     ?ring: Ring
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Chain a = record:
     item: a
     ?more: (Chain a)
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Nevermore = record:
     other: Ever
@@ -71,4 +71,4 @@ fn Total c = match c.?more:
     let r = Ring(mid=Mid(last=Last(?ring=nil)))
     let c = Chain(item=2, ?more=(? Chain(item=3, ?more=nil)))
     Ui.Label($text=$"{Depth l} {Ks o} {Total c}")                                # 0
-    Ui.Label($text=$"{r} {l == l}")                                              # 1
+    Ui.Label($text=$"{Debug r} {l == l}")                                              # 1

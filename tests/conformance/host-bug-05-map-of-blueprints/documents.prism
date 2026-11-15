@@ -4,7 +4,7 @@ emit rest
 type Response = choice:
     Accepted
     Declined Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Stepped s = choice:
     Next s
@@ -21,14 +21,14 @@ trait ^Seat r:
 type Place = record:
     seat: Text
     at: Path
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type Asked s = record:
     place: Place
     apply: fn s -> Stepped s
 
-Asking: fn r, Path, Request r -> Asked (State r) where r: ^Seat, r: ^Show
-fn Asking seat, at, request = Asked(place=Place(seat=(Show seat), at=at), apply=(\|state| Step state, seat, request))
+Asking: fn r, Path, Request r -> Asked (State r) where r: ^Seat, r: ^Debug
+fn Asking seat, at, request = Asked(place=Place(seat=(Debug seat), at=at), apply=(\|state| Step state, seat, request))
 
 type Kept s = record:
     state: s
@@ -56,8 +56,8 @@ fn @InMemory initial, !asked:
     $state <- initial then StateOf !outcome
     @ (($state, ResponsesOf !outcome))
 
-?ResponseTo: fn r, Path, (Place ==> Response) -> ?Response where r: ^Show
-fn ?ResponseTo seat, at, responses = ?Get responses, Place(seat=(Show seat), at=at)
+?ResponseTo: fn r, Path, (Place ==> Response) -> ?Response where r: ^Debug
+fn ?ResponseTo seat, at, responses = ?Get responses, Place(seat=(Debug seat), at=at)
 
 InOrder: fn (k ==> (Path ==> a)) -> [a]
 fn InOrder asked = Fold (Values asked), [[]], \|all, places| Append all, (Values places)

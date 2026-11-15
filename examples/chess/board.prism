@@ -32,8 +32,12 @@ type Cell = record:
     square: Square
 derive ^Eq, ^Ord
 
-impl ^Show Cell:
-    fn Show cell = "{Lower (Show cell.side)}{Upper (Show cell.square)}"
+impl ^Debug Cell:
+    fn Debug cell = "{Lower (Debug cell.side)}{Upper (Debug cell.square)}"
+
+# Text for people (ruling DD): as it debugs, the spelling this module chose.
+impl ^Display Cell:
+    fn Display cell = Debug cell
 
 let mirror = [[((0, 7)), ((1, 6)), ((2, 5)), ((3, 4)), ((4, 3)), ((5, 2)), ((6, 1)), ((7, 0))]]
 
@@ -47,7 +51,7 @@ type Button = choice:
     GiveUp                             # resign
     ProposeDraw                        # offer a draw
     TakeDraw                           # accept the draw offered
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type Knob = record:
     side: Color
@@ -62,8 +66,8 @@ fn ButtonName GiveUp = "Resign"
 fn ButtonName ProposeDraw = "Offer"
 fn ButtonName TakeDraw = "Accept"
 
-impl ^Show Knob:
-    fn Show knob = "{Lower (Show knob.side)}{ButtonName knob.button}"
+impl ^Debug Knob:
+    fn Debug knob = "{Lower (Debug knob.side)}{ButtonName knob.button}"
 
 Knobs: fn Color -> (Knob ==> unit)
 fn Knobs color = Fold [[GoBack, GoForward, GiveUp, ProposeDraw, TakeDraw]], {{}}, \|all, button| Insert all, Knob(side=color, button=button), unit
@@ -79,7 +83,7 @@ fn ButtonLabel TakeDraw = "Accept the draw"
 type Offer = choice:
     Become Man
     Withdraw                           # close the dialog; nothing is sent
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type Choice = record:
     side: Color
@@ -87,11 +91,11 @@ type Choice = record:
 derive ^Eq, ^Ord
 
 OfferLabel: fn Offer -> Text
-fn OfferLabel (Become man) = Show man
+fn OfferLabel (Become man) = Debug man
 fn OfferLabel Withdraw = "Cancel"
 
-impl ^Show Choice:
-    fn Show option = "{Lower (Show option.side)}{OfferLabel option.offer}"
+impl ^Debug Choice:
+    fn Debug option = "{Lower (Debug option.side)}{OfferLabel option.offer}"
 
 Choices: fn Color -> (Choice ==> unit)
 fn Choices color = Fold [[(Become Queen), (Become Rook), (Become Bishop), (Become Knight), Withdraw]], {{}}, \|all, offer| Insert all, Choice(side=color, offer=offer), unit
@@ -102,19 +106,19 @@ type Command = choice:
     Pick Square                        # a square pressed
     Act Button                         # a button pressed
     Choose Offer                       # a button of the promotion dialog pressed
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # an earlier position on the board: how many moves led to it, and the position
 type Viewing = record:
     index: Nat
     position: Position
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # a pawn's move to its last rank, waiting for the dialog to say what the pawn becomes
 type Pending = record:
     from: Square
     to: Square
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # the command pressed first, in the keys' order, when two land in one tick
 ?Earliest: fn (k ==> Command) -> ?Command
@@ -254,8 +258,8 @@ fn PaintOf ?selected, ?told, square = if ?selected == (? square): Yellow else:
         if IsDark square: darkPaint else: lightPaint
 
 StatusLine: fn Color, ?PlayerTold -> Text
-fn StatusLine color, nil = "{color}: loading"
-fn StatusLine color, (? told) = if told.game.?offered == (? (Opponent color)): "{color}: {StatusText told.game}; a draw is offered" else: "{color}: {StatusText told.game}"
+fn StatusLine color, nil = "{Debug color}: loading"
+fn StatusLine color, (? told) = if told.game.?offered == (? (Opponent color)): "{Debug color}: {StatusText told.game}; a draw is offered" else: "{Debug color}: {StatusText told.game}"
 
 DeclinedLine: fn ?ChessReason -> Text
 fn DeclinedLine nil = ""
@@ -310,7 +314,7 @@ fn @Panel color, $?told, $?pinned, $?declined = @Column 6.0, @widget:
 # the promotion dialog's form: what the pawn becomes, or nothing
 @PromotionForm: fn Color -> @!Command
 fn @PromotionForm color = @Column 8.0, @widget:
-    Pane.Label($text=$"{color}'s pawn becomes")
+    Pane.Label($text=$"{Debug color}'s pawn becomes")
     !chosen <- @Row 4.0, @widget:
         !buttons <- for option, $present <- $ (Choices color):
             !click <- Pane.Button($label=$ (OfferLabel option.offer))

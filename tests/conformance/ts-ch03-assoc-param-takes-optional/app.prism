@@ -11,7 +11,7 @@ trait ^Box a:
 type Jar = choice:
     Full Text
     Empty
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^Box Jar:
     type Item = ?Text
@@ -21,4 +21,4 @@ impl ^Box Jar:
 
 @main: @unit
 @main:
-    Ui.Label($text=$"{Show (Make Empty, (? "x"))} {Show (Make (Full "y"), nil)}")    # 0
+    Ui.Label($text=$"{Debug (Make Empty, (? "x"))} {Debug (Make (Full "y"), nil)}")    # 0

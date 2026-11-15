@@ -31,7 +31,7 @@ type Case = choice:
     LoudAfterLabel
     SoftAfterLabel
     LoudAlone
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 LabelFirst: fn Case -> Bool
 fn LabelFirst LoudAlone = False

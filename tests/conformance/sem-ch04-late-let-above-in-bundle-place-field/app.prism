@@ -19,7 +19,7 @@ tag Pad.Port of Element ((Nat, $Text)):
 type Mode = choice:
     Loud Text
     Soft
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 @Panel: fn Mode -> @unit
 fn @Panel mode:

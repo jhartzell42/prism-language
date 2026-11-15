@@ -11,7 +11,7 @@ test mod Tests
 type P = record:
     a: Nat
     b: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Twice: fn Nat -> Nat
 fn Twice n = n * 2
@@ -35,7 +35,7 @@ fn ?Size ?m, k = Len (Or ?m[k], nil)
 
 # A method call (a trait's) through the `?`.
 ?Shown: fn ?P -> ?Text
-fn ?Shown ?p = Show ?p
+fn ?Shown ?p = Debug ?p
 
 # `~` lifts as `?` does, the leftmost `Error` winning.
 ~Half: fn Nat -> ~Nat

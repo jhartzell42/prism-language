@@ -9,11 +9,11 @@ test mod Tests
 type Response = choice:
     Accepted
     Refused Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Query = choice:
     Whole
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 tag Seat.Request of Element !Response:
     $?latest: ((Nat, Nat))

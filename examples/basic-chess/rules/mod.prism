@@ -10,7 +10,7 @@ test mod Tests
 type Color = choice:
     White
     Black
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Man = choice:
     King
@@ -19,12 +19,12 @@ type Man = choice:
     Bishop
     Knight
     Pawn
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Piece = record:
     color: Color
     man: Man
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Sq = record:
     file: Nat                  # a to h, as 0 to 7
@@ -34,15 +34,19 @@ derive ^Eq, ^Ord
 let letters = [["a", "b", "c", "d", "e", "f", "g", "h"]]
 
 # a square prints as a player reads it, `e2` (Type System chapter 3)
-impl ^Show Sq:
-    fn Show sq = "{Or letters[sq.file], "?"}{sq.rank + 1}"
+impl ^Debug Sq:
+    fn Debug sq = "{Or letters[sq.file], "?"}{sq.rank + 1}"
+
+# Text for people (ruling DD): as it debugs, the spelling this module chose.
+impl ^Display Sq:
+    fn Display sq = Debug sq
 
 type Game = record:
     board: Sq ==> Piece        # an absent key is an empty square
     turn: Color
     corners: [Sq]              # the rook corners whose castling right is unspent
     ?passed: Sq                # the square a pawn's double step just passed over
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # every color-dependent rank, so that the rules say `own.forward`
 type Ranks = record:
@@ -50,7 +54,7 @@ type Ranks = record:
     pawns: Nat                 # where the pawns start
     forward: Int               # the direction a pawn moves, up the ranks or down
     last: Nat                  # where a pawn promotes
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 RanksOf: fn Color -> Ranks
 fn RanksOf White = Ranks(home=0, pawns=1, forward=1, last=7)
@@ -66,7 +70,7 @@ type Manner = choice:
     Double Sq                  # a pawn's two steps, and the square it passed over
     EnPassant Sq               # a capture in passing, and the square of the pawn it takes
     Castling Sq, Sq            # the rook's corner, and the square the rook lands on
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---------------------------------------------------------------------------
 # Small helpers over arrays, the names kept apart from the prelude's
@@ -255,7 +259,7 @@ fn HasMove g = AnyOf (Keys g.board), \|from| (Owns g, from, g.turn) and AnyOf sq
 
 Status: fn Game -> Text
 fn Status g:
-    let side = Show g.turn
+    let side = Debug g.turn
     match ((HasMove g, (InCheck g, g.turn))):
         ((False, True)): "{side} has been checkmated"
         ((False, False)): "{side} would be next, but it's a stalemate"

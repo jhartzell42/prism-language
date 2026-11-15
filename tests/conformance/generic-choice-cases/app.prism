@@ -10,7 +10,7 @@ type Tree a = choice:
     Leaf a
     Node (Tree a), (Tree a)
     Empty
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Count: fn Tree a -> Nat
 fn Count (Leaf ignore) = 1
@@ -26,4 +26,4 @@ fn Leaves ts = Each ts, Leaf
 @page: @unit
 @page:
     let t = Built 3
-    Ui.Label($text=$"{Count t} {t} {Leaves [["a", "b"]]} {t == (Built 3)}")      # 0
+    Ui.Label($text=$"{Count t} {Debug t} {Debug (Leaves [["a", "b"]])} {t == (Built 3)}")      # 0

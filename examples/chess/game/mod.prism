@@ -21,7 +21,7 @@ type ChessResult = choice:
     DrawnByFiftyMoves                    # fifty moves by each side with no capture and no pawn's move
     DrawnByRepetition                    # one position for the third time
     DrawnByInsufficientMaterial          # neither side can ever mate
-derive ^Eq, ^Show, ^Pod
+derive ^Eq, ^Debug, ^Pod
 
 type ChessGame = record:
     position: Position                   # the board, the side to move, castling rights, the en passant square
@@ -30,7 +30,7 @@ type ChessGame = record:
     earlier: [Position]                  # every position before this one, the opening first
     ?offered: Color                      # who has a draw offer standing
     ?result: ChessResult
-derive ^Eq, ^Show, ^Pod
+derive ^Eq, ^Debug, ^Pod
 
 let fresh = ChessGame(position=start, moves=[[]], quiet=0, earlier=[[]], ?offered=nil, ?result=nil)
 
@@ -43,7 +43,7 @@ type PlayerRequest = choice:
     Resign
     OfferDraw
     AcceptDraw
-derive ^Eq, ^Ord, ^Show, ^Pod
+derive ^Eq, ^Ord, ^Debug, ^Pod
 
 # why a player's request is declined
 type ChessReason = choice:
@@ -54,19 +54,19 @@ type ChessReason = choice:
     IllegalMove MoveFault                # a move of the player's own piece, and why the rules refuse it
     NoDrawOffered
     DrawAlreadyOffered
-derive ^Eq, ^Show, ^Pod
+derive ^Eq, ^Debug, ^Pod
 
 # what either role may ask to know
 type ChessQuery = choice:
     Whole
-derive ^Eq, ^Show, ^Pod
+derive ^Eq, ^Debug, ^Pod
 
 # What a player is told: the game, and its own legal moves, which are none unless it is
 # this seat's move. A spectator is told the game alone.
 type PlayerTold = record:
     game: ChessGame
     legal: [ChessMove]
-derive ^Eq, ^Show, ^Pod
+derive ^Eq, ^Debug, ^Pod
 
 # ---- the seats: a player seat per color, spectators by name
 

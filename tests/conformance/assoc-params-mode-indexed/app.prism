@@ -13,7 +13,7 @@ type Mode = choice:
     Idle
     Heating
     Boiled
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What an appliance gives in each mode, and what it logs of a reading in each mode.
 trait ^Appliance a:
@@ -22,7 +22,7 @@ trait ^Appliance a:
 
 type Kettle = record:
     degrees: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^Appliance Kettle:
     type Out Idle = Nat

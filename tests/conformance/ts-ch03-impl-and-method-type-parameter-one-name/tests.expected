@@ -1,4 +1,4 @@
-# Derived by hand from Type System ch. 3 (the impl at `Nat` and the impl at `[b]` answer `Pair`; `Show` of an array and of a text). Never run.
+# Derived by hand from Type System ch. 3 (the impl at `Nat` and the impl at `[b]` answer `Pair`; `Debug` of an array and of a text). Never run.
 test it_builds
 
 tick 0

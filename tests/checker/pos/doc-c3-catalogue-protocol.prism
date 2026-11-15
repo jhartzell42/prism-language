@@ -14,28 +14,28 @@ trait ^Document d:
 type CatalogueRole = choice:
     Librarian
     Reader
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type UserId = choice:
     UserId Text
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type BookId = choice:
     BookId Nat
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type Book = record:
     id: BookId
     title: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Filter = choice:
     Titled Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Catalogue = record:
     books: [Book]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^Document Catalogue:
     type Role = CatalogueRole
@@ -50,16 +50,16 @@ impl ^Document Catalogue:
 type LibrarianRequest = choice:
     Add Book
     Withdraw BookId
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type LibrarianReason = choice:
     AlreadyHeld BookId
     NoSuchBook BookId
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Search = choice:
     Search Filter
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A librarian's request, at the role's own types.
 ?Asks: fn SeatId Catalogue Librarian, Request Catalogue Librarian -> ?(Reason Catalogue Librarian)

@@ -1,7 +1,7 @@
-# A generic tag whose variable has no `^Show` bound (Semantics ch. 8: "Every field and
+# A generic tag whose variable has no `^Debug` bound (Semantics ch. 8: "Every field and
 # every output prints", and "No unprintable fields"; its table of what is checked, "tag
-# variables: appear in the output; bounded by `^Show` on the line"; the book's own
-# generic tag is `tag Prelude.Unwrap of Element !a where a: ^Show:`). Written by Claude
+# variables: appear in the output; bounded by `^Debug` on the line"; the book's own
+# generic tag is `tag Prelude.Unwrap of Element !a where a: ^Debug:`). Written by Claude
 # on the claude-lowering branch; subject to change.
 emit Ui.* | Pad.*
 

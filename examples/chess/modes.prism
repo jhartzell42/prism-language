@@ -19,12 +19,12 @@ use Implementations.*
 type FrontEnd = choice:
     Boards                       # a board per side, in one window
     Terminals                    # a terminal per side
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Mode = choice:
     Running FrontEnd, Keeping, [Color]   # the sides that sit at this program
     ServerOn Nat                            # a server listening on this port
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # what a word of the command line asks for
 type Flag = choice:
@@ -32,7 +32,7 @@ type Flag = choice:
     FileAt
     Connecting
     ServerAt
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 let flags = {{"--terminals": AtTerminals, "--file": FileAt, "--connect": Connecting, "--server": ServerAt}}
 let sides = {{"white": White, "black": Black}}
@@ -53,7 +53,7 @@ type Reading = choice:
     Flags Mode
     Taking Flag, [Text], Mode
     Unreadable
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 ?ModeOf: fn [Text] -> ?Mode
 fn ?ModeOf args = match Fold args, (Flags hotSeat), ReadWord:

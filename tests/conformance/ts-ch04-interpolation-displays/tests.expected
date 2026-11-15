@@ -1,4 +1,4 @@
-# Derived by hand from Jimmy's ruling (interpolation is display, `^Show` is debug): the characters place as themselves, the text and the numbers as they are; the array, the tuple, the record and the truth value place as they show, the characters and the text inside them quoted.
+# Derived by hand from Jimmy's ruling (interpolation is display, `^Debug` is debug): the characters place as themselves, the text and the numbers as they are; the array, the tuple, the record and the truth value place as they show, the characters and the text inside them quoted.
 test interpolation_displays
 
 tick 0

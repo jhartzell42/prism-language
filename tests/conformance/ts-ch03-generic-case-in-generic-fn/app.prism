@@ -7,7 +7,7 @@ test mod Tests
 type Tree a = choice:
     Leaf
     Node (Tree a), a, (Tree a)
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Plant: fn Tree a, a -> Tree a where a: ^Ord
 fn Plant Leaf, x = Node Leaf, x, Leaf

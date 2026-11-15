@@ -13,11 +13,11 @@ trait ^Gauge g:
 
 type Thermometer = record:
     degrees: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Weathervane = record:
     wind: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^Gauge Thermometer:
     type Reading = Nat

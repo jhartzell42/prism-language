@@ -8,22 +8,22 @@ test mod Tests
 type Response = choice:
     Accepted
     Refused Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Query = choice:
     Whole
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Side = choice:
     White
     Black
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 # What every seat is told: the count and whose move it is.
 type Game = record:
     count: Nat
     turn: Side
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The player's language: the latest numbered request, and the query.
 tag Play.Request of Element !Response:
@@ -54,12 +54,12 @@ fn @Player name:
     !response <- @Ask (1 on !one)                              # 1/0
     $game <- Play.Query($query=$ Whole)                        # 2
     $last <- "nothing yet" then Said !response
-    Ui.Label($text=$"{name} sees {$game.count}, {$game.turn} to move; {$last}")   # 3
+    Ui.Label($text=$"{name} sees {$game.count}, {Debug $game.turn} to move; {$last}")   # 3
 
 @spectator: @unit emit Ui.* | Watch.*
 @spectator:
     $game <- Watch.Query($query=$ Whole)                       # 0
-    Ui.Label($text=$"spectator sees {$game.count}, {$game.turn} to move")         # 1
+    Ui.Label($text=$"spectator sees {$game.count}, {Debug $game.turn} to move")         # 1
 
 # The implementation's state: the game, each request place's last number, and the
 # responses of the last step by seat and place.
@@ -76,7 +76,7 @@ type Asking = record:
     place: Path
     number: Nat
     amount: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Asked: fn Side, (Path ==> Elem (Ui.* | Play.*)) -> [Asking]
 fn Asked side, doc = Fold doc, [[]], \|acc, p, e| match e:

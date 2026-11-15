@@ -4,23 +4,23 @@ use Documents.*
 
 type Presser = choice:
     Presser Text
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type Viewer = choice:
     Viewer Text
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type Add = choice:
     Add Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Asks = choice:
     Whole
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Nothing = choice:
     Nothing
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^Seat Presser:
     type State = Nat

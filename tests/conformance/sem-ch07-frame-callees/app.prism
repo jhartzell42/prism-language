@@ -43,5 +43,5 @@ fn Run n = (ByField (Ops(step=Inc, label="x")), n) + (ByLet n) + (ByList [[Inc, 
 @main: @unit
 @main:
     !done <- @Run Run, 1
-    $shown <- "working" then Show !done
+    $shown <- "working" then Debug !done
     Ui.Label($text=$shown)

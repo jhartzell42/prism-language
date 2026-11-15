@@ -6,7 +6,7 @@
 type Mode = choice:
     Idle
     Heating
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 trait ^Appliance a:
     type Out (m: Mode)

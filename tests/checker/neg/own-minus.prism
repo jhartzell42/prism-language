@@ -3,7 +3,7 @@
 # down with the prelude's `-?`, and checks clean.
 type Money = choice:
     Cents Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^Num Money:
     fn -? (Cents a), (Cents b) = ? (Cents (a + b + 1))

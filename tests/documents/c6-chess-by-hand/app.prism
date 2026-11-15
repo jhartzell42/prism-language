@@ -43,12 +43,12 @@ fn @Player !moves:
 # responses it is sent, so a board built anew would read 0 again.
 @Board: fn Color, ChessMove, ChessMove -> @unit emit Ui.* | Seat.* ChessGame Player
 fn @Board side, first, second:
-    !one <- Ui.Button($label=$"{side} plays {Spelled first}")                  # 0
-    !two <- Ui.Button($label=$"{side} plays {Spelled second}")                 # 1
+    !one <- Ui.Button($label=$"{Debug side} plays {Spelled first}")                  # 0
+    !two <- Ui.Button($label=$"{Debug side} plays {Spelled second}")                 # 1
     (($?game, !response)) <- @Player ((first on !one) <| (second on !two))     # 2
     $answered <- 0 then $answered + (1 on !response)
     $said <- "nothing yet" then Said !response
-    Ui.Label($text=$"{side}'s board: {Status $?game}; {$said}; {$answered} answered")   # 3
+    Ui.Label($text=$"{Debug side}'s board: {Status $?game}; {$said}; {$answered} answered")   # 3
 
 # A spectator: its requests are `Never`, so it places no request element.
 @Watcher: fn Text -> @unit emit Ui.* | Seat.* ChessGame Spectator

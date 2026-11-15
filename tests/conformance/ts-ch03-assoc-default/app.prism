@@ -18,16 +18,16 @@ trait ^Measured a:
 
 type Crate = record:
     weight: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Wrapped b = record:
     inner: b
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Pair b = record:
     one: b
     two: b
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^Box Crate:
     fn Open c = c
@@ -55,4 +55,4 @@ fn Opened xs = Fold xs, [[]], \|acc, x| Push acc, (Open x)
 @main:
     let crate = Crate(weight=3)
     let pair = Pair(one="a", two="b")
-    Ui.Label($text=$"{(Open crate).weight} {(Open (Wrapped(inner=7))).inner} {Open pair} {Extent crate}{UnitOf crate} {(Extent pair) + (UnitOf pair)} {Len (Opened [[crate, crate]])} {Show (Opened [[(Pair(one=1, two=2)), (Pair(one=3, two=4))]])}")    # 0
+    Ui.Label($text=$"{(Open crate).weight} {(Open (Wrapped(inner=7))).inner} {Open pair} {Extent crate}{UnitOf crate} {(Extent pair) + (UnitOf pair)} {Len (Opened [[crate, crate]])} {Debug (Opened [[(Pair(one=1, two=2)), (Pair(one=3, two=4))]])}")    # 0

@@ -10,7 +10,7 @@ type Mode = choice:
     Shout Text
     Quiet
     Off
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 @Say: fn Mode -> @unit
 fn @Say (Shout t):

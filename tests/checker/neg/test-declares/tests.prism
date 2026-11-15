@@ -3,7 +3,7 @@ emit r
 use App.*
 
 type Mark = row
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 tag Mark.Dot of Mark
 

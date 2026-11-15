@@ -11,11 +11,11 @@ trait ^Box a:
 
 type Crate = record:
     count: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Jar = record:
     label: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^Box Crate:
     type Item = Nat

@@ -7,7 +7,7 @@ test mod Tests
 type Card = choice:
     Card Nat
     Joker
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 Rank: fn Card -> Nat
 fn Rank (Card n) = n
@@ -15,4 +15,4 @@ fn Rank Joker = 0
 
 @main: @unit
 @main:
-    Ui.Label($text=$"{Show (Card 3)} {Rank (Card 4)} {Rank Joker} {(Card 9) < Joker}")    # 0
+    Ui.Label($text=$"{Debug (Card 3)} {Rank (Card 4)} {Rank Joker} {(Card 9) < Joker}")    # 0

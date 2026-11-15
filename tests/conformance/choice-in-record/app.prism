@@ -10,13 +10,13 @@ use Ui.*
 type Spec = record:
     width: Nat
     ?bg: Shade
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Shade = choice:
     Light
     Dark
     Mixed Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Same: fn Spec, Spec -> Text
 fn Same a, b = if a == b: "same" else: "different"

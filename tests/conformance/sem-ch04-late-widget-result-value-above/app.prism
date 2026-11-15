@@ -11,7 +11,7 @@ use Ui.*
 type Mode = choice:
     Loud Text
     Soft
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 @Tile: fn Nat -> @unit
 fn @Tile k:

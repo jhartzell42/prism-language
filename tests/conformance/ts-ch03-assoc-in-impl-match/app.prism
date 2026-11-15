@@ -11,12 +11,12 @@ trait ^Box a:
 
 type Crate = record:
     count: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Jar = choice:
     Full Text
     Empty
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^Box Crate:
     type Item = Nat
@@ -38,4 +38,4 @@ fn Again x = Make (Open x)
 @main: @unit
 @main:
     let c: Crate = Make 4
-    Ui.Label($text=$"{Show (Again c)} {Show (Again (Full "z"))} {Show (Again Empty)}")    # 0
+    Ui.Label($text=$"{Debug (Again c)} {Debug (Again (Full "z"))} {Debug (Again Empty)}")    # 0

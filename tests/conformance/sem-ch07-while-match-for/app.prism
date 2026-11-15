@@ -38,13 +38,13 @@ fn InForMap m = update "":
 @MatchShown: fn Int -> @unit
 fn @MatchShown n:
     !done <- @Run InMatch, n                                # 0
-    $shown <- "working" then Show !done
+    $shown <- "working" then Debug !done
     Ui.Label($text=$shown)                                   # 1
 
 @ForShown: fn [Int] -> @unit
 fn @ForShown xs:
     !done <- @Run InFor, xs                                 # 0
-    $shown <- "working" then Show !done
+    $shown <- "working" then Debug !done
     Ui.Label($text=$shown)                                   # 1
 
 @MapShown: fn (Text ==> Int) -> @unit

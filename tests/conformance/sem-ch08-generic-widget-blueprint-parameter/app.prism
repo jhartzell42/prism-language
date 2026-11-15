@@ -1,4 +1,4 @@
-# A generic widget function that takes a blueprint: `@Framed` over any `^Show` type, with a
+# A generic widget function that takes a blueprint: `@Framed` over any `^Debug` type, with a
 # guest `@a` whose result it gives back (Type System ch. 5: a signature's variables are
 # fresh at each call; Semantics ch. 8: a widget function's application is transparent, its
 # lines take the caller's positions). Hosting attempt 14 of the Bible's evidence
@@ -9,9 +9,9 @@ emit Ui.*
 test mod Tests
 use Ui.*
 
-@Framed: fn s, prompt @a -> @a where s: ^Show
+@Framed: fn s, prompt @a -> @a where s: ^Debug
 fn @Framed initial, @guest:
-    Ui.Label($text=$"starts at {Show initial}")
+    Ui.Label($text=$"starts at {Debug initial}")
     result <- @guest
     @ result
 

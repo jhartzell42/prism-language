@@ -9,7 +9,7 @@ trait ^Box a:
 type Jar = choice:
     Full Text
     Empty
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^Box Jar:
     type Item = ?Text

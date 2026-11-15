@@ -11,13 +11,13 @@ emit rest
 type Response d = choice:
     Accepted
     Declined d
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What a step gives: the next state, or a denial and its reason (chapter 4).
 type Stepped s d = choice:
     Next s
     Denied d
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # One role of one document. A value of `r` is one seat of the role: `Player White`,
 # `Spectator "ada"`. The associated types are chapter 3's facts per role, and `Step` and
@@ -36,7 +36,7 @@ trait ^Seat r:
 type Place k = record:
     seat: k
     at: Path
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 # One request as the implementation takes it: its place, and the step it asks for, with
 # the seat and the request already inside. This is what lets one implementation take the
@@ -172,7 +172,7 @@ fn SittingOf ((k, v)) = v
 
 # What a participant's leaving element fires: a unit type of the library's own.
 type Leaves = leaves
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What a role's host hears from one place of a seat's guest: a request, or that the
 # participant leaves.

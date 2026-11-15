@@ -7,7 +7,7 @@
 emit Ui.* | Pad.*
 test mod Tests
 
-tag Pad.Socket of Element ((!r, $Text)) where r: ^Show:
+tag Pad.Socket of Element ((!r, $Text)) where r: ^Debug:
     address: Text
 
 Wire: fn Text -> Element Pad.* ((!Text, $Text))

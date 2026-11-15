@@ -15,7 +15,7 @@ trait ^Box a:
 type Crate = record:
     count: Nat
     label: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^Box Crate:
     type Item = Nat

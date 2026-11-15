@@ -9,7 +9,7 @@ use Ui.*
 type Extent = record:
     wide: Nat
     high: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 @Measure: fn Nat -> @((Extent, ((Nat, Text))))
 fn @Measure n:

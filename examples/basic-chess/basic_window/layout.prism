@@ -24,14 +24,14 @@ type HitKind = choice:
     Focus
     Track Nat, Nat                            # a slider's, from low to high
     Opaque                                    # a frame's background: it takes the press, and answers nothing
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Hit = record:
     rect: Rect
     chain: [Path]
     kind: HitKind
     turns: [BasicWindow.Turn]                      # the turns of the frames above it, outermost first
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Placed = record:
     draw: [Draw]
@@ -42,7 +42,7 @@ type Room = record:
     maxW: Float
     minH: Float
     maxH: Float
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What an element is, for its layout: a leaf's data, a container's kind and spec; an element
 # that is not the library's is laid as nothing.
@@ -58,13 +58,13 @@ type Kind = choice:
     KFrame FrameSpec
     KGrid Nat
     KNone
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A layout: its size, and how it is placed.
 type Plan = record:
     size: Extent
     part: Part
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A layout's placing as data: what `PlaceAt` draws at an origin in a view.
 type Part = choice:
@@ -78,7 +78,7 @@ type Part = choice:
     PLayers [((Point, Point, Plan))]              # each child's anchor, offset and layout
     PFrame FrameSpec, Plan
     PGrid Nat, [Float], [Float], [Plan]           # columns, their widths, the rows' heights, children
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A laid-out element, as its row ends on it: its kind, the room its parent gave it, its
 # chain of paths from the window, its children's (the row's own `for` over them, by path), a
@@ -91,7 +91,7 @@ type Res = record:
     kids: Path ==> Res
     sizes: Text ==> Extent
     plan: Plan
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Merged: fn Placed, Placed -> Placed
 fn Merged a, b = Placed (Append a.draw, b.draw), (Append a.hits, b.hits)

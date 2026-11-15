@@ -13,7 +13,7 @@ use Ui.*
 type Mode = choice:
     Loud Text
     Soft
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 @Choose: fn Mode, prompt $Nat -> @!Click
 fn @Choose mode, $resets:

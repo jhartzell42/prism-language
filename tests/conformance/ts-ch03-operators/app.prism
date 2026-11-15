@@ -10,7 +10,7 @@ use Ui.*
 type Pair a b = record:
     left: a
     right: b
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 Total: fn a, a -> a where a: ^Num
 fn Total x, y = ((x + y) * x) - y

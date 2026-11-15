@@ -17,7 +17,7 @@ fn @Pressing seat, name:
     !one <- Ui.Button($label=$"{name} +1")
     !response <- Count.Request(!requests=((Add 1) on !one))
     $?total <- Count.Query($query=$ Whole)
-    $last <- "nothing yet" then Show !response
+    $last <- "nothing yet" then Debug !response
     Ui.Label($text=$"{name} sees {Seen $?total}; {$last}")
 
 @Seats: fn $Nat, !(Place ==> Response) -> @((unit, ![Asked Nat])) emit Ui.*

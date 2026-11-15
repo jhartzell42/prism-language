@@ -35,4 +35,4 @@ fn MakeZoo x = Zoo(order=Less, span=Span(file="f", line=1, column=2, binding="b"
     let spans = Each zs, \|k| k.span.line
     let ?gone = First (Each zs, \|k| k.?gave), (?Nothing 0)
     let waits = Each zs, \|k| Keep k.wait
-    Ui.Label($text=$"{Show (Same 1, 2)} {Len orders} {Len spans} {Len waits}")
+    Ui.Label($text=$"{Debug (Same 1, 2)} {Len orders} {Len spans} {Len waits}")

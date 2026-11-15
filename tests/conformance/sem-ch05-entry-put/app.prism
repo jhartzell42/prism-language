@@ -6,7 +6,7 @@ test mod Tests
 type Game = record:
     board: (Int ==> Text)
     turn: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Place: fn Game, Int, Text -> Game
 fn Place game, sq, piece = update game:

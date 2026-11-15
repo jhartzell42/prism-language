@@ -11,7 +11,7 @@ type Shut = record:
 
 type Watch = record:
     label: Text
-    value: any ^Show
+    value: any ^Debug
 
 @main: @unit
 @main:

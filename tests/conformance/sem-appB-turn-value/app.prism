@@ -9,8 +9,8 @@ type Step a = record:
     turn: Turn a
     label: Text
 
-Told: fn Turn a -> Text where a: ^Show
-fn Told (Done x) = "done {Show x}"
+Told: fn Turn a -> Text where a: ^Debug
+fn Told (Done x) = "done {Debug x}"
 fn Told More = "more"
 
 Next: fn Nat -> Turn Nat

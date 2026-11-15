@@ -49,7 +49,7 @@ trait ^Document d where SeatId d _: ^Pod:
 type Response d (r: Role d) = choice:
     Accepted
     Declined (Reason d r)
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---- the seat's language: one family, indexed by document and role (chapter 3)
 
@@ -130,7 +130,7 @@ fn OneATick due = Ordered(apply=(Take due, 1), wait=(Drop due, 1))
 type Stepped s d = choice:
     Next s
     Denied d
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A document whose state is finite, writeable values, with pure rules. Its default
 # implementation keeps the state in a hold and the requests that wait in another; a
@@ -348,20 +348,20 @@ fn !Arrived $?value = !Filter (!Updated $?value)
 
 type File = record:
     path: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type FileRole = choice:
     Editor
     Viewer
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type FileRequest = choice:
     Replace [U8]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type FileQuery = choice:
     Contents
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type FileSeats rest = record:
     $editor: (unit ==> $@(@unit emit Seat.* File Editor | rest))
@@ -443,12 +443,12 @@ fn !ReplacesAt at, guest = match guest:
 type Address = record:
     host: Text
     port: Nat
-derive ^Eq, ^Show, ^Pod
+derive ^Eq, ^Debug, ^Pod
 
 # One end of a wire, as the World gives it to the end that listens.
 type Connection = record:
     id: Nat
-derive ^Eq, ^Ord, ^Show, ^Pod
+derive ^Eq, ^Ord, ^Debug, ^Pod
 
 # What crosses a wire for one seat: a request or a query going up, a response or an
 # answer coming down, each as the role's own value written down, at the place it is for.
@@ -458,7 +458,7 @@ type Message = choice:
     Responding Path, [U8]
     Answering Path, [U8]
     Departing Path
-derive ^Eq, ^Show, ^Pod
+derive ^Eq, ^Debug, ^Pod
 
 # The wire as the World answers it: a link to an address sends messages and gives each
 # message that comes back; a listener gives each connection that opens, and each of its
@@ -537,7 +537,7 @@ type PlaceKind = choice:
     AskedPlace
     QueriedPlace
     OtherPlace
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 KindOf: fn Message -> PlaceKind
 fn KindOf (Asking ignore, ignore2) = AskedPlace
@@ -649,13 +649,13 @@ fn ?DecodedAs bytes = match ~Decode<<t>> bytes:
 type GameRole = choice:
     Player
     Spectator
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 # How a game ends: a side wins, or nobody does.
 type Result s = choice:
     Won s
     Drawn
-derive ^Eq, ^Show, ^Pod
+derive ^Eq, ^Debug, ^Pod
 
 trait ^PerfectInformationGame g:
     type Side                          # White | Black

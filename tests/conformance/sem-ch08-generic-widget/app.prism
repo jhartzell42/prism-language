@@ -1,13 +1,13 @@
-# A generic widget function (`@Shown` over any `^Show` type) inlined at two calls of
+# A generic widget function (`@Shown` over any `^Debug` type) inlined at two calls of
 # different types: its body at each call is lowered at that call's types. Written by Claude
 # on the claude-bugs branch; subject to change.
 emit Ui.*
 test mod Tests
 use Ui.*
 
-@Shown: fn $a, Text -> @unit where a: ^Show
+@Shown: fn $a, Text -> @unit where a: ^Debug
 fn @Shown $x, label:
-    Ui.Label($text=$"{label}={Show $x}")                          # 0
+    Ui.Label($text=$"{label}={Debug $x}")                          # 0
 
 @main: @unit
 @main:

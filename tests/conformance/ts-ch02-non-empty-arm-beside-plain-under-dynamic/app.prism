@@ -19,4 +19,4 @@ fn $Chosen first, $a, $b = if first: $a else: $b
     let $pick = if flag: $a else: $b
     let $other = $Chosen False, $a, $b
     let $third = $Chosen True, $a, $b
-    Ui.Label($text=$"{$pick} {$other} {$third}")    # 1
+    Ui.Label($text=$"{Debug $pick} {Debug $other} {Debug $third}")    # 1

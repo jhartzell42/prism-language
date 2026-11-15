@@ -11,7 +11,7 @@ use Documents.*
 type Tally = record:
     total: Nat
     ?last: Text                          # who added last
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 let empty = Tally(total=0, ?last=nil)
 
@@ -19,30 +19,30 @@ let empty = Tally(total=0, ?last=nil)
 
 type Teller = choice:
     Teller Text
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type Viewer = choice:
     Viewer Text
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type Add = choice:
     Add Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Asks = choice:
     Whole
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A viewer's request type has no value a viewer's language can send: the `View` family
 # has no request tag.
 type NoRequest = choice:
     NoRequest
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TellerView = record:
     total: Nat
     mayAdd: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 NameOf: fn Teller -> Text
 fn NameOf (Teller name) = name

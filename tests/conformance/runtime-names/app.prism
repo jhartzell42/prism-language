@@ -8,25 +8,25 @@ use Ui.*
 
 type Row = record:
     name: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Node = Node Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Program = choice:
     Started
     Stopped
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Hold = Hold Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Segment = record:
     count: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Cx = Cx Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 RowsUpTo: fn Nat -> (Nat ==> Row)
 fn RowsUpTo n = Fold [[1, 2, 3]], {{}}, \|m, k| if k <= n: Insert m, k, (Row "r{k}") else: m

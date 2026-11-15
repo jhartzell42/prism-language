@@ -14,11 +14,11 @@ trait ^SerializableDocument d where d: ^StateDocument, State d: ^SerializableVal
 
 type Board = record:
     squares: [Nat]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Game = choice:
     Game
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^StateDocument Game:
     type State = Board

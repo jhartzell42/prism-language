@@ -12,7 +12,7 @@ type Card = record:
     title: Text
     ?note: Text
     count: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Noted: fn Card, Text -> Card
 fn Noted c, t = update c:
@@ -21,4 +21,4 @@ fn Noted c, t = update c:
 
 @main: @unit
 @main:
-    Ui.Label($text=$"{Noted (Card(title="a", ?note=nil, count=1)), "b"}")
+    Ui.Label($text=$"{Debug (Noted (Card(title="a", ?note=nil, count=1)), "b")}")

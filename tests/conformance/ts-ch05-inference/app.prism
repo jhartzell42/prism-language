@@ -51,5 +51,5 @@ fn @Shown xs:
     !done <- @Run LastOf, (Evens xs)                          # 0
     let op = Op(name="none", step=(\|n| n))
     let first = "{Found (?FirstOver xs, 2)}{Value (WithOp op, 0)}"
-    $shown <- first then "{first} {Show !done}"
+    $shown <- first then "{first} {Debug !done}"
     Ui.Label($text=$shown)                                   # 1

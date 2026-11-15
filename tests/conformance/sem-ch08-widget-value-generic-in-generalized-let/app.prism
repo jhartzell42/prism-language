@@ -12,9 +12,9 @@ use Ui.*
 ?Pick: fn Bool, @a -> ?@a
 fn ?Pick b, @w = if b: ? @w else: nil
 
-@Shown: fn a, Text -> @unit where a: ^Show
+@Shown: fn a, Text -> @unit where a: ^Debug
 fn @Shown x, label:
-    Ui.Label($text=$"{label}={Show x}")
+    Ui.Label($text=$"{label}={Debug x}")
 
 @Page: @unit
 @Page:

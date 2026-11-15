@@ -10,12 +10,12 @@ test mod Tests
 type Tree = record:
     kind: Shape
     label: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Shape = choice:
     Leaf
     Wrap Tree
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Wrapped: fn Tree -> Tree
 fn Wrapped t = update t:

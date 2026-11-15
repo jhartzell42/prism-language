@@ -3,7 +3,7 @@ emit r
 type Amount = choice:
     Small
     Large
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Of: fn Nat -> Amount
 fn Of n = if n < 10: Small else: Large

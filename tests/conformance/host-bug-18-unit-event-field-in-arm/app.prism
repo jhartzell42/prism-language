@@ -14,7 +14,7 @@ use Tally.*
 type Sitting = choice:
     Person
     Eager Nat
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 # ---- the words: a participant turns what it is sent into text, the document never does
 

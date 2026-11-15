@@ -5,7 +5,7 @@
 emit Ui.*
 test mod Tests
 
-@Shown: forall a. fn Text, a -> @unit emit Ui.* where a: ^Show
+@Shown: forall a. fn Text, a -> @unit emit Ui.* where a: ^Display
 fn @Shown label, value:
     Ui.Label($text=$"{label} {value}")                                          # 0
 

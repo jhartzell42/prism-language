@@ -4,11 +4,11 @@
 # multiplies the `Nat`s inside, the built-in `*`, and checks clean.
 type Money = choice:
     Cents Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Bag = choice:
     Count Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^Num Money:
     fn * a, b = Times a, b

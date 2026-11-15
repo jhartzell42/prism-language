@@ -8,9 +8,9 @@ use Rules.*
 use Game.*
 
 ResultText: fn ChessResult -> Text
-fn ResultText (Checkmated color) = "{color} has been checkmated"
+fn ResultText (Checkmated color) = "{Debug color} has been checkmated"
 fn ResultText Stalemate = "stalemate"
-fn ResultText (Resigned color) = "{color} has resigned"
+fn ResultText (Resigned color) = "{Debug color} has resigned"
 fn ResultText DrawAgreed = "a draw by agreement"
 fn ResultText DrawnByFiftyMoves = "a draw: fifty moves with no capture and no pawn's move"
 fn ResultText DrawnByRepetition = "a draw: one position three times"
@@ -19,14 +19,14 @@ fn ResultText DrawnByInsufficientMaterial = "a draw: neither side can mate"
 StatusText: fn ChessGame -> Text
 fn StatusText game = match game.?result:
     ? result: ResultText result
-    nil: if InCheck game.position, game.position.turn: "{game.position.turn} to move, in check" else: "{game.position.turn} to move"
+    nil: if InCheck game.position, game.position.turn: "{Debug game.position.turn} to move, in check" else: "{Debug game.position.turn} to move"
 
 FaultText: fn MoveFault -> Text
 fn FaultText OwnPieceThere = "your own piece stands there"
-fn FaultText (PromotionTo man) = "a pawn never becomes a {man}"
+fn FaultText (PromotionTo man) = "a pawn never becomes a {Debug man}"
 fn FaultText PromotionNotNamed = "name what the pawn becomes"
-fn FaultText (NothingPromotes man) = "no pawn becomes a {man} by that move"
-fn FaultText (NotHowThatPieceMoves man) = "a {man} does not move so"
+fn FaultText (NothingPromotes man) = "no pawn becomes a {Debug man} by that move"
+fn FaultText (NotHowThatPieceMoves man) = "a {Debug man} does not move so"
 fn FaultText PathBlocked = "a piece stands in the way"
 fn FaultText NothingToCapture = "there is nothing to capture"
 fn FaultText CastlingRightSpent = "the right to castle there is spent"

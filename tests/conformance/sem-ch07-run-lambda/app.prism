@@ -9,5 +9,5 @@ use Ui.*
 @page: @unit
 @page:
     !done <- @Run (\|n| n + 1), 3                              # 0
-    $shown <- "working" then Show !done
+    $shown <- "working" then Debug !done
     Ui.Label($text=$shown)                                       # 1

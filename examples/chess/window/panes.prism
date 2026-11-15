@@ -18,14 +18,14 @@ type Click = click
 type Routed = record:                  # an input for the place at `path`
     path: Path
     input: Input
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Input = choice:
     Clicked
     Typed Key
     Slid Nat                           # a slider pressed at this step
     Inner Routed                       # for a place inside the container at `path`
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 tag Pane.Label of Element unit:
     $text: Text                        # live: new text, same label
@@ -55,7 +55,7 @@ type Align = choice:
     Middle
     End
     Stretch
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 tag Pane.VBox of Element !Routed:        # a column with no spacing
     $children: (Path ==> $Elem)
@@ -93,7 +93,7 @@ type FrameSpec = record:
     turn: Float                        # degrees about the frame's centre
     scale: Float
     ?bg: Paint
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 tag Pane.Frame of Element !Routed:
     $spec: FrameSpec                   # live: a new padding or background, same frame

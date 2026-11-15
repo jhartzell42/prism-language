@@ -10,7 +10,7 @@ emit rest
 type Response = choice:
     Accepted
     Declined Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What a step gives: the next state, or a denial and its reason (chapter 4).
 type Stepped s = choice:
@@ -32,7 +32,7 @@ trait ^Seat r:
 type Place = record:
     seat: Text
     at: Path
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 # One request as the implementation takes it: its place, and the step it asks for, with
 # the seat and the request already inside. This is what lets one implementation take the
@@ -41,8 +41,8 @@ type Asked s = record:
     place: Place
     step: fn s -> Stepped s
 
-Asking: fn r, Path, Request r -> Asked (State r) where r: ^Seat, r: ^Show
-fn Asking seat, at, request = Asked(place=Place(seat=(Show seat), at=at), step=(\|state| Step state, seat, request))
+Asking: fn r, Path, Request r -> Asked (State r) where r: ^Seat, r: ^Debug
+fn Asking seat, at, request = Asked(place=Place(seat=(Debug seat), at=at), step=(\|state| Step state, seat, request))
 
 # The state after some requests of one tick, and the response to each by place.
 type Kept s = record:
@@ -80,8 +80,8 @@ fn @InMemory initial, HostSeats:
     let !responses = !Updated $answered
 
 # What a seat's request place is answered with: its own response of this tick, if any.
-?ResponseTo: fn r, Path, (Place ==> Response) -> ?Response where r: ^Show
-fn ?ResponseTo seat, at, responses = ?Get responses, Place(seat=(Show seat), at=at)
+?ResponseTo: fn r, Path, (Place ==> Response) -> ?Response where r: ^Debug
+fn ?ResponseTo seat, at, responses = ?Get responses, Place(seat=(Debug seat), at=at)
 
 # The state as each seat's host hears it: when it changes, a tick after a seat joins, and
 # a tick after the document is built. A seat's host keeps what it hears in its own hold.

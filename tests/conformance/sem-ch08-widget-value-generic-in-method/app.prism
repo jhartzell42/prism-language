@@ -11,14 +11,14 @@ use Ui.*
 ?Pick: fn Bool, @a -> ?@a
 fn ?Pick b, @w = if b: ? @w else: nil
 
-@Shown: fn a, Text -> @unit where a: ^Show
+@Shown: fn a, Text -> @unit where a: ^Debug
 fn @Shown x, label:
-    Ui.Label($text=$"{label}={Show x}")
+    Ui.Label($text=$"{label}={Debug x}")
 
 trait ^Framed a:
     ?Frame: fn a -> ?@unit
 
-impl ^Framed [a] where a: ^Show:
+impl ^Framed [a] where a: ^Debug:
     fn ?Frame xs = match xs[0]:
         ? x: ?Pick True, (@Shown x, "first")
         nil: nil

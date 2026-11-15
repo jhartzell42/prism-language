@@ -18,7 +18,7 @@ type Result = choice:
     DrawnByFiftyMoves                    # fifty moves by each side with no capture and no pawn's move
     DrawnByRepetition                    # one position for the third time
     DrawnByInsufficientMaterial          # neither side can ever mate
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type ChessGame = record:
     position: Position                   # the board, the side to move, castling rights, the en passant square
@@ -27,7 +27,7 @@ type ChessGame = record:
     earlier: [Position]                  # every position before this one, the opening first
     ?offered: Color                      # who has a draw offer standing
     ?result: Result
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 let fresh = ChessGame(position=start, moves=[[]], quiet=0, earlier=[[]], ?offered=nil, ?result=nil)
 
@@ -35,11 +35,11 @@ let fresh = ChessGame(position=start, moves=[[]], quiet=0, earlier=[[]], ?offere
 
 type Player = choice:
     Player Color
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type Spectator = choice:
     Spectator Text
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 ColorOf: fn Player -> Color
 fn ColorOf (Player color) = color
@@ -53,7 +53,7 @@ type PlayerRequest = choice:
     Resign
     OfferDraw
     AcceptDraw
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 # why a player's request is declined
 type ChessReason = choice:
@@ -64,19 +64,19 @@ type ChessReason = choice:
     IllegalMove MoveFault                # a move of the player's own piece, and why the rules refuse it
     NoDrawOffered
     DrawAlreadyOffered
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # what either role may ask to know
 type Asks = choice:
     Whole
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # what a player is told: the game, and its own legal moves, which are none unless it is
 # this seat's move
 type PlayerTold = record:
     game: ChessGame
     legal: [Move]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---- the rules as a step function: plain functions
 

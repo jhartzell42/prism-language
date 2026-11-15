@@ -15,7 +15,7 @@ use BasicWindow.Hits.*
 type Edit = record:
     text: Text
     cursor: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Apply: fn Edit, Key -> Edit
 fn Apply e, k = match ?CursorAt e.text, e.cursor:

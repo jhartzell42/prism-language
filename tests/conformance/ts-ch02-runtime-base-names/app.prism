@@ -8,16 +8,16 @@ test mod Tests
 type Job = choice:
     Idle
     Busy Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Node = choice:
     Header Text
     Line Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Program = record:
     jobs: [Job]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 @shown: @unit
 @shown:
@@ -30,4 +30,4 @@ derive ^Eq, ^Show
         Line n: "line {n}"
         Header t: t
     let idle = Idle
-    Ui.Label($text=$"{shown} {idle} {r}")             # 0
+    Ui.Label($text=$"{shown} {Debug idle} {Debug r}")             # 0

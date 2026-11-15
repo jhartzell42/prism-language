@@ -11,7 +11,7 @@ use Framing.*
 
 type OneEach = choice:
     OneEach
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Tallied o = record:
     count: Nat

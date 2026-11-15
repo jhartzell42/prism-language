@@ -7,7 +7,7 @@
 type Access = choice:
     Reader
     Writer
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Kept: forall a (r: Access). fn Fixed r, a -> a
 fn Kept role, value = value

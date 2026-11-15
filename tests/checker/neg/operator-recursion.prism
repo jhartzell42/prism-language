@@ -4,12 +4,12 @@
 # and checks clean.
 type Money = choice:
     Cents Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Bag = choice:
     Empty
     Put Nat, Bag
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 impl ^Num Money:
     fn * a, b = Times a, b

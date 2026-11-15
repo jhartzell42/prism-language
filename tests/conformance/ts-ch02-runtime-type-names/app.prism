@@ -8,29 +8,29 @@ test mod Tests
 type Row = record:
     label: Text
     count: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Node = record:
     rows: [Row]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Pod = choice:
     Some Nat
     Empty
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Rc = record:
     shared: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Option = choice:
     Yes
     No
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Vec = record:
     items: [Nat]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Total: fn Node, Pod, Rc, Option, Vec -> Nat
 fn Total n, p, r, o, v:
@@ -49,4 +49,4 @@ fn Total n, p, r, o, v:
     let total = Total n, (Some 10), (Rc(shared=100)), Yes, (Vec(items=[[1000, 2000]]))
     let c = Row(label="c", count=3)
     let p = Some 4
-    Ui.Label($text=$"{total} {p} {c}")             # 0
+    Ui.Label($text=$"{total} {Debug p} {Debug c}")             # 0

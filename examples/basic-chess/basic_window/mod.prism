@@ -25,19 +25,19 @@ use BasicWindow.Hits.*
 type Point = record:
     x: Float
     y: Float
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Extent = record:
     w: Float
     h: Float
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Rect = record:
     x: Float
     y: Float
     w: Float
     h: Float
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # `Paper` and `Ink`, not White and Black, which are chess's colors
 type Paint = choice:
@@ -50,7 +50,7 @@ type Paint = choice:
     Green
     Felt                       # a card table's green
     Rgb Float, Float, Float
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # a turn about a pivot, then a scale: what a frame does to its child's drawing and hits
 type Turn = record:
@@ -58,7 +58,7 @@ type Turn = record:
     y: Float
     angle: Float               # degrees, clockwise on the screen
     scale: Float
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---------------------------------------------------------------------------
 # What a scene draws: a row kind with no output, as `Fault` is, so each command is a tag with
@@ -102,16 +102,16 @@ type Key = choice:
     Backspace
     Tab
     Enter
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type WindowInput = choice:
     Press Point
     Pressed Key
     Resized Extent
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type WindowId = WindowId Text          # the World's handle for a window, answered once
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 tag Gui.Window of Element ((WindowId, !WindowInput)):
     $title: Text                       # live: retitling keeps the window

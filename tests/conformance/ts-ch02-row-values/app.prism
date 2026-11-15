@@ -10,10 +10,10 @@ test mod Tests
 type Box = record:
     w: Nat
     h: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Ink = row
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 tag Ink.Line of Ink:
     from: Nat
@@ -74,4 +74,4 @@ fn LineFrom n = Ink.Line(from=n, to=9)
     let $marks = MarksFor $n
     Pad.Sheet(title="sketch", $marks=$marks)                            # 1
     Ui.Label($text=$"{Total $marks} {Lines (Around $marks)} {$marks == [[]]}")    # 2
-    Ui.Label($text=Show (LineFrom $n))                                  # 3
+    Ui.Label($text=Debug (LineFrom $n))                                  # 3

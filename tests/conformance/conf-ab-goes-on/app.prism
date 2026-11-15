@@ -27,5 +27,5 @@ fn Run n = Twice n
 fn @Working n:
     !poke <- Ui.Button($label=$"poke")                       # 0
     !done <- @Run Run, n                                    # 1
-    $shown <- "working" then Show !done
+    $shown <- "working" then Debug !done
     Ui.Label($text=$shown)                                   # 2

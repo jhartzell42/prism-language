@@ -14,5 +14,5 @@ test mod Tests
     !woke <- Time.After(!wakes=(Time.Wake(after=1.5s, context="nap") on !go))   # 1
     $n <- 0 then $n + 1 on !woke
     Ui.Label($text=$"woke {$n}")                                            # 2
-    Ui.Label($text=$"{250ms} {1.3ms} {2min} {-2s} {1h} {7ns} {0.5us} {90s}")   # 3
+    Ui.Label($text=$"{Debug 250ms} {Debug 1.3ms} {Debug 2min} {Debug -2s} {Debug 1h} {Debug 7ns} {Debug 0.5us} {Debug 90s}")   # 3
     @ $n

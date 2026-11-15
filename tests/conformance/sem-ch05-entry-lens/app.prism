@@ -7,7 +7,7 @@ test mod Tests
 type Vm = record:
     regs: (Text ==> Int)
     steps: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 &Acc: fn &(Text ==> Int) -> Entry Text Int
 fn &Acc &registers = &registers["acc"]

@@ -21,7 +21,7 @@ type Typed = choice:
     ListLegal                          # `legal`
     Depart                             # `leave`
     Unreadable Text                    # anything else, as typed
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 let words = {{"resign": (Requesting Resign), "draw": (Requesting OfferDraw), "accept": (Requesting AcceptDraw), "moves": ListMoves, "legal": ListLegal, "leave": Depart}}
 
@@ -43,7 +43,7 @@ type Said = choice:
     Listed [ChessMove]                      # the moves played, or the legal moves
     NoRequests                         # a request typed at a seat that may ask nothing
     NotToldYet                         # a list asked for before the seat is told the game
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 LineOf: fn Said -> Text
 fn LineOf Agreed = "ok"
@@ -113,14 +113,14 @@ fn Replied (Declined why) = [[(Refused why)]]
 @LinePlayer: fn Color -> @unit emit r | Console.* | Seat.* ChessGame Player
 fn @LinePlayer color:
     $?told <- Seat.Query($query=$ Whole)                             # 0
-    !line <- Console.Read(name=(Show color))                         # 1
+    !line <- Console.Read(name=(Debug color))                         # 1
     let !typed = TypedOf !line
     !response <- Seat.Request(!requests=(!Filter (?RequestOf !typed)))   # 2
     Seat.Leave(!?leaves=(nil on (!Filter (?Going !typed))))          # 3
     !told <- @Told $?told
     $?before <- nil then ? !told                                     # what it was told last
     let !news = News (? color), (?Before $?before), (GameOf !told)
-    Console.Print(name=(Show color), !lines=(!Filter (?Lines (!MergeWith Append, [[(Replied !response), !news, (Answered $?told, !typed)]]))))   # 4
+    Console.Print(name=(Debug color), !lines=(!Filter (?Lines (!MergeWith Append, [[(Replied !response), !news, (Answered $?told, !typed)]]))))   # 4
 
 # ---- a spectator
 

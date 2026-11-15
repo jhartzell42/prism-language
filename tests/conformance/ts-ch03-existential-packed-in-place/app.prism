@@ -2,7 +2,7 @@
 # ch. 3, "Existentials", the book's own `Watch(label="selected", value=any Sq(file=4,
 # rank=3))`; ch. 5, "Existentials are dictionaries"): in a constructor's field, in a
 # function's argument, in an array's element. Each packed value prints by its own type's
-# `^Show`. Written by Claude on the claude-lowering branch; subject to change.
+# `^Debug`. Written by Claude on the claude-lowering branch; subject to change.
 emit Ui.*
 test mod Tests
 use Ui.*
@@ -10,20 +10,20 @@ use Ui.*
 type Sq = record:
     file: Nat
     rank: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Watch = record:
     label: Text
-    value: any ^Show
+    value: any ^Debug
 
-Shown: fn (any ^Show) -> Text
-fn Shown v = Show v
+Shown: fn (any ^Debug) -> Text
+fn Shown v = Debug v
 
-Joined: fn [any ^Show] -> Text
-fn Joined vs = Fold vs, "", \|acc, v| "{acc}<{Show v}>"
+Joined: fn [any ^Debug] -> Text
+fn Joined vs = Fold vs, "", \|acc, v| "{acc}<{Debug v}>"
 
 Line: fn Watch -> Text
-fn Line w = "{w.label}={Show w.value}"
+fn Line w = "{w.label}={Debug w.value}"
 
 @page: @unit
 @page:

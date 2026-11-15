@@ -5,7 +5,7 @@ use App.*
 type Pair = record:
     left: Nat
     right: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Total: fn Pair -> Nat
 fn Total p = Add p.left, p.right
@@ -13,4 +13,4 @@ fn Total p = Add p.left, p.right
 check helpers:
     Total Pair(left=2, right=3) => 5
     Pair(left=1, right=2) == Pair(left=1, right=2) => True
-    Show Pair(left=1, right=2) => "Pair(left=1, right=2)"
+    Debug Pair(left=1, right=2) => "Pair(left=1, right=2)"

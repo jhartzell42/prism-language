@@ -8,7 +8,7 @@ test mod Tests
 type Shape = choice:
     Circle Nat
     Square Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Make: fn (fn Nat -> Shape), Nat -> Shape
 fn Make Build, n = Build n
@@ -32,6 +32,6 @@ fn @Shown n:
     let twice = Twice n, Double
     let shape = Make Circle, n
     !done <- @Run Work, n                                   # 0
-    let first = "{doubled} {twice} {Show shape}"
-    $shown <- first then "{first} {Show !done}"
+    let first = "{doubled} {twice} {Debug shape}"
+    $shown <- first then "{first} {Debug !done}"
     Ui.Label($text=$shown)                                   # 1

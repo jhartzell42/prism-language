@@ -8,7 +8,7 @@ use Ui
 
 Report: fn Nat, ?Species -> Text
 fn Report n, nil = "{n} birds"
-fn Report n, (? s) = "{n} birds, the last a {Show s}"
+fn Report n, (? s) = "{n} birds, the last a {Debug s}"
 
 @main: @unit
 @main:
