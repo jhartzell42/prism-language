@@ -206,7 +206,10 @@ FnGenerics: unbounded fn Lx, Text, Scheme -> [((Text, [Text]))]
 fn FnGenerics lx, qk, sc:
     let ((pts, ret)) = SignatureOut lx, qk, sc
     let used = Fold (Push pts, ret), [[]], \|acc, t| UnionTexts acc, (TyParamsIn t)
-    Filter (SchemeGenerics lx, sc), \|((g, ignore))| HasText used, g
+    # (and one its body needs for its bounds though no type the signature lowers names
+    # it, `Told: forall d. fn SeatKey d -> Text` calling `Described<<d>>`: `SeatKey d` is
+    # packed; each call gives it, `?TypeArgsAt`)
+    Filter (SchemeGenerics lx, sc), \|((g, ignore))| (HasText used, g) or Fold sc.bounds, False, \|f, ((v, ignore2))| f or (Camel v) == g
 
 # A plain function: its scheme's types, its clauses as a `match`.
 FnDefOf: unbounded fn Lx, Text, [FnClause], Scheme -> FnDef
@@ -533,7 +536,9 @@ fn ImplDefOf lx, im:
         FnDefIn lxBelow, dq, mq, (DefaultClauses lx.g, dq), sc
     let methods = Append methods0, fromBelow
     # an impl's `where` clauses bound its type parameters, as a function's do
-    let generics = Each im.qs, \|q| ((Camel q, (ImplBounds lx, im, q)))
+    # (only those the Rust head names: a parameter no field of the type holds, `o` of
+    # `Tallied o`, is the checker's alone, `ParamUsed`, and Rust has no unconstrained one)
+    let generics = Each (Filter im.qs, \|q| HasText (TyParamsIn head), (Camel q)), \|q| ((Camel q, (ImplBounds lx, im, q)))
     ImplDef(cls=im.cls, tr=(PathIn lx, tr.home, (TraitName im.cls)), head=head, generics=generics, assocs=(Each im.assocs, \|((an, at))| (((Camel an), (OutTyOf lx, at)))), resultOnly=(ResultOnlyNames lx, tr), methods=methods, doc="")
 
 ImplBounds: unbounded fn Lx, ImplInfo, Text -> [Text]

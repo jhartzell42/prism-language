@@ -1677,7 +1677,9 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
                         let call = match t:
                             OutFn ignore2, rt: if HasOpenIndexedAssoc (Peel sres): XCallAt (HelperRef "recode"), [[rt]], [[XRef call0]] else: call0
                             otherwise: call0
-                        VlOwned (XCall (RefRuntime "std::Rc::new"), [[(XClosure False, pas, call)]]), t
+                        # (cast to the function value's type: a closure is no `dyn Fn` until
+                        # it is made one, ts-ch06-forall-in-alias-body)
+                        VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure False, pas, call)]]), t), t
                     otherwise: VlOwned (XCall (RefRuntime "std::Rc::new"), [[XPath (ValueRef lx, qk)]]), t
             nil: VlOwned (InternalBug "the global {qk}"), t
 
@@ -2409,7 +2411,7 @@ fn DeclaredCall lx, env, qk, args, span, cspan, t:
                 else:
                     let callArgs = Append (KindArgsWith lx, v, cspan, args), (ArgsFor lx, env, v, args)
                     let call = if OpensByVariable lx, qk: XCall (InstanceRef lx, qk, (CallInstance lx, v, cspan)), callArgs
-                        else: match ?TypeArgsAt lx, qk, v.scheme, cspan:
+                        else: match ?TypeArgsAtCall lx, qk, v.scheme, cspan, span:
                             ? tys: XCallAt (ValueRef lx, qk), tys, callArgs
                             nil: XCall (ValueRef lx, qk), callArgs
                     # (a result of an associated type with indices at the callee's variables
@@ -2629,7 +2631,12 @@ fn FunctionRecolored lx, x, from, to, dps, dr, eps, er, depth:
 # them is in no parameter's type (`?Nothing: fn Nat -> ?a`): read off the callee's type at
 # the call against its scheme. The rest are deduced from the arguments: nil.
 ?TypeArgsAt: unbounded fn Lx, Text, Scheme, Range -> ?[OutTy]
-fn ?TypeArgsAt lx, qk, sc, cspan:
+fn ?TypeArgsAt lx, qk, sc, cspan = ?TypeArgsAtCall lx, qk, sc, cspan, cspan
+
+# The same with the whole call's span, where the checker notes the impls of the callee's
+# bounds.
+?TypeArgsAtCall: unbounded fn Lx, Text, Scheme, Range, Range -> ?[OutTy]
+fn ?TypeArgsAtCall lx, qk, sc, cspan, span:
     let generics = Each (FnGenerics lx, qk, sc), \|((g, ignore))| g
     let ((pts, ignore)) = SignatureOut lx, qk, sc
     let deduced = Fold pts, [[]], \|acc, p| UnionTexts acc, (TyParamsDeduced p)
@@ -2640,7 +2647,7 @@ fn ?TypeArgsAt lx, qk, sc, cspan:
         # of `forall d. fn State d -> State d`: the type the checker solved the bound at,
         # its impl note at the call)
         let ?m = match ?InstanceMatch sc.ty, (TypeAt lx, cspan), {{}}:
-            ? found: ? (WithBoundsAt lx, sc, found, cspan)
+            ? found: ? (WithBoundsAt lx, sc, (WithBoundsAt lx, sc, found, span), cspan)
             nil: nil
         ? (Each qs, \|q| TypeArgOf lx, qk, ?m, q)
 

@@ -220,7 +220,7 @@ fn ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound:
         # whole, its given arguments read where they were written and bound by their
         # places, the line's arguments after them (`PartialWidgetLine`)
         ECall c, supplied, ignore, ignore2: match ?PartialWidget clx, c, supplied, args:
-            ? qk: PartialWidgetLine wx, benv, menv, cbenv, cmenv, clx, qk, supplied, e, args, ?bound
+            ? qk: PartialWidgetLine wx, benv, menv, cbenv, cmenv, clx, qk, supplied, e, args, ?bound, (Ungrouped x)
             nil: AppliedFunctionLine wx, menv, clx, cmenv, x, e, args
         # any other function value (`@Use (Chosen "shows")`, a call's result; a field): the
         # value, read where the argument stands, applied to the line's arguments gives
@@ -255,8 +255,8 @@ fn ?PartialWidget clx, c, supplied, args = match (Ungrouped c).kind:
 # A partial application applied at a line: the given arguments' values, read in the
 # caller's environment where they were written, bound by their places in the line's, so
 # the call reads them there as it reads the line's own arguments after them.
-PartialWidgetLine: unbounded fn Wx, Env, Env, Env, Env, Lx, Text, [Arg], Expr, [Arg], ?Bn -> ((Wx, Wres))
-fn PartialWidgetLine wx, benv, menv, cbenv, cmenv, clx, qk, supplied, e, args, ?bound:
+PartialWidgetLine: unbounded fn Wx, Env, Env, Env, Env, Lx, Text, [Arg], Expr, [Arg], ?Bn, Expr -> ((Wx, Wres))
+fn PartialWidgetLine wx, benv, menv, cbenv, cmenv, clx, qk, supplied, e, args, ?bound, partial:
     # (in both environments: the build reads a parameter in the caller's build
     # environment, `@OnDisk path` given its widget's plain `path`, the methods in its
     # methods')
@@ -269,14 +269,19 @@ fn PartialWidgetLine wx, benv, menv, cbenv, cmenv, clx, qk, supplied, e, args, ?
     # in the caller's, `@InMemory<<Tallied OneEach>> empty` in the tally given to the
     # library's `Implement $guests`; only while the call is lowered)
     let lx0 = wx.lx
+    # (and the impls the checker solved the partial application's bounds at, where it
+    # was written, read at the line: `@InMemory<<Tallied OneEach>>`'s `^StateDocument`)
+    let partialNotes = Fold [[partial.span, (CalleeSpanOf partial), (InnerNameSpanOf partial)]], [[]], \|acc, sp| Append acc, (Or clx.impls[PlaceKey clx, sp], [[]])
     let lxTyped = update lx0:
         &_.tys <= Fold supplied, &_.tys, \|m, a| Insert m, (PlaceKey lx0, a.value.span), (TypeAt clx, a.value.span)
+        &_.impls <= Insert &_.impls, (PlaceKey lx0, e.span), (Append (Or &_.impls[PlaceKey lx0, e.span], [[]]), partialNotes)
     let wxTyped = update wx:
         &_.lx <= lxTyped
     let ((done, res)) = WidgetCall wxTyped, benv2, menv2, e, ?bound, qk, (Append supplied, args), ?target
     let back = update done:
         &_.lx <= update done.lx:
             &_.tys <= lx0.tys
+            &_.impls <= lx0.impls
     ((back, res))
 
 # A function's body lowered at the line `e` that applies it (a lambda given as a widget
@@ -832,7 +837,12 @@ fn HostLine wx, benv, menv, form, args, ?bound:
             # (and the live dynamics its held answers read, `HeldOutputReaders`)
             let ((wxh, benvh, menvh)) = HeldOutputReaders wx1, benv, menv, k, sup.value
             let ((wxd, dynEnv, dynLets)) = DynamicOutputs wxh, benvh, menvh, hf, k, sup.value
-            let offered = Own (ValueOf lx, dynEnv, sup.value)
+            # (a supplier an inlined widget gave back as a lambda, `Supply <- @Counting
+            # !add`: its text read here, in that widget's environment with this line's
+            # getters, as a lambda written on the line is, `?resultText`)
+            let offered = match ?LambdaTextOf menv, sup.value:
+                ? ((lambda, ignore, lmenv, llx)): Own (ValueOf llx, (WithMarkedNames lmenv, dynEnv), lambda)
+                nil: Own (ValueOf lx, dynEnv, sup.value)
             let supplier0 = match form:
                 HostSome: XCall (RefRuntime "prism_rtl::forward_on_none"), [[offered]]
                 otherwise: offered
@@ -1098,6 +1108,22 @@ fn OutputTexts lx, benv, menv, written, depth = Fold written, [[]], \|acc, x|
                 ? (BnLocalFn cs): Fold cs, own, \|more, c| Append more, (OutputTexts (LocalFnLx lx, x.span), (WithFnParameters benv, c), (WithFnParameters menv, c), (ClauseExprs c), (Dec depth))
                 otherwise: own
         otherwise: own
+
+# The lambda text a name is bound to, kept from the inlined widget that gave it back.
+?LambdaTextOf: fn Env, Expr -> ?((Expr, Env, Env, Lx))
+fn ?LambdaTextOf env, e = match e.kind:
+    EName n: if (Len n.path) != 1: nil else: match env.names["{SNameKey n}#lambdatext"]:
+        ? (BnWidget lambda, lbenv, lmenv, llx): ? ((lambda, lbenv, lmenv, llx))
+        otherwise: nil
+    EGroup x: ?LambdaTextOf env, x
+    otherwise: nil
+
+# An environment with another's marked entries (`#owner`, `#dyn..`, `#hostline`: what a
+# host's line binds for its supplier) put in.
+WithMarkedNames: fn Env, Env -> Env
+fn WithMarkedNames env, from = Fold (Filter (Keys from.names), \|k| HasPrefix k, "#"), env, \|en, k| match from.names[k]:
+    ? b: Bind en, k, b
+    nil: en
 
 # An environment in which the names a function's clause binds as its parameters are
 # marked (`{name}#fnparameter`): the clause's text is read in the supplier's place
