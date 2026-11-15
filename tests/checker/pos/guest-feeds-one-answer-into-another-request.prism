@@ -1,0 +1,28 @@
+# A guest that feeds one place's answer into another place's request, hosted by a handler
+# that answers both from what the places ask: every path from the guest's element tree back
+# into the guest is a tick (ruling HO, Language ch. 6), so there is no prompt cycle. The
+# request fires at n, the handler's answer reaches the query at n+1, and the next request
+# goes out at n+1.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.* | Count.*
+
+family Count
+
+tag Count.Ask of Element !Nat:
+    !by: Nat
+
+tag Count.Total of Element $Nat:
+    label: Text
+
+@Counter: @unit emit Count.*
+@Counter:
+    $total <- Count.Total(label="total")
+    !answer <- Count.Ask(!by=(1 on !Updated $total))
+    @ unit
+
+@counting: @unit
+@counting:
+    ((ignore, $tree)) <- @Host @Counter, \|path, prompt element| match element:
+        Count.Ask(!by=!by): @ !by
+        Count.Total(..): @ Len (Keys $tree)
+    Ui.Label($text=$"{Len (Keys $tree)} places")
