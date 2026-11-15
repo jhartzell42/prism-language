@@ -11,7 +11,7 @@ fn @Presser name:
     !response <- Count.Request(!requests=((Add 1) on !one))
     $total <- Count.Query($query=$ Whole)
     $last <- "nothing yet" then Debug !response
-    Ui.Label($text=$"{name} sees {Debug $total}; {$last}")
+    Ui.Label($text=$"{name} sees {$total}; {$last}")
 
 @host: @unit
 @host:

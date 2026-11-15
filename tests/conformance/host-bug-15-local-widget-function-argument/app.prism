@@ -18,7 +18,7 @@ derive ^Eq, ^Ord, ^Debug
 
 Said: fn Response -> Text
 fn Said Accepted = "accepted"
-fn Said (Declined why) = "declined: {Debug why}"
+fn Said (Declined why) = "declined: {why}"
 
 Seen: fn ?TellerView -> Text
 fn Seen nil = "(loading)"
@@ -36,15 +36,15 @@ fn @Teller seat, sitting:
     $?view <- Tell.Query($query=$ Whole)                                   # 0
     match sitting:
         Person:
-            !one <- Ui.Button($label=$"{Debug name} +1")
-            !two <- Ui.Button($label=$"{Debug name} +2")
+            !one <- Ui.Button($label=$"{name} +1")
+            !two <- Ui.Button($label=$"{name} +2")
             !response <- Tell.Request(!requests=((Add 1) on !one <| (Add 2) on !two))
             $last <- "nothing yet" then Said !response
-            Ui.Label($text=$"{Debug name}: {Seen $?view}; {$last}")
+            Ui.Label($text=$"{name}: {Seen $?view}; {$last}")
         Eager n:
             !response <- Tell.Request(!requests=(!Filter (?Reached n, (!Updated $?view))))
             $last <- "nothing yet" then Said !response
-            Ui.Label($text=$"{Debug name} (eager at {n}): {Seen $?view}; {$last}")
+            Ui.Label($text=$"{name} (eager at {n}): {Seen $?view}; {$last}")
 
 ViewerName: fn Viewer -> Text
 fn ViewerName (Viewer name) = name
