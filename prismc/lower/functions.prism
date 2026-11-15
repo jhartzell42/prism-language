@@ -397,7 +397,7 @@ fn TraitDefOf lx0, tr:
         let fd = FnDefIn lx, (if defaultQk == "": mq else: defaultQk), mq, (if (Len clauses) == 0: [[dummyClause]] else: clauses), sc
         update fd:
             &_.public <= (Len clauses) > 0
-    TraitDef(supers=(Fold tr.supers, [[]], \|acc, c| Append acc, (BoundOf lx, c)), wheres=(Each (Filter tr.headBounds, \|((h, ignore))| IsPlainProjection h), \|((h, c))| (((OutTyOf lx, (SelfIn h, tr.param)), (BoundOf lx, c)))), name=(TraitName tr.name), resultOnly=(ResultOnlyNames lx, tr), assocs=(Each (PlainAssocs tr), \|a| Camel a), methods=methods, defaults=tr.defaults, doc=(TypeDoc lx, (TyInfo(rowParams=[[]], name=tr.name, home=tr.home, params=[[]], kinds=[[]], body=BOpaque, derives=[[]], file=tr.file, span=tr.span))))
+    TraitDef(supers=(Fold tr.supers, [[]], \|acc, c| Append acc, (BoundOf lx, c)), wheres=(Each (Filter tr.headBounds, \|((h, ignore))| IsPlainProjection h), \|((h, c))| (((OutTyOf lx, (SelfIn h, tr.param)), (BoundOf lx, c)))), name=(TraitName tr.name), resultOnly=(ResultOnlyNames lx, tr), assocs=(Each (PlainAssocs tr), \|a| Camel a), podAssocs=(Each (Filter (PlainAssocs tr), \|a| AssocHeldInAField lx, tr.name, a), \|a| Camel a), methods=methods, defaults=tr.defaults, doc=(TypeDoc lx, (TyInfo(rowParams=[[]], name=tr.name, home=tr.home, params=[[]], kinds=[[]], body=BOpaque, derives=[[]], file=tr.file, span=tr.span))))
 
 # A projection with no indices, which Rust bounds on a trait (`Self::State: ...`); one
 # with indices is normalized at each use and asks its impls (`ImplHasHeadBound`).
@@ -455,6 +455,23 @@ fn ?PackedDefOf lx0, tr:
 # (`PackedDef`; the packing's `with_dictionary` takes it).
 PackedDictionaryOf: fn Lx, TraitInfo -> Ref
 fn PackedDictionaryOf lx, tr = RefIn lx, tr.home, "{Lower (TraitName tr.name)}_packed_of"
+
+# Whether some record's or tag's field holds the associated type `n` of trait `tr` at a
+# type's variable (`last: Reading g`), where the field erases it to plain data.
+AssocHeldInAField: unbounded fn Lx, Text, Text -> Bool
+fn AssocHeldInAField lx, tr, n:
+    let inCtors = Fold (Values lx.g.ctors), False, \|seen, c| seen or Fold c.args, False, \|s2, t| s2 or OpenAssocNamed t, tr, n
+    inCtors or Fold (Values lx.g.tags), False, \|seen, tg| seen or Fold tg.fields, False, \|s2, ((ignore, t))| s2 or OpenAssocNamed t, tr, n
+
+OpenAssocNamed: unbounded fn Ty, Text, Text -> Bool
+fn OpenAssocNamed t, tr, n = match t:
+    TyAssoc t2, n2, a, indices: (t2 == tr and n2 == n and HasOpenAssoc t) or (OpenAssocNamed a, tr, n)
+    TyCon ignore, args: Fold args, False, \|seen, x| seen or OpenAssocNamed x, tr, n
+    TyTuple ts: Fold ts, False, \|seen, x| seen or OpenAssocNamed x, tr, n
+    TyArray e: OpenAssocNamed e, tr, n
+    TyMap k, v: (OpenAssocNamed k, tr, n) or OpenAssocNamed v, tr, n
+    TySig ignore, i: OpenAssocNamed i, tr, n
+    otherwise: False
 
 # An impl's methods, each with its trait's scheme at the impl's head.
 ImplDefOf: unbounded fn Lx, ImplInfo -> ImplDef

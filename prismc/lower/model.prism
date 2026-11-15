@@ -641,6 +641,9 @@ type TraitDef = record:
     resultOnly: [Text]
     # its associated types' names, as the target spells them
     assocs: [Text]
+    # those a record's or a tag's field holds at a type's variable, erased there to plain
+    # data (`AssocErased`), so every impl's choice is plain data
+    podAssocs: [Text]
     methods: [FnDef]
     defaults: [Text]
     # the traits its `where` asks of its parameter (`where d: ^StateDocument`), as paths,

@@ -150,7 +150,7 @@ fn RustItem it = match it:
 
 RustTrait: unbounded fn TraitDef -> Text
 fn RustTrait t:
-    let types = Each t.assocs, \|a| "type {a}: ::std::clone::Clone;"
+    let types = Each t.assocs, \|a| if Fold t.podAssocs, False, \|seen, p| seen or p == a: "type {a}: ::std::clone::Clone + ::prism_rtl::ToPod + ::prism_rtl::FromPod;" else: "type {a}: ::std::clone::Clone;"
     let ms = Join (Append types, (Each t.methods, \|f| TraitMethod f)), "\n"
     # every Prism value is a whole value its functions may copy and keep (a default's
     # closure, a default giving `Self`)
