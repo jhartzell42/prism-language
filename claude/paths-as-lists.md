@@ -44,13 +44,15 @@ current as pieces land.
 - The printer writes `/` for `Call` and `.` between other segments.
 - The reader takes `1/0.#0.0` back: a number with a fraction lexes as one token, whose
   text is read as positions.
-- A host's answer row stands under `[p]` then `Call`, so a forwarded place is `[p]/0`.
+- A host's answer row stands under `[p]` then `Call`, so a forwarded place is `[p]/0`, built
+  early or late (`HostRow::build` adds the `Call` as `first_value` does); its answers and
+  deliveries come in under that `Call`, and one that does not is a fault.
 
 ## The test language (done, 1d3f334c)
 
 - `LexPath` reads `/` as `PstCall` and `.` as a step; `PsCall` in the tree.
 
-## The lowering (written, a8982201; not yet built)
+## The lowering (a8982201, built as q3 and q4; fixes since in 66cdec07)
 
 - **Positions carry a prefix.** `Pos.prefix` holds the caller positions of the inlined
   applications a place stands in. `InCallPos`/`AfterCallPos` move into and out of one;
@@ -63,7 +65,8 @@ current as pieces land.
   `if`, an early choice), `UnderCall` (a widget's clauses static, early, dynamic, bundled
   or shared; an applied blueprint; a block's function of several clauses),
   `UnderCaller` (a line that takes a late result, the lines below a split, an element
-  value applied: the caller's list, as before). Rows under their own place are made
+  value applied: the caller's list, as before, at the line's own position, its path
+  carrying the inlined applications' prefix). Rows under their own place are made
   from a block at position 0 (`RowsWx`), built with the place's path and `row_base` 0
   (`UnderRows`), take one position (`GenWidth`) and leave no gaps (`RowGapsUnder`);
   their answers and documents go by the place's segments (`OwnPlaceGenArm`,
@@ -80,7 +83,12 @@ current as pieces land.
   derived by hand.
 - The six late-value tests, re-derived under PL.
 - Every other transcript moves mechanically; those come from the implementation's run,
-  audited for anything beyond the spelling, in one commit by ruling PL.
+  audited for anything beyond the spelling, in one commit by ruling PL (2a6ae70e: each
+  section's lines the same with paths taken off, each section's count of distinct paths
+  kept). That audit misses a wrong spelling applied the same way everywhere: q4 spelled a
+  late host row's places `[p].0`, which a check of the spelling itself found.
+- Test scripts' `click at` paths: each old place matched to the new one with the same
+  content, the script re-run until its transcript is the old one but for paths.
 
 ## Negative space
 
