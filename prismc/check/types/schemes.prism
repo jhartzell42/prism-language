@@ -135,6 +135,8 @@ fn TailQIn t, q = match t:
     TyElem rw, o: (TailQIn o, q) or TailHasQ rw.tail, q
     TyElemAny rw: TailHasQ rw.tail, q
     TyForall ignore, b: TailQIn b, q
+    TyAssoc ignore, ignore2, a, indices: Fold indices, (TailQIn a, q), \|seen, x| seen or TailQIn x, q
+    TyExists ignore, b, ignore2, ignore3: TailQIn b, q
     otherwise: False
 
 TailHasQ: fn Tail, Text -> Bool
