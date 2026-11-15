@@ -556,6 +556,10 @@ fn SolveClass g, st, s0, Restore, givens, w, t:
                         else: if con == "Prelude.NonEmpty": "write `impl ^{bare} {ShowTy st, t}`, or pass the collection it is, with `as {ShowTy st, (Or args[0], TyErr)}`"
                         else: "derive `^{bare}` on `{BareName con}`, or write `impl ^{bare} {BareName con}`"
                         (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`", fix)))
+            # an associated type at a named type that no equation can ever decide (an arm's
+            # fresh role, `Answer Count ρ`) meets no constraint: refused, never dropped (a
+            # numeric literal answering every role's query)
+            TyAssoc ignore, ignore2, ignore3, ignore4 if IsStuckAssoc st, t: (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`, which no equation of its impls decides here", "annotate the value's type, or match the role first")))
             otherwise: (([[]], st))
 
 # `existential-method` (Jimmy's ruling EX, by Rust's rule for a `dyn` trait's methods): a
@@ -735,10 +739,10 @@ fn DefaultWants g, st, givens:
 # An associated type that stays one: no impl's equation chose it, and no variable in it
 # could later choose one.
 IsStuckAssoc: unbounded fn St, Ty -> Bool
-fn IsStuckAssoc st, t = match t:
+fn IsStuckAssoc st, t0 = match NormAssoc st, (Zonk st, t0):
     # at a named type (`Count`), whose impl is known: a generic head's (`State d`) are the
     # givens' to meet
-    TyAssoc ignore, ignore2, a, indices: (not (IsWaitingAssoc st, t)) and match Walk st, a:
+    TyAssoc tr, n, a, indices: (not (IsWaitingAssoc st, (TyAssoc tr, n, a, indices))) and match Walk st, a:
         TyCon ignore3, ignore4: True
         otherwise: False
     otherwise: False

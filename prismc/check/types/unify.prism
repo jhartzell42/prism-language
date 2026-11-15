@@ -278,9 +278,10 @@ fn NormAssocDeep st, t = match NormAssoc st, t:
 # type as written there with what it is.
 GuestNote: unbounded fn St, GuestRow, Waiting -> Text
 fn GuestNote st, gr, w:
-    let ?assoc = match ?AssocUnder st, w.expected:
-        ? t: ? t
-        nil: ?AssocUnder st, w.found
+    let ((outerExpected, outerFound)) = w.outer
+    let ?assoc = Fold [[w.expected, w.found, outerExpected, outerFound]], nil, \|?found, t| match ?found:
+        ? f: ? f
+        nil: ?AssocUnder st, t
     let emitted = "{gr.familyName}.*{Concat (Each gr.indices, \|i| " {ShowTyIn st, (Zonk st, i), True}")}"
     match ?assoc:
         ? t: "this guest emits `{emitted}`, and `{ShowTyIn st, t, False}` is `{ShowTy st, (NormAssoc st, t)}`"
