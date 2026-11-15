@@ -1,0 +1,24 @@
+# A map of blueprints whose guests give back plain data (`Text`) needs no `prompt` mark, and a loop
+# through it is no cycle: changing the map builds and ends guests at the tick's end
+# (ownership, Semantics ch. 5), and guests that give back no event can never take part in
+# a cycle, however they are built, held or hosted (claude/promptness-checker.md; Jimmy,
+# 15 November: "A blueprint that doesn't output an event can never introduce a cycle").
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+@Kid: fn Text -> @Text emit Ui.*
+fn @Kid name:
+    Ui.Label($text=$"{name}")
+    @ name
+
+@Kids: fn $(Text ==> $@(@Text emit Ui.*)) -> @$(Text ==> Text) emit Ui.*
+fn @Kids $kids:
+    $seated <- for name, $@kid <- $kids:
+        rebuild $@kid:
+            _
+    @ $seated
+
+@room: @unit emit Ui.*
+@room:
+    $seated <- @Kids $kids
+    $kids <- {{"ada": $ (@Kid "ada")}} then {{}} on (!Updated $seated)

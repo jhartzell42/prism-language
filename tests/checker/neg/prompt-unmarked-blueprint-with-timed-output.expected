@@ -1,0 +1,5 @@
+tests/checker/neg/prompt-unmarked-blueprint-with-timed-output.prism:14: error[prompt-unmarked]: `@Run` gives a result that changes in the tick `$@!b` changes, and its type does not mark `$@!b`'s parameter `prompt`
+    @ $!out
+    ^^^^^^^
+  fix: mark the parameter in its type, `@Run: fn prompt $@(@!Nat emit Ui.*) -> @$!Nat emit Ui.*`, or give it a tick later with `@Defer`
+1 error

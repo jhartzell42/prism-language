@@ -1,0 +1,26 @@
+# A parameter whose blueprints give back a type variable takes no `prompt` mark: what
+# the guests give back borrows whatever the type it is given at borrows, so each call is
+# read by its argument's type (claude/promptness-checker.md, "Lifetimes ride inside
+# types"; Jimmy, 15 November). Given guests that give back an event borrowing `!said`,
+# `@Run`'s result borrows `!said`, and feeding it back to `!said` is a cycle. Must stay
+# refused: a call that trusted the bare signature would let it run (soundness).
+# Expected text derived by hand.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+@Echo: fn prompt !Nat -> @!Nat emit Ui.*
+fn @Echo !heard:
+    Ui.Label($text=$"echo")
+    @ !heard
+
+@Run: fn $@(@a emit r) -> @$a emit r
+fn @Run $@b:
+    $out <- rebuild $@b:
+        _
+    @ $out
+
+@room: @unit emit Ui.*
+@room:
+    let $@!echo = $ (@Echo !said)
+    $!back <- @Run $@!echo
+    !said <- @Switch $!back
