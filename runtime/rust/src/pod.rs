@@ -231,12 +231,15 @@ impl PartialOrd for ConstructorName {
 }
 
 /// One step of a path: an element statement's position, a `rebuild`'s generation `#g`,
-/// or a `for`'s or host document's key `[k]` (Semantics ch. 8).
+/// a `for`'s or host document's key `[k]` (Semantics ch. 8), or the start of a widget
+/// application's own list of positions (ruling PL: a path is a list of lists, one per
+/// widget application; written `/` between widgets and `.` inside one).
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum Segment {
     Pos(u32),
     Gen(u32),
     Key(Pod),
+    Call,
 }
 
 /// A place's path. The derived order is document order: a path before every path it
@@ -254,6 +257,11 @@ impl Path {
     /// The child at an element statement's position.
     pub fn at(&self, pos: u32) -> Path {
         self.child(Segment::Pos(pos))
+    }
+    /// The start of a widget application's own list (ruling PL): its places are counted
+    /// from here, whatever its caller builds around it.
+    pub fn call(&self) -> Path {
+        self.child(Segment::Call)
     }
     /// The path `rest` under this one: a hosted child's place, relative to the child,
     /// under the child's root.

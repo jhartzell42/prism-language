@@ -92,7 +92,9 @@ enum Tok {
     Str(String),
     Char(char),
     Num(BigInt),
-    Float(f64),
+    // a number with a fraction, and its text, which a path (`1.0.2`, ruling PL) reads as
+    // positions
+    Float(f64, String),
     Dur(i128),
     Name(String),
     P(&'static str),
@@ -144,7 +146,7 @@ fn lex(src: &str) -> Result<Vec<Tok>, String> {
                 _ => return Err(format!("a character literal holds one character: '{s}'")),
             });
         } else if c == '-' && cs[i + 1..].starts_with(&['i', 'n', 'f']) && !word(i + 4) {
-            out.push(Tok::Float(f64::NEG_INFINITY));
+            out.push(Tok::Float(f64::NEG_INFINITY, "-inf".to_string()));
             i += 4;
         } else if c.is_ascii_digit() || (c == '-' && cs.get(i + 1).is_some_and(char::is_ascii_digit)) {
             let start = i;
@@ -158,7 +160,7 @@ fn lex(src: &str) -> Result<Vec<Tok>, String> {
                     i += 1;
                 }
                 let t: String = cs[start..i].iter().collect();
-                out.push(Tok::Float(t.parse().map_err(|_| format!("bad number {t}"))?));
+                out.push(Tok::Float(t.parse().map_err(|_| format!("bad number {t}"))?, t));
                 continue;
             }
             let digits: String = cs[start..i].iter().collect();
@@ -200,7 +202,7 @@ fn lex(src: &str) -> Result<Vec<Tok>, String> {
             }
             // `-` alone is a sparse tuple's absent part (`(("hello", -))`); a number's
             // sign and `-inf` were read above
-            let p = ["(", ")", "[", "]", "{", "}", ",", ":", "=", "?", "~", "/", "#", "-"]
+            let p = ["(", ")", "[", "]", "{", "}", ",", ":", "=", "?", "~", "/", "#", "-", "."]
                 .into_iter()
                 .find(|p| p.starts_with(c))
                 .ok_or(format!("unexpected character {c:?}"))?;
@@ -325,8 +327,8 @@ impl Parser {
             Some(Tok::Str(s)) => Pod::text(s.as_str()),
             Some(Tok::Char(c)) => Pod::Char(c),
             Some(Tok::Dur(d)) => Pod::Duration(d),
-            Some(Tok::Float(f)) => Pod::Float(Float(f)),
-            Some(Tok::Num(_)) if self.is("/") => {
+            Some(Tok::Float(f, _)) => Pod::Float(Float(f)),
+            Some(Tok::Num(_)) if self.is("/") || self.is(".") => {
                 self.at -= 1;
                 Pod::Path(self.path()?)
             }
@@ -392,26 +394,42 @@ impl Parser {
             _ => Pod::Record(n.into(), fields),
         })
     }
+    /// A path in a transcript's spelling (ruling PL): `/` starts a widget's own list and
+    /// `.` steps inside one, so `1/0.#0.0` is position 1, a widget, then its position 0,
+    /// generation 0 and position 0. A number with a fraction lexes as one token, its text
+    /// read back as positions.
     fn path(&mut self) -> Result<Path, String> {
         let mut segs = Vec::new();
+        let n32 = |n: BigInt| u32::try_from(n).map_err(|_| "a path segment out of range".to_string());
+        let positions = |raw: &str| -> Result<Vec<u32>, String> { raw.split('.').map(|d| d.parse::<u32>().map_err(|_| format!("a path segment out of range: {raw}"))).collect() };
         loop {
-            let n32 = |n: BigInt| u32::try_from(n).map_err(|_| "a path segment out of range".to_string());
             match self.next() {
                 Some(Tok::Num(n)) => segs.push(Segment::Pos(n32(n)?)),
+                Some(Tok::Float(_, raw)) => segs.extend(positions(&raw)?.into_iter().map(Segment::Pos)),
                 Some(Tok::P("#")) => match self.next() {
                     Some(Tok::Num(n)) => segs.push(Segment::Gen(n32(n)?)),
+                    Some(Tok::Float(_, raw)) => {
+                        let ps = positions(&raw)?;
+                        segs.push(Segment::Gen(ps[0]));
+                        segs.extend(ps[1..].iter().map(|p| Segment::Pos(*p)));
+                    }
                     other => return Err(format!("expected a generation after #, found {other:?}")),
                 },
                 Some(Tok::P("[")) => {
                     // A key that is a path prints as its notation, so read one back.
-                    let is_path = matches!(self.peek(), Some(Tok::Num(_))) && matches!(self.toks.get(self.at + 1), Some(Tok::P("/")));
+                    // (a host's key is its guest's path: `[0.0]` and `[0/1]` are paths, a `for`'s
+                    // number key `[2]` a number)
+                    let is_path = (matches!(self.peek(), Some(Tok::Num(_)) | Some(Tok::Float(..))) && matches!(self.toks.get(self.at + 1), Some(Tok::P("/")) | Some(Tok::P("."))))
+                        || matches!(self.peek(), Some(Tok::Float(..)));
                     let key = if is_path { Pod::Path(self.path()?) } else { self.value(true)? };
                     self.expect("]")?;
                     segs.push(Segment::Key(key));
                 }
                 other => return Err(format!("expected a path segment, found {other:?}")),
             }
-            if !self.eat("/") {
+            if self.eat("/") {
+                segs.push(Segment::Call);
+            } else if !self.eat(".") {
                 return Ok(Path(segs));
             }
         }

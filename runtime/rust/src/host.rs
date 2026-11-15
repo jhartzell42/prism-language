@@ -1363,7 +1363,7 @@ impl<E: Level + Eq, A: OutputOf<E>, P: 'static> HostOf<E, A> for Host<E, A, P> {
     /// sync"): the supplier row for the place is built now, before the owner's node, and
     /// kept where the builder finds it. The one early construction.
     fn first_value(&self, place: &Path, element: &E, entry: &Rc<Entry<E>>, cx: &mut Cx) -> Result<Option<A>, Fault> {
-        let row = HostRow::early(self.at.borrow().child(Segment::Key(place.to_pod())), place.clone(), element.clone(), entry.clone(), self.me(), cx)?;
+        let row = HostRow::early(self.at.borrow().child(Segment::Key(place.to_pod())).call(), place.clone(), element.clone(), entry.clone(), self.me(), cx)?;
         let first = row.first();
         self.rows.borrow_mut().insert(place.clone(), row);
         Ok(first)

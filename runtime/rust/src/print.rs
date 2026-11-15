@@ -270,9 +270,12 @@ show_with! {
     Text => |s, p| p.quoted(s.chars(), '"');
     Cursor => |s, p| p.record("Cursor", &[("at", &Nat::from(u32::try_from(s.at()).expect("a text over 4 GB")))]);
     Error => |s, p| p.record("Error", &[("kind", &s.kind()), ("message", &s.message_p)]);
+    // `/` starts a widget's own list and `.` steps inside one (ruling PL)
     Path => |s, p| for (i, seg) in s.0.iter().enumerate() {
-        p.raw(if i > 0 { "/" } else { "" });
+        let after_call = i > 0 && matches!(s.0[i - 1], Segment::Call);
+        p.raw(if i == 0 || after_call || matches!(seg, Segment::Call) { "" } else { "." });
         match seg {
+            Segment::Call => p.raw("/"),
             Segment::Pos(n) => p.display(n),
             Segment::Gen(g) => {
                 p.raw("#");
