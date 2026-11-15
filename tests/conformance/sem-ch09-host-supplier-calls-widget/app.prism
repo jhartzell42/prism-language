@@ -1,4 +1,4 @@
-# A lambda supplier that calls a named widget function, `\|p, e| @Supply p, e`: the call
+# A lambda supplier that calls a named widget function, `\|p, prompt e| @Supply p, e`: the call
 # is a blueprint value, the function's answer for the place (Semantics ch. 9). prismc once
 # emitted a call of a Rust function it never wrote, which rustc refused. Written by Claude
 # on the claude-lowering branch; subject to change.
@@ -26,4 +26,4 @@ fn @Supply p, e = match e:
 
 @called: @unit
 @called:
-    ignore <- @Host @child, \|p, e| @Supply p, e          # 0/[p]
+    ignore <- @Host @child, \|p, prompt e| @Supply p, e          # 0/[p]
