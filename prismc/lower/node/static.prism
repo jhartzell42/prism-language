@@ -2199,7 +2199,7 @@ fn InlineWidgetBody wx, benv, menv, qk, v0, args, e:
                 let unmatched = Filter (Fold ptys, [[]], \|acc, t| UnionTexts acc, (RigidsIn t)), \|q| not (HasKey (Or ?params, {{}}), q)
                 let lxp = update lx:
                     &_.subst <= Fold (Keys (Or ?params, {{}})), &_.subst, \|m, q| Insert m, q, (Or (Or ?params, {{}})[q], TyErr)
-                let ((wx1, be1, me1)) = Fold (Range0 (Len params)), ((wx, emptyEnv, emptyEnv)), \|((w, be, me)), i|
+                let ((wx1, be1, me1)) = Fold (Range0 (Len params)), ((wx, emptyEnv, emptyEnv)), \|((wb, be, me)), i|
                     let p = Or params[i], dummyPat
                     let nkey = PlainBinder lxc, p
                     let pty0 = SubstTy lxp, (Or ptys[i], TyErr)
@@ -2211,8 +2211,8 @@ fn InlineWidgetBody wx, benv, menv, qk, v0, args, e:
                         ? a: if (HasOpenIndexedAssoc pty0) and (LayerOf (TypeAt lx, a.value.span)) == (LayerOf pty0): TypeAt lx, a.value.span else: pty0
                         nil: pty0
                     match args[i]:
-                        nil: ((w, be, me))
-                        ? a: if nkey != "": BindParam w, benv, menv, be, me, nkey, (LocalNameAt lxc, nkey, p.span), pty, a.value else: BindParamPattern w, benv, menv, be, me, lxc, p, pty, a.value
+                        nil: ((wb, be, me))
+                        ? a: if nkey != "": BindParam wb, benv, menv, be, me, nkey, (LocalNameAt lxc, nkey, p.span), pty, a.value else: BindParamPattern wb, benv, menv, be, me, lxc, p, pty, a.value
                 let callSpan = match e.kind:
                     ECall c, ignore, ignore, ignore: c.span
                     otherwise: e.span
