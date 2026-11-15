@@ -1,5 +1,5 @@
 tests/checker/neg/prompt-unmarked-function-in-the-result.prism:11: error[prompt-unmarked]: `@Make` gives an event that fires in the tick `!told` fires, and its type does not mark `!told`'s parameter `prompt`
         @ \|!ignored| @ !told
-        ^^^^^^^^^^^^^^^^^^^^^^
-  fix: mark the parameter in its type, `@Make: fn prompt !Nat -> @fn !Nat -> @!Nat`, or give it a tick later with `@Defer`
+        ^^^^^^^^^^^^^^^^^^^^^
+  fix: mark the parameter in its type, `@Make: fn prompt !Nat -> @(fn !Nat -> @!Nat)`, or give it a tick later with `@Defer`
 1 error

@@ -585,7 +585,8 @@ fn ImplsComplete g, st0:
             let s2 = update s1:
                 &_.file <= im.file
             let s3 = Fold tr.methods, s2, \|s, method|
-                let defined = Fold im.methods, False, \|seen, m| seen or (BareName method) == m or (DropPrefix method, "{tr.home}.") == m or HasAboveChosen im, (BareName method)
+                # (a default from a trait below counts, chosen or `ambiguous` there)
+                let defined = Fold im.methods, False, \|seen, m| seen or (BareName method) == m or (DropPrefix method, "{tr.home}.") == m or (HasAboveChosen im, (BareName method)) or BelowGivesDefault g, tr, im, (BareName method)
                 if defined or HasText tr.defaults, method: s
                 else: match im.?through:
                     ? through: Err s, "mismatch", im.span, "`derive ^{shown} via ^{through}` gives no method `{BareName method}` of `^{shown}`"
@@ -1018,6 +1019,10 @@ fn HeadImplements g, cls, head = Fold (Or g.impls[cls], [[]]), False, \|seen, im
 
 DefSpanOf: fn G, Text -> Range
 fn DefSpanOf g, qk = Fold g.defs, Range(start=0, end=0, origin=InSource), \|r, d| if d.qk == qk: d.span else: r
+
+# Whether a trait below `tr` that the impl's head implements gives a default for `method`.
+BelowGivesDefault: unbounded fn G, TraitInfo, ImplInfo, Text -> Bool
+fn BelowGivesDefault g, tr, im, method = Fold (Values g.traits), False, \|seen, below| seen or (below.name != tr.name and (HasText (TraitsAbove g, below.name), tr.name) and (HasAboveDefault below, method) and (HeadImplements g, below.name, im.head))
 
 HasAboveChosen: fn ImplInfo, Text -> Bool
 fn HasAboveChosen im, method = Fold im.aboveChosen, False, \|seen, ((m, ignore, ignore2))| seen or m == method
