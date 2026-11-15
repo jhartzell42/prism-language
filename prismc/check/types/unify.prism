@@ -86,7 +86,10 @@ fn TryUnify st, expected, found, span:
 # "" when the two unify, "mismatch" when they do not, "reported" when a special error was
 # already added.
 UnifyIn: unbounded fn St, Ty, Ty, Range -> ((Text, St))
-fn UnifyIn st, expected, found, span:
+fn UnifyIn st0, expected, found, span:
+    # an associated type's index that its impl takes as a row (`type Seats rest = Seated
+    # rest`, ruling RR) at a variable still open is a row first (`LinkAssocRows`)
+    let st = LinkAssocRows (LinkAssocRows st0, span, expected), span, found
     let e = NormAssoc st, (Walk st, expected)
     let f = NormAssoc st, (Walk st, found)
     # A variable meeting a waiting associated type is bound to it, so the projection stays
@@ -100,6 +103,28 @@ fn UnifyIn st, expected, found, span:
         else: if (IsFlexVar st, e) or (IsFlexVar st, f): UnifyHeads st, e, f, span
         else: (("", (Defer st, e, f, span)))
     else: UnifyHeads st, e, f, span
+
+# An associated type's indices at an impl that matches its head: an index the impl's
+# equation names by a variable standing as a row's tail in what it chooses (`type Seats
+# rest = Seated rest`, ruling RR), where the application gives a variable still open (a
+# signature's `Seats d zz` instantiated), is bound to a fresh row as `Elem` of it, as a
+# constructor's row parameter is (`LinkRowParams`), so the choice takes the row.
+LinkAssocRows: unbounded fn St, Range, Ty -> St
+fn LinkAssocRows st, span, t = match Walk st, t:
+    TyAssoc tr, n, a, indices if (Len indices) > 0: match Walk st, a:
+        TyFlex ignore: st
+        TyRigid ignore: st
+        otherwise:
+            let whole = Zonk st, a
+            Fold st.assocImpls, st, \|s, ai| if ai.cls != tr or ai.name != n or (Len ai.indices) != (Len indices): s else: match ?MatchHead ai.head, whole, {{}}:
+                ? ignore2: Fold (Range0 (Len indices)), s, \|s2, i| match ((ai.indices[i], (Walk s2, (Or indices[i], TyErr)))):
+                    ((? (IndexVar v), TyFlex k)) if TailQIn ai.value, v:
+                        let ((rw, s3)) = FreshRow s2, [[]]
+                        let ((ignore3, s4)) = BindVar s3, k, (TyElemAny rw), span
+                        s4
+                    otherwise: s2
+                nil: s
+    otherwise: st
 
 # An associated type normalizes before comparing (ch. 5, Traits): `Quotient Float` is
 # `Float`, `Quotient Int` is `?Int` (Type System ch. 3); at a flexible variable it waits
@@ -289,8 +314,9 @@ fn GuestNote st, gr, w:
 
 # An associated type under any sigils (`!(Request Count Watcher)`).
 ?AssocUnder: unbounded fn St, Ty -> ?Ty
-fn ?AssocUnder st, t = match Zonk st, t:
-    TyAssoc tr, n, a, indices: ? (TyAssoc tr, n, a, indices)
+fn ?AssocUnder st, t = match Walk st, t:
+    # (followed, never normalized: `Zonk` would give the `Never` it is)
+    TyAssoc tr, n, a, indices: ? (TyAssoc tr, n, (Zonk st, a), (Each indices, \|i| Zonk st, i))
     TySig ignore, i: ?AssocUnder st, i
     otherwise: nil
 

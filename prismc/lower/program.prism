@@ -1222,7 +1222,9 @@ fn TyDefs lx, ti:
         BRecord fs:
             let fields = Each (Range0 (Len fs)), \|i|
                 let ((fname, ft)) = Or fs[i], (("", TyErr))
-                let rt = OutTyOf lx, ft
+                # (a field of an associated type at the type's variables holds plain data,
+                # as a case's does, `CaseField`: `.field` and the constructor recode it)
+                let rt = if HasOpenAssoc ft: AssocPodOut (OutTyOf lx, (AssocErased ft)) else: OutTyOf lx, ft
                 (((FieldSpell ti.home, fname, ft), (if RcField lx, ti.name, i: OutRc rt else: rt)))
             [[ItType (Mk ShapeRecord, [[CaseDef(name=(Camel bare), prism=bare, fields=fields, labels=(Each fs, \|((fname, ignore))| fname))]])]]
         BChoice cases:

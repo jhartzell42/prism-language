@@ -54,9 +54,14 @@ fn WidgetLine wx, benv, menv, e, ?bound = match e.kind:
 NamedWidgetLine: unbounded fn Wx, Env, Env, Expr, ?Bn -> ((Wx, Wres))
 fn NamedWidgetLine wx, benv, menv, e, ?bound:
     let lx = wx.lx
-    let ((callee, args)) = match e.kind:
+    let ((callee0, args)) = match e.kind:
         ECall c, xs, ignore, ignore: ((c, xs))
         otherwise: ((e, [[]]))
+    # (a widget given its type arguments, `@InMemory<<Count>>`, is the widget it names:
+    # the checker's types at the line say the rest)
+    let callee = match callee0.kind:
+        ETypeArgs x, ignore: x
+        otherwise: callee0
     # a module's lowercase widget written qualified (`@Parts.header`), which the parser
     # reads as a field: the widget it names, where no name of the block hides the
     # module's (`?QualifiedFieldIn`)

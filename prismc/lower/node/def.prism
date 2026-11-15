@@ -1881,15 +1881,46 @@ fn BuildInOrder wx, stmts, order, start, ends:
     # first line's dynamic (`((said, $n)) <- @Asking Scale`, `Scale <- Build $n`; the
     # library's `@HostDocument`) reads the value at a tick, and its own `let`s need only
     # the value's; only `let`s that read each other are a cycle
-    let lets = Fold order, (Take wx.lets, start), \|acc, comp| if (Len comp) > 1: Append acc, (Or (?DosInOrder (CompLets runs, comp)), (CompLets runs, comp)) else: Append acc, (CompLets runs, comp)
+    let lets0 = Fold order, (Take wx.lets, start), \|acc, comp| if (Len comp) > 1: Append acc, (Or (?DosInOrder (CompLets runs, comp)), (CompLets runs, comp)) else: Append acc, (CompLets runs, comp)
     let cyclic = Filter order, \|comp| (Len comp) > 1 and (Fold comp, False, \|seen, i| seen or (Len (Or runs[i], [[]])) > 0) and (?DosInOrder (CompLets runs, comp)) == nil
+    # lines the order puts one after another can still need a `let` of the later one
+    # first: a line given a function value (`@Asking Scale`) binds its parameter to the
+    # value at the build, while the value's line (`Scale <- Build $n`) reads only the
+    # first line's dynamic, which the build does not read; such a `let` is moved up
+    # before the `let`s that read what it binds (`?ForwardReadsPlaced`)
+    let ?placed = ?ForwardReadsPlaced lets0, (Len lets0) + 1
+    let lets = Or ?placed, lets0
     # a link to the node reads nothing and is shared by the lines after the one that made
     # it (`whole_owner`): it stands before every line's run
     let links = Filter lets, IsLinkLet
     let wx2 = update wx:
         &_.lets <= Append (Append links, (Filter lets, \|d| not (IsLinkLet d))), (Drop wx.lets, last)
-    Fold cyclic, wx2, \|w, comp| update w:
+    let wx3 = if (IsSome ?placed) or (Len cyclic) > 0: wx2 else: update wx2:
+        &_.build <= Push &_.build, (InternalBugDo "the build's `let`s read each other across lines the build order separates: a cycle among values")
+    Fold cyclic, wx3, \|w, comp| update w:
         &_.build <= Push &_.build, (InternalBugDo "lines that read each other at the build ({Join (Fold comp, [[]], \|acc, i| Append acc, (Check.Blocks.GroupDefs (Or stmts[i], dummyStmtL))), ", "}): a cycle among values")
+
+# `let`s with each one after those that bind a name it reads: the first `let` that reads a
+# name a later one binds has the stretch from it to that later one put in order by
+# `?DosInOrder`, until none does; `nil` when a stretch's `let`s read each other.
+?ForwardReadsPlaced: unbounded fn [Do], Nat -> ?[Do]
+fn ?ForwardReadsPlaced dos, fuel = match ?ForwardRead dos:
+    nil: ? dos
+    ? ((i, j)) if fuel > 0:
+        match ?DosInOrder (Take (Drop dos, i), (Or ((j + 1) -? i), 0)):
+            ? stretch: ?ForwardReadsPlaced (Append (Append (Take dos, i), stretch), (Drop dos, j + 1)), (Dec fuel)
+            nil: nil
+    otherwise: nil
+
+# The first `let` (at `i`) that reads a name a `let` after it binds, and the last such `let`
+# (at `j`).
+?ForwardRead: unbounded fn [Do] -> ?((Nat, Nat))
+fn ?ForwardRead dos = Fold (Range0 (Len dos)), nil, \|?found, i| if IsSome ?found: ?found else:
+    let d = Or dos[i], DoExpr XUnit
+    # (a name bound before it too is that earlier binding's, which a later one shadows)
+    let before = Fold (Take dos, i), [[]], \|acc, e| Append acc, (DoBinds e)
+    let later = Filter (Range0 (Len dos)), \|j| j > i and Fold (DoBinds (Or dos[j], DoExpr XUnit)), False, \|f, n| f or ((not (HasText before, n)) and DoReads d, n)
+    if (Len later) == 0: nil else: ? ((i, (Or later[Dec (Len later)], i)))
 
 # A component's lines' statements, in page order.
 CompLets: fn [ [Do] ], [Nat] -> [Do]

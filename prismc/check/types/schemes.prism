@@ -34,7 +34,14 @@ derive ^Eq, ^Show
 
 SubstQ: unbounded fn Inst, Ty -> Ty
 fn SubstQ m, t = match t:
-    TyQ n: Or m.tys[n], (TyQ n)
+    # a row variable written where a type stands (an associated type's index, `Seats d
+    # rest` under `emit rest`, ruling RR) is `Elem` of its row
+    TyQ n: match m.tys[n]:
+        ? t: t
+        nil: match m.rows[n]:
+            ? (TlRow whole): TyElemAny whole
+            ? tail: TyElemAny (Rw(fams=[[]], minus=[[]], tail=tail, idx={{}}))
+            nil: TyQ n
     TyCon n, args: TyCon n, (Each args, \|a| SubstQ m, a)
     TyFn c, ps, res, prompts: TyFn (SubstCol m, c), (Each ps, \|p| SubstQ m, p), (SubstQ m, res), prompts
     TyTuple ts: TyTuple (Each ts, \|a| SubstQ m, a)

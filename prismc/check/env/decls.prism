@@ -592,7 +592,9 @@ fn ImplsComplete g, st0:
                 &_.file <= im.file
             let s3 = Fold tr.methods, s2, \|s, method|
                 # (a default from a trait below counts, chosen or `ambiguous` there)
-                let defined = Fold im.methods, False, \|seen, m| seen or (BareName method) == m or (DropPrefix method, "{tr.home}.") == m or (HasAboveChosen im, (BareName method)) or BelowGivesDefault g, tr, im, (BareName method)
+                # (the written ones folded apart: a lambda's body runs to the line's end)
+                let written = Fold im.methods, False, \|seen, m| seen or (BareName method) == m or (DropPrefix method, "{tr.home}.") == m
+                let defined = written or (HasAboveChosen im, (BareName method)) or BelowGivesDefault g, tr, im, (BareName method)
                 if defined or HasText tr.defaults, method: s
                 else: match im.?through:
                     ? through: Err s, "mismatch", im.span, "`derive ^{shown} via ^{through}` gives no method `{BareName method}` of `^{shown}`"

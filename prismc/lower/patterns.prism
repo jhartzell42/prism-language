@@ -95,7 +95,9 @@ fn RustPat lx, p, ty, mode, fresh = match p.kind:
         # number against the variant the variable holds here
         nil: match (Or tys[0], Type(kind=TAbsent, span=p.span)).kind:
             TName n, [[]]: match ?KindedNumber lx, (Dotted n.path):
-                ? ((x, ignore)): PatOut(pa=(PaBind fresh), conds=[[CcIf (XBin OpEq, (XVar fresh), x)]], binds=[[]])
+                # (both sides as references: the scrutinee's binding is one when the
+                # match holds it borrowed, as a literal pattern's is, `LitPat`)
+                ? ((x, ignore)): PatOut(pa=(PaBind fresh), conds=[[CcIf (XBin OpEq, (Ref (LocalPlace (XVar fresh), mode, OutNat)), (XRef x))]], binds=[[]])
                 nil: PatOut(pa=PaWild, conds=[[CcIf (Refusal "`Fixed<<{Dotted n.path}>>`, a type variable with no stated kind here")]], binds=[[]])
             otherwise: PatOut(pa=PaWild, conds=[[CcIf (Refusal "a `<<..>>` pattern that is no `Fixed<<Variant>>`")]], binds=[[]])
     PAny ignore: PatOut(pa=PaWild, conds=[[CcIf (Refusal "an existential opened by `any` in a pattern")]], binds=[[]])

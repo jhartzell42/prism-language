@@ -1614,7 +1614,7 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
                         let ((ps, ignore2)) = SchemeParts lx, qk
                         let names = Each (Range0 (Len ps)), \|i| "a{i}"
                         let pa = if (Len ps) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
-                        let f = XClosure False, [[pa]], (XCall (HelperRef "entered"), [[(XCall (StartRef lx, qk), (Each names, \|nm| XVar nm))]])
+                        let f = XClosure False, [[pa]], (XCall (HelperRef "entered"), [[(XCall (StartRef lx, qk), (Append (KindArgs lx, v, span), (Each names, \|nm| XVar nm)))]])
                         VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[f]]), t), t
                     # a generic function's value is a closure calling it, at the types the
                     # closure's parameters say (a target with function templates names
@@ -1622,7 +1622,9 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
                     OutFn pts, ignore if (Len v.scheme.qs) > 0:
                         let names = Each (Range0 (Len pts)), \|i| "a{i}"
                         let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "a")), (OutRef (Or pts[i], OutUnit))
-                        let callArgs = Each names, \|nm| XVar nm
+                        # (and the variants of its kinded variables at this value's type,
+                        # as a call passes them, `KindArgs`)
+                        let callArgs = Append (KindArgs lx, v, span), (Each names, \|nm| XVar nm)
                         # a type parameter in no parameter's type is given by the value's type here
                         let call = match ?TypeArgsAt lx, qk, v.scheme, span:
                             ? tys: XCallAt (ValueRef lx, qk), tys, callArgs
