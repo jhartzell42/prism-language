@@ -3,4 +3,3 @@ tests/checker/neg/doc-seat-family-arm-answers-other-role.prism:55: error[no-impl
                                    ^
   fix: annotate the value's type, or match the role first
 1 error
-
