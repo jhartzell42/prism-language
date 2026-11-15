@@ -358,6 +358,15 @@ fn LocalFunctionLine wx, benv, menv, cbenv, cmenv, clx, cs, named, e, args:
 # dynamic, event and blueprint parameters match nothing: each is bound in that clause's
 # own environment to the line's argument, as an inlined function's is (`BindParam`), and
 # the clause's row reads it as it reads any name of the block.
+# Where a block's function of several clauses applied stands (`ClauseUnder`): a widget
+# function's rows under its place and a list of their own, a plain function's in its
+# caller's list.
+CalleeUnder: fn Expr -> GenUnder
+fn CalleeUnder e = match e.kind:
+    ECall c, ignore, ignore2, ignore3: CalleeUnder c
+    EName n: if HasPrefix (SNameKey n), "@": UnderCall else: UnderCaller
+    otherwise: UnderCall
+
 ClausesFunctionLine: unbounded fn Wx, Env, Env, Env, Env, Lx, [FnClause], [Ty], Expr, [Arg] -> ((Wx, Wres))
 fn ClausesFunctionLine wx, benv, menv, cbenv, cmenv, clx, cs, ptys, e, args:
     let lx = wx.lx
@@ -383,7 +392,7 @@ fn ClausesFunctionLine wx, benv, menv, cbenv, cmenv, clx, cs, ptys, e, args:
     let patss = Each cs, \|c| ClausePatterns c, ptys
     let bodies = Each cs, \|c| ClauseBlock c
     let guards = Each cs, \|c| ?ClauseGuard c
-    BuildingChoicesLine wx1, envs, lxi, scruts, patss, ptys, guards, bodies, (ChoiceOutTy lx, e), (ResultLayer (TypeAt lx, e.span)), (LineOutFull lx, e), [[]], UnderCall
+    BuildingChoicesLine wx1, envs, lxi, scruts, patss, ptys, guards, bodies, (ChoiceOutTy lx, e), (ResultLayer (TypeAt lx, e.span)), (LineOutFull lx, e), [[]], (CalleeUnder e)
 
 # Whether a clause's pattern matches a parameter's argument: a plain parameter's. A
 # dynamic, an event and a blueprint are no values a pattern tests.

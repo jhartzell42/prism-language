@@ -1516,16 +1516,18 @@ impl<E: Clone + Eq + 'static, A: OutputOf<E>> HostRow<E, A> {
     /// The row's own places, for an enclosing host's document: the forwarded element at
     /// `0`, when there is one, which is the child's place itself (its entry); a placed
     /// element value's; or the places of a widget's row the blueprint built.
+    /// The row's places by their paths under its key: the supplier's answer is a widget
+    /// applied there, its places in a list of their own (ruling PL), `[p]/0`.
     pub fn entries(&self, cx: &Cx) -> Vec<(Path, Rc<Entry<E>>)> {
         if self.forwards() {
-            return vec![(Path::root().at(0), self.place.clone())];
+            return vec![(Path::root().call().at(0), self.place.clone())];
         }
         let document = self.supplied.borrow().as_ref().and_then(|s| s.document.clone());
         if let Some(document) = document {
-            return document(cx);
+            return document(cx).into_iter().map(|(p, e)| (Path::root().call().join(&p), e)).collect();
         }
         match self.supplied.borrow().as_ref().and_then(|s| s.entry.clone()) {
-            Some(entry) => vec![(Path::root().at(0), entry)],
+            Some(entry) => vec![(Path::root().call().at(0), entry)],
             None => Vec::new(),
         }
     }
@@ -1534,6 +1536,11 @@ impl<E: Clone + Eq + 'static, A: OutputOf<E>> HostRow<E, A> {
     /// handed to the child's place now; a place of a widget's row the blueprint built,
     /// handed to the row.
     pub fn deliver(&self, at: &[Segment], v: &A, cx: &mut Cx) -> Done {
+        // (the answer's places stand in a list of their own under the key, ruling PL)
+        let at = match at {
+            [Segment::Call, rest @ ..] => rest,
+            other => other,
+        };
         let deliver = self.supplied.borrow().as_ref().and_then(|s| s.deliver.clone());
         if let Some(deliver) = deliver {
             return deliver(at, v, cx);
