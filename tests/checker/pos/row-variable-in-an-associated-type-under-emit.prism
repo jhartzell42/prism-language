@@ -1,0 +1,26 @@
+# A signature's row variable, `emit rest`, given where an associated type's row parameter
+# stands (`Seats d rest`, ruling RR) is that row at a use: `Count<<Box>>` takes a
+# `Seated Fs.*` and emits `Fs.*`. Found by the p13 run on the tally (`@HostDocument`'s
+# `prompt Seats d rest` with `emit lower | rest`: the index stayed the signature's own
+# `rest`, never instantiated).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+trait ^Hosting d:
+    type Seats rest
+
+type Box = record:
+    size: Nat
+
+type Seated rest = record:
+    $guest: (Text ==> $@(@unit emit Ui.* | rest))
+
+impl ^Hosting Box:
+    type Seats rest = Seated rest
+
+@Count: forall d. fn Seats d rest -> @unit emit rest where d: ^Hosting
+fn @Count seats:
+    @ unit
+
+@Counted: fn Seated Fs.* -> @unit emit Fs.*
+fn @Counted seated:
+    @Count<<Box>> seated

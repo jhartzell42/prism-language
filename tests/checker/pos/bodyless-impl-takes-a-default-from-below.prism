@@ -1,0 +1,19 @@
+# An impl written with no body, `impl ^Named Book`, takes the default a trait below gives
+# for its method (ruling SD), as an impl with a body does: it lacks nothing. Found by the
+# p13 run (neg/default-from-two-rungs also said `impl-lacks`: the written methods were
+# folded with the default's test inside the fold, which a bodyless impl never enters).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+trait ^Named a:
+    Name: fn a -> Text
+
+trait ^Titled a where a: ^Named:
+    fn Name x = "titled"
+
+type Book = record:
+    title: Text
+
+impl ^Titled Book
+impl ^Named Book
+
+Shown: fn Book -> Text
+fn Shown b = Name b
