@@ -1,0 +1,5 @@
+tests/checker/neg/prompt-cycle-through-blueprint-map-keys.prism:16: error[prompt-cycle]: a prompt cycle: `$seats`
+        let $seats = Grown (Keys $seats)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: break it with a hold: `$last <- start then ...` reads the value as the tick opened
+1 error
