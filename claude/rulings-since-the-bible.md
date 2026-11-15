@@ -351,11 +351,17 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
 
 ## 15 November 2026
 
-- **HC** The prompt check applies ruling HO: whatever a function derives from a host's
-  element tree (`$tree`, and anything read off it, the departures `!LeavesAt` gives) is
-  prompt in nothing, since every path from a guest's element tree back into the guest is
-  a tick (Language ch. 6, "Tick by tick"). A widget's result is checked part by part
-  where its body says which part comes from the tree: the tally's table removes a
-  departed seat on `results.!tellersLeft` in the tick it leaves, with no `@Defer`. Chosen
-  over keeping `@Defer`, marks on parts of a result, and splitting promptness of
-  dynamics of blueprints. Jimmy, 15 November: "do c, and I thought HO was established".
+- **HC** The prompt check knows three graphs (claude/promptness-checker.md). Widget
+  ownership is a tree: building and ending guests, as a dynamic of blueprints changes,
+  happens at the tick's end and is never a prompt edge. Element talk goes through hosts,
+  a tick late (ruling HO), and is never cyclic. Only events and dynamics can cycle, so a
+  blueprint matters only through an event or a dynamic its output gives back; one whose
+  output holds none (`@unit`) can never take part in a cycle. Hosting is a primitive.
+  Promptness rides inside types like a borrow: a parameter whose blueprints give back a
+  type variable needs no mark, and each call reads its argument by what that type holds.
+  The tally checks with no `@Defer`: the seat maps take no `prompt`, `@Table` is prompt in
+  its results. Jimmy, 15 November: "do c, and I thought HO was established"; "Hosting
+  ... is a primitive ... Widget ownership is a tree. Talking to an element can never be
+  cyclic"; "A blueprint is only a problem if it outputs an event that's prompt in another
+  event"; "Dynamics are events plus behaviors"; "Maybe it needs lifetimes but for ticks";
+  "yes this is what I meant".
