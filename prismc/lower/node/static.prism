@@ -505,7 +505,7 @@ fn AppliedBlueprintLine wx, e, blueprint, under:
         let select = UnderRows wx, "self", pos, under, (XBlock (Append (Append (Append hearer, [[(DoLet made, applied)]]), keeps), [[]]), (XVar "row"))
         let wx3 = update wx2:
             &_.pos <= Pos(scope=pos.scope, prefix=pos.prefix, at=pos.at + 1)
-            &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, under=under, transparent=True, width=1, moved=(Or (?HostedRows wx), ""), early=False, gappy=False, rebased=False)
+            &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, under=under, transparent=True, width=1, moved=(Or (?HostedRows wx), ""), early=False, gappy=False, rebased=(under == UnderCaller))
             &_.genHolds <= Push &_.genHolds, ((name, [[]]))
             &_.fallible <= True
             &_.getters <= if heard: Push (Push &_.getters, (GenUp name, (GnOf wx2, upId).name, (GnOf wx2, upId).ty)), (GenUpAbove name, (GnOf wx2, upId).name) else: &_.getters
@@ -601,7 +601,7 @@ fn AppliedBundleLine wx, e, blueprint, under:
     let select = UnderRows wx, "self", pos, under, (XBlock (Append (Append (Append [[(DoLet (PaBind "heard_by"), (XWeak XSelf)), (DoLet made, applied)]], wiring), [[keeps]]), [[]]), (XVar "row"))
     let wx3 = update wx2:
         &_.pos <= Pos(scope=pos.scope, prefix=pos.prefix, at=pos.at + 1)
-        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, under=under, transparent=True, width=1, moved=(Or (?HostedRows wx), ""), early=False, gappy=False, rebased=False)
+        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, under=under, transparent=True, width=1, moved=(Or (?HostedRows wx), ""), early=False, gappy=False, rebased=(under == UnderCaller))
         &_.genHolds <= Push &_.genHolds, ((name, [[]]))
         &_.fallible <= True
         &_.taken <= Push &_.taken, kept

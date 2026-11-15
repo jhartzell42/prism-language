@@ -975,6 +975,14 @@ pub fn rebased(at: &[::prism_rtl::Segment], from: u32) -> Vec<::prism_rtl::Segme
     out
 }
 
+/// An answer's segments under the inlined applications a generation stands in (`skip`
+/// segments, each caller position and its list's start, ruling PL), with the first, a
+/// position, counted from `from`: as a blueprint value applied at a line of a called
+/// widget matches it.
+pub fn rebased_under(at: &[::prism_rtl::Segment], skip: usize, from: u32) -> Vec<::prism_rtl::Segment> {
+    rebased(&at[skip..], from)
+}
+
 /// `?ParseNat`.
 pub fn parse_nat_opt(t: &Text) -> Option<Nat> {
     let s = t.as_str();
