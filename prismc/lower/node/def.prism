@@ -2651,6 +2651,19 @@ fn BindParts wx, benv, menv, parts, ps, tys = Fold (Range0 (Len ps)), ((wx, benv
             WrParts inner:
                 let ((w2, builds, methods)) = FieldedParts w, (Snake (SNameKey n)), inner
                 ((w2, (Bind be, (SNameKey n), (BnParts builds)), (Bind me, (SNameKey n), (BnParts methods))))
+            # a late plain part (a line that takes a late result and gives a bundle,
+            # `DeferredLine`): bound as a split line's late name is (`BindLate`), a getter
+            # of the node over the part's read in the methods, nothing at the build
+            # (`{name}#late`), so an element's field reads it live and a building line
+            # that reads it waits for it (sem-ch09-host-late-plain-part-taken-above-bundle-
+            # result)
+            WrLate ex, t:
+                let nkey = SNameKey n
+                let ((getter, w2)) = FreshName w, "late_{LocalNameAt w.lx, nkey, n.span}"
+                let w3 = update w2:
+                    &_.getters <= Push &_.getters, (MethDef(name=getter, recv=RecvRef, params=[[]], cx=CxNone, ret=t, body=[[]], tail=ex, doc="A late plain part of a bundle, read once the row that gives it is built."))
+                let unbuilt = BnLocal (Refusal "the late part `{nkey}` of a bundle read at its block's build by a line of the block's node (a place's constant field or a plain `let` above the line that binds it)"), Owned, t
+                ((w3, (Bind (Bind be, nkey, unbuilt), "{nkey}#late", unbuilt), (Bind (Bind me, nkey, (BnLocal (XMethod XSelf, getter, [[]]), Owned, t)), "{nkey}#late", unbuilt)))
             otherwise:
                 let b = BundleBn part
                 ((w, (Bind be, (SNameKey n), b), (Bind me, (SNameKey n), b)))

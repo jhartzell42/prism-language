@@ -564,7 +564,10 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
             let ((f, wx1)) = match ?LatePlaceHold ?bound:
                 ? hf: ((hf, wx))
                 nil: FreshName wx, "place_{PlaceText pos}"
-            let asked = [[(FirstValueLet wx1, pos, tg, level, out), (LateFirstSet f, (XVar "first_{PlaceText pos}"))]]
+            # (below a building line of its block built after the node, the place's
+            # number is the node's, read from it, as below: sem-ch09-host-dynamic-answer-
+            # below-building-if-host-below-if)
+            let asked = [[(FirstValueLetAt wx1, (if PlaceUnknownAtBuild wx1, pos: "node" else: ""), pos, tg, level, out), (LateFirstSet f, (XVar "first_{PlaceText pos}"))]]
             let wx3 = update (LateFirstPlace wx1, pos, f, out, asked):
                 &_.dynPlaces <= Push &_.dynPlaces, ((pos, f, out, (OutputAccessor tg)))
             ((wx3, (BnRes (LatePlaceBn f, out))))
