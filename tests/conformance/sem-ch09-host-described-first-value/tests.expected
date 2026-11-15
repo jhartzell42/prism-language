@@ -3,24 +3,24 @@ test jailed
 
 tick 0
   added:
-    0/[0]/0: Fs.Contents(path="/jail/motd")
-    0/[1]/0: Ui.Label(text="inside")
+    0.[0]/0: Fs.Contents(path="/jail/motd")
+    0.[1]/0: Ui.Label(text="inside")
 
 tick 1
   in:
     Fs.Contents(path="/jail/motd") = ~ Contents(text="moved")
   changed:
-    0/[1]/0: Ui.Label(text="moved")
+    0.[1]/0: Ui.Label(text="moved")
 
 test jailed_and_hosted
 
 tick 0
   added:
-    0/[0/[0]/0]/0: Fs.Contents(path="/jail/motd")
-    0/[0/[1]/0]/0: Ui.Label(text="inside")
+    0.[0.[0]/0]/0: Fs.Contents(path="/jail/motd")
+    0.[0.[1]/0]/0: Ui.Label(text="inside")
 
 tick 1
   in:
     Fs.Contents(path="/jail/motd") = ~ Contents(text="moved")
   changed:
-    0/[0/[1]/0]/0: Ui.Label(text="moved")
+    0.[0.[1]/0]/0: Ui.Label(text="moved")

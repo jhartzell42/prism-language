@@ -9,5 +9,5 @@ test one_host, @inner:
 
 test two_hosts, @page:
     build
-    click at 0/[0]/0
+    click at 0.[0]/0
         => requested Test.Log, "went"
