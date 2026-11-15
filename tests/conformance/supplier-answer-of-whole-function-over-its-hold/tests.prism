@@ -1,0 +1,7 @@
+# The tests of supplier-answer-of-whole-function-over-its-hold.
+emit Ui.*
+use App.*
+
+test counted, @host:
+    build
+    click at 0
