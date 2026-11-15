@@ -231,11 +231,12 @@ fn InferKind env, st, e = match e.kind:
             nil: nil
         match ?rw:
             ? rw:
+                let ((scope, st1)) = BlockScopeRow st, env.scope, rw, e.span
                 let inner = update env:
-                    &_.scope <= rw
+                    &_.scope <= scope
                     &_.expect <= nil
-                let ((t, st2)) = InferWidgetBlock inner, st, b
-                (((TyAt t, rw), st2))
+                let ((t, st2)) = InferWidgetBlock inner, st1, b
+                (((TyAt t, scope), st2))
             nil:
                 let ((t, st2)) = InferWidgetBlock env, st, b
                 (((TyAt t, env.scope), st2))
@@ -306,11 +307,12 @@ fn Check env, st, e, expected = match e.kind:
     # the scope it is written in
     EWidgetBlock b if IsBlueprintTy st, expected: match Walk st, expected:
         TyAt want, rw:
+            let ((scope, st1)) = BlockScopeRow st, env.scope, rw, e.span
             let inner = update env:
-                &_.scope <= rw
+                &_.scope <= scope
                 &_.expect <= nil
-            let ((t, st2)) = InferWidgetBlockAt inner, st, b, (? want)
-            Unify (NoteTy st2, e.span, (TyAt t, rw)), expected, (TyAt t, rw), e.span
+            let ((t, st2)) = InferWidgetBlockAt inner, st1, b, (? want)
+            Unify (NoteTy st2, e.span, (TyAt t, scope)), expected, (TyAt t, scope), e.span
         otherwise: st
     # `@ v` where a blueprint is wanted: `v` checked at the blueprint's value, so a lambda
     # there takes the type inward (`@ \|at, prompt asking| ..` as a `@(Supplier File)`);
@@ -323,6 +325,21 @@ fn Check env, st, e, expected = match e.kind:
         # place it names
         let ((t, st2)) = if (IsEntry st, expected) and IsRef e: InferPlace env, st, e else: Infer env, st, e
         UnifyAt st2, expected, t, e.span
+
+# A widget block's scope where a blueprint of the row `rw` is wanted: a row still open
+# (`Net.* | ρ` of `@OneWire`'s parameter, or a parameter's whole `ρ`) is the families it
+# names and those of the scope the block is written in, its variable the scope's
+# (`ρ` is `Ui.*`, or the enclosing signature's `r`); a closed or fixed row is itself.
+BlockScopeRow: unbounded fn St, Rw, Rw, Range -> ((Rw, St))
+fn BlockScopeRow st, scope, rw, span:
+    let w = WalkRow st, rw
+    let sc = WalkRow st, scope
+    match w.tail:
+        TlFlex ignore:
+            let target = Rw(fams=(SortTexts (UnionTexts w.fams, sc.fams)), minus=sc.minus, tail=sc.tail, idx=(MergeIdxMaps w.idx, sc.idx))
+            let ((verdict, st2)) = UnifyRow st, w, target, span
+            if verdict == "": (((WalkRow st2, rw), st2)) else: ((rw, st))
+        otherwise: ((rw, st))
 
 IsBlueprintTy: unbounded fn St, Ty -> Bool
 fn IsBlueprintTy st, t = match Walk st, t:

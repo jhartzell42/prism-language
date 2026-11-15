@@ -682,8 +682,20 @@ fn AssocOutAt lx, tr, n, a, indices = match ?ImplAssoc lx.g, tr, n, a, indices:
     ? t: OutTyOf lx, t
     nil: match lx.g.traits[tr]:
         ? info: if (Len indices) == 0: OutAssoc (PathIn lx, info.home, (TraitName info.name)), (Camel n), (OutTyOf lx, a)
-        else: OutRefused "an associated type with indices, `{n}`, at an index that is no role constructor, in a type the program keeps (Type System ch. 6): its Rust trait per associated type is not lowered"
+        else: OutRefused "an associated type with indices, `{n}`, at an index that is no role constructor, in a type the program keeps (Type System ch. 6), {AssocPlaceWords lx, a}: its Rust trait per associated type is not lowered"
         nil: InternalBugType "an associated type `{n}` of `{tr}`, which no trait of the program declares"
+
+# Where such an associated type stands, for the refusal: its trait's argument and the
+# definition being lowered.
+AssocPlaceWords: fn Lx, Ty -> Text
+fn AssocPlaceWords lx, a:
+    let at = match a:
+        TyQ v: "at the type variable `{v}`"
+        TyRigid v: "at the type variable `{v}`"
+        TyCon c, ignore: "at `{BareName c}`, which no impl's equation matches"
+        TyFlex ignore: "at a type the checker left open"
+        otherwise: "at a type that is no named type"
+    if lx.inDefinition == "": at else: "{at} in `{BareName lx.inDefinition}`"
 
 # The type the impl of the trait `tr` at a known head chooses for an associated type, its
 # variables the head's arguments; with indices, the equation whose indices match them

@@ -2268,8 +2268,13 @@ fn ElementValue lx, env, tg, args:
         let v = match LayerOf fty:
             LyPlain: Own (ValueOf lx, env, x)
             otherwise: Own (ValueOf lxw, env, x)
-        # a generic tag's field is held as plain data (`TagFieldOut`)
-        DoLet (PaBind (Local i)), (RecodedWhole lx, fty, v)
+        # a generic tag's field is held as plain data (`TagFieldOut`); an event or a
+        # dynamic given whole is first typed at its concrete type here, so its mapping
+        # knows what it recodes (`Seat.Request(!requests=never)`, a `!Never`)
+        let concrete = OutTyOf lx, (SubstTy lx, (TypeAt lx, x.span))
+        let typedLet = DoLet (PaTyped (PaBind "given_whole"), concrete), v
+        let typedWhole = if (TagFieldOpen lx, fty) and (LayerOf fty) != LyPlain: XBlock [[typedLet]], (XVar "given_whole") else: v
+        DoLet (PaBind (Local i)), (RecodedWhole lx, fty, typedWhole)
     let Spell = \|i| match FieldOf i:
         ((fname, fty)): FieldSpell tg.home, fname, fty
     let desc = XRecord descPath, (Each argued, \|((i, ignore))| (((Spell i), (XClone (XVar (Local i))))))
@@ -2786,7 +2791,13 @@ fn MethodCall lx, env, v, args, span, cspan, t:
         let mname = Or lx.rsNames[v.qk], (Snake m)
         # a method whose type is only in its result is called at the type the call gives,
         # which the checker's impl note at the call says
-        if IsResultOnly lx, v.qk, tr.param: match ?EitherSelf (?SelfAt lx, span, cls), (?SelfAt lx, cspan, cls):
+        # (inside a trait's default inlined at its parameter's type, `Step<<d>>` in
+        # `@InMemory`'s body, the want is the default's own given, which has no impl note:
+        # the parameter's type there)
+        let ?atParameter = match lx.subst[tr.param]:
+            ? x: ? (OutTyOf lx, x)
+            nil: nil
+        if IsResultOnly lx, v.qk, tr.param: match ?EitherSelf (?EitherSelf (?SelfAt lx, span, cls), (?SelfAt lx, cspan, cls)), ?atParameter:
             ? self: VlOwned (XCallSelf (RefIn lx, tr.home, (TraitName cls)), mname, self, (ArgsFor lx, env, v, args)), t
             nil: VlOwned (InternalBug "a call of `{m}` at a type the checker did not record"), t
         else:
