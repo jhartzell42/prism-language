@@ -4,10 +4,10 @@ test the_inner_for_builds_the_new_child
 tick 0
   added:
     0: Ui.Button(label="grow")
-    1/[0]/0: Ui.Label(text="b")
+    1.[0].0: Ui.Label(text="b")
 
 tick 1
   in:
     0: click
   added:
-    1/[0]/1/[0]/0: Ui.Label(text="c")
+    1.[0].1.[0].0: Ui.Label(text="c")

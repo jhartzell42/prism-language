@@ -3,5 +3,5 @@ test it_builds
 
 tick 0
   added:
-    0: Ui.Label(text="row 2")
+    0/0: Ui.Label(text="row 2")
     1: Ui.Label(text="t")

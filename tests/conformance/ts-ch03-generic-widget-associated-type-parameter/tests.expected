@@ -3,4 +3,4 @@ test the_move_is_shown
 
 tick 0
   added:
-    0: Ui.Label(text="step 3")
+    0/0: Ui.Label(text="step 3")

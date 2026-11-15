@@ -3,6 +3,6 @@ test below_the_match
 
 tick 0
   added:
-    0: Ui.Label(text="x")
-    1: Ui.Label(text="twice 20")
-    2: Ui.Label(text="note")
+    0/0.0: Ui.Label(text="x")
+    0/1: Ui.Label(text="twice 20")
+    0/2/0: Ui.Label(text="note")

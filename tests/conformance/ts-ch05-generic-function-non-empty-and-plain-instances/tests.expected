@@ -4,5 +4,5 @@ test it_builds
 tick 0
   added:
     0: Ui.Label(text="non-empty plain")
-    1: Ui.Label(text="n=non-empty")
-    2: Ui.Label(text="n=plain")
+    1.0/0: Ui.Label(text="n=non-empty")
+    2.0/0: Ui.Label(text="n=plain")

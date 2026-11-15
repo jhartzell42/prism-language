@@ -4,16 +4,16 @@ test a_row_hears_its_blocks_parameter
 tick 0
   added:
     0: Ui.Button(label="bump")
-    1/["x"]/0: Ui.Label(text="x heard 0")
+    1/0.["x"].0: Ui.Label(text="x heard 0")
 
 tick 1
   in:
     0: click
   changed:
-    1/["x"]/0: Ui.Label(text="x heard 1")
+    1/0.["x"].0: Ui.Label(text="x heard 1")
 
 tick 2
   in:
     0: click
   changed:
-    1/["x"]/0: Ui.Label(text="x heard 2")
+    1/0.["x"].0: Ui.Label(text="x heard 2")

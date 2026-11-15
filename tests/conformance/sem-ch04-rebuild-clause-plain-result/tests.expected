@@ -4,17 +4,17 @@ test a_generation_of_clauses
 tick 0
   added:
     0: Ui.Button(label="go")
-    1/#0/0: Ui.Label(text="none")
+    1.#0.0/0: Ui.Label(text="none")
     2: Ui.Label(text="zero")
 
 tick 1
   in:
     0: click
   added:
-    1/#1/0: Ui.Label(text="some 1")
-    1/#1/1: Ui.Label(text="second")
+    1.#1.0/0: Ui.Label(text="some 1")
+    1.#1.0/1: Ui.Label(text="second")
   torn down:
-    1/#0/0: Ui.Label(text="none")
+    1.#0.0/0: Ui.Label(text="none")
 
 tick 2
   changed:

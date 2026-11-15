@@ -4,13 +4,13 @@ test names_do_not_collide
 tick 0
   added:
     0: Ui.Button(label="add")
-    1/[1]/0: Ui.Label(text="r1")
+    1.[1].0: Ui.Label(text="r1")
     2: Ui.Label(text="1 1 h 1 stopped")
 
 tick 1
   in:
     0: click
   added:
-    1/[2]/0: Ui.Label(text="r2")
+    1.[2].0: Ui.Label(text="r2")
   changed:
     2: Ui.Label(text="2 2 h 2 started")

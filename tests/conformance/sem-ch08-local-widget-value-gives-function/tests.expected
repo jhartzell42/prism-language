@@ -3,13 +3,13 @@ test picked
 
 tick 0
   added:
-    0: Ui.Label(text="maker")
-    1: Ui.Label(text="made 8")
-    2: Ui.Label(text="end")
+    0.0/0: Ui.Label(text="maker")
+    0.1: Ui.Label(text="made 8")
+    1: Ui.Label(text="end")
 
 test not_picked
 
 tick 0
   added:
-    0: Ui.Label(text="none")
+    0.0: Ui.Label(text="none")
     1: Ui.Label(text="end")

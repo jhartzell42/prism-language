@@ -4,7 +4,7 @@ test plain_and_dynamic_parts_answered
 tick 0
   added:
     0: Ui.Button(label="flip")
-    1/[1]/0: Ui.Label(text="port 7: idle")
+    1.[1].0: Ui.Label(text="port 7: idle")
 
 tick 1
   in:
@@ -12,4 +12,4 @@ tick 1
 
 tick 2
   changed:
-    1/[1]/0: Ui.Label(text="port 7: busy")
+    1.[1].0: Ui.Label(text="port 7: busy")

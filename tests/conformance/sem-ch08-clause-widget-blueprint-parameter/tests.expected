@@ -3,9 +3,9 @@ test a_clause_builds_its_blueprint
 
 tick 0
   added:
-    0: Ui.Label(text="shown")
-    1: Ui.Label(text="five")
-    2: Ui.Label(text="shown")
-    3: Ui.Label(text="line 7")
-    4: Ui.Label(text="hidden")
-    5: Ui.Label(text="end")
+    0/0: Ui.Label(text="shown")
+    0/1/0: Ui.Label(text="five")
+    1/0: Ui.Label(text="shown")
+    1/1/0/0: Ui.Label(text="line 7")
+    2/0: Ui.Label(text="hidden")
+    3: Ui.Label(text="end")

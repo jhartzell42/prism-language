@@ -6,7 +6,7 @@ tick 0
     0: Ui.Button(label="inc")
     1: Ui.Button(label="go 0")
     2: Ui.Label(text="went 0")
-    3/[0]/0: Ui.Label(text="replaced")
+    3.[0].0: Ui.Label(text="replaced")
 
 tick 1
   in:

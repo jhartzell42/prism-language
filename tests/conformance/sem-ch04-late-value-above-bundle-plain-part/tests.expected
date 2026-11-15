@@ -4,9 +4,9 @@ test loud
 tick 0
   added:
     0: Ui.Button(label="add")
-    1: Ui.Label(text="ten")
+    1/0: Ui.Label(text="ten")
     2: Ui.Label(text="wide 1 1")
-    3: Ui.Label(text="loud")
+    3.0: Ui.Label(text="loud")
 
 tick 1
   in:
@@ -19,10 +19,10 @@ test soft
 tick 0
   added:
     0: Ui.Button(label="add")
-    1: Ui.Label(text="wide 2 0")
+    2: Ui.Label(text="wide 2 0")
 
 tick 1
   in:
     0: click
   changed:
-    1: Ui.Label(text="wide 2 1")
+    2: Ui.Label(text="wide 2 1")

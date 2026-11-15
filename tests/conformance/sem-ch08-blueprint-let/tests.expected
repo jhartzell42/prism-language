@@ -3,6 +3,6 @@ test a_let_bound_blueprint_is_built_where_applied
 
 tick 0
   added:
-    0: Ui.Label(text="tile 4")
-    1: Ui.Label(text="tile 4")
+    0/0: Ui.Label(text="tile 4")
+    1/0: Ui.Label(text="tile 4")
     2: Ui.Label(text="double 8")

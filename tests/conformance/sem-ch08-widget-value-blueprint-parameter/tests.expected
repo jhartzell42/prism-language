@@ -3,15 +3,15 @@ test picked
 
 tick 0
   added:
-    0: Ui.Label(text="top")
-    1: Ui.Label(text="left")
-    2: Ui.Label(text="right")
-    3: Ui.Label(text="bottom")
-    4: Ui.Label(text="end")
+    0.0/0: Ui.Label(text="top")
+    0.0/1/0: Ui.Label(text="left")
+    0.0/1/1: Ui.Label(text="right")
+    0.0/2: Ui.Label(text="bottom")
+    1: Ui.Label(text="end")
 
 test not_picked
 
 tick 0
   added:
-    0: Ui.Label(text="none")
+    0.0: Ui.Label(text="none")
     1: Ui.Label(text="end")

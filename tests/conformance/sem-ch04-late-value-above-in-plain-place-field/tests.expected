@@ -4,6 +4,6 @@ test loud
 tick 0
   added:
     0: Ui.Button(label="add")
-    1: Pad.Count(name="count 10")
-    2: Ui.Label(text="4 of 10")
-    3: Ui.Label(text="x 0")
+    1/0: Pad.Count(name="count 10")
+    1/1: Ui.Label(text="4 of 10")
+    1/2.0: Ui.Label(text="x 0")

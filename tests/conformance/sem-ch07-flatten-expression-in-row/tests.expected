@@ -5,7 +5,7 @@ tick 0
   added:
     0: Ui.Button(label="inc")
     1: Ui.Button(label="swap")
-    2/["x"]/0: Ui.Label(text="x: 0")
+    2.["x"].0: Ui.Label(text="x: 0")
 
 tick 1
   in:
@@ -13,7 +13,7 @@ tick 1
 
 tick 2
   changed:
-    2/["x"]/0: Ui.Label(text="x: 1")
+    2.["x"].0: Ui.Label(text="x: 1")
 
 tick 3
   in:
@@ -21,7 +21,7 @@ tick 3
 
 tick 4
   changed:
-    2/["x"]/0: Ui.Label(text="x: 101")
+    2.["x"].0: Ui.Label(text="x: 101")
 
 test over_the_rows_own_name
 
@@ -29,7 +29,7 @@ tick 0
   added:
     0: Ui.Button(label="inc")
     1: Ui.Button(label="swap")
-    2/["x"]/0: Ui.Label(text="x: 0")
+    2.["x"].0: Ui.Label(text="x: 0")
 
 tick 1
   in:
@@ -37,7 +37,7 @@ tick 1
 
 tick 2
   changed:
-    2/["x"]/0: Ui.Label(text="x: 1")
+    2.["x"].0: Ui.Label(text="x: 1")
 
 tick 3
   in:
@@ -45,4 +45,4 @@ tick 3
 
 tick 4
   changed:
-    2/["x"]/0: Ui.Label(text="x: 7")
+    2.["x"].0: Ui.Label(text="x: 7")

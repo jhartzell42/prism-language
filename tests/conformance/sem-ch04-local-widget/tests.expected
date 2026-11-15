@@ -3,6 +3,6 @@ test a_local_widget_is_built_twice
 
 tick 0
   added:
-    0: Ui.Label(text="line 7")
-    1: Ui.Label(text="line 7")
+    0/0/0: Ui.Label(text="line 7")
+    1/0/0: Ui.Label(text="line 7")
     2: Ui.Label(text="end")

@@ -4,16 +4,16 @@ test a_kept_dynamic_follows
 tick 0
   added:
     0: Ui.Button(label="Inc")
-    1/["x"]/0/[0]/0: Ui.Label(text="x row 0")
+    1.["x"].0.[0].0: Ui.Label(text="x row 0")
 
 tick 1
   in:
     0: click
   changed:
-    1/["x"]/0/[0]/0: Ui.Label(text="x row 1")
+    1.["x"].0.[0].0: Ui.Label(text="x row 1")
 
 tick 2
   in:
     0: click
   changed:
-    1/["x"]/0/[0]/0: Ui.Label(text="x row 2")
+    1.["x"].0.[0].0: Ui.Label(text="x row 2")

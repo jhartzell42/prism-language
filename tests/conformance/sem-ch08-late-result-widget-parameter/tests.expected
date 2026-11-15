@@ -3,5 +3,5 @@ test the_parameter_result_is_bound
 
 tick 0
   added:
-    0: Ui.Label(text="x")
-    1: Ui.Label(text="got 10")
+    0/0/0.0: Ui.Label(text="x")
+    0/1: Ui.Label(text="got 10")

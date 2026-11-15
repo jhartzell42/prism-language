@@ -4,19 +4,19 @@ test the_argument_samples_the_dynamic
 tick 0
   added:
     0: Ui.Button(label="go")
-    1: Ui.Label(text="shown 0")
+    1.0/0: Ui.Label(text="shown 0")
     2: Ui.Label(text="n 5")
 
 tick 1
   in:
     0: click
   changed:
-    1: Ui.Label(text="shown 5")
+    1.0/0: Ui.Label(text="shown 5")
     2: Ui.Label(text="n 6")
 
 tick 2
   in:
     0: click
   changed:
-    1: Ui.Label(text="shown 6")
+    1.0/0: Ui.Label(text="shown 6")
     2: Ui.Label(text="n 7")

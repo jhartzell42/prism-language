@@ -3,4 +3,4 @@ test applied_once
 
 tick 0
   added:
-    0: Ui.Label(text="seven 7")
+    0/0/0: Ui.Label(text="seven 7")

@@ -3,11 +3,11 @@ test the_arm_is_built
 
 tick 0
   added:
-    0: Ui.Label(text="loud")
+    0.0: Ui.Label(text="loud")
     1: Ui.Label(text="always")
 
 test nothing_is_built
 
 tick 0
   added:
-    0: Ui.Label(text="always")
+    1: Ui.Label(text="always")

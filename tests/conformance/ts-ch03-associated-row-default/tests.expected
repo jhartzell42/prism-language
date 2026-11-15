@@ -3,4 +3,4 @@ test default_row
 
 tick 0
   added:
-    0: Ui.Label(text="quiet 0")
+    1: Ui.Label(text="quiet 0")

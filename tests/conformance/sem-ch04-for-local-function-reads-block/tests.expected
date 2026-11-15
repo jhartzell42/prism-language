@@ -4,10 +4,10 @@ test a_row_calls_the_blocks_function
 tick 0
   added:
     0: Ui.Button(label="more")
-    1/[1]/0: Ui.Label(text="ale 11")
+    1.[1].0: Ui.Label(text="ale 11")
 
 tick 1
   in:
     0: click
   added:
-    1/[2]/0: Ui.Label(text="bun 12")
+    1.[2].0: Ui.Label(text="bun 12")

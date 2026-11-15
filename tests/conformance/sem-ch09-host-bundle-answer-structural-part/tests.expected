@@ -4,19 +4,19 @@ test a_structural_part_answers
 tick 0
   added:
     0: Ui.Button(label="add")
-    1/[1]/0: Ui.Label(text="one")
-    2/[1]/0: Ui.Label(text="1: none")
+    1.[1].0: Ui.Label(text="one")
+    2.[1].0: Ui.Label(text="1: none")
 
 tick 1
   in:
     0: click
   added:
-    1/[2]/0: Ui.Label(text="two")
+    1.[2].0: Ui.Label(text="two")
 
 tick 2
   changed:
-    2/[1]/0: Ui.Label(text="1: hello")
+    2.[1].0: Ui.Label(text="1: hello")
 
 tick 3
   changed:
-    2/[1]/0: Ui.Label(text="2: hello")
+    2.[1].0: Ui.Label(text="2: hello")

@@ -3,5 +3,5 @@ test each_instance_is_built
 
 tick 0
   added:
-    0: Ui.Label(text="five")
-    1: Ui.Label(text="text")
+    0.0/0: Ui.Label(text="five")
+    1.0/0: Ui.Label(text="text")

@@ -3,5 +3,5 @@ test a_lambda_is_applied_twice
 
 tick 0
   added:
-    0: Ui.Label(text="shows 2")
-    1: Ui.Label(text="shows 5")
+    0/0/0: Ui.Label(text="shows 2")
+    0/1/0: Ui.Label(text="shows 5")

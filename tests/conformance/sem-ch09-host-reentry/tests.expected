@@ -5,7 +5,7 @@ tick 0
   added:
     0: Ui.Button(label="go")
     1: Ui.Button(label="other")
-    2/[2]/0: Ui.Label(text="0 hits")
+    2.[2].0: Ui.Label(text="0 hits")
     3: Ui.Label(text="0")
 
 tick 1
@@ -16,7 +16,7 @@ tick 1
 
 tick 2
   changed:
-    2/[2]/0: Ui.Label(text="1 hits")
+    2.[2].0: Ui.Label(text="1 hits")
 
 tick 3
   in:
@@ -26,4 +26,4 @@ tick 3
 
 tick 4
   changed:
-    2/[2]/0: Ui.Label(text="2 hits")
+    2.[2].0: Ui.Label(text="2 hits")

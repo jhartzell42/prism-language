@@ -3,5 +3,5 @@ test it_builds
 
 tick 0
   added:
-    0: Ui.Label(text="meter main")
+    0.0/0: Ui.Label(text="meter main")
     1: Ui.Label(text="end")

@@ -3,12 +3,12 @@ test a_line_above_reads_a_hold_bound_below
 
 tick 0
   added:
-    0: Ui.Label(text="gone 0")
-    1: Ui.Label(text="x")
-    2: Ui.Button(label="go 10")
+    0/0: Ui.Label(text="gone 0")
+    0/1.0: Ui.Label(text="x")
+    0/2: Ui.Button(label="go 10")
 
 tick 1
   in:
-    2: click
+    0/2: click
   changed:
-    0: Ui.Label(text="gone 1")
+    0/0: Ui.Label(text="gone 1")

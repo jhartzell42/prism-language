@@ -3,6 +3,6 @@ test it_builds
 
 tick 0
   added:
-    0: Ui.Label(text="shows 1")
+    0/0: Ui.Label(text="shows 1")
     1: Ui.Label(text="between")
-    2: Ui.Label(text="shows 2")
+    2/0: Ui.Label(text="shows 2")

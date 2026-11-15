@@ -4,15 +4,15 @@ test a_row_hears_the_blocks_gathered_dynamic
 tick 0
   added:
     0: Ui.Button(label="add")
-    1/[1]/0: Ui.Label(text="one")
-    2/["x"]/0: Ui.Label(text="x heard 0, 0 rows")
+    1.[1].0: Ui.Label(text="one")
+    2.["x"].0: Ui.Label(text="x heard 0, 0 rows")
 
 tick 1
   in:
     0: click
   added:
-    1/[2]/0: Ui.Label(text="three")
+    1.[2].0: Ui.Label(text="three")
 
 tick 2
   changed:
-    2/["x"]/0: Ui.Label(text="x heard 1, 2 rows")
+    2.["x"].0: Ui.Label(text="x heard 1, 2 rows")

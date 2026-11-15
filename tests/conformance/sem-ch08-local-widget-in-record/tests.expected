@@ -3,7 +3,7 @@ test a_local_widget_is_stored
 
 tick 0
   added:
-    0: Ui.Label(text="a card")
-    1: Ui.Label(text="line 7")
-    2: Ui.Label(text="line 7")
-    3: Ui.Label(text="end")
+    0/0: Ui.Label(text="a card")
+    0/1/0: Ui.Label(text="line 7")
+    1/0: Ui.Label(text="line 7")
+    2: Ui.Label(text="end")

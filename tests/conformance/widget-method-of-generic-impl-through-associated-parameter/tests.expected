@@ -3,4 +3,4 @@ test shown
 
 tick 0
   added:
-    0: Ui.Label(text="2 seated")
+    0/0/0: Ui.Label(text="2 seated")

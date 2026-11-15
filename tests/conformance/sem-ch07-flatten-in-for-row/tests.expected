@@ -4,17 +4,17 @@ test each_row_flattens_its_own
 tick 0
   added:
     0: Ui.Button(label="go")
-    1/[0]/0: Ui.Label(text="0: 5")
-    1/[1]/0: Ui.Label(text="1: 5")
+    1.[0].0: Ui.Label(text="0: 5")
+    1.[1].0: Ui.Label(text="1: 5")
 
 tick 1
   in:
     0: click
   changed:
-    1/[0]/0: Ui.Label(text="0: 6")
-    1/[1]/0: Ui.Label(text="1: 6")
+    1.[0].0: Ui.Label(text="0: 6")
+    1.[1].0: Ui.Label(text="1: 6")
 
 tick 2
   changed:
-    1/[0]/0: Ui.Label(text="0: 1")
-    1/[1]/0: Ui.Label(text="1: 2")
+    1.[0].0: Ui.Label(text="0: 1")
+    1.[1].0: Ui.Label(text="1: 2")

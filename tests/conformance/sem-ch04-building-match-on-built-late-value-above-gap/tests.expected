@@ -3,6 +3,6 @@ test long
 
 tick 0
   added:
-    0: Ui.Label(text="over by 1")
-    1: Ui.Label(text="xxxxxxx")
-    2: Ui.Label(text="below 16")
+    0/0.0: Ui.Label(text="over by 1")
+    0/1.0/0: Ui.Label(text="xxxxxxx")
+    0/2: Ui.Label(text="below 16")

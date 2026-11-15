@@ -6,35 +6,35 @@ tick 0
     0: Ui.Button(label="drop")
     1: Ui.Button(label="ring")
     2: Ui.Button(label="keep")
-    3/[1]/0: Ui.Label(text="one 0")
-    3/[2]/0: Ui.Label(text="two 0")
+    3.[1].0: Ui.Label(text="one 0")
+    3.[2].0: Ui.Label(text="two 0")
 
 tick 1
   in:
     1: click
   changed:
-    3/[1]/0: Ui.Label(text="one 1")
-    3/[2]/0: Ui.Label(text="two 1")
+    3.[1].0: Ui.Label(text="one 1")
+    3.[2].0: Ui.Label(text="two 1")
 
 tick 2
   in:
     2: click
   added:
-    4/[1]/0/[0]/0: Ui.Label(text="kept 1")
-    4/[2]/0/[0]/0: Ui.Label(text="kept 1")
+    4.[1].0.[0].0: Ui.Label(text="kept 1")
+    4.[2].0.[0].0: Ui.Label(text="kept 1")
 
 tick 3
   in:
     0: click
   torn down:
-    3/[2]/0: Ui.Label(text="two 1")
+    3.[2].0: Ui.Label(text="two 1")
 
 tick 4
   in:
     1: click
   changed:
-    3/[1]/0: Ui.Label(text="one 2")
-    4/[1]/0/[0]/0: Ui.Label(text="kept 2")
+    3.[1].0: Ui.Label(text="one 2")
+    4.[1].0.[0].0: Ui.Label(text="kept 2")
 
 test a_stateless_combinator_of_a_row_that_left_reads_its_live_input
 
@@ -44,39 +44,39 @@ tick 0
     1: Ui.Button(label="ring")
     2: Ui.Button(label="keep")
     3: Ui.Button(label="more")
-    4/[1]/0: Ui.Label(text="one 0")
-    4/[2]/0: Ui.Label(text="two 0")
+    4.[1].0: Ui.Label(text="one 0")
+    4.[2].0: Ui.Label(text="two 0")
 
 tick 1
   in:
     1: click
   changed:
-    4/[1]/0: Ui.Label(text="one 1")
-    4/[2]/0: Ui.Label(text="two 1")
+    4.[1].0: Ui.Label(text="one 1")
+    4.[2].0: Ui.Label(text="two 1")
 
 tick 2
   in:
     2: click
   added:
-    5/[1]/0/[0]/0: Ui.Label(text="kept 1")
-    5/[2]/0/[0]/0: Ui.Label(text="kept 1")
+    5.[1].0.[0].0: Ui.Label(text="kept 1")
+    5.[2].0.[0].0: Ui.Label(text="kept 1")
 
 tick 3
   in:
     0: click
   torn down:
-    4/[2]/0: Ui.Label(text="two 1")
+    4.[2].0: Ui.Label(text="two 1")
 
 tick 4
   in:
     3: click
   changed:
-    5/[1]/0/[0]/0: Ui.Label(text="kept 11")
-    5/[2]/0/[0]/0: Ui.Label(text="kept 11")
+    5.[1].0.[0].0: Ui.Label(text="kept 11")
+    5.[2].0.[0].0: Ui.Label(text="kept 11")
 
 tick 5
   in:
     1: click
   changed:
-    4/[1]/0: Ui.Label(text="one 2")
-    5/[1]/0/[0]/0: Ui.Label(text="kept 12")
+    4.[1].0: Ui.Label(text="one 2")
+    5.[1].0.[0].0: Ui.Label(text="kept 12")

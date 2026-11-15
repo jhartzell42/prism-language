@@ -3,6 +3,6 @@ test a_blueprint_of_a_tag_arm_applied
 
 tick 0
   added:
-    0: Ui.Label(text="answering a")
-    1: Ui.Label(text="heard yes a")
-    2: Ui.Label(text="end")
+    0.0/0: Ui.Label(text="answering a")
+    0.1: Ui.Label(text="heard yes a")
+    1: Ui.Label(text="end")

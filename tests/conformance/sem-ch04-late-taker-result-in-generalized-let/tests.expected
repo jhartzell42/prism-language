@@ -4,12 +4,12 @@ test loud
 tick 0
   added:
     0: Ui.Label(text="14 14")
-    1: Ui.Label(text="twice 7")
-    2: Ui.Label(text="seven")
+    1/0: Ui.Label(text="twice 7")
+    2.0/0: Ui.Label(text="seven")
 
 test soft
 
 tick 0
   added:
     0: Ui.Label(text="40 40")
-    1: Ui.Label(text="twice 20")
+    1/0: Ui.Label(text="twice 20")

@@ -5,16 +5,16 @@ tick 0
   added:
     0: Ui.Button(label="ask")
     1: Ui.Button(label="leave")
-    2: Ui.Label(text="none")
+    3: Ui.Label(text="none")
 
 tick 1
   in:
     0: click
   changed:
-    2: Ui.Label(text="+1/a/7")
+    3: Ui.Label(text="+1/a/7")
 
 tick 2
   in:
     1: click
   changed:
-    2: Ui.Label(text="-")
+    3: Ui.Label(text="-")

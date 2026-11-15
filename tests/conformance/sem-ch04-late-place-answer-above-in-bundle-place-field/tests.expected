@@ -3,21 +3,21 @@ test loud
 
 tick 0
   added:
-    0: Pad.Ask(name="ask 10")
-    1: Pad.Port(name="port hi")
-    2: Ui.Label(text="7 up of hi")
-    3: Ui.Label(text="x")
+    0/0: Pad.Ask(name="ask 10")
+    0/1: Pad.Port(name="port hi")
+    0/2: Ui.Label(text="7 up of hi")
+    0/3.0: Ui.Label(text="x")
 
 tick 1
   in:
     Pad.Port(name="port hi") = ((7, "down"))
   changed:
-    2: Ui.Label(text="7 down of hi")
+    0/2: Ui.Label(text="7 down of hi")
 
 test soft
 
 tick 0
   added:
-    0: Pad.Ask(name="ask 20")
-    1: Pad.Port(name="port ho")
-    2: Ui.Label(text="8 up of ho")
+    0/0: Pad.Ask(name="ask 20")
+    0/1: Pad.Port(name="port ho")
+    0/2: Ui.Label(text="8 up of ho")

@@ -5,23 +5,23 @@ tick 0
   added:
     0: Ui.Button(label="bump")
     1: Ui.Button(label="grow")
-    2/["a"]/0: Ui.Label(text="a 0: 0")
+    2.1.["a"].0: Ui.Label(text="a 0: 0")
 
 tick 1
   in:
     0: click
   changed:
-    2/["a"]/0: Ui.Label(text="a 1: 100")
+    2.1.["a"].0: Ui.Label(text="a 1: 100")
 
 tick 2
   in:
     1: click
   added:
-    2/["b"]/0: Ui.Label(text="b 0: 0")
+    2.1.["b"].0: Ui.Label(text="b 0: 0")
 
 tick 3
   in:
     0: click
   changed:
-    2/["a"]/0: Ui.Label(text="a 2: 100")
-    2/["b"]/0: Ui.Label(text="b 1: 100")
+    2.1.["a"].0: Ui.Label(text="a 2: 100")
+    2.1.["b"].0: Ui.Label(text="b 1: 100")

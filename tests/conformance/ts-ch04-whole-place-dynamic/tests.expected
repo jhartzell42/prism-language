@@ -4,4 +4,4 @@ test a_kept_dynamic_follows
 tick 0
   added:
     0: Pad.Gauge(name="g")
-    1/[0]/0: Ui.Label(text="row 5")
+    1.[0].0: Ui.Label(text="row 5")

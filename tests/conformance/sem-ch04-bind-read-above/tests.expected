@@ -4,14 +4,14 @@ test read_above
 tick 0
   added:
     0: Ui.Button(label="go")
-    1: Ui.Label(text="a")
-    2/[0]/0: Ui.Label(text="0: a")
+    1/0: Ui.Label(text="a")
+    2/0.[0].0: Ui.Label(text="0: a")
 
 tick 1
   in:
     0: click
   added:
-    2/[1]/0: Ui.Label(text="1: c")
+    2/0.[1].0: Ui.Label(text="1: c")
   changed:
-    1: Ui.Label(text="b")
-    2/[0]/0: Ui.Label(text="0: b")
+    1/0: Ui.Label(text="b")
+    2/0.[0].0: Ui.Label(text="0: b")

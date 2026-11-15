@@ -3,4 +3,4 @@ test it_builds
 
 tick 0
   added:
-    0: Ui.Label(text="n=7")
+    0.0/0: Ui.Label(text="n=7")

@@ -4,7 +4,7 @@ test loud
 tick 0
   added:
     0: Ui.Label(text="11 11")
-    1: Ui.Label(text="loud")
+    1.0: Ui.Label(text="loud")
 
 test soft
 

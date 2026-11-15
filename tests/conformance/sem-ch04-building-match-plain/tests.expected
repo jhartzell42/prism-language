@@ -3,12 +3,12 @@ test the_arm_result_is_read_below
 
 tick 0
   added:
-    0: Ui.Button(label="go")
-    1: Ui.Label(text="x 0")
-    2: Ui.Label(text="n 10")
+    0/0: Ui.Button(label="go")
+    0/1.0: Ui.Label(text="x 0")
+    0/2: Ui.Label(text="n 10")
 
 tick 1
   in:
-    0: click
+    0/0: click
   changed:
-    1: Ui.Label(text="x 1")
+    0/1.0: Ui.Label(text="x 1")

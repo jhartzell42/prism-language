@@ -3,4 +3,4 @@ test answered
 
 tick 0
   added:
-    0/[1]/0: Ui.Label(text="asked 1")
+    0.[1].0: Ui.Label(text="asked 1")

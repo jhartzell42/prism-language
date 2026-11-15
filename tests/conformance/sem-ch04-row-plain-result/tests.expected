@@ -6,14 +6,14 @@ test rows_gather_plain_results
 tick 0
   added:
     0: Ui.Button(label="go")
-    1/[0]/0: Ui.Label(text="i0=5")
+    1/0.[0].0: Ui.Label(text="i0=5")
     2: Ui.Label(text="1")
 
 tick 1
   in:
     0: click
   added:
-    1/[1]/0: Ui.Label(text="i1=7")
+    1/0.[1].0: Ui.Label(text="i1=7")
 
 compute until idle: 1 tick, 2 to 2
 

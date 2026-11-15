@@ -4,5 +4,5 @@ test nothing_asked
 tick 0
   added:
     0: Ui.Label(text="before")
-    1: Ui.Label(text="nothing asked")
+    1.0: Ui.Label(text="nothing asked")
     2: Ui.Label(text="after")

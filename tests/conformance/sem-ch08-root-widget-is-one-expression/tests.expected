@@ -3,17 +3,17 @@ test the_applied_widget_is_built
 
 tick 0
   added:
-    0: Ui.Label(text="shown: first")
+    0/0/0: Ui.Label(text="shown: first")
 
 test the_blueprint_of_the_true_arm_is_built
 
 tick 0
   added:
-    0: Ui.Label(text="one")
+    0/0.0/0: Ui.Label(text="one")
 
 test the_blueprint_of_the_false_arm_is_built
 
 tick 0
   added:
-    0: Ui.Label(text="two")
-    1: Ui.Label(text="second")
+    0/0.0/0: Ui.Label(text="two")
+    0/0.0/1: Ui.Label(text="second")

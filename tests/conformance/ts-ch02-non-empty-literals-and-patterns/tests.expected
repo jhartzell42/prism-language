@@ -5,10 +5,10 @@ tick 0
   added:
     0: Ui.Label(text="4 9 3 0 ann alone 1 2 people 2 6 same")
     1: Ui.Button(label="more")
-    2/[1]/0: Ui.Label(text="1 x")
+    2.[1].0: Ui.Label(text="1 x")
 
 tick 1
   in:
     1: click
   added:
-    2/[2]/0: Ui.Label(text="2 y")
+    2.[2].0: Ui.Label(text="2 y")

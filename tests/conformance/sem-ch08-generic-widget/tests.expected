@@ -4,12 +4,12 @@ test generic_widget
 tick 0
   added:
     0: Ui.Button(label="go")
-    1: Ui.Label(text="n=1")
-    2: Ui.Label(text="t=\"t1\"")
+    1/0: Ui.Label(text="n=1")
+    2/0: Ui.Label(text="t=\"t1\"")
 
 tick 1
   in:
     0: click
   changed:
-    1: Ui.Label(text="n=2")
-    2: Ui.Label(text="t=\"t2\"")
+    1/0: Ui.Label(text="n=2")
+    2/0: Ui.Label(text="t=\"t2\"")

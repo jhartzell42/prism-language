@@ -4,16 +4,16 @@ test default_in_memory_keeps_the_state
 tick 0
   added:
     0: Ui.Button(label="raise 2")
-    1: Ui.Label(text="total 0")
+    2: Ui.Label(text="total 0")
 
 tick 1
   in:
     0: click
   changed:
-    1: Ui.Label(text="total 2")
+    2: Ui.Label(text="total 2")
 
 tick 2
   in:
     0: click
   changed:
-    1: Ui.Label(text="total 4")
+    2: Ui.Label(text="total 4")

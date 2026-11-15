@@ -3,5 +3,5 @@ test each_row_builds_its_blueprint
 
 tick 0
   added:
-    0/[0]/0: Ui.Label(text="one")
-    0/[1]/0: Ui.Label(text="two")
+    0.[0].0/0: Ui.Label(text="one")
+    0.[1].0/0: Ui.Label(text="two")

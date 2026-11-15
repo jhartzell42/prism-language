@@ -4,5 +4,5 @@ test entries_in_key_order
 tick 0
   added:
     0: Ui.Label(text="keys: White Black; White < Black: True")
-    1/[White]/0: Ui.Label(text="White")
-    1/[Black]/0: Ui.Label(text="Black")
+    1.[White].0: Ui.Label(text="White")
+    1.[Black].0: Ui.Label(text="Black")

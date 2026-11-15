@@ -3,7 +3,7 @@ test counted
 
 tick 0
   added:
-    0: Ui.Label(text="three")
+    0/0: Ui.Label(text="three")
     1: Ui.Label(text="wide 1")
-    2: Ui.Label(text="level 2")
-    3: Ui.Label(text="level 1")
+    2/0.0: Ui.Label(text="level 2")
+    2/0.1/0.0: Ui.Label(text="level 1")

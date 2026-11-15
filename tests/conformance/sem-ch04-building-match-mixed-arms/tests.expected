@@ -3,19 +3,19 @@ test loud
 
 tick 0
   added:
-    0: Ui.Label(text="x")
-    1: Ui.Label(text="n 10")
+    0/0.0: Ui.Label(text="x")
+    0/1: Ui.Label(text="n 10")
 
 test soft_and_deep
 
 tick 0
   added:
-    0: Ui.Label(text="deep")
-    1: Ui.Label(text="deeper")
-    2: Ui.Label(text="n 20")
+    0/0.0.0: Ui.Label(text="deep")
+    0/0.0.1: Ui.Label(text="deeper")
+    0/1: Ui.Label(text="n 20")
 
 test soft_and_shallow
 
 tick 0
   added:
-    0: Ui.Label(text="n 30")
+    0/1: Ui.Label(text="n 30")

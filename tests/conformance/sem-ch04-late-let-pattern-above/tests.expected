@@ -3,13 +3,13 @@ test loud
 
 tick 0
   added:
-    0: Ui.Label(text="low 11")
-    1: Ui.Label(text="x")
-    2: Ui.Label(text="high 20")
+    0/0: Ui.Label(text="low 11")
+    0/1.0: Ui.Label(text="x")
+    0/2: Ui.Label(text="high 20")
 
 test soft
 
 tick 0
   added:
-    0: Ui.Label(text="low 21")
-    1: Ui.Label(text="high 40")
+    0/0: Ui.Label(text="low 21")
+    0/2: Ui.Label(text="high 40")

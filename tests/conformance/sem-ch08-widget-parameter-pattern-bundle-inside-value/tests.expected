@@ -4,10 +4,10 @@ test the_bundle_inside_binds
 tick 0
   added:
     0: Ui.Button(label="more")
-    1: Ui.Label(text="b: 1 guests, 0 clicks")
+    1/0/0: Ui.Label(text="b: 1 guests, 0 clicks")
 
 tick 1
   in:
     0: click
   changed:
-    1: Ui.Label(text="b: 2 guests, 1 clicks")
+    1/0/0: Ui.Label(text="b: 2 guests, 1 clicks")

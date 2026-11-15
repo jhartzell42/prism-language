@@ -3,4 +3,4 @@ test it_builds
 
 tick 0
   added:
-    0: Ui.Label(text="6")
+    0.1: Ui.Label(text="6")

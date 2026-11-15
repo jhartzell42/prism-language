@@ -4,16 +4,16 @@ test the_label_lags
 tick 0
   added:
     0: Ui.Button(label="next")
-    1/#0/0: Ui.Label(text="page 1")
+    1.#0.0: Ui.Label(text="page 1")
     2: Ui.Label(text="showing 1")
 
 tick 1
   in:
     0: click
   added:
-    1/#1/0: Ui.Label(text="page 2")
+    1.#1.0: Ui.Label(text="page 2")
   torn down:
-    1/#0/0: Ui.Label(text="page 1")
+    1.#0.0: Ui.Label(text="page 1")
 
 tick 2
 

@@ -3,4 +3,4 @@ test a_kept_dynamic_follows
 
 tick 0
   added:
-    0/[0]/0: Ui.Label(text="row 4")
+    0.[0].0: Ui.Label(text="row 4")

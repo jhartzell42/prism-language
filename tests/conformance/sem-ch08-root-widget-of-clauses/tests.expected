@@ -3,11 +3,11 @@ test the_second_clause_is_built
 
 tick 0
   added:
-    0: Ui.Label(text="titled")
-    1: Ui.Label(text="Mine")
+    0/0: Ui.Label(text="titled")
+    0/1: Ui.Label(text="Mine")
 
 test the_first_clause_is_built
 
 tick 0
   added:
-    0: Ui.Label(text="untitled")
+    0/0: Ui.Label(text="untitled")

@@ -6,7 +6,7 @@ tick 0
     0: Ui.Button(label="add")
     1: Pad.Port(name="port 10")
     2: Ui.Label(text="7 up")
-    3: Ui.Label(text="loud")
+    3.0: Ui.Label(text="loud")
 
 test soft
 

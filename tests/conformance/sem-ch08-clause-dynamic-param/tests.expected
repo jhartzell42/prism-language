@@ -4,10 +4,10 @@ test the_clause_follows_its_parameter
 tick 0
   added:
     0: Ui.Button(label="go")
-    1: Ui.Label(text="some 3 x")
+    1/0: Ui.Label(text="some 3 x")
 
 tick 1
   in:
     0: click
   changed:
-    1: Ui.Label(text="some 3 y")
+    1/0: Ui.Label(text="some 3 y")

@@ -3,13 +3,13 @@ test loud
 
 tick 0
   added:
-    0: Ui.Label(text="pair 7")
+    0/0: Ui.Label(text="pair 7")
     1: Ui.Label(text="7 8")
-    2: Ui.Label(text="seven")
+    2.0/0: Ui.Label(text="seven")
 
 test soft
 
 tick 0
   added:
-    0: Ui.Label(text="pair 20")
+    0/0: Ui.Label(text="pair 20")
     1: Ui.Label(text="20 21")

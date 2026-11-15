@@ -4,11 +4,11 @@ test the_place_follows_the_dynamic
 tick 0
   added:
     0: Ui.Button(label="inc")
-    1: Ui.Label(text="line 7")
+    1.0/0: Ui.Label(text="line 7")
     2: Ui.Label(text="end")
 
 tick 1
   in:
     0: click
   changed:
-    1: Ui.Label(text="line 8")
+    1.0/0: Ui.Label(text="line 8")

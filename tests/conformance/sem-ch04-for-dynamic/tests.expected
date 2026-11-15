@@ -4,14 +4,14 @@ test rows_give_a_dynamic
 tick 0
   added:
     0: Ui.Button(label="add")
-    1/["a"]/0: Fs.Contents(path="a")
+    1.["a"].0: Fs.Contents(path="a")
     2: Ui.Label(text="A")
 
 tick 1
   in:
     0: click
   added:
-    1/["b"]/0: Fs.Contents(path="b")
+    1.["b"].0: Fs.Contents(path="b")
 
 tick 2
   changed:

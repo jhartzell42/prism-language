@@ -3,5 +3,5 @@ test it_builds
 
 tick 0
   added:
-    0: Ui.Label(text="7=\"s\"")
-    1: Ui.Label(text="\"s\"=7")
+    0.0/0: Ui.Label(text="7=\"s\"")
+    1.0/0: Ui.Label(text="\"s\"=7")

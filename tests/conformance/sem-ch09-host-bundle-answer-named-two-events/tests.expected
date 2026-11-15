@@ -5,7 +5,7 @@ tick 0
   added:
     0: Ui.Button(label="say")
     1: Ui.Button(label="drop")
-    2/[1]/0: Ui.Label(text="none, 0 lost")
+    2.[1].0: Ui.Label(text="none, 0 lost")
 
 tick 1
   in:
@@ -13,7 +13,7 @@ tick 1
 
 tick 2
   changed:
-    2/[1]/0: Ui.Label(text="hello, 0 lost")
+    2.[1].0: Ui.Label(text="hello, 0 lost")
 
 tick 3
   in:
@@ -21,4 +21,4 @@ tick 3
 
 tick 4
   changed:
-    2/[1]/0: Ui.Label(text="hello, 3 lost")
+    2.[1].0: Ui.Label(text="hello, 3 lost")

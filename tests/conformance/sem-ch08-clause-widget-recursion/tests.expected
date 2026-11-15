@@ -3,7 +3,7 @@ test each_level_is_counted
 
 tick 0
   added:
-    0: Ui.Label(text="at 2")
-    1: Ui.Label(text="at 1")
-    2: Ui.Label(text="zero")
-    3: Ui.Label(text="after")
+    0/0: Ui.Label(text="at 2")
+    0/1.0/0: Ui.Label(text="at 1")
+    0/1.0/1.0/0: Ui.Label(text="zero")
+    1: Ui.Label(text="after")

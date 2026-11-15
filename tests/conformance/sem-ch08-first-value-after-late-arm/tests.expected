@@ -3,17 +3,17 @@ test loud
 
 tick 0
   added:
-    0: Ui.Label(text="x")
+    0.0: Ui.Label(text="x")
     1: Fs.Contents(path="motd")
     2: Ui.Label(text="10: top")
-    3/[0]/0: Fs.Contents(path="inner")
-    3/[1]/0: Ui.Label(text="under")
+    3.[0]/0: Fs.Contents(path="inner")
+    3.[1].0: Ui.Label(text="under")
 
 tick 1
   in:
     Fs.Contents(path="inner") = ~ Contents(text="moved")
   changed:
-    3/[1]/0: Ui.Label(text="moved")
+    3.[1].0: Ui.Label(text="moved")
 
 tick 2
   in:
@@ -25,19 +25,19 @@ test soft
 
 tick 0
   added:
-    0: Fs.Contents(path="motd")
-    1: Ui.Label(text="20: top")
-    2/[0]/0: Fs.Contents(path="inner")
-    2/[1]/0: Ui.Label(text="under")
+    1: Fs.Contents(path="motd")
+    2: Ui.Label(text="20: top")
+    3.[0]/0: Fs.Contents(path="inner")
+    3.[1].0: Ui.Label(text="under")
 
 tick 1
   in:
     Fs.Contents(path="inner") = ~ Contents(text="moved")
   changed:
-    2/[1]/0: Ui.Label(text="moved")
+    3.[1].0: Ui.Label(text="moved")
 
 tick 2
   in:
     Fs.Contents(path="motd") = ~ Contents(text="new")
   changed:
-    1: Ui.Label(text="20: new")
+    2: Ui.Label(text="20: new")

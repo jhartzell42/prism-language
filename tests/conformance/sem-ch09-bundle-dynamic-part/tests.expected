@@ -22,4 +22,4 @@ test a_socket_offline
 
 tick 0
   added:
-    0/[1]/0: Ui.Label(text="offline: none")
+    0.[1].0: Ui.Label(text="offline: none")

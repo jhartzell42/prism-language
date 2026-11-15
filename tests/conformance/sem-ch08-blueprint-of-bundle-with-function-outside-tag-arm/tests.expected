@@ -4,10 +4,10 @@ test it_fires
 tick 0
   added:
     0: Ui.Button(label="go")
-    1: Ui.Label(text="6 0")
+    1.1: Ui.Label(text="6 0")
 
 tick 1
   in:
     0: click
   changed:
-    1: Ui.Label(text="6 1")
+    1.1: Ui.Label(text="6 1")

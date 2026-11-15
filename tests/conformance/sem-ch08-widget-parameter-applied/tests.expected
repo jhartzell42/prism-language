@@ -3,7 +3,7 @@ test a_parameter_applied_twice
 
 tick 0
   added:
-    0: Ui.Label(text="top")
-    1: Ui.Label(text="row 1")
-    2: Ui.Label(text="row 2")
-    3: Ui.Label(text="bottom")
+    0/0: Ui.Label(text="top")
+    0/1/0: Ui.Label(text="row 1")
+    0/2/0: Ui.Label(text="row 2")
+    0/3: Ui.Label(text="bottom")

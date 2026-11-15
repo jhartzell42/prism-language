@@ -3,12 +3,12 @@ test picked
 
 tick 0
   added:
-    0: Ui.Label(text="line 7")
+    0.0/0: Ui.Label(text="line 7")
     1: Ui.Label(text="end")
 
 test not_picked
 
 tick 0
   added:
-    0: Ui.Label(text="none")
+    0.0: Ui.Label(text="none")
     1: Ui.Label(text="end")

@@ -3,11 +3,11 @@ test many
 
 tick 0
   added:
-    0: Ui.Label(text="ada: 3")
-    1: Ui.Label(text="many")
+    0/0: Ui.Label(text="ada: 3")
+    0/1.0: Ui.Label(text="many")
 
 test few
 
 tick 0
   added:
-    0: Ui.Label(text="bo: 1")
+    0/0: Ui.Label(text="bo: 1")

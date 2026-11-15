@@ -3,6 +3,6 @@ test a_parameter_passed_on
 
 tick 0
   added:
-    0: Ui.Label(text="outer")
-    1: Ui.Label(text="five")
-    2: Ui.Label(text="got 5")
+    0/0: Ui.Label(text="outer")
+    0/1/0/0: Ui.Label(text="five")
+    0/1/1: Ui.Label(text="got 5")

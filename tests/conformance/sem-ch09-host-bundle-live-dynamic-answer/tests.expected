@@ -4,7 +4,7 @@ test a_live_dynamic_part
 tick 0
   added:
     0: Ui.Button(label="flip")
-    1/[1]/0: Ui.Label(text="down: none")
+    1.[1].0: Ui.Label(text="down: none")
 
 tick 1
   in:
@@ -12,4 +12,4 @@ tick 1
 
 tick 2
   changed:
-    1/[1]/0: Ui.Label(text="up: hello")
+    1.[1].0: Ui.Label(text="up: hello")

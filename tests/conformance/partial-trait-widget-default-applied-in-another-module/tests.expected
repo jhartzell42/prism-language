@@ -3,4 +3,4 @@ test started
 
 tick 0
   added:
-    0: Ui.Label(text="started at 7")
+    0/0/0: Ui.Label(text="started at 7")

@@ -5,7 +5,7 @@ tick 0
   added:
     0: Ui.Button(label="add")
     1: Ui.Label(text="11")
-    2: Ui.Label(text="loud")
+    2.0: Ui.Label(text="loud")
 
 test soft
 

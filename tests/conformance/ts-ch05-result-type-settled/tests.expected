@@ -3,5 +3,5 @@ test settled
 
 tick 0
   added:
-    0: Ui.Label(text="-0")
+    0/0: Ui.Label(text="-0")
     1: Ui.Label(text="1 0 [[7]]")

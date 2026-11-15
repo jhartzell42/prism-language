@@ -3,16 +3,16 @@ test the_shouting_clause
 
 tick 0
   added:
-    0: Ui.Label(text="hi!")
+    0.0/0: Ui.Label(text="hi!")
 
 test the_quiet_clause
 
 tick 0
   added:
-    0: Ui.Label(text="...")
+    0.0/0: Ui.Label(text="...")
 
 test the_other_arm
 
 tick 0
   added:
-    0: Ui.Label(text="off")
+    0.0: Ui.Label(text="off")

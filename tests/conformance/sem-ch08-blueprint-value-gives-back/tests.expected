@@ -3,13 +3,13 @@ test picked
 
 tick 0
   added:
-    0: Ui.Label(text="counted")
-    1: Ui.Label(text="got 7")
-    2: Ui.Label(text="end")
+    0.0/0: Ui.Label(text="counted")
+    0.1: Ui.Label(text="got 7")
+    1: Ui.Label(text="end")
 
 test not_picked
 
 tick 0
   added:
-    0: Ui.Label(text="none")
+    0.0: Ui.Label(text="none")
     1: Ui.Label(text="end")

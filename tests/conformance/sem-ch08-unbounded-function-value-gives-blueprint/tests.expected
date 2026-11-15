@@ -3,5 +3,5 @@ test it_builds
 
 tick 0
   added:
-    0: Ui.Label(text="row 1")
+    0.0/0: Ui.Label(text="row 1")
     1: Ui.Label(text="below")

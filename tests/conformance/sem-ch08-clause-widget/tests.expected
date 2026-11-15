@@ -6,11 +6,11 @@ test the_clause_is_chosen_at_the_build
 tick 0
   added:
     0: Ui.Label(text="notes")
-    1: Ui.Label(text="Mine: first")
+    1/0: Ui.Label(text="Mine: first")
 
 test the_other_clause
 
 tick 0
   added:
     0: Ui.Label(text="notes")
-    1: Ui.Label(text="untitled: first")
+    1/0: Ui.Label(text="untitled: first")

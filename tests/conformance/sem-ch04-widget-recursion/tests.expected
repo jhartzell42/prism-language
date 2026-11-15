@@ -4,11 +4,11 @@ test the_outline_grows_a_level
 tick 0
   added:
     0: Ui.Button(label="grow")
-    1: Ui.Label(text="a")
-    2/[0]/0: Ui.Label(text="b")
+    1/0: Ui.Label(text="a")
+    1/1.[0].0/0: Ui.Label(text="b")
 
 tick 1
   in:
     0: click
   added:
-    2/[0]/1/[0]/0: Ui.Label(text="c")
+    1/1.[0].0/1.[0].0/0: Ui.Label(text="c")

@@ -3,7 +3,7 @@ test it_builds
 
 tick 0
   added:
-    0: Ui.Label(text="local=5")
-    1: Ui.Label(text="local=\"t\"")
-    2: Ui.Label(text="let=5")
-    3: Ui.Label(text="let=\"t\"")
+    0.0/0: Ui.Label(text="local=5")
+    1.0/0: Ui.Label(text="local=\"t\"")
+    2.0/0: Ui.Label(text="let=5")
+    3.0/0: Ui.Label(text="let=\"t\"")

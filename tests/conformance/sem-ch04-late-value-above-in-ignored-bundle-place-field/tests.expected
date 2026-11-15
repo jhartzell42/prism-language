@@ -5,7 +5,7 @@ tick 0
   added:
     0: Pad.Port(name="port 10")
     1: Ui.Label(text="of 10")
-    2: Ui.Label(text="loud")
+    2.0: Ui.Label(text="loud")
 
 test soft
 

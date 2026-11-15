@@ -3,6 +3,6 @@ test it_builds
 
 tick 0
   added:
-    0: Ui.Label(text="header")
-    1: Ui.Label(text="header")
+    0/0: Ui.Label(text="header")
+    1.0/0: Ui.Label(text="header")
     2: Ui.Label(text="end")

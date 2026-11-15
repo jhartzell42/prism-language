@@ -3,7 +3,7 @@ test it_builds
 
 tick 0
   added:
-    0: Ui.Label(text="counted=\"a\"")
-    1: Ui.Label(text="counted=True")
-    2: Ui.Label(text="named=7")
-    3: Ui.Label(text="none")
+    0.0/0: Ui.Label(text="counted=\"a\"")
+    1.0/0: Ui.Label(text="counted=True")
+    2.0/0: Ui.Label(text="named=7")
+    3.0: Ui.Label(text="none")

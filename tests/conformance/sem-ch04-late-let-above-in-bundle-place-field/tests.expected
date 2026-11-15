@@ -3,19 +3,19 @@ test loud
 
 tick 0
   added:
-    0: Pad.Port(name="port 11")
-    1: Ui.Label(text="7 up of 11")
-    2: Ui.Label(text="x")
+    0/0: Pad.Port(name="port 11")
+    0/1: Ui.Label(text="7 up of 11")
+    0/2.0: Ui.Label(text="x")
 
 tick 1
   in:
     Pad.Port(name="port 11") = ((7, "down"))
   changed:
-    1: Ui.Label(text="7 down of 11")
+    0/1: Ui.Label(text="7 down of 11")
 
 test soft
 
 tick 0
   added:
-    0: Pad.Port(name="port 21")
-    1: Ui.Label(text="8 up of 21")
+    0/0: Pad.Port(name="port 21")
+    0/1: Ui.Label(text="8 up of 21")

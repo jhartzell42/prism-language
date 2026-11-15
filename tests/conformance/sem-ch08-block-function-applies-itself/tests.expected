@@ -5,15 +5,15 @@ tick 0
   added:
     0: Ui.Button(label="add")
     1: Ui.Label(text="level 2 at 0")
-    2: Ui.Label(text="level 1 at 0")
-    3: Ui.Label(text="level 0 at 0")
-    4: Ui.Label(text="ground")
-    5: Ui.Label(text="after")
+    2.0: Ui.Label(text="level 1 at 0")
+    2.1.0: Ui.Label(text="level 0 at 0")
+    2.1.1.0: Ui.Label(text="ground")
+    3: Ui.Label(text="after")
 
 tick 1
   in:
     0: click
   changed:
     1: Ui.Label(text="level 2 at 1")
-    2: Ui.Label(text="level 1 at 1")
-    3: Ui.Label(text="level 0 at 1")
+    2.0: Ui.Label(text="level 1 at 1")
+    2.1.0: Ui.Label(text="level 0 at 1")

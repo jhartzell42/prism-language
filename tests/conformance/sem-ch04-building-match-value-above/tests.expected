@@ -4,28 +4,28 @@ test loud
 tick 0
   added:
     0: Ui.Button(label="add")
-    1: Ui.Label(text="tile 10")
-    2/[0]/0: Ui.Label(text="a of 10")
-    3: Ui.Label(text="x")
-    4: Ui.Label(text="below 10")
+    1/0/0: Ui.Label(text="tile 10")
+    1/1.[0].0: Ui.Label(text="a of 10")
+    1/2.0: Ui.Label(text="x")
+    1/3: Ui.Label(text="below 10")
 
 tick 1
   in:
     0: click
   added:
-    2/[1]/0: Ui.Label(text="b of 10")
+    1/1.[1].0: Ui.Label(text="b of 10")
 
 test soft
 
 tick 0
   added:
     0: Ui.Button(label="add")
-    1: Ui.Label(text="tile 20")
-    2/[0]/0: Ui.Label(text="a of 20")
-    3: Ui.Label(text="below 20")
+    1/0/0: Ui.Label(text="tile 20")
+    1/1.[0].0: Ui.Label(text="a of 20")
+    1/3: Ui.Label(text="below 20")
 
 tick 1
   in:
     0: click
   added:
-    2/[1]/0: Ui.Label(text="b of 20")
+    1/1.[1].0: Ui.Label(text="b of 20")

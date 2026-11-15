@@ -9,8 +9,8 @@ tick 0
     3: Ui.Button(label="back 1")
     4: Ui.Button(label="both")
     5: Ui.Label(text="outer 0")
-    6/[0]/0: Ui.Label(text="0: a changed 0")
-    6/[1]/0: Ui.Label(text="1: b changed 0")
+    6.[0].0: Ui.Label(text="0: a changed 0")
+    6.[1].0: Ui.Label(text="1: b changed 0")
 
 tick 1
   in:
@@ -20,7 +20,7 @@ tick 2
   in:
     0: click
   changed:
-    6/[0]/0: Ui.Label(text="0: e0 changed 1")
+    6.[0].0: Ui.Label(text="0: e0 changed 1")
 
 tick 3
   in:
@@ -28,13 +28,13 @@ tick 3
   changed:
     5: Ui.Label(text="outer 1")
   torn down:
-    6/[1]/0: Ui.Label(text="1: b changed 0")
+    6.[1].0: Ui.Label(text="1: b changed 0")
 
 tick 4
   in:
     3: click
   added:
-    6/[1]/0: Ui.Label(text="1: B changed 0")
+    6.[1].0: Ui.Label(text="1: B changed 0")
   changed:
     5: Ui.Label(text="outer 2")
 
@@ -42,16 +42,16 @@ tick 5
   in:
     4: click
   added:
-    6/[2]/0: Ui.Label(text="2: c changed 0")
+    6.[2].0: Ui.Label(text="2: c changed 0")
   changed:
     5: Ui.Label(text="outer 3")
-    6/[0]/0: Ui.Label(text="0: x changed 2")
+    6.[0].0: Ui.Label(text="0: x changed 2")
 
 tick 6
   in:
     0: click
   changed:
-    6/[0]/0: Ui.Label(text="0: e1 changed 3")
+    6.[0].0: Ui.Label(text="0: e1 changed 3")
 
 tick 7
   in:

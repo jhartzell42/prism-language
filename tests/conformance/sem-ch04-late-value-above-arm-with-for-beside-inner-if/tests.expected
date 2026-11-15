@@ -3,15 +3,15 @@ test loud
 
 tick 0
   added:
-    0: Ui.Label(text="one 3")
-    1: Ui.Label(text="two 3")
-    2/[0]/0: Ui.Label(text="row 1")
-    2/[1]/0: Ui.Label(text="row 2")
-    3: Ui.Label(text="inner")
+    0/0: Ui.Label(text="one 3")
+    0/1: Ui.Label(text="two 3")
+    1.0.[0].0: Ui.Label(text="row 1")
+    1.0.[1].0: Ui.Label(text="row 2")
+    1.1.0: Ui.Label(text="inner")
 
 test soft
 
 tick 0
   added:
-    0: Ui.Label(text="one 20")
-    1: Ui.Label(text="two 20")
+    0/0: Ui.Label(text="one 20")
+    0/1: Ui.Label(text="two 20")

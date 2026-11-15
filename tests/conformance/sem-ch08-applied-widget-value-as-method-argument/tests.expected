@@ -3,10 +3,10 @@ test loud
 
 tick 0
   added:
-    0: Ui.Label(text="tile 5")
+    0.0/0: Ui.Label(text="tile 5")
 
 test soft
 
 tick 0
   added:
-    0: Ui.Label(text="none")
+    0.0: Ui.Label(text="none")

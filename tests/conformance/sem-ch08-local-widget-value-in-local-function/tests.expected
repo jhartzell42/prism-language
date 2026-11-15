@@ -3,6 +3,6 @@ test a_local_widget_is_passed
 
 tick 0
   added:
-    0: Ui.Label(text="line 7")
-    1: Ui.Label(text="none")
+    0.0/0: Ui.Label(text="line 7")
+    1.0: Ui.Label(text="none")
     2: Ui.Label(text="end")

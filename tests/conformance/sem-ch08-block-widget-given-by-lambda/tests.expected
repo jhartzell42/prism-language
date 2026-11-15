@@ -3,4 +3,4 @@ test the_lambdas_blueprint_is_built
 
 tick 0
   added:
-    0: Ui.Label(text="inner")
+    0/0: Ui.Label(text="inner")

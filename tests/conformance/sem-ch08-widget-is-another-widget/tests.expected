@@ -3,4 +3,4 @@ test the_other_widget_is_built
 
 tick 0
   added:
-    0: Ui.Label(text="page")
+    0/0/0: Ui.Label(text="page")
