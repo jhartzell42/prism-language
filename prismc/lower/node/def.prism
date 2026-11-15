@@ -1876,8 +1876,13 @@ fn BuildInOrder wx, stmts, order, start, ends:
     let runs = Each (Range0 n), \|i|
         let from = if i == 0: start else: Or ends[Dec i], start
         Take (Drop wx.lets, from), (Or ((Or ends[i], from) -? from), 0)
-    let lets = Fold order, (Take wx.lets, start), \|acc, comp| Fold comp, acc, \|acc2, i| Append acc2, (Or runs[i], [[]])
-    let cyclic = Filter order, \|comp| (Len comp) > 1 and Fold comp, False, \|seen, i| seen or (Len (Or runs[i], [[]])) > 0
+    # lines that read each other at the build (a component of several) are ordered by
+    # their `let`s themselves: a line that takes a function value whose own line reads the
+    # first line's dynamic (`((said, $n)) <- @Asking Scale`, `Scale <- Build $n`; the
+    # library's `@HostDocument`) reads the value at a tick, and its own `let`s need only
+    # the value's; only `let`s that read each other are a cycle
+    let lets = Fold order, (Take wx.lets, start), \|acc, comp| if (Len comp) > 1: Append acc, (Or (?DosInOrder (CompLets runs, comp)), (CompLets runs, comp)) else: Append acc, (CompLets runs, comp)
+    let cyclic = Filter order, \|comp| (Len comp) > 1 and (Fold comp, False, \|seen, i| seen or (Len (Or runs[i], [[]])) > 0) and (?DosInOrder (CompLets runs, comp)) == nil
     # a link to the node reads nothing and is shared by the lines after the one that made
     # it (`whole_owner`): it stands before every line's run
     let links = Filter lets, IsLinkLet
@@ -1885,6 +1890,48 @@ fn BuildInOrder wx, stmts, order, start, ends:
         &_.lets <= Append (Append links, (Filter lets, \|d| not (IsLinkLet d))), (Drop wx.lets, last)
     Fold cyclic, wx2, \|w, comp| update w:
         &_.build <= Push &_.build, (InternalBugDo "lines that read each other at the build ({Join (Fold comp, [[]], \|acc, i| Append acc, (Check.Blocks.GroupDefs (Or stmts[i], dummyStmtL))), ", "}): a cycle among values")
+
+# A component's lines' statements, in page order.
+CompLets: fn [ [Do] ], [Nat] -> [Do]
+fn CompLets runs, comp = Fold comp, [[]], \|acc, i| Append acc, (Or runs[i], [[]])
+
+# Statements in an order where each comes after those that bind a local it reads, ties
+# as they stand; `nil` when some read each other. A statement that binds nothing reads
+# whatever came before it, so it keeps its place after them.
+?DosInOrder: unbounded fn [Do] -> ?[Do]
+fn ?DosInOrder dos = ?DosPlaced dos, [[]], (Len dos) + 1
+
+?DosPlaced: unbounded fn [Do], [Do], Nat -> ?[Do]
+fn ?DosPlaced left, placed, fuel = if (Len left) == 0: ? placed else: if fuel == 0: nil else:
+    # the first statement none of the others left binds a local it reads
+    let ready = Filter (Range0 (Len left)), \|i| IsReady left, i
+    match ready[0]:
+        ? i: ?DosPlaced (Append (Take left, i), (Drop left, i + 1)), (Push placed, (Or left[i], DoExpr XUnit)), (Dec fuel)
+        nil: nil
+
+IsReady: unbounded fn [Do], Nat -> Bool
+fn IsReady left, i:
+    let d = Or left[i], DoExpr XUnit
+    let others = Append (Take left, i), (Drop left, i + 1)
+    let earlier = Take left, i
+    # (a statement binding nothing stays after every one before it)
+    if (Len (DoBinds d)) == 0 and (Len earlier) > 0: False
+    else: Fold others, True, \|ok, o| ok and Fold (DoBinds o), True, \|ok2, n| ok2 and not (DoReads d, n)
+
+DoBinds: fn Do -> [Text]
+fn DoBinds d = match d:
+    DoLet p, ignore: PaNamesOf p
+    DoLetElse p, ignore, ignore2: PaNamesOf p
+    otherwise: [[]]
+
+PaNamesOf: fn Pa -> [Text]
+fn PaNamesOf p = match p:
+    PaBind n: [[n]]
+    PaMut n: [[n]]
+    PaCtor ignore, ps: Fold ps, [[]], \|acc, q| Append acc, (PaNamesOf q)
+    PaRecord ignore, fs, ignore2: Fold fs, [[]], \|acc, ((ignore3, q))| Append acc, (PaNamesOf q)
+    PaTuple ps: Fold ps, [[]], \|acc, q| Append acc, (PaNamesOf q)
+    otherwise: [[]]
 
 # The `let` of a node's link (`prism_rtl::Link::<Node>::new()`), made before the node and
 # linked once it is.
