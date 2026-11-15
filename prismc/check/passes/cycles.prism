@@ -61,7 +61,7 @@ use Check.Shrink.Summaries.*
 BlockPromptCycles: unbounded fn Env, St, Block -> St
 fn BlockPromptCycles env, st, b:
     let defs = Fold b.stmts, [[]], \|acc, s| Append acc, (StmtDefs s)
-    let cx = PCx(g=env.g, home=env.home, lams=(LetLambdas b.stmts), base=(PromptBase env, b.stmts), path=[[]], reach=False, supplied=(LocalMarks env, st), names=(Keys env.locals))
+    let cx = PCx(localTys=(LocalTypes env, st), g=env.g, home=env.home, lams=(LetLambdas b.stmts), base=(PromptBase env, b.stmts), path=[[]], reach=False, supplied=(LocalMarks env, st), names=(Keys env.locals))
     let heads = Fold defs, {{}}, \|m, n| Insert m, n, (LocalHead env, st, n)
     let found = FindCycle defs, (Fold b.stmts, [[]], \|acc, s| Append acc, (PromptEdges env, st, cx, s, defs))
     # a loop through `!Updated` (`UpdateEdges`): it names the block's names, in the order
@@ -120,13 +120,13 @@ fn BodyAsBlockOf body = match body:
 ExprBodyMarked: unbounded fn Env, St, Expr -> St
 fn ExprBodyMarked env, st, e:
     let b = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
-    let cx = PCx(g=env.g, home=env.home, lams={{}}, base=(PromptBase env, [[]]), path=[[]], reach=False, supplied=(LocalMarks env, st), names=(Keys env.locals))
+    let cx = PCx(localTys=(LocalTypes env, st), g=env.g, home=env.home, lams={{}}, base=(PromptBase env, [[]]), path=[[]], reach=False, supplied=(LocalMarks env, st), names=(Keys env.locals))
     BodyMarked env, st, cx, b
 
 # The widget lambdas a top-level `let` makes, against their marks (ruling PT).
 TopLambdasMarked: unbounded fn Env, St, Expr -> St
 fn TopLambdasMarked env, st, e:
-    let cx = PCx(g=env.g, home=env.home, lams={{}}, base=(PromptBase env, [[]]), path=[[]], reach=False, supplied=(LocalMarks env, st), names=(Keys env.locals))
+    let cx = PCx(localTys=(LocalTypes env, st), g=env.g, home=env.home, lams={{}}, base=(PromptBase env, [[]]), path=[[]], reach=False, supplied=(LocalMarks env, st), names=(Keys env.locals))
     Fold (LambdasIn e), st, \|s, lam| LambdaMarked env, s, cx, lam
 
 # The `prompt` marks of the widget functions the block's scope binds (its function's
@@ -148,6 +148,14 @@ fn ?WidgetMarks t = match t:
     otherwise: nil
 
 # The marks of a program's or the prelude's widget function, by its key.
+# A widget function's parameter types, by its signature.
+CalleeParamTypes: fn G, Text -> [Ty]
+fn CalleeParamTypes g, k = match g.vals[k]:
+    ? v: match v.scheme.ty:
+        TyFn ignore, ps, ignore2, ignore3: ps
+        otherwise: [[]]
+    nil: [[]]
+
 ?CalleeMarks: fn G, Text -> ?[Bool]
 fn ?CalleeMarks g, k = match g.vals[k]:
     ? v: ?WidgetMarks v.scheme.ty
@@ -257,7 +265,10 @@ fn CarriesTime g, seen, t = match t:
     TySig "$", ignore: True
     TySig ignore, i: CarriesTime g, seen, i
     TyFn ignore, ignore2, ignore3, ignore4: True
-    TyAt ignore, ignore2: True
+    # a blueprint only through its output (claude/promptness-checker.md, "The graphs"):
+    # building it is ownership, what its places emit is element talk through a host, and
+    # only an event or a dynamic it gives back can be prompt in something
+    TyAt o, ignore2: CarriesTime g, seen, o
     TyElem ignore, ignore2: True
     TyElemAny ignore: True
     TyQ ignore: True
@@ -664,6 +675,10 @@ type PCx = record:
     supplied: (Text ==> [Bool])
     # the names bound where the walk's block stands: no global is meant by one of them
     names: [Text]
+    # the types of the block's names where the walk knows them (a block's locals; none in
+    # a summary, `?BlockFlows`): a call reads an argument at a parameter whose timed parts
+    # are the type's to say (`IsTypeCarried`) by what the argument's type holds there
+    localTys: (Text ==> Ty)
 derive ^Eq, ^Show
 
 # The relations every right side of a block starts from: the prelude's names that no
@@ -724,12 +739,82 @@ fn PromptSpots cx, e, m = Fold (PromptKids cx, e, m), [[(SpotExpr e, m)]], \|acc
 PromptKids: unbounded fn PCx, Expr, (Text ==> Rel) -> [Kid]
 fn PromptKids cx, e, m = match e.kind:
     ELambda ignore, ignore, prompts: [[]]
-    ERebuild source, body: RowKidsFrom cx, source, body, m, [[]]
-    EFor ?binders, source, body: RowKidsFrom cx, source, body, m, (ForBinderNames ?binders)
+    # (building is never an edge, but a blueprint that gives back an event or a dynamic
+    # gives it in what it captured: the source is read, `TimedBlueprintSource`)
+    ERebuild source, body: WithTimedSource cx, source, (TimedBlueprintSource cx, source), (RowKidsFrom cx, source, body, m, [[]]), m
+    EFor ?binders, source, body: WithTimedSource cx, source, (Fold (ForBinderNames ?binders), False, \|found, n| found or TimedBlueprintName n), (RowKidsFrom cx, source, body, m, (ForBinderNames ?binders)), m
     EWidgetBlock ignore: [[]]
     ECall c, ignore, ignore, ignore: PromptCallKids cx, e, (?CalleeName c), m
     EMethod ignore, n, ignore: PromptCallKids cx, e, (? (SNameKey n)), m
     otherwise: ExprKids e, m
+
+# A `rebuild`'s or a `for`'s kids, and its source when what it builds gives back an event
+# or a dynamic (claude/promptness-checker.md: a guest's timed output borrows what its
+# blueprint captured; changing the source otherwise only builds and ends guests).
+WithTimedSource: fn PCx, Expr, Bool, [Kid], (Text ==> Rel) -> [Kid]
+fn WithTimedSource cx, source, timed, kids, m = if timed and not cx.reach: Push kids, (KidExpr source, m) else: kids
+
+# Whether a `rebuild`'s source holds blueprints that give back an event or a dynamic: by
+# the source's type where the walk knows it, else by its name's marks, which show its
+# type's stack (`$@!echo`).
+TimedBlueprintSource: unbounded fn PCx, Expr -> Bool
+fn TimedBlueprintSource cx, source = match source.kind:
+    EName n: match cx.localTys[SNameKey n]:
+        ? t: TimedBlueprintOutput cx.g, t
+        nil: TimedBlueprintName (SNameKey n)
+    EGroup x: TimedBlueprintSource cx, x
+    otherwise: True
+
+# Whether a name's marks show a blueprint whose output is timed: a `!` or a `$` after the
+# `@` (`$@!echo`); `$@guest`, whose output is a type variable, does not (the variable
+# holds its own lifetimes, read where it is instantiated).
+TimedBlueprintName: fn Text -> Bool
+fn TimedBlueprintName n:
+    let marks = MarksOf n
+    let after = DropThrough marks, "@"
+    (Contains marks, "@") and ((Contains after, "!") or Contains after, "$")
+
+# The text after the first `at`, or none.
+DropThrough: fn Text, Text -> Text
+fn DropThrough text, at = match SplitOn text, at:
+    [[ignore, rest]]: rest
+    otherwise: if (Len (SplitOn text, at)) > 2: Join (Drop (SplitOn text, at), 1), at else: ""
+
+# Whether a type holds a blueprint whose output is concretely timed (an event, a dynamic,
+# a function, at a type that holds no type variable there).
+TimedBlueprintOutput: unbounded fn G, Ty -> Bool
+fn TimedBlueprintOutput g, t = match t:
+    TyAt o, ignore: ConcretelyTimed g, [[]], o
+    TySig ignore, i: TimedBlueprintOutput g, i
+    TyArray e: TimedBlueprintOutput g, e
+    TyMap k, v: TimedBlueprintOutput g, v
+    TyTuple ts: Fold ts, False, \|found, x| found or TimedBlueprintOutput g, x
+    TyCon n, args: (Fold args, False, \|found, a| found or TimedBlueprintOutput g, a) or Fold (Values g.ctors), False, \|found, c| found or (c.owner == n and Fold c.args, False, \|f2, a| f2 or TimedBlueprintOutput g, a)
+    otherwise: False
+
+# `CarriesTime` with a type variable or an associated type counted as no time: the type
+# that instantiates it says (claude/promptness-checker.md, "Lifetimes ride inside types").
+ConcretelyTimed: unbounded fn G, [Text], Ty -> Bool
+fn ConcretelyTimed g, seen, t = match t:
+    TyQ ignore: False
+    TyRigid ignore: False
+    TyFlex ignore: False
+    TyAssoc ignore, ignore2, ignore3, ignore4: False
+    TySig "!", ignore: True
+    TySig "$", ignore: True
+    TySig ignore, i: ConcretelyTimed g, seen, i
+    TyAt o, ignore: ConcretelyTimed g, seen, o
+    TyCon n, args: if HasText seen, n: False else: (Fold args, False, \|found, a| found or ConcretelyTimed g, seen, a) or Fold (Values g.ctors), False, \|found, c| found or (c.owner == n and Fold c.args, False, \|f2, a| f2 or ConcretelyTimed g, (Push seen, n), a)
+    TyTuple ts: Fold ts, False, \|found, a| found or ConcretelyTimed g, seen, a
+    TyArray e: ConcretelyTimed g, seen, e
+    TyMap k, v: (ConcretelyTimed g, seen, k) or ConcretelyTimed g, seen, v
+    otherwise: CarriesTime g, seen, t
+
+# A block's locals' types, walked.
+LocalTypes: unbounded fn Env, St -> (Text ==> Ty)
+fn LocalTypes env, st = Fold (Keys env.locals), {{}}, \|m, n| match env.locals[n]:
+    ? sc: Insert m, n, (Walk st, sc.ty)
+    nil: m
 
 # A `for`'s or a `rebuild`'s result is prompt in what its rows' results read (Semantics
 # ch. 7, a `for`'s consolidation among the prompt edges): building a row is never an edge
@@ -826,7 +911,7 @@ fn PromptCallKids cx, e, ?n, m = match ?n:
             # a program's or the prelude's widget function: by the marks of its type
             # (ruling PT); a plain function is prompt in everything
             ? k: match ?CalleeMarks cx.g, k:
-                ? flags: ByFlags cx, e, flags, m
+                ? flags: ByFlagsAt cx, e, flags, (CalleeParamTypes cx.g, k), m
                 nil: OpenLambdas cx, (ExprKids e, m)
             nil: OpenLambdas cx, (ExprKids e, m)
     nil: OpenLambdas cx, (ExprKids e, m)
@@ -834,11 +919,50 @@ fn PromptCallKids cx, e, ?n, m = match ?n:
 # A call's arguments by a summary: each the summary says the result reads promptly; all
 # of them where an argument is named.
 ByFlags: unbounded fn PCx, Expr, [Bool], (Text ==> Rel) -> [Kid]
-fn ByFlags cx, e, flags, m = match e.kind:
+fn ByFlags cx, e, flags, m = ByFlagsAt cx, e, flags, [[]], m
+
+# The same with the callee's parameter types: an unmarked parameter whose timed parts are
+# the type's to say (`IsTypeCarried`: a blueprint giving back a type variable, an
+# associated type) is read where the argument's type holds a timed blueprint output, or
+# where the walk does not know the argument's type (claude/promptness-checker.md,
+# "Lifetimes ride inside types").
+ByFlagsAt: unbounded fn PCx, Expr, [Bool], [Ty], (Text ==> Rel) -> [Kid]
+fn ByFlagsAt cx, e, flags, ptys, m = match e.kind:
     ECall ignore, args, ignore, ignore:
         if Fold args, False, \|named, a| named or a.?name != nil: OpenLambdas cx, (ExprKids e, m)
-        else: Fold (Range0 (Len args)), [[]], \|acc, i| if (Or flags[i], True): Append acc, (MarkedArgKids cx, (Or args[i], dummyArgP).value, m) else: acc
+        else: Fold (Range0 (Len args)), [[]], \|acc, i|
+            let a = (Or args[i], dummyArgP).value
+            if (Or flags[i], True): Append acc, (MarkedArgKids cx, a, m)
+            else: if (IsTypeCarried cx.g, (Or ptys[i], TyErr)) and ArgMayGiveTime cx, a: Append acc, (MarkedArgKids cx, a, m)
+            else: acc
     otherwise: OpenLambdas cx, (ExprKids e, m)
+
+# Whether a parameter's type holds a blueprint whose output is a type variable or an
+# associated type: what the guests give back borrows whatever the type it is given at
+# borrows, so the parameter needs no mark and each call reads by its argument's type.
+IsTypeCarried: unbounded fn G, Ty -> Bool
+fn IsTypeCarried g, t = match t:
+    TyAt o, ignore: (not (ConcretelyTimed g, [[]], o)) and CarriesTime g, [[]], o
+    TyAssoc ignore, ignore2, ignore3, ignore4: True
+    TySig ignore, i: IsTypeCarried g, i
+    TyArray x: IsTypeCarried g, x
+    TyMap k, v: IsTypeCarried g, v
+    TyTuple ts: Fold ts, False, \|found, x| found or IsTypeCarried g, x
+    TyCon n, args: Fold args, False, \|found, a| found or IsTypeCarried g, a
+    otherwise: False
+
+# Whether an argument may give a timed blueprint output: by its type where the walk knows
+# it (a block's local, a field of one), else yes.
+ArgMayGiveTime: unbounded fn PCx, Expr -> Bool
+fn ArgMayGiveTime cx, a = match ?ArgType cx, a:
+    ? t: TimedBlueprintOutput cx.g, t
+    nil: True
+
+?ArgType: unbounded fn PCx, Expr -> ?Ty
+fn ?ArgType cx, a = match a.kind:
+    EName n: cx.localTys[SNameKey n]
+    EGroup x: ?ArgType cx, x
+    otherwise: nil
 
 # An argument at a parameter marked `prompt` (ruling PT, choice (a)): itself, and the body
 # of every lambda inside it, however deep (a lambda in a record, a list, a tuple), and of
@@ -924,7 +1048,7 @@ fn ?BlockFlows cx, k, home, params, b, supplied = match ?LastOf b.stmts:
             let paramNames = Each params, \|p| PatternNames p
             let defs = Fold b.stmts, (Fold paramNames, [[]], \|acc, ns| Append acc, ns), \|acc, s| Append acc, (StmtDefs s)
             let base = Fold b.stmts, (PreludeSeeds cx.g, home), \|m, s| LamLetRels s, m
-            let inner = PCx(g=cx.g, home=home, lams=(LetLambdas b.stmts), base=base, path=(Push cx.path, k), reach=cx.reach, supplied=supplied, names=defs)
+            let inner = PCx(localTys={{}}, g=cx.g, home=home, lams=(LetLambdas b.stmts), base=base, path=(Push cx.path, k), reach=cx.reach, supplied=supplied, names=defs)
             let heads = Fold defs, {{}}, \|m, n| Insert m, n, (SigilHead n)
             let edges = Fold b.stmts, [[]], \|acc, s| Append (Append acc, (SummaryEdges inner, s, defs)), (UpdateLineEdges inner, heads, s, defs)
             # a function value the result holds carries what it captures (`CaptureReads`)
