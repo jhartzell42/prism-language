@@ -884,13 +884,17 @@ fn HostLine wx, benv, menv, form, args, ?bound:
             # the supplier's dynamic answers (`@ $d`, round 3 DY): a getter of this node per
             # dynamic, read through the owner's link, and a port each marks
             # (and the live dynamics its held answers read, `HeldOutputReaders`)
-            let ((wxh, benvh, menvh)) = HeldOutputReaders wx1, benv, menv, k, sup.value
-            let ((wxd, dynEnv, dynLets)) = DynamicOutputs wxh, benvh, menvh, hf, k, sup.value
             # (a supplier an inlined widget gave back as a lambda, `Supply <- @Counting
             # !add`: its text read here, in that widget's environment with this line's
-            # getters, as a lambda written on the line is, `?resultText`)
+            # getters, as a lambda written on the line is, `?resultText`; its answers'
+            # readers and dynamics are the text's, in that environment)
+            let ((supBenv, supMenv, supExpr)) = match ?LambdaTextOf menv, sup.value:
+                ? ((lambda, lbenv, lmenv, ignore)): ((lbenv, (WithMarkedNames lmenv, menv), lambda))
+                nil: ((benv, menv, sup.value))
+            let ((wxh, benvh, menvh)) = HeldOutputReaders wx1, supBenv, supMenv, k, supExpr
+            let ((wxd, dynEnv, dynLets)) = DynamicOutputs wxh, benvh, menvh, hf, k, supExpr
             let offered = match ?LambdaTextOf menv, sup.value:
-                ? ((lambda, ignore, lmenv, llx)): Own (ValueOf llx, (WithMarkedNames lmenv, dynEnv), lambda)
+                ? ((lambda, ignore, ignore, llx)): Own (ValueOf llx, dynEnv, lambda)
                 nil: Own (ValueOf lx, dynEnv, sup.value)
             let supplier0 = match form:
                 HostSome: XCall (RefRuntime "prism_rtl::forward_on_none"), [[offered]]
