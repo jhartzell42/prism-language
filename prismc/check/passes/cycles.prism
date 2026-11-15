@@ -47,6 +47,12 @@ use Check.Shrink.Summaries.*
 # The prompt-cycle check (Semantics ch. 7, There are no cycles)
 # ---------------------------------------------------------------------------------------
 
+# How promptness works, the graphs the program has (events, element talk through hosts,
+# widget ownership), and tick lifetimes: claude/promptness-checker.md. In short: `x` is
+# prompt in `y` when a firing of `y` can make `x` fire in the same tick; ownership (building
+# and ending guests) and element talk (through a host, a tick late) never are; a blueprint
+# matters only through the events its output holds.
+
 # A cycle of prompt edges among a widget block's bindings is `prompt-cycle`, naming its
 # bindings in order. A hold's value is delayed; a sample is delayed; a `rebuild`'s
 # generation is built at the end of the tick. A hold's update event is not delayed: a loop
