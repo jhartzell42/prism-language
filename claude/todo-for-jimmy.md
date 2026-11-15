@@ -109,3 +109,26 @@ for a round before any code:
   `rebuild` or `for` whose key or arm depends on `$doc`).
 - **Cost:** the viewer's lag (VL) and chess's owed ticks per move shrink; the transcripts
   pinning today's owed ticks change; the runtimes gain a second phase per tick.
+
+## A design round: hosting delay (HO) and promptness (PT)
+
+Jimmy, 14 November: "HO is a good ruling! … This is an undercooked problem." The prompt
+check (ruling PT) and the hosting delay (ruling HO, Language ch. 6, "Tick by tick") meet
+in a few places nobody has designed together:
+
+- **What prismc does now:** a place's answer is no prompt edge to its fields
+  (`!a <- Count.Ask(!by=!a)` is feedback through a tick), and a lambda given to a function
+  is the function's, its parameter's mark deciding, so a host's handler (unmarked in the
+  prelude) is no prompt edge of the host's line (prismc/check/passes/cycles.prism,
+  `PromptEdges`, `CapturingLambdas`).
+- **Forwarding:** `@Element e` is this tick's input. A host that forwards a guest's
+  element to an enclosing host that computes is a tick; to the World, as fast as the
+  World. Whether any chain of forwards can close a same-tick loop is unchecked.
+- **Marks that only existed because of hosts:** `prompt Supply` on `@HostSeats` and
+  `@HostRole`, `prompt Supplier d` on the implementations, `@Defer` on the tally's
+  departures (YB, choice a). Each wants a look under HO.
+- **Marks on parts of a result** (Claude's RM in the QG talk): PT marks a parameter for
+  the whole result; a tuple result (a host's `((a, $tree))`) could say which part fires
+  with which parameter. Nothing needs it under HO today.
+- **The owed-tick round above** (structural dynamics read in the same tick) is the same
+  question from the other side: where a tick is inserted and where it is owed.
