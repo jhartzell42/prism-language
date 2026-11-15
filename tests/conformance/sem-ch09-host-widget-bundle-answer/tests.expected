@@ -3,13 +3,13 @@ test a_widget_answers_a_bundle
 
 tick 0
   added:
-    0/[0]/0: Ui.Button(label="knock front")
-    0/[1]/0: Ui.Label(text="mock: 0")
+    0.[0]/0: Ui.Button(label="knock front")
+    0.[1]/0: Ui.Label(text="mock: 0")
 
 tick 1
   in:
-    0/[0]/0: click
+    0.[0]/0: click
 
 tick 2
   changed:
-    0/[1]/0: Ui.Label(text="mock: 2")
+    0.[1]/0: Ui.Label(text="mock: 2")
