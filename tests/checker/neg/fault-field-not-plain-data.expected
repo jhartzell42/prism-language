@@ -16,6 +16,6 @@ tests/checker/neg/fault-field-not-plain-data.prism:19: error[fault-field]: the f
   fix: give the field the value as the fault is made, a type with no `$`, `!`, `@` or `any` in it
 tests/checker/neg/fault-field-not-plain-data.prism:22: error[fault-field]: the field `what` of the fault kind `Count.Packed` is no plain data: it holds a packed value (`any`)
         what: any ^Debug
-        ^^^^^^^^^^^^^^^
+        ^^^^^^^^^^^^^^^^
   fix: give the field the value as the fault is made, a type with no `$`, `!`, `@` or `any` in it
 5 errors
