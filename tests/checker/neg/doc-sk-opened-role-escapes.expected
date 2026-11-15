@@ -1,4 +1,5 @@
 tests/checker/neg/doc-sk-opened-role-escapes.prism:17: error[existential-escape]: the type hidden in `SeatKey d` would leave it here
             any ((role, seat)): seat
                                 ^^^^
+  fix: use the opened value inside the arm, and give back a type without it
 1 error
