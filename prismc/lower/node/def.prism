@@ -473,11 +473,33 @@ fn LinesInto wx, benv0, menv0, b, open:
 ?LateLineAt: unbounded fn Lx, Env, Block, Nat -> ?Nat
 fn ?LateLineAt lx, menv, b, depth:
     let env = WithLocalWidgets menv, b
-    Fold (Range0 (Len b.stmts)), nil, \|?found, i| match ?found:
+    let IsLateAt = \|i| match (Or b.stmts[i], dummyStmtL).kind:
+        SBind ignore, e, nil: (IsLateExpr lx, env, e, depth) and not ((IsEarlyChoiceAt lx, env, b, i) or IsPureChoiceAt lx, env, b, i, depth)
+        otherwise: False
+    let ?first = Fold (Range0 (Len b.stmts)), nil, \|?found, i| match ?found:
         ? k: ? k
-        nil: match (Or b.stmts[i], dummyStmtL).kind:
-            SBind ignore, e, nil: if (IsLateExpr lx, env, e, depth) and not ((IsEarlyChoiceAt lx, env, b, i) or IsPureChoiceAt lx, env, b, i, depth): ? i else: nil
+        nil: if IsLateAt i: ? i else: nil
+    match ?first:
+        ? k: ? (GiverBelow b, k, IsLateAt, (Len b.stmts))
+        nil: nil
+
+# The line a block is split at, from its first late line `k`: when `k` takes at its
+# build a late result a line below gives (`m <- if loud: @Twice n` above `n <- if ..`),
+# the block is split at the giver instead, and `k` is a line above that takes its result
+# (`DeferredLine`, `LateTakerResults`), as the order of the lines decides positions and
+# nothing else (Semantics ch. 4); and so on down, `fuel` lines at most
+# (sem-ch04-late-value-taken-by-arm-result-above).
+GiverBelow: unbounded fn Block, Nat, (fn Nat -> Bool), Nat -> Nat
+fn GiverBelow b, k, IsLateAt, fuel:
+    let reads = ReadsOfLine (Or b.stmts[k], dummyStmtL)
+    let ?giver = Fold (Range0 (Len b.stmts)), nil, \|?found, j| match ?found:
+        ? g: ? g
+        nil: if j <= k or not (IsLateAt j): nil else: match (Or b.stmts[j], dummyStmtL).kind:
+            SBind p, ignore, nil: if Fold (PatternNames p), False, \|seen, n| seen or HasText reads, n: ? j else: nil
             otherwise: nil
+    match ((?giver, (fuel -? 1))):
+        ((? j, ? less)): GiverBelow b, j, IsLateAt, less
+        otherwise: k
 
 # An environment with a block's own local widgets (`@line:` and its block), as `PreBind`
 # binds them.
@@ -731,18 +753,19 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
     # the plain `let`s of the node's lines, through which a line above takes the split
     # line's result too (`?FromSplit`), and the building lines that take it and bind a
     # plain result of their own (`LateTakerResults`)
+    # (a line that calls a local function of the block reads what the function's body
+    # reads, `ReadsThroughLocalFns`: `let m = Double n` takes `n` as `Double`'s caller,
+    # sem-ch04-late-value-through-local-function-let-above-clause-widget)
     let localFns = Fold b.stmts, [[]], \|acc, st| match st.kind:
-        SFn c: Push acc, (DefNameText c.name)
+        SFn c: Push acc, (((DefNameText c.name), (ReadsOfLine st)))
         otherwise: acc
     let splitLets = if (Len choiceNames) == 0: [[]] else: Fold head.stmts, [[]], \|acc, st| match st.kind:
         SLet p, ignore, ignore:
-            let reads = ReadsOfLine st
-            let callsLocal = Fold reads, False, \|f, r| f or HasText localFns, r
-            Append acc, (Each (PatternNames p), \|n| SplitLet(name=n, reads=reads, callsLocal=callsLocal, taker=False))
+            let reads = ReadsThroughLocalFns (ReadsOfLine st), localFns, (Len localFns)
+            Append acc, (Each (PatternNames p), \|n| SplitLet(name=n, reads=reads, callsLocal=False, taker=False))
         SBind p, ignore, nil:
-            let reads = ReadsOfLine st
-            let callsLocal = Fold reads, False, \|f, r| f or HasText localFns, r
-            Append acc, (Each (Filter (PatternNames p), \|n| not (IsTimeName n)), \|n| SplitLet(name=n, reads=reads, callsLocal=callsLocal, taker=True))
+            let reads = ReadsThroughLocalFns (ReadsOfLine st), localFns, (Len localFns)
+            Append acc, (Each (Filter (PatternNames p), \|n| not (IsTimeName n)), \|n| SplitLet(name=n, reads=reads, callsLocal=False, taker=True))
         otherwise: acc
     let rest = Block(stmts=staying, inline=b.inline, span=b.span)
     let ((wxu, beu, meu, ups)) = PreBindUps wx, benv, menv, staying
@@ -841,6 +864,17 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
             &_.giving <= outerGiving
             &_.splitNames <= outerSplit
             &_.splitLets <= outerSplitLets
+
+# A line's reads with the reads of each local function of the block it calls, and of
+# the local functions those call, `fuel` rounds at most; the functions' own names are
+# no reads of a value.
+ReadsThroughLocalFns: fn [Text], [((Text, [Text]))], Nat -> [Text]
+fn ReadsThroughLocalFns reads, localFns, fuel:
+    let names = Each localFns, \|((n, ignore))| n
+    let more = Fold localFns, reads, \|acc, ((n, fnReads))| if HasText reads, n: UnionTexts acc, fnReads else: acc
+    match fuel -? 1:
+        ? less: if (Len more) == (Len reads): Filter reads, \|r| not (HasText names, r) else: ReadsThroughLocalFns more, localFns, less
+        nil: Filter more, \|r| not (HasText names, r)
 
 # The one name a pattern is (`both`, `(both)`).
 ?OneName: fn Pattern -> ?SName
