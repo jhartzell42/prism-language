@@ -1,0 +1,35 @@
+# An existential over a variable whose kind is an associated type (`any (r: Role d):
+# ((Fixed r, Text))`), opened in a function generic in `d` and matched against a role the
+# function is given (`Fixed<<r>>`, as the library's `?ResponseTo` does): no type the
+# lowering knows decides `Role d`'s variants there, so the opened variable keeps the
+# variant the value holds. Found by the p16 run on the documents.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+
+type CountRole = choice:
+    Raiser
+    Watcher
+derive ^Eq, ^Show
+
+type Count = record:
+    total: Nat
+
+impl ^Document Count:
+    type Role = CountRole
+
+type Note d = any (r: Role d): ((Fixed r, Text))
+
+?SaidBy: forall d (r: Role d). fn Fixed r, Note d -> ?Text where d: ^Document
+fn ?SaidBy mine, note = match note:
+    any ((theirs, text)): match theirs:
+        Fixed<<r>>: ? text
+        otherwise: nil
+
+@page: @unit
+@page:
+    let note: Note Count = any ((Fixed<<Raiser>>, "raised"))
+    Ui.Label($text=$"{Or (?SaidBy<<Count>> Fixed<<Raiser>>, note), "none"} {Or (?SaidBy<<Count>> Fixed<<Watcher>>, note), "none"}")   # 0

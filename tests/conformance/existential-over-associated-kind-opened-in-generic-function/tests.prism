@@ -1,0 +1,6 @@
+# The tests of existential-over-associated-kind-opened-in-generic-function.
+emit Ui.*
+use App.*
+
+test said_by_its_role, @page:
+    build

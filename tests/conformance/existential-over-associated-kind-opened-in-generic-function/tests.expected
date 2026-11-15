@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 6 (an existential's variable, opened, is the variant it was packed at) and Claude's call under ruling OP (`Fixed<<r>>` matches when the two are the same variant).
+test said_by_its_role
+
+tick 0
+  added:
+    0: Ui.Label(text="raised none")
