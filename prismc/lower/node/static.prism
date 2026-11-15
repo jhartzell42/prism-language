@@ -442,6 +442,22 @@ fn ?ClauseGuard c = nil
 AppliedPath: fn Wx, Pos -> Ex
 fn AppliedPath wx, pos = if Emits wx, pos: XClone (XVar "path") else: XCall (RefRuntime "rt::Path::root"), [[]]
 
+# The path a blueprint value is applied at (ruling PL). In the World's scope, the node's
+# own: under a place of its own, `UnderRows`' `path` already names that place; under its
+# caller's list, the line's position in the list of the inlined applications the line
+# stands in (`pos.prefix`). In a hosted scope, the same path relative to the node, whose
+# host knows its places by their paths under the node (`host_under`).
+AppliedPathUnder: fn Wx, Pos, GenUnder -> Ex
+fn AppliedPathUnder wx, pos, under:
+    if Emits wx, pos: if under == UnderCaller: InPrefix (XClone (XVar "path")), pos.prefix else: XClone (XVar "path")
+    else:
+        let root = XCall (RefRuntime "rt::Path::root"), [[]]
+        match under:
+            UnderCaller: InPrefix root, pos.prefix
+            UnderGeneration: root
+            UnderArm: XMethod (InPrefix root, pos.prefix), "at", [[(PlaceNumber wx, "self", pos)]]
+            UnderCall: XMethod (XMethod (InPrefix root, pos.prefix), "at", [[(PlaceNumber wx, "self", pos)]]), "call", [[]]
+
 ValueBlueprintLine: unbounded fn Wx, Env, Expr -> ((Wx, Wres))
 fn ValueBlueprintLine wx, menv, e = AppliedBlueprintLine wx, e, (Ref (ValueOf wx.lx, menv, e)), UnderCall
 
@@ -487,7 +503,7 @@ fn AppliedBlueprintLine wx, e, blueprint, under:
         # (under its caller's list, the blueprint's places stand at the line's position in
         # the list of the inlined applications the line stands in, `pos.prefix`, ruling PL;
         # under a place of its own, `UnderRows`' `path` already names that place)
-        let appliedAt = if under == UnderCaller: InPrefix (AppliedPath wx, pos), pos.prefix else: AppliedPath wx, pos
+        let appliedAt = AppliedPathUnder wx, pos, under
         let at = [[blueprint, appliedAt, (XVar "row_base"), hostedIn]]
         # a line that binds a dynamic: each answer read at the line's type
         # (the value in a typed `let`)
@@ -594,7 +610,7 @@ fn AppliedBundleLine wx, e, blueprint, under:
     let hostedIn = if IsHostedScope wx: XCtor (RefRuntime "std::Some"), [[(XCast (XClone (HostFieldEx wx, pos)), hostOfTy)]] else: XNone
     let tags = BundleTagsOf lx, full
     let ((stateTy, eventsTy)) = BundleCarried lx, full
-    let applied = XTry (XCallAt (HelperRef "apply_blueprint_whole"), [[wholeTy, stateTy, eventsTy]], [[blueprint, (if under == UnderCaller: InPrefix (AppliedPath wx, pos), pos.prefix else: AppliedPath wx, pos), (XVar "row_base"), hostedIn, (BundleStateTaker lx, tags, stateTy), (BundleEventTaker lx, tags, eventsTy), (BundleAssembled full, tags), XCx]])
+    let applied = XTry (XCallAt (HelperRef "apply_blueprint_whole"), [[wholeTy, stateTy, eventsTy]], [[blueprint, (AppliedPathUnder wx, pos, under), (XVar "row_base"), hostedIn, (BundleStateTaker lx, tags, stateTy), (BundleEventTaker lx, tags, eventsTy), (BundleAssembled full, tags), XCx]])
     let gap = XBin OpSub, (XIndex wideGeneration), (XVar "built")
     let keeps = DoAssign (XDeref (XMethod (XField XSelf, kept), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XVar "whole")]])
     let made = PaTuple [[(PaBind "row"), (PaBind "built"), (PaBind "whole")]]
@@ -1265,9 +1281,11 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
     # and a node's reader a lambda of the line reads as a dynamic (a supplier's `@ $Present
     # $count`, lifted over `$count`): the lambda is called after the build, so what it
     # lifts over is the reader's live dynamic, never its value at the build
-    # (supplier-answer-of-whole-function-over-its-hold)
+    # (supplier-answer-of-whole-function-over-its-hold); a reader with no value at the
+    # build yet (bound below the line, host-bug-01's `$state`) stays as the lambda reads it
+    # otherwise, after the node is linked
     let lambdaReads = Filter inLambdas, \|x| match x.kind:
-        EName ignore: True
+        EName ignore: NamesInited benv, x
         otherwise: False
     let roots = Fold (Append (Append (Append calls, updatedCalls), constants), givenOn), (Append (Append (if whole: ExprsIn e else: [[]]), wholeLambdaReads), lambdaReads), \|acc, c| match c.kind:
         ECall ignore, args, ignore, ignore: Fold args, acc, \|acc2, a| Append acc2, (ExprsIn a.value)
