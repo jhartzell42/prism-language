@@ -8,7 +8,7 @@
 emit Ui.*
 
 type Pair = record:
-    $left: $(Text ==> $@(@unit emit Ui.*))
+    $left: (Text ==> $@(@unit emit Ui.*))
 
 @Run: fn $(k ==> $@(@a emit r)) -> @$(k ==> a) emit r where k: ^Ord
 fn @Run $seats:

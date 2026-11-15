@@ -92,7 +92,7 @@ fn LocalsMarked env, st, cx, b = Fold b.stmts, st, \|s, stmt| match stmt.kind:
                             (([[n]], ? pm)): Insert m, n, pm
                             otherwise: m
                         let block = BodyAsBlockOf c.body
-                        match ?BlockFlows cx, name, env.home, c.params, block, supplied:
+                        match ?BlockFlows cx, name, env.home, c.params, block, supplied, False:
                             ? flows: match ?Unmarked flows, (MarksOrSilent env.g, (Walk s, sc.ty), marks), (ResultIsDynamic (Walk s, sc.ty)):
                                 ? i:
                                     let param = ParamShown c.params, i
@@ -168,7 +168,7 @@ fn ?CalleeMarks g, k = match g.vals[k]:
 BodyMarked: unbounded fn Env, St, PCx, Block -> St
 fn BodyMarked env, st, cx, b = match Filter env.g.defs, \|d| d.file == env.file and (?ClauseOf d, b) != nil:
     [[d]]: match (((?ClauseOf d, b), (?CalleeMarks env.g, (SignedKey env.g, d)))):
-        ((? c, ? marks)): match ?BlockFlows cx, d.qk, d.home, c.params, b, cx.supplied:
+        ((? c, ? marks)): match ?BlockFlows cx, d.qk, d.home, c.params, b, cx.supplied, True:
             ? flows: match ?Unmarked flows, (SignedMarksOrSilent env.g, (SignedKey env.g, d), marks), (GivesDynamic env.g, (SignedKey env.g, d)):
                 ? i:
                     let name = d.name
@@ -361,7 +361,7 @@ fn LambdaMarked env, st, cx, lam = match lam.kind:
         if not (IsWidgetLambdaBody body): st
         else:
             let block = LambdaBlock body
-            match ?BlockFlows cx, "lambda@{lam.span.start}", env.home, params, block, cx.supplied:
+            match ?BlockFlows cx, "lambda@{lam.span.start}", env.home, params, block, cx.supplied, False:
                 # the lambda's own marks and those of the type it was given at
                 ? flows: match ?Unmarked flows, (MarksJoined marks, (Or st.lambdaMarks[lam.span.start], [[]])), (EndsInDynamic block):
                     ? i:
@@ -813,7 +813,7 @@ fn ConcretelyTimed g, seen, t = match t:
 # A block's locals' types, walked.
 LocalTypes: unbounded fn Env, St -> (Text ==> Ty)
 fn LocalTypes env, st = Fold (Keys env.locals), {{}}, \|m, n| match env.locals[n]:
-    ? sc: Insert m, n, (Walk st, sc.ty)
+    ? sc: Insert m, n, (NormAssoc st, (Walk st, sc.ty))
     nil: m
 
 # A `for`'s or a `rebuild`'s result is prompt in what its rows' results read (Semantics
@@ -963,7 +963,26 @@ fn ArgMayGiveTime cx, a = match ?ArgType cx, a:
 fn ?ArgType cx, a = match a.kind:
     EName n: cx.localTys[SNameKey n]
     EGroup x: ?ArgType cx, x
+    # a record's field, by the record's type (the library's `seats.$editor`)
+    EField r, ignore, name: match ?ArgType cx, r:
+        ? t: ?FieldTypeOf cx.g, t, name.name
+        nil: nil
     otherwise: nil
+
+# A record field's type at the record's type arguments, its label read without its marks.
+?FieldTypeOf: unbounded fn G, Ty, Text -> ?Ty
+fn ?FieldTypeOf g, t, label = match t:
+    TySig ignore, inner: ?FieldTypeOf g, inner, label
+    TyCon n, args: match g.types[n]:
+        ? ti: match ti.body:
+            BRecord fs: Fold fs, nil, \|?found, ((f, ft))| if ?found != nil: ?found else: if (BareLabel f) == (BareLabel label): ? (SubstQ (ParamInst ti.params, args), ft) else: nil
+            otherwise: nil
+        nil: nil
+    otherwise: nil
+
+# A field's label without its marks (`$editor` is `editor`).
+BareLabel: unbounded fn Text -> Text
+fn BareLabel label = if (HasPrefix label, "$") or (HasPrefix label, "!") or (HasPrefix label, "?") or (HasPrefix label, "~") or (HasPrefix label, "@") or (HasPrefix label, "&"): BareLabel (AfterFirst label) else: label
 
 # An argument at a parameter marked `prompt` (ruling PT, choice (a)): itself, and the body
 # of every lambda inside it, however deep (a lambda in a record, a list, a tuple), and of
@@ -1042,14 +1061,18 @@ fn Reach edges, frontier, seen = match frontier[0]:
 # its type's (the function's own types are not at hand). The result reaches from what it
 # reads and from the updates under an `!Updated` in it; the result's update reaches from
 # the updates of the dynamics the result reads and from the events it reads.
-?BlockFlows: unbounded fn PCx, Text, Text, [Pattern], Block, (Text ==> [Bool]) -> ?[ParameterFlow]
-fn ?BlockFlows cx, k, home, params, b, supplied = match ?LastOf b.stmts:
+?BlockFlows: unbounded fn PCx, Text, Text, [Pattern], Block, (Text ==> [Bool]), Bool -> ?[ParameterFlow]
+fn ?BlockFlows cx, k, home, params, b, supplied, paramsTyped = match ?LastOf b.stmts:
     ? last: match last.kind:
         SExpr result:
             let paramNames = Each params, \|p| PatternNames p
             let defs = Fold b.stmts, (Fold paramNames, [[]], \|acc, ns| Append acc, ns), \|acc, s| Append acc, (StmtDefs s)
             let base = Fold b.stmts, (PreludeSeeds cx.g, home), \|m, s| LamLetRels s, m
-            let inner = PCx(localTys={{}}, g=cx.g, home=home, lams=(LetLambdas b.stmts), base=base, path=(Push cx.path, k), reach=cx.reach, supplied=supplied, names=defs)
+            # (the types of the block's names where the walk knows them: a body's own, its
+            # parameters as the body was checked (`paramsTyped`, `BodyMarked`); a local
+            # function's or a lambda's parameters are no names of the block it is read in)
+            let known = if paramsTyped: cx.localTys else: Fold (Fold paramNames, [[]], \|acc, ns| Append acc, ns), cx.localTys, \|m, n| Remove m, n
+            let inner = PCx(localTys=known, g=cx.g, home=home, lams=(LetLambdas b.stmts), base=base, path=(Push cx.path, k), reach=cx.reach, supplied=supplied, names=defs)
             let heads = Fold defs, {{}}, \|m, n| Insert m, n, (SigilHead n)
             let edges = Fold b.stmts, [[]], \|acc, s| Append (Append acc, (SummaryEdges inner, s, defs)), (UpdateLineEdges inner, heads, s, defs)
             # a function value the result holds carries what it captures (`CaptureReads`)
