@@ -94,7 +94,8 @@ armed; a World that sees it ticks again, with no inputs if it has none.
   (`tests/compiled/run.sh`), the checker's tests (`tests/checker/run.sh`), and the
   bootstrap's fixed point.
 - `make basic-chess`: build and open chess (`./prism run examples/basic-chess`).
-- `make bootstrap`: the kept prismc to gen1 to gen2, byte-equal; installs
-  `target/bootstrap/prismc`.
+- `make bootstrap`: the seed to gen1 to gen2, byte-equal; installs
+  `target/bootstrap/prismc`. `make rebuild` does the same from the installed compiler;
+  `make clean` removes `target/`.
 
 The README states these three.

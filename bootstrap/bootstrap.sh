@@ -165,7 +165,7 @@ compile() {
     if ! "$2" compile "${args[@]}" -o "$b/gen$1" --name prismc > "$log" 2>&1; then
         tail -20 "$log" >&2
         if [ "$1" = 1 ] && [ $from = installed ]; then
-            echo "the installed $start cannot compile this tree (it is older than the source's syntax); re-run with --from-seed" >&2
+            echo "the installed $start cannot compile this tree (it is older than the source's syntax); run `make bootstrap`, which starts from the seed" >&2
         fi
         exit 1
     fi

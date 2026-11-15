@@ -22,7 +22,7 @@ tree as it stands.*
   the canvas World the way the Makefile compiles it, `./prism run bench/gui/prism
   examples/basic-chess/basic_window` (unrun here).
 - **Break the compiler on purpose:** edit a module under `prismc/` (`prismc/syntax/lexer/`,
-  `prismc/syntax/parser/`, `prismc/check/`, `prismc/lower/`, `prismc/emit/rust/`), run `make bootstrap`, and watch the fixed point refuse or the suites
+  `prismc/syntax/parser/`, `prismc/check/`, `prismc/lower/`, `prismc/emit/rust/`), run `make rebuild`, and watch the fixed point refuse or the suites
   fail; `tests/compiled/run.sh NAME` runs one program (`tests/compiled/run.sh chess`).
 - **Write a new example** as a tree under `examples/` (claude/modules-style-pass.md): a
   directory with its root `app.prism`, a `test mod Tests` in `tests.prism` beside it and
@@ -67,7 +67,7 @@ green at every step:
 2. **Then lowering and the printer** (`prismc/lower/`, `prismc/emit/rust/`,
    the templates under `emit/rust/templates/`): the fixed point and
    the compiled suite (`tests/compiled/run.sh`) catch any change in
-   behavior. Rewrite a function at a time; `make bootstrap` after
+   behavior. Rewrite a function at a time; `make rebuild` after
    each batch.
 3. **Then the runtime and the Worlds** (`runtime/rust`, `worlds/cli`,
    `worlds/canvas`): their unit tests (`cargo test --workspace`), then the compiled suite over them.
