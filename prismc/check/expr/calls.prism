@@ -837,7 +837,11 @@ fn InferMonoLambda env, st, e, ?expected:
     let ((expParams, ?expRes, st0)) = match ?expected:
         ? t: match Walk st, t:
             TyFn ignore, ps, r, wanted:
-                if (Len ps) == (Len params): ((ps, ? r, (PromptsFit st, written, wanted, e.span, "this lambda")))
+                if (Len ps) == (Len params):
+                    let fit = PromptsFit st, written, wanted, e.span, "this lambda"
+                    let noted = update fit:
+                        &_.lambdaMarks <= Insert &_.lambdaMarks, e.span.start, wanted
+                    ((ps, ? r, noted))
                 else: (([[]], nil, (Err st, "mismatch", e.span, "this lambda takes {CountWord (Len params)} parameter{if (Len params) == 1: "" else: "s"}; here {CountWord (Len ps)} {if (Len ps) == 1: "is" else: "are"} wanted")))
             otherwise: (([[]], nil, st))
         nil: (([[]], nil, st))

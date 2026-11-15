@@ -345,13 +345,17 @@ fn LambdaMarked env, st, cx, lam = match lam.kind:
         else:
             let block = LambdaBlock body
             match ?BlockFlows cx, "lambda@{lam.span.start}", env.home, params, block, cx.supplied:
-                ? flows: match ?Unmarked flows, marks, (EndsInDynamic block):
+                # the lambda's own marks and those of the type it was given at
+                ? flows: match ?Unmarked flows, (MarksJoined marks, (Or st.lambdaMarks[lam.span.start], [[]])), (EndsInDynamic block):
                     ? i:
                         let param = ParamShown params, i
                         ErrFix st, "prompt-unmarked", (ResultSpan block), "this lambda gives {PromptWhat param}, and the type it is given at does not mark that parameter `prompt`", "give it a tick later with `@Defer`, or write `\\|prompt {param}| ...` where a function prompt in that parameter is wanted"
                     nil: st
                 nil: st
     otherwise: st
+
+MarksJoined: fn [Bool], [Bool] -> [Bool]
+fn MarksJoined a, b = Each (Range0 (Max (Len a), (Len b))), \|i| (Or a[i], False) or (Or b[i], False)
 
 # A lambda's body as a block: an expression body is a block of its result alone.
 LambdaBlock: fn LambdaBody -> Block
