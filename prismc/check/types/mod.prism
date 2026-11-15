@@ -139,6 +139,14 @@ type Want = record:
     file: Nat
     span: Range
     level: Nat
+    reason: WantReason
+derive ^Eq, ^Show
+
+# Why a constraint is wanted, where a refusal says more: a placeholder (`"{xs}"`) wants
+# `^Display` of its expression, whose source text the fix names (ruling DD).
+type WantReason = choice:
+    Asked
+    Placeholder Text
 derive ^Eq, ^Show
 
 # A type scheme: quantified type variables (free-headed, or plain-headed when a local

@@ -391,7 +391,7 @@ fn WaitingPack st, result, inner, span = update st:
 
 AddWant: fn St, Text, Ty, Range -> St
 fn AddWant st, cls, t, span = update st:
-    &_.wants <= Push &_.wants, Want(cls=cls, ty=t, file=&_.file, span=span, level=&_.level)
+    &_.wants <= Push &_.wants, Want(cls=cls, ty=t, file=&_.file, span=span, level=&_.level, reason=Asked)
 
 EnvCx: fn Env -> Cx
 fn EnvCx env:
@@ -573,7 +573,7 @@ fn InferRegex st, r:
 # A literal's range, checked once its type is known (`literal-range`).
 AddRange: fn St, Ty, Text, Bool, Range -> St
 fn AddRange st, v, digits, signed, span = update st:
-    &_.wants <= Push &_.wants, Want(cls="Range {if signed: "-" else: ""}{digits}", ty=v, file=&_.file, span=span, level=&_.level)
+    &_.wants <= Push &_.wants, Want(cls="Range {if signed: "-" else: ""}{digits}", ty=v, file=&_.file, span=span, level=&_.level, reason=Asked)
 
 # A text with placeholders is the text builder applied to each (ch. 5, Free sigils and
 # text): it lifts; a `$"…"` is a `$Text`, constant when nothing is dynamic, and an event
@@ -593,7 +593,7 @@ fn InferText env, st, segs, dollar, span:
             let ih = HeadSigil s2, inner
             let plainT = if IsPlainSigil ih: InnerOf s2, inner else: inner
             let s3 = if head == "@": Err s2, "blueprint-operand", x.span, "a text over a blueprint; bind it first" else: s2
-            let s4 = ShowWant s3, plainT, x.span
+            let s4 = DisplayWant s3, plainT, x.span, (SrcText env, x.span)
             let ev2 = if head == "!": Push ev, x.span else: ev
             let dy2 = if head == "$": dy + 1 else: dy
             let op2 = if IsPlainSigil ih: AddText op, ih else: op
@@ -615,8 +615,17 @@ fn InferText env, st, segs, dollar, span:
         let st5 = if (Len opts) == 1: NoteLift st4, span, (Or opts[0], ""), optHoles else: st4
         ((res, (NoteApp st5, span, "text", kind, layer, lifted, (Or opts[0], ""), CBound)))
 
-# A placeholder that is not a text prints through `^Show`.
-ShowWant: unbounded fn St, Ty, Range -> St
-fn ShowWant st, t, span = match Walk st, t:
+# A text's placeholder places its value as text for people (ruling DD): it wants
+# `^Display` of the value beneath its layers, and a refusal names the placeholder's text
+# (`NoImplFor`).
+DisplayWant: unbounded fn St, Ty, Range, Text -> St
+fn DisplayWant st, t, span, src = match Walk st, t:
     TyCon "Text", [[]]: st
-    other: AddWant st, "Prelude.Show", other, span
+    other: update st:
+        &_.wants <= Push &_.wants, Want(cls="Prelude.Display", ty=other, file=&_.file, span=span, level=&_.level, reason=(Placeholder src))
+
+# A code template's placeholder places its value as it debugs (`<<n>>`).
+DebugWant: unbounded fn St, Ty, Range -> St
+fn DebugWant st, t, span = match Walk st, t:
+    TyCon "Text", [[]]: st
+    other: AddWant st, "Prelude.Debug", other, span

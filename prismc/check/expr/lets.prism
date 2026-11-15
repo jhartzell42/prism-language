@@ -564,7 +564,7 @@ fn TemplatePartCheck env, st, part = match part:
     TpBadEscape at: ErrFix st, "brace-placeholder", at, "`\\\{\{` is no escape in a code template, where braces are text", "write `\{\{`"
     TpPlaceholder x, ignore:
         let ((t, st2)) = Infer env, st, x
-        BracePlaceholder env, (ShowWant st2, (if IsTimeSigil (HeadSigil st2, t): InnerOf st2, t else: t), x.span), x.span
+        BracePlaceholder env, (DebugWant st2, (if IsTimeSigil (HeadSigil st2, t): InnerOf st2, t else: t), x.span), x.span
     TpBlock b:
         let ((t, st2)) = InferExprBlock env, st, b
         BraceBlock env, st2, b.span

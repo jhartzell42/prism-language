@@ -47,13 +47,26 @@ fn DerivedImpls g = Fold (Keys g.types), g, \|gg, k| match gg.types[k]:
 DerivedDynamics: fn G, St -> St
 fn DerivedDynamics g, st = Fold (Keys g.types), st, \|s, k| match g.types[k]:
     ? ti:
-        let held = Filter ti.derives, \|d| HasText [["Eq", "Ord", "Show"]], (BareName d)
+        let held = Filter ti.derives, \|d| HasText [["Eq", "Ord", "Debug"]], (BareName d)
         match ?FieldHolding ti.body:
             ? f if (Len held) > 0: WithFile (ErrFix (WithFile s, ti.file), "derive-dynamic", ti.span, "`derive ^{BareName (Or held[0], "")}` on `{BareName ti.name}`, whose `{f}` holds a dynamic or an event, which does not compare or print", "drop the derive"), s.file
             otherwise: s
     nil: s
 
-# A derived `^Eq`, `^Ord` or `^Show` is structural (Type System ch. 3, "Derive, out loud"):
+# `derive-unknown`: a `derive` names a trait a derive writes, `^Eq`, `^Ord`, `^Debug` or
+# `^Pod`; one no module declares (`^Show`, gone as a name by ruling DD) or one a derive
+# does not write (`^Display`, text for people, which a program writes itself) is refused
+# at the type's line, never dropped.
+DerivesKnown: fn G, St -> St
+fn DerivesKnown g, st = Fold (Keys g.types), st, \|s, k| match g.types[k]:
+    ? ti: Fold ti.derives, s, \|s1, tr| match ?ResolveTrait g, ti.home, (SplitOn tr, "."):
+        ? cls: if HasText [["Eq", "Ord", "Debug", "Pod"]], (BareName cls): s1 else: WithFile (ErrFix (WithFile s1, ti.file), "derive-unknown", ti.span, "`derive ^{BareName tr}` on `{BareName ti.name}`: `^{BareName cls}` is no trait a derive writes", derivable), s1.file
+        nil: WithFile (ErrFix (WithFile s1, ti.file), "derive-unknown", ti.span, "`derive ^{BareName tr}` on `{BareName ti.name}`, and no trait is named `^{BareName tr}`", derivable), s1.file
+    nil: s
+
+let derivable = "derive one of `^Eq`, `^Ord`, `^Debug`, `^Pod`, or drop it"
+
+# A derived `^Eq`, `^Ord` or `^Debug` is structural (Type System ch. 3, "Derive, out loud"):
 # each field's type has the trait, the type's parameters given it as the derived impl's
 # bounds give it. A field whose type has none refuses the derive at the type's line
 # (`no-impl`), where the target compilers would refuse the derived code. A field holding a
@@ -61,7 +74,7 @@ fn DerivedDynamics g, st = Fold (Keys g.types), st, \|s, k| match g.types[k]:
 DerivedFields: unbounded fn G, St -> St
 fn DerivedFields g, st = Fold (Keys g.types), st, \|s, k| match g.types[k]:
     ? ti: if (?FieldHolding ti.body) != nil: s else: Fold ti.derives, s, \|s1, tr| match ?ResolveTrait g, ti.home, (SplitOn tr, "."):
-        ? cls: if HasText [["Eq", "Ord", "Show"]], (BareName cls): DeriveFieldsHave g, s1, ti, cls else: s1
+        ? cls: if HasText [["Eq", "Ord", "Debug"]], (BareName cls): DeriveFieldsHave g, s1, ti, cls else: s1
         nil: s1
     nil: s
 
@@ -80,7 +93,7 @@ fn DeriveFieldsHave g, st, ti, cls:
             let trial = update st:
                 &_.file <= ti.file
                 &_.diags <= [[]]
-                &_.wants <= [[Want(cls=cls, ty=ft, file=ti.file, span=ti.span, level=0)]]
+                &_.wants <= [[Want(cls=cls, ty=ft, file=ti.file, span=ti.span, level=0, reason=Asked)]]
             let out = SolveWants g, trial, givens, False
             if (Len out.diags) > 0 or (Len out.wants) > 0: ? ((f, how, ft)) else: nil
     match ?lacking:
@@ -236,13 +249,13 @@ fn TagVariablesPrint g, st = Fold (Keys g.tags), st, \|s, name|
     match g.tags[name]:
         nil: s
         ? tg: Fold tg.qs, s, \|s1, variable|
-            let prints = Fold tg.bounds, False, \|seen, ((bounded, cls))| seen or (bounded == variable and HasText (SuperClosure g, cls), "Prelude.Show")
+            let prints = Fold tg.bounds, False, \|seen, ((bounded, cls))| seen or (bounded == variable and HasText (SuperClosure g, cls), "Prelude.Debug")
             # a variable of a field alone is `field-variable` already (`ConvTag`)
             let inOutput = (SubstQ Inst(tys=(Insert {{}}, variable, TyErr), rows={{}}, cols={{}}), tg.out) != tg.out
             # a family's index is decided by the row the element is in (`Seat.* Count
             # Raiser`), where the output prints at that index, not by the tag
             if prints or not inOutput or HasText tg.famParams, variable: s1
-            else: WithFile (ErrFix (WithFile s1, tg.file), "tag-variable", tg.span, "the type variable `{variable}` of the tag `{name}` has no `^Show` bound: every field and every output prints", "write `where {variable}: ^Show` on the tag's line"), s1.file
+            else: WithFile (ErrFix (WithFile s1, tg.file), "tag-variable", tg.span, "the type variable `{variable}` of the tag `{name}` has no `^Debug` bound: every field and every output prints", "write `where {variable}: ^Debug` on the tag's line"), s1.file
 
 # A tag's field prints (Semantics ch. 8's table, "tag fields: the outermost mark is the
 # field's kind; the type beneath prints"; "Every field and every output prints"): the type
@@ -261,7 +274,7 @@ fn TagFieldsPrint g, st = Fold (Keys g.tags), st, \|s, name| match g.tags[name]:
         match ?Unprintable g, s1, fieldType:
             nil: s1
             ? ((bad, why, fix)):
-                let message = "the field `{label}` of the tag `{name}` does not print: no impl of `^Show` for `{ShowTy s1, bad}`{why}"
+                let message = "the field `{label}` of the tag `{name}` does not print: no impl of `^Debug` for `{ShowTy s1, bad}`{why}"
                 let there = WithFile s1, tg.file
                 WithFile (if fix == "": Err there, "no-impl", at, message else: ErrFix there, "no-impl", at, message, fix), s1.file
 
@@ -316,12 +329,12 @@ fn ?Unprintable g, st, t = match t:
     TyArray element: ?Unprintable g, st, element
     TyMap k, v: ?FirstUnprintable g, st, [[k, v]]
     TyCon "Prelude.NonEmpty", [[c]]: ?Unprintable g, st, c
-    TyAny traits: if Fold traits, False, \|seen, tr| seen or (HasText (SuperClosure g, tr), "Prelude.Show"): nil else: ? ((t, "", ""))
+    TyAny traits: if Fold traits, False, \|seen, tr| seen or (HasText (SuperClosure g, tr), "Prelude.Debug"): nil else: ? ((t, "", ""))
     TyCon con, args:
-        if (BuiltinHas "Prelude.Show", con) or IsRowKind g, con: nil
-        else: match ?FindImpl g, st, "Prelude.Show", t:
-            ? ((wants, ignore, ignore, ignore)): ?FirstUnprintable g, st, (Fold wants, [[]], \|acc, ((wanted, cls))| if cls == "Prelude.Show": Push acc, wanted else: acc)
-            nil: ? ((t, "", "derive `^Show` on `{BareName con}`, or write `impl ^Show {BareName con}`"))
+        if (BuiltinHas "Prelude.Debug", con) or IsRowKind g, con: nil
+        else: match ?FindImpl g, st, "Prelude.Debug", t:
+            ? ((wants, ignore, ignore, ignore)): ?FirstUnprintable g, st, (Fold wants, [[]], \|acc, ((wanted, cls))| if cls == "Prelude.Debug": Push acc, wanted else: acc)
+            nil: ? ((t, "", "derive `^Debug` on `{BareName con}`, or write `impl ^Debug {BareName con}`"))
     otherwise: nil
 
 # A row kind's values are its tags, which print by their fields, each checked here at its
@@ -357,7 +370,10 @@ BuiltinHas: fn Text, Text -> Bool
 fn BuiltinHas cls, con:
     let bare = BareName cls
     if bare == "Num": con == "Nat" or con == "Int" or con == "U8" or con == "Float"
-    else: if bare == "Eq" or bare == "Show": (IsPrimType con) or con == "Fault" or con == "Prelude.Fault"
+    else: if bare == "Eq" or bare == "Debug": (IsPrimType con) or con == "Fault" or con == "Prelude.Fault"
+    # text for people (ruling DD): a text and a character as themselves, the numbers and a
+    # truth value; no collection, record or choice unless a program writes the impl
+    else: if bare == "Display": HasText [["Text", "Char", "Nat", "Int", "U8", "Float", "Bool"]], con
     # A regular expression compares by its spelling and has no order (Type System ch. 2,
     # RX-EQ).
     else: if bare == "Ord": ((IsPrimType con) and not (IsRegexType con)) or con == "Fault" or con == "Prelude.Fault"
@@ -384,7 +400,7 @@ fn ResolvePacks st, final:
         &_.packs <= [[]]
     let done = Fold st.packs, cleared, \|s, p| match Walk s, p.result:
         TyAny trs: update s:
-            &_.wants <= Append &_.wants, (Each trs, \|tr| Want(cls=tr, ty=p.inner, file=p.file, span=p.span, level=&_.level))
+            &_.wants <= Append &_.wants, (Each trs, \|tr| Want(cls=tr, ty=p.inner, file=p.file, span=p.span, level=&_.level, reason=Asked))
         # an existential over type variables: the packed value at its body, each variable a
         # fresh one, its bounds wanted
         TyExists vs, b, bs, kinds:
@@ -394,9 +410,9 @@ fn ResolvePacks st, final:
             let inst = ParamInst vs, fresh
             let s3 = Unify (WithFile s2, p.file), (SubstQ inst, b), p.inner, p.span
             update s3:
-                &_.wants <= Append &_.wants, (Each bs, \|((v, tr))| Want(cls=tr, ty=(SubstQ inst, (TyQ v)), file=p.file, span=p.span, level=&_.level))
+                &_.wants <= Append &_.wants, (Each bs, \|((v, tr))| Want(cls=tr, ty=(SubstQ inst, (TyQ v)), file=p.file, span=p.span, level=&_.level, reason=Asked))
         TyFlex ignore:
-            if final: ErrFix (WithFile s, p.file), "ambiguous", p.span, "nothing decides which existential this `any` packs for", "say it where the value goes, as `let x: any ^Show = any ...`"
+            if final: ErrFix (WithFile s, p.file), "ambiguous", p.span, "nothing decides which existential this `any` packs for", "say it where the value goes, as `let x: any ^Debug = any ...`"
             else: update s:
                 &_.packs <= Push &_.packs, p
         TyErr: s
@@ -477,7 +493,7 @@ fn SolveOne g, st, givens, w:
                 else: (([[]], (Solved st, w, t, "given")))
             else: (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{v}`", "add `where {v}: ^{BareName w.cls}` to the signature")))
         TySig s, inner:
-            if (s == "?" or s == "~") and (HasText [["Eq", "Ord", "Show"]], (BareName w.cls)): (([[Want(cls=w.cls, ty=inner, file=w.file, span=w.span, level=w.level)]], (Solved st, w, t, "parts")))
+            if (s == "?" or s == "~") and (HasText [["Eq", "Ord", "Debug"]], (BareName w.cls)): (([[Want(cls=w.cls, ty=inner, file=w.file, span=w.span, level=w.level, reason=w.reason)]], (Solved st, w, t, "parts")))
             else: (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy st, t}`", "no trait has an impl at a sigiled type (Type System ch. 3, T6); take the layer off first")))
         # a non-empty collection compares and prints as the collection it is, by its parts;
         # any other trait is asked of the non-empty type itself, a type of its own with the
@@ -485,7 +501,7 @@ fn SolveOne g, st, givens, w:
         # is no subtyping; an `[a]`'s impl would build an empty `[a]+` where the trait's
         # type is a result)
         TyCon "Prelude.NonEmpty", [[c]]:
-            if HasText [["Eq", "Ord", "Show"]], (BareName w.cls): (([[Want(cls=w.cls, ty=c, file=w.file, span=w.span, level=w.level)]], st))
+            if HasText [["Eq", "Ord", "Debug"]], (BareName w.cls): (([[Want(cls=w.cls, ty=c, file=w.file, span=w.span, level=w.level, reason=w.reason)]], st))
             else: SolveAtHead g, st, s0, Restore, givens, w, t
         TyAt ignore, ignore: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy st, t}`")))
         TyFn ignore, ignore, ignore, prompts: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy st, t}`: functions do not compare or print")))
@@ -518,6 +534,14 @@ fn SignedAt st, w, t = match t:
     TyCon "U8", [[]]: if w.cls == "Prelude.Sub": st else: st
     otherwise: st
 
+# `no-impl` for a wanted constraint at a type, with its fix (none: no fix line). A
+# placeholder's (ruling DD: it wants `^Display`) says so, and its fix names `Debug` over
+# the placeholder's own text.
+NoImplFor: fn St, Want, Text, Text -> St
+fn NoImplFor st, w, shown, fix = match w.reason:
+    Placeholder src: ErrFix st, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{shown}`, which a placeholder wants", "write `\{Debug {src}\}` for the text a program debugs with, or give the type an `impl ^Display`"
+    Asked: if fix == "": Err st, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{shown}`" else: ErrFix st, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{shown}`", fix
+
 SolveClass: unbounded fn G, St, St, (fn St -> St), [((Text, Text))], Want, Ty -> (([Want], St))
 fn SolveClass g, st, s0, Restore, givens, w, t:
     let bare = BareName w.cls
@@ -526,17 +550,17 @@ fn SolveClass g, st, s0, Restore, givens, w, t:
         TyArray e: ? [[e]]
         TyMap k, v: ? [[k, v]]
         otherwise: nil
-    let structural = bare == "Eq" or bare == "Ord" or bare == "Show"
+    let structural = bare == "Eq" or bare == "Ord" or bare == "Debug"
     match ?parts:
         ? ps:
-            if structural: (((Each ps, \|p| Want(cls=w.cls, ty=p, file=w.file, span=w.span, level=w.level)), (Solved st, w, t, "parts")))
+            if structural: (((Each ps, \|p| Want(cls=w.cls, ty=p, file=w.file, span=w.span, level=w.level, reason=w.reason)), (Solved st, w, t, "parts")))
             # a tuple, an array or a map has the impls written for it (`impl ^Blank [a]
             # where a: ^Blank`, Type System ch. 3), found as a named type's are
             else: match ?FindImpl g, st, w.cls, t:
                 ? ((im, s2, how, ch)):
-                    let wants = Each im, \|((ty, cls))| Want(cls=cls, ty=ty, file=w.file, span=w.span, level=w.level)
+                    let wants = Each im, \|((ty, cls))| Want(cls=cls, ty=ty, file=w.file, span=w.span, level=w.level, reason=w.reason)
                     ((wants, (NoteImplUse g, (NoteChoice (Solved s2, w, t, how), w.file, w.span, w.cls, ch), w, t)))
-                nil: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
+                nil: (([[]], Restore (NoImplFor s0, w, (ShowTy st, t), "")))
         nil: match t:
             TySig ignore, ignore: (([[]], st))
             TyElem rw, ignore: ElemTrait g, st, s0, Restore, w, t, bare, rw
@@ -549,13 +573,13 @@ fn SolveClass g, st, s0, Restore, givens, w, t:
                 if BuiltinHas w.cls, con: (([[]], (Solved st, w, t, "builtin")))
                 else: match ?FindImpl g, st, w.cls, t:
                     ? ((im, s2, how, ch)):
-                        let wants = Each im, \|((ty, cls))| Want(cls=cls, ty=ty, file=w.file, span=w.span, level=w.level)
+                        let wants = Each im, \|((ty, cls))| Want(cls=cls, ty=ty, file=w.file, span=w.span, level=w.level, reason=w.reason)
                         ((wants, (NoteImplUse g, (NoteChoice (Solved s2, w, t, how), w.file, w.span, w.cls, ch), w, t)))
                     nil:
                         let fix = if (bare == "Num" and con == "Text") or (IsRegexType con): ""
                         else: if con == "Prelude.NonEmpty": "write `impl ^{bare} {ShowTy st, t}`, or pass the collection it is, with `as {ShowTy st, (Or args[0], TyErr)}`"
                         else: "derive `^{bare}` on `{BareName con}`, or write `impl ^{bare} {BareName con}`"
-                        (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`", fix)))
+                        (([[]], Restore (NoImplFor s0, w, (ShowTy st, t), fix)))
             # an associated type at a named type that no equation can ever decide (an arm's
             # fresh role, `Answer Count ρ`) meets no constraint: refused, never dropped (a
             # numeric literal answering every role's query)
@@ -634,7 +658,7 @@ fn ?PackedRefusal g, st, method = match g.vals[method]:
 # An element's `^Eq` and `^Show` are built in, unless its row's tags hold dynamics (doubt EQ).
 ElemTrait: unbounded fn G, St, St, (fn St -> St), Want, Ty, Text, Rw -> (([Want], St))
 fn ElemTrait g, st, s0, Restore, w, t, bare, rw:
-    if not (bare == "Eq" or bare == "Show"): (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
+    if not (bare == "Eq" or bare == "Debug"): (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
     else: if RowHoldsDynamics g, (WalkRow st, rw): (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`: a tag of its row holds dynamics (a container's children, `$(Path ==> $Elem)`), which do not compare or print", "compare or show what the element holds, a field at a time")))
     else: (([[]], (Solved st, w, t, "builtin")))
 
@@ -705,7 +729,7 @@ fn DefaultWants g, st, givens:
         otherwise: acc
     let s2 = Fold flexVars, st, \|s, v|
         let classes = Each (Filter s.wants, \|w| (Walk s, w.ty) == (TyFlex v)), \|w| BareName w.cls
-        let defaultable = (HasText classes, "Num") and Fold classes, True, \|ok, c| ok and ((HasText [["Num", "Eq", "Ord", "Show", "Sub", "Signed"]], c) or (HasPrefix c, "Range "))
+        let defaultable = (HasText classes, "Num") and Fold classes, True, \|ok, c| ok and ((HasText [["Num", "Eq", "Ord", "Debug", "Display", "Sub", "Signed"]], c) or (HasPrefix c, "Range "))
         if defaultable: update s:
             &_.tys <= Insert &_.tys, v, tInt
         else: s

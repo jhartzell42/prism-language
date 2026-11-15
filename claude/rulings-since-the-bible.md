@@ -384,3 +384,16 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   to `Debug` where a type has no `Display` (a type-directed special case, and no answer
   for a bare type variable). Jimmy, 15 November: "adopt Rust's Display and Debug
   appropriately, and drop Show as a name"; "yes a".
+- **PL** A path is a list of lists of positions: the outer list is the chain of widget
+  applications from the root, each inner list the positions inside one widget's own block
+  (a place, a building arm, a `rebuild`'s generation `#g`, a `for`'s key `[k]`, a host's
+  key `[p]`). A widget application starts a new inner list; nothing a callee or an arm
+  builds renumbers another place, so no row is ever numbered late. Applications stay
+  transparent, since a path is opaque but for equality and order: this is the original
+  intent of Language ch. 6, "Paths and places", whose "their binds take positions in the
+  caller's sequence" it replaces. A transcript writes `/` between widgets and `.` inside
+  one (`0/1`, `1.0`, `2.#0.[k]/0`). Chosen over keeping calls flat with a
+  build-now/number-later step for `rebuild` and blueprint generations, over segments for
+  arms alone, and over a flattened or bracketed spelling. Jimmy, 15 November: "a both but
+  a path is a list of a list of numbers"; "it's still transparent because the path type
+  is opaque but this was the original intent"; "a".

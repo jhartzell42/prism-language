@@ -119,7 +119,7 @@ fn InstantiateWith st, sc, span, explicit:
     let inst = Inst(tys=tys, rows=rows, cols=cols)
     let st2c = Fold sc.cjoins, st2b, \|s, ((lo, hi))| AddLeq s, (Or cols[lo], CBound), (Or cols[hi], CBound), span, "arg", "", ""
     let st3 = Fold sc.bounds, st2c, \|s, ((v, tr))| update s:
-        &_.wants <= Push &_.wants, Want(cls=tr, ty=(Or tys[v], TyErr), file=s.file, span=span, level=s.level)
+        &_.wants <= Push &_.wants, Want(cls=tr, ty=(Or tys[v], TyErr), file=s.file, span=span, level=s.level, reason=Asked)
     # each quantified equation at this use's types: checked here, or waiting for them
     let st4 = Fold sc.eqs, st3, \|s, w| Unify s, (SubstQ inst, w.expected), (SubstQ inst, w.found), span
     (((SubstQ inst, sc.ty), st4, inst))
