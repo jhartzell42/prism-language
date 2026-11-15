@@ -1,6 +1,11 @@
 # Rewrite
 
 * Fix compiler warnings
+    * Move `worlds/rust/tests/common/mod.rs`
+        * Place in `src/testing`
+        * Make it `#[cfg(test)]` and `pub`
+        * Don't use `mod common` in multiple roots to alias the same code
+            * Yields compiler warnings, bro!
 * Pull/merge Claude branch for fix for new bugs
     * Claude agent is fixing many critical bugs
 * All `README.md` files

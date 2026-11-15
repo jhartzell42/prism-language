@@ -1,4 +1,4 @@
-# Root of `prismc` from which all work is done
+# Root module of the Prism portion of the compiler.
 
 emit Fs.* | Process.* | Prelude.*
 mod Reading
