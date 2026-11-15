@@ -2632,11 +2632,16 @@ fn FunctionRecolored lx, x, from, to, dps, dr, eps, er, depth:
 fn ?TypeArgsAt lx, qk, sc, cspan:
     let generics = Each (FnGenerics lx, qk, sc), \|((g, ignore))| g
     let ((pts, ignore)) = SignatureOut lx, qk, sc
-    let deduced = Fold pts, [[]], \|acc, p| UnionTexts acc, (TyParamsIn p)
+    let deduced = Fold pts, [[]], \|acc, p| UnionTexts acc, (TyParamsDeduced p)
     if Fold generics, True, \|all, g| all and HasText deduced, g: nil
     else:
         let qs = Filter sc.qs, \|q| HasText generics, (Camel q)
-        let ?m = ?InstanceMatch sc.ty, (TypeAt lx, cspan), {{}}
+        # (a variable only a bound decides, under an associated type, `Twice<<Clock>>`
+        # of `forall d. fn State d -> State d`: the type the checker solved the bound at,
+        # its impl note at the call)
+        let ?m = match ?InstanceMatch sc.ty, (TypeAt lx, cspan), {{}}:
+            ? found: ? (WithBoundsAt lx, sc, found, cspan)
+            nil: nil
         ? (Each qs, \|q| TypeArgOf lx, qk, ?m, q)
 
 # An array literal's element, at the element type when that is an optional or a fault.
@@ -2919,6 +2924,19 @@ fn MethodFn lx, v, span, t = match t:
         let pa = if (Len pts) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
         VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure True, [[pa]], (XCall (HelperRef "once_job"), [[(XClosure True, [[]], (XCtor (RefRuntime "prism_rtl::Turn::Finished"), [[made]]))]]))]]), t), t
     otherwise: VlOwned (InternalBug "the trait method `{BareName v.qk}` named as a value of a type that is no function's"), t
+
+# A scheme's variables a match left open, each decided by a bound the call solved at an
+# impl: the impl note's type.
+WithBoundsAt: unbounded fn Lx, Scheme, (Text ==> Ty), Range -> (Text ==> Ty)
+fn WithBoundsAt lx, sc, m, span = Fold sc.bounds, m, \|acc, ((q, cls))| if HasKey acc, q: acc else: match ?ImplNoteAt lx, span, cls:
+    ? t: Insert acc, q, t
+    nil: acc
+
+# The type a want of a trait was solved at, at a span (its impl note), unlowered.
+?ImplNoteAt: unbounded fn Lx, Range, Text -> ?Ty
+fn ?ImplNoteAt lx, span, cls = Fold (Or lx.impls[PlaceKey lx, span], [[]]), nil, \|?found, n| match ?found:
+    ? x: ? x
+    nil: if n.cls == cls: ? (SubstTy lx, n.ty) else: nil
 
 # The type a call's want of a trait was solved at (its impl note).
 ?SelfAt: unbounded fn Lx, Range, Text -> ?OutTy

@@ -394,13 +394,22 @@ fn UnifyHeads st, e, f, span:
             UnifyIn st2, other, opened, span
         otherwise: (("mismatch", st))
 
-# A quantified type's body at fresh rigid variables.
+# A quantified type's body at fresh rigid variables (`ForallRigidName`).
 OpenForall: unbounded fn St, [Text], Ty -> ((Ty, St))
 fn OpenForall st, vs, b:
-    let by = Inst(tys=(Map (Each vs, \|v| ((v, (TyRigid "{v}#forall{st.next}"))))), rows={{}}, cols={{}})
+    let by = Inst(tys=(Map (Each vs, \|v| ((v, (TyRigid (ForallRigidName v, st.next)))))), rows={{}}, cols={{}})
     let st2 = update st:
         &_.next += 1
     (((SubstQ by, b), st2))
+
+# The rigid variable a quantified type's variable is opened at: its name and a number,
+# apart from every signature's; `IsForallRigid` tells one (the lowering holds such a
+# variable's values packed, as a quantified type's, ruling FA).
+ForallRigidName: fn Text, Nat -> Text
+fn ForallRigidName v, n = "{v}#forall{n}"
+
+IsForallRigid: fn Text -> Bool
+fn IsForallRigid name = Contains name, "#forall"
 
 # Two existential variables at one position (`\u{0}x0\u{0}r`, `\u{0}x0\u{0}s`).
 AtPosition: fn [Text], Text -> Text

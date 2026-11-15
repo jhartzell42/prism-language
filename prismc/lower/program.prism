@@ -895,6 +895,8 @@ fn IsMain qk = (OwnerOf qk) == "" and (Base (BareName qk)) == "main" and (HasPre
 BlueprintQk: fn Lx, Expr -> Text
 fn BlueprintQk lx, e = match e.kind:
     ECall c, ignore, ignore, ignore: BlueprintQk lx, c
+    # (a widget given its type arguments, `@Held<<Nat>>`, is the widget it names)
+    ETypeArgs x, ignore: BlueprintQk lx, x
     EGroup x: BlueprintQk lx, x
     EHold x: BlueprintQk lx, x
     EName n:

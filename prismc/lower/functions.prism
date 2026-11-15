@@ -176,6 +176,29 @@ fn SignatureOut lx, qk, sc:
     let ret = OutTyOf lx, (if whole: res else: Peel res)
     ((pts, ret))
 
+# The type parameters Rust infers from a value of the type: those outside every
+# associated type's subject (`<D as Machine_t>::State` tells nothing of `D`).
+TyParamsDeduced: fn OutTy -> [Text]
+fn TyParamsDeduced t = match t:
+    OutAssoc ignore, ignore2, ignore3: [[]]
+    OutGen n: [[n]]
+    OutNamed ignore, ts: Fold ts, [[]], \|acc, x| UnionTexts acc, (TyParamsDeduced x)
+    OutTuple ts: Fold ts, [[]], \|acc, x| UnionTexts acc, (TyParamsDeduced x)
+    OutFn ts, r: Fold ts, (TyParamsDeduced r), \|acc, x| UnionTexts acc, (TyParamsDeduced x)
+    OutJobFn a, r: UnionTexts (TyParamsDeduced a), (TyParamsDeduced r)
+    OutMap k, v: UnionTexts (TyParamsDeduced k), (TyParamsDeduced v)
+    OutOpt x: TyParamsDeduced x
+    OutRes x: TyParamsDeduced x
+    OutArray x: TyParamsDeduced x
+    OutJob x: TyParamsDeduced x
+    OutEvent x: TyParamsDeduced x
+    OutDyn x: TyParamsDeduced x
+    OutRc x: TyParamsDeduced x
+    OutRef x: TyParamsDeduced x
+    OutRefMut x: TyParamsDeduced x
+    OutHold x: TyParamsDeduced x
+    otherwise: TyParamsIn t
+
 # A function's type parameters, in its scheme's order. A type variable the Rust signature
 # erases (a supplier's `o`, under a blueprint and a live element) is no Rust type parameter:
 # rustc could not infer it.
@@ -221,6 +244,9 @@ fn FnDefIn lx, definition, qk, clauses, sc:
 TyParamsIn: fn OutTy -> [Text]
 fn TyParamsIn t = match t:
     OutGen n: [[n]]
+    # (one only under an associated type, `<D as Machine_t>::State`, is a parameter all
+    # the same; Rust cannot infer it there, `TyParamsDeduced`)
+    OutAssoc ignore, ignore2, x: TyParamsIn x
     OutNamed ignore, ts: Fold ts, [[]], \|acc, x| UnionTexts acc, (TyParamsIn x)
     OutTuple ts: Fold ts, [[]], \|acc, x| UnionTexts acc, (TyParamsIn x)
     OutFn ts, r: Fold ts, (TyParamsIn r), \|acc, x| UnionTexts acc, (TyParamsIn x)

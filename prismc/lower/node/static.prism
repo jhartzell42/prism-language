@@ -265,7 +265,19 @@ fn PartialWidgetLine wx, benv, menv, cbenv, cmenv, clx, qk, supplied, e, args, ?
     let ?target = match ?bound:
         ? (BnEv er, ignore): ? er.node
         otherwise: nil
-    WidgetCall wx, benv2, menv2, e, ?bound, qk, (Append supplied, args), ?target
+    # (and their types where the call reads them, in the line's file: they were written
+    # in the caller's, `@InMemory<<Tallied OneEach>> empty` in the tally given to the
+    # library's `Implement $guests`; only while the call is lowered)
+    let lx0 = wx.lx
+    let lxTyped = update lx0:
+        &_.tys <= Fold supplied, &_.tys, \|m, a| Insert m, (PlaceKey lx0, a.value.span), (TypeAt clx, a.value.span)
+    let wxTyped = update wx:
+        &_.lx <= lxTyped
+    let ((done, res)) = WidgetCall wxTyped, benv2, menv2, e, ?bound, qk, (Append supplied, args), ?target
+    let back = update done:
+        &_.lx <= update done.lx:
+            &_.tys <= lx0.tys
+    ((back, res))
 
 # A function's body lowered at the line `e` that applies it (a lambda given as a widget
 # function parameter; a function of a block, `LocalFunctionLine`): its parameters bound
@@ -1920,6 +1932,18 @@ fn ?ImplWidgetClauses lx, qk, args, cspan, callSpan = match ?WidgetMethodImpl lx
             ? ((dq, ignore)): ? (DefaultClauses lx.g, dq)
             nil: if HasText tr.defaults, qk: ? (DefaultClauses lx.g, qk) else: nil
 
+# The definition whose clauses `?ImplWidgetClauses` gives: the impl's method, or the
+# default of a trait below it chose; `nil` for the trait's own default, read where the
+# trait is.
+?ImplWidgetSite: unbounded fn Lx, Text, [Arg], Range, Range -> ?Def
+fn ?ImplWidgetSite lx, qk, args, cspan, callSpan = match ?WidgetMethodImpl lx, qk, args, cspan, callSpan:
+    nil: nil
+    ? ((tr, im, ignore)): match Filter lx.g.defs, \|d| (IsMethodOf d, im) and d.name == (BareName qk):
+        [[d]]: ? d
+        otherwise: match ?AboveChosenFor im, (BareName qk):
+            ? ((dq, ignore)): (Filter lx.g.defs, \|d| d.qk == dq)[0]
+            nil: nil
+
 # The trait parameter a widget method's default body is written over, and the type it is
 # read as, where the impl that type chooses leaves the method to a default; `nil` where
 # the impl writes it.
@@ -1997,30 +2021,47 @@ InlineWidget: unbounded fn Wx, Env, Env, Text, ValInfo, [Arg], Expr -> ((Wx, Wre
 fn InlineWidget wx0, benv, menv, qk, v, args, e:
     # a trait's widget method its impl leaves to a default (the trait's own, or one of a
     # trait below, ruling SD): the default's body is written over the trait's parameter,
-    # read here as the argument's type, and only while the body is lowered
-    match ?WidgetDefaultSubst wx0.lx, qk, args, (CalleeSpanOf e), e.span:
-        nil: InlineWidgetBody wx0, benv, menv, qk, v, args, e
-        ? ((param, ty)):
-            let before = wx0.lx.subst
-            let lxIn = update wx0.lx:
-                &_.subst <= Insert &_.subst, param, ty
-            let wxIn = update wx0:
-                &_.lx <= lxIn
-            let ((wxOut, res)) = InlineWidgetBody wxIn, benv, menv, qk, v, args, e
-            let lxOut = update wxOut.lx:
-                &_.subst <= before
-            let wxDone = update wxOut:
-                &_.lx <= lxOut
-            ((wxDone, res))
+    # read here as the argument's type, and only while the body is lowered; an impl's
+    # own method is written over its head, whose variables are the type's arguments here
+    # (`impl ^Hosting (Tallied o)` at `Tallied OneEach`: `o` is `OneEach`)
+    let fromDefault = match ?WidgetDefaultSubst wx0.lx, qk, args, (CalleeSpanOf e), e.span:
+        ? ((param, ty)): Insert {{}}, param, ty
+        nil: {{}}
+    let fromHead = match ?WidgetMethodImpl wx0.lx, qk, args, (CalleeSpanOf e), e.span:
+        ? ((ignore, im, head)): Or (?ParamMatch (Unrigid im.head), head, {{}}), {{}}
+        nil: {{}}
+    let extra = Fold (Keys fromHead), fromDefault, \|m, q| Insert m, q, (Or fromHead[q], TyErr)
+    if (Len (Keys extra)) == 0: InlineWidgetBody wx0, benv, menv, qk, v, args, e
+    else:
+        let before = wx0.lx.subst
+        let lxIn = update wx0.lx:
+            &_.subst <= Fold (Keys extra), &_.subst, \|m, q| Insert m, q, (Or extra[q], TyErr)
+        let wxIn = update wx0:
+            &_.lx <= lxIn
+        let ((wxOut, res)) = InlineWidgetBody wxIn, benv, menv, qk, v, args, e
+        let lxOut = update wxOut.lx:
+            &_.subst <= before
+        let wxDone = update wxOut:
+            &_.lx <= lxOut
+        ((wxDone, res))
 
 InlineWidgetBody: unbounded fn Wx, Env, Env, Text, ValInfo, [Arg], Expr -> ((Wx, Wres))
-fn InlineWidgetBody wx, benv, menv, qk, v, args, e:
+fn InlineWidgetBody wx, benv, menv, qk, v0, args, e:
     let lx = wx.lx
     # a trait's widget method (`@Shown greeting`): the clauses of the impl its argument's
     # type chooses, as the call's type was checked (Type System ch. 3)
     let clauses = match ClausesOf lx.g, qk:
         [[]]: Or (?ImplWidgetClauses lx, qk, args, (CalleeSpanOf e), e.span), [[]]
         cs: cs
+    # (read in the module that writes them: an impl's method in the impl's file, a
+    # default of a trait below in that trait's, `impl-widget-method-reads-its-own-module`)
+    let v = match ClausesOf lx.g, qk:
+        [[]]: match ?ImplWidgetSite lx, qk, args, (CalleeSpanOf e), e.span:
+            ? d: update v0:
+                &_.file <= d.file
+                &_.home <= d.home
+            nil: v0
+        otherwise: v0
     let ?w = ?WidgetDeclOf lx.g, qk
     let ((params, ?body)) = match ?w:
         ? wd: (([[]], ? wd.body))
@@ -2090,7 +2131,12 @@ fn InlineWidgetBody wx, benv, menv, qk, v, args, e:
                     otherwise: [[]]
                 # a generic widget's type parameters, over which its body was checked: their
                 # types at this call, read off its arguments' types
-                let ?params = ?CallInstance lx, v, args
+                # (and a variable only its bound decides, `@Hosted<<Tallied OneEach>>` of
+                # `forall d. fn Seats d -> ..`: the type the checker solved the bound at,
+                # its impl note at the call)
+                let ?params = match ?CallInstance lx, v, args:
+                    ? m: ? (BoundInstance lx, v, m, [[e.span, (CalleeSpanOf e), (InnerNameSpanOf e)]])
+                    nil: nil
                 let unmatched = Filter (Fold ptys, [[]], \|acc, t| UnionTexts acc, (RigidsIn t)), \|q| not (HasKey (Or ?params, {{}}), q)
                 let lxp = update lx:
                     &_.subst <= Fold (Keys (Or ?params, {{}})), &_.subst, \|m, q| Insert m, q, (Or (Or ?params, {{}})[q], TyErr)
@@ -2137,6 +2183,20 @@ fn ?CallInstance lx, v, args:
     Fold (Range0 (Len ptys)), (? {{}}), \|?acc, i| match ((?acc, args[i])):
         ((? m, ? a)): ?ParamInstance (Or ptys[i], TyErr), (TypeAt lx, a.value.span), m
         otherwise: ?acc
+
+# A widget's type parameters its arguments left open, each decided by a bound the call
+# solved at an impl: the type of the impl note at one of the call's spans.
+BoundInstance: unbounded fn Lx, ValInfo, (Text ==> Ty), [Range] -> (Text ==> Ty)
+fn BoundInstance lx, v, m, spans = Fold v.scheme.bounds, m, \|acc, ((q, cls))| if HasKey acc, q: acc else: match Fold spans, nil, \|?found, sp| if IsSome ?found: ?found else: ?ImplNoteTy lx, sp, cls:
+    ? t: Insert acc, q, t
+    nil: acc
+
+# The span of the name a line calls, under its type arguments (`@Hosted<<..>>`).
+InnerNameSpanOf: fn Expr -> Range
+fn InnerNameSpanOf e = match e.kind:
+    ECall c, ignore, ignore2, ignore3: InnerNameSpanOf c
+    ETypeArgs x, ignore: x.span
+    otherwise: e.span
 
 # A widget's type parameters at one of its arguments: its parameter's type matched to the
 # argument's (a plain parameter lifted over a dynamic argument, to the value under it),
