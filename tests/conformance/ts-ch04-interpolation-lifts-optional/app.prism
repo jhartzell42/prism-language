@@ -8,7 +8,7 @@ test mod Tests
 use Ui.*
 
 ?Greet: fn ?Text -> ?Text
-fn ?Greet ?name = "hello {Debug ?name}!"
+fn ?Greet ?name = "hello {?name}!"
 
 ?Name: fn Nat -> ?Text
 fn ?Name 0 = nil
