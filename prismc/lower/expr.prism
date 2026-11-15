@@ -2454,8 +2454,11 @@ fn DeclaredCall lx, env, qk, args, span, cspan, t:
 ?SignatureResult: unbounded fn Lx, ValInfo, Range, Range, OutTy -> ?Ty
 fn ?SignatureResult lx, v, cspan, span, t:
     let declared = ResultRepr lx, v
+    # (a lifted call, `$Adder $k`: the call inside the lift's map gives the signature's
+    # whole result, a value of the lift, `CallResultTy`)
+    let lifted = not (NotLifted lx, span)
     let declaredTy = match v.scheme.ty:
-        TyFn ignore, ignore, r, prompts: Peel r
+        TyFn ignore, ignore, r, prompts: if lifted: r else: Peel r
         other: Peel other
     let callTy = CallResultTy lx, span
     let ?calleeTypes = ?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, cspan), {{}}
@@ -2483,7 +2486,9 @@ fn ?SignatureResult lx, v, cspan, span, t:
 CallResultTy: unbounded fn Lx, Range -> Ty
 fn CallResultTy lx, span:
     let at = Peel (SubstTy lx, (TypeAt lx, span))
-    if NotLifted lx, span: at else: Peel at
+    if NotLifted lx, span: at else: match SubstTy lx, (TypeAt lx, span):
+        TySig ignore, inner: inner
+        other: other
 
 # Whether two types that differ in color alone hold a blueprint whose output is a `Start`
 # under one and a bounded function under the other (`Recolored` maps such a blueprint's
