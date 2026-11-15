@@ -210,6 +210,7 @@ fn IsPathKind ignore = False
 PathSegOf: unbounded fn [PathSeg], Ps, PathSegTok, Range -> (([PathSeg], Ps))
 fn PathSegOf acc, p, (PstNum n), ignore = (((Push acc, (PsNum n)), p))
 fn PathSegOf acc, p, (PstGen n), ignore = (((Push acc, (PsGen n)), p))
+fn PathSegOf acc, p, PstCall, ignore = (((Push acc, PsCall), p))
 fn PathSegOf acc, p, (PstKey toks), span:
     let ((e, q)) = ParseNested p, toks, span
     (((Push acc, (PsKey e)), q))

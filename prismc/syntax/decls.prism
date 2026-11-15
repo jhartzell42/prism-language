@@ -252,6 +252,8 @@ type PathSeg = choice:
     PsNum Nat
     PsGen Nat
     PsKey Expr
+    # `/`: a widget application's own list starts (ruling PL)
+    PsCall
 derive ^Eq, ^Show
 
 type TestCheck = record:

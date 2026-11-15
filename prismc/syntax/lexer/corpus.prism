@@ -70,7 +70,7 @@ fn TokenText (KOpen k, ignore) = k
 fn TokenText (KClose k) = CloseChar k
 fn TokenText KAbsent = "absent"
 fn TokenText KNonEmpty = "nonempty"
-fn TokenText (KPath segs) = "PATH({Join (Each segs, PathSegText), "/"})"
+fn TokenText (KPath segs) = "PATH({PathText segs})"
 fn TokenText KLayOpen = "open"
 fn TokenText KLaySep = "sep"
 fn TokenText KLayClose = "close"
@@ -91,6 +91,16 @@ PathSegText: fn PathSegTok -> Text
 fn PathSegText (PstNum n) = "{n}"
 fn PathSegText (PstGen n) = "#{n}"
 fn PathSegText (PstKey toks) = "[{RenderInner toks}]"
+fn PathSegText PstCall = "/"
+
+# A path's segments as written (ruling PL): `/` starts a widget's own list, `.` steps
+# inside one.
+PathText: fn [PathSegTok] -> Text
+fn PathText segs:
+    let ((ignore, text)) = Fold segs, ((True, "")), \|((fresh, acc)), seg| match seg:
+        PstCall: ((True, "{acc}/"))
+        other: ((False, if fresh: "{acc}{PathSegText other}" else: "{acc}.{PathSegText other}"))
+    text
 
 PartText: fn TPartTok -> Text
 fn PartText (TptText t) = DebugText t

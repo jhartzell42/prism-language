@@ -130,6 +130,8 @@ type PathSegTok = choice:
     PstNum Nat
     PstGen Nat
     PstKey [Tok]
+    # `/`: a widget application's own list starts (ruling PL)
+    PstCall
 derive ^Eq, ^Show
 
 # ---------------------------------------------------------------------------------------

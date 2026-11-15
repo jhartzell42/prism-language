@@ -231,7 +231,8 @@ fn CharTail l0, start:
 
 # ---------------------------------------------------------------------------------------
 # The test language's path (Conformance A.2): "a segment is a number, `#` and a number, or
-# `[` a Prism expression `]`; segments are joined by `/`, with no spaces".
+# `[` a Prism expression `]`", with no spaces; ruling PL: `/` starts a widget
+# application's own list (`PstCall`) and `.` steps inside one, `1/0.#0.0`.
 # ---------------------------------------------------------------------------------------
 
 LexPath: unbounded fn Lex -> (([PathSegTok], Lex))
@@ -265,6 +266,14 @@ fn LexPath l0 = update (([[]], l0)):
         if &going:
             if (Peek &l) == "/":
                 &l <= Bump &l
+                &segs <= Push &segs, PstCall
             else:
-                &going <= False
+                if (Peek &l) == "." and IsPathStart (Peek (Bump &l)):
+                    &l <= Bump &l
+                else:
+                    &going <= False
     &_ <= ((&segs, &l))
+
+# Whether a character can start a path's segment.
+IsPathStart: fn Text -> Bool
+fn IsPathStart c = (IsDigit c) or c == "#" or c == "["
