@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 3 (a method at a type is its impl's, the head's variables its arguments) and Language ch. 6 (widget function applications are transparent).
+test shown
+
+tick 0
+  added:
+    0: Ui.Label(text="2 seated")

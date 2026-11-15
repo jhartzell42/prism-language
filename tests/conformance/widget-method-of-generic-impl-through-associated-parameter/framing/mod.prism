@@ -1,0 +1,11 @@
+# The trait of widget-method-of-generic-impl-through-associated-parameter (the root says
+# why). Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+trait ^Hosting d:
+    type Seats
+    @Show: fn Seats d -> @unit emit Ui.*
+
+@Hosted: forall d. fn Seats d -> @unit emit Ui.* where d: ^Hosting
+fn @Hosted seats:
+    @Show<<d>> seats
