@@ -3,5 +3,5 @@ test both_clauses
 
 tick 0
   added:
-    0/0: Ui.Label(text="a label")
-    1/0: Time.After()
+    0: Ui.Label(text="a label")
+    1: Time.After
