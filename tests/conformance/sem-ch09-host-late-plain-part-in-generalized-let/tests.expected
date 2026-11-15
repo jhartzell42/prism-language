@@ -4,12 +4,12 @@ test loud
 tick 0
   added:
     0.0: Ui.Label(text="before")
-    1.[0].0: Ui.Label(text="3 3")
-    1.[2].0: Ui.Label(text="3 up")
+    1.[0]/0: Ui.Label(text="3 3")
+    1.[2]/0: Ui.Label(text="3 up")
 
 test soft
 
 tick 0
   added:
-    1.[0].0: Ui.Label(text="3 3")
-    1.[2].0: Ui.Label(text="3 up")
+    1.[0]/0: Ui.Label(text="3 3")
+    1.[2]/0: Ui.Label(text="3 up")

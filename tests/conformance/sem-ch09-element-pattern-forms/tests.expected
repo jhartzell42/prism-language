@@ -3,11 +3,11 @@ test one_pattern_reads_both_forms
 
 tick 0
   added:
-    0.[0].0: Ui.Button(label="inc")
-    0.[1].0: Ui.Label(text="<<0>> True")
+    0.[0]/0: Ui.Button(label="inc")
+    0.[1]/0: Ui.Label(text="<<0>> True")
 
 tick 1
   in:
-    0.[0].0: click
+    0.[0]/0: click
   changed:
-    0.[1].0: Ui.Label(text="<<1>> True")
+    0.[1]/0: Ui.Label(text="<<1>> True")

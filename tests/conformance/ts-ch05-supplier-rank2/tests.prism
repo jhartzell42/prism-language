@@ -5,4 +5,4 @@ use Fs.*
 
 test inline_supplier, @inline:
     build
-    click at 0/[0]/0
+    click at 0.[0]/0

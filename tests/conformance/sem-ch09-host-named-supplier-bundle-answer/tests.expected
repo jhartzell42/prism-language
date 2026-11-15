@@ -4,7 +4,7 @@ test parameter_parts_answer
 tick 0
   added:
     0: Ui.Button(label="add")
-    1.[1].0: Ui.Label(text="0: none")
+    1.[1]/0: Ui.Label(text="0: none")
 
 tick 1
   in:
@@ -12,4 +12,4 @@ tick 1
 
 tick 2
   changed:
-    1.[1].0: Ui.Label(text="1: hello")
+    1.[1]/0: Ui.Label(text="1: hello")

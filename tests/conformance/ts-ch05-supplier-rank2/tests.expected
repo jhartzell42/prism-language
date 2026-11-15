@@ -3,9 +3,9 @@ test inline_supplier
 
 tick 0
   added:
-    0/[0]/0: Ui.Button(label="read")
-    0/[3]/0: Ui.Label(text="A, nothing")
+    0.[0]/0: Ui.Button(label="read")
+    0.[3]/0: Ui.Label(text="A, nothing")
 
 tick 1
   in:
-    0/[0]/0: click
+    0.[0]/0: click

@@ -4,8 +4,8 @@ test answers_go_down_by_path
 tick 0
   added:
     0: Ui.Button(label="send")
-    1/[0]/0: Ui.Button(label="inner")
-    1/[1]/0: Ui.Label(text="pressed 0")
+    1.[0]/0: Ui.Button(label="inner")
+    1.[1]/0: Ui.Label(text="pressed 0")
 
 tick 1
   in:
@@ -13,10 +13,10 @@ tick 1
 
 tick 2
   changed:
-    1/[1]/0: Ui.Label(text="pressed 1")
+    1.[1]/0: Ui.Label(text="pressed 1")
 
 tick 3
   in:
-    1/[0]/0: click
+    1.[0]/0: click
   changed:
-    1/[1]/0: Ui.Label(text="pressed 2")
+    1.[1]/0: Ui.Label(text="pressed 2")

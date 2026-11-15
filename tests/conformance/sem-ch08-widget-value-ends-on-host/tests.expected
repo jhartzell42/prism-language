@@ -3,23 +3,23 @@ test picked
 
 tick 0
   added:
-    0/[0]/0: Ui.Button(label="add")
-    1: Ui.Label(text="0 moves")
-    2: Ui.Label(text="end")
+    0.0/0.[0]/0: Ui.Button(label="add")
+    0.1: Ui.Label(text="0 moves")
+    1: Ui.Label(text="end")
 
 tick 1
   in:
-    0/[0]/0: click
+    0.0/0.[0]/0: click
   added:
-    0/[1/[0]/0]/0: Ui.Label(text="item 0")
+    0.0/0.[1.[0].0]/0: Ui.Label(text="item 0")
 
 tick 2
   changed:
-    1: Ui.Label(text="1 moves")
+    0.1: Ui.Label(text="1 moves")
 
 test not_picked
 
 tick 0
   added:
-    0: Ui.Label(text="none")
+    0.0: Ui.Label(text="none")
     1: Ui.Label(text="end")

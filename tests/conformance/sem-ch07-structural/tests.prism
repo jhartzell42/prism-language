@@ -8,9 +8,9 @@ test one_state_in_the_sample_and_the_event, @host:
     build
     click at 1
     compute
-    click at 0/[0]/0, click at 1
+    click at 0.[0]/0, click at 1
     compute
-    click at 0/[0]/0
+    click at 0.[0]/0
     compute
 
 test a_gathered_dynamic_fires_next_tick, @gathered:

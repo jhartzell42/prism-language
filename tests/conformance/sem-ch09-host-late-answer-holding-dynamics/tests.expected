@@ -4,10 +4,10 @@ test loud
 tick 0
   added:
     0.0: Ui.Label(text="before")
-    1.[1].0: Ui.Label(text="asked 1")
+    1.[1]/0: Ui.Label(text="asked 1")
 
 test soft
 
 tick 0
   added:
-    1.[1].0: Ui.Label(text="asked 1")
+    1.[1]/0: Ui.Label(text="asked 1")

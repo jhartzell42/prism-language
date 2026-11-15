@@ -5,44 +5,44 @@ tick 0
   added:
     0: Ui.Button(label="add")
     1: Fs.Contents(path="m")
-    2/[0]/0: Ui.Label(text="0 a0")
+    2.[0].0: Ui.Label(text="0 a0")
 
 tick 1
   in:
     0: click
   added:
-    2/[1]/0: Ui.Label(text="1 a1")
+    2.[1].0: Ui.Label(text="1 a1")
 
 tick 2
   in:
     Fs.Contents(path="m") = ~ Contents(text="b")
   changed:
-    2/[0]/0: Ui.Label(text="0 b0")
-    2/[1]/0: Ui.Label(text="1 b1")
+    2.[0].0: Ui.Label(text="0 b0")
+    2.[1].0: Ui.Label(text="1 b1")
 
 tick 3
   in:
     0: click
   added:
-    2/[2]/0: Ui.Label(text="2 b2")
+    2.[2].0: Ui.Label(text="2 b2")
 
 test hosted_answers_move_the_rows
 
 tick 0
   added:
-    0/[0]/0: Ui.Button(label="add")
-    0/[1]/0: Fs.Contents(path="m")
-    0/[2/[0]/0]/0: Ui.Label(text="0 a0")
+    0.[0]/0: Ui.Button(label="add")
+    0.[1]/0: Fs.Contents(path="m")
+    0.[2.[0].0]/0: Ui.Label(text="0 a0")
 
 tick 1
   in:
-    0/[0]/0: click
+    0.[0]/0: click
   added:
-    0/[2/[1]/0]/0: Ui.Label(text="1 a1")
+    0.[2.[1].0]/0: Ui.Label(text="1 a1")
 
 tick 2
   in:
     Fs.Contents(path="m") = ~ Contents(text="b")
   changed:
-    0/[2/[0]/0]/0: Ui.Label(text="0 b0")
-    0/[2/[1]/0]/0: Ui.Label(text="1 b1")
+    0.[2.[0].0]/0: Ui.Label(text="0 b0")
+    0.[2.[1].0]/0: Ui.Label(text="1 b1")

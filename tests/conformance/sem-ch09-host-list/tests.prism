@@ -8,5 +8,5 @@ test answers_go_down_by_path, @list:
         => expect Ui.Label(text="pressed 0")
     compute
         => expect Ui.Label(text="pressed 1")
-    click at 1/[0]/0
+    click at 1.[0]/0
         => expect Ui.Label(text="pressed 2")

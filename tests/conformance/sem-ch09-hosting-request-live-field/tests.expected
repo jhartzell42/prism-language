@@ -3,15 +3,15 @@ test host_reads_the_latest_request
 
 tick 0
   added:
-    0.[0].0: Ui.Button(label="add 2")
-    0.[1].0: Ui.Button(label="add 9")
-    0.[3].0: Ui.Label(text="guest: nothing yet")
+    0.[0]/0: Ui.Button(label="add 2")
+    0.[1]/0: Ui.Button(label="add 9")
+    0.[3]/0: Ui.Label(text="guest: nothing yet")
     2: Ui.Label(text="host: 0 counted on the document's update")
     3: Ui.Label(text="host: 0 in the document now")
 
 tick 1
   in:
-    0.[0].0: click
+    0.[0]/0: click
 
 tick 2
 

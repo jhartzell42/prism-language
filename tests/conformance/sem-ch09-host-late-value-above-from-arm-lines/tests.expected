@@ -4,14 +4,14 @@ test loud
 tick 0
   added:
     0: Ui.Button(label="add")
-    1.[0/0].0: Ui.Label(text="ten")
-    1.[1].0: Ui.Label(text="wide 1")
-    1.[2.0].0: Ui.Label(text="x 0")
-    1.[2.1/0].0: Ui.Label(text="ten")
+    1.[0/0]/0: Ui.Label(text="ten")
+    1.[1]/0: Ui.Label(text="wide 1")
+    1.[2.0]/0: Ui.Label(text="x 0")
+    1.[2.1/0]/0: Ui.Label(text="ten")
 
 test soft
 
 tick 0
   added:
     0: Ui.Button(label="add")
-    1.[1].0: Ui.Label(text="wide 2")
+    1.[1]/0: Ui.Label(text="wide 2")

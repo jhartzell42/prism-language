@@ -5,15 +5,15 @@ tick 0
   added:
     0: Ui.Button(label="add")
     1.0: Ui.Label(text="before")
-    2.[0/0].0: Ui.Label(text="ten")
-    2.[1].0: Ui.Label(text="wide 1")
-    2.[2.0].0: Ui.Label(text="loud 0")
+    2.[0/0]/0: Ui.Label(text="ten")
+    2.[1]/0: Ui.Label(text="wide 1")
+    2.[2.0]/0: Ui.Label(text="loud 0")
 
 tick 1
   in:
     0: click
   changed:
-    2.[2.0].0: Ui.Label(text="loud 1")
+    2.[2.0]/0: Ui.Label(text="loud 1")
 
 test soft
 
@@ -21,13 +21,13 @@ tick 0
   added:
     0: Ui.Button(label="add")
     1.0: Ui.Label(text="before")
-    2.[1].0: Ui.Label(text="wide 2")
+    2.[1]/0: Ui.Label(text="wide 2")
 
 test loud_nothing_before
 
 tick 0
   added:
     0: Ui.Button(label="add")
-    2.[0/0].0: Ui.Label(text="ten")
-    2.[1].0: Ui.Label(text="wide 1")
-    2.[2.0].0: Ui.Label(text="loud 0")
+    2.[0/0]/0: Ui.Label(text="ten")
+    2.[1]/0: Ui.Label(text="wide 1")
+    2.[2.0]/0: Ui.Label(text="loud 0")

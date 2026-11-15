@@ -5,4 +5,4 @@ use Fs.*
 
 test supplier_calls_a_widget, @called:
     build
-    click at 0/[0]/0
+    click at 0.[0]/0

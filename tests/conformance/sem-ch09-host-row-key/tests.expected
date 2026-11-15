@@ -3,15 +3,15 @@ test the_rows_label_reads_its_own_key
 
 tick 0
   added:
-    0/[0]/0: Ui.Button(label="add")
-    0/[1/[0]/0]/0: Ui.Label(text="item 0")
+    0.[0]/0: Ui.Button(label="add")
+    0.[1.[0].0]/0: Ui.Label(text="item 0")
     1: Ui.Label(text="2 places")
 
 tick 1
   in:
-    0/[0]/0: click
+    0.[0]/0: click
   added:
-    0/[1/[1]/0]/0: Ui.Label(text="item 1")
+    0.[1.[1].0]/0: Ui.Label(text="item 1")
 
 tick 2
   changed:

@@ -3,11 +3,11 @@ test loud
 
 tick 0
   added:
-    0.[0.0].0: Ui.Label(text="loud")
-    0.[2].0: Ui.Label(text="asked yes q")
+    0.[0.0]/0: Ui.Label(text="loud")
+    0.[2]/0: Ui.Label(text="asked yes q")
 
 test soft
 
 tick 0
   added:
-    0.[2].0: Ui.Label(text="asked yes q")
+    0.[2]/0: Ui.Label(text="asked yes q")

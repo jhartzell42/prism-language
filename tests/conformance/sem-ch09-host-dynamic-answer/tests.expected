@@ -4,7 +4,7 @@ test a_dynamic_answer_pushes_next_tick
 tick 0
   added:
     0: Ui.Button(label="change")
-    1.[1].0: Ui.Label(text="first")
+    1.[1]/0: Ui.Label(text="first")
 
 tick 1
   in:
@@ -12,4 +12,4 @@ tick 1
 
 tick 2
   changed:
-    1.[1].0: Ui.Label(text="second")
+    1.[1]/0: Ui.Label(text="second")

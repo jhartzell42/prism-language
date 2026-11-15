@@ -6,7 +6,7 @@ tick 0
     0/0.0: Ui.Label(text="under")
     0/0.1: Ui.Label(text="at 10")
     0/1.0/0: Ui.Label(text="x")
-    0/1.1.[1].0: Ui.Label(text="note 4")
+    0/1.1.[1]/0: Ui.Label(text="note 4")
     0/2: Ui.Label(text="below 10")
 
 test long
@@ -15,7 +15,7 @@ tick 0
   added:
     0/0.0: Ui.Label(text="over by 1")
     0/1.0/0: Ui.Label(text="xxxxxxx")
-    0/1.1.[1].0: Ui.Label(text="note 4")
+    0/1.1.[1]/0: Ui.Label(text="note 4")
     0/2: Ui.Label(text="below 16")
 
 test soft

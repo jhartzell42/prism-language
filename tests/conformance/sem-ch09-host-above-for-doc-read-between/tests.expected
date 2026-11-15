@@ -4,6 +4,6 @@ test the_builder_between_reads_the_document
 tick 0
   added:
     0: Ui.Button(label="add")
-    1.[1].0: Ui.Label(text="1: none")
+    1.[1]/0: Ui.Label(text="1: none")
     2.#0.0: Ui.Label(text="2 places")
     3.[1].0: Ui.Label(text="one")

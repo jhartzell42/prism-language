@@ -3,18 +3,18 @@ test body_reads_the_request
 
 tick 0
   added:
-    0.[0].0: Ui.Button(label="move")
-    0.[2].0: Ui.Label(text="heard: ")
+    0.[0]/0: Ui.Button(label="move")
+    0.[2]/0: Ui.Label(text="heard: ")
     2: Ui.Label(text="host heard 0")
 
 tick 1
   in:
-    0.[0].0: click
+    0.[0]/0: click
   changed:
     2: Ui.Label(text="host heard 1")
 
 tick 2
   changed:
-    0.[2].0: Ui.Label(text="heard: ok 1")
+    0.[2]/0: Ui.Label(text="heard: ok 1")
 
 tick 3

@@ -3,30 +3,30 @@ test named_supplier
 
 tick 0
   added:
-    0/[0]/0: Ui.Button(label="read")
-    0/[3]/0: Ui.Label(text="A, nothing")
+    0.[0]/0: Ui.Button(label="read")
+    0.[3]/0: Ui.Label(text="A, nothing")
 
 tick 1
   in:
-    0/[0]/0: click
+    0.[0]/0: click
 
 test forwarding_supplier
 
 tick 0
   added:
-    0/[0]/0: Ui.Button(label="read")
-    0/[1]/0: Fs.Contents(path="a")
-    0/[2]/0: Fs.File(path="b")
-    0/[3]/0: Ui.Label(text="a, nothing")
+    0.[0]/0: Ui.Button(label="read")
+    0.[1]/0: Fs.Contents(path="a")
+    0.[2]/0: Fs.File(path="b")
+    0.[3]/0: Ui.Label(text="a, nothing")
 
 tick 1
   in:
-    0/[0]/0: click
+    0.[0]/0: click
   requested:
-    0/[2]/0: Read
+    0.[2]/0: Read
 
 tick 2
   in:
-    0/[2]/0: ~ Contents(text="b")
+    0.[2]/0: ~ Contents(text="b")
   changed:
-    0/[3]/0: Ui.Label(text="a, b")
+    0.[3]/0: Ui.Label(text="a, b")

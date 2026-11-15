@@ -3,4 +3,4 @@ test hosted_by_host
 
 tick 0
   added:
-    0.[1].0: Ui.Label(text="told hello ada")
+    0.[1]/0: Ui.Label(text="told hello ada")
