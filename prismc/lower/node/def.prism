@@ -2377,7 +2377,7 @@ fn WidgetStmt wxAny, benv0, menv0, s, last:
     match s.kind:
         SBind p, e, nil:
             let ?takerPattern = ?TakerPatternGetters lx, menv, p, (OutOf (TypeAt lx, e.span))
-            let ((wx2, res)) = if ((IsSome (?TakerGetter menv, p)) or IsSome ?takerPattern) and IsLateTaker wx.lx, menv, (Ungrouped e): DeferredLine wx, menv, (Ungrouped e), True else: BuildLine wx, benv, menv, e, (?BindingOf menv, p)
+            let ((wx2, res)) = if ((IsSome (?TakerGetter menv, p)) or IsSome ?takerPattern) and IsLateTaker wx.lx, menv, (Ungrouped e): DeferredLine wx, menv, (Ungrouped e), True, (Each (BinderNames p), \|n| SNameKey n) else: BuildLine wx, benv, menv, e, (?BindingOf menv, p)
             let wx3 = BindRes wx2, menv, p, res
             match ((res, p.kind)):
                 # the plain result of a line that takes a late name
@@ -2424,7 +2424,7 @@ fn WidgetStmt wxAny, benv0, menv0, s, last:
         # (a line that takes a late name keeps no result here: `ignore <-` reads none,
         # so its row's late result is never asked, `DeferredLine`'s `named`)
         SIgnore e:
-            let ((wx2, ignore)) = if IsLateTaker wx.lx, menv, (Ungrouped e): DeferredLine wx, menv, (Ungrouped e), True else: BuildLine wx, benv, menv, e, nil
+            let ((wx2, ignore)) = if IsLateTaker wx.lx, menv, (Ungrouped e): DeferredLine wx, menv, (Ungrouped e), True, [[]] else: BuildLine wx, benv, menv, e, nil
             ((wx2, benv, menv))
         SLet p, ignore, e: match ?BundleNamed menv, p, e:
             # a bundle given another name (`let same = both`): the same parts, in the
@@ -3534,7 +3534,7 @@ fn BindRes wx2, menv, p, res = match ?BindingOf menv, p:
 # A line that builds: an element (a place), a widget applied (inlined), or a builder. The
 # bound name, when there is one, is where the output goes.
 BuildLine: unbounded fn Wx, Env, Env, Expr, ?Bn -> ((Wx, Wres))
-fn BuildLine wx, benv, menv, e, ?bound = if IsLateTaker wx.lx, menv, e: DeferredLine wx, menv, e, False else: BuildLineNow wx, benv, menv, e, ?bound
+fn BuildLine wx, benv, menv, e, ?bound = if IsLateTaker wx.lx, menv, e: DeferredLine wx, menv, e, False, [[]] else: BuildLineNow wx, benv, menv, e, ?bound
 
 # Whether a building line of a split block's node reads a late name (`BindLate`,
 # `MarkLateLets`) and is no element's (an element's field is live over the name's
@@ -3564,8 +3564,9 @@ fn IsLateTaker lx, menv, e = match e.kind:
 # is late as an arm's is (the block is split at the line, `?LatePlaceTakerAt`).
 # `named`: the line binds its plain result to a name that is late (`LateTakerResults`),
 # so the result is handed back late for the name's getter.
-DeferredLine: unbounded fn Wx, Env, Expr, Bool -> ((Wx, Wres))
-fn DeferredLine wx, menv, e, named:
+# `binds`: the names the line binds (`deferredDeps`).
+DeferredLine: unbounded fn Wx, Env, Expr, Bool, [Text] -> ((Wx, Wres))
+fn DeferredLine wx, menv, e, named, binds:
     let lx = wx.lx
     let ((outTy, layer)) = LineResult lx, e
     let body = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
@@ -3606,6 +3607,7 @@ fn DeferredLine wx, menv, e, named:
                 &_.lateTakings <= Push &_.lateTakings, LateTaking(taker=gd.name, givers=[[]])
             let wx3 = if numbersGiver: asking else: update wx2:
                 &_.deferredGens <= Push &_.deferredGens, gd.name
+                &_.deferredDeps <= Push &_.deferredDeps, ((gd.name, lateRead, binds))
             let wx4 = if numbersGiver or not gd.gappy: wx3 else: update wx3:
                 &_.build <= Push &_.build, (RefusalDo "`{SrcText lx, lx.file, e.span}`, a line that takes a late result at its build, above the line that gives it, and whose places are counted as they are built (a building `match` or `if` inside it)")
             match res:

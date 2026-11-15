@@ -598,13 +598,34 @@ fn ScopeSteps sk, atBuild, k, fuel = match fuel -? 1:
         # (bottom up: a deferred line takes from lines below it, and one that gives a late
         # result to a deferred line above it stands below that one, so the giver is built
         # first, sem-ch04-late-taker-result-taken-by-clause-widget-above)
-        let deferred = Fold (Filter wx.gens, \|gd| gd.pos.scope == k and Deferred gd), [[]], \|a, gd| Append (Gen gd), a
+        # (and among them, one that binds a late name another reads is built before it,
+        # whatever their lines' order, sem-ch04-late-value-above-in-late-numbered-row)
+        let bottomUp = Fold (Filter wx.gens, \|gd| gd.pos.scope == k and Deferred gd), [[]], \|a, gd| Append [[gd]], a
+        let deferred = Fold (DeferredOrder wx.deferredDeps, bottomUp), [[]], \|a, gd| Append a, (Gen gd)
         # a hosted place below a building line of its block built after the node asks its
         # first value here, its number known (`Wx.lateFirsts`, `BelowGappyLine`); a scope
         # of a late host asks at the host's line instead (`LateChild`)
         let asked = if atBuild and wx.genPhase != 1 and not (HasNat wx.lateHosts, k): Fold (Append wx.lateFirsts, wx.lateStarts), [[]], \|firsts, ((scope, dos))| if scope == k: Append firsts, dos else: firsts else: [[]]
         let ordered = Fold (SortNats (Fold steps, [[]], \|seen, ((ignore, at, ignore, ignore, ignore))| if (Len (Filter seen, \|y| y == at)) == 0: Push seen, at else: seen)), [[]], \|a, at| Fold (Range0 ((2 * (Len steps)) + 2)), a, \|a1, rank| Fold steps, a1, \|a2, ((ignore, at2, rank2, ignore, dos))| if at2 == at and rank2 == rank: Append a2, dos else: a2
         Append (Append (Append ordered, asked), deferred), entries
+
+# Deferred generations in build order (`BuildSteps`): each one once every other of them
+# that binds a late name it reads is placed; otherwise in the order given (bottom up). A
+# cycle among them (no line can go first) keeps the order given for what is left.
+DeferredOrder: fn [((Text, [Text], [Text]))], [GenDef] -> [GenDef]
+fn DeferredOrder deps, gens:
+    let ((placed, ignore)) = DeferredOrderStep deps, gens
+    placed
+
+DeferredOrderStep: fn [((Text, [Text], [Text]))], [GenDef] -> (([GenDef], [GenDef]))
+fn DeferredOrderStep deps, gens = Fold (Range0 (Len gens)), (([[]], gens)), \|((placed, left)), ignore|
+    let Reads = \|gd| Fold deps, [[]], \|acc, ((name, reads, ignore))| if name == gd.name: Append acc, reads else: acc
+    let Binds = \|gd| Fold deps, [[]], \|acc, ((name, ignore, binds))| if name == gd.name: Append acc, binds else: acc
+    let Waits = \|gd| Fold left, False, \|w, other| w or (other.name != gd.name and Fold (Reads gd), False, \|f, r| f or HasText (Binds other), r)
+    let ready = Filter left, \|gd| not (Waits gd)
+    match (if (Len ready) > 0: ready[0] else: left[0]):
+        ? gd: (((Push placed, gd), (Filter left, \|other| other.name != gd.name)))
+        nil: ((placed, left))
 
 # A hosted live place's entry taken, its level read from `recv` (the node in its build,
 # `self` in the patch pass): compared with the one that stood, published the tick after if

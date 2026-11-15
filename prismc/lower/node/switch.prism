@@ -1876,8 +1876,8 @@ fn GenForwards gd:
         # (a row numbered from 0, `rebased`: a blueprint value applied in the caller's
         # list, `AppliedBlueprintLine`, whose node counts from its own place; the
         # answer's segments under the line's prefix, its position counted from the line's)
-        let given = if gd.rebased: XCall (HelperRef "segments_of"), [[XRef (XCall (HelperRef "rebased_under"), [[(XVar "at"), (XIndex ((Len gd.pos.prefix) * 2)), (XIndex gd.pos.at)]])]] else: XVar "at"
-        let body = XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[DoExpr (XTry (XMethod (XVar "row"), "answer", [[given, (XVar "v"), XCx]]))]], [[]])]], (XUnit)
+        let handed = if gd.rebased: XCall (HelperRef "segments_of"), [[XRef (XCall (HelperRef "rebased_under"), [[(XVar "at"), (XIndex ((Len gd.pos.prefix) * 2)), (XIndex gd.pos.at)]])]] else: XVar "at"
+        let body = XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[DoExpr (XTry (XMethod (XVar "row"), "answer", [[handed, (XVar "v"), XCx]]))]], [[]])]], (XUnit)
         (((PosPat (Pos(scope=gd.pos.scope, prefix=gd.pos.prefix, at=gd.pos.at + i)), [[PaRest ""]]), body))
     else: [[(((PosPat gd.pos, genTail), (ForwardGen gd)))]]
 
