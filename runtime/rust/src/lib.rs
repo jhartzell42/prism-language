@@ -60,7 +60,7 @@ pub use host::{OutputOf, Blueprint, outputs_mapped, BuiltWidget, Moved, RowDeliv
 pub use float::Float;
 pub use num::{Int, Nat};
 pub use pod::{ConstructorName, Error, Fault, FromPod, Path, Pod, Segment, SparsePart, ToPod, sparse_absent, sparse_present};
-pub use print::{Printer, Show, show, show_text};
+pub use print::{Display, Printer, Show, display_text, displayed, show, show_text};
 pub use regex::{Group, Match, Regex, RegexError, RegexPart, RegexReplacement};
 pub use world::test_world::TestWorld;
 pub use world::{Outcome, Program, ReadyMap, ReadyState, TickIn, TickOut, World, drive};
@@ -69,5 +69,5 @@ pub use world::{Outcome, Program, ReadyMap, ReadyState, TickIn, TickOut, World, 
 /// scope and none of their names, so emitted code that reaches every item by its path has
 /// the methods without a program's type of the same name (`Node`, `Show`) ever hiding one.
 pub mod traits {
-    pub use crate::{OutputOf as _, FromPod as _, HostOf as _, Job as _, Level as _, Node as _, Program as _, ReadyState as _, Show as _, ToPod as _, World as _};
+    pub use crate::{OutputOf as _, FromPod as _, HostOf as _, Job as _, Level as _, Node as _, Program as _, ReadyState as _, Show as _, Display as _, ToPod as _, World as _};
 }

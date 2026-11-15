@@ -62,6 +62,52 @@ pub fn show_text(x: &dyn Show) -> Text {
     Text::new(&show(x))
 }
 
+/// A value as text for people: `^Display` (ruling DD). A text and a character are
+/// themselves; a number and a truth value are as they debug. What a placeholder places.
+pub trait Display {
+    fn display(&self) -> String;
+}
+
+/// `Display x` as a Prism `Text`.
+pub fn display_text(x: &dyn Display) -> Text {
+    Text::new(&x.display())
+}
+
+/// `Display x` as a Rust `String`, for a placeholder's `format!`.
+pub fn displayed(x: &dyn Display) -> String {
+    x.display()
+}
+
+impl Display for Text {
+    fn display(&self) -> String {
+        self.chars().collect()
+    }
+}
+
+impl Display for char {
+    fn display(&self) -> String {
+        self.to_string()
+    }
+}
+
+macro_rules! display_as_shown {
+    ($($t:ty),*) => {$(
+        impl Display for $t {
+            fn display(&self) -> String {
+                show(self)
+            }
+        }
+    )*};
+}
+
+display_as_shown!(Int, Nat, u8, i64, bool, Float);
+
+impl<T: Display + ?Sized> Display for std::rc::Rc<T> {
+    fn display(&self) -> String {
+        (**self).display()
+    }
+}
+
 /// A path in the notation of Semantics ch. 8.
 pub fn path(p: &Path) -> String {
     show(p)
