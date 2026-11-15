@@ -372,3 +372,15 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
 - **TL3** A record or choice with a borrowing field takes lifetime parameters written by
   hand, like Rust's. Chosen over inferring them from the fields and over one lifetime per
   record. Jimmy, 15 November: "a".
+- **DD** `^Show` is gone as a name; Rust's two traits replace it. `^Debug`, `Debug: fn a
+  -> Text`, is what `^Show` was: the transcript prints with it, `derive ^Debug` writes it
+  by structure, a text debugs quoted and a character as a literal. `^Display`, `Display:
+  fn a -> Text`, is text for people: the prelude has it for `Text` and `Char` (the
+  characters themselves), the numbers and `Bool`. A placeholder (`"{x}"`) wants
+  `^Display`; one over a type with no `Display` (a list, a map, an optional, a record, a
+  choice) is refused, as Rust refuses `{}` on a `Vec`, and the program writes `"{Debug
+  xs}"` or gives the type an `impl ^Display`. Chosen over displaying collections through
+  their elements' `Display` with `derive ^Display`, and over a placeholder falling back
+  to `Debug` where a type has no `Display` (a type-directed special case, and no answer
+  for a bare type variable). Jimmy, 15 November: "adopt Rust's Display and Debug
+  appropriately, and drop Show as a name"; "yes a".
