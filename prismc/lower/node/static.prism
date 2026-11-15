@@ -1085,6 +1085,11 @@ fn OutputTexts lx, benv, menv, written, depth = Fold written, [[]], \|acc, x|
             ? (BnWidget held, ignore, ignore, ignore): Append own, (OutputTexts lx, benv, menv, (ExprsIn held), (Dec depth))
             otherwise: match menv.names[SNameKey n]:
                 ? (BnWidget argument, cbenv, cmenv, clx): Append own, (OutputTexts clx, cbenv, cmenv, (ExprsIn argument), (Dec depth))
+                # (a name bound to the lambda an inlined widget gave back, `Supply <-
+                # @Counting !add`: the lambda's text, in that widget's environments)
+                ? (BnLocal ignore, ignore2, ignore3) if HasKey menv.names, "{SNameKey n}#lambdatext": match menv.names["{SNameKey n}#lambdatext"]:
+                    ? (BnWidget lambda, lbenv, lmenv, llx): Append own, (OutputTexts llx, lbenv, lmenv, (ExprsIn lambda), (Dec depth))
+                    otherwise: own
                 # a function of the block the supplier calls (`fn @Supply e` beside the
                 # host's line): inlined where it is called (`InlineLocalFn`), so its
                 # clauses' text is the supplier's, read at that use's instantiation

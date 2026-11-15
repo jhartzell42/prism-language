@@ -2320,7 +2320,10 @@ fn IsLetOfBlueprint s = match s.kind:
 
 # One statement of a widget block.
 WidgetStmt: unbounded fn Wx, Env, Env, Stmt, Bool -> ((Wx, Env, Env))
-fn WidgetStmt wx0, benv0, menv0, s, last:
+fn WidgetStmt wxAny, benv0, menv0, s, last:
+    # (a lambda text kept from a line above is no longer this line's, `?resultText`)
+    let wx0 = update wxAny:
+        &_.resultText <= nil
     # every reader the line passes whole to a function, wherever it stands in the line, as
     # its live dynamic (gap LF)
     # (a hold of dynamics takes its initial value whole, `HoldLine`)
@@ -2361,6 +2364,15 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
                 (((WrParts parts), PName n)):
                     let ((wx4, builds, methods)) = FieldedParts wx3, (Snake (SNameKey n)), parts
                     ((wx4, (Bind benv, (SNameKey n), (BnParts builds)), (Bind menv, (SNameKey n), (BnParts methods))))
+                # (a lambda the inlined widget gave back is kept under the name, its text
+                # read where a host is given the name, `?resultText`)
+                (((WrPlain ex, t), PName n)) if IsSome wx3.?resultText:
+                    let kept = match wx3.?resultText:
+                        ? ((x, be, me, lxr)): Bind menv, "{SNameKey n}#lambdatext", (BnWidget x, be, me, lxr)
+                        nil: menv
+                    let wx4 = update wx3:
+                        &_.resultText <= nil
+                    (((BindPlainResult wx4, kept, p, ex, t), benv, kept))
                 (((WrPlain ex, t), ignore)): if IsNamesPattern p: (((BindPlainResult wx3, menv, p, ex, t), benv, menv)) else: (((BindPatternResult wx3, menv, p, ex, t, (OutOf (TypeAt lx, e.span))), benv, menv))
                 # a late result is bound where its block is split (`SplitBlockInto`): a
                 # line that binds one here was not seen to be late (`IsLateExpr`)
@@ -2422,6 +2434,7 @@ fn WidgetStmt wx0, benv0, menv0, s, last:
                 let ((res, wx2)) = if wx.wholeResultAt != "" and wx.wholeResultAt == ResultKey lx, x: WholeResultOf wx, benv, menv, x else: ResultOf wx, benv, menv, x
                 let wx3 = update wx2:
                     &_.result <= res
+                    &_.resultText <= if IsLambdaText x: ? ((x, benv, menv, lx)) else: nil
                 ((wx3, benv, menv))
             otherwise:
                 let ((wx2, res)) = BuildLine wx, benv, menv, e, nil
@@ -2815,6 +2828,13 @@ fn ?PartAtBuild ?m, ?b = match ((?m, ?b)):
 fn ?PartOf parts, i:
     let ((ignore, ?found)) = Fold parts, ((0, nil)), \|((k, ?f)), ?b| if k == i: ((k + 1, ?b)) else: ((k + 1, ?f))
     ?found
+
+# Whether a block's given-back value is a lambda written there, under any groups.
+IsLambdaText: fn Expr -> Bool
+fn IsLambdaText e = match e.kind:
+    ELambda ignore, ignore2, ignore3: True
+    EGroup x: IsLambdaText x
+    otherwise: False
 
 SetResult: fn Wx, Wres -> Wx
 fn SetResult wx, res = update wx:
