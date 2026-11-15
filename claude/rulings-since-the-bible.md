@@ -365,3 +365,10 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   cyclic"; "A blueprint is only a problem if it outputs an event that's prompt in another
   event"; "Dynamics are events plus behaviors"; "Maybe it needs lifetimes but for ticks";
   "yes this is what I meant".
+- **TL1** Tick lifetimes are spelled after Rust: `!'a Nat`, the lifetime right after the
+  sigil. Chosen over `!Nat by a` and `prompt(a)`. Jimmy, 15 November: "good".
+- **TL2** An unannotated timed result borrows every `prompt` parameter (ruling PT's
+  meaning kept). Chosen over borrowing nothing. Jimmy, 15 November: "a".
+- **TL3** A record or choice with a borrowing field takes lifetime parameters written by
+  hand, like Rust's. Chosen over inferring them from the fields and over one lifetime per
+  record. Jimmy, 15 November: "a".

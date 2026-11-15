@@ -57,15 +57,21 @@ another event in the same tick borrows that event's tick.
 - **A signature relates lifetimes.** `@Echo: fn !'a Nat -> @!'a Nat` says the output
   borrows the input's tick. `@Fresh: fn !'a Nat -> @!Nat` says it does not.
 - **`prompt` is the elided form.** Ruling PT's `prompt` on a parameter is the lifetime
-  `'p` given to that parameter and to every timed part of the result. Existing
-  signatures keep their meaning.
+  `'p` given to that parameter and to every timed part of the result: an unannotated
+  timed result borrows every `prompt` parameter. Every signature written so far keeps
+  its meaning.
+- **Spelled after Rust.** `!'a Nat`, `$'a Nat`, `@!'a Nat`: the lifetime sits right after
+  the sigil, so it reads as a borrow and composes inside types (`$(k ==> !'a Nat)`).
+  Alternatives: `!Nat by a`, `prompt(a)` on parameters and result parts.
 - **Lifetimes ride inside types.** A type variable carries the lifetimes of the type it
   is instantiated at. `@Seated: fn $(k ==> $@(@a emit r)) -> @$(k ==> a)` needs no mark:
   whatever `a` borrows, the result's entries borrow, and the map's own update (ownership,
   built at the tick's end) borrows nothing.
-- **Records and choices take lifetime parameters where a field is timed.**
+- **Records and choices take lifetime parameters, written, where a field borrows.**
   `type Results 't = record: $teller: $'t (..), !tellersLeft: ![Text]` says the tellers
-  map may move in `'t`'s tick and the departures move in no one's.
+  map may move in `'t`'s tick and the departures move in no one's. Written like Rust's:
+  the record's lifetimes are part of its promise, so a library says them rather than
+  letting a field's body decide them.
 - **Holds cut values, not updates.** `$x <- init then step` gives a value read as the
   tick opened and an update event that borrows the step's events (R3).
 - **Hosts are primitives.** `@Host`'s child result borrows what the child's blueprint
@@ -140,17 +146,3 @@ These are the walks in `cycles.prism`. The tick lifetimes above are what they co
 - **No per-document or per-role rule.** Buys a checker that knows events, dynamics,
   blueprints and functions, and nothing else.
 - **No runtime check.** Buys programs that cannot loop inside a tick at all.
-
-## Questions
-
-- **TL1 Spelling.** (Decision area: syntax.) Options: `!'a Nat` after Rust; `!Nat by a`;
-  `prompt(a)` on parameters and result parts. *Claude's recommendation:* `!'a Nat`, which
-  reads as a borrow and composes inside types.
-- **TL2 Elision.** (Decision area: type system.) Options: an unannotated timed result
-  borrows every `prompt` parameter (PT's meaning, kept); an unannotated one borrows
-  nothing. *Claude's recommendation:* PT's meaning, so every signature written so far
-  keeps its meaning.
-- **TL3 Lifetime parameters on records.** (Decision area: type system.) Options: a record
-  with a timed field takes lifetime parameters, written; inferred from its fields; one
-  per record. *Claude's recommendation:* inferred from its fields, written only where a
-  library wants to promise less.
