@@ -221,9 +221,24 @@ fn InferKind env, st, e = match e.kind:
         if env.inUpdate: ((t, st2)) else: (((TyAt t, env.scope), st2))
     EGiven b: InferGiven env, st, b, e.span
     EUpdate target, body: InferUpdate env, st, target, body, e.span
+    # (an argument's block, wanted at a blueprint type: its scope is the wanted row, as
+    # `Check` reads a block wanted there)
     EWidgetBlock b:
-        let ((t, st2)) = InferWidgetBlock env, st, b
-        (((TyAt t, env.scope), st2))
+        let ?rw = match env.?expect:
+            ? want: match Walk st, want:
+                TyAt ignore, rw: ? rw
+                otherwise: nil
+            nil: nil
+        match ?rw:
+            ? rw:
+                let inner = update env:
+                    &_.scope <= rw
+                    &_.expect <= nil
+                let ((t, st2)) = InferWidgetBlock inner, st, b
+                (((TyAt t, rw), st2))
+            nil:
+                let ((t, st2)) = InferWidgetBlock env, st, b
+                (((TyAt t, env.scope), st2))
     EMonad ignore, ignore: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement `T monad:` blocks")))
     ETemplate t: InferTemplate env, st, t
     # `any e` where no existential is expected yet (a constructor's field, an argument,
@@ -285,6 +300,18 @@ fn Check env, st, e, expected = match e.kind:
         let ((t, st2)) = InferIf env, st, c, thenB, ?elseB, e.span, (? expected)
         Unify (NoteTy st2, e.span, t), expected, t, e.span
     EAny x: NoteTy (CheckAny env, st, x, expected, e.span), e.span, expected
+    # `@widget:` where a blueprint is wanted (an argument, `@OneWire @widget: ...` given
+    # `@a emit Net.* | r`): the block's scope is the wanted row, so its lines may emit
+    # what the parameter takes; only a block wanted at no blueprint type emits the row of
+    # the scope it is written in
+    EWidgetBlock b if IsBlueprintTy st, expected: match Walk st, expected:
+        TyAt want, rw:
+            let inner = update env:
+                &_.scope <= rw
+                &_.expect <= nil
+            let ((t, st2)) = InferWidgetBlockAt inner, st, b, (? want)
+            Unify (NoteTy st2, e.span, (TyAt t, rw)), expected, (TyAt t, rw), e.span
+        otherwise: st
     # `@ v` where a blueprint is wanted: `v` checked at the blueprint's value, so a lambda
     # there takes the type inward (`@ \|at, prompt asking| ..` as a `@(Supplier File)`);
     # `@ v` places nothing, so it fits the wanted row

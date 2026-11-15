@@ -670,7 +670,15 @@ fn AsBool v = Copy v
 # System ch. 5, Traits), else the application as the target writes one, `<A as Box>::Item`
 # or `Self::Item` (`OutAssoc`).
 AssocOut: unbounded fn Lx, Text, Text, Ty, [Ty] -> OutTy
-fn AssocOut lx, tr, n, a, indices = match ?ImplAssoc lx.g, tr, n, a, indices:
+fn AssocOut lx, tr, n, a0, indices0:
+    # (at an inlined generic widget's types: `Seats d rest` of `@HostDocument` at the
+    # tally's `Tallied OneEach`)
+    let a = SubstTy lx, a0
+    let indices = Each indices0, \|i| SubstTy lx, i
+    AssocOutAt lx, tr, n, a, indices
+
+AssocOutAt: unbounded fn Lx, Text, Text, Ty, [Ty] -> OutTy
+fn AssocOutAt lx, tr, n, a, indices = match ?ImplAssoc lx.g, tr, n, a, indices:
     ? t: OutTyOf lx, t
     nil: match lx.g.traits[tr]:
         ? info: if (Len indices) == 0: OutAssoc (PathIn lx, info.home, (TraitName info.name)), (Camel n), (OutTyOf lx, a)

@@ -461,7 +461,7 @@ fn LinesInto wx, benv0, menv0, b, open:
     let ((wx3, be4, me4, ends)) = Fold (Range0 n), ((wx2, be2, me1, [[]])), \|((w, be, me, acc)), i|
         let ((w2, be3, me3)) = WidgetStmt w, be, me, (Or stmts[i], dummyStmtL), (not open) and (IsLastLine ?last, (Or stmts[i], dummyStmtL))
         ((w2, be3, me3, (Push acc, (Len w2.lets))))
-    (((BuildInOrder wx3, stmts, order, start, ends), be4, me4))
+    (((BuildInOrder wx3, stmts, order, (Len wx.lets), start, ends), be4, me4))
 
 # A late result (`WrLate`) is a plain result its node can read only once its rows are
 # built: the plain result of a building `match` or `if` (the arm's row keeps it), and of a
@@ -1869,8 +1869,8 @@ fn PreInit wx, benv, menv, s = match s.kind:
 # order of what the lines read at the build: a line's run after the runs of the lines that
 # bind a name it reads, ties in page order. Lines that read each other at the build (a
 # cycle the checker let through) cannot be ordered and are refused.
-BuildInOrder: unbounded fn Wx, [Stmt], [ [Nat] ], Nat, [Nat] -> Wx
-fn BuildInOrder wx, stmts, order, start, ends:
+BuildInOrder: unbounded fn Wx, [Stmt], [ [Nat] ], Nat, Nat, [Nat] -> Wx
+fn BuildInOrder wx, stmts, order, blockStart, start, ends:
     let n = Len stmts
     let last = Or ends[Dec n], start
     let runs = Each (Range0 n), \|i|
@@ -1888,8 +1888,12 @@ fn BuildInOrder wx, stmts, order, start, ends:
     # value at the build, while the value's line (`Scale <- Build $n`) reads only the
     # first line's dynamic, which the build does not read; such a `let` is moved up
     # before the `let`s that read what it binds (`?ForwardReadsPlaced`)
-    let ?placed = ?ForwardReadsPlaced lets0, (Len lets0) + 1
-    let lets = Or ?placed, lets0
+    # (from the block's first `let`: a line's names bound before any line, `PreBind`,
+    # read a value a later line's `let` gives, `scale_f0 = scale_f3.clone()`)
+    let ?placed = ?ForwardReadsPlaced (Drop lets0, blockStart), (Len lets0) + 1
+    let lets = match ?placed:
+        ? own: Append (Take lets0, blockStart), own
+        nil: lets0
     # a link to the node reads nothing and is shared by the lines after the one that made
     # it (`whole_owner`): it stands before every line's run
     let links = Filter lets, IsLinkLet
@@ -1962,6 +1966,8 @@ fn PaNamesOf p = match p:
     PaCtor ignore, ps: Fold ps, [[]], \|acc, q| Append acc, (PaNamesOf q)
     PaRecord ignore, fs, ignore2: Fold fs, [[]], \|acc, ((ignore3, q))| Append acc, (PaNamesOf q)
     PaTuple ps: Fold ps, [[]], \|acc, q| Append acc, (PaNamesOf q)
+    # (a `let` the build types, `let scale_f3: Rc<..> = ..`, binds its pattern's names)
+    PaTyped q, ignore: PaNamesOf q
     otherwise: [[]]
 
 # The `let` of a node's link (`prism_rtl::Link::<Node>::new()`), made before the node and

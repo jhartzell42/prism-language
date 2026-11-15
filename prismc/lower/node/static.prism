@@ -1903,8 +1903,8 @@ fn IsTagApplication lx, e = match e.kind:
 
 # The clauses of the impl's widget method a trait's widget method reaches at a call: the
 # impl whose head names the type of the argument at the trait's parameter.
-?ImplWidgetClauses: unbounded fn Lx, Text, [Arg], Range -> ?[FnClause]
-fn ?ImplWidgetClauses lx, qk, args, cspan = match ?WidgetMethodImpl lx, qk, args, cspan:
+?ImplWidgetClauses: unbounded fn Lx, Text, [Arg], Range, Range -> ?[FnClause]
+fn ?ImplWidgetClauses lx, qk, args, cspan, callSpan = match ?WidgetMethodImpl lx, qk, args, cspan, callSpan:
     nil: nil
     ? ((tr, im, ignore)): match Filter lx.g.defs, \|d| (IsMethodOf d, im) and d.name == (BareName qk):
         [[d]]: ? (MethodClauses d)
@@ -1916,8 +1916,8 @@ fn ?ImplWidgetClauses lx, qk, args, cspan = match ?WidgetMethodImpl lx, qk, args
 # The trait parameter a widget method's default body is written over, and the type it is
 # read as, where the impl that type chooses leaves the method to a default; `nil` where
 # the impl writes it.
-?WidgetDefaultSubst: unbounded fn Lx, Text, [Arg], Range -> ?((Text, Ty))
-fn ?WidgetDefaultSubst lx, qk, args, cspan = match ?WidgetMethodImpl lx, qk, args, cspan:
+?WidgetDefaultSubst: unbounded fn Lx, Text, [Arg], Range, Range -> ?((Text, Ty))
+fn ?WidgetDefaultSubst lx, qk, args, cspan, callSpan = match ?WidgetMethodImpl lx, qk, args, cspan, callSpan:
     nil: nil
     ? ((tr, im, head)): if (Len (Filter lx.g.defs, \|d| (IsMethodOf d, im) and d.name == (BareName qk))) > 0: nil
         else: match ?AboveChosenFor im, (BareName qk):
@@ -1928,8 +1928,8 @@ fn ?WidgetDefaultSubst lx, qk, args, cspan = match ?WidgetMethodImpl lx, qk, arg
 # trait's parameter there: an argument's type where a parameter is the trait's parameter,
 # else what the callee's type at the call gives it (`@InMemory<<Count>> fresh, !asks`,
 # whose parameters hold only `State d`).
-?WidgetMethodImpl: unbounded fn Lx, Text, [Arg], Range -> ?((TraitInfo, ImplInfo, Ty))
-fn ?WidgetMethodImpl lx, qk, args, cspan:
+?WidgetMethodImpl: unbounded fn Lx, Text, [Arg], Range, Range -> ?((TraitInfo, ImplInfo, Ty))
+fn ?WidgetMethodImpl lx, qk, args, cspan, callSpan:
     let ?tr = Fold (Values lx.g.traits), nil, \|?found, tr| if ?found != nil: ?found else: if HasText tr.methods, qk: ? tr else: nil
     match ?tr:
         nil: nil
@@ -1946,9 +1946,21 @@ fn ?WidgetMethodImpl lx, qk, args, cspan:
                 nil: match ?ParamMatch (Unrigid sc.ty), (TypeAt lx, cspan), {{}}:
                     ? m: Or m[tr.param], TyErr
                     nil: TyErr
-            match Fold (Or lx.g.impls[tr.name], [[]]), nil, \|?found, im| if ?found != nil: ?found else: if SameHead im.head, head: ? im else: nil:
+            # (a parameter type that names the trait's parameter only inside an associated
+            # type, `State d`, gives nothing to match: the call's want of the trait, solved
+            # where the checker noted its impl, gives the type, `@InMemory<<Count>>`)
+            let head2 = match head:
+                TyCon ignore, ignore2: head
+                otherwise: Or (?ImplNoteTy lx, callSpan, tr.name), (Or (?ImplNoteTy lx, cspan, tr.name), head)
+            match Fold (Or lx.g.impls[tr.name], [[]]), nil, \|?found, im| if ?found != nil: ?found else: if SameHead im.head, head2: ? im else: nil:
                 nil: nil
-                ? im: ? ((tr, im, head))
+                ? im: ? ((tr, im, head2))
+
+# The type the checker solved a want of the trait `cls` at, at a span (its impl note).
+?ImplNoteTy: unbounded fn Lx, Range, Text -> ?Ty
+fn ?ImplNoteTy lx, span, cls = Fold (Or lx.impls[PlaceKey lx, span], [[]]), nil, \|?found, n| match ?found:
+    ? x: ? x
+    nil: if n.cls == cls: ? (SubstTy lx, n.ty) else: nil
 
 # A type under its sigils.
 CoreOf: fn Ty -> Ty
@@ -1968,7 +1980,7 @@ fn InlineWidget wx0, benv, menv, qk, v, args, e:
     # a trait's widget method its impl leaves to a default (the trait's own, or one of a
     # trait below, ruling SD): the default's body is written over the trait's parameter,
     # read here as the argument's type, and only while the body is lowered
-    match ?WidgetDefaultSubst wx0.lx, qk, args, (CalleeSpanOf e):
+    match ?WidgetDefaultSubst wx0.lx, qk, args, (CalleeSpanOf e), e.span:
         nil: InlineWidgetBody wx0, benv, menv, qk, v, args, e
         ? ((param, ty)):
             let before = wx0.lx.subst
@@ -1989,7 +2001,7 @@ fn InlineWidgetBody wx, benv, menv, qk, v, args, e:
     # a trait's widget method (`@Shown greeting`): the clauses of the impl its argument's
     # type chooses, as the call's type was checked (Type System ch. 3)
     let clauses = match ClausesOf lx.g, qk:
-        [[]]: Or (?ImplWidgetClauses lx, qk, args, (CalleeSpanOf e)), [[]]
+        [[]]: Or (?ImplWidgetClauses lx, qk, args, (CalleeSpanOf e), e.span), [[]]
         cs: cs
     let ?w = ?WidgetDeclOf lx.g, qk
     let ((params, ?body)) = match ?w:

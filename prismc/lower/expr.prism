@@ -233,7 +233,10 @@ fn WholeFns lx:
     # and a function from dynamics to an event (`fn !Changes $a, $b = !Updated ($a +
     # $b)`): no firing reaches its body to lift it over, and `!Updated` takes its
     # dynamic whole, so the function takes the dynamics and gives the `Event`
-    let bySig = Fold fns, {{}}, \|m, ((d, ignore, v))| if (IsWholeSig v.scheme.ty) or (HasElementParam v.scheme.ty) or (GivesEventOfDynamics v.scheme.ty) or ((HasDynamicParam v.scheme.ty) and IsValueWidget lx, d.qk): Insert m, d.qk, True else: m
+    # and a function from events or dynamics to an element (`Asking: fn !Raise -> Element
+    # (Seat.* Count Raiser) ..`, its body `Seat.Request(!requests=!raises)`): the element's
+    # fields hold them live, so no firing's value is what it builds from
+    let bySig = Fold fns, {{}}, \|m, ((d, ignore, v))| if (IsWholeSig v.scheme.ty) or (HasElementParam v.scheme.ty) or (GivesElementOfTime v.scheme.ty) or (GivesEventOfDynamics v.scheme.ty) or ((HasDynamicParam v.scheme.ty) and IsValueWidget lx, d.qk): Insert m, d.qk, True else: m
     # and those a call takes with time below the top of what it gives (`$Sel (True on
     # !swap), $a, $b`, a `!$Nat`: lifted over a plain parameter, the call gives the dynamic
     # it returns whole, Type System ch. 4)
@@ -321,6 +324,16 @@ fn HasElementParam t = match t:
         TyElem ignore, ignore: True
         otherwise: False
     otherwise: False
+
+# Whether a function gives an element and takes an event or a dynamic.
+GivesElementOfTime: fn Ty -> Bool
+fn GivesElementOfTime t = match t:
+    TyFn ignore, ps, r, prompts: (IsElemTy r) and Fold ps, False, \|seen, p| seen or (LayerOf p) == LyEv or (LayerOf p) == LyDyn
+    otherwise: False
+
+IsElemTy: fn Ty -> Bool
+fn IsElemTy (TyElem ignore, ignore2) = True
+fn IsElemTy t = False
 
 HasDynamicParam: fn Ty -> Bool
 fn HasDynamicParam t = match t:
