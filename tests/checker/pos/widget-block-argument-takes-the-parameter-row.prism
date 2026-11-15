@@ -1,0 +1,26 @@
+# A `@widget:` block given where a blueprint whose row has more families is wanted (`@a
+# emit Net.* | r`) takes that row as its scope: its lines may emit `Net.*`, which the
+# function consumes, though the enclosing widget emits `Ui.*` only (Type System ch. 4,
+# "`emit` names a row": only a blueprint with no wanted type emits its scope's row).
+# Found by the p14 run on chess (test_worlds' `@OneWire @widget:`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+@Talker: @unit emit Ui.* | Net.*
+@Talker:
+    Ui.Label($text=$"talks")
+
+@Offline: fn prompt @a emit Net.* | r -> @a emit r
+fn @Offline @guest:
+    ((result, $tree)) <- @Host @guest, \|path, element| match element:
+        Net.Link(..): @ never
+        Net.Listen(..): @ never
+        Net.Channel(..): @ never
+        otherwise: @Element element
+    @ result
+
+@page: @unit emit Ui.*
+@page:
+    @Offline @widget:
+        @Talker
+        @Talker
