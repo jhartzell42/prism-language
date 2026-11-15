@@ -19,7 +19,7 @@ use Ui.*
 # A file kept in a hold, as a file document's implementation: its bytes start as given,
 # and each tick's last replace replaces them. It outlives everything seated at it, so a
 # game hosted there can stop and start again.
-@InHold: fn [U8], Guests File -> @(Supplier File)
+@InHold: fn [U8], Guests File -> @(Supplier File) emit unit
 fn @InHold initial, $guests:
     !overwrites <- for at, $element <- $guests:                                  # 0
         @Switch (!ReplacesAt at, $element)

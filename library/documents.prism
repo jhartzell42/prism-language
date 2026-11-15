@@ -483,7 +483,7 @@ trait ^RemoteDocument d where d: ^Document, Request d _: ^SerializableValue, Rea
     # The other end: each message from a connection fired at the host this sits under,
     # as the seat's own request or query; each response and answer sent back.
     # The caller decides the connection's role, as it decides any seat's.
-    @Serve: forall (r: Role d). fn Fixed r, Connection -> @unit emit Seat.* d r | Net.*
+    @Serve: forall (r: Role d). fn Fixed r, Connection -> @unit emit Seat.* d r | Net.* | rest
     fn @Serve role, connection:
         !received <- Net.Channel(connection=connection, !sends=(Values !replies))
         $open <- {{}} then Fold !received, $open, Opened    # the far end's places, by path

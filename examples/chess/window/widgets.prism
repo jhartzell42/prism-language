@@ -136,7 +136,7 @@ fn @Turned deg, @child = @Framed (FrameSpec 0.0, nil, nil, nil, 0.0, (Point 0.0,
 fn @Backed c, p, @child = @Framed (BandSpec p, c), @child
 
 # its child on a band of `paint` all round, `$width` wide: a board's border
-@Bordered: fn $Float, Paint, prompt @a -> @a
+@Bordered: fn prompt $Float, Paint, prompt @a -> @a
 fn @Bordered $width, paint, @child = @FramedBy (BandSpec $width, paint), @child
 
 BandSpec: fn Float, Paint -> FrameSpec
