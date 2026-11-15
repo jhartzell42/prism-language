@@ -124,9 +124,10 @@ in a few places nobody has designed together:
 - **Forwarding:** `@Element e` is this tick's input. A host that forwards a guest's
   element to an enclosing host that computes is a tick; to the World, as fast as the
   World. Whether any chain of forwards can close a same-tick loop is unchecked.
-- **Marks that only existed because of hosts:** `prompt Supply` on `@HostSeats` and
-  `@HostRole`, `prompt Supplier d` on the implementations, `@Defer` on the tally's
-  departures (YB, choice a). Each wants a look under HO.
+- **Marks that only existed because of hosts:** `Supply` is unmarked on `@HostSeats` and
+  `@HostRole`; the prompt check reads what comes off a host's element tree as prompt in
+  nothing (HC), so the tally's departures need no `@Defer`. `prompt Guests d` on the
+  implementations stays: a supplier answers from `$guests` in the same tick.
 - **Marks on parts of a result** (Claude's RM in the QG talk): PT marks a parameter for
   the whole result; a tuple result (a host's `((a, $tree))`) could say which part fires
   with which parameter. Nothing needs it under HO today.
