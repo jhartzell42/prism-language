@@ -1,0 +1,8 @@
+# The count: declarations of capture-bare-name-beside-optional-of-same-stem.
+emit Ui.*
+use App.*
+use Ui.*
+
+test it_counts, @page:
+    build
+        => expect Ui.Label(text="7")

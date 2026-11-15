@@ -1,0 +1,24 @@
+# A lambda's binder `w` beside an outer `?w`, in an unbounded function whose fold reads
+# `w` after a call that may not end (a continuation): the closure captures the lambda's
+# `w` and clones the outer `?w` it never reads, or moves it (the gen1 build of 15
+# November: q2 confused the fold's `w` in `InlineWidgetBody` with its `?w`, and rustc
+# refused the closure as `FnOnce`). Expected transcript derived by hand.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Down: unbounded fn Nat -> Nat
+fn Down n = match n -? 1:
+    ? m: (Down m) + 1
+    nil: 0
+
+Count: unbounded fn [Nat] -> Nat
+fn Count xs:
+    let ?w = xs[0]
+    let total = Fold xs, 0, \|w, x| (Down x) + w
+    total + (Or ?w, 0)
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Count [[1, 2, 3]]}")                    # 0
