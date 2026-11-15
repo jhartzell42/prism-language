@@ -1116,13 +1116,23 @@ fn OpenedAt lx, env, label, vs, kinds, fresh, i, p, arm, pty, t = match vs[i]:
             let variants = KindVariants lx, (KindOfVar kinds, q)
             let number = XCallAt (RefRuntime "prism_rtl::kind_of"), [[OutNat]], [[(XRef (XVar label)), (XIndex i)]]
             match variants[Dec (Len variants)]:
-                nil: Refusal "an existential's variable whose kind has no variant the lowering can name"
+                # (a kind no type the lowering knows decides, `Role d` in a function generic
+                # in `d`: the variant stays the number the value holds, a kinded variable of
+                # the arm as a generic definition's is, `KindParamName`)
+                nil:
+                    let held = "{label}_kind{i}"
+                    let lxk = update lx:
+                        &_.kinded <= Insert &_.kinded, r, ((held, ""))
+                    XBlock [[(DoLet (PaBind held), (XRef number))]], (OpenedAt lxk, env, label, vs, kinds, fresh, i + 1, p, arm, pty, t)
                 ? last:
                     let At = \|k| OpenedAt (update lx:
                         &_.subst <= Insert &_.subst, r, (TyRole k)
                     ), env, label, vs, kinds, fresh, i + 1, p, arm, pty, t
                     Fold (Take variants, (Dec (Len variants))), (At last), \|rest, k| XIf (XBin OpEq, number, (VariantNumberOf lx, k)), (At k), rest
-        otherwise: InternalBug "an `any` arm whose variable `{q}` the checker did not open"
+        # (a variable the arm's pattern gives no type of its own, `any ((role, id,
+        # element))` read with no `Fixed<<..>>` of it: no code reads its variant, held only
+        # as types are, which the lowering erases)
+        otherwise: OpenedAt lx, env, label, vs, kinds, fresh, i + 1, p, arm, pty, t
 
 # A bound that is a trait of the prelude, by its bare name: its packing is the runtime's
 # and the emitted prelude's own, `with_` and the name (`with_show`, `with_num`). A
@@ -1373,7 +1383,17 @@ fn DynamicBlueprint lx, env, x, d, variant, t = match ?OutputDynamic lx, env, x,
             let heldTy = OutTyOf lx, (Peel (TypeAt lx, d.span))
             let tagged = XClosure True, [[(PaTyped (PaBind "v"), (OutRef heldTy))]], (TaggedOrHeld variant, heldTy, (XClone (XVar "v")))
             VlOwned (XCall (RefRuntime "prism_rtl::dynamic_blueprint::<crate::Elem, _>"), [[(XMethod held, "map", [[tagged]])]]), t
-        nil: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer with no getter of the host's line and a reader that is no live dynamic where it is written"), t
+        # (an expression over such dynamics, `@ ? (BytesOf $~contents)`, `@ $Loaded $game`:
+        # lowered whole, a `Dynamic` of its own, each value in the tag's case)
+        nil:
+            let lxw = update lx:
+                &_.whole <= True
+            let live = ValueOf lxw, env, d
+            match ValueTy live:
+                OutDyn heldTy:
+                    let tagged = XClosure True, [[(PaTyped (PaBind "v"), (OutRef heldTy))]], (TaggedOrHeld variant, heldTy, (XClone (XVar "v")))
+                    VlOwned (XCall (RefRuntime "prism_rtl::dynamic_blueprint::<crate::Elem, _>"), [[(XMethod (Ref live), "map", [[tagged]])]]), t
+                otherwise: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer with no getter of the host's line and a reader that is no live dynamic where it is written"), t
 
 # A supplier's dynamic answer `d` where no host's line made a getter for it
 # (`DynamicOutputs` binds none), when everything it reads is a value held where it is
@@ -1636,12 +1656,27 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
                         let names = Each (Range0 (Len pts)), \|i| "a{i}"
                         let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "a")), (OutRef (Or pts[i], OutUnit))
                         # (and the variants of its kinded variables at this value's type,
-                        # as a call passes them, `KindArgs`)
-                        let callArgs = Append (KindArgs lx, v, span), (Each names, \|nm| XVar nm)
+                        # as a call passes them, `KindArgs`; a parameter of an associated
+                        # type with indices at its variables recoded from the closure's
+                        # concrete one, and such a result read back, as a call does,
+                        # `ArgsFor`, `DeclaredCall`)
+                        let sps = match v.scheme.ty:
+                            TyFn ignore2, xs, ignore3, prompts: xs
+                            otherwise: [[]]
+                        let sres = match v.scheme.ty:
+                            TyFn ignore2, ignore3, r, prompts: r
+                            otherwise: TyErr
+                        let Passed = \|i| match sps[i]:
+                            ? sp: if HasOpenIndexedAssoc (Peel sp): XRef (XCallAt (HelperRef "recode"), [[(ErasedSignatureOut lx, (Peel sp))]], [[(XVar (Or names[i], "a"))]]) else: XVar (Or names[i], "a")
+                            nil: XVar (Or names[i], "a")
+                        let callArgs = Append (KindArgs lx, v, span), (Each (Range0 (Len names)), Passed)
                         # a type parameter in no parameter's type is given by the value's type here
-                        let call = match ?TypeArgsAt lx, qk, v.scheme, span:
+                        let call0 = match ?TypeArgsAt lx, qk, v.scheme, span:
                             ? tys: XCallAt (ValueRef lx, qk), tys, callArgs
                             nil: XCall (ValueRef lx, qk), callArgs
+                        let call = match t:
+                            OutFn ignore2, rt: if HasOpenIndexedAssoc (Peel sres): XCallAt (HelperRef "recode"), [[rt]], [[XRef call0]] else: call0
+                            otherwise: call0
                         VlOwned (XCall (RefRuntime "std::Rc::new"), [[(XClosure False, pas, call)]]), t
                     otherwise: VlOwned (XCall (RefRuntime "std::Rc::new"), [[XPath (ValueRef lx, qk)]]), t
             nil: VlOwned (InternalBug "the global {qk}"), t
@@ -1905,11 +1940,21 @@ fn Application lx, env, callee, args, span:
                         nil: VlOwned (InternalBug "a call of {nkey}, which nothing declares"), t
         EGroup x: Application lx, env, x, args, span
         EHold x: Application lx, env, x, args, span
+        # (a name given its type arguments, `Step<<ChessGame>> fresh, ..`: the call of the
+        # name, whose type and impl notes the checker keeps at the name)
+        ETypeArgs x, ignore if IsNamed x: Application lx, env, x, args, span
         otherwise:
             let f = ValueOf lx, env, callee
             match ValueTy f:
                 OutJobFn ignore, ignore: VlOwned (XCall (HelperRef "run_to_end"), [[(StartCall f, (StartArgs lx, env, f, args))]]), t
                 otherwise: VlOwned (XApply (Ref f), (Each args, \|a| ValueArgument lx, env, a.value)), t
+
+# Whether an expression is a name, under any groups.
+IsNamed: fn Expr -> Bool
+fn IsNamed e = match e.kind:
+    EName ignore: True
+    EGroup x: IsNamed x
+    otherwise: False
 
 # A local function called: its body inlined, each parameter a local bound to its
 # argument (the caller's environment, which the function's block shares). One whose body
@@ -2350,7 +2395,7 @@ fn DeclaredCall lx, env, qk, args, span, cspan, t:
                 else: if v.home == "Prelude": PreludeCall lx, env, qk, args, span, t
                 else: if IsLibraryBuiltin lx, qk: VlOwned (LibraryBuiltinCall lx, qk, (ArgsFor lx, env, v, args), args, span, t), t
                 else:
-                    let callArgs = Append (KindArgs lx, v, cspan), (ArgsFor lx, env, v, args)
+                    let callArgs = Append (KindArgsWith lx, v, cspan, args), (ArgsFor lx, env, v, args)
                     let call = if OpensByVariable lx, qk: XCall (InstanceRef lx, qk, (CallInstance lx, v, cspan)), callArgs
                         else: match ?TypeArgsAt lx, qk, v.scheme, cspan:
                             ? tys: XCallAt (ValueRef lx, qk), tys, callArgs
@@ -3844,8 +3889,22 @@ fn VariantValueEx lx, k = match lx.g.ctors[k]:
 # each variable's variant at this call, as the checker's type of the callee there gives
 # it: a variant named, or a kinded variable of the caller, passed on.
 KindArgs: unbounded fn Lx, ValInfo, Range -> [Ex]
-fn KindArgs lx, v, cspan = if (Len (KindsOfVal lx, v)) == 0: [[]] else:
-    let found = Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, cspan), {{}}), {{}}
+fn KindArgs lx, v, cspan = KindArgsWith lx, v, cspan, [[]]
+
+# The same at a call with its arguments: the callee's type at the call, else (a callee
+# given its type arguments, `?SaidBy<<Count>> Fixed<<Raiser>>, note`, whose type the
+# checker notes at the name inside) the parameters matched against the arguments' types.
+KindArgsWith: unbounded fn Lx, ValInfo, Range, [Arg] -> [Ex]
+fn KindArgsWith lx, v, cspan, args = if (Len (KindsOfVal lx, v)) == 0: [[]] else:
+    let ptys = match Unrigid v.scheme.ty:
+        TyFn ignore, ps, ignore2, prompts: ps
+        otherwise: [[]]
+    let byArgs = Fold (Range0 (Min (Len ptys), (Len args))), {{}}, \|m, i| match args[i]:
+        ? a: Or (?ParamMatch (Or ptys[i], TyErr), (TypeAt lx, a.value.span), m), m
+        nil: m
+    let found = match ?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, cspan), {{}}:
+        ? m: if Fold (KindsOfVal lx, v), True, \|all, ((r, ignore))| all and HasKey m, r: m else: Fold (Keys byArgs), m, \|acc, q| if HasKey acc, q: acc else: Insert acc, q, (Or byArgs[q], TyErr)
+        nil: byArgs
     Each (KindsOfVal lx, v), \|((r, ignore))| match found[r]:
         ? (TyRole k): XRef (VariantNumberOf lx, k)
         ? (TyRigid q): match lx.kinded[q]:

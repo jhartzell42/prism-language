@@ -728,6 +728,11 @@ fn ValueWidgetsIn lx, e = match e.kind:
     # (a map literal's values: a key is no blueprint, which has no order)
     EMap entries: Fold entries, [[]], \|acc, ((ignore, x))| Append acc, (ValueWidgetsAt lx, x)
     EMapSingle entries: Fold entries, [[]], \|acc, ((ignore, x))| Append acc, (ValueWidgetsAt lx, x)
+    # (through a group, an operator's operands, `{{"ada": $ (@Named "ada")}} on !add`, and a
+    # sigil's value, `$ {{..}}`)
+    EGroup x: ValueWidgetsIn lx, x
+    EBinary ignore, a, b: Append (ValueWidgetsIn lx, a), (ValueWidgetsIn lx, b)
+    EFreeSigil ignore, x: ValueWidgetsAt lx, x
     otherwise: [[]]
 
 # Whether a widget's own clauses apply it.
@@ -756,7 +761,10 @@ fn ValueWidgetsAt lx, e = match e.kind:
     EName ignore: PlacedWidget lx, (BlueprintQk lx, e), e.span, [[]]
     # (a module's lowercase widget written qualified, `@Parts.header`)
     EField ignore, ignore2, ignore3: PlacedWidget lx, (BlueprintQk lx, e), e.span, [[]]
-    otherwise: [[]]
+    # (a live blueprint, `$ (@Named "ada")`: the widget it holds)
+    EFreeSigil ignore, x: ValueWidgetsAt lx, x
+    # (a container in a value's place: its values')
+    otherwise: ValueWidgetsIn lx, e
 
 ValueWidgetsOfBlock: unbounded fn Lx, Block -> [((Text, [((Text, Ty))]))]
 fn ValueWidgetsOfBlock lx, b = match (Or b.stmts[Dec (Len b.stmts)], dummyStmtL).kind:

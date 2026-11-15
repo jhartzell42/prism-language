@@ -1955,12 +1955,13 @@ fn ?WidgetMethodImpl lx, qk, args, cspan, callSpan:
             # (or the arguments' types matched whole, an associated type against the same
             # one at the caller's variables, read at the inlined widget's types: `@HostSeats
             # seats, Supply` in `@HostDocument`, `seats` a `Seats d rest`)
-            let ?byArgs = match ?ParamMatchAll (Each ps, \|p| Unrigid p), (Each args, \|a| TypeAt lx, a.value.span), {{}}:
-                ? m: match m[tr.param]:
-                    ? x: match SubstTy lx, x:
-                        TyCon c, cargs: ? (TyCon c, cargs)
-                        otherwise: nil
-                    nil: nil
+            let byArgsMap = Fold (Range0 (Min (Len ps), (Len args))), {{}}, \|m, i| match args[i]:
+                ? a: Or (?ParamMatch (Unrigid (Or ps[i], TyErr)), (TypeAt lx, a.value.span), m), m
+                nil: m
+            let ?byArgs = match byArgsMap[tr.param]:
+                ? x: match SubstTy lx, x:
+                    TyCon c, cargs: ? (TyCon c, cargs)
+                    otherwise: nil
                 nil: nil
             let head2 = match head:
                 TyCon ignore, ignore2: head
@@ -2165,6 +2166,11 @@ fn ?ParamMatch pat, t, m = match ((pat, t)):
     # caller's `Seats d rest` in a generic body: its argument and indices matched)
     (((TyAssoc t1, n1, a1, i1), (TyAssoc t2, n2, a2, i2))) if t1 == t2 and n1 == n2 and (Len i1) == (Len i2): ?ParamMatchAll (Append [[a1]], i1), (Append [[a2]], i2), m
     (((TyAssoc ignore, ignore, ignore, ignore), ignore)): ? m
+    # (an existential against one: their bodies, its own variables matched only there,
+    # `Guests d`'s entries)
+    (((TyExists vs1, b1, ignore, ignore2), (TyExists vs2, b2, ignore3, ignore4))) if (Len vs1) == (Len vs2): match ?ParamMatch b1, b2, m:
+        ? m2: ? (Fold vs1, m2, \|acc, q| if HasKey m, q: acc else: Remove acc, q)
+        nil: nil
     otherwise: if pat == t: ? m else: nil
 
 ?ParamMatchAll: unbounded fn [Ty], [Ty], (Text ==> Ty) -> ?(Text ==> Ty)
