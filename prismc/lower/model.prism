@@ -534,12 +534,24 @@ derive ^Eq, ^Show
 # places of the child of host `scopes[k - 1]` of the node, which count from 0 and are keyed
 # by their path relative to the child in the host's document. A position is spelled by
 # `PlaceAt` and matched by `PosPat`; `PlaceText` is its text in a name or a doc comment.
+# `prefix`: the caller positions of the inlined widget applications the place stands in
+# (ruling PL, claude/paths-as-lists.md: a path is a list of lists, one per widget
+# application), outermost first; `at` counts inside the innermost.
 type Pos = record:
     scope: Nat
+    prefix: [Nat]
     at: Nat
 derive ^Eq, ^Show
 
-let pos0 = Pos(scope=0, at=0)
+let pos0 = Pos(scope=0, prefix=[[]], at=0)
+
+# The first position inside a widget application inlined at `p`: a new list under it.
+InCallPos: fn Pos -> Pos
+fn InCallPos p = Pos(scope=p.scope, prefix=(Push p.prefix, p.at), at=0)
+
+# The caller's next position after a widget application inlined at `p` (`InCallPos`).
+AfterCallPos: fn Pos -> Pos
+fn AfterCallPos p = Pos(scope=p.scope, prefix=p.prefix, at=p.at + 1)
 
 # The next position in the same scope.
 NextPos: fn Pos -> Pos
@@ -548,12 +560,26 @@ fn NextPos p = update p:
 
 # The first position of host `k`'s child (`k` from 1).
 ScopePos: fn Nat -> Pos
-fn ScopePos k = Pos(scope=k, at=0)
+fn ScopePos k = Pos(scope=k, prefix=[[]], at=0)
 
 # A position as text, in a name (`place_1`, `place_h1_2`) or a doc comment: the node's own
 # by its number, a hosted child's by its scope and number, `h{k}_{at}`.
 PlaceText: fn Pos -> Text
-fn PlaceText p = if p.scope == 0: "{p.at}" else: "h{p.scope}_{p.at}"
+fn PlaceText p:
+    let inner = Concat (Each p.prefix, \|q| "{q}c")
+    if p.scope == 0: "{inner}{p.at}" else: "h{p.scope}_{inner}{p.at}"
+
+# Where a generation's rows stand (ruling PL): a `rebuild`'s under its place and its
+# generation (`p.#g`); a building arm's under its place, numbered from 0 (`p.0`); a
+# widget's clause or an applied blueprint's under its place and a list of its own
+# (`p/0`); a line the lowering made a generation of (a line that takes a late result, the
+# lines below a split) in its caller's list, at the caller's positions, as before.
+type GenUnder = choice:
+    UnderGeneration
+    UnderArm
+    UnderCall
+    UnderCaller
+derive ^Eq, ^Show
 
 # A `rebuild` (claude/backend.md, "Dynamic structure"): one generation at `path/n/#g`,
 # torn down and built anew from the source after a tick that changed it; the clause of a
@@ -571,6 +597,8 @@ type GenDef = record:
     # caller's position `pos`, where an inlined widget's places stand.
     transparent: Bool
     width: Nat
+    # Where its rows stand (ruling PL, claude/paths-as-lists.md).
+    under: GenUnder
     # As a `for`'s `moved`: what a new generation tells when its places are a host's.
     moved: Text
     # Built in the block's own build, before its node, from locals `{name}_row` (the row)

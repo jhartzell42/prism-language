@@ -655,13 +655,15 @@ fn DocumentMoved m = if m == sharedMoved: MethDef(name="document_moved", recv=Re
 # the `doc` vector (`VecPush`).
 DocumentBody: fn Wx, (fn Ex, Ex -> Do), [Place], [ForDef], [GenDef] -> [Do]
 fn DocumentBody wx, Add, places, builders, gens:
-    let statics = Each places, \|pl| Add (XMethod (XCall (RefRuntime "rt::Path::root"), [[]]), "at", [[(PlaceNumber wx, "self", pl.pos)]]), (XClone (XField XSelf, pl.entry))
+    let statics = Each places, \|pl| Add (XMethod (InPrefix (XCall (RefRuntime "rt::Path::root"), [[]]), pl.pos.prefix), "at", [[(PlaceNumber wx, "self", pl.pos)]]), (XClone (XField XSelf, pl.entry))
     # a host's own rows (prism_rtl's) give their forwarded places' entries
     let RowDoc = \|b| if HasPrefix b.rowNode, "prism_rtl::HostRow": XMethod (XVar "row"), "entries", [[XCx]] else: XMethod (XVar "row"), "document", [[XCx]]
-    let rows = Each builders, \|b| DoFor (PaTuple [[PaBind "k", PaBind "row"]]), (XMethod (XMethod (XField XSelf, b.name), "borrow", [[]]), "iter", [[]]), [[(DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (RowDoc b), [[(Add (XMethod (XMethod (XMethod (XCall (RefRuntime "rt::Path::root"), [[]]), "at", [[(PlaceNumber wx, "self", b.pos)]]), "child", [[(XCtor (RefRuntime "rt::Segment::Key"), [[(XMethod (XVar "k"), "to_pod", [[]])]])]]), "join", [[XRef (XVar "p")]]), (XVar "e"))]])]]
+    let rows = Each builders, \|b| DoFor (PaTuple [[PaBind "k", PaBind "row"]]), (XMethod (XMethod (XField XSelf, b.name), "borrow", [[]]), "iter", [[]]), [[(DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (RowDoc b), [[(Add (XMethod (XMethod (XMethod (InPrefix (XCall (RefRuntime "rt::Path::root"), [[]]), b.pos.prefix), "at", [[(PlaceNumber wx, "self", b.pos)]]), "child", [[(XCtor (RefRuntime "rt::Segment::Key"), [[(XMethod (XVar "k"), "to_pod", [[]])]])]]), "join", [[XRef (XVar "p")]]), (XVar "e"))]])]]
     # a transparent generation's places stand at the block's own positions (a static
     # widget of several clauses, a building `match`'s arm): their paths are the block's
-    let GenPath = \|gd| if gd.transparent: XClone (XVar "p") else: XMethod (XMethod (XMethod (XCall (RefRuntime "rt::Path::root"), [[]]), "at", [[(PlaceNumber wx, "self", gd.pos)]]), "child", [[(XCtor (RefRuntime "rt::Segment::Gen"), [[XVar "g"]])]]), "join", [[XRef (XVar "p")]]
+    # (and an arm's or a widget's rows under their own place, ruling PL: their paths
+    # under it, `OwnPlacePath`)
+    let GenPath = \|gd| if IsOwnPlaceGen gd: XMethod (OwnPlacePath wx, gd), "join", [[XRef (XVar "p")]] else: if gd.transparent: XClone (XVar "p") else: XMethod (XMethod (XMethod (InPrefix (XCall (RefRuntime "rt::Path::root"), [[]]), gd.pos.prefix), "at", [[(PlaceNumber wx, "self", gd.pos)]]), "child", [[(XCtor (RefRuntime "rt::Segment::Gen"), [[XVar "g"]])]]), "join", [[XRef (XVar "p")]]
     let generations = Each gens, \|gd| DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XMethod (XMethod (XField XSelf, gd.name), "borrow", [[]]), "as_ref", [[]]), [[(DoLet (PaBind "g"), (XBin OpSub, (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]]), (XIndex 1))), (DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (XMethod (XVar "row"), "document", [[XCx]]), [[(Add (GenPath gd), (XVar "e"))]])]], [[]]
     Append (Append statics, rows), generations
 
@@ -870,8 +872,13 @@ fn Adoption fl:
 PlaceAt: fn Wx, Text, Pos -> Ex
 fn PlaceAt wx, recv, pos:
     let at = [[(PlaceNumber wx, recv, pos)]]
-    if Emits wx, pos: XMethod (if recv == "": XVar "path" else: (if recv == "self": XField XSelf, "path" else: XField (XVar recv), "path")), "at", at
-    else: XMethod (XCall (RefRuntime "rt::Path::root"), [[]]), "at", at
+    let base = if Emits wx, pos: (if recv == "": XVar "path" else: (if recv == "self": XField XSelf, "path" else: XField (XVar recv), "path")) else: XCall (RefRuntime "rt::Path::root"), [[]]
+    XMethod (InPrefix base, pos.prefix), "at", at
+
+# A path under the inlined applications a position stands in (ruling PL): each caller
+# position, then `call()`, the application's own list.
+InPrefix: fn Ex, [Nat] -> Ex
+fn InPrefix base, prefix = Fold prefix, base, \|x, q| XMethod (XMethod x, "at", [[XIndex q]]), "call", [[]]
 
 # Whether a position has no number in the block's build, before the node exists
 # (`PlaceNumber` with no receiver): the block is a row numbered late, whose `base` is
@@ -1014,7 +1021,7 @@ fn PlaceMethods wx:
         let inner = MethDef(name="inner_gap", recv=RecvRef, params=[[]], cx=CxNone, ret=OutCount, body=[[]], tail=(Fold gaps, (XIndex 0), \|x, gd| XBin OpAdd, x, (GapGet gd)), doc="How many positions this row's own generations left unbuilt.")
         Append acc, (Append [[place]], (if (Len gaps) == 0: [[]] else: (if k == 0 and IsSomeNat wx.?based: [[seat, inner]] else: [[seat]])))
 
-let dummyGenDef = GenDef(name="", pos=Pos(scope=0, at=0), at=(XUnit), source=(XUnit), valueTy=OutUnit, select=(XUnit), transparent=False, width=0, moved="", early=False, gappy=False, rebased=False)
+let dummyGenDef = GenDef(name="", pos=pos0, at=(XUnit), source=(XUnit), valueTy=OutUnit, select=(XUnit), under=UnderGeneration, transparent=False, width=0, moved="", early=False, gappy=False, rebased=False)
 
 # An answer's segments with the first, a position, seated (`PlaceMethods`), when the
 # node has gaps in the scope; else the segments as they came.
@@ -1023,7 +1030,12 @@ fn Seated wx, scope, segs = if (Len (Filter wx.gens, \|gd| gd.gappy and gd.pos.s
 
 # The pattern of an answer at a place, `tail` the rest of its segments.
 PosPat: fn Pos, [Pa] -> Pa
-fn PosPat pos, tail = PaSlice (Append [[(PaCtor (RefRuntime "rt::Segment::Pos"), [[PaIndex pos.at]])]], tail)
+fn PosPat pos, tail = PaSlice (Append (Append (PrefixPats pos.prefix), [[(PaCtor (RefRuntime "rt::Segment::Pos"), [[PaIndex pos.at]])]]), tail)
+
+# The segments of a position's prefix (ruling PL): each inlined application's caller
+# position, then its list's start.
+PrefixPats: fn [Nat] -> [Pa]
+fn PrefixPats prefix = Fold prefix, [[]], \|acc, q| Append acc, [[(PaCtor (RefRuntime "rt::Segment::Pos"), [[PaIndex q]]), (PaUnit (RefRuntime "rt::Segment::Call"))]]
 
 # The segments under a place: a `for` row's key, a generation's number, or any.
 let keyTail = [[(PaCtor (RefRuntime "rt::Segment::Key"), [[PaBind "k"]]), PaRest "rest"]]
@@ -1111,12 +1123,36 @@ fn TypedForwardArm b, segs:
 # A transparent generation answers at each of its positions in the block, its row given the
 # whole path (its places' paths are the block's).
 TypedGenArms: fn GenDef, Ex -> [((Pa, [Do]))]
-fn TypedGenArms gd, segs = if IsWideGen gd: [[]] else: if gd.transparent: Each (Range0 gd.width), \|i| TransparentGenArm gd, segs, i else: [[TypedGenArm gd]]
+fn TypedGenArms gd, segs = if IsWideGen gd: [[]] else: if IsOwnPlaceGen gd: [[(OwnPlaceGenArm gd, "deliver")]] else: if gd.transparent: Each (Range0 gd.width), \|i| TransparentGenArm gd, segs, i else: [[TypedGenArm gd]]
+
+# A generation whose rows stand under its own place (ruling PL, claude/paths-as-
+# lists.md): a building arm's (`p.0`) or a widget's clause, applied blueprint or shared
+# row (`p/0`).
+IsOwnPlaceGen: fn GenDef -> Bool
+fn IsOwnPlaceGen gd = gd.under == UnderArm or gd.under == UnderCall
+
+# The segments of such a generation's rows under its place: the widget's list starting,
+# for a widget's; then the rest, the row's own.
+OwnPlaceTail: fn GenDef -> [Pa]
+fn OwnPlaceTail gd = if gd.under == UnderCall: [[(PaUnit (RefRuntime "rt::Segment::Call")), PaRest "rest"]] else: [[PaRest "rest"]]
+
+# The path of such a generation's rows from the node's root, for its document.
+OwnPlacePath: fn Wx, GenDef -> Ex
+fn OwnPlacePath wx, gd:
+    let at = XMethod (InPrefix (XCall (RefRuntime "rt::Path::root"), [[]]), gd.pos.prefix), "at", [[(PlaceNumber wx, "self", gd.pos)]]
+    if gd.under == UnderCall: XMethod at, "call", [[]] else: at
+
+# An answer under such a generation's place, handed to its current row by `method` with
+# the row's own segments.
+OwnPlaceGenArm: fn GenDef, Text -> ((Pa, [Do]))
+fn OwnPlaceGenArm gd, method:
+    let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
+    (((PosPat gd.pos, (OwnPlaceTail gd)), [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[DoExpr (XTry (XMethod (XVar "row"), method, [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]]))
 
 TransparentGenArm: fn GenDef, Ex, Nat -> ((Pa, [Do]))
 fn TransparentGenArm gd, segs, i:
     let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
-    (((PosPat (Pos(scope=gd.pos.scope, at=gd.pos.at + i)), [[PaRest ""]]), [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[DoExpr (XTry (XMethod (XVar "row"), "deliver", [[segs, (XVar "v"), XCx]]))]], [[]])]]))
+    (((PosPat (Pos(scope=gd.pos.scope, prefix=gd.pos.prefix, at=gd.pos.at + i)), [[PaRest ""]]), [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor (RefRuntime "std::Some"), [[PaBind "row"]]), (XVar "row"), [[DoExpr (XTry (XMethod (XVar "row"), "deliver", [[segs, (XVar "v"), XCx]]))]], [[]])]]))
 
 TypedGenArm: fn GenDef -> ((Pa, [Do]))
 fn TypedGenArm gd:

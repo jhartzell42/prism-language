@@ -108,7 +108,9 @@ fn NamedWidgetLine wx, benv, menv, e, ?bound:
         ? (BnWidget x, ignore, ignore, ignore): LetBlueprintLine wx, benv, menv, x, e, ?bound
         otherwise: match ?param:
             ? (BnWidget x, cbenv, cmenv, clx): ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound
-            ? (BnLocalWidget b): LocalWidgetLine wx, benv, menv, b, e
+            # (a blueprint `let`, a widget parameter's argument and a top-level blueprint
+            # `let` lower the expression they name, whose own line starts its list)
+            ? (BnLocalWidget b): InCall wx, \|w| LocalWidgetLine w, benv, menv, b, e
             # a function of the block applied (`$more <- @Row $count`): its body lowered
             # here (`LocalFunctionLine`)
             ? (BnLocalFn cs) if (Len args) > 0: LocalFunctionLine wx, benv, menv, benv, menv, (LocalFnLx lx, callee.span), cs, callee, e, args
@@ -167,7 +169,7 @@ fn AppliedFunctionLine wx, menv, clx, cmenv, function, e, args:
     let made = match ValueTy held:
         OutJobFn ignore, ignore2: XCall (HelperRef "run_to_end"), [[(StartCall held, (StartArgs wx.lx, menv, held, args))]]
         otherwise: XApply (Ref held), (Each args, \|a| ValueArgument wx.lx, menv, a.value)
-    AppliedBlueprintLine wx, e, (XRef made)
+    AppliedBlueprintLine wx, e, (XRef made), UnderCall
 
 # A widget parameter applied (`@child` as a statement): its argument lowered here, in its
 # caller's environments and context, so its places take this node's next positions
@@ -381,7 +383,7 @@ fn ClausesFunctionLine wx, benv, menv, cbenv, cmenv, clx, cs, ptys, e, args:
     let patss = Each cs, \|c| ClausePatterns c, ptys
     let bodies = Each cs, \|c| ClauseBlock c
     let guards = Each cs, \|c| ?ClauseGuard c
-    BuildingChoicesLine wx1, envs, lxi, scruts, patss, ptys, guards, bodies, (ChoiceOutTy lx, e), (ResultLayer (TypeAt lx, e.span)), (LineOutFull lx, e), [[]]
+    BuildingChoicesLine wx1, envs, lxi, scruts, patss, ptys, guards, bodies, (ChoiceOutTy lx, e), (ResultLayer (TypeAt lx, e.span)), (LineOutFull lx, e), [[]], UnderCall
 
 # Whether a clause's pattern matches a parameter's argument: a plain parameter's. A
 # dynamic, an event and a blueprint are no values a pattern tests.
@@ -432,7 +434,7 @@ AppliedPath: fn Wx, Pos -> Ex
 fn AppliedPath wx, pos = if Emits wx, pos: XClone (XVar "path") else: XCall (RefRuntime "rt::Path::root"), [[]]
 
 ValueBlueprintLine: unbounded fn Wx, Env, Expr -> ((Wx, Wres))
-fn ValueBlueprintLine wx, menv, e = AppliedBlueprintLine wx, e, (Ref (ValueOf wx.lx, menv, e))
+fn ValueBlueprintLine wx, menv, e = AppliedBlueprintLine wx, e, (Ref (ValueOf wx.lx, menv, e)), UnderCall
 
 # A `Blueprint` (`blueprint`, a reference to one as the node's methods read it) applied
 # at the line `e`. A line that gives an event back (`!go <- @Element e`: the element
@@ -451,15 +453,18 @@ fn ValueBlueprintLine wx, menv, e = AppliedBlueprintLine wx, e, (Ref (ValueOf wx
 # build, each later one a new value in the tick it comes) and keeps it as a
 # generation's dynamic result is kept (`KeptDyn`). A line that binds a bundle takes it
 # as one value (`AppliedBundleLine`).
-AppliedBlueprintLine: unbounded fn Wx, Expr, Ex -> ((Wx, Wres))
-fn AppliedBlueprintLine wx, e, blueprint:
+# `under`: a widget's blueprint applied stands under its place and a list of its own
+# (ruling PL, `UnderCall`); an element value applied is a place of the caller's list
+# (`UnderCaller`).
+AppliedBlueprintLine: unbounded fn Wx, Expr, Ex, GenUnder -> ((Wx, Wres))
+fn AppliedBlueprintLine wx, e, blueprint, under:
     let lx = wx.lx
     let pos = wx.pos
     let outTy = OutTyOf lx, (OutOf (TypeAt lx, e.span))
     let heard = (ResultLayer (TypeAt lx, e.span)) == LyEv
     let answered = outTy != OutUnit and ((ResultLayer (TypeAt lx, e.span)) == LyPlain or (ResultLayer (TypeAt lx, e.span)) == LyBlueprint) and not (IsBundle (LineOutFull lx, e))
     let dynamic = (ResultLayer (TypeAt lx, e.span)) == LyDyn and not (IsBundle (LineOutFull lx, e))
-    if IsBundle (LineOutFull lx, e): AppliedBundleLine wx, e, blueprint
+    if IsBundle (LineOutFull lx, e): AppliedBundleLine wx, e, blueprint, under
     else: if outTy != OutUnit and not heard and not answered and not dynamic:
         let wx2 = update wx:
             &_.build <= Push &_.build, (InternalBugDo "a blueprint value applied whose result is no event, no dynamic, no bundle and no plain value (`{SrcText lx, lx.file, e.span}`)")
@@ -484,10 +489,10 @@ fn AppliedBlueprintLine wx, e, blueprint:
         # (`KeptDyn`), and the node follows its update event: each firing marks what
         # reads it (`{name}_result_moved`)
         let keeps = if dynamic: [[(DoExpr (XMethod (XField XSelf, follow), "follow_above", [[(XRef (XField (XVar "given"), "updates")), (XRef (XClone XSelf)), (XPath (RefChild (SiteRef lx, wx.node), "{name}_result_moved")), (XPath (RefChild (SiteRef lx, wx.node), "{name}_result_moved_above"))]])), (DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XVar "given")]]))]] else: if answered: [[(DoAssign (XDeref (XMethod (XField XSelf, res), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(FirstOutputTaken lx, outTy, "answered")]]))]] else: [[]]
-        let select = WithRowBase wx, "self", pos, (XBlock (Append (Append (Append hearer, [[(DoLet made, applied)]]), keeps), (GapSet name, (? gap))), (XVar "row"))
+        let select = UnderRows wx, "self", pos, under, (XBlock (Append (Append (Append hearer, [[(DoLet made, applied)]]), keeps), [[]]), (XVar "row"))
         let wx3 = update wx2:
-            &_.pos <= Pos(scope=pos.scope, at=pos.at + wideGeneration)
-            &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=True, width=wideGeneration, moved=(Or (?HostedRows wx), ""), early=False, gappy=True, rebased=True)
+            &_.pos <= Pos(scope=pos.scope, prefix=pos.prefix, at=pos.at + 1)
+            &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, under=under, transparent=True, width=1, moved=(Or (?HostedRows wx), ""), early=False, gappy=False, rebased=False)
             &_.genHolds <= Push &_.genHolds, ((name, [[]]))
             &_.fallible <= True
             &_.getters <= if heard: Push (Push &_.getters, (GenUp name, (GnOf wx2, upId).name, (GnOf wx2, upId).ty)), (GenUpAbove name, (GnOf wx2, upId).name) else: &_.getters
@@ -563,8 +568,8 @@ fn FirstOutputTaken lx, t, answer = if not (Podable t): XTry (XCallAt (HelperRef
 # kept value; a dynamic part is kept and followed as a generation's dynamic result is
 # (`KeptDyn`, `prism_rtl::Follow`); an event part is heard (the prelude's `hear_part`)
 # and fires an event of the node through `{generation}_part{place}_up`.
-AppliedBundleLine: unbounded fn Wx, Expr, Ex -> ((Wx, Wres))
-fn AppliedBundleLine wx, e, blueprint:
+AppliedBundleLine: unbounded fn Wx, Expr, Ex, GenUnder -> ((Wx, Wres))
+fn AppliedBundleLine wx, e, blueprint, under:
     let lx = wx.lx
     let pos = wx.pos
     let full = LineOutFull lx, e
@@ -580,10 +585,10 @@ fn AppliedBundleLine wx, e, blueprint:
     let gap = XBin OpSub, (XIndex wideGeneration), (XVar "built")
     let keeps = DoAssign (XDeref (XMethod (XField XSelf, kept), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XVar "whole")]])
     let made = PaTuple [[(PaBind "row"), (PaBind "built"), (PaBind "whole")]]
-    let select = WithRowBase wx, "self", pos, (XBlock (Append (Append (Append [[(DoLet (PaBind "heard_by"), (XWeak XSelf)), (DoLet made, applied)]], wiring), [[keeps]]), (GapSet name, (? gap))), (XVar "row"))
+    let select = UnderRows wx, "self", pos, under, (XBlock (Append (Append (Append [[(DoLet (PaBind "heard_by"), (XWeak XSelf)), (DoLet made, applied)]], wiring), [[keeps]]), [[]]), (XVar "row"))
     let wx3 = update wx2:
-        &_.pos <= Pos(scope=pos.scope, at=pos.at + wideGeneration)
-        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=True, width=wideGeneration, moved=(Or (?HostedRows wx), ""), early=False, gappy=True, rebased=True)
+        &_.pos <= Pos(scope=pos.scope, prefix=pos.prefix, at=pos.at + 1)
+        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, under=under, transparent=True, width=1, moved=(Or (?HostedRows wx), ""), early=False, gappy=False, rebased=False)
         &_.genHolds <= Push &_.genHolds, ((name, [[]]))
         &_.fallible <= True
         &_.taken <= Push &_.taken, kept
@@ -767,10 +772,25 @@ InlineBlock: unbounded fn Wx, Env, Env, Block, Lx -> ((Wx, Wres))
 fn InlineBlock wx, benv, menv, b, lx:
     let inner = update wx:
         &_.result <= WrUnit
+        &_.pos <= if wx.childRoot: wx.pos else: InCallPos wx.pos
+        &_.childRoot <= False
     let done = BlockInto inner, benv, menv, b
     let back = update done:
         &_.result <= wx.result
+        &_.pos <= if wx.childRoot: done.pos else: AfterCallPos wx.pos
     ((back, done.result))
+
+# A widget application lowered into the caller's node (ruling PL, claude/paths-as-
+# lists.md): one position of the caller's, and its places in a list of their own under it.
+InCall: unbounded fn Wx, (fn Wx -> ((Wx, Wres))) -> ((Wx, Wres))
+fn InCall wx, Lower:
+    let inner = update wx:
+        &_.pos <= if wx.childRoot: wx.pos else: InCallPos wx.pos
+        &_.childRoot <= False
+    let ((done, res)) = Lower inner
+    let back = update done:
+        &_.pos <= if wx.childRoot: done.pos else: AfterCallPos wx.pos
+    ((back, res))
 
 WidgetCall: unbounded fn Wx, Env, Env, Expr, ?Bn, Text, [Arg], ?Nat -> ((Wx, Wres))
 fn WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target:
@@ -883,10 +903,15 @@ fn HostLine wx, benv, menv, form, args, ?bound:
                 &_.builders <= Push &_.builders, ForDef(name=rowsName, pos=pos, at=(PlaceAt wx, "self", pos), keyTy=OutPath, valueTy=entryTy, rowNode="prism_rtl::HostRow::<crate::Elem, crate::Output>", keyed=True, source="{docGetter}_direct", parent=(XClone (XField XSelf, hf)), passed=[[]], moved=(Or (?HostedRows wx), ""), replaced=[[]])
                 &_.buildHolds <= AddRead &_.buildHolds, (OwnRead "{docGetter}_now")
                 &_.fallible <= True
+            # (the child's own application is the guest's root: its places are the child's
+            # list, `Wx.childRoot`)
             let inner = update wx2:
                 &_.pos <= ScopePos k
                 &_.result <= WrUnit
-            let ((done, res)) = BuildLine inner, benv, menv, child.value, nil
+                &_.childRoot <= True
+            let ((done0, res)) = BuildLine inner, benv, menv, child.value, nil
+            let done = update done0:
+                &_.childRoot <= False
             # the outer moves only when a place of the child came or went: its builders and
             # generations tell the host so (`host_k_moved`), and no write behind a place's
             # level marks it, since each place's entry is its own
@@ -1924,7 +1949,7 @@ fn ElementCallLine wx, benv, menv, args, e, ?bound:
         # (`prism_rtl::element_blueprint`: a live element forwarded, a description
         # placed), applied at the line as a blueprint value is; its answers are the
         # line's event
-        ? a: AppliedBlueprintLine wx, e, (XRef (XCall (RefRuntime "prism_rtl::element_blueprint::<crate::Elem, crate::Output>"), [[Ref (ValueOf lx, menv, a.value)]]))
+        ? a: AppliedBlueprintLine wx, e, (XRef (XCall (RefRuntime "prism_rtl::element_blueprint::<crate::Elem, crate::Output>"), [[Ref (ValueOf lx, menv, a.value)]])), UnderCaller
         nil:
             let wx2 = update wx:
                 &_.build <= Push &_.build, (InternalBugDo "`@Element` without its element")
@@ -2197,10 +2222,13 @@ fn InlineWidgetBody wx, benv, menv, qk, v0, args, e:
                         nil: lx.inlined
                     &_.subst <= Fold (Keys (Or ?params, {{}})), &_.subst, \|m, q| Insert m, q, (Or (Or ?params, {{}})[q], TyErr)
                     &_.recursing <= AddText lx.recursing, qk
+                # (its places in a list of its own under the caller's position, ruling PL)
                 let inner = update wx1:
                     &_.lx <= lxi
                     &_.inlining <= Push &_.inlining, qk
                     &_.result <= WrUnit
+                    &_.pos <= if wx.childRoot: wx.pos else: InCallPos wx.pos
+                    &_.childRoot <= False
                 if (Len unmatched) > 0:
                     let wx2 = update wx:
                         &_.build <= Push &_.build, (RefusalDo "the generic widget {BareName qk} at a call whose types its parameters' do not match")
@@ -2211,6 +2239,7 @@ fn InlineWidgetBody wx, benv, menv, qk, v0, args, e:
                         &_.lx <= lx
                         &_.inlining <= wx.inlining
                         &_.result <= wx.result
+                        &_.pos <= if wx.childRoot: done.pos else: AfterCallPos wx.pos
                     ((back, done.result))
 
 # A widget's or a function's type parameters at a call (`v` the callee): each parameter's

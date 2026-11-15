@@ -857,7 +857,7 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
                 # its binder: the line's pattern over the kept result; of a bundle, the
                 # patterns of its plain parts over their reads
                 let ((scrut, pats, sty)) = if not bundled: ((kept, [[? p]], (OutOf (TypeAt lx, e.span)))) else: LowerBinder lx, p, e, partReads
-                let ((wx3, res)) = BuildingChoiceLine wx2s, rowEnv, scrut, pats, sty, [[nil]], [[rest]], outTy, layer, outFull, (Each ups, \|((ignore, mine, blocks))| ((mine, blocks)))
+                let ((wx3, res)) = BuildingChoiceLine wx2s, rowEnv, scrut, pats, sty, [[nil]], [[rest]], outTy, layer, outFull, (Each ups, \|((ignore, mine, blocks))| ((mine, blocks))), UnderCaller
                 SetResult wx3, res
         otherwise: update wx1:
             &_.build <= Push &_.build, (InternalBugDo "a block split at a line that binds nothing")
@@ -3582,7 +3582,7 @@ fn DeferredLine wx, menv, e, named:
     let withGivers = named and fromSplit and wx.giving == TakenAbove and (not (HasNat wx.lateHosts, wx.pos.scope)) and not wx.lateGens
     let unnumbered = if withGivers: (update wx:
         &_.giving <= GivenUnnumbered) else: wx
-    let ((wx2b, res)) = BuildingChoiceLine unnumbered, menv, (XUnit), [[nil]], (TyCon "unit", [[]]), [[nil]], [[body]], outTy, layer, (LineOutFull lx, e), [[]]
+    let ((wx2b, res)) = BuildingChoiceLine unnumbered, menv, (XUnit), [[nil]], (TyCon "unit", [[]]), [[nil]], [[body]], outTy, layer, (LineOutFull lx, e), [[]], UnderCaller
     let wx2 = update wx2b:
         &_.giving <= wx.giving
     match wx2.gens[Dec (Len wx2.gens)]:
