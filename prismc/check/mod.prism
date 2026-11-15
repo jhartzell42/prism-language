@@ -225,7 +225,7 @@ fn RigidHead im = SubstQ Inst(tys=(Fold im.qs, {{}}, \|m, q| Insert m, q, (TyRig
 
 # What a derived impl's methods use, read off its type: the impl's trait at the type of
 # every field of every constructor (`ConstraintUses`), over the impl's type parameters.
-# `derive ^Show` on `type Nest a = choice: Flat a, Deep (Nest [a])` needs `^Show` at
+# `derive ^Debug` on `type Nest a = choice: Flat a, Deep (Nest [a])` needs `^Debug` at
 # `Nest [a]`, the same impl at `[a]` for `a`.
 DerivedUses: unbounded fn G, ImplInfo, Text -> [GenericUse]
 fn DerivedUses g, im, user = match im.head:

@@ -53,7 +53,7 @@ match self {
 }
 </rust>
 
-# A type with its own `^Show` crosses as its text and its structure (claude/backend.md,
+# A type with its own `^Debug` crosses as its text and its structure (claude/backend.md,
 # "Printing"): a key prints `0/[e2]/0` and still matches structurally.
 ShownPod: fn Text -> Text
 fn ShownPod structure = inline_text <rust>

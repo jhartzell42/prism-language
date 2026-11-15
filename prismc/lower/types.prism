@@ -327,10 +327,10 @@ fn LayerOf t = match t:
     TyAt ignore, ignore: LyBlueprint
     otherwise: LyPlain
 
-# An existential bounded by `^Show` alone is a `dyn Show`; any other is a `Packed`, the
+# An existential bounded by `^Debug` alone is a `dyn Show`; any other is a `Packed`, the
 # value and its bounds' impls (runtime existential.rs, print.hpp).
 IsShowOnly: fn [Text] -> Bool
-fn IsShowOnly bounds = (Len bounds) > 0 and Fold bounds, True, \|ok, b| ok and (BareName b) == "Show"
+fn IsShowOnly bounds = (Len bounds) > 0 and Fold bounds, True, \|ok, b| ok and (BareName b) == "Debug"
 
 # Whether a constructor's fields hold their type's own values by value (directly, in an
 # optional or a tuple), so they go behind an `Rc` (claude/backend.md: recursive payloads

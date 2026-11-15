@@ -168,7 +168,7 @@ fn Signature f, vis:
 TraitMethod: unbounded fn FnDef -> Text
 fn TraitMethod f = if f.public: Fn "", (Signature f, ""), (BodyLines f.body) else: "{Signature f, ""};"
 
-# An impl: a program's trait's methods inside it; `^Show`, `^Eq` and `^Ord` as Rust's
+# An impl: a program's trait's methods inside it; `^Debug`, `^Eq` and `^Ord` as Rust's
 # traits over the method, a function of its own, generic over the impl's type parameters
 # as well as its own (which live as long as the program, as a function's do).
 RustImpl: unbounded fn ImplDef -> Text
@@ -177,10 +177,15 @@ fn RustImpl i:
     let Own = \|f| RustFn (update f:
         &_.generics <= Append i.generics, &_.generics)
     match i.cls:
-        "Prelude.Show":
+        "Prelude.Debug":
             let fns = Join (Each i.methods, \|f| Own f), "\n"
             let shown = Or (Each i.methods, \|f| f.name)[0], "show"
             "{fns}\n{Impl (StaticGenerics i.generics), "crate::prelude::Show", head, "fn show(&self, p: &mut crate::prelude::Printer)", "p.raw(&{shown}(self).to_string());"}"
+        # text for people (ruling DD): the runtime's `Display` over the method
+        "Prelude.Display":
+            let fns = Join (Each i.methods, \|f| Own f), "\n"
+            let shown = Or (Each i.methods, \|f| f.name)[0], "display"
+            "{fns}\n{Impl (StaticGenerics i.generics), "crate::prelude::Display", head, "fn display(&self) -> ::std::string::String", "{shown}(self).to_string()"}"
         "Prelude.Eq":
             let fns = Join (Each i.methods, \|f| Own f), "\n"
             let eq = Fold i.methods, "", \|acc, f| if (not (HasPrefix f.name, "ne")) and acc == "": f.name else: acc
@@ -358,7 +363,7 @@ fn CasePattern t, c = match t.shape:
 MatchSelfOf: fn TyDef, Text -> Text
 fn MatchSelfOf t, arms = if (Len t.cases) == 0: "match *self \{\}" else: MatchSelf arms
 
-# `derive ^Show`: one printer call per constructor; the printer decides the parentheses.
+# `derive ^Debug`: one printer call per constructor; the printer decides the parentheses.
 ShowImpl: unbounded fn TyDef, Text -> Text
 fn ShowImpl t, head:
     let body = match t.shape:
@@ -396,7 +401,7 @@ fn ToPodImpl t, head:
             "crate::prelude::Pod::record(\"{t.prism}\", vec![{Join (Each c.fields, \|((f, ignore))| "(\"{PrismFieldOf c, f}\", self.{f}.to_pod())"), ", "}])"
         otherwise: MatchSelfOf t, (Join (Each (Range0 (Len t.cases)), \|i| ChoicePodArm t, i), "\n")
     let shown = if t.show == ShownOwn: ShownPod body else: body
-    # its own `^Show` may hold under its `where` bounds alone, which the crossing needs
+    # its own `^Debug` may hold under its `where` bounds alone, which the crossing needs
     let bound = if t.show == ShownOwn and (Len t.params) > 0: [["{head}: crate::prelude::Show"]] else: [[]]
     Impl (BoundedKeyed t, "crate::prelude::ToPod + ::std::clone::Clone"), "crate::prelude::ToPod", (ProjHead t, head, "crate::prelude::ToPod", bound), "fn to_pod(&self) -> crate::prelude::Pod", shown
 

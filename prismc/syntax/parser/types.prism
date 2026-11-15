@@ -246,7 +246,7 @@ fn TypeAtomBody p, start = match Kind p:
         ((Type(kind=(TArray elem, doubled), span=(To start, (Prev p2))), p2))
     otherwise: ((noType, (ErrorHere p, "expected a type")))
 
-# `where a: ^Ord, b: ^Show, ^Eq`: after a comma, a trait continues the same variable's list
+# `where a: ^Ord, b: ^Debug, ^Eq`: after a comma, a trait continues the same variable's list
 # and `name:` begins the next.
 ParseBounds: unbounded fn Ps -> (([Bound], Ps))
 fn ParseBounds p0 = update (([[]], p0)):

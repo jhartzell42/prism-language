@@ -46,11 +46,12 @@ use Lower.Node.Switch.*
 # ---------------------------------------------------------------------------------------
 
 # A trait bound as Rust's: `^Eq` is `Eq`, `^Ord` `Ord` (a `Float` is both, by its bits:
-# `prism_rtl::Float`), `^Show` the printer's, `^Num` the prelude's.
+# `prism_rtl::Float`), `^Debug` the printer's, `^Num` the prelude's.
 BoundOf: fn Lx, Text -> [Text]
 fn BoundOf lx, "Prelude.Eq" = [["std::Eq"]]
 fn BoundOf lx, "Prelude.Ord" = [["std::Ord"]]
-fn BoundOf lx, "Prelude.Show" = [["rt::Show"]]
+fn BoundOf lx, "Prelude.Debug" = [["rt::Show"]]
+fn BoundOf lx, "Prelude.Display" = [["rt::Display"]]
 fn BoundOf lx, "Prelude.Num" = [["rt::Num"]]
 fn BoundOf lx, "Prelude.Pod" = [["rt::ToPod", "rt::FromPod"]]
 fn BoundOf lx, cls = match lx.g.traits[cls]:
@@ -347,11 +348,11 @@ fn LetGenerics lx, qk = match lx.g.vals[qk]:
 
 # ---------------------------------------------------------------------------------------
 # Traits and impls (claude/backend.md: a trait is a Rust trait, `derive` impls; a program's
-# own `impl ^Show` prints by `p.raw`)
+# own `impl ^Debug` prints by `p.raw`)
 # ---------------------------------------------------------------------------------------
 
 HasOwnShow: fn Lx, Text -> Bool
-fn HasOwnShow lx, tn = Fold (Or lx.g.impls["Prelude.Show"], [[]]), False, \|f, im| f or ((not im.derived) and (HeadName im.head) == tn)
+fn HasOwnShow lx, tn = Fold (Or lx.g.impls["Prelude.Debug"], [[]]), False, \|f, im| f or ((not im.derived) and (HeadName im.head) == tn)
 
 HeadName: fn Ty -> Text
 fn HeadName (TyCon n, ignore) = n

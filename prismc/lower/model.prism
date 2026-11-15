@@ -384,8 +384,8 @@ type TyShape = choice:
     ShapeUnit
 derive ^Eq, ^Show
 
-# Where a type's `Show` comes from: the program's own `impl ^Show` (it then crosses as
-# `Pod::Shown`), a `derive ^Show`, or nowhere.
+# Where a type's `Show` comes from: the program's own `impl ^Debug` (it then crosses as
+# `Pod::Shown`), a `derive ^Debug`, or nowhere.
 type Shown = choice:
     ShownOwn
     ShownDerived
@@ -653,7 +653,7 @@ type TraitDef = record:
     doc: Text
 derive ^Eq, ^Show
 
-# An `impl`: of a program's trait, its methods; of `^Show`, `^Eq` or `^Ord`, the Rust
+# An `impl`: of a program's trait, its methods; of `^Debug`, `^Eq` or `^Ord`, the Rust
 # trait the emitted code's operators and printer read, over a function of its own.
 type ImplDef = record:
     cls: Text

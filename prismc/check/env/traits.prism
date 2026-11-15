@@ -40,7 +40,7 @@ fn DerivedImpls g = Fold (Keys g.types), g, \|gg, k| match gg.types[k]:
         nil: g2
     nil: gg
 
-# `derive ^Eq` (or `^Ord`, `^Show`) on a type a field of which holds a dynamic or an event,
+# `derive ^Eq` (or `^Ord`, `^Debug`) on a type a field of which holds a dynamic or an event,
 # below any layer of its own (a box's children, `$(Path ==> $Elem)`): refused, since a
 # dynamic has no `^Eq` (Type System ch. 2) and no trait has an impl at a sigiled type (T6),
 # so no program compares or shows one (doubt EQ).
@@ -54,7 +54,7 @@ fn DerivedDynamics g, st = Fold (Keys g.types), st, \|s, k| match g.types[k]:
     nil: s
 
 # `derive-unknown`: a `derive` names a trait a derive writes, `^Eq`, `^Ord`, `^Debug` or
-# `^Pod`; one no module declares (`^Show`, gone as a name by ruling DD) or one a derive
+# `^Pod`; one no module declares (`^Debug`, gone as a name by ruling DD) or one a derive
 # does not write (`^Display`, text for people, which a program writes itself) is refused
 # at the type's line, never dropped.
 DerivesKnown: fn G, St -> St
@@ -239,10 +239,10 @@ fn TraitCycles g, st = Fold (Keys g.traits), st, \|s, name|
         nil: s
         ? ring: WithFile (ErrFix (WithFile s, ti.file), "trait-cycle", ti.span, "the trait `^{BareName name}` asks for itself: its `where` names a ring of traits, {Join (Each ring, \|r| "`^{BareName r}`"), ", "}", "drop the `where` of one trait of the ring"), s.file
 
-# `tag-variable`: a tag's type variable is bounded by `^Show` on the tag's line (Semantics
-# ch. 8's table, "tag variables: appear in the output; bounded by `^Show` on the line";
+# `tag-variable`: a tag's type variable is bounded by `^Debug` on the tag's line (Semantics
+# ch. 8's table, "tag variables: appear in the output; bounded by `^Debug` on the line";
 # "Every field and every output prints"), by the bound itself or by one whose `where`s
-# reach `^Show`. Read once the traits are, so a bound's `where`s are known. The variables
+# reach `^Debug`. Read once the traits are, so a bound's `where`s are known. The variables
 # are the output's.
 TagVariablesPrint: unbounded fn G, St -> St
 fn TagVariablesPrint g, st = Fold (Keys g.tags), st, \|s, name|
@@ -259,9 +259,9 @@ fn TagVariablesPrint g, st = Fold (Keys g.tags), st, \|s, name|
 
 # A tag's field prints (Semantics ch. 8's table, "tag fields: the outermost mark is the
 # field's kind; the type beneath prints"; "Every field and every output prints"): the type
-# beneath the field's marks has `^Show`. A field that holds elements, or dynamics of
+# beneath the field's marks has `^Debug`. A field that holds elements, or dynamics of
 # elements, prints through its level, each child at its own place in the document, so no
-# `^Show` is asked of the element type (the books' own `$children: (Path ==> $Elem)`,
+# `^Debug` is asked of the element type (the books' own `$children: (Path ==> $Elem)`,
 # whose `Elem` has none by Type System ch. 2); so does a value of a row kind (`[Draw]`),
 # by its tags. A variable of the tag is `tag-variable`'s.
 # Read once the derived impls are known.
@@ -364,7 +364,7 @@ fn WithFile s, f = update s:
     &_.file <= f
 
 # The traits the primitives and built-in formers have (Type System ch. 3, "The three built
-# in"): every primitive is `^Eq`, `^Ord`, `^Show`; the numbers are `^Num`; tuples, arrays,
+# in"): every primitive is `^Eq`, `^Ord`, `^Debug`; the numbers are `^Num`; tuples, arrays,
 # maps, optionals and faults have what their parts have; elements compare and print.
 BuiltinHas: fn Text, Text -> Bool
 fn BuiltinHas cls, con:
@@ -655,7 +655,7 @@ fn ?PackedRefusal g, st, method = match g.vals[method]:
                             nil: if Fold params, False, \|seen, p| seen or p == (TyQ param): nil else: ? noValue
             otherwise: ? noValue
 
-# An element's `^Eq` and `^Show` are built in, unless its row's tags hold dynamics (doubt EQ).
+# An element's `^Eq` and `^Debug` are built in, unless its row's tags hold dynamics (doubt EQ).
 ElemTrait: unbounded fn G, St, St, (fn St -> St), Want, Ty, Text, Rw -> (([Want], St))
 fn ElemTrait g, st, s0, Restore, w, t, bare, rw:
     if not (bare == "Eq" or bare == "Debug"): (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
@@ -721,7 +721,7 @@ fn GivenChoice (TyRigid v) = "given:{v}"
 fn GivenChoice ignore = "any"
 
 # The end of a definition (doubt LD): a variable whose constraints include `^Num` and lie
-# among `^Num`, `^Eq`, `^Ord`, `^Show` becomes `Int`; anything else left is `ambiguous`.
+# among `^Num`, `^Eq`, `^Ord`, `^Debug` becomes `Int`; anything else left is `ambiguous`.
 DefaultWants: unbounded fn G, St, [((Text, Text))] -> St
 fn DefaultWants g, st, givens:
     let flexVars = Fold st.wants, [[]], \|acc, w| match Walk st, w.ty:

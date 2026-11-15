@@ -95,7 +95,7 @@ fn LiteralValue lx, env, l, span, neg:
             ? t: VlOwned (XReplacement r.pattern, t, r.flags), OutReplacement
 
 # A text, interpolated: `Text::from(format!(..))`, a `Text`, a `Char` or a number placed
-# as it is and any other value through `^Show` (Type System ch. 4; `ShownPart`).
+# as it is and any other value through `^Debug` (Type System ch. 4; `ShownPart`).
 TextValue: unbounded fn Lx, Env, [TextSeg] -> Vl
 fn TextValue lx, env, segs:
     let plain = Fold segs, True, \|ok, s| ok and IsPlainSeg s
@@ -116,9 +116,9 @@ fn SegEx lx, env, (SegPlaceholder e):
     let v = ValueOf lx, env, e
     ShownPart v
 
-# A placeholder's text (Jimmy: interpolation is display, `^Show` is debug): a `Text`, a
-# `Char` or a number as it displays, itself; anything else, which has no display of its
-# own, as it shows.
+# A placeholder's text (ruling DD: a placeholder wants `^Display`): a `Text`, a `Char` or
+# a number placed as itself; anything else through the runtime's `Display`, a program's
+# `impl ^Display` or a type variable's bound.
 ShownPart: fn Vl -> Ex
 fn ShownPart v = match ValueTy v:
     OutText: Ref v
@@ -126,7 +126,7 @@ fn ShownPart v = match ValueTy v:
     OutNat: Ref v
     OutInt: Ref v
     OutU8: Ref v
-    otherwise: XCall (HelperRef "show"), [[Ref v]]
+    otherwise: XCall (HelperRef "displayed"), [[Ref v]]
 
 # ---------------------------------------------------------------------------------------
 # Plain expressions (claude/backend.md, "Functions and lifting": a plain function takes
@@ -874,7 +874,7 @@ fn IsValueOfName x = match x.kind:
     otherwise: False
 
 # `any x` (Type System ch. 5, "Existentials are dictionaries"): the value with the impls of
-# the existential's bounds at its type, taken while its type is known; an `any ^Show` is
+# the existential's bounds at its type, taken while its type is known; an `any ^Debug` is
 # a `dyn Show`. A trait of the prelude is the runtime's packing's own, spelled from its
 # name (`?PreludeTrait`: `with_show`, `with_eq`, `with_ord`, `with_num`, `with_pod`); a
 # program's trait gives its dictionary at the value's type (`PackedDef`), and so does
@@ -2981,7 +2981,10 @@ fn PreludeMethod lx, cls, m, vals, span, t:
     let a = Or vals[0], (VlOwned (XUnit), OutUnit)
     let b = Or vals[1], (VlOwned (XUnit), OutUnit)
     match m:
-        "Show": VlOwned (XCall (HelperRef "show_text"), [[Ref a]]), OutText
+        "Debug": VlOwned (XCall (HelperRef "show_text"), [[Ref a]]), OutText
+        # text for people (ruling DD): the runtime's `Display`, which a program's
+        # `impl ^Display` is too
+        "Display": VlOwned (XCall (HelperRef "display_text"), [[Ref a]]), OutText
         "Compare": VlOwned (XCall (HelperRef "compare"), [[Ref a, Ref b]]), t
         "Children": VlOwned (XCall (HelperRef "children"), [[Ref a]]), t
         otherwise: OpValue lx, m, a, b, span, t
