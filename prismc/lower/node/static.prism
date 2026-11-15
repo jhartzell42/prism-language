@@ -220,7 +220,7 @@ fn ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound:
         # whole, its given arguments read where they were written and bound by their
         # places, the line's arguments after them (`PartialWidgetLine`)
         ECall c, supplied, ignore, ignore2: match ?PartialWidget clx, c, supplied, args:
-            ? qk: PartialWidgetLine wx, benv, menv, cmenv, clx, qk, supplied, e, args, ?bound
+            ? qk: PartialWidgetLine wx, benv, menv, cbenv, cmenv, clx, qk, supplied, e, args, ?bound
             nil: AppliedFunctionLine wx, menv, clx, cmenv, x, e, args
         # any other function value (`@Use (Chosen "shows")`, a call's result; a field): the
         # value, read where the argument stands, applied to the line's arguments gives
@@ -255,13 +255,17 @@ fn ?PartialWidget clx, c, supplied, args = match (Ungrouped c).kind:
 # A partial application applied at a line: the given arguments' values, read in the
 # caller's environment where they were written, bound by their places in the line's, so
 # the call reads them there as it reads the line's own arguments after them.
-PartialWidgetLine: unbounded fn Wx, Env, Env, Env, Lx, Text, [Arg], Expr, [Arg], ?Bn -> ((Wx, Wres))
-fn PartialWidgetLine wx, benv, menv, cmenv, clx, qk, supplied, e, args, ?bound:
+PartialWidgetLine: unbounded fn Wx, Env, Env, Env, Env, Lx, Text, [Arg], Expr, [Arg], ?Bn -> ((Wx, Wres))
+fn PartialWidgetLine wx, benv, menv, cbenv, cmenv, clx, qk, supplied, e, args, ?bound:
+    # (in both environments: the build reads a parameter in the caller's build
+    # environment, `@OnDisk path` given its widget's plain `path`, the methods in its
+    # methods')
     let menv2 = Fold supplied, menv, \|en, a| BindSpan en, (PlaceKey wx.lx, a.value.span), (ValueOf clx, cmenv, a.value)
+    let benv2 = Fold supplied, benv, \|en, a| BindSpan en, (PlaceKey wx.lx, a.value.span), (ValueOf clx, (InitEnv cbenv), a.value)
     let ?target = match ?bound:
         ? (BnEv er, ignore): ? er.node
         otherwise: nil
-    WidgetCall wx, benv, menv2, e, ?bound, qk, (Append supplied, args), ?target
+    WidgetCall wx, benv2, menv2, e, ?bound, qk, (Append supplied, args), ?target
 
 # A function's body lowered at the line `e` that applies it (a lambda given as a widget
 # function parameter; a function of a block, `LocalFunctionLine`): its parameters bound
@@ -2166,6 +2170,13 @@ fn ?ParamMatch pat, t, m = match ((pat, t)):
     # caller's `Seats d rest` in a generic body: its argument and indices matched)
     (((TyAssoc t1, n1, a1, i1), (TyAssoc t2, n2, a2, i2))) if t1 == t2 and n1 == n2 and (Len i1) == (Len i2): ?ParamMatchAll (Append [[a1]], i1), (Append [[a2]], i2), m
     (((TyAssoc ignore, ignore, ignore, ignore), ignore)): ? m
+    # (a row given where a type's row parameter stands decides no type, `Elem rest`)
+    ((TyElemAny ignore, TyElemAny ignore2)): ? m
+    # (a quantified type against one, `Supplier d`: their bodies, its own variables
+    # matched only there)
+    (((TyForall vs1, b1), (TyForall vs2, b2))) if (Len vs1) == (Len vs2): match ?ParamMatch b1, b2, m:
+        ? m2: ? (Fold vs1, m2, \|acc, q| if HasKey m, q: acc else: Remove acc, q)
+        nil: nil
     # (an existential against one: their bodies, its own variables matched only there,
     # `Guests d`'s entries)
     (((TyExists vs1, b1, ignore, ignore2), (TyExists vs2, b2, ignore3, ignore4))) if (Len vs1) == (Len vs2): match ?ParamMatch b1, b2, m:

@@ -1094,7 +1094,7 @@ fn ExistsMatch lx, env, s, arm, p, t, span:
     let label = "opened{SpanStem span}"
     match Peel (TypeAt lx, s.span):
         TyExists vs, b, ignore, kinds:
-            let pty = TypeAt lx, p.span
+            let pty = PatternTyOf lx, p
             let fresh = Or (?ParamMatch b, pty, {{}}), {{}}
             let packed = Own (ValueOf lx, env, s)
             VlOwned (XBlock [[(DoLet (PaBind label), packed)]], (OpenedAt lx, env, label, vs, kinds, fresh, 0, p, arm, pty, t)), t
@@ -1955,6 +1955,18 @@ fn IsNamed e = match e.kind:
     EName ignore: True
     EGroup x: IsNamed x
     otherwise: False
+
+# A pattern's type as the checker gave it: at the pattern, else (a tuple of names,
+# `any ((role, id, element))`, whose own type the checker may not note) its parts' binder
+# types.
+PatternTyOf: unbounded fn Lx, Pattern -> Ty
+fn PatternTyOf lx, p = match TypeAt lx, p.span:
+    TyErr: match p.kind:
+        PTuple ps: TyTuple (Each ps, \|q| PatternTyOf lx, q)
+        PGroup q: PatternTyOf lx, q
+        PName ignore: BinderTyOfPattern lx, p
+        otherwise: TyErr
+    found: found
 
 # A local function called: its body inlined, each parameter a local bound to its
 # argument (the caller's environment, which the function's block shares). One whose body
