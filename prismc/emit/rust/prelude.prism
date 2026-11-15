@@ -31,7 +31,7 @@ pub mod traits {
 
 // ---- Types ------------------------------------------------------------------------------
 
-/// `type Ordering = choice: Less | Equal | Greater; derive ^Eq, ^Ord, ^Show`.
+/// `type Ordering = choice: Less | Equal | Greater; derive ^Eq, ^Ord, ^Debug`.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Ordering {
     Less,
@@ -51,7 +51,7 @@ impl ToPod for Ordering {
     }
 }
 
-/// `type Never = choice:` with no case; `derive ^Eq, ^Ord, ^Show` (Part VII ch. 7, step C1).
+/// `type Never = choice:` with no case; `derive ^Eq, ^Ord, ^Debug` (Part VII ch. 7, step C1).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Never {}
 

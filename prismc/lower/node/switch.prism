@@ -1549,7 +1549,7 @@ type RowPart = choice:
     RowPartPlain Text, OutTy
     RowPartNothing
     RowPartParts [RowPart]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The row's side of a bundle: each event part fires up, each dynamic part has its getter,
 # its `Dynamic` and the block's method a write behind it calls, each plain part is kept in

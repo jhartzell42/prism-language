@@ -1749,7 +1749,7 @@ fn ?OpenWidgetBlueprintValue lx, env, qk, calleeSpan, args, handed, t = match ?E
             &_.subst <= Fold user, &_.subst, \|m, ((q, ty))| Insert m, q, ty
         let rowed = Fold users, True, \|all, user| all and HasKey lx.valued, (ValuedKeyAt (At user), qk, calleeSpan, args)
         # two instantiations of one target type are one choice
-        let Reprs = \|user| Show (Each user, \|((ignore, ty))| OutTyOf lx, ty)
+        let Reprs = \|user| Debug (Each user, \|((ignore, ty))| OutTyOf lx, ty)
         let distinct = Fold users, [[]], \|acc, user| if Fold acc, False, \|seen, other| seen or (Reprs other) == (Reprs user): acc else: Push acc, user
         if not rowed: nil
         else:
@@ -3839,7 +3839,7 @@ fn GenericLetBound lx, env, n, gn, x, k, value:
     let bt = OutTyOf lxk, (Peel (BinderTy lxk, n.span))
     let en1 = Bind env, bkey, (BnLocal (XVar rk), Owned, bt)
     let en2 = update en1:
-        &_.uses <= Insert &_.uses, "{nkey}#{Show ((tys, cols))}", bkey
+        &_.uses <= Insert &_.uses, "{nkey}#{Debug ((tys, cols))}", bkey
     # one no use reads has no reader to decide its type: the binding names it
     let unread = (Len (Instantiations lx, gn)) == 0
     (([[(DoLet (if unread: PaTyped (PaBind rk), bt else: PaBind rk), value)]], en2))
@@ -3849,7 +3849,7 @@ fn GenericLetBound lx, env, n, gn, x, k, value:
 # variables: it stands for each of that one's instantiations.
 Instantiations: unbounded fn Lx, GenNote -> [(([((Text, Ty))], [((Text, Col))]))]
 fn Instantiations lx, gn = Fold (Or lx.insts[GenKey gn], [[]]), [[]], \|acc, u|
-    Fold (Expanded lx, (InstAt lx, u)), acc, \|a, i| if Fold a, False, \|seen, j| seen or (Show j) == (Show i): a else: Push a, i
+    Fold (Expanded lx, (InstAt lx, u)), acc, \|a, i| if Fold a, False, \|seen, j| seen or (Debug j) == (Debug i): a else: Push a, i
 
 Expanded: unbounded fn Lx, (([((Text, Ty))], [((Text, Col))])) -> [(([((Text, Ty))], [((Text, Col))]))]
 fn Expanded lx, i = match ?OpenQ lx, i:

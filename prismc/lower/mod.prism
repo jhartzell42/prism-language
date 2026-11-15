@@ -153,7 +153,7 @@ type Lx = record:
     # The definition whose body is being lowered, "" outside one: a generic function's
     # instantiations over the program are read by it (`?DefInstances`).
     inDefinition: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A key into the typed tables: the file and the range.
 PlaceKey: fn Lx, Range -> Text

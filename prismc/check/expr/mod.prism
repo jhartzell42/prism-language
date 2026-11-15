@@ -82,7 +82,7 @@ type Env = record:
     # before its arguments are read, so a field's type variable knows its layer there
     # (`hold-needed` at a constructor, ruling HD)
     ?expect: Ty
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 WithLocal: fn Env, Text, Scheme -> Env
 fn WithLocal env, name, sc = update env:

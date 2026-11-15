@@ -105,7 +105,7 @@ type GnKind = choice:
     GnMergeList
     GnUpdated
     GnNever
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A kind's word, which names its node when nothing else does.
 KindWord: fn GnKind -> Text
@@ -181,7 +181,7 @@ type LateGiving = choice:
     GivenInOrder
     TakenAbove
     GivenUnnumbered
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A plain `let` among the lines above a split line or hoisted to them (`SplitBlockInto`):
 # a name it binds and the names it reads. A line above that takes the name takes the
@@ -207,7 +207,7 @@ type LateTaking = record:
 type Read = choice:
     OwnRead Text
     ParentRead Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 HasRead: fn [Read], Read -> Bool
 fn HasRead rs, r = Fold rs, False, \|seen, x| seen or x == r

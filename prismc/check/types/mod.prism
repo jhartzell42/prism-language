@@ -42,7 +42,7 @@ type Col = choice:
     CRigid Text
     CQ Text
     CFlex Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A join the color owes (ch. 5, The color, doubt CJ): `lo` at most `hi`, from the place
 # that made it. `kind` says which rule: `body` (a body applied something of color `lo`,
@@ -57,7 +57,7 @@ type CLeq = record:
     kind: Text
     name: Text
     why: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A row's tail: closed, a flexible variable, a rigid one, or one quantified in a scheme.
 type Tail = choice:
@@ -74,7 +74,7 @@ type Tail = choice:
     # several variables in one row, each decided apart (Jimmy, 13 November, ruling RT:
     # `@HostDocument ... emit lower | rest`); never empty nor of one part (`UnionTail`)
     TlUnion [Tail]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A row: a set of families (sorted), the tags an arm above has taken (the remainder
 # inside a match; source never spells one), and at most one tail.
@@ -85,7 +85,7 @@ type Rw = record:
     # a family's indices where the row names it applied (`Seat.* Chess Player`; Jimmy's
     # ruling AF); `TyEvery` at an index is every case of its kind (`Seat.* Chess _`)
     idx: (Text ==> [Ty])
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Ty = choice:
     TyFlex Nat
@@ -121,7 +121,7 @@ type Ty = choice:
     # `_` at a family's index in a row: every case of the index's kind
     TyEvery
     TyErr
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What the checker knows of a flexible variable: whether it is plain-headed (it stands
 # for no type with a sigil on top, ch. 5), its level for generalization, and the binder
@@ -130,7 +130,7 @@ type VInfo = record:
     plain: Bool
     level: Nat
     name: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A wanted constraint, `^Trait ty`, from the place that made it.
 type Want = record:
@@ -140,14 +140,14 @@ type Want = record:
     span: Range
     level: Nat
     reason: WantReason
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # Why a constraint is wanted, where a refusal says more: a placeholder (`"{xs}"`) wants
 # `^Display` of its expression, whose source text the fix names (ruling DD).
 type WantReason = choice:
     Asked
     Placeholder Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A type scheme: quantified type variables (free-headed, or plain-headed when a local
 # `let` generalized a plain-headed variable), row variables, color variables and the
@@ -164,7 +164,7 @@ type Scheme = record:
     # each use meets at its own types (`Item a = Text`; GHC's MonoLocalBinds, ruling SH).
     eqs: [Waiting]
     ty: Ty
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A row obligation `R1 ≤ R2` (ch. 5, "Inclusion is not unification"), discharged after a
 # definition's unifications: `what` says whose row is checked, for the message.
@@ -175,7 +175,7 @@ type Incl = record:
     span: Range
     what: Text
     forward: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The inference state, threaded through every judgment.
 type St = record:
@@ -276,7 +276,7 @@ type St = record:
     # The marks of the type each lambda was given at, by where it starts: a lambda need not
     # write a mark the wanted type writes (`LambdaMarked`).
     lambdaMarks: (Nat ==> [Bool])
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The family and indices an element's tag is applied at, while its fields are checked
 # (`TagField`): a waiting associated type of a field is told in its note by the guest
@@ -284,7 +284,7 @@ derive ^Eq, ^Show
 type GuestRow = record:
     familyName: Text
     indices: [Ty]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A name a pattern binds: the name as written, its sigils, the name under them, the marks
 # its type shows, the type it was bound to and where it stands.
@@ -296,7 +296,7 @@ type CaseQ = record:
     ty: Ty
     span: Range
     file: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # One use by name of a definition with type parameters: the definition the use
 # stands in, the one it names, where, and the type the use gives each of the named
@@ -307,7 +307,7 @@ type GenericUse = record:
     file: Nat
     span: Range
     types: [((Text, Ty))]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # An impl's associated row, `row Lower = Ui.*` (Type System ch. 3).
 type AssocRowImpl = record:
@@ -315,7 +315,7 @@ type AssocRowImpl = record:
     name: Text
     head: Ty
     chosen: Rw
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type AssocImpl = record:
     cls: Text
@@ -326,14 +326,14 @@ type AssocImpl = record:
     # System ch. 6): none for an associated type with no further parameters
     indices: [AssocIndex]
     value: Ty
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # One index of an equation (`type Request Librarian = ...`, `type Query r = ...`): a role
 # constructor, by its key, or a variable, which stands for every role.
 type AssocIndex = choice:
     IndexRole Text
     IndexVar Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A dynamic (`$`) or event (`!`) given at an element's identity field `field`, at `arg` in
 # `file`, written `src`, of the tag `owner`.
@@ -344,7 +344,7 @@ type ElemLift = record:
     file: Nat
     layer: Text
     src: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # An equation that waits for an associated type's argument (`Item t3` against `Text`),
 # with the file it was met in: retried there once the variable is bound.
@@ -357,7 +357,7 @@ type Waiting = record:
     # the guest whose element's field it is, for the note
     outer: ((Ty, Ty))
     ?guestRow: GuestRow
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # An `any e` waiting for the existential it meets: the variable it gave, `e`'s type, and
 # where it stands.
@@ -366,7 +366,7 @@ type Pack = record:
     inner: Ty
     file: Nat
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A place's key in `methodUses`.
 UseKey: fn Nat, Range -> Text

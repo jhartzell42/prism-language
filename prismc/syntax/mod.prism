@@ -29,7 +29,7 @@ type Range = record:
     start: Nat
     end: Nat
     origin: Origin
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # Where a span's offsets count: in its file's source text, or in a space of their own,
 # from 0, for what prismc made where nothing is written (so a made span never meets a
@@ -37,7 +37,7 @@ derive ^Eq, ^Show
 type Origin = choice:
     InSource
     MadeBy Making
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What made an expression no source has.
 type Making = choice:
@@ -46,7 +46,7 @@ type Making = choice:
     RootApplication
     # the arguments of a constructor used as a function value (`CtorFn`)
     ConstructorArguments
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A lexical error, a parse error, or an out-of-scope feature:
 # `stage` is `"lex"`, `"parse"` or `"out"`; `feature` names an out-of-scope feature as
@@ -56,7 +56,7 @@ type Diag = record:
     span: Range
     message: Text
     ?feature: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---------------------------------------------------------------------------------------
 # Names
@@ -67,24 +67,24 @@ type SName = record:
     sigils: Text
     path: [Text]
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A plain lowercase identifier: a field, a named argument, a type variable.
 type Ident = record:
     name: Text
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A trait reference, `^Ord`.
 type TraitRef = record:
     path: [Text]
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type QualName = record:
     path: [Text]
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---------------------------------------------------------------------------------------
 # The file
@@ -98,7 +98,7 @@ type Module = record:
     decls: [Decl]
     ?template: Template
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # `mod Name` (a child module, `name.prism` beside the declaring file or `name/mod.prism`)
 # or `test mod Name` (a child test module): a file's header says what its module's
@@ -107,7 +107,7 @@ type ModLine = record:
     name: Ident
     isTest: Bool
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # `use Birds` or `use Birds.*`.
 type Use = record:
@@ -116,19 +116,19 @@ type Use = record:
     # `use Fish.Count as FishCount`: the name the target is reached by here (ruling UA)
     ?alias: Ident
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # Families joined by `|`.
 type Row = record:
     terms: [RowTerm]
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type RowTerm = choice:
     RFamily QualName
     RType Type
     RVar Ident
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---------------------------------------------------------------------------------------
 # Types
@@ -137,7 +137,7 @@ derive ^Eq, ^Show
 type Type = record:
     kind: TypeKind
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TypeKind = choice:
     TName SName, [Type]
@@ -165,14 +165,14 @@ type TypeKind = choice:
     THole SName
     TAbsent
     TNonEmpty Type
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A function type's color: no word, `unbounded`, or a color variable.
 type Color = choice:
     Bounded
     Unbounded
     ColorVar Ident
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---------------------------------------------------------------------------------------
 # Patterns
@@ -181,7 +181,7 @@ derive ^Eq, ^Show
 type Pattern = record:
     kind: PatternKind
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type PatternKind = choice:
     PName SName
@@ -201,7 +201,7 @@ type PatternKind = choice:
     PAny Pattern
     # `Fixed<<Raiser>>`, a value written with its type (Jimmy's ruling VO)
     PTypeArgs SName, [Type]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # `marks` are the sigils written on the field's name (`$label=ignore`), "" for a plain name.
 type FieldPat = record:
@@ -209,7 +209,7 @@ type FieldPat = record:
     ?name: Ident
     pattern: Pattern
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---------------------------------------------------------------------------------------
 # Literals
@@ -219,7 +219,7 @@ type Literal = record:
     marks: Text
     kind: LitKind
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A character is a one-character `Text`.
 type LitKind = choice:
@@ -229,7 +229,7 @@ type LitKind = choice:
     LChar Text
     LText [TextSeg]
     LRegex RegexLit
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A regular-expression literal (Semantics ch. 2, Regular expressions): its pattern and,
 # for a `RegexReplacement`, its replacement, each as written between its delimiters, and
@@ -242,12 +242,12 @@ type RegexLit = record:
     replacementAt: Nat
     flags: Text
     flagsAt: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TextSeg = choice:
     SegPlain Text
     SegPlaceholder Expr
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---------------------------------------------------------------------------------------
 # Expressions
@@ -256,7 +256,7 @@ derive ^Eq, ^Show
 type Expr = record:
     kind: ExprKind
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A binary operator is its spelling (`"<|"`, `"on"`, `"-?"`, `"mod"`); a unary one is
 # `"not"`, `"neg"` or `"pos"`; a bound name `"key"`, `"ix"`, `"jx"` or `"kx"`.
@@ -305,7 +305,7 @@ type ExprKind = choice:
     EAny Expr
     ELens [Ident]
     EError
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A hold's braces, for diagnostics that show one: `{!e}`. The parser's `HoldPrimary`
 # reads them.
@@ -324,29 +324,29 @@ type Arg = record:
     ?name: Ident
     value: Expr
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type LambdaBody = choice:
     LbExpr Expr
     LbBlock Block
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Cond = choice:
     CondExpr Expr
     CondBind Pattern, Expr, ?Expr
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type ForBinders = record:
     first: Pattern
     ?second: Pattern
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Arm = record:
     ?pattern: Pattern
     ?guard: Expr
     body: Block
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---------------------------------------------------------------------------------------
 # Blocks and statements
@@ -356,12 +356,12 @@ type Block = record:
     stmts: [Stmt]
     inline: Bool
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Stmt = record:
     kind: StmtKind
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # An accumulation is its operator's spelling, `"+="`, `"-="`, `"*="` or `"/="`.
 type StmtKind = choice:
@@ -381,7 +381,7 @@ type StmtKind = choice:
     SWhile Cond, Block
     SReturn Expr
     SExpr Expr
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---------------------------------------------------------------------------------------
 # Templates (Templates ch. 2)
@@ -395,7 +395,7 @@ type Template = record:
     delims: Text
     parts: [TemplatePart]
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TemplatePart = choice:
     TpText Text
@@ -404,4 +404,4 @@ type TemplatePart = choice:
     # `\{{` in a code template, refused by the checker (`brace-placeholder`)
     TpBadEscape Range
     TpCall SName, [Arg], ?[TemplatePart], Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug

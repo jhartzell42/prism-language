@@ -28,7 +28,7 @@ type ModRead = record:
     p: Ps
     m: Module
     stage: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A file: the header (`module`, then `emit`, then `mod`, then `use`), then declarations. With
 # `fragment`, statements are accepted among the declarations.

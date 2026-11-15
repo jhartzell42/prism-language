@@ -20,7 +20,7 @@ type RxDiag = record:
     part: Text
     at: Nat
     message: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---------------------------------------------------------------------------------------
 # The messages, word for word as claude/regex-dialect.md has them
@@ -141,7 +141,7 @@ type RxState = record:
     groups: Nat
     names: Text ==> Nat
     ?err: RxDiag
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What the last piece of a sequence was, for the repetition checks.
 type RxLast = choice:
@@ -150,7 +150,7 @@ type RxLast = choice:
     RxLastAssertion
     RxLastRepetition
     RxLastAtom
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The whole-pattern measures of a piece (the whole-pattern checks): its depth, its size
 # with counted repetition expanded, and the largest product of counts in it.
@@ -158,7 +158,7 @@ type RxMeasure = record:
     depth: Nat
     size: Nat
     product: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 let rxNone = RxMeasure(depth=0, size=0, product=0)
 let rxAtom = RxMeasure(depth=0, size=1, product=1)
@@ -171,7 +171,7 @@ fn RxThen a, b = RxMeasure(depth=(Max a.depth, b.depth), size=a.size + b.size, p
 type RxCp = choice:
     RxLit Text
     RxNum Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 RxBad: fn RxState -> Bool
 fn RxBad st = st.?err != nil

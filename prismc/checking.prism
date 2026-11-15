@@ -57,7 +57,7 @@ type CheckJob = record:
     world: [Text]
     typed: Bool
     unused: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The checker over a program: its files read as trees and parsed, then checked.
 CheckFiles: unbounded fn CheckJob -> Outcome

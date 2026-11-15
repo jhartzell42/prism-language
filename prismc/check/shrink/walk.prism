@@ -54,14 +54,14 @@ use Check.Passes.Borrows.*
 type Spot = choice:
     SpotExpr Expr, (Text ==> Rel)
     SpotStmt Stmt, (Text ==> Rel)
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What a node holds one level down: an expression, or a block's statements, each with the
 # relations it is read under.
 type Kid = choice:
     KidExpr Expr, (Text ==> Rel)
     KidStmts [Stmt], (Text ==> Rel)
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 ExprSpots: unbounded fn Expr, (Text ==> Rel) -> [Spot]
 fn ExprSpots e, m = Fold (ExprKids e, m), [[(SpotExpr e, m)]], \|acc, k| Append acc, (KidSpots k)
@@ -295,7 +295,7 @@ type Site = record:
     args: [Arg]
     span: Range
     rels: (Text ==> Rel)
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 BodySites: unbounded fn FnBody, (Text ==> Rel) -> [Site]
 fn BodySites body, m = Fold (BodySpots body, m), [[]], \|acc, sp| Append acc, (SpotSites sp)

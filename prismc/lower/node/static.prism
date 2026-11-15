@@ -850,7 +850,7 @@ type HostForm = choice:
     HostEach
     HostSome
     HostList
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 HostLine: unbounded fn Wx, Env, Env, HostForm, [Arg], ?Bn -> ((Wx, Wres))
 fn HostLine wx, benv, menv, form, args, ?bound:

@@ -64,7 +64,7 @@ type Pair = record:
     ?partner: Nat
     outer: Bool
     inner: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Ps = record:
     toks: [Tok]
@@ -75,13 +75,13 @@ type Ps = record:
     stepMode: Bool
     inTrait: Bool
     bad: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What a parse gives: the tree, and every diagnostic in source order.
 type Parsed = record:
     tree: Module
     diags: [Diag]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 let noRange = Range(start=0, end=0, origin=InSource)
 let eofTok = Tok(kind=KEof, span=noRange, touches=False, lineStart=False)

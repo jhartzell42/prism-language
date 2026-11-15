@@ -26,7 +26,7 @@ type CDiag = record:
     fix: Text
     # what the reader needs to see why, a line before the fix ("" for none)
     note: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A source as the checker holds it: its path, its text, where its lines start, and the
 # files it holds. A module of a tree is one file (claude/modules-style-pass.md); `segs`
@@ -37,7 +37,7 @@ type Src = record:
     text: Text
     starts: [Nat]
     segs: [SrcSeg]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # One file of a source: its path, the offset and the line of the text it starts at, and its
 # role (`main` or `test` in a tree, `loose` else). A tree's module is one file, so its source
@@ -47,7 +47,7 @@ type SrcSeg = record:
     start: Nat
     line: Nat
     role: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 MkSrc: fn Text, Text -> Src
 fn MkSrc path, text = Src(path=path, text=text, starts=(CLineStarts text), segs=[[SrcSeg(path=path, start=0, line=0, role="loose")]])
@@ -163,4 +163,4 @@ fn CountWord 1 = "one"
 fn CountWord 2 = "two"
 fn CountWord 3 = "three"
 fn CountWord 4 = "four"
-fn CountWord n = Show n
+fn CountWord n = Debug n

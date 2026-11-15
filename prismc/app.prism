@@ -60,13 +60,13 @@ type Job = record:
     tokens: Bool
     fragment: Bool
     text: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Outcome = record:
     text: Text
     failed: Bool
     report: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A file the front end refused: its diagnostics are the message.
 tag Prismc.Refused of Fault

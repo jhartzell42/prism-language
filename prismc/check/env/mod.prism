@@ -45,7 +45,7 @@ type ModInfo = record:
     uses: [((Text, Bool))]
     root: Bool
     tree: Module
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TyBody = choice:
     BRecord [((Text, Ty))]
@@ -54,7 +54,7 @@ type TyBody = choice:
     BAlias Ty
     BOpaque
     BPrim
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TyInfo = record:
     name: Text
@@ -69,7 +69,7 @@ type TyInfo = record:
     derives: [Text]
     file: Nat
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A constructor: of a choice (`args` positional), a record (`fields` named too), a newtype
 # or a unit type. `ty` is the type it builds, over `TyQ` params.
@@ -81,7 +81,7 @@ type CtorInfo = record:
     fields: [Text]
     ty: Ty
     index: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TagInfo = record:
     name: Text
@@ -99,7 +99,7 @@ type TagInfo = record:
     home: Text
     file: Nat
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type ValInfo = record:
     qk: Text
@@ -113,7 +113,7 @@ type ValInfo = record:
     home: Text
     file: Nat
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TraitInfo = record:
     name: Text
@@ -144,7 +144,7 @@ type TraitInfo = record:
     assocRowDefaults: [((Text, Rw))]
     file: Nat
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type ImplInfo = record:
     cls: Text
@@ -168,7 +168,7 @@ type ImplInfo = record:
     aboveChosen: [((Text, Text, Text))]
     # the equalities of types a derive asks of the impl's head (Claude's call DE)
     equalities: [((Ty, Ty, Range))]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A definition whose body is checked.
 type DefBody = choice:
@@ -179,7 +179,7 @@ type DefBody = choice:
     DbDefault [FnClause], Text
     DbCheck CheckDecl
     DbTest TestDecl
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Def = record:
     qk: Text
@@ -188,7 +188,7 @@ type Def = record:
     file: Nat
     span: Range
     body: DefBody
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type G = record:
     mods: (Text ==> ModInfo)
@@ -221,7 +221,7 @@ type G = record:
     appRoot: Bool
     fnAt: (Text ==> Nat)
     preludeFrom: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The primitive types (the runtimes' own; prelude.prism declares none of them).
 # The two opaque types of the regular-expression literals (Type System ch. 2).

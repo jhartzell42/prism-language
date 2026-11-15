@@ -143,7 +143,7 @@ type ArmWait = record:
     span: Range
     ?against: Ty
     fwd: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 InferArm: unbounded fn Env, St, Arm, Ty, Ty, ?Ty, ?Text, [((Text, Range))] -> (([((Text, Range))], St, ?ArmWait))
 fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:

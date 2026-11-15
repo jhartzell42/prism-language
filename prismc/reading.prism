@@ -56,7 +56,7 @@ use Emit.Rust
 type ReadMode = choice:
     Checking CheckOpts
     Compiling CompileSettings
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 IsCompiling: fn ReadMode -> Bool
 fn IsCompiling (Compiling ignore) = True
@@ -67,14 +67,14 @@ type CheckOpts = record:
     ?out: Text
     typed: Bool
     unused: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type CompileSettings = record:
     out: Text
     prelude: Text
     name: Text
     runtime: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # Everything a run read: its arguments (files and directories), the prelude's directory,
 # every directory it listed and every file it read, whether test modules are read
@@ -87,7 +87,7 @@ type ReadInput = record:
     texts: [((Text, Text))]
     tests: Bool
     compiling: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # Every directory argument is listed (`Fs.List`, which prismc's `Fs` declares), with the
 # prelude's; then the ancestors of a module directory, to find the root above it; then every
@@ -205,7 +205,7 @@ type HeadLine = record:
     word: Text
     arg: Text
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The header of a file, read from its text before it is parsed: after comments and blank
 # lines, the lines at its top that start with a header keyword; a line indented under one
@@ -249,7 +249,7 @@ type Seg = record:
     path: Text
     text: Text
     role: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # One module as the checker is given it: its one file (role `main`, `test` for a test
 # module, `loose` for a file argument). A tree's module is
@@ -260,7 +260,7 @@ type ModFiles = record:
     named: Bool
     segs: [Seg]
     parent: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A diagnostic of the reading, before anything is parsed, at a file of the listing.
 type TreeDiag = record:
@@ -269,7 +269,7 @@ type TreeDiag = record:
     code: Text
     message: Text
     fix: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What the reading gives: the program's modules and the prelude's, the test scripts the
 # compiled program runs, and the errors (which stop the run).
@@ -278,7 +278,7 @@ type Assembled = record:
     prelude: [ModFiles]
     scripts: [Text]
     errors: [TreeDiag]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 let noAssembly = Assembled(units=[[]], prelude=[[]], scripts=[[]], errors=[[]])
 let noSpan = Range(start=0, end=0, origin=InSource)
@@ -289,7 +289,7 @@ type TreeAcc = record:
     units: [ModFiles]
     declared: (Text ==> Bool)
     diags: [TreeDiag]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 AddTreeDiag: fn TreeAcc, Text, Range, Text, Text, Text -> TreeAcc
 fn AddTreeDiag acc, path, span, code, message, fix = update acc:
@@ -554,7 +554,7 @@ type ParsedProgram = record:
     shown: Nat
     parents: [Text]
     errors: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 ParseProgram: unbounded fn Assembled -> ParsedProgram
 fn ParseProgram read:

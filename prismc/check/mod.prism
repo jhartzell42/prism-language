@@ -62,7 +62,7 @@ type Report = record:
     errors: Nat
     rootRow: Text
     typed: TProgram
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The whole checker over a program's files (each already parsed): the environment, every
 # definition, the separate checkers, the root row against `world` when one is named. `pre`
@@ -122,7 +122,7 @@ type GrowthStep = record:
     definition: Text
     types: [((Text, Ty))]
     place: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What a walk has so far: the checker's state, the endless lines already reported (each
 # by the places of its uses), and the definitions reached from the walk's start, each
@@ -131,7 +131,7 @@ type GrowthFound = record:
     st: St
     reported: [Text]
     seen: (Text ==> Bool)
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A definition that reaches itself by name at types that grow without end is
 # `grows-without-end` (ruling PG): `fn Depth xs, more: .. Depth [[xs]], less` wants
@@ -215,7 +215,7 @@ fn GrowthCheck g, st, defs:
     let found = Fold (Keys generic), GrowthFound(st=st, reported=[[]], seen={{}}), \|sofar, start|
         let own = Each (Or generic[start], [[]]), \|q| ((q, (TyRigid q)))
         let fresh = update sofar:
-            &_.seen <= Insert {{}}, "{start} {Show own}", True
+            &_.seen <= Insert {{}}, "{start} {Debug own}", True
         GrowthWalk usesBy, shown, [[GrowthStep(definition=start, types=own, place="")]], start, own, fresh
     found.st
 
@@ -352,7 +352,7 @@ fn GrowthWalk usesBy, shown, path, at, reached, found = Fold (Or usesBy[at], [[]
         nil:
             # (an associated type whose argument now has a head is the type its impl chooses)
             let now = Each noted.types, \|((q, t))| ((q, (Zonk sofar.st, (SubstRigids reached, t))))
-            let reachedAt = "{noted.target} {Show now}"
+            let reachedAt = "{noted.target} {Debug now}"
             if HasKey sofar.seen, reachedAt: sofar
             else:
                 let marked = update sofar:
@@ -388,7 +388,7 @@ fn ?GrowsBack st, path, composed, target, below = match below -? 1:
 GrownThroughAssociated: unbounded fn St, [((Text, Ty))], [((Text, Ty))], [Text] -> [((Text, Ty))]
 fn GrownThroughAssociated st, round, now, earlier:
     let settled = Each now, \|((q, t))| ((q, (Zonk st, t)))
-    let shown = Show settled
+    let shown = Debug settled
     if HasText earlier, shown: [[]]
     else:
         let next = Each round, \|((q, t))| ((q, (Zonk st, (SubstRigids settled, t))))

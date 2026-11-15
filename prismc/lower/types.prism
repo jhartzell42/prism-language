@@ -310,7 +310,7 @@ type Layer = choice:
     LyDyn
     LyEv
     LyBlueprint
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # Whether a type is a bundle: a tuple with an event or a dynamic among its parts, at any
 # depth (Type System ch. 2, "Bundles and sparse tuples").
@@ -541,7 +541,7 @@ type Holding = choice:
     Owned
     RcRef
     RcOwned
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A name where it is read. `BnLocal` is a place and how it holds its value. In a
 # widget block a hold reads at the read point, a derived dynamic is a reader, and an event
@@ -585,7 +585,7 @@ let emptyEnv = Env(names={{}}, spans={{}}, uses={{}})
 # there (pick LG), else the name's own.
 NameKeyAt: fn Lx, Env, SName, Range -> Text
 fn NameKeyAt lx, env, n, span = match lx.useInsts[PlaceKey lx, span]:
-    ? u: Or env.uses["{SNameKey n}#{Show (InstAt lx, u)}"], (SNameKey n)
+    ? u: Or env.uses["{SNameKey n}#{Debug (InstAt lx, u)}"], (SNameKey n)
     nil: SNameKey n
 
 # Names a closure reads, with the instantiations of each that is a generalized `let`

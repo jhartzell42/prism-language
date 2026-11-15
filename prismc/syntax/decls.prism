@@ -10,7 +10,7 @@ use Syntax.*
 type Decl = record:
     kind: DeclKind
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type DeclKind = choice:
     DSignature Signature
@@ -31,20 +31,20 @@ type DeclKind = choice:
     DCheck CheckDecl
     DTest TestDecl
     DStmt Stmt
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The name a signature or a definition is for: a name, or in a trait an operator.
 type DefName = choice:
     DefSName SName
     DefOp Text, Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Signature = record:
     name: DefName
     ty: Type
     bounds: [Bound]
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Bound = record:
     var: Ident
@@ -56,32 +56,32 @@ type Bound = record:
     # side, this the right, and `traits` is empty
     ?equals: Type
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type FnClause = record:
     name: DefName
     params: [Pattern]
     body: FnBody
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type FnBody = choice:
     BodyExpr Expr
     BodyBlock Block
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type LetDecl = record:
     pattern: Pattern
     ?ty: Type
     value: Expr
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type WidgetDecl = record:
     name: SName
     body: Block
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TypeDecl = record:
     name: QualName
@@ -90,7 +90,7 @@ type TypeDecl = record:
     kinds: [((Text, Type))]
     ?body: TypeBody
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TypeBody = choice:
     TbRecord [Field]
@@ -99,7 +99,7 @@ type TypeBody = choice:
     TbNewtype Case
     TbUnit Ident
     TbAlias Type
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A field's sigils stand on its name, as a binder's do (`$label: Text` holds a dynamic).
 type Field = record:
@@ -107,14 +107,14 @@ type Field = record:
     name: Ident
     ty: Type
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Case = record:
     name: SName
     args: [Type]
     ?indexed: Type
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # `family Seat d (r: Role) where d: ^Document` (Part III ch. 6, "Families indexed by
 # document and role"; Jimmy's ruling AF): a tag family's parameters, which every tag of
@@ -125,7 +125,7 @@ type FamilyDecl = record:
     kinds: [((Text, Type))]
     bounds: [Bound]
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TagDecl = record:
     name: QualName
@@ -133,7 +133,7 @@ type TagDecl = record:
     bounds: [Bound]
     fields: [Field]
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TraitDecl = record:
     name: TraitRef
@@ -141,7 +141,7 @@ type TraitDecl = record:
     bounds: [Bound]
     items: [TraitItem]
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TraitItem = choice:
     TiSignature Signature
@@ -150,7 +150,7 @@ type TraitItem = choice:
     TiAssocType Ident, [Ident], [((Text, Type))], ?Type, Range
     # `row Lower` in a trait, `row Lower = Ui.*` in an impl (Type System ch. 3)
     TiAssocRow SName, ?Type, Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type ImplDecl = record:
     traitRef: TraitRef
@@ -160,7 +160,7 @@ type ImplDecl = record:
     span: Range
     # the trait an impl written by `derive ... via` came through
     ?through: TraitRef
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type ViaDecl = record:
     traitRef: TraitRef
@@ -170,14 +170,14 @@ type ViaDecl = record:
     bounds: [Bound]
     items: [TraitItem]
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type DeriveViaDecl = record:
     traitRef: TraitRef
     through: TraitRef
     ty: Type
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---------------------------------------------------------------------------------------
 # Tests (Conformance ch. 1 and Appendix A)
@@ -187,13 +187,13 @@ type CheckDecl = record:
     name: Ident
     lines: [CheckLine]
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type CheckLine = record:
     expr: Expr
     ?pattern: Pattern
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TestDecl = record:
     name: Ident
@@ -201,20 +201,20 @@ type TestDecl = record:
     ?seed: Nat
     steps: [TestStep]
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TestStep = record:
     withs: [Entry]
     action: StepAction
     checks: [TestCheck]
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Entry = record:
     element: Expr
     value: Expr
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type StepAction = choice:
     SaBuild
@@ -223,30 +223,30 @@ type StepAction = choice:
     SaPush Entry
     SaDeliver [Delivery]
     SaWithOnly
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Delivery = record:
     kind: DeliveryKind
     target: Target
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type DeliveryKind = choice:
     DkSend Expr
     DkClick
     DkAnswer
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Target = choice:
     TgPattern Pattern
     TgPath TestPath
     TgElement TestPath
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TestPath = record:
     segments: [PathSeg]
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type PathSeg = choice:
     PsNum Nat
@@ -254,12 +254,12 @@ type PathSeg = choice:
     PsKey Expr
     # `/`: a widget application's own list starts (ruling PL)
     PsCall
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TestCheck = record:
     kind: TestCheckKind
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TestCheckKind = choice:
     CkExpect Pattern
@@ -275,4 +275,4 @@ type TestCheckKind = choice:
     CkSettles
     CkAborted
     CkSnapshot Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug

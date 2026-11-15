@@ -61,13 +61,13 @@ type Sc = record:
     span: Range
     file: Nat
     arg: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What a name is known to be no larger (or strictly smaller) than: a parameter.
 type Rel = record:
     param: Nat
     strict: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What the shrink check reads of the program: its definitions with clauses (functions,
 # impls' methods, traits' default methods), each by its key; the definitions a trait
@@ -85,7 +85,7 @@ type Shrink = record:
     seeds: (Text ==> (Text ==> Rel))
     localOf: (Text ==> Text)
     localBase: (Text ==> (Text ==> Rel))
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The reference graph's cycles that the size-change principle cannot show end are
 # `may-not-end`, unless every function on the cycle is declared unbounded (D6). A `while`

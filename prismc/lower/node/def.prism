@@ -1293,7 +1293,7 @@ fn MarkLateLets wx, benv, menv, fns, stmts, fuel:
             let me4 = Bind me, bkey, (BnLocal (XMethod XSelf, getter, [[]]), Owned, tk)
             let be4 = Bind be, bkey, unbuilt
             if not generalized: ((w3, be4, me4)) else:
-                let ukey = "{nkey}#{Show inst}"
+                let ukey = "{nkey}#{Debug inst}"
                 ((w3, (WithUse be4, ukey, bkey), (WithUse me4, ukey, bkey)))
         let me5 = Bind me3, "{nkey}#late", unbuilt
         # late only as a late place's plain parts are (`LatePlaceParts`): the name has its
@@ -2161,7 +2161,7 @@ type HowBound = choice:
     AsResult                   # `p <- e` where `e` is a widget the node inlines: its result
     AsLateHold                 # a hold whose first value reads a late result (`BindLate`)
     AsLatePlace                # a `$` place whose first value is asked once the node stands (`Wx.lateHosts`)
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # Whether a bind line's right side is a widget this node inlines, a widget block or a widget
 # parameter applied, whose result is an expression of the node's, never a sink a builtin
@@ -2285,7 +2285,7 @@ fn PreBindName wx, benv, menv, n, how:
                 let ((rk, w2)) = if k == 0: ((rs, w)) else: FreshName w, "{rs}_{k}"
                 let bkey = if k == 0: nkey else: "{nkey}#inst{k}"
                 let ((be2, me2)) = BindPlain be, me, bkey, rk, tk
-                let ukey = "{nkey}#{Show inst}"
+                let ukey = "{nkey}#{Debug inst}"
                 ((w2, (WithUse be2, ukey, bkey), (WithUse me2, ukey, bkey)))
             nil:
                 let ((be, me)) = BindPlain benv, menv, nkey, rs, t

@@ -62,7 +62,7 @@ type Slot = record:
     owner: Text
     at: Nat
     arity: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The seeds of each module's walks: the prelude's names (`PreludeSeeds`), and every
 # cleared slot's `acc:` and `sum:` entries.

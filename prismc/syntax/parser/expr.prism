@@ -101,7 +101,7 @@ type Climb = record:
     lhs: Expr
     p: Ps
     going: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 ParseBinary: unbounded fn Ps, Nat, Bool -> ((Expr, Ps))
 fn ParseBinary p0, min, commas:
@@ -294,7 +294,7 @@ type ArgsRead = record:
     rest: Bool
     p: Ps
     going: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 ParseParenArgs: unbounded fn Ps -> (([Arg], Bool, Ps))
 fn ParseParenArgs p0:

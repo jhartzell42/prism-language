@@ -58,7 +58,7 @@ type Ref = choice:
     # A name of the runtime's (`rt::`, `prism_rtl::`), of the standard library's (marked
     # `std::`), of the hand-written prelude code's, or a target's own (`Self`).
     RefRuntime Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A runtime name as the target writes it: the model's mark of the runtime side, `rt::`, is
 # the emitted prelude's path from the crate (`crate::prelude::`), and the runtime library is
@@ -152,7 +152,7 @@ type OutTy = choice:
     # A type lowering could not find (the checker found none, an associated type): writing
     # it anywhere is a prismc refusal naming what it is, never a type a compiler guesses.
     OutRefused Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The model's operators, which each printer spells (pick UN: no operator is a string).
 type BinOp = choice:
@@ -168,12 +168,12 @@ type BinOp = choice:
     OpGe
     OpAnd
     OpOr
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type UnOp = choice:
     OpNot
     OpNeg
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # An operator's spelling.
 BinOpText: fn BinOp -> Text
@@ -302,7 +302,7 @@ type Ex = choice:
     # An expression with its type said, where a printer cannot infer it (an empty array
     # or map passed to a generic function).
     XTyped Ex, OutTy
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # One arm of a `match` or of an if-let chain: the pattern, the conditions after it (a
 # guard, or a `let` through a reference counted payload), the value.
@@ -310,12 +310,12 @@ type XArm = record:
     pat: Pa
     conds: [Cc]
     body: Ex
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Cc = choice:
     CcIf Ex
     CcLet Pa, Ex
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A pattern.
 type Pa = choice:
@@ -336,7 +336,7 @@ type Pa = choice:
     PaSlice [Pa]
     PaRest Text
     PaTyped Pa, OutTy
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A statement of a method body.
 type Do = choice:
@@ -357,7 +357,7 @@ type Do = choice:
     DoScope [Do]
     DoLine [Do]
     DoNote Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A type declaration: a record (one case named as the type, named fields), a choice
 # (cases with positional fields), a newtype or a unit type.
@@ -375,14 +375,14 @@ type TyDef = record:
     show: Shown
     pod: Bool
     doc: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TyShape = choice:
     ShapeRecord
     ShapeChoice
     ShapeNewtype
     ShapeUnit
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # Where a type's `Show` comes from: the program's own `impl ^Debug` (it then crosses as
 # `Pod::Shown`), a `derive ^Debug`, or nowhere.
@@ -390,7 +390,7 @@ type Shown = choice:
     ShownOwn
     ShownDerived
     NotShown
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type CaseDef = record:
     name: Text
@@ -399,7 +399,7 @@ type CaseDef = record:
     # A record's fields as the program spells them, which it shows and a `Pod` carries
     # (`byName`, not the Rust `by_name`); a choice's case has none.
     labels: [Text]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # An element tag: the `Level` struct (its plain and dynamic fields, as values after the
 # tick) and the tag's qualified name.
@@ -420,7 +420,7 @@ type TagDef = record:
     # for the runtime's comparisons (a place's entry), a dynamic equal only to itself
     # (doubt EQ). A field that holds dynamics is read deep by a World (`Level`, doubt WD).
     eq: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A row kind's values as plain data (pick RV): one Rust enum whose variants are the tags
 # of the kind across the program, each holding its tag's struct. A `type Draw = row` is
@@ -437,7 +437,7 @@ type RowDef = record:
     eq: Bool
     level: Bool
     deep: [Text]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A plain function, a top-level `let` (a getter with no parameters), or a check line.
 type FnDef = record:
@@ -448,7 +448,7 @@ type FnDef = record:
     body: Ex
     doc: Text
     public: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A step machine (D6): one per unbounded function that `@Run` is given or that a job
 # calls. A tail call is the callee's job (`Normalize`); any other call is a `Frame`
@@ -461,7 +461,7 @@ type JobDef = record:
     ret: OutTy
     body: Ex
     doc: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A method of a node.
 type MethDef = record:
@@ -473,7 +473,7 @@ type MethDef = record:
     body: [Do]
     tail: Ex
     doc: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A method's receiver: `self: &Rc<Self>` (it may hand the node to the runtime), `&self`, or
 # `self: Rc<Self>` (a `Node` or `Row` hook's).
@@ -481,14 +481,14 @@ type Recv = choice:
     RecvRc
     RecvRef
     RecvOwned
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The read point a method takes: `cx: &mut Cx`, `cx: &Cx`, or none.
 type CxArg = choice:
     CxMut
     CxRef
     CxNone
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A node: one widget block's storage and methods (claude/backend.md, "A widget block").
 type NodeDef = record:
@@ -517,7 +517,7 @@ type NodeDef = record:
     rowKind: RowKind
     # A hosted row's `Row` methods (pick HO): `deliver`, `document`, `document_moved`.
     hosted: [MethDef]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What a node is a row of: a `for` (it has a `key`), a `rebuild`'s generation, or nothing
 # (a root widget's node).
@@ -528,7 +528,7 @@ type RowKind = choice:
     # (`BlueprintValuesAt`)
     ValueRow
     NotARow
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A place's position in a node (pick HO): `scope` 0 is the node's own places, `k` from 1 the
 # places of the child of host `scopes[k - 1]` of the node, which count from 0 and are keyed
@@ -541,7 +541,7 @@ type Pos = record:
     scope: Nat
     prefix: [Nat]
     at: Nat
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 let pos0 = Pos(scope=0, prefix=[[]], at=0)
 
@@ -579,7 +579,7 @@ type GenUnder = choice:
     UnderArm
     UnderCall
     UnderCaller
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A `rebuild` (claude/backend.md, "Dynamic structure"): one generation at `path/n/#g`,
 # torn down and built anew from the source after a tick that changed it; the clause of a
@@ -615,7 +615,7 @@ type GenDef = record:
     # type per clause shared by every call, numbered from 0, so the node hands an answer
     # on with its position counted from the generation's first (`WideForward`).
     rebased: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A `for` builder (claude/backend.md, "Dynamic structure"): a map of rows, each a node of
 # its own at `path/n/[k]`, rebuilt from the source after the tick.
@@ -643,7 +643,7 @@ type ForDef = record:
     # builder calls on a row whose kept key holds another dynamic than the one it was built
     # from, so that row alone follows it from the next tick; empty otherwise.
     replaced: [Text]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The program of a root widget, as a World drives it.
 type ProgDef = record:
@@ -653,13 +653,13 @@ type ProgDef = record:
     params: [((Text, OutTy))]
     fallible: Bool
     world: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A compiled `check` block: each line's value as plain data.
 type CheckDef = record:
     name: Text
     lines: [Ex]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A program's own trait: each method an associated function over `Self`, a default's body.
 type TraitDef = record:
@@ -679,7 +679,7 @@ type TraitDef = record:
     supers: [Text]
     wheres: [((OutTy, [Text]))]
     doc: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # An `impl`: of a program's trait, its methods; of `^Debug`, `^Eq` or `^Ord`, the Rust
 # trait the emitted code's operators and printer read, over a function of its own.
@@ -694,7 +694,7 @@ type ImplDef = record:
     resultOnly: [Text]
     methods: [FnDef]
     doc: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A program's trait as an existential keeps it (Type System ch. 5, "Existentials are
 # dictionaries"): the dictionary of the trait an `any` stores at its packing, one function
@@ -711,7 +711,7 @@ type PackedDef = record:
     # the trait's associated types, as the target spells them: the impl for the packed
     # value chooses the unit type for each, since only an unasked method names one
     assocs: [Text]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A trait's method at a packed value: its name, parameters and result with the packed
 # value in the trait's parameter's place (its body is unused); which parameters are the
@@ -720,7 +720,7 @@ type PackedMethod = record:
     method: FnDef
     hidden: [Bool]
     hiddenResult: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Item = choice:
     ItTrait TraitDef
@@ -735,7 +735,7 @@ type Item = choice:
     ItNote Text
     # What lowering cannot lower, as a `compile_error!` item (`Refusal`).
     ItRefused Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # One Prism module as one module of the output.
 type ModDef = record:
@@ -744,7 +744,7 @@ type ModDef = record:
     path: Text
     uses: [Text]
     items: [Item]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Model = record:
     name: Text
@@ -758,14 +758,14 @@ type Model = record:
     answer: OutputDef
     scripts: [Text]
     notes: [Text]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # `crate::Output` (pick HO): an answer to an element, typed by its tag, what a host's
 # supplier answers a child place with and what a World's answer to a forwarded element
 # decodes to. A variant per element tag of the program, carrying the tag's output type.
 type OutputDef = record:
     cases: [OutputCase]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type OutputCase = record:
     # The variant, the tag's struct name (`UiButton`); the accessor that takes its value
@@ -786,7 +786,7 @@ type OutputCase = record:
     # a host's row answers its place (prism_rtl's `OutputOf::held_parts`).
     ?heldWhole: OutTy
     ?heldParts: Ex
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # Whether an expression reads the local `n` anywhere in it (its `XVar`s), as a printer
 # asks of a closure's body or a call's other arguments.

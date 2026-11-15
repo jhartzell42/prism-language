@@ -97,13 +97,13 @@ type CompileJob = record:
     read: ReadInput
     name: Text
     runtime: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Compiled = record:
     files: [((Text, Text))]
     failed: Bool
     report: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The back end over a program: its files read as trees and parsed, the checker (refusing on
 # an error, as `--check` reports it), then lowering and emission.

@@ -65,7 +65,7 @@ type Pat = choice:
     PtCon Text, [Pat]
     PtLit Text
     PtFam Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A constructor of a type: its name as patterns spell it, its arity, its argument types,
 # how a witness prints it.
@@ -74,7 +74,7 @@ type Ctor = record:
     arity: Nat
     args: [Ty]
     shown: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 FixedCtor: fn Text -> Ctor
 fn FixedCtor c = Ctor(name="fixed:{c}", arity=0, args=[[]], shown="Fixed<<{BareName c}>>")

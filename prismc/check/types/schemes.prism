@@ -30,7 +30,7 @@ type Inst = record:
     tys: (Text ==> Ty)
     rows: (Text ==> Tail)
     cols: (Text ==> Col)
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 SubstQ: unbounded fn Inst, Ty -> Ty
 fn SubstQ m, t = match t:

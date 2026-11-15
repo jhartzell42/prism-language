@@ -169,7 +169,7 @@ fn ValuedWidgets lx = Fold lx.g.defs, (({{}}, {{}})), \|acc, d|
 # A valued widget's key in `Lx.valued`: the widget, and for a generic one the types this
 # reading of it gives its type parameters.
 ValuedKey: fn Text, [((Text, Ty))] -> Text
-fn ValuedKey qk, types = if (Len types) == 0: qk else: "{qk}#{Show types}"
+fn ValuedKey qk, types = if (Len types) == 0: qk else: "{qk}#{Debug types}"
 
 # The types a reading of a widget as a value gives the widget's type parameters, in the
 # parameters' order by name: read off the arguments' types as an inlined call reads them
@@ -230,7 +230,7 @@ type InstancesOutput = choice:
     UndecidedParameter
     # nothing by that name is defined
     NoDefinition
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # `?DefInstances` with its reason: the instantiations of `wanted` alone.
 DefInstancesOutput: unbounded fn Lx, Text -> InstancesOutput
@@ -291,7 +291,7 @@ type InstanceUse = choice:
     # a trait method with type parameters of its own, named: the method, and the types
     # its name has there for the trait's parameter and its own
     UseOfMethod Text, Text, (Text ==> Ty)
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # One instantiation the fixed point found, and the one whose body's use gave it (its
 # place in the list; `nil` for a use in a definition with no type parameter).
@@ -303,7 +303,7 @@ type Instantiation = record:
     # a type over the parent's type parameters. `nil` for a constraint an impl solves
     # and for a use whose types hold an associated type.
     ?step: [((Text, Ty))]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # Every use of a generic function or widget and every constraint an impl solves, over
 # the whole program.
@@ -418,7 +418,7 @@ fn AddTargets lx, uses, relevant, all, user, types, ?parent = Fold uses, (Instan
         nil: UndecidedParameter
         ? targets: Fold targets, answer, \|inner, ((definition, taken, ?step))| match inner:
             InstancesReached sofar:
-                let known = Fold sofar, False, \|seen, other| seen or (other.definition == definition and (Show other.types) == (Show taken))
+                let known = Fold sofar, False, \|seen, other| seen or (other.definition == definition and (Debug other.types) == (Debug taken))
                 if known or not (HasText relevant, definition): inner
                 else: match ?GrowsFrom lx, sofar, ?parent, definition, taken, ?step:
                     ? endless: endless
@@ -1325,7 +1325,7 @@ fn KeyedRounds lx, known:
                 otherwise: [[]]
             let found = Fold fields, (Or m[ti.name], [[]]), \|acc, ft| UnionTexts acc, (KeyedIn lx, m, ft, False)
             Insert m, ti.name, (Filter found, \|q| HasText ti.params, q)
-    if (Show next) == (Show known): known else: KeyedRounds lx, next
+    if (Debug next) == (Debug known): known else: KeyedRounds lx, next
 
 # The type parameters in a type that a map's key holds, `inKey` inside one: a map's key;
 # a declared type's argument at a parameter that type keys by (`known`).

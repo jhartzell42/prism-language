@@ -43,14 +43,14 @@ type NameCase = choice:
     CaseTopic
     CaseHole
     CaseReserved
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A name token: attached sigils, then one or more `.`-joined segments.
 type NameTok = record:
     sigils: Text
     path: [Text]
     case: NameCase
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A bracket kind is its opening character, `"("`, `"["` or `"{"`. A keyword, an operator
 # and a sigil are their spelling; `sigils` is a run of sigils as written.
@@ -89,19 +89,19 @@ type TokKind = choice:
     KLaySep
     KLayClose
     KEof
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type Tok = record:
     kind: TokKind
     span: Range
     touches: Bool
     lineStart: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TextSegTok = choice:
     TsPlain Text
     TsPlaceholder [Tok], Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # `keyword` is `"Output"`, `"InlineText"`, `"Raw"` or `"File"`; `delims` `"single"` or
 # `"double"` (Q-CT1 (a)).
@@ -110,7 +110,7 @@ type TemplateTok = record:
     lang: Text
     delims: Text
     parts: [TPartTok]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TPartTok = choice:
     TptText Text
@@ -118,13 +118,13 @@ type TPartTok = choice:
     TptBlock [Tok], Range
     TptCall NameTok, [AttrTok], ?[TPartTok], Range
     TptBadEscape Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type AttrTok = record:
     name: Text
     tokens: [Tok]
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type PathSegTok = choice:
     PstNum Nat
@@ -132,7 +132,7 @@ type PathSegTok = choice:
     PstKey [Tok]
     # `/`: a widget application's own list starts (ruling PL)
     PstCall
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---------------------------------------------------------------------------------------
 # The lexer's state
@@ -145,7 +145,7 @@ type Mode = choice:
     MBrace Text
     MPlaceholder Text
     MPathKey
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The text, the cursor and the diagnostics, which every stream shares, and one stream's own
 # state, which `Fresh` starts over for a nested stream.
@@ -170,7 +170,7 @@ type Lex = record:
     ?testDepth: Nat
     ?checkDepth: Nat
     pathNext: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 Fresh: fn Lex, Mode -> Lex
 fn Fresh l, mode = Lex(src=l.src, pos=l.pos, diags=l.diags, mode=mode, tokens=[[]], layout=[[]],
@@ -182,7 +182,7 @@ fn Fresh l, mode = Lex(src=l.src, pos=l.pos, diags=l.diags, mode=mode, tokens=[[
 type Lexed = record:
     tokens: [Tok]
     diags: [Diag]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # ---------------------------------------------------------------------------------------
 # Token kinds

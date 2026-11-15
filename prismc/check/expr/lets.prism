@@ -336,7 +336,7 @@ fn WantsAboveBut st0, t, lambda, own:
     let mine = Filter st.wants, \|w| match Walk st, w.ty:
         TyFlex n: HasNat vs, n
         otherwise: False
-    let others = Filter st.wants, \|w| not (HasText (Each mine, \|m| Show m), (Show w))
+    let others = Filter st.wants, \|w| not (HasText (Each mine, \|m| Debug m), (Debug w))
     let constrained = Fold mine, [[]], \|acc, w| match Walk st, w.ty:
         TyFlex n: AddNat acc, n
         otherwise: acc

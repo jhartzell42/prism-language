@@ -214,7 +214,7 @@ type AssocFound = choice:
     AssocMatched (Text ==> Ty)
     AssocWaits
     AssocMissed
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # An equation's indices against an application's: each variable bound to its index, each
 # role constructor the same constructor.
@@ -537,7 +537,7 @@ type FieldQ = record:
     # The marks the access shows and where the field's name stands, checked against the
     # field's stack once the record is known (gap FM); none for a reference path's step.
     ?marks: ((Text, Range))
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 AskField: fn St, Ty, Text, Ty, Range, [Text] -> St
 fn AskField st, recv, field, result, span, owners = update st:

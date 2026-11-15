@@ -32,14 +32,14 @@ use Check.Typed.Print.*
 type SrcAt = record:
     file: Nat
     span: Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # One expression's type, every variable followed (a variable left is one nothing decided
 # and nothing constrains, or one a local `let` quantified).
 type TyNote = record:
     at: SrcAt
     ty: Ty
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # One application's lifting decision (ch. 5, The application rule). `kind` is the node it
 # elaborates to: `plain` (no node), `const` (a plain value made a constant dynamic, `$ x`
@@ -55,7 +55,7 @@ type AppNote = record:
     lifted: [Nat]
     inner: Text
     color: Col
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # An expression lifted over a `?` or `~` at the plain layer (ch. 4, `?` and `~` at the
 # plain layer): an application, an operator or a field read, `sigil` the layer peeled and
@@ -65,7 +65,7 @@ type LiftNote = record:
     at: SrcAt
     sigil: Text
     operands: [Range]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A function's color (ch. 5, The color): what its signature declares and the join of what
 # its body applies. A lambda's declared color is its body's.
@@ -74,7 +74,7 @@ type FnNote = record:
     name: Text
     declared: Col
     body: Col
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # How one wanted constraint was solved (ch. 5, Traits): `impl FILE:LINE` (a written impl),
 # `derived FILE:LINE`, `builtin` (the primitives and formers, Type System ch. 3), `given`
@@ -86,7 +86,7 @@ type ImplNote = record:
     cls: Text
     ty: Ty
     how: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A method call: the method's qualified name and its trait; the impl is the `ImplNote` of
 # the same trait at the same place.
@@ -94,7 +94,7 @@ type MethodNote = record:
     at: SrcAt
     method: Text
     cls: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A binding group's dependency order: the block, and its statements (by index) in
 # strongly connected components, each component's dependencies before it; the statements
@@ -103,13 +103,13 @@ type GroupNote = record:
     at: SrcAt
     kind: Text
     order: [ [Nat] ]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type BinderNote = record:
     at: SrcAt
     name: Text
     ty: Ty
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A generalized local `let` (ch. 5, a local `let` generalizes; D8): its binder's place,
 # its name, and the type and color variables its scheme quantified (`'12`, `'c14`), which
@@ -119,7 +119,7 @@ type GenNote = record:
     name: Text
     tys: [Text]
     cols: [Text]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A use of a generalized local `let` (ch. 5, a local `let` generalizes; D8): the name's
 # place, its name, and what each of the scheme's type and color variables is there, by the
@@ -129,7 +129,7 @@ type InstNote = record:
     name: Text
     tys: [((Text, Ty))]
     cols: [((Text, Col))]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A top-level definition's scheme as the checker read it: its signature's, or what a
 # top-level `let` without one generalized to.
@@ -137,7 +137,7 @@ type DefNote = record:
     at: SrcAt
     name: Text
     scheme: Scheme
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A local's binder or a use of it, with the binder's id (pick UN): the checker numbers a
 # definition's local binders in the order it binds them, from 0, and a use names the
@@ -146,12 +146,12 @@ type LocalNote = record:
     at: SrcAt
     id: Nat
     name: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type GlobalNote = record:
     at: SrcAt
     target: Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type TProgram = record:
     exprs: [TyNote]
@@ -185,7 +185,7 @@ type TProgram = record:
     # known to want an `[a]`, the one implicit conversion; ruling NS): lowering converts it
     # there, since a non-empty collection has a target type of its own.
     plains: [SrcAt]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 let emptyTyped = TProgram(exprs=[[]], apps=[[]], lifts=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], locals=[[]], uses=[[]], calls=[[]], globals=[[]], gens=[[]], insts=[[]], defs=[[]], unshrunk=[[]], faults=[[]], plains=[[]])
 

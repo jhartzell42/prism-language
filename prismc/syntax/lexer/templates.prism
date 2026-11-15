@@ -55,7 +55,7 @@ type RawLine = record:
     items: [RawItem]
     newline: Bool
     block: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type RawItem = choice:
     RiText Text
@@ -64,7 +64,7 @@ type RawItem = choice:
     RiCall NameTok, [AttrTok], ?[TPartTok], Range
     # `\{{` in a code template, where braces are text and no escape (`brace-placeholder`)
     RiBadEscape Range
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 let emptyLine = RawLine(items=[[]], newline=False, block=False)
 
@@ -102,7 +102,7 @@ type TplRead = record:
     closed: Bool
     atLineStart: Bool
     going: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # What every step of a template's body needs to know.
 type TplHow = record:
@@ -111,7 +111,7 @@ type TplHow = record:
     open: Text
     isRaw: Bool
     firstContinues: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # Reads a template's text up to `close` and applies Templates ch. 2's whitespace rules.
 # `firstContinues` is true when the first line of text shares the opening tag's line.
@@ -211,7 +211,7 @@ type CallRead = record:
     attrs: [AttrTok]
     ?body: [TPartTok]
     going: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # `<@Name attr=<<v>> attr="t"/>` or `<@Name ...>body</@Name>` (Templates ch. 2, "`<@` is
 # the only call form").

@@ -560,7 +560,7 @@ type ParameterFlow = record:
     resultReadsUpdate: Bool
     updateReadsValue: Bool
     updateReadsUpdate: Bool
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The edges of a line `NAMES <- F ARGUMENTS` over update events, by `F`'s flows
 # (`?LineFlows`): for each argument, from the line's names to what the argument reads (the
@@ -679,7 +679,7 @@ type PCx = record:
     # a summary, `?BlockFlows`): a call reads an argument at a parameter whose timed parts
     # are the type's to say (`IsTypeCarried`) by what the argument's type holds there
     localTys: (Text ==> Ty)
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # The relations every right side of a block starts from: the prelude's names that no
 # local of the block's scope hides, and the block's own `let NAME = \|..| ..` lines
@@ -1136,7 +1136,7 @@ fn BlockPlaceCycles env, st, b = Fold (Range0 (Len b.stmts)), st, \|s, at| match
 type Width = choice:
     WidthKnown Nat
     WidthUnknown
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A building choice on a line: a widget function of several clauses by the name the line
 # writes, a building `match`, a building `if`; each with its arms' widths.
@@ -1144,7 +1144,7 @@ type PlaceChoice = choice:
     ClausesChoice Text, [Width]
     MatchChoice [Width]
     IfChoice [Width]
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 ChoiceWidths: fn PlaceChoice -> [Width]
 fn ChoiceWidths (ClausesChoice ignore, widths) = widths

@@ -4,18 +4,18 @@ emit Fs.*
 
 type Contents = record:
     text: Text
-derive ^Eq, ^Ord, ^Show
+derive ^Eq, ^Ord, ^Debug
 
 type FileRequest = choice:
     Read
     Write Text
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 type WriteState = choice:
     Writing
     Written
     WriteFailed Error
-derive ^Eq, ^Show
+derive ^Eq, ^Debug
 
 # A file's state: its text, or an `Error` while it is missing.
 tag Fs.Contents of Element $~Contents:
