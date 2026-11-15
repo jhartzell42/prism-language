@@ -1,0 +1,7 @@
+# Ruling DD (Jimmy, 15 November): `^Show` is gone as a name; `^Debug` is what it was. A
+# derive of a trait no one declares is refused (q2 takes it silently).
+# Expected text derived by hand.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+type Card = record:
+    rank: Nat
+derive ^Eq, ^Show

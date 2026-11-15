@@ -1,0 +1,6 @@
+# Ruling DD (Jimmy, 15 November): a placeholder wants `^Display`, and a list has none, as
+# Rust's `{}` refuses a `Vec`: the program writes `{Debug xs}`, or gives the type an
+# `impl ^Display`. Expected text derived by hand.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+Listed: fn [Nat] -> Text
+fn Listed xs = "all: {xs}"

@@ -1,0 +1,5 @@
+tests/checker/neg/show-is-no-trait.prism:5: error[derive-unknown]: `derive ^Show` on `Card`, and no trait is named `^Show`
+    type Card = record:
+    ^^^^^^^^^^^^^^^^^^^
+  fix: derive one of `^Eq`, `^Ord`, `^Debug`, `^Pod`, or drop it
+1 error

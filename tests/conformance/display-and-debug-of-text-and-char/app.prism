@@ -1,0 +1,19 @@
+# Ruling DD (Jimmy, 15 November): `^Display` is text for people, `^Debug` text for
+# debugging and for the transcript. A placeholder displays: a text and a character as
+# themselves, a number as its digits, a `Bool` as its name. `Debug` quotes a text and
+# writes a character as its literal. A generic placeholder bounded by `^Display` displays
+# at the type it is given (`Framed`). Expected transcript derived by hand.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Framed: fn a -> Text where a: ^Display
+fn Framed x = "[{x}]"
+
+@page: @unit
+@page:
+    let word = "hi"
+    Ui.Label($text=$"{word} {'q'} {7} {True}")                            # 0
+    Ui.Label($text=$"{Debug word} {Debug 'q'} {Debug 7}")                 # 1
+    Ui.Label($text=$"{Framed word} {Framed 'q'} {Display 7}")             # 2

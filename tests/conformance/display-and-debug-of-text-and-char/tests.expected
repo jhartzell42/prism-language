@@ -1,0 +1,8 @@
+# Derived by hand from ruling DD: a placeholder displays (`hi`, `q`), `Debug` quotes a text and writes a character as its literal, and a placeholder bounded by `^Display` displays at its instance.
+test a_text_displays_as_itself_and_debugs_quoted
+
+tick 0
+  added:
+    0: Ui.Label(text="hi q 7 True")
+    1: Ui.Label(text="\"hi\" 'q' 7")
+    2: Ui.Label(text="[hi] [q] 7")
