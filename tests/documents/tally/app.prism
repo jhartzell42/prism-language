@@ -135,15 +135,16 @@ fn Removing names = Change(seat={{}}, remove=names)
 # - The loop. `@table` seats the document by the table (`seats <- @Table results`) and
 #   reads the document's results back into the table (`results <- @HostDocument ...,
 #   seats`), so that a seat whose participant leaves leaves the table's map (ruling SL).
-# - Promptness per parameter. `@HostDocument` is prompt in `seats`: a newborn guest's
-#   result is in `results` in its birth tick. The table steps its holds on
-#   `results.!tellersLeft`, so its result changes in the tick that event fires.
-# - Why that is no cycle. `!tellersLeft` is read off the guests' element trees: it fires
-#   on a participant's own `Seat.Leave`. Every path from a guest's element tree back
-#   into the guest is a tick (HO), so what the host derives from the tree is prompt in
-#   nothing, and the loop closes through a tick.
+# - Promptness per parameter. `@Table` is prompt in `results`: it steps its holds on
+#   `results.!tellersLeft`, so its seats change in the tick that event fires.
+# - Why that is no cycle. `@HostDocument` is not prompt in `seats`: changing the map only
+#   builds and ends guests (ownership), and the seats give back `unit`, so nothing they
+#   output can be prompt in anything. `!tellersLeft` is read off the guests' element
+#   trees, through a host: a tick late (HO). So the loop closes through ownership and a
+#   host, and no annotation but the parameters' own `prompt` marks is needed
+#   (claude/promptness-checker.md, "The tally, checked").
 
-@Table: fn TallyResults -> @(TallySeats o Ui.*) emit Ui.* where o: ^TallyOrder
+@Table: fn prompt TallyResults -> @(TallySeats o Ui.*) emit Ui.* where o: ^TallyOrder
 fn @Table results:
     !cyJoins <- Ui.Button($label=$"cy joins")                              # 0
     !cyRemoved <- Ui.Button($label=$"cy is removed")                       # 1
