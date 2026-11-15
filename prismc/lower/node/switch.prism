@@ -732,14 +732,16 @@ fn LiveParams r0, lives = Fold lives, ((r0, emptyEnv, emptyEnv, [[]])), \|((r, b
         let res = "{f}_res"
         let getter = "{f}_value"
         let follow = "{f}_follow"
-        let init = "{f}_init"
+        # (each name `inited` lists has its value at the build in `{name}_init`, as
+        # `LiveDynamic` reads it: the getter's and the dynamic's, one value)
+        let init = "{getter}_init"
         let followed = DoExpr (XMethod (XField (XVar "node"), follow), "follow_above", [[(XRef (XField (XField (XVar "node"), res), "updates")), (XRef (XVar "node")), (XPath (RefChild (SiteRef r.lx, r.node), "{f}_result_moved")), (XPath (RefChild (SiteRef r.lx, r.node), "{f}_result_moved_above"))]])
         let r2 = update r1:
-            &_.taken <= Append &_.taken, [[res, getter, follow, init, "{f}_result_moved"]]
+            &_.taken <= Append &_.taken, [[res, getter, follow, init, "{res}_init", "{f}_result_moved"]]
             &_.fields <= Append &_.fields, [[((res, (OutDyn t), "`{bn}`, a `$` parameter of a widget that calls itself: the caller's dynamic")), ((follow, (OutNamed (RefRuntime "prism_rtl::Follow"), [[]]), "the subscription to `{bn}`'s update event"))]]
             &_.inits <= Push &_.inits, ((res, (XClone (XVar res))))
             &_.moves <= Push &_.moves, ((follow, (XCall (RefRuntime "prism_rtl::Follow::new"), [[]])))
-            &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind init), t), (XMethod (XVar res), "sample", [[XCx]]))
+            &_.lets <= Push (Push &_.lets, (DoLet (PaTyped (PaBind init), t), (XMethod (XVar res), "sample", [[XCx]]))), (DoLet (PaTyped (PaBind "{res}_init"), t), (XClone (XVar init)))
             &_.inited <= Append &_.inited, [[res, getter]]
             &_.build <= Push &_.build, followed
             &_.getters <= Push &_.getters, (MethDef(name=getter, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=(XMethod (XField XSelf, res), "sample", [[XCx]]), doc="`{bn}`, a `$` parameter, at the read point."))
