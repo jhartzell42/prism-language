@@ -21,21 +21,21 @@ test boards_show_the_opening, @twoBoards:
 test fools_mate_on_two_boards, @twoBoards:
     build
     compute until idle
-    click element 0/[whiteF2]/0
+    click element 0.[whiteF2].0
     compute until idle
-    click element 0/[whiteF3]/0
+    click element 0.[whiteF3].0
     compute until idle
-    click element 0/[blackE7]/0
+    click element 0.[blackE7].0
     compute until idle
-    click element 0/[blackE5]/0
+    click element 0.[blackE5].0
     compute until idle
-    click element 0/[whiteG2]/0
+    click element 0.[whiteG2].0
     compute until idle
-    click element 0/[whiteG4]/0
+    click element 0.[whiteG4].0
     compute until idle
-    click element 0/[blackD8]/0
+    click element 0.[blackD8].0
     compute until idle
-    click element 0/[blackH4]/0
+    click element 0.[blackH4].0
     compute until idle
         => expect Draw.Text(text="White: White has been checkmated", ..)
         => expect Draw.Text(text="Black: White has been checkmated", ..)
@@ -46,20 +46,20 @@ test fools_mate_on_two_boards, @twoBoards:
 test declined_on_a_board, @twoBoards:
     build
     compute until idle
-    click element 0/[whiteE2]/0
+    click element 0.[whiteE2].0
     compute until idle
-    click element 0/[whiteE5]/0
+    click element 0.[whiteE5].0
     compute until idle
         => expect Draw.Text(text="declined: a Pawn does not move so", ..)
         => expect Draw.Text(text="White: White to move", ..)
-    click element 0/[blackE7]/0
+    click element 0.[blackE7].0
     compute until idle
-    click element 0/[blackE5]/0
+    click element 0.[blackE5].0
     compute until idle
         => expect Draw.Text(text="declined: it is not your move", ..)
-    click element 0/[whiteE2]/0
+    click element 0.[whiteE2].0
     compute until idle
-    click element 0/[whiteE4]/0
+    click element 0.[whiteE4].0
     compute until idle
         => expect_none Draw.Text(text="declined: a Pawn does not move so", ..)
         => expect Draw.Text(text="White: Black to move", ..)
@@ -69,27 +69,27 @@ test declined_on_a_board, @twoBoards:
 test back_and_forward, @twoBoards:
     build
     compute until idle
-    click element 0/[whiteE2]/0
+    click element 0.[whiteE2].0
     compute until idle
-    click element 0/[whiteE4]/0
+    click element 0.[whiteE4].0
     compute until idle
-    click element 0/[blackE7]/0
+    click element 0.[blackE7].0
     compute until idle
-    click element 0/[blackE5]/0
+    click element 0.[blackE5].0
     compute until idle
         => expect_count Draw.Text(text="1. e2e4 [e7e5]", ..), 2
-    click element 0/[whiteBack]/0
+    click element 0.[whiteBack].0
     compute until idle
         => expect Draw.Text(text="1. [e2e4] e7e5", ..)
         => expect Draw.Text(text="1. e2e4 [e7e5]", ..)
-    click element 0/[whiteBack]/0
+    click element 0.[whiteBack].0
     compute until idle
         => expect Draw.Text(text="1. e2e4 e7e5", ..)
-    click element 0/[whiteBack]/0
+    click element 0.[whiteBack].0
     compute until idle
-    click element 0/[whiteForward]/0
+    click element 0.[whiteForward].0
     compute until idle
-    click element 0/[whiteForward]/0
+    click element 0.[whiteForward].0
     compute until idle
         => expect_count Draw.Text(text="1. e2e4 [e7e5]", ..), 2
 
@@ -98,53 +98,53 @@ test back_and_forward, @twoBoards:
 test promotion_dialog, @twoBoards:
     build
     compute until idle
-    click element 0/[whiteA2]/0
+    click element 0.[whiteA2].0
     compute until idle
-    click element 0/[whiteA4]/0
+    click element 0.[whiteA4].0
     compute until idle
-    click element 0/[blackB7]/0
+    click element 0.[blackB7].0
     compute until idle
-    click element 0/[blackB5]/0
+    click element 0.[blackB5].0
     compute until idle
-    click element 0/[whiteA4]/0
+    click element 0.[whiteA4].0
     compute until idle
-    click element 0/[whiteB5]/0
+    click element 0.[whiteB5].0
     compute until idle
-    click element 0/[blackA7]/0
+    click element 0.[blackA7].0
     compute until idle
-    click element 0/[blackA6]/0
+    click element 0.[blackA6].0
     compute until idle
-    click element 0/[whiteB5]/0
+    click element 0.[whiteB5].0
     compute until idle
-    click element 0/[whiteA6]/0
+    click element 0.[whiteA6].0
     compute until idle
-    click element 0/[blackC8]/0
+    click element 0.[blackC8].0
     compute until idle
-    click element 0/[blackB7]/0
+    click element 0.[blackB7].0
     compute until idle
-    click element 0/[whiteA6]/0
+    click element 0.[whiteA6].0
     compute until idle
-    click element 0/[whiteB7]/0
+    click element 0.[whiteB7].0
     compute until idle
-    click element 0/[blackB8]/0
+    click element 0.[blackB8].0
     compute until idle
-    click element 0/[blackC6]/0
+    click element 0.[blackC6].0
     compute until idle
-    click element 0/[whiteB7]/0
+    click element 0.[whiteB7].0
     compute until idle
-    click element 0/[whiteA8]/0
+    click element 0.[whiteA8].0
     compute until idle
         => expect Draw.Text(text="White's pawn becomes", ..)
         => expect Draw.Text(text="White: White to move", ..)
-    click element 0/[whiteCancel]/0
+    click element 0.[whiteCancel].0
     compute until idle
         => expect_none Draw.Text(text="White's pawn becomes", ..)
         => expect Draw.Text(text="White: White to move", ..)
-    click element 0/[whiteB7]/0
+    click element 0.[whiteB7].0
     compute until idle
-    click element 0/[whiteA8]/0
+    click element 0.[whiteA8].0
     compute until idle
-    click element 0/[whiteKnight]/0
+    click element 0.[whiteKnight].0
     compute until idle
         => expect_none Draw.Text(text="White's pawn becomes", ..)
         => expect_count Draw.Text(text="5. [b7a8n]", ..), 2
@@ -154,16 +154,16 @@ test promotion_dialog, @twoBoards:
 test draw_by_buttons, @twoBoards:
     build
     compute until idle
-    click element 0/[blackAccept]/0
+    click element 0.[blackAccept].0
     compute until idle
         => expect Draw.Text(text="declined: no draw has been offered to you", ..)
-    click element 0/[whiteOffer]/0
+    click element 0.[whiteOffer].0
     compute until idle
         => expect Draw.Text(text="Black: White to move; a draw is offered", ..)
-    click element 0/[blackAccept]/0
+    click element 0.[blackAccept].0
     compute until idle
         => expect Draw.Text(text="White: a draw by agreement", ..)
-    click element 0/[whiteResign]/0
+    click element 0.[whiteResign].0
     compute until idle
         => expect Draw.Text(text="declined: the game is over: a draw by agreement", ..)
 
@@ -171,9 +171,9 @@ test draw_by_buttons, @twoBoards:
 test boards_with_a_terminal_watching, @watched:
     build
     compute until idle
-    click element 0/[whiteE2]/0
+    click element 0.[whiteE2].0
     compute until idle
-    click element 0/[whiteE4]/0
+    click element 0.[whiteE4].0
     compute until idle
     send Console.Read(name="ada", ..), "moves"
     compute until idle
@@ -183,9 +183,9 @@ test boards_with_a_terminal_watching, @watched:
 test board_against_a_terminal, @againstTerminal:
     build
     compute until idle
-    click element 0/[whiteE2]/0
+    click element 0.[whiteE2].0
     compute until idle
-    click element 0/[whiteE4]/0
+    click element 0.[whiteE4].0
     compute until idle
     send Console.Read(name="Black", ..), "e7e5"
     compute until idle
