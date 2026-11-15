@@ -296,6 +296,11 @@ fn Or (? x), ignore = x
 
 @started: @!unit
 @Element: fn Element r o -> @o emit r
+# The hosts. A computed answer is the next tick's input; a forwarded one (`@Element`) is
+# this tick's (ruling HO, Language ch. 6, "Tick by tick": "every path from the guest's
+# element tree back into the guest is a tick, so no prompt cycle runs through a host:
+# hosting means inserting delay"). So the handler is not `prompt`: what it captures is no
+# prompt edge of the host's line, and the prompt check never runs through a guest.
 @Host: fn prompt @a emit c, (fn Path, prompt Element c o -> @o) -> @((a, $(Path ==> $Elem c)))
 @HostSome: fn prompt @a emit c, (fn Path, Element c o -> ?@o) -> @((a, $(Path ==> $Elem c)))
 @HostList: fn prompt @a emit c, !(Path ==> Output c), (fn Path, prompt Element c o -> @o) -> @((a, $(Path ==> $Wired c)))

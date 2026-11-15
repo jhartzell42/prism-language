@@ -26,7 +26,9 @@
 //!   pushes from the World go to the child's place in the same tick, as the tick's
 //!   inputs. A host that forwards everything is observably not there. A host in a hosted
 //!   scope re-emits into the enclosing host's document instead ([`Host::enclosing`]).
-//! - **A computed answer** is delayed: an event output's firing ([`event_blueprint`]) or a
+//! - **A computed answer** is delayed (ruling HO, Language ch. 6, "Tick by tick": hosting
+//!   means inserting delay, so no prompt cycle runs through a host, and prismc's prompt
+//!   check draws no edge through a handler or from a place's answer to its fields): an event output's firing ([`event_blueprint`]) or a
 //!   dynamic output's later update ([`dynamic_blueprint`]) is queued with
 //!   [`Cx::output_later`] and delivered as an input of the next tick, which is owed
 //!   (`pending`, like an armed `@Defer`). A dynamic output's first value is read in the

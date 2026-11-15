@@ -670,6 +670,9 @@ derive ^StateDocument g via ^PerfectInformationGame g where State g = g, SeatId 
 # The document hosted: each role hosted once by the document's own `@HostSeats`, the
 # implementation built once, here; the result is every seat's own result. Its lower
 # language passes up to the caller.
+# Hosting inserts delay (ruling HO, Language ch. 6, "Tick by tick"): `Supply`'s answers
+# reach the places a tick after they ask, so `$guests` feeding `Implement`, whose supplier
+# answers the guests, is no prompt cycle.
 @HostDocument: fn prompt Implementation d lower, prompt Seats d rest -> @(Results d) emit lower | rest where d: ^Document
 fn @HostDocument Implement, seats:
     ((results, $guests)) <- @HostSeats seats, Supply     # each role hosted once
