@@ -240,6 +240,9 @@ fn ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound:
 # line's together are all its parameters.
 ?PartialWidget: unbounded fn Lx, Expr, [Arg], [Arg] -> ?Text
 fn ?PartialWidget clx, c, supplied, args = match (Ungrouped c).kind:
+    # (given its type arguments, `@Over<<ChessGame>> server`: the widget it names, the
+    # checker's types at the call saying the rest)
+    ETypeArgs x, ignore: ?PartialWidget clx, x, supplied, args
     EName n: match ResolveValue clx.g, clx.home, n:
         ((? qk, ignore)): match clx.g.vals[qk]:
             ? v: match v.scheme.ty:
@@ -1949,9 +1952,19 @@ fn ?WidgetMethodImpl lx, qk, args, cspan, callSpan:
             # (a parameter type that names the trait's parameter only inside an associated
             # type, `State d`, gives nothing to match: the call's want of the trait, solved
             # where the checker noted its impl, gives the type, `@InMemory<<Count>>`)
+            # (or the arguments' types matched whole, an associated type against the same
+            # one at the caller's variables, read at the inlined widget's types: `@HostSeats
+            # seats, Supply` in `@HostDocument`, `seats` a `Seats d rest`)
+            let ?byArgs = match ?ParamMatchAll (Each ps, \|p| Unrigid p), (Each args, \|a| TypeAt lx, a.value.span), {{}}:
+                ? m: match m[tr.param]:
+                    ? x: match SubstTy lx, x:
+                        TyCon c, cargs: ? (TyCon c, cargs)
+                        otherwise: nil
+                    nil: nil
+                nil: nil
             let head2 = match head:
                 TyCon ignore, ignore2: head
-                otherwise: Or (?ImplNoteTy lx, callSpan, tr.name), (Or (?ImplNoteTy lx, cspan, tr.name), head)
+                otherwise: Or ?byArgs, (Or (?ImplNoteTy lx, callSpan, tr.name), (Or (?ImplNoteTy lx, cspan, tr.name), head))
             match Fold (Or lx.g.impls[tr.name], [[]]), nil, \|?found, im| if ?found != nil: ?found else: if SameHead im.head, head2: ? im else: nil:
                 nil: nil
                 ? im: ? ((tr, im, head2))
@@ -2148,6 +2161,9 @@ fn ?ParamMatch pat, t, m = match ((pat, t)):
     # an associated type at a variable (`Move r` against `Step`) decides nothing about it:
     # the argument's type is already the impl's (`?InstanceMatch`); another parameter
     # decides the variable, or it stays unmatched
+    # (one against the same associated type unnormalized, `Seats d rest` against the
+    # caller's `Seats d rest` in a generic body: its argument and indices matched)
+    (((TyAssoc t1, n1, a1, i1), (TyAssoc t2, n2, a2, i2))) if t1 == t2 and n1 == n2 and (Len i1) == (Len i2): ?ParamMatchAll (Append [[a1]], i1), (Append [[a2]], i2), m
     (((TyAssoc ignore, ignore, ignore, ignore), ignore)): ? m
     otherwise: if pat == t: ? m else: nil
 

@@ -369,7 +369,16 @@ fn LiveFieldPat lx, p, fname, rsField, ft, view, descPath = match p.kind:
 EventFieldPat: unbounded fn Lx, Pattern, Text, Text, Ty, Text, Ref -> PatOut
 fn EventFieldPat lx, p, fname, rsField, ft, view, descPath = match p.kind:
     PIgnore: PatOnly PaWild
-    PName n: PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal (XClone (XFieldOf (XVar view), descPath, rsField)), Owned, (OutEvent (TagFieldOut lx, ft)))))]])
+    PName n:
+        let held = XClone (XFieldOf (XVar view), descPath, rsField)
+        # (a field of an associated type at the tag's variables holds plain data: the
+        # binder reads it back at the type the checker gave the binder, `!Raise`, as a
+        # constructor pattern's field does, `AssocPodPat`)
+        if TagFieldOpen lx, ft:
+            let concrete = OutTyOf lx, (SubstTy lx, (Peel (BinderTy lx, n.span)))
+            let back = XMethod held, "map", [[(XClosure True, [[(PaTyped (PaBind "open"), (OutRef (TagFieldOut lx, ft)))]], (XCallAt (HelperRef "recode"), [[concrete]], [[XVar "open"]]))]]
+            PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal back, Owned, (OutEvent concrete))))]])
+        else: PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal held, Owned, (OutEvent (TagFieldOut lx, ft)))))]])
     PGroup q: EventFieldPat lx, q, fname, rsField, ft, view, descPath
     otherwise: PatOut(pa=PaWild, conds=[[CcIf (InternalBug "a pattern inside an element's event field ({fname})")]], binds=[[]])
 

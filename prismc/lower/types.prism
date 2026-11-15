@@ -420,6 +420,24 @@ fn AssocPodOut t = if t == OutGen (Camel assocErasedName): OutPod else: match t:
 HasOpenAssoc: unbounded fn Ty -> Bool
 fn HasOpenAssoc t = (AssocErased t) != t
 
+# Whether a signature's type holds an associated type with indices at a variable, which
+# the definition's Rust signature holds as plain data (`AssocOutAt`); one with no indices
+# stays the Rust trait's (`<D as Gauge>::Reading`).
+HasOpenIndexedAssoc: unbounded fn Ty -> Bool
+fn HasOpenIndexedAssoc t = match t:
+    TyAssoc ignore, n, a, indices: (Len indices) > 0 and (AssocErased t) != t
+    TyCon c, args: Fold args, False, \|seen, x| seen or HasOpenIndexedAssoc x
+    TyTuple ts: Fold ts, False, \|seen, x| seen or HasOpenIndexedAssoc x
+    TyArray e: HasOpenIndexedAssoc e
+    TyMap k, v: (HasOpenIndexedAssoc k) or HasOpenIndexedAssoc v
+    TySig sg, i: HasOpenIndexedAssoc i
+    otherwise: False
+
+# A signature's type as its definition's Rust signature holds it at a call, each
+# associated type with indices at a variable plain data.
+ErasedSignatureOut: unbounded fn Lx, Ty -> OutTy
+fn ErasedSignatureOut lx, t = AssocPodOut (OutTyOf lx, (AssocErased t))
+
 IsKnownIndex: fn Ty -> Bool
 fn IsKnownIndex t = match t:
     TyRole ignore: True
@@ -682,7 +700,12 @@ fn AssocOutAt lx, tr, n, a, indices = match ?ImplAssoc lx.g, tr, n, a, indices:
     ? t: OutTyOf lx, t
     nil: match lx.g.traits[tr]:
         ? info: if (Len indices) == 0: OutAssoc (PathIn lx, info.home, (TraitName info.name)), (Camel n), (OutTyOf lx, a)
-        else: OutRefused "an associated type with indices, `{n}`, at an index that is no role constructor, in a type the program keeps (Type System ch. 6), {AssocPlaceWords lx, a}: its Rust trait per associated type is not lowered"
+        # (an associated type with indices that no equation decides here, at a variable
+        # or at a role the program learns as it runs, is plain data, as a tag's field and
+        # a type's field of one are, `AssocErased`; MB): each call of a definition that
+        # takes or gives one recodes at the concrete type its site gives (`ArgsFor`,
+        # `DeclaredCall`)
+        else: OutPod
         nil: InternalBugType "an associated type `{n}` of `{tr}`, which no trait of the program declares"
 
 # Where such an associated type stands, for the refusal: its trait's argument and the

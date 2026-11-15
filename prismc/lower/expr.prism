@@ -2355,7 +2355,13 @@ fn DeclaredCall lx, env, qk, args, span, cspan, t:
                         else: match ?TypeArgsAt lx, qk, v.scheme, cspan:
                             ? tys: XCallAt (ValueRef lx, qk), tys, callArgs
                             nil: XCall (ValueRef lx, qk), callArgs
-                    match ?SignatureResult lx, v, cspan, span, t:
+                    # (a result of an associated type with indices at the callee's variables
+                    # comes back as plain data, read at the type the call gives)
+                    let resTy = match v.scheme.ty:
+                        TyFn ignore, ignore2, r, prompts: r
+                        otherwise: TyErr
+                    if (HasOpenIndexedAssoc (Peel resTy)) and (LayerOf resTy) == LyPlain: VlOwned (XCallAt (HelperRef "recode"), [[t]], [[XRef call]]), t
+                    else: match ?SignatureResult lx, v, cspan, span, t:
                         ? signatureTy: VlOwned (Recolored lx, call, signatureTy, (Peel (SubstTy lx, (TypeAt lx, span))), 0), t
                         nil: VlOwned call, t
             nil: VlOwned (InternalBug "a call of {qk}"), t
@@ -2660,7 +2666,12 @@ fn ArgsFor lx, env, v, args:
         let bounded = match Peel (Or ps[i], TyErr):
             TyFn CBound, ignore, ignore, prompts: True
             otherwise: False
-        if toUnbounded: XRef (AsJobValue lx, env, a.value)
+        # (a plain parameter of an associated type with indices at the callee's variables
+        # is plain data in its Rust signature: the argument recoded from its concrete type)
+        let p = Or ps[i], TyErr
+        let erasedAt = (HasOpenIndexedAssoc (Peel p)) and (LayerOf p) == LyPlain and not toUnbounded and not bounded
+        if erasedAt: XRef (XCallAt (HelperRef "recode"), [[(ErasedSignatureOut lx, (Peel p))]], [[(ArgumentAt lx, env, p, a.value)]])
+        else: if toUnbounded: XRef (AsJobValue lx, env, a.value)
         else: if bounded: ValueArgument lx, env, a.value
         else: if wholeAt:
             let lxw = update lx:
@@ -2794,9 +2805,19 @@ fn MethodCall lx, env, v, args, span, cspan, t:
         # (inside a trait's default inlined at its parameter's type, `Step<<d>>` in
         # `@InMemory`'s body, the want is the default's own given, which has no impl note:
         # the parameter's type there)
-        let ?atParameter = match lx.subst[tr.param]:
-            ? x: ? (OutTyOf lx, x)
+        # (the callee's type at the call matched whole, `State d` against the caller's
+        # own `State d` in a generic body or an inlined default, read at the types being
+        # lowered; else the trait's parameter as the inlined default has it)
+        let ?byType = match ?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, cspan), {{}}:
+            ? m: match m[tr.param]:
+                ? x: ? (OutTyOf lx, (SubstTy lx, x))
+                nil: nil
             nil: nil
+        let ?atParameter = match ?byType:
+            ? x: ? x
+            nil: match lx.subst[tr.param]:
+                ? x: ? (OutTyOf lx, x)
+                nil: nil
         if IsResultOnly lx, v.qk, tr.param: match ?EitherSelf (?EitherSelf (?SelfAt lx, span, cls), (?SelfAt lx, cspan, cls)), ?atParameter:
             ? self: VlOwned (XCallSelf (RefIn lx, tr.home, (TraitName cls)), mname, self, (ArgsFor lx, env, v, args)), t
             nil: VlOwned (InternalBug "a call of `{m}` at a type the checker did not record"), t
