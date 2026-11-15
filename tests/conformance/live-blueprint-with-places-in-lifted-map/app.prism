@@ -1,0 +1,17 @@
+# A live blueprint of a widget with places written in a map literal that a `then` takes
+# on an event (`{{"ada": $ (@Named "ada")}} on !add`; ruling HD keeps the map's values
+# whole): the widget read as a value there. The documents' seat maps are written so
+# (tests/documents/c6-chess-by-hand's `$spectators`). Found by the p16 run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@Named: fn Text -> @unit emit Ui.*
+fn @Named name:
+    Ui.Label($text=$ name)
+
+@page: @unit
+@page:
+    !add <- Ui.Button($label=$"add")                                            # 0
+    $seats <- {{}} then ({{"ada": $ (@Named "ada")}} on !add)
+    Ui.Label($text=$"{Size $seats} seated")                                     # 1

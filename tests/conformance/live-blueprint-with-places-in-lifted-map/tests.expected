@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 4 (`then` takes the event's value) and ruling HD (a map literal keeps a live blueprint whole).
+test seated_on_add
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Ui.Label(text="0 seated")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1 seated")
