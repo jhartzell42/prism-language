@@ -1,0 +1,42 @@
+# A host's departures, read off its guests' element tree, remove the guests from the map
+# that seats them, in the tick they leave, with no `@Defer` (ruling HO, Language ch. 6,
+# "Tick by tick": every path from a guest's element tree back into the guest is a tick;
+# Jimmy, 15 November: the checker applies it). `@Seats` is prompt in `$guests`, its
+# guests' results are in its result in their birth tick, but `!left` comes from the tree
+# and is prompt in nothing, so `@room` reading it back closes no prompt cycle. The
+# tally's table is this loop (tests/documents/tally).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.* | Pad.*
+
+tag Pad.Bye of Element:
+    !bye: unit
+
+@Guest: fn Text -> @unit emit Ui.* | Pad.*
+fn @Guest name:
+    !leave <- Ui.Button($label=$"{name} leaves")
+    Pad.Bye(!bye=(unit on !leave))
+
+!ByeAt: fn Path, Elem (Ui.* | Pad.*) -> !Text
+fn !ByeAt at, element = match element:
+    Pad.Bye(!bye=!bye): "left" on !bye
+    otherwise: never
+
+@Seats: fn prompt $(Text ==> $@(@unit emit Ui.* | Pad.*)) -> @(($(Text ==> unit), !Text)) emit Ui.*
+fn @Seats $guests:
+    (($results, $tree)) <- @Host (@Seated $guests), \|path, prompt element| match element:
+        Pad.Bye(..): @ unit
+        otherwise: @Element element
+    !leaving <- for at, $element <- $tree:
+        @Switch (!ByeAt at, $element)
+    @ (($results, !Filter (?Last (Values !leaving))))
+
+@Seated: fn prompt $(k ==> $@(@a emit r)) -> @$(k ==> a) emit r where k: ^Ord
+fn @Seated $seats:
+    for seat, $@guest <- $seats:
+        rebuild $@guest:
+            _
+
+@room: @unit emit Ui.*
+@room:
+    (($seated, !left)) <- @Seats $guests
+    $guests <- {{"ada": $ (@Guest "ada")}} then {{}} on !left
