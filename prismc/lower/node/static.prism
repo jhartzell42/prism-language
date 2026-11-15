@@ -2174,7 +2174,14 @@ fn InlineWidgetBody wx, benv, menv, qk, v0, args, e:
                 let ((wx1, be1, me1)) = Fold (Range0 (Len params)), ((wx, emptyEnv, emptyEnv)), \|((w, be, me)), i|
                     let p = Or params[i], dummyPat
                     let nkey = PlainBinder lxc, p
-                    let pty = SubstTy lxp, (Or ptys[i], TyErr)
+                    let pty0 = SubstTy lxp, (Or ptys[i], TyErr)
+                    # (a parameter whose type holds an associated type with indices no
+                    # equation decides here, `$(SeatId d r ==> ..)` with `r` given by
+                    # nothing but the argument: the argument's own type, of the same
+                    # layer, which the checker found equal)
+                    let pty = match args[i]:
+                        ? a: if (HasOpenIndexedAssoc pty0) and (LayerOf (TypeAt lx, a.value.span)) == (LayerOf pty0): TypeAt lx, a.value.span else: pty0
+                        nil: pty0
                     match args[i]:
                         nil: ((w, be, me))
                         ? a: if nkey != "": BindParam w, benv, menv, be, me, nkey, (LocalNameAt lxc, nkey, p.span), pty, a.value else: BindParamPattern w, benv, menv, be, me, lxc, p, pty, a.value
