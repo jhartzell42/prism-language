@@ -1,0 +1,36 @@
+# Ruling PL (Jimmy, 15 November): a path is a list of lists of positions, one list per
+# widget application. A widget's places are counted in its own list, so how many places
+# `@Wide n` builds moves nothing after it; a building arm's places extend the list at the
+# arm's own position, so an arm that builds nothing moves nothing either. A transcript
+# writes `/` between widgets and `.` inside one. Expected transcripts derived by hand.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Wide: fn Nat -> @unit
+fn @Wide 0:
+    Ui.Label($text=$"none")
+fn @Wide k:
+    Ui.Label($text=$"one {k}")
+    Ui.Label($text=$"two {k}")
+
+@Inner: @unit
+@Inner:
+    Ui.Label($text=$"inner")
+
+@Outer: @unit
+@Outer:
+    Ui.Label($text=$"outer")
+    @Inner
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    @Wide n                                    # 0/0 and 0/1, or 0/0
+    n <- if loud:
+        Ui.Label($text=$"arm")                 # 1.0
+        @ 2
+    else:
+        @ 0
+    @Outer                                     # 2/0 and 2/1/0
+    Ui.Label($text=$"after")                   # 3

@@ -1,0 +1,20 @@
+# Derived by hand from ruling PL: `@Wide` at position 0 numbers its labels in its own list (`0/0`, `0/1`); the building `if` at position 1 extends the page's list (`1.0`); `@Outer` at 2 numbers its label `2/0` and `@Inner` at its position 1 `2/1/0`; the last label is 3 whatever `@Wide` and the arm built.
+test a_widget_numbers_its_places_in_its_own_list
+
+tick 0
+  added:
+    0/0: Ui.Label(text="one 2")
+    0/1: Ui.Label(text="two 2")
+    1.0: Ui.Label(text="arm")
+    2/0: Ui.Label(text="outer")
+    2/1/0: Ui.Label(text="inner")
+    3: Ui.Label(text="after")
+
+test an_arm_that_builds_nothing_moves_nothing
+
+tick 0
+  added:
+    0/0: Ui.Label(text="none")
+    2/0: Ui.Label(text="outer")
+    2/1/0: Ui.Label(text="inner")
+    3: Ui.Label(text="after")
