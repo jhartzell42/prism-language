@@ -1,4 +1,4 @@
-tests/checker/neg/doc-seat-family-arm-answers-other-role.prism:52: error[no-impl]: no impl of `^Num` for `Answer Count ρ`, which no equation of its impls decides here
+tests/checker/neg/doc-seat-family-arm-answers-other-role.prism:55: error[no-impl]: no impl of `^Num` for `Answer Count ρ`, which no equation of its impls decides here
             Seat.Query(..): @ $ (? 5)
                                    ^
   fix: annotate the value's type, or match the role first
