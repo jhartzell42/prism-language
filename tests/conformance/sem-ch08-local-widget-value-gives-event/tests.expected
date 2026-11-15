@@ -3,20 +3,20 @@ test picked
 
 tick 0
   added:
-    0: Ui.Label(text="press 7")
-    1: Ui.Button(label="go")
-    2: Ui.Label(text="total 0")
-    3: Ui.Label(text="end")
+    0.0/0: Ui.Label(text="press 7")
+    0.0/1: Ui.Button(label="go")
+    0.1: Ui.Label(text="total 0")
+    1: Ui.Label(text="end")
 
 tick 1
   in:
-    1: click
+    0.0/1: click
   changed:
-    2: Ui.Label(text="total 7")
+    0.1: Ui.Label(text="total 7")
 
 test not_picked
 
 tick 0
   added:
-    0: Ui.Label(text="none")
+    0.0: Ui.Label(text="none")
     1: Ui.Label(text="end")

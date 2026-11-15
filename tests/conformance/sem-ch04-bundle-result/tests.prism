@@ -6,6 +6,6 @@ test a_bundle_result_is_taken_apart, @page:
     build
         => expect Ui.Label(text="0 after 0")
         => returns "0"
-    click at 0
+    click at 0/0
         => expect Ui.Label(text="1 after 1")
         => returns "1"

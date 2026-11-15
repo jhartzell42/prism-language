@@ -4,5 +4,5 @@ use App.*
 
 test a_kept_dynamic_follows, @rows:
     build
-    click at 0
-    click at 0
+    click at 0/0
+    click at 0/0

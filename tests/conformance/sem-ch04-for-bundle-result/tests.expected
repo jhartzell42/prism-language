@@ -4,14 +4,14 @@ test a_bundle_gathered_field_by_field
 tick 0
   added:
     0: Ui.Button(label="drop")
-    1/[1]/0: Ui.Button(label="ale")
-    1/[2]/0: Ui.Button(label="bun")
+    1.[1].0: Ui.Button(label="ale")
+    1.[2].0: Ui.Button(label="bun")
     2: Ui.Label(text="sales 0")
     3: Ui.Label(text="total 0")
 
 tick 1
   in:
-    1/[1]/0: click
+    1.[1].0: click
   changed:
     2: Ui.Label(text="sales 1")
 

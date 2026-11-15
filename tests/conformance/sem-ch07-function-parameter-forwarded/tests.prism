@@ -5,5 +5,5 @@ use App.*
 test a_parameter_handed_on_is_read_by_its_use, @host:
     build
         => expect Ui.Label(text="0")
-    click at 0
+    click at 0/0/0/0
         => expect Ui.Label(text="2")

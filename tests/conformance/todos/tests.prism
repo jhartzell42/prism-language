@@ -30,9 +30,9 @@ test the_star_follows_its_item, @todos:
         => expect Ui.Label(text="[ ] item 1")
     click Ui.Button(label="Add")
         => expect Ui.Label(text="[ ] item 2")
-    click at 1/[2]/2
+    click at 1.[2].2
         => expect Ui.Label(text="[ ] item 2 *")
-    click at 1/[1]/1
+    click at 1.[1].1
         => expect_none Ui.Label(text="[ ] item 1")
         => expect Ui.Label(text="[ ] item 2 *")
         => expect_count Ui.Label(..), 2

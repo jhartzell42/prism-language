@@ -5,39 +5,39 @@ tick 0
   added:
     0: Ui.Button(label="next")
     1: Ui.Button(label="ring")
-    2/#0/0: Ui.Button(label="hit 1")
-    2/#0/1: Test.Log
-    2/#0/2: Ui.Label(text="page 1: 0 hits")
+    2.#0.0: Ui.Button(label="hit 1")
+    2.#0.1: Test.Log
+    2.#0.2: Ui.Label(text="page 1: 0 hits")
 
 tick 1
   in:
-    2/#0/0: click
+    2.#0.0: click
   changed:
-    2/#0/2: Ui.Label(text="page 1: 1 hits")
+    2.#0.2: Ui.Label(text="page 1: 1 hits")
 
 tick 2
   in:
     0: click
     1: click
   added:
-    2/#1/0: Ui.Button(label="hit 2")
-    2/#1/1: Test.Log
-    2/#1/2: Ui.Label(text="page 2: 0 hits")
+    2.#1.0: Ui.Button(label="hit 2")
+    2.#1.1: Test.Log
+    2.#1.2: Ui.Label(text="page 2: 0 hits")
   torn down:
-    2/#0/0: Ui.Button(label="hit 1")
-    2/#0/1: Test.Log
-    2/#0/2: Ui.Label(text="page 1: 1 hits")
+    2.#0.0: Ui.Button(label="hit 1")
+    2.#0.1: Test.Log
+    2.#0.2: Ui.Label(text="page 1: 1 hits")
   requested:
-    2/#0/1: "ring 1"
+    2.#0.1: "ring 1"
 
 tick 3
   in:
     1: click
   requested:
-    2/#1/1: "ring 2"
+    2.#1.1: "ring 2"
 
 tick 4
   in:
-    2/#1/0: click
+    2.#1.0: click
   changed:
-    2/#1/2: Ui.Label(text="page 2: 1 hits")
+    2.#1.2: Ui.Label(text="page 2: 1 hits")

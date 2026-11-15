@@ -4,43 +4,43 @@ test the_wide_arm
 tick 0
   added:
     0: Ui.Label(text="panel")
-    1: Ui.Label(text="loud")
-    2: Ui.Button(label="wide")
-    3: Ui.Button(label="more")
-    4: Ui.Label(text="tail")
-    5: Ui.Label(text="inner 0 more 0")
+    1/0.0: Ui.Label(text="loud")
+    1/0.1: Ui.Button(label="wide")
+    2: Ui.Button(label="more")
+    3/0: Ui.Label(text="tail")
+    4: Ui.Label(text="inner 0 more 0")
 
 tick 1
   in:
-    3: click
+    2: click
   changed:
-    5: Ui.Label(text="inner 0 more 1")
+    4: Ui.Label(text="inner 0 more 1")
 
 tick 2
   in:
-    2: click
+    1/0.1: click
   changed:
-    5: Ui.Label(text="inner 1 more 1")
+    4: Ui.Label(text="inner 1 more 1")
 
 test the_narrow_arm
 
 tick 0
   added:
     0: Ui.Label(text="panel")
-    1: Ui.Button(label="narrow")
+    1/0.0: Ui.Button(label="narrow")
     2: Ui.Button(label="more")
-    3: Ui.Label(text="tail a")
-    4: Ui.Label(text="tail b")
-    5: Ui.Label(text="inner 0 more 0")
+    3/0: Ui.Label(text="tail a")
+    3/1: Ui.Label(text="tail b")
+    4: Ui.Label(text="inner 0 more 0")
 
 tick 1
   in:
     2: click
   changed:
-    5: Ui.Label(text="inner 0 more 1")
+    4: Ui.Label(text="inner 0 more 1")
 
 tick 2
   in:
-    1: click
+    1/0.0: click
   changed:
-    5: Ui.Label(text="inner 1 more 1")
+    4: Ui.Label(text="inner 1 more 1")

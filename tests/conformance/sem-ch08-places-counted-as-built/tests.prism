@@ -5,9 +5,9 @@ use App.*
 test the_wide_arm, @Panel (Wide "loud"):
     build
         => expect Ui.Button(label="more")
-    click at 3
-        => expect Ui.Label(text="inner 0 more 1")
     click at 2
+        => expect Ui.Label(text="inner 0 more 1")
+    click at 1/0.1
         => expect Ui.Label(text="inner 1 more 1")
 
 test the_narrow_arm, @Panel Narrow:
@@ -15,5 +15,5 @@ test the_narrow_arm, @Panel Narrow:
         => expect Ui.Button(label="more")
     click at 2
         => expect Ui.Label(text="inner 0 more 1")
-    click at 1
+    click at 1/0.0
         => expect Ui.Label(text="inner 1 more 1")

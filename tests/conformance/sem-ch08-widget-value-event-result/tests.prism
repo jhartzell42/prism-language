@@ -4,7 +4,7 @@ use App.*
 
 test picked, @Page True:
     build
-    click at 1
+    click at 0.0/1
         => expect Ui.Label(text="total 1")
 
 test not_picked, @Page False:

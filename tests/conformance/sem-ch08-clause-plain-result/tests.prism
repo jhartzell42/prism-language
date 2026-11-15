@@ -5,7 +5,7 @@ use App.*
 test some_clause, @Page (? 3):
     build
         => returns "n3"
-    click at 3
+    click at 2
         => expect Ui.Label(text="n3 1")
 
 test none_clause, @Page nil:

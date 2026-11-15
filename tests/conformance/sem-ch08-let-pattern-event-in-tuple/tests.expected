@@ -3,11 +3,11 @@ test the_inner_parts_are_bound
 
 tick 0
   added:
-    0: Ui.Button(label="more on 1")
+    0/0/0: Ui.Button(label="more on 1")
     1: Ui.Label(text="10: 1 guests, 0 clicks")
 
 tick 1
   in:
-    0: click
+    0/0/0: click
   changed:
     1: Ui.Label(text="10: 2 guests, 1 clicks")

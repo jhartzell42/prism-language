@@ -4,4 +4,4 @@ use App.*
 
 test the_patterns_bind, @main:
     build
-    click at 0
+    click at 0/0

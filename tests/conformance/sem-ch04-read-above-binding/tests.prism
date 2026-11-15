@@ -8,4 +8,4 @@ test a_build_reads_names_bound_below, @page:
     with Pad.Door(name="front") = "door 1", build
         => expect Ui.Label(text="door 1, hello x!")
         => returns "door 1"
-    click at 4
+    click at 5

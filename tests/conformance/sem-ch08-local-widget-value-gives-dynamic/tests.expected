@@ -3,19 +3,19 @@ test picked
 
 tick 0
   added:
-    0: Ui.Button(label="inc")
-    1: Ui.Label(text="live 7")
-    2: Ui.Label(text="end")
+    0.0/0: Ui.Button(label="inc")
+    0.1: Ui.Label(text="live 7")
+    1: Ui.Label(text="end")
 
 tick 1
   in:
-    0: click
+    0.0/0: click
   changed:
-    1: Ui.Label(text="live 8")
+    0.1: Ui.Label(text="live 8")
 
 test not_picked
 
 tick 0
   added:
-    0: Ui.Label(text="none")
+    0.0: Ui.Label(text="none")
     1: Ui.Label(text="end")

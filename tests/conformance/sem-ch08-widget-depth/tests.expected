@@ -3,13 +3,13 @@ test widgets_nest_as_deep_as_they_are_written
 
 tick 0
   added:
-    0: Ui.Button(label="poke")
-    1: Ui.Label(text="deep 0")
+    0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0: Ui.Button(label="poke")
+    0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/1: Ui.Label(text="deep 0")
   result: "0"
 
 tick 1
   in:
-    0: click
+    0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0: click
   changed:
-    1: Ui.Label(text="deep 1")
+    0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/1: Ui.Label(text="deep 1")
   result: "1"

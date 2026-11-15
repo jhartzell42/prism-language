@@ -3,11 +3,11 @@ test the_function_takes_the_bundle
 
 tick 0
   added:
-    0: Ui.Button(label="inc")
+    0/0: Ui.Button(label="inc")
     1: Ui.Label(text="0")
 
 tick 1
   in:
-    0: click
+    0/0: click
   changed:
     1: Ui.Label(text="1")

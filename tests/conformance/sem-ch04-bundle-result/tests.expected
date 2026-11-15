@@ -3,13 +3,13 @@ test a_bundle_result_is_taken_apart
 
 tick 0
   added:
-    0: Ui.Button(label="go")
+    0/0: Ui.Button(label="go")
     1: Ui.Label(text="0 after 0")
   result: "0"
 
 tick 1
   in:
-    0: click
+    0/0: click
   changed:
     1: Ui.Label(text="1 after 1")
   result: "1"

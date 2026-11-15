@@ -4,4 +4,4 @@ use App.*
 
 test the_plain_part_is_read_again, @main:
     build
-    click at 0
+    click at 0/0

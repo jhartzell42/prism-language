@@ -6,5 +6,5 @@ test the_clause_hears_its_own_button, @page:
     build
     click at 0
         => expect Ui.Label(text="0 1")
-    click at 1
+    click at 1/0
         => expect Ui.Label(text="3 1")

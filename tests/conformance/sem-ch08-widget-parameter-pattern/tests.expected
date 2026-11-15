@@ -3,12 +3,12 @@ test the_patterns_bind
 
 tick 0
   added:
-    0: Ui.Button(label="more on 1")
-    1: Ui.Label(text="a: 3")
-    2: Ui.Label(text="b: 1 guests, 0 clicks")
+    0/0: Ui.Button(label="more on 1")
+    1/0: Ui.Label(text="a: 3")
+    2/0: Ui.Label(text="b: 1 guests, 0 clicks")
 
 tick 1
   in:
-    0: click
+    0/0: click
   changed:
-    2: Ui.Label(text="b: 2 guests, 1 clicks")
+    2/0: Ui.Label(text="b: 2 guests, 1 clicks")

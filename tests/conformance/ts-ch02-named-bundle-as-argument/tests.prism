@@ -4,4 +4,4 @@ use App.*
 
 test the_function_takes_the_bundle, @main:
     build
-    click at 0
+    click at 0/0

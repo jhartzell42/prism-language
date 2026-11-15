@@ -4,46 +4,46 @@ test a_loud_arm
 tick 0
   added:
     0: Ui.Button(label="reset")
-    1: Ui.Label(text="choose")
-    2: Ui.Button(label="hey!")
-    3: Ui.Label(text="hey 0")
-    4: Ui.Label(text="count 2")
-    5: Ui.Label(text="hits 0")
+    1/0: Ui.Label(text="choose")
+    1/1.0: Ui.Button(label="hey!")
+    1/1.1: Ui.Label(text="hey 0")
+    2.0: Ui.Label(text="count 2")
+    3: Ui.Label(text="hits 0")
 
 tick 1
   in:
-    2: click
+    1/1.0: click
   changed:
-    5: Ui.Label(text="hits 1")
+    3: Ui.Label(text="hits 1")
 
 tick 2
   in:
     0: click
   changed:
-    3: Ui.Label(text="hey 1")
+    1/1.1: Ui.Label(text="hey 1")
 
 test the_guard_fails
 
 tick 0
   added:
     0: Ui.Button(label="reset")
-    1: Ui.Label(text="choose")
-    2: Ui.Button(label="empty")
-    3: Ui.Label(text="count 2")
-    4: Ui.Label(text="hits 0")
+    1/0: Ui.Label(text="choose")
+    1/1.0: Ui.Button(label="empty")
+    2.0: Ui.Label(text="count 2")
+    3: Ui.Label(text="hits 0")
 
 test a_soft_arm
 
 tick 0
   added:
     0: Ui.Button(label="reset")
-    1: Ui.Label(text="choose")
-    2: Ui.Button(label="soft")
-    3: Ui.Label(text="no count")
-    4: Ui.Label(text="hits 0")
+    1/0: Ui.Label(text="choose")
+    1/1.0: Ui.Button(label="soft")
+    2.0: Ui.Label(text="no count")
+    3: Ui.Label(text="hits 0")
 
 tick 1
   in:
-    2: click
+    1/1.0: click
   changed:
-    4: Ui.Label(text="hits 1")
+    3: Ui.Label(text="hits 1")

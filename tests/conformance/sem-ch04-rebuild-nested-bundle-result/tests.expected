@@ -4,21 +4,21 @@ test generations
 tick 0
   added:
     0: Ui.Button(label="next")
-    1/#0/0: Ui.Button(label="more on 1")
-    1/#0/1: Ui.Label(text="page 1: 1")
+    1.#0.0/0/0: Ui.Button(label="more on 1")
+    1.#0.0/0/1: Ui.Label(text="page 1: 1")
 
 tick 1
   in:
-    1/#0/0: click
+    1.#0.0/0/0: click
   changed:
-    1/#0/1: Ui.Label(text="page 1: 2")
+    1.#0.0/0/1: Ui.Label(text="page 1: 2")
 
 tick 2
   in:
     0: click
   added:
-    1/#1/0: Ui.Button(label="more on 2")
-    1/#1/1: Ui.Label(text="page 2: 1")
+    1.#1.0/0/0: Ui.Button(label="more on 2")
+    1.#1.0/0/1: Ui.Label(text="page 2: 1")
   torn down:
-    1/#0/0: Ui.Button(label="more on 1")
-    1/#0/1: Ui.Label(text="page 1: 2")
+    1.#0.0/0/0: Ui.Button(label="more on 1")
+    1.#0.0/0/1: Ui.Label(text="page 1: 2")

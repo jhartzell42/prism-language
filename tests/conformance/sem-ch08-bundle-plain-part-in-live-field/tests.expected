@@ -3,11 +3,11 @@ test the_plain_part_is_read_again
 
 tick 0
   added:
-    0: Ui.Button(label="more on 1")
+    0/0: Ui.Button(label="more on 1")
     1: Ui.Label(text="10: 1")
 
 tick 1
   in:
-    0: click
+    0/0: click
   changed:
     1: Ui.Label(text="10: 2")

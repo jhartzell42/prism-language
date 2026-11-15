@@ -3,25 +3,25 @@ test loud
 
 tick 0
   added:
-    0: Ui.Label(text="x")
-    1: Ui.Button(label="go")
-    2: Ui.Label(text="step 10, gone 0")
+    0/0.0: Ui.Label(text="x")
+    0/1: Ui.Button(label="go")
+    1: Ui.Label(text="step 10, gone 0")
 
 tick 1
   in:
-    1: click
+    0/1: click
   changed:
-    2: Ui.Label(text="step 10, gone 10")
+    1: Ui.Label(text="step 10, gone 10")
 
 test soft
 
 tick 0
   added:
-    0: Ui.Button(label="go")
+    0/1: Ui.Button(label="go")
     1: Ui.Label(text="step 20, gone 0")
 
 tick 1
   in:
-    0: click
+    0/1: click
   changed:
     1: Ui.Label(text="step 20, gone 20")

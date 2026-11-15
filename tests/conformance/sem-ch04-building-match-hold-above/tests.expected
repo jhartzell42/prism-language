@@ -3,12 +3,12 @@ test a_hold_above_reads_the_arms_result
 
 tick 0
   added:
-    0: Ui.Label(text="h 10")
-    1: Ui.Label(text="x")
-    2: Ui.Button(label="go 10")
+    0/0: Ui.Label(text="h 10")
+    0/1.0: Ui.Label(text="x")
+    0/2: Ui.Button(label="go 10")
 
 tick 1
   in:
-    2: click
+    0/2: click
   changed:
-    0: Ui.Label(text="h 11")
+    0/0: Ui.Label(text="h 11")

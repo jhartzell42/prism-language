@@ -6,7 +6,7 @@ test go_once, @host:
     build
     click at 0
     tick
-    click at 1/["a"]/1
+    click at 1.["a"].1
     tick
 
 test go_alone, @alone:
@@ -17,5 +17,5 @@ test go_alone, @alone:
 test go_nested, @nested:
     build
     click at 0
-    click at 1/["a"]/2/["x"]/0
-    click at 1/["a"]/0
+    click at 1.["a"].2.["x"].0
+    click at 1.["a"].0

@@ -3,11 +3,11 @@ test a_given_function_is_read_by_its_summary
 
 tick 0
   added:
-    0: Ui.Button(label="ask")
-    1: Ui.Label(text="0")
+    0/0/0/0: Ui.Button(label="ask")
+    0/0/0/1: Ui.Label(text="0")
 
 tick 1
   in:
-    0: click
+    0/0/0/0: click
   changed:
-    1: Ui.Label(text="2")
+    0/0/0/1: Ui.Label(text="2")

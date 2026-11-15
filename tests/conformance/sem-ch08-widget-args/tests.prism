@@ -4,7 +4,7 @@ use App.*
 
 test arguments_are_inlined, @page:
     build
-    click at 6
-    click at 4
-    click at 6
+    click at 3/0/0
+    click at 2/1/0
+    click at 3/0/0
     click at 0

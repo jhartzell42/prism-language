@@ -5,7 +5,7 @@ use App.*
 test a_loud_arm, @Panel (Loud "hey"):
     build
         => expect Ui.Label(text="hey 0")
-    click at 2
+    click at 1/1.0
         => expect Ui.Label(text="hits 1")
     click at 0
         => expect Ui.Label(text="hey 1")
@@ -17,5 +17,5 @@ test the_guard_fails, @Panel (Loud ""):
 test a_soft_arm, @Panel Soft:
     build
         => expect Ui.Label(text="no count")
-    click at 2
+    click at 1/1.0
         => expect Ui.Label(text="hits 1")

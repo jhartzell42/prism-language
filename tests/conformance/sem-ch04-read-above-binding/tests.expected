@@ -5,13 +5,13 @@ tick 0
   added:
     0: Pad.Door(name="front")
     1: Ui.Label(text="door 1, hello x!")
-    2: Ui.Button(label="never")
-    3: Ui.Label(text="10")
-    4: Ui.Button(label="bump")
+    3: Ui.Button(label="never")
+    4: Ui.Label(text="10")
+    5: Ui.Button(label="bump")
   result: "door 1"
 
 tick 1
   in:
-    4: click
+    5: click
   changed:
-    3: Ui.Label(text="11")
+    4: Ui.Label(text="11")

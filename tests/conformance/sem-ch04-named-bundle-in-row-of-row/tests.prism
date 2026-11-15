@@ -4,4 +4,4 @@ use App.*
 
 test inner_rows_follow_the_part, @main:
     build
-    click at 0
+    click at 0/0

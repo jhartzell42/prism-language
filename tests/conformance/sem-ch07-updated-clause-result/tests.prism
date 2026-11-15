@@ -4,5 +4,5 @@ use App.*
 
 test a_clause_widgets_result_is_heard, @page:
     build
-    click at 0
-    click at 0
+    click at 0/0
+    click at 0/0

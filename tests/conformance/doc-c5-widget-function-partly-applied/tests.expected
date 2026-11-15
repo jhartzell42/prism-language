@@ -3,18 +3,18 @@ test built_once_from_its_settings
 
 tick 0
   added:
-    0: Ui.Label(text="hosted")
-    1: Ui.Button(label="count")
-    2: Ui.Label(text="count: 5")
+    0/0: Ui.Label(text="hosted")
+    0/1/0: Ui.Button(label="count")
+    0/1/1: Ui.Label(text="count: 5")
 
 tick 1
   in:
-    1: click
+    0/1/0: click
   changed:
-    2: Ui.Label(text="count: 6")
+    0/1/1: Ui.Label(text="count: 6")
 
 tick 2
   in:
-    1: click
+    0/1/0: click
   changed:
-    2: Ui.Label(text="count: 7")
+    0/1/1: Ui.Label(text="count: 7")

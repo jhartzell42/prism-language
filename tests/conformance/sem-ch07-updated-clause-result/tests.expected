@@ -3,17 +3,17 @@ test a_clause_widgets_result_is_heard
 
 tick 0
   added:
-    0: Ui.Button(label="inc")
+    0/0: Ui.Button(label="inc")
     1: Ui.Label(text="1 heard 0")
 
 tick 1
   in:
-    0: click
+    0/0: click
   changed:
     1: Ui.Label(text="2 heard 1")
 
 tick 2
   in:
-    0: click
+    0/0: click
   changed:
     1: Ui.Label(text="3 heard 2")

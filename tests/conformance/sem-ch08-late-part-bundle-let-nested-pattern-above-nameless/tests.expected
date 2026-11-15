@@ -4,12 +4,12 @@ test loud
 tick 0
   added:
     0: Ui.Label(text="0 clicks")
-    1: Ui.Label(text="x")
-    2: Ui.Button(label="go")
+    1/0.0: Ui.Label(text="x")
+    1/1: Ui.Button(label="go")
 
 tick 1
   in:
-    2: click
+    1/1: click
   changed:
     0: Ui.Label(text="1 clicks")
 
@@ -18,10 +18,10 @@ test soft
 tick 0
   added:
     0: Ui.Label(text="0 clicks")
-    1: Ui.Button(label="go")
+    1/1: Ui.Button(label="go")
 
 tick 1
   in:
-    1: click
+    1/1: click
   changed:
     0: Ui.Label(text="1 clicks")

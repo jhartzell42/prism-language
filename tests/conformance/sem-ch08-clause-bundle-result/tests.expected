@@ -3,12 +3,12 @@ test by_ones
 
 tick 0
   added:
-    0: Ui.Button(label="up")
+    0/0: Ui.Button(label="up")
     1: Ui.Label(text="0 hits, count 0")
 
 tick 1
   in:
-    0: click
+    0/0: click
   changed:
     1: Ui.Label(text="1 hits, count 1")
 
@@ -16,12 +16,12 @@ test by_tens
 
 tick 0
   added:
-    0: Ui.Label(text="by tens")
-    1: Ui.Button(label="ten")
-    2: Ui.Label(text="0 hits, count 10")
+    0/0: Ui.Label(text="by tens")
+    0/1: Ui.Button(label="ten")
+    1: Ui.Label(text="0 hits, count 10")
 
 tick 1
   in:
-    1: click
+    0/1: click
   changed:
-    2: Ui.Label(text="1 hits, count 20")
+    1: Ui.Label(text="1 hits, count 20")
