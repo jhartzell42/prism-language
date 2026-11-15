@@ -152,7 +152,11 @@ ValuedWidgets: unbounded fn Lx -> (((Text ==> [((Text, Pa, [Cc], [Ex]))]), (Text
 fn ValuedWidgets lx = Fold lx.g.defs, (({{}}, {{}})), \|acc, d|
     let lxd = update (InModule lx, d.file, d.home):
         &_.inDefinition <= InstanceKey d
-    let held = Fold (DefExprs d), [[]], \|sites, e| Append sites, (ValueWidgetsIn lxd, e)
+    let held0 = Fold (DefExprs d), [[]], \|sites, e| Append sites, (ValueWidgetsIn lxd, e)
+    # a pure supplier's answers are values: the widgets they apply (`AnswerWidget`)
+    let held = if not (IsValueWidget lx, d.qk): held0 else: Fold (DefClauses d, [[]]), held0, \|sites, c| match c.body:
+        BodyExpr x: Append sites, (ValueWidgetsAt lxd, x)
+        BodyBlock b: Append sites, (ValueWidgetsOfBlock lxd, b)
     # a `let` names a value: the widget it names is read as one where the name is
     let named = Fold (LetValues d), held, \|sites, e| Append sites, (ValueWidgetsAt lxd, e)
     Fold named, acc, \|((cases, instances)), ((qk, types))|
@@ -487,6 +491,28 @@ fn EmbeddedAbove all, ?at, definition, types = match ?at:
                 otherwise: False
             embedded or EmbeddedAbove all, above.?parent, definition, types
 
+# A type with each associated type at a known head the type its impl chooses, all the
+# way down: an instantiation's types are those its impls give, so `Inner (Box (Box
+# Nat))` reached again is `Box Nat`, the instantiation already known, and no growth
+# (sem-ch08-widget-value-generic-through-associated-type).
+KnownAssocsIn: unbounded fn Lx, Ty -> Ty
+fn KnownAssocsIn lx, t = match t:
+    TyAssoc tr, n, a, indices:
+        let inner = TyAssoc tr, n, (KnownAssocsIn lx, a), (Each indices, \|i| KnownAssocsIn lx, i)
+        match inner:
+            TyAssoc tr2, n2, a2, indices2: match ?ImplAssoc lx.g, tr2, n2, a2, indices2:
+                ? chosen: KnownAssocsIn lx, chosen
+                nil: inner
+            otherwise: inner
+    TyCon n, args: TyCon n, (Each args, \|x| KnownAssocsIn lx, x)
+    TyFn c, ps, res, prompts: TyFn c, (Each ps, \|p| KnownAssocsIn lx, p), (KnownAssocsIn lx, res), prompts
+    TyTuple ts: TyTuple (Each ts, \|x| KnownAssocsIn lx, x)
+    TyArray e: TyArray (KnownAssocsIn lx, e)
+    TyMap k, v: TyMap (KnownAssocsIn lx, k), (KnownAssocsIn lx, v)
+    TySig sg, i: TySig sg, (KnownAssocsIn lx, i)
+    TyAt i, rw: TyAt (KnownAssocsIn lx, i), rw
+    other: other
+
 # Whether a type holds an associated type, which stands for another type once its
 # argument is known.
 HoldsAssociated: unbounded fn Ty -> Bool
@@ -546,15 +572,24 @@ fn ?UseTargets lx, site, types:
         UseOfDefinition ignore, target, found: match lx.g.vals[target]:
             ? v:
                 let rigids = RigidsIn v.scheme.ty
-                let read = Fold rigids, {{}}, \|m, q| match found[q]:
-                    ? t: Insert m, q, (SubstTy lxu, t)
-                    nil: m
+                let atUse = Fold rigids, [[]], \|acc, q| match found[q]:
+                    ? t: Push acc, ((q, (SubstTy lxu, t)))
+                    nil: acc
                 let written = Fold (SortTexts rigids), [[]], \|acc, q| match found[q]:
                     ? t: Push acc, ((q, t))
                     nil: acc
-                let ?step = if Fold written, False, \|held, ((ignore, t))| held or HoldsAssociated t: nil else: ? written
-                match ?ClosedTypes rigids, read:
-                    ? taken: ? [[((target, taken, ?step))]]
+                # a use inside a generalized local `let` (a local function, `fn ?Made y`)
+                # at that one's own variables stands for each of its instantiations
+                # (`AtLetInstantiations`): one target at each (sem-ch08-widget-value-
+                # generic-through-local-function)
+                let readings = AtLetInstantiations lxu, atUse
+                let ?step = if (Len readings) != 1 or Fold written, False, \|held, ((ignore, t))| held or HoldsAssociated t: nil else: ? written
+                Fold readings, (? [[]]), \|?acc, lxk| match ?acc:
+                    ? acc:
+                        let read = Fold atUse, {{}}, \|m, ((q, t))| Insert m, q, (KnownAssocsIn lx, (SubstTy lxk, t))
+                        match ?ClosedTypes rigids, read:
+                            ? taken: ? (Push acc, ((target, taken, ?step)))
+                            nil: nil
                     nil: nil
             nil: nil
         UseOfImpl ignore, cls, ty:
@@ -946,7 +981,25 @@ fn PureBlueprintExpr lx, e, seen = match e.kind:
     EIf ignore, yes, (? no): (PureBlueprintBlock lx, yes, seen) and PureBlueprintBlock lx, no, seen
     ECall c, ignore, ignore, ignore:
         let qk = BlueprintQk lx, c
-        qk == "Prelude.@Element" or PureWidgetFn lx, qk, seen
+        qk == "Prelude.@Element" or (PureWidgetFn lx, qk, seen) or AnswerWidget lx, qk
+    otherwise: False
+
+# A widget the program defines that answers no element it is given (no supplier's shape:
+# `@Held<<Nat>> $count`): applied in a supplier's answer, it is a blueprint value of its
+# own rows (`ValuedWidgets` reads it there), which builds nothing until the place applies
+# it, so the supplier stays a pure blueprint (supplier-answer-of-generic-widget-given-
+# type-arguments).
+AnswerWidget: unbounded fn Lx, Text -> Bool
+fn AnswerWidget lx, qk = match lx.g.vals[qk]:
+    ? v: v.home != "Prelude" and (Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsWidgetDef d)) and match v.scheme.ty:
+        TyFn ignore, ps, (TyAt o, ignore), prompts: not (Fold ps, False, \|found, p| found or AnswersElementOf p, o)
+        otherwise: False
+    nil: False
+
+# Whether a parameter's type is an element whose output is `o`.
+AnswersElementOf: fn Ty, Ty -> Bool
+fn AnswersElementOf p, o = match p:
+    TyElem ignore, po: po == o
     otherwise: False
 
 PureBlueprintBlock: unbounded fn Lx, Block, [Text] -> Bool

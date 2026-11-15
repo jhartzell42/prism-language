@@ -2217,6 +2217,10 @@ fn ValueArgument lx, env, e = match env.spans[PlaceKey lx, e.span]:
 ArgumentAt: unbounded fn Lx, Env, Ty, Expr -> Ex
 fn ArgumentAt lx, env, declared, e = match Peel declared:
     TyFn ignore, ignore, ignore, prompts: Argument lx, env, e
+    # a quantified function type (`type Echo = forall a. fn a -> a`) is a function value
+    # held in an `Rc` at the parameter, never the borrowed closure: the value itself,
+    # borrowed (ts-ch06-forall-in-alias-body)
+    TyForall ignore, ignore2: Ref (ValueOf lx, env, e)
     otherwise: if IsLambdaValue e: Ref (ValueOf lx, env, e) else: Argument lx, env, e
 
 IsLambdaValue: fn Expr -> Bool
@@ -2421,7 +2425,7 @@ fn DeclaredCall lx, env, qk, args, span, cspan, t:
                         otherwise: TyErr
                     if (HasOpenIndexedAssoc (Peel resTy)) and (LayerOf resTy) == LyPlain: VlOwned (XCallAt (HelperRef "recode"), [[t]], [[XRef call]]), t
                     else: match ?SignatureResult lx, v, cspan, span, t:
-                        ? signatureTy: VlOwned (Recolored lx, call, signatureTy, (Peel (SubstTy lx, (TypeAt lx, span))), 0), t
+                        ? signatureTy: VlOwned (Recolored lx, call, signatureTy, (CallResultTy lx, span), 0), t
                         nil: VlOwned call, t
             nil: VlOwned (InternalBug "a call of {qk}"), t
 
@@ -2437,7 +2441,7 @@ fn ?SignatureResult lx, v, cspan, span, t:
     let declaredTy = match v.scheme.ty:
         TyFn ignore, ignore, r, prompts: Peel r
         other: Peel other
-    let callTy = Peel (SubstTy lx, (TypeAt lx, span))
+    let callTy = CallResultTy lx, span
     let ?calleeTypes = ?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, cspan), {{}}
     let lxCallee = update lx:
         &_.subst <= Or ?calleeTypes, {{}}
@@ -2454,6 +2458,16 @@ fn ?SignatureResult lx, v, cspan, span, t:
         ? ignore: HeldDiffers lx, signatureTy, callTy
         nil: False
     if ((HasJobFn declared) and differs) or held: ? signatureTy else: nil
+
+# A call's own result where `Recolored` walks to it: its type at the call, and for a call
+# the checker lifted over a dynamic or an event (`$Adder $k`, whose type has one `$` more
+# than its signature's result), what one firing or one value of the lift gives, which is
+# what the call itself returns inside the lift's map (`DynamicLift`;
+# ts-ch05-color-function-in-dynamic-through-lifted-call).
+CallResultTy: unbounded fn Lx, Range -> Ty
+fn CallResultTy lx, span:
+    let at = Peel (SubstTy lx, (TypeAt lx, span))
+    if NotLifted lx, span: at else: Peel at
 
 # Whether two types that differ in color alone hold a blueprint whose output is a `Start`
 # under one and a bounded function under the other (`Recolored` maps such a blueprint's
@@ -2682,6 +2696,15 @@ fn ?InstanceMatch pat, t, m = match ((pat, t)):
     # an associated type at a variable decides nothing about it: its instance is already
     # normalized
     (((TyAssoc ignore, ignore, ignore, ignore), ignore)): ? m
+    # a blueprint by its output (its row decides no type argument); a quantified or an
+    # existential type by its body, whose own variables bind only themselves (`Supplier d`
+    # is `forall o. fn Path, prompt Asking d o -> @o`, `SeatKey d` an `any`): the
+    # documents' `SupplierFrom`, doc-sk's `Told`
+    (((TyAt x, ignore), (TyAt y, ignore2))): ?InstanceMatch x, y, m
+    (((TyForall ignore, x), (TyForall ignore2, y))): ?InstanceMatch x, y, m
+    (((TyExists ignore, x, ignore2, ignore3), (TyExists ignore4, y, ignore5, ignore6))): ?InstanceMatch x, y, m
+    (((TyElem ignore, x), (TyElem ignore2, y))): ?InstanceMatch x, y, m
+    (((TyElemAny ignore), (TyElemAny ignore2))): ? m
     otherwise: if pat == t: ? m else: nil
 
 ?InstanceMatchAll: unbounded fn [Ty], [Ty], (Text ==> Ty) -> ?(Text ==> Ty)

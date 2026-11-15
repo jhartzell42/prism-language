@@ -1200,8 +1200,11 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
     let inLambdas = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
         ELambda ignore, ignore, prompts: Append acc, (ExprsIn x)
         otherwise: acc
+    # and a call of a function that takes time whole there (a supplier's `@ $Present
+    # $count`, c6's `@ $Loaded $game`): the node's readers it passes, live dynamics too
+    # (supplier-answer-of-whole-function-over-its-hold)
     let updatedCalls = Filter inLambdas, \|x| match x.kind:
-        ECall c, ignore, ignore, ignore: (CalleeKey lx, c) == "Prelude.!Updated"
+        ECall c, ignore, ignore, ignore: (CalleeKey lx, c) == "Prelude.!Updated" or IsWholeFn lx, (CalleeKey lx, c)
         otherwise: False
     # and `$ v` over a value that holds time below its top (`$ (($level, "main"))`): `v`
     # holds its dynamics whole (`ConstantOfTimeAt`)
