@@ -50,28 +50,29 @@ current as pieces land.
 
 - `LexPath` reads `/` as `PstCall` and `.` as a step; `PsCall` in the tree.
 
-## The lowering (to do)
+## The lowering (written, a8982201; not yet built)
 
-- **Positions carry a prefix.** `Pos` gets `prefix: [Nat]`, the caller positions of the
-  inlined applications it stands inside. Inlining a widget (`InlineWidget`'s one-clause
-  branch, `InlineBlock`, a local widget) at caller position `p` lowers the body at
-  `Pos(scope, prefix ++ [p], 0)` and resumes the caller at `p + 1`.
-- **`PlaceAt`** spells `path.at(p0).call().at(p1).call()…at(at)`; `PosPat` matches the
-  same segments, `Pos(p0), Call, …, Pos(at)`; `PlaceText` names a place by its whole
-  prefix so field names stay unique.
-- **The nine transparent generations** (building `if`/`match` arms, clause widgets static
-  and dynamic, shared rows of a widget that calls itself, applied blueprints) become
-  generations under their own place: their rows are built with the generation's place
-  path (plus `Call` for a widget's rows) and number from 0. `transparent=False`,
-  `gappy=False`, width 1. `TransparentGenArm` goes; such a generation's answers match
-  `Pos(at), rest` (an arm's) or `Pos(at), Call, rest` (a widget's), like `TypedGenArm`
-  without the generation segment.
-- **Wide generations** (a widget that calls itself, `wideGeneration` positions) become a
-  generation under one place with `Call`, each level's places in its own list.
-- **Late numbering** then never fires: once every generation is non-gappy, `PlaceNumber`
-  is a constant and `PlaceUnknownAtBuild` false. Delete it once the full run is green.
-- **`DeferredLine`** stays for build order (a line that takes a late value is built after
-  the row that gives it) but needs no numbering.
+- **Positions carry a prefix.** `Pos.prefix` holds the caller positions of the inlined
+  applications a place stands in. `InCallPos`/`AfterCallPos` move into and out of one;
+  `InlineWidgetBody`'s one-clause branch, `InlineBlock` and `LocalWidgetLine` (`InCall`)
+  take them. A blueprint `let`, a widget parameter's argument and a top-level blueprint
+  `let` lower the expression they name, whose own line starts its list.
+- **`PlaceAt`, `PosPat` and the documents** spell the prefix (`InPrefix`, `PrefixPats`);
+  `PlaceText` names a place by it.
+- **`GenDef.under`**: `UnderGeneration` (a `rebuild`), `UnderArm` (a building `match` or
+  `if`, an early choice), `UnderCall` (a widget's clauses static, early, dynamic, bundled
+  or shared; an applied blueprint; a block's function of several clauses),
+  `UnderCaller` (a line that takes a late result, the lines below a split, an element
+  value applied: the caller's list, as before). Rows under their own place are made
+  from a block at position 0 (`RowsWx`), built with the place's path and `row_base` 0
+  (`UnderRows`), take one position (`GenWidth`) and leave no gaps (`RowGapsUnder`);
+  their answers and documents go by the place's segments (`OwnPlaceGenArm`,
+  `OwnPlacePath`).
+- **A hosted child's own application** is the guest's root (`Wx.childRoot`): no list of
+  its own. A child that is a widget of several clauses or an applied blueprint still
+  takes one; to fix if the run shows it.
+- **Late numbering** never fires once no generation is gappy; it is deleted once the full
+  run is green. `DeferredLine` stays for build order.
 
 ## Tests
 
