@@ -1262,7 +1262,14 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
             TyFn ignore2, ps, ignore3, prompts: if Fold ps, False, \|seen, p| seen or HasTime p: Append acc, (ExprsIn x) else: acc
             otherwise: acc
         otherwise: acc
-    let roots = Fold (Append (Append (Append calls, updatedCalls), constants), givenOn), (Append (if whole: ExprsIn e else: [[]]), wholeLambdaReads), \|acc, c| match c.kind:
+    # and a node's reader a lambda of the line reads as a dynamic (a supplier's `@ $Present
+    # $count`, lifted over `$count`): the lambda is called after the build, so what it
+    # lifts over is the reader's live dynamic, never its value at the build
+    # (supplier-answer-of-whole-function-over-its-hold)
+    let lambdaReads = Filter inLambdas, \|x| match x.kind:
+        EName ignore: True
+        otherwise: False
+    let roots = Fold (Append (Append (Append calls, updatedCalls), constants), givenOn), (Append (Append (if whole: ExprsIn e else: [[]]), wholeLambdaReads), lambdaReads), \|acc, c| match c.kind:
         ECall ignore, args, ignore, ignore: Fold args, acc, \|acc2, a| Append acc2, (ExprsIn a.value)
         EFreeSigil ignore, x: Append acc, (ExprsIn x)
         EBinary "on", value, ignore: Append acc, (ExprsIn value)
