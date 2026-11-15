@@ -3,4 +3,4 @@ test round_trip
 
 tick 0
   added:
-    0: Ui.Label(text="3 é true")
+    0: Ui.Label(text="3 é True")

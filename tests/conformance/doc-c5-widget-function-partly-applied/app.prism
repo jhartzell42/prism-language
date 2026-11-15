@@ -17,7 +17,7 @@ fn @Counter start, label:
 @Hosted: fn (fn Text -> @unit emit Ui.*) -> @unit emit Ui.*
 fn @Hosted Make:
     Ui.Label($text=$"hosted")                                                   # 0
-    Make "count"                                                                # 1
+    Make "count"                                                                # 1 and 2 (transparent)
 
 @page: @unit
 @page:

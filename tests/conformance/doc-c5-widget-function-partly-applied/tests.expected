@@ -1,20 +1,20 @@
-# Derived by hand from Part III ch. 7 (a widget function applied to a prefix of its parameters is a function value) and Semantics ch. 4 (a widget's places under its call's position): `@Counter 5` is built once, at `@Hosted`'s position 1, its count starting at 5.
+# Derived by hand from Part III ch. 7 (a widget function applied to a prefix of its parameters is a function value) and Language ch. 6 ("Widget function applications and widget blocks are transparent. They add no segment"): `@Counter 5` is built once, its places at `@Hosted`'s positions 1 and 2, its count starting at 5. Corrected 15 November by that chapter: the hand derivation had nested them under position 1.
 test built_once_from_its_settings
 
 tick 0
   added:
     0: Ui.Label(text="hosted")
-    1/0: Ui.Button(label="count")
-    1/1: Ui.Label(text="count: 5")
+    1: Ui.Button(label="count")
+    2: Ui.Label(text="count: 5")
 
 tick 1
   in:
-    1/0: click
+    1: click
   changed:
-    1/1: Ui.Label(text="count: 6")
+    2: Ui.Label(text="count: 6")
 
 tick 2
   in:
-    1/0: click
+    1: click
   changed:
-    1/1: Ui.Label(text="count: 7")
+    2: Ui.Label(text="count: 7")
