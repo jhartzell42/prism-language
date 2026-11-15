@@ -943,7 +943,8 @@ fn ByFlagsAt cx, e, flags, ptys, m = match e.kind:
 IsTypeCarried: unbounded fn G, Ty -> Bool
 fn IsTypeCarried g, t = match t:
     TyAt o, ignore: (not (ConcretelyTimed g, [[]], o)) and CarriesTime g, [[]], o
-    TyAssoc ignore, ignore2, ignore3, ignore4: True
+    # one its trait bounds by `^Pod` holds plain data (ruling QD), as in `CarriesTime`
+    TyAssoc tr, n, ignore3, ignore4: not (AssocIsPod g, tr, n)
     TySig ignore, i: IsTypeCarried g, i
     TyArray x: IsTypeCarried g, x
     TyMap k, v: IsTypeCarried g, v
