@@ -1,0 +1,6 @@
+# Derived by hand from ruling SD (an impl that writes no method takes the trait's default), Part III ch. 7 (a partial application is a function value) and Language ch. 6 (transparent applications).
+test started
+
+tick 0
+  added:
+    0: Ui.Label(text="started at 7")
