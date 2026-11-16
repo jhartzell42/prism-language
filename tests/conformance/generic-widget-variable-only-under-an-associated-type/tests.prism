@@ -1,0 +1,6 @@
+# The tests of generic-widget-variable-only-under-an-associated-type.
+emit Ui.*
+use App.*
+
+test counted_at_what_the_checker_solved, @page:
+    build
