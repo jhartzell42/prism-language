@@ -3607,7 +3607,7 @@ fn DeferredLine wx, menv, e, named, binds:
                 &_.lateTakings <= Push &_.lateTakings, LateTaking(taker=gd.name, givers=[[]])
             let wx3 = if numbersGiver: asking else: update wx2:
                 &_.deferredGens <= Push &_.deferredGens, gd.name
-                &_.deferredDeps <= Push &_.deferredDeps, ((gd.name, lateRead, binds))
+                &_.deferredDeps <= Push &_.deferredDeps, ((gd.name, (FreeReads (ExprsIn e), [[]]), binds))
             let wx4 = if numbersGiver or not gd.gappy: wx3 else: update wx3:
                 &_.build <= Push &_.build, (RefusalDo "`{SrcText lx, lx.file, e.span}`, a line that takes a late result at its build, above the line that gives it, and whose places are counted as they are built (a building `match` or `if` inside it)")
             match res:
