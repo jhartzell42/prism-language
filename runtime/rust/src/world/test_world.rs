@@ -140,7 +140,7 @@ impl TestWorld {
                     let _ = writeln!(out, "{}: ok", i + 1);
                 }
                 v => {
-                    let shown = v.map_or_else(|e| format!("(error: {e})"), |v| v.to_string());
+                    let shown = v.map_or_else(|e| format!("(error: {e})"), |v| shown(&v));
                     let _ = writeln!(out, "{}: {shown}", i + 1);
                     failures.push(format!("check {} line {line}: {expr} was {shown}", c.name));
                 }
@@ -275,7 +275,7 @@ impl Run<'_> {
             StepKind::ComputeUntilIdle => self.until_idle(out)?,
             StepKind::Push(e, v) => {
                 self.ready.insert(e.clone(), v.clone());
-                self.one_tick(TickIn::none().push(e.clone(), v.clone()), &[format!("{e} = {v}")], out)
+                self.one_tick(TickIn::none().push(e.clone(), v.clone()), &[format!("{e} = {}", shown(v))], out)
             }
             StepKind::Deliver(ds) => {
                 let mut input = TickIn::none();
@@ -383,7 +383,7 @@ impl Run<'_> {
         input.answers.extend(owed.iter().cloned());
         input.answers.retain(|(p, _)| !self.prelude.is_poisoned(p));
         input.answers.sort_by(|a, b| a.0.cmp(&b.0));
-        let shown: Vec<String> = pushed.iter().cloned().chain(input.answers.iter().map(|(p, v)| format!("{p}: {v}"))).collect();
+        let shown: Vec<String> = pushed.iter().cloned().chain(input.answers.iter().map(|(p, v)| format!("{p}: {}", shown(v)))).collect();
         let shown = &shown[..];
         let ready = TestReady(&self.ready);
         let logged = (input.clone(), self.ready.clone());
@@ -535,17 +535,23 @@ pub fn print_tick(out: &mut String, n: usize, inputs: &[String], result: &Result
             return;
         }
     };
-    let places = |ps: &[(Path, Pod)]| ps.iter().map(|(p, e)| format!("{p}: {e}")).collect();
+    let places = |ps: &[(Path, Pod)]| ps.iter().map(|(p, e)| format!("{p}: {}", shown(e))).collect();
     section(out, "added", places(&o.patch.added));
     section(out, "changed", places(&o.patch.changed));
     section(out, "torn down", places(&o.patch.removed));
     section(out, "requested", o.requests.iter().map(|r| r.to_string()).collect());
     for outcome in &o.results {
         match outcome {
-            Outcome::Value(v) => _ = writeln!(out, "  result: {v}"),
-            Outcome::Fired(v) => _ = writeln!(out, "  result: fired: {v}"),
+            Outcome::Value(v) => _ = writeln!(out, "  result: {}", shown(v)),
+            Outcome::Fired(v) => _ = writeln!(out, "  result: fired: {}", shown(v)),
         }
     }
+}
+
+/// A value as a transcript writes it: its literal, a text quoted (`show`), never the
+/// text a placeholder would put in its place (ruling DD: `Display` is that).
+fn shown(v: &Pod) -> String {
+    crate::print::show(v)
 }
 
 /// A line-by-line difference, for a failed `verify`.

@@ -381,7 +381,7 @@ pub trait FromPod: Sized {
 
 /// What every derived `from_pod` gives on a mismatch.
 pub fn mismatch<T>(want: &str, got: &Pod) -> Result<T, Fault> {
-    Err(Fault::answer(format!("expected {want}, got {got}")))
+    Err(Fault::answer(format!("expected {want}, got {}", crate::print::show(got))))
 }
 
 /// `ToPod` and `FromPod` for a type that is one `Pod` variant, and for its whole value.

@@ -50,8 +50,8 @@ impl fmt::Display for Request {
     /// The transcript's `requested:` line: `path: value`, or `path: field=value`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.field {
-            Some(name) => write!(f, "{}: {}={}", self.path, name, self.value),
-            None => write!(f, "{}: {}", self.path, self.value),
+            Some(name) => write!(f, "{}: {}={}", self.path, name, crate::print::show(&self.value)),
+            None => write!(f, "{}: {}", self.path, crate::print::show(&self.value)),
         }
     }
 }
