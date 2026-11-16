@@ -212,6 +212,17 @@ fn ResolveScopeRow env, rw = match rw.tail:
 # Every name a statement binds gets its marked type before any line is read.
 PreBindStmt: unbounded fn Env, St, Stmt -> ((Env, St))
 fn PreBindStmt env, st, s = match s.kind:
+    SBind p, e, nil: match ?SignedResultOf env, p, e:
+        # (a plain name bound to a call of a widget whose signature fixes its result,
+        # `Supply <- @Counting $doc`: that result, before any line is read, so a line
+        # above may take it as the quantified type it is; rank-two-supplier-bound-below-its-host)
+        ? t: match p.kind:
+            PName n:
+                let en2 = update (WithLocal env, (SNameKey n), (Mono t)):
+                    &_.pending <= AddText &_.pending, (SNameKey n)
+                BindLocalId en2, st, (SNameKey n), n.span
+            otherwise: PreBindPattern env, st, p
+        nil: PreBindPattern env, st, p
     SBind p, ignore, ignore: PreBindPattern env, st, p
     SLet ignore, ignore, ignore: PreBind env, st, s
     SFn ignore: PreBind env, st, s
@@ -220,6 +231,27 @@ fn PreBindStmt env, st, s = match s.kind:
         let ((v, st2)) = FreshVar st, False, ""
         BindLocalId (WithLocal env, (SNameKey w.name), (Mono (TyAt v, env.scope))), st2, (SNameKey w.name), w.name.span
     otherwise: ((env, st))
+
+# The result a name bound by a line takes, where the line's call fixes it: a plain name
+# (no sigils) and a call of a global widget whose scheme quantifies nothing, its result a
+# blueprint of a type with no layer on top (a quantified type, a function, data).
+?SignedResultOf: unbounded fn Env, Pattern, Expr -> ?Ty
+fn ?SignedResultOf env, p, e = match p.kind:
+    PName n: if n.sigils != "": nil else: match e.kind:
+        ECall c, ignore, ignore2, ignore3: match c.kind:
+            EName cn: match ResolveValue env.g, env.home, cn:
+                ((? qk, ignore)): match env.g.vals[qk]:
+                    ? v: if (Len v.scheme.qs) > 0 or (Len v.scheme.cqs) > 0: nil else: match v.scheme.ty:
+                        TyFn ignore, ignore2, (TyAt r, ignore3), ignore4: match r:
+                            TyForall ignore, ignore2: ? r
+                            TyFn ignore, ignore2, ignore3, ignore4: ? r
+                            otherwise: nil
+                        otherwise: nil
+                    nil: nil
+                otherwise: nil
+            otherwise: nil
+        otherwise: nil
+    otherwise: nil
 
 PreBindPattern: unbounded fn Env, St, Pattern -> ((Env, St))
 fn PreBindPattern env, st, p = Fold (PatternBinders p), ((env, st)), \|((en, s)), ((name, at))|
