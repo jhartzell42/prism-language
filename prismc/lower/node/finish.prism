@@ -1010,7 +1010,11 @@ fn SeatMethod scope = if scope == 0: "seat" else: "seat_{scope}"
 PlaceNumber: fn Wx, Text, Pos -> Ex
 fn PlaceNumber wx, recv, pos:
     let gaps = GapsBefore wx, pos
-    let ?base = if pos.scope == 0: wx.?based else: nil
+    # (a row's `base` counts the row's own list alone: a position inside an inlined
+    # application, under a prefix, is numbered in that application's list from 0,
+    # sem-ch08-first-value-after-late-arm's host at `path.at(base + 2).call().at(base + 0)`,
+    # whose `base + 0` put the hosted child's first value at `3/1.[0]/0`)
+    let ?base = if pos.scope == 0 and (Len pos.prefix) == 0: wx.?based else: nil
     if (Len gaps) == 0 and not (IsSomeNat ?base): XIndex pos.at
     else: if recv == "":
         let start = match ?base:

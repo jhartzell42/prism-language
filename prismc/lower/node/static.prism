@@ -1043,9 +1043,29 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
             ? (BnDyn ignore, ignore, ignore): not (NamesInited benv, x)
             otherwise: False
         otherwise: False
-    let ((wxw, be, me)) = WholeArgsLive wx, benv, menv, e, whole, late
+    let ((wxw0, be0, me0)) = WholeArgsLive wx, benv, menv, e, whole, late
+    # (and a widget's blueprint parameter a lambda of the line names, `@answer` of a
+    # supplier's arm: its argument's text is read in its caller's environments where the
+    # parameter is read (`NameValueOf`, `ParameterEnv`), so its readers' live dynamics are
+    # made from those environments, taken whole, and bound here under `#whole{span}`,
+    # which `ParameterEnv` carries to it; sem-ch09-host-blueprint-parameter-answer's
+    # `$count`)
+    let texts = Fold inLambdas, [[]], \|acc, x| match x.kind:
+        EName n: match menv.names[SNameKey n]:
+            ? (BnWidget y, cbenv, cmenv, ignore): Push acc, ((y, cbenv, cmenv))
+            otherwise: acc
+        otherwise: acc
+    let ((wxw, be, me)) = Fold texts, ((wxw0, be0, me0)), \|((w, b1, m1)), ((y, cbenv, cmenv))|
+        let ((w2, cb2, cm2)) = WholeArgsLive w, cbenv, cmenv, y, True, late
+        ((w2, (WithWholes b1, cb2), (WithWholes m1, cm2)))
     if unbuilt: (((update wxw:
         &_.lambdasLate <= True), be, me)) else: ((wxw, be, me))
+
+# `env` with the live dynamics `from` binds (`#whole...`).
+WithWholes: fn Env, Env -> Env
+fn WithWholes env, from = Fold (Keys from.names), env, \|en, k| if not (HasPrefix k, "#whole"): en else: match from.names[k]:
+    ? b: Bind en, k, b
+    nil: en
 
 WholeArgsLive: unbounded fn Wx, Env, Env, Expr, Bool, Bool -> ((Wx, Env, Env))
 fn WholeArgsLive wx, benv, menv, e, whole, late:
