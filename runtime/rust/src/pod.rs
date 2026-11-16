@@ -285,9 +285,17 @@ impl fmt::Display for Path {
     }
 }
 
+/// A `Pod` placed in a text is the value it holds, as its own type places it (ruling DD:
+/// a placeholder wants `^Display`): a text or a character as itself, anything else as it
+/// prints. A placeholder over a type held as plain data (an associated type at a
+/// variable, doc-sk-existential-seat-key's `SeatId d r`) meets a `Pod` here.
 impl fmt::Display for Pod {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&crate::print::show(self))
+        match self {
+            Pod::Text(t) => fmt::Display::fmt(t, f),
+            Pod::Char(c) => fmt::Display::fmt(c, f),
+            other => f.write_str(&crate::print::show(other)),
+        }
     }
 }
 
