@@ -1,0 +1,6 @@
+# Derived by hand from Part III ch. 6 (each existential is opened at its own role) and Semantics ch. 4 (the first arm that matches is taken): one label naming each response.
+test every_case_said
+
+tick 0
+  added:
+    0: Ui.Label(text="raiser: accepted; raiser: declined, stops at 5; a watcher")
