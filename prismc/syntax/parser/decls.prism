@@ -242,7 +242,7 @@ fn ParseRuntime p = match Kind p:
     KName n if n.sigils == "" and n.path == [["runtime"]]:
         let q = Adv p
         match Kind q:
-            KText t, ignore: ((? t, (Adv q)))
+            KText ignore, [[TsPlain t]]: ((? t, (Adv q)))
             otherwise: ((nil, (ErrorHere q, "expected the runtime function's path, a text: `runtime \"documents::seat_path_of\"`")))
     otherwise: ((nil, (ErrorHere p, "expected `runtime` and the path of the runtime function that implements the declaration (ruling RT)")))
 

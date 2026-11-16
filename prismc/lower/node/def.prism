@@ -87,6 +87,28 @@ fn OverNode x = match x:
     XCall f, xs: XCall f, (Each xs, \|z| OverNode z)
     otherwise: x
 
+# `OverNode` through constructors, records and blocks too: an element's level at the build.
+OverNodeDeep: fn Ex -> Ex
+fn OverNodeDeep x = match x:
+    XCtor c, xs: XCtor c, (Each xs, \|z| OverNodeDeep z)
+    XRecord r, fs: XRecord r, (Each fs, \|((f, z))| ((f, (OverNodeDeep z))))
+    XCall f, xs: XCall f, (Each xs, \|z| OverNodeDeep z)
+    XRef y: XRef (OverNodeDeep y)
+    XClone y: XClone (OverNodeDeep y)
+    XMethod y, m, xs: XMethod (OverNodeDeep y), m, (Each xs, \|z| OverNodeDeep z)
+    XField y, f: XField (OverNodeDeep y), f
+    XSelf: XVar "node"
+    XFormat xs: XFormat (Each xs, \|z| OverNodeDeep z)
+    XFormatStr xs: XFormatStr (Each xs, \|z| OverNodeDeep z)
+    XCallAt f, ts, xs: XCallAt f, ts, (Each xs, \|z| OverNodeDeep z)
+    XApply f, xs: XApply (OverNodeDeep f), (Each xs, \|z| OverNodeDeep z)
+    XBin o, l, r: XBin o, (OverNodeDeep l), (OverNodeDeep r)
+    XUnary o, y: XUnary o, (OverNodeDeep y)
+    XTuple xs: XTuple (Each xs, \|z| OverNodeDeep z)
+    XFieldOf y, r, f: XFieldOf (OverNodeDeep y), r, f
+    XTry y: XTry (OverNodeDeep y)
+    otherwise: x
+
 # The root's result goes to the World (claude/backend.md: `cx.result(..)`).
 RootResult: unbounded fn Wx -> Wx
 fn RootResult wx = RootResultOf wx, wx.result

@@ -2359,7 +2359,14 @@ fn BindParam wx, cbenv, cmenv, be, me, nkey, spelled, pty, arg:
                 &_.fields <= Push &_.fields, ((rs, t, "`{nkey}`"))
                 &_.inits <= Push &_.inits, ((rs, (XClone (XVar rs))))
             let ((be2, me2)) = BindPlain be, me, nkey, rs, t
-            ((wx3, be2, me2))
+            # (a function value an inlined widget gave back, handed on as this argument:
+            # its text goes with it, so what reads the parameter reads what the text reads,
+            # `ReadsOfText`)
+            match ?LambdaTextOf cmenv, arg:
+                ? ((lambda, lbenv, lmenv, llx)):
+                    let kept = BnWidget lambda, lbenv, lmenv, llx
+                    ((wx3, (Bind be2, "{nkey}#lambdatext", kept), (Bind me2, "{nkey}#lambdatext", kept)))
+                nil: ((wx3, be2, me2))
 
 # An event parameter of an inlined widget bound to the caller's event (`BindParam`), with
 # its value form, as a bound event's (`PreBindName`): a port the event fires, made before

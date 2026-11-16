@@ -149,7 +149,9 @@ fn ElementPlaced wx, benv, menv, tg, args, fed, out, ?bound:
     # fields' value
     let level = XCtor variant, [[(XRecord structPath, (if live: liveFields else: methodConsts))]]
     let atBuild = XCtor variant, [[(XRecord structPath, constFields)]]
-    let added = if live: XMethod (XVar "node"), getter, [[XCx]] else: atBuild
+    # (sent once the node stands: a constant field that reads through a getter of the node,
+    # a dynamic parameter's, reads it on the node)
+    let added = if live: XMethod (XVar "node"), getter, [[XCx]] else: OverNodeDeep atBuild
     let emits = Emits wx3, pos
     # a hosted place is an entry of its host's document (`$(Path ==> $Elem c)`): its
     # `Entry`, made before the node (a first-value query hands it to the host) and

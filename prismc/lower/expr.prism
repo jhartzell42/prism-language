@@ -261,10 +261,15 @@ fn WholeFns lx:
 # Whether a function gives a function value or a blueprint.
 GivesCode: fn Ty -> Bool
 fn GivesCode t = match t:
-    TyFn ignore, ignore2, r, prompts: match Peel r:
-        TyFn ignore3, ignore4, ignore5, ignore6: True
-        TyAt ignore3, ignore4: True
-        otherwise: False
+    TyFn ignore, ignore2, r, prompts: GivesCodeTy (Peel r)
+    otherwise: False
+
+GivesCodeTy: fn Ty -> Bool
+fn GivesCodeTy t = match t:
+    TyFn ignore, ignore2, ignore3, ignore4: True
+    TyAt ignore, ignore2: True
+    # (a rank-two function, a supplier `forall o. fn ..`)
+    TyForall ignore, b: GivesCodeTy b
     otherwise: False
 
 # Whether a signature has an event on top of a parameter, in a function that gives no
@@ -1459,9 +1464,10 @@ fn ?HeldDynamic lx, env, d:
 
 # An answer of the type `t` made by a widget's blueprint value: in its tag's case, or
 # with no tag as plain data when it is plain data (`Tagged`), else held as it is (the
-# prelude's `output_held`).
+# prelude's `output_held`). The value is typed first, so a recoder (`OutputMaker`) knows
+# what it is given (`None` alone names no type).
 TaggedOrHeld: unbounded fn Ref, OutTy, Ex -> Ex
-fn TaggedOrHeld variant, t, value = if variant == untaggedRef and not (Podable t): XCall (HelperRef "output_held"), [[value]] else: Tagged variant, value
+fn TaggedOrHeld variant, t, value = if variant == untaggedRef and not (Podable t): XCall (HelperRef "output_held"), [[value]] else: Tagged variant, (XBlock [[(DoLet (PaTyped (PaBind "typed_answer"), t), value)]], (XVar "typed_answer"))
 
 # An answer in its tag's case of `crate::Output`; with no tag, as plain data in the case
 # of no tag (`untaggedRef`).

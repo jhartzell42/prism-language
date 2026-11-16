@@ -539,7 +539,9 @@ fn ScopeSteps sk, atBuild, k, fuel = match fuel -? 1:
             let before = Each (Filter wx.snaps, \|sn| sn.before and sn.builder == b.name), Take
             let after = Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == b.name), Take
             # (a host made at no place of its own is placed first, `Wx.unplacedHosts`)
-            let placed = if not atBuild: [[]] else: Fold wx.hosts, [[]], \|a, h| if "{h.name}_rows" == b.name and HasText wx.unplacedHosts, h.name: Push a, (DoExpr (XMethod (XField recv, h.name), "place_at", [[(PlaceAt wx, "node", h.pos)]])) else: a
+            # (with a diagnostic beside it, sem-ch08-first-value-after-late-arm: the host's
+            # position and the gaps its numbers count)
+            let placed = if not atBuild: [[]] else: Fold wx.hosts, [[]], \|a, h| if "{h.name}_rows" == b.name and HasText wx.unplacedHosts, h.name: Push (Push a, (DoNote "host `{h.name}` placed (diagnostic): scope {h.pos.scope}, prefix {Debug h.pos.prefix}, at {h.pos.at}, gaps before {Debug (Each (GapsBefore wx, h.pos), \|gd| gd.name)}, gaps before its application {Debug (Each (GapsBefore wx, Pos(scope=h.pos.scope, prefix=[[]], at=(Or h.pos.prefix[0], 0))), \|gd| gd.name)}")), (DoExpr (XMethod (XField recv, h.name), "place_at", [[(PlaceAt wx, "node", h.pos)]])) else: a
             if wx.genPhase == 1: [[]] else: Append placed, (Append (LateChild b), (Append (Push before, (DoExpr (XTry (XMethod recv, "{b.name}_build", [[XCx]])))), after))
         # a `rebuild` handing back a dynamic: its snapshot taken after the generation is built
         let Gen = \|gd|
