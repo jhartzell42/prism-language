@@ -1,0 +1,6 @@
+# Derived by hand: two names, 2 + 3 letters, two steps of the fold.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="t: 2 names, 5 letters, 2 steps")
