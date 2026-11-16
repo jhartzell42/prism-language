@@ -3,18 +3,18 @@ test presses
 
 tick 0
   added:
-    0/[Presser "ada"]/0/[0/#0/0]/0: Ui.Button(label="ada +1")
-    0/[Presser "ada"]/0/[0/#0/3]/0: Ui.Label(text="ada sees 0; nothing yet")
-    0/[Presser "bob"]/0/[0/#0/0]/0: Ui.Button(label="bob +1")
-    0/[Presser "bob"]/0/[0/#0/3]/0: Ui.Label(text="bob sees 0; nothing yet")
+    1/0.[Presser "ada"].0.[0.#0.0/0]/0: Ui.Button(label="ada +1")
+    1/0.[Presser "ada"].0.[0.#0.0/3]/0: Ui.Label(text="ada sees 0; nothing yet")
+    1/0.[Presser "bob"].0.[0.#0.0/0]/0: Ui.Button(label="bob +1")
+    1/0.[Presser "bob"].0.[0.#0.0/3]/0: Ui.Label(text="bob sees 0; nothing yet")
 
 tick 1
   in:
-    0/[Presser "ada"]/0/[0/#0/0]/0: click
+    1/0.[Presser "ada"].0.[0.#0.0/0]/0: click
 
 tick 2
   changed:
-    0/[Presser "ada"]/0/[0/#0/3]/0: Ui.Label(text="ada sees 1; Accepted")
-    0/[Presser "bob"]/0/[0/#0/3]/0: Ui.Label(text="bob sees 1; nothing yet")
+    1/0.[Presser "ada"].0.[0.#0.0/3]/0: Ui.Label(text="ada sees 1; Accepted")
+    1/0.[Presser "bob"].0.[0.#0.0/3]/0: Ui.Label(text="bob sees 1; nothing yet")
 
 tick 3
