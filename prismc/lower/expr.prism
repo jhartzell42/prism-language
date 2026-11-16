@@ -654,7 +654,7 @@ fn EventValueOf lx, env, e:
             # `l <| r` of two event values: once in a tick, the left's value when it fired
             # (`prism_rtl::prefer`; supplier-merging-an-updated-dynamic-and-an-event)
             else: if IsPreferOfEvents lx, e: match e.kind:
-                EBinary "<|", l, r: VlOwned (XCall (RefRuntime "prism_rtl::prefer"), [[Ref (EventValueOf lx, env, l), Ref (EventValueOf lx, env, r)]]), et
+                EBinary "<|", l, r: VlOwned (XCall (RefRuntime "prism_rtl::prefer"), [[Ref (ValueOf lx, env, l), Ref (ValueOf lx, env, r)]]), et
                 otherwise: VlOwned (InternalBug "`<|` with no operands"), et
             else:
                 let evs = Filter (Operands e), \|x| (LayerOf (TypeAt lx, x.span)) == LyEv
