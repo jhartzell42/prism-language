@@ -2108,7 +2108,7 @@ fn InlineWidgetBody wx, benv, menv, qk, v0, args, e:
                     &_.childRoot <= False
                 if (Len unmatched) > 0:
                     let wx2 = update wx:
-                        &_.build <= Push &_.build, (RefusalDo "the generic widget {BareName qk} at a call whose types its parameters' do not match: nothing at the call decides {Join (Each unmatched, \|q| "`{q}`"), ", "}")
+                        &_.build <= Push &_.build, (RefusalDo "the generic widget {BareName qk} at a call whose types its parameters' do not match: nothing at the call decides {Join (Each unmatched, \|q| "`{q}`"), ", "} (diagnostic: the checker's note here {NoteShown lx, e}; the arguments decided {Debug (Keys (Or ?params, {{}}))})")
                     ((wx2, WrUnit))
                 else:
                     let done = BlockInto inner, be1, me1, body
@@ -2127,8 +2127,12 @@ fn ?CallInstance lx, v, args:
     let ptys = match v.scheme.ty:
         TyFn ignore, ps, ignore, prompts: ps
         otherwise: [[]]
+    # (a parameter whose type does not match its argument's, a rank-two supplier given a
+    # named function, decides nothing; the others still do)
     Fold (Range0 (Len ptys)), (? {{}}), \|?acc, i| match ((?acc, args[i])):
-        ((? m, ? a)): ?ParamInstance (Or ptys[i], TyErr), (TypeAt lx, a.value.span), m
+        ((? m, ? a)): match ?ParamInstance (Or ptys[i], TyErr), (TypeAt lx, a.value.span), m:
+            ? m2: ? m2
+            nil: ? m
         otherwise: ?acc
 
 # A widget's type parameters its arguments left open, each decided by a bound the call
@@ -2137,6 +2141,13 @@ BoundInstance: unbounded fn Lx, ValInfo, (Text ==> Ty), [Range] -> (Text ==> Ty)
 fn BoundInstance lx, v, m, spans = Fold v.scheme.bounds, m, \|acc, ((q, cls))| if HasKey acc, q: acc else: match Fold spans, nil, \|?found, sp| if IsSome ?found: ?found else: ?ImplNoteTy lx, sp, cls:
     ? t: Insert acc, q, t
     nil: acc
+
+# What the checker noted at a generic widget's use (`NoteInst`), shown for a refusal's
+# diagnostic.
+NoteShown: fn Lx, Expr -> Text
+fn NoteShown lx, e = match lx.useInsts[PlaceKey lx, (InnerNameSpanOf e)]:
+    ? u: Debug u.tys
+    nil: "none, at {Debug (InnerNameSpanOf e)} in file {lx.file}"
 
 # Whether a type the checker solved a variable at is one: not the error type.
 IsSolvedTy: fn Ty -> Bool
