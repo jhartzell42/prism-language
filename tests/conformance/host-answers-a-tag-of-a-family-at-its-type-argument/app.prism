@@ -1,0 +1,23 @@
+# A host answers a tag of a family whose answer type is the family's parameter: the
+# guest's `Ask.Query` is `Ask.* Nat`, so its answer is a `$?Nat`, and the host's arm
+# answers it at that type. Prompted by doc-seats-record-of-rows, where rustc refused the
+# lowered answer (an `Option<Nat>` where the tag's output holds a `Pod`, ruling CR).
+# Written by Claude, 15 November 2026, on the claude-self-hosting branch. Subject to change.
+emit Ui.*
+test mod Tests
+
+family Ask t
+
+tag Ask.Query of Element $?t:
+    $query: Nat
+
+@asking: @unit emit Ask.* Nat | Ui.*
+@asking:
+    $?told <- Ask.Query($query=$ 1)                                     # 0
+    Ui.Label($text=$"told {Or $?told, 7}")                              # 1
+
+@page: @unit
+@page:
+    ignore <- @Host @asking, \|path, element| match element:            # 0
+        Ask.Query(..): @ $nil
+        otherwise: @Element element
