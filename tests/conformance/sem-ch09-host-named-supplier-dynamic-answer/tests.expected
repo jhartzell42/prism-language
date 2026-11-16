@@ -4,7 +4,7 @@ test a_parameter_dynamic_answers
 tick 0
   added:
     0: Ui.Button(label="add")
-    1.[1]/0: Ui.Label(text="level 0")
+    1/0.[1]/0: Ui.Label(text="level 0")
 
 tick 1
   in:
@@ -12,4 +12,4 @@ tick 1
 
 tick 2
   changed:
-    1.[1]/0: Ui.Label(text="level 1")
+    1/0.[1]/0: Ui.Label(text="level 1")

@@ -4,7 +4,7 @@ test a_named_event_answer
 tick 0
   added:
     0: Ui.Button(label="go")
-    1.[1]/0: Ui.Label(text="sum 0")
+    1/0.[1]/0: Ui.Label(text="sum 0")
 
 tick 1
   in:
@@ -12,4 +12,4 @@ tick 1
 
 tick 2
   changed:
-    1.[1]/0: Ui.Label(text="sum 3")
+    1/0.[1]/0: Ui.Label(text="sum 3")

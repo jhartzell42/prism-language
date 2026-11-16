@@ -4,7 +4,7 @@ test two_dynamic_parts_answered
 tick 0
   added:
     0: Ui.Button(label="join")
-    1.[1]/0: Ui.Label(text="idle, 0 peers")
+    1/0.[1]/0: Ui.Label(text="idle, 0 peers")
 
 tick 1
   in:
@@ -12,7 +12,7 @@ tick 1
 
 tick 2
   changed:
-    1.[1]/0: Ui.Label(text="busy, 1 peers")
+    1/0.[1]/0: Ui.Label(text="busy, 1 peers")
 
 tick 3
   in:
@@ -20,4 +20,4 @@ tick 3
 
 tick 4
   changed:
-    1.[1]/0: Ui.Label(text="busy, 2 peers")
+    1/0.[1]/0: Ui.Label(text="busy, 2 peers")

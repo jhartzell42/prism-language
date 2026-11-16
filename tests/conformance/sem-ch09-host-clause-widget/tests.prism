@@ -5,5 +5,5 @@ use App.*
 test hosted_clauses, @hosted:
     build
         => expect Ui.Label(text="total 0")
-    click at 0.[0/1]/0
+    click at 0/0.[0/1]/0
         => expect Ui.Label(text="total 3")

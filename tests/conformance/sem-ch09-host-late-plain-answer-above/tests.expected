@@ -3,7 +3,7 @@ test loud
 
 tick 0
   added:
-    0.[1]/0: Ui.Label(text="size 2")
+    0/0.[1]/0: Ui.Label(text="size 2")
     1/0.0: Ui.Label(text="x")
     1/1: Ui.Label(text="picked 1")
     2: Ui.Label(text="below 2")
@@ -12,6 +12,6 @@ test soft
 
 tick 0
   added:
-    0.[1]/0: Ui.Label(text="size 21")
+    0/0.[1]/0: Ui.Label(text="size 21")
     1/1: Ui.Label(text="picked 20")
     2: Ui.Label(text="below 21")

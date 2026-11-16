@@ -7,7 +7,7 @@ use Ui.*
 test a_left_key_drops_the_answer_in_flight, @host:
     build
         => expect Ui.Label(text="two: 0")
-    click at 0, send at 1.[0]/0, Backspace
+    click at 0, send at 1/0.[0]/0, Backspace
         => expect_none Ui.Label(text="two: 0")
         => expect Ui.Label(text="one: 0")
     compute

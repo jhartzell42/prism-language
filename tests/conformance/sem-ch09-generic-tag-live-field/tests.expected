@@ -3,9 +3,9 @@ test a_generic_tag_is_placed_and_hosted
 
 tick 0
   added:
-    0.[0]/0: Ui.Button(label="press")
-    0.[2]/0: Ui.Label(text="heard nothing")
+    0/0.[0]/0: Ui.Button(label="press")
+    0/0.[2]/0: Ui.Label(text="heard nothing")
 
 tick 1
   in:
-    0.[0]/0: click
+    0/0.[0]/0: click

@@ -3,8 +3,8 @@ test one_state_in_the_sample_and_the_event
 
 tick 0
   added:
-    0.[0]/0: Ui.Button(label="add")
-    0.[1.[1].0]/0: Ui.Label(text="k1")
+    0/0.[0]/0: Ui.Button(label="add")
+    0/0.[1.[1].0]/0: Ui.Label(text="k1")
     1: Ui.Button(label="tap")
     2: Ui.Label(text="0 moves, 2 places")
     3: Ui.Label(text="seen 0 places at 0 clicks")
@@ -19,10 +19,10 @@ tick 2
 
 tick 3
   in:
-    0.[0]/0: click
+    0/0.[0]/0: click
     1: click
   added:
-    0.[1.[2].0]/0: Ui.Label(text="k2")
+    0/0.[1.[2].0]/0: Ui.Label(text="k2")
   changed:
     3: Ui.Label(text="seen 2 places at 2 clicks")
 
@@ -33,9 +33,9 @@ tick 4
 
 tick 5
   in:
-    0.[0]/0: click
+    0/0.[0]/0: click
   added:
-    0.[1.[3].0]/0: Ui.Label(text="k3")
+    0/0.[1.[3].0]/0: Ui.Label(text="k3")
 
 tick 6
   changed:

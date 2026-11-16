@@ -4,7 +4,7 @@ test the_host_above_reads_every_row
 tick 0
   added:
     0: Ui.Button(label="add")
-    1.[1]/0: Ui.Label(text="1: none")
+    1/0.[1]/0: Ui.Label(text="1: none")
     2.[1].0: Ui.Label(text="one")
 
 tick 1
@@ -15,8 +15,8 @@ tick 1
 
 tick 2
   changed:
-    1.[1]/0: Ui.Label(text="1: hello")
+    1/0.[1]/0: Ui.Label(text="1: hello")
 
 tick 3
   changed:
-    1.[1]/0: Ui.Label(text="2: hello")
+    1/0.[1]/0: Ui.Label(text="2: hello")

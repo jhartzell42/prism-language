@@ -3,15 +3,15 @@ test the_document_updates_in_its_tick
 
 tick 0
   added:
-    0.[0]/0: Ui.Button(label="inc")
-    0.[1]/0: Ui.Label(text="0")
+    0/0.[0]/0: Ui.Button(label="inc")
+    0/0.[1]/0: Ui.Label(text="0")
     2: Ui.Label(text="0 moves, latest ")
 
 tick 1
   in:
-    0.[0]/0: click
+    0/0.[0]/0: click
   changed:
-    0.[1]/0: Ui.Label(text="1")
+    0/0.[1]/0: Ui.Label(text="1")
 
 tick 2
 
@@ -21,9 +21,9 @@ tick 3
 
 tick 4
   in:
-    0.[0]/0: click
+    0/0.[0]/0: click
   changed:
-    0.[1]/0: Ui.Label(text="2")
+    0/0.[1]/0: Ui.Label(text="2")
 
 tick 5
 

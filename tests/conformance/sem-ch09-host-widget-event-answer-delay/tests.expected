@@ -4,8 +4,8 @@ test a_widget_functions_event_answer_is_a_tick_late
 tick 0
   added:
     0: Ui.Button(label="tap")
-    1.[0]/0: Ui.Label(text="relaying")
-    1.[1]/0: Ui.Label(text="0 hits")
+    1/0.[0]/0: Ui.Label(text="relaying")
+    1/0.[1]/0: Ui.Label(text="0 hits")
     2: Ui.Label(text="0 taps")
 
 tick 1
@@ -16,4 +16,4 @@ tick 1
 
 tick 2
   changed:
-    1.[1]/0: Ui.Label(text="1 hits")
+    1/0.[1]/0: Ui.Label(text="1 hits")

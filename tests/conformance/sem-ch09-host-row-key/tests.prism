@@ -6,5 +6,5 @@ use Ui.*
 
 test the_rows_label_reads_its_own_key, @forwarded:
     build
-    click at 0.[0]/0
+    click at 0/0.[0]/0
     compute

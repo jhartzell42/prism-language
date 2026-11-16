@@ -3,5 +3,5 @@ test a_local_widget_value_under_a_host
 
 tick 0
   added:
-    0.[0.0/0]/0: Ui.Label(text="line 7")
-    0.[1]/0: Ui.Label(text="end")
+    0/0.[0.0/0]/0: Ui.Label(text="line 7")
+    0/0.[1]/0: Ui.Label(text="end")

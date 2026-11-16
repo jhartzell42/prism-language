@@ -3,13 +3,13 @@ test requests_change_the_state_and_are_answered
 
 tick 0
   added:
-    0.[0]/0: Ui.Button(label="add 2")
-    0.[1]/0: Ui.Button(label="add 9")
-    0.[4]/0: Ui.Label(text="guest: total 0, nothing yet")
+    0/0.[0]/0: Ui.Button(label="add 2")
+    0/0.[1]/0: Ui.Button(label="add 9")
+    0/0.[4]/0: Ui.Label(text="guest: total 0, nothing yet")
 
 tick 1
   in:
-    0.[0]/0: click
+    0/0.[0]/0: click
 
 tick 2
 
@@ -17,13 +17,13 @@ tick 3
 
 tick 4
   changed:
-    0.[4]/0: Ui.Label(text="guest: total 2, accepted")
+    0/0.[4]/0: Ui.Label(text="guest: total 2, accepted")
 
 tick 5
 
 tick 6
   in:
-    0.[1]/0: click
+    0/0.[1]/0: click
 
 tick 7
 
@@ -31,6 +31,6 @@ tick 8
 
 tick 9
   changed:
-    0.[4]/0: Ui.Label(text="guest: total 2, refused: 2 + 9 passes ten")
+    0/0.[4]/0: Ui.Label(text="guest: total 2, refused: 2 + 9 passes ten")
 
 tick 10

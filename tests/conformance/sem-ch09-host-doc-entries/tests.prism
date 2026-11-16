@@ -6,7 +6,7 @@ use Ui.*
 
 test a_value_change_does_not_move_the_outer_document, @counter:
     build
-    click at 0.[0]/0
+    click at 0/0.[0]/0
     compute
-    click at 0.[1]/0
+    click at 0/0.[1]/0
     compute

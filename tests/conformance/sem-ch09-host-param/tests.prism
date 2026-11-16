@@ -6,4 +6,4 @@ use App.*
 test the_child_reads_and_answers_out, @page:
     build
     click at 0
-    click at 1/0.[0]/0
+    click at 1/0/0.[0]/0

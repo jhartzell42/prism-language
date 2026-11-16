@@ -3,12 +3,12 @@ test hosted_clauses
 
 tick 0
   added:
-    0.[0/0]/0: Ui.Label(text="some 3")
-    0.[0/1]/0: Ui.Button(label="pick 3")
-    0.[1.0]/0: Ui.Label(text="total 0")
+    0/0.[0/0]/0: Ui.Label(text="some 3")
+    0/0.[0/1]/0: Ui.Button(label="pick 3")
+    0/0.[1.0]/0: Ui.Label(text="total 0")
 
 tick 1
   in:
-    0.[0/1]/0: click
+    0/0.[0/1]/0: click
   changed:
-    0.[1.0]/0: Ui.Label(text="total 3")
+    0/0.[1.0]/0: Ui.Label(text="total 3")

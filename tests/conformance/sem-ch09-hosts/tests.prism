@@ -6,7 +6,7 @@ test a_supplier_per_child_place, @mocked:
     build
         => expect_none Fs.Contents(..)
         => expect Ui.Label(text="3 places")
-    click at 0.[0]/0
+    click at 0/0.[0]/0
         => expect Ui.Label(text="1 mock")
 
 test host_some_forwards_on_nil, @some:

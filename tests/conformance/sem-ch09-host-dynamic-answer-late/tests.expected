@@ -4,7 +4,7 @@ test a_pushed_place_answers
 tick 0
   added:
     0: Fs.Contents(path="/etc/real")
-    1.[1]/0: Ui.Label(text="first")
+    1/0.[1]/0: Ui.Label(text="first")
 
 tick 1
   in:
@@ -12,14 +12,14 @@ tick 1
 
 tick 2
   changed:
-    1.[1]/0: Ui.Label(text="second")
+    1/0.[1]/0: Ui.Label(text="second")
 
 test a_let_below_answers
 
 tick 0
   added:
     0: Ui.Button(label="change")
-    1.[1]/0: Ui.Label(text="first")
+    1/0.[1]/0: Ui.Label(text="first")
 
 tick 1
   in:
@@ -27,4 +27,4 @@ tick 1
 
 tick 2
   changed:
-    1.[1]/0: Ui.Label(text="second")
+    1/0.[1]/0: Ui.Label(text="second")

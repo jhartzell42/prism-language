@@ -4,23 +4,23 @@ test one_host
 tick 0
   added:
     0: Ui.Button(label="go")
-    1.[0]/0: Test.Log
+    1/0.[0]/0: Test.Log
 
 tick 1
   in:
     0: click
   requested:
-    1.[0]/0: "went"
+    1/0.[0]/0: "went"
 
 test two_hosts
 
 tick 0
   added:
-    0.[0]/0: Ui.Button(label="go")
-    0.[1.[0]/0]/0: Test.Log
+    0/0.[0]/0: Ui.Button(label="go")
+    0/0.[1/0.[0]/0]/0: Test.Log
 
 tick 1
   in:
-    0.[0]/0: click
+    0/0.[0]/0: click
   requested:
-    0.[1.[0]/0]/0: "went"
+    0/0.[1/0.[0]/0]/0: "went"

@@ -5,7 +5,7 @@ tick 0
   added:
     0: Ui.Button(label="add")
     1.[1].0: Ui.Label(text="one")
-    2.[2]/0: Ui.Label(text="1 at 6: none")
+    2/0.[2]/0: Ui.Label(text="1 at 6: none")
 
 tick 1
   in:
@@ -15,8 +15,8 @@ tick 1
 
 tick 2
   changed:
-    2.[2]/0: Ui.Label(text="1 at 6: hello")
+    2/0.[2]/0: Ui.Label(text="1 at 6: hello")
 
 tick 3
   changed:
-    2.[2]/0: Ui.Label(text="2 at 6: hello")
+    2/0.[2]/0: Ui.Label(text="2 at 6: hello")
