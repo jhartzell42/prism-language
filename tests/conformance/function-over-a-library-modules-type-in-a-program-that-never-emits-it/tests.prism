@@ -1,0 +1,6 @@
+# The tests of function-over-a-library-modules-type-in-a-program-that-never-emits-it.
+emit Ui.*
+use App.*
+
+test built, @page:
+    build
