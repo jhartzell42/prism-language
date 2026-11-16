@@ -59,9 +59,23 @@ fn DynamicExpr wx, menv, e:
             # `$` parts are live dynamics over the parts' readers, so the expression reads
             # what they read, as a reader passed whole (`WholeArgsAt`) is read by name
             ? (BnParts bs): if HasKey menv.names, "{SNameKey n}#value": UnionReads acc, (PartsReads bs) else: acc
-            otherwise: acc
+            # a function value an inlined widget gave back (`Read <- @Counter !add`), called
+            # here: what its text reads, so a dynamic it gives (`\|k| $count`) marks this
+            # reader when it moves (ruling HP)
+            otherwise: match menv.names["{SNameKey n}#lambdatext"]:
+                ? (BnWidget lambda, ignore, lmenv, ignore): UnionReads acc, (ReadsOfText lmenv, lambda)
+                otherwise: acc
         otherwise: acc
     ((Own v, reads))
+
+# What the names of a text read as readers of its node, in its environment.
+ReadsOfText: unbounded fn Env, Expr -> [Read]
+fn ReadsOfText env, e = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
+    EName n: match env.names[SNameKey n]:
+        ? (BnHold f, ignore): AddRead acc, (OwnRead f)
+        ? (BnDyn ignore, rs, ignore): UnionReads acc, rs
+        otherwise: acc
+    otherwise: acc
 
 # What a named bundle's parts read (`DynamicExpr`): each `$` part's reader, a bundle
 # inside it by its own parts; an event part and a plain part read nothing.

@@ -1388,7 +1388,7 @@ fn PlainBlueprint lx, env, x, variant, t:
 # HP: a supplier is an ordinary function value). The first value is read at the row's
 # build, each later update is a push delivered the next tick.
 DynamicBlueprint: unbounded fn Lx, Env, Expr, Expr, Ref, OutTy -> Vl
-fn DynamicBlueprint lx, env, x, d, variant, t = if (?ConstantDynamic d) != nil: PlainBlueprint lx, env, (Or (?ConstantDynamic d), d), variant, t
+fn DynamicBlueprint lx, env, x, d, variant, t = if ((?ConstantDynamic d) != nil) or ReadsNoDynamic env, d: PlainBlueprint lx, env, (Or (?ConstantDynamic d), d), variant, t
 else: if variant == untaggedRef: HeldDynamicBlueprint lx, env, x, d, t
 else: match ?HeldDynamic lx, env, d:
         # a dynamic the function holds as a value (a named supplier's `$` parameter):
@@ -1408,6 +1408,17 @@ else: match ?HeldDynamic lx, env, d:
                     let tagged = XClosure True, [[(PaTyped (PaBind "v"), (OutRef heldTy))]], (TaggedOrHeld variant, heldTy, (XClone (XVar "v")))
                     VlOwned (XCall (RefRuntime "prism_rtl::dynamic_blueprint::<crate::Elem, _>"), [[(XMethod (Ref live), "map", [[tagged]])]]), t
                 otherwise: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer over a reader that is no live dynamic where it is written"), t
+
+# Whether a dynamic expression reads no dynamic of a node or a function (`$nil`, a constant
+# written with its sigil on the name): its value is the answer, once.
+ReadsNoDynamic: unbounded fn Env, Expr -> Bool
+fn ReadsNoDynamic env, d = Fold (ExprsIn d), True, \|ok, y| ok and match y.kind:
+    EName n: match env.names[SNameKey n]:
+        nil: True
+        ? (BnLocal ignore, ignore, (OutDyn ignore)): False
+        ? (BnLocal ignore, ignore, ignore): True
+        otherwise: False
+    otherwise: True
 
 # `@ $d` made outside a tag's arm (`@ \|k| @ $count`, applied by a line): the dynamic held
 # whole (`output_held`), so the line that applies it reads that dynamic in the tick it
