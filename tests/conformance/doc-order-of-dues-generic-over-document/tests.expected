@@ -1,0 +1,7 @@
+# Derived by hand from Part IV ch. 3 (the default order applies the first due request and each other waits) and doubt SK (a seat key opened tells its arm the role): the raiser 3 is applied, the watcher ada and the raiser 4 wait, in the order given.
+test one_applied_the_rest_wait
+
+tick 0
+  added:
+    0: Ui.Label(text="apply: raiser 3 at 0")
+    1: Ui.Label(text="wait: watcher ada at 1, raiser 4 at 2")

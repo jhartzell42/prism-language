@@ -1,0 +1,64 @@
+# A record over a document whose fields are lists of a record over the same document, whose
+# own field is an existential seat key (Part IV ch. 3, "The order of one tick's requests";
+# Part III ch. 6, doubt SK): the library's `Ordered d` of `Due d`, and its default order
+# `OneATick`, a generic function no argument's type names the document of but through the
+# dues. Isolated from tests/documents/tally, whose crate held `pub struct Ordered<D>` with
+# no field over `D` (rustc E0392), beside `Due` lowered with no parameter, so a caller of
+# `one_atick_f::<D>` could not infer `D` (E0282).
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type SeatId (r: Role d)
+    Described: forall (r: Role d). fn Fixed r, SeatId d r -> Text
+
+type CountRole = choice:
+    Raiser
+    Watcher
+derive ^Eq, ^Ord, ^Debug
+
+type Count = record:
+    total: Nat
+derive ^Eq, ^Debug
+
+impl ^Document Count:
+    type Role = CountRole
+    type SeatId Raiser = Nat
+    type SeatId Watcher = Text
+    fn Described Fixed<<Raiser>>, n = "raiser {n}"
+    fn Described Fixed<<Watcher>>, name = "watcher {name}"
+
+type SeatKey d = any (r: Role d): ((Fixed r, SeatId d r))
+
+type Due d = record:
+    seat: SeatKey d
+    at: Nat
+
+type Ordered d = record:
+    apply: [Due d]
+    wait: [Due d]
+
+OneATick: fn [Due d] -> Ordered d
+fn OneATick due = Ordered(apply=(Take due, 1), wait=(Drop due, 1))
+
+Keyed: forall d (r: Role d). fn Fixed r, SeatId d r -> SeatKey d where d: ^Document
+fn Keyed role, id = any ((role, id))
+
+Told: forall d. fn Due d -> Text where d: ^Document
+fn Told due = match due.seat:
+    any ((role, id)): "{Described<<d>> role, id} at {due.at}"
+
+Joined: fn [Text], Text -> Text
+fn Joined texts, between = Fold texts, "", \|all, text| if all == "": text else: "{all}{between}{text}"
+
+ToldAll: forall d. fn [Due d] -> Text where d: ^Document
+fn ToldAll dues = Joined (Each dues, \|due| Told<<d>> due), ", "
+
+@page: @unit
+@page:
+    let dues: [Due Count] = [[Due(seat=(Keyed<<Count, Raiser>> Fixed<<Raiser>>, 3), at=0), Due(seat=(Keyed<<Count, Watcher>> Fixed<<Watcher>>, "ada"), at=1), Due(seat=(Keyed<<Count, Raiser>> Fixed<<Raiser>>, 4), at=2)]]
+    let ordered = OneATick dues
+    Ui.Label($text=$"apply: {ToldAll<<Count>> ordered.apply}")                 # 0
+    Ui.Label($text=$"wait: {ToldAll<<Count>> ordered.wait}")                   # 1
