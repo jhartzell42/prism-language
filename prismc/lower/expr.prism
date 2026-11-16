@@ -1466,8 +1466,44 @@ fn ?HeldDynamic lx, env, d:
 # with no tag as plain data when it is plain data (`Tagged`), else held as it is (the
 # prelude's `output_held`). The value is typed first, so a recoder (`OutputMaker`) knows
 # what it is given (`None` alone names no type).
+# (a type that names a type variable, a generic tag's `r` in a supplier's arm, is named in
+# no scope there: such a value is given untyped, its type decided by the tag's case,
+# sem-ch09-generic-tag-variable-in-arm)
 TaggedOrHeld: unbounded fn Ref, OutTy, Ex -> Ex
-fn TaggedOrHeld variant, t, value = if variant == untaggedRef and not (Podable t): XCall (HelperRef "output_held"), [[value]] else: Tagged variant, (XBlock [[(DoLet (PaTyped (PaBind "typed_answer"), t), value)]], (XVar "typed_answer"))
+fn TaggedOrHeld variant, t, value = if variant == untaggedRef and not (Podable t): XCall (HelperRef "output_held"), [[value]] else: if not (IsClosedOut t): Tagged variant, value else: Tagged variant, (XBlock [[(DoLet (PaTyped (PaBind "typed_answer"), t), value)]], (XVar "typed_answer"))
+
+# Whether a lowered type names no type variable (`OutGen`), no quantified or open
+# associated type and nothing refused: a type Rust can be told anywhere.
+IsClosedOut: fn OutTy -> Bool
+fn IsClosedOut t = match t:
+    OutGen ignore: False
+    OutQuantified ignore: False
+    OutAssoc ignore, ignore2, ignore3: False
+    OutRefused ignore: False
+    OutNamed ignore, args: Fold args, True, \|ok, a| ok and IsClosedOut a
+    OutOpt x: IsClosedOut x
+    OutRes x: IsClosedOut x
+    OutTuple xs: Fold xs, True, \|ok, a| ok and IsClosedOut a
+    OutArray x: IsClosedOut x
+    OutMap k, v: (IsClosedOut k) and IsClosedOut v
+    OutFn ps, r: Fold ps, (IsClosedOut r), \|ok, a| ok and IsClosedOut a
+    OutJobFn a, b: (IsClosedOut a) and IsClosedOut b
+    OutJob x: IsClosedOut x
+    OutEvent x: IsClosedOut x
+    OutDyn x: IsClosedOut x
+    OutRc x: IsClosedOut x
+    OutRef x: IsClosedOut x
+    OutRefMut x: IsClosedOut x
+    OutHold x: IsClosedOut x
+    OutStamped x: IsClosedOut x
+    OutSnapshot x: IsClosedOut x
+    OutDefer x: IsClosedOut x
+    OutCell x: IsClosedOut x
+    OutObj x: IsClosedOut x
+    OutSlice x: IsClosedOut x
+    OutPort x: IsClosedOut x
+    OutLive x: IsClosedOut x
+    otherwise: True
 
 # An answer in its tag's case of `crate::Output`; with no tag, as plain data in the case
 # of no tag (`untaggedRef`).
