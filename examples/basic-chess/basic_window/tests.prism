@@ -61,7 +61,7 @@ test a_column_taller_than_the_window_draws_what_shows, @$window:
 test the_focus_moves_by_press_and_by_tab, @$formWindow:
     build
         => expect Gui.Focus(at=nil, ..)
-    click element 0
+    click element 0/0
     compute until idle
         => expect Gui.Focus(at=(? Rect(x=0.0, y=0.0, w=200.0, h=22.0)), ..)
     send Gui.Window(..), Pressed Tab
@@ -75,7 +75,7 @@ test the_focus_moves_by_press_and_by_tab, @$formWindow:
 test a_key_types_its_character, @$formWindow:
     build
         => returns "xy"
-    click element 0
+    click element 0/0
     compute until idle
     send Gui.Window(..), Pressed (Char 'q')
     compute until idle
@@ -112,7 +112,7 @@ test a_slider_and_its_box_move_together, @$slideWindow:
     send Gui.Window(..), Press Point(x=1.0, y=11.0)         # the left end: step 0
     compute until idle
         => returns "0 0"
-    click element 1                                         # the box, then a 7 after its 0
+    click element 1/0                                         # the box, then a 7 after its 0
     compute until idle
     send Gui.Window(..), Pressed (Char '7')
     compute until idle
@@ -145,7 +145,7 @@ test a_dialog_hides_shows_and_keeps_its_text, @$overlaidWindow:
     send Gui.Window(..), Press Point(x=8.0, y=8.0)          # the button under the hidden dialog
     compute until idle
         => returns "1 hi"
-    click element 2                                         # Toggle (the layers are places 0 and 1): the dialog opens
+    click element 1                                         # Toggle (the layers are place 0): the dialog opens
     compute until idle
         => expect Draw.Text(text="hi", ..)
     send Gui.Window(..), Press Point(x=4.0, y=4.0)          # the dialog's edge, over the button
@@ -156,13 +156,13 @@ test a_dialog_hides_shows_and_keeps_its_text, @$overlaidWindow:
     send Gui.Window(..), Pressed (Char '!')
     compute until idle
         => returns "1 hi!"
-    click element 2                                         # Toggle: it closes, and keeps its text
+    click element 1                                         # Toggle: it closes, and keeps its text
     compute until idle
         => expect_none Draw.Text(text="hi!", ..)
     send Gui.Window(..), Pressed (Char '?')                 # to the hidden box: nobody hears it
     compute until idle
         => returns "1 hi!"
-    click element 2
+    click element 1
     compute until idle
         => expect Draw.Text(text="hi!", ..)
 
