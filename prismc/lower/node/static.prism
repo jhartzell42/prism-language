@@ -169,7 +169,7 @@ fn AppliedFunctionLine wx, menv, clx, cmenv, function, e, args:
     let made = match ValueTy held:
         OutJobFn ignore, ignore2: XCall (HelperRef "run_to_end"), [[(StartCall held, (StartArgs wx.lx, menv, held, args))]]
         otherwise: XApply (Ref held), (Each args, \|a| ValueArgument wx.lx, menv, a.value)
-    AppliedBlueprintLine wx, e, (XRef made), UnderCall
+    AppliedBlueprintLine wx, e, (XRef made), (CallUnder wx)
 
 # A widget parameter applied (`@child` as a statement): its argument lowered here, in its
 # caller's environments and context, so its places take this node's next positions
@@ -367,6 +367,10 @@ fn CalleeUnder e = match e.kind:
     EName n: if HasPrefix (SNameKey n), "@": UnderCall else: UnderCaller
     otherwise: UnderCall
 
+# `CalleeUnder` at a hosted child's own application: the guest's root (`CallUnder`).
+CalleeUnderAt: fn Wx, Expr -> GenUnder
+fn CalleeUnderAt wx, e = if wx.childRoot and (CalleeUnder e) == UnderCall: UnderCaller else: CalleeUnder e
+
 ClausesFunctionLine: unbounded fn Wx, Env, Env, Env, Env, Lx, [FnClause], [Ty], Expr, [Arg] -> ((Wx, Wres))
 fn ClausesFunctionLine wx, benv, menv, cbenv, cmenv, clx, cs, ptys, e, args:
     let lx = wx.lx
@@ -392,7 +396,7 @@ fn ClausesFunctionLine wx, benv, menv, cbenv, cmenv, clx, cs, ptys, e, args:
     let patss = Each cs, \|c| ClausePatterns c, ptys
     let bodies = Each cs, \|c| ClauseBlock c
     let guards = Each cs, \|c| ?ClauseGuard c
-    BuildingChoicesLine wx1, envs, lxi, scruts, patss, ptys, guards, bodies, (ChoiceOutTy lx, e), (ResultLayer (TypeAt lx, e.span)), (LineOutFull lx, e), [[]], (CalleeUnder e)
+    BuildingChoicesLine wx1, envs, lxi, scruts, patss, ptys, guards, bodies, (ChoiceOutTy lx, e), (ResultLayer (TypeAt lx, e.span)), (LineOutFull lx, e), [[]], (CalleeUnderAt wx1, e)
 
 # Whether a clause's pattern matches a parameter's argument: a plain parameter's. A
 # dynamic, an event and a blueprint are no values a pattern tests.
@@ -459,7 +463,7 @@ fn AppliedPathUnder wx, pos, under:
             UnderCall: XMethod (XMethod (InPrefix root, pos.prefix), "at", [[(PlaceNumber wx, "self", pos)]]), "call", [[]]
 
 ValueBlueprintLine: unbounded fn Wx, Env, Expr -> ((Wx, Wres))
-fn ValueBlueprintLine wx, menv, e = AppliedBlueprintLine wx, e, (Ref (ValueOf wx.lx, menv, e)), UnderCall
+fn ValueBlueprintLine wx, menv, e = AppliedBlueprintLine wx, e, (Ref (ValueOf wx.lx, menv, e)), (CallUnder wx)
 
 # A `Blueprint` (`blueprint`, a reference to one as the node's methods read it) applied
 # at the line `e`. A line that gives an event back (`!go <- @Element e`: the element
