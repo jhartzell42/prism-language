@@ -1,0 +1,7 @@
+# Derived by hand from Part IV ch. 6 (a step's next state is kept, a denial keeps the state and its reason is the response) and Part III ch. 6 (an existential opened tells its arm the role): 0 + 3 is accepted, 3 + 3 passes 5 and is declined, so the total stays 3.
+test raised_then_declined
+
+tick 0
+  added:
+    0: Ui.Label(text="total 3")
+    1: Ui.Label(text="0: accepted; 1: declined, stops at 5")

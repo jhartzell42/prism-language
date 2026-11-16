@@ -1,0 +1,94 @@
+# What a document's in-memory implementation keeps after a request (Part IV ch. 6): a
+# record over the document with an optional field of its associated `State` and a list of
+# responses, each an existential over the role whose reason it holds; read back by
+# generic functions with no bound of their own, `?StateOf: fn Kept d -> ?(State d)`, as
+# the library writes them. Isolated from tests/documents/tally, whose crate held `Kept<D>`
+# with `state: Option<Pod>`, so `D` went unused (E0392), `state_of_o` named
+# `<D as Document_t>::State` with no `D: Document_t` bound (E0277), and the derived
+# equality compared `Array<Responded>`, which has none (E0369).
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type Request (r: Role d)
+    type Reason (r: Role d)
+    type State = unit
+    Step: forall (r: Role d). fn State d, Fixed r, Request d r -> Stepped (State d) (Reason d r)
+
+type Stepped s why = choice:
+    Next s
+    Denied why
+derive ^Eq, ^Debug
+
+type Response d (r: Role d) = choice:
+    Accepted
+    Declined (Reason d r)
+derive ^Eq, ^Debug
+
+type Responded d = record:
+    at: Nat
+    response: any (r: Role d): ((Fixed r, Response d r))
+
+type Kept d = record:
+    ?state: State d
+    responses: [Responded d]
+
+?StateOf: fn Kept d -> ?(State d)
+fn ?StateOf kept = kept.?state
+
+ResponsesOf: fn Kept d -> [Responded d]
+fn ResponsesOf kept = kept.responses
+
+StepOne: forall d (r: Role d). fn State d, Kept d, Nat, Fixed r, Request d r -> Kept d where d: ^Document
+fn StepOne state, kept, at, role, request = match Step<<d>> state, role, request:
+    Next next: Kept(?state=(? next), responses=(Push kept.responses, Responded(at=at, response=(any ((role, Accepted))))))
+    Denied why: Kept(?state=kept.?state, responses=(Push kept.responses, Responded(at=at, response=(any ((role, Declined why))))))
+
+type CountRole = choice:
+    Raiser
+    Watcher
+derive ^Eq, ^Ord, ^Debug
+
+type Count = record:
+    total: Nat
+derive ^Eq, ^Debug
+
+type TooHigh = choice:
+    StopsAt Nat
+derive ^Eq, ^Debug
+
+impl ^Document Count:
+    type Role = CountRole
+    type Request Raiser = Nat
+    type Request Watcher = Never
+    type Reason Raiser = TooHigh
+    type Reason Watcher = Never
+    type State = Count
+    fn Step count, Fixed<<Raiser>>, n = if count.total + n > 5: Denied (StopsAt 5) else: Next Count(total=(count.total + n))
+    fn Step count, Fixed<<Watcher>>, request = match request:
+
+Said: fn Responded Count -> Text
+fn Said responded = match responded.response:
+    any ((role, response)): "{responded.at}: {SaidAt role, response}"
+
+SaidAt: forall (r: Role Count). fn Fixed r, Response Count r -> Text
+fn SaidAt Fixed<<Raiser>>, Accepted = "accepted"
+fn SaidAt Fixed<<Raiser>>, (Declined (StopsAt most)) = "declined, stops at {most}"
+fn SaidAt Fixed<<Watcher>>, ignore = "a watcher"
+
+Total: fn ?Count -> Text
+fn Total (? count) = "{count.total}"
+fn Total nil = "none"
+
+@page: @unit
+@page:
+    let start: Kept Count = Kept(?state=nil, responses=[[]])
+    let once = StepOne<<Count, Raiser>> Count(total=0), start, 0, Fixed<<Raiser>>, 3
+    let twice = StepOne<<Count, Raiser>> (Or once.?state, Count(total=0)), once, 1, Fixed<<Raiser>>, 3
+    Ui.Label($text=$"total {Total (?StateOf twice)}")                                     # 0
+    Ui.Label($text=$"{Joined (Each (ResponsesOf twice), Said), "; "}")                  # 1
+
+Joined: fn [Text], Text -> Text
+fn Joined texts, between = Fold texts, "", \|all, text| if all == "": text else: "{all}{between}{text}"
