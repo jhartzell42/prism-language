@@ -1,0 +1,31 @@
+# A plain function gives back a supplier whose answer is over its `$` parameter
+# (`SupplierFrom $count`): the supplier answers with the dynamic, live, so the function
+# takes `$count` whole. prismc lowered it lifted, sampling the hold in the build through
+# `self` (rustc E0424), a value it would then never update. One of the variants pinning
+# supplier-answer-of-whole-function-over-its-hold down.
+# Written by Claude, 15 November 2026, on the claude-self-hosting branch. Subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Gauge of Element $?Nat:
+    name: Text
+
+@meter: @unit emit Ui.* | Pad.*
+@meter:
+    $?level <- Pad.Gauge(name="tank")                                          # 0
+    Ui.Label($text=$"level {Or $?level, 0}")                                   # 1
+
+$Present: fn $s -> $?s
+fn $Present $x = ? $x
+
+SupplierFrom: fn $Nat -> (forall o. fn Path, prompt Element (Ui.* | Pad.*) o -> @o)
+fn SupplierFrom $count = \|path, element| match element:
+    Pad.Gauge(..): @ $Present $count
+    otherwise: @Element element
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")                                           # 0
+    $count <- 0 then $count + (1 on !add)
+    let Supply = SupplierFrom $count
+    ignore <- @Host @meter, Supply                                             # 1/[p]
