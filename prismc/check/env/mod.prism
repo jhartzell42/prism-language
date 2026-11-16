@@ -113,6 +113,9 @@ type ValInfo = record:
     home: Text
     file: Nat
     span: Range
+    # The runtime function a declaration with no body names (ruling RT), a path under
+    # `prism_rtl`.
+    ?runtime: Text
 derive ^Eq, ^Debug
 
 type TraitInfo = record:
@@ -361,4 +364,4 @@ fn AddBuiltins g:
         &_.vals <= Insert &_.vals, "Table.Empty", (Builtin "Table.Empty", tabEmpty)
 
 Builtin: fn Text, Scheme -> ValInfo
-fn Builtin qk, sc = ValInfo(qk=qk, scheme=sc, sort="builtin", hasSig=True, scoped=[[]], scopedKinds=[[]], home="Prelude", file=0, span=Range(start=0, end=0, origin=InSource))
+fn Builtin qk, sc = ValInfo(qk=qk, ?runtime=nil, scheme=sc, sort="builtin", hasSig=True, scoped=[[]], scopedKinds=[[]], home="Prelude", file=0, span=Range(start=0, end=0, origin=InSource))

@@ -928,19 +928,22 @@ fn AnyValue lx, env, x, t:
                 VlOwned (XMethod packing, "packed", [[]]), packedTy
         otherwise: VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[v]]), OutShowAny), OutShowAny
 
-# A declaration of the standard library's `Documents` with no body (library/
-# documents.prism: `SeatPathOf`, `SeatIdAt`, `$Merge`, ...): the runtime's
-# (`prism_rtl::documents`), called by its path from the prelude.
+# A declaration with no body that names its runtime function (ruling RT: `SeatPathOf:
+# fn Path -> Path = runtime "documents::seat_path_of"`), and no definition: a call of
+# that function under `prism_rtl`, typed as the call's result. `$GuestsOf` lifts over
+# the parts of the dynamics it is given (`GuestsOfCall`).
 IsLibraryBuiltin: fn Lx, Text -> Bool
-fn IsLibraryBuiltin lx, qk = (HasPrefix qk, "Documents.") and not (Fold lx.g.defs, False, \|found, d| found or d.qk == qk)
+fn IsLibraryBuiltin lx, qk = match lx.g.vals[qk]:
+    ? v: (v.?runtime != nil) and not (Fold lx.g.defs, False, \|found, d| found or d.qk == qk)
+    nil: False
 
 LibraryBuiltinCall: unbounded fn Lx, Text, [Ex], [Arg], Range, OutTy -> Ex
-fn LibraryBuiltinCall lx, qk, args, written, span, t = match BareName qk:
-    "SeatPathOf": XCall (HelperRef "documents_seat_path_of"), args
-    "SeatIdAt": XCallAt (HelperRef "documents_seat_id_at"), [[t]], args
-    "$Merge": XCall (HelperRef "documents_merge"), args
-    "$GuestsOf": GuestsOfCall lx, qk, args, written, span
-    other: Refusal "the library's builtin `{other}`, whose runtime is not written yet"
+fn LibraryBuiltinCall lx, qk, args, written, span, t = match ((lx.g.vals[qk], BareName qk)):
+    ((ignore, "$GuestsOf")): GuestsOfCall lx, qk, args, written, span
+    ((? v, ignore)): match v.?runtime:
+        ? path: XTyped (XCall (RefRuntime "prism_rtl::{path}"), args), t
+        nil: Refusal "`{BareName qk}`, a declaration with no body that names no runtime function"
+    otherwise: Refusal "`{BareName qk}`, a declaration with no body that names no runtime function"
 
 # `$GuestsOf<<d, r>> role, $tree`: the runtime's, at the guest's parts as this call's
 # role gives them (the role, its seat id, the element), with the role's variant number
@@ -969,7 +972,7 @@ fn GuestsOfCall lx, qk, args, written, span:
                     let seatTags = Filter (Values lx.g.tags), \|tg| tg.kind == "Element" and HasText fams, tg.familyName
                     let isSeat = XClosure False, [[PaBind "element"]], (XIsCase (XVar "element"), (Each seatTags, \|tg| VariantOf lx, tg))
                     let number = ExistsNumber lx, (Or vs[0], "r"), (? role)
-                    XCallAt (HelperRef "documents_guests_of"), [[(OutTyOf lx, fixedTy), (OutTyOf lx, seatTy), (OutTyOf lx, elemTy), OutNat]], (Append (Push [[number]], (Or args[0], XUnit)), [[(Or args[1], XUnit), isSeat]])
+                    XCallAt (RefRuntime "prism_rtl::documents::guests_of"), [[(OutTyOf lx, fixedTy), (OutTyOf lx, seatTy), (OutTyOf lx, elemTy), OutNat]], (Append (Push [[number]], (Or args[0], XUnit)), [[(Or args[1], XUnit), isSeat]])
                 otherwise: InternalBug "`$GuestsOf` whose guest is no triple"
         otherwise: InternalBug "`$GuestsOf` whose result holds no existential"
 
