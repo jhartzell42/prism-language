@@ -1,5 +1,5 @@
-tests/checker/neg/forwarding-by-a-supplier-giving-nil.prism:17: error[forwarding]: forwarding Pad.Ping from a scope that emits Ui.*
+tests/checker/neg/forwarding-by-a-supplier-giving-nil.prism:17: error[row-outside]: a child that emits `Pad.* | Ui.*` in a scope that emits `Ui.*`
         ignore <- @HostSome @child, \|p, e| nil
-                                            ^^^
-  fix: answer them above this arm, for example `Pad.Ping(..): @ never`
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: widen the scope's `emit` row, or host the child with `@Host`
 1 error
