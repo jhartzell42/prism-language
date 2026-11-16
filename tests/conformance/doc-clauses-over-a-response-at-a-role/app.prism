@@ -1,0 +1,46 @@
+# A plain function whose clauses match a response at one document and role, `Response
+# Board Player`, the declined clause by its reason's constructor (tests/documents/c6's
+# `Said (Declined NotYourMove) = ..`, tally's `Said (Declined why) = ..`). Isolated from
+# c6 and tally, whose crates recoded the reason, held as `Pod`, from `&&Pod` (rustc E0277:
+# the trait bound `&Pod: ToPod` is not satisfied).
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type Reason (r: Role d)
+
+type Response d (r: Role d) = choice:
+    Accepted
+    Declined (Reason d r)
+derive ^Eq, ^Debug
+
+type GameRole = choice:
+    Player
+    Spectator
+derive ^Eq, ^Ord, ^Debug
+
+type ChessReason = choice:
+    NotYourMove
+    NoSuchPiece Nat
+derive ^Eq, ^Debug
+
+type Board = choice:
+    Board
+
+impl ^Document Board:
+    type Role = GameRole
+    type Reason Player = ChessReason
+    type Reason Spectator = Never
+
+Said: fn Response Board Player -> Text
+fn Said Accepted = "accepted"
+fn Said (Declined NotYourMove) = "declined: not your move"
+fn Said (Declined (NoSuchPiece at)) = "declined: nothing at {at}"
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Said Accepted}")                                     # 0
+    Ui.Label($text=$"{Said (Declined NotYourMove)}")                       # 1
+    Ui.Label($text=$"{Said (Declined (NoSuchPiece 9))}")                   # 2
