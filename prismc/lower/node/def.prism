@@ -2200,11 +2200,17 @@ fn GivesResult lx, menv, e = match e.kind:
                 otherwise: if HasKey menv.names, "{SNameKey n}#blueprint": True else:
                     let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
                     match ?q:
-                        ? q: (IsGetterBuiltin q) or (IsHostBuiltin q) or ((not (IsPreludeName q)) and (lx.g.vals[q] != nil) and IsWidgetTy (Peel (TypeAt lx, e.span)))
+                        # (a widget of the prelude with a body, `@Host`, is a widget as any
+                        # other: ruling HP)
+                        ? q: (IsGetterBuiltin q) or (IsHostBuiltin q) or (((not (IsPreludeName q)) or HasDefinition lx, q) and (lx.g.vals[q] != nil) and IsWidgetTy (Peel (TypeAt lx, e.span)))
                         nil: False
             otherwise: False
 
-# a prelude widget (`@Distinct`, `@Flatten`, a host) may write the name it is bound to
+# Whether a value has a definition the program holds (a prelude widget with a body).
+HasDefinition: fn Lx, Text -> Bool
+fn HasDefinition lx, q = Fold lx.g.defs, False, \|found, d| found or d.qk == q
+
+# a prelude widget (`@Distinct`, `@Flatten`, the host primitive) may write the name it is bound to
 IsPreludeName: fn Text -> Bool
 fn IsPreludeName q = (?Find %/^Prelude\./, q) != nil
 

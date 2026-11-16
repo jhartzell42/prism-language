@@ -978,6 +978,25 @@ fn NamesInitedOrParent wx, env, e = Fold (ReadNames (ExprsIn e)), True, \|ok, n|
     ? (BnHold ignore, ignore): HasKey env.names, "{n}#init"
     otherwise: True
 
+# What a function value of a line reaches beyond its own text (ruling HP): the bodies of
+# the block's functions it names and the expressions of the blueprint `let`s it names.
+ReachedExprs: unbounded fn Env, [Expr] -> [Expr]
+fn ReachedExprs menv, xs = Fold xs, [[]], \|acc, x| match x.kind:
+    EName n: Append acc, (NamedTexts menv, (SNameKey n))
+    otherwise: acc
+
+NamedTexts: unbounded fn Env, Text -> [Expr]
+fn NamedTexts menv, k = match menv.names[k]:
+    ? (BnLocalFn cs): Fold cs, [[]], \|acc, c| Append acc, (ClauseExprs c)
+    otherwise: match menv.names["{k}#blueprint"]:
+        ? (BnWidget y, ignore, ignore, ignore): ExprsIn y
+        otherwise: [[]]
+
+ClauseExprs: unbounded fn FnClause -> [Expr]
+fn ClauseExprs c = match c.body:
+    BodyBlock b: BlockExprs b
+    BodyExpr y: ExprsIn y
+
 # A dynamic answer's or a live dynamic's port fires once a tick, however many writes lie
 # behind it: an update event fires at most once a tick (Semantics ch. 7). `{name}_once`
 # stamps the tick it fired in (`MovedBy`).
@@ -1027,9 +1046,14 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
         otherwise: False
     # and `!Updated $d` inside a lambda of the line (a supplier's `@ !Filter (?Pick p,
     # !Updated $state)`): an event value there, over `$d`'s live dynamic (`?UpdatedValue`)
-    let inLambdas = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
+    let inLambdas0 = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
         ELambda ignore, ignore, prompts: Append acc, (ExprsIn x)
         otherwise: acc
+    # (and what those lambdas reach beyond their own text: the bodies of the block's
+    # functions they call and the blueprint `let`s they name, a supplier `@Supply e`
+    # written as a function of the block; ruling HP)
+    let reached = ReachedExprs menv, inLambdas0
+    let inLambdas = Append (Append inLambdas0, reached), (ReachedExprs menv, reached)
     # and a call of a function that takes time whole there (a supplier's `@ $Present
     # $count`, c6's `@ $Loaded $game`): the node's readers it passes, live dynamics too
     # (supplier-answer-of-whole-function-over-its-hold)

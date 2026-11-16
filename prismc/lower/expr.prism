@@ -1889,7 +1889,7 @@ fn Application lx, env, callee, args, span:
                 ? (BnLocalFn cs): InlineLocalFn (LocalFnLx lx, callee.span), env, cs, args, t
                 ? b:
                     let f = NameValue lx, env, n, callee.span
-                    match ValueTy f:
+                    let applied = match ValueTy f:
                         OutJobFn ignore, ignore:
                             VlOwned (XCall (HelperRef "run_to_end"), [[(StartCall f, (StartArgs lx, env, f, args))]]), t
                         # a value of a quantified type (Jimmy's ruling FA) holds its
@@ -1897,6 +1897,13 @@ fn Application lx, env, callee, args, span:
                         # its result read at the type this call gives it
                         OutFn ps, r: VlOwned (PackedApply lx, env, (Ref f), ps, r, args, t), t
                         otherwise: VlOwned (XApply (Ref f), (Each args, \|a| ValueArgument lx, env, a.value)), t
+                    # a function value that gives a dynamic (`Read: fn Nat -> $Nat`), called
+                    # where its value is read (`"{Read k}"`): the `Dynamic` it gives sampled
+                    # at the read point; taken whole, the `Dynamic` itself
+                    let givesDynamic = match Peel (TypeAt lx, callee.span):
+                        TyFn ignore, ignore2, r, ignore3: (LayerOf r) == LyDyn
+                        otherwise: False
+                    if givesDynamic and not lx.whole: VlOwned (SampledAt lx, (Own applied)), t else: applied
                 nil:
                     let ((?qk, why)) = ResolveValue lx.g, lx.home, n
                     match ?qk:
