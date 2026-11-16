@@ -2258,11 +2258,17 @@ fn InlineWidgetBody wx, benv, menv, qk, v0, args, e:
                 let callSpan = match e.kind:
                     ECall c, ignore, ignore, ignore: c.span
                     otherwise: e.span
+                # (each associated type only an argument decides, read in the body as the
+                # argument's type there, doc-seats-record-of-rows)
+                let assocPairs = Fold (Range0 (Len params)), [[]], \|acc, i| match args[i]:
+                    ? a: Append acc, (AssocPairs (SubstTy lxp, (Or ptys[i], TyErr)), (TypeAt lx, a.value.span))
+                    nil: acc
                 let lxi = update lxc:
                     &_.inlined <= match lx.callIds[PlaceKey lx, callSpan]:
                         ? id: "{lx.inlined}_{Base32 id}"
                         nil: lx.inlined
                     &_.subst <= Fold (Keys (Or ?params, {{}})), &_.subst, \|m, q| Insert m, q, (Or (Or ?params, {{}})[q], TyErr)
+                    &_.assocs <= Append lx.assocs, assocPairs
                     &_.recursing <= AddText lx.recursing, qk
                 # (its places in a list of its own under the caller's position, ruling PL)
                 let inner = update wx1:

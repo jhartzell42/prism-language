@@ -126,6 +126,10 @@ type Lx = record:
     inlined: Text
     subst: (Text ==> Ty)
     csubst: (Text ==> Col)
+    # An inlined widget's associated types at indices nothing but an argument decides, each
+    # with the argument's type there (`AssocPairs`): `SeatId d r` read as `Nat` where the
+    # argument is a map keyed by `Nat`.
+    assocs: [((Ty, Ty))]
     # The expressions whose `Error` value is the failure of the `~T` it meets, with that
     # type, by place (the typed output's `faults`).
     faults: (Text ==> Ty)
@@ -200,7 +204,7 @@ fn BinderTy lx, r = match lx.binders[PlaceKey lx, r]:
 # A type at the instantiation being lowered (pick LG): a generalized `let`'s type and color
 # variables replaced by what this instantiation gives them.
 SubstTy: fn Lx, Ty -> Ty
-fn SubstTy lx, t = if (Len (Keys lx.subst)) == 0 and (Len (Keys lx.csubst)) == 0: t else: SubstTyIn lx, t
+fn SubstTy lx, t = if (Len (Keys lx.subst)) == 0 and (Len (Keys lx.csubst)) == 0 and (Len lx.assocs) == 0: t else: SubstTyIn lx, t
 
 SubstTyIn: fn Lx, Ty -> Ty
 fn SubstTyIn lx, t = match t:
@@ -216,9 +220,29 @@ fn SubstTyIn lx, t = match t:
     TySig s, i: TySig s, (SubstTyIn lx, i)
     TyAt i, rw: TyAt (SubstTyIn lx, i), rw
     TyElem rw, o: TyElem rw, (SubstTyIn lx, o)
-    TyAssoc tr, n, a, indices: TyAssoc tr, n, (SubstTyIn lx, a), (Each indices, \|i| SubstTyIn lx, i)
+    TyAssoc tr, n, a, indices:
+        let t2 = TyAssoc tr, n, (SubstTyIn lx, a), (Each indices, \|i| SubstTyIn lx, i)
+        match (Filter lx.assocs, \|((at, ignore))| SameUpToRigid at, t2)[0]:
+            ? ((ignore, standing)): standing
+            nil: t2
     TyExists vs, b, bs, kinds: TyExists vs, (SubstTyIn lx, b), bs, (Each kinds, \|((kv, kt))| ((kv, (SubstTyIn lx, kt))))
     TyForall vs, b: TyForall vs, (SubstTyIn lx, b)
+    other: other
+
+# Two types the same but that a variable may stand as a scheme's (`TyQ`) in one and as a
+# body's (`TyRigid`) in the other.
+SameUpToRigid: fn Ty, Ty -> Bool
+fn SameUpToRigid a, b = (RigidAsQ a) == (RigidAsQ b)
+
+RigidAsQ: fn Ty -> Ty
+fn RigidAsQ t = match t:
+    TyRigid n: TyQ n
+    TyCon n, args: TyCon n, (Each args, \|x| RigidAsQ x)
+    TyTuple ts: TyTuple (Each ts, \|x| RigidAsQ x)
+    TyArray e: TyArray (RigidAsQ e)
+    TyMap k, v: TyMap (RigidAsQ k), (RigidAsQ v)
+    TySig sg, i: TySig sg, (RigidAsQ i)
+    TyAssoc tr, n, a, indices: TyAssoc tr, n, (RigidAsQ a), (Each indices, \|i| RigidAsQ i)
     other: other
 
 InstCol: fn Lx, Col -> Col

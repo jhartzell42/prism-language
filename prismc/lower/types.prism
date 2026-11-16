@@ -455,6 +455,28 @@ fn HasOpenIndexedAssoc t = match t:
     TySig sg, i: HasOpenIndexedAssoc i
     otherwise: False
 
+# The associated types at indices no equation decides in a parameter's type, each with
+# the argument's type standing where it stands (`Lx.assocs`).
+AssocPairs: unbounded fn Ty, Ty -> [((Ty, Ty))]
+fn AssocPairs p, a = match p:
+    TyAssoc ignore, ignore2, ignore3, ignore4: if HasOpenIndexedAssoc p: [[((p, a))]] else: [[]]
+    TyCon c, ps: match a:
+        TyCon d, argTys: if c == d: Fold (Range0 (Len ps)), [[]], \|acc, i| Append acc, (AssocPairs (Or ps[i], TyErr), (Or argTys[i], TyErr)) else: [[]]
+        otherwise: [[]]
+    TyTuple ps: match a:
+        TyTuple argTys: Fold (Range0 (Len ps)), [[]], \|acc, i| Append acc, (AssocPairs (Or ps[i], TyErr), (Or argTys[i], TyErr))
+        otherwise: [[]]
+    TyArray e: match a:
+        TyArray f: AssocPairs e, f
+        otherwise: [[]]
+    TyMap k, v: match a:
+        TyMap k2, v2: Append (AssocPairs k, k2), (AssocPairs v, v2)
+        otherwise: [[]]
+    TySig sg, i: match a:
+        TySig sg2, j: AssocPairs i, j
+        otherwise: [[]]
+    otherwise: [[]]
+
 # A signature's type as its definition's Rust signature holds it at a call, each
 # associated type with indices at a variable plain data.
 ErasedSignatureOut: unbounded fn Lx, Ty -> OutTy
