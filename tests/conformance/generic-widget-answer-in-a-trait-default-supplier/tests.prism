@@ -1,0 +1,6 @@
+# The tests of generic-widget-answer-in-a-trait-default-supplier.
+emit Ui.* | Asked.*
+use App.*
+
+test answered, @page:
+    build

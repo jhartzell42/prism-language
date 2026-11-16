@@ -1,0 +1,59 @@
+# A generic widget over a document and a role, with a hold and no place, given as a host's
+# supplier's answer inside a trait's default widget, at the trait's own parameter and the
+# default's role (the library's `^RemoteDocument` default `@Over`, whose supplier answers a
+# query by `@AnswerFrom<<d>> role, path, !arrived`). Isolated from examples/chess, which
+# q11 refused: "the widget function @AnswerFrom as a value: a blueprint value is a
+# supplier's answer that builds no place"; its diagnostic showed a key with the role and
+# no document, looked up outside any definition, and no reading collected.
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.* | Asked.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    Name: forall (r: Role d). fn Fixed r -> Text
+    @Panel: forall (r: Role d). fn Fixed r, prompt @unit emit Ui.* | Asked.* d -> @unit emit Ui.*
+    fn @Panel role, @child:
+        ignore <- @Host @child, \|path, prompt element| match element:    # 0
+            Asked.Ask(..): @AnswerFrom<<d>> role, path
+            otherwise: @Element element
+
+family Asked d where d: ^Document
+
+tag Asked.Ask of Element $?(Told d):
+    asking: unit
+
+# (its result names the document, as the library's `@$?(Answer d r)` does)
+type Told d = choice:
+    Told Text
+
+@AnswerFrom: forall d (r: Role d). fn Fixed r, Path -> @$?(Told d) emit unit where d: ^Document
+fn @AnswerFrom role, path:
+    $?answer <- ? (Told "{Name<<d>> role} answers") then ? (Told "again") on never
+    @ $?answer
+
+@guest: @unit emit Ui.* | Asked.* Game
+@guest:
+    $?told <- Asked.Ask(asking=unit)                                         # 0
+    Ui.Label($text=$"told {TextOf $?told}")                                # 1
+
+TextOf: fn ?(Told Game) -> Text
+fn TextOf (? (Told text)) = text
+fn TextOf nil = "nothing yet"
+
+type GameRole = choice:
+    Player
+    Spectator
+derive ^Eq, ^Ord, ^Debug
+
+type Game = choice:
+    Game
+
+impl ^Document Game:
+    type Role = GameRole
+    fn Name Fixed<<Player>> = "the player"
+    fn Name Fixed<<Spectator>> = "a spectator"
+
+@page: @unit
+@page:
+    @Panel<<Game, Player>> Fixed<<Player>>, @guest                         # 0
