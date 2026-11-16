@@ -1,0 +1,57 @@
+# A trait whose where-clause bounds an associated type of its parameter (Part III ch. 5:
+# `trait ^SerializableDocument d where State d: ^SerializableValue`), and a generic
+# function bounded by that trait alone that calls the associated type's method at it,
+# `~Decode<<State d>> bytes`, as the library's `Decoded` does. Isolated from
+# tests/documents/tally, whose crate wrote `decoded_f<D: SerializableDocument_t>` and
+# called the method of `<D as Document_t>::State` with no bound saying it has one (rustc
+# E0277: `<D as Document_t>::State: SerializableValue_t` is not satisfied).
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type State = unit
+
+trait ^SerializableValue s:
+    Encode: fn s -> [U8]
+    ~Decode: fn [U8] -> ~s
+
+trait ^SerializableDocument d where d: ^Document, State d: ^SerializableValue:
+    Named: fn d -> Text
+
+Decoded: forall d. fn State d, [U8] -> State d where d: ^SerializableDocument
+fn Decoded initial, bytes = if (Len bytes) == 0: initial else: match ~Decode<<State d>> bytes:
+    ~ state: state
+    otherwise: initial
+
+Encoded: forall d. fn State d -> [U8] where d: ^SerializableDocument
+fn Encoded state = Encode state
+
+type Tally = record:
+    total: Nat
+derive ^Eq, ^Debug
+
+type Board = choice:
+    Board
+derive ^Eq, ^Debug
+
+# a tally written as its total's digits
+impl ^SerializableValue Tally:
+    fn Encode tally = Utf8Bytes "{tally.total}"
+    fn ~Decode bytes = match ~Utf8Text bytes:
+        ~ text: match ~ParseNat text:
+            ~ n: ~ Tally(total=n)
+            otherwise: Error(kind=Prelude.NotANumber, message="not a tally")
+        otherwise: Error(kind=Prelude.NotANumber, message="not a tally")
+
+impl ^Document Board:
+    type State = Tally
+
+impl ^SerializableDocument Board:
+    fn Named board = "board"
+
+@page: @unit
+@page:
+    let saved = Encoded<<Board>> Tally(total=7)
+    Ui.Label($text=$"read back {(Decoded<<Board>> Tally(total=0), saved).total}")      # 0
+    Ui.Label($text=$"from nothing {(Decoded<<Board>> Tally(total=0), [[]]).total}")    # 1

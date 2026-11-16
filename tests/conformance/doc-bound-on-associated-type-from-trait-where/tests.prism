@@ -1,0 +1,6 @@
+# The tests of doc-bound-on-associated-type-from-trait-where.
+emit Ui.*
+use App.*
+
+test written_and_read_back, @page:
+    build
