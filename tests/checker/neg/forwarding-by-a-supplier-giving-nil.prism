@@ -1,0 +1,17 @@
+# `forwarding`: a `@HostSome` supplier's `nil` forwards the element it was given, so every
+# tag of the child's row it may give `nil` for leaves through the host's scope, which emits
+# only `Ui.*`; q7 accepted this and put `Pad.Ping` before the World (a soundness hole,
+# ruling CR). Written by Claude, 16 November 2026, on the claude-self-hosting branch.
+emit Ui.*
+
+tag Pad.Ping of Element unit:
+    name: Text
+
+@child: @unit emit Pad.* | Ui.*
+@child:
+    ignore <- Pad.Ping(name="leaks")
+    Ui.Label($text=$"child")
+
+@page: @unit
+@page:
+    ignore <- @HostSome @child, \|p, e| nil
