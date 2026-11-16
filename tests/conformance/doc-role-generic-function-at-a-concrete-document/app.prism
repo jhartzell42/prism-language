@@ -1,0 +1,53 @@
+# A function generic over a role of one concrete document, `forall (r: Role Board)`, its
+# clauses one per role (ruling VO), each passing the role's own seat id and request to a
+# plain function of that role's types (tests/documents/c6-chess-by-hand's `Stepping`, whose
+# player clause calls `MoveBy game, side, move`). Isolated from c6, whose crate held the
+# seat id and request as `Pod` and passed them where `Side` and `Move` are taken (rustc
+# E0308: arguments to this function are incorrect).
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type SeatId (r: Role d)
+    type Request (r: Role d)
+
+type Side = choice:
+    White
+    Black
+derive ^Eq, ^Debug
+
+type Move = record:
+    from: Nat
+    to: Nat
+derive ^Eq, ^Debug
+
+type GameRole = choice:
+    Player
+    Spectator
+derive ^Eq, ^Ord, ^Debug
+
+type Board = record:
+    moves: Nat
+derive ^Eq, ^Debug
+
+impl ^Document Board:
+    type Role = GameRole
+    type SeatId Player = Side
+    type SeatId Spectator = Text
+    type Request Player = Move
+    type Request Spectator = Never
+
+MoveBy: fn Board, Side, Move -> Text
+fn MoveBy board, White, move = "white moves {move.from} to {move.to} after {board.moves}"
+fn MoveBy board, Black, move = "black moves {move.from} to {move.to} after {board.moves}"
+
+Stepping: forall (r: Role Board). fn Board, Fixed r, SeatId Board r, Request Board r -> Text
+fn Stepping board, Fixed<<Player>>, side, move = MoveBy board, side, move
+fn Stepping board, Fixed<<Spectator>>, user, request = match request:
+
+@page: @unit
+@page:
+    let board = Board(moves=2)
+    Ui.Label($text=$"{Stepping<<Player>> board, Fixed<<Player>>, Black, Move(from=12, to=28)}")   # 0
