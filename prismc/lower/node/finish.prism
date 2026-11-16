@@ -904,7 +904,10 @@ PlaceAt: fn Wx, Text, Pos -> Ex
 fn PlaceAt wx, recv, pos:
     let at = [[(PlaceNumber wx, recv, pos)]]
     let base = if Emits wx, pos: (if recv == "": XVar "path" else: (if recv == "self": XField XSelf, "path" else: XField (XVar recv), "path")) else: XCall (RefRuntime "rt::Path::root"), [[]]
-    XMethod (InPrefix base, pos.prefix), "at", at
+    # (each caller position of the prefix numbered as a place of its own list is: a gap
+    # before the application counts there, not inside it, sem-ch08-first-value-after-late-arm)
+    let prefixed = Fold (Range0 (Len pos.prefix)), base, \|x, i| XMethod (XMethod x, "at", [[(PlaceNumber wx, recv, Pos(scope=pos.scope, prefix=(Take pos.prefix, i), at=(Or pos.prefix[i], 0)))]]), "call", [[]]
+    XMethod prefixed, "at", at
 
 # A path under the inlined applications a position stands in (ruling PL): each caller
 # position, then `call()`, the application's own list.
@@ -920,7 +923,7 @@ fn PlaceUnknownAtBuild wx, pos = (pos.scope == 0 and wx.baseLate and IsSomeNat w
 
 # The gappy generations of a position's scope that end at or before it (`GenDef.gappy`).
 GapsBefore: fn Wx, Pos -> [GenDef]
-fn GapsBefore wx, pos = Filter wx.gens, \|gd| gd.gappy and gd.pos.scope == pos.scope and gd.pos.at + gd.width <= pos.at
+fn GapsBefore wx, pos = Filter wx.gens, \|gd| gd.gappy and gd.pos.scope == pos.scope and gd.pos.prefix == pos.prefix and gd.pos.at + gd.width <= pos.at
 
 # Whether a generation built early at a position, before the block's node, is numbered
 # after it (`Wx.lateNumbered`; ruling TC: places are counted as they are built): a

@@ -2336,7 +2336,12 @@ fn BindParam wx, cbenv, cmenv, be, me, nkey, spelled, pty, arg:
                         &_.getters <= Push &_.getters, getter
                         &_.dynReads <= Insert &_.dynReads, rs, reads
                     let rb = BnDyn (XMethod (XSelf), rs, [[XCx]]), [[OwnRead rs]], t
-                    ((wx3, (Bind (Bind be0, nkey, b), "{nkey}#row", rb), (Bind (Bind me, nkey, b), "{nkey}#row", rb)))
+                    # (the name itself reads through the getter too, carrying the argument's
+                    # reads: a reader at the node's build maps `self` to the node in a getter
+                    # call, not inside an expression over the node's fields; the forall
+                    # test's `box.$m`)
+                    let named = BnDyn (XMethod (XSelf), rs, [[XCx]]), reads, t
+                    ((wx3, (Bind (Bind be0, nkey, named), "{nkey}#row", rb), (Bind (Bind me, nkey, named), "{nkey}#row", rb)))
         otherwise:
             let ((rs, wx2a)) = FreshName wx, spelled
             # a tuple written in place that holds time (`@Shows ((!counted, $n))`, a

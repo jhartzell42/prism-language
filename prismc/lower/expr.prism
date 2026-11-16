@@ -1281,7 +1281,7 @@ fn WrittenPart lx, env, y = match LayerOf (TypeAt lx, y.span):
         nil: PartPlain (Own (ValueOf lx, env, (Or (?ConstantDynamic y), y)))
         ? d: match ?HeldDynamic lx, env, d:
             ? held: PartLive held
-            nil: PartInternalBug "`{SrcText lx, lx.file, y.span}`, a bundle answer's `$` part over a reader that is no live dynamic where it is written"
+            nil: PartInternalBug "`{SrcText lx, lx.file, y.span}`, a bundle answer's `$` part over a reader that is no live dynamic where it is written (diagnostic: the live dynamics here {Debug (Filter (Keys env.names), \|k| HasPrefix k, "#whole")}, the part's key {SpanKey y.span}, its names' bindings {Debug (Each (ReadNames (ExprsIn y)), \|n| ((n, (KindOfBinding env, n))))})"
     otherwise: PartPlain (Own (ValueOf lx, env, y))
 
 # A bundle answer of its parts (round 3 DY). The plain and `$` parts are the state: one
@@ -1428,6 +1428,16 @@ HeldDynamicBlueprint: unbounded fn Lx, Env, Expr, Expr, OutTy -> Vl
 fn HeldDynamicBlueprint lx, env, x, d, t = match ?HeldDynamic lx, env, d:
     ? held: VlOwned (XCall (RefRuntime "prism_rtl::plain_blueprint::<crate::Elem, _>"), [[(XCall (HelperRef "output_held"), [[held]])]]), t
     nil: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a dynamic blueprint over a reader that is no live dynamic where it is written"), t
+
+# A binding's kind by name, for a diagnostic.
+KindOfBinding: fn Env, Text -> Text
+fn KindOfBinding env, n = match env.names[n]:
+    ? (BnHold ignore, ignore): "hold"
+    ? (BnDyn ignore, ignore, ignore): "dynamic"
+    ? (BnLocal ignore, ignore, ignore): "local"
+    ? (BnWidget ignore, ignore, ignore, ignore): "blueprint"
+    ? ignore: "other"
+    nil: "unbound"
 
 # A supplier's dynamic answer `d` when everything it reads is held where it is written: the
 # `Dynamic` the expression gives there, taken whole. Held: a reader of a node as the live
