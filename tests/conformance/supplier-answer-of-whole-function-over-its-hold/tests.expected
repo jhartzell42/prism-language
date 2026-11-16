@@ -1,10 +1,10 @@
-# Derived by hand from Language ch. 6, "Tick by tick" (a dynamic output's first value is read in the birth tick; each later change is the next tick's input) and host-bug-01's transcript.
+# Derived by hand from Language ch. 6, "Tick by tick" (a dynamic output's first value is read in the birth tick; each later change is the next tick's input) and host-bug-01's transcript. Paths under ruling PL: `Supply <- @Counting !add` is a widget application at 1, so the host is at 2.
 test counted
 
 tick 0
   added:
     0: Ui.Button(label="add")
-    1/[1]/0: Ui.Label(text="level 0")
+    2.[1]/0: Ui.Label(text="level 0")
 
 tick 1
   in:
@@ -12,4 +12,4 @@ tick 1
 
 tick 2
   changed:
-    1/[1]/0: Ui.Label(text="level 1")
+    2.[1]/0: Ui.Label(text="level 1")

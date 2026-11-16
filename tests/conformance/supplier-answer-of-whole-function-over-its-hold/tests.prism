@@ -5,3 +5,4 @@ use App.*
 test counted, @host:
     build
     click at 0
+    compute
