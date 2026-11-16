@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 4 and ruling PL: `@Outer` at the page's 0 places nothing (no guest is applied), and the label at 1 reads the map's size.
+test counted_through_the_record
+
+tick 0
+  added:
+    1: Ui.Label(text="1 guests")
