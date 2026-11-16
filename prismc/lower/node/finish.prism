@@ -550,9 +550,12 @@ fn ScopeSteps sk, atBuild, k, fuel = match fuel -? 1:
             # at once the generations whose rows are numbered late, `Wx.lateRowGens`;
             # once it is numbered those rows' numbers, and every other step whole)
             let lateRow = (k == 0 or not wx.lateGens) and HasText wx.lateRowGens, gd.name
-            if wx.genPhase == 1 and not lateRow: [[]]
-            else: if wx.genPhase == 2 and lateRow: [[(NumberTaken recv, gd.name)]]
-            else: Append [[built]], (Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == gd.name), Take)
+            # (a diagnostic, sem-ch04-late-value-above-in-late-numbered-row: the facts this
+            # step's order is decided by, as a comment beside it in the program)
+            let note = DoNote "build step `{gd.name}` of `{wx.node}` scope {k} (diagnostic): phase {wx.genPhase}, late gens {wx.lateGens}, late row {lateRow}, deferred {Debug wx.deferredGens}, deps {Debug wx.deferredDeps}, takings {Debug wx.lateTakings}, late row gens {Debug wx.lateRowGens}, late numbered {Debug wx.lateNumbered}"
+            if wx.genPhase == 1 and not lateRow: [[note]]
+            else: if wx.genPhase == 2 and lateRow: [[note, (NumberTaken recv, gd.name)]]
+            else: Append [[note, built]], (Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == gd.name), Take)
         # at the build, a scope's live hosted places take their entries once its builders and
         # generations have run (the structure they read has settled), before the host whose
         # child they are builds its rows over them
@@ -570,7 +573,9 @@ fn ScopeSteps sk, atBuild, k, fuel = match fuel -? 1:
         # (each step with its name, its place and what it waits for: the builders and
         # generations whose structural dynamics its build reads. A late host's rows read
         # what its answers read; a `for` reads its source; a generation its scrutinee)
-        let HostReads = \|b| Fold wx.hosts, [[]], \|acc, h| if "{h.name}_rows" != b.name or not (HasNat wx.lateHosts, h.scope): acc else: Fold wx.dynOutputs, acc, \|acc2, ((name, reads))| if HasPrefix name, "{h.name}_dyn_": UnionReads acc2, reads else: acc2
+        # (a late host's supplier is a function value, ruling HP, whose live dynamics may read
+        # any structure of the scope: its rows wait for the scope's other builders)
+        let HostWaits = \|b| if not (Fold wx.hosts, False, \|f, h| f or ("{h.name}_rows" == b.name and HasNat wx.lateHosts, h.scope)): [[]] else: Each (Filter wx.builders, \|o| o.name != b.name and o.pos.scope == k and not (Fold wx.hosts, False, \|f, h| f or "{h.name}_rows" == o.name)), \|o| o.name
         let SourceReads = \|name| Or wx.dynReads["{name}_source"], [[]]
         let GenReads = \|name| Fold wx.genHolds, [[]], \|acc, ((held, reads))| if held == name: UnionReads acc, reads else: acc
         let BuildersRead = \|reads| Fold (ReadsClosed wx.dynReads, reads), [[]], \|acc, r| match r:
@@ -581,10 +586,12 @@ fn ScopeSteps sk, atBuild, k, fuel = match fuel -? 1:
         # deferred too, in the order of the lines)
         let NumberedAfter = \|gd| if atBuild and HasText wx.lateNumbered, gd.name: Each (Filter (GapsBefore wx, gd.pos), \|other| (not other.early) or HasText wx.lateNumbered, other.name), \|other| other.name else: [[]]
         let Deferred = \|gd| (HasText wx.deferredGens, gd.name) or ((HasText wx.lateNumbered, gd.name) and (Len (Filter (GapsBefore wx, gd.pos), \|other| HasText wx.deferredGens, other.name)) > 0)
-        # (and where the rows are built before they are numbered, `Wx.genPhase` 1, a line
-        # that takes a split line's late result waits for that line's rows, `LateTaking`)
-        let GiversOf = \|gd| if wx.genPhase != 1: [[]] else: Fold wx.lateTakings, [[]], \|acc, taking| if taking.taker == gd.name: Append acc, taking.givers else: acc
-        let steps0 = Append (Each (Filter wx.builders, \|b| b.pos.scope == k), \|b| ((b.name, b.pos.at, 0, (BuildersRead (UnionReads (HostReads b), (SourceReads b.name))), (Builder b)))), (Each (Filter wx.gens, \|gd| gd.pos.scope == k and not (Deferred gd)), \|gd| ((gd.name, gd.pos.at, 0, (Fold (Append (NumberedAfter gd), (GiversOf gd)), (BuildersRead (GenReads gd.name)), AddText), (Gen gd))))
+        # (a line that takes a split line's late result waits for that line's rows,
+        # `LateTaking`, in any phase, a line that takes a split line's late result waits for that
+        # line's rows: sem-ch04-late-value-above-in-late-numbered-row's `@Wide m` was built
+        # before the `match` that binds `m`)
+        let GiversOf = \|gd| Fold wx.lateTakings, [[]], \|acc, taking| if taking.taker == gd.name: Append acc, taking.givers else: acc
+        let steps0 = Append (Each (Filter wx.builders, \|b| b.pos.scope == k), \|b| ((b.name, b.pos.at, 0, (Fold (HostWaits b), (BuildersRead (SourceReads b.name)), AddText), (Builder b)))), (Each (Filter wx.gens, \|gd| gd.pos.scope == k and not (Deferred gd)), \|gd| ((gd.name, gd.pos.at, 0, (Fold (Append (NumberedAfter gd), (GiversOf gd)), (BuildersRead (GenReads gd.name)), AddText), (Gen gd))))
         # a step that reads the structure of another stands after it: at the other's
         # place, one rank on (so a chain keeps its order: the `for`, the late host that
         # answers with its result, the builder that reads the host's document)

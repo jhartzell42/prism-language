@@ -81,8 +81,10 @@ OverNode: fn Ex -> Ex
 fn OverNode x = match x:
     XSelf: XVar "node"
     XField y, f: XField (OverNode y), f
-    XMethod y, m, xs: XMethod (OverNode y), m, xs
+    XMethod y, m, xs: XMethod (OverNode y), m, (Each xs, \|z| OverNode z)
     XClone y: XClone (OverNode y)
+    XRef y: XRef (OverNode y)
+    XCall f, xs: XCall f, (Each xs, \|z| OverNode z)
     otherwise: x
 
 # The root's result goes to the World (claude/backend.md: `cx.result(..)`).

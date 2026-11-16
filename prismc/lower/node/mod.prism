@@ -203,6 +203,7 @@ type SplitLet = record:
 type LateTaking = record:
     taker: Text
     givers: [Text]
+derive ^Eq, ^Debug
 
 type Read = choice:
     OwnRead Text

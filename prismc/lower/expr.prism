@@ -236,7 +236,10 @@ fn WholeFns lx:
     # and a function from events or dynamics to an element (`Asking: fn !Raise -> Element
     # (Seat.* Count Raiser) ..`, its body `Seat.Request(!requests=!raises)`): the element's
     # fields hold them live, so no firing's value is what it builds from
-    let bySig = Fold fns, {{}}, \|m, ((d, ignore, v))| if (IsWholeSig v.scheme.ty) or (HasElementParam v.scheme.ty) or (GivesElementOfTime v.scheme.ty) or (GivesEventOfDynamics v.scheme.ty) or ((HasDynamicParam v.scheme.ty) and IsValueWidget lx, d.qk): Insert m, d.qk, True else: m
+    # and a function with a `$` parameter that gives a function value or a blueprint
+    # (`MakerOver $count = \|k| @ $count`): what it gives holds the dynamic, which has no
+    # read point there, so it takes the caller's live dynamic (ruling HP)
+    let bySig = Fold fns, {{}}, \|m, ((d, ignore, v))| if (IsWholeSig v.scheme.ty) or (HasElementParam v.scheme.ty) or (GivesElementOfTime v.scheme.ty) or (GivesEventOfDynamics v.scheme.ty) or ((HasDynamicParam v.scheme.ty) and IsValueWidget lx, d.qk) or ((HasDynamicParam v.scheme.ty) and GivesCode v.scheme.ty): Insert m, d.qk, True else: m
     # and those a call takes with time below the top of what it gives (`$Sel (True on
     # !swap), $a, $b`, a `!$Nat`: lifted over a plain parameter, the call gives the dynamic
     # it returns whole, Type System ch. 4)
@@ -254,6 +257,15 @@ fn WholeFns lx:
                 if (HasKey known, qk) and TimeWithin (TypeAt lxd, x.span): Insert m2, qk, True else: m2
             otherwise: m2
     GrowWhole lx, fns, start, (Len fns)
+
+# Whether a function gives a function value or a blueprint.
+GivesCode: fn Ty -> Bool
+fn GivesCode t = match t:
+    TyFn ignore, ignore2, r, prompts: match Peel r:
+        TyFn ignore3, ignore4, ignore5, ignore6: True
+        TyAt ignore3, ignore4: True
+        otherwise: False
+    otherwise: False
 
 # Whether a signature has an event on top of a parameter, in a function that gives no
 # blueprint (one that gives a blueprint takes its events as event values already).
@@ -1376,7 +1388,7 @@ fn PlainBlueprint lx, env, x, variant, t:
 # HP: a supplier is an ordinary function value). The first value is read at the row's
 # build, each later update is a push delivered the next tick.
 DynamicBlueprint: unbounded fn Lx, Env, Expr, Expr, Ref, OutTy -> Vl
-fn DynamicBlueprint lx, env, x, d, variant, t = match ?HeldDynamic lx, env, d:
+fn DynamicBlueprint lx, env, x, d, variant, t = if (?ConstantDynamic d) != nil: PlainBlueprint lx, env, (Or (?ConstantDynamic d), d), variant, t else: match ?HeldDynamic lx, env, d:
         # a dynamic the function holds as a value (a named supplier's `$` parameter):
         # that `Dynamic`, each value in the tag's case
         ? held:
