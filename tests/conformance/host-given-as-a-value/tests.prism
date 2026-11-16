@@ -1,0 +1,6 @@
+emit Ui.*
+use App.*
+
+test hosted_through_a_value, @page:
+    build
+    click at 0/0/0.[0]/0
