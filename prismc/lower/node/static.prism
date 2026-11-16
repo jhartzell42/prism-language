@@ -2126,6 +2126,13 @@ fn InlineWidgetBody wx, benv, menv, qk, v0, args, e:
                     &_.result <= WrUnit
                     &_.pos <= if wx.childRoot: wx.pos else: InCallPos wx.pos
                     &_.childRoot <= False
+                    # (a diagnostic, doc-seats-record-of-rows' `k: ()` of `@Seated`'s rows:
+                    # a type parameter decided at a type that still holds an associated type
+                    # no equation and no argument decides here, with the argument types and
+                    # the associated types the call reads as its arguments')
+                    &_.build <= Fold (Keys (Or ?params, {{}})), &_.build, \|bd, q| match (Or ?params, {{}})[q]:
+                        ? t if HasOpenIndexedAssoc t: Push bd, (DoNote "`{q}` of {BareName qk} decided at {Debug t}, an associated type open here (diagnostic): arguments' types {Debug (Each args, \|a| TypeAt lx, a.value.span)}, the associated types read as arguments' {Debug lx.assocs}, the checker's note {NoteShown lx, e}")
+                        otherwise: bd
                 if (Len unmatched) > 0:
                     let wx2 = update wx:
                         &_.build <= Push &_.build, (RefusalDo "the generic widget {BareName qk} at a call whose types its parameters' do not match: nothing at the call decides {Join (Each unmatched, \|q| "`{q}`"), ", "} (diagnostic: the checker's note here {NoteShown lx, e}; the arguments decided {Debug (Keys (Or ?params, {{}}))})")
