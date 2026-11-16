@@ -74,6 +74,8 @@ fn ShowTyQ st, t = match Zonk st, t:
         if (HasPrefix inner, "["): "[ {inner} ]" else: "[{inner}]"
     TyMap k, v: "({ShowTyQ st, k} ==> {ShowTyQ st, v})"
     TyAt i, rw: "@{ShowTyQ st, i} emit {ShowRowIn st, rw, True}"
+    # (a function's parameters and result, so a blueprint inside shows its row)
+    TyFn c, ps, res, prompts: "({ShowCol c}fn {Join (Each (Range0 (Len ps)), \|i| "{if Or prompts[i], False: "prompt " else: ""}{ShowTyQ st, (Or ps[i], TyErr)}"), ", "} -> {ShowTyQ st, res})"
     other: ShowTy st, other
 
 # Unify, and say whether it worked, with no diagnostic for a plain mismatch: for the
@@ -284,7 +286,9 @@ fn RetryOne st, w:
         let ((outerExpected, outerFound)) = w.outer
         let shownE = ShowTy st2, (NormAssocDeep st2, (Zonk st2, (if outerExpected == TyErr: w.expected else: outerExpected)))
         let shownF = ShowTy st2, (NormAssocDeep st2, (Zonk st2, (if outerFound == TyErr: w.found else: outerFound)))
-        let message = "expected `{shownE}`, found `{shownF}`"
+        # (two types that print alike are shown with their names qualified and their
+        # rows, `ShowTyQ`)
+        let message = if shownE != shownF: "expected `{shownE}`, found `{shownF}`" else: "expected `{ShowTyQ st2, (if outerExpected == TyErr: w.expected else: outerExpected)}`, found `{ShowTyQ st2, (if outerFound == TyErr: w.found else: outerFound)}`"
         match w.?guestRow:
             ? gr: AddDiag st2, (DiagNote "mismatch", st2.file, w.span, message, (GuestNote st2, gr, w))
             nil: Err st2, "mismatch", w.span, message
