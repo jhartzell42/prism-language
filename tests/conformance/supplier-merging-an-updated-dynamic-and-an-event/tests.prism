@@ -1,0 +1,7 @@
+emit Ui.* | Pad.*
+use App.*
+
+test a_knock_per_add, @host:
+    build
+    click at 0
+    compute
