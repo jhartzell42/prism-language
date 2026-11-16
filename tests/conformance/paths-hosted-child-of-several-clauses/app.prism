@@ -1,0 +1,23 @@
+# A hosted child that is a widget of several clauses, and one that is a blueprint value
+# applied: the child's places are the guest's own, its root, whatever the child is (ruling
+# PL, claude/paths-as-lists.md: a hosted child's own application is the guest's root, no
+# list of its own). Written by Claude, 15 November 2026, on the claude-self-hosting branch.
+# Subject to change.
+emit Ui.*
+test mod Tests
+
+@Pick: fn Bool -> @unit emit Ui.*
+fn @Pick True:
+    Ui.Label($text=$"yes")                                             # 0
+    Ui.Label($text=$"and more")                                        # 1
+fn @Pick False:
+    Ui.Label($text=$"no")                                              # 0
+
+@clauses: @unit
+@clauses:
+    ignore <- @Host (@Pick True), \|p, e| @Element e                   # 0.[p]/0
+
+@applied: @unit
+@applied:
+    let @picked = @Pick False
+    ignore <- @Host @picked, \|p, e| @Element e                        # 0.[p]/0
