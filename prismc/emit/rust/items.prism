@@ -646,8 +646,25 @@ GenBuilder: unbounded fn GenDef -> Text
 fn GenBuilder gd:
     # a transparent generation (a widget of several clauses in a static position) stands at
     # its caller's path
-    let path = if gd.transparent: "self.path.clone()" else: "{Expression gd.at}.child(crate::prelude::Segment::Gen(g))"
+    let path = if gd.transparent: GenBase gd.at, (Len gd.pos.prefix) else: "{Expression gd.at}.child(crate::prelude::Segment::Gen(g))"
     GenBuild gd.name, (Expression gd.at), path, (Expression gd.source), (Type gd.valueTy), (Expression gd.select), (GenMovedCall gd.moved)
+
+# A transparent generation's base: what its place's path is read from (`PlaceAt`), the
+# node's own path for a place that goes to the World or the hosted child's root for a place
+# of a host's document, without the inlined applications' prefix, which its rows put back.
+GenBase: unbounded fn Ex, Nat -> Text
+fn GenBase at, n = match at:
+    XMethod x, "at", ignore: GenBaseUnder x, n
+    otherwise: "::std::compile_error!(\"a prismc bug: a transparent generation's place is not read as `PlaceAt` reads it\")"
+
+GenBaseUnder: unbounded fn Ex, Nat -> Text
+fn GenBaseUnder x, n = match n -? 1:
+    nil: match x:
+        XField XSelf, "path": "self.path.clone()"
+        otherwise: Expression x
+    ? m: match x:
+        XMethod (XMethod y, "at", ignore), "call", ignore2: GenBaseUnder y, m
+        otherwise: "::std::compile_error!(\"a prismc bug: a transparent generation's place is not read as `PlaceAt` reads it\")"
 
 # A row's leaving (prelude `Row`): a `for` row keeps its entry as the tick opened, since
 # its key is gone from the source after it (R8); its places are torn down; its

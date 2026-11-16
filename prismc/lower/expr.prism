@@ -831,7 +831,12 @@ fn PlainValueByKind lx, env, e:
             ? n: NameValue lx, env, n, e.span
             # a reference path through an index to a field (`&_[1].acc`), read: the entry
             # in place, as the path's place is on the left of `<=`
-            nil: if (IsRefPath e) and (StepsThroughIndex e, True): VlOwned (XClone (SharedPlaceOf lx, env, e)), t else: FieldValue lx, env, r, name.name
+            nil: if (IsRefPath e) and (StepsThroughIndex e, True): VlOwned (XClone (SharedPlaceOf lx, env, e)), t
+            # a dynamic field of a plain value (`box.$n`) read for its value: the field's
+            # `Dynamic` sampled at the read point, as a hold or a dynamic parameter is read
+            # by its value; taken whole (`lx.whole`), the `Dynamic` itself
+            else: if (HasPrefix sigils, "$") and (not lx.whole) and (LayerOf (TypeAt lx, e.span)) == LyDyn and (LayerOf (TypeAt lx, r.span)) != LyDyn: VlOwned (SampledAt lx, (Own (FieldValue lx, env, r, name.name))), t
+            else: FieldValue lx, env, r, name.name
         EIndex r, i: IndexValue lx, env, r, i, t
         ELambda ?ps, body, prompts: LambdaValue lx, env, e, (Or ?ps, [[]]), body
         EIf c, thenB, ?elseB: IfValue lx, env, c, thenB, ?elseB, t
