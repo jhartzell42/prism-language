@@ -1704,7 +1704,7 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
 # function applies (`AppliedFunctionLine`).
 WidgetNamed: unbounded fn Lx, Text, Range, ValInfo, OutTy -> Vl
 fn WidgetNamed lx, qk, span, v, t:
-    let Made = \|handed, gives| if HasKey lx.valued, (ValuedKeyAt lx, qk, span, [[]]): WidgetBlueprintValueFrom lx, lx, False, emptyEnv, qk, span, [[]], handed, gives else: Or (?OpenWidgetBlueprintValue lx, emptyEnv, qk, span, [[]], handed, gives), (VlOwned (Refusal (OpenWidgetValueWords lx, qk)), gives)
+    let Made = \|handed, gives| if HasKey lx.valued, (ValuedKeyAt lx, qk, span, [[]]): WidgetBlueprintValueFrom lx, lx, False, emptyEnv, qk, span, [[]], handed, gives else: Or (?OpenWidgetBlueprintValue lx, emptyEnv, qk, span, [[]], handed, gives), (VlOwned (Refusal "{OpenWidgetValueWords lx, qk}{ValuedMissNote lx, qk, span, [[]]}"), gives)
     let taken = match v.scheme.ty:
         TyFn ignore, ps, ignore, prompts: Len ps
         otherwise: 0
@@ -1903,6 +1903,21 @@ fn OpenWidgetValueWords lx, qk = match EnclosingOutput lx:
     # first, sem-ch08-widget-value-generic-through-local-function). Probes ud1-ud4 of
     # the sweeps, claude/refusals.md)
     UndecidedParameter: "{internalBug}the generic widget function {BareName qk} as a value in {lx.inDefinition}, given a type parameter of that definition, where a use of that definition leaves one of its type parameters undecided: every instantiation's types are closed (`?ClosedTypes`), so no use's types name a type parameter once they are put in"
+
+# (a diagnostic beside the refusal, examples/chess's `@Serve<<ChessGame>>` and
+# `@AnswerFrom<<d>>`: the key looked up, the keys the widget's readings were collected
+# under, and the instantiations the enclosing definition is used at)
+ValuedMissNote: unbounded fn Lx, Text, Range, [Arg] -> Text
+fn ValuedMissNote lx, qk, span, args:
+    let looked = ValuedKeyAt lx, qk, span, args
+    let collected = Filter (Keys lx.valued), \|k| k == qk or HasPrefix k, "{qk}#"
+    let solved = match lx.useInsts[PlaceKey lx, span]:
+        ? u: Debug u.tys
+        nil: "none at the span"
+    let instances = match ?EnclosingInstances lx:
+        ? users: Debug users
+        nil: "none"
+    " (diagnostic: looked up `{looked}` at {PlaceKey lx, span} in `{lx.inDefinition}`; collected {Debug collected}; the checker's instantiation there {solved}; the enclosing definition's instantiations {instances})"
 
 WidgetValueWords: fn Text -> Text
 fn WidgetValueWords qk = "the widget function {BareName qk} as a value: a blueprint value is a supplier's answer that builds no place (`@ x`, `@Element e`, a `match` of them); one with places is a widget-function blueprint as an answer (pick HO)"
@@ -2448,7 +2463,7 @@ fn DeclaredCall lx, env, qk, args, span, cspan, t:
         ? c: CtorApp lx, env, c, args, span
         nil: match lx.g.vals[qk]:
             ? v if HasKey lx.valued, (ValuedKeyAt lx, qk, cspan, args): WidgetBlueprintValue lx, env, qk, cspan, args, t
-            ? v if (IsWidgetFn v) and not (IsValueWidget lx, qk): Or (?OpenWidgetBlueprintValue lx, env, qk, cspan, args, [[]], t), (VlOwned (Refusal (OpenWidgetValueWords lx, qk)), t)
+            ? v if (IsWidgetFn v) and not (IsValueWidget lx, qk): Or (?OpenWidgetBlueprintValue lx, env, qk, cspan, args, [[]], t), (VlOwned (Refusal "{OpenWidgetValueWords lx, qk}{ValuedMissNote lx, qk, cspan, args}"), t)
             ? v:
                 if v.sort == "method": MethodCall lx, env, v, args, span, cspan, t
                 else: if v.home == "Prelude": PreludeCall lx, env, qk, args, span, t

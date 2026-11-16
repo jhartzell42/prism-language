@@ -889,7 +889,20 @@ fn SplitBlockInto wx00, benv00, menv00, b, k:
                 # its binder: the line's pattern over the kept result; of a bundle, the
                 # patterns of its plain parts over their reads
                 let ((scrut, pats, sty)) = if not bundled: ((kept, [[? p]], (OutOf (TypeAt lx, e.span)))) else: LowerBinder lx, p, e, partReads
-                let ((wx3, res)) = BuildingChoiceLine wx2s, rowEnv, scrut, pats, sty, [[nil]], [[rest]], outTy, layer, outFull, (Each ups, \|((ignore, mine, blocks))| ((mine, blocks))), UnderCaller
+                let ((wx3g, res)) = BuildingChoiceLine wx2s, rowEnv, scrut, pats, sty, [[nil]], [[rest]], outTy, layer, outFull, (Each ups, \|((ignore, mine, blocks))| ((mine, blocks))), UnderCaller
+                # the lower generation reads a name a deferred line above binds (its row's
+                # result reads it at the build, and its place counts that line's rows): it
+                # is deferred too, built after that line (`DeferredOrder`),
+                # sem-ch04-late-value-above-in-late-numbered-row's `@ m + w` read `w` of
+                # `w <- @Wide m` before that line was built
+                let restReads = Fold staying, [[]], \|acc, st| UnionTexts acc, (ReadsOfLine st)
+                let deferredBinds = Fold wx3g.deferredDeps, [[]], \|acc, ((ignore, ignore, binds))| UnionTexts acc, binds
+                let readsDeferred = Fold restReads, False, \|f, r| f or HasText deferredBinds, r
+                let wx3 = match wx3g.gens[Dec (Len wx3g.gens)]:
+                    ? gd if readsDeferred and not (HasText wx3g.deferredGens, gd.name): update wx3g:
+                        &_.deferredGens <= Push &_.deferredGens, gd.name
+                        &_.deferredDeps <= Push &_.deferredDeps, ((gd.name, restReads, [[]]))
+                    otherwise: wx3g
                 SetResult wx3, res
         otherwise: update wx1:
             &_.build <= Push &_.build, (InternalBugDo "a block split at a line that binds nothing")
@@ -2005,18 +2018,24 @@ fn ?DosInOrder dos = ?DosPlaced dos, [[]], (Len dos) + 1
 ?DosPlaced: unbounded fn [Do], [Do], Nat -> ?[Do]
 fn ?DosPlaced left, placed, fuel = if (Len left) == 0: ? placed else: if fuel == 0: nil else:
     # the first statement none of the others left binds a local it reads
-    let ready = Filter (Range0 (Len left)), \|i| IsReady left, i
+    let ready = Filter (Range0 (Len left)), \|i| IsReady left, placed, i
     match ready[0]:
         ? i: ?DosPlaced (Append (Take left, i), (Drop left, i + 1)), (Push placed, (Or left[i], DoExpr XUnit)), (Dec fuel)
         nil: nil
 
-IsReady: unbounded fn [Do], Nat -> Bool
-fn IsReady left, i:
+IsReady: unbounded fn [Do], [Do], Nat -> Bool
+fn IsReady left, placed, i:
     let d = Or left[i], DoExpr XUnit
     let others = Append (Take left, i), (Drop left, i + 1)
     let earlier = Take left, i
-    # (a statement binding nothing stays after every one before it)
-    if (Len (DoBinds d)) == 0 and (Len earlier) > 0: False
+    # (a statement binding nothing, an effect, stays after every one before it that binds
+    # nothing too, and after every one before it that reads a local it reads: the locals
+    # the statements bind, `shared`. Not after the others: chess's `@HostDocument`, whose
+    # host line's `let supply_p1 = supply_p4.clone()` waits for the `Supply` line's
+    # `let`s, among them its places' `entry.take(..)`, which read nothing of the host's)
+    let shared = Filter (Fold (Append placed, left), [[]], \|acc, o| Append acc, (DoBinds o)), \|n| DoReads d, n
+    let effectWaits = (Len (DoBinds d)) == 0 and Fold earlier, False, \|w, o| w or (Len (DoBinds o)) == 0 or Fold shared, False, \|f, n| f or DoReads o, n
+    if effectWaits: False
     else: Fold others, True, \|ok, o| ok and Fold (DoBinds o), True, \|ok2, n| ok2 and not (DoReads d, n)
 
 DoBinds: fn Do -> [Text]

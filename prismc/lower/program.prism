@@ -187,7 +187,17 @@ fn ?ValuedTypes lx, v, calleeSpan, args:
         let fromArguments = Fold (Range0 (Len ptys)), {{}}, \|m, i| match args[i]:
             ? a: Or (?ParamInstance (Or ptys[i], TyErr), (TypeAt lx, a.value.span), m), m
             nil: m
-        let found = if Fold rigids, True, \|all, q| all and HasKey fromArguments, q: fromArguments else: Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, calleeSpan), fromArguments), fromArguments
+        let found0 = if Fold rigids, True, \|all, q| all and HasKey fromArguments, q: fromArguments else: Or (?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, calleeSpan), fromArguments), fromArguments
+        # (and what the checker solved the widget's variables at, noted at the name's use,
+        # `NoteInst`: the callee's span, or its name's within type arguments written,
+        # `@Serve<<ChessGame>>`: a variable no argument shows is decided there)
+        let nameSpan = Range(start=calleeSpan.start, end=calleeSpan.start + (Len (Utf8Bytes (BareName v.qk))), origin=calleeSpan.origin)
+        let ?noted = match lx.useInsts[PlaceKey lx, calleeSpan]:
+            ? u: ? u
+            nil: lx.useInsts[PlaceKey lx, nameSpan]
+        let found = match ?noted:
+            ? u: Fold (Filter u.tys, \|((q, t))| IsSolvedTy t), found0, \|m, ((q, t))| if HasKey m, q: m else: Insert m, q, (SubstTy lx, t)
+            nil: found0
         ?ClosedTypes rigids, found
 
 # Whether a type names a type parameter only as an element's or a blueprint's output
