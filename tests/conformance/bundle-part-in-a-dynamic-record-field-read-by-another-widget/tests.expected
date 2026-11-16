@@ -1,0 +1,26 @@
+# Derived by hand under ruling PL (`@Hosted` is the page's 0, its `@Counter` its 0, the buttons that list's 0 and 1; `@Table` is the page's 1, its label its 0) from Type System ch. 2 ("Bundles": a part keeps its time) and Semantics ch. 4: two adds count 2; the reset sets the count to 0 and is counted once by the table.
+test counted_and_reset
+
+tick 0
+  added:
+    0/0/0: Ui.Button(label="ada +1")
+    0/0/1: Ui.Button(label="ada resets")
+    1/0: Ui.Label(text="count 0, reset 0 times")
+
+tick 1
+  in:
+    0/0/0: click
+  changed:
+    1/0: Ui.Label(text="count 1, reset 0 times")
+
+tick 2
+  in:
+    0/0/0: click
+  changed:
+    1/0: Ui.Label(text="count 2, reset 0 times")
+
+tick 3
+  in:
+    0/0/1: click
+  changed:
+    1/0: Ui.Label(text="count 0, reset 1 times")

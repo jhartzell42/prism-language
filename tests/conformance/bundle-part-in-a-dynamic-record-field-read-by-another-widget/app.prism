@@ -1,0 +1,37 @@
+# A widget's bundle result taken apart by a tuple pattern, its `$` and `!` parts handed to
+# a record's `$` and `!` fields (tests/documents/tally's `@HostSeats`, whose `$tellers`
+# from `@HostRole` go into `TallyResults($teller=$tellers, ..)`), and the record read by
+# another widget of the block, in a block where that widget binds a hold of the same name
+# (tally's `@Table`, whose own `$tellers` is the tellers' map). Written while isolating
+# tally's missing getter `tellers_d2` (rustc E0599); this program compiles on q11 but its
+# label never moves: the record's `$count` and `!reset` read nothing of the counter's
+# clicks (a silent wrong transcript).
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+type Results = record:
+    $count: Nat
+    !reset: unit
+
+@Counter: fn Text -> @(($Nat, !unit)) emit Ui.*
+fn @Counter name:
+    !add <- Ui.Button($label=$"{name} +1")                                 # 0
+    !reset <- Ui.Button($label=$"{name} resets")                           # 1
+    $tellers <- 0 then ($tellers + 1 on !add) <| (0 on !reset)
+    @ (($tellers, unit on !reset))
+
+@Hosted: fn Text -> @Results emit Ui.*
+fn @Hosted name:
+    (($tellers, !reset)) <- @Counter name                                  # 0
+    @ Results($count=$tellers, !reset=!reset)
+
+@Table: fn Results -> @unit emit Ui.*
+fn @Table results:
+    $tellers <- 0 then $tellers + 1 on results.!reset
+    Ui.Label($text=$"count {results.$count}, reset {$tellers} times")      # 0
+
+@page: @unit
+@page:
+    results <- @Hosted "ada"                                               # 0
+    @Table results                                                         # 1
