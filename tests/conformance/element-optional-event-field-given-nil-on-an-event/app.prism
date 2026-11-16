@@ -1,0 +1,18 @@
+# An element tag with an optional event field (`!?leaves`, the library's `Seat.Leave`),
+# given `nil on !leave`: a firing whose value is nil, requested at the place as any
+# request is. Isolated from tests/documents/tally's watcher, `Seat.Leave(!?leaves=(nil on
+# !leave))`, whose crate requested `::std::option::Option::None.to_pod()` with nothing
+# to say what `None` is of (rustc E0282: type annotations needed).
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Leave of Element:
+    !?leaves: Text
+
+@page: @unit
+@page:
+    !leave <- Ui.Button($label=$"leave")                                   # 0
+    !bye <- Ui.Button($label=$"say bye and leave")                         # 1
+    Pad.Leave(!?leaves=(nil on !leave))                                    # 2
+    Pad.Leave(!?leaves=((? "bye") on !bye))                                # 3

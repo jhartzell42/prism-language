@@ -1,0 +1,8 @@
+# The tests of element-optional-event-field-given-nil-on-an-event.
+emit Ui.* | Pad.*
+use App.*
+
+test nil_then_a_value, @page:
+    build
+    click at 0
+    click at 1
