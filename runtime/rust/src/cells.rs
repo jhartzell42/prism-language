@@ -790,6 +790,13 @@ pub fn merge_all<T: Clone + 'static>(events: &crate::collections::Array<Event<T>
     Event { owner: Some(node), port }
 }
 
+/// `l <| r` as a value (Semantics Appendix B): once in a tick, the left event's value when
+/// it fired, the right's otherwise. Made over [`merge_all`] of the two, in that order.
+pub fn prefer<T: Clone + 'static>(left: &Event<T>, right: &Event<T>) -> Event<T> {
+    let both = crate::collections::Array::from(vec![left.clone(), right.clone()]);
+    merge_all(&both).map(|fired: &crate::collections::Array<T>| fired.get(0).expect("a merge that fired holds a value").clone())
+}
+
 /// A `$a` value: a read at the context's read point, its update event, and its owner.
 /// The update event says only that the value moved; a reader reads it again, so a
 /// projection of a dynamic shares its source's port.

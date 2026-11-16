@@ -45,7 +45,7 @@ pub mod regex;
 mod regex_dialect;
 pub mod world;
 
-pub use cells::{Above, Cache, Defer, Demand, Described, Dynamic, Element, Event, Handle, Heights, Hold, Job, LaterQueue, Listen, Live, MergeList, described, described_element, element_is, element_view, Port, merge_all, Snapshot, Stamped, Tick, Turn};
+pub use cells::{Above, Cache, Defer, Demand, Described, Dynamic, Element, Event, Handle, Heights, Hold, Job, LaterQueue, Listen, Live, MergeList, described, described_element, element_is, element_view, Port, merge_all, prefer, Snapshot, Stamped, Tick, Turn};
 pub use collections::{Array, Cursor, Map, Text};
 
 /// Whether two maps have the same keys, in order: a builder whose rows came or went.

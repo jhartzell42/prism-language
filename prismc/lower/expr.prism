@@ -651,6 +651,11 @@ fn EventValueOf lx, env, e:
           # function that takes time whole): the plain call, each argument an event value
           nil:
             if GivesEventWhole lx, e: VlOwned (Own (ValueByKind lx, env, e)), et
+            # `l <| r` of two event values: once in a tick, the left's value when it fired
+            # (`prism_rtl::prefer`; supplier-merging-an-updated-dynamic-and-an-event)
+            else: if IsPreferOfEvents lx, e: match e.kind:
+                EBinary "<|", l, r: VlOwned (XCall (RefRuntime "prism_rtl::prefer"), [[Ref (EventValueOf lx, env, l), Ref (EventValueOf lx, env, r)]]), et
+                otherwise: VlOwned (InternalBug "`<|` with no operands"), et
             else:
                 let evs = Filter (Operands e), \|x| (LayerOf (TypeAt lx, x.span)) == LyEv
                 match evs:
@@ -690,6 +695,12 @@ fn EventValueOf lx, env, e:
                         let lets = if hoisted: Push made, (DoLet (PaBind "sampled_dyn"), (Own bodyValue)) else: made
                         VlOwned (XBlock lets, (XMethod (XVar "src_ev"), (if samples: "map_at" else: "map"), [[closure]])), et
                     otherwise: VlOwned (InternalBug "an event value of several events"), et
+
+# Whether an expression is `l <| r` of two events (a merge, not a lift over them).
+IsPreferOfEvents: fn Lx, Expr -> Bool
+fn IsPreferOfEvents lx, e = match e.kind:
+    EBinary "<|", l, r: (LayerOf (TypeAt lx, l.span)) == LyEv and (LayerOf (TypeAt lx, r.span)) == LyEv
+    otherwise: False
 
 # An expression the checker lifted over a `?` or `~` at the plain layer is its plain value
 # under a `match` of each operand it peeled; any other is lowered by its kind.
