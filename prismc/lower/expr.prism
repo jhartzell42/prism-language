@@ -1764,7 +1764,12 @@ fn ?OpenWidgetBlueprintValue lx, env, qk, calleeSpan, args, handed, t = match ?E
         let distinct = Fold users, [[]], \|acc, user| if Fold acc, False, \|seen, other| seen or (Reprs other) == (Reprs user): acc else: Push acc, user
         if not rowed: nil
         else:
-            let Chosen = \|user| Fold user, (XBool True), \|sofar, ((q, ty))|
+            # (a type parameter the enclosing definition names only as an output is erased
+            # in Rust, no generic of its function to compare, `OutputOnly`)
+            let InRustOf = \|q| match lx.g.vals[lx.inDefinition]:
+                ? dv: not (OutputOnly dv.scheme.ty, q)
+                nil: True
+            let Chosen = \|user| Fold (Filter user, \|((q, ignore))| (InRustOf q)), (XBool True), \|sofar, ((q, ty))|
                 let same = XBin OpEq, (XCallAt (RefRuntime "prism_rtl::type_key"), [[(OutTyOf lx, (TyRigid q))]], [[]]), (XCallAt (RefRuntime "prism_rtl::type_key"), [[(OutTyOf lx, ty)]], [[]])
                 if sofar == (XBool True): same else: XBin OpAnd, sofar, same
             let n = Len distinct
