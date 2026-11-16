@@ -344,11 +344,14 @@ fn LocalFunctionLine wx, benv, menv, cbenv, cmenv, clx, cs, named, e, args:
     else:
         let inside = update wx:
             &_.inlining <= Push &_.inlining, mark
-        # (a widget function of the block, `@Row`, is a widget application: one position
-        # and a list of its own, ruling PL; a function giving a blueprint stands in its
-        # caller's list, `CalleeUnder`)
+        # (a widget function of the block, `@Row`, or one handed on and applied by a
+        # parameter's name, `Seats $state`, is a widget application: one position and a
+        # list of its own, ruling PL)
         let Inline = \|w| InlinedFunctionLine w, benv, menv, cbenv, cmenv, clx, c.params, ptys, body, e, args
-        let ((done, res)) = if (Len cs) == 1: (if (CalleeUnder e) == UnderCall: InCall inside, Inline else: Inline inside) else: ClausesFunctionLine inside, benv, menv, cbenv, cmenv, clx, cs, ptys, e, args
+        let appliesWidget = (CalleeUnder e) == UnderCall or match Peel (SubstTy clx, (TypeAt clx, named.span)):
+            TyFn ignore, ignore2, r, ignore3: IsWidgetTy (Peel r)
+            otherwise: False
+        let ((done, res)) = if (Len cs) == 1: (if appliesWidget: InCall inside, Inline else: Inline inside) else: ClausesFunctionLine inside, benv, menv, cbenv, cmenv, clx, cs, ptys, e, args
         let back = update done:
             &_.inlining <= wx.inlining
         ((back, res))
