@@ -1,0 +1,14 @@
+# Derived by hand under ruling PL and ruling HP (SM3 (a)): `@Kept` is the page's 0 and its clause's `@HostDocument` that list's 0; there `@HostSeats` is 0 and `@OnDisk` 1, the file's contents `@OnDisk`'s 0 and the file its 2; in `@HostSeats` the editors' `@HostRole` is 0, its host that list's 0 and the primitive that list's 0; the guest `@Seated` is the host's root, its `for` place 0, the seat's key (`unit`, in `Print`'s text), the `rebuild` the row's 0 and its generation #0, the editor applied there with a list of its own, its query 0 (answered by the host, so never the World's) and its label 1, forwarded at host/[p]/0. The supplier's answer, the file's bytes, reaches the query a tick after the build (ruling HO), and the World computes until the label says so.
+test the_editor_reads_the_file
+
+tick 0
+  added:
+    0/0/0/0/0/0.[0.[unit].0.#0.0/1]/0: Ui.Label(text="ada reads nothing yet")
+    0/0/1/0: Fs.Contents(path="notes")
+    0/0/1/2: Fs.File(path="notes")
+
+compute until idle: 1 tick, 1 to 1
+
+tick 1
+  changed:
+    0/0/0/0/0/0.[0.[unit].0.#0.0/1]/0: Ui.Label(text="ada reads hello")

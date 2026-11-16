@@ -1,0 +1,46 @@
+# The library's file document hosted on disk, as examples/chess saves its game, from
+# a clause of a widget of several clauses (chess's `@Kept`): `@HostDocument (@OnDisk
+# path), FileSeats($editor=$ {{unit: $ (@Viewing seats)}}, $viewer=$ {{}})`, its
+# clause's parameter and the editor's own named as `@HostDocument`'s (`seats`, as in
+# chess, whose `@Filed seats` is `@Kept`'s), one editor that queries the file's contents. `@HostDocument` hosts the seats with
+# a supplier its next line builds over the hosted guests (ruling HO: no cycle), and
+# `@OnDisk`'s line has places of its own. Isolated from examples/chess, whose crate
+# refused `@HostDocument`'s lines: "lines that read each other at the build (results,
+# $guests, Supply): a cycle among values". The cause, read off chess's crate: the editor's
+# blueprint value matches its argument into a local spelled as `@HostDocument`'s own
+# parameter (`seats_p0`), and the build's ordering takes that binder, inside the value's
+# closure, for a read of the outer local. This program uses the documents library, whose
+# module q11 writes with other rustc refusals (the tests beside this one isolate them):
+# the cycle is a prismc refusal and comes first.
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.* | Fs.*
+test mod Tests
+use Documents.*
+
+TextOf: fn ?[U8] -> Text
+fn TextOf (? bytes) = match ~Utf8Text bytes:
+    ~ text: text
+    otherwise: "(not text)"
+fn TextOf nil = "nothing yet"
+
+@Viewing: fn Text -> @unit emit Ui.* | Seat.* File Editor
+fn @Viewing seats:
+    $?bytes <- Seat.Query($query=$ Contents)                               # 0
+    Ui.Label($text=$"{seats} reads {TextOf $?bytes}")                      # 1
+
+# How the notes are kept, as chess's `@Kept` chooses its implementation: a widget of
+# several clauses, the file's clause hosting the file document.
+type Keeping = choice:
+    Nowhere
+    InFile Text
+derive ^Eq, ^Debug
+
+@Kept: fn Keeping, Text -> @unit emit Ui.* | Fs.*
+fn @Kept Nowhere, seats:
+    Ui.Label($text=$"{seats} keeps nothing")                               # 0
+fn @Kept (InFile path), seats:
+    ignore <- @HostDocument (@OnDisk path), FileSeats($editor=$ {{unit: $ (@Viewing seats)}}, $viewer=$ {{}})   # 0
+
+@page: @unit
+@page:
+    @Kept (InFile "notes"), "ada"                                          # 0
