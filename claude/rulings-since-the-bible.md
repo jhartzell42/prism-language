@@ -403,3 +403,14 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   Each gets a failing test before any fix, and variants that pin down where it happens.
   Jimmy, 15 November: "unsoundness and rustc refusing what prismc accepts are both
   critical bugs".
+
+- **HP** `@Host` is a regular widget of the library whose body calls one primitive, a
+  builtin widget with no body that only `@Host` uses and that the back end lowers as one
+  runtime call; a supplier is an ordinary function value, and a block that hosts lowers
+  nothing about suppliers. Function values built in a node capture the live dynamic of
+  each reader of the node they read, so a supplier's dynamic answers need no host-only
+  lowering. Chosen over keeping the host-only lowering (re-reading the supplier's text
+  into the caller), which made a block that hosts carry the host's magic, and over doing
+  the refactor after a green run, since the bug is critical and the failing tests keep
+  where context does not. Jimmy, 15 November: "This special casing is a red flag"; "I
+  want to solve it the right way the first time".
