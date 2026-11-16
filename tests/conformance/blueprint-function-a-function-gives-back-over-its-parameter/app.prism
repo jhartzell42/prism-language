@@ -1,0 +1,19 @@
+# A plain function gives back a function whose blueprint answers with its `$` parameter
+# (`MakerOver $count`): it takes the parameter whole, as the function it gives back reads
+# it live. prismc lowered it lifted, sampling the hold through `self` in the build (rustc
+# E0424). No host: suppliers are function values like any other.
+# Written by Claude, 15 November 2026, on the claude-self-hosting branch. Subject to change.
+emit Ui.*
+test mod Tests
+@Shows: fn prompt (fn Nat -> @$Nat emit unit), Nat -> @unit emit Ui.*
+fn @Shows Make, k:
+    $n <- Make k
+    Ui.Label($text=$"shows {$n}")
+MakerOver: fn $Nat -> (fn Nat -> @$Nat emit unit)
+fn MakerOver $count = \|k| @ $count
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")
+    $count <- 0 then $count + (1 on !add)
+    let Make = MakerOver $count
+    @Shows Make, 1

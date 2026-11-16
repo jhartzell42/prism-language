@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 7 (a dynamic read where it is written reads the value in the tick it changes) and ruling PL (each widget application a list of its own; a blueprint value applied takes a position though it builds no place).
+test counted
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/1: Ui.Label(text="shows 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1/1: Ui.Label(text="shows 1")
