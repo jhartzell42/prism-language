@@ -1,0 +1,45 @@
+# An existential over a role opened in a generic function, and in its arm a call of a
+# function generic over that role lifted over an event (the library's `SupplierFrom`:
+# `Seat.Request(..): @ !Filter (?ResponseTo<<d>> role, path, !responses)`). Isolated from
+# tests/documents/tally, whose crate borrowed the opened role's kind into the event's
+# `'static` closure (rustc E0716: temporary value dropped while borrowed). Here, with no
+# supplier around it, q11's program builds and panics at the click: "two existentials of
+# different types met".
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type SeatId (r: Role d)
+    Described: forall (r: Role d). fn Fixed r, SeatId d r, Nat -> Text
+
+type SeatKey d = any (r: Role d): ((Fixed r, SeatId d r))
+
+!Told: forall d. fn SeatKey d, !Nat -> !Text where d: ^Document
+fn !Told seatKey, !n = match seatKey:
+    any ((role, id)): Described<<d>> role, id, !n
+
+type CountRole = choice:
+    Raiser
+    Watcher
+derive ^Eq, ^Ord, ^Debug
+
+type Count = record:
+    total: Nat
+derive ^Eq, ^Debug
+
+impl ^Document Count:
+    type Role = CountRole
+    type SeatId Raiser = Nat
+    type SeatId Watcher = Text
+    fn Described Fixed<<Raiser>>, n, k = "raiser {n} heard {k}"
+    fn Described Fixed<<Watcher>>, name, k = "watcher {name} heard {k}"
+
+@page: @unit
+@page:
+    !next <- Ui.Button($label=$"next")                                     # 0
+    $count <- 0 then $count + 1 on !next
+    let seatKey: SeatKey Count = any ((Fixed<<Watcher>>, "ada"))
+    $said <- "nothing" then !Told<<Count>> seatKey, ($count + 1 on !next)
+    Ui.Label($text=$"{$said}")                                             # 1

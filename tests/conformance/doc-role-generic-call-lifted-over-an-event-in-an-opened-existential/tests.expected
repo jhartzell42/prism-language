@@ -1,0 +1,13 @@
+# Derived by hand from Part III ch. 6 (an existential opened tells its arm the role) and Semantics ch. 4 (a lifted call fires with its event): the watcher's words, with the first click's count.
+test told_at_its_role
+
+tick 0
+  added:
+    0: Ui.Button(label="next")
+    1: Ui.Label(text="nothing")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="watcher ada heard 1")
