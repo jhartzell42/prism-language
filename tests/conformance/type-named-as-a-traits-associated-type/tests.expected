@@ -1,0 +1,6 @@
+# Derived by hand: the player's reason is the program's `Reason`, said by its one constructor.
+test said
+
+tick 0
+  added:
+    0: Ui.Label(text="not your move")

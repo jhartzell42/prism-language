@@ -1,0 +1,38 @@
+# A type of the program named as an associated type of a trait it implements, `type
+# Reason = choice: ..` beside `trait ^Document d: type Reason (r: Role d)`, given as that
+# associated type at a role, `type Reason Player = Reason` (Part III ch. 6: an associated
+# type is named through its trait, `Reason Board Player`; a bare `Reason` in type position
+# is the program's own type). Found while isolating c6's errors: q11's checker refused it,
+# "a second impl of `^Debug` for `GameRole`", at a line that derives nothing for
+# `GameRole`.
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type Reason (r: Role d)
+
+type GameRole = choice:
+    Player
+    Spectator
+derive ^Eq, ^Ord, ^Debug
+
+type Reason = choice:
+    NotYourMove
+derive ^Eq, ^Debug
+
+type Board = choice:
+    Board
+
+impl ^Document Board:
+    type Role = GameRole
+    type Reason Player = Reason
+    type Reason Spectator = Never
+
+Why: fn Reason Board Player -> Text
+fn Why NotYourMove = "not your move"
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Why NotYourMove}")                                   # 0
