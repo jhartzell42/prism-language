@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 9 (a host's computed answer reaches the place the tick after, ruling HO) and ruling PL (the host at 1, its answer under the guest's place in a list of its own): the click moves `$held`, `!Updated $held` fires, and the knock the supplier answers is heard a tick later.
+test a_knock_per_add
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1.[1]/0: Ui.Label(text="knocks 0")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1.[1]/0: Ui.Label(text="knocks 1")
