@@ -751,11 +751,20 @@ fn RestReads lx, from, call, to = ReadsIn lx, (Range(start=from.start, end=to.en
 ReadsIn: fn Lx, Range -> [Text]
 fn ReadsIn lx, r = Fold (Or lx.useNames[lx.file], [[]]), [[]], \|acc, ((at, n))| if at >= r.start and at < r.end and not (HasText acc, n): Push acc, n else: acc
 
-# Whether `reads` reads the local `k`, its marks aside.
+# Whether `reads` reads the local `k`, its time marks aside (`$x` read where `x` is
+# bound): `?` and `~` stay, since `?w` and `w` are two names (a continuation that reads the
+# fold binder `w` captured the outer `?w` too and moved it, rustc E0525 building gen1).
 Reads: fn [Text], Text -> Bool
 fn Reads reads, k:
-    let base = DropPrefix (InstanceOf k), (MarksOf k)
-    Fold reads, False, \|found, n| found or (DropPrefix n, (MarksOf n)) == base
+    let base = WithoutTimeMarks (InstanceOf k)
+    Fold reads, False, \|found, n| found or (WithoutTimeMarks n) == base
+
+# A name with its `$`, `!` and `@` marks taken off, its `?` and `~` kept.
+WithoutTimeMarks: fn Text -> Text
+fn WithoutTimeMarks n:
+    let marks = MarksOf n
+    let kept = Concat (Filter (FoldChars marks, [[]], \|acc, c| Push acc, c), \|c| c == "?" or c == "~")
+    "{kept}{DropPrefix n, marks}"
 
 TailBody: unbounded fn Lx, Env, FnBody -> Ex
 fn TailBody lx, env, (BodyExpr x) = Tail lx, env, x
