@@ -1,0 +1,7 @@
+# Derived by hand from Part III ch. 4 (a derive through another trait answers by that trait's methods, its equalities fixing the associated types) and the rules written here: white moves first, so white's step is played and black's is declined.
+test each_side_steps
+
+tick 0
+  added:
+    0: Ui.Label(text="white steps 2: 2 steps, Black to move")
+    1: Ui.Label(text="black steps 2: not your move")

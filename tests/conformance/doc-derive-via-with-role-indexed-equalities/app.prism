@@ -1,0 +1,83 @@
+# A derive through another trait whose equalities fix role-indexed associated types at a
+# role, `where SeatId g Player = Side g, Request g Player = Move g, ..` (the library's
+# `derive ^StateDocument g via ^PerfectInformationGame g`), its role method's clauses one
+# per role, the player's calling the via trait's methods at the player's seat id and
+# request. Isolated from tests/documents/c8-chess-via, whose crate held the side and the
+# move as `Pod` and passed them to `legal_f` and `play_f` (rustc E0308).
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type SeatId (r: Role d)
+    type Request (r: Role d)
+    type Reason (r: Role d)
+
+type Stepped s why = choice:
+    Next s
+    Denied why
+derive ^Eq, ^Debug
+
+trait ^StateDocument d where d: ^Document:
+    Step: forall (r: Role d). fn d, Fixed r, SeatId d r, Request d r -> Stepped d (Reason d r)
+
+type GameRole = choice:
+    Player
+    Spectator
+derive ^Eq, ^Ord, ^Debug
+
+trait ^PerfectInformationGame g:
+    type Side
+    type Move
+    type Illegal
+    ?Legal: fn g, Side g, Move g -> ?(Illegal g)
+    Play: fn g, Move g -> g
+
+derive ^StateDocument g via ^PerfectInformationGame g where SeatId g Player = Side g, Request g Player = Move g, Reason g Player = Illegal g, Request g Spectator = Never:
+    fn Step game, Fixed<<Player>>, side, move = match ?Legal game, side, move:
+        nil: Next (Play game, move)
+        ? why: Denied why
+    fn Step game, Fixed<<Spectator>>, user, request = match request:
+
+type Color = choice:
+    White
+    Black
+derive ^Eq, ^Debug
+
+type NotYourMove = choice:
+    NotYourMove
+derive ^Eq, ^Debug
+
+type Race = record:
+    turn: Color
+    steps: Nat
+derive ^Eq, ^Debug
+
+impl ^PerfectInformationGame Race:
+    type Side = Color
+    type Move = Nat
+    type Illegal = NotYourMove
+    fn ?Legal race, side, by = if side == race.turn: nil else: ? NotYourMove
+    fn Play race, by = Race(turn=(if race.turn == White: Black else: White), steps=race.steps + by)
+
+impl ^Document Race:
+    type Role = GameRole
+    type SeatId Player = Color
+    type SeatId Spectator = Text
+    type Request Player = Nat
+    type Request Spectator = Never
+    type Reason Player = NotYourMove
+    type Reason Spectator = Never
+
+derive ^StateDocument via ^PerfectInformationGame for Race
+
+Said: fn Stepped Race NotYourMove -> Text
+fn Said (Next race) = "{race.steps} steps, {Debug race.turn} to move"
+fn Said (Denied NotYourMove) = "not your move"
+
+@page: @unit
+@page:
+    let race = Race(turn=White, steps=0)
+    Ui.Label($text=$"white steps 2: {Said (Step<<Race, Player>> race, Fixed<<Player>>, White, 2)}")   # 0
+    Ui.Label($text=$"black steps 2: {Said (Step<<Race, Player>> race, Fixed<<Player>>, Black, 2)}")   # 1

@@ -1,0 +1,6 @@
+# The tests of doc-derive-via-with-role-indexed-equalities.
+emit Ui.*
+use App.*
+
+test each_side_steps, @page:
+    build
