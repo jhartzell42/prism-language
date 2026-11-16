@@ -200,11 +200,31 @@ fn RustTyOfParams lx, ps = match ps:
 # Whether a field or a case of a declared type names its parameter, as the Rust type holds
 # it: one named only inside an associated type at a variable (`Declined (Reason d r)`) is
 # held as plain data there (`AssocErased`, `AssocPodOut`), so the Rust type names it nowhere.
-ParamUsed: unbounded fn TyInfo, Text -> Bool
-fn ParamUsed ti, p = match ti.body:
-    BRecord fs: Fold fs, False, \|seen, ((ignore, ft))| seen or (Mentions (AssocErased ft), p)
-    BChoice cs: Fold cs, False, \|seen, ((ignore, ats))| seen or Fold ats, False, \|s2, at| s2 or (Mentions (AssocErased at), p)
+# A packed value (`any`, Type System ch. 5), written out or through an alias
+# (`SeatKey d = any (r: Role d): ..`), is held as `Packed`: the Rust type names nothing
+# inside it either (`ExistsErased`; doc-sk-existential-seat-key).
+ParamUsed: unbounded fn Lx, TyInfo, Text -> Bool
+fn ParamUsed lx, ti, p = match ti.body:
+    BRecord fs: Fold fs, False, \|seen, ((ignore, ft))| seen or (Mentions (AssocErased (ExistsErased lx, ft, 0)), p)
+    BChoice cs: Fold cs, False, \|seen, ((ignore, ats))| seen or Fold ats, False, \|s2, at| s2 or (Mentions (AssocErased (ExistsErased lx, at, 0)), p)
     otherwise: True
+
+# A type with each packed value in it, written out or through an alias, as the variable
+# an associated type at a variable is read as (`assocErasedName`): what its Rust type
+# names. `depth` stops an alias that names itself.
+ExistsErased: unbounded fn Lx, Ty, Nat -> Ty
+fn ExistsErased lx, t, depth = if depth > 32: t else: match t:
+    TyExists ignore, ignore2, ignore3, ignore4: TyQ assocErasedName
+    TyCon c, args: match lx.g.types[c]:
+        ? ti: match ti.body:
+            BAlias a: ExistsErased lx, (Instantiated a, ti.params, args), (depth + 1)
+            otherwise: TyCon c, (Each args, \|x| ExistsErased lx, x, depth)
+        nil: TyCon c, (Each args, \|x| ExistsErased lx, x, depth)
+    TyTuple ts: TyTuple (Each ts, \|x| ExistsErased lx, x, depth)
+    TyArray e: TyArray (ExistsErased lx, e, depth)
+    TyMap k, v: TyMap (ExistsErased lx, k, depth), (ExistsErased lx, v, depth)
+    TySig sg, i: TySig sg, (ExistsErased lx, i, depth)
+    otherwise: t
 
 Mentions: unbounded fn Ty, Text -> Bool
 fn Mentions t, p = (Instantiated t, [[p]], [[TyErr]]) != t
@@ -218,7 +238,7 @@ fn NamedTy lx, n, args = match lx.g.types[n]:
         BRowKind: if n == "Prelude.Fault": OutPod else: OutNamed (RefIn lx, ti.home, (TypeItemName n)), [[]]
         # a parameter no field names (`Quantity u`, a unit's case) is the checker's alone:
         # Rust has no unused type parameter, so the Rust type leaves it out
-        otherwise: OutNamed (RefIn lx, ti.home, (TypeItemName n)), (Fold (Range0 (Len args)), [[]], \|acc, i| if ParamUsed ti, (Or ti.params[i], ""): Push acc, (Or args[i], OutUnit) else: acc)
+        otherwise: OutNamed (RefIn lx, ti.home, (TypeItemName n)), (Fold (Range0 (Len args)), [[]], \|acc, i| if ParamUsed lx, ti, (Or ti.params[i], ""): Push acc, (Or args[i], OutUnit) else: acc)
     nil: if HasKey lx.g.families, n: OutPod else: InternalBugType "the type `{n}`, which the checker did not declare"
 
 # The Rust unit struct of a choice's case as a type (Jimmy's ruling PK): `Unit`'s
