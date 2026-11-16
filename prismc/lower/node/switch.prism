@@ -1387,7 +1387,10 @@ fn BuildingChoicesLine wx, menvs, lxc, scruts, patss, stys, guards, bodies, outT
     else: if isDyn: KeptDynResult wx4, name, rows
     else: if (Len plainRows) > 0:
         if allPlain:
-            let read = XClone (XMethod (XMethod (XMethod (XField XSelf, res), "borrow", [[]]), "as_ref", [[]]), "expect", [[(XStr "an arm built before what reads its result")]])
+            # (read before the arm is built, a prismc bug: the message names the result, its
+            # generation, its node and its place, the diagnostic for
+            # sem-ch04-late-value-above-in-late-numbered-row)
+            let read = XClone (XMethod (XMethod (XMethod (XField XSelf, res), "borrow", [[]]), "as_ref", [[]]), "expect", [[(XStr "a prismc bug: `{res}`, the plain result of the building arm `{name}` of `{wx.node}` at place {PlaceText pos}, read before that arm was built")]])
             let wx5 = update wx4:
                 &_.taken <= Push &_.taken, res
                 &_.fields <= Push &_.fields, ((res, (OutCell (OutOpt outTy)), "the arm's plain result, kept from its build on"))

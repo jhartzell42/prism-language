@@ -310,9 +310,21 @@ fn Or (? x), ignore = x
 # element tree back into the guest is a tick, so no prompt cycle runs through a host:
 # hosting means inserting delay"). So the handler is not `prompt`: what it captures is no
 # prompt edge of the host's line, and the prompt check never runs through a guest.
-@Host: fn prompt @a emit c, (fn Path, prompt Element c o -> @o) -> @((a, $(Path ==> $Elem c)))
-@HostSome: fn prompt @a emit c, (fn Path, Element c o -> ?@o) -> @((a, $(Path ==> $Elem c)))
-@HostList: fn prompt @a emit c, !(Path ==> Output c), (fn Path, prompt Element c o -> @o) -> @((a, $(Path ==> $Wired c)))
+# Each host is a widget like any other (ruling HP): its body applies the one primitive that
+# hosts, which the lowering builds and nothing else applies; the supplier is an ordinary
+# function value. As a widget application, a host stands at one place of its caller's,
+# its primitive at the host's own 0 (`1/0.[p]/0`).
+@Hosting: fn prompt @a emit c, (forall o. fn Path, prompt Element c o -> @o) -> @((a, $(Path ==> $Elem c)))
+@HostingList: fn prompt @a emit c, !(Path ==> Output c), (forall o. fn Path, prompt Element c o -> @o) -> @((a, $(Path ==> $Wired c)))
+@Host: fn prompt @a emit c, (forall o. fn Path, prompt Element c o -> @o) -> @((a, $(Path ==> $Elem c)))
+fn @Host @child, Supply = @Hosting @child, Supply
+# `nil` from the supplier forwards the element (`@Element`), so any tag of the child's row
+# may leave through the host's scope: the child emits only what the scope emits, `r`.
+@HostSome: fn prompt @a emit r, (forall o. fn Path, Element r o -> ?@o) -> @((a, $(Path ==> $Elem r)))
+fn @HostSome @child, Supply = @Hosting @child, \|path, prompt element| Or (Supply path, element), (@Element element)
+# The Each form whose owner also sends answers down by path (prismc's first ruling HL).
+@HostList: fn prompt @a emit c, !(Path ==> Output c), (forall o. fn Path, prompt Element c o -> @o) -> @((a, $(Path ==> $Wired c)))
+fn @HostList @child, !answers, Supply = @HostingList @child, !answers, Supply
 @Switch: fn prompt $!a -> @!a
 @Flatten: fn prompt $$a -> @$a
 # `$y <- @Distinct $x`: `$x`'s value, whose update event fires only when the value changed

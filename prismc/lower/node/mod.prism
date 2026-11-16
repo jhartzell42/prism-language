@@ -312,7 +312,7 @@ type Wx = record:
     # The text of the lambda a block just gave back (`@ \|path, element| ..`), with the
     # environments and file it is read in: the line that binds the inlined widget's
     # result (`Supply <- @Counting !add`) keeps it under its name, so a host given that
-    # name reads the supplier's answers as written (`OutputTexts`, `DynamicOutputs`).
+    # name reads the supplier as written.
     ?resultText: ((Expr, Env, Env, Lx))
     # A generation's row: the `rebuild`'s field in its block (`GenRowOf`), else "".
     genOf: Text
@@ -367,10 +367,10 @@ type Wx = record:
     # Each of those generations with the late names its line reads and the names it binds:
     # among them, the one that binds a name another reads is built first (`BuildSteps`).
     deferredDeps: [((Text, [Text], [Text]))]
-    # The hosted scopes whose host's supplier answers with a dynamic that has no value
-    # while the node is being made (a structural dynamic; `DynamicOutputs`): the child's
-    # places with a `$` output ask their first values once the node stands and the
-    # builders above the host have run (`LateFirstPlace`).
+    # The hosted scopes, every one (ruling HP: a supplier is a function value, which may
+    # read a live dynamic of the node read through its link alone): the child's places with
+    # a `$` output ask their first values once the node stands and the builders above the
+    # host have run (`LateFirstPlace`).
     lateHosts: [Nat]
     # What those places do then, by scope, in the order of the places: the first value
     # asked of the host and each hold set (`BuildSteps`).

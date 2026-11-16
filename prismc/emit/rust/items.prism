@@ -570,7 +570,10 @@ fn RustOutput a:
     # of the line that binds it (the prelude's `output_held`, `Output::held`)
     let cases = Join (Push (Push (Append (Each a.cases, \|c| "{c.variant}({Type c.ty}),"), (Each firsts, \|((c, ft))| "{c.variant}First({Type ft}),")), "Untagged_a(crate::prelude::Pod),"), "Held_a(::std::rc::Rc<dyn ::std::any::Any>),"), "\n"
     let tags = Join (Push (Push (Append (Each a.cases, \|c| "Output::{c.variant}(_) => {RsRef c.structPath}::TAG,"), (Each firsts, \|((c, ft))| "Output::{c.variant}First(_) => {RsRef c.structPath}::TAG,")), "Output::Untagged_a(_) => \"no tag (an answer made outside a tag's arm)\","), "Output::Held_a(_) => \"no tag (an answer made outside a tag's arm that is no plain data)\","), "\n"
-    let accessors = Join (Append (Each a.cases, \|c| OutputGetter c.accessor, c.variant, c.tagName, (Type c.ty), (OutsideArm c.ty)), (Each firsts, \|((c, ft))| OutputGetter "{c.accessor}_first", "{c.variant}First", c.tagName, (Type ft), (OutsideArm ft))), "\n"
+    # an answer at the type a use of a generic tag gives, recoded into the output its
+    # family's parameters erase (`OutputMaker`)
+    let recoders = Fold a.cases, [[]], \|acc, c| if HoldsPod c.ty: Push acc, "/// An answer to a `{c.tagName}` at the type a use gives, recoded into the output its family's parameters erase.\npub fn {c.accessor}_recoded(v: impl crate::prelude::ToPod) -> Output \{\n    Output::{c.variant}(crate::prelude::recode(&v))\n\}" else: acc
+    let accessors = Join (Append (Append recoders, (Each a.cases, \|c| OutputGetter c.accessor, c.variant, c.tagName, (Type c.ty), (OutsideArm c.ty))), (Each firsts, \|((c, ft))| OutputGetter "{c.accessor}_first", "{c.variant}First", c.tagName, (Type ft), (OutsideArm ft))), "\n"
     # a World answers with plain data: an output that is none (a function) is a host's
     # to answer, and a World's answer for it a fault
     let decodes = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Each a.cases, \|c| if Podable c.ty: "Elem::{c.variant}(..) => ::std::result::Result::Ok(Output::{c.variant}({DecodeHead c.ty}::from_pod(v)?))," else: "Elem::{c.variant}(..) => {NoWorldOutput c.tagName},"), "\n"

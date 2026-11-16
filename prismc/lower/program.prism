@@ -776,7 +776,7 @@ ValueWidgetsIn: unbounded fn Lx, Expr -> [((Text, [((Text, Ty))]))]
 fn ValueWidgetsIn lx, e = match e.kind:
     ECall c, args, ignore, ignore:
         let qk = BlueprintQk lx, c
-        let hosts = qk == "Prelude.@Host" or qk == "Prelude.@HostSome" or qk == "Prelude.@HostList"
+        let hosts = qk == "Prelude.@Hosting" or qk == "Prelude.@HostingList"
         let applies = match lx.g.vals[qk]:
             ? v: IsWidgetTy (WidgetResultOf v.scheme.ty)
             nil: False
@@ -1539,7 +1539,7 @@ fn ?HeldPartsOf lx, tg = match (((?HeldWholeTy lx, tg), (Peel tg.out))):
                 LyEv: PartEvent value, (OutTyOf lx, (Peel part))
                 LyDyn: PartLive value
                 otherwise: PartPlain value
-        let env = Bind (Bind emptyEnv, "#tag", (BnLocal (XPath (OutputVariant tg)), Owned, OutUnit)), "#tagfirst", (BnLocal (XPath (OutputFirstVariant tg)), Owned, OutUnit)
+        let env = Bind (Bind emptyEnv, "#tag", (BnLocal (XPath (OutputMaker lx, tg)), Owned, OutUnit)), "#tagfirst", (BnLocal (XPath (OutputFirstVariant tg)), Owned, OutUnit)
         ? (XClosure False, [[(PaTyped (PaBind "held_whole"), (OutRef whole))]], (PartsOutputOf lx, env, "a bundle held whole as {tg.name}'s answer", read, (OutputVariant tg)))
     otherwise: nil
 
@@ -1573,6 +1573,27 @@ fn SparsePartTy t = OutNamed (RefRuntime "prism_rtl::SparsePart"), [[t]]
 # tuple of them, the parts that fired (Type System ch. 2, "Bundles and sparse tuples");
 # with none, its state (`?BundleStateTy`). A variable of the tag is the answer as it
 # came, a `Pod` (`TagFieldOut`).
+# Whether a tag's output holds data its family's parameters erase (`Ask.Query of Element
+# $?t`: `Option<Pod>`): an answer at the parameter's type at a use (`Option<Nat>`) is
+# recoded into it (`OutputMaker`, `Output::{accessor}_recoded`).
+HoldsPod: fn OutTy -> Bool
+fn HoldsPod t = match t:
+    OutPod: True
+    OutOpt x: HoldsPod x
+    OutRes x: HoldsPod x
+    OutArray x: HoldsPod x
+    OutDyn x: HoldsPod x
+    OutTuple xs: Fold xs, False, \|seen, x| seen or HoldsPod x
+    OutMap k, v: (HoldsPod k) or HoldsPod v
+    OutNamed ignore, xs: Fold xs, False, \|seen, x| seen or HoldsPod x
+    otherwise: False
+
+# The constructor an answer under a tag's arm is made with (`#tag`): the tag's variant of
+# `crate::Output`, or, when the tag's output holds erased data (`HoldsPod`), the variant
+# over the answer recoded (`Output::{accessor}_recoded`).
+OutputMaker: unbounded fn Lx, TagInfo -> Ref
+fn OutputMaker lx, tg = if HoldsPod (OutputTy lx, tg): RefChild outputRef, "{Snake (TagStruct tg.name)}_recoded" else: OutputVariant tg
+
 OutputTy: unbounded fn Lx, TagInfo -> OutTy
 fn OutputTy lx, tg:
     let out = Peel tg.out

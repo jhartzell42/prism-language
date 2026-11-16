@@ -1230,8 +1230,8 @@ fn OutputEvent lx, env, ev = match ev.kind:
 
 # One part of a bundle answer: a plain value (a constant `$` part among them, `$
 # "offline"`); a live `$` part, a `Dynamic` of its value; an event part, an `Event` of the
-# type given; or a part no checked program has (an internal error, `DynamicOutputs` makes a
-# getter for every dynamic answer), its words.
+# type given; or a part no checked program has (an internal error: every reader of a node a
+# function value reads is a live dynamic there), its words.
 type OutputPart = choice:
     PartPlain Ex
     PartLive Ex
@@ -1264,11 +1264,9 @@ fn WrittenPart lx, env, y = match LayerOf (TypeAt lx, y.span):
     LyDyn: match ?DynamicOutput lx, y:
         # a constant `$` part: its value, once
         nil: PartPlain (Own (ValueOf lx, env, (Or (?ConstantDynamic y), y)))
-        ? d: match ?PartDynamic lx, env, y, d:
-            ? dynamic: PartLive dynamic
-            nil: match ?HeldDynamic lx, env, d:
-                ? held: PartLive held
-                nil: PartInternalBug "`{SrcText lx, lx.file, y.span}`, a bundle answer's `$` part with no getter of the host's line and a reader that is no live dynamic where it is written"
+        ? d: match ?HeldDynamic lx, env, d:
+            ? held: PartLive held
+            nil: PartInternalBug "`{SrcText lx, lx.file, y.span}`, a bundle answer's `$` part over a reader that is no live dynamic where it is written"
     otherwise: PartPlain (Own (ValueOf lx, env, y))
 
 # A bundle answer of its parts (round 3 DY). The plain and `$` parts are the state: one
@@ -1352,20 +1350,6 @@ fn PartsOutputOf lx, env, what, parts, variant:
             let all = Fold (Drop (Range0 (Len evIx)), (if (Len stIx) > 0: 0 else: 1)), started, \|acc, j| XMethod acc, "event", [[(EventOf j)]]
             XBlock lets, all
 
-# A supplier's dynamic `d` (a `$` part `x` of a bundle answer) as a `Dynamic` of its own
-# value, read through the owner's link (`DynamicOutputs`), and, while the owner's node is
-# being made, its value at the build; `nil` when its line made no getter for it (it reads
-# what has no value at the owner's build).
-?PartDynamic: unbounded fn Lx, Env, Expr, Expr -> ?Ex
-fn ?PartDynamic lx, env, x, d = match ((env.names["#dyn{DynKey x}"], env.names["#owner"])):
-    ((? (BnLocal (XVar getter), ignore, dt), ? (BnLocal (XVar owner), ignore, ignore))):
-        let late = HasKey env.names, "#dynlate{DynKey x}"
-        let atBuild = if late: XUnit else: OutputAtBuild lx, env, x, d
-        let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(XMethod (XVar "owner"), getter, [[XCx]])), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=(if late: XUnreachable else: XClone (XVar "at_build")))]]
-        let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, dt)
-        ? (XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar "{getter}_portx"))]]))
-    otherwise: nil
-
 # `$ x` written in place: the `x` of a constant dynamic.
 ?ConstantDynamic: fn Expr -> ?Expr
 fn ?ConstantDynamic d = match d.kind:
@@ -1383,16 +1367,13 @@ fn PlainBlueprint lx, env, x, variant, t:
     let lxa = if HoldsTimeWhole lx, x: lxw else: lx
     VlOwned (XCall (RefRuntime "prism_rtl::plain_blueprint::<crate::Elem, _>"), [[(TaggedOrHeld variant, (OutTyOf lx, (Peel (TypeAt lx, x.span))), (Own (ValueOf lxa, env, x)))]]), t
 
-# `@ $d` with `$d` a dynamic of the host that is not a constant (round 3 DY): prism_rtl's
-# `dynamic_blueprint` over a `Dynamic` of the tag's `Output` whose read is the owner's getter
-# for `d` through the owner's link, and, while the owner's node is being made, `d`'s value at
-# the build (`InitEnv`); its update port is the getter's, fired by the writes behind `d`
-# (`DynamicOutputs`). The first value is read at the row's build, each later update is a push
-# delivered the next tick.
+# `@ $d` with `$d` a dynamic that is not a constant (round 3 DY): prism_rtl's
+# `dynamic_blueprint` over `d` taken whole, each value in the tag's case. A reader of a node
+# is its live dynamic, which the line the supplier is written in made (`WholeArgsAt`; ruling
+# HP: a supplier is an ordinary function value). The first value is read at the row's
+# build, each later update is a push delivered the next tick.
 DynamicBlueprint: unbounded fn Lx, Env, Expr, Expr, Ref, OutTy -> Vl
-fn DynamicBlueprint lx, env, x, d, variant, t = match ?OutputDynamic lx, env, x, d, variant:
-    ? dynamic: VlOwned (XCall (RefRuntime "prism_rtl::dynamic_blueprint::<crate::Elem, _>"), [[dynamic]]), t
-    nil: match ?HeldDynamic lx, env, d:
+fn DynamicBlueprint lx, env, x, d, variant, t = match ?HeldDynamic lx, env, d:
         # a dynamic the function holds as a value (a named supplier's `$` parameter):
         # that `Dynamic`, each value in the tag's case
         ? held:
@@ -1409,68 +1390,31 @@ fn DynamicBlueprint lx, env, x, d, variant, t = match ?OutputDynamic lx, env, x,
                 OutDyn heldTy:
                     let tagged = XClosure True, [[(PaTyped (PaBind "v"), (OutRef heldTy))]], (TaggedOrHeld variant, heldTy, (XClone (XVar "v")))
                     VlOwned (XCall (RefRuntime "prism_rtl::dynamic_blueprint::<crate::Elem, _>"), [[(XMethod (Ref live), "map", [[tagged]])]]), t
-                otherwise: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer with no getter of the host's line and a reader that is no live dynamic where it is written"), t
+                otherwise: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer over a reader that is no live dynamic where it is written"), t
 
-# A supplier's dynamic answer `d` where no host's line made a getter for it
-# (`DynamicOutputs` binds none), when everything it reads is a value held where it is
-# written: the `Dynamic` the expression gives there. `nil` when it reads a name of a
-# node that has no live dynamic there (a hold, a dynamic `let`), which only its owner's
-# getter reads.
-# In a function (a named supplier's body, no `#hostline`) every local is held: its `$`
-# parameter is a `Dynamic`. In a host's own line (`#hostline`; a held answer,
-# `IsHeldOutput`) a name read as a dynamic is held when it is a `Dynamic` there: the `$`
-# field of the element an arm describes, a reader of the node as the live dynamic the
-# host's line made for it (`HeldOutputReaders`, `#whole{span}`), the `$` parameter of a
-# function of the block as its argument's live dynamic (`InlineLocalFn`); a name read
-# as a plain value is the local it is (the place's path,
-# a plain field of the described element, a `let` of the block). The expression is
-# lifted over the `Dynamic`s by mapping them (`WholeValueOf`).
+# A supplier's dynamic answer `d` when everything it reads is held where it is written: the
+# `Dynamic` the expression gives there, taken whole. Held: a reader of a node as the live
+# dynamic its line made (`#whole{span}`), a local (a function's `$` parameter, a `Dynamic`;
+# the `$` field of the element an arm describes; the place's path), a function of the block.
+# `nil` when it reads a name of a node with no live dynamic there.
 ?HeldDynamic: unbounded fn Lx, Env, Expr -> ?Ex
 fn ?HeldDynamic lx, env, d:
-    let owned = HasKey env.names, "#hostline"
     let held = Fold (ExprsIn d), True, \|ok, y| ok and match y.kind:
         EName n: if (Len n.path) != 1: True else: if (HasKey env.names, "#whole{SpanKey y.span}") or HasKey env.names, "#whole#{SNameKey n}": True else: match env.names[SNameKey n]:
-            ? (BnLocal ignore, ignore, (OutDyn ignore)): True
-            ? (BnLocal ignore, ignore, ignore): (not owned) or (LayerOf (TypeAt lx, y.span)) != LyDyn
+            ? (BnLocal ignore, ignore, ignore): True
             ? (BnLocalFn ignore): True
             nil: True
             otherwise: False
         otherwise: True
     let lxw = update lx:
         &_.whole <= True
-    if not held: nil else: if owned: ? (Own (ValueOf lxw, env, d)) else: ? (Own (ValueOf lx, env, d))
-
-# A supplier's dynamic `d` (the `x` of `@ x`, or a `$` part of a bundle answer) as a
-# `Dynamic` of `crate::Output` under `variant`, read through the owner's link
-# (`DynamicOutputs`); `nil` when its line made no getter for it (it reads what has no
-# value at the owner's build).
-?OutputDynamic: unbounded fn Lx, Env, Expr, Expr, Ref -> ?Ex
-fn ?OutputDynamic lx, env, x, d, variant = match ((env.names["#dyn{DynKey x}"], env.names["#owner"])):
-    ((? (BnLocal (XVar getter), ignore, dt), ? (BnLocal (XVar owner), ignore, ignore))):
-        let late = HasKey env.names, "#dynlate{DynKey x}"
-        let atBuild = if late: XUnit else: OutputAtBuild lx, env, x, d
-        let held = OutTyOf lx, (Peel (TypeAt lx, d.span))
-        let arms = [[XArm(pat=(PaCtor (RefRuntime "std::Some"), [[PaBind "owner"]]), conds=[[]], body=(TaggedOrHeld variant, held, (XMethod (XVar "owner"), getter, [[XCx]]))), XArm(pat=(PaUnit (RefRuntime "std::None")), conds=[[]], body=(if late: XUnreachable else: TaggedOrHeld variant, held, (XClone (XVar "at_build"))))]]
-        let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, (OutNamed outputRef, [[]]))
-        ? (XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall (RefRuntime "prism_rtl::Dynamic::of"), [[read, (XRef (XVar "{getter}_portx"))]]))
-    otherwise: nil
+    if not held: nil else: ? (Own (ValueOf lxw, env, d))
 
 # An answer of the type `t` made by a widget's blueprint value: in its tag's case, or
 # with no tag as plain data when it is plain data (`Tagged`), else held as it is (the
 # prelude's `output_held`).
 TaggedOrHeld: unbounded fn Ref, OutTy, Ex -> Ex
 fn TaggedOrHeld variant, t, value = if variant == untaggedRef and not (Podable t): XCall (HelperRef "output_held"), [[value]] else: Tagged variant, value
-
-# (A dynamic with no value while the owner's node is being made, `#dynlate{span}`, is
-# read through the owner's link alone: the child's places ask their first values once
-# the node stands, `DynamicOutputs`.)
-# A supplier's dynamic answer's value at the owner's build: the local the host's line took
-# it into, for a dynamic read through the owner's parent (`DynamicOutputs`,
-# `#dynbuild{span}`), or the dynamic over the names' values at the build (`InitEnv`).
-OutputAtBuild: unbounded fn Lx, Env, Expr, Expr -> Ex
-fn OutputAtBuild lx, env, x, d = match env.names["#dynbuild{DynKey x}"]:
-    ? (BnLocal taken, ignore, ignore): XClone taken
-    otherwise: Own (ValueOf lx, (InitEnv env), d)
 
 # An answer in its tag's case of `crate::Output`; with no tag, as plain data in the case
 # of no tag (`untaggedRef`).
@@ -2011,24 +1955,24 @@ fn InlineLocalFn lx, env0, cs, args, t:
                 ? a: ValueOf lx, env0, a.value
                 nil: VlOwned (XUnit), OutUnit
             let bt = ValueTy v
-            # in a host's own line (`#hostline`) a `$` argument is its live dynamic
-            # (`?HeldDynamic`: a reader of the node as the live dynamic the host's line
-            # made for it, `HeldOutputReaders`), and the parameter is that `Dynamic`: an
-            # answer of the function over its parameter, `@ $d`, answers over it
+            # in a function value's body (`#lambda`) a `$` argument is its live dynamic
+            # (`?HeldDynamic`: a reader of the node as the live dynamic its line made for
+            # it), and the parameter is that `Dynamic`: an answer of the function over its
+            # parameter, `@ $d`, answers over it
             match ?LiveArgument lx, env0, args[i]:
                 ? ((dynamic, dt)): (((Push acc, (DoLet (PaBind rs), dynamic)), (Bind en, nm, (BnLocal (XVar rs), Owned, dt))))
                 nil: (((Push acc, (DoLet (PaBind rs), (Own v))), (Bind en, nm, (BnLocal (XVar rs), Owned, bt))))
         VlOwned (XBlock dos, (FnBodyValue lx, env2, c.body)), t
 
-# A `$` argument of a function of the block called in a host's own line (`#hostline`, the
-# supplier's closure): the live `Dynamic` it is there and its type; `nil` for any other
-# argument. A getter of the node has no read point in the supplier's closure, so the
-# argument is never the node's reader itself.
+# A `$` argument of a function of the block called in a function value's body (`#lambda`,
+# a supplier's closure): the live `Dynamic` it is there and its type; `nil` for any other
+# argument. A getter of the node has no read point in the closure, so the argument is
+# never the node's reader itself.
 ?LiveArgument: unbounded fn Lx, Env, ?Arg -> ?((Ex, OutTy))
 fn ?LiveArgument lx, env, ?argument = match ?argument:
-    ? a: if not ((HasKey env.names, "#hostline") and (LayerOf (TypeAt lx, a.value.span)) == LyDyn): nil else: match ?HeldDynamic lx, env, a.value:
+    ? a: if not ((HasKey env.names, "#lambda") and (LayerOf (TypeAt lx, a.value.span)) == LyDyn): nil else: match ?HeldDynamic lx, env, a.value:
         ? dynamic: ? ((dynamic, (OutDyn (OutTyOf lx, (Peel (TypeAt lx, a.value.span))))))
-        nil: ? (((InternalBug "`{SrcText lx, lx.file, a.value.span}`, a `$` argument of a function of the host's block, with no live dynamic in the supplier's place"), (OutDyn (OutTyOf lx, (Peel (TypeAt lx, a.value.span))))))
+        nil: ? (((InternalBug "`{SrcText lx, lx.file, a.value.span}`, a `$` argument of a function of the block, with no live dynamic in a function value's body"), (OutDyn (OutTyOf lx, (Peel (TypeAt lx, a.value.span))))))
     nil: nil
 
 # The lowering at a use of a local function: one the checker generalized (Type System
@@ -3454,7 +3398,9 @@ fn PlainLambda lx, env, ps, body, ft:
         otherwise: [[]]
     let ((dos, env1)) = LambdaCaptures env, (WithInstances env, (LambdaReads ps, body))
     let ((pas, env2)) = ClosureParams (WholeLambda lx, pts), env1, ps, pts, True
-    let v = LambdaBodyValue (WholeLambda lx, pts), env2, body
+    # (`#lambda` marks a function value's body: a `$` argument of a function of the block
+    # it calls is the argument's live dynamic there, `?LiveArgument`)
+    let v = LambdaBodyValue (WholeLambdaBody lx, pts, ft), (Bind env2, "#lambda", (BnLocal XUnit, Owned, OutUnit)), body
     # Cast to its function type, so that two lambdas meet where one type is wanted (an
     # array's elements, an `if`'s or a `match`'s arms), each a closure type of its own.
     VlOwned (XBlock dos, (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure True, pas, (Own v))]]), ft)), ft
@@ -3613,6 +3559,15 @@ fn LambdaArg lx, env, ps, body, pts:
 WholeLambda: fn Lx, [OutTy] -> Lx
 fn WholeLambda lx, pts = if lx.whole or not (Fold pts, False, \|seen, t| seen or OutHasTime t): lx else: update lx:
     &_.whole <= True
+
+# A lambda's body: taken whole when a parameter holds time (`WholeLambda`), or when its
+# result does (`\|k| $count`, a function value that gives a dynamic): what it reads of a
+# node is then that reader's live dynamic, which its line made (ruling HP).
+WholeLambdaBody: fn Lx, [OutTy], OutTy -> Lx
+fn WholeLambdaBody lx, pts, ft = match ft:
+    OutFn ignore, r: if OutHasTime r: (update lx:
+        &_.whole <= True) else: WholeLambda lx, pts
+    otherwise: WholeLambda lx, pts
 
 OutHasTime: fn OutTy -> Bool
 fn OutHasTime t = match t:

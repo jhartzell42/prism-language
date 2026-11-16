@@ -349,8 +349,7 @@ fn RowReads env, pref = Fold (Keys env.names), env, \|en, k| match env.names[k]:
 # A row's build environment without its block's values at the block's build
 # (`{name}#init`, locals of the block's constructor, which the row's constructor has
 # not): in the row a hold or a dynamic of the block is read through the parent, which is
-# built, at the build as at any read (`RowReads`), so a supplier's dynamic answer in the
-# row takes its value at the row's build there (`DynamicOutputs`).
+# built, at the build as at any read (`RowReads`).
 WithoutBuildValues: fn Env -> Env
 fn WithoutBuildValues env = WithoutNames env, (Filter (Keys env.names), \|k| (?BeforeSuffix k, "#init") != nil)
 
