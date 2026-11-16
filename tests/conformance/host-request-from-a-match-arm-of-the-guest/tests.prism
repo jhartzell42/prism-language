@@ -1,0 +1,8 @@
+# The tests of host-request-from-a-match-arm-of-the-guest.
+emit Ui.* | Ask.*
+use App.*
+
+test answered_in_the_arm, @page:
+    build
+    click at 0.[1].0/0.[0.0]/0
+    compute
