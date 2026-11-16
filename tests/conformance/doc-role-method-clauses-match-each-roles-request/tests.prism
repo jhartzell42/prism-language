@@ -1,0 +1,6 @@
+# The tests of doc-role-method-clauses-match-each-roles-request.
+emit Ui.*
+use App.*
+
+test each_roles_request_stepped, @page:
+    build

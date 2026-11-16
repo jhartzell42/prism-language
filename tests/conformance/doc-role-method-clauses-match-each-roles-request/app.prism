@@ -1,0 +1,77 @@
+# A trait method over every role whose request parameter is indexed by the role, and an
+# impl whose clauses, one per role (ruling VO), match each role's own request by its
+# constructors and give each role's own reason (Part III ch. 6; Part IV ch. 4,
+# `^StateDocument`'s `Step`). Isolated from tests/documents/tally, whose crate matched the
+# request, held as `Pod`, against `Add(n)` and `KeeperRequest::Clear` (rustc E0308:
+# expected `Pod`, found `Add`).
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type Request (r: Role d)
+    type Reason (r: Role d)
+    type State = unit
+    Step: forall (r: Role d). fn State d, Fixed r, Request d r -> Stepped (State d) (Reason d r)
+
+type Stepped s why = choice:
+    Next s
+    Denied why
+derive ^Eq, ^Debug
+
+type TallyRole = choice:
+    Teller
+    Keeper
+derive ^Eq, ^Ord, ^Debug
+
+type Tally = record:
+    total: Nat
+derive ^Eq, ^Debug
+
+type Add = choice:
+    Add Nat
+derive ^Eq, ^Debug
+
+type KeeperRequest = choice:
+    Clear
+    Halve
+derive ^Eq, ^Debug
+
+type TellerReason = choice:
+    StopsAt Nat
+derive ^Eq, ^Debug
+
+type KeeperReason = choice:
+    NothingToClear
+derive ^Eq, ^Debug
+
+type Board = choice:
+    Board
+
+impl ^Document Board:
+    type Role = TallyRole
+    type Request Teller = Add
+    type Request Keeper = KeeperRequest
+    type Reason Teller = TellerReason
+    type Reason Keeper = KeeperReason
+    type State = Tally
+    fn Step tally, Fixed<<Teller>>, (Add n) = if tally.total + n > 5: Denied (StopsAt 5) else: Next Tally(total=tally.total + n)
+    fn Step tally, Fixed<<Keeper>>, Clear = if tally.total == 0: Denied NothingToClear else: Next Tally(total=0)
+    fn Step tally, Fixed<<Keeper>>, Halve = if tally.total == 0: Denied NothingToClear else: Next Tally(total=(Or (?Div tally.total, 2), 0))
+
+SaidTeller: fn Stepped Tally TellerReason -> Text
+fn SaidTeller (Next tally) = "now {tally.total}"
+fn SaidTeller (Denied (StopsAt most)) = "stops at {most}"
+
+SaidKeeper: fn Stepped Tally KeeperReason -> Text
+fn SaidKeeper (Next tally) = "now {tally.total}"
+fn SaidKeeper (Denied NothingToClear) = "nothing to clear"
+
+@page: @unit
+@page:
+    let four = Tally(total=4)
+    Ui.Label($text=$"add 1: {SaidTeller (Step<<Board, Teller>> four, Fixed<<Teller>>, (Add 1))}")     # 0
+    Ui.Label($text=$"add 3: {SaidTeller (Step<<Board, Teller>> four, Fixed<<Teller>>, (Add 3))}")     # 1
+    Ui.Label($text=$"halve: {SaidKeeper (Step<<Board, Keeper>> four, Fixed<<Keeper>>, Halve)}")       # 2
+    Ui.Label($text=$"clear none: {SaidKeeper (Step<<Board, Keeper>> Tally(total=0), Fixed<<Keeper>>, Clear)}")   # 3

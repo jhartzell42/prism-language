@@ -1,0 +1,9 @@
+# Derived by hand from Part III ch. 6 (each clause is taken at its role, its request of that role's type) and the rules written here: 4 + 1 is 5, accepted; 4 + 3 passes 5; 4 halved is 2; clearing 0 is declined.
+test each_roles_request_stepped
+
+tick 0
+  added:
+    0: Ui.Label(text="add 1: now 5")
+    1: Ui.Label(text="add 3: stops at 5")
+    2: Ui.Label(text="halve: now 2")
+    3: Ui.Label(text="clear none: nothing to clear")
