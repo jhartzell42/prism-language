@@ -1,0 +1,7 @@
+# Derived by hand from tests/documents/tally's two orders (one request a tick by place; every request at once, the reverse of place order) and Part III ch. 6 (an impl over a parameter answers by the parameter's trait): `OneEach` applies place 0 and keeps 1 waiting; `KeepersFirst` applies 1 then 0 and keeps none.
+test each_order_by_its_parameter
+
+tick 0
+  added:
+    0: Ui.Label(text="one each: apply 0, wait 1")
+    1: Ui.Label(text="keepers first: apply 1 0, wait ")
