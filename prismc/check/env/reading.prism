@@ -618,6 +618,7 @@ fn IsFnType t = match t.kind:
 # Whether a type writes a blueprint or bare element that takes the scope's row.
 UsesScope: unbounded fn Type -> Bool
 fn UsesScope t = match t.kind:
+    TForall ignore, ignore2, body: UsesScope body
     # a blueprint whose type writes its own row (`$@(@unit emit Ui.* | rest)`) uses none
     TName n, args if (Contains n.sigils, "@") and (Len args) == 1 and WritesEmitIn (Or args[0], dummyType): UsesScope (Or args[0], dummyType)
     TSigiled s, i if (Contains s, "@") and WritesEmitIn i: UsesScope i
@@ -635,6 +636,9 @@ fn UsesScope t = match t.kind:
 # The lowercase names a type writes in a row's place.
 RowVarsOfType: unbounded fn Type -> [Text]
 fn RowVarsOfType t = match t.kind:
+    # a signature's own `forall` names some of its variables; its rows stand in its body
+    # either way (Jimmy's ruling FA)
+    TForall ignore, ignore2, body: RowVarsOfType body
     TName n, args:
         let name = Dotted n.path
         let own = if (name == "Element" and (Len args) == 2) or (name == "Elem" and (Len args) == 1): RowNamesIn (Or args[0], dummyType) else: [[]]
@@ -717,6 +721,7 @@ fn TypeVarPlaces acc, t = match t.kind:
 
 ColorVarsOfType: unbounded fn Type -> [Text]
 fn ColorVarsOfType t = match t.kind:
+    TForall ignore, ignore2, body: ColorVarsOfType body
     TFn (ColorVar v), ps, res, prompts:
         let inner = Fold ps, (ColorVarsOfType res), \|acc, a| UnionTexts acc, (ColorVarsOfType a)
         if v.name == "bounded": inner else: AddText inner, v.name
