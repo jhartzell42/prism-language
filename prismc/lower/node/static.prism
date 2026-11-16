@@ -926,7 +926,10 @@ fn HostLine wx, benv, menv, form, args, ?bound:
                 &_.inits <= Append &_.inits, [[(("{docGetter}_snap", (XCall (RefRuntime "rt::Snapshot::new"), [[XStr what]]))), (("{rowsName}_from", (XCall (RefRuntime "std::RefCell::new"), [[(XCall (RefRuntime "rt::Map::new"), [[]])]])))]]
                 &_.hosts <= Push &_.hosts, HostDef(pos=pos, name=hf, scope=k)
                 &_.unplacedHosts <= if unplaced: Push &_.unplacedHosts, hf else: &_.unplacedHosts
-                &_.lateHosts <= if unplaced and not (HasNat &_.lateHosts, k): Push &_.lateHosts, k else: &_.lateHosts
+                # (and a host whose supplier may read a reader of the node with no value at
+                # the build, `Wx.lambdasLate`: its places ask their first values once the
+                # node stands)
+                &_.lateHosts <= if (unplaced or wx.lambdasLate) and not (HasNat &_.lateHosts, k): Push &_.lateHosts, k else: &_.lateHosts
                 &_.snaps <= Push &_.snaps, SnapDef(name=docGetter, live="{docGetter}_now", ty=hostDocTy, eq=True, builder=rowsName, before=True, what=what)
                 &_.getters <= Append &_.getters, [[(MethDef(name=docGetter, recv=RecvRef, params=[[]], cx=CxRef, ret=docTy, body=[[]], tail=(XField (XMethod (XField XSelf, "{docGetter}_snap"), "get", [[XCx]]), "doc"), doc="The document of the child hosted at place {PlaceText pos}, `$doc`, its outer a structural dynamic (pick ST): one tick behind the child's places, the snapshot of the tick before the tick the read point is after; each entry the place's own dynamic.")), (MethDef(name="{docGetter}_direct", recv=RecvRef, params=[[]], cx=CxRef, ret=directTy, body=[[]], tail=(XField (XMethod (XField XSelf, "{docGetter}_snap"), "current", [[XCx]]), "places"), doc="The places of the child hosted at place {PlaceText pos}, not the lagged `$doc`: the snapshot taken in this tick's construction step, the places as the tick opened during propagation. The host's own `for` reads it, so a newborn child place gets its row in the tick it is born (pick ST)."))]]
                 &_.scopes <= Push &_.scopes, hf
@@ -1025,6 +1028,24 @@ fn WholeArgs wx, benv, menv, e, whole = WholeArgsAt wx, benv, menv, e, whole, Fa
 # step runs; a read before that is unreachable.
 WholeArgsAt: unbounded fn Wx, Env, Env, Expr, Bool, Bool -> ((Wx, Env, Env))
 fn WholeArgsAt wx, benv, menv, e, whole, late:
+    # (a lambda of the line that reads a reader of the node with no value at the build makes
+    # the hosts below late, `Wx.lambdasLate`)
+    let inLambdas = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
+        ELambda ignore, ignore, prompts: Append acc, (ExprsIn x)
+        otherwise: acc
+    let reads = Append inLambdas, (ReachedExprs menv, inLambdas)
+    let unbuilt = Fold reads, False, \|found, x| found or match x.kind:
+        EName n: match menv.names[SNameKey n]:
+            ? (BnHold ignore, ignore): not (NamesInited benv, x)
+            ? (BnDyn ignore, ignore, ignore): not (NamesInited benv, x)
+            otherwise: False
+        otherwise: False
+    let ((wxw, be, me)) = WholeArgsLive wx, benv, menv, e, whole, late
+    if unbuilt: (((update wxw:
+        &_.lambdasLate <= True), be, me)) else: ((wxw, be, me))
+
+WholeArgsLive: unbounded fn Wx, Env, Env, Expr, Bool, Bool -> ((Wx, Env, Env))
+fn WholeArgsLive wx, benv, menv, e, whole, late:
     let lx = wx.lx
     # a call of a function that takes time whole, lifted or not (a lifted one, `$Sel (True
     # on !swap), $a, $b`, takes its sigiled arguments whole, `ArgsFor`), and `@Flatten`'s

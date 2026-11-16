@@ -371,6 +371,10 @@ type Wx = record:
     # the child's places with a `$` output ask their first values once the node stands
     # and the builders above the host have run (`LateFirstPlace`).
     lateHosts: [Nat]
+    # Whether a function value of a line above reads a reader of the node that has no value
+    # at the build (its live dynamic read through the node's link alone): a host below,
+    # whose supplier may be that function value, is late (ruling HP).
+    lambdasLate: Bool
     # What those places do then, by scope, in the order of the places: the first value
     # asked of the host and each hold set (`BuildSteps`).
     lateFirsts: [((Nat, [Do]))]
@@ -558,7 +562,7 @@ fn NewWx lx, name, fields, inits, moves, getters, dynReads, taken, inlining, ?ho
     let hostedInits = match ?hostedBy:
         ? ignore: [[(("enclosing", (XVar "enclosing")))]]
         nil: [[]]
-    Wx(?resultText=nil, lx=lx, node=name, pos=pos0, childRoot=False, rowsUnder=UnderCaller, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, ?valuedAs=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], bundles=[[]], scopes=[[]], ?hostedBy=?hostedBy, rootDyns=[[]], genOf="", rowMarks=[[]], pending=[[]], floors={{}}, snaps=[[]], resultMoved=[[]], dynOutputs=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]], lateAsks=[[]], lateGens=False, lateRowGens=[[]], genPhase=0, numberedBy=[[]], unplacedHosts=[[]], wholeResultAt="", earlyChoices=[[]], deferredGens=[[]], deferredDeps=[[]], lateHosts=[[]], lateFirsts=[[]], lateStarts=[[]], latePlaces=[[]], lateElements=[[]], lateNumbered=[[]], holdsLast=[[]], baseLate=False, splitNames=[[]], splitLets=[[]], giving=GivenInOrder, lateTakings=[[]], valueSubs=[[]])
+    Wx(?resultText=nil, lx=lx, node=name, pos=pos0, childRoot=False, rowsUnder=UnderCaller, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, ?valuedAs=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], bundles=[[]], scopes=[[]], ?hostedBy=?hostedBy, rootDyns=[[]], genOf="", rowMarks=[[]], pending=[[]], floors={{}}, snaps=[[]], resultMoved=[[]], dynOutputs=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]], lateAsks=[[]], lateGens=False, lateRowGens=[[]], genPhase=0, numberedBy=[[]], unplacedHosts=[[]], wholeResultAt="", earlyChoices=[[]], deferredGens=[[]], deferredDeps=[[]], lateHosts=[[]], lambdasLate=False, lateFirsts=[[]], lateStarts=[[]], latePlaces=[[]], lateElements=[[]], lateNumbered=[[]], holdsLast=[[]], baseLate=False, splitNames=[[]], splitLets=[[]], giving=GivenInOrder, lateTakings=[[]], valueSubs=[[]])
 
 # A name not yet taken in the node: `base`, else `base_2`, `base_3`.
 FreshName: fn Wx, Text -> ((Text, Wx))
