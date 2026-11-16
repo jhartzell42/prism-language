@@ -195,6 +195,7 @@ SexpPathSeg: fn PathSeg, Nat -> Text
 fn SexpPathSeg (PsNum n), ignore = " {n}"
 fn SexpPathSeg (PsGen n), ignore = " #{n}"
 fn SexpPathSeg (PsKey e), d = " [{SexpExpr e, d}]"
+fn SexpPathSeg (PsKeyPath segs), d = " [(path{Concat (Each segs, \|s| SexpPathSeg s, d)})]"
 fn SexpPathSeg PsCall, ignore = " /"
 
 SexpCheck: fn TestCheck, Nat -> Text

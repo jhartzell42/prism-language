@@ -211,9 +211,16 @@ PathSegOf: unbounded fn [PathSeg], Ps, PathSegTok, Range -> (([PathSeg], Ps))
 fn PathSegOf acc, p, (PstNum n), ignore = (((Push acc, (PsNum n)), p))
 fn PathSegOf acc, p, (PstGen n), ignore = (((Push acc, (PsGen n)), p))
 fn PathSegOf acc, p, PstCall, ignore = (((Push acc, PsCall), p))
-fn PathSegOf acc, p, (PstKey toks), span:
-    let ((e, q)) = ParseNested p, toks, span
-    (((Push acc, (PsKey e)), q))
+fn PathSegOf acc, p, (PstKey toks), span = match toks:
+    # (a key that is a path, lexed as one, `[0.0]`)
+    [[t]] if IsPathKind t.kind: match t.kind:
+        KPath segs:
+            let ((inner, q)) = Fold segs, (([[]], p)), \|((acc2, pp)), seg| PathSegOf acc2, pp, seg, span
+            (((Push acc, (PsKeyPath inner)), q))
+        otherwise: ((acc, p))
+    otherwise:
+        let ((e, q)) = ParseNested p, toks, span
+        (((Push acc, (PsKey e)), q))
 
 # One `=> check` line (A.4, `check`).
 ParseTestCheck: unbounded fn Ps -> ((TestCheck, Ps))

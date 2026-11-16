@@ -252,6 +252,8 @@ type PathSeg = choice:
     PsNum Nat
     PsGen Nat
     PsKey Expr
+    # a key that is itself a path, a host's guest place (`1.[0.0]/0`, ruling PL)
+    PsKeyPath [PathSeg]
     # `/`: a widget application's own list starts (ruling PL)
     PsCall
 derive ^Eq, ^Debug

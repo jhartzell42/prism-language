@@ -23,7 +23,18 @@ fn LexToken l0:
         &_.pathNext <= False
     # Conformance A.2: a path after `at`, read by the test lexer.
     if l0.pathNext and ((IsDigit c) or c == "#" or c == "["): LexPathToken l, start
+    # (a path's key that is itself a path, a host's guest place, `[0.0]` or `[1/0]`: one
+    # path token, where a number would stop at its `.`)
+    else: if l0.mode == MPathKey and (IsKeyPathAt l0): LexPathToken l, start
     else: LexTokenAt l, start, c
+
+# Whether a path of more than one segment starts at the cursor: digits, then `/` or a `.`
+# before another segment.
+IsKeyPathAt: unbounded fn Lex -> Bool
+fn IsKeyPathAt l = if not (IsDigit (Peek l)): False else:
+    let after = update l:
+        &_.pos <= MatchEnd %/[0-9]*/, &_.src, &_.pos
+    (Peek after) == "/" or ((Peek after) == "." and IsPathStart (Peek (Bump after)))
 
 LexPathToken: unbounded fn Lex, Nat -> Lex
 fn LexPathToken l, start:
