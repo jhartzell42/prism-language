@@ -1981,7 +1981,7 @@ fn BuildInOrder wx, stmts, order, blockStart, start, ends:
     let wx3 = if (IsSome ?placed) or (Len cyclic) > 0: wx2 else: update wx2:
         &_.build <= Push &_.build, (InternalBugDo "the build's `let`s read each other across lines the build order separates: a cycle among values")
     Fold cyclic, wx3, \|w, comp| update w:
-        &_.build <= Push &_.build, (InternalBugDo "lines that read each other at the build ({Join (Fold comp, [[]], \|acc, i| Append acc, (Check.Blocks.GroupDefs (Or stmts[i], dummyStmtL))), ", "}): a cycle among values")
+        &_.build <= Push &_.build, (InternalBugDo "lines that read each other at the build ({Join (Fold comp, [[]], \|acc, i| Append acc, (Check.Blocks.GroupDefs (Or stmts[i], dummyStmtL))), ", "}): a cycle among values (diagnostic: the `let`s left unordered, each with what it waits for: {StuckShown (DosStuck (CompLets runs, comp), [[]], (Len (CompLets runs, comp)) + 1)})")
 
 # `let`s with each one after those that bind a name it reads: the first `let` that reads a
 # name a later one binds has the stretch from it to that later one put in order by
@@ -2022,6 +2022,28 @@ fn ?DosPlaced left, placed, fuel = if (Len left) == 0: ? placed else: if fuel ==
     match ready[0]:
         ? i: ?DosPlaced (Append (Take left, i), (Drop left, i + 1)), (Push placed, (Or left[i], DoExpr XUnit)), (Dec fuel)
         nil: nil
+
+# The statements `?DosPlaced` cannot place, where it stalls (a diagnostic).
+DosStuck: unbounded fn [Do], [Do], Nat -> [Do]
+fn DosStuck left, placed, fuel = if (Len left) == 0 or fuel == 0: left else:
+    let ready = Filter (Range0 (Len left)), \|i| IsReady left, placed, i
+    match ready[0]:
+        ? i: DosStuck (Append (Take left, i), (Drop left, i + 1)), (Push placed, (Or left[i], DoExpr XUnit)), (Dec fuel)
+        nil: left
+
+# Each stuck statement by what it binds (or as an effect, by its place among them), with
+# the names of the others it reads.
+StuckShown: unbounded fn [Do] -> Text
+fn StuckShown stuck = Join (Each (Range0 (Len stuck)), \|i| StuckLine stuck, i), "; "
+
+StuckLine: unbounded fn [Do], Nat -> Text
+fn StuckLine stuck, i:
+    let d = Or stuck[i], DoExpr XUnit
+    let binds = DoBinds d
+    let others = Append (Take stuck, i), (Drop stuck, i + 1)
+    let reads = Fold others, [[]], \|acc, o| Append acc, (Filter (DoBinds o), \|n| DoReads d, n)
+    let named = if (Len binds) == 0: "an effect (#{i})" else: "`{Join binds, ", "}`"
+    "{named} reads {Debug reads}"
 
 IsReady: unbounded fn [Do], [Do], Nat -> Bool
 fn IsReady left, placed, i:
