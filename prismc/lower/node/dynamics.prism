@@ -186,6 +186,8 @@ fn CalleeKey lx, c = match c.kind:
     EName n:
         let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
         Or ?q, ""
+    # (a callee given its type arguments, `Knocking<<Nat>>`, is the function it names)
+    ETypeArgs x, ignore: CalleeKey lx, x
     otherwise: ""
 
 # `!Union`, `!Both`, `!Except`: combinators of two events, deciding in the wake.
