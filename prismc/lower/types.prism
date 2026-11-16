@@ -455,6 +455,21 @@ fn HasOpenIndexedAssoc t = match t:
     TySig sg, i: HasOpenIndexedAssoc i
     otherwise: False
 
+# A type with each associated type at indices no equation decides as plain data
+# (`assocErasedName`): the variables it still names are the ones outside them.
+AssocsOpenErased: unbounded fn Ty -> Ty
+fn AssocsOpenErased t = match t:
+    TyAssoc ignore, ignore2, ignore3, ignore4: if HasOpenIndexedAssoc t: TyQ assocErasedName else: t
+    TyCon c, args: TyCon c, (Each args, \|x| AssocsOpenErased x)
+    TyTuple ts: TyTuple (Each ts, \|x| AssocsOpenErased x)
+    TyArray e: TyArray (AssocsOpenErased e)
+    TyMap k, v: TyMap (AssocsOpenErased k), (AssocsOpenErased v)
+    TySig sg, i: TySig sg, (AssocsOpenErased i)
+    TyFn c, ps, r, prompts: TyFn c, (Each ps, \|x| AssocsOpenErased x), (AssocsOpenErased r), prompts
+    TyAt i, rw: TyAt (AssocsOpenErased i), rw
+    TyElem rw, o: TyElem rw, (AssocsOpenErased o)
+    otherwise: t
+
 # The associated types at indices no equation decides in a parameter's type, each with
 # the argument's type standing where it stands (`Lx.assocs`).
 AssocPairs: unbounded fn Ty, Ty -> [((Ty, Ty))]

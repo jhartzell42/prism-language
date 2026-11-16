@@ -2238,7 +2238,10 @@ fn InlineWidgetBody wx, benv, menv, qk, v0, args, e:
                 let ?params = match ?CallInstance lx, v, args:
                     ? m: ? (BoundInstance lx, v, m, [[e.span, (CalleeSpanOf e), (InnerNameSpanOf e)]])
                     nil: nil
-                let unmatched = Filter (Fold ptys, [[]], \|acc, t| UnionTexts acc, (RigidsIn t)), \|q| not (HasKey (Or ?params, {{}}), q)
+                # (a variable that stands only in associated types an argument decides,
+                # `r` of `$(SeatId d r ==> ..)`, needs no type at the call: the body reads
+                # those types as the argument's, `Lx.assocs`)
+                let unmatched = Filter (Fold ptys, [[]], \|acc, t| UnionTexts acc, (RigidsIn (AssocsOpenErased t))), \|q| not (HasKey (Or ?params, {{}}), q)
                 let lxp = update lx:
                     &_.subst <= Fold (Keys (Or ?params, {{}})), &_.subst, \|m, q| Insert m, q, (Or (Or ?params, {{}})[q], TyErr)
                 let ((wx1, be1, me1)) = Fold (Range0 (Len params)), ((wx, emptyEnv, emptyEnv)), \|((wb, be, me)), i|
@@ -2279,7 +2282,7 @@ fn InlineWidgetBody wx, benv, menv, qk, v0, args, e:
                     &_.childRoot <= False
                 if (Len unmatched) > 0:
                     let wx2 = update wx:
-                        &_.build <= Push &_.build, (RefusalDo "the generic widget {BareName qk} at a call whose types its parameters' do not match")
+                        &_.build <= Push &_.build, (RefusalDo "the generic widget {BareName qk} at a call whose types its parameters' do not match: nothing at the call decides {Join (Each unmatched, \|q| "`{q}`"), ", "}")
                     ((wx2, WrUnit))
                 else:
                     let done = BlockInto inner, be1, me1, body
