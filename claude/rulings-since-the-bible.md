@@ -422,3 +422,6 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   `runtime`. Jimmy, 16 November, choosing (b) of three (a naming rule from the qualified
   name; this; one shared table): "b yes".
 
+  Any module may write one, a program's own as much as the standard library's: the
+  checker takes a signature with `runtime` as defined wherever it stands. Jimmy, 16
+  November, asked whether ruling RT keeps it to the library: "yes it's allowed".
