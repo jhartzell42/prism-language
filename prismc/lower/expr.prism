@@ -1388,7 +1388,9 @@ fn PlainBlueprint lx, env, x, variant, t:
 # HP: a supplier is an ordinary function value). The first value is read at the row's
 # build, each later update is a push delivered the next tick.
 DynamicBlueprint: unbounded fn Lx, Env, Expr, Expr, Ref, OutTy -> Vl
-fn DynamicBlueprint lx, env, x, d, variant, t = if (?ConstantDynamic d) != nil: PlainBlueprint lx, env, (Or (?ConstantDynamic d), d), variant, t else: match ?HeldDynamic lx, env, d:
+fn DynamicBlueprint lx, env, x, d, variant, t = if (?ConstantDynamic d) != nil: PlainBlueprint lx, env, (Or (?ConstantDynamic d), d), variant, t
+else: if variant == untaggedRef: HeldDynamicBlueprint lx, env, x, d, t
+else: match ?HeldDynamic lx, env, d:
         # a dynamic the function holds as a value (a named supplier's `$` parameter):
         # that `Dynamic`, each value in the tag's case
         ? held:
@@ -1406,6 +1408,15 @@ fn DynamicBlueprint lx, env, x, d, variant, t = if (?ConstantDynamic d) != nil: 
                     let tagged = XClosure True, [[(PaTyped (PaBind "v"), (OutRef heldTy))]], (TaggedOrHeld variant, heldTy, (XClone (XVar "v")))
                     VlOwned (XCall (RefRuntime "prism_rtl::dynamic_blueprint::<crate::Elem, _>"), [[(XMethod (Ref live), "map", [[tagged]])]]), t
                 otherwise: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer over a reader that is no live dynamic where it is written"), t
+
+# `@ $d` made outside a tag's arm (`@ \|k| @ $count`, applied by a line): the dynamic held
+# whole (`output_held`), so the line that applies it reads that dynamic in the tick it
+# moves, as a widget's own dynamic result is read; pushed as answers it would land a tick
+# late.
+HeldDynamicBlueprint: unbounded fn Lx, Env, Expr, Expr, OutTy -> Vl
+fn HeldDynamicBlueprint lx, env, x, d, t = match ?HeldDynamic lx, env, d:
+    ? held: VlOwned (XCall (RefRuntime "prism_rtl::plain_blueprint::<crate::Elem, _>"), [[(XCall (HelperRef "output_held"), [[held]])]]), t
+    nil: VlOwned (InternalBug "`@ {SrcText lx, lx.file, x.span}`, a dynamic blueprint over a reader that is no live dynamic where it is written"), t
 
 # A supplier's dynamic answer `d` when everything it reads is held where it is written: the
 # `Dynamic` the expression gives there, taken whole. Held: a reader of a node as the live
