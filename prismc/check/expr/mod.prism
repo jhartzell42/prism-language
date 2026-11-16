@@ -459,7 +459,11 @@ fn InferGlobal env, st0, n, span:
             else: match env.g.vals[qk]:
                 ? v:
                     let ((t, st2, inst)) = InstantiateWith (NoteMethodUse (CallId st, qk, span), v, span), v.scheme, span, [[]]
-                    ((t, (if IsGenericUse v: NoteGenericUse st2, qk, v.scheme.qs, span, inst else: st2)))
+                    # (a generic definition's use is noted with what the checker solved
+                    # its variables at, for the lowering, `NoteInst`: a generic widget
+                    # inlined at the call is lowered at those types)
+                    let st3 = if IsGenericUse v: NoteInst (NoteGenericUse st2, qk, v.scheme.qs, span, inst), span, qk, v.scheme, inst else: st2
+                    ((t, st3))
                 nil: match env.g.ctors[qk]:
                     ? c: CtorValue env, st, c, span
                     nil: ((TyErr, (Err st, "unknown-name", span, "`{SNameKey n}` has no signature line or type")))

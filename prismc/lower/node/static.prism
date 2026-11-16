@@ -926,10 +926,7 @@ fn HostLine wx, benv, menv, form, args, ?bound:
                 &_.inits <= Append &_.inits, [[(("{docGetter}_snap", (XCall (RefRuntime "rt::Snapshot::new"), [[XStr what]]))), (("{rowsName}_from", (XCall (RefRuntime "std::RefCell::new"), [[(XCall (RefRuntime "rt::Map::new"), [[]])]])))]]
                 &_.hosts <= Push &_.hosts, HostDef(pos=pos, name=hf, scope=k)
                 &_.unplacedHosts <= if unplaced: Push &_.unplacedHosts, hf else: &_.unplacedHosts
-                # (every host is late: its supplier, a function value, may read a live
-                # dynamic of the node read through the node's link alone, so its scope's
-                # places ask their first values once the node stands, `Wx.lateHosts`)
-                &_.lateHosts <= if not (HasNat &_.lateHosts, k): Push &_.lateHosts, k else: &_.lateHosts
+                &_.lateHosts <= if unplaced and not (HasNat &_.lateHosts, k): Push &_.lateHosts, k else: &_.lateHosts
                 &_.snaps <= Push &_.snaps, SnapDef(name=docGetter, live="{docGetter}_now", ty=hostDocTy, eq=True, builder=rowsName, before=True, what=what)
                 &_.getters <= Append &_.getters, [[(MethDef(name=docGetter, recv=RecvRef, params=[[]], cx=CxRef, ret=docTy, body=[[]], tail=(XField (XMethod (XField XSelf, "{docGetter}_snap"), "get", [[XCx]]), "doc"), doc="The document of the child hosted at place {PlaceText pos}, `$doc`, its outer a structural dynamic (pick ST): one tick behind the child's places, the snapshot of the tick before the tick the read point is after; each entry the place's own dynamic.")), (MethDef(name="{docGetter}_direct", recv=RecvRef, params=[[]], cx=CxRef, ret=directTy, body=[[]], tail=(XField (XMethod (XField XSelf, "{docGetter}_snap"), "current", [[XCx]]), "places"), doc="The places of the child hosted at place {PlaceText pos}, not the lagged `$doc`: the snapshot taken in this tick's construction step, the places as the tick opened during propagation. The host's own `for` reads it, so a newborn child place gets its row in the tick it is born (pick ST)."))]]
                 &_.scopes <= Push &_.scopes, hf
@@ -2010,9 +2007,15 @@ fn InlineWidgetBody wx, benv, menv, qk, v0, args, e:
                 # (and a variable only its bound decides, `@Hosted<<Tallied OneEach>>` of
                 # `forall d. fn Seats d -> ..`: the type the checker solved the bound at,
                 # its impl note at the call)
+                # (what the checker solved the widget's variables at, noted at the name's
+                # use, `NoteInst`: a variable no argument's type shows, `a` of `@Host`'s
+                # result, is decided there; the arguments' types decide the rest)
+                let solved = match lx.useInsts[PlaceKey lx, (InnerNameSpanOf e)]:
+                    ? u: Fold (Filter u.tys, \|((q, t))| IsSolvedTy t), {{}}, \|m, ((q, t))| Insert m, q, (SubstTy lx, t)
+                    nil: {{}}
                 let ?params = match ?CallInstance lx, v, args:
-                    ? m: ? (BoundInstance lx, v, m, [[e.span, (CalleeSpanOf e), (InnerNameSpanOf e)]])
-                    nil: nil
+                    ? m: ? (BoundInstance lx, v, (Fold (Keys solved), m, \|acc, q| if HasKey acc, q: acc else: Insert acc, q, (Or solved[q], TyErr)), [[e.span, (CalleeSpanOf e), (InnerNameSpanOf e)]])
+                    nil: if (Len (Keys solved)) > 0: ? solved else: nil
                 # (a variable that stands only in associated types an argument decides,
                 # `r` of `$(SeatId d r ==> ..)`, needs no type at the call: the body reads
                 # those types as the argument's, `Lx.assocs`)
@@ -2086,6 +2089,12 @@ BoundInstance: unbounded fn Lx, ValInfo, (Text ==> Ty), [Range] -> (Text ==> Ty)
 fn BoundInstance lx, v, m, spans = Fold v.scheme.bounds, m, \|acc, ((q, cls))| if HasKey acc, q: acc else: match Fold spans, nil, \|?found, sp| if IsSome ?found: ?found else: ?ImplNoteTy lx, sp, cls:
     ? t: Insert acc, q, t
     nil: acc
+
+# Whether a type the checker solved a variable at is one: not the error type.
+IsSolvedTy: fn Ty -> Bool
+fn IsSolvedTy t = match t:
+    TyErr: False
+    otherwise: True
 
 # The span of the name a line calls, under its type arguments (`@Hosted<<..>>`).
 InnerNameSpanOf: fn Expr -> Range

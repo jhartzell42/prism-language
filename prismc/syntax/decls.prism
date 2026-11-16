@@ -43,6 +43,9 @@ type Signature = record:
     name: DefName
     ty: Type
     bounds: [Bound]
+    # The runtime function a declaration with no body names (ruling RT):
+    # `= runtime "documents::seat_path_of"`, a path under `prism_rtl`.
+    ?runtime: Text
     span: Range
 derive ^Eq, ^Debug
 

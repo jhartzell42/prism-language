@@ -367,10 +367,9 @@ type Wx = record:
     # Each of those generations with the late names its line reads and the names it binds:
     # among them, the one that binds a name another reads is built first (`BuildSteps`).
     deferredDeps: [((Text, [Text], [Text]))]
-    # The hosted scopes, every one (ruling HP: a supplier is a function value, which may
-    # read a live dynamic of the node read through its link alone): the child's places with
-    # a `$` output ask their first values once the node stands and the builders above the
-    # host have run (`LateFirstPlace`).
+    # The hosted scopes whose host has no place at the build (ruling TC, `unplacedHosts`):
+    # the child's places with a `$` output ask their first values once the node stands
+    # and the builders above the host have run (`LateFirstPlace`).
     lateHosts: [Nat]
     # What those places do then, by scope, in the order of the places: the first value
     # asked of the host and each hold set (`BuildSteps`).
