@@ -1,0 +1,51 @@
+# A function value that opens an existential over a role and, in the arm, lifts a call
+# generic over that role over an event it captured, the call matching each value's role
+# against the opened one by `Fixed<<r>>` (the library's `SupplierFrom` and
+# `?ResponseTo`). Isolated from tests/documents/tally, whose crate borrowed the opened
+# role's kind (`&kind_of(..)`) into the event's `'static` closure (rustc E0716: temporary
+# value dropped while borrowed).
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type SeatId (r: Role d)
+
+type SeatKey d = any (r: Role d): ((Fixed r, SeatId d r))
+
+type Said d = any (r: Role d): ((Fixed r, Text))
+
+?SaidTo: forall d (r: Role d). fn Fixed r, [Said d] -> ?Text
+fn ?SaidTo role, all = Fold all, nil, \|?found, one| match one:
+    any ((theirs, words)): match theirs:
+        Fixed<<r>>: ? words
+        otherwise: ?found
+
+Answerer: forall d. fn ![Said d] -> (fn SeatKey d -> !Text) where d: ^Document
+fn Answerer !said = \|seatKey| match seatKey:
+    any ((role, id)): !Filter (?SaidTo<<d>> role, !said)
+
+type CountRole = choice:
+    Raiser
+    Watcher
+derive ^Eq, ^Ord, ^Debug
+
+type Count = record:
+    total: Nat
+derive ^Eq, ^Debug
+
+impl ^Document Count:
+    type Role = CountRole
+    type SeatId Raiser = Nat
+    type SeatId Watcher = Text
+
+@page: @unit
+@page:
+    !speak <- Ui.Button($label=$"speak")                                   # 0
+    let all: [Said Count] = [[(any ((Fixed<<Raiser>>, "to raisers"))), (any ((Fixed<<Watcher>>, "to watchers")))]]
+    let !said = all on !speak
+    let Answer = Answerer<<Count>> !said
+    let watcher: SeatKey Count = any ((Fixed<<Watcher>>, "ada"))
+    $heard <- "nothing" then Answer watcher
+    Ui.Label($text=$"ada heard {$heard}")                                  # 1
