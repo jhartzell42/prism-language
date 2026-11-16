@@ -397,3 +397,9 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   arms alone, and over a flattened or bracketed spelling. Jimmy, 15 November: "a both but
   a path is a list of a list of numbers"; "it's still transparent because the path type
   is opaque but this was the original intent"; "a".
+
+- **CR** Two kinds of compiler bug are critical: a checker that accepts an unsound
+  program, and prismc emitting Rust that rustc refuses for a program the checker accepted.
+  Each gets a failing test before any fix, and variants that pin down where it happens.
+  Jimmy, 15 November: "unsoundness and rustc refusing what prismc accepts are both
+  critical bugs".
