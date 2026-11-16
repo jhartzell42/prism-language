@@ -1,0 +1,7 @@
+# The tests of trait-default-widget-read-as-a-value.
+emit Ui.*
+use App.*
+
+test served_once, @page:
+    build
+    click at 0.["ada"].0.#0.0/0

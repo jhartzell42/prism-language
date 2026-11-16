@@ -1,0 +1,32 @@
+# A widget written as a trait's default method, with places of its own, read as a value at
+# a type that takes the default (`$ (@Serve<<Game>> "ada")`, examples/chess's server:
+# `$ (@Serve<<ChessGame>> Fixed<<Player>>, connection)`, the library's `^RemoteDocument`
+# default), in a live map of blueprints a `for` and a `rebuild` build. Isolated from
+# examples/chess, which q11 refused: "the widget function @Serve as a value: a blueprint
+# value is a supplier's answer that builds no place" (pick HO: one with places is a
+# widget-function blueprint as an answer); its diagnostic showed no reading of `@Serve`
+# collected, the collection taking no trait default.
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Served d:
+    Greeting: fn d -> Text
+    @Serve: fn Text -> @unit emit Ui.*
+    fn @Serve name:
+        !click <- Ui.Button($label=$"serve {name}")                        # 0
+        $count <- 0 then $count + 1 on !click
+        Ui.Label($text=$"{name} served {$count}")                          # 1
+
+type Game = choice:
+    Game
+
+impl ^Served Game:
+    fn Greeting game = "a game"
+
+@page: @unit
+@page:
+    let $served = $ {{"ada": $ (@Serve<<Game>> "ada")}}
+    for name, $@serving <- $served:                                        # 0, at each name
+        rebuild $@serving:
+            _
