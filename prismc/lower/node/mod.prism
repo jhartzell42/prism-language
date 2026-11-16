@@ -243,6 +243,10 @@ type Wx = record:
     # are the child's list, the guest's path from its root, with no list of their own
     # (ruling PL; `InCallPos` not taken once).
     childRoot: Bool
+    # Where the rows being made stand (`RowsWx`): under a place of their own, whose host
+    # the rows reach through that place's path (`ArmRowOf`, `UnderItsPath`), or in their
+    # caller's list; set back once a row is made.
+    rowsUnder: GenUnder
     gns: [Gn]
     fields: [((Text, OutTy, Text))]
     # Field initializers: the computed ones (a clone of a local among them), then `moves`,
@@ -555,7 +559,7 @@ fn NewWx lx, name, fields, inits, moves, getters, dynReads, taken, inlining, ?ho
     let hostedInits = match ?hostedBy:
         ? ignore: [[(("enclosing", (XVar "enclosing")))]]
         nil: [[]]
-    Wx(?resultText=nil, lx=lx, node=name, pos=pos0, childRoot=False, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, ?valuedAs=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], bundles=[[]], scopes=[[]], ?hostedBy=?hostedBy, rootDyns=[[]], genOf="", rowMarks=[[]], pending=[[]], floors={{}}, snaps=[[]], resultMoved=[[]], dynOutputs=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]], lateAsks=[[]], lateGens=False, lateRowGens=[[]], genPhase=0, numberedBy=[[]], unplacedHosts=[[]], wholeResultAt="", earlyChoices=[[]], deferredGens=[[]], deferredDeps=[[]], lateHosts=[[]], lateFirsts=[[]], lateStarts=[[]], latePlaces=[[]], lateElements=[[]], lateNumbered=[[]], holdsLast=[[]], baseLate=False, splitNames=[[]], splitLets=[[]], giving=GivenInOrder, lateTakings=[[]], valueSubs=[[]])
+    Wx(?resultText=nil, lx=lx, node=name, pos=pos0, childRoot=False, rowsUnder=UnderCaller, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, ?based=nil, ?valuedAs=nil, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], bundles=[[]], scopes=[[]], ?hostedBy=?hostedBy, rootDyns=[[]], genOf="", rowMarks=[[]], pending=[[]], floors={{}}, snaps=[[]], resultMoved=[[]], dynOutputs=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]], lateInits=[[]], lateAsks=[[]], lateGens=False, lateRowGens=[[]], genPhase=0, numberedBy=[[]], unplacedHosts=[[]], wholeResultAt="", earlyChoices=[[]], deferredGens=[[]], deferredDeps=[[]], lateHosts=[[]], lateFirsts=[[]], lateStarts=[[]], latePlaces=[[]], lateElements=[[]], lateNumbered=[[]], holdsLast=[[]], baseLate=False, splitNames=[[]], splitLets=[[]], giving=GivenInOrder, lateTakings=[[]], valueSubs=[[]])
 
 # A name not yet taken in the node: `base`, else `base_2`, `base_3`.
 FreshName: fn Wx, Text -> ((Text, Wx))

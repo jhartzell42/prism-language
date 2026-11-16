@@ -593,7 +593,7 @@ fn GenCases wx, menv, body, vt, name:
         ? ((qk, args)):
             let clauses = ClausesOf lx.g, qk
             let v = ValOf lx, qk
-            Fold (Range0 (Len clauses)), (([[]], wx)), \|((acc, w)), i|
+            Fold (Range0 (Len clauses)), (([[]], (RowsWx wx, UnderCaller))), \|((acc, w)), i|
                 let c = Or clauses[i], dummyClause
                 let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name, False, (OutWeak wx.node), args, False
                 # a `rebuild` of a clause call hands back no plain result
@@ -1054,6 +1054,10 @@ fn OnSelfRooted x = match x:
 # itself (`SharedClauseLine`).
 ArmRowOf: unbounded fn Wx, Env, Lx, [?Pattern], [Ty], ?Expr, Block, Text, Text, Bool, Bool, OutTy, [((Text, Bn))], [((Text, Text))], [((Text, Expr))], Bool -> ClauseRow
 fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transparent, readsBlock, parentTy, dynsGiven, ups, widgets, zeroBased:
+    # (a row under a place of its own, ruling PL, names its places from 0 under that place:
+    # its host is reached through the place's path, as a row numbered from 0 reaches it,
+    # host-bug-15's request from an arm's place)
+    let ownPlace = wx.rowsUnder != UnderCaller
     let upName = "{genName}_up"
     let pos = Each (Range0 (Len pats)), \|i| ArmPat lxc, (Or pats[i], nil), (Or ptys[i], TyErr), ByRef, "c{i}"
     let pa = PaTuple (Each pos, \|o| o.pa)
@@ -1108,11 +1112,11 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
         ? m: if shared: ? sharedMoved else: ? m
         nil: nil
     let hostedParams = match ?hostedRows:
-        ? ignore: [[(((if zeroBased: hostAbove else: "enclosing"), hostOfTy))]]
+        ? ignore: [[(((if zeroBased or ownPlace: hostAbove else: "enclosing"), hostOfTy))]]
         nil: [[]]
     let movedParam = if shared and IsSome ?hostedBy: [[(("moved", movedTy))]] else: [[]]
     let rowFresh = NewWx lxc, rowName, rowFields, rowInits, [[(("parent", (XClone (XVar "parent"))))]], [[]], {{}}, rowTaken, wx.inlining, ?hostedBy
-    let r0000 = if zeroBased: UnderItsPath rowFresh, ?hostedBy else: rowFresh
+    let r0000 = if zeroBased or ownPlace: UnderItsPath rowFresh, ?hostedBy else: rowFresh
     let r000 = update r0000:
         &_.baseLate <= numberedLate
         &_.lateGens <= numberedLate and (wx.lateGens or sharedLate or IsLateBlock lxc, (if readsBlock: menv else: emptyEnv), body, 16)
@@ -1213,7 +1217,8 @@ fn ArmRowOf wx, menv, lxc, pats, ptys, ?guard, body, rowName, genName, transpare
     # the block's `row_base` where it builds the row (`WithRowBase`)
     let passed = if transparent and not numberedLate: Push passed0, (XVar "row_base") else: passed0
     let inner = (Len (Filter r3.gens, \|gd| gd.gappy and gd.pos.scope == 0)) > 0
-    ClauseRow(case=GenCase(node=node, params=(Each fields, \|((f, t, ignore))| ((f, t))), pat=pa, conds=(Append (Fold pos, [[]], \|acc, o| Append acc, o.conds), guardConds), passed=passed), parent=p2, width=(Or (r2.pos.at -? r0.pos.at), 0), inner=inner, parts=parts, ?plain=?plain, resultReads=(ResultParentReads r2), ?resultTy=(?ResultDynTy r2))
+    ClauseRow(case=GenCase(node=node, params=(Each fields, \|((f, t, ignore))| ((f, t))), pat=pa, conds=(Append (Fold pos, [[]], \|acc, o| Append acc, o.conds), guardConds), passed=passed), parent=(update p2:
+        &_.rowsUnder <= wx.rowsUnder), width=(Or (r2.pos.at -? r0.pos.at), 0), inner=inner, parts=parts, ?plain=?plain, resultReads=(ResultParentReads r2), ?resultTy=(?ResultDynTy r2))
 
 # The event result of a row a blueprint value builds (`ValuedRows`): a port of the row's
 # that the event fires, handed out by `result_event`; the blueprint that built the row
@@ -1767,8 +1772,10 @@ CallUnder: fn Wx -> GenUnder
 fn CallUnder wx = if wx.childRoot: UnderCaller else: UnderCall
 
 RowsWx: fn Wx, GenUnder -> Wx
-fn RowsWx wx, under = if under == UnderCaller: wx else: update wx:
+fn RowsWx wx, under = if under == UnderCaller: (update wx:
+    &_.rowsUnder <= UnderCaller) else: update wx:
     &_.pos <= Pos(scope=wx.pos.scope, prefix=[[]], at=0)
+    &_.rowsUnder <= under
 
 UnderRows: fn Wx, Text, Pos, GenUnder, Ex -> Ex
 fn UnderRows wx, recv, pos, under, select = match under:
