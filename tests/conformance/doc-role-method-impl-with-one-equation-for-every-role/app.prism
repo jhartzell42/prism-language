@@ -1,0 +1,50 @@
+# A trait method over every role (`forall (r: Role d)`) whose parameters are associated
+# types indexed by the role, and an impl whose equations give some of them one type for
+# every role, `type SeatId r = Text`, `type Query r = Whole` (Part III ch. 6: an equation
+# with a variable for every role), its clauses one per role (ruling VO). Isolated from
+# tests/documents/tally and c8, whose crates wrote the trait's `read_f` and `step_f` over
+# `Pod` for the role-indexed types and the impl's over `Text` and the query type (rustc
+# E0053: method has an incompatible type for trait).
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type SeatId (r: Role d)
+    type Query (r: Role d)
+    type Answer (r: Role d)
+    type State = unit
+    Read: forall (r: Role d). fn State d, Fixed r, SeatId d r, Query d r -> Answer d r
+
+type TallyRole = choice:
+    Teller
+    Viewer
+derive ^Eq, ^Ord, ^Debug
+
+type Tally = record:
+    total: Nat
+derive ^Eq, ^Debug
+
+type Whole = choice:
+    Whole
+derive ^Eq, ^Debug
+
+type Board = choice:
+    Board
+
+impl ^Document Board:
+    type Role = TallyRole
+    type SeatId r = Text
+    type Query r = Whole
+    type Answer Teller = Text
+    type Answer Viewer = Nat
+    type State = Tally
+    fn Read tally, Fixed<<Teller>>, name, Whole = "{name} sees {tally.total}"
+    fn Read tally, Fixed<<Viewer>>, name, Whole = tally.total
+
+@page: @unit
+@page:
+    let tally = Tally(total=4)
+    Ui.Label($text=$"{Read<<Board, Teller>> tally, Fixed<<Teller>>, "ada", Whole}")             # 0
+    Ui.Label($text=$"a viewer sees {Read<<Board, Viewer>> tally, Fixed<<Viewer>>, "kim", Whole}")   # 1

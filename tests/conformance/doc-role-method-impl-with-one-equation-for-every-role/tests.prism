@@ -1,0 +1,6 @@
+# The tests of doc-role-method-impl-with-one-equation-for-every-role.
+emit Ui.*
+use App.*
+
+test each_role_read, @page:
+    build
