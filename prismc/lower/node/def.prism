@@ -64,7 +64,15 @@ fn NodeDefOf lx, qk, params, body, sc, isRoot:
             &_.inits <= Push &_.inits, ((rs, (XClone (XVar rs))))
         let ((be2, me2)) = BindPlain be, me, nkey, rs, t
         (((Push acc, ((rs, t))), w3, be2, me2))
-    let wx2 = BlockInto wx1, benv, menv, body
+    # (a root applied to its arguments, `RootApplicationItems`: the root's own application
+    # is the top list, as a hosted child's is the guest's root, ruling PL; `Wx.childRoot`)
+    let rootApplied = match body.span.origin:
+        MadeBy RootApplication: True
+        otherwise: False
+    let wx1r = update wx1:
+        &_.childRoot <= rootApplied
+    let wx2 = update (BlockInto wx1r, benv, menv, body):
+        &_.childRoot <= False
     let wx3 = if isRoot: RootResult wx2 else: wx2
     FinishNode wx3, qk, ps, False
 

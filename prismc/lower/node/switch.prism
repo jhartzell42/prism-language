@@ -587,24 +587,12 @@ type GenCase = record:
 
 GenCases: unbounded fn Wx, Env, Block, OutTy, Text -> (([GenCase], Wx))
 fn GenCases wx, menv, body, vt, name:
-    let lx = wx.lx
     let rowName = "{wx.node}Gen{RowSuffix wx}"
-    match ?ClauseCall lx, body:
-        ? ((qk, args)):
-            let clauses = ClausesOf lx.g, qk
-            let v = ValOf lx, qk
-            Fold (Range0 (Len clauses)), (([[]], (RowsWx wx, UnderCaller))), \|((acc, w)), i|
-                let c = Or clauses[i], dummyClause
-                let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name, False, (OutWeak wx.node), args, False
-                # a `rebuild` of a clause call hands back no plain result
-                let p2 = match cr.?plain:
-                    ? ignore: update cr.parent:
-                        &_.build <= Push &_.build, (InternalBugDo "a `rebuild` that hands back no dynamic whose generation is a widget of several clauses ending on a plain result")
-                    nil: cr.parent
-                (((Push acc, cr.case), p2))
-        nil:
-            let whole = GenRowOf wx, menv, body, vt, rowName, name
-            ((([[GenCase(node=whole.node, params=[[(("value", vt))]], pat=PaWild, conds=[[]], passed=[[(XVar "value")]])]]), whole.parent))
+    # (a generation whose block is one application of a widget of several clauses is a
+    # block like any other: the application is one place of the generation's, with a list
+    # of its own, ruling PL)
+    let whole = GenRowOf wx, menv, body, vt, rowName, name
+    ((([[GenCase(node=whole.node, params=[[(("value", vt))]], pat=PaWild, conds=[[]], passed=[[(XVar "value")]])]]), whole.parent))
 
 # A generation's body that is one application of a widget of several clauses: the widget
 # and the arguments.
@@ -1734,7 +1722,7 @@ fn ?PartSpelledAtBuild ?b = match ?b:
 GenSelect: unbounded fn Wx, Env, Block, [GenCase], Pos, [ [Do] ], Bool -> Ex
 fn GenSelect wx, menv, body, cases, pos, sets, ofRebuild:
     let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
-    match ?ClauseCall wx.lx, body:
+    match (if ofRebuild: nil else: ?ClauseCall wx.lx, body):
         nil: match cases[0]:
             ? c: XTry (XCall (RefChild (SiteRef wx.lx, c.node.name), "build"), (Append [[(XVar "path"), (XVar "value")]], tail))
             nil: InternalBug "a `rebuild` with no generation"

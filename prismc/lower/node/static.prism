@@ -108,9 +108,9 @@ fn NamedWidgetLine wx, benv, menv, e, ?bound:
         ? (BnWidget x, ignore, ignore, ignore): LetBlueprintLine wx, benv, menv, x, e, ?bound
         otherwise: match ?param:
             ? (BnWidget x, cbenv, cmenv, clx): ApplyWidgetParam wx, benv, menv, x, cbenv, cmenv, clx, e, args, ?bound
-            # (a blueprint `let`, a widget parameter's argument and a top-level blueprint
-            # `let` lower the expression they name, whose own line starts its list)
-            ? (BnLocalWidget b): InCall wx, \|w| LocalWidgetLine w, benv, menv, b, e
+            # (a widget defined in the block, `@line:`, is a widget application: one
+            # position and one list, its block's, `InlineBlock`)
+            ? (BnLocalWidget b): LocalWidgetLine wx, benv, menv, b, e
             # a function of the block applied (`$more <- @Row $count`): its body lowered
             # here (`LocalFunctionLine`)
             ? (BnLocalFn cs) if (Len args) > 0: LocalFunctionLine wx, benv, menv, benv, menv, (LocalFnLx lx, callee.span), cs, callee, e, args
@@ -344,7 +344,11 @@ fn LocalFunctionLine wx, benv, menv, cbenv, cmenv, clx, cs, named, e, args:
     else:
         let inside = update wx:
             &_.inlining <= Push &_.inlining, mark
-        let ((done, res)) = if (Len cs) == 1: InlinedFunctionLine inside, benv, menv, cbenv, cmenv, clx, c.params, ptys, body, e, args else: ClausesFunctionLine inside, benv, menv, cbenv, cmenv, clx, cs, ptys, e, args
+        # (a widget function of the block, `@Row`, is a widget application: one position
+        # and a list of its own, ruling PL; a function giving a blueprint stands in its
+        # caller's list, `CalleeUnder`)
+        let Inline = \|w| InlinedFunctionLine w, benv, menv, cbenv, cmenv, clx, c.params, ptys, body, e, args
+        let ((done, res)) = if (Len cs) == 1: (if (CalleeUnder e) == UnderCall: InCall inside, Inline else: Inline inside) else: ClausesFunctionLine inside, benv, menv, cbenv, cmenv, clx, cs, ptys, e, args
         let back = update done:
             &_.inlining <= wx.inlining
         ((back, res))
