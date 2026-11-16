@@ -414,3 +414,11 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   the refactor after a green run, since the bug is critical and the failing tests keep
   where context does not. Jimmy, 15 November: "This special casing is a red flag"; "I
   want to solve it the right way the first time".
+
+- **RT** A declaration with no body names the runtime function that implements it, written
+  after its signature: `SeatPathOf: fn Path -> Path = runtime "documents::seat_path_of"`,
+  a path under `prism_rtl`. The lowering keeps no table of library names. The primitives
+  the lowering builds itself (`@Hosting`, `@Switch`, `@Defer`, ...) stay bodiless with no
+  `runtime`. Jimmy, 16 November, choosing (b) of three (a naming rule from the qualified
+  name; this; one shared table): "b yes".
+

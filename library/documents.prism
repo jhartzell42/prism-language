@@ -100,10 +100,10 @@ type Implementation d lower = fn prompt Guests d -> @(Supplier d) emit lower
 # role and the first key the seat: `0/[White]/#g/2` is White's. The prelude takes a path
 # apart (Part IV ch. 5, "A seat is a path's first key").
 # A seat's own prefix of a place's path: the role's index and the seat's key.
-SeatPathOf: fn Path -> Path
+SeatPathOf: fn Path -> Path = runtime "documents::seat_path_of"
 
 # The roles' trees as one: each role's tree under the role's position in the list.
-$Merge: fn [Guests d] -> Guests d
+$Merge: fn [Guests d] -> Guests d = runtime "documents::merge"
 
 # ---- the order of one tick's requests (chapter 3)
 
@@ -730,10 +730,10 @@ fn Touched ignore = unit
 
 # A role's tree as guests: each seat's places, each with the role and its seat id (the
 # path's first key); a place of another language is not the document's.
-$GuestsOf: forall d (r: Role d). fn Fixed r, $(Path ==> $Elem (Seat.* d r | rest)) -> Guests d where d: ^Document
+$GuestsOf: forall d (r: Role d). fn Fixed r, $(Path ==> $Elem (Seat.* d r | rest)) -> Guests d where d: ^Document = runtime "documents::guests_of"
 
 # Within one role's tree, a place's first key is its seat id.
-SeatIdAt: forall d (r: Role d). fn Path -> SeatId d r where d: ^Document
+SeatIdAt: forall d (r: Role d). fn Path -> SeatId d r where d: ^Document = runtime "documents::seat_id_at"
 
 # Each seat's guest, built: one entry per seat, built anew only when that seat's own
 # blueprint changes. The seats need no `prompt`: changing the map builds and ends guests
