@@ -1,4 +1,4 @@
-tests/checker/neg/mismatch-of-blueprint-rows-shows-the-rows.prism:19: error[mismatch]: expected `(fn Prelude.Nat -> @Prelude.Nat emit Ui.*)`, found `(fn Prelude.Nat -> @Prelude.Nat emit unit)`
+tests/checker/neg/mismatch-of-blueprint-rows-shows-the-rows.prism:19: error[mismatch]: expected `(fn Nat -> @Nat emit Ui.*)`, found `(fn Nat -> @Nat emit unit)`
         @Using @Quiet
                ^^^^^^
 1 error
