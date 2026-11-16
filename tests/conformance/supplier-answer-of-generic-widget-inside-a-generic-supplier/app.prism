@@ -1,0 +1,34 @@
+# A generic supplier answers with a generic widget function given its own type variable
+# (`@Held<<a>> $value` in `@Supply: forall a. ..`), as the library's `@Over` answers a
+# query with `@AnswerFrom<<d>> role, path, !arrived`: prismc refused the widget as a value
+# in examples/chess (`the widget function @AnswerFrom as a value`).
+# Written by Claude, 15 November 2026, on the claude-self-hosting branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Gauge of Element $Nat:
+    name: Text
+
+@meter: @unit
+@meter:
+    $level <- Pad.Gauge(name="tank")
+    Ui.Label($text=$"level {$level}")
+
+@Counted: forall a. fn prompt $a, (fn a -> Nat) -> @$Nat emit unit
+fn @Counted $value, Count:
+    $kept <- 0 then Count !Updated $value
+    @ $kept
+
+@Supply: forall a. fn prompt $a, (fn a -> Nat), prompt Element (Ui.* | Pad.*) o -> @o
+fn @Supply $value, Count, e = match e:
+    Pad.Gauge(..): @Counted<<a>> $value, Count
+    otherwise: @Element e
+
+Twice: fn Nat -> Nat
+fn Twice n = n * 2
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")                              # 0
+    $count <- 0 then $count + 1 on !add
+    ignore <- @Host @meter, \|p, prompt e| @Supply $count, Twice, e     # 1.[p]/0
