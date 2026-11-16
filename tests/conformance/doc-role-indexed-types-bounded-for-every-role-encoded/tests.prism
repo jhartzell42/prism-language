@@ -1,0 +1,6 @@
+# The tests of doc-role-indexed-types-bounded-for-every-role-encoded.
+emit Ui.*
+use App.*
+
+test written_at_each_role, @page:
+    build
