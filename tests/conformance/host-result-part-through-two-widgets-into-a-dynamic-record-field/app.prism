@@ -1,0 +1,49 @@
+# A host's child's result (a `for`'s live map of its rows' results), handed back by the
+# widget that hosts it as a bundle's `$` part, taken apart by the widget above and put in
+# a record's `$` field (tests/documents/tally: `@HostRole`'s `$results`, `@HostSeats`'
+# `(($tellers, ..)) <- @HostRole ..` and `TallyResults($teller=$tellers, ..)`). Isolated
+# from tally, whose crate read that part, passed whole to the record's constructor,
+# through a getter `tellers_d2` it never wrote (rustc E0599: no method named `tellers_d2`).
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+type Results = record:
+    $teller: (Text ==> unit)
+
+@Seated: fn $(k ==> $@(@a emit rest)) -> @$(k ==> a) emit rest
+fn @Seated $seats:
+    for seat, $@guest <- $seats:
+        rebuild $@guest:
+            _
+
+@HostRole: fn $(Text ==> $@(@unit emit Ui.*)) -> @(($(Text ==> unit), $Nat)) emit Ui.*
+fn @HostRole $seats:
+    (($results, $tree)) <- @Host (@Seated $seats), \|path, prompt element| @Element element     # 0
+    @ (($results, (Size $tree)))
+
+@HostSeats: fn $(Text ==> $@(@unit emit Ui.*)) -> @Results emit Ui.*
+fn @HostSeats $seats:
+    (($tellers, $placed)) <- @HostRole $seats                              # 0
+    @ Results($teller=$tellers)
+
+@Teller: fn Text -> @unit emit Ui.*
+fn @Teller name:
+    Ui.Label($text=$"teller {name}")                                       # 0
+
+# (tally's own way of changing a map of seats by an event)
+type Change a = record:
+    seat: (Text ==> a)
+
+Changed: fn (Text ==> a), Change a -> (Text ==> a)
+fn Changed seats, change = Union change.seat, seats
+
+Seating: fn (Text ==> a) -> Change a
+fn Seating seats = Change(seat=seats)
+
+@page: @unit
+@page:
+    !join <- Ui.Button($label=$"cy joins")                                 # 0
+    $tellers <- {{"ada": $ (@Teller "ada")}} then Changed $tellers, ((Seating {{"cy": $ (@Teller "cy")}}) on !join)
+    results <- @HostSeats $tellers                                         # 1
+    Ui.Label($text=$"{Size results.$teller} seated")                       # 2

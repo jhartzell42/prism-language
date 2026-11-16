@@ -1,0 +1,16 @@
+# Derived by hand under ruling PL and ruling HP (SM3 (a)): `@HostSeats` is the page's 1, its `@HostRole` that list's 0, the host its 0 and the primitive that list's 0; the guest `@Seated` is the host's root, its `for` place 0, the seat's key, the `rebuild` the row's 0 and its generation #0, the teller applied there with a list of its own, its label that list's 0, forwarded at host/[p]/0 (Semantics ch. 9). The `for`'s map of results holds one entry per seat, so the count follows the seats: 1, then 2 when cy joins.
+test a_teller_joins
+
+tick 0
+  added:
+    0: Ui.Button(label="cy joins")
+    1/0/0/0.[0.["ada"].0.#0.0/0]/0: Ui.Label(text="teller ada")
+    2: Ui.Label(text="1 seated")
+
+tick 1
+  in:
+    0: click
+  added:
+    1/0/0/0.[0.["cy"].0.#0.0/0]/0: Ui.Label(text="teller cy")
+  changed:
+    2: Ui.Label(text="2 seated")
