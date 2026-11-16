@@ -1,0 +1,7 @@
+# The tests of event-match-inside-an-element-arm-of-a-hosts-tree.
+emit Ui.* | Pad.*
+use App.*
+
+test a_write_is_seen, @page:
+    build
+    click at 0/0.[0]/0
