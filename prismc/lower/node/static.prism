@@ -2245,7 +2245,7 @@ fn InlineWidgetBody wx, benv, menv, qk, v0, args, e:
                 # (a variable that stands only in associated types an argument decides,
                 # `r` of `$(SeatId d r ==> ..)`, needs no type at the call: the body reads
                 # those types as the argument's, `Lx.assocs`)
-                let unmatched = Filter (Fold ptys, [[]], \|acc, t| UnionTexts acc, (RigidsIn (AssocsOpenErased t))), \|q| not (HasKey (Or ?params, {{}}), q)
+                let unmatched = Filter (Fold ptys, [[]], \|acc, t| UnionTexts acc, (RigidsIn (AssocsOpenErased t))), \|q| q != assocErasedName and not (HasKey (Or ?params, {{}}), q)
                 let lxp = update lx:
                     &_.subst <= Fold (Keys (Or ?params, {{}})), &_.subst, \|m, q| Insert m, q, (Or (Or ?params, {{}})[q], TyErr)
                 let ((wx1, be1, me1)) = Fold (Range0 (Len params)), ((wx, emptyEnv, emptyEnv)), \|((wb, be, me)), i|
