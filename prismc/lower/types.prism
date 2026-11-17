@@ -203,11 +203,35 @@ fn RustTyOfParams lx, ps = match ps:
 # A packed value (`any`, Type System ch. 5), written out or through an alias
 # (`SeatKey d = any (r: Role d): ..`), is held as `Packed`: the Rust type names nothing
 # inside it either (`ExistsErased`; doc-sk-existential-seat-key).
+# (a field of another declared type mentions the parameter only through that type's own
+# parameters its Rust type keeps: `Ordered d`'s `[Due d]` names no `D`, since `Due d`'s
+# seat key is packed and `Due` keeps no parameter; rustc refused `Ordered<D>`, E0392,
+# doc-order-of-dues-generic-over-document)
 ParamUsed: unbounded fn Lx, TyInfo, Text -> Bool
-fn ParamUsed lx, ti, p = match ti.body:
-    BRecord fs: Fold fs, False, \|seen, ((ignore, ft))| seen or (Mentions (AssocErased (ExistsErased lx, ft, 0)), p)
-    BChoice cs: Fold cs, False, \|seen, ((ignore, ats))| seen or Fold ats, False, \|s2, at| s2 or (Mentions (AssocErased (ExistsErased lx, at, 0)), p)
+fn ParamUsed lx, ti, p = ParamUsedAt lx, ti, p, 8
+
+ParamUsedAt: unbounded fn Lx, TyInfo, Text, Nat -> Bool
+fn ParamUsedAt lx, ti, p, fuel = match ti.body:
+    BRecord fs: Fold fs, False, \|seen, ((ignore, ft))| seen or (KeptMentions lx, (AssocErased (ExistsErased lx, ft, 0)), p, fuel)
+    BChoice cs: Fold cs, False, \|seen, ((ignore, ats))| seen or Fold ats, False, \|s2, at| s2 or (KeptMentions lx, (AssocErased (ExistsErased lx, at, 0)), p, fuel)
     otherwise: True
+
+# Whether a type names the variable `p` where its Rust type keeps it.
+KeptMentions: unbounded fn Lx, Ty, Text, Nat -> Bool
+fn KeptMentions lx, t, p, fuel = match t:
+    TyCon c, args: match ((lx.g.types[c], fuel -? 1)):
+        (((? ti), (? less))): match ti.body:
+            BRecord ignore: Fold (Range0 (Len args)), False, \|f, i| f or ((KeptMentions lx, (Or args[i], TyErr), p, less) and ((ParamUsedAt lx, ti, (Or ti.params[i], ""), less) or PhantomParam lx, ti, (Or ti.params[i], "")))
+            BChoice ignore: Fold (Range0 (Len args)), False, \|f, i| f or ((KeptMentions lx, (Or args[i], TyErr), p, less) and ((ParamUsedAt lx, ti, (Or ti.params[i], ""), less) or PhantomParam lx, ti, (Or ti.params[i], "")))
+            otherwise: Mentions t, p
+        otherwise: Fold args, False, \|f, x| f or KeptMentions lx, x, p, fuel
+    TyArray e: KeptMentions lx, e, p, fuel
+    TyMap k, v: (KeptMentions lx, k, p, fuel) or KeptMentions lx, v, p, fuel
+    TyTuple ts: Fold ts, False, \|f, x| f or KeptMentions lx, x, p, fuel
+    TySig ignore, i: KeptMentions lx, i, p, fuel
+    TyAt i, ignore: KeptMentions lx, i, p, fuel
+    TyFn ignore, ps, r, prompts: Fold ps, (KeptMentions lx, r, p, fuel), \|f, x| f or KeptMentions lx, x, p, fuel
+    otherwise: Mentions t, p
 
 # Whether the Rust type keeps a declared type's parameter: one a field holds
 # (`ParamUsed`), or one no field holds that an impl's head binds, so the impl can answer by
