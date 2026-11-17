@@ -65,6 +65,10 @@ fn DynamicExpr wx, menv, e:
             otherwise: match menv.names["{SNameKey n}#lambdatext"]:
                 ? (BnWidget lambda, ignore, lmenv, ignore): UnionReads acc, (ReadsOfText lmenv, lambda)
                 otherwise: acc
+        # a `$` field of a plain value the node follows (`FieldDynamicsAt`)
+        EField ignore, ignore2, ignore3: match menv.names["#field{SpanKey x.span}"]:
+            ? (BnDyn ignore4, rs, ignore5): UnionReads acc, rs
+            otherwise: acc
         otherwise: acc
     ((Own v, reads))
 
@@ -106,7 +110,14 @@ fn EventRef wx, menv, e:
             ? (BnEv r, ignore):
                 if r.owner == wx.node: ((r, wx))
                 else: NeverEvent (Crossed wx, "the event `{SNameKey n}`, of node `{r.owner}`,"), t
+            # an event value held by a local (a parameter given one): heard through its port
+            ? (BnLocal ignore, ignore2, (OutEvent ignore3)): EventObjectRef wx, menv, e, t
             otherwise: NeverEvent wx, t
+        # an `!` field of a plain value (`results.!reset`, a record a widget gave back):
+        # the event value the field holds, heard through its port, as an event a function
+        # gave whole is (bundle-part-in-a-dynamic-record-field-read-by-another-widget, whose
+        # hold q11 never stepped)
+        EField r, sigils, ignore if HasPrefix sigils, "!": EventObjectRef wx, menv, e, t
         EBinary "<|", l, r:
             let ((lr, w1)) = EventRef wx, menv, l
             let ((rr, w2)) = EventRef w1, menv, r

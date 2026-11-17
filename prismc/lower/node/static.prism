@@ -1058,8 +1058,54 @@ fn WholeArgsAt wx, benv, menv, e, whole, late:
     let ((wxw, be, me)) = Fold texts, ((wxw0, be0, me0)), \|((w, b1, m1)), ((y, cbenv, cmenv))|
         let ((w2, cb2, cm2)) = WholeArgsLive w, cbenv, cmenv, y, True, late
         ((w2, (WithWholes b1, cb2), (WithWholes m1, cm2)))
-    if unbuilt: (((update wxw:
-        &_.lambdasLate <= True), be, me)) else: ((wxw, be, me))
+    let ((wxf, bef, mef)) = FieldDynamicsAt wxw, be, me, e
+    if unbuilt: (((update wxf:
+        &_.lambdasLate <= True), bef, mef)) else: ((wxf, bef, mef))
+
+# A `$` field of a plain value the line reads (`results.$count`, a record a widget gave
+# back, its field a live dynamic of that widget's): the node follows the field's
+# dynamic, kept from the build on as a generation's dynamic result is (`KeptDyn`), and
+# what reads the field reads it, so each move of the dynamic marks the readers (Type
+# System ch. 1, field sigils; bundle-part-in-a-dynamic-record-field-read-by-another-widget,
+# whose label q11 never moved). Bound under `#field{span}` for `DynamicExpr`.
+FieldDynamicsAt: unbounded fn Wx, Env, Env, Expr -> ((Wx, Env, Env))
+fn FieldDynamicsAt wx, benv, menv, e = Fold (ExprsIn e), ((wx, benv, menv)), \|((w, be, me)), x| match x.kind:
+    EField r, sigils, ignore if (HasPrefix sigils, "$") and (not (HasKey me.names, "#field{SpanKey x.span}")) and (LayerOf (TypeAt w.lx, r.span)) != LyDyn and IsPlainLocal me, r: FieldDynamic w, be, me, x
+    otherwise: ((w, be, me))
+
+# Whether an expression names a local of the block held as a plain value.
+IsPlainLocal: fn Env, Expr -> Bool
+fn IsPlainLocal env, r = match r.kind:
+    EName n: match env.names[SNameKey n]:
+        ? (BnLocal ignore, ignore, ignore): True
+        otherwise: False
+    EGroup x: IsPlainLocal env, x
+    otherwise: False
+
+FieldDynamic: unbounded fn Wx, Env, Env, Expr -> ((Wx, Env, Env))
+fn FieldDynamic wx, benv, menv, x:
+    let lx = wx.lx
+    let ((name, w1)) = FreshName wx, "field"
+    let t = OutTyOf lx, (Peel (TypeAt lx, x.span))
+    let follow = "{name}_follow"
+    let lxWhole = update lx:
+        &_.whole <= True
+    let givenDyn = MethDef(name="{name}_given", recv=RecvRef, params=[[]], cx=CxRef, ret=(OutDyn t), body=[[]], tail=(Own (ValueOf lxWhole, menv, x)), doc="`{SrcText lx, lx.file, x.span}`, a field's live dynamic, as the field holds it.")
+    let moved = XPath (RefChild (SiteRef lx, wx.node), "{name}_result_moved")
+    let movedAbove = XPath (RefChild (SiteRef lx, wx.node), "{name}_result_moved_above")
+    let wired = DoScope [[(DoLet (PaBind "given"), (XMethod (XVar "node"), "{name}_given", [[XCx]])), (DoExpr (XMethod (XField (XVar "node"), follow), "follow_above", [[(XRef (XField (XVar "given"), "updates")), (XRef (XVar "node")), moved, movedAbove]])), (DoAssign (XDeref (XMethod (XField (XVar "node"), "{name}_res"), "borrow_mut", [[]])), (XCtor (RefRuntime "std::Some"), [[(XVar "given")]]))]]
+    let w2 = update w1:
+        &_.taken <= Push &_.taken, follow
+        &_.fields <= Push &_.fields, ((follow, (OutNamed (RefRuntime "prism_rtl::Follow"), [[]]), "the subscription to the update event of a field's live dynamic"))
+        &_.moves <= Push &_.moves, ((follow, (XCall (RefRuntime "prism_rtl::Follow::new"), [[]])))
+        &_.getters <= Push &_.getters, givenDyn
+        &_.build <= Push &_.build, wired
+    let ((w3, res)) = KeptDyn w2, name, t, [[]]
+    match res:
+        WrDyn ex, rds, ignore:
+            let b = BnDyn ex, rds, t
+            ((w3, (Bind benv, "#field{SpanKey x.span}", b), (Bind menv, "#field{SpanKey x.span}", b)))
+        otherwise: ((w3, benv, menv))
 
 # `env` with the live dynamics `from` binds (`#whole...`).
 WithWholes: fn Env, Env -> Env
