@@ -2874,6 +2874,17 @@ fn ResultGetter wx, menv, n, ex, rds, t, benv2, menv2 = match menv.names[SNameKe
             &_.getters <= Push &_.getters, getter
             &_.dynReads <= Insert &_.dynReads, rs, rds
         ((wx2, benv2, menv2))
+    # (a name prebound to a getter that nothing wrote yet, whatever reads its prebinding
+    # noted: the getter, reading the result, its reads beside the noted ones; a host's
+    # child's result handed up as a part and taken apart again, tally's `$tellers` read
+    # through `tellers_d2` that no getter defined, rustc E0599,
+    # host-result-part-through-two-widgets-into-a-dynamic-record-field)
+    ? (BnDyn (XMethod XSelf, rs, ignore), ignore2, ignore3) if not (Fold wx.getters, False, \|f, g| f or g.name == rs) and (XMethod XSelf, rs, [[XCx]]) != ex:
+        let getter = MethDef(name=rs, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="`{SNameKey n}`, a widget's result")
+        let wx2 = update wx:
+            &_.getters <= Push &_.getters, getter
+            &_.dynReads <= Insert &_.dynReads, rs, (UnionReads (Or wx.dynReads[rs], [[]]), (Filter rds, \|rd| rd != OwnRead rs))
+        ((wx2, benv2, menv2))
     otherwise: ((wx, benv2, menv2))
 
 # A widget's plain result (`@ door` last in its block) bound by the line's pattern: the
