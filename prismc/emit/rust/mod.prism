@@ -231,7 +231,10 @@ fn Expression x = match x:
     XVec xs: "vec![{Args xs}]"
     XText t: "crate::prelude::Text::lit(\"{Escape t}\")"
     XFormat parts: Format parts
-    XMatch s, arms, fallback, ignore: MatchBlock (Expression s), (Arms arms, fallback)
+    # (every `match` ends on an arm no value reaches: a choice that keeps a parameter in a
+    # hidden case, `TyDef.phantoms`, has a case no Prism arm names, which rustc counts
+    # behind a reference; the crate allows unreachable patterns)
+    XMatch s, arms, fallback, ignore: MatchBlock (Expression s), (Arms arms, True)
     XChain label, s, arms, ignore: Chain (Label label), s, arms
     XIf c, t, e: IfExpression c, t, e
     XBlock [[]], e: Expression e

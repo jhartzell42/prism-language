@@ -375,6 +375,10 @@ type TyDef = record:
     show: Shown
     pod: Bool
     doc: Text
+    # The parameters no field holds that Rust keeps all the same, since an impl's head
+    # binds them (`Tallied o`, whose `^Document` impl answers by `o`'s trait): a choice
+    # holds them in a hidden case no value takes, `__Phantom(PhantomData<..>, Never)`.
+    phantoms: [Text]
 derive ^Eq, ^Debug
 
 type TyShape = choice:

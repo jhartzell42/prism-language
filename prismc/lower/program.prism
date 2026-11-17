@@ -1339,9 +1339,10 @@ fn TyDefs lx, ti:
     let derives = Fold ti.derives, [[]], \|acc, dn| match ?ResolveTrait lx.g, ti.home, (SplitOn dn, "."):
         ? cls: Push acc, cls
         nil: acc
-    let params = Each (Filter ti.params, \|p| ParamUsed lx, ti, p), \|p| Camel p
+    let params = Each (Filter ti.params, \|p| RustParam lx, ti, p), \|p| Camel p
+    let phantoms = Each (Filter ti.params, \|p| (PhantomParam lx, ti, p) and not (ParamUsed lx, ti, p)), \|p| Camel p
     let bare = BareName ti.name
-    let Mk = \|shape, cases| TyDef(name=(Camel bare), prism=bare, params=params, keyed=(Each (KeyedParameters lx, ti.name), \|q| Camel q), shape=shape, cases=cases, eq=(HasText derives, "Prelude.Eq"), ord=(HasText derives, "Prelude.Ord"), show=(if HasOwnShow lx, ti.name: ShownOwn else: if HasText derives, "Prelude.Debug": ShownDerived else: NotShown), pod=((TyPodable lx, (TyCon ti.name, [[]]), [[]]) and Fold cases, True, \|ok, c| ok and Fold c.fields, True, \|ok2, ((ignore, ft))| ok2 and Podable ft), doc=(TypeDoc lx, ti))
+    let Mk = \|shape, cases| TyDef(name=(Camel bare), prism=bare, params=params, keyed=(Each (KeyedParameters lx, ti.name), \|q| Camel q), shape=shape, cases=cases, eq=(HasText derives, "Prelude.Eq"), ord=(HasText derives, "Prelude.Ord"), show=(if HasOwnShow lx, ti.name: ShownOwn else: if HasText derives, "Prelude.Debug": ShownDerived else: NotShown), pod=((TyPodable lx, (TyCon ti.name, [[]]), [[]]) and Fold cases, True, \|ok, c| ok and Fold c.fields, True, \|ok2, ((ignore, ft))| ok2 and Podable ft), doc=(TypeDoc lx, ti), phantoms=phantoms)
     match ti.body:
         BRecord fs:
             let fields = Each (Range0 (Len fs)), \|i|
@@ -1361,7 +1362,7 @@ fn TyDefs lx, ti:
                 otherwise: ShapeChoice
             # a choice whose variants carry no payload is also a kind (Jimmy's ruling PK):
             # each case a unit struct, the case as a type
-            let promoted = if (Len cases) > 0 and Fold cases, True, \|all, ((ignore, ats))| all and (Len ats) == 0: Each cases, \|((cn, ignore))| ItType (TyDef(name=(PromotedName ti.name, (QualKey ti.home, cn)), prism=cn, params=[[]], keyed=[[]], shape=ShapeUnit, cases=[[CaseDef(name=(PromotedName ti.name, (QualKey ti.home, cn)), prism=cn, fields=[[]], labels=[[]])]], eq=True, ord=True, show=ShownDerived, pod=True, doc="/// `{cn}` of `{bare}` as a type.")) else: [[]]
+            let promoted = if (Len cases) > 0 and Fold cases, True, \|all, ((ignore, ats))| all and (Len ats) == 0: Each cases, \|((cn, ignore))| ItType (TyDef(name=(PromotedName ti.name, (QualKey ti.home, cn)), prism=cn, params=[[]], keyed=[[]], shape=ShapeUnit, cases=[[CaseDef(name=(PromotedName ti.name, (QualKey ti.home, cn)), prism=cn, fields=[[]], labels=[[]])]], eq=True, ord=True, show=ShownDerived, pod=True, doc="/// `{cn}` of `{bare}` as a type.", phantoms=[[]])) else: [[]]
             Push promoted, (ItType (Mk shape, defs))
         BRowKind: if ti.name == "Prelude.Fault": [[]] else: [[ItRow (RowDefOf lx, ti)]]
         otherwise: [[]]
@@ -1492,7 +1493,7 @@ DescDefOf: unbounded fn Lx, TagInfo -> TyDef
 fn DescDefOf lx, tg:
     let name = DescStructOf tg
     let fields = Each tg.fields, \|((fname, ft))| (((FieldSpell tg.home, fname, ft), (DescFieldTy lx, ft)))
-    TyDef(name=name, prism=name, params=[[]], keyed=[[]], shape=ShapeRecord, cases=[[CaseDef(name=name, prism=name, fields=fields, labels=(Each tg.fields, \|((fname, ignore))| fname))]], eq=False, ord=False, show=NotShown, pod=False, doc="The description of `{tg.name}`: an element applied as a plain value, its fields as given.")
+    TyDef(name=name, prism=name, params=[[]], keyed=[[]], shape=ShapeRecord, cases=[[CaseDef(name=name, prism=name, fields=fields, labels=(Each tg.fields, \|((fname, ignore))| fname))]], eq=False, ord=False, show=NotShown, pod=False, doc="The description of `{tg.name}`: an element applied as a plain value, its fields as given.", phantoms=[[]])
 
 DescFieldTy: unbounded fn Lx, Ty -> OutTy
 fn DescFieldTy lx, ft = match LayerOf ft:

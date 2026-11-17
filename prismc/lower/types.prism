@@ -209,6 +209,31 @@ fn ParamUsed lx, ti, p = match ti.body:
     BChoice cs: Fold cs, False, \|seen, ((ignore, ats))| seen or Fold ats, False, \|s2, at| s2 or (Mentions (AssocErased (ExistsErased lx, at, 0)), p)
     otherwise: True
 
+# Whether the Rust type keeps a declared type's parameter: one a field holds
+# (`ParamUsed`), or one no field holds that an impl's head binds, so the impl can answer by
+# it (`PhantomParam`).
+RustParam: unbounded fn Lx, TyInfo, Text -> Bool
+fn RustParam lx, ti, p = (ParamUsed lx, ti, p) or PhantomParam lx, ti, p
+
+# A choice's parameter that no field holds and that an impl's head binds to a variable of
+# its own (`impl ^Document (Tallied o) where o: ^TallyOrder`): Rust keeps it, in a hidden
+# case (`TyDef.phantoms`), or the impl could not answer by it (tally's `Order due =
+# OrderOf due`, rustc E0790, doc-order-method-through-a-parameter-trait). A kinded
+# parameter is a variant, held as a number where it is read, never a Rust type.
+PhantomParam: unbounded fn Lx, TyInfo, Text -> Bool
+fn PhantomParam lx, ti, p = match ti.body:
+    BChoice ignore: (not (HasText (Each ti.kinds, \|((k, ignore2))| k), p)) and match ?IndexOfText ti.params, p:
+        ? at: Fold (Values lx.g.impls), False, \|f, ims| f or Fold ims, False, \|f2, im| f2 or match im.head:
+            TyCon hc, hargs if hc == ti.name: match hargs[at]:
+                ? (TyQ ignore3): True
+                otherwise: False
+            otherwise: False
+        nil: False
+    otherwise: False
+
+?IndexOfText: fn [Text], Text -> ?Nat
+fn ?IndexOfText xs, x = Fold (Range0 (Len xs)), nil, \|?found, i| if ?found != nil: ?found else: if (Or xs[i], "") == x: ? i else: nil
+
 # A type with each packed value in it, written out or through an alias, as the variable
 # an associated type at a variable is read as (`assocErasedName`): what its Rust type
 # names. `depth` stops an alias that names itself.
@@ -238,7 +263,7 @@ fn NamedTy lx, n, args = match lx.g.types[n]:
         BRowKind: if n == "Prelude.Fault": OutPod else: OutNamed (RefIn lx, ti.home, (TypeItemName n)), [[]]
         # a parameter no field names (`Quantity u`, a unit's case) is the checker's alone:
         # Rust has no unused type parameter, so the Rust type leaves it out
-        otherwise: OutNamed (RefIn lx, ti.home, (TypeItemName n)), (Fold (Range0 (Len args)), [[]], \|acc, i| if ParamUsed lx, ti, (Or ti.params[i], ""): Push acc, (Or args[i], OutUnit) else: acc)
+        otherwise: OutNamed (RefIn lx, ti.home, (TypeItemName n)), (Fold (Range0 (Len args)), [[]], \|acc, i| if RustParam lx, ti, (Or ti.params[i], ""): Push acc, (Or args[i], OutUnit) else: acc)
     nil: if HasKey lx.g.families, n: OutPod else: InternalBugType "the type `{n}`, which the checker did not declare"
 
 # The Rust unit struct of a choice's case as a type (Jimmy's ruling PK): `Unit`'s
