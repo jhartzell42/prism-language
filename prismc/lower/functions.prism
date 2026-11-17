@@ -141,14 +141,49 @@ fn ClausesBody lx, env, clauses, names, ptys, Body, label, t:
             otherwise: XTuple (Each scrutIx, \|i| XVar (Or (Each names, \|((n, ignore))| n)[i], "arg"))
         let arms = Each (Range0 (Len clauses)), \|ci|
             let c = Or clauses[ci], dummyClause
-            let pos = Each scrutIx, \|i| RustPat lx, (Or c.params[i], dummyPat), (Or ptys[i], TyErr), ByRef, "{label}{ci}_{i}"
-            let pa = match pos:
-                [[o]]: o.pa
-                otherwise: PaTuple (Each pos, \|o| o.pa)
-            let conds = Fold pos, [[]], \|acc, o| Append acc, o.conds
+            # (a clause that fixes a kinded variable by its `Fixed<<Variant>>` pattern reads
+            # its body at that variant, `FixedClauseLx`: a parameter of an associated type at
+            # that variable, plain data in the signature, is read back at the variant's own
+            # type, its pattern matched against the value recoded, after every other
+            # condition, the variant's among them; tally's `Step`, c6's `Stepping`, c8's
+            # derived `Step`)
+            let lxc = FixedClauseLx lx, c.params, ptys
+            let Recoded = \|i| (lxc.subst != lx.subst) and (HasOpenIndexedAssoc (Peel (Or ptys[i], TyErr))) and not (HasOpenIndexedAssoc (SubstTy lxc, (Peel (Or ptys[i], TyErr))))
+            let RecodeAt = \|i, x| XCallAt (HelperRef "recode"), [[(OutTyOf lxc, (SubstTy lxc, (Peel (Or ptys[i], TyErr))))]], [[x]]
+            let pos = Each scrutIx, \|i| if Recoded i: RustPat lxc, (Or c.params[i], dummyPat), (SubstTy lxc, (Peel (Or ptys[i], TyErr))), Owned, "{label}{ci}_{i}" else: RustPat lx, (Or c.params[i], dummyPat), (Or ptys[i], TyErr), ByRef, "{label}{ci}_{i}"
+            let pas = Each (Range0 (Len scrutIx)), \|k| if Recoded (Or scrutIx[k], 0): PaBind "{label}{ci}_{Or scrutIx[k], 0}_pod" else: (Or pos[k], PatOnly PaWild).pa
+            let pa = match pas:
+                [[one]]: one
+                otherwise: PaTuple pas
+            let plainConds = Fold (Range0 (Len scrutIx)), [[]], \|acc, k| if Recoded (Or scrutIx[k], 0): acc else: Append acc, (Or pos[k], PatOnly PaWild).conds
+            let recodedConds = Fold (Range0 (Len scrutIx)), [[]], \|acc, k| if Recoded (Or scrutIx[k], 0): Append (Push acc, (CcLet (Or pos[k], PatOnly PaWild).pa, (RecodeAt (Or scrutIx[k], 0), (XVar "{label}{ci}_{Or scrutIx[k], 0}_pod")))), (Or pos[k], PatOnly PaWild).conds else: acc
+            let conds = Append plainConds, recodedConds
             let binds = Fold pos, [[]], \|acc, o| Append acc, o.binds
-            XArm(pat=pa, conds=conds, body=(Body lx, (BindAll env1, binds), c.body))
+            # (a parameter bound by name alone, of such a type, read back at the variant's)
+            let rebound = Fold (Range0 (Len names)), [[]], \|acc, i| match names[i]:
+                ? ((rs, False)): if Recoded i: Push acc, (((PlainBinder lx, (Or c.params[i], dummyPat)), (BnLocal (RecodeAt i, (XVar rs)), Owned, (OutTyOf lxc, (SubstTy lxc, (Peel (Or ptys[i], TyErr))))))) else: acc
+                otherwise: acc
+            let value = Body lxc, (BindAll (BindAll env1, rebound), binds), c.body
+            # (and a result of such a type given back as the signature holds it, plain data)
+            let answered = if lxc.subst != lx.subst and t == OutPod: XCallAt (HelperRef "recode"), [[OutPod]], [[XRef value]] else: value
+            XArm(pat=pa, conds=conds, body=answered)
         Own (ArmsValue scrut, arms, "'{label}", t)
+
+# A clause's lowering with each kinded variable its `Fixed<<Variant>>` parameter pattern
+# fixes given that variant (ruling PK, ruling VO), as an instantiation gives it.
+FixedClauseLx: unbounded fn Lx, [Pattern], [Ty] -> Lx
+fn FixedClauseLx lx, params, ptys = Fold (Range0 (Len params)), lx, \|l, i| match (((Or params[i], dummyPat).kind, Peel (Or ptys[i], TyErr))):
+    (((PTypeArgs ignore, tys), (TyCon "Prelude.Fixed", [[(TyQ q)]]))): FixedTo l, q, tys
+    (((PTypeArgs ignore, tys), (TyCon "Prelude.Fixed", [[(TyRigid q)]]))): FixedTo l, q, tys
+    otherwise: l
+
+FixedTo: unbounded fn Lx, Text, [Type] -> Lx
+fn FixedTo lx, q, tys = match (Or tys[0], Type(kind=TAbsent, span=Range(start=0, end=0, origin=InSource))).kind:
+    TName n, [[]]: match ?RoleConstructor lx.g, lx.home, (Dotted n.path):
+        ? k: update lx:
+            &_.subst <= Insert &_.subst, q, (TyRole k)
+        nil: lx
+    otherwise: lx
 
 let dummyClause = FnClause(name=(DefOp "", Range(start=0, end=0, origin=InSource)), params=[[]], body=(BodyExpr (Expr(kind=EError, span=Range(start=0, end=0, origin=InSource)))), span=Range(start=0, end=0, origin=InSource))
 

@@ -754,8 +754,13 @@ fn AssocOut lx, tr, n, a0, indices0:
     let indices = Each indices0, \|i| SubstTy lx, i
     AssocOutAt lx, tr, n, a, indices
 
+# (an associated type with indices at a variable is plain data even where an equation
+# for every index would decide it, `type SeatId r = Text`: the trait's signature holds it
+# so, and an impl's method must take what the trait's gives,
+# doc-role-method-impl-with-one-equation-for-every-role's E0053; a clause that fixes the
+# index reads it back at its type, `FixedClauseLx`)
 AssocOutAt: unbounded fn Lx, Text, Text, Ty, [Ty] -> OutTy
-fn AssocOutAt lx, tr, n, a, indices = match ?ImplAssoc lx.g, tr, n, a, indices:
+fn AssocOutAt lx, tr, n, a, indices = if (Len indices) > 0 and HasOpenIndexedAssoc (TyAssoc tr, n, a, indices): OutPod else: match ?ImplAssoc lx.g, tr, n, a, indices:
     ? t: OutTyOf lx, t
     nil: match lx.g.traits[tr]:
         ? info: if (Len indices) == 0: OutAssoc (PathIn lx, info.home, (TraitName info.name)), (Camel n), (OutTyOf lx, a)
