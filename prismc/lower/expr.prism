@@ -3064,12 +3064,48 @@ fn MethodCall lx, env, v, args, span, cspan, t:
         # Rust may not learn it from the arguments even where Prism's types name it, a
         # parameter only a packed or erased value holds, `Order (Each staying, ..)` over
         # `[Due d]`, tally's E0790, doc-order-method-through-a-parameter-trait)
+        # (asked of an associated type at an index the lowering does not know, a value held
+        # as plain data, through a trait whose `where` bounds that associated type at every
+        # index: that trait's dispatch method, given the index's variant, `EveryIndexBounds`;
+        # tally's `Encode !requests` of a `Request d r`,
+        # doc-role-indexed-types-bounded-for-every-role-encoded)
+        let ?selfTy = match ?ParamMatch (Unrigid v.scheme.ty), (TypeAt lx, cspan), {{}}:
+            ? found: match found[tr.param]:
+                ? x: ? (SubstTy lx, x)
+                nil: nil
+            nil: nil
+        match ?DispatchAt lx, cls, ?selfTy:
+            ? ((dtr, n, a, indices)): VlOwned (XCallSelf (RefIn lx, dtr.home, (TraitName dtr.name)), (DispatchName lx, n, v.qk), (OutTyOf lx, a), (Append (Each indices, \|x| VariantArg lx, x), (ArgsFor lx, env, v, args))), t
+            nil: MethodCallAtSelf lx, env, v, args, span, cspan, t, cls, tr, mname, m, ?atParameter
+
+MethodCallAtSelf: unbounded fn Lx, Env, ValInfo, [Arg], Range, Range, OutTy, Text, TraitInfo, Text, Text, ?OutTy -> Vl
+fn MethodCallAtSelf lx, env, v, args, span, cspan, t, cls, tr, mname, m, ?atParameter:
         match ?EitherSelf (?EitherSelf (?SelfAt lx, span, cls), (?SelfAt lx, cspan, cls)), ?atParameter:
             ? self: VlOwned (XCallSelf (RefIn lx, tr.home, (TraitName cls)), mname, self, (ArgsFor lx, env, v, args)), t
             nil: if IsResultOnly lx, v.qk, tr.param: VlOwned (InternalBug "a call of `{m}` at a type the checker did not record"), t
             else:
                 let path = RefIn lx, tr.home, "{TraitName cls}::{mname}"
                 VlOwned (XCall path, (ArgsFor lx, env, v, args)), t
+
+# The trait whose `where` bounds an associated type at every index by `cls`, when the
+# method's type there is that associated type at an index the lowering does not know:
+# the trait, the associated type's name, its argument and its indices.
+?DispatchAt: unbounded fn Lx, Text, ?Ty -> ?((TraitInfo, Text, Ty, [Ty]))
+fn ?DispatchAt lx, cls, ?selfTy = match ?selfTy:
+    ? (TyAssoc tr2, n, a, indices): if not (HasOpenIndexedAssoc (TyAssoc tr2, n, a, indices)): nil else: Fold (Values lx.g.traits), nil, \|?found, dtr| if ?found != nil: ?found else: if Fold (EveryIndexBounds dtr), False, \|f, ((t2, n2, c, ignore))| f or (t2 == tr2 and n2 == n and c == cls): ? ((dtr, n, a, indices)) else: nil
+    otherwise: nil
+
+# An index's variant as a dispatch method takes it: by reference.
+VariantArg: fn Lx, Ty -> Ex
+fn VariantArg lx, x = match x:
+    TyRole k: XRef (VariantNumberOf lx, k)
+    TyRigid r: match ?KindedNumber lx, r:
+        ? ((ex, ignore)): XRef ex
+        nil: InternalBug "the index `{r}` of an associated type asked a method, with no variant here"
+    TyQ r: match ?KindedNumber lx, r:
+        ? ((ex, ignore)): XRef ex
+        nil: InternalBug "the index `{r}` of an associated type asked a method, with no variant here"
+    otherwise: InternalBug "an index of an associated type asked a method that is no variant or kinded variable"
 
 IsMethodKey: fn Lx, Text -> Bool
 fn IsMethodKey lx, qk = match lx.g.vals[qk]:

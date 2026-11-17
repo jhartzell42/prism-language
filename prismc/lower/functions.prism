@@ -503,7 +503,95 @@ fn TraitDefOf lx0, tr:
         let fd = FnDefIn lx, (if defaultQk == "": mq else: defaultQk), mq, (if (Len clauses) == 0: [[dummyClause]] else: clauses), sc
         update fd:
             &_.public <= (Len clauses) > 0
-    TraitDef(supers=(Fold tr.supers, [[]], \|acc, c| Append acc, (BoundOf lx, c)), wheres=(Each (Filter tr.headBounds, \|((h, ignore))| IsPlainProjection h), \|((h, c))| (((OutTyOf lx, (SelfIn h, tr.param)), (BoundOf lx, c)))), name=(TraitName tr.name), resultOnly=(ResultOnlyNames lx, tr), assocs=(Each (PlainAssocs tr), \|a| Camel a), podAssocs=(Each (Filter (PlainAssocs tr), \|a| AssocHeldInAField lx, tr.name, a), \|a| Camel a), methods=methods, defaults=tr.defaults, doc=(TypeDoc lx, (TyInfo(rowParams=[[]], name=tr.name, home=tr.home, params=[[]], kinds=[[]], body=BOpaque, derives=[[]], file=tr.file, span=tr.span))))
+    TraitDef(supers=(Fold tr.supers, [[]], \|acc, c| Append acc, (BoundOf lx, c)), wheres=(Each (Filter tr.headBounds, \|((h, ignore))| IsPlainProjection h), \|((h, c))| (((OutTyOf lx, (SelfIn h, tr.param)), (BoundOf lx, c)))), name=(TraitName tr.name), resultOnly=(ResultOnlyNames lx, tr), assocs=(Each (PlainAssocs tr), \|a| Camel a), podAssocs=(Each (Filter (PlainAssocs tr), \|a| AssocHeldInAField lx, tr.name, a), \|a| Camel a), methods=(Append methods, (DispatchSignatures lx0, tr)), defaults=tr.defaults, doc=(TypeDoc lx, (TyInfo(rowParams=[[]], name=tr.name, home=tr.home, params=[[]], kinds=[[]], body=BOpaque, derives=[[]], file=tr.file, span=tr.span))))
+
+# A trait's `where`s on an associated type at every index, `Request d _:
+# ^SerializableValue` (Type System ch. 6): Rust has no trait indexed by a role, so the
+# associated type is plain data where its index is not known (`AssocOutAt`), and each
+# method of the bound's trait asked of such a value is a method of this trait's own
+# (`DispatchName`) that takes the index's variant and the value as plain data; each impl
+# answers it at the type its equation gives that variant (`DispatchMethods`). Each:
+# the associated type's trait and name, the bound's trait, and the number of indices.
+EveryIndexBounds: fn TraitInfo -> [((Text, Text, Text, Nat))]
+fn EveryIndexBounds tr = Fold tr.headBounds, [[]], \|acc, ((h, c))| match h:
+    TyAssoc tr2, n, a, indices: if (IsParamTy a, tr.param) and (Len indices) > 0 and Fold indices, True, \|all, x| all and x == TyEvery: Push acc, ((tr2, n, c, (Len indices))) else: acc
+    otherwise: acc
+
+IsParamTy: fn Ty, Text -> Bool
+fn IsParamTy (TyQ q), p = q == p
+fn IsParamTy (TyRigid q), p = q == p
+fn IsParamTy ignore, p = False
+
+# The dispatch method's name: the associated type's and the method's, `request_encode_f`.
+DispatchName: fn Lx, Text, Text -> Text
+fn DispatchName lx, n, mq = "{Snake n}_{Or lx.rsNames[mq], (Snake (BareName mq))}"
+
+# The methods of a bound's trait a dispatch answers: its plain ones.
+DispatchedMethods: fn Lx, Text -> [Text]
+fn DispatchedMethods lx, c = match lx.g.traits[c]:
+    ? ctr: Filter ctr.methods, \|mq| not (HasPrefix (BareName mq), "@")
+    nil: [[]]
+
+# A dispatch method's parameters and result: the variants, then the method's own with its
+# trait's parameter as plain data.
+DispatchShape: unbounded fn Lx, Text, Text, Nat -> (([((Text, OutTy))], OutTy))
+fn DispatchShape lx, c, mq, k:
+    let ctr = Or lx.g.traits[c], dummyTraitInfo
+    let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
+    let ((ptys, res)) = SignatureTys v.scheme
+    let Erased = \|t| AssocPodOut (OutTyOf lx, (Instantiated (Peel t), [[ctr.param]], [[(TyQ assocErasedName)]]))
+    let variants = Each (Range0 k), \|i| (("variant{i}", (OutRef OutNat)))
+    let params = Each (Range0 (Len ptys)), \|i| (("arg{i}", (OutRef (Erased (Or ptys[i], TyErr)))))
+    (((Append variants, params), (Erased res)))
+
+DispatchSignatures: unbounded fn Lx, TraitInfo -> [FnDef]
+fn DispatchSignatures lx, tr = Fold (EveryIndexBounds tr), [[]], \|acc, ((tr2, n, c, k))| Fold (DispatchedMethods lx, c), acc, \|acc2, mq|
+    let ((params, ret)) = DispatchShape lx, c, mq, k
+    Push acc2, FnDef(name=(DispatchName lx, n, mq), generics=[[]], params=params, ret=ret, body=XUnit, doc="", public=False, wheres=[[]])
+
+# An impl's dispatch methods (`EveryIndexBounds`): the variant chooses the type the impl's
+# equation for the associated type gives it, and the method of the bound's trait is asked
+# at that type, the value recoded to it and its result back to plain data.
+DispatchMethods: unbounded fn Lx, ImplInfo, TraitInfo -> [FnDef]
+fn DispatchMethods lx, im, tr = Fold (EveryIndexBounds tr), [[]], \|acc, ((tr2, n, c, k))| Fold (DispatchedMethods lx, c), acc, \|acc2, mq|
+    let ((params, ret)) = DispatchShape lx, c, mq, k
+    let ctr = Or lx.g.traits[c], dummyTraitInfo
+    let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
+    let ((ptys, res)) = SignatureTys v.scheme
+    let mname = Or lx.rsNames[mq], (Snake (BareName mq))
+    let AtType = \|t|
+        let args = Each (Range0 (Len ptys)), \|i|
+            let pt = Peel (Or ptys[i], TyErr)
+            let concrete = OutTyOf lx, (Instantiated pt, [[ctr.param]], [[t]])
+            if (Instantiated pt, [[ctr.param]], [[TyErr]]) == pt: XVar "arg{i}" else: XRef (XCallAt (HelperRef "recode"), [[concrete]], [[(XVar "arg{i}")]])
+        let call = XCallSelf (RefIn lx, ctr.home, (TraitName c)), mname, (OutTyOf lx, t), args
+        if (Instantiated (Peel res), [[ctr.param]], [[TyErr]]) == (Peel res): call else: XCallAt (HelperRef "recode"), [[ret]], [[(XRef call)]]
+    let equations = Filter (ImplEquationsAt lx, tr2, n, im.head), \|((ignore, ignore2))| True
+    let body = match equations:
+        [[(("", t))]]: AtType t
+        otherwise: Fold equations, (XUnreachable), \|rest, ((kq, t))| if kq == "": AtType t else: XIf (XBin OpEq, (XDeref (XVar "variant0")), (VariantNumberOfKey lx, kq)), (AtType t), rest
+    Push acc2, FnDef(name=(DispatchName lx, n, mq), generics=[[]], params=params, ret=ret, body=(if k > 1: Refusal "an associated type with several indices bounded at every index: its dispatch is not written yet" else: body), doc="", public=True, wheres=[[]])
+
+# The equations an impl of `tr2` at a head gives the associated type `n`: each role
+# constructor's (its key) with its type, or one for every role ("").
+ImplEquationsAt: unbounded fn Lx, Text, Text, Ty -> [((Text, Ty))]
+fn ImplEquationsAt lx, tr2, n, head = match head:
+    TyCon hc, hargs: Fold (Or lx.g.impls[tr2], [[]]), [[]], \|acc, im| if (Len acc) > 0: acc else: match im.head:
+        TyCon c, cargs if c == hc and (Len cargs) == (Len hargs):
+            let params = Each cargs, \|h| match h:
+                TyQ q: q
+                otherwise: ""
+            Fold im.indexed, [[]], \|a2, e| if e.name != n: a2 else: match e.indices[0]:
+                ? (IndexRole k): Push a2, ((k, (Instantiated e.value, params, hargs)))
+                ? (IndexVar ignore): Push a2, (("", (Instantiated e.value, params, hargs)))
+                otherwise: a2
+        otherwise: acc
+    otherwise: [[]]
+
+VariantNumberOfKey: fn Lx, Text -> Ex
+fn VariantNumberOfKey lx, k = match lx.g.ctors[k]:
+    ? ci: Number OutNat, "{ci.index}", False
+    nil: InternalBug "the variant `{k}`, which the checker did not declare"
 
 # A projection with no indices, which Rust bounds on a trait (`Self::State: ...`); one
 # with indices is normalized at each use and asks its impls (`ImplHasHeadBound`).
@@ -611,7 +699,7 @@ fn ImplDefOf lx, im:
         let lxBelow = update lx:
             &_.subst <= Insert &_.subst, belowParam, im.head
         FnDefIn lxBelow, dq, mq, (DefaultClauses lx.g, dq), sc
-    let methods = Append methods0, fromBelow
+    let methods = Append (Append methods0, fromBelow), (DispatchMethods lx, im, tr)
     # an impl's `where` clauses bound its type parameters, as a function's do
     # (only those the Rust head names: a parameter no field of the type holds, `o` of
     # `Tallied o`, is the checker's alone, `ParamUsed`, and Rust has no unconstrained one)
