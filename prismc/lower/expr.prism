@@ -958,7 +958,10 @@ LibraryBuiltinCall: unbounded fn Lx, Text, [Ex], [Arg], Range, OutTy -> Ex
 fn LibraryBuiltinCall lx, qk, args, written, span, t = match ((lx.g.vals[qk], BareName qk)):
     ((ignore, "$GuestsOf")): GuestsOfCall lx, qk, args, written, span
     ((? v, ignore)): match v.?runtime:
-        ? path: XTyped (XCall (RefRuntime "prism_rtl::{path}"), args), t
+        # (its result bound at its type where Rust can be told it: a runtime function
+        # generic in its result alone, `seat_id_at::<T>`, learns `T` from the binding,
+        # runtime-declaration-generic-in-its-result-packed-in-an-existential)
+        ? path: if IsClosedOut t: XBlock [[(DoLet (PaTyped (PaBind "runtime_value"), t), (XCall (RefRuntime "prism_rtl::{path}"), args))]], (XVar "runtime_value") else: XTyped (XCall (RefRuntime "prism_rtl::{path}"), args), t
         nil: Refusal "`{BareName qk}`, a declaration with no body that names no runtime function"
     otherwise: Refusal "`{BareName qk}`, a declaration with no body that names no runtime function"
 
