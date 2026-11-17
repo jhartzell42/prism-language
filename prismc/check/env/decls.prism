@@ -668,7 +668,7 @@ fn IndicesShown xs = match Filter xs, \|x| not (IsIndexVar x):
 FirstEquationLine: fn G, ModInfo, ImplDecl, Text, [Ident] -> Nat
 fn FirstEquationLine g, info, i, name, params:
     let spans = Fold i.items, [[]], \|acc, it| match it:
-        TiAssocType n, ps, ignore, ignore, at if n.name == name and (Each ps, \|p| p.name) == (Each params, \|p| p.name): Push acc, at
+        TiAssocType n, ps, ignore, ignore, at, ignoreAq if n.name == name and (Each ps, \|p| p.name) == (Each params, \|p| p.name): Push acc, at
         otherwise: acc
     let src = Or g.srcs[info.file], (MkSrc "", "")
     let at = Or spans[0], Range(start=0, end=0, origin=InSource)
@@ -814,13 +814,13 @@ fn ConvTrait g, st, info, t, span:
     let ((headBounds, st2)) = TraitHeadBounds cx, st2a, t.bounds
     # a default for an associated type, `type Item = a`, read over the trait's parameter
     let ((assocDefaults, st2d)) = Fold t.items, (([[]], st2)), \|((acc, s)), it| match it:
-        TiAssocType n, params, ignore, (? v), aspan:
+        TiAssocType n, params, ignore, (? v), aspan, ignoreAq:
             if (Len params) > 0: ((acc, (Err s, "unsupported", aspan, "this checker does not implement a default for an associated type with indices")))
             else:
                 let ((vt, s2)) = ConvType cx, s, v
                 (((Push acc, ((n.name, vt))), s2))
         # a trait's own further parameters are variables, `type Request r`
-        TiAssocType n, params, ignore, nil, aspan: Fold params, ((acc, s)), \|((a2, s2)), p| if IsUpperText p.name: ((a2, (ErrFix s2, "syntax", p.span, "`{p.name}` stands where `type {n.name}` names its parameters, which are lowercase", "write a lowercase name, `type {n.name} r`; a role's own equation stands under an impl"))) else: ((a2, s2))
+        TiAssocType n, params, ignore, nil, aspan, ignoreAq: Fold params, ((acc, s)), \|((a2, s2)), p| if IsUpperText p.name: ((a2, (ErrFix s2, "syntax", p.span, "`{p.name}` stands where `type {n.name}` names its parameters, which are lowercase", "write a lowercase name, `type {n.name} r`; a role's own equation stands under an impl"))) else: ((a2, s2))
         otherwise: ((acc, s))
     let ((g3, st3, methods, defaults, assocs)) = Fold t.items, ((g, st2d, [[]], [[]], [[]])), \|((gg, s, ms, ds, assocAcc)), it| match it:
         TiSignature sg:
@@ -854,7 +854,7 @@ fn ConvTrait g, st, info, t, span:
                 let upd = update gg:
                     &_.defs <= Push &_.defs, def
                 ((upd, s, ms, (Push ds, qk), assocAcc))
-        TiAssocType n, ignore, ignore, ignore, ignore: ((gg, s, ms, ds, (Push assocAcc, n.name)))
+        TiAssocType n, ignore, ignore, ignore, ignore, ignoreAq: ((gg, s, ms, ds, (Push assocAcc, n.name)))
         TiAssocRow ignore, ?ignore2, ignore3: ((gg, s, ms, ds, assocAcc))
     # a default body is a body of a method the trait signs, or of one a trait above it
     # signs (ruling SD; `AboveDefaultsKnown` checks that one, once every trait is read)
@@ -894,8 +894,16 @@ fn ConvImpl g, st, info, i, span = match ?ResolveTrait g, info.name, i.traitRef.
                 let ((r, s3)) = ConvType cx, s2, right
                 (((Push acc, ((l, r, b.span))), s3))
             otherwise: ((acc, s))
-        let ((assocs, st4a)) = Fold i.items, (([[]], st3)), \|((acc, s)), it| match it:
-            TiAssocType n, params, ignore, (? v), chosenAt if (Len params) == 0:
+        # (ruling AQ: a bare name an equation gives that is also a type of the program is
+        # the program's type, which is no associated type of the trait: the equation is
+        # written through its trait, `type ^Document.Reason Player = Reason`)
+        let st3q = Fold i.items, st3, \|s, it| match it:
+            TiAssocType n, ignore, ignore2, ?ignore3, chosenAt, False: match ResolveType g, info.name, [[n.name]]:
+                ((? qk, ignore4)) if HasKey g.types, qk: ErrFix s, "collision", chosenAt, "`{n.name}` here is the program's type `{n.name}`, which is no associated type of `^{BareName cls}`", "write the associated type through its trait, as `^{BareName cls}.{n.name}`"
+                otherwise: s
+            otherwise: s
+        let ((assocs, st4a)) = Fold i.items, (([[]], st3q)), \|((acc, s)), it| match it:
+            TiAssocType n, params, ignore, (? v), chosenAt, ignoreAq if (Len params) == 0:
                 let ((vt, s2)) = ConvType cx, s, v
                 # `collision`: an impl chooses an associated type once; the first stays
                 if Fold acc, False, \|seen, ((chosen, ignore))| seen or chosen == n.name: ((acc, (Err s2, "collision", chosenAt, "a second choice of `type {n.name}`")))
@@ -904,7 +912,7 @@ fn ConvImpl g, st, info, i, span = match ?ResolveTrait g, info.name, i.traitRef.
         # the equations with indices (Type System ch. 6): a lowercase index a variable for
         # every role, an uppercase one a role constructor
         let ((indexed, st4)) = Fold i.items, (([[]], st4a)), \|((acc, s)), it| match it:
-            TiAssocType n, params, ignore, (? v), chosenAt if (Len params) > 0:
+            TiAssocType n, params, ignore, (? v), chosenAt, ignoreAq if (Len params) > 0:
                 let ((vt, s2)) = ConvType cx, s, v
                 let ((indices, s3)) = Fold params, (([[]], s2)), \|((xs, ss)), p|
                     if IsUpperText p.name: match ?RoleConstructor g, info.name, p.name:

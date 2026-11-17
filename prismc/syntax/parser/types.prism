@@ -221,6 +221,9 @@ fn TypeAtomBody p, start = match Kind p:
         if n.case == CaseTopic or n.case == CaseHole: ((Type(kind=(THole name), span=start), (Adv p)))
         else: ((Type(kind=(TName name, [[]]), span=start), (CheckTypeNameScope (Adv p), name)))
     KKw "unit", sigils: ((Type(kind=(TUnit sigils), span=start), (Adv p)))
+    # an associated type written through its trait, `^Document.Reason` (ruling AQ),
+    # applied as any type name is
+    KTrait path if (Len path) >= 2: ((Type(kind=(TName SName(sigils="^", path=path, span=start), [[]]), span=start), (Adv p)))
     KKw "any", ignore: if IsTraitKind (KindAt p, 1): AnyTraitType p, start else: ExistsType p, start
     KKw "forall", ignore:
         # `forall a b (r: Access). t` (Jimmy's ruling FA)

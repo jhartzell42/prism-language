@@ -150,7 +150,9 @@ type TraitItem = choice:
     TiSignature Signature
     TiFn FnClause
     # an associated type: its name, parameters, the stated kinds of some, and its value
-    TiAssocType Ident, [Ident], [((Text, Type))], ?Type, Range
+    # (the last, whether it is written through its trait, `type ^Document.Reason Player =
+    # ..` in an impl: ruling AQ)
+    TiAssocType Ident, [Ident], [((Text, Type))], ?Type, Range, Bool
     # `row Lower` in a trait, `row Lower = Ui.*` in an impl (Type System ch. 3)
     TiAssocRow SName, ?Type, Range
 derive ^Eq, ^Debug

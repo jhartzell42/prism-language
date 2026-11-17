@@ -486,10 +486,18 @@ fn ParseTraitItem p = match Kind p:
                 let name = Ident(name=(Or n.path[0], ""), span=(Here p1))
                 let ((params, kinds, p2)) = AssocParams (Adv p1)
                 let ((?value, p3)) = if AtOp p2, "=": OptionalType (Adv p2) else: ((nil, p2))
-                let item = TiAssocType name, params, kinds, ?value, (To start, (Prev p3))
+                let item = TiAssocType name, params, kinds, ?value, (To start, (Prev p3)), False
+                ((item, p3))
+            # an associated type written through its trait, `type ^Document.Reason Player
+            # = Reason` (ruling AQ): its name is the last
+            KTrait path if (Len path) >= 2:
+                let name = Ident(name=(Or path[Dec (Len path)], ""), span=(Here p1))
+                let ((params, kinds, p2)) = AssocParams (Adv p1)
+                let ((?value, p3)) = if AtOp p2, "=": OptionalType (Adv p2) else: ((nil, p2))
+                let item = TiAssocType name, params, kinds, ?value, (To start, (Prev p3)), True
                 ((item, p3))
             otherwise:
-                let item = TiAssocType noIdent, [[]], [[]], nil, noRange
+                let item = TiAssocType noIdent, [[]], [[]], nil, noRange, False
                 ((item, (ErrorHere p1, "expected the associated type's name")))
     KKw "row", ignore:
         let start = Here p

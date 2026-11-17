@@ -43,7 +43,8 @@ fn CollectDecl g, st, info, d, ?lastType = match d.kind:
         if HasKey g.types, name: ((g, (Err st, "collision", d.span, "a second type `{Dotted t.name.path}`"), ?lastType))
         # an associated type is a type-level name of its trait's module (AK): a trait above
         # declared this name
-        else: if HasKey g.assocNames, name: ((g, (ErrFix st, "duplicate-name", d.span, "`{Dotted t.name.path}` is already an associated type of `^{BareName (Or g.assocNames[name], "")}` in this module", "rename one of them, or declare the trait in a module of its own"), ?lastType))
+        # (a type may share its name with an associated type of the module's trait: a bare
+        # name is the type, the associated type is written through its trait, ruling AQ)
         else:
             let upd = update g:
                 &_.types <= Insert &_.types, name, ti
@@ -87,18 +88,19 @@ fn CollectDecl g, st, info, d, ?lastType = match d.kind:
         # its associated types named now, so a signature of any trait or function can
         # apply one (`Item a`) before the trait's own items are read
         let assocs = Fold t.items, [[]], \|acc, it| match it:
-            TiAssocType n, ignore, ignore, ignore, ignore: Push acc, n.name
+            TiAssocType n, ignore, ignore, ignore, ignore, ignoreAq: Push acc, n.name
             otherwise: acc
         let ti = TraitInfo(assocRowDefaults=[[]], aboveDefaults=[[]], assocRows=[[]], name=name, home=info.name, param=(Or (Each t.params, \|p| p.name)[0], "a"), supers=[[]], headBounds=[[]], methods=[[]], defaults=[[]], assocs=assocs, assocParams=(AssocParamCounts t.items), assocKinded=(AssocKindedOf t.items), assocDefaults=[[]], file=info.file, span=d.span)
         # each a name of the module: a second trait of the module declaring it is
         # `duplicate-name`
         let ((names, st2)) = Fold t.items, ((g.assocNames, st)), \|((m, s)), it| match it:
-            TiAssocType n, ignore, ignore, ignore, aspan:
+            TiAssocType n, ignore, ignore, ignore, aspan, ignoreAq:
                 let qkey = QualKey info.name, n.name
                 match m[qkey]:
                     ? other: ((m, (ErrFix s, "duplicate-name", aspan, "`{n.name}` is already an associated type of `^{BareName other}` in this module", "rename one of them, or declare the trait in a module of its own")))
                     # a type above declared this name
-                    nil: if HasKey g.types, qkey: ((m, (ErrFix s, "duplicate-name", aspan, "`{n.name}` is already a type of this module", "rename one of them, or declare the trait in a module of its own"))) else: (((Insert m, qkey, name), s))
+                    # (a type of the module may share the name, ruling AQ)
+                    nil: (((Insert m, qkey, name), s))
             TiAssocRow n, ignore, aspan:
                 let qkey = QualKey info.name, (SNameKey n)
                 match m[qkey]:
@@ -395,12 +397,12 @@ fn ?ResolveTrait g, m, path:
 # any (`type Request r`; Type System ch. 6).
 AssocKindedOf: fn [TraitItem] -> (Text ==> [Bool])
 fn AssocKindedOf items = Fold items, {{}}, \|m, it| match it:
-    TiAssocType n, params, kinds, ignore, ignore2: if (Len params) == 0: m else: Insert m, n.name, (Each params, \|p| Fold kinds, False, \|seen, ((k, ignore3))| seen or k == p.name)
+    TiAssocType n, params, kinds, ignore, ignore2, ignoreAq: if (Len params) == 0: m else: Insert m, n.name, (Each params, \|p| Fold kinds, False, \|seen, ((k, ignore3))| seen or k == p.name)
     otherwise: m
 
 AssocParamCounts: fn [TraitItem] -> (Text ==> Nat)
 fn AssocParamCounts items = Fold items, {{}}, \|m, it| match it:
-    TiAssocType n, params, ignore, ignore, ignore: if (Len params) == 0: m else: Insert m, n.name, (Len params)
+    TiAssocType n, params, ignore, ignore, ignore, ignoreAq: if (Len params) == 0: m else: Insert m, n.name, (Len params)
     otherwise: m
 
 # A type declaration's parameters written only in a row's place (ruling RR): its fields',

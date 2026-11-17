@@ -173,6 +173,17 @@ fn ConvNamed cx, st, n, args, span:
         let ((xs, st2)) = ConvTypes cx, st, args
         if (Len args) == want: (((TyCon name, xs), st2))
         else: ((TyErr, (Err st2, "kind", span, "`{name}` takes {CountWord want} types; here it has {CountWord (Len args)}")))
+    # an associated type written through its trait, `^Document.Reason Board Player`
+    # (ruling AQ): the trait the path names but its last, the associated type its last
+    else: if n.sigils == "^" and (Len n.path) >= 2:
+        match ?ResolveTrait cx.g, cx.home, (Take n.path, (Dec (Len n.path))):
+            ? tr: match cx.g.traits[tr]:
+                ? info:
+                    let akey = QualKey info.home, (Or n.path[Dec (Len n.path)], "")
+                    if (Or cx.g.assocNames[akey], "") == tr: AssocTypeAt cx, st, tr, akey, name, args, span
+                    else: ((TyErr, (Err st, "unknown-name", span, "`^{BareName tr}` declares no associated type `{Or n.path[Dec (Len n.path)], ""}`")))
+                nil: ((TyErr, (Err st, "unknown-name", span, "no trait `^{Dotted (Take n.path, (Dec (Len n.path)))}`")))
+            nil: ((TyErr, (Err st, "unknown-name", span, "no trait `^{Dotted (Take n.path, (Dec (Len n.path)))}`")))
     else:
         let ((?key, why)) = ResolveType cx.g, cx.home, n.path
         match ?key:
@@ -192,25 +203,17 @@ fn ConvNamed cx, st, n, args, span:
                 let ti = Or cx.g.types[qk], dummyTyInfo
                 let st1 = if why == "collision": ErrFix st, "collision", span, "`{name}` is declared by two modules this file reaches by a bare name", "write it qualified, `{qk}`, or rename this file's own" else: st
                 if HasKey cx.g.assocRowNames, qk: ((TyErr, (Err st1, "kind", span, "`{name}` is an associated row, not a type: it stands where a row does, `emit {name} ...`")))
+                # (a bare name that is both a type of the program and an associated type is
+                # the program's type, ruling AQ; given more types than it takes, it was
+                # meant as the associated type, which is written through its trait)
+                else: if (HasKey cx.g.types, qk) and HasKey cx.g.assocNames, qk:
+                    if (Len args) != (Len ti.params) and (Len args) > 0: ((TyErr, (ErrFix st1, "collision", span, "`{name}` here is the program's type `{name}`, which takes {if (Len ti.params) == 0: "no parameter" else: CountWord (Len ti.params)}, given {CountWord (Len args)}", "write the associated type through its trait, as `^{BareName (Or cx.g.assocNames[qk], "")}.{name}`")))
+                    else: ConvNamedType cx, st1, qk, ti, name, args, span
                 else: match cx.g.assocNames[qk]:
                     # an associated type applied (Type System ch. 3, ch. 5's Traits), a name
                     # of its trait's module: normalized when unified, at an impl's head
                     # with its indices after the head, `Request d r` (Type System ch. 6)
-                    ? tr:
-                        let more = match cx.g.traits[tr]:
-                            ? ti: Or ti.assocParams[BareName qk], 0
-                            nil: 0
-                        if (Len args) == 1 + more:
-                            let ((a, st2)) = ConvType cx, st1, (Or args[0], dummyType)
-                            let kindedAt = match cx.g.traits[tr]:
-                                ? ti: Or ti.assocKinded[BareName qk], [[]]
-                                nil: [[]]
-                            let ((indices, st3)) = Fold (Drop args, 1), (([[]], st2)), \|((xs, s)), arg|
-                                let ((x, s2)) = if Or kindedAt[Len xs], False: ConvIndex cx, s, arg else: UnkindedArg cx, s, arg, "this index of `{name}`", "type {BareName qk} (r: {CaseKindShown cx, arg})", span
-                                (((Push xs, x), s2))
-                            (((TyAssoc tr, (BareName qk), a, indices), st3))
-                        else: if more == 0: ((TyErr, (Err st1, "kind", span, "the associated type `{name}` takes one type; here it has {CountWord (Len args)}")))
-                        else: ((TyErr, (Err st1, "kind", span, "the associated type `{name}` takes {CountWord (1 + more)} types, its trait's and {if more == 1: "an index" else: "{CountWord more} indices"}; here it has {CountWord (Len args)}")))
+                    ? tr: AssocTypeAt cx, st1, tr, qk, name, args, span
                     nil: ConvNamedType cx, st1, qk, ti, name, args, span
 
 # An associated type's index: a bare uppercase name that names a constructor is that
@@ -751,3 +754,22 @@ fn WritesEmitIn t = match t.kind:
     TEmit ignore, ignore2: True
     TGroup x: WritesEmitIn x
     otherwise: False
+
+# An associated type applied (Type System ch. 3, ch. 5's Traits): normalized when unified,
+# at an impl's head with its indices after the head, `Request d r` (Type System ch. 6).
+AssocTypeAt: unbounded fn Cx, St, Text, Text, Text, [Type], Range -> ((Ty, St))
+fn AssocTypeAt cx, st1, tr, qk, name, args, span:
+    let more = match cx.g.traits[tr]:
+        ? ti: Or ti.assocParams[BareName qk], 0
+        nil: 0
+    if (Len args) == 1 + more:
+        let ((a, st2)) = ConvType cx, st1, (Or args[0], dummyType)
+        let kindedAt = match cx.g.traits[tr]:
+            ? ti: Or ti.assocKinded[BareName qk], [[]]
+            nil: [[]]
+        let ((indices, st3)) = Fold (Drop args, 1), (([[]], st2)), \|((xs, s)), arg|
+            let ((x, s2)) = if Or kindedAt[Len xs], False: ConvIndex cx, s, arg else: UnkindedArg cx, s, arg, "this index of `{name}`", "type {BareName qk} (r: {CaseKindShown cx, arg})", span
+            (((Push xs, x), s2))
+        (((TyAssoc tr, (BareName qk), a, indices), st3))
+    else: if more == 0: ((TyErr, (Err st1, "kind", span, "the associated type `{name}` takes one type; here it has {CountWord (Len args)}")))
+    else: ((TyErr, (Err st1, "kind", span, "the associated type `{name}` takes {CountWord (1 + more)} types, its trait's and {if more == 1: "an index" else: "{CountWord more} indices"}; here it has {CountWord (Len args)}")))
