@@ -738,6 +738,20 @@ fn ImplTargets lx, cls, ty = Fold (Or lx.g.impls[cls], [[]]), [[]], \|acc, im| m
 ?EnclosingInstances: unbounded fn Lx -> ?[ [((Text, Ty))] ]
 fn ?EnclosingInstances lx = if lx.inDefinition == "": nil else: ?DefInstances lx, lx.inDefinition
 
+# A definition's instantiations (`?EnclosingInstances`), else the types its uses give it.
+InstancesOrUses: unbounded fn Lx -> [ [((Text, Ty))] ]
+fn InstancesOrUses lx = match ?EnclosingInstances lx:
+    ? users: if (Len users) > 0: users else: UsesInstances lx
+    nil: UsesInstances lx
+
+UsesInstances: fn Lx -> [ [((Text, Ty))] ]
+fn UsesInstances lx = if lx.inDefinition == "": [[]] else: Fold (Values lx.useInsts), [[]], \|acc, u| if u.name != lx.inDefinition: acc else:
+    let solved = Filter u.tys, \|((ignore, t))| IsSolvedTy t
+    if (Len solved) == 0 or HasUser acc, solved: acc else: Push acc, solved
+
+HasUser: fn [ [((Text, Ty))] ], [((Text, Ty))] -> Bool
+fn HasUser users, one = Fold users, False, \|f, u| f or u == one
+
 # The same with its reason (`DefInstancesOutput`), for a refusal's words.
 EnclosingOutput: unbounded fn Lx -> InstancesOutput
 fn EnclosingOutput lx = if lx.inDefinition == "": NoDefinition else: DefInstancesOutput lx, lx.inDefinition
@@ -886,7 +900,12 @@ fn PlacedWidget lx, qk, calleeSpan, args = match lx.g.vals[qk]:
             ? types: Closed lx, types
             # a type parameter of the definition the reading stands in stays open: the
             # reading at each of that definition's instantiations
-            nil: Fold (Or (?EnclosingInstances lx), [[]]), [[]], \|acc, user|
+            # (or, where the definition has no instantiations of its own, a widget
+            # inlined where it is applied, a trait's default widget method among them, the
+            # types each of its uses gives it, as the checker noted them: `@AnswerFrom<<d>>
+            # role, ..` in `@Over`'s supplier at each `@Over<<ChessGame>>`,
+            # generic-widget-answer-in-a-trait-default-supplier)
+            nil: Fold (InstancesOrUses lx), [[]], \|acc, user|
                 let lxu = update lx:
                     &_.subst <= Fold user, &_.subst, \|m, ((q, t))| Insert m, q, t
                 match ?ValuedTypes lxu, v, calleeSpan, args:
