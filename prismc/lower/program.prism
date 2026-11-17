@@ -913,11 +913,35 @@ fn AtLetInstantiations lx, types:
                     let lxk = AtInstance lx, instantiation
                     Append acc, (AtLetInstantiations lxk, (Each types, \|((name, t))| ((name, (SubstTy lxk, t)))))
 
+# (and a trait's default for a widget method, whose rows are the impl's own method's
+# where the impl at the reading's type writes one, `ValuedClauses`: examples/chess's
+# `$ (@Serve<<ChessGame>> ..)`, trait-default-widget-read-as-a-value)
 IsWidgetDef: fn Def -> Bool
 fn IsWidgetDef d = match d.body:
     DbWidget ignore: True
     DbFn ignore: True
+    DbDefault ignore, ignore2: True
     otherwise: False
+
+# The clauses a valued widget's rows lower at the reading's types (`lx.subst`): a
+# function's own; a trait method's, the impl's at the trait's parameter there, else the
+# trait's default.
+ValuedClauses: unbounded fn Lx, Text -> [FnClause]
+fn ValuedClauses lx, qk = match ClausesOf lx.g, qk:
+    [[]]: match lx.g.vals[qk]:
+        ? v: match (Or (Each v.scheme.bounds, \|((ignore, c))| c)[0], ""):
+            "": [[]]
+            cls: match lx.g.traits[cls]:
+                ? tr:
+                    let own = match SubstTy lx, (TyQ tr.param):
+                        TyCon c, ignore: Fold (Or lx.g.impls[cls], [[]]), [[]], \|acc, im| match im.head:
+                            TyCon hc, ignore2 if hc == c and (Len acc) == 0: Fold lx.g.defs, [[]], \|a2, d| if (IsMethodOf d, im) and d.name == (BareName qk): Append a2, (MethodClauses d) else: a2
+                            otherwise: acc
+                        otherwise: [[]]
+                    if (Len own) > 0: own else: DefaultClauses lx.g, qk
+                nil: [[]]
+        nil: [[]]
+    clauses: clauses
 
 # The stem of the names of a valued widget's rows: `{stem}{i}` is clause `i`'s.
 ValuedStem: fn Text -> Text
@@ -954,7 +978,7 @@ fn ?ValuedCases lx, qk, types, stem = match lx.g.vals[qk]:
         let plainParams = Fold ptys, True, \|ok, pt| ok and ((IsWidgetFnTy pt) or (LayerOf pt) == LyPlain or (LayerOf pt) == LyBlueprint or IsLiveParam pt)
         if not (plainResult and plainParams): nil
         else:
-            let clauses = ClausesOf lx.g, qk
+            let clauses = ValuedClauses lxv, qk
             if (Len clauses) == 0: ? [[(("{stem}0", (PaTuple [[]]), [[]], [[(XVar "row_base")]]))]]
             else: ? (Each (Range0 (Len clauses)), \|i| SharedCaseOf lxv, v, (Or clauses[i], dummyClause), "{stem}{i}", True)
 
@@ -981,7 +1005,7 @@ fn ValuedRowsIn lx, qk, stem, ?body, v, hosted:
     let Named = \|i| if hosted: HostedValuedRow "{stem}{i}" else: "{stem}{i}"
     let ?hostedBy = if hosted: ? sharedMoved else: nil
     let wx0 = NewWx lx, "{stem}s", [[]], [[]], [[]], [[]], {{}}, nodeHooks, [[]], ?hostedBy
-    let clauses = ClausesOf lx.g, qk
+    let clauses = ValuedClauses lx, qk
     let rows = match ?body:
         ? b: if (Len clauses) > 0: [[]] else: [[(ArmRowOf wx0, emptyEnv, lx, [[]], [[]], nil, b, (Named 0), "valued", True, False, OutUnit, [[]], [[]], [[]], True)]]
         nil: Each (Range0 (Len clauses)), \|i| ClauseRowOf wx0, emptyEnv, (Or clauses[i], dummyClause), v, (Named i), "valued", True, OutUnit, [[]], True
