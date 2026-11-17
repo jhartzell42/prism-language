@@ -2544,7 +2544,16 @@ fn DeclaredCall lx, env, qk, args, span, cspan, t:
                     let resTy = match v.scheme.ty:
                         TyFn ignore, ignore2, r, prompts: r
                         otherwise: TyErr
+                    # (and an event's or a dynamic's values so, each mapped,
+                    # doc-generic-function-giving-a-role-indexed-type-at-a-role)
+                    let RecodedMap = \|inner| XMethod call, "map", [[(XClosure True, [[(PaTyped (PaBind "erased"), (OutRef OutPod))]], (XCallAt (HelperRef "recode"), [[inner]], [[(XVar "erased")]]))]]
                     if (HasOpenIndexedAssoc (Peel resTy)) and (LayerOf resTy) == LyPlain: VlOwned (XCallAt (HelperRef "recode"), [[t]], [[XRef call]]), t
+                    else: if (HasOpenIndexedAssoc (Peel resTy)) and (LayerOf resTy) == LyEv: match t:
+                        OutEvent inner: VlOwned (RecodedMap inner), t
+                        otherwise: VlOwned call, t
+                    else: if (HasOpenIndexedAssoc (Peel resTy)) and (LayerOf resTy) == LyDyn: match t:
+                        OutDyn inner: VlOwned (RecodedMap inner), t
+                        otherwise: VlOwned call, t
                     else: match ?SignatureResult lx, v, cspan, span, t:
                         ? signatureTy: VlOwned (Recolored lx, call, signatureTy, (CallResultTy lx, span), 0), t
                         nil: VlOwned call, t
