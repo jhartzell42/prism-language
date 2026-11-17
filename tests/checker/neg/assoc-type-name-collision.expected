@@ -1,0 +1,13 @@
+tests/checker/neg/assoc-type-name-collision.prism:23: error[collision]: `Reason` is both the type `Reason` and the associated type `^Document.Reason`
+        type Reason Player = Reason
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: write the associated type through its trait, as `^Document.Reason`
+tests/checker/neg/assoc-type-name-collision.prism:24: error[collision]: `Reason` is both the type `Reason` and the associated type `^Document.Reason`
+        type Reason Spectator = Never
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: write the associated type through its trait, as `^Document.Reason`
+tests/checker/neg/assoc-type-name-collision.prism:26: error[collision]: `Reason` is both the type `Reason` and the associated type `^Document.Reason`
+    Why: fn Reason Board Player -> Text
+            ^^^^^^^^^^^^^^^^^^^
+  fix: write the associated type through its trait, as `^Document.Reason`
+3 errors

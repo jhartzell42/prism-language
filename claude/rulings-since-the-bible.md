@@ -425,3 +425,13 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
   Any module may write one, a program's own as much as the standard library's: the
   checker takes a signature with `runtime` as defined wherever it stands. Jimmy, 16
   November, asked whether ruling RT keeps it to the library: "yes it's allowed".
+
+- **AQ** An associated type may be written through its trait, `^Document.Reason Board
+  Player`, and in an impl's equation `type ^Document.Reason Player = Reason`; the bare
+  form, `Reason Board Player`, stays wherever the name is the associated type's alone.
+  Where a bare name could be the program's own type and an associated type in scope, the
+  checker refuses it as a collision whose fix is the qualified form, as it refuses a
+  variant or a trait reached by two modules. Associated types and a module's types are
+  told apart by this, not kept under one key. Jimmy, 16 November, choosing (a) of three
+  (qualified where names collide; a projection `Board.Reason Player` always; forbidding
+  the clash): "let's go with a".

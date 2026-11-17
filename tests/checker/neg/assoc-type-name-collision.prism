@@ -1,0 +1,28 @@
+# A bare name that is both a type of the program and an associated type of a trait in
+# scope (ruling AQ): `type Reason Player = Reason` in an impl, and `Reason Board Player` in
+# a signature, are refused as collisions, their fix the associated type written through
+# its trait, `^Document.Reason`. Written by Claude (round after q11), 16 November 2026;
+# subject to change.
+trait ^Document d:
+    type Role
+    type Reason (r: Role d)
+
+type GameRole = choice:
+    Player
+    Spectator
+derive ^Eq, ^Ord
+
+type Reason = choice:
+    NotYourMove
+derive ^Eq
+
+type Board = choice:
+    Board
+
+impl ^Document Board:
+    type Role = GameRole
+    type Reason Player = Reason
+    type Reason Spectator = Never
+
+Why: fn Reason Board Player -> Text
+fn Why NotYourMove = "not your move"

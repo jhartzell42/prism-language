@@ -1,10 +1,10 @@
 # A type of the program named as an associated type of a trait it implements, `type
-# Reason = choice: ..` beside `trait ^Document d: type Reason (r: Role d)`, given as that
-# associated type at a role, `type Reason Player = Reason` (Part III ch. 6: an associated
-# type is named through its trait, `Reason Board Player`; a bare `Reason` in type position
-# is the program's own type). Found while isolating c6's errors: q11's checker refused it,
-# "a second impl of `^Debug` for `GameRole`", at a line that derives nothing for
-# `GameRole`.
+# Reason = choice: ..` beside `trait ^Document d: type Reason (r: Role d)`, the
+# associated type written through its trait where the names collide (ruling AQ): the
+# impl's equation `type ^Document.Reason Player = Reason`, whose right side is the
+# program's own type, and a signature's `^Document.Reason Board Player`. Found while
+# isolating c6's errors: q11's checker kept both under one name and refused the program,
+# "a second impl of `^Debug` for `GameRole`".
 # Written by Claude (round after q11), 16 November 2026; subject to change.
 emit Ui.*
 test mod Tests
@@ -27,12 +27,15 @@ type Board = choice:
 
 impl ^Document Board:
     type Role = GameRole
-    type Reason Player = Reason
-    type Reason Spectator = Never
+    type ^Document.Reason Player = Reason
+    type ^Document.Reason Spectator = Never
 
-Why: fn Reason Board Player -> Text
+Why: fn ^Document.Reason Board Player -> Text
 fn Why NotYourMove = "not your move"
+
+Again: fn Reason -> Text
+fn Again reason = "again: {Why reason}"
 
 @page: @unit
 @page:
-    Ui.Label($text=$"{Why NotYourMove}")                                   # 0
+    Ui.Label($text=$"{Why NotYourMove}; {Again NotYourMove}")              # 0
