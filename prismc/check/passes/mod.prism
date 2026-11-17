@@ -109,8 +109,11 @@ fn ?CtorsOf env, st, t = match NormAssoc st, (Zonk st, t):
                     otherwise: nil
                 nil: nil
         otherwise: nil
-    # an existential has one constructor, `any`, over its body
-    TyExists ignore, b, ignore2, kinds: ? [[Ctor(name="any", arity=1, args=[[b]], shown="any _")]]
+    # an existential has one constructor, `any`, over its body, its variables there as
+    # the opened ones an `any` arm reads (`ExistsOpened`): a `Fixed r` column under it
+    # counts `r`'s kind's cases, and the columns after it narrow at each
+    # (doc-existential-match-by-role-and-response-exhaustive)
+    TyExists vs, b, ignore2, kinds: ? [[Ctor(name="any", arity=1, args=[[(ExistsBodyOpened vs, b)]], shown="any _")]]
     TyTuple ts: ? [[Ctor(name="tuple", arity=(Len ts), args=ts, shown="(({Join (Each ts, \|ignore| "_"), ", "}))")]]
     TyCon "Prelude.Error", [[]]: ? [[Ctor(name="Error", arity=2, args=[[(TyCon "Prelude.Fault", [[]]), tText]], shown="Error(..)")]]
     TyCon n, args: match env.g.types[n]:
@@ -348,7 +351,8 @@ fn ShowWitness c, args:
 # `row-not-closed`; a missing case is `not-exhaustive`; an arm nothing reaches is
 # `unreachable`, except `otherwise:` over another module's families (Q-RW6).
 MatchCoverage: unbounded fn Env, St, Ty, [Arm], Range -> St
-fn MatchCoverage env, st, t, arms, span:
+fn MatchCoverage env, st0, t, arms, span:
+    let st = ExistsOpened st0, (Zonk st0, t), 8
     let hasOtherwise = Fold arms, False, \|seen, a| seen or a.?pattern == nil
     let tys = [[t]]
     let ((rows, st2)) = Fold arms, (([[]], st)), \|((acc, s)), arm|
@@ -370,6 +374,33 @@ ArmSpan: fn Arm -> Range
 fn ArmSpan a = match a.?pattern:
     ? p: p.span
     nil: a.span
+
+# An existential's body with its variables as the opened ones (`ExistsVarName`).
+ExistsBodyOpened: unbounded fn [Text], Ty -> Ty
+fn ExistsBodyOpened vs, b:
+    let tys = Fold vs, {{}}, \|m, v| Insert m, v, (TyRigid (ExistsVarName v))
+    SubstQ Inst(tys=tys, rows={{}}, cols={{}}), b
+
+# The variable an existential's own is read as in a match's columns (`?CtorsOf`).
+ExistsVarName: fn Text -> Text
+fn ExistsVarName v = "{v}#exists"
+
+# The kinds of the existentials' variables a type holds, as an `any` arm's opened ones
+# (`St.openedKinds`), so the coverage of a `Fixed` column under one counts its cases.
+ExistsOpened: unbounded fn St, Ty, Nat -> St
+fn ExistsOpened st, t, fuel = match fuel -? 1:
+    nil: st
+    ? less: match t:
+        TyExists vs, b, ignore, kinds:
+            let st2 = update st:
+                &_.openedKinds <= Fold kinds, &_.openedKinds, \|m, ((kv, kt))| Insert m, (ExistsVarName kv), kt
+            ExistsOpened st2, b, less
+        TyCon ignore, args: Fold args, st, \|s, x| ExistsOpened s, x, less
+        TyTuple ts: Fold ts, st, \|s, x| ExistsOpened s, x, less
+        TyArray x: ExistsOpened st, x, less
+        TySig ignore, x: ExistsOpened st, x, less
+        TyMap k, v: ExistsOpened (ExistsOpened st, k, less), v, less
+        otherwise: st
 
 # A row the match cannot close: an element row with a tail, or a fault row in a library.
 IsOpenRow: unbounded fn Env, St, Ty -> Bool
