@@ -3051,12 +3051,16 @@ fn MethodCall lx, env, v, args, span, cspan, t:
             nil: match lx.subst[tr.param]:
                 ? x: ? (OutTyOf lx, x)
                 nil: nil
-        if IsResultOnly lx, v.qk, tr.param: match ?EitherSelf (?EitherSelf (?SelfAt lx, span, cls), (?SelfAt lx, cspan, cls)), ?atParameter:
+        # (any call whose trait's parameter is known here names it, `<T as Trait>::m(..)`:
+        # Rust may not learn it from the arguments even where Prism's types name it, a
+        # parameter only a packed or erased value holds, `Order (Each staying, ..)` over
+        # `[Due d]`, tally's E0790, doc-order-method-through-a-parameter-trait)
+        match ?EitherSelf (?EitherSelf (?SelfAt lx, span, cls), (?SelfAt lx, cspan, cls)), ?atParameter:
             ? self: VlOwned (XCallSelf (RefIn lx, tr.home, (TraitName cls)), mname, self, (ArgsFor lx, env, v, args)), t
-            nil: VlOwned (InternalBug "a call of `{m}` at a type the checker did not record"), t
-        else:
-            let path = RefIn lx, tr.home, "{TraitName cls}::{mname}"
-            VlOwned (XCall path, (ArgsFor lx, env, v, args)), t
+            nil: if IsResultOnly lx, v.qk, tr.param: VlOwned (InternalBug "a call of `{m}` at a type the checker did not record"), t
+            else:
+                let path = RefIn lx, tr.home, "{TraitName cls}::{mname}"
+                VlOwned (XCall path, (ArgsFor lx, env, v, args)), t
 
 IsMethodKey: fn Lx, Text -> Bool
 fn IsMethodKey lx, qk = match lx.g.vals[qk]:
