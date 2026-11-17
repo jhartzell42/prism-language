@@ -610,7 +610,7 @@ fn IsEventValue lx, env, e = match e.kind:
     EName ignore: False
     EGroup ignore: False
     EHold ignore: False
-    otherwise: ((LayerOf (TypeAt lx, e.span)) == LyEv) and (not (Fold (Operands e), False, \|bound, c| bound or HasKey env.spans, (PlaceKey lx, c.span))) and ((HasEventSource lx, env, e) or (?UpdatedValue lx, env, e) != nil)
+    otherwise: ((LayerOf (TypeAt lx, e.span)) == LyEv) and (not (Fold (EventOperands e), False, \|bound, c| bound or HasKey env.spans, (PlaceKey lx, c.span))) and ((HasEventSource lx, env, e) or (?UpdatedValue lx, env, e) != nil)
 
 # `!Updated $d` where `$d` is a dynamic value here (a live dynamic its line made for a
 # supplier's closure, `WholeArgs`, or a local `Dynamic`, a parameter taken whole): the
@@ -632,7 +632,16 @@ fn ?UpdatedValue lx, env, e = match e.kind:
 # parameter taken as one), or a node's event that has its value port. A lifted function's
 # body (`fn !Bump $n, !go = $n + 1 on !go`) has neither: its events are its firing.
 HasEventSource: unbounded fn Lx, Env, Expr -> Bool
-fn HasEventSource lx, env, e = Fold (Operands e), False, \|found, c| found or IsEventSource lx, env, c
+fn HasEventSource lx, env, e = Fold (EventOperands e), False, \|found, c| found or IsEventSource lx, env, c
+
+# What an event lift maps: an expression's operands, and a `match`'s scrutinee or an
+# `if`'s condition (`match !requests: Replace bytes: bytes`, the library's `!ReplacesAt`:
+# each firing matched, event-match-inside-an-element-arm-of-a-hosts-tree).
+EventOperands: fn Expr -> [Expr]
+fn EventOperands e = match e.kind:
+    EMatch sc, ignore: [[sc]]
+    EIf (CondExpr c), ignore, ?ignore2: [[c]]
+    otherwise: Operands e
 
 IsEventSource: unbounded fn Lx, Env, Expr -> Bool
 fn IsEventSource lx, env, c:
@@ -675,7 +684,7 @@ fn EventValueOf lx, env, e:
                 EBinary "<|", l, r: VlOwned (XCall (RefRuntime "prism_rtl::prefer"), [[Ref (ValueOf lx, env, l), Ref (ValueOf lx, env, r)]]), et
                 otherwise: VlOwned (InternalBug "`<|` with no operands"), et
             else:
-                let evs = Filter (Operands e), \|x| (LayerOf (TypeAt lx, x.span)) == LyEv
+                let evs = Filter (EventOperands e), \|x| (LayerOf (TypeAt lx, x.span)) == LyEv
                 match evs:
                     [[one]]:
                         let src = Own (ValueOf lx, env, one)

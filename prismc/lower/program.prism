@@ -125,8 +125,26 @@ fn ModRefs g, m = match g.mods[m]:
                 RFamily q: Push acc, (Or g.famOwner[Dotted q.path], (Dotted q.path))
                 otherwise: acc
             nil: [[]]
-        Filter (Append used, fams), \|x| HasKey g.mods, x
+        # (and every module whose type a declaration's signature names qualified, with no
+        # `use` and no row of it: the library's `BytesOf: fn ~Fs.Contents -> [U8]` in a
+        # program that emits no `Fs.*`, function-over-a-library-modules-type-in-a-program-
+        # that-never-emits-it)
+        let typed = Fold (Values g.vals), [[]], \|acc, v| if v.home != m: acc else: Fold (TyNamesOf v.scheme.ty), acc, \|a2, n| AddText a2, (OwnerOf n)
+        Filter (Append (Append used, fams), typed), \|x| HasKey g.mods, x
     nil: [[]]
+
+# The names of the types a type is built of.
+TyNamesOf: unbounded fn Ty -> [Text]
+fn TyNamesOf t = match t:
+    TyCon n, args: Fold args, [[n]], \|acc, a| UnionTexts acc, (TyNamesOf a)
+    TyTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (TyNamesOf a)
+    TyArray e: TyNamesOf e
+    TyMap k, v: UnionTexts (TyNamesOf k), (TyNamesOf v)
+    TySig ignore, i: TyNamesOf i
+    TyAt i, ignore: TyNamesOf i
+    TyFn ignore, ps, r, prompts: Fold ps, (TyNamesOf r), \|acc, a| UnionTexts acc, (TyNamesOf a)
+    TyForall ignore, b: TyNamesOf b
+    otherwise: [[]]
 
 # The root widgets: every widget a test names, and the root module's `@main`.
 RootWidgets: fn Lx -> [((Text, Bool))]

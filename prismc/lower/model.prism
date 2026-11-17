@@ -821,7 +821,7 @@ fn ExReads x, n = match x:
     XIf c, a, b: (ExReads c, n) or (ExReads a, n) or ExReads b, n
     XBlock ds, y: (DosRead ds, n) or ExReads y, n
     XLabeled ignore, ds, y, ignore: (DosRead ds, n) or ExReads y, n
-    XClosure ignore, ignore, y: ExReads y, n
+    XClosure ignore, ps, y: (not (Fold ps, False, \|f, q| f or PaHas q, n)) and ExReads y, n
     XTry y: ExReads y, n
     XField y, ignore: ExReads y, n
     XFieldOf y, ignore, ignore: ExReads y, n
@@ -834,13 +834,53 @@ fn ExReads x, n = match x:
 AnyReads: unbounded fn [Ex], Text -> Bool
 fn AnyReads xs, n = Fold xs, False, \|f, y| f or ExReads y, n
 
+# (an arm, a closure or a block that binds the name again reads its own, not the one
+# outside: chess's crate, whose blueprint value matched its argument into `seats_p0`
+# inside its closure, was ordered as reading the outer `seats_p0`, and refused as a
+# cycle among values, doc-file-document-hosted-on-disk)
 ArmsRead: unbounded fn [XArm], Text -> Bool
-fn ArmsRead arms, n = Fold arms, False, \|f, a| f or (ExReads a.body, n) or Fold a.conds, False, \|g, c| g or match c:
-    CcIf y: ExReads y, n
-    CcLet ignore, y: ExReads y, n
+fn ArmsRead arms, n = Fold arms, False, \|f, a| f or ArmReads a, n
 
+ArmReads: unbounded fn XArm, Text -> Bool
+fn ArmReads a, n = if PaHas a.pat, n: CondsRead a.conds, n, True else: (CondsRead a.conds, n, False) or ((not (CondsBind a.conds, n)) and ExReads a.body, n)
+
+# The conditions' reads of `n`, in order: a `let` condition that binds it again ends
+# them; `shadowed`: the arm's pattern binds it already, so none reads the outer one.
+CondsRead: unbounded fn [Cc], Text, Bool -> Bool
+fn CondsRead cs, n, shadowed = if shadowed: False else: match cs[0]:
+    nil: False
+    ? (CcIf y): (ExReads y, n) or CondsRead (Drop cs, 1), n, False
+    ? (CcLet q, y): (ExReads y, n) or CondsRead (Drop cs, 1), n, (PaHas q, n)
+
+CondsBind: unbounded fn [Cc], Text -> Bool
+fn CondsBind cs, n = Fold cs, False, \|f, c| f or match c:
+    CcLet q, ignore: PaHas q, n
+    otherwise: False
+
+# Whether a pattern binds the name.
+PaHas: unbounded fn Pa, Text -> Bool
+fn PaHas p, n = match p:
+    PaBind m: m == n
+    PaMut m: m == n
+    PaCtor ignore, ps: Fold ps, False, \|f, q| f or PaHas q, n
+    PaRecord ignore, fs, ignore2: Fold fs, False, \|f, ((ignore3, q))| f or PaHas q, n
+    PaTuple ps: Fold ps, False, \|f, q| f or PaHas q, n
+    PaSlice ps: Fold ps, False, \|f, q| f or PaHas q, n
+    PaRest m: m == n
+    PaTyped q, ignore: PaHas q, n
+    otherwise: False
+
+# A block's statements' reads of `n`, in order: a `let` that binds it again ends them.
 DosRead: unbounded fn [Do], Text -> Bool
-fn DosRead ds, n = Fold ds, False, \|f, d| f or DoReads d, n
+fn DosRead ds, n = match ds[0]:
+    nil: False
+    ? d: (DoReads d, n) or ((not (DoBindsName d, n)) and DosRead (Drop ds, 1), n)
+
+DoBindsName: unbounded fn Do, Text -> Bool
+fn DoBindsName d, n = match d:
+    DoLet q, ignore: PaHas q, n
+    DoLetElse q, ignore, ignore2: PaHas q, n
+    otherwise: False
 
 DoReads: unbounded fn Do, Text -> Bool
 fn DoReads d, n = match d:
@@ -848,12 +888,12 @@ fn DoReads d, n = match d:
     DoLetElse ignore, y, z: (ExReads y, n) or ExReads z, n
     DoAssign a, b: (ExReads a, n) or ExReads b, n
     DoWhile c, ds: (ExReads c, n) or DosRead ds, n
-    DoWhileLet ignore, y, ds: (ExReads y, n) or DosRead ds, n
-    DoFor ignore, y, ds: (ExReads y, n) or DosRead ds, n
+    DoWhileLet q, y, ds: (ExReads y, n) or ((not (PaHas q, n)) and DosRead ds, n)
+    DoFor q, y, ds: (ExReads y, n) or ((not (PaHas q, n)) and DosRead ds, n)
     DoExpr y: ExReads y, n
     DoIf c, a, b: (ExReads c, n) or (DosRead a, n) or DosRead b, n
-    DoIfLet ignore, y, a, b: (ExReads y, n) or (DosRead a, n) or DosRead b, n
-    DoMatch y, arms: (ExReads y, n) or Fold arms, False, \|f, ((ignore, ds))| f or DosRead ds, n
+    DoIfLet q, y, a, b: (ExReads y, n) or ((not (PaHas q, n)) and DosRead a, n) or DosRead b, n
+    DoMatch y, arms: (ExReads y, n) or Fold arms, False, \|f, ((q, ds))| f or ((not (PaHas q, n)) and DosRead ds, n)
     DoReturn y: ExReads y, n
     DoBlock ds: DosRead ds, n
     DoScope ds: DosRead ds, n
