@@ -429,9 +429,12 @@ are kept here, with his words, until they are woven into the Bible. Nothing is r
 - **AQ** An associated type may be written through its trait, `^Document.Reason Board
   Player`, and in an impl's equation `type ^Document.Reason Player = Reason`; the bare
   form, `Reason Board Player`, stays wherever the name is the associated type's alone.
-  Where a bare name could be the program's own type and an associated type in scope, the
-  checker refuses it as a collision whose fix is the qualified form, as it refuses a
-  variant or a trait reached by two modules. Associated types and a module's types are
-  told apart by this, not kept under one key. Jimmy, 16 November, choosing (a) of three
+  Where a bare name is both the program's own type and an associated type in scope, the
+  bare name is the program's own type, since nothing else could say so; the associated
+  type is then written through its trait, and a bare use that reads as the associated
+  type (an equation's left side, the type given the document and indices) is refused
+  with the qualified form as its fix. Associated types and a module's types are told
+  apart by this, not kept under one key. Jimmy, 16 November, choosing (a) of three
   (qualified where names collide; a projection `Board.Reason Player` always; forbidding
-  the clash): "let's go with a".
+  the clash): "let's go with a"; and of a collision: "there's no way to disambiguate
+  this in favor of the program's own type so default has to be the program's own type".

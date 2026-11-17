@@ -1,7 +1,8 @@
 # A bare name that is both a type of the program and an associated type of a trait in
-# scope (ruling AQ): `type Reason Player = Reason` in an impl, and `Reason Board Player` in
-# a signature, are refused as collisions, their fix the associated type written through
-# its trait, `^Document.Reason`. Written by Claude (round after q11), 16 November 2026;
+# scope is the program's own type (ruling AQ): an impl's equation `type Reason Player =
+# Reason` names no associated type of `^Document`, and `Reason Board Player` gives the
+# program's `Reason`, which takes no parameter, two; each is refused with the associated
+# type written through its trait, `^Document.Reason`, as its fix. Written by Claude (round after q11), 16 November 2026;
 # subject to change.
 trait ^Document d:
     type Role
