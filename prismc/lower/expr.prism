@@ -964,7 +964,16 @@ fn AnyValue lx, env, x, t:
             else:
                 # each hidden variable's variant at the packing site, beside the value (MB)
                 let found = Or (?ParamMatch b, (TypeAt lx, x.span), {{}}), {{}}
-                let packing = Fold vs, (XCall (RefRuntime "prism_rtl::Packed::of"), [[v]]), \|acc, q| XMethod acc, "with_kind", [[(ExistsNumber lx, q, found[q])]]
+                # (packed as an opened arm reads it: a part of an associated type at the
+                # existential's own variable is plain data there, so the value given at a
+                # known variant is recoded to it, `any ((Fixed<<Watcher>>, "ada"))` of a
+                # `SeatKey Count` opened as `(Nat, Pod)`; q11 panicked, "two existentials
+                # of different types met",
+                # doc-role-generic-call-lifted-over-an-event-in-an-opened-existential)
+                let erased = OutTyOf lx, b
+                let atSite = OutTyOf lx, (Peel (TypeAt lx, x.span))
+                let packedValue = if (HasOpenIndexedAssoc b) and erased != atSite: XCallAt (HelperRef "recode"), [[erased]], [[XRef v]] else: v
+                let packing = Fold vs, (XCall (RefRuntime "prism_rtl::Packed::of"), [[packedValue]]), \|acc, q| XMethod acc, "with_kind", [[(ExistsNumber lx, q, found[q])]]
                 VlOwned (XMethod packing, "packed", [[]]), packedTy
         otherwise: VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[v]]), OutShowAny), OutShowAny
 
