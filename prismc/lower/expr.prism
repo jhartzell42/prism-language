@@ -553,12 +553,13 @@ DynamicLiftOver: unbounded fn Lx, Env, Expr, [Expr] -> Vl
 fn DynamicLiftOver lx, env, e, srcs:
     let full = TypeAt lx, e.span
     let t = OutTyOf lx, (Peel full)
-    let lxp = update lx:
+    let ((kdos, lxk)) = KindedCaptured lx
+    let lxp = update lxk:
         &_.whole <= False
     let caps = Filter (WithInstances env, (ReadNames (ExprsIn e))), \|n| match env.names[n]:
         ? (BnLocal ignore, ignore, ignore): True
         otherwise: False
-    let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
+    let ((dos, env1)) = Fold caps, ((kdos, env)), \|((acc, en)), n| match env.names[n]:
         ? (BnLocal rs, mode, ct):
             let local = "{PlaceStem rs}_c"
             (((Push acc, (DoLet (PaBind local), (Own (LocalPlace rs, mode, ct)))), (Bind en, n, (BnLocal (XVar local), Owned, ct))))
@@ -682,7 +683,8 @@ fn EventValueOf lx, env, e:
                         let caps = Filter (WithInstances env, (ReadNames (ExprsIn e))), \|n| match env.names[n]:
                             ? (BnLocal ignore, ignore, ignore): True
                             otherwise: False
-                        let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
+                        let ((kdos, lxk)) = KindedCaptured lx
+                        let ((dos, env1)) = Fold caps, ((kdos, env)), \|((acc, en)), n| match env.names[n]:
                             ? (BnLocal rs, mode, ct):
                                 let local = "{PlaceStem rs}_c"
                                 (((Push acc, (DoLet (PaBind local), (Own (LocalPlace rs, mode, ct)))), (Bind en, n, (BnLocal (XVar local), Owned, ct))))
@@ -695,8 +697,8 @@ fn EventValueOf lx, env, e:
                         # object read in a widget's value (`@Shows ($n on !go)`) is its dynamic,
                         # sampled at each firing, not a read of the building method's `cx`
                         let bodyValue = match ?SampledOn e:
-                            ? x: ValueOf lx, env2, x
-                            nil: ValueByKind lx, env2, e
+                            ? x: ValueOf lxk, env2, x
+                            nil: ValueByKind lxk, env2, e
                         # the expression over the firing's value is a dynamic when it samples one
                         # (`(ToldTo seat, $state) on !born`): the event fires its value at the
                         # firing's read point (`Event::map_at`), not the dynamic
@@ -712,6 +714,18 @@ fn EventValueOf lx, env, e:
                         let lets = if hoisted: Push made, (DoLet (PaBind "sampled_dyn"), (Own bodyValue)) else: made
                         VlOwned (XBlock lets, (XMethod (XVar "src_ev"), (if samples: "map_at" else: "map"), [[closure]])), et
                     otherwise: VlOwned (InternalBug "an event value of several events"), et
+
+# The kinded variables' variants a lift's closure reads, each cloned into a local of its
+# own the `move` closure takes (an opened arm's number, a definition's hidden parameter),
+# and the lowering that reads them there.
+KindedCaptured: fn Lx -> (([Do], Lx))
+fn KindedCaptured lx = Fold (Keys lx.kinded), (([[]], lx)), \|((acc, l)), r| match lx.kinded[r]:
+    ? ((name, kindChoice)):
+        let local = "{name}_c"
+        let l2 = update l:
+            &_.kinded <= Insert &_.kinded, r, ((local, kindChoice))
+        (((Push acc, (DoLet (PaBind local), (XClone (XVar name)))), l2))
+    nil: ((acc, l))
 
 # Whether an expression is `l <| r` of two events (a merge, not a lift over them).
 IsPreferOfEvents: fn Lx, Expr -> Bool
@@ -1162,7 +1176,10 @@ fn OpenedAt lx, env, label, vs, kinds, fresh, i, p, arm, pty, t = match vs[i]:
                     let held = "{label}_kind{i}"
                     let lxk = update lx:
                         &_.kinded <= Insert &_.kinded, r, ((held, ""))
-                    XBlock [[(DoLet (PaBind held), (XRef number))]], (OpenedAt lxk, env, label, vs, kinds, fresh, i + 1, p, arm, pty, t)
+                    # (held as its own value, which a lift's closure clones, `KindedCaptured`: a
+                    # reference to the number read would not outlive the arm, tally's
+                    # `SupplierFrom`, doc-closure-opening-an-existential-lifts-a-role-generic-call)
+                    XBlock [[(DoLet (PaBind held), number)]], (OpenedAt lxk, env, label, vs, kinds, fresh, i + 1, p, arm, pty, t)
                 ? last:
                     let At = \|k| OpenedAt (update lx:
                         &_.subst <= Insert &_.subst, r, (TyRole k)
@@ -4087,13 +4104,15 @@ fn KindArgsWith lx, v, cspan, args = if (Len (KindsOfVal lx, v)) == 0: [[]] else
         nil: byArgs
     Each (KindsOfVal lx, v), \|((r, ignore))| match found[r]:
         ? (TyRole k): XRef (VariantNumberOf lx, k)
+        # (by reference: a definition's hidden parameter is one already, an opened arm's
+        # or a lift's own copy a value, and Rust takes `&&Nat` as `&Nat`)
         ? (TyRigid q): match lx.kinded[q]:
-            ? ((name, ignore)): XVar name
+            ? ((name, ignore)): XRef (XVar name)
             nil: match lx.subst[q]:
                 ? (TyRole k): XRef (VariantNumberOf lx, k)
                 otherwise: InternalBug "the kinded variable `{r}` at a call, given `{q}`, which holds no variant here"
         ? (TyQ q): match lx.kinded[q]:
-            ? ((name, ignore)): XVar name
+            ? ((name, ignore)): XRef (XVar name)
             nil: InternalBug "the kinded variable `{r}` at a call, given `{q}`, which holds no variant here"
         otherwise: InternalBug "the kinded variable `{r}` at a call, which the callee's type there does not give"
 

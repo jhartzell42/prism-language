@@ -541,7 +541,7 @@ fn MissingDefinitions g, st0:
             # (a signature that names its runtime function is defined there, in any module:
             # ruling RT, Jimmy 16 November, "yes it's allowed")
             DSignature sg:
-                if (HasKey defined, (QualKey info.name, (DefNameText sg.name))) or IsSome sg.?runtime: s
+                if (HasKey defined, (QualKey info.name, (DefNameText sg.name))) or (sg.?runtime != nil): s
                 else: ErrFix s, "no-definition", d.span, "`{DefNameText sg.name}` has a signature line and no definition", "define it under its signature, `fn {DefNameText sg.name} ... = ...`, or delete the line"
             otherwise: s
     update st:
