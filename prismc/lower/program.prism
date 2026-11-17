@@ -196,7 +196,10 @@ fn ValuedKey qk, types = if (Len types) == 0: qk else: "{qk}#{Debug types}"
 # reading stands in a generic function, whose own parameter it is given).
 ?ValuedTypes: unbounded fn Lx, ValInfo, Range, [Arg] -> ?[((Text, Ty))]
 fn ?ValuedTypes lx, v, calleeSpan, args:
-    let rigids = RigidsIn v.scheme.ty
+    # (and a variable only a bound names, `o` of `@Teller: forall o. fn Text -> @unit emit
+    # Ui.* | Ordered.* o where o: ^Order`: the rows read it, `Told<<o>>`, so the reading
+    # gives it, generic-widget-value-over-a-type-only-its-bound-names's `told_f::<O>`)
+    let rigids = Fold v.scheme.bounds, (RigidsIn v.scheme.ty), \|acc, ((q, ignore))| AddText acc, q
     if (Len rigids) == 0: ? [[]]
     else:
         let ptys = match v.scheme.ty:
