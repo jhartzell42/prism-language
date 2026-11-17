@@ -276,8 +276,49 @@ fn FnDefIn lx, definition, qk, clauses, sc:
     let body = ClausesBody lxb, emptyEnv, clauses, names, ptys, FnBodyValue, "c", ret
     let hidden = Each kinds, \|((r, ignore))| (((KindParamName r), (OutRef OutNat)))
     let params = Append hidden, (Each (Range0 (Len pts)), \|i| (((Or (Each names, \|((n, ignore))| n)[i], "arg"), (OutRef (Or pts[i], OutUnit)))))
-    let generics = FnGenerics lx, qk, sc
-    FnDef(name=(Or lx.rsNames[qk], (Snake (BareName qk))), generics=generics, params=params, ret=ret, body=body, doc=(SignatureText lx, qk), public=True)
+    # (each type parameter an associated type's projection names is bounded by that
+    # associated type's trait, `D: Document_t` for `<D as Document_t>::State`: Prism's
+    # `?StateOf: fn Kept d -> ?(State d)` asks no bound of its own, Rust's does)
+    let generics = Each (FnGenerics lx, qk, sc), \|((g, bs))| ((g, (UnionTexts bs, (ProjectionBounds lx, sc.ty, g))))
+    FnDef(name=(Or lx.rsNames[qk], (Snake (BareName qk))), generics=generics, params=params, ret=ret, body=body, doc=(SignatureText lx, qk), public=True, wheres=(TraitWheres lx, sc))
+
+# The traits of the associated types whose subject is the type variable named `g` (as
+# Rust names it) in a type: the bounds Rust needs to project them.
+ProjectionBounds: unbounded fn Lx, Ty, Text -> [Text]
+fn ProjectionBounds lx, t, g = match t:
+    TyAssoc tr, ignore, a, indices:
+        let own = match a:
+            TyQ q: if (Camel q) == g and (Len indices) == 0: BoundOf lx, tr else: [[]]
+            TyRigid q: if (Camel q) == g and (Len indices) == 0: BoundOf lx, tr else: [[]]
+            otherwise: [[]]
+        Fold indices, (UnionTexts own, (ProjectionBounds lx, a, g)), \|acc, x| UnionTexts acc, (ProjectionBounds lx, x, g)
+    TyCon ignore, ts: Fold ts, [[]], \|acc, x| UnionTexts acc, (ProjectionBounds lx, x, g)
+    TyTuple ts: Fold ts, [[]], \|acc, x| UnionTexts acc, (ProjectionBounds lx, x, g)
+    TyArray x: ProjectionBounds lx, x, g
+    TyMap k, v: UnionTexts (ProjectionBounds lx, k, g), (ProjectionBounds lx, v, g)
+    TySig ignore, x: ProjectionBounds lx, x, g
+    TyAt x, ignore: ProjectionBounds lx, x, g
+    TyFn ignore, ps, r, prompts: Fold ps, (ProjectionBounds lx, r, g), \|acc, x| UnionTexts acc, (ProjectionBounds lx, x, g)
+    otherwise: [[]]
+
+# The `where`s on associated types that a function's trait bounds bring, each trait's
+# own and its superclasses' (`trait ^SerializableDocument d where State d:
+# ^SerializableValue`): at the bounded variable, `<D as Document_t>::State:
+# SerializableValue_t` (doc-bound-on-associated-type-from-trait-where).
+TraitWheres: unbounded fn Lx, Scheme -> [((OutTy, [Text]))]
+fn TraitWheres lx, sc = Fold sc.bounds, [[]], \|acc, ((q, cls))| Fold (TraitsAbove lx, [[cls]], 8), acc, \|acc2, c| match lx.g.traits[c]:
+    ? tr: Fold (Filter tr.headBounds, \|((h, ignore))| IsPlainProjection h), acc2, \|acc3, ((h, b))| Push acc3, (((OutTyOf lx, (Instantiated h, [[tr.param]], [[(TyQ q)]])), (BoundOf lx, b)))
+    nil: acc2
+
+# A trait and the traits above it, `fuel` rounds at most.
+TraitsAbove: unbounded fn Lx, [Text], Nat -> [Text]
+fn TraitsAbove lx, cs, fuel = match fuel -? 1:
+    nil: cs
+    ? less:
+        let more = Fold cs, cs, \|acc, c| match lx.g.traits[c]:
+            ? tr: UnionTexts acc, tr.supers
+            nil: acc
+        if (Len more) == (Len cs): cs else: TraitsAbove lx, more, less
 
 # The type parameters a Rust type names.
 TyParamsIn: fn OutTy -> [Text]
@@ -351,7 +392,7 @@ fn LetGetter lx, qk, l:
     let lxg = GeneralizedLx lx, qk
     let t = OutTyOf lxg, (Peel (TypeAt lxg, l.value.span))
     let v = ValueOf lxg, emptyEnv, l.value
-    FnDef(name=(Or lx.rsNames[qk], (Snake (BareName qk))), generics=(LetGenerics lx, qk), params=[[]], ret=t, body=(Own v), doc="let {BareName qk}", public=True)
+    FnDef(name=(Or lx.rsNames[qk], (Snake (BareName qk))), generics=(LetGenerics lx, qk), params=[[]], ret=t, body=(Own v), doc="let {BareName qk}", public=True, wheres=[[]])
 
 # The variables a generalized top-level `let`'s scheme quantifies (`'N`, the checker's
 # name for the variable `N` it left open), each with the type parameter that stands for

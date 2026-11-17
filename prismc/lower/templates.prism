@@ -635,7 +635,7 @@ fn LensDefs lx, qk, clauses, sc:
         else: OutRefMut part
     let taken = if takesEntry: EntryMutOf lx, (Or ptys[0], TyErr) else: OutRefMut whole
     let read = FnDefOf lx, qk, clauses, sc
-    let reference = FnDef(name=read.name, generics=read.generics, params=[[((parameter, taken))]], ret=ret, body=body, doc=read.doc, public=True)
+    let reference = FnDef(name=read.name, generics=read.generics, params=[[((parameter, taken))]], ret=ret, body=body, doc=read.doc, public=True, wheres=read.wheres)
     # a body that steps through an index is read through the entry in place (`at_shared`)
     let shared = Bind emptyEnv, binder, (BnLocal (XVar parameter), ByRef, whole)
     let ?throughIndex = match clauses[0]:

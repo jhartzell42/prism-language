@@ -452,6 +452,9 @@ type FnDef = record:
     body: Ex
     doc: Text
     public: Bool
+    # The bounds on associated types its traits' `where`s give, `<D as Document_t>::State:
+    # SerializableValue_t`: Rust implies none of them from the trait's own bound.
+    wheres: [((OutTy, [Text]))]
 derive ^Eq, ^Debug
 
 # A step machine (D6): one per unbounded function that `@Run` is given or that a job

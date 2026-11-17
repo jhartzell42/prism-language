@@ -163,7 +163,11 @@ fn Signature f, vis:
     let params = Join (Each f.params, \|((n, t))| "{n}: {Type t}"), ", "
     # A method's own type parameters live as long as the program, as a function's do
     # (`RustFn`): its body may ask a type's key or build a closure over them.
-    "{vis}fn {f.name}{StaticGenerics f.generics}({params}) -> {Type f.ret}"
+    "{vis}fn {f.name}{StaticGenerics f.generics}({params}) -> {Type f.ret}{FnWheres f}"
+
+# A function's `where`s on associated types (`FnDef.wheres`).
+FnWheres: unbounded fn FnDef -> Text
+fn FnWheres f = if (Len f.wheres) == 0: "" else: " where {Join (Each f.wheres, \|((w, bs))| "{Type w}: {Join (Each bs, \|b| RsPath b), " + "}"), ", "}"
 
 TraitMethod: unbounded fn FnDef -> Text
 fn TraitMethod f = if f.public: Fn "", (Signature f, ""), (BodyLines f.body) else: "{Signature f, ""};"
@@ -227,7 +231,7 @@ fn RustFn f:
     let params = Join (Each f.params, \|((n, t))| "{n}: {Type t}"), ", "
     # A function may build a job or a closure over its type parameters, which then live
     # as long as the program (every Prism type does).
-    let sig = "pub fn {f.name}{StaticGenerics f.generics}({params}) -> {Type f.ret}"
+    let sig = "pub fn {f.name}{StaticGenerics f.generics}({params}) -> {Type f.ret}{FnWheres f}"
     Fn (SourceDoc "", f.doc), sig, (BodyLines f.body)
 
 StaticGenerics: fn [((Text, [Text]))] -> Text
