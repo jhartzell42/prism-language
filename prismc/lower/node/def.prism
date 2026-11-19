@@ -2671,6 +2671,10 @@ fn BindHostedWhole wx, benv, menv, res, doc, ps:
         (((WrPlain ex, t), ? p)): BindPlainResult wx, menv, p, ex, t
         (((WrLate ignore, ignore), ? ignore)): update wx:
             &_.build <= Push &_.build, (InternalBugDo "a hosted child's late plain result bound where its block is not split")
+        # (a name the block reads through a getter, given a result that is no dynamic:
+        # refused here, never a getter no one writes)
+        ((ignore, (? (Pattern(kind=(PName n), span=ignore2))))) if (not (IsSome ?r)) and IsPreboundGetter menv.names[SNameKey n]: update wx:
+            &_.build <= Push &_.build, (DoExpr (Refusal "the name `{SNameKey n}`, read as a dynamic, bound to a hosted child's result that is none (a prismc bug)"))
         otherwise: wx
     let wx1 = PartGetter (PartGetter wx0, menv, ps[0], ?r), menv, ps[1], (? doc)
     let ((be1, me1)) = BindPart benv, menv, ps[0], ?r
@@ -2750,6 +2754,11 @@ fn BindParts wx, benv, menv, parts, ps, tys = Fold (Range0 (Len ps)), ((wx, benv
             WrPlain ex, t: (((BindPatternResult w, me, p, ex, t, (Or tys[i], TyErr)), be, me))
             otherwise: ((w, be, me))
     otherwise: ((w, be, me))
+
+# A name prebound as a dynamic read through a getter of the node.
+IsPreboundGetter: fn ?Bn -> Bool
+fn IsPreboundGetter (? (BnDyn (XMethod XSelf, ignore, ignore2), ignore3, ignore4)) = True
+fn IsPreboundGetter ?other = False
 
 # A name prebound as a plain value's field of the node (`BindPlain`).
 IsFieldPart: fn ?Bn -> Bool

@@ -134,6 +134,11 @@ fn ForLine wx, benv0, menv0, ?binders, source, body, e, ?bound:
         # a late one: read from the row once its own rows are built
         WrLate ex, rt: update rowWx:
             &_.result <= WrDyn ex, [[]], rt
+        # rows that give nothing, gathered where the `for` gives a map of them
+        # (`$(k ==> unit)`, the keys that have a row): each row's nothing, a dynamic no
+        # write moves
+        WrUnit if outTy != OutUnit: update rowWx:
+            &_.result <= WrDyn XUnit, [[]], OutUnit
         otherwise: rowWx
     match rowWxR.result:
         WrEv r:

@@ -123,8 +123,8 @@ PeelUnlessWhole: fn Lx, Ty -> Ty
 fn PeelUnlessWhole lx, t = if lx.whole: t else: Peel t
 
 # A function's clauses as one body over its parameters (each a reference, `ref`).
-ClausesBody: unbounded fn Lx, Env, [FnClause], [((Text, Bool))], [Ty], (fn Lx, Env, FnBody -> Ex), Text, OutTy -> Ex
-fn ClausesBody lx, env, clauses, names, ptys, Body, label, t:
+ClausesBody: unbounded fn Lx, Env, [FnClause], [((Text, Bool))], [Ty], (fn Lx, Env, FnBody -> Ex), Text, OutTy, ?Ty -> Ex
+fn ClausesBody lx, env, clauses, names, ptys, Body, label, t, ?result:
     let env1 = Fold (Range0 (Len names)), env, \|en, i|
         let ((rs, matched)) = Or names[i], (("", True))
         if matched: en
@@ -150,12 +150,19 @@ fn ClausesBody lx, env, clauses, names, ptys, Body, label, t:
             let lxc = FixedClauseLx lx, c.params, ptys
             let Recoded = \|i| (lxc.subst != lx.subst) and (HasOpenIndexedAssoc (Peel (Or ptys[i], TyErr))) and not (HasOpenIndexedAssoc (SubstTy lxc, (Peel (Or ptys[i], TyErr))))
             let RecodeAt = \|i, x| XCallAt (HelperRef "recode"), [[(OutTyOf lxc, (SubstTy lxc, (Peel (Or ptys[i], TyErr))))]], [[x]]
-            let pos = Each scrutIx, \|i| if Recoded i: RustPat lxc, (Or c.params[i], dummyPat), (SubstTy lxc, (Peel (Or ptys[i], TyErr))), Owned, "{label}{ci}_{i}" else: RustPat lx, (Or c.params[i], dummyPat), (Or ptys[i], TyErr), ByRef, "{label}{ci}_{i}"
+            let pos = Each scrutIx, \|i| if Recoded i: RustPat lxc, (Or c.params[i], dummyPat), (SubstTy lxc, (Peel (Or ptys[i], TyErr))), Owned, "{label}{ci}_{i}" else: RustPat lxc, (Or c.params[i], dummyPat), (SubstTy lxc, (Or ptys[i], TyErr)), ByRef, "{label}{ci}_{i}"
             let pas = Each (Range0 (Len scrutIx)), \|k| if Recoded (Or scrutIx[k], 0): PaBind "{label}{ci}_{Or scrutIx[k], 0}_pod" else: (Or pos[k], PatOnly PaWild).pa
             let pa = match pas:
                 [[one]]: one
                 otherwise: PaTuple pas
-            let plainConds = Fold (Range0 (Len scrutIx)), [[]], \|acc, k| if Recoded (Or scrutIx[k], 0): acc else: Append acc, (Or pos[k], PatOnly PaWild).conds
+            # (the variant's own condition before any other: a pattern under it may read a
+            # field back at the variant's type, `Declined (StopsAt most)` of a `Response d r`)
+            let Fixes = \|k| match (Or c.params[(Or scrutIx[k], 0)], dummyPat).kind:
+                PTypeArgs ignore, ignore2: True
+                otherwise: False
+            let fixedConds = Fold (Range0 (Len scrutIx)), [[]], \|acc, k| if (Fixes k) and not (Recoded (Or scrutIx[k], 0)): Append acc, (Or pos[k], PatOnly PaWild).conds else: acc
+            let otherConds = Fold (Range0 (Len scrutIx)), [[]], \|acc, k| if (Fixes k) or Recoded (Or scrutIx[k], 0): acc else: Append acc, (Or pos[k], PatOnly PaWild).conds
+            let plainConds = Append fixedConds, otherConds
             let recodedConds = Fold (Range0 (Len scrutIx)), [[]], \|acc, k| if Recoded (Or scrutIx[k], 0): Append (Push acc, (CcLet (Or pos[k], PatOnly PaWild).pa, (RecodeAt (Or scrutIx[k], 0), (XVar "{label}{ci}_{Or scrutIx[k], 0}_pod")))), (Or pos[k], PatOnly PaWild).conds else: acc
             let conds = Append plainConds, recodedConds
             let binds = Fold pos, [[]], \|acc, o| Append acc, o.binds
@@ -165,7 +172,13 @@ fn ClausesBody lx, env, clauses, names, ptys, Body, label, t:
                 otherwise: acc
             let value = Body lxc, (BindAll (BindAll env1, rebound), binds), c.body
             # (and a result of such a type given back as the signature holds it, plain data)
-            let answered = if lxc.subst != lx.subst and t == OutPod: XCallAt (HelperRef "recode"), [[OutPod]], [[XRef value]] else: value
+            # (the body's value is of the result's type at the variant, said so Rust reads
+            # every arm of it there: `Stepped<Race, NotYourMove>` for a signature's
+            # `Stepped<Race, Pod>`, doc-derive-via-with-role-indexed-equalities)
+            let atVariant = match ?result:
+                ? r: OutTyOf lxc, (SubstTy lxc, (Peel r))
+                nil: t
+            let answered = if lxc.subst != lx.subst and atVariant != t: XCallAt (HelperRef "recode"), [[t]], [[(XRef (XBlock [[(DoLet (PaTyped (PaBind "at_variant"), atVariant), value)]], (XVar "at_variant")))]] else: value
             XArm(pat=pa, conds=conds, body=answered)
         Own (ArmsValue scrut, arms, "'{label}", t)
 
@@ -273,7 +286,7 @@ fn FnDefIn lx, definition, qk, clauses, sc:
         &_.kinded <= Fold kinds, &_.kinded, \|m, ((r, kindChoice))| Insert m, r, (((KindParamName r), kindChoice))
     let ((pts, ret)) = SignatureOut lx, qk, sc
     let names = ParamNames lx, clauses, pts
-    let body = ClausesBody lxb, emptyEnv, clauses, names, ptys, FnBodyValue, "c", ret
+    let body = ClausesBody lxb, emptyEnv, clauses, names, ptys, FnBodyValue, "c", ret, (? res)
     let hidden = Each kinds, \|((r, ignore))| (((KindParamName r), (OutRef OutNat)))
     let params = Append hidden, (Each (Range0 (Len pts)), \|i| (((Or (Each names, \|((n, ignore))| n)[i], "arg"), (OutRef (Or pts[i], OutUnit)))))
     # (each type parameter an associated type's projection names is bounded by that
@@ -564,7 +577,16 @@ fn DispatchMethods lx, im, tr = Fold (EveryIndexBounds tr), [[]], \|acc, ((tr2, 
             let pt = Peel (Or ptys[i], TyErr)
             let concrete = OutTyOf lx, (Instantiated pt, [[ctr.param]], [[t]])
             if (Instantiated pt, [[ctr.param]], [[TyErr]]) == pt: XVar "arg{i}" else: XRef (XCallAt (HelperRef "recode"), [[concrete]], [[(XVar "arg{i}")]])
-        let call = XCallSelf (RefIn lx, ctr.home, (TraitName c)), mname, (OutTyOf lx, t), args
+        # (a bound by a trait of the prelude, `where SeatId d _: ^Pod`: its method as the
+        # prelude answers it at that type, `PreludeMethod`, never a path of a Rust trait
+        # the prelude has none of; q12 wrote `<() as crate::prelude::Pod>::children`,
+        # rustc E0404, doc-file-document-hosted-on-disk)
+        let atType = OutTyOf lx, (Instantiated (Peel res), [[ctr.param]], [[t]])
+        let vals = Each (Range0 (Len ptys)), \|i|
+            let pt = Peel (Or ptys[i], TyErr)
+            let concrete = OutTyOf lx, (Instantiated pt, [[ctr.param]], [[t]])
+            if (Instantiated pt, [[ctr.param]], [[TyErr]]) == pt: VlPlace (XVar "arg{i}"), ByRef, concrete else: VlOwned (XCallAt (HelperRef "recode"), [[concrete]], [[(XVar "arg{i}")]]), concrete
+        let call = if HasPrefix c, "Prelude.": Own (PreludeMethod lx, c, (BareName mq), vals, im.span, atType) else: XCallSelf (RefIn lx, ctr.home, (TraitName c)), mname, (OutTyOf lx, t), args
         if (Instantiated (Peel res), [[ctr.param]], [[TyErr]]) == (Peel res): call else: XCallAt (HelperRef "recode"), [[ret]], [[(XRef call)]]
     let equations = Filter (ImplEquationsAt lx, tr2, n, im.head), \|((ignore, ignore2))| True
     let body = match equations:

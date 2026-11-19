@@ -122,7 +122,10 @@ fn RequestCode sk, pos, field, y:
     let fieldEx = if field == "": XNone else: (XCtor (RefRuntime "std::Some"), [[XStr field]])
     # (a firing that is `nil` itself, `!?leaves=(nil on !leave)`, is the `Pod` of none: a
     # bare `None` names no type to write it at, element-optional-event-field-given-nil-on-an-event)
-    let pod = if y == XNone: XPath (RefRuntime "rt::Pod::Nil") else: XMethod y, "to_pod", [[]]
+    let pod = match y:
+        XNone: XPath (RefRuntime "rt::Pod::Nil")
+        XTyped XNone, ignore: XPath (RefRuntime "rt::Pod::Nil")
+        otherwise: XMethod y, "to_pod", [[]]
     # a hosted place's request goes to its host: out with a forwarded element, else nowhere
     if Emits sk.wx, pos: [[DoExpr (XMethod (XCx), "request", [[(PlaceAt sk.wx, "self", pos), fieldEx, pod]])]]
     # the host's answer first, then kept: `cx` is borrowed once at a time

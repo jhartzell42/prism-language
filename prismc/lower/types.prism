@@ -809,7 +809,7 @@ fn AssocOut lx, tr, n, a0, indices0:
 # doc-role-method-impl-with-one-equation-for-every-role's E0053; a clause that fixes the
 # index reads it back at its type, `FixedClauseLx`)
 AssocOutAt: unbounded fn Lx, Text, Text, Ty, [Ty] -> OutTy
-fn AssocOutAt lx, tr, n, a, indices = if (Len indices) > 0 and HasOpenIndexedAssoc (TyAssoc tr, n, a, indices): OutPod else: match ?ImplAssoc lx.g, tr, n, a, indices:
+fn AssocOutAt lx, tr, n, a, indices = if OpenAtKindedIndex lx, tr, n, indices: OutPod else: match ?ImplAssoc lx.g, tr, n, a, indices:
     ? t: OutTyOf lx, t
     nil: match lx.g.traits[tr]:
         ? info: if (Len indices) == 0: OutAssoc (PathIn lx, info.home, (TraitName info.name)), (Camel n), (OutTyOf lx, a)
@@ -820,6 +820,18 @@ fn AssocOutAt lx, tr, n, a, indices = if (Len indices) > 0 and HasOpenIndexedAss
         # `DeclaredCall`)
         else: OutPod
         nil: InternalBugType "an associated type `{n}` of `{tr}`, which no trait of the program declares"
+
+# Whether an associated type stands at a variable in an index that declares its kind
+# (`type SeatId (r: Role d)` at `r`). A further parameter of no kind is a type parameter
+# as any other, which the impl's equation holds whatever it is (`type Seats rest =
+# FileSeats rest`: q12 held `Seats File rest` as plain data, and the file's seats, live
+# maps, are none; doc-file-document-hosted-on-disk).
+OpenAtKindedIndex: fn Lx, Text, Text, [Ty] -> Bool
+fn OpenAtKindedIndex lx, tr, n, indices:
+    let kinded = match lx.g.traits[tr]:
+        ? info: Or info.assocKinded[n], [[]]
+        nil: [[]]
+    Fold (Range0 (Len indices)), False, \|open, i| open or ((Or kinded[i], False) and not (IsKnownIndex (Or indices[i], TyErr)))
 
 # Where such an associated type stands, for the refusal: its trait's argument and the
 # definition being lowered.

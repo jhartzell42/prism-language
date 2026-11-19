@@ -243,7 +243,11 @@ fn RebuildLine wx, benv, menv, scrut, body, e, ?bound:
             &_.genHolds <= Push &_.genHolds, ((name, reads))
             &_.rows <= Fold rowDefs, &_.rows, \|acc, rd| Append (Push acc, rd), rd.children
             &_.getters <= Push (Push &_.getters, (GenUp name, (GnOf wx4, upId).name, (GnOf wx4, upId).ty)), (GenUpAbove name, (GnOf wx4, upId).name)
-        ((wx5, (WrEv (EvRefOf wx5, upId))))
+        # (a `rebuild` whose block gives nothing gives nothing: no event of unit, which a
+        # `for` over such rows gathered as one, its `$(k ==> unit)` then bound to no
+        # dynamic, host-result-part-through-two-widgets-into-a-dynamic-record-field,
+        # doc-seats-record-of-rows)
+        if (OutTyOf lx, (Peel (TypeAt lx, e.span))) == OutUnit and not (IsSome ?bound): ((wx5, WrUnit)) else: ((wx5, (WrEv (EvRefOf wx5, upId))))
 
 # Whether a `rebuild` hands back a dynamic: `$$a` (its generations give `$a`), or `$a` over
 # a plain result, rather than an event, `$!a`, or nothing.

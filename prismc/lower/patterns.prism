@@ -190,7 +190,7 @@ fn CtorPat lx, n, ps, ty, mode, fresh:
 # nested pattern matches behind it in a `let`.
 SubPat: unbounded fn Lx, CtorInfo, Nat, Pattern, Ty, Holding, Text -> PatOut
 fn SubPat lx, c, i, p, ty, mode, fresh:
-    if HasOpenAssoc (Or c.args[i], TyErr): AssocPodPat lx, p, ty, fresh
+    if HasOpenAssoc (Or c.args[i], TyErr): AssocPodPat lx, p, ty, mode, fresh
     else: if not (RcField lx, c.name, i): RustPat lx, p, ty, mode, fresh
     else:
         let rcMode = if mode == Owned: RcOwned else: RcRef
@@ -206,11 +206,11 @@ fn SubPat lx, c, i, p, ty, mode, fresh:
 # A field that holds plain data for an associated type at its type's variables (MB,
 # `CaseField`): bound as it is, then recoded at the concrete type the pattern gives, and
 # the pattern matched against that.
-AssocPodPat: unbounded fn Lx, Pattern, Ty, Text -> PatOut
-fn AssocPodPat lx, p, ty, fresh:
+AssocPodPat: unbounded fn Lx, Pattern, Ty, Holding, Text -> PatOut
+fn AssocPodPat lx, p, ty, mode, fresh:
     let pod = "{fresh}_pod"
     let inner = RustPat lx, p, ty, Owned, "{fresh}_at"
-    let read = XCallAt (HelperRef "recode"), [[(OutTyOf lx, ty)]], [[(XRef (XVar pod))]]
+    let read = XCallAt (HelperRef "recode"), [[(OutTyOf lx, ty)]], [[(if mode == Owned: XRef (XVar pod) else: XVar pod)]]
     PatOut(pa=(PaBind pod), conds=(Append [[(CcLet inner.pa, read)]], inner.conds), binds=inner.binds)
 
 BehindRc: unbounded fn Lx, Pattern, Ty, Holding, Text -> PatOut

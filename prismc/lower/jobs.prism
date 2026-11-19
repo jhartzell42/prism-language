@@ -870,5 +870,5 @@ fn JobClauses lx, clauses, names, ptys, pts:
     let lets = Each (Range0 (Len names)), \|i|
         let ((rs, ignore)) = Or names[i], (("arg", True))
         DoLet (PaBind rs), (XRef (XField XSelf, rs))
-    let inner = ClausesBody lx, emptyEnv, clauses, names, ptys, TailBody, "j", (OutTurn)
+    let inner = ClausesBody lx, emptyEnv, clauses, names, ptys, TailBody, "j", (OutTurn), nil
     XBlock lets, inner
