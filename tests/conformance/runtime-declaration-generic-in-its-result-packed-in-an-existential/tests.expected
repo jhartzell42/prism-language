@@ -1,6 +1,6 @@
-# Derived by hand under ruling PL and ruling HP (SM3 (a)): the host is the page's 0 and its primitive that list's 0; `@Seated` is the host's root, its `for` place 0, the seat's key [7], the `rebuild` the row's 0 and generation #0, the guest applied there with a list of its own, its query 0 and label 1, forwarded at 0/0.[p]/0. The supplier answers the query from the seat's key, read at the raiser's seat id type (ruling RT's runtime `seat_id_at`); a computed answer reaches the place the next tick (ruling HO), and the World shows no tick 1 without input, so the label is still unanswered at tick 0.
+# Derived by hand under ruling PL and ruling HP (SM3 (a)): the host is the page's 0 and its primitive that list's 0; `@Seated` is the host's root, its `for` place 0, the seat's key [7], the `rebuild` the row's 0 and generation #0, the guest applied there with a list of its own, its query 0 and label 1, forwarded at 0/0.[p]/0. The supplier answers the query from the seat's key, read at the raiser's seat id type (ruling RT's runtime `seat_id_at`); a supplier's dynamic answer gives the place its first value in the birth tick (round 3 DY, as sem-ch09-host-dynamic-answer-let), so the label is told at tick 0.
 test told_its_seat
 
 tick 0
   added:
-    0/0.[0.[7].0.#0.0/1]/0: Ui.Label(text="I am not told yet")
+    0/0.[0.[7].0.#0.0/1]/0: Ui.Label(text="I am raiser 7")
